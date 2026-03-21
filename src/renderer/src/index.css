@@ -120,6 +120,12 @@
   }
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 /* Tactical typography utilities */
 .text-section-header {
   @apply text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground;
@@ -361,6 +367,10 @@
 .app-drag-region input,
 .app-drag-region select,
 .app-drag-region a {
+  -webkit-app-region: no-drag;
+}
+
+.app-no-drag {
   -webkit-app-region: no-drag;
 }
 

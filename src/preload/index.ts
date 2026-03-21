@@ -150,6 +150,11 @@ const api = {
       return ipcRenderer.invoke("models:deleteApiKey", provider)
     }
   },
+  launcher: {
+    hide: (): Promise<void> => {
+      return ipcRenderer.invoke("launcher:hide")
+    }
+  },
   workspace: {
     get: (threadId?: string): Promise<string | null> => {
       return ipcRenderer.invoke("workspace:get", threadId)

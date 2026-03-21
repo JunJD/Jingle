@@ -4,8 +4,16 @@ import { registerAgentHandlers } from "./ipc/agent"
 import { registerThreadHandlers } from "./ipc/threads"
 import { registerModelHandlers } from "./ipc/models"
 import { initializeDatabase } from "./db"
+import {
+  createLauncherWindow,
+  registerLauncherHandlers,
+  registerLauncherShortcut,
+  unregisterLauncherShortcut
+} from "./windows/launcher-window"
+import { loadRendererWindow } from "./windows/load-renderer-window"
 
 let mainWindow: BrowserWindow | null = null
+let launcherWindow: BrowserWindow | null = null
 
 // Simple dev check - replaces @electron-toolkit/utils is.dev
 const isDev = !app.isPackaged
@@ -35,16 +43,26 @@ function createWindow(): void {
     return { action: "deny" }
   })
 
-  // HMR for renderer based on electron-vite cli
-  if (isDev && process.env["ELECTRON_RENDERER_URL"]) {
-    mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"])
-  } else {
-    mainWindow.loadFile(join(__dirname, "../renderer/index.html"))
-  }
+  void loadRendererWindow(mainWindow, "main")
 
   mainWindow.on("closed", () => {
+    if (launcherWindow && !launcherWindow.isDestroyed()) {
+      launcherWindow.close()
+      launcherWindow = null
+    }
     mainWindow = null
   })
+}
+
+function getOrCreateLauncherWindow(): BrowserWindow {
+  if (!launcherWindow || launcherWindow.isDestroyed()) {
+    launcherWindow = createLauncherWindow()
+    launcherWindow.on("closed", () => {
+      launcherWindow = null
+    })
+  }
+
+  return launcherWindow
 }
 
 app.whenReady().then(async () => {
@@ -85,14 +103,21 @@ app.whenReady().then(async () => {
   registerAgentHandlers(ipcMain)
   registerThreadHandlers(ipcMain)
   registerModelHandlers(ipcMain)
+  registerLauncherHandlers(ipcMain)
 
   createWindow()
+  getOrCreateLauncherWindow()
+  registerLauncherShortcut(getOrCreateLauncherWindow)
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
       createWindow()
     }
   })
+})
+
+app.on("will-quit", () => {
+  unregisterLauncherShortcut()
 })
 
 app.on("window-all-closed", () => {

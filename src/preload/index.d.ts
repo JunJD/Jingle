@@ -53,6 +53,9 @@ interface CustomAPI {
     setApiKey: (provider: string, apiKey: string) => Promise<void>
     getApiKey: (provider: string) => Promise<string | null>
   }
+  launcher: {
+    hide: () => Promise<void>
+  }
   workspace: {
     get: (threadId?: string) => Promise<string | null>
     set: (threadId: string | undefined, path: string | null) => Promise<string | null>
