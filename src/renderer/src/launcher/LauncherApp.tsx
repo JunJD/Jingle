@@ -7,7 +7,8 @@ function getShortcutLabel(platform: NodeJS.Platform): string {
 export default function LauncherApp(): React.JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null)
   const [value, setValue] = useState("")
-  const shortcutLabel = getShortcutLabel(window.electron.process.platform)
+  const platform = window.electron.process.platform
+  const shortcutLabel = getShortcutLabel(platform)
 
   useEffect(() => {
     const focusInput = (): void => {
@@ -16,8 +17,13 @@ export default function LauncherApp(): React.JSX.Element {
     }
 
     focusInput()
+    const cleanupShown = window.api.launcher.onShown(focusInput)
     window.addEventListener("focus", focusInput)
-    return () => window.removeEventListener("focus", focusInput)
+
+    return () => {
+      cleanupShown()
+      window.removeEventListener("focus", focusInput)
+    }
   }, [])
 
   useEffect(() => {
@@ -33,29 +39,22 @@ export default function LauncherApp(): React.JSX.Element {
   }, [])
 
   return (
-    <div className="h-screen bg-[#101014] p-3">
-      <div className="app-drag-region flex h-full items-center rounded-[14px] border border-white/8 bg-[linear-gradient(135deg,#15151b_0%,#101014_100%)] px-4 shadow-[0_22px_60px_rgba(0,0,0,0.45)]">
-        <div className="mr-4 flex shrink-0 flex-col">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#f97316]">
-            Launcher
-          </span>
-          <span className="text-[11px] text-muted-foreground">{shortcutLabel}</span>
-        </div>
+    <div className="flex h-screen items-center overflow-hidden border border-[#33333d] bg-[#1c1c28] px-4 shadow-[0_14px_36px_rgba(0,0,0,0.32)]">
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        placeholder="Launcher shell ready. Search connects next."
+        className="h-full flex-1 border-0 bg-transparent px-1 text-[16px] text-[#e8e8f0] outline-none placeholder:text-[#73788c]"
+      />
 
-        <input
-          ref={inputRef}
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          placeholder="Phase 1.1: launcher window only. Search lands in Phase 2."
-          className="app-no-drag h-12 flex-1 border-0 bg-transparent text-[20px] text-foreground outline-none placeholder:text-[#5f6372]"
-        />
-
-        <div className="ml-4 flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
-          <span className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#8a8a96]">
-            Esc
-          </span>
-          <span>Hide</span>
-        </div>
+      <div className="ml-3 flex shrink-0 items-center gap-2 text-[11px] text-[#a9aabd]">
+        <span className="hidden min-[760px]:inline text-[10px] uppercase tracking-[0.12em] text-[#7e8297]">
+          {shortcutLabel}
+        </span>
+        <span className="rounded border border-[#3a3d4f] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-[#c7c9d6]">
+          Esc
+        </span>
       </div>
     </div>
   )

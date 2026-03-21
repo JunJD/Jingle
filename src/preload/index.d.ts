@@ -55,6 +55,7 @@ interface CustomAPI {
   }
   launcher: {
     hide: () => Promise<void>
+    onShown: (callback: () => void) => () => void
   }
   workspace: {
     get: (threadId?: string) => Promise<string | null>

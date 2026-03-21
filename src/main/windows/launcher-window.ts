@@ -2,32 +2,57 @@ import { BrowserWindow, type IpcMain, globalShortcut, screen } from "electron"
 import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
 
-const LAUNCHER_WIDTH = 760
-const LAUNCHER_HEIGHT = 96
+const LAUNCHER_WIDTH = 800
+const LAUNCHER_HEIGHT = 60
+const LAUNCHER_HORIZONTAL_MARGIN = 24
+const LAUNCHER_TOP_MARGIN = 60
+const MAC_LAUNCHER_WINDOW_LEVEL = "floating"
+
 export const DEFAULT_LAUNCHER_SHORTCUT = "CommandOrControl+Shift+Space"
 
-function getLauncherBounds(): { x: number; y: number } {
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max)
+}
+
+function getLauncherBounds(): { x: number; y: number; width: number; height: number } {
   const cursorPoint = screen.getCursorScreenPoint()
   const display = screen.getDisplayNearestPoint(cursorPoint)
+  const maxWidth = Math.max(520, display.workArea.width - LAUNCHER_HORIZONTAL_MARGIN * 2)
+  const width = Math.min(LAUNCHER_WIDTH, maxWidth)
+  const x = Math.round(display.workArea.x + display.workArea.width / 2 - width / 2)
+  const minY = display.workArea.y + LAUNCHER_TOP_MARGIN
+  const maxY = display.workArea.y + display.workArea.height - LAUNCHER_HEIGHT - LAUNCHER_TOP_MARGIN
+  const targetY = Math.round(display.workArea.y + display.workArea.height * 0.16)
+  const y = clamp(targetY, minY, Math.max(minY, maxY))
 
   return {
-    x: Math.round(display.workArea.x + display.workArea.width / 2 - LAUNCHER_WIDTH / 2),
-    y: Math.round(display.workArea.y + Math.max(72, display.workArea.height * 0.18))
+    x,
+    y,
+    width,
+    height: LAUNCHER_HEIGHT
   }
 }
 
+function emitLauncherShown(launcherWindow: BrowserWindow): void {
+  if (launcherWindow.webContents.isLoadingMainFrame()) {
+    launcherWindow.webContents.once("did-finish-load", () => {
+      if (!launcherWindow.isDestroyed()) {
+        launcherWindow.webContents.send("launcher:shown")
+      }
+    })
+    return
+  }
+
+  launcherWindow.webContents.send("launcher:shown")
+}
+
 function showLauncherWindow(launcherWindow: BrowserWindow): void {
-  const { x, y } = getLauncherBounds()
-  launcherWindow.setBounds({
-    x,
-    y,
-    width: LAUNCHER_WIDTH,
-    height: LAUNCHER_HEIGHT
-  })
+  launcherWindow.setBounds(getLauncherBounds(), false)
 
   if (process.platform === "darwin") {
     launcherWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-    launcherWindow.setAlwaysOnTop(true, "screen-saver", 1)
+    //// 保持启动器位于应用窗口上方，但不遮挡输入法候选窗口。
+    launcherWindow.setAlwaysOnTop(true, MAC_LAUNCHER_WINDOW_LEVEL)
   } else {
     launcherWindow.setAlwaysOnTop(true)
   }
@@ -35,6 +60,15 @@ function showLauncherWindow(launcherWindow: BrowserWindow): void {
   launcherWindow.show()
   launcherWindow.focus()
   launcherWindow.moveTop()
+  emitLauncherShown(launcherWindow)
+
+  if (process.platform === "darwin") {
+    setTimeout(() => {
+      if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
+        launcherWindow.setVisibleOnAllWorkspaces(false, { visibleOnFullScreen: true })
+      }
+    }, 0)
+  }
 }
 
 function hideLauncherWindow(launcherWindow: BrowserWindow): void {
@@ -48,14 +82,15 @@ export function createLauncherWindow(): BrowserWindow {
     show: false,
     ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
     frame: false,
+    useContentSize: true,
     resizable: false,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
+    hiddenInMissionControl: true,
     hasShadow: true,
-    alwaysOnTop: true,
-    backgroundColor: "#101014",
+    backgroundColor: "#1c1c28",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false
@@ -66,6 +101,32 @@ export function createLauncherWindow(): BrowserWindow {
     if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
       hideLauncherWindow(launcherWindow)
     }
+  })
+
+  launcherWindow.webContents.on("before-input-event", (event, input) => {
+    const isCloseChord =
+      input.key.toLowerCase() === "w" && (input.control || input.meta) && !input.alt && !input.shift
+
+    if (input.key === "Escape" || isCloseChord) {
+      event.preventDefault()
+      hideLauncherWindow(launcherWindow)
+    }
+  })
+
+  const repositionIfVisible = (): void => {
+    if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
+      launcherWindow.setBounds(getLauncherBounds(), false)
+    }
+  }
+
+  screen.on("display-metrics-changed", repositionIfVisible)
+  screen.on("display-added", repositionIfVisible)
+  screen.on("display-removed", repositionIfVisible)
+
+  launcherWindow.on("closed", () => {
+    screen.removeListener("display-metrics-changed", repositionIfVisible)
+    screen.removeListener("display-added", repositionIfVisible)
+    screen.removeListener("display-removed", repositionIfVisible)
   })
 
   void loadRendererWindow(launcherWindow, "launcher")

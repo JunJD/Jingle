@@ -153,6 +153,15 @@ const api = {
   launcher: {
     hide: (): Promise<void> => {
       return ipcRenderer.invoke("launcher:hide")
+    },
+    onShown: (callback: () => void): (() => void) => {
+      const handler = (): void => {
+        callback()
+      }
+      ipcRenderer.on("launcher:shown", handler)
+      return () => {
+        ipcRenderer.removeListener("launcher:shown", handler)
+      }
     }
   },
   workspace: {
