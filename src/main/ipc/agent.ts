@@ -53,7 +53,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
 
     try {
       // Get workspace path from thread metadata - REQUIRED
-      const thread = getThread(threadId)
+      const thread = await getThread(threadId)
       const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
       console.log("[Agent] Thread metadata:", metadata)
 
@@ -137,7 +137,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
     }
 
     // Get workspace path from thread metadata
-    const thread = getThread(threadId)
+    const thread = await getThread(threadId)
     const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
     const workspacePath = metadata.workspacePath as string | undefined
 
@@ -161,10 +161,11 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
 
     try {
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
+      const streamMode: Array<"messages" | "values"> = ["messages", "values"]
       const config = {
         configurable: { thread_id: threadId },
         signal: abortController.signal,
-        streamMode: ["messages", "values"] as const,
+        streamMode,
         recursionLimit: 1000
       }
 
@@ -218,7 +219,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
     }
 
     // Get workspace path from thread metadata - REQUIRED
-    const thread = getThread(threadId)
+    const thread = await getThread(threadId)
     const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
     const workspacePath = metadata.workspacePath as string | undefined
     const modelId = metadata.model as string | undefined
@@ -243,10 +244,11 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
 
     try {
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
+      const streamMode: Array<"messages" | "values"> = ["messages", "values"]
       const config = {
         configurable: { thread_id: threadId },
         signal: abortController.signal,
-        streamMode: ["messages", "values"] as const,
+        streamMode,
         recursionLimit: 1000
       }
 

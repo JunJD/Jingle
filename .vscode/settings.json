@@ -1,5 +1,14 @@
 {
-  "cSpell.words": ["minimizable"],
+  "cSpell.words": [
+    "checkpointer",
+    "checkpointers",
+    "dashscope",
+    "deepagents",
+    "langchain",
+    "Langgraph",
+    "minimizable",
+    "serde"
+  ],
   "editor.formatOnSave": true,
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit"

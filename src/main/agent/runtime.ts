@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { createDeepAgent } from "deepagents"
 import { getDefaultModel, getModelConfig } from "../ipc/models"
-import { getApiKey, getThreadCheckpointPath } from "../storage"
+import { getApiKey } from "../storage"
 import { ChatAnthropic } from "@langchain/anthropic"
 import { ChatOpenAI } from "@langchain/openai"
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai"
-import { SqlJsSaver } from "../checkpointer/sqljs-saver"
+import { PrismaCheckpointSaver } from "../checkpointer/prisma-saver"
 import { LocalSandbox } from "./local-sandbox"
 
 import type * as _lcTypes from "langchain"
@@ -40,13 +40,12 @@ function getSystemPrompt(workspacePath: string): string {
 }
 
 // Per-thread checkpointer cache
-const checkpointers = new Map<string, SqlJsSaver>()
+const checkpointers = new Map<string, PrismaCheckpointSaver>()
 
-export async function getCheckpointer(threadId: string): Promise<SqlJsSaver> {
+export async function getCheckpointer(threadId: string): Promise<PrismaCheckpointSaver> {
   let checkpointer = checkpointers.get(threadId)
   if (!checkpointer) {
-    const dbPath = getThreadCheckpointPath(threadId)
-    checkpointer = new SqlJsSaver(dbPath)
+    checkpointer = new PrismaCheckpointSaver()
     await checkpointer.initialize()
     checkpointers.set(threadId, checkpointer)
   }

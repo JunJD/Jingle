@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Thread {
+  threadId         String            @id @map("thread_id")
+  createdAt        BigInt            @map("created_at")
+  updatedAt        BigInt            @map("updated_at")
+  metadata         String?
+  status           String            @default("idle")
+  threadValues     String?           @map("thread_values")
+  title            String?
+  runs             Run[]
+  sessionBindings  SessionBinding[]  @relation("SessionBindingCurrentThread")
+  checkpoints      Checkpoint[]
+  checkpointWrites CheckpointWrite[]
+
+  @@index([updatedAt], map: "idx_threads_updated_at")
+  @@map("threads")
+}
+
+model Run {
+  runId       String     @id @map("run_id")
+  threadId    String     @map("thread_id")
+  assistantId String?    @map("assistant_id")
+  createdAt   BigInt     @map("created_at")
+  updatedAt   BigInt     @map("updated_at")
+  status      String?
+  metadata    String?
+  kwargs      String?
+  thread      Thread     @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  assistant   Assistant? @relation(fields: [assistantId], references: [assistantId], onDelete: SetNull)
+
+  @@index([threadId], map: "idx_runs_thread_id")
+  @@index([status], map: "idx_runs_status")
+  @@map("runs")
+}
+
+model Assistant {
+  assistantId String @id @map("assistant_id")
+  graphId     String @map("graph_id")
+  name        String?
+  model       String @default("claude-sonnet-4-5-20250929")
+  config      String?
+  createdAt   BigInt @map("created_at")
+  updatedAt   BigInt @map("updated_at")
+  runs        Run[]
+
+  @@map("assistants")
+}
+
+model SessionBinding {
+  sessionKey       String @id @map("session_key")
+  workspaceKey     String @map("workspace_key")
+  workspacePath    String @map("workspace_path")
+  currentThreadId  String @map("current_thread_id")
+  createdAt        BigInt @map("created_at")
+  updatedAt        BigInt @map("updated_at")
+  metadata         String?
+  currentThread    Thread @relation("SessionBindingCurrentThread", fields: [currentThreadId], references: [threadId], onDelete: Cascade)
+
+  @@index([workspaceKey], map: "idx_session_bindings_workspace_key")
+  @@index([currentThreadId], map: "idx_session_bindings_thread_id")
+  @@map("session_bindings")
+}
+
+model Checkpoint {
+  threadId           String  @map("thread_id")
+  checkpointNs       String  @default("") @map("checkpoint_ns")
+  checkpointId       String  @map("checkpoint_id")
+  parentCheckpointId String? @map("parent_checkpoint_id")
+  type               String?
+  checkpoint         String?
+  metadata           String?
+  thread             Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@id([threadId, checkpointNs, checkpointId])
+  @@index([threadId, checkpointNs], map: "idx_checkpoints_thread_ns")
+  @@map("checkpoints")
+}
+
+model CheckpointWrite {
+  threadId     String  @map("thread_id")
+  checkpointNs String  @default("") @map("checkpoint_ns")
+  checkpointId String  @map("checkpoint_id")
+  taskId       String  @map("task_id")
+  idx          Int
+  channel      String
+  type         String?
+  value        String?
+  thread       Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@id([threadId, checkpointNs, checkpointId, taskId, idx])
+  @@index([threadId, checkpointNs, checkpointId], map: "idx_writes_thread_checkpoint")
+  @@map("writes")
+}

@@ -8,14 +8,13 @@ import {
   deleteThread as dbDeleteThread
 } from "../db"
 import { getCheckpointer, closeCheckpointer } from "../agent/runtime"
-import { deleteThreadCheckpoint } from "../storage"
 import { generateTitle } from "../services/title-generator"
 import type { Thread, ThreadUpdateParams } from "../types"
 
 export function registerThreadHandlers(ipcMain: IpcMain): void {
   // List all threads
   ipcMain.handle("threads:list", async () => {
-    const threads = getAllThreads()
+    const threads = await getAllThreads()
     return threads.map((row) => ({
       thread_id: row.thread_id,
       created_at: new Date(row.created_at),
@@ -29,7 +28,7 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
 
   // Get a single thread
   ipcMain.handle("threads:get", async (_event, threadId: string) => {
-    const row = getThread(threadId)
+    const row = await getThread(threadId)
     if (!row) return null
     return {
       thread_id: row.thread_id,
@@ -47,7 +46,7 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
     const threadId = uuid()
     const title = (metadata?.title as string) || `Thread ${new Date().toLocaleDateString()}`
 
-    const thread = dbCreateThread(threadId, { ...metadata, title })
+    const thread = await dbCreateThread(threadId, { ...metadata, title })
 
     return {
       thread_id: thread.thread_id,
@@ -70,7 +69,7 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
     if (updates.thread_values !== undefined)
       updateData.thread_values = JSON.stringify(updates.thread_values)
 
-    const row = dbUpdateThread(threadId, updateData)
+    const row = await dbUpdateThread(threadId, updateData)
     if (!row) throw new Error("Thread not found")
 
     return {
@@ -89,7 +88,7 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
     console.log("[Threads] Deleting thread:", threadId)
 
     // Delete from our metadata store
-    dbDeleteThread(threadId)
+    await dbDeleteThread(threadId)
     console.log("[Threads] Deleted from metadata store")
 
     // Close any open checkpointer for this thread
@@ -98,14 +97,6 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
       console.log("[Threads] Closed checkpointer")
     } catch (e) {
       console.warn("[Threads] Failed to close checkpointer:", e)
-    }
-
-    // Delete the thread's checkpoint file
-    try {
-      deleteThreadCheckpoint(threadId)
-      console.log("[Threads] Deleted checkpoint file")
-    } catch (e) {
-      console.warn("[Threads] Failed to delete checkpoint file:", e)
     }
   })
 

@@ -287,7 +287,7 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
 
     // Get from thread metadata via threads:get
     const { getThread } = await import("../db")
-    const thread = getThread(threadId)
+    const thread = await getThread(threadId)
     if (!thread?.metadata) return null
 
     const metadata = JSON.parse(thread.metadata)
@@ -309,12 +309,12 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
       }
 
       const { getThread, updateThread } = await import("../db")
-      const thread = getThread(threadId)
+      const thread = await getThread(threadId)
       if (!thread) return null
 
       const metadata = thread.metadata ? JSON.parse(thread.metadata) : {}
       metadata.workspacePath = newPath
-      updateThread(threadId, { metadata: JSON.stringify(metadata) })
+      await updateThread(threadId, { metadata: JSON.stringify(metadata) })
 
       // Update file watcher
       if (newPath) {
@@ -343,11 +343,11 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
 
     if (threadId) {
       const { getThread, updateThread } = await import("../db")
-      const thread = getThread(threadId)
+      const thread = await getThread(threadId)
       if (thread) {
         const metadata = thread.metadata ? JSON.parse(thread.metadata) : {}
         metadata.workspacePath = selectedPath
-        updateThread(threadId, { metadata: JSON.stringify(metadata) })
+        await updateThread(threadId, { metadata: JSON.stringify(metadata) })
 
         // Start watching the new workspace
         startWatching(threadId, selectedPath)
@@ -365,7 +365,7 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
     const { getThread } = await import("../db")
 
     // Get workspace path from thread metadata
-    const thread = getThread(threadId)
+    const thread = await getThread(threadId)
     const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
     const workspacePath = metadata.workspacePath as string | null
 
@@ -438,7 +438,7 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
       const { getThread } = await import("../db")
 
       // Get workspace path from thread metadata
-      const thread = getThread(threadId)
+      const thread = await getThread(threadId)
       const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
       const workspacePath = metadata.workspacePath as string | null
 
@@ -492,7 +492,7 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
       const { getThread } = await import("../db")
 
       // Get workspace path from thread metadata
-      const thread = getThread(threadId)
+      const thread = await getThread(threadId)
       const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
       const workspacePath = metadata.workspacePath as string | null
 

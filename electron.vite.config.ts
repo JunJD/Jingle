@@ -34,7 +34,7 @@ export default defineConfig({
         formats: ["cjs"]
       },
       rollupOptions: {
-        external: ["electron"],
+        external: ["electron", "@prisma/client", "prisma"],
         plugins: [copyResources()]
       }
     }

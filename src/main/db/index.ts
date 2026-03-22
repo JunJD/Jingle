@@ -1,141 +1,194 @@
-import initSqlJs, { Database as SqlJsDatabase } from "sql.js"
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs"
+import { mkdirSync } from "fs"
 import { dirname } from "path"
 import { getDbPath } from "../storage"
+import { closePrismaClient, getPrismaClient } from "./client"
 
-let db: SqlJsDatabase | null = null
-let saveTimer: ReturnType<typeof setTimeout> | null = null
-let dirty = false
+const THREADS_DDL = (tableName = "threads"): string => `
+  CREATE TABLE IF NOT EXISTS ${tableName} (
+    thread_id TEXT PRIMARY KEY,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    metadata TEXT,
+    status TEXT DEFAULT 'idle',
+    thread_values TEXT,
+    title TEXT
+  )
+`
 
-/**
- * Save database to disk (debounced)
- */
-function saveToDisk(): void {
-  if (!db) return
+const RUNS_DDL = (tableName = "runs"): string => `
+  CREATE TABLE IF NOT EXISTS ${tableName} (
+    run_id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL,
+    assistant_id TEXT,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    status TEXT,
+    metadata TEXT,
+    kwargs TEXT,
+    FOREIGN KEY (thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE,
+    FOREIGN KEY (assistant_id) REFERENCES assistants(assistant_id) ON DELETE SET NULL
+  )
+`
 
-  dirty = true
+const ASSISTANTS_DDL = (tableName = "assistants"): string => `
+  CREATE TABLE IF NOT EXISTS ${tableName} (
+    assistant_id TEXT PRIMARY KEY,
+    graph_id TEXT NOT NULL,
+    name TEXT,
+    model TEXT DEFAULT 'claude-sonnet-4-5-20250929',
+    config TEXT,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL
+  )
+`
 
-  if (saveTimer) {
-    clearTimeout(saveTimer)
-  }
+const SESSION_BINDINGS_DDL = (tableName = "session_bindings"): string => `
+  CREATE TABLE IF NOT EXISTS ${tableName} (
+    session_key TEXT PRIMARY KEY,
+    workspace_key TEXT NOT NULL,
+    workspace_path TEXT NOT NULL,
+    current_thread_id TEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    metadata TEXT,
+    FOREIGN KEY (current_thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+  )
+`
 
-  saveTimer = setTimeout(() => {
-    if (db && dirty) {
-      const data = db.export()
-      writeFileSync(getDbPath(), Buffer.from(data))
-      dirty = false
-    }
-  }, 100)
+const CHECKPOINTS_DDL = (tableName = "checkpoints"): string => `
+  CREATE TABLE IF NOT EXISTS ${tableName} (
+    thread_id TEXT NOT NULL,
+    checkpoint_ns TEXT NOT NULL DEFAULT '',
+    checkpoint_id TEXT NOT NULL,
+    parent_checkpoint_id TEXT,
+    type TEXT,
+    checkpoint TEXT,
+    metadata TEXT,
+    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id),
+    FOREIGN KEY (thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+  )
+`
+
+const WRITES_DDL = (tableName = "writes"): string => `
+  CREATE TABLE IF NOT EXISTS ${tableName} (
+    thread_id TEXT NOT NULL,
+    checkpoint_ns TEXT NOT NULL DEFAULT '',
+    checkpoint_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    idx INTEGER NOT NULL,
+    channel TEXT NOT NULL,
+    type TEXT,
+    value TEXT,
+    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx),
+    FOREIGN KEY (thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+  )
+`
+
+const INDEX_DDLS = [
+  `CREATE INDEX IF NOT EXISTS idx_threads_updated_at ON threads(updated_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_runs_thread_id ON runs(thread_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_session_bindings_workspace_key ON session_bindings(workspace_key)`,
+  `CREATE INDEX IF NOT EXISTS idx_session_bindings_thread_id ON session_bindings(current_thread_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_checkpoints_thread_ns ON checkpoints(thread_id, checkpoint_ns)`,
+  `CREATE INDEX IF NOT EXISTS idx_writes_thread_checkpoint ON writes(thread_id, checkpoint_ns, checkpoint_id)`
+]
+
+interface SqliteTableColumn {
+  name: string
+  type: string
 }
 
-/**
- * Force immediate save
- */
-export async function flush(): Promise<void> {
-  if (saveTimer) {
-    clearTimeout(saveTimer)
-    saveTimer = null
-  }
-  if (db && dirty) {
-    const data = db.export()
-    writeFileSync(getDbPath(), Buffer.from(data))
-    dirty = false
-  }
+interface TableSchemaConfig {
+  tableName: string
+  createTableSql: (tableName?: string) => string
+  columns: string[]
+  bigintColumns: string[]
 }
 
-export function getDb(): SqlJsDatabase {
-  if (!db) {
-    throw new Error("Database not initialized. Call initializeDatabase() first.")
+const TABLE_SCHEMAS: TableSchemaConfig[] = [
+  {
+    tableName: "threads",
+    createTableSql: THREADS_DDL,
+    columns: [
+      "thread_id",
+      "created_at",
+      "updated_at",
+      "metadata",
+      "status",
+      "thread_values",
+      "title"
+    ],
+    bigintColumns: ["created_at", "updated_at"]
+  },
+  {
+    tableName: "assistants",
+    createTableSql: ASSISTANTS_DDL,
+    columns: ["assistant_id", "graph_id", "name", "model", "config", "created_at", "updated_at"],
+    bigintColumns: ["created_at", "updated_at"]
+  },
+  {
+    tableName: "runs",
+    createTableSql: RUNS_DDL,
+    columns: [
+      "run_id",
+      "thread_id",
+      "assistant_id",
+      "created_at",
+      "updated_at",
+      "status",
+      "metadata",
+      "kwargs"
+    ],
+    bigintColumns: ["created_at", "updated_at"]
+  },
+  {
+    tableName: "session_bindings",
+    createTableSql: SESSION_BINDINGS_DDL,
+    columns: [
+      "session_key",
+      "workspace_key",
+      "workspace_path",
+      "current_thread_id",
+      "created_at",
+      "updated_at",
+      "metadata"
+    ],
+    bigintColumns: ["created_at", "updated_at"]
+  },
+  {
+    tableName: "checkpoints",
+    createTableSql: CHECKPOINTS_DDL,
+    columns: [
+      "thread_id",
+      "checkpoint_ns",
+      "checkpoint_id",
+      "parent_checkpoint_id",
+      "type",
+      "checkpoint",
+      "metadata"
+    ],
+    bigintColumns: []
+  },
+  {
+    tableName: "writes",
+    createTableSql: WRITES_DDL,
+    columns: [
+      "thread_id",
+      "checkpoint_ns",
+      "checkpoint_id",
+      "task_id",
+      "idx",
+      "channel",
+      "type",
+      "value"
+    ],
+    bigintColumns: []
   }
-  return db
-}
+]
 
-export async function initializeDatabase(): Promise<SqlJsDatabase> {
-  const dbPath = getDbPath()
-  console.log("Initializing database at:", dbPath)
+let initialized = false
 
-  const SQL = await initSqlJs()
-
-  // Load existing database if it exists
-  if (existsSync(dbPath)) {
-    const buffer = readFileSync(dbPath)
-    db = new SQL.Database(buffer)
-  } else {
-    // Ensure directory exists
-    const dir = dirname(dbPath)
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true })
-    }
-    db = new SQL.Database()
-  }
-
-  // Create tables if they don't exist
-  db.run(`
-    CREATE TABLE IF NOT EXISTS threads (
-      thread_id TEXT PRIMARY KEY,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      metadata TEXT,
-      status TEXT DEFAULT 'idle',
-      thread_values TEXT,
-      title TEXT
-    )
-  `)
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS runs (
-      run_id TEXT PRIMARY KEY,
-      thread_id TEXT REFERENCES threads(thread_id) ON DELETE CASCADE,
-      assistant_id TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      status TEXT,
-      metadata TEXT,
-      kwargs TEXT
-    )
-  `)
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS assistants (
-      assistant_id TEXT PRIMARY KEY,
-      graph_id TEXT NOT NULL,
-      name TEXT,
-      model TEXT DEFAULT 'claude-sonnet-4-5-20250929',
-      config TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    )
-  `)
-
-  db.run(`CREATE INDEX IF NOT EXISTS idx_threads_updated_at ON threads(updated_at)`)
-  db.run(`CREATE INDEX IF NOT EXISTS idx_runs_thread_id ON runs(thread_id)`)
-  db.run(`CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)`)
-
-  saveToDisk()
-
-  console.log("Database initialized successfully")
-  return db
-}
-
-export function closeDatabase(): void {
-  if (saveTimer) {
-    clearTimeout(saveTimer)
-    saveTimer = null
-  }
-  if (db) {
-    // Save any pending changes
-    if (dirty) {
-      const data = db.export()
-      writeFileSync(getDbPath(), Buffer.from(data))
-    }
-    db.close()
-    db = null
-  }
-}
-
-// Helper functions for common operations
-
-/** Raw thread row from SQLite database (timestamps as numbers, metadata as JSON string) */
 export interface ThreadRow {
   thread_id: string
   created_at: number
@@ -146,100 +199,242 @@ export interface ThreadRow {
   title: string | null
 }
 
-export function getAllThreads(): ThreadRow[] {
-  const database = getDb()
-  const stmt = database.prepare("SELECT * FROM threads ORDER BY updated_at DESC")
-  const threads: ThreadRow[] = []
-
-  while (stmt.step()) {
-    threads.push(stmt.getAsObject() as unknown as ThreadRow)
-  }
-  stmt.free()
-
-  return threads
+function toNumber(value: bigint | number): number {
+  return typeof value === "bigint" ? Number(value) : value
 }
 
-export function getThread(threadId: string): ThreadRow | null {
-  const database = getDb()
-  const stmt = database.prepare("SELECT * FROM threads WHERE thread_id = ?")
-  stmt.bind([threadId])
+function mapThreadRow(row: {
+  threadId: string
+  createdAt: bigint
+  updatedAt: bigint
+  metadata: string | null
+  status: string
+  threadValues: string | null
+  title: string | null
+}): ThreadRow {
+  return {
+    thread_id: row.threadId,
+    created_at: toNumber(row.createdAt),
+    updated_at: toNumber(row.updatedAt),
+    metadata: row.metadata,
+    status: row.status,
+    thread_values: row.threadValues,
+    title: row.title
+  }
+}
 
-  if (!stmt.step()) {
-    stmt.free()
+async function ensureSchema(): Promise<void> {
+  const prisma = getPrismaClient()
+
+  await prisma.$connect()
+  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON")
+  await prisma.$executeRawUnsafe(THREADS_DDL())
+  await prisma.$executeRawUnsafe(ASSISTANTS_DDL())
+  await prisma.$executeRawUnsafe(RUNS_DDL())
+  await prisma.$executeRawUnsafe(SESSION_BINDINGS_DDL())
+  await prisma.$executeRawUnsafe(CHECKPOINTS_DDL())
+  await prisma.$executeRawUnsafe(WRITES_DDL())
+  await migrateLegacyIntegerColumns(prisma)
+
+  for (const ddl of INDEX_DDLS) {
+    await prisma.$executeRawUnsafe(ddl)
+  }
+}
+
+function quoteIdentifier(identifier: string): string {
+  return `"${identifier.replace(/"/g, '""')}"`
+}
+
+async function getTableColumns(tableName: string): Promise<SqliteTableColumn[]> {
+  const prisma = getPrismaClient()
+  const rows = await prisma.$queryRawUnsafe(`PRAGMA table_info(${quoteIdentifier(tableName)})`)
+  return rows as SqliteTableColumn[]
+}
+
+function normalizeColumnType(type: string | null | undefined): string {
+  return (type ?? "").trim().toUpperCase()
+}
+
+function needsBigIntMigration(columns: SqliteTableColumn[], bigintColumns: string[]): boolean {
+  if (columns.length === 0 || bigintColumns.length === 0) {
+    return false
+  }
+
+  return bigintColumns.some((columnName) => {
+    const column = columns.find((entry) => entry.name === columnName)
+    if (!column) {
+      return false
+    }
+
+    return normalizeColumnType(column.type) !== "BIGINT"
+  })
+}
+
+async function rebuildTable(config: TableSchemaConfig): Promise<void> {
+  const prisma = getPrismaClient()
+  const tempTableName = `__tmp_${config.tableName}`
+  const quotedColumns = config.columns.map(quoteIdentifier).join(", ")
+
+  await prisma.$executeRawUnsafe("BEGIN IMMEDIATE")
+
+  try {
+    await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS ${quoteIdentifier(tempTableName)}`)
+    await prisma.$executeRawUnsafe(config.createTableSql(tempTableName))
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO ${quoteIdentifier(tempTableName)} (${quotedColumns}) SELECT ${quotedColumns} FROM ${quoteIdentifier(config.tableName)}`
+    )
+    await prisma.$executeRawUnsafe(`DROP TABLE ${quoteIdentifier(config.tableName)}`)
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE ${quoteIdentifier(tempTableName)} RENAME TO ${quoteIdentifier(config.tableName)}`
+    )
+    await prisma.$executeRawUnsafe("COMMIT")
+  } catch (error) {
+    await prisma.$executeRawUnsafe("ROLLBACK")
+    throw error
+  }
+}
+
+async function migrateLegacyIntegerColumns(prisma = getPrismaClient()): Promise<void> {
+  const tablesToRebuild: TableSchemaConfig[] = []
+
+  for (const config of TABLE_SCHEMAS) {
+    const columns = await getTableColumns(config.tableName)
+    if (needsBigIntMigration(columns, config.bigintColumns)) {
+      tablesToRebuild.push(config)
+    }
+  }
+
+  if (tablesToRebuild.length === 0) {
+    return
+  }
+
+  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF")
+
+  try {
+    for (const config of tablesToRebuild) {
+      await rebuildTable(config)
+    }
+  } finally {
+    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON")
+  }
+}
+
+export async function initializeDatabase(): Promise<void> {
+  if (initialized) {
+    return
+  }
+
+  const filePath = getDbPath()
+
+  if (filePath) {
+    mkdirSync(dirname(filePath), { recursive: true })
+  }
+
+  await ensureSchema()
+  initialized = true
+}
+
+export async function closeDatabase(): Promise<void> {
+  initialized = false
+  await closePrismaClient()
+}
+
+export async function getAllThreads(): Promise<ThreadRow[]> {
+  const prisma = getPrismaClient()
+  const rows = await prisma.thread.findMany({
+    orderBy: {
+      updatedAt: "desc"
+    }
+  })
+
+  return rows.map(mapThreadRow)
+}
+
+export async function getThread(threadId: string): Promise<ThreadRow | null> {
+  const prisma = getPrismaClient()
+  const row = await prisma.thread.findUnique({
+    where: {
+      threadId
+    }
+  })
+
+  return row ? mapThreadRow(row) : null
+}
+
+export async function createThread(
+  threadId: string,
+  metadata?: Record<string, unknown>
+): Promise<ThreadRow> {
+  const prisma = getPrismaClient()
+  const now = BigInt(Date.now())
+
+  const row = await prisma.thread.create({
+    data: {
+      threadId,
+      createdAt: now,
+      updatedAt: now,
+      metadata: metadata ? JSON.stringify(metadata) : null,
+      status: "idle"
+    }
+  })
+
+  return mapThreadRow(row)
+}
+
+export async function updateThread(
+  threadId: string,
+  updates: Partial<Omit<ThreadRow, "thread_id" | "created_at">>
+): Promise<ThreadRow | null> {
+  const prisma = getPrismaClient()
+  const existing = await prisma.thread.findUnique({
+    where: {
+      threadId
+    }
+  })
+
+  if (!existing) {
     return null
   }
 
-  const thread = stmt.getAsObject() as unknown as ThreadRow
-  stmt.free()
-  return thread
+  const row = await prisma.thread.update({
+    where: {
+      threadId
+    },
+    data: {
+      updatedAt: BigInt(Date.now()),
+      metadata:
+        updates.metadata === undefined
+          ? undefined
+          : typeof updates.metadata === "string"
+            ? updates.metadata
+            : JSON.stringify(updates.metadata),
+      status: updates.status,
+      threadValues: updates.thread_values,
+      title: updates.title
+    }
+  })
+
+  return mapThreadRow(row)
 }
 
-export function createThread(threadId: string, metadata?: Record<string, unknown>): ThreadRow {
-  const database = getDb()
-  const now = Date.now()
+export async function deleteThread(threadId: string): Promise<void> {
+  const prisma = getPrismaClient()
 
-  database.run(
-    `INSERT INTO threads (thread_id, created_at, updated_at, metadata, status)
-     VALUES (?, ?, ?, ?, ?)`,
-    [threadId, now, now, metadata ? JSON.stringify(metadata) : null, "idle"]
-  )
-
-  saveToDisk()
-
-  return {
-    thread_id: threadId,
-    created_at: now,
-    updated_at: now,
-    metadata: metadata ? JSON.stringify(metadata) : null,
-    status: "idle",
-    thread_values: null,
-    title: null
-  }
-}
-
-export function updateThread(
-  threadId: string,
-  updates: Partial<Omit<ThreadRow, "thread_id" | "created_at">>
-): ThreadRow | null {
-  const database = getDb()
-  const existing = getThread(threadId)
-
-  if (!existing) return null
-
-  const now = Date.now()
-  const setClauses: string[] = ["updated_at = ?"]
-  const values: (string | number | null)[] = [now]
-
-  if (updates.metadata !== undefined) {
-    setClauses.push("metadata = ?")
-    values.push(
-      typeof updates.metadata === "string" ? updates.metadata : JSON.stringify(updates.metadata)
-    )
-  }
-  if (updates.status !== undefined) {
-    setClauses.push("status = ?")
-    values.push(updates.status)
-  }
-  if (updates.thread_values !== undefined) {
-    setClauses.push("thread_values = ?")
-    values.push(updates.thread_values)
-  }
-  if (updates.title !== undefined) {
-    setClauses.push("title = ?")
-    values.push(updates.title)
-  }
-
-  values.push(threadId)
-
-  database.run(`UPDATE threads SET ${setClauses.join(", ")} WHERE thread_id = ?`, values)
-
-  saveToDisk()
-
-  return getThread(threadId)
-}
-
-export function deleteThread(threadId: string): void {
-  const database = getDb()
-  database.run("DELETE FROM threads WHERE thread_id = ?", [threadId])
-  saveToDisk()
+  await prisma.$transaction([
+    prisma.checkpointWrite.deleteMany({
+      where: { threadId }
+    }),
+    prisma.checkpoint.deleteMany({
+      where: { threadId }
+    }),
+    prisma.sessionBinding.deleteMany({
+      where: { currentThreadId: threadId }
+    }),
+    prisma.run.deleteMany({
+      where: { threadId }
+    }),
+    prisma.thread.deleteMany({
+      where: { threadId }
+    })
+  ])
 }

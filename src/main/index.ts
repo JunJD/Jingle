@@ -3,7 +3,8 @@ import { join } from "path"
 import { registerAgentHandlers } from "./ipc/agent"
 import { registerThreadHandlers } from "./ipc/threads"
 import { registerModelHandlers } from "./ipc/models"
-import { initializeDatabase } from "./db"
+import { closeDatabase, initializeDatabase } from "./db"
+import { closeRuntime } from "./agent/runtime"
 import {
   createLauncherWindow,
   registerLauncherHandlers,
@@ -120,6 +121,8 @@ app.whenReady().then(async () => {
 
 app.on("will-quit", () => {
   unregisterLauncherShortcut()
+  void closeRuntime()
+  void closeDatabase()
 })
 
 app.on("window-all-closed", () => {
