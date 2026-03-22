@@ -1,12 +1,14 @@
 import { BrowserWindow, type IpcMain, globalShortcut, screen } from "electron"
 import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
+import { FALLBACK_SHELL_CONFIG, getLauncherMaxViewportHeight } from "../../shared/launcher"
 
 const LAUNCHER_WIDTH = 800
-const LAUNCHER_HEIGHT = 60
 const LAUNCHER_HORIZONTAL_MARGIN = 24
 const LAUNCHER_TOP_MARGIN = 60
 const MAC_LAUNCHER_WINDOW_LEVEL = "floating"
+const LAUNCHER_BASE_HEIGHT = FALLBACK_SHELL_CONFIG.baseHeight
+const LAUNCHER_MAX_HEIGHT = getLauncherMaxViewportHeight(FALLBACK_SHELL_CONFIG)
 
 export const DEFAULT_LAUNCHER_SHORTCUT = "CommandOrControl+Shift+Space"
 
@@ -14,14 +16,19 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
-function getLauncherBounds(): { x: number; y: number; width: number; height: number } {
+function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): {
+  x: number
+  y: number
+  width: number
+  height: number
+} {
   const cursorPoint = screen.getCursorScreenPoint()
   const display = screen.getDisplayNearestPoint(cursorPoint)
   const maxWidth = Math.max(520, display.workArea.width - LAUNCHER_HORIZONTAL_MARGIN * 2)
   const width = Math.min(LAUNCHER_WIDTH, maxWidth)
   const x = Math.round(display.workArea.x + display.workArea.width / 2 - width / 2)
   const minY = display.workArea.y + LAUNCHER_TOP_MARGIN
-  const maxY = display.workArea.y + display.workArea.height - LAUNCHER_HEIGHT - LAUNCHER_TOP_MARGIN
+  const maxY = display.workArea.y + display.workArea.height - height - LAUNCHER_TOP_MARGIN
   const targetY = Math.round(display.workArea.y + display.workArea.height * 0.16)
   const y = clamp(targetY, minY, Math.max(minY, maxY))
 
@@ -29,7 +36,7 @@ function getLauncherBounds(): { x: number; y: number; width: number; height: num
     x,
     y,
     width,
-    height: LAUNCHER_HEIGHT
+    height
   }
 }
 
@@ -47,7 +54,7 @@ function emitLauncherShown(launcherWindow: BrowserWindow): void {
 }
 
 function showLauncherWindow(launcherWindow: BrowserWindow): void {
-  launcherWindow.setBounds(getLauncherBounds(), false)
+  launcherWindow.setBounds(getLauncherBounds(LAUNCHER_BASE_HEIGHT), false)
 
   if (process.platform === "darwin") {
     launcherWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
@@ -78,7 +85,7 @@ function hideLauncherWindow(launcherWindow: BrowserWindow): void {
 export function createLauncherWindow(): BrowserWindow {
   const launcherWindow = new BrowserWindow({
     width: LAUNCHER_WIDTH,
-    height: LAUNCHER_HEIGHT,
+    height: LAUNCHER_BASE_HEIGHT,
     show: false,
     ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
     frame: false,
@@ -90,7 +97,7 @@ export function createLauncherWindow(): BrowserWindow {
     skipTaskbar: true,
     hiddenInMissionControl: true,
     hasShadow: true,
-    backgroundColor: "#1c1c28",
+    backgroundColor: "#141418",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false
@@ -104,10 +111,7 @@ export function createLauncherWindow(): BrowserWindow {
   })
 
   launcherWindow.webContents.on("before-input-event", (event, input) => {
-    const isCloseChord =
-      input.key.toLowerCase() === "w" && (input.control || input.meta) && !input.alt && !input.shift
-
-    if (input.key === "Escape" || isCloseChord) {
+    if (input.key === "Escape") {
       event.preventDefault()
       hideLauncherWindow(launcherWindow)
     }
@@ -115,7 +119,7 @@ export function createLauncherWindow(): BrowserWindow {
 
   const repositionIfVisible = (): void => {
     if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
-      launcherWindow.setBounds(getLauncherBounds(), false)
+      launcherWindow.setBounds(getLauncherBounds(launcherWindow.getBounds().height), false)
     }
   }
 
@@ -135,9 +139,23 @@ export function createLauncherWindow(): BrowserWindow {
 }
 
 export function registerLauncherHandlers(ipcMain: IpcMain): void {
+  ipcMain.handle("launcher:getShellConfig", () => {
+    return FALLBACK_SHELL_CONFIG
+  })
+
   ipcMain.handle("launcher:hide", (event) => {
     const currentWindow = BrowserWindow.fromWebContents(event.sender)
     currentWindow?.hide()
+  })
+
+  ipcMain.handle("launcher:setViewportHeight", (event, height: number) => {
+    const currentWindow = BrowserWindow.fromWebContents(event.sender)
+    if (!currentWindow) {
+      return
+    }
+
+    const nextHeight = clamp(Math.round(height), LAUNCHER_BASE_HEIGHT, LAUNCHER_MAX_HEIGHT)
+    currentWindow.setBounds(getLauncherBounds(nextHeight), false)
   })
 }
 

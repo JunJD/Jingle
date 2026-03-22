@@ -1,30 +1,46 @@
-import { useEffect, useRef, useState } from "react"
-
-function getShortcutLabel(platform: NodeJS.Platform): string {
-  return platform === "darwin" ? "Cmd + Shift + Space" : "Ctrl + Shift + Space"
-}
+import { Settings2 } from "lucide-react"
+import { useEffect, useRef } from "react"
+import { LauncherResultList } from "./components/LauncherResultList"
+import { useLauncherShell } from "./hooks/useLauncherShell"
 
 export default function LauncherApp(): React.JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [value, setValue] = useState("")
-  const platform = window.electron.process.platform
-  const shortcutLabel = getShortcutLabel(platform)
+  const {
+    handleInputKeyDown,
+    items,
+    placeholder,
+    query,
+    selectedIndex,
+    selectAiRoute,
+    setQuery,
+    setSelectedIndex,
+    syncViewportHeight
+  } = useLauncherShell()
 
   useEffect(() => {
     const focusInput = (): void => {
-      inputRef.current?.focus()
-      inputRef.current?.select()
+      const input = inputRef.current
+      if (!input) {
+        return
+      }
+
+      input.focus()
+      const caretPosition = input.value.length
+      input.setSelectionRange(caretPosition, caretPosition)
     }
 
     focusInput()
-    const cleanupShown = window.api.launcher.onShown(focusInput)
+    const cleanupShown = window.api.launcher.onShown(() => {
+      focusInput()
+      syncViewportHeight()
+    })
     window.addEventListener("focus", focusInput)
 
     return () => {
       cleanupShown()
       window.removeEventListener("focus", focusInput)
     }
-  }, [])
+  }, [syncViewportHeight])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -39,23 +55,90 @@ export default function LauncherApp(): React.JSX.Element {
   }, [])
 
   return (
-    <div className="flex h-screen items-center overflow-hidden border border-[#33333d] bg-[#1c1c28] px-4 shadow-[0_14px_36px_rgba(0,0,0,0.32)]">
-      <input
-        ref={inputRef}
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        placeholder="Launcher shell ready. Search connects next."
-        className="h-full flex-1 border-0 bg-transparent px-1 text-[16px] text-[#e8e8f0] outline-none placeholder:text-[#73788c]"
-      />
+    <div
+      className="h-full w-full overflow-hidden rounded-[18px] shadow-[0_18px_42px_rgba(0,0,0,0.34)]"
+      style={{
+        border: "1px solid var(--launcher-border)",
+        backgroundColor: "var(--launcher-surface)"
+      }}
+    >
+      <div
+        className="flex h-[60px] items-center pl-6 pr-8"
+        style={{ borderBottom: "1px solid var(--launcher-border)" }}
+      >
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={handleInputKeyDown}
+          placeholder={placeholder}
+          className="h-full flex-1 border-0 bg-transparent px-0 text-[16px] font-medium text-foreground outline-none placeholder:text-muted-foreground"
+        />
 
-      <div className="ml-3 flex shrink-0 items-center gap-2 text-[11px] text-[#a9aabd]">
-        <span className="hidden min-[760px]:inline text-[10px] uppercase tracking-[0.12em] text-[#7e8297]">
-          {shortcutLabel}
-        </span>
-        <span className="rounded border border-[#3a3d4f] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-[#c7c9d6]">
-          Esc
-        </span>
+        <button
+          type="button"
+          onClick={selectAiRoute}
+          onMouseDown={(event) => event.preventDefault()}
+          className="ml-4 flex shrink-0 appearance-none items-center gap-2 border-0 bg-transparent text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
+        >
+          <span>Ask AI</span>
+          <span
+            className="rounded-[10px] px-2 py-1 text-[12px]"
+            style={{
+              border: "1px solid var(--launcher-border-strong)",
+              backgroundColor: "var(--launcher-surface-strong)",
+              color: "var(--launcher-text)"
+            }}
+          >
+            Tab
+          </span>
+        </button>
       </div>
+
+      {items.length > 0 && (
+        <>
+          <LauncherResultList
+            items={items}
+            selectedIndex={selectedIndex}
+            onSelect={setSelectedIndex}
+          />
+
+          <div
+            className="flex h-[48px] items-center justify-between pl-4 pr-8"
+            style={{
+              borderTop: "1px solid var(--launcher-border)",
+              backgroundColor: "color-mix(in srgb, var(--launcher-surface-strong) 42%, transparent)"
+            }}
+          >
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              className="flex appearance-none items-center gap-2 rounded-md border-0 bg-transparent px-2 py-1 text-[13px] text-muted-foreground transition hover:text-foreground"
+            >
+              <Settings2 className="size-4" />
+              <span>Settings</span>
+            </button>
+
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              className="flex appearance-none items-center gap-3 rounded-md border-0 bg-transparent px-2 py-1 text-[13px] font-medium text-foreground"
+            >
+              <span>Open Quicklink</span>
+              <span
+                className="rounded-[10px] px-2 py-1 text-[12px]"
+                style={{
+                  border: "1px solid var(--launcher-border-strong)",
+                  backgroundColor: "var(--launcher-surface-strong)",
+                  color: "var(--launcher-text)"
+                }}
+              >
+                ↵
+              </span>
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

@@ -1,4 +1,5 @@
-import type { Thread, ModelConfig, Provider, StreamEvent, HITLDecision } from "../main/types"
+import type { Thread, ModelConfig, Provider, StreamEvent, HITLDecision } from "../shared/app-types"
+import type { LauncherShellConfig } from "../shared/launcher"
 
 interface ElectronAPI {
   ipcRenderer: {
@@ -54,7 +55,9 @@ interface CustomAPI {
     getApiKey: (provider: string) => Promise<string | null>
   }
   launcher: {
+    getShellConfig: () => Promise<LauncherShellConfig>
     hide: () => Promise<void>
+    setViewportHeight: (height: number) => Promise<void>
     onShown: (callback: () => void) => () => void
   }
   workspace: {

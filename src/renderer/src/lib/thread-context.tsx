@@ -12,9 +12,9 @@ import {
 
 /* eslint-disable react-refresh/only-export-components */
 import { useStream } from "@langchain/langgraph-sdk/react"
+import type { DeepAgent } from "deepagents"
 import { ElectronIPCTransport } from "./electron-transport"
 import type { Message, Todo, FileInfo, Subagent, HITLRequest } from "@/types"
-import type { DeepAgent } from "../../../main/agent/types"
 
 // Open file tab type
 export interface OpenFile {
