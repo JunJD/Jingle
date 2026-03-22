@@ -54,6 +54,7 @@ export function LauncherResultList(props: {
     <div style={{ backgroundColor: "var(--launcher-surface)" }}>
       {items.map((item, index) => {
         const isSelected = index === selectedIndex
+        const isPlanned = item.availability === "planned"
 
         return (
           <button
@@ -63,7 +64,10 @@ export function LauncherResultList(props: {
             onMouseDown={(event) => event.preventDefault()}
             className="flex h-14 w-full appearance-none items-center gap-3 border-0 pl-6 pr-8 text-left transition"
             style={{
-              backgroundColor: isSelected ? "var(--launcher-row-active)" : "var(--launcher-surface)"
+              backgroundColor: isSelected
+                ? "var(--launcher-row-active)"
+                : "var(--launcher-surface)",
+              opacity: isPlanned ? 0.72 : 1
             }}
           >
             <div
@@ -78,7 +82,7 @@ export function LauncherResultList(props: {
               <div className="truncate text-[13px] text-muted-foreground">{item.subtitle}</div>
             </div>
 
-            <div className="ml-4 shrink-0 pr-1 text-[13px] text-muted-foreground">
+            <div className="ml-4 min-w-[32px] shrink-0 pr-1 text-right text-[13px] text-muted-foreground">
               {item.trailingLabel}
             </div>
           </button>

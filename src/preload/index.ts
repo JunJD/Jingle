@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron"
 import type { Thread, ModelConfig, Provider, StreamEvent, HITLDecision } from "../shared/app-types"
 import type { LauncherShellConfig } from "../shared/launcher"
+import type { LauncherSearchRequest, LauncherSearchResponse } from "../shared/launcher-search"
 
 // Simple electron API - replaces @electron-toolkit/preload
 const electronAPI = {
@@ -154,6 +155,9 @@ const api = {
   launcher: {
     getShellConfig: (): Promise<LauncherShellConfig> => {
       return ipcRenderer.invoke("launcher:getShellConfig")
+    },
+    search: (request: LauncherSearchRequest): Promise<LauncherSearchResponse> => {
+      return ipcRenderer.invoke("launcher:search", request)
     },
     hide: (): Promise<void> => {
       return ipcRenderer.invoke("launcher:hide")

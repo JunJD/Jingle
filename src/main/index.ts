@@ -11,6 +11,7 @@ import {
   unregisterLauncherShortcut
 } from "./windows/launcher-window"
 import { loadRendererWindow } from "./windows/load-renderer-window"
+import { warmLauncherSearchProviders } from "./services/launcher-search"
 
 let mainWindow: BrowserWindow | null = null
 let launcherWindow: BrowserWindow | null = null
@@ -104,6 +105,7 @@ app.whenReady().then(async () => {
   registerThreadHandlers(ipcMain)
   registerModelHandlers(ipcMain)
   registerLauncherHandlers(ipcMain)
+  void warmLauncherSearchProviders()
 
   createWindow()
   getOrCreateLauncherWindow()

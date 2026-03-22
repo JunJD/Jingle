@@ -7,15 +7,38 @@ export default function LauncherApp(): React.JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null)
   const {
     handleInputKeyDown,
+    isSearching,
     items,
     placeholder,
     query,
+    searchDiagnostics,
+    searchMatchCount,
     selectedIndex,
+    selectedItem,
+    selectedResult,
     selectAiRoute,
     setQuery,
     setSelectedIndex,
     syncViewportHeight
   } = useLauncherShell()
+
+  const footerStatus = !query
+    ? "Providers: applications"
+    : isSearching
+      ? "Searching launcher providers"
+      : searchDiagnostics.length > 0
+        ? searchDiagnostics
+            .map(
+              (diagnostic) =>
+                `${diagnostic.source} ${diagnostic.returnedCount}/${diagnostic.matchCount} · ${diagnostic.durationMs}ms`
+            )
+            .join("  ")
+        : `${searchMatchCount} result${searchMatchCount === 1 ? "" : "s"}`
+  const footerSelection = selectedResult
+    ? `${selectedResult.source} result selected`
+    : selectedItem?.availability === "planned"
+      ? "AI route lands in Phase 3"
+      : "Search result ready"
 
   useEffect(() => {
     const focusInput = (): void => {
@@ -118,21 +141,13 @@ export default function LauncherApp(): React.JSX.Element {
                   "color-mix(in srgb, var(--launcher-surface-strong) 42%, transparent)"
               }}
             >
-              <button
-                type="button"
-                onMouseDown={(event) => event.preventDefault()}
-                className="flex appearance-none items-center gap-2 rounded-md border-0 bg-transparent px-2 py-1 text-[13px] text-muted-foreground transition hover:text-foreground"
-              >
+              <div className="flex items-center gap-2 px-2 py-1 text-[13px] text-muted-foreground">
                 <Settings2 className="size-4" />
-                <span>Settings</span>
-              </button>
+                <span>{footerStatus}</span>
+              </div>
 
-              <button
-                type="button"
-                onMouseDown={(event) => event.preventDefault()}
-                className="flex appearance-none items-center gap-3 rounded-md border-0 bg-transparent px-2 py-1 text-[13px] font-medium text-foreground"
-              >
-                <span>Open Quicklink</span>
+              <div className="flex items-center gap-3 px-2 py-1 text-[13px] font-medium text-foreground">
+                <span>{footerSelection}</span>
                 <span
                   className="rounded-[10px] px-2 py-1 text-[12px]"
                   style={{
@@ -141,9 +156,9 @@ export default function LauncherApp(): React.JSX.Element {
                     color: "var(--launcher-text)"
                   }}
                 >
-                  ↵
+                  Search
                 </span>
-              </button>
+              </div>
             </div>
           </>
         )}

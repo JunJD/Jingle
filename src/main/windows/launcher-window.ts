@@ -2,6 +2,8 @@ import { BrowserWindow, type IpcMain, globalShortcut, screen } from "electron"
 import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
 import { FALLBACK_SHELL_CONFIG, getLauncherMaxViewportHeight } from "../../shared/launcher"
+import type { LauncherSearchRequest } from "../../shared/launcher-search"
+import { searchLauncher } from "../services/launcher-search"
 
 const LAUNCHER_WIDTH = 800
 const LAUNCHER_HORIZONTAL_MARGIN = 24
@@ -141,6 +143,10 @@ export function createLauncherWindow(): BrowserWindow {
 export function registerLauncherHandlers(ipcMain: IpcMain): void {
   ipcMain.handle("launcher:getShellConfig", () => {
     return FALLBACK_SHELL_CONFIG
+  })
+
+  ipcMain.handle("launcher:search", async (_event, request: LauncherSearchRequest) => {
+    return searchLauncher(request)
   })
 
   ipcMain.handle("launcher:hide", (event) => {
