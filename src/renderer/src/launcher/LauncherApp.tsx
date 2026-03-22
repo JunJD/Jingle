@@ -56,89 +56,98 @@ export default function LauncherApp(): React.JSX.Element {
 
   return (
     <div
-      className="h-full w-full overflow-hidden rounded-[18px] shadow-[0_18px_42px_rgba(0,0,0,0.34)]"
+      className="h-full w-full p-px shadow-[0_18px_42px_rgba(0,0,0,0.34)]"
       style={{
-        border: "1px solid var(--launcher-border)",
-        backgroundColor: "var(--launcher-surface)"
+        borderRadius: "var(--launcher-panel-radius)",
+        backgroundColor: "var(--launcher-border)"
       }}
     >
       <div
-        className="flex h-[60px] items-center pl-6 pr-8"
-        style={{ borderBottom: "1px solid var(--launcher-border)" }}
+        className="flex h-full w-full flex-col overflow-hidden"
+        style={{
+          borderRadius: "var(--launcher-panel-radius-inner)",
+          backgroundColor: "var(--launcher-surface)"
+        }}
       >
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={handleInputKeyDown}
-          placeholder={placeholder}
-          className="h-full flex-1 border-0 bg-transparent px-0 text-[16px] font-medium text-foreground outline-none placeholder:text-muted-foreground"
-        />
-
-        <button
-          type="button"
-          onClick={selectAiRoute}
-          onMouseDown={(event) => event.preventDefault()}
-          className="ml-4 flex shrink-0 appearance-none items-center gap-2 border-0 bg-transparent text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
+        <div
+          className="flex h-[60px] shrink-0 items-center pl-6 pr-8"
+          style={{ borderBottom: "1px solid var(--launcher-border)" }}
         >
-          <span>Ask AI</span>
-          <span
-            className="rounded-[10px] px-2 py-1 text-[12px]"
-            style={{
-              border: "1px solid var(--launcher-border-strong)",
-              backgroundColor: "var(--launcher-surface-strong)",
-              color: "var(--launcher-text)"
-            }}
-          >
-            Tab
-          </span>
-        </button>
-      </div>
-
-      {items.length > 0 && (
-        <>
-          <LauncherResultList
-            items={items}
-            selectedIndex={selectedIndex}
-            onSelect={setSelectedIndex}
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={handleInputKeyDown}
+            placeholder={placeholder}
+            className="h-full flex-1 border-0 bg-transparent px-0 text-[16px] font-medium text-foreground outline-none placeholder:text-muted-foreground"
           />
 
-          <div
-            className="flex h-[48px] items-center justify-between pl-4 pr-8"
-            style={{
-              borderTop: "1px solid var(--launcher-border)",
-              backgroundColor: "color-mix(in srgb, var(--launcher-surface-strong) 42%, transparent)"
-            }}
+          <button
+            type="button"
+            onClick={selectAiRoute}
+            onMouseDown={(event) => event.preventDefault()}
+            className="ml-4 flex shrink-0 appearance-none items-center gap-2 border-0 bg-transparent text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
           >
-            <button
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              className="flex appearance-none items-center gap-2 rounded-md border-0 bg-transparent px-2 py-1 text-[13px] text-muted-foreground transition hover:text-foreground"
+            <span>Ask AI</span>
+            <span
+              className="rounded-[10px] px-2 py-1 text-[12px]"
+              style={{
+                border: "1px solid var(--launcher-border-strong)",
+                backgroundColor: "var(--launcher-surface-strong)",
+                color: "var(--launcher-text)"
+              }}
             >
-              <Settings2 className="size-4" />
-              <span>Settings</span>
-            </button>
+              Tab
+            </span>
+          </button>
+        </div>
 
-            <button
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              className="flex appearance-none items-center gap-3 rounded-md border-0 bg-transparent px-2 py-1 text-[13px] font-medium text-foreground"
+        {items.length > 0 && (
+          <>
+            <LauncherResultList
+              items={items}
+              selectedIndex={selectedIndex}
+              onSelect={setSelectedIndex}
+            />
+
+            <div
+              className="flex h-[48px] shrink-0 items-center justify-between pl-4 pr-8"
+              style={{
+                borderTop: "1px solid var(--launcher-border)",
+                backgroundColor:
+                  "color-mix(in srgb, var(--launcher-surface-strong) 42%, transparent)"
+              }}
             >
-              <span>Open Quicklink</span>
-              <span
-                className="rounded-[10px] px-2 py-1 text-[12px]"
-                style={{
-                  border: "1px solid var(--launcher-border-strong)",
-                  backgroundColor: "var(--launcher-surface-strong)",
-                  color: "var(--launcher-text)"
-                }}
+              <button
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                className="flex appearance-none items-center gap-2 rounded-md border-0 bg-transparent px-2 py-1 text-[13px] text-muted-foreground transition hover:text-foreground"
               >
-                ↵
-              </span>
-            </button>
-          </div>
-        </>
-      )}
+                <Settings2 className="size-4" />
+                <span>Settings</span>
+              </button>
+
+              <button
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                className="flex appearance-none items-center gap-3 rounded-md border-0 bg-transparent px-2 py-1 text-[13px] font-medium text-foreground"
+              >
+                <span>Open Quicklink</span>
+                <span
+                  className="rounded-[10px] px-2 py-1 text-[12px]"
+                  style={{
+                    border: "1px solid var(--launcher-border-strong)",
+                    backgroundColor: "var(--launcher-surface-strong)",
+                    color: "var(--launcher-text)"
+                  }}
+                >
+                  ↵
+                </span>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

@@ -115,6 +115,7 @@
   --launcher-surface-interactive: var(--background-interactive);
   --launcher-border: var(--border);
   --launcher-border-strong: var(--border-emphasis);
+  --launcher-panel-radius-inner: 10px;
   --launcher-text: var(--foreground);
   --launcher-text-muted: var(--muted-foreground);
   --launcher-row-active: color-mix(in srgb, var(--primary) 14%, var(--background-interactive));
@@ -150,6 +151,7 @@ body[data-window="launcher"] #root {
   height: 100%;
   min-height: 100%;
   overflow: hidden;
+  background-color: var(--launcher-surface);
 }
 
 body[data-window="launcher"] {
