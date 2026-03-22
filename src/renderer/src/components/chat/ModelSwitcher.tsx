@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { ChevronDown, Check, AlertCircle, Key } from "lucide-react"
+import { ChevronDown, Check, AlertCircle, Key, Cloud } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { useAppStore } from "@/lib/store"
@@ -33,10 +33,15 @@ function GoogleIcon({ className }: { className?: string }): React.JSX.Element {
   )
 }
 
+function DashScopeIcon({ className }: { className?: string }): React.JSX.Element {
+  return <Cloud className={className} />
+}
+
 const PROVIDER_ICONS: Record<ProviderId, React.FC<{ className?: string }>> = {
   anthropic: AnthropicIcon,
   openai: OpenAIIcon,
   google: GoogleIcon,
+  dashscope: DashScopeIcon,
   ollama: () => null // No icon for ollama yet
 }
 
@@ -44,7 +49,8 @@ const PROVIDER_ICONS: Record<ProviderId, React.FC<{ className?: string }>> = {
 const FALLBACK_PROVIDERS: Provider[] = [
   { id: "anthropic", name: "Anthropic", hasApiKey: false },
   { id: "openai", name: "OpenAI", hasApiKey: false },
-  { id: "google", name: "Google", hasApiKey: false }
+  { id: "google", name: "Google", hasApiKey: false },
+  { id: "dashscope", name: "DashScope", hasApiKey: false }
 ]
 
 interface ModelSwitcherProps {

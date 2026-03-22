@@ -23,7 +23,8 @@ const store = new Store({
 const PROVIDERS: Omit<Provider, "hasApiKey">[] = [
   { id: "anthropic", name: "Anthropic" },
   { id: "openai", name: "OpenAI" },
-  { id: "google", name: "Google" }
+  { id: "google", name: "Google" },
+  { id: "dashscope", name: "DashScope" }
 ]
 
 // Available models configuration (updated Jan 2026)
@@ -159,6 +160,31 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-4o-mini",
     description: "Cost-efficient variant with faster response times",
+    available: true
+  },
+  // DashScope OpenAI-compatible models
+  {
+    id: "glm-4.6",
+    name: "GLM-4.6",
+    provider: "dashscope",
+    model: "glm-4.6",
+    description: "Zhipu GLM model routed through DashScope's OpenAI-compatible API",
+    available: true
+  },
+  {
+    id: "qwen-max",
+    name: "Qwen Max",
+    provider: "dashscope",
+    model: "qwen-max",
+    description: "High-capability Qwen model served by DashScope",
+    available: true
+  },
+  {
+    id: "qwen-plus",
+    name: "Qwen Plus",
+    provider: "dashscope",
+    model: "qwen-plus",
+    description: "Balanced Qwen model for general-purpose tasks",
     available: true
   },
   // Google Gemini models
@@ -518,6 +544,10 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
 // Re-export getApiKey from storage for use in agent runtime
 export { getApiKey } from "../storage"
 
+export function getModelConfig(modelId: string): ModelConfig | undefined {
+  return AVAILABLE_MODELS.find((model) => model.id === modelId)
+}
+
 export function getDefaultModel(): string {
-  return store.get("defaultModel", "claude-sonnet-4-5-20250929") as string
+  return store.get("defaultModel", "glm-4.6") as string
 }

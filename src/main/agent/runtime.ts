@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { createDeepAgent } from "deepagents"
-import { getDefaultModel } from "../ipc/models"
+import { getDefaultModel, getModelConfig } from "../ipc/models"
 import { getApiKey, getThreadCheckpointPath } from "../storage"
 import { ChatAnthropic } from "@langchain/anthropic"
 import { ChatOpenAI } from "@langchain/openai"
@@ -12,8 +12,11 @@ import type * as _lcTypes from "langchain"
 import type * as _lcMessages from "@langchain/core/messages"
 import type * as _lcLanggraph from "@langchain/langgraph"
 import type * as _lcZodTypes from "@langchain/core/utils/types"
+import type { ProviderId } from "../types"
 
 import { BASE_SYSTEM_PROMPT } from "./system-prompt"
+
+const DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 /**
  * Generate the full system prompt for the agent.
@@ -62,11 +65,13 @@ export async function closeCheckpointer(threadId: string): Promise<void> {
 function getModelInstance(
   modelId?: string
 ): ChatAnthropic | ChatOpenAI | ChatGoogleGenerativeAI | string {
-  const model = modelId || getDefaultModel()
-  console.log("[Runtime] Using model:", model)
+  const resolvedModelId = modelId || getDefaultModel()
+  const configuredModel = getModelConfig(resolvedModelId)
+  const model = configuredModel?.model ?? resolvedModelId
+  const provider = configuredModel?.provider ?? inferProviderFromModelId(resolvedModelId)
+  console.log("[Runtime] Using model:", resolvedModelId)
 
-  // Determine provider from model ID
-  if (model.startsWith("claude")) {
+  if (provider === "anthropic") {
     const apiKey = getApiKey("anthropic")
     console.log("[Runtime] Anthropic API key present:", !!apiKey)
     if (!apiKey) {
@@ -76,12 +81,7 @@ function getModelInstance(
       model,
       anthropicApiKey: apiKey
     })
-  } else if (
-    model.startsWith("gpt") ||
-    model.startsWith("o1") ||
-    model.startsWith("o3") ||
-    model.startsWith("o4")
-  ) {
+  } else if (provider === "openai") {
     const apiKey = getApiKey("openai")
     console.log("[Runtime] OpenAI API key present:", !!apiKey)
     if (!apiKey) {
@@ -89,9 +89,22 @@ function getModelInstance(
     }
     return new ChatOpenAI({
       model,
-      openAIApiKey: apiKey
+      apiKey
     })
-  } else if (model.startsWith("gemini")) {
+  } else if (provider === "dashscope") {
+    const apiKey = getApiKey("dashscope")
+    console.log("[Runtime] DashScope API key present:", !!apiKey)
+    if (!apiKey) {
+      throw new Error("DashScope API key not configured")
+    }
+    return new ChatOpenAI({
+      model,
+      apiKey,
+      configuration: {
+        baseURL: DASHSCOPE_BASE_URL
+      }
+    })
+  } else if (provider === "google") {
     const apiKey = getApiKey("google")
     console.log("[Runtime] Google API key present:", !!apiKey)
     if (!apiKey) {
@@ -105,6 +118,36 @@ function getModelInstance(
 
   // Default to model string (let deepagents handle it)
   return model
+}
+
+function inferProviderFromModelId(modelId: string): ProviderId | undefined {
+  if (modelId.startsWith("claude")) {
+    return "anthropic"
+  }
+
+  if (
+    modelId.startsWith("gpt") ||
+    modelId.startsWith("o1") ||
+    modelId.startsWith("o3") ||
+    modelId.startsWith("o4")
+  ) {
+    return "openai"
+  }
+
+  if (
+    modelId.startsWith("glm") ||
+    modelId.startsWith("qwen") ||
+    modelId.startsWith("deepseek") ||
+    modelId.startsWith("qwq")
+  ) {
+    return "dashscope"
+  }
+
+  if (modelId.startsWith("gemini")) {
+    return "google"
+  }
+
+  return undefined
 }
 
 export interface CreateAgentRuntimeOptions {

@@ -22,7 +22,7 @@ export interface Run {
   metadata?: Record<string, unknown>
 }
 
-export type ProviderId = "anthropic" | "openai" | "google" | "ollama"
+export type ProviderId = "anthropic" | "openai" | "google" | "dashscope" | "ollama"
 
 export interface Provider {
   id: ProviderId
