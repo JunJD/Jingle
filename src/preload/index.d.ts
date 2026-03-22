@@ -1,6 +1,11 @@
 import type { Thread, ModelConfig, Provider, StreamEvent, HITLDecision } from "../shared/app-types"
 import type { LauncherShellConfig } from "../shared/launcher"
-import type { LauncherSearchRequest, LauncherSearchResponse } from "../shared/launcher-search"
+import type {
+  LauncherActionExecutionResult,
+  LauncherSearchAction,
+  LauncherSearchRequest,
+  LauncherSearchResponse
+} from "../shared/launcher-search"
 
 interface ElectronAPI {
   ipcRenderer: {
@@ -58,6 +63,7 @@ interface CustomAPI {
   launcher: {
     getShellConfig: () => Promise<LauncherShellConfig>
     search: (request: LauncherSearchRequest) => Promise<LauncherSearchResponse>
+    executeAction: (action: LauncherSearchAction) => Promise<LauncherActionExecutionResult>
     hide: () => Promise<void>
     setViewportHeight: (height: number) => Promise<void>
     onShown: (callback: () => void) => () => void

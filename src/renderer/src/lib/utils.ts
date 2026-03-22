@@ -38,6 +38,14 @@ export function truncate(str: string, length: number): string {
   return str.slice(0, length) + "..."
 }
 
+export function truncateMiddle(str: string, startLength: number, endLength: number): string {
+  if (str.length <= startLength + endLength + 3) {
+    return str
+  }
+
+  return `${str.slice(0, startLength)}...${str.slice(str.length - endLength)}`
+}
+
 export function generateId(): string {
   return crypto.randomUUID()
 }

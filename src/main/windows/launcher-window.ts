@@ -1,8 +1,9 @@
-import { BrowserWindow, type IpcMain, globalShortcut, screen } from "electron"
+import { spawn } from "node:child_process"
+import { BrowserWindow, type IpcMain, globalShortcut, screen, shell } from "electron"
 import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
 import { FALLBACK_SHELL_CONFIG, getLauncherMaxViewportHeight } from "../../shared/launcher"
-import type { LauncherSearchRequest } from "../../shared/launcher-search"
+import type { LauncherSearchAction, LauncherSearchRequest } from "../../shared/launcher-search"
 import { searchLauncher } from "../services/launcher-search"
 
 const LAUNCHER_WIDTH = 800
@@ -11,6 +12,7 @@ const LAUNCHER_TOP_MARGIN = 60
 const MAC_LAUNCHER_WINDOW_LEVEL = "floating"
 const LAUNCHER_BASE_HEIGHT = FALLBACK_SHELL_CONFIG.baseHeight
 const LAUNCHER_MAX_HEIGHT = getLauncherMaxViewportHeight(FALLBACK_SHELL_CONFIG)
+const LAUNCHER_MAX_SCREEN_HEIGHT_RATIO = 0.7
 
 export const DEFAULT_LAUNCHER_SHORTCUT = "CommandOrControl+Shift+Space"
 
@@ -26,11 +28,12 @@ function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): {
 } {
   const cursorPoint = screen.getCursorScreenPoint()
   const display = screen.getDisplayNearestPoint(cursorPoint)
+  const boundedHeight = getLauncherHeightForDisplay(display, height)
   const maxWidth = Math.max(520, display.workArea.width - LAUNCHER_HORIZONTAL_MARGIN * 2)
   const width = Math.min(LAUNCHER_WIDTH, maxWidth)
   const x = Math.round(display.workArea.x + display.workArea.width / 2 - width / 2)
   const minY = display.workArea.y + LAUNCHER_TOP_MARGIN
-  const maxY = display.workArea.y + display.workArea.height - height - LAUNCHER_TOP_MARGIN
+  const maxY = display.workArea.y + display.workArea.height - boundedHeight - LAUNCHER_TOP_MARGIN
   const targetY = Math.round(display.workArea.y + display.workArea.height * 0.16)
   const y = clamp(targetY, minY, Math.max(minY, maxY))
 
@@ -38,8 +41,15 @@ function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): {
     x,
     y,
     width,
-    height
+    height: boundedHeight
   }
+}
+
+function getLauncherHeightForDisplay(display: Electron.Display, requestedHeight: number): number {
+  const maxHeightByScreen = Math.floor(display.workArea.height * LAUNCHER_MAX_SCREEN_HEIGHT_RATIO)
+  const maxHeight = Math.max(LAUNCHER_BASE_HEIGHT, Math.min(LAUNCHER_MAX_HEIGHT, maxHeightByScreen))
+
+  return clamp(Math.round(requestedHeight), LAUNCHER_BASE_HEIGHT, maxHeight)
 }
 
 function emitLauncherShown(launcherWindow: BrowserWindow): void {
@@ -82,6 +92,39 @@ function showLauncherWindow(launcherWindow: BrowserWindow): void {
 
 function hideLauncherWindow(launcherWindow: BrowserWindow): void {
   launcherWindow.hide()
+}
+
+async function executeLauncherAction(action: LauncherSearchAction): Promise<void> {
+  switch (action.type) {
+    case "launch-application":
+      if (process.platform === "darwin") {
+        await new Promise<void>((resolve, reject) => {
+          const child = spawn("open", [action.applicationPath], {
+            detached: true,
+            stdio: "ignore"
+          })
+
+          child.once("error", reject)
+          child.once("spawn", () => resolve())
+          child.unref()
+        })
+        return
+      }
+
+      {
+        const openPathError = await shell.openPath(action.applicationPath)
+        if (openPathError) {
+          throw new Error(openPathError)
+        }
+      }
+      return
+    case "none":
+      return
+    default: {
+      const exhaustiveAction: never = action
+      throw new Error(`Unsupported launcher action: ${JSON.stringify(exhaustiveAction)}`)
+    }
+  }
 }
 
 export function createLauncherWindow(): BrowserWindow {
@@ -149,6 +192,23 @@ export function registerLauncherHandlers(ipcMain: IpcMain): void {
     return searchLauncher(request)
   })
 
+  ipcMain.handle("launcher:executeAction", async (event, action: LauncherSearchAction) => {
+    const currentWindow = BrowserWindow.fromWebContents(event.sender)
+
+    try {
+      await executeLauncherAction(action)
+      currentWindow?.hide()
+      return {
+        ok: true
+      }
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : String(error),
+        ok: false
+      }
+    }
+  })
+
   ipcMain.handle("launcher:hide", (event) => {
     const currentWindow = BrowserWindow.fromWebContents(event.sender)
     currentWindow?.hide()
@@ -160,8 +220,7 @@ export function registerLauncherHandlers(ipcMain: IpcMain): void {
       return
     }
 
-    const nextHeight = clamp(Math.round(height), LAUNCHER_BASE_HEIGHT, LAUNCHER_MAX_HEIGHT)
-    currentWindow.setBounds(getLauncherBounds(nextHeight), false)
+    currentWindow.setBounds(getLauncherBounds(height), false)
   })
 }
 

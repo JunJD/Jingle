@@ -1,12 +1,10 @@
 import type {
-  LauncherSearchDiagnostic,
   LauncherSearchRequest,
   LauncherSearchResult,
   LauncherSearchSource
 } from "../../../shared/launcher-search"
 
 export interface LauncherSearchProviderResponse {
-  diagnostic: LauncherSearchDiagnostic
   results: LauncherSearchResult[]
 }
 
