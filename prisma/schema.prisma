@@ -19,6 +19,7 @@ model Thread {
   sessionBindings  SessionBinding[]  @relation("SessionBindingCurrentThread")
   checkpoints      Checkpoint[]
   checkpointWrites CheckpointWrite[]
+  messages         Message[]
 
   @@index([updatedAt], map: "idx_threads_updated_at")
   @@map("threads")
@@ -35,10 +36,35 @@ model Run {
   kwargs      String?
   thread      Thread     @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
   assistant   Assistant? @relation(fields: [assistantId], references: [assistantId], onDelete: SetNull)
+  messages    Message[]
 
   @@index([threadId], map: "idx_runs_thread_id")
   @@index([status], map: "idx_runs_status")
   @@map("runs")
+}
+
+model Message {
+  messageId   String  @id @map("message_id")
+  threadId    String  @map("thread_id")
+  runId       String? @map("run_id")
+  seq         Int
+  role        String
+  kind        String
+  content     String
+  toolCalls   String? @map("tool_calls")
+  toolCallId  String? @map("tool_call_id")
+  name        String?
+  metadata    String?
+  createdAt   BigInt  @map("created_at")
+  updatedAt   BigInt  @map("updated_at")
+  thread      Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  run         Run?    @relation(fields: [runId], references: [runId], onDelete: SetNull)
+
+  @@unique([threadId, seq], map: "idx_messages_thread_seq_unique")
+  @@index([threadId, createdAt], map: "idx_messages_thread_created_at")
+  @@index([runId], map: "idx_messages_run_id")
+  @@index([toolCallId], map: "idx_messages_tool_call_id")
+  @@map("messages")
 }
 
 model Assistant {

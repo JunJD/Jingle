@@ -561,122 +561,12 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
         console.error("[ThreadContext] Failed to load thread details:", error)
       }
 
-      // Load thread history from checkpoints
+      // Load persisted messages only. Thread bootstrap no longer reads checkpoints.
       try {
-        const history = await window.api.threads.getHistory(threadId)
-        if (history.length > 0) {
-          const latestCheckpoint = history[0] as {
-            checkpoint?: {
-              channel_values?: {
-                messages?: Array<{
-                  id?: string
-                  _getType?: () => string
-                  type?: string
-                  content?: string | unknown[]
-                  tool_calls?: unknown[]
-                  tool_call_id?: string
-                  name?: string
-                }>
-                todos?: Array<{ id?: string; content?: string; status?: string }>
-                __interrupt__?: Array<{
-                  value?: {
-                    actionRequests?: Array<{
-                      action: string
-                      args: Record<string, unknown>
-                    }>
-                    reviewConfigs?: Array<{
-                      toolName: string
-                      toolArgs: Record<string, unknown>
-                    }>
-                  }
-                }>
-              }
-            }
-            pending_sends?: Array<unknown>
-          }
-
-          const channelValues = latestCheckpoint.checkpoint?.channel_values
-
-          if (channelValues?.messages && Array.isArray(channelValues.messages)) {
-            const messages: Message[] = channelValues.messages.map((msg, index) => {
-              let role: "user" | "assistant" | "system" | "tool" = "assistant"
-              if (typeof msg._getType === "function") {
-                const type = msg._getType()
-                if (type === "human") role = "user"
-                else if (type === "ai") role = "assistant"
-                else if (type === "system") role = "system"
-                else if (type === "tool") role = "tool"
-              } else if (msg.type) {
-                if (msg.type === "human") role = "user"
-                else if (msg.type === "ai") role = "assistant"
-                else if (msg.type === "system") role = "system"
-                else if (msg.type === "tool") role = "tool"
-              }
-
-              let content: Message["content"] = ""
-              if (typeof msg.content === "string") content = msg.content
-              else if (Array.isArray(msg.content)) content = msg.content as Message["content"]
-
-              return {
-                id: msg.id || `msg-${index}`,
-                role,
-                content,
-                tool_calls: msg.tool_calls as Message["tool_calls"],
-                ...(role === "tool" && msg.tool_call_id && { tool_call_id: msg.tool_call_id }),
-                ...(role === "tool" && msg.name && { name: msg.name }),
-                created_at: new Date()
-              }
-            })
-            actions.setMessages(messages)
-          }
-
-          if (channelValues?.todos && Array.isArray(channelValues.todos)) {
-            const todos: Todo[] = channelValues.todos.map((todo, index) => ({
-              id: todo.id || `todo-${index}`,
-              content: todo.content || "",
-              status: (todo.status as Todo["status"]) || "pending"
-            }))
-            actions.setTodos(todos)
-          }
-
-          // Restore interrupt state if present
-          const interruptData = channelValues?.__interrupt__
-          if (interruptData && Array.isArray(interruptData) && interruptData.length > 0) {
-            const interruptValue = interruptData[0]?.value
-            const actionRequests = interruptValue?.actionRequests
-            const reviewConfigs = interruptValue?.reviewConfigs
-
-            if (actionRequests && actionRequests.length > 0) {
-              // New langchain HITL format
-              const req = actionRequests[0]
-              const hitlRequest: HITLRequest = {
-                id: crypto.randomUUID(),
-                tool_call: {
-                  id: crypto.randomUUID(),
-                  name: req.action,
-                  args: req.args
-                },
-                allowed_decisions: ["approve", "reject", "edit"]
-              }
-              actions.setPendingApproval(hitlRequest)
-            } else if (reviewConfigs && reviewConfigs.length > 0) {
-              // Alternative format
-              const config = reviewConfigs[0]
-              const hitlRequest: HITLRequest = {
-                id: crypto.randomUUID(),
-                tool_call: {
-                  id: crypto.randomUUID(),
-                  name: config.toolName,
-                  args: config.toolArgs
-                },
-                allowed_decisions: ["approve", "reject", "edit"]
-              }
-              actions.setPendingApproval(hitlRequest)
-            }
-          }
-        }
+        const persistedMessages = await window.api.threads.getMessages(threadId)
+        actions.setMessages(persistedMessages)
       } catch (error) {
-        console.error("[ThreadContext] Failed to load thread history:", error)
+        console.error("[ThreadContext] Failed to load persisted messages:", error)
       }
     },
     [getThreadActions, updateThreadState]

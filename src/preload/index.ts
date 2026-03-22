@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron"
-import type { Thread, ModelConfig, Provider, StreamEvent, HITLDecision } from "../shared/app-types"
+import type {
+  Thread,
+  Message,
+  ModelConfig,
+  Provider,
+  StreamEvent,
+  HITLDecision
+} from "../shared/app-types"
 import type { LauncherShellConfig } from "../shared/launcher"
 import type {
   LauncherActionExecutionResult,
@@ -127,8 +134,8 @@ const api = {
     delete: (threadId: string): Promise<void> => {
       return ipcRenderer.invoke("threads:delete", threadId)
     },
-    getHistory: (threadId: string): Promise<unknown[]> => {
-      return ipcRenderer.invoke("threads:history", threadId)
+    getMessages: (threadId: string): Promise<Message[]> => {
+      return ipcRenderer.invoke("threads:messages", threadId)
     },
     generateTitle: (message: string): Promise<string> => {
       return ipcRenderer.invoke("threads:generateTitle", message)

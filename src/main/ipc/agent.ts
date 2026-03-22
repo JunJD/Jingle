@@ -3,6 +3,13 @@ import { HumanMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
 import { createAgentRuntime } from "../agent/runtime"
 import { getThread } from "../db"
+import {
+  beginAgentRun,
+  markRunAborted,
+  markRunFailed,
+  resumeAgentRun,
+  syncRunFromLatestCheckpoint
+} from "../agent/persistence"
 import type {
   AgentInvokeParams,
   AgentResumeParams,
@@ -11,7 +18,7 @@ import type {
 } from "../types"
 
 // Track active runs for cancellation
-const activeRuns = new Map<string, AbortController>()
+const activeRuns = new Map<string, { controller: AbortController; runId: string }>()
 
 export function registerAgentHandlers(ipcMain: IpcMain): void {
   console.log("[Agent] Registering agent handlers...")
@@ -34,15 +41,15 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
 
     // Abort any existing stream for this thread before starting a new one
     // This prevents concurrent streams which can cause checkpoint corruption
-    const existingController = activeRuns.get(threadId)
-    if (existingController) {
+    const existingRun = activeRuns.get(threadId)
+    if (existingRun) {
       console.log("[Agent] Aborting existing stream for thread:", threadId)
-      existingController.abort()
+      existingRun.controller.abort()
       activeRuns.delete(threadId)
+      await markRunAborted(threadId, existingRun.runId)
     }
 
     const abortController = new AbortController()
-    activeRuns.set(threadId, abortController)
 
     // Abort the stream if the window is closed/destroyed
     const onWindowClosed = (): void => {
@@ -68,6 +75,9 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         return
       }
 
+      const { runId } = await beginAgentRun(threadId, message, modelId)
+      activeRuns.set(threadId, { controller: abortController, runId })
+
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
       const humanMessage = new HumanMessage(message)
 
@@ -80,6 +90,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
           configurable: { thread_id: threadId },
           signal: abortController.signal,
           streamMode: ["messages", "values"],
+          durability: "exit",
           recursionLimit: 1000
         }
       )
@@ -101,6 +112,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
 
       // Send done event (only if not aborted)
       if (!abortController.signal.aborted) {
+        await syncRunFromLatestCheckpoint(threadId, runId)
         window.webContents.send(channel, { type: "done" })
       }
     } catch (error) {
@@ -112,6 +124,10 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
           error.message.includes("Controller is already closed"))
 
       if (!isAbortError) {
+        const activeRun = activeRuns.get(threadId)
+        if (activeRun) {
+          await markRunFailed(threadId, activeRun.runId, error)
+        }
         console.error("[Agent] Error:", error)
         window.webContents.send(channel, {
           type: "error",
@@ -119,6 +135,10 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         })
       }
     } finally {
+      const activeRun = activeRuns.get(threadId)
+      if (activeRun?.controller === abortController && abortController.signal.aborted) {
+        await markRunAborted(threadId, activeRun.runId)
+      }
       window.removeListener("closed", onWindowClosed)
       activeRuns.delete(threadId)
     }
@@ -150,14 +170,16 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
     }
 
     // Abort any existing stream before resuming
-    const existingController = activeRuns.get(threadId)
-    if (existingController) {
-      existingController.abort()
+    const existingRun = activeRuns.get(threadId)
+    if (existingRun) {
+      existingRun.controller.abort()
       activeRuns.delete(threadId)
+      await markRunAborted(threadId, existingRun.runId)
     }
 
     const abortController = new AbortController()
-    activeRuns.set(threadId, abortController)
+    const runId = await resumeAgentRun(threadId, { source: "resume", modelId: modelId ?? null })
+    activeRuns.set(threadId, { controller: abortController, runId })
 
     try {
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
@@ -166,6 +188,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         configurable: { thread_id: threadId },
         signal: abortController.signal,
         streamMode,
+        durability: "exit" as const,
         recursionLimit: 1000
       }
 
@@ -187,6 +210,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
       }
 
       if (!abortController.signal.aborted) {
+        await syncRunFromLatestCheckpoint(threadId, runId)
         window.webContents.send(channel, { type: "done" })
       }
     } catch (error) {
@@ -197,6 +221,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
           error.message.includes("Controller is already closed"))
 
       if (!isAbortError) {
+        await markRunFailed(threadId, runId, error)
         console.error("[Agent] Resume error:", error)
         window.webContents.send(channel, {
           type: "error",
@@ -204,6 +229,9 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         })
       }
     } finally {
+      if (abortController.signal.aborted) {
+        await markRunAborted(threadId, runId)
+      }
       activeRuns.delete(threadId)
     }
   })
@@ -233,14 +261,20 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
     }
 
     // Abort any existing stream before continuing
-    const existingController = activeRuns.get(threadId)
-    if (existingController) {
-      existingController.abort()
+    const existingRun = activeRuns.get(threadId)
+    if (existingRun) {
+      existingRun.controller.abort()
       activeRuns.delete(threadId)
+      await markRunAborted(threadId, existingRun.runId)
     }
 
     const abortController = new AbortController()
-    activeRuns.set(threadId, abortController)
+    const runId = await resumeAgentRun(threadId, {
+      source: "interrupt",
+      decision: decision.type,
+      modelId: modelId ?? null
+    })
+    activeRuns.set(threadId, { controller: abortController, runId })
 
     try {
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
@@ -249,6 +283,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         configurable: { thread_id: threadId },
         signal: abortController.signal,
         streamMode,
+        durability: "exit" as const,
         recursionLimit: 1000
       }
 
@@ -268,11 +303,13 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         }
 
         if (!abortController.signal.aborted) {
+          await syncRunFromLatestCheckpoint(threadId, runId)
           window.webContents.send(channel, { type: "done" })
         }
       } else if (decision.type === "reject") {
         // For reject, we need to send a Command with reject decision
         // For now, just send done - the agent will see no resumption happened
+        await syncRunFromLatestCheckpoint(threadId, runId)
         window.webContents.send(channel, { type: "done" })
       }
       // edit case handled similarly to approve with modified args
@@ -284,6 +321,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
           error.message.includes("Controller is already closed"))
 
       if (!isAbortError) {
+        await markRunFailed(threadId, runId, error)
         console.error("[Agent] Interrupt error:", error)
         window.webContents.send(channel, {
           type: "error",
@@ -291,16 +329,20 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         })
       }
     } finally {
+      if (abortController.signal.aborted) {
+        await markRunAborted(threadId, runId)
+      }
       activeRuns.delete(threadId)
     }
   })
 
   // Handle cancellation
   ipcMain.handle("agent:cancel", async (_event, { threadId }: AgentCancelParams) => {
-    const controller = activeRuns.get(threadId)
-    if (controller) {
-      controller.abort()
+    const activeRun = activeRuns.get(threadId)
+    if (activeRun) {
+      activeRun.controller.abort()
       activeRuns.delete(threadId)
+      await markRunAborted(threadId, activeRun.runId)
     }
   })
 }

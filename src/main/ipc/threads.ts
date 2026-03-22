@@ -3,13 +3,14 @@ import { v4 as uuid } from "uuid"
 import {
   getAllThreads,
   getThread,
+  listMessages as dbListMessages,
   createThread as dbCreateThread,
   updateThread as dbUpdateThread,
   deleteThread as dbDeleteThread
 } from "../db"
-import { getCheckpointer, closeCheckpointer } from "../agent/runtime"
+import { closeCheckpointer } from "../agent/runtime"
 import { generateTitle } from "../services/title-generator"
-import type { Thread, ThreadUpdateParams } from "../types"
+import type { Message, Thread, ThreadUpdateParams } from "../types"
 
 export function registerThreadHandlers(ipcMain: IpcMain): void {
   // List all threads
@@ -100,23 +101,37 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
     }
   })
 
-  // Get thread history (checkpoints)
-  ipcMain.handle("threads:history", async (_event, threadId: string) => {
-    try {
-      const checkpointer = await getCheckpointer(threadId)
+  ipcMain.handle("threads:messages", async (_event, threadId: string) => {
+    const rows = await dbListMessages(threadId)
 
-      const history: unknown[] = []
-      const config = { configurable: { thread_id: threadId } }
+    return rows.map((row) => {
+      let content: Message["content"] = ""
+      let tool_calls: Message["tool_calls"] | undefined
 
-      for await (const checkpoint of checkpointer.list(config, { limit: 50 })) {
-        history.push(checkpoint)
+      try {
+        content = JSON.parse(row.content) as Message["content"]
+      } catch {
+        content = row.content
       }
 
-      return history
-    } catch (e) {
-      console.warn("Failed to get thread history:", e)
-      return []
-    }
+      if (row.tool_calls) {
+        try {
+          tool_calls = JSON.parse(row.tool_calls) as Message["tool_calls"]
+        } catch {
+          tool_calls = undefined
+        }
+      }
+
+      return {
+        id: row.message_id,
+        role: row.role as Message["role"],
+        content,
+        tool_calls,
+        ...(row.tool_call_id ? { tool_call_id: row.tool_call_id } : {}),
+        ...(row.name ? { name: row.name } : {}),
+        created_at: new Date(row.created_at)
+      }
+    })
   })
 
   // Generate a title from a message

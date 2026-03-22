@@ -3,189 +3,16 @@ import { dirname } from "path"
 import { getDbPath } from "../storage"
 import { closePrismaClient, getPrismaClient } from "./client"
 
-const THREADS_DDL = (tableName = "threads"): string => `
-  CREATE TABLE IF NOT EXISTS ${tableName} (
-    thread_id TEXT PRIMARY KEY,
-    created_at BIGINT NOT NULL,
-    updated_at BIGINT NOT NULL,
-    metadata TEXT,
-    status TEXT DEFAULT 'idle',
-    thread_values TEXT,
-    title TEXT
-  )
-`
-
-const RUNS_DDL = (tableName = "runs"): string => `
-  CREATE TABLE IF NOT EXISTS ${tableName} (
-    run_id TEXT PRIMARY KEY,
-    thread_id TEXT NOT NULL,
-    assistant_id TEXT,
-    created_at BIGINT NOT NULL,
-    updated_at BIGINT NOT NULL,
-    status TEXT,
-    metadata TEXT,
-    kwargs TEXT,
-    FOREIGN KEY (thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE,
-    FOREIGN KEY (assistant_id) REFERENCES assistants(assistant_id) ON DELETE SET NULL
-  )
-`
-
-const ASSISTANTS_DDL = (tableName = "assistants"): string => `
-  CREATE TABLE IF NOT EXISTS ${tableName} (
-    assistant_id TEXT PRIMARY KEY,
-    graph_id TEXT NOT NULL,
-    name TEXT,
-    model TEXT DEFAULT 'claude-sonnet-4-5-20250929',
-    config TEXT,
-    created_at BIGINT NOT NULL,
-    updated_at BIGINT NOT NULL
-  )
-`
-
-const SESSION_BINDINGS_DDL = (tableName = "session_bindings"): string => `
-  CREATE TABLE IF NOT EXISTS ${tableName} (
-    session_key TEXT PRIMARY KEY,
-    workspace_key TEXT NOT NULL,
-    workspace_path TEXT NOT NULL,
-    current_thread_id TEXT NOT NULL,
-    created_at BIGINT NOT NULL,
-    updated_at BIGINT NOT NULL,
-    metadata TEXT,
-    FOREIGN KEY (current_thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
-  )
-`
-
-const CHECKPOINTS_DDL = (tableName = "checkpoints"): string => `
-  CREATE TABLE IF NOT EXISTS ${tableName} (
-    thread_id TEXT NOT NULL,
-    checkpoint_ns TEXT NOT NULL DEFAULT '',
-    checkpoint_id TEXT NOT NULL,
-    parent_checkpoint_id TEXT,
-    type TEXT,
-    checkpoint TEXT,
-    metadata TEXT,
-    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id),
-    FOREIGN KEY (thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
-  )
-`
-
-const WRITES_DDL = (tableName = "writes"): string => `
-  CREATE TABLE IF NOT EXISTS ${tableName} (
-    thread_id TEXT NOT NULL,
-    checkpoint_ns TEXT NOT NULL DEFAULT '',
-    checkpoint_id TEXT NOT NULL,
-    task_id TEXT NOT NULL,
-    idx INTEGER NOT NULL,
-    channel TEXT NOT NULL,
-    type TEXT,
-    value TEXT,
-    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx),
-    FOREIGN KEY (thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
-  )
-`
-
-const INDEX_DDLS = [
-  `CREATE INDEX IF NOT EXISTS idx_threads_updated_at ON threads(updated_at)`,
-  `CREATE INDEX IF NOT EXISTS idx_runs_thread_id ON runs(thread_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)`,
-  `CREATE INDEX IF NOT EXISTS idx_session_bindings_workspace_key ON session_bindings(workspace_key)`,
-  `CREATE INDEX IF NOT EXISTS idx_session_bindings_thread_id ON session_bindings(current_thread_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_checkpoints_thread_ns ON checkpoints(thread_id, checkpoint_ns)`,
-  `CREATE INDEX IF NOT EXISTS idx_writes_thread_checkpoint ON writes(thread_id, checkpoint_ns, checkpoint_id)`
-]
-
-interface SqliteTableColumn {
-  name: string
-  type: string
-}
-
-interface TableSchemaConfig {
-  tableName: string
-  createTableSql: (tableName?: string) => string
-  columns: string[]
-  bigintColumns: string[]
-}
-
-const TABLE_SCHEMAS: TableSchemaConfig[] = [
-  {
-    tableName: "threads",
-    createTableSql: THREADS_DDL,
-    columns: [
-      "thread_id",
-      "created_at",
-      "updated_at",
-      "metadata",
-      "status",
-      "thread_values",
-      "title"
-    ],
-    bigintColumns: ["created_at", "updated_at"]
-  },
-  {
-    tableName: "assistants",
-    createTableSql: ASSISTANTS_DDL,
-    columns: ["assistant_id", "graph_id", "name", "model", "config", "created_at", "updated_at"],
-    bigintColumns: ["created_at", "updated_at"]
-  },
-  {
-    tableName: "runs",
-    createTableSql: RUNS_DDL,
-    columns: [
-      "run_id",
-      "thread_id",
-      "assistant_id",
-      "created_at",
-      "updated_at",
-      "status",
-      "metadata",
-      "kwargs"
-    ],
-    bigintColumns: ["created_at", "updated_at"]
-  },
-  {
-    tableName: "session_bindings",
-    createTableSql: SESSION_BINDINGS_DDL,
-    columns: [
-      "session_key",
-      "workspace_key",
-      "workspace_path",
-      "current_thread_id",
-      "created_at",
-      "updated_at",
-      "metadata"
-    ],
-    bigintColumns: ["created_at", "updated_at"]
-  },
-  {
-    tableName: "checkpoints",
-    createTableSql: CHECKPOINTS_DDL,
-    columns: [
-      "thread_id",
-      "checkpoint_ns",
-      "checkpoint_id",
-      "parent_checkpoint_id",
-      "type",
-      "checkpoint",
-      "metadata"
-    ],
-    bigintColumns: []
-  },
-  {
-    tableName: "writes",
-    createTableSql: WRITES_DDL,
-    columns: [
-      "thread_id",
-      "checkpoint_ns",
-      "checkpoint_id",
-      "task_id",
-      "idx",
-      "channel",
-      "type",
-      "value"
-    ],
-    bigintColumns: []
-  }
-]
+const REQUIRED_TABLES = [
+  "_prisma_migrations",
+  "threads",
+  "runs",
+  "messages",
+  "assistants",
+  "session_bindings",
+  "checkpoints",
+  "writes"
+] as const
 
 let initialized = false
 
@@ -199,8 +26,76 @@ export interface ThreadRow {
   title: string | null
 }
 
+export interface RunRow {
+  run_id: string
+  thread_id: string
+  assistant_id: string | null
+  created_at: number
+  updated_at: number
+  status: string | null
+  metadata: string | null
+  kwargs: string | null
+}
+
+export interface MessageRow {
+  message_id: string
+  thread_id: string
+  run_id: string | null
+  seq: number
+  role: string
+  kind: string
+  content: string
+  tool_calls: string | null
+  tool_call_id: string | null
+  name: string | null
+  metadata: string | null
+  created_at: number
+  updated_at: number
+}
+
+export interface CreateRunInput {
+  assistant_id?: string | null
+  status?: string | null
+  metadata?: Record<string, unknown> | string | null
+  kwargs?: Record<string, unknown> | string | null
+}
+
+export interface UpdateRunInput {
+  status?: string | null
+  metadata?: Record<string, unknown> | string | null
+  kwargs?: Record<string, unknown> | string | null
+}
+
+export interface PersistedMessageInput {
+  message_id: string
+  thread_id: string
+  run_id?: string | null
+  seq: number
+  role: string
+  kind: string
+  content: string
+  tool_calls?: string | null
+  tool_call_id?: string | null
+  name?: string | null
+  metadata?: string | null
+  created_at: number
+  updated_at: number
+}
+
 function toNumber(value: bigint | number): number {
   return typeof value === "bigint" ? Number(value) : value
+}
+
+function serializeJsonValue(
+  value: Record<string, unknown> | string | null | undefined
+): string | null | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+  if (value === null) {
+    return null
+  }
+  return typeof value === "string" ? value : JSON.stringify(value)
 }
 
 function mapThreadRow(row: {
@@ -223,100 +118,75 @@ function mapThreadRow(row: {
   }
 }
 
-async function ensureSchema(): Promise<void> {
+function mapRunRow(row: {
+  runId: string
+  threadId: string
+  assistantId: string | null
+  createdAt: bigint
+  updatedAt: bigint
+  status: string | null
+  metadata: string | null
+  kwargs: string | null
+}): RunRow {
+  return {
+    run_id: row.runId,
+    thread_id: row.threadId,
+    assistant_id: row.assistantId,
+    created_at: toNumber(row.createdAt),
+    updated_at: toNumber(row.updatedAt),
+    status: row.status,
+    metadata: row.metadata,
+    kwargs: row.kwargs
+  }
+}
+
+function mapMessageRow(row: {
+  messageId: string
+  threadId: string
+  runId: string | null
+  seq: number
+  role: string
+  kind: string
+  content: string
+  toolCalls: string | null
+  toolCallId: string | null
+  name: string | null
+  metadata: string | null
+  createdAt: bigint
+  updatedAt: bigint
+}): MessageRow {
+  return {
+    message_id: row.messageId,
+    thread_id: row.threadId,
+    run_id: row.runId,
+    seq: row.seq,
+    role: row.role,
+    kind: row.kind,
+    content: row.content,
+    tool_calls: row.toolCalls,
+    tool_call_id: row.toolCallId,
+    name: row.name,
+    metadata: row.metadata,
+    created_at: toNumber(row.createdAt),
+    updated_at: toNumber(row.updatedAt)
+  }
+}
+
+async function ensurePrismaSchemaApplied(): Promise<void> {
   const prisma = getPrismaClient()
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT name FROM sqlite_master WHERE type = 'table'`
+  )) as Array<{ name: string }>
+  const names = new Set(rows.map((row) => row.name))
+  const missing = REQUIRED_TABLES.filter((name) => !names.has(name))
 
-  await prisma.$connect()
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON")
-  await prisma.$executeRawUnsafe(THREADS_DDL())
-  await prisma.$executeRawUnsafe(ASSISTANTS_DDL())
-  await prisma.$executeRawUnsafe(RUNS_DDL())
-  await prisma.$executeRawUnsafe(SESSION_BINDINGS_DDL())
-  await prisma.$executeRawUnsafe(CHECKPOINTS_DDL())
-  await prisma.$executeRawUnsafe(WRITES_DDL())
-  await migrateLegacyIntegerColumns(prisma)
-
-  for (const ddl of INDEX_DDLS) {
-    await prisma.$executeRawUnsafe(ddl)
-  }
-}
-
-function quoteIdentifier(identifier: string): string {
-  return `"${identifier.replace(/"/g, '""')}"`
-}
-
-async function getTableColumns(tableName: string): Promise<SqliteTableColumn[]> {
-  const prisma = getPrismaClient()
-  const rows = await prisma.$queryRawUnsafe(`PRAGMA table_info(${quoteIdentifier(tableName)})`)
-  return rows as SqliteTableColumn[]
-}
-
-function normalizeColumnType(type: string | null | undefined): string {
-  return (type ?? "").trim().toUpperCase()
-}
-
-function needsBigIntMigration(columns: SqliteTableColumn[], bigintColumns: string[]): boolean {
-  if (columns.length === 0 || bigintColumns.length === 0) {
-    return false
-  }
-
-  return bigintColumns.some((columnName) => {
-    const column = columns.find((entry) => entry.name === columnName)
-    if (!column) {
-      return false
-    }
-
-    return normalizeColumnType(column.type) !== "BIGINT"
-  })
-}
-
-async function rebuildTable(config: TableSchemaConfig): Promise<void> {
-  const prisma = getPrismaClient()
-  const tempTableName = `__tmp_${config.tableName}`
-  const quotedColumns = config.columns.map(quoteIdentifier).join(", ")
-
-  await prisma.$executeRawUnsafe("BEGIN IMMEDIATE")
-
-  try {
-    await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS ${quoteIdentifier(tempTableName)}`)
-    await prisma.$executeRawUnsafe(config.createTableSql(tempTableName))
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO ${quoteIdentifier(tempTableName)} (${quotedColumns}) SELECT ${quotedColumns} FROM ${quoteIdentifier(config.tableName)}`
-    )
-    await prisma.$executeRawUnsafe(`DROP TABLE ${quoteIdentifier(config.tableName)}`)
-    await prisma.$executeRawUnsafe(
-      `ALTER TABLE ${quoteIdentifier(tempTableName)} RENAME TO ${quoteIdentifier(config.tableName)}`
-    )
-    await prisma.$executeRawUnsafe("COMMIT")
-  } catch (error) {
-    await prisma.$executeRawUnsafe("ROLLBACK")
-    throw error
-  }
-}
-
-async function migrateLegacyIntegerColumns(prisma = getPrismaClient()): Promise<void> {
-  const tablesToRebuild: TableSchemaConfig[] = []
-
-  for (const config of TABLE_SCHEMAS) {
-    const columns = await getTableColumns(config.tableName)
-    if (needsBigIntMigration(columns, config.bigintColumns)) {
-      tablesToRebuild.push(config)
-    }
-  }
-
-  if (tablesToRebuild.length === 0) {
+  if (missing.length === 0) {
     return
   }
 
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF")
-
-  try {
-    for (const config of tablesToRebuild) {
-      await rebuildTable(config)
-    }
-  } finally {
-    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON")
-  }
+  throw new Error(
+    `Database schema is not initialized for ${getDbPath()}. Missing tables: ${missing.join(", ")}. Run \`pnpm prisma:migrate:deploy\` before starting the app.`
+  )
 }
 
 export async function initializeDatabase(): Promise<void> {
@@ -325,12 +195,13 @@ export async function initializeDatabase(): Promise<void> {
   }
 
   const filePath = getDbPath()
+  mkdirSync(dirname(filePath), { recursive: true })
 
-  if (filePath) {
-    mkdirSync(dirname(filePath), { recursive: true })
-  }
+  const prisma = getPrismaClient()
+  await prisma.$connect()
+  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON")
+  await ensurePrismaSchemaApplied()
 
-  await ensureSchema()
   initialized = true
 }
 
@@ -421,6 +292,9 @@ export async function deleteThread(threadId: string): Promise<void> {
   const prisma = getPrismaClient()
 
   await prisma.$transaction([
+    prisma.message.deleteMany({
+      where: { threadId }
+    }),
     prisma.checkpointWrite.deleteMany({
       where: { threadId }
     }),
@@ -437,4 +311,263 @@ export async function deleteThread(threadId: string): Promise<void> {
       where: { threadId }
     })
   ])
+}
+
+export async function createRun(
+  runId: string,
+  threadId: string,
+  input: CreateRunInput = {}
+): Promise<RunRow> {
+  const prisma = getPrismaClient()
+  const now = BigInt(Date.now())
+
+  const row = await prisma.run.create({
+    data: {
+      runId,
+      threadId,
+      assistantId: input.assistant_id ?? null,
+      createdAt: now,
+      updatedAt: now,
+      status: input.status ?? "running",
+      metadata: serializeJsonValue(input.metadata) ?? null,
+      kwargs: serializeJsonValue(input.kwargs) ?? null
+    }
+  })
+
+  return mapRunRow(row)
+}
+
+export async function updateRun(runId: string, updates: UpdateRunInput): Promise<RunRow | null> {
+  const prisma = getPrismaClient()
+  const existing = await prisma.run.findUnique({
+    where: {
+      runId
+    }
+  })
+
+  if (!existing) {
+    return null
+  }
+
+  const row = await prisma.run.update({
+    where: {
+      runId
+    },
+    data: {
+      updatedAt: BigInt(Date.now()),
+      status: updates.status,
+      metadata: serializeJsonValue(updates.metadata),
+      kwargs: serializeJsonValue(updates.kwargs)
+    }
+  })
+
+  return mapRunRow(row)
+}
+
+export async function getLatestRun(threadId: string, statuses?: string[]): Promise<RunRow | null> {
+  const prisma = getPrismaClient()
+  const row = await prisma.run.findFirst({
+    where: {
+      threadId,
+      status: statuses ? { in: statuses } : undefined
+    },
+    orderBy: {
+      updatedAt: "desc"
+    }
+  })
+
+  return row ? mapRunRow(row) : null
+}
+
+export async function listMessages(threadId: string): Promise<MessageRow[]> {
+  const prisma = getPrismaClient()
+  const rows = await prisma.message.findMany({
+    where: {
+      threadId
+    },
+    orderBy: [{ seq: "asc" }, { createdAt: "asc" }]
+  })
+
+  return rows.map(mapMessageRow)
+}
+
+export async function createMessage(
+  input: Omit<PersistedMessageInput, "seq" | "updated_at"> & { seq?: number; updated_at?: number }
+): Promise<MessageRow> {
+  const prisma = getPrismaClient()
+  const now = input.updated_at ?? input.created_at
+
+  const row = await prisma.$transaction(async (tx) => {
+    const maxSeqRow = await tx.message.aggregate({
+      where: {
+        threadId: input.thread_id
+      },
+      _max: {
+        seq: true
+      }
+    })
+    const nextSeq = input.seq ?? (maxSeqRow._max.seq ?? -1) + 1
+
+    const created = await tx.message.create({
+      data: {
+        messageId: input.message_id,
+        threadId: input.thread_id,
+        runId: input.run_id ?? null,
+        seq: nextSeq,
+        role: input.role,
+        kind: input.kind,
+        content: input.content,
+        toolCalls: input.tool_calls ?? null,
+        toolCallId: input.tool_call_id ?? null,
+        name: input.name ?? null,
+        metadata: input.metadata ?? null,
+        createdAt: BigInt(input.created_at),
+        updatedAt: BigInt(now)
+      }
+    })
+
+    await tx.thread.update({
+      where: {
+        threadId: input.thread_id
+      },
+      data: {
+        updatedAt: BigInt(now)
+      }
+    })
+
+    return created
+  })
+
+  return mapMessageRow(row)
+}
+
+export async function syncMessagesFromSnapshot(
+  threadId: string,
+  currentRunId: string | null,
+  messages: Array<
+    Omit<PersistedMessageInput, "thread_id" | "run_id" | "seq" | "updated_at"> & {
+      seq?: number
+    }
+  >
+): Promise<void> {
+  const prisma = getPrismaClient()
+  const existing = await listMessages(threadId)
+
+  const normalizedIncoming = messages.map((message, index) => ({
+    message_id: message.message_id,
+    thread_id: threadId,
+    run_id: null,
+    seq: index,
+    role: message.role,
+    kind: message.kind,
+    content: message.content,
+    tool_calls: message.tool_calls ?? null,
+    tool_call_id: message.tool_call_id ?? null,
+    name: message.name ?? null,
+    metadata: message.metadata ?? null,
+    created_at: message.created_at,
+    updated_at: message.created_at
+  }))
+
+  const makeFingerprint = (
+    message: Pick<MessageRow, "role" | "kind" | "content" | "tool_calls" | "tool_call_id" | "name">
+  ): string =>
+    JSON.stringify([
+      message.role,
+      message.kind,
+      message.content,
+      message.tool_calls ?? null,
+      message.tool_call_id ?? null,
+      message.name ?? null
+    ])
+
+  const isExistingPrefix = existing.every((message, index) => {
+    const incoming = normalizedIncoming[index]
+    if (!incoming) {
+      return false
+    }
+
+    return makeFingerprint(message) === makeFingerprint(incoming)
+  })
+
+  const lastUserIndex = normalizedIncoming.reduce((found, message, index) => {
+    return message.role === "user" ? index : found
+  }, -1)
+
+  await prisma.$transaction(async (tx) => {
+    if (existing.length > 0 && isExistingPrefix && normalizedIncoming.length >= existing.length) {
+      const appended = normalizedIncoming.slice(existing.length).map((message) => ({
+        messageId: message.message_id,
+        threadId,
+        runId: currentRunId,
+        seq: message.seq,
+        role: message.role,
+        kind: message.kind,
+        content: message.content,
+        toolCalls: message.tool_calls,
+        toolCallId: message.tool_call_id,
+        name: message.name,
+        metadata: message.metadata,
+        createdAt: BigInt(message.created_at),
+        updatedAt: BigInt(message.updated_at)
+      }))
+
+      if (appended.length > 0) {
+        await tx.message.createMany({
+          data: appended
+        })
+
+        const lastTimestamp = appended[appended.length - 1]?.updatedAt
+        if (lastTimestamp) {
+          await tx.thread.update({
+            where: {
+              threadId
+            },
+            data: {
+              updatedAt: lastTimestamp
+            }
+          })
+        }
+      }
+
+      return
+    }
+
+    await tx.message.deleteMany({
+      where: {
+        threadId
+      }
+    })
+
+    if (normalizedIncoming.length === 0) {
+      return
+    }
+
+    await tx.message.createMany({
+      data: normalizedIncoming.map((message) => ({
+        messageId: message.message_id,
+        threadId,
+        runId: currentRunId && message.seq >= lastUserIndex ? currentRunId : null,
+        seq: message.seq,
+        role: message.role,
+        kind: message.kind,
+        content: message.content,
+        toolCalls: message.tool_calls,
+        toolCallId: message.tool_call_id,
+        name: message.name,
+        metadata: message.metadata,
+        createdAt: BigInt(message.created_at),
+        updatedAt: BigInt(message.updated_at)
+      }))
+    })
+
+    await tx.thread.update({
+      where: {
+        threadId
+      },
+      data: {
+        updatedAt: BigInt(normalizedIncoming[normalizedIncoming.length - 1].updated_at)
+      }
+    })
+  })
 }
