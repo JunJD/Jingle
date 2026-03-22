@@ -4,6 +4,7 @@
     "checkpointers",
     "dashscope",
     "deepagents",
+    "HITL",
     "langchain",
     "Langgraph",
     "minimizable",

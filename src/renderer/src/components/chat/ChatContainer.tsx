@@ -338,6 +338,10 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
               />
             ))}
 
+            {!isLoading && todos.length > 0 && (pendingApproval || displayMessages.length > 0) && (
+              <ChatTodos todos={todos} />
+            )}
+
             {/* Streaming indicator and inline TODOs */}
             {isLoading && (
               <div className="space-y-3">
