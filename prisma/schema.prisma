@@ -20,6 +20,7 @@ model Thread {
   checkpoints      Checkpoint[]
   checkpointWrites CheckpointWrite[]
   messages         Message[]
+  hitlRequests     HitlRequest[]
 
   @@index([updatedAt], map: "idx_threads_updated_at")
   @@map("threads")
@@ -37,6 +38,7 @@ model Run {
   thread      Thread     @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
   assistant   Assistant? @relation(fields: [assistantId], references: [assistantId], onDelete: SetNull)
   messages    Message[]
+  hitlRequests HitlRequest[]
 
   @@index([threadId], map: "idx_runs_thread_id")
   @@index([status], map: "idx_runs_status")
@@ -93,6 +95,28 @@ model SessionBinding {
   @@index([workspaceKey], map: "idx_session_bindings_workspace_key")
   @@index([currentThreadId], map: "idx_session_bindings_thread_id")
   @@map("session_bindings")
+}
+
+model HitlRequest {
+  requestId         String  @id @map("request_id")
+  threadId          String  @map("thread_id")
+  runId             String? @map("run_id")
+  toolCallId        String? @map("tool_call_id")
+  toolName          String  @map("tool_name")
+  toolArgs          String  @map("tool_args")
+  allowedDecisions  String  @map("allowed_decisions")
+  status            String  @default("pending")
+  decision          String?
+  createdAt         BigInt  @map("created_at")
+  updatedAt         BigInt  @map("updated_at")
+  resolvedAt        BigInt? @map("resolved_at")
+  thread            Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  run               Run?    @relation(fields: [runId], references: [runId], onDelete: SetNull)
+
+  @@index([threadId, status, updatedAt], map: "idx_hitl_requests_thread_status_updated_at")
+  @@index([threadId, updatedAt], map: "idx_hitl_requests_thread_updated_at")
+  @@index([runId], map: "idx_hitl_requests_run_id")
+  @@map("hitl_requests")
 }
 
 model Checkpoint {
