@@ -10,9 +10,21 @@ import type {
   LauncherSearchResponse,
   LauncherSearchResult
 } from "../../../../shared/launcher-search"
+import {
+  DEFAULT_LAUNCHER_SECONDARY_PAGE_ID,
+  getLauncherSecondaryPageDefinition,
+  launcherSecondaryPages
+} from "../pages"
+import type {
+  LauncherNavigationDirection,
+  LauncherSecondaryPageDefinition,
+  LauncherSecondaryPageId
+} from "../pages/types"
 import type { LauncherShellItem } from "../types"
 
 const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
+
+export type LauncherViewMode = "search" | "detail"
 
 function buildLauncherShellItems(searchResults: LauncherSearchResult[]): LauncherShellItem[] {
   return searchResults.map((result) => ({
@@ -28,25 +40,49 @@ function buildLauncherShellItems(searchResults: LauncherSearchResult[]): Launche
 }
 
 export function useLauncherShell(): {
+  activeSecondaryPage: LauncherSecondaryPageDefinition | null
+  closeSecondaryPage: () => void
+  detailQuery: string
   executeItem: (index: number) => void
+  handleDetailInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   handleInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   items: LauncherShellItem[]
+  mode: LauncherViewMode
+  navigationDirection: LauncherNavigationDirection
+  openSecondaryPage: (pageId: LauncherSecondaryPageId) => void
+  pageEntries: LauncherSecondaryPageDefinition[]
   placeholder: string
   query: string
+  resultsVisible: boolean
   selectedIndex: number
+  setDetailQuery: (value: string) => void
   resultsViewportHeight: number
   setQuery: (value: string) => void
   setSelectedIndex: (value: number) => void
   syncViewportHeight: () => void
 } {
   const latestSearchRequestRef = useRef(0)
+  const [activeSecondaryPageId, setActiveSecondaryPageId] =
+    useState<LauncherSecondaryPageId | null>(null)
   const [query, setQueryState] = useState("")
+  const [secondaryPageQueries, setSecondaryPageQueries] = useState<
+    Partial<Record<LauncherSecondaryPageId, string>>
+  >({})
   const [debouncedQuery, setDebouncedQuery] = useState("")
   const [shellConfig, setShellConfig] = useState<LauncherShellConfig>(FALLBACK_SHELL_CONFIG)
   const [searchResponse, setSearchResponse] = useState<LauncherSearchResponse | null>(null)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [navigationDirection, setNavigationDirection] =
+    useState<LauncherNavigationDirection>("forward")
   const searchResults = searchResponse?.results ?? EMPTY_SEARCH_RESULTS
   const searchLimit = MAX_LAUNCHER_SEARCH_RESULTS
+  const activeSecondaryPage = activeSecondaryPageId
+    ? getLauncherSecondaryPageDefinition(activeSecondaryPageId)
+    : null
+  const mode: LauncherViewMode = activeSecondaryPage ? "detail" : "search"
+  const detailQuery = activeSecondaryPageId
+    ? (secondaryPageQueries[activeSecondaryPageId] ?? "")
+    : ""
 
   const items = useMemo(() => buildLauncherShellItems(searchResults), [searchResults])
   const selectedIndex = useMemo(() => {
@@ -93,6 +129,37 @@ export function useLauncherShell(): {
     }
   }, [])
 
+  const setDetailQuery = useCallback(
+    (value: string): void => {
+      if (!activeSecondaryPageId) {
+        return
+      }
+
+      setSecondaryPageQueries((previous) => ({
+        ...previous,
+        [activeSecondaryPageId]: value
+      }))
+    },
+    [activeSecondaryPageId]
+  )
+
+  const openSecondaryPage = useCallback(
+    (pageId: LauncherSecondaryPageId): void => {
+      setNavigationDirection("forward")
+      setSecondaryPageQueries((previous) => ({
+        ...previous,
+        [pageId]: query.trim()
+      }))
+      setActiveSecondaryPageId(pageId)
+    },
+    [query]
+  )
+
+  const closeSecondaryPage = useCallback((): void => {
+    setNavigationDirection("backward")
+    setActiveSecondaryPageId(null)
+  }, [])
+
   useEffect(() => {
     const nextQuery = query.trim()
     if (!nextQuery) {
@@ -137,10 +204,14 @@ export function useLauncherShell(): {
       })
   }, [debouncedQuery, searchLimit])
 
+  const resultsVisible = mode === "search" && items.length > 0
+
   const syncViewportHeight = useCallback(() => {
-    const nextHeight = getLauncherViewportHeight(items.length, shellConfig)
+    const nextHeight = activeSecondaryPage
+      ? activeSecondaryPage.getViewportHeight(shellConfig)
+      : getLauncherViewportHeight(items.length, shellConfig)
     void window.api.launcher.setViewportHeight(nextHeight)
-  }, [items.length, shellConfig])
+  }, [activeSecondaryPage, items.length, shellConfig])
 
   useEffect(() => {
     syncViewportHeight()
@@ -184,6 +255,9 @@ export function useLauncherShell(): {
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
     switch (event.key) {
       case "Tab":
+        event.preventDefault()
+        openSecondaryPage(DEFAULT_LAUNCHER_SECONDARY_PAGE_ID)
+        break
       case "ArrowDown":
       case "ArrowRight":
         event.preventDefault()
@@ -203,13 +277,40 @@ export function useLauncherShell(): {
     }
   }
 
+  const handleDetailInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+    switch (event.key) {
+      case "Escape":
+        event.preventDefault()
+        closeSecondaryPage()
+        break
+      case "Backspace":
+        if (!detailQuery && activeSecondaryPage?.closeOnEmptyBackspace) {
+          event.preventDefault()
+          closeSecondaryPage()
+        }
+        break
+      default:
+        break
+    }
+  }
+
   return {
+    activeSecondaryPage,
+    closeSecondaryPage,
+    detailQuery,
     executeItem,
+    handleDetailInputKeyDown,
     handleInputKeyDown,
     items,
+    mode,
+    navigationDirection,
+    openSecondaryPage,
+    pageEntries: launcherSecondaryPages,
     placeholder: shellConfig.placeholder,
     query,
+    resultsVisible,
     selectedIndex,
+    setDetailQuery,
     resultsViewportHeight,
     setQuery,
     setSelectedIndex,

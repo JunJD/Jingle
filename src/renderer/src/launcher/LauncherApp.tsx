@@ -1,39 +1,39 @@
-import { Settings2 } from "lucide-react"
-import { useEffect, useMemo, useRef } from "react"
-import { LauncherResultList } from "./components/LauncherResultList"
+import { useEffect, useRef } from "react"
+import { LauncherPageTransition } from "./components/LauncherPageTransition"
+import { LauncherSearchPage } from "./components/LauncherSearchPage"
+import { LauncherSecondaryPage } from "./components/LauncherSecondaryPage"
 import { useLauncherShell } from "./hooks/useLauncherShell"
 
 export default function LauncherApp(): React.JSX.Element {
-  const inputRef = useRef<HTMLInputElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const detailInputRef = useRef<HTMLInputElement>(null)
   const {
+    activeSecondaryPage,
+    closeSecondaryPage,
+    detailQuery,
     executeItem,
+    handleDetailInputKeyDown,
     handleInputKeyDown,
     items,
+    mode,
+    navigationDirection,
+    openSecondaryPage,
+    pageEntries,
     placeholder,
     query,
+    resultsVisible,
     resultsViewportHeight,
     selectedIndex,
+    setDetailQuery,
     setQuery,
     syncViewportHeight
   } = useLauncherShell()
   const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : null
-  const footerAction = useMemo(() => {
-    if (!selectedItem) {
-      return {
-        label: "Open Result",
-        shortcut: "↵"
-      }
-    }
-
-    return {
-      label: selectedItem.kind === "application" ? "Open App" : "Open Result",
-      shortcut: "↵"
-    }
-  }, [selectedItem])
+  const activePageKey = activeSecondaryPage ? activeSecondaryPage.id : "search"
 
   useEffect(() => {
     const focusInput = (): void => {
-      const input = inputRef.current
+      const input = mode === "detail" ? detailInputRef.current : searchInputRef.current
       if (!input) {
         return
       }
@@ -54,7 +54,7 @@ export default function LauncherApp(): React.JSX.Element {
       cleanupShown()
       window.removeEventListener("focus", focusInput)
     }
-  }, [syncViewportHeight])
+  }, [mode, syncViewportHeight])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -83,69 +83,34 @@ export default function LauncherApp(): React.JSX.Element {
           backgroundColor: "var(--launcher-surface)"
         }}
       >
-        <div
-          className="flex h-[60px] shrink-0 items-center pl-6 pr-8"
-          style={{ borderBottom: "1px solid var(--launcher-border)" }}
-        >
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={handleInputKeyDown}
-            placeholder={placeholder}
-            className="h-full flex-1 border-0 bg-transparent px-0 text-[16px] font-medium text-foreground outline-none placeholder:text-muted-foreground"
-          />
-        </div>
-        <LauncherResultList
-          height={resultsViewportHeight}
-          items={items}
-          onExecute={executeItem}
-          selectedIndex={selectedIndex}
-        />
-
-        {items.length > 0 && (
-          <div
-            className="flex h-[48px] shrink-0 items-center justify-between pl-4 pr-8"
-            style={{
-              borderTop: "1px solid var(--launcher-border)",
-              backgroundColor: "color-mix(in srgb, var(--launcher-surface-strong) 42%, transparent)"
-            }}
-          >
-            <button
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              className="flex appearance-none items-center gap-2 rounded-md border-0 bg-transparent px-2 py-1 text-[13px] text-muted-foreground transition hover:text-foreground"
-            >
-              <Settings2 className="size-4" />
-              <span>Settings</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (!selectedItem) {
-                  return
-                }
-
-                executeItem(selectedIndex)
-              }}
-              onMouseDown={(event) => event.preventDefault()}
-              className="flex appearance-none items-center gap-3 rounded-md border-0 bg-transparent px-2 py-1 text-[13px] font-medium text-foreground"
-            >
-              <span>{footerAction.label}</span>
-              <span
-                className="rounded-[10px] px-2 py-1 text-[12px]"
-                style={{
-                  border: "1px solid var(--launcher-border-strong)",
-                  backgroundColor: "var(--launcher-surface-strong)",
-                  color: "var(--launcher-text)"
-                }}
-              >
-                {footerAction.shortcut}
-              </span>
-            </button>
-          </div>
-        )}
+        <LauncherPageTransition direction={navigationDirection} pageKey={activePageKey}>
+          {activeSecondaryPage ? (
+            <LauncherSecondaryPage
+              inputRef={detailInputRef}
+              onBack={closeSecondaryPage}
+              onInputKeyDown={handleDetailInputKeyDown}
+              page={activeSecondaryPage}
+              query={detailQuery}
+              setQuery={setDetailQuery}
+            />
+          ) : (
+            <LauncherSearchPage
+              executeItem={executeItem}
+              inputRef={searchInputRef}
+              items={items}
+              onInputKeyDown={handleInputKeyDown}
+              onOpenPage={openSecondaryPage}
+              pageEntries={pageEntries}
+              placeholder={placeholder}
+              query={query}
+              resultsViewportHeight={resultsViewportHeight}
+              resultsVisible={resultsVisible}
+              selectedIndex={selectedIndex}
+              selectedItem={selectedItem}
+              setQuery={setQuery}
+            />
+          )}
+        </LauncherPageTransition>
       </div>
     </div>
   )
