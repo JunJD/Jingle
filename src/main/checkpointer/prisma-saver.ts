@@ -9,7 +9,12 @@ import {
   type PendingWrite,
   type SerializerProtocol
 } from "@langchain/langgraph-checkpoint"
+import { syncMessagesFromSnapshot, upsertHitlRequest } from "../db"
 import { getPrismaClient } from "../db/client"
+import {
+  extractHitlRequestFromCheckpoint,
+  extractMessagesFromCheckpoint
+} from "../agent/runtime-state"
 import { decodeSerializedPayload, encodeSerializedPayload } from "./storage-codec"
 
 export class PrismaCheckpointSaver extends BaseCheckpointSaver {
@@ -178,6 +183,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
     }
 
     const threadId = config.configurable.thread_id
+    const runId = typeof config.configurable.run_id === "string" ? config.configurable.run_id : null
     const checkpointNs = config.configurable.checkpoint_ns ?? ""
     const parentCheckpointId = config.configurable.checkpoint_id
     const preparedCheckpoint = copyCheckpoint(checkpoint)
@@ -219,8 +225,32 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       }
     })
 
+    const tuple = {
+      checkpoint: preparedCheckpoint,
+      metadata
+    } as CheckpointTuple
+    const messages = extractMessagesFromCheckpoint(threadId, tuple)
+    if (messages.length > 0) {
+      await syncMessagesFromSnapshot(threadId, runId, messages)
+    }
+
+    const hitlRequest = extractHitlRequestFromCheckpoint(threadId, tuple)
+    if (hitlRequest) {
+      await upsertHitlRequest({
+        request_id: hitlRequest.id,
+        thread_id: threadId,
+        run_id: runId,
+        tool_call_id: hitlRequest.tool_call.id || null,
+        tool_name: hitlRequest.tool_call.name,
+        tool_args: hitlRequest.tool_call.args,
+        allowed_decisions: hitlRequest.allowed_decisions,
+        status: "pending"
+      })
+    }
+
     return {
       configurable: {
+        ...config.configurable,
         thread_id: threadId,
         checkpoint_ns: checkpointNs,
         checkpoint_id: checkpoint.id

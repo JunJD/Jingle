@@ -1,102 +1,13 @@
 import { randomUUID } from "crypto"
 import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
-import {
-  createMessage,
-  createRun,
-  getLatestRun,
-  syncMessagesFromSnapshot,
-  updateRun,
-  updateThread
-} from "../db"
+import { createMessage, createRun, getLatestRun, updateRun, updateThread } from "../db"
 import { getCheckpointer } from "./runtime"
 
 type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted"
 
-interface CheckpointChannelMessage {
-  id?: string
-  _getType?: () => string
-  type?: string
-  content?: string | unknown[]
-  tool_calls?: unknown[]
-  tool_call_id?: string
-  name?: string
-}
-
-interface LatestCheckpointState {
-  checkpoint?: {
-    channel_values?: {
-      messages?: CheckpointChannelMessage[]
-      __interrupt__?: unknown[]
-    }
-  }
-}
-
-function resolveMessageRole(
-  message: CheckpointChannelMessage
-): "user" | "assistant" | "system" | "tool" {
-  if (typeof message._getType === "function") {
-    const type = message._getType()
-    if (type === "human") return "user"
-    if (type === "system") return "system"
-    if (type === "tool") return "tool"
-    return "assistant"
-  }
-
-  if (message.type === "human") return "user"
-  if (message.type === "system") return "system"
-  if (message.type === "tool") return "tool"
-  return "assistant"
-}
-
-function extractMessagesFromCheckpoint(
-  threadId: string,
-  state: LatestCheckpointState | undefined
-): Array<{
-  message_id: string
-  role: string
-  kind: string
-  content: string
-  tool_calls?: string | null
-  tool_call_id?: string | null
-  name?: string | null
-  metadata?: string | null
-  created_at: number
-}> {
-  const messages = state?.checkpoint?.channel_values?.messages
-  if (!Array.isArray(messages)) {
-    return []
-  }
-
-  const now = Date.now()
-
-  return messages.map((message, index) => {
-    const role = resolveMessageRole(message)
-    const content =
-      typeof message.content === "string"
-        ? message.content
-        : Array.isArray(message.content)
-          ? message.content
-          : ""
-
-    const messageId =
-      message.id || message.tool_call_id || `checkpoint:${threadId}:${index}:${role}`
-
-    return {
-      message_id: messageId,
-      role,
-      kind: role === "tool" ? "tool_result" : "message",
-      content: JSON.stringify(content),
-      tool_calls: message.tool_calls ? JSON.stringify(message.tool_calls) : null,
-      tool_call_id: message.tool_call_id ?? null,
-      name: message.name ?? null,
-      metadata: null,
-      created_at: now + index
-    }
-  })
-}
-
-function resolveCheckpointRunStatus(state: LatestCheckpointState | undefined): PersistedRunStatus {
-  const interrupts = state?.checkpoint?.channel_values?.__interrupt__
+function resolveCheckpointRunStatus(tuple: CheckpointTuple | undefined): PersistedRunStatus {
+  const interrupts = (tuple as { checkpoint?: { channel_values?: { __interrupt__?: unknown[] } } })
+    ?.checkpoint?.channel_values?.__interrupt__
   return Array.isArray(interrupts) && interrupts.length > 0 ? "interrupted" : "success"
 }
 
@@ -166,7 +77,10 @@ export async function resumeAgentRun(
 
 export async function syncRunFromLatestCheckpoint(
   threadId: string,
-  runId: string
+  runId: string,
+  options?: {
+    interrupted?: boolean
+  }
 ): Promise<PersistedRunStatus> {
   const checkpointer = await getCheckpointer(threadId)
   const latest = (await checkpointer.getTuple({
@@ -175,14 +89,7 @@ export async function syncRunFromLatestCheckpoint(
     }
   })) as CheckpointTuple | undefined
 
-  const state = latest as LatestCheckpointState | undefined
-  const messages = extractMessagesFromCheckpoint(threadId, state)
-
-  if (messages.length > 0) {
-    await syncMessagesFromSnapshot(threadId, runId, messages)
-  }
-
-  const status = resolveCheckpointRunStatus(state)
+  const status = options?.interrupted ? "interrupted" : resolveCheckpointRunStatus(latest)
 
   await updateRun(runId, {
     status

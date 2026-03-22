@@ -1,11 +1,11 @@
 import { contextBridge, ipcRenderer } from "electron"
 import type {
   Thread,
-  Message,
   ModelConfig,
   Provider,
   StreamEvent,
-  HITLDecision
+  HITLDecision,
+  ThreadRuntimeState
 } from "../shared/app-types"
 import type { LauncherShellConfig } from "../shared/launcher"
 import type {
@@ -134,8 +134,11 @@ const api = {
     delete: (threadId: string): Promise<void> => {
       return ipcRenderer.invoke("threads:delete", threadId)
     },
-    getMessages: (threadId: string): Promise<Message[]> => {
-      return ipcRenderer.invoke("threads:messages", threadId)
+    getHistory: (threadId: string) => {
+      return ipcRenderer.invoke("threads:history", threadId)
+    },
+    getRuntimeState: (threadId: string): Promise<ThreadRuntimeState> => {
+      return ipcRenderer.invoke("threads:runtimeState", threadId)
     },
     generateTitle: (message: string): Promise<string> => {
       return ipcRenderer.invoke("threads:generateTitle", message)

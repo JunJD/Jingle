@@ -1,10 +1,11 @@
 import type {
   Thread,
-  Message,
   ModelConfig,
   Provider,
   StreamEvent,
-  HITLDecision
+  HITLDecision,
+  ThreadRuntimeState,
+  ThreadHistoryState
 } from "../shared/app-types"
 import type { LauncherShellConfig } from "../shared/launcher"
 import type {
@@ -55,7 +56,8 @@ interface CustomAPI {
     create: (metadata?: Record<string, unknown>) => Promise<Thread>
     update: (threadId: string, updates: Partial<Thread>) => Promise<Thread>
     delete: (threadId: string) => Promise<void>
-    getMessages: (threadId: string) => Promise<Message[]>
+    getHistory: (threadId: string) => Promise<ThreadHistoryState>
+    getRuntimeState: (threadId: string) => Promise<ThreadRuntimeState>
     generateTitle: (message: string) => Promise<string>
   }
   models: {

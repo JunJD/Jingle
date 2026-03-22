@@ -113,6 +113,15 @@ export interface HITLDecision {
   feedback?: string
 }
 
+export interface ThreadRuntimeState {
+  todos: Todo[]
+  pendingApproval: HITLRequest | null
+}
+
+export interface ThreadHistoryState extends ThreadRuntimeState {
+  messages: Message[]
+}
+
 export interface Todo {
   id: string
   content: string

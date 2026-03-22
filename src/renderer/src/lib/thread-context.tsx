@@ -561,12 +561,14 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
         console.error("[ThreadContext] Failed to load thread details:", error)
       }
 
-      // Load persisted messages only. Thread bootstrap no longer reads checkpoints.
+      // Bootstrap thread state directly from the latest checkpoint-backed runtime snapshot.
       try {
-        const persistedMessages = await window.api.threads.getMessages(threadId)
-        actions.setMessages(persistedMessages)
+        const history = await window.api.threads.getHistory(threadId)
+        actions.setMessages(history.messages)
+        actions.setTodos(history.todos)
+        actions.setPendingApproval(history.pendingApproval)
       } catch (error) {
-        console.error("[ThreadContext] Failed to load persisted messages:", error)
+        console.error("[ThreadContext] Failed to load checkpoint-backed thread state:", error)
       }
     },
     [getThreadActions, updateThreadState]

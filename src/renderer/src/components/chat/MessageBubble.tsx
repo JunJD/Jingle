@@ -84,6 +84,21 @@ export function MessageBubble({
   const content = renderContent()
   const hasToolCalls = message.tool_calls && message.tool_calls.length > 0
 
+  const getPendingMatchIndex = (): number => {
+    if (!hasToolCalls || !pendingApproval) {
+      return -1
+    }
+
+    const pendingId = pendingApproval.tool_call?.id
+    if (!pendingId) {
+      return -1
+    }
+
+    return message.tool_calls!.findIndex((toolCall) => toolCall.id === pendingId)
+  }
+
+  const pendingMatchIndex = getPendingMatchIndex()
+
   // Don't render if there's no content and no tool calls
   if (!content && !hasToolCalls) {
     return null
@@ -117,8 +132,7 @@ export function MessageBubble({
           <div className="space-y-2 overflow-hidden">
             {message.tool_calls!.map((toolCall, index) => {
               const result = toolResults?.get(toolCall.id)
-              const pendingId = pendingApproval?.tool_call?.id
-              const needsApproval = Boolean(pendingId && pendingId === toolCall.id)
+              const needsApproval = pendingMatchIndex === index
               return (
                 <ToolCallRenderer
                   key={`${toolCall.id || `tc-${index}`}-${needsApproval ? "pending" : "done"}`}

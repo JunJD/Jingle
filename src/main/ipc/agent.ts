@@ -2,7 +2,7 @@ import { IpcMain, BrowserWindow } from "electron"
 import { HumanMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
 import { createAgentRuntime } from "../agent/runtime"
-import { getThread } from "../db"
+import { getThread, resolvePendingHitlRequests, upsertHitlRequest } from "../db"
 import {
   beginAgentRun,
   markRunAborted,
@@ -10,15 +10,59 @@ import {
   resumeAgentRun,
   syncRunFromLatestCheckpoint
 } from "../agent/persistence"
+import { extractHitlRequestFromValuesState } from "../agent/runtime-state"
 import type {
   AgentInvokeParams,
   AgentResumeParams,
   AgentInterruptParams,
-  AgentCancelParams
+  AgentCancelParams,
+  HITLDecision
 } from "../types"
 
 // Track active runs for cancellation
 const activeRuns = new Map<string, { controller: AbortController; runId: string }>()
+
+function mapDecisionToHitlStatus(
+  decision: HITLDecision["type"]
+): "approved" | "rejected" | "edited" {
+  switch (decision) {
+    case "approve":
+      return "approved"
+    case "reject":
+      return "rejected"
+    case "edit":
+      return "edited"
+  }
+}
+
+async function persistPendingHitlFromStream(
+  threadId: string,
+  runId: string,
+  mode: string,
+  data: unknown
+): Promise<boolean> {
+  if (mode !== "values") {
+    return false
+  }
+
+  const request = extractHitlRequestFromValuesState(threadId, runId, data)
+  if (!request) {
+    return false
+  }
+
+  await upsertHitlRequest({
+    request_id: request.id,
+    thread_id: threadId,
+    run_id: runId,
+    tool_call_id: request.tool_call.id || null,
+    tool_name: request.tool_call.name,
+    tool_args: request.tool_call.args,
+    allowed_decisions: request.allowed_decisions,
+    status: "pending"
+  })
+
+  return true
+}
 
 export function registerAgentHandlers(ipcMain: IpcMain): void {
   console.log("[Agent] Registering agent handlers...")
@@ -87,19 +131,21 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
       const stream = await agent.stream(
         { messages: [humanMessage] },
         {
-          configurable: { thread_id: threadId },
+          configurable: { thread_id: threadId, run_id: runId },
           signal: abortController.signal,
           streamMode: ["messages", "values"],
-          durability: "exit",
           recursionLimit: 1000
         }
       )
+      let interrupted = false
 
       for await (const chunk of stream) {
         if (abortController.signal.aborted) break
 
         // With multiple stream modes, chunks are tuples: [mode, data]
         const [mode, data] = chunk as [string, unknown]
+        const sawInterrupt = await persistPendingHitlFromStream(threadId, runId, mode, data)
+        interrupted = interrupted || sawInterrupt
 
         // Forward raw stream events - transport layer handles parsing
         // Serialize to plain objects for IPC (class instances don't transfer)
@@ -112,7 +158,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
 
       // Send done event (only if not aborted)
       if (!abortController.signal.aborted) {
-        await syncRunFromLatestCheckpoint(threadId, runId)
+        await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
         window.webContents.send(channel, { type: "done" })
       }
     } catch (error) {
@@ -185,23 +231,28 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
       const streamMode: Array<"messages" | "values"> = ["messages", "values"]
       const config = {
-        configurable: { thread_id: threadId },
+        configurable: { thread_id: threadId, run_id: runId },
         signal: abortController.signal,
         streamMode,
-        durability: "exit" as const,
         recursionLimit: 1000
       }
 
       // Resume from checkpoint by streaming with Command containing the decision
       // The HITL middleware expects { decisions: [{ type: 'approve' | 'reject' | 'edit' }] }
-      const decisionType = command?.resume?.decision || "approve"
+      const decisionType = (command?.resume?.decision || "approve") as HITLDecision["type"]
+      await resolvePendingHitlRequests(threadId, mapDecisionToHitlStatus(decisionType), {
+        type: decisionType
+      })
       const resumeValue = { decisions: [{ type: decisionType }] }
       const stream = await agent.stream(new Command({ resume: resumeValue }), config)
+      let interrupted = false
 
       for await (const chunk of stream) {
         if (abortController.signal.aborted) break
 
         const [mode, data] = chunk as unknown as [string, unknown]
+        const sawInterrupt = await persistPendingHitlFromStream(threadId, runId, mode, data)
+        interrupted = interrupted || sawInterrupt
         window.webContents.send(channel, {
           type: "stream",
           mode,
@@ -210,7 +261,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
       }
 
       if (!abortController.signal.aborted) {
-        await syncRunFromLatestCheckpoint(threadId, runId)
+        await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
         window.webContents.send(channel, { type: "done" })
       }
     } catch (error) {
@@ -274,27 +325,35 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
       decision: decision.type,
       modelId: modelId ?? null
     })
+    await resolvePendingHitlRequests(threadId, mapDecisionToHitlStatus(decision.type), {
+      type: decision.type,
+      tool_call_id: decision.tool_call_id,
+      edited_args: decision.edited_args,
+      feedback: decision.feedback
+    })
     activeRuns.set(threadId, { controller: abortController, runId })
 
     try {
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
       const streamMode: Array<"messages" | "values"> = ["messages", "values"]
       const config = {
-        configurable: { thread_id: threadId },
+        configurable: { thread_id: threadId, run_id: runId },
         signal: abortController.signal,
         streamMode,
-        durability: "exit" as const,
         recursionLimit: 1000
       }
 
       if (decision.type === "approve") {
         // Resume execution by invoking with null (continues from checkpoint)
         const stream = await agent.stream(null, config)
+        let interrupted = false
 
         for await (const chunk of stream) {
           if (abortController.signal.aborted) break
 
           const [mode, data] = chunk as unknown as [string, unknown]
+          const sawInterrupt = await persistPendingHitlFromStream(threadId, runId, mode, data)
+          interrupted = interrupted || sawInterrupt
           window.webContents.send(channel, {
             type: "stream",
             mode,
@@ -303,7 +362,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         }
 
         if (!abortController.signal.aborted) {
-          await syncRunFromLatestCheckpoint(threadId, runId)
+          await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
           window.webContents.send(channel, { type: "done" })
         }
       } else if (decision.type === "reject") {
