@@ -1,3 +1,5 @@
+import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
+
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
 
 export interface Thread {
@@ -81,10 +83,12 @@ export interface ContentBlock {
   content?: string
 }
 
-export interface ToolCall {
+export interface ToolCall extends LangChainToolCall<string, Record<string, unknown>> {
   id: string
-  name: string
-  args: Record<string, unknown>
+}
+
+export interface HITLToolCall extends LangChainToolCall<string, Record<string, unknown>> {
+  id?: string
 }
 
 export interface ToolResult {
@@ -95,13 +99,13 @@ export interface ToolResult {
 
 export interface HITLRequest {
   id: string
-  tool_call: ToolCall
+  tool_call: HITLToolCall
   allowed_decisions: HITLDecision["type"][]
 }
 
 export interface HITLDecision {
   type: "approve" | "reject" | "edit"
-  tool_call_id: string
+  tool_call_id?: string
   edited_args?: Record<string, unknown>
   feedback?: string
 }

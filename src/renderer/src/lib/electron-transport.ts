@@ -1,5 +1,6 @@
 import type { UseStreamTransport } from "@langchain/langgraph-sdk/react"
 import type { ToolCall, ToolCallChunk } from "@langchain/core/messages"
+import type { ActionRequest, ReviewConfig } from "langchain"
 import type { StreamPayload, StreamEvent, IPCEvent, IPCStreamEvent } from "../../../types"
 import type { Subagent } from "../types"
 
@@ -60,6 +61,12 @@ interface MessageMetadata {
   name?: string
 }
 
+interface InterruptActionRequest extends ActionRequest {
+  id?: string
+  toolCallId?: string
+  description?: string
+}
+
 // Accumulated tool call data (for streaming tool calls)
 interface AccumulatedToolCall {
   id: string
@@ -67,11 +74,81 @@ interface AccumulatedToolCall {
   args: string // Accumulated JSON string
 }
 
-// Completed tool call with parsed args
-interface CompletedToolCall {
-  id: string
-  name: string
-  args: Record<string, unknown>
+interface ValuesInterruptState {
+  messages?: SerializedMessageChunk[]
+  __interrupt__?: Array<{
+    value?: {
+      actionRequests?: InterruptActionRequest[]
+      reviewConfigs?: ReviewConfig[]
+    }
+  }>
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value)
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+    a.localeCompare(b)
+  )
+
+  return `{${entries
+    .map(([key, nested]) => `${JSON.stringify(key)}:${stableStringify(nested)}`)
+    .join(",")}}`
+}
+
+function getLatestToolCallsFromSerializedMessages(
+  messages: SerializedMessageChunk[] | undefined
+): ToolCall[] {
+  if (!Array.isArray(messages)) {
+    return []
+  }
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const toolCalls = messages[index]?.kwargs?.tool_calls
+    if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+      return toolCalls
+    }
+  }
+
+  return []
+}
+
+function findInterruptedToolCallFromState(
+  state: ValuesInterruptState,
+  actionIndex: number
+): ToolCall | undefined {
+  // Legacy fallback for interrupts emitted before the custom middleware
+  // started carrying toolCallId in the payload.
+  const interruptValue = state.__interrupt__?.[0]?.value
+  const action = interruptValue?.actionRequests?.[actionIndex]
+  if (!action) {
+    return undefined
+  }
+
+  const latestToolCalls = getLatestToolCallsFromSerializedMessages(state.messages)
+  const interruptNames = new Set([
+    ...(interruptValue?.actionRequests ?? []).map((request) => request.name),
+    ...(interruptValue?.reviewConfigs ?? []).map((config) => config.actionName)
+  ])
+  const interruptToolCalls = latestToolCalls.filter((toolCall) => interruptNames.has(toolCall.name))
+  const positionalMatch = interruptToolCalls[actionIndex]
+  const expectedArgs = stableStringify(action.args || {})
+
+  if (
+    positionalMatch &&
+    positionalMatch.name === action.name &&
+    stableStringify(positionalMatch.args ?? {}) === expectedArgs
+  ) {
+    return positionalMatch
+  }
+
+  return undefined
 }
 
 /**
@@ -89,15 +166,11 @@ export class ElectronIPCTransport implements UseStreamTransport {
   // Track accumulated tool call chunks (for streaming tool calls)
   private accumulatedToolCalls: Map<string, AccumulatedToolCall> = new Map()
 
-  // Track completed tool calls by name for HITL matching
-  private completedToolCallsByName: Map<string, CompletedToolCall[]> = new Map()
-
   async stream(payload: StreamPayload): Promise<AsyncGenerator<StreamEvent>> {
     // Reset state for new stream
     this.currentMessageId = null
     this.activeSubagents.clear()
     this.accumulatedToolCalls.clear()
-    this.completedToolCallsByName.clear()
     // Extract thread ID and model ID from config
     const threadId = payload.config?.configurable?.thread_id
     const modelId = payload.config?.configurable?.model_id as string | undefined
@@ -343,9 +416,9 @@ export class ElectronIPCTransport implements UseStreamTransport {
                 data: {
                   type: "interrupt",
                   request: {
-                    id: firstAction.id || crypto.randomUUID(),
+                    id: firstAction.id || firstAction.toolCallId || crypto.randomUUID(),
                     tool_call: {
-                      id: firstAction.id,
+                      ...(firstAction.toolCallId ? { id: firstAction.toolCallId } : {}),
                       name: firstAction.name,
                       args: firstAction.args || {}
                     },
@@ -462,15 +535,6 @@ export class ElectronIPCTransport implements UseStreamTransport {
         if (kwargs.tool_calls?.length) {
           const subagentEvents = this.processCompletedToolCalls(kwargs.tool_calls)
           events.push(...subagentEvents)
-
-          // Track tool calls for HITL matching
-          for (const tc of kwargs.tool_calls) {
-            if (tc.id && tc.name) {
-              const existing = this.completedToolCallsByName.get(tc.name) || []
-              existing.push({ id: tc.id, name: tc.name, args: tc.args || {} })
-              this.completedToolCallsByName.set(tc.name, existing)
-            }
-          }
         }
 
         // Extract usage_metadata for context window tracking
@@ -531,18 +595,11 @@ export class ElectronIPCTransport implements UseStreamTransport {
       }
     } else if (mode === "values") {
       // Values mode returns full state with serialized LangChain messages
-      const state = data as {
+      const state = data as ValuesInterruptState & {
         messages?: SerializedMessageChunk[]
         todos?: { id?: string; content?: string; status?: string }[]
         files?: Record<string, unknown> | Array<{ path: string; is_dir?: boolean; size?: number }>
         workspacePath?: string
-        // __interrupt__ is an array of interrupt objects from langchain HITL middleware
-        __interrupt__?: Array<{
-          value?: {
-            actionRequests?: Array<{ name: string; id: string; args: Record<string, unknown> }>
-            reviewConfigs?: Array<{ actionName: string; allowedDecisions: string[] }>
-          }
-        }>
       }
 
       // Process messages in values mode to extract subagents
@@ -666,29 +723,22 @@ export class ElectronIPCTransport implements UseStreamTransport {
         // For each action request (tool call) that needs approval
         if (actionRequests?.length) {
           // Get the first action request for now (can be extended for batch approvals)
+          const actionIndex = 0
           const firstAction = actionRequests[0]
           const reviewConfig = reviewConfigs?.find((rc) => rc.actionName === firstAction.name)
-
-          // The actionRequest doesn't include tool_call.id - look up from tracked tool calls
-          let toolCallId: string | undefined
-
-          // Find the tool call ID from our tracked completed tool calls
-          const trackedToolCalls = this.completedToolCallsByName.get(firstAction.name)
-
-          if (trackedToolCalls && trackedToolCalls.length > 0) {
-            // Get the most recent tool call with this name
-            const lastTracked = trackedToolCalls[trackedToolCalls.length - 1]
-            toolCallId = lastTracked.id
-          }
+          const matchedToolCall = findInterruptedToolCallFromState(state, actionIndex)
+          const toolCallId = firstAction.toolCallId || matchedToolCall?.id
+          const requestId =
+            firstAction.id || firstAction.toolCallId || `hitl:${actionIndex}:${firstAction.name}`
 
           events.push({
             event: "custom",
             data: {
               type: "interrupt",
               request: {
-                id: toolCallId || crypto.randomUUID(),
+                id: requestId,
                 tool_call: {
-                  id: toolCallId,
+                  ...(toolCallId ? { id: toolCallId } : {}),
                   name: firstAction.name,
                   args: firstAction.args || {}
                 },

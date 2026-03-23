@@ -234,7 +234,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       await syncMessagesFromSnapshot(threadId, runId, messages)
     }
 
-    const hitlRequest = extractHitlRequestFromCheckpoint(threadId, tuple)
+    const hitlRequest = extractHitlRequestFromCheckpoint(threadId, tuple, { runId })
     if (hitlRequest) {
       await upsertHitlRequest({
         request_id: hitlRequest.id,

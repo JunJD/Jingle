@@ -1,4 +1,5 @@
 import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
+import type { ActionRequest, ReviewConfig } from "langchain"
 import type { HitlRequestRow } from "../db"
 import type { HITLRequest, Todo, ToolCall } from "../types"
 
@@ -28,20 +29,15 @@ interface CheckpointChannelMessage {
   name?: string
 }
 
-interface InterruptActionRequest {
+interface InterruptActionRequest extends ActionRequest {
   id?: string
-  name: string
-  args?: Record<string, unknown>
-}
-
-interface InterruptReviewConfig {
-  actionName: string
-  allowedDecisions: Array<"approve" | "reject" | "edit">
+  toolCallId?: string
+  description?: string
 }
 
 interface CheckpointInterruptValue {
   actionRequests?: InterruptActionRequest[]
-  reviewConfigs?: InterruptReviewConfig[]
+  reviewConfigs?: ReviewConfig[]
 }
 
 interface LatestCheckpointState {
@@ -147,89 +143,86 @@ function getCheckpointMessageId(
   return `checkpoint:${threadId}:${index}:${role}`
 }
 
-function findMatchingToolCallIdFromCheckpointMessages(
-  messages: CheckpointChannelMessage[] | undefined,
-  actionName: string,
-  actionArgs: Record<string, unknown>
-): string | undefined {
+function getLatestCheckpointToolCalls(
+  messages: CheckpointChannelMessage[] | undefined
+): ToolCall[] {
   if (!Array.isArray(messages)) {
+    return []
+  }
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const toolCalls = getCheckpointToolCalls(messages[index]!)
+    if (toolCalls.length > 0) {
+      return toolCalls
+    }
+  }
+
+  return []
+}
+
+function getLatestValuesToolCalls(messages: ValuesStateMessage[] | undefined): ToolCall[] {
+  if (!Array.isArray(messages)) {
+    return []
+  }
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const toolCalls = messages[index]?.kwargs?.tool_calls
+    if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+      return toolCalls
+    }
+  }
+
+  return []
+}
+
+function getInterruptCandidateToolCalls(
+  toolCalls: ToolCall[],
+  interruptValue: CheckpointInterruptValue | undefined
+): ToolCall[] {
+  const interruptNames = new Set([
+    ...(interruptValue?.actionRequests ?? []).map((action) => action.name),
+    ...(interruptValue?.reviewConfigs ?? []).map((config) => config.actionName)
+  ])
+
+  if (interruptNames.size === 0) {
+    return []
+  }
+
+  return toolCalls.filter((toolCall) => interruptNames.has(toolCall.name))
+}
+
+function findInterruptedToolCall(
+  toolCalls: ToolCall[],
+  interruptValue: CheckpointInterruptValue | undefined,
+  actionIndex: number
+): ToolCall | undefined {
+  // Legacy fallback for checkpoints created before the custom middleware
+  // started writing toolCallId directly into the interrupt payload.
+  const action = interruptValue?.actionRequests?.[actionIndex]
+  if (!action) {
     return undefined
   }
 
-  const expectedArgs = stableStringify(actionArgs)
+  const interruptToolCalls = getInterruptCandidateToolCalls(toolCalls, interruptValue)
+  const positionalMatch = interruptToolCalls[actionIndex]
+  const expectedArgs = stableStringify(action.args || {})
 
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const toolCalls = getCheckpointToolCalls(messages[index]!)
-    if (toolCalls.length === 0) {
-      continue
-    }
-
-    for (let toolIndex = toolCalls.length - 1; toolIndex >= 0; toolIndex -= 1) {
-      const toolCall = toolCalls[toolIndex]
-      if (toolCall.name !== actionName) {
-        continue
-      }
-
-      if (stableStringify(toolCall.args ?? {}) === expectedArgs) {
-        return toolCall.id
-      }
-    }
-  }
-
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const toolCalls = getCheckpointToolCalls(messages[index]!)
-    if (toolCalls.length === 0) {
-      continue
-    }
-
-    const fallback = toolCalls.find((toolCall) => toolCall.name === actionName)
-    if (fallback?.id) {
-      return fallback.id
-    }
+  if (
+    positionalMatch &&
+    positionalMatch.name === action.name &&
+    stableStringify(positionalMatch.args ?? {}) === expectedArgs
+  ) {
+    return positionalMatch
   }
 
   return undefined
 }
 
-function findMatchingToolCallIdFromStateMessages(
-  messages: ValuesStateMessage[] | undefined,
-  actionName: string,
-  actionArgs: Record<string, unknown>
+function getInterruptActionToolCallId(
+  action: InterruptActionRequest | undefined
 ): string | undefined {
-  if (!Array.isArray(messages)) {
-    return undefined
-  }
-
-  const expectedArgs = stableStringify(actionArgs)
-
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const toolCalls = messages[index]?.kwargs?.tool_calls
-    if (!Array.isArray(toolCalls)) {
-      continue
-    }
-
-    for (let toolIndex = toolCalls.length - 1; toolIndex >= 0; toolIndex -= 1) {
-      const toolCall = toolCalls[toolIndex]
-      if (toolCall.name !== actionName) {
-        continue
-      }
-
-      if (stableStringify(toolCall.args ?? {}) === expectedArgs) {
-        return toolCall.id
-      }
-    }
-  }
-
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const toolCalls = messages[index]?.kwargs?.tool_calls
-    if (!Array.isArray(toolCalls)) {
-      continue
-    }
-
-    const fallback = toolCalls.find((toolCall) => toolCall.name === actionName)
-    if (fallback?.id) {
-      return fallback.id
-    }
+  if (typeof action?.toolCallId === "string" && action.toolCallId.length > 0) {
+    return action.toolCallId
   }
 
   return undefined
@@ -261,11 +254,7 @@ export function extractMessagesFromCheckpoint(
     const role = resolveMessageRole(message)
     const rawContent = getCheckpointMessageContent(message)
     const content =
-      typeof rawContent === "string"
-        ? rawContent
-        : Array.isArray(rawContent)
-          ? rawContent
-          : ""
+      typeof rawContent === "string" ? rawContent : Array.isArray(rawContent) ? rawContent : ""
     const toolCalls = getCheckpointToolCalls(message)
     const messageId = getCheckpointMessageId(threadId, index, role, message)
 
@@ -323,11 +312,15 @@ export function extractTodosFromCheckpoint(tuple: CheckpointTuple | undefined): 
 
 export function extractHitlRequestFromCheckpoint(
   threadId: string,
-  tuple: CheckpointTuple | undefined
+  tuple: CheckpointTuple | undefined,
+  options?: {
+    runId?: string | null
+  }
 ): HITLRequest | null {
   const state = tuple as LatestCheckpointState | undefined
   const interruptValue = state?.checkpoint?.channel_values?.__interrupt__?.[0]?.value
-  const action = interruptValue?.actionRequests?.[0]
+  const actionIndex = 0
+  const action = interruptValue?.actionRequests?.[actionIndex]
 
   if (!action) {
     return null
@@ -335,15 +328,12 @@ export function extractHitlRequestFromCheckpoint(
 
   const checkpointId = state?.checkpoint?.id || "latest"
   const toolArgs = action.args || {}
-  const toolCallId =
-    findMatchingToolCallIdFromCheckpointMessages(
-      state?.checkpoint?.channel_values?.messages,
-      action.name,
-      toolArgs
-    ) ||
-    action.id ||
-    undefined
-  const requestId = toolCallId || `hitl:${threadId}:${checkpointId}:${action.name}`
+  const latestToolCalls = getLatestCheckpointToolCalls(state?.checkpoint?.channel_values?.messages)
+  const matchedToolCall = findInterruptedToolCall(latestToolCalls, interruptValue, actionIndex)
+  const toolCallId = getInterruptActionToolCallId(action) || matchedToolCall?.id
+  const requestContextId = options?.runId || checkpointId
+  const requestKey = toolCallId || action.id || `${actionIndex}:${action.name}`
+  const requestId = `hitl:${threadId}:${requestContextId}:${requestKey}`
   const allowedDecisions = interruptValue?.reviewConfigs?.find(
     (config) => config.actionName === action.name
   )?.allowedDecisions || ["approve", "reject", "edit"]
@@ -351,7 +341,7 @@ export function extractHitlRequestFromCheckpoint(
   return {
     id: requestId,
     tool_call: {
-      id: toolCallId || requestId,
+      ...(toolCallId ? { id: toolCallId } : {}),
       name: action.name,
       args: toolArgs
     },
@@ -366,18 +356,19 @@ export function extractHitlRequestFromValuesState(
 ): HITLRequest | null {
   const state = data as ValuesRuntimeState | undefined
   const interruptValue = state?.__interrupt__?.[0]?.value
-  const action = interruptValue?.actionRequests?.[0]
+  const actionIndex = 0
+  const action = interruptValue?.actionRequests?.[actionIndex]
 
   if (!action) {
     return null
   }
 
   const toolArgs = action.args || {}
-  const toolCallId =
-    findMatchingToolCallIdFromStateMessages(state?.messages, action.name, toolArgs) ||
-    action.id ||
-    undefined
-  const requestId = toolCallId || `hitl:${threadId}:${runId}:${action.name}`
+  const latestToolCalls = getLatestValuesToolCalls(state?.messages)
+  const matchedToolCall = findInterruptedToolCall(latestToolCalls, interruptValue, actionIndex)
+  const toolCallId = getInterruptActionToolCallId(action) || matchedToolCall?.id
+  const requestKey = toolCallId || action.id || `${actionIndex}:${action.name}`
+  const requestId = `hitl:${threadId}:${runId}:${requestKey}`
   const allowedDecisions = interruptValue?.reviewConfigs?.find(
     (config) => config.actionName === action.name
   )?.allowedDecisions || ["approve", "reject", "edit"]
@@ -385,7 +376,7 @@ export function extractHitlRequestFromValuesState(
   return {
     id: requestId,
     tool_call: {
-      id: toolCallId || requestId,
+      ...(toolCallId ? { id: toolCallId } : {}),
       name: action.name,
       args: toolArgs
     },
@@ -415,7 +406,7 @@ export function mapHitlRowToRequest(row: HitlRequestRow): HITLRequest {
   return {
     id: row.request_id,
     tool_call: {
-      id: row.tool_call_id || row.request_id,
+      ...(row.tool_call_id ? { id: row.tool_call_id } : {}),
       name: row.tool_name,
       args: toolArgs
     },

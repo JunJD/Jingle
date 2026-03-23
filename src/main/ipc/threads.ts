@@ -4,7 +4,6 @@ import {
   getAllThreads,
   getThread,
   getLatestHitlRequest,
-  upsertHitlRequest,
   createThread as dbCreateThread,
   updateThread as dbUpdateThread,
   deleteThread as dbDeleteThread
@@ -27,117 +26,14 @@ import type {
   HITLRequest
 } from "../types"
 
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value)
-  }
-
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(",")}]`
-  }
-
-  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
-    a.localeCompare(b)
-  )
-
-  return `{${entries
-    .map(([key, nested]) => `${JSON.stringify(key)}:${stableStringify(nested)}`)
-    .join(",")}}`
-}
-
-function resolveToolCallIdFromMessages(
-  messages: Message[],
-  toolName: string,
-  toolArgs: Record<string, unknown>
-): string | null {
-  const expectedArgs = stableStringify(toolArgs)
-
-  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
-    const message = messages[messageIndex]
-    const toolCalls = message?.tool_calls
-    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
-      continue
-    }
-
-    for (let toolIndex = toolCalls.length - 1; toolIndex >= 0; toolIndex -= 1) {
-      const toolCall = toolCalls[toolIndex]
-      if (toolCall.name !== toolName) {
-        continue
-      }
-
-      if (stableStringify(toolCall.args ?? {}) === expectedArgs) {
-        return toolCall.id
-      }
-    }
-  }
-
-  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
-    const toolCalls = messages[messageIndex]?.tool_calls
-    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
-      continue
-    }
-
-    const fallback = toolCalls.find((toolCall) => toolCall.name === toolName)
-    if (fallback?.id) {
-      return fallback.id
-    }
-  }
-
-  return null
-}
-
 async function resolvePendingHitlRequest(
-  latestHitl: Awaited<ReturnType<typeof getLatestHitlRequest>>,
-  messages: Message[]
+  latestHitl: Awaited<ReturnType<typeof getLatestHitlRequest>>
 ): Promise<HITLRequest | null> {
   if (!latestHitl || latestHitl.status !== "pending") {
     return null
   }
 
-  const request = mapHitlRowToRequest(latestHitl)
-  const currentToolCallId = request.tool_call.id
-  const hasPersistedMatch = messages.some((message) =>
-    message.tool_calls?.some((toolCall) => toolCall.id === currentToolCallId)
-  )
-
-  if (hasPersistedMatch) {
-    return request
-  }
-
-  let toolArgs: Record<string, unknown> = {}
-  try {
-    toolArgs = JSON.parse(latestHitl.tool_args) as Record<string, unknown>
-  } catch {
-    toolArgs = {}
-  }
-
-  const resolvedToolCallId = resolveToolCallIdFromMessages(messages, latestHitl.tool_name, toolArgs)
-  if (!resolvedToolCallId || resolvedToolCallId === currentToolCallId) {
-    return request
-  }
-
-  await upsertHitlRequest({
-    request_id: latestHitl.request_id,
-    thread_id: latestHitl.thread_id,
-    run_id: latestHitl.run_id,
-    tool_call_id: resolvedToolCallId,
-    tool_name: latestHitl.tool_name,
-    tool_args: latestHitl.tool_args,
-    allowed_decisions: latestHitl.allowed_decisions,
-    status: latestHitl.status,
-    decision: latestHitl.decision,
-    created_at: latestHitl.created_at,
-    updated_at: latestHitl.updated_at,
-    resolved_at: latestHitl.resolved_at
-  })
-
-  return {
-    ...request,
-    tool_call: {
-      ...request.tool_call,
-      id: resolvedToolCallId
-    }
-  }
+  return mapHitlRowToRequest(latestHitl)
 }
 
 function mapCheckpointMessagesToThreadMessages(
@@ -281,7 +177,7 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
       )
       const todos = extractTodosFromCheckpoint(latest)
       const checkpointRequest = extractHitlRequestFromCheckpoint(threadId, latest)
-      const pendingApproval = await resolvePendingHitlRequest(latestHitl, messages)
+      const pendingApproval = await resolvePendingHitlRequest(latestHitl)
 
       if (latestHitl) {
         if (pendingApproval) {
@@ -319,12 +215,9 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
         }
       })
 
-      const messages = mapCheckpointMessagesToThreadMessages(
-        extractMessagesFromCheckpoint(threadId, latest)
-      )
       const todos = extractTodosFromCheckpoint(latest)
       const checkpointRequest = extractHitlRequestFromCheckpoint(threadId, latest)
-      const pendingApproval = await resolvePendingHitlRequest(latestHitl, messages)
+      const pendingApproval = await resolvePendingHitlRequest(latestHitl)
 
       if (latestHitl) {
         if (pendingApproval) {

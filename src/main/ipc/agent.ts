@@ -35,6 +35,26 @@ function mapDecisionToHitlStatus(
   }
 }
 
+function buildResumeDecision(decision: HITLDecision): {
+  type: HITLDecision["type"]
+  editedArgs?: Record<string, unknown>
+  feedback?: string
+} {
+  return {
+    type: decision.type,
+    ...(decision.edited_args ? { editedArgs: decision.edited_args } : {}),
+    ...(decision.feedback ? { feedback: decision.feedback } : {})
+  }
+}
+
+function buildResumeValue(decision: HITLDecision): {
+  decisions: Array<ReturnType<typeof buildResumeDecision>>
+} {
+  return {
+    decisions: [buildResumeDecision(decision)]
+  }
+}
+
 async function persistPendingHitlFromStream(
   threadId: string,
   runId: string,
@@ -237,13 +257,21 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         recursionLimit: 1000
       }
 
-      // Resume from checkpoint by streaming with Command containing the decision
-      // The HITL middleware expects { decisions: [{ type: 'approve' | 'reject' | 'edit' }] }
+      // Resume from checkpoint with the approval middleware response.
       const decisionType = (command?.resume?.decision || "approve") as HITLDecision["type"]
+      const decision: HITLDecision = {
+        type: decisionType,
+        ...(command?.resume?.tool_call_id ? { tool_call_id: command.resume.tool_call_id } : {}),
+        ...(command?.resume?.edited_args ? { edited_args: command.resume.edited_args } : {}),
+        ...(command?.resume?.feedback ? { feedback: command.resume.feedback } : {})
+      }
       await resolvePendingHitlRequests(threadId, mapDecisionToHitlStatus(decisionType), {
-        type: decisionType
+        type: decision.type,
+        tool_call_id: decision.tool_call_id,
+        edited_args: decision.edited_args,
+        feedback: decision.feedback
       })
-      const resumeValue = { decisions: [{ type: decisionType }] }
+      const resumeValue = buildResumeValue(decision)
       const stream = await agent.stream(new Command({ resume: resumeValue }), config)
       let interrupted = false
 
@@ -343,35 +371,27 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         recursionLimit: 1000
       }
 
-      if (decision.type === "approve") {
-        // Resume execution by invoking with null (continues from checkpoint)
-        const stream = await agent.stream(null, config)
-        let interrupted = false
+      const resumeValue = buildResumeValue(decision)
+      const stream = await agent.stream(new Command({ resume: resumeValue }), config)
+      let interrupted = false
 
-        for await (const chunk of stream) {
-          if (abortController.signal.aborted) break
+      for await (const chunk of stream) {
+        if (abortController.signal.aborted) break
 
-          const [mode, data] = chunk as unknown as [string, unknown]
-          const sawInterrupt = await persistPendingHitlFromStream(threadId, runId, mode, data)
-          interrupted = interrupted || sawInterrupt
-          window.webContents.send(channel, {
-            type: "stream",
-            mode,
-            data: JSON.parse(JSON.stringify(data))
-          })
-        }
+        const [mode, data] = chunk as unknown as [string, unknown]
+        const sawInterrupt = await persistPendingHitlFromStream(threadId, runId, mode, data)
+        interrupted = interrupted || sawInterrupt
+        window.webContents.send(channel, {
+          type: "stream",
+          mode,
+          data: JSON.parse(JSON.stringify(data))
+        })
+      }
 
-        if (!abortController.signal.aborted) {
-          await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
-          window.webContents.send(channel, { type: "done" })
-        }
-      } else if (decision.type === "reject") {
-        // For reject, we need to send a Command with reject decision
-        // For now, just send done - the agent will see no resumption happened
-        await syncRunFromLatestCheckpoint(threadId, runId)
+      if (!abortController.signal.aborted) {
+        await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
         window.webContents.send(channel, { type: "done" })
       }
-      // edit case handled similarly to approve with modified args
     } catch (error) {
       const isAbortError =
         error instanceof Error &&
