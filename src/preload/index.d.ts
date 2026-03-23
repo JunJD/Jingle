@@ -1,4 +1,5 @@
 import type {
+  AgentConfig,
   Thread,
   ModelConfig,
   Provider,
@@ -68,6 +69,10 @@ interface CustomAPI {
     setDefault: (modelId: string) => Promise<void>
     setApiKey: (provider: string, apiKey: string) => Promise<void>
     getApiKey: (provider: string) => Promise<string | null>
+  }
+  settings: {
+    getAgentConfig: () => Promise<AgentConfig>
+    setAgentConfig: (updates: Partial<AgentConfig>) => Promise<AgentConfig>
   }
   launcher: {
     getShellConfig: () => Promise<LauncherShellConfig>

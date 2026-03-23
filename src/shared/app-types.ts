@@ -41,6 +41,11 @@ export interface ModelConfig {
   available: boolean
 }
 
+export interface AgentConfig {
+  skillSources: string[]
+  memorySources: string[]
+}
+
 export interface Subagent {
   id: string
   name: string

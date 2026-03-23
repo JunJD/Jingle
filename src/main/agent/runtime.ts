@@ -1,13 +1,21 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { createDeepAgent } from "deepagents"
-import { getDefaultModel, getModelConfig } from "../ipc/models"
-import { getApiKey } from "../storage"
+import {
+  createFilesystemMiddleware,
+  createMemoryMiddleware,
+  createPatchToolCallsMiddleware,
+  createSkillsMiddleware,
+  createSummarizationMiddleware
+} from "deepagents"
+import { join } from "path"
+import { getAgentConfig, getDefaultModel, getModelConfig } from "../ipc/models"
+import { getApiKey, getOpenworkDir } from "../storage"
 import { ChatAnthropic } from "@langchain/anthropic"
 import { ChatOpenAI } from "@langchain/openai"
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai"
 import { PrismaCheckpointSaver } from "../checkpointer/prisma-saver"
 import { LocalSandbox } from "./local-sandbox"
 import { createExecuteApprovalMiddleware } from "./execute-approval-middleware"
+import { anthropicPromptCachingMiddleware, createAgent, todoListMiddleware } from "langchain"
 
 import type * as _lcTypes from "langchain"
 import type * as _lcMessages from "@langchain/core/messages"
@@ -150,6 +158,18 @@ function inferProviderFromModelId(modelId: string): ProviderId | undefined {
   return undefined
 }
 
+function dedupePaths(paths: string[]): string[] {
+  return Array.from(new Set(paths.map((entry) => entry.trim()).filter((entry) => entry.length > 0)))
+}
+
+function getDefaultSkillSources(workspacePath: string): string[] {
+  return [join(getOpenworkDir(), "skills"), join(workspacePath, ".openwork", "skills")]
+}
+
+function getDefaultMemorySources(workspacePath: string): string[] {
+  return [join(getOpenworkDir(), "AGENTS.md"), join(workspacePath, ".openwork", "AGENTS.md")]
+}
+
 export interface CreateAgentRuntimeOptions {
   /** Thread ID - REQUIRED for per-thread checkpointing */
   threadId: string
@@ -160,9 +180,11 @@ export interface CreateAgentRuntimeOptions {
 }
 
 // Create agent runtime with configured model and checkpointer
-export type AgentRuntime = ReturnType<typeof createDeepAgent>
+export type AgentRuntime = ReturnType<typeof createAgent>
 
-export async function createAgentRuntime(options: CreateAgentRuntimeOptions) {
+export async function createAgentRuntime(
+  options: CreateAgentRuntimeOptions
+): Promise<AgentRuntime> {
   const { threadId, modelId, workspacePath } = options
 
   if (!threadId) {
@@ -193,6 +215,18 @@ export async function createAgentRuntime(options: CreateAgentRuntimeOptions) {
   })
 
   const systemPrompt = getSystemPrompt(workspacePath)
+  const agentConfig = getAgentConfig()
+  const skillSources = dedupePaths([
+    ...getDefaultSkillSources(workspacePath),
+    ...agentConfig.skillSources
+  ])
+  const memorySources = dedupePaths([
+    ...getDefaultMemorySources(workspacePath),
+    ...agentConfig.memorySources
+  ])
+
+  console.log("[Runtime] Skill sources:", skillSources)
+  console.log("[Runtime] Memory sources:", memorySources)
 
   // Custom filesystem prompt for absolute paths (matches virtualMode: false)
   const filesystemSystemPrompt = `You have access to a filesystem. All file paths use fully qualified absolute system paths.
@@ -206,23 +240,49 @@ export async function createAgentRuntime(options: CreateAgentRuntimeOptions) {
 
 The workspace root is: ${workspacePath}`
 
-  const agent = createDeepAgent({
+  const agent = createAgent({
     model,
+    name: "openwork",
     checkpointer,
-    backend,
     systemPrompt,
-    // Custom filesystem prompt for absolute paths (requires deepagents update)
-    filesystemSystemPrompt,
-    // Intercept execute right before the tool runs so the approval payload
-    // carries the real tool_call.id from the source.
-    middleware: [createExecuteApprovalMiddleware()]
-  } as Parameters<typeof createDeepAgent>[0])
+    middleware: [
+      todoListMiddleware(),
+      createFilesystemMiddleware({
+        backend,
+        systemPrompt: filesystemSystemPrompt
+      }),
+      createSummarizationMiddleware({
+        model,
+        backend
+      }),
+      anthropicPromptCachingMiddleware({
+        unsupportedModelBehavior: "ignore",
+        minMessagesToCache: 1
+      }),
+      createPatchToolCallsMiddleware(),
+      createSkillsMiddleware({
+        backend,
+        sources: skillSources
+      }),
+      createMemoryMiddleware({
+        backend,
+        sources: memorySources,
+        addCacheControl: model instanceof ChatAnthropic
+      }),
+      // Intercept execute right before the tool runs so the approval payload
+      // carries the real tool_call.id from the source.
+      createExecuteApprovalMiddleware()
+    ]
+  }).withConfig({
+    recursionLimit: 1e4,
+    metadata: { ls_integration: "openwork" }
+  })
 
-  console.log("[Runtime] Deep agent created with LocalSandbox at:", workspacePath)
+  console.log("[Runtime] Agent created without subagent middleware at:", workspacePath)
   return agent
 }
 
-export type DeepAgent = ReturnType<typeof createDeepAgent>
+export type DeepAgent = ReturnType<typeof createAgent>
 
 // Clean up all checkpointer resources
 export async function closeRuntime(): Promise<void> {

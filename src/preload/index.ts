@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron"
 import type {
+  AgentConfig,
   Thread,
   ModelConfig,
   Provider,
@@ -165,6 +166,14 @@ const api = {
     },
     deleteApiKey: (provider: string): Promise<void> => {
       return ipcRenderer.invoke("models:deleteApiKey", provider)
+    }
+  },
+  settings: {
+    getAgentConfig: (): Promise<AgentConfig> => {
+      return ipcRenderer.invoke("settings:getAgentConfig")
+    },
+    setAgentConfig: (updates: Partial<AgentConfig>): Promise<AgentConfig> => {
+      return ipcRenderer.invoke("settings:setAgentConfig", updates)
     }
   },
   launcher: {

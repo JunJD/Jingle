@@ -3,6 +3,7 @@ import Store from "electron-store"
 import * as fs from "fs/promises"
 import * as path from "path"
 import type {
+  AgentConfig,
   ModelConfig,
   Provider,
   SetApiKeyParams,
@@ -18,6 +19,11 @@ const store = new Store({
   name: "settings",
   cwd: getOpenworkDir()
 })
+
+const DEFAULT_AGENT_CONFIG: AgentConfig = {
+  skillSources: [],
+  memorySources: []
+}
 
 // Provider configurations
 const PROVIDERS: Omit<Provider, "hasApiKey">[] = [
@@ -230,6 +236,41 @@ const AVAILABLE_MODELS: ModelConfig[] = [
   }
 ]
 
+function normalizePathList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0)
+    )
+  )
+}
+
+export function getAgentConfig(): AgentConfig {
+  const stored = store.get("agentConfig", DEFAULT_AGENT_CONFIG) as Partial<AgentConfig> | undefined
+
+  return {
+    skillSources: normalizePathList(stored?.skillSources),
+    memorySources: normalizePathList(stored?.memorySources)
+  }
+}
+
+function setAgentConfig(updates: Partial<AgentConfig>): AgentConfig {
+  const nextConfig: AgentConfig = {
+    ...getAgentConfig(),
+    ...(updates.skillSources ? { skillSources: normalizePathList(updates.skillSources) } : {}),
+    ...(updates.memorySources ? { memorySources: normalizePathList(updates.memorySources) } : {})
+  }
+
+  store.set("agentConfig", nextConfig)
+  return nextConfig
+}
+
 export function registerModelHandlers(ipcMain: IpcMain): void {
   // List available models
   ipcMain.handle("models:list", async () => {
@@ -248,6 +289,14 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
   // Set default model
   ipcMain.handle("models:setDefault", async (_event, modelId: string) => {
     store.set("defaultModel", modelId)
+  })
+
+  ipcMain.handle("settings:getAgentConfig", async () => {
+    return getAgentConfig()
+  })
+
+  ipcMain.handle("settings:setAgentConfig", async (_event, updates: Partial<AgentConfig>) => {
+    return setAgentConfig(updates)
   })
 
   // Set API key for a provider (stored in ~/.openwork/.env)

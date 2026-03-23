@@ -107,6 +107,11 @@ export interface ModelConfig {
   available: boolean
 }
 
+export interface AgentConfig {
+  skillSources: string[]
+  memorySources: string[]
+}
+
 // Subagent types (from deepagentsjs)
 export interface Subagent {
   id: string
