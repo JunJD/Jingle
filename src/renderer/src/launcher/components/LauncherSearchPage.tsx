@@ -1,15 +1,16 @@
 import type { RefObject } from "react"
 import type { LauncherShellItem } from "../types"
-import type { LauncherSecondaryPageDefinition } from "../pages/types"
+import type { LauncherHomeEntry } from "../pages/types"
+import { LauncherInput } from "./LauncherInput"
 import { LauncherResultList } from "./LauncherResultList"
 
 export function LauncherSearchPage(props: {
+  entries: LauncherHomeEntry[]
   executeItem: (index: number) => void
   inputRef: RefObject<HTMLInputElement | null>
   items: LauncherShellItem[]
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
-  onOpenPage: (pageId: LauncherSecondaryPageDefinition["id"]) => void
-  pageEntries: LauncherSecondaryPageDefinition[]
+  onOpenFeaturePage: (pageId: LauncherHomeEntry["pageId"]) => void
   placeholder: string
   query: string
   resultsViewportHeight: number
@@ -19,12 +20,12 @@ export function LauncherSearchPage(props: {
   setQuery: (value: string) => void
 }): React.JSX.Element {
   const {
+    entries,
     executeItem,
     inputRef,
     items,
     onInputKeyDown,
-    onOpenPage,
-    pageEntries,
+    onOpenFeaturePage,
     placeholder,
     query,
     resultsViewportHeight,
@@ -40,25 +41,25 @@ export function LauncherSearchPage(props: {
         className="flex h-[60px] shrink-0 items-center pl-6 pr-8"
         style={{ borderBottom: "1px solid var(--launcher-border)" }}
       >
-        <input
+        <LauncherInput
           ref={inputRef}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={onInputKeyDown}
           placeholder={placeholder}
-          className="h-full flex-1 border-0 bg-transparent px-0 text-[16px] font-medium text-foreground outline-none placeholder:text-muted-foreground"
+          className="flex-1 text-foreground"
         />
 
         <div className="ml-4 flex shrink-0 items-center gap-4">
-          {pageEntries.map((page) => (
+          {entries.map((entry) => (
             <button
-              key={page.id}
+              key={entry.pageId}
               type="button"
-              onClick={() => onOpenPage(page.id)}
+              onClick={() => onOpenFeaturePage(entry.pageId)}
               onMouseDown={(event) => event.preventDefault()}
               className="flex shrink-0 appearance-none items-center gap-3 rounded-md border-0 bg-transparent px-0 py-1 text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
             >
-              <span>{page.entry.label}</span>
+              <span>{entry.label}</span>
               <span
                 className="rounded-[10px] px-2 py-1 text-[12px]"
                 style={{
@@ -67,7 +68,7 @@ export function LauncherSearchPage(props: {
                   color: "var(--launcher-text)"
                 }}
               >
-                {page.entry.shortcutLabel}
+                {entry.shortcutLabel}
               </span>
             </button>
           ))}

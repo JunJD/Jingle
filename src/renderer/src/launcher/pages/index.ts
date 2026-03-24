@@ -1,16 +1,20 @@
-import { aiLauncherPage } from "./ai"
-import type { LauncherSecondaryPageDefinition, LauncherSecondaryPageId } from "./types"
+import { aiLauncherHomeEntry, aiLauncherPage } from "./ai"
+import type {
+  LauncherFeaturePageDefinition,
+  LauncherFeaturePageId,
+  LauncherHomeEntry
+} from "./types"
 
-export const launcherSecondaryPages: LauncherSecondaryPageDefinition[] = [aiLauncherPage]
+export const launcherHomeEntries: LauncherHomeEntry[] = [aiLauncherHomeEntry]
 
-const launcherSecondaryPageMap = Object.fromEntries(
-  launcherSecondaryPages.map((page) => [page.id, page])
-) as Record<LauncherSecondaryPageId, LauncherSecondaryPageDefinition>
+const launcherFeaturePageMap: Record<LauncherFeaturePageId, LauncherFeaturePageDefinition> = {
+  [aiLauncherPage.id]: aiLauncherPage
+}
 
-export const DEFAULT_LAUNCHER_SECONDARY_PAGE_ID: LauncherSecondaryPageId = aiLauncherPage.id
+export const DEFAULT_HOME_ENTRY_PAGE_ID: LauncherFeaturePageId = aiLauncherPage.id
 
-export function getLauncherSecondaryPageDefinition(
-  pageId: LauncherSecondaryPageId
-): LauncherSecondaryPageDefinition {
-  return launcherSecondaryPageMap[pageId]
+export function getLauncherFeaturePageDefinition(
+  pageId: LauncherFeaturePageId
+): LauncherFeaturePageDefinition {
+  return launcherFeaturePageMap[pageId]
 }

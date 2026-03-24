@@ -13,6 +13,7 @@ import type {
 } from "../types"
 import { startWatching, stopWatching } from "../services/workspace-watcher"
 import { getOpenworkDir, getApiKey, setApiKey, deleteApiKey, hasApiKey } from "../storage"
+import { DEFAULT_MODEL_ID } from "../../shared/models"
 
 // Store for non-sensitive settings only (no encryption needed)
 const store = new Store({
@@ -236,6 +237,42 @@ const AVAILABLE_MODELS: ModelConfig[] = [
   }
 ]
 
+export function getDefaultModelId(): string {
+  return store.get("defaultModel", DEFAULT_MODEL_ID) as string
+}
+
+export function getGlobalWorkspacePath(): string | null {
+  return store.get("workspacePath", null) as string | null
+}
+
+export async function resolveGlobalWorkspacePath(): Promise<string | null> {
+  const configuredPath = getGlobalWorkspacePath()
+  if (configuredPath) {
+    return configuredPath
+  }
+
+  const { getAllThreads } = await import("../db")
+  const threads = await getAllThreads()
+
+  for (const thread of threads) {
+    if (!thread.metadata) {
+      continue
+    }
+
+    const metadata = JSON.parse(thread.metadata) as { source?: unknown; workspacePath?: unknown }
+    if (metadata.source === "launcher-ai") {
+      continue
+    }
+
+    if (typeof metadata.workspacePath === "string" && metadata.workspacePath.trim()) {
+      store.set("workspacePath", metadata.workspacePath)
+      return metadata.workspacePath
+    }
+  }
+
+  return null
+}
+
 function normalizePathList(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return []
@@ -283,7 +320,7 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
 
   // Get default model
   ipcMain.handle("models:getDefault", async () => {
-    return store.get("defaultModel", "claude-sonnet-4-5-20250929") as string
+    return getDefaultModelId()
   })
 
   // Set default model
@@ -330,8 +367,7 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
   // Get workspace path for a thread (from thread metadata)
   ipcMain.handle("workspace:get", async (_event, threadId?: string) => {
     if (!threadId) {
-      // Fallback to global setting for backwards compatibility
-      return store.get("workspacePath", null) as string | null
+      return resolveGlobalWorkspacePath()
     }
 
     // Get from thread metadata via threads:get
@@ -365,6 +401,10 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
       metadata.workspacePath = newPath
       await updateThread(threadId, { metadata: JSON.stringify(metadata) })
 
+      if (newPath) {
+        store.set("workspacePath", newPath)
+      }
+
       // Update file watcher
       if (newPath) {
         startWatching(threadId, newPath)
@@ -397,6 +437,7 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
         const metadata = thread.metadata ? JSON.parse(thread.metadata) : {}
         metadata.workspacePath = selectedPath
         await updateThread(threadId, { metadata: JSON.stringify(metadata) })
+        store.set("workspacePath", selectedPath)
 
         // Start watching the new workspace
         startWatching(threadId, selectedPath)
@@ -598,5 +639,5 @@ export function getModelConfig(modelId: string): ModelConfig | undefined {
 }
 
 export function getDefaultModel(): string {
-  return store.get("defaultModel", "glm-4.6") as string
+  return store.get("defaultModel", DEFAULT_MODEL_ID) as string
 }

@@ -1,16 +1,38 @@
 import { ArrowLeft } from "lucide-react"
-import type { RefObject } from "react"
-import type { LauncherSecondaryPageDefinition } from "../pages/types"
+import type { ReactNode, RefObject } from "react"
+import { LauncherInput } from "../components/LauncherInput"
 
-export function LauncherSecondaryPage(props: {
+interface LauncherAiPageChromeConfig {
+  footer: {
+    leadingLabel: string
+    primaryLabel: string
+    primaryShortcutLabel: string
+  }
+  inputPlaceholder: string
+}
+
+export function LauncherAiPageChrome(props: {
+  children: ReactNode
+  chrome: LauncherAiPageChromeConfig
   inputRef: RefObject<HTMLInputElement | null>
   onBack: () => void
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
-  page: LauncherSecondaryPageDefinition
+  onPrimaryAction: () => void
+  primaryActionDisabled: boolean
   query: string
   setQuery: (value: string) => void
 }): React.JSX.Element {
-  const { inputRef, onBack, onInputKeyDown, page, query, setQuery } = props
+  const {
+    children,
+    chrome,
+    inputRef,
+    onBack,
+    onInputKeyDown,
+    onPrimaryAction,
+    primaryActionDisabled,
+    query,
+    setQuery
+  } = props
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -27,17 +49,17 @@ export function LauncherSecondaryPage(props: {
         >
           <ArrowLeft className="size-5" />
         </button>
-        <input
+        <LauncherInput
           ref={inputRef}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={onInputKeyDown}
-          placeholder={page.inputPlaceholder}
-          className="h-full flex-1 border-0 bg-transparent px-0 text-[16px] font-medium text-foreground outline-none placeholder:text-muted-foreground"
+          placeholder={chrome.inputPlaceholder}
+          className="flex-1 text-foreground"
         />
       </div>
 
-      {page.renderBody({ query })}
+      {children}
 
       <div
         className="flex h-[48px] shrink-0 items-center justify-between pl-4 pr-8"
@@ -47,16 +69,17 @@ export function LauncherSecondaryPage(props: {
         }}
       >
         <div className="px-2 py-1 text-[13px] text-muted-foreground">
-          {page.footer.leadingLabel}
+          {chrome.footer.leadingLabel}
         </div>
 
         <button
           type="button"
+          onClick={onPrimaryAction}
           onMouseDown={(event) => event.preventDefault()}
-          disabled
+          disabled={primaryActionDisabled}
           className="flex appearance-none items-center gap-3 rounded-md border-0 bg-transparent px-2 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
         >
-          <span>{page.footer.primaryLabel}</span>
+          <span>{chrome.footer.primaryLabel}</span>
           <span
             className="rounded-[10px] px-2 py-1 text-[12px]"
             style={{
@@ -65,7 +88,7 @@ export function LauncherSecondaryPage(props: {
               color: "var(--launcher-text)"
             }}
           >
-            {page.footer.primaryShortcutLabel}
+            {chrome.footer.primaryShortcutLabel}
           </span>
         </button>
       </div>

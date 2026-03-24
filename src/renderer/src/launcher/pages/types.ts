@@ -1,31 +1,29 @@
-import type { ReactNode } from "react"
-import type { LauncherShellConfig } from "../../../../shared/launcher"
+import type { ComponentType, RefObject } from "react"
 
-export type LauncherSecondaryPageId = "ai"
+export type LauncherFeaturePageId = "ai"
 export type LauncherNavigationDirection = "forward" | "backward"
 
-export interface LauncherSecondaryPageBodyProps {
-  query: string
+export type LauncherRoute =
+  | { id: "home" }
+  | {
+      id: LauncherFeaturePageId
+      seedQuery: string
+    }
+
+export interface LauncherFeaturePageRenderProps {
+  inputRef: RefObject<HTMLInputElement | null>
+  onBack: () => void
+  onViewportHeightChange: (height: number) => void
+  seedQuery: string
 }
 
-export interface LauncherSecondaryPageEntryConfig {
+export interface LauncherHomeEntry {
+  pageId: LauncherFeaturePageId
   label: string
   shortcutLabel: string
 }
 
-export interface LauncherSecondaryPageFooterConfig {
-  leadingLabel: string
-  primaryLabel: string
-  primaryShortcutLabel: string
-}
-
-export interface LauncherSecondaryPageDefinition {
-  id: LauncherSecondaryPageId
-  title: string
-  inputPlaceholder: string
-  closeOnEmptyBackspace: boolean
-  entry: LauncherSecondaryPageEntryConfig
-  footer: LauncherSecondaryPageFooterConfig
-  getViewportHeight: (shellConfig: LauncherShellConfig) => number
-  renderBody: (props: LauncherSecondaryPageBodyProps) => ReactNode
+export interface LauncherFeaturePageDefinition {
+  id: LauncherFeaturePageId
+  Component: ComponentType<LauncherFeaturePageRenderProps>
 }

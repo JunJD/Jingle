@@ -102,9 +102,10 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
   // Create a new thread
   ipcMain.handle("threads:create", async (_event, metadata?: Record<string, unknown>) => {
     const threadId = uuid()
-    const title = (metadata?.title as string) || `Thread ${new Date().toLocaleDateString()}`
+    const nextMetadata = { ...metadata }
+    const title = (nextMetadata.title as string) || `Thread ${new Date().toLocaleDateString()}`
 
-    const thread = await dbCreateThread(threadId, { ...metadata, title })
+    const thread = await dbCreateThread(threadId, { ...nextMetadata, title })
 
     return {
       thread_id: thread.thread_id,

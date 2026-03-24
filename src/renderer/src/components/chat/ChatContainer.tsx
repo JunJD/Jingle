@@ -1,9 +1,10 @@
-import { useRef, useEffect, useMemo, useCallback } from "react"
+import { useRef, useEffect, useCallback } from "react"
 import { Send, Square, Loader2, AlertCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAppStore } from "@/lib/store"
-import { useCurrentThread, useThreadStream } from "@/lib/thread-context"
+import { useCurrentThread } from "@/lib/thread-context"
+import { useThreadConversationProjection } from "@/lib/thread-conversation"
 import { MessageBubble } from "./MessageBubble"
 import { ModelSwitcher } from "./ModelSwitcher"
 import { Folder } from "lucide-react"
@@ -12,19 +13,6 @@ import { selectWorkspaceFolder } from "@/lib/workspace-utils"
 import { ChatTodos } from "./ChatTodos"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
 import type { Message } from "@/types"
-
-interface AgentStreamValues {
-  todos?: Array<{ id?: string; content?: string; status?: string }>
-}
-
-interface StreamMessage {
-  id?: string
-  type?: string
-  content?: string | unknown[]
-  tool_calls?: Message["tool_calls"]
-  tool_call_id?: string
-  name?: string
-}
 
 interface ChatContainerProps {
   threadId: string
@@ -37,133 +25,32 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
 
   const { threads, loadThreads, generateTitleForFirstMessage } = useAppStore()
 
-  // Get persisted thread state and actions from context
   const {
-    messages: threadMessages,
+    messages,
     pendingApproval,
-    todos,
-    error: threadError,
     workspacePath,
     tokenUsage,
     currentModel,
     draftInput: input,
-    setTodos,
     setWorkspaceFiles,
     setWorkspacePath,
     setPendingApproval,
     appendMessage,
-    setError,
     clearError,
+    setError,
     setDraftInput: setInput
   } = useCurrentThread(threadId)
-
-  // Get the stream data via subscription - reactive updates without re-rendering provider
-  const streamData = useThreadStream(threadId)
-  const stream = streamData.stream
-  const isLoading = streamData.isLoading
-
-  const handleApprovalDecision = useCallback(
-    async (decision: "approve" | "reject" | "edit"): Promise<void> => {
-      if (!pendingApproval || !stream) return
-
-      setPendingApproval(null)
-
-      try {
-        await stream.submit(null, {
-          command: { resume: { decision } },
-          config: { configurable: { thread_id: threadId, model_id: currentModel } }
-        })
-      } catch (err) {
-        console.error("[ChatContainer] Resume command failed:", err)
-      }
-    },
-    [pendingApproval, setPendingApproval, stream, threadId, currentModel]
-  )
-
-  const agentValues = stream?.values as AgentStreamValues | undefined
-  const streamTodos = agentValues?.todos
-  useEffect(() => {
-    if (Array.isArray(streamTodos)) {
-      setTodos(
-        streamTodos.map((t) => ({
-          id: t.id || crypto.randomUUID(),
-          content: t.content || "",
-          status: (t.status || "pending") as "pending" | "in_progress" | "completed" | "cancelled"
-        }))
-      )
-    }
-  }, [streamTodos, setTodos])
-
-  const prevLoadingRef = useRef(false)
-  useEffect(() => {
-    if (prevLoadingRef.current && !isLoading) {
-      for (const rawMsg of streamData.messages) {
-        const msg = rawMsg as StreamMessage
-        if (msg.id) {
-          const streamMsg = msg as StreamMessage & { id: string }
-
-          let role: Message["role"] = "assistant"
-          if (streamMsg.type === "human") role = "user"
-          else if (streamMsg.type === "tool") role = "tool"
-          else if (streamMsg.type === "ai") role = "assistant"
-
-          const storeMsg: Message = {
-            id: streamMsg.id,
-            role,
-            content: typeof streamMsg.content === "string" ? streamMsg.content : "",
-            tool_calls: streamMsg.tool_calls,
-            ...(role === "tool" &&
-              streamMsg.tool_call_id && { tool_call_id: streamMsg.tool_call_id }),
-            ...(role === "tool" && streamMsg.name && { name: streamMsg.name }),
-            created_at: new Date()
-          }
-          appendMessage(storeMsg)
-        }
-      }
-      loadThreads()
-    }
-    prevLoadingRef.current = isLoading
-  }, [isLoading, streamData.messages, loadThreads, appendMessage])
-
-  const displayMessages = useMemo(() => {
-    const threadMessageIds = new Set(threadMessages.map((m) => m.id))
-
-    const streamingMsgs: Message[] = ((streamData.messages || []) as StreamMessage[])
-      .filter((m): m is StreamMessage & { id: string } => !!m.id && !threadMessageIds.has(m.id))
-      .map((streamMsg) => {
-        let role: Message["role"] = "assistant"
-        if (streamMsg.type === "human") role = "user"
-        else if (streamMsg.type === "tool") role = "tool"
-        else if (streamMsg.type === "ai") role = "assistant"
-
-        return {
-          id: streamMsg.id,
-          role,
-          content: typeof streamMsg.content === "string" ? streamMsg.content : "",
-          tool_calls: streamMsg.tool_calls,
-          ...(role === "tool" &&
-            streamMsg.tool_call_id && { tool_call_id: streamMsg.tool_call_id }),
-          ...(role === "tool" && streamMsg.name && { name: streamMsg.name }),
-          created_at: new Date()
-        }
-      })
-
-    return [...threadMessages, ...streamingMsgs]
-  }, [threadMessages, streamData.messages])
-
-  // Build tool results map from tool messages
-  const toolResults = useMemo(() => {
-    const results = new Map<string, { content: string | unknown; is_error?: boolean }>()
-    for (const msg of displayMessages) {
-      if (msg.role === "tool" && msg.tool_call_id) {
-        results.set(msg.tool_call_id, {
-          content: msg.content,
-          is_error: false // Could be enhanced to track errors
-        })
-      }
-    }
-    return results
-  }, [displayMessages])
+  const {
+    displayMessages,
+    error: threadError,
+    isLoading,
+    resumePendingApproval,
+    stream,
+    todos,
+    toolResults
+  } = useThreadConversationProjection(threadId, {
+    onMessagesPersisted: loadThreads
+  })
 
   // Get the actual scrollable viewport element from Radix ScrollArea
   const getViewport = useCallback((): HTMLDivElement | null => {
@@ -238,7 +125,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     const message = input.trim()
     setInput("")
 
-    const isFirstMessage = threadMessages.length === 0
+    const isFirstMessage = messages.length === 0
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -334,7 +221,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                 message={message}
                 toolResults={toolResults}
                 pendingApproval={pendingApproval}
-                onApprovalDecision={handleApprovalDecision}
+                onApprovalDecision={resumePendingApproval}
               />
             ))}
 

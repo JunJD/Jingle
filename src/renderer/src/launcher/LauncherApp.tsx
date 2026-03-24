@@ -1,39 +1,39 @@
-import { useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { LauncherPageTransition } from "./components/LauncherPageTransition"
 import { LauncherSearchPage } from "./components/LauncherSearchPage"
-import { LauncherSecondaryPage } from "./components/LauncherSecondaryPage"
-import { useLauncherShell } from "./hooks/useLauncherShell"
+import { useLauncherRouter } from "./hooks/useLauncherRouter"
+import { useLauncherSearchPage } from "./hooks/useLauncherSearchPage"
 
 export default function LauncherApp(): React.JSX.Element {
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const detailInputRef = useRef<HTMLInputElement>(null)
+  const featureInputRef = useRef<HTMLInputElement>(null)
+  const viewportHeightRef = useRef(0)
   const {
-    activeSecondaryPage,
-    closeSecondaryPage,
-    detailQuery,
-    executeItem,
-    handleDetailInputKeyDown,
-    handleInputKeyDown,
-    items,
-    mode,
+    activeFeaturePage,
+    closeActivePage,
     navigationDirection,
-    openSecondaryPage,
-    pageEntries,
-    placeholder,
-    query,
-    resultsVisible,
-    resultsViewportHeight,
-    selectedIndex,
-    setDetailQuery,
-    setQuery,
-    syncViewportHeight
-  } = useLauncherShell()
-  const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : null
-  const activePageKey = activeSecondaryPage ? activeSecondaryPage.id : "search"
+    openFeaturePage,
+    route,
+    routeKey
+  } = useLauncherRouter()
+  const searchPage = useLauncherSearchPage({ openFeaturePage })
+  const selectedItem =
+    searchPage.selectedIndex >= 0 ? searchPage.items[searchPage.selectedIndex] : null
+  const ActiveFeaturePageComponent = activeFeaturePage?.Component ?? null
+  const setViewportHeight = useCallback((height: number): void => {
+    viewportHeightRef.current = height
+    void window.api.launcher.setViewportHeight(height)
+  }, [])
+
+  useEffect(() => {
+    if (route.id === "home") {
+      setViewportHeight(searchPage.viewportHeight)
+    }
+  }, [route.id, searchPage.viewportHeight, setViewportHeight])
 
   useEffect(() => {
     const focusInput = (): void => {
-      const input = mode === "detail" ? detailInputRef.current : searchInputRef.current
+      const input = route.id === "home" ? searchInputRef.current : featureInputRef.current
       if (!input) {
         return
       }
@@ -46,7 +46,9 @@ export default function LauncherApp(): React.JSX.Element {
     focusInput()
     const cleanupShown = window.api.launcher.onShown(() => {
       focusInput()
-      syncViewportHeight()
+      if (viewportHeightRef.current > 0) {
+        setViewportHeight(viewportHeightRef.current)
+      }
     })
     window.addEventListener("focus", focusInput)
 
@@ -54,19 +56,24 @@ export default function LauncherApp(): React.JSX.Element {
       cleanupShown()
       window.removeEventListener("focus", focusInput)
     }
-  }, [mode, syncViewportHeight])
+  }, [route.id, setViewportHeight])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
         event.preventDefault()
+        if (route.id !== "home") {
+          closeActivePage()
+          return
+        }
+
         void window.api.launcher.hide()
       }
     }
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [])
+  }, [closeActivePage, route.id])
 
   return (
     <div
@@ -83,31 +90,29 @@ export default function LauncherApp(): React.JSX.Element {
           backgroundColor: "var(--launcher-surface)"
         }}
       >
-        <LauncherPageTransition direction={navigationDirection} pageKey={activePageKey}>
-          {activeSecondaryPage ? (
-            <LauncherSecondaryPage
-              inputRef={detailInputRef}
-              onBack={closeSecondaryPage}
-              onInputKeyDown={handleDetailInputKeyDown}
-              page={activeSecondaryPage}
-              query={detailQuery}
-              setQuery={setDetailQuery}
+        <LauncherPageTransition direction={navigationDirection} pageKey={routeKey}>
+          {activeFeaturePage && ActiveFeaturePageComponent && route.id !== "home" ? (
+            <ActiveFeaturePageComponent
+              inputRef={featureInputRef}
+              onBack={closeActivePage}
+              onViewportHeightChange={setViewportHeight}
+              seedQuery={route.seedQuery}
             />
           ) : (
             <LauncherSearchPage
-              executeItem={executeItem}
+              entries={searchPage.entries}
+              executeItem={searchPage.executeItem}
               inputRef={searchInputRef}
-              items={items}
-              onInputKeyDown={handleInputKeyDown}
-              onOpenPage={openSecondaryPage}
-              pageEntries={pageEntries}
-              placeholder={placeholder}
-              query={query}
-              resultsViewportHeight={resultsViewportHeight}
-              resultsVisible={resultsVisible}
-              selectedIndex={selectedIndex}
+              items={searchPage.items}
+              onInputKeyDown={searchPage.handleInputKeyDown}
+              onOpenFeaturePage={searchPage.openFeaturePage}
+              placeholder={searchPage.placeholder}
+              query={searchPage.query}
+              resultsViewportHeight={searchPage.resultsViewportHeight}
+              resultsVisible={searchPage.resultsVisible}
+              selectedIndex={searchPage.selectedIndex}
               selectedItem={selectedItem}
-              setQuery={setQuery}
+              setQuery={searchPage.setQuery}
             />
           )}
         </LauncherPageTransition>
