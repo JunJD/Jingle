@@ -103,7 +103,6 @@ export default function LauncherApp(): React.JSX.Element {
             <ActiveFeaturePageComponent
               inputRef={featureInputRef}
               onBack={closeActivePage}
-              seedQuery={route.seedQuery}
               shellConfig={searchPage.shellConfig}
             />
           ) : (
@@ -115,12 +114,10 @@ export default function LauncherApp(): React.JSX.Element {
               onInputKeyDown={searchPage.handleInputKeyDown}
               onOpenFeaturePage={searchPage.openFeaturePage}
               placeholder={searchPage.placeholder}
-              query={searchPage.query}
               resultsViewportHeight={searchPage.resultsViewportHeight}
               resultsVisible={searchPage.resultsVisible}
               selectedIndex={searchPage.selectedIndex}
               selectedItem={selectedItem}
-              setQuery={searchPage.setQuery}
               shellConfig={searchPage.shellConfig}
             />
           )}

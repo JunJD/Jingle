@@ -3,6 +3,8 @@ import { useI18n } from "@/lib/i18n"
 import type { LauncherShellConfig } from "../../../../shared/launcher"
 import type { LauncherShellItem } from "../types"
 import type { LauncherHomeEntry } from "../pages/types"
+import { useLauncherClipboard } from "../LauncherClipboardContext"
+import { ClipboardChip } from "./ClipboardChip"
 import { LauncherChrome } from "./LauncherChrome"
 import { LauncherResultList } from "./LauncherResultList"
 
@@ -14,15 +16,14 @@ export function LauncherSearchPage(props: {
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   onOpenFeaturePage: (pageId: LauncherHomeEntry["pageId"]) => void
   placeholder: string
-  query: string
   resultsViewportHeight: number
   resultsVisible: boolean
   selectedIndex: number
   selectedItem: LauncherShellItem | null
-  setQuery: (value: string) => void
   shellConfig: LauncherShellConfig
 }): React.JSX.Element {
   const { copy } = useI18n()
+  const clipboard = useLauncherClipboard()
   const {
     entries,
     executeItem,
@@ -31,12 +32,10 @@ export function LauncherSearchPage(props: {
     onInputKeyDown,
     onOpenFeaturePage,
     placeholder,
-    query,
     resultsViewportHeight,
     resultsVisible,
     selectedIndex,
     selectedItem,
-    setQuery,
     shellConfig
   } = props
 
@@ -46,9 +45,14 @@ export function LauncherSearchPage(props: {
       : selectedItem?.kind === "application"
         ? copy.launcher.openApp
         : copy.launcher.openResult
+  const headerLeading =
+    clipboard.context.kind === "files" || clipboard.context.kind === "image" ? (
+      <ClipboardChip context={clipboard.context} onClear={clipboard.clearContext} />
+    ) : undefined
 
   return (
     <LauncherChrome
+      headerLeading={headerLeading}
       footer={
         resultsVisible ? (
           <>
@@ -104,8 +108,6 @@ export function LauncherSearchPage(props: {
       inputRef={inputRef}
       onInputKeyDown={onInputKeyDown}
       placeholder={placeholder}
-      query={query}
-      setQuery={setQuery}
       shellConfig={shellConfig}
       showHeaderDivider={resultsVisible}
       surface="home"

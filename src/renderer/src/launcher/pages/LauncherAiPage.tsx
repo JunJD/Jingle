@@ -1,16 +1,18 @@
 import { ArrowLeft } from "lucide-react"
 import type { LauncherFeaturePageRenderProps } from "./types"
-import { useLauncherAiSession } from "../hooks/useLauncherAiSession"
+import { useLauncherClipboard } from "../LauncherClipboardContext"
+import { useAiThread } from "../hooks/useAiThread"
+import { ClipboardChip } from "../components/ClipboardChip"
 import { LauncherAiConversation, LauncherAiEmptyState } from "./LauncherAiConversation"
 import { LauncherChrome } from "../components/LauncherChrome"
 import { useI18n } from "@/lib/i18n"
 
 export function LauncherAiPage(props: LauncherFeaturePageRenderProps): React.JSX.Element {
   const { copy } = useI18n()
-  const { inputRef, onBack, seedQuery, shellConfig } = props
+  const clipboard = useLauncherClipboard()
+  const { inputRef, onBack, shellConfig } = props
 
-  const session = useLauncherAiSession({
-    seedQuery,
+  const session = useAiThread({
     onBack
   })
 
@@ -41,21 +43,23 @@ export function LauncherAiPage(props: LauncherFeaturePageRenderProps): React.JSX
         </>
       }
       headerLeading={
-        <button
-          type="button"
-          onClick={onBack}
-          onMouseDown={(event) => event.preventDefault()}
-          className="flex h-9 w-9 shrink-0 appearance-none items-center justify-center rounded-full border-0 bg-[var(--launcher-surface-strong)] text-muted-foreground transition hover:text-foreground"
-        >
-          <ArrowLeft className="size-5" />
-        </button>
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            onMouseDown={(event) => event.preventDefault()}
+            className="flex h-9 w-9 shrink-0 appearance-none items-center justify-center rounded-full border-0 bg-[var(--launcher-surface-strong)] text-muted-foreground transition hover:text-foreground"
+          >
+            <ArrowLeft className="size-5" />
+          </button>
+
+          <ClipboardChip context={clipboard.context} onClear={clipboard.clearContext} />
+        </div>
       }
       inputRef={inputRef}
       onInputKeyDown={session.handleInputKeyDown}
       placeholder={copy.launcher.aiInputPlaceholder}
-      query={session.query}
       shellConfig={shellConfig}
-      setQuery={session.setQuery}
       surface="ai"
     >
       {session.threadId ? (

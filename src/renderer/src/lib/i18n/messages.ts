@@ -77,6 +77,9 @@ export interface AppCopy {
     aiInputPlaceholder: string
     aiPrimaryLabel: string
     aiThreadTitle: string
+    clearClipboardContext: string
+    clipboardFiles: (count: number) => string
+    clipboardImage: string
     enter: string
     jumpToLatest: string
     openApp: string
@@ -212,6 +215,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       aiInputPlaceholder: "描述你要完成的事情...",
       aiPrimaryLabel: "发给 AI",
       aiThreadTitle: "快速提问",
+      clearClipboardContext: "清除剪贴板上下文",
+      clipboardFiles: (count) => `${count} 个文件`,
+      clipboardImage: "剪贴板图片",
       enter: "回车",
       jumpToLatest: "跳到最新",
       openApp: "打开应用",
@@ -357,6 +363,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       aiInputPlaceholder: "Ask AI anything...",
       aiPrimaryLabel: "Ask AI",
       aiThreadTitle: "Ask Anything",
+      clearClipboardContext: "Clear clipboard context",
+      clipboardFiles: (count) => `${count} file${count === 1 ? "" : "s"}`,
+      clipboardImage: "Clipboard image",
       enter: "Enter",
       jumpToLatest: "Jump to latest",
       openApp: "Open App",

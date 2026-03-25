@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useThreadContext } from "@/lib/thread-context"
 import { useThreadConversationProjection } from "@/lib/thread-conversation"
 import { useI18n } from "@/lib/i18n"
+import { useLauncherInput } from "../LauncherInputContext"
 
 interface CreatedLauncherThread {
   modelId: string
@@ -9,7 +10,7 @@ interface CreatedLauncherThread {
   workspacePath: string
 }
 
-export function useLauncherAiSession(props: { onBack: () => void; seedQuery: string }): {
+export function useAiThread(props: { onBack: () => void }): {
   conversation: ReturnType<typeof useThreadConversationProjection> & {
     clearVisibleError: () => void
     visibleError: string | null
@@ -23,17 +24,16 @@ export function useLauncherAiSession(props: { onBack: () => void; seedQuery: str
   threadId: string | null
 } {
   const { copy } = useI18n()
-  const { onBack, seedQuery } = props
+  const { onBack } = props
   const threadContext = useThreadContext()
+  const { query, setQuery } = useLauncherInput()
   const requestRef = useRef(0)
   const [threadId, setThreadId] = useState<string | null>(null)
-  const [pendingQuery, setPendingQuery] = useState(seedQuery)
   const [localError, setLocalError] = useState<string | null>(null)
   const [isCreatingThread, setIsCreatingThread] = useState(false)
 
   const conversation = useThreadConversationProjection(threadId)
   const threadState = conversation.threadState
-  const query = threadState ? threadState.draftInput : pendingQuery
   const visibleError = conversation.error ?? localError
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export function useLauncherAiSession(props: { onBack: () => void; seedQuery: str
     }
   }, [conversation, localError])
 
-  const setQuery = useCallback(
+  const setInputQuery = useCallback(
     (value: string): void => {
       if (localError) {
         setLocalError(null)
@@ -60,13 +60,22 @@ export function useLauncherAiSession(props: { onBack: () => void; seedQuery: str
 
       if (threadState) {
         threadState.setDraftInput(value)
-        return
       }
 
-      setPendingQuery(value)
+      setQuery(value)
     },
-    [localError, threadState]
+    [localError, setQuery, threadState]
   )
+
+  useEffect(() => {
+    if (!threadState) {
+      return
+    }
+
+    if (threadState.draftInput !== query) {
+      setQuery(threadState.draftInput)
+    }
+  }, [query, setQuery, threadState])
 
   const waitForThreadStream = useCallback(
     async (nextThreadId: string, requestId: number) => {
@@ -161,6 +170,7 @@ export function useLauncherAiSession(props: { onBack: () => void; seedQuery: str
         actions.setPendingApproval(null)
       }
 
+      setQuery("")
       actions.setDraftInput("")
       actions.appendMessage({
         id: crypto.randomUUID(),
@@ -187,6 +197,7 @@ export function useLauncherAiSession(props: { onBack: () => void; seedQuery: str
       copy.chat.inputNeedsWorkspace,
       createLauncherThread,
       localError,
+      setQuery,
       threadContext,
       threadId,
       waitForThreadStream
@@ -247,7 +258,7 @@ export function useLauncherAiSession(props: { onBack: () => void; seedQuery: str
     primaryActionDisabled,
     query,
     runPrimaryAction,
-    setQuery,
+    setQuery: setInputQuery,
     threadId
   }
 }

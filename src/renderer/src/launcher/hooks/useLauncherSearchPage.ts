@@ -11,6 +11,7 @@ import type {
   LauncherSearchResponse,
   LauncherSearchResult
 } from "../../../../shared/launcher-search"
+import { useLauncherInput } from "../LauncherInputContext"
 import { DEFAULT_HOME_ENTRY_PAGE_ID } from "../pages"
 import type { LauncherFeaturePageId, LauncherHomeEntry } from "../pages/types"
 import type { LauncherShellItem } from "../types"
@@ -54,12 +55,7 @@ function buildLauncherShellItems(searchResults: LauncherSearchResult[]): Launche
 }
 
 export function useLauncherSearchPage(props: {
-  openFeaturePage: (
-    pageId: LauncherFeaturePageId,
-    options?: {
-      seedQuery?: string
-    }
-  ) => void
+  openFeaturePage: (pageId: LauncherFeaturePageId) => void
 }): {
   entries: LauncherHomeEntry[]
   executeItem: (index: number) => void
@@ -67,24 +63,24 @@ export function useLauncherSearchPage(props: {
   items: LauncherShellItem[]
   openFeaturePage: (pageId: LauncherFeaturePageId) => void
   placeholder: string
-  query: string
   resultsViewportHeight: number
   resultsVisible: boolean
   selectedIndex: number
-  setQuery: (value: string) => void
   shellConfig: LauncherShellConfig
   viewportHeight: number
 } {
   const { openFeaturePage: navigateToFeaturePage } = props
   const { copy } = useI18n()
+  const { query } = useLauncherInput()
   const latestSearchRequestRef = useRef(0)
-  const [query, setQueryState] = useState("")
   const [debouncedQuery, setDebouncedQuery] = useState("")
   const [searchResponse, setSearchResponse] = useState<LauncherSearchResponse | null>(null)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const shellConfig: LauncherShellConfig = FALLBACK_SHELL_CONFIG
 
-  const searchResults = searchResponse?.results ?? EMPTY_SEARCH_RESULTS
+  const searchResults = query.trim()
+    ? (searchResponse?.results ?? EMPTY_SEARCH_RESULTS)
+    : EMPTY_SEARCH_RESULTS
   const items = useMemo(() => {
     return [
       ...buildFeatureIntentItems({
@@ -111,20 +107,10 @@ export function useLauncherSearchPage(props: {
   const viewportHeight = getLauncherViewportHeight(items.length, shellConfig)
   const resultsVisible = items.length > 0
 
-  const setQuery = useCallback((value: string): void => {
-    setQueryState(value)
-
-    if (!value.trim()) {
-      latestSearchRequestRef.current += 1
-      setDebouncedQuery("")
-      setSearchResponse(null)
-      setSelectedItemId(null)
-    }
-  }, [])
-
   useEffect(() => {
     const nextQuery = query.trim()
     if (!nextQuery) {
+      latestSearchRequestRef.current += 1
       return
     }
 
@@ -168,9 +154,9 @@ export function useLauncherSearchPage(props: {
 
   const openFeaturePage = useCallback(
     (pageId: LauncherFeaturePageId): void => {
-      navigateToFeaturePage(pageId, { seedQuery: query })
+      navigateToFeaturePage(pageId)
     },
-    [navigateToFeaturePage, query]
+    [navigateToFeaturePage]
   )
 
   const moveSelection = useCallback(
@@ -193,7 +179,7 @@ export function useLauncherSearchPage(props: {
       }
 
       if (item.featurePageId) {
-        navigateToFeaturePage(item.featurePageId, { seedQuery: query })
+        navigateToFeaturePage(item.featurePageId)
         return
       }
 
@@ -207,7 +193,7 @@ export function useLauncherSearchPage(props: {
         }
       })
     },
-    [items, navigateToFeaturePage, query]
+    [items, navigateToFeaturePage]
   )
 
   const handleInputKeyDown = useCallback(
@@ -251,11 +237,9 @@ export function useLauncherSearchPage(props: {
     items,
     openFeaturePage,
     placeholder: copy.launcher.searchPlaceholder,
-    query,
     resultsViewportHeight,
     resultsVisible,
     selectedIndex,
-    setQuery,
     shellConfig,
     viewportHeight
   }

@@ -14,6 +14,7 @@ import type {
   LauncherSearchRequest,
   LauncherSearchResponse
 } from "../shared/launcher-search"
+import type { ClipboardContext } from "../shared/clipboard"
 
 interface ElectronAPI {
   ipcRenderer: {
@@ -74,6 +75,7 @@ interface CustomAPI {
     setAgentConfig: (updates: Partial<AgentConfig>) => Promise<AgentConfig>
   }
   launcher: {
+    getClipboardContext: () => Promise<ClipboardContext>
     search: (request: LauncherSearchRequest) => Promise<LauncherSearchResponse>
     executeAction: (action: LauncherSearchAction) => Promise<LauncherActionExecutionResult>
     hide: () => Promise<void>

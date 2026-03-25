@@ -1,6 +1,7 @@
 import { useRef, type ReactNode, type RefObject } from "react"
 import { cn } from "@/lib/utils"
 import type { LauncherShellConfig } from "../../../../shared/launcher"
+import { useLauncherInput } from "../LauncherInputContext"
 import { useLauncherChromeAudit } from "../hooks/useLauncherChromeAudit"
 import { LauncherInput } from "./LauncherInput"
 
@@ -13,8 +14,6 @@ interface LauncherChromeProps {
   inputRef: RefObject<HTMLInputElement | null>
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   placeholder: string
-  query: string
-  setQuery: (value: string) => void
   shellConfig: LauncherShellConfig
   showHeaderDivider?: boolean
   surface: string
@@ -30,12 +29,11 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
     inputRef,
     onInputKeyDown,
     placeholder,
-    query,
-    setQuery,
     shellConfig,
     showHeaderDivider = true,
     surface
   } = props
+  const { query, setQuery } = useLauncherInput()
   const headerRef = useRef<HTMLDivElement>(null)
   const footerRef = useRef<HTMLDivElement>(null)
 

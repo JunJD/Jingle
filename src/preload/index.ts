@@ -14,6 +14,7 @@ import type {
   LauncherSearchRequest,
   LauncherSearchResponse
 } from "../shared/launcher-search"
+import type { ClipboardContext } from "../shared/clipboard"
 
 // Simple electron API - replaces @electron-toolkit/preload
 const electronAPI = {
@@ -176,6 +177,9 @@ const api = {
     }
   },
   launcher: {
+    getClipboardContext: (): Promise<ClipboardContext> => {
+      return ipcRenderer.invoke("launcher:getClipboardContext")
+    },
     search: (request: LauncherSearchRequest): Promise<LauncherSearchResponse> => {
       return ipcRenderer.invoke("launcher:search", request)
     },

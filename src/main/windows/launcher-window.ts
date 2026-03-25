@@ -7,7 +7,9 @@ import {
   getLauncherIdleHeight,
   getLauncherMaxViewportHeight
 } from "../../shared/launcher"
+import type { ClipboardContext } from "../../shared/clipboard"
 import type { LauncherSearchAction, LauncherSearchRequest } from "../../shared/launcher-search"
+import { readClipboardContext } from "../services/clipboard"
 import { searchLauncher } from "../services/launcher-search"
 
 const LAUNCHER_WIDTH = 760
@@ -191,6 +193,10 @@ export function createLauncherWindow(): BrowserWindow {
 export function registerLauncherHandlers(ipcMain: IpcMain): void {
   ipcMain.handle("launcher:search", async (_event, request: LauncherSearchRequest) => {
     return searchLauncher(request)
+  })
+
+  ipcMain.handle("launcher:getClipboardContext", (): ClipboardContext => {
+    return readClipboardContext()
   })
 
   ipcMain.handle("launcher:executeAction", async (event, action: LauncherSearchAction) => {

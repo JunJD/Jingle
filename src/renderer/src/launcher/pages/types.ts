@@ -4,17 +4,11 @@ import type { LauncherShellConfig } from "../../../../shared/launcher"
 export type LauncherFeaturePageId = "ai"
 export type LauncherNavigationDirection = "forward" | "backward"
 
-export type LauncherRoute =
-  | { id: "home" }
-  | {
-      id: LauncherFeaturePageId
-      seedQuery: string
-    }
+export type LauncherRoute = { id: "home" } | { id: LauncherFeaturePageId }
 
 export interface LauncherFeaturePageRenderProps {
   inputRef: RefObject<HTMLInputElement | null>
   onBack: () => void
-  seedQuery: string
   shellConfig: LauncherShellConfig
 }
 

@@ -11,9 +11,9 @@ export const LauncherInput = forwardRef<HTMLInputElement, InputProps>(function L
     <Input
       ref={ref}
       className={[
-        "h-auto border-0 bg-transparent px-0 py-0 text-[18px] font-medium leading-none shadow-none",
+        "h-8 border-0 bg-transparent px-1.5 py-0 text-[18px] font-medium leading-8 shadow-none",
         "focus-visible:ring-0 focus-visible:ring-offset-0",
-        "placeholder:text-muted-foreground",
+        "placeholder:font-medium placeholder:text-muted-foreground/55",
         className
       ].join(" ")}
       onCompositionStart={(event) => {

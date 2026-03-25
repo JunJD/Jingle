@@ -13,12 +13,7 @@ export function useLauncherRouter(): {
   activeFeaturePage: LauncherFeaturePageDefinition | null
   closeActivePage: () => void
   navigationDirection: LauncherNavigationDirection
-  openFeaturePage: (
-    pageId: LauncherFeaturePageId,
-    options?: {
-      seedQuery?: string
-    }
-  ) => void
+  openFeaturePage: (pageId: LauncherFeaturePageId) => void
   route: LauncherRoute
   routeKey: string
 } {
@@ -26,21 +21,10 @@ export function useLauncherRouter(): {
     useState<LauncherNavigationDirection>("forward")
   const [route, setRoute] = useState<LauncherRoute>(HOME_ROUTE)
 
-  const openFeaturePage = useCallback(
-    (
-      pageId: LauncherFeaturePageId,
-      options?: {
-        seedQuery?: string
-      }
-    ): void => {
-      setNavigationDirection("forward")
-      setRoute({
-        id: pageId,
-        seedQuery: options?.seedQuery ?? ""
-      })
-    },
-    []
-  )
+  const openFeaturePage = useCallback((pageId: LauncherFeaturePageId): void => {
+    setNavigationDirection("forward")
+    setRoute({ id: pageId })
+  }, [])
 
   const closeActivePage = useCallback((): void => {
     setNavigationDirection("backward")
