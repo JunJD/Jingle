@@ -1,16 +1,10 @@
-export const AI_PAGE_VIEWPORT_HEIGHT = 520
+import {
+  getLauncherViewportHeightForBody,
+  type LauncherShellConfig
+} from "../../../../shared/launcher"
 
-export const AI_PAGE_ENTRY = {
-  label: "Ask AI",
-  shortcutLabel: "Tab"
-} as const
+const AI_PAGE_CONTENT_HEIGHT = 394
 
-export const AI_PAGE_CHROME = {
-  title: "Ask Anything",
-  inputPlaceholder: "Ask AI anything...",
-  footer: {
-    leadingLabel: "Quick AI",
-    primaryLabel: "Ask AI",
-    primaryShortcutLabel: "↵"
-  }
-} as const
+export function getAiPageViewportHeight(shellConfig: LauncherShellConfig): number {
+  return getLauncherViewportHeightForBody(AI_PAGE_CONTENT_HEIGHT, shellConfig)
+}

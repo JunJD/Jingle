@@ -1,7 +1,9 @@
 import type { RefObject } from "react"
+import { useI18n } from "@/lib/i18n"
+import type { LauncherShellConfig } from "../../../../shared/launcher"
 import type { LauncherShellItem } from "../types"
 import type { LauncherHomeEntry } from "../pages/types"
-import { LauncherInput } from "./LauncherInput"
+import { LauncherChrome } from "./LauncherChrome"
 import { LauncherResultList } from "./LauncherResultList"
 
 export function LauncherSearchPage(props: {
@@ -18,7 +20,9 @@ export function LauncherSearchPage(props: {
   selectedIndex: number
   selectedItem: LauncherShellItem | null
   setQuery: (value: string) => void
+  shellConfig: LauncherShellConfig
 }): React.JSX.Element {
+  const { copy } = useI18n()
   const {
     entries,
     executeItem,
@@ -32,93 +36,86 @@ export function LauncherSearchPage(props: {
     resultsVisible,
     selectedIndex,
     selectedItem,
-    setQuery
+    setQuery,
+    shellConfig
   } = props
 
-  return (
-    <div className="flex h-full w-full flex-col">
-      <div
-        className="flex h-[60px] shrink-0 items-center pl-6 pr-8"
-        style={{ borderBottom: "1px solid var(--launcher-border)" }}
-      >
-        <LauncherInput
-          ref={inputRef}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={onInputKeyDown}
-          placeholder={placeholder}
-          className="flex-1 text-foreground"
-        />
+  const primaryActionLabel =
+    selectedItem?.featurePageId || selectedItem?.kind === "ai"
+      ? copy.launcher.aiPrimaryLabel
+      : selectedItem?.kind === "application"
+        ? copy.launcher.openApp
+        : copy.launcher.openResult
 
-        <div className="ml-4 flex shrink-0 items-center gap-4">
-          {entries.map((entry) => (
+  return (
+    <LauncherChrome
+      footer={
+        resultsVisible ? (
+          <>
+            <div className="text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
+              {copy.launcher.searchResults}
+            </div>
+
             <button
-              key={entry.pageId}
               type="button"
-              onClick={() => onOpenFeaturePage(entry.pageId)}
+              onClick={() => {
+                if (!selectedItem) {
+                  return
+                }
+
+                executeItem(selectedIndex)
+              }}
               onMouseDown={(event) => event.preventDefault()}
-              className="flex shrink-0 appearance-none items-center gap-3 rounded-md border-0 bg-transparent px-0 py-1 text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
+              disabled={!selectedItem}
+              className="flex appearance-none items-center gap-3 rounded-full border-0 bg-transparent px-2 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
             >
-              <span>{entry.label}</span>
+              <span>{primaryActionLabel}</span>
               <span
-                className="rounded-[10px] px-2 py-1 text-[12px]"
+                className="rounded-full bg-[var(--launcher-surface-strong)] px-2.5 py-1 text-[11px] text-muted-foreground"
                 style={{
-                  border: "1px solid var(--launcher-border-strong)",
-                  backgroundColor: "var(--launcher-surface-strong)",
-                  color: "var(--launcher-text)"
+                  color: "var(--launcher-text-muted)"
                 }}
               >
-                {entry.shortcutLabel}
+                ↵
               </span>
             </button>
-          ))}
-        </div>
-      </div>
-
+          </>
+        ) : undefined
+      }
+      headerTrailing={entries.map((entry) => (
+        <button
+          key={entry.pageId}
+          type="button"
+          onClick={() => onOpenFeaturePage(entry.pageId)}
+          onMouseDown={(event) => event.preventDefault()}
+          className="flex shrink-0 appearance-none items-center gap-2 border-0 bg-transparent px-0 py-1 text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
+        >
+          <span>{entry.label}</span>
+          <span
+            className="rounded-full bg-[var(--launcher-surface-strong)] px-2.5 py-1 text-[11px] text-muted-foreground"
+            style={{
+              color: "var(--launcher-text-muted)"
+            }}
+          >
+            {entry.shortcutLabel}
+          </span>
+        </button>
+      ))}
+      inputRef={inputRef}
+      onInputKeyDown={onInputKeyDown}
+      placeholder={placeholder}
+      query={query}
+      setQuery={setQuery}
+      shellConfig={shellConfig}
+      showHeaderDivider={resultsVisible}
+      surface="home"
+    >
       <LauncherResultList
         height={resultsViewportHeight}
         items={items}
         onExecute={executeItem}
         selectedIndex={selectedIndex}
       />
-
-      {resultsVisible ? (
-        <div
-          className="flex h-[48px] shrink-0 items-center justify-between pl-4 pr-8"
-          style={{
-            borderTop: "1px solid var(--launcher-border)",
-            backgroundColor: "color-mix(in srgb, var(--launcher-surface-strong) 42%, transparent)"
-          }}
-        >
-          <div className="px-2 py-1 text-[13px] text-muted-foreground">Search Results</div>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (!selectedItem) {
-                return
-              }
-
-              executeItem(selectedIndex)
-            }}
-            onMouseDown={(event) => event.preventDefault()}
-            disabled={!selectedItem}
-            className="flex appearance-none items-center gap-3 rounded-md border-0 bg-transparent px-2 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
-          >
-            <span>{selectedItem?.kind === "application" ? "Open App" : "Open Result"}</span>
-            <span
-              className="rounded-[10px] px-2 py-1 text-[12px]"
-              style={{
-                border: "1px solid var(--launcher-border-strong)",
-                backgroundColor: "var(--launcher-surface-strong)",
-                color: "var(--launcher-text)"
-              }}
-            >
-              ↵
-            </span>
-          </button>
-        </div>
-      ) : null}
-    </div>
+    </LauncherChrome>
   )
 }

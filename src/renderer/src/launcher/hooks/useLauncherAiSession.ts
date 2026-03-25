@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useThreadContext } from "@/lib/thread-context"
 import { useThreadConversationProjection } from "@/lib/thread-conversation"
-
-const MISSING_WORKSPACE_ERROR =
-  "Please select a workspace folder in the main app before sending messages."
+import { useI18n } from "@/lib/i18n"
 
 interface CreatedLauncherThread {
   modelId: string
@@ -24,6 +22,7 @@ export function useLauncherAiSession(props: { onBack: () => void; seedQuery: str
   setQuery: (value: string) => void
   threadId: string | null
 } {
+  const { copy } = useI18n()
   const { onBack, seedQuery } = props
   const threadContext = useThreadContext()
   const requestRef = useRef(0)
@@ -92,14 +91,14 @@ export function useLauncherAiSession(props: { onBack: () => void; seedQuery: str
       ])
 
       if (!workspacePath) {
-        setLocalError(MISSING_WORKSPACE_ERROR)
+        setLocalError(copy.chat.inputNeedsWorkspace)
         return null
       }
 
       const thread = await window.api.threads.create({
         model: defaultModelId,
         source: "launcher-ai",
-        title: "Ask Anything",
+        title: copy.launcher.aiThreadTitle,
         visibility: "launcher-private",
         workspacePath
       })
@@ -121,7 +120,7 @@ export function useLauncherAiSession(props: { onBack: () => void; seedQuery: str
         workspacePath
       }
     },
-    [threadContext]
+    [copy.chat.inputNeedsWorkspace, copy.launcher.aiThreadTitle, threadContext]
   )
 
   const submitMessage = useCallback(
@@ -146,7 +145,7 @@ export function useLauncherAiSession(props: { onBack: () => void; seedQuery: str
       const modelId = createdThread?.modelId ?? state.currentModel
 
       if (!workspacePath) {
-        actions.setError(MISSING_WORKSPACE_ERROR)
+        actions.setError(copy.chat.inputNeedsWorkspace)
         return
       }
 
@@ -184,7 +183,14 @@ export function useLauncherAiSession(props: { onBack: () => void; seedQuery: str
         }
       )
     },
-    [createLauncherThread, localError, threadContext, threadId, waitForThreadStream]
+    [
+      copy.chat.inputNeedsWorkspace,
+      createLauncherThread,
+      localError,
+      threadContext,
+      threadId,
+      waitForThreadStream
+    ]
   )
 
   const runPrimaryAction = useCallback((): void => {

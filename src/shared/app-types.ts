@@ -1,4 +1,5 @@
 import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
+import type { AppLocale } from "./i18n"
 
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
 
@@ -44,6 +45,7 @@ export interface ModelConfig {
 export interface AgentConfig {
   skillSources: string[]
   memorySources: string[]
+  locale: AppLocale
 }
 
 export interface Subagent {

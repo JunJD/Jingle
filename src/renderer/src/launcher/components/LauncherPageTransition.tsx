@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react"
 import type { ReactNode } from "react"
 import type { LauncherNavigationDirection } from "../pages/types"
 
-const TRANSITION_DURATION_MS = 220
+const TRANSITION_DURATION_MS = 170
 
 export function LauncherPageTransition(props: {
   children: ReactNode
@@ -23,12 +23,11 @@ export function LauncherPageTransition(props: {
       return
     }
 
-    const offset = direction === "forward" ? 28 : -28
     const animation = pageElement.animate(
       [
         {
-          opacity: 0.72,
-          transform: `translate3d(${offset}px, 0, 0)`
+          opacity: direction === "forward" ? 0.72 : 0.8,
+          transform: "translate3d(0, 0, 0)"
         },
         {
           opacity: 1,
@@ -37,7 +36,7 @@ export function LauncherPageTransition(props: {
       ],
       {
         duration: TRANSITION_DURATION_MS,
-        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        easing: "cubic-bezier(0.2, 0.9, 0.24, 1)",
         fill: "both"
       }
     )

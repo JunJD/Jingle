@@ -1,4 +1,5 @@
 import type { ComponentType, RefObject } from "react"
+import type { LauncherShellConfig } from "../../../../shared/launcher"
 
 export type LauncherFeaturePageId = "ai"
 export type LauncherNavigationDirection = "forward" | "backward"
@@ -13,8 +14,8 @@ export type LauncherRoute =
 export interface LauncherFeaturePageRenderProps {
   inputRef: RefObject<HTMLInputElement | null>
   onBack: () => void
-  onViewportHeightChange: (height: number) => void
   seedQuery: string
+  shellConfig: LauncherShellConfig
 }
 
 export interface LauncherHomeEntry {
@@ -24,6 +25,7 @@ export interface LauncherHomeEntry {
 }
 
 export interface LauncherFeaturePageDefinition {
+  getViewportHeight: (shellConfig: LauncherShellConfig) => number
   id: LauncherFeaturePageId
   Component: ComponentType<LauncherFeaturePageRenderProps>
 }

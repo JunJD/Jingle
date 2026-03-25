@@ -11,7 +11,7 @@ export const LauncherInput = forwardRef<HTMLInputElement, InputProps>(function L
     <Input
       ref={ref}
       className={[
-        "h-full border-0 bg-transparent px-0 py-0 text-[16px] font-medium shadow-none",
+        "h-auto border-0 bg-transparent px-0 py-0 text-[18px] font-medium leading-none shadow-none",
         "focus-visible:ring-0 focus-visible:ring-offset-0",
         "placeholder:text-muted-foreground",
         className

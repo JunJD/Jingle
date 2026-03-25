@@ -21,15 +21,27 @@ let launcherWindow: BrowserWindow | null = null
 const isDev = !app.isPackaged
 
 function createWindow(): void {
+  const isMac = process.platform === "darwin"
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1200,
     minHeight: 700,
     show: false,
-    backgroundColor: "#0D0D0F",
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 16, y: 16 },
+    backgroundColor: "#F3F4F1",
+    titleBarStyle: "hidden",
+    ...(isMac
+      ? {
+          trafficLightPosition: { x: 16, y: 16 }
+        }
+      : {
+          titleBarOverlay: {
+            color: "#F7F6F2",
+            symbolColor: "#5F6873",
+            height: 52
+          }
+        }),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false

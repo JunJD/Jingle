@@ -2,15 +2,20 @@ import { spawn } from "node:child_process"
 import { BrowserWindow, type IpcMain, globalShortcut, screen, shell } from "electron"
 import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
-import { FALLBACK_SHELL_CONFIG, getLauncherMaxViewportHeight } from "../../shared/launcher"
+import {
+  FALLBACK_SHELL_CONFIG,
+  getLauncherIdleHeight,
+  getLauncherMaxViewportHeight
+} from "../../shared/launcher"
 import type { LauncherSearchAction, LauncherSearchRequest } from "../../shared/launcher-search"
 import { searchLauncher } from "../services/launcher-search"
 
-const LAUNCHER_WIDTH = 800
+const LAUNCHER_WIDTH = 760
 const LAUNCHER_HORIZONTAL_MARGIN = 24
 const LAUNCHER_TOP_MARGIN = 60
+const LAUNCHER_VERTICAL_POSITION_RATIO = 0.28
 const MAC_LAUNCHER_WINDOW_LEVEL = "floating"
-const LAUNCHER_BASE_HEIGHT = FALLBACK_SHELL_CONFIG.baseHeight
+const LAUNCHER_BASE_HEIGHT = getLauncherIdleHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_HEIGHT = getLauncherMaxViewportHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_SCREEN_HEIGHT_RATIO = 0.7
 
@@ -34,7 +39,7 @@ function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): {
   const x = Math.round(display.workArea.x + display.workArea.width / 2 - width / 2)
   const minY = display.workArea.y + LAUNCHER_TOP_MARGIN
   const maxY = display.workArea.y + display.workArea.height - boundedHeight - LAUNCHER_TOP_MARGIN
-  const targetY = Math.round(display.workArea.y + display.workArea.height * 0.16)
+  const targetY = Math.round(minY + (maxY - minY) * LAUNCHER_VERTICAL_POSITION_RATIO)
   const y = clamp(targetY, minY, Math.max(minY, maxY))
 
   return {
@@ -142,7 +147,7 @@ export function createLauncherWindow(): BrowserWindow {
     skipTaskbar: true,
     hiddenInMissionControl: true,
     hasShadow: true,
-    backgroundColor: "#141418",
+    backgroundColor: "#FBFBF8",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false
@@ -184,10 +189,6 @@ export function createLauncherWindow(): BrowserWindow {
 }
 
 export function registerLauncherHandlers(ipcMain: IpcMain): void {
-  ipcMain.handle("launcher:getShellConfig", () => {
-    return FALLBACK_SHELL_CONFIG
-  })
-
   ipcMain.handle("launcher:search", async (_event, request: LauncherSearchRequest) => {
     return searchLauncher(request)
   })

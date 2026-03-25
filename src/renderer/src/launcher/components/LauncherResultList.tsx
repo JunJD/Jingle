@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { truncateMiddle } from "@/lib/utils"
+import { cn, truncateMiddle } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 import { History, Search, Sparkles } from "lucide-react"
 import type { LauncherShellItem } from "../types"
 
@@ -52,7 +53,7 @@ function renderTitle(title: string, match?: [number, number]): React.JSX.Element
   return (
     <>
       {title.slice(0, start)}
-      <span style={{ color: "var(--status-critical)" }}>{title.slice(start, end + 1)}</span>
+      <span style={{ color: "var(--launcher-accent-line)" }}>{title.slice(start, end + 1)}</span>
       {title.slice(end + 1)}
     </>
   )
@@ -64,9 +65,11 @@ export function LauncherResultList(props: {
   onExecute: (index: number) => void
   selectedIndex: number
 }): React.JSX.Element | null {
+  const { copy } = useI18n()
   const { height, items, onExecute, selectedIndex } = props
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const itemsKey = items.map((item) => item.id).join("|")
 
   useLayoutEffect(() => {
     if (selectedIndex < 0) {
@@ -96,7 +99,7 @@ export function LauncherResultList(props: {
     if (deltaBottom > tolerance) {
       viewport.scrollTop += deltaBottom
     }
-  }, [selectedIndex, items.length])
+  }, [itemsKey, selectedIndex])
 
   if (items.length === 0) {
     return null
@@ -117,34 +120,57 @@ export function LauncherResultList(props: {
             type="button"
             onClick={() => onExecute(index)}
             onMouseDown={(event) => event.preventDefault()}
-            className="flex h-[70px] w-full appearance-none items-center gap-3 border-0 pl-6 pr-6 text-left transition"
+            className={cn(
+              "relative grid h-auto w-full appearance-none grid-cols-[84px_minmax(0,1fr)_92px] items-start gap-4 border-0 px-6 py-4 text-left transition",
+              "border-t border-[var(--launcher-border)] first:border-t-0",
+              isSelected &&
+                "before:absolute before:bottom-4 before:left-0 before:top-4 before:w-[3px] before:rounded-full before:bg-[var(--launcher-accent-line)]"
+            )}
             style={{
               backgroundColor: isSelected
                 ? "var(--launcher-row-active)"
                 : "var(--launcher-surface)",
-              borderBottom: "1px solid var(--launcher-border)",
               cursor: isPlanned ? "default" : "pointer",
               opacity: isPlanned ? 0.72 : 1
             }}
           >
-            <div
-              className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-none"
-              style={getChipStyle(item.kind)}
-            >
-              {item.iconDataUrl ? (
-                <img src={item.iconDataUrl} alt="" className="h-7 w-7 object-contain" />
-              ) : (
-                getResultIcon(item.kind)
-              )}
+            <div className="pt-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              {item.kind === "application"
+                ? copy.launcher.resultKindApp
+                : item.kind === "ai"
+                  ? copy.launcher.resultKindAgent
+                  : copy.launcher.resultKindThread}
             </div>
 
-            <div className="min-w-0 flex flex-1 flex-col justify-center gap-1">
-              <div className="truncate text-[14px] font-medium text-foreground">
-                {renderTitle(item.title, item.match)}
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-start gap-3">
+                <div
+                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden"
+                  style={getChipStyle(item.kind)}
+                >
+                  {item.iconDataUrl ? (
+                    <img src={item.iconDataUrl} alt="" className="h-5 w-5 object-contain" />
+                  ) : (
+                    getResultIcon(item.kind)
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-[15px] font-medium text-foreground">
+                    {renderTitle(item.title, item.match)}
+                  </div>
+                  <div className="mt-1 truncate text-[13px] text-muted-foreground">
+                    {truncateMiddle(item.subtitle, 63, 14)}
+                  </div>
+                </div>
               </div>
-              <div className="truncate text-[13px] text-muted-foreground">
-                {truncateMiddle(item.subtitle, 63, 14)}
-              </div>
+            </div>
+
+            <div className="justify-self-end pt-0.5 text-[12px] text-muted-foreground">
+              {isPlanned
+                ? copy.launcher.planned
+                : item.kind === "application"
+                  ? copy.launcher.enter
+                  : copy.launcher.openGeneric}
             </div>
           </button>
         )

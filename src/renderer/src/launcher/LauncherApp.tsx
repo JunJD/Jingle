@@ -20,16 +20,24 @@ export default function LauncherApp(): React.JSX.Element {
   const selectedItem =
     searchPage.selectedIndex >= 0 ? searchPage.items[searchPage.selectedIndex] : null
   const ActiveFeaturePageComponent = activeFeaturePage?.Component ?? null
+  const viewportHeight =
+    route.id === "home"
+      ? searchPage.viewportHeight
+      : (activeFeaturePage?.getViewportHeight(searchPage.shellConfig) ?? searchPage.viewportHeight)
+
   const setViewportHeight = useCallback((height: number): void => {
-    viewportHeightRef.current = height
-    void window.api.launcher.setViewportHeight(height)
+    const nextHeight = Math.round(height)
+    if (nextHeight <= 0 || nextHeight === viewportHeightRef.current) {
+      return
+    }
+
+    viewportHeightRef.current = nextHeight
+    void window.api.launcher.setViewportHeight(nextHeight)
   }, [])
 
   useEffect(() => {
-    if (route.id === "home") {
-      setViewportHeight(searchPage.viewportHeight)
-    }
-  }, [route.id, searchPage.viewportHeight, setViewportHeight])
+    setViewportHeight(viewportHeight)
+  }, [setViewportHeight, viewportHeight])
 
   useEffect(() => {
     const focusInput = (): void => {
@@ -77,10 +85,10 @@ export default function LauncherApp(): React.JSX.Element {
 
   return (
     <div
-      className="h-full w-full p-px shadow-[0_18px_42px_rgba(0,0,0,0.34)]"
+      className="h-full w-full overflow-hidden"
       style={{
         borderRadius: "var(--launcher-panel-radius)",
-        backgroundColor: "var(--launcher-border)"
+        backgroundColor: "var(--launcher-surface)"
       }}
     >
       <div
@@ -95,8 +103,8 @@ export default function LauncherApp(): React.JSX.Element {
             <ActiveFeaturePageComponent
               inputRef={featureInputRef}
               onBack={closeActivePage}
-              onViewportHeightChange={setViewportHeight}
               seedQuery={route.seedQuery}
+              shellConfig={searchPage.shellConfig}
             />
           ) : (
             <LauncherSearchPage
@@ -113,6 +121,7 @@ export default function LauncherApp(): React.JSX.Element {
               selectedIndex={searchPage.selectedIndex}
               selectedItem={selectedItem}
               setQuery={searchPage.setQuery}
+              shellConfig={searchPage.shellConfig}
             />
           )}
         </LauncherPageTransition>

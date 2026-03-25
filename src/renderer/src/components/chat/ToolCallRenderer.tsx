@@ -19,6 +19,7 @@ import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { ToolCall, Todo } from "@/types"
+import { useI18n } from "@/lib/i18n"
 
 interface ToolCallRendererProps {
   toolCall: ToolCall
@@ -38,18 +39,6 @@ const TOOL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   execute: Terminal,
   write_todos: ListTodo,
   task: GitBranch
-}
-
-const TOOL_LABELS: Record<string, string> = {
-  read_file: "Read File",
-  write_file: "Write File",
-  edit_file: "Edit File",
-  ls: "List Directory",
-  glob: "Find Files",
-  grep: "Search Content",
-  execute: "Execute Command",
-  write_todos: "Update Tasks",
-  task: "Subagent Task"
 }
 
 // Tools whose results are shown in the UI panels and don't need verbose display
@@ -99,6 +88,7 @@ function FileListDisplay({
   files: string[] | Array<{ path: string; is_dir?: boolean }>
   isGlob?: boolean
 }): React.JSX.Element {
+  const { copy } = useI18n()
   const items = files.slice(0, 15) // Limit display
   const hasMore = files.length > 15
 
@@ -119,7 +109,9 @@ function FileListDisplay({
         )
       })}
       {hasMore && (
-        <div className="text-xs text-muted-foreground mt-1">... and {files.length - 15} more</div>
+        <div className="text-xs text-muted-foreground mt-1">
+          {copy.toolCall.moreItems(files.length - 15)}
+        </div>
       )}
     </div>
   )
@@ -131,6 +123,7 @@ function GrepResultsDisplay({
 }: {
   matches: Array<{ path: string; line?: number; text?: string }>
 }): React.JSX.Element {
+  const { copy } = useI18n()
   const grouped = matches.reduce(
     (acc, match) => {
       if (!acc[match.path]) acc[match.path] = []
@@ -159,14 +152,16 @@ function GrepResultsDisplay({
               </div>
             ))}
             {grouped[path].length > 3 && (
-              <div className="text-muted-foreground">+{grouped[path].length - 3} more matches</div>
+              <div className="text-muted-foreground">
+                {copy.toolCall.moreMatches(grouped[path].length - 3)}
+              </div>
             )}
           </div>
         </div>
       ))}
       {hasMore && (
         <div className="text-xs text-muted-foreground">
-          ... matches in {Object.keys(grouped).length - 5} more files
+          {copy.toolCall.moreFiles(Object.keys(grouped).length - 5)}
         </div>
       )}
     </div>
@@ -175,6 +170,7 @@ function GrepResultsDisplay({
 
 // Render file content preview
 function FileContentPreview({ content }: { content: string; path?: string }): React.JSX.Element {
+  const { copy } = useI18n()
   const lines = content.split("\n")
   const preview = lines.slice(0, 10)
   const hasMore = lines.length > 10
@@ -193,7 +189,7 @@ function FileContentPreview({ content }: { content: string; path?: string }): Re
       </pre>
       {hasMore && (
         <div className="px-2 py-1 text-muted-foreground bg-background-elevated border-t border-border">
-          ... {lines.length - 10} more lines
+          {copy.toolCall.moreLines(lines.length - 10)}
         </div>
       )}
     </div>
@@ -202,6 +198,7 @@ function FileContentPreview({ content }: { content: string; path?: string }): Re
 
 // Render edit/write file summary
 function FileEditSummary({ args }: { args: Record<string, unknown> }): React.JSX.Element | null {
+  const { copy } = useI18n()
   const path = (args.path || args.file_path) as string
   const content = args.content as string | undefined
   const oldStr = args.old_str as string | undefined
@@ -229,7 +226,7 @@ function FileEditSummary({ args }: { args: Record<string, unknown> }): React.JSX
     const lines = content.split("\n").length
     return (
       <div className="text-xs text-muted-foreground">
-        Writing {lines} lines to {getFileName(path)}
+        {copy.toolCall.writeLinesToFile(lines, getFileName(path))}
       </div>
     )
   }
@@ -296,6 +293,7 @@ export function ToolCallRenderer({
   needsApproval,
   onApprovalDecision
 }: ToolCallRendererProps): React.JSX.Element | null {
+  const { copy } = useI18n()
   // Defensive: ensure args is always an object
   const args = toolCall?.args || {}
 
@@ -307,7 +305,7 @@ export function ToolCallRenderer({
   }
 
   const Icon = TOOL_ICONS[toolCall.name] || Terminal
-  const label = TOOL_LABELS[toolCall.name] || toolCall.name
+  const label = copy.toolCall.labels[toolCall.name] || toolCall.name
   const isPanelSynced = PANEL_SYNCED_TOOLS.has(toolCall.name)
 
   const handleApprove = (e: React.MouseEvent): void => {
@@ -391,7 +389,7 @@ export function ToolCallRenderer({
           <div className="space-y-2">
             <div className="text-xs text-status-nominal flex items-center gap-1.5">
               <CheckCircle2 className="size-3" />
-              <span>Read {lines} lines</span>
+              <span>{copy.toolCall.readLines(lines)}</span>
             </div>
             <FileContentPreview content={content} />
           </div>
@@ -408,10 +406,7 @@ export function ToolCallRenderer({
             <div className="space-y-2">
               <div className="text-xs text-status-nominal flex items-center gap-1.5">
                 <CheckCircle2 className="size-3" />
-                <span>
-                  {files} file{files !== 1 ? "s" : ""}
-                  {dirs > 0 ? `, ${dirs} folder${dirs !== 1 ? "s" : ""}` : ""}
-                </span>
+                <span>{copy.toolCall.filesAndFolders(files, dirs)}</span>
               </div>
               <FileListDisplay files={result} />
             </div>
@@ -426,9 +421,7 @@ export function ToolCallRenderer({
             <div className="space-y-2">
               <div className="text-xs text-status-nominal flex items-center gap-1.5">
                 <CheckCircle2 className="size-3" />
-                <span>
-                  Found {result.length} match{result.length !== 1 ? "es" : ""}
-                </span>
+                <span>{copy.toolCall.foundMatches(result.length)}</span>
               </div>
               <FileListDisplay files={result} isGlob />
             </div>
@@ -444,10 +437,7 @@ export function ToolCallRenderer({
             <div className="space-y-2">
               <div className="text-xs text-status-nominal flex items-center gap-1.5">
                 <CheckCircle2 className="size-3" />
-                <span>
-                  {result.length} match{result.length !== 1 ? "es" : ""} in {fileCount} file
-                  {fileCount !== 1 ? "s" : ""}
-                </span>
+                <span>{copy.toolCall.matchesInFiles(result.length, fileCount)}</span>
               </div>
               <GrepResultsDisplay matches={result} />
             </div>
@@ -464,7 +454,7 @@ export function ToolCallRenderer({
           return (
             <div className="text-xs text-status-nominal flex items-center gap-1.5">
               <CheckCircle2 className="size-3" />
-              <span>Command completed</span>
+              <span>{copy.toolCall.commandCompleted}</span>
             </div>
           )
         }
@@ -474,7 +464,7 @@ export function ToolCallRenderer({
             <div className="space-y-2">
               <div className="text-xs text-status-nominal flex items-center gap-1.5">
                 <CheckCircle2 className="size-3" />
-                <span>Command completed</span>
+                <span>{copy.toolCall.commandCompleted}</span>
               </div>
               <pre className="text-xs font-mono bg-background rounded-sm p-2 overflow-auto max-h-32 text-muted-foreground whitespace-pre-wrap break-all">
                 {output.slice(0, 500)}
@@ -486,7 +476,7 @@ export function ToolCallRenderer({
         return (
           <div className="text-xs text-status-nominal flex items-center gap-1.5">
             <CheckCircle2 className="size-3" />
-            <span>Command completed (no output)</span>
+            <span>{copy.toolCall.commandCompletedNoOutput}</span>
           </div>
         )
       }
@@ -509,7 +499,7 @@ export function ToolCallRenderer({
         return (
           <div className="text-xs text-status-nominal flex items-center gap-1.5">
             <CheckCircle2 className="size-3" />
-            <span>File saved</span>
+            <span>{copy.toolCall.fileSaved}</span>
           </div>
         )
       }
@@ -521,7 +511,7 @@ export function ToolCallRenderer({
             <div className="space-y-2">
               <div className="text-xs text-status-nominal flex items-center gap-1.5">
                 <CheckCircle2 className="size-3" />
-                <span>Task completed</span>
+                <span>{copy.toolCall.taskCompleted}</span>
               </div>
               <div className="text-xs text-muted-foreground pl-5 line-clamp-3">
                 {result.slice(0, 500)}
@@ -533,7 +523,7 @@ export function ToolCallRenderer({
         return (
           <div className="text-xs text-status-nominal flex items-center gap-1.5">
             <CheckCircle2 className="size-3" />
-            <span>Task completed</span>
+            <span>{copy.toolCall.taskCompleted}</span>
           </div>
         )
       }
@@ -554,7 +544,7 @@ export function ToolCallRenderer({
         return (
           <div className="text-xs text-status-nominal flex items-center gap-1.5">
             <CheckCircle2 className="size-3" />
-            <span>Completed</span>
+            <span>{copy.toolCall.completed}</span>
           </div>
         )
       }
@@ -599,25 +589,25 @@ export function ToolCallRenderer({
 
         {needsApproval && (
           <Badge variant="warning" className="ml-auto shrink-0">
-            APPROVAL
+            {copy.common.approval}
           </Badge>
         )}
 
         {!needsApproval && result === undefined && (
           <Badge variant="outline" className="ml-auto shrink-0 animate-pulse">
-            RUNNING
+            {copy.common.running}
           </Badge>
         )}
 
         {result !== undefined && !needsApproval && (
           <Badge variant={isError ? "critical" : "nominal"} className="ml-auto shrink-0">
-            {isError ? "ERROR" : "OK"}
+            {isError ? copy.common.error : copy.common.ok}
           </Badge>
         )}
 
         {isPanelSynced && !needsApproval && (
           <Badge variant="outline" className="shrink-0 text-[9px]">
-            SYNCED
+            {copy.common.synced}
           </Badge>
         )}
       </button>
@@ -630,7 +620,7 @@ export function ToolCallRenderer({
 
           {/* Arguments */}
           <div>
-            <div className="text-section-header text-[10px] mb-1">ARGUMENTS</div>
+            <div className="text-section-header text-[10px] mb-1">{copy.common.arguments}</div>
             <pre className="text-xs font-mono bg-background p-2 rounded-sm overflow-auto max-h-24">
               {JSON.stringify(args, null, 2)}
             </pre>
@@ -642,13 +632,13 @@ export function ToolCallRenderer({
               className="px-3 py-1.5 text-xs border border-border rounded-sm hover:bg-background-interactive transition-colors"
               onClick={handleReject}
             >
-              Reject
+              {copy.toolCall.reject}
             </button>
             <button
               className="px-3 py-1.5 text-xs bg-status-nominal text-background rounded-sm hover:bg-status-nominal/90 transition-colors"
               onClick={handleApprove}
             >
-              Approve & Run
+              {copy.toolCall.approveAndRun}
             </button>
           </div>
         </div>
@@ -671,7 +661,7 @@ export function ToolCallRenderer({
 
           {/* Raw Arguments */}
           <div className="overflow-hidden w-full">
-            <div className="text-section-header mb-1">RAW ARGUMENTS</div>
+            <div className="text-section-header mb-1">{copy.common.rawArguments}</div>
             <pre className="text-xs font-mono bg-background p-2 rounded-sm overflow-auto max-h-48 w-full whitespace-pre-wrap break-all">
               {JSON.stringify(args, null, 2)}
             </pre>
@@ -680,7 +670,7 @@ export function ToolCallRenderer({
           {/* Raw Result */}
           {result !== undefined && (
             <div className="overflow-hidden w-full">
-              <div className="text-section-header mb-1">RAW RESULT</div>
+              <div className="text-section-header mb-1">{copy.common.rawResult}</div>
               <pre
                 className={cn(
                   "text-xs font-mono p-2 rounded-sm overflow-auto max-h-48 w-full whitespace-pre-wrap break-all",

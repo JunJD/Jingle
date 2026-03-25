@@ -8,7 +8,6 @@ import type {
   ThreadRuntimeState,
   ThreadHistoryState
 } from "../shared/app-types"
-import type { LauncherShellConfig } from "../shared/launcher"
 import type {
   LauncherActionExecutionResult,
   LauncherSearchAction,
@@ -75,7 +74,6 @@ interface CustomAPI {
     setAgentConfig: (updates: Partial<AgentConfig>) => Promise<AgentConfig>
   }
   launcher: {
-    getShellConfig: () => Promise<LauncherShellConfig>
     search: (request: LauncherSearchRequest) => Promise<LauncherSearchResponse>
     executeAction: (action: LauncherSearchAction) => Promise<LauncherActionExecutionResult>
     hide: () => Promise<void>

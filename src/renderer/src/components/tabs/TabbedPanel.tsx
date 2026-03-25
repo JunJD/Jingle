@@ -20,10 +20,6 @@ export function TabbedPanel({ threadId, showTabBar = true }: TabbedPanelProps): 
       {/* Tab Bar (optional - can be rendered externally in titlebar) */}
       {showTabBar && <TabBar />}
 
-      {/* Subtle gradient fade from titlebar */}
-      <div className="h-1 shrink-0 bg-gradient-to-b from-sidebar/80 to-transparent" />
-
-      {/* Content Area */}
       <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
         {isAgentTab ? (
           <ChatContainer threadId={threadId} />

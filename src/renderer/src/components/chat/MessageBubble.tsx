@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils"
 import type { Message, HITLRequest } from "@/types"
 import { ToolCallRenderer } from "./ToolCallRenderer"
 import { StreamingMarkdown } from "./StreamingMarkdown"
+import { useI18n } from "@/lib/i18n"
 
 interface ToolResultInfo {
   content: string | unknown
@@ -24,6 +25,7 @@ export function MessageBubble({
   pendingApproval,
   onApprovalDecision
 }: MessageBubbleProps): React.JSX.Element | null {
+  const { copy } = useI18n()
   const isUser = message.role === "user"
   const isTool = message.role === "tool"
 
@@ -38,8 +40,8 @@ export function MessageBubble({
   }
 
   const getLabel = (): string => {
-    if (isUser) return "YOU"
-    return "AGENT"
+    if (isUser) return copy.chat.userLabel
+    return copy.chat.agentLabel
   }
 
   const renderContent = (): React.ReactNode => {
@@ -105,31 +107,29 @@ export function MessageBubble({
   }
 
   return (
-    <div className="flex gap-3 overflow-hidden">
-      {/* Left avatar column - shows for agent/tool */}
-      <div className="w-8 shrink-0">
-        {!isUser && (
-          <div className="flex size-8 items-center justify-center rounded-sm bg-status-info/10 text-status-info">
-            {getIcon()}
-          </div>
-        )}
-      </div>
-
-      {/* Content column - always same width */}
-      <div className="flex-1 min-w-0 space-y-2 overflow-hidden">
-        <div className={cn("text-section-header", isUser && "text-right")}>{getLabel()}</div>
+    <div className={cn("flex overflow-hidden", isUser ? "justify-end" : "justify-start")}>
+      <div className={cn("min-w-0 space-y-3", isUser ? "max-w-[72%]" : "max-w-[78%]")}>
+        <div className={cn("flex items-center gap-2 text-section-header", isUser && "justify-end")}>
+          {!isUser && <span className="text-accent">{getIcon()}</span>}
+          <span>{getLabel()}</span>
+          {isUser && <span className="text-primary">{getIcon()}</span>}
+        </div>
 
         {content && (
           <div
-            className={cn("rounded-sm p-3 overflow-hidden", isUser ? "bg-primary/10" : "bg-card")}
+            className={cn(
+              "overflow-hidden text-[15px] leading-8",
+              isUser
+                ? "rounded-[20px] bg-[var(--chat-user-surface)] px-5 py-4 shadow-[inset_0_0_0_1px_var(--chat-user-line)]"
+                : "text-foreground"
+            )}
           >
             {content}
           </div>
         )}
 
-        {/* Tool calls */}
         {hasToolCalls && (
-          <div className="space-y-2 overflow-hidden">
+          <div className="space-y-3 overflow-hidden">
             {message.tool_calls!.map((toolCall, index) => {
               const result = toolResults?.get(toolCall.id)
               const needsApproval = pendingMatchIndex === index
@@ -144,15 +144,6 @@ export function MessageBubble({
                 />
               )
             })}
-          </div>
-        )}
-      </div>
-
-      {/* Right avatar column - shows for user */}
-      <div className="w-8 shrink-0">
-        {isUser && (
-          <div className="flex size-8 items-center justify-center rounded-sm bg-primary/10 text-primary">
-            {getIcon()}
           </div>
         )}
       </div>

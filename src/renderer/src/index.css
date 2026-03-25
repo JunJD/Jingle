@@ -13,6 +13,7 @@
   /* Foundation colors */
   --color-background: var(--background);
   --color-background-elevated: var(--background-elevated);
+  --color-background-secondary: var(--background-secondary);
   --color-background-interactive: var(--background-interactive);
   --color-foreground: var(--foreground);
 
@@ -63,69 +64,158 @@
 
 :root {
   /* Foundation */
-  --radius: 3px;
-  --background: #0d0d0f;
-  --background-elevated: #141418;
-  --background-interactive: #1c1c22;
-  --foreground: #e8e8ec;
+  --radius: 10px;
+  --background: #f3f4f1;
+  --background-elevated: #fbfbf8;
+  --background-secondary: #f0f1ed;
+  --background-interactive: #e7e9e4;
+  --foreground: #20262d;
 
   /* Borders */
-  --border: #2a2a32;
-  --border-emphasis: #3a3a45;
-  --input: #2a2a32;
-  --ring: #3b82f6;
+  --border: rgba(67, 76, 88, 0.1);
+  --border-emphasis: rgba(67, 76, 88, 0.18);
+  --input: rgba(67, 76, 88, 0.14);
+  --ring: #3f6f94;
 
   /* Text hierarchy */
-  --muted: #141418;
-  --muted-foreground: #8a8a96;
-  --tertiary-foreground: #5a5a66;
+  --muted: #f0f1ed;
+  --muted-foreground: #5f6873;
+  --tertiary-foreground: #8a929b;
 
   /* Semantic mapping for shadcn compatibility */
-  --card: #141418;
-  --card-foreground: #e8e8ec;
-  --popover: #141418;
-  --popover-foreground: #e8e8ec;
-  --primary: #3b82f6;
-  --primary-foreground: #e8e8ec;
-  --secondary: #1c1c22;
-  --secondary-foreground: #e8e8ec;
-  --accent: #fb923c;
-  --accent-foreground: #0d0d0f;
-  --destructive: #e53e3e;
+  --card: #fbfbf8;
+  --card-foreground: #20262d;
+  --popover: #fbfbf8;
+  --popover-foreground: #20262d;
+  --primary: #3f6f94;
+  --primary-foreground: #f8fafc;
+  --secondary: #f0f1ed;
+  --secondary-foreground: #20262d;
+  --accent: #3c7a72;
+  --accent-foreground: #f6fffd;
+  --destructive: #a45b57;
 
   /* Status colors */
-  --status-critical: #e53e3e;
-  --status-warning: #f59e0b;
-  --status-nominal: #22c55e;
-  --status-info: #3b82f6;
+  --status-critical: #a45b57;
+  --status-warning: #a6743c;
+  --status-nominal: #567847;
+  --status-info: #3f6f94;
 
   /* Sidebar */
-  --sidebar: #141418;
-  --sidebar-foreground: #e8e8ec;
-  --sidebar-primary: #3b82f6;
-  --sidebar-primary-foreground: #e8e8ec;
-  --sidebar-accent: #1c1c22;
-  --sidebar-accent-foreground: #e8e8ec;
-  --sidebar-border: #2a2a32;
-  --sidebar-ring: #3b82f6;
+  --sidebar: #f7f7f4;
+  --sidebar-foreground: #20262d;
+  --sidebar-primary: #3c7a72;
+  --sidebar-primary-foreground: #f6fffd;
+  --sidebar-accent: #eceee8;
+  --sidebar-accent-foreground: #20262d;
+  --sidebar-border: rgba(67, 76, 88, 0.08);
+  --sidebar-ring: #3f6f94;
+
+  /* Window chrome */
+  --window-chrome: #f7f6f2;
+  --window-divider: rgba(67, 76, 88, 0.08);
+  --window-chrome-foreground: #20262d;
+  --window-chrome-muted: #8a929b;
+  --window-controls-offset-inline: 18px;
+  --window-controls-gap: 18px;
+
+  /* Chat surfaces */
+  --chat-user-surface: color-mix(in srgb, var(--primary) 16%, transparent);
+  --chat-user-line: color-mix(in srgb, var(--primary) 28%, transparent);
+  --chat-tool-surface: color-mix(in srgb, var(--background-secondary) 88%, transparent);
+  --chat-emphasis-surface: color-mix(in srgb, var(--status-warning) 10%, transparent);
 
   /* Launcher surfaces derive from the app theme */
-  --launcher-surface: var(--background-elevated);
-  --launcher-surface-strong: var(--background);
-  --launcher-surface-interactive: var(--background-interactive);
-  --launcher-border: var(--border);
-  --launcher-border-strong: var(--border-emphasis);
-  --launcher-panel-radius-inner: 10px;
-  --launcher-text: var(--foreground);
+  --launcher-surface: #fbfbf8;
+  --launcher-surface-strong: #f0f1ed;
+  --launcher-surface-interactive: #e7e9e4;
+  --launcher-border: rgba(67, 76, 88, 0.08);
+  --launcher-border-strong: rgba(67, 76, 88, 0.16);
+  --launcher-outline: rgba(67, 76, 88, 0.12);
+  --launcher-panel-radius: 24px;
+  --launcher-panel-radius-inner: 24px;
+  --launcher-text: #20262d;
   --launcher-text-muted: var(--muted-foreground);
-  --launcher-row-active: color-mix(in srgb, var(--primary) 14%, var(--background-interactive));
-  --launcher-row-hover: color-mix(in srgb, var(--foreground) 4%, var(--background-interactive));
-  --launcher-app-chip-bg: color-mix(in srgb, var(--primary) 16%, transparent);
+  --launcher-row-active: color-mix(in srgb, var(--primary) 12%, var(--launcher-surface));
+  --launcher-row-hover: color-mix(in srgb, var(--foreground) 4%, var(--launcher-surface));
+  --launcher-accent-line: var(--primary);
+  --launcher-app-chip-bg: transparent;
   --launcher-app-chip-fg: var(--primary);
-  --launcher-ai-chip-bg: color-mix(in srgb, var(--accent) 18%, transparent);
+  --launcher-ai-chip-bg: transparent;
   --launcher-ai-chip-fg: var(--accent);
-  --launcher-history-chip-bg: color-mix(in srgb, var(--foreground) 8%, transparent);
+  --launcher-history-chip-bg: transparent;
   --launcher-history-chip-fg: var(--muted-foreground);
+}
+
+.dark {
+  --background: #15191d;
+  --background-elevated: #1b2026;
+  --background-secondary: #20262d;
+  --background-interactive: #252c35;
+  --foreground: #eff2f5;
+
+  --border: rgba(219, 227, 235, 0.08);
+  --border-emphasis: rgba(219, 227, 235, 0.16);
+  --input: rgba(219, 227, 235, 0.1);
+  --ring: #7aa7c6;
+
+  --muted: #1b2026;
+  --muted-foreground: #bcc3cb;
+  --tertiary-foreground: #8f98a3;
+
+  --card: #1b2026;
+  --card-foreground: #eff2f5;
+  --popover: #20262d;
+  --popover-foreground: #eff2f5;
+  --primary: #7aa7c6;
+  --primary-foreground: #07111a;
+  --secondary: #222831;
+  --secondary-foreground: #eff2f5;
+  --accent: #67a99f;
+  --accent-foreground: #081513;
+  --destructive: #cb8b86;
+
+  --status-critical: #cb8b86;
+  --status-warning: #c89860;
+  --status-nominal: #87af74;
+  --status-info: #7aa7c6;
+
+  --sidebar: #171c21;
+  --sidebar-foreground: #eff2f5;
+  --sidebar-primary: #67a99f;
+  --sidebar-primary-foreground: #071513;
+  --sidebar-accent: #20262d;
+  --sidebar-accent-foreground: #eff2f5;
+  --sidebar-border: rgba(219, 227, 235, 0.08);
+  --sidebar-ring: #7aa7c6;
+
+  --window-chrome: #171c21;
+  --window-divider: rgba(219, 227, 235, 0.08);
+  --window-chrome-foreground: #eff2f5;
+  --window-chrome-muted: #8f98a3;
+
+  --launcher-surface: #1b2026;
+  --launcher-surface-strong: #222831;
+  --launcher-surface-interactive: #29303a;
+  --launcher-border: rgba(219, 227, 235, 0.08);
+  --launcher-border-strong: rgba(219, 227, 235, 0.16);
+  --launcher-outline: rgba(219, 227, 235, 0.12);
+  --launcher-text: #eff2f5;
+  --launcher-text-muted: var(--muted-foreground);
+  --launcher-row-active: color-mix(in srgb, var(--primary) 12%, var(--launcher-surface));
+  --launcher-row-hover: color-mix(in srgb, var(--foreground) 4%, var(--launcher-surface));
+}
+
+html[data-platform="darwin"],
+body[data-platform="darwin"] {
+  --window-controls-offset-inline: 84px;
+}
+
+html[data-platform="win32"],
+body[data-platform="win32"],
+html[data-platform="linux"],
+body[data-platform="linux"] {
+  --window-controls-offset-inline: 18px;
 }
 
 @layer base {
@@ -134,14 +224,32 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace;
+    font-family:
+      "OW Sans CN",
+      "IBM Plex Sans",
+      "PingFang SC",
+      "Hiragino Sans GB",
+      "Microsoft YaHei UI",
+      "Segoe UI",
+      sans-serif;
   }
 }
 
 html,
 body,
 #root {
+  width: 100%;
   min-height: 100%;
+}
+
+html[data-window="main"],
+body[data-window="main"],
+body[data-window="main"] #root {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background-color: var(--background);
 }
 
 html[data-window="launcher"],
@@ -160,7 +268,7 @@ body[data-window="launcher"] {
 
 /* Tactical typography utilities */
 .text-section-header {
-  @apply text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground;
+  @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground;
 }
 
 .text-data {
@@ -269,8 +377,9 @@ body[data-window="launcher"] {
 
 /* Streaming markdown styles */
 .streaming-markdown {
-  font-size: 0.875rem;
-  line-height: 1.5;
+  font-size: 0.9375rem;
+  line-height: 1.9;
+  color: var(--foreground);
 }
 
 .streaming-markdown p {
@@ -326,16 +435,16 @@ body[data-window="launcher"] {
 }
 
 .streaming-markdown code {
-  background-color: var(--background);
-  padding: 0.125em 0.25em;
-  border-radius: 3px;
+  background-color: color-mix(in srgb, var(--background-interactive) 88%, transparent);
+  padding: 0.125em 0.35em;
+  border-radius: 6px;
   font-size: 0.875em;
 }
 
 .streaming-markdown pre {
-  background-color: var(--background);
+  background-color: var(--background-secondary);
   padding: 0.75em 1em;
-  border-radius: 3px;
+  border-radius: 12px;
   overflow-x: auto;
   margin-bottom: 0.75em;
 }
@@ -346,7 +455,7 @@ body[data-window="launcher"] {
 }
 
 .streaming-markdown blockquote {
-  border-left: 3px solid var(--border-emphasis);
+  border-left: 3px solid var(--primary);
   padding-left: 1em;
   margin-left: 0;
   margin-bottom: 0.75em;
@@ -404,43 +513,6 @@ body[data-window="launcher"] {
 
 .app-no-drag {
   -webkit-app-region: no-drag;
-}
-
-/* Traffic light safe area for macOS - dynamically updated via JS */
-:root {
-  --sidebar-safe-padding: 0px;
-}
-
-/* App badge that stays fixed size regardless of zoom (position/scale set via JS) */
-.app-badge {
-  position: fixed;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
-  border-radius: 3px;
-  background-color: color-mix(in srgb, var(--primary) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
-  line-height: 1;
-  pointer-events: none;
-  -webkit-app-region: drag;
-}
-
-.app-badge-name {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--primary);
-  line-height: 1;
-}
-
-.app-badge-version {
-  font-size: 11px;
-  font-family: "JetBrains Mono", monospace;
-  color: color-mix(in srgb, var(--primary) 70%, transparent);
-  line-height: 1;
 }
 
 /* Shiki syntax highlighting styles */

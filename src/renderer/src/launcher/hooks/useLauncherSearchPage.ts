@@ -6,15 +6,39 @@ import {
   getLauncherViewportHeight,
   type LauncherShellConfig
 } from "../../../../shared/launcher"
+import { useI18n } from "@/lib/i18n"
 import type {
   LauncherSearchResponse,
   LauncherSearchResult
 } from "../../../../shared/launcher-search"
-import { DEFAULT_HOME_ENTRY_PAGE_ID, launcherHomeEntries } from "../pages"
+import { DEFAULT_HOME_ENTRY_PAGE_ID } from "../pages"
 import type { LauncherFeaturePageId, LauncherHomeEntry } from "../pages/types"
 import type { LauncherShellItem } from "../types"
 
 const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
+
+function buildFeatureIntentItems(props: {
+  aiEntryLabel: string
+  aiIntentSubtitle: (query: string) => string
+  query: string
+}): LauncherShellItem[] {
+  const { aiEntryLabel, aiIntentSubtitle, query } = props
+  const trimmedQuery = query.trim()
+  if (!trimmedQuery) {
+    return []
+  }
+
+  return [
+    {
+      action: { type: "none" },
+      featurePageId: "ai",
+      id: "feature-ai-intent",
+      kind: "ai",
+      subtitle: aiIntentSubtitle(trimmedQuery),
+      title: aiEntryLabel
+    }
+  ]
+}
 
 function buildLauncherShellItems(searchResults: LauncherSearchResult[]): LauncherShellItem[] {
   return searchResults.map((result) => ({
@@ -48,18 +72,29 @@ export function useLauncherSearchPage(props: {
   resultsVisible: boolean
   selectedIndex: number
   setQuery: (value: string) => void
+  shellConfig: LauncherShellConfig
   viewportHeight: number
 } {
   const { openFeaturePage: navigateToFeaturePage } = props
+  const { copy } = useI18n()
   const latestSearchRequestRef = useRef(0)
   const [query, setQueryState] = useState("")
   const [debouncedQuery, setDebouncedQuery] = useState("")
-  const [shellConfig, setShellConfig] = useState<LauncherShellConfig>(FALLBACK_SHELL_CONFIG)
   const [searchResponse, setSearchResponse] = useState<LauncherSearchResponse | null>(null)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const shellConfig: LauncherShellConfig = FALLBACK_SHELL_CONFIG
 
   const searchResults = searchResponse?.results ?? EMPTY_SEARCH_RESULTS
-  const items = useMemo(() => buildLauncherShellItems(searchResults), [searchResults])
+  const items = useMemo(() => {
+    return [
+      ...buildFeatureIntentItems({
+        aiEntryLabel: copy.launcher.aiEntryLabel,
+        aiIntentSubtitle: copy.launcher.aiIntentSubtitle,
+        query
+      }),
+      ...buildLauncherShellItems(searchResults)
+    ]
+  }, [copy.launcher.aiEntryLabel, copy.launcher.aiIntentSubtitle, query, searchResults])
   const selectedIndex = useMemo(() => {
     if (items.length === 0) {
       return -1
@@ -75,25 +110,6 @@ export function useLauncherSearchPage(props: {
   const resultsViewportHeight = getLauncherResultsHeight(items.length, shellConfig)
   const viewportHeight = getLauncherViewportHeight(items.length, shellConfig)
   const resultsVisible = items.length > 0
-
-  useEffect(() => {
-    let isMounted = true
-
-    void window.api.launcher
-      .getShellConfig()
-      .then((config) => {
-        if (isMounted) {
-          setShellConfig(config)
-        }
-      })
-      .catch(() => {
-        // Fall back to local defaults if the main-process shell config is unavailable.
-      })
-
-    return () => {
-      isMounted = false
-    }
-  }, [])
 
   const setQuery = useCallback((value: string): void => {
     setQueryState(value)
@@ -172,7 +188,16 @@ export function useLauncherSearchPage(props: {
   const executeItem = useCallback(
     (index: number): void => {
       const item = items[index]
-      if (!item || item.availability === "planned" || item.action.type === "none") {
+      if (!item || item.availability === "planned") {
+        return
+      }
+
+      if (item.featurePageId) {
+        navigateToFeaturePage(item.featurePageId, { seedQuery: query })
+        return
+      }
+
+      if (item.action.type === "none") {
         return
       }
 
@@ -182,7 +207,7 @@ export function useLauncherSearchPage(props: {
         }
       })
     },
-    [items]
+    [items, navigateToFeaturePage, query]
   )
 
   const handleInputKeyDown = useCallback(
@@ -214,17 +239,24 @@ export function useLauncherSearchPage(props: {
   )
 
   return {
-    entries: launcherHomeEntries,
+    entries: [
+      {
+        pageId: DEFAULT_HOME_ENTRY_PAGE_ID,
+        label: copy.launcher.aiEntryLabel,
+        shortcutLabel: "Tab"
+      }
+    ],
     executeItem,
     handleInputKeyDown,
     items,
     openFeaturePage,
-    placeholder: shellConfig.placeholder,
+    placeholder: copy.launcher.searchPlaceholder,
     query,
     resultsViewportHeight,
     resultsVisible,
     selectedIndex,
     setQuery,
+    shellConfig,
     viewportHeight
   }
 }

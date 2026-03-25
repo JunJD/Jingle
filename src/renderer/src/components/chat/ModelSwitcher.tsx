@@ -7,6 +7,7 @@ import { useCurrentThread } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
 import { ApiKeyDialog } from "./ApiKeyDialog"
 import type { Provider, ProviderId } from "@/types"
+import { useI18n } from "@/lib/i18n"
 
 // Provider icons as simple SVG components
 function AnthropicIcon({ className }: { className?: string }): React.JSX.Element {
@@ -58,6 +59,7 @@ interface ModelSwitcherProps {
 }
 
 export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Element {
+  const { copy } = useI18n()
   const [open, setOpen] = useState(false)
   const [selectedProviderId, setSelectedProviderId] = useState<ProviderId | null>(null)
   const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false)
@@ -117,7 +119,7 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+            className="h-8 gap-1.5 rounded-full bg-background-secondary px-3 text-xs text-muted-foreground hover:bg-background-interactive hover:text-foreground"
           >
             {selectedModel ? (
               <>
@@ -125,21 +127,20 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
                 <span className="font-mono">{selectedModel.id}</span>
               </>
             ) : (
-              <span>Select model</span>
+              <span>{copy.modelSwitcher.selectModel}</span>
             )}
             <ChevronDown className="size-3" />
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          className="w-[420px] p-0 bg-background border-border"
+          className="w-[420px] border-border bg-popover p-0"
           align="start"
           sideOffset={8}
         >
           <div className="flex min-h-[240px]">
-            {/* Provider column */}
-            <div className="w-[140px] border-r border-border p-2 bg-muted/30">
+            <div className="w-[140px] border-r border-border p-2 bg-background/35">
               <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1.5">
-                Provider
+                {copy.modelSwitcher.provider}
               </div>
               <div className="space-y-0.5">
                 {displayProviders.map((provider) => {
@@ -149,10 +150,10 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
                       key={provider.id}
                       onClick={() => handleProviderClick(provider)}
                       className={cn(
-                        "w-full flex items-center gap-1.5 px-2 py-1 rounded-sm text-xs transition-colors text-left",
+                        "w-full rounded-[10px] px-2 py-1 text-left text-xs transition-colors",
                         effectiveProviderId === provider.id
-                          ? "bg-muted text-foreground"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                          ? "bg-background-secondary text-foreground"
+                          : "text-muted-foreground hover:bg-background-secondary/70 hover:text-foreground"
                       )}
                     >
                       {Icon && <Icon className="size-3.5 shrink-0" />}
@@ -166,25 +167,22 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
               </div>
             </div>
 
-            {/* Models column */}
             <div className="flex-1 p-2">
               <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1.5">
-                Model
+                {copy.modelSwitcher.model}
               </div>
 
               {selectedProvider && !selectedProvider.hasApiKey ? (
-                // No API key configured
                 <div className="flex flex-col items-center justify-center h-[180px] px-4 text-center">
                   <Key className="size-6 text-muted-foreground mb-2" />
                   <p className="text-xs text-muted-foreground mb-3">
-                    API key required for {selectedProvider.name}
+                    {copy.modelSwitcher.apiKeyRequired(selectedProvider.name)}
                   </p>
                   <Button size="sm" onClick={() => handleConfigureApiKey(selectedProvider)}>
-                    Configure API Key
+                    {copy.modelSwitcher.configureApiKey}
                   </Button>
                 </div>
               ) : (
-                // Show models list with scrollable area
                 <div className="flex flex-col h-[200px]">
                   <div className="overflow-y-auto flex-1 space-y-0.5">
                     {filteredModels.map((model) => (
@@ -192,10 +190,10 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
                         key={model.id}
                         onClick={() => handleModelSelect(model.id)}
                         className={cn(
-                          "w-full flex items-center gap-1.5 px-2 py-1 rounded-sm text-xs transition-colors text-left font-mono",
+                          "w-full rounded-[10px] px-2 py-1 text-left text-xs font-mono transition-colors",
                           currentModel === model.id
-                            ? "bg-muted text-foreground"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                            ? "bg-background-secondary text-foreground"
+                            : "text-muted-foreground hover:bg-background-secondary/70 hover:text-foreground"
                         )}
                       >
                         <span className="flex-1 truncate">{model.id}</span>
@@ -206,18 +204,19 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
                     ))}
 
                     {filteredModels.length === 0 && (
-                      <p className="text-xs text-muted-foreground px-2 py-4">No models available</p>
+                      <p className="text-xs text-muted-foreground px-2 py-4">
+                        {copy.modelSwitcher.noModelsAvailable}
+                      </p>
                     )}
                   </div>
 
-                  {/* Configure API key link for providers that have a key */}
                   {selectedProvider?.hasApiKey && (
                     <button
                       onClick={() => handleConfigureApiKey(selectedProvider)}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors mt-2 border-t border-border pt-2"
+                      className="mt-2 w-full rounded-[10px] border-t border-border px-2 pt-2 text-left text-xs text-muted-foreground transition-colors hover:bg-background-secondary/70 hover:text-foreground"
                     >
-                      <Key className="size-3.5" />
-                      <span>Edit API Key</span>
+                      <Key className="mr-2 inline size-3.5" />
+                      <span>{copy.modelSwitcher.editApiKey}</span>
                     </button>
                   )}
                 </div>

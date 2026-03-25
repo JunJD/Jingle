@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useCurrentThread } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 
 interface WorkspacePickerProps {
   threadId: string
 }
 
 export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.Element {
+  const { copy } = useI18n()
   const { workspacePath, setWorkspacePath, setWorkspaceFiles } = useCurrentThread(threadId)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -48,34 +50,34 @@ export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.E
           variant="ghost"
           size="sm"
           className={cn(
-            "h-7 px-2 text-xs gap-1.5",
-            workspacePath ? "text-foreground" : "text-amber-500"
+            "h-8 gap-1.5 rounded-full bg-background-secondary px-3 text-xs hover:bg-background-interactive",
+            workspacePath ? "text-foreground" : "text-status-warning"
           )}
           disabled={!threadId}
         >
           <Folder className="size-3.5" />
           <span className="max-w-[120px] truncate">
-            {workspacePath ? folderName : "Select workspace"}
+            {workspacePath ? folderName : copy.workspacePicker.selectWorkspace}
           </span>
           <ChevronDown className="size-3 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-3" align="start">
+      <PopoverContent className="w-64 border-border bg-popover p-3" align="start">
         <div className="space-y-3">
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Workspace Folder
+            {copy.workspacePicker.title}
           </div>
 
           {workspacePath ? (
             <div className="space-y-2">
-              <div className="flex items-center gap-2 p-2 rounded-md bg-background-secondary border border-border">
+              <div className="flex items-center gap-2 rounded-[12px] border border-border bg-background-secondary p-2">
                 <Check className="size-3.5 text-status-nominal shrink-0" />
                 <span className="text-sm truncate flex-1" title={workspacePath}>
                   {folderName}
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                The agent will read and write files in this folder.
+                {copy.workspacePicker.linkedHint}
               </p>
               <Button
                 variant="outline"
@@ -84,14 +86,13 @@ export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.E
                 onClick={handleSelectFolder}
                 disabled={loading}
               >
-                Change Folder
+                {copy.workspacePicker.changeFolder}
               </Button>
             </div>
           ) : (
             <div className="space-y-2">
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Select a folder for the agent to work in. The agent will read and write files
-                directly to this location.
+                {copy.workspacePicker.selectHint}
               </p>
               <Button
                 variant="default"
@@ -101,7 +102,7 @@ export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.E
                 disabled={loading}
               >
                 <Folder className="size-3.5 mr-1.5" />
-                Select Folder
+                {copy.workspacePicker.selectFolder}
               </Button>
             </div>
           )}

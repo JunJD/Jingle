@@ -1,7 +1,8 @@
 import { CircleGauge, Zap, ArrowDown, ArrowUp, Database } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { cn } from "@/lib/utils"
+import { cn, formatCompactNumber, formatNumber, formatTime } from "@/lib/utils"
 import type { TokenUsage } from "@/lib/thread-context"
+import { useI18n } from "@/lib/i18n"
 
 // Context window limits by model (in tokens)
 // These are approximate and may vary
@@ -58,20 +59,6 @@ function getContextLimit(modelId: string): number {
   return DEFAULT_CONTEXT_LIMIT
 }
 
-function formatTokenCount(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    return `${(tokens / 1_000_000).toFixed(1)}M`
-  }
-  if (tokens >= 1_000) {
-    return `${Math.round(tokens / 1_000)}K`
-  }
-  return tokens.toString()
-}
-
-function formatTokenCountFull(tokens: number): string {
-  return tokens.toLocaleString()
-}
-
 interface ContextUsageIndicatorProps {
   tokenUsage: TokenUsage | null
   modelId: string
@@ -83,6 +70,7 @@ export function ContextUsageIndicator({
   modelId,
   className
 }: ContextUsageIndicatorProps): React.JSX.Element | null {
+  const { copy, locale } = useI18n()
   if (!tokenUsage) {
     return null
   }
@@ -92,26 +80,26 @@ export function ContextUsageIndicator({
   const usagePercent = Math.min((usedTokens / contextLimit) * 100, 100)
 
   // Determine color based on usage
-  let colorClass = "text-blue-500"
-  let bgColorClass = "bg-blue-500/20"
-  let barColorClass = "bg-blue-500"
-  let statusText = "Normal"
+  let colorClass = "text-status-info"
+  let bgColorClass = "bg-status-info/10"
+  let barColorClass = "bg-status-info"
+  let statusText = copy.contextUsage.normal
 
   if (usagePercent >= 90) {
-    colorClass = "text-red-500"
-    bgColorClass = "bg-red-500/20"
-    barColorClass = "bg-red-500"
-    statusText = "Critical"
+    colorClass = "text-status-critical"
+    bgColorClass = "bg-status-critical/10"
+    barColorClass = "bg-status-critical"
+    statusText = copy.contextUsage.critical
   } else if (usagePercent >= 75) {
-    colorClass = "text-orange-500"
-    bgColorClass = "bg-orange-500/20"
-    barColorClass = "bg-orange-500"
-    statusText = "Warning"
+    colorClass = "text-status-warning"
+    bgColorClass = "bg-status-warning/10"
+    barColorClass = "bg-status-warning"
+    statusText = copy.contextUsage.warning
   } else if (usagePercent >= 50) {
-    colorClass = "text-yellow-500"
-    bgColorClass = "bg-yellow-500/20"
-    barColorClass = "bg-yellow-500"
-    statusText = "Moderate"
+    colorClass = "text-status-warning"
+    bgColorClass = "bg-status-warning/10"
+    barColorClass = "bg-status-warning"
+    statusText = copy.contextUsage.moderate
   }
 
   const hasCacheData = tokenUsage.cacheReadTokens || tokenUsage.cacheCreationTokens
@@ -121,7 +109,7 @@ export function ContextUsageIndicator({
       <PopoverTrigger asChild>
         <button
           className={cn(
-            "flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs transition-colors hover:opacity-80",
+            "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors hover:opacity-80",
             bgColorClass,
             colorClass,
             className
@@ -129,16 +117,17 @@ export function ContextUsageIndicator({
         >
           <CircleGauge className="size-3.5" />
           <span className="font-mono">
-            {formatTokenCount(usedTokens)} / {formatTokenCount(contextLimit)}
+            {formatCompactNumber(usedTokens, locale)} / {formatCompactNumber(contextLimit, locale)}
           </span>
           <span className="text-[10px] opacity-70">({usagePercent.toFixed(0)}%)</span>
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-0 bg-background border-border" align="end" sideOffset={8}>
+      <PopoverContent className="w-72 border-border bg-popover p-0" align="end" sideOffset={8}>
         <div className="p-3 space-y-3">
-          {/* Header */}
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-foreground">Context Window</span>
+            <span className="text-xs font-medium text-foreground">
+              {copy.contextUsage.contextWindow}
+            </span>
             <span
               className={cn(
                 "text-[10px] font-medium px-1.5 py-0.5 rounded",
@@ -150,24 +139,26 @@ export function ContextUsageIndicator({
             </span>
           </div>
 
-          {/* Progress bar */}
           <div className="space-y-1">
-            <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <div className="h-2 overflow-hidden rounded-full bg-background-secondary">
               <div
                 className={cn("h-full rounded-full transition-all", barColorClass)}
                 style={{ width: `${usagePercent}%` }}
               />
             </div>
             <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>{formatTokenCountFull(usedTokens)} tokens</span>
-              <span>{formatTokenCountFull(contextLimit)} max</span>
+              <span>
+                {formatNumber(usedTokens, locale)} {copy.contextUsage.tokens}
+              </span>
+              <span>
+                {formatNumber(contextLimit, locale)} {copy.contextUsage.max}
+              </span>
             </div>
           </div>
 
-          {/* Token breakdown */}
           <div className="space-y-1.5 pt-2 border-t border-border">
             <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-              Token Breakdown
+              {copy.contextUsage.tokenBreakdown}
             </div>
 
             <div className="space-y-1">
@@ -175,35 +166,34 @@ export function ContextUsageIndicator({
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-1.5 text-muted-foreground">
                   <ArrowUp className="size-3" />
-                  <span>Input</span>
+                  <span>{copy.contextUsage.input}</span>
                 </div>
-                <span className="font-mono">{formatTokenCountFull(tokenUsage.inputTokens)}</span>
+                <span className="font-mono">{formatNumber(tokenUsage.inputTokens, locale)}</span>
               </div>
 
               {/* Output tokens */}
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-1.5 text-muted-foreground">
                   <ArrowDown className="size-3" />
-                  <span>Output</span>
+                  <span>{copy.contextUsage.output}</span>
                 </div>
-                <span className="font-mono">{formatTokenCountFull(tokenUsage.outputTokens)}</span>
+                <span className="font-mono">{formatNumber(tokenUsage.outputTokens, locale)}</span>
               </div>
 
               {/* Total */}
               <div className="flex items-center justify-between text-xs pt-1 border-t border-border/50">
                 <div className="flex items-center gap-1.5 text-muted-foreground">
                   <Zap className="size-3" />
-                  <span>Total</span>
+                  <span>{copy.contextUsage.total}</span>
                 </div>
-                <span className="font-mono">{formatTokenCountFull(tokenUsage.totalTokens)}</span>
+                <span className="font-mono">{formatNumber(tokenUsage.totalTokens, locale)}</span>
               </div>
             </div>
           </div>
 
-          {/* Cache info (always show, with "none" state) */}
           <div className="space-y-1.5 pt-2 border-t border-border">
             <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-              Cache
+              {copy.contextUsage.cache}
             </div>
 
             <div className="space-y-1">
@@ -211,12 +201,12 @@ export function ContextUsageIndicator({
                 <>
                   {tokenUsage.cacheReadTokens !== undefined && tokenUsage.cacheReadTokens > 0 && (
                     <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 text-green-500">
+                      <div className="flex items-center gap-1.5 text-status-nominal">
                         <Database className="size-3" />
-                        <span>Cache hits</span>
+                        <span>{copy.contextUsage.cacheHits}</span>
                       </div>
-                      <span className="font-mono text-green-500">
-                        {formatTokenCountFull(tokenUsage.cacheReadTokens)}
+                      <span className="font-mono text-status-nominal">
+                        {formatNumber(tokenUsage.cacheReadTokens, locale)}
                       </span>
                     </div>
                   )}
@@ -224,26 +214,27 @@ export function ContextUsageIndicator({
                   {tokenUsage.cacheCreationTokens !== undefined &&
                     tokenUsage.cacheCreationTokens > 0 && (
                       <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1.5 text-blue-500">
+                        <div className="flex items-center gap-1.5 text-status-info">
                           <Database className="size-3" />
-                          <span>Cache created</span>
+                          <span>{copy.contextUsage.cacheCreated}</span>
                         </div>
-                        <span className="font-mono text-blue-500">
-                          {formatTokenCountFull(tokenUsage.cacheCreationTokens)}
+                        <span className="font-mono text-status-info">
+                          {formatNumber(tokenUsage.cacheCreationTokens, locale)}
                         </span>
                       </div>
                     )}
                 </>
               ) : (
-                <div className="text-xs text-muted-foreground">No cached tokens</div>
+                <div className="text-xs text-muted-foreground">
+                  {copy.contextUsage.noCachedTokens}
+                </div>
               )}
             </div>
           </div>
 
-          {/* Last updated */}
           <div className="pt-2 border-t border-border">
             <div className="text-[10px] text-muted-foreground">
-              Last updated: {tokenUsage.lastUpdated.toLocaleTimeString()}
+              {copy.contextUsage.lastUpdated}: {formatTime(tokenUsage.lastUpdated, locale)}
             </div>
           </div>
         </div>

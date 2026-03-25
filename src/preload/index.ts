@@ -8,7 +8,6 @@ import type {
   HITLDecision,
   ThreadRuntimeState
 } from "../shared/app-types"
-import type { LauncherShellConfig } from "../shared/launcher"
 import type {
   LauncherActionExecutionResult,
   LauncherSearchAction,
@@ -177,9 +176,6 @@ const api = {
     }
   },
   launcher: {
-    getShellConfig: (): Promise<LauncherShellConfig> => {
-      return ipcRenderer.invoke("launcher:getShellConfig")
-    },
     search: (request: LauncherSearchRequest): Promise<LauncherSearchResponse> => {
       return ipcRenderer.invoke("launcher:search", request)
     },

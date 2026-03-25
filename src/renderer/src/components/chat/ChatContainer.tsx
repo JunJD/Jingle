@@ -13,12 +13,15 @@ import { selectWorkspaceFolder } from "@/lib/workspace-utils"
 import { ChatTodos } from "./ChatTodos"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
 import type { Message } from "@/types"
+import { useI18n } from "@/lib/i18n"
+import { isDefaultThreadTitle } from "../../../../shared/i18n"
 
 interface ChatContainerProps {
   threadId: string
 }
 
 export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Element {
+  const { copy } = useI18n()
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef = useRef(true)
@@ -110,7 +113,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     if (!input.trim() || isLoading || !stream) return
 
     if (!workspacePath) {
-      setError("Please select a workspace folder before sending messages.")
+      setError(copy.chat.inputNeedsWorkspace)
       return
     }
 
@@ -137,7 +140,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
 
     if (isFirstMessage) {
       const currentThread = threads.find((t) => t.thread_id === threadId)
-      const hasDefaultTitle = currentThread?.title?.startsWith("Thread ")
+      const hasDefaultTitle = isDefaultThreadTitle(currentThread?.title)
       if (hasDefaultTitle) {
         generateTitleForFirstMessage(threadId, message)
       }
@@ -185,30 +188,36 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-      {/* Messages */}
       <ScrollArea className="flex-1 min-h-0" ref={scrollRef}>
-        <div className="p-4">
-          <div className="max-w-3xl mx-auto space-y-4">
+        <div className="px-8 py-7">
+          <div className="mx-auto max-w-4xl space-y-8">
             {displayMessages.length === 0 && !isLoading && (
-              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-                <div className="text-section-header mb-2">NEW THREAD</div>
+              <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
+                <div className="mb-3 text-section-header">{copy.chat.newThreadEyebrow}</div>
                 {workspacePath ? (
-                  <div className="text-sm">Start a conversation with the agent</div>
+                  <div className="text-center">
+                    <div className="text-[28px] font-semibold tracking-[-0.04em] text-foreground">
+                      {copy.chat.startConversation}
+                    </div>
+                    <div className="mt-3 text-sm text-muted-foreground">
+                      {copy.chat.describeOutcome}
+                    </div>
+                  </div>
                 ) : (
-                  <div className="text-sm text-center space-y-3">
+                  <div className="space-y-3 text-center text-sm">
                     <div>
-                      <span className="text-amber-500">Select a workspace folder</span>
+                      <span className="text-status-warning">{copy.chat.selectWorkspaceTitle}</span>
                       <span className="block text-xs mt-1 opacity-75">
-                        The agent needs a workspace to create and modify files
+                        {copy.chat.selectWorkspaceHint}
                       </span>
                     </div>
                     <button
                       type="button"
-                      className="inline-flex items-center justify-center rounded-md border border-border bg-background px-2 h-7 text-xs gap-1.5 text-amber-500 hover:bg-accent/50 transition-color duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full bg-background-secondary px-3 text-xs text-status-warning transition-colors duration-100 hover:bg-background-interactive disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={handleSelectWorkspaceFromEmptyState}
                     >
                       <Folder className="size-3.5" />
-                      <span className="max-w-[120px] truncate">Select workspace</span>
+                      <span className="max-w-[120px] truncate">{copy.chat.selectWorkspace}</span>
                     </button>
                   </div>
                 )}
@@ -231,10 +240,10 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
 
             {/* Streaming indicator and inline TODOs */}
             {isLoading && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+              <div className="space-y-4 border-t border-border pt-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" />
-                  Agent is thinking...
+                  {copy.chat.agentThinking}
                 </div>
                 {todos.length > 0 && <ChatTodos todos={todos} />}
               </div>
@@ -242,21 +251,21 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
 
             {/* Error state */}
             {threadError && !isLoading && (
-              <div className="flex items-start gap-3 rounded-md border border-destructive/50 bg-destructive/10 p-4">
+              <div className="flex items-start gap-3 border-l-[3px] border-destructive bg-destructive/8 px-4 py-3">
                 <AlertCircle className="size-5 text-destructive shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-destructive text-sm">Agent Error</div>
+                  <div className="font-medium text-destructive text-sm">{copy.chat.agentError}</div>
                   <div className="text-sm text-muted-foreground mt-1 break-words">
                     {threadError}
                   </div>
                   <div className="text-xs text-muted-foreground mt-2">
-                    You can try sending a new message to continue the conversation.
+                    {copy.chat.agentErrorRecovery}
                   </div>
                 </div>
                 <button
                   onClick={handleDismissError}
                   className="shrink-0 rounded p-1 hover:bg-destructive/20 transition-colors"
-                  aria-label="Dismiss error"
+                  aria-label={copy.chat.dismissError}
                 >
                   <X className="size-4 text-muted-foreground" />
                 </button>
@@ -266,25 +275,30 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
         </div>
       </ScrollArea>
 
-      {/* Input */}
-      <div className="border-t border-border p-4">
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
-          <div className="flex flex-col gap-2">
-            <div className="flex items-end gap-2">
+      <div className="border-t border-border bg-background-elevated/60 px-8 py-5">
+        <form onSubmit={handleSubmit} className="mx-auto max-w-4xl">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-end gap-3 rounded-[20px] bg-background-secondary px-4 py-4">
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Message..."
+                placeholder={copy.chat.messagePlaceholder}
                 disabled={isLoading}
-                className="flex-1 min-w-0 resize-none rounded-sm border border-border bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+                className="flex-1 min-w-0 resize-none bg-transparent px-0 py-0 text-[15px] leading-7 text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
                 rows={1}
                 style={{ minHeight: "48px", maxHeight: "200px" }}
               />
-              <div className="flex items-center justify-center shrink-0 h-12">
+              <div className="flex h-12 shrink-0 items-center justify-center">
                 {isLoading ? (
-                  <Button type="button" variant="ghost" size="icon" onClick={handleCancel}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleCancel}
+                    className="rounded-full bg-background-elevated"
+                  >
                     <Square className="size-4" />
                   </Button>
                 ) : (
@@ -293,17 +307,17 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                     variant="default"
                     size="icon"
                     disabled={!input.trim()}
-                    className="rounded-md"
+                    className="rounded-full"
                   >
                     <Send className="size-4" />
                   </Button>
                 )}
               </div>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <ModelSwitcher threadId={threadId} />
-                <div className="w-px h-4 bg-border" />
+                <div className="h-4 w-px bg-border" />
                 <WorkspacePicker threadId={threadId} />
               </div>
               {tokenUsage && (

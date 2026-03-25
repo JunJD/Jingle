@@ -17,6 +17,8 @@ import {
 } from "../agent/runtime-state"
 import { closeCheckpointer } from "../agent/runtime"
 import { generateTitle } from "../services/title-generator"
+import { formatDefaultThreadTitle } from "../../shared/i18n"
+import { getAgentConfig } from "./models"
 import type {
   Message,
   Thread,
@@ -103,7 +105,8 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
   ipcMain.handle("threads:create", async (_event, metadata?: Record<string, unknown>) => {
     const threadId = uuid()
     const nextMetadata = { ...metadata }
-    const title = (nextMetadata.title as string) || `Thread ${new Date().toLocaleDateString()}`
+    const title =
+      (nextMetadata.title as string) || formatDefaultThreadTitle(getAgentConfig().locale)
 
     const thread = await dbCreateThread(threadId, { ...nextMetadata, title })
 

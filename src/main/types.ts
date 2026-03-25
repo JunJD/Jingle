@@ -1,4 +1,5 @@
 import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
+import type { AppLocale } from "../shared/i18n"
 
 // Thread types matching langgraph-api
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
@@ -110,6 +111,7 @@ export interface ModelConfig {
 export interface AgentConfig {
   skillSources: string[]
   memorySources: string[]
+  locale: AppLocale
 }
 
 // Subagent types (from deepagentsjs)

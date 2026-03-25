@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useAppStore } from "@/lib/store"
 import type { Provider } from "@/types"
+import { useI18n } from "@/lib/i18n"
 
 interface ApiKeyDialogProps {
   open: boolean
@@ -30,6 +31,7 @@ export function ApiKeyDialog({
   onOpenChange,
   provider
 }: ApiKeyDialogProps): React.JSX.Element | null {
+  const { copy } = useI18n()
   const [apiKey, setApiKey] = useState("")
   const [showKey, setShowKey] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -86,12 +88,14 @@ export function ApiKeyDialog({
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
           <DialogTitle>
-            {hasExistingKey ? `Update ${provider.name} API Key` : `Add ${provider.name} API Key`}
+            {hasExistingKey
+              ? copy.apiKeyDialog.updateTitle(provider.name)
+              : copy.apiKeyDialog.addTitle(provider.name)}
           </DialogTitle>
           <DialogDescription>
             {hasExistingKey
-              ? "Enter a new API key to replace the existing one, or remove it."
-              : `Enter your ${provider.name} API key to use their models.`}
+              ? copy.apiKeyDialog.updateDescription
+              : copy.apiKeyDialog.addDescription(provider.name)}
           </DialogDescription>
         </DialogHeader>
 
@@ -115,7 +119,7 @@ export function ApiKeyDialog({
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Environment variable: <code className="text-foreground">{info.envVar}</code>
+              {copy.apiKeyDialog.envVar}: <code className="text-foreground">{info.envVar}</code>
             </p>
           </div>
         </div>
@@ -134,17 +138,17 @@ export function ApiKeyDialog({
               ) : (
                 <Trash2 className="size-4 mr-2" />
               )}
-              Remove Key
+              {copy.apiKeyDialog.removeKey}
             </Button>
           ) : (
             <div />
           )}
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {copy.apiKeyDialog.cancel}
             </Button>
             <Button type="button" onClick={handleSave} disabled={!apiKey.trim() || saving}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : "Save"}
+              {saving ? <Loader2 className="size-4 animate-spin" /> : copy.apiKeyDialog.save}
             </Button>
           </div>
         </div>

@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAppStore } from "@/lib/store"
 import { useThreadStream, useCurrentThread } from "@/lib/thread-context"
 import { cn, formatRelativeTime, truncate } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -22,11 +23,11 @@ function ThreadStatusIcon({ threadId }: { threadId: string }): React.JSX.Element
   if (isLoading) {
     return <Loader2 className="size-4 shrink-0 text-status-info animate-spin" />
   }
-  
+
   if (pendingApproval) {
     return <AlertCircle className="size-4 shrink-0 text-status-warning" />
   }
-  
+
   return <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
 }
 
@@ -41,7 +42,10 @@ function ThreadListItem({
   onStartEditing,
   onSaveTitle,
   onCancelEditing,
-  onEditingTitleChange
+  onEditingTitleChange,
+  locale,
+  renameLabel,
+  deleteLabel
 }: {
   thread: Thread
   isSelected: boolean
@@ -53,16 +57,19 @@ function ThreadListItem({
   onSaveTitle: () => void
   onCancelEditing: () => void
   onEditingTitleChange: (value: string) => void
+  locale: "zh-CN" | "en-US"
+  renameLabel: string
+  deleteLabel: string
 }): React.JSX.Element {
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
           className={cn(
-            "group flex items-center gap-2 rounded-sm px-3 py-2 cursor-pointer transition-colors overflow-hidden",
+            "group flex cursor-pointer items-start gap-3 overflow-hidden border-t border-border px-3 py-3 transition-colors first:border-t-0",
             isSelected
-              ? "bg-sidebar-accent text-sidebar-accent-foreground"
-              : "hover:bg-sidebar-accent/50"
+              ? "bg-sidebar-accent/45 text-sidebar-accent-foreground shadow-[inset_3px_0_0_var(--sidebar-primary)]"
+              : "hover:bg-sidebar-accent/25"
           )}
           onClick={() => {
             if (!isEditing) {
@@ -82,7 +89,7 @@ function ThreadListItem({
                   if (e.key === "Enter") onSaveTitle()
                   if (e.key === "Escape") onCancelEditing()
                 }}
-                className="w-full bg-background border border-border rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+                className="w-full rounded-[10px] border border-border bg-background-elevated px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-ring"
                 autoFocus
                 onClick={(e) => e.stopPropagation()}
               />
@@ -92,7 +99,7 @@ function ThreadListItem({
                   {thread.title || truncate(thread.thread_id, 20)}
                 </div>
                 <div className="text-[10px] text-muted-foreground truncate">
-                  {formatRelativeTime(thread.updated_at)}
+                  {formatRelativeTime(thread.updated_at, locale)}
                 </div>
               </>
             )}
@@ -100,7 +107,7 @@ function ThreadListItem({
           <Button
             variant="ghost"
             size="icon-sm"
-            className="opacity-0 group-hover:opacity-100 shrink-0"
+            className="mt-0.5 shrink-0 opacity-0 group-hover:opacity-100"
             onClick={(e) => {
               e.stopPropagation()
               onDelete()
@@ -113,12 +120,12 @@ function ThreadListItem({
       <ContextMenuContent>
         <ContextMenuItem onClick={onStartEditing}>
           <Pencil className="size-4 mr-2" />
-          Rename
+          {renameLabel}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem variant="destructive" onClick={onDelete}>
           <Trash2 className="size-4 mr-2" />
-          Delete
+          {deleteLabel}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -126,6 +133,7 @@ function ThreadListItem({
 }
 
 export function ThreadSidebar(): React.JSX.Element {
+  const { copy, locale } = useI18n()
   const {
     threads,
     currentThreadId,
@@ -158,27 +166,25 @@ export function ThreadSidebar(): React.JSX.Element {
   }
 
   const handleNewThread = async (): Promise<void> => {
-    await createThread({ title: `Thread ${new Date().toLocaleDateString()}` })
+    await createThread()
   }
 
   return (
-    <aside className="flex h-full w-full flex-col border-r border-border bg-sidebar overflow-hidden">
-      {/* New Thread Button - with dynamic safe area padding when zoomed out */}
-      <div className="p-2" style={{ paddingTop: "calc(8px + var(--sidebar-safe-padding, 0px))" }}>
+    <aside className="flex h-full w-full flex-col overflow-hidden border-r border-border bg-sidebar">
+      <div className="border-b border-border px-3 py-3">
         <Button
           variant="ghost"
           size="sm"
-          className="w-full justify-start gap-2"
+          className="w-full justify-start gap-2 rounded-full bg-sidebar-accent/50 text-sidebar-foreground hover:bg-sidebar-accent"
           onClick={handleNewThread}
         >
           <Plus className="size-4" />
-          New Thread
+          {copy.sidebar.newThread}
         </Button>
       </div>
 
-      {/* Thread List */}
       <ScrollArea className="flex-1 min-h-0">
-        <div className="p-2 space-y-1 overflow-hidden">
+        <div className="overflow-hidden px-3 py-2">
           {threads.map((thread) => (
             <ThreadListItem
               key={thread.thread_id}
@@ -192,27 +198,29 @@ export function ThreadSidebar(): React.JSX.Element {
               onSaveTitle={saveTitle}
               onCancelEditing={cancelEditing}
               onEditingTitleChange={setEditingTitle}
+              locale={locale}
+              renameLabel={copy.sidebar.rename}
+              deleteLabel={copy.sidebar.delete}
             />
           ))}
 
           {threads.length === 0 && (
             <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-              No threads yet
+              {copy.sidebar.noThreads}
             </div>
           )}
         </div>
       </ScrollArea>
 
-      {/* Overview Toggle */}
-      <div className="p-2 border-t border-border">
+      <div className="border-t border-border px-3 py-3">
         <Button
           variant="ghost"
           size="sm"
-          className="w-full justify-start gap-2"
+          className="w-full justify-start gap-2 rounded-full text-sidebar-foreground hover:bg-sidebar-accent/60"
           onClick={() => setShowKanbanView(true)}
         >
           <LayoutGrid className="size-4" />
-          Overview
+          {copy.sidebar.overview}
         </Button>
       </div>
     </aside>

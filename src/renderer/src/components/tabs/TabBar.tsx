@@ -23,27 +23,22 @@ export function TabBar({
   const { openFiles, activeTab, setActiveTab, closeFile } = threadState
 
   return (
-    <div
-      className={cn(
-        "flex items-center h-9 border-b border-border bg-sidebar overflow-x-auto scrollbar-hide",
-        className
-      )}
-    >
-      {/* Agent Tab - Always first and prominent */}
+    <div className={cn("flex h-full items-center overflow-x-auto scrollbar-hide px-4", className)}>
       <button
         onClick={() => setActiveTab("agent")}
         className={cn(
-          "flex items-center gap-2 px-4 h-full text-sm font-medium transition-colors shrink-0 border-r border-border",
+          "relative flex h-full shrink-0 items-center gap-2 px-4 text-sm font-medium transition-colors",
           activeTab === "agent"
-            ? "bg-primary/15 text-primary border-b-2 border-b-primary"
-            : "text-muted-foreground hover:text-foreground hover:bg-background-interactive"
+            ? "text-foreground after:absolute after:bottom-0 after:left-4 after:right-4 after:h-[2px] after:rounded-full after:bg-primary"
+            : "text-muted-foreground hover:text-foreground"
         )}
       >
-        <Bot className="size-4" />
+        <Bot
+          className={cn("size-4", activeTab === "agent" ? "text-accent" : "text-muted-foreground")}
+        />
         <span>Agent</span>
       </button>
 
-      {/* File Tabs */}
       {openFiles.map((file) => (
         <FileTab
           key={file.path}
@@ -54,7 +49,6 @@ export function TabBar({
         />
       ))}
 
-      {/* Spacer to fill remaining space */}
       <div className="flex-1 min-w-0" />
     </div>
   )
@@ -86,10 +80,10 @@ function FileTab({ file, isActive, onSelect, onClose }: FileTabProps): React.JSX
       onClick={onSelect}
       onMouseDown={handleMouseDown}
       className={cn(
-        "group flex items-center gap-2 px-3 h-full text-sm transition-colors shrink-0 border-r border-border max-w-[200px]",
+        "group relative flex h-full max-w-[220px] shrink-0 items-center gap-2 px-3 text-sm transition-colors",
         isActive
-          ? "bg-background text-foreground border-b-2 border-b-primary"
-          : "text-muted-foreground hover:text-foreground hover:bg-background-interactive"
+          ? "text-foreground after:absolute after:bottom-0 after:left-3 after:right-3 after:h-[2px] after:rounded-full after:bg-primary"
+          : "text-muted-foreground hover:text-foreground"
       )}
       title={file.path}
     >
@@ -98,7 +92,7 @@ function FileTab({ file, isActive, onSelect, onClose }: FileTabProps): React.JSX
       <button
         onClick={handleClose}
         className={cn(
-          "size-4 flex items-center justify-center rounded-sm hover:bg-background-interactive transition-colors",
+          "flex size-4 items-center justify-center rounded-full transition-colors hover:bg-background-secondary",
           isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
         )}
       >

@@ -14,6 +14,7 @@ import type {
 import { startWatching, stopWatching } from "../services/workspace-watcher"
 import { getOpenworkDir, getApiKey, setApiKey, deleteApiKey, hasApiKey } from "../storage"
 import { DEFAULT_MODEL_ID } from "../../shared/models"
+import { DEFAULT_APP_LOCALE, normalizeAppLocale } from "../../shared/i18n"
 
 // Store for non-sensitive settings only (no encryption needed)
 const store = new Store({
@@ -23,7 +24,8 @@ const store = new Store({
 
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
   skillSources: [],
-  memorySources: []
+  memorySources: [],
+  locale: DEFAULT_APP_LOCALE
 }
 
 // Provider configurations
@@ -293,7 +295,8 @@ export function getAgentConfig(): AgentConfig {
 
   return {
     skillSources: normalizePathList(stored?.skillSources),
-    memorySources: normalizePathList(stored?.memorySources)
+    memorySources: normalizePathList(stored?.memorySources),
+    locale: normalizeAppLocale(stored?.locale)
   }
 }
 
@@ -301,7 +304,8 @@ function setAgentConfig(updates: Partial<AgentConfig>): AgentConfig {
   const nextConfig: AgentConfig = {
     ...getAgentConfig(),
     ...(updates.skillSources ? { skillSources: normalizePathList(updates.skillSources) } : {}),
-    ...(updates.memorySources ? { memorySources: normalizePathList(updates.memorySources) } : {})
+    ...(updates.memorySources ? { memorySources: normalizePathList(updates.memorySources) } : {}),
+    ...(updates.locale ? { locale: normalizeAppLocale(updates.locale) } : {})
   }
 
   store.set("agentConfig", nextConfig)

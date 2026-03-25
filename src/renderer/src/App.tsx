@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useLayoutEffect } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { ThreadSidebar } from "@/components/sidebar/ThreadSidebar"
 import { TabbedPanel, TabBar } from "@/components/tabs"
 import { RightPanel } from "@/components/panels/RightPanel"
@@ -6,9 +6,9 @@ import { KanbanView, KanbanHeader } from "@/components/kanban"
 import { ResizeHandle } from "@/components/ui/resizable"
 import { useAppStore } from "@/lib/store"
 import { ThreadProvider } from "@/lib/thread-context"
+import { useI18n } from "@/lib/i18n"
 
-// Badge requires ~235 screen pixels to display with comfortable margin
-const BADGE_MIN_SCREEN_WIDTH = 235
+const LEFT_MIN = 220
 const LEFT_MAX = 350
 const LEFT_DEFAULT = 240
 
@@ -18,49 +18,13 @@ const RIGHT_DEFAULT = 320
 
 function App(): React.JSX.Element {
   const { currentThreadId, loadThreads, createThread, showKanbanView } = useAppStore()
+  const { copy } = useI18n()
   const [isLoading, setIsLoading] = useState(true)
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT)
   const [rightWidth, setRightWidth] = useState(RIGHT_DEFAULT)
-  const [zoomLevel, setZoomLevel] = useState(1)
 
   // Track drag start widths
   const dragStartWidths = useRef<{ left: number; right: number } | null>(null)
-
-  // Track zoom level changes and update CSS custom properties for safe areas
-  useLayoutEffect(() => {
-    const updateZoom = (): void => {
-      // Detect zoom by comparing outer/inner window dimensions
-      const detectedZoom = Math.round((window.outerWidth / window.innerWidth) * 100) / 100
-      if (detectedZoom > 0.5 && detectedZoom < 3) {
-        setZoomLevel(detectedZoom)
-
-        // Traffic lights are at fixed screen position (y: ~28px bottom including padding)
-        // Titlebar is 36px CSS, which becomes 36*zoom screen pixels
-        // Extra padding needed when titlebar shrinks below traffic lights
-        const TRAFFIC_LIGHT_BOTTOM_SCREEN = 40 // screen pixels to clear traffic lights
-        const TITLEBAR_HEIGHT_CSS = 36
-        const titlebarScreenHeight = TITLEBAR_HEIGHT_CSS * detectedZoom
-        const extraPaddingScreen = Math.max(0, TRAFFIC_LIGHT_BOTTOM_SCREEN - titlebarScreenHeight)
-        const extraPaddingCss = Math.round(extraPaddingScreen / detectedZoom)
-
-        document.documentElement.style.setProperty("--sidebar-safe-padding", `${extraPaddingCss}px`)
-      }
-    }
-
-    updateZoom()
-    window.addEventListener("resize", updateZoom)
-    return () => window.removeEventListener("resize", updateZoom)
-  }, [])
-
-  // Calculate zoom-compensated minimum width to always contain the badge
-  const leftMinWidth = Math.ceil(BADGE_MIN_SCREEN_WIDTH / zoomLevel)
-
-  // Enforce minimum width when zoom changes
-  useEffect(() => {
-    if (leftWidth < leftMinWidth) {
-      setLeftWidth(leftMinWidth)
-    }
-  }, [leftMinWidth, leftWidth])
 
   const handleLeftResize = useCallback(
     (totalDelta: number) => {
@@ -68,9 +32,9 @@ function App(): React.JSX.Element {
         dragStartWidths.current = { left: leftWidth, right: rightWidth }
       }
       const newWidth = dragStartWidths.current.left + totalDelta
-      setLeftWidth(Math.min(LEFT_MAX, Math.max(leftMinWidth, newWidth)))
+      setLeftWidth(Math.min(LEFT_MAX, Math.max(LEFT_MIN, newWidth)))
     },
-    [leftWidth, rightWidth, leftMinWidth]
+    [leftWidth, rightWidth]
   )
 
   const handleRightResize = useCallback(
@@ -114,91 +78,91 @@ function App(): React.JSX.Element {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-muted-foreground">Initializing...</div>
+        <div className="text-muted-foreground">{copy.app.initializing}</div>
       </div>
     )
   }
 
   return (
     <ThreadProvider>
-      <div className="flex h-screen overflow-hidden bg-background">
-        {/* Fixed app badge - zoom independent position and size */}
-        <div
-          className="app-badge"
-          style={{
-            // Compensate both position and scale for zoom
-            // Target screen position: top 14px, left 82px (just past traffic lights)
-            top: `${14 / zoomLevel}px`,
-            left: `${82 / zoomLevel}px`,
-            transform: `scale(${1 / zoomLevel})`,
-            transformOrigin: "top left"
-          }}
-        >
-          <span className="app-badge-name">OPENWORK</span>
-          <span className="app-badge-version">{__APP_VERSION__}</span>
-        </div>
-
-        {/* Left + Center column */}
-        <div className="flex flex-col flex-1 min-w-0">
-          {/* Titlebar row with tabs integrated */}
-          <div className="flex h-9 w-full shrink-0 app-drag-region">
-            {/* Left section - spacer for traffic lights + badge (matches left sidebar width) */}
-            <div style={{ width: leftWidth }} className="shrink-0 bg-sidebar" />
-
-            {/* Resize handle spacer */}
-            <div className="w-[1px] shrink-0" />
-
-            {/* Center section - Tab bar or Kanban header */}
-            <div className="flex-1 min-w-0 bg-background border-b border-border">
-              {showKanbanView ? (
-                <KanbanHeader className="h-full" />
-              ) : (
-                currentThreadId && <TabBar className="h-full border-b-0" />
-              )}
+      <div className="flex h-screen flex-col overflow-hidden bg-background">
+        <div className="flex h-[52px] shrink-0 border-b border-border bg-[var(--window-chrome)] app-drag-region">
+          <div style={{ width: leftWidth }} className="shrink-0 border-r border-border bg-sidebar">
+            <div
+              className="flex h-full min-w-0 flex-col justify-center pr-4"
+              style={{ paddingLeft: "calc(var(--window-controls-offset-inline) + 6px)" }}
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--window-chrome-muted)]">
+                Openwork
+              </div>
+              <div className="truncate text-[13px] text-[var(--window-chrome-foreground)]">
+                {copy.app.workspaceSubtitle}
+              </div>
             </div>
           </div>
 
-          {/* Main content area */}
-          <div className="flex flex-1 overflow-hidden">
-            {/* Left Sidebar - Thread List */}
-            <div style={{ width: leftWidth }} className="shrink-0">
-              <ThreadSidebar />
-            </div>
+          <div className="w-[6px] shrink-0 bg-[var(--window-chrome)]" />
 
-            <ResizeHandle onDrag={handleLeftResize} />
-
+          <div className="min-w-0 flex-1 border-r border-border bg-[var(--window-chrome)]">
             {showKanbanView ? (
-              /* Kanban View - replaces center and right panels */
-              <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
-                <KanbanView />
-              </main>
+              <KanbanHeader className="h-full border-b-0 bg-transparent" />
+            ) : currentThreadId ? (
+              <TabBar className="h-full border-b-0 bg-transparent" />
             ) : (
-              <>
-                {/* Center - Content Panel (Agent Chat + File Viewer) */}
-                <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
-                  {currentThreadId ? (
-                    <TabbedPanel threadId={currentThreadId} showTabBar={false} />
-                  ) : (
-                    <div className="flex flex-1 items-center justify-center text-muted-foreground">
-                      Select or create a thread to begin
-                    </div>
-                  )}
-                </main>
-              </>
+              <div className="flex h-full items-center px-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--window-chrome-muted)]">
+                {copy.app.conversation}
+              </div>
             )}
           </div>
+
+          {!showKanbanView && (
+            <>
+              <div className="w-[6px] shrink-0 bg-[var(--window-chrome)]" />
+              <div style={{ width: rightWidth }} className="shrink-0 bg-[var(--window-chrome)]">
+                <div className="flex h-full items-center justify-between px-4">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--window-chrome-muted)]">
+                    {copy.app.inspector}
+                  </span>
+                  <span className="text-[12px] text-muted-foreground">
+                    {copy.app.inspectorSummary}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
-        {!showKanbanView && (
-          <>
-            <ResizeHandle onDrag={handleRightResize} />
+        <div className="flex flex-1 overflow-hidden">
+          <div style={{ width: leftWidth }} className="shrink-0">
+            <ThreadSidebar />
+          </div>
 
-            {/* Right Panel - Status Panels (full height) */}
-            <div style={{ width: rightWidth }} className="shrink-0">
-              <RightPanel />
-            </div>
-          </>
-        )}
+          <ResizeHandle onDrag={handleLeftResize} />
+
+          {showKanbanView ? (
+            <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+              <KanbanView />
+            </main>
+          ) : (
+            <>
+              <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                {currentThreadId ? (
+                  <TabbedPanel threadId={currentThreadId} showTabBar={false} />
+                ) : (
+                  <div className="flex flex-1 items-center justify-center text-muted-foreground">
+                    {copy.app.selectThreadToBegin}
+                  </div>
+                )}
+              </main>
+
+              <ResizeHandle onDrag={handleRightResize} />
+
+              <div style={{ width: rightWidth }} className="shrink-0">
+                <RightPanel />
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </ThreadProvider>
   )
