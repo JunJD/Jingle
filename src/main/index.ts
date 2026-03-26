@@ -5,6 +5,7 @@ import { registerLauncherHistoryHandlers } from "./ipc/launcher-history"
 import { registerLocalStartHandlers } from "./ipc/local-start"
 import { registerThreadHandlers } from "./ipc/threads"
 import { registerModelHandlers } from "./ipc/models"
+import { registerBuiltPluginHandlers } from "./ipc/built-plugins"
 import { closeDatabase, initializeDatabase } from "./db"
 import { closeRuntime } from "./agent/runtime"
 import {
@@ -121,6 +122,7 @@ app.whenReady().then(async () => {
   registerLocalStartHandlers(ipcMain)
   registerThreadHandlers(ipcMain)
   registerModelHandlers(ipcMain)
+  registerBuiltPluginHandlers(ipcMain)
   registerLauncherHandlers(ipcMain)
   void warmLauncherSearchProviders()
 

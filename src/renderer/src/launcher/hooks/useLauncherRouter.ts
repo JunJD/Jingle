@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useState } from "react"
 import { getLauncherPluginDefinition } from "../pages"
-import type {
-  LauncherPluginDefinition,
+import {
+  isLauncherPluginRoute,
+  type LauncherPluginDefinition,
+  LauncherPluginOpenOptions,
   LauncherPluginId,
   LauncherNavigationDirection,
   LauncherRoute
@@ -13,7 +15,7 @@ export function useLauncherRouter(): {
   activePlugin: LauncherPluginDefinition | null
   closeActivePlugin: () => void
   navigationDirection: LauncherNavigationDirection
-  openPlugin: (pluginId: LauncherPluginId, options?: { seedQuery?: string }) => void
+  openPlugin: (pluginId: LauncherPluginId, options?: LauncherPluginOpenOptions) => void
   route: LauncherRoute
   routeKey: string
 } {
@@ -22,7 +24,7 @@ export function useLauncherRouter(): {
   const [route, setRoute] = useState<LauncherRoute>(HOME_ROUTE)
 
   const openPlugin = useCallback(
-    (pluginId: LauncherPluginId, options?: { seedQuery?: string }): void => {
+    (pluginId: LauncherPluginId, options?: LauncherPluginOpenOptions): void => {
       setNavigationDirection("forward")
       setRoute({ id: pluginId, seedQuery: options?.seedQuery ?? "" })
     },
@@ -35,7 +37,7 @@ export function useLauncherRouter(): {
   }, [])
 
   const activePlugin = useMemo(() => {
-    if (route.id === "home") {
+    if (!isLauncherPluginRoute(route)) {
       return null
     }
 
@@ -48,6 +50,6 @@ export function useLauncherRouter(): {
     navigationDirection,
     openPlugin,
     route,
-    routeKey: route.id === "home" ? route.id : `${route.id}:${route.seedQuery}`
+    routeKey: isLauncherPluginRoute(route) ? `${route.id}:${route.seedQuery}` : route.id
   }
 }

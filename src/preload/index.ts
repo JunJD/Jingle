@@ -18,6 +18,7 @@ import type { ClipboardContext } from "../shared/clipboard"
 import type { LauncherHistoryItem } from "../shared/launcher-history"
 import type { CreateLocalStartItemInput, LocalStartItem } from "../shared/local-start"
 import type { LauncherSettings } from "../shared/launcher-settings"
+import type { BuiltPluginInvokeRequest } from "../shared/built-plugins/sdk"
 
 // Simple electron API - replaces @electron-toolkit/preload
 const electronAPI = {
@@ -234,6 +235,11 @@ const api = {
     },
     recordUse: (itemId: string): Promise<LocalStartItem> => {
       return ipcRenderer.invoke("localStart:recordUse", itemId)
+    }
+  },
+  builtPlugins: {
+    invoke: <TPayload, TResult>(request: BuiltPluginInvokeRequest<TPayload>): Promise<TResult> => {
+      return ipcRenderer.invoke("builtPlugins:invoke", request)
     }
   },
   workspace: {

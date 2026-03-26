@@ -15,34 +15,16 @@ import type { LauncherHistoryItem } from "../../../../shared/launcher-history"
 import type { LocalStartItem } from "../../../../shared/local-start"
 import { shouldShowLauncherIdleItems } from "../../../../shared/launcher-settings"
 import { useLauncherClipboard } from "../LauncherClipboardContext"
-import { DEFAULT_HOME_ENTRY_PLUGIN_ID, getLauncherHomeEntries } from "../pages"
-import type { LauncherHomeEntry, LauncherPluginId } from "../pages/types"
+import {
+  DEFAULT_HOME_ENTRY_PLUGIN_ID,
+  getLauncherHomeEntries,
+  getLauncherPluginIntentItems,
+  resolveLauncherPluginCommand
+} from "../pages"
+import type { LauncherHomeEntry, LauncherPluginId, LauncherPluginOpenOptions } from "../pages/types"
 import type { LauncherShellItem } from "../types"
 
 const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
-
-function buildFeatureIntentItems(props: {
-  aiEntryLabel: string
-  aiIntentSubtitle: (query: string) => string
-  query: string
-}): LauncherShellItem[] {
-  const { aiEntryLabel, aiIntentSubtitle, query } = props
-  const trimmedQuery = query.trim()
-  if (!trimmedQuery) {
-    return []
-  }
-
-  return [
-    {
-      action: { type: "none" },
-      pluginId: "ai",
-      id: "feature-ai-intent",
-      kind: "ai",
-      subtitle: aiIntentSubtitle(trimmedQuery),
-      title: aiEntryLabel
-    }
-  ]
-}
 
 function buildLauncherShellItems(searchResults: LauncherSearchResult[]): LauncherShellItem[] {
   return searchResults.map((result) => ({
@@ -83,7 +65,7 @@ function buildLauncherHistoryShellItems(items: LauncherHistoryItem[]): LauncherS
 }
 
 export function useLauncherSearchPage(props: {
-  openPlugin: (pluginId: LauncherPluginId, options?: { seedQuery?: string }) => void
+  openPlugin: (pluginId: LauncherPluginId, options?: LauncherPluginOpenOptions) => void
 }): {
   entries: LauncherHomeEntry[]
   executeItem: (index: number) => void
@@ -100,7 +82,7 @@ export function useLauncherSearchPage(props: {
   viewportHeight: number
 } {
   const { openPlugin: navigateToPlugin } = props
-  const { copy } = useI18n()
+  const { copy, locale } = useI18n()
   const { context, isTextAutofillConsumed, markTextAutofillConsumed } = useLauncherClipboard()
   const latestSearchRequestRef = useRef(0)
   const [query, setQuery] = useState("")
@@ -130,22 +112,14 @@ export function useLauncherSearchPage(props: {
     }
 
     return [
-      ...buildFeatureIntentItems({
-        aiEntryLabel: copy.launcher.aiEntryLabel,
-        aiIntentSubtitle: copy.launcher.aiIntentSubtitle,
+      ...getLauncherPluginIntentItems({
+        copy,
+        locale,
         query
       }),
       ...buildLauncherShellItems(searchResults)
     ]
-  }, [
-    copy.launcher.aiEntryLabel,
-    copy.launcher.aiIntentSubtitle,
-    historyItems,
-    idleItems,
-    query,
-    searchResults,
-    windowMode
-  ])
+  }, [copy, historyItems, idleItems, locale, query, searchResults, windowMode])
   const selectedIndex = useMemo(() => {
     if (items.length === 0) {
       return -1
@@ -161,7 +135,7 @@ export function useLauncherSearchPage(props: {
   const resultsViewportHeight = getLauncherResultsHeight(items.length, shellConfig)
   const viewportHeight = getLauncherViewportHeight(items.length, shellConfig)
   const resultsVisible = items.length > 0
-  const entries = useMemo(() => getLauncherHomeEntries(copy), [copy])
+  const entries = useMemo(() => getLauncherHomeEntries({ copy, locale }), [copy, locale])
 
   useEffect(() => {
     const refreshIdleState = (): void => {
@@ -270,7 +244,7 @@ export function useLauncherSearchPage(props: {
       }
 
       if (item.pluginId) {
-        navigateToPlugin(item.pluginId, { seedQuery: query })
+        navigateToPlugin(item.pluginId, item.pluginOpenOptions ?? { seedQuery: query })
         return
       }
 
@@ -289,6 +263,20 @@ export function useLauncherSearchPage(props: {
 
   const handleInputKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>): void => {
+      const commandMatch = resolveLauncherPluginCommand({
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        key: event.key,
+        metaKey: event.metaKey,
+        query,
+        shiftKey: event.shiftKey
+      })
+      if (commandMatch) {
+        event.preventDefault()
+        navigateToPlugin(commandMatch.pluginId, commandMatch.match.openOptions)
+        return
+      }
+
       switch (event.key) {
         case "Tab":
           event.preventDefault()

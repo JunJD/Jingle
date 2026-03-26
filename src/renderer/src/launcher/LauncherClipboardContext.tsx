@@ -2,9 +2,9 @@
 import { createContext, useContext, type ReactNode } from "react"
 import { useClipboardState } from "./hooks/useClipboardState"
 
-type LauncherClipboardContextValue = ReturnType<typeof useClipboardState>
+export type LauncherClipboardState = ReturnType<typeof useClipboardState>
 
-export const LauncherClipboardContext = createContext<LauncherClipboardContextValue | null>(null)
+export const LauncherClipboardContext = createContext<LauncherClipboardState | null>(null)
 
 export function LauncherClipboardProvider(props: { children: ReactNode }): React.JSX.Element {
   const { children } = props
@@ -15,7 +15,7 @@ export function LauncherClipboardProvider(props: { children: ReactNode }): React
   )
 }
 
-export function useLauncherClipboard(): LauncherClipboardContextValue {
+export function useLauncherClipboard(): LauncherClipboardState {
   const context = useContext(LauncherClipboardContext)
 
   if (!context) {

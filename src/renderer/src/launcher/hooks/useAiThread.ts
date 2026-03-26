@@ -1,15 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useThreadContext } from "@/lib/thread-context"
 import { useThreadConversationProjection } from "@/lib/thread-conversation"
 import { useI18n } from "@/lib/i18n"
+import { useLauncherPluginHost } from "../LauncherPluginHost"
 
-interface CreatedLauncherThread {
-  modelId: string
-  threadId: string
-  workspacePath: string
-}
-
-export function useAiThread(props: { onBack: () => void; seedQuery: string }): {
+export function useAiThread(): {
   conversation: ReturnType<typeof useThreadConversationProjection> & {
     clearVisibleError: () => void
     visibleError: string | null
@@ -23,11 +17,10 @@ export function useAiThread(props: { onBack: () => void; seedQuery: string }): {
   threadId: string | null
 } {
   const { copy } = useI18n()
-  const { onBack, seedQuery } = props
-  const threadContext = useThreadContext()
+  const host = useLauncherPluginHost()
   const requestRef = useRef(0)
   const [threadId, setThreadId] = useState<string | null>(null)
-  const [pendingQuery, setPendingQuery] = useState(seedQuery)
+  const [pendingQuery, setPendingQuery] = useState(host.seedQuery)
   const [localError, setLocalError] = useState<string | null>(null)
   const [isCreatingThread, setIsCreatingThread] = useState(false)
 
@@ -68,129 +61,50 @@ export function useAiThread(props: { onBack: () => void; seedQuery: string }): {
     [localError, threadState]
   )
 
-  const waitForThreadStream = useCallback(
-    async (nextThreadId: string, requestId: number) => {
-      let stream = threadContext.getStreamData(nextThreadId).stream
-      while (!stream && requestRef.current === requestId) {
-        await new Promise<void>((resolve) => {
-          window.requestAnimationFrame(() => resolve())
-        })
-        stream = threadContext.getStreamData(nextThreadId).stream
-      }
-
-      return requestRef.current === requestId ? stream : null
-    },
-    [threadContext]
-  )
-
-  const createLauncherThread = useCallback(
-    async (message: string, requestId: number): Promise<CreatedLauncherThread | null> => {
-      const [defaultModelId, workspacePath] = await Promise.all([
-        window.api.models.getDefault(),
-        window.api.workspace.get()
-      ])
-
-      if (!workspacePath) {
-        setLocalError(copy.chat.inputNeedsWorkspace)
-        return null
-      }
-
-      const thread = await window.api.threads.create({
-        model: defaultModelId,
-        source: "launcher-ai",
-        title: copy.launcher.aiThreadTitle,
-        visibility: "launcher-private",
-        workspacePath
-      })
-
-      if (requestRef.current !== requestId) {
-        return null
-      }
-
-      threadContext.initializeThread(thread.thread_id)
-      const actions = threadContext.getThreadActions(thread.thread_id)
-      actions.setCurrentModel(defaultModelId)
-      actions.setWorkspacePath(workspacePath)
-      actions.setDraftInput(message)
-
-      setThreadId(thread.thread_id)
-      return {
-        modelId: defaultModelId,
-        threadId: thread.thread_id,
-        workspacePath
-      }
-    },
-    [copy.chat.inputNeedsWorkspace, copy.launcher.aiThreadTitle, threadContext]
-  )
-
   const submitMessage = useCallback(
     async (message: string): Promise<void> => {
       const requestId = requestRef.current + 1
       requestRef.current = requestId
 
-      const createdThread = threadId ? null : await createLauncherThread(message, requestId)
-      const nextThreadId = createdThread?.threadId ?? threadId
-      if (!nextThreadId) {
-        return
-      }
-
-      const stream = await waitForThreadStream(nextThreadId, requestId)
-      if (!stream) {
-        return
-      }
-
-      const state = threadContext.getThreadState(nextThreadId)
-      const actions = threadContext.getThreadActions(nextThreadId)
-      const workspacePath = createdThread?.workspacePath ?? state.workspacePath
-      const modelId = createdThread?.modelId ?? state.currentModel
-
-      if (!workspacePath) {
-        actions.setError(copy.chat.inputNeedsWorkspace)
-        return
-      }
-
-      if (state.error) {
-        actions.clearError()
-      }
-
-      if (localError) {
-        setLocalError(null)
-      }
-
-      if (state.pendingApproval) {
-        actions.setPendingApproval(null)
-      }
-
-      actions.setDraftInput("")
-      actions.appendMessage({
-        id: crypto.randomUUID(),
-        role: "user",
-        content: message,
-        created_at: new Date()
-      })
-
-      await stream.submit(
-        {
-          messages: [{ type: "human", content: message }]
-        },
-        {
-          config: {
-            configurable: {
-              model_id: modelId,
-              thread_id: nextThreadId
-            }
-          }
+      try {
+        const createdThread = threadId
+          ? null
+          : await host.threads.create({
+              draftInput: message,
+              source: "launcher-ai",
+              title: copy.launcher.aiThreadTitle,
+              visibility: "launcher-private"
+            })
+        if (requestRef.current !== requestId) {
+          return
         }
-      )
+
+        const nextThreadId = createdThread?.threadId ?? threadId
+        if (!nextThreadId) {
+          return
+        }
+
+        if (createdThread) {
+          setThreadId(createdThread.threadId)
+        }
+
+        if (localError) {
+          setLocalError(null)
+        }
+
+        await host.threads.submit({
+          message,
+          threadId: nextThreadId
+        })
+      } catch (error) {
+        if (requestRef.current !== requestId) {
+          return
+        }
+
+        setLocalError(error instanceof Error ? error.message : String(error))
+      }
     },
-    [
-      copy.chat.inputNeedsWorkspace,
-      createLauncherThread,
-      localError,
-      threadContext,
-      threadId,
-      waitForThreadStream
-    ]
+    [copy.launcher.aiThreadTitle, host.threads, localError, threadId]
   )
 
   const runPrimaryAction = useCallback((): void => {
@@ -222,14 +136,14 @@ export function useAiThread(props: { onBack: () => void; seedQuery: string }): {
         case "Backspace":
           if (!query && !conversation.isLoading) {
             event.preventDefault()
-            onBack()
+            host.navigation.goHome()
           }
           break
         default:
           break
       }
     },
-    [conversation.isLoading, onBack, query, runPrimaryAction]
+    [conversation.isLoading, host.navigation, query, runPrimaryAction]
   )
 
   const primaryActionDisabled = useMemo(() => {

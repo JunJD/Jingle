@@ -1,21 +1,15 @@
 import { ArrowLeft } from "lucide-react"
-import type { LauncherPluginRenderProps } from "./types"
-import { useLauncherClipboard } from "../LauncherClipboardContext"
+import { useLauncherPluginHost } from "../LauncherPluginHost"
 import { useAiThread } from "../hooks/useAiThread"
 import { ClipboardChip } from "../components/ClipboardChip"
 import { LauncherAiConversation, LauncherAiEmptyState } from "./LauncherAiConversation"
 import { LauncherChrome } from "../components/LauncherChrome"
 import { useI18n } from "@/lib/i18n"
 
-export function LauncherAiPage(props: LauncherPluginRenderProps): React.JSX.Element {
+export function LauncherAiPage(): React.JSX.Element {
   const { copy } = useI18n()
-  const clipboard = useLauncherClipboard()
-  const { inputRef, onBack, seedQuery, shellConfig } = props
-
-  const session = useAiThread({
-    onBack,
-    seedQuery
-  })
+  const host = useLauncherPluginHost()
+  const session = useAiThread()
 
   return (
     <LauncherChrome
@@ -47,22 +41,22 @@ export function LauncherAiPage(props: LauncherPluginRenderProps): React.JSX.Elem
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
-            onClick={onBack}
+            onClick={host.navigation.goHome}
             onMouseDown={(event) => event.preventDefault()}
             className="flex h-9 w-9 shrink-0 appearance-none items-center justify-center rounded-full border-0 bg-[var(--launcher-surface-strong)] text-muted-foreground transition hover:text-foreground"
           >
             <ArrowLeft className="size-5" />
           </button>
 
-          <ClipboardChip context={clipboard.context} onClear={clipboard.clearContext} />
+          <ClipboardChip context={host.clipboard.context} onClear={host.clipboard.clearContext} />
         </div>
       }
-      inputRef={inputRef}
+      inputRef={host.surface.inputRef}
       inputValue={session.query}
       onInputKeyDown={session.handleInputKeyDown}
       onInputValueChange={session.setQuery}
       placeholder={copy.launcher.aiInputPlaceholder}
-      shellConfig={shellConfig}
+      shellConfig={host.surface.shellConfig}
       surface="ai"
     >
       {session.threadId ? (

@@ -18,6 +18,7 @@ import type { ClipboardContext } from "../shared/clipboard"
 import type { LauncherHistoryItem } from "../shared/launcher-history"
 import type { CreateLocalStartItemInput, LocalStartItem } from "../shared/local-start"
 import type { LauncherSettings } from "../shared/launcher-settings"
+import type { BuiltPluginInvokeRequest } from "../shared/built-plugins/sdk"
 
 interface ElectronAPI {
   ipcRenderer: {
@@ -97,6 +98,11 @@ interface CustomAPI {
     upsert: (input: CreateLocalStartItemInput) => Promise<LocalStartItem>
     remove: (itemId: string) => Promise<void>
     recordUse: (itemId: string) => Promise<LocalStartItem>
+  }
+  builtPlugins: {
+    invoke: <TPayload = unknown, TResult = unknown>(
+      request: BuiltPluginInvokeRequest<TPayload>
+    ) => Promise<TResult>
   }
   workspace: {
     get: (threadId?: string) => Promise<string | null>

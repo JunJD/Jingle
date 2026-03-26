@@ -43,8 +43,9 @@ export function LauncherSearchPage(props: {
     shellConfig
   } = props
 
-  const primaryActionLabel =
-    selectedItem?.pluginId || selectedItem?.kind === "ai"
+  const primaryActionLabel = selectedItem?.pluginId
+    ? selectedItem.title
+    : selectedItem?.kind === "ai"
       ? copy.launcher.aiPrimaryLabel
       : selectedItem?.kind === "application"
         ? copy.launcher.openApp
@@ -99,14 +100,16 @@ export function LauncherSearchPage(props: {
           className="flex shrink-0 appearance-none items-center gap-2 border-0 bg-transparent px-0 py-1 text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
         >
           <span>{entry.label}</span>
-          <span
-            className="rounded-full bg-[var(--launcher-surface-strong)] px-2.5 py-1 text-[11px] text-muted-foreground"
-            style={{
-              color: "var(--launcher-text-muted)"
-            }}
-          >
-            {entry.shortcutLabel}
-          </span>
+          {entry.shortcutLabel ? (
+            <span
+              className="rounded-full bg-[var(--launcher-surface-strong)] px-2.5 py-1 text-[11px] text-muted-foreground"
+              style={{
+                color: "var(--launcher-text-muted)"
+              }}
+            >
+              {entry.shortcutLabel}
+            </span>
+          ) : null}
         </button>
       ))}
       inputRef={inputRef}

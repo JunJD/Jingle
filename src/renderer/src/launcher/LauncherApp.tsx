@@ -1,13 +1,35 @@
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useLauncherClipboard } from "./LauncherClipboardContext"
+import {
+  type LauncherPluginInputElement,
+  type LauncherPluginThreadCreateInput,
+  type LauncherPluginThreadSubmitInput
+} from "./LauncherPluginHost"
+import {
+  LauncherPluginHostProvider
+} from "./LauncherPluginHostContext"
 import { LauncherPageTransition } from "./components/LauncherPageTransition"
 import { LauncherSearchPage } from "./components/LauncherSearchPage"
 import { useLauncherRouter } from "./hooks/useLauncherRouter"
 import { useLauncherSearchPage } from "./hooks/useLauncherSearchPage"
+import { isLauncherPluginRoute } from "./pages/types"
+import { useI18n } from "@/lib/i18n"
+import { useThreadContext } from "@/lib/thread-context"
+
+function waitForAnimationFrame(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve())
+  })
+}
 
 export default function LauncherApp(): React.JSX.Element {
+  const { copy } = useI18n()
+  const clipboard = useLauncherClipboard()
+  const threadContext = useThreadContext()
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const pluginInputRef = useRef<HTMLInputElement>(null)
+  const pluginInputRef = useRef<LauncherPluginInputElement>(null)
   const viewportHeightRef = useRef(0)
+  const [shownSequence, setShownSequence] = useState(0)
   const { activePlugin, closeActivePlugin, navigationDirection, openPlugin, route, routeKey } =
     useLauncherRouter()
   const searchPage = useLauncherSearchPage({ openPlugin })
@@ -15,10 +37,22 @@ export default function LauncherApp(): React.JSX.Element {
     searchPage.selectedIndex >= 0 ? searchPage.items[searchPage.selectedIndex] : null
   const ActivePluginComponent = activePlugin?.Component ?? null
   const viewportHeight =
-    route.id === "home"
+    !isLauncherPluginRoute(route)
       ? searchPage.viewportHeight
       : (activePlugin?.getViewportHeight(searchPage.shellConfig) ?? searchPage.viewportHeight)
 
+  const waitForThreadStream = useCallback(
+    async (threadId: string) => {
+      let stream = threadContext.getStreamData(threadId).stream
+      while (!stream) {
+        await waitForAnimationFrame()
+        stream = threadContext.getStreamData(threadId).stream
+      }
+
+      return stream
+    },
+    [threadContext]
+  )
   const setViewportHeight = useCallback((height: number): void => {
     const nextHeight = Math.round(height)
     if (nextHeight <= 0 || nextHeight === viewportHeightRef.current) {
@@ -28,6 +62,127 @@ export default function LauncherApp(): React.JSX.Element {
     viewportHeightRef.current = nextHeight
     void window.api.launcher.setViewportHeight(nextHeight)
   }, [])
+  const hideLauncher = useCallback(() => {
+    return window.api.launcher.hide()
+  }, [])
+  const createPluginThread = useCallback(
+    async (input: LauncherPluginThreadCreateInput) => {
+      const [defaultModelId, workspacePath] = await Promise.all([
+        window.api.models.getDefault(),
+        window.api.workspace.get()
+      ])
+
+      if (!workspacePath) {
+        throw new Error(copy.chat.inputNeedsWorkspace)
+      }
+
+      const thread = await window.api.threads.create({
+        model: defaultModelId,
+        source: input.source,
+        title: input.title,
+        visibility: input.visibility,
+        workspacePath
+      })
+
+      threadContext.initializeThread(thread.thread_id)
+      const actions = threadContext.getThreadActions(thread.thread_id)
+      actions.setCurrentModel(defaultModelId)
+      actions.setWorkspacePath(workspacePath)
+      actions.setDraftInput(input.draftInput ?? "")
+
+      return {
+        modelId: defaultModelId,
+        threadId: thread.thread_id,
+        workspacePath
+      }
+    },
+    [copy.chat.inputNeedsWorkspace, threadContext]
+  )
+  const submitPluginThread = useCallback(
+    async (input: LauncherPluginThreadSubmitInput): Promise<void> => {
+      const { message, threadId } = input
+      const stream = await waitForThreadStream(threadId)
+      const state = threadContext.getThreadState(threadId)
+      const actions = threadContext.getThreadActions(threadId)
+
+      if (!state.workspacePath) {
+        throw new Error(copy.chat.inputNeedsWorkspace)
+      }
+
+      if (state.error) {
+        actions.clearError()
+      }
+
+      if (state.pendingApproval) {
+        actions.setPendingApproval(null)
+      }
+
+      actions.setDraftInput("")
+      actions.appendMessage({
+        id: crypto.randomUUID(),
+        role: "user",
+        content: message,
+        created_at: new Date()
+      })
+
+      await stream.submit(
+        {
+          messages: [{ type: "human", content: message }]
+        },
+        {
+          config: {
+            configurable: {
+              model_id: state.currentModel,
+              thread_id: threadId
+            }
+          }
+        }
+      )
+    },
+    [copy.chat.inputNeedsWorkspace, threadContext, waitForThreadStream]
+  )
+  const activePluginHost = useMemo(() => {
+    if (!activePlugin || !isLauncherPluginRoute(route)) {
+      return null
+    }
+
+    return {
+      clipboard: {
+        clearContext: clipboard.clearContext,
+        context: clipboard.context
+      },
+      navigation: {
+        goHome: closeActivePlugin,
+        hideLauncher,
+        openPlugin
+      },
+      pluginId: route.id,
+      seedQuery: route.seedQuery,
+      surface: {
+        inputRef: pluginInputRef,
+        shellConfig: searchPage.shellConfig,
+        shownSequence,
+        viewportHeight
+      },
+      threads: {
+        create: createPluginThread,
+        submit: submitPluginThread
+      }
+    }
+  }, [
+    activePlugin,
+    clipboard.clearContext,
+    clipboard.context,
+    closeActivePlugin,
+    createPluginThread,
+    hideLauncher,
+    openPlugin,
+    route,
+    searchPage.shellConfig,
+    shownSequence,
+    submitPluginThread,
+    viewportHeight
+  ])
 
   useEffect(() => {
     setViewportHeight(viewportHeight)
@@ -35,7 +190,7 @@ export default function LauncherApp(): React.JSX.Element {
 
   useEffect(() => {
     const focusInput = (): void => {
-      const input = route.id === "home" ? searchInputRef.current : pluginInputRef.current
+      const input = isLauncherPluginRoute(route) ? pluginInputRef.current : searchInputRef.current
       if (!input) {
         return
       }
@@ -47,6 +202,7 @@ export default function LauncherApp(): React.JSX.Element {
 
     focusInput()
     const cleanupShown = window.api.launcher.onShown(() => {
+      setShownSequence((value) => value + 1)
       focusInput()
       if (viewportHeightRef.current > 0) {
         setViewportHeight(viewportHeightRef.current)
@@ -64,7 +220,7 @@ export default function LauncherApp(): React.JSX.Element {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
         event.preventDefault()
-        if (route.id !== "home") {
+        if (isLauncherPluginRoute(route)) {
           closeActivePlugin()
           return
         }
@@ -75,7 +231,7 @@ export default function LauncherApp(): React.JSX.Element {
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [closeActivePlugin, route.id])
+  }, [closeActivePlugin, route])
 
   return (
     <div
@@ -93,13 +249,10 @@ export default function LauncherApp(): React.JSX.Element {
         }}
       >
         <LauncherPageTransition direction={navigationDirection} pageKey={routeKey}>
-          {activePlugin && ActivePluginComponent && route.id !== "home" ? (
-            <ActivePluginComponent
-              inputRef={pluginInputRef}
-              onBack={closeActivePlugin}
-              seedQuery={route.seedQuery}
-              shellConfig={searchPage.shellConfig}
-            />
+          {activePlugin && ActivePluginComponent && activePluginHost ? (
+            <LauncherPluginHostProvider value={activePluginHost}>
+              <ActivePluginComponent />
+            </LauncherPluginHostProvider>
           ) : (
             <LauncherSearchPage
               entries={searchPage.entries}

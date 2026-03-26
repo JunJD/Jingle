@@ -7,25 +7,21 @@ import {
   createSummarizationMiddleware
 } from "deepagents"
 import { join } from "path"
-import { getAgentConfig, getDefaultModel, getModelConfig } from "../ipc/models"
-import { getApiKey, getOpenworkDir } from "../storage"
-import { ChatAnthropic } from "@langchain/anthropic"
-import { ChatOpenAI } from "@langchain/openai"
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai"
+import { getAgentConfig } from "../ipc/models"
+import { getOpenworkDir } from "../storage"
 import { PrismaCheckpointSaver } from "../checkpointer/prisma-saver"
 import { LocalSandbox } from "./local-sandbox"
 import { createExecuteApprovalMiddleware } from "./execute-approval-middleware"
 import { anthropicPromptCachingMiddleware, createAgent, todoListMiddleware } from "langchain"
+import { getChatModelInstance } from "../llm/get-chat-model"
 
 import type * as _lcTypes from "langchain"
 import type * as _lcMessages from "@langchain/core/messages"
 import type * as _lcLanggraph from "@langchain/langgraph"
 import type * as _lcZodTypes from "@langchain/core/utils/types"
-import type { ProviderId } from "../types"
 
 import { BASE_SYSTEM_PROMPT } from "./system-prompt"
-
-const DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+import { ChatAnthropic } from "@langchain/anthropic"
 
 /**
  * Generate the full system prompt for the agent.
@@ -67,95 +63,6 @@ export async function closeCheckpointer(threadId: string): Promise<void> {
     await checkpointer.close()
     checkpointers.delete(threadId)
   }
-}
-
-// Get the appropriate model instance based on configuration
-function getModelInstance(
-  modelId?: string
-): ChatAnthropic | ChatOpenAI | ChatGoogleGenerativeAI | string {
-  const resolvedModelId = modelId || getDefaultModel()
-  const configuredModel = getModelConfig(resolvedModelId)
-  const model = configuredModel?.model ?? resolvedModelId
-  const provider = configuredModel?.provider ?? inferProviderFromModelId(resolvedModelId)
-  console.log("[Runtime] Using model:", resolvedModelId)
-
-  if (provider === "anthropic") {
-    const apiKey = getApiKey("anthropic")
-    console.log("[Runtime] Anthropic API key present:", !!apiKey)
-    if (!apiKey) {
-      throw new Error("Anthropic API key not configured")
-    }
-    return new ChatAnthropic({
-      model,
-      anthropicApiKey: apiKey
-    })
-  } else if (provider === "openai") {
-    const apiKey = getApiKey("openai")
-    console.log("[Runtime] OpenAI API key present:", !!apiKey)
-    if (!apiKey) {
-      throw new Error("OpenAI API key not configured")
-    }
-    return new ChatOpenAI({
-      model,
-      apiKey
-    })
-  } else if (provider === "dashscope") {
-    const apiKey = getApiKey("dashscope")
-    console.log("[Runtime] DashScope API key present:", !!apiKey)
-    if (!apiKey) {
-      throw new Error("DashScope API key not configured")
-    }
-    return new ChatOpenAI({
-      model,
-      apiKey,
-      configuration: {
-        baseURL: DASHSCOPE_BASE_URL
-      }
-    })
-  } else if (provider === "google") {
-    const apiKey = getApiKey("google")
-    console.log("[Runtime] Google API key present:", !!apiKey)
-    if (!apiKey) {
-      throw new Error("Google API key not configured")
-    }
-    return new ChatGoogleGenerativeAI({
-      model,
-      apiKey: apiKey
-    })
-  }
-
-  // Default to model string (let deepagents handle it)
-  return model
-}
-
-function inferProviderFromModelId(modelId: string): ProviderId | undefined {
-  if (modelId.startsWith("claude")) {
-    return "anthropic"
-  }
-
-  if (
-    modelId.startsWith("gpt") ||
-    modelId.startsWith("o1") ||
-    modelId.startsWith("o3") ||
-    modelId.startsWith("o4")
-  ) {
-    return "openai"
-  }
-
-  if (
-    modelId.startsWith("glm") ||
-    modelId.startsWith("qwen") ||
-    modelId.startsWith("deepseek") ||
-    modelId.startsWith("qwq")
-  ) {
-    return "dashscope"
-  }
-
-  if (modelId.startsWith("gemini")) {
-    return "google"
-  }
-
-  return undefined
 }
 
 function dedupePaths(paths: string[]): string[] {
@@ -201,7 +108,7 @@ export async function createAgentRuntime(
   console.log("[Runtime] Thread ID:", threadId)
   console.log("[Runtime] Workspace path:", workspacePath)
 
-  const model = getModelInstance(modelId)
+  const model = getChatModelInstance({ modelId })
   console.log("[Runtime] Model instance created:", typeof model)
 
   const checkpointer = await getCheckpointer(threadId)

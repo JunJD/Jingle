@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils"
 import type { LauncherShellConfig } from "../../../../shared/launcher"
 import { useLauncherChromeAudit } from "../hooks/useLauncherChromeAudit"
 import { LauncherInput } from "./LauncherInput"
+import type { LauncherPluginInputElement } from "../LauncherPluginHost"
 
 interface LauncherChromeProps {
   children?: ReactNode
@@ -10,7 +11,7 @@ interface LauncherChromeProps {
   headerLeading?: ReactNode
   headerTrailing?: ReactNode
   inputClassName?: string
-  inputRef: RefObject<HTMLInputElement | null>
+  inputRef: RefObject<LauncherPluginInputElement | null>
   inputValue: string
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   onInputValueChange: (value: string) => void
