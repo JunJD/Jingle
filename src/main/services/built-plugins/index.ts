@@ -1,7 +1,8 @@
 import type { BuiltPluginInvokeRequest } from "../../../shared/built-plugins/sdk"
+import { translateBuiltPluginService } from "./translate"
 import type { BuiltPluginService } from "./sdk"
 
-const builtPluginServices: BuiltPluginService[] = []
+const builtPluginServices: BuiltPluginService[] = [translateBuiltPluginService]
 
 const builtPluginServiceMap = new Map(
   builtPluginServices.map((service) => [service.pluginId, service])

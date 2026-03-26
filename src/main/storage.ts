@@ -30,6 +30,15 @@ export function getEnvFilePath(): string {
   return ENV_FILE
 }
 
+export function getEnvValue(name: string): string | undefined {
+  const env = parseEnvFile()
+  if (env[name]) {
+    return env[name]
+  }
+
+  return process.env[name]
+}
+
 // Read .env file and parse into object
 function parseEnvFile(): Record<string, string> {
   const envPath = getEnvFilePath()
@@ -65,12 +74,7 @@ export function getApiKey(provider: string): string | undefined {
   const envVarName = ENV_VAR_NAMES[provider]
   if (!envVarName) return undefined
 
-  // Check .env file first
-  const env = parseEnvFile()
-  if (env[envVarName]) return env[envVarName]
-
-  // Fall back to process environment
-  return process.env[envVarName]
+  return getEnvValue(envVarName)
 }
 
 export function setApiKey(provider: string, apiKey: string): void {

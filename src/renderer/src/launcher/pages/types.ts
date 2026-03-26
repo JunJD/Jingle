@@ -51,7 +51,7 @@ export interface LauncherPluginTextContext {
 }
 
 export interface LauncherPluginDefinition {
-  buildHomeEntry: (context: LauncherPluginTextContext) => LauncherHomeEntry
+  buildHomeEntry?: (context: LauncherPluginTextContext) => LauncherHomeEntry
   buildIntentItems?: (params: {
     copy: AppCopy
     locale: AppLocale

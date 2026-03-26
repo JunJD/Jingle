@@ -23,6 +23,7 @@ const MAC_LAUNCHER_WINDOW_LEVEL = "floating"
 const LAUNCHER_BASE_HEIGHT = getLauncherIdleHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_HEIGHT = getLauncherMaxViewportHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_SCREEN_HEIGHT_RATIO = 0.7
+const launcherVisibleOrigins = new WeakMap<BrowserWindow, { x: number; y: number }>()
 
 export const DEFAULT_LAUNCHER_SHORTCUT = "CommandOrControl+Shift+Space"
 
@@ -62,6 +63,34 @@ function getLauncherHeightForDisplay(display: Electron.Display, requestedHeight:
   return clamp(Math.round(requestedHeight), LAUNCHER_BASE_HEIGHT, maxHeight)
 }
 
+function getVisibleLauncherBounds(params: {
+  anchorX: number
+  anchorY: number
+  height: number
+  launcherWindow: BrowserWindow
+}): {
+  x: number
+  y: number
+  width: number
+  height: number
+} {
+  const { anchorX, anchorY, height, launcherWindow } = params
+  const currentBounds = launcherWindow.getBounds()
+  const display = screen.getDisplayMatching(currentBounds)
+  const boundedHeight = getLauncherHeightForDisplay(display, height)
+  const minX = display.workArea.x + LAUNCHER_HORIZONTAL_MARGIN
+  const maxX = display.workArea.x + display.workArea.width - currentBounds.width - LAUNCHER_HORIZONTAL_MARGIN
+  const minY = display.workArea.y + LAUNCHER_TOP_MARGIN
+  const maxY = display.workArea.y + display.workArea.height - boundedHeight - LAUNCHER_TOP_MARGIN
+
+  return {
+    x: clamp(anchorX, minX, Math.max(minX, maxX)),
+    y: clamp(anchorY, minY, Math.max(minY, maxY)),
+    width: currentBounds.width,
+    height: boundedHeight
+  }
+}
+
 function emitLauncherShown(launcherWindow: BrowserWindow): void {
   if (launcherWindow.webContents.isLoadingMainFrame()) {
     launcherWindow.webContents.once("did-finish-load", () => {
@@ -77,7 +106,8 @@ function emitLauncherShown(launcherWindow: BrowserWindow): void {
 
 function showLauncherWindow(launcherWindow: BrowserWindow): void {
   const nextHeight = launcherWindow.getBounds().height || LAUNCHER_BASE_HEIGHT
-  launcherWindow.setBounds(getLauncherBounds(nextHeight), false)
+  const nextBounds = getLauncherBounds(nextHeight)
+  launcherWindow.setBounds(nextBounds, false)
 
   if (process.platform === "darwin") {
     launcherWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
@@ -214,6 +244,15 @@ export function createLauncherWindow(): BrowserWindow {
     }
   })
 
+  launcherWindow.on("show", () => {
+    const { x, y } = launcherWindow.getBounds()
+    launcherVisibleOrigins.set(launcherWindow, { x, y })
+  })
+
+  launcherWindow.on("hide", () => {
+    launcherVisibleOrigins.delete(launcherWindow)
+  })
+
   launcherWindow.webContents.on("before-input-event", (event, input) => {
     if (input.key === "Escape") {
       event.preventDefault()
@@ -223,7 +262,12 @@ export function createLauncherWindow(): BrowserWindow {
 
   const repositionIfVisible = (): void => {
     if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
-      launcherWindow.setBounds(getLauncherBounds(launcherWindow.getBounds().height), false)
+      const nextBounds = getLauncherBounds(launcherWindow.getBounds().height)
+      launcherVisibleOrigins.set(launcherWindow, {
+        x: nextBounds.x,
+        y: nextBounds.y
+      })
+      launcherWindow.setBounds(nextBounds, false)
     }
   }
 
@@ -278,8 +322,19 @@ export function registerLauncherHandlers(ipcMain: IpcMain): void {
     if (!currentWindow) {
       return
     }
+    const visibleOrigin = launcherVisibleOrigins.get(currentWindow)
 
-    currentWindow.setBounds(getLauncherBounds(height), false)
+    currentWindow.setBounds(
+      currentWindow.isVisible()
+        ? getVisibleLauncherBounds({
+            anchorX: visibleOrigin?.x ?? currentWindow.getBounds().x,
+            anchorY: visibleOrigin?.y ?? currentWindow.getBounds().y,
+            height,
+            launcherWindow: currentWindow
+          })
+        : getLauncherBounds(height),
+      false
+    )
   })
 }
 

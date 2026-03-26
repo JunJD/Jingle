@@ -30,7 +30,10 @@ export function getLauncherPluginDefinition(pluginId: LauncherPluginId): Launche
 }
 
 export function getLauncherHomeEntries(context: LauncherPluginTextContext): LauncherHomeEntry[] {
-  return launcherPlugins.map((plugin) => plugin.buildHomeEntry(context))
+  return launcherPlugins.flatMap((plugin) => {
+    const entry = plugin.buildHomeEntry?.(context)
+    return entry ? [entry] : []
+  })
 }
 
 export function getLauncherPluginIntentItems(params: {

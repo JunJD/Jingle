@@ -2,7 +2,7 @@ import { ChatAnthropic } from "@langchain/anthropic"
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai"
 import { ChatOpenAI } from "@langchain/openai"
 import { getDefaultModel, getModelConfig } from "../ipc/models"
-import { getApiKey } from "../storage"
+import { getApiKey, getEnvValue } from "../storage"
 import type { ProviderId } from "../types"
 
 const DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -51,13 +51,14 @@ export function getChatModelInstance(options: ChatModelOptions = {}): ChatModelI
     if (!apiKey) {
       throw new Error("DashScope API key not configured")
     }
+    const baseURL = getEnvValue("DASHSCOPE_BASE_URL") ?? DASHSCOPE_BASE_URL
 
     return new ChatOpenAI({
       apiKey,
       model,
       temperature: options.temperature,
       configuration: {
-        baseURL: DASHSCOPE_BASE_URL
+        baseURL
       }
     })
   }

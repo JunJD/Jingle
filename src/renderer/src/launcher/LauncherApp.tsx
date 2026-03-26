@@ -5,9 +5,7 @@ import {
   type LauncherPluginThreadCreateInput,
   type LauncherPluginThreadSubmitInput
 } from "./LauncherPluginHost"
-import {
-  LauncherPluginHostProvider
-} from "./LauncherPluginHostContext"
+import { LauncherPluginHostProvider } from "./LauncherPluginHostContext"
 import { LauncherPageTransition } from "./components/LauncherPageTransition"
 import { LauncherSearchPage } from "./components/LauncherSearchPage"
 import { useLauncherRouter } from "./hooks/useLauncherRouter"
@@ -36,10 +34,9 @@ export default function LauncherApp(): React.JSX.Element {
   const selectedItem =
     searchPage.selectedIndex >= 0 ? searchPage.items[searchPage.selectedIndex] : null
   const ActivePluginComponent = activePlugin?.Component ?? null
-  const viewportHeight =
-    !isLauncherPluginRoute(route)
-      ? searchPage.viewportHeight
-      : (activePlugin?.getViewportHeight(searchPage.shellConfig) ?? searchPage.viewportHeight)
+  const viewportHeight = !isLauncherPluginRoute(route)
+    ? searchPage.viewportHeight
+    : (activePlugin?.getViewportHeight(searchPage.shellConfig) ?? searchPage.viewportHeight)
 
   const waitForThreadStream = useCallback(
     async (threadId: string) => {
@@ -67,14 +64,15 @@ export default function LauncherApp(): React.JSX.Element {
   }, [])
   const createPluginThread = useCallback(
     async (input: LauncherPluginThreadCreateInput) => {
-      const [defaultModelId, workspacePath] = await Promise.all([
+      const [defaultModelId, workspacePathResult] = await Promise.all([
         window.api.models.getDefault(),
         window.api.workspace.get()
       ])
 
-      if (!workspacePath) {
+      if (!workspacePathResult) {
         throw new Error(copy.chat.inputNeedsWorkspace)
       }
+      const workspacePath = workspacePathResult
 
       const thread = await window.api.threads.create({
         model: defaultModelId,
@@ -214,7 +212,7 @@ export default function LauncherApp(): React.JSX.Element {
       cleanupShown()
       window.removeEventListener("focus", focusInput)
     }
-  }, [route.id, setViewportHeight])
+  }, [route, route.id, setViewportHeight])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {

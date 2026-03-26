@@ -6,10 +6,7 @@ import {
 } from "../../../../shared/launcher"
 import type { BuiltPluginInvokeRequest } from "../../../../shared/built-plugins/sdk"
 import type { AppCopy } from "@/lib/i18n/messages"
-import {
-  useLauncherPluginHost,
-  useLauncherPluginLifecycle
-} from "../LauncherPluginHost"
+import { useLauncherPluginHost, useLauncherPluginLifecycle } from "../LauncherPluginHost"
 import type {
   LauncherHomeEntry,
   LauncherPluginCommandMatch,
@@ -27,7 +24,7 @@ export interface BuiltLauncherPluginTextContext {
 export interface BuiltLauncherPluginSpec {
   Component: ComponentType
   manifest: {
-    home: (context: BuiltLauncherPluginTextContext) => Omit<LauncherHomeEntry, "pluginId">
+    home?: (context: BuiltLauncherPluginTextContext) => Omit<LauncherHomeEntry, "pluginId">
     id: LauncherPluginId
     search?: {
       buildIntentItems?: (context: {
@@ -35,9 +32,7 @@ export interface BuiltLauncherPluginSpec {
         locale: AppLocale
         query: string
       }) => LauncherPluginIntent[]
-      resolveCommand?: (
-        params: LauncherPluginCommandParams
-      ) => LauncherPluginCommandMatch | null
+      resolveCommand?: (params: LauncherPluginCommandParams) => LauncherPluginCommandMatch | null
     }
     viewport:
       | {
@@ -54,11 +49,12 @@ export interface BuiltPluginClientMethod<TPayload, TResult> {
   result?: TResult
 }
 
-type BuiltPluginClient<TMethods extends Record<string, BuiltPluginClientMethod<unknown, unknown>>> = {
-  [TMethod in keyof TMethods]: (
-    payload: NonNullable<TMethods[TMethod]["payload"]>
-  ) => Promise<NonNullable<TMethods[TMethod]["result"]>>
-}
+type BuiltPluginClient<TMethods extends Record<string, BuiltPluginClientMethod<unknown, unknown>>> =
+  {
+    [TMethod in keyof TMethods]: (
+      payload: NonNullable<TMethods[TMethod]["payload"]>
+    ) => Promise<NonNullable<TMethods[TMethod]["result"]>>
+  }
 
 function getBuiltPluginViewportHeight(
   viewport: BuiltLauncherPluginSpec["manifest"]["viewport"]
@@ -72,13 +68,16 @@ function getBuiltPluginViewportHeight(
 
 export function defineBuiltLauncherPlugin(spec: BuiltLauncherPluginSpec): LauncherPluginDefinition {
   const viewportHeight = getBuiltPluginViewportHeight(spec.manifest.viewport)
+  const buildHomeEntry = spec.manifest.home
 
   return {
     Component: spec.Component,
-    buildHomeEntry: (context) => ({
-      ...spec.manifest.home(context),
-      pluginId: spec.manifest.id
-    }),
+    buildHomeEntry: buildHomeEntry
+      ? (context) => ({
+          ...buildHomeEntry(context),
+          pluginId: spec.manifest.id
+        })
+      : undefined,
     buildIntentItems: spec.manifest.search?.buildIntentItems,
     getViewportHeight: viewportHeight,
     id: spec.manifest.id,
