@@ -88,6 +88,8 @@ export interface AppCopy {
     planned: string
     resultKindAgent: string
     resultKindApp: string
+    resultKindDirectory: string
+    resultKindFile: string
     resultKindThread: string
     searchPlaceholder: string
     searchResults: string
@@ -226,6 +228,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       planned: "规划中",
       resultKindAgent: "Agent",
       resultKindApp: "应用",
+      resultKindDirectory: "文件夹",
+      resultKindFile: "文件",
       resultKindThread: "对话",
       searchPlaceholder: "你想处理什么工作？",
       searchResults: "搜索结果"
@@ -374,6 +378,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       planned: "Planned",
       resultKindAgent: "Agent",
       resultKindApp: "App",
+      resultKindDirectory: "Folder",
+      resultKindFile: "File",
       resultKindThread: "Thread",
       searchPlaceholder: "What do you want to get done?",
       searchResults: "Search Results"

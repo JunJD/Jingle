@@ -15,6 +15,11 @@ import { startWatching, stopWatching } from "../services/workspace-watcher"
 import { getOpenworkDir, getApiKey, setApiKey, deleteApiKey, hasApiKey } from "../storage"
 import { DEFAULT_MODEL_ID } from "../../shared/models"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale } from "../../shared/i18n"
+import {
+  DEFAULT_LAUNCHER_SETTINGS,
+  normalizeLauncherSettings,
+  type LauncherSettings
+} from "../../shared/launcher-settings"
 
 // Store for non-sensitive settings only (no encryption needed)
 const store = new Store({
@@ -312,6 +317,24 @@ function setAgentConfig(updates: Partial<AgentConfig>): AgentConfig {
   return nextConfig
 }
 
+export function getLauncherSettings(): LauncherSettings {
+  const stored = store.get("launcherSettings", DEFAULT_LAUNCHER_SETTINGS) as
+    | Partial<LauncherSettings>
+    | undefined
+
+  return normalizeLauncherSettings(stored)
+}
+
+function setLauncherSettings(updates: Partial<LauncherSettings>): LauncherSettings {
+  const nextSettings = normalizeLauncherSettings({
+    ...getLauncherSettings(),
+    ...updates
+  })
+
+  store.set("launcherSettings", nextSettings)
+  return nextSettings
+}
+
 export function registerModelHandlers(ipcMain: IpcMain): void {
   // List available models
   ipcMain.handle("models:list", async () => {
@@ -339,6 +362,17 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
   ipcMain.handle("settings:setAgentConfig", async (_event, updates: Partial<AgentConfig>) => {
     return setAgentConfig(updates)
   })
+
+  ipcMain.handle("settings:getLauncherSettings", async () => {
+    return getLauncherSettings()
+  })
+
+  ipcMain.handle(
+    "settings:setLauncherSettings",
+    async (_event, updates: Partial<LauncherSettings>) => {
+      return setLauncherSettings(updates)
+    }
+  )
 
   // Set API key for a provider (stored in ~/.openwork/.env)
   ipcMain.handle("models:setApiKey", async (_event, { provider, apiKey }: SetApiKeyParams) => {

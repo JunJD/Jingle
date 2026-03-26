@@ -15,6 +15,9 @@ import type {
   LauncherSearchResponse
 } from "../shared/launcher-search"
 import type { ClipboardContext } from "../shared/clipboard"
+import type { LauncherHistoryItem } from "../shared/launcher-history"
+import type { CreateLocalStartItemInput, LocalStartItem } from "../shared/local-start"
+import type { LauncherSettings } from "../shared/launcher-settings"
 
 // Simple electron API - replaces @electron-toolkit/preload
 const electronAPI = {
@@ -174,6 +177,12 @@ const api = {
     },
     setAgentConfig: (updates: Partial<AgentConfig>): Promise<AgentConfig> => {
       return ipcRenderer.invoke("settings:setAgentConfig", updates)
+    },
+    getLauncherSettings: (): Promise<LauncherSettings> => {
+      return ipcRenderer.invoke("settings:getLauncherSettings")
+    },
+    setLauncherSettings: (updates: Partial<LauncherSettings>): Promise<LauncherSettings> => {
+      return ipcRenderer.invoke("settings:setLauncherSettings", updates)
     }
   },
   launcher: {
@@ -200,6 +209,31 @@ const api = {
       return () => {
         ipcRenderer.removeListener("launcher:shown", handler)
       }
+    }
+  },
+  launcherHistory: {
+    list: (): Promise<LauncherHistoryItem[]> => {
+      return ipcRenderer.invoke("launcherHistory:list")
+    },
+    remove: (itemId: string): Promise<void> => {
+      return ipcRenderer.invoke("launcherHistory:remove", itemId)
+    },
+    setPinned: (itemId: string, pin: boolean): Promise<LauncherHistoryItem> => {
+      return ipcRenderer.invoke("launcherHistory:setPinned", itemId, pin)
+    }
+  },
+  localStart: {
+    list: (): Promise<LocalStartItem[]> => {
+      return ipcRenderer.invoke("localStart:list")
+    },
+    upsert: (input: CreateLocalStartItemInput): Promise<LocalStartItem> => {
+      return ipcRenderer.invoke("localStart:upsert", input)
+    },
+    remove: (itemId: string): Promise<void> => {
+      return ipcRenderer.invoke("localStart:remove", itemId)
+    },
+    recordUse: (itemId: string): Promise<LocalStartItem> => {
+      return ipcRenderer.invoke("localStart:recordUse", itemId)
     }
   },
   workspace: {

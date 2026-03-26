@@ -57,7 +57,9 @@ export function LauncherAiPage(props: LauncherFeaturePageRenderProps): React.JSX
         </div>
       }
       inputRef={inputRef}
+      inputValue={session.query}
       onInputKeyDown={session.handleInputKeyDown}
+      onInputValueChange={session.setQuery}
       placeholder={copy.launcher.aiInputPlaceholder}
       shellConfig={shellConfig}
       surface="ai"

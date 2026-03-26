@@ -11,6 +11,9 @@ import type {
   LauncherSearchResponse,
   LauncherSearchResult
 } from "../../../../shared/launcher-search"
+import type { LauncherHistoryItem } from "../../../../shared/launcher-history"
+import type { LocalStartItem } from "../../../../shared/local-start"
+import { shouldShowLauncherIdleItems } from "../../../../shared/launcher-settings"
 import { useLauncherInput } from "../LauncherInputContext"
 import { DEFAULT_HOME_ENTRY_PAGE_ID } from "../pages"
 import type { LauncherFeaturePageId, LauncherHomeEntry } from "../pages/types"
@@ -54,6 +57,31 @@ function buildLauncherShellItems(searchResults: LauncherSearchResult[]): Launche
   }))
 }
 
+function buildLocalStartShellItems(items: LocalStartItem[]): LauncherShellItem[] {
+  return items.map((item) => ({
+    action: {
+      type: "open-local-start-item",
+      itemId: item.id,
+      itemKind: item.kind,
+      path: item.path
+    },
+    id: item.id,
+    kind: item.kind,
+    subtitle: item.path,
+    title: item.title
+  }))
+}
+
+function buildLauncherHistoryShellItems(items: LauncherHistoryItem[]): LauncherShellItem[] {
+  return items.map((item) => ({
+    action: item.action,
+    id: item.id,
+    kind: item.kind,
+    subtitle: item.subtitle,
+    title: item.title
+  }))
+}
+
 export function useLauncherSearchPage(props: {
   openFeaturePage: (pageId: LauncherFeaturePageId) => void
 }): {
@@ -74,7 +102,10 @@ export function useLauncherSearchPage(props: {
   const { query } = useLauncherInput()
   const latestSearchRequestRef = useRef(0)
   const [debouncedQuery, setDebouncedQuery] = useState("")
+  const [historyItems, setHistoryItems] = useState<LauncherHistoryItem[]>([])
   const [searchResponse, setSearchResponse] = useState<LauncherSearchResponse | null>(null)
+  const [idleItems, setIdleItems] = useState<LocalStartItem[]>([])
+  const [windowMode, setWindowMode] = useState<"default" | "compact">("default")
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const shellConfig: LauncherShellConfig = FALLBACK_SHELL_CONFIG
 
@@ -82,6 +113,18 @@ export function useLauncherSearchPage(props: {
     ? (searchResponse?.results ?? EMPTY_SEARCH_RESULTS)
     : EMPTY_SEARCH_RESULTS
   const items = useMemo(() => {
+    if (!query.trim()) {
+      if (!shouldShowLauncherIdleItems(windowMode)) {
+        return []
+      }
+
+      if (historyItems.length > 0) {
+        return buildLauncherHistoryShellItems(historyItems)
+      }
+
+      return buildLocalStartShellItems(idleItems)
+    }
+
     return [
       ...buildFeatureIntentItems({
         aiEntryLabel: copy.launcher.aiEntryLabel,
@@ -90,7 +133,15 @@ export function useLauncherSearchPage(props: {
       }),
       ...buildLauncherShellItems(searchResults)
     ]
-  }, [copy.launcher.aiEntryLabel, copy.launcher.aiIntentSubtitle, query, searchResults])
+  }, [
+    copy.launcher.aiEntryLabel,
+    copy.launcher.aiIntentSubtitle,
+    historyItems,
+    idleItems,
+    query,
+    searchResults,
+    windowMode
+  ])
   const selectedIndex = useMemo(() => {
     if (items.length === 0) {
       return -1
@@ -106,6 +157,29 @@ export function useLauncherSearchPage(props: {
   const resultsViewportHeight = getLauncherResultsHeight(items.length, shellConfig)
   const viewportHeight = getLauncherViewportHeight(items.length, shellConfig)
   const resultsVisible = items.length > 0
+
+  useEffect(() => {
+    const refreshIdleState = (): void => {
+      void Promise.all([
+        window.api.settings.getLauncherSettings(),
+        window.api.launcherHistory.list(),
+        window.api.localStart.list()
+      ]).then(([settings, launcherHistoryItems, localStartItems]) => {
+        setWindowMode(settings.windowMode)
+        setHistoryItems(launcherHistoryItems)
+        setIdleItems(localStartItems)
+      })
+    }
+
+    refreshIdleState()
+    const cleanupShown = window.api.launcher.onShown(() => {
+      refreshIdleState()
+    })
+
+    return () => {
+      cleanupShown()
+    }
+  }, [])
 
   useEffect(() => {
     const nextQuery = query.trim()

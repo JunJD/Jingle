@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process"
 import { BrowserWindow, type IpcMain, globalShortcut, screen, shell } from "electron"
-import { join } from "path"
+import { basename, extname, join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
 import {
   FALLBACK_SHELL_CONFIG,
@@ -8,8 +8,11 @@ import {
   getLauncherMaxViewportHeight
 } from "../../shared/launcher"
 import type { ClipboardContext } from "../../shared/clipboard"
+import type { RecordLauncherHistoryItemInput } from "../../shared/launcher-history"
 import type { LauncherSearchAction, LauncherSearchRequest } from "../../shared/launcher-search"
 import { readClipboardContext } from "../services/clipboard"
+import { recordLauncherHistoryItem } from "../services/launcher-history"
+import { getLocalStartItem, recordLocalStartItemUse } from "../services/local-start"
 import { searchLauncher } from "../services/launcher-search"
 
 const LAUNCHER_WIDTH = 760
@@ -73,7 +76,8 @@ function emitLauncherShown(launcherWindow: BrowserWindow): void {
 }
 
 function showLauncherWindow(launcherWindow: BrowserWindow): void {
-  launcherWindow.setBounds(getLauncherBounds(LAUNCHER_BASE_HEIGHT), false)
+  const nextHeight = launcherWindow.getBounds().height || LAUNCHER_BASE_HEIGHT
+  launcherWindow.setBounds(getLauncherBounds(nextHeight), false)
 
   if (process.platform === "darwin") {
     launcherWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
@@ -101,29 +105,77 @@ function hideLauncherWindow(launcherWindow: BrowserWindow): void {
   launcherWindow.hide()
 }
 
+async function openLauncherPath(
+  path: string,
+  kind: "application" | "file" | "directory"
+): Promise<void> {
+  if (kind === "application" && process.platform === "darwin") {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn("open", [path], {
+        detached: true,
+        stdio: "ignore"
+      })
+
+      child.once("error", reject)
+      child.once("spawn", () => resolve())
+      child.unref()
+    })
+    return
+  }
+
+  const openPathError = await shell.openPath(path)
+  if (openPathError) {
+    throw new Error(openPathError)
+  }
+}
+
+function getLauncherPathTitle(targetPath: string): string {
+  const fileName = basename(targetPath)
+  const fileExtension = extname(fileName)
+  return fileExtension ? basename(fileName, fileExtension) : fileName
+}
+
+function buildLauncherHistoryRecord(
+  action: LauncherSearchAction
+): RecordLauncherHistoryItemInput | null {
+  switch (action.type) {
+    case "launch-application":
+      return {
+        action,
+        dedupeKey: `application:${action.applicationPath}`,
+        kind: "application",
+        subtitle: action.applicationPath,
+        title: getLauncherPathTitle(action.applicationPath)
+      }
+    case "open-local-start-item": {
+      const item = getLocalStartItem(action.itemId)
+      return {
+        action,
+        dedupeKey: `local-start:${action.itemId}`,
+        kind: item?.kind ?? action.itemKind,
+        subtitle: item?.path ?? action.path,
+        title: item?.title ?? getLauncherPathTitle(action.path)
+      }
+    }
+    case "none":
+      return null
+    default: {
+      const exhaustiveAction: never = action
+      throw new Error(`Unsupported launcher history action: ${JSON.stringify(exhaustiveAction)}`)
+    }
+  }
+}
+
 async function executeLauncherAction(action: LauncherSearchAction): Promise<void> {
   switch (action.type) {
     case "launch-application":
-      if (process.platform === "darwin") {
-        await new Promise<void>((resolve, reject) => {
-          const child = spawn("open", [action.applicationPath], {
-            detached: true,
-            stdio: "ignore"
-          })
-
-          child.once("error", reject)
-          child.once("spawn", () => resolve())
-          child.unref()
-        })
-        return
-      }
-
-      {
-        const openPathError = await shell.openPath(action.applicationPath)
-        if (openPathError) {
-          throw new Error(openPathError)
-        }
-      }
+      await openLauncherPath(action.applicationPath, "application")
+      recordLauncherHistoryItem(buildLauncherHistoryRecord(action)!)
+      return
+    case "open-local-start-item":
+      await openLauncherPath(action.path, action.itemKind)
+      recordLocalStartItemUse(action.itemId)
+      recordLauncherHistoryItem(buildLauncherHistoryRecord(action)!)
       return
     case "none":
       return

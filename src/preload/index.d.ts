@@ -15,6 +15,9 @@ import type {
   LauncherSearchResponse
 } from "../shared/launcher-search"
 import type { ClipboardContext } from "../shared/clipboard"
+import type { LauncherHistoryItem } from "../shared/launcher-history"
+import type { CreateLocalStartItemInput, LocalStartItem } from "../shared/local-start"
+import type { LauncherSettings } from "../shared/launcher-settings"
 
 interface ElectronAPI {
   ipcRenderer: {
@@ -73,6 +76,8 @@ interface CustomAPI {
   settings: {
     getAgentConfig: () => Promise<AgentConfig>
     setAgentConfig: (updates: Partial<AgentConfig>) => Promise<AgentConfig>
+    getLauncherSettings: () => Promise<LauncherSettings>
+    setLauncherSettings: (updates: Partial<LauncherSettings>) => Promise<LauncherSettings>
   }
   launcher: {
     getClipboardContext: () => Promise<ClipboardContext>
@@ -81,6 +86,17 @@ interface CustomAPI {
     hide: () => Promise<void>
     setViewportHeight: (height: number) => Promise<void>
     onShown: (callback: () => void) => () => void
+  }
+  launcherHistory: {
+    list: () => Promise<LauncherHistoryItem[]>
+    remove: (itemId: string) => Promise<void>
+    setPinned: (itemId: string, pin: boolean) => Promise<LauncherHistoryItem>
+  }
+  localStart: {
+    list: () => Promise<LocalStartItem[]>
+    upsert: (input: CreateLocalStartItemInput) => Promise<LocalStartItem>
+    remove: (itemId: string) => Promise<void>
+    recordUse: (itemId: string) => Promise<LocalStartItem>
   }
   workspace: {
     get: (threadId?: string) => Promise<string | null>

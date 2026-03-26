@@ -1,4 +1,5 @@
 import type { LauncherResultAvailability, LauncherResultKind } from "./launcher"
+import type { LocalStartItemKind } from "./local-start"
 
 export type LauncherSearchSource = "applications" | "browser-history" | "files" | "semantic-history"
 
@@ -12,6 +13,12 @@ export type LauncherSearchAction =
   | {
       type: "launch-application"
       applicationPath: string
+    }
+  | {
+      type: "open-local-start-item"
+      itemId: string
+      itemKind: LocalStartItemKind
+      path: string
     }
   | {
       type: "none"

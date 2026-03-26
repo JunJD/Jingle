@@ -38,6 +38,84 @@ export function LauncherAiEmptyState(props: { error?: string | null }): React.JS
   )
 }
 
+function LauncherJumpToLatestButton(props: {
+  isLoading: boolean
+  label: string
+  onClick: () => void
+}): React.JSX.Element {
+  const { isLoading, label, onClick } = props
+
+  return (
+    <button
+      type="button"
+      className="absolute bottom-4 left-1/2 isolate flex -translate-x-1/2 items-center gap-2 overflow-hidden rounded-full border bg-background-secondary px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition"
+      style={{
+        borderColor: isLoading ? "transparent" : "var(--launcher-border-strong)"
+      }}
+      onClick={onClick}
+    >
+      {isLoading ? (
+        <svg
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 h-full w-full"
+          viewBox="0 0 132 36"
+          preserveAspectRatio="none"
+        >
+          <rect
+            x="1"
+            y="1"
+            width="130"
+            height="34"
+            rx="17"
+            fill="none"
+            stroke="var(--launcher-border-strong)"
+            strokeWidth="1.5"
+            vectorEffect="non-scaling-stroke"
+          />
+          <rect
+            x="1"
+            y="1"
+            width="130"
+            height="34"
+            rx="17"
+            fill="none"
+            pathLength="100"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeDasharray="18 82"
+            className="launcher-jump-orbit-primary"
+            opacity="0.82"
+            vectorEffect="non-scaling-stroke"
+          />
+          <rect
+            x="1"
+            y="1"
+            width="130"
+            height="34"
+            rx="17"
+            fill="none"
+            pathLength="100"
+            stroke="currentColor"
+            strokeWidth="1.25"
+            strokeLinecap="round"
+            strokeDasharray="6 94"
+            strokeDashoffset="28"
+            className="launcher-jump-orbit-secondary"
+            opacity="0.28"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+      ) : null}
+
+      <span className="relative z-10 flex items-center gap-2">
+        <ArrowDown className="size-3.5" />
+        {label}
+      </span>
+    </button>
+  )
+}
+
 export function LauncherAiConversation(props: {
   clearError: () => void
   displayMessages: Message[]
@@ -120,17 +198,11 @@ export function LauncherAiConversation(props: {
           </StickToBottom.Content>
 
           {!isAtBottom && (
-            <button
-              type="button"
-              className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-background-secondary px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition"
-              style={{
-                borderColor: "var(--launcher-border-strong)"
-              }}
+            <LauncherJumpToLatestButton
+              isLoading={isLoading}
+              label={copy.launcher.jumpToLatest}
               onClick={() => void scrollToBottom({ animation: "smooth" })}
-            >
-              <ArrowDown className="size-3.5" />
-              {copy.launcher.jumpToLatest}
-            </button>
+            />
           )}
         </>
       )}

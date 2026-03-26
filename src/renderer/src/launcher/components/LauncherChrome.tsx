@@ -12,7 +12,9 @@ interface LauncherChromeProps {
   headerTrailing?: ReactNode
   inputClassName?: string
   inputRef: RefObject<HTMLInputElement | null>
+  inputValue?: string
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
+  onInputValueChange?: (value: string) => void
   placeholder: string
   shellConfig: LauncherShellConfig
   showHeaderDivider?: boolean
@@ -27,13 +29,17 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
     headerTrailing,
     inputClassName,
     inputRef,
+    inputValue,
     onInputKeyDown,
+    onInputValueChange,
     placeholder,
     shellConfig,
     showHeaderDivider = true,
     surface
   } = props
   const { query, setQuery } = useLauncherInput()
+  const resolvedInputValue = inputValue ?? query
+  const handleInputValueChange = onInputValueChange ?? setQuery
   const headerRef = useRef<HTMLDivElement>(null)
   const footerRef = useRef<HTMLDivElement>(null)
 
@@ -59,8 +65,8 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
 
         <LauncherInput
           ref={inputRef}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          value={resolvedInputValue}
+          onChange={(event) => handleInputValueChange(event.target.value)}
           onKeyDown={onInputKeyDown}
           placeholder={placeholder}
           className={cn(

@@ -44,7 +44,7 @@ export function LauncherSearchPage(props: {
       ? copy.launcher.aiPrimaryLabel
       : selectedItem?.kind === "application"
         ? copy.launcher.openApp
-        : copy.launcher.openResult
+        : copy.launcher.openGeneric
   const headerLeading =
     clipboard.context.kind === "files" || clipboard.context.kind === "image" ? (
       <ClipboardChip context={clipboard.context} onClear={clipboard.clearContext} />

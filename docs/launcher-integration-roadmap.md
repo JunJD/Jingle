@@ -157,20 +157,28 @@ Phase 3 子步骤：
   - `Tab` 和右侧入口按钮都能进入 `ai` 页
   - 支持返回、空输入 `Backspace` 返回、页面切换动画
   - 这一阶段只做壳，不接 thread
-- `3.2` thread 与 workspace 继承
-  - 进入 `ai` 二级页时，按 workspace 的 `sessionKey` 查找或创建主 thread
-  - `sessionKey` 只区分不同 workspace，不区分界面入口
-  - 默认继承顶层 workspace
-  - 把 launcher 输入写入 thread draft
-  - 这一阶段仍不自动发送首条消息
+- `3.2` thread 与 launcher 根目录
+  - `thread` 创建必须挂在“第一次发送”这个明确提交点，而不是挂在 page navigation 上
+  - `useLauncherShell` 只保留搜索、导航、窗口壳；不再承载 AI thread 生命周期
+  - launcher AI 进入后默认继承全局 workspace，不再引入 `os.homedir()` 兜底
+  - AI 的 create / submit / resume 收口到独立 `launcher-ai` 模块
+  - launcher 会话先视为私有会话；是否提升到主应用 thread 列表，后续单独定义
 - `3.3` message / tool / HITL 复用
-  - 复用现有 thread messages 数据层
-  - 在 launcher 的 `ai` 二级页中展示消息、tool call、审批状态
-  - 线程初始化时从 `messages` 表回读消息，从 checkpoint 回读 `todos` 运行态
-  - `HITL` 继续以 checkpoint 作为 graph 恢复来源，同时额外持久化一份审批记录，供 UI 恢复使用
+  - 抽一个共享的 `thread conversation state / stream projection` 层
+  - 主 chat 与 launcher AI 共用消息投影、stream 合并、todos、tool result、HITL 恢复逻辑
+  - launcher 的 `ai` 二级页中展示消息、tool call、审批状态
 - `3.4` AI 发送链路
-  - 把二级页输入真正接到 agent 发送流程
-  - 决定是否进入即自动发送，或只预填等待用户确认
+  - 二级页输入真正接到 agent 发送流程
+  - 第一次发送时 lazy-create thread，并马上提交首条消息
+  - 不做“进入即自动发送”
+
+Phase 3 当前状态：
+
+- `3.1` 已完成
+- `3.2` 已完成
+- `3.3` 已完成基础共享层
+- `3.4` 已完成首条消息发送链路
+- launcher shell 边界重切已落档：`docs/launcher-shell-architecture.md`
 
 ### Phase 4：基础工具层
 
@@ -183,6 +191,32 @@ Phase 3 子步骤：
 - 只加入有明确使用场景的工具能力
 - 不把 `Jingle` 的系统工具整包搬过来
 
+Phase 4 子步骤：
+
+- `4.1` 剪贴板上下文感知
+  - 独立抽出 launcher clipboard 服务，不并入 search provider
+  - launcher 会话级感知文本 / 文件 / 图片三类上下文
+  - 文本在输入为空时自动回填到当前页输入框
+  - 文件 / 图片以上下文 chip 形式展示，并支持当前会话内清除
+  - 上下文状态挂在 launcher shell，而不是挂在某个具体 page
+- `4.2` local-start 手动固定项
+  - 参考 `Jingle` 的 local-start
+  - 支持手动固定 app / 文件 / 文件夹，并进入 launcher 搜索
+  - 不做全盘文件索引
+  - `4.2.1` 先落持久化模型和存储：`LocalStartItem`
+  - 第一版记录 `useCount / lastUsedAt`，为后续搜索排序做准备
+  - 第一版先用独立 `electron-store`，不提前引入 sqlite 表
+- `4.3` 截图进入工作流
+  - 参考 `Jingle` 的 screen-capture
+  - 只在明确接入 launcher AI / 图像链路时再落地
+
+Phase 4 当前状态：
+
+- `4.1` 已完成
+- `4.2` 进行中
+- `4.2.1` 已完成：数据模型、独立存储、IPC/preload 已落地
+- `4.3` 未开始
+
 ### Phase 5：排序与扩展项
 
 范围：
@@ -191,6 +225,7 @@ Phase 3 子步骤：
 - 视情况加入本地固定项或手动 local-start 项
 - 视情况补充更丰富的最近记录/历史行为
 - 收敛 launcher result `action` 模型，避免继续沿用字符串命令或临时字段堆叠
+- 对齐 `Jingle` 的空态语义：优先补 `launcherHistory + pin`
 
 后续优化记录：
 
@@ -201,6 +236,9 @@ Phase 3 子步骤：
 - 搜索 provider 只产出结构化 action，不直接拼 `open` / `start` / `exec` 命令
 - `executeLauncherAction` 只做 action 分发，不承载搜索或排序逻辑
 - 参考结论：`Jingle` / `rubick-core` 当前没有更好的 typed action 答案，现有实现基本仍是字符串命令，后续优化以 `openwork` 自己的结构化模型为准
+- clipboard 上下文协议后续从单一互斥 union 演进为更通用的 snapshot / items 模型，支持文本、文件、图片及未来更多剪贴板通道并存
+- launcher shell 级共享状态后续禁止继续通过 page render props 逐层下传，统一收口到 launcher 根 context / shell 边界
+- `launcherHistory` 数据层已提前落地：独立持久化、pin 字段、执行后自动写入；空态展示后续再接 UI
 
 验收标准：
 

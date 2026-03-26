@@ -2,13 +2,17 @@ import { useLayoutEffect, useRef } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn, truncateMiddle } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n"
-import { History, Search, Sparkles } from "lucide-react"
+import { FileText, Folder, History, Search, Sparkles } from "lucide-react"
 import type { LauncherShellItem } from "../types"
 
 function getResultIcon(kind: LauncherShellItem["kind"]): React.JSX.Element {
   switch (kind) {
     case "application":
       return <Search className="size-4" />
+    case "file":
+      return <FileText className="size-4" />
+    case "directory":
+      return <Folder className="size-4" />
     case "ai":
       return <Sparkles className="size-4" />
     case "history":
@@ -24,6 +28,12 @@ function getChipStyle(kind: LauncherShellItem["kind"]): React.CSSProperties {
       return {
         backgroundColor: "var(--launcher-app-chip-bg)",
         color: "var(--launcher-app-chip-fg)"
+      }
+    case "file":
+    case "directory":
+      return {
+        backgroundColor: "var(--launcher-history-chip-bg)",
+        color: "var(--launcher-history-chip-fg)"
       }
     case "ai":
       return {
@@ -137,9 +147,13 @@ export function LauncherResultList(props: {
             <div className="pt-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               {item.kind === "application"
                 ? copy.launcher.resultKindApp
-                : item.kind === "ai"
-                  ? copy.launcher.resultKindAgent
-                  : copy.launcher.resultKindThread}
+                : item.kind === "file"
+                  ? copy.launcher.resultKindFile
+                  : item.kind === "directory"
+                    ? copy.launcher.resultKindDirectory
+                    : item.kind === "ai"
+                      ? copy.launcher.resultKindAgent
+                      : copy.launcher.resultKindThread}
             </div>
 
             <div className="min-w-0">

@@ -1,4 +1,4 @@
-export type LauncherResultKind = "application" | "ai" | "history"
+export type LauncherResultKind = "application" | "file" | "directory" | "ai" | "history"
 
 export type LauncherResultAvailability = "ready" | "planned"
 
