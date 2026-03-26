@@ -1,5 +1,4 @@
 import { IpcMain, dialog, app } from "electron"
-import Store from "electron-store"
 import * as fs from "fs/promises"
 import * as path from "path"
 import type {
@@ -12,26 +11,20 @@ import type {
   WorkspaceFileParams
 } from "../types"
 import { startWatching, stopWatching } from "../services/workspace-watcher"
-import { getOpenworkDir, getApiKey, setApiKey, deleteApiKey, hasApiKey } from "../storage"
-import { DEFAULT_MODEL_ID } from "../../shared/models"
-import { DEFAULT_APP_LOCALE, normalizeAppLocale } from "../../shared/i18n"
+import { getApiKey, setApiKey, deleteApiKey, hasApiKey } from "../storage"
+import type { LauncherSettings } from "../../shared/launcher-settings"
 import {
-  DEFAULT_LAUNCHER_SETTINGS,
-  normalizeLauncherSettings,
-  type LauncherSettings
-} from "../../shared/launcher-settings"
-
-// Store for non-sensitive settings only (no encryption needed)
-const store = new Store({
-  name: "settings",
-  cwd: getOpenworkDir()
-})
-
-const DEFAULT_AGENT_CONFIG: AgentConfig = {
-  skillSources: [],
-  memorySources: [],
-  locale: DEFAULT_APP_LOCALE
-}
+  getAgentConfig,
+  getDefaultModelId,
+  getGlobalWorkspacePath,
+  getLauncherSettings,
+  getWorkspaceDialogPath,
+  setAgentConfig,
+  setDefaultModelId,
+  setGlobalWorkspacePath,
+  setLauncherSettings,
+  setWorkspaceDialogPath
+} from "../preferences"
 
 // Provider configurations
 const PROVIDERS: Omit<Provider, "hasApiKey">[] = [
@@ -244,14 +237,6 @@ const AVAILABLE_MODELS: ModelConfig[] = [
   }
 ]
 
-export function getDefaultModelId(): string {
-  return store.get("defaultModel", DEFAULT_MODEL_ID) as string
-}
-
-export function getGlobalWorkspacePath(): string | null {
-  return store.get("workspacePath", null) as string | null
-}
-
 export async function resolveGlobalWorkspacePath(): Promise<string | null> {
   const configuredPath = getGlobalWorkspacePath()
   if (configuredPath) {
@@ -272,67 +257,12 @@ export async function resolveGlobalWorkspacePath(): Promise<string | null> {
     }
 
     if (typeof metadata.workspacePath === "string" && metadata.workspacePath.trim()) {
-      store.set("workspacePath", metadata.workspacePath)
+      setGlobalWorkspacePath(metadata.workspacePath)
       return metadata.workspacePath
     }
   }
 
   return null
-}
-
-function normalizePathList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return []
-  }
-
-  return Array.from(
-    new Set(
-      value
-        .filter((entry): entry is string => typeof entry === "string")
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0)
-    )
-  )
-}
-
-export function getAgentConfig(): AgentConfig {
-  const stored = store.get("agentConfig", DEFAULT_AGENT_CONFIG) as Partial<AgentConfig> | undefined
-
-  return {
-    skillSources: normalizePathList(stored?.skillSources),
-    memorySources: normalizePathList(stored?.memorySources),
-    locale: normalizeAppLocale(stored?.locale)
-  }
-}
-
-function setAgentConfig(updates: Partial<AgentConfig>): AgentConfig {
-  const nextConfig: AgentConfig = {
-    ...getAgentConfig(),
-    ...(updates.skillSources ? { skillSources: normalizePathList(updates.skillSources) } : {}),
-    ...(updates.memorySources ? { memorySources: normalizePathList(updates.memorySources) } : {}),
-    ...(updates.locale ? { locale: normalizeAppLocale(updates.locale) } : {})
-  }
-
-  store.set("agentConfig", nextConfig)
-  return nextConfig
-}
-
-export function getLauncherSettings(): LauncherSettings {
-  const stored = store.get("launcherSettings", DEFAULT_LAUNCHER_SETTINGS) as
-    | Partial<LauncherSettings>
-    | undefined
-
-  return normalizeLauncherSettings(stored)
-}
-
-function setLauncherSettings(updates: Partial<LauncherSettings>): LauncherSettings {
-  const nextSettings = normalizeLauncherSettings({
-    ...getLauncherSettings(),
-    ...updates
-  })
-
-  store.set("launcherSettings", nextSettings)
-  return nextSettings
 }
 
 export function registerModelHandlers(ipcMain: IpcMain): void {
@@ -352,7 +282,7 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
 
   // Set default model
   ipcMain.handle("models:setDefault", async (_event, modelId: string) => {
-    store.set("defaultModel", modelId)
+    setDefaultModelId(modelId)
   })
 
   ipcMain.handle("settings:getAgentConfig", async () => {
@@ -422,12 +352,7 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
     "workspace:set",
     async (_event, { threadId, path: newPath }: WorkspaceSetParams) => {
       if (!threadId) {
-        // Fallback to global setting
-        if (newPath) {
-          store.set("workspacePath", newPath)
-        } else {
-          store.delete("workspacePath")
-        }
+        setGlobalWorkspacePath(newPath)
         return newPath
       }
 
@@ -440,7 +365,7 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
       await updateThread(threadId, { metadata: JSON.stringify(metadata) })
 
       if (newPath) {
-        store.set("workspacePath", newPath)
+        setGlobalWorkspacePath(newPath)
       }
 
       // Update file watcher
@@ -456,7 +381,10 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
 
   // Select workspace folder via dialog (for a specific thread)
   ipcMain.handle("workspace:select", async (_event, threadId?: string) => {
+    const defaultPath =
+      getWorkspaceDialogPath() ?? (await resolveGlobalWorkspacePath()) ?? undefined
     const result = await dialog.showOpenDialog({
+      defaultPath,
       properties: ["openDirectory", "createDirectory"],
       title: "Select Workspace Folder",
       message: "Choose a folder for the agent to work in"
@@ -467,6 +395,7 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
     }
 
     const selectedPath = result.filePaths[0]
+    setWorkspaceDialogPath(selectedPath)
 
     if (threadId) {
       const { getThread, updateThread } = await import("../db")
@@ -475,14 +404,14 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
         const metadata = thread.metadata ? JSON.parse(thread.metadata) : {}
         metadata.workspacePath = selectedPath
         await updateThread(threadId, { metadata: JSON.stringify(metadata) })
-        store.set("workspacePath", selectedPath)
+        setGlobalWorkspacePath(selectedPath)
 
         // Start watching the new workspace
         startWatching(threadId, selectedPath)
       }
     } else {
       // Fallback to global
-      store.set("workspacePath", selectedPath)
+      setGlobalWorkspacePath(selectedPath)
     }
 
     return selectedPath
@@ -671,11 +600,12 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
 
 // Re-export getApiKey from storage for use in agent runtime
 export { getApiKey } from "../storage"
+export { getAgentConfig }
 
 export function getModelConfig(modelId: string): ModelConfig | undefined {
   return AVAILABLE_MODELS.find((model) => model.id === modelId)
 }
 
 export function getDefaultModel(): string {
-  return store.get("defaultModel", DEFAULT_MODEL_ID) as string
+  return getDefaultModelId()
 }

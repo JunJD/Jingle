@@ -1,5 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, nativeImage } from "electron"
 import { join } from "path"
+import { installApplicationMenu } from "./app-menu"
 import { registerAgentHandlers } from "./ipc/agent"
 import { registerLauncherHistoryHandlers } from "./ipc/launcher-history"
 import { registerLocalStartHandlers } from "./ipc/local-start"
@@ -12,9 +13,14 @@ import {
   createLauncherWindow,
   registerLauncherHandlers,
   registerLauncherShortcut,
+  showLauncherWindow,
   unregisterLauncherShortcut
 } from "./windows/launcher-window"
 import { loadRendererWindow } from "./windows/load-renderer-window"
+import {
+  attachMainWindowStatePersistence,
+  getMainWindowPlacement
+} from "./windows/main-window-state"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
 
 let mainWindow: BrowserWindow | null = null
@@ -25,13 +31,14 @@ const isDev = !app.isPackaged
 
 function createWindow(): void {
   const isMac = process.platform === "darwin"
+  const placement = getMainWindowPlacement()
 
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    ...placement.bounds,
     minWidth: 1200,
     minHeight: 700,
     show: false,
+    autoHideMenuBar: !isMac,
     backgroundColor: "#F3F4F1",
     titleBarStyle: "hidden",
     ...(isMac
@@ -51,8 +58,18 @@ function createWindow(): void {
     }
   })
 
+  attachMainWindowStatePersistence(mainWindow)
+
   mainWindow.on("ready-to-show", () => {
-    mainWindow?.show()
+    if (!mainWindow) {
+      return
+    }
+
+    mainWindow.show()
+    if (placement.isMaximized) {
+      mainWindow.maximize()
+    }
+    mainWindow.focus()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -125,6 +142,12 @@ app.whenReady().then(async () => {
   registerBuiltPluginHandlers(ipcMain)
   registerLauncherHandlers(ipcMain)
   void warmLauncherSearchProviders()
+  installApplicationMenu({
+    isDev,
+    showLauncher: () => {
+      showLauncherWindow(getOrCreateLauncherWindow())
+    }
+  })
 
   createWindow()
   getOrCreateLauncherWindow()

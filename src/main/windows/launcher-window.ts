@@ -104,7 +104,7 @@ function emitLauncherShown(launcherWindow: BrowserWindow): void {
   launcherWindow.webContents.send("launcher:shown")
 }
 
-function showLauncherWindow(launcherWindow: BrowserWindow): void {
+export function showLauncherWindow(launcherWindow: BrowserWindow): void {
   const nextHeight = launcherWindow.getBounds().height || LAUNCHER_BASE_HEIGHT
   const nextBounds = getLauncherBounds(nextHeight)
   launcherWindow.setBounds(nextBounds, false)
@@ -221,6 +221,7 @@ export function createLauncherWindow(): BrowserWindow {
     width: LAUNCHER_WIDTH,
     height: LAUNCHER_BASE_HEIGHT,
     show: false,
+    autoHideMenuBar: process.platform !== "darwin",
     ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
     frame: false,
     useContentSize: true,
