@@ -14,9 +14,9 @@ import type {
 import type { LauncherHistoryItem } from "../../../../shared/launcher-history"
 import type { LocalStartItem } from "../../../../shared/local-start"
 import { shouldShowLauncherIdleItems } from "../../../../shared/launcher-settings"
-import { useLauncherInput } from "../LauncherInputContext"
-import { DEFAULT_HOME_ENTRY_PAGE_ID } from "../pages"
-import type { LauncherFeaturePageId, LauncherHomeEntry } from "../pages/types"
+import { useLauncherClipboard } from "../LauncherClipboardContext"
+import { DEFAULT_HOME_ENTRY_PLUGIN_ID, getLauncherHomeEntries } from "../pages"
+import type { LauncherHomeEntry, LauncherPluginId } from "../pages/types"
 import type { LauncherShellItem } from "../types"
 
 const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
@@ -35,7 +35,7 @@ function buildFeatureIntentItems(props: {
   return [
     {
       action: { type: "none" },
-      featurePageId: "ai",
+      pluginId: "ai",
       id: "feature-ai-intent",
       kind: "ai",
       subtitle: aiIntentSubtitle(trimmedQuery),
@@ -83,35 +83,39 @@ function buildLauncherHistoryShellItems(items: LauncherHistoryItem[]): LauncherS
 }
 
 export function useLauncherSearchPage(props: {
-  openFeaturePage: (pageId: LauncherFeaturePageId) => void
+  openPlugin: (pluginId: LauncherPluginId, options?: { seedQuery?: string }) => void
 }): {
   entries: LauncherHomeEntry[]
   executeItem: (index: number) => void
   handleInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   items: LauncherShellItem[]
-  openFeaturePage: (pageId: LauncherFeaturePageId) => void
+  openPlugin: (pluginId: LauncherPluginId) => void
   placeholder: string
+  query: string
   resultsViewportHeight: number
   resultsVisible: boolean
   selectedIndex: number
+  setQuery: (value: string) => void
   shellConfig: LauncherShellConfig
   viewportHeight: number
 } {
-  const { openFeaturePage: navigateToFeaturePage } = props
+  const { openPlugin: navigateToPlugin } = props
   const { copy } = useI18n()
-  const { query } = useLauncherInput()
+  const { context, isTextAutofillConsumed, markTextAutofillConsumed } = useLauncherClipboard()
   const latestSearchRequestRef = useRef(0)
-  const [debouncedQuery, setDebouncedQuery] = useState("")
+  const [query, setQuery] = useState("")
   const [historyItems, setHistoryItems] = useState<LauncherHistoryItem[]>([])
   const [searchResponse, setSearchResponse] = useState<LauncherSearchResponse | null>(null)
   const [idleItems, setIdleItems] = useState<LocalStartItem[]>([])
   const [windowMode, setWindowMode] = useState<"default" | "compact">("default")
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const shellConfig: LauncherShellConfig = FALLBACK_SHELL_CONFIG
+  const trimmedQuery = query.trim()
 
-  const searchResults = query.trim()
-    ? (searchResponse?.results ?? EMPTY_SEARCH_RESULTS)
-    : EMPTY_SEARCH_RESULTS
+  const searchResults =
+    trimmedQuery && searchResponse?.query === trimmedQuery
+      ? searchResponse.results
+      : EMPTY_SEARCH_RESULTS
   const items = useMemo(() => {
     if (!query.trim()) {
       if (!shouldShowLauncherIdleItems(windowMode)) {
@@ -157,6 +161,7 @@ export function useLauncherSearchPage(props: {
   const resultsViewportHeight = getLauncherResultsHeight(items.length, shellConfig)
   const viewportHeight = getLauncherViewportHeight(items.length, shellConfig)
   const resultsVisible = items.length > 0
+  const entries = useMemo(() => getLauncherHomeEntries(copy), [copy])
 
   useEffect(() => {
     const refreshIdleState = (): void => {
@@ -182,55 +187,67 @@ export function useLauncherSearchPage(props: {
   }, [])
 
   useEffect(() => {
-    const nextQuery = query.trim()
-    if (!nextQuery) {
+    if (context.kind !== "text" || isTextAutofillConsumed) {
+      return
+    }
+
+    if (query.trim().length > 0) {
+      markTextAutofillConsumed()
+      return
+    }
+
+    const text = context.text
+    const frameId = window.requestAnimationFrame(() => {
+      setQuery(text)
+      markTextAutofillConsumed()
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [context, isTextAutofillConsumed, markTextAutofillConsumed, query])
+
+  useEffect(() => {
+    if (!trimmedQuery) {
       latestSearchRequestRef.current += 1
       return
     }
 
     const debounceTimer = window.setTimeout(() => {
-      setDebouncedQuery(nextQuery)
+      const requestId = latestSearchRequestRef.current + 1
+      latestSearchRequestRef.current = requestId
+
+      void window.api.launcher
+        .search({
+          limit: MAX_LAUNCHER_SEARCH_RESULTS,
+          query: trimmedQuery,
+          sources: ["applications"]
+        })
+        .then((response) => {
+          if (latestSearchRequestRef.current === requestId) {
+            setSearchResponse(response)
+          }
+        })
+        .catch(() => {
+          if (latestSearchRequestRef.current === requestId) {
+            setSearchResponse({
+              query: trimmedQuery,
+              results: []
+            })
+          }
+        })
     }, 100)
 
     return () => {
       window.clearTimeout(debounceTimer)
     }
-  }, [query])
+  }, [trimmedQuery])
 
-  useEffect(() => {
-    if (!debouncedQuery) {
-      return
-    }
-
-    const requestId = latestSearchRequestRef.current + 1
-    latestSearchRequestRef.current = requestId
-
-    void window.api.launcher
-      .search({
-        limit: MAX_LAUNCHER_SEARCH_RESULTS,
-        query: debouncedQuery,
-        sources: ["applications"]
-      })
-      .then((response) => {
-        if (latestSearchRequestRef.current === requestId) {
-          setSearchResponse(response)
-        }
-      })
-      .catch(() => {
-        if (latestSearchRequestRef.current === requestId) {
-          setSearchResponse({
-            query: debouncedQuery,
-            results: []
-          })
-        }
-      })
-  }, [debouncedQuery])
-
-  const openFeaturePage = useCallback(
-    (pageId: LauncherFeaturePageId): void => {
-      navigateToFeaturePage(pageId)
+  const openPlugin = useCallback(
+    (pluginId: LauncherPluginId): void => {
+      navigateToPlugin(pluginId, { seedQuery: query })
     },
-    [navigateToFeaturePage]
+    [navigateToPlugin, query]
   )
 
   const moveSelection = useCallback(
@@ -252,8 +269,8 @@ export function useLauncherSearchPage(props: {
         return
       }
 
-      if (item.featurePageId) {
-        navigateToFeaturePage(item.featurePageId)
+      if (item.pluginId) {
+        navigateToPlugin(item.pluginId, { seedQuery: query })
         return
       }
 
@@ -267,7 +284,7 @@ export function useLauncherSearchPage(props: {
         }
       })
     },
-    [items, navigateToFeaturePage]
+    [items, navigateToPlugin, query]
   )
 
   const handleInputKeyDown = useCallback(
@@ -275,7 +292,7 @@ export function useLauncherSearchPage(props: {
       switch (event.key) {
         case "Tab":
           event.preventDefault()
-          openFeaturePage(DEFAULT_HOME_ENTRY_PAGE_ID)
+          openPlugin(DEFAULT_HOME_ENTRY_PLUGIN_ID)
           break
         case "ArrowDown":
         case "ArrowRight":
@@ -295,25 +312,21 @@ export function useLauncherSearchPage(props: {
           break
       }
     },
-    [executeItem, moveSelection, openFeaturePage, selectedIndex]
+    [executeItem, moveSelection, openPlugin, selectedIndex]
   )
 
   return {
-    entries: [
-      {
-        pageId: DEFAULT_HOME_ENTRY_PAGE_ID,
-        label: copy.launcher.aiEntryLabel,
-        shortcutLabel: "Tab"
-      }
-    ],
+    entries,
     executeItem,
     handleInputKeyDown,
     items,
-    openFeaturePage,
+    openPlugin,
     placeholder: copy.launcher.searchPlaceholder,
+    query,
     resultsViewportHeight,
     resultsVisible,
     selectedIndex,
+    setQuery,
     shellConfig,
     viewportHeight
   }

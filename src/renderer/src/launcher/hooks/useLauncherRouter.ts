@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from "react"
-import { getLauncherFeaturePageDefinition } from "../pages"
+import { getLauncherPluginDefinition } from "../pages"
 import type {
-  LauncherFeaturePageDefinition,
-  LauncherFeaturePageId,
+  LauncherPluginDefinition,
+  LauncherPluginId,
   LauncherNavigationDirection,
   LauncherRoute
 } from "../pages/types"
@@ -10,10 +10,10 @@ import type {
 const HOME_ROUTE: LauncherRoute = { id: "home" }
 
 export function useLauncherRouter(): {
-  activeFeaturePage: LauncherFeaturePageDefinition | null
-  closeActivePage: () => void
+  activePlugin: LauncherPluginDefinition | null
+  closeActivePlugin: () => void
   navigationDirection: LauncherNavigationDirection
-  openFeaturePage: (pageId: LauncherFeaturePageId) => void
+  openPlugin: (pluginId: LauncherPluginId, options?: { seedQuery?: string }) => void
   route: LauncherRoute
   routeKey: string
 } {
@@ -21,30 +21,33 @@ export function useLauncherRouter(): {
     useState<LauncherNavigationDirection>("forward")
   const [route, setRoute] = useState<LauncherRoute>(HOME_ROUTE)
 
-  const openFeaturePage = useCallback((pageId: LauncherFeaturePageId): void => {
-    setNavigationDirection("forward")
-    setRoute({ id: pageId })
-  }, [])
+  const openPlugin = useCallback(
+    (pluginId: LauncherPluginId, options?: { seedQuery?: string }): void => {
+      setNavigationDirection("forward")
+      setRoute({ id: pluginId, seedQuery: options?.seedQuery ?? "" })
+    },
+    []
+  )
 
-  const closeActivePage = useCallback((): void => {
+  const closeActivePlugin = useCallback((): void => {
     setNavigationDirection("backward")
     setRoute(HOME_ROUTE)
   }, [])
 
-  const activeFeaturePage = useMemo(() => {
+  const activePlugin = useMemo(() => {
     if (route.id === "home") {
       return null
     }
 
-    return getLauncherFeaturePageDefinition(route.id)
+    return getLauncherPluginDefinition(route.id)
   }, [route])
 
   return {
-    activeFeaturePage,
-    closeActivePage,
+    activePlugin,
+    closeActivePlugin,
     navigationDirection,
-    openFeaturePage,
+    openPlugin,
     route,
-    routeKey: route.id
+    routeKey: route.id === "home" ? route.id : `${route.id}:${route.seedQuery}`
   }
 }

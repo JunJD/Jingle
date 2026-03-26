@@ -1,5 +1,5 @@
 import { ArrowLeft } from "lucide-react"
-import type { LauncherFeaturePageRenderProps } from "./types"
+import type { LauncherPluginRenderProps } from "./types"
 import { useLauncherClipboard } from "../LauncherClipboardContext"
 import { useAiThread } from "../hooks/useAiThread"
 import { ClipboardChip } from "../components/ClipboardChip"
@@ -7,13 +7,14 @@ import { LauncherAiConversation, LauncherAiEmptyState } from "./LauncherAiConver
 import { LauncherChrome } from "../components/LauncherChrome"
 import { useI18n } from "@/lib/i18n"
 
-export function LauncherAiPage(props: LauncherFeaturePageRenderProps): React.JSX.Element {
+export function LauncherAiPage(props: LauncherPluginRenderProps): React.JSX.Element {
   const { copy } = useI18n()
   const clipboard = useLauncherClipboard()
-  const { inputRef, onBack, shellConfig } = props
+  const { inputRef, onBack, seedQuery, shellConfig } = props
 
   const session = useAiThread({
-    onBack
+    onBack,
+    seedQuery
   })
 
   return (

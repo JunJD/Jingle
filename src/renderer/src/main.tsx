@@ -3,7 +3,6 @@ import ReactDOM from "react-dom/client"
 import App from "./App"
 import LauncherApp from "./launcher/LauncherApp"
 import { LauncherClipboardProvider } from "./launcher/LauncherClipboardContext"
-import { LauncherInputProvider } from "./launcher/LauncherInputContext"
 import { ThreadProvider } from "./lib/thread-context"
 import { I18nProvider } from "./lib/i18n"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "../../shared/i18n"
@@ -36,9 +35,7 @@ async function bootstrap(): Promise<void> {
         {windowKind === "launcher" ? (
           <ThreadProvider>
             <LauncherClipboardProvider>
-              <LauncherInputProvider>
-                <LauncherApp />
-              </LauncherInputProvider>
+              <LauncherApp />
             </LauncherClipboardProvider>
           </ThreadProvider>
         ) : (

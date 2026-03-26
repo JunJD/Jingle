@@ -6,24 +6,18 @@ import { useLauncherSearchPage } from "./hooks/useLauncherSearchPage"
 
 export default function LauncherApp(): React.JSX.Element {
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const featureInputRef = useRef<HTMLInputElement>(null)
+  const pluginInputRef = useRef<HTMLInputElement>(null)
   const viewportHeightRef = useRef(0)
-  const {
-    activeFeaturePage,
-    closeActivePage,
-    navigationDirection,
-    openFeaturePage,
-    route,
-    routeKey
-  } = useLauncherRouter()
-  const searchPage = useLauncherSearchPage({ openFeaturePage })
+  const { activePlugin, closeActivePlugin, navigationDirection, openPlugin, route, routeKey } =
+    useLauncherRouter()
+  const searchPage = useLauncherSearchPage({ openPlugin })
   const selectedItem =
     searchPage.selectedIndex >= 0 ? searchPage.items[searchPage.selectedIndex] : null
-  const ActiveFeaturePageComponent = activeFeaturePage?.Component ?? null
+  const ActivePluginComponent = activePlugin?.Component ?? null
   const viewportHeight =
     route.id === "home"
       ? searchPage.viewportHeight
-      : (activeFeaturePage?.getViewportHeight(searchPage.shellConfig) ?? searchPage.viewportHeight)
+      : (activePlugin?.getViewportHeight(searchPage.shellConfig) ?? searchPage.viewportHeight)
 
   const setViewportHeight = useCallback((height: number): void => {
     const nextHeight = Math.round(height)
@@ -41,7 +35,7 @@ export default function LauncherApp(): React.JSX.Element {
 
   useEffect(() => {
     const focusInput = (): void => {
-      const input = route.id === "home" ? searchInputRef.current : featureInputRef.current
+      const input = route.id === "home" ? searchInputRef.current : pluginInputRef.current
       if (!input) {
         return
       }
@@ -71,7 +65,7 @@ export default function LauncherApp(): React.JSX.Element {
       if (event.key === "Escape") {
         event.preventDefault()
         if (route.id !== "home") {
-          closeActivePage()
+          closeActivePlugin()
           return
         }
 
@@ -81,7 +75,7 @@ export default function LauncherApp(): React.JSX.Element {
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [closeActivePage, route.id])
+  }, [closeActivePlugin, route.id])
 
   return (
     <div
@@ -99,10 +93,11 @@ export default function LauncherApp(): React.JSX.Element {
         }}
       >
         <LauncherPageTransition direction={navigationDirection} pageKey={routeKey}>
-          {activeFeaturePage && ActiveFeaturePageComponent && route.id !== "home" ? (
-            <ActiveFeaturePageComponent
-              inputRef={featureInputRef}
-              onBack={closeActivePage}
+          {activePlugin && ActivePluginComponent && route.id !== "home" ? (
+            <ActivePluginComponent
+              inputRef={pluginInputRef}
+              onBack={closeActivePlugin}
+              seedQuery={route.seedQuery}
               shellConfig={searchPage.shellConfig}
             />
           ) : (
@@ -110,9 +105,11 @@ export default function LauncherApp(): React.JSX.Element {
               entries={searchPage.entries}
               executeItem={searchPage.executeItem}
               inputRef={searchInputRef}
+              inputValue={searchPage.query}
               items={searchPage.items}
               onInputKeyDown={searchPage.handleInputKeyDown}
-              onOpenFeaturePage={searchPage.openFeaturePage}
+              onInputValueChange={searchPage.setQuery}
+              onOpenPlugin={searchPage.openPlugin}
               placeholder={searchPage.placeholder}
               resultsViewportHeight={searchPage.resultsViewportHeight}
               resultsVisible={searchPage.resultsVisible}

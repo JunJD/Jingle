@@ -1,25 +1,28 @@
 import type { ComponentType, RefObject } from "react"
 import type { LauncherShellConfig } from "../../../../shared/launcher"
+import type { AppCopy } from "@/lib/i18n/messages"
 
-export type LauncherFeaturePageId = "ai"
+export type LauncherPluginId = "ai"
 export type LauncherNavigationDirection = "forward" | "backward"
 
-export type LauncherRoute = { id: "home" } | { id: LauncherFeaturePageId }
+export type LauncherRoute = { id: "home" } | { id: LauncherPluginId; seedQuery: string }
 
-export interface LauncherFeaturePageRenderProps {
+export interface LauncherPluginRenderProps {
   inputRef: RefObject<HTMLInputElement | null>
   onBack: () => void
+  seedQuery: string
   shellConfig: LauncherShellConfig
 }
 
 export interface LauncherHomeEntry {
-  pageId: LauncherFeaturePageId
+  pluginId: LauncherPluginId
   label: string
   shortcutLabel: string
 }
 
-export interface LauncherFeaturePageDefinition {
+export interface LauncherPluginDefinition {
+  buildHomeEntry: (copy: AppCopy) => LauncherHomeEntry
   getViewportHeight: (shellConfig: LauncherShellConfig) => number
-  id: LauncherFeaturePageId
-  Component: ComponentType<LauncherFeaturePageRenderProps>
+  id: LauncherPluginId
+  Component: ComponentType<LauncherPluginRenderProps>
 }

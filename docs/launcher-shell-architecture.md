@@ -17,6 +17,18 @@
 - `LauncherAiPage` 自己管理 AI page chrome、thread session 和固定 viewport
 - `launcherHomeEntries` 与 `feature page registry` 分离，不再共用一个 definition
 
+## First-Party Plugin Contract
+
+当前 launcher 里的二级能力按 `first-party plugin` 收口，而不是继续按“内建特殊页”处理。
+
+- `plugin registry` 负责 `id -> Component + viewport + home entry`
+- `home/search page` 只拥有自己的搜索输入和搜索结果
+- `plugin page` 只拥有自己的输入、提交链路和内部状态
+- `seedQuery` 只在 `home -> plugin` 导航时显式传一次
+- launcher 根层不再持有全局 `query state`
+
+这条边界是为了先把内部能力写成稳定的插件宿主协议；后续如果真的需要外部加载或 npm 分发，只在这个 contract 外增加 loader，不回头修改 page 输入归属。
+
 ## 模块图
 
 ```mermaid

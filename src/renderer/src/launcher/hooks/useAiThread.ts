@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useThreadContext } from "@/lib/thread-context"
 import { useThreadConversationProjection } from "@/lib/thread-conversation"
 import { useI18n } from "@/lib/i18n"
-import { useLauncherInput } from "../LauncherInputContext"
 
 interface CreatedLauncherThread {
   modelId: string
@@ -10,7 +9,7 @@ interface CreatedLauncherThread {
   workspacePath: string
 }
 
-export function useAiThread(props: { onBack: () => void }): {
+export function useAiThread(props: { onBack: () => void; seedQuery: string }): {
   conversation: ReturnType<typeof useThreadConversationProjection> & {
     clearVisibleError: () => void
     visibleError: string | null
@@ -24,17 +23,18 @@ export function useAiThread(props: { onBack: () => void }): {
   threadId: string | null
 } {
   const { copy } = useI18n()
-  const { onBack } = props
+  const { onBack, seedQuery } = props
   const threadContext = useThreadContext()
-  const { query, setQuery } = useLauncherInput()
   const requestRef = useRef(0)
   const [threadId, setThreadId] = useState<string | null>(null)
+  const [pendingQuery, setPendingQuery] = useState(seedQuery)
   const [localError, setLocalError] = useState<string | null>(null)
   const [isCreatingThread, setIsCreatingThread] = useState(false)
 
   const conversation = useThreadConversationProjection(threadId)
   const threadState = conversation.threadState
   const visibleError = conversation.error ?? localError
+  const query = threadState?.draftInput ?? pendingQuery
 
   useEffect(() => {
     return () => {
@@ -60,22 +60,13 @@ export function useAiThread(props: { onBack: () => void }): {
 
       if (threadState) {
         threadState.setDraftInput(value)
+        return
       }
 
-      setQuery(value)
+      setPendingQuery(value)
     },
-    [localError, setQuery, threadState]
+    [localError, threadState]
   )
-
-  useEffect(() => {
-    if (!threadState) {
-      return
-    }
-
-    if (threadState.draftInput !== query) {
-      setQuery(threadState.draftInput)
-    }
-  }, [query, setQuery, threadState])
 
   const waitForThreadStream = useCallback(
     async (nextThreadId: string, requestId: number) => {
@@ -170,7 +161,6 @@ export function useAiThread(props: { onBack: () => void }): {
         actions.setPendingApproval(null)
       }
 
-      setQuery("")
       actions.setDraftInput("")
       actions.appendMessage({
         id: crypto.randomUUID(),
@@ -197,7 +187,6 @@ export function useAiThread(props: { onBack: () => void }): {
       copy.chat.inputNeedsWorkspace,
       createLauncherThread,
       localError,
-      setQuery,
       threadContext,
       threadId,
       waitForThreadStream

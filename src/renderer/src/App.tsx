@@ -3,6 +3,7 @@ import { ThreadSidebar } from "@/components/sidebar/ThreadSidebar"
 import { TabbedPanel, TabBar } from "@/components/tabs"
 import { RightPanel } from "@/components/panels/RightPanel"
 import { KanbanView, KanbanHeader } from "@/components/kanban"
+import { HomeEntry } from "@/components/home/HomeEntry"
 import { ResizeHandle } from "@/components/ui/resizable"
 import { useAppStore } from "@/lib/store"
 import { ThreadProvider } from "@/lib/thread-context"
@@ -149,9 +150,7 @@ function App(): React.JSX.Element {
                 {currentThreadId ? (
                   <TabbedPanel threadId={currentThreadId} showTabBar={false} />
                 ) : (
-                  <div className="flex flex-1 items-center justify-center text-muted-foreground">
-                    {copy.app.selectThreadToBegin}
-                  </div>
+                  <HomeEntry />
                 )}
               </main>
 

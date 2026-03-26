@@ -12,9 +12,11 @@ export function LauncherSearchPage(props: {
   entries: LauncherHomeEntry[]
   executeItem: (index: number) => void
   inputRef: RefObject<HTMLInputElement | null>
+  inputValue: string
   items: LauncherShellItem[]
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
-  onOpenFeaturePage: (pageId: LauncherHomeEntry["pageId"]) => void
+  onInputValueChange: (value: string) => void
+  onOpenPlugin: (pluginId: LauncherHomeEntry["pluginId"]) => void
   placeholder: string
   resultsViewportHeight: number
   resultsVisible: boolean
@@ -28,9 +30,11 @@ export function LauncherSearchPage(props: {
     entries,
     executeItem,
     inputRef,
+    inputValue,
     items,
     onInputKeyDown,
-    onOpenFeaturePage,
+    onInputValueChange,
+    onOpenPlugin,
     placeholder,
     resultsViewportHeight,
     resultsVisible,
@@ -40,7 +44,7 @@ export function LauncherSearchPage(props: {
   } = props
 
   const primaryActionLabel =
-    selectedItem?.featurePageId || selectedItem?.kind === "ai"
+    selectedItem?.pluginId || selectedItem?.kind === "ai"
       ? copy.launcher.aiPrimaryLabel
       : selectedItem?.kind === "application"
         ? copy.launcher.openApp
@@ -88,9 +92,9 @@ export function LauncherSearchPage(props: {
       }
       headerTrailing={entries.map((entry) => (
         <button
-          key={entry.pageId}
+          key={entry.pluginId}
           type="button"
-          onClick={() => onOpenFeaturePage(entry.pageId)}
+          onClick={() => onOpenPlugin(entry.pluginId)}
           onMouseDown={(event) => event.preventDefault()}
           className="flex shrink-0 appearance-none items-center gap-2 border-0 bg-transparent px-0 py-1 text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
         >
@@ -106,7 +110,9 @@ export function LauncherSearchPage(props: {
         </button>
       ))}
       inputRef={inputRef}
+      inputValue={inputValue}
       onInputKeyDown={onInputKeyDown}
+      onInputValueChange={onInputValueChange}
       placeholder={placeholder}
       shellConfig={shellConfig}
       showHeaderDivider={resultsVisible}

@@ -1,14 +1,19 @@
-import { aiLauncherPage } from "./ai"
-import type { LauncherFeaturePageDefinition, LauncherFeaturePageId } from "./types"
+import type { AppCopy } from "@/lib/i18n/messages"
+import { aiLauncherPlugin } from "./ai"
+import type { LauncherHomeEntry, LauncherPluginDefinition, LauncherPluginId } from "./types"
 
-const launcherFeaturePageMap: Record<LauncherFeaturePageId, LauncherFeaturePageDefinition> = {
-  [aiLauncherPage.id]: aiLauncherPage
+const launcherPlugins: LauncherPluginDefinition[] = [aiLauncherPlugin]
+
+const launcherPluginMap: Record<LauncherPluginId, LauncherPluginDefinition> = {
+  [aiLauncherPlugin.id]: aiLauncherPlugin
 }
 
-export const DEFAULT_HOME_ENTRY_PAGE_ID: LauncherFeaturePageId = aiLauncherPage.id
+export const DEFAULT_HOME_ENTRY_PLUGIN_ID: LauncherPluginId = aiLauncherPlugin.id
 
-export function getLauncherFeaturePageDefinition(
-  pageId: LauncherFeaturePageId
-): LauncherFeaturePageDefinition {
-  return launcherFeaturePageMap[pageId]
+export function getLauncherPluginDefinition(pluginId: LauncherPluginId): LauncherPluginDefinition {
+  return launcherPluginMap[pluginId]
+}
+
+export function getLauncherHomeEntries(copy: AppCopy): LauncherHomeEntry[] {
+  return launcherPlugins.map((plugin) => plugin.buildHomeEntry(copy))
 }
