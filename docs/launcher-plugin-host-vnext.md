@@ -380,21 +380,22 @@ type LauncherPluginEntryManifest = {
 
 ### P0
 
-- [ ] 新建共享 `LauncherPluginManifest` / `LauncherPluginEntryManifest`
-- [ ] 把 route 从 `pluginId` 升级到 `pluginId + entryId`
-- [ ] 把 home entry / intent / shortcut / history 统一切到 entry 级模型
-- [ ] 给每个插件补独立 `manifest.ts`
-- [ ] 让 renderer registry 从 manifest + renderer adapter 注册
-- [ ] 让 main registry 从 manifest + main adapter 注册
-- [ ] 把 `AI` 迁到新插件包结构
-- [ ] 删除旧 `pages/ai.tsx` authoring path
+- [x] 新建共享 `LauncherPluginManifest` / `LauncherPluginEntryManifest`
+- [x] 把 route 从 `pluginId` 升级到 `pluginId + entryId`
+- [x] 把 home entry / intent / shortcut / history 统一切到 entry 级模型
+- [x] 给每个插件补独立 `manifest.ts`
+- [x] 让 renderer registry 从 manifest + renderer adapter 注册
+- [x] 让 main registry 从 manifest + main adapter 注册
+- [x] 把 `AI` 迁到新插件包结构
+- [x] 删除旧 `pages/ai.tsx` authoring path
 
 ### P1
 
-- [ ] 给 manifest 加 `capabilities`
-- [ ] 按 capability 注入 host API
-- [ ] 给插件 RPC 方法加 manifest 声明
-- [ ] 启动时校验 pluginId / entryId / rpc methods
+- [x] 给 manifest 加 `capabilities`
+- [x] 按 capability 注入 host API
+- [x] 给插件 RPC 方法加 manifest 声明
+- [x] 启动时校验 pluginId / entryId / rpc methods
+- [x] 预留 manifest-only registry seam，供未来 Jingle adapter 消费
 - [ ] 统一 `plugin.invoke` 命名，逐步替代 `builtPlugins.invoke`
 
 ### P2

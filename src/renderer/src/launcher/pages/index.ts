@@ -48,6 +48,10 @@ export function getLauncherPluginDefinition(pluginId: LauncherPluginId): Launche
   return plugin
 }
 
+export function listLauncherPluginManifests() {
+  return launcherPlugins.map((plugin) => plugin.manifest)
+}
+
 export function getLauncherDefaultEntryAddress(
   pluginId: LauncherPluginId
 ): LauncherPluginEntryAddress {
@@ -58,14 +62,13 @@ export function getLauncherDefaultEntryAddress(
   }
 }
 
-export function getLauncherPluginEntryDefinition(
-  address: LauncherPluginEntryAddress
-): { entry: LauncherPluginEntryDefinition; plugin: LauncherPluginDefinition } {
+export function getLauncherPluginEntryDefinition(address: LauncherPluginEntryAddress): {
+  entry: LauncherPluginEntryDefinition
+  plugin: LauncherPluginDefinition
+} {
   const resolved = launcherPluginEntryMap.get(getLauncherPluginEntryKey(address))
   if (!resolved) {
-    throw new Error(
-      `Unknown launcher plugin entry "${address.pluginId}:${address.entryId}"`
-    )
+    throw new Error(`Unknown launcher plugin entry "${address.pluginId}:${address.entryId}"`)
   }
 
   return resolved
@@ -116,9 +119,11 @@ export function getLauncherPluginIntents(params: {
     })
 }
 
-export function resolveLauncherPluginCommand(
-  params: LauncherPluginCommandParams
-): { entryId: LauncherPluginEntryId; pluginId: LauncherPluginId; match: LauncherPluginCommandMatch } | null {
+export function resolveLauncherPluginCommand(params: LauncherPluginCommandParams): {
+  entryId: LauncherPluginEntryId
+  pluginId: LauncherPluginId
+  match: LauncherPluginCommandMatch
+} | null {
   for (const plugin of launcherPlugins) {
     for (const entry of plugin.entries) {
       const match = entry.resolveCommand?.(params)
