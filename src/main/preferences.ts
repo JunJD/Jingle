@@ -17,8 +17,13 @@ export interface PersistedWindowState {
   isMaximized: boolean
 }
 
+export interface BuiltPluginSettings {
+  translateModelId: string | null
+}
+
 interface SettingsStoreShape {
   agentConfig: AgentConfig
+  builtPluginSettings: BuiltPluginSettings
   defaultModel: string
   launcherSettings: LauncherSettings
   mainWindowState: PersistedWindowState | null
@@ -32,11 +37,16 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   locale: DEFAULT_APP_LOCALE
 }
 
+const DEFAULT_BUILT_PLUGIN_SETTINGS: BuiltPluginSettings = {
+  translateModelId: null
+}
+
 const settingsStore = new Store<SettingsStoreShape>({
   name: "settings",
   cwd: getOpenworkDir(),
   defaults: {
     agentConfig: DEFAULT_AGENT_CONFIG,
+    builtPluginSettings: DEFAULT_BUILT_PLUGIN_SETTINGS,
     defaultModel: DEFAULT_MODEL_ID,
     launcherSettings: DEFAULT_LAUNCHER_SETTINGS,
     mainWindowState: null,
@@ -58,6 +68,15 @@ function normalizePathList(value: unknown): string[] {
         .filter((entry) => entry.length > 0)
     )
   )
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null
+  }
+
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
 }
 
 function normalizeWindowCoordinate(value: unknown): number | undefined {
@@ -122,6 +141,16 @@ export function setAgentConfig(updates: Partial<AgentConfig>): AgentConfig {
 
   settingsStore.set("agentConfig", nextConfig)
   return nextConfig
+}
+
+export function getBuiltPluginSettings(): BuiltPluginSettings {
+  const stored = settingsStore.get("builtPluginSettings", DEFAULT_BUILT_PLUGIN_SETTINGS) as
+    | Partial<BuiltPluginSettings>
+    | undefined
+
+  return {
+    translateModelId: normalizeOptionalString(stored?.translateModelId)
+  }
 }
 
 export function getLauncherSettings(): LauncherSettings {

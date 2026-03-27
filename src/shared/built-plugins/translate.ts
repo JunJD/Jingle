@@ -1,5 +1,3 @@
-export const DEFAULT_TRANSLATE_MODEL_ID = "qwen-plus"
-
 export type TranslateBackendConfig = {
   kind: "llm"
   modelId?: string

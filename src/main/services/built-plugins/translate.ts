@@ -1,53 +1,49 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages"
 import {
-  DEFAULT_TRANSLATE_MODEL_ID,
   type TranslateBackendConfig,
   type TranslateTextRequest,
   type TranslateTextResponse
 } from "../../../shared/built-plugins/translate"
-import { getDefaultModel, getModelConfig } from "../../ipc/models"
-import { getChatModelInstance } from "../../llm/get-chat-model"
-import { hasApiKey } from "../../storage"
+import { getModelConfig } from "../../ipc/models"
+import { getChatModelInstance, inferProviderFromModelId } from "../../llm/get-chat-model"
+import { getEnvValue, hasApiKey } from "../../storage"
+import { getBuiltPluginSettings } from "../../preferences"
 import { defineBuiltPluginService } from "./sdk"
 
-const TRANSLATE_MODEL_FALLBACK_ORDER = [
-  DEFAULT_TRANSLATE_MODEL_ID,
-  "glm-4.6",
-  "gemini-2.5-flash-lite",
-  "gpt-4.1-mini",
-  "claude-haiku-4-5-20251001"
-]
+const TRANSLATE_MODEL_ENV_NAME = "OPENWORK_TRANSLATE_MODEL_ID"
+const TRANSLATE_MODEL_SETTINGS_PATH = "builtPluginSettings.translateModelId"
 
 function resolveBackend(backend?: TranslateBackendConfig): TranslateBackendConfig {
-  const preferredModelId = resolvePreferredTranslateModelId(backend?.modelId)
+  void backend
 
   return {
     kind: "llm",
-    modelId: preferredModelId
+    modelId: resolveConfiguredTranslateModelId()
   }
 }
 
-function resolvePreferredTranslateModelId(requestedModelId?: string): string {
-  const candidates = Array.from(
-    new Set(
-      [requestedModelId, getDefaultModel(), ...TRANSLATE_MODEL_FALLBACK_ORDER].filter(
-        (value): value is string => typeof value === "string" && value.trim().length > 0
-      )
+function resolveConfiguredTranslateModelId(): string {
+  const configuredModelId =
+    getBuiltPluginSettings().translateModelId ?? getEnvValue(TRANSLATE_MODEL_ENV_NAME)?.trim() ?? null
+  if (!configuredModelId) {
+    throw new Error(
+      `Translation model is not configured. Set ${TRANSLATE_MODEL_SETTINGS_PATH} in ~/.openwork/settings.json or ${TRANSLATE_MODEL_ENV_NAME} in ~/.openwork/.env.`
     )
-  )
-
-  for (const candidate of candidates) {
-    const config = getModelConfig(candidate)
-    if (!config) {
-      continue
-    }
-
-    if (hasApiKey(config.provider)) {
-      return candidate
-    }
   }
 
-  throw new Error("No available translation model. Configure at least one model provider API key.")
+  const provider =
+    getModelConfig(configuredModelId)?.provider ?? inferProviderFromModelId(configuredModelId)
+  if (!provider) {
+    throw new Error(
+      `Unknown translation model "${configuredModelId}". Check ${TRANSLATE_MODEL_SETTINGS_PATH} in ~/.openwork/settings.json or ${TRANSLATE_MODEL_ENV_NAME} in ~/.openwork/.env.`
+    )
+  }
+
+  if (!hasApiKey(provider)) {
+    throw new Error(`Translation provider "${provider}" is not configured.`)
+  }
+
+  return configuredModelId
 }
 
 function buildTranslationPrompt(request: TranslateTextRequest): string {
@@ -114,7 +110,7 @@ export async function translateText(request: TranslateTextRequest): Promise<Tran
 
   return {
     backend,
-    modelId: backend.modelId ?? DEFAULT_TRANSLATE_MODEL_ID,
+    modelId: backend.modelId!,
     sourceLanguage: request.sourceLanguage,
     targetLanguage: request.targetLanguage,
     translatedText

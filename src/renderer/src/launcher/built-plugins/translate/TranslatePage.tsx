@@ -57,18 +57,8 @@ export function LauncherTranslatePage(): React.JSX.Element {
   })
 
   const hasFreshTranslation = !translate.isDirty && translate.translatedText.trim().length > 0
-  const sourceStatus = !translate.sourceText.trim()
-    ? copy.emptyInputHint
-    : translate.isDirty
-      ? copy.readyToTranslate
-      : copy.translationUpToDate
-  const resultStatus = !translate.sourceText.trim()
-    ? copy.emptyInputHint
-    : translate.isTranslating
-      ? copy.translating
-      : translate.isDirty
-        ? copy.readyToTranslate
-        : translate.modelId
+  const sourceStatus = !translate.sourceText.trim() ? copy.emptyInputHint : null
+  const resultStatus = translate.isTranslating ? copy.translating : null
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -91,7 +81,6 @@ export function LauncherTranslatePage(): React.JSX.Element {
 
         <div className="min-w-0">
           <div className="launcher-translate-toolbar-title">{copy.entryLabel}</div>
-          <div className="launcher-translate-toolbar-subtitle">{copy.footerHint}</div>
         </div>
       </div>
 
@@ -133,7 +122,7 @@ export function LauncherTranslatePage(): React.JSX.Element {
             />
 
             <div className="launcher-translate-panel-footer">
-              <span className="launcher-translate-panel-status">{sourceStatus}</span>
+              <span className="launcher-translate-panel-status">{sourceStatus ?? ""}</span>
 
               <button
                 type="button"
@@ -217,8 +206,8 @@ export function LauncherTranslatePage(): React.JSX.Element {
             </div>
 
             <div className="launcher-translate-panel-footer">
-              <span className="launcher-translate-panel-status">{resultStatus}</span>
-              <span>{copy.footerHint}</span>
+              <span className="launcher-translate-panel-status">{resultStatus ?? ""}</span>
+              <span />
             </div>
           </section>
         </div>

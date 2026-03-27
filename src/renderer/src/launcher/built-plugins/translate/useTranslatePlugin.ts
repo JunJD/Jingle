@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { TranslateTextResponse } from "../../../../../shared/built-plugins/translate"
-import { DEFAULT_TRANSLATE_MODEL_ID } from "../../../../../shared/built-plugins/translate"
 import { useI18n } from "@/lib/i18n"
 import { useBuiltLauncherPluginHost } from "../sdk"
 import { translateBuiltPluginClient } from "./api"
@@ -17,7 +15,6 @@ export function useTranslatePlugin(): {
   error: string | null
   isDirty: boolean
   isTranslating: boolean
-  modelId: string
   setSourceLanguageId: (languageId: string) => void
   setSourceText: (value: string) => void
   setTargetLanguageId: (languageId: string) => void
@@ -45,7 +42,6 @@ export function useTranslatePlugin(): {
   const [error, setError] = useState<string | null>(null)
   const [isTranslating, setIsTranslating] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [lastResponse, setLastResponse] = useState<TranslateTextResponse | null>(null)
   const [lastCompletedRequestKey, setLastCompletedRequestKey] = useState<string | null>(null)
   const trimmedSourceText = sourceText.trim()
   const currentRequestKey = useMemo(
@@ -73,7 +69,6 @@ export function useTranslatePlugin(): {
     setTranslatedText("")
     setError(null)
     setIsTranslating(false)
-    setLastResponse(null)
     setLastCompletedRequestKey(null)
   }, [trimmedSourceText])
 
@@ -91,7 +86,6 @@ export function useTranslatePlugin(): {
 
     if (sourceLanguageId !== "auto" && sourceLanguageId === targetLanguageId) {
       setTranslatedText(sourceText)
-      setLastResponse(null)
       setLastCompletedRequestKey(currentRequestKey)
       setIsTranslating(false)
       return
@@ -112,7 +106,6 @@ export function useTranslatePlugin(): {
         return
       }
 
-      setLastResponse(response)
       setTranslatedText(response.translatedText)
       setLastCompletedRequestKey(currentRequestKey)
     } catch (nextError: unknown) {
@@ -181,11 +174,7 @@ export function useTranslatePlugin(): {
       setCopied(false)
       copyResetTimerRef.current = null
     }, 1200)
-  }, [translatedText])
-
-  const modelId = useMemo(() => {
-    return lastResponse?.modelId ?? DEFAULT_TRANSLATE_MODEL_ID
-  }, [lastResponse])
+    }, [translatedText])
 
   return {
     canSubmit,
@@ -195,7 +184,6 @@ export function useTranslatePlugin(): {
     isDirty,
     isTranslating,
     languageOptions: TRANSLATE_LANGUAGE_OPTIONS,
-    modelId,
     setSourceLanguageId,
     setSourceText,
     setTargetLanguageId,
