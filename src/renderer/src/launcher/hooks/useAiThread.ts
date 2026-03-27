@@ -10,6 +10,7 @@ export function useAiThread(): {
   }
   handleApprovalDecision: (decision: "approve" | "reject" | "edit") => Promise<void>
   handleInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
+  isBusy: boolean
   primaryActionDisabled: boolean
   query: string
   runPrimaryAction: () => void
@@ -149,6 +150,7 @@ export function useAiThread(): {
   const primaryActionDisabled = useMemo(() => {
     return !query.trim() || conversation.isLoading || isCreatingThread
   }, [conversation.isLoading, isCreatingThread, query])
+  const isBusy = conversation.isLoading || isCreatingThread
 
   return {
     conversation: {
@@ -158,6 +160,7 @@ export function useAiThread(): {
     },
     handleApprovalDecision,
     handleInputKeyDown,
+    isBusy,
     primaryActionDisabled,
     query,
     runPrimaryAction,

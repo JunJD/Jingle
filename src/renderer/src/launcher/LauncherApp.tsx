@@ -6,6 +6,7 @@ import {
   type LauncherPluginThreadSubmitInput
 } from "./LauncherPluginHost"
 import { LauncherPluginHostProvider } from "./LauncherPluginHostContext"
+import type { LauncherInputStatus } from "./launcher-input-status"
 import { LauncherIntelligenceGlow } from "./components/LauncherIntelligenceGlow"
 import { LauncherPageTransition } from "./components/LauncherPageTransition"
 import { LauncherSearchPage } from "./components/LauncherSearchPage"
@@ -29,6 +30,7 @@ export default function LauncherApp(): React.JSX.Element {
   const pluginInputRef = useRef<LauncherPluginInputElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const viewportHeightRef = useRef(0)
+  const [pluginInputStatus, setPluginInputStatus] = useState<LauncherInputStatus>("idle")
   const [shownSequence, setShownSequence] = useState(0)
   const { activePlugin, closeActivePlugin, navigationDirection, openPlugin, route, routeKey } =
     useLauncherRouter()
@@ -161,7 +163,9 @@ export default function LauncherApp(): React.JSX.Element {
       seedQuery: route.seedQuery,
       surface: {
         inputRef: pluginInputRef,
+        inputStatus: pluginInputStatus,
         shellConfig: searchPage.shellConfig,
+        setInputStatus: setPluginInputStatus,
         shownSequence,
         viewportHeight
       },
@@ -178,6 +182,7 @@ export default function LauncherApp(): React.JSX.Element {
     createPluginThread,
     hideLauncher,
     openPlugin,
+    pluginInputStatus,
     route,
     searchPage.shellConfig,
     shownSequence,
@@ -188,6 +193,10 @@ export default function LauncherApp(): React.JSX.Element {
   useEffect(() => {
     setViewportHeight(viewportHeight)
   }, [setViewportHeight, viewportHeight])
+
+  useEffect(() => {
+    setPluginInputStatus("idle")
+  }, [routeKey])
 
   useEffect(() => {
     const focusInput = (): void => {
@@ -242,7 +251,11 @@ export default function LauncherApp(): React.JSX.Element {
         data-active-plugin={activePluginId ?? "home"}
       >
         {activePluginId === "ai" ? (
-          <LauncherIntelligenceGlow key={routeKey} targetRef={shellRef} />
+          <LauncherIntelligenceGlow
+            key={routeKey}
+            status={pluginInputStatus}
+            targetRef={shellRef}
+          />
         ) : null}
 
         <div className="launcher-shell-content">

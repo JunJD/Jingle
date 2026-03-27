@@ -1,13 +1,16 @@
 import { createContext, useContext, useEffect, useEffectEvent, useRef, type RefObject } from "react"
 import type { LauncherShellConfig } from "../../../shared/launcher"
 import type { LauncherClipboardState } from "./LauncherClipboardContext"
+import type { LauncherInputStatus } from "./launcher-input-status"
 import type { LauncherPluginId, LauncherPluginOpenOptions } from "./pages/types"
 
 export type LauncherPluginInputElement = HTMLInputElement | HTMLTextAreaElement
 
 export interface LauncherPluginSurface {
   inputRef: RefObject<LauncherPluginInputElement | null>
+  inputStatus: LauncherInputStatus
   shellConfig: LauncherShellConfig
+  setInputStatus: (status: LauncherInputStatus) => void
   shownSequence: number
   viewportHeight: number
 }

@@ -2,8 +2,9 @@ import { useRef, type ReactNode, type RefObject } from "react"
 import { cn } from "@/lib/utils"
 import type { LauncherShellConfig } from "../../../../shared/launcher"
 import { useLauncherChromeAudit } from "../hooks/useLauncherChromeAudit"
-import { LauncherInput } from "./LauncherInput"
+import type { LauncherInputStatus } from "../launcher-input-status"
 import type { LauncherPluginInputElement } from "../LauncherPluginHost"
+import { LauncherInput } from "./LauncherInput"
 
 interface LauncherChromeProps {
   children?: ReactNode
@@ -12,6 +13,7 @@ interface LauncherChromeProps {
   headerTrailing?: ReactNode
   inputClassName?: string
   inputRef: RefObject<LauncherPluginInputElement | null>
+  inputStatus?: LauncherInputStatus
   inputValue: string
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   onInputValueChange: (value: string) => void
@@ -29,6 +31,7 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
     headerTrailing,
     inputClassName,
     inputRef,
+    inputStatus = "idle",
     inputValue,
     onInputKeyDown,
     onInputValueChange,
@@ -49,7 +52,11 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
   })
 
   return (
-    <div className="launcher-chrome flex h-full w-full flex-col" data-surface={surface}>
+    <div
+      className="launcher-chrome flex h-full w-full flex-col"
+      data-input-status={inputStatus}
+      data-surface={surface}
+    >
       <div
         ref={headerRef}
         className="launcher-chrome-header flex shrink-0 items-center gap-3 px-6"
@@ -62,6 +69,7 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
 
         <LauncherInput
           ref={inputRef}
+          status={inputStatus}
           value={inputValue}
           onChange={(event) => onInputValueChange(event.target.value)}
           onKeyDown={onInputKeyDown}

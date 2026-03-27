@@ -1,4 +1,5 @@
 import { ArrowLeft } from "lucide-react"
+import { useEffect } from "react"
 import { useLauncherPluginHost } from "../LauncherPluginHost"
 import { useAiThread } from "../hooks/useAiThread"
 import { ClipboardChip } from "../components/ClipboardChip"
@@ -11,7 +12,17 @@ export function LauncherAiPage(): React.JSX.Element {
   const { copy } = useI18n()
   const host = useLauncherPluginHost()
   const session = useAiThread()
-  useDisableTabNavigation(host.surface.inputRef)
+  const inputStatus = session.isBusy ? "pending" : "idle"
+  const { inputRef, setInputStatus } = host.surface
+  useDisableTabNavigation(inputRef)
+
+  useEffect(() => {
+    setInputStatus(inputStatus)
+
+    return () => {
+      setInputStatus("idle")
+    }
+  }, [inputStatus, setInputStatus])
 
   return (
     <LauncherChrome
@@ -48,7 +59,8 @@ export function LauncherAiPage(): React.JSX.Element {
           <ClipboardChip context={host.clipboard.context} onClear={host.clipboard.clearContext} />
         </div>
       }
-      inputRef={host.surface.inputRef}
+      inputStatus={inputStatus}
+      inputRef={inputRef}
       inputValue={session.query}
       onInputKeyDown={session.handleInputKeyDown}
       onInputValueChange={session.setQuery}

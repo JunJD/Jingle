@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useId, useState, type RefObject } from "react"
+import type { LauncherInputStatus } from "../launcher-input-status"
 
 type GlowBounds = {
   height: number
@@ -8,7 +9,8 @@ type GlowBounds = {
 
 type Corner = "bottom-left" | "bottom-right" | "top-left" | "top-right"
 
-const INNER_STROKE_INSET = -3
+// Bias the stroke outward so the shell reads as emitting glow instead of gaining an inner border.
+const INNER_STROKE_INSET = -4
 
 const GLOW_LAYERS = [
   {
@@ -108,9 +110,10 @@ function buildCornerPath(
 }
 
 export function LauncherIntelligenceGlow(props: {
+  status: LauncherInputStatus
   targetRef: RefObject<HTMLElement | null>
 }): React.JSX.Element | null {
-  const { targetRef } = props
+  const { status, targetRef } = props
   const [bounds, setBounds] = useState<GlowBounds | null>(null)
   const reducedMotion = useReducedMotion()
   const gradientPrefix = useId().replace(/:/g, "")
@@ -143,9 +146,10 @@ export function LauncherIntelligenceGlow(props: {
   const centerX = bounds.width / 2
   const centerY = bounds.height / 2
   const armLength = Math.max(44, Math.min(Math.min(bounds.width, bounds.height) * 0.18, 92))
+  const intensity = status === "running" ? 1.28 : status === "pending" ? 1.08 : 1
 
   return (
-    <div aria-hidden="true" className="launcher-shell-intelligence-glow">
+    <div aria-hidden="true" className="launcher-shell-intelligence-glow" data-status={status}>
       <svg
         className="launcher-shell-intelligence-glow-svg"
         preserveAspectRatio="none"
@@ -202,14 +206,14 @@ export function LauncherIntelligenceGlow(props: {
 
         {GLOW_LAYERS.map((layer) => {
           const inset = INNER_STROKE_INSET + layer.strokeWidth / 2
-          const layerArmLength = armLength + layer.strokeWidth * 1.8
+          const layerArmLength = armLength + layer.strokeWidth * 1.8 * intensity
 
           return (
             <g
               key={layer.id}
               className={`launcher-shell-intelligence-glow-stroke launcher-shell-intelligence-glow-stroke--${layer.id}`}
               filter={layer.blur > 0 ? `url(#${gradientPrefix}-${layer.id}-blur)` : undefined}
-              opacity={layer.opacity}
+              opacity={Math.min(layer.opacity * intensity, 1)}
             >
               {CORNERS.map((corner) => (
                 <path
