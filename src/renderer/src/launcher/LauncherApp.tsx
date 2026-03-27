@@ -6,6 +6,7 @@ import {
   type LauncherPluginThreadSubmitInput
 } from "./LauncherPluginHost"
 import { LauncherPluginHostProvider } from "./LauncherPluginHostContext"
+import { LauncherIntelligenceGlow } from "./components/LauncherIntelligenceGlow"
 import { LauncherPageTransition } from "./components/LauncherPageTransition"
 import { LauncherSearchPage } from "./components/LauncherSearchPage"
 import { useLauncherRouter } from "./hooks/useLauncherRouter"
@@ -26,11 +27,13 @@ export default function LauncherApp(): React.JSX.Element {
   const threadContext = useThreadContext()
   const searchInputRef = useRef<HTMLInputElement>(null)
   const pluginInputRef = useRef<LauncherPluginInputElement>(null)
+  const shellRef = useRef<HTMLDivElement>(null)
   const viewportHeightRef = useRef(0)
   const [shownSequence, setShownSequence] = useState(0)
   const { activePlugin, closeActivePlugin, navigationDirection, openPlugin, route, routeKey } =
     useLauncherRouter()
   const searchPage = useLauncherSearchPage({ openPlugin })
+  const activePluginId = isLauncherPluginRoute(route) ? route.id : null
   const selectedItem =
     searchPage.selectedIndex >= 0 ? searchPage.items[searchPage.selectedIndex] : null
   const ActivePluginComponent = activePlugin?.Component ?? null
@@ -232,44 +235,42 @@ export default function LauncherApp(): React.JSX.Element {
   }, [closeActivePlugin, route])
 
   return (
-    <div
-      className="h-full w-full overflow-hidden"
-      style={{
-        borderRadius: "var(--launcher-panel-radius)",
-        backgroundColor: "var(--launcher-surface)"
-      }}
-    >
+    <div className="launcher-window-frame">
       <div
-        className="flex h-full w-full flex-col overflow-hidden"
-        style={{
-          borderRadius: "var(--launcher-panel-radius-inner)",
-          backgroundColor: "var(--launcher-surface)"
-        }}
+        ref={shellRef}
+        className="launcher-window-shell"
+        data-active-plugin={activePluginId ?? "home"}
       >
-        <LauncherPageTransition direction={navigationDirection} pageKey={routeKey}>
-          {activePlugin && ActivePluginComponent && activePluginHost ? (
-            <LauncherPluginHostProvider value={activePluginHost}>
-              <ActivePluginComponent />
-            </LauncherPluginHostProvider>
-          ) : (
-            <LauncherSearchPage
-              entries={searchPage.entries}
-              executeItem={searchPage.executeItem}
-              inputRef={searchInputRef}
-              inputValue={searchPage.query}
-              items={searchPage.items}
-              onInputKeyDown={searchPage.handleInputKeyDown}
-              onInputValueChange={searchPage.setQuery}
-              onOpenPlugin={searchPage.openPlugin}
-              placeholder={searchPage.placeholder}
-              resultsViewportHeight={searchPage.resultsViewportHeight}
-              resultsVisible={searchPage.resultsVisible}
-              selectedIndex={searchPage.selectedIndex}
-              selectedItem={selectedItem}
-              shellConfig={searchPage.shellConfig}
-            />
-          )}
-        </LauncherPageTransition>
+        {activePluginId === "ai" ? (
+          <LauncherIntelligenceGlow key={routeKey} targetRef={shellRef} />
+        ) : null}
+
+        <div className="launcher-shell-content">
+          <LauncherPageTransition direction={navigationDirection} pageKey={routeKey}>
+            {activePlugin && ActivePluginComponent && activePluginHost ? (
+              <LauncherPluginHostProvider value={activePluginHost}>
+                <ActivePluginComponent />
+              </LauncherPluginHostProvider>
+            ) : (
+              <LauncherSearchPage
+                entries={searchPage.entries}
+                executeItem={searchPage.executeItem}
+                inputRef={searchInputRef}
+                inputValue={searchPage.query}
+                items={searchPage.items}
+                onInputKeyDown={searchPage.handleInputKeyDown}
+                onInputValueChange={searchPage.setQuery}
+                onOpenPlugin={searchPage.openPlugin}
+                placeholder={searchPage.placeholder}
+                resultsViewportHeight={searchPage.resultsViewportHeight}
+                resultsVisible={searchPage.resultsVisible}
+                selectedIndex={searchPage.selectedIndex}
+                selectedItem={selectedItem}
+                shellConfig={searchPage.shellConfig}
+              />
+            )}
+          </LauncherPageTransition>
+        </div>
       </div>
     </div>
   )
