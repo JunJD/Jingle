@@ -5,11 +5,13 @@ import { ClipboardChip } from "../components/ClipboardChip"
 import { LauncherAiConversation, LauncherAiEmptyState } from "./LauncherAiConversation"
 import { LauncherChrome } from "../components/LauncherChrome"
 import { useI18n } from "@/lib/i18n"
+import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 
 export function LauncherAiPage(): React.JSX.Element {
   const { copy } = useI18n()
   const host = useLauncherPluginHost()
   const session = useAiThread()
+  useDisableTabNavigation(host.surface.inputRef)
 
   return (
     <LauncherChrome
@@ -23,15 +25,10 @@ export function LauncherAiPage(): React.JSX.Element {
             onClick={session.runPrimaryAction}
             onMouseDown={(event) => event.preventDefault()}
             disabled={session.primaryActionDisabled}
-            className="flex appearance-none items-center gap-3 rounded-full border-0 bg-transparent px-2 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
+            className="launcher-action-button launcher-action-button--primary flex appearance-none items-center gap-3 border-0 px-2 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
           >
             <span>{copy.launcher.aiPrimaryLabel}</span>
-            <span
-              className="rounded-full bg-[var(--launcher-surface-strong)] px-2.5 py-1 text-[11px] text-muted-foreground"
-              style={{
-                color: "var(--launcher-text-muted)"
-              }}
-            >
+            <span className="launcher-keycap rounded-full px-2.5 py-1 text-[11px] text-muted-foreground">
               ↵
             </span>
           </button>
@@ -43,7 +40,7 @@ export function LauncherAiPage(): React.JSX.Element {
             type="button"
             onClick={host.navigation.goHome}
             onMouseDown={(event) => event.preventDefault()}
-            className="flex h-9 w-9 shrink-0 appearance-none items-center justify-center rounded-full border-0 bg-[var(--launcher-surface-strong)] text-muted-foreground transition hover:text-foreground"
+            className="launcher-icon-button flex h-9 w-9 shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
           >
             <ArrowLeft className="size-5" />
           </button>

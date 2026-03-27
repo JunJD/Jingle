@@ -79,7 +79,8 @@ function getVisibleLauncherBounds(params: {
   const display = screen.getDisplayMatching(currentBounds)
   const boundedHeight = getLauncherHeightForDisplay(display, height)
   const minX = display.workArea.x + LAUNCHER_HORIZONTAL_MARGIN
-  const maxX = display.workArea.x + display.workArea.width - currentBounds.width - LAUNCHER_HORIZONTAL_MARGIN
+  const maxX =
+    display.workArea.x + display.workArea.width - currentBounds.width - LAUNCHER_HORIZONTAL_MARGIN
   const minY = display.workArea.y + LAUNCHER_TOP_MARGIN
   const maxY = display.workArea.y + display.workArea.height - boundedHeight - LAUNCHER_TOP_MARGIN
 
@@ -222,7 +223,19 @@ export function createLauncherWindow(): BrowserWindow {
     height: LAUNCHER_BASE_HEIGHT,
     show: false,
     autoHideMenuBar: process.platform !== "darwin",
-    ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
+    ...(process.platform === "darwin"
+      ? {
+          type: "panel" as const,
+          vibrancy: "popover" as const,
+          visualEffectState: "active" as const
+        }
+      : {}),
+    ...(process.platform === "win32"
+      ? {
+          backgroundMaterial: "acrylic" as const,
+          roundedCorners: true
+        }
+      : {}),
     frame: false,
     useContentSize: true,
     resizable: false,
@@ -232,7 +245,8 @@ export function createLauncherWindow(): BrowserWindow {
     skipTaskbar: true,
     hiddenInMissionControl: true,
     hasShadow: true,
-    backgroundColor: "#FBFBF8",
+    transparent: true,
+    backgroundColor: "#00000000",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false

@@ -141,6 +141,8 @@
   --launcher-shell-border: rgba(255, 255, 255, 0.52);
   --launcher-shell-outline: rgba(67, 76, 88, 0.1);
   --launcher-shell-highlight: rgba(255, 255, 255, 0.72);
+  --launcher-footer-strip: color-mix(in srgb, var(--launcher-surface-strong) 58%, white 42%);
+  --launcher-header-strip: color-mix(in srgb, var(--launcher-surface-strong) 54%, white 46%);
   --launcher-shell-shadow-ambient: rgba(32, 38, 45, 0.12);
   --launcher-shell-shadow-depth: rgba(32, 38, 45, 0.2);
   --launcher-shell-blur: 18px;
@@ -150,8 +152,8 @@
   --launcher-shell-sheen-opacity: 0.9;
   --launcher-text: #20262d;
   --launcher-text-muted: var(--muted-foreground);
-  --launcher-row-active: color-mix(in srgb, var(--primary) 12%, var(--launcher-surface));
-  --launcher-row-hover: color-mix(in srgb, var(--foreground) 4%, var(--launcher-surface));
+  --launcher-row-active: color-mix(in srgb, var(--primary) 12%, var(--launcher-shell-fill));
+  --launcher-row-hover: color-mix(in srgb, var(--foreground) 4%, var(--launcher-shell-fill));
   --launcher-accent-line: var(--primary);
   --launcher-app-chip-bg: transparent;
   --launcher-app-chip-fg: var(--primary);
@@ -219,6 +221,8 @@
   --launcher-shell-border: rgba(255, 255, 255, 0.12);
   --launcher-shell-outline: rgba(255, 255, 255, 0.08);
   --launcher-shell-highlight: rgba(255, 255, 255, 0.08);
+  --launcher-footer-strip: color-mix(in srgb, var(--launcher-surface-strong) 76%, #0f1318 24%);
+  --launcher-header-strip: color-mix(in srgb, var(--launcher-surface-strong) 72%, #11171d 28%);
   --launcher-shell-shadow-ambient: rgba(6, 9, 12, 0.32);
   --launcher-shell-shadow-depth: rgba(6, 9, 12, 0.48);
   --launcher-shell-blur: 20px;
@@ -228,19 +232,23 @@
   --launcher-shell-sheen-opacity: 0.72;
   --launcher-text: #eff2f5;
   --launcher-text-muted: var(--muted-foreground);
-  --launcher-row-active: color-mix(in srgb, var(--primary) 12%, var(--launcher-surface));
-  --launcher-row-hover: color-mix(in srgb, var(--foreground) 4%, var(--launcher-surface));
+  --launcher-row-active: color-mix(in srgb, var(--primary) 14%, var(--launcher-shell-fill));
+  --launcher-row-hover: color-mix(in srgb, var(--foreground) 5%, var(--launcher-shell-fill));
 }
 
 html[data-platform="darwin"],
 body[data-platform="darwin"] {
   --window-controls-offset-inline: 84px;
+  --launcher-panel-radius: 22px;
   --launcher-shell-radius: 0px;
   --launcher-shell-native-radius: 12px;
+  --launcher-border: rgba(67, 76, 88, 0.028);
   --launcher-shell-fill: color-mix(in srgb, var(--launcher-surface) 72%, transparent);
   --launcher-shell-fill-strong: color-mix(in srgb, var(--launcher-surface) 82%, transparent);
   --launcher-shell-border: rgba(255, 255, 255, 0.16);
   --launcher-shell-highlight: rgba(255, 255, 255, 0.16);
+  --launcher-footer-strip: color-mix(in srgb, var(--launcher-surface-strong) 22%, transparent);
+  --launcher-header-strip: color-mix(in srgb, var(--launcher-surface-strong) 20%, transparent);
   --launcher-shell-shadow-ambient: rgba(32, 38, 45, 0.045);
   --launcher-shell-shadow-depth: rgba(32, 38, 45, 0.085);
   --launcher-shell-blur: 0px;
@@ -248,6 +256,9 @@ body[data-platform="darwin"] {
   --launcher-shell-sheen-accent: color-mix(in srgb, var(--primary) 2%, transparent);
   --launcher-shell-sheen-linear: rgba(255, 255, 255, 0.02);
   --launcher-shell-sheen-opacity: 0.22;
+  --launcher-shell-outline: transparent;
+  --launcher-row-active: color-mix(in srgb, var(--primary) 6%, var(--launcher-shell-fill));
+  --launcher-row-hover: color-mix(in srgb, var(--foreground) 1.5%, var(--launcher-shell-fill));
 }
 
 html[data-platform="win32"],
@@ -255,6 +266,8 @@ body[data-platform="win32"],
 html[data-platform="linux"],
 body[data-platform="linux"] {
   --window-controls-offset-inline: 18px;
+  --launcher-panel-radius: 24px;
+  --launcher-shell-radius: 24px;
 }
 
 @layer base {
@@ -420,15 +433,187 @@ body[data-platform="darwin"][data-window="launcher"] {
   filter: saturate(1.12);
 }
 
-.launcher-shell-intelligence-glow-stroke--soft,
+.launcher-shell-intelligence-glow-stroke--soft {
+  mix-blend-mode: screen;
+}
+
 .launcher-shell-intelligence-glow-stroke--ambient {
   mix-blend-mode: screen;
 }
 
+.launcher-page-transition {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.launcher-page-transition-panel {
+  height: 100%;
+  width: 100%;
+  animation-duration: 240ms;
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.22, 0.9, 0.32, 1);
+  transform-origin: 50% 18%;
+  will-change: opacity, transform, filter;
+}
+
+.launcher-page-transition-panel[data-direction="forward"] {
+  animation-name: launcher-page-enter-forward;
+}
+
+.launcher-page-transition-panel[data-direction="backward"] {
+  animation-name: launcher-page-enter-backward;
+}
+
 html[data-platform="darwin"] .launcher-window-shell,
-body[data-platform="darwin"] .launcher-window-shell {
+body[data-platform="darwin"] .launcher-window-shell,
+html[data-platform="darwin"] .launcher-chrome-header,
+body[data-platform="darwin"] .launcher-chrome-header,
+html[data-platform="darwin"] .launcher-chrome-footer,
+body[data-platform="darwin"] .launcher-chrome-footer {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+}
+
+html[data-platform="darwin"] .launcher-window-shell,
+body[data-platform="darwin"] .launcher-window-shell {
+  box-shadow:
+    inset 0 1px 0 var(--launcher-shell-highlight),
+    0 8px 18px var(--launcher-shell-shadow-ambient),
+    0 18px 34px var(--launcher-shell-shadow-depth);
+}
+
+.launcher-chrome-header,
+.launcher-chrome-footer {
+  position: relative;
+  z-index: 1;
+  -webkit-backdrop-filter: blur(calc(var(--launcher-shell-blur) * 0.85)) saturate(1.1);
+  backdrop-filter: blur(calc(var(--launcher-shell-blur) * 0.85)) saturate(1.1);
+}
+
+.launcher-chrome-header {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--launcher-header-strip) 100%, transparent),
+    color-mix(in srgb, var(--launcher-shell-fill) 82%, transparent)
+  );
+}
+
+.launcher-chrome-footer {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--launcher-shell-fill) 78%, transparent),
+    color-mix(in srgb, var(--launcher-footer-strip) 100%, transparent)
+  );
+}
+
+.launcher-header-button,
+.launcher-icon-button,
+.launcher-action-button,
+.launcher-clipboard-chip {
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--launcher-surface-strong) 28%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 46%, transparent);
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.launcher-header-button:hover,
+.launcher-icon-button:hover,
+.launcher-action-button:hover,
+.launcher-clipboard-chip:hover {
+  border-color: color-mix(in srgb, var(--primary) 18%, var(--launcher-border-strong));
+  background: color-mix(in srgb, var(--launcher-surface-strong) 72%, white 28%);
+}
+
+.dark .launcher-header-button:hover,
+.dark .launcher-icon-button:hover,
+.dark .launcher-action-button:hover,
+.dark .launcher-clipboard-chip:hover {
+  background: color-mix(in srgb, var(--launcher-surface-strong) 84%, #0f1318 16%);
+}
+
+.launcher-header-button,
+.launcher-action-button {
+  border-radius: 999px;
+}
+
+.launcher-header-button {
+  padding-inline: 10px;
+}
+
+.launcher-icon-button {
+  background: color-mix(in srgb, var(--launcher-surface-strong) 52%, transparent);
+}
+
+.launcher-action-button--primary {
+  background: color-mix(in srgb, var(--primary) 9%, var(--launcher-shell-fill));
+  border-color: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+.launcher-header-button:active,
+.launcher-icon-button:active,
+.launcher-action-button:active {
+  transform: scale(0.98);
+}
+
+.launcher-keycap {
+  background: color-mix(in srgb, var(--launcher-surface-strong) 80%, white 20%);
+  color: var(--launcher-text-muted);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 52%, transparent),
+    0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+.dark .launcher-keycap {
+  background: color-mix(in srgb, var(--launcher-surface-strong) 88%, #11171d 12%);
+}
+
+.launcher-clipboard-chip {
+  color: var(--launcher-text-muted);
+}
+
+.launcher-result-row {
+  box-sizing: border-box;
+  position: relative;
+  border-top: 1px solid color-mix(in srgb, var(--launcher-border) 82%, transparent);
+  background-color: color-mix(in srgb, var(--launcher-shell-fill) 46%, transparent);
+}
+
+.launcher-result-row:first-child {
+  border-top-color: transparent;
+}
+
+.launcher-result-row:hover {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--launcher-row-hover) 92%, white 8%),
+      color-mix(in srgb, var(--launcher-row-hover) 100%, transparent)
+    );
+}
+
+.launcher-result-row--selected {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--launcher-row-active) 88%, white 12%),
+      color-mix(in srgb, var(--launcher-row-active) 100%, transparent)
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 42%, transparent),
+    inset 3px 0 0 var(--launcher-accent-line);
+}
+
+.dark .launcher-result-row--selected {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 10%, transparent),
+    inset 3px 0 0 var(--launcher-accent-line);
 }
 
 /* Tactical typography utilities */
@@ -527,6 +712,32 @@ body[data-platform="darwin"] .launcher-window-shell {
   }
   to {
     stroke-dashoffset: 0;
+  }
+}
+
+@keyframes launcher-page-enter-forward {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0) scale(0.988);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes launcher-page-enter-backward {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -10px, 0) scale(0.992);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
   }
 }
 
@@ -925,6 +1136,7 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 @media (prefers-reduced-motion: reduce) {
   .launcher-shell-intelligence-glow,
+  .launcher-page-transition-panel,
   .launcher-jump-orbit-primary,
   .launcher-jump-orbit-secondary {
     animation: none;

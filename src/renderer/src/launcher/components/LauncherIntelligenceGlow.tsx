@@ -8,7 +8,7 @@ type GlowBounds = {
 
 type Corner = "bottom-left" | "bottom-right" | "top-left" | "top-right"
 
-const INNER_STROKE_INSET = -2
+const INNER_STROKE_INSET = -3
 
 const GLOW_LAYERS = [
   {

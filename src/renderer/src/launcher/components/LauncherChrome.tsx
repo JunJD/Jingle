@@ -49,10 +49,10 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
   })
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="launcher-chrome flex h-full w-full flex-col" data-surface={surface}>
       <div
         ref={headerRef}
-        className="flex shrink-0 items-center gap-5 px-6"
+        className="launcher-chrome-header flex shrink-0 items-center gap-3 px-6"
         style={{
           borderBottom: showHeaderDivider ? "1px solid var(--launcher-border)" : "none",
           height: shellConfig.headerHeight
@@ -82,10 +82,10 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
       {footer ? (
         <div
           ref={footerRef}
-          className="flex shrink-0 items-center justify-between px-6"
+          className="launcher-chrome-footer flex shrink-0 items-center justify-between px-6"
           style={{
             borderTop: "1px solid var(--launcher-border)",
-            backgroundColor: "color-mix(in srgb, var(--launcher-surface-strong) 24%, transparent)",
+            backgroundColor: "var(--launcher-footer-strip)",
             height: shellConfig.footerHeight
           }}
         >
