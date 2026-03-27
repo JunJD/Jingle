@@ -1,5 +1,6 @@
 import { ArrowLeft } from "lucide-react"
 import { useEffect } from "react"
+import { AI_LAUNCHER_PLUGIN_ID } from "../../../../plugins/ai/manifest"
 import { useLauncherPluginHost } from "../LauncherPluginHost"
 import { useAiThread } from "../hooks/useAiThread"
 import { ClipboardChip } from "../components/ClipboardChip"
@@ -36,12 +37,10 @@ export function LauncherAiPage(): React.JSX.Element {
             onClick={session.runPrimaryAction}
             onMouseDown={(event) => event.preventDefault()}
             disabled={session.primaryActionDisabled}
-            className="launcher-action-button launcher-action-button--primary flex appearance-none items-center gap-3 border-0 px-2 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
+            className="launcher-action-link flex appearance-none items-center gap-2 border-0 px-0 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
           >
             <span>{copy.launcher.aiPrimaryLabel}</span>
-            <span className="launcher-keycap rounded-full px-2.5 py-1 text-[11px] text-muted-foreground">
-              ↵
-            </span>
+            <span className="launcher-shortcut text-[11px] text-muted-foreground">↵</span>
           </button>
         </>
       }
@@ -66,7 +65,7 @@ export function LauncherAiPage(): React.JSX.Element {
       onInputValueChange={session.setQuery}
       placeholder={copy.launcher.aiInputPlaceholder}
       shellConfig={host.surface.shellConfig}
-      surface="ai"
+      surface={AI_LAUNCHER_PLUGIN_ID}
     >
       {session.threadId ? (
         <LauncherAiConversation

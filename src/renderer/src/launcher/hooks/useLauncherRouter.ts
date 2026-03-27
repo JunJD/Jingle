@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from "react"
-import { getLauncherPluginDefinition } from "../pages"
+import { getLauncherPluginEntryDefinition } from "../pages"
 import {
   isLauncherPluginRoute,
-  type LauncherPluginDefinition,
+  type LauncherPluginEntryAddress,
+  type LauncherPluginEntryDefinition,
   LauncherPluginOpenOptions,
-  LauncherPluginId,
   LauncherNavigationDirection,
   LauncherRoute
 } from "../pages/types"
@@ -12,10 +12,13 @@ import {
 const HOME_ROUTE: LauncherRoute = { id: "home" }
 
 export function useLauncherRouter(): {
-  activePlugin: LauncherPluginDefinition | null
+  activeEntry: LauncherPluginEntryDefinition | null
   closeActivePlugin: () => void
   navigationDirection: LauncherNavigationDirection
-  openPlugin: (pluginId: LauncherPluginId, options?: LauncherPluginOpenOptions) => void
+  openEntry: (
+    address: LauncherPluginEntryAddress,
+    options?: LauncherPluginOpenOptions
+  ) => void
   route: LauncherRoute
   routeKey: string
 } {
@@ -23,10 +26,14 @@ export function useLauncherRouter(): {
     useState<LauncherNavigationDirection>("forward")
   const [route, setRoute] = useState<LauncherRoute>(HOME_ROUTE)
 
-  const openPlugin = useCallback(
-    (pluginId: LauncherPluginId, options?: LauncherPluginOpenOptions): void => {
+  const openEntry = useCallback(
+    (address: LauncherPluginEntryAddress, options?: LauncherPluginOpenOptions): void => {
       setNavigationDirection("forward")
-      setRoute({ id: pluginId, seedQuery: options?.seedQuery ?? "" })
+      setRoute({
+        ...address,
+        initialAction: options?.initialAction ?? "focus",
+        seedQuery: options?.seedQuery ?? ""
+      })
     },
     []
   )
@@ -36,20 +43,22 @@ export function useLauncherRouter(): {
     setRoute(HOME_ROUTE)
   }, [])
 
-  const activePlugin = useMemo(() => {
+  const activeEntry = useMemo(() => {
     if (!isLauncherPluginRoute(route)) {
       return null
     }
 
-    return getLauncherPluginDefinition(route.id)
+    return getLauncherPluginEntryDefinition(route).entry
   }, [route])
 
   return {
-    activePlugin,
+    activeEntry,
     closeActivePlugin,
     navigationDirection,
-    openPlugin,
+    openEntry,
     route,
-    routeKey: isLauncherPluginRoute(route) ? `${route.id}:${route.seedQuery}` : route.id
+    routeKey: isLauncherPluginRoute(route)
+      ? `${route.pluginId}:${route.entryId}:${route.initialAction}:${route.seedQuery}`
+      : route.id
   }
 }

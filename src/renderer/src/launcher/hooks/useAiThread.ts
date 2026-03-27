@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "../../../../plugins/ai/manifest"
 import { useThreadConversationProjection } from "@/lib/thread-conversation"
 import { useI18n } from "@/lib/i18n"
 import { useLauncherPluginHost } from "../LauncherPluginHost"
@@ -20,6 +21,7 @@ export function useAiThread(): {
   const { copy } = useI18n()
   const host = useLauncherPluginHost()
   const requestRef = useRef(0)
+  const hasRunInitialActionRef = useRef(false)
   const [threadId, setThreadId] = useState<string | null>(null)
   const [pendingQuery, setPendingQuery] = useState(host.seedQuery)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -72,9 +74,9 @@ export function useAiThread(): {
           ? null
           : await host.threads.create({
               draftInput: message,
-              source: "launcher-ai",
+              source: AI_THREAD_SOURCE,
               title: copy.launcher.aiThreadTitle,
-              visibility: "launcher-private"
+              visibility: AI_THREAD_VISIBILITY
             })
         if (requestRef.current !== requestId) {
           return
@@ -119,6 +121,30 @@ export function useAiThread(): {
       setIsCreatingThread(false)
     })
   }, [conversation.isLoading, isCreatingThread, query, submitMessage])
+
+  useEffect(() => {
+    if (hasRunInitialActionRef.current || host.initialAction !== "submit") {
+      return
+    }
+
+    const message = host.seedQuery.trim()
+    if (!message) {
+      hasRunInitialActionRef.current = true
+      return
+    }
+
+    const submitFrameId = window.requestAnimationFrame(() => {
+      hasRunInitialActionRef.current = true
+      setIsCreatingThread(true)
+      void submitMessage(message).finally(() => {
+        setIsCreatingThread(false)
+      })
+    })
+
+    return () => {
+      window.cancelAnimationFrame(submitFrameId)
+    }
+  }, [host.initialAction, host.seedQuery, submitMessage])
 
   const handleApprovalDecision = useCallback(
     async (decision: "approve" | "reject" | "edit"): Promise<void> => {

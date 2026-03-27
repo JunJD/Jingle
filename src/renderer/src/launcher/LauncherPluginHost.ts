@@ -2,7 +2,13 @@ import { createContext, useContext, useEffect, useEffectEvent, useRef, type RefO
 import type { LauncherShellConfig } from "../../../shared/launcher"
 import type { LauncherClipboardState } from "./LauncherClipboardContext"
 import type { LauncherInputStatus } from "./launcher-input-status"
-import type { LauncherPluginId, LauncherPluginOpenOptions } from "./pages/types"
+import type {
+  LauncherPluginEntryAddress,
+  LauncherPluginEntryInitialAction,
+  LauncherPluginEntryId,
+  LauncherPluginId,
+  LauncherPluginOpenOptions
+} from "./pages/types"
 
 export type LauncherPluginInputElement = HTMLInputElement | HTMLTextAreaElement
 
@@ -35,10 +41,12 @@ export interface LauncherPluginThreadSubmitInput {
 
 export interface LauncherPluginHostValue {
   clipboard: Pick<LauncherClipboardState, "clearContext" | "context">
+  entryId: LauncherPluginEntryId
+  initialAction: LauncherPluginEntryInitialAction
   navigation: {
     goHome: () => void
     hideLauncher: () => Promise<void>
-    openPlugin: (pluginId: LauncherPluginId, options?: LauncherPluginOpenOptions) => void
+    openEntry: (address: LauncherPluginEntryAddress, options?: LauncherPluginOpenOptions) => void
   }
   pluginId: LauncherPluginId
   seedQuery: string

@@ -495,71 +495,82 @@ body[data-platform="darwin"] .launcher-window-shell {
 .launcher-header-button,
 .launcher-icon-button,
 .launcher-action-button,
+.launcher-action-link,
 .launcher-clipboard-chip {
-  border: 1px solid transparent;
-  background: color-mix(in srgb, var(--launcher-surface-strong) 28%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 46%, transparent);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   transition:
     transform 140ms ease,
-    border-color 140ms ease,
     background-color 140ms ease,
     color 140ms ease,
-    box-shadow 140ms ease;
+    opacity 140ms ease;
 }
 
 .launcher-header-button:hover,
 .launcher-icon-button:hover,
 .launcher-action-button:hover,
+.launcher-action-link:hover,
 .launcher-clipboard-chip:hover {
-  border-color: color-mix(in srgb, var(--primary) 18%, var(--launcher-border-strong));
-  background: color-mix(in srgb, var(--launcher-surface-strong) 72%, white 28%);
+  background: color-mix(in srgb, var(--launcher-surface-strong) 32%, transparent);
 }
 
 .dark .launcher-header-button:hover,
 .dark .launcher-icon-button:hover,
 .dark .launcher-action-button:hover,
+.dark .launcher-action-link:hover,
 .dark .launcher-clipboard-chip:hover {
-  background: color-mix(in srgb, var(--launcher-surface-strong) 84%, #0f1318 16%);
-}
-
-.launcher-header-button,
-.launcher-action-button {
-  border-radius: 999px;
+  background: color-mix(in srgb, var(--launcher-surface-strong) 40%, transparent);
 }
 
 .launcher-header-button {
-  padding-inline: 10px;
+  border-radius: 999px;
+  padding-inline: 8px;
 }
 
 .launcher-icon-button {
-  background: color-mix(in srgb, var(--launcher-surface-strong) 52%, transparent);
+  border-radius: 999px;
 }
 
 .launcher-action-button--primary {
-  background: color-mix(in srgb, var(--primary) 9%, var(--launcher-shell-fill));
-  border-color: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--launcher-text);
 }
 
 .launcher-header-button:active,
 .launcher-icon-button:active,
-.launcher-action-button:active {
+.launcher-action-button:active,
+.launcher-action-link:active {
   transform: scale(0.98);
 }
 
 .launcher-keycap {
-  background: color-mix(in srgb, var(--launcher-surface-strong) 80%, white 20%);
   color: var(--launcher-text-muted);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, white 52%, transparent),
-    0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent);
+  background: transparent;
+  box-shadow: none;
 }
 
 .dark .launcher-keycap {
-  background: color-mix(in srgb, var(--launcher-surface-strong) 88%, #11171d 12%);
+  background: transparent;
+}
+
+.launcher-shortcut {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .launcher-clipboard-chip {
   color: var(--launcher-text-muted);
+}
+
+.launcher-jump-to-latest {
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--launcher-shell-fill) 78%, transparent);
+  box-shadow: none;
+}
+
+.launcher-jump-to-latest:hover {
+  background: color-mix(in srgb, var(--launcher-surface-strong) 36%, transparent);
 }
 
 .launcher-result-row {

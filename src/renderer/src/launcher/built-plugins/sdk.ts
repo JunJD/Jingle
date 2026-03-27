@@ -17,7 +17,10 @@ import type {
   LauncherPluginCommandMatch,
   LauncherPluginCommandParams,
   LauncherPluginDefinition,
+  LauncherPluginEntryDefinition,
+  LauncherPluginEntryId,
   LauncherPluginId,
+  LauncherPluginManifest,
   LauncherPluginIntent
 } from "../pages/types"
 
@@ -27,26 +30,31 @@ export interface BuiltLauncherPluginTextContext {
 }
 
 export interface BuiltLauncherPluginSpec {
+  entries: BuiltLauncherPluginEntrySpec[]
+  manifest: LauncherPluginManifest
+}
+
+export interface BuiltLauncherPluginEntrySpec {
   Component: ComponentType
-  manifest: {
-    home?: (context: BuiltLauncherPluginTextContext) => Omit<LauncherHomeEntry, "pluginId">
-    id: LauncherPluginId
-    search?: {
-      buildIntentItems?: (context: {
-        copy: AppCopy
-        locale: AppLocale
-        query: string
-      }) => LauncherPluginIntent[]
-      resolveCommand?: (params: LauncherPluginCommandParams) => LauncherPluginCommandMatch | null
-    }
-    viewport:
-      | {
-          bodyHeight: number
-        }
-      | {
-          getHeight: (shellConfig: LauncherShellConfig) => number
-        }
+  entryId: LauncherPluginEntryId
+  home?: (
+    context: BuiltLauncherPluginTextContext
+  ) => Omit<LauncherHomeEntry, "entryId" | "pluginId">
+  search?: {
+    buildIntentItems?: (context: {
+      copy: AppCopy
+      locale: AppLocale
+      query: string
+    }) => LauncherPluginIntent[]
+    resolveCommand?: (params: LauncherPluginCommandParams) => LauncherPluginCommandMatch | null
   }
+  viewport:
+    | {
+        bodyHeight: number
+      }
+    | {
+        getHeight: (shellConfig: LauncherShellConfig) => number
+      }
 }
 
 export interface BuiltPluginClientMethod<TPayload, TResult> {
@@ -70,7 +78,7 @@ type BuiltPluginClient<TMethods extends Record<string, BuiltPluginClientMethod<u
   }
 
 function getBuiltPluginViewportHeight(
-  viewport: BuiltLauncherPluginSpec["manifest"]["viewport"]
+  viewport: BuiltLauncherPluginEntrySpec["viewport"]
 ): (shellConfig: LauncherShellConfig) => number {
   if ("getHeight" in viewport) {
     return viewport.getHeight
@@ -79,22 +87,58 @@ function getBuiltPluginViewportHeight(
   return (shellConfig) => getLauncherViewportHeightForBody(viewport.bodyHeight, shellConfig)
 }
 
+function resolveBuiltPluginEntryDefinition(
+  entry: BuiltLauncherPluginEntrySpec
+): LauncherPluginEntryDefinition {
+  return {
+    Component: entry.Component,
+    buildHomeEntry: entry.home,
+    buildIntentItems: entry.search?.buildIntentItems,
+    entryId: entry.entryId,
+    getViewportHeight: getBuiltPluginViewportHeight(entry.viewport),
+    resolveCommand: entry.search?.resolveCommand
+  }
+}
+
+function validateBuiltLauncherPluginSpec(spec: BuiltLauncherPluginSpec): void {
+  const manifestEntryIds = new Set(spec.manifest.entries.map((entry) => entry.id))
+  const rendererEntryIds = new Set<string>()
+
+  if (!manifestEntryIds.has(spec.manifest.defaultEntryId)) {
+    throw new Error(
+      `Launcher plugin "${spec.manifest.id}" default entry "${spec.manifest.defaultEntryId}" is not declared in its manifest`
+    )
+  }
+
+  for (const entry of spec.entries) {
+    if (rendererEntryIds.has(entry.entryId)) {
+      throw new Error(
+        `Launcher plugin "${spec.manifest.id}" declares duplicate renderer entry "${entry.entryId}"`
+      )
+    }
+
+    if (!manifestEntryIds.has(entry.entryId)) {
+      throw new Error(
+        `Launcher plugin "${spec.manifest.id}" renderer entry "${entry.entryId}" is missing from its manifest`
+      )
+    }
+
+    rendererEntryIds.add(entry.entryId)
+  }
+
+  if (rendererEntryIds.size !== manifestEntryIds.size) {
+    throw new Error(
+      `Launcher plugin "${spec.manifest.id}" manifest and renderer entries are out of sync`
+    )
+  }
+}
+
 export function defineBuiltLauncherPlugin(spec: BuiltLauncherPluginSpec): LauncherPluginDefinition {
-  const viewportHeight = getBuiltPluginViewportHeight(spec.manifest.viewport)
-  const buildHomeEntry = spec.manifest.home
+  validateBuiltLauncherPluginSpec(spec)
 
   return {
-    Component: spec.Component,
-    buildHomeEntry: buildHomeEntry
-      ? (context) => ({
-          ...buildHomeEntry(context),
-          pluginId: spec.manifest.id
-        })
-      : undefined,
-    buildIntentItems: spec.manifest.search?.buildIntentItems,
-    getViewportHeight: viewportHeight,
-    id: spec.manifest.id,
-    resolveCommand: spec.manifest.search?.resolveCommand
+    entries: spec.entries.map((entry) => resolveBuiltPluginEntryDefinition(entry)),
+    manifest: spec.manifest
   }
 }
 

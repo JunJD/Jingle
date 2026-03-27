@@ -1,9 +1,10 @@
 import type { RefObject } from "react"
+import { AI_LAUNCHER_PLUGIN_ID } from "../../../../plugins/ai/manifest"
 import { useI18n } from "@/lib/i18n"
 import type { LauncherShellConfig } from "../../../../shared/launcher"
-import type { LauncherShellItem } from "../types"
-import type { LauncherHomeEntry } from "../pages/types"
 import { useLauncherClipboard } from "../LauncherClipboardContext"
+import type { LauncherHomeEntry, LauncherPluginOpenOptions } from "../pages/types"
+import type { LauncherShellItem } from "../types"
 import { ClipboardChip } from "./ClipboardChip"
 import { LauncherChrome } from "./LauncherChrome"
 import { LauncherResultList } from "./LauncherResultList"
@@ -16,7 +17,7 @@ export function LauncherSearchPage(props: {
   items: LauncherShellItem[]
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   onInputValueChange: (value: string) => void
-  onOpenPlugin: (pluginId: LauncherHomeEntry["pluginId"]) => void
+  onOpenEntry: (entry: LauncherHomeEntry, options?: LauncherPluginOpenOptions) => void
   placeholder: string
   resultsViewportHeight: number
   resultsVisible: boolean
@@ -34,7 +35,7 @@ export function LauncherSearchPage(props: {
     items,
     onInputKeyDown,
     onInputValueChange,
-    onOpenPlugin,
+    onOpenEntry,
     placeholder,
     resultsViewportHeight,
     resultsVisible,
@@ -45,8 +46,8 @@ export function LauncherSearchPage(props: {
 
   const primaryActionLabel =
     selectedItem?.presentation.primaryActionLabel ?? copy.launcher.openGeneric
-  const isPrimaryActionDisabled =
-    !selectedItem || selectedItem.availability === "planned"
+  const isPrimaryActionDisabled = !selectedItem || selectedItem.availability === "planned"
+  const hasQuery = inputValue.trim().length > 0
   const headerLeading =
     clipboard.context.kind === "files" || clipboard.context.kind === "image" ? (
       <ClipboardChip context={clipboard.context} onClear={clipboard.clearContext} />
@@ -73,27 +74,37 @@ export function LauncherSearchPage(props: {
               }}
               onMouseDown={(event) => event.preventDefault()}
               disabled={isPrimaryActionDisabled}
-              className="launcher-action-button launcher-action-button--primary flex appearance-none items-center gap-3 border-0 px-2 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
+              className="launcher-action-link flex appearance-none items-center gap-2 border-0 px-0 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
             >
               <span>{primaryActionLabel}</span>
-              <span className="launcher-keycap rounded-full px-2.5 py-1 text-[11px] text-muted-foreground">
-                ↵
-              </span>
+              <span className="launcher-shortcut text-[11px] text-muted-foreground">↵</span>
             </button>
           </>
         ) : undefined
       }
       headerTrailing={entries.map((entry) => (
         <button
-          key={entry.pluginId}
+          key={`${entry.pluginId}:${entry.entryId}`}
           type="button"
-          onClick={() => onOpenPlugin(entry.pluginId)}
+          onClick={() =>
+            onOpenEntry(
+              entry,
+              entry.pluginId === AI_LAUNCHER_PLUGIN_ID && hasQuery
+                ? { initialAction: "submit" }
+                : undefined
+            )
+          }
           onMouseDown={(event) => event.preventDefault()}
           className="launcher-header-button flex shrink-0 appearance-none items-center gap-2 border-0 px-0 py-1 text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
         >
-          <span>{entry.label}</span>
-          {entry.shortcutLabel ? (
-            <span className="launcher-keycap rounded-full px-2.5 py-1 text-[11px] text-muted-foreground">
+          <span>
+            {entry.pluginId === AI_LAUNCHER_PLUGIN_ID && hasQuery
+              ? copy.launcher.askAiWithTab
+              : entry.label}
+          </span>
+          {entry.shortcutLabel &&
+          !(entry.pluginId === AI_LAUNCHER_PLUGIN_ID && hasQuery) ? (
+            <span className="launcher-shortcut text-[11px] text-muted-foreground">
               {entry.shortcutLabel}
             </span>
           ) : null}

@@ -1,5 +1,9 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages"
 import {
+  TRANSLATE_LAUNCHER_PLUGIN_ID,
+  TRANSLATE_RPC_METHOD_TRANSLATE
+} from "../../../plugins/translate/manifest"
+import {
   type TranslateBackendConfig,
   type TranslateTextRequest,
   type TranslateTextResponse
@@ -117,6 +121,6 @@ export async function translateText(request: TranslateTextRequest): Promise<Tran
   }
 }
 
-export const translateBuiltPluginService = defineBuiltPluginService("translate", {
-  translate: translateText
+export const translateBuiltPluginService = defineBuiltPluginService(TRANSLATE_LAUNCHER_PLUGIN_ID, {
+  [TRANSLATE_RPC_METHOD_TRANSLATE]: translateText
 })

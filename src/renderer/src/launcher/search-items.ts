@@ -73,6 +73,7 @@ export function buildLauncherPluginIntentShellItems(
     action: { type: "none" },
     id: item.id,
     kind: item.kind,
+    pluginEntryId: item.entryId,
     pluginId: item.pluginId,
     pluginOpenOptions: item.openOptions,
     presentation: item.presentation,

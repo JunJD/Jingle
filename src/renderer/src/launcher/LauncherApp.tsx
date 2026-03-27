@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { AI_LAUNCHER_PLUGIN_ID } from "../../../plugins/ai/manifest"
 import { useLauncherClipboard } from "./LauncherClipboardContext"
 import {
   type LauncherPluginInputElement,
@@ -24,24 +25,42 @@ function waitForAnimationFrame(): Promise<void> {
 
 export default function LauncherApp(): React.JSX.Element {
   const { copy } = useI18n()
+  const inputNeedsWorkspaceMessage = copy.chat.inputNeedsWorkspace
   const clipboard = useLauncherClipboard()
   const threadContext = useThreadContext()
   const searchInputRef = useRef<HTMLInputElement>(null)
   const pluginInputRef = useRef<LauncherPluginInputElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const viewportHeightRef = useRef(0)
-  const [pluginInputStatus, setPluginInputStatus] = useState<LauncherInputStatus>("idle")
   const [shownSequence, setShownSequence] = useState(0)
-  const { activePlugin, closeActivePlugin, navigationDirection, openPlugin, route, routeKey } =
+  const { activeEntry, closeActivePlugin, navigationDirection, openEntry, route, routeKey } =
     useLauncherRouter()
-  const searchPage = useLauncherSearchPage({ openPlugin })
-  const activePluginId = isLauncherPluginRoute(route) ? route.id : null
+  const [pluginInputSurface, setPluginInputSurface] = useState<{
+    routeKey: string
+    status: LauncherInputStatus
+  }>({
+    routeKey,
+    status: "idle"
+  })
+  const searchPage = useLauncherSearchPage({ openEntry })
+  const activePluginId = isLauncherPluginRoute(route) ? route.pluginId : null
   const selectedItem =
     searchPage.selectedIndex >= 0 ? searchPage.items[searchPage.selectedIndex] : null
-  const ActivePluginComponent = activePlugin?.Component ?? null
+  const ActivePluginComponent = activeEntry?.Component ?? null
   const viewportHeight = !isLauncherPluginRoute(route)
     ? searchPage.viewportHeight
-    : (activePlugin?.getViewportHeight(searchPage.shellConfig) ?? searchPage.viewportHeight)
+    : (activeEntry?.getViewportHeight(searchPage.shellConfig) ?? searchPage.viewportHeight)
+  const pluginInputStatus =
+    pluginInputSurface.routeKey === routeKey ? pluginInputSurface.status : "idle"
+  const setPluginInputStatus = useCallback(
+    (status: LauncherInputStatus): void => {
+      setPluginInputSurface({
+        routeKey,
+        status
+      })
+    },
+    [routeKey]
+  )
 
   const waitForThreadStream = useCallback(
     async (threadId: string) => {
@@ -75,7 +94,7 @@ export default function LauncherApp(): React.JSX.Element {
       ])
 
       if (!workspacePathResult) {
-        throw new Error(copy.chat.inputNeedsWorkspace)
+        throw new Error(inputNeedsWorkspaceMessage)
       }
       const workspacePath = workspacePathResult
 
@@ -99,7 +118,7 @@ export default function LauncherApp(): React.JSX.Element {
         workspacePath
       }
     },
-    [copy.chat.inputNeedsWorkspace, threadContext]
+    [inputNeedsWorkspaceMessage, threadContext]
   )
   const submitPluginThread = useCallback(
     async (input: LauncherPluginThreadSubmitInput): Promise<void> => {
@@ -108,9 +127,9 @@ export default function LauncherApp(): React.JSX.Element {
       const state = threadContext.getThreadState(threadId)
       const actions = threadContext.getThreadActions(threadId)
 
-      if (!state.workspacePath) {
-        throw new Error(copy.chat.inputNeedsWorkspace)
-      }
+      // if (!state.workspacePath) {
+      //   throw new Error(copy.chat.inputNeedsWorkspace)
+      // }
 
       if (state.error) {
         actions.clearError()
@@ -142,10 +161,10 @@ export default function LauncherApp(): React.JSX.Element {
         }
       )
     },
-    [copy.chat.inputNeedsWorkspace, threadContext, waitForThreadStream]
+    [threadContext, waitForThreadStream]
   )
   const activePluginHost = useMemo(() => {
-    if (!activePlugin || !isLauncherPluginRoute(route)) {
+    if (!activeEntry || !isLauncherPluginRoute(route)) {
       return null
     }
 
@@ -154,12 +173,14 @@ export default function LauncherApp(): React.JSX.Element {
         clearContext: clipboard.clearContext,
         context: clipboard.context
       },
+      entryId: route.entryId,
+      initialAction: route.initialAction,
       navigation: {
         goHome: closeActivePlugin,
         hideLauncher,
-        openPlugin
+        openEntry
       },
-      pluginId: route.id,
+      pluginId: route.pluginId,
       seedQuery: route.seedQuery,
       surface: {
         inputRef: pluginInputRef,
@@ -175,14 +196,15 @@ export default function LauncherApp(): React.JSX.Element {
       }
     }
   }, [
-    activePlugin,
+    activeEntry,
     clipboard.clearContext,
     clipboard.context,
     closeActivePlugin,
     createPluginThread,
     hideLauncher,
-    openPlugin,
+    openEntry,
     pluginInputStatus,
+    setPluginInputStatus,
     route,
     searchPage.shellConfig,
     shownSequence,
@@ -193,10 +215,6 @@ export default function LauncherApp(): React.JSX.Element {
   useEffect(() => {
     setViewportHeight(viewportHeight)
   }, [setViewportHeight, viewportHeight])
-
-  useEffect(() => {
-    setPluginInputStatus("idle")
-  }, [routeKey])
 
   useEffect(() => {
     const focusInput = (): void => {
@@ -224,7 +242,7 @@ export default function LauncherApp(): React.JSX.Element {
       cleanupShown()
       window.removeEventListener("focus", focusInput)
     }
-  }, [route, route.id, setViewportHeight])
+  }, [route, setViewportHeight])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -250,7 +268,7 @@ export default function LauncherApp(): React.JSX.Element {
         className="launcher-window-shell"
         data-active-plugin={activePluginId ?? "home"}
       >
-        {activePluginId === "ai" ? (
+        {activePluginId === AI_LAUNCHER_PLUGIN_ID ? (
           <LauncherIntelligenceGlow
             key={routeKey}
             status={pluginInputStatus}
@@ -260,7 +278,7 @@ export default function LauncherApp(): React.JSX.Element {
 
         <div className="launcher-shell-content">
           <LauncherPageTransition direction={navigationDirection} pageKey={routeKey}>
-            {activePlugin && ActivePluginComponent && activePluginHost ? (
+            {activeEntry && ActivePluginComponent && activePluginHost ? (
               <LauncherPluginHostProvider value={activePluginHost}>
                 <ActivePluginComponent />
               </LauncherPluginHostProvider>
@@ -273,7 +291,7 @@ export default function LauncherApp(): React.JSX.Element {
                 items={searchPage.items}
                 onInputKeyDown={searchPage.handleInputKeyDown}
                 onInputValueChange={searchPage.setQuery}
-                onOpenPlugin={searchPage.openPlugin}
+                onOpenEntry={searchPage.openEntry}
                 placeholder={searchPage.placeholder}
                 resultsViewportHeight={searchPage.resultsViewportHeight}
                 resultsVisible={searchPage.resultsVisible}

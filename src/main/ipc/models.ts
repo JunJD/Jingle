@@ -1,6 +1,7 @@
 import { IpcMain, dialog, app } from "electron"
 import * as fs from "fs/promises"
 import * as path from "path"
+import { AI_THREAD_SOURCE } from "../../plugins/ai/manifest"
 import type {
   AgentConfig,
   ModelConfig,
@@ -252,7 +253,7 @@ export async function resolveGlobalWorkspacePath(): Promise<string | null> {
     }
 
     const metadata = JSON.parse(thread.metadata) as { source?: unknown; workspacePath?: unknown }
-    if (metadata.source === "launcher-ai") {
+    if (metadata.source === AI_THREAD_SOURCE) {
       continue
     }
 

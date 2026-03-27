@@ -16,7 +16,7 @@ import type { LocalStartItem } from "../../../../shared/local-start"
 import { shouldShowLauncherIdleItems } from "../../../../shared/launcher-settings"
 import { useLauncherClipboard } from "../LauncherClipboardContext"
 import {
-  DEFAULT_HOME_ENTRY_PLUGIN_ID,
+  DEFAULT_HOME_ENTRY,
   getLauncherHomeEntries,
   getLauncherPluginIntents,
   resolveLauncherPluginCommand
@@ -27,19 +27,23 @@ import {
   buildLauncherPluginIntentShellItems,
   buildLauncherSearchShellItems
 } from "../search-items"
-import type { LauncherHomeEntry, LauncherPluginId, LauncherPluginOpenOptions } from "../pages/types"
+import type {
+  LauncherHomeEntry,
+  LauncherPluginEntryAddress,
+  LauncherPluginOpenOptions
+} from "../pages/types"
 import type { LauncherShellItem } from "../types"
 
 const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
 
 export function useLauncherSearchPage(props: {
-  openPlugin: (pluginId: LauncherPluginId, options?: LauncherPluginOpenOptions) => void
+  openEntry: (address: LauncherPluginEntryAddress, options?: LauncherPluginOpenOptions) => void
 }): {
   entries: LauncherHomeEntry[]
   executeItem: (index: number) => void
   handleInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   items: LauncherShellItem[]
-  openPlugin: (pluginId: LauncherPluginId) => void
+  openEntry: (entry: LauncherHomeEntry, options?: LauncherPluginOpenOptions) => void
   placeholder: string
   query: string
   resultsViewportHeight: number
@@ -49,7 +53,7 @@ export function useLauncherSearchPage(props: {
   shellConfig: LauncherShellConfig
   viewportHeight: number
 } {
-  const { openPlugin: navigateToPlugin } = props
+  const { openEntry: navigateToEntry } = props
   const { copy, locale } = useI18n()
   const { context, isTextAutofillConsumed, markTextAutofillConsumed } = useLauncherClipboard()
   const latestSearchRequestRef = useRef(0)
@@ -187,11 +191,20 @@ export function useLauncherSearchPage(props: {
     }
   }, [trimmedQuery])
 
-  const openPlugin = useCallback(
-    (pluginId: LauncherPluginId): void => {
-      navigateToPlugin(pluginId, { seedQuery: query })
+  const openEntry = useCallback(
+    (entry: LauncherHomeEntry, options?: LauncherPluginOpenOptions): void => {
+      navigateToEntry(
+        {
+          entryId: entry.entryId,
+          pluginId: entry.pluginId
+        },
+        {
+          initialAction: options?.initialAction,
+          seedQuery: options?.seedQuery ?? query
+        }
+      )
     },
-    [navigateToPlugin, query]
+    [navigateToEntry, query]
   )
 
   const moveSelection = useCallback(
@@ -213,8 +226,14 @@ export function useLauncherSearchPage(props: {
         return
       }
 
-      if (item.pluginId) {
-        navigateToPlugin(item.pluginId, item.pluginOpenOptions ?? { seedQuery: query })
+      if (item.pluginId && item.pluginEntryId) {
+        navigateToEntry(
+          {
+            entryId: item.pluginEntryId,
+            pluginId: item.pluginId
+          },
+          item.pluginOpenOptions ?? { seedQuery: query }
+        )
         return
       }
 
@@ -228,7 +247,7 @@ export function useLauncherSearchPage(props: {
         }
       })
     },
-    [items, navigateToPlugin, query]
+    [items, navigateToEntry, query]
   )
 
   const handleInputKeyDown = useCallback(
@@ -243,14 +262,23 @@ export function useLauncherSearchPage(props: {
       })
       if (commandMatch) {
         event.preventDefault()
-        navigateToPlugin(commandMatch.pluginId, commandMatch.match.openOptions)
+        navigateToEntry(
+          {
+            entryId: commandMatch.entryId,
+            pluginId: commandMatch.pluginId
+          },
+          commandMatch.match.openOptions
+        )
         return
       }
 
       switch (event.key) {
         case "Tab":
           event.preventDefault()
-          openPlugin(DEFAULT_HOME_ENTRY_PLUGIN_ID)
+          navigateToEntry(DEFAULT_HOME_ENTRY, {
+            initialAction: query.trim() ? "submit" : "focus",
+            seedQuery: query
+          })
           break
         case "ArrowDown":
         case "ArrowRight":
@@ -270,7 +298,7 @@ export function useLauncherSearchPage(props: {
           break
       }
     },
-    [executeItem, moveSelection, navigateToPlugin, openPlugin, query, selectedIndex]
+    [executeItem, moveSelection, navigateToEntry, query, selectedIndex]
   )
 
   return {
@@ -278,7 +306,7 @@ export function useLauncherSearchPage(props: {
     executeItem,
     handleInputKeyDown,
     items,
-    openPlugin,
+    openEntry,
     placeholder: copy.launcher.searchPlaceholder,
     query,
     resultsViewportHeight,

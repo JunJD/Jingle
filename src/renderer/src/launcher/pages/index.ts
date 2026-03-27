@@ -1,24 +1,43 @@
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { AppLocale } from "../../../../shared/i18n"
+import { AI_CHAT_ENTRY_ID, AI_LAUNCHER_PLUGIN_ID } from "../../../../plugins/ai/manifest"
 import { builtLauncherPlugins } from "../built-plugins"
-import { aiLauncherPlugin } from "./ai"
 import type {
   LauncherPluginCommandMatch,
   LauncherPluginCommandParams,
-  LauncherHomeEntry,
   LauncherPluginDefinition,
+  LauncherPluginEntryAddress,
+  LauncherPluginEntryDefinition,
+  LauncherPluginEntryId,
+  LauncherHomeEntry,
   LauncherPluginId,
   LauncherResolvedPluginIntent,
   LauncherPluginTextContext
 } from "./types"
 
-const launcherPlugins: LauncherPluginDefinition[] = [aiLauncherPlugin, ...builtLauncherPlugins]
+const launcherPlugins: LauncherPluginDefinition[] = builtLauncherPlugins
 
 const launcherPluginMap = new Map(
-  launcherPlugins.map((plugin) => [plugin.id, plugin] as const)
+  launcherPlugins.map((plugin) => [plugin.manifest.id, plugin] as const)
 )
 
-export const DEFAULT_HOME_ENTRY_PLUGIN_ID: LauncherPluginId = aiLauncherPlugin.id
+const launcherPluginEntryMap = new Map(
+  launcherPlugins.flatMap((plugin) =>
+    plugin.entries.map((entry) => [
+      `${plugin.manifest.id}:${entry.entryId}`,
+      { entry, plugin } as const
+    ])
+  )
+)
+
+export const DEFAULT_HOME_ENTRY: LauncherPluginEntryAddress = {
+  entryId: AI_CHAT_ENTRY_ID,
+  pluginId: AI_LAUNCHER_PLUGIN_ID
+}
+
+function getLauncherPluginEntryKey(address: LauncherPluginEntryAddress): string {
+  return `${address.pluginId}:${address.entryId}`
+}
 
 export function getLauncherPluginDefinition(pluginId: LauncherPluginId): LauncherPluginDefinition {
   const plugin = launcherPluginMap.get(pluginId)
@@ -29,11 +48,44 @@ export function getLauncherPluginDefinition(pluginId: LauncherPluginId): Launche
   return plugin
 }
 
+export function getLauncherDefaultEntryAddress(
+  pluginId: LauncherPluginId
+): LauncherPluginEntryAddress {
+  const plugin = getLauncherPluginDefinition(pluginId)
+  return {
+    entryId: plugin.manifest.defaultEntryId,
+    pluginId
+  }
+}
+
+export function getLauncherPluginEntryDefinition(
+  address: LauncherPluginEntryAddress
+): { entry: LauncherPluginEntryDefinition; plugin: LauncherPluginDefinition } {
+  const resolved = launcherPluginEntryMap.get(getLauncherPluginEntryKey(address))
+  if (!resolved) {
+    throw new Error(
+      `Unknown launcher plugin entry "${address.pluginId}:${address.entryId}"`
+    )
+  }
+
+  return resolved
+}
+
 export function getLauncherHomeEntries(context: LauncherPluginTextContext): LauncherHomeEntry[] {
-  return launcherPlugins.flatMap((plugin) => {
-    const entry = plugin.buildHomeEntry?.(context)
-    return entry ? [entry] : []
-  })
+  return launcherPlugins.flatMap((plugin) =>
+    plugin.entries.flatMap((entry) => {
+      const homeEntry = entry.buildHomeEntry?.(context)
+      return homeEntry
+        ? [
+            {
+              ...homeEntry,
+              entryId: entry.entryId,
+              pluginId: plugin.manifest.id
+            }
+          ]
+        : []
+    })
+  )
 }
 
 export function getLauncherPluginIntents(params: {
@@ -43,16 +95,19 @@ export function getLauncherPluginIntents(params: {
 }): LauncherResolvedPluginIntent[] {
   return launcherPlugins
     .flatMap((plugin) =>
-      (plugin.buildIntentItems?.(params) ?? []).map((item) => ({
-        id: item.id,
-        kind: item.kind,
-        pluginId: plugin.id,
-        openOptions: item.openOptions,
-        presentation: item.presentation,
-        subtitle: item.subtitle,
-        title: item.title,
-        priority: item.priority
-      }))
+      plugin.entries.flatMap((entry) =>
+        (entry.buildIntentItems?.(params) ?? []).map((item) => ({
+          entryId: item.entryId ?? entry.entryId,
+          id: item.id,
+          kind: item.kind,
+          pluginId: plugin.manifest.id,
+          openOptions: item.openOptions,
+          presentation: item.presentation,
+          priority: item.priority,
+          subtitle: item.subtitle,
+          title: item.title
+        }))
+      )
     )
     .sort((left, right) => {
       const rightPriority = typeof right.priority === "number" ? right.priority : 0
@@ -63,13 +118,16 @@ export function getLauncherPluginIntents(params: {
 
 export function resolveLauncherPluginCommand(
   params: LauncherPluginCommandParams
-): { pluginId: LauncherPluginId; match: LauncherPluginCommandMatch } | null {
+): { entryId: LauncherPluginEntryId; pluginId: LauncherPluginId; match: LauncherPluginCommandMatch } | null {
   for (const plugin of launcherPlugins) {
-    const match = plugin.resolveCommand?.(params)
-    if (match) {
-      return {
-        match,
-        pluginId: plugin.id
+    for (const entry of plugin.entries) {
+      const match = entry.resolveCommand?.(params)
+      if (match) {
+        return {
+          entryId: match.entryId ?? entry.entryId,
+          match,
+          pluginId: plugin.manifest.id
+        }
       }
     }
   }
