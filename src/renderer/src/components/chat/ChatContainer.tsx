@@ -14,6 +14,7 @@ import { ChatTodos } from "./ChatTodos"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
 import type { Message } from "@/types"
 import { useI18n } from "@/lib/i18n"
+import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { isDefaultThreadTitle } from "../../../../shared/i18n"
 
 interface ChatContainerProps {
@@ -25,6 +26,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef = useRef(true)
+  useDisableTabNavigation(inputRef)
 
   const { threads, loadThreads, generateTitleForFirstMessage } = useAppStore()
 
