@@ -132,10 +132,11 @@
   --launcher-border: rgba(67, 76, 88, 0.08);
   --launcher-border-strong: rgba(67, 76, 88, 0.16);
   --launcher-outline: rgba(67, 76, 88, 0.12);
-  --launcher-panel-radius: 24px;
-  --launcher-panel-radius-inner: 24px;
-  --launcher-shell-radius: 24px;
+  --launcher-panel-radius: 12px;
+  --launcher-panel-radius-inner: 12px;
+  --launcher-shell-radius: 12px;
   --launcher-shell-native-radius: 0px;
+  --launcher-window-gutter: 0px;
   --launcher-shell-fill: color-mix(in srgb, var(--launcher-surface) 76%, white 24%);
   --launcher-shell-fill-strong: color-mix(in srgb, var(--launcher-surface) 88%, white 12%);
   --launcher-shell-border: rgba(255, 255, 255, 0.52);
@@ -266,14 +267,15 @@ body[data-platform="win32"],
 html[data-platform="linux"],
 body[data-platform="linux"] {
   --window-controls-offset-inline: 18px;
-  --launcher-panel-radius: 24px;
-  --launcher-shell-radius: 24px;
+  --launcher-panel-radius: 12px;
+  --launcher-shell-radius: 12px;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-family:
@@ -311,25 +313,16 @@ body[data-window="launcher"] #root {
 
 body[data-window="launcher"] {
   margin: 0;
-  background:
-    radial-gradient(
-      circle at 50% 0%,
-      color-mix(in srgb, var(--primary) 14%, transparent),
-      transparent 52%
-    ),
-    transparent;
-}
-
-html[data-platform="darwin"] body[data-window="launcher"],
-body[data-platform="darwin"][data-window="launcher"] {
   background: transparent;
 }
 
 .launcher-window-frame {
   position: relative;
+  box-sizing: border-box;
   height: 100%;
   width: 100%;
   overflow: hidden;
+  background: transparent;
 }
 
 .launcher-window-shell {
@@ -340,21 +333,17 @@ body[data-platform="darwin"][data-window="launcher"] {
   width: 100%;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--launcher-shell-border);
   border-radius: var(--launcher-shell-radius);
   background:
-    linear-gradient(
-      180deg,
+    linear-gradient(180deg,
       color-mix(in srgb, var(--launcher-shell-fill) 88%, white 12%),
-      color-mix(in srgb, var(--launcher-shell-fill-strong) 96%, var(--background-secondary) 4%)
-    );
+      color-mix(in srgb, var(--launcher-shell-fill-strong) 96%, var(--background-secondary) 4%));
   box-shadow:
     inset 0 1px 0 var(--launcher-shell-highlight),
     inset 0 -1px 0 color-mix(in srgb, var(--foreground) 4%, transparent),
     0 12px 28px var(--launcher-shell-shadow-ambient),
     0 22px 54px var(--launcher-shell-shadow-depth);
   transition:
-    border-color 220ms ease,
     box-shadow 220ms ease,
     background 220ms ease;
   -webkit-backdrop-filter: blur(var(--launcher-shell-blur)) saturate(1.22);
@@ -384,7 +373,6 @@ body[data-platform="darwin"][data-window="launcher"] {
 }
 
 .launcher-window-shell[data-active-plugin="ai"] {
-  border-color: color-mix(in srgb, white 18%, var(--launcher-shell-border));
   box-shadow:
     inset 0 1px 0 var(--launcher-shell-highlight),
     inset 0 -1px 0 color-mix(in srgb, var(--foreground) 4%, transparent),
@@ -493,19 +481,15 @@ body[data-platform="darwin"] .launcher-window-shell {
 }
 
 .launcher-chrome-header {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--launcher-header-strip) 100%, transparent),
-    color-mix(in srgb, var(--launcher-shell-fill) 82%, transparent)
-  );
+  background: linear-gradient(180deg,
+      color-mix(in srgb, var(--launcher-header-strip) 100%, transparent),
+      color-mix(in srgb, var(--launcher-shell-fill) 82%, transparent));
 }
 
 .launcher-chrome-footer {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--launcher-shell-fill) 78%, transparent),
-    color-mix(in srgb, var(--launcher-footer-strip) 100%, transparent)
-  );
+  background: linear-gradient(180deg,
+      color-mix(in srgb, var(--launcher-shell-fill) 78%, transparent),
+      color-mix(in srgb, var(--launcher-footer-strip) 100%, transparent));
 }
 
 .launcher-header-button,
@@ -591,20 +575,16 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 .launcher-result-row:hover {
   background:
-    linear-gradient(
-      180deg,
+    linear-gradient(180deg,
       color-mix(in srgb, var(--launcher-row-hover) 92%, white 8%),
-      color-mix(in srgb, var(--launcher-row-hover) 100%, transparent)
-    );
+      color-mix(in srgb, var(--launcher-row-hover) 100%, transparent));
 }
 
 .launcher-result-row--selected {
   background:
-    linear-gradient(
-      180deg,
+    linear-gradient(180deg,
       color-mix(in srgb, var(--launcher-row-active) 88%, white 12%),
-      color-mix(in srgb, var(--launcher-row-active) 100%, transparent)
-    );
+      color-mix(in srgb, var(--launcher-row-active) 100%, transparent));
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, white 42%, transparent),
     inset 3px 0 0 var(--launcher-accent-line);
@@ -633,12 +613,15 @@ body[data-platform="darwin"] .launcher-window-shell {
 .text-critical {
   color: var(--status-critical);
 }
+
 .text-warning {
   color: var(--status-warning);
 }
+
 .text-nominal {
   color: var(--status-nominal);
 }
+
 .text-info {
   color: var(--status-info);
 }
@@ -646,12 +629,15 @@ body[data-platform="darwin"] .launcher-window-shell {
 .bg-critical {
   background-color: var(--status-critical);
 }
+
 .bg-warning {
   background-color: var(--status-warning);
 }
+
 .bg-nominal {
   background-color: var(--status-nominal);
 }
+
 .bg-info {
   background-color: var(--status-info);
 }
@@ -659,12 +645,15 @@ body[data-platform="darwin"] .launcher-window-shell {
 .bg-critical\/15 {
   background-color: color-mix(in srgb, var(--status-critical) 15%, transparent);
 }
+
 .bg-warning\/15 {
   background-color: color-mix(in srgb, var(--status-warning) 15%, transparent);
 }
+
 .bg-nominal\/15 {
   background-color: color-mix(in srgb, var(--status-nominal) 15%, transparent);
 }
+
 .bg-info\/15 {
   background-color: color-mix(in srgb, var(--status-info) 15%, transparent);
 }
@@ -672,22 +661,27 @@ body[data-platform="darwin"] .launcher-window-shell {
 .border-critical {
   border-color: var(--status-critical);
 }
+
 .border-warning {
   border-color: var(--status-warning);
 }
+
 .border-nominal {
   border-color: var(--status-nominal);
 }
+
 .border-info {
   border-color: var(--status-info);
 }
 
 /* Pulse animation for live indicators */
 @keyframes tactical-pulse {
+
   0%,
   100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.5;
   }
@@ -701,6 +695,7 @@ body[data-platform="darwin"] .launcher-window-shell {
   from {
     stroke-dashoffset: 0;
   }
+
   to {
     stroke-dashoffset: -100;
   }
@@ -710,6 +705,7 @@ body[data-platform="darwin"] .launcher-window-shell {
   from {
     stroke-dashoffset: 100;
   }
+
   to {
     stroke-dashoffset: 0;
   }
@@ -721,6 +717,7 @@ body[data-platform="darwin"] .launcher-window-shell {
     transform: translate3d(0, 14px, 0) scale(0.988);
     filter: blur(6px);
   }
+
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
@@ -734,6 +731,7 @@ body[data-platform="darwin"] .launcher-window-shell {
     transform: translate3d(0, -10px, 0) scale(0.992);
     filter: blur(4px);
   }
+
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
@@ -742,10 +740,12 @@ body[data-platform="darwin"] .launcher-window-shell {
 }
 
 @keyframes launcher-intelligence-glow-breathe {
+
   0%,
   100% {
     opacity: 0.92;
   }
+
   50% {
     opacity: 1;
   }
@@ -765,11 +765,9 @@ body[data-platform="darwin"] .launcher-window-shell {
   padding: 16px;
   background:
     radial-gradient(circle at top, color-mix(in srgb, var(--primary) 14%, transparent), transparent 42%),
-    linear-gradient(
-      180deg,
+    linear-gradient(180deg,
       color-mix(in srgb, var(--launcher-surface) 92%, white 8%),
-      color-mix(in srgb, var(--background-secondary) 84%, white 16%)
-    );
+      color-mix(in srgb, var(--background-secondary) 84%, white 16%));
 }
 
 .launcher-translate-grid {
@@ -864,11 +862,9 @@ body[data-platform="darwin"] .launcher-window-shell {
   border: 1px solid color-mix(in srgb, var(--launcher-border-strong) 70%, transparent);
   border-radius: 18px;
   background:
-    linear-gradient(
-      180deg,
+    linear-gradient(180deg,
       color-mix(in srgb, var(--background-elevated) 92%, white 8%),
-      color-mix(in srgb, var(--launcher-surface) 96%, var(--background-secondary) 4%)
-    );
+      color-mix(in srgb, var(--launcher-surface) 96%, var(--background-secondary) 4%));
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, white 72%, transparent),
     0 16px 40px color-mix(in srgb, var(--foreground) 6%, transparent);
@@ -1135,6 +1131,7 @@ body[data-platform="darwin"] .launcher-window-shell {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .launcher-shell-intelligence-glow,
   .launcher-page-transition-panel,
   .launcher-jump-orbit-primary,
@@ -1167,6 +1164,7 @@ body[data-platform="darwin"] .launcher-window-shell {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
@@ -1200,12 +1198,15 @@ body[data-platform="darwin"] .launcher-window-shell {
 .streaming-markdown h1 {
   font-size: 1.5em;
 }
+
 .streaming-markdown h2 {
   font-size: 1.25em;
 }
+
 .streaming-markdown h3 {
   font-size: 1.125em;
 }
+
 .streaming-markdown h4,
 .streaming-markdown h5,
 .streaming-markdown h6 {
@@ -1300,6 +1301,7 @@ body[data-platform="darwin"] .launcher-window-shell {
 .app-drag-region {
   -webkit-app-region: drag;
 }
+
 .app-drag-region button,
 .app-drag-region input,
 .app-drag-region select,

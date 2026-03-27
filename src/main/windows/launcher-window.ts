@@ -1,5 +1,12 @@
 import { spawn } from "node:child_process"
-import { BrowserWindow, type IpcMain, globalShortcut, screen, shell } from "electron"
+import {
+  BrowserWindow,
+  type IpcMain,
+  type Rectangle,
+  globalShortcut,
+  screen,
+  shell
+} from "electron"
 import { basename, extname, join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
 import {
@@ -23,6 +30,7 @@ const MAC_LAUNCHER_WINDOW_LEVEL = "floating"
 const LAUNCHER_BASE_HEIGHT = getLauncherIdleHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_HEIGHT = getLauncherMaxViewportHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_SCREEN_HEIGHT_RATIO = 0.7
+const WINDOWS_LAUNCHER_SHAPE_RADIUS = 12
 const launcherVisibleOrigins = new WeakMap<BrowserWindow, { x: number; y: number }>()
 
 export const DEFAULT_LAUNCHER_SHORTCUT = "CommandOrControl+Shift+Space"
@@ -31,12 +39,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
-function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): {
-  x: number
-  y: number
-  width: number
-  height: number
-} {
+function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): Rectangle {
   const cursorPoint = screen.getCursorScreenPoint()
   const display = screen.getDisplayNearestPoint(cursorPoint)
   const boundedHeight = getLauncherHeightForDisplay(display, height)
@@ -68,12 +71,7 @@ function getVisibleLauncherBounds(params: {
   anchorY: number
   height: number
   launcherWindow: BrowserWindow
-}): {
-  x: number
-  y: number
-  width: number
-  height: number
-} {
+}): Rectangle {
   const { anchorX, anchorY, height, launcherWindow } = params
   const currentBounds = launcherWindow.getBounds()
   const display = screen.getDisplayMatching(currentBounds)
@@ -92,6 +90,66 @@ function getVisibleLauncherBounds(params: {
   }
 }
 
+function buildRoundedRectShape(width: number, height: number, radius: number): Rectangle[] {
+  if (width <= 0 || height <= 0) {
+    return []
+  }
+
+  const boundedRadius = clamp(Math.round(radius), 0, Math.floor(Math.min(width, height) / 2))
+  if (boundedRadius === 0) {
+    return [{ x: 0, y: 0, width, height }]
+  }
+
+  const rects: Rectangle[] = []
+  let currentRect: Rectangle | null = null
+
+  for (let y = 0; y < height; y += 1) {
+    const topDy = Math.max(0, boundedRadius - (y + 0.5))
+    const bottomDy = Math.max(0, y + 0.5 - (height - boundedRadius))
+    const cornerDy = Math.max(topDy, bottomDy)
+    const inset =
+      cornerDy > 0
+        ? Math.max(
+            0,
+            Math.ceil(
+              boundedRadius - Math.sqrt(boundedRadius * boundedRadius - cornerDy * cornerDy)
+            )
+          )
+        : 0
+    const lineWidth = Math.max(1, width - inset * 2)
+    const lineX = inset
+
+    if (
+      currentRect &&
+      currentRect.x === lineX &&
+      currentRect.width === lineWidth &&
+      currentRect.y + currentRect.height === y
+    ) {
+      currentRect.height += 1
+      continue
+    }
+
+    currentRect = { x: lineX, y, width: lineWidth, height: 1 }
+    rects.push(currentRect)
+  }
+
+  return rects
+}
+
+function syncLauncherWindowShape(launcherWindow: BrowserWindow): void {
+  if (process.platform !== "win32" || launcherWindow.isDestroyed()) {
+    return
+  }
+
+  const { width, height } = launcherWindow.getBounds()
+  launcherWindow.setShape(buildRoundedRectShape(width, height, WINDOWS_LAUNCHER_SHAPE_RADIUS))
+}
+
+function setLauncherWindowBounds(launcherWindow: BrowserWindow, bounds: Rectangle): void {
+  launcherWindow.setBounds(bounds, false)
+  syncLauncherWindowShape(launcherWindow)
+}
+
 function emitLauncherShown(launcherWindow: BrowserWindow): void {
   if (launcherWindow.webContents.isLoadingMainFrame()) {
     launcherWindow.webContents.once("did-finish-load", () => {
@@ -108,7 +166,7 @@ function emitLauncherShown(launcherWindow: BrowserWindow): void {
 export function showLauncherWindow(launcherWindow: BrowserWindow): void {
   const nextHeight = launcherWindow.getBounds().height || LAUNCHER_BASE_HEIGHT
   const nextBounds = getLauncherBounds(nextHeight)
-  launcherWindow.setBounds(nextBounds, false)
+  setLauncherWindowBounds(launcherWindow, nextBounds)
 
   if (process.platform === "darwin") {
     launcherWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
@@ -232,10 +290,13 @@ export function createLauncherWindow(): BrowserWindow {
       : {}),
     ...(process.platform === "win32"
       ? {
-          backgroundMaterial: "acrylic" as const,
+          backgroundMaterial: "none" as const,
+          hasShadow: false,
           roundedCorners: true
         }
-      : {}),
+      : {
+          hasShadow: true
+        }),
     frame: false,
     useContentSize: true,
     resizable: false,
@@ -244,7 +305,6 @@ export function createLauncherWindow(): BrowserWindow {
     fullscreenable: false,
     skipTaskbar: true,
     hiddenInMissionControl: true,
-    hasShadow: true,
     transparent: true,
     backgroundColor: "#00000000",
     webPreferences: {
@@ -257,6 +317,10 @@ export function createLauncherWindow(): BrowserWindow {
     if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
       hideLauncherWindow(launcherWindow)
     }
+  })
+
+  launcherWindow.on("resize", () => {
+    syncLauncherWindowShape(launcherWindow)
   })
 
   launcherWindow.on("show", () => {
@@ -282,7 +346,7 @@ export function createLauncherWindow(): BrowserWindow {
         x: nextBounds.x,
         y: nextBounds.y
       })
-      launcherWindow.setBounds(nextBounds, false)
+      setLauncherWindowBounds(launcherWindow, nextBounds)
     }
   }
 
@@ -296,6 +360,7 @@ export function createLauncherWindow(): BrowserWindow {
     screen.removeListener("display-removed", repositionIfVisible)
   })
 
+  syncLauncherWindowShape(launcherWindow)
   void loadRendererWindow(launcherWindow, "launcher")
 
   return launcherWindow
@@ -339,7 +404,8 @@ export function registerLauncherHandlers(ipcMain: IpcMain): void {
     }
     const visibleOrigin = launcherVisibleOrigins.get(currentWindow)
 
-    currentWindow.setBounds(
+    setLauncherWindowBounds(
+      currentWindow,
       currentWindow.isVisible()
         ? getVisibleLauncherBounds({
             anchorX: visibleOrigin?.x ?? currentWindow.getBounds().x,
@@ -347,8 +413,7 @@ export function registerLauncherHandlers(ipcMain: IpcMain): void {
             height,
             launcherWindow: currentWindow
           })
-        : getLauncherBounds(height),
-      false
+        : getLauncherBounds(height)
     )
   })
 }
