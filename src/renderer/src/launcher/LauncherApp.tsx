@@ -282,14 +282,6 @@ export default function LauncherApp(): React.JSX.Element {
         className="launcher-window-shell"
         data-active-plugin={activePluginId ?? "home"}
       >
-        {activePluginId === AI_LAUNCHER_PLUGIN_ID ? (
-          <LauncherIntelligenceGlow
-            key={routeKey}
-            status={pluginInputStatus}
-            targetRef={shellRef}
-          />
-        ) : null}
-
         <div className="launcher-shell-content">
           <LauncherPageTransition direction={navigationDirection} pageKey={routeKey}>
             {activeEntry && ActivePluginComponent && activePluginHost ? (
@@ -316,6 +308,14 @@ export default function LauncherApp(): React.JSX.Element {
             )}
           </LauncherPageTransition>
         </div>
+
+        {activePluginId === AI_LAUNCHER_PLUGIN_ID ? (
+          <LauncherIntelligenceGlow
+            key={routeKey}
+            status={pluginInputStatus}
+            targetRef={shellRef}
+          />
+        ) : null}
       </div>
     </div>
   )

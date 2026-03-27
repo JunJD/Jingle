@@ -7,6 +7,7 @@ import {
   useLauncherPluginNavigation,
   useLauncherPluginThreads
 } from "../LauncherPluginHost"
+import type { LauncherInputStatus } from "../launcher-input-status"
 
 export function useAiThread(): {
   conversation: ReturnType<typeof useThreadConversationProjection> & {
@@ -15,6 +16,7 @@ export function useAiThread(): {
   }
   handleApprovalDecision: (decision: "approve" | "reject" | "edit") => Promise<void>
   handleInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
+  inputStatus: LauncherInputStatus
   isBusy: boolean
   primaryActionDisabled: boolean
   query: string
@@ -31,6 +33,7 @@ export function useAiThread(): {
   const [threadId, setThreadId] = useState<string | null>(null)
   const [pendingQuery, setPendingQuery] = useState(host.seedQuery)
   const [localError, setLocalError] = useState<string | null>(null)
+  const [inputStatus, setInputStatus] = useState<LauncherInputStatus>("idle")
   const [isCreatingThread, setIsCreatingThread] = useState(false)
 
   const conversation = useThreadConversationProjection(threadId)
@@ -122,6 +125,7 @@ export function useAiThread(): {
       return
     }
 
+    setInputStatus("pending")
     setIsCreatingThread(true)
     void submitMessage(message).finally(() => {
       setIsCreatingThread(false)
@@ -141,6 +145,7 @@ export function useAiThread(): {
 
     const submitFrameId = window.requestAnimationFrame(() => {
       hasRunInitialActionRef.current = true
+      setInputStatus("pending")
       setIsCreatingThread(true)
       void submitMessage(message).finally(() => {
         setIsCreatingThread(false)
@@ -154,6 +159,7 @@ export function useAiThread(): {
 
   const handleApprovalDecision = useCallback(
     async (decision: "approve" | "reject" | "edit"): Promise<void> => {
+      setInputStatus("pending")
       await conversation.resumePendingApproval(decision)
     },
     [conversation]
@@ -184,6 +190,20 @@ export function useAiThread(): {
   }, [conversation.isLoading, isCreatingThread, query])
   const isBusy = conversation.isLoading || isCreatingThread
 
+  useEffect(() => {
+    if (isBusy) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setInputStatus("idle")
+    }, 180)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [isBusy])
+
   return {
     conversation: {
       ...conversation,
@@ -192,6 +212,7 @@ export function useAiThread(): {
     },
     handleApprovalDecision,
     handleInputKeyDown,
+    inputStatus,
     isBusy,
     primaryActionDisabled,
     query,

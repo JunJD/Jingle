@@ -9,37 +9,85 @@ type GlowBounds = {
 
 type Corner = "bottom-left" | "bottom-right" | "top-left" | "top-right"
 
+interface GlowLayer {
+  readonly blur: number
+  readonly duration: string
+  readonly from: number
+  readonly id: string
+  readonly opacity: number
+  readonly strokeWidth: number
+}
+
+interface GlowTuning {
+  readonly armScale: number
+  readonly containerOpacity: number
+  readonly perimeterOpacity: number
+  readonly strokeScale: number
+  readonly strokeOpacity: number
+}
+
 // Bias the stroke outward so the shell reads as emitting glow instead of gaining an inner border.
 const INNER_STROKE_INSET = -4
 
-const GLOW_LAYERS = [
+const GLOW_LAYERS: readonly GlowLayer[] = [
   {
     blur: 0,
-    duration: "7.6s",
+    duration: "6.8s",
     from: 0,
-    id: "crisp",
+    id: "core",
     opacity: 0.94,
-    strokeWidth: 1.5
+    strokeWidth: 2.5
   },
   {
-    blur: 6,
-    duration: "10.2s",
+    blur: 4,
+    duration: "8.6s",
     from: 360,
     id: "soft",
-    opacity: 0.6,
-    strokeWidth: 4.5
+    opacity: 0.76,
+    strokeWidth: 6
   },
   {
-    blur: 12,
-    duration: "13.6s",
+    blur: 10,
+    duration: "11.8s",
+    from: 120,
+    id: "halo",
+    opacity: 0.48,
+    strokeWidth: 10.5
+  },
+  {
+    blur: 15,
+    duration: "14.6s",
     from: 0,
-    id: "ambient",
-    opacity: 0.34,
-    strokeWidth: 8
+    id: "bloom",
+    opacity: 0.28,
+    strokeWidth: 15
   }
 ] as const
 
 const CORNERS: Corner[] = ["top-left", "top-right", "bottom-right", "bottom-left"]
+const GLOW_TUNING: Record<LauncherInputStatus, GlowTuning> = {
+  idle: {
+    armScale: 0.84,
+    containerOpacity: 0.64,
+    perimeterOpacity: 0.34,
+    strokeOpacity: 0.72,
+    strokeScale: 0.92
+  },
+  pending: {
+    armScale: 1.08,
+    containerOpacity: 1,
+    perimeterOpacity: 0.82,
+    strokeOpacity: 1.08,
+    strokeScale: 1.05
+  },
+  tooling: {
+    armScale: 1.22,
+    containerOpacity: 1,
+    perimeterOpacity: 0.94,
+    strokeOpacity: 1.16,
+    strokeScale: 1.12
+  }
+}
 
 function resolveRadius(styles: CSSStyleDeclaration): number {
   const shellRadius = Number.parseFloat(styles.borderTopLeftRadius)
@@ -109,6 +157,28 @@ function buildCornerPath(
   }
 }
 
+function resolveRectGeometry(
+  bounds: GlowBounds,
+  inset: number
+): {
+  readonly height: number
+  readonly radius: number
+  readonly width: number
+  readonly x: number
+  readonly y: number
+} {
+  const width = bounds.width - inset * 2
+  const height = bounds.height - inset * 2
+
+  return {
+    height,
+    radius: Math.max(bounds.radius - inset, 0),
+    width,
+    x: inset,
+    y: inset
+  }
+}
+
 export function LauncherIntelligenceGlow(props: {
   status: LauncherInputStatus
   targetRef: RefObject<HTMLElement | null>
@@ -145,11 +215,16 @@ export function LauncherIntelligenceGlow(props: {
 
   const centerX = bounds.width / 2
   const centerY = bounds.height / 2
-  const armLength = Math.max(44, Math.min(Math.min(bounds.width, bounds.height) * 0.18, 92))
-  const intensity = status === "running" ? 1.28 : status === "pending" ? 1.08 : 1
+  const baseArmLength = Math.max(30, Math.min(Math.min(bounds.width, bounds.height) * 0.135, 68))
+  const tuning = GLOW_TUNING[status]
 
   return (
-    <div aria-hidden="true" className="launcher-shell-intelligence-glow" data-status={status}>
+    <div
+      aria-hidden="true"
+      className="launcher-shell-intelligence-glow"
+      data-status={status}
+      style={{ opacity: tuning.containerOpacity }}
+    >
       <svg
         className="launcher-shell-intelligence-glow-svg"
         preserveAspectRatio="none"
@@ -190,11 +265,11 @@ export function LauncherIntelligenceGlow(props: {
                 {layer.blur > 0 ? (
                   <filter
                     colorInterpolationFilters="sRGB"
-                    height="160%"
+                    height="240%"
                     id={filterId}
-                    width="160%"
-                    x="-30%"
-                    y="-30%"
+                    width="240%"
+                    x="-70%"
+                    y="-70%"
                   >
                     <feGaussianBlur stdDeviation={layer.blur} />
                   </filter>
@@ -205,25 +280,42 @@ export function LauncherIntelligenceGlow(props: {
         </defs>
 
         {GLOW_LAYERS.map((layer) => {
-          const inset = INNER_STROKE_INSET + layer.strokeWidth / 2
-          const layerArmLength = armLength + layer.strokeWidth * 1.8 * intensity
+          const strokeWidth = layer.strokeWidth * tuning.strokeScale
+          const inset = INNER_STROKE_INSET + strokeWidth / 2
+          const layerArmLength = baseArmLength * tuning.armScale + strokeWidth * 1.2
+          const rect = resolveRectGeometry(bounds, inset)
+          const perimeterOpacity = Math.min(layer.opacity * tuning.perimeterOpacity, 1)
+          const strokeOpacity = Math.min(layer.opacity * tuning.strokeOpacity, 1)
 
           return (
             <g
               key={layer.id}
               className={`launcher-shell-intelligence-glow-stroke launcher-shell-intelligence-glow-stroke--${layer.id}`}
               filter={layer.blur > 0 ? `url(#${gradientPrefix}-${layer.id}-blur)` : undefined}
-              opacity={Math.min(layer.opacity * intensity, 1)}
             >
+              <rect
+                fill="none"
+                height={rect.height}
+                opacity={perimeterOpacity}
+                rx={rect.radius}
+                ry={rect.radius}
+                stroke={`url(#${gradientPrefix}-${layer.id}-gradient)`}
+                strokeLinejoin="round"
+                strokeWidth={strokeWidth}
+                width={rect.width}
+                x={rect.x}
+                y={rect.y}
+              />
               {CORNERS.map((corner) => (
                 <path
                   key={corner}
                   d={buildCornerPath(corner, bounds, inset, layerArmLength)}
                   fill="none"
+                  opacity={strokeOpacity}
                   stroke={`url(#${gradientPrefix}-${layer.id}-gradient)`}
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeWidth={layer.strokeWidth}
+                  strokeWidth={strokeWidth}
                 />
               ))}
             </g>

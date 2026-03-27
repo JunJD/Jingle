@@ -1,1 +1,1 @@
-export type LauncherInputStatus = "idle" | "pending" | "running"
+export type LauncherInputStatus = "idle" | "pending" | "tooling"

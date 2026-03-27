@@ -61,11 +61,11 @@ export const LauncherInput = forwardRef<LauncherPluginInputElement, LauncherInpu
               "relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full border backdrop-blur-sm transition",
               status === "pending" &&
                 "border-status-warning/25 bg-status-warning/10 text-status-warning",
-              status === "running" &&
+              status === "tooling" &&
                 "border-status-info/40 bg-status-info/16 text-status-info shadow-[0_0_18px_color-mix(in_srgb,var(--status-info)_34%,transparent)]"
             )}
           >
-            {status === "running" ? (
+            {status === "tooling" ? (
               <>
                 <span className="absolute inset-[-3px] rounded-full border border-status-info/35" />
                 <span className="absolute inset-0 rounded-full bg-status-info/18 animate-ping" />

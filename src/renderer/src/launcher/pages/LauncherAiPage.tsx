@@ -19,7 +19,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const navigation = useLauncherPluginNavigation()
   const surface = useLauncherPluginSurface()
   const session = useAiThread()
-  const inputStatus = session.isBusy ? "pending" : "idle"
+  const inputStatus = session.inputStatus
   const { inputRef, setInputStatus } = surface
   useDisableTabNavigation(inputRef)
 
