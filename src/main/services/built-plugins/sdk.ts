@@ -8,6 +8,7 @@ type BuiltPluginMethodMap = Record<string, BuiltPluginMethodHandler>
 
 export interface BuiltPluginService {
   invoke: (request: BuiltPluginInvokeRequest) => Promise<unknown>
+  methods: string[]
   pluginId: string
 }
 
@@ -15,8 +16,11 @@ export function defineBuiltPluginService<TMethods extends BuiltPluginMethodMap>(
   pluginId: string,
   methods: TMethods
 ): BuiltPluginService {
+  const methodNames = Object.keys(methods)
+
   return {
     pluginId,
+    methods: methodNames,
     invoke: async (request) => {
       const method = methods[request.method]
       if (!method) {
