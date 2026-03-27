@@ -6,7 +6,14 @@ import {
 } from "../../../../shared/launcher"
 import type { BuiltPluginInvokeRequest } from "../../../../shared/built-plugins/sdk"
 import type { AppCopy } from "@/lib/i18n/messages"
-import { useLauncherPluginHost, useLauncherPluginLifecycle } from "../LauncherPluginHost"
+import {
+  useLauncherPluginClipboard,
+  useLauncherPluginHost,
+  useLauncherPluginLifecycle,
+  useLauncherPluginNavigation,
+  useLauncherPluginSurface,
+  useLauncherPluginThreads
+} from "../LauncherPluginHost"
 import type {
   LauncherResultPresentation,
   LauncherResultPresentationIcon,
@@ -23,6 +30,7 @@ import type {
   LauncherPluginManifest,
   LauncherPluginIntent
 } from "../pages/types"
+import { validateLauncherPluginManifest } from "../../../../shared/launcher-plugin"
 
 export interface BuiltLauncherPluginTextContext {
   copy: AppCopy
@@ -101,14 +109,9 @@ function resolveBuiltPluginEntryDefinition(
 }
 
 function validateBuiltLauncherPluginSpec(spec: BuiltLauncherPluginSpec): void {
+  validateLauncherPluginManifest(spec.manifest)
   const manifestEntryIds = new Set(spec.manifest.entries.map((entry) => entry.id))
   const rendererEntryIds = new Set<string>()
-
-  if (!manifestEntryIds.has(spec.manifest.defaultEntryId)) {
-    throw new Error(
-      `Launcher plugin "${spec.manifest.id}" default entry "${spec.manifest.defaultEntryId}" is not declared in its manifest`
-    )
-  }
 
   for (const entry of spec.entries) {
     if (rendererEntryIds.has(entry.entryId)) {
@@ -163,7 +166,27 @@ export function createBuiltLauncherIntentPresentation(
 
 export function createBuiltPluginClient<
   TMethods extends Record<string, BuiltPluginClientMethod<unknown, unknown>>
->(pluginId: LauncherPluginId, methods: TMethods): BuiltPluginClient<TMethods> {
+>(
+  pluginId: LauncherPluginId,
+  declaredMethods: readonly string[],
+  methods: TMethods
+): BuiltPluginClient<TMethods> {
+  const clientMethodNames = Object.keys(methods)
+
+  if (declaredMethods.length !== clientMethodNames.length) {
+    throw new Error(
+      `Built plugin client "${pluginId}" method count does not match its manifest RPC declaration`
+    )
+  }
+
+  for (const methodName of clientMethodNames) {
+    if (!declaredMethods.includes(methodName)) {
+      throw new Error(
+        `Built plugin client "${pluginId}" implements "${methodName}" but it is not declared in the manifest`
+      )
+    }
+  }
+
   const clientEntries = Object.keys(methods).map((methodName) => [
     methodName,
     (payload: unknown) =>
@@ -182,5 +205,9 @@ export function useBuiltLauncherPluginHost() {
 }
 
 export const useBuiltLauncherPluginLifecycle = useLauncherPluginLifecycle
+export const useBuiltLauncherPluginClipboard = useLauncherPluginClipboard
+export const useBuiltLauncherPluginNavigation = useLauncherPluginNavigation
+export const useBuiltLauncherPluginSurface = useLauncherPluginSurface
+export const useBuiltLauncherPluginThreads = useLauncherPluginThreads
 
 export type { LauncherResultPresentationIcon, LauncherResultPresentationTone }

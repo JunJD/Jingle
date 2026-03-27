@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "../../../../plugins/ai/manifest"
 import { useThreadConversationProjection } from "@/lib/thread-conversation"
 import { useI18n } from "@/lib/i18n"
-import { useLauncherPluginHost } from "../LauncherPluginHost"
+import {
+  useLauncherPluginHost,
+  useLauncherPluginNavigation,
+  useLauncherPluginThreads
+} from "../LauncherPluginHost"
 
 export function useAiThread(): {
   conversation: ReturnType<typeof useThreadConversationProjection> & {
@@ -20,6 +24,8 @@ export function useAiThread(): {
 } {
   const { copy } = useI18n()
   const host = useLauncherPluginHost()
+  const navigation = useLauncherPluginNavigation()
+  const threads = useLauncherPluginThreads()
   const requestRef = useRef(0)
   const hasRunInitialActionRef = useRef(false)
   const [threadId, setThreadId] = useState<string | null>(null)
@@ -72,7 +78,7 @@ export function useAiThread(): {
       try {
         const createdThread = threadId
           ? null
-          : await host.threads.create({
+          : await threads.create({
               draftInput: message,
               source: AI_THREAD_SOURCE,
               title: copy.launcher.aiThreadTitle,
@@ -95,7 +101,7 @@ export function useAiThread(): {
           setLocalError(null)
         }
 
-        await host.threads.submit({
+        await threads.submit({
           message,
           threadId: nextThreadId
         })
@@ -107,7 +113,7 @@ export function useAiThread(): {
         setLocalError(error instanceof Error ? error.message : String(error))
       }
     },
-    [copy.launcher.aiThreadTitle, host.threads, localError, threadId]
+    [copy.launcher.aiThreadTitle, localError, threadId, threads]
   )
 
   const runPrimaryAction = useCallback((): void => {
@@ -163,14 +169,14 @@ export function useAiThread(): {
         case "Backspace":
           if (!query && !conversation.isLoading) {
             event.preventDefault()
-            host.navigation.goHome()
+            navigation.goHome()
           }
           break
         default:
           break
       }
     },
-    [conversation.isLoading, host.navigation, query, runPrimaryAction]
+    [conversation.isLoading, navigation, query, runPrimaryAction]
   )
 
   const primaryActionDisabled = useMemo(() => {

@@ -10,7 +10,7 @@ export const translateLauncherPluginManifest: LauncherPluginManifest<
   typeof TRANSLATE_LAUNCHER_PLUGIN_ID,
   typeof TRANSLATE_MAIN_ENTRY_ID
 > = {
-  capabilities: ["navigation", "surface"],
+  capabilities: ["navigation", "rpc", "surface"],
   defaultEntryId: TRANSLATE_MAIN_ENTRY_ID,
   displayName: "Translate",
   entries: [{ id: TRANSLATE_MAIN_ENTRY_ID }],

@@ -2,7 +2,7 @@ import { useCallback, useRef } from "react"
 import { ArrowLeft, ArrowRightLeft, Check, ChevronDown, Copy } from "lucide-react"
 import { FALLBACK_SHELL_CONFIG } from "../../../../../shared/launcher"
 import { useI18n } from "@/lib/i18n"
-import { useBuiltLauncherPluginHost, useBuiltLauncherPluginLifecycle } from "../sdk"
+import { useBuiltLauncherPluginLifecycle, useBuiltLauncherPluginNavigation } from "../sdk"
 import { getTranslatePluginCopy } from "./copy"
 import { useTranslatePlugin } from "./useTranslatePlugin"
 
@@ -36,7 +36,7 @@ function LanguageSelect(props: {
 
 export function LauncherTranslatePage(): React.JSX.Element {
   const { locale } = useI18n()
-  const host = useBuiltLauncherPluginHost()
+  const navigation = useBuiltLauncherPluginNavigation()
   const translate = useTranslatePlugin()
   const copy = getTranslatePluginCopy(locale)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -71,7 +71,7 @@ export function LauncherTranslatePage(): React.JSX.Element {
       >
         <button
           type="button"
-          onClick={host.navigation.goHome}
+          onClick={navigation.goHome}
           onMouseDown={(event) => event.preventDefault()}
           className="flex h-10 w-10 appearance-none items-center justify-center rounded-full border-0 bg-[var(--launcher-surface-strong)] text-muted-foreground transition hover:text-foreground"
           aria-label={copy.backLabel}
@@ -114,7 +114,7 @@ export function LauncherTranslatePage(): React.JSX.Element {
 
                 if (event.key === "Backspace" && !translate.sourceText.trim()) {
                   event.preventDefault()
-                  host.navigation.goHome()
+                  navigation.goHome()
                 }
               }}
               placeholder={copy.inputPlaceholder}

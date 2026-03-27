@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useEffectEvent, useRef, type RefObject } from "react"
+import type { LauncherPluginCapability } from "../../../shared/launcher-plugin"
 import type { LauncherShellConfig } from "../../../shared/launcher"
 import type { LauncherClipboardState } from "./LauncherClipboardContext"
 import type { LauncherInputStatus } from "./launcher-input-status"
@@ -39,19 +40,22 @@ export interface LauncherPluginThreadSubmitInput {
   threadId: string
 }
 
+export interface LauncherPluginNavigation {
+  goHome: () => void
+  hideLauncher: () => Promise<void>
+  openEntry: (address: LauncherPluginEntryAddress, options?: LauncherPluginOpenOptions) => void
+}
+
 export interface LauncherPluginHostValue {
-  clipboard: Pick<LauncherClipboardState, "clearContext" | "context">
+  capabilities: readonly LauncherPluginCapability[]
+  clipboard?: Pick<LauncherClipboardState, "clearContext" | "context">
   entryId: LauncherPluginEntryId
   initialAction: LauncherPluginEntryInitialAction
-  navigation: {
-    goHome: () => void
-    hideLauncher: () => Promise<void>
-    openEntry: (address: LauncherPluginEntryAddress, options?: LauncherPluginOpenOptions) => void
-  }
+  navigation?: LauncherPluginNavigation
   pluginId: LauncherPluginId
   seedQuery: string
-  surface: LauncherPluginSurface
-  threads: {
+  surface?: LauncherPluginSurface
+  threads?: {
     create: (input: LauncherPluginThreadCreateInput) => Promise<LauncherPluginThreadHandle>
     submit: (input: LauncherPluginThreadSubmitInput) => Promise<void>
   }
@@ -75,11 +79,49 @@ export function useLauncherPluginHost(): LauncherPluginHostValue {
   return context
 }
 
+function requireLauncherPluginCapability<TValue>(
+  host: LauncherPluginHostValue,
+  capability: LauncherPluginCapability,
+  value: TValue | undefined
+): TValue {
+  if (value) {
+    return value
+  }
+
+  if (!host.capabilities.includes(capability)) {
+    throw new Error(
+      `Launcher plugin "${host.pluginId}" tried to use the "${capability}" capability without declaring it`
+    )
+  }
+
+  throw new Error(
+    `Launcher plugin "${host.pluginId}" declares the "${capability}" capability but the host did not provide it`
+  )
+}
+
+export function useLauncherPluginClipboard(): NonNullable<LauncherPluginHostValue["clipboard"]> {
+  const host = useLauncherPluginHost()
+  return requireLauncherPluginCapability(host, "clipboard", host.clipboard)
+}
+
+export function useLauncherPluginNavigation(): LauncherPluginNavigation {
+  const host = useLauncherPluginHost()
+  return requireLauncherPluginCapability(host, "navigation", host.navigation)
+}
+
+export function useLauncherPluginSurface(): LauncherPluginSurface {
+  const host = useLauncherPluginHost()
+  return requireLauncherPluginCapability(host, "surface", host.surface)
+}
+
+export function useLauncherPluginThreads(): NonNullable<LauncherPluginHostValue["threads"]> {
+  const host = useLauncherPluginHost()
+  return requireLauncherPluginCapability(host, "threads", host.threads)
+}
+
 export function useLauncherPluginLifecycle(handlers: LauncherPluginLifecycleHandlers): void {
   const { onEnter, onLauncherShown, onLeave } = handlers
-  const {
-    surface: { shownSequence }
-  } = useLauncherPluginHost()
+  const { shownSequence } = useLauncherPluginSurface()
   const lastShownSequenceRef = useRef(shownSequence)
   const runOnEnter = useEffectEvent(() => {
     onEnter?.()

@@ -13,6 +13,7 @@ import { LauncherPageTransition } from "./components/LauncherPageTransition"
 import { LauncherSearchPage } from "./components/LauncherSearchPage"
 import { useLauncherRouter } from "./hooks/useLauncherRouter"
 import { useLauncherSearchPage } from "./hooks/useLauncherSearchPage"
+import { getLauncherPluginDefinition } from "./pages"
 import { isLauncherPluginRoute } from "./pages/types"
 import { useI18n } from "@/lib/i18n"
 import { useThreadContext } from "@/lib/thread-context"
@@ -44,6 +45,7 @@ export default function LauncherApp(): React.JSX.Element {
   })
   const searchPage = useLauncherSearchPage({ openEntry })
   const activePluginId = isLauncherPluginRoute(route) ? route.pluginId : null
+  const activePluginDefinition = activePluginId ? getLauncherPluginDefinition(activePluginId) : null
   const selectedItem =
     searchPage.selectedIndex >= 0 ? searchPage.items[searchPage.selectedIndex] : null
   const ActivePluginComponent = activeEntry?.Component ?? null
@@ -164,39 +166,51 @@ export default function LauncherApp(): React.JSX.Element {
     [threadContext, waitForThreadStream]
   )
   const activePluginHost = useMemo(() => {
-    if (!activeEntry || !isLauncherPluginRoute(route)) {
+    if (!activeEntry || !activePluginDefinition || !isLauncherPluginRoute(route)) {
       return null
     }
 
+    const capabilities = activePluginDefinition.manifest.capabilities
+
     return {
-      clipboard: {
-        clearContext: clipboard.clearContext,
-        context: clipboard.context
-      },
+      capabilities,
+      clipboard: capabilities.includes("clipboard")
+        ? {
+            clearContext: clipboard.clearContext,
+            context: clipboard.context
+          }
+        : undefined,
       entryId: route.entryId,
       initialAction: route.initialAction,
-      navigation: {
-        goHome: closeActivePlugin,
-        hideLauncher,
-        openEntry
-      },
+      navigation: capabilities.includes("navigation")
+        ? {
+            goHome: closeActivePlugin,
+            hideLauncher,
+            openEntry
+          }
+        : undefined,
       pluginId: route.pluginId,
       seedQuery: route.seedQuery,
-      surface: {
-        inputRef: pluginInputRef,
-        inputStatus: pluginInputStatus,
-        shellConfig: searchPage.shellConfig,
-        setInputStatus: setPluginInputStatus,
-        shownSequence,
-        viewportHeight
-      },
-      threads: {
-        create: createPluginThread,
-        submit: submitPluginThread
-      }
+      surface: capabilities.includes("surface")
+        ? {
+            inputRef: pluginInputRef,
+            inputStatus: pluginInputStatus,
+            shellConfig: searchPage.shellConfig,
+            setInputStatus: setPluginInputStatus,
+            shownSequence,
+            viewportHeight
+          }
+        : undefined,
+      threads: capabilities.includes("threads")
+        ? {
+            create: createPluginThread,
+            submit: submitPluginThread
+          }
+        : undefined
     }
   }, [
     activeEntry,
+    activePluginDefinition,
     clipboard.clearContext,
     clipboard.context,
     closeActivePlugin,
