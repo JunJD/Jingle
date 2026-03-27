@@ -7,12 +7,12 @@ export interface TranslatePluginCopy {
   copyResultAriaLabel: string
   emptyInputHint: string
   entryLabel: string
-  footerHint: string
   inputPlaceholder: string
-  readyToTranslate: string
   retryTranslation: string
   outputPlaceholder: string
   resultLabel: string
+  searchItemCategoryLabel: string
+  searchItemPrimaryActionLabel: string
   searchItemSubtitle: (sourceText: string) => string
   sourceLabel: string
   sourceLanguage: string
@@ -20,7 +20,6 @@ export interface TranslatePluginCopy {
   targetLanguage: string
   translateAction: string
   translateShortcut: string
-  translationUpToDate: string
   updateTranslationHint: string
   translating: string
 }
@@ -33,12 +32,12 @@ const translatePluginCopy: Record<AppLocale, TranslatePluginCopy> = {
     copyResultAriaLabel: "Copy translation result",
     emptyInputHint: "Enter text first",
     entryLabel: "Translate",
-    footerHint: "Built plugin",
     inputPlaceholder: "Paste or type text to translate...",
-    readyToTranslate: "Ready to translate",
     retryTranslation: "Retry",
     outputPlaceholder: "The translation will appear here.",
     resultLabel: "Translation",
+    searchItemCategoryLabel: "Plugin",
+    searchItemPrimaryActionLabel: "Translate",
     searchItemSubtitle: (sourceText) => `Translate "${sourceText}"`,
     sourceLabel: "Source",
     sourceLanguage: "Source language",
@@ -46,7 +45,6 @@ const translatePluginCopy: Record<AppLocale, TranslatePluginCopy> = {
     targetLanguage: "Target language",
     translateAction: "Translate",
     translateShortcut: "⌘↵ / Ctrl↵",
-    translationUpToDate: "Up to date",
     updateTranslationHint: "Press Translate to update the result.",
     translating: "Translating..."
   },
@@ -57,12 +55,12 @@ const translatePluginCopy: Record<AppLocale, TranslatePluginCopy> = {
     copyResultAriaLabel: "复制译文结果",
     emptyInputHint: "先输入内容",
     entryLabel: "翻译",
-    footerHint: "独立 built-plugin",
     inputPlaceholder: "输入或粘贴要翻译的内容...",
-    readyToTranslate: "准备翻译",
     retryTranslation: "重试",
     outputPlaceholder: "译文会在这里出现。",
     resultLabel: "译文",
+    searchItemCategoryLabel: "插件",
+    searchItemPrimaryActionLabel: "翻译",
     searchItemSubtitle: (sourceText) => `翻译这个“${sourceText}”`,
     sourceLabel: "原文",
     sourceLanguage: "源语言",
@@ -70,7 +68,6 @@ const translatePluginCopy: Record<AppLocale, TranslatePluginCopy> = {
     targetLanguage: "目标语言",
     translateAction: "翻译",
     translateShortcut: "⌘↵ / Ctrl↵",
-    translationUpToDate: "已更新",
     updateTranslationHint: "点击翻译，或按 ⌘↵ / Ctrl↵ 更新结果。",
     translating: "正在翻译..."
   }

@@ -8,6 +8,11 @@ import type { BuiltPluginInvokeRequest } from "../../../../shared/built-plugins/
 import type { AppCopy } from "@/lib/i18n/messages"
 import { useLauncherPluginHost, useLauncherPluginLifecycle } from "../LauncherPluginHost"
 import type {
+  LauncherResultPresentation,
+  LauncherResultPresentationIcon,
+  LauncherResultPresentationTone
+} from "../result-types"
+import type {
   LauncherHomeEntry,
   LauncherPluginCommandMatch,
   LauncherPluginCommandParams,
@@ -47,6 +52,14 @@ export interface BuiltLauncherPluginSpec {
 export interface BuiltPluginClientMethod<TPayload, TResult> {
   payload?: TPayload
   result?: TResult
+}
+
+export interface BuiltLauncherIntentPresentationInput {
+  categoryLabel: string
+  icon: LauncherResultPresentationIcon
+  listActionLabel?: string
+  primaryActionLabel: string
+  tone?: LauncherResultPresentationTone
 }
 
 type BuiltPluginClient<TMethods extends Record<string, BuiltPluginClientMethod<unknown, unknown>>> =
@@ -92,6 +105,18 @@ export function defineBuiltPluginClientMethod<TPayload, TResult>(): BuiltPluginC
   return {}
 }
 
+export function createBuiltLauncherIntentPresentation(
+  input: BuiltLauncherIntentPresentationInput
+): LauncherResultPresentation {
+  return {
+    categoryLabel: input.categoryLabel,
+    icon: input.icon,
+    listActionLabel: input.listActionLabel ?? input.primaryActionLabel,
+    primaryActionLabel: input.primaryActionLabel,
+    tone: input.tone ?? "accent"
+  }
+}
+
 export function createBuiltPluginClient<
   TMethods extends Record<string, BuiltPluginClientMethod<unknown, unknown>>
 >(pluginId: LauncherPluginId, methods: TMethods): BuiltPluginClient<TMethods> {
@@ -113,3 +138,5 @@ export function useBuiltLauncherPluginHost() {
 }
 
 export const useBuiltLauncherPluginLifecycle = useLauncherPluginLifecycle
+
+export type { LauncherResultPresentationIcon, LauncherResultPresentationTone }

@@ -31,7 +31,7 @@ export const MAX_LAUNCHER_SEARCH_RESULTS = 20
 export const FALLBACK_SHELL_CONFIG: LauncherShellConfig = {
   headerHeight: 68,
   footerHeight: 46,
-  resultItemHeight: 70,
+  resultItemHeight: 56,
   maxVisibleResults: 8
 }
 

@@ -1,7 +1,8 @@
 import type { ComponentType } from "react"
 import type { AppLocale } from "../../../../shared/i18n"
-import type { LauncherResultKind, LauncherShellConfig } from "../../../../shared/launcher"
+import type { LauncherShellConfig } from "../../../../shared/launcher"
 import type { AppCopy } from "@/lib/i18n/messages"
+import type { LauncherResultPresentation, LauncherShellItemKind } from "../result-types"
 
 export type LauncherPluginId = "ai" | (string & {})
 export type LauncherNavigationDirection = "forward" | "backward"
@@ -25,11 +26,16 @@ export interface LauncherHomeEntry {
 
 export interface LauncherPluginIntent {
   id: string
-  kind: LauncherResultKind
+  kind: LauncherShellItemKind
   openOptions?: LauncherPluginOpenOptions
+  presentation: LauncherResultPresentation
   priority?: number
   subtitle: string
   title: string
+}
+
+export interface LauncherResolvedPluginIntent extends LauncherPluginIntent {
+  pluginId: LauncherPluginId
 }
 
 export interface LauncherPluginCommandMatch {

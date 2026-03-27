@@ -21,6 +21,16 @@ export const aiLauncherPlugin: LauncherPluginDefinition = {
         openOptions: {
           seedQuery: trimmedQuery
         },
+        presentation: {
+          categoryLabel: copy.launcher.resultKindAgent,
+          icon: {
+            name: "sparkles",
+            type: "glyph"
+          },
+          listActionLabel: copy.launcher.openGeneric,
+          primaryActionLabel: copy.launcher.aiPrimaryLabel,
+          tone: "accent"
+        },
         priority: 10,
         subtitle: copy.launcher.aiIntentSubtitle(trimmedQuery),
         title: copy.launcher.aiEntryLabel

@@ -1,29 +1,44 @@
-import { defineBuiltLauncherPlugin } from "../sdk"
+import { createBuiltLauncherIntentPresentation, defineBuiltLauncherPlugin } from "../sdk"
 import { LauncherTranslatePage } from "./TranslatePage"
 import { getTranslatePluginCopy } from "./copy"
+import { matchTranslateCommandQuery, matchTranslateIntent } from "./languages"
 
 export const translateLauncherPlugin = defineBuiltLauncherPlugin({
   Component: LauncherTranslatePage,
   manifest: {
     id: "translate",
     search: {
-      buildIntentItems: ({ locale, query }) => {
+      buildIntentItems: ({ copy, locale, query }) => {
         const pluginCopy = getTranslatePluginCopy(locale)
         const trimmedQuery = query.trim()
+        const naturalIntentMatch = matchTranslateIntent(trimmedQuery)
+        const commandSourceText = matchTranslateCommandQuery(trimmedQuery)
 
-        if (!trimmedQuery) {
+        if (!naturalIntentMatch && !commandSourceText) {
           return []
         }
+
+        const previewText = naturalIntentMatch?.sourceText ?? commandSourceText ?? trimmedQuery
 
         return [
           {
             id: "feature-translate-intent",
-            kind: "history",
+            kind: "plugin",
             openOptions: {
               seedQuery: trimmedQuery
             },
+            presentation: createBuiltLauncherIntentPresentation({
+              categoryLabel: pluginCopy.searchItemCategoryLabel,
+              icon: {
+                name: "languages",
+                type: "glyph"
+              },
+              listActionLabel: copy.launcher.openGeneric,
+              primaryActionLabel: pluginCopy.searchItemPrimaryActionLabel,
+              tone: "accent"
+            }),
             priority: 100,
-            subtitle: pluginCopy.searchItemSubtitle(trimmedQuery),
+            subtitle: pluginCopy.searchItemSubtitle(previewText),
             title: pluginCopy.entryLabel
           }
         ]

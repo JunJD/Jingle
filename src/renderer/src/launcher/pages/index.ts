@@ -1,7 +1,6 @@
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { AppLocale } from "../../../../shared/i18n"
 import { builtLauncherPlugins } from "../built-plugins"
-import type { LauncherShellItem } from "../types"
 import { aiLauncherPlugin } from "./ai"
 import type {
   LauncherPluginCommandMatch,
@@ -9,6 +8,7 @@ import type {
   LauncherHomeEntry,
   LauncherPluginDefinition,
   LauncherPluginId,
+  LauncherResolvedPluginIntent,
   LauncherPluginTextContext
 } from "./types"
 
@@ -36,19 +36,19 @@ export function getLauncherHomeEntries(context: LauncherPluginTextContext): Laun
   })
 }
 
-export function getLauncherPluginIntentItems(params: {
+export function getLauncherPluginIntents(params: {
   copy: AppCopy
   locale: AppLocale
   query: string
-}): LauncherShellItem[] {
+}): LauncherResolvedPluginIntent[] {
   return launcherPlugins
     .flatMap((plugin) =>
       (plugin.buildIntentItems?.(params) ?? []).map((item) => ({
-        action: { type: "none" as const },
         id: item.id,
         kind: item.kind,
         pluginId: plugin.id,
-        pluginOpenOptions: item.openOptions,
+        openOptions: item.openOptions,
+        presentation: item.presentation,
         subtitle: item.subtitle,
         title: item.title,
         priority: item.priority

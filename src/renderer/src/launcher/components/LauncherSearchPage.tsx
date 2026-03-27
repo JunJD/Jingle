@@ -43,13 +43,10 @@ export function LauncherSearchPage(props: {
     shellConfig
   } = props
 
-  const primaryActionLabel = selectedItem?.pluginId
-    ? selectedItem.title
-    : selectedItem?.kind === "ai"
-      ? copy.launcher.aiPrimaryLabel
-      : selectedItem?.kind === "application"
-        ? copy.launcher.openApp
-        : copy.launcher.openGeneric
+  const primaryActionLabel =
+    selectedItem?.presentation.primaryActionLabel ?? copy.launcher.openGeneric
+  const isPrimaryActionDisabled =
+    !selectedItem || selectedItem.availability === "planned"
   const headerLeading =
     clipboard.context.kind === "files" || clipboard.context.kind === "image" ? (
       <ClipboardChip context={clipboard.context} onClear={clipboard.clearContext} />
@@ -75,16 +72,11 @@ export function LauncherSearchPage(props: {
                 executeItem(selectedIndex)
               }}
               onMouseDown={(event) => event.preventDefault()}
-              disabled={!selectedItem}
-              className="flex appearance-none items-center gap-3 rounded-full border-0 bg-transparent px-2 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
+              disabled={isPrimaryActionDisabled}
+              className="launcher-action-button launcher-action-button--primary flex appearance-none items-center gap-3 border-0 px-2 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
             >
               <span>{primaryActionLabel}</span>
-              <span
-                className="rounded-full bg-[var(--launcher-surface-strong)] px-2.5 py-1 text-[11px] text-muted-foreground"
-                style={{
-                  color: "var(--launcher-text-muted)"
-                }}
-              >
+              <span className="launcher-keycap rounded-full px-2.5 py-1 text-[11px] text-muted-foreground">
                 ↵
               </span>
             </button>
@@ -97,16 +89,11 @@ export function LauncherSearchPage(props: {
           type="button"
           onClick={() => onOpenPlugin(entry.pluginId)}
           onMouseDown={(event) => event.preventDefault()}
-          className="flex shrink-0 appearance-none items-center gap-2 border-0 bg-transparent px-0 py-1 text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
+          className="launcher-header-button flex shrink-0 appearance-none items-center gap-2 border-0 px-0 py-1 text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
         >
           <span>{entry.label}</span>
           {entry.shortcutLabel ? (
-            <span
-              className="rounded-full bg-[var(--launcher-surface-strong)] px-2.5 py-1 text-[11px] text-muted-foreground"
-              style={{
-                color: "var(--launcher-text-muted)"
-              }}
-            >
+            <span className="launcher-keycap rounded-full px-2.5 py-1 text-[11px] text-muted-foreground">
               {entry.shortcutLabel}
             </span>
           ) : null}

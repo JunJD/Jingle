@@ -16,6 +16,7 @@
 - `useLauncherSearchPage` 负责把 home 内部 intent item 和外部 search result 合成一条结果流
 - `LauncherAiPage` 自己管理 AI page chrome、thread session 和固定 viewport
 - `launcherHomeEntries` 与 `feature page registry` 分离，不再共用一个 definition
+- 搜索结果展示改成 provider 自描述，shell 不再根据 `kind` 决定 label/icon/action 文案
 
 ## First-Party Plugin Contract
 
@@ -59,6 +60,22 @@
 - `onLeave`
 - `onLauncherShown`
 
+## Search Result Contract
+
+结果列表也要按 contract 收口，不能继续把展示逻辑放在 shell 里。
+
+- `result provider` 负责产出 `title + subtitle + action + semantic kind + presentation`
+- `presentation` 至少包含 `categoryLabel + icon + tone + listActionLabel + primaryActionLabel`
+- `home/search shell` 只负责列表布局、滚动、选中和执行
+- `app/file/history/local-start` 这些内建结果也走同一套 adapter
+- `plugin intent` 可以使用本地 `plugin` semantic kind，不再伪装成 `history`
+
+这层分开之后：
+
+- `kind` 只保留给行为语义、统计和未来历史记录
+- `presentation` 才是展示驱动字段
+- 增加新 plugin intent 时，不再修改 `LauncherResultList`
+
 ## 模块图
 
 ```mermaid
@@ -92,7 +109,8 @@ graph TD
 | 窗口 show/hide、focus、page transition                             | `LauncherApp`                       | 这是 launcher shell 的职责                               |
 | 当前 route、前进/返回方向                                          | `useLauncherRouter`                 | 不承载 search 或 AI state                                |
 | 搜索 query、debounce、results、selectedIndex                       | `useLauncherSearchPage`             | 只服务 home/search page                                  |
-| feature intent item 组装                                           | `useLauncherSearchPage`             | 例如 `Ask AI with "{query}"` 这种内部跳转项              |
+| feature intent item 组装                                           | `plugin registry` + result adapter  | 例如 `Ask AI with "{query}"` 这种内部跳转项              |
+| 结果展示元信息（label/icon/tone/listActionLabel/primaryActionLabel） | result provider / adapter         | shell 只消费 `presentation`，不再看 `kind` 渲染 UI       |
 | plugin host 能力（返回、clipboard、surface、thread bridge、shown） | `LauncherPluginHostContext`         | plugin 页面不直接读取 shell 私有实现                     |
 | feature page 输入、footer、提交逻辑                                | 各自 page                           | 现在由 `LauncherAiPage` / `useAiThread` 承担             |
 | AI thread、resume、approval、display projection                    | `useAiThread` + shared thread layer | 与 launcher search 脱耦                                  |
@@ -100,11 +118,12 @@ graph TD
 
 ## 关键约束
 
-1. `plugin registry` 只保留 `id -> Component`，不再承载 shell 级输入状态。
+1. `plugin registry` 只负责插件声明，不承载 shell 级输入状态。
 2. `home entry` 单独定义；将来某些页面可以“可路由但不出现在 home 入口区”。
 3. `seedQuery` 只在从 home 进入 plugin 时显式传递；进入后页面完全接管自身输入态。
 4. `Escape` 统一由 shell host 决策：优先返回当前 feature page，再关闭 launcher 窗口。
-5. 新 feature page 默认不复用 AI chrome；只有真实出现共性时，再下沉小颗粒 primitive。
+5. 搜索结果 UI 只能读取 `presentation`；新增结果类型时不允许回到 shell 里补 `kind -> UI` 分支。
+6. 新 feature page 默认不复用 AI chrome；只有真实出现共性时，再下沉小颗粒 primitive。
 
 ## 后续扩展规则
 

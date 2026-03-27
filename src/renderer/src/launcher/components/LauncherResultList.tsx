@@ -1,57 +1,11 @@
 import { useLayoutEffect, useRef } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn, truncateMiddle } from "@/lib/utils"
-import { useI18n } from "@/lib/i18n"
-import { FileText, Folder, History, Search, Sparkles } from "lucide-react"
+import {
+  getLauncherResultToneStyle,
+  renderLauncherResultIcon
+} from "../result-presentation"
 import type { LauncherShellItem } from "../types"
-
-function getResultIcon(kind: LauncherShellItem["kind"]): React.JSX.Element {
-  switch (kind) {
-    case "application":
-      return <Search className="size-4" />
-    case "file":
-      return <FileText className="size-4" />
-    case "directory":
-      return <Folder className="size-4" />
-    case "ai":
-      return <Sparkles className="size-4" />
-    case "history":
-      return <History className="size-4" />
-    default:
-      return <Search className="size-4" />
-  }
-}
-
-function getChipStyle(kind: LauncherShellItem["kind"]): React.CSSProperties {
-  switch (kind) {
-    case "application":
-      return {
-        backgroundColor: "var(--launcher-app-chip-bg)",
-        color: "var(--launcher-app-chip-fg)"
-      }
-    case "file":
-    case "directory":
-      return {
-        backgroundColor: "var(--launcher-history-chip-bg)",
-        color: "var(--launcher-history-chip-fg)"
-      }
-    case "ai":
-      return {
-        backgroundColor: "var(--launcher-ai-chip-bg)",
-        color: "var(--launcher-ai-chip-fg)"
-      }
-    case "history":
-      return {
-        backgroundColor: "var(--launcher-history-chip-bg)",
-        color: "var(--launcher-history-chip-fg)"
-      }
-    default:
-      return {
-        backgroundColor: "var(--launcher-history-chip-bg)",
-        color: "var(--launcher-history-chip-fg)"
-      }
-  }
-}
 
 function renderTitle(title: string, match?: [number, number]): React.JSX.Element | string {
   if (!match || match[0] < 0 || match[1] < match[0]) {
@@ -75,7 +29,6 @@ export function LauncherResultList(props: {
   onExecute: (index: number) => void
   selectedIndex: number
 }): React.JSX.Element | null {
-  const { copy } = useI18n()
   const { height, items, onExecute, selectedIndex } = props
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
@@ -116,7 +69,7 @@ export function LauncherResultList(props: {
   }
 
   return (
-    <ScrollArea ref={scrollAreaRef} style={{ backgroundColor: "var(--launcher-surface)", height }}>
+    <ScrollArea ref={scrollAreaRef} style={{ backgroundColor: "transparent", height }}>
       {items.map((item, index) => {
         const isSelected = index === selectedIndex
         const isPlanned = item.availability === "planned"
@@ -131,60 +84,39 @@ export function LauncherResultList(props: {
             onClick={() => onExecute(index)}
             onMouseDown={(event) => event.preventDefault()}
             className={cn(
-              "relative grid h-auto w-full appearance-none grid-cols-[84px_minmax(0,1fr)_92px] items-start gap-4 border-0 px-6 py-4 text-left transition",
-              "border-t border-[var(--launcher-border)] first:border-t-0",
-              isSelected &&
-                "before:absolute before:bottom-4 before:left-0 before:top-4 before:w-[3px] before:rounded-full before:bg-[var(--launcher-accent-line)]"
+              "launcher-result-row relative grid h-14 w-full appearance-none grid-cols-[72px_minmax(0,1fr)_80px] items-center gap-3 border-0 px-4 text-left transition",
+              isSelected && "launcher-result-row--selected"
             )}
             style={{
-              backgroundColor: isSelected
-                ? "var(--launcher-row-active)"
-                : "var(--launcher-surface)",
               cursor: isPlanned ? "default" : "pointer",
               opacity: isPlanned ? 0.72 : 1
             }}
           >
-            <div className="pt-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              {item.kind === "application"
-                ? copy.launcher.resultKindApp
-                : item.kind === "file"
-                  ? copy.launcher.resultKindFile
-                  : item.kind === "directory"
-                    ? copy.launcher.resultKindDirectory
-                    : item.kind === "ai"
-                      ? copy.launcher.resultKindAgent
-                      : copy.launcher.resultKindThread}
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              {item.presentation.categoryLabel}
             </div>
 
             <div className="min-w-0">
-              <div className="flex min-w-0 items-start gap-3">
+              <div className="flex min-w-0 items-center gap-2.5">
                 <div
-                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden"
-                  style={getChipStyle(item.kind)}
+                  className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden"
+                  style={getLauncherResultToneStyle(item.presentation.tone)}
                 >
-                  {item.iconDataUrl ? (
-                    <img src={item.iconDataUrl} alt="" className="h-5 w-5 object-contain" />
-                  ) : (
-                    getResultIcon(item.kind)
-                  )}
+                  {renderLauncherResultIcon(item.presentation.icon)}
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate text-[15px] font-medium text-foreground">
+                  <div className="truncate text-[14px] font-medium leading-[1.15] text-foreground">
                     {renderTitle(item.title, item.match)}
                   </div>
-                  <div className="mt-1 truncate text-[13px] text-muted-foreground">
+                  <div className="mt-0.5 truncate text-[12px] leading-[1.15] text-muted-foreground">
                     {truncateMiddle(item.subtitle, 63, 14)}
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="justify-self-end pt-0.5 text-[12px] text-muted-foreground">
-              {isPlanned
-                ? copy.launcher.planned
-                : item.kind === "application"
-                  ? copy.launcher.enter
-                  : copy.launcher.openGeneric}
+            <div className="justify-self-end text-[11px] font-medium text-muted-foreground">
+              {item.presentation.listActionLabel}
             </div>
           </button>
         )

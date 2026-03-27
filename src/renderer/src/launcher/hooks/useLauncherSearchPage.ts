@@ -18,51 +18,19 @@ import { useLauncherClipboard } from "../LauncherClipboardContext"
 import {
   DEFAULT_HOME_ENTRY_PLUGIN_ID,
   getLauncherHomeEntries,
-  getLauncherPluginIntentItems,
+  getLauncherPluginIntents,
   resolveLauncherPluginCommand
 } from "../pages"
+import {
+  buildLauncherHistoryShellItems,
+  buildLauncherLocalStartShellItems,
+  buildLauncherPluginIntentShellItems,
+  buildLauncherSearchShellItems
+} from "../search-items"
 import type { LauncherHomeEntry, LauncherPluginId, LauncherPluginOpenOptions } from "../pages/types"
 import type { LauncherShellItem } from "../types"
 
 const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
-
-function buildLauncherShellItems(searchResults: LauncherSearchResult[]): LauncherShellItem[] {
-  return searchResults.map((result) => ({
-    action: result.action,
-    availability: result.availability,
-    id: result.id,
-    iconDataUrl: result.iconDataUrl,
-    kind: result.kind,
-    match: result.match,
-    subtitle: result.subtitle,
-    title: result.title
-  }))
-}
-
-function buildLocalStartShellItems(items: LocalStartItem[]): LauncherShellItem[] {
-  return items.map((item) => ({
-    action: {
-      type: "open-local-start-item",
-      itemId: item.id,
-      itemKind: item.kind,
-      path: item.path
-    },
-    id: item.id,
-    kind: item.kind,
-    subtitle: item.path,
-    title: item.title
-  }))
-}
-
-function buildLauncherHistoryShellItems(items: LauncherHistoryItem[]): LauncherShellItem[] {
-  return items.map((item) => ({
-    action: item.action,
-    id: item.id,
-    kind: item.kind,
-    subtitle: item.subtitle,
-    title: item.title
-  }))
-}
 
 export function useLauncherSearchPage(props: {
   openPlugin: (pluginId: LauncherPluginId, options?: LauncherPluginOpenOptions) => void
@@ -105,19 +73,21 @@ export function useLauncherSearchPage(props: {
       }
 
       if (historyItems.length > 0) {
-        return buildLauncherHistoryShellItems(historyItems)
+        return buildLauncherHistoryShellItems(copy, historyItems)
       }
 
-      return buildLocalStartShellItems(idleItems)
+      return buildLauncherLocalStartShellItems(copy, idleItems)
     }
 
     return [
-      ...getLauncherPluginIntentItems({
-        copy,
-        locale,
-        query
-      }),
-      ...buildLauncherShellItems(searchResults)
+      ...buildLauncherPluginIntentShellItems(
+        getLauncherPluginIntents({
+          copy,
+          locale,
+          query
+        })
+      ),
+      ...buildLauncherSearchShellItems(copy, searchResults)
     ]
   }, [copy, historyItems, idleItems, locale, query, searchResults, windowMode])
   const selectedIndex = useMemo(() => {
@@ -300,7 +270,7 @@ export function useLauncherSearchPage(props: {
           break
       }
     },
-    [executeItem, moveSelection, openPlugin, selectedIndex]
+    [executeItem, moveSelection, navigateToPlugin, openPlugin, query, selectedIndex]
   )
 
   return {
