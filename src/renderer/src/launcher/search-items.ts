@@ -14,6 +14,7 @@ export function buildLauncherSearchShellItems(
     action: result.action,
     availability: result.availability,
     id: result.id,
+    iconDataUrl: result.iconDataUrl,
     kind: result.kind,
     match: result.match,
     presentation: createLauncherBuiltinResultPresentation({
@@ -56,9 +57,12 @@ export function buildLauncherHistoryShellItems(
   return items.map((item) => ({
     action: item.action,
     id: item.id,
+    iconDataUrl: item.iconDataUrl,
     kind: item.kind,
+    pin: item.pin,
     presentation: createLauncherBuiltinResultPresentation({
       copy,
+      iconDataUrl: item.iconDataUrl,
       kind: item.kind
     }),
     subtitle: item.subtitle,

@@ -15,7 +15,9 @@ export interface LauncherShellItem {
   pluginOpenOptions?: LauncherPluginOpenOptions
   kind: LauncherShellItemKind
   id: string
+  iconDataUrl?: string
   match?: [number, number]
+  pin?: boolean
   presentation: LauncherResultPresentation
   priority?: number
   subtitle: string

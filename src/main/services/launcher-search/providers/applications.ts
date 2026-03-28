@@ -451,7 +451,9 @@ function getApplicationMatch(
   }
 }
 
-async function getApplicationIconDataUrl(applicationPath: string): Promise<string | undefined> {
+export async function getApplicationIconDataUrl(
+  applicationPath: string
+): Promise<string | undefined> {
   let iconPromise = applicationIconPromiseCache.get(applicationPath)
 
   if (!iconPromise) {

@@ -7,11 +7,13 @@ import type { LauncherHomeEntry, LauncherPluginOpenOptions } from "../pages/type
 import type { LauncherShellItem } from "../types"
 import { ClipboardChip } from "./ClipboardChip"
 import { LauncherChrome } from "./LauncherChrome"
+import { LauncherHistoryGrid } from "./LauncherHistoryGrid"
 import { LauncherResultList } from "./LauncherResultList"
 
 export function LauncherSearchPage(props: {
   entries: LauncherHomeEntry[]
   executeItem: (index: number) => void
+  homeSurfaceMode: "history" | "idle" | "results"
   inputRef: RefObject<HTMLInputElement | null>
   inputValue: string
   items: LauncherShellItem[]
@@ -30,6 +32,7 @@ export function LauncherSearchPage(props: {
   const {
     entries,
     executeItem,
+    homeSurfaceMode,
     inputRef,
     inputValue,
     items,
@@ -48,6 +51,7 @@ export function LauncherSearchPage(props: {
     selectedItem?.presentation.primaryActionLabel ?? copy.launcher.openGeneric
   const isPrimaryActionDisabled = !selectedItem || selectedItem.availability === "planned"
   const hasQuery = inputValue.trim().length > 0
+  const showHistoryGrid = homeSurfaceMode === "history"
   const headerLeading =
     clipboard.context.kind === "files" || clipboard.context.kind === "image" ? (
       <ClipboardChip context={clipboard.context} onClear={clipboard.clearContext} />
@@ -119,12 +123,20 @@ export function LauncherSearchPage(props: {
       showHeaderDivider={resultsVisible}
       surface="home"
     >
-      <LauncherResultList
-        height={resultsViewportHeight}
-        items={items}
-        onExecute={executeItem}
-        selectedIndex={selectedIndex}
-      />
+      {showHistoryGrid ? (
+        <LauncherHistoryGrid
+          items={items}
+          onExecute={executeItem}
+          selectedIndex={selectedIndex}
+        />
+      ) : (
+        <LauncherResultList
+          height={resultsViewportHeight}
+          items={items}
+          onExecute={executeItem}
+          selectedIndex={selectedIndex}
+        />
+      )}
     </LauncherChrome>
   )
 }

@@ -291,8 +291,9 @@ export default function LauncherApp(): React.JSX.Element {
             ) : (
               <LauncherSearchPage
                 entries={searchPage.entries}
-                executeItem={searchPage.executeItem}
-                inputRef={searchInputRef}
+            executeItem={searchPage.executeItem}
+            homeSurfaceMode={searchPage.homeSurfaceMode}
+            inputRef={searchInputRef}
                 inputValue={searchPage.query}
                 items={searchPage.items}
                 onInputKeyDown={searchPage.handleInputKeyDown}

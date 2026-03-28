@@ -5,6 +5,7 @@ import type {
   RecordLauncherHistoryItemInput
 } from "../../shared/launcher-history"
 import { getOpenworkDir } from "../storage"
+import { getApplicationIconDataUrl } from "./launcher-search/providers/applications"
 
 interface LauncherHistoryStoreShape {
   items: LauncherHistoryItem[]
@@ -44,8 +45,42 @@ function sortItems(items: LauncherHistoryItem[]): LauncherHistoryItem[] {
   })
 }
 
-export function listLauncherHistoryItems(): LauncherHistoryItem[] {
-  return sortItems(readItems())
+async function enrichHistoryItem(item: LauncherHistoryItem): Promise<LauncherHistoryItem> {
+  if (item.iconDataUrl || item.kind !== "application") {
+    return item
+  }
+
+  const applicationPath =
+    item.action.type === "launch-application"
+      ? item.action.applicationPath
+      : item.action.type === "open-local-start-item" && item.action.itemKind === "application"
+        ? item.action.path
+        : null
+
+  if (!applicationPath) {
+    return item
+  }
+
+  const iconDataUrl = await getApplicationIconDataUrl(applicationPath)
+  if (!iconDataUrl) {
+    return item
+  }
+
+  return {
+    ...item,
+    iconDataUrl
+  }
+}
+
+export async function listLauncherHistoryItems(): Promise<LauncherHistoryItem[]> {
+  const items = readItems()
+  const enrichedItems = await Promise.all(items.map((item) => enrichHistoryItem(item)))
+
+  if (enrichedItems.some((item, index) => item !== items[index])) {
+    writeItems(enrichedItems)
+  }
+
+  return sortItems(enrichedItems)
 }
 
 export function recordLauncherHistoryItem(
@@ -60,6 +95,7 @@ export function recordLauncherHistoryItem(
       ...items[existingIndex],
       action: input.action,
       kind: input.kind,
+      iconDataUrl: input.iconDataUrl,
       subtitle: input.subtitle,
       title: input.title,
       updatedAt: now,
@@ -78,6 +114,7 @@ export function recordLauncherHistoryItem(
     kind: input.kind,
     title: input.title,
     subtitle: input.subtitle,
+    iconDataUrl: input.iconDataUrl,
     action: input.action,
     pin: false,
     useCount: 1,

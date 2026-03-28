@@ -7,6 +7,7 @@ export interface LauncherHistoryItem {
   kind: LauncherResultKind
   title: string
   subtitle: string
+  iconDataUrl?: string
   action: LauncherSearchAction
   pin: boolean
   useCount: number
@@ -20,5 +21,6 @@ export interface RecordLauncherHistoryItemInput {
   kind: LauncherResultKind
   title: string
   subtitle: string
+  iconDataUrl?: string
   action: LauncherSearchAction
 }

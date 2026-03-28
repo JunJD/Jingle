@@ -3,6 +3,7 @@ import {
   FALLBACK_SHELL_CONFIG,
   MAX_LAUNCHER_SEARCH_RESULTS,
   getLauncherResultsHeight,
+  getLauncherViewportHeightForBody,
   getLauncherViewportHeight,
   type LauncherShellConfig
 } from "../../../../shared/launcher"
@@ -42,6 +43,7 @@ export function useLauncherSearchPage(props: {
   entries: LauncherHomeEntry[]
   executeItem: (index: number) => void
   handleInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
+  homeSurfaceMode: "history" | "idle" | "results"
   items: LauncherShellItem[]
   openEntry: (entry: LauncherHomeEntry, options?: LauncherPluginOpenOptions) => void
   placeholder: string
@@ -70,6 +72,17 @@ export function useLauncherSearchPage(props: {
     trimmedQuery && searchResponse?.query === trimmedQuery
       ? searchResponse.results
       : EMPTY_SEARCH_RESULTS
+  const homeSurfaceMode = useMemo<"history" | "idle" | "results">(() => {
+    if (trimmedQuery) {
+      return "results"
+    }
+
+    if (!shouldShowLauncherIdleItems(windowMode)) {
+      return "idle"
+    }
+
+    return historyItems.length > 0 ? "history" : "idle"
+  }, [historyItems.length, trimmedQuery, windowMode])
   const items = useMemo(() => {
     if (!query.trim()) {
       if (!shouldShowLauncherIdleItems(windowMode)) {
@@ -106,8 +119,22 @@ export function useLauncherSearchPage(props: {
     const matchingIndex = items.findIndex((item) => item.id === selectedItemId)
     return matchingIndex >= 0 ? matchingIndex : 0
   }, [items, selectedItemId])
-  const resultsViewportHeight = getLauncherResultsHeight(items.length, shellConfig)
-  const viewportHeight = getLauncherViewportHeight(items.length, shellConfig)
+  const resultsViewportHeight = useMemo(() => {
+    if (homeSurfaceMode === "history") {
+      const columns = 8
+      const rows = Math.ceil(items.length / columns)
+      return rows * 70
+    }
+
+    return getLauncherResultsHeight(items.length, shellConfig)
+  }, [homeSurfaceMode, items.length, shellConfig])
+  const viewportHeight = useMemo(() => {
+    if (resultsViewportHeight === 0) {
+      return getLauncherViewportHeight(0, shellConfig)
+    }
+
+    return getLauncherViewportHeightForBody(resultsViewportHeight, shellConfig)
+  }, [resultsViewportHeight, shellConfig])
   const resultsVisible = items.length > 0
   const entries = useMemo(() => getLauncherHomeEntries({ copy, locale }), [copy, locale])
 
@@ -305,6 +332,7 @@ export function useLauncherSearchPage(props: {
     entries,
     executeItem,
     handleInputKeyDown,
+    homeSurfaceMode,
     items,
     openEntry,
     placeholder: copy.launcher.searchPlaceholder,

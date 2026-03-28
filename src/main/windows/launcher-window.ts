@@ -20,6 +20,7 @@ import type { LauncherSearchAction, LauncherSearchRequest } from "../../shared/l
 import { readClipboardContext } from "../services/clipboard"
 import { recordLauncherHistoryItem } from "../services/launcher-history"
 import { getLocalStartItem, recordLocalStartItemUse } from "../services/local-start"
+import { getApplicationIconDataUrl } from "../services/launcher-search/providers/applications"
 import { searchLauncher } from "../services/launcher-search"
 
 const LAUNCHER_WIDTH = 760
@@ -224,25 +225,30 @@ function getLauncherPathTitle(targetPath: string): string {
   return fileExtension ? basename(fileName, fileExtension) : fileName
 }
 
-function buildLauncherHistoryRecord(
+async function buildLauncherHistoryRecord(
   action: LauncherSearchAction
-): RecordLauncherHistoryItemInput | null {
+): Promise<RecordLauncherHistoryItemInput | null> {
   switch (action.type) {
     case "launch-application":
       return {
         action,
         dedupeKey: `application:${action.applicationPath}`,
+        iconDataUrl: await getApplicationIconDataUrl(action.applicationPath),
         kind: "application",
         subtitle: action.applicationPath,
         title: getLauncherPathTitle(action.applicationPath)
       }
     case "open-local-start-item": {
       const item = getLocalStartItem(action.itemId)
+      const itemKind = item?.kind ?? action.itemKind
+      const itemPath = item?.path ?? action.path
       return {
         action,
         dedupeKey: `local-start:${action.itemId}`,
-        kind: item?.kind ?? action.itemKind,
-        subtitle: item?.path ?? action.path,
+        iconDataUrl:
+          itemKind === "application" ? await getApplicationIconDataUrl(itemPath) : undefined,
+        kind: itemKind,
+        subtitle: itemPath,
         title: item?.title ?? getLauncherPathTitle(action.path)
       }
     }
@@ -259,12 +265,12 @@ async function executeLauncherAction(action: LauncherSearchAction): Promise<void
   switch (action.type) {
     case "launch-application":
       await openLauncherPath(action.applicationPath, "application")
-      recordLauncherHistoryItem(buildLauncherHistoryRecord(action)!)
+      recordLauncherHistoryItem((await buildLauncherHistoryRecord(action))!)
       return
     case "open-local-start-item":
       await openLauncherPath(action.path, action.itemKind)
       recordLocalStartItemUse(action.itemId)
-      recordLauncherHistoryItem(buildLauncherHistoryRecord(action)!)
+      recordLauncherHistoryItem((await buildLauncherHistoryRecord(action))!)
       return
     case "none":
       return
