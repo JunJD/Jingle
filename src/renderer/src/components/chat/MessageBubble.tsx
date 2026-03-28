@@ -36,14 +36,23 @@ function resolveImageSource(content?: string): string | null {
   return null
 }
 
-function MessageImageBlock(props: { block: ContentBlock; index: number }): React.JSX.Element {
+function MessageImageBlock(props: {
+  block: ContentBlock
+  index: number
+  isUser: boolean
+}): React.JSX.Element {
   const { copy } = useI18n()
-  const { block, index } = props
+  const { block, index, isUser } = props
   const label = block.name || `${copy.launcher.clipboardImage} ${index + 1}`
   const src = resolveImageSource(block.content)
 
   return (
-    <div className="overflow-hidden rounded-[20px] border border-border/70 bg-background-secondary/70">
+    <div
+      className={cn(
+        "overflow-hidden rounded-[8px]",
+        isUser && "border border-border/70 bg-background-secondary/70"
+      )}
+    >
       {src ? (
         <img
           alt={label}
@@ -122,7 +131,9 @@ function renderStructuredContent(
   const renderedBlocks = content
     .map((block, index) => {
       if (block.type === "image") {
-        return <MessageImageBlock key={`image-${index}`} block={block} index={index} />
+        return (
+          <MessageImageBlock key={`image-${index}`} block={block} index={index} isUser={isUser} />
+        )
       }
 
       const text = block.text ?? block.content ?? ""
@@ -209,10 +220,10 @@ export function MessageBubble({
         {content && (
           <div
             className={cn(
-              "mt-3 min-w-0 overflow-hidden rounded-[24px] px-5 py-4 text-[15px] leading-8 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.35)]",
+              "mt-3 min-w-0 overflow-hidden rounded-[8px] px-5 py-4 text-[15px] leading-8",
               isUser
                 ? "bg-[var(--chat-user-surface)] text-foreground shadow-[inset_0_0_0_1px_var(--chat-user-line),0_18px_40px_-30px_rgba(37,99,235,0.25)]"
-                : "border border-border/70 bg-background/70 text-foreground backdrop-blur-[18px]"
+                : "text-foreground"
             )}
           >
             <div className="space-y-4">{content}</div>
