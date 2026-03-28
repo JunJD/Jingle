@@ -85,6 +85,7 @@ export interface ThreadContextValue {
   getThreadActions: (threadId: string) => ThreadActions
   initializeThread: (threadId: string) => void
   cleanupThread: (threadId: string) => void
+  reloadThread: (threadId: string) => Promise<void>
   // Stream subscription
   subscribeToStream: (threadId: string, callback: () => void) => () => void
   getStreamData: (threadId: string) => StreamData
@@ -610,12 +611,25 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const reloadThread = useCallback(
+    async (threadId: string) => {
+      if (!initializedThreadsRef.current.has(threadId)) {
+        initializeThread(threadId)
+        return
+      }
+
+      await loadThreadHistory(threadId)
+    },
+    [initializeThread, loadThreadHistory]
+  )
+
   const contextValue = useMemo<ThreadContextValue>(
     () => ({
       getThreadState,
       getThreadActions,
       initializeThread,
       cleanupThread,
+      reloadThread,
       subscribeToStream,
       getStreamData,
       getAllThreadStates,
@@ -627,6 +641,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       getThreadActions,
       initializeThread,
       cleanupThread,
+      reloadThread,
       subscribeToStream,
       getStreamData,
       getAllThreadStates,

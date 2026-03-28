@@ -39,14 +39,16 @@ interface CustomAPI {
       threadId: string,
       message: string,
       onEvent: (event: StreamEvent) => void,
-      modelId?: string
+      modelId?: string,
+      messageId?: string
     ) => () => void
     streamAgent: (
       threadId: string,
       message: string,
       command: unknown,
       onEvent: (event: StreamEvent) => void,
-      modelId?: string
+      modelId?: string,
+      messageId?: string
     ) => () => void
     interrupt: (
       threadId: string,

@@ -125,6 +125,21 @@ export function useAiThread(): {
     }
   }, [isBusy])
 
+  useEffect(() => {
+    if (!threadId) {
+      return
+    }
+
+    const handleWindowFocus = (): void => {
+      void threads.reload(threadId)
+    }
+
+    window.addEventListener("focus", handleWindowFocus)
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus)
+    }
+  }, [threadId, threads])
+
   return {
     conversation: {
       ...invocation.conversation,

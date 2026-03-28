@@ -197,6 +197,7 @@ export default function LauncherApp(): React.JSX.Element {
       threads: capabilities.includes("threads")
         ? {
             create: createPluginThread,
+            reload: (threadId: string) => threadContext.reloadThread(threadId),
             submit: submitPluginThread
           }
         : undefined
@@ -216,6 +217,7 @@ export default function LauncherApp(): React.JSX.Element {
     searchPage.shellConfig,
     shownSequence,
     submitPluginThread,
+    threadContext,
     viewportHeight
   ])
 

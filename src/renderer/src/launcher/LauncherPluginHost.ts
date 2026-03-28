@@ -57,6 +57,7 @@ export interface LauncherPluginHostValue {
   surface?: LauncherPluginSurface
   threads?: {
     create: (input: LauncherPluginThreadCreateInput) => Promise<LauncherPluginThreadHandle>
+    reload: (threadId: string) => Promise<void>
     submit: (input: LauncherPluginThreadSubmitInput) => Promise<void>
   }
 }

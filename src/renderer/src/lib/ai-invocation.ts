@@ -101,8 +101,9 @@ export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promis
   }
 
   const isFirstMessage = threadState.messages.length === 0
+  const messageId = crypto.randomUUID()
   const userMessage: Message = {
-    id: crypto.randomUUID(),
+    id: messageId,
     role: "user",
     content: message,
     created_at: new Date()
@@ -121,7 +122,7 @@ export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promis
 
   await stream.submit(
     {
-      messages: [{ type: "human", content: message }]
+      messages: [{ id: messageId, type: "human", content: message }]
     },
     {
       config: {

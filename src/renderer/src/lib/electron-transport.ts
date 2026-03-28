@@ -183,12 +183,13 @@ export class ElectronIPCTransport implements UseStreamTransport {
 
     // Extract the message content from input
     const input = payload.input as
-      | { messages?: Array<{ content: string; type: string }> }
+      | { messages?: Array<{ content: string; id?: string; type: string }> }
       | null
       | undefined
     const messages = input?.messages ?? []
     const lastHumanMessage = messages.find((m) => m.type === "human")
     const messageContent = lastHumanMessage?.content ?? ""
+    const messageId = lastHumanMessage?.id
 
     // Only require message content if not resuming
     if (!messageContent && !hasResumeCommand) {
@@ -201,7 +202,8 @@ export class ElectronIPCTransport implements UseStreamTransport {
       messageContent,
       payload.command,
       payload.signal,
-      modelId
+      modelId,
+      messageId
     )
   }
 
@@ -217,7 +219,8 @@ export class ElectronIPCTransport implements UseStreamTransport {
     message: string,
     command: unknown,
     signal: AbortSignal,
-    modelId?: string
+    modelId?: string,
+    messageId?: string
   ): AsyncGenerator<StreamEvent> {
     // Create a queue to buffer events from IPC
     const eventQueue: StreamEvent[] = []
@@ -263,7 +266,8 @@ export class ElectronIPCTransport implements UseStreamTransport {
           }
         }
       },
-      modelId
+      modelId,
+      messageId
     )
 
     // Handle abort signal

@@ -12,6 +12,7 @@ export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
 export interface AgentInvokeParams {
   threadId: string
   message: string
+  messageId?: string
   modelId?: string
 }
 
