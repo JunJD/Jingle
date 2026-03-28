@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AI_LAUNCHER_PLUGIN_ID } from "../../../plugins/ai/manifest"
 import { useLauncherClipboard } from "./LauncherClipboardContext"
+import { deriveLauncherPluginClipboardContext } from "../../../shared/clipboard-derivations"
 import {
   type LauncherPluginInputElement,
   type LauncherPluginThreadCreateInput,
@@ -170,7 +171,10 @@ export default function LauncherApp(): React.JSX.Element {
       clipboard: capabilities.includes("clipboard")
         ? {
             clearContext: clipboard.clearContext,
-            context: clipboard.context
+            context: deriveLauncherPluginClipboardContext(
+              clipboard.context,
+              activePluginDefinition.manifest.clipboard
+            )
           }
         : undefined,
       entryId: route.entryId,
@@ -330,12 +334,14 @@ export default function LauncherApp(): React.JSX.Element {
                 executeItem={searchPage.executeItem}
                 inputRef={searchInputRef}
                 inputValue={searchPage.query}
+                onClearClipboardContext={searchPage.clearClipboardContext}
                 onInputKeyDown={searchPage.handleInputKeyDown}
                 onInputValueChange={searchPage.setQuery}
                 onOpenEntry={searchPage.openEntry}
                 onRemoveHistoryItem={searchPage.removeHistoryItem}
                 onSetHistoryItemPinned={searchPage.setHistoryItemPinned}
                 placeholder={searchPage.placeholder}
+                previewClipboardContext={searchPage.previewClipboardContext}
                 resultsViewportHeight={searchPage.resultsViewportHeight}
                 selectedIndex={searchPage.selectedIndex}
                 selectedItem={selectedItem}

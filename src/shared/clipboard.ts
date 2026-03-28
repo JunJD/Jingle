@@ -5,7 +5,13 @@ export interface ClipboardFile {
   path: string
 }
 
-export type ClipboardContext =
+export interface ClipboardImage {
+  height: number
+  previewDataUrl: string
+  width: number
+}
+
+export type ClipboardSnapshot =
   | {
       kind: "none"
     }
@@ -18,5 +24,10 @@ export type ClipboardContext =
       kind: "files"
     }
   | {
+      image: ClipboardImage
       kind: "image"
     }
+
+export type ClipboardContext = ClipboardSnapshot
+
+export type ClipboardPayloadKind = Exclude<ClipboardSnapshot["kind"], "none">

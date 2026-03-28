@@ -12,6 +12,9 @@ export const aiLauncherPluginManifest: LauncherPluginManifest<
   typeof AI_CHAT_ENTRY_ID
 > = {
   capabilities: ["navigation", "clipboard", "surface", "threads"],
+  clipboard: {
+    accepts: ["files", "image"]
+  },
   defaultEntryId: AI_CHAT_ENTRY_ID,
   displayName: "AI",
   entries: [{ id: AI_CHAT_ENTRY_ID }],

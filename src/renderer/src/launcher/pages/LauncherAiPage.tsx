@@ -1,13 +1,11 @@
-import { ArrowLeft } from "lucide-react"
-import { useEffect } from "react"
+import { ArrowLeft, Plus } from "lucide-react"
+import { useEffect, useRef } from "react"
 import { AI_LAUNCHER_PLUGIN_ID } from "../../../../plugins/ai/manifest"
-import {
-  useLauncherPluginClipboard,
-  useLauncherPluginNavigation,
-  useLauncherPluginSurface
-} from "../LauncherPluginHost"
+import { AI_ATTACHMENT_FILE_EXTENSIONS } from "../../../../shared/launcher-attachments"
+import { useLauncherPluginNavigation, useLauncherPluginSurface } from "../LauncherPluginHost"
+import { LauncherAttachmentStrip } from "../components/LauncherAttachmentStrip"
 import { useAiThread } from "../hooks/useAiThread"
-import { ClipboardChip } from "../components/ClipboardChip"
+import { useLauncherAiAttachments } from "../hooks/useLauncherAiAttachments"
 import { LauncherAiConversation, LauncherAiEmptyState } from "./LauncherAiConversation"
 import { LauncherChrome } from "../components/LauncherChrome"
 import { useI18n } from "@/lib/i18n"
@@ -15,12 +13,13 @@ import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 
 export function LauncherAiPage(): React.JSX.Element {
   const { copy } = useI18n()
-  const clipboard = useLauncherPluginClipboard()
+  const attachmentDraft = useLauncherAiAttachments()
   const navigation = useLauncherPluginNavigation()
   const surface = useLauncherPluginSurface()
   const session = useAiThread()
   const inputStatus = session.inputStatus
   const { inputRef, setInputStatus } = surface
+  const fileInputRef = useRef<HTMLInputElement>(null)
   useDisableTabNavigation(inputRef)
 
   useEffect(() => {
@@ -61,7 +60,39 @@ export function LauncherAiPage(): React.JSX.Element {
             <ArrowLeft className="size-5" />
           </button>
 
-          <ClipboardChip context={clipboard.context} onClear={clipboard.clearContext} />
+          <div className="flex min-w-0 items-center gap-1.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              accept={AI_ATTACHMENT_FILE_EXTENSIONS.map((extension) => `.${extension}`).join(",")}
+              onChange={(event) => {
+                if (event.target.files) {
+                  void attachmentDraft.addSelectedFiles(event.target.files)
+                }
+                event.target.value = ""
+              }}
+            />
+
+            <button
+              type="button"
+              onClick={() => {
+                fileInputRef.current?.click()
+              }}
+              onMouseDown={(event) => event.preventDefault()}
+              aria-label={copy.launcher.aiAddAttachment}
+              title={copy.launcher.aiAddAttachment}
+              className="launcher-icon-button flex h-7 w-7 shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
+            >
+              <Plus className="size-3.5" />
+            </button>
+
+            <LauncherAttachmentStrip
+              attachments={attachmentDraft.attachments}
+              onRemove={attachmentDraft.removeAttachment}
+            />
+          </div>
         </div>
       }
       inputStatus={inputStatus}

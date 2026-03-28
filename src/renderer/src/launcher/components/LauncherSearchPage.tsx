@@ -2,7 +2,7 @@ import type { RefObject } from "react"
 import { AI_LAUNCHER_PLUGIN_ID } from "../../../../plugins/ai/manifest"
 import { useI18n } from "@/lib/i18n"
 import type { LauncherShellConfig } from "../../../../shared/launcher"
-import { useLauncherClipboard } from "../LauncherClipboardContext"
+import type { ClipboardContext } from "../../../../shared/clipboard"
 import type { LauncherHomeSurfaceModel } from "../home-surface"
 import type { LauncherHomeEntry, LauncherPluginOpenOptions } from "../pages/types"
 import type { LauncherShellItem } from "../types"
@@ -16,12 +16,14 @@ export function LauncherSearchPage(props: {
   executeItem: (index: number) => void
   inputRef: RefObject<HTMLInputElement | null>
   inputValue: string
+  onClearClipboardContext: () => void
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   onInputValueChange: (value: string) => void
   onOpenEntry: (entry: LauncherHomeEntry, options?: LauncherPluginOpenOptions) => void
   onRemoveHistoryItem: (itemId: string) => void
   onSetHistoryItemPinned: (itemId: string, pin: boolean) => void
   placeholder: string
+  previewClipboardContext: Extract<ClipboardContext, { kind: "files" | "image" }> | null
   resultsViewportHeight: number
   selectedIndex: number
   selectedItem: LauncherShellItem | null
@@ -29,18 +31,19 @@ export function LauncherSearchPage(props: {
   surface: LauncherHomeSurfaceModel
 }): React.JSX.Element {
   const { copy } = useI18n()
-  const clipboard = useLauncherClipboard()
   const {
     entries,
     executeItem,
     inputRef,
     inputValue,
+    onClearClipboardContext,
     onInputKeyDown,
     onInputValueChange,
     onOpenEntry,
     onRemoveHistoryItem,
     onSetHistoryItemPinned,
     placeholder,
+    previewClipboardContext,
     resultsViewportHeight,
     selectedIndex,
     selectedItem,
@@ -54,10 +57,9 @@ export function LauncherSearchPage(props: {
   const hasQuery = inputValue.trim().length > 0
   const resultsVisible = surface.items.length > 0
   const showHistoryGrid = surface.mode === "history"
-  const headerLeading =
-    clipboard.context.kind === "files" || clipboard.context.kind === "image" ? (
-      <ClipboardChip context={clipboard.context} onClear={clipboard.clearContext} />
-    ) : undefined
+  const headerLeading = previewClipboardContext ? (
+    <ClipboardChip context={previewClipboardContext} onClear={onClearClipboardContext} />
+  ) : undefined
 
   return (
     <LauncherChrome

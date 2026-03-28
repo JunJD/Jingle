@@ -14,7 +14,6 @@ import type {
 import type { LauncherHistoryItem } from "../../../../shared/launcher-history"
 import { sortLauncherHistoryItems } from "../../../../shared/launcher-history"
 import type { LocalStartItem } from "../../../../shared/local-start"
-import { useLauncherClipboard } from "../LauncherClipboardContext"
 import { DEFAULT_HOME_ENTRY, getLauncherHomeEntries, resolveLauncherPluginCommand } from "../pages"
 import {
   buildLauncherHomeSurfaceModel,
@@ -26,6 +25,7 @@ import type {
   LauncherPluginEntryAddress,
   LauncherPluginOpenOptions
 } from "../pages/types"
+import { useLauncherHomeClipboard } from "./useLauncherHomeClipboard"
 
 const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
 
@@ -34,12 +34,17 @@ export function useLauncherSearchPage(props: {
 }): {
   entries: LauncherHomeEntry[]
   executeItem: (index: number) => void
+  clearClipboardContext: () => void
   handleInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   homeInputSelectionRequestVersion: number
   openEntry: (entry: LauncherHomeEntry, options?: LauncherPluginOpenOptions) => void
   removeHistoryItem: (itemId: string) => void
   setHistoryItemPinned: (itemId: string, pin: boolean) => void
   placeholder: string
+  previewClipboardContext: Extract<
+    import("../../../../shared/clipboard").ClipboardContext,
+    { kind: "files" | "image" }
+  > | null
   query: string
   resultsViewportHeight: number
   selectedIndex: number
@@ -50,7 +55,6 @@ export function useLauncherSearchPage(props: {
 } {
   const { openEntry: navigateToEntry } = props
   const { copy, locale } = useI18n()
-  const { context, isTextAutofillConsumed, markTextAutofillConsumed } = useLauncherClipboard()
   const latestSearchRequestRef = useRef(0)
   const [query, setQuery] = useState("")
   const [historyItems, setHistoryItems] = useState<LauncherHistoryItem[]>([])
@@ -102,6 +106,14 @@ export function useLauncherSearchPage(props: {
     return getLauncherViewportHeightForBody(resultsViewportHeight, shellConfig)
   }, [resultsViewportHeight, shellConfig])
   const entries = useMemo(() => getLauncherHomeEntries({ copy, locale }), [copy, locale])
+  const requestHomeInputSelection = useCallback((): void => {
+    setHomeInputSelectionRequestVersion((version) => version + 1)
+  }, [])
+  const homeClipboard = useLauncherHomeClipboard({
+    query,
+    requestSelection: requestHomeInputSelection,
+    setQuery
+  })
   const refreshIdleState = useCallback((): void => {
     void Promise.all([
       window.api.settings.getLauncherSettings(),
@@ -124,28 +136,6 @@ export function useLauncherSearchPage(props: {
       cleanupShown()
     }
   }, [refreshIdleState])
-
-  useEffect(() => {
-    if (context.kind !== "text" || isTextAutofillConsumed) {
-      return
-    }
-
-    if (query.trim().length > 0) {
-      markTextAutofillConsumed()
-      return
-    }
-
-    const text = context.text
-    const frameId = window.requestAnimationFrame(() => {
-      setQuery(text)
-      setHomeInputSelectionRequestVersion((version) => version + 1)
-      markTextAutofillConsumed()
-    })
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-    }
-  }, [context, isTextAutofillConsumed, markTextAutofillConsumed, query])
 
   useEffect(() => {
     if (!trimmedQuery) {
@@ -329,11 +319,13 @@ export function useLauncherSearchPage(props: {
   )
 
   return {
+    clearClipboardContext: homeClipboard.clearContext,
     entries,
     executeItem,
     handleInputKeyDown,
     homeInputSelectionRequestVersion,
     openEntry,
+    previewClipboardContext: homeClipboard.previewContext,
     removeHistoryItem,
     setHistoryItemPinned,
     placeholder: copy.launcher.searchPlaceholder,

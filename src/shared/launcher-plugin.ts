@@ -1,6 +1,12 @@
+import type { ClipboardPayloadKind } from "./clipboard"
+
 export type LauncherPluginRuntime = "external-webview" | "internal-react"
 
 export type LauncherPluginCapability = "clipboard" | "navigation" | "rpc" | "surface" | "threads"
+
+export interface LauncherPluginClipboardManifest {
+  accepts: ClipboardPayloadKind[]
+}
 
 export interface LauncherPluginEntryManifest<TEntryId extends string = string> {
   id: TEntryId
@@ -11,6 +17,7 @@ export interface LauncherPluginManifest<
   TEntryId extends string = string
 > {
   capabilities: LauncherPluginCapability[]
+  clipboard?: LauncherPluginClipboardManifest
   defaultEntryId: TEntryId
   displayName: string
   entries: Array<LauncherPluginEntryManifest<TEntryId>>
@@ -63,6 +70,12 @@ export function validateLauncherPluginManifest(manifest: LauncherPluginManifest)
   if (hasLauncherPluginCapability(manifest, "rpc") && rpcMethods.length === 0) {
     throw new Error(
       `Launcher plugin "${manifest.id}" declares the "rpc" capability without any RPC methods`
+    )
+  }
+
+  if (manifest.clipboard && !hasLauncherPluginCapability(manifest, "clipboard")) {
+    throw new Error(
+      `Launcher plugin "${manifest.id}" declares clipboard filters without the "clipboard" capability`
     )
   }
 }

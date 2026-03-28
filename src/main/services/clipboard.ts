@@ -2,7 +2,7 @@ import { existsSync, lstatSync } from "node:fs"
 import { basename } from "node:path"
 import { fileURLToPath } from "node:url"
 import { clipboard } from "electron"
-import type { ClipboardContext, ClipboardFile } from "../../shared/clipboard"
+import type { ClipboardContext, ClipboardFile, ClipboardImage } from "../../shared/clipboard"
 
 const EMPTY_CLIPBOARD_CONTEXT: ClipboardContext = {
   kind: "none"
@@ -118,6 +118,26 @@ function readClipboardFiles(): ClipboardFile[] {
   return files
 }
 
+function buildClipboardImage(image: Electron.NativeImage): ClipboardImage {
+  const size = image.getSize()
+  const maxPreviewEdge = 112
+  const longestEdge = Math.max(size.width, size.height)
+  const preview =
+    size.width > maxPreviewEdge || size.height > maxPreviewEdge
+      ? image.resize({
+          height: Math.max(1, Math.round((size.height / longestEdge) * maxPreviewEdge)),
+          quality: "good",
+          width: Math.max(1, Math.round((size.width / longestEdge) * maxPreviewEdge))
+        })
+      : image
+
+  return {
+    height: size.height,
+    previewDataUrl: preview.toDataURL(),
+    width: size.width
+  }
+}
+
 export function readClipboardContext(): ClipboardContext {
   const files = readClipboardFiles()
   if (files.length > 0) {
@@ -130,6 +150,7 @@ export function readClipboardContext(): ClipboardContext {
   const image = clipboard.readImage()
   if (!image.isEmpty()) {
     return {
+      image: buildClipboardImage(image),
       kind: "image"
     }
   }

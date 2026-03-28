@@ -10,7 +10,7 @@ function getClipboardContextKey(context: ClipboardContext): string {
     case "none":
       return "none"
     case "image":
-      return "image"
+      return `image:${context.image.width}x${context.image.height}:${context.image.previewDataUrl.length}:${context.image.previewDataUrl.slice(-48)}`
     case "text":
       return `text:${context.text}`
     case "files":

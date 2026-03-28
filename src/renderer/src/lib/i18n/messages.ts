@@ -68,6 +68,7 @@ export interface AppCopy {
     warning: string
   }
   launcher: {
+    aiAddAttachment: string
     askAiWithTab: string
     aiEmptyEyebrow: string
     aiEntryLabel: string
@@ -88,6 +89,7 @@ export interface AppCopy {
     openResult: string
     pinHistoryItem: string
     planned: string
+    removeAttachment: string
     removeHistoryItem: string
     resultKindAgent: string
     resultKindApp: string
@@ -212,6 +214,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       warning: "警告"
     },
     launcher: {
+      aiAddAttachment: "添加附件",
       askAiWithTab: "按 Tab 问 AI",
       aiEmptyEyebrow: "桌面 Agent",
       aiEntryLabel: "问 AI",
@@ -232,6 +235,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openResult: "打开结果",
       pinHistoryItem: "固定到搜索面板",
       planned: "规划中",
+      removeAttachment: "移除附件",
       removeHistoryItem: "从使用记录中删除",
       resultKindAgent: "Agent",
       resultKindApp: "应用",
@@ -365,6 +369,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       warning: "Warning"
     },
     launcher: {
+      aiAddAttachment: "Add attachment",
       askAiWithTab: "Tab to ask AI",
       aiEmptyEyebrow: "Launcher AI",
       aiEntryLabel: "Ask AI",
@@ -386,6 +391,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openResult: "Open Result",
       pinHistoryItem: "Pin to launcher",
       planned: "Planned",
+      removeAttachment: "Remove attachment",
       removeHistoryItem: "Remove from history",
       resultKindAgent: "Agent",
       resultKindApp: "App",
