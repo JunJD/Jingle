@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAppStore } from "@/lib/store"
 import { useCurrentThread } from "@/lib/thread-context"
-import { useThreadConversationProjection } from "@/lib/thread-conversation"
+import { useAiInvocation } from "@/lib/ai-invocation"
 import { MessageBubble } from "./MessageBubble"
 import { ModelSwitcher } from "./ModelSwitcher"
 import { Folder } from "lucide-react"
@@ -12,7 +12,6 @@ import { WorkspacePicker } from "./WorkspacePicker"
 import { selectWorkspaceFolder } from "@/lib/workspace-utils"
 import { ChatTodos } from "./ChatTodos"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
-import type { Message } from "@/types"
 import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { isDefaultThreadTitle } from "../../../../shared/i18n"
@@ -28,34 +27,39 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const isAtBottomRef = useRef(true)
   useDisableTabNavigation(inputRef)
 
-  const { threads, loadThreads, generateTitleForFirstMessage } = useAppStore()
+  const { threads, generateTitleForFirstMessage } = useAppStore()
 
-  const {
-    messages,
-    pendingApproval,
-    workspacePath,
-    tokenUsage,
-    currentModel,
-    draftInput: input,
-    setWorkspaceFiles,
-    setWorkspacePath,
-    setPendingApproval,
-    appendMessage,
-    clearError,
-    setError,
-    setDraftInput: setInput
-  } = useCurrentThread(threadId)
-  const {
-    displayMessages,
-    error: threadError,
-    isLoading,
-    resumePendingApproval,
-    stream,
-    todos,
-    toolResults
-  } = useThreadConversationProjection(threadId, {
-    onMessagesPersisted: loadThreads
+  const { workspacePath, tokenUsage, currentModel, setWorkspaceFiles, setWorkspacePath } =
+    useCurrentThread(threadId)
+  const invocation = useAiInvocation({
+    onAfterAppendMessage: ({ isFirstMessage, message }) => {
+      if (!isFirstMessage) {
+        return
+      }
+
+      const currentThread = threads.find((thread) => thread.thread_id === threadId)
+      if (!isDefaultThreadTitle(currentThread?.title)) {
+        return
+      }
+
+      void generateTitleForFirstMessage(threadId, message)
+    },
+    threadId,
+    validateInvocation: ({ threadState }) => {
+      return threadState.workspacePath ? null : copy.chat.inputNeedsWorkspace
+    }
   })
+  const {
+    clearVisibleError,
+    conversation: { displayMessages, isLoading, pendingApproval, todos, toolResults },
+    input,
+    invoke,
+    isBusy,
+    resume,
+    setInput,
+    stop,
+    visibleError
+  } = invocation
 
   // Get the actual scrollable viewport element from Radix ScrollArea
   const getViewport = useCallback((): HTMLDivElement | null => {
@@ -90,7 +94,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     if (viewport && isAtBottomRef.current) {
       viewport.scrollTop = viewport.scrollHeight
     }
-  }, [displayMessages, isLoading, getViewport])
+  }, [displayMessages, isBusy, getViewport])
 
   // Always scroll to bottom when switching threads
   useEffect(() => {
@@ -107,57 +111,12 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   }, [threadId])
 
   const handleDismissError = (): void => {
-    clearError()
+    clearVisibleError()
   }
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
-    if (!input.trim() || isLoading || !stream) return
-
-    if (!workspacePath) {
-      setError(copy.chat.inputNeedsWorkspace)
-      return
-    }
-
-    if (threadError) {
-      clearError()
-    }
-
-    if (pendingApproval) {
-      setPendingApproval(null)
-    }
-
-    const message = input.trim()
-    setInput("")
-
-    const isFirstMessage = messages.length === 0
-
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: message,
-      created_at: new Date()
-    }
-    appendMessage(userMessage)
-
-    if (isFirstMessage) {
-      const currentThread = threads.find((t) => t.thread_id === threadId)
-      const hasDefaultTitle = isDefaultThreadTitle(currentThread?.title)
-      if (hasDefaultTitle) {
-        generateTitleForFirstMessage(threadId, message)
-      }
-    }
-
-    await stream.submit(
-      {
-        messages: [{ type: "human", content: message }]
-      },
-      {
-        config: {
-          configurable: { thread_id: threadId, model_id: currentModel }
-        }
-      }
-    )
+    await invoke()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {
@@ -181,7 +140,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   }, [input])
 
   const handleCancel = async (): Promise<void> => {
-    await stream?.stop()
+    await stop()
   }
 
   const handleSelectWorkspaceFromEmptyState = async (): Promise<void> => {
@@ -232,7 +191,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                 message={message}
                 toolResults={toolResults}
                 pendingApproval={pendingApproval}
-                onApprovalDecision={resumePendingApproval}
+                onApprovalDecision={resume}
               />
             ))}
 
@@ -241,7 +200,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
             )}
 
             {/* Streaming indicator and inline TODOs */}
-            {isLoading && (
+            {isBusy && (
               <div className="space-y-4 border-t border-border pt-4">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" />
@@ -252,13 +211,13 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
             )}
 
             {/* Error state */}
-            {threadError && !isLoading && (
+            {visibleError && !isBusy && (
               <div className="flex items-start gap-3 border-l-[3px] border-destructive bg-destructive/8 px-4 py-3">
                 <AlertCircle className="size-5 text-destructive shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-destructive text-sm">{copy.chat.agentError}</div>
                   <div className="text-sm text-muted-foreground mt-1 break-words">
-                    {threadError}
+                    {visibleError}
                   </div>
                   <div className="text-xs text-muted-foreground mt-2">
                     {copy.chat.agentErrorRecovery}
@@ -287,13 +246,13 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={copy.chat.messagePlaceholder}
-                disabled={isLoading}
+                disabled={isBusy}
                 className="flex-1 min-w-0 resize-none bg-transparent px-0 py-0 text-[15px] leading-7 text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
                 rows={1}
                 style={{ minHeight: "48px", maxHeight: "200px" }}
               />
               <div className="flex h-12 shrink-0 items-center justify-center">
-                {isLoading ? (
+                {isBusy ? (
                   <Button
                     type="button"
                     variant="ghost"
@@ -308,7 +267,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                     type="submit"
                     variant="default"
                     size="icon"
-                    disabled={!input.trim()}
+                    disabled={!invocation.canInvoke}
                     className="rounded-full"
                   >
                     <Send className="size-4" />

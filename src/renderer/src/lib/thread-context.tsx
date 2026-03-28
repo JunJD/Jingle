@@ -80,7 +80,7 @@ export interface ThreadActions {
 }
 
 // Context value
-interface ThreadContextValue {
+export interface ThreadContextValue {
   getThreadState: (threadId: string) => ThreadState
   getThreadActions: (threadId: string) => ThreadActions
   initializeThread: (threadId: string) => void

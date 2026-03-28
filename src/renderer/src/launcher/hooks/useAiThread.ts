@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "../../../../plugins/ai/manifest"
-import { useThreadConversationProjection } from "@/lib/thread-conversation"
+import { useAiInvocation } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
 import {
   useLauncherPluginHost,
@@ -10,7 +10,7 @@ import {
 import type { LauncherInputStatus } from "../launcher-input-status"
 
 export function useAiThread(): {
-  conversation: ReturnType<typeof useThreadConversationProjection> & {
+  conversation: ReturnType<typeof useAiInvocation>["conversation"] & {
     clearVisibleError: () => void
     visibleError: string | null
   }
@@ -28,109 +28,36 @@ export function useAiThread(): {
   const host = useLauncherPluginHost()
   const navigation = useLauncherPluginNavigation()
   const threads = useLauncherPluginThreads()
-  const requestRef = useRef(0)
   const hasRunInitialActionRef = useRef(false)
   const [threadId, setThreadId] = useState<string | null>(null)
-  const [pendingQuery, setPendingQuery] = useState(host.seedQuery)
-  const [localError, setLocalError] = useState<string | null>(null)
   const [inputStatus, setInputStatus] = useState<LauncherInputStatus>("idle")
-  const [isCreatingThread, setIsCreatingThread] = useState(false)
-
-  const conversation = useThreadConversationProjection(threadId)
-  const threadState = conversation.threadState
-  const visibleError = conversation.error ?? localError
-  const query = threadState?.draftInput ?? pendingQuery
-
-  useEffect(() => {
-    return () => {
-      requestRef.current += 1
-    }
-  }, [])
-
-  const clearVisibleError = useCallback(() => {
-    if (localError) {
-      setLocalError(null)
-    }
-
-    if (conversation.error) {
-      conversation.clearError()
-    }
-  }, [conversation, localError])
-
-  const setInputQuery = useCallback(
-    (value: string): void => {
-      if (localError) {
-        setLocalError(null)
-      }
-
-      if (threadState) {
-        threadState.setDraftInput(value)
-        return
-      }
-
-      setPendingQuery(value)
-    },
-    [localError, threadState]
-  )
-
-  const submitMessage = useCallback(
-    async (message: string): Promise<void> => {
-      const requestId = requestRef.current + 1
-      requestRef.current = requestId
-
-      try {
-        const createdThread = threadId
-          ? null
-          : await threads.create({
-              draftInput: message,
-              source: AI_THREAD_SOURCE,
-              title: copy.launcher.aiThreadTitle,
-              visibility: AI_THREAD_VISIBILITY
-            })
-        if (requestRef.current !== requestId) {
-          return
-        }
-
-        const nextThreadId = createdThread?.threadId ?? threadId
-        if (!nextThreadId) {
-          return
-        }
-
-        if (createdThread) {
-          setThreadId(createdThread.threadId)
-        }
-
-        if (localError) {
-          setLocalError(null)
-        }
-
-        await threads.submit({
-          message,
-          threadId: nextThreadId
-        })
-      } catch (error) {
-        if (requestRef.current !== requestId) {
-          return
-        }
-
-        setLocalError(error instanceof Error ? error.message : String(error))
+  const invocation = useAiInvocation({
+    ensureThread: async ({ draftInput }) => {
+      const createdThread = await threads.create({
+        draftInput,
+        source: AI_THREAD_SOURCE,
+        title: copy.launcher.aiThreadTitle,
+        visibility: AI_THREAD_VISIBILITY
+      })
+      setThreadId(createdThread.threadId)
+      return {
+        threadId: createdThread.threadId
       }
     },
-    [copy.launcher.aiThreadTitle, localError, threadId, threads]
-  )
+    initialInput: host.seedQuery,
+    threadId
+  })
+  const query = invocation.input
+  const isBusy = invocation.isBusy
 
   const runPrimaryAction = useCallback((): void => {
-    const message = query.trim()
-    if (!message || conversation.isLoading || isCreatingThread) {
+    if (!invocation.canInvoke) {
       return
     }
 
     setInputStatus("pending")
-    setIsCreatingThread(true)
-    void submitMessage(message).finally(() => {
-      setIsCreatingThread(false)
-    })
-  }, [conversation.isLoading, isCreatingThread, query, submitMessage])
+    void invocation.invoke()
+  }, [invocation])
 
   useEffect(() => {
     if (hasRunInitialActionRef.current || host.initialAction !== "submit") {
@@ -146,23 +73,20 @@ export function useAiThread(): {
     const submitFrameId = window.requestAnimationFrame(() => {
       hasRunInitialActionRef.current = true
       setInputStatus("pending")
-      setIsCreatingThread(true)
-      void submitMessage(message).finally(() => {
-        setIsCreatingThread(false)
-      })
+      void invocation.invoke(message)
     })
 
     return () => {
       window.cancelAnimationFrame(submitFrameId)
     }
-  }, [host.initialAction, host.seedQuery, submitMessage])
+  }, [host.initialAction, host.seedQuery, invocation])
 
   const handleApprovalDecision = useCallback(
     async (decision: "approve" | "reject" | "edit"): Promise<void> => {
       setInputStatus("pending")
-      await conversation.resumePendingApproval(decision)
+      await invocation.resume(decision)
     },
-    [conversation]
+    [invocation]
   )
 
   const handleInputKeyDown = useCallback(
@@ -173,7 +97,7 @@ export function useAiThread(): {
           runPrimaryAction()
           break
         case "Backspace":
-          if (!query && !conversation.isLoading) {
+          if (!query && !isBusy) {
             event.preventDefault()
             navigation.goHome()
           }
@@ -182,13 +106,10 @@ export function useAiThread(): {
           break
       }
     },
-    [conversation.isLoading, navigation, query, runPrimaryAction]
+    [isBusy, navigation, query, runPrimaryAction]
   )
 
-  const primaryActionDisabled = useMemo(() => {
-    return !query.trim() || conversation.isLoading || isCreatingThread
-  }, [conversation.isLoading, isCreatingThread, query])
-  const isBusy = conversation.isLoading || isCreatingThread
+  const primaryActionDisabled = !invocation.canInvoke
 
   useEffect(() => {
     if (isBusy) {
@@ -206,9 +127,9 @@ export function useAiThread(): {
 
   return {
     conversation: {
-      ...conversation,
-      clearVisibleError,
-      visibleError
+      ...invocation.conversation,
+      clearVisibleError: invocation.clearVisibleError,
+      visibleError: invocation.visibleError
     },
     handleApprovalDecision,
     handleInputKeyDown,
@@ -217,7 +138,7 @@ export function useAiThread(): {
     primaryActionDisabled,
     query,
     runPrimaryAction,
-    setQuery: setInputQuery,
+    setQuery: invocation.setInput,
     threadId
   }
 }

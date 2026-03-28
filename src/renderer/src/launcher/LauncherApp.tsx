@@ -15,14 +15,9 @@ import { useLauncherRouter } from "./hooks/useLauncherRouter"
 import { useLauncherSearchPage } from "./hooks/useLauncherSearchPage"
 import { getLauncherPluginDefinition } from "./pages"
 import { isLauncherPluginRoute } from "./pages/types"
+import { invokeThreadMessage } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
 import { useThreadContext } from "@/lib/thread-context"
-
-function waitForAnimationFrame(): Promise<void> {
-  return new Promise<void>((resolve) => {
-    window.requestAnimationFrame(() => resolve())
-  })
-}
 
 type HomeInputFocusBehavior = "preserve" | "select-all"
 type PluginInputFocusBehavior = "preserve" | "move-to-end"
@@ -107,18 +102,6 @@ export default function LauncherApp(): React.JSX.Element {
     [focusHomeInput, focusPluginInput, route]
   )
 
-  const waitForThreadStream = useCallback(
-    async (threadId: string) => {
-      let stream = threadContext.getStreamData(threadId).stream
-      while (!stream) {
-        await waitForAnimationFrame()
-        stream = threadContext.getStreamData(threadId).stream
-      }
-
-      return stream
-    },
-    [threadContext]
-  )
   const setViewportHeight = useCallback((height: number): void => {
     const nextHeight = Math.round(height)
     if (nextHeight <= 0 || nextHeight === viewportHeightRef.current) {
@@ -167,46 +150,13 @@ export default function LauncherApp(): React.JSX.Element {
   )
   const submitPluginThread = useCallback(
     async (input: LauncherPluginThreadSubmitInput): Promise<void> => {
-      const { message, threadId } = input
-      const stream = await waitForThreadStream(threadId)
-      const state = threadContext.getThreadState(threadId)
-      const actions = threadContext.getThreadActions(threadId)
-
-      // if (!state.workspacePath) {
-      //   throw new Error(copy.chat.inputNeedsWorkspace)
-      // }
-
-      if (state.error) {
-        actions.clearError()
-      }
-
-      if (state.pendingApproval) {
-        actions.setPendingApproval(null)
-      }
-
-      actions.setDraftInput("")
-      actions.appendMessage({
-        id: crypto.randomUUID(),
-        role: "user",
-        content: message,
-        created_at: new Date()
+      await invokeThreadMessage({
+        message: input.message,
+        threadContext,
+        threadId: input.threadId
       })
-
-      await stream.submit(
-        {
-          messages: [{ type: "human", content: message }]
-        },
-        {
-          config: {
-            configurable: {
-              model_id: state.currentModel,
-              thread_id: threadId
-            }
-          }
-        }
-      )
     },
-    [threadContext, waitForThreadStream]
+    [threadContext]
   )
   const activePluginHost = useMemo(() => {
     if (!activeEntry || !activePluginDefinition || !isLauncherPluginRoute(route)) {
