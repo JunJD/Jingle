@@ -47,12 +47,7 @@ function MessageImageBlock(props: {
   const src = resolveImageSource(block.content)
 
   return (
-    <div
-      className={cn(
-        "overflow-hidden rounded-[8px]",
-        isUser && "border border-border/70 bg-background-secondary/70"
-      )}
-    >
+    <div className={cn("overflow-hidden rounded-[8px]", isUser && "bg-background-secondary/70")}>
       {src ? (
         <img
           alt={label}
@@ -221,9 +216,7 @@ export function MessageBubble({
           <div
             className={cn(
               "mt-3 min-w-0 overflow-hidden rounded-[8px] px-5 py-4 text-[15px] leading-8",
-              isUser
-                ? "bg-[var(--chat-user-surface)] text-foreground shadow-[inset_0_0_0_1px_var(--chat-user-line),0_18px_40px_-30px_rgba(37,99,235,0.25)]"
-                : "text-foreground"
+              isUser ? "bg-[var(--chat-user-surface)] text-foreground " : "text-foreground"
             )}
           >
             <div className="space-y-4">{content}</div>
