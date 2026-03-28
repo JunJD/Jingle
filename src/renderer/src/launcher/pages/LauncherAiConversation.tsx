@@ -3,7 +3,7 @@ import { MessageBubble } from "@/components/chat/MessageBubble"
 import { ChatTodos } from "@/components/chat/ChatTodos"
 import type { HITLRequest, Message, Todo } from "@/types"
 import { useI18n } from "@/lib/i18n"
-import { StickToBottom } from "use-stick-to-bottom"
+import { useStickToBottom } from "use-stick-to-bottom"
 
 interface ToolResultInfo {
   content: string | unknown
@@ -74,6 +74,10 @@ export function LauncherAiConversation(props: {
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element {
   const { copy } = useI18n()
+  const { contentRef, isAtBottom, scrollRef, scrollToBottom } = useStickToBottom({
+    initial: "instant",
+    resize: "smooth"
+  })
   const {
     clearError,
     displayMessages,
@@ -90,69 +94,68 @@ export function LauncherAiConversation(props: {
   }
 
   return (
-    <StickToBottom className="relative min-h-0 flex-1" initial="instant" resize="smooth">
-      {({ isAtBottom, scrollToBottom }) => (
-        <>
-          <StickToBottom.Content className="px-6 py-6" scrollClassName="h-full">
-            <div className="mx-auto flex max-w-4xl flex-col gap-8">
-              {displayMessages.map((message, index) => (
-                <MessageBubble
-                  key={message.id}
-                  isStreaming={
-                    isLoading && index === displayMessages.length - 1 && message.role !== "user"
-                  }
-                  message={message}
-                  onApprovalDecision={onApprovalDecision}
-                  pendingApproval={pendingApproval}
-                  toolResults={toolResults}
-                />
-              ))}
+    <div className="relative min-h-0 flex-1">
+      <div
+        ref={scrollRef}
+        className="h-full overflow-x-hidden overflow-y-scroll overscroll-contain scrollbar-hide"
+      >
+        <div ref={contentRef} className="overflow-x-hidden px-6 py-6">
+          <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-8">
+            {displayMessages.map((message, index) => (
+              <MessageBubble
+                key={message.id}
+                isStreaming={
+                  isLoading && index === displayMessages.length - 1 && message.role !== "user"
+                }
+                message={message}
+                onApprovalDecision={onApprovalDecision}
+                pendingApproval={pendingApproval}
+                toolResults={toolResults}
+              />
+            ))}
 
-              {!isLoading &&
-                todos.length > 0 &&
-                (pendingApproval || displayMessages.length > 0) && <ChatTodos todos={todos} />}
+            {!isLoading && todos.length > 0 && (pendingApproval || displayMessages.length > 0) && (
+              <ChatTodos todos={todos} />
+            )}
 
-              {isLoading && (
-                <div className="space-y-4 border-t border-border pt-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" />
-                    {copy.chat.agentThinking}
-                  </div>
-                  {todos.length > 0 && <ChatTodos todos={todos} />}
+            {isLoading && (
+              <div className="space-y-4 border-t border-border pt-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                  {copy.chat.agentThinking}
                 </div>
-              )}
+                {todos.length > 0 && <ChatTodos todos={todos} />}
+              </div>
+            )}
 
-              {error && !isLoading && (
-                <div className="flex items-start gap-3 border-l-[3px] border-destructive bg-destructive/8 px-4 py-3">
-                  <AlertCircle className="mt-0.5 size-5 shrink-0 text-destructive" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-destructive">
-                      {copy.chat.agentError}
-                    </div>
-                    <div className="mt-1 break-words text-sm text-muted-foreground">{error}</div>
-                  </div>
-                  <button
-                    aria-label={copy.chat.dismissError}
-                    className="shrink-0 rounded p-1 transition-colors hover:bg-destructive/20"
-                    onClick={clearError}
-                    type="button"
-                  >
-                    <X className="size-4 text-muted-foreground" />
-                  </button>
+            {error && !isLoading && (
+              <div className="flex items-start gap-3 border-l-[3px] border-destructive bg-destructive/8 px-4 py-3">
+                <AlertCircle className="mt-0.5 size-5 shrink-0 text-destructive" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-destructive">{copy.chat.agentError}</div>
+                  <div className="mt-1 break-words text-sm text-muted-foreground">{error}</div>
                 </div>
-              )}
-            </div>
-          </StickToBottom.Content>
+                <button
+                  aria-label={copy.chat.dismissError}
+                  className="shrink-0 rounded p-1 transition-colors hover:bg-destructive/20"
+                  onClick={clearError}
+                  type="button"
+                >
+                  <X className="size-4 text-muted-foreground" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
-          {!isAtBottom && (
-            <LauncherJumpToLatestButton
-              isLoading={isLoading}
-              label={copy.launcher.jumpToLatest}
-              onClick={() => void scrollToBottom({ animation: "smooth" })}
-            />
-          )}
-        </>
+      {!isAtBottom && (
+        <LauncherJumpToLatestButton
+          isLoading={isLoading}
+          label={copy.launcher.jumpToLatest}
+          onClick={() => void scrollToBottom({ animation: "smooth" })}
+        />
       )}
-    </StickToBottom>
+    </div>
   )
 }

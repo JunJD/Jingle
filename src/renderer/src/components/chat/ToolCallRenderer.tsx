@@ -69,10 +69,12 @@ function TodosDisplay({ todos }: { todos: Todo[] }): React.JSX.Element {
         return (
           <div
             key={todo.id || i}
-            className={cn("flex items-start gap-2 text-xs", isDone && "opacity-50")}
+            className={cn("flex min-w-0 items-start gap-2 text-xs", isDone && "opacity-50")}
           >
             <Icon className={cn("size-3.5 mt-0.5 shrink-0", config.color)} />
-            <span className={cn(isDone && "line-through")}>{todo.content}</span>
+            <span className={cn("min-w-0 [overflow-wrap:anywhere]", isDone && "line-through")}>
+              {todo.content}
+            </span>
           </div>
         )
       })}
@@ -98,13 +100,13 @@ function FileListDisplay({
         const path = typeof file === "string" ? file : file.path
         const isDir = typeof file === "object" && file.is_dir
         return (
-          <div key={i} className="flex items-center gap-2 text-xs font-mono">
+          <div key={i} className="flex min-w-0 items-center gap-2 text-xs font-mono">
             {isDir ? (
               <Folder className="size-3 text-status-warning shrink-0" />
             ) : (
               <File className="size-3 text-muted-foreground shrink-0" />
             )}
-            <span className="truncate">{isGlob ? path : getFileName(path)}</span>
+            <span className="min-w-0 flex-1 truncate">{isGlob ? path : getFileName(path)}</span>
           </div>
         )
       })}
@@ -139,14 +141,14 @@ function GrepResultsDisplay({
   return (
     <div className="space-y-2">
       {files.map((path) => (
-        <div key={path} className="text-xs">
-          <div className="flex items-center gap-1.5 font-medium text-status-info mb-1">
-            <FileText className="size-3" />
-            {getFileName(path)}
+        <div key={path} className="min-w-0 text-xs">
+          <div className="mb-1 flex min-w-0 items-center gap-1.5 font-medium text-status-info">
+            <FileText className="size-3 shrink-0" />
+            <span className="min-w-0 truncate">{getFileName(path)}</span>
           </div>
-          <div className="space-y-0.5 pl-4 border-l border-border/50">
+          <div className="min-w-0 space-y-0.5 border-l border-border/50 pl-4">
             {grouped[path].slice(0, 3).map((match, i) => (
-              <div key={i} className="font-mono text-muted-foreground truncate">
+              <div key={i} className="min-w-0 font-mono text-muted-foreground truncate">
                 {match.line && <span className="text-status-warning mr-2">{match.line}:</span>}
                 {match.text?.trim()}
               </div>
@@ -176,8 +178,8 @@ function FileContentPreview({ content }: { content: string; path?: string }): Re
   const hasMore = lines.length > 10
 
   return (
-    <div className="text-xs font-mono bg-background rounded-sm overflow-hidden w-full">
-      <pre className="p-2 overflow-auto max-h-40 w-full">
+    <div className="w-full min-w-0 overflow-hidden rounded-sm bg-background text-xs font-mono">
+      <pre className="max-h-40 w-full overflow-auto p-2">
         {preview.map((line, i) => (
           <div key={i} className="flex min-w-0">
             <span className="w-8 shrink-0 text-muted-foreground select-none pr-2 text-right">
@@ -243,13 +245,15 @@ function CommandDisplay({
   output?: string
 }): React.JSX.Element {
   return (
-    <div className="text-xs space-y-2 w-full overflow-hidden">
-      <div className="font-mono bg-background rounded-sm p-2 flex items-center gap-2 min-w-0">
+    <div className="w-full min-w-0 space-y-2 overflow-hidden text-xs">
+      <div className="grid min-w-0 w-full grid-cols-[auto,minmax(0,1fr)] items-start gap-2 rounded-sm bg-background p-2 font-mono">
         <span className="text-status-info shrink-0">$</span>
-        <span className="truncate">{command}</span>
+        <span className="block min-w-0 whitespace-pre-wrap break-all [overflow-wrap:anywhere]">
+          {command}
+        </span>
       </div>
       {output && (
-        <pre className="font-mono bg-background rounded-sm p-2 overflow-auto max-h-32 text-muted-foreground w-full whitespace-pre-wrap break-all">
+        <pre className="max-h-32 w-full overflow-auto rounded-sm bg-background p-2 font-mono text-muted-foreground whitespace-pre-wrap break-all">
           {output.slice(0, 500)}
           {output.length > 500 && "..."}
         </pre>
@@ -270,15 +274,20 @@ function TaskDisplay({
   const description = args.description as string | undefined
 
   return (
-    <div className="text-xs space-y-1">
+    <div className="min-w-0 space-y-1 text-xs">
       {name && (
-        <div className="flex items-center gap-2">
-          <GitBranch className="size-3 text-status-info" />
-          <span className="font-medium truncate">{name}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <GitBranch className="size-3 shrink-0 text-status-info" />
+          <span className="min-w-0 truncate font-medium">{name}</span>
         </div>
       )}
       {description && (
-        <p className={cn("text-muted-foreground pl-5", !isExpanded && "line-clamp-2")}>
+        <p
+          className={cn(
+            "pl-5 text-muted-foreground [overflow-wrap:anywhere]",
+            !isExpanded && "line-clamp-2"
+          )}
+        >
           {description}
         </p>
       )}
@@ -372,9 +381,9 @@ export function ToolCallRenderer({
     // Handle errors
     if (isError) {
       return (
-        <div className="text-xs text-status-critical flex items-start gap-1.5">
+        <div className="flex min-w-0 items-start gap-1.5 text-xs text-status-critical">
           <XCircle className="size-3 mt-0.5 shrink-0" />
-          <span className="break-words">
+          <span className="min-w-0 [overflow-wrap:anywhere]">
             {typeof result === "string" ? result : JSON.stringify(result)}
           </span>
         </div>
@@ -490,9 +499,9 @@ export function ToolCallRenderer({
         // Show confirmation message for file operations
         if (typeof result === "string" && result.trim()) {
           return (
-            <div className="text-xs text-status-nominal flex items-center gap-1.5">
-              <CheckCircle2 className="size-3" />
-              <span>{result}</span>
+            <div className="flex min-w-0 items-center gap-1.5 text-xs text-status-nominal">
+              <CheckCircle2 className="size-3 shrink-0" />
+              <span className="min-w-0 [overflow-wrap:anywhere]">{result}</span>
             </div>
           )
         }
@@ -509,11 +518,11 @@ export function ToolCallRenderer({
         if (typeof result === "string" && result.trim()) {
           return (
             <div className="space-y-2">
-              <div className="text-xs text-status-nominal flex items-center gap-1.5">
-                <CheckCircle2 className="size-3" />
+              <div className="flex min-w-0 items-center gap-1.5 text-xs text-status-nominal">
+                <CheckCircle2 className="size-3 shrink-0" />
                 <span>{copy.toolCall.taskCompleted}</span>
               </div>
-              <div className="text-xs text-muted-foreground pl-5 line-clamp-3">
+              <div className="pl-5 text-xs text-muted-foreground line-clamp-3 [overflow-wrap:anywhere]">
                 {result.slice(0, 500)}
                 {result.length > 500 && "..."}
               </div>
@@ -532,9 +541,9 @@ export function ToolCallRenderer({
         // Generic success for unknown tools
         if (typeof result === "string" && result.trim()) {
           return (
-            <div className="text-xs text-status-nominal flex items-center gap-1.5">
-              <CheckCircle2 className="size-3" />
-              <span className="truncate">
+            <div className="flex min-w-0 items-center gap-1.5 text-xs text-status-nominal">
+              <CheckCircle2 className="size-3 shrink-0" />
+              <span className="min-w-0 truncate">
                 {result.slice(0, 100)}
                 {result.length > 100 ? "..." : ""}
               </span>
@@ -558,7 +567,7 @@ export function ToolCallRenderer({
   return (
     <div
       className={cn(
-        "rounded-sm border overflow-hidden",
+        "w-full min-w-0 max-w-full overflow-hidden rounded-sm border",
         needsApproval
           ? "border-amber-500/50 bg-amber-500/5"
           : "border-border bg-background-elevated"
@@ -567,7 +576,7 @@ export function ToolCallRenderer({
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full items-center gap-2 px-3 py-2 hover:bg-background-interactive transition-colors"
+        className="flex w-full min-w-0 items-center gap-2 overflow-hidden px-3 py-2 transition-colors hover:bg-background-interactive"
       >
         {isExpanded ? (
           <ChevronDown className="size-4 text-muted-foreground shrink-0" />
@@ -579,10 +588,10 @@ export function ToolCallRenderer({
           className={cn("size-4 shrink-0", needsApproval ? "text-amber-500" : "text-status-info")}
         />
 
-        <span className="text-xs font-medium shrink-0">{label}</span>
+        <span className="shrink-0 text-xs font-medium">{label}</span>
 
         {displayArg && (
-          <span className="flex-1 truncate text-left text-xs text-muted-foreground font-mono">
+          <span className="block min-w-0 flex-1 truncate text-left text-xs font-mono text-muted-foreground">
             {displayArg}
           </span>
         )}
@@ -614,14 +623,14 @@ export function ToolCallRenderer({
 
       {/* Approval UI */}
       {needsApproval ? (
-        <div className="border-t border-amber-500/20 px-3 py-3 space-y-3">
+        <div className="min-w-0 space-y-3 border-t border-amber-500/20 px-3 py-3">
           {/* Show formatted content (e.g., command preview) */}
           {formattedContent}
 
           {/* Arguments */}
           <div>
             <div className="text-section-header text-[10px] mb-1">{copy.common.arguments}</div>
-            <pre className="text-xs font-mono bg-background p-2 rounded-sm overflow-auto max-h-24">
+            <pre className="max-h-24 w-full max-w-full overflow-auto rounded-sm bg-background p-2 text-xs font-mono whitespace-pre-wrap break-all">
               {JSON.stringify(args, null, 2)}
             </pre>
           </div>
@@ -646,7 +655,7 @@ export function ToolCallRenderer({
 
       {/* Formatted content (only visible when collapsed AND has result) */}
       {hasFormattedDisplay && !isExpanded && !needsApproval && result !== undefined && (
-        <div className="border-t border-border px-3 py-2 space-y-2 overflow-hidden">
+        <div className="min-w-0 space-y-2 overflow-hidden border-t border-border px-3 py-2">
           {formattedContent}
           {formattedResult}
         </div>
@@ -654,7 +663,7 @@ export function ToolCallRenderer({
 
       {/* Expanded content - raw details */}
       {isExpanded && !needsApproval && (
-        <div className="border-t border-border px-3 py-2 space-y-2 overflow-hidden">
+        <div className="min-w-0 space-y-2 overflow-hidden border-t border-border px-3 py-2">
           {/* Formatted display first */}
           {formattedContent}
           {formattedResult}
@@ -662,7 +671,7 @@ export function ToolCallRenderer({
           {/* Raw Arguments */}
           <div className="overflow-hidden w-full">
             <div className="text-section-header mb-1">{copy.common.rawArguments}</div>
-            <pre className="text-xs font-mono bg-background p-2 rounded-sm overflow-auto max-h-48 w-full whitespace-pre-wrap break-all">
+            <pre className="max-h-48 w-full max-w-full overflow-auto rounded-sm bg-background p-2 text-xs font-mono whitespace-pre-wrap break-all">
               {JSON.stringify(args, null, 2)}
             </pre>
           </div>
@@ -673,7 +682,7 @@ export function ToolCallRenderer({
               <div className="text-section-header mb-1">{copy.common.rawResult}</div>
               <pre
                 className={cn(
-                  "text-xs font-mono p-2 rounded-sm overflow-auto max-h-48 w-full whitespace-pre-wrap break-all",
+                  "max-h-48 w-full max-w-full overflow-auto rounded-sm p-2 text-xs font-mono whitespace-pre-wrap break-all",
                   isError ? "bg-status-critical/10 text-status-critical" : "bg-background"
                 )}
               >

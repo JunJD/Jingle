@@ -1201,6 +1201,8 @@ body[data-platform="darwin"] .launcher-window-shell {
   font-size: 0.9375rem;
   line-height: 1.9;
   color: var(--foreground);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .streaming-markdown p {
@@ -1256,6 +1258,7 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 .streaming-markdown li {
   margin-bottom: 0.25em;
+  overflow-wrap: anywhere;
 }
 
 .streaming-markdown code {
@@ -1263,6 +1266,7 @@ body[data-platform="darwin"] .launcher-window-shell {
   padding: 0.125em 0.35em;
   border-radius: 6px;
   font-size: 0.875em;
+  overflow-wrap: anywhere;
 }
 
 .streaming-markdown pre {
@@ -1270,12 +1274,14 @@ body[data-platform="darwin"] .launcher-window-shell {
   padding: 0.75em 1em;
   border-radius: 12px;
   overflow-x: auto;
+  max-width: 100%;
   margin-bottom: 0.75em;
 }
 
 .streaming-markdown pre code {
   background-color: transparent;
   padding: 0;
+  overflow-wrap: normal;
 }
 
 .streaming-markdown blockquote {
@@ -1296,9 +1302,12 @@ body[data-platform="darwin"] .launcher-window-shell {
 }
 
 .streaming-markdown table {
+  display: block;
   width: 100%;
+  max-width: 100%;
   border-collapse: collapse;
   margin-bottom: 0.75em;
+  overflow-x: auto;
 }
 
 .streaming-markdown th,
@@ -1322,6 +1331,7 @@ body[data-platform="darwin"] .launcher-window-shell {
 .streaming-markdown img {
   max-width: 100%;
   height: auto;
+  border-radius: 16px;
 }
 
 /* Window drag region for frameless window */

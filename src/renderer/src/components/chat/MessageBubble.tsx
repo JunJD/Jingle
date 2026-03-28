@@ -1,6 +1,6 @@
-import { User, Bot } from "lucide-react"
+import { Bot, FileImage, User } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { Message, HITLRequest } from "@/types"
+import type { ContentBlock, HITLRequest, Message } from "@/types"
 import { ToolCallRenderer } from "./ToolCallRenderer"
 import { StreamingMarkdown } from "./StreamingMarkdown"
 import { useI18n } from "@/lib/i18n"
@@ -16,6 +16,125 @@ interface MessageBubbleProps {
   toolResults?: Map<string, ToolResultInfo>
   pendingApproval?: HITLRequest | null
   onApprovalDecision?: (decision: "approve" | "reject" | "edit") => void
+}
+
+function resolveImageSource(content?: string): string | null {
+  if (!content) {
+    return null
+  }
+
+  if (
+    content.startsWith("data:") ||
+    content.startsWith("blob:") ||
+    content.startsWith("http://") ||
+    content.startsWith("https://") ||
+    content.startsWith("file://")
+  ) {
+    return content
+  }
+
+  return null
+}
+
+function MessageImageBlock(props: { block: ContentBlock; index: number }): React.JSX.Element {
+  const { copy } = useI18n()
+  const { block, index } = props
+  const label = block.name || `${copy.launcher.clipboardImage} ${index + 1}`
+  const src = resolveImageSource(block.content)
+
+  return (
+    <div className="overflow-hidden rounded-[20px] border border-border/70 bg-background-secondary/70">
+      {src ? (
+        <img
+          alt={label}
+          className="max-h-[320px] w-full object-cover object-center"
+          loading="lazy"
+          src={src}
+        />
+      ) : (
+        <div className="flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-2xl bg-background">
+            <FileImage className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate font-medium text-foreground">{label}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function renderTextBlock(
+  text: string,
+  options: {
+    isStreaming?: boolean
+    isUser: boolean
+    key: string
+  }
+): React.JSX.Element | null {
+  const { isStreaming, isUser, key } = options
+
+  if (!text.trim()) {
+    return null
+  }
+
+  if (isUser) {
+    return (
+      <div key={key} className="whitespace-pre-wrap text-[15px] leading-7 [overflow-wrap:anywhere]">
+        {text}
+      </div>
+    )
+  }
+
+  return (
+    <StreamingMarkdown key={key} isStreaming={isStreaming}>
+      {text}
+    </StreamingMarkdown>
+  )
+}
+
+function renderStructuredContent(
+  content: Message["content"],
+  options: {
+    isStreaming?: boolean
+    isUser: boolean
+  }
+): React.ReactNode {
+  const { isStreaming, isUser } = options
+
+  if (typeof content === "string") {
+    return renderTextBlock(content, {
+      isStreaming,
+      isUser,
+      key: "message-content"
+    })
+  }
+
+  const lastTextBlockIndex = [...content]
+    .reverse()
+    .findIndex(
+      (block) => block.type !== "image" && Boolean(block.text?.trim() || block.content?.trim())
+    )
+  const resolvedLastTextBlockIndex =
+    lastTextBlockIndex === -1 ? -1 : content.length - lastTextBlockIndex - 1
+
+  const renderedBlocks = content
+    .map((block, index) => {
+      if (block.type === "image") {
+        return <MessageImageBlock key={`image-${index}`} block={block} index={index} />
+      }
+
+      const text = block.text ?? block.content ?? ""
+      return renderTextBlock(text, {
+        isStreaming: isStreaming && index === resolvedLastTextBlockIndex,
+        isUser,
+        key: `${block.type}-${index}`
+      })
+    })
+    .filter(Boolean)
+
+  return renderedBlocks.length > 0 ? renderedBlocks : null
 }
 
 export function MessageBubble({
@@ -43,47 +162,7 @@ export function MessageBubble({
     if (isUser) return copy.chat.userLabel
     return copy.chat.agentLabel
   }
-
-  const renderContent = (): React.ReactNode => {
-    if (typeof message.content === "string") {
-      // Empty content
-      if (!message.content.trim()) {
-        return null
-      }
-
-      // Use streaming markdown for assistant messages, plain text for user messages
-      if (isUser) {
-        return <div className="whitespace-pre-wrap text-sm">{message.content}</div>
-      }
-      return <StreamingMarkdown isStreaming={isStreaming}>{message.content}</StreamingMarkdown>
-    }
-
-    // Handle content blocks
-    const renderedBlocks = message.content
-      .map((block, index) => {
-        if (block.type === "text" && block.text) {
-          // Use streaming markdown for assistant text blocks
-          if (isUser) {
-            return (
-              <div key={index} className="whitespace-pre-wrap text-sm">
-                {block.text}
-              </div>
-            )
-          }
-          return (
-            <StreamingMarkdown key={index} isStreaming={isStreaming}>
-              {block.text}
-            </StreamingMarkdown>
-          )
-        }
-        return null
-      })
-      .filter(Boolean)
-
-    return renderedBlocks.length > 0 ? renderedBlocks : null
-  }
-
-  const content = renderContent()
+  const content = renderStructuredContent(message.content, { isStreaming, isUser })
   const hasToolCalls = message.tool_calls && message.tool_calls.length > 0
 
   const getPendingMatchIndex = (): number => {
@@ -100,6 +179,8 @@ export function MessageBubble({
   }
 
   const pendingMatchIndex = getPendingMatchIndex()
+  const contentWidthClass = isUser ? "w-full max-w-[72%] self-end" : "w-full max-w-[78%]"
+  const toolWidthClass = isUser ? "w-full max-w-[72%] self-end" : "w-full"
 
   // Don't render if there's no content and no tool calls
   if (!content && !hasToolCalls) {
@@ -107,46 +188,56 @@ export function MessageBubble({
   }
 
   return (
-    <div className={cn("flex overflow-hidden", isUser ? "justify-end" : "justify-start")}>
-      <div className={cn("min-w-0 space-y-3", isUser ? "max-w-[72%]" : "max-w-[78%]")}>
+    <div
+      className={cn("flex w-full min-w-0 flex-col space-y-3", isUser ? "items-end" : "items-start")}
+    >
+      <div className={cn("min-w-0", contentWidthClass)}>
         <div className={cn("flex items-center gap-2 text-section-header", isUser && "justify-end")}>
-          {!isUser && <span className="text-accent">{getIcon()}</span>}
+          {!isUser && (
+            <span className="flex size-6 items-center justify-center rounded-full bg-background-secondary text-accent">
+              {getIcon()}
+            </span>
+          )}
           <span>{getLabel()}</span>
-          {isUser && <span className="text-primary">{getIcon()}</span>}
+          {isUser && (
+            <span className="flex size-6 items-center justify-center rounded-full bg-[var(--chat-user-surface)] text-primary">
+              {getIcon()}
+            </span>
+          )}
         </div>
 
         {content && (
           <div
             className={cn(
-              "overflow-hidden text-[15px] leading-8",
+              "mt-3 min-w-0 overflow-hidden rounded-[24px] px-5 py-4 text-[15px] leading-8 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.35)]",
               isUser
-                ? "rounded-[20px] bg-[var(--chat-user-surface)] px-5 py-4 shadow-[inset_0_0_0_1px_var(--chat-user-line)]"
-                : "text-foreground"
+                ? "bg-[var(--chat-user-surface)] text-foreground shadow-[inset_0_0_0_1px_var(--chat-user-line),0_18px_40px_-30px_rgba(37,99,235,0.25)]"
+                : "border border-border/70 bg-background/70 text-foreground backdrop-blur-[18px]"
             )}
           >
-            {content}
-          </div>
-        )}
-
-        {hasToolCalls && (
-          <div className="space-y-3 overflow-hidden">
-            {message.tool_calls!.map((toolCall, index) => {
-              const result = toolResults?.get(toolCall.id)
-              const needsApproval = pendingMatchIndex === index
-              return (
-                <ToolCallRenderer
-                  key={`${toolCall.id || `tc-${index}`}-${needsApproval ? "pending" : "done"}`}
-                  toolCall={toolCall}
-                  result={result?.content}
-                  isError={result?.is_error}
-                  needsApproval={needsApproval}
-                  onApprovalDecision={needsApproval ? onApprovalDecision : undefined}
-                />
-              )
-            })}
+            <div className="space-y-4">{content}</div>
           </div>
         )}
       </div>
+
+      {hasToolCalls && (
+        <div className={cn("min-w-0 space-y-3 overflow-hidden", toolWidthClass)}>
+          {message.tool_calls!.map((toolCall, index) => {
+            const result = toolResults?.get(toolCall.id)
+            const needsApproval = pendingMatchIndex === index
+            return (
+              <ToolCallRenderer
+                key={`${toolCall.id || `tc-${index}`}-${needsApproval ? "pending" : "done"}`}
+                toolCall={toolCall}
+                result={result?.content}
+                isError={result?.is_error}
+                needsApproval={needsApproval}
+                onApprovalDecision={needsApproval ? onApprovalDecision : undefined}
+              />
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
