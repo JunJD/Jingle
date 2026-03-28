@@ -1,7 +1,11 @@
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { AppLocale } from "../../../shared/i18n"
 import { getLauncherResultsHeight, type LauncherShellConfig } from "../../../shared/launcher"
-import type { LauncherHistoryItem } from "../../../shared/launcher-history"
+import {
+  getLauncherHistoryDedupeKeyForAction,
+  sortLauncherHistoryItems,
+  type LauncherHistoryItem
+} from "../../../shared/launcher-history"
 import type { LauncherSearchResult } from "../../../shared/launcher-search"
 import type { LocalStartItem } from "../../../shared/local-start"
 import { shouldShowLauncherIdleItems } from "../../../shared/launcher-settings"
@@ -52,6 +56,50 @@ function createHomeSurfaceModel(
   }
 }
 
+function rankHistorySectionItems(historyItems: LauncherHistoryItem[]): LauncherHistoryItem[] {
+  return sortLauncherHistoryItems(historyItems)
+}
+
+function rankSearchResultSectionItems(
+  searchResults: LauncherSearchResult[],
+  historyItems: LauncherHistoryItem[]
+): LauncherSearchResult[] {
+  const historyByDedupeKey = new Map(historyItems.map((item) => [item.dedupeKey, item]))
+
+  return searchResults
+    .map((result, index) => ({
+      history: historyByDedupeKey.get(getLauncherHistoryDedupeKeyForAction(result.action) ?? ""),
+      index,
+      result
+    }))
+    .sort((left, right) => {
+      if (right.result.score !== left.result.score) {
+        return right.result.score - left.result.score
+      }
+
+      if (Boolean(right.history) !== Boolean(left.history)) {
+        return right.history ? 1 : -1
+      }
+
+      if (left.history && right.history) {
+        if (left.history.pin !== right.history.pin) {
+          return left.history.pin ? -1 : 1
+        }
+
+        if (left.history.lastUsedAt !== right.history.lastUsedAt) {
+          return right.history.lastUsedAt.localeCompare(left.history.lastUsedAt)
+        }
+
+        if (left.history.useCount !== right.history.useCount) {
+          return right.history.useCount - left.history.useCount
+        }
+      }
+
+      return left.index - right.index
+    })
+    .map((entry) => entry.result)
+}
+
 export function buildLauncherHomeSurfaceModel(params: {
   copy: AppCopy
   historyItems: LauncherHistoryItem[]
@@ -70,9 +118,10 @@ export function buildLauncherHomeSurfaceModel(params: {
     }
 
     if (historyItems.length > 0) {
+      const rankedHistoryItems = rankHistorySectionItems(historyItems)
       return createHomeSurfaceModel("history", [
         {
-          items: buildLauncherHistoryShellItems(copy, historyItems),
+          items: buildLauncherHistoryShellItems(copy, rankedHistoryItems),
           kind: "history-grid"
         }
       ])
@@ -94,7 +143,8 @@ export function buildLauncherHomeSurfaceModel(params: {
       query
     })
   )
-  const searchResultItems = buildLauncherSearchShellItems(copy, searchResults)
+  const rankedSearchResults = rankSearchResultSectionItems(searchResults, historyItems)
+  const searchResultItems = buildLauncherSearchShellItems(copy, rankedSearchResults)
 
   if (pluginIntentItems.length > 0) {
     sections.push({

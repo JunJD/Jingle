@@ -25,6 +25,23 @@ export interface RecordLauncherHistoryItemInput {
   action: LauncherSearchAction
 }
 
+export function getLauncherHistoryDedupeKeyForAction(action: LauncherSearchAction): string | null {
+  switch (action.type) {
+    case "launch-application":
+      return `application:${action.applicationPath}`
+    case "open-local-start-item":
+      return `local-start:${action.itemId}`
+    case "none":
+      return null
+    default: {
+      const exhaustiveAction: never = action
+      throw new Error(
+        `Unsupported launcher history dedupe action: ${JSON.stringify(exhaustiveAction)}`
+      )
+    }
+  }
+}
+
 export function sortLauncherHistoryItems(items: LauncherHistoryItem[]): LauncherHistoryItem[] {
   return [...items].sort((left, right) => {
     if (left.pin !== right.pin) {

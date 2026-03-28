@@ -15,7 +15,10 @@ import {
   getLauncherMaxViewportHeight
 } from "../../shared/launcher"
 import type { ClipboardContext } from "../../shared/clipboard"
-import type { RecordLauncherHistoryItemInput } from "../../shared/launcher-history"
+import {
+  getLauncherHistoryDedupeKeyForAction,
+  type RecordLauncherHistoryItemInput
+} from "../../shared/launcher-history"
 import type { LauncherSearchAction, LauncherSearchRequest } from "../../shared/launcher-search"
 import { readClipboardContext } from "../services/clipboard"
 import { recordLauncherHistoryItem } from "../services/launcher-history"
@@ -232,7 +235,7 @@ async function buildLauncherHistoryRecord(
     case "launch-application":
       return {
         action,
-        dedupeKey: `application:${action.applicationPath}`,
+        dedupeKey: getLauncherHistoryDedupeKeyForAction(action)!,
         iconDataUrl: await getApplicationIconDataUrl(action.applicationPath),
         kind: "application",
         subtitle: action.applicationPath,
@@ -244,7 +247,7 @@ async function buildLauncherHistoryRecord(
       const itemPath = item?.path ?? action.path
       return {
         action,
-        dedupeKey: `local-start:${action.itemId}`,
+        dedupeKey: getLauncherHistoryDedupeKeyForAction(action)!,
         iconDataUrl:
           itemKind === "application" ? await getApplicationIconDataUrl(itemPath) : undefined,
         kind: itemKind,
