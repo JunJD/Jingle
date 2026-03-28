@@ -9,6 +9,22 @@ export interface LauncherInputProps extends InputProps {
   readonly status?: LauncherInputStatus
 }
 
+function shouldPreserveNativeInputNavigation(
+  event: React.KeyboardEvent<HTMLInputElement>
+): boolean {
+  const isArrowKey =
+    event.key === "ArrowLeft" ||
+    event.key === "ArrowRight" ||
+    event.key === "ArrowUp" ||
+    event.key === "ArrowDown"
+
+  if (!isArrowKey) {
+    return false
+  }
+
+  return event.metaKey || event.ctrlKey || event.altKey
+}
+
 export const LauncherInput = forwardRef<LauncherPluginInputElement, LauncherInputProps>(
   function LauncherInput(
     { className, onCompositionEnd, onCompositionStart, onKeyDown, status = "idle", ...props },
@@ -46,6 +62,10 @@ export const LauncherInput = forwardRef<LauncherPluginInputElement, LauncherInpu
               nativeEvent.isComposing === true ||
               nativeEvent.keyCode === 229
             ) {
+              return
+            }
+
+            if (shouldPreserveNativeInputNavigation(event)) {
               return
             }
 

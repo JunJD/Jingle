@@ -35,6 +35,7 @@ export function useLauncherSearchPage(props: {
   entries: LauncherHomeEntry[]
   executeItem: (index: number) => void
   handleInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
+  homeInputSelectionRequestVersion: number
   openEntry: (entry: LauncherHomeEntry, options?: LauncherPluginOpenOptions) => void
   removeHistoryItem: (itemId: string) => void
   setHistoryItemPinned: (itemId: string, pin: boolean) => void
@@ -57,6 +58,7 @@ export function useLauncherSearchPage(props: {
   const [idleItems, setIdleItems] = useState<LocalStartItem[]>([])
   const [windowMode, setWindowMode] = useState<"default" | "compact">("default")
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [homeInputSelectionRequestVersion, setHomeInputSelectionRequestVersion] = useState(0)
   const shellConfig: LauncherShellConfig = FALLBACK_SHELL_CONFIG
   const trimmedQuery = query.trim()
 
@@ -136,6 +138,7 @@ export function useLauncherSearchPage(props: {
     const text = context.text
     const frameId = window.requestAnimationFrame(() => {
       setQuery(text)
+      setHomeInputSelectionRequestVersion((version) => version + 1)
       markTextAutofillConsumed()
     })
 
@@ -329,6 +332,7 @@ export function useLauncherSearchPage(props: {
     entries,
     executeItem,
     handleInputKeyDown,
+    homeInputSelectionRequestVersion,
     openEntry,
     removeHistoryItem,
     setHistoryItemPinned,

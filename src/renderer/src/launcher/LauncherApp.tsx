@@ -24,6 +24,9 @@ function waitForAnimationFrame(): Promise<void> {
   })
 }
 
+type HomeInputFocusBehavior = "preserve" | "select-all"
+type PluginInputFocusBehavior = "preserve" | "move-to-end"
+
 export default function LauncherApp(): React.JSX.Element {
   const { copy } = useI18n()
   const inputNeedsWorkspaceMessage = copy.chat.inputNeedsWorkspace
@@ -44,6 +47,10 @@ export default function LauncherApp(): React.JSX.Element {
     status: "idle"
   })
   const searchPage = useLauncherSearchPage({ openEntry })
+  const previousRouteRef = useRef(route)
+  const previousRouteKeyRef = useRef<string | null>(null)
+  const lastHandledShownSequenceRef = useRef(shownSequence)
+  const lastHandledHomeSelectionRequestRef = useRef(searchPage.homeInputSelectionRequestVersion)
   const activePluginId = isLauncherPluginRoute(route) ? route.pluginId : null
   const activePluginDefinition = activePluginId ? getLauncherPluginDefinition(activePluginId) : null
   const selectedItem =
@@ -62,6 +69,42 @@ export default function LauncherApp(): React.JSX.Element {
       })
     },
     [routeKey]
+  )
+  const focusHomeInput = useCallback((behavior: HomeInputFocusBehavior): void => {
+    const input = searchInputRef.current
+    if (!input) {
+      return
+    }
+
+    input.focus()
+
+    if (behavior === "select-all") {
+      input.select()
+    }
+  }, [])
+  const focusPluginInput = useCallback((behavior: PluginInputFocusBehavior): void => {
+    const input = pluginInputRef.current
+    if (!input) {
+      return
+    }
+
+    input.focus()
+
+    if (behavior === "move-to-end") {
+      const caretPosition = input.value.length
+      input.setSelectionRange(caretPosition, caretPosition)
+    }
+  }, [])
+  const focusActiveInput = useCallback(
+    (options?: { home?: HomeInputFocusBehavior; plugin?: PluginInputFocusBehavior }): void => {
+      if (isLauncherPluginRoute(route)) {
+        focusPluginInput(options?.plugin ?? "move-to-end")
+        return
+      }
+
+      focusHomeInput(options?.home ?? "preserve")
+    },
+    [focusHomeInput, focusPluginInput, route]
   )
 
   const waitForThreadStream = useCallback(
@@ -231,32 +274,73 @@ export default function LauncherApp(): React.JSX.Element {
   }, [setViewportHeight, viewportHeight])
 
   useEffect(() => {
-    const focusInput = (): void => {
-      const input = isLauncherPluginRoute(route) ? pluginInputRef.current : searchInputRef.current
-      if (!input) {
-        return
-      }
-
-      input.focus()
-      const caretPosition = input.value.length
-      input.setSelectionRange(caretPosition, caretPosition)
-    }
-
-    focusInput()
     const cleanupShown = window.api.launcher.onShown(() => {
       setShownSequence((value) => value + 1)
-      focusInput()
       if (viewportHeightRef.current > 0) {
         setViewportHeight(viewportHeightRef.current)
       }
     })
-    window.addEventListener("focus", focusInput)
+    const handleWindowFocus = (): void => {
+      focusActiveInput({
+        home: "preserve",
+        plugin: "preserve"
+      })
+    }
+    window.addEventListener("focus", handleWindowFocus)
 
     return () => {
       cleanupShown()
-      window.removeEventListener("focus", focusInput)
+      window.removeEventListener("focus", handleWindowFocus)
     }
-  }, [route, setViewportHeight])
+  }, [focusActiveInput, setViewportHeight])
+
+  useEffect(() => {
+    const routeChanged = previousRouteKeyRef.current !== routeKey
+    const returnedHome =
+      routeChanged &&
+      isLauncherPluginRoute(previousRouteRef.current) &&
+      !isLauncherPluginRoute(route)
+    const shownChanged = shownSequence !== lastHandledShownSequenceRef.current
+    const homeSelectionRequested =
+      searchPage.homeInputSelectionRequestVersion !== lastHandledHomeSelectionRequestRef.current
+
+    if (shownChanged) {
+      focusActiveInput({
+        home: "select-all",
+        plugin: "move-to-end"
+      })
+      lastHandledShownSequenceRef.current = shownSequence
+    } else if (!isLauncherPluginRoute(route) && homeSelectionRequested) {
+      focusActiveInput({
+        home: "select-all",
+        plugin: "preserve"
+      })
+      lastHandledHomeSelectionRequestRef.current = searchPage.homeInputSelectionRequestVersion
+    } else if (returnedHome) {
+      focusActiveInput({
+        home: "select-all",
+        plugin: "preserve"
+      })
+    } else if (routeChanged) {
+      focusActiveInput({
+        home: "preserve",
+        plugin: "move-to-end"
+      })
+    }
+
+    previousRouteRef.current = route
+    previousRouteKeyRef.current = routeKey
+
+    if (!homeSelectionRequested) {
+      lastHandledHomeSelectionRequestRef.current = searchPage.homeInputSelectionRequestVersion
+    }
+  }, [
+    focusActiveInput,
+    route,
+    routeKey,
+    searchPage.homeInputSelectionRequestVersion,
+    shownSequence
+  ])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
