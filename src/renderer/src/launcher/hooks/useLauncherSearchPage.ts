@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   FALLBACK_SHELL_CONFIG,
   MAX_LAUNCHER_SEARCH_RESULTS,
-  getLauncherResultsHeight,
   getLauncherViewportHeightForBody,
   getLauncherViewportHeight,
   type LauncherShellConfig
@@ -15,26 +14,18 @@ import type {
 import type { LauncherHistoryItem } from "../../../../shared/launcher-history"
 import { sortLauncherHistoryItems } from "../../../../shared/launcher-history"
 import type { LocalStartItem } from "../../../../shared/local-start"
-import { shouldShowLauncherIdleItems } from "../../../../shared/launcher-settings"
 import { useLauncherClipboard } from "../LauncherClipboardContext"
+import { DEFAULT_HOME_ENTRY, getLauncherHomeEntries, resolveLauncherPluginCommand } from "../pages"
 import {
-  DEFAULT_HOME_ENTRY,
-  getLauncherHomeEntries,
-  getLauncherPluginIntents,
-  resolveLauncherPluginCommand
-} from "../pages"
-import {
-  buildLauncherHistoryShellItems,
-  buildLauncherLocalStartShellItems,
-  buildLauncherPluginIntentShellItems,
-  buildLauncherSearchShellItems
-} from "../search-items"
+  buildLauncherHomeSurfaceModel,
+  getLauncherHomeSurfaceResultsHeight,
+  type LauncherHomeSurfaceModel
+} from "../home-surface"
 import type {
   LauncherHomeEntry,
   LauncherPluginEntryAddress,
   LauncherPluginOpenOptions
 } from "../pages/types"
-import type { LauncherShellItem } from "../types"
 
 const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
 
@@ -44,18 +35,16 @@ export function useLauncherSearchPage(props: {
   entries: LauncherHomeEntry[]
   executeItem: (index: number) => void
   handleInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
-  homeSurfaceMode: "history" | "idle" | "results"
-  items: LauncherShellItem[]
   openEntry: (entry: LauncherHomeEntry, options?: LauncherPluginOpenOptions) => void
   removeHistoryItem: (itemId: string) => void
   setHistoryItemPinned: (itemId: string, pin: boolean) => void
   placeholder: string
   query: string
   resultsViewportHeight: number
-  resultsVisible: boolean
   selectedIndex: number
   setQuery: (value: string) => void
   shellConfig: LauncherShellConfig
+  surface: LauncherHomeSurfaceModel
   viewportHeight: number
 } {
   const { openEntry: navigateToEntry } = props
@@ -75,62 +64,34 @@ export function useLauncherSearchPage(props: {
     trimmedQuery && searchResponse?.query === trimmedQuery
       ? searchResponse.results
       : EMPTY_SEARCH_RESULTS
-  const homeSurfaceMode = useMemo<"history" | "idle" | "results">(() => {
-    if (trimmedQuery) {
-      return "results"
-    }
-
-    if (!shouldShowLauncherIdleItems(windowMode)) {
-      return "idle"
-    }
-
-    return historyItems.length > 0 ? "history" : "idle"
-  }, [historyItems.length, trimmedQuery, windowMode])
-  const items = useMemo(() => {
-    if (!query.trim()) {
-      if (!shouldShowLauncherIdleItems(windowMode)) {
-        return []
-      }
-
-      if (historyItems.length > 0) {
-        return buildLauncherHistoryShellItems(copy, historyItems)
-      }
-
-      return buildLauncherLocalStartShellItems(copy, idleItems)
-    }
-
-    return [
-      ...buildLauncherPluginIntentShellItems(
-        getLauncherPluginIntents({
-          copy,
-          locale,
-          query
-        })
-      ),
-      ...buildLauncherSearchShellItems(copy, searchResults)
-    ]
-  }, [copy, historyItems, idleItems, locale, query, searchResults, windowMode])
+  const surface = useMemo(
+    () =>
+      buildLauncherHomeSurfaceModel({
+        copy,
+        historyItems,
+        idleItems,
+        locale,
+        query,
+        searchResults,
+        windowMode
+      }),
+    [copy, historyItems, idleItems, locale, query, searchResults, windowMode]
+  )
   const selectedIndex = useMemo(() => {
-    if (items.length === 0) {
+    if (surface.items.length === 0 || surface.selection.defaultStrategy === "none") {
       return -1
     }
 
     if (!selectedItemId) {
-      return 0
+      return surface.selection.defaultStrategy === "first-item" ? 0 : -1
     }
 
-    const matchingIndex = items.findIndex((item) => item.id === selectedItemId)
+    const matchingIndex = surface.items.findIndex((item) => item.id === selectedItemId)
     return matchingIndex >= 0 ? matchingIndex : 0
-  }, [items, selectedItemId])
+  }, [selectedItemId, surface])
   const resultsViewportHeight = useMemo(() => {
-    if (homeSurfaceMode === "history") {
-      const columns = 8
-      const rows = Math.ceil(items.length / columns)
-      return rows * 70
-    }
-
-    return getLauncherResultsHeight(items.length, shellConfig)
-  }, [homeSurfaceMode, items.length, shellConfig])
+    return getLauncherHomeSurfaceResultsHeight(surface, shellConfig)
+  }, [shellConfig, surface])
   const viewportHeight = useMemo(() => {
     if (resultsViewportHeight === 0) {
       return getLauncherViewportHeight(0, shellConfig)
@@ -138,7 +99,6 @@ export function useLauncherSearchPage(props: {
 
     return getLauncherViewportHeightForBody(resultsViewportHeight, shellConfig)
   }, [resultsViewportHeight, shellConfig])
-  const resultsVisible = items.length > 0
   const entries = useMemo(() => getLauncherHomeEntries({ copy, locale }), [copy, locale])
   const refreshIdleState = useCallback((): void => {
     void Promise.all([
@@ -238,19 +198,19 @@ export function useLauncherSearchPage(props: {
 
   const moveSelection = useCallback(
     (delta: number): void => {
-      if (items.length === 0) {
+      if (surface.items.length === 0) {
         return
       }
 
-      const nextIndex = (selectedIndex + delta + items.length) % items.length
-      setSelectedItemId(items[nextIndex]?.id ?? null)
+      const nextIndex = (selectedIndex + delta + surface.items.length) % surface.items.length
+      setSelectedItemId(surface.items[nextIndex]?.id ?? null)
     },
-    [items, selectedIndex]
+    [selectedIndex, surface.items]
   )
 
   const executeItem = useCallback(
     (index: number): void => {
-      const item = items[index]
+      const item = surface.items[index]
       if (!item || item.availability === "planned") {
         return
       }
@@ -276,7 +236,7 @@ export function useLauncherSearchPage(props: {
         }
       })
     },
-    [items, navigateToEntry, query]
+    [navigateToEntry, query, surface.items]
   )
 
   const handleInputKeyDown = useCallback(
@@ -369,18 +329,16 @@ export function useLauncherSearchPage(props: {
     entries,
     executeItem,
     handleInputKeyDown,
-    homeSurfaceMode,
-    items,
     openEntry,
     removeHistoryItem,
     setHistoryItemPinned,
     placeholder: copy.launcher.searchPlaceholder,
     query,
     resultsViewportHeight,
-    resultsVisible,
     selectedIndex,
     setQuery,
     shellConfig,
+    surface,
     viewportHeight
   }
 }

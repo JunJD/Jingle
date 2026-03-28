@@ -3,6 +3,7 @@ import { AI_LAUNCHER_PLUGIN_ID } from "../../../../plugins/ai/manifest"
 import { useI18n } from "@/lib/i18n"
 import type { LauncherShellConfig } from "../../../../shared/launcher"
 import { useLauncherClipboard } from "../LauncherClipboardContext"
+import type { LauncherHomeSurfaceModel } from "../home-surface"
 import type { LauncherHomeEntry, LauncherPluginOpenOptions } from "../pages/types"
 import type { LauncherShellItem } from "../types"
 import { ClipboardChip } from "./ClipboardChip"
@@ -13,10 +14,8 @@ import { LauncherResultList } from "./LauncherResultList"
 export function LauncherSearchPage(props: {
   entries: LauncherHomeEntry[]
   executeItem: (index: number) => void
-  homeSurfaceMode: "history" | "idle" | "results"
   inputRef: RefObject<HTMLInputElement | null>
   inputValue: string
-  items: LauncherShellItem[]
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   onInputValueChange: (value: string) => void
   onOpenEntry: (entry: LauncherHomeEntry, options?: LauncherPluginOpenOptions) => void
@@ -24,20 +23,18 @@ export function LauncherSearchPage(props: {
   onSetHistoryItemPinned: (itemId: string, pin: boolean) => void
   placeholder: string
   resultsViewportHeight: number
-  resultsVisible: boolean
   selectedIndex: number
   selectedItem: LauncherShellItem | null
   shellConfig: LauncherShellConfig
+  surface: LauncherHomeSurfaceModel
 }): React.JSX.Element {
   const { copy } = useI18n()
   const clipboard = useLauncherClipboard()
   const {
     entries,
     executeItem,
-    homeSurfaceMode,
     inputRef,
     inputValue,
-    items,
     onInputKeyDown,
     onInputValueChange,
     onOpenEntry,
@@ -45,17 +42,18 @@ export function LauncherSearchPage(props: {
     onSetHistoryItemPinned,
     placeholder,
     resultsViewportHeight,
-    resultsVisible,
     selectedIndex,
     selectedItem,
-    shellConfig
+    shellConfig,
+    surface
   } = props
 
   const primaryActionLabel =
     selectedItem?.presentation.primaryActionLabel ?? copy.launcher.openGeneric
   const isPrimaryActionDisabled = !selectedItem || selectedItem.availability === "planned"
   const hasQuery = inputValue.trim().length > 0
-  const showHistoryGrid = homeSurfaceMode === "history"
+  const resultsVisible = surface.items.length > 0
+  const showHistoryGrid = surface.mode === "history"
   const headerLeading =
     clipboard.context.kind === "files" || clipboard.context.kind === "image" ? (
       <ClipboardChip context={clipboard.context} onClear={clipboard.clearContext} />
@@ -128,7 +126,7 @@ export function LauncherSearchPage(props: {
     >
       {showHistoryGrid ? (
         <LauncherHistoryGrid
-          items={items}
+          items={surface.items}
           onExecute={executeItem}
           onRemove={onRemoveHistoryItem}
           onSetPinned={onSetHistoryItemPinned}
@@ -137,7 +135,7 @@ export function LauncherSearchPage(props: {
       ) : (
         <LauncherResultList
           height={resultsViewportHeight}
-          items={items}
+          items={surface.items}
           onExecute={executeItem}
           selectedIndex={selectedIndex}
         />

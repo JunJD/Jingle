@@ -47,7 +47,7 @@ export default function LauncherApp(): React.JSX.Element {
   const activePluginId = isLauncherPluginRoute(route) ? route.pluginId : null
   const activePluginDefinition = activePluginId ? getLauncherPluginDefinition(activePluginId) : null
   const selectedItem =
-    searchPage.selectedIndex >= 0 ? searchPage.items[searchPage.selectedIndex] : null
+    searchPage.selectedIndex >= 0 ? searchPage.surface.items[searchPage.selectedIndex] : null
   const ActivePluginComponent = activeEntry?.Component ?? null
   const viewportHeight = !isLauncherPluginRoute(route)
     ? searchPage.viewportHeight
@@ -292,10 +292,8 @@ export default function LauncherApp(): React.JSX.Element {
               <LauncherSearchPage
                 entries={searchPage.entries}
                 executeItem={searchPage.executeItem}
-                homeSurfaceMode={searchPage.homeSurfaceMode}
                 inputRef={searchInputRef}
                 inputValue={searchPage.query}
-                items={searchPage.items}
                 onInputKeyDown={searchPage.handleInputKeyDown}
                 onInputValueChange={searchPage.setQuery}
                 onOpenEntry={searchPage.openEntry}
@@ -303,10 +301,10 @@ export default function LauncherApp(): React.JSX.Element {
                 onSetHistoryItemPinned={searchPage.setHistoryItemPinned}
                 placeholder={searchPage.placeholder}
                 resultsViewportHeight={searchPage.resultsViewportHeight}
-                resultsVisible={searchPage.resultsVisible}
                 selectedIndex={searchPage.selectedIndex}
                 selectedItem={selectedItem}
                 shellConfig={searchPage.shellConfig}
+                surface={searchPage.surface}
               />
             )}
           </LauncherPageTransition>
