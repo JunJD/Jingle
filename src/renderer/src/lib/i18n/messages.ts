@@ -86,7 +86,9 @@ export interface AppCopy {
     openApp: string
     openGeneric: string
     openResult: string
+    pinHistoryItem: string
     planned: string
+    removeHistoryItem: string
     resultKindAgent: string
     resultKindApp: string
     resultKindDirectory: string
@@ -94,6 +96,7 @@ export interface AppCopy {
     resultKindThread: string
     searchPlaceholder: string
     searchResults: string
+    unpinHistoryItem: string
   }
   modelSwitcher: {
     apiKeyRequired: (providerName: string) => string
@@ -227,14 +230,17 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openApp: "打开应用",
       openGeneric: "打开",
       openResult: "打开结果",
+      pinHistoryItem: "固定到搜索面板",
       planned: "规划中",
+      removeHistoryItem: "从使用记录中删除",
       resultKindAgent: "Agent",
       resultKindApp: "应用",
       resultKindDirectory: "文件夹",
       resultKindFile: "文件",
       resultKindThread: "对话",
       searchPlaceholder: "你想处理什么工作？",
-      searchResults: "搜索结果"
+      searchResults: "搜索结果",
+      unpinHistoryItem: "取消固定"
     },
     modelSwitcher: {
       apiKeyRequired: (providerName) => `${providerName} 需要 API Key`,
@@ -378,14 +384,17 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openApp: "Open App",
       openGeneric: "Open",
       openResult: "Open Result",
+      pinHistoryItem: "Pin to launcher",
       planned: "Planned",
+      removeHistoryItem: "Remove from history",
       resultKindAgent: "Agent",
       resultKindApp: "App",
       resultKindDirectory: "Folder",
       resultKindFile: "File",
       resultKindThread: "Thread",
       searchPlaceholder: "What do you want to get done?",
-      searchResults: "Search Results"
+      searchResults: "Search Results",
+      unpinHistoryItem: "Unpin"
     },
     modelSwitcher: {
       apiKeyRequired: (providerName) => `API key required for ${providerName}`,

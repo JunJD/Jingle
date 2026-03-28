@@ -13,6 +13,7 @@ import type {
   LauncherSearchResult
 } from "../../../../shared/launcher-search"
 import type { LauncherHistoryItem } from "../../../../shared/launcher-history"
+import { sortLauncherHistoryItems } from "../../../../shared/launcher-history"
 import type { LocalStartItem } from "../../../../shared/local-start"
 import { shouldShowLauncherIdleItems } from "../../../../shared/launcher-settings"
 import { useLauncherClipboard } from "../LauncherClipboardContext"
@@ -46,6 +47,8 @@ export function useLauncherSearchPage(props: {
   homeSurfaceMode: "history" | "idle" | "results"
   items: LauncherShellItem[]
   openEntry: (entry: LauncherHomeEntry, options?: LauncherPluginOpenOptions) => void
+  removeHistoryItem: (itemId: string) => void
+  setHistoryItemPinned: (itemId: string, pin: boolean) => void
   placeholder: string
   query: string
   resultsViewportHeight: number
@@ -137,20 +140,19 @@ export function useLauncherSearchPage(props: {
   }, [resultsViewportHeight, shellConfig])
   const resultsVisible = items.length > 0
   const entries = useMemo(() => getLauncherHomeEntries({ copy, locale }), [copy, locale])
+  const refreshIdleState = useCallback((): void => {
+    void Promise.all([
+      window.api.settings.getLauncherSettings(),
+      window.api.launcherHistory.list(),
+      window.api.localStart.list()
+    ]).then(([settings, launcherHistoryItems, localStartItems]) => {
+      setWindowMode(settings.windowMode)
+      setHistoryItems(launcherHistoryItems)
+      setIdleItems(localStartItems)
+    })
+  }, [])
 
   useEffect(() => {
-    const refreshIdleState = (): void => {
-      void Promise.all([
-        window.api.settings.getLauncherSettings(),
-        window.api.launcherHistory.list(),
-        window.api.localStart.list()
-      ]).then(([settings, launcherHistoryItems, localStartItems]) => {
-        setWindowMode(settings.windowMode)
-        setHistoryItems(launcherHistoryItems)
-        setIdleItems(localStartItems)
-      })
-    }
-
     refreshIdleState()
     const cleanupShown = window.api.launcher.onShown(() => {
       refreshIdleState()
@@ -159,7 +161,7 @@ export function useLauncherSearchPage(props: {
     return () => {
       cleanupShown()
     }
-  }, [])
+  }, [refreshIdleState])
 
   useEffect(() => {
     if (context.kind !== "text" || isTextAutofillConsumed) {
@@ -327,6 +329,41 @@ export function useLauncherSearchPage(props: {
     },
     [executeItem, moveSelection, navigateToEntry, query, selectedIndex]
   )
+  const setHistoryItemPinned = useCallback(
+    (itemId: string, pin: boolean): void => {
+      const updatedAt = new Date().toISOString()
+      setHistoryItems((currentItems) =>
+        sortLauncherHistoryItems(
+          currentItems.map((item) =>
+            item.id === itemId
+              ? {
+                  ...item,
+                  pin,
+                  updatedAt
+                }
+              : item
+          )
+        )
+      )
+
+      void window.api.launcherHistory.setPinned(itemId, pin).catch((error) => {
+        console.warn("[Launcher] Failed to update history pin:", error)
+        refreshIdleState()
+      })
+    },
+    [refreshIdleState]
+  )
+  const removeHistoryItem = useCallback(
+    (itemId: string): void => {
+      setHistoryItems((currentItems) => currentItems.filter((item) => item.id !== itemId))
+
+      void window.api.launcherHistory.remove(itemId).catch((error) => {
+        console.warn("[Launcher] Failed to remove history item:", error)
+        refreshIdleState()
+      })
+    },
+    [refreshIdleState]
+  )
 
   return {
     entries,
@@ -335,6 +372,8 @@ export function useLauncherSearchPage(props: {
     homeSurfaceMode,
     items,
     openEntry,
+    removeHistoryItem,
+    setHistoryItemPinned,
     placeholder: copy.launcher.searchPlaceholder,
     query,
     resultsViewportHeight,

@@ -20,6 +20,8 @@ export function LauncherSearchPage(props: {
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   onInputValueChange: (value: string) => void
   onOpenEntry: (entry: LauncherHomeEntry, options?: LauncherPluginOpenOptions) => void
+  onRemoveHistoryItem: (itemId: string) => void
+  onSetHistoryItemPinned: (itemId: string, pin: boolean) => void
   placeholder: string
   resultsViewportHeight: number
   resultsVisible: boolean
@@ -39,6 +41,8 @@ export function LauncherSearchPage(props: {
     onInputKeyDown,
     onInputValueChange,
     onOpenEntry,
+    onRemoveHistoryItem,
+    onSetHistoryItemPinned,
     placeholder,
     resultsViewportHeight,
     resultsVisible,
@@ -106,8 +110,7 @@ export function LauncherSearchPage(props: {
               ? copy.launcher.askAiWithTab
               : entry.label}
           </span>
-          {entry.shortcutLabel &&
-          !(entry.pluginId === AI_LAUNCHER_PLUGIN_ID && hasQuery) ? (
+          {entry.shortcutLabel && !(entry.pluginId === AI_LAUNCHER_PLUGIN_ID && hasQuery) ? (
             <span className="launcher-shortcut text-[11px] text-muted-foreground">
               {entry.shortcutLabel}
             </span>
@@ -127,6 +130,8 @@ export function LauncherSearchPage(props: {
         <LauncherHistoryGrid
           items={items}
           onExecute={executeItem}
+          onRemove={onRemoveHistoryItem}
+          onSetPinned={onSetHistoryItemPinned}
           selectedIndex={selectedIndex}
         />
       ) : (

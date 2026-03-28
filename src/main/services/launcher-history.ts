@@ -4,6 +4,7 @@ import type {
   LauncherHistoryItem,
   RecordLauncherHistoryItemInput
 } from "../../shared/launcher-history"
+import { sortLauncherHistoryItems } from "../../shared/launcher-history"
 import { getOpenworkDir } from "../storage"
 import { getApplicationIconDataUrl } from "./launcher-search/providers/applications"
 
@@ -25,24 +26,6 @@ function readItems(): LauncherHistoryItem[] {
 
 function writeItems(items: LauncherHistoryItem[]): void {
   store.set("items", items)
-}
-
-function sortItems(items: LauncherHistoryItem[]): LauncherHistoryItem[] {
-  return [...items].sort((left, right) => {
-    if (left.pin !== right.pin) {
-      return left.pin ? -1 : 1
-    }
-
-    if (left.lastUsedAt !== right.lastUsedAt) {
-      return right.lastUsedAt.localeCompare(left.lastUsedAt)
-    }
-
-    if (left.useCount !== right.useCount) {
-      return right.useCount - left.useCount
-    }
-
-    return right.updatedAt.localeCompare(left.updatedAt)
-  })
 }
 
 async function enrichHistoryItem(item: LauncherHistoryItem): Promise<LauncherHistoryItem> {
@@ -80,7 +63,7 @@ export async function listLauncherHistoryItems(): Promise<LauncherHistoryItem[]>
     writeItems(enrichedItems)
   }
 
-  return sortItems(enrichedItems)
+  return sortLauncherHistoryItems(enrichedItems)
 }
 
 export function recordLauncherHistoryItem(

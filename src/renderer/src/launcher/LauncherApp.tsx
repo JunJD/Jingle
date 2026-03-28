@@ -291,14 +291,16 @@ export default function LauncherApp(): React.JSX.Element {
             ) : (
               <LauncherSearchPage
                 entries={searchPage.entries}
-            executeItem={searchPage.executeItem}
-            homeSurfaceMode={searchPage.homeSurfaceMode}
-            inputRef={searchInputRef}
+                executeItem={searchPage.executeItem}
+                homeSurfaceMode={searchPage.homeSurfaceMode}
+                inputRef={searchInputRef}
                 inputValue={searchPage.query}
                 items={searchPage.items}
                 onInputKeyDown={searchPage.handleInputKeyDown}
                 onInputValueChange={searchPage.setQuery}
                 onOpenEntry={searchPage.openEntry}
+                onRemoveHistoryItem={searchPage.removeHistoryItem}
+                onSetHistoryItemPinned={searchPage.setHistoryItemPinned}
                 placeholder={searchPage.placeholder}
                 resultsViewportHeight={searchPage.resultsViewportHeight}
                 resultsVisible={searchPage.resultsVisible}

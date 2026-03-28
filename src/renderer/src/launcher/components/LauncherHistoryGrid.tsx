@@ -1,4 +1,12 @@
-import { Pin } from "lucide-react"
+import { Pin, PinOff, Trash2 } from "lucide-react"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from "@/components/ui/context-menu"
+import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { getLauncherResultToneStyle, renderLauncherResultIcon } from "../result-presentation"
 import type { LauncherShellItem } from "../types"
@@ -6,9 +14,12 @@ import type { LauncherShellItem } from "../types"
 export function LauncherHistoryGrid(props: {
   items: LauncherShellItem[]
   onExecute: (index: number) => void
+  onRemove: (itemId: string) => void
+  onSetPinned: (itemId: string, pin: boolean) => void
   selectedIndex: number
 }): React.JSX.Element | null {
-  const { items, onExecute, selectedIndex } = props
+  const { copy } = useI18n()
+  const { items, onExecute, onRemove, onSetPinned, selectedIndex } = props
 
   if (items.length === 0) {
     return null
@@ -20,34 +31,59 @@ export function LauncherHistoryGrid(props: {
         const isSelected = index === selectedIndex
 
         return (
-          <button
+          <div
             key={item.id}
-            type="button"
-            onClick={() => onExecute(index)}
-            onMouseDown={(event) => event.preventDefault()}
             className={cn(
-              "relative flex h-[70px] appearance-none flex-col items-center justify-center gap-1.5 border-0 border-r border-dashed border-[var(--launcher-border)] px-2 text-center transition",
-              "text-foreground",
-              isSelected && "bg-[var(--launcher-item-hover)]"
+              "relative h-[70px] border-r border-dashed border-[var(--launcher-border)]",
+              "text-foreground"
             )}
           >
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => onExecute(index)}
+                  onMouseDown={(event) => event.preventDefault()}
+                  className={cn(
+                    "flex h-full w-full appearance-none flex-col items-center justify-center gap-1.5 border-0 px-2 text-center transition",
+                    "text-foreground",
+                    isSelected && "bg-[var(--launcher-item-hover)]"
+                  )}
+                >
+                  <span
+                    className="flex h-7 w-7 items-center justify-center overflow-hidden"
+                    style={getLauncherResultToneStyle(item.presentation.tone)}
+                  >
+                    {renderLauncherResultIcon(item.presentation.icon)}
+                  </span>
+
+                  <span className="line-clamp-1 w-full text-[12px] leading-[1.2] text-foreground/92">
+                    {item.title}
+                  </span>
+                </button>
+              </ContextMenuTrigger>
+
+              <ContextMenuContent>
+                <ContextMenuItem onClick={() => onSetPinned(item.id, !item.pin)}>
+                  {item.pin ? (
+                    <PinOff className="size-4" strokeWidth={1.8} />
+                  ) : (
+                    <Pin className="size-4" strokeWidth={1.8} />
+                  )}
+                  {item.pin ? copy.launcher.unpinHistoryItem : copy.launcher.pinHistoryItem}
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem variant="destructive" onClick={() => onRemove(item.id)}>
+                  <Trash2 className="size-4" strokeWidth={1.8} />
+                  {copy.launcher.removeHistoryItem}
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
+
             {item.pin ? (
-              <span className="absolute right-1.5 top-1.5 text-[var(--launcher-accent-line)]">
-                <Pin className="size-3 fill-current" strokeWidth={1.8} />
-              </span>
+              <div className="pointer-events-none absolute right-1 top-1 h-0 w-0 border-t-[6px] border-r-[6px] border-t-[var(--launcher-accent-line)] border-r-[var(--launcher-accent-line)] border-l-[6px] border-b-[6px] border-l-transparent border-b-transparent" />
             ) : null}
-
-            <span
-              className="flex h-7 w-7 items-center justify-center overflow-hidden"
-              style={getLauncherResultToneStyle(item.presentation.tone)}
-            >
-              {renderLauncherResultIcon(item.presentation.icon)}
-            </span>
-
-            <span className="line-clamp-1 w-full text-[12px] leading-[1.2] text-foreground/92">
-              {item.title}
-            </span>
-          </button>
+          </div>
         )
       })}
     </div>

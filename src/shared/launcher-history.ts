@@ -24,3 +24,21 @@ export interface RecordLauncherHistoryItemInput {
   iconDataUrl?: string
   action: LauncherSearchAction
 }
+
+export function sortLauncherHistoryItems(items: LauncherHistoryItem[]): LauncherHistoryItem[] {
+  return [...items].sort((left, right) => {
+    if (left.pin !== right.pin) {
+      return left.pin ? -1 : 1
+    }
+
+    if (left.lastUsedAt !== right.lastUsedAt) {
+      return right.lastUsedAt.localeCompare(left.lastUsedAt)
+    }
+
+    if (left.useCount !== right.useCount) {
+      return right.useCount - left.useCount
+    }
+
+    return right.updatedAt.localeCompare(left.updatedAt)
+  })
+}
