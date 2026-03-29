@@ -123,6 +123,7 @@ export interface AppCopy {
     commandCompleted: string
     commandCompletedNoOutput: string
     completed: string
+    edit: string
     fileSaved: string
     filesAndFolders: (files: number, dirs: number) => string
     foundMatches: (count: number) => string
@@ -271,6 +272,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       commandCompleted: "命令已完成",
       commandCompletedNoOutput: "命令已完成，无输出",
       completed: "已完成",
+      edit: "编辑",
       fileSaved: "文件已保存",
       filesAndFolders: (files, dirs) =>
         dirs > 0 ? `${files} 个文件，${dirs} 个文件夹` : `${files} 个文件`,
@@ -429,6 +431,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       commandCompleted: "Command completed",
       commandCompletedNoOutput: "Command completed (no output)",
       completed: "Completed",
+      edit: "Edit",
       fileSaved: "File saved",
       filesAndFolders: (files, dirs) =>
         dirs > 0

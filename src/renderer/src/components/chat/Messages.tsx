@@ -2,7 +2,7 @@ import { CopyIcon, FileText, RefreshCcwIcon } from "lucide-react"
 import { useMemo } from "react"
 import { extractMessageText, resolveImageBlockUrl } from "../../../../shared/message-content"
 import type { ContentBlock, HITLRequest, Message as ThreadMessage } from "@/types"
-import { ToolCallRenderer } from "./ToolCallRenderer"
+import { ActionMessage } from "./ActionMessage"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import {
@@ -286,10 +286,10 @@ function AssistantMessage(props: {
               const needsApproval = Boolean(pendingId) && pendingId === toolCall.id
 
               return (
-                <ToolCallRenderer
+                <ActionMessage
+                  approvalRequest={needsApproval ? pendingApproval : null}
                   key={`${toolCall.id || `tc-${index}`}-${needsApproval ? "pending" : "done"}`}
                   isError={result?.is_error}
-                  needsApproval={needsApproval}
                   onApprovalDecision={needsApproval ? onApprovalDecision : undefined}
                   result={result?.content}
                   toolCall={toolCall}
