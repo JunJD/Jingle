@@ -1,9 +1,11 @@
+import { Terminal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { defineHumanInTheLoop } from "./registry-core"
 import { ToolCodeBlock, ToolDetailStack } from "./shared-components"
 import { getCommandArg } from "./shared"
 
 defineHumanInTheLoop({
+  icon: Terminal,
   name: "execute",
   render({ copy, args, rawArgs, request, respond }) {
     const command = getCommandArg(args)

@@ -1,10 +1,18 @@
-import { CopyIcon, FileText, RefreshCcwIcon } from "lucide-react"
-import { useMemo } from "react"
-import { extractMessageText, resolveImageBlockUrl } from "../../../../shared/message-content"
-import type { ContentBlock, HITLRequest, Message as ThreadMessage } from "@/types"
+import { CopyIcon, FileText, ListTodo, RefreshCcwIcon } from "lucide-react"
+import { useMemo, useState } from "react"
+import { resolveImageBlockUrl } from "../../../../shared/message-content"
+import type { ContentBlock, HITLRequest, Message as ThreadMessage, ToolCall } from "@/types"
 import { ActionMessage } from "./ActionMessage"
+import { createActionMessageView } from "./action-message-view"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
+import {
+  buildTurnAssistantEntries,
+  getTurnCopyText,
+  projectMessages,
+  type MessageTurn,
+  type ToolResultInfo
+} from "./message-projection"
 import {
   Attachment,
   Attachments,
@@ -16,6 +24,12 @@ import {
   type AttachmentData
 } from "../ui/attachments"
 import {
+  ChainOfThought,
+  ChainOfThoughtContent,
+  ChainOfThoughtHeader,
+  ChainOfThoughtItem
+} from "./ChainOfThought"
+import {
   Message,
   MessageAction,
   MessageActions,
@@ -23,11 +37,6 @@ import {
   MessageResponse,
   MessageToolbar
 } from "./message"
-
-interface ToolResultInfo {
-  content: string | unknown
-  is_error?: boolean
-}
 
 interface MessagesProps {
   messages: ThreadMessage[]
@@ -40,23 +49,6 @@ interface MessagesProps {
 interface StructuredMessageContent {
   attachments: React.ReactNode
   textContent: React.ReactNode
-}
-
-function buildToolResults(messages: ThreadMessage[]): Map<string, ToolResultInfo> {
-  const results = new Map<string, ToolResultInfo>()
-
-  for (const message of messages) {
-    if (message.role !== "tool" || !message.tool_call_id) {
-      continue
-    }
-
-    results.set(message.tool_call_id, {
-      content: message.content,
-      is_error: false
-    })
-  }
-
-  return results
 }
 
 function isRenderableImageUrl(url: string | null): url is string {
@@ -244,33 +236,151 @@ function renderStructuredContent(
   }
 }
 
-function AssistantMessage(props: {
-  isLastAssistant: boolean
-  isLoading?: boolean
-  message: ThreadMessage
+function ToolActivityGroup(props: {
+  preferLatestToolSummary?: boolean
   onApprovalDecision?: (decision: "approve" | "reject" | "edit") => void
-  onRetry?: () => Promise<void> | void
   pendingApproval?: HITLRequest | null
+  toolCalls: ToolCall[]
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
   const { copy } = useI18n()
-  const {
-    isLastAssistant,
-    isLoading,
-    message,
-    onApprovalDecision,
-    onRetry,
-    pendingApproval,
-    toolResults
-  } = props
+  const { onApprovalDecision, pendingApproval, preferLatestToolSummary, toolCalls, toolResults } =
+    props
+  const pendingId = pendingApproval?.tool_call?.id
+  const [openOverride, setOpenOverride] = useState<boolean | null>(null)
+
+  if (toolCalls.length === 0) {
+    return null
+  }
+
+  const actionItems = toolCalls.map((toolCall, index) => {
+    const result = toolResults.get(toolCall.id)
+    const needsApproval = Boolean(pendingId) && pendingId === toolCall.id
+
+    return {
+      key: `${toolCall.id || `tc-${index}`}-${needsApproval ? "pending" : "done"}`,
+      needsApproval,
+      result,
+      toolCall
+    }
+  })
+  const actionViews = actionItems.map((item) => {
+    const view = createActionMessageView({
+      approvalRequest: item.needsApproval ? pendingApproval : null,
+      copy,
+      isError: item.result?.is_error,
+      presentation: "grouped",
+      result: item.result?.content,
+      toolCall: item.toolCall
+    })
+
+    return {
+      ...item,
+      view
+    }
+  })
+
+  const shouldGroup = toolCalls.length >= 2
+  const shouldDefaultOpen = actionItems.some(
+    (item) => item.needsApproval || item.result === undefined
+  )
+  const isOpen = openOverride ?? shouldDefaultOpen
+  const latestActiveAction = [...actionViews]
+    .reverse()
+    .find((item) => item.needsApproval || item.result === undefined)
+  const latestToolAction = actionViews[actionViews.length - 1]
+  const headerTitle =
+    (preferLatestToolSummary
+      ? isOpen
+        ? copy.chat.agentWorking
+        : latestToolAction?.view.summary
+      : null) ??
+    latestActiveAction?.view.summary ??
+    copy.chat.executedSteps(toolCalls.length)
+
+  if (!shouldGroup) {
+    const item = actionItems[0]
+
+    return item ? (
+      <ActionMessage
+        approvalRequest={item.needsApproval ? pendingApproval : null}
+        isError={item.result?.is_error}
+        onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
+        result={item.result?.content}
+        toolCall={item.toolCall}
+      />
+    ) : null
+  }
+
+  return (
+    <ChainOfThought onOpenChange={setOpenOverride} open={isOpen}>
+      <ChainOfThoughtHeader className="text-[13px] leading-5" icon={ListTodo}>
+        {headerTitle}
+      </ChainOfThoughtHeader>
+      <ChainOfThoughtContent className="space-y-2.5">
+        {actionViews.map((item, index) => (
+          <ChainOfThoughtItem
+            icon={item.view.icon}
+            isLast={index === actionViews.length - 1}
+            key={item.key}
+          >
+            <ActionMessage
+              approvalRequest={item.needsApproval ? pendingApproval : null}
+              isError={item.result?.is_error}
+              onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
+              presentation="grouped"
+              result={item.result?.content}
+              toolCall={item.toolCall}
+            />
+          </ChainOfThoughtItem>
+        ))}
+      </ChainOfThoughtContent>
+    </ChainOfThought>
+  )
+}
+
+function AssistantToolCluster(props: {
+  preferLatestToolSummary?: boolean
+  messages: ThreadMessage[]
+  onApprovalDecision?: (decision: "approve" | "reject" | "edit") => void
+  pendingApproval?: HITLRequest | null
+  toolResults: Map<string, ToolResultInfo>
+}): React.JSX.Element | null {
+  const { messages, onApprovalDecision, pendingApproval, preferLatestToolSummary, toolResults } =
+    props
+  const toolCalls = messages.flatMap((message) => message.tool_calls ?? [])
+
+  if (toolCalls.length === 0) {
+    return null
+  }
+
+  return (
+    <Message className="max-w-full" from="assistant">
+      <MessageContent className="w-full gap-3">
+        <ToolActivityGroup
+          onApprovalDecision={onApprovalDecision}
+          pendingApproval={pendingApproval}
+          preferLatestToolSummary={preferLatestToolSummary}
+          toolCalls={toolCalls}
+          toolResults={toolResults}
+        />
+      </MessageContent>
+    </Message>
+  )
+}
+
+function AssistantBlock(props: {
+  isLastAssistant: boolean
+  isLoading?: boolean
+  message: ThreadMessage
+}): React.JSX.Element | null {
+  const { isLastAssistant, isLoading, message } = props
   const content = renderStructuredContent(message.content, {
     isStreaming: Boolean(isLoading) && isLastAssistant,
     isUser: false
   })
-  const toolCalls = message.tool_calls ?? []
-  const pendingId = pendingApproval?.tool_call?.id
 
-  if (!content.attachments && !content.textContent && toolCalls.length === 0) {
+  if (!content.attachments && !content.textContent) {
     return null
   }
 
@@ -279,47 +389,7 @@ function AssistantMessage(props: {
       <MessageContent className="w-full gap-3">
         {content.attachments}
         {content.textContent ? <div className="space-y-4">{content.textContent}</div> : null}
-        {toolCalls.length > 0 ? (
-          <div className="space-y-3">
-            {toolCalls.map((toolCall, index) => {
-              const result = toolResults.get(toolCall.id)
-              const needsApproval = Boolean(pendingId) && pendingId === toolCall.id
-
-              return (
-                <ActionMessage
-                  approvalRequest={needsApproval ? pendingApproval : null}
-                  key={`${toolCall.id || `tc-${index}`}-${needsApproval ? "pending" : "done"}`}
-                  isError={result?.is_error}
-                  onApprovalDecision={needsApproval ? onApprovalDecision : undefined}
-                  result={result?.content}
-                  toolCall={toolCall}
-                />
-              )
-            })}
-          </div>
-        ) : null}
       </MessageContent>
-
-      <MessageToolbar className="mt-0 justify-end">
-        <MessageActions>
-          {isLastAssistant && onRetry && !isLoading ? (
-            <MessageAction
-              label={copy.chat.retryMessage}
-              onClick={() => void onRetry()}
-              tooltip={copy.chat.retryMessage}
-            >
-              <RefreshCcwIcon className="size-4" />
-            </MessageAction>
-          ) : null}
-          <MessageAction
-            label={copy.chat.copyMessage}
-            onClick={() => void navigator.clipboard.writeText(extractMessageText(message.content))}
-            tooltip={copy.chat.copyMessage}
-          >
-            <CopyIcon className="size-4" />
-          </MessageAction>
-        </MessageActions>
-      </MessageToolbar>
     </Message>
   )
 }
@@ -342,36 +412,108 @@ function UserMessage(props: { message: ThreadMessage }): React.JSX.Element | nul
   )
 }
 
-export function Messages(props: MessagesProps): React.JSX.Element {
-  const { isLoading, messages, onApprovalDecision, onRetry, pendingApproval } = props
-  const toolResults = useMemo(() => buildToolResults(messages), [messages])
-  const visibleMessages = useMemo(
-    () => messages.filter((message) => message.role !== "tool"),
-    [messages]
-  )
-  const lastAssistantId =
-    [...visibleMessages].reverse().find((message) => message.role === "assistant")?.id ?? null
+function MessageTurnView(props: {
+  isActiveTurn: boolean
+  isLoading?: boolean
+  lastAssistantId: string | null
+  onApprovalDecision?: (decision: "approve" | "reject" | "edit") => void
+  onRetry?: () => Promise<void> | void
+  pendingApproval?: HITLRequest | null
+  toolResults: Map<string, ToolResultInfo>
+  turn: MessageTurn
+}): React.JSX.Element {
+  const { copy } = useI18n()
+  const {
+    isActiveTurn,
+    isLoading,
+    lastAssistantId,
+    onApprovalDecision,
+    onRetry,
+    pendingApproval,
+    toolResults,
+    turn
+  } = props
+  const copyText = getTurnCopyText(turn)
+  const hasAssistantMessages = turn.assistants.length > 0
+  const assistantEntries = useMemo(() => buildTurnAssistantEntries(turn), [turn])
 
   return (
-    <>
-      {visibleMessages.map((message) => {
-        if (message.role === "user") {
-          return <UserMessage key={message.id} message={message} />
+    <div className="space-y-3">
+      {turn.user ? <UserMessage message={turn.user} /> : null}
+      {assistantEntries.map((entry) => {
+        if (entry.kind === "assistant-content") {
+          return (
+            <AssistantBlock
+              isLastAssistant={entry.message.id === lastAssistantId}
+              isLoading={isLoading}
+              key={entry.key}
+              message={entry.message}
+            />
+          )
         }
 
         return (
-          <AssistantMessage
-            isLastAssistant={message.id === lastAssistantId}
-            isLoading={isLoading}
-            key={message.id}
-            message={message}
+          <AssistantToolCluster
+            key={entry.key}
+            messages={entry.messages}
             onApprovalDecision={onApprovalDecision}
-            onRetry={onRetry}
             pendingApproval={pendingApproval}
+            preferLatestToolSummary={isActiveTurn && Boolean(isLoading)}
             toolResults={toolResults}
           />
         )
       })}
+
+      {hasAssistantMessages ? (
+        <MessageToolbar className="mt-0 justify-end">
+          <MessageActions>
+            {isActiveTurn && onRetry && !isLoading ? (
+              <MessageAction
+                label={copy.chat.retryMessage}
+                onClick={() => void onRetry()}
+                tooltip={copy.chat.retryMessage}
+              >
+                <RefreshCcwIcon className="size-4" />
+              </MessageAction>
+            ) : null}
+            {copyText ? (
+              <MessageAction
+                label={copy.chat.copyMessage}
+                onClick={() => void navigator.clipboard.writeText(copyText)}
+                tooltip={copy.chat.copyMessage}
+              >
+                <CopyIcon className="size-4" />
+              </MessageAction>
+            ) : null}
+          </MessageActions>
+        </MessageToolbar>
+      ) : null}
+    </div>
+  )
+}
+
+export function Messages(props: MessagesProps): React.JSX.Element {
+  const { isLoading, messages, onApprovalDecision, onRetry, pendingApproval } = props
+  const { activeTurnKey, lastAssistantId, toolResults, turns } = useMemo(
+    () => projectMessages(messages),
+    [messages]
+  )
+
+  return (
+    <>
+      {turns.map((turn) => (
+        <MessageTurnView
+          isActiveTurn={turn.key === activeTurnKey}
+          isLoading={isLoading}
+          key={turn.key}
+          lastAssistantId={lastAssistantId}
+          onApprovalDecision={onApprovalDecision}
+          onRetry={onRetry}
+          pendingApproval={pendingApproval}
+          toolResults={toolResults}
+          turn={turn}
+        />
+      ))}
     </>
   )
 }

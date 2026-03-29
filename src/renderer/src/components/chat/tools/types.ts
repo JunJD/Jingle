@@ -4,6 +4,7 @@ import type { LucideIcon } from "lucide-react"
 import type { ReactNode } from "react"
 
 export type ToolComponentStatus = "running" | "success" | "error" | "approval"
+export type ToolPresentation = "standalone" | "grouped"
 
 export interface ToolRenderModel {
   args: Record<string, unknown>
@@ -17,6 +18,7 @@ export interface ToolRenderModel {
 
 export interface ToolComponentProps extends ToolRenderModel {
   copy: AppCopy
+  presentation: ToolPresentation
   toolCall: ToolCall
   isExpanded: boolean
 }
@@ -36,6 +38,7 @@ export interface HumanInTheLoopProps extends ToolComponentProps {
 }
 
 export interface HumanInTheLoopDefinition {
+  icon: LucideIcon
   name: string
   render: (props: HumanInTheLoopProps) => ReactNode
 }

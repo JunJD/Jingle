@@ -3,14 +3,8 @@ import { useMemo, useState } from "react"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import type { HITLRequest, ToolCall } from "@/types"
-import {
-  defaultHumanInTheLoop,
-  defaultToolComponent,
-  getHumanInTheLoop,
-  getToolComponent,
-  type ToolComponentStatus
-} from "./tools"
-import { normalizeToolRenderModel } from "./tools/normalize"
+import { createActionMessageView } from "./action-message-view"
+import { type ToolPresentation, type ToolComponentStatus } from "./tools"
 import { ToolCodeBlock } from "./tools/shared-components"
 
 interface ActionMessageProps {
@@ -19,6 +13,7 @@ interface ActionMessageProps {
   isError?: boolean
   approvalRequest?: HITLRequest | null
   onApprovalDecision?: (decision: "approve" | "reject" | "edit") => void
+  presentation?: ToolPresentation
 }
 
 function StatusGlyph(props: {
@@ -46,36 +41,37 @@ function StatusGlyph(props: {
 }
 
 export function ActionMessage(props: ActionMessageProps): React.JSX.Element | null {
-  const { approvalRequest, isError, onApprovalDecision, result, toolCall } = props
+  const {
+    approvalRequest,
+    isError,
+    onApprovalDecision,
+    presentation = "standalone",
+    result,
+    toolCall
+  } = props
   const { copy } = useI18n()
-  const [isExpanded, setIsExpanded] = useState(Boolean(approvalRequest))
-  const model = useMemo(
+  const [manualExpanded, setManualExpanded] = useState(Boolean(approvalRequest))
+  const view = useMemo(
     () =>
-      normalizeToolRenderModel({
+      createActionMessageView({
         approvalRequest,
+        copy,
         isError,
+        presentation,
         result,
         toolCall
       }),
-    [approvalRequest, isError, result, toolCall]
+    [approvalRequest, copy, isError, presentation, result, toolCall]
   )
-  const { status } = model
-
-  const definition = getToolComponent(toolCall.name) || defaultToolComponent
-  const hitlDefinition = approvalRequest
-    ? getHumanInTheLoop(toolCall.name) || defaultHumanInTheLoop
-    : null
-  const summary = definition.renderSummary({
-    copy,
-    isExpanded,
-    toolCall,
-    ...model
-  })
+  const { definition, hitlDefinition, icon, model, status, summary } = view
+  const isExpanded = Boolean(approvalRequest) || manualExpanded
+  const showLeadingIcon = presentation !== "grouped"
   const detail = useMemo<React.ReactNode>(() => {
     if (approvalRequest && onApprovalDecision && hitlDefinition) {
       return hitlDefinition.render({
         copy,
         isExpanded,
+        presentation,
         request: approvalRequest,
         respond: onApprovalDecision,
         toolCall,
@@ -86,6 +82,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     const contentDetail = definition.renderDetail?.({
       copy,
       isExpanded,
+      presentation,
       toolCall,
       ...model
     })
@@ -116,6 +113,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     isExpanded,
     model,
     onApprovalDecision,
+    presentation,
     status,
     toolCall
   ])
@@ -131,24 +129,27 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
           : null
 
   return (
-    <div className="grid gap-1.5">
+    <div className={cn("grid", presentation === "grouped" ? "gap-1" : "gap-1.5")}>
       <button
         className={cn(
-          "flex w-full min-w-0 items-center gap-3 rounded-lg px-0 py-1 text-left transition-colors",
+          "inline-flex max-w-full min-w-0 items-center gap-3 rounded-lg px-0 text-left transition-colors",
+          presentation === "grouped" ? "py-0.5" : "py-1",
           "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         )}
         onClick={() => {
-          if (hasDetail) {
-            setIsExpanded((current) => !current)
+          if (hasDetail && !approvalRequest) {
+            setManualExpanded((current) => !current)
           }
         }}
         type="button"
       >
-        <span className="inline-flex size-4 shrink-0 items-center justify-center">
-          <StatusGlyph Icon={definition.icon} status={status} />
-        </span>
+        {showLeadingIcon ? (
+          <span className="inline-flex size-4 shrink-0 items-center justify-center">
+            <StatusGlyph Icon={icon} status={status} />
+          </span>
+        ) : null}
 
-        <span className="min-w-0 flex-1 text-[13px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+        <span className="min-w-0 text-[13px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
           {summary}
         </span>
 
@@ -164,7 +165,9 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
         </span>
       </button>
 
-      {hasDetail && isExpanded ? <div className="pl-7">{detail}</div> : null}
+      {hasDetail && isExpanded ? (
+        <div className={cn(presentation === "grouped" ? "pl-6" : "pl-7")}>{detail}</div>
+      ) : null}
     </div>
   )
 }

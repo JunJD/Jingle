@@ -4,6 +4,7 @@ export type {
   HumanInTheLoopRespond,
   ToolComponentDefinition,
   ToolComponentProps,
+  ToolPresentation,
   ToolComponentStatus
 } from "./types"
 export {

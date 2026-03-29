@@ -1,8 +1,10 @@
+import { TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ToolCodeBlock, ToolDetailStack } from "./shared-components"
 import type { HumanInTheLoopDefinition } from "./types"
 
 export const defaultHumanInTheLoop: HumanInTheLoopDefinition = {
+  icon: TriangleAlert,
   name: "*",
   render({ copy, rawArgs, request, respond }) {
     const canEdit = request.allowed_decisions.includes("edit")
