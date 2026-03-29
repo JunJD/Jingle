@@ -198,7 +198,6 @@ export class ElectronIPCTransport implements UseStreamTransport {
     const messages = input?.messages ?? []
     const lastHumanMessage = messages.find((m) => m.type === "human")
     const messageContent = lastHumanMessage?.content ?? ""
-    const messageId = lastHumanMessage?.id
 
     // Only require message content if not resuming
     if (!hasMessageContent(messageContent) && !hasResumeCommand) {
@@ -211,8 +210,7 @@ export class ElectronIPCTransport implements UseStreamTransport {
       messageContent,
       payload.command,
       payload.signal,
-      modelId,
-      messageId
+      modelId
     )
   }
 
@@ -228,8 +226,7 @@ export class ElectronIPCTransport implements UseStreamTransport {
     message: AgentMessageContent,
     command: unknown,
     signal: AbortSignal,
-    modelId?: string,
-    messageId?: string
+    modelId?: string
   ): AsyncGenerator<StreamEvent> {
     // Create a queue to buffer events from IPC
     const eventQueue: StreamEvent[] = []
@@ -275,8 +272,7 @@ export class ElectronIPCTransport implements UseStreamTransport {
           }
         }
       },
-      modelId,
-      messageId
+      modelId
     )
 
     // Handle abort signal
@@ -346,6 +342,13 @@ export class ElectronIPCTransport implements UseStreamTransport {
       }
 
       // Legacy: Token streaming for real-time typing effect
+      case "user_message":
+        events.push({
+          event: "messages",
+          data: [event.message, { langgraph_node: "human" }]
+        })
+        break
+
       case "token":
         events.push({
           event: "messages",
@@ -655,35 +658,33 @@ export class ElectronIPCTransport implements UseStreamTransport {
         }
       }
 
-      // Transform messages from LangChain serialization format
-      // Filter out human messages since they're already shown from user input
-      const transformedMessages = state.messages
-        ?.filter((msg) => {
-          const classId = Array.isArray(msg.id) ? msg.id : []
-          const className = classId[classId.length - 1] || ""
-          // Filter out HumanMessage
-          return !className.includes("Human")
-        })
-        .map((msg) => {
-          const kwargs = msg.kwargs || {}
-          const classId = Array.isArray(msg.id) ? msg.id : []
-          const className = classId[classId.length - 1] || ""
+      // Transform messages from LangChain serialization format.
+      // Keep human messages in the values snapshot so later values updates
+      // do not wipe the backend-authored user message from stream state.
+      const transformedMessages = state.messages?.map((msg) => {
+        const kwargs = msg.kwargs || {}
+        const classId = Array.isArray(msg.id) ? msg.id : []
+        const className = classId[classId.length - 1] || ""
 
-          // Determine message type from class name
-          const type: "ai" | "tool" = className.includes("Tool") ? "tool" : "ai"
-          const content = this.extractContent(kwargs.content)
+        // Determine message type from class name
+        const type: "human" | "ai" | "tool" = className.includes("Human")
+          ? "human"
+          : className.includes("Tool")
+            ? "tool"
+            : "ai"
+        const content = this.extractContent(kwargs.content)
 
-          return {
-            id: kwargs.id || crypto.randomUUID(),
-            type,
-            content,
-            // Include tool_calls for AI messages
-            ...(type === "ai" && kwargs.tool_calls && { tool_calls: kwargs.tool_calls }),
-            // Include tool_call_id and name for tool messages
-            ...(type === "tool" && kwargs.tool_call_id && { tool_call_id: kwargs.tool_call_id }),
-            ...(type === "tool" && kwargs.name && { name: kwargs.name })
-          }
-        })
+        return {
+          id: kwargs.id || crypto.randomUUID(),
+          type,
+          content,
+          // Include tool_calls for AI messages
+          ...(type === "ai" && kwargs.tool_calls && { tool_calls: kwargs.tool_calls }),
+          // Include tool_call_id and name for tool messages
+          ...(type === "tool" && kwargs.tool_call_id && { tool_call_id: kwargs.tool_call_id }),
+          ...(type === "tool" && kwargs.name && { name: kwargs.name })
+        }
+      })
 
       // Only emit values event if we have actual data to update
       // Don't emit messages: undefined as it would clear the UI

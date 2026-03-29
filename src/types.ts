@@ -55,6 +55,11 @@ export interface IPCStreamEvent {
   data: unknown
 }
 
+export interface IPCUserMessageEvent {
+  type: "user_message"
+  message: IPCMessage
+}
+
 export interface IPCDoneEvent {
   type: "done"
 }
@@ -66,6 +71,7 @@ export interface IPCErrorEvent {
 
 export type IPCEvent =
   | IPCValuesEvent
+  | IPCUserMessageEvent
   | IPCTokenEvent
   | IPCToolCallEvent
   | IPCStreamEvent

@@ -15,11 +15,10 @@ function resolveCheckpointRunStatus(tuple: CheckpointTuple | undefined): Persist
 export async function beginAgentRun(
   threadId: string,
   message: AgentMessageContent,
-  modelId?: string,
-  messageId?: string
+  modelId?: string
 ): Promise<{ runId: string; userMessageId: string }> {
   const runId = randomUUID()
-  const userMessageId = messageId ?? randomUUID()
+  const userMessageId = randomUUID()
   const now = Date.now()
 
   await createRun(runId, threadId, {

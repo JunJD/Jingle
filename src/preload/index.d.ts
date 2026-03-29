@@ -3,11 +3,11 @@ import type {
   Thread,
   ModelConfig,
   Provider,
-  StreamEvent,
   HITLDecision,
   ThreadRuntimeState,
   ThreadHistoryState
 } from "../shared/app-types"
+import type { IPCEvent } from "../types"
 import type {
   LauncherActionExecutionResult,
   LauncherSearchAction,
@@ -39,22 +39,20 @@ interface CustomAPI {
     invoke: (
       threadId: string,
       message: AgentMessageContent,
-      onEvent: (event: StreamEvent) => void,
-      modelId?: string,
-      messageId?: string
+      onEvent: (event: IPCEvent) => void,
+      modelId?: string
     ) => () => void
     streamAgent: (
       threadId: string,
       message: AgentMessageContent,
       command: unknown,
-      onEvent: (event: StreamEvent) => void,
-      modelId?: string,
-      messageId?: string
+      onEvent: (event: IPCEvent) => void,
+      modelId?: string
     ) => () => void
     interrupt: (
       threadId: string,
       decision: HITLDecision,
-      onEvent?: (event: StreamEvent) => void
+      onEvent?: (event: IPCEvent) => void
     ) => () => void
     cancel: (threadId: string) => Promise<void>
   }

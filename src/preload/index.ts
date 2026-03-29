@@ -4,10 +4,10 @@ import type {
   Thread,
   ModelConfig,
   Provider,
-  StreamEvent,
   HITLDecision,
   ThreadRuntimeState
 } from "../shared/app-types"
+import type { IPCEvent } from "../types"
 import type {
   LauncherActionExecutionResult,
   LauncherSearchAction,
@@ -47,13 +47,12 @@ const api = {
     invoke: (
       threadId: string,
       message: AgentMessageContent,
-      onEvent: (event: StreamEvent) => void,
-      modelId?: string,
-      messageId?: string
+      onEvent: (event: IPCEvent) => void,
+      modelId?: string
     ): (() => void) => {
       const channel = `agent:stream:${threadId}`
 
-      const handler = (_: unknown, data: StreamEvent): void => {
+      const handler = (_: unknown, data: IPCEvent): void => {
         onEvent(data)
         if (data.type === "done" || data.type === "error") {
           ipcRenderer.removeListener(channel, handler)
@@ -61,7 +60,7 @@ const api = {
       }
 
       ipcRenderer.on(channel, handler)
-      ipcRenderer.send("agent:invoke", { threadId, message, modelId, messageId })
+      ipcRenderer.send("agent:invoke", { threadId, message, modelId })
 
       // Return cleanup function
       return () => {
@@ -73,13 +72,12 @@ const api = {
       threadId: string,
       message: AgentMessageContent,
       command: unknown,
-      onEvent: (event: StreamEvent) => void,
-      modelId?: string,
-      messageId?: string
+      onEvent: (event: IPCEvent) => void,
+      modelId?: string
     ): (() => void) => {
       const channel = `agent:stream:${threadId}`
 
-      const handler = (_: unknown, data: StreamEvent): void => {
+      const handler = (_: unknown, data: IPCEvent): void => {
         onEvent(data)
         if (data.type === "done" || data.type === "error") {
           ipcRenderer.removeListener(channel, handler)
@@ -92,7 +90,7 @@ const api = {
       if (command) {
         ipcRenderer.send("agent:resume", { threadId, command, modelId })
       } else {
-        ipcRenderer.send("agent:invoke", { threadId, message, modelId, messageId })
+        ipcRenderer.send("agent:invoke", { threadId, message, modelId })
       }
 
       // Return cleanup function
@@ -103,11 +101,11 @@ const api = {
     interrupt: (
       threadId: string,
       decision: HITLDecision,
-      onEvent?: (event: StreamEvent) => void
+      onEvent?: (event: IPCEvent) => void
     ): (() => void) => {
       const channel = `agent:stream:${threadId}`
 
-      const handler = (_: unknown, data: StreamEvent): void => {
+      const handler = (_: unknown, data: IPCEvent): void => {
         onEvent?.(data)
         if (data.type === "done" || data.type === "error") {
           ipcRenderer.removeListener(channel, handler)

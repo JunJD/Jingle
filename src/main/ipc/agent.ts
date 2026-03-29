@@ -97,7 +97,6 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
     console.log("[Agent] Received invoke request:", {
       threadId,
       message: messagePreview.substring(0, 50),
-      messageId,
       modelId
     })
 
@@ -144,11 +143,17 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
 
       const { runId, userMessageId } = await beginAgentRun(threadId, message, modelId)
       activeRuns.set(threadId, { controller: abortController, runId })
+      window.webContents.send(channel, {
+        type: "user_message",
+        message: {
+          id: userMessageId,
+          type: "human",
+          content: message
+        }
+      })
 
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
-      const humanMessage = userMessageId
-        ? new HumanMessage({ content: message, id: userMessageId })
-        : new HumanMessage(message)
+      const humanMessage = new HumanMessage({ content: message, id: userMessageId })
 
       // Stream with both modes:
       // - 'messages' for real-time token streaming
