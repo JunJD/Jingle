@@ -81,7 +81,7 @@ export function LauncherHistoryGrid(props: {
             </ContextMenu>
 
             {item.pin ? (
-              <div className="pointer-events-none absolute right-1 top-1 h-0 w-0 border-t-[6px] border-r-[6px] border-t-[var(--launcher-accent-line)] border-r-[var(--launcher-accent-line)] border-l-[6px] border-b-[6px] border-l-transparent border-b-transparent" />
+              <div className="pointer-events-none absolute right-1 top-1 h-0 w-0 border-t-[6px] border-r-[6px] border-t-[var(--launcher-pin-indicator)] border-r-[var(--launcher-pin-indicator)] border-l-[6px] border-b-[6px] border-l-transparent border-b-transparent" />
             ) : null}
           </div>
         )

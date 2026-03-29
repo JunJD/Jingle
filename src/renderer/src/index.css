@@ -156,6 +156,7 @@
   --launcher-row-active: color-mix(in srgb, var(--primary) 12%, var(--launcher-shell-fill));
   --launcher-row-hover: color-mix(in srgb, var(--foreground) 4%, var(--launcher-shell-fill));
   --launcher-accent-line: var(--primary);
+  --launcher-pin-indicator: color-mix(in srgb, var(--status-warning) 82%, var(--background-elevated) 18%);
   --launcher-app-chip-bg: transparent;
   --launcher-app-chip-fg: var(--primary);
   --launcher-ai-chip-bg: transparent;
@@ -235,6 +236,7 @@
   --launcher-text-muted: var(--muted-foreground);
   --launcher-row-active: color-mix(in srgb, var(--primary) 14%, var(--launcher-shell-fill));
   --launcher-row-hover: color-mix(in srgb, var(--foreground) 5%, var(--launcher-shell-fill));
+  --launcher-pin-indicator: color-mix(in srgb, var(--status-warning) 78%, white 22%);
 }
 
 html[data-platform="darwin"],
