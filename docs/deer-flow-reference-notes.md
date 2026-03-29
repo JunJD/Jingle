@@ -1,195 +1,401 @@
 # DeerFlow Reference Notes
 
-## 目的
+## Product Memo
 
-把 `../deer-flow` 当成 `openwork` 的参考系之一，但先明确边界：
+### Product
 
-- `Jingle` 主要是 `launcher` 参考
-- `DeerFlow` 主要是 `main workspace + agent harness` 参考
-- 不把两者混成一个“什么都往 launcher 里塞”的方向
+`openwork` 不该被定义成“更强的 coding agent”，而应该被定义成：
 
-这份文档只记录对 `openwork` 真有参考价值的部分，不做 DeerFlow 全量介绍。
+`一个把工作交给智能体，但始终保留控制面、审计面、回退面的超级智能助手。`
 
-## 一句话判断
+如果这个定义成立，那么：
 
-`DeerFlow` 不是 launcher 产品，它更像一个带前端工作台的 `super agent harness`。
+- `launcher` 只是入口
+- `agent runtime` 只是执行脑
+- `harness` 不是内部实现细节，而是用户能直接感受到的产品能力
 
-对 `openwork` 来说，最值得看的不是“搜索框长什么样”，而是：
+### User
 
-- thread 如何投影成 `todo / subtask / artifact`
-- workspace shell 如何组织聊天区、产物区、agent 区
-- runtime 如何把 `sandbox / subagent / memory / skill` 收口在 UI 下层
+- 不是只写代码的人
+- 而是任何把真实工作交给助手执行的人
+- 他们需要的不是“更会做”，而是“做了什么、现在到哪、哪里能接管、错了怎么撤回”
 
-## DeerFlow 的产品边界
+### Pain
 
-从 `../deer-flow/README.md`、`../deer-flow/frontend/README.md`、`../deer-flow/backend/README.md` 看，DeerFlow 的主线是：
+今天大多数 agent 产品的问题，不是能力不足，而是工作一旦交出去，就变成黑箱：
 
-- 前端是一个 web workspace，不是系统级 launcher
-- 后端是 `LangGraph Server + Gateway API + sandbox + subagents + memory`
-- 会话单位是 `thread`
-- thread 上天然挂着 `uploads / artifacts / todos / agent execution`
-- skills 和 custom agents 是一等能力，不是补丁
+- 看不清当前到底在执行什么
+- 不知道哪些产物是中间态，哪些可以采用
+- 不能稳定暂停、审核、接管
+- 出错后只能重跑，不能基于明确状态回退
+- 很难把 agent 从“对话工具”变成“工作系统”
 
-这和 `openwork` 当前 launcher 路线不同。`openwork` 的 launcher 已经明确收口为 `home/search + feature page + typed plugin host`，见 `docs/launcher-shell-architecture.md`。
+### Non-goal
 
-## 对 openwork 真有价值的点
+这不是要做：
 
-### 1. 把 thread projection 做成一等层
+- 一个通用 agent 平台
+- 一个更花哨的 coding agent IDE
+- 一个把所有能力都塞进 launcher 的桌面壳
 
-DeerFlow 前端不是直接拿原始流事件到处渲染，而是把 thread 投影成多个稳定 UI 面：
+## Hero Workflow
+
+要证明 `openwork` 值得存在，核心工作流应该是：
+
+1. 用户从 launcher 或主工作台提交一个真实工作目标。
+2. 系统把这次执行创建成一个可追踪的工作单元。
+3. 智能体开始推进，持续产出计划、子任务、文件、结论、审批点。
+4. 用户随时能看到：
+   - 现在在做什么
+   - 已产生了什么
+   - 哪一步需要审核
+   - 如果不满意，能从哪里回退
+5. 最终留下一个可检查、可比较、可复用、可重放的工作记录，而不是一串聊天气泡。
+
+这才是 `human on the loop` 在工作场景里的产品化落点。  
+不是把人从审批按钮前移到旁观席，而是让人拥有一个稳定控制面。
+
+## Must-Own Seam
+
+`openwork` 必须自己拥有的，不是“模型调用”，而是：
+
+`把一次 agent 执行收口成一个受控工作单元的能力。`
+
+这个工作单元至少要有：
+
+- 输入
+- 环境
+- 执行轨迹
+- 子任务状态
+- 产物列表
+- 审批节点
+- 检查点
+- 回退语义
+
+如果这层不成立，所谓“超级智能助手”就还是一个强一点的聊天工具。
+
+## DeerFlow 真正值得学的部分
+
+`DeerFlow` 最值得学的，不是它用了多少 subagent，也不是它的 web chat 外观。  
+真正有价值的是：它已经把 agent 执行的一部分，做成了可管理的控制面原语。
+
+### 1. 它把 thread 当成工作单元，而不是只当会话容器
+
+`../deer-flow/backend/packages/harness/deerflow/agents/thread_state.py` 里，`ThreadState` 不是只有 `messages`，还挂了：
+
+- `thread_data`
+- `artifacts`
+- `todos`
+- `uploaded_files`
+- `viewed_images`
+
+这件事非常重要。  
+它说明 DeerFlow 已经在做一件对的事：
+
+`一次执行不只是消息流，而是一个带结构化工作状态的单元。`
+
+对 `openwork` 的启发：
+
+- thread / run 必须承载结构化工作状态
+- 不能把 todo、artifact、approval、attachment 继续散落在各自 UI 组件里
+- 这层应该继续被提升成 `work unit projection`
+
+### 2. 它把 thread-local filesystem 做成了 harness 基础设施
+
+`ThreadDataMiddleware` 会给每个 thread 建出：
+
+- `workspace`
+- `uploads`
+- `outputs`
+
+也就是 `../deer-flow/backend/packages/harness/deerflow/agents/middlewares/thread_data_middleware.py` 里的 thread data 目录模型。
+
+这意味着 DeerFlow 的 agent 不是在抽象世界里“思考”，而是在一个可定位、可隔离、可清理的工作环境里执行。
+
+这对 `openwork` 的价值很大，因为“可审核、可回退”不可能只靠消息历史实现。  
+必须先有一个可边界化的工作目录或工作空间语义。
+
+该学的不是目录名字，而是这条原则：
+
+- 每次工作都要有自己的执行空间
+- 用户能知道产物属于哪次工作
+- 系统能清理、归档、恢复这次工作留下的痕迹
+
+### 3. 它有一个 runtime 之外的 Gateway API，这其实就是 control plane 雏形
+
+DeerFlow 的 Gateway API 管的不只是模型配置，而是：
+
+- uploads
+- artifacts
+- memory
+- skills
+- threads cleanup
+- agents
+
+也就是 `../deer-flow/backend/app/gateway/routers/*` 这一层。
+
+这里最值得学的，不是 REST 风格，而是分层意识：
+
+- `agent runtime` 负责执行
+- `gateway / control plane` 负责管理可见资源和可控能力
+
+这正符合 `openwork` 的方向。  
+因为你要做的不是一个更强 agent，而是一个有控制面的超级助手。
+
+所以对 `openwork` 来说，关键不是“是否也做一个 FastAPI gateway”，而是：
+
+`必须把执行面和控制面明确分层。`
+
+例如：
+
+- 执行面：thread / tool / agent / stream
+- 控制面：artifacts / approvals / checkpoints / history / rollback / cleanup / publish
+
+### 4. 它已经把“审批点”做成执行流程的一部分，而不是 UI 补丁
+
+`ClarificationMiddleware` 很关键。
+
+它不是前端看到一句“请补充信息”再自己瞎猜怎么处理中断；  
+而是在 middleware 层拦截 `ask_clarification`，直接把执行停在一个明确节点。
+
+这说明 DeerFlow 已经有了一个重要产品前提：
+
+`控制点应该先存在于 runtime 语义里，再投影到 UI。`
+
+这对 `openwork` 完全适用。
+
+你要的“可审核、可回退”，本质上都不是 UI 功能，而是 runtime checkpoint 语义：
+
+- 哪里能暂停
+- 哪里必须确认
+- 继续后状态如何衔接
+- 拒绝后留下什么记录
+
+### 5. 它把 todo / subtask / artifact 变成了用户看得见的控制面
+
+DeerFlow 前端值得学的，不是“好看”，而是它把一些内部运行态公开成了用户可消费的工作控制面：
 
 - `todo-list.tsx`
 - `messages/subtask-card.tsx`
 - `chats/chat-box.tsx`
 
-这对 `openwork` 的启发是：
+这三类东西合起来，构成了最基础的“工作可见性”：
 
-- `todo / tool call / approval / artifact / subtask` 应该继续收口到共享 thread projection
-- page 只消费投影结果，不直接理解 runtime 细节
-- 这条思路和当前 launcher AI 共享 conversation state 的方向是一致的
+- 当前计划是什么
+- 子任务推进到了哪
+- 产物有哪些
 
-### 2. Chat + Artifact 分栏很值得借
+这比单纯把工具调用日志往外抛强很多。  
+因为用户要的不是日志，而是控制。
 
-DeerFlow 的 `chat-box.tsx` 采用聊天区和 artifact 区并排切换的工作台模式。
+对 `openwork` 的启发是：
 
-这适合 `openwork` 的主应用，不适合 launcher：
+- 主工作台应该优先补 `plan / subtask / artifact` 三个稳定投影
+- 这些不是 debug 面板
+- 它们就是用户感知 harness 的主要界面
 
-- 适合主应用里的代码、网页、文档、图表输出
-- 不适合 launcher 的快速意图捕获
+### 6. 它已经有了 cleanup、checkpointer、thread deletion 这些“可恢复”基础件
 
-结论：
+DeerFlow 里能看到几块很关键的基础设施：
 
-- 如果 `openwork` 主 chat 后续强化文件/代码产物，优先参考 DeerFlow 的 artifact side panel
-- 不要把 artifact 面板塞进 launcher shell
+- checkpointer provider
+- thread cleanup router
+- thread-local filesystem deletion
+- artifact path resolution
 
-### 3. Todo / Subtask 可视化比“工具日志列表”更像工作流
+这说明它至少在系统层面承认：
 
-DeerFlow 把多步任务显式渲染成：
+`执行不是瞬时文本流，而是一个需要持久化、恢复、清理的对象。`
 
-- 折叠的 todo strip
-- 可展开的 subtask card
-- 每个 subtask 的状态、最新动作和结果
+这正是 `openwork` 要继续放大的方向。
 
-这比单纯显示工具调用流更适合 `openwork` 想做的“工作感”。  
-如果后续要强化 agent orchestration，这部分比 Jingle 更值得抄。
+## DeerFlow 还不够的地方
 
-### 4. Agent Gallery 值得参考，但应该落在主工作台
+如果按你的目标来看，DeerFlow 还不是最终答案。  
+它给了很多正确结构，但还没有把“工作控制面”做成第一产品。
 
-DeerFlow 有独立的 agent gallery：
+### 1. 它更像 thread control，不像 work control
 
-- `workspace-nav-chat-list.tsx`
-- `agents/agent-gallery.tsx`
+DeerFlow 主要围绕 `thread` 组织能力。  
+这很好，但还不够。
 
-这说明它把“聊天”和“agent 配置/选择”当成两个平级工作台对象。
+因为你要的不是“会话可管理”，而是“工作可管理”。
 
-对 `openwork` 的意义：
+两者差异很大：
 
-- 未来如果要把 assistant / extension / custom agent 做成可管理实体，应该放进主应用
-- 不要先把它做成 launcher 二级页
+- thread 更像对话容器
+- work item 更像一个有目标、状态、审计、回退、交付边界的业务单元
 
-### 5. Command Palette 是 shell overlay，不是 launcher 替代品
+`openwork` 后续不能只停在 thread abstraction。  
+应该进一步考虑：
 
-DeerFlow 的 `command-palette.tsx` 做的是应用内动作面板：
+- `thread` 是不是只是 work unit 的一种交互面
+- 真正的一等对象是不是 `run / task / case / work item`
 
-- 新建 chat
-- 打开 settings
-- 查看快捷键
+### 2. 它的 rollback 语义还不够强
 
-它不是系统级 launcher，也不承担 app search / app launch。
+DeerFlow 有：
 
-这对 `openwork` 很重要：
+- checkpointer
+- cleanup
+- artifacts
+- thread-local files
 
-- `launcher` 负责桌面级 intent capture
-- `command palette` 如果要做，应该是主应用内部 shell action menu
-- 两者不要复用同一套心智模型
+但它还不等于真正的“回退能力”。
 
-### 6. Runtime 分层比 UI 长相更值得学
+因为回退至少有三层：
 
-DeerFlow backend 的核心不是界面，而是 runtime 分层：
+- 对话状态回退
+- 产物版本回退
+- 工作空间改动回退
 
-- `lead agent`
-- middleware chain
-- sandbox
-- subagents
-- memory
-- gateway API
+DeerFlow 现在更像“可以重新拿到状态”，还不像“可以明确撤销到哪个受信状态”。
 
-这套分层给 `openwork` 的启发是：
+这正是 `openwork` 需要超越它的地方。
 
-- UI 不应该直接背负 runtime 复杂性
-- `approval / tool execution / thread data / uploads / artifacts` 这些都应该先有后端边界，再投影到 UI
-- 我们已有 `execute approval middleware` 与 DeerFlow 接近，见 `docs/execute-approval-middleware.md`
+### 3. 它的审计仍偏开发者视角
 
-## 不该照搬的点
+DeerFlow 现在的证据分散在：
 
-### 1. 不要把 openwork 改造成 DeerFlow 的部署结构
+- message stream
+- middleware
+- thread-local outputs
+- gateway resources
 
-DeerFlow 是典型 web harness：
+这对工程师够用，但对工作控制面来说还不够。
 
-- Nginx
-- LangGraph server
-- Gateway API
-- Next.js frontend
+你要的产品里，审计面应该更像一个统一账本，而不是分散在多个技术层里的事实。
 
-`openwork` 是 Electron 桌面应用。除非真有部署压力，否则不要为了“像 DeerFlow”复制它的服务拆分。
+用户真正想看的是：
 
-### 2. 不要把 launcher 做成 mini workspace
+- 这次工作输入了什么
+- 做了哪些关键决策
+- 哪些动作改了外部世界
+- 哪些产物是最终结果
+- 谁确认过
+- 如果撤回，会撤回到哪里
 
-DeerFlow 的强项是 workspace，不是 launcher。
+### 4. 它的 control point 还不够广
 
-所以：
+DeerFlow 已经有 clarification / interruption，但还没有充分展开为工作级 control points，例如：
 
-- artifact
-- agent gallery
-- 大块 task orchestration UI
-- 重型 settings / config surface
+- 对外发送前审核
+- 对关键文件覆盖前审核
+- 对“发布 / 提交 / 同步”动作设置明确 gate
+- 对已有产物进行 adopt / reject / rollback
 
-都不应该优先往 launcher 放。
+也就是说，它更像“执行中的中断能力”，还不是“工作的治理面”。
 
-### 3. 不要整包照搬 DeerFlow skills / custom agents 体系
+## Openwork 应该怎么借 DeerFlow
 
-DeerFlow 的 skills、custom agents、gateway API、thread-local filesystem 是一整套 harness 设计。
+### Own
 
-`openwork` 已经有自己的方向：
+`openwork` 必须自己拥有这几条：
 
-- launcher plugin host
-- assistant / extension 架构
-- 本地技能体系
+- `work unit` 模型，而不是只停在 thread
+- `control plane` 视图，而不是只有聊天界面
+- `checkpoint / approval / rollback` 的产品语义
+- `artifact / diff / output / publish state` 的统一账本
 
-正确做法是借它的边界意识，不是直接复制它的对象模型。
+### Integrate
 
-## 对 openwork 的落点建议
+可以借 DeerFlow 的是：
 
-### 短期
+- thread-local workspace 思路
+- middleware checkpoint 思路
+- artifacts / uploads / cleanup 的资源分层
+- todo / subtask / artifact 的前端投影方式
 
-- 继续强化主 chat 的共享 thread projection
-- 优先补 `todo / subtask / artifact` 三种稳定投影
-- 如果主应用即将强化代码/网页输出，考虑引入 artifact side panel
+### Delay
 
-### 中期
+现在不该优先做的：
 
-- 把 assistant / extension registry 往 DeerFlow 的 agent gallery 方向推进
-- 明确主应用中的 `thread-local uploads / outputs / artifacts` 模型
-- 保持 launcher 只是入口，不承接重型工作台职责
+- DeerFlow 式大而全的 web harness 部署结构
+- 为了“平台化”先做一堆 agent gallery / custom agent 管理
+- 把 launcher 扩成整个 control plane
 
-### 参考边界
+### Risk
 
-建议后续统一这样使用参考系：
+最大的风险不是实现难，而是产品概念再次变糊：
 
-| 主题 | 更该看谁 | 原因 |
-| --- | --- | --- |
-| launcher 唤起、app search、空态 history | `Jingle` | 它本来就是 launcher 参考 |
-| main workspace、artifact 区、todo/subtask、agent gallery | `DeerFlow` | 它本来就是 workspace/harness 参考 |
-| tool approval / interrupt 边界 | `DeerFlow` | runtime 分层更成熟 |
-| typed plugin host / Electron desktop integration | `openwork` 自己定义 | 现有边界已经比两边都更贴当前目标 |
+- 一会儿想做 launcher
+- 一会儿想做 coding agent
+- 一会儿想做 generic runtime
+- 一会儿想做工作控制面
 
-## 本次查看的文件
+这些不能并列。
+
+如果你的方向是对的，那就应该明确：
+
+`launcher 是入口，主工作台是控制面，runtime 是执行脑，harness 是产品信任层。`
+
+## 建议的产品定义
+
+### Harness Surface The User Can Feel
+
+用户能感知到的 harness，不应该藏在日志和开发者工具里。  
+至少要有这几块可见面：
+
+- `Plan`: 当前计划和状态
+- `Run Timeline`: 做了什么、何时做的
+- `Artifacts`: 产物与中间产物
+- `Approvals`: 待确认动作和历史确认记录
+- `Checkpoints`: 可以恢复到的状态点
+- `Rollback`: 撤回某次采用、发布或改动
+
+如果这几块做不出来，`human on the loop` 就还停留在概念层。
+
+### What To Cut Now
+
+为了保护产品核心，现在应该主动砍掉：
+
+- 把 focus 放在“更强 coding agent UI”上
+- 把 DeerFlow 当作 frontend 视觉参考
+- 把 launcher 当成主要工作台
+- 提前做通用多 agent 平台叙事
+
+## Recommended Direction
+
+`openwork` 应该定义成一个 launcher-first、workspace-controlled 的超级智能助手：用户从 launcher 进入，但真正的产品核心是主工作台里的工作控制面。每一次 agent 执行都必须留下可检查、可审核、可恢复、可回退的工作单元。`
+
+在这个方向下，DeerFlow 最值得学习的不是“它有 subagent”，而是：
+
+- 它把 thread 做成了结构化执行单元
+- 它把 workspace / uploads / outputs 做成了 thread-local 资源
+- 它把 artifacts / cleanup / memory / skills 提升成 runtime 之外的管理面
+- 它把 clarification / todo / subtask 变成了用户可见的流程控制原语
+
+但 `openwork` 不能停在 DeerFlow 这里。  
+你真正要补出来的，是 DeerFlow 还没有完整产品化的那一层：
+
+`工作级 control plane + 审计 + checkpoint + rollback`
+
+## Next Experiment
+
+不要先讨论大平台。  
+先挑一个真实工作流，把控制面做出来。
+
+推荐只做一个：
+
+`让一次“产出文档 / 网页 / 分析结果”的 agent 任务，天然生成 plan、timeline、artifacts、approval、checkpoint，并支持回退到上一个已确认状态。`
+
+如果这条跑通，`openwork` 的产品核心就成立了。
+
+## 本次查看的 DeerFlow 文件
 
 - `../deer-flow/README.md`
 - `../deer-flow/frontend/README.md`
 - `../deer-flow/backend/README.md`
-- `../deer-flow/frontend/src/components/workspace/command-palette.tsx`
+- `../deer-flow/backend/packages/harness/deerflow/agents/thread_state.py`
+- `../deer-flow/backend/packages/harness/deerflow/agents/middlewares/thread_data_middleware.py`
+- `../deer-flow/backend/packages/harness/deerflow/agents/middlewares/clarification_middleware.py`
+- `../deer-flow/backend/packages/harness/deerflow/agents/middlewares/todo_middleware.py`
+- `../deer-flow/backend/packages/harness/deerflow/tools/builtins/task_tool.py`
+- `../deer-flow/backend/app/gateway/routers/artifacts.py`
+- `../deer-flow/backend/app/gateway/routers/threads.py`
+- `../deer-flow/backend/packages/harness/deerflow/agents/checkpointer/provider.py`
+- `../deer-flow/frontend/src/core/threads/types.ts`
+- `../deer-flow/frontend/src/core/tasks/types.ts`
 - `../deer-flow/frontend/src/components/workspace/chats/chat-box.tsx`
 - `../deer-flow/frontend/src/components/workspace/todo-list.tsx`
 - `../deer-flow/frontend/src/components/workspace/messages/subtask-card.tsx`
-- `../deer-flow/frontend/src/components/workspace/agents/agent-gallery.tsx`
