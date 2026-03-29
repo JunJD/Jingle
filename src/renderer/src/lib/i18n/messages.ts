@@ -23,6 +23,7 @@ export interface AppCopy {
     agentError: string
     agentErrorRecovery: string
     agentLabel: string
+    copyMessage: string
     agentTasks: string
     agentThinking: string
     describeOutcome: string
@@ -34,6 +35,7 @@ export interface AppCopy {
     selectWorkspaceHint: string
     selectWorkspaceTitle: string
     startConversation: string
+    retryMessage: string
     tasksCompleted: (count: number) => string
     userLabel: string
   }
@@ -169,6 +171,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentError: "Agent 错误",
       agentErrorRecovery: "你可以继续发送新消息，恢复这段对话。",
       agentLabel: "AGENT",
+      copyMessage: "复制消息",
       agentTasks: "Agent 任务",
       agentThinking: "Agent 正在思考...",
       describeOutcome: "描述你想达成的结果。workspace 和 tools 会随后接上。",
@@ -180,6 +183,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       selectWorkspaceHint: "Agent 需要一个 workspace 来创建和修改文件",
       selectWorkspaceTitle: "先选择一个 workspace 文件夹",
       startConversation: "开始和 Agent 对话",
+      retryMessage: "重试回答",
       tasksCompleted: (count) => `${count} 个任务已完成`,
       userLabel: "你"
     },
@@ -324,6 +328,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentError: "Agent Error",
       agentErrorRecovery: "You can send a new message to continue the conversation.",
       agentLabel: "AGENT",
+      copyMessage: "Copy message",
       agentTasks: "Agent Tasks",
       agentThinking: "Agent is thinking...",
       describeOutcome: "Describe the outcome you want. The workspace and tools will follow.",
@@ -335,6 +340,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       selectWorkspaceHint: "The agent needs a workspace to create and modify files",
       selectWorkspaceTitle: "Select a workspace folder first",
       startConversation: "Start a conversation with the agent",
+      retryMessage: "Retry response",
       tasksCompleted: (count) => `${count} task${count === 1 ? "" : "s"} completed`,
       userLabel: "YOU"
     },

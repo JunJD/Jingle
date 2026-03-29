@@ -27,6 +27,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   isBusy: boolean
   primaryActionDisabled: boolean
   query: string
+  retry: () => Promise<void>
   runPrimaryAction: () => void
   setQuery: (value: string) => void
   threadId: string | null
@@ -172,6 +173,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     isBusy,
     primaryActionDisabled,
     query,
+    retry: invocation.retry,
     runPrimaryAction,
     setQuery: invocation.setInput,
     threadId

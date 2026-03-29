@@ -1,14 +1,9 @@
 import { AlertCircle, ArrowDown, Loader2, X } from "lucide-react"
-import { MessageBubble } from "@/components/chat/MessageBubble"
+import { Messages } from "@/components/chat/Messages"
 import { ChatTodos } from "@/components/chat/ChatTodos"
 import type { HITLRequest, Message, Todo } from "@/types"
 import { useI18n } from "@/lib/i18n"
 import { useStickToBottom } from "use-stick-to-bottom"
-
-interface ToolResultInfo {
-  content: string | unknown
-  is_error?: boolean
-}
 
 export function LauncherAiEmptyState(props: { error?: string | null }): React.JSX.Element {
   const { copy } = useI18n()
@@ -69,9 +64,9 @@ export function LauncherAiConversation(props: {
   error: string | null
   isLoading: boolean
   onApprovalDecision: (decision: "approve" | "reject" | "edit") => Promise<void>
+  onRetry: () => Promise<void>
   pendingApproval: HITLRequest | null
   todos: Todo[]
-  toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element {
   const { copy } = useI18n()
   const { contentRef, isAtBottom, scrollRef, scrollToBottom } = useStickToBottom({
@@ -84,9 +79,9 @@ export function LauncherAiConversation(props: {
     error,
     isLoading,
     onApprovalDecision,
+    onRetry,
     pendingApproval,
-    todos,
-    toolResults
+    todos
   } = props
 
   if (!displayMessages.length && !isLoading && !error) {
@@ -101,18 +96,13 @@ export function LauncherAiConversation(props: {
       >
         <div ref={contentRef} className="overflow-x-hidden px-6 py-6">
           <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-8">
-            {displayMessages.map((message, index) => (
-              <MessageBubble
-                key={message.id}
-                isStreaming={
-                  isLoading && index === displayMessages.length - 1 && message.role !== "user"
-                }
-                message={message}
-                onApprovalDecision={onApprovalDecision}
-                pendingApproval={pendingApproval}
-                toolResults={toolResults}
-              />
-            ))}
+            <Messages
+              isLoading={isLoading}
+              messages={displayMessages}
+              onApprovalDecision={onApprovalDecision}
+              onRetry={onRetry}
+              pendingApproval={pendingApproval}
+            />
 
             {!isLoading && todos.length > 0 && (pendingApproval || displayMessages.length > 0) && (
               <ChatTodos todos={todos} />

@@ -114,9 +114,9 @@ export function LauncherAiPage(): React.JSX.Element {
           error={session.conversation.visibleError}
           isLoading={session.conversation.isLoading}
           onApprovalDecision={session.handleApprovalDecision}
+          onRetry={session.retry}
           pendingApproval={session.conversation.pendingApproval}
           todos={session.conversation.todos}
-          toolResults={session.conversation.toolResults}
         />
       ) : (
         <LauncherAiEmptyState error={session.conversation.visibleError} />

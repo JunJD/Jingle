@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAppStore } from "@/lib/store"
 import { useCurrentThread } from "@/lib/thread-context"
 import { useAiInvocation } from "@/lib/ai-invocation"
-import { MessageBubble } from "./MessageBubble"
+import { Messages } from "./Messages"
 import { ModelSwitcher } from "./ModelSwitcher"
 import { Folder } from "lucide-react"
 import { WorkspacePicker } from "./WorkspacePicker"
@@ -51,10 +51,11 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   })
   const {
     clearVisibleError,
-    conversation: { displayMessages, isLoading, pendingApproval, todos, toolResults },
+    conversation: { displayMessages, isLoading, pendingApproval, todos },
     input,
     invoke,
     isBusy,
+    retry,
     resume,
     setInput,
     stop,
@@ -185,15 +186,13 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
               </div>
             )}
 
-            {displayMessages.map((message) => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                toolResults={toolResults}
-                pendingApproval={pendingApproval}
-                onApprovalDecision={resume}
-              />
-            ))}
+            <Messages
+              isLoading={isLoading}
+              messages={displayMessages}
+              onApprovalDecision={resume}
+              onRetry={retry}
+              pendingApproval={pendingApproval}
+            />
 
             {!isLoading && todos.length > 0 && (pendingApproval || displayMessages.length > 0) && (
               <ChatTodos todos={todos} />
