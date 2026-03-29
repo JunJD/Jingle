@@ -180,6 +180,14 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     available: true
   },
   {
+    id: "qwen3.5-plus",
+    name: "Qwen 3.5 Plus",
+    provider: "dashscope",
+    model: "qwen3.5-plus",
+    description: "DashScope multimodal Qwen model with image understanding support",
+    available: true
+  },
+  {
     id: "qwen-max",
     name: "Qwen Max",
     provider: "dashscope",

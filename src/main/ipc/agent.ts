@@ -11,6 +11,7 @@ import {
   syncRunFromLatestCheckpoint
 } from "../agent/persistence"
 import { extractHitlRequestFromValuesState } from "../agent/runtime-state"
+import { summarizeMessageContent } from "../../shared/message-content"
 import type {
   AgentInvokeParams,
   AgentResumeParams,
@@ -93,10 +94,11 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
     async (event, { threadId, message, messageId, modelId }: AgentInvokeParams) => {
       const channel = `agent:stream:${threadId}`
       const window = BrowserWindow.fromWebContents(event.sender)
+      const messagePreview = summarizeMessageContent(message)
 
       console.log("[Agent] Received invoke request:", {
         threadId,
-        message: message.substring(0, 50),
+        message: messagePreview.substring(0, 50),
         messageId,
         modelId
       })
@@ -142,7 +144,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
           return
         }
 
-        const { runId } = await beginAgentRun(threadId, message, modelId)
+        const { runId } = await beginAgentRun(threadId, message, modelId, messageId)
         activeRuns.set(threadId, { controller: abortController, runId })
 
         const agent = await createAgentRuntime({ threadId, workspacePath, modelId })

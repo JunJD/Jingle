@@ -213,6 +213,16 @@ Phase 4 子步骤：
 Phase 4 当前状态：
 
 - `4.1` 已完成
+- `4.1` 图片上下文已扩展为可预览 payload，当前 launcher header 可直接显示缩略图
+- launcher header 的 clipboard 图片预览与 AI attachment strip 已开始复用同一套 attachment UI，图片缩略图支持 hover 大图
+- clipboard 能力边界已开始收口为：`snapshot -> consumer derivation -> surface consumption`
+- launcher home / launcher plugin 不再直接各自理解原始 clipboard 语义；后续 AI composer 继续沿同一模式接入
+- launcher AI 已引入独立 `attachment draft` 映射层；当前 clipboard 图片/文件先映射成只读 attachment strip，上传/截图/发送后续接入同一模型
+- launcher AI 的 `attachment draft` 已支持单项移除；`+` 按钮当前可选择本地图片文件并加入同一附件条
+- launcher AI 的 `attachment draft` 已接入实际发送链：用户消息区可直接回显图片/文件附件；发送成功后当前 attachment draft 会清空
+- 图片附件当前会在提交边界转换成 provider-friendly 的 `image_url` 内容块，不需要对象存储
+- 文件附件当前先走“消息显示 + 文件名摘要”最小闭环：消息区可见，模型侧先收到文件名摘要文本；真正的 file ingestion / upload 后续单独迭代
+- launcher AI 当前先限制为一组常见可接入文件：`pdf/doc/docx/xls/xlsx/csv/ppt/pptx/txt/md/png/jpg/jpeg/webp/gif/bmp/tif/tiff/heic/heif`
 - `4.2` 进行中
 - `4.2.1` 已完成：数据模型、独立存储、IPC/preload 已落地
 - `4.3` 未开始
@@ -227,6 +237,21 @@ Phase 4 当前状态：
 - 收敛 launcher result `action` 模型，避免继续沿用字符串命令或临时字段堆叠
 - 对齐 `Jingle` 的空态语义：优先补 `launcherHistory + pin`
 
+Phase 5 子步骤：
+
+- `5.1` history + pin
+  - 空输入时展示 `Jingle` 风格的 history 宫格
+  - 应用 icon 正常回显
+  - tile 只保留 pin 角标
+  - `pin / unpin / remove` 收口到右键菜单
+- `5.2` 排序规则收紧
+  - 继续收敛搜索结果排序的可解释性
+  - 明确 history、pin、搜索匹配之间的优先级
+  - 不引入复杂黑盒评分
+- `5.3` action 模型收口
+  - 把 launcher result action 收成结构化模型
+  - `executeLauncherAction` 只做分发，不混入搜索逻辑
+
 后续优化记录：
 
 - `action` 设计改为三段式：`type + executor + target`
@@ -237,8 +262,16 @@ Phase 4 当前状态：
 - `executeLauncherAction` 只做 action 分发，不承载搜索或排序逻辑
 - 参考结论：`Jingle` / `rubick-core` 当前没有更好的 typed action 答案，现有实现基本仍是字符串命令，后续优化以 `openwork` 自己的结构化模型为准
 - clipboard 上下文协议后续从单一互斥 union 演进为更通用的 snapshot / items 模型，支持文本、文件、图片及未来更多剪贴板通道并存
+- clipboard 图片预览和 AI 页上传/截图最终收敛到统一 attachment 模型；clipboard 只是 attachment 的来源之一
+- launcher plugin manifest 可声明 clipboard 接受类型；host 负责过滤后再暴露给 plugin，避免 plugin 自己理解全部 clipboard 原始语义
 - launcher shell 级共享状态后续禁止继续通过 page render props 逐层下传，统一收口到 launcher 根 context / shell 边界
 - `launcherHistory` 数据层已提前落地：独立持久化、pin 字段、执行后自动写入；空态展示后续再接 UI
+
+Phase 5 当前状态：
+
+- `5.1` 已完成
+- `5.2` 未开始
+- `5.3` 未开始
 
 验收标准：
 

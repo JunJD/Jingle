@@ -16,7 +16,10 @@ export function LauncherAiPage(): React.JSX.Element {
   const attachmentDraft = useLauncherAiAttachments()
   const navigation = useLauncherPluginNavigation()
   const surface = useLauncherPluginSurface()
-  const session = useAiThread()
+  const session = useAiThread({
+    buildMessageContent: attachmentDraft.buildMessageContent,
+    onDidInvoke: attachmentDraft.clearAllAttachments
+  })
   const inputStatus = session.inputStatus
   const { inputRef, setInputStatus } = surface
   const fileInputRef = useRef<HTMLInputElement>(null)

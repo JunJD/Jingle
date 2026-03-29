@@ -1,9 +1,20 @@
-import { Bot, FileImage, User } from "lucide-react"
+import { Bot, FileText, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ContentBlock, HITLRequest, Message } from "@/types"
 import { ToolCallRenderer } from "./ToolCallRenderer"
 import { StreamingMarkdown } from "./StreamingMarkdown"
 import { useI18n } from "@/lib/i18n"
+import { resolveImageBlockUrl } from "../../../../shared/message-content"
+import {
+  Attachment,
+  Attachments,
+  AttachmentHoverCard,
+  AttachmentHoverCardContent,
+  AttachmentHoverCardTrigger,
+  AttachmentHoverPreview,
+  AttachmentPreview,
+  type AttachmentData
+} from "../ui/attachments"
 
 interface ToolResultInfo {
   content: string | unknown
@@ -18,54 +29,108 @@ interface MessageBubbleProps {
   onApprovalDecision?: (decision: "approve" | "reject" | "edit") => void
 }
 
-function resolveImageSource(content?: string): string | null {
-  if (!content) {
-    return null
+interface StructuredMessageContent {
+  attachments: React.ReactNode
+  textContent: React.ReactNode
+}
+
+function isRenderableImageUrl(url: string | null): url is string {
+  return Boolean(
+    url &&
+    (url.startsWith("data:") ||
+      url.startsWith("blob:") ||
+      url.startsWith("http://") ||
+      url.startsWith("https://") ||
+      url.startsWith("file://"))
+  )
+}
+
+function toAttachmentData(
+  block: ContentBlock,
+  index: number,
+  clipboardImageLabel: string
+): {
+  data: AttachmentData
+  fallbackIcon?: React.JSX.Element
+} | null {
+  if (block.type === "image" || block.type === "image_url") {
+    const url = resolveImageBlockUrl(block)
+    return {
+      data: {
+        filename: block.name || `${clipboardImageLabel} ${index + 1}`,
+        id: `attachment:${index}`,
+        mediaType: block.mimeType || "image/png",
+        type: "file",
+        ...(isRenderableImageUrl(url) ? { url } : {})
+      }
+    }
   }
 
-  if (
-    content.startsWith("data:") ||
-    content.startsWith("blob:") ||
-    content.startsWith("http://") ||
-    content.startsWith("https://") ||
-    content.startsWith("file://")
-  ) {
-    return content
+  if (block.type === "file") {
+    return {
+      data: {
+        filename: block.name || "Attachment",
+        id: `attachment:${index}`,
+        mediaType: block.mimeType,
+        type: "file",
+        ...(block.content?.startsWith("http://") || block.content?.startsWith("https://")
+          ? { url: block.content }
+          : {})
+      },
+      fallbackIcon: <FileText className="size-7 text-muted-foreground" />
+    }
   }
 
   return null
 }
 
-function MessageImageBlock(props: {
-  block: ContentBlock
-  index: number
+function MessageAttachments(props: {
+  blocks: Array<{ block: ContentBlock; index: number }>
   isUser: boolean
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   const { copy } = useI18n()
-  const { block, index, isUser } = props
-  const label = block.name || `${copy.launcher.clipboardImage} ${index + 1}`
-  const src = resolveImageSource(block.content)
+  const { blocks, isUser } = props
+  const attachments = blocks
+    .map(({ block, index }) => toAttachmentData(block, index, copy.launcher.clipboardImage))
+    .filter((item): item is NonNullable<ReturnType<typeof toAttachmentData>> => item !== null)
+
+  if (attachments.length === 0) {
+    return null
+  }
 
   return (
-    <div className={cn("overflow-hidden rounded-[8px]", isUser && "bg-background-secondary/70")}>
-      {src ? (
-        <img
-          alt={label}
-          className="max-h-[320px] w-full object-cover object-center"
-          loading="lazy"
-          src={src}
-        />
-      ) : (
-        <div className="flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-2xl bg-background">
-            <FileImage className="size-4" />
-          </span>
-          <div className="min-w-0">
-            <div className="truncate font-medium text-foreground">{label}</div>
-          </div>
-        </div>
+    <Attachments
+      variant="grid"
+      className={cn(
+        "w-fit max-w-full gap-3",
+        isUser ? "ml-auto justify-end" : "mr-auto justify-start"
       )}
-    </div>
+    >
+      {attachments.map(({ data, fallbackIcon }) => (
+        <AttachmentHoverCard key={data.id}>
+          <AttachmentHoverCardTrigger asChild>
+            <Attachment
+              data={data}
+              className={cn(
+                "size-28 overflow-hidden rounded-[20px] border-0 bg-background-secondary shadow-[0_8px_24px_rgba(0,0,0,0.14)]",
+                "sm:size-32"
+              )}
+            >
+              <AttachmentPreview
+                fallbackIcon={fallbackIcon}
+                className={cn(
+                  "size-full bg-background-secondary",
+                  fallbackIcon ? "p-0" : "object-cover"
+                )}
+              />
+            </Attachment>
+          </AttachmentHoverCardTrigger>
+          <AttachmentHoverCardContent>
+            <AttachmentHoverPreview data={data} fallbackIcon={fallbackIcon} showMediaType={false} />
+          </AttachmentHoverCardContent>
+        </AttachmentHoverCard>
+      ))}
+    </Attachments>
   )
 }
 
@@ -104,31 +169,42 @@ function renderStructuredContent(
     isStreaming?: boolean
     isUser: boolean
   }
-): React.ReactNode {
+): StructuredMessageContent {
   const { isStreaming, isUser } = options
 
   if (typeof content === "string") {
-    return renderTextBlock(content, {
-      isStreaming,
-      isUser,
-      key: "message-content"
-    })
+    return {
+      attachments: null,
+      textContent: renderTextBlock(content, {
+        isStreaming,
+        isUser,
+        key: "message-content"
+      })
+    }
   }
+
+  const attachmentBlocks = content
+    .map((block, index) => ({ block, index }))
+    .filter(
+      ({ block }) => block.type === "image" || block.type === "image_url" || block.type === "file"
+    )
 
   const lastTextBlockIndex = [...content]
     .reverse()
     .findIndex(
-      (block) => block.type !== "image" && Boolean(block.text?.trim() || block.content?.trim())
+      (block) =>
+        block.type !== "image" &&
+        block.type !== "image_url" &&
+        block.type !== "file" &&
+        Boolean(block.text?.trim() || block.content?.trim())
     )
   const resolvedLastTextBlockIndex =
     lastTextBlockIndex === -1 ? -1 : content.length - lastTextBlockIndex - 1
 
-  const renderedBlocks = content
+  const textBlocks = content
     .map((block, index) => {
-      if (block.type === "image") {
-        return (
-          <MessageImageBlock key={`image-${index}`} block={block} index={index} isUser={isUser} />
-        )
+      if (block.type === "image" || block.type === "image_url" || block.type === "file") {
+        return null
       }
 
       const text = block.text ?? block.content ?? ""
@@ -140,7 +216,10 @@ function renderStructuredContent(
     })
     .filter(Boolean)
 
-  return renderedBlocks.length > 0 ? renderedBlocks : null
+  return {
+    attachments: <MessageAttachments blocks={attachmentBlocks} isUser={isUser} />,
+    textContent: textBlocks.length > 0 ? textBlocks : null
+  }
 }
 
 export function MessageBubble({
@@ -189,7 +268,7 @@ export function MessageBubble({
   const toolWidthClass = isUser ? "w-full max-w-[72%] self-end" : "w-full"
 
   // Don't render if there's no content and no tool calls
-  if (!content && !hasToolCalls) {
+  if (!content.attachments && !content.textContent && !hasToolCalls) {
     return null
   }
 
@@ -212,16 +291,19 @@ export function MessageBubble({
           )}
         </div>
 
-        {content && (
-          <div
-            className={cn(
-              "mt-3 min-w-0 overflow-hidden rounded-[8px] px-5 py-4 text-[15px] leading-8",
-              isUser ? "bg-[var(--chat-user-surface)] text-foreground " : "text-foreground"
-            )}
-          >
-            <div className="space-y-4">{content}</div>
-          </div>
-        )}
+        <div className="mt-3 min-w-0 space-y-4">
+          {content.attachments}
+          {content.textContent ? (
+            <div
+              className={cn(
+                "min-w-0 overflow-hidden rounded-[8px] px-5 py-4 text-[15px] leading-8",
+                isUser ? "bg-[var(--chat-user-surface)] text-foreground" : "text-foreground"
+              )}
+            >
+              <div className="space-y-4">{content.textContent}</div>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {hasToolCalls && (

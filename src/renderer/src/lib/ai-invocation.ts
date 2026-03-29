@@ -1,6 +1,11 @@
 import { useCallback, useMemo, useState } from "react"
 import type { HITLDecision, Message } from "@/types"
 import {
+  extractMessageText,
+  hasMessageContent,
+  toAgentMessageContent
+} from "../../../shared/message-content"
+import {
   useThreadContext,
   useThreadState,
   type ThreadActions,
@@ -21,6 +26,7 @@ export interface EnsureAiThreadResult {
 }
 
 interface InvokeThreadMessageArgs {
+  content?: Message["content"]
   message: string
   threadContext: ThreadContextValue
   threadId: string
@@ -65,6 +71,7 @@ export async function waitForThreadStream(
 
 export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promise<boolean> {
   const {
+    content,
     message: rawMessage,
     onAfterAppendMessage,
     threadContext,
@@ -72,7 +79,9 @@ export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promis
     validateInvocation
   } = args
   const message = rawMessage.trim()
-  if (!message) {
+  const displayContent = content ?? message
+  const submitContent = toAgentMessageContent(displayContent)
+  if (!hasMessageContent(displayContent) || !hasMessageContent(submitContent)) {
     return false
   }
 
@@ -105,7 +114,7 @@ export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promis
   const userMessage: Message = {
     id: messageId,
     role: "user",
-    content: message,
+    content: displayContent,
     created_at: new Date()
   }
 
@@ -122,7 +131,7 @@ export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promis
 
   await stream.submit(
     {
-      messages: [{ id: messageId, type: "human", content: message }]
+      messages: [{ id: messageId, type: "human", content: submitContent }]
     },
     {
       config: {
@@ -145,7 +154,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
   clearVisibleError: () => void
   conversation: ReturnType<typeof useThreadConversationProjection>
   input: string
-  invoke: (message?: string) => Promise<void>
+  invoke: (message?: string, content?: Message["content"]) => Promise<boolean>
   isBusy: boolean
   isPreparing: boolean
   resume: (decision: HITLDecision["type"]) => Promise<void>
@@ -188,10 +197,12 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
   )
 
   const invoke = useCallback(
-    async (nextMessage?: string): Promise<void> => {
-      const message = (nextMessage ?? input).trim()
-      if (!message || isBusy) {
-        return
+    async (nextMessage?: string, content?: Message["content"]): Promise<boolean> => {
+      const draftInput = nextMessage ?? input
+      const message = draftInput.trim()
+      const nextContent = content ?? draftInput
+      if (isBusy || !hasMessageContent(nextContent)) {
+        return false
       }
 
       setIsPreparing(true)
@@ -204,7 +215,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
           }
 
           const createdThread = await ensureThread({
-            draftInput: message,
+            draftInput,
             message
           })
           nextThreadId = createdThread.threadId
@@ -212,7 +223,8 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
 
         setLocalError(null)
 
-        await invokeThreadMessage({
+        return await invokeThreadMessage({
+          content: nextContent,
           message,
           onAfterAppendMessage,
           threadContext,
@@ -221,6 +233,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
         })
       } catch (error) {
         setLocalError(error instanceof Error ? error.message : String(error))
+        return false
       } finally {
         setIsPreparing(false)
       }
@@ -242,13 +255,13 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
   const lastUserMessage = useMemo(() => {
     for (let index = conversation.displayMessages.length - 1; index >= 0; index -= 1) {
       const message = conversation.displayMessages[index]
-      if (message.role !== "user" || typeof message.content !== "string") {
+      if (message.role !== "user" || !hasMessageContent(message.content)) {
         continue
       }
 
-      const content = message.content.trim()
-      if (content) {
-        return content
+      return {
+        content: message.content,
+        draftInput: extractMessageText(message.content).trim()
       }
     }
 
@@ -260,7 +273,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
       return
     }
 
-    await invoke(lastUserMessage)
+    await invoke(lastUserMessage.draftInput, lastUserMessage.content)
   }, [invoke, lastUserMessage])
 
   return {

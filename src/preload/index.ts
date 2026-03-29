@@ -19,6 +19,7 @@ import type { LauncherHistoryItem } from "../shared/launcher-history"
 import type { CreateLocalStartItemInput, LocalStartItem } from "../shared/local-start"
 import type { LauncherSettings } from "../shared/launcher-settings"
 import type { BuiltPluginInvokeRequest } from "../shared/built-plugins/sdk"
+import type { AgentMessageContent } from "../shared/message-content"
 
 // Simple electron API - replaces @electron-toolkit/preload
 const electronAPI = {
@@ -45,7 +46,7 @@ const api = {
     // Send message and receive events via callback
     invoke: (
       threadId: string,
-      message: string,
+      message: AgentMessageContent,
       onEvent: (event: StreamEvent) => void,
       modelId?: string,
       messageId?: string
@@ -70,7 +71,7 @@ const api = {
     // Stream agent events for useStream transport
     streamAgent: (
       threadId: string,
-      message: string,
+      message: AgentMessageContent,
       command: unknown,
       onEvent: (event: StreamEvent) => void,
       modelId?: string,

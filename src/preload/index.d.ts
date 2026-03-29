@@ -19,6 +19,7 @@ import type { LauncherHistoryItem } from "../shared/launcher-history"
 import type { CreateLocalStartItemInput, LocalStartItem } from "../shared/local-start"
 import type { LauncherSettings } from "../shared/launcher-settings"
 import type { BuiltPluginInvokeRequest } from "../shared/built-plugins/sdk"
+import type { AgentMessageContent } from "../shared/message-content"
 
 interface ElectronAPI {
   ipcRenderer: {
@@ -37,14 +38,14 @@ interface CustomAPI {
   agent: {
     invoke: (
       threadId: string,
-      message: string,
+      message: AgentMessageContent,
       onEvent: (event: StreamEvent) => void,
       modelId?: string,
       messageId?: string
     ) => () => void
     streamAgent: (
       threadId: string,
-      message: string,
+      message: AgentMessageContent,
       command: unknown,
       onEvent: (event: StreamEvent) => void,
       modelId?: string,

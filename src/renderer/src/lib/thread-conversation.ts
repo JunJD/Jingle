@@ -9,7 +9,7 @@ interface AgentStreamValues {
 interface StreamMessage {
   id?: string
   type?: string
-  content?: string | unknown[]
+  content?: Message["content"]
   tool_calls?: Message["tool_calls"]
   tool_call_id?: string
   name?: string
@@ -36,7 +36,8 @@ function toThreadMessage(message: StreamMessage & { id: string }): Message {
   return {
     id: message.id,
     role,
-    content: typeof message.content === "string" ? message.content : "",
+    content:
+      typeof message.content === "string" || Array.isArray(message.content) ? message.content : "",
     tool_calls: message.tool_calls,
     ...(role === "tool" && message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
     ...(role === "tool" && message.name ? { name: message.name } : {}),
@@ -154,6 +155,10 @@ export function useThreadConversationProjection(
       return []
     }
 
+    if (!isLoading) {
+      return threadMessages
+    }
+
     const threadMessageIds = new Set(threadMessages.map((message) => message.id))
 
     const streamingMessages: Message[] = (streamData.messages as StreamMessage[])
@@ -163,7 +168,7 @@ export function useThreadConversationProjection(
       .map((message) => toThreadMessage(message))
 
     return [...threadMessages, ...streamingMessages]
-  }, [appendMessage, streamData.messages, threadMessages])
+  }, [appendMessage, isLoading, streamData.messages, threadMessages])
 
   const toolResults = useMemo(() => {
     const results = new Map<string, ToolResultInfo>()

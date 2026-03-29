@@ -1,4 +1,5 @@
 import type { UseStreamTransport } from "@langchain/langgraph-sdk/react"
+import type { ContentBlock } from "./shared/app-types"
 
 export type StreamPayload = Parameters<UseStreamTransport["stream"]>[0]
 
@@ -12,7 +13,7 @@ export type StreamEvent = {
 export interface IPCMessage {
   id: string
   type: "human" | "ai" | "tool" | "system"
-  content: string
+  content: string | ContentBlock[]
   tool_calls?: { id: string; name: string; args: Record<string, unknown> }[]
 }
 

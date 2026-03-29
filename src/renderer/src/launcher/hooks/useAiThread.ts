@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "../../../../plugins/ai/manifest"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
+import { hasMessageContent } from "../../../../shared/message-content"
+import type { Message } from "@/types"
 import {
   useLauncherPluginHost,
   useLauncherPluginNavigation,
@@ -9,7 +11,12 @@ import {
 } from "../LauncherPluginHost"
 import type { LauncherInputStatus } from "../launcher-input-status"
 
-export function useAiThread(): {
+interface UseAiThreadOptions {
+  buildMessageContent?: (message: string) => Message["content"]
+  onDidInvoke?: () => void
+}
+
+export function useAiThread(options: UseAiThreadOptions = {}): {
   conversation: ReturnType<typeof useAiInvocation>["conversation"] & {
     clearVisibleError: () => void
     visibleError: string | null
@@ -24,6 +31,7 @@ export function useAiThread(): {
   setQuery: (value: string) => void
   threadId: string | null
 } {
+  const { buildMessageContent, onDidInvoke } = options
   const { copy } = useI18n()
   const host = useLauncherPluginHost()
   const navigation = useLauncherPluginNavigation()
@@ -49,15 +57,20 @@ export function useAiThread(): {
   })
   const query = invocation.input
   const isBusy = invocation.isBusy
+  const messageContent = buildMessageContent ? buildMessageContent(query) : query
 
   const runPrimaryAction = useCallback((): void => {
-    if (!invocation.canInvoke) {
+    if (isBusy || !hasMessageContent(messageContent)) {
       return
     }
 
     setInputStatus("pending")
-    void invocation.invoke()
-  }, [invocation])
+    void invocation.invoke(query, messageContent).then((didInvoke) => {
+      if (didInvoke) {
+        onDidInvoke?.()
+      }
+    })
+  }, [invocation, isBusy, messageContent, onDidInvoke, query])
 
   useEffect(() => {
     if (hasRunInitialActionRef.current || host.initialAction !== "submit") {
@@ -65,7 +78,10 @@ export function useAiThread(): {
     }
 
     const message = host.seedQuery.trim()
-    if (!message) {
+    const initialContent = buildMessageContent
+      ? buildMessageContent(host.seedQuery)
+      : host.seedQuery
+    if (!hasMessageContent(initialContent)) {
       hasRunInitialActionRef.current = true
       return
     }
@@ -73,13 +89,17 @@ export function useAiThread(): {
     const submitFrameId = window.requestAnimationFrame(() => {
       hasRunInitialActionRef.current = true
       setInputStatus("pending")
-      void invocation.invoke(message)
+      void invocation.invoke(message, initialContent).then((didInvoke) => {
+        if (didInvoke) {
+          onDidInvoke?.()
+        }
+      })
     })
 
     return () => {
       window.cancelAnimationFrame(submitFrameId)
     }
-  }, [host.initialAction, host.seedQuery, invocation])
+  }, [buildMessageContent, host.initialAction, host.seedQuery, invocation, onDidInvoke])
 
   const handleApprovalDecision = useCallback(
     async (decision: "approve" | "reject" | "edit"): Promise<void> => {
@@ -109,7 +129,7 @@ export function useAiThread(): {
     [isBusy, navigation, query, runPrimaryAction]
   )
 
-  const primaryActionDisabled = !invocation.canInvoke
+  const primaryActionDisabled = isBusy || !hasMessageContent(messageContent)
 
   useEffect(() => {
     if (isBusy) {

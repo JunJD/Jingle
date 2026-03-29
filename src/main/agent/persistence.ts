@@ -2,6 +2,7 @@ import { randomUUID } from "crypto"
 import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
 import { createMessage, createRun, getLatestRun, updateRun, updateThread } from "../db"
 import { getCheckpointer } from "./runtime"
+import type { AgentMessageContent } from "../../shared/message-content"
 
 type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted"
 
@@ -13,11 +14,12 @@ function resolveCheckpointRunStatus(tuple: CheckpointTuple | undefined): Persist
 
 export async function beginAgentRun(
   threadId: string,
-  message: string,
-  modelId?: string
+  message: AgentMessageContent,
+  modelId?: string,
+  messageId?: string
 ): Promise<{ runId: string; userMessageId: string }> {
   const runId = randomUUID()
-  const userMessageId = randomUUID()
+  const userMessageId = messageId ?? randomUUID()
   const now = Date.now()
 
   await createRun(runId, threadId, {
