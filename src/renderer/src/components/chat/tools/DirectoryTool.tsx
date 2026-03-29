@@ -32,11 +32,9 @@ defineToolComponent({
         ? copy.common.running
         : status === "approval"
           ? copy.common.approval
-          : status === "error"
-            ? copy.common.error
-            : entries.length > 0
-              ? copy.toolCall.filesAndFolders(counts.files, counts.dirs)
-              : copy.common.completed
+          : entries.length > 0
+            ? copy.toolCall.filesAndFolders(counts.files, counts.dirs)
+            : null
     )
   },
   renderDetail({ args, result }) {
@@ -70,11 +68,9 @@ defineToolComponent({
         ? copy.common.running
         : status === "approval"
           ? copy.common.approval
-          : status === "error"
-            ? copy.common.error
-            : matches.length > 0
-              ? copy.toolCall.foundMatches(matches.length)
-              : copy.common.completed
+          : matches.length > 0
+            ? copy.toolCall.foundMatches(matches.length)
+            : null
     )
   },
   renderDetail({ args, result }) {

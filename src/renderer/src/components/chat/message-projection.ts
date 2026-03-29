@@ -3,7 +3,6 @@ import type { Message as ThreadMessage } from "@/types"
 
 export interface ToolResultInfo {
   content: string | unknown
-  is_error?: boolean
 }
 
 export interface MessageTurn {
@@ -40,8 +39,7 @@ export function buildToolResults(messages: ThreadMessage[]): Map<string, ToolRes
     }
 
     results.set(message.tool_call_id, {
-      content: message.content,
-      is_error: false
+      content: message.content
     })
   }
 

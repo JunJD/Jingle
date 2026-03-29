@@ -12,17 +12,15 @@ import { normalizeToolRenderModel } from "./tools/normalize"
 interface CreateActionMessageViewInput {
   approvalRequest?: HITLRequest | null
   copy: AppCopy
-  isError?: boolean
   presentation: ToolPresentation
   result?: unknown
   toolCall: ToolCall
 }
 
 export function createActionMessageView(input: CreateActionMessageViewInput) {
-  const { approvalRequest, copy, isError, presentation, result, toolCall } = input
+  const { approvalRequest, copy, presentation, result, toolCall } = input
   const model = normalizeToolRenderModel({
     approvalRequest,
-    isError,
     result,
     toolCall
   })

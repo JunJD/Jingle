@@ -17,7 +17,6 @@ interface StreamMessage {
 
 export interface ToolResultInfo {
   content: string | unknown
-  is_error?: boolean
 }
 
 const EMPTY_STREAM_DATA = {
@@ -176,8 +175,7 @@ export function useThreadConversationProjection(
     for (const message of displayMessages) {
       if (message.role === "tool" && message.tool_call_id) {
         results.set(message.tool_call_id, {
-          content: message.content,
-          is_error: false
+          content: message.content
         })
       }
     }

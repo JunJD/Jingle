@@ -5,37 +5,31 @@ import { countLines, getBasename, getPathArg, isNonEmptyString, joinSummaryParts
 import type { ToolComponentProps } from "./types"
 
 function buildMutationSummary(props: ToolComponentProps, mode: "edit_file" | "write_file"): string {
-  const { copy, args, hasResult, status } = props
+  const { copy, args, status } = props
   const path = getPathArg(args)
   const target = path ? getBasename(path) : copy.toolCall.labels[mode]
   const content = isNonEmptyString(args.content) ? args.content : ""
+  const statusLabel =
+    status === "running" ? copy.common.running : status === "approval" ? copy.common.approval : null
 
   return joinSummaryParts(
     copy.toolCall.labels[mode],
     target,
-    status === "running"
-      ? copy.common.running
-      : status === "approval"
-        ? copy.common.approval
-        : status === "error"
-          ? copy.common.error
-          : mode === "write_file" && content
-            ? copy.toolCall.writeLinesToFile(countLines(content), target)
-            : hasResult
-              ? copy.toolCall.fileSaved
-              : copy.common.completed
+    mode === "write_file" && content
+      ? copy.toolCall.writeLinesToFile(countLines(content), target)
+      : statusLabel
   )
 }
 
 function renderMutationDetail(
   args: Record<string, unknown>,
-  options: { rawResult: string; status: ToolComponentProps["status"] }
+  options: { rawResult: string }
 ): React.JSX.Element | null {
   const path = getPathArg(args)
   const content = isNonEmptyString(args.content) ? args.content : ""
   const oldValue = isNonEmptyString(args.old_str) ? args.old_str : ""
   const newValue = isNonEmptyString(args.new_str) ? args.new_str : ""
-  const rawResult = options.status === "error" ? "" : options.rawResult
+  const rawResult = options.rawResult
 
   if (!path && !content && !oldValue && !newValue && !rawResult) {
     return null
@@ -67,8 +61,8 @@ defineToolComponent({
   renderSummary(props) {
     return buildMutationSummary(props, "edit_file")
   },
-  renderDetail({ args, rawResult, status }) {
-    return renderMutationDetail(args, { rawResult, status })
+  renderDetail({ args, rawResult }) {
+    return renderMutationDetail(args, { rawResult })
   }
 })
 
@@ -78,7 +72,7 @@ defineToolComponent({
   renderSummary(props) {
     return buildMutationSummary(props, "write_file")
   },
-  renderDetail({ args, rawResult, status }) {
-    return renderMutationDetail(args, { rawResult, status })
+  renderDetail({ args, rawResult }) {
+    return renderMutationDetail(args, { rawResult })
   }
 })

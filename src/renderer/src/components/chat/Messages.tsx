@@ -268,7 +268,6 @@ function ToolActivityGroup(props: {
     const view = createActionMessageView({
       approvalRequest: item.needsApproval ? pendingApproval : null,
       copy,
-      isError: item.result?.is_error,
       presentation: "grouped",
       result: item.result?.content,
       toolCall: item.toolCall
@@ -304,7 +303,6 @@ function ToolActivityGroup(props: {
     return item ? (
       <ActionMessage
         approvalRequest={item.needsApproval ? pendingApproval : null}
-        isError={item.result?.is_error}
         onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
         result={item.result?.content}
         toolCall={item.toolCall}
@@ -331,7 +329,6 @@ function ToolActivityGroup(props: {
           >
             <ActionMessage
               approvalRequest={item.needsApproval ? pendingApproval : null}
-              isError={item.result?.is_error}
               onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
               presentation="grouped"
               result={item.result?.content}

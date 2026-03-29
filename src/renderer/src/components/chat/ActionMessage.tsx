@@ -5,12 +5,10 @@ import { cn } from "@/lib/utils"
 import type { HITLRequest, ToolCall } from "@/types"
 import { createActionMessageView } from "./action-message-view"
 import { type ToolPresentation, type ToolComponentStatus } from "./tools"
-import { ToolCodeBlock } from "./tools/shared-components"
 
 interface ActionMessageProps {
   toolCall: ToolCall
   result?: unknown
-  isError?: boolean
   approvalRequest?: HITLRequest | null
   onApprovalDecision?: (decision: "approve" | "reject" | "edit") => void
   presentation?: ToolPresentation
@@ -30,20 +28,12 @@ function StatusGlyph(props: {
     return <TriangleAlert className="size-3.5 text-status-warning" />
   }
 
-  return (
-    <Icon
-      className={cn(
-        "size-3.5",
-        status === "error" ? "text-status-critical" : "text-muted-foreground"
-      )}
-    />
-  )
+  return <Icon className={cn("size-3.5 text-muted-foreground")} />
 }
 
 export function ActionMessage(props: ActionMessageProps): React.JSX.Element | null {
   const {
     approvalRequest,
-    isError,
     onApprovalDecision,
     presentation = "standalone",
     result,
@@ -56,12 +46,11 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       createActionMessageView({
         approvalRequest,
         copy,
-        isError,
         presentation,
         result,
         toolCall
       }),
-    [approvalRequest, copy, isError, presentation, result, toolCall]
+    [approvalRequest, copy, presentation, result, toolCall]
   )
   const { definition, hitlDefinition, icon, model, status, summary } = view
   const isExpanded = Boolean(approvalRequest) || manualExpanded
@@ -86,25 +75,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       toolCall,
       ...model
     })
-
-    if (status !== "error") {
-      return contentDetail
-    }
-
-    const errorDetail = model.errorDetail ? (
-      <ToolCodeBlock>{model.errorDetail}</ToolCodeBlock>
-    ) : null
-
-    if (!contentDetail && !errorDetail) {
-      return null
-    }
-
-    return (
-      <div className="grid gap-2.5">
-        {contentDetail}
-        {errorDetail}
-      </div>
-    )
+    return contentDetail
   }, [
     approvalRequest,
     copy,
@@ -114,19 +85,12 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     model,
     onApprovalDecision,
     presentation,
-    status,
     toolCall
   ])
 
   const hasDetail = Boolean(detail)
   const statusLabel =
-    status === "approval"
-      ? copy.common.approval
-      : status === "running"
-        ? copy.common.running
-        : status === "error"
-          ? copy.common.error
-          : null
+    status === "approval" ? copy.common.approval : status === "running" ? copy.common.running : null
 
   return (
     <div className={cn("grid", presentation === "grouped" ? "gap-1" : "gap-1.5")}>

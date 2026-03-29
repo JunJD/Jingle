@@ -13,9 +13,7 @@ defineToolComponent({
         ? copy.common.running
         : status === "approval"
           ? copy.common.approval
-          : status === "error"
-            ? copy.common.error
-            : copy.common.completed
+          : null
     )
   },
   renderDetail({ args }) {

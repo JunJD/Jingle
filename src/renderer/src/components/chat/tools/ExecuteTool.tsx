@@ -8,22 +8,22 @@ defineToolComponent({
   icon: Terminal,
   renderSummary({ copy, args, status }) {
     const command = getCommandArg(args)
-
-    return joinSummaryParts(
-      copy.toolCall.labels.execute,
-      command ? truncateMiddle(command, 60) : null,
+    const statusLabel =
       status === "running"
         ? copy.common.running
         : status === "approval"
           ? copy.common.approval
-          : status === "error"
-            ? copy.common.error
-            : copy.toolCall.commandCompleted
+          : null
+
+    return joinSummaryParts(
+      copy.toolCall.labels.execute,
+      command ? truncateMiddle(command, 60) : null,
+      statusLabel
     )
   },
-  renderDetail({ args, rawResult, status }) {
+  renderDetail({ args, rawResult }) {
     const command = getCommandArg(args)
-    const output = status === "error" ? "" : rawResult
+    const output = rawResult
 
     if (!command && !output) {
       return null

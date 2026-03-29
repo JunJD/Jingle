@@ -103,7 +103,6 @@ export interface HITLToolCall extends LangChainToolCall<string, Record<string, u
 export interface ToolResult {
   tool_call_id: string
   content: string | unknown
-  is_error?: boolean
 }
 
 export interface HITLRequest {

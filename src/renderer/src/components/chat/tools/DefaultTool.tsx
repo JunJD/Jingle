@@ -17,15 +17,13 @@ export const defaultToolComponent: ToolComponentDefinition = {
         ? copy.common.approval
         : status === "running"
           ? copy.common.running
-          : status === "error"
-            ? copy.common.error
-            : copy.common.completed
+          : null
 
     return joinSummaryParts(toolCall.name, getPrimaryArg(args), statusLabel)
   },
-  renderDetail({ copy, rawArgs, rawResult, status }) {
+  renderDetail({ copy, rawArgs, rawResult }) {
     const detailArgs = rawArgs.trim() ? rawArgs : ""
-    const detailResult = status === "error" ? "" : rawResult
+    const detailResult = rawResult
 
     if (!detailArgs && !detailResult) {
       return null

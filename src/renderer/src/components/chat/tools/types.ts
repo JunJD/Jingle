@@ -3,12 +3,11 @@ import type { HITLRequest, ToolCall } from "@/types"
 import type { LucideIcon } from "lucide-react"
 import type { ReactNode } from "react"
 
-export type ToolComponentStatus = "running" | "success" | "error" | "approval"
+export type ToolComponentStatus = "running" | "complete" | "approval"
 export type ToolPresentation = "standalone" | "grouped"
 
 export interface ToolRenderModel {
   args: Record<string, unknown>
-  errorDetail: string | null
   hasResult: boolean
   rawArgs: string
   rawResult: string

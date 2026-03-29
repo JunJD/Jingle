@@ -16,15 +16,13 @@ defineToolComponent({
         ? copy.common.running
         : status === "approval"
           ? copy.common.approval
-          : status === "error"
-            ? copy.common.error
-            : copy.toolCall.taskCompleted
+          : null
     )
   },
-  renderDetail({ args, rawResult, status }) {
+  renderDetail({ args, rawResult }) {
     const name = isNonEmptyString(args.name) ? args.name : ""
     const description = isNonEmptyString(args.description) ? args.description : ""
-    const output = status === "error" ? "" : rawResult
+    const output = rawResult
 
     if (!name && !description && !output) {
       return null

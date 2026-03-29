@@ -1,12 +1,12 @@
 import { FileText } from "lucide-react"
 import { defineToolComponent } from "./registry-core"
 import { ToolCodeBlock, ToolDetailStack, ToolPreviewLines } from "./shared-components"
-import { countLines, getBasename, getPathArg, joinSummaryParts } from "./shared"
+import { getBasename, getPathArg, joinSummaryParts } from "./shared"
 
 defineToolComponent({
   name: "read_file",
   icon: FileText,
-  renderSummary({ copy, args, hasResult, rawResult, status }) {
+  renderSummary({ copy, args, status }) {
     const path = getPathArg(args)
     const target = path ? getBasename(path) : copy.toolCall.labels.read_file
 
@@ -17,16 +17,12 @@ defineToolComponent({
         ? copy.common.running
         : status === "approval"
           ? copy.common.approval
-          : status === "error"
-            ? copy.common.error
-            : hasResult
-              ? copy.toolCall.readLines(countLines(rawResult))
-              : copy.common.completed
+          : null
     )
   },
-  renderDetail({ args, rawResult, status }) {
+  renderDetail({ args, rawResult }) {
     const path = getPathArg(args)
-    const content = status === "error" ? "" : rawResult
+    const content = rawResult
 
     if (!path && !content) {
       return null

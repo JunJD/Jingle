@@ -18,11 +18,9 @@ defineToolComponent({
         ? copy.common.running
         : status === "approval"
           ? copy.common.approval
-          : status === "error"
-            ? copy.common.error
-            : matches.length > 0
-              ? copy.toolCall.matchesInFiles(matches.length, fileCount)
-              : copy.common.completed
+          : matches.length > 0
+            ? copy.toolCall.matchesInFiles(matches.length, fileCount)
+            : null
     )
   },
   renderDetail({ result }) {
