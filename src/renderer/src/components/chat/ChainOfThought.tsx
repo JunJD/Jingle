@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 import type { LucideIcon } from "lucide-react"
 import { BrainIcon, ChevronDownIcon, DotIcon } from "lucide-react"
 import type { ComponentProps, ReactNode } from "react"
-import { createContext, memo, useContext, useMemo } from "react"
+import { createContext, memo, useContext, useEffect, useMemo, useRef } from "react"
 
 interface ChainOfThoughtContextValue {
   isOpen: boolean
@@ -25,6 +25,8 @@ const useChainOfThought = () => {
 }
 
 export type ChainOfThoughtProps = ComponentProps<"div"> & {
+  active?: boolean
+  collapseWhenInactive?: boolean
   open?: boolean
   defaultOpen?: boolean
   onOpenChange?: (open: boolean) => void
@@ -33,6 +35,8 @@ export type ChainOfThoughtProps = ComponentProps<"div"> & {
 export const ChainOfThought = memo(
   ({
     className,
+    active = false,
+    collapseWhenInactive = false,
     open,
     defaultOpen = false,
     onOpenChange,
@@ -44,6 +48,15 @@ export const ChainOfThought = memo(
       onChange: onOpenChange,
       prop: open
     })
+    const wasActiveRef = useRef(active)
+
+    useEffect(() => {
+      if (collapseWhenInactive && wasActiveRef.current && !active) {
+        setIsOpen(false)
+      }
+
+      wasActiveRef.current = active
+    }, [active, collapseWhenInactive, setIsOpen])
 
     const chainOfThoughtContext = useMemo(() => ({ isOpen, setIsOpen }), [isOpen, setIsOpen])
 

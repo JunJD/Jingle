@@ -281,10 +281,10 @@ function ToolActivityGroup(props: {
   })
 
   const shouldGroup = toolCalls.length >= 2
-  const shouldDefaultOpen = actionItems.some(
+  const hasActiveActions = actionItems.some(
     (item) => item.needsApproval || item.result === undefined
   )
-  const isOpen = openOverride ?? shouldDefaultOpen
+  const isOpen = openOverride ?? hasActiveActions
   const latestActiveAction = [...actionViews]
     .reverse()
     .find((item) => item.needsApproval || item.result === undefined)
@@ -313,7 +313,12 @@ function ToolActivityGroup(props: {
   }
 
   return (
-    <ChainOfThought onOpenChange={setOpenOverride} open={isOpen}>
+    <ChainOfThought
+      active={hasActiveActions}
+      collapseWhenInactive
+      onOpenChange={setOpenOverride}
+      open={isOpen}
+    >
       <ChainOfThoughtHeader className="text-[13px] leading-5" icon={ListTodo}>
         {headerTitle}
       </ChainOfThoughtHeader>
