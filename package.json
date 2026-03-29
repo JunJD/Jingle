@@ -86,6 +86,7 @@
     "electron-store": "^8.2.0",
     "langchain": "^1.2.12",
     "lucide-react": "^0.469.0",
+    "pinyin-match": "1.2.4",
     "prisma": "^6.18.0",
     "react-resizable-panels": "^4.4.0",
     "shiki": "^3.21.0",

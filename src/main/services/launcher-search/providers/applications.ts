@@ -1,4 +1,5 @@
 import { app, nativeImage } from "electron"
+import PinyinMatch from "pinyin-match"
 import { execFile } from "node:child_process"
 import { Dirent, promises as fs } from "node:fs"
 import os from "node:os"
@@ -60,11 +61,11 @@ function getTitleMatchRange(title: string, query: string): [number, number] | un
   }
 
   const index = title.toLocaleLowerCase().indexOf(trimmedQuery.toLocaleLowerCase())
-  if (index < 0) {
-    return undefined
+  if (index >= 0) {
+    return [index, index + trimmedQuery.length - 1]
   }
 
-  return [index, index + trimmedQuery.length - 1]
+  return getPinyinMatchRange(title, trimmedQuery)
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -411,43 +412,105 @@ function scoreKeywordMatch(keyword: string, query: string): number {
   return -1
 }
 
-function getDisplayNameForQuery(application: LauncherApplicationRecord, query: string): string {
-  const displayNameScore = scoreKeywordMatch(normalizeSearchValue(application.displayName), query)
-  if (displayNameScore >= 0) {
-    return application.displayName
+function getPinyinMatchRange(value: string, query: string): [number, number] | undefined {
+  const match = PinyinMatch.match(value, query)
+  return Array.isArray(match) ? match : undefined
+}
+
+function scorePinyinMatch(
+  value: string,
+  query: string
+): { match: [number, number]; score: number } | null {
+  if (!query) {
+    return null
   }
 
-  const bundleNameScore = scoreKeywordMatch(normalizeSearchValue(application.bundleName), query)
-  if (bundleNameScore >= 0) {
-    return application.bundleName
+  const match = getPinyinMatchRange(value, query)
+  if (!match) {
+    return null
   }
 
-  return application.displayName
+  const [start, end] = match
+  const span = end - start
+
+  return {
+    match,
+    score: 68 - Math.min(start, 10) * 3 - Math.min(span, 6)
+  }
 }
 
 function getApplicationMatch(
   application: LauncherApplicationRecord,
   query: string
 ): {
+  match?: [number, number]
   score: number
   title: string
 } | null {
-  let bestScore = -1
+  const candidates = [
+    {
+      normalizedValue: normalizeSearchValue(application.displayName),
+      title: application.displayName,
+      value: application.displayName
+    },
+    {
+      normalizedValue: normalizeSearchValue(application.bundleName),
+      title: application.bundleName,
+      value: application.bundleName
+    }
+  ]
+  let bestMatch: { match?: [number, number]; score: number; title: string } | null = null
 
-  for (const keyword of application.keywords) {
-    const score = scoreKeywordMatch(keyword, query)
-    if (score > bestScore) {
-      bestScore = score
+  for (const candidate of candidates) {
+    const literalScore = scoreKeywordMatch(candidate.normalizedValue, query)
+    if (literalScore >= 0) {
+      const nextMatch = {
+        match: getTitleMatchRange(candidate.title, query),
+        score: literalScore,
+        title: candidate.title
+      }
+
+      if (!bestMatch || nextMatch.score > bestMatch.score) {
+        bestMatch = nextMatch
+      }
+    }
+
+    const pinyinScore = scorePinyinMatch(candidate.value, query)
+    if (!pinyinScore) {
+      continue
+    }
+
+    const nextMatch = {
+      match: pinyinScore.match,
+      score: pinyinScore.score,
+      title: candidate.title
+    }
+
+    if (!bestMatch || nextMatch.score > bestMatch.score) {
+      bestMatch = nextMatch
     }
   }
 
-  if (bestScore < 0) {
+  if (bestMatch) {
+    return bestMatch
+  }
+
+  let bestKeywordScore = -1
+
+  for (const keyword of application.keywords) {
+    const score = scoreKeywordMatch(keyword, query)
+    if (score > bestKeywordScore) {
+      bestKeywordScore = score
+    }
+  }
+
+  if (bestKeywordScore < 0) {
     return null
   }
 
   return {
-    score: bestScore,
-    title: getDisplayNameForQuery(application, query)
+    score: bestKeywordScore,
+    title: application.displayName
   }
 }
 
@@ -488,9 +551,9 @@ export async function getApplicationIconDataUrl(
 
 async function mapApplicationResult(
   application: LauncherApplicationRecord,
-  rawQuery: string,
   title: string,
-  score: number
+  score: number,
+  match?: [number, number]
 ): Promise<LauncherSearchResult> {
   return {
     action: {
@@ -500,7 +563,7 @@ async function mapApplicationResult(
     id: application.id,
     iconDataUrl: await getApplicationIconDataUrl(application.path),
     kind: "application",
-    match: getTitleMatchRange(title, rawQuery),
+    match,
     score,
     source: "applications",
     subtitle: application.subtitle,
@@ -520,40 +583,44 @@ async function searchApplications(
   }
 
   const catalog = await getApplicationCatalog()
-  const matches = catalog
-    .map((application) => {
-      const match = getApplicationMatch(application, query)
-      if (!match) {
-        return null
-      }
+  const matches: Array<{
+    application: LauncherApplicationRecord
+    match?: [number, number]
+    score: number
+    title: string
+  }> = []
 
-      return {
-        application,
-        score: match.score,
-        title: match.title
-      }
+  for (const application of catalog) {
+    const match = getApplicationMatch(application, query)
+    if (!match) {
+      continue
+    }
+
+    matches.push({
+      application,
+      match: match.match,
+      score: match.score,
+      title: match.title
     })
-    .filter(
-      (entry): entry is { application: LauncherApplicationRecord; score: number; title: string } =>
-        Boolean(entry)
-    )
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score
-      }
+  }
 
-      const titleOrder = collator.compare(left.title, right.title)
-      if (titleOrder !== 0) {
-        return titleOrder
-      }
+  matches.sort((left, right) => {
+    if (right.score !== left.score) {
+      return right.score - left.score
+    }
 
-      return collator.compare(left.application.path, right.application.path)
-    })
+    const titleOrder = collator.compare(left.title, right.title)
+    if (titleOrder !== 0) {
+      return titleOrder
+    }
+
+    return collator.compare(left.application.path, right.application.path)
+  })
   const results = await Promise.all(
     matches
       .slice(0, Math.max(request.limit, 1))
       .map((entry) =>
-        mapApplicationResult(entry.application, request.query, entry.title, entry.score)
+        mapApplicationResult(entry.application, entry.title, entry.score, entry.match)
       )
   )
 
