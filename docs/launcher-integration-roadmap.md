@@ -413,6 +413,23 @@ Phase 5 当前状态：
 - 清空输入或 top result 不够明确时，该 affordance 消失
 - 这条能力不新增 provider，也不污染结果列表结构
 
+### Pause 7：Result Identity / Semantics 收口
+
+目标：
+
+- 继续做减法，把 result 的 identity 和展示语义从零散 helper / switch 中收拢
+
+范围：
+
+- `7.1` 统一 `historyKey` 构造入口，移除按类型散落的多个 helper
+- `7.2` 统一 `kind` 的展示语义定义，例如 icon、category、primary action label
+
+验收标准：
+
+- 行为不变
+- provider / executor / presentation 的依赖关系更直接
+- 新增 result kind 时，不需要再沿多处平铺 helper 和 switch 追加
+
 建议顺序：
 
 1. Pause 1
@@ -421,6 +438,7 @@ Phase 5 当前状态：
 4. Pause 4
 5. Pause 5
 6. Pause 6
+7. Pause 7
 
 当前状态：
 
@@ -430,6 +448,7 @@ Phase 5 当前状态：
 - Pause 4 已完成
 - Pause 5 已完成
 - Pause 6 已跳过
+- Pause 7.1 已完成
 
 ## 当前不做
 

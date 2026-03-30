@@ -5,7 +5,7 @@ import { Dirent, promises as fs } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
-import { createLauncherApplicationHistoryKey } from "../../../../shared/launcher-history"
+import { createLauncherHistoryKey } from "../../../../shared/launcher-history"
 import type {
   LauncherSearchRequest,
   LauncherSearchResult
@@ -565,7 +565,10 @@ async function mapApplicationResult(
       },
       type: "open-path"
     },
-    historyKey: createLauncherApplicationHistoryKey(application.path),
+    historyKey: createLauncherHistoryKey({
+      path: application.path,
+      type: "application"
+    }),
     id: application.id,
     iconDataUrl: await getApplicationIconDataUrl(application.path),
     kind: "application",

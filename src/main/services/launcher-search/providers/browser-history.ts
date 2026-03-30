@@ -4,7 +4,7 @@ import { Dirent, promises as fs } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
-import { createLauncherBrowserHistoryKey } from "../../../../shared/launcher-history"
+import { createLauncherHistoryKey } from "../../../../shared/launcher-history"
 import type {
   LauncherSearchRequest,
   LauncherSearchResult
@@ -450,7 +450,11 @@ class BrowserHistoryLauncherSearchProvider implements LauncherSearchProvider {
     const hostname = getUrlHostname(row.url)
 
     return {
-      historyKey: createLauncherBrowserHistoryKey(profile.browser, row.url),
+      historyKey: createLauncherHistoryKey({
+        browser: profile.browser,
+        type: "browser-history",
+        url: row.url
+      }),
       id: `${profile.browser}:${row.url}`,
       match: match.match,
       score: match.score + Math.min(row.visit_count, 24) + getRecencyBoost(visitedAtMs),

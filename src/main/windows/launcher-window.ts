@@ -16,8 +16,7 @@ import {
 } from "../../shared/launcher"
 import type { ClipboardContext } from "../../shared/clipboard"
 import {
-  createLauncherApplicationHistoryKey,
-  createLauncherLocalStartHistoryKey,
+  createLauncherHistoryKey,
   type RecordLauncherHistoryItemInput
 } from "../../shared/launcher-history"
 import type {
@@ -245,7 +244,10 @@ async function buildLauncherHistoryRecord(
       if (!action.localStartItemId) {
         return {
           action,
-          historyKey: createLauncherApplicationHistoryKey(action.target.path),
+          historyKey: createLauncherHistoryKey({
+            path: action.target.path,
+            type: "application"
+          }),
           iconDataUrl: await getApplicationIconDataUrl(action.target.path),
           kind: "application",
           subtitle: action.target.path,
@@ -259,7 +261,10 @@ async function buildLauncherHistoryRecord(
         const itemPath = item?.path ?? action.target.path
         return {
           action,
-          historyKey: createLauncherLocalStartHistoryKey(action.localStartItemId),
+          historyKey: createLauncherHistoryKey({
+            itemId: action.localStartItemId,
+            type: "local-start"
+          }),
           iconDataUrl:
             itemKind === "application" ? await getApplicationIconDataUrl(itemPath) : undefined,
           kind: itemKind,

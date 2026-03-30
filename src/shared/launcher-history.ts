@@ -1,16 +1,34 @@
 import type { LauncherResultKind } from "./launcher"
 import type { LauncherSearchAction } from "./launcher-search"
 
-export function createLauncherApplicationHistoryKey(applicationPath: string): string {
-  return `application:${applicationPath}`
-}
+export type LauncherHistoryKeyInput =
+  | {
+      path: string
+      type: "application"
+    }
+  | {
+      itemId: string
+      type: "local-start"
+    }
+  | {
+      browser: string
+      type: "browser-history"
+      url: string
+    }
 
-export function createLauncherLocalStartHistoryKey(itemId: string): string {
-  return `local-start:${itemId}`
-}
-
-export function createLauncherBrowserHistoryKey(browser: string, url: string): string {
-  return `browser-history:${browser}:${url}`
+export function createLauncherHistoryKey(input: LauncherHistoryKeyInput): string {
+  switch (input.type) {
+    case "application":
+      return `application:${input.path}`
+    case "local-start":
+      return `local-start:${input.itemId}`
+    case "browser-history":
+      return `browser-history:${input.browser}:${input.url}`
+    default: {
+      const exhaustiveInput: never = input
+      throw new Error(`Unsupported launcher history key input: ${JSON.stringify(exhaustiveInput)}`)
+    }
+  }
 }
 
 export interface LauncherHistoryItem {
