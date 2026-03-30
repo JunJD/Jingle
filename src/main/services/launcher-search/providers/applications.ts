@@ -1,4 +1,4 @@
-import { app, nativeImage } from "electron"
+import { app, nativeImage, shell } from "electron"
 import PinyinMatch from "pinyin-match"
 import { execFile } from "node:child_process"
 import { Dirent, promises as fs } from "node:fs"
@@ -30,6 +30,19 @@ interface SystemProfilerApplicationsPayload {
   SPApplicationsDataType?: SystemProfilerApplicationEntry[]
 }
 
+type WindowsStartMenuRootKind = "user-start-menu" | "system-start-menu"
+
+interface WindowsStartMenuRoot {
+  kind: WindowsStartMenuRootKind
+  path: string
+  priority: number
+}
+
+interface WindowsApplicationRecord extends LauncherApplicationRecord {
+  sourcePriority: number
+  targetPath?: string
+}
+
 const MAX_SCAN_DEPTH = 3
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
 const execFileAsync = promisify(execFile)
@@ -42,6 +55,7 @@ const MAC_APPLICATION_DIRECTORIES = [
   "/System/Applications/Utilities",
   "/System/Library/CoreServices/Applications"
 ]
+const WINDOWS_START_MENU_FALLBACK_SUBTITLE = "开始菜单"
 
 function normalizeSearchValue(value: string): string {
   return value
@@ -108,7 +122,7 @@ function normalizeApplicationContainerLabel(label: string): string {
   }
 }
 
-function getApplicationSubtitle(applicationPath: string): string {
+function getMacApplicationSubtitle(applicationPath: string): string {
   const parentDirectoryName = normalizeApplicationContainerLabel(
     path.basename(path.dirname(applicationPath))
   )
@@ -134,6 +148,48 @@ function getApplicationSubtitle(applicationPath: string): string {
   }
 
   return "应用程序"
+}
+
+function getWindowsStartMenuRoots(): WindowsStartMenuRoot[] {
+  const appData = process.env.APPDATA
+  const programData = process.env.PROGRAMDATA
+
+  if (!appData || !programData) {
+    throw new Error("Missing Windows Start Menu environment variables")
+  }
+
+  return [
+    {
+      kind: "user-start-menu",
+      path: path.join(appData, "Microsoft", "Windows", "Start Menu", "Programs"),
+      priority: 0
+    },
+    {
+      kind: "system-start-menu",
+      path: path.join(programData, "Microsoft", "Windows", "Start Menu", "Programs"),
+      priority: 1
+    }
+  ]
+}
+
+function normalizeWindowsPath(filePath: string): string {
+  return path.win32.normalize(filePath).toLowerCase()
+}
+
+function getWindowsApplicationSubtitle(shortcutPath: string, rootPath: string): string {
+  const relativePath = path.win32.relative(rootPath, shortcutPath)
+  const relativeDirectory = path.win32.dirname(relativePath)
+
+  if (!relativeDirectory || relativeDirectory === ".") {
+    return WINDOWS_START_MENU_FALLBACK_SUBTITLE
+  }
+
+  const containerLabel = normalizeApplicationContainerLabel(path.win32.basename(relativeDirectory))
+  return containerLabel || WINDOWS_START_MENU_FALLBACK_SUBTITLE
+}
+
+function isWindowsUninstallEntry(label: string): boolean {
+  return /(^|[\s._-])(uninstall|unins|卸载)([\s._-]|$)/i.test(label)
 }
 
 async function collectMacApplicationPaths(
@@ -203,7 +259,7 @@ async function loadMacApplicationsFromSystemProfiler(): Promise<LauncherApplicat
       id: applicationPath,
       keywords: buildSearchKeywords(displayName, bundleName),
       path: applicationPath,
-      subtitle: getApplicationSubtitle(applicationPath)
+      subtitle: getMacApplicationSubtitle(applicationPath)
     })
   }
 
@@ -242,16 +298,179 @@ async function loadMacApplications(): Promise<LauncherApplicationRecord[]> {
         id: applicationPath,
         keywords: buildSearchKeywords(bundleName),
         path: applicationPath,
-        subtitle: getApplicationSubtitle(applicationPath)
+        subtitle: getMacApplicationSubtitle(applicationPath)
       }
     })
     .sort((left, right) => collator.compare(left.displayName, right.displayName))
+}
+
+async function collectWindowsShortcutPaths(
+  directoryPath: string,
+  target: Set<string>
+): Promise<void> {
+  let entries: Dirent[] = []
+
+  try {
+    entries = await fs.readdir(directoryPath, { withFileTypes: true })
+  } catch {
+    return
+  }
+
+  await Promise.all(
+    entries.map(async (entry) => {
+      if (entry.name.startsWith(".")) {
+        return
+      }
+
+      const fullPath = path.join(directoryPath, entry.name)
+      const isShortcut = entry.name.toLowerCase().endsWith(".lnk")
+
+      if (isShortcut && entry.isFile()) {
+        target.add(fullPath)
+        return
+      }
+
+      if (!entry.isDirectory()) {
+        return
+      }
+
+      await collectWindowsShortcutPaths(fullPath, target)
+    })
+  )
+}
+
+function compareWindowsApplicationRecords(
+  left: WindowsApplicationRecord,
+  right: WindowsApplicationRecord
+): number {
+  if (left.sourcePriority !== right.sourcePriority) {
+    return left.sourcePriority - right.sourcePriority
+  }
+
+  if (left.displayName.length !== right.displayName.length) {
+    return left.displayName.length - right.displayName.length
+  }
+
+  const displayOrder = collator.compare(left.displayName, right.displayName)
+  if (displayOrder !== 0) {
+    return displayOrder
+  }
+
+  return collator.compare(left.path, right.path)
+}
+
+function toLauncherApplicationRecord(
+  application: WindowsApplicationRecord
+): LauncherApplicationRecord {
+  return {
+    bundleName: application.bundleName,
+    displayName: application.displayName,
+    id: application.id,
+    keywords: application.keywords,
+    path: application.path,
+    subtitle: application.subtitle
+  }
+}
+
+function parseWindowsApplicationRecord(
+  shortcutPath: string,
+  root: WindowsStartMenuRoot
+): WindowsApplicationRecord | null {
+  const shortcutDetails = shell.readShortcutLink(shortcutPath)
+  const targetPath = shortcutDetails.target.trim()
+
+  if (!targetPath) {
+    return null
+  }
+
+  const bundleName = path.win32.basename(shortcutPath, path.win32.extname(shortcutPath)).trim()
+  if (!bundleName) {
+    return null
+  }
+
+  const targetName = path.win32.basename(targetPath, path.win32.extname(targetPath)).trim()
+  if (isWindowsUninstallEntry(bundleName) || isWindowsUninstallEntry(targetName)) {
+    return null
+  }
+
+  return {
+    bundleName,
+    displayName: bundleName,
+    id: shortcutPath,
+    keywords: buildSearchKeywords(bundleName, targetName),
+    path: shortcutPath,
+    sourcePriority: root.priority,
+    subtitle: getWindowsApplicationSubtitle(shortcutPath, root.path),
+    targetPath
+  }
+}
+
+async function loadWindowsApplications(): Promise<LauncherApplicationRecord[]> {
+  const shortcutPaths = new Set<string>()
+  const startMenuRoots = getWindowsStartMenuRoots()
+  const normalizedStartMenuRoots = startMenuRoots.map((root) => ({
+    normalizedPath: `${normalizeWindowsPath(root.path)}\\`,
+    root
+  }))
+
+  await Promise.all(
+    startMenuRoots.map((root) => collectWindowsShortcutPaths(root.path, shortcutPaths))
+  )
+
+  const applicationsByTarget = new Map<string, WindowsApplicationRecord>()
+
+  for (const shortcutPath of shortcutPaths) {
+    const normalizedShortcutPath = normalizeWindowsPath(shortcutPath)
+    const root = normalizedStartMenuRoots.find((entry) =>
+      normalizedShortcutPath.startsWith(entry.normalizedPath)
+    )?.root
+    if (!root) {
+      continue
+    }
+
+    let application: WindowsApplicationRecord | null = null
+
+    try {
+      application = parseWindowsApplicationRecord(shortcutPath, root)
+    } catch {
+      continue
+    }
+
+    if (!application) {
+      continue
+    }
+
+    const dedupeKey = normalizeWindowsPath(application.targetPath ?? application.path)
+    const existing = applicationsByTarget.get(dedupeKey)
+
+    if (!existing || compareWindowsApplicationRecords(application, existing) < 0) {
+      applicationsByTarget.set(dedupeKey, application)
+    }
+  }
+
+  return [...applicationsByTarget.values()]
+    .map((application) => toLauncherApplicationRecord(application))
+    .sort((left, right) => {
+      const displayOrder = collator.compare(left.displayName, right.displayName)
+      if (displayOrder !== 0) {
+        return displayOrder
+      }
+
+      const bundleOrder = collator.compare(left.bundleName, right.bundleName)
+      if (bundleOrder !== 0) {
+        return bundleOrder
+      }
+
+      return collator.compare(left.path, right.path)
+    })
 }
 
 async function loadApplicationCatalog(): Promise<LauncherApplicationRecord[]> {
   switch (process.platform) {
     case "darwin":
       return loadMacApplications()
+    case "win32":
+      return loadWindowsApplications()
     default:
       return []
   }

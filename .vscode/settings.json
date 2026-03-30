@@ -9,7 +9,8 @@
     "Langgraph",
     "minimizable",
     "Renderable",
-    "serde"
+    "serde",
+    "unins"
   ],
   "editor.formatOnSave": true,
   "editor.codeActionsOnSave": {
