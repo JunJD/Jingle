@@ -73,7 +73,7 @@ export function LauncherSearchPage(props: {
               }}
               onMouseDown={(event) => event.preventDefault()}
               disabled={isPrimaryActionDisabled}
-              className="launcher-action-link flex appearance-none items-center gap-2 border-0 px-0 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
+              className="launcher-action-link flex appearance-none items-center gap-2 rounded-[10px] border-0 px-3 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
             >
               <span>{primaryActionLabel}</span>
               <span className="launcher-shortcut text-[11px] text-muted-foreground">↵</span>

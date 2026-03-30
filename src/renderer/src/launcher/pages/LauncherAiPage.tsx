@@ -45,7 +45,7 @@ export function LauncherAiPage(): React.JSX.Element {
             onClick={session.runPrimaryAction}
             onMouseDown={(event) => event.preventDefault()}
             disabled={session.primaryActionDisabled}
-            className="launcher-action-link flex appearance-none items-center gap-2 border-0 px-0 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
+            className="launcher-action-link flex appearance-none items-center gap-2 rounded-[10px] border-0 px-3 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
           >
             <span>{copy.launcher.aiPrimaryLabel}</span>
             <span className="launcher-shortcut text-[11px] text-muted-foreground">↵</span>

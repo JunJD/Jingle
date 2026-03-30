@@ -518,6 +518,7 @@ body[data-platform="darwin"] .launcher-window-shell {
   border: 0;
   background: transparent;
   box-shadow: none;
+  cursor: pointer;
   transition:
     transform 140ms ease,
     background-color 140ms ease,
@@ -525,20 +526,34 @@ body[data-platform="darwin"] .launcher-window-shell {
     opacity 140ms ease;
 }
 
+.launcher-header-button:disabled,
+.launcher-icon-button:disabled,
+.launcher-action-button:disabled,
+.launcher-action-link:disabled,
+.launcher-clipboard-chip:disabled {
+  cursor: default;
+}
+
 .launcher-header-button:hover,
 .launcher-icon-button:hover,
 .launcher-action-button:hover,
-.launcher-action-link:hover,
 .launcher-clipboard-chip:hover {
-  background: color-mix(in srgb, var(--launcher-surface-strong) 32%, transparent);
+  background: color-mix(in srgb, var(--launcher-surface-strong) 42%, transparent);
 }
 
 .dark .launcher-header-button:hover,
 .dark .launcher-icon-button:hover,
 .dark .launcher-action-button:hover,
-.dark .launcher-action-link:hover,
 .dark .launcher-clipboard-chip:hover {
-  background: color-mix(in srgb, var(--launcher-surface-strong) 40%, transparent);
+  background: color-mix(in srgb, var(--launcher-surface-strong) 50%, transparent);
+}
+
+.launcher-action-link:hover {
+  background: var(--launcher-surface-interactive);
+}
+
+.dark .launcher-action-link:hover {
+  background: color-mix(in srgb, var(--launcher-surface-interactive) 88%, white 12%);
 }
 
 .launcher-header-button {
