@@ -7,6 +7,14 @@ export type LauncherHistoryKeyInput =
       type: "application"
     }
   | {
+      path: string
+      type: "file"
+    }
+  | {
+      path: string
+      type: "directory"
+    }
+  | {
       itemId: string
       type: "local-start"
     }
@@ -20,6 +28,10 @@ export function createLauncherHistoryKey(input: LauncherHistoryKeyInput): string
   switch (input.type) {
     case "application":
       return `application:${input.path}`
+    case "file":
+      return `file:${input.path}`
+    case "directory":
+      return `directory:${input.path}`
     case "local-start":
       return `local-start:${input.itemId}`
     case "browser-history":

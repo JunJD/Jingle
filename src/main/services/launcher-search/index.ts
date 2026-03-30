@@ -1,10 +1,12 @@
 import type { LauncherSearchRequest, LauncherSearchResponse } from "../../../shared/launcher-search"
 import { applicationsLauncherSearchProvider } from "./providers/applications"
 import { browserHistoryLauncherSearchProvider } from "./providers/browser-history"
+import { filesLauncherSearchProvider } from "./providers/files"
 import type { LauncherSearchProvider } from "./types"
 
 const providers: LauncherSearchProvider[] = [
   applicationsLauncherSearchProvider,
+  filesLauncherSearchProvider,
   browserHistoryLauncherSearchProvider
 ]
 const providerOrder = new Map(providers.map((provider, index) => [provider.source, index]))

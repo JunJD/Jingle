@@ -292,6 +292,21 @@ flowchart LR
   G --> J[Do not change source contract]
 ```
 
+### Source / Provider 落地约束
+
+搜索 source 的主进程实现统一按下面的形式落地：
+
+- `class X implements LauncherSearchProvider`
+- export 一个稳定实例，例如 `export const filesLauncherSearchProvider = new FilesLauncherSearchProvider()`
+
+这样做的原因：
+
+- provider 边界一眼可见
+- `source / search / warmup` contract 固定
+- 内部状态，例如缓存、预热 promise、icon cache，可以留在类内部，不外溢到搜索总线
+
+不再把主链 provider 导出成匿名对象字面量。
+
 ## 决策标准
 
 如果未来一个 launcher 功能满足下面条件，就说明方向是对的：

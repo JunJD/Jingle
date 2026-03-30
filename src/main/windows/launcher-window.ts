@@ -21,6 +21,7 @@ import {
 } from "../../shared/launcher-history"
 import type {
   LauncherActionExecutor,
+  LauncherOpenPathTarget,
   LauncherSearchAction,
   LauncherSearchRequest
 } from "../../shared/launcher-search"
@@ -230,10 +231,35 @@ async function openLauncherUrl(url: string): Promise<void> {
   await shell.openExternal(url)
 }
 
-function getLauncherPathTitle(targetPath: string): string {
-  const fileName = basename(targetPath)
-  const fileExtension = extname(fileName)
-  return fileExtension ? basename(fileName, fileExtension) : fileName
+function getLauncherPathTitle(target: LauncherOpenPathTarget): string {
+  const fileName = basename(target.path)
+  if (target.kind === "application") {
+    const fileExtension = extname(fileName)
+    return fileExtension ? basename(fileName, fileExtension) : fileName
+  }
+
+  return fileName
+}
+
+function getLauncherPathHistoryKey(target: LauncherOpenPathTarget): string {
+  if (target.kind === "application") {
+    return createLauncherHistoryKey({
+      path: target.path,
+      type: "application"
+    })
+  }
+
+  if (target.kind === "file") {
+    return createLauncherHistoryKey({
+      path: target.path,
+      type: "file"
+    })
+  }
+
+  return createLauncherHistoryKey({
+    path: target.path,
+    type: "directory"
+  })
 }
 
 async function buildLauncherHistoryRecord(
@@ -244,14 +270,14 @@ async function buildLauncherHistoryRecord(
       if (!action.localStartItemId) {
         return {
           action,
-          historyKey: createLauncherHistoryKey({
-            path: action.target.path,
-            type: "application"
-          }),
-          iconDataUrl: await getApplicationIconDataUrl(action.target.path),
-          kind: "application",
+          historyKey: getLauncherPathHistoryKey(action.target),
+          iconDataUrl:
+            action.target.kind === "application"
+              ? await getApplicationIconDataUrl(action.target.path)
+              : undefined,
+          kind: action.target.kind,
           subtitle: action.target.path,
-          title: getLauncherPathTitle(action.target.path)
+          title: getLauncherPathTitle(action.target)
         }
       }
 
@@ -269,7 +295,12 @@ async function buildLauncherHistoryRecord(
             itemKind === "application" ? await getApplicationIconDataUrl(itemPath) : undefined,
           kind: itemKind,
           subtitle: itemPath,
-          title: item?.title ?? getLauncherPathTitle(action.target.path)
+          title:
+            item?.title ??
+            getLauncherPathTitle({
+              kind: action.target.kind,
+              path: action.target.path
+            })
         }
       }
     case "open-url":

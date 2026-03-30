@@ -8,6 +8,8 @@
 
 - 全局快捷键唤起
 - 应用搜索与启动
+- macOS 文件 / 目录搜索
+- macOS Chrome / Edge 浏览器历史搜索
 - 空输入 history 宫格
 - `pin / unpin / remove`
 - clipboard 文本自动回填
@@ -37,7 +39,9 @@ flowchart TD
   D --> I[window.api.launcherHistory / localStart / settings]
 
   G --> J[searchLauncher]
-  J --> K[applications provider only]
+  J --> K[applications provider]
+  J --> Lb[files provider]
+  J --> Mc[browser-history provider]
 
   D --> L[buildLauncherHomeSurfaceModel]
   L --> M[history-grid]
@@ -134,11 +138,18 @@ flowchart LR
 
 - [index.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/services/launcher-search/index.ts)
 - [applications.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/services/launcher-search/providers/applications.ts)
+- [files.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/services/launcher-search/providers/files.ts)
+- [browser-history.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/services/launcher-search/providers/browser-history.ts)
 
 当前状态：
 
-- 只有 `applications provider`
-- 负责应用发现、匹配、打分、图标和 subtitle
+- `applications provider`
+  - 当前支持 macOS 应用搜索与启动
+  - 已补 Windows Start Menu `.lnk` 应用发现
+- `files provider`
+  - 当前支持 macOS Spotlight 文件 / 目录搜索
+- `browser-history provider`
+  - 当前支持 macOS Chrome / Edge 本地历史搜索
 
 ### 6. 执行入口
 

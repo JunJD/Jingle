@@ -179,6 +179,47 @@ function getUrlDisplayTitle(url: string): string {
   }
 }
 
+function compareBrowserHistoryCandidates(
+  left: BrowserHistoryCandidate,
+  right: BrowserHistoryCandidate
+): number {
+  if (right.score !== left.score) {
+    return right.score - left.score
+  }
+
+  if (right.visitedAtMs !== left.visitedAtMs) {
+    return right.visitedAtMs - left.visitedAtMs
+  }
+
+  if (right.visitCount !== left.visitCount) {
+    return right.visitCount - left.visitCount
+  }
+
+  const titleOrder = collator.compare(left.title, right.title)
+  if (titleOrder !== 0) {
+    return titleOrder
+  }
+
+  return collator.compare(left.url, right.url)
+}
+
+function dedupeBrowserHistoryCandidates(
+  candidates: BrowserHistoryCandidate[]
+): BrowserHistoryCandidate[] {
+  const candidatesByVisibleIdentity = new Map<string, BrowserHistoryCandidate>()
+
+  for (const candidate of candidates) {
+    const visibleIdentity = `${normalizeSearchValue(candidate.title)}|${normalizeSearchValue(candidate.subtitle)}`
+    const existing = candidatesByVisibleIdentity.get(visibleIdentity)
+
+    if (!existing || compareBrowserHistoryCandidates(candidate, existing) < 0) {
+      candidatesByVisibleIdentity.set(visibleIdentity, candidate)
+    }
+  }
+
+  return [...candidatesByVisibleIdentity.values()]
+}
+
 function getBrowserHistoryMatch(
   row: BrowserHistoryRow,
   query: string
@@ -370,23 +411,10 @@ class BrowserHistoryLauncherSearchProvider implements LauncherSearchProvider {
         )
       )
     ).flat()
+    const dedupedCandidates = dedupeBrowserHistoryCandidates(candidates)
 
-    const results = candidates
-      .sort((left, right) => {
-        if (right.score !== left.score) {
-          return right.score - left.score
-        }
-
-        if (right.visitedAtMs !== left.visitedAtMs) {
-          return right.visitedAtMs - left.visitedAtMs
-        }
-
-        if (right.visitCount !== left.visitCount) {
-          return right.visitCount - left.visitCount
-        }
-
-        return collator.compare(left.title, right.title)
-      })
+    const results = dedupedCandidates
+      .sort(compareBrowserHistoryCandidates)
       .slice(0, request.limit)
       .map<LauncherSearchResult>((candidate) => ({
         action: {
