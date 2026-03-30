@@ -49,8 +49,6 @@ export default function LauncherApp(): React.JSX.Element {
   const lastHandledHomeSelectionRequestRef = useRef(searchPage.homeInputSelectionRequestVersion)
   const activePluginId = isLauncherPluginRoute(route) ? route.pluginId : null
   const activePluginDefinition = activePluginId ? getLauncherPluginDefinition(activePluginId) : null
-  const selectedItem =
-    searchPage.selectedIndex >= 0 ? searchPage.surface.items[searchPage.selectedIndex] : null
   const ActivePluginComponent = activeEntry?.Component ?? null
   const viewportHeight = !isLauncherPluginRoute(route)
     ? searchPage.viewportHeight
@@ -344,7 +342,6 @@ export default function LauncherApp(): React.JSX.Element {
                 previewClipboardContext={searchPage.previewClipboardContext}
                 resultsViewportHeight={searchPage.resultsViewportHeight}
                 selectedIndex={searchPage.selectedIndex}
-                selectedItem={selectedItem}
                 shellConfig={searchPage.shellConfig}
                 surface={searchPage.surface}
               />

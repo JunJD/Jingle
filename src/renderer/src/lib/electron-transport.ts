@@ -5,7 +5,7 @@ import type { StreamPayload, StreamEvent, IPCEvent, IPCStreamEvent } from "../..
 import type { ContentBlock } from "@/types"
 import type { Subagent } from "../types"
 import type { AgentMessageContent } from "../../../shared/message-content"
-import { extractMessageText, hasMessageContent } from "../../../shared/message-content"
+import { hasMessageContent, toDisplayMessageContent } from "../../../shared/message-content"
 
 /**
  * Usage metadata from LangChain model responses.
@@ -768,12 +768,12 @@ export class ElectronIPCTransport implements UseStreamTransport {
   }
 
   /**
-   * Extract text content from message content (string or content blocks)
+   * Preserve structured message content so attachments survive transport round-trips.
    */
   private extractContent(
     content: string | ContentBlock[] | AgentMessageContent | undefined
-  ): string {
-    return extractMessageText(content)
+  ): string | ContentBlock[] {
+    return toDisplayMessageContent(content)
   }
 
   /**

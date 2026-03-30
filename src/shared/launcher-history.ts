@@ -1,9 +1,21 @@
 import type { LauncherResultKind } from "./launcher"
 import type { LauncherSearchAction } from "./launcher-search"
 
+export function createLauncherApplicationHistoryKey(applicationPath: string): string {
+  return `application:${applicationPath}`
+}
+
+export function createLauncherLocalStartHistoryKey(itemId: string): string {
+  return `local-start:${itemId}`
+}
+
+export function createLauncherBrowserHistoryKey(browser: string, url: string): string {
+  return `browser-history:${browser}:${url}`
+}
+
 export interface LauncherHistoryItem {
   id: string
-  dedupeKey: string
+  historyKey: string
   kind: LauncherResultKind
   title: string
   subtitle: string
@@ -17,29 +29,12 @@ export interface LauncherHistoryItem {
 }
 
 export interface RecordLauncherHistoryItemInput {
-  dedupeKey: string
+  historyKey: string
   kind: LauncherResultKind
   title: string
   subtitle: string
   iconDataUrl?: string
   action: LauncherSearchAction
-}
-
-export function getLauncherHistoryDedupeKeyForAction(action: LauncherSearchAction): string | null {
-  switch (action.type) {
-    case "launch-application":
-      return `application:${action.applicationPath}`
-    case "open-local-start-item":
-      return `local-start:${action.itemId}`
-    case "none":
-      return null
-    default: {
-      const exhaustiveAction: never = action
-      throw new Error(
-        `Unsupported launcher history dedupe action: ${JSON.stringify(exhaustiveAction)}`
-      )
-    }
-  }
 }
 
 export function sortLauncherHistoryItems(items: LauncherHistoryItem[]): LauncherHistoryItem[] {

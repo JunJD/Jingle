@@ -1,10 +1,11 @@
 import type { LauncherResultKind } from "../../../shared/launcher"
 
-export type LauncherShellItemKind = LauncherResultKind | "plugin"
+export type LauncherShellItemKind = LauncherResultKind | "plugin" | "suggestion"
 
 export type LauncherResultPresentationIconName =
   | "file-text"
   | "folder"
+  | "globe"
   | "history"
   | "languages"
   | "search"

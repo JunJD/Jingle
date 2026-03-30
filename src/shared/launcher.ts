@@ -1,4 +1,4 @@
-export type LauncherResultKind = "application" | "file" | "directory" | "ai" | "history"
+export type LauncherResultKind = "application" | "file" | "directory" | "url" | "ai" | "history"
 
 export type LauncherResultAvailability = "ready" | "planned"
 
@@ -16,6 +16,7 @@ export interface LauncherShellConfig {
   headerHeight: number
   footerHeight: number
   resultItemHeight: number
+  sectionHeaderHeight: number
   maxVisibleResults: number
 }
 
@@ -32,6 +33,7 @@ export const FALLBACK_SHELL_CONFIG: LauncherShellConfig = {
   headerHeight: 68,
   footerHeight: 46,
   resultItemHeight: 56,
+  sectionHeaderHeight: 30,
   maxVisibleResults: 8
 }
 
@@ -47,6 +49,17 @@ export function getLauncherResultsHeight(
 ): number {
   return (
     Math.min(Math.max(resultCount, 0), shellConfig.maxVisibleResults) * shellConfig.resultItemHeight
+  )
+}
+
+export function getLauncherSectionedResultsHeight(
+  itemCount: number,
+  sectionHeaderCount: number,
+  shellConfig: LauncherShellConfig = FALLBACK_SHELL_CONFIG
+): number {
+  return (
+    getLauncherResultsHeight(itemCount, shellConfig) +
+    Math.max(0, sectionHeaderCount) * shellConfig.sectionHeaderHeight
   )
 }
 

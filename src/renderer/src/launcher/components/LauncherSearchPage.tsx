@@ -5,7 +5,6 @@ import type { LauncherShellConfig } from "../../../../shared/launcher"
 import type { ClipboardContext } from "../../../../shared/clipboard"
 import type { LauncherHomeSurfaceModel } from "../home-surface"
 import type { LauncherHomeEntry, LauncherPluginOpenOptions } from "../pages/types"
-import type { LauncherShellItem } from "../types"
 import { ClipboardChip } from "./ClipboardChip"
 import { LauncherChrome } from "./LauncherChrome"
 import { LauncherHistoryGrid } from "./LauncherHistoryGrid"
@@ -26,7 +25,6 @@ export function LauncherSearchPage(props: {
   previewClipboardContext: Extract<ClipboardContext, { kind: "files" | "image" }> | null
   resultsViewportHeight: number
   selectedIndex: number
-  selectedItem: LauncherShellItem | null
   shellConfig: LauncherShellConfig
   surface: LauncherHomeSurfaceModel
 }): React.JSX.Element {
@@ -46,17 +44,17 @@ export function LauncherSearchPage(props: {
     previewClipboardContext,
     resultsViewportHeight,
     selectedIndex,
-    selectedItem,
     shellConfig,
     surface
   } = props
+  const selectedItem = selectedIndex >= 0 ? surface.items[selectedIndex] : null
 
   const primaryActionLabel =
     selectedItem?.presentation.primaryActionLabel ?? copy.launcher.openGeneric
   const isPrimaryActionDisabled = !selectedItem || selectedItem.availability === "planned"
   const hasQuery = inputValue.trim().length > 0
-  const resultsVisible = surface.items.length > 0
-  const showHistoryGrid = surface.mode === "history"
+  const resultsVisible = surface.chrome.footerVisible
+  const showHistoryGrid = surface.body.kind === "history-grid"
   const headerLeading = previewClipboardContext ? (
     <ClipboardChip context={previewClipboardContext} onClear={onClearClipboardContext} />
   ) : undefined
@@ -123,7 +121,7 @@ export function LauncherSearchPage(props: {
       onInputValueChange={onInputValueChange}
       placeholder={placeholder}
       shellConfig={shellConfig}
-      showHeaderDivider={resultsVisible}
+      showHeaderDivider={surface.chrome.headerDividerVisible}
       surface="home"
     >
       {showHistoryGrid ? (
@@ -137,8 +135,8 @@ export function LauncherSearchPage(props: {
       ) : (
         <LauncherResultList
           height={resultsViewportHeight}
-          items={surface.items}
           onExecute={executeItem}
+          sections={surface.sections}
           selectedIndex={selectedIndex}
         />
       )}

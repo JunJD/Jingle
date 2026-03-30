@@ -1,8 +1,12 @@
 import type { LauncherSearchRequest, LauncherSearchResponse } from "../../../shared/launcher-search"
 import { applicationsLauncherSearchProvider } from "./providers/applications"
+import { browserHistoryLauncherSearchProvider } from "./providers/browser-history"
 import type { LauncherSearchProvider } from "./types"
 
-const providers: LauncherSearchProvider[] = [applicationsLauncherSearchProvider]
+const providers: LauncherSearchProvider[] = [
+  applicationsLauncherSearchProvider,
+  browserHistoryLauncherSearchProvider
+]
 const providerOrder = new Map(providers.map((provider, index) => [provider.source, index]))
 
 function dedupeSearchResults<T extends { result: { id: string; source: string } }>(

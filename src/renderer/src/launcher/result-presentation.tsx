@@ -1,4 +1,4 @@
-import { FileText, Folder, History, Languages, Search, Sparkles } from "lucide-react"
+import { FileText, Folder, Globe, History, Languages, Search, Sparkles } from "lucide-react"
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { LauncherResultAvailability, LauncherResultKind } from "../../../shared/launcher"
 import type {
@@ -34,6 +34,13 @@ function getBuiltinResultActionLabel(params: {
     }
   }
 
+  if (kind === "url") {
+    return {
+      listActionLabel: copy.launcher.openGeneric,
+      primaryActionLabel: copy.launcher.openGeneric
+    }
+  }
+
   return {
     listActionLabel: copy.launcher.openGeneric,
     primaryActionLabel: copy.launcher.openGeneric
@@ -46,6 +53,8 @@ function getBuiltinResultCategoryLabel(copy: AppCopy, kind: LauncherResultKind):
       return copy.launcher.resultKindApp
     case "file":
       return copy.launcher.resultKindFile
+    case "url":
+      return copy.launcher.resultKindUrl
     case "directory":
       return copy.launcher.resultKindDirectory
     case "ai":
@@ -72,6 +81,11 @@ function getBuiltinResultIcon(params: {
     case "file":
       return {
         name: "file-text",
+        type: "glyph"
+      }
+    case "url":
+      return {
+        name: "globe",
         type: "glyph"
       }
     case "directory":
@@ -143,6 +157,8 @@ export function renderLauncherResultIcon(icon: LauncherResultPresentationIcon): 
       return <FileText className="size-4" />
     case "folder":
       return <Folder className="size-4" />
+    case "globe":
+      return <Globe className="size-4" />
     case "history":
       return <History className="size-4" />
     case "languages":

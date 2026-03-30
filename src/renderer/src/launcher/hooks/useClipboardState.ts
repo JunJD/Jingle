@@ -26,18 +26,17 @@ export function useClipboardState(): {
   clearContext: () => void
   context: ClipboardContext
   contextKey: string
-  isTextAutofillConsumed: boolean
-  markTextAutofillConsumed: () => void
+  refreshSequence: number
 } {
   const [rawContext, setRawContext] = useState<ClipboardContext>(EMPTY_CLIPBOARD_CONTEXT)
   const [dismissedKey, setDismissedKey] = useState<string | null>(null)
-  const [consumedTextKey, setConsumedTextKey] = useState<string | null>(null)
+  const [refreshSequence, setRefreshSequence] = useState(0)
 
   const refreshContext = useCallback(async (): Promise<void> => {
     const nextContext = await window.api.launcher.getClipboardContext()
     setRawContext(nextContext)
     setDismissedKey(null)
-    setConsumedTextKey(null)
+    setRefreshSequence((currentValue) => currentValue + 1)
   }, [])
 
   useEffect(() => {
@@ -64,9 +63,6 @@ export function useClipboardState(): {
     },
     context,
     contextKey: getClipboardContextKey(context),
-    isTextAutofillConsumed: consumedTextKey === rawContextKey,
-    markTextAutofillConsumed: () => {
-      setConsumedTextKey(rawContextKey)
-    }
+    refreshSequence
   }
 }

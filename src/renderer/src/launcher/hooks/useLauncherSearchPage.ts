@@ -18,6 +18,7 @@ import { DEFAULT_HOME_ENTRY, getLauncherHomeEntries, resolveLauncherPluginComman
 import {
   buildLauncherHomeSurfaceModel,
   getLauncherHomeSurfaceResultsHeight,
+  resolveLauncherHomeSurfaceSelectedIndex,
   type LauncherHomeSurfaceModel
 } from "../home-surface"
 import type {
@@ -84,16 +85,7 @@ export function useLauncherSearchPage(props: {
     [copy, historyItems, idleItems, locale, query, searchResults, windowMode]
   )
   const selectedIndex = useMemo(() => {
-    if (surface.items.length === 0 || surface.selection.defaultStrategy === "none") {
-      return -1
-    }
-
-    if (!selectedItemId) {
-      return surface.selection.defaultStrategy === "first-item" ? 0 : -1
-    }
-
-    const matchingIndex = surface.items.findIndex((item) => item.id === selectedItemId)
-    return matchingIndex >= 0 ? matchingIndex : 0
+    return resolveLauncherHomeSurfaceSelectedIndex(surface, selectedItemId)
   }, [selectedItemId, surface])
   const resultsViewportHeight = useMemo(() => {
     return getLauncherHomeSurfaceResultsHeight(surface, shellConfig)
@@ -151,7 +143,7 @@ export function useLauncherSearchPage(props: {
         .search({
           limit: MAX_LAUNCHER_SEARCH_RESULTS,
           query: trimmedQuery,
-          sources: ["applications"]
+          sources: ["applications", "browser-history"]
         })
         .then((response) => {
           if (latestSearchRequestRef.current === requestId) {
@@ -205,6 +197,11 @@ export function useLauncherSearchPage(props: {
     (index: number): void => {
       const item = surface.items[index]
       if (!item || item.availability === "planned") {
+        return
+      }
+
+      if (item.command?.type === "replace-query") {
+        setQuery(item.command.value)
         return
       }
 

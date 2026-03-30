@@ -1,8 +1,10 @@
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { AppLocale } from "../../../shared/i18n"
-import { getLauncherResultsHeight, type LauncherShellConfig } from "../../../shared/launcher"
 import {
-  getLauncherHistoryDedupeKeyForAction,
+  getLauncherSectionedResultsHeight,
+  type LauncherShellConfig
+} from "../../../shared/launcher"
+import {
   sortLauncherHistoryItems,
   type LauncherHistoryItem
 } from "../../../shared/launcher-history"
@@ -11,6 +13,8 @@ import type { LocalStartItem } from "../../../shared/local-start"
 import { shouldShowLauncherIdleItems } from "../../../shared/launcher-settings"
 import { getLauncherPluginIntents } from "./pages"
 import {
+  buildLauncherBrowserSearchSuggestionItem,
+  buildLauncherCompletionSuggestionItem,
   buildLauncherHistoryShellItems,
   buildLauncherLocalStartShellItems,
   buildLauncherPluginIntentShellItems,
@@ -18,40 +22,61 @@ import {
 } from "./search-items"
 import type { LauncherShellItem } from "./types"
 
-export type LauncherHomeSurfaceMode = "history" | "idle" | "results"
-
 export type LauncherHomeSurfaceSectionKind =
   | "history-grid"
   | "idle-list"
   | "plugin-intents"
+  | "suggestions"
   | "search-results"
+
+export type LauncherHomeSurfaceBodyKind = "history-grid" | "result-list"
 
 export interface LauncherHomeSurfaceSection {
   items: LauncherShellItem[]
   kind: LauncherHomeSurfaceSectionKind
 }
 
+export interface LauncherHomeSurfaceBody {
+  kind: LauncherHomeSurfaceBodyKind
+}
+
+export interface LauncherHomeSurfaceChrome {
+  footerVisible: boolean
+  headerDividerVisible: boolean
+}
+
 export interface LauncherHomeSurfaceModel {
+  body: LauncherHomeSurfaceBody
+  chrome: LauncherHomeSurfaceChrome
   items: LauncherShellItem[]
-  mode: LauncherHomeSurfaceMode
   sections: LauncherHomeSurfaceSection[]
   selection: {
-    defaultStrategy: "first-item" | "none"
+    defaultItemId: string | null
   }
 }
 
+function hasLauncherHomeSurfaceSectionHeader(section: LauncherHomeSurfaceSection): boolean {
+  return section.kind === "suggestions"
+}
+
 function createHomeSurfaceModel(
-  mode: LauncherHomeSurfaceMode,
+  bodyKind: LauncherHomeSurfaceBodyKind,
   sections: LauncherHomeSurfaceSection[]
 ): LauncherHomeSurfaceModel {
   const items = sections.flatMap((section) => section.items)
 
   return {
+    body: {
+      kind: bodyKind
+    },
+    chrome: {
+      footerVisible: items.length > 0,
+      headerDividerVisible: items.length > 0
+    },
     items,
-    mode,
     sections,
     selection: {
-      defaultStrategy: items.length > 0 ? "first-item" : "none"
+      defaultItemId: items[0]?.id ?? null
     }
   }
 }
@@ -64,11 +89,11 @@ function rankSearchResultSectionItems(
   searchResults: LauncherSearchResult[],
   historyItems: LauncherHistoryItem[]
 ): LauncherSearchResult[] {
-  const historyByDedupeKey = new Map(historyItems.map((item) => [item.dedupeKey, item]))
+  const historyByKey = new Map(historyItems.map((item) => [item.historyKey, item]))
 
   return searchResults
     .map((result, index) => ({
-      history: historyByDedupeKey.get(getLauncherHistoryDedupeKeyForAction(result.action) ?? ""),
+      history: result.historyKey ? historyByKey.get(result.historyKey) : undefined,
       index,
       result
     }))
@@ -100,6 +125,21 @@ function rankSearchResultSectionItems(
     .map((entry) => entry.result)
 }
 
+function createSuggestionSectionItems(
+  copy: AppCopy,
+  query: string,
+  searchResults: LauncherSearchResult[]
+): LauncherShellItem[] {
+  const suggestions: LauncherShellItem[] = [buildLauncherBrowserSearchSuggestionItem(copy, query)]
+  const topResultTitle = searchResults[0]?.title.trim()
+
+  if (topResultTitle && topResultTitle.localeCompare(query, undefined, { sensitivity: "accent" })) {
+    suggestions.push(buildLauncherCompletionSuggestionItem(copy, topResultTitle))
+  }
+
+  return suggestions
+}
+
 export function buildLauncherHomeSurfaceModel(params: {
   copy: AppCopy
   historyItems: LauncherHistoryItem[]
@@ -114,12 +154,12 @@ export function buildLauncherHomeSurfaceModel(params: {
 
   if (!trimmedQuery) {
     if (!shouldShowLauncherIdleItems(windowMode)) {
-      return createHomeSurfaceModel("idle", [])
+      return createHomeSurfaceModel("result-list", [])
     }
 
     if (historyItems.length > 0) {
       const rankedHistoryItems = rankHistorySectionItems(historyItems)
-      return createHomeSurfaceModel("history", [
+      return createHomeSurfaceModel("history-grid", [
         {
           items: buildLauncherHistoryShellItems(copy, rankedHistoryItems),
           kind: "history-grid"
@@ -127,7 +167,7 @@ export function buildLauncherHomeSurfaceModel(params: {
       ])
     }
 
-    return createHomeSurfaceModel("idle", [
+    return createHomeSurfaceModel("result-list", [
       {
         items: buildLauncherLocalStartShellItems(copy, idleItems),
         kind: "idle-list"
@@ -144,6 +184,7 @@ export function buildLauncherHomeSurfaceModel(params: {
     })
   )
   const rankedSearchResults = rankSearchResultSectionItems(searchResults, historyItems)
+  const suggestionItems = createSuggestionSectionItems(copy, trimmedQuery, rankedSearchResults)
   const searchResultItems = buildLauncherSearchShellItems(copy, rankedSearchResults)
 
   if (pluginIntentItems.length > 0) {
@@ -160,18 +201,46 @@ export function buildLauncherHomeSurfaceModel(params: {
     })
   }
 
-  return createHomeSurfaceModel("results", sections)
+  if (suggestionItems.length > 0) {
+    sections.push({
+      items: suggestionItems,
+      kind: "suggestions"
+    })
+  }
+
+  return createHomeSurfaceModel("result-list", sections)
 }
 
 export function getLauncherHomeSurfaceResultsHeight(
   surface: LauncherHomeSurfaceModel,
   shellConfig: LauncherShellConfig
 ): number {
-  if (surface.mode === "history") {
+  if (surface.body.kind === "history-grid") {
     const columns = 8
     const rows = Math.ceil(surface.items.length / columns)
     return rows * 70
   }
 
-  return getLauncherResultsHeight(surface.items.length, shellConfig)
+  const sectionHeaderCount = surface.sections.filter(hasLauncherHomeSurfaceSectionHeader).length
+  return getLauncherSectionedResultsHeight(surface.items.length, sectionHeaderCount, shellConfig)
+}
+
+export function resolveLauncherHomeSurfaceSelectedIndex(
+  surface: LauncherHomeSurfaceModel,
+  selectedItemId: string | null
+): number {
+  if (surface.items.length === 0 || !surface.selection.defaultItemId) {
+    return -1
+  }
+
+  if (!selectedItemId) {
+    return surface.items.findIndex((item) => item.id === surface.selection.defaultItemId)
+  }
+
+  const matchingIndex = surface.items.findIndex((item) => item.id === selectedItemId)
+  if (matchingIndex >= 0) {
+    return matchingIndex
+  }
+
+  return surface.items.findIndex((item) => item.id === surface.selection.defaultItemId)
 }

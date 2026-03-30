@@ -13,6 +13,15 @@ export type AgentMessageContent =
         }
     >
 
+function isContentBlockLike(value: unknown): value is ContentBlock {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    typeof (value as { type?: unknown }).type === "string"
+  )
+}
+
 export function resolveImageBlockUrl(
   block: Pick<ContentBlock, "content" | "image_url">
 ): string | null {
@@ -34,6 +43,20 @@ export function resolveImageBlockUrl(
   }
 
   return null
+}
+
+export function toDisplayMessageContent(
+  content: string | ContentBlock[] | AgentMessageContent | undefined
+): string | ContentBlock[] {
+  if (typeof content === "string") {
+    return content
+  }
+
+  if (!Array.isArray(content)) {
+    return ""
+  }
+
+  return content.filter(isContentBlockLike)
 }
 
 function getDisplayBlockText(block: ContentBlock): string {

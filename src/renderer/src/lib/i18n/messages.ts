@@ -99,10 +99,19 @@ export interface AppCopy {
     resultKindApp: string
     resultKindDirectory: string
     resultKindFile: string
+    resultKindUrl: string
+    resultKindSuggestion: string
     resultKindThread: string
+    searchInBrowserSuggestionSubtitle: string
+    searchInBrowserSuggestionTitle: (query: string) => string
+    searchSuggestionAction: string
     searchPlaceholder: string
     searchResults: string
+    suggestions: string
     unpinHistoryItem: string
+    useSuggestedQueryAction: string
+    useSuggestedQuerySubtitle: string
+    useSuggestedQueryTitle: (query: string) => string
   }
   modelSwitcher: {
     apiKeyRequired: (providerName: string) => string
@@ -250,10 +259,19 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       resultKindApp: "应用",
       resultKindDirectory: "文件夹",
       resultKindFile: "文件",
+      resultKindUrl: "网页",
+      resultKindSuggestion: "建议",
       resultKindThread: "对话",
+      searchInBrowserSuggestionSubtitle: "用默认浏览器搜索",
+      searchInBrowserSuggestionTitle: (query) => `在浏览器中搜索“${query}”`,
+      searchSuggestionAction: "搜索",
       searchPlaceholder: "你想处理什么工作？",
       searchResults: "搜索结果",
-      unpinHistoryItem: "取消固定"
+      suggestions: "建议",
+      unpinHistoryItem: "取消固定",
+      useSuggestedQueryAction: "填充",
+      useSuggestedQuerySubtitle: "只填充输入框",
+      useSuggestedQueryTitle: (query) => `补全为“${query}”`
     },
     modelSwitcher: {
       apiKeyRequired: (providerName) => `${providerName} 需要 API Key`,
@@ -411,10 +429,19 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       resultKindApp: "App",
       resultKindDirectory: "Folder",
       resultKindFile: "File",
+      resultKindUrl: "Webpage",
+      resultKindSuggestion: "Suggestion",
       resultKindThread: "Thread",
+      searchInBrowserSuggestionSubtitle: "Search with your default browser",
+      searchInBrowserSuggestionTitle: (query) => `Search “${query}” in browser`,
+      searchSuggestionAction: "Search",
       searchPlaceholder: "What do you want to get done?",
       searchResults: "Search Results",
-      unpinHistoryItem: "Unpin"
+      suggestions: "Suggestions",
+      unpinHistoryItem: "Unpin",
+      useSuggestedQueryAction: "Fill",
+      useSuggestedQuerySubtitle: "Only fill the input",
+      useSuggestedQueryTitle: (query) => `Complete as “${query}”`
     },
     modelSwitcher: {
       apiKeyRequired: (providerName) => `API key required for ${providerName}`,

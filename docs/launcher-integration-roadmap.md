@@ -266,17 +266,170 @@ Phase 5 子步骤：
 - launcher plugin manifest 可声明 clipboard 接受类型；host 负责过滤后再暴露给 plugin，避免 plugin 自己理解全部 clipboard 原始语义
 - launcher shell 级共享状态后续禁止继续通过 page render props 逐层下传，统一收口到 launcher 根 context / shell 边界
 - `launcherHistory` 数据层已提前落地：独立持久化、pin 字段、执行后自动写入；空态展示后续再接 UI
+- `browser-history` source 已开始接入：当前先支持 macOS 下 Chrome / Edge 本地历史搜索，结果进入现有 `search-results` section，执行先复用 `open-url`
 
 Phase 5 当前状态：
 
 - `5.1` 已完成
-- `5.2` 未开始
-- `5.3` 未开始
+- `5.2` 已完成
+- `5.3` 已完成
+
+说明：
+
+- `5.2` 的排序与 section ranker 收口，已在后续的 Pause 1 / Pause 4 / Pause 5 中落地
+- `5.3` 的结构化 action / executor 收口，已在 Pause 2 中落地
 
 验收标准：
 
 - 排序调整是可解释、可验证的
 - 新增项类型在代码上仍然容易理解
+
+## 架构收口 Pause
+
+这组 pause 按 [launcher-architecture-principles.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/launcher-architecture-principles.md) 执行。
+
+原则：
+
+- 先收口边界，再加新能力
+- 每一步都必须可独立验收
+- 每一步尽量不改变已有用户可见行为
+
+### Pause 1：Candidate identity 收口
+
+目标：
+
+- 把结果 identity 从 `action` 中解耦
+- 明确 `Candidate / Result` 自己的 `identityKey` 或 `historyKey`
+
+范围：
+
+- `applications` 等 source 在产出结果时直接带上稳定 key
+- `launcherHistory` 去重不再反推 `action`
+- `home-surface` 排序不再理解执行协议
+
+验收标准：
+
+- 现有搜索、history、pin 行为不变
+- `home-surface` 不再通过 `action` 反推 history key
+- 后续新增结果类型时，不需要先改 `action -> dedupeKey`
+
+### Pause 2：Action / Executor 收口
+
+目标：
+
+- 把 launcher action 明确拆成 `type + executor + target`
+- 让执行层只负责分发，不再承载搜索或 history 语义
+
+范围：
+
+- 把当前已有 action 迁到结构化模型
+- `executeLauncherAction` 改成小型 dispatch table
+- 先只覆盖已有 action，不顺手加新动作
+
+验收标准：
+
+- 现有应用打开、local-start 打开、页面跳转行为不变
+- `executeLauncherAction` 代码里不再混入搜索或排序逻辑
+- 新增 action 类型时，只需要新增协议和一个 executor 分支
+
+### Pause 3：Clipboard 边界收口
+
+目标：
+
+- 把 clipboard 从“页面里顺手处理”收成明确的三层边界
+
+范围：
+
+- `snapshot`：原始剪贴板状态
+- `derivation`：launcher 消费策略，例如 text autofill、attachment draft 映射
+- `consumption`：home / ai / plugin page 的具体展示与交互
+
+验收标准：
+
+- 现有 clipboard 文本自动回填、图片/文件 preview 行为不变
+- `useLauncherSearchPage` 不再直接理解 clipboard 消费协议
+- 后续新增 clipboard intent 时，不需要再回到页面 hook 里改一整段逻辑
+
+### Pause 4：Home Surface 合约收口
+
+目标：
+
+- 把首页“显示什么、怎么排、默认选中谁”继续收口到 `SurfaceModel`
+
+范围：
+
+- 明确 `body / chrome / sections / defaultSelection`
+- `useLauncherSearchPage` 只负责 query、请求、执行、导航
+- `section` 内部排序保留在 surface builder，而不是散在 page hook 和组件里
+
+验收标准：
+
+- 空输入 history、idle、有输入 results 行为不变
+- 首页 section 组装和默认选中策略有唯一落点
+- 以后新增 `suggestions` 或 `inline action` 时，不需要改动多处组件判断
+
+### Pause 5：Suggestion Surface 首次落地
+
+目标：
+
+- 在不污染 search provider 的前提下，引入首页 suggestion 能力
+
+范围：
+
+- 新增 `suggestions` section
+- 第一批只做两类 suggestion：
+  - 浏览器搜索
+  - 点击后只填充输入框的补全建议
+- suggestion 来自 `SurfaceModel` 派生，不进入 source/provider 主链
+
+验收标准：
+
+- 应用搜索主链不变
+- suggestion 与 search results 能并存，且边界清晰
+- 点击 suggestion 的行为分别是：
+  - 浏览器搜索：执行动作
+  - 输入补全：只改 query，不执行
+
+### Pause 6：Input Affordance 首次落地
+
+状态：
+
+- 已跳过
+
+目标：
+
+- 把“输入行即时动作”作为 `SurfaceModel` 的第一个显式 affordance 落地
+
+范围：
+
+- 输入框右侧显示 inline primary action，例如 `- 打开`
+- 只在 top result 置信度足够高时展示
+- 点击行为等价于对当前主结果执行一次主动作
+
+验收标准：
+
+- 输入明确应用名时，输入框右侧出现 `- 打开`
+- 点击后直接打开目标应用
+- 清空输入或 top result 不够明确时，该 affordance 消失
+- 这条能力不新增 provider，也不污染结果列表结构
+
+建议顺序：
+
+1. Pause 1
+2. Pause 2
+3. Pause 3
+4. Pause 4
+5. Pause 5
+6. Pause 6
+
+当前状态：
+
+- Pause 1 已完成
+- Pause 2 已完成
+- Pause 3 已完成
+- Pause 4 已完成
+- Pause 5 已完成
+- Pause 6 已跳过
 
 ## 当前不做
 

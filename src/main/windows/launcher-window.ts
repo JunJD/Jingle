@@ -16,10 +16,15 @@ import {
 } from "../../shared/launcher"
 import type { ClipboardContext } from "../../shared/clipboard"
 import {
-  getLauncherHistoryDedupeKeyForAction,
+  createLauncherApplicationHistoryKey,
+  createLauncherLocalStartHistoryKey,
   type RecordLauncherHistoryItemInput
 } from "../../shared/launcher-history"
-import type { LauncherSearchAction, LauncherSearchRequest } from "../../shared/launcher-search"
+import type {
+  LauncherActionExecutor,
+  LauncherSearchAction,
+  LauncherSearchRequest
+} from "../../shared/launcher-search"
 import { readClipboardContext } from "../services/clipboard"
 import { recordLauncherHistoryItem } from "../services/launcher-history"
 import { getLocalStartItem, recordLocalStartItemUse } from "../services/local-start"
@@ -222,6 +227,10 @@ async function openLauncherPath(
   }
 }
 
+async function openLauncherUrl(url: string): Promise<void> {
+  await shell.openExternal(url)
+}
+
 function getLauncherPathTitle(targetPath: string): string {
   const fileName = basename(targetPath)
   const fileExtension = extname(fileName)
@@ -232,29 +241,33 @@ async function buildLauncherHistoryRecord(
   action: LauncherSearchAction
 ): Promise<RecordLauncherHistoryItemInput | null> {
   switch (action.type) {
-    case "launch-application":
-      return {
-        action,
-        dedupeKey: getLauncherHistoryDedupeKeyForAction(action)!,
-        iconDataUrl: await getApplicationIconDataUrl(action.applicationPath),
-        kind: "application",
-        subtitle: action.applicationPath,
-        title: getLauncherPathTitle(action.applicationPath)
+    case "open-path":
+      if (!action.localStartItemId) {
+        return {
+          action,
+          historyKey: createLauncherApplicationHistoryKey(action.target.path),
+          iconDataUrl: await getApplicationIconDataUrl(action.target.path),
+          kind: "application",
+          subtitle: action.target.path,
+          title: getLauncherPathTitle(action.target.path)
+        }
       }
-    case "open-local-start-item": {
-      const item = getLocalStartItem(action.itemId)
-      const itemKind = item?.kind ?? action.itemKind
-      const itemPath = item?.path ?? action.path
-      return {
-        action,
-        dedupeKey: getLauncherHistoryDedupeKeyForAction(action)!,
-        iconDataUrl:
-          itemKind === "application" ? await getApplicationIconDataUrl(itemPath) : undefined,
-        kind: itemKind,
-        subtitle: itemPath,
-        title: item?.title ?? getLauncherPathTitle(action.path)
+
+      {
+        const item = getLocalStartItem(action.localStartItemId)
+        const itemKind = item?.kind ?? action.target.kind
+        const itemPath = item?.path ?? action.target.path
+        return {
+          action,
+          historyKey: createLauncherLocalStartHistoryKey(action.localStartItemId),
+          iconDataUrl:
+            itemKind === "application" ? await getApplicationIconDataUrl(itemPath) : undefined,
+          kind: itemKind,
+          subtitle: itemPath,
+          title: item?.title ?? getLauncherPathTitle(action.target.path)
+        }
       }
-    }
+    case "open-url":
     case "none":
       return null
     default: {
@@ -264,24 +277,56 @@ async function buildLauncherHistoryRecord(
   }
 }
 
-async function executeLauncherAction(action: LauncherSearchAction): Promise<void> {
+type LauncherActionExecutorHandler = (action: LauncherSearchAction) => Promise<void>
+
+const launcherActionExecutors: Record<LauncherActionExecutor, LauncherActionExecutorHandler> = {
+  internal: async (action) => {
+    if (action.type !== "none") {
+      throw new Error(`Unsupported internal launcher action: ${JSON.stringify(action)}`)
+    }
+  },
+  shell: async (action) => {
+    switch (action.type) {
+      case "open-path":
+        await openLauncherPath(action.target.path, action.target.kind)
+        return
+      case "open-url":
+        await openLauncherUrl(action.target.url)
+        return
+      default:
+        throw new Error(`Unsupported shell launcher action: ${JSON.stringify(action)}`)
+    }
+  }
+}
+
+async function applyLauncherActionSideEffects(action: LauncherSearchAction): Promise<void> {
   switch (action.type) {
-    case "launch-application":
-      await openLauncherPath(action.applicationPath, "application")
-      recordLauncherHistoryItem((await buildLauncherHistoryRecord(action))!)
+    case "open-path": {
+      if (action.localStartItemId) {
+        recordLocalStartItemUse(action.localStartItemId)
+      }
+
+      const historyRecord = await buildLauncherHistoryRecord(action)
+      if (historyRecord) {
+        recordLauncherHistoryItem(historyRecord)
+      }
       return
-    case "open-local-start-item":
-      await openLauncherPath(action.path, action.itemKind)
-      recordLocalStartItemUse(action.itemId)
-      recordLauncherHistoryItem((await buildLauncherHistoryRecord(action))!)
-      return
+    }
+    case "open-url":
     case "none":
       return
     default: {
       const exhaustiveAction: never = action
-      throw new Error(`Unsupported launcher action: ${JSON.stringify(exhaustiveAction)}`)
+      throw new Error(
+        `Unsupported launcher side effects action: ${JSON.stringify(exhaustiveAction)}`
+      )
     }
   }
+}
+
+async function executeLauncherAction(action: LauncherSearchAction): Promise<void> {
+  await launcherActionExecutors[action.executor](action)
+  await applyLauncherActionSideEffects(action)
 }
 
 export function createLauncherWindow(): BrowserWindow {

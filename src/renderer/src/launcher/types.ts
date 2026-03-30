@@ -10,6 +10,10 @@ import type {
 export interface LauncherShellItem {
   action: LauncherSearchAction
   availability?: LauncherResultAvailability
+  command?: {
+    type: "replace-query"
+    value: string
+  }
   pluginEntryId?: LauncherPluginEntryId
   pluginId?: LauncherPluginId
   pluginOpenOptions?: LauncherPluginOpenOptions
@@ -19,7 +23,6 @@ export interface LauncherShellItem {
   match?: [number, number]
   pin?: boolean
   presentation: LauncherResultPresentation
-  priority?: number
   subtitle: string
   title: string
 }

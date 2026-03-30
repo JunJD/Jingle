@@ -20,8 +20,22 @@ const store = new Store<LauncherHistoryStoreShape>({
   }
 })
 
-function readItems(): LauncherHistoryItem[] {
-  return store.get("items", [])
+function hasLauncherHistoryKey(value: unknown): value is LauncherHistoryItem {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "historyKey" in value &&
+    typeof (value as { historyKey?: unknown }).historyKey === "string" &&
+    (value as { historyKey: string }).historyKey.length > 0
+  )
+}
+
+function readStoredItems(): unknown[] {
+  return store.get("items", []) as unknown[]
+}
+
+function readItems(storedItems: unknown[] = readStoredItems()): LauncherHistoryItem[] {
+  return storedItems.filter(hasLauncherHistoryKey)
 }
 
 function writeItems(items: LauncherHistoryItem[]): void {
@@ -34,11 +48,9 @@ async function enrichHistoryItem(item: LauncherHistoryItem): Promise<LauncherHis
   }
 
   const applicationPath =
-    item.action.type === "launch-application"
-      ? item.action.applicationPath
-      : item.action.type === "open-local-start-item" && item.action.itemKind === "application"
-        ? item.action.path
-        : null
+    item.action.type === "open-path" && item.action.target.kind === "application"
+      ? item.action.target.path
+      : null
 
   if (!applicationPath) {
     return item
@@ -56,10 +68,14 @@ async function enrichHistoryItem(item: LauncherHistoryItem): Promise<LauncherHis
 }
 
 export async function listLauncherHistoryItems(): Promise<LauncherHistoryItem[]> {
-  const items = readItems()
+  const storedItems = readStoredItems()
+  const items = readItems(storedItems)
   const enrichedItems = await Promise.all(items.map((item) => enrichHistoryItem(item)))
 
-  if (enrichedItems.some((item, index) => item !== items[index])) {
+  if (
+    storedItems.length !== items.length ||
+    enrichedItems.some((item, index) => item !== items[index])
+  ) {
     writeItems(enrichedItems)
   }
 
@@ -71,7 +87,7 @@ export function recordLauncherHistoryItem(
 ): LauncherHistoryItem {
   const now = new Date().toISOString()
   const items = readItems()
-  const existingIndex = items.findIndex((item) => item.dedupeKey === input.dedupeKey)
+  const existingIndex = items.findIndex((item) => item.historyKey === input.historyKey)
 
   if (existingIndex >= 0) {
     const nextItem: LauncherHistoryItem = {
@@ -93,7 +109,7 @@ export function recordLauncherHistoryItem(
 
   const nextItem: LauncherHistoryItem = {
     id: randomUUID(),
-    dedupeKey: input.dedupeKey,
+    historyKey: input.historyKey,
     kind: input.kind,
     title: input.title,
     subtitle: input.subtitle,
