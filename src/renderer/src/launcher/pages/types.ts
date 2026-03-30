@@ -28,11 +28,6 @@ export interface LauncherPluginOpenOptions {
   seedQuery?: string
 }
 
-export interface LauncherHomeEntry extends LauncherPluginEntryAddress {
-  label: string
-  shortcutLabel?: string
-}
-
 export interface LauncherPluginIntent {
   entryId?: LauncherPluginEntryId
   id: string
@@ -63,20 +58,12 @@ export interface LauncherPluginCommandParams {
   shiftKey: boolean
 }
 
-export interface LauncherPluginTextContext {
-  copy: AppCopy
-  locale: AppLocale
-}
-
 export type LauncherPluginManifest = SharedLauncherPluginManifest<
   LauncherPluginId,
   LauncherPluginEntryId
 >
 
 export interface LauncherPluginEntryDefinition {
-  buildHomeEntry?: (
-    context: LauncherPluginTextContext
-  ) => Omit<LauncherHomeEntry, "entryId" | "pluginId">
   buildIntentItems?: (params: {
     copy: AppCopy
     locale: AppLocale

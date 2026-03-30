@@ -328,14 +328,12 @@ export default function LauncherApp(): React.JSX.Element {
               </LauncherPluginHostProvider>
             ) : (
               <LauncherSearchPage
-                entries={searchPage.entries}
                 executeItem={searchPage.executeItem}
                 inputRef={searchInputRef}
                 inputValue={searchPage.query}
                 onClearClipboardContext={searchPage.clearClipboardContext}
                 onInputKeyDown={searchPage.handleInputKeyDown}
                 onInputValueChange={searchPage.setQuery}
-                onOpenEntry={searchPage.openEntry}
                 onRemoveHistoryItem={searchPage.removeHistoryItem}
                 onSetHistoryItemPinned={searchPage.setHistoryItemPinned}
                 placeholder={searchPage.placeholder}

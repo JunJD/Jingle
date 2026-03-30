@@ -14,18 +14,14 @@ import type {
 import type { LauncherHistoryItem } from "../../../../shared/launcher-history"
 import { sortLauncherHistoryItems } from "../../../../shared/launcher-history"
 import type { LocalStartItem } from "../../../../shared/local-start"
-import { DEFAULT_HOME_ENTRY, getLauncherHomeEntries, resolveLauncherPluginCommand } from "../pages"
+import { DEFAULT_HOME_ENTRY, resolveLauncherPluginCommand } from "../pages"
 import {
   buildLauncherHomeSurfaceModel,
   getLauncherHomeSurfaceResultsHeight,
   resolveLauncherHomeSurfaceSelectedIndex,
   type LauncherHomeSurfaceModel
 } from "../home-surface"
-import type {
-  LauncherHomeEntry,
-  LauncherPluginEntryAddress,
-  LauncherPluginOpenOptions
-} from "../pages/types"
+import type { LauncherPluginEntryAddress, LauncherPluginOpenOptions } from "../pages/types"
 import { useLauncherHomeClipboard } from "./useLauncherHomeClipboard"
 
 const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
@@ -33,12 +29,10 @@ const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
 export function useLauncherSearchPage(props: {
   openEntry: (address: LauncherPluginEntryAddress, options?: LauncherPluginOpenOptions) => void
 }): {
-  entries: LauncherHomeEntry[]
   executeItem: (index: number) => void
   clearClipboardContext: () => void
   handleInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   homeInputSelectionRequestVersion: number
-  openEntry: (entry: LauncherHomeEntry, options?: LauncherPluginOpenOptions) => void
   removeHistoryItem: (itemId: string) => void
   setHistoryItemPinned: (itemId: string, pin: boolean) => void
   placeholder: string
@@ -97,7 +91,6 @@ export function useLauncherSearchPage(props: {
 
     return getLauncherViewportHeightForBody(resultsViewportHeight, shellConfig)
   }, [resultsViewportHeight, shellConfig])
-  const entries = useMemo(() => getLauncherHomeEntries({ copy, locale }), [copy, locale])
   const requestHomeInputSelection = useCallback((): void => {
     setHomeInputSelectionRequestVersion((version) => version + 1)
   }, [])
@@ -142,8 +135,7 @@ export function useLauncherSearchPage(props: {
       void window.api.launcher
         .search({
           limit: MAX_LAUNCHER_SEARCH_RESULTS,
-          query: trimmedQuery,
-          sources: ["applications", "browser-history"]
+          query: trimmedQuery
         })
         .then((response) => {
           if (latestSearchRequestRef.current === requestId) {
@@ -164,22 +156,6 @@ export function useLauncherSearchPage(props: {
       window.clearTimeout(debounceTimer)
     }
   }, [trimmedQuery])
-
-  const openEntry = useCallback(
-    (entry: LauncherHomeEntry, options?: LauncherPluginOpenOptions): void => {
-      navigateToEntry(
-        {
-          entryId: entry.entryId,
-          pluginId: entry.pluginId
-        },
-        {
-          initialAction: options?.initialAction,
-          seedQuery: options?.seedQuery ?? query
-        }
-      )
-    },
-    [navigateToEntry, query]
-  )
 
   const moveSelection = useCallback(
     (delta: number): void => {
@@ -317,11 +293,9 @@ export function useLauncherSearchPage(props: {
 
   return {
     clearClipboardContext: homeClipboard.clearContext,
-    entries,
     executeItem,
     handleInputKeyDown,
     homeInputSelectionRequestVersion,
-    openEntry,
     previewClipboardContext: homeClipboard.previewContext,
     removeHistoryItem,
     setHistoryItemPinned,

@@ -43,9 +43,6 @@ const MAC_APPLICATION_DIRECTORIES = [
   "/System/Library/CoreServices/Applications"
 ]
 
-let applicationCatalogPromise: Promise<LauncherApplicationRecord[]> | null = null
-const applicationIconPromiseCache = new Map<string, Promise<string | undefined>>()
-
 function normalizeSearchValue(value: string): string {
   return value
     .normalize("NFKD")
@@ -258,14 +255,6 @@ async function loadApplicationCatalog(): Promise<LauncherApplicationRecord[]> {
     default:
       return []
   }
-}
-
-async function getApplicationCatalog(): Promise<LauncherApplicationRecord[]> {
-  if (!applicationCatalogPromise) {
-    applicationCatalogPromise = loadApplicationCatalog()
-  }
-
-  return applicationCatalogPromise
 }
 
 async function readPlistRawValue(
@@ -515,133 +504,148 @@ function getApplicationMatch(
   }
 }
 
+class ApplicationsLauncherSearchProvider implements LauncherSearchProvider {
+  readonly source = "applications" as const
+  private applicationCatalogPromise: Promise<LauncherApplicationRecord[]> | null = null
+  private applicationIconPromiseCache = new Map<string, Promise<string | undefined>>()
+
+  async warmup(): Promise<void> {
+    await this.getApplicationCatalog()
+  }
+
+  async search(request: LauncherSearchRequest): Promise<LauncherSearchProviderResponse> {
+    const query = normalizeSearchValue(request.query)
+
+    if (!query) {
+      return {
+        results: []
+      }
+    }
+
+    const catalog = await this.getApplicationCatalog()
+    const matches: Array<{
+      application: LauncherApplicationRecord
+      match?: [number, number]
+      score: number
+      title: string
+    }> = []
+
+    for (const application of catalog) {
+      const match = getApplicationMatch(application, query)
+      if (!match) {
+        continue
+      }
+
+      matches.push({
+        application,
+        match: match.match,
+        score: match.score,
+        title: match.title
+      })
+    }
+
+    matches.sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score
+      }
+
+      const titleOrder = collator.compare(left.title, right.title)
+      if (titleOrder !== 0) {
+        return titleOrder
+      }
+
+      return collator.compare(left.application.path, right.application.path)
+    })
+
+    const results = await Promise.all(
+      matches
+        .slice(0, Math.max(request.limit, 1))
+        .map((entry) =>
+          this.mapApplicationResult(entry.application, entry.title, entry.score, entry.match)
+        )
+    )
+
+    return {
+      results
+    }
+  }
+
+  async getApplicationIconDataUrl(applicationPath: string): Promise<string | undefined> {
+    let iconPromise = this.applicationIconPromiseCache.get(applicationPath)
+
+    if (!iconPromise) {
+      iconPromise = (async () => {
+        if (process.platform === "darwin") {
+          const iconPath = await resolveMacApplicationIconPath(applicationPath)
+          if (iconPath) {
+            const iconDataUrl = await createIconDataUrlFromPath(iconPath)
+            if (iconDataUrl) {
+              return iconDataUrl
+            }
+          }
+        }
+
+        try {
+          const icon = await app.getFileIcon(applicationPath, { size: "small" })
+          if (icon.isEmpty()) {
+            return undefined
+          }
+
+          return icon.toDataURL()
+        } catch {
+          return undefined
+        }
+      })()
+
+      this.applicationIconPromiseCache.set(applicationPath, iconPromise)
+    }
+
+    return iconPromise
+  }
+
+  private async getApplicationCatalog(): Promise<LauncherApplicationRecord[]> {
+    if (!this.applicationCatalogPromise) {
+      this.applicationCatalogPromise = loadApplicationCatalog()
+    }
+
+    return this.applicationCatalogPromise
+  }
+
+  private async mapApplicationResult(
+    application: LauncherApplicationRecord,
+    title: string,
+    score: number,
+    match?: [number, number]
+  ): Promise<LauncherSearchResult> {
+    return {
+      action: {
+        executor: "shell",
+        target: {
+          kind: "application",
+          path: application.path
+        },
+        type: "open-path"
+      },
+      historyKey: createLauncherHistoryKey({
+        path: application.path,
+        type: "application"
+      }),
+      id: application.id,
+      iconDataUrl: await this.getApplicationIconDataUrl(application.path),
+      kind: "application",
+      match,
+      score,
+      source: "applications",
+      subtitle: application.subtitle,
+      title
+    }
+  }
+}
+
+export const applicationsLauncherSearchProvider = new ApplicationsLauncherSearchProvider()
+
 export async function getApplicationIconDataUrl(
   applicationPath: string
 ): Promise<string | undefined> {
-  let iconPromise = applicationIconPromiseCache.get(applicationPath)
-
-  if (!iconPromise) {
-    iconPromise = (async () => {
-      if (process.platform === "darwin") {
-        const iconPath = await resolveMacApplicationIconPath(applicationPath)
-        if (iconPath) {
-          const iconDataUrl = await createIconDataUrlFromPath(iconPath)
-          if (iconDataUrl) {
-            return iconDataUrl
-          }
-        }
-      }
-
-      try {
-        const icon = await app.getFileIcon(applicationPath, { size: "small" })
-        if (icon.isEmpty()) {
-          return undefined
-        }
-
-        return icon.toDataURL()
-      } catch {
-        return undefined
-      }
-    })()
-
-    applicationIconPromiseCache.set(applicationPath, iconPromise)
-  }
-
-  return iconPromise
-}
-
-async function mapApplicationResult(
-  application: LauncherApplicationRecord,
-  title: string,
-  score: number,
-  match?: [number, number]
-): Promise<LauncherSearchResult> {
-  return {
-    action: {
-      executor: "shell",
-      target: {
-        kind: "application",
-        path: application.path
-      },
-      type: "open-path"
-    },
-    historyKey: createLauncherHistoryKey({
-      path: application.path,
-      type: "application"
-    }),
-    id: application.id,
-    iconDataUrl: await getApplicationIconDataUrl(application.path),
-    kind: "application",
-    match,
-    score,
-    source: "applications",
-    subtitle: application.subtitle,
-    title
-  }
-}
-
-async function searchApplications(
-  request: LauncherSearchRequest
-): Promise<LauncherSearchProviderResponse> {
-  const query = normalizeSearchValue(request.query)
-
-  if (!query) {
-    return {
-      results: []
-    }
-  }
-
-  const catalog = await getApplicationCatalog()
-  const matches: Array<{
-    application: LauncherApplicationRecord
-    match?: [number, number]
-    score: number
-    title: string
-  }> = []
-
-  for (const application of catalog) {
-    const match = getApplicationMatch(application, query)
-    if (!match) {
-      continue
-    }
-
-    matches.push({
-      application,
-      match: match.match,
-      score: match.score,
-      title: match.title
-    })
-  }
-
-  matches.sort((left, right) => {
-    if (right.score !== left.score) {
-      return right.score - left.score
-    }
-
-    const titleOrder = collator.compare(left.title, right.title)
-    if (titleOrder !== 0) {
-      return titleOrder
-    }
-
-    return collator.compare(left.application.path, right.application.path)
-  })
-  const results = await Promise.all(
-    matches
-      .slice(0, Math.max(request.limit, 1))
-      .map((entry) =>
-        mapApplicationResult(entry.application, entry.title, entry.score, entry.match)
-      )
-  )
-
-  return {
-    results
-  }
-}
-
-export const applicationsLauncherSearchProvider: LauncherSearchProvider = {
-  search: searchApplications,
-  source: "applications",
-  warmup: async () => {
-    await getApplicationCatalog()
-  }
+  return applicationsLauncherSearchProvider.getApplicationIconDataUrl(applicationPath)
 }

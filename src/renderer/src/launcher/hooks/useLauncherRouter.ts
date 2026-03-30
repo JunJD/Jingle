@@ -15,10 +15,7 @@ export function useLauncherRouter(): {
   activeEntry: LauncherPluginEntryDefinition | null
   closeActivePlugin: () => void
   navigationDirection: LauncherNavigationDirection
-  openEntry: (
-    address: LauncherPluginEntryAddress,
-    options?: LauncherPluginOpenOptions
-  ) => void
+  openEntry: (address: LauncherPluginEntryAddress, options?: LauncherPluginOpenOptions) => void
   route: LauncherRoute
   routeKey: string
 } {

@@ -267,6 +267,11 @@ Phase 5 子步骤：
 - launcher shell 级共享状态后续禁止继续通过 page render props 逐层下传，统一收口到 launcher 根 context / shell 边界
 - `launcherHistory` 数据层已提前落地：独立持久化、pin 字段、执行后自动写入；空态展示后续再接 UI
 - `browser-history` source 已开始接入：当前先支持 macOS 下 Chrome / Edge 本地历史搜索，结果进入现有 `search-results` section，执行先复用 `open-url`
+- 后续 `Source` backlog：
+  - `FilesLauncherSearchProvider`
+  - `BrowserBookmarksLauncherSearchProvider`
+  - `ClipboardIntentSource`
+  - 这几类统一按 `class X implements LauncherSearchProvider` 的风格落地，只在 source 层类化，不向 `Candidate / SurfaceModel / Action` 扩散
 
 Phase 5 当前状态：
 

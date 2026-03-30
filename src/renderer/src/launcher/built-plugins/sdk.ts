@@ -20,7 +20,6 @@ import type {
   LauncherResultPresentationTone
 } from "../result-types"
 import type {
-  LauncherHomeEntry,
   LauncherPluginCommandMatch,
   LauncherPluginCommandParams,
   LauncherPluginDefinition,
@@ -32,11 +31,6 @@ import type {
 } from "../pages/types"
 import { validateLauncherPluginManifest } from "../../../../shared/launcher-plugin"
 
-export interface BuiltLauncherPluginTextContext {
-  copy: AppCopy
-  locale: AppLocale
-}
-
 export interface BuiltLauncherPluginSpec {
   entries: BuiltLauncherPluginEntrySpec[]
   manifest: LauncherPluginManifest
@@ -45,9 +39,6 @@ export interface BuiltLauncherPluginSpec {
 export interface BuiltLauncherPluginEntrySpec {
   Component: ComponentType
   entryId: LauncherPluginEntryId
-  home?: (
-    context: BuiltLauncherPluginTextContext
-  ) => Omit<LauncherHomeEntry, "entryId" | "pluginId">
   search?: {
     buildIntentItems?: (context: {
       copy: AppCopy
@@ -100,7 +91,6 @@ function resolveBuiltPluginEntryDefinition(
 ): LauncherPluginEntryDefinition {
   return {
     Component: entry.Component,
-    buildHomeEntry: entry.home,
     buildIntentItems: entry.search?.buildIntentItems,
     entryId: entry.entryId,
     getViewportHeight: getBuiltPluginViewportHeight(entry.viewport),

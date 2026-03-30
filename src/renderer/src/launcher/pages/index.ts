@@ -9,10 +9,8 @@ import type {
   LauncherPluginEntryAddress,
   LauncherPluginEntryDefinition,
   LauncherPluginEntryId,
-  LauncherHomeEntry,
   LauncherPluginId,
-  LauncherResolvedPluginIntent,
-  LauncherPluginTextContext
+  LauncherResolvedPluginIntent
 } from "./types"
 
 const launcherPlugins: LauncherPluginDefinition[] = builtLauncherPlugins
@@ -72,23 +70,6 @@ export function getLauncherPluginEntryDefinition(address: LauncherPluginEntryAdd
   }
 
   return resolved
-}
-
-export function getLauncherHomeEntries(context: LauncherPluginTextContext): LauncherHomeEntry[] {
-  return launcherPlugins.flatMap((plugin) =>
-    plugin.entries.flatMap((entry) => {
-      const homeEntry = entry.buildHomeEntry?.(context)
-      return homeEntry
-        ? [
-            {
-              ...homeEntry,
-              entryId: entry.entryId,
-              pluginId: plugin.manifest.id
-            }
-          ]
-        : []
-    })
-  )
 }
 
 export function getLauncherPluginIntents(params: {

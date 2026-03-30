@@ -13,10 +13,6 @@ export const aiLauncherPlugin = defineBuiltLauncherPlugin({
     {
       Component: LauncherAiPage,
       entryId: AI_CHAT_ENTRY_ID,
-      home: ({ copy }) => ({
-        label: copy.launcher.aiEntryLabel,
-        shortcutLabel: "Tab"
-      }),
       search: {
         buildIntentItems: ({ copy, query }) => {
           const trimmedQuery = query.trim()
