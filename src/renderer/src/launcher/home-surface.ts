@@ -1,4 +1,5 @@
 import type { AppCopy } from "@/lib/i18n/messages"
+import type { ExternalExtensionCommandInfo } from "../../../shared/external-extensions"
 import type { AppLocale } from "../../../shared/i18n"
 import {
   getLauncherSectionedResultsHeight,
@@ -15,6 +16,7 @@ import { getLauncherPluginIntents } from "./pages"
 import {
   buildLauncherBrowserSearchSuggestionItem,
   buildLauncherCompletionSuggestionItem,
+  buildLauncherExternalCommandShellItems,
   buildLauncherHistoryShellItems,
   buildLauncherLocalStartShellItems,
   buildLauncherPluginIntentShellItems,
@@ -26,6 +28,7 @@ export type LauncherHomeSurfaceSectionKind =
   | "history-grid"
   | "idle-list"
   | "plugin-intents"
+  | "external-commands"
   | "suggestions"
   | "search-results"
 
@@ -142,6 +145,7 @@ function createSuggestionSectionItems(
 
 export function buildLauncherHomeSurfaceModel(params: {
   copy: AppCopy
+  externalCommands: ExternalExtensionCommandInfo[]
   historyItems: LauncherHistoryItem[]
   idleItems: LocalStartItem[]
   locale: AppLocale
@@ -149,7 +153,8 @@ export function buildLauncherHomeSurfaceModel(params: {
   searchResults: LauncherSearchResult[]
   windowMode: "default" | "compact"
 }): LauncherHomeSurfaceModel {
-  const { copy, historyItems, idleItems, locale, query, searchResults, windowMode } = params
+  const { copy, externalCommands, historyItems, idleItems, locale, query, searchResults, windowMode } =
+    params
   const trimmedQuery = query.trim()
 
   if (!trimmedQuery) {
@@ -183,6 +188,7 @@ export function buildLauncherHomeSurfaceModel(params: {
       query
     })
   )
+  const externalCommandItems = buildLauncherExternalCommandShellItems(copy, externalCommands, query)
   const rankedSearchResults = rankSearchResultSectionItems(searchResults, historyItems)
   const suggestionItems = createSuggestionSectionItems(copy, trimmedQuery, rankedSearchResults)
   const searchResultItems = buildLauncherSearchShellItems(copy, rankedSearchResults)
@@ -191,6 +197,13 @@ export function buildLauncherHomeSurfaceModel(params: {
     sections.push({
       items: pluginIntentItems,
       kind: "plugin-intents"
+    })
+  }
+
+  if (externalCommandItems.length > 0) {
+    sections.push({
+      items: externalCommandItems,
+      kind: "external-commands"
     })
   }
 

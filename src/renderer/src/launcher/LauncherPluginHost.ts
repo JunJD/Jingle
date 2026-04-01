@@ -4,11 +4,10 @@ import type { LauncherShellConfig } from "../../../shared/launcher"
 import type { LauncherClipboardState } from "./LauncherClipboardContext"
 import type { LauncherInputStatus } from "./launcher-input-status"
 import type {
-  LauncherPluginEntryAddress,
-  LauncherPluginEntryInitialAction,
-  LauncherPluginEntryId,
-  LauncherPluginId,
-  LauncherPluginOpenOptions
+  LauncherPluginCommandInitialAction,
+  LauncherPluginCommandName,
+  LauncherPluginNavigation,
+  LauncherPluginId
 } from "./pages/types"
 
 export type LauncherPluginInputElement = HTMLInputElement | HTMLTextAreaElement
@@ -40,17 +39,11 @@ export interface LauncherPluginThreadSubmitInput {
   threadId: string
 }
 
-export interface LauncherPluginNavigation {
-  goHome: () => void
-  hideLauncher: () => Promise<void>
-  openEntry: (address: LauncherPluginEntryAddress, options?: LauncherPluginOpenOptions) => void
-}
-
 export interface LauncherPluginHostValue {
   capabilities: readonly LauncherPluginCapability[]
   clipboard?: Pick<LauncherClipboardState, "clearContext" | "context">
-  entryId: LauncherPluginEntryId
-  initialAction: LauncherPluginEntryInitialAction
+  commandName: LauncherPluginCommandName
+  initialAction: LauncherPluginCommandInitialAction
   navigation?: LauncherPluginNavigation
   pluginId: LauncherPluginId
   seedQuery: string

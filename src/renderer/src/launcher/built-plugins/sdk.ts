@@ -20,11 +20,12 @@ import type {
   LauncherResultPresentationTone
 } from "../result-types"
 import type {
+  LauncherNoViewPluginRunContext,
   LauncherPluginCommandMatch,
   LauncherPluginCommandParams,
+  LauncherPluginCommandDefinition,
+  LauncherPluginCommandName,
   LauncherPluginDefinition,
-  LauncherPluginEntryDefinition,
-  LauncherPluginEntryId,
   LauncherPluginId,
   LauncherPluginManifest,
   LauncherPluginIntent
@@ -32,13 +33,12 @@ import type {
 import { validateLauncherPluginManifest } from "../../../../shared/launcher-plugin"
 
 export interface BuiltLauncherPluginSpec {
-  entries: BuiltLauncherPluginEntrySpec[]
+  commands: BuiltLauncherPluginCommandSpec[]
   manifest: LauncherPluginManifest
 }
 
-export interface BuiltLauncherPluginEntrySpec {
-  Component: ComponentType
-  entryId: LauncherPluginEntryId
+interface BuiltLauncherPluginSearchSpec {
+  commandName: LauncherPluginCommandName
   search?: {
     buildIntentItems?: (context: {
       copy: AppCopy
@@ -47,6 +47,11 @@ export interface BuiltLauncherPluginEntrySpec {
     }) => LauncherPluginIntent[]
     resolveCommand?: (params: LauncherPluginCommandParams) => LauncherPluginCommandMatch | null
   }
+}
+
+export interface BuiltLauncherViewPluginCommandSpec extends BuiltLauncherPluginSearchSpec {
+  Component: ComponentType
+  mode: "view"
   viewport:
     | {
         bodyHeight: number
@@ -55,6 +60,15 @@ export interface BuiltLauncherPluginEntrySpec {
         getHeight: (shellConfig: LauncherShellConfig) => number
       }
 }
+
+export interface BuiltLauncherNoViewPluginCommandSpec extends BuiltLauncherPluginSearchSpec {
+  mode: "no-view"
+  run: (context: LauncherNoViewPluginRunContext) => Promise<void> | void
+}
+
+export type BuiltLauncherPluginCommandSpec =
+  | BuiltLauncherViewPluginCommandSpec
+  | BuiltLauncherNoViewPluginCommandSpec
 
 export interface BuiltPluginClientMethod<TPayload, TResult> {
   payload?: TPayload
@@ -77,7 +91,7 @@ type BuiltPluginClient<TMethods extends Record<string, BuiltPluginClientMethod<u
   }
 
 function getBuiltPluginViewportHeight(
-  viewport: BuiltLauncherPluginEntrySpec["viewport"]
+  viewport: BuiltLauncherViewPluginCommandSpec["viewport"]
 ): (shellConfig: LauncherShellConfig) => number {
   if ("getHeight" in viewport) {
     return viewport.getHeight
@@ -86,42 +100,65 @@ function getBuiltPluginViewportHeight(
   return (shellConfig) => getLauncherViewportHeightForBody(viewport.bodyHeight, shellConfig)
 }
 
-function resolveBuiltPluginEntryDefinition(
-  entry: BuiltLauncherPluginEntrySpec
-): LauncherPluginEntryDefinition {
+function resolveBuiltPluginCommandDefinition(
+  command: BuiltLauncherPluginCommandSpec
+): LauncherPluginCommandDefinition {
+  const baseDefinition = {
+    buildIntentItems: command.search?.buildIntentItems,
+    commandName: command.commandName,
+    resolveCommand: command.search?.resolveCommand
+  }
+
+  if (command.mode === "view") {
+    return {
+      ...baseDefinition,
+      Component: command.Component,
+      getViewportHeight: getBuiltPluginViewportHeight(command.viewport),
+      mode: command.mode
+    }
+  }
+
   return {
-    Component: entry.Component,
-    buildIntentItems: entry.search?.buildIntentItems,
-    entryId: entry.entryId,
-    getViewportHeight: getBuiltPluginViewportHeight(entry.viewport),
-    resolveCommand: entry.search?.resolveCommand
+    ...baseDefinition,
+    mode: command.mode,
+    run: command.run
   }
 }
 
 function validateBuiltLauncherPluginSpec(spec: BuiltLauncherPluginSpec): void {
   validateLauncherPluginManifest(spec.manifest)
-  const manifestEntryIds = new Set(spec.manifest.entries.map((entry) => entry.id))
-  const rendererEntryIds = new Set<string>()
+  const manifestCommandMap = new Map(
+    spec.manifest.commands.map((command) => [command.name, command] as const)
+  )
+  const rendererCommandNames = new Set<string>()
 
-  for (const entry of spec.entries) {
-    if (rendererEntryIds.has(entry.entryId)) {
+  for (const command of spec.commands) {
+    if (rendererCommandNames.has(command.commandName)) {
       throw new Error(
-        `Launcher plugin "${spec.manifest.id}" declares duplicate renderer entry "${entry.entryId}"`
+        `Launcher plugin "${spec.manifest.id}" declares duplicate renderer command "${command.commandName}"`
       )
     }
 
-    if (!manifestEntryIds.has(entry.entryId)) {
+    const manifestCommand = manifestCommandMap.get(command.commandName)
+
+    if (!manifestCommand) {
       throw new Error(
-        `Launcher plugin "${spec.manifest.id}" renderer entry "${entry.entryId}" is missing from its manifest`
+        `Launcher plugin "${spec.manifest.id}" renderer command "${command.commandName}" is missing from its manifest`
       )
     }
 
-    rendererEntryIds.add(entry.entryId)
+    if (manifestCommand.mode !== command.mode) {
+      throw new Error(
+        `Launcher plugin "${spec.manifest.id}" command "${command.commandName}" mode "${command.mode}" does not match manifest mode "${manifestCommand.mode}"`
+      )
+    }
+
+    rendererCommandNames.add(command.commandName)
   }
 
-  if (rendererEntryIds.size !== manifestEntryIds.size) {
+  if (rendererCommandNames.size !== manifestCommandMap.size) {
     throw new Error(
-      `Launcher plugin "${spec.manifest.id}" manifest and renderer entries are out of sync`
+      `Launcher plugin "${spec.manifest.id}" manifest and renderer commands are out of sync`
     )
   }
 }
@@ -130,7 +167,7 @@ export function defineBuiltLauncherPlugin(spec: BuiltLauncherPluginSpec): Launch
   validateBuiltLauncherPluginSpec(spec)
 
   return {
-    entries: spec.entries.map((entry) => resolveBuiltPluginEntryDefinition(entry)),
+    commands: spec.commands.map((command) => resolveBuiltPluginCommandDefinition(command)),
     manifest: spec.manifest
   }
 }

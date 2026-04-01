@@ -2,8 +2,7 @@ import type { LauncherResultAvailability } from "../../../shared/launcher"
 import type { LauncherSearchAction } from "../../../shared/launcher-search"
 import type { LauncherResultPresentation, LauncherShellItemKind } from "./result-types"
 import type {
-  LauncherPluginEntryId,
-  LauncherPluginId,
+  LauncherCommandAddress,
   LauncherPluginOpenOptions
 } from "./pages/types"
 
@@ -14,9 +13,8 @@ export interface LauncherShellItem {
     type: "replace-query"
     value: string
   }
-  pluginEntryId?: LauncherPluginEntryId
-  pluginId?: LauncherPluginId
-  pluginOpenOptions?: LauncherPluginOpenOptions
+  commandOpenOptions?: LauncherPluginOpenOptions
+  commandRef?: LauncherCommandAddress
   kind: LauncherShellItemKind
   id: string
   iconDataUrl?: string

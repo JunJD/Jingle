@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AI_LAUNCHER_PLUGIN_ID } from "../../../plugins/ai/manifest"
 import { useLauncherClipboard } from "./LauncherClipboardContext"
 import { deriveLauncherPluginClipboardContext } from "../../../shared/clipboard-derivations"
+import { getLauncherMaxViewportHeight } from "../../../shared/launcher"
 import {
   type LauncherPluginInputElement,
   type LauncherPluginThreadCreateInput,
@@ -12,10 +13,17 @@ import type { LauncherInputStatus } from "./launcher-input-status"
 import { LauncherIntelligenceGlow } from "./components/LauncherIntelligenceGlow"
 import { LauncherPageTransition } from "./components/LauncherPageTransition"
 import { LauncherSearchPage } from "./components/LauncherSearchPage"
+import { ExternalCommandRouteView } from "./external-runtime/ExternalCommandRouteView"
 import { useLauncherRouter } from "./hooks/useLauncherRouter"
 import { useLauncherSearchPage } from "./hooks/useLauncherSearchPage"
 import { getLauncherPluginDefinition } from "./pages"
-import { isLauncherPluginRoute } from "./pages/types"
+import {
+  isLauncherCommandRoute,
+  isLauncherExternalExtensionRoute,
+  isLauncherNoViewPluginCommand,
+  isLauncherPluginRoute,
+  isLauncherViewPluginCommand
+} from "./pages/types"
 import { invokeThreadMessage } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
 import { useThreadContext } from "@/lib/thread-context"
@@ -33,7 +41,7 @@ export default function LauncherApp(): React.JSX.Element {
   const shellRef = useRef<HTMLDivElement>(null)
   const viewportHeightRef = useRef(0)
   const [shownSequence, setShownSequence] = useState(0)
-  const { activeEntry, closeActivePlugin, navigationDirection, openEntry, route, routeKey } =
+  const { activeCommand, closeActivePlugin, navigationDirection, openCommand, route, routeKey } =
     useLauncherRouter()
   const [pluginInputSurface, setPluginInputSurface] = useState<{
     routeKey: string
@@ -42,17 +50,26 @@ export default function LauncherApp(): React.JSX.Element {
     routeKey,
     status: "idle"
   })
-  const searchPage = useLauncherSearchPage({ openEntry })
+  const searchPage = useLauncherSearchPage({ openCommand })
   const previousRouteRef = useRef(route)
   const previousRouteKeyRef = useRef<string | null>(null)
   const lastHandledShownSequenceRef = useRef(shownSequence)
   const lastHandledHomeSelectionRequestRef = useRef(searchPage.homeInputSelectionRequestVersion)
+  const lastExecutedNoViewRouteKeyRef = useRef<string | null>(null)
+  const latestRouteKeyRef = useRef(routeKey)
   const activePluginId = isLauncherPluginRoute(route) ? route.pluginId : null
+  const activeExternalRoute = isLauncherExternalExtensionRoute(route) ? route : null
   const activePluginDefinition = activePluginId ? getLauncherPluginDefinition(activePluginId) : null
-  const ActivePluginComponent = activeEntry?.Component ?? null
-  const viewportHeight = !isLauncherPluginRoute(route)
+  const activeViewCommand =
+    activeCommand && isLauncherViewPluginCommand(activeCommand) ? activeCommand : null
+  const activeNoViewCommand =
+    activeCommand && isLauncherNoViewPluginCommand(activeCommand) ? activeCommand : null
+  const ActivePluginComponent = activeViewCommand?.Component ?? null
+  const viewportHeight = !isLauncherCommandRoute(route)
     ? searchPage.viewportHeight
-    : (activeEntry?.getViewportHeight(searchPage.shellConfig) ?? searchPage.viewportHeight)
+    : activeExternalRoute
+      ? getLauncherMaxViewportHeight(searchPage.shellConfig)
+      : (activeViewCommand?.getViewportHeight(searchPage.shellConfig) ?? searchPage.viewportHeight)
   const pluginInputStatus =
     pluginInputSurface.routeKey === routeKey ? pluginInputSurface.status : "idle"
   const setPluginInputStatus = useCallback(
@@ -91,6 +108,10 @@ export default function LauncherApp(): React.JSX.Element {
   }, [])
   const focusActiveInput = useCallback(
     (options?: { home?: HomeInputFocusBehavior; plugin?: PluginInputFocusBehavior }): void => {
+      if (isLauncherExternalExtensionRoute(route)) {
+        return
+      }
+
       if (isLauncherPluginRoute(route)) {
         focusPluginInput(options?.plugin ?? "move-to-end")
         return
@@ -158,7 +179,7 @@ export default function LauncherApp(): React.JSX.Element {
     [threadContext]
   )
   const activePluginHost = useMemo(() => {
-    if (!activeEntry || !activePluginDefinition || !isLauncherPluginRoute(route)) {
+    if (!activeCommand || !activePluginDefinition || !isLauncherPluginRoute(route)) {
       return null
     }
 
@@ -175,13 +196,13 @@ export default function LauncherApp(): React.JSX.Element {
             )
           }
         : undefined,
-      entryId: route.entryId,
+      commandName: route.commandName,
       initialAction: route.initialAction,
       navigation: capabilities.includes("navigation")
         ? {
             goHome: closeActivePlugin,
             hideLauncher,
-            openEntry
+            openCommand
           }
         : undefined,
       pluginId: route.pluginId,
@@ -205,14 +226,14 @@ export default function LauncherApp(): React.JSX.Element {
         : undefined
     }
   }, [
-    activeEntry,
+    activeCommand,
     activePluginDefinition,
     clipboard.clearContext,
     clipboard.context,
     closeActivePlugin,
     createPluginThread,
     hideLauncher,
-    openEntry,
+    openCommand,
     pluginInputStatus,
     setPluginInputStatus,
     route,
@@ -222,6 +243,41 @@ export default function LauncherApp(): React.JSX.Element {
     threadContext,
     viewportHeight
   ])
+
+  useEffect(() => {
+    latestRouteKeyRef.current = routeKey
+  }, [routeKey])
+
+  useEffect(() => {
+    if (!activeNoViewCommand || !activePluginHost || !isLauncherPluginRoute(route)) {
+      return
+    }
+
+    if (lastExecutedNoViewRouteKeyRef.current === routeKey) {
+      return
+    }
+
+    lastExecutedNoViewRouteKeyRef.current = routeKey
+
+    void Promise.resolve(
+      activeNoViewCommand.run({
+        initialAction: route.initialAction,
+        navigation: activePluginHost.navigation,
+        seedQuery: route.seedQuery
+      })
+    )
+      .catch((error) => {
+        console.error(
+          `[Launcher] No-view command "${route.pluginId}:${route.commandName}" failed:`,
+          error
+        )
+      })
+      .finally(() => {
+        if (latestRouteKeyRef.current === routeKey) {
+          closeActivePlugin()
+        }
+      })
+  }, [activeNoViewCommand, activePluginHost, closeActivePlugin, route, routeKey])
 
   useEffect(() => {
     setViewportHeight(viewportHeight)
@@ -252,8 +308,8 @@ export default function LauncherApp(): React.JSX.Element {
     const routeChanged = previousRouteKeyRef.current !== routeKey
     const returnedHome =
       routeChanged &&
-      isLauncherPluginRoute(previousRouteRef.current) &&
-      !isLauncherPluginRoute(route)
+      isLauncherCommandRoute(previousRouteRef.current) &&
+      !isLauncherCommandRoute(route)
     const shownChanged = shownSequence !== lastHandledShownSequenceRef.current
     const homeSelectionRequested =
       searchPage.homeInputSelectionRequestVersion !== lastHandledHomeSelectionRequestRef.current
@@ -300,7 +356,7 @@ export default function LauncherApp(): React.JSX.Element {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
         event.preventDefault()
-        if (isLauncherPluginRoute(route)) {
+        if (isLauncherCommandRoute(route)) {
           closeActivePlugin()
           return
         }
@@ -322,7 +378,13 @@ export default function LauncherApp(): React.JSX.Element {
       >
         <div className="launcher-shell-content">
           <LauncherPageTransition direction={navigationDirection} pageKey={routeKey}>
-            {activeEntry && ActivePluginComponent && activePluginHost ? (
+            {activeExternalRoute ? (
+              <ExternalCommandRouteView
+                commandName={activeExternalRoute.commandName}
+                extensionName={activeExternalRoute.extensionName}
+                onClose={closeActivePlugin}
+              />
+            ) : activeViewCommand && ActivePluginComponent && activePluginHost ? (
               <LauncherPluginHostProvider value={activePluginHost}>
                 <ActivePluginComponent />
               </LauncherPluginHostProvider>

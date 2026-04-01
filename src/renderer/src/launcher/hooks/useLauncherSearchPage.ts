@@ -7,6 +7,7 @@ import {
   type LauncherShellConfig
 } from "../../../../shared/launcher"
 import { useI18n } from "@/lib/i18n"
+import type { ExternalExtensionCommandInfo } from "../../../../shared/external-extensions"
 import type {
   LauncherSearchResponse,
   LauncherSearchResult
@@ -14,20 +15,20 @@ import type {
 import type { LauncherHistoryItem } from "../../../../shared/launcher-history"
 import { sortLauncherHistoryItems } from "../../../../shared/launcher-history"
 import type { LocalStartItem } from "../../../../shared/local-start"
-import { DEFAULT_HOME_ENTRY, resolveLauncherPluginCommand } from "../pages"
+import { DEFAULT_HOME_COMMAND, resolveLauncherPluginCommand } from "../pages"
 import {
   buildLauncherHomeSurfaceModel,
   getLauncherHomeSurfaceResultsHeight,
   resolveLauncherHomeSurfaceSelectedIndex,
   type LauncherHomeSurfaceModel
 } from "../home-surface"
-import type { LauncherPluginEntryAddress, LauncherPluginOpenOptions } from "../pages/types"
+import type { LauncherCommandAddress, LauncherPluginOpenOptions } from "../pages/types"
 import { useLauncherHomeClipboard } from "./useLauncherHomeClipboard"
 
 const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
 
 export function useLauncherSearchPage(props: {
-  openEntry: (address: LauncherPluginEntryAddress, options?: LauncherPluginOpenOptions) => void
+  openCommand: (address: LauncherCommandAddress, options?: LauncherPluginOpenOptions) => void
 }): {
   executeItem: (index: number) => void
   clearClipboardContext: () => void
@@ -48,13 +49,14 @@ export function useLauncherSearchPage(props: {
   surface: LauncherHomeSurfaceModel
   viewportHeight: number
 } {
-  const { openEntry: navigateToEntry } = props
+  const { openCommand: navigateToCommand } = props
   const { copy, locale } = useI18n()
   const latestSearchRequestRef = useRef(0)
   const [query, setQuery] = useState("")
   const [historyItems, setHistoryItems] = useState<LauncherHistoryItem[]>([])
   const [searchResponse, setSearchResponse] = useState<LauncherSearchResponse | null>(null)
   const [idleItems, setIdleItems] = useState<LocalStartItem[]>([])
+  const [externalCommands, setExternalCommands] = useState<ExternalExtensionCommandInfo[]>([])
   const [windowMode, setWindowMode] = useState<"default" | "compact">("default")
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [homeInputSelectionRequestVersion, setHomeInputSelectionRequestVersion] = useState(0)
@@ -69,6 +71,7 @@ export function useLauncherSearchPage(props: {
     () =>
       buildLauncherHomeSurfaceModel({
         copy,
+        externalCommands,
         historyItems,
         idleItems,
         locale,
@@ -76,7 +79,7 @@ export function useLauncherSearchPage(props: {
         searchResults,
         windowMode
       }),
-    [copy, historyItems, idleItems, locale, query, searchResults, windowMode]
+    [copy, externalCommands, historyItems, idleItems, locale, query, searchResults, windowMode]
   )
   const selectedIndex = useMemo(() => {
     return resolveLauncherHomeSurfaceSelectedIndex(surface, selectedItemId)
@@ -110,17 +113,30 @@ export function useLauncherSearchPage(props: {
       setIdleItems(localStartItems)
     })
   }, [])
+  const refreshExternalCommands = useCallback((): void => {
+    void window.api.extensions
+      .listCommands()
+      .then((commands) => {
+        setExternalCommands(commands)
+      })
+      .catch((error) => {
+        console.warn("[Launcher] Failed to list external extension commands:", error)
+        setExternalCommands([])
+      })
+  }, [])
 
   useEffect(() => {
     refreshIdleState()
+    refreshExternalCommands()
     const cleanupShown = window.api.launcher.onShown(() => {
       refreshIdleState()
+      refreshExternalCommands()
     })
 
     return () => {
       cleanupShown()
     }
-  }, [refreshIdleState])
+  }, [refreshExternalCommands, refreshIdleState])
 
   useEffect(() => {
     if (!trimmedQuery) {
@@ -181,14 +197,8 @@ export function useLauncherSearchPage(props: {
         return
       }
 
-      if (item.pluginId && item.pluginEntryId) {
-        navigateToEntry(
-          {
-            entryId: item.pluginEntryId,
-            pluginId: item.pluginId
-          },
-          item.pluginOpenOptions ?? { seedQuery: query }
-        )
+      if (item.commandRef) {
+        navigateToCommand(item.commandRef, item.commandOpenOptions ?? { seedQuery: query })
         return
       }
 
@@ -202,7 +212,7 @@ export function useLauncherSearchPage(props: {
         }
       })
     },
-    [navigateToEntry, query, surface.items]
+    [navigateToCommand, query, surface.items]
   )
 
   const handleInputKeyDown = useCallback(
@@ -217,9 +227,10 @@ export function useLauncherSearchPage(props: {
       })
       if (commandMatch) {
         event.preventDefault()
-        navigateToEntry(
+        navigateToCommand(
           {
-            entryId: commandMatch.entryId,
+            kind: "internal-plugin",
+            commandName: commandMatch.commandName,
             pluginId: commandMatch.pluginId
           },
           commandMatch.match.openOptions
@@ -230,7 +241,7 @@ export function useLauncherSearchPage(props: {
       switch (event.key) {
         case "Tab":
           event.preventDefault()
-          navigateToEntry(DEFAULT_HOME_ENTRY, {
+          navigateToCommand(DEFAULT_HOME_COMMAND, {
             initialAction: query.trim() ? "submit" : "focus",
             seedQuery: query
           })
@@ -253,7 +264,7 @@ export function useLauncherSearchPage(props: {
           break
       }
     },
-    [executeItem, moveSelection, navigateToEntry, query, selectedIndex]
+    [executeItem, moveSelection, navigateToCommand, query, selectedIndex]
   )
   const setHistoryItemPinned = useCallback(
     (itemId: string, pin: boolean): void => {

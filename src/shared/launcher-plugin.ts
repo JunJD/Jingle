@@ -3,24 +3,28 @@ import type { ClipboardPayloadKind } from "./clipboard"
 export type LauncherPluginRuntime = "external-webview" | "internal-react"
 
 export type LauncherPluginCapability = "clipboard" | "navigation" | "rpc" | "surface" | "threads"
+export type LauncherPluginCommandMode = "view" | "no-view" | "menu-bar"
 
 export interface LauncherPluginClipboardManifest {
   accepts: ClipboardPayloadKind[]
 }
 
-export interface LauncherPluginEntryManifest<TEntryId extends string = string> {
-  id: TEntryId
+export interface LauncherPluginCommandManifest<TCommandName extends string = string> {
+  description?: string
+  mode: LauncherPluginCommandMode
+  name: TCommandName
+  title?: string
 }
 
 export interface LauncherPluginManifest<
   TPluginId extends string = string,
-  TEntryId extends string = string
+  TCommandName extends string = string
 > {
   capabilities: LauncherPluginCapability[]
   clipboard?: LauncherPluginClipboardManifest
-  defaultEntryId: TEntryId
+  commands: Array<LauncherPluginCommandManifest<TCommandName>>
+  defaultCommandName: TCommandName
   displayName: string
-  entries: Array<LauncherPluginEntryManifest<TEntryId>>
   id: TPluginId
   rpcMethods?: string[]
   runtime: LauncherPluginRuntime
@@ -35,7 +39,7 @@ export function hasLauncherPluginCapability(
 
 export function validateLauncherPluginManifest(manifest: LauncherPluginManifest): void {
   const capabilitySet = new Set(manifest.capabilities)
-  const entryIdSet = new Set<string>()
+  const commandNameSet = new Set<string>()
   const rpcMethods = manifest.rpcMethods ?? []
   const rpcMethodSet = new Set(rpcMethods)
 
@@ -43,17 +47,19 @@ export function validateLauncherPluginManifest(manifest: LauncherPluginManifest)
     throw new Error(`Launcher plugin "${manifest.id}" declares duplicate capabilities`)
   }
 
-  for (const entry of manifest.entries) {
-    if (entryIdSet.has(entry.id)) {
-      throw new Error(`Launcher plugin "${manifest.id}" declares duplicate entry "${entry.id}"`)
+  for (const command of manifest.commands) {
+    if (commandNameSet.has(command.name)) {
+      throw new Error(
+        `Launcher plugin "${manifest.id}" declares duplicate command "${command.name}"`
+      )
     }
 
-    entryIdSet.add(entry.id)
+    commandNameSet.add(command.name)
   }
 
-  if (!entryIdSet.has(manifest.defaultEntryId)) {
+  if (!commandNameSet.has(manifest.defaultCommandName)) {
     throw new Error(
-      `Launcher plugin "${manifest.id}" default entry "${manifest.defaultEntryId}" is not declared in its manifest`
+      `Launcher plugin "${manifest.id}" default command "${manifest.defaultCommandName}" is not declared in its manifest`
     )
   }
 

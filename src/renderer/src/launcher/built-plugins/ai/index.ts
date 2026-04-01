@@ -1,5 +1,5 @@
 import {
-  AI_CHAT_ENTRY_ID,
+  AI_CHAT_COMMAND_NAME,
   AI_INTENT_ID,
   AI_RESULT_KIND,
   aiLauncherPluginManifest
@@ -9,10 +9,11 @@ import { getAiPageViewportHeight } from "../../pages/ai-config"
 import { defineBuiltLauncherPlugin } from "../sdk"
 
 export const aiLauncherPlugin = defineBuiltLauncherPlugin({
-  entries: [
+  commands: [
     {
       Component: LauncherAiPage,
-      entryId: AI_CHAT_ENTRY_ID,
+      commandName: AI_CHAT_COMMAND_NAME,
+      mode: "view",
       search: {
         buildIntentItems: ({ copy, query }) => {
           const trimmedQuery = query.trim()

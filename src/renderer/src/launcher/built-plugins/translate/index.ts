@@ -1,18 +1,27 @@
 import { createBuiltLauncherIntentPresentation, defineBuiltLauncherPlugin } from "../sdk"
 import {
   TRANSLATE_INTENT_ID,
-  TRANSLATE_MAIN_ENTRY_ID,
+  TRANSLATE_MAIN_COMMAND_NAME,
+  TRANSLATE_QUICK_COPY_COMMAND_NAME,
+  TRANSLATE_QUICK_COPY_INTENT_ID,
   translateLauncherPluginManifest
 } from "../../../../../plugins/translate/manifest"
 import { LauncherTranslatePage } from "./TranslatePage"
 import { getTranslatePluginCopy } from "./copy"
-import { matchTranslateCommandQuery, matchTranslateIntent } from "./languages"
+import { translateBuiltPluginClient } from "./api"
+import {
+  detectTranslateLanguageId,
+  getTranslateLanguageOption,
+  matchTranslateCommandQuery,
+  matchTranslateIntent
+} from "./languages"
 
 export const translateLauncherPlugin = defineBuiltLauncherPlugin({
-  entries: [
+  commands: [
     {
       Component: LauncherTranslatePage,
-      entryId: TRANSLATE_MAIN_ENTRY_ID,
+      commandName: TRANSLATE_MAIN_COMMAND_NAME,
+      mode: "view",
       search: {
         buildIntentItems: ({ copy, locale, query }) => {
           const pluginCopy = getTranslatePluginCopy(locale)
@@ -71,6 +80,67 @@ export const translateLauncherPlugin = defineBuiltLauncherPlugin({
       },
       viewport: {
         bodyHeight: 392
+      }
+    },
+    {
+      commandName: TRANSLATE_QUICK_COPY_COMMAND_NAME,
+      mode: "no-view",
+      run: async ({ navigation, seedQuery }) => {
+        const intentMatch = matchTranslateIntent(seedQuery.trim())
+
+        if (!intentMatch) {
+          navigation?.goHome()
+          return
+        }
+
+        const sourceLanguageId = detectTranslateLanguageId(intentMatch.sourceText)
+        const response = await translateBuiltPluginClient.translate({
+          backend: {
+            kind: "llm"
+          },
+          sourceLanguage: getTranslateLanguageOption(sourceLanguageId).promptLabel,
+          targetLanguage: getTranslateLanguageOption(intentMatch.targetLanguageId).promptLabel,
+          text: intentMatch.sourceText
+        })
+
+        await navigator.clipboard.writeText(response.translatedText)
+        navigation?.goHome()
+      },
+      search: {
+        buildIntentItems: ({ locale, query }) => {
+          const pluginCopy = getTranslatePluginCopy(locale)
+          const trimmedQuery = query.trim()
+          const naturalIntentMatch = matchTranslateIntent(trimmedQuery)
+
+          if (!naturalIntentMatch) {
+            return []
+          }
+
+          return [
+            {
+              id: TRANSLATE_QUICK_COPY_INTENT_ID,
+              kind: "plugin",
+              openOptions: {
+                seedQuery: trimmedQuery
+              },
+              presentation: createBuiltLauncherIntentPresentation({
+                categoryLabel: pluginCopy.searchItemCategoryLabel,
+                icon: {
+                  name: "copy",
+                  type: "glyph"
+                },
+                primaryActionLabel: pluginCopy.quickCopyPrimaryActionLabel,
+                tone: "accent"
+              }),
+              priority: 95,
+              subtitle: pluginCopy.quickCopySubtitle(
+                naturalIntentMatch.sourceText,
+                naturalIntentMatch.targetLabel
+              ),
+              title: pluginCopy.quickCopyEntryLabel
+            }
+          ]
+        }
       }
     }
   ],

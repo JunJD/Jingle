@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from "react"
-import { getLauncherPluginEntryDefinition } from "../pages"
+import { getLauncherPluginCommandDefinition } from "../pages"
 import {
+  type LauncherCommandAddress,
   isLauncherPluginRoute,
-  type LauncherPluginEntryAddress,
-  type LauncherPluginEntryDefinition,
+  type LauncherPluginCommandDefinition,
   LauncherPluginOpenOptions,
   LauncherNavigationDirection,
   LauncherRoute
@@ -12,10 +12,10 @@ import {
 const HOME_ROUTE: LauncherRoute = { id: "home" }
 
 export function useLauncherRouter(): {
-  activeEntry: LauncherPluginEntryDefinition | null
+  activeCommand: LauncherPluginCommandDefinition | null
   closeActivePlugin: () => void
   navigationDirection: LauncherNavigationDirection
-  openEntry: (address: LauncherPluginEntryAddress, options?: LauncherPluginOpenOptions) => void
+  openCommand: (address: LauncherCommandAddress, options?: LauncherPluginOpenOptions) => void
   route: LauncherRoute
   routeKey: string
 } {
@@ -23,8 +23,8 @@ export function useLauncherRouter(): {
     useState<LauncherNavigationDirection>("forward")
   const [route, setRoute] = useState<LauncherRoute>(HOME_ROUTE)
 
-  const openEntry = useCallback(
-    (address: LauncherPluginEntryAddress, options?: LauncherPluginOpenOptions): void => {
+  const openCommand = useCallback(
+    (address: LauncherCommandAddress, options?: LauncherPluginOpenOptions): void => {
       setNavigationDirection("forward")
       setRoute({
         ...address,
@@ -40,22 +40,31 @@ export function useLauncherRouter(): {
     setRoute(HOME_ROUTE)
   }, [])
 
-  const activeEntry = useMemo(() => {
+  const activeCommand = useMemo(() => {
     if (!isLauncherPluginRoute(route)) {
       return null
     }
 
-    return getLauncherPluginEntryDefinition(route).entry
+    return getLauncherPluginCommandDefinition(route).command
+  }, [route])
+  const routeKey = useMemo(() => {
+    if ("id" in route) {
+      return route.id
+    }
+
+    if (route.kind === "internal-plugin") {
+      return `${route.pluginId}:${route.commandName}:${route.initialAction}:${route.seedQuery}`
+    }
+
+    return `${route.extensionName}:${route.commandName}:${route.initialAction}:${route.seedQuery}`
   }, [route])
 
   return {
-    activeEntry,
+    activeCommand,
     closeActivePlugin,
     navigationDirection,
-    openEntry,
+    openCommand,
     route,
-    routeKey: isLauncherPluginRoute(route)
-      ? `${route.pluginId}:${route.entryId}:${route.initialAction}:${route.seedQuery}`
-      : route.id
+    routeKey
   }
 }

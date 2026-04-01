@@ -10,6 +10,9 @@ export interface TranslatePluginCopy {
   inputPlaceholder: string
   retryTranslation: string
   outputPlaceholder: string
+  quickCopyEntryLabel: string
+  quickCopyPrimaryActionLabel: string
+  quickCopySubtitle: (sourceText: string, targetLabel: string) => string
   resultLabel: string
   searchItemCategoryLabel: string
   searchItemPrimaryActionLabel: string
@@ -35,6 +38,10 @@ const translatePluginCopy: Record<AppLocale, TranslatePluginCopy> = {
     inputPlaceholder: "Paste or type text to translate...",
     retryTranslation: "Retry",
     outputPlaceholder: "The translation will appear here.",
+    quickCopyEntryLabel: "Quick Translate & Copy",
+    quickCopyPrimaryActionLabel: "Translate & Copy",
+    quickCopySubtitle: (sourceText, targetLabel) =>
+      `Translate "${sourceText}" to ${targetLabel} and copy the result`,
     resultLabel: "Translation",
     searchItemCategoryLabel: "Plugin",
     searchItemPrimaryActionLabel: "Translate",
@@ -58,6 +65,10 @@ const translatePluginCopy: Record<AppLocale, TranslatePluginCopy> = {
     inputPlaceholder: "输入或粘贴要翻译的内容...",
     retryTranslation: "重试",
     outputPlaceholder: "译文会在这里出现。",
+    quickCopyEntryLabel: "快速翻译并复制",
+    quickCopyPrimaryActionLabel: "翻译并复制",
+    quickCopySubtitle: (sourceText, targetLabel) =>
+      `把“${sourceText}”翻译成${targetLabel}并复制结果`,
     resultLabel: "译文",
     searchItemCategoryLabel: "插件",
     searchItemPrimaryActionLabel: "翻译",

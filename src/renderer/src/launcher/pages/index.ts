@@ -1,14 +1,14 @@
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { AppLocale } from "../../../../shared/i18n"
-import { AI_CHAT_ENTRY_ID, AI_LAUNCHER_PLUGIN_ID } from "../../../../plugins/ai/manifest"
+import { AI_CHAT_COMMAND_NAME, AI_LAUNCHER_PLUGIN_ID } from "../../../../plugins/ai/manifest"
 import { builtLauncherPlugins } from "../built-plugins"
 import type {
   LauncherPluginCommandMatch,
   LauncherPluginCommandParams,
+  LauncherPluginCommandAddress,
+  LauncherPluginCommandDefinition,
+  LauncherPluginCommandName,
   LauncherPluginDefinition,
-  LauncherPluginEntryAddress,
-  LauncherPluginEntryDefinition,
-  LauncherPluginEntryId,
   LauncherPluginId,
   LauncherResolvedPluginIntent
 } from "./types"
@@ -19,22 +19,23 @@ const launcherPluginMap = new Map(
   launcherPlugins.map((plugin) => [plugin.manifest.id, plugin] as const)
 )
 
-const launcherPluginEntryMap = new Map(
+const launcherPluginCommandMap = new Map(
   launcherPlugins.flatMap((plugin) =>
-    plugin.entries.map((entry) => [
-      `${plugin.manifest.id}:${entry.entryId}`,
-      { entry, plugin } as const
+    plugin.commands.map((command) => [
+      `${plugin.manifest.id}:${command.commandName}`,
+      { command, plugin } as const
     ])
   )
 )
 
-export const DEFAULT_HOME_ENTRY: LauncherPluginEntryAddress = {
-  entryId: AI_CHAT_ENTRY_ID,
+export const DEFAULT_HOME_COMMAND: LauncherPluginCommandAddress = {
+  kind: "internal-plugin",
+  commandName: AI_CHAT_COMMAND_NAME,
   pluginId: AI_LAUNCHER_PLUGIN_ID
 }
 
-function getLauncherPluginEntryKey(address: LauncherPluginEntryAddress): string {
-  return `${address.pluginId}:${address.entryId}`
+function getLauncherPluginCommandKey(address: LauncherPluginCommandAddress): string {
+  return `${address.pluginId}:${address.commandName}`
 }
 
 export function getLauncherPluginDefinition(pluginId: LauncherPluginId): LauncherPluginDefinition {
@@ -50,23 +51,24 @@ export function listLauncherPluginManifests() {
   return launcherPlugins.map((plugin) => plugin.manifest)
 }
 
-export function getLauncherDefaultEntryAddress(
+export function getLauncherDefaultCommandAddress(
   pluginId: LauncherPluginId
-): LauncherPluginEntryAddress {
+): LauncherPluginCommandAddress {
   const plugin = getLauncherPluginDefinition(pluginId)
   return {
-    entryId: plugin.manifest.defaultEntryId,
+    kind: "internal-plugin",
+    commandName: plugin.manifest.defaultCommandName,
     pluginId
   }
 }
 
-export function getLauncherPluginEntryDefinition(address: LauncherPluginEntryAddress): {
-  entry: LauncherPluginEntryDefinition
+export function getLauncherPluginCommandDefinition(address: LauncherPluginCommandAddress): {
+  command: LauncherPluginCommandDefinition
   plugin: LauncherPluginDefinition
 } {
-  const resolved = launcherPluginEntryMap.get(getLauncherPluginEntryKey(address))
+  const resolved = launcherPluginCommandMap.get(getLauncherPluginCommandKey(address))
   if (!resolved) {
-    throw new Error(`Unknown launcher plugin entry "${address.pluginId}:${address.entryId}"`)
+    throw new Error(`Unknown launcher plugin command "${address.pluginId}:${address.commandName}"`)
   }
 
   return resolved
@@ -79,9 +81,9 @@ export function getLauncherPluginIntents(params: {
 }): LauncherResolvedPluginIntent[] {
   return launcherPlugins
     .flatMap((plugin) =>
-      plugin.entries.flatMap((entry) =>
-        (entry.buildIntentItems?.(params) ?? []).map((item) => ({
-          entryId: item.entryId ?? entry.entryId,
+      plugin.commands.flatMap((command) =>
+        (command.buildIntentItems?.(params) ?? []).map((item) => ({
+          commandName: item.commandName ?? command.commandName,
           id: item.id,
           kind: item.kind,
           pluginId: plugin.manifest.id,
@@ -101,16 +103,16 @@ export function getLauncherPluginIntents(params: {
 }
 
 export function resolveLauncherPluginCommand(params: LauncherPluginCommandParams): {
-  entryId: LauncherPluginEntryId
+  commandName: LauncherPluginCommandName
   pluginId: LauncherPluginId
   match: LauncherPluginCommandMatch
 } | null {
   for (const plugin of launcherPlugins) {
-    for (const entry of plugin.entries) {
-      const match = entry.resolveCommand?.(params)
+    for (const command of plugin.commands) {
+      const match = command.resolveCommand?.(params)
       if (match) {
         return {
-          entryId: match.entryId ?? entry.entryId,
+          commandName: match.commandName ?? command.commandName,
           match,
           pluginId: plugin.manifest.id
         }

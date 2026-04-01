@@ -97,6 +97,7 @@ export interface AppCopy {
     removeHistoryItem: string
     resultKindAgent: string
     resultKindApp: string
+    resultKindExtension: string
     resultKindDirectory: string
     resultKindFile: string
     resultKindUrl: string
@@ -257,6 +258,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       removeHistoryItem: "从使用记录中删除",
       resultKindAgent: "Agent",
       resultKindApp: "应用",
+      resultKindExtension: "扩展",
       resultKindDirectory: "文件夹",
       resultKindFile: "文件",
       resultKindUrl: "网页",
@@ -427,6 +429,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       removeHistoryItem: "Remove from history",
       resultKindAgent: "Agent",
       resultKindApp: "App",
+      resultKindExtension: "Extension",
       resultKindDirectory: "Folder",
       resultKindFile: "File",
       resultKindUrl: "Webpage",
