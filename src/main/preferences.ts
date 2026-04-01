@@ -3,6 +3,7 @@ import type { AgentConfig } from "./types"
 import { getOpenworkDir } from "./storage"
 import { DEFAULT_MODEL_ID } from "../shared/models"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale } from "../shared/i18n"
+import type { BuiltPluginSettings } from "../shared/built-plugin-settings"
 import {
   DEFAULT_LAUNCHER_SETTINGS,
   normalizeLauncherSettings,
@@ -15,10 +16,6 @@ export interface PersistedWindowState {
   x?: number
   y?: number
   isMaximized: boolean
-}
-
-export interface BuiltPluginSettings {
-  translateModelId: string | null
 }
 
 interface SettingsStoreShape {
@@ -151,6 +148,20 @@ export function getBuiltPluginSettings(): BuiltPluginSettings {
   return {
     translateModelId: normalizeOptionalString(stored?.translateModelId)
   }
+}
+
+export function setBuiltPluginSettings(
+  updates: Partial<BuiltPluginSettings>
+): BuiltPluginSettings {
+  const nextSettings: BuiltPluginSettings = {
+    ...getBuiltPluginSettings(),
+    ...(updates.translateModelId === undefined
+      ? {}
+      : { translateModelId: normalizeOptionalString(updates.translateModelId) })
+  }
+
+  settingsStore.set("builtPluginSettings", nextSettings)
+  return nextSettings
 }
 
 export function getLauncherSettings(): LauncherSettings {

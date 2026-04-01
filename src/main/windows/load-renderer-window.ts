@@ -1,7 +1,7 @@
 import { BrowserWindow } from "electron"
 import { join } from "path"
 
-export type AppWindowKind = "main" | "launcher"
+export type AppWindowKind = "main" | "launcher" | "settings"
 
 export async function loadRendererWindow(
   browserWindow: BrowserWindow,

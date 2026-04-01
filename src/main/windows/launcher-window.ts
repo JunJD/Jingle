@@ -41,6 +41,7 @@ const LAUNCHER_MAX_HEIGHT = getLauncherMaxViewportHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_SCREEN_HEIGHT_RATIO = 0.7
 const WINDOWS_LAUNCHER_SHAPE_RADIUS = 12
 const launcherVisibleOrigins = new WeakMap<BrowserWindow, { x: number; y: number }>()
+let launcherBlurHideSuppressionDepth = 0
 
 export const DEFAULT_LAUNCHER_SHORTCUT = "CommandOrControl+Shift+Space"
 
@@ -201,6 +202,15 @@ export function showLauncherWindow(launcherWindow: BrowserWindow): void {
 
 function hideLauncherWindow(launcherWindow: BrowserWindow): void {
   launcherWindow.hide()
+}
+
+export function setLauncherBlurHideSuppressed(active: boolean): void {
+  if (active) {
+    launcherBlurHideSuppressionDepth += 1
+    return
+  }
+
+  launcherBlurHideSuppressionDepth = Math.max(0, launcherBlurHideSuppressionDepth - 1)
 }
 
 async function openLauncherPath(
@@ -404,6 +414,10 @@ export function createLauncherWindow(): BrowserWindow {
   })
 
   launcherWindow.on("blur", () => {
+    if (launcherBlurHideSuppressionDepth > 0) {
+      return
+    }
+
     if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
       hideLauncherWindow(launcherWindow)
     }

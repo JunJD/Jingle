@@ -18,8 +18,18 @@ import type { ClipboardContext } from "../shared/clipboard"
 import type { LauncherHistoryItem } from "../shared/launcher-history"
 import type { CreateLocalStartItemInput, LocalStartItem } from "../shared/local-start"
 import type { LauncherSettings } from "../shared/launcher-settings"
+import type { BuiltPluginSettings } from "../shared/built-plugin-settings"
 import type { BuiltPluginInvokeRequest } from "../shared/built-plugins/sdk"
 import type { AgentMessageContent } from "../shared/message-content"
+import type {
+  ExternalExtensionBundleResult,
+  ExternalExtensionCommandInfo,
+  ExternalExtensionSettingsState,
+  GetExternalExtensionBundleRequest,
+  InstalledExternalExtensionSettingsSchema
+} from "../shared/external-extensions"
+import type { OAuthTokenRecord } from "../shared/oauth"
+import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "../shared/settings-window"
 
 // Simple electron API - replaces @electron-toolkit/preload
 const electronAPI = {
@@ -33,6 +43,60 @@ const electronAPI = {
       ipcRenderer.once(channel, (_event, ...args) => listener(...args))
     },
     invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args)
+  },
+  onOAuthCallback: (callback: (url: string) => void): (() => void) => {
+    const listener = (_event: unknown, url: string): void => {
+      callback(url)
+    }
+
+    ipcRenderer.on("oauth:callback", listener)
+    return () => {
+      ipcRenderer.removeListener("oauth:callback", listener)
+    }
+  },
+  onOAuthLogout: (callback: (provider: string) => void): (() => void) => {
+    const listener = (_event: unknown, provider: string): void => {
+      callback(provider)
+    }
+
+    ipcRenderer.on("oauth:logout", listener)
+    return () => {
+      ipcRenderer.removeListener("oauth:logout", listener)
+    }
+  },
+  oauthGetToken: (provider: string): Promise<OAuthTokenRecord | null> => {
+    return ipcRenderer.invoke("oauth:getToken", provider)
+  },
+  oauthSetToken: (provider: string, token: OAuthTokenRecord): Promise<void> => {
+    return ipcRenderer.invoke("oauth:setToken", provider, token)
+  },
+  oauthRemoveToken: (provider: string): Promise<void> => {
+    return ipcRenderer.invoke("oauth:removeToken", provider)
+  },
+  oauthLogout: (provider: string): Promise<void> => {
+    return ipcRenderer.invoke("oauth:logout", provider)
+  },
+  oauthSetFlowActive: (active: boolean): Promise<void> => {
+    return ipcRenderer.invoke("oauth:setFlowActive", active)
+  },
+  openSettings: (): Promise<void> => {
+    return ipcRenderer.invoke("settings:openWindow")
+  },
+  openSettingsTab: (
+    tab: SettingsWindowTab,
+    target?: SettingsWindowNavigationPayload["target"]
+  ): Promise<void> => {
+    return ipcRenderer.invoke("settings:openTab", { tab, ...(target ? { target } : {}) })
+  },
+  onSettingsTabChanged: (callback: (payload: SettingsWindowNavigationPayload) => void): (() => void) => {
+    const listener = (_event: unknown, payload: SettingsWindowNavigationPayload): void => {
+      callback(payload)
+    }
+
+    ipcRenderer.on("settings-tab-changed", listener)
+    return () => {
+      ipcRenderer.removeListener("settings-tab-changed", listener)
+    }
   },
   process: {
     platform: process.platform,
@@ -185,6 +249,23 @@ const api = {
     },
     setLauncherSettings: (updates: Partial<LauncherSettings>): Promise<LauncherSettings> => {
       return ipcRenderer.invoke("settings:setLauncherSettings", updates)
+    },
+    getBuiltPluginSettings: (): Promise<BuiltPluginSettings> => {
+      return ipcRenderer.invoke("settings:getBuiltPluginSettings")
+    },
+    setBuiltPluginSettings: (
+      updates: Partial<BuiltPluginSettings>
+    ): Promise<BuiltPluginSettings> => {
+      return ipcRenderer.invoke("settings:setBuiltPluginSettings", updates)
+    },
+    openWindow: (): Promise<void> => {
+      return ipcRenderer.invoke("settings:openWindow")
+    },
+    openTab: (payload: SettingsWindowNavigationPayload): Promise<void> => {
+      return ipcRenderer.invoke("settings:openTab", payload)
+    },
+    getPendingNavigation: (): Promise<SettingsWindowNavigationPayload | null> => {
+      return ipcRenderer.invoke("settings:getPendingNavigation")
     }
   },
   launcher: {
@@ -241,6 +322,45 @@ const api = {
   builtPlugins: {
     invoke: <TPayload, TResult>(request: BuiltPluginInvokeRequest<TPayload>): Promise<TResult> => {
       return ipcRenderer.invoke("builtPlugins:invoke", request)
+    }
+  },
+  extensions: {
+    listCommands: (): Promise<ExternalExtensionCommandInfo[]> => {
+      return ipcRenderer.invoke("extensions:listCommands")
+    },
+    getBundle: (
+      request: GetExternalExtensionBundleRequest
+    ): Promise<ExternalExtensionBundleResult> => {
+      return ipcRenderer.invoke("extensions:getBundle", request)
+    },
+    listRoots: (): Promise<string[]> => {
+      return ipcRenderer.invoke("extensions:listRoots")
+    },
+    listSettingsSchemas: (): Promise<InstalledExternalExtensionSettingsSchema[]> => {
+      return ipcRenderer.invoke("extensions:listSettingsSchemas")
+    },
+    getCustomRoots: (): Promise<ExternalExtensionSettingsState["customRoots"]> => {
+      return ipcRenderer.invoke("extensions:getCustomRoots")
+    },
+    setCustomRoots: (
+      nextRoots: ExternalExtensionSettingsState["customRoots"]
+    ): Promise<ExternalExtensionSettingsState["customRoots"]> => {
+      return ipcRenderer.invoke("extensions:setCustomRoots", nextRoots)
+    },
+    pickRoot: (): Promise<string | null> => {
+      return ipcRenderer.invoke("extensions:pickRoot")
+    },
+    revealPath: (targetPath: string): Promise<boolean> => {
+      return ipcRenderer.invoke("extensions:revealPath", targetPath)
+    },
+    onChanged: (callback: () => void): (() => void) => {
+      const listener = (): void => {
+        callback()
+      }
+      ipcRenderer.on("extensions:changed", listener)
+      return () => {
+        ipcRenderer.removeListener("extensions:changed", listener)
+      }
     }
   },
   workspace: {

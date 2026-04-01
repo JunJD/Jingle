@@ -3,6 +3,7 @@ import { DEFAULT_LAUNCHER_SHORTCUT } from "./windows/launcher-window"
 
 interface InstallApplicationMenuParams {
   isDev: boolean
+  showSettings: () => void
   showLauncher: () => void
 }
 
@@ -69,6 +70,13 @@ export function installApplicationMenu(params: InstallApplicationMenuParams): vo
     }
   }
 
+  const settingsItem: MenuItemConstructorOptions = {
+    label: "Settings",
+    click: () => {
+      params.showSettings()
+    }
+  }
+
   const template: MenuItemConstructorOptions[] =
     process.platform === "darwin"
       ? [
@@ -83,6 +91,7 @@ export function installApplicationMenu(params: InstallApplicationMenuParams): vo
             label: "Window",
             submenu: [
               launcherItem,
+              settingsItem,
               { type: "separator" },
               { role: "minimize" },
               { role: "zoom" },
@@ -95,7 +104,7 @@ export function installApplicationMenu(params: InstallApplicationMenuParams): vo
       : [
           {
             label: "File",
-            submenu: [launcherItem, { type: "separator" }, { role: "quit" }]
+            submenu: [launcherItem, settingsItem, { type: "separator" }, { role: "quit" }]
           },
           createEditMenu(),
           createViewMenu(params.isDev),
