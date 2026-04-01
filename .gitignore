@@ -6,3 +6,5 @@ out
 *.log*
 release
 .env
+raycast
+.ow-build/

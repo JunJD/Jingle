@@ -13,9 +13,6 @@ interface AppState {
   // Right panel state (UI state, not thread data)
   rightPanelTab: "todos" | "files" | "subagents"
 
-  // Settings dialog state
-  settingsOpen: boolean
-
   // Sidebar state
   sidebarCollapsed: boolean
 
@@ -40,9 +37,6 @@ interface AppState {
   // Panel actions
   setRightPanelTab: (tab: "todos" | "files" | "subagents") => void
 
-  // Settings actions
-  setSettingsOpen: (open: boolean) => void
-
   // Sidebar actions
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -59,7 +53,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   models: [],
   providers: [],
   rightPanelTab: "todos",
-  settingsOpen: false,
   sidebarCollapsed: false,
   showKanbanView: false,
   showSubagentsInKanban: true,
@@ -166,11 +159,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Panel actions
   setRightPanelTab: (tab: "todos" | "files" | "subagents") => {
     set({ rightPanelTab: tab })
-  },
-
-  // Settings actions
-  setSettingsOpen: (open: boolean) => {
-    set({ settingsOpen: open })
   },
 
   // Sidebar actions

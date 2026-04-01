@@ -1,4 +1,5 @@
 import type { RefObject } from "react"
+import { Settings2 } from "lucide-react"
 import { useI18n } from "@/lib/i18n"
 import type { LauncherShellConfig } from "../../../../shared/launcher"
 import type { ClipboardContext } from "../../../../shared/clipboard"
@@ -24,7 +25,7 @@ export function LauncherSearchPage(props: {
   shellConfig: LauncherShellConfig
   surface: LauncherHomeSurfaceModel
 }): React.JSX.Element {
-  const { copy } = useI18n()
+  const { copy, locale } = useI18n()
   const {
     executeItem,
     inputRef,
@@ -58,8 +59,20 @@ export function LauncherSearchPage(props: {
       footer={
         resultsVisible ? (
           <>
-            <div className="text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
-              {copy.launcher.searchResults}
+            <div className="flex items-center gap-2 text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
+              <button
+                type="button"
+                onClick={() => {
+                  void window.api.settings.openWindow()
+                }}
+                onMouseDown={(event) => event.preventDefault()}
+                className="launcher-icon-button flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition hover:text-foreground"
+                title={locale === "zh-CN" ? "打开设置" : "Open settings"}
+                aria-label={locale === "zh-CN" ? "打开设置" : "Open settings"}
+              >
+                <Settings2 className="h-4 w-4" />
+              </button>
+              <span>{copy.launcher.searchResults}</span>
             </div>
 
             <button

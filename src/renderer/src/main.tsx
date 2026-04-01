@@ -5,6 +5,7 @@ import LauncherApp from "./launcher/LauncherApp"
 import { LauncherClipboardProvider } from "./launcher/LauncherClipboardContext"
 import { ThreadProvider } from "./lib/thread-context"
 import { I18nProvider } from "./lib/i18n"
+import SettingsApp from "./settings/SettingsApp"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "../../shared/i18n"
 import "./index.css"
 
@@ -38,6 +39,8 @@ async function bootstrap(): Promise<void> {
               <LauncherApp />
             </LauncherClipboardProvider>
           </ThreadProvider>
+        ) : windowKind === "settings" ? (
+          <SettingsApp />
         ) : (
           <App />
         )}
