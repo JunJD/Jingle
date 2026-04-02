@@ -1,14 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import {
-  Brain,
-  FolderOpen,
-  Languages,
-  Layers2,
-  Rocket,
-  WandSparkles
-} from "lucide-react"
+import { Brain, FolderOpen, Languages, Layers2, Rocket } from "lucide-react"
 import type { AgentConfig, ModelConfig } from "../../../shared/app-types"
-import type { BuiltPluginSettings } from "../../../shared/built-plugin-settings"
 import type { LauncherSettings, LauncherWindowMode } from "../../../shared/launcher-settings"
 import { SUPPORTED_APP_LOCALES, type AppLocale } from "../../../shared/i18n"
 import { useI18n } from "../lib/i18n"
@@ -61,7 +53,6 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   const { setLocale } = useI18n()
   const copy = getSettingsCopy(locale)
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null)
-  const [builtPluginSettings, setBuiltPluginSettings] = useState<BuiltPluginSettings | null>(null)
   const [defaultModelId, setDefaultModelId] = useState<string>("")
   const [globalWorkspacePath, setGlobalWorkspacePath] = useState<string | null>(null)
   const [launcherSettings, setLauncherSettings] = useState<LauncherSettings | null>(null)
@@ -73,7 +64,6 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   useEffect(() => {
     void Promise.all([
       window.api.settings.getAgentConfig(),
-      window.api.settings.getBuiltPluginSettings(),
       window.api.models.getDefault(),
       window.api.models.list(),
       window.api.workspace.get(),
@@ -81,14 +71,12 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
     ]).then(
       ([
         nextAgentConfig,
-        nextBuiltPluginSettings,
         nextDefaultModelId,
         nextModels,
         nextGlobalWorkspacePath,
         nextLauncherSettings
       ]) => {
         setAgentConfig(nextAgentConfig)
-        setBuiltPluginSettings(nextBuiltPluginSettings)
         setDefaultModelId(nextDefaultModelId)
         setModels(nextModels)
         setGlobalWorkspacePath(nextGlobalWorkspacePath)
@@ -146,14 +134,7 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
     setLauncherSettings(nextSettings)
   }
 
-  const handleTranslateModelChange = async (nextModelId: string): Promise<void> => {
-    const nextSettings = await window.api.settings.setBuiltPluginSettings({
-      translateModelId: nextModelId || null
-    })
-    setBuiltPluginSettings(nextSettings)
-  }
-
-  if (!agentConfig || !builtPluginSettings || !launcherSettings) {
+  if (!agentConfig || !launcherSettings) {
     return (
       <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
         {locale === "zh-CN" ? "正在加载设置..." : "Loading settings..."}
@@ -178,11 +159,19 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
             <div className="min-w-[280px] flex-1 rounded-md border border-border/70 bg-background-elevated px-3 py-2 text-[13px] text-foreground">
               {globalWorkspacePath || copy.common.none}
             </div>
-            <button type="button" className={secondaryButtonClassName} onClick={handleWorkspaceSelect}>
+            <button
+              type="button"
+              className={secondaryButtonClassName}
+              onClick={handleWorkspaceSelect}
+            >
               {globalWorkspacePath ? copy.common.change : copy.common.choose}
             </button>
             {globalWorkspacePath ? (
-              <button type="button" className={secondaryButtonClassName} onClick={handleWorkspaceClear}>
+              <button
+                type="button"
+                className={secondaryButtonClassName}
+                onClick={handleWorkspaceClear}
+              >
                 {copy.common.clear}
               </button>
             ) : null}
@@ -282,38 +271,15 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
               spellCheck={false}
             />
             <div className="flex items-center gap-3">
-              <button type="button" className={secondaryButtonClassName} onClick={() => void saveSourceLists()}>
+              <button
+                type="button"
+                className={secondaryButtonClassName}
+                onClick={() => void saveSourceLists()}
+              >
                 {copy.common.save}
               </button>
               {status ? <span className="text-[12px] text-muted-foreground">{status}</span> : null}
             </div>
-          </div>
-        </SettingsRow>
-
-        <SettingsRow
-          icon={<WandSparkles className="h-4 w-4" />}
-          title={copy.general.builtPluginsTitle}
-          description={copy.general.builtPluginsDescription}
-          withBorder={false}
-        >
-          <div className="max-w-[420px] space-y-2">
-            <label className="text-[12px] font-medium text-muted-foreground">
-              {copy.general.translateModelLabel}
-            </label>
-            <select
-              className={selectClassName}
-              value={builtPluginSettings.translateModelId ?? ""}
-              onChange={(event) => {
-                void handleTranslateModelChange(event.target.value)
-              }}
-            >
-              <option value="">{copy.general.useEnvironmentFallback}</option>
-              {modelOptions.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                </option>
-              ))}
-            </select>
           </div>
         </SettingsRow>
       </div>

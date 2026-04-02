@@ -8,8 +8,8 @@ export function registerSettingsWindowHandlers(params: {
 }): void {
   const { consumePendingNavigation, ipcMain, openSettingsWindow } = params
 
-  ipcMain.handle("settings:openWindow", () => {
-    openSettingsWindow()
+  ipcMain.handle("settings:openWindow", (_event, payload?: SettingsWindowNavigationPayload) => {
+    openSettingsWindow(payload)
   })
 
   ipcMain.handle("settings:openTab", (_event, payload: SettingsWindowNavigationPayload) => {

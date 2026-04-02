@@ -1,9 +1,13 @@
 import Store from "electron-store"
 import type { AgentConfig } from "./types"
 import { getOpenworkDir } from "./storage"
+import { nativeExtensions } from "../extensions"
 import { DEFAULT_MODEL_ID } from "../shared/models"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale } from "../shared/i18n"
-import type { BuiltPluginSettings } from "../shared/built-plugin-settings"
+import type {
+  NativeExtensionPreferenceSchema,
+  NativeExtensionPreferencesState
+} from "../shared/native-extensions"
 import {
   DEFAULT_LAUNCHER_SETTINGS,
   normalizeLauncherSettings,
@@ -20,10 +24,10 @@ export interface PersistedWindowState {
 
 interface SettingsStoreShape {
   agentConfig: AgentConfig
-  builtPluginSettings: BuiltPluginSettings
   defaultModel: string
   launcherSettings: LauncherSettings
   mainWindowState: PersistedWindowState | null
+  nativeExtensionPreferences: NativeExtensionPreferencesState
   workspaceDialogPath: string | null
   workspacePath: string | null
 }
@@ -34,8 +38,8 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   locale: DEFAULT_APP_LOCALE
 }
 
-const DEFAULT_BUILT_PLUGIN_SETTINGS: BuiltPluginSettings = {
-  translateModelId: null
+const DEFAULT_NATIVE_EXTENSION_PREFERENCES: NativeExtensionPreferencesState = {
+  commandPreferences: {}
 }
 
 const settingsStore = new Store<SettingsStoreShape>({
@@ -43,10 +47,10 @@ const settingsStore = new Store<SettingsStoreShape>({
   cwd: getOpenworkDir(),
   defaults: {
     agentConfig: DEFAULT_AGENT_CONFIG,
-    builtPluginSettings: DEFAULT_BUILT_PLUGIN_SETTINGS,
     defaultModel: DEFAULT_MODEL_ID,
     launcherSettings: DEFAULT_LAUNCHER_SETTINGS,
     mainWindowState: null,
+    nativeExtensionPreferences: DEFAULT_NATIVE_EXTENSION_PREFERENCES,
     workspaceDialogPath: null,
     workspacePath: null
   }
@@ -67,13 +71,91 @@ function normalizePathList(value: unknown): string[] {
   )
 }
 
-function normalizeOptionalString(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null
+function normalizePreferenceRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {}
   }
 
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(([key]) => key.trim().length > 0)
+  )
+}
+
+function normalizePreferenceRecordMap(value: unknown): Record<string, Record<string, unknown>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, record]) => [
+      key,
+      normalizePreferenceRecord(record)
+    ])
+  )
+}
+
+function normalizeNativeExtensionPreferencesState(value: unknown): NativeExtensionPreferencesState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return DEFAULT_NATIVE_EXTENSION_PREFERENCES
+  }
+
+  const raw = value as Partial<NativeExtensionPreferencesState>
+
+  return {
+    commandPreferences: normalizePreferenceRecordMap(raw.commandPreferences)
+  }
+}
+
+function getCommandPreferenceStoreKey(extensionName: string, commandName: string): string {
+  return `${extensionName}:${commandName}`
+}
+
+function getCommandPreferenceSchema(
+  extensionName: string,
+  commandName: string
+): NativeExtensionPreferenceSchema[] {
+  const manifest = nativeExtensions.find((entry) => entry.manifest.name === extensionName)?.manifest
+  if (!manifest) {
+    throw new Error(`Unknown native extension "${extensionName}"`)
+  }
+
+  const command = manifest.commands.find((entry) => entry.name === commandName)
+  if (!command) {
+    throw new Error(`Native extension "${extensionName}" does not declare command "${commandName}"`)
+  }
+
+  return command.preferences ?? []
+}
+
+function getDefaultPreferenceValue(preference: NativeExtensionPreferenceSchema): unknown {
+  if (preference.default !== undefined) {
+    return preference.default
+  }
+
+  if (preference.type === "checkbox") {
+    return false
+  }
+
+  if (preference.type === "dropdown") {
+    return preference.data?.[0]?.value ?? ""
+  }
+
+  return ""
+}
+
+function resolveCommandPreferenceRecord(params: {
+  commandName: string
+  extensionName: string
+  nextRecord: Record<string, unknown>
+}): Record<string, unknown> {
+  const schema = getCommandPreferenceSchema(params.extensionName, params.commandName)
+
+  return Object.fromEntries(
+    schema.map((preference) => [
+      preference.name,
+      params.nextRecord[preference.name] ?? getDefaultPreferenceValue(preference)
+    ])
+  )
 }
 
 function normalizeWindowCoordinate(value: unknown): number | undefined {
@@ -140,28 +222,50 @@ export function setAgentConfig(updates: Partial<AgentConfig>): AgentConfig {
   return nextConfig
 }
 
-export function getBuiltPluginSettings(): BuiltPluginSettings {
-  const stored = settingsStore.get("builtPluginSettings", DEFAULT_BUILT_PLUGIN_SETTINGS) as
-    | Partial<BuiltPluginSettings>
-    | undefined
+function getNativeExtensionPreferencesState(): NativeExtensionPreferencesState {
+  const stored = settingsStore.get(
+    "nativeExtensionPreferences",
+    DEFAULT_NATIVE_EXTENSION_PREFERENCES
+  ) as NativeExtensionPreferencesState | undefined
 
-  return {
-    translateModelId: normalizeOptionalString(stored?.translateModelId)
-  }
+  return normalizeNativeExtensionPreferencesState(stored)
 }
 
-export function setBuiltPluginSettings(
-  updates: Partial<BuiltPluginSettings>
-): BuiltPluginSettings {
-  const nextSettings: BuiltPluginSettings = {
-    ...getBuiltPluginSettings(),
-    ...(updates.translateModelId === undefined
-      ? {}
-      : { translateModelId: normalizeOptionalString(updates.translateModelId) })
+export function getNativeExtensionCommandPreferenceRecord(
+  extensionName: string,
+  commandName: string
+): Record<string, unknown> {
+  const state = getNativeExtensionPreferencesState()
+  const key = getCommandPreferenceStoreKey(extensionName, commandName)
+  const storedRecord = normalizePreferenceRecord(state.commandPreferences[key])
+  return resolveCommandPreferenceRecord({
+    commandName,
+    extensionName,
+    nextRecord: storedRecord
+  })
+}
+
+export function setNativeExtensionCommandPreferenceRecord(
+  extensionName: string,
+  commandName: string,
+  nextRecord: Record<string, unknown>
+): Record<string, unknown> {
+  const state = getNativeExtensionPreferencesState()
+  const key = getCommandPreferenceStoreKey(extensionName, commandName)
+  const normalizedRecord = resolveCommandPreferenceRecord({
+    commandName,
+    extensionName,
+    nextRecord: normalizePreferenceRecord(nextRecord)
+  })
+  const nextState: NativeExtensionPreferencesState = {
+    commandPreferences: {
+      ...state.commandPreferences,
+      [key]: normalizedRecord
+    }
   }
 
-  settingsStore.set("builtPluginSettings", nextSettings)
-  return nextSettings
+  settingsStore.set("nativeExtensionPreferences", nextState)
+  return normalizedRecord
 }
 
 export function getLauncherSettings(): LauncherSettings {

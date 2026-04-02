@@ -7,7 +7,6 @@ import {
   type LauncherShellConfig
 } from "../../../../shared/launcher"
 import { useI18n } from "@/lib/i18n"
-import type { ExternalExtensionCommandInfo } from "../../../../shared/external-extensions"
 import type {
   LauncherSearchResponse,
   LauncherSearchResult
@@ -56,7 +55,6 @@ export function useLauncherSearchPage(props: {
   const [historyItems, setHistoryItems] = useState<LauncherHistoryItem[]>([])
   const [searchResponse, setSearchResponse] = useState<LauncherSearchResponse | null>(null)
   const [idleItems, setIdleItems] = useState<LocalStartItem[]>([])
-  const [externalCommands, setExternalCommands] = useState<ExternalExtensionCommandInfo[]>([])
   const [windowMode, setWindowMode] = useState<"default" | "compact">("default")
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [homeInputSelectionRequestVersion, setHomeInputSelectionRequestVersion] = useState(0)
@@ -71,7 +69,6 @@ export function useLauncherSearchPage(props: {
     () =>
       buildLauncherHomeSurfaceModel({
         copy,
-        externalCommands,
         historyItems,
         idleItems,
         locale,
@@ -79,7 +76,7 @@ export function useLauncherSearchPage(props: {
         searchResults,
         windowMode
       }),
-    [copy, externalCommands, historyItems, idleItems, locale, query, searchResults, windowMode]
+    [copy, historyItems, idleItems, locale, query, searchResults, windowMode]
   )
   const selectedIndex = useMemo(() => {
     return resolveLauncherHomeSurfaceSelectedIndex(surface, selectedItemId)
@@ -113,30 +110,16 @@ export function useLauncherSearchPage(props: {
       setIdleItems(localStartItems)
     })
   }, [])
-  const refreshExternalCommands = useCallback((): void => {
-    void window.api.extensions
-      .listCommands()
-      .then((commands) => {
-        setExternalCommands(commands)
-      })
-      .catch((error) => {
-        console.warn("[Launcher] Failed to list external extension commands:", error)
-        setExternalCommands([])
-      })
-  }, [])
-
   useEffect(() => {
     refreshIdleState()
-    refreshExternalCommands()
     const cleanupShown = window.api.launcher.onShown(() => {
       refreshIdleState()
-      refreshExternalCommands()
     })
 
     return () => {
       cleanupShown()
     }
-  }, [refreshExternalCommands, refreshIdleState])
+  }, [refreshIdleState])
 
   useEffect(() => {
     if (!trimmedQuery) {

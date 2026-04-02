@@ -10,7 +10,6 @@ import type { LauncherResultPresentation, LauncherShellItemKind } from "../resul
 
 export type LauncherPluginId = string & {}
 export type LauncherPluginCommandName = string & {}
-export type LauncherExternalExtensionName = string & {}
 export type LauncherNavigationDirection = "forward" | "backward"
 
 export interface LauncherInternalPluginCommandAddress {
@@ -19,15 +18,7 @@ export interface LauncherInternalPluginCommandAddress {
   pluginId: LauncherPluginId
 }
 
-export interface LauncherExternalExtensionCommandAddress {
-  kind: "external-extension"
-  commandName: string
-  extensionName: LauncherExternalExtensionName
-}
-
-export type LauncherCommandAddress =
-  | LauncherInternalPluginCommandAddress
-  | LauncherExternalExtensionCommandAddress
+export type LauncherCommandAddress = LauncherInternalPluginCommandAddress
 
 export type LauncherPluginCommandAddress = LauncherInternalPluginCommandAddress
 
@@ -36,15 +27,7 @@ export interface LauncherPluginRoute extends LauncherInternalPluginCommandAddres
   seedQuery: string
 }
 
-export interface LauncherExternalExtensionCommandRoute extends LauncherExternalExtensionCommandAddress {
-  initialAction: LauncherPluginCommandInitialAction
-  seedQuery: string
-}
-
-export type LauncherRoute =
-  | { id: "home" }
-  | LauncherPluginRoute
-  | LauncherExternalExtensionCommandRoute
+export type LauncherRoute = { id: "home" } | LauncherPluginRoute
 
 export type LauncherPluginCommandInitialAction = "focus" | "submit"
 
@@ -103,10 +86,13 @@ interface LauncherPluginSearchDefinition {
     query: string
   }) => LauncherPluginIntent[]
   commandName: LauncherPluginCommandName
+  loadCommandPreferences?: () => Promise<Record<string, unknown>>
+  validateCommandPreferences?: (preferences: Record<string, unknown>) => string | null
   resolveCommand?: (params: LauncherPluginCommandParams) => LauncherPluginCommandMatch | null
 }
 
 export interface LauncherNoViewPluginRunContext {
+  commandPreferences: Record<string, unknown>
   initialAction: LauncherPluginCommandInitialAction
   navigation?: LauncherPluginNavigation
   seedQuery: string
@@ -148,14 +134,6 @@ export function isLauncherPluginRoute(route: LauncherRoute): route is LauncherPl
   return "kind" in route && route.kind === "internal-plugin"
 }
 
-export function isLauncherExternalExtensionRoute(
-  route: LauncherRoute
-): route is LauncherExternalExtensionCommandRoute {
-  return "kind" in route && route.kind === "external-extension"
-}
-
-export function isLauncherCommandRoute(
-  route: LauncherRoute
-): route is LauncherPluginRoute | LauncherExternalExtensionCommandRoute {
+export function isLauncherCommandRoute(route: LauncherRoute): route is LauncherPluginRoute {
   return "kind" in route
 }

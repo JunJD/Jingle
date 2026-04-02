@@ -1,9 +1,9 @@
 import type { AppCopy } from "@/lib/i18n/messages"
-import type { ExternalExtensionCommandInfo } from "../../../shared/external-extensions"
 import type { LauncherHistoryItem } from "../../../shared/launcher-history"
 import type { LocalStartItem } from "../../../shared/local-start"
 import type { LauncherSearchResult } from "../../../shared/launcher-search"
 import type { LauncherResolvedPluginIntent } from "./pages/types"
+import type { LauncherIndexedPluginCommand } from "./pages"
 import { createLauncherBuiltinResultPresentation } from "./result-presentation"
 import type { LauncherResultPresentation } from "./result-types"
 import type { LauncherShellItem } from "./types"
@@ -98,42 +98,12 @@ export function buildLauncherPluginIntentShellItems(
   }))
 }
 
-function createLauncherExternalCommandPresentation(
-  copy: AppCopy,
-  iconDataUrl?: string
-): LauncherResultPresentation {
-  return {
-    categoryLabel: copy.launcher.resultKindExtension,
-    icon: iconDataUrl
-      ? {
-          src: iconDataUrl,
-          type: "image"
-        }
-      : {
-          name: "search",
-          type: "glyph"
-        },
-    listActionLabel: copy.launcher.openGeneric,
-    primaryActionLabel: copy.launcher.openGeneric,
-    tone: "neutral"
-  }
-}
-
-function getTitleMatch(title: string, normalizedQuery: string): [number, number] | undefined {
-  const matchIndex = title.toLowerCase().indexOf(normalizedQuery)
-  if (matchIndex < 0) {
-    return undefined
-  }
-
-  return [matchIndex, matchIndex + normalizedQuery.length - 1]
-}
-
-function getExternalCommandQueryScore(
-  command: ExternalExtensionCommandInfo,
+function getInternalCommandQueryScore(
+  command: LauncherIndexedPluginCommand,
   normalizedQuery: string
 ): { match?: [number, number]; score: number } | null {
   const normalizedTitle = command.title.toLowerCase()
-  const normalizedExtensionTitle = command.extensionTitle.toLowerCase()
+  const normalizedPluginTitle = command.pluginTitle.toLowerCase()
   const normalizedDescription = command.description.toLowerCase()
   const normalizedKeywords = command.keywords.map((keyword) => keyword.toLowerCase())
   const titleMatch = getTitleMatch(command.title, normalizedQuery)
@@ -141,32 +111,32 @@ function getExternalCommandQueryScore(
   if (normalizedTitle.startsWith(normalizedQuery)) {
     return {
       match: titleMatch,
-      score: 400
+      score: 420
     }
   }
 
   if (titleMatch) {
     return {
       match: titleMatch,
-      score: 320
+      score: 340
     }
   }
 
   if (normalizedKeywords.some((keyword) => keyword === normalizedQuery)) {
     return {
-      score: 280
+      score: 300
     }
   }
 
   if (normalizedKeywords.some((keyword) => keyword.includes(normalizedQuery))) {
     return {
-      score: 240
+      score: 260
     }
   }
 
-  if (normalizedExtensionTitle.includes(normalizedQuery)) {
+  if (normalizedPluginTitle.includes(normalizedQuery)) {
     return {
-      score: 180
+      score: 200
     }
   }
 
@@ -179,9 +149,9 @@ function getExternalCommandQueryScore(
   return null
 }
 
-export function buildLauncherExternalCommandShellItems(
+export function buildLauncherInternalCommandShellItems(
   copy: AppCopy,
-  commands: ExternalExtensionCommandInfo[],
+  commands: LauncherIndexedPluginCommand[],
   query: string
 ): LauncherShellItem[] {
   const normalizedQuery = query.trim().toLowerCase()
@@ -191,11 +161,7 @@ export function buildLauncherExternalCommandShellItems(
 
   return commands
     .flatMap((command) => {
-      if (command.disabledByDefault) {
-        return []
-      }
-
-      const rankedMatch = getExternalCommandQueryScore(command, normalizedQuery)
+      const rankedMatch = getInternalCommandQueryScore(command, normalizedQuery)
       if (!rankedMatch) {
         return []
       }
@@ -208,16 +174,25 @@ export function buildLauncherExternalCommandShellItems(
             type: "none" as const
           },
           commandRef: {
-            kind: "external-extension" as const,
+            kind: "internal-plugin" as const,
             commandName: command.commandName,
-            extensionName: command.extensionName
+            pluginId: command.pluginId
           },
-          id: `external-command:${command.extensionName}:${command.commandName}`,
+          id: `internal-command:${command.pluginId}:${command.commandName}`,
           kind: "plugin" as const,
           match: rankedMatch.match,
-          presentation: createLauncherExternalCommandPresentation(copy, command.iconDataUrl),
+          presentation: {
+            categoryLabel: copy.launcher.resultKindExtension,
+            icon: {
+              name: "search",
+              type: "glyph" as const
+            },
+            listActionLabel: copy.launcher.openGeneric,
+            primaryActionLabel: copy.launcher.openGeneric,
+            tone: "neutral" as const
+          },
           score: rankedMatch.score,
-          subtitle: [command.extensionTitle, command.description].filter(Boolean).join(" · "),
+          subtitle: [command.pluginTitle, command.description].filter(Boolean).join(" · "),
           title: command.title
         }
       ]
@@ -230,6 +205,15 @@ export function buildLauncherExternalCommandShellItems(
       return left.title.localeCompare(right.title)
     })
     .map(({ score: _score, ...item }) => item)
+}
+
+function getTitleMatch(title: string, normalizedQuery: string): [number, number] | undefined {
+  const matchIndex = title.toLowerCase().indexOf(normalizedQuery)
+  if (matchIndex < 0) {
+    return undefined
+  }
+
+  return [matchIndex, matchIndex + normalizedQuery.length - 1]
 }
 
 function createLauncherSuggestionPresentation(params: {

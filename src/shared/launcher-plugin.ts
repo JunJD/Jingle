@@ -1,9 +1,7 @@
 import type { ClipboardPayloadKind } from "./clipboard"
 
-export type LauncherPluginRuntime = "external-webview" | "internal-react"
-
 export type LauncherPluginCapability = "clipboard" | "navigation" | "rpc" | "surface" | "threads"
-export type LauncherPluginCommandMode = "view" | "no-view" | "menu-bar"
+export type LauncherPluginCommandMode = "view" | "no-view"
 
 export interface LauncherPluginClipboardManifest {
   accepts: ClipboardPayloadKind[]
@@ -11,6 +9,7 @@ export interface LauncherPluginClipboardManifest {
 
 export interface LauncherPluginCommandManifest<TCommandName extends string = string> {
   description?: string
+  keywords?: string[]
   mode: LauncherPluginCommandMode
   name: TCommandName
   title?: string
@@ -27,7 +26,6 @@ export interface LauncherPluginManifest<
   displayName: string
   id: TPluginId
   rpcMethods?: string[]
-  runtime: LauncherPluginRuntime
 }
 
 export function hasLauncherPluginCapability(

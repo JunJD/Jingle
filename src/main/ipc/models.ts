@@ -16,13 +16,11 @@ import { getApiKey, setApiKey, deleteApiKey, hasApiKey } from "../storage"
 import type { LauncherSettings } from "../../shared/launcher-settings"
 import {
   getAgentConfig,
-  getBuiltPluginSettings,
   getDefaultModelId,
   getGlobalWorkspacePath,
   getLauncherSettings,
   getWorkspaceDialogPath,
   setAgentConfig,
-  setBuiltPluginSettings,
   setDefaultModelId,
   setGlobalWorkspacePath,
   setLauncherSettings,
@@ -312,17 +310,6 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
     "settings:setLauncherSettings",
     async (_event, updates: Partial<LauncherSettings>) => {
       return setLauncherSettings(updates)
-    }
-  )
-
-  ipcMain.handle("settings:getBuiltPluginSettings", async () => {
-    return getBuiltPluginSettings()
-  })
-
-  ipcMain.handle(
-    "settings:setBuiltPluginSettings",
-    async (_event, updates: { translateModelId?: string | null }) => {
-      return setBuiltPluginSettings(updates)
     }
   )
 

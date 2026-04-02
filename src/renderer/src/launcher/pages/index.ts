@@ -34,6 +34,15 @@ export const DEFAULT_HOME_COMMAND: LauncherPluginCommandAddress = {
   pluginId: AI_LAUNCHER_PLUGIN_ID
 }
 
+export interface LauncherIndexedPluginCommand {
+  commandName: LauncherPluginCommandName
+  description: string
+  keywords: string[]
+  pluginId: LauncherPluginId
+  pluginTitle: string
+  title: string
+}
+
 function getLauncherPluginCommandKey(address: LauncherPluginCommandAddress): string {
   return `${address.pluginId}:${address.commandName}`
 }
@@ -49,6 +58,19 @@ export function getLauncherPluginDefinition(pluginId: LauncherPluginId): Launche
 
 export function listLauncherPluginManifests() {
   return launcherPlugins.map((plugin) => plugin.manifest)
+}
+
+export function listLauncherPluginCommands(): LauncherIndexedPluginCommand[] {
+  return launcherPlugins.flatMap((plugin) =>
+    plugin.manifest.commands.map((command) => ({
+      commandName: command.name,
+      description: command.description ?? "",
+      keywords: command.keywords ?? [],
+      pluginId: plugin.manifest.id,
+      pluginTitle: plugin.manifest.displayName,
+      title: command.title ?? command.name
+    }))
+  )
 }
 
 export function getLauncherDefaultCommandAddress(

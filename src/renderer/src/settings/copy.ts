@@ -32,24 +32,18 @@ interface SettingsCopy {
     skillSourcesDescription: string
     memorySourcesTitle: string
     memorySourcesDescription: string
-    builtPluginsTitle: string
-    builtPluginsDescription: string
-    translateModelLabel: string
+    nativeExtensionsTitle: string
+    nativeExtensionsDescription: string
+    noNativeExtensions: string
     useEnvironmentFallback: string
     saved: string
     workspaceHint: string
   }
   extensions: {
     title: string
-    rootsTitle: string
     rootsDescription: string
     installedTitle: string
     empty: string
-    extensionPreferences: string
-    commandPreferences: string
-    sourceRoot: string
-    extensionPath: string
-    owner: string
     mode: string
     noPreferences: string
   }
@@ -87,24 +81,18 @@ const zhCN: SettingsCopy = {
     skillSourcesDescription: "每行一个目录，会并入 agent 默认技能源。",
     memorySourcesTitle: "Memory Sources",
     memorySourcesDescription: "每行一个文件或目录，会并入 agent 默认记忆源。",
-    builtPluginsTitle: "内建插件",
-    builtPluginsDescription: "目前先暴露 Translate 的模型设置。",
-    translateModelLabel: "Translate 模型",
+    nativeExtensionsTitle: "Native Extensions",
+    nativeExtensionsDescription: "这些设置直接来自 first-party extension package 的 schema。",
+    noNativeExtensions: "当前没有带设置项的 native extension。",
     useEnvironmentFallback: "跟随环境变量 / 默认值",
     saved: "已保存",
     workspaceHint: "线程级 workspace 仍然可以覆盖这里的默认值。"
   },
   extensions: {
-    title: "外部 Extensions",
-    rootsTitle: "扫描目录",
-    rootsDescription: "这些目录会被当作 Raycast extension 根目录扫描。",
-    installedTitle: "已发现 Extensions",
+    title: "Extensions",
+    rootsDescription: "这里直接展示 Openwork 一方 native extensions 的 schema 和命令设置。",
+    installedTitle: "搜索 Extensions",
     empty: "还没有扫描到 extension。",
-    extensionPreferences: "Extension Preferences",
-    commandPreferences: "Command Preferences",
-    sourceRoot: "来源目录",
-    extensionPath: "扩展路径",
-    owner: "作者",
     mode: "模式",
     noPreferences: "没有可配置项。"
   }
@@ -141,25 +129,21 @@ const enUS: SettingsCopy = {
     skillSourcesTitle: "Skill Sources",
     skillSourcesDescription: "One directory per line. Merged into the default agent skill sources.",
     memorySourcesTitle: "Memory Sources",
-    memorySourcesDescription: "One file or directory per line. Merged into the default agent memory sources.",
-    builtPluginsTitle: "Built-in Plugins",
-    builtPluginsDescription: "Exposes the Translate model setting for now.",
-    translateModelLabel: "Translate Model",
+    memorySourcesDescription:
+      "One file or directory per line. Merged into the default agent memory sources.",
+    nativeExtensionsTitle: "Native Extensions",
+    nativeExtensionsDescription:
+      "These settings are generated directly from first-party extension package schemas.",
+    noNativeExtensions: "No native extensions expose preferences yet.",
     useEnvironmentFallback: "Use env var / fallback default",
     saved: "Saved",
     workspaceHint: "Thread-level workspace can still override this global default."
   },
   extensions: {
-    title: "External Extensions",
-    rootsTitle: "Scan Roots",
-    rootsDescription: "These directories are scanned as Raycast extension roots.",
-    installedTitle: "Installed Extensions",
+    title: "Extensions",
+    rootsDescription: "These settings are generated from native Openwork extension schemas.",
+    installedTitle: "Search Extensions",
     empty: "No extensions were discovered yet.",
-    extensionPreferences: "Extension Preferences",
-    commandPreferences: "Command Preferences",
-    sourceRoot: "Source Root",
-    extensionPath: "Extension Path",
-    owner: "Owner",
     mode: "Mode",
     noPreferences: "No configurable preferences."
   }

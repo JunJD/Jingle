@@ -4,7 +4,6 @@ import {
   getLauncherViewportHeightForBody,
   type LauncherShellConfig
 } from "../../../../shared/launcher"
-import type { BuiltPluginInvokeRequest } from "../../../../shared/built-plugins/sdk"
 import type { AppCopy } from "@/lib/i18n/messages"
 import {
   useLauncherPluginClipboard,
@@ -26,7 +25,6 @@ import type {
   LauncherPluginCommandDefinition,
   LauncherPluginCommandName,
   LauncherPluginDefinition,
-  LauncherPluginId,
   LauncherPluginManifest,
   LauncherPluginIntent
 } from "../pages/types"
@@ -70,11 +68,6 @@ export type BuiltLauncherPluginCommandSpec =
   | BuiltLauncherViewPluginCommandSpec
   | BuiltLauncherNoViewPluginCommandSpec
 
-export interface BuiltPluginClientMethod<TPayload, TResult> {
-  payload?: TPayload
-  result?: TResult
-}
-
 export interface BuiltLauncherIntentPresentationInput {
   categoryLabel: string
   icon: LauncherResultPresentationIcon
@@ -82,13 +75,6 @@ export interface BuiltLauncherIntentPresentationInput {
   primaryActionLabel: string
   tone?: LauncherResultPresentationTone
 }
-
-type BuiltPluginClient<TMethods extends Record<string, BuiltPluginClientMethod<unknown, unknown>>> =
-  {
-    [TMethod in keyof TMethods]: (
-      payload: NonNullable<TMethods[TMethod]["payload"]>
-    ) => Promise<NonNullable<TMethods[TMethod]["result"]>>
-  }
 
 function getBuiltPluginViewportHeight(
   viewport: BuiltLauncherViewPluginCommandSpec["viewport"]
@@ -172,13 +158,6 @@ export function defineBuiltLauncherPlugin(spec: BuiltLauncherPluginSpec): Launch
   }
 }
 
-export function defineBuiltPluginClientMethod<TPayload, TResult>(): BuiltPluginClientMethod<
-  TPayload,
-  TResult
-> {
-  return {}
-}
-
 export function createBuiltLauncherIntentPresentation(
   input: BuiltLauncherIntentPresentationInput
 ): LauncherResultPresentation {
@@ -189,42 +168,6 @@ export function createBuiltLauncherIntentPresentation(
     primaryActionLabel: input.primaryActionLabel,
     tone: input.tone ?? "accent"
   }
-}
-
-export function createBuiltPluginClient<
-  TMethods extends Record<string, BuiltPluginClientMethod<unknown, unknown>>
->(
-  pluginId: LauncherPluginId,
-  declaredMethods: readonly string[],
-  methods: TMethods
-): BuiltPluginClient<TMethods> {
-  const clientMethodNames = Object.keys(methods)
-
-  if (declaredMethods.length !== clientMethodNames.length) {
-    throw new Error(
-      `Built plugin client "${pluginId}" method count does not match its manifest RPC declaration`
-    )
-  }
-
-  for (const methodName of clientMethodNames) {
-    if (!declaredMethods.includes(methodName)) {
-      throw new Error(
-        `Built plugin client "${pluginId}" implements "${methodName}" but it is not declared in the manifest`
-      )
-    }
-  }
-
-  const clientEntries = Object.keys(methods).map((methodName) => [
-    methodName,
-    (payload: unknown) =>
-      window.api.builtPlugins.invoke({
-        method: methodName,
-        payload,
-        pluginId
-      } satisfies BuiltPluginInvokeRequest)
-  ])
-
-  return Object.fromEntries(clientEntries) as BuiltPluginClient<TMethods>
 }
 
 export function useBuiltLauncherPluginHost() {

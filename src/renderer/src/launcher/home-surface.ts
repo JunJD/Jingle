@@ -1,5 +1,4 @@
 import type { AppCopy } from "@/lib/i18n/messages"
-import type { ExternalExtensionCommandInfo } from "../../../shared/external-extensions"
 import type { AppLocale } from "../../../shared/i18n"
 import {
   getLauncherSectionedResultsHeight,
@@ -12,12 +11,12 @@ import {
 import type { LauncherSearchResult } from "../../../shared/launcher-search"
 import type { LocalStartItem } from "../../../shared/local-start"
 import { shouldShowLauncherIdleItems } from "../../../shared/launcher-settings"
-import { getLauncherPluginIntents } from "./pages"
+import { getLauncherPluginIntents, listLauncherPluginCommands } from "./pages"
 import {
   buildLauncherBrowserSearchSuggestionItem,
   buildLauncherCompletionSuggestionItem,
-  buildLauncherExternalCommandShellItems,
   buildLauncherHistoryShellItems,
+  buildLauncherInternalCommandShellItems,
   buildLauncherLocalStartShellItems,
   buildLauncherPluginIntentShellItems,
   buildLauncherSearchShellItems
@@ -27,8 +26,8 @@ import type { LauncherShellItem } from "./types"
 export type LauncherHomeSurfaceSectionKind =
   | "history-grid"
   | "idle-list"
+  | "internal-commands"
   | "plugin-intents"
-  | "external-commands"
   | "suggestions"
   | "search-results"
 
@@ -145,7 +144,6 @@ function createSuggestionSectionItems(
 
 export function buildLauncherHomeSurfaceModel(params: {
   copy: AppCopy
-  externalCommands: ExternalExtensionCommandInfo[]
   historyItems: LauncherHistoryItem[]
   idleItems: LocalStartItem[]
   locale: AppLocale
@@ -153,8 +151,7 @@ export function buildLauncherHomeSurfaceModel(params: {
   searchResults: LauncherSearchResult[]
   windowMode: "default" | "compact"
 }): LauncherHomeSurfaceModel {
-  const { copy, externalCommands, historyItems, idleItems, locale, query, searchResults, windowMode } =
-    params
+  const { copy, historyItems, idleItems, locale, query, searchResults, windowMode } = params
   const trimmedQuery = query.trim()
 
   if (!trimmedQuery) {
@@ -181,6 +178,11 @@ export function buildLauncherHomeSurfaceModel(params: {
   }
 
   const sections: LauncherHomeSurfaceSection[] = []
+  const internalCommandItems = buildLauncherInternalCommandShellItems(
+    copy,
+    listLauncherPluginCommands(),
+    query
+  )
   const pluginIntentItems = buildLauncherPluginIntentShellItems(
     getLauncherPluginIntents({
       copy,
@@ -188,22 +190,21 @@ export function buildLauncherHomeSurfaceModel(params: {
       query
     })
   )
-  const externalCommandItems = buildLauncherExternalCommandShellItems(copy, externalCommands, query)
   const rankedSearchResults = rankSearchResultSectionItems(searchResults, historyItems)
   const suggestionItems = createSuggestionSectionItems(copy, trimmedQuery, rankedSearchResults)
   const searchResultItems = buildLauncherSearchShellItems(copy, rankedSearchResults)
+
+  if (internalCommandItems.length > 0) {
+    sections.push({
+      items: internalCommandItems,
+      kind: "internal-commands"
+    })
+  }
 
   if (pluginIntentItems.length > 0) {
     sections.push({
       items: pluginIntentItems,
       kind: "plugin-intents"
-    })
-  }
-
-  if (externalCommandItems.length > 0) {
-    sections.push({
-      items: externalCommandItems,
-      kind: "external-commands"
     })
   }
 

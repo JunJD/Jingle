@@ -24,6 +24,5 @@ export const aiLauncherPluginManifest: LauncherPluginManifest<
   ],
   defaultCommandName: AI_CHAT_COMMAND_NAME,
   displayName: "AI",
-  id: AI_LAUNCHER_PLUGIN_ID,
-  runtime: "internal-react"
+  id: AI_LAUNCHER_PLUGIN_ID
 }

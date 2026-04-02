@@ -18,17 +18,11 @@ import type { ClipboardContext } from "../shared/clipboard"
 import type { LauncherHistoryItem } from "../shared/launcher-history"
 import type { CreateLocalStartItemInput, LocalStartItem } from "../shared/local-start"
 import type { LauncherSettings } from "../shared/launcher-settings"
-import type { BuiltPluginSettings } from "../shared/built-plugin-settings"
-import type { BuiltPluginInvokeRequest } from "../shared/built-plugins/sdk"
 import type { AgentMessageContent } from "../shared/message-content"
 import type {
-  ExternalExtensionBundleResult,
-  ExternalExtensionCommandInfo,
-  ExternalExtensionSettingsState,
-  GetExternalExtensionBundleRequest,
-  InstalledExternalExtensionSettingsSchema
-} from "../shared/external-extensions"
-import type { OAuthTokenRecord } from "../shared/oauth"
+  InstalledNativeExtensionSettingsSchema,
+  NativeExtensionInvokeRequest
+} from "../shared/native-extensions"
 import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "../shared/settings-window"
 
 interface ElectronAPI {
@@ -38,21 +32,12 @@ interface ElectronAPI {
     once: (channel: string, listener: (...args: unknown[]) => void) => void
     invoke: (channel: string, ...args: unknown[]) => Promise<unknown>
   }
-  onOAuthCallback: (callback: (url: string) => void) => () => void
-  onOAuthLogout: (callback: (provider: string) => void) => () => void
-  oauthGetToken: (provider: string) => Promise<OAuthTokenRecord | null>
-  oauthSetToken: (provider: string, token: OAuthTokenRecord) => Promise<void>
-  oauthRemoveToken: (provider: string) => Promise<void>
-  oauthLogout: (provider: string) => Promise<void>
-  oauthSetFlowActive: (active: boolean) => Promise<void>
   openSettings: () => Promise<void>
   openSettingsTab: (
     tab: SettingsWindowTab,
     target?: SettingsWindowNavigationPayload["target"]
   ) => Promise<void>
-  onSettingsTabChanged: (
-    callback: (payload: SettingsWindowNavigationPayload) => void
-  ) => () => void
+  onSettingsTabChanged: (callback: (payload: SettingsWindowNavigationPayload) => void) => () => void
   process: {
     platform: NodeJS.Platform
     versions: NodeJS.ProcessVersions
@@ -105,11 +90,7 @@ interface CustomAPI {
     setAgentConfig: (updates: Partial<AgentConfig>) => Promise<AgentConfig>
     getLauncherSettings: () => Promise<LauncherSettings>
     setLauncherSettings: (updates: Partial<LauncherSettings>) => Promise<LauncherSettings>
-    getBuiltPluginSettings: () => Promise<BuiltPluginSettings>
-    setBuiltPluginSettings: (
-      updates: Partial<BuiltPluginSettings>
-    ) => Promise<BuiltPluginSettings>
-    openWindow: () => Promise<void>
+    openWindow: (payload?: SettingsWindowNavigationPayload) => Promise<void>
     openTab: (payload: SettingsWindowNavigationPayload) => Promise<void>
     getPendingNavigation: () => Promise<SettingsWindowNavigationPayload | null>
   }
@@ -132,25 +113,20 @@ interface CustomAPI {
     remove: (itemId: string) => Promise<void>
     recordUse: (itemId: string) => Promise<LocalStartItem>
   }
-  builtPlugins: {
+  nativeExtensions: {
+    listSettingsSchemas: () => Promise<InstalledNativeExtensionSettingsSchema[]>
+    getCommandPreferences: (
+      extensionName: string,
+      commandName: string
+    ) => Promise<Record<string, unknown>>
+    setCommandPreferences: (
+      extensionName: string,
+      commandName: string,
+      nextRecord: Record<string, unknown>
+    ) => Promise<Record<string, unknown>>
     invoke: <TPayload = unknown, TResult = unknown>(
-      request: BuiltPluginInvokeRequest<TPayload>
+      request: NativeExtensionInvokeRequest<TPayload>
     ) => Promise<TResult>
-  }
-  extensions: {
-    listCommands: () => Promise<ExternalExtensionCommandInfo[]>
-    getBundle: (
-      request: GetExternalExtensionBundleRequest
-    ) => Promise<ExternalExtensionBundleResult>
-    listRoots: () => Promise<string[]>
-    listSettingsSchemas: () => Promise<InstalledExternalExtensionSettingsSchema[]>
-    getCustomRoots: () => Promise<ExternalExtensionSettingsState["customRoots"]>
-    setCustomRoots: (
-      nextRoots: ExternalExtensionSettingsState["customRoots"]
-    ) => Promise<ExternalExtensionSettingsState["customRoots"]>
-    pickRoot: () => Promise<string | null>
-    revealPath: (targetPath: string) => Promise<boolean>
-    onChanged: (callback: () => void) => () => void
   }
   workspace: {
     get: (threadId?: string) => Promise<string | null>

@@ -43,6 +43,7 @@ export interface LauncherPluginHostValue {
   capabilities: readonly LauncherPluginCapability[]
   clipboard?: Pick<LauncherClipboardState, "clearContext" | "context">
   commandName: LauncherPluginCommandName
+  commandPreferences: Record<string, unknown>
   initialAction: LauncherPluginCommandInitialAction
   navigation?: LauncherPluginNavigation
   pluginId: LauncherPluginId

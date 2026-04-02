@@ -52,11 +52,7 @@ export function useLauncherRouter(): {
       return route.id
     }
 
-    if (route.kind === "internal-plugin") {
-      return `${route.pluginId}:${route.commandName}:${route.initialAction}:${route.seedQuery}`
-    }
-
-    return `${route.extensionName}:${route.commandName}:${route.initialAction}:${route.seedQuery}`
+    return `${route.pluginId}:${route.commandName}:${route.initialAction}:${route.seedQuery}`
   }, [route])
 
   return {
