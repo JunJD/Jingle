@@ -39,6 +39,7 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
 }
 
 const DEFAULT_NATIVE_EXTENSION_PREFERENCES: NativeExtensionPreferencesState = {
+  extensionPreferences: {},
   commandPreferences: {}
 }
 
@@ -102,22 +103,37 @@ function normalizeNativeExtensionPreferencesState(value: unknown): NativeExtensi
   const raw = value as Partial<NativeExtensionPreferencesState>
 
   return {
+    extensionPreferences: normalizePreferenceRecordMap(raw.extensionPreferences),
     commandPreferences: normalizePreferenceRecordMap(raw.commandPreferences)
   }
+}
+
+function getExtensionPreferenceStoreKey(extensionName: string): string {
+  return extensionName
 }
 
 function getCommandPreferenceStoreKey(extensionName: string, commandName: string): string {
   return `${extensionName}:${commandName}`
 }
 
-function getCommandPreferenceSchema(
-  extensionName: string,
-  commandName: string
-): NativeExtensionPreferenceSchema[] {
+function getNativeExtensionManifest(extensionName: string) {
   const manifest = nativeExtensions.find((entry) => entry.manifest.name === extensionName)?.manifest
   if (!manifest) {
     throw new Error(`Unknown native extension "${extensionName}"`)
   }
+
+  return manifest
+}
+
+function getExtensionPreferenceSchema(extensionName: string): NativeExtensionPreferenceSchema[] {
+  return getNativeExtensionManifest(extensionName).preferences ?? []
+}
+
+function getCommandPreferenceSchema(
+  extensionName: string,
+  commandName: string
+): NativeExtensionPreferenceSchema[] {
+  const manifest = getNativeExtensionManifest(extensionName)
 
   const command = manifest.commands.find((entry) => entry.name === commandName)
   if (!command) {
@@ -149,6 +165,20 @@ function resolveCommandPreferenceRecord(params: {
   nextRecord: Record<string, unknown>
 }): Record<string, unknown> {
   const schema = getCommandPreferenceSchema(params.extensionName, params.commandName)
+
+  return Object.fromEntries(
+    schema.map((preference) => [
+      preference.name,
+      params.nextRecord[preference.name] ?? getDefaultPreferenceValue(preference)
+    ])
+  )
+}
+
+function resolveExtensionPreferenceRecord(params: {
+  extensionName: string
+  nextRecord: Record<string, unknown>
+}): Record<string, unknown> {
+  const schema = getExtensionPreferenceSchema(params.extensionName)
 
   return Object.fromEntries(
     schema.map((preference) => [
@@ -236,13 +266,54 @@ export function getNativeExtensionCommandPreferenceRecord(
   commandName: string
 ): Record<string, unknown> {
   const state = getNativeExtensionPreferencesState()
-  const key = getCommandPreferenceStoreKey(extensionName, commandName)
-  const storedRecord = normalizePreferenceRecord(state.commandPreferences[key])
-  return resolveCommandPreferenceRecord({
+  const extensionKey = getExtensionPreferenceStoreKey(extensionName)
+  const commandKey = getCommandPreferenceStoreKey(extensionName, commandName)
+  const extensionRecord = resolveExtensionPreferenceRecord({
+    extensionName,
+    nextRecord: normalizePreferenceRecord(state.extensionPreferences[extensionKey])
+  })
+  const commandRecord = resolveCommandPreferenceRecord({
     commandName,
     extensionName,
-    nextRecord: storedRecord
+    nextRecord: normalizePreferenceRecord(state.commandPreferences[commandKey])
   })
+
+  return {
+    ...extensionRecord,
+    ...commandRecord
+  }
+}
+
+export function getNativeExtensionPreferenceRecord(extensionName: string): Record<string, unknown> {
+  const state = getNativeExtensionPreferencesState()
+  const key = getExtensionPreferenceStoreKey(extensionName)
+
+  return resolveExtensionPreferenceRecord({
+    extensionName,
+    nextRecord: normalizePreferenceRecord(state.extensionPreferences[key])
+  })
+}
+
+export function setNativeExtensionPreferenceRecord(
+  extensionName: string,
+  nextRecord: Record<string, unknown>
+): Record<string, unknown> {
+  const state = getNativeExtensionPreferencesState()
+  const key = getExtensionPreferenceStoreKey(extensionName)
+  const normalizedRecord = resolveExtensionPreferenceRecord({
+    extensionName,
+    nextRecord: normalizePreferenceRecord(nextRecord)
+  })
+  const nextState: NativeExtensionPreferencesState = {
+    extensionPreferences: {
+      ...state.extensionPreferences,
+      [key]: normalizedRecord
+    },
+    commandPreferences: state.commandPreferences
+  }
+
+  settingsStore.set("nativeExtensionPreferences", nextState)
+  return normalizedRecord
 }
 
 export function setNativeExtensionCommandPreferenceRecord(
@@ -258,6 +329,7 @@ export function setNativeExtensionCommandPreferenceRecord(
     nextRecord: normalizePreferenceRecord(nextRecord)
   })
   const nextState: NativeExtensionPreferencesState = {
+    extensionPreferences: state.extensionPreferences,
     commandPreferences: {
       ...state.commandPreferences,
       [key]: normalizedRecord

@@ -1,6 +1,8 @@
 import type { IpcMain } from "electron"
 import {
+  getNativeExtensionPreferenceRecord,
   getNativeExtensionCommandPreferenceRecord,
+  setNativeExtensionPreferenceRecord,
   setNativeExtensionCommandPreferenceRecord
 } from "../preferences"
 import { invokeNativeExtension, listNativeExtensionSettingsSchemas } from "../services/native-extensions"
@@ -9,6 +11,20 @@ export function registerNativeExtensionHandlers(ipcMain: IpcMain): void {
   ipcMain.handle("nativeExtensions:listSettingsSchemas", () => {
     return listNativeExtensionSettingsSchemas()
   })
+
+  ipcMain.handle(
+    "nativeExtensions:getPreferences",
+    (_event, extensionName: string) => {
+      return getNativeExtensionPreferenceRecord(extensionName)
+    }
+  )
+
+  ipcMain.handle(
+    "nativeExtensions:setPreferences",
+    (_event, extensionName: string, nextRecord: Record<string, unknown>) => {
+      return setNativeExtensionPreferenceRecord(extensionName, nextRecord)
+    }
+  )
 
   ipcMain.handle(
     "nativeExtensions:getCommandPreferences",

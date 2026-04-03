@@ -115,6 +115,11 @@ interface CustomAPI {
   }
   nativeExtensions: {
     listSettingsSchemas: () => Promise<InstalledNativeExtensionSettingsSchema[]>
+    getPreferences: (extensionName: string) => Promise<Record<string, unknown>>
+    setPreferences: (
+      extensionName: string,
+      nextRecord: Record<string, unknown>
+    ) => Promise<Record<string, unknown>>
     getCommandPreferences: (
       extensionName: string,
       commandName: string

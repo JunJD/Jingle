@@ -34,6 +34,7 @@ export interface NativeExtensionPackageManifest<
   defaultCommandName?: TCommandName
   description?: string
   name: TExtensionName
+  preferences?: NativeExtensionPreferenceSchema[]
   rpcMethods?: string[]
   title: string
 }
@@ -65,10 +66,12 @@ export interface InstalledNativeExtensionSettingsSchema {
   commands: NativeExtensionCommandSettingsSchema[]
   description: string
   extName: string
+  preferences: NativeExtensionPreferenceSchema[]
   title: string
 }
 
 export interface NativeExtensionPreferencesState {
+  extensionPreferences: Record<string, Record<string, unknown>>
   commandPreferences: Record<string, Record<string, unknown>>
 }
 
@@ -117,9 +120,7 @@ export function defineNativeExtensionManifest(manifest: unknown): NativeExtensio
   return resolvedManifest
 }
 
-export function validateNativeExtensionDefinition(
-  definition: NativeExtensionDefinition
-): void {
+export function validateNativeExtensionDefinition(definition: NativeExtensionDefinition): void {
   validateNativeExtensionPackageManifest(definition.manifest)
 
   const manifestCommandNames = new Set(definition.manifest.commands.map((command) => command.name))
@@ -230,7 +231,6 @@ export function toLauncherPluginManifest(
 export function toInstalledNativeExtensionSettingsSchema(
   manifest: NativeExtensionPackageManifest
 ): InstalledNativeExtensionSettingsSchema {
-
   return {
     commands: manifest.commands.map((command) => ({
       description: command.description ?? "",
@@ -242,6 +242,7 @@ export function toInstalledNativeExtensionSettingsSchema(
     })),
     description: manifest.description ?? "",
     extName: manifest.name,
+    preferences: manifest.preferences ?? [],
     title: manifest.title
   }
 }

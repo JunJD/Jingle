@@ -2,6 +2,39 @@ import { defineNativeExtensionManifest } from "../../shared/native-extensions"
 
 export const githubManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "surface"],
+  preferences: [
+    {
+      description:
+        "Personal access token used to read your GitHub data. A classic token with repo access is enough.",
+      name: "accessToken",
+      placeholder: "ghp_...",
+      title: "GitHub Personal Access Token",
+      type: "password"
+    },
+    {
+      default: "https://api.github.com",
+      description: "Override this only if you use GitHub Enterprise.",
+      name: "apiBaseUrl",
+      placeholder: "https://api.github.com",
+      title: "GitHub API Base URL",
+      type: "text"
+    },
+    {
+      default: "",
+      description: "Default query used when opening global search commands.",
+      name: "defaultSearchTerms",
+      placeholder: "author:@me state:open",
+      title: "Default Search Terms",
+      type: "text"
+    },
+    {
+      default: "25",
+      description: "How many results each command should request per load.",
+      name: "numberOfResults",
+      title: "Number of Results",
+      type: "text"
+    }
+  ],
   commands: [
     {
       description: "List GitHub issues created by you, assigned to you, or mentioning you.",
@@ -9,22 +42,6 @@ export const githubManifest = defineNativeExtensionManifest({
       mode: "view",
       name: "my-issues",
       preferences: [
-        {
-          description:
-            "Personal access token used to read your issues. A classic token with repo access is enough.",
-          name: "accessToken",
-          placeholder: "ghp_...",
-          title: "GitHub Personal Access Token",
-          type: "password"
-        },
-        {
-          default: "https://api.github.com",
-          description: "Override this only if you use GitHub Enterprise.",
-          name: "apiBaseUrl",
-          placeholder: "https://api.github.com",
-          title: "GitHub API Base URL",
-          type: "text"
-        },
         {
           default: true,
           description: "Show issues you created.",
@@ -55,6 +72,115 @@ export const githubManifest = defineNativeExtensionManifest({
         }
       ],
       title: "My Issues"
+    },
+    {
+      description: "List your GitHub pull requests for review and tracking.",
+      keywords: ["github", "pull requests", "pr", "merge", "review"],
+      mode: "view",
+      name: "my-pull-requests",
+      preferences: [
+        {
+          default: true,
+          description: "Show pull requests assigned to you.",
+          name: "includeAssigned",
+          title: "Show Assigned",
+          type: "checkbox"
+        },
+        {
+          default: true,
+          description: "Show pull requests where you were mentioned.",
+          name: "includeMentioned",
+          title: "Show Mentioned",
+          type: "checkbox"
+        },
+        {
+          default: true,
+          description: "Show pull requests requesting your review.",
+          name: "includeReviewRequests",
+          title: "Show Review Requests",
+          type: "checkbox"
+        },
+        {
+          default: false,
+          description: "Show pull requests you already reviewed.",
+          name: "includeReviewed",
+          title: "Show Reviewed",
+          type: "checkbox"
+        },
+        {
+          default: false,
+          description: "Include recently closed pull requests.",
+          name: "includeRecentlyClosed",
+          title: "Show Recently Closed",
+          type: "checkbox"
+        },
+        {
+          default: false,
+          description: "Include draft pull requests.",
+          name: "includeDrafts",
+          title: "Include Drafts",
+          type: "checkbox"
+        }
+      ],
+      title: "My Pull Requests"
+    },
+    {
+      description: "Search GitHub issues across repositories.",
+      keywords: ["github", "search", "issue", "issues"],
+      mode: "view",
+      name: "search-issues",
+      title: "Search Issues"
+    },
+    {
+      description: "Search GitHub pull requests across repositories.",
+      keywords: ["github", "search", "pull request", "pr"],
+      mode: "view",
+      name: "search-pull-requests",
+      title: "Search Pull Requests"
+    },
+    {
+      description: "Search GitHub repositories.",
+      keywords: ["github", "repository", "repo", "search"],
+      mode: "view",
+      name: "search-repositories",
+      preferences: [
+        {
+          default: false,
+          description: "Include forked repositories in the results.",
+          name: "includeForks",
+          title: "Include Forks",
+          type: "checkbox"
+        },
+        {
+          default: false,
+          description: "Include archived repositories in the results.",
+          name: "includeArchived",
+          title: "Include Archived",
+          type: "checkbox"
+        },
+        {
+          default: true,
+          description: "Show the owner name in repository rows.",
+          name: "displayOwnerName",
+          title: "Display Owner Name",
+          type: "checkbox"
+        }
+      ],
+      title: "Search Repositories"
+    },
+    {
+      description: "Show repositories you worked on most recently.",
+      keywords: ["github", "repositories", "recent", "repo"],
+      mode: "view",
+      name: "my-latest-repositories",
+      title: "My Latest Repositories"
+    },
+    {
+      description: "Show repositories you starred on GitHub.",
+      keywords: ["github", "repositories", "starred", "repo"],
+      mode: "view",
+      name: "my-starred-repositories",
+      title: "My Starred Repositories"
     }
   ],
   description: "Work with your GitHub issues inside the launcher.",

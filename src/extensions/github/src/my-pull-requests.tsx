@@ -6,18 +6,13 @@ import {
   openGitHubSettings,
   normalizeGitHubPreferences,
   searchGitHubIssueLikes,
-  type GitHubIssueListPreferences,
   type GitHubIssueLike,
+  type GitHubPullRequestListPreferences,
   useGitHubCommandPreferences
 } from "./client"
-import {
-  formatResultCount,
-  formatUpdatedAt,
-  getIssueLikeAccessories,
-  getIssueLikeIcon
-} from "./view-helpers"
+import { formatResultCount, formatUpdatedAt, getIssueLikeAccessories, getIssueLikeIcon } from "./view-helpers"
 
-interface GitHubIssueSection {
+interface GitHubPullRequestSection {
   id: string
   items: GitHubIssueLike[]
   title: string
@@ -25,43 +20,65 @@ interface GitHubIssueSection {
 
 const SECTION_LABELS = {
   assigned: "Assigned",
-  created: "Created",
+  authored: "Authored",
   mentioned: "Mentioned",
-  recentlyClosed: "Recently Closed"
+  recentlyClosed: "Recently Closed",
+  reviewRequested: "Review Requested",
+  reviewed: "Reviewed"
 } as const
 
 export const viewport = {
   bodyHeight: 520
 }
 
-async function loadMyIssueSections(params: {
+function buildPullRequestQuery(base: string, includeDrafts: boolean, state: "open" | "closed"): string {
+  return `is:pr ${base} archived:false is:${state} ${includeDrafts ? "" : "draft:false"}`.trim()
+}
+
+async function loadMyPullRequestSections(params: {
+  commandPreferences: GitHubPullRequestListPreferences
   preferences: ReturnType<typeof normalizeGitHubPreferences>
-  commandPreferences: GitHubIssueListPreferences
-}): Promise<GitHubIssueSection[]> {
-  const queryEntries: Array<{ key: keyof typeof SECTION_LABELS; query: string }> = []
+}): Promise<GitHubPullRequestSection[]> {
+  const queryEntries: Array<{ key: keyof typeof SECTION_LABELS; query: string }> = [
+    {
+      key: "authored",
+      query: buildPullRequestQuery("author:@me", params.commandPreferences.includeDrafts, "open")
+    }
+  ]
 
-  if (params.commandPreferences.showCreated) {
-    queryEntries.push({
-      key: "created",
-      query: "is:issue author:@me archived:false is:open"
-    })
-  }
-
-  if (params.commandPreferences.showAssigned) {
+  if (params.commandPreferences.includeAssigned) {
     queryEntries.push({
       key: "assigned",
-      query: "is:issue assignee:@me archived:false is:open"
+      query: buildPullRequestQuery("assignee:@me", params.commandPreferences.includeDrafts, "open")
     })
   }
 
-  if (params.commandPreferences.showMentioned) {
+  if (params.commandPreferences.includeMentioned) {
     queryEntries.push({
       key: "mentioned",
-      query: "is:issue mentions:@me archived:false is:open"
+      query: buildPullRequestQuery("mentions:@me", params.commandPreferences.includeDrafts, "open")
     })
   }
 
-  const sections: GitHubIssueSection[] = []
+  if (params.commandPreferences.includeReviewRequests) {
+    queryEntries.push({
+      key: "reviewRequested",
+      query: buildPullRequestQuery(
+        "review-requested:@me",
+        params.commandPreferences.includeDrafts,
+        "open"
+      )
+    })
+  }
+
+  if (params.commandPreferences.includeReviewed) {
+    queryEntries.push({
+      key: "reviewed",
+      query: buildPullRequestQuery("reviewed-by:@me", params.commandPreferences.includeDrafts, "open")
+    })
+  }
+
+  const sections: GitHubPullRequestSection[] = []
 
   for (const entry of queryEntries) {
     sections.push({
@@ -74,17 +91,17 @@ async function loadMyIssueSections(params: {
     })
   }
 
-  if (!params.commandPreferences.showRecentlyClosed) {
+  if (!params.commandPreferences.includeRecentlyClosed) {
     return sections.filter((section) => section.items.length > 0)
   }
 
   const recentlyClosedGroups: GitHubIssueLike[][] = []
 
-  for (const qualifier of ["author:@me", "assignee:@me", "mentions:@me"]) {
+  for (const qualifier of ["author:@me", "assignee:@me", "review-requested:@me"]) {
     recentlyClosedGroups.push(
       await searchGitHubIssueLikes({
         preferences: params.preferences,
-        query: `is:issue ${qualifier} archived:false is:closed`
+        query: buildPullRequestQuery(qualifier, params.commandPreferences.includeDrafts, "closed")
       })
     )
   }
@@ -99,13 +116,13 @@ async function loadMyIssueSections(params: {
   ]
 }
 
-export default function GitHubMyIssues(): React.JSX.Element {
-  const commandPreferences = useGitHubCommandPreferences<GitHubIssueListPreferences>()
+export default function GitHubMyPullRequests(): React.JSX.Element {
+  const commandPreferences = useGitHubCommandPreferences<GitHubPullRequestListPreferences>()
   const resolvedPreferences = useMemo(
     () => normalizeGitHubPreferences(commandPreferences),
     [commandPreferences]
   )
-  const [sections, setSections] = useState<GitHubIssueSection[]>([])
+  const [sections, setSections] = useState<GitHubPullRequestSection[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [reloadVersion, setReloadVersion] = useState(0)
@@ -123,7 +140,7 @@ export default function GitHubMyIssues(): React.JSX.Element {
     setIsLoading(true)
     setError(null)
 
-    void loadMyIssueSections({
+    void loadMyPullRequestSections({
       commandPreferences,
       preferences: resolvedPreferences
     })
@@ -135,7 +152,9 @@ export default function GitHubMyIssues(): React.JSX.Element {
       .catch((nextError) => {
         if (!cancelled) {
           setSections([])
-          setError(nextError instanceof Error ? nextError.message : "Failed to load GitHub issues")
+          setError(
+            nextError instanceof Error ? nextError.message : "Failed to load GitHub pull requests"
+          )
         }
       })
       .finally(() => {
@@ -181,13 +200,13 @@ export default function GitHubMyIssues(): React.JSX.Element {
           />
           <Action
             icon={<AlertCircle className="h-4 w-4" />}
-            onAction={() => void openGitHubSettings("my-issues")}
+            onAction={() => void openGitHubSettings("my-pull-requests")}
             title="Open GitHub Settings"
           />
         </ActionPanel>
       }
       isLoading={isLoading}
-      navigationTitle="My Issues"
+      navigationTitle="My Pull Requests"
       searchBarAccessory={
         repositoryOptions.length > 0 ? (
           <List.Dropdown onChange={setSelectedRepository} value={selectedRepository}>
@@ -200,7 +219,7 @@ export default function GitHubMyIssues(): React.JSX.Element {
           </List.Dropdown>
         ) : null
       }
-      searchBarPlaceholder="Filter by title, repository, or issue number"
+      searchBarPlaceholder="Filter by title, repository, or pull request number"
     >
       {!resolvedPreferences.accessToken ? (
         <List.EmptyView
@@ -208,7 +227,7 @@ export default function GitHubMyIssues(): React.JSX.Element {
             <ActionPanel>
               <Action
                 icon={<AlertCircle className="h-4 w-4" />}
-                onAction={() => void openGitHubSettings("my-issues")}
+                onAction={() => void openGitHubSettings("my-pull-requests")}
                 title="Add GitHub Token"
               />
             </ActionPanel>
@@ -227,7 +246,7 @@ export default function GitHubMyIssues(): React.JSX.Element {
               />
               <Action
                 icon={<AlertCircle className="h-4 w-4" />}
-                onAction={() => void openGitHubSettings("my-issues")}
+                onAction={() => void openGitHubSettings("my-pull-requests")}
                 title="Open GitHub Settings"
               />
             </ActionPanel>
@@ -236,13 +255,13 @@ export default function GitHubMyIssues(): React.JSX.Element {
           title="GitHub Request Failed"
         />
       ) : filteredSections.length === 0 && !isLoading ? (
-        <List.EmptyView title="No issues found" />
+        <List.EmptyView title="No pull requests found" />
       ) : null}
 
       {filteredSections.map((section) => (
         <List.Section
           key={section.id}
-          subtitle={formatResultCount(section.items.length, "issue")}
+          subtitle={formatResultCount(section.items.length, "pull request")}
           title={section.title}
         >
           {section.items.map((item) => (
@@ -250,7 +269,7 @@ export default function GitHubMyIssues(): React.JSX.Element {
               key={item.id}
               actions={
                 <ActionPanel>
-                  <Action.OpenInBrowser title="Open Issue in Browser" url={item.url} />
+                  <Action.OpenInBrowser title="Open Pull Request in Browser" url={item.url} />
                 </ActionPanel>
               }
               accessories={getIssueLikeAccessories(item)}

@@ -53,10 +53,29 @@ interface NativeListEmptyViewDescriptor {
   title?: string
 }
 
+interface NativeListDropdownItemDescriptor {
+  title: string
+  value: string
+}
+
+interface NativeListDropdownSectionDescriptor {
+  items: NativeListDropdownItemDescriptor[]
+  title?: string
+}
+
+interface NativeListDropdownDescriptor {
+  onChange?: (value: string) => void
+  sections: NativeListDropdownSectionDescriptor[]
+  value?: string
+}
+
 type MarkerRole =
   | "list-section"
   | "list-item"
   | "list-empty-view"
+  | "list-dropdown"
+  | "list-dropdown-section"
+  | "list-dropdown-item"
   | "action-panel"
   | "action-panel-section"
   | "action-panel-submenu"
@@ -94,6 +113,22 @@ const ListEmptyViewMarker = createMarkerComponent<{
   description?: string
   title?: string
 }>("list-empty-view")
+
+const ListDropdownMarker = createMarkerComponent<{
+  children?: ReactNode
+  onChange?: (value: string) => void
+  value?: string
+}>("list-dropdown")
+
+const ListDropdownSectionMarker = createMarkerComponent<{
+  children?: ReactNode
+  title?: string
+}>("list-dropdown-section")
+
+const ListDropdownItemMarker = createMarkerComponent<{
+  title: string
+  value: string
+}>("list-dropdown-item")
 
 const ActionPanelMarker = createMarkerComponent<{
   children?: ReactNode
@@ -307,6 +342,76 @@ function collectEmptyView(children: ReactNode): NativeListEmptyViewDescriptor | 
         : [],
       description: props.description,
       title: props.title
+    }
+  }
+
+  return null
+}
+
+function collectDropdown(children: ReactNode): NativeListDropdownDescriptor | null {
+  for (const node of Children.toArray(children)) {
+    if (!isValidElement(node) || extractMarkerRole(node) !== "list-dropdown") {
+      continue
+    }
+
+    const props = node.props as {
+      children?: ReactNode
+      onChange?: (value: string) => void
+      value?: string
+    }
+
+    const sections = Children.toArray(props.children)
+      .map((sectionNode) => {
+        if (!isValidElement(sectionNode)) {
+          return null
+        }
+
+        const role = extractMarkerRole(sectionNode)
+        if (role === "list-dropdown-item") {
+          const itemProps = sectionNode.props as { title: string; value: string }
+          return {
+            items: [{ title: itemProps.title, value: itemProps.value }]
+          } satisfies NativeListDropdownSectionDescriptor
+        }
+
+        if (role !== "list-dropdown-section") {
+          return null
+        }
+
+        const sectionProps = sectionNode.props as { children?: ReactNode; title?: string }
+        const items = Children.toArray(sectionProps.children)
+          .map((itemNode) => {
+            if (!isValidElement(itemNode) || extractMarkerRole(itemNode) !== "list-dropdown-item") {
+              return null
+            }
+
+            const itemProps = itemNode.props as { title: string; value: string }
+            return {
+              title: itemProps.title,
+              value: itemProps.value
+            } satisfies NativeListDropdownItemDescriptor
+          })
+          .filter((item): item is NativeListDropdownItemDescriptor => item !== null)
+
+        if (items.length === 0) {
+          return null
+        }
+
+        return {
+          items,
+          title: sectionProps.title
+        } satisfies NativeListDropdownSectionDescriptor
+      })
+      .filter((section): section is NativeListDropdownSectionDescriptor => section !== null)
+
+    if (sections.length === 0) {
+      return null
+    }
+
+    return {
+      onChange: props.onChange,
+      sections,
+      value: props.value
     }
   }
 
@@ -591,12 +696,56 @@ function NativeListRows(props: {
   )
 }
 
+function NativeListDropdown(props: {
+  descriptor: NativeListDropdownDescriptor
+}): React.JSX.Element {
+  const { descriptor } = props
+  const options = descriptor.sections.flatMap((section) =>
+    section.items.map((item) => ({
+      label: section.title ? `${section.title} · ${item.title}` : item.title,
+      value: item.value
+    }))
+  )
+  const selectedValue = descriptor.value ?? options[0]?.value ?? ""
+
+  return (
+    <select
+      className="h-9 max-w-[220px] rounded-full border border-border/80 bg-background px-3 text-[12px] font-medium text-foreground outline-none transition focus:border-[var(--ring)]"
+      value={selectedValue}
+      onChange={(event) => {
+        descriptor.onChange?.(event.target.value)
+      }}
+    >
+      {descriptor.sections.map((section, sectionIndex) =>
+        section.title ? (
+          <optgroup key={`native-dropdown-section-${sectionIndex}`} label={section.title}>
+            {section.items.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.title}
+              </option>
+            ))}
+          </optgroup>
+        ) : (
+          <Fragment key={`native-dropdown-section-${sectionIndex}`}>
+            {section.items.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.title}
+              </option>
+            ))}
+          </Fragment>
+        )
+      )}
+    </select>
+  )
+}
+
 function ListRoot(props: {
   actions?: ReactElement | null
   children?: ReactNode
   isLoading?: boolean
   navigationTitle?: string
   onSearchTextChange?: (value: string) => void
+  searchBarAccessory?: ReactElement | null
   searchBarPlaceholder?: string
   searchText?: string
 }): React.JSX.Element {
@@ -606,6 +755,7 @@ function ListRoot(props: {
     isLoading = false,
     navigationTitle,
     onSearchTextChange,
+    searchBarAccessory,
     searchBarPlaceholder,
     searchText
   } = props
@@ -621,6 +771,7 @@ function ListRoot(props: {
     [children, resolvedSearchText]
   )
   const emptyView = useMemo(() => collectEmptyView(children), [children])
+  const dropdown = useMemo(() => collectDropdown(searchBarAccessory), [searchBarAccessory])
   const items = sections.flatMap((section) => section.items)
   const selectedItem = items[selectedIndex] ?? null
   const listActions = useMemo(
@@ -635,7 +786,11 @@ function ListRoot(props: {
         : [],
     [actions]
   )
-  const activeActions = selectedItem?.actions.length ? selectedItem.actions : listActions
+  const activeActions = selectedItem?.actions.length
+    ? selectedItem.actions
+    : emptyView?.actions.length
+      ? emptyView.actions
+      : listActions
   const primaryAction = activeActions[0] ?? null
   const footerLabel = selectedItem?.sectionTitle ?? navigationTitle ?? "Results"
   const footerCount =
@@ -744,6 +899,7 @@ function ListRoot(props: {
             ) : null}
           </div>
         }
+        headerTrailing={dropdown ? <NativeListDropdown descriptor={dropdown} /> : null}
         inputRef={surface.inputRef}
         inputValue={resolvedSearchText}
         onInputKeyDown={handleInputKeyDown}
@@ -818,6 +974,10 @@ function ListRoot(props: {
 }
 
 export const List = Object.assign(ListRoot, {
+  Dropdown: Object.assign(ListDropdownMarker, {
+    Item: ListDropdownItemMarker,
+    Section: ListDropdownSectionMarker
+  }),
   EmptyView: ListEmptyViewMarker,
   Item: ListItemMarker,
   Section: ListSectionMarker

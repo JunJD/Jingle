@@ -58,6 +58,8 @@
     "@langchain/langgraph-checkpoint": "^1.0.0",
     "@langchain/langgraph-sdk": "^1.5.3",
     "@langchain/openai": "^1.2.3",
+    "@octokit/plugin-throttling": "^11.0.3",
+    "@octokit/rest": "^22.0.1",
     "@phosphor-icons/react": "^2.1.10",
     "@prisma/client": "^6.18.0",
     "@radix-ui/react-collapsible": "^1.1.12",

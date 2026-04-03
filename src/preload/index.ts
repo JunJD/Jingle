@@ -276,6 +276,15 @@ const api = {
     listSettingsSchemas: (): Promise<InstalledNativeExtensionSettingsSchema[]> => {
       return ipcRenderer.invoke("nativeExtensions:listSettingsSchemas")
     },
+    getPreferences: (extensionName: string): Promise<Record<string, unknown>> => {
+      return ipcRenderer.invoke("nativeExtensions:getPreferences", extensionName)
+    },
+    setPreferences: (
+      extensionName: string,
+      nextRecord: Record<string, unknown>
+    ): Promise<Record<string, unknown>> => {
+      return ipcRenderer.invoke("nativeExtensions:setPreferences", extensionName, nextRecord)
+    },
     getCommandPreferences: (
       extensionName: string,
       commandName: string

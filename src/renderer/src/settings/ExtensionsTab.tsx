@@ -205,6 +205,9 @@ export function ExtensionsTab(props: {
   const copy = getSettingsCopy(locale)
   const [models, setModels] = useState<ModelConfig[]>([])
   const [schemas, setSchemas] = useState<InstalledNativeExtensionSettingsSchema[]>([])
+  const [extensionRecords, setExtensionRecords] = useState<Record<string, Record<string, unknown>>>(
+    {}
+  )
   const [commandRecords, setCommandRecords] = useState<Record<string, Record<string, unknown>>>({})
   const [selectedExtName, setSelectedExtName] = useState<string | null>(focusedExtensionName)
   const [search, setSearch] = useState("")
@@ -221,6 +224,12 @@ export function ExtensionsTab(props: {
       const sortedSchemas = [...nextSchemas].sort((left, right) =>
         left.title.localeCompare(right.title)
       )
+      const extensionEntries = await Promise.all(
+        sortedSchemas.map(async (schema) => [
+          schema.extName,
+          await window.api.nativeExtensions.getPreferences(schema.extName)
+        ])
+      )
       const commandEntries = await Promise.all(
         sortedSchemas.flatMap((schema) =>
           schema.commands.map(async (command) => [
@@ -235,6 +244,7 @@ export function ExtensionsTab(props: {
 
       setModels(nextModels)
       setSchemas(sortedSchemas)
+      setExtensionRecords(Object.fromEntries(extensionEntries))
       setCommandRecords(Object.fromEntries(commandEntries))
       setSelectedExtName((current) => {
         if (targetExtensionName) {
@@ -282,6 +292,15 @@ export function ExtensionsTab(props: {
     }
 
     return schemas.filter((schema) => {
+      const extensionPreferenceHaystack = schema.preferences
+        .flatMap((preference) => [
+          preference.title,
+          preference.name,
+          preference.description,
+          preference.label
+        ])
+        .join(" ")
+        .toLowerCase()
       const commandHaystack = schema.commands
         .flatMap((command) => [
           command.title,
@@ -296,6 +315,7 @@ export function ExtensionsTab(props: {
         schema.title.toLowerCase().includes(normalizedQuery) ||
         schema.extName.toLowerCase().includes(normalizedQuery) ||
         schema.description.toLowerCase().includes(normalizedQuery) ||
+        extensionPreferenceHaystack.includes(normalizedQuery) ||
         commandHaystack.includes(normalizedQuery)
       )
     })
@@ -327,6 +347,23 @@ export function ExtensionsTab(props: {
     setCommandRecords((current) => ({
       ...current,
       [recordKey]: nextRecord
+    }))
+  }
+
+  const updateExtensionPreference = async (
+    extensionName: string,
+    preferenceName: string,
+    nextValue: unknown
+  ): Promise<void> => {
+    const currentRecord = extensionRecords[extensionName] ?? {}
+    const nextRecord = await window.api.nativeExtensions.setPreferences(extensionName, {
+      ...currentRecord,
+      [preferenceName]: nextValue
+    })
+
+    setExtensionRecords((current) => ({
+      ...current,
+      [extensionName]: nextRecord
     }))
   }
 
@@ -413,6 +450,18 @@ export function ExtensionsTab(props: {
             </div>
 
             <div className="space-y-3">
+              <PreferenceSection
+                emptyLabel={copy.extensions.noPreferences}
+                modelOptions={modelOptions}
+                onChange={(preferenceName, nextValue) => {
+                  void updateExtensionPreference(selectedSchema.extName, preferenceName, nextValue)
+                }}
+                preferences={selectedSchema.preferences}
+                title={selectedSchema.title}
+                useEnvironmentFallbackLabel={copy.general.useEnvironmentFallback}
+                values={extensionRecords[selectedSchema.extName] ?? {}}
+              />
+
               {selectedSchema.commands.map((command) => (
                 <CommandCard
                   commandName={command.name}
