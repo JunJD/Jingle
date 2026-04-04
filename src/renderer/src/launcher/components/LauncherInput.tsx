@@ -12,17 +12,15 @@ export interface LauncherInputProps extends InputProps {
 function shouldPreserveNativeInputNavigation(
   event: React.KeyboardEvent<HTMLInputElement>
 ): boolean {
-  const isArrowKey =
-    event.key === "ArrowLeft" ||
-    event.key === "ArrowRight" ||
-    event.key === "ArrowUp" ||
-    event.key === "ArrowDown"
-
-  if (!isArrowKey) {
-    return false
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    return true
   }
 
-  return event.metaKey || event.ctrlKey || event.altKey
+  if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+    return event.metaKey || event.ctrlKey || event.altKey
+  }
+
+  return false
 }
 
 export const LauncherInput = forwardRef<LauncherPluginInputElement, LauncherInputProps>(

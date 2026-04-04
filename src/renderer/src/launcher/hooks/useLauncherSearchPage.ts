@@ -230,12 +230,10 @@ export function useLauncherSearchPage(props: {
           })
           break
         case "ArrowDown":
-        case "ArrowRight":
           event.preventDefault()
           moveSelection(1)
           break
         case "ArrowUp":
-        case "ArrowLeft":
           event.preventDefault()
           moveSelection(-1)
           break
