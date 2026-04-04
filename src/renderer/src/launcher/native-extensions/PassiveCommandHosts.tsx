@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react"
-import { LauncherPluginHostProvider } from "../LauncherPluginHostContext"
 import type { LauncherCommandAddress, LauncherCommandOpenOptions } from "../pages/types"
+import { NativeExtensionHostProvider } from "./NativeExtensionHost"
 import { nativeExtensionCommandRegistry } from "./registry"
 
 function PassiveCommandHost(props: {
@@ -69,7 +69,7 @@ function PassiveCommandHost(props: {
               hideLauncher: () => window.api.launcher.hide(),
               openCommand
             },
-            pluginId: extensionName,
+            extensionName,
             seedQuery: ""
           }
         : null,
@@ -81,9 +81,9 @@ function PassiveCommandHost(props: {
   }
 
   return (
-    <LauncherPluginHostProvider value={hostValue}>
+    <NativeExtensionHostProvider value={hostValue}>
       <Component />
-    </LauncherPluginHostProvider>
+    </NativeExtensionHostProvider>
   )
 }
 

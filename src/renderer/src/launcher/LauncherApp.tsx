@@ -15,9 +15,11 @@ import { LauncherPageTransition } from "./components/LauncherPageTransition"
 import { LauncherSearchPage } from "./components/LauncherSearchPage"
 import { useLauncherRouter } from "./hooks/useLauncherRouter"
 import { useLauncherSearchPage } from "./hooks/useLauncherSearchPage"
+import { NativeExtensionHostProvider } from "./native-extensions/NativeExtensionHost"
 import { NativeExtensionPassiveCommandHosts } from "./native-extensions/PassiveCommandHosts"
 import { getLauncherCommandDefinition, getLauncherCommandOwnerId } from "./pages"
 import {
+  isLauncherBuiltInCommandAddress,
   isLauncherCommandRoute,
   isLauncherExtensionCommandRoute,
   isLauncherNoViewPluginCommand,
@@ -74,7 +76,9 @@ export default function LauncherApp(): React.JSX.Element {
 
     return getLauncherCommandDefinition(route)
   }, [route])
-  const activeCommandOwnerId = isLauncherCommandRoute(route) ? getLauncherCommandOwnerId(route) : null
+  const activeCommandOwnerId = isLauncherCommandRoute(route)
+    ? getLauncherCommandOwnerId(route)
+    : null
   const activePluginDefinition = activeCommandRecord?.plugin ?? null
   const activeViewCommand =
     activeCommand && isLauncherViewPluginCommand(activeCommand) ? activeCommand : null
@@ -247,7 +251,7 @@ export default function LauncherApp(): React.JSX.Element {
     }
   }, [activeCommand, route, routeKey])
 
-  const activePluginHost = useMemo(() => {
+  const activeCommandHostBase = useMemo(() => {
     if (!activeCommand || !activePluginDefinition || !isLauncherCommandRoute(route)) {
       return null
     }
@@ -279,7 +283,6 @@ export default function LauncherApp(): React.JSX.Element {
             openCommand
           }
         : undefined,
-      pluginId: activePluginDefinition.manifest.id,
       seedQuery: route.seedQuery,
       surface: capabilities.includes("surface")
         ? {
@@ -320,12 +323,38 @@ export default function LauncherApp(): React.JSX.Element {
     viewportHeight
   ])
 
+  const activeBuiltInHost = useMemo(() => {
+    if (
+      !activeCommandHostBase ||
+      !isLauncherCommandRoute(route) ||
+      !isLauncherBuiltInCommandAddress(route)
+    ) {
+      return null
+    }
+
+    return {
+      ...activeCommandHostBase,
+      pluginId: route.builtInId
+    }
+  }, [activeCommandHostBase, route])
+
+  const activeNativeExtensionHost = useMemo(() => {
+    if (!activeCommandHostBase || !isLauncherExtensionCommandRoute(route)) {
+      return null
+    }
+
+    return {
+      ...activeCommandHostBase,
+      extensionName: route.extensionName
+    }
+  }, [activeCommandHostBase, route])
+
   useEffect(() => {
     latestRouteKeyRef.current = routeKey
   }, [routeKey])
 
   useEffect(() => {
-    if (!activeNoViewCommand || !activePluginHost || !isLauncherCommandRoute(route)) {
+    if (!activeNoViewCommand || !activeCommandHostBase || !isLauncherCommandRoute(route)) {
       return
     }
 
@@ -337,9 +366,9 @@ export default function LauncherApp(): React.JSX.Element {
 
     void Promise.resolve(
       activeNoViewCommand.run({
-        commandPreferences: activePluginHost.commandPreferences,
+        commandPreferences: activeCommandHostBase.commandPreferences,
         initialAction: route.initialAction,
-        navigation: activePluginHost.navigation,
+        navigation: activeCommandHostBase.navigation,
         seedQuery: route.seedQuery
       })
     )
@@ -354,7 +383,7 @@ export default function LauncherApp(): React.JSX.Element {
           closeActivePlugin()
         }
       })
-  }, [activeNoViewCommand, activePluginHost, closeActivePlugin, route, routeKey])
+  }, [activeCommandHostBase, activeNoViewCommand, closeActivePlugin, route, routeKey])
 
   useEffect(() => {
     setViewportHeight(viewportHeight)
@@ -476,8 +505,12 @@ export default function LauncherApp(): React.JSX.Element {
                 title={activeCommandErrorTitle}
               />
             ) : activeViewCommand && ActivePluginComponent ? (
-              activePluginHost ? (
-                <LauncherPluginHostProvider value={activePluginHost}>
+              activeNativeExtensionHost ? (
+                <NativeExtensionHostProvider value={activeNativeExtensionHost}>
+                  <ActivePluginComponent />
+                </NativeExtensionHostProvider>
+              ) : activeBuiltInHost ? (
+                <LauncherPluginHostProvider value={activeBuiltInHost}>
                   <ActivePluginComponent />
                 </LauncherPluginHostProvider>
               ) : (

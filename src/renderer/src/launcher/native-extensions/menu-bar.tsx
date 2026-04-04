@@ -131,7 +131,7 @@ function MenuBarRoot(props: {
 }): null {
   const { children, isLoading = false, title, tooltip } = props
   const host = useNativeExtensionHost()
-  const commandKey = `${host.pluginId}:${host.commandName}`
+  const commandKey = `${host.extensionName}:${host.commandName}`
   const descriptor = useMemo(() => collectMenuBarSections(children), [children])
 
   useEffect(() => {

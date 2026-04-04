@@ -4,6 +4,11 @@ import type { LauncherShellConfig } from "../../../../shared/launcher"
 import type { NativeExtensionInvokeRequest } from "../../../../shared/native-extensions"
 import type { AppCopy } from "@/lib/i18n/messages"
 import type {
+  LauncherResultPresentation,
+  LauncherResultPresentationIcon,
+  LauncherResultPresentationTone
+} from "../result-types"
+import type {
   LauncherCommandAddress,
   LauncherCommandMatch,
   LauncherCommandOpenOptions,
@@ -12,14 +17,13 @@ import type {
   LauncherNoViewCommandRunContext
 } from "../pages/types"
 import {
-  createBuiltLauncherIntentPresentation,
-  useBuiltLauncherPluginClipboard,
-  useBuiltLauncherPluginHost,
-  useBuiltLauncherPluginLifecycle,
-  useBuiltLauncherPluginSurface,
-  useBuiltLauncherPluginThreads,
-  type BuiltLauncherIntentPresentationInput
-} from "../built-plugins/sdk"
+  useNativeExtensionClipboard as useNativeExtensionClipboardBase,
+  useNativeExtensionHost as useNativeExtensionHostBase,
+  useNativeExtensionLifecycle as useNativeExtensionLifecycleBase,
+  useNativeExtensionSurface as useNativeExtensionSurfaceBase,
+  useNativeExtensionThreads as useNativeExtensionThreadsBase,
+  type NativeExtensionHostValue
+} from "./NativeExtensionHost"
 import { useNativeExtensionViewStack } from "./view-stack-context"
 
 export interface NativeExtensionSearchDefinition {
@@ -62,27 +66,41 @@ export interface NativeExtensionNavigation {
   push: (view: ReactNode) => void
 }
 
+export interface NativeExtensionIntentPresentationInput {
+  categoryLabel: string
+  icon: LauncherResultPresentationIcon
+  listActionLabel?: string
+  primaryActionLabel: string
+  tone?: LauncherResultPresentationTone
+}
+
 export function createNativeExtensionIntentPresentation(
-  input: BuiltLauncherIntentPresentationInput
-) {
-  return createBuiltLauncherIntentPresentation(input)
+  input: NativeExtensionIntentPresentationInput
+): LauncherResultPresentation {
+  return {
+    categoryLabel: input.categoryLabel,
+    icon: input.icon,
+    listActionLabel: input.listActionLabel ?? input.primaryActionLabel,
+    primaryActionLabel: input.primaryActionLabel,
+    tone: input.tone ?? "accent"
+  }
 }
 
 export function createNativeExtensionClient<
   TMethods extends Record<string, NativeExtensionClientMethod<unknown, unknown>>
->(pluginId: string, declaredMethods: readonly string[], methods: TMethods) {
+>(extensionName: string, declaredMethods: readonly string[], methods: TMethods) {
   const clientMethodNames = Object.keys(methods)
 
   if (declaredMethods.length !== clientMethodNames.length) {
     throw new Error(
-      `Native extension client "${pluginId}" method count does not match its manifest RPC declaration`
+      `Native extension client "${extensionName}" method count does not match its manifest RPC declaration`
     )
   }
 
   for (const methodName of clientMethodNames) {
     if (!declaredMethods.includes(methodName)) {
       throw new Error(
-        `Native extension client "${pluginId}" implements "${methodName}" but it is not declared in the manifest`
+        `Native extension client "${extensionName}" implements "${methodName}" but it is not declared in the manifest`
       )
     }
   }
@@ -92,7 +110,7 @@ export function createNativeExtensionClient<
       methodName,
       (payload: unknown) =>
         window.api.nativeExtensions.invoke({
-          extensionName: pluginId,
+          extensionName,
           method: methodName,
           payload
         } satisfies NativeExtensionInvokeRequest)
@@ -160,11 +178,11 @@ export function useBackgroundRefresh(
   }, [callback, intervalMs])
 }
 
-export const useNativeExtensionHost = useBuiltLauncherPluginHost
-export const useNativeExtensionLifecycle = useBuiltLauncherPluginLifecycle
-export const useNativeExtensionClipboard = useBuiltLauncherPluginClipboard
-export const useNativeExtensionSurface = useBuiltLauncherPluginSurface
-export const useNativeExtensionThreads = useBuiltLauncherPluginThreads
+export const useNativeExtensionHost = useNativeExtensionHostBase
+export const useNativeExtensionLifecycle = useNativeExtensionLifecycleBase
+export const useNativeExtensionClipboard = useNativeExtensionClipboardBase
+export const useNativeExtensionSurface = useNativeExtensionSurfaceBase
+export const useNativeExtensionThreads = useNativeExtensionThreadsBase
 
 export function useNativeExtensionNavigation(): NativeExtensionNavigation {
   const host = useNativeExtensionHost()
@@ -182,3 +200,5 @@ export function useNativeExtensionNavigation(): NativeExtensionNavigation {
     [host.navigation, stack]
   )
 }
+
+export type { NativeExtensionHostValue }
