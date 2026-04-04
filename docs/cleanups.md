@@ -20,12 +20,14 @@
 ## 当前状态
 
 - `doctor:route-language` 当前还剩 `2 files / 8 matches`
-- `doctor:secrets-boundary` 当前还剩 `github.accessToken`
+- `doctor:secrets-boundary` 当前仍识别到 `github.accessToken` 这个 password preference，但已经确认：
+  - `preferences.ts uses safeStorage: yes`
+  - `preferences.ts hints at dedicated secret helpers: yes`
 
 这两个结果说明：
 
 - route 语言上的 legacy plugin 还没有完全收干净
-- password preference 还没有进入独立 secrets 边界
+- secrets 边界已经立起来了，但 Phase 5 还留着最小迁移逻辑和共模块实现，后续要继续清
 
 ## 清理条目
 
@@ -142,6 +144,35 @@
 - 删除验收：
   - launcher / native extension / settings 主路径不再 import 这里的任何代码
   - 删除后 `npm run check:guardrails && npm run typecheck` 通过
+
+### 11. `src/main/preferences.ts` 里的 secrets 迁移逻辑
+
+- 类型：migration residue
+- 为什么还在：Phase 5 为了把已有明文 password preference 平滑迁到安全存储，没有单开一次“只迁移不读写”的发布阶段
+- 当前作用：
+  - `safeStorage` 加密 password preference
+  - 维护独立 `secrets` store
+  - 首次访问时把旧明文值迁走
+- 不是终局的原因：
+  - `settings` 和 `secrets` 目前还同住一个模块
+  - `migrateLegacyPasswordPreferences()` / `ensureNativeExtensionSecretsMigrated()` 只是过渡逻辑，不该永久留在主路径
+- 删除时机：确认旧明文 token 不再需要兼容之后
+- 删除验收：
+  - `preferences.ts` 不再包含 legacy 明文迁移逻辑
+  - `doctor:secrets-boundary` 继续显示 `safeStorage: yes`
+  - GitHub token 仍能读写，且已打开 command 仍能刷新
+
+### 12. `src/renderer/src/launcher/LauncherApp.tsx` 里的 active command preference 订阅实现
+
+- 类型：phase-local refresh bridge
+- 为什么还在：Phase 5 先把“已打开 command 能感知设置变化”收在 launcher 壳层，避免这一步继续扩到 surface controller
+- 当前作用：监听 `nativeExtensions:preferencesChanged`，在 active extension command 上重新拉取 preferences
+- 不是终局的原因：最终这类刷新语义应该下沉到统一的 extension host / surface controller，而不是继续留在 `LauncherApp`
+- 删除时机：Phase 6 或之后，surface controller / host 统一接管 active command 的 preference lifecycle
+- 删除验收：
+  - `LauncherApp.tsx` 不再手写 preference reload effect
+  - active extension command 在设置变更后仍能刷新
+  - `todo-list`、`github` 等 native extension 行为不回退
 
 ## 使用规则
 

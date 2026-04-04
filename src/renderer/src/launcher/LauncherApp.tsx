@@ -224,30 +224,49 @@ export default function LauncherApp(): React.JSX.Element {
     }
 
     let cancelled = false
+    const loadActiveCommandPreferences = activeCommand.loadCommandPreferences
+    const loadCommandPreferences = (): void => {
+      void loadActiveCommandPreferences()
+        .then((value) => {
+          if (!cancelled) {
+            setActiveCommandPreferencesState({
+              error: null,
+              routeKey,
+              value
+            })
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setActiveCommandPreferencesState({
+              error: error instanceof Error ? error.message : String(error),
+              routeKey,
+              value: null
+            })
+          }
+        })
+    }
 
-    void activeCommand
-      .loadCommandPreferences()
-      .then((value) => {
-        if (!cancelled) {
-          setActiveCommandPreferencesState({
-            error: null,
-            routeKey,
-            value
-          })
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setActiveCommandPreferencesState({
-            error: error instanceof Error ? error.message : String(error),
-            routeKey,
-            value: null
-          })
-        }
-      })
+    loadCommandPreferences()
+    const unsubscribe = window.api.nativeExtensions.onPreferencesChanged((event) => {
+      if (!isLauncherExtensionCommandRoute(route)) {
+        return
+      }
+
+      if (event.extensionName !== route.extensionName) {
+        return
+      }
+
+      if (event.scope === "command" && event.commandName !== route.commandName) {
+        return
+      }
+
+      loadCommandPreferences()
+    })
 
     return () => {
       cancelled = true
+      unsubscribe()
     }
   }, [activeCommand, route, routeKey])
 

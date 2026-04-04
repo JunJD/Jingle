@@ -583,6 +583,7 @@ preferences / secrets 边界收口
 - `password` 类型不再走普通 settings 存储
 - active view command 订阅 preference 变化
 - settings -> command 的回流语义明确
+- secrets 实现优先用 Electron 自带 `safeStorage` 和独立 secrets store，不为这一步引入更重的商业化依赖或权限系统
 
 ### 绝对不做什么
 
@@ -671,13 +672,13 @@ AI core contract 接入
 
 ## 下一步只做什么
 
-下一步只进入 `Phase 4`。
+下一步只进入 `Phase 6`。
 
 也就是：
 
 - 不加新 command
-- 不改 secrets
-- 不补新 UI surface
-- 只把 shell / built-in / native adapter 里的 legacy plugin 语言再往里推一层
+- 不碰 route / secrets / AI contract
+- 只收口 `List / Detail / Form` 的统一 surface controller
+- 把 back button、footer、主动作、`⌘K`、`↵` 的规则收成一套
 
-做完就停，按 Phase 4 的验收口径过一遍。
+做完就停，按 Phase 6 的验收口径过一遍。
