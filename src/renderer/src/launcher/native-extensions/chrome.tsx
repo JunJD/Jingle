@@ -92,3 +92,18 @@ export function NativeSurfaceBackButton(): React.JSX.Element {
     </button>
   )
 }
+
+export function NativeSurfaceHeaderLeading(props: { label?: string }): React.JSX.Element {
+  const { label } = props
+
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <NativeSurfaceBackButton />
+      {label ? (
+        <span className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
+          {label}
+        </span>
+      ) : null}
+    </div>
+  )
+}

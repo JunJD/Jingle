@@ -25,13 +25,8 @@ import {
   type NativeActionStyle,
   OpenInBrowserActionMarker
 } from "./actions"
-import { NativeSurfaceBackButton } from "./chrome"
 import { NativeExtensionSelect } from "./select"
-import {
-  NativeSurfaceActionLayer,
-  NativeSurfaceActionsFooter,
-  useNativeSurfaceActionController
-} from "./surface-actions"
+import { useNativeSurfaceController } from "./surface-actions"
 import { useNativeExtensionSurface } from "./sdk"
 
 interface NativeListItemDescriptor {
@@ -558,7 +553,10 @@ function ListRoot(props: {
 
   const resolvedSearchText = searchText ?? internalSearchText
   const sections = useMemo(
-    () => (filtering ? filterSections(collectSections(children), resolvedSearchText) : collectSections(children)),
+    () =>
+      filtering
+        ? filterSections(collectSections(children), resolvedSearchText)
+        : collectSections(children),
     [children, filtering, resolvedSearchText]
   )
   const emptyView = useMemo(() => collectEmptyView(children), [children])
@@ -582,13 +580,16 @@ function ListRoot(props: {
     : emptyView?.actions.length
       ? emptyView.actions
       : listActions
-  const actionController = useNativeSurfaceActionController({
-    actions: activeActions,
-    primaryActionFallbackTitle: "Open"
-  })
   const footerLabel = selectedItem?.sectionTitle ?? navigationTitle ?? "Results"
   const footerCount =
     items.length > 0 ? `${Math.min(selectedIndex + 1, items.length)} of ${items.length}` : null
+  const surfaceController = useNativeSurfaceController({
+    actions: activeActions,
+    footerCount,
+    footerLabel,
+    headerLabel: navigationTitle,
+    primaryActionFallbackTitle: "Open"
+  })
 
   useEffect(() => {
     if (selectedIndex > items.length - 1) {
@@ -614,38 +615,13 @@ function ListRoot(props: {
       setSelectedIndex((current) => Math.max(current - 1, 0))
       return
     }
-
-    actionController.handleKeyDown(event)
   }
 
   return (
     <div className="relative h-full">
       <LauncherChrome
-        footer={
-          <NativeSurfaceActionsFooter
-            controller={actionController}
-            leading={
-              <>
-                <div className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
-                  {footerLabel}
-                </div>
-                {footerCount ? (
-                  <div className="shrink-0 text-[12px] text-muted-foreground">{footerCount}</div>
-                ) : null}
-              </>
-            }
-          />
-        }
-        headerLeading={
-          <div className="flex min-w-0 items-center gap-3">
-            <NativeSurfaceBackButton />
-            {navigationTitle ? (
-              <span className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
-                {navigationTitle}
-              </span>
-            ) : null}
-          </div>
-        }
+        footer={surfaceController.footer}
+        headerLeading={surfaceController.headerLeading}
         headerTrailing={dropdown ? <NativeListDropdown descriptor={dropdown} /> : null}
         inputRef={surface.inputRef}
         inputValue={resolvedSearchText}
@@ -667,7 +643,7 @@ function ListRoot(props: {
             }}
             onOpenActions={(index) => {
               setSelectedIndex(index)
-              actionController.openActions()
+              surfaceController.actionController.openActions()
             }}
             onSelect={setSelectedIndex}
             sections={sections}
@@ -695,11 +671,11 @@ function ListRoot(props: {
                 {emptyView.actions[0] ? (
                   <button
                     type="button"
-                    onClick={actionController.executePrimaryAction}
+                    onClick={surfaceController.actionController.executePrimaryAction}
                     onMouseDown={(event) => event.preventDefault()}
                     className="inline-flex items-center gap-2 rounded-[10px] border border-border bg-background px-3 py-2 text-[13px] font-medium text-foreground transition hover:bg-background-secondary"
                   >
-                    <span>{actionController.primaryAction?.title ?? "Open"}</span>
+                    <span>{surfaceController.actionController.primaryAction?.title ?? "Open"}</span>
                     <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 ) : null}
@@ -711,7 +687,7 @@ function ListRoot(props: {
         )}
       </LauncherChrome>
 
-      <NativeSurfaceActionLayer controller={actionController} />
+      {surfaceController.actionLayer}
     </div>
   )
 }

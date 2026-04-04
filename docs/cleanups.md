@@ -17,6 +17,7 @@
 
 - `phase-checkpoints` 负责说明下一步做什么
 - `cleanups.md` 负责约束哪些临时层最后必须删掉
+- 当前已经确认、但不属于“临时桥接层”的结构问题，单独记在 [issues.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/issues.md)
 
 ## 清理策略
 
@@ -47,6 +48,12 @@
 
 - route 语言上的 legacy plugin 还没有完全收干净
 - secrets 边界已经立起来了，但 Phase 5 还留着最小迁移逻辑和共模块实现，后续要继续清
+
+另外当前还有一组“不是 cleanup，但会影响 pause 验收可信度”的已确认问题：
+
+- 见 [issues.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/issues.md)
+- 它们不属于“最后统一删除”的桥接层，所以不混在清理条目里
+- 但 Final Cleanup 之前必须确保这些问题已经关闭，否则 cleanup 闸门会失真
 
 ## 清理条目
 

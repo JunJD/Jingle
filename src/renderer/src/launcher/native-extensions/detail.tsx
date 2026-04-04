@@ -8,12 +8,8 @@ import { Streamdown } from "streamdown"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { collectActions } from "./actions"
-import { NativeSurfaceBackButton, NativeSurfaceChrome } from "./chrome"
-import {
-  NativeSurfaceActionLayer,
-  NativeSurfaceActionsFooter,
-  useNativeSurfaceActionController
-} from "./surface-actions"
+import { NativeSurfaceChrome } from "./chrome"
+import { useNativeSurfaceController } from "./surface-actions"
 
 const streamdownPlugins = { cjk, code, math, mermaid }
 
@@ -110,8 +106,9 @@ function DetailRoot(props: {
         : [],
     [actions]
   )
-  const actionController = useNativeSurfaceActionController({
+  const surfaceController = useNativeSurfaceController({
     actions: actionItems,
+    footerLabel: navigationTitle ?? "Detail",
     primaryActionFallbackTitle: "Open"
   })
   const metadataEntries = useMemo(() => collectMetadataEntries(metadata), [metadata])
@@ -119,17 +116,8 @@ function DetailRoot(props: {
   return (
     <div className="relative h-full">
       <NativeSurfaceChrome
-        footer={
-          <NativeSurfaceActionsFooter
-            controller={actionController}
-            leading={
-              <div className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
-                {navigationTitle ?? "Detail"}
-              </div>
-            }
-          />
-        }
-        headerLeading={<NativeSurfaceBackButton />}
+        footer={surfaceController.footer}
+        headerLeading={surfaceController.headerLeading}
         surface="native-detail"
         title={navigationTitle}
       >
@@ -180,7 +168,7 @@ function DetailRoot(props: {
         </ScrollArea>
       </NativeSurfaceChrome>
 
-      <NativeSurfaceActionLayer controller={actionController} />
+      {surfaceController.actionLayer}
     </div>
   )
 }

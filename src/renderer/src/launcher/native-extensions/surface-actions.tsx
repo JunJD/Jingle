@@ -3,6 +3,7 @@ import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { cn } from "@/lib/utils"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import type { NativeActionDescriptor } from "./actions"
+import { NativeSurfaceHeaderLeading } from "./chrome"
 
 function groupActionsBySection(actions: NativeActionDescriptor[]): Array<{
   actions: NativeActionDescriptor[]
@@ -137,6 +138,21 @@ export interface NativeSurfaceActionController {
   showActions: boolean
 }
 
+export interface NativeSurfaceController {
+  actionController: NativeSurfaceActionController
+  actionLayer: React.JSX.Element | null
+  footer: React.JSX.Element
+  headerLeading: React.JSX.Element
+}
+
+function isRichTextInputTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return target instanceof HTMLTextAreaElement || target.isContentEditable
+}
+
 export function useNativeSurfaceActionController(params: {
   actions: NativeActionDescriptor[]
   primaryActionFallbackTitle: string
@@ -184,6 +200,62 @@ export function useNativeSurfaceActionController(params: {
     primaryActionFallbackTitle,
     primaryActionShortcut,
     showActions
+  }
+}
+
+export function useNativeSurfaceController(params: {
+  actions: NativeActionDescriptor[]
+  footerCount?: string | null
+  footerLabel: string
+  headerLabel?: string
+  primaryActionFallbackTitle: string
+}): NativeSurfaceController {
+  const { actions, footerCount, footerLabel, headerLabel, primaryActionFallbackTitle } = params
+  const actionController = useNativeSurfaceActionController({
+    actions,
+    primaryActionFallbackTitle
+  })
+
+  useEffect(() => {
+    if (actionController.showActions) {
+      return
+    }
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented) {
+        return
+      }
+
+      if (event.key === "Enter" && isRichTextInputTarget(event.target)) {
+        return
+      }
+
+      actionController.handleKeyDown(event)
+    }
+
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [actionController])
+
+  return {
+    actionController,
+    actionLayer: <NativeSurfaceActionLayer controller={actionController} />,
+    footer: (
+      <NativeSurfaceActionsFooter
+        controller={actionController}
+        leading={
+          <>
+            <div className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
+              {footerLabel}
+            </div>
+            {footerCount ? (
+              <div className="shrink-0 text-[12px] text-muted-foreground">{footerCount}</div>
+            ) : null}
+          </>
+        }
+      />
+    ),
+    headerLeading: <NativeSurfaceHeaderLeading label={headerLabel} />
   }
 }
 

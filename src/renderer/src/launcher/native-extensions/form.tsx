@@ -1,13 +1,9 @@
 import { Children, isValidElement, useMemo, type ReactNode } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { collectActions } from "./actions"
-import { NativeSurfaceBackButton, NativeSurfaceChrome } from "./chrome"
+import { NativeSurfaceChrome } from "./chrome"
 import { NativeExtensionSelect } from "./select"
-import {
-  NativeSurfaceActionLayer,
-  NativeSurfaceActionsFooter,
-  useNativeSurfaceActionController
-} from "./surface-actions"
+import { useNativeSurfaceController } from "./surface-actions"
 
 type FormDropdownMarkerRole = "form-dropdown-item"
 
@@ -66,25 +62,17 @@ function FormRoot(props: {
         : [],
     [actions]
   )
-  const actionController = useNativeSurfaceActionController({
+  const surfaceController = useNativeSurfaceController({
     actions: actionItems,
+    footerLabel: navigationTitle ?? "Form",
     primaryActionFallbackTitle: "Submit"
   })
 
   return (
     <div className="relative h-full">
       <NativeSurfaceChrome
-        footer={
-          <NativeSurfaceActionsFooter
-            controller={actionController}
-            leading={
-              <div className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
-                {navigationTitle ?? "Form"}
-              </div>
-            }
-          />
-        }
-        headerLeading={<NativeSurfaceBackButton />}
+        footer={surfaceController.footer}
+        headerLeading={surfaceController.headerLeading}
         surface="native-form"
         title={navigationTitle}
       >
@@ -93,7 +81,7 @@ function FormRoot(props: {
         </ScrollArea>
       </NativeSurfaceChrome>
 
-      <NativeSurfaceActionLayer controller={actionController} />
+      {surfaceController.actionLayer}
     </div>
   )
 }

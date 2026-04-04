@@ -16,8 +16,10 @@
 
 ## 相关架构文档
 
+- [launcher-directory-map.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/launcher-directory-map.md)
 - [shortcut-system-architecture.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/shortcut-system-architecture.md)
 - [cleanups.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/cleanups.md)
+- [issues.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/issues.md)
 
 这份文档不是附属说明，而是 launcher 主线的平行基础设施文档。
 
@@ -41,6 +43,12 @@
 - 前几个 pause 为了不一次性炸掉而留下的桥接层，必须登记进去
 - 中途不为了“顺手整洁”提前删，先统一登记，最后专门开一个 cleanup phase 集中处理
 - 最后一轮清理按 `delete-first` 原则做：先删桥，再根据真实报错修目标架构缺陷
+
+`issues.md` 则负责记录当前已经确认的问题：
+
+- 不等“未来重构自然解决”
+- 不混进 cleanup 条目
+- 每个问题都要能落到明确文件和最小修正方向
 
 ## 非目标
 
@@ -762,13 +770,13 @@ AI core contract 接入
 
 ## 下一步只做什么
 
-下一步只进入 `Phase 7`。
+下一步只进入 `Phase 8`。
 
 也就是：
 
-- 不加新 command
-- 不碰 AI contract
-- 只收 `List / Detail / Form` 的统一 surface controller
-- 只解决 surface 行为分叉
+- 不再继续加新 command
+- 不回头扩 surface controller scope
+- 只定义最小 `useAI()` / `compilerSkill` / `registerMcp` / `registerContextProvider` contract
+- 只把 AI 明确成平台原生能力，不把它挂回 extension
 
-做完就停，按 Phase 7 的验收口径过一遍。
+做完就停，按 Phase 8 的验收口径过一遍。
