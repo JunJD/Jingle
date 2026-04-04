@@ -1,8 +1,8 @@
 import type {
-  LauncherPluginCapability,
-  LauncherPluginCommandMode,
-  LauncherPluginManifest
-} from "./launcher-plugin"
+  LauncherCommandMode,
+  LauncherCommandOwnerCapability,
+  LauncherCommandOwnerManifest
+} from "./launcher-command-owner"
 
 export type NativeExtensionCommandMode = "background" | "menu-bar" | "no-view" | "view"
 
@@ -31,7 +31,7 @@ export interface NativeExtensionPackageManifest<
   TExtensionName extends string = string,
   TCommandName extends string = string
 > {
-  capabilities: LauncherPluginCapability[]
+  capabilities: LauncherCommandOwnerCapability[]
   commands: Array<NativeExtensionCommandManifest<TCommandName>>
   defaultCommandName?: TCommandName
   description?: string
@@ -201,13 +201,11 @@ export function validateNativeExtensionPackageManifest(
   }
 }
 
-export function toLauncherPluginManifest(
+export function toLauncherCommandOwnerManifest(
   manifest: NativeExtensionPackageManifest
-): LauncherPluginManifest {
+): LauncherCommandOwnerManifest {
   const launcherCommands = manifest.commands.filter(
-    (
-      command
-    ): command is NativeExtensionCommandManifest<string> & { mode: LauncherPluginCommandMode } =>
+    (command): command is NativeExtensionCommandManifest<string> & { mode: LauncherCommandMode } =>
       command.mode === "view" || command.mode === "no-view"
   )
   const defaultLauncherCommandName =

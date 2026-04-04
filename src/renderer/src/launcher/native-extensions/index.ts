@@ -2,14 +2,14 @@ import { createElement, Fragment, type ComponentType } from "react"
 import {
   getLauncherViewportHeightForBody,
   type LauncherShellConfig
-} from "../../../../shared/launcher"
+} from "@shared/launcher"
 import {
   listMissingRequiredNativeExtensionPreferences,
-  toLauncherPluginManifest
-} from "../../../../shared/native-extensions"
-import { validateLauncherPluginManifest } from "../../../../shared/launcher-plugin"
-import { nativeExtensions } from "../../../../extensions"
-import type { LauncherPluginDefinition } from "../pages/types"
+  toLauncherCommandOwnerManifest
+} from "@shared/native-extensions"
+import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
+import { nativeExtensions } from "@extensions/index"
+import type { LauncherCommandOwnerDefinition } from "../pages/types"
 import type { NativeNoViewCommandModule, NativeViewCommandModule } from "./sdk"
 import { nativeExtensionCommandRegistry } from "./registry"
 import { useNativeExtensionViewStack } from "./view-stack-context"
@@ -56,20 +56,20 @@ function wrapNativeViewCommand(Component: ComponentType): ComponentType {
   return WrappedNativeViewCommand
 }
 
-export const nativeLauncherPlugins = nativeExtensions.reduce<LauncherPluginDefinition[]>(
-  (plugins, extension) => {
+export const nativeLauncherCommandOwners = nativeExtensions.reduce<LauncherCommandOwnerDefinition[]>(
+  (owners, extension) => {
     const routeableCommands = extension.manifest.commands.filter(
       (command) => command.mode === "view" || command.mode === "no-view"
     )
 
     if (routeableCommands.length === 0) {
-      return plugins
+      return owners
     }
 
-    const launcherManifest = toLauncherPluginManifest(extension.manifest)
-    validateLauncherPluginManifest(launcherManifest)
+    const commandOwnerManifest = toLauncherCommandOwnerManifest(extension.manifest)
+    validateLauncherCommandOwnerManifest(commandOwnerManifest)
 
-    plugins.push({
+    owners.push({
       commands: routeableCommands.map((command) => {
         const registryEntry = nativeExtensionCommandRegistryMap.get(
           `${extension.manifest.name}:${command.name}`
@@ -141,10 +141,10 @@ export const nativeLauncherPlugins = nativeExtensions.reduce<LauncherPluginDefin
           run
         }
       }),
-      manifest: launcherManifest
-    } satisfies LauncherPluginDefinition)
+      manifest: commandOwnerManifest
+    } satisfies LauncherCommandOwnerDefinition)
 
-    return plugins
+    return owners
   },
   []
 )

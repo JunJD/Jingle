@@ -22,8 +22,8 @@ import {
   isLauncherBuiltInCommandAddress,
   isLauncherCommandRoute,
   isLauncherExtensionCommandRoute,
-  isLauncherNoViewPluginCommand,
-  isLauncherViewPluginCommand
+  isLauncherNoViewCommand,
+  isLauncherViewCommand
 } from "./pages/types"
 import { invokeThreadMessage } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
@@ -79,11 +79,11 @@ export default function LauncherApp(): React.JSX.Element {
   const activeCommandOwnerId = isLauncherCommandRoute(route)
     ? getLauncherCommandOwnerId(route)
     : null
-  const activePluginDefinition = activeCommandRecord?.plugin ?? null
+  const activeCommandOwner = activeCommandRecord?.owner ?? null
   const activeViewCommand =
-    activeCommand && isLauncherViewPluginCommand(activeCommand) ? activeCommand : null
+    activeCommand && isLauncherViewCommand(activeCommand) ? activeCommand : null
   const activeNoViewCommand =
-    activeCommand && isLauncherNoViewPluginCommand(activeCommand) ? activeCommand : null
+    activeCommand && isLauncherNoViewCommand(activeCommand) ? activeCommand : null
   const ActivePluginComponent = activeViewCommand?.Component ?? null
   const viewportHeight = !isLauncherCommandRoute(route)
     ? searchPage.viewportHeight
@@ -108,8 +108,8 @@ export default function LauncherApp(): React.JSX.Element {
       : null
   const activeCommandError = activeCommandPreferencesLoadError ?? activeCommandValidationError
   const activeManifestCommand =
-    isLauncherCommandRoute(route) && activePluginDefinition
-      ? (activePluginDefinition.manifest.commands.find(
+    isLauncherCommandRoute(route) && activeCommandOwner
+      ? (activeCommandOwner.manifest.commands.find(
           (command) => command.name === route.commandName
         ) ?? null)
       : null
@@ -252,7 +252,7 @@ export default function LauncherApp(): React.JSX.Element {
   }, [activeCommand, route, routeKey])
 
   const activeCommandHostBase = useMemo(() => {
-    if (!activeCommand || !activePluginDefinition || !isLauncherCommandRoute(route)) {
+    if (!activeCommand || !activeCommandOwner || !isLauncherCommandRoute(route)) {
       return null
     }
 
@@ -260,7 +260,7 @@ export default function LauncherApp(): React.JSX.Element {
       return null
     }
 
-    const capabilities = activePluginDefinition.manifest.capabilities
+    const capabilities = activeCommandOwner.manifest.capabilities
 
     return {
       capabilities,
@@ -269,7 +269,7 @@ export default function LauncherApp(): React.JSX.Element {
             clearContext: clipboard.clearContext,
             context: deriveLauncherPluginClipboardContext(
               clipboard.context,
-              activePluginDefinition.manifest.clipboard
+              activeCommandOwner.manifest.clipboard
             )
           }
         : undefined,
@@ -306,7 +306,7 @@ export default function LauncherApp(): React.JSX.Element {
     activeCommand,
     activeCommandError,
     activeCommandPreferences,
-    activePluginDefinition,
+    activeCommandOwner,
     clipboard.clearContext,
     clipboard.context,
     closeActivePlugin,
@@ -374,7 +374,7 @@ export default function LauncherApp(): React.JSX.Element {
     )
       .catch((error) => {
         console.error(
-          `[Launcher] No-view command "${activePluginDefinition?.manifest.id ?? "unknown"}:${route.commandName}" failed:`,
+          `[Launcher] No-view command "${activeCommandOwner?.manifest.id ?? "unknown"}:${route.commandName}" failed:`,
           error
         )
       })
@@ -386,7 +386,7 @@ export default function LauncherApp(): React.JSX.Element {
   }, [
     activeCommandHostBase,
     activeNoViewCommand,
-    activePluginDefinition?.manifest.id,
+    activeCommandOwner?.manifest.id,
     closeActivePlugin,
     route,
     routeKey

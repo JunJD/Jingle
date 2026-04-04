@@ -2,9 +2,9 @@ import { useCallback, useMemo, useState } from "react"
 import { getLauncherCommandDefinition, getLauncherCommandOwnerId } from "../pages"
 import {
   type LauncherCommandAddress,
+  type LauncherCommandDefinition,
   type LauncherCommandOpenOptions,
   isLauncherCommandRoute,
-  type LauncherPluginCommandDefinition,
   LauncherNavigationDirection,
   LauncherRoute
 } from "../pages/types"
@@ -12,7 +12,7 @@ import {
 const HOME_ROUTE: LauncherRoute = { id: "home" }
 
 export function useLauncherRouter(): {
-  activeCommand: LauncherPluginCommandDefinition | null
+  activeCommand: LauncherCommandDefinition | null
   closeActivePlugin: () => void
   navigationDirection: LauncherNavigationDirection
   openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void

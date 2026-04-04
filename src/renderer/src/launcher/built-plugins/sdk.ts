@@ -1,41 +1,41 @@
 import type { ComponentType } from "react"
-import type { AppLocale } from "../../../../shared/i18n"
-import {
-  getLauncherViewportHeightForBody,
-  type LauncherShellConfig
-} from "../../../../shared/launcher"
+import type { AppLocale } from "@shared/i18n"
+import type { LauncherShellConfig } from "@shared/launcher"
+import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import type { AppCopy } from "@/lib/i18n/messages"
 import {
-  useLauncherPluginClipboard,
-  useLauncherPluginHost,
-  useLauncherPluginLifecycle,
-  useLauncherPluginNavigation,
-  useLauncherPluginSurface,
-  useLauncherPluginThreads
-} from "../LauncherPluginHost"
+  useBuiltInLauncherClipboard,
+  useBuiltInLauncherHost,
+  useBuiltInLauncherLifecycle,
+  useBuiltInLauncherNavigation,
+  useBuiltInLauncherSurface,
+  useBuiltInLauncherThreads
+} from "../built-ins/host"
+import {
+  getLauncherViewportHeightForBody
+} from "@shared/launcher"
+import type {
+  LauncherCommandDefinition,
+  LauncherCommandIntent,
+  LauncherCommandMatch,
+  LauncherCommandName,
+  LauncherCommandOwnerDefinition,
+  LauncherCommandOwnerManifest,
+  LauncherCommandParams,
+  LauncherNoViewCommandRunContext
+} from "../pages/types"
 import type {
   LauncherResultPresentation,
   LauncherResultPresentationIcon,
   LauncherResultPresentationTone
 } from "../result-types"
-import type {
-  LauncherCommandIntent,
-  LauncherCommandMatch,
-  LauncherCommandParams,
-  LauncherNoViewCommandRunContext,
-  LauncherPluginCommandDefinition,
-  LauncherCommandName,
-  LauncherPluginDefinition,
-  LauncherPluginManifest,
-} from "../pages/types"
-import { validateLauncherPluginManifest } from "../../../../shared/launcher-plugin"
 
-export interface BuiltLauncherPluginSpec {
-  commands: BuiltLauncherPluginCommandSpec[]
-  manifest: LauncherPluginManifest
+export interface BuiltInCommandOwnerSpec {
+  commands: BuiltInCommandSpec[]
+  manifest: LauncherCommandOwnerManifest
 }
 
-interface BuiltLauncherPluginSearchSpec {
+interface BuiltInCommandSearchSpec {
   commandName: LauncherCommandName
   search?: {
     buildIntentItems?: (context: {
@@ -47,7 +47,7 @@ interface BuiltLauncherPluginSearchSpec {
   }
 }
 
-export interface BuiltLauncherViewPluginCommandSpec extends BuiltLauncherPluginSearchSpec {
+export interface BuiltInViewCommandSpec extends BuiltInCommandSearchSpec {
   Component: ComponentType
   mode: "view"
   viewport:
@@ -59,16 +59,14 @@ export interface BuiltLauncherViewPluginCommandSpec extends BuiltLauncherPluginS
       }
 }
 
-export interface BuiltLauncherNoViewPluginCommandSpec extends BuiltLauncherPluginSearchSpec {
+export interface BuiltInNoViewCommandSpec extends BuiltInCommandSearchSpec {
   mode: "no-view"
   run: (context: LauncherNoViewCommandRunContext) => Promise<void> | void
 }
 
-export type BuiltLauncherPluginCommandSpec =
-  | BuiltLauncherViewPluginCommandSpec
-  | BuiltLauncherNoViewPluginCommandSpec
+export type BuiltInCommandSpec = BuiltInViewCommandSpec | BuiltInNoViewCommandSpec
 
-export interface BuiltLauncherIntentPresentationInput {
+export interface BuiltInIntentPresentationInput {
   categoryLabel: string
   icon: LauncherResultPresentationIcon
   listActionLabel?: string
@@ -76,8 +74,8 @@ export interface BuiltLauncherIntentPresentationInput {
   tone?: LauncherResultPresentationTone
 }
 
-function getBuiltPluginViewportHeight(
-  viewport: BuiltLauncherViewPluginCommandSpec["viewport"]
+function getBuiltInViewportHeight(
+  viewport: BuiltInViewCommandSpec["viewport"]
 ): (shellConfig: LauncherShellConfig) => number {
   if ("getHeight" in viewport) {
     return viewport.getHeight
@@ -86,9 +84,7 @@ function getBuiltPluginViewportHeight(
   return (shellConfig) => getLauncherViewportHeightForBody(viewport.bodyHeight, shellConfig)
 }
 
-function resolveBuiltPluginCommandDefinition(
-  command: BuiltLauncherPluginCommandSpec
-): LauncherPluginCommandDefinition {
+function resolveBuiltInCommandDefinition(command: BuiltInCommandSpec): LauncherCommandDefinition {
   const baseDefinition = {
     buildIntentItems: command.search?.buildIntentItems,
     commandName: command.commandName,
@@ -99,7 +95,7 @@ function resolveBuiltPluginCommandDefinition(
     return {
       ...baseDefinition,
       Component: command.Component,
-      getViewportHeight: getBuiltPluginViewportHeight(command.viewport),
+      getViewportHeight: getBuiltInViewportHeight(command.viewport),
       mode: command.mode
     }
   }
@@ -111,8 +107,8 @@ function resolveBuiltPluginCommandDefinition(
   }
 }
 
-function validateBuiltLauncherPluginSpec(spec: BuiltLauncherPluginSpec): void {
-  validateLauncherPluginManifest(spec.manifest)
+function validateBuiltInCommandOwnerSpec(spec: BuiltInCommandOwnerSpec): void {
+  validateLauncherCommandOwnerManifest(spec.manifest)
   const manifestCommandMap = new Map(
     spec.manifest.commands.map((command) => [command.name, command] as const)
   )
@@ -121,7 +117,7 @@ function validateBuiltLauncherPluginSpec(spec: BuiltLauncherPluginSpec): void {
   for (const command of spec.commands) {
     if (rendererCommandNames.has(command.commandName)) {
       throw new Error(
-        `Launcher plugin "${spec.manifest.id}" declares duplicate renderer command "${command.commandName}"`
+        `Built-in command owner "${spec.manifest.id}" declares duplicate renderer command "${command.commandName}"`
       )
     }
 
@@ -129,13 +125,13 @@ function validateBuiltLauncherPluginSpec(spec: BuiltLauncherPluginSpec): void {
 
     if (!manifestCommand) {
       throw new Error(
-        `Launcher plugin "${spec.manifest.id}" renderer command "${command.commandName}" is missing from its manifest`
+        `Built-in command owner "${spec.manifest.id}" renderer command "${command.commandName}" is missing from its manifest`
       )
     }
 
     if (manifestCommand.mode !== command.mode) {
       throw new Error(
-        `Launcher plugin "${spec.manifest.id}" command "${command.commandName}" mode "${command.mode}" does not match manifest mode "${manifestCommand.mode}"`
+        `Built-in command owner "${spec.manifest.id}" command "${command.commandName}" mode "${command.mode}" does not match manifest mode "${manifestCommand.mode}"`
       )
     }
 
@@ -144,22 +140,24 @@ function validateBuiltLauncherPluginSpec(spec: BuiltLauncherPluginSpec): void {
 
   if (rendererCommandNames.size !== manifestCommandMap.size) {
     throw new Error(
-      `Launcher plugin "${spec.manifest.id}" manifest and renderer commands are out of sync`
+      `Built-in command owner "${spec.manifest.id}" manifest and renderer commands are out of sync`
     )
   }
 }
 
-export function defineBuiltLauncherPlugin(spec: BuiltLauncherPluginSpec): LauncherPluginDefinition {
-  validateBuiltLauncherPluginSpec(spec)
+export function defineBuiltInCommandOwner(
+  spec: BuiltInCommandOwnerSpec
+): LauncherCommandOwnerDefinition {
+  validateBuiltInCommandOwnerSpec(spec)
 
   return {
-    commands: spec.commands.map((command) => resolveBuiltPluginCommandDefinition(command)),
+    commands: spec.commands.map((command) => resolveBuiltInCommandDefinition(command)),
     manifest: spec.manifest
   }
 }
 
-export function createBuiltLauncherIntentPresentation(
-  input: BuiltLauncherIntentPresentationInput
+export function createBuiltInIntentPresentation(
+  input: BuiltInIntentPresentationInput
 ): LauncherResultPresentation {
   return {
     categoryLabel: input.categoryLabel,
@@ -170,14 +168,14 @@ export function createBuiltLauncherIntentPresentation(
   }
 }
 
-export function useBuiltLauncherPluginHost() {
-  return useLauncherPluginHost()
+export function useBuiltInHost() {
+  return useBuiltInLauncherHost()
 }
 
-export const useBuiltLauncherPluginLifecycle = useLauncherPluginLifecycle
-export const useBuiltLauncherPluginClipboard = useLauncherPluginClipboard
-export const useBuiltLauncherPluginNavigation = useLauncherPluginNavigation
-export const useBuiltLauncherPluginSurface = useLauncherPluginSurface
-export const useBuiltLauncherPluginThreads = useLauncherPluginThreads
+export const useBuiltInLifecycle = useBuiltInLauncherLifecycle
+export const useBuiltInClipboard = useBuiltInLauncherClipboard
+export const useBuiltInNavigation = useBuiltInLauncherNavigation
+export const useBuiltInSurface = useBuiltInLauncherSurface
+export const useBuiltInThreads = useBuiltInLauncherThreads
 
 export type { LauncherResultPresentationIcon, LauncherResultPresentationTone }

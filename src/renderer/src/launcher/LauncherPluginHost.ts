@@ -4,11 +4,12 @@ import type { LauncherShellConfig } from "../../../shared/launcher"
 import type { LauncherClipboardState } from "./LauncherClipboardContext"
 import type { LauncherInputStatus } from "./launcher-input-status"
 import type {
-  LauncherPluginCommandInitialAction,
-  LauncherPluginCommandName,
-  LauncherPluginNavigation,
-  LauncherPluginId
+  LauncherCommandInitialAction,
+  LauncherCommandName,
+  LauncherCommandNavigation
 } from "./pages/types"
+
+export type LauncherPluginId = string & {}
 
 export type LauncherPluginInputElement = HTMLInputElement | HTMLTextAreaElement
 
@@ -42,10 +43,10 @@ export interface LauncherPluginThreadSubmitInput {
 export interface LauncherPluginHostValue {
   capabilities: readonly LauncherPluginCapability[]
   clipboard?: Pick<LauncherClipboardState, "clearContext" | "context">
-  commandName: LauncherPluginCommandName
+  commandName: LauncherCommandName
   commandPreferences: Record<string, unknown>
-  initialAction: LauncherPluginCommandInitialAction
-  navigation?: LauncherPluginNavigation
+  initialAction: LauncherCommandInitialAction
+  navigation?: LauncherCommandNavigation
   pluginId: LauncherPluginId
   seedQuery: string
   surface?: LauncherPluginSurface
@@ -99,7 +100,7 @@ export function useLauncherPluginClipboard(): NonNullable<LauncherPluginHostValu
   return requireLauncherPluginCapability(host, "clipboard", host.clipboard)
 }
 
-export function useLauncherPluginNavigation(): LauncherPluginNavigation {
+export function useLauncherPluginNavigation(): LauncherCommandNavigation {
   const host = useLauncherPluginHost()
   return requireLauncherPluginCapability(host, "navigation", host.navigation)
 }

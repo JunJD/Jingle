@@ -143,6 +143,11 @@ export function useNativeCommandPreferences<T extends object>() {
   return host.commandPreferences as T
 }
 
+export function useCommandSeedQuery(): string {
+  const host = useNativeExtensionHost()
+  return host.seedQuery
+}
+
 export function useBackgroundRefresh(
   callback: () => void | Promise<void>,
   intervalMs: number | null | undefined

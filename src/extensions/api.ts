@@ -4,15 +4,14 @@ export { MenuBarExtra } from "../renderer/src/launcher/native-extensions/menu-ba
 export { List, ActionPanel, Action } from "../renderer/src/launcher/native-extensions/ui"
 export { useI18n } from "../renderer/src/lib/i18n"
 export {
+  useCommandSeedQuery,
   createNativeExtensionClient,
   createNativeExtensionIntentPresentation,
   defineNativeExtensionClientMethod,
   useBackgroundRefresh,
   useNativeCommandPreferences,
   useNativeExtensionClipboard,
-  useNativeExtensionHost,
   useNativeExtensionLifecycle,
   useNativeExtensionNavigation,
-  useNativeExtensionSurface,
   useNativeExtensionThreads
 } from "../renderer/src/launcher/native-extensions/sdk"

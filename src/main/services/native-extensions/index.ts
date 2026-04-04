@@ -1,14 +1,14 @@
 import {
   type InstalledNativeExtensionSettingsSchema,
   type NativeExtensionInvokeRequest,
-  toInstalledNativeExtensionSettingsSchema
+  toInstalledNativeExtensionSettingsSchema,
+  toLauncherCommandOwnerManifest
 } from "../../../shared/native-extensions"
 import { nativeExtensions } from "../../../extensions"
 import {
   hasLauncherPluginCapability,
   validateLauncherPluginManifest
 } from "../../../shared/launcher-plugin"
-import { toLauncherPluginManifest } from "../../../shared/native-extensions"
 import type { NativeExtensionService } from "./sdk"
 import { nativeExtensionServiceRegistry } from "./registry"
 
@@ -29,7 +29,7 @@ const nativeExtensionDefinitionMap = new Map(
 )
 
 for (const definition of nativeExtensionDefinitions) {
-  const launcherManifest = toLauncherPluginManifest(definition.manifest)
+  const launcherManifest = toLauncherCommandOwnerManifest(definition.manifest)
   validateLauncherPluginManifest(launcherManifest)
   const manifestRpcMethods = launcherManifest.rpcMethods ?? []
 

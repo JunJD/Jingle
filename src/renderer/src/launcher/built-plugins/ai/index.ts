@@ -2,13 +2,13 @@ import {
   AI_CHAT_COMMAND_NAME,
   AI_INTENT_ID,
   AI_RESULT_KIND,
-  aiLauncherPluginManifest
+  aiBuiltInCommandManifest
 } from "../../../../../plugins/ai/manifest"
 import { LauncherAiPage } from "../../pages/LauncherAiPage"
 import { getAiPageViewportHeight } from "../../pages/ai-config"
-import { defineBuiltLauncherPlugin } from "../sdk"
+import { defineBuiltInCommandOwner } from "../sdk"
 
-export const aiLauncherPlugin = defineBuiltLauncherPlugin({
+export const aiBuiltInCommandOwner = defineBuiltInCommandOwner({
   commands: [
     {
       Component: LauncherAiPage,
@@ -50,5 +50,5 @@ export const aiLauncherPlugin = defineBuiltLauncherPlugin({
       }
     }
   ],
-  manifest: aiLauncherPluginManifest
+  manifest: aiBuiltInCommandManifest
 })

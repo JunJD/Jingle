@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useI18n, useNativeCommandPreferences, useNativeExtensionHost } from "../../api"
+import { useCommandSeedQuery, useI18n, useNativeCommandPreferences } from "../../api"
 import { translateClient } from "./api"
 import {
   TRANSLATE_LANGUAGE_OPTIONS,
@@ -31,13 +31,13 @@ export function useTranslate(): {
   translatedText: string
 } {
   const { locale } = useI18n()
-  const host = useNativeExtensionHost()
+  const seedQuery = useCommandSeedQuery()
   const preferences = useNativeCommandPreferences<TranslateCommandPreferences>()
   const requestRef = useRef(0)
   const copyResetTimerRef = useRef<number | null>(null)
   const initialSeedState = useMemo(
-    () => parseTranslateSeedQuery(host.seedQuery, locale),
-    [host.seedQuery, locale]
+    () => parseTranslateSeedQuery(seedQuery, locale),
+    [seedQuery, locale]
   )
   const [sourceText, setSourceTextState] = useState(initialSeedState.sourceText)
   const [sourceLanguageId, setSourceLanguageIdState] = useState(initialSeedState.sourceLanguageId)

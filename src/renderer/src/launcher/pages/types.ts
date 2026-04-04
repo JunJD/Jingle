@@ -2,9 +2,9 @@ import type { ComponentType } from "react"
 import type { AppLocale } from "@shared/i18n"
 import type { LauncherShellConfig } from "@shared/launcher"
 import type {
-  LauncherPluginCommandMode as SharedLauncherPluginCommandMode,
-  LauncherPluginManifest as SharedLauncherPluginManifest
-} from "@shared/launcher-plugin"
+  LauncherCommandMode as SharedLauncherCommandMode,
+  LauncherCommandOwnerManifest as SharedLauncherCommandOwnerManifest
+} from "@shared/launcher-command-owner"
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { LauncherResultPresentation, LauncherShellItemKind } from "../result-types"
 
@@ -83,27 +83,24 @@ export interface LauncherCommandParams {
   shiftKey: boolean
 }
 
-export type LauncherPluginId = string & {}
-export type LauncherPluginCommandName = LauncherCommandName
-export type LauncherPluginCommandAddress = LauncherCommandAddress
-export type LauncherPluginRoute = LauncherExtensionCommandRoute
-export type LauncherPluginCommandInitialAction = LauncherCommandInitialAction
-export type LauncherPluginNavigation = LauncherCommandNavigation
-export type LauncherPluginOpenOptions = LauncherCommandOpenOptions
-export type LauncherPluginIntent = LauncherCommandIntent
-export type LauncherResolvedPluginIntent = LauncherResolvedCommandIntent
-export type LauncherPluginCommandMatch = LauncherCommandMatch
-export type LauncherPluginCommandParams = LauncherCommandParams
-export type LauncherNoViewPluginRunContext = LauncherNoViewCommandRunContext
-
-export type LauncherPluginManifest = SharedLauncherPluginManifest<
-  LauncherPluginId,
-  LauncherPluginCommandName
+export type LauncherBuiltInManifest = SharedLauncherCommandOwnerManifest<
+  LauncherBuiltInId,
+  LauncherCommandName
 >
 
-export type LauncherPluginCommandMode = SharedLauncherPluginCommandMode
+export type LauncherExtensionManifest = SharedLauncherCommandOwnerManifest<
+  LauncherExtensionName,
+  LauncherCommandName
+>
 
-interface LauncherPluginSearchDefinition {
+export type LauncherCommandOwnerManifest = SharedLauncherCommandOwnerManifest<
+  string,
+  LauncherCommandName
+>
+
+export type LauncherCommandMode = SharedLauncherCommandMode
+
+interface LauncherCommandSearchDefinition {
   buildIntentItems?: (params: {
     copy: AppCopy
     locale: AppLocale
@@ -122,36 +119,34 @@ export interface LauncherNoViewCommandRunContext {
   seedQuery: string
 }
 
-export interface LauncherViewPluginCommandDefinition extends LauncherPluginSearchDefinition {
+export interface LauncherViewCommandDefinition extends LauncherCommandSearchDefinition {
   Component: ComponentType
   getViewportHeight: (shellConfig: LauncherShellConfig) => number
   mode: "view"
 }
 
-export interface LauncherNoViewPluginCommandDefinition extends LauncherPluginSearchDefinition {
+export interface LauncherNoViewCommandDefinition extends LauncherCommandSearchDefinition {
   mode: "no-view"
   run: (context: LauncherNoViewCommandRunContext) => Promise<void> | void
 }
 
-export type LauncherPluginCommandDefinition =
-  | LauncherViewPluginCommandDefinition
-  | LauncherNoViewPluginCommandDefinition
+export type LauncherCommandDefinition = LauncherViewCommandDefinition | LauncherNoViewCommandDefinition
 
-export function isLauncherViewPluginCommand(
-  command: LauncherPluginCommandDefinition
-): command is LauncherViewPluginCommandDefinition {
+export function isLauncherViewCommand(
+  command: LauncherCommandDefinition
+): command is LauncherViewCommandDefinition {
   return command.mode === "view"
 }
 
-export function isLauncherNoViewPluginCommand(
-  command: LauncherPluginCommandDefinition
-): command is LauncherNoViewPluginCommandDefinition {
+export function isLauncherNoViewCommand(
+  command: LauncherCommandDefinition
+): command is LauncherNoViewCommandDefinition {
   return command.mode === "no-view"
 }
 
-export interface LauncherPluginDefinition {
-  commands: LauncherPluginCommandDefinition[]
-  manifest: LauncherPluginManifest
+export interface LauncherCommandOwnerDefinition {
+  commands: LauncherCommandDefinition[]
+  manifest: LauncherCommandOwnerManifest
 }
 
 export function isLauncherExtensionCommandAddress(
@@ -170,10 +165,6 @@ export function isLauncherExtensionCommandRoute(
   route: LauncherRoute
 ): route is LauncherExtensionCommandRoute {
   return "kind" in route && route.kind === "extension-command"
-}
-
-export function isLauncherPluginRoute(route: LauncherRoute): route is LauncherPluginRoute {
-  return isLauncherExtensionCommandRoute(route)
 }
 
 export function isLauncherCommandRoute(route: LauncherRoute): route is LauncherCommandRoute {

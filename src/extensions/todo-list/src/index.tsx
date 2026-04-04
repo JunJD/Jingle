@@ -4,8 +4,8 @@ import {
   Action,
   ActionPanel,
   List,
-  useNativeCommandPreferences,
-  useNativeExtensionHost
+  useCommandSeedQuery,
+  useNativeCommandPreferences
 } from "../../api"
 
 type SortOrder =
@@ -91,9 +91,9 @@ function extractFirstUrl(value: string): string | null {
 }
 
 export default function TodoList(): React.JSX.Element {
-  const host = useNativeExtensionHost()
+  const seedQuery = useCommandSeedQuery()
   const preferences = useNativeCommandPreferences<TodoListPreferences>()
-  const [searchText, setSearchText] = useState(host.seedQuery)
+  const [searchText, setSearchText] = useState(seedQuery)
   const [todos, setTodos] = useState<TodoItem[]>(() => readTodos())
 
   useEffect(() => {

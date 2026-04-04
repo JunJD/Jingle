@@ -26,3 +26,5 @@ export const aiLauncherPluginManifest: LauncherPluginManifest<
   displayName: "AI",
   id: AI_LAUNCHER_PLUGIN_ID
 }
+
+export const aiBuiltInCommandManifest = aiLauncherPluginManifest

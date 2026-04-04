@@ -45,7 +45,7 @@ export interface NativeExtensionViewModule {
 
 export interface NativeExtensionNoViewModule {
   default: (
-    context: import("../pages/types").LauncherNoViewPluginRunContext
+    context: import("../pages/types").LauncherNoViewCommandRunContext
   ) => Promise<void> | void
 }
 

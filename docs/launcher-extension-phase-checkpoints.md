@@ -528,6 +528,43 @@ NativeExtensionHost 脱离 LauncherPluginHost
 
 ### 名称
 
+shell contract 去 legacy plugin 语言
+
+### 目标
+
+让 `launcher-shell / built-in / native extension adapter` 这层不再把 `LauncherPlugin*` 当第一语言。
+
+### 只做什么
+
+- 把 `pages/**` 里的核心类型收成 `command owner / command definition`
+- built-in AI 和 native extension adapter 不再以 `LauncherPluginDefinition` 为公开契约
+- 把旧 `LauncherPlugin*` 语言往 host / 兼容边界里推，不再留在 shell 主路径
+
+### 绝对不做什么
+
+- 不改 secrets 存储
+- 不重写 AI 页面
+- 不改 `List / Detail / Form`
+- 不搬目录
+
+### 代码边界
+
+- `src/renderer/src/launcher/pages/**`
+- `src/renderer/src/launcher/built-plugins/**`
+- `src/renderer/src/launcher/native-extensions/index.ts`
+- `src/shared/native-extensions.ts`
+
+### 暂停点验收
+
+- `AI / Todo List / GitHub` 仍然能搜索、打开、跳转
+- `pages/**`、`built-plugins/**`、`native-extensions/index.ts` 不再把 `LauncherPlugin*` 当公开主契约
+- `npm run doctor:route-language` 告警数量明显下降
+- `npm run check:guardrails && npm run typecheck` 通过
+
+## Phase 5
+
+### 名称
+
 preferences / secrets 边界收口
 
 ### 目标
@@ -559,7 +596,7 @@ preferences / secrets 边界收口
 - `npm run doctor:secrets-boundary` 告警收敛
 - `npm run check:guardrails && npm run typecheck` 通过
 
-## Phase 5
+## Phase 6
 
 ### 名称
 
@@ -592,7 +629,7 @@ surface controller 收口
 - 改一个 footer 规则，不需要改三处
 - `npm run check:guardrails && npm run typecheck` 通过
 
-## Phase 6
+## Phase 7
 
 ### 名称
 
@@ -627,13 +664,13 @@ AI core contract 接入
 
 ## 下一步只做什么
 
-下一步只进入 `Phase 1`。
+下一步只进入 `Phase 4`。
 
 也就是：
 
 - 不加新 command
+- 不改 secrets
 - 不补新 UI surface
-- 不改 settings
-- 只把 native extension 的路由和打开语义从 `plugin-first` 往 `extension-command-first` 推进一步
+- 只把 shell / built-in / native adapter 里的 legacy plugin 语言再往里推一层
 
-做完就停，按 Phase 1 的验收口径过一遍。
+做完就停，按 Phase 4 的验收口径过一遍。
