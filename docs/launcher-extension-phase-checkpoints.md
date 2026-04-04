@@ -17,6 +17,7 @@
 ## 相关架构文档
 
 - [launcher-directory-map.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/launcher-directory-map.md)
+- [launcher-ai-extension-architecture.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/launcher-ai-extension-architecture.md)
 - [shortcut-system-architecture.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/shortcut-system-architecture.md)
 - [cleanups.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/cleanups.md)
 - [issues.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/issues.md)
@@ -112,12 +113,12 @@ launcher-shell -> ai-core
 
 当前主要对应：
 
-- `src/renderer/src/launcher/LauncherApp.tsx`
-- `src/renderer/src/launcher/components/**`
-- `src/renderer/src/launcher/hooks/**`
-- `src/renderer/src/launcher/home-surface.ts`
-- `src/renderer/src/launcher/search-items.ts`
-- `src/renderer/src/launcher/pages/**`
+- `src/renderer/src/launcher-shell/LauncherApp.tsx`
+- `src/renderer/src/launcher-components/**`
+- `src/renderer/src/launcher-shell/hooks/**`
+- `src/renderer/src/launcher-shell/home-surface.ts`
+- `src/renderer/src/launcher-shell/search-items.ts`
+- `src/renderer/src/launcher-shell/pages/**`
 
 职责：
 
@@ -138,7 +139,7 @@ launcher-shell -> ai-core
 
 当前主要对应：
 
-- `src/renderer/src/launcher/native-extensions/**`
+- `src/renderer/src/extension-host/**`
 - `src/main/services/native-extensions/**`
 - `src/main/preferences.ts` 里和 extension settings/secrets 直接相关的部分
 
@@ -216,71 +217,60 @@ launcher-shell -> ai-core
 
 ### launcher-shell 里的文件该怎么放
 
-`src/renderer/src/launcher/LauncherApp.tsx`
+`src/renderer/src/launcher-shell/LauncherApp.tsx`
 
 - 只放 launcher 窗口根组件
 - 只编排 shell、route、host 接线
 - 不写 extension surface 细节
 
-`src/renderer/src/launcher/components/*`
+`src/renderer/src/launcher-components/*`
 
 - 只放 launcher 自己的壳层组件
 - 例如 input、footer、search page、history grid
 - 不能成为 extension SDK 的直接实现入口
 
-`src/renderer/src/launcher/hooks/*`
+`src/renderer/src/launcher-shell/hooks/*`
 
 - 只放 launcher 自己的状态和交互 hooks
 - 例如 root search、router、clipboard preview
 - extension 不应直接 import
 
-`src/renderer/src/launcher/pages/*`
+`src/renderer/src/launcher-shell/pages/*`
 
 - 只放 launcher route 类型、built-in command 定义、route registry
 - 这里后续应该只保留 built-in command 和 route 语义
 - native extension 不该继续在这里伪装成 `internal-plugin`
 
-`src/renderer/src/launcher/built-plugins/*`
-
-- 临时区，只允许平台内建能力
-- 当前主要是 AI
-- 不允许再接新的 native extension
-
-`src/renderer/src/launcher/external-runtime/*`
-
-- 冻结区，未来兼容外部 Raycast extension 时再看
-- 不参与当前 native extension 主线
-
 ### extension-host 里的文件该怎么放
 
-`src/renderer/src/launcher/native-extensions/index.ts`
+`src/renderer/src/extension-host/index.ts`
 
 - 只做 native extension host 的 renderer 侧入口
 - 不做 root search 组装
 
-`src/renderer/src/launcher/native-extensions/sdk.ts`
+`src/renderer/src/extension-host/sdk.ts`
 
 - 放 native host 提供给 SDK 的桥
 - Phase 2 后不应继续直接复用旧 `LauncherPlugin*`
 
-`src/renderer/src/launcher/native-extensions/ui.tsx`
+`src/renderer/src/extension-host/ui.tsx`
 
 - `List / Section / Item / ActionPanel / Action`
 - 这里只做 extension surface，不做 launcher 首页列表
 
-`src/renderer/src/launcher/native-extensions/detail.tsx`
+`src/renderer/src/extension-host/detail.tsx`
 
 - `Detail` surface
 
-`src/renderer/src/launcher/native-extensions/form.tsx`
+`src/renderer/src/extension-host/form.tsx`
 
 - `Form` surface
 
-`src/renderer/src/launcher/native-extensions/menu-bar.tsx`
+`src/renderer/src/extension-host/menu-bar.tsx`
 
 - `MenuBarExtra` surface
 
-`src/renderer/src/launcher/native-extensions/view-stack*.ts*`
+`src/renderer/src/extension-host/view-stack*.ts*`
 
 - extension 内部 view stack
 - 不处理 launcher root route
@@ -394,8 +384,8 @@ launcher-shell -> ai-core
 
 1. `src/extensions/*` 只能 import `src/extensions/api.ts` 和 `shared/*`
 2. `src/extensions/*` 不再新增对 `LauncherPlugin*` 的依赖
-3. `src/renderer/src/launcher/built-plugins/*` 不再承接新的 native extension
-4. `src/renderer/src/launcher/external-runtime/*` 先冻结
+3. 不再新增任何 `launcher-legacy` 或同类临时目录
+4. 外部 extension compat 不参与当前 native extension 主线
 5. `Main` 页面不参与当前架构前提
 6. 快捷键绑定最终走统一 command/registry，不再允许页面各自长 `window.addEventListener("keydown")`
 
@@ -468,10 +458,10 @@ npm run check:extension-registry
 
 ### 代码边界
 
-- `src/renderer/src/launcher/pages/**`
-- `src/renderer/src/launcher/hooks/useLauncherRouter.ts`
-- `src/renderer/src/launcher/search-items.ts`
-- `src/renderer/src/launcher/home-surface.ts`
+- `src/renderer/src/launcher-shell/pages/**`
+- `src/renderer/src/launcher-shell/hooks/useLauncherRouter.ts`
+- `src/renderer/src/launcher-shell/search-items.ts`
+- `src/renderer/src/launcher-shell/home-surface.ts`
 - `src/extensions/github/**` 里少量 `openCommand()` 调用
 
 ### 暂停点验收
@@ -505,7 +495,7 @@ NativeExtensionHost 脱离 LauncherPluginHost
 
 ### 代码边界
 
-- `src/renderer/src/launcher/native-extensions/**`
+- `src/renderer/src/extension-host/**`
 - `src/renderer/src/launcher/LauncherPluginHost*.ts*`
 - `src/extensions/api.ts`
 
@@ -546,7 +536,7 @@ NativeExtensionHost 脱离 LauncherPluginHost
 - `src/extensions/*/renderer.ts`
 - `src/extensions/*/main.ts`
 - `src/main/services/native-extensions/index.ts`
-- `src/renderer/src/launcher/native-extensions/index.ts`
+- `src/renderer/src/extension-host/index.ts`
 
 ### 暂停点验收
 
@@ -582,9 +572,8 @@ shell contract 去 legacy plugin 语言
 
 ### 代码边界
 
-- `src/renderer/src/launcher/pages/**`
-- `src/renderer/src/launcher/built-plugins/**`
-- `src/renderer/src/launcher/native-extensions/index.ts`
+- `src/renderer/src/launcher-shell/pages/**`
+- `src/renderer/src/extension-host/index.ts`
 - `src/shared/native-extensions.ts`
 
 ### 暂停点验收
@@ -621,7 +610,7 @@ preferences / secrets 边界收口
 - `src/main/preferences.ts`
 - `src/main/services/native-extensions/**`
 - `src/renderer/src/settings/**`
-- `src/renderer/src/launcher/native-extensions/**`
+- `src/renderer/src/extension-host/**`
 
 ### 暂停点验收
 
@@ -661,7 +650,7 @@ extension declaration 收口
 - `src/extensions/*/renderer.ts`
 - `src/extensions/*/main.ts`
 - `src/main/services/native-extensions/index.ts`
-- `src/renderer/src/launcher/native-extensions/index.ts`
+- `src/renderer/src/extension-host/index.ts`
 
 ### 暂停点验收
 
@@ -692,11 +681,11 @@ surface controller 收口
 
 ### 代码边界
 
-- `src/renderer/src/launcher/native-extensions/ui.tsx`
-- `src/renderer/src/launcher/native-extensions/detail.tsx`
-- `src/renderer/src/launcher/native-extensions/form.tsx`
-- `src/renderer/src/launcher/native-extensions/chrome.tsx`
-- `src/renderer/src/launcher/native-extensions/surface-actions.tsx`
+- `src/renderer/src/extension-host/ui.tsx`
+- `src/renderer/src/extension-host/detail.tsx`
+- `src/renderer/src/extension-host/form.tsx`
+- `src/renderer/src/extension-host/chrome.tsx`
+- `src/renderer/src/extension-host/surface-actions.tsx`
 
 ### 暂停点验收
 
@@ -717,24 +706,29 @@ AI core contract 接入
 ### 只做什么
 
 - 定义最小 `useAI()` contract
-- 定义 `compilerSkill`、`registerMcp`、`registerContextProvider` 的最小接口
-- 不急着把全部实现打通
+- 先只支持 tool 注册
+- 把 AI 页面、AI host、旧 Main 页面目录一起收进 `ai-core`
 
 ### 绝对不做什么
 
 - 不把 AI 降成 extension
 - 不把 extension runtime 和 AI runtime 混成一个上下文
+- 不急着把 `compilerSkill / registerMcp / registerContextProvider` 一次做完
 
 ### 代码边界
 
 - `src/extensions/api.ts`
-- 新的 `src/ai-core/**`
-- 必要的 host bridge
+- `src/renderer/src/ai-core/**`
+- `src/renderer/src/launcher-shell/LauncherApp.tsx`
+- `src/renderer/src/extension-host/**`
+- 必要的 host bridge 和 alias 更新
 
 ### 暂停点验收
 
 - extension 可以通过 SDK 看到 `useAI()` 的稳定接口
+- `useAI()` 已能注册 tool，但不要求完整 agent runtime
 - AI 仍然是平台原生能力，不需要作为 extension 注册
+- `LauncherAiPage` 不再依赖 legacy `LauncherPluginHost`
 - `npm run check:guardrails && npm run typecheck` 通过
 
 ## Final Cleanup
@@ -770,13 +764,10 @@ AI core contract 接入
 
 ## 下一步只做什么
 
-下一步只进入 `Phase 8`。
+下一步不再扩新 surface。
 
-也就是：
+而是：
 
-- 不再继续加新 command
-- 不回头扩 surface controller scope
-- 只定义最小 `useAI()` / `compilerSkill` / `registerMcp` / `registerContextProvider` contract
-- 只把 AI 明确成平台原生能力，不把它挂回 extension
-
-做完就停，按 Phase 8 的验收口径过一遍。
+- 收 `LauncherPlugin*` 语言尾巴
+- 把残留 contract 从 `launcher-plugin` 迁走
+- 按 [cleanups.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/cleanups.md) 开始最后几轮 delete-first cleanup

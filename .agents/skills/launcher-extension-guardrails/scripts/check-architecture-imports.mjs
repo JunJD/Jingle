@@ -51,8 +51,10 @@ const rules = [
       isUnder(target, "src/main/") ||
       isUnder(target, "src/preload/") ||
       isUnder(target, "src/plugins/") ||
-      (isUnder(target, "src/renderer/src/launcher/") &&
-        !isUnder(target, "src/renderer/src/launcher/native-extensions/")) ||
+      (isUnder(target, "src/renderer/src/") &&
+        !isUnder(target, "src/renderer/src/extension-host/") &&
+        !isUnder(target, "src/renderer/src/ai-core/") &&
+        !isExact(target, "src/renderer/src/lib/i18n/index.tsx")) ||
       (isUnder(target, "src/renderer/src/lib/") &&
         !isExact(target, "src/renderer/src/lib/i18n/index.tsx")),
     message:

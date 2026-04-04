@@ -16,11 +16,20 @@
     "composite": true,
     "baseUrl": ".",
     "paths": {
+      "@ai-core/*": [
+        "src/renderer/src/ai-core/*"
+      ],
+      "@extension-host/*": [
+        "src/renderer/src/extension-host/*"
+      ],
       "@extensions/*": [
         "src/extensions/*"
       ],
-      "@launcher/*": [
-        "src/renderer/src/launcher/*"
+      "@launcher-components/*": [
+        "src/renderer/src/launcher-components/*"
+      ],
+      "@launcher-shell/*": [
+        "src/renderer/src/launcher-shell/*"
       ],
       "@plugins/*": [
         "src/plugins/*"

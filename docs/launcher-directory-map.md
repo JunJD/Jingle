@@ -2,43 +2,134 @@
 
 这份文档只回答一件事：
 
-`现在 Openwork 的 launcher / native extension 目录，到底该怎么读。`
+`现在 launcher / ai / extension 到底放哪，先看哪几层。`
 
-不是未来理想形态，不是所有文件逐个解释，而是当前阶段最稳定、最值得记住的目录地图。
+## 一句话
 
-## 一句话地图
+当前前端主线已经不再堆在 `src/renderer/src/launcher/**` 里了，而是拆成 5 块：
 
-现在主线只需要看 6 个入口：
+- `src/renderer/src/launcher-shell`
+- `src/renderer/src/launcher-components`
+- `src/renderer/src/extension-host`
+- `src/renderer/src/ai-core`
+其中这些目录里，`ai-core / extension-host / launcher-components / launcher-shell` 是当前主线。
 
-1. `src/extensions/index.ts`
-2. `src/extensions/renderer.ts`
-3. `src/extensions/main.ts`
-4. `src/extensions/api.ts`
-5. `src/renderer/src/launcher/native-extensions/`
-6. `src/main/services/native-extensions/index.ts`
+## 先看这 8 个入口
 
-如果这 6 个入口看懂了，当前 native extension 主线就看懂了。
+1. [src/extensions/index.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/extensions/index.ts)
+2. [src/extensions/renderer.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/extensions/renderer.ts)
+3. [src/extensions/main.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/extensions/main.ts)
+4. [src/extensions/api.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/extensions/api.ts)
+5. [src/renderer/src/launcher-shell/LauncherApp.tsx](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/renderer/src/launcher-shell/LauncherApp.tsx)
+6. [src/renderer/src/extension-host/index.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/renderer/src/extension-host/index.ts)
+7. [src/renderer/src/ai-core/command.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/renderer/src/ai-core/command.ts)
+8. [src/main/services/native-extensions/index.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/services/native-extensions/index.ts)
 
-## 先记住的分层
+如果只读这 8 个文件，就能看懂当前主线。
 
-当前应按这 5 层来理解，不要再按旧的 `plugin` 语言理解：
+## 目录职责
 
-- `shared`
-  - 共享类型、共享契约、共享转换函数
-- `extensions`
-  - extension 的声明域
-- `launcher-shell`
-  - launcher 入口壳、根搜索、路由
-- `extension-host`
-  - native extension 运行时
-- `main services`
-  - extension 在 main 进程的 service / settings / invoke
+### `src/extensions/*`
 
-一句话：
+这是 extension 自己的地盘。
 
-`extensions 负责声明自己，launcher-shell 负责打开命令，extension-host 负责把命令跑起来，main services 负责主进程能力。`
+每个 extension 现在只认这几个文件：
 
-## 目录总图
+- `manifest.ts`
+- `renderer.ts`
+- `main.ts`
+- `src/<command>.tsx|ts`
+- `src/<command>.meta.ts`
+
+它负责：
+
+- extension 是谁
+- 有哪些 command
+- command 对应哪个 renderer 文件
+- 有没有 main service
+
+它不负责：
+
+- root search
+- route
+- shell chrome
+- host context
+
+### `src/renderer/src/launcher-shell/*`
+
+这是 launcher 入口壳。
+
+它负责：
+
+- `LauncherApp`
+- root search
+- route
+- home surface
+- command 打开/返回
+- launcher 窗口行为
+
+它不负责：
+
+- `List / Detail / Form`
+- extension 自己的页面状态
+- AI 线程逻辑
+
+### `src/renderer/src/launcher-components/*`
+
+这是 launcher / ai / extension 共用的壳层组件区。
+
+现在主要是：
+
+- `LauncherChrome`
+- `LauncherSearchPage`
+- `LauncherResultList`
+- `LauncherHistoryGrid`
+- `LauncherPageTransition`
+
+判断标准：
+
+`如果一个组件脱离具体 extension 仍然成立，它就可以在这里。`
+
+### `src/renderer/src/extension-host/*`
+
+这是 native extension runtime。
+
+它负责：
+
+- `NativeExtensionHost`
+- `List / Detail / Form / MenuBarExtra`
+- action runtime
+- view stack
+- passive command host
+- extension host context
+
+它不负责：
+
+- launcher 根搜索
+- AI 主控
+
+### `src/renderer/src/ai-core/*`
+
+这是 AI 自己的地盘。
+
+现在已经放进来的有：
+
+- `LauncherAiPage`
+- `LauncherAiConversation`
+- `useAiThread`
+- `useAiAttachments`
+- `history.tsx`  
+  这是原 starter `Main` 页面，现在降级成 parked surface
+- `AiCoreHost.tsx`
+- `useAI.ts`
+- `tool-registry.ts`
+- `command.ts`
+
+这里的原则是：
+
+`AI 是平台原生能力，不再挂在 extension 或 launcher plugin 下面。`
+
+## 当前目录总图
 
 ```txt
 src/
@@ -51,348 +142,59 @@ src/
     github/
     todo-list/
     translate/
-  renderer/src/launcher/
-    pages/
-    native-extensions/
-    built-ins/
+  renderer/src/
+    ai-core/
+    extension-host/
+    launcher-components/
+    launcher-shell/
+    settings/
+    shortcuts/
+    lib/
     components/
-    hooks/
   main/services/native-extensions/
 ```
 
-## 你现在该先看哪 6 个文件
+## 一条真实链路
 
-### 1. `src/extensions/index.ts`
+以 `github / my-issues` 为例：
 
-作用：
+1. [src/extensions/github/manifest.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/extensions/github/manifest.ts)
+   定义 extension 和 command 元信息。
+2. [src/extensions/github/renderer.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/extensions/github/renderer.ts)
+   把 `my-issues` 映射到 renderer command module。
+3. [src/extensions/renderer.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/extensions/renderer.ts)
+   把 `github` 收进全局 renderer registry。
+4. [src/renderer/src/extension-host/index.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/renderer/src/extension-host/index.ts)
+   把 command 转成 launcher 可打开的 command owner。
+5. [src/renderer/src/launcher-shell/pages/index.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/renderer/src/launcher-shell/pages/index.ts)
+   让 launcher shell 知道这个 command 可以被路由。
+6. [src/renderer/src/launcher-shell/LauncherApp.tsx](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/renderer/src/launcher-shell/LauncherApp.tsx)
+   在被打开时挂上 host，并渲染实际 command。
 
-- native extension 的 `manifest` 总表
-- 这里只回答“系统里有哪些 extension”
+一句话收口：
 
-不要在这里做：
+`extensions 声明自己，extension-host 跑它，launcher-shell 打开它。`
 
-- command 组件映射
-- main service 映射
-- 运行时逻辑
+## 现在先不要看的
 
-它是：
+如果你想先看主线，先不要把这些当核心：
 
-`extension 名单`
+- `docs/*` 里还没清完的历史路径引用
+- `src/main/services/extensions/*`
 
-### 2. `src/extensions/renderer.ts`
+它们不是当前 native extension 主线。
 
-作用：
+## 你要读代码时的顺序
 
-- native extension 的 renderer 总表
-- 把每个 extension 的 `renderer.ts` 收进来
+建议就按这个顺序：
 
-它负责：
+1. `src/extensions/github/manifest.ts`
+2. `src/extensions/github/renderer.ts`
+3. `src/extensions/api.ts`
+4. `src/renderer/src/extension-host/index.ts`
+5. `src/renderer/src/launcher-shell/pages/index.ts`
+6. `src/renderer/src/launcher-shell/LauncherApp.tsx`
+7. `src/renderer/src/ai-core/command.ts`
+8. `src/renderer/src/ai-core/useAI.ts`
 
-- `extension -> renderer definition`
-
-它不负责：
-
-- main service
-- 根搜索
-- settings 存储
-
-它是：
-
-`renderer 侧的 extension inventory`
-
-### 3. `src/extensions/main.ts`
-
-作用：
-
-- native extension 的 main 总表
-- 把每个 extension 的 `main.ts` 收进来
-
-它负责：
-
-- `extension -> main definition`
-
-它是：
-
-`main 侧的 extension inventory`
-
-### 4. `src/extensions/api.ts`
-
-作用：
-
-- extension 作者唯一应该 import 的公开 API
-- 暴露 `List / Detail / Form / MenuBarExtra / ActionPanel / hooks`
-
-它是：
-
-`extension sdk 入口`
-
-对 extension 作者来说，最重要的一条规则是：
-
-`src/extensions/*` 里的命令实现，应该优先只 import 这里和 shared。`
-
-### 5. `src/renderer/src/launcher/native-extensions/`
-
-作用：
-
-- native extension renderer host
-- 真正把 `List / Detail / Form / MenuBarExtra` 跑起来
-
-这个目录可以再拆成 4 类：
-
-- `index.ts`
-  - 把 `src/extensions/renderer.ts` 变成 launcher 可打开的命令定义
-- `NativeExtensionHost.tsx`
-  - host context
-- `sdk.ts`
-  - runtime hooks 的实现
-- `ui.tsx / detail.tsx / form.tsx / menu-bar.tsx`
-  - native surface runtime
-- `surface-actions.tsx / chrome.tsx`
-  - surface 共享控制层
-
-它是：
-
-`renderer 里的 extension runtime`
-
-### 6. `src/main/services/native-extensions/index.ts`
-
-作用：
-
-- 把 `src/extensions/main.ts` 变成 main 进程可调用的 service
-- 负责 settings schema、RPC invoke、main-side service 校验
-
-它是：
-
-`main 里的 extension runtime entry`
-
-## 一个 extension 自己的目录应该怎么看
-
-以 `github` 为例：
-
-```txt
-src/extensions/github/
-  manifest.ts
-  renderer.ts
-  main.ts
-  src/
-    my-issues.tsx
-    my-issues.meta.ts
-    create-issue.tsx
-    notifications.tsx
-```
-
-### `manifest.ts`
-
-作用：
-
-- extension 元信息
-- commands
-- preferences
-- capabilities
-
-它回答：
-
-- 这是什么 extension
-- 它有哪些 command
-- 它需要哪些设置
-
-### `renderer.ts`
-
-作用：
-
-- 显式声明这个 extension 的 renderer commands
-
-它回答：
-
-- 哪个 command 对应哪个组件
-- 哪个 command 对应哪个 `.meta.ts`
-
-### `main.ts`
-
-作用：
-
-- 显式声明这个 extension 的 main service
-
-它回答：
-
-- 这个 extension 有没有 main-side service
-- 有的话，暴露哪些 methods
-
-### `src/*.tsx`
-
-作用：
-
-- 真正的 command 实现
-
-### `src/*.meta.ts`
-
-作用：
-
-- view command 的 `viewport / search` 元信息
-
-## 现在最容易让人混乱的目录
-
-下面这些目录不是“当前 native extension 主线”，要分开看。
-
-### `src/renderer/src/launcher/pages/`
-
-它是：
-
-- launcher shell 的 route / command 打开协议
-
-它不是：
-
-- extension 作者写页面的地方
-
-可以理解成：
-
-`launcher 怎么决定打开哪个 command`
-
-### `src/renderer/src/launcher/components/`
-
-它是：
-
-- launcher 自己的壳组件
-- 根搜索、首页展示、输入框等
-
-它不是：
-
-- extension sdk
-
-不要把这里和 `src/extensions/api.ts` 混在一起看。
-
-### `src/renderer/src/launcher/built-ins/`
-
-它是：
-
-- 内建命令的 host 适配层
-
-可以暂时理解成：
-
-`给 launcher 自己的原生命令用的，不是 extension 作者关心的目录`
-
-### `src/renderer/src/launcher/built-plugins/`
-
-它现在是：
-
-- 旧骨架残留区
-- 主要给 AI / 少量 built-in 命令做过渡
-
-它不是：
-
-- native extension 新主线
-
-所以现在看目录时，可以把它当：
-
-`过渡层`
-
-### `src/renderer/src/launcher/external-runtime/`
-
-它现在是：
-
-- 冻结的兼容区
-- 给外部 Raycast/SuperCmd 兼容实验留下的历史层
-
-它不是：
-
-- 当前 native extension 主线
-
-可以直接理解成：
-
-`compat zone，先别看`
-
-### `src/shared/launcher-plugin.ts`
-
-它现在是：
-
-- legacy contract
-- cleanup 候选
-
-它仍然存在，是因为还没到 final cleanup，不代表它还是你应该围绕构建的新中心。
-
-## 真正的主线路径
-
-当前一条 native extension command 的主路径是：
-
-```txt
-src/extensions/<id>/manifest.ts
-  -> src/extensions/renderer.ts
-  -> src/renderer/src/launcher/native-extensions/index.ts
-  -> src/renderer/src/launcher/pages/index.ts
-  -> src/renderer/src/launcher/LauncherApp.tsx
-  -> src/renderer/src/launcher/native-extensions/NativeExtensionHost.tsx
-  -> src/extensions/api.ts
-  -> src/extensions/<id>/src/<command>.tsx
-```
-
-如果这个 command 还需要 main service：
-
-```txt
-src/extensions/<id>/main.ts
-  -> src/extensions/main.ts
-  -> src/main/services/native-extensions/index.ts
-  -> preload / ipc
-  -> renderer sdk client
-```
-
-这两条线一起看，就不会再把目录看散。
-
-## 现在该怎么记
-
-如果你只想有一个最小脑图，就记下面这 4 句：
-
-- `src/extensions/*` 是 extension 自己的地盘
-- `src/extensions/api.ts` 是作者 API 入口
-- `src/renderer/src/launcher/native-extensions/*` 是 extension runtime
-- `src/main/services/native-extensions/index.ts` 是 main service runtime
-
-其他 launcher 目录，先按下面分类看：
-
-- `pages / components / hooks`
-  - launcher-shell
-- `built-ins / built-plugins`
-  - 过渡或内建
-- `external-runtime`
-  - 冻结 compat zone
-
-## 当前还不够干净的地方
-
-你感觉目录还不够一眼清楚，是对的。现在还剩 3 个没完全收干净的点：
-
-1. `built-plugins/` 这个名字还在污染认知
-2. `LauncherPlugin*` 语言还在少量 host 文件里残留
-3. AI 还没进 `ai-core`，所以你会觉得“主线已经是 extension 了，但 AI 还像另一套”
-
-这也是为什么后面还有：
-
-- `Phase 8: AI core contract`
-- `Final Cleanup`
-
-所以现在的准确判断不是“目录已经终局很干净”，而是：
-
-`主线已经能读了，但过渡层还没删完。`
-
-## 推荐阅读顺序
-
-如果你要自己读代码，推荐只按这个顺序：
-
-1. `src/extensions/index.ts`
-2. `src/extensions/api.ts`
-3. `src/extensions/github/manifest.ts`
-4. `src/extensions/github/renderer.ts`
-5. `src/extensions/github/main.ts`
-6. `src/renderer/src/launcher/native-extensions/index.ts`
-7. `src/renderer/src/launcher/native-extensions/NativeExtensionHost.tsx`
-8. `src/main/services/native-extensions/index.ts`
-
-只读这 8 个入口，不要一开始就钻进 `components/`、`hooks/`、`external-runtime/`。
-
-## 最后一句话
-
-现在这套目录，不该再理解成：
-
-`launcher 下面挂很多 plugin 页面`
-
-而应该理解成：
-
-`launcher-shell 打开 command，extension 在自己的目录里声明自己，native extension host 负责运行它。`
+读完这 8 个点，当前目录就不会再是“看起来很多层都在互相引用”的感觉。

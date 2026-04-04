@@ -647,7 +647,7 @@ V1 推荐规则：
 
 ### extension-host / extension-sdk / extensions
 
-`src/renderer/src/launcher/native-extensions/**`
+`src/renderer/src/extension-host/**`
 
 - 负责 extension command 在运行时向 shortcut system 暴露 action / scope
 

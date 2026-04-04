@@ -1,8 +1,8 @@
 import React from "react"
 import ReactDOM from "react-dom/client"
-import App from "./App"
-import LauncherApp from "./launcher/LauncherApp"
-import { LauncherClipboardProvider } from "./launcher/LauncherClipboardContext"
+import HistoryApp from "@ai-core/history"
+import LauncherApp from "@launcher-shell/LauncherApp"
+import { LauncherClipboardProvider } from "@launcher-shell/LauncherClipboardContext"
 import { ThreadProvider } from "./lib/thread-context"
 import { I18nProvider } from "./lib/i18n"
 import SettingsApp from "./settings/SettingsApp"
@@ -42,7 +42,7 @@ async function bootstrap(): Promise<void> {
         ) : windowKind === "settings" ? (
           <SettingsApp />
         ) : (
-          <App />
+          <HistoryApp />
         )}
       </I18nProvider>
     </React.StrictMode>

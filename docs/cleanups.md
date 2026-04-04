@@ -81,41 +81,6 @@
   - `src/shared/launcher-plugin.ts` 不再存在或不再暴露 legacy 名称
   - `pages/**`、`native-extensions/**`、`main/services/native-extensions/**` 继续通过类型检查
 
-### 3. `src/renderer/src/launcher/LauncherPluginHost.ts`
-
-- 类型：legacy host
-- 为什么还在：built-in AI 和旧 launcher 内部宿主能力还没全部切到新 host 语言
-- 当前作用：承接 clipboard / navigation / surface / threads / lifecycle 这些既有宿主能力
-- 不是终局的原因：native extension 已经有独立 host 边界，这个文件不应该继续作为整条主线的核心宿主
-- 删除时机：built-in command 和 AI 页都不再直接依赖 `useLauncherPlugin*`
-- 删除验收：
-  - [NativeExtensionHost.tsx](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/renderer/src/launcher/native-extensions/NativeExtensionHost.tsx) 不再引用 `LauncherPluginCapability`
-  - [LauncherAiPage.tsx](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/renderer/src/launcher/pages/LauncherAiPage.tsx) 不再引用 `useLauncherPlugin*`
-  - `doctor:route-language` 归零
-
-### 4. `src/renderer/src/launcher/LauncherPluginHostContext.tsx`
-
-- 类型：legacy context bridge
-- 为什么还在：当前 launcher shell 仍通过旧 host context 给 built-in command 注入宿主能力
-- 当前作用：把 legacy host value 挂到 React context
-- 不是终局的原因：context 名称和边界都停留在 plugin-first 时代
-- 删除时机：`LauncherPluginHost.ts` 被新 host/context 替换后
-- 删除验收：
-  - 旧 host provider 不再出现在 [LauncherApp.tsx](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/renderer/src/launcher/LauncherApp.tsx)
-  - built-in command 仍能正常读取 navigation / surface / threads
-
-### 5. `src/renderer/src/launcher/built-ins/host.ts`
-
-- 类型：wrapper bridge
-- 为什么还在：Phase 4 为了把 built-in 层从 `LauncherPlugin*` 语言里先隔离出来
-- 当前作用：把 `useLauncherPlugin*` 包成 `useBuiltInLauncher*`
-- 不是终局的原因：它只是旧 host 到新 built-in 语言的一层薄包装
-- 删除时机：built-in host 直接接入新的宿主实现后
-- 删除验收：
-  - `built-ins/host.ts` 被删除
-  - `built-plugins/sdk.ts` 不再通过 wrapper 间接读取 legacy host
-  - `AI` 和其他 built-in command 行为不回退
-
 ### 6. `src/plugins/ai/manifest.ts` 中的 `aiBuiltInCommandManifest` 别名导出
 
 - 类型：alias export
@@ -127,7 +92,7 @@
   - 别名导出被删除
   - built-in AI 仍能注册和打开
 
-### 7. `src/renderer/src/launcher/native-extensions/NativeExtensionHost.tsx` 中的 legacy plugin 语言
+### 7. `src/renderer/src/extension-host/NativeExtensionHost.tsx` 中的 legacy plugin 语言
 
 - 类型：host-internal compatibility residue
 - 为什么还在：Phase 4 故意只清 shell 主路径，没有继续深入 host 内部
@@ -135,10 +100,10 @@
 - 不是终局的原因：host 自身最终也应完全使用 extension-host 语言
 - 删除时机：Phase 5 或之后的 host 清理阶段
 - 删除验收：
-  - `rg -n "LauncherPlugin" src/renderer/src/launcher/native-extensions/NativeExtensionHost.tsx` 结果为 0
+  - `rg -n "LauncherPlugin" src/renderer/src/extension-host/NativeExtensionHost.tsx` 结果为 0
   - native extension command 全部继续可运行
 
-### 8. `src/renderer/src/launcher/pages/LauncherAiPage.tsx` 中的 legacy plugin 语言
+### 8. `src/renderer/src/ai-core/LauncherAiPage.tsx` 中的 legacy plugin 语言
 
 - 类型：built-in page residue
 - 为什么还在：AI 仍是 built-in，页面实现还直接依赖旧 host hook
@@ -146,30 +111,8 @@
 - 不是终局的原因：AI 是平台原生能力，不应该长期挂在 plugin-first 命名之下
 - 删除时机：`useAI` 和 built-in host contract 明确之后
 - 删除验收：
-  - `rg -n "LauncherPlugin" src/renderer/src/launcher/pages/LauncherAiPage.tsx` 结果为 0
+  - `rg -n "LauncherPlugin" src/renderer/src/ai-core/LauncherAiPage.tsx` 结果为 0
   - AI 页面打开、返回、输入焦点行为不回退
-
-### 9. `src/renderer/src/launcher/built-plugins/*`
-
-- 类型：temporary built-in zone
-- 为什么还在：当前 built-in AI 还在这条目录下运行
-- 当前作用：容纳平台内建 command
-- 不是终局的原因：native extension 主线已经建立，这个目录不应该继续承接新能力
-- 删除时机：AI built-in contract 独立稳定后，目录语义改名或迁出
-- 删除验收：
-  - 不再新增任何 native extension 到这个目录
-  - built-in 能力仍可注册，但目录名不再带 `built-plugins`
-
-### 10. `src/renderer/src/launcher/external-runtime/*`
-
-- 类型：frozen compatibility zone
-- 为什么还在：之前为跑 Raycast / SuperCmd case 迁入的兼容 runtime 仍在仓库里
-- 当前作用：保留历史参考和兼容实验基础
-- 不是终局的原因：当前主线只做 native extension，这条兼容层不应继续影响主架构
-- 删除时机：如果短期不恢复外部 extension 主线，在 native extension 体系稳定后直接删除；如果恢复，则必须移出当前主线文档和依赖关系，单独立项
-- 删除验收：
-  - launcher / native extension / settings 主路径不再 import 这里的任何代码
-  - 删除后 `npm run check:guardrails && npm run typecheck` 通过
 
 ### 11. `src/main/preferences.ts` 里的 secrets 迁移逻辑
 
@@ -188,7 +131,7 @@
   - `doctor:secrets-boundary` 继续显示 `safeStorage: yes`
   - GitHub token 仍能读写，且已打开 command 仍能刷新
 
-### 12. `src/renderer/src/launcher/LauncherApp.tsx` 里的 active command preference 订阅实现
+### 12. `src/renderer/src/launcher-shell/LauncherApp.tsx` 里的 active command preference 订阅实现
 
 - 类型：phase-local refresh bridge
 - 为什么还在：Phase 5 先把“已打开 command 能感知设置变化”收在 launcher 壳层，避免这一步继续扩到 surface controller
@@ -200,7 +143,7 @@
   - active extension command 在设置变更后仍能刷新
   - `todo-list`、`github` 等 native extension 行为不回退
 
-### 13. `src/renderer/src/launcher/native-extensions/registry.ts`
+### 13. `src/renderer/src/extension-host/registry.ts`
 
 - 类型：parallel renderer registry
 - 状态：已在 Phase 6 完成删除
@@ -208,7 +151,7 @@
 - 当时作用：维护 `command -> component/meta` 的平行映射
 - 为什么必须删：extension 自己的 renderer 声明应收回 `src/extensions/<id>/renderer.ts`，而不是继续集中堆在 host 目录里
 - 删除验收：
-  - `src/renderer/src/launcher/native-extensions/registry.ts` 被删除
+  - `src/renderer/src/extension-host/registry.ts` 被删除
   - renderer 不再维护独立的 extension inventory
   - `todo-list`、`github`、`translate` 继续能搜索、打开、运行
 

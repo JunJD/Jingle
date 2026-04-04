@@ -90,13 +90,38 @@ export function resolveImportPath(fromFile, specifier) {
     return resolveResolvedBase(path.join(repoRoot, "src/renderer/src"), specifier.slice(2))
   }
 
+  if (specifier.startsWith("@ai-core/")) {
+    return resolveResolvedBase(path.join(repoRoot, "src/renderer/src/ai-core"), specifier.slice("@ai-core/".length))
+  }
+
+  if (specifier.startsWith("@extension-host/")) {
+    return resolveResolvedBase(
+      path.join(repoRoot, "src/renderer/src/extension-host"),
+      specifier.slice("@extension-host/".length)
+    )
+  }
+
   if (specifier.startsWith("@extensions/")) {
     return resolveResolvedBase(path.join(repoRoot, "src/extensions"), specifier.slice("@extensions/".length))
   }
 
+  if (specifier.startsWith("@launcher-components/")) {
+    return resolveResolvedBase(
+      path.join(repoRoot, "src/renderer/src/launcher-components"),
+      specifier.slice("@launcher-components/".length)
+    )
+  }
+
+  if (specifier.startsWith("@launcher-shell/")) {
+    return resolveResolvedBase(
+      path.join(repoRoot, "src/renderer/src/launcher-shell"),
+      specifier.slice("@launcher-shell/".length)
+    )
+  }
+
   if (specifier.startsWith("@launcher/")) {
     return resolveResolvedBase(
-      path.join(repoRoot, "src/renderer/src/launcher"),
+      path.join(repoRoot, "src/renderer/src/launcher-shell"),
       specifier.slice("@launcher/".length)
     )
   }
@@ -279,7 +304,11 @@ function loadTypeScriptModule(absolutePath) {
     }
 
     if (
+      specifier.startsWith("@ai-core/") ||
+      specifier.startsWith("@extension-host/") ||
       specifier.startsWith("@extensions/") ||
+      specifier.startsWith("@launcher-components/") ||
+      specifier.startsWith("@launcher-shell/") ||
       specifier.startsWith("@launcher/") ||
       specifier.startsWith("@plugins/") ||
       specifier.startsWith("@shared/")

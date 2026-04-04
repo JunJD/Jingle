@@ -8,9 +8,9 @@ import {
 const watchPrefixes = [
   "src/extensions/",
   "src/shared/native-extensions.ts",
-  "src/renderer/src/launcher/native-extensions/",
-  "src/renderer/src/launcher/pages/",
-  "src/renderer/src/launcher/built-plugins/"
+  "src/renderer/src/extension-host/",
+  "src/renderer/src/launcher-shell/pages/",
+  "src/renderer/src/ai-core/"
 ]
 
 const watchTerms = ["internal-plugin", "pluginId", "LauncherPlugin", "builtLauncherPlugins"]

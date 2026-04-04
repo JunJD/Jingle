@@ -1,6 +1,6 @@
 ---
 name: launcher-extension-guardrails
-description: Guard launcher-shell, native extension host, extension sdk, and ai-core boundaries in Openwork. Use when touching src/extensions, src/renderer/src/launcher, src/main/services/native-extensions, route language, preference/secrets flow, or architecture cleanup work. Run the architecture doctor before changes, then run guardrail checks and typecheck after changes.
+description: Guard launcher-shell, native extension host, extension sdk, and ai-core boundaries in Openwork. Use when touching src/extensions, src/renderer/src/launcher-shell, src/renderer/src/extension-host, src/renderer/src/ai-core, src/main/services/native-extensions, route language, preference/secrets flow, or architecture cleanup work. Run the architecture doctor before changes, then run guardrail checks and typecheck after changes.
 user_invocable: true
 version: "1.0.0"
 ---
@@ -12,7 +12,9 @@ version: "1.0.0"
 ## 什么时候用
 
 - 改 `src/extensions/**`
-- 改 `src/renderer/src/launcher/**`
+- 改 `src/renderer/src/launcher-shell/**`
+- 改 `src/renderer/src/extension-host/**`
+- 改 `src/renderer/src/ai-core/**`
 - 改 `src/main/services/native-extensions/**`
 - 改 `src/main/preferences.ts`
 - 改 command route、命名、settings schema、import 边界

@@ -29,8 +29,11 @@ export default defineConfig({
   main: {
     resolve: {
       alias: {
+        "@ai-core": resolve("src/renderer/src/ai-core"),
+        "@extension-host": resolve("src/renderer/src/extension-host"),
         "@extensions": resolve("src/extensions"),
-        "@launcher": resolve("src/renderer/src/launcher"),
+        "@launcher-components": resolve("src/renderer/src/launcher-components"),
+        "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
         "@plugins": resolve("src/plugins"),
         "@shared": resolve("src/shared")
       }
@@ -50,8 +53,11 @@ export default defineConfig({
   preload: {
     resolve: {
       alias: {
+        "@ai-core": resolve("src/renderer/src/ai-core"),
+        "@extension-host": resolve("src/renderer/src/extension-host"),
         "@extensions": resolve("src/extensions"),
-        "@launcher": resolve("src/renderer/src/launcher"),
+        "@launcher-components": resolve("src/renderer/src/launcher-components"),
+        "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
         "@plugins": resolve("src/plugins"),
         "@shared": resolve("src/shared")
       }
@@ -64,8 +70,11 @@ export default defineConfig({
     resolve: {
       alias: {
         "@": resolve("src/renderer/src"),
+        "@ai-core": resolve("src/renderer/src/ai-core"),
+        "@extension-host": resolve("src/renderer/src/extension-host"),
         "@extensions": resolve("src/extensions"),
-        "@launcher": resolve("src/renderer/src/launcher"),
+        "@launcher-components": resolve("src/renderer/src/launcher-components"),
+        "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
         "@plugins": resolve("src/plugins"),
         "@renderer": resolve("src/renderer/src"),
         "@shared": resolve("src/shared")
