@@ -17,6 +17,7 @@
 ## 相关架构文档
 
 - [shortcut-system-architecture.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/shortcut-system-architecture.md)
+- [cleanups.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/cleanups.md)
 
 这份文档不是附属说明，而是 launcher 主线的平行基础设施文档。
 
@@ -34,6 +35,12 @@
 - settings 中的 command 配置
 
 都必须同时核对这份快捷键架构文档，而不是把快捷键留到最后补。
+
+`cleanups.md` 则负责另一件事：
+
+- 前几个 pause 为了不一次性炸掉而留下的桥接层，必须登记进去
+- 后续 phase 完成时，相关桥接层必须被删除，而不是永久常驻
+- 每个 pause 结束都要同时核对“新增了什么临时层”和“删掉了什么临时层”
 
 ## 非目标
 
