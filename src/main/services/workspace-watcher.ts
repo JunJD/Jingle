@@ -15,6 +15,12 @@ const DEBOUNCE_DELAY = 500 // ms
  * Sends 'workspace:files-changed' events to the renderer when changes are detected.
  */
 export function startWatching(threadId: string, workspacePath: string): void {
+  // Temporarily disabled while the workspace loading boundary is being tightened.
+  // Recursive watchers on large directories can currently blow up the Electron main process.
+  void threadId
+  void workspacePath
+  return
+
   // Stop any existing watcher for this thread
   stopWatching(threadId)
 
