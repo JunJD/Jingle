@@ -2,7 +2,7 @@ import { safeStorage } from "electron"
 import Store from "electron-store"
 import type { AgentConfig } from "./types"
 import { getOpenworkDir } from "./storage"
-import { nativeExtensions } from "../extensions"
+import { nativeExtensionManifests } from "../extensions"
 import { DEFAULT_MODEL_ID } from "../shared/models"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale } from "../shared/i18n"
 import type {
@@ -193,7 +193,7 @@ function listPasswordPreferenceNames(schema: NativeExtensionPreferenceSchema[]):
 }
 
 function getNativeExtensionManifest(extensionName: string) {
-  const manifest = nativeExtensions.find((entry) => entry.manifest.name === extensionName)?.manifest
+  const manifest = nativeExtensionManifests.find((entry) => entry.name === extensionName)
   if (!manifest) {
     throw new Error(`Unknown native extension "${extensionName}"`)
   }
@@ -461,13 +461,13 @@ function migrateLegacyPasswordPreferences(): void {
     return nextRecord
   }
 
-  for (const extension of nativeExtensions) {
-    const extensionKey = getExtensionPreferenceStoreKey(extension.manifest.name)
+  for (const manifest of nativeExtensionManifests) {
+    const extensionKey = getExtensionPreferenceStoreKey(manifest.name)
     const extensionRawRecord = normalizePreferenceRecord(state.extensionPreferences[extensionKey])
     const migratedExtensionRecord = migrateRecord({
       key: extensionKey,
       rawRecord: extensionRawRecord,
-      schema: extension.manifest.preferences ?? [],
+      schema: manifest.preferences ?? [],
       scope: "extension"
     })
 
@@ -481,8 +481,8 @@ function migrateLegacyPasswordPreferences(): void {
       }
     }
 
-    for (const command of extension.manifest.commands) {
-      const commandKey = getCommandPreferenceStoreKey(extension.manifest.name, command.name)
+    for (const command of manifest.commands) {
+      const commandKey = getCommandPreferenceStoreKey(manifest.name, command.name)
       const commandRawRecord = normalizePreferenceRecord(state.commandPreferences[commandKey])
       const migratedCommandRecord = migrateRecord({
         key: commandKey,

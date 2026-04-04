@@ -250,11 +250,6 @@ launcher-shell -> ai-core
 - 只做 native extension host 的 renderer 侧入口
 - 不做 root search 组装
 
-`src/renderer/src/launcher/native-extensions/registry.ts`
-
-- 管理 native extension command registry
-- 当前应继续收口，最终不保留为第二份 extension 清单
-
 `src/renderer/src/launcher/native-extensions/sdk.ts`
 
 - 放 native host 提供给 SDK 的桥
@@ -284,8 +279,8 @@ launcher-shell -> ai-core
 
 `src/main/services/native-extensions/index.ts`
 
-- main 侧 native extension registry
-- service module 发现和调用
+- main 侧 native extension host 入口
+- 消费 `src/extensions/main.ts`
 - settings schema 汇总
 
 `src/main/services/native-extensions/sdk.ts`
@@ -320,11 +315,6 @@ launcher-shell -> ai-core
 - extension 单一事实源
 - 定义 id、title、commands、preferences、capabilities、rpcMethods
 
-`src/extensions/<ext>/index.ts`
-
-- 只做 command/service 注册
-- 不写业务逻辑
-
 `src/extensions/<ext>/renderer.ts`
 
 - 只放这个 extension 的 renderer command registry
@@ -332,9 +322,8 @@ launcher-shell -> ai-core
 
 `src/extensions/<ext>/main.ts`
 
-- 可选
 - 只放这个 extension 的 main service / command service registry
-- 没有 main service 时可以不存在
+- 没有 main service 时导出空 definition
 
 `src/extensions/<ext>/src/<command>.tsx`
 
@@ -358,6 +347,21 @@ launcher-shell -> ai-core
 
 - extension 自己的纯逻辑
 - 比如 client、contracts、view helpers
+
+`src/extensions/index.ts`
+
+- 唯一的 manifest 总清单
+- 只聚合 `manifest.ts`
+
+`src/extensions/renderer.ts`
+
+- 唯一的 renderer 总清单
+- 只聚合 `src/extensions/<ext>/renderer.ts`
+
+`src/extensions/main.ts`
+
+- 唯一的 main 总清单
+- 只聚合 `src/extensions/<ext>/main.ts`
 
 ## 共享代码放哪
 
@@ -529,9 +533,12 @@ NativeExtensionHost 脱离 LauncherPluginHost
 ### 代码边界
 
 - `src/extensions/index.ts`
-- `src/extensions/*/index.ts`
-- `src/renderer/src/launcher/native-extensions/registry.ts`
+- `src/extensions/renderer.ts`
+- `src/extensions/main.ts`
+- `src/extensions/*/renderer.ts`
+- `src/extensions/*/main.ts`
 - `src/main/services/native-extensions/index.ts`
+- `src/renderer/src/launcher/native-extensions/index.ts`
 
 ### 暂停点验收
 
@@ -640,12 +647,13 @@ extension declaration 收口
 
 ### 代码边界
 
-- `src/extensions/index.ts` 或新的 `src/extensions/registry.ts`
-- `src/extensions/*/index.ts`
-- 新的 `src/extensions/*/renderer.ts`
-- 新的 `src/extensions/*/main.ts`
-- `src/renderer/src/launcher/native-extensions/registry.ts`
-- `src/main/services/native-extensions/registry.ts`
+- `src/extensions/index.ts`
+- `src/extensions/renderer.ts`
+- `src/extensions/main.ts`
+- `src/extensions/*/renderer.ts`
+- `src/extensions/*/main.ts`
+- `src/main/services/native-extensions/index.ts`
+- `src/renderer/src/launcher/native-extensions/index.ts`
 
 ### 暂停点验收
 
@@ -754,13 +762,13 @@ AI core contract 接入
 
 ## 下一步只做什么
 
-下一步只进入 `Phase 6`。
+下一步只进入 `Phase 7`。
 
 也就是：
 
 - 不加新 command
-- 不碰 surface controller / AI contract
-- 只收 extension declaration 和目录职责
-- 只把 extension inventory 收成单一设计
+- 不碰 AI contract
+- 只收 `List / Detail / Form` 的统一 surface controller
+- 只解决 surface 行为分叉
 
-做完就停，按 Phase 6 的验收口径过一遍。
+做完就停，按 Phase 7 的验收口径过一遍。

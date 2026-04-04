@@ -1,6 +1,7 @@
-import githubExtension from "./github"
-import todoListExtension from "./todo-list"
-import translateExtension from "./translate"
+import { githubManifest } from "./github/manifest"
+import { todoListManifest } from "./todo-list/manifest"
+import { translateManifest } from "./translate/manifest"
 
-export const nativeExtensions = [githubExtension, todoListExtension, translateExtension]
-  .sort((left, right) => left.manifest.title.localeCompare(right.manifest.title))
+export const nativeExtensionManifests = [githubManifest, todoListManifest, translateManifest].sort(
+  (left, right) => left.title.localeCompare(right.title)
+)

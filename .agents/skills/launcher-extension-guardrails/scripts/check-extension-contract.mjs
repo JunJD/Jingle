@@ -3,18 +3,18 @@ import {
   fileExists,
   formatViolations,
   listNativeExtensionDirectories,
-  loadNativeExtensionDefinition,
   loadNativeExtensionManifest,
-  loadNativeExtensionServiceRegistry,
+  listNativeExtensionRendererCommandNames,
+  nativeExtensionMainDeclaresService,
   resolveExtensionCommandFile
 } from "./lib/architecture-guardrails.mjs"
 
 const violations = []
-const nativeExtensionServiceRegistry = loadNativeExtensionServiceRegistry()
 
 for (const extensionDirectory of listNativeExtensionDirectories()) {
   const manifestPath = path.join(extensionDirectory.absolutePath, "manifest.ts")
-  const indexPath = path.join(extensionDirectory.absolutePath, "index.ts")
+  const rendererPath = path.join(extensionDirectory.absolutePath, "renderer.ts")
+  const mainPath = path.join(extensionDirectory.absolutePath, "main.ts")
 
   if (!fileExists(manifestPath)) {
     violations.push({
@@ -24,18 +24,28 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
     continue
   }
 
-  if (!fileExists(indexPath)) {
+  if (!fileExists(rendererPath)) {
     violations.push({
-      file: `${extensionDirectory.repoPath}/index.ts`,
-      reason: "native extension 缺少 index.ts"
+      file: `${extensionDirectory.repoPath}/renderer.ts`,
+      reason: "native extension 缺少 renderer.ts"
+    })
+    continue
+  }
+
+  if (!fileExists(mainPath)) {
+    violations.push({
+      file: `${extensionDirectory.repoPath}/main.ts`,
+      reason: "native extension 缺少 main.ts"
     })
     continue
   }
 
   const manifest = loadNativeExtensionManifest(extensionDirectory)
-  const definition = loadNativeExtensionDefinition(extensionDirectory)
   const manifestCommandMap = new Map(manifest.commands.map((command) => [command.name, command]))
-  const definitionCommandMap = new Map(definition.commands.map((command) => [command.name, command]))
+  const rendererCommandNames = listNativeExtensionRendererCommandNames(extensionDirectory)
+  const definitionCommandMap = new Map(
+    rendererCommandNames.map((commandName) => [commandName, true])
+  )
 
   if (manifest.name !== extensionDirectory.name) {
     violations.push({
@@ -48,8 +58,8 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
     const commandReference = definitionCommandMap.get(command.name)
     if (!commandReference) {
       violations.push({
-        file: `${extensionDirectory.repoPath}/index.ts`,
-        reason: `manifest 声明了 command "${command.name}"，但 index.ts 没有导出对应 command name`
+        file: `${extensionDirectory.repoPath}/renderer.ts`,
+        reason: `manifest 声明了 command "${command.name}"，但 renderer.ts 没有导出对应 command name`
       })
       continue
     }
@@ -75,19 +85,22 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
     }
   }
 
-  for (const commandReference of definition.commands) {
-    if (!manifestCommandMap.has(commandReference.name)) {
+  for (const commandName of rendererCommandNames) {
+    if (!manifestCommandMap.has(commandName)) {
       violations.push({
-        file: `${extensionDirectory.repoPath}/index.ts`,
-        reason: `index.ts 导出了 command "${commandReference.name}"，但 manifest.ts 未声明`
+        file: `${extensionDirectory.repoPath}/renderer.ts`,
+        reason: `renderer.ts 导出了 command "${commandName}"，但 manifest.ts 未声明`
       })
     }
   }
 
-  if ((manifest.rpcMethods?.length ?? 0) > 0 && !nativeExtensionServiceRegistry.has(manifest.name)) {
+  if (
+    (manifest.rpcMethods?.length ?? 0) > 0 &&
+    !nativeExtensionMainDeclaresService(extensionDirectory)
+  ) {
     violations.push({
-      file: `${extensionDirectory.repoPath}/manifest.ts`,
-      reason: "声明了 rpcMethods，但 main registry 没有注册对应 service"
+      file: `${extensionDirectory.repoPath}/main.ts`,
+      reason: "声明了 rpcMethods，但 main.ts 没有导出对应 service"
     })
   }
 }

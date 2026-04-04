@@ -10,8 +10,7 @@ export const sourceExtensions = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", "
 
 export const allowedImportMetaGlobFiles = new Set([
   "src/extensions/index.ts",
-  "src/main/services/native-extensions/index.ts",
-  "src/renderer/src/launcher/native-extensions/registry.ts"
+  "src/main/services/native-extensions/index.ts"
 ])
 
 export function listSourceFiles(directory) {
@@ -150,15 +149,20 @@ export function loadNativeExtensionManifest(extensionDirectory) {
   return manifest
 }
 
-export function loadNativeExtensionDefinition(extensionDirectory) {
-  const definitionModule = loadTypeScriptModule(path.join(extensionDirectory.absolutePath, "index.ts"))
-  const definition = definitionModule.default
+export function listNativeExtensionRendererCommandNames(extensionDirectory) {
+  const rendererSource = readSourceText(`${extensionDirectory.repoPath}/renderer.ts`)
+  const commandNames = []
 
-  if (!isNativeExtensionDefinition(definition)) {
-    throw new Error(`${extensionDirectory.repoPath}/index.ts does not export a native extension definition`)
+  for (const match of rendererSource.matchAll(/\bname:\s*"([^"]+)"/g)) {
+    commandNames.push(match[1])
   }
 
-  return definition
+  return commandNames
+}
+
+export function nativeExtensionMainDeclaresService(extensionDirectory) {
+  const mainSource = readSourceText(`${extensionDirectory.repoPath}/main.ts`)
+  return /\bservice\s*:/.test(mainSource)
 }
 
 export function resolveExtensionRelativeFile(extensionDirectory, relativeModulePath) {
@@ -169,26 +173,6 @@ export function resolveExtensionCommandFile(extensionDirectory, commandName) {
   return sourceExtensions
     .map((extension) => path.join(extensionDirectory.absolutePath, "src", `${commandName}${extension}`))
     .find((candidate) => fileExists(candidate))
-}
-
-export function loadNativeExtensionServiceRegistry() {
-  const registryModule = loadTypeScriptModule(
-    path.join(srcRoot, "main/services/native-extensions/registry.ts")
-  )
-  const registry = registryModule.nativeExtensionServiceRegistry
-
-  if (
-    !registry ||
-    typeof registry !== "object" ||
-    typeof registry.get !== "function" ||
-    typeof registry.has !== "function"
-  ) {
-    throw new Error(
-      "src/main/services/native-extensions/registry.ts must export nativeExtensionServiceRegistry as a Map"
-    )
-  }
-
-  return registry
 }
 
 export function fileExists(absolutePath) {
@@ -258,16 +242,6 @@ function isNativeExtensionManifest(value) {
     typeof value.name === "string" &&
     typeof value.title === "string" &&
     Array.isArray(value.commands)
-  )
-}
-
-function isNativeExtensionDefinition(value) {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    Array.isArray(value.commands) &&
-    !!value.manifest &&
-    typeof value.manifest === "object"
   )
 }
 

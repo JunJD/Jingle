@@ -1,4 +1,6 @@
-import type { NativeExtensionInvokeRequest } from "../../../shared/native-extensions"
+import type {
+  NativeExtensionService
+} from "../../../shared/native-extensions"
 
 type NativeExtensionMethodHandler<TPayload = unknown, TResult = unknown> = (
   payload: TPayload
@@ -7,12 +9,6 @@ type NativeExtensionMethodHandler<TPayload = unknown, TResult = unknown> = (
 type UnknownNativeExtensionMethodHandler = NativeExtensionMethodHandler<unknown, unknown>
 
 type NativeExtensionMethodMap = Record<string, NativeExtensionMethodHandler<never, unknown>>
-
-export interface NativeExtensionService {
-  extensionName: string
-  invoke: (request: NativeExtensionInvokeRequest) => Promise<unknown>
-  methods: string[]
-}
 
 export function defineNativeExtensionService<TMethods extends NativeExtensionMethodMap>(
   extensionName: string,

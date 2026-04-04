@@ -1,26 +1,26 @@
 import {
   type InstalledNativeExtensionSettingsSchema,
   type NativeExtensionInvokeRequest,
+  type NativeExtensionService,
   toInstalledNativeExtensionSettingsSchema,
   toLauncherCommandOwnerManifest
 } from "../../../shared/native-extensions"
-import { nativeExtensions } from "../../../extensions"
+import { nativeExtensionManifests } from "../../../extensions"
+import { nativeExtensionMainDefinitions } from "../../../extensions/main"
 import {
   hasLauncherPluginCapability,
   validateLauncherPluginManifest
 } from "../../../shared/launcher-plugin"
-import type { NativeExtensionService } from "./sdk"
-import { nativeExtensionServiceRegistry } from "./registry"
 
 interface NativeExtensionRuntimeDefinition {
-  manifest: (typeof nativeExtensions)[number]["manifest"]
+  manifest: (typeof nativeExtensionManifests)[number]
   service?: NativeExtensionService
 }
 
-const nativeExtensionDefinitions: NativeExtensionRuntimeDefinition[] = nativeExtensions
-  .map((extension) => ({
-    manifest: extension.manifest,
-    service: nativeExtensionServiceRegistry.get(extension.manifest.name)
+const nativeExtensionDefinitions: NativeExtensionRuntimeDefinition[] = nativeExtensionManifests
+  .map((manifest) => ({
+    manifest,
+    service: nativeExtensionMainDefinitions.get(manifest.name)?.service
   }))
   .sort((left, right) => left.manifest.title.localeCompare(right.manifest.title))
 

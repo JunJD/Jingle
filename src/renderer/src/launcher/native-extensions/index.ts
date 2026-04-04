@@ -8,15 +8,58 @@ import {
   toLauncherCommandOwnerManifest
 } from "@shared/native-extensions"
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
-import { nativeExtensions } from "@extensions/index"
+import { nativeExtensionManifests } from "@extensions/index"
+import { nativeExtensionRendererDefinitions } from "@extensions/renderer"
 import type { LauncherCommandOwnerDefinition } from "../pages/types"
 import type { NativeNoViewCommandModule, NativeViewCommandModule } from "./sdk"
-import { nativeExtensionCommandRegistry } from "./registry"
 import { useNativeExtensionViewStack } from "./view-stack-context"
 import { NativeExtensionViewStackProvider } from "./view-stack"
 
-const nativeExtensionCommandRegistryMap = new Map(
-  nativeExtensionCommandRegistry.map(
+export interface NativeExtensionCommandEntry {
+  command: (typeof nativeExtensionManifests)[number]["commands"][number]
+  extensionCapabilities: (typeof nativeExtensionManifests)[number]["capabilities"]
+  extensionName: string
+  extensionTitle: string
+  module: Record<string, unknown>
+}
+
+export const nativeExtensionCommandEntries: NativeExtensionCommandEntry[] = nativeExtensionManifests
+  .flatMap((manifest) =>
+    manifest.commands.map((command) => {
+      const rendererEntry = nativeExtensionRendererDefinitions
+        .get(manifest.name)
+        ?.commands.find((candidate) => candidate.name === command.name)
+      if (!rendererEntry) {
+        throw new Error(
+          `Native extension "${manifest.name}" command "${command.name}" is missing from its renderer definition`
+        )
+      }
+
+      return {
+        command,
+        extensionCapabilities: manifest.capabilities,
+        extensionName: manifest.name,
+        extensionTitle: manifest.title,
+        module: {
+          ...rendererEntry.commandModule,
+          ...(rendererEntry.metaModule ?? {})
+        }
+      } satisfies NativeExtensionCommandEntry
+    })
+  )
+  .sort((left, right) => {
+    const extensionOrder = left.extensionTitle.localeCompare(right.extensionTitle)
+    if (extensionOrder !== 0) {
+      return extensionOrder
+    }
+
+    return (left.command.title ?? left.command.name).localeCompare(
+      right.command.title ?? right.command.name
+    )
+  })
+
+const nativeExtensionCommandEntryMap = new Map(
+  nativeExtensionCommandEntries.map(
     (entry) => [`${entry.extensionName}:${entry.command.name}`, entry] as const
   )
 )
@@ -56,9 +99,9 @@ function wrapNativeViewCommand(Component: ComponentType): ComponentType {
   return WrappedNativeViewCommand
 }
 
-export const nativeLauncherCommandOwners = nativeExtensions.reduce<LauncherCommandOwnerDefinition[]>(
+export const nativeLauncherCommandOwners = nativeExtensionManifests.reduce<LauncherCommandOwnerDefinition[]>(
   (owners, extension) => {
-    const routeableCommands = extension.manifest.commands.filter(
+    const routeableCommands = extension.commands.filter(
       (command) => command.mode === "view" || command.mode === "no-view"
     )
 
@@ -66,17 +109,17 @@ export const nativeLauncherCommandOwners = nativeExtensions.reduce<LauncherComma
       return owners
     }
 
-    const commandOwnerManifest = toLauncherCommandOwnerManifest(extension.manifest)
+    const commandOwnerManifest = toLauncherCommandOwnerManifest(extension)
     validateLauncherCommandOwnerManifest(commandOwnerManifest)
 
     owners.push({
       commands: routeableCommands.map((command) => {
-        const registryEntry = nativeExtensionCommandRegistryMap.get(
-          `${extension.manifest.name}:${command.name}`
+        const registryEntry = nativeExtensionCommandEntryMap.get(
+          `${extension.name}:${command.name}`
         )
         if (!registryEntry) {
           throw new Error(
-            `Native extension "${extension.manifest.name}" command "${command.name}" is missing from the renderer registry`
+            `Native extension "${extension.name}" command "${command.name}" is missing from the renderer definition`
           )
         }
 
@@ -85,7 +128,7 @@ export const nativeLauncherCommandOwners = nativeExtensions.reduce<LauncherComma
           | NativeNoViewCommandModule["search"]
           | undefined
         const loadCommandPreferences = () =>
-          window.api.nativeExtensions.getCommandPreferences(extension.manifest.name, command.name)
+          window.api.nativeExtensions.getCommandPreferences(extension.name, command.name)
         const validateCommandPreferences = (preferences: Record<string, unknown>) => {
           const missingPreferences = listMissingRequiredNativeExtensionPreferences(
             command.preferences ?? [],
@@ -108,7 +151,7 @@ export const nativeLauncherCommandOwners = nativeExtensions.reduce<LauncherComma
             | undefined
           if (!Component || !viewport) {
             throw new Error(
-              `Native extension "${extension.manifest.name}" view command "${command.name}" must export default component and viewport`
+              `Native extension "${extension.name}" view command "${command.name}" must export default component and viewport`
             )
           }
 
@@ -127,7 +170,7 @@ export const nativeLauncherCommandOwners = nativeExtensions.reduce<LauncherComma
         const run = registryEntry.module.default as NativeNoViewCommandModule["default"] | undefined
         if (!run) {
           throw new Error(
-            `Native extension "${extension.manifest.name}" command "${command.name}" must export a default run function`
+            `Native extension "${extension.name}" command "${command.name}" must export a default run function`
           )
         }
 

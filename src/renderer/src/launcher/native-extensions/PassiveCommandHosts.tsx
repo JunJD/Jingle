@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react"
 import type { LauncherCommandAddress, LauncherCommandOpenOptions } from "../pages/types"
 import { NativeExtensionHostProvider } from "./NativeExtensionHost"
-import { nativeExtensionCommandRegistry } from "./registry"
+import { nativeExtensionCommandEntries } from "./index"
 
 function PassiveCommandHost(props: {
   commandName: string
@@ -93,7 +93,7 @@ export function NativeExtensionPassiveCommandHosts(props: {
   const { openCommand } = props
   const commands = useMemo(
     () =>
-      nativeExtensionCommandRegistry.filter(
+      nativeExtensionCommandEntries.filter(
         (entry) => entry.command.mode === "background" || entry.command.mode === "menu-bar"
       ),
     []

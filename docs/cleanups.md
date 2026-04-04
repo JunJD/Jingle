@@ -196,10 +196,10 @@
 ### 13. `src/renderer/src/launcher/native-extensions/registry.ts`
 
 - 类型：parallel renderer registry
-- 为什么还在：Phase 3 先把隐式发现收成显式 import，但 renderer 侧仍保留了一份独立 command inventory
-- 当前作用：维护 `command -> component/meta` 的平行映射
-- 不是终局的原因：extension 自己的 renderer 声明应收回 `src/extensions/<id>/renderer.ts`，而不是继续集中堆在 host 目录里
-- 删除时机：Phase 6 完成后，renderer command registry 收回各 extension 自己目录
+- 状态：已在 Phase 6 完成删除
+- 为什么会存在过：Phase 3 先把隐式发现收成显式 import，但 renderer 侧仍保留了一份独立 command inventory
+- 当时作用：维护 `command -> component/meta` 的平行映射
+- 为什么必须删：extension 自己的 renderer 声明应收回 `src/extensions/<id>/renderer.ts`，而不是继续集中堆在 host 目录里
 - 删除验收：
   - `src/renderer/src/launcher/native-extensions/registry.ts` 被删除
   - renderer 不再维护独立的 extension inventory
@@ -208,10 +208,10 @@
 ### 14. `src/main/services/native-extensions/registry.ts`
 
 - 类型：parallel main registry
-- 为什么还在：main 侧 service 注册目前还单独维护在 host 目录，和 extension 自己目录分离
-- 当前作用：维护 `extension -> main service` 的平行映射
-- 不是终局的原因：main service 声明应收回 `src/extensions/<id>/main.ts`，没有 service 的 extension 不应再被迫经过独立 registry
-- 删除时机：Phase 6 完成后，main service registry 收回各 extension 自己目录
+- 状态：已在 Phase 6 完成删除
+- 为什么会存在过：main 侧 service 注册曾经单独维护在 host 目录，和 extension 自己目录分离
+- 当时作用：维护 `extension -> main service` 的平行映射
+- 为什么必须删：main service 声明应收回 `src/extensions/<id>/main.ts`，没有 service 的 extension 不应再被迫经过独立 registry
 - 删除验收：
   - `src/main/services/native-extensions/registry.ts` 被删除
   - main 不再维护独立的 extension inventory
@@ -220,10 +220,10 @@
 ### 15. `src/extensions/index.ts`
 
 - 类型：aggregate inventory bridge
-- 为什么还在：当前总清单只列 extension 包本身，但 command/component/service 的声明还散落在别处
-- 当前作用：提供 native extension 的聚合列表
-- 不是终局的原因：如果总清单继续只聚合半成品 definition，声明点仍然会分裂在 `extensions/*`、renderer registry、main registry 三处
-- 删除时机：Phase 6 完成后，要么改造成唯一总 registry，要么被新的 `src/extensions/registry.ts` 替换
+- 状态：Phase 6 已改造成 manifest 唯一总清单
+- 为什么会存在过：总清单曾经只列 extension 包本身，但 command/component/service 的声明还散落在别处
+- 当前作用：只提供 manifest 聚合；renderer 和 main 分别收口到 `src/extensions/renderer.ts`、`src/extensions/main.ts`
+- 为什么还要继续观察：直到 Final Cleanup，仍要确保仓库里不会重新长出 host 侧平行 inventory
 - 删除验收：
   - 仓库里只剩一份 native extension 总清单
   - 新增一个 extension 时，修改点集中在 `src/extensions/<id>/` 和唯一总 registry

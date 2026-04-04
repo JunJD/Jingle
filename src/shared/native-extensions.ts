@@ -41,16 +41,26 @@ export interface NativeExtensionPackageManifest<
   title: string
 }
 
-export interface NativeExtensionCommandReference<TCommandName extends string = string> {
+export interface NativeExtensionRendererCommandDefinition<
+  TCommandName extends string = string
+> {
+  commandModule: Record<string, unknown>
+  metaModule?: Record<string, unknown>
   name: TCommandName
 }
 
-export interface NativeExtensionDefinition<
-  TExtensionName extends string = string,
-  TCommandName extends string = string
-> {
-  commands: Array<NativeExtensionCommandReference<TCommandName>>
-  manifest: NativeExtensionPackageManifest<TExtensionName, TCommandName>
+export interface NativeExtensionRendererDefinition<TCommandName extends string = string> {
+  commands: Array<NativeExtensionRendererCommandDefinition<TCommandName>>
+}
+
+export interface NativeExtensionService {
+  extensionName: string
+  invoke: (request: NativeExtensionInvokeRequest) => Promise<unknown>
+  methods: string[]
+}
+
+export interface NativeExtensionMainDefinition {
+  service?: NativeExtensionService
 }
 
 export interface NativeExtensionCommandSettingsSchema {
@@ -113,11 +123,16 @@ export function listMissingRequiredNativeExtensionPreferences(
     .map((preference) => getNativeExtensionPreferenceDisplayName(preference))
 }
 
-export function defineNativeExtension(
-  definition: NativeExtensionDefinition
-): NativeExtensionDefinition {
-  validateNativeExtensionDefinition(definition)
-  return definition
+export function defineNativeExtensionRenderer(
+  renderer: NativeExtensionRendererDefinition
+): NativeExtensionRendererDefinition {
+  return renderer
+}
+
+export function defineNativeExtensionMain(
+  main: NativeExtensionMainDefinition
+): NativeExtensionMainDefinition {
+  return main
 }
 
 export function defineNativeExtensionManifest(manifest: unknown): NativeExtensionPackageManifest {
@@ -126,22 +141,25 @@ export function defineNativeExtensionManifest(manifest: unknown): NativeExtensio
   return resolvedManifest
 }
 
-export function validateNativeExtensionDefinition(definition: NativeExtensionDefinition): void {
-  validateNativeExtensionPackageManifest(definition.manifest)
+export function validateNativeExtensionRendererDefinition(
+  manifest: NativeExtensionPackageManifest,
+  renderer: NativeExtensionRendererDefinition
+): void {
+  validateNativeExtensionPackageManifest(manifest)
 
-  const manifestCommandNames = new Set(definition.manifest.commands.map((command) => command.name))
+  const manifestCommandNames = new Set(manifest.commands.map((command) => command.name))
   const commandModuleNames = new Set<string>()
 
-  for (const command of definition.commands) {
+  for (const command of renderer.commands) {
     if (commandModuleNames.has(command.name)) {
       throw new Error(
-        `Native extension "${definition.manifest.name}" declares duplicate command module "${command.name}"`
+        `Native extension "${manifest.name}" declares duplicate command module "${command.name}"`
       )
     }
 
     if (!manifestCommandNames.has(command.name)) {
       throw new Error(
-        `Native extension "${definition.manifest.name}" command module "${command.name}" is missing from its manifest`
+        `Native extension "${manifest.name}" command module "${command.name}" is missing from its manifest`
       )
     }
 
@@ -150,10 +168,21 @@ export function validateNativeExtensionDefinition(definition: NativeExtensionDef
 
   if (commandModuleNames.size !== manifestCommandNames.size) {
     throw new Error(
-      `Native extension "${definition.manifest.name}" manifest and command modules are out of sync`
+      `Native extension "${manifest.name}" manifest and command modules are out of sync`
     )
   }
+}
 
+export function validateNativeExtensionMainDefinition(
+  manifest: NativeExtensionPackageManifest,
+  main: NativeExtensionMainDefinition
+): void {
+  const service = main.service
+  if (service && service.extensionName !== manifest.name) {
+    throw new Error(
+      `Native extension service "${service.extensionName}" does not match manifest "${manifest.name}"`
+    )
+  }
 }
 
 export function validateNativeExtensionPackageManifest(
