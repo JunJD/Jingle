@@ -1,8 +1,10 @@
 import type { RefObject } from "react"
 import { Settings2 } from "lucide-react"
 import { useI18n } from "@/lib/i18n"
+import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import type { LauncherShellConfig } from "../../../../shared/launcher"
 import type { ClipboardContext } from "../../../../shared/clipboard"
+import { LAUNCHER_COMMAND_IDS } from "../../../../shared/shortcuts/ids"
 import type { LauncherHomeSurfaceModel } from "../home-surface"
 import { ClipboardChip } from "./ClipboardChip"
 import { LauncherChrome } from "./LauncherChrome"
@@ -49,6 +51,10 @@ export function LauncherSearchPage(props: {
   const isPrimaryActionDisabled = !selectedItem || selectedItem.availability === "planned"
   const resultsVisible = surface.chrome.footerVisible
   const showHistoryGrid = surface.body.kind === "history-grid"
+  const askAiShortcut = formatLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.searchOpenAi)
+  const executeSelectionShortcut = formatLauncherCommandShortcut(
+    LAUNCHER_COMMAND_IDS.searchExecuteSelection
+  )
   const headerLeading = previewClipboardContext ? (
     <ClipboardChip context={previewClipboardContext} onClear={onClearClipboardContext} />
   ) : undefined
@@ -89,14 +95,23 @@ export function LauncherSearchPage(props: {
               className="launcher-action-link flex appearance-none items-center gap-2 rounded-[10px] border-0 px-3 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
             >
               <span>{primaryActionLabel}</span>
-              <span className="launcher-shortcut text-[11px] text-muted-foreground">↵</span>
+              {executeSelectionShortcut ? (
+                <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                  {executeSelectionShortcut}
+                </span>
+              ) : null}
             </button>
           </>
         ) : undefined
       }
       headerTrailing={
-        <div className="flex shrink-0 items-center px-0 py-1 text-[13px] font-medium text-muted-foreground">
-          {copy.launcher.askAiWithTab}
+        <div className="flex shrink-0 items-center gap-2 px-0 py-1 text-[13px] font-medium text-muted-foreground">
+          {askAiShortcut ? (
+            <span className="launcher-shortcut text-[11px] text-muted-foreground">
+              {askAiShortcut}
+            </span>
+          ) : null}
+          <span>{copy.launcher.aiEntryLabel}</span>
         </div>
       }
       inputRef={inputRef}

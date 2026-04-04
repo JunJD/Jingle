@@ -1,5 +1,7 @@
 import { Children, isValidElement, useMemo, useState, type ReactNode } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
+import { LAUNCHER_COMMAND_IDS } from "../../../../shared/shortcuts/ids"
 import { collectActions } from "./actions"
 import { NativeSurfaceBackButton, NativeSurfaceChrome } from "./chrome"
 import { NativeExtensionSelect } from "./select"
@@ -64,6 +66,10 @@ function FormRoot(props: {
     [actions]
   )
   const primaryAction = actionItems[0] ?? null
+  const actionPanelShortcut = formatLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.actionsOpen)
+  const primaryActionShortcut = formatLauncherCommandShortcut(
+    LAUNCHER_COMMAND_IDS.actionsExecutePrimary
+  )
 
   return (
     <div className="relative h-full">
@@ -83,7 +89,11 @@ function FormRoot(props: {
                   className="launcher-action-link flex items-center gap-2 rounded-[10px] px-3 py-1 text-[13px] font-medium text-foreground"
                 >
                   <span>Actions</span>
-                  <span className="launcher-shortcut text-[11px] text-muted-foreground">⌘K</span>
+                  {actionPanelShortcut ? (
+                    <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                      {actionPanelShortcut}
+                    </span>
+                  ) : null}
                 </button>
               ) : null}
 
@@ -99,7 +109,11 @@ function FormRoot(props: {
                 className="launcher-action-link flex items-center gap-2 rounded-[10px] px-3 py-1 text-[13px] font-medium text-foreground disabled:opacity-40"
               >
                 <span>{primaryAction?.title ?? "Submit"}</span>
-                <span className="launcher-shortcut text-[11px] text-muted-foreground">↵</span>
+                {primaryActionShortcut ? (
+                  <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                    {primaryActionShortcut}
+                  </span>
+                ) : null}
               </button>
             </div>
           </>

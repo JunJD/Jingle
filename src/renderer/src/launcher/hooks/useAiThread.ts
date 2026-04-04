@@ -3,6 +3,7 @@ import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "../../../../plugins/ai/m
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
 import { hasMessageContent } from "../../../../shared/message-content"
+import { LAUNCHER_COMMAND_IDS } from "../../../../shared/shortcuts/ids"
 import type { Message } from "@/types"
 import {
   useLauncherPluginHost,
@@ -110,12 +111,21 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     [invocation]
   )
 
+  const executeAiShortcutCommand = useCallback(
+    (commandId: string): void => {
+      if (commandId === LAUNCHER_COMMAND_IDS.aiSubmit) {
+        runPrimaryAction()
+      }
+    },
+    [runPrimaryAction]
+  )
+
   const handleInputKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>): void => {
       switch (event.key) {
         case "Enter":
           event.preventDefault()
-          runPrimaryAction()
+          executeAiShortcutCommand(LAUNCHER_COMMAND_IDS.aiSubmit)
           break
         case "Backspace":
           if (!query && !isBusy) {
@@ -127,7 +137,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
           break
       }
     },
-    [isBusy, navigation, query, runPrimaryAction]
+    [executeAiShortcutCommand, isBusy, navigation, query]
   )
 
   const primaryActionDisabled = isBusy || !hasMessageContent(messageContent)

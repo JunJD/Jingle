@@ -13,7 +13,9 @@ import {
   type ReactNode
 } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { cn } from "@/lib/utils"
+import { LAUNCHER_COMMAND_IDS } from "../../../../shared/shortcuts/ids"
 import { LauncherChrome } from "../components/LauncherChrome"
 import {
   ActionMarker,
@@ -689,6 +691,10 @@ function ListRoot(props: {
       ? emptyView.actions
       : listActions
   const primaryAction = activeActions[0] ?? null
+  const actionPanelShortcut = formatLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.actionsOpen)
+  const primaryActionShortcut = formatLauncherCommandShortcut(
+    LAUNCHER_COMMAND_IDS.actionsExecutePrimary
+  )
   const footerLabel = selectedItem?.sectionTitle ?? navigationTitle ?? "Results"
   const footerCount =
     items.length > 0 ? `${Math.min(selectedIndex + 1, items.length)} of ${items.length}` : null
@@ -757,7 +763,11 @@ function ListRoot(props: {
                   className="launcher-action-link flex items-center gap-2 rounded-[10px] px-3 py-1 text-[13px] font-medium text-foreground"
                 >
                   <span>Actions</span>
-                  <span className="launcher-shortcut text-[11px] text-muted-foreground">⌘K</span>
+                  {actionPanelShortcut ? (
+                    <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                      {actionPanelShortcut}
+                    </span>
+                  ) : null}
                 </button>
               ) : null}
 
@@ -773,7 +783,11 @@ function ListRoot(props: {
                 className="launcher-action-link flex items-center gap-2 rounded-[10px] px-3 py-1 text-[13px] font-medium text-foreground disabled:opacity-40"
               >
                 <span>{primaryAction?.title ?? "Open"}</span>
-                <span className="launcher-shortcut text-[11px] text-muted-foreground">↵</span>
+                {primaryActionShortcut ? (
+                  <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                    {primaryActionShortcut}
+                  </span>
+                ) : null}
               </button>
             </div>
           </>

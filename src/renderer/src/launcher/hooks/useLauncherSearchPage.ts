@@ -14,20 +14,21 @@ import type {
 import type { LauncherHistoryItem } from "../../../../shared/launcher-history"
 import { sortLauncherHistoryItems } from "../../../../shared/launcher-history"
 import type { LocalStartItem } from "../../../../shared/local-start"
-import { DEFAULT_HOME_COMMAND, resolveLauncherPluginCommand } from "../pages"
+import { LAUNCHER_COMMAND_IDS, type LauncherCommandId } from "../../../../shared/shortcuts/ids"
+import { DEFAULT_HOME_COMMAND, resolveLauncherCommand } from "../pages"
 import {
   buildLauncherHomeSurfaceModel,
   getLauncherHomeSurfaceResultsHeight,
   resolveLauncherHomeSurfaceSelectedIndex,
   type LauncherHomeSurfaceModel
 } from "../home-surface"
-import type { LauncherCommandAddress, LauncherPluginOpenOptions } from "../pages/types"
+import type { LauncherCommandAddress, LauncherCommandOpenOptions } from "../pages/types"
 import { useLauncherHomeClipboard } from "./useLauncherHomeClipboard"
 
 const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
 
 export function useLauncherSearchPage(props: {
-  openCommand: (address: LauncherCommandAddress, options?: LauncherPluginOpenOptions) => void
+  openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
 }): {
   executeItem: (index: number) => void
   clearClipboardContext: () => void
@@ -198,9 +199,34 @@ export function useLauncherSearchPage(props: {
     [navigateToCommand, query, surface.items]
   )
 
+  const executeSearchCommand = useCallback(
+    (commandId: LauncherCommandId): void => {
+      switch (commandId) {
+        case LAUNCHER_COMMAND_IDS.searchOpenAi:
+          navigateToCommand(DEFAULT_HOME_COMMAND, {
+            initialAction: query.trim() ? "submit" : "focus",
+            seedQuery: query
+          })
+          return
+        case LAUNCHER_COMMAND_IDS.searchMoveSelectionDown:
+          moveSelection(1)
+          return
+        case LAUNCHER_COMMAND_IDS.searchMoveSelectionUp:
+          moveSelection(-1)
+          return
+        case LAUNCHER_COMMAND_IDS.searchExecuteSelection:
+          executeItem(selectedIndex)
+          return
+        default:
+          return
+      }
+    },
+    [executeItem, moveSelection, navigateToCommand, query, selectedIndex]
+  )
+
   const handleInputKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>): void => {
-      const commandMatch = resolveLauncherPluginCommand({
+      const commandMatch = resolveLauncherCommand({
         altKey: event.altKey,
         ctrlKey: event.ctrlKey,
         key: event.key,
@@ -210,42 +236,37 @@ export function useLauncherSearchPage(props: {
       })
       if (commandMatch) {
         event.preventDefault()
-        navigateToCommand(
-          {
-            kind: "internal-plugin",
-            commandName: commandMatch.commandName,
-            pluginId: commandMatch.pluginId
-          },
-          commandMatch.match.openOptions
-        )
+        navigateToCommand(commandMatch.address, commandMatch.match.openOptions)
         return
       }
 
+      let commandId: LauncherCommandId | null = null
+
       switch (event.key) {
         case "Tab":
-          event.preventDefault()
-          navigateToCommand(DEFAULT_HOME_COMMAND, {
-            initialAction: query.trim() ? "submit" : "focus",
-            seedQuery: query
-          })
+          commandId = LAUNCHER_COMMAND_IDS.searchOpenAi
           break
         case "ArrowDown":
-          event.preventDefault()
-          moveSelection(1)
+          commandId = LAUNCHER_COMMAND_IDS.searchMoveSelectionDown
           break
         case "ArrowUp":
-          event.preventDefault()
-          moveSelection(-1)
+          commandId = LAUNCHER_COMMAND_IDS.searchMoveSelectionUp
           break
         case "Enter":
-          event.preventDefault()
-          executeItem(selectedIndex)
+          commandId = LAUNCHER_COMMAND_IDS.searchExecuteSelection
           break
         default:
           break
       }
+
+      if (!commandId) {
+        return
+      }
+
+      event.preventDefault()
+      executeSearchCommand(commandId)
     },
-    [executeItem, moveSelection, navigateToCommand, query, selectedIndex]
+    [executeSearchCommand, navigateToCommand, query]
   )
   const setHistoryItemPinned = useCallback(
     (itemId: string, pin: boolean): void => {

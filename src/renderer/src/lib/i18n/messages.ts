@@ -73,7 +73,6 @@ export interface AppCopy {
   }
   launcher: {
     aiAddAttachment: string
-    askAiWithTab: string
     aiEmptyEyebrow: string
     aiEntryLabel: string
     aiIntentSubtitle: (query: string) => string
@@ -234,7 +233,6 @@ export const appCopy: Record<AppLocale, AppCopy> = {
     },
     launcher: {
       aiAddAttachment: "添加附件",
-      askAiWithTab: "按 Tab 问 AI",
       aiEmptyEyebrow: "桌面 Agent",
       aiEntryLabel: "问 AI",
       aiIntentSubtitle: (query) => `带着“${query}”进入 AI`,
@@ -404,7 +402,6 @@ export const appCopy: Record<AppLocale, AppCopy> = {
     },
     launcher: {
       aiAddAttachment: "Add attachment",
-      askAiWithTab: "Tab to ask AI",
       aiEmptyEyebrow: "Launcher AI",
       aiEntryLabel: "Ask AI",
       aiIntentSubtitle: (query) => `Open AI with “${query}”`,

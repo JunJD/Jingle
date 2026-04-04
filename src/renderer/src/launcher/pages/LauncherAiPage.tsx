@@ -1,7 +1,9 @@
 import { ArrowLeft, Plus } from "lucide-react"
 import { useEffect, useRef } from "react"
+import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { AI_LAUNCHER_PLUGIN_ID } from "../../../../plugins/ai/manifest"
 import { AI_ATTACHMENT_FILE_EXTENSIONS } from "../../../../shared/launcher-attachments"
+import { LAUNCHER_COMMAND_IDS } from "../../../../shared/shortcuts/ids"
 import { useLauncherPluginNavigation, useLauncherPluginSurface } from "../LauncherPluginHost"
 import { LauncherAttachmentStrip } from "../components/LauncherAttachmentStrip"
 import { useAiThread } from "../hooks/useAiThread"
@@ -23,6 +25,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const inputStatus = session.inputStatus
   const { inputRef, setInputStatus } = surface
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const submitShortcut = formatLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.aiSubmit)
   useDisableTabNavigation(inputRef)
 
   useEffect(() => {
@@ -48,7 +51,11 @@ export function LauncherAiPage(): React.JSX.Element {
             className="launcher-action-link flex appearance-none items-center gap-2 rounded-[10px] border-0 px-3 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
           >
             <span>{copy.launcher.aiPrimaryLabel}</span>
-            <span className="launcher-shortcut text-[11px] text-muted-foreground">↵</span>
+            {submitShortcut ? (
+              <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                {submitShortcut}
+              </span>
+            ) : null}
           </button>
         </>
       }
