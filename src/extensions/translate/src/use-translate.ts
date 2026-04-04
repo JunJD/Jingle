@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useNativeCommandPreferences, useNativeExtensionHost } from "../../api"
-import { useI18n } from "@/lib/i18n"
+import { useI18n, useNativeCommandPreferences, useNativeExtensionHost } from "../../api"
 import { translateClient } from "./api"
 import {
   TRANSLATE_LANGUAGE_OPTIONS,

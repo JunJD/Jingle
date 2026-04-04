@@ -1,8 +1,7 @@
 import { useCallback, useRef } from "react"
 import { ArrowLeft, ArrowRightLeft, Check, ChevronDown, Copy } from "lucide-react"
 import { FALLBACK_SHELL_CONFIG } from "../../../shared/launcher"
-import { useNativeExtensionLifecycle, useNativeExtensionNavigation } from "../../api"
-import { useI18n } from "@/lib/i18n"
+import { useI18n, useNativeExtensionLifecycle, useNativeExtensionNavigation } from "../../api"
 import { getTranslatePluginCopy } from "./copy"
 import { useTranslate } from "./use-translate"
 
