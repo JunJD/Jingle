@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronRight, LoaderCircle, MoreHorizontal } from "lucide-react"
+import { ChevronRight, LoaderCircle, MoreHorizontal } from "lucide-react"
 import {
   Children,
   Fragment,
@@ -13,9 +13,7 @@ import {
   type ReactNode
 } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { cn } from "@/lib/utils"
-import { LAUNCHER_COMMAND_IDS } from "../../../../shared/shortcuts/ids"
 import { LauncherChrome } from "../components/LauncherChrome"
 import {
   ActionMarker,
@@ -27,8 +25,14 @@ import {
   type NativeActionStyle,
   OpenInBrowserActionMarker
 } from "./actions"
+import { NativeSurfaceBackButton } from "./chrome"
 import { NativeExtensionSelect } from "./select"
-import { useNativeExtensionNavigation, useNativeExtensionSurface } from "./sdk"
+import {
+  NativeSurfaceActionLayer,
+  NativeSurfaceActionsFooter,
+  useNativeSurfaceActionController
+} from "./surface-actions"
+import { useNativeExtensionSurface } from "./sdk"
 
 interface NativeListItemDescriptor {
   accessories?: ReactNode
@@ -340,118 +344,6 @@ function filterSections(
     .filter((section) => section.items.length > 0)
 }
 
-function groupActionsBySection(actions: NativeActionDescriptor[]): Array<{
-  actions: NativeActionDescriptor[]
-  title?: string
-}> {
-  const groups: Array<{ actions: NativeActionDescriptor[]; title?: string }> = []
-
-  for (const action of actions) {
-    const current = groups[groups.length - 1]
-    if (!current || current.title !== action.sectionTitle) {
-      groups.push({
-        actions: [action],
-        title: action.sectionTitle
-      })
-      continue
-    }
-
-    current.actions.push(action)
-  }
-
-  return groups
-}
-
-export function NativeActionOverlay(props: {
-  actions: NativeActionDescriptor[]
-  onClose: () => void
-}): React.JSX.Element {
-  const { actions, onClose } = props
-  const groupedActions = groupActionsBySection(actions)
-  const [selectedIndex, setSelectedIndex] = useState(0)
-  const flatActions = groupedActions.flatMap((group) => group.actions)
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
-        event.preventDefault()
-        onClose()
-        return
-      }
-
-      if (event.key === "ArrowDown") {
-        event.preventDefault()
-        setSelectedIndex((current) => Math.min(current + 1, flatActions.length - 1))
-        return
-      }
-
-      if (event.key === "ArrowUp") {
-        event.preventDefault()
-        setSelectedIndex((current) => Math.max(current - 1, 0))
-        return
-      }
-
-      if (event.key === "Enter") {
-        event.preventDefault()
-        void Promise.resolve(flatActions[selectedIndex]?.onAction()).finally(onClose)
-      }
-    }
-
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [flatActions, onClose, selectedIndex])
-
-  return (
-    <div className="absolute inset-0 z-50 bg-black/28" onClick={onClose}>
-      <div
-        className="absolute bottom-12 right-3 w-80 overflow-hidden rounded-2xl border border-border/80 bg-background shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="max-h-[60vh] overflow-y-auto py-2">
-          {groupedActions.map((group, groupIndex) => (
-            <Fragment key={`native-action-group-${groupIndex}`}>
-              {group.title ? (
-                <div className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  {group.title}
-                </div>
-              ) : null}
-              {group.actions.map((action) => {
-                const index = flatActions.findIndex((entry) => entry.id === action.id)
-                const isSelected = index === selectedIndex
-
-                return (
-                  <button
-                    key={action.id}
-                    type="button"
-                    onClick={() => {
-                      void Promise.resolve(action.onAction()).finally(onClose)
-                    }}
-                    className={cn(
-                      "flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-[13px] transition",
-                      isSelected ? "bg-background-secondary" : "hover:bg-background-secondary/70",
-                      action.style === "destructive" ? "text-red-500" : "text-foreground"
-                    )}
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      {action.icon ? <div className="shrink-0">{action.icon}</div> : null}
-                      <span className="truncate">{action.title}</span>
-                    </div>
-                    {action.shortcut ? (
-                      <span className="shrink-0 text-[11px] text-muted-foreground">
-                        {action.shortcut}
-                      </span>
-                    ) : null}
-                  </button>
-                )
-              })}
-            </Fragment>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function NativeListRows(props: {
   onExecute: (index: number) => void
   onOpenActions: (index: number) => void
@@ -641,6 +533,7 @@ function NativeListDropdown(props: {
 function ListRoot(props: {
   actions?: ReactElement | null
   children?: ReactNode
+  filtering?: boolean
   isLoading?: boolean
   navigationTitle?: string
   onSearchTextChange?: (value: string) => void
@@ -651,6 +544,7 @@ function ListRoot(props: {
   const {
     actions,
     children,
+    filtering = true,
     isLoading = false,
     navigationTitle,
     onSearchTextChange,
@@ -658,16 +552,14 @@ function ListRoot(props: {
     searchBarPlaceholder,
     searchText
   } = props
-  const navigation = useNativeExtensionNavigation()
   const surface = useNativeExtensionSurface()
   const [internalSearchText, setInternalSearchText] = useState(searchText ?? "")
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [showActions, setShowActions] = useState(false)
 
   const resolvedSearchText = searchText ?? internalSearchText
   const sections = useMemo(
-    () => filterSections(collectSections(children), resolvedSearchText),
-    [children, resolvedSearchText]
+    () => (filtering ? filterSections(collectSections(children), resolvedSearchText) : collectSections(children)),
+    [children, filtering, resolvedSearchText]
   )
   const emptyView = useMemo(() => collectEmptyView(children), [children])
   const dropdown = useMemo(() => collectDropdown(searchBarAccessory), [searchBarAccessory])
@@ -690,11 +582,10 @@ function ListRoot(props: {
     : emptyView?.actions.length
       ? emptyView.actions
       : listActions
-  const primaryAction = activeActions[0] ?? null
-  const actionPanelShortcut = formatLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.actionsOpen)
-  const primaryActionShortcut = formatLauncherCommandShortcut(
-    LAUNCHER_COMMAND_IDS.actionsExecutePrimary
-  )
+  const actionController = useNativeSurfaceActionController({
+    actions: activeActions,
+    primaryActionFallbackTitle: "Open"
+  })
   const footerLabel = selectedItem?.sectionTitle ?? navigationTitle ?? "Results"
   const footerCount =
     items.length > 0 ? `${Math.min(selectedIndex + 1, items.length)} of ${items.length}` : null
@@ -724,85 +615,30 @@ function ListRoot(props: {
       return
     }
 
-    if (event.key === "Enter") {
-      event.preventDefault()
-      if (primaryAction) {
-        void Promise.resolve(primaryAction.onAction())
-      }
-      return
-    }
-
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-      if (activeActions.length > 1) {
-        event.preventDefault()
-        setShowActions(true)
-      }
-    }
+    actionController.handleKeyDown(event)
   }
 
   return (
     <div className="relative h-full">
       <LauncherChrome
         footer={
-          <>
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
-                {footerLabel}
-              </div>
-              {footerCount ? (
-                <div className="shrink-0 text-[12px] text-muted-foreground">{footerCount}</div>
-              ) : null}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {activeActions.length > 1 ? (
-                <button
-                  type="button"
-                  onClick={() => setShowActions(true)}
-                  onMouseDown={(event) => event.preventDefault()}
-                  className="launcher-action-link flex items-center gap-2 rounded-[10px] px-3 py-1 text-[13px] font-medium text-foreground"
-                >
-                  <span>Actions</span>
-                  {actionPanelShortcut ? (
-                    <span className="launcher-shortcut text-[11px] text-muted-foreground">
-                      {actionPanelShortcut}
-                    </span>
-                  ) : null}
-                </button>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (primaryAction) {
-                    void Promise.resolve(primaryAction.onAction())
-                  }
-                }}
-                onMouseDown={(event) => event.preventDefault()}
-                disabled={!primaryAction}
-                className="launcher-action-link flex items-center gap-2 rounded-[10px] px-3 py-1 text-[13px] font-medium text-foreground disabled:opacity-40"
-              >
-                <span>{primaryAction?.title ?? "Open"}</span>
-                {primaryActionShortcut ? (
-                  <span className="launcher-shortcut text-[11px] text-muted-foreground">
-                    {primaryActionShortcut}
-                  </span>
+          <NativeSurfaceActionsFooter
+            controller={actionController}
+            leading={
+              <>
+                <div className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
+                  {footerLabel}
+                </div>
+                {footerCount ? (
+                  <div className="shrink-0 text-[12px] text-muted-foreground">{footerCount}</div>
                 ) : null}
-              </button>
-            </div>
-          </>
+              </>
+            }
+          />
         }
         headerLeading={
           <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              onClick={navigation.canPop ? navigation.pop : navigation.goHome}
-              onMouseDown={(event) => event.preventDefault()}
-              className="launcher-icon-button flex h-9 w-9 shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
-              aria-label="Go Home"
-            >
-              <ArrowLeft className="size-5" />
-            </button>
+            <NativeSurfaceBackButton />
             {navigationTitle ? (
               <span className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
                 {navigationTitle}
@@ -831,7 +667,7 @@ function ListRoot(props: {
             }}
             onOpenActions={(index) => {
               setSelectedIndex(index)
-              setShowActions(true)
+              actionController.openActions()
             }}
             onSelect={setSelectedIndex}
             sections={sections}
@@ -859,13 +695,11 @@ function ListRoot(props: {
                 {emptyView.actions[0] ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      void Promise.resolve(emptyView.actions[0]?.onAction())
-                    }}
+                    onClick={actionController.executePrimaryAction}
                     onMouseDown={(event) => event.preventDefault()}
                     className="inline-flex items-center gap-2 rounded-[10px] border border-border bg-background px-3 py-2 text-[13px] font-medium text-foreground transition hover:bg-background-secondary"
                   >
-                    <span>{emptyView.actions[0].title}</span>
+                    <span>{actionController.primaryAction?.title ?? "Open"}</span>
                     <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 ) : null}
@@ -877,9 +711,7 @@ function ListRoot(props: {
         )}
       </LauncherChrome>
 
-      {showActions && activeActions.length > 1 ? (
-        <NativeActionOverlay actions={activeActions} onClose={() => setShowActions(false)} />
-      ) : null}
+      <NativeSurfaceActionLayer controller={actionController} />
     </div>
   )
 }

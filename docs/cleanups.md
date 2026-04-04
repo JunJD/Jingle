@@ -6,16 +6,35 @@
 
 它们不是目标架构的一部分。
 
-规则只有 3 条：
+规则只有 4 条：
 
 1. 只要新增了“为了先不报错”的桥接层，就必须登记到这里。
 2. 每个条目都必须写清楚删除时机和删除后的验收方式。
-3. 当前 launcher / native extension 主线全部完成后，这份文档应被清空并删除。
+3. 中途不为了“顺手更干净”提前删；先登记、先推进主线，最后统一清理。
+4. 当前 launcher / native extension 主线全部完成后，这份文档应被清空并删除。
 
 这份文档和 [launcher-extension-phase-checkpoints.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/launcher-extension-phase-checkpoints.md) 配套使用：
 
 - `phase-checkpoints` 负责说明下一步做什么
 - `cleanups.md` 负责约束哪些临时层最后必须删掉
+
+## 清理策略
+
+这里的条目默认都进入最后一个统一清理阶段，而不是在中间 phase 里边走边删。
+
+原因很简单：
+
+- 当前主线目标是把 native extension 架构收干净，不是让每一步都追求“立刻零临时层”
+- 中途提前删除，容易把主线推进和兼容层拆除搅在一起，暂停点会变脏
+- 最后一轮应该故意更激进：先删桥、先删别名、先删兼容层，报错了就顺着报错修
+
+最终清理遵守 `delete-first` 原则：
+
+1. 先删桥接层，而不是先补更多兜底。
+2. 删完出现报错，不算“不能删”，而算“目标架构还没成立”。
+3. 只要主路径因此暴露出缺陷，就继续修到目标边界成立为止。
+
+`cleanups.md` 不是“以后有空再看”的备忘录，而是最后一个硬 phase 的删除清单。`
 
 ## 当前状态
 
@@ -174,11 +193,47 @@
   - active extension command 在设置变更后仍能刷新
   - `todo-list`、`github` 等 native extension 行为不回退
 
+### 13. `src/renderer/src/launcher/native-extensions/registry.ts`
+
+- 类型：parallel renderer registry
+- 为什么还在：Phase 3 先把隐式发现收成显式 import，但 renderer 侧仍保留了一份独立 command inventory
+- 当前作用：维护 `command -> component/meta` 的平行映射
+- 不是终局的原因：extension 自己的 renderer 声明应收回 `src/extensions/<id>/renderer.ts`，而不是继续集中堆在 host 目录里
+- 删除时机：Phase 6 完成后，renderer command registry 收回各 extension 自己目录
+- 删除验收：
+  - `src/renderer/src/launcher/native-extensions/registry.ts` 被删除
+  - renderer 不再维护独立的 extension inventory
+  - `todo-list`、`github`、`translate` 继续能搜索、打开、运行
+
+### 14. `src/main/services/native-extensions/registry.ts`
+
+- 类型：parallel main registry
+- 为什么还在：main 侧 service 注册目前还单独维护在 host 目录，和 extension 自己目录分离
+- 当前作用：维护 `extension -> main service` 的平行映射
+- 不是终局的原因：main service 声明应收回 `src/extensions/<id>/main.ts`，没有 service 的 extension 不应再被迫经过独立 registry
+- 删除时机：Phase 6 完成后，main service registry 收回各 extension 自己目录
+- 删除验收：
+  - `src/main/services/native-extensions/registry.ts` 被删除
+  - main 不再维护独立的 extension inventory
+  - `translate` 的 service 调用继续正常
+
+### 15. `src/extensions/index.ts`
+
+- 类型：aggregate inventory bridge
+- 为什么还在：当前总清单只列 extension 包本身，但 command/component/service 的声明还散落在别处
+- 当前作用：提供 native extension 的聚合列表
+- 不是终局的原因：如果总清单继续只聚合半成品 definition，声明点仍然会分裂在 `extensions/*`、renderer registry、main registry 三处
+- 删除时机：Phase 6 完成后，要么改造成唯一总 registry，要么被新的 `src/extensions/registry.ts` 替换
+- 删除验收：
+  - 仓库里只剩一份 native extension 总清单
+  - 新增一个 extension 时，修改点集中在 `src/extensions/<id>/` 和唯一总 registry
+  - `npm run check:extension-contract && npm run check:extension-registry` 通过
+
 ## 使用规则
 
 后续每个 pause 结束前，都要做这两件事：
 
 1. 如果新增了桥接层，先在这里登记。
-2. 如果删掉了桥接层，先从这里移除，再在 phase 文档里更新状态。
+2. 如果某个桥接层已经满足删除条件，先把条件写清楚，但先不要从这里移除，留到最终统一清理 phase 一次删除。
 
 如果某个条目连续几个阶段都还在，但没人能清楚说明删除时机，说明它已经从“临时桥”变成了“架构债”，必须优先处理。

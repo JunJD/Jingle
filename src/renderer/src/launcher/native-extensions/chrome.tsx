@@ -1,11 +1,7 @@
 import { ArrowLeft } from "lucide-react"
-import { useRef, useState, type ReactNode } from "react"
-import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
-import { LAUNCHER_COMMAND_IDS } from "../../../../shared/shortcuts/ids"
+import { useRef, type ReactNode } from "react"
 import { useLauncherChromeAudit } from "../hooks/useLauncherChromeAudit"
-import type { NativeActionDescriptor } from "./actions"
 import { useNativeExtensionNavigation, useNativeExtensionSurface } from "./sdk"
-import { NativeActionOverlay } from "./ui"
 
 export function NativeSurfaceChrome(props: {
   children?: ReactNode
@@ -94,69 +90,5 @@ export function NativeSurfaceBackButton(): React.JSX.Element {
     >
       <ArrowLeft className="size-5" />
     </button>
-  )
-}
-
-export function NativeSurfaceActionsFooter(props: {
-  actions: NativeActionDescriptor[]
-  label: string
-}): React.JSX.Element {
-  const { actions, label } = props
-  const [showActions, setShowActions] = useState(false)
-  const primaryAction = actions[0] ?? null
-  const actionPanelShortcut = formatLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.actionsOpen)
-  const primaryActionShortcut = formatLauncherCommandShortcut(
-    LAUNCHER_COMMAND_IDS.actionsExecutePrimary
-  )
-
-  return (
-    <>
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
-          {label}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        {actions.length > 1 ? (
-          <button
-            type="button"
-            onClick={() => setShowActions(true)}
-            onMouseDown={(event) => event.preventDefault()}
-            className="launcher-action-link flex items-center gap-2 rounded-[10px] px-3 py-1 text-[13px] font-medium text-foreground"
-          >
-            <span>Actions</span>
-            {actionPanelShortcut ? (
-              <span className="launcher-shortcut text-[11px] text-muted-foreground">
-                {actionPanelShortcut}
-              </span>
-            ) : null}
-          </button>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={() => {
-            if (primaryAction) {
-              void Promise.resolve(primaryAction.onAction())
-            }
-          }}
-          onMouseDown={(event) => event.preventDefault()}
-          disabled={!primaryAction}
-          className="launcher-action-link flex items-center gap-2 rounded-[10px] px-3 py-1 text-[13px] font-medium text-foreground disabled:opacity-40"
-        >
-          <span>{primaryAction?.title ?? "Open"}</span>
-          {primaryActionShortcut ? (
-            <span className="launcher-shortcut text-[11px] text-muted-foreground">
-              {primaryActionShortcut}
-            </span>
-          ) : null}
-        </button>
-      </div>
-
-      {showActions && actions.length > 1 ? (
-        <NativeActionOverlay actions={actions} onClose={() => setShowActions(false)} />
-      ) : null}
-    </>
   )
 }

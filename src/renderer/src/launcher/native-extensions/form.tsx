@@ -1,11 +1,13 @@
-import { Children, isValidElement, useMemo, useState, type ReactNode } from "react"
+import { Children, isValidElement, useMemo, type ReactNode } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
-import { LAUNCHER_COMMAND_IDS } from "../../../../shared/shortcuts/ids"
 import { collectActions } from "./actions"
 import { NativeSurfaceBackButton, NativeSurfaceChrome } from "./chrome"
 import { NativeExtensionSelect } from "./select"
-import { NativeActionOverlay } from "./ui"
+import {
+  NativeSurfaceActionLayer,
+  NativeSurfaceActionsFooter,
+  useNativeSurfaceActionController
+} from "./surface-actions"
 
 type FormDropdownMarkerRole = "form-dropdown-item"
 
@@ -52,7 +54,6 @@ function FormRoot(props: {
   navigationTitle?: string
 }): React.JSX.Element {
   const { actions, children, navigationTitle } = props
-  const [showActions, setShowActions] = useState(false)
   const actionItems = useMemo(
     () =>
       actions
@@ -65,58 +66,23 @@ function FormRoot(props: {
         : [],
     [actions]
   )
-  const primaryAction = actionItems[0] ?? null
-  const actionPanelShortcut = formatLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.actionsOpen)
-  const primaryActionShortcut = formatLauncherCommandShortcut(
-    LAUNCHER_COMMAND_IDS.actionsExecutePrimary
-  )
+  const actionController = useNativeSurfaceActionController({
+    actions: actionItems,
+    primaryActionFallbackTitle: "Submit"
+  })
 
   return (
     <div className="relative h-full">
       <NativeSurfaceChrome
         footer={
-          <>
-            <div className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
-              {navigationTitle ?? "Form"}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {actionItems.length > 1 ? (
-                <button
-                  type="button"
-                  onClick={() => setShowActions(true)}
-                  onMouseDown={(event) => event.preventDefault()}
-                  className="launcher-action-link flex items-center gap-2 rounded-[10px] px-3 py-1 text-[13px] font-medium text-foreground"
-                >
-                  <span>Actions</span>
-                  {actionPanelShortcut ? (
-                    <span className="launcher-shortcut text-[11px] text-muted-foreground">
-                      {actionPanelShortcut}
-                    </span>
-                  ) : null}
-                </button>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (primaryAction) {
-                    void Promise.resolve(primaryAction.onAction())
-                  }
-                }}
-                onMouseDown={(event) => event.preventDefault()}
-                disabled={!primaryAction}
-                className="launcher-action-link flex items-center gap-2 rounded-[10px] px-3 py-1 text-[13px] font-medium text-foreground disabled:opacity-40"
-              >
-                <span>{primaryAction?.title ?? "Submit"}</span>
-                {primaryActionShortcut ? (
-                  <span className="launcher-shortcut text-[11px] text-muted-foreground">
-                    {primaryActionShortcut}
-                  </span>
-                ) : null}
-              </button>
-            </div>
-          </>
+          <NativeSurfaceActionsFooter
+            controller={actionController}
+            leading={
+              <div className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
+                {navigationTitle ?? "Form"}
+              </div>
+            }
+          />
         }
         headerLeading={<NativeSurfaceBackButton />}
         surface="native-form"
@@ -127,9 +93,7 @@ function FormRoot(props: {
         </ScrollArea>
       </NativeSurfaceChrome>
 
-      {showActions && actionItems.length > 1 ? (
-        <NativeActionOverlay actions={actionItems} onClose={() => setShowActions(false)} />
-      ) : null}
+      <NativeSurfaceActionLayer controller={actionController} />
     </div>
   )
 }

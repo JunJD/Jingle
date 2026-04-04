@@ -39,8 +39,8 @@
 `cleanups.md` 则负责另一件事：
 
 - 前几个 pause 为了不一次性炸掉而留下的桥接层，必须登记进去
-- 后续 phase 完成时，相关桥接层必须被删除，而不是永久常驻
-- 每个 pause 结束都要同时核对“新增了什么临时层”和“删掉了什么临时层”
+- 中途不为了“顺手整洁”提前删，先统一登记，最后专门开一个 cleanup phase 集中处理
+- 最后一轮清理按 `delete-first` 原则做：先删桥，再根据真实报错修目标架构缺陷
 
 ## 非目标
 
@@ -253,7 +253,7 @@ launcher-shell -> ai-core
 `src/renderer/src/launcher/native-extensions/registry.ts`
 
 - 管理 native extension command registry
-- 当前可以先显式化，不要继续长隐式发现
+- 当前应继续收口，最终不保留为第二份 extension 清单
 
 `src/renderer/src/launcher/native-extensions/sdk.ts`
 
@@ -324,6 +324,17 @@ launcher-shell -> ai-core
 
 - 只做 command/service 注册
 - 不写业务逻辑
+
+`src/extensions/<ext>/renderer.ts`
+
+- 只放这个 extension 的 renderer command registry
+- 显式把 `command name -> component/meta` 收在 extension 自己目录里
+
+`src/extensions/<ext>/main.ts`
+
+- 可选
+- 只放这个 extension 的 main service / command service registry
+- 没有 main service 时可以不存在
 
 `src/extensions/<ext>/src/<command>.tsx`
 
@@ -608,6 +619,45 @@ preferences / secrets 边界收口
 
 ### 名称
 
+extension declaration 收口
+
+### 目标
+
+把“一个 extension 要在哪几处声明”收成单一设计，先解掉当前目录乱和多处 registry 的问题。
+
+### 只做什么
+
+- 把 native extension 的总清单收成唯一入口
+- 把每个 extension 自己的 renderer/main 声明收回 `src/extensions/<id>/`
+- 不再让 `renderer/native-extensions/registry.ts` 和 `main/services/native-extensions/registry.ts` 继续扮演平行 extension 清单
+
+### 绝对不做什么
+
+- 不顺手继续补新 command
+- 不碰 `List / Detail / Form` 交互语义
+- 不做 codegen
+- 不搬成 monorepo
+
+### 代码边界
+
+- `src/extensions/index.ts` 或新的 `src/extensions/registry.ts`
+- `src/extensions/*/index.ts`
+- 新的 `src/extensions/*/renderer.ts`
+- 新的 `src/extensions/*/main.ts`
+- `src/renderer/src/launcher/native-extensions/registry.ts`
+- `src/main/services/native-extensions/registry.ts`
+
+### 暂停点验收
+
+- 新增一个 extension 时，修改点集中在 `src/extensions/<id>/` 和唯一总 registry
+- renderer/main 不再各自维护一份“extension inventory”
+- `todo-list`、`github`、`translate` 继续能搜索、打开、运行
+- `npm run check:guardrails && npm run typecheck` 通过
+
+## Phase 7
+
+### 名称
+
 surface controller 收口
 
 ### 目标
@@ -630,6 +680,7 @@ surface controller 收口
 - `src/renderer/src/launcher/native-extensions/detail.tsx`
 - `src/renderer/src/launcher/native-extensions/form.tsx`
 - `src/renderer/src/launcher/native-extensions/chrome.tsx`
+- `src/renderer/src/launcher/native-extensions/surface-actions.tsx`
 
 ### 暂停点验收
 
@@ -637,7 +688,7 @@ surface controller 收口
 - 改一个 footer 规则，不需要改三处
 - `npm run check:guardrails && npm run typecheck` 通过
 
-## Phase 7
+## Phase 8
 
 ### 名称
 
@@ -670,6 +721,37 @@ AI core contract 接入
 - AI 仍然是平台原生能力，不需要作为 extension 注册
 - `npm run check:guardrails && npm run typecheck` 通过
 
+## Final Cleanup
+
+### 名称
+
+统一删除临时桥接层
+
+### 目标
+
+把 [cleanups.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/cleanups.md) 里的临时层一次性删到接近归零。
+
+### 只做什么
+
+- 按 `delete-first` 原则删除桥接层、别名层、legacy host、compat zone
+- 顺着真实报错补目标架构，而不是继续加兜底
+- 清空并删除 `cleanups.md`
+
+### 绝对不做什么
+
+- 不再新增新的过渡桥
+- 不为了“不报错”把刚删掉的兼容层加回来
+
+### 代码边界
+
+- 以 `cleanups.md` 当前登记项为准
+
+### 暂停点验收
+
+- `npm run doctor:route-language` 接近或达到 `0 files / 0 matches`
+- `cleanups.md` 清空并删除
+- `npm run check:guardrails && npm run typecheck` 通过
+
 ## 下一步只做什么
 
 下一步只进入 `Phase 6`。
@@ -677,8 +759,8 @@ AI core contract 接入
 也就是：
 
 - 不加新 command
-- 不碰 route / secrets / AI contract
-- 只收口 `List / Detail / Form` 的统一 surface controller
-- 把 back button、footer、主动作、`⌘K`、`↵` 的规则收成一套
+- 不碰 surface controller / AI contract
+- 只收 extension declaration 和目录职责
+- 只把 extension inventory 收成单一设计
 
 做完就停，按 Phase 6 的验收口径过一遍。
