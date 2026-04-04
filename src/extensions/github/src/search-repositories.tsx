@@ -13,10 +13,6 @@ import {
 } from "./client"
 import { formatResultCount, formatUpdatedAt, getRepositoryAccessories } from "./view-helpers"
 
-export const viewport = {
-  bodyHeight: 520
-}
-
 function buildRepositorySearchQuery(params: {
   includeArchived: boolean
   includeForks: boolean
@@ -29,7 +25,12 @@ function buildRepositorySearchQuery(params: {
     parts.push("archived:false")
   }
 
-  return parts.filter((part) => part.trim().length > 0).join(" ").trim() || "stars:>0 archived:false"
+  return (
+    parts
+      .filter((part) => part.trim().length > 0)
+      .join(" ")
+      .trim() || "stars:>0 archived:false"
+  )
 }
 
 function getScopeOptions(viewer: GitHubViewer | null): Array<{ title: string; value: string }> {
@@ -59,24 +60,25 @@ export default function GitHubSearchRepositories(): React.JSX.Element {
   const deferredSearchText = useDeferredValue(searchText)
 
   useEffect(() => {
-    if (!resolvedPreferences.accessToken) {
-      setViewer(null)
-      return
-    }
-
     let cancelled = false
+    const run = async (): Promise<void> => {
+      if (!resolvedPreferences.accessToken) {
+        return
+      }
 
-    void loadGitHubViewer({ preferences: resolvedPreferences })
-      .then((nextViewer) => {
+      try {
+        const nextViewer = await loadGitHubViewer({ preferences: resolvedPreferences })
         if (!cancelled) {
           setViewer(nextViewer)
         }
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) {
           setViewer(null)
         }
-      })
+      }
+    }
+
+    void run()
 
     return () => {
       cancelled = true
@@ -84,51 +86,60 @@ export default function GitHubSearchRepositories(): React.JSX.Element {
   }, [resolvedPreferences])
 
   useEffect(() => {
-    if (!resolvedPreferences.accessToken) {
-      setItems([])
-      setError(null)
-      setIsLoading(false)
-      return
-    }
-
     let cancelled = false
-    setIsLoading(true)
-    setError(null)
+    const run = async (): Promise<void> => {
+      if (!resolvedPreferences.accessToken) {
+        return
+      }
 
-    void searchGitHubRepositories({
-      preferences: resolvedPreferences,
-      query: buildRepositorySearchQuery({
-        includeArchived: commandPreferences.includeArchived,
-        includeForks: commandPreferences.includeForks,
-        scope,
-        searchText: deferredSearchText
-      })
-    })
-      .then((nextItems) => {
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        const nextItems = await searchGitHubRepositories({
+          preferences: resolvedPreferences,
+          query: buildRepositorySearchQuery({
+            includeArchived: commandPreferences.includeArchived,
+            includeForks: commandPreferences.includeForks,
+            scope,
+            searchText: deferredSearchText
+          })
+        })
         if (!cancelled) {
           setItems(nextItems)
         }
-      })
-      .catch((nextError) => {
+      } catch (nextError) {
         if (!cancelled) {
           setItems([])
           setError(
             nextError instanceof Error ? nextError.message : "Failed to search GitHub repositories"
           )
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) {
           setIsLoading(false)
         }
-      })
+      }
+    }
+
+    void run()
 
     return () => {
       cancelled = true
     }
-  }, [commandPreferences.includeArchived, commandPreferences.includeForks, deferredSearchText, reloadVersion, resolvedPreferences, scope])
+  }, [
+    commandPreferences.includeArchived,
+    commandPreferences.includeForks,
+    deferredSearchText,
+    reloadVersion,
+    resolvedPreferences,
+    scope
+  ])
 
-  const scopeOptions = useMemo(() => getScopeOptions(viewer), [viewer])
+  const scopeOptions = useMemo(
+    () => getScopeOptions(resolvedPreferences.accessToken ? viewer : null),
+    [resolvedPreferences.accessToken, viewer]
+  )
 
   return (
     <List

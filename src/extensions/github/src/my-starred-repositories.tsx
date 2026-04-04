@@ -10,10 +10,6 @@ import {
 } from "./client"
 import { formatResultCount, formatUpdatedAt, getRepositoryAccessories } from "./view-helpers"
 
-export const viewport = {
-  bodyHeight: 520
-}
-
 export default function GitHubMyStarredRepositories(): React.JSX.Element {
   const commandPreferences = useGitHubCommandPreferences<Record<string, never>>()
   const resolvedPreferences = useMemo(
@@ -26,26 +22,23 @@ export default function GitHubMyStarredRepositories(): React.JSX.Element {
   const [reloadVersion, setReloadVersion] = useState(0)
 
   useEffect(() => {
-    if (!resolvedPreferences.accessToken) {
-      setItems([])
-      setError(null)
-      setIsLoading(false)
-      return
-    }
-
     let cancelled = false
-    setIsLoading(true)
-    setError(null)
+    const run = async (): Promise<void> => {
+      if (!resolvedPreferences.accessToken) {
+        return
+      }
 
-    void listGitHubStarredRepositories({
-      preferences: resolvedPreferences
-    })
-      .then((nextItems) => {
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        const nextItems = await listGitHubStarredRepositories({
+          preferences: resolvedPreferences
+        })
         if (!cancelled) {
           setItems(nextItems)
         }
-      })
-      .catch((nextError) => {
+      } catch (nextError) {
         if (!cancelled) {
           setItems([])
           setError(
@@ -54,12 +47,14 @@ export default function GitHubMyStarredRepositories(): React.JSX.Element {
               : "Failed to load your starred GitHub repositories"
           )
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) {
           setIsLoading(false)
         }
-      })
+      }
+    }
+
+    void run()
 
     return () => {
       cancelled = true

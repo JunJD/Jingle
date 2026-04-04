@@ -8,11 +8,12 @@ import {
   type GitHubIssueLike,
   useGitHubCommandPreferences
 } from "./client"
-import { formatResultCount, formatUpdatedAt, getIssueLikeAccessories, getIssueLikeIcon } from "./view-helpers"
-
-export const viewport = {
-  bodyHeight: 520
-}
+import {
+  formatResultCount,
+  formatUpdatedAt,
+  getIssueLikeAccessories,
+  getIssueLikeIcon
+} from "./view-helpers"
 
 function buildIssueSearchQuery(searchText: string): string {
   const trimmed = searchText.trim()
@@ -37,37 +38,38 @@ export default function GitHubSearchIssues(): React.JSX.Element {
   const deferredSearchText = useDeferredValue(searchText)
 
   useEffect(() => {
-    if (!resolvedPreferences.accessToken) {
-      setItems([])
-      setError(null)
-      setIsLoading(false)
-      return
-    }
-
     let cancelled = false
-    setIsLoading(true)
-    setError(null)
+    const run = async (): Promise<void> => {
+      if (!resolvedPreferences.accessToken) {
+        return
+      }
 
-    void searchGitHubIssueLikes({
-      preferences: resolvedPreferences,
-      query: buildIssueSearchQuery(deferredSearchText)
-    })
-      .then((nextItems) => {
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        const nextItems = await searchGitHubIssueLikes({
+          preferences: resolvedPreferences,
+          query: buildIssueSearchQuery(deferredSearchText)
+        })
         if (!cancelled) {
           setItems(nextItems.filter((item) => item.kind === "issue"))
         }
-      })
-      .catch((nextError) => {
+      } catch (nextError) {
         if (!cancelled) {
           setItems([])
-          setError(nextError instanceof Error ? nextError.message : "Failed to search GitHub issues")
+          setError(
+            nextError instanceof Error ? nextError.message : "Failed to search GitHub issues"
+          )
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) {
           setIsLoading(false)
         }
-      })
+      }
+    }
+
+    void run()
 
     return () => {
       cancelled = true

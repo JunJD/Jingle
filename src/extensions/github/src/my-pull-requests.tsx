@@ -10,7 +10,12 @@ import {
   type GitHubPullRequestListPreferences,
   useGitHubCommandPreferences
 } from "./client"
-import { formatResultCount, formatUpdatedAt, getIssueLikeAccessories, getIssueLikeIcon } from "./view-helpers"
+import {
+  formatResultCount,
+  formatUpdatedAt,
+  getIssueLikeAccessories,
+  getIssueLikeIcon
+} from "./view-helpers"
 
 interface GitHubPullRequestSection {
   id: string
@@ -27,11 +32,11 @@ const SECTION_LABELS = {
   reviewed: "Reviewed"
 } as const
 
-export const viewport = {
-  bodyHeight: 520
-}
-
-function buildPullRequestQuery(base: string, includeDrafts: boolean, state: "open" | "closed"): string {
+function buildPullRequestQuery(
+  base: string,
+  includeDrafts: boolean,
+  state: "open" | "closed"
+): string {
   return `is:pr ${base} archived:false is:${state} ${includeDrafts ? "" : "draft:false"}`.trim()
 }
 
@@ -74,7 +79,11 @@ async function loadMyPullRequestSections(params: {
   if (params.commandPreferences.includeReviewed) {
     queryEntries.push({
       key: "reviewed",
-      query: buildPullRequestQuery("reviewed-by:@me", params.commandPreferences.includeDrafts, "open")
+      query: buildPullRequestQuery(
+        "reviewed-by:@me",
+        params.commandPreferences.includeDrafts,
+        "open"
+      )
     })
   }
 
@@ -129,39 +138,38 @@ export default function GitHubMyPullRequests(): React.JSX.Element {
   const [selectedRepository, setSelectedRepository] = useState("")
 
   useEffect(() => {
-    if (!resolvedPreferences.accessToken) {
-      setSections([])
-      setError(null)
-      setIsLoading(false)
-      return
-    }
-
     let cancelled = false
-    setIsLoading(true)
-    setError(null)
+    const run = async (): Promise<void> => {
+      if (!resolvedPreferences.accessToken) {
+        return
+      }
 
-    void loadMyPullRequestSections({
-      commandPreferences,
-      preferences: resolvedPreferences
-    })
-      .then((nextSections) => {
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        const nextSections = await loadMyPullRequestSections({
+          commandPreferences,
+          preferences: resolvedPreferences
+        })
         if (!cancelled) {
           setSections(nextSections)
         }
-      })
-      .catch((nextError) => {
+      } catch (nextError) {
         if (!cancelled) {
           setSections([])
           setError(
             nextError instanceof Error ? nextError.message : "Failed to load GitHub pull requests"
           )
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) {
           setIsLoading(false)
         }
-      })
+      }
+    }
+
+    void run()
 
     return () => {
       cancelled = true

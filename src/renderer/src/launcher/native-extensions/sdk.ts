@@ -1,10 +1,11 @@
-import type { ComponentType } from "react"
+import { useEffect, useMemo, type ComponentType, type ReactNode } from "react"
 import type { AppLocale } from "../../../../shared/i18n"
 import type { LauncherShellConfig } from "../../../../shared/launcher"
 import type { NativeExtensionInvokeRequest } from "../../../../shared/native-extensions"
 import type { AppCopy } from "@/lib/i18n/messages"
 import type {
   LauncherNoViewPluginRunContext,
+  LauncherPluginCommandAddress,
   LauncherPluginCommandMatch,
   LauncherPluginCommandParams,
   LauncherPluginIntent
@@ -14,11 +15,11 @@ import {
   useBuiltLauncherPluginClipboard,
   useBuiltLauncherPluginHost,
   useBuiltLauncherPluginLifecycle,
-  useBuiltLauncherPluginNavigation,
   useBuiltLauncherPluginSurface,
   useBuiltLauncherPluginThreads,
   type BuiltLauncherIntentPresentationInput
 } from "../built-plugins/sdk"
+import { useNativeExtensionViewStack } from "./view-stack-context"
 
 export interface NativeExtensionSearchDefinition {
   buildIntentItems?: (context: {
@@ -46,6 +47,18 @@ export interface NativeViewCommandModule {
 export interface NativeNoViewCommandModule {
   default: (context: LauncherNoViewPluginRunContext) => Promise<void> | void
   search?: NativeExtensionSearchDefinition
+}
+
+export interface NativeExtensionNavigation {
+  canPop: boolean
+  goHome: () => void
+  hideLauncher: () => Promise<void>
+  openCommand: (
+    address: LauncherPluginCommandAddress,
+    options?: import("../pages/types").LauncherPluginOpenOptions
+  ) => void
+  pop: () => void
+  push: (view: ReactNode) => void
 }
 
 export function createNativeExtensionIntentPresentation(
@@ -111,9 +124,60 @@ export function useNativeCommandPreferences<T extends object>() {
   return host.commandPreferences as T
 }
 
+export function useBackgroundRefresh(
+  callback: () => void | Promise<void>,
+  intervalMs: number | null | undefined
+): void {
+  useEffect(() => {
+    if (!intervalMs || intervalMs <= 0) {
+      return
+    }
+
+    let cancelled = false
+    let pending = false
+    const run = (): void => {
+      if (pending) {
+        return
+      }
+
+      pending = true
+      void Promise.resolve(callback()).finally(() => {
+        pending = false
+      })
+    }
+
+    const timer = window.setInterval(() => {
+      if (!cancelled) {
+        run()
+      }
+    }, intervalMs)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [callback, intervalMs])
+}
+
 export const useNativeExtensionHost = useBuiltLauncherPluginHost
 export const useNativeExtensionLifecycle = useBuiltLauncherPluginLifecycle
 export const useNativeExtensionClipboard = useBuiltLauncherPluginClipboard
-export const useNativeExtensionNavigation = useBuiltLauncherPluginNavigation
 export const useNativeExtensionSurface = useBuiltLauncherPluginSurface
 export const useNativeExtensionThreads = useBuiltLauncherPluginThreads
+
+export function useNativeExtensionNavigation(): NativeExtensionNavigation {
+  const host = useNativeExtensionHost()
+  const stack = useNativeExtensionViewStack()
+
+  return useMemo(
+    () => ({
+      canPop: stack?.canPop ?? false,
+      goHome: host.navigation?.goHome ?? (() => {}),
+      hideLauncher: host.navigation?.hideLauncher ?? (() => Promise.resolve()),
+      openCommand: host.navigation?.openCommand ?? (() => {}),
+      pop: stack?.pop ?? (() => {}),
+      push: stack?.push ?? (() => {})
+    }),
+    [host.navigation, stack]
+  )
+}

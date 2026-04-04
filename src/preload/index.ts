@@ -21,8 +21,10 @@ import type { LauncherSettings } from "../shared/launcher-settings"
 import type { AgentMessageContent } from "../shared/message-content"
 import type {
   InstalledNativeExtensionSettingsSchema,
-  NativeExtensionInvokeRequest
+  NativeExtensionInvokeRequest,
+  NativeExtensionPreferencesChangedEvent
 } from "../shared/native-extensions"
+import type { NativeMenuBarActionEvent, NativeMenuBarState } from "../shared/native-menu-bar"
 import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "../shared/settings-window"
 
 // Simple electron API - replaces @electron-toolkit/preload
@@ -231,6 +233,9 @@ const api = {
     executeAction: (action: LauncherSearchAction): Promise<LauncherActionExecutionResult> => {
       return ipcRenderer.invoke("launcher:executeAction", action)
     },
+    show: (): Promise<void> => {
+      return ipcRenderer.invoke("launcher:show")
+    },
     hide: (): Promise<void> => {
       return ipcRenderer.invoke("launcher:hide")
     },
@@ -311,6 +316,36 @@ const api = {
       request: NativeExtensionInvokeRequest<TPayload>
     ): Promise<TResult> => {
       return ipcRenderer.invoke("nativeExtensions:invoke", request)
+    },
+    onPreferencesChanged: (
+      callback: (event: NativeExtensionPreferencesChangedEvent) => void
+    ): (() => void) => {
+      const handler = (_event: unknown, payload: NativeExtensionPreferencesChangedEvent): void => {
+        callback(payload)
+      }
+
+      ipcRenderer.on("nativeExtensions:preferencesChanged", handler)
+      return () => {
+        ipcRenderer.removeListener("nativeExtensions:preferencesChanged", handler)
+      }
+    }
+  },
+  nativeMenuBar: {
+    setState: (state: NativeMenuBarState): Promise<void> => {
+      return ipcRenderer.invoke("nativeMenuBar:setState", state)
+    },
+    clearState: (commandKey: string): Promise<void> => {
+      return ipcRenderer.invoke("nativeMenuBar:clearState", commandKey)
+    },
+    onItemSelected: (callback: (event: NativeMenuBarActionEvent) => void): (() => void) => {
+      const handler = (_event: unknown, payload: NativeMenuBarActionEvent): void => {
+        callback(payload)
+      }
+
+      ipcRenderer.on("nativeMenuBar:itemSelected", handler)
+      return () => {
+        ipcRenderer.removeListener("nativeMenuBar:itemSelected", handler)
+      }
     }
   },
   workspace: {

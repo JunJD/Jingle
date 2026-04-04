@@ -4,6 +4,8 @@ import type {
   LauncherPluginManifest
 } from "./launcher-plugin"
 
+export type NativeExtensionCommandMode = "background" | "menu-bar" | "no-view" | "view"
+
 export interface NativeExtensionPreferenceSchema {
   data?: Array<{ title?: string; value?: string }>
   default?: unknown
@@ -19,7 +21,7 @@ export interface NativeExtensionPreferenceSchema {
 export interface NativeExtensionCommandManifest<TCommandName extends string = string> {
   description?: string
   keywords?: string[]
-  mode: LauncherPluginCommandMode
+  mode: NativeExtensionCommandMode
   name: TCommandName
   preferences?: NativeExtensionPreferenceSchema[]
   title?: string
@@ -56,7 +58,7 @@ export interface NativeExtensionDefinition<
 export interface NativeExtensionCommandSettingsSchema {
   description: string
   keywords?: string[]
-  mode: LauncherPluginCommandMode
+  mode: NativeExtensionCommandMode
   name: string
   preferences: NativeExtensionPreferenceSchema[]
   title: string
@@ -73,6 +75,12 @@ export interface InstalledNativeExtensionSettingsSchema {
 export interface NativeExtensionPreferencesState {
   extensionPreferences: Record<string, Record<string, unknown>>
   commandPreferences: Record<string, Record<string, unknown>>
+}
+
+export interface NativeExtensionPreferencesChangedEvent {
+  commandName?: string
+  extensionName: string
+  scope: "command" | "extension"
 }
 
 export interface NativeExtensionInvokeRequest<TPayload = unknown> {
@@ -210,18 +218,32 @@ export function validateNativeExtensionPackageManifest(
 export function toLauncherPluginManifest(
   manifest: NativeExtensionPackageManifest
 ): LauncherPluginManifest {
-  validateNativeExtensionPackageManifest(manifest)
+  const launcherCommands = manifest.commands.filter(
+    (
+      command
+    ): command is NativeExtensionCommandManifest<string> & { mode: LauncherPluginCommandMode } =>
+      command.mode === "view" || command.mode === "no-view"
+  )
+  const defaultLauncherCommandName =
+    launcherCommands.find((command) => command.name === manifest.defaultCommandName)?.name ??
+    launcherCommands[0]?.name
+
+  if (!defaultLauncherCommandName) {
+    throw new Error(
+      `Native extension "${manifest.name}" does not declare any launcher commands for root search`
+    )
+  }
 
   return {
     capabilities: manifest.capabilities,
-    commands: manifest.commands.map((command) => ({
+    commands: launcherCommands.map((command) => ({
       description: command.description,
       keywords: command.keywords,
       mode: command.mode,
       name: command.name,
       title: command.title
     })),
-    defaultCommandName: manifest.defaultCommandName ?? manifest.commands[0]!.name,
+    defaultCommandName: defaultLauncherCommandName,
     displayName: manifest.title,
     id: manifest.name,
     rpcMethods: manifest.rpcMethods

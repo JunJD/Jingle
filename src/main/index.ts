@@ -7,6 +7,7 @@ import { registerLocalStartHandlers } from "./ipc/local-start"
 import { registerThreadHandlers } from "./ipc/threads"
 import { registerModelHandlers } from "./ipc/models"
 import { registerNativeExtensionHandlers } from "./ipc/native-extensions"
+import { registerNativeMenuBarHandlers } from "./ipc/native-menu-bar"
 import { registerSettingsWindowHandlers } from "./ipc/settings-window"
 import { closeDatabase, initializeDatabase } from "./db"
 import { closeRuntime } from "./agent/runtime"
@@ -24,6 +25,7 @@ import {
   getMainWindowPlacement
 } from "./windows/main-window-state"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
+import { initializeNativeMenuBar } from "./services/native-menu-bar"
 import type { SettingsWindowNavigationPayload } from "../shared/settings-window"
 
 let mainWindow: BrowserWindow | null = null
@@ -174,6 +176,7 @@ if (hasSingleInstanceLock) {
     registerThreadHandlers(ipcMain)
     registerModelHandlers(ipcMain)
     registerNativeExtensionHandlers(ipcMain)
+    registerNativeMenuBarHandlers(ipcMain)
     registerSettingsWindowHandlers({
       consumePendingNavigation: () => {
         const pending = pendingSettingsNavigation
@@ -184,15 +187,19 @@ if (hasSingleInstanceLock) {
       openSettingsWindow
     })
     registerLauncherHandlers(ipcMain)
+    initializeNativeMenuBar({
+      getLauncherWindow: () =>
+        launcherWindow && !launcherWindow.isDestroyed() ? launcherWindow : null
+    })
     void warmLauncherSearchProviders()
-      installApplicationMenu({
-        isDev,
-        showSettings: () => {
-          openSettingsWindow()
-        },
-        showLauncher: () => {
-          showLauncherWindow(getOrCreateLauncherWindow())
-        }
+    installApplicationMenu({
+      isDev,
+      showSettings: () => {
+        openSettingsWindow()
+      },
+      showLauncher: () => {
+        showLauncherWindow(getOrCreateLauncherWindow())
+      }
     })
 
     createWindow()

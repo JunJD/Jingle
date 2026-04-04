@@ -15,19 +15,18 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { LauncherChrome } from "../components/LauncherChrome"
+import {
+  ActionMarker,
+  ActionPanelMarker,
+  ActionPanelSectionMarker,
+  ActionPanelSubmenuMarker,
+  collectActions,
+  type NativeActionDescriptor,
+  type NativeActionStyle,
+  OpenInBrowserActionMarker
+} from "./actions"
+import { NativeExtensionSelect } from "./select"
 import { useNativeExtensionNavigation, useNativeExtensionSurface } from "./sdk"
-
-type NativeActionStyle = "regular" | "destructive"
-
-interface NativeActionDescriptor {
-  icon?: ReactNode
-  id: string
-  onAction: () => void | Promise<void>
-  sectionTitle?: string
-  shortcut?: string
-  style?: NativeActionStyle
-  title: string
-}
 
 interface NativeListItemDescriptor {
   accessories?: ReactNode
@@ -76,11 +75,6 @@ type MarkerRole =
   | "list-dropdown"
   | "list-dropdown-section"
   | "list-dropdown-item"
-  | "action-panel"
-  | "action-panel-section"
-  | "action-panel-submenu"
-  | "action"
-  | "action-open-in-browser"
 
 interface MarkerComponent<P = object> extends React.FC<P> {
   __nativeRole: MarkerRole
@@ -130,36 +124,6 @@ const ListDropdownItemMarker = createMarkerComponent<{
   value: string
 }>("list-dropdown-item")
 
-const ActionPanelMarker = createMarkerComponent<{
-  children?: ReactNode
-}>("action-panel")
-
-const ActionPanelSectionMarker = createMarkerComponent<{
-  children?: ReactNode
-  title?: string
-}>("action-panel-section")
-
-const ActionPanelSubmenuMarker = createMarkerComponent<{
-  children?: ReactNode
-  title?: string
-}>("action-panel-submenu")
-
-const ActionMarker = createMarkerComponent<{
-  icon?: ReactNode
-  onAction?: () => void | Promise<void>
-  shortcut?: string
-  style?: NativeActionStyle
-  title: string
-}>("action")
-
-const OpenInBrowserActionMarker = createMarkerComponent<{
-  icon?: ReactNode
-  shortcut?: string
-  style?: NativeActionStyle
-  title?: string
-  url: string
-}>("action-open-in-browser")
-
 function extractMarkerRole(node: ReactNode): MarkerRole | null {
   if (!isValidElement(node)) {
     return null
@@ -167,73 +131,6 @@ function extractMarkerRole(node: ReactNode): MarkerRole | null {
 
   const marker = node.type as MarkerComponent
   return marker.__nativeRole ?? null
-}
-
-function collectActions(
-  node: ReactNode,
-  params: {
-    nextId: () => string
-    sectionTitle?: string
-  }
-): NativeActionDescriptor[] {
-  const role = extractMarkerRole(node)
-  if (!role || !isValidElement(node)) {
-    return []
-  }
-
-  const nextSectionTitle =
-    role === "action-panel-section" || role === "action-panel-submenu"
-      ? ((node.props as { title?: string }).title ?? params.sectionTitle)
-      : params.sectionTitle
-
-  if (role === "action" || role === "action-open-in-browser") {
-    const props = node.props as {
-      icon?: ReactNode
-      onAction?: () => void | Promise<void>
-      shortcut?: string
-      style?: NativeActionStyle
-      title?: string
-      url?: string
-    }
-
-    const title = props.title ?? (role === "action-open-in-browser" ? "Open in Browser" : "")
-    if (!title) {
-      return []
-    }
-
-    const onAction =
-      role === "action-open-in-browser"
-        ? () => {
-            if (props.url) {
-              window.open(props.url, "_blank", "noopener,noreferrer")
-            }
-          }
-        : props.onAction
-
-    if (!onAction) {
-      return []
-    }
-
-    return [
-      {
-        icon: props.icon,
-        id: params.nextId(),
-        onAction,
-        sectionTitle: nextSectionTitle,
-        shortcut: props.shortcut,
-        style: props.style,
-        title
-      }
-    ]
-  }
-
-  const props = node.props as { children?: ReactNode }
-  return Children.toArray(props.children).flatMap((child) =>
-    collectActions(child, {
-      nextId: params.nextId,
-      sectionTitle: nextSectionTitle
-    })
-  )
 }
 
 function collectSections(children: ReactNode): NativeListSectionDescriptor[] {
@@ -463,7 +360,7 @@ function groupActionsBySection(actions: NativeActionDescriptor[]): Array<{
   return groups
 }
 
-function NativeActionOverlay(props: {
+export function NativeActionOverlay(props: {
   actions: NativeActionDescriptor[]
   onClose: () => void
 }): React.JSX.Element {
@@ -709,11 +606,11 @@ function NativeListDropdown(props: {
   const selectedValue = descriptor.value ?? options[0]?.value ?? ""
 
   return (
-    <select
-      className="h-9 max-w-[220px] rounded-full border border-border/80 bg-background px-3 text-[12px] font-medium text-foreground outline-none transition focus:border-[var(--ring)]"
+    <NativeExtensionSelect
+      className="h-9 max-w-[220px] appearance-none rounded-full border border-border/80 bg-background pl-3 pr-10 text-[12px] font-medium text-foreground outline-none transition focus:border-[var(--ring)]"
       value={selectedValue}
-      onChange={(event) => {
-        descriptor.onChange?.(event.target.value)
+      onChange={(value) => {
+        descriptor.onChange?.(value)
       }}
     >
       {descriptor.sections.map((section, sectionIndex) =>
@@ -735,7 +632,7 @@ function NativeListDropdown(props: {
           </Fragment>
         )
       )}
-    </select>
+    </NativeExtensionSelect>
   )
 }
 
@@ -885,7 +782,7 @@ function ListRoot(props: {
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
-              onClick={navigation.goHome}
+              onClick={navigation.canPop ? navigation.pop : navigation.goHome}
               onMouseDown={(event) => event.preventDefault()}
               className="launcher-icon-button flex h-9 w-9 shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
               aria-label="Go Home"
@@ -983,13 +880,54 @@ export const List = Object.assign(ListRoot, {
   Section: ListSectionMarker
 })
 
-export const ActionPanel = Object.assign(ActionPanelMarker, {
+type NativeActionPanelComponent = React.FC<{
+  children?: ReactNode
+}> & {
+  Section: React.FC<{
+    children?: ReactNode
+    title?: string
+  }>
+  Submenu: React.FC<{
+    children?: ReactNode
+    title?: string
+  }>
+}
+
+export const ActionPanel: NativeActionPanelComponent = Object.assign(ActionPanelMarker, {
   Section: ActionPanelSectionMarker,
   Submenu: ActionPanelSubmenuMarker
 })
 
-const ActionBase = ActionMarker as MarkerComponent<React.ComponentProps<typeof ActionMarker>> & {
+const ActionBase = ActionMarker as typeof ActionMarker & {
   OpenInBrowser: typeof OpenInBrowserActionMarker
+  SubmitForm: typeof ActionMarker
+  Style: {
+    Destructive: NativeActionStyle
+    Regular: NativeActionStyle
+  }
+}
+
+type NativeActionComponent = React.FC<{
+  icon?: ReactNode
+  onAction?: () => void | Promise<void>
+  shortcut?: string
+  style?: NativeActionStyle
+  title: string
+}> & {
+  OpenInBrowser: React.FC<{
+    icon?: ReactNode
+    shortcut?: string
+    style?: NativeActionStyle
+    title?: string
+    url: string
+  }>
+  SubmitForm: React.FC<{
+    icon?: ReactNode
+    onAction?: () => void | Promise<void>
+    shortcut?: string
+    style?: NativeActionStyle
+    title: string
+  }>
   Style: {
     Destructive: NativeActionStyle
     Regular: NativeActionStyle
@@ -997,9 +935,10 @@ const ActionBase = ActionMarker as MarkerComponent<React.ComponentProps<typeof A
 }
 
 ActionBase.OpenInBrowser = OpenInBrowserActionMarker
+ActionBase.SubmitForm = ActionMarker
 ActionBase.Style = {
   Destructive: "destructive",
   Regular: "regular"
 }
 
-export const Action = ActionBase
+export const Action: NativeActionComponent = ActionBase

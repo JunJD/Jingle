@@ -169,6 +169,34 @@ export const githubManifest = defineNativeExtensionManifest({
       title: "Search Repositories"
     },
     {
+      description: "Inspect recent GitHub Actions workflow runs for one of your repositories.",
+      keywords: ["github", "actions", "workflow", "workflow runs", "ci", "build"],
+      mode: "view",
+      name: "workflow-runs",
+      title: "Workflow Runs"
+    },
+    {
+      description: "Create a new issue in one of your GitHub repositories.",
+      keywords: ["github", "create", "issue", "new issue"],
+      mode: "view",
+      name: "create-issue",
+      title: "Create Issue"
+    },
+    {
+      description: "Create a pull request in one of your GitHub repositories.",
+      keywords: ["github", "create", "pull request", "pr", "merge request"],
+      mode: "view",
+      name: "create-pull-request",
+      title: "Create Pull Request"
+    },
+    {
+      description: "List inbox notifications from all repositories or a selected repository.",
+      keywords: ["github", "notifications", "inbox", "mentions"],
+      mode: "view",
+      name: "notifications",
+      title: "Notifications"
+    },
+    {
       description: "Show repositories you worked on most recently.",
       keywords: ["github", "repositories", "recent", "repo"],
       mode: "view",
@@ -181,6 +209,29 @@ export const githubManifest = defineNativeExtensionManifest({
       mode: "view",
       name: "my-starred-repositories",
       title: "My Starred Repositories"
+    },
+    {
+      description: "Show unread GitHub notifications in the menu bar.",
+      keywords: ["github", "notifications", "menu bar", "tray"],
+      mode: "menu-bar",
+      name: "unread-notifications",
+      preferences: [
+        {
+          default: "60",
+          description: "How often the menu bar should refresh unread notifications.",
+          name: "refreshIntervalSeconds",
+          title: "Refresh Interval Seconds",
+          type: "text"
+        },
+        {
+          default: true,
+          description: "Show the unread count in the menu bar title.",
+          name: "showUnreadCount",
+          title: "Show Unread Count",
+          type: "checkbox"
+        }
+      ],
+      title: "Unread Notifications"
     }
   ],
   description: "Work with your GitHub issues inside the launcher.",

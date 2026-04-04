@@ -501,6 +501,15 @@ export function registerLauncherHandlers(ipcMain: IpcMain): void {
     currentWindow?.hide()
   })
 
+  ipcMain.handle("launcher:show", (event) => {
+    const currentWindow = BrowserWindow.fromWebContents(event.sender)
+    if (!currentWindow) {
+      return
+    }
+
+    showLauncherWindow(currentWindow)
+  })
+
   ipcMain.handle("launcher:setViewportHeight", (event, height: number) => {
     const currentWindow = BrowserWindow.fromWebContents(event.sender)
     if (!currentWindow) {

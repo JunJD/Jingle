@@ -1,3 +1,4 @@
+import { createElement, Fragment, type ComponentType } from "react"
 import {
   getLauncherViewportHeightForBody,
   type LauncherShellConfig
@@ -10,10 +11,15 @@ import { validateLauncherPluginManifest } from "../../../../shared/launcher-plug
 import { nativeExtensions } from "../../../../extensions"
 import type { LauncherPluginDefinition } from "../pages/types"
 import type { NativeNoViewCommandModule, NativeViewCommandModule } from "./sdk"
+import { nativeExtensionCommandRegistry } from "./registry"
+import { useNativeExtensionViewStack } from "./view-stack-context"
+import { NativeExtensionViewStackProvider } from "./view-stack"
 
-const nativeExtensionCommandModules = import.meta.glob("../../../../extensions/*/src/*.{ts,tsx}", {
-  eager: true
-}) as Record<string, Record<string, unknown>>
+const nativeExtensionCommandRegistryMap = new Map(
+  nativeExtensionCommandRegistry.map(
+    (entry) => [`${entry.extensionName}:${entry.command.name}`, entry] as const
+  )
+)
 
 function getViewportHeight(
   viewport: NativeViewCommandModule["viewport"]
@@ -25,46 +31,61 @@ function getViewportHeight(
   return (shellConfig) => getLauncherViewportHeightForBody(viewport.bodyHeight, shellConfig)
 }
 
-function getNativeExtensionCommandModule(params: {
-  commandModulePath: string
-  extensionName: string
-}): Record<string, unknown> {
-  const modulePath = `../../../../extensions/${params.extensionName}/${params.commandModulePath.slice(2)}`
-  const commandModule = nativeExtensionCommandModules[modulePath]
-
-  if (!commandModule) {
-    throw new Error(
-      `Native extension "${params.extensionName}" command module "${params.commandModulePath}" does not exist`
+function wrapNativeViewCommand(Component: ComponentType): ComponentType {
+  function NativeViewCommandWithStack(): React.JSX.Element {
+    const stack = useNativeExtensionViewStack()
+    return createElement(
+      Fragment,
+      null,
+      stack?.render(createElement(Component)) ?? createElement(Component)
     )
   }
 
-  return commandModule
+  function WrappedNativeViewCommand(): React.JSX.Element {
+    return createElement(
+      NativeExtensionViewStackProvider,
+      null,
+      createElement(NativeViewCommandWithStack)
+    )
+  }
+
+  WrappedNativeViewCommand.displayName = `WrappedNativeViewCommand(${
+    Component.displayName ?? Component.name ?? "Anonymous"
+  })`
+
+  return WrappedNativeViewCommand
 }
 
-export const nativeLauncherPlugins: LauncherPluginDefinition[] = nativeExtensions.map(
-  ({ commands, manifest }) => {
-    const launcherManifest = toLauncherPluginManifest(manifest)
+export const nativeLauncherPlugins = nativeExtensions.reduce<LauncherPluginDefinition[]>(
+  (plugins, extension) => {
+    const routeableCommands = extension.manifest.commands.filter(
+      (command) => command.mode === "view" || command.mode === "no-view"
+    )
+
+    if (routeableCommands.length === 0) {
+      return plugins
+    }
+
+    const launcherManifest = toLauncherPluginManifest(extension.manifest)
     validateLauncherPluginManifest(launcherManifest)
 
-    return {
-      commands: manifest.commands.map((command) => {
-        const commandReference = commands.find((entry) => entry.name === command.name)
-        if (!commandReference) {
+    plugins.push({
+      commands: routeableCommands.map((command) => {
+        const registryEntry = nativeExtensionCommandRegistryMap.get(
+          `${extension.manifest.name}:${command.name}`
+        )
+        if (!registryEntry) {
           throw new Error(
-            `Native extension "${manifest.name}" command "${command.name}" is missing from src/extensions/${manifest.name}/index.ts`
+            `Native extension "${extension.manifest.name}" command "${command.name}" is missing from the renderer registry`
           )
         }
 
-        const commandModule = getNativeExtensionCommandModule({
-          commandModulePath: commandReference.modulePath,
-          extensionName: manifest.name
-        })
-        const search = commandModule.search as
+        const search = registryEntry.module.search as
           | NativeViewCommandModule["search"]
           | NativeNoViewCommandModule["search"]
           | undefined
         const loadCommandPreferences = () =>
-          window.api.nativeExtensions.getCommandPreferences(manifest.name, command.name)
+          window.api.nativeExtensions.getCommandPreferences(extension.manifest.name, command.name)
         const validateCommandPreferences = (preferences: Record<string, unknown>) => {
           const missingPreferences = listMissingRequiredNativeExtensionPreferences(
             command.preferences ?? [],
@@ -79,16 +100,20 @@ export const nativeLauncherPlugins: LauncherPluginDefinition[] = nativeExtension
         }
 
         if (command.mode === "view") {
-          const Component = commandModule.default as NativeViewCommandModule["default"] | undefined
-          const viewport = commandModule.viewport as NativeViewCommandModule["viewport"] | undefined
+          const Component = registryEntry.module.default as
+            | NativeViewCommandModule["default"]
+            | undefined
+          const viewport = registryEntry.module.viewport as
+            | NativeViewCommandModule["viewport"]
+            | undefined
           if (!Component || !viewport) {
             throw new Error(
-              `Native extension "${manifest.name}" view command "${command.name}" must export default component and viewport`
+              `Native extension "${extension.manifest.name}" view command "${command.name}" must export default component and viewport`
             )
           }
 
           return {
-            Component,
+            Component: wrapNativeViewCommand(Component),
             buildIntentItems: search?.buildIntentItems,
             commandName: command.name,
             getViewportHeight: getViewportHeight(viewport),
@@ -99,10 +124,10 @@ export const nativeLauncherPlugins: LauncherPluginDefinition[] = nativeExtension
           }
         }
 
-        const run = commandModule.default as NativeNoViewCommandModule["default"] | undefined
+        const run = registryEntry.module.default as NativeNoViewCommandModule["default"] | undefined
         if (!run) {
           throw new Error(
-            `Native extension "${manifest.name}" command "${command.name}" must export a default run function`
+            `Native extension "${extension.manifest.name}" command "${command.name}" must export a default run function`
           )
         }
 
@@ -117,6 +142,9 @@ export const nativeLauncherPlugins: LauncherPluginDefinition[] = nativeExtension
         }
       }),
       manifest: launcherManifest
-    }
-  }
+    } satisfies LauncherPluginDefinition)
+
+    return plugins
+  },
+  []
 )

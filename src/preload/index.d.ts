@@ -21,8 +21,10 @@ import type { LauncherSettings } from "../shared/launcher-settings"
 import type { AgentMessageContent } from "../shared/message-content"
 import type {
   InstalledNativeExtensionSettingsSchema,
-  NativeExtensionInvokeRequest
+  NativeExtensionInvokeRequest,
+  NativeExtensionPreferencesChangedEvent
 } from "../shared/native-extensions"
+import type { NativeMenuBarActionEvent, NativeMenuBarState } from "../shared/native-menu-bar"
 import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "../shared/settings-window"
 
 interface ElectronAPI {
@@ -98,6 +100,7 @@ interface CustomAPI {
     getClipboardContext: () => Promise<ClipboardContext>
     search: (request: LauncherSearchRequest) => Promise<LauncherSearchResponse>
     executeAction: (action: LauncherSearchAction) => Promise<LauncherActionExecutionResult>
+    show: () => Promise<void>
     hide: () => Promise<void>
     setViewportHeight: (height: number) => Promise<void>
     onShown: (callback: () => void) => () => void
@@ -132,6 +135,14 @@ interface CustomAPI {
     invoke: <TPayload = unknown, TResult = unknown>(
       request: NativeExtensionInvokeRequest<TPayload>
     ) => Promise<TResult>
+    onPreferencesChanged: (
+      callback: (event: NativeExtensionPreferencesChangedEvent) => void
+    ) => () => void
+  }
+  nativeMenuBar: {
+    setState: (state: NativeMenuBarState) => Promise<void>
+    clearState: (commandKey: string) => Promise<void>
+    onItemSelected: (callback: (event: NativeMenuBarActionEvent) => void) => () => void
   }
   workspace: {
     get: (threadId?: string) => Promise<string | null>

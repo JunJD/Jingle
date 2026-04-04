@@ -1,6 +1,9 @@
 import {
   AlertCircle,
+  CheckCircle2,
+  Circle,
   CircleDotDashed,
+  Clock3,
   GitFork,
   GitPullRequest,
   Lock,
@@ -8,7 +11,7 @@ import {
   Star
 } from "lucide-react"
 import type { ReactNode } from "react"
-import type { GitHubIssueLike, GitHubRepository } from "./client"
+import type { GitHubIssueLike, GitHubRepository, GitHubWorkflowRun } from "./client"
 
 export function formatUpdatedAt(isoTimestamp: string): string {
   const parsed = new Date(isoTimestamp)
@@ -76,6 +79,40 @@ export function getRepositoryAccessories(
           Private
         </span>
       ) : null}
+    </div>
+  )
+}
+
+export function getWorkflowRunIcon(run: GitHubWorkflowRun): ReactNode {
+  if (run.status === "completed") {
+    if (run.conclusion === "success") {
+      return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+    }
+
+    if (run.conclusion === "failure" || run.conclusion === "startup_failure") {
+      return <AlertCircle className="h-4 w-4 text-red-500" />
+    }
+
+    return <Circle className="h-4 w-4 text-muted-foreground" />
+  }
+
+  if (run.status === "in_progress") {
+    return <Clock3 className="h-4 w-4 text-amber-500" />
+  }
+
+  if (run.status === "queued" || run.status === "requested" || run.status === "waiting") {
+    return <Circle className="h-4 w-4 text-amber-500" />
+  }
+
+  return <Circle className="h-4 w-4 text-muted-foreground" />
+}
+
+export function getWorkflowRunAccessories(run: GitHubWorkflowRun): ReactNode {
+  return (
+    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+      {run.headBranch ? <span>{run.headBranch}</span> : null}
+      {run.headSha ? <span>{run.headSha.slice(0, 7)}</span> : null}
+      <span>#{run.runNumber}</span>
     </div>
   )
 }

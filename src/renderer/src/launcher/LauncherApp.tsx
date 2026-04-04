@@ -15,6 +15,7 @@ import { LauncherPageTransition } from "./components/LauncherPageTransition"
 import { LauncherSearchPage } from "./components/LauncherSearchPage"
 import { useLauncherRouter } from "./hooks/useLauncherRouter"
 import { useLauncherSearchPage } from "./hooks/useLauncherSearchPage"
+import { NativeExtensionPassiveCommandHosts } from "./native-extensions/PassiveCommandHosts"
 import { getLauncherPluginDefinition } from "./pages"
 import {
   isLauncherCommandRoute,
@@ -28,6 +29,8 @@ import { useThreadContext } from "@/lib/thread-context"
 
 type HomeInputFocusBehavior = "preserve" | "select-all"
 type PluginInputFocusBehavior = "preserve" | "move-to-end"
+
+const EMPTY_COMMAND_PREFERENCES: Record<string, unknown> = {}
 
 export default function LauncherApp(): React.JSX.Element {
   const { copy } = useI18n()
@@ -81,7 +84,7 @@ export default function LauncherApp(): React.JSX.Element {
       ? activeCommandPreferencesState.routeKey === routeKey
         ? activeCommandPreferencesState.value
         : null
-      : {}
+      : EMPTY_COMMAND_PREFERENCES
   const activeCommandPreferencesLoadError =
     isLauncherPluginRoute(route) && activeCommand?.loadCommandPreferences
       ? activeCommandPreferencesState.routeKey === routeKey
@@ -210,11 +213,6 @@ export default function LauncherApp(): React.JSX.Element {
     }
 
     let cancelled = false
-    setActiveCommandPreferencesState({
-      error: null,
-      routeKey,
-      value: null
-    })
 
     void activeCommand
       .loadCommandPreferences()
@@ -507,6 +505,10 @@ export default function LauncherApp(): React.JSX.Element {
             targetRef={shellRef}
           />
         ) : null}
+
+        <div className="hidden" aria-hidden="true">
+          <NativeExtensionPassiveCommandHosts openCommand={openCommand} />
+        </div>
       </div>
     </div>
   )

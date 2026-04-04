@@ -30,10 +30,6 @@ const SECTION_LABELS = {
   recentlyClosed: "Recently Closed"
 } as const
 
-export const viewport = {
-  bodyHeight: 520
-}
-
 async function loadMyIssueSections(params: {
   preferences: ReturnType<typeof normalizeGitHubPreferences>
   commandPreferences: GitHubIssueListPreferences
@@ -112,37 +108,36 @@ export default function GitHubMyIssues(): React.JSX.Element {
   const [selectedRepository, setSelectedRepository] = useState("")
 
   useEffect(() => {
-    if (!resolvedPreferences.accessToken) {
-      setSections([])
-      setError(null)
-      setIsLoading(false)
-      return
-    }
-
     let cancelled = false
-    setIsLoading(true)
-    setError(null)
+    const run = async (): Promise<void> => {
+      if (!resolvedPreferences.accessToken) {
+        return
+      }
 
-    void loadMyIssueSections({
-      commandPreferences,
-      preferences: resolvedPreferences
-    })
-      .then((nextSections) => {
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        const nextSections = await loadMyIssueSections({
+          commandPreferences,
+          preferences: resolvedPreferences
+        })
         if (!cancelled) {
           setSections(nextSections)
         }
-      })
-      .catch((nextError) => {
+      } catch (nextError) {
         if (!cancelled) {
           setSections([])
           setError(nextError instanceof Error ? nextError.message : "Failed to load GitHub issues")
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) {
           setIsLoading(false)
         }
-      })
+      }
+    }
+
+    void run()
 
     return () => {
       cancelled = true

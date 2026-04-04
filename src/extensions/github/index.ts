@@ -24,12 +24,32 @@ export default defineNativeExtension({
       name: "search-repositories"
     },
     {
+      modulePath: "./src/workflow-runs.tsx",
+      name: "workflow-runs"
+    },
+    {
+      modulePath: "./src/create-issue.tsx",
+      name: "create-issue"
+    },
+    {
+      modulePath: "./src/create-pull-request.tsx",
+      name: "create-pull-request"
+    },
+    {
+      modulePath: "./src/notifications.tsx",
+      name: "notifications"
+    },
+    {
       modulePath: "./src/my-latest-repositories.tsx",
       name: "my-latest-repositories"
     },
     {
       modulePath: "./src/my-starred-repositories.tsx",
       name: "my-starred-repositories"
+    },
+    {
+      modulePath: "./src/unread-notifications.tsx",
+      name: "unread-notifications"
     }
   ],
   manifest: githubManifest

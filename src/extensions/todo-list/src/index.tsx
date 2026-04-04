@@ -29,10 +29,6 @@ interface TodoItem {
 
 const STORAGE_KEY = "openwork.native.todo-list.items"
 
-export const viewport = {
-  bodyHeight: 420
-}
-
 function readTodos(): TodoItem[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
