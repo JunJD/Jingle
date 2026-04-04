@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react"
 import { LauncherPluginHostProvider } from "../LauncherPluginHostContext"
-import type { LauncherPluginCommandAddress, LauncherPluginOpenOptions } from "../pages/types"
+import type { LauncherCommandAddress, LauncherCommandOpenOptions } from "../pages/types"
 import { nativeExtensionCommandRegistry } from "./registry"
 
 function PassiveCommandHost(props: {
@@ -8,7 +8,7 @@ function PassiveCommandHost(props: {
   Component: ComponentType
   extensionCapabilities: readonly string[]
   extensionName: string
-  openCommand: (address: LauncherPluginCommandAddress, options?: LauncherPluginOpenOptions) => void
+  openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
 }): React.JSX.Element | null {
   const { commandName, Component, extensionCapabilities, extensionName, openCommand } = props
   const [commandPreferences, setCommandPreferences] = useState<Record<string, unknown> | null>(null)
@@ -88,7 +88,7 @@ function PassiveCommandHost(props: {
 }
 
 export function NativeExtensionPassiveCommandHosts(props: {
-  openCommand: (address: LauncherPluginCommandAddress, options?: LauncherPluginOpenOptions) => void
+  openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
 }): React.JSX.Element {
   const { openCommand } = props
   const commands = useMemo(

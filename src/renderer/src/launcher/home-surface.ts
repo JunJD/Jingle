@@ -11,14 +11,14 @@ import {
 import type { LauncherSearchResult } from "../../../shared/launcher-search"
 import type { LocalStartItem } from "../../../shared/local-start"
 import { shouldShowLauncherIdleItems } from "../../../shared/launcher-settings"
-import { getLauncherPluginIntents, listLauncherPluginCommands } from "./pages"
+import { getLauncherCommandIntents, listLauncherCommands } from "./pages"
 import {
   buildLauncherBrowserSearchSuggestionItem,
+  buildLauncherCommandIntentShellItems,
   buildLauncherCompletionSuggestionItem,
   buildLauncherHistoryShellItems,
   buildLauncherInternalCommandShellItems,
   buildLauncherLocalStartShellItems,
-  buildLauncherPluginIntentShellItems,
   buildLauncherSearchShellItems
 } from "./search-items"
 import type { LauncherShellItem } from "./types"
@@ -26,8 +26,8 @@ import type { LauncherShellItem } from "./types"
 export type LauncherHomeSurfaceSectionKind =
   | "history-grid"
   | "idle-list"
-  | "internal-commands"
-  | "plugin-intents"
+  | "commands"
+  | "command-intents"
   | "suggestions"
   | "search-results"
 
@@ -180,11 +180,11 @@ export function buildLauncherHomeSurfaceModel(params: {
   const sections: LauncherHomeSurfaceSection[] = []
   const internalCommandItems = buildLauncherInternalCommandShellItems(
     copy,
-    listLauncherPluginCommands(),
+    listLauncherCommands(),
     query
   )
-  const pluginIntentItems = buildLauncherPluginIntentShellItems(
-    getLauncherPluginIntents({
+  const commandIntentItems = buildLauncherCommandIntentShellItems(
+    getLauncherCommandIntents({
       copy,
       locale,
       query
@@ -197,14 +197,14 @@ export function buildLauncherHomeSurfaceModel(params: {
   if (internalCommandItems.length > 0) {
     sections.push({
       items: internalCommandItems,
-      kind: "internal-commands"
+      kind: "commands"
     })
   }
 
-  if (pluginIntentItems.length > 0) {
+  if (commandIntentItems.length > 0) {
     sections.push({
-      items: pluginIntentItems,
-      kind: "plugin-intents"
+      items: commandIntentItems,
+      kind: "command-intents"
     })
   }
 

@@ -2,8 +2,8 @@ import type { AppCopy } from "@/lib/i18n/messages"
 import type { LauncherHistoryItem } from "../../../shared/launcher-history"
 import type { LocalStartItem } from "../../../shared/local-start"
 import type { LauncherSearchResult } from "../../../shared/launcher-search"
-import type { LauncherResolvedPluginIntent } from "./pages/types"
-import type { LauncherIndexedPluginCommand } from "./pages"
+import type { LauncherResolvedCommandIntent } from "./pages/types"
+import type { LauncherIndexedCommand } from "./pages"
 import { createLauncherBuiltinResultPresentation } from "./result-presentation"
 import type { LauncherResultPresentation } from "./result-types"
 import type { LauncherShellItem } from "./types"
@@ -75,8 +75,8 @@ export function buildLauncherHistoryShellItems(
   }))
 }
 
-export function buildLauncherPluginIntentShellItems(
-  items: LauncherResolvedPluginIntent[]
+export function buildLauncherCommandIntentShellItems(
+  items: LauncherResolvedCommandIntent[]
 ): LauncherShellItem[] {
   return items.map((item) => ({
     action: {
@@ -85,11 +85,7 @@ export function buildLauncherPluginIntentShellItems(
       type: "none"
     },
     commandOpenOptions: item.openOptions,
-    commandRef: {
-      kind: "internal-plugin",
-      commandName: item.commandName,
-      pluginId: item.pluginId
-    },
+    commandRef: item.address,
     id: item.id,
     kind: item.kind,
     presentation: item.presentation,
@@ -99,11 +95,11 @@ export function buildLauncherPluginIntentShellItems(
 }
 
 function getInternalCommandQueryScore(
-  command: LauncherIndexedPluginCommand,
+  command: LauncherIndexedCommand,
   normalizedQuery: string
 ): { match?: [number, number]; score: number } | null {
   const normalizedTitle = command.title.toLowerCase()
-  const normalizedPluginTitle = command.pluginTitle.toLowerCase()
+  const normalizedOwnerTitle = command.ownerTitle.toLowerCase()
   const normalizedDescription = command.description.toLowerCase()
   const normalizedKeywords = command.keywords.map((keyword) => keyword.toLowerCase())
   const titleMatch = getTitleMatch(command.title, normalizedQuery)
@@ -134,7 +130,7 @@ function getInternalCommandQueryScore(
     }
   }
 
-  if (normalizedPluginTitle.includes(normalizedQuery)) {
+  if (normalizedOwnerTitle.includes(normalizedQuery)) {
     return {
       score: 200
     }
@@ -151,7 +147,7 @@ function getInternalCommandQueryScore(
 
 export function buildLauncherInternalCommandShellItems(
   copy: AppCopy,
-  commands: LauncherIndexedPluginCommand[],
+  commands: LauncherIndexedCommand[],
   query: string
 ): LauncherShellItem[] {
   const normalizedQuery = query.trim().toLowerCase()
@@ -173,12 +169,11 @@ export function buildLauncherInternalCommandShellItems(
             target: null,
             type: "none" as const
           },
-          commandRef: {
-            kind: "internal-plugin" as const,
-            commandName: command.commandName,
-            pluginId: command.pluginId
-          },
-          id: `internal-command:${command.pluginId}:${command.commandName}`,
+          commandRef: command.address,
+          id:
+            command.address.kind === "built-in-command"
+              ? `command:${command.address.builtInId}:${command.address.commandName}`
+              : `command:${command.address.extensionName}:${command.address.commandName}`,
           kind: "plugin" as const,
           match: rankedMatch.match,
           presentation: {
@@ -192,7 +187,7 @@ export function buildLauncherInternalCommandShellItems(
             tone: "neutral" as const
           },
           score: rankedMatch.score,
-          subtitle: [command.pluginTitle, command.description].filter(Boolean).join(" · "),
+          subtitle: [command.ownerTitle, command.description].filter(Boolean).join(" · "),
           title: command.title
         }
       ]

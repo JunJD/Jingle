@@ -18,8 +18,20 @@
       "@/*": [
         "src/renderer/src/*"
       ],
+      "@extensions/*": [
+        "src/extensions/*"
+      ],
+      "@launcher/*": [
+        "src/renderer/src/launcher/*"
+      ],
+      "@plugins/*": [
+        "src/plugins/*"
+      ],
       "@renderer/*": [
         "src/renderer/src/*"
+      ],
+      "@shared/*": [
+        "src/shared/*"
       ]
     }
   },

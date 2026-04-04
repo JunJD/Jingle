@@ -152,8 +152,8 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
             void window.api.launcher.show().then(() => {
               navigation.openCommand({
                 commandName: "notifications",
-                kind: "internal-plugin",
-                pluginId: "github"
+                extensionName: "github",
+                kind: "extension-command"
               })
             })
           }}

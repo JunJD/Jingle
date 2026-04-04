@@ -1,69 +1,80 @@
 import type { ComponentType } from "react"
-import type { AppLocale } from "../../../../shared/i18n"
-import type { LauncherShellConfig } from "../../../../shared/launcher"
+import type { AppLocale } from "@shared/i18n"
+import type { LauncherShellConfig } from "@shared/launcher"
 import type {
   LauncherPluginCommandMode as SharedLauncherPluginCommandMode,
   LauncherPluginManifest as SharedLauncherPluginManifest
-} from "../../../../shared/launcher-plugin"
+} from "@shared/launcher-plugin"
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { LauncherResultPresentation, LauncherShellItemKind } from "../result-types"
 
-export type LauncherPluginId = string & {}
-export type LauncherPluginCommandName = string & {}
+export type LauncherBuiltInId = string & {}
+export type LauncherExtensionName = string & {}
+export type LauncherCommandName = string & {}
 export type LauncherNavigationDirection = "forward" | "backward"
 
-export interface LauncherInternalPluginCommandAddress {
-  kind: "internal-plugin"
-  commandName: LauncherPluginCommandName
-  pluginId: LauncherPluginId
+export interface LauncherBuiltInCommandAddress {
+  builtInId: LauncherBuiltInId
+  commandName: LauncherCommandName
+  kind: "built-in-command"
 }
 
-export type LauncherCommandAddress = LauncherInternalPluginCommandAddress
+export interface LauncherExtensionCommandAddress {
+  commandName: LauncherCommandName
+  extensionName: LauncherExtensionName
+  kind: "extension-command"
+}
 
-export type LauncherPluginCommandAddress = LauncherInternalPluginCommandAddress
+export type LauncherCommandAddress = LauncherBuiltInCommandAddress | LauncherExtensionCommandAddress
 
-export interface LauncherPluginRoute extends LauncherInternalPluginCommandAddress {
-  initialAction: LauncherPluginCommandInitialAction
+export interface LauncherBuiltInCommandRoute extends LauncherBuiltInCommandAddress {
+  initialAction: LauncherCommandInitialAction
   seedQuery: string
 }
 
-export type LauncherRoute = { id: "home" } | LauncherPluginRoute
-
-export type LauncherPluginCommandInitialAction = "focus" | "submit"
-
-export interface LauncherPluginNavigation {
-  goHome: () => void
-  hideLauncher: () => Promise<void>
-  openCommand: (address: LauncherCommandAddress, options?: LauncherPluginOpenOptions) => void
+export interface LauncherExtensionCommandRoute extends LauncherExtensionCommandAddress {
+  initialAction: LauncherCommandInitialAction
+  seedQuery: string
 }
 
-export interface LauncherPluginOpenOptions {
-  initialAction?: LauncherPluginCommandInitialAction
+export type LauncherCommandRoute = LauncherBuiltInCommandRoute | LauncherExtensionCommandRoute
+
+export type LauncherRoute = { id: "home" } | LauncherCommandRoute
+
+export type LauncherCommandInitialAction = "focus" | "submit"
+
+export interface LauncherCommandNavigation {
+  goHome: () => void
+  hideLauncher: () => Promise<void>
+  openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
+}
+
+export interface LauncherCommandOpenOptions {
+  initialAction?: LauncherCommandInitialAction
   seedQuery?: string
 }
 
-export interface LauncherPluginIntent {
-  commandName?: LauncherPluginCommandName
+export interface LauncherCommandIntent {
+  commandName?: LauncherCommandName
   id: string
   kind: LauncherShellItemKind
-  openOptions?: LauncherPluginOpenOptions
+  openOptions?: LauncherCommandOpenOptions
   presentation: LauncherResultPresentation
   priority?: number
   subtitle: string
   title: string
 }
 
-export interface LauncherResolvedPluginIntent extends Omit<LauncherPluginIntent, "commandName"> {
-  commandName: LauncherPluginCommandName
-  pluginId: LauncherPluginId
+export interface LauncherResolvedCommandIntent extends Omit<LauncherCommandIntent, "commandName"> {
+  address: LauncherCommandAddress
 }
 
-export interface LauncherPluginCommandMatch {
-  commandName?: LauncherPluginCommandName
-  openOptions?: LauncherPluginOpenOptions
+export interface LauncherCommandMatch {
+  commandName?: LauncherCommandName
+  openOptions?: LauncherCommandOpenOptions
 }
 
-export interface LauncherPluginCommandParams {
+export interface LauncherCommandParams {
   altKey: boolean
   ctrlKey: boolean
   key: string
@@ -71,6 +82,19 @@ export interface LauncherPluginCommandParams {
   query: string
   shiftKey: boolean
 }
+
+export type LauncherPluginId = string & {}
+export type LauncherPluginCommandName = LauncherCommandName
+export type LauncherPluginCommandAddress = LauncherCommandAddress
+export type LauncherPluginRoute = LauncherExtensionCommandRoute
+export type LauncherPluginCommandInitialAction = LauncherCommandInitialAction
+export type LauncherPluginNavigation = LauncherCommandNavigation
+export type LauncherPluginOpenOptions = LauncherCommandOpenOptions
+export type LauncherPluginIntent = LauncherCommandIntent
+export type LauncherResolvedPluginIntent = LauncherResolvedCommandIntent
+export type LauncherPluginCommandMatch = LauncherCommandMatch
+export type LauncherPluginCommandParams = LauncherCommandParams
+export type LauncherNoViewPluginRunContext = LauncherNoViewCommandRunContext
 
 export type LauncherPluginManifest = SharedLauncherPluginManifest<
   LauncherPluginId,
@@ -84,17 +108,17 @@ interface LauncherPluginSearchDefinition {
     copy: AppCopy
     locale: AppLocale
     query: string
-  }) => LauncherPluginIntent[]
-  commandName: LauncherPluginCommandName
+  }) => LauncherCommandIntent[]
+  commandName: LauncherCommandName
   loadCommandPreferences?: () => Promise<Record<string, unknown>>
   validateCommandPreferences?: (preferences: Record<string, unknown>) => string | null
-  resolveCommand?: (params: LauncherPluginCommandParams) => LauncherPluginCommandMatch | null
+  resolveCommand?: (params: LauncherCommandParams) => LauncherCommandMatch | null
 }
 
-export interface LauncherNoViewPluginRunContext {
+export interface LauncherNoViewCommandRunContext {
   commandPreferences: Record<string, unknown>
-  initialAction: LauncherPluginCommandInitialAction
-  navigation?: LauncherPluginNavigation
+  initialAction: LauncherCommandInitialAction
+  navigation?: LauncherCommandNavigation
   seedQuery: string
 }
 
@@ -106,7 +130,7 @@ export interface LauncherViewPluginCommandDefinition extends LauncherPluginSearc
 
 export interface LauncherNoViewPluginCommandDefinition extends LauncherPluginSearchDefinition {
   mode: "no-view"
-  run: (context: LauncherNoViewPluginRunContext) => Promise<void> | void
+  run: (context: LauncherNoViewCommandRunContext) => Promise<void> | void
 }
 
 export type LauncherPluginCommandDefinition =
@@ -130,10 +154,28 @@ export interface LauncherPluginDefinition {
   manifest: LauncherPluginManifest
 }
 
-export function isLauncherPluginRoute(route: LauncherRoute): route is LauncherPluginRoute {
-  return "kind" in route && route.kind === "internal-plugin"
+export function isLauncherExtensionCommandAddress(
+  address: LauncherCommandAddress
+): address is LauncherExtensionCommandAddress {
+  return address.kind === "extension-command"
 }
 
-export function isLauncherCommandRoute(route: LauncherRoute): route is LauncherPluginRoute {
+export function isLauncherBuiltInCommandAddress(
+  address: LauncherCommandAddress
+): address is LauncherBuiltInCommandAddress {
+  return address.kind === "built-in-command"
+}
+
+export function isLauncherExtensionCommandRoute(
+  route: LauncherRoute
+): route is LauncherExtensionCommandRoute {
+  return "kind" in route && route.kind === "extension-command"
+}
+
+export function isLauncherPluginRoute(route: LauncherRoute): route is LauncherPluginRoute {
+  return isLauncherExtensionCommandRoute(route)
+}
+
+export function isLauncherCommandRoute(route: LauncherRoute): route is LauncherCommandRoute {
   return "kind" in route
 }

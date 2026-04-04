@@ -4,11 +4,12 @@ import type { LauncherShellConfig } from "../../../../shared/launcher"
 import type { NativeExtensionInvokeRequest } from "../../../../shared/native-extensions"
 import type { AppCopy } from "@/lib/i18n/messages"
 import type {
-  LauncherNoViewPluginRunContext,
-  LauncherPluginCommandAddress,
-  LauncherPluginCommandMatch,
-  LauncherPluginCommandParams,
-  LauncherPluginIntent
+  LauncherCommandAddress,
+  LauncherCommandMatch,
+  LauncherCommandOpenOptions,
+  LauncherCommandParams,
+  LauncherCommandIntent,
+  LauncherNoViewCommandRunContext
 } from "../pages/types"
 import {
   createBuiltLauncherIntentPresentation,
@@ -26,8 +27,8 @@ export interface NativeExtensionSearchDefinition {
     copy: AppCopy
     locale: AppLocale
     query: string
-  }) => LauncherPluginIntent[]
-  resolveCommand?: (params: LauncherPluginCommandParams) => LauncherPluginCommandMatch | null
+  }) => LauncherCommandIntent[]
+  resolveCommand?: (params: LauncherCommandParams) => LauncherCommandMatch | null
 }
 
 export type NativeExtensionViewport =
@@ -45,7 +46,7 @@ export interface NativeViewCommandModule {
 }
 
 export interface NativeNoViewCommandModule {
-  default: (context: LauncherNoViewPluginRunContext) => Promise<void> | void
+  default: (context: LauncherNoViewCommandRunContext) => Promise<void> | void
   search?: NativeExtensionSearchDefinition
 }
 
@@ -54,8 +55,8 @@ export interface NativeExtensionNavigation {
   goHome: () => void
   hideLauncher: () => Promise<void>
   openCommand: (
-    address: LauncherPluginCommandAddress,
-    options?: import("../pages/types").LauncherPluginOpenOptions
+    address: LauncherCommandAddress,
+    options?: LauncherCommandOpenOptions
   ) => void
   pop: () => void
   push: (view: ReactNode) => void

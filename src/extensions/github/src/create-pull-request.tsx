@@ -40,8 +40,8 @@ function CreatePullRequestSuccessDetail(props: {
             onAction={() =>
               navigation.openCommand({
                 commandName: "my-pull-requests",
-                kind: "internal-plugin",
-                pluginId: "github"
+                extensionName: "github",
+                kind: "extension-command"
               })
             }
             title="Show My Pull Requests"

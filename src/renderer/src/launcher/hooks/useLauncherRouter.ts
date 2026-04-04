@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from "react"
-import { getLauncherPluginCommandDefinition } from "../pages"
+import { getLauncherCommandDefinition, getLauncherCommandOwnerId } from "../pages"
 import {
   type LauncherCommandAddress,
-  isLauncherPluginRoute,
+  type LauncherCommandOpenOptions,
+  isLauncherCommandRoute,
   type LauncherPluginCommandDefinition,
-  LauncherPluginOpenOptions,
   LauncherNavigationDirection,
   LauncherRoute
 } from "../pages/types"
@@ -15,7 +15,7 @@ export function useLauncherRouter(): {
   activeCommand: LauncherPluginCommandDefinition | null
   closeActivePlugin: () => void
   navigationDirection: LauncherNavigationDirection
-  openCommand: (address: LauncherCommandAddress, options?: LauncherPluginOpenOptions) => void
+  openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
   route: LauncherRoute
   routeKey: string
 } {
@@ -24,7 +24,7 @@ export function useLauncherRouter(): {
   const [route, setRoute] = useState<LauncherRoute>(HOME_ROUTE)
 
   const openCommand = useCallback(
-    (address: LauncherCommandAddress, options?: LauncherPluginOpenOptions): void => {
+    (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions): void => {
       setNavigationDirection("forward")
       setRoute({
         ...address,
@@ -41,18 +41,18 @@ export function useLauncherRouter(): {
   }, [])
 
   const activeCommand = useMemo(() => {
-    if (!isLauncherPluginRoute(route)) {
+    if (!isLauncherCommandRoute(route)) {
       return null
     }
 
-    return getLauncherPluginCommandDefinition(route).command
+    return getLauncherCommandDefinition(route).command
   }, [route])
   const routeKey = useMemo(() => {
     if ("id" in route) {
       return route.id
     }
 
-    return `${route.pluginId}:${route.commandName}:${route.initialAction}:${route.seedQuery}`
+    return `${route.kind}:${getLauncherCommandOwnerId(route)}:${route.commandName}:${route.initialAction}:${route.seedQuery}`
   }, [route])
 
   return {

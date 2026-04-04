@@ -16,11 +16,11 @@ import { LauncherSearchPage } from "./components/LauncherSearchPage"
 import { useLauncherRouter } from "./hooks/useLauncherRouter"
 import { useLauncherSearchPage } from "./hooks/useLauncherSearchPage"
 import { NativeExtensionPassiveCommandHosts } from "./native-extensions/PassiveCommandHosts"
-import { getLauncherPluginDefinition } from "./pages"
+import { getLauncherCommandDefinition, getLauncherCommandOwnerId } from "./pages"
 import {
   isLauncherCommandRoute,
+  isLauncherExtensionCommandRoute,
   isLauncherNoViewPluginCommand,
-  isLauncherPluginRoute,
   isLauncherViewPluginCommand
 } from "./pages/types"
 import { invokeThreadMessage } from "@/lib/ai-invocation"
@@ -67,8 +67,15 @@ export default function LauncherApp(): React.JSX.Element {
   const lastHandledHomeSelectionRequestRef = useRef(searchPage.homeInputSelectionRequestVersion)
   const lastExecutedNoViewRouteKeyRef = useRef<string | null>(null)
   const latestRouteKeyRef = useRef(routeKey)
-  const activePluginId = isLauncherPluginRoute(route) ? route.pluginId : null
-  const activePluginDefinition = activePluginId ? getLauncherPluginDefinition(activePluginId) : null
+  const activeCommandRecord = useMemo(() => {
+    if (!isLauncherCommandRoute(route)) {
+      return null
+    }
+
+    return getLauncherCommandDefinition(route)
+  }, [route])
+  const activeCommandOwnerId = isLauncherCommandRoute(route) ? getLauncherCommandOwnerId(route) : null
+  const activePluginDefinition = activeCommandRecord?.plugin ?? null
   const activeViewCommand =
     activeCommand && isLauncherViewPluginCommand(activeCommand) ? activeCommand : null
   const activeNoViewCommand =
@@ -80,13 +87,13 @@ export default function LauncherApp(): React.JSX.Element {
   const pluginInputStatus =
     pluginInputSurface.routeKey === routeKey ? pluginInputSurface.status : "idle"
   const activeCommandPreferences =
-    isLauncherPluginRoute(route) && activeCommand?.loadCommandPreferences
+    isLauncherCommandRoute(route) && activeCommand?.loadCommandPreferences
       ? activeCommandPreferencesState.routeKey === routeKey
         ? activeCommandPreferencesState.value
         : null
       : EMPTY_COMMAND_PREFERENCES
   const activeCommandPreferencesLoadError =
-    isLauncherPluginRoute(route) && activeCommand?.loadCommandPreferences
+    isLauncherCommandRoute(route) && activeCommand?.loadCommandPreferences
       ? activeCommandPreferencesState.routeKey === routeKey
         ? activeCommandPreferencesState.error
         : null
@@ -97,13 +104,13 @@ export default function LauncherApp(): React.JSX.Element {
       : null
   const activeCommandError = activeCommandPreferencesLoadError ?? activeCommandValidationError
   const activeManifestCommand =
-    isLauncherPluginRoute(route) && activePluginDefinition
+    isLauncherCommandRoute(route) && activePluginDefinition
       ? (activePluginDefinition.manifest.commands.find(
           (command) => command.name === route.commandName
         ) ?? null)
       : null
   const activeCommandErrorTitle =
-    activeManifestCommand?.title ?? (isLauncherPluginRoute(route) ? route.commandName : "Command")
+    activeManifestCommand?.title ?? (isLauncherCommandRoute(route) ? route.commandName : "Command")
   const setPluginInputStatus = useCallback(
     (status: LauncherInputStatus): void => {
       setPluginInputSurface({
@@ -140,7 +147,7 @@ export default function LauncherApp(): React.JSX.Element {
   }, [])
   const focusActiveInput = useCallback(
     (options?: { home?: HomeInputFocusBehavior; plugin?: PluginInputFocusBehavior }): void => {
-      if (isLauncherPluginRoute(route)) {
+      if (isLauncherCommandRoute(route)) {
         focusPluginInput(options?.plugin ?? "move-to-end")
         return
       }
@@ -208,7 +215,7 @@ export default function LauncherApp(): React.JSX.Element {
   )
 
   useEffect(() => {
-    if (!isLauncherPluginRoute(route) || !activeCommand?.loadCommandPreferences) {
+    if (!isLauncherCommandRoute(route) || !activeCommand?.loadCommandPreferences) {
       return
     }
 
@@ -241,7 +248,7 @@ export default function LauncherApp(): React.JSX.Element {
   }, [activeCommand, route, routeKey])
 
   const activePluginHost = useMemo(() => {
-    if (!activeCommand || !activePluginDefinition || !isLauncherPluginRoute(route)) {
+    if (!activeCommand || !activePluginDefinition || !isLauncherCommandRoute(route)) {
       return null
     }
 
@@ -272,7 +279,7 @@ export default function LauncherApp(): React.JSX.Element {
             openCommand
           }
         : undefined,
-      pluginId: route.pluginId,
+      pluginId: activePluginDefinition.manifest.id,
       seedQuery: route.seedQuery,
       surface: capabilities.includes("surface")
         ? {
@@ -318,7 +325,7 @@ export default function LauncherApp(): React.JSX.Element {
   }, [routeKey])
 
   useEffect(() => {
-    if (!activeNoViewCommand || !activePluginHost || !isLauncherPluginRoute(route)) {
+    if (!activeNoViewCommand || !activePluginHost || !isLauncherCommandRoute(route)) {
       return
     }
 
@@ -338,7 +345,7 @@ export default function LauncherApp(): React.JSX.Element {
     )
       .catch((error) => {
         console.error(
-          `[Launcher] No-view command "${route.pluginId}:${route.commandName}" failed:`,
+          `[Launcher] No-view command "${activePluginDefinition?.manifest.id ?? "unknown"}:${route.commandName}" failed:`,
           error
         )
       })
@@ -390,7 +397,7 @@ export default function LauncherApp(): React.JSX.Element {
         plugin: "move-to-end"
       })
       lastHandledShownSequenceRef.current = shownSequence
-    } else if (!isLauncherPluginRoute(route) && homeSelectionRequested) {
+    } else if (!isLauncherCommandRoute(route) && homeSelectionRequested) {
       focusActiveInput({
         home: "select-all",
         plugin: "preserve"
@@ -444,7 +451,8 @@ export default function LauncherApp(): React.JSX.Element {
       <div
         ref={shellRef}
         className="launcher-window-shell"
-        data-active-plugin={activePluginId ?? "home"}
+        data-active-plugin={activeCommandOwnerId ?? "home"}
+        data-active-command-owner={activeCommandOwnerId ?? "home"}
       >
         <div className="launcher-shell-content">
           <LauncherPageTransition direction={navigationDirection} pageKey={routeKey}>
@@ -453,7 +461,7 @@ export default function LauncherApp(): React.JSX.Element {
                 description={activeCommandError}
                 onBack={closeActivePlugin}
                 onOpenSettings={() => {
-                  if (!isLauncherPluginRoute(route)) {
+                  if (!isLauncherExtensionCommandRoute(route)) {
                     return
                   }
 
@@ -461,7 +469,7 @@ export default function LauncherApp(): React.JSX.Element {
                     tab: "extensions",
                     target: {
                       commandName: route.commandName,
-                      extensionName: route.pluginId
+                      extensionName: route.extensionName
                     }
                   })
                 }}
@@ -475,7 +483,7 @@ export default function LauncherApp(): React.JSX.Element {
               ) : (
                 <div aria-busy="true" className="h-full w-full" />
               )
-            ) : isLauncherPluginRoute(route) ? (
+            ) : isLauncherCommandRoute(route) ? (
               <div aria-busy="true" className="h-full w-full" />
             ) : (
               <LauncherSearchPage
@@ -498,7 +506,7 @@ export default function LauncherApp(): React.JSX.Element {
           </LauncherPageTransition>
         </div>
 
-        {activePluginId === AI_LAUNCHER_PLUGIN_ID ? (
+        {activeCommandOwnerId === AI_LAUNCHER_PLUGIN_ID ? (
           <LauncherIntelligenceGlow
             key={routeKey}
             status={pluginInputStatus}

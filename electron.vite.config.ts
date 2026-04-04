@@ -27,6 +27,14 @@ function copyResources(): { name: string; closeBundle: () => void } {
 
 export default defineConfig({
   main: {
+    resolve: {
+      alias: {
+        "@extensions": resolve("src/extensions"),
+        "@launcher": resolve("src/renderer/src/launcher"),
+        "@plugins": resolve("src/plugins"),
+        "@shared": resolve("src/shared")
+      }
+    },
     // Bundle all dependencies into the main process
     build: {
       lib: {
@@ -39,7 +47,16 @@ export default defineConfig({
       }
     }
   },
-  preload: {},
+  preload: {
+    resolve: {
+      alias: {
+        "@extensions": resolve("src/extensions"),
+        "@launcher": resolve("src/renderer/src/launcher"),
+        "@plugins": resolve("src/plugins"),
+        "@shared": resolve("src/shared")
+      }
+    }
+  },
   renderer: {
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version)
@@ -47,7 +64,11 @@ export default defineConfig({
     resolve: {
       alias: {
         "@": resolve("src/renderer/src"),
-        "@renderer": resolve("src/renderer/src")
+        "@extensions": resolve("src/extensions"),
+        "@launcher": resolve("src/renderer/src/launcher"),
+        "@plugins": resolve("src/plugins"),
+        "@renderer": resolve("src/renderer/src"),
+        "@shared": resolve("src/shared")
       }
     },
     plugins: [react(), tailwindcss()]

@@ -19,14 +19,14 @@ import type {
   LauncherResultPresentationTone
 } from "../result-types"
 import type {
-  LauncherNoViewPluginRunContext,
-  LauncherPluginCommandMatch,
-  LauncherPluginCommandParams,
+  LauncherCommandIntent,
+  LauncherCommandMatch,
+  LauncherCommandParams,
+  LauncherNoViewCommandRunContext,
   LauncherPluginCommandDefinition,
-  LauncherPluginCommandName,
+  LauncherCommandName,
   LauncherPluginDefinition,
   LauncherPluginManifest,
-  LauncherPluginIntent
 } from "../pages/types"
 import { validateLauncherPluginManifest } from "../../../../shared/launcher-plugin"
 
@@ -36,14 +36,14 @@ export interface BuiltLauncherPluginSpec {
 }
 
 interface BuiltLauncherPluginSearchSpec {
-  commandName: LauncherPluginCommandName
+  commandName: LauncherCommandName
   search?: {
     buildIntentItems?: (context: {
       copy: AppCopy
       locale: AppLocale
       query: string
-    }) => LauncherPluginIntent[]
-    resolveCommand?: (params: LauncherPluginCommandParams) => LauncherPluginCommandMatch | null
+    }) => LauncherCommandIntent[]
+    resolveCommand?: (params: LauncherCommandParams) => LauncherCommandMatch | null
   }
 }
 
@@ -61,7 +61,7 @@ export interface BuiltLauncherViewPluginCommandSpec extends BuiltLauncherPluginS
 
 export interface BuiltLauncherNoViewPluginCommandSpec extends BuiltLauncherPluginSearchSpec {
   mode: "no-view"
-  run: (context: LauncherNoViewPluginRunContext) => Promise<void> | void
+  run: (context: LauncherNoViewCommandRunContext) => Promise<void> | void
 }
 
 export type BuiltLauncherPluginCommandSpec =

@@ -1,26 +1,36 @@
 import type { AppCopy } from "@/lib/i18n/messages"
-import type { AppLocale } from "../../../../shared/i18n"
-import { AI_CHAT_COMMAND_NAME, AI_LAUNCHER_PLUGIN_ID } from "../../../../plugins/ai/manifest"
-import { builtLauncherPlugins } from "../built-plugins"
+import type { AppLocale } from "@shared/i18n"
+import { AI_CHAT_COMMAND_NAME, AI_LAUNCHER_PLUGIN_ID } from "@plugins/ai/manifest"
+import { aiLauncherPlugin } from "@launcher/built-plugins/ai"
+import { nativeLauncherPlugins } from "@launcher/native-extensions"
 import type {
-  LauncherPluginCommandMatch,
-  LauncherPluginCommandParams,
-  LauncherPluginCommandAddress,
+  LauncherBuiltInCommandAddress,
+  LauncherBuiltInId,
+  LauncherCommandAddress,
+  LauncherCommandMatch,
+  LauncherCommandName,
+  LauncherCommandParams,
+  LauncherExtensionName,
   LauncherPluginCommandDefinition,
-  LauncherPluginCommandName,
   LauncherPluginDefinition,
-  LauncherPluginId,
-  LauncherResolvedPluginIntent
+  LauncherResolvedCommandIntent
 } from "./types"
 
-const launcherPlugins: LauncherPluginDefinition[] = builtLauncherPlugins
+const builtInLauncherPlugins: LauncherPluginDefinition[] = [aiLauncherPlugin]
+const extensionLauncherPlugins: LauncherPluginDefinition[] = nativeLauncherPlugins
 
-const launcherPluginMap = new Map(
-  launcherPlugins.map((plugin) => [plugin.manifest.id, plugin] as const)
+const builtInLauncherPluginMap = new Map(
+  builtInLauncherPlugins.map((plugin) => [plugin.manifest.id as LauncherBuiltInId, plugin] as const)
 )
 
-const launcherPluginCommandMap = new Map(
-  launcherPlugins.flatMap((plugin) =>
+const extensionLauncherPluginMap = new Map(
+  extensionLauncherPlugins.map(
+    (plugin) => [plugin.manifest.id as LauncherExtensionName, plugin] as const
+  )
+)
+
+const builtInCommandMap = new Map(
+  builtInLauncherPlugins.flatMap((plugin) =>
     plugin.commands.map((command) => [
       `${plugin.manifest.id}:${command.commandName}`,
       { command, plugin } as const
@@ -28,87 +38,181 @@ const launcherPluginCommandMap = new Map(
   )
 )
 
-export const DEFAULT_HOME_COMMAND: LauncherPluginCommandAddress = {
-  kind: "internal-plugin",
+const extensionCommandMap = new Map(
+  extensionLauncherPlugins.flatMap((plugin) =>
+    plugin.commands.map((command) => [
+      `${plugin.manifest.id}:${command.commandName}`,
+      { command, plugin } as const
+    ])
+  )
+)
+
+export const DEFAULT_HOME_COMMAND: LauncherBuiltInCommandAddress = {
+  builtInId: AI_LAUNCHER_PLUGIN_ID,
   commandName: AI_CHAT_COMMAND_NAME,
-  pluginId: AI_LAUNCHER_PLUGIN_ID
+  kind: "built-in-command"
 }
 
-export interface LauncherIndexedPluginCommand {
-  commandName: LauncherPluginCommandName
+export interface LauncherIndexedCommand {
+  address: LauncherCommandAddress
   description: string
   keywords: string[]
-  pluginId: LauncherPluginId
-  pluginTitle: string
+  ownerTitle: string
   title: string
 }
 
-function getLauncherPluginCommandKey(address: LauncherPluginCommandAddress): string {
-  return `${address.pluginId}:${address.commandName}`
+function createLauncherCommandAddress(params: {
+  builtInId: LauncherBuiltInId
+  commandName: LauncherCommandName
+}): LauncherBuiltInCommandAddress
+function createLauncherCommandAddress(params: {
+  commandName: LauncherCommandName
+  extensionName: LauncherExtensionName
+}): LauncherCommandAddress
+function createLauncherCommandAddress(params: {
+  builtInId?: LauncherBuiltInId
+  commandName: LauncherCommandName
+  extensionName?: LauncherExtensionName
+}): LauncherCommandAddress {
+  const { builtInId, commandName, extensionName } = params
+
+  if (builtInId) {
+    return {
+      builtInId,
+      commandName,
+      kind: "built-in-command"
+    }
+  }
+
+  return {
+    commandName,
+    extensionName: extensionName as LauncherExtensionName,
+    kind: "extension-command"
+  }
 }
 
-export function getLauncherPluginDefinition(pluginId: LauncherPluginId): LauncherPluginDefinition {
-  const plugin = launcherPluginMap.get(pluginId)
+function getLauncherCommandKey(address: LauncherCommandAddress): string {
+  return address.kind === "built-in-command"
+    ? `${address.builtInId}:${address.commandName}`
+    : `${address.extensionName}:${address.commandName}`
+}
+
+export function getLauncherCommandOwnerId(address: LauncherCommandAddress): string {
+  return address.kind === "built-in-command" ? address.builtInId : address.extensionName
+}
+
+export function getLauncherCommandOwnerDefinition(
+  address: LauncherCommandAddress
+): LauncherPluginDefinition {
+  if (address.kind === "built-in-command") {
+    const plugin = builtInLauncherPluginMap.get(address.builtInId)
+    if (!plugin) {
+      throw new Error(`Unknown built-in launcher command owner "${address.builtInId}"`)
+    }
+
+    return plugin
+  }
+
+  const plugin = extensionLauncherPluginMap.get(address.extensionName)
   if (!plugin) {
-    throw new Error(`Unknown launcher plugin "${pluginId}"`)
+    throw new Error(`Unknown launcher extension "${address.extensionName}"`)
   }
 
   return plugin
 }
 
-export function listLauncherPluginManifests() {
-  return launcherPlugins.map((plugin) => plugin.manifest)
+export function listLauncherCommands(): LauncherIndexedCommand[] {
+  return [
+    ...builtInLauncherPlugins.flatMap((plugin) =>
+      plugin.manifest.commands.map((command) => ({
+        address: createLauncherCommandAddress({
+          builtInId: plugin.manifest.id as LauncherBuiltInId,
+          commandName: command.name
+        }),
+        description: command.description ?? "",
+        keywords: command.keywords ?? [],
+        ownerTitle: plugin.manifest.displayName,
+        title: command.title ?? command.name
+      }))
+    ),
+    ...extensionLauncherPlugins.flatMap((plugin) =>
+      plugin.manifest.commands.map((command) => ({
+        address: createLauncherCommandAddress({
+          commandName: command.name,
+          extensionName: plugin.manifest.id as LauncherExtensionName
+        }),
+        description: command.description ?? "",
+        keywords: command.keywords ?? [],
+        ownerTitle: plugin.manifest.displayName,
+        title: command.title ?? command.name
+      }))
+    )
+  ]
 }
 
-export function listLauncherPluginCommands(): LauncherIndexedPluginCommand[] {
-  return launcherPlugins.flatMap((plugin) =>
-    plugin.manifest.commands.map((command) => ({
-      commandName: command.name,
-      description: command.description ?? "",
-      keywords: command.keywords ?? [],
-      pluginId: plugin.manifest.id,
-      pluginTitle: plugin.manifest.displayName,
-      title: command.title ?? command.name
-    }))
-  )
-}
+export function getLauncherExtensionDefaultCommandAddress(
+  extensionName: LauncherExtensionName
+): LauncherCommandAddress {
+  const plugin = extensionLauncherPluginMap.get(extensionName)
+  if (!plugin) {
+    throw new Error(`Unknown launcher extension "${extensionName}"`)
+  }
 
-export function getLauncherDefaultCommandAddress(
-  pluginId: LauncherPluginId
-): LauncherPluginCommandAddress {
-  const plugin = getLauncherPluginDefinition(pluginId)
   return {
-    kind: "internal-plugin",
     commandName: plugin.manifest.defaultCommandName,
-    pluginId
+    extensionName,
+    kind: "extension-command"
   }
 }
 
-export function getLauncherPluginCommandDefinition(address: LauncherPluginCommandAddress): {
+export function getLauncherCommandDefinition(address: LauncherCommandAddress): {
   command: LauncherPluginCommandDefinition
   plugin: LauncherPluginDefinition
 } {
-  const resolved = launcherPluginCommandMap.get(getLauncherPluginCommandKey(address))
+  const resolved =
+    address.kind === "built-in-command"
+      ? builtInCommandMap.get(getLauncherCommandKey(address))
+      : extensionCommandMap.get(getLauncherCommandKey(address))
+
   if (!resolved) {
-    throw new Error(`Unknown launcher plugin command "${address.pluginId}:${address.commandName}"`)
+    throw new Error(`Unknown launcher command "${getLauncherCommandKey(address)}"`)
   }
 
   return resolved
 }
 
-export function getLauncherPluginIntents(params: {
+export function getLauncherCommandIntents(params: {
   copy: AppCopy
   locale: AppLocale
   query: string
-}): LauncherResolvedPluginIntent[] {
-  return launcherPlugins
-    .flatMap((plugin) =>
+}): LauncherResolvedCommandIntent[] {
+  const intents = [
+    ...builtInLauncherPlugins.flatMap((plugin) =>
       plugin.commands.flatMap((command) =>
         (command.buildIntentItems?.(params) ?? []).map((item) => ({
-          commandName: item.commandName ?? command.commandName,
+          address: createLauncherCommandAddress({
+            builtInId: plugin.manifest.id as LauncherBuiltInId,
+            commandName: item.commandName ?? command.commandName
+          }),
           id: item.id,
           kind: item.kind,
-          pluginId: plugin.manifest.id,
+          openOptions: item.openOptions,
+          presentation: item.presentation,
+          priority: item.priority,
+          subtitle: item.subtitle,
+          title: item.title
+        }))
+      )
+    ),
+    ...extensionLauncherPlugins.flatMap((plugin) =>
+      plugin.commands.flatMap((command) =>
+        (command.buildIntentItems?.(params) ?? []).map((item) => ({
+          address: createLauncherCommandAddress({
+            commandName: item.commandName ?? command.commandName,
+            extensionName: plugin.manifest.id as LauncherExtensionName
+          }),
+          id: item.id,
+          kind: item.kind,
           openOptions: item.openOptions,
           presentation: item.presentation,
           priority: item.priority,
@@ -117,26 +221,44 @@ export function getLauncherPluginIntents(params: {
         }))
       )
     )
-    .sort((left, right) => {
-      const rightPriority = typeof right.priority === "number" ? right.priority : 0
-      const leftPriority = typeof left.priority === "number" ? left.priority : 0
-      return rightPriority - leftPriority
-    })
+  ]
+
+  return intents.sort((left, right) => {
+    const rightPriority = typeof right.priority === "number" ? right.priority : 0
+    const leftPriority = typeof left.priority === "number" ? left.priority : 0
+    return rightPriority - leftPriority
+  })
 }
 
-export function resolveLauncherPluginCommand(params: LauncherPluginCommandParams): {
-  commandName: LauncherPluginCommandName
-  pluginId: LauncherPluginId
-  match: LauncherPluginCommandMatch
+export function resolveLauncherCommand(params: LauncherCommandParams): {
+  address: LauncherCommandAddress
+  match: LauncherCommandMatch
 } | null {
-  for (const plugin of launcherPlugins) {
+  for (const plugin of builtInLauncherPlugins) {
     for (const command of plugin.commands) {
       const match = command.resolveCommand?.(params)
       if (match) {
         return {
-          commandName: match.commandName ?? command.commandName,
-          match,
-          pluginId: plugin.manifest.id
+          address: createLauncherCommandAddress({
+            builtInId: plugin.manifest.id as LauncherBuiltInId,
+            commandName: match.commandName ?? command.commandName
+          }),
+          match
+        }
+      }
+    }
+  }
+
+  for (const plugin of extensionLauncherPlugins) {
+    for (const command of plugin.commands) {
+      const match = command.resolveCommand?.(params)
+      if (match) {
+        return {
+          address: createLauncherCommandAddress({
+            commandName: match.commandName ?? command.commandName,
+            extensionName: plugin.manifest.id as LauncherExtensionName
+          }),
+          match
         }
       }
     }
