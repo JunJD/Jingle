@@ -91,8 +91,27 @@ export function resolveImportPath(fromFile, specifier) {
     return resolveResolvedBase(path.join(repoRoot, "src/renderer/src"), specifier.slice(2))
   }
 
+  if (specifier.startsWith("@extensions/")) {
+    return resolveResolvedBase(path.join(repoRoot, "src/extensions"), specifier.slice("@extensions/".length))
+  }
+
+  if (specifier.startsWith("@launcher/")) {
+    return resolveResolvedBase(
+      path.join(repoRoot, "src/renderer/src/launcher"),
+      specifier.slice("@launcher/".length)
+    )
+  }
+
+  if (specifier.startsWith("@plugins/")) {
+    return resolveResolvedBase(path.join(repoRoot, "src/plugins"), specifier.slice("@plugins/".length))
+  }
+
   if (specifier.startsWith("@renderer/")) {
     return resolveResolvedBase(path.join(repoRoot, "src/renderer/src"), specifier.slice("@renderer/".length))
+  }
+
+  if (specifier.startsWith("@shared/")) {
+    return resolveResolvedBase(path.join(repoRoot, "src/shared"), specifier.slice("@shared/".length))
   }
 
   if (specifier.startsWith(".")) {
@@ -144,6 +163,32 @@ export function loadNativeExtensionDefinition(extensionDirectory) {
 
 export function resolveExtensionRelativeFile(extensionDirectory, relativeModulePath) {
   return path.join(extensionDirectory.absolutePath, relativeModulePath)
+}
+
+export function resolveExtensionCommandFile(extensionDirectory, commandName) {
+  return sourceExtensions
+    .map((extension) => path.join(extensionDirectory.absolutePath, "src", `${commandName}${extension}`))
+    .find((candidate) => fileExists(candidate))
+}
+
+export function loadNativeExtensionServiceRegistry() {
+  const registryModule = loadTypeScriptModule(
+    path.join(srcRoot, "main/services/native-extensions/registry.ts")
+  )
+  const registry = registryModule.nativeExtensionServiceRegistry
+
+  if (
+    !registry ||
+    typeof registry !== "object" ||
+    typeof registry.get !== "function" ||
+    typeof registry.has !== "function"
+  ) {
+    throw new Error(
+      "src/main/services/native-extensions/registry.ts must export nativeExtensionServiceRegistry as a Map"
+    )
+  }
+
+  return registry
 }
 
 export function fileExists(absolutePath) {
@@ -259,11 +304,21 @@ function loadTypeScriptModule(absolutePath) {
       return loadTypeScriptModule(resolved)
     }
 
-    if (specifier.startsWith("node:")) {
-      return nodeRequire(specifier)
+    if (
+      specifier.startsWith("@extensions/") ||
+      specifier.startsWith("@launcher/") ||
+      specifier.startsWith("@plugins/") ||
+      specifier.startsWith("@shared/")
+    ) {
+      const resolved = resolveImportPath(absolutePath, specifier)
+      if (!resolved) {
+        throw new Error(`Cannot resolve "${specifier}" from "${absolutePath}"`)
+      }
+
+      return loadTypeScriptModule(resolved)
     }
 
-    throw new Error(`Unsupported bare import "${specifier}" in "${absolutePath}"`)
+    return nodeRequire(specifier)
   }
 
   const context = {

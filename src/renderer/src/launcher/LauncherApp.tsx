@@ -383,7 +383,14 @@ export default function LauncherApp(): React.JSX.Element {
           closeActivePlugin()
         }
       })
-  }, [activeCommandHostBase, activeNoViewCommand, closeActivePlugin, route, routeKey])
+  }, [
+    activeCommandHostBase,
+    activeNoViewCommand,
+    activePluginDefinition?.manifest.id,
+    closeActivePlugin,
+    route,
+    routeKey
+  ])
 
   useEffect(() => {
     setViewportHeight(viewportHeight)

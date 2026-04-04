@@ -4,7 +4,6 @@ import { todoListManifest } from "./manifest"
 export default defineNativeExtension({
   commands: [
     {
-      modulePath: "./src/index.tsx",
       name: "index"
     }
   ],

@@ -41,8 +41,7 @@ export interface NativeExtensionPackageManifest<
   title: string
 }
 
-export interface NativeExtensionCommandModuleReference<TCommandName extends string = string> {
-  modulePath: `./src/${string}`
+export interface NativeExtensionCommandReference<TCommandName extends string = string> {
   name: TCommandName
 }
 
@@ -50,9 +49,8 @@ export interface NativeExtensionDefinition<
   TExtensionName extends string = string,
   TCommandName extends string = string
 > {
-  commands: Array<NativeExtensionCommandModuleReference<TCommandName>>
+  commands: Array<NativeExtensionCommandReference<TCommandName>>
   manifest: NativeExtensionPackageManifest<TExtensionName, TCommandName>
-  serviceModulePath?: `./main/${string}`
 }
 
 export interface NativeExtensionCommandSettingsSchema {
@@ -156,18 +154,6 @@ export function validateNativeExtensionDefinition(definition: NativeExtensionDef
     )
   }
 
-  const rpcMethods = definition.manifest.rpcMethods ?? []
-  if (rpcMethods.length > 0 && !definition.serviceModulePath) {
-    throw new Error(
-      `Native extension "${definition.manifest.name}" declares RPC methods without a service module`
-    )
-  }
-
-  if (rpcMethods.length === 0 && definition.serviceModulePath) {
-    throw new Error(
-      `Native extension "${definition.manifest.name}" declares a service module without any RPC methods`
-    )
-  }
 }
 
 export function validateNativeExtensionPackageManifest(

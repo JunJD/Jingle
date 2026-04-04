@@ -5,10 +5,12 @@ import {
   listNativeExtensionDirectories,
   loadNativeExtensionDefinition,
   loadNativeExtensionManifest,
-  resolveExtensionRelativeFile
+  loadNativeExtensionServiceRegistry,
+  resolveExtensionCommandFile
 } from "./lib/architecture-guardrails.mjs"
 
 const violations = []
+const nativeExtensionServiceRegistry = loadNativeExtensionServiceRegistry()
 
 for (const extensionDirectory of listNativeExtensionDirectories()) {
   const manifestPath = path.join(extensionDirectory.absolutePath, "manifest.ts")
@@ -47,35 +49,26 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
     if (!commandReference) {
       violations.push({
         file: `${extensionDirectory.repoPath}/index.ts`,
-        reason: `manifest 声明了 command "${command.name}"，但 index.ts 没有导出对应 modulePath`
+        reason: `manifest 声明了 command "${command.name}"，但 index.ts 没有导出对应 command name`
       })
       continue
     }
 
-    const commandFilePath = resolveExtensionRelativeFile(
-      extensionDirectory,
-      commandReference.modulePath.slice(2)
-    )
+    const commandFilePath = resolveExtensionCommandFile(extensionDirectory, command.name)
 
-    if (!fileExists(commandFilePath)) {
+    if (!commandFilePath || !fileExists(commandFilePath)) {
       violations.push({
         file: `${extensionDirectory.repoPath}/index.ts`,
-        reason: `command "${command.name}" 指向的文件不存在：${commandReference.modulePath}`
+        reason: `command "${command.name}" 对应的文件不存在：src/${command.name}.ts(x)`
       })
-    }
-
-    if (!commandReference.modulePath.startsWith("./src/")) {
-      violations.push({
-        file: `${extensionDirectory.repoPath}/index.ts`,
-        reason: `command "${command.name}" 的 modulePath 必须位于 ./src/ 下`
-      })
+      continue
     }
 
     if (command.mode === "view") {
       const metaFilePath = commandFilePath.replace(/\.(ts|tsx)$/, ".meta.ts")
       if (!fileExists(metaFilePath)) {
         violations.push({
-          file: `${extensionDirectory.repoPath}/${commandReference.modulePath.slice(2)}`,
+          file: `${extensionDirectory.repoPath}/src/${command.name}.ts(x)`,
           reason: `view command "${command.name}" 缺少对应的 .meta.ts 文件`
         })
       }
@@ -91,24 +84,10 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
     }
   }
 
-  if (definition.serviceModulePath) {
-    const servicePath = resolveExtensionRelativeFile(
-      extensionDirectory,
-      definition.serviceModulePath.slice(2)
-    )
-
-    if (!fileExists(servicePath)) {
-      violations.push({
-        file: `${extensionDirectory.repoPath}/index.ts`,
-        reason: `serviceModulePath 指向的文件不存在：${definition.serviceModulePath}`
-      })
-    }
-  }
-
-  if ((manifest.rpcMethods?.length ?? 0) > 0 && !definition.serviceModulePath) {
+  if ((manifest.rpcMethods?.length ?? 0) > 0 && !nativeExtensionServiceRegistry.has(manifest.name)) {
     violations.push({
       file: `${extensionDirectory.repoPath}/manifest.ts`,
-      reason: "声明了 rpcMethods，但 index.ts 没有 serviceModulePath"
+      reason: "声明了 rpcMethods，但 main registry 没有注册对应 service"
     })
   }
 }

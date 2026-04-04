@@ -10,43 +10,17 @@ import {
 } from "../../../shared/launcher-plugin"
 import { toLauncherPluginManifest } from "../../../shared/native-extensions"
 import type { NativeExtensionService } from "./sdk"
-
-const nativeExtensionServiceModules = import.meta.glob("../../../extensions/*/main/service.ts", {
-  eager: true
-}) as Record<string, { default?: NativeExtensionService }>
+import { nativeExtensionServiceRegistry } from "./registry"
 
 interface NativeExtensionRuntimeDefinition {
   manifest: (typeof nativeExtensions)[number]["manifest"]
   service?: NativeExtensionService
 }
 
-function getNativeExtensionService(params: {
-  extensionName: string
-  serviceModulePath?: `./main/${string}`
-}): NativeExtensionService | undefined {
-  if (!params.serviceModulePath) {
-    return undefined
-  }
-
-  const modulePath = `../../../extensions/${params.extensionName}/${params.serviceModulePath.slice(2)}`
-  const service = nativeExtensionServiceModules[modulePath]?.default
-
-  if (!service) {
-    throw new Error(
-      `Native extension "${params.extensionName}" service module "${params.serviceModulePath}" does not export a default service`
-    )
-  }
-
-  return service
-}
-
 const nativeExtensionDefinitions: NativeExtensionRuntimeDefinition[] = nativeExtensions
   .map((extension) => ({
     manifest: extension.manifest,
-    service: getNativeExtensionService({
-      extensionName: extension.manifest.name,
-      serviceModulePath: extension.serviceModulePath
-    })
+    service: nativeExtensionServiceRegistry.get(extension.manifest.name)
   }))
   .sort((left, right) => left.manifest.title.localeCompare(right.manifest.title))
 
@@ -57,8 +31,15 @@ const nativeExtensionDefinitionMap = new Map(
 for (const definition of nativeExtensionDefinitions) {
   const launcherManifest = toLauncherPluginManifest(definition.manifest)
   validateLauncherPluginManifest(launcherManifest)
+  const manifestRpcMethods = launcherManifest.rpcMethods ?? []
 
   if (!definition.service) {
+    if (manifestRpcMethods.length > 0) {
+      throw new Error(
+        `Native extension "${definition.manifest.name}" declares RPC methods but has no registered main-side service`
+      )
+    }
+
     continue
   }
 
@@ -74,7 +55,6 @@ for (const definition of nativeExtensionDefinitions) {
     )
   }
 
-  const manifestRpcMethods = launcherManifest.rpcMethods ?? []
   if (manifestRpcMethods.length !== definition.service.methods.length) {
     throw new Error(
       `Native extension "${definition.manifest.name}" service method count does not match its manifest RPC declaration`
@@ -96,7 +76,9 @@ export function listNativeExtensionSettingsSchemas(): InstalledNativeExtensionSe
   )
 }
 
-export async function invokeNativeExtension(request: NativeExtensionInvokeRequest): Promise<unknown> {
+export async function invokeNativeExtension(
+  request: NativeExtensionInvokeRequest
+): Promise<unknown> {
   const definition = nativeExtensionDefinitionMap.get(request.extensionName)
   if (!definition) {
     throw new Error(`Unknown native extension "${request.extensionName}"`)

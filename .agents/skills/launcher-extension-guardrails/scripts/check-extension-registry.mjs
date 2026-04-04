@@ -58,6 +58,17 @@ if (!fileExists(extensionsIndexPath)) {
   })
 }
 
+const nativeExtensionServiceRegistryPath = path.join(
+  repoRoot,
+  "src/main/services/native-extensions/registry.ts"
+)
+if (!fileExists(nativeExtensionServiceRegistryPath)) {
+  violations.push({
+    file: "src/main/services/native-extensions/registry.ts",
+    reason: "缺少 native extension main service registry"
+  })
+}
+
 if (violations.length === 0) {
   console.log("extension registry check passed")
   process.exit(0)
