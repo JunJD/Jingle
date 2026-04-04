@@ -3,7 +3,7 @@ import {
   AI_INTENT_ID,
   AI_RESULT_KIND,
   aiBuiltInCommandManifest
-} from "../../../../../plugins/ai/manifest"
+} from "@shared/launcher-ai"
 import { LauncherAiPage } from "../../pages/LauncherAiPage"
 import { getAiPageViewportHeight } from "../../pages/ai-config"
 import { defineBuiltInCommandOwner } from "../sdk"

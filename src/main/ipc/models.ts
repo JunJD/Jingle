@@ -1,7 +1,7 @@
 import { IpcMain, dialog, app } from "electron"
 import * as fs from "fs/promises"
 import * as path from "path"
-import { AI_THREAD_SOURCE } from "../../plugins/ai/manifest"
+import { AI_THREAD_SOURCE } from "../../shared/launcher-ai"
 import type {
   AgentConfig,
   ModelConfig,

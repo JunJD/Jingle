@@ -1,7 +1,7 @@
 import { ArrowLeft, Plus } from "lucide-react"
 import { useEffect, useRef } from "react"
 import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
-import { AI_LAUNCHER_PLUGIN_ID } from "../../../../plugins/ai/manifest"
+import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { AI_ATTACHMENT_FILE_EXTENSIONS } from "../../../../shared/launcher-attachments"
 import { LAUNCHER_COMMAND_IDS } from "../../../../shared/shortcuts/ids"
 import { useLauncherPluginNavigation, useLauncherPluginSurface } from "../LauncherPluginHost"

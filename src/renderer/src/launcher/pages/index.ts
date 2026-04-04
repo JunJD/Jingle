@@ -1,6 +1,6 @@
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { AppLocale } from "@shared/i18n"
-import { AI_CHAT_COMMAND_NAME, AI_LAUNCHER_PLUGIN_ID } from "@plugins/ai/manifest"
+import { AI_CHAT_COMMAND_NAME, AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { aiBuiltInCommandOwner } from "@launcher/built-plugins/ai"
 import { nativeLauncherCommandOwners } from "@launcher/native-extensions"
 import type {

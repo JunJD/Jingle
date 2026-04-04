@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "../../../../plugins/ai/manifest"
+import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
 import { hasMessageContent } from "../../../../shared/message-content"

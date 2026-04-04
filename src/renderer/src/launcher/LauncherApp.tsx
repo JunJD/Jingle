@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { AI_LAUNCHER_PLUGIN_ID } from "../../../plugins/ai/manifest"
+import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { useLauncherClipboard } from "./LauncherClipboardContext"
 import { deriveLauncherPluginClipboardContext } from "../../../shared/clipboard-derivations"
 import {
