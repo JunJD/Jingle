@@ -36,7 +36,6 @@ export function useLauncherSearchPage(props: {
   homeInputSelectionRequestVersion: number
   removeHistoryItem: (itemId: string) => void
   setHistoryItemPinned: (itemId: string, pin: boolean) => void
-  placeholder: string
   previewClipboardContext: Extract<
     import("../../../../shared/clipboard").ClipboardContext,
     { kind: "files" | "image" }
@@ -312,7 +311,6 @@ export function useLauncherSearchPage(props: {
     previewClipboardContext: homeClipboard.previewContext,
     removeHistoryItem,
     setHistoryItemPinned,
-    placeholder: copy.launcher.searchPlaceholder,
     query,
     resultsViewportHeight,
     selectedIndex,

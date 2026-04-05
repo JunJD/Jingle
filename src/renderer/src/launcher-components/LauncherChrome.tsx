@@ -17,7 +17,7 @@ interface LauncherChromeProps {
   inputValue: string
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   onInputValueChange: (value: string) => void
-  placeholder: string
+  placeholders: readonly string[]
   shellConfig: LauncherShellConfig
   showHeaderDivider?: boolean
   surface: string
@@ -35,7 +35,7 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
     inputValue,
     onInputKeyDown,
     onInputValueChange,
-    placeholder,
+    placeholders,
     shellConfig,
     showHeaderDivider = true,
     surface
@@ -73,11 +73,12 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
           value={inputValue}
           onChange={(event) => onInputValueChange(event.target.value)}
           onKeyDown={onInputKeyDown}
-          placeholder={placeholder}
+          placeholders={placeholders}
           className={cn(
-            "flex-1 text-[20px] font-semibold tracking-[-0.03em] text-foreground placeholder:text-muted-foreground/75",
+            "flex-1 text-[20px] font-semibold tracking-[-0.03em] text-foreground",
             inputClassName
           )}
+          placeholderClassName="text-[20px] font-semibold tracking-[-0.03em] text-muted-foreground/75"
         />
 
         {headerTrailing ? (

@@ -627,7 +627,7 @@ function ListRoot(props: {
         inputValue={resolvedSearchText}
         onInputKeyDown={handleInputKeyDown}
         onInputValueChange={handleInputChange}
-        placeholder={searchBarPlaceholder ?? "Search"}
+        placeholders={[searchBarPlaceholder ?? "Search"]}
         shellConfig={surface.shellConfig}
         surface="native-list"
       >

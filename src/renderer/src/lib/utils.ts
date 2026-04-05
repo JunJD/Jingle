@@ -40,10 +40,7 @@ export function formatNumber(value: number, locale: AppLocale = DEFAULT_APP_LOCA
   return new Intl.NumberFormat(normalizeAppLocale(locale)).format(value)
 }
 
-export function formatCompactNumber(
-  value: number,
-  locale: AppLocale = DEFAULT_APP_LOCALE
-): string {
+export function formatCompactNumber(value: number, locale: AppLocale = DEFAULT_APP_LOCALE): string {
   return new Intl.NumberFormat(normalizeAppLocale(locale), {
     notation: "compact",
     maximumFractionDigits: value >= 1_000_000 ? 1 : 0

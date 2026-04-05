@@ -1,11 +1,14 @@
 import { Loader2 } from "lucide-react"
 import { forwardRef, useRef } from "react"
-import { Input, type InputProps } from "@/components/ui/input"
+import {
+  PlaceholdersAndVanishInput,
+  type PlaceholdersAndVanishInputProps
+} from "@/components/ui/PlaceholdersAndVanishInput"
 import { cn } from "@/lib/utils"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 
-export interface LauncherInputProps extends InputProps {
+export interface LauncherInputProps extends PlaceholdersAndVanishInputProps {
   readonly status?: LauncherInputStatus
 }
 
@@ -25,21 +28,33 @@ function shouldPreserveNativeInputNavigation(
 
 export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps>(
   function LauncherInput(
-    { className, onCompositionEnd, onCompositionStart, onKeyDown, status = "idle", ...props },
+    {
+      className,
+      onCompositionEnd,
+      onCompositionStart,
+      onKeyDown,
+      placeholderClassName,
+      status = "idle",
+      ...props
+    },
     ref
   ) {
     const isComposingRef = useRef(false)
 
     return (
       <div className="launcher-input flex min-w-0 flex-1 items-center gap-2.5" data-status={status}>
-        <Input
+        <PlaceholdersAndVanishInput
           ref={ref as React.Ref<HTMLInputElement>}
           aria-busy={status === "idle" ? undefined : true}
           className={cn(
             "h-8 min-w-0 border-0 bg-transparent px-1.5 py-0 text-[18px] font-medium leading-8 shadow-none",
             "focus-visible:ring-0 focus-visible:ring-offset-0",
-            "placeholder:font-medium placeholder:text-muted-foreground/55",
+            "placeholder:text-transparent",
             className
+          )}
+          placeholderClassName={cn(
+            "text-[18px] font-medium leading-8 text-muted-foreground/55",
+            placeholderClassName
           )}
           data-status={status}
           onCompositionStart={(event) => {

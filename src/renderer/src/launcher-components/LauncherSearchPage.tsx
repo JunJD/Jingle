@@ -1,4 +1,4 @@
-import type { RefObject } from "react"
+import { useMemo, type RefObject } from "react"
 import { Settings2 } from "lucide-react"
 import { useI18n } from "@/lib/i18n"
 import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
@@ -20,7 +20,6 @@ export function LauncherSearchPage(props: {
   onInputValueChange: (value: string) => void
   onRemoveHistoryItem: (itemId: string) => void
   onSetHistoryItemPinned: (itemId: string, pin: boolean) => void
-  placeholder: string
   previewClipboardContext: Extract<ClipboardContext, { kind: "files" | "image" }> | null
   resultsViewportHeight: number
   selectedIndex: number
@@ -37,7 +36,6 @@ export function LauncherSearchPage(props: {
     onInputValueChange,
     onRemoveHistoryItem,
     onSetHistoryItemPinned,
-    placeholder,
     previewClipboardContext,
     resultsViewportHeight,
     selectedIndex,
@@ -54,6 +52,10 @@ export function LauncherSearchPage(props: {
   const askAiShortcut = formatLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.searchOpenAi)
   const executeSelectionShortcut = formatLauncherCommandShortcut(
     LAUNCHER_COMMAND_IDS.searchExecuteSelection
+  )
+  const placeholders = useMemo(
+    () => [copy.launcher.searchPlaceholder, copy.launcher.searchPlaceholderSecondary],
+    [copy]
   )
   const headerLeading = previewClipboardContext ? (
     <ClipboardChip context={previewClipboardContext} onClear={onClearClipboardContext} />
@@ -118,7 +120,7 @@ export function LauncherSearchPage(props: {
       inputValue={inputValue}
       onInputKeyDown={onInputKeyDown}
       onInputValueChange={onInputValueChange}
-      placeholder={placeholder}
+      placeholders={placeholders}
       shellConfig={shellConfig}
       showHeaderDivider={surface.chrome.headerDividerVisible}
       surface="home"

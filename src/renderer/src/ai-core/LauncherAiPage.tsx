@@ -110,7 +110,7 @@ export function LauncherAiPage(): React.JSX.Element {
       inputValue={session.query}
       onInputKeyDown={session.handleInputKeyDown}
       onInputValueChange={session.setQuery}
-      placeholder={copy.launcher.aiInputPlaceholder}
+      placeholders={[copy.launcher.aiInputPlaceholder, copy.launcher.aiInputPlaceholderSecondary]}
       shellConfig={surface.shellConfig}
       surface={AI_LAUNCHER_PLUGIN_ID}
     >

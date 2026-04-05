@@ -1,10 +1,8 @@
 import { useCallback, useMemo, useState } from "react"
-import { getLauncherCommandDefinition, getLauncherCommandOwnerId } from "../pages"
+import { getLauncherCommandOwnerId } from "../pages"
 import {
   type LauncherCommandAddress,
-  type LauncherCommandDefinition,
   type LauncherCommandOpenOptions,
-  isLauncherCommandRoute,
   LauncherNavigationDirection,
   LauncherRoute
 } from "../pages/types"
@@ -12,7 +10,6 @@ import {
 const HOME_ROUTE: LauncherRoute = { id: "home" }
 
 export function useLauncherRouter(): {
-  activeCommand: LauncherCommandDefinition | null
   closeActivePlugin: () => void
   navigationDirection: LauncherNavigationDirection
   openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
@@ -39,14 +36,6 @@ export function useLauncherRouter(): {
     setNavigationDirection("backward")
     setRoute(HOME_ROUTE)
   }, [])
-
-  const activeCommand = useMemo(() => {
-    if (!isLauncherCommandRoute(route)) {
-      return null
-    }
-
-    return getLauncherCommandDefinition(route).command
-  }, [route])
   const routeKey = useMemo(() => {
     if ("id" in route) {
       return route.id
@@ -56,7 +45,6 @@ export function useLauncherRouter(): {
   }, [route])
 
   return {
-    activeCommand,
     closeActivePlugin,
     navigationDirection,
     openCommand,

@@ -80,6 +80,7 @@ export interface AppCopy {
     aiHeroDescription: string
     aiHeroTitle: string
     aiInputPlaceholder: string
+    aiInputPlaceholderSecondary: string
     aiPrimaryLabel: string
     aiThreadTitle: string
     clearClipboardContext: string
@@ -106,6 +107,7 @@ export interface AppCopy {
     searchInBrowserSuggestionTitle: (query: string) => string
     searchSuggestionAction: string
     searchPlaceholder: string
+    searchPlaceholderSecondary: string
     searchResults: string
     suggestions: string
     unpinHistoryItem: string
@@ -240,6 +242,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       aiHeroDescription: "从意图开始。Agent 会自行判断需要哪些工具、文件和下一步动作。",
       aiHeroTitle: "想做什么，直接说",
       aiInputPlaceholder: "描述你要完成的事情...",
+      aiInputPlaceholderSecondary: "也可以直接贴文件、命令或报错信息",
       aiPrimaryLabel: "发给 AI",
       aiThreadTitle: "快速提问",
       clearClipboardContext: "清除剪贴板上下文",
@@ -266,6 +269,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       searchInBrowserSuggestionTitle: (query) => `在浏览器中搜索“${query}”`,
       searchSuggestionAction: "搜索",
       searchPlaceholder: "你想处理什么工作？",
+      searchPlaceholderSecondary: "搜应用、文件、命令，或直接问 AI",
       searchResults: "搜索结果",
       suggestions: "建议",
       unpinHistoryItem: "取消固定",
@@ -410,6 +414,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
         "Start from intent. The agent will figure out tools, files, and next actions from there.",
       aiHeroTitle: "Ask anything",
       aiInputPlaceholder: "Ask AI anything...",
+      aiInputPlaceholderSecondary: "You can also paste files, commands, or error output",
       aiPrimaryLabel: "Ask AI",
       aiThreadTitle: "Ask Anything",
       clearClipboardContext: "Clear clipboard context",
@@ -436,6 +441,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       searchInBrowserSuggestionTitle: (query) => `Search “${query}” in browser`,
       searchSuggestionAction: "Search",
       searchPlaceholder: "What do you want to get done?",
+      searchPlaceholderSecondary: "Search apps, files, commands, or ask AI",
       searchResults: "Search Results",
       suggestions: "Suggestions",
       unpinHistoryItem: "Unpin",

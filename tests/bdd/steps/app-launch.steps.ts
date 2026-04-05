@@ -62,6 +62,12 @@ When("我执行当前选中的 Launcher 结果", async function (this: OpenworkW
   await input.press("Enter")
 })
 
+When("我在 Launcher 中按下 Escape", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+
+  await page.keyboard.press("Escape")
+})
+
 Then("Launcher 界面切换到 {string}", async function (this: OpenworkWorld, surface: string) {
   const page = await this.getPageByKind("launcher")
   const activeSurface = page.locator(`.launcher-chrome[data-surface="${surface}"]`)
