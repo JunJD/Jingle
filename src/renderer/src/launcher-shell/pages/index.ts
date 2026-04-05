@@ -19,16 +19,6 @@ import type {
 const builtInLauncherCommandOwners: LauncherCommandOwnerDefinition[] = [aiBuiltInCommandOwner]
 const extensionLauncherCommandOwners: LauncherCommandOwnerDefinition[] = nativeLauncherCommandOwners
 
-const builtInLauncherCommandOwnerMap = new Map(
-  builtInLauncherCommandOwners.map((owner) => [owner.manifest.id as LauncherBuiltInId, owner] as const)
-)
-
-const extensionLauncherCommandOwnerMap = new Map(
-  extensionLauncherCommandOwners.map(
-    (owner) => [owner.manifest.id as LauncherExtensionName, owner] as const
-  )
-)
-
 const builtInCommandMap = new Map(
   builtInLauncherCommandOwners.flatMap((owner) =>
     owner.commands.map((command) => [
@@ -61,6 +51,9 @@ export interface LauncherIndexedCommand {
   title: string
 }
 
+/**
+ * 为内建命令或扩展命令构造统一的地址对象。
+ */
 function createLauncherCommandAddress(params: {
   builtInId: LauncherBuiltInId
   commandName: LauncherCommandName
@@ -91,36 +84,25 @@ function createLauncherCommandAddress(params: {
   }
 }
 
+/**
+ * 把命令地址压平成稳定的 map key。
+ */
 function getLauncherCommandKey(address: LauncherCommandAddress): string {
   return address.kind === "built-in-command"
     ? `${address.builtInId}:${address.commandName}`
     : `${address.extensionName}:${address.commandName}`
 }
 
+/**
+ * 返回命令所属 owner 的唯一标识。
+ */
 export function getLauncherCommandOwnerId(address: LauncherCommandAddress): string {
   return address.kind === "built-in-command" ? address.builtInId : address.extensionName
 }
 
-export function getLauncherCommandOwnerDefinition(
-  address: LauncherCommandAddress
-): LauncherCommandOwnerDefinition {
-  if (address.kind === "built-in-command") {
-    const owner = builtInLauncherCommandOwnerMap.get(address.builtInId)
-    if (!owner) {
-      throw new Error(`Unknown built-in launcher command owner "${address.builtInId}"`)
-    }
-
-    return owner
-  }
-
-  const owner = extensionLauncherCommandOwnerMap.get(address.extensionName)
-  if (!owner) {
-    throw new Error(`Unknown launcher extension "${address.extensionName}"`)
-  }
-
-  return owner
-}
-
+/**
+ * 列出可供搜索和展示的全部 launcher 命令元数据。
+ */
 export function listLauncherCommands(): LauncherIndexedCommand[] {
   return [
     ...builtInLauncherCommandOwners.flatMap((owner) =>
@@ -150,21 +132,9 @@ export function listLauncherCommands(): LauncherIndexedCommand[] {
   ]
 }
 
-export function getLauncherExtensionDefaultCommandAddress(
-  extensionName: LauncherExtensionName
-): LauncherCommandAddress {
-  const owner = extensionLauncherCommandOwnerMap.get(extensionName)
-  if (!owner) {
-    throw new Error(`Unknown launcher extension "${extensionName}"`)
-  }
-
-  return {
-    commandName: owner.manifest.defaultCommandName,
-    extensionName,
-    kind: "extension-command"
-  }
-}
-
+/**
+ * 根据命令地址拿到运行时定义和所属 owner。
+ */
 export function getLauncherCommandDefinition(address: LauncherCommandAddress): {
   command: LauncherCommandDefinition
   owner: LauncherCommandOwnerDefinition
@@ -181,6 +151,9 @@ export function getLauncherCommandDefinition(address: LauncherCommandAddress): {
   return resolved
 }
 
+/**
+ * 收集所有命令暴露的 intent，并按优先级倒序排序。
+ */
 export function getLauncherCommandIntents(params: {
   copy: AppCopy
   locale: AppLocale
@@ -230,6 +203,9 @@ export function getLauncherCommandIntents(params: {
   })
 }
 
+/**
+ * 根据输入参数解析出首个匹配的 launcher 命令。
+ */
 export function resolveLauncherCommand(params: LauncherCommandParams): {
   address: LauncherCommandAddress
   match: LauncherCommandMatch
