@@ -60,6 +60,7 @@
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "test:bdd:run": "cucumber-js --config tests/bdd/cucumber.config.cjs",
+    "test:bdd:debug": "npm run build && OPENWORK_BDD_DEBUG=1 OPENWORK_BDD_DEBUG_PAUSE_MS=5000 cucumber-js --config tests/bdd/cucumber.config.cjs",
     "test:bdd:smoke": "npm run build && cucumber-js --config tests/bdd/cucumber.config.cjs --tags @smoke",
     "test:bdd": "npm run build && npm run test:bdd:run"
   },

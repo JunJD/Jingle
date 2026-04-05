@@ -85,6 +85,7 @@ export class OpenworkWorld extends World {
   private electronApp: ElectronApplication | null = null
   private page: Page | null = null
   private openworkHome: string | null = null
+  private scenarioValues = new Map<string, string>()
 
   constructor(options: IWorldOptions) {
     super(options)
@@ -158,11 +159,25 @@ export class OpenworkWorld extends World {
     }
 
     this.page = null
+    this.scenarioValues.clear()
 
     if (this.openworkHome) {
       rmSync(this.openworkHome, { force: true, recursive: true })
       this.openworkHome = null
     }
+  }
+
+  getScenarioValue(key: string): string {
+    const value = this.scenarioValues.get(key)
+    if (!value) {
+      throw new Error(`Scenario value "${key}" is not available.`)
+    }
+
+    return value
+  }
+
+  setScenarioValue(key: string, value: string): void {
+    this.scenarioValues.set(key, value)
   }
 }
 
