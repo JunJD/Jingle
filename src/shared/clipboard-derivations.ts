@@ -68,7 +68,7 @@ export function deriveLauncherHomeClipboardState(
   }
 }
 
-export function deriveLauncherPluginClipboardContext(
+export function deriveLauncherCommandOwnerClipboardContext(
   snapshot: ClipboardSnapshot,
   filter: ClipboardFilter | null | undefined
 ): ClipboardSnapshot {

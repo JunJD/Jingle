@@ -42,10 +42,19 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
 
   const manifest = loadNativeExtensionManifest(extensionDirectory)
   const manifestCommandMap = new Map(manifest.commands.map((command) => [command.name, command]))
-  const rendererCommandNames = listNativeExtensionRendererCommandNames(extensionDirectory)
-  const definitionCommandMap = new Map(
-    rendererCommandNames.map((commandName) => [commandName, true])
-  )
+  let rendererCommandNames = []
+
+  try {
+    rendererCommandNames = listNativeExtensionRendererCommandNames(extensionDirectory)
+  } catch (error) {
+    violations.push({
+      file: `${extensionDirectory.repoPath}/renderer.ts`,
+      reason: error instanceof Error ? error.message : String(error)
+    })
+    continue
+  }
+
+  const definitionCommandMap = new Map(rendererCommandNames.map((commandName) => [commandName, true]))
 
   if (manifest.name !== extensionDirectory.name) {
     violations.push({
@@ -68,8 +77,8 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
 
     if (!commandFilePath || !fileExists(commandFilePath)) {
       violations.push({
-        file: `${extensionDirectory.repoPath}/index.ts`,
-        reason: `command "${command.name}" 对应的文件不存在：src/${command.name}.ts(x)`
+        file: `${extensionDirectory.repoPath}/renderer.ts`,
+        reason: `command "${command.name}" 对应的文件不存在：${extensionDirectory.repoPath}/src/${command.name}.ts(x)`
       })
       continue
     }
@@ -94,14 +103,20 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
     }
   }
 
-  if (
-    (manifest.rpcMethods?.length ?? 0) > 0 &&
-    !nativeExtensionMainDeclaresService(extensionDirectory)
-  ) {
-    violations.push({
-      file: `${extensionDirectory.repoPath}/main.ts`,
-      reason: "声明了 rpcMethods，但 main.ts 没有导出对应 service"
-    })
+  if ((manifest.rpcMethods?.length ?? 0) > 0) {
+    try {
+      if (!nativeExtensionMainDeclaresService(extensionDirectory)) {
+        violations.push({
+          file: `${extensionDirectory.repoPath}/main.ts`,
+          reason: "声明了 rpcMethods，但 main.ts 没有导出对应 service"
+        })
+      }
+    } catch (error) {
+      violations.push({
+        file: `${extensionDirectory.repoPath}/main.ts`,
+        reason: error instanceof Error ? error.message : String(error)
+      })
+    }
   }
 }
 

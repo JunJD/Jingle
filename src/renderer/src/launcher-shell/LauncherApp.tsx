@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AiCoreHostProvider } from "@ai-core/AiCoreHost"
 import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { useLauncherClipboard } from "./LauncherClipboardContext"
-import { deriveLauncherPluginClipboardContext } from "../../../shared/clipboard-derivations"
+import { deriveLauncherCommandOwnerClipboardContext } from "../../../shared/clipboard-derivations"
 import type { LauncherInputStatus } from "./launcher-input-status"
 import type { LauncherInputElement } from "./input-element"
 import { LauncherCommandErrorPage } from "@launcher-components/LauncherCommandErrorPage"
@@ -121,6 +121,22 @@ export default function LauncherApp(): React.JSX.Element {
           (command) => command.name === route.commandName
         ) ?? null)
       : null
+  const activeCommandCapabilities =
+    isLauncherCommandRoute(route) && activeCommandOwner
+      ? activeCommandOwner.manifest.capabilities
+      : null
+  const activeCommandHostReady = Boolean(
+    isLauncherCommandRoute(route) &&
+    activeCommand &&
+    activeCommandOwner &&
+    (!activeCommand.loadCommandPreferences || (activeCommandPreferences && !activeCommandError))
+  )
+  const activeBuiltInCommand =
+    isLauncherCommandRoute(route) && isLauncherBuiltInCommandAddress(route)
+  const activeCommandNavigationEnabled = activeCommandCapabilities?.includes("navigation") ?? false
+  const activeCommandClipboardEnabled = activeCommandCapabilities?.includes("clipboard") ?? false
+  const activeCommandSurfaceEnabled = activeCommandCapabilities?.includes("surface") ?? false
+  const activeCommandThreadsEnabled = activeCommandCapabilities?.includes("threads") ?? false
   const activeCommandErrorTitle =
     activeManifestCommand?.title ?? (isLauncherCommandRoute(route) ? route.commandName : "Command")
   const setPluginInputStatus = useCallback(
@@ -278,115 +294,12 @@ export default function LauncherApp(): React.JSX.Element {
     }
   }, [activeCommand, route, routeKey])
 
-  const activeCommandHostBase = useMemo(() => {
-    if (!activeCommand || !activeCommandOwner || !isLauncherCommandRoute(route)) {
-      return null
-    }
-
-    if (activeCommand.loadCommandPreferences && (!activeCommandPreferences || activeCommandError)) {
-      return null
-    }
-
-    const capabilities = activeCommandOwner.manifest.capabilities
-
-    return {
-      capabilities,
-      clipboard: capabilities.includes("clipboard")
-        ? {
-            clearContext: clipboard.clearContext,
-            context: deriveLauncherPluginClipboardContext(
-              clipboard.context,
-              activeCommandOwner.manifest.clipboard
-            )
-          }
-        : undefined,
-      commandName: route.commandName,
-      commandPreferences: activeCommandPreferences ?? {},
-      initialAction: route.initialAction,
-      navigation: capabilities.includes("navigation")
-        ? {
-            goHome: closeActivePlugin,
-            hideLauncher,
-            openCommand
-          }
-        : undefined,
-      seedQuery: route.seedQuery,
-      surface: capabilities.includes("surface")
-        ? {
-            inputRef: pluginInputRef,
-            inputStatus: pluginInputStatus,
-            shellConfig: searchPage.shellConfig,
-            setInputStatus: setPluginInputStatus,
-            shownSequence,
-            viewportHeight
-          }
-        : undefined,
-      threads: capabilities.includes("threads")
-        ? {
-            create: createPluginThread,
-            reload: (threadId: string) => threadContext.reloadThread(threadId),
-            submit: submitPluginThread
-          }
-        : undefined
-    }
-  }, [
-    activeCommand,
-    activeCommandError,
-    activeCommandPreferences,
-    activeCommandOwner,
-    clipboard.clearContext,
-    clipboard.context,
-    closeActivePlugin,
-    createPluginThread,
-    hideLauncher,
-    openCommand,
-    pluginInputStatus,
-    setPluginInputStatus,
-    route,
-    searchPage.shellConfig,
-    shownSequence,
-    submitPluginThread,
-    threadContext,
-    viewportHeight
-  ])
-
-  const activeAiCoreHost = useMemo(() => {
-    if (
-      !activeCommandHostBase ||
-      !isLauncherCommandRoute(route) ||
-      !isLauncherBuiltInCommandAddress(route)
-    ) {
-      return null
-    }
-
-    return {
-      clipboard: activeCommandHostBase.clipboard!,
-      commandName: route.commandName,
-      initialAction: route.initialAction,
-      navigation: activeCommandHostBase.navigation!,
-      seedQuery: route.seedQuery,
-      surface: activeCommandHostBase.surface!,
-      threads: activeCommandHostBase.threads!
-    }
-  }, [activeCommandHostBase, route])
-
-  const activeNativeExtensionHost = useMemo(() => {
-    if (!activeCommandHostBase || !isLauncherExtensionCommandRoute(route)) {
-      return null
-    }
-
-    return {
-      ...activeCommandHostBase,
-      extensionName: route.extensionName
-    }
-  }, [activeCommandHostBase, route])
-
   useEffect(() => {
     latestRouteKeyRef.current = routeKey
   }, [routeKey])
 
   useEffect(() => {
-    if (!activeNoViewCommand || !activeCommandHostBase || !isLauncherCommandRoute(route)) {
+    if (!activeNoViewCommand || !activeCommandHostReady || !isLauncherCommandRoute(route)) {
       return
     }
 
@@ -396,11 +309,19 @@ export default function LauncherApp(): React.JSX.Element {
 
     lastExecutedNoViewRouteKeyRef.current = routeKey
 
+    const navigation = activeCommandNavigationEnabled
+      ? {
+          goHome: closeActivePlugin,
+          hideLauncher,
+          openCommand
+        }
+      : undefined
+
     void Promise.resolve(
       activeNoViewCommand.run({
-        commandPreferences: activeCommandHostBase.commandPreferences,
+        commandPreferences: activeCommandPreferences ?? {},
         initialAction: route.initialAction,
-        navigation: activeCommandHostBase.navigation,
+        navigation,
         seedQuery: route.seedQuery
       })
     )
@@ -416,10 +337,14 @@ export default function LauncherApp(): React.JSX.Element {
         }
       })
   }, [
-    activeCommandHostBase,
+    activeCommandHostReady,
+    activeCommandNavigationEnabled,
     activeNoViewCommand,
+    activeCommandPreferences,
     activeCommandOwner?.manifest.id,
     closeActivePlugin,
+    hideLauncher,
+    openCommand,
     route,
     routeKey
   ])
@@ -544,12 +469,93 @@ export default function LauncherApp(): React.JSX.Element {
                 title={activeCommandErrorTitle}
               />
             ) : activeViewCommand && ActivePluginComponent ? (
-              activeNativeExtensionHost ? (
-                <NativeExtensionHostProvider value={activeNativeExtensionHost}>
+              isLauncherExtensionCommandRoute(route) &&
+              activeCommandOwner &&
+              activeCommandCapabilities &&
+              activeCommandHostReady ? (
+                <NativeExtensionHostProvider
+                  value={{
+                    capabilities: activeCommandCapabilities,
+                    clipboard: activeCommandClipboardEnabled
+                      ? {
+                          clearContext: clipboard.clearContext,
+                          context: deriveLauncherCommandOwnerClipboardContext(
+                            clipboard.context,
+                            activeCommandOwner.manifest.clipboard
+                          )
+                        }
+                      : undefined,
+                    commandName: route.commandName,
+                    commandPreferences: activeCommandPreferences ?? {},
+                    extensionName: route.extensionName,
+                    initialAction: route.initialAction,
+                    navigation: activeCommandNavigationEnabled
+                      ? {
+                          goHome: closeActivePlugin,
+                          hideLauncher,
+                          openCommand
+                        }
+                      : undefined,
+                    seedQuery: route.seedQuery,
+                    surface: activeCommandSurfaceEnabled
+                      ? {
+                          inputRef: pluginInputRef,
+                          inputStatus: pluginInputStatus,
+                          shellConfig: searchPage.shellConfig,
+                          setInputStatus: setPluginInputStatus,
+                          shownSequence,
+                          viewportHeight
+                        }
+                      : undefined,
+                    threads: activeCommandThreadsEnabled
+                      ? {
+                          create: createPluginThread,
+                          reload: (threadId: string) => threadContext.reloadThread(threadId),
+                          submit: submitPluginThread
+                        }
+                      : undefined
+                  }}
+                >
                   <ActivePluginComponent />
                 </NativeExtensionHostProvider>
-              ) : activeAiCoreHost ? (
-                <AiCoreHostProvider value={activeAiCoreHost}>
+              ) : activeBuiltInCommand &&
+                activeCommandHostReady &&
+                activeCommandClipboardEnabled &&
+                activeCommandNavigationEnabled &&
+                activeCommandSurfaceEnabled &&
+                activeCommandThreadsEnabled ? (
+                <AiCoreHostProvider
+                  value={{
+                    clipboard: {
+                      clearContext: clipboard.clearContext,
+                      context: deriveLauncherCommandOwnerClipboardContext(
+                        clipboard.context,
+                        activeCommandOwner?.manifest.clipboard
+                      )
+                    },
+                    commandName: route.commandName,
+                    initialAction: route.initialAction,
+                    navigation: {
+                      goHome: closeActivePlugin,
+                      hideLauncher,
+                      openCommand
+                    },
+                    seedQuery: route.seedQuery,
+                    surface: {
+                      inputRef: pluginInputRef,
+                      inputStatus: pluginInputStatus,
+                      shellConfig: searchPage.shellConfig,
+                      setInputStatus: setPluginInputStatus,
+                      shownSequence,
+                      viewportHeight
+                    },
+                    threads: {
+                      create: createPluginThread,
+                      reload: (threadId: string) => threadContext.reloadThread(threadId),
+                      submit: submitPluginThread
+                    }
+                  }}
+                >
                   <ActivePluginComponent />
                 </AiCoreHostProvider>
               ) : (

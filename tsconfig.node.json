@@ -3,8 +3,9 @@
   "include": [
     "electron.vite.config.*",
     "src/extensions/index.ts",
-    "src/extensions/*/index.ts",
+    "src/extensions/main.ts",
     "src/extensions/*/main/**/*.ts",
+    "src/extensions/*/main.ts",
     "src/extensions/*/manifest.ts",
     "src/main/**/*",
     "src/plugins/**/*",

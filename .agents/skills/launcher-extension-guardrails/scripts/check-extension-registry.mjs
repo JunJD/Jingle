@@ -3,6 +3,9 @@ import {
   fileExists,
   formatViolations,
   listNativeExtensionDirectories,
+  listTopLevelMainRegistryExtensionNames,
+  listTopLevelManifestRegistryExtensionNames,
+  listTopLevelRendererRegistryExtensionNames,
   loadNativeExtensionManifest,
   repoRoot
 } from "./lib/architecture-guardrails.mjs"
@@ -65,6 +68,50 @@ if (!fileExists(extensionsMainPath)) {
   })
 }
 
+const directoryExtensionIds = new Set(listNativeExtensionDirectories().map((directory) => directory.name))
+
+if (fileExists(extensionsIndexPath)) {
+  try {
+    compareRegistryCoverage(
+      "src/extensions/index.ts",
+      new Set(listTopLevelManifestRegistryExtensionNames())
+    )
+  } catch (error) {
+    violations.push({
+      file: "src/extensions/index.ts",
+      reason: error instanceof Error ? error.message : String(error)
+    })
+  }
+}
+
+if (fileExists(extensionsRendererPath)) {
+  try {
+    compareRegistryCoverage(
+      "src/extensions/renderer.ts",
+      new Set(listTopLevelRendererRegistryExtensionNames())
+    )
+  } catch (error) {
+    violations.push({
+      file: "src/extensions/renderer.ts",
+      reason: error instanceof Error ? error.message : String(error)
+    })
+  }
+}
+
+if (fileExists(extensionsMainPath)) {
+  try {
+    compareRegistryCoverage(
+      "src/extensions/main.ts",
+      new Set(listTopLevelMainRegistryExtensionNames())
+    )
+  } catch (error) {
+    violations.push({
+      file: "src/extensions/main.ts",
+      reason: error instanceof Error ? error.message : String(error)
+    })
+  }
+}
+
 if (violations.length === 0) {
   console.log("extension registry check passed")
   process.exit(0)
@@ -72,3 +119,23 @@ if (violations.length === 0) {
 
 console.error(formatViolations("extension registry check", violations))
 process.exit(1)
+
+function compareRegistryCoverage(file, registryExtensionIds) {
+  for (const extensionId of directoryExtensionIds) {
+    if (!registryExtensionIds.has(extensionId)) {
+      violations.push({
+        file,
+        reason: `extension "${extensionId}" 存在于 src/extensions/${extensionId}，但没有被顶层 registry 收录`
+      })
+    }
+  }
+
+  for (const extensionId of registryExtensionIds) {
+    if (!directoryExtensionIds.has(extensionId)) {
+      violations.push({
+        file,
+        reason: `顶层 registry 收录了 extension "${extensionId}"，但 src/extensions/${extensionId} 不存在`
+      })
+    }
+  }
+}

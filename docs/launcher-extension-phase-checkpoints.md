@@ -19,7 +19,6 @@
 - [launcher-directory-map.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/launcher-directory-map.md)
 - [launcher-ai-extension-architecture.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/launcher-ai-extension-architecture.md)
 - [shortcut-system-architecture.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/shortcut-system-architecture.md)
-- [cleanups.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/cleanups.md)
 - [issues.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/issues.md)
 
 这份文档不是附属说明，而是 launcher 主线的平行基础设施文档。
@@ -38,12 +37,6 @@
 - settings 中的 command 配置
 
 都必须同时核对这份快捷键架构文档，而不是把快捷键留到最后补。
-
-`cleanups.md` 则负责另一件事：
-
-- 前几个 pause 为了不一次性炸掉而留下的桥接层，必须登记进去
-- 中途不为了“顺手整洁”提前删，先统一登记，最后专门开一个 cleanup phase 集中处理
-- 最后一轮清理按 `delete-first` 原则做：先删桥，再根据真实报错修目标架构缺陷
 
 `issues.md` 则负责记录当前已经确认的问题：
 
@@ -739,13 +732,13 @@ AI core contract 接入
 
 ### 目标
 
-把 [cleanups.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/cleanups.md) 里的临时层一次性删到接近归零。
+按 `delete-first` 原则把最后残留的临时桥接层删到归零。
 
 ### 只做什么
 
 - 按 `delete-first` 原则删除桥接层、别名层、legacy host、compat zone
 - 顺着真实报错补目标架构，而不是继续加兜底
-- 清空并删除 `cleanups.md`
+- 清掉最后残留的 cleanup 项
 
 ### 绝对不做什么
 
@@ -754,12 +747,12 @@ AI core contract 接入
 
 ### 代码边界
 
-- 以 `cleanups.md` 当前登记项为准
+- 以当前 `issues.md` 和 architecture doctor 暴露的真实边界为准
 
 ### 暂停点验收
 
 - `npm run doctor:route-language` 接近或达到 `0 files / 0 matches`
-- `cleanups.md` 清空并删除
+- 不再保留单独的 cleanup 清单文档
 - `npm run check:guardrails && npm run typecheck` 通过
 
 ## 下一步只做什么
@@ -770,4 +763,4 @@ AI core contract 接入
 
 - 收 `LauncherPlugin*` 语言尾巴
 - 把残留 contract 从 `launcher-plugin` 迁走
-- 按 [cleanups.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/cleanups.md) 开始最后几轮 delete-first cleanup
+- 按 delete-first 原则继续处理剩余结构债

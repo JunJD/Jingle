@@ -5,12 +5,12 @@ import {
   toInstalledNativeExtensionSettingsSchema,
   toLauncherCommandOwnerManifest
 } from "../../../shared/native-extensions"
+import {
+  hasLauncherCommandOwnerCapability,
+  validateLauncherCommandOwnerManifest
+} from "../../../shared/launcher-command-owner"
 import { nativeExtensionManifests } from "../../../extensions"
 import { nativeExtensionMainDefinitions } from "../../../extensions/main"
-import {
-  hasLauncherPluginCapability,
-  validateLauncherPluginManifest
-} from "../../../shared/launcher-plugin"
 
 interface NativeExtensionRuntimeDefinition {
   manifest: (typeof nativeExtensionManifests)[number]
@@ -30,7 +30,7 @@ const nativeExtensionDefinitionMap = new Map(
 
 for (const definition of nativeExtensionDefinitions) {
   const launcherManifest = toLauncherCommandOwnerManifest(definition.manifest)
-  validateLauncherPluginManifest(launcherManifest)
+  validateLauncherCommandOwnerManifest(launcherManifest)
   const manifestRpcMethods = launcherManifest.rpcMethods ?? []
 
   if (!definition.service) {
@@ -49,7 +49,7 @@ for (const definition of nativeExtensionDefinitions) {
     )
   }
 
-  if (!hasLauncherPluginCapability(launcherManifest, "rpc")) {
+  if (!hasLauncherCommandOwnerCapability(launcherManifest, "rpc")) {
     throw new Error(
       `Native extension "${definition.manifest.name}" exposes a main-side service without the "rpc" capability`
     )

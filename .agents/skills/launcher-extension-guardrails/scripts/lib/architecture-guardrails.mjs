@@ -149,6 +149,11 @@ export function readSourceText(repoFilePath) {
   return fs.readFileSync(path.join(repoRoot, repoFilePath), "utf8")
 }
 
+export function parseSourceFile(absolutePath) {
+  const sourceText = fs.readFileSync(absolutePath, "utf8")
+  return ts.createSourceFile(absolutePath, sourceText, ts.ScriptTarget.Latest, true)
+}
+
 export function listNativeExtensionDirectories() {
   const extensionsRoot = path.join(srcRoot, "extensions")
 
@@ -175,19 +180,43 @@ export function loadNativeExtensionManifest(extensionDirectory) {
 }
 
 export function listNativeExtensionRendererCommandNames(extensionDirectory) {
-  const rendererSource = readSourceText(`${extensionDirectory.repoPath}/renderer.ts`)
-  const commandNames = []
+  const rendererObject = findTopLevelDefineCallObjectLiteral(
+    path.join(extensionDirectory.absolutePath, "renderer.ts"),
+    "defineNativeExtensionRenderer"
+  )
+  const commandsInitializer = getObjectPropertyInitializer(rendererObject, "commands")
 
-  for (const match of rendererSource.matchAll(/\bname:\s*"([^"]+)"/g)) {
-    commandNames.push(match[1])
+  if (!commandsInitializer || !ts.isArrayLiteralExpression(commandsInitializer)) {
+    throw new Error(
+      `${extensionDirectory.repoPath}/renderer.ts must pass a commands array to defineNativeExtensionRenderer(...)`
+    )
   }
 
-  return commandNames
+  return commandsInitializer.elements.map((element) => {
+    if (!ts.isObjectLiteralExpression(element)) {
+      throw new Error(
+        `${extensionDirectory.repoPath}/renderer.ts must declare commands as object literals`
+      )
+    }
+
+    const nameInitializer = getObjectPropertyInitializer(element, "name")
+    if (!nameInitializer || !ts.isStringLiteral(nameInitializer)) {
+      throw new Error(
+        `${extensionDirectory.repoPath}/renderer.ts must declare each command name as a string literal`
+      )
+    }
+
+    return nameInitializer.text
+  })
 }
 
 export function nativeExtensionMainDeclaresService(extensionDirectory) {
-  const mainSource = readSourceText(`${extensionDirectory.repoPath}/main.ts`)
-  return /\bservice\s*:/.test(mainSource)
+  const mainObject = findTopLevelDefineCallObjectLiteral(
+    path.join(extensionDirectory.absolutePath, "main.ts"),
+    "defineNativeExtensionMain"
+  )
+
+  return !!getObjectPropertyInitializer(mainObject, "service")
 }
 
 export function resolveExtensionRelativeFile(extensionDirectory, relativeModulePath) {
@@ -227,6 +256,27 @@ export function formatViolations(title, violations) {
   ].join("\n")
 }
 
+export function listTopLevelManifestRegistryExtensionNames() {
+  return listTopLevelArrayRegistryExtensionNames(
+    path.join(repoRoot, "src/extensions/index.ts"),
+    "nativeExtensionManifests"
+  )
+}
+
+export function listTopLevelRendererRegistryExtensionNames() {
+  return listTopLevelMapRegistryExtensionNames(
+    path.join(repoRoot, "src/extensions/renderer.ts"),
+    "nativeExtensionRendererDefinitions"
+  )
+}
+
+export function listTopLevelMainRegistryExtensionNames() {
+  return listTopLevelMapRegistryExtensionNames(
+    path.join(repoRoot, "src/extensions/main.ts"),
+    "nativeExtensionMainDefinitions"
+  )
+}
+
 function resolveResolvedBase(baseDirectory, requestPath) {
   const absoluteBase = path.resolve(baseDirectory, requestPath)
   const direct = resolveFileCandidate(absoluteBase)
@@ -249,6 +299,215 @@ function resolveResolvedBase(baseDirectory, requestPath) {
   }
 
   return null
+}
+
+function listTopLevelArrayRegistryExtensionNames(absolutePath, exportName) {
+  const sourceFile = parseSourceFile(absolutePath)
+  const importedExtensionIds = collectImportedExtensionIds(sourceFile)
+  const initializer = getExportedConstInitializer(sourceFile, exportName)
+  const arrayLiteral = unwrapArrayInitializer(initializer)
+
+  if (!arrayLiteral) {
+    throw new Error(`${toRepoPath(absolutePath)} must export ${exportName} as an array registry`)
+  }
+
+  return arrayLiteral.elements.map((element) => {
+    if (ts.isIdentifier(element)) {
+      return resolveImportedExtensionId(importedExtensionIds, element.text, absolutePath)
+    }
+
+    throw new Error(
+      `${toRepoPath(absolutePath)} must declare ${exportName} entries as imported manifest identifiers`
+    )
+  })
+}
+
+function listTopLevelMapRegistryExtensionNames(absolutePath, exportName) {
+  const sourceFile = parseSourceFile(absolutePath)
+  const importedExtensionIds = collectImportedExtensionIds(sourceFile)
+  const initializer = getExportedConstInitializer(sourceFile, exportName)
+
+  if (
+    !initializer ||
+    !ts.isNewExpression(initializer) ||
+    !ts.isIdentifier(initializer.expression) ||
+    initializer.expression.text !== "Map"
+  ) {
+    throw new Error(`${toRepoPath(absolutePath)} must export ${exportName} as a Map registry`)
+  }
+
+  const entriesArgument = initializer.arguments?.[0]
+  if (!entriesArgument || !ts.isArrayLiteralExpression(entriesArgument)) {
+    throw new Error(`${toRepoPath(absolutePath)} must initialize ${exportName} with Map entries`)
+  }
+
+  return entriesArgument.elements.map((entry) => {
+    if (!ts.isArrayLiteralExpression(entry) || entry.elements.length === 0) {
+      throw new Error(`${toRepoPath(absolutePath)} must declare each ${exportName} entry as a tuple`)
+    }
+
+    return resolveRegistryKeyExtensionId(entry.elements[0], importedExtensionIds, absolutePath)
+  })
+}
+
+function findTopLevelDefineCallObjectLiteral(absolutePath, factoryName) {
+  const sourceFile = parseSourceFile(absolutePath)
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) {
+      continue
+    }
+
+    for (const declaration of statement.declarationList.declarations) {
+      const initializer = declaration.initializer
+      if (
+        !initializer ||
+        !ts.isCallExpression(initializer) ||
+        !ts.isIdentifier(initializer.expression) ||
+        initializer.expression.text !== factoryName
+      ) {
+        continue
+      }
+
+      const argument = initializer.arguments[0]
+      if (!argument || !ts.isObjectLiteralExpression(argument)) {
+        throw new Error(
+          `${toRepoPath(absolutePath)} must pass an object literal to ${factoryName}(...)`
+        )
+      }
+
+      return argument
+    }
+  }
+
+  throw new Error(`${toRepoPath(absolutePath)} must export a ${factoryName}(...) definition`)
+}
+
+function getExportedConstInitializer(sourceFile, exportName) {
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) {
+      continue
+    }
+
+    if (!statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) {
+      continue
+    }
+
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.name.text === exportName) {
+        return declaration.initializer ?? null
+      }
+    }
+  }
+
+  return null
+}
+
+function unwrapArrayInitializer(initializer) {
+  if (!initializer) {
+    return null
+  }
+
+  if (ts.isArrayLiteralExpression(initializer)) {
+    return initializer
+  }
+
+  if (
+    ts.isCallExpression(initializer) &&
+    ts.isPropertyAccessExpression(initializer.expression) &&
+    initializer.expression.name.text === "sort" &&
+    ts.isArrayLiteralExpression(initializer.expression.expression)
+  ) {
+    return initializer.expression.expression
+  }
+
+  return null
+}
+
+function getObjectPropertyInitializer(objectLiteral, propertyName) {
+  for (const property of objectLiteral.properties) {
+    if (!ts.isPropertyAssignment(property)) {
+      continue
+    }
+
+    if (getPropertyNameText(property.name) === propertyName) {
+      return property.initializer
+    }
+  }
+
+  return null
+}
+
+function getPropertyNameText(nameNode) {
+  if (ts.isIdentifier(nameNode) || ts.isStringLiteral(nameNode)) {
+    return nameNode.text
+  }
+
+  return null
+}
+
+function collectImportedExtensionIds(sourceFile) {
+  const importedExtensionIds = new Map()
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+      continue
+    }
+
+    const extensionId = inferImportedExtensionId(statement.moduleSpecifier.text)
+    if (!extensionId) {
+      continue
+    }
+
+    const namedBindings = statement.importClause?.namedBindings
+    if (!namedBindings || !ts.isNamedImports(namedBindings)) {
+      continue
+    }
+
+    for (const element of namedBindings.elements) {
+      importedExtensionIds.set(element.name.text, extensionId)
+    }
+  }
+
+  return importedExtensionIds
+}
+
+function inferImportedExtensionId(specifier) {
+  const match = specifier.match(/^\.\/([^/]+)\/(?:manifest|renderer|main)$/)
+  return match?.[1] ?? null
+}
+
+function resolveImportedExtensionId(importedExtensionIds, identifierName, absolutePath) {
+  const extensionId = importedExtensionIds.get(identifierName)
+  if (!extensionId) {
+    throw new Error(
+      `${toRepoPath(absolutePath)} references "${identifierName}" but it is not an imported extension binding`
+    )
+  }
+
+  return extensionId
+}
+
+function resolveRegistryKeyExtensionId(expression, importedExtensionIds, absolutePath) {
+  if (ts.isStringLiteral(expression)) {
+    return expression.text
+  }
+
+  if (
+    ts.isPropertyAccessExpression(expression) &&
+    ts.isIdentifier(expression.expression) &&
+    expression.name.text === "name"
+  ) {
+    return resolveImportedExtensionId(importedExtensionIds, expression.expression.text, absolutePath)
+  }
+
+  if (ts.isIdentifier(expression)) {
+    return resolveImportedExtensionId(importedExtensionIds, expression.text, absolutePath)
+  }
+
+  throw new Error(
+    `${toRepoPath(absolutePath)} must declare registry keys as imported manifest names or string literals`
+  )
 }
 
 function resolveFileCandidate(candidate) {

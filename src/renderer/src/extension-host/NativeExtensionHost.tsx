@@ -1,6 +1,14 @@
-import { createContext, useContext, useEffect, useEffectEvent, useRef, type ReactNode, type RefObject } from "react"
-import type { LauncherPluginCapability } from "@shared/launcher-plugin"
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  type ReactNode,
+  type RefObject
+} from "react"
 import type { LauncherShellConfig } from "@shared/launcher"
+import type { LauncherCommandOwnerCapability } from "@shared/launcher-command-owner"
 import type { LauncherClipboardState } from "@launcher-shell/LauncherClipboardContext"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 import type {
@@ -40,7 +48,7 @@ export interface NativeExtensionThreadSubmitInput {
 }
 
 export interface NativeExtensionHostValue {
-  capabilities: readonly LauncherPluginCapability[]
+  capabilities: readonly LauncherCommandOwnerCapability[]
   clipboard?: Pick<LauncherClipboardState, "clearContext" | "context">
   commandName: LauncherCommandName
   commandPreferences: Record<string, unknown>
@@ -71,7 +79,9 @@ export function NativeExtensionHostProvider(props: {
   const { children, value } = props
 
   return (
-    <nativeExtensionHostContext.Provider value={value}>{children}</nativeExtensionHostContext.Provider>
+    <nativeExtensionHostContext.Provider value={value}>
+      {children}
+    </nativeExtensionHostContext.Provider>
   )
 }
 
@@ -91,7 +101,7 @@ export function useNativeExtensionHostOptional(): NativeExtensionHostValue | nul
 
 function requireNativeExtensionCapability<TValue>(
   host: NativeExtensionHostValue,
-  capability: LauncherPluginCapability,
+  capability: LauncherCommandOwnerCapability,
   value: TValue | undefined
 ): TValue {
   if (value) {
