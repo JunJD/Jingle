@@ -101,6 +101,12 @@ When("我在 Launcher 首页按下 Escape", async function (this: OpenworkWorld)
   await page.keyboard.press("Escape")
 })
 
+When("我在 Launcher 首页按下 Tab", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+
+  await page.keyboard.press("Tab")
+})
+
 When("我从 Launcher 打开设置窗口", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("launcher")
   const settingsButton = page

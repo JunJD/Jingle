@@ -25,6 +25,11 @@ import type {
   NativeExtensionPreferencesChangedEvent
 } from "../shared/native-extensions"
 import type { NativeMenuBarActionEvent, NativeMenuBarState } from "../shared/native-menu-bar"
+import type {
+  GlobalShortcutAvailability,
+  ResolvedShortcutBinding,
+  ShortcutSettings
+} from "../shared/shortcuts/settings"
 import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "../shared/settings-window"
 
 // Simple electron API - replaces @electron-toolkit/preload
@@ -221,6 +226,30 @@ const api = {
     },
     getPendingNavigation: (): Promise<SettingsWindowNavigationPayload | null> => {
       return ipcRenderer.invoke("settings:getPendingNavigation")
+    }
+  },
+  shortcuts: {
+    getSettings: (): Promise<ShortcutSettings> => {
+      return ipcRenderer.invoke("shortcuts:getSettings")
+    },
+    setSettings: (updates: Partial<ShortcutSettings>): Promise<ShortcutSettings> => {
+      return ipcRenderer.invoke("shortcuts:setSettings", updates)
+    },
+    onSettingsChanged: (callback: (settings: ShortcutSettings) => void): (() => void) => {
+      const handler = (_event: unknown, settings: ShortcutSettings): void => {
+        callback(settings)
+      }
+
+      ipcRenderer.on("shortcuts:settingsChanged", handler)
+      return () => {
+        ipcRenderer.removeListener("shortcuts:settingsChanged", handler)
+      }
+    },
+    getResolvedBindings: (): Promise<ResolvedShortcutBinding[]> => {
+      return ipcRenderer.invoke("shortcuts:getResolvedBindings")
+    },
+    getGlobalAvailability: (): Promise<GlobalShortcutAvailability[]> => {
+      return ipcRenderer.invoke("shortcuts:getGlobalAvailability")
     }
   },
   launcher: {

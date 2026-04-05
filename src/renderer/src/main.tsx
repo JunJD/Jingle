@@ -6,6 +6,7 @@ import { LauncherClipboardProvider } from "@launcher-shell/LauncherClipboardCont
 import { ThreadProvider } from "./lib/thread-context"
 import { I18nProvider } from "./lib/i18n"
 import SettingsApp from "./settings/SettingsApp"
+import { ShortcutProvider } from "./shortcuts/shortcut-provider"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "../../shared/i18n"
 import "./index.css"
 
@@ -29,22 +30,30 @@ async function resolveInitialLocale(): Promise<AppLocale> {
 
 async function bootstrap(): Promise<void> {
   const initialLocale = await resolveInitialLocale()
+  const shortcutWindowKind =
+    resolvedWindowKind === "launcher"
+      ? "launcher"
+      : resolvedWindowKind === "settings"
+        ? "settings"
+        : "main"
 
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
-      <I18nProvider initialLocale={initialLocale}>
-        {windowKind === "launcher" ? (
-          <ThreadProvider>
-            <LauncherClipboardProvider>
-              <LauncherApp />
-            </LauncherClipboardProvider>
-          </ThreadProvider>
-        ) : windowKind === "settings" ? (
-          <SettingsApp />
-        ) : (
-          <HistoryApp />
-        )}
-      </I18nProvider>
+      <ShortcutProvider windowKind={shortcutWindowKind}>
+        <I18nProvider initialLocale={initialLocale}>
+          {windowKind === "launcher" ? (
+            <ThreadProvider>
+              <LauncherClipboardProvider>
+                <LauncherApp />
+              </LauncherClipboardProvider>
+            </ThreadProvider>
+          ) : windowKind === "settings" ? (
+            <SettingsApp />
+          ) : (
+            <HistoryApp />
+          )}
+        </I18nProvider>
+      </ShortcutProvider>
     </React.StrictMode>
   )
 }

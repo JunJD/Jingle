@@ -8,9 +8,7 @@ interface LauncherFocusOptions {
 }
 
 interface UseLauncherShellEffectsProps {
-  closeActivePlugin: () => void
   focusActiveInput: (options?: LauncherFocusOptions) => void
-  hideLauncher: () => Promise<void>
   homeInputSelectionRequestVersion: number
   route: LauncherRoute
   routeKey: string
@@ -18,20 +16,13 @@ interface UseLauncherShellEffectsProps {
 }
 
 /**
- * 管理 launcher 壳层副作用：窗口高度、shown/focus 生命周期，以及 Escape / 路由切换焦点。
+ * 管理 launcher 壳层副作用：窗口高度、shown/focus 生命周期，以及路由切换焦点。
  */
 export function useLauncherShellEffects(props: UseLauncherShellEffectsProps): {
   shownSequence: number
 } {
-  const {
-    closeActivePlugin,
-    focusActiveInput,
-    hideLauncher,
-    homeInputSelectionRequestVersion,
-    route,
-    routeKey,
-    viewportHeight
-  } = props
+  const { focusActiveInput, homeInputSelectionRequestVersion, route, routeKey, viewportHeight } =
+    props
   const appliedViewportHeightRef = useRef(0)
   const previousRouteRef = useRef(route)
   const previousRouteKeyRef = useRef<string | null>(null)
@@ -112,23 +103,6 @@ export function useLauncherShellEffects(props: UseLauncherShellEffectsProps): {
       lastHandledHomeSelectionRequestRef.current = homeInputSelectionRequestVersion
     }
   }, [focusActiveInput, homeInputSelectionRequestVersion, route, routeKey, shownSequence])
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
-        event.preventDefault()
-        if (isLauncherCommandRoute(route)) {
-          closeActivePlugin()
-          return
-        }
-
-        void hideLauncher()
-      }
-    }
-
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [closeActivePlugin, hideLauncher, route])
 
   return { shownSequence }
 }

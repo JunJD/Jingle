@@ -36,18 +36,15 @@ export interface ShortcutBindingDefinition {
   platform?: ShortcutPlatform
 }
 
-export interface ShortcutOverride {
-  commandId: string
-  chord?: ShortcutChord
-  disabled?: boolean
-  platform?: ShortcutPlatform
-}
-
 const MODIFIER_ORDER: Record<ShortcutModifier, number> = {
   ctrl: 0,
   alt: 1,
   shift: 2,
   meta: 3
+}
+
+export function resolveShortcutPlatform(value: string | undefined | null): ShortcutPlatform {
+  return value === "darwin" || value === "win32" || value === "linux" ? value : "darwin"
 }
 
 export function normalizeShortcutChord(chord: ShortcutChord): ShortcutChord {

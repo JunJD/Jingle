@@ -8,17 +8,22 @@ import { registerThreadHandlers } from "./ipc/threads"
 import { registerModelHandlers } from "./ipc/models"
 import { registerNativeExtensionHandlers } from "./ipc/native-extensions"
 import { registerNativeMenuBarHandlers } from "./ipc/native-menu-bar"
+import { registerShortcutHandlers } from "./ipc/shortcuts"
 import { registerSettingsWindowHandlers } from "./ipc/settings-window"
 import { closeDatabase, initializeDatabase } from "./db"
 import { closeRuntime } from "./agent/runtime"
+import { LAUNCHER_COMMAND_IDS } from "../shared/shortcuts/ids"
 import {
   createLauncherWindow,
   registerLauncherHandlers,
-  registerLauncherShortcut,
-  showLauncherWindow,
-  unregisterLauncherShortcut
+  showLauncherWindow
 } from "./windows/launcher-window"
 import { createSettingsWindow, showSettingsWindow } from "./windows/settings-window"
+import {
+  getGlobalShortcutAccelerator,
+  registerGlobalShortcutService,
+  unregisterGlobalShortcutService
+} from "./services/shortcuts/global-shortcut-service"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
 import { initializeNativeMenuBar } from "./services/native-menu-bar"
 import type { SettingsWindowNavigationPayload } from "../shared/settings-window"
@@ -113,6 +118,40 @@ if (hasSingleInstanceLock) {
     registerModelHandlers(ipcMain)
     registerNativeExtensionHandlers(ipcMain)
     registerNativeMenuBarHandlers(ipcMain)
+    const handleGlobalShortcutCommand = (commandId: string): void => {
+      if (commandId !== LAUNCHER_COMMAND_IDS.toggle) {
+        return
+      }
+
+      const launcherWindow = getOrCreateLauncherWindow()
+      if (launcherWindow.isVisible()) {
+        launcherWindow.hide()
+        return
+      }
+
+      showLauncherWindow(launcherWindow)
+    }
+
+    const applyShortcutSettings = (): void => {
+      registerGlobalShortcutService({
+        onCommand: handleGlobalShortcutCommand
+      })
+      installApplicationMenu({
+        isDev,
+        launcherShortcutAccelerator: getGlobalShortcutAccelerator(LAUNCHER_COMMAND_IDS.toggle),
+        showSettings: () => {
+          openSettingsWindow()
+        },
+        showLauncher: () => {
+          showLauncherWindow(getOrCreateLauncherWindow())
+        }
+      })
+    }
+
+    registerShortcutHandlers({
+      applySettings: applyShortcutSettings,
+      ipcMain
+    })
     registerSettingsWindowHandlers({
       consumePendingNavigation: () => {
         const pending = pendingSettingsNavigation
@@ -127,19 +166,10 @@ if (hasSingleInstanceLock) {
       getLauncherWindow: () =>
         launcherWindow && !launcherWindow.isDestroyed() ? launcherWindow : null
     })
+    applyShortcutSettings()
     void warmLauncherSearchProviders()
-    installApplicationMenu({
-      isDev,
-      showSettings: () => {
-        openSettingsWindow()
-      },
-      showLauncher: () => {
-        showLauncherWindow(getOrCreateLauncherWindow())
-      }
-    })
 
     showLauncherWindow(getOrCreateLauncherWindow())
-    registerLauncherShortcut(getOrCreateLauncherWindow)
 
     app.on("activate", () => {
       showLauncherWindow(getOrCreateLauncherWindow())
@@ -148,7 +178,7 @@ if (hasSingleInstanceLock) {
 }
 
 app.on("will-quit", () => {
-  unregisterLauncherShortcut()
+  unregisterGlobalShortcutService()
   void closeRuntime()
   void closeDatabase()
 })

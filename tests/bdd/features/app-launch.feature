@@ -15,6 +15,14 @@ Feature: Openwork 桌面启动
     Then Launcher 界面切换到 "ai"
     And Launcher 输入框包含 "整理本周计划"
 
+  Scenario: Launcher 首页可以通过 Tab 进入 AI 界面
+    Given Openwork 桌面应用已启动
+    When 我在 Launcher 中搜索 "整理本周计划"
+    Then Launcher 首页展示了可执行结果
+    When 我在 Launcher 首页按下 Tab
+    Then Launcher 界面切换到 "ai"
+    And Launcher 输入框包含 "整理本周计划"
+
   Scenario: Launcher 命令页可以返回首页
     Given Openwork 桌面应用已启动
     When 我在 Launcher 中搜索 "整理本周计划"

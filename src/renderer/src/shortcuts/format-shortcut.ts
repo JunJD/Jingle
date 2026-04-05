@@ -3,7 +3,8 @@ import type {
   ShortcutChord,
   ShortcutModifier,
   ShortcutPlatform
-} from "../../../shared/shortcuts/model"
+} from "@shared/shortcuts/model"
+import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import { getPrimaryLauncherShortcutBinding } from "./command-registry"
 
 const DARWIN_MODIFIER_ORDER: readonly ShortcutModifier[] = ["meta", "shift", "alt", "ctrl"]
@@ -36,10 +37,6 @@ const KEY_LABELS: Record<string, string> = {
   End: "End",
   Space: "Space",
   Tab: "Tab"
-}
-
-function resolveShortcutPlatform(value: string): ShortcutPlatform {
-  return value === "darwin" || value === "win32" || value === "linux" ? value : "darwin"
 }
 
 function sortShortcutModifiers(

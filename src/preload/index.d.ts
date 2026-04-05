@@ -25,6 +25,11 @@ import type {
   NativeExtensionPreferencesChangedEvent
 } from "../shared/native-extensions"
 import type { NativeMenuBarActionEvent, NativeMenuBarState } from "../shared/native-menu-bar"
+import type {
+  GlobalShortcutAvailability,
+  ResolvedShortcutBinding,
+  ShortcutSettings
+} from "../shared/shortcuts/settings"
 import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "../shared/settings-window"
 
 interface ElectronAPI {
@@ -95,6 +100,13 @@ interface CustomAPI {
     openWindow: (payload?: SettingsWindowNavigationPayload) => Promise<void>
     openTab: (payload: SettingsWindowNavigationPayload) => Promise<void>
     getPendingNavigation: () => Promise<SettingsWindowNavigationPayload | null>
+  }
+  shortcuts: {
+    getSettings: () => Promise<ShortcutSettings>
+    setSettings: (updates: Partial<ShortcutSettings>) => Promise<ShortcutSettings>
+    onSettingsChanged: (callback: (settings: ShortcutSettings) => void) => () => void
+    getResolvedBindings: () => Promise<ResolvedShortcutBinding[]>
+    getGlobalAvailability: () => Promise<GlobalShortcutAvailability[]>
   }
   launcher: {
     getClipboardContext: () => Promise<ClipboardContext>

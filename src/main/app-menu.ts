@@ -1,8 +1,8 @@
 import { Menu, shell, type MenuItemConstructorOptions } from "electron"
-import { DEFAULT_LAUNCHER_SHORTCUT } from "./windows/launcher-window"
 
 interface InstallApplicationMenuParams {
   isDev: boolean
+  launcherShortcutAccelerator: string | null
   showSettings: () => void
   showLauncher: () => void
 }
@@ -64,7 +64,9 @@ function createHelpMenu(): MenuItemConstructorOptions {
 export function installApplicationMenu(params: InstallApplicationMenuParams): void {
   const launcherItem: MenuItemConstructorOptions = {
     label: "Show Launcher",
-    accelerator: DEFAULT_LAUNCHER_SHORTCUT,
+    ...(params.launcherShortcutAccelerator
+      ? { accelerator: params.launcherShortcutAccelerator }
+      : {}),
     click: () => {
       params.showLauncher()
     }

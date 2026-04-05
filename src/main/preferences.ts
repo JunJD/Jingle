@@ -14,6 +14,11 @@ import {
   normalizeLauncherSettings,
   type LauncherSettings
 } from "../shared/launcher-settings"
+import {
+  DEFAULT_SHORTCUT_SETTINGS,
+  normalizeShortcutSettings,
+  type ShortcutSettings
+} from "../shared/shortcuts/settings"
 
 export interface PersistedWindowState {
   width: number
@@ -29,6 +34,7 @@ interface SettingsStoreShape {
   launcherSettings: LauncherSettings
   mainWindowState: PersistedWindowState | null
   nativeExtensionPreferences: NativeExtensionPreferencesState
+  shortcutSettings: ShortcutSettings
   workspaceDialogPath: string | null
   workspacePath: string | null
 }
@@ -67,6 +73,7 @@ const settingsStore = new Store<SettingsStoreShape>({
     launcherSettings: DEFAULT_LAUNCHER_SETTINGS,
     mainWindowState: null,
     nativeExtensionPreferences: DEFAULT_NATIVE_EXTENSION_PREFERENCES,
+    shortcutSettings: DEFAULT_SHORTCUT_SETTINGS,
     workspaceDialogPath: null,
     workspacePath: null
   }
@@ -609,6 +616,24 @@ export function setLauncherSettings(updates: Partial<LauncherSettings>): Launche
   })
 
   settingsStore.set("launcherSettings", nextSettings)
+  return nextSettings
+}
+
+export function getShortcutSettings(): ShortcutSettings {
+  const stored = settingsStore.get("shortcutSettings", DEFAULT_SHORTCUT_SETTINGS) as
+    | ShortcutSettings
+    | undefined
+
+  return normalizeShortcutSettings(stored)
+}
+
+export function setShortcutSettings(updates: Partial<ShortcutSettings>): ShortcutSettings {
+  const nextSettings = normalizeShortcutSettings({
+    ...getShortcutSettings(),
+    ...(updates.overrides ? { overrides: updates.overrides } : {})
+  })
+
+  settingsStore.set("shortcutSettings", nextSettings)
   return nextSettings
 }
 

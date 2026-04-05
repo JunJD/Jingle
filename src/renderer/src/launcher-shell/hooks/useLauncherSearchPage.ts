@@ -14,7 +14,7 @@ import type {
 import type { LauncherHistoryItem } from "../../../../shared/launcher-history"
 import { sortLauncherHistoryItems } from "../../../../shared/launcher-history"
 import type { LocalStartItem } from "../../../../shared/local-start"
-import { LAUNCHER_COMMAND_IDS, type LauncherCommandId } from "../../../../shared/shortcuts/ids"
+import { LAUNCHER_COMMAND_IDS } from "../../../../shared/shortcuts/ids"
 import { DEFAULT_HOME_COMMAND, resolveLauncherCommand } from "../pages"
 import {
   buildLauncherHomeSurfaceModel,
@@ -26,13 +26,19 @@ import type { LauncherCommandAddress, LauncherCommandOpenOptions } from "../page
 import { useLauncherHomeClipboard } from "./useLauncherHomeClipboard"
 
 const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
+type LauncherHomeCommandId =
+  | typeof LAUNCHER_COMMAND_IDS.searchOpenAi
+  | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionDown
+  | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionUp
+  | typeof LAUNCHER_COMMAND_IDS.searchExecuteSelection
 
 export function useLauncherSearchPage(props: {
   openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
 }): {
   executeItem: (index: number) => void
   clearClipboardContext: () => void
-  handleInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
+  executeHomeCommand: (commandId: LauncherHomeCommandId) => void
+  handleInputCommandKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   homeInputSelectionRequestVersion: number
   removeHistoryItem: (itemId: string) => void
   setHistoryItemPinned: (itemId: string, pin: boolean) => void
@@ -198,8 +204,8 @@ export function useLauncherSearchPage(props: {
     [navigateToCommand, query, surface.items]
   )
 
-  const executeSearchCommand = useCallback(
-    (commandId: LauncherCommandId): void => {
+  const executeHomeCommand = useCallback(
+    (commandId: LauncherHomeCommandId): void => {
       switch (commandId) {
         case LAUNCHER_COMMAND_IDS.searchOpenAi:
           navigateToCommand(DEFAULT_HOME_COMMAND, {
@@ -223,7 +229,7 @@ export function useLauncherSearchPage(props: {
     [executeItem, moveSelection, navigateToCommand, query, selectedIndex]
   )
 
-  const handleInputKeyDown = useCallback(
+  const handleInputCommandKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>): void => {
       const commandMatch = resolveLauncherCommand({
         altKey: event.altKey,
@@ -238,34 +244,8 @@ export function useLauncherSearchPage(props: {
         navigateToCommand(commandMatch.address, commandMatch.match.openOptions)
         return
       }
-
-      let commandId: LauncherCommandId | null = null
-
-      switch (event.key) {
-        case "Tab":
-          commandId = LAUNCHER_COMMAND_IDS.searchOpenAi
-          break
-        case "ArrowDown":
-          commandId = LAUNCHER_COMMAND_IDS.searchMoveSelectionDown
-          break
-        case "ArrowUp":
-          commandId = LAUNCHER_COMMAND_IDS.searchMoveSelectionUp
-          break
-        case "Enter":
-          commandId = LAUNCHER_COMMAND_IDS.searchExecuteSelection
-          break
-        default:
-          break
-      }
-
-      if (!commandId) {
-        return
-      }
-
-      event.preventDefault()
-      executeSearchCommand(commandId)
     },
-    [executeSearchCommand, navigateToCommand, query]
+    [navigateToCommand, query]
   )
   const setHistoryItemPinned = useCallback(
     (itemId: string, pin: boolean): void => {
@@ -306,7 +286,8 @@ export function useLauncherSearchPage(props: {
   return {
     clearClipboardContext: homeClipboard.clearContext,
     executeItem,
-    handleInputKeyDown,
+    executeHomeCommand,
+    handleInputCommandKeyDown,
     homeInputSelectionRequestVersion,
     previewClipboardContext: homeClipboard.previewContext,
     removeHistoryItem,

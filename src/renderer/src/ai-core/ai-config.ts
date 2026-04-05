@@ -1,7 +1,4 @@
-import {
-  getLauncherViewportHeightForBody,
-  type LauncherShellConfig
-} from "@shared/launcher"
+import { getLauncherViewportHeightForBody, type LauncherShellConfig } from "@shared/launcher"
 
 const AI_PAGE_CONTENT_HEIGHT = 394
 

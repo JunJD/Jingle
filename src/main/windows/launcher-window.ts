@@ -1,12 +1,5 @@
 import { spawn } from "node:child_process"
-import {
-  BrowserWindow,
-  type IpcMain,
-  type Rectangle,
-  globalShortcut,
-  screen,
-  shell
-} from "electron"
+import { BrowserWindow, type IpcMain, type Rectangle, screen, shell } from "electron"
 import { basename, extname, join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
 import {
@@ -42,8 +35,6 @@ const LAUNCHER_MAX_SCREEN_HEIGHT_RATIO = 0.7
 const WINDOWS_LAUNCHER_SHAPE_RADIUS = 12
 const launcherVisibleOrigins = new WeakMap<BrowserWindow, { x: number; y: number }>()
 let launcherBlurHideSuppressionDepth = 0
-
-export const DEFAULT_LAUNCHER_SHORTCUT = "CommandOrControl+Shift+Space"
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
@@ -529,23 +520,4 @@ export function registerLauncherHandlers(ipcMain: IpcMain): void {
         : getLauncherBounds(height)
     )
   })
-}
-
-export function registerLauncherShortcut(getLauncherWindow: () => BrowserWindow): void {
-  const registered = globalShortcut.register(DEFAULT_LAUNCHER_SHORTCUT, () => {
-    const launcherWindow = getLauncherWindow()
-    if (launcherWindow.isVisible()) {
-      hideLauncherWindow(launcherWindow)
-      return
-    }
-    showLauncherWindow(launcherWindow)
-  })
-
-  if (!registered) {
-    console.warn(`Failed to register launcher shortcut: ${DEFAULT_LAUNCHER_SHORTCUT}`)
-  }
-}
-
-export function unregisterLauncherShortcut(): void {
-  globalShortcut.unregister(DEFAULT_LAUNCHER_SHORTCUT)
 }

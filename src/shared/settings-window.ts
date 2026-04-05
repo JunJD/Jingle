@@ -1,4 +1,4 @@
-export type SettingsWindowTab = "general" | "extensions"
+export type SettingsWindowTab = "general" | "extensions" | "shortcuts"
 
 export interface SettingsWindowTarget {
   commandName?: string

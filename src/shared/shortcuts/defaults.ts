@@ -36,6 +36,7 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
       modifiers: [],
       key: "Escape"
     },
+    allowInTextInput: true,
     preventDefault: true
   },
   {
