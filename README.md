@@ -38,12 +38,23 @@ npm run dev
 
 Or configure them in-app via the settings panel.
 
+## BDD Testing
+
+The repository now includes a minimal Electron BDD harness built on Cucumber and Playwright.
+
+```bash
+npm run test:bdd:smoke
+npm run test:bdd
+```
+
+The BDD runner builds the app first, launches the packaged Electron entrypoint, creates an isolated `OPENWORK_HOME` temp directory for each scenario, and applies Prisma migrations before the app starts.
+
 ## Supported Models
 
-| Provider  | Models                                                                                 |
-| --------- | -------------------------------------------------------------------------------------- |
-| Anthropic | Claude Opus 4.5, Claude Sonnet 4.5, Claude Haiku 4.5, Claude Opus 4.1, Claude Sonnet 4 |
-| OpenAI    | GPT-5.2, GPT-5.1, o3, o3 Mini, o4 Mini, o1, GPT-4.1, GPT-4o                            |
+| Provider  | Models                                                                                                |
+| --------- | ----------------------------------------------------------------------------------------------------- |
+| Anthropic | Claude Opus 4.5, Claude Sonnet 4.5, Claude Haiku 4.5, Claude Opus 4.1, Claude Sonnet 4                |
+| OpenAI    | GPT-5.2, GPT-5.1, o3, o3 Mini, o4 Mini, o1, GPT-4.1, GPT-4o                                           |
 | Google    | Gemini 3 Pro Preview, Gemini 3 Flash Preview, Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 2.5 Flash Lite |
 
 ## Contributing

@@ -3,8 +3,7 @@ import { join } from "path"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
 import type { ProviderId } from "./types"
 
-const OPENWORK_DIR = join(homedir(), ".openwork")
-const ENV_FILE = join(OPENWORK_DIR, ".env")
+const DEFAULT_OPENWORK_DIR = join(homedir(), ".openwork")
 
 // Environment variable names for each provider
 const ENV_VAR_NAMES: Record<ProviderId, string> = {
@@ -15,11 +14,17 @@ const ENV_VAR_NAMES: Record<ProviderId, string> = {
   ollama: "" // Ollama doesn't require an API key
 }
 
+function resolveOpenworkDir(): string {
+  const override = process.env["OPENWORK_HOME"]?.trim()
+  return override && override.length > 0 ? override : DEFAULT_OPENWORK_DIR
+}
+
 export function getOpenworkDir(): string {
-  if (!existsSync(OPENWORK_DIR)) {
-    mkdirSync(OPENWORK_DIR, { recursive: true })
+  const openworkDir = resolveOpenworkDir()
+  if (!existsSync(openworkDir)) {
+    mkdirSync(openworkDir, { recursive: true })
   }
-  return OPENWORK_DIR
+  return openworkDir
 }
 
 export function getDbPath(): string {
@@ -27,7 +32,7 @@ export function getDbPath(): string {
 }
 
 export function getEnvFilePath(): string {
-  return ENV_FILE
+  return join(getOpenworkDir(), ".env")
 }
 
 export function getEnvValue(name: string): string | undefined {
