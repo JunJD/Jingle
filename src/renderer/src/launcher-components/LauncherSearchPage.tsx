@@ -1,7 +1,7 @@
 import { useCallback, useMemo, type RefObject } from "react"
 import { Settings2 } from "lucide-react"
 import { useI18n } from "@/lib/i18n"
-import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
+import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import type { LauncherShellConfig } from "@shared/launcher"
 import type { ClipboardContext } from "@shared/clipboard"
@@ -108,7 +108,10 @@ export function LauncherSearchPage(props: {
     LAUNCHER_COMMAND_IDS.searchMoveSelectionDown,
     handleMoveSelectionDownShortcut
   )
-  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.searchMoveSelectionUp, handleMoveSelectionUpShortcut)
+  useShortcutCommandHandler(
+    LAUNCHER_COMMAND_IDS.searchMoveSelectionUp,
+    handleMoveSelectionUpShortcut
+  )
   useShortcutCommandHandler(
     LAUNCHER_COMMAND_IDS.searchExecuteSelection,
     handleExecuteSelectionShortcut
@@ -119,8 +122,8 @@ export function LauncherSearchPage(props: {
   const isPrimaryActionDisabled = !selectedItem || selectedItem.availability === "planned"
   const resultsVisible = surface.chrome.footerVisible
   const showHistoryGrid = surface.body.kind === "history-grid"
-  const askAiShortcut = formatLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.searchOpenAi)
-  const executeSelectionShortcut = formatLauncherCommandShortcut(
+  const askAiShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.searchOpenAi)
+  const executeSelectionShortcut = useLauncherCommandShortcut(
     LAUNCHER_COMMAND_IDS.searchExecuteSelection
   )
   const placeholders = useMemo(

@@ -754,13 +754,11 @@ const ActionBase = ActionMarker as typeof ActionMarker & {
 type NativeActionComponent = React.FC<{
   icon?: ReactNode
   onAction?: () => void | Promise<void>
-  shortcut?: string
   style?: NativeActionStyle
   title: string
 }> & {
   OpenInBrowser: React.FC<{
     icon?: ReactNode
-    shortcut?: string
     style?: NativeActionStyle
     title?: string
     url: string
@@ -768,7 +766,6 @@ type NativeActionComponent = React.FC<{
   SubmitForm: React.FC<{
     icon?: ReactNode
     onAction?: () => void | Promise<void>
-    shortcut?: string
     style?: NativeActionStyle
     title: string
   }>

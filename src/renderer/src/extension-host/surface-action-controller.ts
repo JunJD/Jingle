@@ -1,5 +1,5 @@
 import { Fragment, createElement, useCallback, useState, type ReactNode } from "react"
-import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
+import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { useShortcutCommandHandler } from "@/shortcuts/shortcut-context"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import type { NativeActionDescriptor } from "./actions"
@@ -42,8 +42,8 @@ export function useNativeSurfaceActionController(params: {
   const [showActions, setShowActions] = useState(false)
   const primaryAction = actions[0] ?? null
   const canOpenActions = actions.length > 1
-  const actionPanelShortcut = formatLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.actionsOpen)
-  const primaryActionShortcut = formatLauncherCommandShortcut(
+  const actionPanelShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.actionsOpen)
+  const primaryActionShortcut = useLauncherCommandShortcut(
     LAUNCHER_COMMAND_IDS.actionsExecutePrimary
   )
 

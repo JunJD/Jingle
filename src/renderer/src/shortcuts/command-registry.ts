@@ -1,14 +1,6 @@
 import { isShortcutCommandConfigurable } from "../../../shared/shortcuts/configurable"
-import {
-  getDefaultShortcutBindingsForCommand,
-  getPrimaryDefaultShortcutBinding
-} from "../../../shared/shortcuts/defaults"
 import { LAUNCHER_COMMAND_IDS } from "../../../shared/shortcuts/ids"
-import type {
-  ShortcutBindingDefinition,
-  ShortcutCommandDefinition,
-  ShortcutPlatform
-} from "../../../shared/shortcuts/model"
+import type { ShortcutCommandDefinition } from "../../../shared/shortcuts/model"
 
 function defineLauncherShortcutCommand(
   definition: Omit<ShortcutCommandDefinition, "configurable">
@@ -133,20 +125,4 @@ export function getLauncherShortcutCommand(commandId: string): ShortcutCommandDe
   }
 
   return command
-}
-
-export function getLauncherShortcutBindings(
-  commandId: string,
-  platform?: ShortcutPlatform
-): readonly ShortcutBindingDefinition[] {
-  getLauncherShortcutCommand(commandId)
-  return getDefaultShortcutBindingsForCommand(commandId, platform)
-}
-
-export function getPrimaryLauncherShortcutBinding(
-  commandId: string,
-  platform?: ShortcutPlatform
-): ShortcutBindingDefinition | null {
-  getLauncherShortcutCommand(commandId)
-  return getPrimaryDefaultShortcutBinding(commandId, platform)
 }

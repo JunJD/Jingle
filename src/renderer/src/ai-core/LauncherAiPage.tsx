@@ -1,6 +1,6 @@
 import { ArrowLeft, Plus } from "lucide-react"
 import { useCallback, useEffect, useRef } from "react"
-import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
+import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { AI_ATTACHMENT_FILE_EXTENSIONS } from "@shared/launcher-attachments"
@@ -21,14 +21,24 @@ export function LauncherAiPage(): React.JSX.Element {
   const attachmentDraft = useAiAttachments()
   const navigation = useAiCoreNavigation()
   const surface = useAiCoreSurface()
-  const session = useAiThread({
+  const {
+    conversation,
+    handleApprovalDecision,
+    inputStatus,
+    isBusy,
+    primaryActionDisabled,
+    query,
+    retry,
+    runPrimaryAction,
+    setQuery,
+    threadId
+  } = useAiThread({
     buildMessageContent: attachmentDraft.buildMessageContent,
     onDidInvoke: attachmentDraft.clearAllAttachments
   })
-  const inputStatus = session.inputStatus
   const { inputRef, setInputStatus } = surface
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const submitShortcut = formatLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.aiSubmit)
+  const submitShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.aiSubmit)
   const isAiInputTarget = useCallback(
     (target: EventTarget | null): boolean => target === inputRef.current,
     [inputRef]
@@ -40,20 +50,20 @@ export function LauncherAiPage(): React.JSX.Element {
       }
 
       event.preventDefault()
-      session.runPrimaryAction()
+      runPrimaryAction()
     },
-    [isAiInputTarget, session.runPrimaryAction]
+    [isAiInputTarget, runPrimaryAction]
   )
   const handleGoHomeShortcut = useCallback(
     (event: KeyboardEvent): void => {
-      if (!isAiInputTarget(event.target) || session.query || session.isBusy) {
+      if (!isAiInputTarget(event.target) || query || isBusy) {
         return
       }
 
       event.preventDefault()
       navigation.goHome()
     },
-    [isAiInputTarget, navigation, session.isBusy, session.query]
+    [isAiInputTarget, isBusy, navigation, query]
   )
 
   useShortcutScopeLayer(AI_SHORTCUT_SCOPES)
@@ -78,9 +88,9 @@ export function LauncherAiPage(): React.JSX.Element {
           </div>
           <button
             type="button"
-            onClick={session.runPrimaryAction}
+            onClick={runPrimaryAction}
             onMouseDown={(event) => event.preventDefault()}
-            disabled={session.primaryActionDisabled}
+            disabled={primaryActionDisabled}
             className="launcher-action-link flex appearance-none items-center gap-2 rounded-[10px] border-0 px-3 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
           >
             <span>{copy.launcher.aiPrimaryLabel}</span>
@@ -140,25 +150,25 @@ export function LauncherAiPage(): React.JSX.Element {
       }
       inputStatus={inputStatus}
       inputRef={inputRef}
-      inputValue={session.query}
-      onInputValueChange={session.setQuery}
+      inputValue={query}
+      onInputValueChange={setQuery}
       placeholders={[copy.launcher.aiInputPlaceholder, copy.launcher.aiInputPlaceholderSecondary]}
       shellConfig={surface.shellConfig}
       surface={AI_LAUNCHER_PLUGIN_ID}
     >
-      {session.threadId ? (
+      {threadId ? (
         <LauncherAiConversation
-          clearError={session.conversation.clearVisibleError}
-          displayMessages={session.conversation.displayMessages}
-          error={session.conversation.visibleError}
-          isLoading={session.conversation.isLoading}
-          onApprovalDecision={session.handleApprovalDecision}
-          onRetry={session.retry}
-          pendingApproval={session.conversation.pendingApproval}
-          todos={session.conversation.todos}
+          clearError={conversation.clearVisibleError}
+          displayMessages={conversation.displayMessages}
+          error={conversation.visibleError}
+          isLoading={conversation.isLoading}
+          onApprovalDecision={handleApprovalDecision}
+          onRetry={retry}
+          pendingApproval={conversation.pendingApproval}
+          todos={conversation.todos}
         />
       ) : (
-        <LauncherAiEmptyState error={session.conversation.visibleError} />
+        <LauncherAiEmptyState error={conversation.visibleError} />
       )}
     </LauncherChrome>
   )

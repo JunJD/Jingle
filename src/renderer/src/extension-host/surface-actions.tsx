@@ -100,11 +100,6 @@ export function NativeActionOverlay(props: {
                       {action.icon ? <div className="shrink-0">{action.icon}</div> : null}
                       <span className="truncate">{action.title}</span>
                     </div>
-                    {action.shortcut ? (
-                      <span className="shrink-0 text-[11px] text-muted-foreground">
-                        {action.shortcut}
-                      </span>
-                    ) : null}
                   </button>
                 )
               })}

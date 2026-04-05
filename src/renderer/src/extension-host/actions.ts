@@ -7,7 +7,6 @@ export interface NativeActionDescriptor {
   id: string
   onAction: () => void | Promise<void>
   sectionTitle?: string
-  shortcut?: string
   style?: NativeActionStyle
   title: string
 }
@@ -46,14 +45,12 @@ export const ActionPanelSubmenuMarker = createActionMarkerComponent<{
 export const ActionMarker = createActionMarkerComponent<{
   icon?: ReactNode
   onAction?: () => void | Promise<void>
-  shortcut?: string
   style?: NativeActionStyle
   title: string
 }>("action")
 
 export const OpenInBrowserActionMarker = createActionMarkerComponent<{
   icon?: ReactNode
-  shortcut?: string
   style?: NativeActionStyle
   title?: string
   url: string
@@ -89,7 +86,6 @@ export function collectActions(
     const props = node.props as {
       icon?: ReactNode
       onAction?: () => void | Promise<void>
-      shortcut?: string
       style?: NativeActionStyle
       title?: string
       url?: string
@@ -119,7 +115,6 @@ export function collectActions(
         id: params.nextId(),
         onAction,
         sectionTitle: nextSectionTitle,
-        shortcut: props.shortcut,
         style: props.style,
         title
       }

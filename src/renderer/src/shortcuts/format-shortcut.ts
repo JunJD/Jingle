@@ -1,3 +1,4 @@
+import { useMemo } from "react"
 import type {
   ShortcutBindingDefinition,
   ShortcutChord,
@@ -5,7 +6,8 @@ import type {
   ShortcutPlatform
 } from "@shared/shortcuts/model"
 import { resolveShortcutPlatform } from "@shared/shortcuts/model"
-import { getPrimaryLauncherShortcutBinding } from "./command-registry"
+import type { ResolvedShortcutBinding } from "@shared/shortcuts/settings"
+import { useShortcutBindings } from "./shortcut-context"
 
 const DARWIN_MODIFIER_ORDER: readonly ShortcutModifier[] = ["meta", "shift", "alt", "ctrl"]
 const DEFAULT_MODIFIER_ORDER: readonly ShortcutModifier[] = ["ctrl", "alt", "shift", "meta"]
@@ -75,10 +77,21 @@ export function formatShortcutBinding(
   return formatShortcutChord(binding.chord, platform)
 }
 
-export function formatLauncherCommandShortcut(
+export function getPrimaryResolvedShortcutBinding(
+  bindings: readonly ResolvedShortcutBinding[],
+  commandId: string
+): ResolvedShortcutBinding | null {
+  return bindings.find((binding) => binding.commandId === commandId) ?? null
+}
+
+export function useLauncherCommandShortcut(
   commandId: string,
   platform = resolveShortcutPlatform(window.electron.process.platform)
 ): string | null {
-  const binding = getPrimaryLauncherShortcutBinding(commandId, platform)
-  return binding ? formatShortcutBinding(binding, platform) : null
+  const bindings = useShortcutBindings()
+
+  return useMemo(() => {
+    const binding = getPrimaryResolvedShortcutBinding(bindings, commandId)
+    return binding ? formatShortcutBinding(binding, platform) : null
+  }, [bindings, commandId, platform])
 }

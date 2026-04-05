@@ -37,79 +37,86 @@
 
 ## 当前现状判断
 
-是，当前仓库里的快捷键系统本质上只做了一半。
+这份文档最初写下时，仓库里的快捷键系统本质上只做了一半。
+现在这个判断已经不准确了。
 
 更准确地说：
 
-- `静态描述层` 已经起了头
-- `统一运行时层` 还没有真正落地
+- `静态描述层` 已经定稳
+- `统一运行时层` 已经落地主体
+- `settings / conflict` 还没有完全收尾
 
 也就是说，我们已经开始有：
 
 - 稳定的 `commandId`
 - 默认 `binding` 数据结构
 - shortcut 展示格式化
-- 少量 shortcut 元数据注册
+- shortcut 元数据注册
+- main global shortcut + menu accelerator 共用 resolved binding
+- renderer 单入口 `shortcut-manager`
+- 显式 scope/context 投影
+- launcher home / AI / native action panel / native list 的统一 dispatch
+- preload 注入初始 resolved bindings，避免首帧空窗
+- shortcut settings 持久化、IPC、availability 查询
+- `ShortcutsTab`
+- configurable command 白名单
 
 但还没有真正做到：
 
-- 同一份 binding 同时驱动展示和执行
-- 单一 renderer 入口统一匹配和分发
-- 显式 scope 栈和 context 投影
-- 用户 override、冲突检测、注册失败反馈
-- `main` 和 `renderer` 共享同一份运行时 binding 结果
+- 完整 conflict / shadowing UI
+- 大于 `launcher.toggle` 的 configurable command 集合
+- settings 编辑流的完整行为覆盖
 
-这不是“系统完全没有开始”，也不是“只差一个设置页”。
+这也不是“系统已经收尾”。
 现在的状态更像：
 
-- 上半部分：名词、模型、展示，已经有雏形
-- 下半部分：dispatch、runtime、settings、conflict、lifecycle，还散在各页面里
+- 主体架构已经立住
+- 用户可配置能力刚刚起了第一条闭环
+- 剩下的是把配置范围、冲突反馈和设置体验继续收干净
 
-### 已完成的半套
+### 已完成的主体
 
 1. `Command identity`
    `src/shared/shortcuts/ids.ts` 已经建立了稳定命令标识。
 
 2. `Binding model`
-   `src/shared/shortcuts/model.ts` 和 `src/shared/shortcuts/defaults.ts` 已经有 chord、scope、platform、`allowInTextInput`、`preventDefault` 这些基础结构。
+   `src/shared/shortcuts/model.ts`、`src/shared/shortcuts/defaults.ts`、`src/shared/shortcuts/settings.ts` 已经有 chord、scope、platform、`allowInTextInput`、`preventDefault`、override、availability、resolved binding 这些基础结构。
 
 3. `Display formatting`
-   `src/renderer/src/shortcuts/format-shortcut.ts` 和 `src/renderer/src/shortcuts/command-registry.ts` 已经能把 command 绑定格式化并展示到 UI。
+   `src/renderer/src/shortcuts/format-shortcut.ts` 和 `src/renderer/src/shortcuts/command-registry.ts` 已经能把 command 绑定格式化并展示到 UI；当前 launcher / AI / native footer 的运行时提示已经读 resolved binding，settings 页同时展示 current binding 和 default binding。
 
-4. `局部命令执行入口`
-   launcher home、AI、native action panel 都已经有自己的执行逻辑，只是这些逻辑还没有统一挂到 shortcut runtime 上。
+4. `Main runtime`
+   launcher 全局唤起热键和 menu accelerator 已经走 shared/default + overrides 解析链，不再依赖旧硬编码常量。
 
-### 缺失的半套
+5. `Renderer runtime`
+   `shortcut-manager`、`shortcut-provider`、`shortcut-context` 已经建立，renderer 已经存在单入口匹配和分发。
 
-1. `Binding -> Execution` 不是同一真相源
-   例如 `launcher.home` 的 `Tab / ArrowDown / ArrowUp / Enter` 已经定义在 `src/shared/shortcuts/defaults.ts`，但实际执行仍然硬编码在 `src/renderer/src/launcher-shell/hooks/useLauncherSearchPage.ts`。
+6. `消费侧迁移`
+   launcher home、AI、native action panel、native list 的主要快捷键已经迁到统一 runtime，不再是“每页各自私挂一套键盘监听”。
 
-2. `Renderer runtime` 不统一
-   `useLauncherSearchPage.ts`、`useAiThread.ts`、`surface-actions.tsx`、`useLauncherShellEffects.ts` 仍然各自处理 `keydown`。
+7. `Settings 起步`
+   shortcuts 设置页已经存在，但当前只开放 `launcher.toggle`，这是刻意的产品边界，不是漏做。
 
-3. `Main runtime` 还没接入 shared bindings
-   launcher 唤起热键和菜单 accelerator 仍直接依赖 `src/main/windows/launcher-window.ts` 里的 `DEFAULT_LAUNCHER_SHORTCUT`，没有走 `shared/shortcuts/defaults.ts`。
+### 剩余未收尾项
 
-4. `Scope` 只有类型，没有统一活跃态
-   `src/shared/shortcuts/model.ts` 已经有 `ShortcutScope`，但仓库里还没有真正的 `shortcut-manager` 或 `shortcut-context` 来维护活动 scope 栈。
+1. `Configurable scope` 还是极小白名单
+   当前只有 `launcher.toggle` 进入 configurable command 集合。这是对的，但也意味着 settings 还只是 MVP。
 
-5. `Override / conflict / availability` 缺席
-   现在没有统一的 override 存储、冲突检测、shadowing 提示，也没有把 Electron `globalShortcut` 注册失败回流到设置 UI。
+2. `Conflict / shadowing` 还没落到 UI
+   availability 已经有了，conflict / shadowing 还没有成为用户可见反馈。
 
-6. `Extension integration` 只到展示，没有到 command-first dispatch
-   例如 `NativeActionDescriptor.shortcut` 仍是展示字符串，不是统一 binding 引用。
+3. `Settings 行为验证` 还不完整
+   当前有 shortcuts tab 的存在性和白名单边界验证，但还没有覆盖“修改 `launcher.toggle` 后 UI 展示和实际执行同时变化”的完整行为场景。
 
-### 为什么说这是“做了一半”，而不是“差一点收尾”
+### 为什么现在不该再叫“只做了一半”
 
-因为当前缺的不是零散功能，而是整条闭环的后半段：
+因为最难、也最决定系统成不成立的那条运行时闭环，主体已经建立了：
 
-`commandId -> binding -> active scope/context -> match -> execute -> settings override -> conflict/status`
+`commandId -> binding -> active scope/context -> match -> execute`
 
-现在仓库主要完成的是：
+现在真正剩下的，是：
 
-`commandId -> binding metadata -> display`
-
-而真正难、也真正决定系统是否成立的，是后面那条运行时闭环。
+`settings override completeness -> conflict/status UI -> configurable scope growth`
 
 ## 第三方库能帮什么，不能帮什么
 
@@ -138,10 +145,12 @@
 
 如果这个边界不先立住，换任何库，最后都会重新退化成页面里 scattered `keydown`。
 
-## 本次需要改动的模块边界
+## 模块边界与当前落点
 
 这里不是“把所有搜到 `keydown` 的文件都改一遍”。
-正确做法是先按职责分层，把必须改的模块和暂时不要混进去的模块分开。
+正确做法一直是先按职责分层，把必须改的模块和暂时不要混进去的模块分开。
+
+下面这组边界仍然有效，只是其中大部分现在已经有了明确代码落点。
 
 ### A. Shared 真相层
 
@@ -290,26 +299,27 @@
   - 需要纳入统一 scope host，而不是继续单点写 `onKeyDown`
 
 - `src/renderer/src/extension-host/actions.ts`
-  - 当前 `shortcut?: string` 只是展示字符串
-  - 后续应演进到 `commandId` 或 `bindingRef`
+  - 旧 `shortcut?: string` 展示协议已经清掉
+  - 后续继续保持 command-first，不再回引只展示不执行的 shortcut 字段
 
 ### G. Settings UI
 
 这些模块决定 shortcut settings 是否真能落地，而不是只停在架构口号：
 
 - `src/renderer/src/settings/SettingsApp.tsx`
-  - 需要新增 shortcuts tab
+  - `shortcuts` tab 已经接上
+  - 当前只开放 `launcher.toggle`
 
 - `src/renderer/src/settings/copy.ts`
-  - 需要新增 shortcut settings 文案
+  - shortcut settings 文案已经补齐
 
 - `src/renderer/src/settings/GeneralTab.tsx`
   - 目前只管通用设置
   - shortcut 设置不应继续塞进 general tab
 
-更正确的做法是新增：
-
 - `src/renderer/src/settings/ShortcutsTab.tsx`
+  - 已经存在
+  - 当前是最小 MVP，不是完整 Raycast 式快捷键设置页
 
 这个 tab 至少应承载：
 
@@ -1194,6 +1204,8 @@ src/
 
 ### Step 1: 锁定 Shared Shortcut Truth
 
+状态：已完成
+
 目标：
 
 - 把 shortcut system 的 shared 真相源彻底定稳
@@ -1227,6 +1239,8 @@ src/
 
 ### Step 2: 建立 Main Persistence 与 Shortcut IPC
 
+状态：已完成
+
 目标：
 
 - 建立 shortcut settings 的独立持久化与跨进程读写链路
@@ -1257,6 +1271,8 @@ src/
 - 现有 launcher / settings / extension 设置功能不回归
 
 ### Step 3: 接管 Main Global Shortcut 与 Menu Accelerator
+
+状态：已完成
 
 目标：
 
@@ -1291,6 +1307,8 @@ src/
 
 ### Step 4: 建立 Renderer Shortcut Core
 
+状态：已完成
+
 目标：
 
 - 建立 renderer 统一 shortcut runtime，而不是继续散落页面监听
@@ -1324,6 +1342,8 @@ src/
 - 现有 shortcut 展示继续可用
 
 ### Step 5: 迁移 Launcher Shell 基础命令链
+
+状态：已完成
 
 目标：
 
@@ -1364,6 +1384,8 @@ src/
 
 ### Step 6: 迁移 AI 与 Native Surface Shortcut 链
 
+状态：已完成
+
 目标：
 
 - 把 AI、action panel、native list/detail/form 的 shortcut 行为纳入同一 runtime
@@ -1395,7 +1417,15 @@ src/
 - AI 页和 native list 不再各自 hardcode 主要快捷键匹配
 - 同一 command 的展示和执行开始共享同一 binding 真相源
 
+当前进度补充：
+
+- dispatch 主体已经迁完
+- overlay scope 已稳定落到 `launcher.action-panel`
+- 本步遗留的展示协议与提示链清理已在 Step 8 完成
+
 ### Step 7: 接入 Settings Overrides 与 Recorder
+
+状态：部分完成
 
 目标：
 
@@ -1416,6 +1446,16 @@ src/
 - override 编辑与保存
 - conflict / shadowing / unavailable 展示
 
+当前进度补充：
+
+- `ShortcutsTab` 已存在
+- configurable command 白名单已落地
+- 当前只开放 `launcher.toggle`
+- override 编辑与保存已接通
+- availability 展示已接通
+- conflict / shadowing UI 还没有做
+- “显示和执行同时变化”这条目前对 `launcher.toggle` 主链成立
+
 本步额外边界：
 
 - 当前已展示的固定语义 shortcut 不自动进入设置页
@@ -1434,6 +1474,8 @@ src/
 - global shortcut 注册失败状态能回流到 settings UI
 
 ### Step 8: 清理兼容层与遗留监听
+
+状态：已完成
 
 目标：
 
