@@ -3,18 +3,20 @@ import {
   Children,
   Fragment,
   isValidElement,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
   type ReactElement,
   type ReactNode
 } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
+import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
+import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import {
   ActionMarker,
   ActionPanelMarker,
@@ -25,9 +27,11 @@ import {
   type NativeActionStyle,
   OpenInBrowserActionMarker
 } from "./actions"
+import { useNativeSurfaceController } from "./surface-action-controller"
 import { NativeExtensionSelect } from "./select"
-import { useNativeSurfaceController } from "./surface-actions"
 import { useNativeExtensionSurface } from "./sdk"
+
+const NATIVE_LIST_SHORTCUT_SCOPES = ["launcher.list"] as const
 
 interface NativeListItemDescriptor {
   accessories?: ReactNode
@@ -590,6 +594,39 @@ function ListRoot(props: {
     headerLabel: navigationTitle,
     primaryActionFallbackTitle: "Open"
   })
+  const isListInputShortcutTarget = useCallback(
+    (target: EventTarget | null): boolean => target === surface.inputRef.current,
+    [surface.inputRef]
+  )
+  const handleMoveSelectionDownShortcut = useCallback(
+    (event: KeyboardEvent): void => {
+      if (!isListInputShortcutTarget(event.target) || items.length === 0) {
+        return
+      }
+
+      event.preventDefault()
+      setSelectedIndex((current) => Math.min(current + 1, items.length - 1))
+    },
+    [isListInputShortcutTarget, items.length]
+  )
+  const handleMoveSelectionUpShortcut = useCallback(
+    (event: KeyboardEvent): void => {
+      if (!isListInputShortcutTarget(event.target) || items.length === 0) {
+        return
+      }
+
+      event.preventDefault()
+      setSelectedIndex((current) => Math.max(current - 1, 0))
+    },
+    [isListInputShortcutTarget, items.length]
+  )
+
+  useShortcutScopeLayer(NATIVE_LIST_SHORTCUT_SCOPES)
+  useShortcutCommandHandler(
+    LAUNCHER_COMMAND_IDS.listMoveSelectionDown,
+    handleMoveSelectionDownShortcut
+  )
+  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.listMoveSelectionUp, handleMoveSelectionUpShortcut)
 
   useEffect(() => {
     if (selectedIndex > items.length - 1) {
@@ -603,20 +640,6 @@ function ListRoot(props: {
     setSelectedIndex(0)
   }
 
-  const handleInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
-    if (event.key === "ArrowDown") {
-      event.preventDefault()
-      setSelectedIndex((current) => Math.min(current + 1, items.length - 1))
-      return
-    }
-
-    if (event.key === "ArrowUp") {
-      event.preventDefault()
-      setSelectedIndex((current) => Math.max(current - 1, 0))
-      return
-    }
-  }
-
   return (
     <div className="relative h-full">
       <LauncherChrome
@@ -625,7 +648,6 @@ function ListRoot(props: {
         headerTrailing={dropdown ? <NativeListDropdown descriptor={dropdown} /> : null}
         inputRef={surface.inputRef}
         inputValue={resolvedSearchText}
-        onInputKeyDown={handleInputKeyDown}
         onInputValueChange={handleInputChange}
         placeholders={[searchBarPlaceholder ?? "Search"]}
         shellConfig={surface.shellConfig}

@@ -35,6 +35,331 @@
 
 如果一个快捷键需求不能清晰落到这 5 个名词上，说明设计边界还没收干净。
 
+## 当前现状判断
+
+是，当前仓库里的快捷键系统本质上只做了一半。
+
+更准确地说：
+
+- `静态描述层` 已经起了头
+- `统一运行时层` 还没有真正落地
+
+也就是说，我们已经开始有：
+
+- 稳定的 `commandId`
+- 默认 `binding` 数据结构
+- shortcut 展示格式化
+- 少量 shortcut 元数据注册
+
+但还没有真正做到：
+
+- 同一份 binding 同时驱动展示和执行
+- 单一 renderer 入口统一匹配和分发
+- 显式 scope 栈和 context 投影
+- 用户 override、冲突检测、注册失败反馈
+- `main` 和 `renderer` 共享同一份运行时 binding 结果
+
+这不是“系统完全没有开始”，也不是“只差一个设置页”。
+现在的状态更像：
+
+- 上半部分：名词、模型、展示，已经有雏形
+- 下半部分：dispatch、runtime、settings、conflict、lifecycle，还散在各页面里
+
+### 已完成的半套
+
+1. `Command identity`
+   `src/shared/shortcuts/ids.ts` 已经建立了稳定命令标识。
+
+2. `Binding model`
+   `src/shared/shortcuts/model.ts` 和 `src/shared/shortcuts/defaults.ts` 已经有 chord、scope、platform、`allowInTextInput`、`preventDefault` 这些基础结构。
+
+3. `Display formatting`
+   `src/renderer/src/shortcuts/format-shortcut.ts` 和 `src/renderer/src/shortcuts/command-registry.ts` 已经能把 command 绑定格式化并展示到 UI。
+
+4. `局部命令执行入口`
+   launcher home、AI、native action panel 都已经有自己的执行逻辑，只是这些逻辑还没有统一挂到 shortcut runtime 上。
+
+### 缺失的半套
+
+1. `Binding -> Execution` 不是同一真相源
+   例如 `launcher.home` 的 `Tab / ArrowDown / ArrowUp / Enter` 已经定义在 `src/shared/shortcuts/defaults.ts`，但实际执行仍然硬编码在 `src/renderer/src/launcher-shell/hooks/useLauncherSearchPage.ts`。
+
+2. `Renderer runtime` 不统一
+   `useLauncherSearchPage.ts`、`useAiThread.ts`、`surface-actions.tsx`、`useLauncherShellEffects.ts` 仍然各自处理 `keydown`。
+
+3. `Main runtime` 还没接入 shared bindings
+   launcher 唤起热键和菜单 accelerator 仍直接依赖 `src/main/windows/launcher-window.ts` 里的 `DEFAULT_LAUNCHER_SHORTCUT`，没有走 `shared/shortcuts/defaults.ts`。
+
+4. `Scope` 只有类型，没有统一活跃态
+   `src/shared/shortcuts/model.ts` 已经有 `ShortcutScope`，但仓库里还没有真正的 `shortcut-manager` 或 `shortcut-context` 来维护活动 scope 栈。
+
+5. `Override / conflict / availability` 缺席
+   现在没有统一的 override 存储、冲突检测、shadowing 提示，也没有把 Electron `globalShortcut` 注册失败回流到设置 UI。
+
+6. `Extension integration` 只到展示，没有到 command-first dispatch
+   例如 `NativeActionDescriptor.shortcut` 仍是展示字符串，不是统一 binding 引用。
+
+### 为什么说这是“做了一半”，而不是“差一点收尾”
+
+因为当前缺的不是零散功能，而是整条闭环的后半段：
+
+`commandId -> binding -> active scope/context -> match -> execute -> settings override -> conflict/status`
+
+现在仓库主要完成的是：
+
+`commandId -> binding metadata -> display`
+
+而真正难、也真正决定系统是否成立的，是后面那条运行时闭环。
+
+## 第三方库能帮什么，不能帮什么
+
+可以依赖第三方库，但第三方库只能补“输入匹配层”，补不了这套系统最核心的架构缺口。
+
+第三方库适合承担：
+
+- renderer 内键盘事件匹配
+- chord 解析
+- Electron 全局热键注册的底层适配
+- shortcut recorder 的输入捕获
+
+第三方库不应该承担：
+
+- Openwork 的 `commandId` 体系
+- launcher / AI / extension 的 scope 边界
+- 用户 override 模型
+- 冲突检测和 shadowing 规则
+- extension command 如何接入宿主
+
+所以结论不是“找个 hotkey 库就补完了另一半”。
+更准确的结论是：
+
+- 可以用第三方库做 matcher / adapter
+- 但 `command + binding + scope + context + override` 这层仍必须自研
+
+如果这个边界不先立住，换任何库，最后都会重新退化成页面里 scattered `keydown`。
+
+## 本次需要改动的模块边界
+
+这里不是“把所有搜到 `keydown` 的文件都改一遍”。
+正确做法是先按职责分层，把必须改的模块和暂时不要混进去的模块分开。
+
+### A. Shared 真相层
+
+这些模块是整个 shortcut system 的稳定边界，必须先收口：
+
+- `src/shared/shortcuts/ids.ts`
+  - 保留稳定 `commandId`
+  - 后续新增 command 时继续从这里长，不允许页面私造字符串 id
+
+- `src/shared/shortcuts/model.ts`
+  - 需要补充 override、conflict、availability 这类 shared 类型
+  - 仍然只放可序列化模型，不放 renderer 闭包
+
+- `src/shared/shortcuts/defaults.ts`
+  - 继续只放默认 bindings
+  - 不要把运行时代码塞进来
+
+- `src/shared/settings-window.ts`
+  - 需要扩展 settings tab 模型
+  - 如果后续加 shortcuts 设置页，这里要新增 `shortcuts` tab
+
+更正确的做法是新增独立 shortcut settings 模型，例如：
+
+- `src/shared/shortcuts/settings.ts`
+  - `ShortcutOverride`
+  - `ShortcutConflictState`
+  - `ResolvedShortcutBinding`
+  - `GlobalShortcutAvailability`
+
+不要把这些结构直接塞进 `src/shared/launcher-settings.ts`。
+`launcherSettings` 现在是 launcher 外观设置，shortcut overrides 属于另一条系统边界。
+
+### B. Main 持久化与 IPC
+
+这些模块决定 shortcut settings 如何跨进程流动：
+
+- `src/main/preferences.ts`
+  - 需要新增独立 `shortcutSettings` 存储切片
+  - 不应把 shortcut overrides 塞进 `launcherSettings`
+
+- `src/main/ipc/models.ts`
+  - 当前 settings handler 都挂在这里
+  - 实现时最好把 shortcut 相关 handler 拆到独立 `src/main/ipc/shortcuts.ts`
+  - 至少要避免继续把 shortcut runtime 逻辑混进 models IPC
+
+- `src/preload/index.ts`
+- `src/preload/index.d.ts`
+  - 需要为 shortcut settings、resolved bindings、global availability 暴露明确 API
+
+### C. Main 全局热键运行时
+
+这些模块必须从“硬编码常量”迁到“shared binding -> resolved global shortcut”：
+
+- `src/main/windows/launcher-window.ts`
+  - 当前 `DEFAULT_LAUNCHER_SHORTCUT` 是硬编码真相源
+  - 需要改成消费 resolved global binding
+
+- `src/main/app-menu.ts`
+  - 当前 menu accelerator 复制使用 `DEFAULT_LAUNCHER_SHORTCUT`
+  - 应与 global shortcut 共用同一份 resolved binding
+
+- `src/main/index.ts`
+  - 需要负责 shortcut service 的生命周期装配
+
+更正确的落点是新增：
+
+- `src/main/services/shortcuts/global-shortcut-service.ts`
+- `src/main/services/shortcuts/global-shortcut-adapter.ts`
+
+这里的职责只应是：
+
+- 读取 resolved global bindings
+- 注册 / 注销 Electron `globalShortcut`
+- 报告注册状态
+
+不要把 renderer scope、route、输入框冲突判断拉进 main。
+
+### D. Renderer Shortcut Core
+
+这部分是当前最缺的半套，也是本次重构的核心：
+
+- `src/renderer/src/shortcuts/command-registry.ts`
+  - 继续负责 command 元数据目录
+  - 需要避免演变成“吞下所有页面闭包”的上帝文件
+
+- `src/renderer/src/shortcuts/format-shortcut.ts`
+  - 继续只做展示格式化
+  - 后续应从 resolved binding 读，不从零散调用方推断
+
+更正确的做法是新增：
+
+- `src/renderer/src/shortcuts/binding-registry.ts`
+  - 合并 defaults + platform + user overrides
+
+- `src/renderer/src/shortcuts/shortcut-context.ts`
+  - 维护当前窗口的 active scope / modal / text input / IME 状态投影
+
+- `src/renderer/src/shortcuts/shortcut-manager.ts`
+  - 统一键盘监听、匹配、分发、`preventDefault`
+
+- `src/renderer/src/shortcuts/shortcut-provider.tsx`
+  - 在 renderer 根部装配 manager 和 context
+
+如果需要局部注册执行 handler，更正确的方式是让 active scope host 注册 `commandId -> execute`，而不是把所有页面状态闭包硬塞进 `command-registry.ts`。
+
+### E. Launcher Shell 消费侧
+
+这些模块需要从“自己监听按键”改成“声明 scope + 注册 handler”：
+
+- `src/renderer/src/launcher-shell/LauncherApp.tsx`
+  - 需要挂 shortcut provider
+  - 需要声明 launcher window 当前 active scopes
+
+- `src/renderer/src/launcher-shell/hooks/useLauncherShellEffects.ts`
+  - 当前持有 `Escape` 的窗口级监听
+  - 后续应迁移为 launcher scope handler，而不是自己监听 DOM
+
+- `src/renderer/src/launcher-shell/hooks/useLauncherSearchPage.ts`
+  - 当前把 `Tab / ArrowDown / ArrowUp / Enter` 硬编码映射到 command
+  - 迁移后应只保留这些 command 的本地执行语义，不再自己做按键匹配
+
+- `src/renderer/src/launcher-shell/LauncherCommandSurface.tsx`
+  - 是 built-in / extension surface 的宿主边界
+  - 后续应在这里装配 route-specific scope host，而不是让子页面各自私挂监听
+
+需要特别注意：
+
+- `src/renderer/src/launcher-shell/pages/index.ts` 里的 `resolveLauncherCommand`
+  这是 typed alias / query intent 解析，不是物理快捷键 runtime。
+  不要把 alias 系统和 shortcut dispatch 混成一套。
+
+### F. AI / Native Extension Surface 消费侧
+
+这些模块是 renderer 内第二批必须迁移的运行时入口：
+
+- `src/renderer/src/ai-core/useAiThread.ts`
+  - 当前直接处理 `Enter` 和 `Backspace`
+  - 后续应只暴露本地 command handler
+
+- `src/renderer/src/extension-host/surface-actions.tsx`
+  - 当前既有 overlay 监听，也有 surface 级监听
+  - 后续应迁到 `launcher.action-panel` / surface scope 的统一 dispatch
+
+- `src/renderer/src/extension-host/ui.tsx`
+  - native list input 里还有 `ArrowUp / ArrowDown` 的本地键盘处理
+  - 需要纳入统一 scope host，而不是继续单点写 `onKeyDown`
+
+- `src/renderer/src/extension-host/actions.ts`
+  - 当前 `shortcut?: string` 只是展示字符串
+  - 后续应演进到 `commandId` 或 `bindingRef`
+
+### G. Settings UI
+
+这些模块决定 shortcut settings 是否真能落地，而不是只停在架构口号：
+
+- `src/renderer/src/settings/SettingsApp.tsx`
+  - 需要新增 shortcuts tab
+
+- `src/renderer/src/settings/copy.ts`
+  - 需要新增 shortcut settings 文案
+
+- `src/renderer/src/settings/GeneralTab.tsx`
+  - 目前只管通用设置
+  - shortcut 设置不应继续塞进 general tab
+
+更正确的做法是新增：
+
+- `src/renderer/src/settings/ShortcutsTab.tsx`
+
+这个 tab 至少应承载：
+
+- command 列表
+- 当前 binding 展示
+- override 编辑
+- 冲突 / shadowing / unavailable 状态
+
+### H. 测试边界
+
+这次如果按正确方式做，不能只靠 typecheck。
+至少要补两层验证：
+
+- 单元 / 类型层
+  - binding normalize
+  - scope precedence
+  - override merge
+  - conflict detection
+
+- BDD / 行为层
+  - launcher home: `Tab / Arrow / Enter / Escape`
+  - AI surface: `Enter`
+  - action panel: `Cmd/Ctrl+K`、`Enter`、`Escape`
+  - settings 修改 binding 后，展示和执行同时变化
+
+当前可复用的入口是：
+
+- `tests/bdd/features/app-launch.feature`
+- `tests/bdd/steps/app-launch.steps.ts`
+
+正确方向是补稳定行为场景，而不是只给纯函数堆测试。
+
+## 这次不要这样改
+
+下面这些做法看起来省事，但方向是错的：
+
+1. 不要把 shortcut overrides 塞进 `launcherSettings`
+2. 不要把 typed alias / `resolveLauncherCommand` 和物理快捷键 runtime 合并
+3. 不要把所有页面执行闭包硬塞进 `command-registry.ts`
+4. 不要继续新增页面级 `window.addEventListener("keydown")`
+5. 不要让 `shortcut?: string` 继续作为长期展示协议
+6. 不要先做 settings UI，再回头补 runtime 真相源
+
+更正确的顺序应该是：
+
+1. shared model + main persistence + renderer runtime
+2. home / AI / action panel 三条消费链迁移
+3. settings overrides / conflict UI
+4. extension command shortcut 接入
+
 ## 和 launcher extension 架构的关系
 
 快捷键系统不是一个独立 feature，它挂在当前目标架构里：
@@ -270,15 +595,16 @@ flowchart TD
 
 职责：
 
-- 定义系统支持的所有可执行命令
+- 定义系统支持的所有稳定 command 元数据
 - 提供标题、描述、分类、默认显示名
-- 提供命令执行入口
+- 作为 settings、tooltip、menu、action panel 的统一命令目录
 
 建议放在：
 
 - `src/renderer/src/shortcuts/command-registry.ts`
 
 这里的 registry 只认 `commandId`，不认“某个页面上临时写的按钮回调”。
+具体执行 handler 应由 active scope host 提供，`ShortcutManager` 负责把命中的 `commandId` 分发给当前 host。
 
 ### 6. BindingRegistry
 
@@ -304,15 +630,22 @@ export interface ShortcutCommandDefinition {
   title: string
   description?: string
   category: "global" | "launcher" | "app" | "extension"
-  execute: (context: ShortcutExecutionContext) => void | Promise<void>
 }
 ```
 
 关键点：
 
 - `id` 是唯一稳定标识，用于设置、显示、冲突检测、埋点
-- `execute` 是命令入口，不是组件内部临时回调
 - command 可以没有任何默认快捷键
+
+如果某个命令的执行天然不依赖局部页面状态，可以提供静态 execute。
+但这不应成为默认路径。
+
+对 `launcher.home`、`launcher.ai`、`launcher.action-panel` 这类强依赖局部状态的命令，更正确的方式是：
+
+- registry 负责定义 command 元数据
+- active scope host 负责注册当前可执行 handler
+- `ShortcutManager` 只做匹配与分发
 
 ## Binding 模型
 
@@ -520,6 +853,24 @@ export interface ShortcutOverride {
 
 建议持久化在统一 settings store 中，并带 schema version。
 
+不是所有快捷键都应该进入这个设置模型。
+
+- `展示` 和 `可配置` 是两条独立策略
+- 一个 shortcut 被展示在 UI 上，不代表用户就应该能修改它
+- 只有被产品明确标记为“允许自定义”的 command，才进入 override 白名单
+
+当前已展示的这批快捷键，先视为固定产品语义，不进入用户设置：
+
+- `launcher.toggle`
+- `launcher.search.open-ai`
+- `launcher.search.execute-selection`
+- `launcher.ai.submit`
+- `launcher.actions.open`
+- `launcher.actions.execute-primary`
+
+也就是说，当前阶段不需要为了“向后兼容未来可能的设置页”，把所有已展示 shortcut 都并入 override 体系。
+后续如果真的要开放设置，应按 command 白名单逐个放开，而不是默认全开放。
+
 ## 冲突检测规则
 
 冲突检测必须发生在“保存设置”和“注册运行时绑定”两个时刻。
@@ -565,6 +916,12 @@ V1 推荐规则：
 
 - macOS: `⌘K`
 - Windows: `Ctrl+K`
+
+但“展示来自统一 binding”不等于“所有展示项都支持用户修改”。
+
+- 固定产品语义的 shortcut 可以继续展示
+- 只有进入 configurable 白名单的 command，才需要接 settings override
+- 不要把“显示给用户看”和“允许用户改”绑定成同一个默认规则
 
 ## Alias 与 Hotkey 的边界
 
@@ -825,84 +1182,287 @@ src/
       ShortcutsTab.tsx
 ```
 
-## 迁移顺序
+## 实施顺序清单
 
-### Phase 1: 建立共享模型
+下面这份清单按“先定真相源，再接运行时，再迁消费侧，最后收设置和清理”的顺序排。
 
-先做：
+原则：
 
-- `commandId`
-- `ShortcutChord`
-- `ShortcutBindingDefinition`
-- `ShortcutOverride`
-- 平台格式化与序列化
+1. 每一步都必须保持应用可运行
+2. 每一步都必须有明确验收点
+3. 如果某一步为了平滑迁移引入兼容桥接代码，必须同步登记到 [cleanups.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/docs/cleanups.md)
 
-完成标准：
+### Step 1: 锁定 Shared Shortcut Truth
 
-- 新旧代码可以并存
-- 不改变现有行为
+目标：
 
-### Phase 2: 接管 launcher 全局热键
+- 把 shortcut system 的 shared 真相源彻底定稳
+- 明确 shortcut overrides 不属于 `launcherSettings`
 
-先把 `launcher.toggle` 从硬编码常量迁到 `GlobalShortcutService`。
+改动模块：
 
-完成标准：
+- `src/shared/shortcuts/ids.ts`
+- `src/shared/shortcuts/model.ts`
+- `src/shared/shortcuts/defaults.ts`
+- `src/shared/settings-window.ts`
+- 新增 `src/shared/shortcuts/settings.ts`
 
-- app menu accelerator 与 global shortcut 来自同一份 binding
-- 设置变更后能重新注册
-- 注册失败能在 UI 中看到
+本步只做：
 
-### Phase 3: 建立 renderer 统一 manager
+- 补齐 `ShortcutOverride`、resolved binding、availability、conflict 相关 shared 类型
+- 为后续 settings tab 预留 `shortcuts` 导航模型
+- 保持默认 bindings 仍只在 shared 层定义
 
-接入 `tinykeys`，在 renderer 建单入口。
+本步不做：
 
-先迁：
+- 不接 renderer 监听
+- 不接 main 全局热键
+- 不改页面 `keydown`
+
+验收点：
+
+- shortcut 相关 shared 类型不再依赖 renderer 闭包
+- shortcut override 数据结构有单独落点，不进入 `launcherSettings`
+- 现有 shortcut 展示行为不变
+
+### Step 2: 建立 Main Persistence 与 Shortcut IPC
+
+目标：
+
+- 建立 shortcut settings 的独立持久化与跨进程读写链路
+
+改动模块：
+
+- `src/main/preferences.ts`
+- `src/main/ipc/models.ts`
+- 新增 `src/main/ipc/shortcuts.ts`
+- `src/preload/index.ts`
+- `src/preload/index.d.ts`
+
+本步只做：
+
+- 给 main 增加 `shortcutSettings` 切片
+- 增加读写 shortcut overrides、读取 resolved bindings、读取 global availability 的 IPC
+- preload 暴露稳定 shortcut API
+
+本步不做：
+
+- 不接 settings UI
+- 不改 renderer runtime dispatch
+
+验收点：
+
+- renderer 可以通过 preload 读取 shortcut settings 和 resolved bindings
+- settings store 中出现独立 shortcut 配置切片
+- 现有 launcher / settings / extension 设置功能不回归
+
+### Step 3: 接管 Main Global Shortcut 与 Menu Accelerator
+
+目标：
+
+- 让 `launcher.toggle` 的全局热键和菜单 accelerator 共享同一份 resolved binding
+
+改动模块：
+
+- `src/main/windows/launcher-window.ts`
+- `src/main/app-menu.ts`
+- `src/main/index.ts`
+- 新增 `src/main/services/shortcuts/global-shortcut-service.ts`
+- 新增 `src/main/services/shortcuts/global-shortcut-adapter.ts`
+
+本步只做：
+
+- 移除 `DEFAULT_LAUNCHER_SHORTCUT` 作为运行时真相源
+- main 从 shared/default + overrides 解析 global binding
+- 统一驱动 Electron `globalShortcut` 和 menu accelerator
+
+可能出现的兼容桥接：
+
+- 暂时保留旧常量作为 fallback
+- 暂时把 menu accelerator 兼容指向旧值
+
+这些桥接若出现，必须记到 `docs/cleanups.md`。
+
+验收点：
+
+- `launcher.toggle` 的 global shortcut 和 menu accelerator 来自同一份 resolved binding
+- 注册失败状态可被查询，不只打印控制台
+- 旧常量不再是主真相源
+
+### Step 4: 建立 Renderer Shortcut Core
+
+目标：
+
+- 建立 renderer 统一 shortcut runtime，而不是继续散落页面监听
+
+改动模块：
+
+- `src/renderer/src/shortcuts/command-registry.ts`
+- `src/renderer/src/shortcuts/format-shortcut.ts`
+- 新增 `src/renderer/src/shortcuts/binding-registry.ts`
+- 新增 `src/renderer/src/shortcuts/shortcut-context.ts`
+- 新增 `src/renderer/src/shortcuts/shortcut-manager.ts`
+- 新增 `src/renderer/src/shortcuts/shortcut-provider.tsx`
+- `src/renderer/src/main.tsx`
+
+本步只做：
+
+- 统一 resolved bindings 的 renderer 合并逻辑
+- 建立 active scope/context 投影
+- 建立单入口键盘匹配与分发
+- 保持 `command-registry` 仍是元数据目录，不吞页面状态闭包
+
+本步不做：
+
+- 不一次性迁完所有页面 handler
+- 不做 settings 编辑 UI
+
+验收点：
+
+- renderer 存在唯一 shortcut manager 入口
+- active scope/context 可以被注入和读取
+- 现有 shortcut 展示继续可用
+
+### Step 5: 迁移 Launcher Shell 基础命令链
+
+目标：
+
+- 先把 launcher 最核心的一组 shortcut 从页面硬编码迁到统一 runtime
+
+改动模块：
+
+- `src/renderer/src/launcher-shell/LauncherApp.tsx`
+- `src/renderer/src/launcher-shell/hooks/useLauncherShellEffects.ts`
+- `src/renderer/src/launcher-shell/hooks/useLauncherSearchPage.ts`
+- `src/renderer/src/launcher-shell/LauncherCommandSurface.tsx`
+
+本步只迁：
 
 - launcher `Escape`
-- launcher 首页 `ArrowUp / ArrowDown / Enter / Tab`
-- launcher AI 页 `Enter`
+- home `Tab`
+- home `ArrowUp / ArrowDown`
+- home `Enter`
 
-完成标准：
+本步要求：
 
-- 这些页面不再直接写散落的窗口级 `keydown` 监听
+- `useLauncherSearchPage.ts` 只保留 command 执行语义，不再自己做按键匹配
+- `useLauncherShellEffects.ts` 不再持有 launcher 根部 `Escape` 监听
+- route / page / surface 的 active scope 由 host 层声明
 
-### Phase 4: 迁移 overlay / action panel / plugin page
+可能出现的兼容桥接：
 
-迁移：
+- manager 与旧 handler 双跑一段时间
+- route host 临时同时提供旧回调和新 command handler
 
-- native action overlay
-- translate page
-- 其他 launcher plugin 页
+这些桥接必须记到 `docs/cleanups.md`。
 
-完成标准：
+验收点：
 
-- modal / route scope 栈生效
-- action panel 的 shortcut 展示来自 registry
+- launcher home 的 `Tab / Arrow / Enter / Escape` 全部走统一 dispatch
+- `useLauncherSearchPage.ts` 不再 hardcode `event.key -> commandId`
+- launcher 基础搜索和页面切换行为不回归
 
-### Phase 5: 加设置页与录制器
+### Step 6: 迁移 AI 与 Native Surface Shortcut 链
 
-做：
+目标：
 
-- shortcut recorder
-- 冲突检测
-- global 注册状态展示
-- 按 command 搜索和编辑
+- 把 AI、action panel、native list/detail/form 的 shortcut 行为纳入同一 runtime
 
-完成标准：
+改动模块：
 
-- 用户可以像 Raycast 一样对 command 配热键
+- `src/renderer/src/ai-core/useAiThread.ts`
+- `src/renderer/src/extension-host/surface-actions.tsx`
+- `src/renderer/src/extension-host/ui.tsx`
+- `src/renderer/src/extension-host/actions.ts`
+- 必要时补 `src/renderer/src/ai-core/*`、`src/renderer/src/extension-host/*` host 装配
 
-### Phase 6: 清理遗留监听
+本步只迁：
 
-删除：
+- AI `Enter`
+- AI 空输入 `Backspace -> goHome`
+- action panel `Cmd/Ctrl+K`
+- action panel `Enter / Escape / ArrowUp / ArrowDown`
+- native list input 的选择移动键
 
-- ad-hoc `window.addEventListener("keydown")`
-- 手写 shortcut label
-- capture-phase 的整窗 `Tab` 拦截
+本步要求：
 
-完成标准：
+- `shortcut?: string` 开始向 `commandId / bindingRef` 迁移
+- overlay scope 优先级高于 page scope
 
-- 快捷键行为都能追溯到 registry
+验收点：
+
+- action panel 的打开、导航、执行、关闭都走统一 dispatch
+- AI 页和 native list 不再各自 hardcode 主要快捷键匹配
+- 同一 command 的展示和执行开始共享同一 binding 真相源
+
+### Step 7: 接入 Settings Overrides 与 Recorder
+
+目标：
+
+- 只为明确进入白名单的 command 提供 shortcut 编辑能力，并让修改同时影响展示与执行
+
+改动模块：
+
+- `src/renderer/src/settings/SettingsApp.tsx`
+- `src/renderer/src/settings/copy.ts`
+- `src/renderer/src/settings/GeneralTab.tsx`
+- 新增 `src/renderer/src/settings/ShortcutsTab.tsx`
+- 可能新增 recorder / conflict UI 组件
+
+本步只做：
+
+- shortcuts tab
+- configurable command 列表、搜索、当前 binding 展示
+- override 编辑与保存
+- conflict / shadowing / unavailable 展示
+
+本步额外边界：
+
+- 当前已展示的固定语义 shortcut 不自动进入设置页
+- 是否开放某个 command，必须由明确白名单决定，而不是“只要展示了就默认可改”
+
+本步不做：
+
+- 不做复杂 chord sequence
+- 不做完整 `when` DSL
+- 不把当前固定展示型 shortcut 一次性全部开放
+
+验收点：
+
+- settings 中只能查看和编辑进入白名单的 command shortcut
+- 修改 binding 后，UI 展示和实际执行同时变化
+- global shortcut 注册失败状态能回流到 settings UI
+
+### Step 8: 清理兼容层与遗留监听
+
+目标：
+
+- 删除为了平滑迁移引入的桥接代码，恢复单一真相源
+
+改动模块：
+
+- 全仓与 shortcut 相关的遗留监听与兼容分支
+- 重点复查：
+  - `src/main/windows/launcher-window.ts`
+  - `src/renderer/src/launcher-shell/hooks/useLauncherShellEffects.ts`
+  - `src/renderer/src/launcher-shell/hooks/useLauncherSearchPage.ts`
+  - `src/renderer/src/ai-core/useAiThread.ts`
+  - `src/renderer/src/extension-host/surface-actions.tsx`
+  - `src/renderer/src/extension-host/actions.ts`
+  - `docs/cleanups.md`
+
+本步只删：
+
+- 旧 `window.addEventListener("keydown")`
+- 双跑的 fallback handler
+- 旧常量 fallback
+- 只展示不执行的 shortcut 字符串协议
+
+验收点：
+
+- `docs/cleanups.md` 没有未清理的 shortcut 兼容项
+- 主要 shortcut 行为都能追溯到 shared bindings + renderer/main runtime
+- 不再存在新增 shortcut 时必须去多个页面手写按键逻辑的路径
 
 ## V1 明确不做的事
 

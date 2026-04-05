@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react"
-import { Puzzle, Settings2 } from "lucide-react"
+import { Keyboard, Puzzle, Settings2 } from "lucide-react"
 import type { SettingsWindowTab, SettingsWindowTarget } from "../../../shared/settings-window"
 import { useI18n } from "../lib/i18n"
 import { getSettingsCopy } from "./copy"
 import { ExtensionsTab } from "./ExtensionsTab"
 import { GeneralTab } from "./GeneralTab"
+import { ShortcutsTab } from "./ShortcutsTab"
 
 export default function SettingsApp(): React.JSX.Element {
   const { locale } = useI18n()
@@ -40,6 +41,7 @@ export default function SettingsApp(): React.JSX.Element {
           <button
             type="button"
             onClick={() => setActiveTab("general")}
+            data-settings-tab="general"
             className={`inline-flex items-center gap-2 px-3 py-1.5 text-[12px] font-medium transition ${
               activeTab === "general"
                 ? "bg-background text-foreground"
@@ -52,6 +54,7 @@ export default function SettingsApp(): React.JSX.Element {
           <button
             type="button"
             onClick={() => setActiveTab("extensions")}
+            data-settings-tab="extensions"
             className={`inline-flex items-center gap-2 border-l border-border px-3 py-1.5 text-[12px] font-medium transition ${
               activeTab === "extensions"
                 ? "bg-background text-foreground"
@@ -60,6 +63,19 @@ export default function SettingsApp(): React.JSX.Element {
           >
             <Puzzle className="h-3.5 w-3.5" />
             {copy.tabs.extensions}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("shortcuts")}
+            data-settings-tab="shortcuts"
+            className={`inline-flex items-center gap-2 border-l border-border px-3 py-1.5 text-[12px] font-medium transition ${
+              activeTab === "shortcuts"
+                ? "bg-background text-foreground"
+                : "text-muted-foreground hover:bg-background-secondary hover:text-foreground"
+            }`}
+          >
+            <Keyboard className="h-3.5 w-3.5" />
+            {copy.tabs.shortcuts}
           </button>
         </div>
 
@@ -72,6 +88,10 @@ export default function SettingsApp(): React.JSX.Element {
         {activeTab === "general" ? (
           <div className="h-full overflow-y-auto pr-1">
             <GeneralTab locale={locale} />
+          </div>
+        ) : activeTab === "shortcuts" ? (
+          <div className="h-full overflow-y-auto pr-1">
+            <ShortcutsTab locale={locale} />
           </div>
         ) : (
           <ExtensionsTab focusTarget={focusTarget} locale={locale} />

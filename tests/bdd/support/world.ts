@@ -152,6 +152,48 @@ export class OpenworkWorld extends World {
     return browserWindow.evaluate((window) => window.isVisible())
   }
 
+  async getApplicationMenuAccelerator(itemLabel: string): Promise<string | null> {
+    if (!this.electronApp) {
+      throw new Error("BDD Electron app is not available. Launch the app before using page steps.")
+    }
+
+    return this.electronApp.evaluate(({ Menu }, label) => {
+      const menu = Menu.getApplicationMenu()
+      if (!menu) {
+        return null
+      }
+
+      const queue = [...menu.items] as Array<{
+        accelerator?: string | null
+        label?: string
+        submenu?: { items: unknown[] } | null
+      }>
+
+      while (queue.length > 0) {
+        const item = queue.shift()
+        if (!item) {
+          continue
+        }
+
+        if (item.label === label) {
+          return item.accelerator ?? null
+        }
+
+        if (item.submenu) {
+          queue.push(
+            ...(item.submenu.items as Array<{
+              accelerator?: string | null
+              label?: string
+              submenu?: { items: unknown[] } | null
+            }>)
+          )
+        }
+      }
+
+      return null
+    }, itemLabel)
+  }
+
   async closeApp(): Promise<void> {
     if (this.electronApp) {
       await this.electronApp.close()

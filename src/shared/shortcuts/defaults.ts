@@ -46,8 +46,7 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
       modifiers: [],
       key: "Tab"
     },
-    allowInTextInput: true,
-    preventDefault: true
+    allowInTextInput: true
   },
   {
     commandId: LAUNCHER_COMMAND_IDS.searchMoveSelectionDown,
@@ -56,8 +55,7 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
       modifiers: [],
       key: "ArrowDown"
     },
-    allowInTextInput: true,
-    preventDefault: true
+    allowInTextInput: true
   },
   {
     commandId: LAUNCHER_COMMAND_IDS.searchMoveSelectionUp,
@@ -66,8 +64,7 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
       modifiers: [],
       key: "ArrowUp"
     },
-    allowInTextInput: true,
-    preventDefault: true
+    allowInTextInput: true
   },
   {
     commandId: LAUNCHER_COMMAND_IDS.searchExecuteSelection,
@@ -76,8 +73,16 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
       modifiers: [],
       key: "Enter"
     },
-    allowInTextInput: true,
-    preventDefault: true
+    allowInTextInput: true
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiGoHome,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: [],
+      key: "Backspace"
+    },
+    allowInTextInput: true
   },
   {
     commandId: LAUNCHER_COMMAND_IDS.aiSubmit,
@@ -86,8 +91,25 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
       modifiers: [],
       key: "Enter"
     },
-    allowInTextInput: true,
-    preventDefault: true
+    allowInTextInput: true
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.listMoveSelectionDown,
+    scope: "launcher.list",
+    chord: {
+      modifiers: [],
+      key: "ArrowDown"
+    },
+    allowInTextInput: true
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.listMoveSelectionUp,
+    scope: "launcher.list",
+    chord: {
+      modifiers: [],
+      key: "ArrowUp"
+    },
+    allowInTextInput: true
   },
   {
     commandId: LAUNCHER_COMMAND_IDS.actionsOpen,
@@ -97,7 +119,7 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
       key: "K",
       code: "KeyK"
     },
-    preventDefault: true,
+    allowInTextInput: true,
     platform: "darwin"
   },
   {
@@ -108,7 +130,7 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
       key: "K",
       code: "KeyK"
     },
-    preventDefault: true,
+    allowInTextInput: true,
     platform: "win32"
   },
   {
@@ -119,7 +141,7 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
       key: "K",
       code: "KeyK"
     },
-    preventDefault: true,
+    allowInTextInput: true,
     platform: "linux"
   },
   {
@@ -129,6 +151,46 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
       modifiers: [],
       key: "Enter"
     },
+    allowInTextInput: true
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.actionPanelClose,
+    scope: "launcher.action-panel",
+    chord: {
+      modifiers: [],
+      key: "Escape"
+    },
+    allowInTextInput: true,
+    preventDefault: true
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.actionPanelMoveSelectionDown,
+    scope: "launcher.action-panel",
+    chord: {
+      modifiers: [],
+      key: "ArrowDown"
+    },
+    allowInTextInput: true,
+    preventDefault: true
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.actionPanelMoveSelectionUp,
+    scope: "launcher.action-panel",
+    chord: {
+      modifiers: [],
+      key: "ArrowUp"
+    },
+    allowInTextInput: true,
+    preventDefault: true
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.actionPanelExecuteSelection,
+    scope: "launcher.action-panel",
+    chord: {
+      modifiers: [],
+      key: "Enter"
+    },
+    allowInTextInput: true,
     preventDefault: true
   }
 ]

@@ -3,14 +3,9 @@ import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
 import { hasMessageContent } from "@shared/message-content"
-import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 import type { Message } from "@/types"
-import {
-  useAiCoreHost,
-  useAiCoreNavigation,
-  useAiCoreThreads
-} from "./AiCoreHost"
+import { useAiCoreHost, useAiCoreThreads } from "./AiCoreHost"
 
 interface UseAiThreadOptions {
   buildMessageContent?: (message: string) => Message["content"]
@@ -23,7 +18,6 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     visibleError: string | null
   }
   handleApprovalDecision: (decision: "approve" | "reject" | "edit") => Promise<void>
-  handleInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   inputStatus: LauncherInputStatus
   isBusy: boolean
   primaryActionDisabled: boolean
@@ -36,7 +30,6 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const { buildMessageContent, onDidInvoke } = options
   const { copy } = useI18n()
   const host = useAiCoreHost()
-  const navigation = useAiCoreNavigation()
   const threads = useAiCoreThreads()
   const hasRunInitialActionRef = useRef(false)
   const [threadId, setThreadId] = useState<string | null>(null)
@@ -111,35 +104,6 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     [invocation]
   )
 
-  const executeAiShortcutCommand = useCallback(
-    (commandId: string): void => {
-      if (commandId === LAUNCHER_COMMAND_IDS.aiSubmit) {
-        runPrimaryAction()
-      }
-    },
-    [runPrimaryAction]
-  )
-
-  const handleInputKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLInputElement>): void => {
-      switch (event.key) {
-        case "Enter":
-          event.preventDefault()
-          executeAiShortcutCommand(LAUNCHER_COMMAND_IDS.aiSubmit)
-          break
-        case "Backspace":
-          if (!query && !isBusy) {
-            event.preventDefault()
-            navigation.goHome()
-          }
-          break
-        default:
-          break
-      }
-    },
-    [executeAiShortcutCommand, isBusy, navigation, query]
-  )
-
   const primaryActionDisabled = isBusy || !hasMessageContent(messageContent)
 
   useEffect(() => {
@@ -178,7 +142,6 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
       visibleError: invocation.visibleError
     },
     handleApprovalDecision,
-    handleInputKeyDown,
     inputStatus,
     isBusy,
     primaryActionDisabled,

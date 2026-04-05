@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { collectActions } from "./actions"
 import { NativeSurfaceChrome } from "./chrome"
-import { useNativeSurfaceController } from "./surface-actions"
+import { useNativeSurfaceController } from "./surface-action-controller"
 
 const streamdownPlugins = { cjk, code, math, mermaid }
 

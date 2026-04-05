@@ -8,6 +8,7 @@ export type ShortcutScope =
   | "launcher"
   | "launcher.home"
   | "launcher.ai"
+  | "launcher.list"
   | "launcher.action-panel"
   | "settings"
   | "chat"
@@ -19,6 +20,7 @@ export interface ShortcutCommandDefinition {
   title: string
   description?: string
   category: ShortcutCommandCategory
+  configurable: boolean
 }
 
 export interface ShortcutChord {

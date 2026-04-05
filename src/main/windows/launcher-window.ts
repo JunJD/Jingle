@@ -33,6 +33,7 @@ const LAUNCHER_BASE_HEIGHT = getLauncherIdleHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_HEIGHT = getLauncherMaxViewportHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_SCREEN_HEIGHT_RATIO = 0.7
 const WINDOWS_LAUNCHER_SHAPE_RADIUS = 12
+const EMPTY_CLIPBOARD_CONTEXT: ClipboardContext = { kind: "none" }
 const launcherVisibleOrigins = new WeakMap<BrowserWindow, { x: number; y: number }>()
 let launcherBlurHideSuppressionDepth = 0
 
@@ -467,6 +468,10 @@ export function registerLauncherHandlers(ipcMain: IpcMain): void {
   })
 
   ipcMain.handle("launcher:getClipboardContext", (): ClipboardContext => {
+    if (process.env.OPENWORK_BDD === "1") {
+      return EMPTY_CLIPBOARD_CONTEXT
+    }
+
     return readClipboardContext()
   })
 

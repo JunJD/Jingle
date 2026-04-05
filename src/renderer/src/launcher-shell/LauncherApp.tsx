@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
-import type { ShortcutScope } from "@shared/shortcuts/model"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { LauncherIntelligenceGlow } from "@launcher-components/LauncherIntelligenceGlow"
 import { LauncherPageTransition } from "@launcher-components/LauncherPageTransition"
@@ -8,7 +7,7 @@ import { LauncherSearchPage } from "@launcher-components/LauncherSearchPage"
 import { NativeExtensionPassiveCommandHosts } from "@extension-host/PassiveCommandHosts"
 import { invokeThreadMessage } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
-import { useShortcutSystem } from "@/shortcuts/shortcut-context"
+import { useShortcutCommandHandler } from "@/shortcuts/shortcut-context"
 import { useThreadContext } from "@/lib/thread-context"
 import { useLauncherClipboard } from "./LauncherClipboardContext"
 import { LauncherCommandSurface } from "./LauncherCommandSurface"
@@ -40,7 +39,6 @@ export default function LauncherApp(): React.JSX.Element {
   const inputNeedsWorkspaceMessage = copy.chat.inputNeedsWorkspace
   const clipboard = useLauncherClipboard()
   const threadContext = useThreadContext()
-  const { registerHandler, setActiveScopes } = useShortcutSystem()
   const searchInputRef = useRef<HTMLInputElement>(null)
   const pluginInputRef = useRef<LauncherInputElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
@@ -114,63 +112,14 @@ export default function LauncherApp(): React.JSX.Element {
     routeKey,
     shellConfig: searchPage.shellConfig
   })
-  const activeShortcutScopes = useMemo<readonly ShortcutScope[]>(() => {
-    if (!isLauncherCommandRoute(route)) {
-      return ["launcher.home", "launcher", "window"]
+  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.close, () => {
+    if (isLauncherCommandRoute(route)) {
+      closeActivePlugin()
+      return
     }
 
-    if (commandState.activeCommandOwnerId === AI_LAUNCHER_PLUGIN_ID) {
-      return ["launcher.ai", "launcher", "window"]
-    }
-
-    return ["launcher", "window"]
-  }, [commandState.activeCommandOwnerId, route])
-
-  useEffect(() => {
-    setActiveScopes(activeShortcutScopes)
-  }, [activeShortcutScopes, setActiveScopes])
-
-  useEffect(() => {
-    return registerHandler(LAUNCHER_COMMAND_IDS.close, () => {
-      if (isLauncherCommandRoute(route)) {
-        closeActivePlugin()
-        return
-      }
-
-      void hideLauncher()
-    })
-  }, [closeActivePlugin, hideLauncher, registerHandler, route])
-
-  useEffect(() => {
-    const unregisterSearchOpenAi = registerHandler(LAUNCHER_COMMAND_IDS.searchOpenAi, () => {
-      executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenAi)
-    })
-    const unregisterMoveSelectionDown = registerHandler(
-      LAUNCHER_COMMAND_IDS.searchMoveSelectionDown,
-      () => {
-        executeHomeCommand(LAUNCHER_COMMAND_IDS.searchMoveSelectionDown)
-      }
-    )
-    const unregisterMoveSelectionUp = registerHandler(
-      LAUNCHER_COMMAND_IDS.searchMoveSelectionUp,
-      () => {
-        executeHomeCommand(LAUNCHER_COMMAND_IDS.searchMoveSelectionUp)
-      }
-    )
-    const unregisterExecuteSelection = registerHandler(
-      LAUNCHER_COMMAND_IDS.searchExecuteSelection,
-      () => {
-        executeHomeCommand(LAUNCHER_COMMAND_IDS.searchExecuteSelection)
-      }
-    )
-
-    return () => {
-      unregisterSearchOpenAi()
-      unregisterMoveSelectionDown()
-      unregisterMoveSelectionUp()
-      unregisterExecuteSelection()
-    }
-  }, [executeHomeCommand, registerHandler])
+    void hideLauncher()
+  })
   const { shownSequence } = useLauncherShellEffects({
     focusActiveInput,
     homeInputSelectionRequestVersion: searchPage.homeInputSelectionRequestVersion,
@@ -252,6 +201,7 @@ export default function LauncherApp(): React.JSX.Element {
               />
             ) : (
               <LauncherSearchPage
+                executeHomeCommand={executeHomeCommand}
                 executeItem={searchPage.executeItem}
                 inputRef={searchInputRef}
                 inputValue={searchPage.query}

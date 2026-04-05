@@ -15,7 +15,7 @@ interface LauncherChromeProps {
   inputRef: RefObject<LauncherInputElement | null>
   inputStatus?: LauncherInputStatus
   inputValue: string
-  onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
+  onInputKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void
   onInputValueChange: (value: string) => void
   placeholders: readonly string[]
   shellConfig: LauncherShellConfig

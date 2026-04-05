@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import type { LauncherRoute } from "../pages/types"
 import { isLauncherCommandRoute } from "../pages/types"
 
@@ -62,7 +62,7 @@ export function useLauncherShellEffects(props: UseLauncherShellEffectsProps): {
     }
   }, [focusActiveInput])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const routeChanged = previousRouteKeyRef.current !== routeKey
     const returnedHome =
       routeChanged &&

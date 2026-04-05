@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron"
+import { resolveShortcutPlatform } from "../shared/shortcuts/model"
 import type {
   AgentConfig,
   Thread,
@@ -30,6 +31,7 @@ import type {
   ResolvedShortcutBinding,
   ShortcutSettings
 } from "../shared/shortcuts/settings"
+import { resolveShortcutBindings } from "../shared/shortcuts/settings"
 import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "../shared/settings-window"
 
 // Simple electron API - replaces @electron-toolkit/preload
@@ -71,6 +73,14 @@ const electronAPI = {
     versions: process.versions
   }
 }
+
+const initialShortcutSettings = ipcRenderer.sendSync(
+  "shortcuts:getBootstrapSettingsSync"
+) as ShortcutSettings
+const initialResolvedShortcutBindings = resolveShortcutBindings(
+  initialShortcutSettings,
+  resolveShortcutPlatform(process.platform)
+)
 
 // Custom APIs for renderer
 const api = {
@@ -229,6 +239,8 @@ const api = {
     }
   },
   shortcuts: {
+    initialResolvedBindings: initialResolvedShortcutBindings,
+    initialSettings: initialShortcutSettings,
     getSettings: (): Promise<ShortcutSettings> => {
       return ipcRenderer.invoke("shortcuts:getSettings")
     },

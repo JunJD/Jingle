@@ -2,8 +2,8 @@ import { Children, isValidElement, useMemo, type ReactNode } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { collectActions } from "./actions"
 import { NativeSurfaceChrome } from "./chrome"
+import { useNativeSurfaceController } from "./surface-action-controller"
 import { NativeExtensionSelect } from "./select"
-import { useNativeSurfaceController } from "./surface-actions"
 
 type FormDropdownMarkerRole = "form-dropdown-item"
 

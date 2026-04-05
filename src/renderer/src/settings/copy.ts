@@ -5,9 +5,11 @@ interface SettingsCopy {
   tabs: {
     extensions: string
     general: string
+    shortcuts: string
   }
   common: {
     addRoot: string
+    cancel: string
     change: string
     choose: string
     clear: string
@@ -47,16 +49,38 @@ interface SettingsCopy {
     mode: string
     noPreferences: string
   }
+  shortcuts: {
+    title: string
+    description: string
+    edit: string
+    useDefault: string
+    cancel: string
+    saved: string
+    reset: string
+    defaultBinding: string
+    customBinding: string
+    defaultBindingLabel: string
+    registrationStatus: string
+    recordingTitle: string
+    recordingDescription: string
+    recordingPlaceholder: string
+    available: string
+    unavailable: string
+    unknown: string
+    notSet: string
+  }
 }
 
 const zhCN: SettingsCopy = {
   title: "设置",
   tabs: {
     extensions: "Extensions",
-    general: "通用"
+    general: "通用",
+    shortcuts: "快捷键"
   },
   common: {
     addRoot: "添加目录",
+    cancel: "取消",
     change: "更换",
     choose: "选择",
     clear: "清空",
@@ -95,6 +119,26 @@ const zhCN: SettingsCopy = {
     empty: "还没有扫描到 extension。",
     mode: "模式",
     noPreferences: "没有可配置项。"
+  },
+  shortcuts: {
+    title: "快捷键",
+    description: "当前只开放应用级快捷键。页面内部导航快捷键仍保持固定产品语义。",
+    edit: "编辑快捷键",
+    useDefault: "恢复默认",
+    cancel: "取消",
+    saved: "已保存",
+    reset: "已恢复默认",
+    defaultBinding: "默认绑定",
+    customBinding: "自定义绑定",
+    defaultBindingLabel: "默认值",
+    registrationStatus: "全局注册状态",
+    recordingTitle: "录制新快捷键",
+    recordingDescription: "聚焦下面的按钮后按下新的快捷键组合。",
+    recordingPlaceholder: "按下新的快捷键",
+    available: "可用",
+    unavailable: "不可用",
+    unknown: "未知",
+    notSet: "未设置"
   }
 }
 
@@ -102,10 +146,12 @@ const enUS: SettingsCopy = {
   title: "Settings",
   tabs: {
     extensions: "Extensions",
-    general: "General"
+    general: "General",
+    shortcuts: "Shortcuts"
   },
   common: {
     addRoot: "Add Root",
+    cancel: "Cancel",
     change: "Change",
     choose: "Choose",
     clear: "Clear",
@@ -146,6 +192,27 @@ const enUS: SettingsCopy = {
     empty: "No extensions were discovered yet.",
     mode: "Mode",
     noPreferences: "No configurable preferences."
+  },
+  shortcuts: {
+    title: "Shortcuts",
+    description:
+      "Only app-level shortcuts are configurable right now. Surface navigation shortcuts remain fixed product semantics.",
+    edit: "Edit Shortcut",
+    useDefault: "Use Default",
+    cancel: "Cancel",
+    saved: "Saved",
+    reset: "Restored default",
+    defaultBinding: "Default binding",
+    customBinding: "Custom binding",
+    defaultBindingLabel: "Default",
+    registrationStatus: "Global registration",
+    recordingTitle: "Record new shortcut",
+    recordingDescription: "Focus the button below, then press the new shortcut combination.",
+    recordingPlaceholder: "Press the new shortcut",
+    available: "Available",
+    unavailable: "Unavailable",
+    unknown: "Unknown",
+    notSet: "Not set"
   }
 }
 

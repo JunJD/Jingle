@@ -102,6 +102,8 @@ interface CustomAPI {
     getPendingNavigation: () => Promise<SettingsWindowNavigationPayload | null>
   }
   shortcuts: {
+    initialResolvedBindings: ResolvedShortcutBinding[]
+    initialSettings: ShortcutSettings
     getSettings: () => Promise<ShortcutSettings>
     setSettings: (updates: Partial<ShortcutSettings>) => Promise<ShortcutSettings>
     onSettingsChanged: (callback: (settings: ShortcutSettings) => void) => () => void

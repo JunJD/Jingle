@@ -1,7 +1,8 @@
-import { useMemo, type RefObject } from "react"
+import { useCallback, useMemo, type RefObject } from "react"
 import { Settings2 } from "lucide-react"
 import { useI18n } from "@/lib/i18n"
 import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
+import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import type { LauncherShellConfig } from "@shared/launcher"
 import type { ClipboardContext } from "@shared/clipboard"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
@@ -11,7 +12,15 @@ import { LauncherChrome } from "./LauncherChrome"
 import { LauncherHistoryGrid } from "./LauncherHistoryGrid"
 import { LauncherResultList } from "./LauncherResultList"
 
+const HOME_SHORTCUT_SCOPES = ["launcher.home"] as const
+type LauncherHomeCommandId =
+  | typeof LAUNCHER_COMMAND_IDS.searchOpenAi
+  | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionDown
+  | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionUp
+  | typeof LAUNCHER_COMMAND_IDS.searchExecuteSelection
+
 export function LauncherSearchPage(props: {
+  executeHomeCommand: (commandId: LauncherHomeCommandId) => void
   executeItem: (index: number) => void
   inputRef: RefObject<HTMLInputElement | null>
   inputValue: string
@@ -28,6 +37,7 @@ export function LauncherSearchPage(props: {
 }): React.JSX.Element {
   const { copy, locale } = useI18n()
   const {
+    executeHomeCommand,
     executeItem,
     inputRef,
     inputValue,
@@ -42,7 +52,67 @@ export function LauncherSearchPage(props: {
     shellConfig,
     surface
   } = props
+  useShortcutScopeLayer(HOME_SHORTCUT_SCOPES)
   const selectedItem = selectedIndex >= 0 ? surface.items[selectedIndex] : null
+  const isInputShortcutTarget = useCallback(
+    (target: EventTarget | null): boolean => target === inputRef.current,
+    [inputRef]
+  )
+  const handleOpenAiShortcut = useCallback(
+    (event: KeyboardEvent): void => {
+      if (!isInputShortcutTarget(event.target)) {
+        return
+      }
+
+      event.preventDefault()
+      executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenAi)
+    },
+    [executeHomeCommand, isInputShortcutTarget]
+  )
+  const handleMoveSelectionDownShortcut = useCallback(
+    (event: KeyboardEvent): void => {
+      if (!isInputShortcutTarget(event.target)) {
+        return
+      }
+
+      event.preventDefault()
+      executeHomeCommand(LAUNCHER_COMMAND_IDS.searchMoveSelectionDown)
+    },
+    [executeHomeCommand, isInputShortcutTarget]
+  )
+  const handleMoveSelectionUpShortcut = useCallback(
+    (event: KeyboardEvent): void => {
+      if (!isInputShortcutTarget(event.target)) {
+        return
+      }
+
+      event.preventDefault()
+      executeHomeCommand(LAUNCHER_COMMAND_IDS.searchMoveSelectionUp)
+    },
+    [executeHomeCommand, isInputShortcutTarget]
+  )
+  const handleExecuteSelectionShortcut = useCallback(
+    (event: KeyboardEvent): void => {
+      if (!isInputShortcutTarget(event.target)) {
+        return
+      }
+
+      event.preventDefault()
+      executeHomeCommand(LAUNCHER_COMMAND_IDS.searchExecuteSelection)
+    },
+    [executeHomeCommand, isInputShortcutTarget]
+  )
+
+  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.searchOpenAi, handleOpenAiShortcut)
+  useShortcutCommandHandler(
+    LAUNCHER_COMMAND_IDS.searchMoveSelectionDown,
+    handleMoveSelectionDownShortcut
+  )
+  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.searchMoveSelectionUp, handleMoveSelectionUpShortcut)
+  useShortcutCommandHandler(
+    LAUNCHER_COMMAND_IDS.searchExecuteSelection,
+    handleExecuteSelectionShortcut
+  )
 
   const primaryActionLabel =
     selectedItem?.presentation.primaryActionLabel ?? copy.launcher.openGeneric

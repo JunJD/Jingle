@@ -1,6 +1,7 @@
 import { ArrowLeft, Plus } from "lucide-react"
-import { useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
+import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { AI_ATTACHMENT_FILE_EXTENSIONS } from "@shared/launcher-attachments"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
@@ -12,6 +13,8 @@ import { useAiAttachments } from "./useAiAttachments"
 import { useAiThread } from "./useAiThread"
 import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
+
+const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 
 export function LauncherAiPage(): React.JSX.Element {
   const { copy } = useI18n()
@@ -26,6 +29,36 @@ export function LauncherAiPage(): React.JSX.Element {
   const { inputRef, setInputStatus } = surface
   const fileInputRef = useRef<HTMLInputElement>(null)
   const submitShortcut = formatLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.aiSubmit)
+  const isAiInputTarget = useCallback(
+    (target: EventTarget | null): boolean => target === inputRef.current,
+    [inputRef]
+  )
+  const handleSubmitShortcut = useCallback(
+    (event: KeyboardEvent): void => {
+      if (!isAiInputTarget(event.target)) {
+        return
+      }
+
+      event.preventDefault()
+      session.runPrimaryAction()
+    },
+    [isAiInputTarget, session.runPrimaryAction]
+  )
+  const handleGoHomeShortcut = useCallback(
+    (event: KeyboardEvent): void => {
+      if (!isAiInputTarget(event.target) || session.query || session.isBusy) {
+        return
+      }
+
+      event.preventDefault()
+      navigation.goHome()
+    },
+    [isAiInputTarget, navigation, session.isBusy, session.query]
+  )
+
+  useShortcutScopeLayer(AI_SHORTCUT_SCOPES)
+  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.aiSubmit, handleSubmitShortcut)
+  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.aiGoHome, handleGoHomeShortcut)
   useDisableTabNavigation(inputRef)
 
   useEffect(() => {
@@ -108,7 +141,6 @@ export function LauncherAiPage(): React.JSX.Element {
       inputStatus={inputStatus}
       inputRef={inputRef}
       inputValue={session.query}
-      onInputKeyDown={session.handleInputKeyDown}
       onInputValueChange={session.setQuery}
       placeholders={[copy.launcher.aiInputPlaceholder, copy.launcher.aiInputPlaceholderSecondary]}
       shellConfig={surface.shellConfig}

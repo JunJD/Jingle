@@ -1,3 +1,4 @@
+import { isShortcutCommandConfigurable } from "./configurable"
 import { listDefaultShortcutBindings } from "./defaults"
 import {
   normalizeShortcutChord,
@@ -63,6 +64,9 @@ function normalizeShortcutOverride(value: unknown): ShortcutOverride | null {
   const partial = value as Partial<ShortcutOverride>
   const commandId = typeof partial.commandId === "string" ? partial.commandId.trim() : ""
   if (!commandId) {
+    return null
+  }
+  if (!isShortcutCommandConfigurable(commandId)) {
     return null
   }
 

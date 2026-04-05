@@ -7,12 +7,16 @@ function getTodoListRoot(page: import("@playwright/test").Page) {
   return page.locator('.launcher-window-shell[data-active-command-owner="todo-list"]')
 }
 
+function getTodoListInput(page: import("@playwright/test").Page) {
+  return getTodoListRoot(page).locator(
+    '.launcher-chrome[data-surface="native-list"] .launcher-input input'
+  )
+}
+
 When("我在 Todo List 中创建一条新的测试待办", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("launcher")
   const todoListRoot = getTodoListRoot(page)
-  const input = todoListRoot.locator(
-    '.launcher-chrome[data-surface="native-list"] .launcher-input input'
-  )
+  const input = getTodoListInput(page)
   const title = `BDD todo ${randomUUID()}`
 
   this.setScenarioValue("todoList.createdTitle", title)
@@ -27,6 +31,57 @@ When("我在 Todo List 中创建一条新的测试待办", async function (this:
 
   await expect(createRow).toBeVisible()
   await createRow.click()
+})
+
+When("我在 Todo List 输入框中输入新的测试待办标题", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+  const input = getTodoListInput(page)
+  const title = `BDD todo ${randomUUID()}`
+
+  this.setScenarioValue("todoList.createdTitle", title)
+
+  await input.fill(title)
+})
+
+When("我在 Todo List 输入框按下 Enter", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+  const input = getTodoListInput(page)
+
+  await input.focus()
+  await input.press("Enter")
+})
+
+When("我在当前 Launcher surface 打开动作面板", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+  const input = getTodoListInput(page)
+  const platform = await page.evaluate(() => {
+    return (
+      window as unknown as Window & {
+        electron: { process: { platform: string } }
+      }
+    ).electron.process.platform
+  })
+
+  await input.focus()
+  await page.keyboard.press(platform === "darwin" ? "Meta+K" : "Control+K")
+})
+
+When("我在原生动作面板中向下移动一次", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+
+  await page.keyboard.press("ArrowDown")
+})
+
+When("我执行当前选中的原生动作", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+
+  await page.keyboard.press("Enter")
+})
+
+When("我关闭原生动作面板", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+
+  await page.keyboard.press("Escape")
 })
 
 Then("Launcher 当前命令归属为 {string}", async function (this: OpenworkWorld, ownerId: string) {
@@ -50,4 +105,24 @@ Then("Todo List 展示刚创建的待办", async function (this: OpenworkWorld) 
 
   await expect(todoListRoot).toBeVisible()
   await expect(todoRow).toBeVisible()
+})
+
+Then("Launcher 原生动作面板可见", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+
+  await expect(page.locator('[data-surface="native-action-panel"]')).toBeVisible()
+})
+
+Then("Launcher 原生动作面板已隐藏", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+
+  await expect(page.locator('[data-surface="native-action-panel"]')).toHaveCount(0)
+})
+
+Then("Todo List 已进入搜索模式", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+  const todoListRoot = getTodoListRoot(page)
+  const searchingLabel = todoListRoot.getByText("Todo List • Searching", { exact: true }).first()
+
+  await expect(searchingLabel).toBeVisible()
 })

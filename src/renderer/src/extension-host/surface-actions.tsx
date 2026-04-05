@@ -1,9 +1,11 @@
-import { Fragment, useEffect, useState, type ReactNode } from "react"
-import { formatLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
+import { Fragment, useState, type ReactNode } from "react"
+import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { cn } from "@/lib/utils"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import type { NativeActionDescriptor } from "./actions"
-import { NativeSurfaceHeaderLeading } from "./chrome"
+import type { NativeSurfaceActionController } from "./surface-action-controller"
+
+const ACTION_PANEL_SHORTCUT_SCOPES = ["launcher.action-panel"] as const
 
 function groupActionsBySection(actions: NativeActionDescriptor[]): Array<{
   actions: NativeActionDescriptor[]
@@ -35,39 +37,36 @@ export function NativeActionOverlay(props: {
   const groupedActions = groupActionsBySection(actions)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const flatActions = groupedActions.flatMap((group) => group.actions)
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
-        event.preventDefault()
-        onClose()
-        return
-      }
-
-      if (event.key === "ArrowDown") {
-        event.preventDefault()
-        setSelectedIndex((current) => Math.min(current + 1, flatActions.length - 1))
-        return
-      }
-
-      if (event.key === "ArrowUp") {
-        event.preventDefault()
-        setSelectedIndex((current) => Math.max(current - 1, 0))
-        return
-      }
-
-      if (event.key === "Enter") {
-        event.preventDefault()
-        void Promise.resolve(flatActions[selectedIndex]?.onAction()).finally(onClose)
-      }
+  const maxSelectedIndex = Math.max(flatActions.length - 1, 0)
+  const activeSelectedIndex = Math.min(selectedIndex, maxSelectedIndex)
+  const executeSelectedAction = (): void => {
+    const selectedAction = flatActions[activeSelectedIndex]
+    if (!selectedAction) {
+      return
     }
 
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [flatActions, onClose, selectedIndex])
+    void Promise.resolve(selectedAction.onAction()).finally(onClose)
+  }
+
+  useShortcutScopeLayer(ACTION_PANEL_SHORTCUT_SCOPES)
+  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.actionPanelClose, onClose)
+  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.actionPanelMoveSelectionDown, () => {
+    setSelectedIndex((current) => {
+      const boundedCurrent = Math.min(current, maxSelectedIndex)
+      return Math.min(boundedCurrent + 1, maxSelectedIndex)
+    })
+  })
+  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.actionPanelMoveSelectionUp, () => {
+    setSelectedIndex((current) => Math.max(Math.min(current, maxSelectedIndex) - 1, 0))
+  })
+  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.actionPanelExecuteSelection, executeSelectedAction)
 
   return (
-    <div className="absolute inset-0 z-50 bg-black/28" onClick={onClose}>
+    <div
+      className="absolute inset-0 z-50 bg-black/28"
+      data-surface="native-action-panel"
+      onClick={onClose}
+    >
       <div
         className="absolute bottom-12 right-3 w-80 overflow-hidden rounded-2xl border border-border/80 bg-background shadow-2xl"
         onClick={(event) => event.stopPropagation()}
@@ -82,7 +81,7 @@ export function NativeActionOverlay(props: {
               ) : null}
               {group.actions.map((action) => {
                 const index = flatActions.findIndex((entry) => entry.id === action.id)
-                const isSelected = index === selectedIndex
+                const isSelected = index === activeSelectedIndex
 
                 return (
                   <button
@@ -115,148 +114,6 @@ export function NativeActionOverlay(props: {
       </div>
     </div>
   )
-}
-
-interface NativeSurfaceActionKeyEvent {
-  ctrlKey: boolean
-  key: string
-  metaKey: boolean
-  preventDefault: () => void
-}
-
-export interface NativeSurfaceActionController {
-  actionPanelShortcut: string | null
-  actions: NativeActionDescriptor[]
-  canOpenActions: boolean
-  closeActions: () => void
-  executePrimaryAction: () => void
-  handleKeyDown: (event: NativeSurfaceActionKeyEvent) => boolean
-  openActions: () => void
-  primaryAction: NativeActionDescriptor | null
-  primaryActionFallbackTitle: string
-  primaryActionShortcut: string | null
-  showActions: boolean
-}
-
-export interface NativeSurfaceController {
-  actionController: NativeSurfaceActionController
-  actionLayer: React.JSX.Element | null
-  footer: React.JSX.Element
-  headerLeading: React.JSX.Element
-}
-
-function isRichTextInputTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false
-  }
-
-  return target instanceof HTMLTextAreaElement || target.isContentEditable
-}
-
-export function useNativeSurfaceActionController(params: {
-  actions: NativeActionDescriptor[]
-  primaryActionFallbackTitle: string
-}): NativeSurfaceActionController {
-  const { actions, primaryActionFallbackTitle } = params
-  const [showActions, setShowActions] = useState(false)
-  const primaryAction = actions[0] ?? null
-  const canOpenActions = actions.length > 1
-  const actionPanelShortcut = formatLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.actionsOpen)
-  const primaryActionShortcut = formatLauncherCommandShortcut(
-    LAUNCHER_COMMAND_IDS.actionsExecutePrimary
-  )
-
-  const executePrimaryAction = (): void => {
-    if (primaryAction) {
-      void Promise.resolve(primaryAction.onAction())
-    }
-  }
-
-  const handleKeyDown = (event: NativeSurfaceActionKeyEvent): boolean => {
-    if (event.key === "Enter") {
-      event.preventDefault()
-      executePrimaryAction()
-      return true
-    }
-
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k" && canOpenActions) {
-      event.preventDefault()
-      setShowActions(true)
-      return true
-    }
-
-    return false
-  }
-
-  return {
-    actionPanelShortcut,
-    actions,
-    canOpenActions,
-    closeActions: () => setShowActions(false),
-    executePrimaryAction,
-    handleKeyDown,
-    openActions: () => setShowActions(true),
-    primaryAction,
-    primaryActionFallbackTitle,
-    primaryActionShortcut,
-    showActions
-  }
-}
-
-export function useNativeSurfaceController(params: {
-  actions: NativeActionDescriptor[]
-  footerCount?: string | null
-  footerLabel: string
-  headerLabel?: string
-  primaryActionFallbackTitle: string
-}): NativeSurfaceController {
-  const { actions, footerCount, footerLabel, headerLabel, primaryActionFallbackTitle } = params
-  const actionController = useNativeSurfaceActionController({
-    actions,
-    primaryActionFallbackTitle
-  })
-
-  useEffect(() => {
-    if (actionController.showActions) {
-      return
-    }
-
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.defaultPrevented) {
-        return
-      }
-
-      if (event.key === "Enter" && isRichTextInputTarget(event.target)) {
-        return
-      }
-
-      actionController.handleKeyDown(event)
-    }
-
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [actionController])
-
-  return {
-    actionController,
-    actionLayer: <NativeSurfaceActionLayer controller={actionController} />,
-    footer: (
-      <NativeSurfaceActionsFooter
-        controller={actionController}
-        leading={
-          <>
-            <div className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
-              {footerLabel}
-            </div>
-            {footerCount ? (
-              <div className="shrink-0 text-[12px] text-muted-foreground">{footerCount}</div>
-            ) : null}
-          </>
-        }
-      />
-    ),
-    headerLeading: <NativeSurfaceHeaderLeading label={headerLabel} />
-  }
 }
 
 export function NativeSurfaceActionsFooter(props: {

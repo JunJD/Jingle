@@ -18,6 +18,10 @@ export function registerShortcutHandlers(params: {
 }): void {
   const { applySettings, ipcMain } = params
 
+  ipcMain.on("shortcuts:getBootstrapSettingsSync", (event) => {
+    event.returnValue = getShortcutSettings()
+  })
+
   ipcMain.handle("shortcuts:getSettings", () => {
     return getShortcutSettings()
   })

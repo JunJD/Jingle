@@ -5,6 +5,16 @@ import {
   type ShortcutSettings
 } from "@shared/shortcuts/settings"
 
+export function getShortcutBootstrapState(): {
+  bindings: ResolvedShortcutBinding[]
+  settings: ShortcutSettings
+} {
+  return {
+    bindings: [...window.api.shortcuts.initialResolvedBindings],
+    settings: window.api.shortcuts.initialSettings
+  }
+}
+
 export async function loadShortcutSettings(): Promise<ShortcutSettings> {
   return window.api.shortcuts.getSettings()
 }
