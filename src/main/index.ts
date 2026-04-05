@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, nativeImage } from "electron"
+import { app, BrowserWindow, ipcMain, nativeImage } from "electron"
 import { join } from "path"
 import { installApplicationMenu } from "./app-menu"
 import { registerAgentHandlers } from "./ipc/agent"
@@ -18,17 +18,11 @@ import {
   showLauncherWindow,
   unregisterLauncherShortcut
 } from "./windows/launcher-window"
-import { loadRendererWindow } from "./windows/load-renderer-window"
 import { createSettingsWindow, showSettingsWindow } from "./windows/settings-window"
-import {
-  attachMainWindowStatePersistence,
-  getMainWindowPlacement
-} from "./windows/main-window-state"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
 import { initializeNativeMenuBar } from "./services/native-menu-bar"
 import type { SettingsWindowNavigationPayload } from "../shared/settings-window"
 
-let mainWindow: BrowserWindow | null = null
 let launcherWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
@@ -36,65 +30,6 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock()
 
 // Simple dev check - replaces @electron-toolkit/utils is.dev
 const isDev = !app.isPackaged
-
-function createWindow(): void {
-  const isMac = process.platform === "darwin"
-  const placement = getMainWindowPlacement()
-
-  mainWindow = new BrowserWindow({
-    ...placement.bounds,
-    minWidth: 1200,
-    minHeight: 700,
-    show: false,
-    autoHideMenuBar: !isMac,
-    backgroundColor: "#F3F4F1",
-    titleBarStyle: "hidden",
-    ...(isMac
-      ? {
-          trafficLightPosition: { x: 16, y: 16 }
-        }
-      : {
-          titleBarOverlay: {
-            color: "#F7F6F2",
-            symbolColor: "#5F6873",
-            height: 52
-          }
-        }),
-    webPreferences: {
-      preload: join(__dirname, "../preload/index.js"),
-      sandbox: false
-    }
-  })
-
-  attachMainWindowStatePersistence(mainWindow)
-
-  mainWindow.on("ready-to-show", () => {
-    if (!mainWindow) {
-      return
-    }
-
-    mainWindow.show()
-    if (placement.isMaximized) {
-      mainWindow.maximize()
-    }
-    mainWindow.focus()
-  })
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: "deny" }
-  })
-
-  void loadRendererWindow(mainWindow, "main")
-
-  mainWindow.on("closed", () => {
-    if (launcherWindow && !launcherWindow.isDestroyed()) {
-      launcherWindow.close()
-      launcherWindow = null
-    }
-    mainWindow = null
-  })
-}
 
 function getOrCreateLauncherWindow(): BrowserWindow {
   if (!launcherWindow || launcherWindow.isDestroyed()) {
@@ -202,14 +137,11 @@ if (hasSingleInstanceLock) {
       }
     })
 
-    createWindow()
-    getOrCreateLauncherWindow()
+    showLauncherWindow(getOrCreateLauncherWindow())
     registerLauncherShortcut(getOrCreateLauncherWindow)
 
     app.on("activate", () => {
-      if (!mainWindow || mainWindow.isDestroyed()) {
-        createWindow()
-      }
+      showLauncherWindow(getOrCreateLauncherWindow())
     })
   })
 }

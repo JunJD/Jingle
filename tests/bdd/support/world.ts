@@ -28,12 +28,15 @@ async function readWindowKind(page: Page): Promise<string | null> {
   }
 }
 
-async function resolveMainWindow(electronApp: ElectronApplication): Promise<Page> {
+async function resolveWindowByKind(
+  electronApp: ElectronApplication,
+  windowKind: "main" | "launcher" | "settings"
+): Promise<Page> {
   const deadline = Date.now() + 30_000
 
   while (Date.now() < deadline) {
     for (const page of electronApp.windows()) {
-      if ((await readWindowKind(page)) === "main") {
+      if ((await readWindowKind(page)) === windowKind) {
         return page
       }
     }
@@ -46,7 +49,12 @@ async function resolveMainWindow(electronApp: ElectronApplication): Promise<Page
     await electronApp.waitForEvent("window", { timeout: remaining }).catch(() => null)
   }
 
-  throw new Error("Main window did not finish bootstrapping within 30 seconds.")
+  throw new Error(`Window "${windowKind}" did not finish bootstrapping within 30 seconds.`)
+}
+
+async function listWindowKinds(electronApp: ElectronApplication): Promise<string[]> {
+  const kinds = await Promise.all(electronApp.windows().map((page) => readWindowKind(page)))
+  return kinds.filter((kind): kind is string => Boolean(kind))
 }
 
 async function prepareDatabase(openworkHome: string): Promise<void> {
@@ -100,7 +108,7 @@ export class OpenworkWorld extends World {
       }
     })
 
-    this.page = await resolveMainWindow(this.electronApp)
+    this.page = await resolveWindowByKind(this.electronApp, "launcher")
   }
 
   getPage(): Page {
@@ -109,6 +117,26 @@ export class OpenworkWorld extends World {
     }
 
     return this.page
+  }
+
+  async getPageByKind(windowKind: "main" | "launcher" | "settings"): Promise<Page> {
+    if (!this.electronApp) {
+      throw new Error("BDD Electron app is not available. Launch the app before using page steps.")
+    }
+
+    if (windowKind === "launcher") {
+      return this.getPage()
+    }
+
+    return resolveWindowByKind(this.electronApp, windowKind)
+  }
+
+  async getWindowKinds(): Promise<string[]> {
+    if (!this.electronApp) {
+      throw new Error("BDD Electron app is not available. Launch the app before using page steps.")
+    }
+
+    return listWindowKinds(this.electronApp)
   }
 
   async closeApp(): Promise<void> {
