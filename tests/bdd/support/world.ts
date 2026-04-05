@@ -104,6 +104,7 @@ export class OpenworkWorld extends World {
       env: {
         ...process.env,
         CI: "1",
+        OPENWORK_BDD: "1",
         OPENWORK_HOME: this.openworkHome
       }
     })
@@ -137,6 +138,17 @@ export class OpenworkWorld extends World {
     }
 
     return listWindowKinds(this.electronApp)
+  }
+
+  async isWindowVisible(windowKind: "main" | "launcher" | "settings"): Promise<boolean> {
+    if (!this.electronApp) {
+      throw new Error("BDD Electron app is not available. Launch the app before using page steps.")
+    }
+
+    const page = await this.getPageByKind(windowKind)
+    const browserWindow = await this.electronApp.browserWindow(page)
+
+    return browserWindow.evaluate((window) => window.isVisible())
   }
 
   async closeApp(): Promise<void> {

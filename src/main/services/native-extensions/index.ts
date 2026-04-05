@@ -9,20 +9,23 @@ import {
   hasLauncherCommandOwnerCapability,
   validateLauncherCommandOwnerManifest
 } from "../../../shared/launcher-command-owner"
-import { nativeExtensionManifests } from "../../../extensions"
+import { listNativeExtensionManifests } from "../../../extensions"
 import { nativeExtensionMainDefinitions } from "../../../extensions/main"
 
+const supportedNativeExtensionManifests = listNativeExtensionManifests(process.platform)
+
 interface NativeExtensionRuntimeDefinition {
-  manifest: (typeof nativeExtensionManifests)[number]
+  manifest: (typeof supportedNativeExtensionManifests)[number]
   service?: NativeExtensionService
 }
 
-const nativeExtensionDefinitions: NativeExtensionRuntimeDefinition[] = nativeExtensionManifests
-  .map((manifest) => ({
-    manifest,
-    service: nativeExtensionMainDefinitions.get(manifest.name)?.service
-  }))
-  .sort((left, right) => left.manifest.title.localeCompare(right.manifest.title))
+const nativeExtensionDefinitions: NativeExtensionRuntimeDefinition[] =
+  supportedNativeExtensionManifests
+    .map((manifest) => ({
+      manifest,
+      service: nativeExtensionMainDefinitions.get(manifest.name)?.service
+    }))
+    .sort((left, right) => left.manifest.title.localeCompare(right.manifest.title))
 
 const nativeExtensionDefinitionMap = new Map(
   nativeExtensionDefinitions.map((definition) => [definition.manifest.name, definition] as const)

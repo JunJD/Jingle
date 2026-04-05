@@ -5,6 +5,7 @@ import type {
 } from "./launcher-command-owner"
 
 export type NativeExtensionCommandMode = "background" | "menu-bar" | "no-view" | "view"
+export type NativeExtensionSupportedPlatform = "darwin" | "linux" | "win32"
 
 export interface NativeExtensionPreferenceSchema {
   data?: Array<{ title?: string; value?: string }>
@@ -38,12 +39,11 @@ export interface NativeExtensionPackageManifest<
   name: TExtensionName
   preferences?: NativeExtensionPreferenceSchema[]
   rpcMethods?: string[]
+  supportedPlatforms?: NativeExtensionSupportedPlatform[]
   title: string
 }
 
-export interface NativeExtensionRendererCommandDefinition<
-  TCommandName extends string = string
-> {
+export interface NativeExtensionRendererCommandDefinition<TCommandName extends string = string> {
   commandModule: Record<string, unknown>
   metaModule?: Record<string, unknown>
   name: TCommandName
@@ -228,6 +228,23 @@ export function validateNativeExtensionPackageManifest(
   if (rpcMethodSet.size !== rpcMethods.length) {
     throw new Error(`Native extension "${manifest.name}" declares duplicate RPC methods`)
   }
+
+  const supportedPlatforms = manifest.supportedPlatforms ?? []
+  if (new Set(supportedPlatforms).size !== supportedPlatforms.length) {
+    throw new Error(`Native extension "${manifest.name}" declares duplicate supported platforms`)
+  }
+}
+
+export function supportsNativeExtensionPlatform(
+  manifest: NativeExtensionPackageManifest,
+  platform: string
+): boolean {
+  const supportedPlatforms = manifest.supportedPlatforms
+  if (!supportedPlatforms || supportedPlatforms.length === 0) {
+    return true
+  }
+
+  return supportedPlatforms.includes(platform as NativeExtensionSupportedPlatform)
 }
 
 export function toLauncherCommandOwnerManifest(

@@ -2,7 +2,7 @@ import { safeStorage } from "electron"
 import Store from "electron-store"
 import type { AgentConfig } from "./types"
 import { getOpenworkDir } from "./storage"
-import { nativeExtensionManifests } from "../extensions"
+import { listNativeExtensionManifests } from "../extensions"
 import { DEFAULT_MODEL_ID } from "../shared/models"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale } from "../shared/i18n"
 import type {
@@ -192,7 +192,9 @@ function listPasswordPreferenceNames(schema: NativeExtensionPreferenceSchema[]):
 }
 
 function getNativeExtensionManifest(extensionName: string) {
-  const manifest = nativeExtensionManifests.find((entry) => entry.name === extensionName)
+  const manifest = listNativeExtensionManifests(process.platform).find(
+    (entry) => entry.name === extensionName
+  )
   if (!manifest) {
     throw new Error(`Unknown native extension "${extensionName}"`)
   }

@@ -24,3 +24,24 @@ Feature: Openwork 桌面启动
     When 我在 Launcher 中按下 Escape
     Then Launcher 界面切换到 "home"
     And Launcher 输入框包含 "整理本周计划"
+
+  Scenario: Launcher 首页可以被关闭
+    Given Openwork 桌面应用已启动
+    Then Launcher 窗口当前可见
+    When 我在 Launcher 首页按下 Escape
+    Then Launcher 窗口已隐藏
+
+  Scenario: Launcher 可以打开设置窗口
+    Given Openwork 桌面应用已启动
+    When 我在 Launcher 中搜索 "todo"
+    Then Launcher 首页展示了可执行结果
+    When 我从 Launcher 打开设置窗口
+    Then Settings 窗口可用
+    And Launcher 窗口已隐藏
+
+  Scenario: 自然语言翻译请求会把原文带入翻译页
+    Given Openwork 桌面应用已启动
+    When 我在 Launcher 中搜索 "translate hello to chinese"
+    Then Launcher 首页展示了可执行结果
+    When 我执行当前选中的 Launcher 结果
+    Then Launcher 翻译输入框包含 "hello"

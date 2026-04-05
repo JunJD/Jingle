@@ -26,7 +26,8 @@ import type { SettingsWindowNavigationPayload } from "../shared/settings-window"
 let launcherWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
-const hasSingleInstanceLock = app.requestSingleInstanceLock()
+const bypassSingleInstanceLock = process.env.OPENWORK_BDD === "1"
+const hasSingleInstanceLock = bypassSingleInstanceLock ? true : app.requestSingleInstanceLock()
 
 // Simple dev check - replaces @electron-toolkit/utils is.dev
 const isDev = !app.isPackaged
