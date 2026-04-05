@@ -1,6 +1,6 @@
 import { ArrowLeft } from "lucide-react"
-import { useRef, type ReactNode } from "react"
-import { useLauncherChromeAudit } from "@launcher-shell/hooks/useLauncherChromeAudit"
+import { type ReactNode } from "react"
+import { LauncherChromeFrame } from "@launcher-components/LauncherChromeFrame"
 import { useNativeExtensionNavigation, useNativeExtensionSurface } from "./sdk"
 
 export function NativeSurfaceChrome(props: {
@@ -22,58 +22,25 @@ export function NativeSurfaceChrome(props: {
     title
   } = props
   const shell = useNativeExtensionSurface()
-  const headerRef = useRef<HTMLDivElement>(null)
-  const footerRef = useRef<HTMLDivElement>(null)
-
-  useLauncherChromeAudit({
-    footerRef,
-    hasFooter: footer !== undefined,
-    headerRef,
-    shellConfig: shell.shellConfig,
-    surface
-  })
 
   return (
-    <div className="launcher-chrome flex h-full w-full flex-col" data-surface={surface}>
-      <div
-        ref={headerRef}
-        className="launcher-chrome-header flex shrink-0 items-center gap-3 px-6"
-        style={{
-          borderBottom: showHeaderDivider ? "1px solid var(--launcher-border)" : "none",
-          height: shell.shellConfig.headerHeight
-        }}
-      >
-        {headerLeading ? <div className="flex shrink-0 items-center">{headerLeading}</div> : null}
-
-        <div className="min-w-0 flex-1">
-          {title ? (
-            <div className="truncate text-[20px] font-semibold tracking-[-0.03em] text-foreground">
-              {title}
-            </div>
-          ) : null}
-        </div>
-
-        {headerTrailing ? (
-          <div className="flex shrink-0 items-center gap-4">{headerTrailing}</div>
-        ) : null}
-      </div>
-
+    <LauncherChromeFrame
+      footer={footer}
+      headerLeading={headerLeading}
+      headerMain={
+        title ? (
+          <div className="truncate text-[20px] font-semibold tracking-[-0.03em] text-foreground">
+            {title}
+          </div>
+        ) : null
+      }
+      headerTrailing={headerTrailing}
+      shellConfig={shell.shellConfig}
+      showHeaderDivider={showHeaderDivider}
+      surface={surface}
+    >
       {children}
-
-      {footer ? (
-        <div
-          ref={footerRef}
-          className="launcher-chrome-footer flex shrink-0 items-center justify-between px-6"
-          style={{
-            borderTop: "1px solid var(--launcher-border)",
-            backgroundColor: "var(--launcher-footer-strip)",
-            height: shell.shellConfig.footerHeight
-          }}
-        >
-          {footer}
-        </div>
-      ) : null}
-    </div>
+    </LauncherChromeFrame>
   )
 }
 

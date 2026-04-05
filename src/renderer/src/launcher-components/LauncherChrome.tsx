@@ -1,9 +1,9 @@
-import { useRef, type ReactNode, type RefObject } from "react"
+import { type ReactNode, type RefObject } from "react"
 import { cn } from "@/lib/utils"
 import type { LauncherShellConfig } from "@shared/launcher"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
-import { useLauncherChromeAudit } from "@launcher-shell/hooks/useLauncherChromeAudit"
+import { LauncherChromeFrame } from "./LauncherChromeFrame"
 import { LauncherInput } from "./LauncherInput"
 
 interface LauncherChromeProps {
@@ -40,33 +40,12 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
     showHeaderDivider = true,
     surface
   } = props
-  const headerRef = useRef<HTMLDivElement>(null)
-  const footerRef = useRef<HTMLDivElement>(null)
-
-  useLauncherChromeAudit({
-    footerRef,
-    hasFooter: footer !== undefined,
-    headerRef,
-    shellConfig,
-    surface
-  })
 
   return (
-    <div
-      className="launcher-chrome flex h-full w-full flex-col"
-      data-input-status={inputStatus}
-      data-surface={surface}
-    >
-      <div
-        ref={headerRef}
-        className="launcher-chrome-header flex shrink-0 items-center gap-3 px-6"
-        style={{
-          borderBottom: showHeaderDivider ? "1px solid var(--launcher-border)" : "none",
-          height: shellConfig.headerHeight
-        }}
-      >
-        {headerLeading ? <div className="flex shrink-0 items-center">{headerLeading}</div> : null}
-
+    <LauncherChromeFrame
+      footer={footer}
+      headerLeading={headerLeading}
+      headerMain={
         <LauncherInput
           ref={inputRef}
           status={inputStatus}
@@ -80,27 +59,14 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
           )}
           placeholderClassName="text-[20px] font-semibold tracking-[-0.03em] text-muted-foreground/75"
         />
-
-        {headerTrailing ? (
-          <div className="flex shrink-0 items-center gap-4">{headerTrailing}</div>
-        ) : null}
-      </div>
-
+      }
+      headerTrailing={headerTrailing}
+      inputStatus={inputStatus}
+      shellConfig={shellConfig}
+      showHeaderDivider={showHeaderDivider}
+      surface={surface}
+    >
       {children}
-
-      {footer ? (
-        <div
-          ref={footerRef}
-          className="launcher-chrome-footer flex shrink-0 items-center justify-between px-6"
-          style={{
-            borderTop: "1px solid var(--launcher-border)",
-            backgroundColor: "var(--launcher-footer-strip)",
-            height: shellConfig.footerHeight
-          }}
-        >
-          {footer}
-        </div>
-      ) : null}
-    </div>
+    </LauncherChromeFrame>
   )
 }
