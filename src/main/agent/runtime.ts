@@ -4,6 +4,7 @@ import {
   createMemoryMiddleware,
   createPatchToolCallsMiddleware,
   createSkillsMiddleware,
+  createSubAgentMiddleware,
   createSummarizationMiddleware
 } from "deepagents"
 import { join } from "path"
@@ -88,6 +89,9 @@ export interface CreateAgentRuntimeOptions {
 
 // Create agent runtime with configured model and checkpointer
 export type AgentRuntime = ReturnType<typeof createAgent>
+type SubagentMiddlewareStack = NonNullable<
+  Parameters<typeof createSubAgentMiddleware>[0]["defaultMiddleware"]
+>
 
 export async function createAgentRuntime(
   options: CreateAgentRuntimeOptions
@@ -147,12 +151,8 @@ export async function createAgentRuntime(
 
 The workspace root is: ${workspacePath}`
 
-  const agent = createAgent({
-    model,
-    name: "openwork",
-    checkpointer,
-    systemPrompt,
-    middleware: [
+  function createAgentLoopMiddleware() {
+    return [
       todoListMiddleware(),
       createFilesystemMiddleware({
         backend,
@@ -176,16 +176,40 @@ The workspace root is: ${workspacePath}`
         sources: memorySources,
         addCacheControl: model instanceof ChatAnthropic
       }),
-      // Intercept execute right before the tool runs so the approval payload
-      // carries the real tool_call.id from the source.
       createExecuteApprovalMiddleware()
+    ] as const
+  }
+
+  const [rootTodoMiddleware, rootFilesystemMiddleware, ...rootAgentLoopTailMiddleware] =
+    createAgentLoopMiddleware()
+
+  function createSubagentMiddlewareStack(): SubagentMiddlewareStack {
+    // createSubAgentMiddleware accepts the same runtime middleware stack, but its
+    // input type is narrower than the concrete middleware instances we use here.
+    return [...createAgentLoopMiddleware()] as unknown as SubagentMiddlewareStack
+  }
+
+  const agent = createAgent({
+    model,
+    name: "openwork",
+    checkpointer,
+    systemPrompt,
+    middleware: [
+      rootTodoMiddleware,
+      rootFilesystemMiddleware,
+      createSubAgentMiddleware({
+        defaultModel: model,
+        defaultMiddleware: createSubagentMiddlewareStack(),
+        generalPurposeMiddleware: createSubagentMiddlewareStack()
+      }),
+      ...rootAgentLoopTailMiddleware
     ]
   }).withConfig({
     recursionLimit: 1e4,
     metadata: { ls_integration: "openwork" }
   })
 
-  console.log("[Runtime] Agent created without subagent middleware at:", workspacePath)
+  console.log("[Runtime] Agent created with subagent middleware at:", workspacePath)
   return agent
 }
 

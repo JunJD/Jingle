@@ -44,6 +44,13 @@ When exploring codebases or reading multiple files, use pagination to prevent co
 - Small files (<500 lines)
 - Files you need to edit immediately after reading
 
+## Working with Subagents (task tool)
+When delegating to subagents:
+- **Use filesystem for large I/O**: If input/output is large (>500 words), communicate via files
+- **Parallelize independent work**: Spawn parallel subagents for independent tasks
+- **Clear specifications**: Tell subagent exactly what format/structure you need
+- **Main agent synthesizes**: Subagents gather/execute, main agent integrates results
+
 ## Tools
 
 ### File Tools

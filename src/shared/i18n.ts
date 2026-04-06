@@ -22,10 +22,7 @@ export function normalizeAppLocale(value: unknown): AppLocale {
   return DEFAULT_APP_LOCALE
 }
 
-export function formatDefaultThreadTitle(
-  locale: AppLocale,
-  date: Date = new Date()
-): string {
+export function formatDefaultThreadTitle(locale: AppLocale, date: Date = new Date()): string {
   const dateLabel = new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "numeric",
