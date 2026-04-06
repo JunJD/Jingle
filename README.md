@@ -7,9 +7,7 @@
 [license-badge]: https://img.shields.io/badge/License-MIT-yellow.svg
 [license-url]: https://opensource.org/licenses/MIT
 
-A desktop interface for [deepagentsjs](https://github.com/langchain-ai/deepagentsjs) — an opinionated harness for building deep agents with filesystem capabilities planning, and subagent delegation.
-
-![openwork screenshot](docs/screenshot.png)
+A harness-first desktop agent for non-programmers, built on [deepagentsjs](https://github.com/langchain-ai/deepagentsjs), with controlled execution, approvals, and persistent run visibility.
 
 > [!CAUTION]
 > openwork gives AI agents direct access to your filesystem and the ability to execute shell commands. Always review tool calls before approving them, and only run in workspaces you trust.
