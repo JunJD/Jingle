@@ -2,6 +2,7 @@ import { ToolMessage } from "@langchain/core/messages"
 import { interrupt } from "@langchain/langgraph"
 import { createMiddleware } from "langchain"
 import type { ActionRequest, DecisionType, ReviewConfig } from "langchain"
+import { getMutationPrediction } from "../../shared/mutation-prediction"
 
 const EXECUTE_TOOL_NAME = "execute"
 const EXECUTE_ALLOWED_DECISIONS = ["approve", "reject", "edit"] as const
@@ -34,11 +35,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function buildExecuteApprovalDescription(args: Record<string, unknown>): string {
   const command = typeof args.command === "string" ? args.command : null
   const lines = ["Shell command approval required."]
+  const prediction = getMutationPrediction(args)
 
   if (command) {
     lines.push("", `Command: ${command}`)
   } else {
     lines.push("", `Args: ${JSON.stringify(args, null, 2)}`)
+  }
+
+  if (prediction) {
+    lines.push("", `Prediction: ${prediction.summary}`)
+
+    if (prediction.changes.length > 0) {
+      lines.push("", "Predicted files:")
+      for (const change of prediction.changes.slice(0, 8)) {
+        lines.push(`- ${change.changeType}: ${change.path}`)
+      }
+
+      if (prediction.changes.length > 8) {
+        lines.push(`- +${prediction.changes.length - 8} more`)
+      }
+    }
+
+    if (prediction.stderr) {
+      lines.push("", `Simulator stderr: ${prediction.stderr}`)
+    }
   }
 
   return lines.join("\n")

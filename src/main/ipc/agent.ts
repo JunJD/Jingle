@@ -85,6 +85,130 @@ async function persistPendingHitlFromStream(
   return true
 }
 
+function cloneStreamDataForIpc<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+function getProjectedFileSize(file: unknown): number | undefined {
+  if (!file || typeof file !== "object") {
+    return undefined
+  }
+
+  if (typeof (file as { size?: unknown }).size === "number") {
+    return (file as { size: number }).size
+  }
+
+  const content = (file as { content?: unknown }).content
+  if (typeof content === "string") {
+    return content.length
+  }
+
+  if (Array.isArray(content)) {
+    return content.reduce((total, line) => total + (typeof line === "string" ? line.length : 0), 0)
+  }
+
+  return undefined
+}
+
+function projectFilesForIpc(
+  files: unknown
+): Array<{ path: string; is_dir?: boolean; size?: number }> | undefined {
+  if (Array.isArray(files)) {
+    const projectedFiles = files.flatMap((file) => {
+      if (!file || typeof file !== "object") {
+        return []
+      }
+
+      const path = (file as { path?: unknown }).path
+      if (typeof path !== "string" || !path) {
+        return []
+      }
+
+      const projectedFile = {
+        path
+      } as { path: string; is_dir?: boolean; size?: number }
+
+      if (typeof (file as { is_dir?: unknown }).is_dir === "boolean") {
+        projectedFile.is_dir = (file as { is_dir: boolean }).is_dir
+      }
+
+      const size = getProjectedFileSize(file)
+      if (size !== undefined) {
+        projectedFile.size = size
+      }
+
+      return [projectedFile]
+    })
+
+    return projectedFiles.length > 0 ? projectedFiles : undefined
+  }
+
+  if (!files || typeof files !== "object") {
+    return undefined
+  }
+
+  const projectedFiles = Object.entries(files).map(([path, file]) => {
+    const projectedFile = {
+      path
+    } as { path: string; is_dir?: boolean; size?: number }
+    const size = getProjectedFileSize(file)
+
+    if (size !== undefined) {
+      projectedFile.size = size
+    }
+
+    return projectedFile
+  })
+
+  return projectedFiles.length > 0 ? projectedFiles : undefined
+}
+
+function projectValuesStreamDataForIpc(data: unknown): Record<string, unknown> {
+  if (!data || typeof data !== "object") {
+    return {}
+  }
+
+  const state = data as {
+    __interrupt__?: unknown
+    files?: unknown
+    messages?: unknown
+    todos?: unknown
+    workspacePath?: unknown
+  }
+  const projectedState: Record<string, unknown> = {}
+
+  if (Array.isArray(state.messages)) {
+    projectedState.messages = state.messages
+  }
+
+  if (Array.isArray(state.todos)) {
+    projectedState.todos = state.todos
+  }
+
+  if (typeof state.workspacePath === "string" && state.workspacePath.trim()) {
+    projectedState.workspacePath = state.workspacePath
+  }
+
+  const projectedFiles = projectFilesForIpc(state.files)
+  if (projectedFiles) {
+    projectedState.files = projectedFiles
+  }
+
+  if (Array.isArray(state.__interrupt__)) {
+    projectedState.__interrupt__ = state.__interrupt__
+  }
+
+  return projectedState
+}
+
+function serializeStreamChunkForIpc(mode: string, data: unknown): unknown {
+  if (mode === "values") {
+    return cloneStreamDataForIpc(projectValuesStreamDataForIpc(data))
+  }
+
+  return cloneStreamDataForIpc(data)
+}
+
 export function registerAgentHandlers(ipcMain: IpcMain): void {
   console.log("[Agent] Registering agent handlers...")
 
@@ -182,7 +306,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         window.webContents.send(channel, {
           type: "stream",
           mode,
-          data: JSON.parse(JSON.stringify(data))
+          data: serializeStreamChunkForIpc(mode, data)
         })
       }
 
@@ -294,7 +418,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         window.webContents.send(channel, {
           type: "stream",
           mode,
-          data: JSON.parse(JSON.stringify(data))
+          data: serializeStreamChunkForIpc(mode, data)
         })
       }
 
@@ -394,7 +518,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         window.webContents.send(channel, {
           type: "stream",
           mode,
-          data: JSON.parse(JSON.stringify(data))
+          data: serializeStreamChunkForIpc(mode, data)
         })
       }
 

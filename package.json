@@ -102,6 +102,7 @@
     "deepagents": "^1.5.1",
     "electron": "^39.2.6",
     "electron-store": "^8.2.0",
+    "just-bash": "^2.14.0",
     "langchain": "^1.2.12",
     "lucide-react": "^0.469.0",
     "motion": "^12.38.0",

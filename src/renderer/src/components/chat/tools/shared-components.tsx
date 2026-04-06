@@ -15,7 +15,12 @@ export function ToolDetailStack(props: {
   }
 
   return (
-    <div className={cn("grid gap-2.5 text-[13px] leading-5 text-muted-foreground", className)}>
+    <div
+      className={cn(
+        "grid min-w-0 max-w-full gap-2.5 text-[13px] leading-5 text-muted-foreground [&>*]:min-w-0",
+        className
+      )}
+    >
       {children}
     </div>
   )
@@ -34,7 +39,7 @@ export function ToolCodeBlock(props: {
   return (
     <pre
       className={cn(
-        "overflow-x-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-5 text-foreground/80",
+        "min-w-0 max-w-full overflow-x-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-5 text-foreground/80",
         className
       )}
     >

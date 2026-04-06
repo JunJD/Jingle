@@ -114,7 +114,10 @@ function isExcludedMacFileSearchPath(filePath: string, kind: "file" | "directory
   const normalizedPath = path.normalize(filePath)
 
   for (const excludedRoot of MAC_FILE_SEARCH_EXCLUDED_ROOTS) {
-    if (normalizedPath === excludedRoot || normalizedPath.startsWith(`${excludedRoot}${path.sep}`)) {
+    if (
+      normalizedPath === excludedRoot ||
+      normalizedPath.startsWith(`${excludedRoot}${path.sep}`)
+    ) {
       return true
     }
   }
@@ -315,7 +318,21 @@ async function searchMacFiles(
     }
   }
 
-  const candidatePaths = await collectMacSpotlightPaths(request.query.trim(), request.limit)
+  let candidatePaths: string[]
+
+  try {
+    candidatePaths = await collectMacSpotlightPaths(request.query.trim(), request.limit)
+  } catch (error) {
+    console.warn("[LauncherSearch][files] Spotlight search failed:", {
+      error: error instanceof Error ? error.message : String(error),
+      query: request.query
+    })
+
+    return {
+      results: []
+    }
+  }
+
   const candidates = (
     await Promise.all(
       candidatePaths.map((candidatePath) => resolveMacFileSearchCandidate(candidatePath, query))

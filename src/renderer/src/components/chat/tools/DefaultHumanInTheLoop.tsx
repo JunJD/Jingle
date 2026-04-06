@@ -10,7 +10,7 @@ export const defaultHumanInTheLoop: HumanInTheLoopDefinition = {
     const canEdit = request.allowed_decisions.includes("edit")
 
     return (
-      <div className="grid gap-3 rounded-xl bg-status-warning/10 px-4 py-3">
+      <div className="grid min-w-0 max-w-full gap-3 overflow-hidden rounded-xl bg-status-warning/10 px-4 py-3">
         {rawArgs ? (
           <ToolDetailStack className="text-foreground/80">
             <ToolCodeBlock>{rawArgs}</ToolCodeBlock>

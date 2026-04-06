@@ -1,4 +1,8 @@
 import type { FileInfo, Todo } from "@/types"
+import {
+  getMutationPrediction,
+  type MutationPrediction
+} from "../../../../../shared/mutation-prediction"
 
 export type ToolFileEntry = string | FileInfo
 
@@ -26,6 +30,10 @@ export function getPathArg(args: Record<string, unknown>): string | null {
 
 export function getCommandArg(args: Record<string, unknown>): string | null {
   return typeof args.command === "string" && args.command.trim().length > 0 ? args.command : null
+}
+
+export function getMutationPredictionArg(args: Record<string, unknown>): MutationPrediction | null {
+  return getMutationPrediction(args)
 }
 
 export function getPatternArg(args: Record<string, unknown>): string | null {

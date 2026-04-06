@@ -93,7 +93,9 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     status === "approval" ? copy.common.approval : status === "running" ? copy.common.running : null
 
   return (
-    <div className={cn("grid", presentation === "grouped" ? "gap-1" : "gap-1.5")}>
+    <div
+      className={cn("grid min-w-0 max-w-full", presentation === "grouped" ? "gap-1" : "gap-1.5")}
+    >
       <button
         className={cn(
           "inline-flex max-w-full min-w-0 items-center gap-3 rounded-lg px-0 text-left transition-colors",
@@ -130,7 +132,14 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       </button>
 
       {hasDetail && isExpanded ? (
-        <div className={cn(presentation === "grouped" ? "pl-6" : "pl-7")}>{detail}</div>
+        <div
+          className={cn(
+            "min-w-0 max-w-full overflow-hidden",
+            presentation === "grouped" ? "pl-0" : "pl-7"
+          )}
+        >
+          {detail}
+        </div>
       ) : null}
     </div>
   )

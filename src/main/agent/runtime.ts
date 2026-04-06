@@ -12,7 +12,10 @@ import { getAgentConfig } from "../ipc/models"
 import { getOpenworkDir } from "../storage"
 import { PrismaCheckpointSaver } from "../checkpointer/prisma-saver"
 import { LocalSandbox } from "./local-sandbox"
+import { createGuardrailMiddleware } from "./guardrail-middleware"
 import { createExecuteApprovalMiddleware } from "./execute-approval-middleware"
+import { JustBashMutationPredictor } from "./mutation-predictor"
+import { createMutationPredictionGuardrailProvider } from "./mutation-prediction-guardrail-provider"
 import { anthropicPromptCachingMiddleware, createAgent, todoListMiddleware } from "langchain"
 import { getChatModelInstance } from "../llm/get-chat-model"
 
@@ -124,6 +127,13 @@ export async function createAgentRuntime(
     timeout: 120_000, // 2 minutes
     maxOutputBytes: 100_000 // ~100KB
   })
+  const mutationPredictor = new JustBashMutationPredictor({
+    workspacePath
+  })
+  const guardrailProvider = createMutationPredictionGuardrailProvider({
+    predictor: mutationPredictor,
+    denyStatuses: ["unsupported_command", "simulation_error", "timed_out"]
+  })
 
   const systemPrompt = getSystemPrompt(workspacePath)
   const agentConfig = getAgentConfig()
@@ -175,6 +185,11 @@ The workspace root is: ${workspacePath}`
         backend,
         sources: memorySources,
         addCacheControl: model instanceof ChatAnthropic
+      }),
+      createGuardrailMiddleware({
+        provider: guardrailProvider,
+        threadId,
+        workspacePath
       }),
       createExecuteApprovalMiddleware()
     ] as const

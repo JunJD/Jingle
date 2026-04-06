@@ -62,18 +62,29 @@ export async function searchLauncher(
     }
   }
 
-  const providerResponses = await Promise.all(
+  const providerResponses = await Promise.allSettled(
     selectedProviders.map((provider) => provider.search(normalizedRequest))
   )
 
   const sortedEntries = providerResponses
-    .flatMap((response, providerResponseIndex) =>
-      response.results.map((result, resultIndex) => ({
+    .flatMap((providerResponse, providerResponseIndex) => {
+      if (providerResponse.status === "rejected") {
+        const provider = selectedProviders[providerResponseIndex]
+        console.warn(`[LauncherSearch] Provider "${provider?.source ?? "unknown"}" failed:`, {
+          error:
+            providerResponse.reason instanceof Error
+              ? providerResponse.reason.message
+              : String(providerResponse.reason)
+        })
+        return []
+      }
+
+      return providerResponse.value.results.map((result, resultIndex) => ({
         providerResponseIndex,
         result,
         resultIndex
       }))
-    )
+    })
     .sort((left, right) => {
       if (right.result.score !== left.result.score) {
         return right.result.score - left.result.score
