@@ -16,6 +16,7 @@ import { createGuardrailMiddleware } from "./guardrail-middleware"
 import { createExecuteApprovalMiddleware } from "./execute-approval-middleware"
 import { JustBashMutationPredictor } from "./mutation-predictor"
 import { createMutationPredictionGuardrailProvider } from "./mutation-prediction-guardrail-provider"
+import { createSubagentReadOnlyGuardrailMiddleware } from "./subagent-read-only-guardrail"
 import { anthropicPromptCachingMiddleware, createAgent, todoListMiddleware } from "langchain"
 import { getChatModelInstance } from "../llm/get-chat-model"
 
@@ -161,7 +162,7 @@ export async function createAgentRuntime(
 
 The workspace root is: ${workspacePath}`
 
-  function createAgentLoopMiddleware() {
+  function createSharedAgentLoopMiddleware() {
     return [
       todoListMiddleware(),
       createFilesystemMiddleware({
@@ -185,7 +186,13 @@ The workspace root is: ${workspacePath}`
         backend,
         sources: memorySources,
         addCacheControl: model instanceof ChatAnthropic
-      }),
+      })
+    ] as const
+  }
+
+  function createRootAgentLoopMiddleware() {
+    return [
+      ...createSharedAgentLoopMiddleware(),
       createGuardrailMiddleware({
         provider: guardrailProvider,
         threadId,
@@ -195,13 +202,23 @@ The workspace root is: ${workspacePath}`
     ] as const
   }
 
+  function createSubagentAgentLoopMiddleware() {
+    return [
+      ...createSharedAgentLoopMiddleware(),
+      createSubagentReadOnlyGuardrailMiddleware({
+        threadId,
+        workspacePath
+      })
+    ] as const
+  }
+
   const [rootTodoMiddleware, rootFilesystemMiddleware, ...rootAgentLoopTailMiddleware] =
-    createAgentLoopMiddleware()
+    createRootAgentLoopMiddleware()
 
   function createSubagentMiddlewareStack(): SubagentMiddlewareStack {
     // createSubAgentMiddleware accepts the same runtime middleware stack, but its
     // input type is narrower than the concrete middleware instances we use here.
-    return [...createAgentLoopMiddleware()] as unknown as SubagentMiddlewareStack
+    return [...createSubagentAgentLoopMiddleware()] as unknown as SubagentMiddlewareStack
   }
 
   const agent = createAgent({
