@@ -311,6 +311,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
         ls: "列出目录",
         read_file: "读取文件",
         task: "子代理任务",
+        web_search: "搜索网页",
         write_file: "写入文件",
         write_todos: "更新任务"
       },
@@ -485,6 +486,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
         ls: "List Directory",
         read_file: "Read File",
         task: "Subagent Task",
+        web_search: "Search Web",
         write_file: "Write File",
         write_todos: "Update Tasks"
       },

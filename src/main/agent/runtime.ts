@@ -27,6 +27,7 @@ import type * as _lcZodTypes from "@langchain/core/utils/types"
 
 import { BASE_SYSTEM_PROMPT } from "./system-prompt"
 import { ChatAnthropic } from "@langchain/anthropic"
+import { createWebToolsMiddleware } from "./web-tools-middleware"
 
 /**
  * Generate the full system prompt for the agent.
@@ -169,6 +170,7 @@ The workspace root is: ${workspacePath}`
         backend,
         systemPrompt: filesystemSystemPrompt
       }),
+      createWebToolsMiddleware(),
       createSummarizationMiddleware({
         model,
         backend

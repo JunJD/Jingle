@@ -50,6 +50,9 @@ const electronAPI = {
   openSettings: (): Promise<void> => {
     return ipcRenderer.invoke("settings:openWindow")
   },
+  openExternal: (url: string): Promise<void> => {
+    return ipcRenderer.invoke("shell:openExternal", url)
+  },
   openSettingsTab: (
     tab: SettingsWindowTab,
     target?: SettingsWindowNavigationPayload["target"]

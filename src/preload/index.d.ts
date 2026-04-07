@@ -40,6 +40,7 @@ interface ElectronAPI {
     invoke: (channel: string, ...args: unknown[]) => Promise<unknown>
   }
   openSettings: () => Promise<void>
+  openExternal: (url: string) => Promise<void>
   openSettingsTab: (
     tab: SettingsWindowTab,
     target?: SettingsWindowNavigationPayload["target"]

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, nativeImage } from "electron"
 import { join } from "path"
 import { installApplicationMenu } from "./app-menu"
 import { registerAgentHandlers } from "./ipc/agent"
+import { registerExternalLinkHandlers } from "./ipc/external-links"
 import { registerLauncherHistoryHandlers } from "./ipc/launcher-history"
 import { registerLocalStartHandlers } from "./ipc/local-start"
 import { registerThreadHandlers } from "./ipc/threads"
@@ -112,6 +113,7 @@ if (hasSingleInstanceLock) {
 
     // Register IPC handlers
     registerAgentHandlers(ipcMain)
+    registerExternalLinkHandlers(ipcMain)
     registerLauncherHistoryHandlers(ipcMain)
     registerLocalStartHandlers(ipcMain)
     registerThreadHandlers(ipcMain)
