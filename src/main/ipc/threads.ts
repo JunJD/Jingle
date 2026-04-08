@@ -18,6 +18,7 @@ import {
 import { closeCheckpointer } from "../agent/runtime"
 import { generateTitle } from "../services/title-generator"
 import { formatDefaultThreadTitle } from "../../shared/i18n"
+import { toDisplayUserMessageContent } from "../../shared/message-content"
 import { getAgentConfig } from "./models"
 import type {
   Message,
@@ -44,6 +45,7 @@ function mapCheckpointMessagesToThreadMessages(
   return checkpointMessages.map((row) => {
     let content: Message["content"] = ""
     let tool_calls: Message["tool_calls"] | undefined
+    let metadata: Message["metadata"] | undefined
 
     try {
       content = JSON.parse(row.content) as Message["content"]
@@ -59,11 +61,20 @@ function mapCheckpointMessagesToThreadMessages(
       }
     }
 
+    if (row.metadata) {
+      try {
+        metadata = JSON.parse(row.metadata) as Message["metadata"]
+      } catch {
+        metadata = undefined
+      }
+    }
+
     return {
       id: row.message_id,
       role: row.role as Message["role"],
-      content,
+      content: row.role === "user" ? toDisplayUserMessageContent(content, metadata) : content,
       tool_calls,
+      metadata,
       ...(row.tool_call_id ? { tool_call_id: row.tool_call_id } : {}),
       ...(row.name ? { name: row.name } : {}),
       created_at: new Date(row.created_at)

@@ -9,7 +9,7 @@ import {
   type PendingWrite,
   type SerializerProtocol
 } from "@langchain/langgraph-checkpoint"
-import { syncMessagesFromSnapshot, upsertHitlRequest } from "../db"
+import { syncMessageSearchIndexFromSnapshot, upsertHitlRequest } from "../db"
 import { getPrismaClient } from "../db/client"
 import {
   extractHitlRequestFromCheckpoint,
@@ -230,9 +230,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       metadata
     } as CheckpointTuple
     const messages = extractMessagesFromCheckpoint(threadId, tuple)
-    if (messages.length > 0) {
-      await syncMessagesFromSnapshot(threadId, runId, messages)
-    }
+    await syncMessageSearchIndexFromSnapshot(threadId, messages)
 
     const hitlRequest = extractHitlRequestFromCheckpoint(threadId, tuple, { runId })
     if (hitlRequest) {

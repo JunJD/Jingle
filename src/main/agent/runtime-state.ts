@@ -2,6 +2,7 @@ import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
 import type { ActionRequest, ReviewConfig } from "langchain"
 import type { HitlRequestRow } from "../db"
 import type { HITLRequest, Todo, ToolCall } from "../types"
+import { toComposerMessageMetadata, normalizeComposerMessageRefs } from "../../shared/message-content"
 
 interface CheckpointChannelMessage {
   id?: string
@@ -10,6 +11,7 @@ interface CheckpointChannelMessage {
     content?: string | unknown[]
     tool_calls?: ToolCall[]
     additional_kwargs?: {
+      refs?: unknown
       tool_calls?: Array<{
         id?: string
         function?: {
@@ -120,6 +122,13 @@ function getCheckpointToolCalls(message: CheckpointChannelMessage): ToolCall[] {
   }
 
   return []
+}
+
+function getCheckpointMessageMetadata(
+  message: CheckpointChannelMessage
+): Record<string, unknown> | null {
+  const refs = normalizeComposerMessageRefs(message.kwargs?.additional_kwargs?.refs)
+  return toComposerMessageMetadata({ refs }) ?? null
 }
 
 function getCheckpointMessageId(
@@ -257,6 +266,7 @@ export function extractMessagesFromCheckpoint(
       typeof rawContent === "string" ? rawContent : Array.isArray(rawContent) ? rawContent : ""
     const toolCalls = getCheckpointToolCalls(message)
     const messageId = getCheckpointMessageId(threadId, index, role, message)
+    const messageMetadata = getCheckpointMessageMetadata(message)
 
     return {
       message_id: messageId,
@@ -266,7 +276,7 @@ export function extractMessagesFromCheckpoint(
       tool_calls: toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
       tool_call_id: message.kwargs?.tool_call_id ?? message.tool_call_id ?? null,
       name: message.kwargs?.name ?? message.name ?? null,
-      metadata: null,
+      metadata: messageMetadata ? JSON.stringify(messageMetadata) : null,
       created_at: now + index
     }
   })

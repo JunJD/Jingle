@@ -147,7 +147,7 @@ export default function LauncherApp(): React.JSX.Element {
         workspacePath
       })
 
-      threadContext.initializeThread(thread.thread_id)
+      threadContext.ensureThreadRuntime(thread.thread_id)
       const actions = threadContext.getThreadActions(thread.thread_id)
       actions.setCurrentModel(defaultModelId)
       actions.setWorkspacePath(workspacePath)
@@ -164,7 +164,10 @@ export default function LauncherApp(): React.JSX.Element {
   const submitPluginThread = useCallback(
     async (input: LauncherThreadSubmitInput): Promise<void> => {
       await invokeThreadMessage({
-        message: input.message,
+        input: {
+          refs: [],
+          text: input.message
+        },
         threadContext,
         threadId: input.threadId
       })

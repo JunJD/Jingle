@@ -1,10 +1,7 @@
 import { useCallback, useMemo, useState } from "react"
 import type { ClipboardContext } from "@shared/clipboard"
-import {
-  isAiAttachmentFilePath,
-  isAiAttachmentImagePath
-} from "@shared/launcher-attachments"
-import type { Message } from "@/types"
+import { isAiAttachmentFilePath, isAiAttachmentImagePath } from "@shared/launcher-attachments"
+import type { ComposerMessageRef } from "@shared/message-content"
 import { useAiCoreClipboard } from "./AiCoreHost"
 
 export type LauncherAiAttachmentDraft =
@@ -128,9 +125,8 @@ async function toPickedAttachment(file: PickerFile): Promise<LauncherAiAttachmen
 export function useAiAttachments(): {
   attachments: LauncherAiAttachmentDraft[]
   addSelectedFiles: (files: FileList | File[]) => Promise<void>
-  buildMessageContent: (message: string) => Message["content"]
   clearAllAttachments: () => void
-  hasAttachments: boolean
+  messageRefs: ComposerMessageRef[]
   removeAttachment: (attachmentId: string) => void
 } {
   const clipboard = useAiCoreClipboard()
@@ -151,7 +147,23 @@ export function useAiAttachments(): {
     return mergedAttachments.filter((attachment) => !dismissedAttachmentIds.has(attachment.id))
   }, [clipboardAttachments, dismissedAttachmentIds, pickedImages])
 
-  const hasAttachments = attachments.length > 0
+  const messageRefs = useMemo<ComposerMessageRef[]>(() => {
+    return attachments.map((attachment) => {
+      if (attachment.kind === "image") {
+        return {
+          name: attachment.name,
+          type: "image",
+          url: attachment.previewDataUrl
+        }
+      }
+
+      return {
+        name: attachment.name,
+        path: attachment.path,
+        type: "file"
+      }
+    })
+  }, [attachments])
 
   const addSelectedFiles = useCallback(async (files: FileList | File[]): Promise<void> => {
     const selectedFiles = Array.from(files)
@@ -193,45 +205,6 @@ export function useAiAttachments(): {
     })
   }, [])
 
-  const buildMessageContent = useCallback(
-    (message: string): Message["content"] => {
-      if (attachments.length === 0) {
-        return message
-      }
-
-      const blocks: Exclude<Message["content"], string> = []
-      const trimmedMessage = message.trim()
-
-      if (trimmedMessage) {
-        blocks.push({
-          text: trimmedMessage,
-          type: "text"
-        })
-      }
-
-      for (const attachment of attachments) {
-        if (attachment.kind === "image") {
-          blocks.push({
-            content: attachment.previewDataUrl,
-            mimeType: "image/png",
-            name: attachment.name,
-            type: "image"
-          })
-          continue
-        }
-
-        blocks.push({
-          content: attachment.path,
-          name: attachment.name,
-          type: "file"
-        })
-      }
-
-      return blocks
-    },
-    [attachments]
-  )
-
   const clearAllAttachments = useCallback((): void => {
     if (attachments.length === 0) {
       return
@@ -250,9 +223,8 @@ export function useAiAttachments(): {
   return {
     attachments,
     addSelectedFiles,
-    buildMessageContent,
     clearAllAttachments,
-    hasAttachments,
+    messageRefs,
     removeAttachment
   }
 }

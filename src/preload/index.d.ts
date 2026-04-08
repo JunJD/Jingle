@@ -18,7 +18,7 @@ import type { ClipboardContext } from "../shared/clipboard"
 import type { LauncherHistoryItem } from "../shared/launcher-history"
 import type { CreateLocalStartItemInput, LocalStartItem } from "../shared/local-start"
 import type { LauncherSettings } from "../shared/launcher-settings"
-import type { AgentMessageContent } from "../shared/message-content"
+import type { AgentInvokeMessage } from "../shared/message-content"
 import type {
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionInvokeRequest,
@@ -56,13 +56,13 @@ interface CustomAPI {
   agent: {
     invoke: (
       threadId: string,
-      message: AgentMessageContent,
+      message: AgentInvokeMessage,
       onEvent: (event: IPCEvent) => void,
       modelId?: string
     ) => () => void
     streamAgent: (
       threadId: string,
-      message: AgentMessageContent,
+      message: AgentInvokeMessage,
       command: unknown,
       onEvent: (event: IPCEvent) => void,
       modelId?: string

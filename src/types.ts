@@ -15,6 +15,7 @@ export interface IPCMessage {
   type: "human" | "ai" | "tool" | "system"
   content: string | ContentBlock[]
   tool_calls?: { id: string; name: string; args: Record<string, unknown> }[]
+  metadata?: Record<string, unknown>
 }
 
 export interface IPCValuesEvent {
@@ -55,11 +56,6 @@ export interface IPCStreamEvent {
   data: unknown
 }
 
-export interface IPCUserMessageEvent {
-  type: "user_message"
-  message: IPCMessage
-}
-
 export interface IPCDoneEvent {
   type: "done"
 }
@@ -71,7 +67,6 @@ export interface IPCErrorEvent {
 
 export type IPCEvent =
   | IPCValuesEvent
-  | IPCUserMessageEvent
   | IPCTokenEvent
   | IPCToolCallEvent
   | IPCStreamEvent

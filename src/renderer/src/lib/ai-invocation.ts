@@ -1,9 +1,13 @@
 import { useCallback, useMemo, useState } from "react"
 import type { HITLDecision, Message } from "@/types"
 import {
-  extractMessageText,
+  hasComposerMessageInputContent,
   hasMessageContent,
-  toAgentMessageContent
+  toComposerMessageMetadata,
+  toComposerMessageInput,
+  toAgentMessageContent,
+  toMessageContent,
+  type ComposerMessageInput
 } from "../../../shared/message-content"
 import {
   useThreadContext,
@@ -26,8 +30,7 @@ export interface EnsureAiThreadResult {
 }
 
 interface InvokeThreadMessageArgs {
-  content?: Message["content"]
-  message: string
+  input: ComposerMessageInput
   threadContext: ThreadContextValue
   threadId: string
   onAfterAppendMessage?: (input: {
@@ -70,16 +73,9 @@ export async function waitForThreadStream(
 }
 
 export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promise<boolean> {
-  const {
-    content,
-    message: rawMessage,
-    onAfterAppendMessage,
-    threadContext,
-    threadId,
-    validateInvocation
-  } = args
-  const message = rawMessage.trim()
-  const displayContent = content ?? message
+  const { input, onAfterAppendMessage, threadContext, threadId, validateInvocation } = args
+  const message = input.text.trim()
+  const displayContent = toMessageContent(input)
   const submitContent = toAgentMessageContent(displayContent)
   if (!hasMessageContent(displayContent) || !hasMessageContent(submitContent)) {
     return false
@@ -110,8 +106,17 @@ export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promis
   }
 
   const isFirstMessage = threadState.messages.length === 0
+  const userMessageId = crypto.randomUUID()
+  const userMessageMetadata = toComposerMessageMetadata({ refs: input.refs })
 
   actions.setDraftInput("")
+  actions.appendMessage({
+    id: userMessageId,
+    role: "user",
+    content: displayContent,
+    ...(userMessageMetadata ? { metadata: userMessageMetadata } : {}),
+    created_at: new Date()
+  } satisfies Message)
 
   await onAfterAppendMessage?.({
     actions,
@@ -123,7 +128,14 @@ export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promis
 
   await stream.submit(
     {
-      messages: [{ type: "human", content: submitContent }]
+      messages: [
+        {
+          id: userMessageId,
+          type: "human",
+          content: submitContent,
+          ...(input.refs.length > 0 ? { additional_kwargs: { refs: input.refs } } : {})
+        }
+      ]
     },
     {
       config: {
@@ -146,7 +158,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
   clearVisibleError: () => void
   conversation: ReturnType<typeof useThreadConversationProjection>
   input: string
-  invoke: (message?: string, content?: Message["content"]) => Promise<boolean>
+  invoke: (input?: ComposerMessageInput) => Promise<boolean>
   isBusy: boolean
   isPreparing: boolean
   resume: (decision: HITLDecision["type"]) => Promise<void>
@@ -163,7 +175,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
   const [localError, setLocalError] = useState<string | null>(null)
   const [isPreparing, setIsPreparing] = useState(false)
 
-  const input = threadState?.draftInput ?? pendingInput
+  const draftInput = threadState?.draftInput ?? pendingInput
   const visibleError = conversation.error ?? localError
   const isBusy = conversation.isLoading || isPreparing
 
@@ -189,11 +201,14 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
   )
 
   const invoke = useCallback(
-    async (nextMessage?: string, content?: Message["content"]): Promise<boolean> => {
-      const draftInput = nextMessage ?? input
-      const message = draftInput.trim()
-      const nextContent = content ?? draftInput
-      if (isBusy || !hasMessageContent(nextContent)) {
+    async (nextInput?: ComposerMessageInput): Promise<boolean> => {
+      const input = nextInput ?? {
+        refs: [],
+        text: draftInput
+      }
+      const message = input.text.trim()
+
+      if (isBusy || !hasComposerMessageInputContent(input)) {
         return false
       }
 
@@ -207,7 +222,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
           }
 
           const createdThread = await ensureThread({
-            draftInput,
+            draftInput: input.text,
             message
           })
           nextThreadId = createdThread.threadId
@@ -216,8 +231,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
         setLocalError(null)
 
         return await invokeThreadMessage({
-          content: nextContent,
-          message,
+          input,
           onAfterAppendMessage,
           threadContext,
           threadId: nextThreadId,
@@ -230,7 +244,15 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
         setIsPreparing(false)
       }
     },
-    [ensureThread, input, isBusy, onAfterAppendMessage, threadContext, threadId, validateInvocation]
+    [
+      draftInput,
+      ensureThread,
+      isBusy,
+      onAfterAppendMessage,
+      threadContext,
+      threadId,
+      validateInvocation
+    ]
   )
 
   const stop = useCallback(async (): Promise<void> => {
@@ -244,38 +266,35 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
     [conversation]
   )
 
-  const lastUserMessage = useMemo(() => {
+  const lastUserMessageInput = useMemo(() => {
     for (let index = conversation.displayMessages.length - 1; index >= 0; index -= 1) {
       const message = conversation.displayMessages[index]
       if (message.role !== "user" || !hasMessageContent(message.content)) {
         continue
       }
 
-      return {
-        content: message.content,
-        draftInput: extractMessageText(message.content).trim()
-      }
+      return toComposerMessageInput(message.content, message.metadata)
     }
 
     return null
   }, [conversation.displayMessages])
 
   const retry = useCallback(async (): Promise<void> => {
-    if (!lastUserMessage) {
+    if (!lastUserMessageInput) {
       return
     }
 
-    await invoke(lastUserMessage.draftInput, lastUserMessage.content)
-  }, [invoke, lastUserMessage])
+    await invoke(lastUserMessageInput)
+  }, [invoke, lastUserMessageInput])
 
   return {
-    canInvoke: Boolean(input.trim()) && !isBusy,
+    canInvoke: Boolean(draftInput.trim()) && !isBusy,
     canResume: Boolean(conversation.pendingApproval) && !isPreparing,
-    canRetry: Boolean(lastUserMessage) && !isBusy,
+    canRetry: Boolean(lastUserMessageInput) && !isBusy,
     canStop: Boolean(conversation.stream) && conversation.isLoading,
     clearVisibleError,
     conversation,
-    input,
+    input: draftInput,
     invoke,
     isBusy,
     isPreparing,

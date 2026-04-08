@@ -4,8 +4,15 @@ import type { ActionRequest, ReviewConfig } from "langchain"
 import type { StreamPayload, StreamEvent, IPCEvent, IPCStreamEvent } from "../../../types"
 import type { ContentBlock } from "@/types"
 import type { Subagent } from "../types"
-import type { AgentMessageContent } from "../../../shared/message-content"
-import { hasMessageContent, toDisplayMessageContent } from "../../../shared/message-content"
+import type { AgentInvokeMessage, AgentMessageContent } from "../../../shared/message-content"
+import {
+  extractComposerMessageRefsMetadata,
+  hasMessageContent,
+  normalizeComposerMessageRefs,
+  toComposerMessageMetadata,
+  toDisplayMessageContent,
+  toDisplayUserMessageContent
+} from "../../../shared/message-content"
 
 /**
  * Usage metadata from LangChain model responses.
@@ -45,6 +52,17 @@ interface SerializedMessageChunk {
     tool_call_chunks?: ToolCallChunk[]
     tool_call_id?: string
     name?: string
+    additional_kwargs?: {
+      refs?: unknown
+      tool_calls?: Array<{
+        id?: string
+        function?: {
+          name?: string
+          arguments?: string
+        }
+      }>
+      [key: string]: unknown
+    }
     usage_metadata?: UsageMetadata
     response_metadata?: {
       usage?: UsageMetadata
@@ -188,6 +206,9 @@ export class ElectronIPCTransport implements UseStreamTransport {
     const input = payload.input as
       | {
           messages?: Array<{
+            additional_kwargs?: {
+              refs?: unknown
+            }
             content: AgentMessageContent
             id?: string
             type: string
@@ -198,6 +219,17 @@ export class ElectronIPCTransport implements UseStreamTransport {
     const messages = input?.messages ?? []
     const lastHumanMessage = messages.find((m) => m.type === "human")
     const messageContent = lastHumanMessage?.content ?? ""
+    const messageRefs = normalizeComposerMessageRefs(lastHumanMessage?.additional_kwargs?.refs)
+    const invokeMessage: AgentInvokeMessage | null = lastHumanMessage
+      ? {
+          content: messageContent,
+          id:
+            typeof lastHumanMessage.id === "string" && lastHumanMessage.id.length > 0
+              ? lastHumanMessage.id
+              : crypto.randomUUID(),
+          ...(messageRefs.length > 0 ? { additional_kwargs: { refs: messageRefs } } : {})
+        }
+      : null
 
     // Only require message content if not resuming
     if (!hasMessageContent(messageContent) && !hasResumeCommand) {
@@ -207,7 +239,7 @@ export class ElectronIPCTransport implements UseStreamTransport {
     // Create an async generator that bridges IPC events
     return this.createStreamGenerator(
       threadId,
-      messageContent,
+      invokeMessage,
       payload.command,
       payload.signal,
       modelId
@@ -223,7 +255,7 @@ export class ElectronIPCTransport implements UseStreamTransport {
 
   private async *createStreamGenerator(
     threadId: string,
-    message: AgentMessageContent,
+    message: AgentInvokeMessage | null,
     command: unknown,
     signal: AbortSignal,
     modelId?: string
@@ -249,7 +281,10 @@ export class ElectronIPCTransport implements UseStreamTransport {
     // Start the stream via IPC (pass modelId to use the selected model)
     const cleanup = window.api.agent.streamAgent(
       threadId,
-      message,
+      message ?? {
+        content: "",
+        id: crypto.randomUUID()
+      },
       command,
       (ipcEvent) => {
         // Convert IPC events to SDK format
@@ -340,14 +375,6 @@ export class ElectronIPCTransport implements UseStreamTransport {
         events.push(...streamEvents)
         break
       }
-
-      // Legacy: Token streaming for real-time typing effect
-      case "user_message":
-        events.push({
-          event: "messages",
-          data: [event.message, { langgraph_node: "human" }]
-        })
-        break
 
       case "token":
         events.push({
@@ -517,6 +544,9 @@ export class ElectronIPCTransport implements UseStreamTransport {
         this.currentMessageId = msgId
 
         if (content || kwargs.tool_calls?.length) {
+          const messageMetadata = toComposerMessageMetadata({
+            refs: extractComposerMessageRefsMetadata(kwargs.additional_kwargs)
+          })
           events.push({
             event: "messages",
             data: [
@@ -524,6 +554,7 @@ export class ElectronIPCTransport implements UseStreamTransport {
                 id: msgId,
                 type: "ai",
                 content: content || "",
+                ...(messageMetadata ? { metadata: messageMetadata } : {}),
                 // Include tool_calls if present
                 ...(kwargs.tool_calls?.length && { tool_calls: kwargs.tool_calls })
               },
@@ -587,6 +618,9 @@ export class ElectronIPCTransport implements UseStreamTransport {
       if (isToolMessage && kwargs.tool_call_id) {
         const content = this.extractContent(kwargs.content)
         const msgId = kwargs.id || crypto.randomUUID()
+        const messageMetadata = toComposerMessageMetadata({
+          refs: extractComposerMessageRefsMetadata(kwargs.additional_kwargs)
+        })
 
         // Emit tool message to the stream
         events.push({
@@ -596,6 +630,7 @@ export class ElectronIPCTransport implements UseStreamTransport {
               id: msgId,
               type: "tool",
               content,
+              ...(messageMetadata ? { metadata: messageMetadata } : {}),
               tool_call_id: kwargs.tool_call_id,
               name: kwargs.name
             },
@@ -672,12 +707,19 @@ export class ElectronIPCTransport implements UseStreamTransport {
           : className.includes("Tool")
             ? "tool"
             : "ai"
-        const content = this.extractContent(kwargs.content)
+        const messageMetadata = toComposerMessageMetadata({
+          refs: extractComposerMessageRefsMetadata(kwargs.additional_kwargs)
+        })
+        const content =
+          type === "human"
+            ? toDisplayUserMessageContent(kwargs.content, messageMetadata)
+            : this.extractContent(kwargs.content)
 
         return {
           id: kwargs.id || crypto.randomUUID(),
           type,
           content,
+          ...(messageMetadata ? { metadata: messageMetadata } : {}),
           // Include tool_calls for AI messages
           ...(type === "ai" && kwargs.tool_calls && { tool_calls: kwargs.tool_calls }),
           // Include tool_call_id and name for tool messages

@@ -5,6 +5,7 @@
     "dashscope",
     "deepagents",
     "HITL",
+    "kwargs",
     "langchain",
     "Langgraph",
     "minimizable",
@@ -12,6 +13,7 @@
     "Prefs",
     "Renderable",
     "serde",
+    "Tavily",
     "unins"
   ],
   "editor.formatOnSave": true,

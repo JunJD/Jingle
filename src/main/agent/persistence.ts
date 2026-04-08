@@ -1,8 +1,7 @@
 import { randomUUID } from "crypto"
 import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
-import { createMessage, createRun, getLatestRun, updateRun, updateThread } from "../db"
+import { createRun, getLatestRun, updateRun, updateThread } from "../db"
 import { getCheckpointer } from "./runtime"
-import type { AgentMessageContent } from "../../shared/message-content"
 
 type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted"
 
@@ -14,12 +13,9 @@ function resolveCheckpointRunStatus(tuple: CheckpointTuple | undefined): Persist
 
 export async function beginAgentRun(
   threadId: string,
-  message: AgentMessageContent,
   modelId?: string
-): Promise<{ runId: string; userMessageId: string }> {
+): Promise<{ runId: string }> {
   const runId = randomUUID()
-  const userMessageId = randomUUID()
-  const now = Date.now()
 
   await createRun(runId, threadId, {
     status: "running",
@@ -28,23 +24,12 @@ export async function beginAgentRun(
     }
   })
 
-  await createMessage({
-    message_id: userMessageId,
-    thread_id: threadId,
-    run_id: runId,
-    role: "user",
-    kind: "message",
-    content: JSON.stringify(message),
-    created_at: now
-  })
-
   await updateThread(threadId, {
     status: "busy"
   })
 
   return {
-    runId,
-    userMessageId
+    runId
   }
 }
 

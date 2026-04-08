@@ -33,7 +33,7 @@ export function LauncherAiPage(): React.JSX.Element {
     setQuery,
     threadId
   } = useAiThread({
-    buildMessageContent: attachmentDraft.buildMessageContent,
+    messageRefs: attachmentDraft.messageRefs,
     onDidInvoke: attachmentDraft.clearAllAttachments
   })
   const { inputRef, setInputStatus } = surface

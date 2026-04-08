@@ -29,6 +29,13 @@ import { warmLauncherSearchProviders } from "./services/launcher-search"
 import { initializeNativeMenuBar } from "./services/native-menu-bar"
 import type { SettingsWindowNavigationPayload } from "../shared/settings-window"
 
+const remoteDebuggingPort = process.env.OPENWORK_REMOTE_DEBUGGING_PORT
+if (remoteDebuggingPort) {
+  // Expose Electron's Chromium target for external CDP clients like agent-browser.
+  app.commandLine.appendSwitch("remote-debugging-port", remoteDebuggingPort)
+  app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1")
+}
+
 let launcherWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null

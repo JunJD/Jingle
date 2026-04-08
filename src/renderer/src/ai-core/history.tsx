@@ -78,6 +78,14 @@ function MainAppContent(): React.JSX.Element {
   }, [loadThreads, createThread])
 
   useEffect(() => {
+    if (!currentThreadId) {
+      return
+    }
+
+    void threadContext.reloadThread(currentThreadId)
+  }, [currentThreadId, threadContext])
+
+  useEffect(() => {
     const handleWindowFocus = (): void => {
       void (async () => {
         await loadThreads()

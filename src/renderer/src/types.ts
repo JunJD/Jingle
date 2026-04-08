@@ -81,6 +81,7 @@ export interface Message {
   role: "user" | "assistant" | "system" | "tool"
   content: string | ContentBlock[]
   tool_calls?: ToolCall[]
+  metadata?: Record<string, unknown>
   // For tool messages - links result to its tool call
   tool_call_id?: string
   // For tool messages - the name of the tool

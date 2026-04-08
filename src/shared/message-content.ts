@@ -13,6 +13,135 @@ export type AgentMessageContent =
         }
     >
 
+export type ComposerMessageRef =
+  | {
+      type: "file"
+      name: string
+      path: string
+    }
+  | {
+      type: "image"
+      name?: string
+      url: string
+    }
+
+export interface ComposerMessageInput {
+  refs: ComposerMessageRef[]
+  text: string
+}
+
+export interface AgentInvokeMessage {
+  additional_kwargs?: {
+    refs?: ComposerMessageRef[]
+  }
+  content: AgentMessageContent
+  id: string
+}
+
+function normalizeComposerMessageRef(value: unknown): ComposerMessageRef | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const ref = value as {
+    name?: unknown
+    path?: unknown
+    type?: unknown
+    url?: unknown
+  }
+
+  if (ref.type === "file") {
+    if (typeof ref.name !== "string" || typeof ref.path !== "string") {
+      return null
+    }
+
+    const name = ref.name.trim()
+    const path = ref.path.trim()
+    if (!name || !path) {
+      return null
+    }
+
+    return {
+      name,
+      path,
+      type: "file"
+    }
+  }
+
+  if (ref.type === "image") {
+    if (typeof ref.url !== "string") {
+      return null
+    }
+
+    const url = ref.url.trim()
+    if (!url) {
+      return null
+    }
+
+    const name = typeof ref.name === "string" ? ref.name.trim() : ""
+    return {
+      ...(name ? { name } : {}),
+      type: "image",
+      url
+    }
+  }
+
+  return null
+}
+
+export function normalizeComposerMessageRefs(value: unknown): ComposerMessageRef[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.flatMap((entry) => {
+    const ref = normalizeComposerMessageRef(entry)
+    return ref ? [ref] : []
+  })
+}
+
+export function toComposerMessageMetadata(
+  input: Pick<ComposerMessageInput, "refs">
+): Record<string, unknown> | undefined {
+  if (input.refs.length === 0) {
+    return undefined
+  }
+
+  return {
+    refs: input.refs
+  }
+}
+
+export function extractComposerMessageRefsMetadata(metadata: unknown): ComposerMessageRef[] {
+  if (!metadata || typeof metadata !== "object") {
+    return []
+  }
+
+  return normalizeComposerMessageRefs((metadata as { refs?: unknown }).refs)
+}
+
+function getSyntheticFileRefsText(refs: ComposerMessageRef[]): string | null {
+  const fileNames = refs
+    .filter((ref): ref is Extract<ComposerMessageRef, { type: "file" }> => ref.type === "file")
+    .map((ref) => ref.name.trim())
+    .filter(Boolean)
+
+  if (fileNames.length === 0) {
+    return null
+  }
+
+  return `Attached files:\n${fileNames.map((name) => `- ${name}`).join("\n")}`
+}
+
+function stripSyntheticRefsText(text: string, refs: ComposerMessageRef[]): string {
+  const syntheticFileRefsText = getSyntheticFileRefsText(refs)
+  if (syntheticFileRefsText && text.trim() === syntheticFileRefsText.trim()) {
+    return ""
+  }
+
+  return text
+}
+
 function isContentBlockLike(value: unknown): value is ContentBlock {
   return (
     typeof value === "object" &&
@@ -88,7 +217,13 @@ export function extractMessageText(
         return block.text
       }
 
-      if ("content" in block && typeof block.content === "string") {
+      if (
+        block.type !== "file" &&
+        block.type !== "image" &&
+        block.type !== "image_url" &&
+        "content" in block &&
+        typeof block.content === "string"
+      ) {
         return block.content
       }
 
@@ -144,6 +279,27 @@ export function summarizeMessageContent(
   return ""
 }
 
+export function hasComposerMessageInputContent(input: ComposerMessageInput | undefined): boolean {
+  if (!input) {
+    return false
+  }
+
+  if (input.text.trim().length > 0) {
+    return true
+  }
+
+  return input.refs.some((ref) => {
+    switch (ref.type) {
+      case "file":
+        return ref.path.trim().length > 0
+      case "image":
+        return ref.url.trim().length > 0
+      default:
+        return false
+    }
+  })
+}
+
 export function hasMessageContent(
   content: string | ContentBlock[] | AgentMessageContent | undefined
 ): boolean {
@@ -177,6 +333,127 @@ export function hasMessageContent(
 
     return getDisplayBlockText(block as ContentBlock).trim().length > 0
   })
+}
+
+export function toMessageContent(input: ComposerMessageInput): string | ContentBlock[] {
+  if (input.refs.length === 0) {
+    return input.text
+  }
+
+  const blocks: ContentBlock[] = []
+
+  if (input.text.trim().length > 0) {
+    blocks.push({
+      text: input.text,
+      type: "text"
+    })
+  }
+
+  for (const ref of input.refs) {
+    switch (ref.type) {
+      case "file":
+        blocks.push({
+          content: ref.path,
+          name: ref.name,
+          type: "file"
+        })
+        break
+      case "image":
+        blocks.push({
+          content: ref.url,
+          ...(ref.name ? { name: ref.name } : {}),
+          type: "image"
+        })
+        break
+    }
+  }
+
+  return blocks
+}
+
+export function toComposerMessageInput(
+  content: string | ContentBlock[] | AgentMessageContent | undefined,
+  metadata?: unknown
+): ComposerMessageInput {
+  const metadataRefs = extractComposerMessageRefsMetadata(metadata)
+
+  if (typeof content === "string") {
+    return {
+      refs: metadataRefs,
+      text: stripSyntheticRefsText(content, metadataRefs)
+    }
+  }
+
+  if (!Array.isArray(content)) {
+    return {
+      refs: metadataRefs,
+      text: ""
+    }
+  }
+
+  const textParts: string[] = []
+  const refs: ComposerMessageRef[] = []
+
+  for (const block of content) {
+    if (typeof block !== "object" || block === null || !("type" in block)) {
+      continue
+    }
+
+    switch (block.type) {
+      case "text":
+        if (typeof block.text === "string") {
+          const text = stripSyntheticRefsText(block.text, metadataRefs)
+          if (text.length > 0) {
+            textParts.push(text)
+          }
+        }
+        break
+      case "image":
+      case "image_url": {
+        const url = resolveImageBlockUrl(block)
+        if (url) {
+          const name =
+            "name" in block && typeof block.name === "string" && block.name.length > 0
+              ? block.name
+              : undefined
+
+          refs.push({
+            ...(name ? { name } : {}),
+            type: "image",
+            url
+          })
+        }
+        break
+      }
+      case "file": {
+        const path = typeof block.content === "string" ? block.content : ""
+        const name =
+          typeof block.name === "string" && block.name.length > 0
+            ? block.name
+            : path || "Attachment"
+
+        if (path.trim().length > 0) {
+          refs.push({
+            name,
+            path,
+            type: "file"
+          })
+        }
+        break
+      }
+      default: {
+        const text = getDisplayBlockText(block).trim()
+        if (text.length > 0) {
+          textParts.push(text)
+        }
+      }
+    }
+  }
+
+  return {
+    refs: metadataRefs.length > 0 ? metadataRefs : refs,
+    text: textParts.join("")
+  }
 }
 
 export function toAgentMessageContent(content: string | ContentBlock[]): AgentMessageContent {
@@ -243,4 +520,11 @@ export function toAgentMessageContent(content: string | ContentBlock[]): AgentMe
   }
 
   return agentBlocks
+}
+
+export function toDisplayUserMessageContent(
+  content: string | ContentBlock[] | AgentMessageContent | undefined,
+  metadata?: unknown
+): string | ContentBlock[] {
+  return toMessageContent(toComposerMessageInput(content, metadata))
 }

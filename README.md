@@ -36,6 +36,10 @@ npm run dev
 
 Or configure them in-app via the settings panel.
 
+## Electron Debugging
+
+For CDP-based debugging against the real Electron window, see [docs/openwork-electron-debugging.md](docs/openwork-electron-debugging.md).
+
 ## BDD Testing
 
 The repository now includes a minimal Electron BDD harness built on Cucumber and Playwright.

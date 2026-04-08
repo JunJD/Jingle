@@ -1,5 +1,5 @@
 import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
-import type { AgentMessageContent } from "../shared/message-content"
+import type { AgentInvokeMessage } from "../shared/message-content"
 import type { AppLocale } from "../shared/i18n"
 
 // Thread types matching langgraph-api
@@ -12,7 +12,7 @@ export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
 // Agent IPC
 export interface AgentInvokeParams {
   threadId: string
-  message: AgentMessageContent
+  message: AgentInvokeMessage
   modelId?: string
 }
 
@@ -143,6 +143,7 @@ export interface Message {
   role: "user" | "assistant" | "system" | "tool"
   content: string | ContentBlock[]
   tool_calls?: ToolCall[]
+  metadata?: Record<string, unknown>
   created_at: Date
 }
 

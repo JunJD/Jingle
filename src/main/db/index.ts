@@ -1,5 +1,12 @@
 import { mkdirSync } from "fs"
 import { dirname } from "path"
+import type { ContentBlock } from "../../shared/app-types"
+import {
+  extractComposerMessageRefsMetadata,
+  extractMessageText,
+  summarizeMessageContent,
+  type AgentMessageContent
+} from "../../shared/message-content"
 import { getDbPath } from "../storage"
 import { closePrismaClient, getPrismaClient } from "./client"
 
@@ -7,7 +14,7 @@ const REQUIRED_TABLES = [
   "_prisma_migrations",
   "threads",
   "runs",
-  "messages",
+  "messages_fts",
   "assistants",
   "session_bindings",
   "hitl_requests",
@@ -38,22 +45,6 @@ export interface RunRow {
   kwargs: string | null
 }
 
-export interface MessageRow {
-  message_id: string
-  thread_id: string
-  run_id: string | null
-  seq: number
-  role: string
-  kind: string
-  content: string
-  tool_calls: string | null
-  tool_call_id: string | null
-  name: string | null
-  metadata: string | null
-  created_at: number
-  updated_at: number
-}
-
 export interface HitlRequestRow {
   request_id: string
   thread_id: string
@@ -80,22 +71,6 @@ export interface UpdateRunInput {
   status?: string | null
   metadata?: Record<string, unknown> | string | null
   kwargs?: Record<string, unknown> | string | null
-}
-
-export interface PersistedMessageInput {
-  message_id: string
-  thread_id: string
-  run_id?: string | null
-  seq: number
-  role: string
-  kind: string
-  content: string
-  tool_calls?: string | null
-  tool_call_id?: string | null
-  name?: string | null
-  metadata?: string | null
-  created_at: number
-  updated_at: number
 }
 
 export interface UpsertHitlRequestInput {
@@ -168,38 +143,6 @@ function mapRunRow(row: {
     status: row.status,
     metadata: row.metadata,
     kwargs: row.kwargs
-  }
-}
-
-function mapMessageRow(row: {
-  messageId: string
-  threadId: string
-  runId: string | null
-  seq: number
-  role: string
-  kind: string
-  content: string
-  toolCalls: string | null
-  toolCallId: string | null
-  name: string | null
-  metadata: string | null
-  createdAt: bigint
-  updatedAt: bigint
-}): MessageRow {
-  return {
-    message_id: row.messageId,
-    thread_id: row.threadId,
-    run_id: row.runId,
-    seq: row.seq,
-    role: row.role,
-    kind: row.kind,
-    content: row.content,
-    tool_calls: row.toolCalls,
-    tool_call_id: row.toolCallId,
-    name: row.name,
-    metadata: row.metadata,
-    created_at: toNumber(row.createdAt),
-    updated_at: toNumber(row.updatedAt)
   }
 }
 
@@ -352,29 +295,27 @@ export async function updateThread(
 export async function deleteThread(threadId: string): Promise<void> {
   const prisma = getPrismaClient()
 
-  await prisma.$transaction([
-    prisma.hitlRequest.deleteMany({
-      where: { threadId }
-    }),
-    prisma.message.deleteMany({
-      where: { threadId }
-    }),
-    prisma.checkpointWrite.deleteMany({
-      where: { threadId }
-    }),
-    prisma.checkpoint.deleteMany({
-      where: { threadId }
-    }),
-    prisma.sessionBinding.deleteMany({
-      where: { currentThreadId: threadId }
-    }),
-    prisma.run.deleteMany({
-      where: { threadId }
-    }),
-    prisma.thread.deleteMany({
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`DELETE FROM "messages_fts" WHERE thread_id = ?`, threadId)
+    await tx.hitlRequest.deleteMany({
       where: { threadId }
     })
-  ])
+    await tx.checkpointWrite.deleteMany({
+      where: { threadId }
+    })
+    await tx.checkpoint.deleteMany({
+      where: { threadId }
+    })
+    await tx.sessionBinding.deleteMany({
+      where: { currentThreadId: threadId }
+    })
+    await tx.run.deleteMany({
+      where: { threadId }
+    })
+    await tx.thread.deleteMany({
+      where: { threadId }
+    })
+  })
 }
 
 export async function createRun(
@@ -443,196 +384,85 @@ export async function getLatestRun(threadId: string, statuses?: string[]): Promi
   return row ? mapRunRow(row) : null
 }
 
-export async function listMessages(threadId: string): Promise<MessageRow[]> {
-  const prisma = getPrismaClient()
-  const rows = await prisma.message.findMany({
-    where: {
-      threadId
-    },
-    orderBy: [{ seq: "asc" }, { createdAt: "asc" }]
-  })
-
-  return rows.map(mapMessageRow)
+type IndexedCheckpointMessage = {
+  content: string
+  message_id: string
+  metadata?: string | null
+  role: string
 }
 
-export async function createMessage(
-  input: Omit<PersistedMessageInput, "seq" | "updated_at"> & { seq?: number; updated_at?: number }
-): Promise<MessageRow> {
-  const prisma = getPrismaClient()
-  const now = input.updated_at ?? input.created_at
-
-  const row = await prisma.$transaction(async (tx) => {
-    const maxSeqRow = await tx.message.aggregate({
-      where: {
-        threadId: input.thread_id
-      },
-      _max: {
-        seq: true
-      }
-    })
-    const nextSeq = input.seq ?? (maxSeqRow._max.seq ?? -1) + 1
-
-    const created = await tx.message.create({
-      data: {
-        messageId: input.message_id,
-        threadId: input.thread_id,
-        runId: input.run_id ?? null,
-        seq: nextSeq,
-        role: input.role,
-        kind: input.kind,
-        content: input.content,
-        toolCalls: input.tool_calls ?? null,
-        toolCallId: input.tool_call_id ?? null,
-        name: input.name ?? null,
-        metadata: input.metadata ?? null,
-        createdAt: BigInt(input.created_at),
-        updatedAt: BigInt(now)
-      }
-    })
-
-    await tx.thread.update({
-      where: {
-        threadId: input.thread_id
-      },
-      data: {
-        updatedAt: BigInt(now)
-      }
-    })
-
-    return created
-  })
-
-  return mapMessageRow(row)
+function parseIndexedMessageContent(
+  content: string
+): string | ContentBlock[] | AgentMessageContent {
+  try {
+    const parsed = JSON.parse(content) as unknown
+    return typeof parsed === "string" || Array.isArray(parsed)
+      ? (parsed as string | ContentBlock[] | AgentMessageContent)
+      : content
+  } catch {
+    return content
+  }
 }
 
-export async function syncMessagesFromSnapshot(
-  threadId: string,
-  currentRunId: string | null,
-  messages: Array<
-    Omit<PersistedMessageInput, "thread_id" | "run_id" | "seq" | "updated_at"> & {
-      seq?: number
+function buildIndexedMessageSearchText(message: IndexedCheckpointMessage): string {
+  const parsedContent = parseIndexedMessageContent(message.content)
+  const refs = (() => {
+    if (!message.metadata) {
+      return []
     }
-  >
+
+    try {
+      return extractComposerMessageRefsMetadata(JSON.parse(message.metadata) as unknown)
+    } catch {
+      return []
+    }
+  })()
+
+  const refLabels = refs.map((ref) => {
+    switch (ref.type) {
+      case "file":
+        return ref.name
+      case "image":
+        return ref.name || ref.url
+      default:
+        return ""
+    }
+  })
+
+  const candidateParts = [
+    extractMessageText(parsedContent).trim(),
+    summarizeMessageContent(parsedContent).trim(),
+    ...refLabels.map((part) => part.trim())
+  ]
+
+  return Array.from(new Set(candidateParts.filter(Boolean))).join("\n")
+}
+
+export async function syncMessageSearchIndexFromSnapshot(
+  threadId: string,
+  messages: IndexedCheckpointMessage[]
 ): Promise<void> {
   const prisma = getPrismaClient()
-  const existing = await listMessages(threadId)
-
-  const normalizedIncoming = messages.map((message, index) => ({
-    message_id: message.message_id,
-    thread_id: threadId,
-    run_id: null,
-    seq: index,
-    role: message.role,
-    kind: message.kind,
-    content: message.content,
-    tool_calls: message.tool_calls ?? null,
-    tool_call_id: message.tool_call_id ?? null,
-    name: message.name ?? null,
-    metadata: message.metadata ?? null,
-    created_at: message.created_at,
-    updated_at: message.created_at
-  }))
-
-  const makeFingerprint = (
-    message: Pick<MessageRow, "role" | "kind" | "content" | "tool_calls" | "tool_call_id" | "name">
-  ): string =>
-    JSON.stringify([
-      message.role,
-      message.kind,
-      message.content,
-      message.tool_calls ?? null,
-      message.tool_call_id ?? null,
-      message.name ?? null
-    ])
-
-  const isExistingPrefix = existing.every((message, index) => {
-    const incoming = normalizedIncoming[index]
-    if (!incoming) {
-      return false
-    }
-
-    return makeFingerprint(message) === makeFingerprint(incoming)
-  })
-
-  const lastUserIndex = normalizedIncoming.reduce((found, message, index) => {
-    return message.role === "user" ? index : found
-  }, -1)
+  const indexedMessages = messages
+    .map((message) => ({
+      messageId: message.message_id,
+      role: message.role,
+      searchText: buildIndexedMessageSearchText(message)
+    }))
+    .filter((message) => message.searchText.length > 0)
 
   await prisma.$transaction(async (tx) => {
-    if (existing.length > 0 && isExistingPrefix && normalizedIncoming.length >= existing.length) {
-      const appended = normalizedIncoming.slice(existing.length).map((message) => ({
-        messageId: message.message_id,
+    await tx.$executeRawUnsafe(`DELETE FROM "messages_fts" WHERE thread_id = ?`, threadId)
+
+    for (const message of indexedMessages) {
+      await tx.$executeRawUnsafe(
+        `INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text") VALUES (?, ?, ?, ?)`,
         threadId,
-        runId: currentRunId,
-        seq: message.seq,
-        role: message.role,
-        kind: message.kind,
-        content: message.content,
-        toolCalls: message.tool_calls,
-        toolCallId: message.tool_call_id,
-        name: message.name,
-        metadata: message.metadata,
-        createdAt: BigInt(message.created_at),
-        updatedAt: BigInt(message.updated_at)
-      }))
-
-      if (appended.length > 0) {
-        await tx.message.createMany({
-          data: appended
-        })
-
-        const lastTimestamp = appended[appended.length - 1]?.updatedAt
-        if (lastTimestamp) {
-          await tx.thread.update({
-            where: {
-              threadId
-            },
-            data: {
-              updatedAt: lastTimestamp
-            }
-          })
-        }
-      }
-
-      return
+        message.messageId,
+        message.role,
+        message.searchText
+      )
     }
-
-    await tx.message.deleteMany({
-      where: {
-        threadId
-      }
-    })
-
-    if (normalizedIncoming.length === 0) {
-      return
-    }
-
-    await tx.message.createMany({
-      data: normalizedIncoming.map((message) => ({
-        messageId: message.message_id,
-        threadId,
-        runId: currentRunId && message.seq >= lastUserIndex ? currentRunId : null,
-        seq: message.seq,
-        role: message.role,
-        kind: message.kind,
-        content: message.content,
-        toolCalls: message.tool_calls,
-        toolCallId: message.tool_call_id,
-        name: message.name,
-        metadata: message.metadata,
-        createdAt: BigInt(message.created_at),
-        updatedAt: BigInt(message.updated_at)
-      }))
-    })
-
-    await tx.thread.update({
-      where: {
-        threadId
-      },
-      data: {
-        updatedAt: BigInt(normalizedIncoming[normalizedIncoming.length - 1].updated_at)
-      }
-    })
   })
 }
 

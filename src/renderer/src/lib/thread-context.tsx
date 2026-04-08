@@ -83,7 +83,7 @@ export interface ThreadActions {
 export interface ThreadContextValue {
   getThreadState: (threadId: string) => ThreadState
   getThreadActions: (threadId: string) => ThreadActions
-  initializeThread: (threadId: string) => void
+  ensureThreadRuntime: (threadId: string) => void
   cleanupThread: (threadId: string) => void
   reloadThread: (threadId: string) => Promise<void>
   // Stream subscription
@@ -576,23 +576,18 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     [getThreadActions, updateThreadState]
   )
 
-  const initializeThread = useCallback(
-    (threadId: string) => {
-      if (initializedThreadsRef.current.has(threadId)) return
-      initializedThreadsRef.current.add(threadId)
+  const ensureThreadRuntime = useCallback((threadId: string) => {
+    if (initializedThreadsRef.current.has(threadId)) return
+    initializedThreadsRef.current.add(threadId)
 
-      // Add to active threads (this will render a ThreadStreamHolder)
-      setActiveThreadIds((prev) => new Set([...prev, threadId]))
+    // Add to active threads (this will render a ThreadStreamHolder)
+    setActiveThreadIds((prev) => new Set([...prev, threadId]))
 
-      setThreadStates((prev) => {
-        if (prev[threadId]) return prev
-        return { ...prev, [threadId]: createDefaultThreadState() }
-      })
-
-      loadThreadHistory(threadId)
-    },
-    [loadThreadHistory]
-  )
+    setThreadStates((prev) => {
+      if (prev[threadId]) return prev
+      return { ...prev, [threadId]: createDefaultThreadState() }
+    })
+  }, [])
 
   const cleanupThread = useCallback((threadId: string) => {
     initializedThreadsRef.current.delete(threadId)
@@ -614,20 +609,19 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
   const reloadThread = useCallback(
     async (threadId: string) => {
       if (!initializedThreadsRef.current.has(threadId)) {
-        initializeThread(threadId)
-        return
+        ensureThreadRuntime(threadId)
       }
 
       await loadThreadHistory(threadId)
     },
-    [initializeThread, loadThreadHistory]
+    [ensureThreadRuntime, loadThreadHistory]
   )
 
   const contextValue = useMemo<ThreadContextValue>(
     () => ({
       getThreadState,
       getThreadActions,
-      initializeThread,
+      ensureThreadRuntime,
       cleanupThread,
       reloadThread,
       subscribeToStream,
@@ -639,7 +633,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     [
       getThreadState,
       getThreadActions,
-      initializeThread,
+      ensureThreadRuntime,
       cleanupThread,
       reloadThread,
       subscribeToStream,
@@ -692,7 +686,7 @@ export function useCurrentThread(threadId: string): ThreadState & ThreadActions 
   const context = useThreadContext()
 
   useEffect(() => {
-    context.initializeThread(threadId)
+    context.ensureThreadRuntime(threadId)
   }, [threadId, context])
 
   const state = context.getThreadState(threadId)
@@ -706,7 +700,7 @@ export function useThreadState(threadId: string | null): (ThreadState & ThreadAc
   const context = useThreadContext()
 
   useEffect(() => {
-    if (threadId) context.initializeThread(threadId)
+    if (threadId) context.ensureThreadRuntime(threadId)
   }, [threadId, context])
 
   if (!threadId) return null

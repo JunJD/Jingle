@@ -12,6 +12,7 @@ interface StreamMessage {
   content?: Message["content"]
   tool_calls?: Message["tool_calls"]
   tool_call_id?: string
+  metadata?: Message["metadata"]
   name?: string
 }
 
@@ -38,6 +39,7 @@ function toThreadMessage(message: StreamMessage & { id: string }): Message {
     content:
       typeof message.content === "string" || Array.isArray(message.content) ? message.content : "",
     tool_calls: message.tool_calls,
+    metadata: message.metadata,
     ...(role === "tool" && message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
     ...(role === "tool" && message.name ? { name: message.name } : {}),
     created_at: new Date()
