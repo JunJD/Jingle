@@ -2,6 +2,8 @@ import type { UseStreamTransport } from "@langchain/langgraph-sdk/react"
 import type { ToolCall, ToolCallChunk } from "@langchain/core/messages"
 import type { ActionRequest, ReviewConfig } from "langchain"
 import type { StreamPayload, StreamEvent, IPCEvent, IPCStreamEvent } from "../../../types"
+import { getDefaultHitlAllowedDecisions, normalizeHitlAllowedDecisions } from "../../../shared/hitl"
+import { parseToolApprovalItem } from "../../../shared/tool-approval"
 import type { ContentBlock } from "@/types"
 import type { Subagent } from "../types"
 import type { AgentInvokeMessage, AgentMessageContent } from "../../../shared/message-content"
@@ -86,6 +88,7 @@ interface InterruptActionRequest extends ActionRequest {
   id?: string
   toolCallId?: string
   description?: string
+  review?: unknown
 }
 
 // Accumulated tool call data (for streaming tool calls)
@@ -465,11 +468,8 @@ export class ElectronIPCTransport implements UseStreamTransport {
                       name: firstAction.name,
                       args: firstAction.args || {}
                     },
-                    allowed_decisions: reviewConfig?.allowedDecisions || [
-                      "approve",
-                      "reject",
-                      "edit"
-                    ]
+                    review: parseToolApprovalItem(firstAction.review),
+                    allowed_decisions: normalizeHitlAllowedDecisions(reviewConfig?.allowedDecisions)
                   }
                 }
               })
@@ -483,7 +483,8 @@ export class ElectronIPCTransport implements UseStreamTransport {
                 request: {
                   id: interrupt.id || crypto.randomUUID(),
                   tool_call: interrupt.tool_call,
-                  allowed_decisions: ["approve", "reject", "edit"]
+                  review: null,
+                  allowed_decisions: getDefaultHitlAllowedDecisions()
                 }
               }
             })
@@ -798,7 +799,8 @@ export class ElectronIPCTransport implements UseStreamTransport {
                   name: firstAction.name,
                   args: firstAction.args || {}
                 },
-                allowed_decisions: reviewConfig?.allowedDecisions || ["approve", "reject", "edit"]
+                review: parseToolApprovalItem(firstAction.review),
+                allowed_decisions: normalizeHitlAllowedDecisions(reviewConfig?.allowedDecisions)
               }
             }
           })

@@ -2,7 +2,12 @@ import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
 import type { ActionRequest, ReviewConfig } from "langchain"
 import type { HitlRequestRow } from "../db"
 import type { HITLRequest, Todo, ToolCall } from "../types"
-import { toComposerMessageMetadata, normalizeComposerMessageRefs } from "../../shared/message-content"
+import { getDefaultHitlAllowedDecisions, normalizeHitlAllowedDecisions } from "../../shared/hitl"
+import { parseToolApprovalItem } from "../../shared/tool-approval"
+import {
+  toComposerMessageMetadata,
+  normalizeComposerMessageRefs
+} from "../../shared/message-content"
 
 interface CheckpointChannelMessage {
   id?: string
@@ -35,6 +40,7 @@ interface InterruptActionRequest extends ActionRequest {
   id?: string
   toolCallId?: string
   description?: string
+  review?: unknown
 }
 
 interface CheckpointInterruptValue {
@@ -237,6 +243,10 @@ function getInterruptActionToolCallId(
   return undefined
 }
 
+function getInterruptActionReview(action: InterruptActionRequest | undefined) {
+  return parseToolApprovalItem(action?.review)
+}
+
 export function extractMessagesFromCheckpoint(
   threadId: string,
   tuple: CheckpointTuple | undefined
@@ -344,9 +354,10 @@ export function extractHitlRequestFromCheckpoint(
   const requestContextId = options?.runId || checkpointId
   const requestKey = toolCallId || action.id || `${actionIndex}:${action.name}`
   const requestId = `hitl:${threadId}:${requestContextId}:${requestKey}`
-  const allowedDecisions = interruptValue?.reviewConfigs?.find(
-    (config) => config.actionName === action.name
-  )?.allowedDecisions || ["approve", "reject", "edit"]
+  const allowedDecisions = normalizeHitlAllowedDecisions(
+    interruptValue?.reviewConfigs?.find((config) => config.actionName === action.name)
+      ?.allowedDecisions
+  )
 
   return {
     id: requestId,
@@ -355,7 +366,8 @@ export function extractHitlRequestFromCheckpoint(
       name: action.name,
       args: toolArgs
     },
-    allowed_decisions: allowedDecisions
+    allowed_decisions: allowedDecisions,
+    review: getInterruptActionReview(action)
   }
 }
 
@@ -379,9 +391,10 @@ export function extractHitlRequestFromValuesState(
   const toolCallId = getInterruptActionToolCallId(action) || matchedToolCall?.id
   const requestKey = toolCallId || action.id || `${actionIndex}:${action.name}`
   const requestId = `hitl:${threadId}:${runId}:${requestKey}`
-  const allowedDecisions = interruptValue?.reviewConfigs?.find(
-    (config) => config.actionName === action.name
-  )?.allowedDecisions || ["approve", "reject", "edit"]
+  const allowedDecisions = normalizeHitlAllowedDecisions(
+    interruptValue?.reviewConfigs?.find((config) => config.actionName === action.name)
+      ?.allowedDecisions
+  )
 
   return {
     id: requestId,
@@ -390,13 +403,15 @@ export function extractHitlRequestFromValuesState(
       name: action.name,
       args: toolArgs
     },
-    allowed_decisions: allowedDecisions
+    allowed_decisions: allowedDecisions,
+    review: getInterruptActionReview(action)
   }
 }
 
 export function mapHitlRowToRequest(row: HitlRequestRow): HITLRequest {
   let toolArgs: Record<string, unknown> = {}
-  let allowedDecisions: HITLRequest["allowed_decisions"] = ["approve", "reject", "edit"]
+  let allowedDecisions: HITLRequest["allowed_decisions"] = getDefaultHitlAllowedDecisions()
+  let review: HITLRequest["review"] = null
 
   try {
     toolArgs = JSON.parse(row.tool_args) as Record<string, unknown>
@@ -405,12 +420,15 @@ export function mapHitlRowToRequest(row: HitlRequestRow): HITLRequest {
   }
 
   try {
-    const parsed = JSON.parse(row.allowed_decisions) as HITLRequest["allowed_decisions"]
-    if (Array.isArray(parsed)) {
-      allowedDecisions = parsed
-    }
+    allowedDecisions = normalizeHitlAllowedDecisions(JSON.parse(row.allowed_decisions))
   } catch {
-    allowedDecisions = ["approve", "reject", "edit"]
+    allowedDecisions = getDefaultHitlAllowedDecisions()
+  }
+
+  try {
+    review = parseToolApprovalItem(row.review_payload ? JSON.parse(row.review_payload) : null)
+  } catch {
+    review = null
   }
 
   return {
@@ -420,6 +438,7 @@ export function mapHitlRowToRequest(row: HitlRequestRow): HITLRequest {
       name: row.tool_name,
       args: toolArgs
     },
-    allowed_decisions: allowedDecisions
+    allowed_decisions: allowedDecisions,
+    review
   }
 }

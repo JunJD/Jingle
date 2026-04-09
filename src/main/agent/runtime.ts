@@ -13,10 +13,11 @@ import { getOpenworkDir } from "../storage"
 import { PrismaCheckpointSaver } from "../checkpointer/prisma-saver"
 import { LocalSandbox } from "./local-sandbox"
 import { createGuardrailMiddleware } from "./guardrail-middleware"
-import { createExecuteApprovalMiddleware } from "./execute-approval-middleware"
+import { JustBashExecuteCommandClassifier } from "./execute-command-classifier"
+import { createExecuteCommandGuardrailProvider } from "./execute-command-guardrail-provider"
 import { JustBashMutationPredictor } from "./mutation-predictor"
-import { createMutationPredictionGuardrailProvider } from "./mutation-prediction-guardrail-provider"
 import { createSubagentReadOnlyGuardrailMiddleware } from "./subagent-read-only-guardrail"
+import { createToolApprovalMiddleware } from "./tool-approval-middleware"
 import { anthropicPromptCachingMiddleware, createAgent, todoListMiddleware } from "langchain"
 import { getChatModelInstance } from "../llm/get-chat-model"
 
@@ -132,9 +133,10 @@ export async function createAgentRuntime(
   const mutationPredictor = new JustBashMutationPredictor({
     workspacePath
   })
-  const guardrailProvider = createMutationPredictionGuardrailProvider({
-    predictor: mutationPredictor,
-    denyStatuses: ["unsupported_command", "simulation_error", "timed_out"]
+  const commandClassifier = new JustBashExecuteCommandClassifier()
+  const guardrailProvider = createExecuteCommandGuardrailProvider({
+    classifier: commandClassifier,
+    predictor: mutationPredictor
   })
 
   const systemPrompt = getSystemPrompt(workspacePath)
@@ -200,7 +202,7 @@ The workspace root is: ${workspacePath}`
         threadId,
         workspacePath
       }),
-      createExecuteApprovalMiddleware()
+      createToolApprovalMiddleware()
     ] as const
   }
 

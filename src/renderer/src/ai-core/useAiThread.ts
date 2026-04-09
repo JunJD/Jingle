@@ -4,6 +4,7 @@ import { useAiInvocation } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
 import { hasComposerMessageInputContent, type ComposerMessageRef } from "@shared/message-content"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
+import type { HITLDecision } from "@/types"
 import { useAiCoreHost, useAiCoreThreads } from "./AiCoreHost"
 
 interface UseAiThreadOptions {
@@ -16,7 +17,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     clearVisibleError: () => void
     visibleError: string | null
   }
-  handleApprovalDecision: (decision: "approve" | "reject" | "edit") => Promise<void>
+  handleApprovalDecision: (decision: HITLDecision) => Promise<void>
   inputStatus: LauncherInputStatus
   isBusy: boolean
   primaryActionDisabled: boolean
@@ -105,7 +106,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   }, [host.initialAction, initialMessageInput, invocation, onDidInvoke])
 
   const handleApprovalDecision = useCallback(
-    async (decision: "approve" | "reject" | "edit"): Promise<void> => {
+    async (decision: HITLDecision): Promise<void> => {
       setInputStatus("pending")
       await invocation.resume(decision)
     },

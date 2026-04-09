@@ -22,6 +22,10 @@ const REQUIRED_TABLES = [
   "writes"
 ] as const
 
+const REQUIRED_TABLE_COLUMNS = {
+  hitl_requests: ["review_kind", "review_payload"]
+} as const
+
 let initialized = false
 
 export interface ThreadRow {
@@ -52,6 +56,8 @@ export interface HitlRequestRow {
   tool_call_id: string | null
   tool_name: string
   tool_args: string
+  review_kind: string | null
+  review_payload: string | null
   allowed_decisions: string
   status: string
   decision: string | null
@@ -80,6 +86,8 @@ export interface UpsertHitlRequestInput {
   tool_call_id?: string | null
   tool_name: string
   tool_args: Record<string, unknown> | string
+  review_kind?: string | null
+  review_payload?: unknown
   allowed_decisions: string[] | string
   status?: string
   decision?: Record<string, unknown> | string | null
@@ -92,9 +100,7 @@ function toNumber(value: bigint | number): number {
   return typeof value === "bigint" ? Number(value) : value
 }
 
-function serializeJsonValue(
-  value: Record<string, unknown> | string | null | undefined
-): string | null | undefined {
+function serializeJsonValue(value: unknown): string | null | undefined {
   if (value === undefined) {
     return undefined
   }
@@ -153,6 +159,8 @@ function mapHitlRequestRow(row: {
   toolCallId: string | null
   toolName: string
   toolArgs: string
+  reviewKind: string | null
+  reviewPayload: string | null
   allowedDecisions: string
   status: string
   decision: string | null
@@ -167,6 +175,8 @@ function mapHitlRequestRow(row: {
     tool_call_id: row.toolCallId,
     tool_name: row.toolName,
     tool_args: row.toolArgs,
+    review_kind: row.reviewKind,
+    review_payload: row.reviewPayload,
     allowed_decisions: row.allowedDecisions,
     status: row.status,
     decision: row.decision,
@@ -185,6 +195,20 @@ async function ensurePrismaSchemaApplied(): Promise<void> {
   const missing = REQUIRED_TABLES.filter((name) => !names.has(name))
 
   if (missing.length === 0) {
+    for (const [tableName, requiredColumns] of Object.entries(REQUIRED_TABLE_COLUMNS)) {
+      const columnRows = (await prisma.$queryRawUnsafe(
+        `PRAGMA table_info("${tableName}")`
+      )) as Array<{ name: string }>
+      const columnNames = new Set(columnRows.map((row) => row.name))
+      const missingColumns = requiredColumns.filter((column) => !columnNames.has(column))
+
+      if (missingColumns.length > 0) {
+        throw new Error(
+          `Database schema is not initialized for ${getDbPath()}. Missing columns in ${tableName}: ${missingColumns.join(", ")}. Run \`pnpm prisma:migrate:deploy\` before starting the app.`
+        )
+      }
+    }
+
     return
   }
 
@@ -489,6 +513,8 @@ export async function upsertHitlRequest(input: UpsertHitlRequestInput): Promise<
       toolName: input.tool_name,
       toolArgs:
         typeof input.tool_args === "string" ? input.tool_args : JSON.stringify(input.tool_args),
+      reviewKind: input.review_kind ?? null,
+      reviewPayload: serializeJsonValue(input.review_payload) ?? null,
       allowedDecisions:
         typeof input.allowed_decisions === "string"
           ? input.allowed_decisions
@@ -505,6 +531,11 @@ export async function upsertHitlRequest(input: UpsertHitlRequestInput): Promise<
       toolName: input.tool_name,
       toolArgs:
         typeof input.tool_args === "string" ? input.tool_args : JSON.stringify(input.tool_args),
+      reviewKind: input.review_kind === undefined ? undefined : input.review_kind,
+      reviewPayload:
+        input.review_payload === undefined
+          ? undefined
+          : (serializeJsonValue(input.review_payload) ?? null),
       allowedDecisions:
         typeof input.allowed_decisions === "string"
           ? input.allowed_decisions

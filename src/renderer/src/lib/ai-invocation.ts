@@ -161,7 +161,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
   invoke: (input?: ComposerMessageInput) => Promise<boolean>
   isBusy: boolean
   isPreparing: boolean
-  resume: (decision: HITLDecision["type"]) => Promise<void>
+  resume: (decision: HITLDecision) => Promise<void>
   retry: () => Promise<void>
   setInput: (value: string) => void
   stop: () => Promise<void>
@@ -260,7 +260,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
   }, [conversation.stream])
 
   const resume = useCallback(
-    async (decision: HITLDecision["type"]): Promise<void> => {
+    async (decision: HITLDecision): Promise<void> => {
       await conversation.resumePendingApproval(decision)
     },
     [conversation]

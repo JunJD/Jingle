@@ -1,5 +1,9 @@
 import { ToolMessage } from "@langchain/core/messages"
 import { createMiddleware } from "langchain"
+import {
+  withExecuteCommandPolicy,
+  type ExecuteCommandPolicy
+} from "../../shared/execute-command-policy"
 import { withMutationPrediction, type MutationPrediction } from "../../shared/mutation-prediction"
 
 export interface GuardrailReason {
@@ -20,6 +24,7 @@ export interface GuardrailDecision {
   allow: boolean
   reasons?: GuardrailReason[]
   metadata?: {
+    executeCommandPolicy?: ExecuteCommandPolicy
     mutationPrediction?: MutationPrediction
   }
 }
@@ -49,6 +54,23 @@ function buildDeniedMessage(
     tool_call_id: toolCallId,
     status: "error"
   })
+}
+
+function applyGuardrailMetadata(
+  args: Record<string, unknown>,
+  metadata: GuardrailDecision["metadata"]
+): Record<string, unknown> {
+  let nextArgs = args
+
+  if (metadata?.executeCommandPolicy) {
+    nextArgs = withExecuteCommandPolicy(nextArgs, metadata.executeCommandPolicy)
+  }
+
+  if (metadata?.mutationPrediction) {
+    nextArgs = withMutationPrediction(nextArgs, metadata.mutationPrediction)
+  }
+
+  return nextArgs
 }
 
 export function createGuardrailMiddleware(options: CreateGuardrailMiddlewareOptions) {
@@ -83,13 +105,11 @@ export function createGuardrailMiddleware(options: CreateGuardrailMiddlewareOpti
       }
 
       const nextToolCall =
-        decision.metadata?.mutationPrediction && isRecord(request.toolCall.args)
+        isRecord(request.toolCall.args) &&
+        (decision.metadata?.mutationPrediction || decision.metadata?.executeCommandPolicy)
           ? {
               ...request.toolCall,
-              args: withMutationPrediction(
-                request.toolCall.args,
-                decision.metadata.mutationPrediction
-              )
+              args: applyGuardrailMetadata(request.toolCall.args, decision.metadata)
             }
           : request.toolCall
 

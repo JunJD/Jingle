@@ -78,6 +78,8 @@ model HitlRequest {
   toolCallId        String? @map("tool_call_id")
   toolName          String  @map("tool_name")
   toolArgs          String  @map("tool_args")
+  reviewKind        String? @map("review_kind")
+  reviewPayload     String? @map("review_payload")
   allowedDecisions  String  @map("allowed_decisions")
   status            String  @default("pending")
   decision          String?

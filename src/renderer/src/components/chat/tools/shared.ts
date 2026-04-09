@@ -1,5 +1,9 @@
 import type { FileInfo, Todo } from "@/types"
 import {
+  getExecuteCommandPolicy,
+  type ExecuteCommandPolicy
+} from "../../../../../shared/execute-command-policy"
+import {
   getMutationPrediction,
   type MutationPrediction
 } from "../../../../../shared/mutation-prediction"
@@ -30,6 +34,12 @@ export function getPathArg(args: Record<string, unknown>): string | null {
 
 export function getCommandArg(args: Record<string, unknown>): string | null {
   return typeof args.command === "string" && args.command.trim().length > 0 ? args.command : null
+}
+
+export function getExecuteCommandPolicyArg(
+  args: Record<string, unknown>
+): ExecuteCommandPolicy | null {
+  return getExecuteCommandPolicy(args)
 }
 
 export function getMutationPredictionArg(args: Record<string, unknown>): MutationPrediction | null {

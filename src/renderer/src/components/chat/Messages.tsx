@@ -1,7 +1,13 @@
 import { CopyIcon, FileText, ListTodo, RefreshCcwIcon } from "lucide-react"
 import { useMemo, useState } from "react"
 import { resolveImageBlockUrl } from "../../../../shared/message-content"
-import type { ContentBlock, HITLRequest, Message as ThreadMessage, ToolCall } from "@/types"
+import type {
+  ContentBlock,
+  HITLDecision,
+  HITLRequest,
+  Message as ThreadMessage,
+  ToolCall
+} from "@/types"
 import { ActionMessage } from "./ActionMessage"
 import { createActionMessageView } from "./action-message-view"
 import { useI18n } from "@/lib/i18n"
@@ -42,7 +48,7 @@ interface MessagesProps {
   messages: ThreadMessage[]
   isLoading?: boolean
   pendingApproval?: HITLRequest | null
-  onApprovalDecision?: (decision: "approve" | "reject" | "edit") => void
+  onApprovalDecision?: (decision: HITLDecision) => void
   onRetry?: () => Promise<void> | void
 }
 
@@ -238,7 +244,7 @@ function renderStructuredContent(
 
 function ToolActivityGroup(props: {
   preferLatestToolSummary?: boolean
-  onApprovalDecision?: (decision: "approve" | "reject" | "edit") => void
+  onApprovalDecision?: (decision: HITLDecision) => void
   pendingApproval?: HITLRequest | null
   toolCalls: ToolCall[]
   toolResults: Map<string, ToolResultInfo>
@@ -344,7 +350,7 @@ function ToolActivityGroup(props: {
 function AssistantToolCluster(props: {
   preferLatestToolSummary?: boolean
   messages: ThreadMessage[]
-  onApprovalDecision?: (decision: "approve" | "reject" | "edit") => void
+  onApprovalDecision?: (decision: HITLDecision) => void
   pendingApproval?: HITLRequest | null
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
@@ -418,7 +424,7 @@ function MessageTurnView(props: {
   isActiveTurn: boolean
   isLoading?: boolean
   lastAssistantId: string | null
-  onApprovalDecision?: (decision: "approve" | "reject" | "edit") => void
+  onApprovalDecision?: (decision: HITLDecision) => void
   onRetry?: () => Promise<void> | void
   pendingApproval?: HITLRequest | null
   toolResults: Map<string, ToolResultInfo>

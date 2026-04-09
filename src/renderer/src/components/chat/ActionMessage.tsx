@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight, LoaderCircle, TriangleAlert } from "lucide-r
 import { useMemo, useState } from "react"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
-import type { HITLRequest, ToolCall } from "@/types"
+import type { HITLDecision, HITLRequest, ToolCall } from "@/types"
 import { createActionMessageView } from "./action-message-view"
 import { type ToolPresentation, type ToolComponentStatus } from "./tools"
 
@@ -10,7 +10,7 @@ interface ActionMessageProps {
   toolCall: ToolCall
   result?: unknown
   approvalRequest?: HITLRequest | null
-  onApprovalDecision?: (decision: "approve" | "reject" | "edit") => void
+  onApprovalDecision?: (decision: HITLDecision) => void
   presentation?: ToolPresentation
 }
 

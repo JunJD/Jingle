@@ -1,7 +1,7 @@
 import { AlertCircle, ArrowDown, Loader2, X } from "lucide-react"
 import { Messages } from "@/components/chat/Messages"
 import { ChatTodos } from "@/components/chat/ChatTodos"
-import type { HITLRequest, Message, Todo } from "@/types"
+import type { HITLDecision, HITLRequest, Message, Todo } from "@/types"
 import { useI18n } from "@/lib/i18n"
 import { useStickToBottom } from "use-stick-to-bottom"
 
@@ -63,7 +63,7 @@ export function LauncherAiConversation(props: {
   displayMessages: Message[]
   error: string | null
   isLoading: boolean
-  onApprovalDecision: (decision: "approve" | "reject" | "edit") => Promise<void>
+  onApprovalDecision: (decision: HITLDecision) => Promise<void>
   onRetry: () => Promise<void>
   pendingApproval: HITLRequest | null
   todos: Todo[]

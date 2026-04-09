@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react"
 import { useThreadContext, useThreadState } from "./thread-context"
-import type { HITLRequest, Message } from "@/types"
+import type { HITLDecision, HITLRequest, Message } from "@/types"
 
 interface AgentStreamValues {
   todos?: Array<{ id?: string; content?: string; status?: string }>
@@ -52,7 +52,7 @@ export interface ThreadConversationProjection {
   error: string | null
   isLoading: boolean
   pendingApproval: HITLRequest | null
-  resumePendingApproval: (decision: "approve" | "reject" | "edit") => Promise<void>
+  resumePendingApproval: (decision: HITLDecision) => Promise<void>
   stream: ReturnType<ReturnType<typeof useThreadContext>["getStreamData"]>["stream"]
   threadState: ReturnType<typeof useThreadState>
   todos: NonNullable<ReturnType<typeof useThreadState>>["todos"]
@@ -186,7 +186,7 @@ export function useThreadConversationProjection(
   }, [displayMessages])
 
   const resumePendingApproval = useCallback(
-    async (decision: "approve" | "reject" | "edit"): Promise<void> => {
+    async (decision: HITLDecision): Promise<void> => {
       if (!threadId || !pendingApproval || !stream || !setPendingApproval || !currentModel) {
         return
       }
@@ -195,7 +195,7 @@ export function useThreadConversationProjection(
 
       try {
         await stream.submit(null, {
-          command: { resume: { decision } },
+          command: { resume: decision },
           config: {
             configurable: {
               model_id: currentModel,

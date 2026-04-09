@@ -132,11 +132,21 @@ export interface AppCopy {
     rename: string
   }
   toolCall: {
+    approvalItem: string
+    approveAndApply: string
     approveAndRun: string
+    changeCreate: string
+    changeDelete: string
+    changeModify: string
     commandCompleted: string
     commandCompletedNoOutput: string
     completed: string
     edit: string
+    fileReviewContent: string
+    fileReviewDetails: string
+    fileReviewOriginal: string
+    fileReviewPath: string
+    fileReviewUpdated: string
     fileSaved: string
     filesAndFolders: (files: number, dirs: number) => string
     foundMatches: (count: number) => string
@@ -148,6 +158,7 @@ export interface AppCopy {
     readLines: (count: number) => string
     reject: string
     taskCompleted: string
+    upcomingChanges: string
     writeLinesToFile: (count: number, fileName: string) => string
     matchesInFiles: (matchCount: number, fileCount: number) => string
   }
@@ -294,11 +305,21 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       rename: "重命名"
     },
     toolCall: {
+      approvalItem: "审批事项",
+      approveAndApply: "批准并修改",
       approveAndRun: "批准并执行",
+      changeCreate: "新增",
+      changeDelete: "删除",
+      changeModify: "修改",
       commandCompleted: "命令已完成",
       commandCompletedNoOutput: "命令已完成，无输出",
       completed: "已完成",
       edit: "编辑",
+      fileReviewContent: "写入内容",
+      fileReviewDetails: "内容详情",
+      fileReviewOriginal: "当前内容",
+      fileReviewPath: "路径",
+      fileReviewUpdated: "更新后内容",
       fileSaved: "文件已保存",
       filesAndFolders: (files, dirs) =>
         dirs > 0 ? `${files} 个文件，${dirs} 个文件夹` : `${files} 个文件`,
@@ -323,6 +344,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       readLines: (count) => `读取了 ${count} 行`,
       reject: "拒绝",
       taskCompleted: "任务已完成",
+      upcomingChanges: "即将变更",
       writeLinesToFile: (count, fileName) => `向 ${fileName} 写入 ${count} 行`
     },
     workspacePicker: {
@@ -467,11 +489,21 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       rename: "Rename"
     },
     toolCall: {
+      approvalItem: "Approval Item",
+      approveAndApply: "Approve & Apply",
       approveAndRun: "Approve & Run",
+      changeCreate: "Create",
+      changeDelete: "Delete",
+      changeModify: "Modify",
       commandCompleted: "Command completed",
       commandCompletedNoOutput: "Command completed (no output)",
       completed: "Completed",
       edit: "Edit",
+      fileReviewContent: "Content",
+      fileReviewDetails: "Content details",
+      fileReviewOriginal: "Current Content",
+      fileReviewPath: "Path",
+      fileReviewUpdated: "Updated Content",
       fileSaved: "File saved",
       filesAndFolders: (files, dirs) =>
         dirs > 0
@@ -501,6 +533,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       readLines: (count) => `Read ${count} lines`,
       reject: "Reject",
       taskCompleted: "Task completed",
+      upcomingChanges: "Upcoming changes",
       writeLinesToFile: (count, fileName) => `Writing ${count} lines to ${fileName}`
     },
     workspacePicker: {

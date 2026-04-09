@@ -1,6 +1,8 @@
 import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
 import type { AgentInvokeMessage } from "../shared/message-content"
 import type { AppLocale } from "../shared/i18n"
+import type { HITLDecision, HITLRequest } from "../shared/hitl"
+export type { HITLDecision, HITLRequest } from "../shared/hitl"
 
 // Thread types matching langgraph-api
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
@@ -19,12 +21,7 @@ export interface AgentInvokeParams {
 export interface AgentResumeParams {
   threadId: string
   command: {
-    resume?: {
-      decision?: string
-      tool_call_id?: string
-      edited_args?: Record<string, unknown>
-      feedback?: string
-    }
+    resume?: HITLDecision
   }
   modelId?: string
 }
@@ -162,27 +159,9 @@ export interface ToolCall extends LangChainToolCall<string, Record<string, unkno
   id: string
 }
 
-export interface HITLToolCall extends LangChainToolCall<string, Record<string, unknown>> {
-  id?: string
-}
-
 export interface ToolResult {
   tool_call_id: string
   content: string | unknown
-}
-
-// Human-in-the-loop
-export interface HITLRequest {
-  id: string
-  tool_call: HITLToolCall
-  allowed_decisions: HITLDecision["type"][]
-}
-
-export interface HITLDecision {
-  type: "approve" | "reject" | "edit"
-  tool_call_id?: string
-  edited_args?: Record<string, unknown>
-  feedback?: string
 }
 
 export interface ThreadRuntimeState {

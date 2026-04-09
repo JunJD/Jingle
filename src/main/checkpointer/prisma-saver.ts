@@ -241,6 +241,8 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
         tool_call_id: hitlRequest.tool_call.id || null,
         tool_name: hitlRequest.tool_call.name,
         tool_args: hitlRequest.tool_call.args,
+        review_kind: hitlRequest.review?.kind ?? null,
+        review_payload: hitlRequest.review,
         allowed_decisions: hitlRequest.allowed_decisions,
         status: "pending"
       })

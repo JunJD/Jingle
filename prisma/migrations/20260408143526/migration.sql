@@ -1,0 +1,12 @@
+-- No-op migration.
+--
+-- Context:
+-- The Prisma schema removed the legacy `Message` model, but the underlying
+-- `messages_fts` virtual table is still part of the runtime storage contract
+-- and is managed manually in SQL/code instead of as a Prisma model.
+--
+-- Prisma generated DROP statements for `messages_fts` and its FTS5 shadow
+-- tables here. Applying those statements is incorrect for two reasons:
+-- 1. The application still requires `messages_fts`.
+-- 2. Dropping the virtual table already removes its shadow tables, so the
+--    generated follow-up DROP statements fail during reset with `P3018`.
