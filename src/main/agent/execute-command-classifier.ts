@@ -178,13 +178,39 @@ function wordToText(node: unknown): string | null {
 
   const values: string[] = []
   for (const part of parts) {
-    if (!isRecord(part) || part.type !== "Literal" || typeof part.value !== "string") {
+    const value = wordPartToText(part)
+    if (value === null) {
       return null
     }
-    values.push(part.value)
+    values.push(value)
   }
 
   return values.join("")
+}
+
+function wordPartToText(node: unknown): string | null {
+  if (!isRecord(node) || typeof node.type !== "string") {
+    return null
+  }
+
+  if (node.type === "Literal" || node.type === "SingleQuoted") {
+    return typeof node.value === "string" ? node.value : null
+  }
+
+  if (node.type === "DoubleQuoted") {
+    const parts = asArray(node.parts)
+    const values: string[] = []
+    for (const part of parts) {
+      const value = wordPartToText(part)
+      if (value === null) {
+        return null
+      }
+      values.push(value)
+    }
+    return values.join("")
+  }
+
+  return null
 }
 
 function collectSimpleCommands(node: unknown, acc: CollectedCommand[]): void {
@@ -536,6 +562,13 @@ function classifyInvocation(invocation: CollectedCommand): InvocationClassificat
 
   if (name === "pnpm") {
     if (!hasWriteTarget) {
+      if (invocation.args.some((token) => token === "--version" || token === "-v")) {
+        return {
+          profile: "read_only",
+          reason: "pnpm version inspection is read-only."
+        }
+      }
+
       const subcommand = extractCliSubcommand(invocation.args)
       if (subcommand && PNPM_READ_ONLY_SUBCOMMANDS.has(subcommand)) {
         return {

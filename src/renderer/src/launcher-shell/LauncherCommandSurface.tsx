@@ -1,7 +1,9 @@
 import { AiCoreHostProvider } from "@ai-core/AiCoreHost"
+import { getAiShellConfig } from "@ai-core/ai-config"
 import { NativeExtensionHostProvider } from "@extension-host/NativeExtensionHost"
 import { LauncherCommandErrorPage } from "@launcher-components/LauncherCommandErrorPage"
 import type { LauncherShellConfig } from "@shared/launcher"
+import { AI_CHAT_COMMAND_NAME } from "@shared/launcher-ai"
 import { deriveLauncherCommandOwnerClipboardContext } from "../../../shared/clipboard-derivations"
 import type { LauncherClipboardState } from "./LauncherClipboardContext"
 import type { LauncherInputElement } from "./input-element"
@@ -83,6 +85,10 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
     viewportHeight
   } = commandState
   const ActivePluginComponent = activeViewCommand?.Component ?? null
+  const builtInSurfaceShellConfig =
+    activeBuiltInCommand && route.commandName === AI_CHAT_COMMAND_NAME
+      ? getAiShellConfig(searchShellConfig)
+      : searchShellConfig
 
   if (activeCommandError) {
     return (
@@ -195,7 +201,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
           surface: {
             inputRef: pluginInputRef,
             inputStatus: pluginInputStatus,
-            shellConfig: searchShellConfig,
+            shellConfig: builtInSurfaceShellConfig,
             setInputStatus: setPluginInputStatus,
             shownSequence,
             viewportHeight

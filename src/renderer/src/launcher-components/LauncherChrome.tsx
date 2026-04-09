@@ -8,6 +8,7 @@ import { LauncherInput } from "./LauncherInput"
 
 interface LauncherChromeProps {
   children?: ReactNode
+  density?: "default" | "compact"
   footer?: ReactNode
   headerLeading?: ReactNode
   headerTrailing?: ReactNode
@@ -26,6 +27,7 @@ interface LauncherChromeProps {
 export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
   const {
     children,
+    density = "default",
     footer,
     headerLeading,
     headerTrailing,
@@ -44,20 +46,28 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
   return (
     <LauncherChromeFrame
       footer={footer}
+      density={density}
       headerLeading={headerLeading}
       headerMain={
         <LauncherInput
           ref={inputRef}
+          density={density}
           status={inputStatus}
           value={inputValue}
           onChange={(event) => onInputValueChange(event.target.value)}
           onKeyDown={onInputKeyDown}
           placeholders={placeholders}
           className={cn(
-            "flex-1 text-[20px] font-semibold tracking-[-0.03em] text-foreground",
+            density === "compact"
+              ? "flex-1 text-[17px] font-semibold tracking-[-0.025em] text-foreground"
+              : "flex-1 text-[20px] font-semibold tracking-[-0.03em] text-foreground",
             inputClassName
           )}
-          placeholderClassName="text-[20px] font-semibold tracking-[-0.03em] text-muted-foreground/75"
+          placeholderClassName={
+            density === "compact"
+              ? "text-[17px] font-semibold tracking-[-0.025em] text-muted-foreground/72"
+              : "text-[20px] font-semibold tracking-[-0.03em] text-muted-foreground/75"
+          }
         />
       }
       headerTrailing={headerTrailing}

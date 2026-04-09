@@ -45,6 +45,7 @@ import {
 } from "./message"
 
 interface MessagesProps {
+  density?: "default" | "compact"
   messages: ThreadMessage[]
   isLoading?: boolean
   pendingApproval?: HITLRequest | null
@@ -157,12 +158,13 @@ function MessageAttachments(props: {
 function renderTextBlock(
   text: string,
   options: {
+    density?: "default" | "compact"
     isStreaming?: boolean
     isUser: boolean
     key: string
   }
 ): React.JSX.Element | null {
-  const { isStreaming, isUser, key } = options
+  const { density = "default", isStreaming, isUser, key } = options
 
   if (!text.trim()) {
     return null
@@ -170,14 +172,27 @@ function renderTextBlock(
 
   if (isUser) {
     return (
-      <div key={key} className="whitespace-pre-wrap text-[15px] leading-7 [overflow-wrap:anywhere]">
+      <div
+        key={key}
+        className={cn(
+          "whitespace-pre-wrap [overflow-wrap:anywhere]",
+          density === "compact" ? "text-[14px] leading-6" : "text-[15px] leading-7"
+        )}
+      >
         {text}
       </div>
     )
   }
 
   return (
-    <MessageResponse key={key} className="min-w-0 text-[15px] leading-7" isAnimating={isStreaming}>
+    <MessageResponse
+      key={key}
+      className={cn(
+        "min-w-0",
+        density === "compact" ? "text-[14px] leading-6" : "text-[15px] leading-7"
+      )}
+      isAnimating={isStreaming}
+    >
       {text}
     </MessageResponse>
   )
@@ -186,16 +201,18 @@ function renderTextBlock(
 function renderStructuredContent(
   content: ThreadMessage["content"],
   options: {
+    density?: "default" | "compact"
     isStreaming?: boolean
     isUser: boolean
   }
 ): StructuredMessageContent {
-  const { isStreaming, isUser } = options
+  const { density = "default", isStreaming, isUser } = options
 
   if (typeof content === "string") {
     return {
       attachments: null,
       textContent: renderTextBlock(content, {
+        density,
         isStreaming,
         isUser,
         key: "message-content"
@@ -229,6 +246,7 @@ function renderStructuredContent(
 
       const text = block.text ?? block.content ?? ""
       return renderTextBlock(text, {
+        density,
         isStreaming: isStreaming && index === resolvedLastTextBlockIndex,
         isUser,
         key: `${block.type}-${index}`
@@ -243,6 +261,7 @@ function renderStructuredContent(
 }
 
 function ToolActivityGroup(props: {
+  density?: "default" | "compact"
   preferLatestToolSummary?: boolean
   onApprovalDecision?: (decision: HITLDecision) => void
   pendingApproval?: HITLRequest | null
@@ -250,8 +269,14 @@ function ToolActivityGroup(props: {
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
   const { copy } = useI18n()
-  const { onApprovalDecision, pendingApproval, preferLatestToolSummary, toolCalls, toolResults } =
-    props
+  const {
+    density = "default",
+    onApprovalDecision,
+    pendingApproval,
+    preferLatestToolSummary,
+    toolCalls,
+    toolResults
+  } = props
   const pendingId = pendingApproval?.tool_call?.id
   const [openOverride, setOpenOverride] = useState<boolean | null>(null)
 
@@ -309,6 +334,7 @@ function ToolActivityGroup(props: {
     return item ? (
       <ActionMessage
         approvalRequest={item.needsApproval ? pendingApproval : null}
+        density={density}
         onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
         result={item.result?.content}
         toolCall={item.toolCall}
@@ -323,10 +349,13 @@ function ToolActivityGroup(props: {
       onOpenChange={setOpenOverride}
       open={isOpen}
     >
-      <ChainOfThoughtHeader className="text-[13px] leading-5" icon={ListTodo}>
+      <ChainOfThoughtHeader
+        className={density === "compact" ? "text-[12px] leading-5" : "text-[13px] leading-5"}
+        icon={ListTodo}
+      >
         {headerTitle}
       </ChainOfThoughtHeader>
-      <ChainOfThoughtContent className="space-y-2.5">
+      <ChainOfThoughtContent className={density === "compact" ? "space-y-2" : "space-y-2.5"}>
         {actionViews.map((item, index) => (
           <ChainOfThoughtItem
             icon={item.view.icon}
@@ -335,6 +364,7 @@ function ToolActivityGroup(props: {
           >
             <ActionMessage
               approvalRequest={item.needsApproval ? pendingApproval : null}
+              density={density}
               onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
               presentation="grouped"
               result={item.result?.content}
@@ -348,14 +378,21 @@ function ToolActivityGroup(props: {
 }
 
 function AssistantToolCluster(props: {
+  density?: "default" | "compact"
   preferLatestToolSummary?: boolean
   messages: ThreadMessage[]
   onApprovalDecision?: (decision: HITLDecision) => void
   pendingApproval?: HITLRequest | null
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
-  const { messages, onApprovalDecision, pendingApproval, preferLatestToolSummary, toolResults } =
-    props
+  const {
+    density = "default",
+    messages,
+    onApprovalDecision,
+    pendingApproval,
+    preferLatestToolSummary,
+    toolResults
+  } = props
   const toolCalls = messages.flatMap((message) => message.tool_calls ?? [])
 
   if (toolCalls.length === 0) {
@@ -366,6 +403,7 @@ function AssistantToolCluster(props: {
     <Message className="max-w-full" from="assistant">
       <MessageContent className="w-full gap-3">
         <ToolActivityGroup
+          density={density}
           onApprovalDecision={onApprovalDecision}
           pendingApproval={pendingApproval}
           preferLatestToolSummary={preferLatestToolSummary}
@@ -378,12 +416,14 @@ function AssistantToolCluster(props: {
 }
 
 function AssistantBlock(props: {
+  density?: "default" | "compact"
   isLastAssistant: boolean
   isLoading?: boolean
   message: ThreadMessage
 }): React.JSX.Element | null {
-  const { isLastAssistant, isLoading, message } = props
+  const { density = "default", isLastAssistant, isLoading, message } = props
   const content = renderStructuredContent(message.content, {
+    density,
     isStreaming: Boolean(isLoading) && isLastAssistant,
     isUser: false
   })
@@ -396,15 +436,22 @@ function AssistantBlock(props: {
     <Message className="max-w-full" from="assistant">
       <MessageContent className="w-full gap-3">
         {content.attachments}
-        {content.textContent ? <div className="space-y-4">{content.textContent}</div> : null}
+        {content.textContent ? (
+          <div className={density === "compact" ? "space-y-3" : "space-y-4"}>
+            {content.textContent}
+          </div>
+        ) : null}
       </MessageContent>
     </Message>
   )
 }
 
-function UserMessage(props: { message: ThreadMessage }): React.JSX.Element | null {
-  const { message } = props
-  const content = renderStructuredContent(message.content, { isUser: true })
+function UserMessage(props: {
+  density?: "default" | "compact"
+  message: ThreadMessage
+}): React.JSX.Element | null {
+  const { density = "default", message } = props
+  const content = renderStructuredContent(message.content, { density, isUser: true })
 
   if (!content.attachments && !content.textContent) {
     return null
@@ -421,6 +468,7 @@ function UserMessage(props: { message: ThreadMessage }): React.JSX.Element | nul
 }
 
 function MessageTurnView(props: {
+  density?: "default" | "compact"
   isActiveTurn: boolean
   isLoading?: boolean
   lastAssistantId: string | null
@@ -432,6 +480,7 @@ function MessageTurnView(props: {
 }): React.JSX.Element {
   const { copy } = useI18n()
   const {
+    density = "default",
     isActiveTurn,
     isLoading,
     lastAssistantId,
@@ -443,15 +492,17 @@ function MessageTurnView(props: {
   } = props
   const copyText = getTurnCopyText(turn)
   const hasAssistantMessages = turn.assistants.length > 0
+  const shouldHideToolbar = Boolean(isLoading) && isActiveTurn
   const assistantEntries = useMemo(() => buildTurnAssistantEntries(turn), [turn])
 
   return (
-    <div className="space-y-3">
-      {turn.user ? <UserMessage message={turn.user} /> : null}
+    <div className={density === "compact" ? "space-y-2.5" : "space-y-3"}>
+      {turn.user ? <UserMessage density={density} message={turn.user} /> : null}
       {assistantEntries.map((entry) => {
         if (entry.kind === "assistant-content") {
           return (
             <AssistantBlock
+              density={density}
               isLastAssistant={entry.message.id === lastAssistantId}
               isLoading={isLoading}
               key={entry.key}
@@ -462,6 +513,7 @@ function MessageTurnView(props: {
 
         return (
           <AssistantToolCluster
+            density={density}
             key={entry.key}
             messages={entry.messages}
             onApprovalDecision={onApprovalDecision}
@@ -472,7 +524,7 @@ function MessageTurnView(props: {
         )
       })}
 
-      {hasAssistantMessages ? (
+      {hasAssistantMessages && !shouldHideToolbar ? (
         <MessageToolbar className="mt-0 justify-end">
           <MessageActions>
             {isActiveTurn && onRetry && !isLoading ? (
@@ -501,7 +553,14 @@ function MessageTurnView(props: {
 }
 
 export function Messages(props: MessagesProps): React.JSX.Element {
-  const { isLoading, messages, onApprovalDecision, onRetry, pendingApproval } = props
+  const {
+    density = "default",
+    isLoading,
+    messages,
+    onApprovalDecision,
+    onRetry,
+    pendingApproval
+  } = props
   const { activeTurnKey, lastAssistantId, toolResults, turns } = useMemo(
     () => projectMessages(messages),
     [messages]
@@ -511,6 +570,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     <>
       {turns.map((turn) => (
         <MessageTurnView
+          density={density}
           isActiveTurn={turn.key === activeTurnKey}
           isLoading={isLoading}
           key={turn.key}

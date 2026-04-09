@@ -190,6 +190,7 @@ export function LauncherSearchPage(props: {
         </div>
       }
       inputRef={inputRef}
+      density="compact"
       inputValue={inputValue}
       onInputKeyDown={onInputKeyDown}
       onInputValueChange={onInputValueChange}

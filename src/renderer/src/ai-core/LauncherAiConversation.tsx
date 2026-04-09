@@ -10,17 +10,17 @@ export function LauncherAiEmptyState(props: { error?: string | null }): React.JS
   const { error } = props
 
   return (
-    <div className="relative flex flex-1 items-center justify-center overflow-hidden px-8">
-      <div className="relative flex max-w-2xl flex-col items-center text-center">
-        <div className="text-section-header mb-3">{copy.launcher.aiEmptyEyebrow}</div>
-        <h1 className="text-[44px] font-semibold tracking-[-0.05em] text-foreground">
+    <div className="relative flex flex-1 items-center justify-center overflow-hidden px-6">
+      <div className="relative flex w-full max-w-3xl flex-col items-center text-center">
+        <div className="text-section-header mb-2.5">{copy.launcher.aiEmptyEyebrow}</div>
+        <h1 className="text-[30px] font-semibold tracking-[-0.05em] text-foreground sm:text-[34px]">
           {copy.launcher.aiHeroTitle}
         </h1>
-        <p className="mt-4 max-w-xl text-sm leading-7 text-muted-foreground">
+        <p className="mt-3 max-w-2xl text-[13px] leading-6 text-muted-foreground">
           {copy.launcher.aiHeroDescription}
         </p>
         {error ? (
-          <div className="mt-8 flex w-full items-start gap-3 border-l-[3px] border-destructive bg-destructive/8 px-4 py-3 text-left">
+          <div className="mt-6 flex w-full items-start gap-3 bg-destructive/8 px-4 py-3 text-left">
             <AlertCircle className="mt-0.5 size-5 shrink-0 text-destructive" />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium text-destructive">{copy.chat.agentError}</div>
@@ -43,7 +43,7 @@ function LauncherJumpToLatestButton(props: {
   return (
     <button
       type="button"
-      className="launcher-jump-to-latest absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 px-3 py-1.5 text-xs font-medium text-foreground transition"
+      className="launcher-jump-to-latest absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 bg-background/88 px-3 py-1.5 text-[11px] font-medium text-foreground backdrop-blur-md transition"
       onClick={onClick}
     >
       <span className="relative z-10 flex items-center gap-2">
@@ -94,9 +94,10 @@ export function LauncherAiConversation(props: {
         ref={scrollRef}
         className="h-full overflow-x-hidden overflow-y-scroll overscroll-contain scrollbar-hide"
       >
-        <div ref={contentRef} className="overflow-x-hidden px-6 py-6">
-          <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-8">
+        <div ref={contentRef} className="overflow-x-hidden px-4 py-3 sm:px-5">
+          <div className="mx-auto flex w-full min-w-0 max-w-[860px] flex-col gap-5">
             <Messages
+              density="compact"
               isLoading={isLoading}
               messages={displayMessages}
               onApprovalDecision={onApprovalDecision}
@@ -109,8 +110,8 @@ export function LauncherAiConversation(props: {
             )}
 
             {isLoading && (
-              <div className="space-y-4 border-t border-border pt-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="space-y-3 border-t border-border/80 pt-4">
+                <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" />
                   {copy.chat.agentThinking}
                 </div>

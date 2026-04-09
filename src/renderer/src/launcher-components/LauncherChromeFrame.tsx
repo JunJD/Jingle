@@ -5,6 +5,7 @@ import { useLauncherChromeAudit } from "@launcher-shell/hooks/useLauncherChromeA
 
 interface LauncherChromeFrameProps {
   children?: ReactNode
+  density?: "default" | "compact"
   footer?: ReactNode
   headerLeading?: ReactNode
   headerMain?: ReactNode
@@ -18,6 +19,7 @@ interface LauncherChromeFrameProps {
 export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.Element {
   const {
     children,
+    density = "default",
     footer,
     headerLeading,
     headerMain,
@@ -46,7 +48,9 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
     >
       <div
         ref={headerRef}
-        className="launcher-chrome-header flex shrink-0 items-center gap-3 px-6"
+        className={`launcher-chrome-header flex shrink-0 items-center ${
+          density === "compact" ? "gap-2.5 px-4" : "gap-3 px-6"
+        }`}
         style={{
           borderBottom: showHeaderDivider ? "1px solid var(--launcher-border)" : "none",
           height: shellConfig.headerHeight
@@ -57,7 +61,11 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
         <div className="min-w-0 flex-1">{headerMain}</div>
 
         {headerTrailing ? (
-          <div className="flex shrink-0 items-center gap-4">{headerTrailing}</div>
+          <div
+            className={`flex shrink-0 items-center ${density === "compact" ? "gap-3" : "gap-4"}`}
+          >
+            {headerTrailing}
+          </div>
         ) : null}
       </div>
 
@@ -66,7 +74,9 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
       {footer ? (
         <div
           ref={footerRef}
-          className="launcher-chrome-footer flex shrink-0 items-center justify-between px-4"
+          className={`launcher-chrome-footer flex shrink-0 items-center justify-between ${
+            density === "compact" ? "px-3" : "px-4"
+          }`}
           style={{
             borderTop: "1px solid var(--launcher-border)",
             backgroundColor: "var(--launcher-footer-strip)",

@@ -9,6 +9,7 @@ import type { LauncherInputElement } from "@launcher-shell/input-element"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 
 export interface LauncherInputProps extends PlaceholdersAndVanishInputProps {
+  readonly density?: "default" | "compact"
   readonly status?: LauncherInputStatus
 }
 
@@ -30,6 +31,7 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
   function LauncherInput(
     {
       className,
+      density = "default",
       onCompositionEnd,
       onCompositionStart,
       onKeyDown,
@@ -40,20 +42,31 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
     ref
   ) {
     const isComposingRef = useRef(false)
+    const isCompact = density === "compact"
 
     return (
-      <div className="launcher-input flex min-w-0 flex-1 items-center gap-2.5" data-status={status}>
+      <div
+        className={cn(
+          "launcher-input flex min-w-0 flex-1 items-center",
+          isCompact ? "gap-2" : "gap-2.5"
+        )}
+        data-status={status}
+      >
         <PlaceholdersAndVanishInput
           ref={ref as React.Ref<HTMLInputElement>}
           aria-busy={status === "idle" ? undefined : true}
           className={cn(
-            "h-8 min-w-0 border-0 bg-transparent px-1.5 py-0 text-[18px] font-medium leading-8 shadow-none",
+            isCompact
+              ? "h-7 min-w-0 border-0 bg-transparent px-1 py-0 text-[16px] font-medium leading-7 shadow-none"
+              : "h-8 min-w-0 border-0 bg-transparent px-1.5 py-0 text-[18px] font-medium leading-8 shadow-none",
             "focus-visible:ring-0 focus-visible:ring-offset-0",
             "placeholder:text-transparent",
             className
           )}
           placeholderClassName={cn(
-            "text-[18px] font-medium leading-8 text-muted-foreground/55",
+            isCompact
+              ? "text-[16px] font-medium leading-7 text-muted-foreground/52"
+              : "text-[18px] font-medium leading-8 text-muted-foreground/55",
             placeholderClassName
           )}
           data-status={status}
@@ -91,7 +104,8 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
           <div
             aria-hidden="true"
             className={cn(
-              "relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full border backdrop-blur-sm transition",
+              "relative flex shrink-0 items-center justify-center rounded-full border backdrop-blur-sm transition",
+              isCompact ? "h-5 w-5" : "h-6 w-6",
               status === "pending" &&
                 "border-status-warning/25 bg-status-warning/10 text-status-warning",
               status === "tooling" &&
@@ -102,7 +116,10 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
               <>
                 <span className="absolute inset-[-3px] rounded-full border border-status-info/35" />
                 <span className="absolute inset-0 rounded-full bg-status-info/18 animate-ping" />
-                <Loader2 className="relative size-3.5 animate-spin" strokeWidth={2.25} />
+                <Loader2
+                  className={cn("relative animate-spin", isCompact ? "size-3" : "size-3.5")}
+                  strokeWidth={2.25}
+                />
               </>
             ) : (
               <span className="animate-tactical-pulse h-1.5 w-1.5 rounded-full bg-current" />

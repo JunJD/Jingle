@@ -11,6 +11,7 @@ interface ActionMessageProps {
   result?: unknown
   approvalRequest?: HITLRequest | null
   onApprovalDecision?: (decision: HITLDecision) => void
+  density?: "default" | "compact"
   presentation?: ToolPresentation
 }
 
@@ -34,6 +35,7 @@ function StatusGlyph(props: {
 export function ActionMessage(props: ActionMessageProps): React.JSX.Element | null {
   const {
     approvalRequest,
+    density = "default",
     onApprovalDecision,
     presentation = "standalone",
     result,
@@ -115,11 +117,23 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
           </span>
         ) : null}
 
-        <span className="min-w-0 text-[13px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+        <span
+          className={cn(
+            "min-w-0 [overflow-wrap:anywhere]",
+            density === "compact"
+              ? "text-[12px] leading-5 text-muted-foreground"
+              : "text-[13px] leading-5 text-muted-foreground"
+          )}
+        >
           {summary}
         </span>
 
-        <span className="flex shrink-0 items-center gap-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        <span
+          className={cn(
+            "flex shrink-0 items-center gap-2 font-medium uppercase tracking-[0.08em] text-muted-foreground",
+            density === "compact" ? "text-[10px]" : "text-[11px]"
+          )}
+        >
           {statusLabel ? <span>{statusLabel}</span> : null}
           {hasDetail ? (
             isExpanded ? (

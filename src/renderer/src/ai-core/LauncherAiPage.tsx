@@ -83,7 +83,7 @@ export function LauncherAiPage(): React.JSX.Element {
     <LauncherChrome
       footer={
         <>
-          <div className="text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
+          <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
             {copy.launcher.aiFooterLeading}
           </div>
           <button
@@ -91,7 +91,7 @@ export function LauncherAiPage(): React.JSX.Element {
             onClick={runPrimaryAction}
             onMouseDown={(event) => event.preventDefault()}
             disabled={primaryActionDisabled}
-            className="launcher-action-link flex appearance-none items-center gap-2 rounded-[10px] border-0 px-3 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
+            className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
           >
             <span>{copy.launcher.aiPrimaryLabel}</span>
             {submitShortcut ? (
@@ -103,17 +103,17 @@ export function LauncherAiPage(): React.JSX.Element {
         </>
       }
       headerLeading={
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
             onClick={navigation.goHome}
             onMouseDown={(event) => event.preventDefault()}
-            className="launcher-icon-button flex h-9 w-9 shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
+            className="launcher-icon-button flex h-7 w-7 shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
           >
-            <ArrowLeft className="size-5" />
+            <ArrowLeft className="size-3.5" />
           </button>
 
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-1">
             <input
               ref={fileInputRef}
               type="file"
@@ -136,9 +136,9 @@ export function LauncherAiPage(): React.JSX.Element {
               onMouseDown={(event) => event.preventDefault()}
               aria-label={copy.launcher.aiAddAttachment}
               title={copy.launcher.aiAddAttachment}
-              className="launcher-icon-button flex h-7 w-7 shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
+              className="launcher-icon-button flex h-5.5 w-5.5 shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
             >
-              <Plus className="size-3.5" />
+              <Plus className="size-2.5" />
             </button>
 
             <LauncherAttachmentStrip
@@ -150,6 +150,7 @@ export function LauncherAiPage(): React.JSX.Element {
       }
       inputStatus={inputStatus}
       inputRef={inputRef}
+      density="compact"
       inputValue={query}
       onInputValueChange={setQuery}
       placeholders={[copy.launcher.aiInputPlaceholder, copy.launcher.aiInputPlaceholderSecondary]}
