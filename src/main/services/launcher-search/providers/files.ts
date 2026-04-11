@@ -22,6 +22,8 @@ interface MacFileSearchCandidate {
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
 const MAC_FILE_SEARCH_ROOT = os.homedir()
 const MAC_FILE_SEARCH_MAX_CANDIDATES = 200
+const MAC_FILE_SEARCH_MAX_QUERY_LENGTH = 120
+const MAC_FILE_SEARCH_MAX_QUERY_TOKENS = 8
 const MAC_FILE_SEARCH_EXCLUDED_ROOTS = [
   path.join(MAC_FILE_SEARCH_ROOT, "Library", "Caches"),
   path.join(MAC_FILE_SEARCH_ROOT, "Library", "Logs"),
@@ -46,6 +48,27 @@ function normalizeSearchValue(value: string): string {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim()
+}
+
+export function resolveMacSpotlightNameQuery(value: string): string | null {
+  if (/[\r\n]/.test(value)) {
+    return null
+  }
+
+  const query = value.replace(/\s+/g, " ").trim()
+  if (!query) {
+    return null
+  }
+
+  if (query.length > MAC_FILE_SEARCH_MAX_QUERY_LENGTH) {
+    return null
+  }
+
+  if (query.split(" ").length > MAC_FILE_SEARCH_MAX_QUERY_TOKENS) {
+    return null
+  }
+
+  return query
 }
 
 function scoreKeywordMatch(keyword: string, query: string): number {
@@ -318,10 +341,17 @@ async function searchMacFiles(
     }
   }
 
+  const spotlightQuery = resolveMacSpotlightNameQuery(request.query)
+  if (!spotlightQuery) {
+    return {
+      results: []
+    }
+  }
+
   let candidatePaths: string[]
 
   try {
-    candidatePaths = await collectMacSpotlightPaths(request.query.trim(), request.limit)
+    candidatePaths = await collectMacSpotlightPaths(spotlightQuery, request.limit)
   } catch (error) {
     console.warn("[LauncherSearch][files] Spotlight search failed:", {
       error: error instanceof Error ? error.message : String(error),

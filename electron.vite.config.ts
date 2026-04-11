@@ -14,12 +14,22 @@ function copyResources(): { name: string; closeBundle: () => void } {
       const srcIcon = resolve("resources/icon.png")
       const destDir = resolve("out/resources")
       const destIcon = resolve("out/resources/icon.png")
+      const nativeSource = resolve("src/native/openwork-minimal-island.swift")
+      const nativeDestDir = resolve("out/native")
+      const nativeDestFile = resolve("out/native/openwork-minimal-island.swift")
 
       if (existsSync(srcIcon)) {
         if (!existsSync(destDir)) {
           mkdirSync(destDir, { recursive: true })
         }
         copyFileSync(srcIcon, destIcon)
+      }
+
+      if (existsSync(nativeSource)) {
+        if (!existsSync(nativeDestDir)) {
+          mkdirSync(nativeDestDir, { recursive: true })
+        }
+        copyFileSync(nativeSource, nativeDestFile)
       }
     }
   }

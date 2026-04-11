@@ -27,6 +27,7 @@ import {
 } from "./services/shortcuts/global-shortcut-service"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
 import { initializeNativeMenuBar } from "./services/native-menu-bar"
+import { startNativeMinimalIsland, stopNativeMinimalIsland } from "./services/native-minimal-island"
 import type { SettingsWindowNavigationPayload } from "../shared/settings-window"
 
 const remoteDebuggingPort = process.env.OPENWORK_REMOTE_DEBUGGING_PORT
@@ -177,6 +178,7 @@ if (hasSingleInstanceLock) {
     })
     applyShortcutSettings()
     void warmLauncherSearchProviders()
+    startNativeMinimalIsland()
 
     showLauncherWindow(getOrCreateLauncherWindow())
 
@@ -187,6 +189,7 @@ if (hasSingleInstanceLock) {
 }
 
 app.on("will-quit", () => {
+  stopNativeMinimalIsland()
   unregisterGlobalShortcutService()
   void closeRuntime()
   void closeDatabase()
