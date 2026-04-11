@@ -171,17 +171,6 @@ interface CustomAPI {
     get: (threadId?: string) => Promise<string | null>
     set: (threadId: string | undefined, path: string | null) => Promise<string | null>
     select: (threadId?: string) => Promise<string | null>
-    loadFromDisk: (threadId: string) => Promise<{
-      success: boolean
-      files: Array<{
-        path: string
-        is_dir: boolean
-        size?: number
-        modified_at?: string
-      }>
-      workspacePath?: string
-      error?: string
-    }>
     readFile: (
       threadId: string,
       filePath: string
@@ -202,9 +191,6 @@ interface CustomAPI {
       modified_at?: string
       error?: string
     }>
-    onFilesChanged: (
-      callback: (data: { threadId: string; workspacePath: string }) => void
-    ) => () => void
   }
 }
 

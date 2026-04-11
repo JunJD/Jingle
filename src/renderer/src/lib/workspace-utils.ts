@@ -1,7 +1,6 @@
 export async function selectWorkspaceFolder(
   currentThreadId: string | null,
   setWorkspacePath: (path: string | null) => void,
-  setWorkspaceFiles: (files: Array<{ path: string; is_dir?: boolean; size?: number }>) => void,
   setLoading: (loading: boolean) => void,
   setOpen?: (open: boolean) => void
 ): Promise<void> {
@@ -11,10 +10,6 @@ export async function selectWorkspaceFolder(
     const path = await window.api.workspace.select(currentThreadId)
     if (path) {
       setWorkspacePath(path)
-      const result = await window.api.workspace.loadFromDisk(currentThreadId)
-      if (result.success && result.files) {
-        setWorkspaceFiles(result.files)
-      }
     }
     if (setOpen) setOpen(false)
   } catch (e) {

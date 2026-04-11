@@ -8,10 +8,8 @@ import type {
   Provider,
   SetApiKeyParams,
   WorkspaceSetParams,
-  WorkspaceLoadParams,
   WorkspaceFileParams
 } from "../types"
-import { startWatching, stopWatching } from "../services/workspace-watcher"
 import { getApiKey, setApiKey, deleteApiKey, hasApiKey } from "../storage"
 import type { LauncherSettings } from "../../shared/launcher-settings"
 import {
@@ -377,13 +375,6 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
         setGlobalWorkspacePath(newPath)
       }
 
-      // Update file watcher
-      if (newPath) {
-        startWatching(threadId, newPath)
-      } else {
-        stopWatching(threadId)
-      }
-
       return newPath
     }
   )
@@ -414,9 +405,6 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
         metadata.workspacePath = selectedPath
         await updateThread(threadId, { metadata: JSON.stringify(metadata) })
         setGlobalWorkspacePath(selectedPath)
-
-        // Start watching the new workspace
-        startWatching(threadId, selectedPath)
       }
     } else {
       // Fallback to global
@@ -424,77 +412,6 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
     }
 
     return selectedPath
-  })
-
-  // Load files from disk into the workspace view
-  ipcMain.handle("workspace:loadFromDisk", async (_event, { threadId }: WorkspaceLoadParams) => {
-    const { getThread } = await import("../db")
-
-    // Get workspace path from thread metadata
-    const thread = await getThread(threadId)
-    const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
-    const workspacePath = metadata.workspacePath as string | null
-
-    if (!workspacePath) {
-      return { success: false, error: "No workspace folder linked", files: [] }
-    }
-
-    try {
-      const files: Array<{
-        path: string
-        is_dir: boolean
-        size?: number
-        modified_at?: string
-      }> = []
-
-      // Recursively read directory
-      async function readDir(dirPath: string, relativePath: string = ""): Promise<void> {
-        const entries = await fs.readdir(dirPath, { withFileTypes: true })
-
-        for (const entry of entries) {
-          // Skip hidden files and common non-project files
-          if (entry.name.startsWith(".") || entry.name === "node_modules") {
-            continue
-          }
-
-          const fullPath = path.join(dirPath, entry.name)
-          const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
-
-          if (entry.isDirectory()) {
-            files.push({
-              path: "/" + relPath,
-              is_dir: true
-            })
-            await readDir(fullPath, relPath)
-          } else {
-            const stat = await fs.stat(fullPath)
-            files.push({
-              path: "/" + relPath,
-              is_dir: false,
-              size: stat.size,
-              modified_at: stat.mtime.toISOString()
-            })
-          }
-        }
-      }
-
-      await readDir(workspacePath)
-
-      // Start watching for file changes
-      startWatching(threadId, workspacePath)
-
-      return {
-        success: true,
-        files,
-        workspacePath
-      }
-    } catch (e) {
-      return {
-        success: false,
-        error: e instanceof Error ? e.message : "Unknown error",
-        files: []
-      }
-    }
   })
 
   // Read a single file's contents from disk

@@ -14,7 +14,7 @@ import {
 import { useStream } from "@langchain/langgraph-sdk/react"
 import type { DeepAgent } from "deepagents"
 import { ElectronIPCTransport } from "./electron-transport"
-import type { Message, Todo, FileInfo, Subagent, HITLRequest } from "@/types"
+import type { Message, Todo, Subagent, HITLRequest } from "@/types"
 import { DEFAULT_MODEL_ID } from "../../../shared/models"
 
 // Open file tab type
@@ -37,7 +37,6 @@ export interface TokenUsage {
 export interface ThreadState {
   messages: Message[]
   todos: Todo[]
-  workspaceFiles: FileInfo[]
   workspacePath: string | null
   subagents: Subagent[]
   pendingApproval: HITLRequest | null
@@ -65,7 +64,6 @@ export interface ThreadActions {
   appendMessage: (message: Message) => void
   setMessages: (messages: Message[]) => void
   setTodos: (todos: Todo[]) => void
-  setWorkspaceFiles: (files: FileInfo[] | ((prev: FileInfo[]) => FileInfo[])) => void
   setWorkspacePath: (path: string | null) => void
   setSubagents: (subagents: Subagent[]) => void
   setPendingApproval: (request: HITLRequest | null) => void
@@ -101,7 +99,6 @@ export interface ThreadContextValue {
 const createDefaultThreadState = (): ThreadState => ({
   messages: [],
   todos: [],
-  workspaceFiles: [],
   workspacePath: null,
   subagents: [],
   pendingApproval: null,
@@ -126,8 +123,6 @@ const ThreadContext = createContext<ThreadContextValue | null>(null)
 interface CustomEventData {
   type?: string
   request?: HITLRequest
-  files?: Array<{ path: string; is_dir?: boolean; size?: number }>
-  path?: string
   subagents?: Array<{
     id?: string
     name?: string
@@ -356,7 +351,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     [parseErrorMessage, updateThreadState]
   )
 
-  // Handle custom events from ThreadStreamHolder (interrupts, workspace updates, etc.)
+  // Handle custom events from ThreadStreamHolder (interrupts, subagents, token usage)
   const handleCustomEvent = useCallback(
     (threadId: string, data: CustomEventData) => {
       console.log("[ThreadContext] Custom event received:", { threadId, type: data.type, data })
@@ -369,20 +364,6 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
               data.request
             )
             updateThreadState(threadId, () => ({ pendingApproval: data.request }))
-          }
-          break
-        case "workspace":
-          if (Array.isArray(data.files)) {
-            updateThreadState(threadId, (state) => {
-              const fileMap = new Map(state.workspaceFiles.map((f) => [f.path, f]))
-              for (const f of data.files!) {
-                fileMap.set(f.path, { path: f.path, is_dir: f.is_dir, size: f.size })
-              }
-              return { workspaceFiles: Array.from(fileMap.values()) }
-            })
-          }
-          if (data.path) {
-            updateThreadState(threadId, () => ({ workspacePath: data.path }))
           }
           break
         case "subagents":
@@ -459,11 +440,6 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
         },
         setTodos: (todos: Todo[]) => {
           updateThreadState(threadId, () => ({ todos }))
-        },
-        setWorkspaceFiles: (files: FileInfo[] | ((prev: FileInfo[]) => FileInfo[])) => {
-          updateThreadState(threadId, (state) => ({
-            workspaceFiles: typeof files === "function" ? files(state.workspaceFiles) : files
-          }))
         },
         setWorkspacePath: (path: string | null) => {
           updateThreadState(threadId, () => ({ workspacePath: path }))
@@ -549,10 +525,6 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
           const metadata = thread.metadata || {}
           if (metadata.workspacePath) {
             actions.setWorkspacePath(metadata.workspacePath as string)
-            const diskResult = await window.api.workspace.loadFromDisk(threadId)
-            if (diskResult.success) {
-              actions.setWorkspaceFiles(diskResult.files)
-            }
           }
           if (metadata.model) {
             // Update state directly to avoid triggering persistence in setCurrentModel

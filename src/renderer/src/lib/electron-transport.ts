@@ -403,7 +403,7 @@ export class ElectronIPCTransport implements UseStreamTransport {
 
       // Legacy: Full state values
       case "values": {
-        const { todos, files, workspacePath, subagents, interrupt } = event.data
+        const { todos, subagents, interrupt } = event.data
 
         // Only emit values event if todos is defined
         // Avoid emitting { todos: [] } when undefined, which would wipe out existing todos
@@ -412,27 +412,6 @@ export class ElectronIPCTransport implements UseStreamTransport {
             event: "values",
             data: { todos }
           })
-        }
-
-        // Emit files/workspace
-        if (files) {
-          const filesList = Array.isArray(files)
-            ? files
-            : Object.entries(files).map(([path, data]) => ({
-                path,
-                is_dir: false,
-                size:
-                  typeof (data as { content?: string })?.content === "string"
-                    ? (data as { content: string }).content.length
-                    : undefined
-              }))
-
-          if (filesList.length) {
-            events.push({
-              event: "custom",
-              data: { type: "workspace", files: filesList, path: workspacePath || "/" }
-            })
-          }
         }
 
         // Emit subagents
@@ -650,8 +629,6 @@ export class ElectronIPCTransport implements UseStreamTransport {
       const state = data as ValuesInterruptState & {
         messages?: SerializedMessageChunk[]
         todos?: { id?: string; content?: string; status?: string }[]
-        files?: Record<string, unknown> | Array<{ path: string; is_dir?: boolean; size?: number }>
-        workspacePath?: string
       }
 
       // Process messages in values mode to extract subagents
@@ -738,9 +715,6 @@ export class ElectronIPCTransport implements UseStreamTransport {
       if (state.todos !== undefined) {
         valuesData.todos = state.todos
       }
-      if (state.workspacePath) {
-        valuesData.workspacePath = state.workspacePath
-      }
 
       // Only emit if we have something to update
       if (Object.keys(valuesData).length > 0) {
@@ -748,27 +722,6 @@ export class ElectronIPCTransport implements UseStreamTransport {
           event: "values",
           data: valuesData
         })
-      }
-
-      // Emit files/workspace
-      if (state.files) {
-        const filesList = Array.isArray(state.files)
-          ? state.files
-          : Object.entries(state.files).map(([path, fileData]) => ({
-              path,
-              is_dir: false,
-              size:
-                typeof (fileData as { content?: string })?.content === "string"
-                  ? (fileData as { content: string }).content.length
-                  : undefined
-            }))
-
-        if (filesList.length) {
-          events.push({
-            event: "custom",
-            data: { type: "workspace", files: filesList, path: state.workspacePath || "/" }
-          })
-        }
       }
 
       // Emit interrupt - langchain HITL returns __interrupt__ as array of { value: HITLRequest }

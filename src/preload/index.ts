@@ -427,21 +427,6 @@ const api = {
     select: (threadId?: string): Promise<string | null> => {
       return ipcRenderer.invoke("workspace:select", threadId)
     },
-    loadFromDisk: (
-      threadId: string
-    ): Promise<{
-      success: boolean
-      files: Array<{
-        path: string
-        is_dir: boolean
-        size?: number
-        modified_at?: string
-      }>
-      workspacePath?: string
-      error?: string
-    }> => {
-      return ipcRenderer.invoke("workspace:loadFromDisk", { threadId })
-    },
     readFile: (
       threadId: string,
       filePath: string
@@ -465,19 +450,6 @@ const api = {
       error?: string
     }> => {
       return ipcRenderer.invoke("workspace:readBinaryFile", { threadId, filePath })
-    },
-    // Listen for file changes in the workspace
-    onFilesChanged: (
-      callback: (data: { threadId: string; workspacePath: string }) => void
-    ): (() => void) => {
-      const handler = (_: unknown, data: { threadId: string; workspacePath: string }): void => {
-        callback(data)
-      }
-      ipcRenderer.on("workspace:files-changed", handler)
-      // Return cleanup function
-      return () => {
-        ipcRenderer.removeListener("workspace:files-changed", handler)
-      }
     }
   }
 }

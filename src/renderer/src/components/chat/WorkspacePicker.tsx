@@ -13,24 +13,16 @@ interface WorkspacePickerProps {
 
 export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.Element {
   const { copy } = useI18n()
-  const { workspacePath, setWorkspacePath, setWorkspaceFiles } = useCurrentThread(threadId)
+  const { workspacePath, setWorkspacePath } = useCurrentThread(threadId)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  // Load workspace path and files for current thread
+  // Load workspace path for current thread. File discovery is no longer implicit.
   useEffect(() => {
     async function loadWorkspace(): Promise<void> {
       if (threadId) {
         const path = await window.api.workspace.get(threadId)
         setWorkspacePath(path)
-
-        // If a folder is linked, load files from disk
-        if (path) {
-          const result = await window.api.workspace.loadFromDisk(threadId)
-          if (result.success && result.files) {
-            setWorkspaceFiles(result.files)
-          }
-        }
       }
     }
     loadWorkspace()
@@ -38,7 +30,7 @@ export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.E
   }, [threadId])
 
   async function handleSelectFolder(): Promise<void> {
-    await selectWorkspaceFolder(threadId, setWorkspacePath, setWorkspaceFiles, setLoading, setOpen)
+    await selectWorkspaceFolder(threadId, setWorkspacePath, setLoading, setOpen)
   }
 
   const folderName = workspacePath?.split("/").pop()

@@ -68,7 +68,6 @@ export type StreamEvent =
   | { type: "interrupt"; request: HITLRequest }
   | { type: "token"; token: string }
   | { type: "todos"; todos: Todo[] }
-  | { type: "workspace"; files: FileInfo[]; path: string }
   | { type: "subagents"; subagents: Subagent[] }
   | { type: "done"; result: unknown }
   | { type: "error"; error: string }

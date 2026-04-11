@@ -29,8 +29,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
 
   const { threads, generateTitleForFirstMessage } = useHistoryShellStore()
 
-  const { workspacePath, tokenUsage, currentModel, setWorkspaceFiles, setWorkspacePath } =
-    useCurrentThread(threadId)
+  const { workspacePath, tokenUsage, currentModel, setWorkspacePath } = useCurrentThread(threadId)
   const invocation = useAiInvocation({
     onAfterAppendMessage: ({ isFirstMessage, message }) => {
       if (!isFirstMessage) {
@@ -145,7 +144,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   }
 
   const handleSelectWorkspaceFromEmptyState = async (): Promise<void> => {
-    await selectWorkspaceFolder(threadId, setWorkspacePath, setWorkspaceFiles, () => {}, undefined)
+    await selectWorkspaceFolder(threadId, setWorkspacePath, () => {}, undefined)
   }
 
   return (
