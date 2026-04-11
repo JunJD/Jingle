@@ -305,7 +305,7 @@ async function buildLauncherHistoryRecord(
               path: action.target.path
             })
         }
-    }
+      }
     case "open-url":
     case "open-history-thread":
     case "none":
@@ -331,7 +331,7 @@ const internalLauncherActionExecutor: InternalLauncherActionExecutorHandler = as
     case "none":
       return
     case "open-history-thread":
-      runtime.openMainWindow({ threadId: action.target.threadId })
+      runtime.openMainWindow({ targetThreadId: action.target.threadId })
       return
     default: {
       throw new Error(`Unsupported internal launcher action: ${JSON.stringify(action)}`)
@@ -339,7 +339,10 @@ const internalLauncherActionExecutor: InternalLauncherActionExecutorHandler = as
   }
 }
 
-const launcherActionExecutors: Record<Exclude<LauncherActionExecutor, "internal">, LauncherActionExecutorHandler> = {
+const launcherActionExecutors: Record<
+  Exclude<LauncherActionExecutor, "internal">,
+  LauncherActionExecutorHandler
+> = {
   shell: async (action) => {
     switch (action.type) {
       case "open-path":

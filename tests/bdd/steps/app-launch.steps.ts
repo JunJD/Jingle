@@ -1,34 +1,29 @@
 import { Given, Then, When } from "@cucumber/cucumber"
 import { expect } from "@playwright/test"
 import { OpenworkWorld } from "../support/world"
+import { seedHistoryThreadFixture } from "../support/history-fixtures"
 
 Given("Openwork 桌面应用已启动", async function (this: OpenworkWorld) {
   await this.launchApp()
 })
 
 Given("存在标题为 {string} 的历史线程", async function (this: OpenworkWorld, title: string) {
-  const page = await this.getPageByKind("launcher")
-  const threadId = await page.evaluate(async (threadTitle) => {
-    const api = (
-      window as unknown as Window & {
-        api: {
-          threads: {
-            create: () => Promise<{ thread_id: string }>
-            update: (
-              threadId: string,
-              updates: { title: string }
-            ) => Promise<{ thread_id: string }>
-          }
-        }
-      }
-    ).api
-    const thread = await api.threads.create()
-    await api.threads.update(thread.thread_id, { title: threadTitle })
-    return thread.thread_id
-  }, title)
+  const { threadId } = await seedHistoryThreadFixture({ title })
 
   this.setScenarioValue("threads.lastCreatedThreadId", threadId)
 })
+
+Given(
+  "存在标题为 {string} 且包含历史消息 {string} 的历史线程",
+  async function (this: OpenworkWorld, title: string, message: string) {
+    const { threadId } = await seedHistoryThreadFixture({
+      messages: [message],
+      title
+    })
+
+    this.setScenarioValue("threads.lastCreatedThreadId", threadId)
+  }
+)
 
 Then("Launcher 窗口可用", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("launcher")
@@ -111,6 +106,24 @@ When("我打开名为 {string} 的 Launcher 结果", async function (this: Openw
     .first()
 
   await result.click()
+})
+
+When("我直接打开 Main 历史窗口", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+
+  await page.evaluate(async () => {
+    const api = (
+      window as unknown as Window & {
+        api: {
+          mainWindow: {
+            openWindow: () => Promise<void>
+          }
+        }
+      }
+    ).api
+
+    await api.mainWindow.openWindow()
+  })
 })
 
 When("我在 Launcher 中按下 Escape", async function (this: OpenworkWorld) {
@@ -223,12 +236,45 @@ Then(
   "Main 窗口当前选中了标题为 {string} 的线程",
   async function (this: OpenworkWorld, title: string) {
     const page = await this.getPageByKind("main")
-    const selectedThread = page
-      .locator('[data-thread-selected="true"]')
+
+    await expect
+      .poll(async () => {
+        return page.locator('[data-thread-selected="true"]').first().innerText()
+      })
+      .toContain(title)
+  }
+)
+
+Then("Main 窗口消息区包含 {string}", async function (this: OpenworkWorld, content: string) {
+  const page = await this.getPageByKind("main")
+
+  await expect(page.locator("main").getByText(content, { exact: true }).first()).toBeVisible()
+})
+
+When(
+  "我在 Main 窗口选择标题为 {string} 的线程",
+  async function (this: OpenworkWorld, title: string) {
+    const page = await this.getPageByKind("main")
+    const threadItem = page
+      .locator('[data-thread-selected="false"], [data-thread-selected="true"]')
       .filter({ has: page.getByText(title, { exact: true }) })
       .first()
 
-    await expect(selectedThread).toBeVisible()
+    await threadItem.click()
+  }
+)
+
+Then(
+  "Main 窗口持续选中了标题为 {string} 的线程",
+  async function (this: OpenworkWorld, title: string) {
+    const page = await this.getPageByKind("main")
+    const selectedThread = page.locator('[data-thread-selected="true"]').first()
+    const deadline = Date.now() + 1000
+
+    while (Date.now() < deadline) {
+      await expect(selectedThread).toContainText(title)
+      await page.waitForTimeout(100)
+    }
   }
 )
 

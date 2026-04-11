@@ -2,7 +2,7 @@ import { useState } from "react"
 import { CheckCircle2, Circle, Clock, XCircle, ChevronRight, ChevronDown } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { useAppStore } from "@/lib/store"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useThreadState } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
 import type { Todo } from "@/types"
@@ -35,7 +35,7 @@ const STATUS_CONFIG = {
 }
 
 export function TodoPanel(): React.JSX.Element {
-  const { currentThreadId } = useAppStore()
+  const { currentThreadId } = useHistoryShellStore()
   const threadState = useThreadState(currentThreadId)
   const todos = threadState?.todos ?? []
   const [completedExpanded, setCompletedExpanded] = useState(false)

@@ -58,16 +58,8 @@ export function showMainWindow(
     mainWindow.restore()
   }
 
-  if (payload) {
-    const emitPayload = (): void => {
-      mainWindow.webContents.send("main-window:navigate", payload)
-    }
-
-    if (mainWindow.webContents.isLoadingMainFrame()) {
-      mainWindow.webContents.once("did-finish-load", emitPayload)
-    } else {
-      emitPayload()
-    }
+  if (payload && !mainWindow.webContents.isLoadingMainFrame()) {
+    mainWindow.webContents.send("main-window:navigate", payload)
   }
 
   mainWindow.show()

@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useAppStore } from "@/lib/store"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import type { Provider } from "@/types"
 import { useI18n } from "@/lib/i18n"
 
@@ -38,7 +38,7 @@ export function ApiKeyDialog({
   const [deleting, setDeleting] = useState(false)
   const [hasExistingKey, setHasExistingKey] = useState(false)
 
-  const { setApiKey: saveApiKey, deleteApiKey } = useAppStore()
+  const { setApiKey: saveApiKey, deleteApiKey } = useHistoryShellStore()
 
   // Check if there's an existing key when dialog opens
   useEffect(() => {

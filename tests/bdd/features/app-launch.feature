@@ -63,15 +63,36 @@ Feature: Openwork 桌面启动
     Then Settings 窗口可用
     And Launcher 窗口已隐藏
 
-  Scenario: Launcher 线程搜索可以打开 Main 窗口并定位线程
+  Scenario: Main 历史窗口可以直接打开并默认选中最近线程
     Given Openwork 桌面应用已启动
-    And 存在标题为 "BDD Main Window Thread" 的历史线程
+    And 存在标题为 "BDD Older Thread" 的历史线程
+    And 存在标题为 "BDD Newer Thread" 的历史线程
+    When 我直接打开 Main 历史窗口
+    Then Main 窗口可用
+    And Main 窗口当前选中了标题为 "BDD Newer Thread" 的线程
+
+  Scenario: Launcher 线程搜索可以打开 Main 窗口并展示历史消息
+    Given Openwork 桌面应用已启动
+    And 存在标题为 "BDD Main Window Thread" 且包含历史消息 "BDD Main Window Message" 的历史线程
     When 我在 Launcher 中搜索 "BDD Main Window Thread"
     Then Launcher 首页展示了名为 "BDD Main Window Thread" 的结果
     When 我打开名为 "BDD Main Window Thread" 的 Launcher 结果
     Then Main 窗口可用
     And Main 窗口当前选中了标题为 "BDD Main Window Thread" 的线程
+    And Main 窗口消息区包含 "BDD Main Window Message"
     And Launcher 窗口已隐藏
+
+  Scenario: 从 target 进入 Main 窗口后仍然可以手动切换线程
+    Given Openwork 桌面应用已启动
+    And 存在标题为 "BDD Primary Thread" 且包含历史消息 "BDD Primary Message" 的历史线程
+    And 存在标题为 "BDD Secondary Thread" 的历史线程
+    When 我在 Launcher 中搜索 "BDD Primary Thread"
+    Then Launcher 首页展示了名为 "BDD Primary Thread" 的结果
+    When 我打开名为 "BDD Primary Thread" 的 Launcher 结果
+    Then Main 窗口可用
+    And Main 窗口当前选中了标题为 "BDD Primary Thread" 的线程
+    When 我在 Main 窗口选择标题为 "BDD Secondary Thread" 的线程
+    Then Main 窗口持续选中了标题为 "BDD Secondary Thread" 的线程
 
   Scenario: Settings 可以展示可配置快捷键
     Given Openwork 桌面应用已启动

@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback } from "react"
 import { Send, Square, Loader2, AlertCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { useAppStore } from "@/lib/store"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useCurrentThread } from "@/lib/thread-context"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { Messages } from "./Messages"
@@ -27,7 +27,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const isAtBottomRef = useRef(true)
   useDisableTabNavigation(inputRef)
 
-  const { threads, generateTitleForFirstMessage } = useAppStore()
+  const { threads, generateTitleForFirstMessage } = useHistoryShellStore()
 
   const { workspacePath, tokenUsage, currentModel, setWorkspaceFiles, setWorkspacePath } =
     useCurrentThread(threadId)

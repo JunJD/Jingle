@@ -97,6 +97,7 @@ export class OpenworkWorld extends World {
     }
 
     this.openworkHome = mkdtempSync(join(tmpdir(), "openwork-bdd-"))
+    process.env.OPENWORK_HOME = this.openworkHome
     await prepareDatabase(this.openworkHome)
 
     this.electronApp = await electron.launch({
@@ -111,6 +112,14 @@ export class OpenworkWorld extends World {
     })
 
     this.page = await resolveWindowByKind(this.electronApp, "launcher")
+  }
+
+  getOpenworkHome(): string {
+    if (!this.openworkHome) {
+      throw new Error("BDD OPENWORK_HOME is not available before launch.")
+    }
+
+    return this.openworkHome
   }
 
   getPage(): Page {
@@ -200,6 +209,13 @@ export class OpenworkWorld extends World {
       this.electronApp = null
     }
 
+    try {
+      const { closeDatabase } = await import("../../../src/main/db")
+      await closeDatabase()
+    } catch {
+      // Test process may not have opened its own Prisma client.
+    }
+
     this.page = null
     this.scenarioValues.clear()
 
@@ -207,6 +223,8 @@ export class OpenworkWorld extends World {
       rmSync(this.openworkHome, { force: true, recursive: true })
       this.openworkHome = null
     }
+
+    delete process.env.OPENWORK_HOME
   }
 
   getScenarioValue(key: string): string {

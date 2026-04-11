@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { ChevronDown, Check, AlertCircle, Key, Cloud } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
-import { useAppStore } from "@/lib/store"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useCurrentThread } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
 import { ApiKeyDialog } from "./ApiKeyDialog"
@@ -65,7 +65,7 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
   const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false)
   const [apiKeyProvider, setApiKeyProvider] = useState<Provider | null>(null)
 
-  const { models, providers, loadModels, loadProviders } = useAppStore()
+  const { models, providers, loadModels, loadProviders } = useHistoryShellStore()
   const { currentModel, setCurrentModel } = useCurrentThread(threadId)
 
   // Load models and providers on mount

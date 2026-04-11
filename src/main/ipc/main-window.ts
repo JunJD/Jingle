@@ -14,7 +14,7 @@ export function registerMainWindowHandlers(params: {
   })
 
   ipcMain.handle("main-window:openThread", (_event, threadId: string) => {
-    openMainWindow({ threadId })
+    openMainWindow({ targetThreadId: threadId })
   })
 
   ipcMain.handle("main-window:getPendingNavigation", () => {

@@ -91,7 +91,7 @@ function openMainWindow(payload?: MainWindowNavigationPayload): void {
 }
 
 function acknowledgePendingMainNavigation(payload: MainWindowNavigationPayload): void {
-  if (payload.threadId && pendingMainNavigation?.threadId === payload.threadId) {
+  if (payload.targetThreadId && pendingMainNavigation?.targetThreadId === payload.targetThreadId) {
     pendingMainNavigation = null
   }
 }

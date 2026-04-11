@@ -11,12 +11,12 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { useAppStore } from "@/lib/store"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useThreadState } from "@/lib/thread-context"
 import type { FileInfo } from "@/types"
 
 export function FilesystemPanel() {
-  const { currentThreadId } = useAppStore()
+  const { currentThreadId } = useHistoryShellStore()
   const threadState = useThreadState(currentThreadId)
   const workspaceFiles = threadState?.workspaceFiles ?? []
   const workspacePath = threadState?.workspacePath ?? null

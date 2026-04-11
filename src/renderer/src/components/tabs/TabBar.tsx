@@ -1,6 +1,6 @@
 import { Bot, X, FileCode, FileText, FileJson, File } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useAppStore } from "@/lib/store"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useThreadState, type OpenFile } from "@/lib/thread-context"
 
 interface TabBarProps {
@@ -12,7 +12,7 @@ export function TabBar({
   className,
   threadId: propThreadId
 }: TabBarProps): React.JSX.Element | null {
-  const { currentThreadId } = useAppStore()
+  const { currentThreadId } = useHistoryShellStore()
   const threadId = propThreadId ?? currentThreadId
   const threadState = useThreadState(threadId)
 

@@ -1,4 +1,4 @@
-import type { LauncherSearchRequest } from "../../../../shared/launcher-search"
+import type { LauncherSearchRequest } from "@shared/launcher-search"
 import {
   searchThreadMatches,
   type ThreadSearchDirectMatchRow,

@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Plus, Sparkles, MessageSquare, Clock, Zap, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { useAppStore } from "@/lib/store"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
 import { formatRelativeTime } from "@/lib/utils"
 import type { Thread } from "@/types"
@@ -61,7 +61,7 @@ function RecentThreadItem({
 }
 
 export function HomeEntry(): React.JSX.Element {
-  const { createThread, selectThread, setShowKanbanView, threads } = useAppStore()
+  const { createThread, selectThread, setShowKanbanView, threads } = useHistoryShellStore()
   const { copy } = useI18n()
   const [isCreating, setIsCreating] = useState(false)
 

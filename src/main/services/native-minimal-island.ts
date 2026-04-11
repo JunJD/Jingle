@@ -89,6 +89,10 @@ export function startNativeMinimalIsland(): void {
     }
 
     const child = spawn(binaryPath, [], {
+      env: {
+        ...process.env,
+        OPENWORK_PARENT_PID: String(process.pid)
+      },
       stdio: ["pipe", "ignore", "ignore"]
     })
 
@@ -125,6 +129,24 @@ export function stopNativeMinimalIsland(): void {
     return
   }
 
-  nativeIslandProcess.kill()
+  const child = nativeIslandProcess
   nativeIslandProcess = null
+
+  let didExit = false
+  child.once("exit", () => {
+    didExit = true
+  })
+
+  if (child.stdin && !child.stdin.destroyed) {
+    child.stdin.end(JSON.stringify({ type: "quit" }) + "\n")
+  }
+
+  child.kill("SIGTERM")
+
+  const killTimer = setTimeout(() => {
+    if (!didExit) {
+      child.kill("SIGKILL")
+    }
+  }, 500)
+  killTimer.unref()
 }

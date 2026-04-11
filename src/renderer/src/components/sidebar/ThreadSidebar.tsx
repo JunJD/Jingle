@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Plus, MessageSquare, Trash2, Pencil, Loader2, LayoutGrid, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { useAppStore } from "@/lib/store"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useThreadStream, useCurrentThread } from "@/lib/thread-context"
 import { cn, formatRelativeTime, truncate } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n"
@@ -144,7 +144,7 @@ export function ThreadSidebar(): React.JSX.Element {
     deleteThread,
     updateThread,
     setShowKanbanView
-  } = useAppStore()
+  } = useHistoryShellStore()
 
   const [editingThreadId, setEditingThreadId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState("")

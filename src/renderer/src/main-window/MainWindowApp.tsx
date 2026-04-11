@@ -2,38 +2,41 @@ import { useCallback, useEffect, useState } from "react"
 import HistoryApp from "@ai-core/history"
 import type { MainWindowNavigationPayload } from "../../../shared/main-window"
 
-interface MainWindowThreadNavigation {
-  sequence: number
-  threadId: string
-}
-
 export default function MainWindowApp(): React.JSX.Element {
-  const [threadNavigation, setThreadNavigation] = useState<MainWindowThreadNavigation | null>(null)
+  const [targetThreadId, setTargetThreadId] = useState<string | undefined>(undefined)
 
-  const acknowledgeNavigation = useCallback((threadId: string): void => {
-    void window.api.mainWindow.ackNavigation({ threadId })
+  const acknowledgeNavigation = useCallback((payload: MainWindowNavigationPayload): void => {
+    void window.api.mainWindow.ackNavigation(payload)
   }, [])
+
+  const handleTargetThreadHandled = useCallback(
+    (result: { matched: boolean; targetThreadId: string }): void => {
+      acknowledgeNavigation({ targetThreadId: result.targetThreadId })
+      setTargetThreadId((currentTargetThreadId) =>
+        currentTargetThreadId === result.targetThreadId ? undefined : currentTargetThreadId
+      )
+    },
+    [acknowledgeNavigation]
+  )
 
   useEffect(() => {
     let disposed = false
 
     const applyNavigation = (payload: MainWindowNavigationPayload | null | undefined): void => {
-      if (disposed || !payload?.threadId) {
+      if (disposed) {
         return
       }
 
-      const { threadId } = payload
-      setThreadNavigation((current) => ({
-        sequence: (current?.sequence ?? 0) + 1,
-        threadId
-      }))
+      if (payload?.targetThreadId) {
+        setTargetThreadId(payload.targetThreadId)
+      }
     }
 
-    void window.api.mainWindow.getPendingNavigation().then((payload) => {
+    const unsubscribe = window.api.mainWindow.onNavigate((payload) => {
       applyNavigation(payload)
     })
 
-    const unsubscribe = window.api.mainWindow.onNavigate((payload) => {
+    void window.api.mainWindow.getPendingNavigation().then((payload) => {
       applyNavigation(payload)
     })
 
@@ -44,10 +47,6 @@ export default function MainWindowApp(): React.JSX.Element {
   }, [])
 
   return (
-    <HistoryApp
-      onNavigationConsumed={acknowledgeNavigation}
-      navigationSequence={threadNavigation?.sequence ?? 0}
-      navigationThreadId={threadNavigation?.threadId}
-    />
+    <HistoryApp onTargetThreadHandled={handleTargetThreadHandled} targetThreadId={targetThreadId} />
   )
 }

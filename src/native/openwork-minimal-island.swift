@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 
 enum IslandState: String, Codable {
@@ -7,8 +8,8 @@ enum IslandState: String, Codable {
     case working
 }
 
-struct SetStateCommand: Codable {
-    let state: IslandState
+struct IslandCommand: Codable {
+    let state: IslandState?
     let type: String
 }
 
@@ -376,7 +377,10 @@ final class CommandReader {
     func start() {
         FileHandle.standardInput.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
-            guard !data.isEmpty else {
+            if data.isEmpty {
+                DispatchQueue.main.async {
+                    NSApp.terminate(nil)
+                }
                 return
             }
 
@@ -401,22 +405,68 @@ final class CommandReader {
 
             guard
                 let data = trimmed.data(using: .utf8),
-                let command = try? JSONDecoder().decode(SetStateCommand.self, from: data),
-                command.type == "setState"
+                let command = try? JSONDecoder().decode(IslandCommand.self, from: data)
             else {
                 continue
             }
 
             DispatchQueue.main.async { [controller] in
-                controller.setState(command.state)
+                switch command.type {
+                case "setState":
+                    if let state = command.state {
+                        controller.setState(state)
+                    }
+                case "quit":
+                    NSApp.terminate(nil)
+                default:
+                    break
+                }
             }
         }
+    }
+
+    func stop() {
+        FileHandle.standardInput.readabilityHandler = nil
+    }
+}
+
+final class ParentProcessMonitor {
+    private let parentPid: pid_t?
+    private var timer: Timer?
+
+    init(environment: [String: String] = ProcessInfo.processInfo.environment) {
+        if let value = environment["OPENWORK_PARENT_PID"], let pid = Int32(value), pid > 1 {
+            parentPid = pid
+        } else {
+            parentPid = nil
+        }
+    }
+
+    func start() {
+        guard let parentPid else {
+            return
+        }
+
+        let timer = Timer(timeInterval: 1, repeats: true) { _ in
+            if getppid() == 1 || (kill(parentPid, 0) == -1 && errno == ESRCH) {
+                NSApp.terminate(nil)
+            }
+        }
+
+        self.timer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
     }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let controller = IslandController()
     private lazy var reader = CommandReader(controller: controller)
+    private let parentMonitor = ParentProcessMonitor()
     private var screenObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -426,6 +476,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.setState(.idle)
         controller.show()
         reader.start()
+        parentMonitor.start()
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
@@ -436,6 +487,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        reader.stop()
+        parentMonitor.stop()
         if let screenObserver {
             NotificationCenter.default.removeObserver(screenObserver)
             self.screenObserver = nil

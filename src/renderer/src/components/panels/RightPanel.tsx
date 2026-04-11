@@ -24,7 +24,7 @@ import {
   FileType
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useAppStore } from "@/lib/store"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useThreadState } from "@/lib/thread-context"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -116,7 +116,7 @@ function ResizeHandle({ onDrag }: ResizeHandleProps): React.JSX.Element {
 }
 
 export function RightPanel(): React.JSX.Element {
-  const { currentThreadId } = useAppStore()
+  const { currentThreadId } = useHistoryShellStore()
   const threadState = useThreadState(currentThreadId)
   const todos = threadState?.todos ?? []
   const workspaceFiles = threadState?.workspaceFiles ?? []
@@ -400,7 +400,7 @@ const STATUS_CONFIG = {
 }
 
 function TasksContent(): React.JSX.Element {
-  const { currentThreadId } = useAppStore()
+  const { currentThreadId } = useHistoryShellStore()
   const threadState = useThreadState(currentThreadId)
   const todos = threadState?.todos ?? []
   const [completedExpanded, setCompletedExpanded] = useState(false)
@@ -509,7 +509,7 @@ function TaskItem({ todo }: { todo: Todo }): React.JSX.Element {
 }
 
 function FilesContent(): React.JSX.Element {
-  const { currentThreadId } = useAppStore()
+  const { currentThreadId } = useHistoryShellStore()
   const threadState = useThreadState(currentThreadId)
   const workspaceFiles = threadState?.workspaceFiles ?? []
   const workspacePath = threadState?.workspacePath ?? null
@@ -746,7 +746,7 @@ function buildFileTree(files: FileInfo[]): TreeNode[] {
 }
 
 function FileTree({ files }: { files: FileInfo[] }): React.JSX.Element {
-  const { currentThreadId } = useAppStore()
+  const { currentThreadId } = useHistoryShellStore()
   const threadState = useThreadState(currentThreadId)
   const openFile = threadState?.openFile
   const tree = useMemo(() => buildFileTree(files), [files])
@@ -868,8 +868,7 @@ const FileTreeNode = memo(
     // 4. The onToggle callback changed
     return (
       prevProps.node === nextProps.node &&
-      prevProps.expanded.has(prevProps.node.path) ===
-        nextProps.expanded.has(nextProps.node.path) &&
+      prevProps.expanded.has(prevProps.node.path) === nextProps.expanded.has(nextProps.node.path) &&
       prevProps.openFile === nextProps.openFile &&
       prevProps.onToggle === nextProps.onToggle &&
       prevProps.depth === nextProps.depth
@@ -934,7 +933,7 @@ function FileIcon({
 }
 
 function AgentsContent(): React.JSX.Element {
-  const { currentThreadId } = useAppStore()
+  const { currentThreadId } = useHistoryShellStore()
   const threadState = useThreadState(currentThreadId)
   const subagents = threadState?.subagents ?? []
 

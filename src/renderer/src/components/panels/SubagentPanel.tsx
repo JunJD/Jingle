@@ -12,7 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import { useAppStore } from "@/lib/store"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useThreadState } from "@/lib/thread-context"
 import type { Subagent } from "@/types"
 
@@ -53,7 +53,7 @@ function getSubagentTypeBadge(subagentType?: string): string {
 }
 
 export function SubagentPanel(): React.JSX.Element {
-  const { currentThreadId } = useAppStore()
+  const { currentThreadId } = useHistoryShellStore()
   const threadState = useThreadState(currentThreadId)
   const subagents = threadState?.subagents ?? []
 
