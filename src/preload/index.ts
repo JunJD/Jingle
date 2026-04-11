@@ -32,6 +32,7 @@ import type {
   ShortcutSettings
 } from "../shared/shortcuts/settings"
 import { resolveShortcutBindings } from "../shared/shortcuts/settings"
+import type { MainWindowNavigationPayload } from "../shared/main-window"
 import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "../shared/settings-window"
 
 // Simple electron API - replaces @electron-toolkit/preload
@@ -239,6 +240,30 @@ const api = {
     },
     getPendingNavigation: (): Promise<SettingsWindowNavigationPayload | null> => {
       return ipcRenderer.invoke("settings:getPendingNavigation")
+    }
+  },
+  mainWindow: {
+    openWindow: (payload?: MainWindowNavigationPayload): Promise<void> => {
+      return ipcRenderer.invoke("main-window:openWindow", payload)
+    },
+    openThread: (threadId: string): Promise<void> => {
+      return ipcRenderer.invoke("main-window:openThread", threadId)
+    },
+    getPendingNavigation: (): Promise<MainWindowNavigationPayload | null> => {
+      return ipcRenderer.invoke("main-window:getPendingNavigation")
+    },
+    ackNavigation: (payload: MainWindowNavigationPayload): Promise<void> => {
+      return ipcRenderer.invoke("main-window:ackNavigation", payload)
+    },
+    onNavigate: (callback: (payload: MainWindowNavigationPayload) => void): (() => void) => {
+      const handler = (_event: unknown, payload: MainWindowNavigationPayload): void => {
+        callback(payload)
+      }
+
+      ipcRenderer.on("main-window:navigate", handler)
+      return () => {
+        ipcRenderer.removeListener("main-window:navigate", handler)
+      }
     }
   },
   shortcuts: {

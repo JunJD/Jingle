@@ -56,7 +56,7 @@
       | 命令                                | 原因片段                    |
       | echo hello > notes.txt              | shell redirection           |
       | sed -i 's/old/new/' src/app.ts      | in-place editing            |
-      | echo hello | tee notes.txt          | explicit file targets       |
+      | echo hello \| tee notes.txt         | explicit file targets       |
       | mkdir dist                          | modifies files or directories |
       | chmod +x script.sh                  | modifies files or directories |
       | find src -delete                    | deletes files with -delete  |

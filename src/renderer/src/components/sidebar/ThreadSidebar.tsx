@@ -65,6 +65,8 @@ function ThreadListItem({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
+          data-thread-id={thread.thread_id}
+          data-thread-selected={isSelected ? "true" : "false"}
           className={cn(
             "group flex cursor-pointer items-start gap-3 overflow-hidden border-t border-border px-3 py-3 transition-colors first:border-t-0",
             isSelected

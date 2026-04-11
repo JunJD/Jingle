@@ -2,10 +2,12 @@ import type { LauncherSearchRequest, LauncherSearchResponse } from "../../../sha
 import { applicationsLauncherSearchProvider } from "./providers/applications"
 import { browserHistoryLauncherSearchProvider } from "./providers/browser-history"
 import { filesLauncherSearchProvider } from "./providers/files"
+import { threadsLauncherSearchProvider } from "./providers/threads"
 import type { LauncherSearchProvider } from "./types"
 
 const providers: LauncherSearchProvider[] = [
   applicationsLauncherSearchProvider,
+  threadsLauncherSearchProvider,
   filesLauncherSearchProvider,
   browserHistoryLauncherSearchProvider
 ]

@@ -1,7 +1,12 @@
 import type { LauncherResultAvailability, LauncherResultKind } from "./launcher"
 import type { LocalStartItemKind } from "./local-start"
 
-export type LauncherSearchSource = "applications" | "browser-history" | "files" | "semantic-history"
+export type LauncherSearchSource =
+  | "applications"
+  | "browser-history"
+  | "files"
+  | "semantic-history"
+  | "threads"
 
 export interface LauncherSearchRequest {
   query: string
@@ -36,6 +41,13 @@ export type LauncherSearchAction =
       executor: "internal"
       target: null
       type: "none"
+    }
+  | {
+      executor: "internal"
+      target: {
+        threadId: string
+      }
+      type: "open-history-thread"
     }
 
 export interface LauncherActionExecutionResult {

@@ -18,6 +18,7 @@ import type {
   LauncherSearchAction,
   LauncherSearchRequest
 } from "../../shared/launcher-search"
+import type { MainWindowNavigationPayload } from "../../shared/main-window"
 import { readClipboardContext } from "../services/clipboard"
 import { recordLauncherHistoryItem } from "../services/launcher-history"
 import { getLocalStartItem, recordLocalStartItemUse } from "../services/local-start"
@@ -304,8 +305,9 @@ async function buildLauncherHistoryRecord(
               path: action.target.path
             })
         }
-      }
+    }
     case "open-url":
+    case "open-history-thread":
     case "none":
       return null
     default: {
@@ -316,13 +318,28 @@ async function buildLauncherHistoryRecord(
 }
 
 type LauncherActionExecutorHandler = (action: LauncherSearchAction) => Promise<void>
+type InternalLauncherActionExecutorHandler = (
+  action: LauncherSearchAction,
+  runtime: { openMainWindow: (payload?: MainWindowNavigationPayload) => void }
+) => Promise<void>
 
-const launcherActionExecutors: Record<LauncherActionExecutor, LauncherActionExecutorHandler> = {
-  internal: async (action) => {
-    if (action.type !== "none") {
+const internalLauncherActionExecutor: InternalLauncherActionExecutorHandler = async (
+  action,
+  runtime
+) => {
+  switch (action.type) {
+    case "none":
+      return
+    case "open-history-thread":
+      runtime.openMainWindow({ threadId: action.target.threadId })
+      return
+    default: {
       throw new Error(`Unsupported internal launcher action: ${JSON.stringify(action)}`)
     }
-  },
+  }
+}
+
+const launcherActionExecutors: Record<Exclude<LauncherActionExecutor, "internal">, LauncherActionExecutorHandler> = {
   shell: async (action) => {
     switch (action.type) {
       case "open-path":
@@ -351,6 +368,7 @@ async function applyLauncherActionSideEffects(action: LauncherSearchAction): Pro
       return
     }
     case "open-url":
+    case "open-history-thread":
     case "none":
       return
     default: {
@@ -362,8 +380,15 @@ async function applyLauncherActionSideEffects(action: LauncherSearchAction): Pro
   }
 }
 
-async function executeLauncherAction(action: LauncherSearchAction): Promise<void> {
-  await launcherActionExecutors[action.executor](action)
+async function executeLauncherAction(
+  action: LauncherSearchAction,
+  runtime: { openMainWindow: (payload?: MainWindowNavigationPayload) => void }
+): Promise<void> {
+  if (action.executor === "internal") {
+    await internalLauncherActionExecutor(action, runtime)
+  } else {
+    await launcherActionExecutors[action.executor](action)
+  }
   await applyLauncherActionSideEffects(action)
 }
 
@@ -462,7 +487,12 @@ export function createLauncherWindow(): BrowserWindow {
   return launcherWindow
 }
 
-export function registerLauncherHandlers(ipcMain: IpcMain): void {
+export function registerLauncherHandlers(params: {
+  ipcMain: IpcMain
+  openMainWindow: (payload?: MainWindowNavigationPayload) => void
+}): void {
+  const { ipcMain, openMainWindow } = params
+
   ipcMain.handle("launcher:search", async (_event, request: LauncherSearchRequest) => {
     return searchLauncher(request)
   })
@@ -479,7 +509,7 @@ export function registerLauncherHandlers(ipcMain: IpcMain): void {
     const currentWindow = BrowserWindow.fromWebContents(event.sender)
 
     try {
-      await executeLauncherAction(action)
+      await executeLauncherAction(action, { openMainWindow })
       currentWindow?.hide()
       return {
         ok: true

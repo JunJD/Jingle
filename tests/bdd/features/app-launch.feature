@@ -63,6 +63,16 @@ Feature: Openwork 桌面启动
     Then Settings 窗口可用
     And Launcher 窗口已隐藏
 
+  Scenario: Launcher 线程搜索可以打开 Main 窗口并定位线程
+    Given Openwork 桌面应用已启动
+    And 存在标题为 "BDD Main Window Thread" 的历史线程
+    When 我在 Launcher 中搜索 "BDD Main Window Thread"
+    Then Launcher 首页展示了名为 "BDD Main Window Thread" 的结果
+    When 我打开名为 "BDD Main Window Thread" 的 Launcher 结果
+    Then Main 窗口可用
+    And Main 窗口当前选中了标题为 "BDD Main Window Thread" 的线程
+    And Launcher 窗口已隐藏
+
   Scenario: Settings 可以展示可配置快捷键
     Given Openwork 桌面应用已启动
     When 我在 Launcher 中搜索 "todo"

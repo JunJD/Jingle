@@ -5,6 +5,7 @@ import { registerAgentHandlers } from "./ipc/agent"
 import { registerExternalLinkHandlers } from "./ipc/external-links"
 import { registerLauncherHistoryHandlers } from "./ipc/launcher-history"
 import { registerLocalStartHandlers } from "./ipc/local-start"
+import { registerMainWindowHandlers } from "./ipc/main-window"
 import { registerThreadHandlers } from "./ipc/threads"
 import { registerModelHandlers } from "./ipc/models"
 import { registerNativeExtensionHandlers } from "./ipc/native-extensions"
@@ -19,6 +20,7 @@ import {
   registerLauncherHandlers,
   showLauncherWindow
 } from "./windows/launcher-window"
+import { createMainWindow, showMainWindow } from "./windows/main-window"
 import { createSettingsWindow, showSettingsWindow } from "./windows/settings-window"
 import {
   getGlobalShortcutAccelerator,
@@ -28,6 +30,7 @@ import {
 import { warmLauncherSearchProviders } from "./services/launcher-search"
 import { initializeNativeMenuBar } from "./services/native-menu-bar"
 import { startNativeMinimalIsland, stopNativeMinimalIsland } from "./services/native-minimal-island"
+import type { MainWindowNavigationPayload } from "../shared/main-window"
 import type { SettingsWindowNavigationPayload } from "../shared/settings-window"
 
 const remoteDebuggingPort = process.env.OPENWORK_REMOTE_DEBUGGING_PORT
@@ -38,7 +41,9 @@ if (remoteDebuggingPort) {
 }
 
 let launcherWindow: BrowserWindow | null = null
+let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
+let pendingMainNavigation: MainWindowNavigationPayload | null = null
 let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
 const bypassSingleInstanceLock = process.env.OPENWORK_BDD === "1"
 const hasSingleInstanceLock = bypassSingleInstanceLock ? true : app.requestSingleInstanceLock()
@@ -57,6 +62,17 @@ function getOrCreateLauncherWindow(): BrowserWindow {
   return launcherWindow
 }
 
+function getOrCreateMainWindow(): BrowserWindow {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createMainWindow()
+    mainWindow.on("closed", () => {
+      mainWindow = null
+    })
+  }
+
+  return mainWindow
+}
+
 function getOrCreateSettingsWindow(): BrowserWindow {
   if (!settingsWindow || settingsWindow.isDestroyed()) {
     settingsWindow = createSettingsWindow()
@@ -66,6 +82,18 @@ function getOrCreateSettingsWindow(): BrowserWindow {
   }
 
   return settingsWindow
+}
+
+function openMainWindow(payload?: MainWindowNavigationPayload): void {
+  const mainWindow = getOrCreateMainWindow()
+  pendingMainNavigation = payload ?? null
+  showMainWindow(mainWindow, payload)
+}
+
+function acknowledgePendingMainNavigation(payload: MainWindowNavigationPayload): void {
+  if (payload.threadId && pendingMainNavigation?.threadId === payload.threadId) {
+    pendingMainNavigation = null
+  }
 }
 
 function openSettingsWindow(payload?: SettingsWindowNavigationPayload): void {
@@ -128,6 +156,12 @@ if (hasSingleInstanceLock) {
     registerModelHandlers(ipcMain)
     registerNativeExtensionHandlers(ipcMain)
     registerNativeMenuBarHandlers(ipcMain)
+    registerMainWindowHandlers({
+      acknowledgePendingNavigation: acknowledgePendingMainNavigation,
+      getPendingNavigation: () => pendingMainNavigation,
+      ipcMain,
+      openMainWindow
+    })
     const handleGlobalShortcutCommand = (commandId: string): void => {
       if (commandId !== LAUNCHER_COMMAND_IDS.toggle) {
         return
@@ -171,7 +205,10 @@ if (hasSingleInstanceLock) {
       ipcMain,
       openSettingsWindow
     })
-    registerLauncherHandlers(ipcMain)
+    registerLauncherHandlers({
+      ipcMain,
+      openMainWindow
+    })
     initializeNativeMenuBar({
       getLauncherWindow: () =>
         launcherWindow && !launcherWindow.isDestroyed() ? launcherWindow : null

@@ -17,8 +17,15 @@ const RIGHT_MIN = 250
 const RIGHT_MAX = 450
 const RIGHT_DEFAULT = 320
 
-function MainAppContent(): React.JSX.Element {
-  const { currentThreadId, loadThreads, createThread, showKanbanView } = useAppStore()
+interface MainAppContentProps {
+  navigationSequence: number
+  navigationThreadId?: string
+  onNavigationConsumed?: (threadId: string) => void
+}
+
+function MainAppContent(props: MainAppContentProps): React.JSX.Element {
+  const { navigationSequence, navigationThreadId, onNavigationConsumed } = props
+  const { currentThreadId, loadThreads, createThread, selectThread, showKanbanView } = useAppStore()
   const threadContext = useThreadContext()
   const { copy } = useI18n()
   const [isLoading, setIsLoading] = useState(true)
@@ -76,6 +83,16 @@ function MainAppContent(): React.JSX.Element {
     }
     init()
   }, [loadThreads, createThread])
+
+  useEffect(() => {
+    if (!navigationThreadId || navigationSequence === 0) {
+      return
+    }
+
+    void selectThread(navigationThreadId).then(() => {
+      onNavigationConsumed?.(navigationThreadId)
+    })
+  }, [navigationSequence, navigationThreadId, onNavigationConsumed, selectThread])
 
   useEffect(() => {
     if (!currentThreadId) {
@@ -192,10 +209,22 @@ function MainAppContent(): React.JSX.Element {
   )
 }
 
-function HistoryApp(): React.JSX.Element {
+interface HistoryAppProps {
+  navigationSequence?: number
+  navigationThreadId?: string
+  onNavigationConsumed?: (threadId: string) => void
+}
+
+function HistoryApp(props: HistoryAppProps): React.JSX.Element {
+  const { navigationSequence = 0, navigationThreadId, onNavigationConsumed } = props
+
   return (
     <ThreadProvider>
-      <MainAppContent />
+      <MainAppContent
+        navigationSequence={navigationSequence}
+        navigationThreadId={navigationThreadId}
+        onNavigationConsumed={onNavigationConsumed}
+      />
     </ThreadProvider>
   )
 }

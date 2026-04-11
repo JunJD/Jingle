@@ -1,10 +1,10 @@
 import React from "react"
 import ReactDOM from "react-dom/client"
-import HistoryApp from "@ai-core/history"
 import LauncherApp from "@launcher-shell/LauncherApp"
 import { LauncherClipboardProvider } from "@launcher-shell/LauncherClipboardContext"
 import { ThreadProvider } from "./lib/thread-context"
 import { I18nProvider } from "./lib/i18n"
+import MainWindowApp from "./main-window/MainWindowApp"
 import SettingsApp from "./settings/SettingsApp"
 import { ShortcutProvider } from "./shortcuts/shortcut-provider"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "../../shared/i18n"
@@ -50,7 +50,7 @@ async function bootstrap(): Promise<void> {
           ) : windowKind === "settings" ? (
             <SettingsApp />
           ) : (
-            <HistoryApp />
+            <MainWindowApp />
           )}
         </I18nProvider>
       </ShortcutProvider>

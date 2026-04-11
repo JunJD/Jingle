@@ -6,6 +6,30 @@ Given("Openwork 桌面应用已启动", async function (this: OpenworkWorld) {
   await this.launchApp()
 })
 
+Given("存在标题为 {string} 的历史线程", async function (this: OpenworkWorld, title: string) {
+  const page = await this.getPageByKind("launcher")
+  const threadId = await page.evaluate(async (threadTitle) => {
+    const api = (
+      window as unknown as Window & {
+        api: {
+          threads: {
+            create: () => Promise<{ thread_id: string }>
+            update: (
+              threadId: string,
+              updates: { title: string }
+            ) => Promise<{ thread_id: string }>
+          }
+        }
+      }
+    ).api
+    const thread = await api.threads.create()
+    await api.threads.update(thread.thread_id, { title: threadTitle })
+    return thread.thread_id
+  }, title)
+
+  this.setScenarioValue("threads.lastCreatedThreadId", threadId)
+})
+
 Then("Launcher 窗口可用", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("launcher")
 
@@ -184,6 +208,29 @@ Then("Settings 窗口可用", async function (this: OpenworkWorld) {
     return Boolean(root && root.childElementCount > 0)
   })
 })
+
+Then("Main 窗口可用", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("main")
+
+  await expect(page.locator("body")).toHaveAttribute("data-window", "main")
+  await page.waitForFunction(() => {
+    const root = document.getElementById("root")
+    return Boolean(root && root.childElementCount > 0)
+  })
+})
+
+Then(
+  "Main 窗口当前选中了标题为 {string} 的线程",
+  async function (this: OpenworkWorld, title: string) {
+    const page = await this.getPageByKind("main")
+    const selectedThread = page
+      .locator('[data-thread-selected="true"]')
+      .filter({ has: page.getByText(title, { exact: true }) })
+      .first()
+
+    await expect(selectedThread).toBeVisible()
+  }
+)
 
 When("我切换到 Settings 快捷键页", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("settings")

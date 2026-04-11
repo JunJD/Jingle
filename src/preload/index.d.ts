@@ -30,6 +30,7 @@ import type {
   ResolvedShortcutBinding,
   ShortcutSettings
 } from "../shared/shortcuts/settings"
+import type { MainWindowNavigationPayload } from "../shared/main-window"
 import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "../shared/settings-window"
 
 interface ElectronAPI {
@@ -101,6 +102,13 @@ interface CustomAPI {
     openWindow: (payload?: SettingsWindowNavigationPayload) => Promise<void>
     openTab: (payload: SettingsWindowNavigationPayload) => Promise<void>
     getPendingNavigation: () => Promise<SettingsWindowNavigationPayload | null>
+  }
+  mainWindow: {
+    openWindow: (payload?: MainWindowNavigationPayload) => Promise<void>
+    openThread: (threadId: string) => Promise<void>
+    getPendingNavigation: () => Promise<MainWindowNavigationPayload | null>
+    ackNavigation: (payload: MainWindowNavigationPayload) => Promise<void>
+    onNavigate: (callback: (payload: MainWindowNavigationPayload) => void) => () => void
   }
   shortcuts: {
     initialResolvedBindings: ResolvedShortcutBinding[]
