@@ -6,7 +6,7 @@ interface HistoryShellState {
   currentThreadId: string | null
   models: ModelConfig[]
   providers: Provider[]
-  rightPanelTab: "todos" | "files" | "subagents"
+  rightPanelTab: "todos" | "artifacts" | "subagents"
   sidebarCollapsed: boolean
   showKanbanView: boolean
   showSubagentsInKanban: boolean
@@ -20,7 +20,7 @@ interface HistoryShellState {
   loadProviders: () => Promise<void>
   setApiKey: (providerId: string, apiKey: string) => Promise<void>
   deleteApiKey: (providerId: string) => Promise<void>
-  setRightPanelTab: (tab: "todos" | "files" | "subagents") => void
+  setRightPanelTab: (tab: "todos" | "artifacts" | "subagents") => void
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setShowKanbanView: (show: boolean) => void
@@ -125,7 +125,7 @@ export const useHistoryShellStore = create<HistoryShellState>((set, get) => ({
     await get().loadModels()
   },
 
-  setRightPanelTab: (tab: "todos" | "files" | "subagents") => {
+  setRightPanelTab: (tab: "todos" | "artifacts" | "subagents") => {
     set({ rightPanelTab: tab })
   },
 

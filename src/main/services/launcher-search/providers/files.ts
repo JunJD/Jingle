@@ -24,6 +24,7 @@ const MAC_FILE_SEARCH_ROOT = os.homedir()
 const MAC_FILE_SEARCH_MAX_CANDIDATES = 200
 const MAC_FILE_SEARCH_MAX_QUERY_LENGTH = 120
 const MAC_FILE_SEARCH_MAX_QUERY_TOKENS = 8
+const MAC_FILE_SEARCH_TIMEOUT_MS = 650
 const MAC_FILE_SEARCH_EXCLUDED_ROOTS = [
   path.join(MAC_FILE_SEARCH_ROOT, "Library", "Caches"),
   path.join(MAC_FILE_SEARCH_ROOT, "Library", "Logs"),
@@ -239,8 +240,10 @@ async function collectMacSpotlightPaths(query: string, limit: number): Promise<s
     let stdoutBuffer = Buffer.alloc(0)
     let stderr = ""
     let killedForLimit = false
+    let killedForTimeout = false
+    let settled = false
 
-    const process = spawn(
+    const child = spawn(
       "/usr/bin/mdfind",
       ["-0", "-onlyin", MAC_FILE_SEARCH_ROOT, "-name", query],
       {
@@ -248,7 +251,23 @@ async function collectMacSpotlightPaths(query: string, limit: number): Promise<s
       }
     )
 
-    process.stdout.on("data", (chunk: Buffer) => {
+    const settle = (next: () => void): void => {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      clearTimeout(timeout)
+      next()
+    }
+
+    const timeout = setTimeout(() => {
+      killedForTimeout = true
+      child.kill("SIGTERM")
+      settle(() => resolve(paths))
+    }, MAC_FILE_SEARCH_TIMEOUT_MS)
+
+    child.stdout.on("data", (chunk: Buffer) => {
       stdoutBuffer = Buffer.concat([stdoutBuffer, chunk])
 
       while (true) {
@@ -268,29 +287,33 @@ async function collectMacSpotlightPaths(query: string, limit: number): Promise<s
 
         if (paths.length >= candidateLimit) {
           killedForLimit = true
-          process.kill("SIGTERM")
+          child.kill("SIGTERM")
           break
         }
       }
     })
 
-    process.stderr.on("data", (chunk: Buffer) => {
+    child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString()
     })
 
-    process.once("error", reject)
-    process.once("close", (code, signal) => {
-      if (killedForLimit && signal === "SIGTERM") {
-        resolve(paths)
+    child.once("error", (error) => {
+      settle(() => reject(error))
+    })
+    child.once("close", (code, signal) => {
+      if ((killedForLimit || killedForTimeout) && signal === "SIGTERM") {
+        settle(() => resolve(paths))
         return
       }
 
       if (code === 0) {
-        resolve(paths)
+        settle(() => resolve(paths))
         return
       }
 
-      reject(new Error(stderr.trim() || `mdfind exited with code ${code ?? "unknown"}`))
+      settle(() =>
+        reject(new Error(stderr.trim() || `mdfind exited with code ${code ?? "unknown"}`))
+      )
     })
   })
 }

@@ -81,47 +81,48 @@ export async function searchThreadMatches(params: {
   const { directLimit, ftsQuery, messageLimit, query } = params
   const prisma = getPrismaClient()
 
-  const directRows = await prisma.thread.findMany({
-    where: {
-      OR: [
-        {
-          threadId: {
-            contains: query
+  const [directRows, messageRows] = await Promise.all([
+    prisma.thread.findMany({
+      where: {
+        OR: [
+          {
+            threadId: {
+              contains: query
+            }
+          },
+          {
+            title: {
+              contains: query
+            }
           }
-        },
-        {
-          title: {
-            contains: query
-          }
-        }
-      ]
-    },
-    orderBy: {
-      updatedAt: "desc"
-    },
-    take: directLimit
-  })
-
-  const messageRows = ftsQuery
-    ? await prisma.$queryRawUnsafe<
-        {
-          rank: number
-          search_text: string | null
-          title: string | null
-          thread_id: string
-          updated_at: bigint | number
-        }[]
-      >(
-        `SELECT messages_fts.thread_id, messages_fts.search_text, bm25(messages_fts) AS rank, threads.title, threads.updated_at
-         FROM messages_fts
-         INNER JOIN threads ON threads.thread_id = messages_fts.thread_id
-         WHERE messages_fts MATCH ?
-         ORDER BY rank
-         LIMIT ?`,
-        ftsQuery,
-        messageLimit
-      )
-    : []
+        ]
+      },
+      orderBy: {
+        updatedAt: "desc"
+      },
+      take: directLimit
+    }),
+    ftsQuery
+      ? prisma.$queryRawUnsafe<
+          {
+            rank: number
+            search_text: string | null
+            title: string | null
+            thread_id: string
+            updated_at: bigint | number
+          }[]
+        >(
+          `SELECT messages_fts.thread_id, messages_fts.search_text, bm25(messages_fts) AS rank, threads.title, threads.updated_at
+           FROM messages_fts
+           INNER JOIN threads ON threads.thread_id = messages_fts.thread_id
+           WHERE messages_fts MATCH ?
+           ORDER BY rank
+           LIMIT ?`,
+          ftsQuery,
+          messageLimit
+        )
+      : Promise.resolve([])
+  ])
 
   return {
     direct: directRows.map((row) => ({

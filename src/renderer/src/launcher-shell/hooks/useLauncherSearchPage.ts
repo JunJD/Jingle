@@ -7,10 +7,7 @@ import {
   type LauncherShellConfig
 } from "../../../../shared/launcher"
 import { useI18n } from "@/lib/i18n"
-import type {
-  LauncherSearchResponse,
-  LauncherSearchResult
-} from "../../../../shared/launcher-search"
+import type { LauncherSearchResult, LauncherSearchSource } from "../../../../shared/launcher-search"
 import type { LauncherHistoryItem } from "../../../../shared/launcher-history"
 import { sortLauncherHistoryItems } from "../../../../shared/launcher-history"
 import type { LocalStartItem } from "../../../../shared/local-start"
@@ -26,11 +23,89 @@ import type { LauncherCommandAddress, LauncherCommandOpenOptions } from "../page
 import { useLauncherHomeClipboard } from "./useLauncherHomeClipboard"
 
 const EMPTY_SEARCH_RESULTS: LauncherSearchResult[] = []
+const LAUNCHER_SEARCH_SOURCES: LauncherSearchSource[] = [
+  "applications",
+  "threads",
+  "files",
+  "browser-history"
+]
+const launcherSearchSourceOrder = new Map(
+  LAUNCHER_SEARCH_SOURCES.map((source, index) => [source, index])
+)
 type LauncherHomeCommandId =
   | typeof LAUNCHER_COMMAND_IDS.searchOpenAi
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionDown
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionUp
   | typeof LAUNCHER_COMMAND_IDS.searchExecuteSelection
+
+interface LauncherSearchState {
+  query: string
+  resultsBySource: Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>
+}
+
+function normalizeLauncherSearchFilterValue(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function filterCachedLauncherSearchResults(
+  resultsBySource: Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>,
+  query: string
+): Partial<Record<LauncherSearchSource, LauncherSearchResult[]>> {
+  const normalizedQuery = normalizeLauncherSearchFilterValue(query)
+  if (!normalizedQuery) {
+    return resultsBySource
+  }
+
+  return Object.fromEntries(
+    Object.entries(resultsBySource).map(([source, results]) => [
+      source,
+      (results ?? []).filter((result) => {
+        const haystack = normalizeLauncherSearchFilterValue(
+          `${result.title} ${result.subtitle ?? ""} ${result.id}`
+        )
+        return haystack.includes(normalizedQuery)
+      })
+    ])
+  ) as Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>
+}
+
+function mergeLauncherSearchResults(
+  resultsBySource: Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>,
+  limit: number
+): LauncherSearchResult[] {
+  const seen = new Set<string>()
+
+  return Object.values(resultsBySource)
+    .flat()
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score
+      }
+
+      const leftOrder = launcherSearchSourceOrder.get(left.source) ?? Number.MAX_SAFE_INTEGER
+      const rightOrder = launcherSearchSourceOrder.get(right.source) ?? Number.MAX_SAFE_INTEGER
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder
+      }
+
+      return left.title.localeCompare(right.title)
+    })
+    .filter((result) => {
+      const key = `${result.source}:${result.id}`
+      if (seen.has(key)) {
+        return false
+      }
+
+      seen.add(key)
+      return true
+    })
+    .slice(0, limit)
+}
 
 export function useLauncherSearchPage(props: {
   openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
@@ -59,7 +134,7 @@ export function useLauncherSearchPage(props: {
   const latestSearchRequestRef = useRef(0)
   const [query, setQuery] = useState("")
   const [historyItems, setHistoryItems] = useState<LauncherHistoryItem[]>([])
-  const [searchResponse, setSearchResponse] = useState<LauncherSearchResponse | null>(null)
+  const [searchState, setSearchState] = useState<LauncherSearchState | null>(null)
   const [idleItems, setIdleItems] = useState<LocalStartItem[]>([])
   const [windowMode, setWindowMode] = useState<"default" | "compact">("default")
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
@@ -67,10 +142,24 @@ export function useLauncherSearchPage(props: {
   const shellConfig: LauncherShellConfig = FALLBACK_SHELL_CONFIG
   const trimmedQuery = query.trim()
 
-  const searchResults =
-    trimmedQuery && searchResponse?.query === trimmedQuery
-      ? searchResponse.results
-      : EMPTY_SEARCH_RESULTS
+  const visibleSearchResultsBySource = useMemo(() => {
+    if (!trimmedQuery || !searchState) {
+      return null
+    }
+
+    if (searchState.query === trimmedQuery) {
+      return searchState.resultsBySource
+    }
+
+    if (trimmedQuery.startsWith(searchState.query)) {
+      return filterCachedLauncherSearchResults(searchState.resultsBySource, trimmedQuery)
+    }
+
+    return null
+  }, [searchState, trimmedQuery])
+  const searchResults = visibleSearchResultsBySource
+    ? mergeLauncherSearchResults(visibleSearchResultsBySource, MAX_LAUNCHER_SEARCH_RESULTS)
+    : EMPTY_SEARCH_RESULTS
   const surface = useMemo(
     () =>
       buildLauncherHomeSurfaceModel({
@@ -137,24 +226,36 @@ export function useLauncherSearchPage(props: {
       const requestId = latestSearchRequestRef.current + 1
       latestSearchRequestRef.current = requestId
 
-      void window.api.launcher
-        .search({
-          limit: MAX_LAUNCHER_SEARCH_RESULTS,
-          query: trimmedQuery
-        })
-        .then((response) => {
-          if (latestSearchRequestRef.current === requestId) {
-            setSearchResponse(response)
-          }
-        })
-        .catch(() => {
-          if (latestSearchRequestRef.current === requestId) {
-            setSearchResponse({
-              query: trimmedQuery,
-              results: []
-            })
-          }
-        })
+      for (const source of LAUNCHER_SEARCH_SOURCES) {
+        void window.api.launcher
+          .search({
+            limit: MAX_LAUNCHER_SEARCH_RESULTS,
+            query: trimmedQuery,
+            sources: [source]
+          })
+          .then((response) => {
+            if (latestSearchRequestRef.current === requestId) {
+              setSearchState((current) => ({
+                query: trimmedQuery,
+                resultsBySource: {
+                  ...(current?.query === trimmedQuery ? current.resultsBySource : {}),
+                  [source]: response.results
+                }
+              }))
+            }
+          })
+          .catch(() => {
+            if (latestSearchRequestRef.current === requestId) {
+              setSearchState((current) => ({
+                query: trimmedQuery,
+                resultsBySource: {
+                  ...(current?.query === trimmedQuery ? current.resultsBySource : {}),
+                  [source]: []
+                }
+              }))
+            }
+          })
+      }
     }, 100)
 
     return () => {
