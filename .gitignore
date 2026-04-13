@@ -9,3 +9,4 @@ release
 raycast
 .ow-build/
 test-results
+prisma/dev.sqlite*

@@ -8,6 +8,8 @@ const REQUIRED_TABLES = [
   "threads",
   "runs",
   "messages_fts",
+  "artifacts",
+  "artifact_presentations",
   "assistants",
   "session_bindings",
   "hitl_requests",

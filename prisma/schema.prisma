@@ -8,34 +8,37 @@ datasource db {
 }
 
 model Thread {
-  threadId         String            @id @map("thread_id")
-  createdAt        BigInt            @map("created_at")
-  updatedAt        BigInt            @map("updated_at")
-  metadata         String?
-  status           String            @default("idle")
-  threadValues     String?           @map("thread_values")
-  title            String?
-  runs             Run[]
-  sessionBindings  SessionBinding[]  @relation("SessionBindingCurrentThread")
-  checkpoints      Checkpoint[]
-  checkpointWrites CheckpointWrite[]
-  hitlRequests     HitlRequest[]
+  threadId              String                 @id @map("thread_id")
+  createdAt             BigInt                 @map("created_at")
+  updatedAt             BigInt                 @map("updated_at")
+  metadata              String?
+  status                String                 @default("idle")
+  threadValues          String?                @map("thread_values")
+  title                 String?
+  runs                  Run[]
+  artifacts             Artifact[]
+  artifactPresentations ArtifactPresentation[]
+  sessionBindings       SessionBinding[]       @relation("SessionBindingCurrentThread")
+  checkpoints           Checkpoint[]
+  checkpointWrites      CheckpointWrite[]
+  hitlRequests          HitlRequest[]
 
   @@index([updatedAt], map: "idx_threads_updated_at")
   @@map("threads")
 }
 
 model Run {
-  runId        String      @id @map("run_id")
-  threadId     String      @map("thread_id")
-  assistantId  String?     @map("assistant_id")
-  createdAt    BigInt      @map("created_at")
-  updatedAt    BigInt      @map("updated_at")
+  runId        String        @id @map("run_id")
+  threadId     String        @map("thread_id")
+  assistantId  String?       @map("assistant_id")
+  createdAt    BigInt        @map("created_at")
+  updatedAt    BigInt        @map("updated_at")
   status       String?
   metadata     String?
   kwargs       String?
-  thread       Thread      @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
-  assistant    Assistant?  @relation(fields: [assistantId], references: [assistantId], onDelete: SetNull)
+  thread       Thread        @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  assistant    Assistant?    @relation(fields: [assistantId], references: [assistantId], onDelete: SetNull)
+  artifacts    Artifact[]
   hitlRequests HitlRequest[]
 
   @@index([threadId], map: "idx_runs_thread_id")
@@ -44,27 +47,27 @@ model Run {
 }
 
 model Assistant {
-  assistantId String @id @map("assistant_id")
-  graphId     String @map("graph_id")
+  assistantId String  @id @map("assistant_id")
+  graphId     String  @map("graph_id")
   name        String?
-  model       String @default("claude-sonnet-4-5-20250929")
+  model       String  @default("claude-sonnet-4-5-20250929")
   config      String?
-  createdAt   BigInt @map("created_at")
-  updatedAt   BigInt @map("updated_at")
+  createdAt   BigInt  @map("created_at")
+  updatedAt   BigInt  @map("updated_at")
   runs        Run[]
 
   @@map("assistants")
 }
 
 model SessionBinding {
-  sessionKey       String @id @map("session_key")
-  workspaceKey     String @map("workspace_key")
-  workspacePath    String @map("workspace_path")
-  currentThreadId  String @map("current_thread_id")
-  createdAt        BigInt @map("created_at")
-  updatedAt        BigInt @map("updated_at")
-  metadata         String?
-  currentThread    Thread @relation("SessionBindingCurrentThread", fields: [currentThreadId], references: [threadId], onDelete: Cascade)
+  sessionKey      String  @id @map("session_key")
+  workspaceKey    String  @map("workspace_key")
+  workspacePath   String  @map("workspace_path")
+  currentThreadId String  @map("current_thread_id")
+  createdAt       BigInt  @map("created_at")
+  updatedAt       BigInt  @map("updated_at")
+  metadata        String?
+  currentThread   Thread  @relation("SessionBindingCurrentThread", fields: [currentThreadId], references: [threadId], onDelete: Cascade)
 
   @@index([workspaceKey], map: "idx_session_bindings_workspace_key")
   @@index([currentThreadId], map: "idx_session_bindings_thread_id")
@@ -72,27 +75,73 @@ model SessionBinding {
 }
 
 model HitlRequest {
-  requestId         String  @id @map("request_id")
-  threadId          String  @map("thread_id")
-  runId             String? @map("run_id")
-  toolCallId        String? @map("tool_call_id")
-  toolName          String  @map("tool_name")
-  toolArgs          String  @map("tool_args")
-  reviewKind        String? @map("review_kind")
-  reviewPayload     String? @map("review_payload")
-  allowedDecisions  String  @map("allowed_decisions")
-  status            String  @default("pending")
-  decision          String?
-  createdAt         BigInt  @map("created_at")
-  updatedAt         BigInt  @map("updated_at")
-  resolvedAt        BigInt? @map("resolved_at")
-  thread            Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
-  run               Run?    @relation(fields: [runId], references: [runId], onDelete: SetNull)
+  requestId        String  @id @map("request_id")
+  threadId         String  @map("thread_id")
+  runId            String? @map("run_id")
+  toolCallId       String? @map("tool_call_id")
+  toolName         String  @map("tool_name")
+  toolArgs         String  @map("tool_args")
+  reviewKind       String? @map("review_kind")
+  reviewPayload    String? @map("review_payload")
+  allowedDecisions String  @map("allowed_decisions")
+  status           String  @default("pending")
+  decision         String?
+  createdAt        BigInt  @map("created_at")
+  updatedAt        BigInt  @map("updated_at")
+  resolvedAt       BigInt? @map("resolved_at")
+  thread           Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  run              Run?    @relation(fields: [runId], references: [runId], onDelete: SetNull)
 
   @@index([threadId, status, updatedAt], map: "idx_hitl_requests_thread_status_updated_at")
   @@index([threadId, updatedAt], map: "idx_hitl_requests_thread_updated_at")
   @@index([runId], map: "idx_hitl_requests_run_id")
   @@map("hitl_requests")
+}
+
+model Artifact {
+  artifactId  String  @id @map("artifact_id")
+  threadId    String  @map("thread_id")
+  runId       String? @map("run_id")
+  messageId   String? @map("message_id")
+  toolCallId  String? @map("tool_call_id")
+  artifactKey String  @map("artifact_key")
+  dedupeKey   String? @map("dedupe_key")
+  kind        String
+  title       String
+  subtitle    String?
+  sourceType  String  @map("source_type")
+  mimeType    String? @map("mime_type")
+  sizeBytes   BigInt? @map("size_bytes")
+  sourceUri   String? @map("source_uri")
+  previewText String? @map("preview_text")
+  payloadJson String? @map("payload_json")
+  status      String  @default("ready")
+  createdAt   BigInt  @map("created_at")
+  updatedAt   BigInt  @map("updated_at")
+  thread      Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  run         Run?    @relation(fields: [runId], references: [runId], onDelete: SetNull)
+
+  @@unique([threadId, dedupeKey], map: "uidx_artifacts_thread_dedupe_key")
+  @@index([threadId, createdAt], map: "idx_artifacts_thread_created_at")
+  @@index([threadId, kind, createdAt], map: "idx_artifacts_thread_kind_created_at")
+  @@index([runId], map: "idx_artifacts_run_id")
+  @@index([messageId], map: "idx_artifacts_message_id")
+  @@map("artifacts")
+}
+
+model ArtifactPresentation {
+  presentationId  String @id @map("presentation_id")
+  threadId        String @map("thread_id")
+  idempotencyKey  String @map("idempotency_key")
+  contentHash     String @map("content_hash")
+  artifactIdsJson String @map("artifact_ids_json")
+  createdAt       BigInt @map("created_at")
+  updatedAt       BigInt @map("updated_at")
+  thread          Thread @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@unique([threadId, idempotencyKey], map: "uidx_artifact_presentations_thread_idempotency")
+  @@index([threadId, createdAt], map: "idx_artifact_presentations_thread_created_at")
+  @@map("artifact_presentations")
 }
 
 model Checkpoint {
