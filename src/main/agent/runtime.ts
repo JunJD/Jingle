@@ -28,6 +28,7 @@ import type * as _lcZodTypes from "@langchain/core/utils/types"
 
 import { BASE_SYSTEM_PROMPT } from "./system-prompt"
 import { ChatAnthropic } from "@langchain/anthropic"
+import { createArtifactToolsMiddleware } from "./artifact-tools-middleware"
 import { createWebToolsMiddleware } from "./web-tools-middleware"
 
 /**
@@ -171,6 +172,10 @@ The workspace root is: ${workspacePath}`
       createFilesystemMiddleware({
         backend,
         systemPrompt: filesystemSystemPrompt
+      }),
+      createArtifactToolsMiddleware({
+        threadId,
+        workspacePath
       }),
       createWebToolsMiddleware(),
       createSummarizationMiddleware({

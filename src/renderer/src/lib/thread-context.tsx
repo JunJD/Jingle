@@ -16,6 +16,7 @@ import type { DeepAgent } from "deepagents"
 import { ElectronIPCTransport } from "./electron-transport"
 import type { Message, Todo, Subagent, HITLRequest } from "@/types"
 import { DEFAULT_MODEL_ID } from "../../../shared/models"
+import type { ArtifactRecord } from "@shared/artifacts"
 
 // Open file tab type
 export interface OpenFile {
@@ -35,6 +36,7 @@ export interface TokenUsage {
 
 // Per-thread state (persisted/restored from checkpoints)
 export interface ThreadState {
+  artifacts: ArtifactRecord[]
   messages: Message[]
   todos: Todo[]
   workspacePath: string | null
@@ -61,6 +63,7 @@ interface StreamData {
 
 // Actions available on a thread
 export interface ThreadActions {
+  setArtifacts: (artifacts: ArtifactRecord[]) => void
   appendMessage: (message: Message) => void
   setMessages: (messages: Message[]) => void
   setTodos: (todos: Todo[]) => void
@@ -97,6 +100,7 @@ export interface ThreadContextValue {
 
 // Default thread state
 const createDefaultThreadState = (): ThreadState => ({
+  artifacts: [],
   messages: [],
   todos: [],
   workspacePath: null,
@@ -121,6 +125,7 @@ const ThreadContext = createContext<ThreadContextValue | null>(null)
 
 // Custom event types from the stream
 interface CustomEventData {
+  artifacts?: ArtifactRecord[]
   type?: string
   request?: HITLRequest
   subagents?: Array<{
@@ -366,6 +371,11 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
             updateThreadState(threadId, () => ({ pendingApproval: data.request }))
           }
           break
+        case "artifacts":
+          if (Array.isArray(data.artifacts)) {
+            updateThreadState(threadId, () => ({ artifacts: data.artifacts! }))
+          }
+          break
         case "subagents":
           if (Array.isArray(data.subagents)) {
             updateThreadState(threadId, () => ({
@@ -437,6 +447,9 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
         },
         setMessages: (messages: Message[]) => {
           updateThreadState(threadId, () => ({ messages }))
+        },
+        setArtifacts: (artifacts: ArtifactRecord[]) => {
+          updateThreadState(threadId, () => ({ artifacts }))
         },
         setTodos: (todos: Todo[]) => {
           updateThreadState(threadId, () => ({ todos }))
@@ -538,6 +551,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       // Bootstrap thread state directly from the latest checkpoint-backed runtime snapshot.
       try {
         const history = await window.api.threads.getHistory(threadId)
+        actions.setArtifacts(history.artifacts)
         actions.setMessages(history.messages)
         actions.setTodos(history.todos)
         actions.setPendingApproval(history.pendingApproval)
@@ -588,6 +602,15 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     },
     [ensureThreadRuntime, loadThreadHistory]
   )
+
+  useEffect(() => {
+    return window.api.artifacts.onChanged(({ artifacts, threadId }) => {
+      handleCustomEvent(threadId, {
+        artifacts,
+        type: "artifacts"
+      })
+    })
+  }, [handleCustomEvent])
 
   const contextValue = useMemo<ThreadContextValue>(
     () => ({

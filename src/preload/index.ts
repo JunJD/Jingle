@@ -34,6 +34,12 @@ import type {
 import { resolveShortcutBindings } from "../shared/shortcuts/settings"
 import type { MainWindowNavigationPayload } from "../shared/main-window"
 import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "../shared/settings-window"
+import type {
+  ArtifactActionId,
+  ArtifactActionResolution,
+  ArtifactChangedEvent,
+  ArtifactRecord
+} from "../shared/artifacts"
 
 // Simple electron API - replaces @electron-toolkit/preload
 const electronAPI = {
@@ -194,6 +200,24 @@ const api = {
     },
     generateTitle: (message: string): Promise<string> => {
       return ipcRenderer.invoke("threads:generateTitle", message)
+    }
+  },
+  artifacts: {
+    list: (threadId: string): Promise<ArtifactRecord[]> => {
+      return ipcRenderer.invoke("artifacts:list", threadId)
+    },
+    open: (artifactId: string, action?: ArtifactActionId): Promise<ArtifactActionResolution> => {
+      return ipcRenderer.invoke("artifacts:open", { action, artifactId })
+    },
+    onChanged: (callback: (event: ArtifactChangedEvent) => void) => {
+      const listener = (_event: unknown, payload: ArtifactChangedEvent): void => {
+        callback(payload as ArtifactChangedEvent)
+      }
+
+      ipcRenderer.on("artifacts:changed", listener)
+      return () => {
+        ipcRenderer.removeListener("artifacts:changed", listener)
+      }
     }
   },
   models: {

@@ -32,6 +32,12 @@ import type {
 } from "../shared/shortcuts/settings"
 import type { MainWindowNavigationPayload } from "../shared/main-window"
 import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "../shared/settings-window"
+import type {
+  ArtifactActionId,
+  ArtifactActionResolution,
+  ArtifactChangedEvent,
+  ArtifactRecord
+} from "../shared/artifacts"
 
 interface ElectronAPI {
   ipcRenderer: {
@@ -84,6 +90,11 @@ interface CustomAPI {
     getHistory: (threadId: string) => Promise<ThreadHistoryState>
     getRuntimeState: (threadId: string) => Promise<ThreadRuntimeState>
     generateTitle: (message: string) => Promise<string>
+  }
+  artifacts: {
+    list: (threadId: string) => Promise<ArtifactRecord[]>
+    open: (artifactId: string, action?: ArtifactActionId) => Promise<ArtifactActionResolution>
+    onChanged: (callback: (event: ArtifactChangedEvent) => void) => () => void
   }
   models: {
     list: () => Promise<ModelConfig[]>

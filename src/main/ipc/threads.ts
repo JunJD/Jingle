@@ -20,6 +20,8 @@ import { generateTitle } from "../services/title-generator"
 import { formatDefaultThreadTitle } from "../../shared/i18n"
 import { toDisplayUserMessageContent } from "../../shared/message-content"
 import { getAgentConfig } from "./models"
+import { listArtifacts } from "../artifacts/service"
+import { deleteManagedArtifactsForThread } from "../artifacts/storage"
 import type {
   Message,
   Thread,
@@ -164,6 +166,13 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
     await dbDeleteThread(threadId)
     console.log("[Threads] Deleted from metadata store")
 
+    try {
+      await deleteManagedArtifactsForThread(threadId)
+      console.log("[Threads] Deleted managed artifacts")
+    } catch (e) {
+      console.warn("[Threads] Failed to delete managed artifacts:", e)
+    }
+
     // Close any open checkpointer for this thread
     try {
       await closeCheckpointer(threadId)
@@ -176,9 +185,10 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(
     "threads:history",
     async (_event, threadId: string): Promise<ThreadHistoryState> => {
-      const [checkpointer, latestHitl] = await Promise.all([
+      const [checkpointer, latestHitl, artifacts] = await Promise.all([
         getCheckpointer(threadId),
-        getLatestHitlRequest(threadId)
+        getLatestHitlRequest(threadId),
+        listArtifacts(threadId)
       ])
 
       const latest = await checkpointer.getTuple({
@@ -196,9 +206,10 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
 
       if (latestHitl) {
         if (pendingApproval) {
-          return { messages, todos, pendingApproval }
+          return { artifacts, messages, todos, pendingApproval }
         }
         return {
+          artifacts,
           messages,
           todos,
           pendingApproval: null
@@ -206,6 +217,7 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
       }
 
       return {
+        artifacts,
         messages,
         todos,
         pendingApproval: checkpointRequest

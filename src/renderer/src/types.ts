@@ -1,6 +1,7 @@
 import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
 import type { AppLocale } from "../../shared/i18n"
 import type { HITLRequest } from "../../shared/hitl"
+import type { ArtifactRecord } from "../../shared/artifacts"
 export type { HITLDecision, HITLRequest } from "../../shared/hitl"
 
 // Re-export types from electron for use in renderer
@@ -116,6 +117,7 @@ export interface ThreadRuntimeState {
 }
 
 export interface ThreadHistoryState extends ThreadRuntimeState {
+  artifacts: ArtifactRecord[]
   messages: Message[]
 }
 

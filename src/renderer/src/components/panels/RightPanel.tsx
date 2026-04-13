@@ -9,18 +9,24 @@ import {
   Circle,
   Clock,
   XCircle,
-  GripHorizontal
+  GripHorizontal,
+  ExternalLink,
+  FileText,
+  Link2,
+  FileCode2
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useThreadState } from "@/lib/thread-context"
 import { Badge } from "@/components/ui/badge"
 import type { Todo } from "@/types"
+import type { ArtifactActionId, ArtifactRecord } from "@shared/artifacts"
 
 const HEADER_HEIGHT = 40 // px
 const HANDLE_HEIGHT = 6 // px
 const MIN_CONTENT_HEIGHT = 60 // px
 const COLLAPSE_THRESHOLD = 55 // px - auto-collapse when below this
+const EMPTY_ARTIFACTS: ArtifactRecord[] = []
 
 interface SectionHeaderProps {
   title: string
@@ -106,7 +112,7 @@ export function RightPanel(): React.JSX.Element {
   const { currentThreadId } = useHistoryShellStore()
   const threadState = useThreadState(currentThreadId)
   const todos = threadState?.todos ?? []
-  const artifactCount = 0
+  const artifactCount = threadState?.artifacts.length ?? 0
   const subagents = threadState?.subagents ?? []
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerHeight, setContainerHeight] = useState(0)
@@ -519,19 +525,329 @@ function TaskItem({ todo }: { todo: Todo }): React.JSX.Element {
 }
 
 function ArtifactsContent(): React.JSX.Element {
+  const { currentThreadId } = useHistoryShellStore()
+  const threadState = useThreadState(currentThreadId)
+  const artifacts = threadState?.artifacts ?? EMPTY_ARTIFACTS
+  const [manuallySelectedArtifactId, setManuallySelectedArtifactId] = useState<string | null>(null)
+  const activeArtifactId =
+    manuallySelectedArtifactId &&
+    artifacts.some((artifact) => artifact.id === manuallySelectedArtifactId)
+      ? manuallySelectedArtifactId
+      : (artifacts[0]?.id ?? null)
+
+  const handleArtifactAction = useCallback(
+    async (artifact: ArtifactRecord, action?: ArtifactActionId) => {
+      const resolution = await window.api.artifacts.open(artifact.id, action)
+
+      switch (resolution.type) {
+        case "detail":
+          setManuallySelectedArtifactId(artifact.id)
+          return
+        case "copy-link":
+          await navigator.clipboard.writeText(resolution.value)
+          return
+        case "download":
+        case "external-browser":
+        case "reveal-source":
+        case "system-default":
+          return
+      }
+    },
+    []
+  )
+
+  if (artifacts.length === 0) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="px-3 py-2 border-b border-border/50 bg-background/30">
+          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+            Thread outputs
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center justify-center text-center text-sm text-muted-foreground py-8 px-4 flex-1 gap-3">
+          <PackageOpen className="size-8 opacity-50" />
+          <div className="space-y-1">
+            <div>No artifacts yet</div>
+            <div className="text-xs">Presented outputs will appear here</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col">
       <div className="px-3 py-2 border-b border-border/50 bg-background/30">
         <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
           Thread outputs
         </div>
       </div>
 
-      <div className="flex flex-col items-center justify-center text-center text-sm text-muted-foreground py-8 px-4 flex-1">
-        <PackageOpen className="size-8 mb-2 opacity-50" />
-        <span>No artifacts yet</span>
-        <span className="text-xs mt-1">Presented outputs will appear here</span>
+      <div className="min-h-0 flex-1 overflow-auto p-2">
+        <div className="space-y-2">
+          {artifacts.map((artifact) => (
+            <ArtifactCard
+              artifact={artifact}
+              isSelected={artifact.id === activeArtifactId}
+              key={artifact.id}
+              onAction={handleArtifactAction}
+              onSelect={() => setManuallySelectedArtifactId(artifact.id)}
+            />
+          ))}
+        </div>
       </div>
+    </div>
+  )
+}
+
+function ArtifactCard(props: {
+  artifact: ArtifactRecord
+  isSelected: boolean
+  onAction: (artifact: ArtifactRecord, action?: ArtifactActionId) => Promise<void>
+  onSelect: () => void
+}): React.JSX.Element {
+  const { artifact, isSelected, onAction, onSelect } = props
+  const descriptor = getArtifactDescriptor(artifact)
+  const primaryActionLabel = getArtifactPrimaryActionLabel(artifact)
+  const canRevealSource = artifact.source.type === "managed-file-path"
+  const canCopyLink = artifact.kind === "link"
+
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-md border bg-background/35 transition-colors",
+        isSelected ? "border-primary/45 bg-primary/5" : "border-border hover:border-border-emphasis"
+      )}
+    >
+      <div className="flex items-stretch">
+        <button
+          aria-expanded={isSelected}
+          className="min-h-[72px] min-w-0 flex-1 px-3 py-3 text-left"
+          onClick={onSelect}
+          type="button"
+        >
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-background">
+              <descriptor.icon className="size-3.5 text-muted-foreground" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-5 text-foreground">
+                  {artifact.title}
+                </div>
+                <span className="shrink-0 rounded-full border border-border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  {descriptor.label}
+                </span>
+              </div>
+              <div className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">
+                {descriptor.location}
+              </div>
+              {descriptor.preview && (
+                <div className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                  {descriptor.preview}
+                </div>
+              )}
+            </div>
+          </div>
+        </button>
+
+        <div className="flex shrink-0 flex-col items-end justify-between py-2 pr-2">
+          <ChevronDown
+            className={cn(
+              "size-3.5 text-muted-foreground transition-transform duration-200",
+              !isSelected && "-rotate-90"
+            )}
+          />
+          {primaryActionLabel && (
+            <button
+              className="min-h-8 rounded-sm border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-background-interactive"
+              onClick={() => void onAction(artifact)}
+              type="button"
+            >
+              {primaryActionLabel}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {isSelected && (
+        <div className="space-y-3 border-t border-border/60 px-3 py-3">
+          {(canRevealSource || canCopyLink) && (
+            <div className="flex flex-wrap gap-2">
+              {canRevealSource && (
+                <button
+                  className="min-h-8 rounded-sm border border-border px-2.5 text-xs text-foreground transition-colors hover:bg-background-interactive"
+                  onClick={() => void onAction(artifact, "reveal-source")}
+                  type="button"
+                >
+                  Reveal
+                </button>
+              )}
+              {canCopyLink && (
+                <button
+                  className="min-h-8 rounded-sm border border-border px-2.5 text-xs text-foreground transition-colors hover:bg-background-interactive"
+                  onClick={() => void onAction(artifact, "copy-link")}
+                  type="button"
+                >
+                  Copy link
+                </button>
+              )}
+            </div>
+          )}
+
+          <div>{getArtifactDetailBody(artifact)}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function getArtifactPrimaryActionLabel(artifact: ArtifactRecord): string | null {
+  switch (artifact.kind) {
+    case "file":
+      return "Open"
+    case "link":
+      return "Open"
+    case "patch":
+      return artifact.source.type === "inline-text" ? null : "Open"
+    case "summary":
+      return null
+  }
+}
+
+function getArtifactUriLabel(uri: string): string {
+  try {
+    return new URL(uri).hostname
+  } catch {
+    return uri.split(/[\\/]/).filter(Boolean).at(-1) ?? uri
+  }
+}
+
+function formatArtifactSize(sizeBytes: number | null): string | null {
+  if (sizeBytes === null) {
+    return null
+  }
+
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`
+  }
+
+  if (sizeBytes < 1024 * 1024) {
+    return `${Math.round(sizeBytes / 102.4) / 10} KB`
+  }
+
+  return `${Math.round(sizeBytes / 1024 / 102.4) / 10} MB`
+}
+
+function getArtifactDescriptor(artifact: ArtifactRecord): {
+  icon: typeof FileText
+  label: string
+  location: string
+  preview: string | null
+} {
+  switch (artifact.kind) {
+    case "summary":
+      return {
+        icon: FileText,
+        label: "Summary",
+        location: "Inline result",
+        preview: artifact.previewText ?? artifact.payload!.text
+      }
+    case "link":
+      return {
+        icon: Link2,
+        label: "Link",
+        location: getArtifactUriLabel(artifact.source.uri),
+        preview: artifact.previewText ?? artifact.source.uri
+      }
+    case "patch":
+      return {
+        icon: FileCode2,
+        label: "Patch",
+        location:
+          artifact.source.type === "inline-text"
+            ? "Inline diff"
+            : getArtifactUriLabel(artifact.source.uri),
+        preview:
+          artifact.source.type === "inline-text"
+            ? (artifact.previewText ?? artifact.payload!.text)
+            : artifact.previewText
+      }
+    case "file":
+      return {
+        icon: PackageOpen,
+        label: "File",
+        location: getArtifactUriLabel(artifact.source.uri),
+        preview: artifact.previewText
+      }
+  }
+}
+
+function getArtifactDetailBody(artifact: ArtifactRecord): React.JSX.Element {
+  switch (artifact.kind) {
+    case "summary":
+      return (
+        <div className="whitespace-pre-wrap break-words rounded-sm border border-border bg-background p-3 text-sm leading-6 text-foreground">
+          {artifact.payload!.text}
+        </div>
+      )
+    case "patch":
+      if (artifact.source.type === "inline-text") {
+        return (
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-border bg-background p-3 font-mono text-xs leading-5 text-foreground">
+            {artifact.payload!.text}
+          </pre>
+        )
+      }
+      return (
+        <ArtifactMetaList
+          entries={[
+            ["File", getArtifactUriLabel(artifact.source.uri)],
+            ["Path", artifact.source.uri],
+            ["Mime", artifact.mimeType],
+            ["Size", formatArtifactSize(artifact.sizeBytes)]
+          ]}
+        />
+      )
+    case "file":
+      return (
+        <ArtifactMetaList
+          entries={[
+            ["File", getArtifactUriLabel(artifact.source.uri)],
+            ["Path", artifact.source.uri],
+            ["Mime", artifact.mimeType],
+            ["Size", formatArtifactSize(artifact.sizeBytes)],
+            ["Preview", artifact.previewText]
+          ]}
+        />
+      )
+    case "link":
+      return (
+        <div className="space-y-2 rounded-sm border border-border bg-background p-3">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
+            <ExternalLink className="size-3.5" />
+            External link
+          </div>
+          <div className="break-all text-sm leading-5 text-foreground">{artifact.source.uri}</div>
+        </div>
+      )
+  }
+}
+
+function ArtifactMetaList(props: { entries: Array<[string, string | null]> }): React.JSX.Element {
+  return (
+    <div className="space-y-3 rounded-sm border border-border bg-background p-3">
+      {props.entries
+        .filter(([, value]) => Boolean(value))
+        .map(([label, value]) => (
+          <div key={label} className="space-y-1">
+            <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+              {label}
+            </div>
+            <div className="break-all text-sm leading-5 text-foreground">{value}</div>
+          </div>
+        ))}
     </div>
   )
 }

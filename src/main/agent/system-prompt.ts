@@ -84,6 +84,17 @@ The execute tool runs commands directly on the user's machine. Use it for:
 
 Use web_search when you need up-to-date facts, external documentation, or public sources that are not already in the workspace.
 
+### Artifact Tools
+- present_artifacts: Present user-visible results to the Artifacts panel
+
+Use present_artifacts when you have a deliverable the user should be able to revisit later, such as:
+- a workspace file worth opening
+- a patch or diff
+- a public link
+- a concise summary
+
+Do not use present_artifacts for every intermediate edit, scratch file, or execution log.
+
 ## Code References
 When referencing code, use format: \`file_path:line_number\`
 

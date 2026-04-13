@@ -1,6 +1,7 @@
 import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
 import type { AppLocale } from "./i18n"
 import type { HITLRequest } from "./hitl"
+import type { ArtifactRecord } from "./artifacts"
 export type { HITLDecision, HITLRequest } from "./hitl"
 
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
@@ -109,6 +110,7 @@ export interface ThreadRuntimeState {
 }
 
 export interface ThreadHistoryState extends ThreadRuntimeState {
+  artifacts: ArtifactRecord[]
   messages: Message[]
 }
 
