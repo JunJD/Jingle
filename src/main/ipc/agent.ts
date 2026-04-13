@@ -1,6 +1,7 @@
 import { IpcMain, BrowserWindow } from "electron"
 import { HumanMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
+import { isAbortLikeError } from "../agent/errors"
 import { createAgentRuntime } from "../agent/runtime"
 import { getThread, resolvePendingHitlRequests, upsertHitlRequest } from "../db"
 import {
@@ -311,14 +312,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         window.webContents.send(channel, { type: "done" })
       }
     } catch (error) {
-      // Ignore abort-related errors (expected when stream is cancelled)
-      const isAbortError =
-        error instanceof Error &&
-        (error.name === "AbortError" ||
-          error.message.includes("aborted") ||
-          error.message.includes("Controller is already closed"))
-
-      if (!isAbortError) {
+      if (!isAbortLikeError(error, abortController.signal)) {
         const activeRun = activeRuns.get(threadId)
         if (activeRun) {
           await markRunFailed(threadId, activeRun.runId, error)
@@ -416,13 +410,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         window.webContents.send(channel, { type: "done" })
       }
     } catch (error) {
-      const isAbortError =
-        error instanceof Error &&
-        (error.name === "AbortError" ||
-          error.message.includes("aborted") ||
-          error.message.includes("Controller is already closed"))
-
-      if (!isAbortError) {
+      if (!isAbortLikeError(error, abortController.signal)) {
         await markRunFailed(threadId, runId, error)
         console.error("[Agent] Resume error:", error)
         window.webContents.send(channel, {
@@ -515,13 +503,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         window.webContents.send(channel, { type: "done" })
       }
     } catch (error) {
-      const isAbortError =
-        error instanceof Error &&
-        (error.name === "AbortError" ||
-          error.message.includes("aborted") ||
-          error.message.includes("Controller is already closed"))
-
-      if (!isAbortError) {
+      if (!isAbortLikeError(error, abortController.signal)) {
         await markRunFailed(threadId, runId, error)
         console.error("[Agent] Interrupt error:", error)
         window.webContents.send(channel, {
