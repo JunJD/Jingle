@@ -3,7 +3,7 @@ import type {
   Thread,
   ModelConfig,
   ModelProviderState,
-  Provider,
+  ModelType,
   ProviderId,
   HITLDecision,
   ThreadRuntimeState,
@@ -100,13 +100,12 @@ interface CustomAPI {
   }
   models: {
     getState: () => Promise<ModelProviderState>
-    list: () => Promise<ModelConfig[]>
-    listByProvider: (provider: ProviderId) => Promise<ModelConfig[]>
-    listProviders: () => Promise<Provider[]>
-    getDefault: () => Promise<string>
-    deleteApiKey: (provider: ProviderId) => Promise<void>
-    setDefault: (modelId: string) => Promise<void>
-    setApiKey: (provider: ProviderId, apiKey: string) => Promise<void>
+    list: (modelType?: ModelType) => Promise<ModelConfig[]>
+    listByProvider: (provider: ProviderId, modelType?: ModelType) => Promise<ModelConfig[]>
+    getDefault: (modelType: "llm") => Promise<string>
+    deleteCredentials: (provider: ProviderId) => Promise<void>
+    setCredentials: (provider: ProviderId, credentials: Record<string, string>) => Promise<void>
+    setDefault: (modelType: "llm", modelId: string) => Promise<void>
   }
   settings: {
     getAgentConfig: () => Promise<AgentConfig>

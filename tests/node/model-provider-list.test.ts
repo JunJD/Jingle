@@ -27,8 +27,24 @@ test("listRemoteModelsByProvider scopes remote model ids by provider", async () 
   const models = await listRemoteModelsByProvider("openai", "sk-test")
 
   assert.deepEqual(
-    models.map((model) => ({ id: model.id, model: model.model, provider: model.provider })),
-    [{ id: "openai:gpt-4o", model: "gpt-4o", provider: "openai" }]
+    models.map((model) => ({
+      fetchFrom: model.fetchFrom,
+      id: model.id,
+      model: model.model,
+      modelType: model.modelType,
+      provider: model.provider,
+      status: model.status
+    })),
+    [
+      {
+        fetchFrom: "fetch-from-remote",
+        id: "openai:gpt-4o",
+        model: "gpt-4o",
+        modelType: "llm",
+        provider: "openai",
+        status: "active"
+      }
+    ]
   )
 })
 

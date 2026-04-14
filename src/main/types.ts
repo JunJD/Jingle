@@ -5,7 +5,13 @@ import type { HITLDecision, HITLRequest } from "../shared/hitl"
 import type { ArtifactRecord } from "../shared/artifacts"
 import type { ProviderId } from "../shared/app-types"
 export type { HITLDecision, HITLRequest } from "../shared/hitl"
-export type { ModelConfig, Provider, ProviderId, ProviderModelStatus } from "../shared/app-types"
+export type {
+  ModelConfig,
+  ModelProviderState,
+  ModelType,
+  Provider,
+  ProviderId
+} from "../shared/app-types"
 
 // Thread types matching langgraph-api
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
@@ -56,9 +62,14 @@ export interface WorkspaceFileParams {
 }
 
 // Model IPC
-export interface SetApiKeyParams {
+export interface SetProviderCredentialsParams {
+  credentials: Record<string, string>
   provider: ProviderId
-  apiKey: string
+}
+
+export interface SetDefaultModelParams {
+  modelId: string
+  modelType: "llm"
 }
 
 // =============================================================================

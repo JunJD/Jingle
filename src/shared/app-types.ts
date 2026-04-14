@@ -30,26 +30,95 @@ export interface Run {
 
 export type ProviderId = "anthropic" | "openai" | "google" | "dashscope"
 
-export type ProviderModelStatus = "available" | "error" | "not_configured"
+export type ModelType = "llm" | "text-embedding" | "rerank" | "speech2text" | "moderation" | "tts"
+
+export type SupportedDefaultModelType = "llm"
+
+export type ConfigurationMethod = "predefined-model" | "customizable-model" | "fetch-from-remote"
+
+export type ModelFeature =
+  | "tool-call"
+  | "multi-tool-call"
+  | "vision"
+  | "video"
+  | "document"
+  | "audio"
+  | "structured-output"
+
+export type ModelStatus =
+  | "active"
+  | "no-configure"
+  | "quota-exceeded"
+  | "no-permission"
+  | "disabled"
+  | "credential-removed"
+
+export type ProviderModelListStatus = "active" | "error" | "no-configure"
+
+export type CustomConfigurationStatus = "active" | "no-configure"
+
+export type CredentialFormType = "secret-input" | "text-input"
+
+export interface LocalizedText {
+  en_US: string
+  zh_Hans: string
+}
+
+export interface CredentialFormSchema {
+  label: LocalizedText
+  name: string
+  placeholder?: LocalizedText
+  required: boolean
+  tooltip?: LocalizedText
+  type: CredentialFormType
+  variable: string
+}
+
+export interface ModelProviderCredentialSchema {
+  credentialFormSchemas: CredentialFormSchema[]
+}
+
+export interface ModelProviderCustomConfiguration {
+  currentCredentialName?: string
+  status: CustomConfigurationStatus
+}
+
+export interface ModelProviderSystemConfiguration {
+  enabled: boolean
+}
+
+export interface DefaultModels {
+  llm: string
+}
 
 export interface Provider {
+  configurateMethods: ConfigurationMethod[]
+  customConfiguration: ModelProviderCustomConfiguration
+  description?: LocalizedText
   id: ProviderId
+  label: LocalizedText
+  modelListError?: string
+  modelListStatus: ProviderModelListStatus
   name: string
-  hasApiKey: boolean
-  modelError?: string
-  modelStatus: ProviderModelStatus
+  providerCredentialSchema: ModelProviderCredentialSchema
+  supportedModelTypes: ModelType[]
+  systemConfiguration: ModelProviderSystemConfiguration
 }
 
 export interface ModelConfig {
+  description?: string
+  fetchFrom: ConfigurationMethod
+  features?: ModelFeature[]
   id: string
+  model: string
+  modelType: ModelType
   name: string
   provider: ProviderId
-  model: string
-  description?: string
-  available: boolean
+  status: ModelStatus
 }
 
 export interface ModelProviderState {
+  defaultModels: DefaultModels
   models: ModelConfig[]
   providers: Provider[]
 }

@@ -130,7 +130,7 @@ export default function LauncherApp(): React.JSX.Element {
   const createPluginThread = useCallback(
     async (input: LauncherThreadCreateInput) => {
       const [defaultModelId, workspacePathResult] = await Promise.all([
-        window.api.models.getDefault(),
+        window.api.models.getDefault("llm"),
         window.api.workspace.get()
       ])
 

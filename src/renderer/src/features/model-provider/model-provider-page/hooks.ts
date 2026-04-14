@@ -29,7 +29,7 @@ export function useModelProviderPageState(
     const notConfiguredProviders: ModelProvider[] = []
 
     pageProviders.forEach((provider) => {
-      if (provider.hasApiKey) {
+      if (provider.configurationStatus === "active") {
         configuredProviders.push(provider)
         return
       }
@@ -37,7 +37,9 @@ export function useModelProviderPageState(
       notConfiguredProviders.push(provider)
     })
 
-    const availableModels = models.filter((model) => model.available)
+    const availableModels = models.filter(
+      (model) => model.modelType === "llm" && model.status === "active"
+    )
     const defaultModel = models.find((model) => model.id === defaultModelId)
 
     return {
@@ -45,7 +47,7 @@ export function useModelProviderPageState(
       configuredProviders,
       defaultModel,
       notConfiguredProviders,
-      showWarning: !defaultModel?.available
+      showWarning: defaultModel?.status !== "active"
     }
   }, [defaultModelId, models, providers])
 }

@@ -1,9 +1,18 @@
-import { getDefaultModelId, setDefaultModelId } from "../preferences"
+import type { SupportedDefaultModelType } from "../../shared/app-types"
+import { getDefaultModelId, getDefaultModels, setDefaultModelId } from "../preferences"
+import type { DefaultModels } from "./types"
 
-export function getModelProviderDefaultModel(): string {
-  return getDefaultModelId()
+export function getModelProviderDefaultModels(): DefaultModels {
+  return getDefaultModels()
 }
 
-export function setModelProviderDefaultModel(modelId: string): void {
-  setDefaultModelId(modelId)
+export function getModelProviderDefaultModel(modelType: SupportedDefaultModelType): string {
+  return getDefaultModelId(modelType)
+}
+
+export function setModelProviderDefaultModel(
+  modelType: SupportedDefaultModelType,
+  modelId: string
+): void {
+  setDefaultModelId(modelType, modelId)
 }

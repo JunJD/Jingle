@@ -5,7 +5,7 @@ import type {
   Thread,
   ModelConfig,
   ModelProviderState,
-  Provider,
+  ModelType,
   ProviderId,
   HITLDecision,
   ThreadRuntimeState
@@ -226,26 +226,23 @@ const api = {
     getState: (): Promise<ModelProviderState> => {
       return ipcRenderer.invoke("models:getState")
     },
-    list: (): Promise<ModelConfig[]> => {
-      return ipcRenderer.invoke("models:list")
+    list: (modelType?: ModelType): Promise<ModelConfig[]> => {
+      return ipcRenderer.invoke("models:list", modelType)
     },
-    listByProvider: (provider: ProviderId): Promise<ModelConfig[]> => {
-      return ipcRenderer.invoke("models:listByProvider", provider)
+    listByProvider: (provider: ProviderId, modelType?: ModelType): Promise<ModelConfig[]> => {
+      return ipcRenderer.invoke("models:listByProvider", provider, modelType)
     },
-    listProviders: (): Promise<Provider[]> => {
-      return ipcRenderer.invoke("models:listProviders")
+    getDefault: (modelType: "llm"): Promise<string> => {
+      return ipcRenderer.invoke("models:getDefault", modelType)
     },
-    getDefault: (): Promise<string> => {
-      return ipcRenderer.invoke("models:getDefault")
+    setDefault: (modelType: "llm", modelId: string): Promise<void> => {
+      return ipcRenderer.invoke("models:setDefault", { modelId, modelType })
     },
-    setDefault: (modelId: string): Promise<void> => {
-      return ipcRenderer.invoke("models:setDefault", modelId)
+    setCredentials: (provider: ProviderId, credentials: Record<string, string>): Promise<void> => {
+      return ipcRenderer.invoke("models:setCredentials", { credentials, provider })
     },
-    setApiKey: (provider: ProviderId, apiKey: string): Promise<void> => {
-      return ipcRenderer.invoke("models:setApiKey", { provider, apiKey })
-    },
-    deleteApiKey: (provider: ProviderId): Promise<void> => {
-      return ipcRenderer.invoke("models:deleteApiKey", provider)
+    deleteCredentials: (provider: ProviderId): Promise<void> => {
+      return ipcRenderer.invoke("models:deleteCredentials", provider)
     }
   },
   settings: {

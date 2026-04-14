@@ -12,18 +12,13 @@ import { Input } from "@/components/ui/input"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import type { Provider } from "@/types"
 import { useI18n } from "@/lib/i18n"
+import type { AppLocale } from "../../../../shared/i18n"
+import type { LocalizedText } from "../../../../shared/app-types"
 
 interface ApiKeyDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   provider: Provider | null
-}
-
-const PROVIDER_INFO: Record<Provider["id"], { placeholder: string }> = {
-  anthropic: { placeholder: "sk-ant-..." },
-  openai: { placeholder: "sk-..." },
-  google: { placeholder: "AIza..." },
-  dashscope: { placeholder: "sk-..." }
 }
 
 function getDialogErrorMessage(error: unknown, fallback: string): string {
@@ -34,27 +29,37 @@ function getDialogErrorMessage(error: unknown, fallback: string): string {
   return error.message.replace(/^Error invoking remote method '[^']+':\s*/, "")
 }
 
+function getLocalizedText(text: LocalizedText, locale: AppLocale): string {
+  return locale === "zh-CN" ? text.zh_Hans : text.en_US
+}
+
 export function ApiKeyDialog({
   open,
   onOpenChange,
   provider
 }: ApiKeyDialogProps): React.JSX.Element | null {
-  const { copy } = useI18n()
-  const [apiKey, setApiKey] = useState("")
-  const [showKey, setShowKey] = useState(false)
+  const { copy, locale } = useI18n()
+  const [credentials, setCredentials] = useState<Record<string, string>>({})
+  const [visibleCredentials, setVisibleCredentials] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [hasExistingKey, setHasExistingKey] = useState(false)
   const [errorText, setErrorText] = useState<string | null>(null)
 
-  const { setApiKey: saveApiKey, deleteApiKey } = useHistoryShellStore()
+  const { setProviderCredentials, deleteProviderCredentials } = useHistoryShellStore()
 
   // Check if there's an existing key when dialog opens
   useEffect(() => {
     if (open && provider) {
-      setHasExistingKey(provider.hasApiKey)
-      setApiKey("")
-      setShowKey(false)
+      const credentialValues = Object.fromEntries(
+        provider.providerCredentialSchema.credentialFormSchemas.map((schema) => [
+          schema.variable,
+          ""
+        ])
+      )
+      setHasExistingKey(provider.customConfiguration.status === "active")
+      setCredentials(credentialValues)
+      setVisibleCredentials({})
       setErrorText(null)
     }
   }, [open, provider])
@@ -62,15 +67,22 @@ export function ApiKeyDialog({
   if (!provider) return null
 
   const selectedProvider = provider
-  const info = PROVIDER_INFO[selectedProvider.id]
+  const credentialSchemas = selectedProvider.providerCredentialSchema.credentialFormSchemas
+  const canSave = credentialSchemas.every((schema) => {
+    if (!schema.required) {
+      return true
+    }
+
+    return Boolean(credentials[schema.variable]?.trim())
+  })
 
   async function handleSave(): Promise<void> {
-    if (!apiKey.trim()) return
+    if (!canSave) return
 
     setSaving(true)
     setErrorText(null)
     try {
-      await saveApiKey(selectedProvider.id, apiKey.trim())
+      await setProviderCredentials(selectedProvider.id, credentials)
       onOpenChange(false)
     } catch (e) {
       console.error("[ApiKeyDialog] Failed to save API key:", e)
@@ -84,7 +96,7 @@ export function ApiKeyDialog({
     setDeleting(true)
     setErrorText(null)
     try {
-      await deleteApiKey(selectedProvider.id)
+      await deleteProviderCredentials(selectedProvider.id)
       onOpenChange(false)
     } catch (e) {
       console.error("Failed to delete API key:", e)
@@ -111,24 +123,51 @@ export function ApiKeyDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <div className="relative">
-              <Input
-                type={showKey ? "text" : "password"}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={hasExistingKey ? "••••••••••••••••" : info.placeholder}
-                className="pr-10"
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
+          <div className="space-y-3">
+            {credentialSchemas.map((schema, index) => {
+              const isSecret = schema.type === "secret-input"
+              const visible = visibleCredentials[schema.variable] === true
+              const placeholder = schema.placeholder
+                ? getLocalizedText(schema.placeholder, locale)
+                : undefined
+
+              return (
+                <label key={schema.variable} className="block space-y-1.5">
+                  <span className="text-[12px] font-medium text-foreground">
+                    {getLocalizedText(schema.label, locale)}
+                  </span>
+                  <div className="relative">
+                    <Input
+                      type={isSecret && !visible ? "password" : "text"}
+                      value={credentials[schema.variable] ?? ""}
+                      onChange={(event) =>
+                        setCredentials((currentCredentials) => ({
+                          ...currentCredentials,
+                          [schema.variable]: event.target.value
+                        }))
+                      }
+                      placeholder={hasExistingKey ? "••••••••••••••••" : placeholder}
+                      className={isSecret ? "pr-10" : undefined}
+                      autoFocus={index === 0}
+                    />
+                    {isSecret && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVisibleCredentials((current) => ({
+                            ...current,
+                            [schema.variable]: !visible
+                          }))
+                        }
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
+                    )}
+                  </div>
+                </label>
+              )
+            })}
             <p className="text-xs text-muted-foreground">{copy.apiKeyDialog.secureStorageHint}</p>
             {errorText && (
               <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -161,7 +200,7 @@ export function ApiKeyDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {copy.apiKeyDialog.cancel}
             </Button>
-            <Button type="button" onClick={handleSave} disabled={!apiKey.trim() || saving}>
+            <Button type="button" onClick={handleSave} disabled={!canSave || saving}>
               {saving ? <Loader2 className="size-4 animate-spin" /> : copy.apiKeyDialog.save}
             </Button>
           </div>

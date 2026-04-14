@@ -72,6 +72,7 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
     ? models.filter((m) => m.provider === effectiveProviderId)
     : []
   const selectedProvider = providers.find((p) => p.id === effectiveProviderId)
+  const selectedProviderConfigured = selectedProvider?.customConfiguration.status === "active"
 
   function handleProviderClick(provider: Provider): void {
     setSelectedProviderId(provider.id)
@@ -140,11 +141,11 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
                   >
                     {Icon && <Icon className="size-3.5 shrink-0" />}
                     <span className="flex-1 truncate">{provider.name}</span>
-                    {provider.modelStatus !== "available" && (
+                    {provider.modelListStatus !== "active" && (
                       <AlertCircle
                         className={cn(
                           "size-3 shrink-0",
-                          provider.modelStatus === "error"
+                          provider.modelListStatus === "error"
                             ? "text-destructive"
                             : "text-status-warning"
                         )}
@@ -161,20 +162,20 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
               {copy.modelSwitcher.model}
             </div>
 
-            {selectedProvider?.modelStatus === "error" ? (
+            {selectedProvider?.modelListStatus === "error" ? (
               <div className="flex h-[180px] flex-col items-center justify-center px-4 text-center">
                 <AlertCircle className="mb-2 size-6 text-destructive" />
                 <p className="mb-1 text-xs font-medium text-foreground">
                   {copy.modelSwitcher.providerError(selectedProvider.name)}
                 </p>
                 <p className="mb-3 max-w-[220px] truncate text-xs text-muted-foreground">
-                  {selectedProvider.modelError}
+                  {selectedProvider.modelListError}
                 </p>
                 <Button size="sm" onClick={() => handleOpenProviderSettings(selectedProvider)}>
                   {copy.modelSwitcher.editApiKey}
                 </Button>
               </div>
-            ) : selectedProvider && !selectedProvider.hasApiKey ? (
+            ) : selectedProvider && !selectedProviderConfigured ? (
               <div className="flex flex-col items-center justify-center h-[180px] px-4 text-center">
                 <Key className="size-6 text-muted-foreground mb-2" />
                 <p className="text-xs text-muted-foreground mb-3">
@@ -212,7 +213,7 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
                   )}
                 </div>
 
-                {selectedProvider?.hasApiKey && (
+                {selectedProviderConfigured && (
                   <button
                     onClick={() => handleOpenProviderSettings(selectedProvider)}
                     className="mt-2 w-full rounded-[10px] border-t border-border px-2 pt-2 text-left text-xs text-muted-foreground transition-colors hover:bg-background-secondary/70 hover:text-foreground"

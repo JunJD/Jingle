@@ -1,24 +1,28 @@
 import type { ModelConfig, Provider, ProviderId } from "@/types"
 
 export type ModelProvider = {
-  hasApiKey: boolean
+  configurationStatus: Provider["customConfiguration"]["status"]
+  credentialSchema: Provider["providerCredentialSchema"]
   label: string
-  modelError?: string
-  modelStatus: Provider["modelStatus"]
+  modelListError?: string
+  modelListStatus: Provider["modelListStatus"]
   models: ModelConfig[]
   provider: ProviderId
+  supportedModelTypes: Provider["supportedModelTypes"]
 }
 
 export const FIXED_MODEL_PROVIDER_ORDER: ProviderId[] = ["openai", "anthropic"]
 
 export function toModelProvider(provider: Provider, models: ModelConfig[]): ModelProvider {
   return {
-    hasApiKey: provider.hasApiKey,
+    configurationStatus: provider.customConfiguration.status,
+    credentialSchema: provider.providerCredentialSchema,
     label: provider.name,
-    modelError: provider.modelError,
-    modelStatus: provider.modelStatus,
+    modelListError: provider.modelListError,
+    modelListStatus: provider.modelListStatus,
     models: models.filter((model) => model.provider === provider.id),
-    provider: provider.id
+    provider: provider.id,
+    supportedModelTypes: provider.supportedModelTypes
   }
 }
 

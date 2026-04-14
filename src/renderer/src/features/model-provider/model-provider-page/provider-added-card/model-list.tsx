@@ -42,7 +42,7 @@ export default function ModelList(props: ModelListProps): React.JSX.Element {
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     {isDefault && <ModelBadge>{copy.provider.defaultBadge}</ModelBadge>}
-                    {!model.available && (
+                    {model.status !== "active" && (
                       <ModelBadge className="border-amber-200 bg-amber-50 text-amber-700">
                         {copy.provider.notConfigured}
                       </ModelBadge>

@@ -43,16 +43,16 @@ function ProviderAddedCard(props: ProviderAddedCardProps): React.JSX.Element {
   const [modelLoadError, setModelLoadError] = useState<string | null>(null)
   const { locale } = useI18n()
   const copy = getSettingsCopy(locale)
-  const hasProviderError = provider.modelStatus === "error"
-  const visibleModels =
-    provider.models.length > 0 ? provider.models : (loadedModels ?? provider.models)
+  const hasProviderError = provider.modelListStatus === "error"
+  const visibleModels = loadedModels ?? provider.models
+  const shouldLoadRemoteModels = !notConfigured && loadedModels === null
 
   const handleOpenModelList = async (): Promise<void> => {
     if (loadingModels) {
       return
     }
 
-    if (!hasProviderError && visibleModels.length > 0) {
+    if (!hasProviderError && visibleModels.length > 0 && !shouldLoadRemoteModels) {
       setModelLoadError(null)
       setExpanded(true)
       return
@@ -142,8 +142,8 @@ function ProviderAddedCard(props: ProviderAddedCardProps): React.JSX.Element {
         {hasProviderError ? (
           <div className="flex min-w-0 items-center gap-1 pl-2 text-[12px] text-destructive">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            <span className="truncate" title={provider.modelError}>
-              {provider.modelError}
+            <span className="truncate" title={provider.modelListError}>
+              {provider.modelListError}
             </span>
           </div>
         ) : notConfigured ? (

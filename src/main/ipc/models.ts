@@ -3,7 +3,8 @@ import * as fs from "fs/promises"
 import * as path from "path"
 import type {
   AgentConfig,
-  SetApiKeyParams,
+  SetDefaultModelParams,
+  SetProviderCredentialsParams,
   WorkspaceSetParams,
   WorkspaceFileParams
 } from "../types"
@@ -19,14 +20,13 @@ import {
   setWorkspaceDialogPath
 } from "../preferences"
 import {
-  deleteProviderApiKeyForUI,
+  deleteProviderCredentialsForUI,
   getDefaultModelForUI,
   getModelProviderStateForUI,
   listModelsByProviderForUI,
   listModelsForUI,
-  listProvidersForUI,
   setDefaultModelForUI,
-  setProviderApiKeyForUI
+  setProviderCredentialsForUI
 } from "../model-provider/service"
 import { getModelConfig } from "../model-provider/catalog"
 
@@ -36,12 +36,12 @@ export async function resolveGlobalWorkspacePath(): Promise<string | null> {
 
 export function registerModelHandlers(ipcMain: IpcMain): void {
   // List available models
-  ipcMain.handle("models:list", async () => {
-    return listModelsForUI()
+  ipcMain.handle("models:list", async (_event, modelType: string = "llm") => {
+    return listModelsForUI(modelType)
   })
 
-  ipcMain.handle("models:listByProvider", async (_event, provider: string) => {
-    return listModelsByProviderForUI(provider)
+  ipcMain.handle("models:listByProvider", async (_event, provider: string, modelType = "llm") => {
+    return listModelsByProviderForUI(provider, modelType)
   })
 
   ipcMain.handle("models:getState", async () => {
@@ -49,14 +49,17 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
   })
 
   // Get default model
-  ipcMain.handle("models:getDefault", async () => {
-    return getDefaultModelForUI()
+  ipcMain.handle("models:getDefault", async (_event, modelType: string) => {
+    return getDefaultModelForUI(modelType)
   })
 
   // Set default model
-  ipcMain.handle("models:setDefault", async (_event, modelId: string) => {
-    await setDefaultModelForUI(modelId)
-  })
+  ipcMain.handle(
+    "models:setDefault",
+    async (_event, { modelType, modelId }: SetDefaultModelParams) => {
+      await setDefaultModelForUI(modelType, modelId)
+    }
+  )
 
   ipcMain.handle("settings:getAgentConfig", async () => {
     return getAgentConfig()
@@ -77,16 +80,15 @@ export function registerModelHandlers(ipcMain: IpcMain): void {
     }
   )
 
-  ipcMain.handle("models:setApiKey", async (_event, { provider, apiKey }: SetApiKeyParams) => {
-    await setProviderApiKeyForUI(provider, apiKey)
-  })
+  ipcMain.handle(
+    "models:setCredentials",
+    async (_event, { provider, credentials }: SetProviderCredentialsParams) => {
+      await setProviderCredentialsForUI(provider, credentials)
+    }
+  )
 
-  ipcMain.handle("models:deleteApiKey", async (_event, provider: string) => {
-    deleteProviderApiKeyForUI(provider)
-  })
-
-  ipcMain.handle("models:listProviders", async () => {
-    return listProvidersForUI()
+  ipcMain.handle("models:deleteCredentials", async (_event, provider: string) => {
+    deleteProviderCredentialsForUI(provider)
   })
 
   // Sync version info
@@ -283,5 +285,5 @@ export { getAgentConfig }
 export { getModelConfig }
 
 export function getDefaultModel(): string {
-  return getDefaultModelForUI()
+  return getDefaultModelForUI("llm")
 }

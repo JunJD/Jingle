@@ -212,18 +212,37 @@ export function ExtensionsTab(props: {
   const [selectedExtName, setSelectedExtName] = useState<string | null>(focusedExtensionName)
   const [search, setSearch] = useState("")
 
-  const load = useEffectEvent(
+  const loadModels = useEffectEvent(async (signal: AbortSignal): Promise<void> => {
+    const nextModels = await window.api.models.list("llm")
+    if (signal.aborted) {
+      return
+    }
+
+    setModels(nextModels)
+  })
+
+  const loadSchemas = useEffectEvent(
     async (targetExtensionName: string | null, signal: AbortSignal): Promise<void> => {
-      const [nextModels, nextSchemas] = await Promise.all([
-        window.api.models.list(),
-        window.api.nativeExtensions.listSettingsSchemas()
-      ])
+      const nextSchemas = await window.api.nativeExtensions.listSettingsSchemas()
       if (signal.aborted) {
         return
       }
       const sortedSchemas = [...nextSchemas].sort((left, right) =>
         left.title.localeCompare(right.title)
       )
+      setSchemas(sortedSchemas)
+      setSelectedExtName((current) => {
+        if (targetExtensionName) {
+          return targetExtensionName
+        }
+
+        if (current && sortedSchemas.some((schema) => schema.extName === current)) {
+          return current
+        }
+
+        return sortedSchemas[0]?.extName ?? null
+      })
+
       const extensionEntries = await Promise.all(
         sortedSchemas.map(async (schema) => [
           schema.extName,
@@ -242,28 +261,16 @@ export function ExtensionsTab(props: {
         return
       }
 
-      setModels(nextModels)
-      setSchemas(sortedSchemas)
       setExtensionRecords(Object.fromEntries(extensionEntries))
       setCommandRecords(Object.fromEntries(commandEntries))
-      setSelectedExtName((current) => {
-        if (targetExtensionName) {
-          return targetExtensionName
-        }
-
-        if (current && sortedSchemas.some((schema) => schema.extName === current)) {
-          return current
-        }
-
-        return sortedSchemas[0]?.extName ?? null
-      })
     }
   )
 
   useEffect(() => {
     const controller = new AbortController()
     const handleFocus = (): void => {
-      void load(focusedExtensionName, controller.signal)
+      void loadSchemas(focusedExtensionName, controller.signal)
+      void loadModels(controller.signal)
     }
 
     handleFocus()
@@ -277,7 +284,7 @@ export function ExtensionsTab(props: {
   const modelOptions = useMemo(
     () =>
       models
-        .filter((model) => model.available)
+        .filter((model) => model.status === "active")
         .map((model) => ({
           id: model.id,
           label: `${model.name} · ${model.provider}`

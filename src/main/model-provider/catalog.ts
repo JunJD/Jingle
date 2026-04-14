@@ -2,6 +2,8 @@ import type { ModelConfig, ProviderDefinition, ProviderId } from "./types"
 
 export const DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 const MODEL_ID_SEPARATOR = ":"
+const LLM_MODEL_TYPE = "llm"
+export const API_KEY_CREDENTIAL_VARIABLE = "apiKey"
 
 export interface ProviderModelId {
   modelName: string
@@ -12,11 +14,87 @@ export function toProviderModelId(providerId: ProviderId, modelName: string): st
   return `${providerId}${MODEL_ID_SEPARATOR}${modelName}`
 }
 
+function apiKeyCredential(
+  label: string,
+  placeholder: string
+): ProviderDefinition["credentialFormSchemas"][number] {
+  return {
+    label: {
+      en_US: label,
+      zh_Hans: label
+    },
+    name: label,
+    placeholder: {
+      en_US: placeholder,
+      zh_Hans: placeholder
+    },
+    required: true,
+    type: "secret-input",
+    variable: API_KEY_CREDENTIAL_VARIABLE
+  }
+}
+
 const PROVIDERS: ProviderDefinition[] = [
-  { id: "anthropic", name: "Anthropic" },
-  { id: "openai", name: "OpenAI" },
-  { id: "google", name: "Google" },
-  { id: "dashscope", name: "DashScope" }
+  {
+    configurateMethods: ["fetch-from-remote"],
+    credentialFormSchemas: [apiKeyCredential("Anthropic API Key", "sk-ant-...")],
+    description: {
+      en_US: "Anthropic Claude chat models.",
+      zh_Hans: "Anthropic Claude 聊天模型。"
+    },
+    id: "anthropic",
+    label: {
+      en_US: "Anthropic",
+      zh_Hans: "Anthropic"
+    },
+    name: "Anthropic",
+    supportedModelTypes: [LLM_MODEL_TYPE]
+  },
+  {
+    configurateMethods: ["fetch-from-remote"],
+    credentialFormSchemas: [apiKeyCredential("OpenAI API Key", "sk-...")],
+    description: {
+      en_US: "OpenAI chat and reasoning models.",
+      zh_Hans: "OpenAI 聊天和推理模型。"
+    },
+    id: "openai",
+    label: {
+      en_US: "OpenAI",
+      zh_Hans: "OpenAI"
+    },
+    name: "OpenAI",
+    supportedModelTypes: [LLM_MODEL_TYPE]
+  },
+  {
+    configurateMethods: ["fetch-from-remote"],
+    credentialFormSchemas: [apiKeyCredential("Google API Key", "AIza...")],
+    description: {
+      en_US: "Google Gemini chat models.",
+      zh_Hans: "Google Gemini 聊天模型。"
+    },
+    id: "google",
+    label: {
+      en_US: "Google",
+      zh_Hans: "Google"
+    },
+    name: "Google",
+    supportedModelTypes: [LLM_MODEL_TYPE]
+  },
+  {
+    configurateMethods: ["fetch-from-remote"],
+    credentialFormSchemas: [apiKeyCredential("DashScope API Key", "sk-...")],
+    description: {
+      en_US: "Alibaba Cloud DashScope OpenAI-compatible chat models.",
+      zh_Hans: "阿里云 DashScope OpenAI-compatible 聊天模型。"
+    },
+    id: "dashscope",
+    label: {
+      en_US: "DashScope",
+      zh_Hans: "DashScope"
+    },
+    name: "DashScope",
+    supportedModelTypes: [LLM_MODEL_TYPE]
+  }
 ]
 
 const AVAILABLE_MODELS: ModelConfig[] = [
@@ -26,7 +104,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "anthropic",
     model: "claude-opus-4-5-20251101",
     description: "Premium model with maximum intelligence",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("anthropic", "claude-sonnet-4-5-20250929"),
@@ -34,7 +114,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "anthropic",
     model: "claude-sonnet-4-5-20250929",
     description: "Best balance of intelligence, speed, and cost for agents",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("anthropic", "claude-haiku-4-5-20251001"),
@@ -42,7 +124,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "anthropic",
     model: "claude-haiku-4-5-20251001",
     description: "Fastest model with near-frontier intelligence",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("anthropic", "claude-opus-4-1-20250805"),
@@ -50,7 +134,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "anthropic",
     model: "claude-opus-4-1-20250805",
     description: "Previous generation premium model with extended thinking",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("anthropic", "claude-sonnet-4-20250514"),
@@ -58,7 +144,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "anthropic",
     model: "claude-sonnet-4-20250514",
     description: "Fast and capable previous generation model",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("openai", "gpt-5.2"),
@@ -66,7 +154,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-5.2",
     description: "Latest flagship with enhanced coding and agentic capabilities",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("openai", "gpt-5.1"),
@@ -74,7 +164,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-5.1",
     description: "Advanced reasoning and robust performance",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("openai", "o3"),
@@ -82,7 +174,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "o3",
     description: "Advanced reasoning for complex problem-solving",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("openai", "o3-mini"),
@@ -90,7 +184,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "o3-mini",
     description: "Cost-effective reasoning with faster response times",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("openai", "o4-mini"),
@@ -98,7 +194,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "o4-mini",
     description: "Fast, efficient reasoning model succeeding o3",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("openai", "o1"),
@@ -106,7 +204,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "o1",
     description: "Premium reasoning for research, coding, math and science",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("openai", "gpt-4.1"),
@@ -114,7 +214,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-4.1",
     description: "Strong instruction-following with 1M context window",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("openai", "gpt-4.1-mini"),
@@ -122,7 +224,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-4.1-mini",
     description: "Faster, smaller version balancing performance and efficiency",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("openai", "gpt-4.1-nano"),
@@ -130,7 +234,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-4.1-nano",
     description: "Most cost-efficient for lighter tasks",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("openai", "gpt-4o"),
@@ -138,7 +244,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-4o",
     description: "Versatile model for text generation and comprehension",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("openai", "gpt-4o-mini"),
@@ -146,7 +254,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-4o-mini",
     description: "Cost-efficient variant with faster response times",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("dashscope", "glm-4.6"),
@@ -154,7 +264,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "dashscope",
     model: "glm-4.6",
     description: "Zhipu GLM model routed through DashScope's OpenAI-compatible API",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("dashscope", "qwen3.5-plus"),
@@ -162,7 +274,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "dashscope",
     model: "qwen3.5-plus",
     description: "DashScope multimodal Qwen model with image understanding support",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("dashscope", "qwen-max"),
@@ -170,7 +284,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "dashscope",
     model: "qwen-max",
     description: "High-capability Qwen model served by DashScope",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("dashscope", "qwen-plus"),
@@ -178,7 +294,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "dashscope",
     model: "qwen-plus",
     description: "Balanced Qwen model for general-purpose tasks",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("google", "gemini-3-pro-preview"),
@@ -186,7 +304,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "google",
     model: "gemini-3-pro-preview",
     description: "State-of-the-art reasoning and multimodal understanding",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("google", "gemini-3-flash-preview"),
@@ -194,7 +314,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "google",
     model: "gemini-3-flash-preview",
     description: "Fast frontier-class model with low latency and cost",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("google", "gemini-2.5-pro"),
@@ -202,7 +324,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "google",
     model: "gemini-2.5-pro",
     description: "High-capability model for complex reasoning and coding",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("google", "gemini-2.5-flash"),
@@ -210,7 +334,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "google",
     model: "gemini-2.5-flash",
     description: "Lightning-fast with balance of intelligence and latency",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   },
   {
     id: toProviderModelId("google", "gemini-2.5-flash-lite"),
@@ -218,7 +344,9 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "google",
     model: "gemini-2.5-flash-lite",
     description: "Fast, low-cost, high-performance model",
-    available: true
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
   }
 ]
 

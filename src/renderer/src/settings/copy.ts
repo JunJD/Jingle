@@ -23,8 +23,6 @@ interface SettingsCopy {
     title: string
     workspaceTitle: string
     workspaceDescription: string
-    defaultModelTitle: string
-    defaultModelDescription: string
     launcherModeTitle: string
     launcherModeDescription: string
     launcherModeDefault: string
@@ -122,8 +120,6 @@ const zhCN: SettingsCopy = {
     title: "Openwork 基础设置",
     workspaceTitle: "默认 Workspace",
     workspaceDescription: "Launcher 和新建线程会优先使用这个全局 workspace。",
-    defaultModelTitle: "默认模型",
-    defaultModelDescription: "作为 launcher 和新线程的默认模型。",
     launcherModeTitle: "Launcher 窗口模式",
     launcherModeDescription: "控制根搜索默认展示密度。",
     launcherModeDefault: "默认",
@@ -221,8 +217,6 @@ const enUS: SettingsCopy = {
     title: "Openwork Foundation",
     workspaceTitle: "Default Workspace",
     workspaceDescription: "Launcher and new threads use this global workspace by default.",
-    defaultModelTitle: "Default Model",
-    defaultModelDescription: "Used as the default model for launcher and new threads.",
     launcherModeTitle: "Launcher Window Mode",
     launcherModeDescription: "Controls the default density of root search.",
     launcherModeDefault: "Default",

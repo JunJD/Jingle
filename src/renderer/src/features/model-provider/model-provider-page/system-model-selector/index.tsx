@@ -37,7 +37,9 @@ export default function SystemModelSelector(props: SystemModelSelectorProps): Re
       return
     }
 
-    setDraftModelId(defaultModel?.available ? defaultModel.id : (availableModels[0]?.id ?? ""))
+    setDraftModelId(
+      defaultModel?.status === "active" ? defaultModel.id : (availableModels[0]?.id ?? "")
+    )
     setErrorText(null)
   }, [availableModels, defaultModel, open])
 

@@ -14,13 +14,13 @@ const MODEL_LIST_REQUEST_TIMEOUT_MS = 10_000
 
 export function listCatalogModelsByProvider(
   providerId: ProviderId,
-  available: boolean
+  status: ModelConfig["status"]
 ): ModelConfig[] {
   return listModelCatalog()
     .filter((model) => model.provider === providerId)
     .map((model) => ({
       ...model,
-      available
+      status
     }))
 }
 
@@ -190,12 +190,14 @@ function toModelConfig(providerId: ProviderId, remoteModel: RemoteModel): ModelC
   const localModel = getModelConfig(id)
 
   return {
-    available: true,
     description: localModel?.description ?? remoteModel.description,
+    fetchFrom: "fetch-from-remote",
     id,
     model: remoteModel.id,
+    modelType: "llm",
     name: localModel?.name ?? remoteModel.displayName ?? remoteModel.id,
-    provider: providerId
+    provider: providerId,
+    status: "active"
   }
 }
 

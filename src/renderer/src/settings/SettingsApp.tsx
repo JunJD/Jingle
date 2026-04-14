@@ -5,7 +5,7 @@ import { useI18n } from "../lib/i18n"
 import { getSettingsCopy } from "./copy"
 import { ExtensionsTab } from "./ExtensionsTab"
 import { GeneralTab } from "./GeneralTab"
-import { ProviderTab } from "./ProviderTab"
+import { ProviderTab, preloadProviderTabData } from "./ProviderTab"
 import { ShortcutsTab } from "./ShortcutsTab"
 
 const settingsScrollPaneClassName =
@@ -22,6 +22,8 @@ export default function SettingsApp(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    preloadProviderTabData()
+
     void window.api.settings.getPendingNavigation().then((payload) => {
       if (!payload) {
         return
@@ -114,7 +116,6 @@ export default function SettingsApp(): React.JSX.Element {
           <div className={settingsScrollPaneClassName}>
             <ProviderTab
               focusTarget={focusTarget}
-              locale={locale}
               onFocusTargetConsumed={handleFocusTargetConsumed}
             />
           </div>

@@ -15,7 +15,7 @@ import { useStream } from "@langchain/langgraph-sdk/react"
 import type { DeepAgent } from "deepagents"
 import { ElectronIPCTransport } from "./electron-transport"
 import type { Message, Todo, Subagent, HITLRequest } from "@/types"
-import { DEFAULT_MODEL_ID } from "../../../shared/models"
+import { DEFAULT_MODELS } from "../../../shared/models"
 import type { ArtifactRecord } from "@shared/artifacts"
 
 // Open file tab type
@@ -107,7 +107,7 @@ const createDefaultThreadState = (): ThreadState => ({
   subagents: [],
   pendingApproval: null,
   error: null,
-  currentModel: DEFAULT_MODEL_ID,
+  currentModel: DEFAULT_MODELS.llm,
   openFiles: [],
   activeTab: "agent",
   fileContents: {},

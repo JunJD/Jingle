@@ -6,6 +6,7 @@
 - `renderer` 层负责复用 Dify `model-provider-page` 的页面结构和交互组织。
 - provider secret 只走 `secretsStore + safeStorage`，不再读写 `.env` 做兼容。
 - 模型 ID 使用 `provider:model` 格式保存，例如 `dashscope:glm-4.6`；未识别的 model/provider 直接报错，不按模型名前缀猜 provider。
+- 默认模型从单字符串改为 `defaultModels.llm`，当前只支持 `llm`。如果调用方传入 `text-embedding`、`rerank` 等类型，会直接报错，不做假实现。
 
 ## Dify 参考路径
 
@@ -51,7 +52,15 @@ Renderer 层：
 - `src/renderer/src/features/model-provider/model-provider-page/provider-added-card/model-list.tsx`
 - `src/renderer/src/features/model-provider/model-provider-page/system-model-selector/index.tsx`
 
-`src/renderer/src/settings/ProviderTab.tsx` 现在只是 feature host，负责从 IPC 拉 `providers/models/defaultModel`，以及承接 settings deep-link 后打开对应 provider 的 credential dialog。真正的页面结构放在 `features/model-provider/model-provider-page`，对齐 Dify 的 feature 目录，而不是继续在 settings tab 内部写自定义布局。
+`src/renderer/src/settings/ProviderTab.tsx` 现在只是 feature host，负责从 IPC 拉 `providers/models/defaultModels`，以及承接 settings deep-link 后打开对应 provider 的 credential dialog。真正的页面结构放在 `features/model-provider/model-provider-page`，对齐 Dify 的 feature 目录，而不是继续在 settings tab 内部写自定义布局。
+
+Provider 状态不再把 `hasApiKey` 当核心模型，而是对齐 Dify 的概念拆开：
+
+- `customConfiguration.status`：provider credential 是否已配置。
+- `providerCredentialSchema.credentialFormSchemas`：设置弹窗按 schema 渲染字段，当前各 provider 只有 `apiKey` 这个 `secret-input`。
+- `supportedModelTypes`：当前只声明 `llm`。
+- `modelListStatus` / `modelListError`：远程 models list 的状态和错误。
+- `ModelConfig.modelType` / `fetchFrom` / `status`：模型本身的类型、来源和可用状态。
 
 Provider 级模型读取对齐 Dify 的：
 
@@ -61,8 +70,12 @@ Openwork 对应 IPC 是：
 
 - `models:getState`
 - `models:listByProvider`
+- `models:getDefault(modelType)`
+- `models:setDefault({ modelType, modelId })`
+- `models:setCredentials({ provider, credentials })`
+- `models:deleteCredentials(provider)`
 
-`models:getState` 一次返回 `providers + models`，用于 provider 设置页和 model switcher 保持同一份状态。`ProviderAddedCard` 展开模型列表时调用 provider 级接口。全局 `models:list` 也使用同一套远程读取逻辑聚合所有 provider，避免 model switcher 和 provider page 的模型来源不一致。
+`models:getState` 一次返回 `providers + models`，用于 provider 设置页和 model switcher 保持同一份本地状态。这个接口只读本地 catalog、默认模型和 provider credential 是否存在，不触发任何供应商远程请求，避免设置页首屏被外部网络阻塞。`models:list` 同样只返回本地 catalog 的可用性快照。
 
 有 provider API key 时，`models:listByProvider` 会调供应商真实 models list：
 
@@ -71,7 +84,7 @@ Openwork 对应 IPC 是：
 - `google`：`GET https://generativelanguage.googleapis.com/v1beta/models`
 - `dashscope`：`GET https://dashscope.aliyuncs.com/compatible-mode/v1/models`
 
-没有 provider API key 时，才返回本地预定义 catalog，并标记为不可用，语义对应 Dify 的 `no_configure` 状态。有 key 但远程接口失败时，provider 状态会变成 `error` 并展示具体 provider 错误，不回退到本地 catalog；直接调用 `models:listByProvider` 时仍然抛真实错误。
+没有 provider API key 时，`models:listByProvider` 返回本地预定义 catalog，并标记为 `no-configure`，语义对应 Dify 的 `no_configure` 状态。有 key 时，`models:listByProvider` 才调用真实远程接口；远程接口失败时直接抛真实错误，不回退到本地 catalog。
 
 ## SDK 对接边界
 

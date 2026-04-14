@@ -17,8 +17,11 @@ interface HistoryShellState {
   updateThread: (threadId: string, updates: Partial<Thread>) => Promise<void>
   generateTitleForFirstMessage: (threadId: string, content: string) => Promise<void>
   loadModelProviderState: () => Promise<void>
-  setApiKey: (providerId: ProviderId, apiKey: string) => Promise<void>
-  deleteApiKey: (providerId: ProviderId) => Promise<void>
+  setProviderCredentials: (
+    providerId: ProviderId,
+    credentials: Record<string, string>
+  ) => Promise<void>
+  deleteProviderCredentials: (providerId: ProviderId) => Promise<void>
   setRightPanelTab: (tab: "todos" | "artifacts" | "subagents") => void
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -99,13 +102,13 @@ export const useHistoryShellStore = create<HistoryShellState>((set, get) => ({
     set({ models, providers })
   },
 
-  setApiKey: async (providerId: ProviderId, apiKey: string) => {
-    await window.api.models.setApiKey(providerId, apiKey)
+  setProviderCredentials: async (providerId: ProviderId, credentials: Record<string, string>) => {
+    await window.api.models.setCredentials(providerId, credentials)
     await get().loadModelProviderState()
   },
 
-  deleteApiKey: async (providerId: ProviderId) => {
-    await window.api.models.deleteApiKey(providerId)
+  deleteProviderCredentials: async (providerId: ProviderId) => {
+    await window.api.models.deleteCredentials(providerId)
     await get().loadModelProviderState()
   },
 

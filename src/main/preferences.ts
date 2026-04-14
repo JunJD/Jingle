@@ -4,8 +4,9 @@ import { homedir } from "os"
 import type { AgentConfig, ProviderId } from "./types"
 import { getOpenworkDir } from "./storage"
 import { listNativeExtensionManifests } from "../extensions"
-import { DEFAULT_MODEL_ID } from "../shared/models"
+import { DEFAULT_MODELS } from "../shared/models"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale } from "../shared/i18n"
+import type { DefaultModels, SupportedDefaultModelType } from "../shared/app-types"
 import type {
   NativeExtensionPreferenceSchema,
   NativeExtensionPreferencesState
@@ -31,7 +32,7 @@ export interface PersistedWindowState {
 
 interface SettingsStoreShape {
   agentConfig: AgentConfig
-  defaultModel: string
+  defaultModels: DefaultModels
   launcherSettings: LauncherSettings
   mainWindowState: PersistedWindowState | null
   nativeExtensionPreferences: NativeExtensionPreferencesState
@@ -80,7 +81,7 @@ const settingsStore = new Store<SettingsStoreShape>({
   cwd: getOpenworkDir(),
   defaults: {
     agentConfig: DEFAULT_AGENT_CONFIG,
-    defaultModel: DEFAULT_MODEL_ID,
+    defaultModels: DEFAULT_MODELS,
     launcherSettings: DEFAULT_LAUNCHER_SETTINGS,
     mainWindowState: null,
     nativeExtensionPreferences: DEFAULT_NATIVE_EXTENSION_PREFERENCES,
@@ -454,12 +455,19 @@ function normalizeWindowDimension(value: unknown): number | null {
   return Math.round(value)
 }
 
-export function getDefaultModelId(): string {
-  return settingsStore.get("defaultModel", DEFAULT_MODEL_ID)
+export function getDefaultModels(): DefaultModels {
+  return settingsStore.get("defaultModels", DEFAULT_MODELS)
 }
 
-export function setDefaultModelId(modelId: string): void {
-  settingsStore.set("defaultModel", modelId)
+export function getDefaultModelId(modelType: SupportedDefaultModelType): string {
+  return getDefaultModels()[modelType]
+}
+
+export function setDefaultModelId(modelType: SupportedDefaultModelType, modelId: string): void {
+  settingsStore.set("defaultModels", {
+    ...getDefaultModels(),
+    [modelType]: modelId
+  })
 }
 
 export function getGlobalWorkspacePath(): string | null {

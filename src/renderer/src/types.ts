@@ -6,9 +6,9 @@ export type { HITLDecision, HITLRequest } from "../../shared/hitl"
 export type {
   ModelConfig,
   ModelProviderState,
+  ModelType,
   Provider,
-  ProviderId,
-  ProviderModelStatus
+  ProviderId
 } from "../../shared/app-types"
 
 // Re-export types from electron for use in renderer
