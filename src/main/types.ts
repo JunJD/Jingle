@@ -3,7 +3,9 @@ import type { AgentInvokeMessage } from "../shared/message-content"
 import type { AppLocale } from "../shared/i18n"
 import type { HITLDecision, HITLRequest } from "../shared/hitl"
 import type { ArtifactRecord } from "../shared/artifacts"
+import type { ProviderId } from "../shared/app-types"
 export type { HITLDecision, HITLRequest } from "../shared/hitl"
+export type { ModelConfig, Provider, ProviderId, ProviderModelStatus } from "../shared/app-types"
 
 // Thread types matching langgraph-api
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
@@ -55,7 +57,7 @@ export interface WorkspaceFileParams {
 
 // Model IPC
 export interface SetApiKeyParams {
-  provider: string
+  provider: ProviderId
   apiKey: string
 }
 
@@ -82,25 +84,6 @@ export interface Run {
   updated_at: Date
   status: RunStatus
   metadata?: Record<string, unknown>
-}
-
-// Provider configuration
-export type ProviderId = "anthropic" | "openai" | "google" | "dashscope" | "ollama"
-
-export interface Provider {
-  id: ProviderId
-  name: string
-  hasApiKey: boolean
-}
-
-// Model configuration
-export interface ModelConfig {
-  id: string
-  name: string
-  provider: ProviderId
-  model: string
-  description?: string
-  available: boolean
 }
 
 export interface AgentConfig {

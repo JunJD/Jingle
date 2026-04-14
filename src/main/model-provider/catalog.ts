@@ -1,0 +1,257 @@
+import type { ModelConfig, ProviderDefinition, ProviderId } from "./types"
+
+export const DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+const MODEL_ID_SEPARATOR = ":"
+
+export interface ProviderModelId {
+  modelName: string
+  providerId: ProviderId
+}
+
+export function toProviderModelId(providerId: ProviderId, modelName: string): string {
+  return `${providerId}${MODEL_ID_SEPARATOR}${modelName}`
+}
+
+const PROVIDERS: ProviderDefinition[] = [
+  { id: "anthropic", name: "Anthropic" },
+  { id: "openai", name: "OpenAI" },
+  { id: "google", name: "Google" },
+  { id: "dashscope", name: "DashScope" }
+]
+
+const AVAILABLE_MODELS: ModelConfig[] = [
+  {
+    id: toProviderModelId("anthropic", "claude-opus-4-5-20251101"),
+    name: "Claude Opus 4.5",
+    provider: "anthropic",
+    model: "claude-opus-4-5-20251101",
+    description: "Premium model with maximum intelligence",
+    available: true
+  },
+  {
+    id: toProviderModelId("anthropic", "claude-sonnet-4-5-20250929"),
+    name: "Claude Sonnet 4.5",
+    provider: "anthropic",
+    model: "claude-sonnet-4-5-20250929",
+    description: "Best balance of intelligence, speed, and cost for agents",
+    available: true
+  },
+  {
+    id: toProviderModelId("anthropic", "claude-haiku-4-5-20251001"),
+    name: "Claude Haiku 4.5",
+    provider: "anthropic",
+    model: "claude-haiku-4-5-20251001",
+    description: "Fastest model with near-frontier intelligence",
+    available: true
+  },
+  {
+    id: toProviderModelId("anthropic", "claude-opus-4-1-20250805"),
+    name: "Claude Opus 4.1",
+    provider: "anthropic",
+    model: "claude-opus-4-1-20250805",
+    description: "Previous generation premium model with extended thinking",
+    available: true
+  },
+  {
+    id: toProviderModelId("anthropic", "claude-sonnet-4-20250514"),
+    name: "Claude Sonnet 4",
+    provider: "anthropic",
+    model: "claude-sonnet-4-20250514",
+    description: "Fast and capable previous generation model",
+    available: true
+  },
+  {
+    id: toProviderModelId("openai", "gpt-5.2"),
+    name: "GPT-5.2",
+    provider: "openai",
+    model: "gpt-5.2",
+    description: "Latest flagship with enhanced coding and agentic capabilities",
+    available: true
+  },
+  {
+    id: toProviderModelId("openai", "gpt-5.1"),
+    name: "GPT-5.1",
+    provider: "openai",
+    model: "gpt-5.1",
+    description: "Advanced reasoning and robust performance",
+    available: true
+  },
+  {
+    id: toProviderModelId("openai", "o3"),
+    name: "o3",
+    provider: "openai",
+    model: "o3",
+    description: "Advanced reasoning for complex problem-solving",
+    available: true
+  },
+  {
+    id: toProviderModelId("openai", "o3-mini"),
+    name: "o3 Mini",
+    provider: "openai",
+    model: "o3-mini",
+    description: "Cost-effective reasoning with faster response times",
+    available: true
+  },
+  {
+    id: toProviderModelId("openai", "o4-mini"),
+    name: "o4 Mini",
+    provider: "openai",
+    model: "o4-mini",
+    description: "Fast, efficient reasoning model succeeding o3",
+    available: true
+  },
+  {
+    id: toProviderModelId("openai", "o1"),
+    name: "o1",
+    provider: "openai",
+    model: "o1",
+    description: "Premium reasoning for research, coding, math and science",
+    available: true
+  },
+  {
+    id: toProviderModelId("openai", "gpt-4.1"),
+    name: "GPT-4.1",
+    provider: "openai",
+    model: "gpt-4.1",
+    description: "Strong instruction-following with 1M context window",
+    available: true
+  },
+  {
+    id: toProviderModelId("openai", "gpt-4.1-mini"),
+    name: "GPT-4.1 Mini",
+    provider: "openai",
+    model: "gpt-4.1-mini",
+    description: "Faster, smaller version balancing performance and efficiency",
+    available: true
+  },
+  {
+    id: toProviderModelId("openai", "gpt-4.1-nano"),
+    name: "GPT-4.1 Nano",
+    provider: "openai",
+    model: "gpt-4.1-nano",
+    description: "Most cost-efficient for lighter tasks",
+    available: true
+  },
+  {
+    id: toProviderModelId("openai", "gpt-4o"),
+    name: "GPT-4o",
+    provider: "openai",
+    model: "gpt-4o",
+    description: "Versatile model for text generation and comprehension",
+    available: true
+  },
+  {
+    id: toProviderModelId("openai", "gpt-4o-mini"),
+    name: "GPT-4o Mini",
+    provider: "openai",
+    model: "gpt-4o-mini",
+    description: "Cost-efficient variant with faster response times",
+    available: true
+  },
+  {
+    id: toProviderModelId("dashscope", "glm-4.6"),
+    name: "GLM-4.6",
+    provider: "dashscope",
+    model: "glm-4.6",
+    description: "Zhipu GLM model routed through DashScope's OpenAI-compatible API",
+    available: true
+  },
+  {
+    id: toProviderModelId("dashscope", "qwen3.5-plus"),
+    name: "Qwen 3.5 Plus",
+    provider: "dashscope",
+    model: "qwen3.5-plus",
+    description: "DashScope multimodal Qwen model with image understanding support",
+    available: true
+  },
+  {
+    id: toProviderModelId("dashscope", "qwen-max"),
+    name: "Qwen Max",
+    provider: "dashscope",
+    model: "qwen-max",
+    description: "High-capability Qwen model served by DashScope",
+    available: true
+  },
+  {
+    id: toProviderModelId("dashscope", "qwen-plus"),
+    name: "Qwen Plus",
+    provider: "dashscope",
+    model: "qwen-plus",
+    description: "Balanced Qwen model for general-purpose tasks",
+    available: true
+  },
+  {
+    id: toProviderModelId("google", "gemini-3-pro-preview"),
+    name: "Gemini 3 Pro Preview",
+    provider: "google",
+    model: "gemini-3-pro-preview",
+    description: "State-of-the-art reasoning and multimodal understanding",
+    available: true
+  },
+  {
+    id: toProviderModelId("google", "gemini-3-flash-preview"),
+    name: "Gemini 3 Flash Preview",
+    provider: "google",
+    model: "gemini-3-flash-preview",
+    description: "Fast frontier-class model with low latency and cost",
+    available: true
+  },
+  {
+    id: toProviderModelId("google", "gemini-2.5-pro"),
+    name: "Gemini 2.5 Pro",
+    provider: "google",
+    model: "gemini-2.5-pro",
+    description: "High-capability model for complex reasoning and coding",
+    available: true
+  },
+  {
+    id: toProviderModelId("google", "gemini-2.5-flash"),
+    name: "Gemini 2.5 Flash",
+    provider: "google",
+    model: "gemini-2.5-flash",
+    description: "Lightning-fast with balance of intelligence and latency",
+    available: true
+  },
+  {
+    id: toProviderModelId("google", "gemini-2.5-flash-lite"),
+    name: "Gemini 2.5 Flash Lite",
+    provider: "google",
+    model: "gemini-2.5-flash-lite",
+    description: "Fast, low-cost, high-performance model",
+    available: true
+  }
+]
+
+export function listProviderDefinitions(): ProviderDefinition[] {
+  return [...PROVIDERS]
+}
+
+export function getProviderDefinition(providerId: string): ProviderDefinition | undefined {
+  return PROVIDERS.find((provider) => provider.id === providerId)
+}
+
+export function listModelCatalog(): ModelConfig[] {
+  return [...AVAILABLE_MODELS]
+}
+
+export function getModelConfig(modelId: string): ModelConfig | undefined {
+  return AVAILABLE_MODELS.find((model) => model.id === modelId)
+}
+
+export function parseProviderModelId(modelId: string): ProviderModelId {
+  const separatorIndex = modelId.indexOf(MODEL_ID_SEPARATOR)
+  if (separatorIndex <= 0 || separatorIndex === modelId.length - 1) {
+    throw new Error(`Model id must be provider-scoped: ${modelId}`)
+  }
+
+  const provider = modelId.slice(0, separatorIndex)
+  const providerDefinition = PROVIDERS.find((entry) => entry.id === provider)
+  if (!providerDefinition) {
+    throw new Error(`Model provider is not configured: ${provider}`)
+  }
+
+  return {
+    modelName: modelId.slice(separatorIndex + 1),
+    providerId: providerDefinition.id
+  }
+}

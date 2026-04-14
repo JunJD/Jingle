@@ -4,7 +4,9 @@ import type {
   AgentConfig,
   Thread,
   ModelConfig,
+  ModelProviderState,
   Provider,
+  ProviderId,
   HITLDecision,
   ThreadRuntimeState
 } from "../shared/app-types"
@@ -221,8 +223,14 @@ const api = {
     }
   },
   models: {
+    getState: (): Promise<ModelProviderState> => {
+      return ipcRenderer.invoke("models:getState")
+    },
     list: (): Promise<ModelConfig[]> => {
       return ipcRenderer.invoke("models:list")
+    },
+    listByProvider: (provider: ProviderId): Promise<ModelConfig[]> => {
+      return ipcRenderer.invoke("models:listByProvider", provider)
     },
     listProviders: (): Promise<Provider[]> => {
       return ipcRenderer.invoke("models:listProviders")
@@ -233,13 +241,10 @@ const api = {
     setDefault: (modelId: string): Promise<void> => {
       return ipcRenderer.invoke("models:setDefault", modelId)
     },
-    setApiKey: (provider: string, apiKey: string): Promise<void> => {
+    setApiKey: (provider: ProviderId, apiKey: string): Promise<void> => {
       return ipcRenderer.invoke("models:setApiKey", { provider, apiKey })
     },
-    getApiKey: (provider: string): Promise<string | null> => {
-      return ipcRenderer.invoke("models:getApiKey", provider)
-    },
-    deleteApiKey: (provider: string): Promise<void> => {
+    deleteApiKey: (provider: ProviderId): Promise<void> => {
       return ipcRenderer.invoke("models:deleteApiKey", provider)
     }
   },

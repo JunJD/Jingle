@@ -2,7 +2,9 @@ import type {
   AgentConfig,
   Thread,
   ModelConfig,
+  ModelProviderState,
   Provider,
+  ProviderId,
   HITLDecision,
   ThreadRuntimeState,
   ThreadHistoryState
@@ -97,13 +99,14 @@ interface CustomAPI {
     onChanged: (callback: (event: ArtifactChangedEvent) => void) => () => void
   }
   models: {
+    getState: () => Promise<ModelProviderState>
     list: () => Promise<ModelConfig[]>
+    listByProvider: (provider: ProviderId) => Promise<ModelConfig[]>
     listProviders: () => Promise<Provider[]>
     getDefault: () => Promise<string>
-    deleteApiKey: (provider: string) => Promise<void>
+    deleteApiKey: (provider: ProviderId) => Promise<void>
     setDefault: (modelId: string) => Promise<void>
-    setApiKey: (provider: string, apiKey: string) => Promise<void>
-    getApiKey: (provider: string) => Promise<string | null>
+    setApiKey: (provider: ProviderId, apiKey: string) => Promise<void>
   }
   settings: {
     getAgentConfig: () => Promise<AgentConfig>

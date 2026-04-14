@@ -1,1 +1,1 @@
-export const DEFAULT_MODEL_ID = "glm-4.6"
+export const DEFAULT_MODEL_ID = "dashscope:glm-4.6"

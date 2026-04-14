@@ -28,12 +28,16 @@ export interface Run {
   metadata?: Record<string, unknown>
 }
 
-export type ProviderId = "anthropic" | "openai" | "google" | "dashscope" | "ollama"
+export type ProviderId = "anthropic" | "openai" | "google" | "dashscope"
+
+export type ProviderModelStatus = "available" | "error" | "not_configured"
 
 export interface Provider {
   id: ProviderId
   name: string
   hasApiKey: boolean
+  modelError?: string
+  modelStatus: ProviderModelStatus
 }
 
 export interface ModelConfig {
@@ -43,6 +47,11 @@ export interface ModelConfig {
   model: string
   description?: string
   available: boolean
+}
+
+export interface ModelProviderState {
+  models: ModelConfig[]
+  providers: Provider[]
 }
 
 export interface AgentConfig {
