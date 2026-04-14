@@ -1,7 +1,7 @@
 "use client"
 import { useState } from "react"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
-import { atomDark } from "react-syntax-highlighter/dist/cjs/styles/prism"
+import { oneLight } from "react-syntax-highlighter/dist/cjs/styles/prism"
 import { Check, Copy } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -111,20 +111,22 @@ export const CodeBlock = ({
   return (
     <div
       className={cn(
-        "relative min-w-0 overflow-hidden rounded-lg bg-slate-900 p-4 font-mono text-sm",
+        "relative min-w-0 max-w-full overflow-hidden rounded-[12px] bg-background-secondary/60 px-3 py-2.5 font-mono text-[12px] leading-5 text-foreground/85",
         className
       )}
     >
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 border-b border-border/50 pb-2">
         {tabsExist && (
-          <div className="flex overflow-x-auto">
+          <div className="flex flex-wrap gap-1">
             {tabs.map((tab, index) => (
               <button
                 key={index}
                 type="button"
                 onClick={() => setActiveTab(index)}
-                className={`px-3 !py-2 font-sans text-xs transition-colors ${
-                  activeTab === index ? "text-white" : "text-zinc-400 hover:text-zinc-200"
+                className={`rounded-md px-2 py-1 font-sans text-[11px] leading-4 transition-colors ${
+                  activeTab === index
+                    ? "bg-background-interactive text-foreground"
+                    : "text-muted-foreground hover:bg-background-interactive/60 hover:text-foreground"
                 }`}
               >
                 {tab.name}
@@ -133,12 +135,14 @@ export const CodeBlock = ({
           </div>
         )}
         {activeFilename ? (
-          <div className="flex items-center justify-between py-2">
-            <div className="min-w-0 truncate text-xs text-zinc-400">{activeFilename}</div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 truncate font-mono text-[11px] leading-4 text-muted-foreground">
+              {activeFilename}
+            </div>
             <button
               type="button"
               onClick={copyToClipboard}
-              className="flex shrink-0 items-center gap-1 font-sans text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+              className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 font-sans text-[11px] leading-4 text-muted-foreground transition-colors hover:bg-background-interactive hover:text-foreground"
             >
               {copied ? <Check size={14} /> : <Copy size={14} />}
             </button>
@@ -147,21 +151,42 @@ export const CodeBlock = ({
       </div>
       <SyntaxHighlighter
         language={activeLanguage}
-        style={atomDark}
+        style={oneLight}
         customStyle={{
           margin: 0,
-          padding: 0,
+          padding: "0.625rem 0 0",
           background: "transparent",
-          fontSize: "0.875rem"
+          color: "var(--foreground)",
+          fontSize: "0.75rem",
+          lineHeight: "1.25rem",
+          overflowX: "auto",
+          whiteSpace: "pre"
+        }}
+        className="code-block-scrollbar"
+        codeTagProps={{
+          style: {
+            background: "transparent",
+            color: "inherit",
+            fontFamily: "inherit",
+            whiteSpace: "pre"
+          }
+        }}
+        lineNumberStyle={{
+          color: "var(--muted-foreground)",
+          minWidth: "2.25rem",
+          opacity: 0.72,
+          paddingRight: "0.75rem",
+          userSelect: "none"
         }}
         wrapLines
         showLineNumbers={showLineNumbers}
         lineProps={(lineNumber) => ({
           style: {
             backgroundColor: activeHighlightLines.includes(lineNumber)
-              ? "rgba(255,255,255,0.1)"
+              ? "color-mix(in srgb, var(--status-info) 10%, transparent)"
               : "transparent",
             display: "block",
+            whiteSpace: "pre",
             width: "100%"
           }
         })}
@@ -170,7 +195,9 @@ export const CodeBlock = ({
         {visible.code}
       </SyntaxHighlighter>
       {visible.hidden > 0 ? (
-        <div className="pt-2 font-sans text-[11px] leading-4 text-zinc-400">+{visible.hidden}</div>
+        <div className="pt-2 font-sans text-[11px] leading-4 text-muted-foreground">
+          +{visible.hidden}
+        </div>
       ) : null}
     </div>
   )
