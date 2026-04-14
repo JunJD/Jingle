@@ -6,19 +6,12 @@ import { getCommandArg, joinSummaryParts, truncateMiddle } from "./shared"
 defineToolComponent({
   name: "execute",
   icon: Terminal,
-  renderSummary({ copy, args, status }) {
+  renderSummary({ copy, args }) {
     const command = getCommandArg(args)
-    const statusLabel =
-      status === "running"
-        ? copy.common.running
-        : status === "approval"
-          ? copy.common.approval
-          : null
 
     return joinSummaryParts(
       copy.toolCall.labels.execute,
-      command ? truncateMiddle(command, 60) : null,
-      statusLabel
+      command ? truncateMiddle(command, 60) : null
     )
   },
   renderDetail({ args, rawResult }) {

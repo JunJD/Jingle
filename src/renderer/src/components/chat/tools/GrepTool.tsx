@@ -6,7 +6,7 @@ import { asGrepMatches, getPatternArg, joinSummaryParts } from "./shared"
 defineToolComponent({
   name: "grep",
   icon: Search,
-  renderSummary({ copy, args, result, status }) {
+  renderSummary({ copy, args, result }) {
     const pattern = getPatternArg(args)
     const matches = asGrepMatches(result)
     const fileCount = new Set(matches.map((match) => match.path)).size
@@ -14,13 +14,7 @@ defineToolComponent({
     return joinSummaryParts(
       copy.toolCall.labels.grep,
       pattern,
-      status === "running"
-        ? copy.common.running
-        : status === "approval"
-          ? copy.common.approval
-          : matches.length > 0
-            ? copy.toolCall.matchesInFiles(matches.length, fileCount)
-            : null
+      matches.length > 0 ? copy.toolCall.matchesInFiles(matches.length, fileCount) : null
     )
   },
   renderDetail({ result }) {

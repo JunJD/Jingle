@@ -19,20 +19,18 @@ export function buildFileMutationSummary(
   props: ToolComponentProps,
   mode: FileMutationToolName
 ): string {
-  const { copy, args, status } = props
+  const { copy, args } = props
   const review = getFileMutationReview(mode, args)
   const path = review?.path
   const content = review ? review.content : null
   const target = path ? getBasename(path) : copy.toolCall.labels[mode]
-  const statusLabel =
-    status === "running" ? copy.common.running : status === "approval" ? copy.common.approval : null
 
   return joinSummaryParts(
     copy.toolCall.labels[mode],
     target,
     mode === "write_file" && content !== null
       ? copy.toolCall.writeLinesToFile(countLines(content), target)
-      : statusLabel
+      : null
   )
 }
 

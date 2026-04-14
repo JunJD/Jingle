@@ -5,6 +5,7 @@ import {
   defaultToolComponent,
   getHumanInTheLoop,
   getToolComponent,
+  type ToolComponentStatus,
   type ToolPresentation
 } from "./tools"
 import { normalizeToolRenderModel } from "./tools/normalize"
@@ -15,6 +16,17 @@ interface CreateActionMessageViewInput {
   presentation: ToolPresentation
   result?: unknown
   toolCall: ToolCall
+}
+
+export function getToolStatusLabel(copy: AppCopy, status: ToolComponentStatus): string | null {
+  switch (status) {
+    case "approval":
+      return copy.common.approval
+    case "running":
+      return null
+    case "complete":
+      return null
+  }
 }
 
 export function createActionMessageView(input: CreateActionMessageViewInput) {
@@ -42,6 +54,7 @@ export function createActionMessageView(input: CreateActionMessageViewInput) {
     icon: hitlDefinition?.icon ?? definition.icon,
     model,
     status: model.status,
+    statusLabel: getToolStatusLabel(copy, model.status),
     summary
   }
 }

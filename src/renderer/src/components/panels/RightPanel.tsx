@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useThreadState } from "@/lib/thread-context"
 import { Badge } from "@/components/ui/badge"
+import { CodeBlock } from "@/components/ui/code-block"
 import type { Todo } from "@/types"
 import type { ArtifactActionId, ArtifactRecord } from "@shared/artifacts"
 
@@ -795,9 +796,12 @@ function getArtifactDetailBody(artifact: ArtifactRecord): React.JSX.Element {
     case "patch":
       if (artifact.source.type === "inline-text") {
         return (
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-border bg-background p-3 font-mono text-xs leading-5 text-foreground">
-            {artifact.payload!.text}
-          </pre>
+          <CodeBlock
+            className="max-h-72 overflow-auto"
+            code={artifact.payload!.text}
+            filename={artifact.title}
+            language="diff"
+          />
         )
       }
       return (

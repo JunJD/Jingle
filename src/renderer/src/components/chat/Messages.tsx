@@ -8,7 +8,7 @@ import type {
   Message as ThreadMessage,
   ToolCall
 } from "@/types"
-import { ActionMessage } from "./ActionMessage"
+import { ActionMessage, ToolStatusIndicator } from "./ActionMessage"
 import { createActionMessageView } from "./action-message-view"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -319,14 +319,23 @@ function ToolActivityGroup(props: {
     .reverse()
     .find((item) => item.needsApproval || item.result === undefined)
   const latestToolAction = actionViews[actionViews.length - 1]
+  const headerAction = hasActiveActions ? latestActiveAction : latestToolAction
   const headerTitle =
-    (preferLatestToolSummary
+    (preferLatestToolSummary && hasActiveActions
       ? isOpen
         ? copy.chat.agentWorking
-        : latestToolAction?.view.summary
+        : headerAction?.view.summary
       : null) ??
-    latestActiveAction?.view.summary ??
+    headerAction?.view.summary ??
     copy.chat.executedSteps(toolCalls.length)
+  const headerStatusMeta =
+    !isOpen && hasActiveActions && headerAction ? (
+      <ToolStatusIndicator
+        runningLabel={copy.common.running}
+        status={headerAction.view.status}
+        statusLabel={headerAction.view.statusLabel}
+      />
+    ) : null
 
   if (!shouldGroup) {
     const item = actionItems[0]
@@ -352,6 +361,7 @@ function ToolActivityGroup(props: {
       <ChainOfThoughtHeader
         className={density === "compact" ? "text-[12px] leading-5" : "text-[13px] leading-5"}
         icon={ListTodo}
+        meta={headerStatusMeta}
       >
         {headerTitle}
       </ChainOfThoughtHeader>

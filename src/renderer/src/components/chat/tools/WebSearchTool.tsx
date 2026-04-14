@@ -90,19 +90,12 @@ function renderSearchResultsList(
 defineToolComponent({
   name: "web_search",
   icon: Search,
-  renderSummary({ copy, args, status }) {
+  renderSummary({ copy, args }) {
     const query = getPatternArg(args)
-    const statusLabel =
-      status === "running"
-        ? copy.common.running
-        : status === "approval"
-          ? copy.common.approval
-          : null
 
     return joinSummaryParts(
       copy.toolCall.labels.web_search,
-      query ? truncateMiddle(query, 60) : null,
-      statusLabel
+      query ? truncateMiddle(query, 60) : null
     )
   },
   renderDetail({ args, rawResult, result }) {

@@ -1,24 +1,17 @@
 import { FileText } from "lucide-react"
+import { CodeBlock } from "@/components/ui/code-block"
 import { defineToolComponent } from "./registry-core"
-import { ToolCodeBlock, ToolDetailStack, ToolPreviewLines } from "./shared-components"
+import { ToolCodeBlock, ToolDetailStack } from "./shared-components"
 import { getBasename, getPathArg, joinSummaryParts } from "./shared"
 
 defineToolComponent({
   name: "read_file",
   icon: FileText,
-  renderSummary({ copy, args, status }) {
+  renderSummary({ copy, args }) {
     const path = getPathArg(args)
     const target = path ? getBasename(path) : copy.toolCall.labels.read_file
 
-    return joinSummaryParts(
-      copy.toolCall.labels.read_file,
-      target,
-      status === "running"
-        ? copy.common.running
-        : status === "approval"
-          ? copy.common.approval
-          : null
-    )
+    return joinSummaryParts(copy.toolCall.labels.read_file, target)
   },
   renderDetail({ args, rawResult }) {
     const path = getPathArg(args)
@@ -31,7 +24,9 @@ defineToolComponent({
     return (
       <ToolDetailStack>
         {path ? <ToolCodeBlock>{path}</ToolCodeBlock> : null}
-        {content ? <ToolPreviewLines text={content} /> : null}
+        {content ? (
+          <CodeBlock code={content} filename={path ? getBasename(path) : undefined} maxLines={12} />
+        ) : null}
       </ToolDetailStack>
     )
   }

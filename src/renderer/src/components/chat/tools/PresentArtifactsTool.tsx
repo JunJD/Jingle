@@ -1,6 +1,7 @@
 import { PackageOpen } from "lucide-react"
+import { CodeBlock } from "@/components/ui/code-block"
 import { defineToolComponent } from "./registry-core"
-import { ToolCodeBlock, ToolDetailSection, ToolDetailStack } from "./shared-components"
+import { ToolDetailSection, ToolDetailStack } from "./shared-components"
 import { getBasename, joinSummaryParts } from "./shared"
 
 function getArtifactItems(args: Record<string, unknown>): Array<Record<string, unknown>> {
@@ -12,26 +13,35 @@ function getArtifactItems(args: Record<string, unknown>): Array<Record<string, u
     : []
 }
 
+function isJsonText(value: string): boolean {
+  const trimmed = value.trim()
+
+  if (!trimmed) {
+    return false
+  }
+
+  try {
+    JSON.parse(trimmed)
+    return true
+  } catch {
+    return false
+  }
+}
+
 defineToolComponent({
   icon: PackageOpen,
   name: "present_artifacts",
-  renderSummary({ copy, args, status }) {
+  renderSummary({ copy, args }) {
     const items = getArtifactItems(args)
-    const statusLabel =
-      status === "running"
-        ? copy.common.running
-        : status === "approval"
-          ? copy.common.approval
-          : null
 
     return joinSummaryParts(
       copy.toolCall.labels.present_artifacts,
-      items.length > 0 ? `${items.length}` : null,
-      statusLabel
+      items.length > 0 ? `${items.length}` : null
     )
   },
   renderDetail({ copy, args, rawResult }) {
     const items = getArtifactItems(args)
+    const hasJsonResult = isJsonText(rawResult)
 
     return (
       <ToolDetailStack>
@@ -64,7 +74,12 @@ defineToolComponent({
         ) : null}
         {rawResult.trim() ? (
           <ToolDetailSection label={copy.common.rawResult}>
-            <ToolCodeBlock>{rawResult}</ToolCodeBlock>
+            <CodeBlock
+              code={rawResult}
+              filename={hasJsonResult ? "result.json" : "result.txt"}
+              language={hasJsonResult ? "json" : "text"}
+              maxLines={12}
+            />
           </ToolDetailSection>
         ) : null}
       </ToolDetailStack>

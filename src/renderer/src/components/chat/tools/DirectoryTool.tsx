@@ -19,7 +19,7 @@ function countDirectoryEntries(items: ToolFileEntry[]): { dirs: number; files: n
 defineToolComponent({
   name: "ls",
   icon: FolderOpen,
-  renderSummary({ copy, args, result, status }) {
+  renderSummary({ copy, args, result }) {
     const path = getPathArg(args)
     const target = path ? getBasename(path) : copy.toolCall.labels.ls
     const entries = asFileEntries(result)
@@ -28,13 +28,7 @@ defineToolComponent({
     return joinSummaryParts(
       copy.toolCall.labels.ls,
       target,
-      status === "running"
-        ? copy.common.running
-        : status === "approval"
-          ? copy.common.approval
-          : entries.length > 0
-            ? copy.toolCall.filesAndFolders(counts.files, counts.dirs)
-            : null
+      entries.length > 0 ? copy.toolCall.filesAndFolders(counts.files, counts.dirs) : null
     )
   },
   renderDetail({ args, result }) {
@@ -57,20 +51,14 @@ defineToolComponent({
 defineToolComponent({
   name: "glob",
   icon: FolderOpen,
-  renderSummary({ copy, args, result, status }) {
+  renderSummary({ copy, args, result }) {
     const pattern = getPatternArg(args)
     const matches = asStringArray(result)
 
     return joinSummaryParts(
       copy.toolCall.labels.glob,
       pattern,
-      status === "running"
-        ? copy.common.running
-        : status === "approval"
-          ? copy.common.approval
-          : matches.length > 0
-            ? copy.toolCall.foundMatches(matches.length)
-            : null
+      matches.length > 0 ? copy.toolCall.foundMatches(matches.length) : null
     )
   },
   renderDetail({ args, result }) {

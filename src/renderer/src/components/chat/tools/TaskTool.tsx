@@ -6,18 +6,10 @@ import { isNonEmptyString, joinSummaryParts } from "./shared"
 defineToolComponent({
   name: "task",
   icon: GitBranch,
-  renderSummary({ copy, args, status }) {
+  renderSummary({ copy, args }) {
     const name = isNonEmptyString(args.name) ? args.name : null
 
-    return joinSummaryParts(
-      copy.toolCall.labels.task,
-      name,
-      status === "running"
-        ? copy.common.running
-        : status === "approval"
-          ? copy.common.approval
-          : null
-    )
+    return joinSummaryParts(copy.toolCall.labels.task, name)
   },
   renderDetail({ args, rawResult }) {
     const name = isNonEmptyString(args.name) ? args.name : ""

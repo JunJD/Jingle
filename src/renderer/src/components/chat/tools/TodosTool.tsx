@@ -6,15 +6,8 @@ import { asTodos, joinSummaryParts } from "./shared"
 defineToolComponent({
   name: "write_todos",
   icon: ListTodo,
-  renderSummary({ copy, status }) {
-    return joinSummaryParts(
-      copy.toolCall.labels.write_todos,
-      status === "running"
-        ? copy.common.running
-        : status === "approval"
-          ? copy.common.approval
-          : null
-    )
+  renderSummary({ copy }) {
+    return joinSummaryParts(copy.toolCall.labels.write_todos)
   },
   renderDetail({ args }) {
     const todos = asTodos(args.todos)

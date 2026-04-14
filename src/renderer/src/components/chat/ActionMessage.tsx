@@ -1,5 +1,6 @@
-import { ChevronDown, ChevronRight, LoaderCircle, TriangleAlert } from "lucide-react"
+import { ChevronDown, ChevronRight, TriangleAlert } from "lucide-react"
 import { useMemo, useState } from "react"
+import { LoaderOne } from "@/components/ui/loader"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import type { HITLDecision, HITLRequest, ToolCall } from "@/types"
@@ -21,15 +22,35 @@ function StatusGlyph(props: {
 }): React.JSX.Element {
   const { Icon, status } = props
 
-  if (status === "running") {
-    return <LoaderCircle className="size-3.5 animate-spin text-muted-foreground" />
-  }
-
   if (status === "approval") {
     return <TriangleAlert className="size-3.5 text-status-warning" />
   }
 
   return <Icon className={cn("size-3.5 text-muted-foreground")} />
+}
+
+export function ToolStatusIndicator(props: {
+  runningLabel: string
+  status: ToolComponentStatus
+  statusLabel: string | null
+}): React.JSX.Element | null {
+  const { runningLabel, status, statusLabel } = props
+
+  if (status === "running") {
+    return (
+      <span
+        aria-label={runningLabel}
+        className="inline-flex h-4 w-6 shrink-0 items-center justify-center overflow-hidden"
+        role="status"
+      >
+        <span className="inline-flex origin-center scale-[0.34]">
+          <LoaderOne />
+        </span>
+      </span>
+    )
+  }
+
+  return statusLabel ? <span>{statusLabel}</span> : null
 }
 
 export function ActionMessage(props: ActionMessageProps): React.JSX.Element | null {
@@ -54,7 +75,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       }),
     [approvalRequest, copy, presentation, result, toolCall]
   )
-  const { definition, hitlDefinition, icon, model, status, summary } = view
+  const { definition, hitlDefinition, icon, model, status, statusLabel, summary } = view
   const isExpanded = Boolean(approvalRequest) || manualExpanded
   const showLeadingIcon = presentation !== "grouped"
   const detail = useMemo<React.ReactNode>(() => {
@@ -91,9 +112,6 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
   ])
 
   const hasDetail = Boolean(detail)
-  const statusLabel =
-    status === "approval" ? copy.common.approval : status === "running" ? copy.common.running : null
-
   return (
     <div
       className={cn("grid min-w-0 max-w-full", presentation === "grouped" ? "gap-1" : "gap-1.5")}
@@ -134,7 +152,11 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
             density === "compact" ? "text-[10px]" : "text-[11px]"
           )}
         >
-          {statusLabel ? <span>{statusLabel}</span> : null}
+          <ToolStatusIndicator
+            runningLabel={copy.common.running}
+            status={status}
+            statusLabel={statusLabel}
+          />
           {hasDetail ? (
             isExpanded ? (
               <ChevronDown className="size-3.5" />

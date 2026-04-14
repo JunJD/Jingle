@@ -11,15 +11,8 @@ function getPrimaryArg(args: Record<string, unknown>): string | null {
 export const defaultToolComponent: ToolComponentDefinition = {
   name: "*",
   icon: Wrench,
-  renderSummary({ copy, toolCall, args, status }) {
-    const statusLabel =
-      status === "approval"
-        ? copy.common.approval
-        : status === "running"
-          ? copy.common.running
-          : null
-
-    return joinSummaryParts(toolCall.name, getPrimaryArg(args), statusLabel)
+  renderSummary({ toolCall, args }) {
+    return joinSummaryParts(toolCall.name, getPrimaryArg(args))
   },
   renderDetail({ copy, rawArgs, rawResult }) {
     const detailArgs = rawArgs.trim() ? rawArgs : ""
