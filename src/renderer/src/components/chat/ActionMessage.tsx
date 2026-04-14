@@ -40,12 +40,10 @@ export function ToolStatusIndicator(props: {
     return (
       <span
         aria-label={runningLabel}
-        className="inline-flex h-4 w-6 shrink-0 items-center justify-center overflow-hidden"
+        className="inline-flex h-4 w-7 shrink-0 items-center justify-center"
         role="status"
       >
-        <span className="inline-flex origin-center scale-[0.34]">
-          <LoaderOne />
-        </span>
+        <LoaderOne />
       </span>
     )
   }

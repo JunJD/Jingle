@@ -1,47 +1,54 @@
 "use client"
 import { motion } from "motion/react"
+import { cn } from "@/lib/utils"
 
-export const LoaderOne = () => {
+export const LoaderOne = ({ className }: { className?: string }) => {
   const transition = (x: number) => {
     return {
-      duration: 1,
+      duration: 0.9,
       repeat: Infinity,
-      repeatType: "loop" as const,
-      delay: x * 0.2,
+      repeatType: "mirror" as const,
+      delay: x * 0.12,
       ease: "easeInOut" as const
     }
   }
   return (
-    <div className="flex items-center gap-2">
+    <div className={cn("inline-flex h-4 items-center gap-1 text-muted-foreground", className)}>
       <motion.div
         initial={{
+          opacity: 0.35,
           y: 0
         }}
         animate={{
-          y: [0, 10, 0]
+          opacity: [0.35, 1, 0.35],
+          y: [0, -2, 0]
         }}
         transition={transition(0)}
-        className="h-4 w-4 rounded-full border border-neutral-300 bg-gradient-to-b from-neutral-400 to-neutral-300"
+        className="size-1.5 rounded-full bg-current"
       />
       <motion.div
         initial={{
+          opacity: 0.35,
           y: 0
         }}
         animate={{
-          y: [0, 10, 0]
+          opacity: [0.35, 1, 0.35],
+          y: [0, -2, 0]
         }}
         transition={transition(1)}
-        className="h-4 w-4 rounded-full border border-neutral-300 bg-gradient-to-b from-neutral-400 to-neutral-300"
+        className="size-1.5 rounded-full bg-current"
       />
       <motion.div
         initial={{
+          opacity: 0.35,
           y: 0
         }}
         animate={{
-          y: [0, 10, 0]
+          opacity: [0.35, 1, 0.35],
+          y: [0, -2, 0]
         }}
         transition={transition(2)}
-        className="h-4 w-4 rounded-full border border-neutral-300 bg-gradient-to-b from-neutral-400 to-neutral-300"
+        className="size-1.5 rounded-full bg-current"
       />
     </div>
   )
