@@ -3,6 +3,13 @@ import type { AppLocale } from "../../shared/i18n"
 import type { HITLRequest } from "../../shared/hitl"
 import type { ArtifactRecord } from "../../shared/artifacts"
 export type { HITLDecision, HITLRequest } from "../../shared/hitl"
+export type {
+  ModelConfig,
+  ModelProviderState,
+  Provider,
+  ProviderId,
+  ProviderModelStatus
+} from "../../shared/app-types"
 
 // Re-export types from electron for use in renderer
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
@@ -27,24 +34,6 @@ export interface Run {
   updated_at: Date
   status: RunStatus
   metadata?: Record<string, unknown>
-}
-
-// Provider configuration
-export type ProviderId = "anthropic" | "openai" | "google" | "dashscope" | "ollama"
-
-export interface Provider {
-  id: ProviderId
-  name: string
-  hasApiKey: boolean
-}
-
-export interface ModelConfig {
-  id: string
-  name: string
-  provider: ProviderId
-  model: string
-  description?: string
-  available: boolean
 }
 
 export interface AgentConfig {

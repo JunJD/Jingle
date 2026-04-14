@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Thread, ModelConfig, Provider } from "@/types"
+import type { Thread, ModelConfig, Provider, ProviderId } from "@/types"
 
 interface HistoryShellState {
   threads: Thread[]
@@ -16,10 +16,9 @@ interface HistoryShellState {
   deleteThread: (threadId: string) => Promise<void>
   updateThread: (threadId: string, updates: Partial<Thread>) => Promise<void>
   generateTitleForFirstMessage: (threadId: string, content: string) => Promise<void>
-  loadModels: () => Promise<void>
-  loadProviders: () => Promise<void>
-  setApiKey: (providerId: string, apiKey: string) => Promise<void>
-  deleteApiKey: (providerId: string) => Promise<void>
+  loadModelProviderState: () => Promise<void>
+  setApiKey: (providerId: ProviderId, apiKey: string) => Promise<void>
+  deleteApiKey: (providerId: ProviderId) => Promise<void>
   setRightPanelTab: (tab: "todos" | "artifacts" | "subagents") => void
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -95,34 +94,19 @@ export const useHistoryShellStore = create<HistoryShellState>((set, get) => ({
     }
   },
 
-  loadModels: async () => {
-    const models = await window.api.models.list()
-    set({ models })
+  loadModelProviderState: async () => {
+    const { models, providers } = await window.api.models.getState()
+    set({ models, providers })
   },
 
-  loadProviders: async () => {
-    const providers = await window.api.models.listProviders()
-    set({ providers })
+  setApiKey: async (providerId: ProviderId, apiKey: string) => {
+    await window.api.models.setApiKey(providerId, apiKey)
+    await get().loadModelProviderState()
   },
 
-  setApiKey: async (providerId: string, apiKey: string) => {
-    console.log("[Store] setApiKey called:", { providerId, keyLength: apiKey.length })
-    try {
-      await window.api.models.setApiKey(providerId, apiKey)
-      console.log("[Store] API key saved via IPC")
-      await get().loadProviders()
-      await get().loadModels()
-      console.log("[Store] Providers and models reloaded")
-    } catch (error) {
-      console.error("[Store] Failed to set API key:", error)
-      throw error
-    }
-  },
-
-  deleteApiKey: async (providerId: string) => {
+  deleteApiKey: async (providerId: ProviderId) => {
     await window.api.models.deleteApiKey(providerId)
-    await get().loadProviders()
-    await get().loadModels()
+    await get().loadModelProviderState()
   },
 
   setRightPanelTab: (tab: "todos" | "artifacts" | "subagents") => {

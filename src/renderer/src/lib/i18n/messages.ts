@@ -13,9 +13,11 @@ export interface AppCopy {
     addTitle: (providerName: string) => string
     addDescription: (providerName: string) => string
     cancel: string
-    envVar: string
+    deleteError: string
     removeKey: string
     save: string
+    saveError: string
+    secureStorageHint: string
     updateTitle: (providerName: string) => string
     updateDescription: string
   }
@@ -122,6 +124,7 @@ export interface AppCopy {
     model: string
     noModelsAvailable: string
     provider: string
+    providerError: (providerName: string) => string
     selectModel: string
   }
   sidebar: {
@@ -186,9 +189,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       addTitle: (providerName) => `添加 ${providerName} API Key`,
       addDescription: (providerName) => `输入你的 ${providerName} API Key 以使用对应模型。`,
       cancel: "取消",
-      envVar: "环境变量",
+      deleteError: "移除密钥失败，请检查系统安全存储状态。",
       removeKey: "移除 Key",
       save: "保存",
+      saveError: "保存密钥失败，请检查系统安全存储状态。",
+      secureStorageHint: "密钥会写入系统安全存储，不会写入 ~/.openwork/.env。",
       updateTitle: (providerName) => `更新 ${providerName} API Key`,
       updateDescription: "输入新的 API Key 覆盖已有值，或直接移除。"
     },
@@ -295,6 +300,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       model: "模型",
       noModelsAvailable: "没有可用模型",
       provider: "提供商",
+      providerError: (providerName) => `${providerName} 模型列表读取失败`,
       selectModel: "选择模型"
     },
     sidebar: {
@@ -370,9 +376,12 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       addTitle: (providerName) => `Add ${providerName} API Key`,
       addDescription: (providerName) => `Enter your ${providerName} API key to use their models.`,
       cancel: "Cancel",
-      envVar: "Environment variable",
+      deleteError: "Failed to remove the key. Check secure system storage status.",
       removeKey: "Remove Key",
       save: "Save",
+      saveError: "Failed to save the key. Check secure system storage status.",
+      secureStorageHint:
+        "Keys are stored in secure system storage and are not written to ~/.openwork/.env.",
       updateTitle: (providerName) => `Update ${providerName} API Key`,
       updateDescription: "Enter a new API key to replace the existing one, or remove it."
     },
@@ -480,6 +489,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       model: "Model",
       noModelsAvailable: "No models available",
       provider: "Provider",
+      providerError: (providerName) => `Failed to load ${providerName} models`,
       selectModel: "Select model"
     },
     sidebar: {

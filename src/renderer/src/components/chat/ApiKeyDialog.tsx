@@ -19,11 +19,19 @@ interface ApiKeyDialogProps {
   provider: Provider | null
 }
 
-const PROVIDER_INFO: Record<string, { placeholder: string; envVar: string }> = {
-  anthropic: { placeholder: "sk-ant-...", envVar: "ANTHROPIC_API_KEY" },
-  openai: { placeholder: "sk-...", envVar: "OPENAI_API_KEY" },
-  google: { placeholder: "AIza...", envVar: "GOOGLE_API_KEY" },
-  dashscope: { placeholder: "sk-...", envVar: "DASHSCOPE_API_KEY" }
+const PROVIDER_INFO: Record<Provider["id"], { placeholder: string }> = {
+  anthropic: { placeholder: "sk-ant-..." },
+  openai: { placeholder: "sk-..." },
+  google: { placeholder: "AIza..." },
+  dashscope: { placeholder: "sk-..." }
+}
+
+function getDialogErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) {
+    return fallback
+  }
+
+  return error.message.replace(/^Error invoking remote method '[^']+':\s*/, "")
 }
 
 export function ApiKeyDialog({
@@ -37,6 +45,7 @@ export function ApiKeyDialog({
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [hasExistingKey, setHasExistingKey] = useState(false)
+  const [errorText, setErrorText] = useState<string | null>(null)
 
   const { setApiKey: saveApiKey, deleteApiKey } = useHistoryShellStore()
 
@@ -46,38 +55,40 @@ export function ApiKeyDialog({
       setHasExistingKey(provider.hasApiKey)
       setApiKey("")
       setShowKey(false)
+      setErrorText(null)
     }
   }, [open, provider])
 
   if (!provider) return null
 
-  const info = PROVIDER_INFO[provider.id] || { placeholder: "...", envVar: "" }
+  const selectedProvider = provider
+  const info = PROVIDER_INFO[selectedProvider.id]
 
   async function handleSave(): Promise<void> {
     if (!apiKey.trim()) return
-    if (!provider) return
 
-    console.log("[ApiKeyDialog] Saving API key for provider:", provider.id)
     setSaving(true)
+    setErrorText(null)
     try {
-      await saveApiKey(provider.id, apiKey.trim())
-      console.log("[ApiKeyDialog] API key saved successfully")
+      await saveApiKey(selectedProvider.id, apiKey.trim())
       onOpenChange(false)
     } catch (e) {
       console.error("[ApiKeyDialog] Failed to save API key:", e)
+      setErrorText(getDialogErrorMessage(e, copy.apiKeyDialog.saveError))
     } finally {
       setSaving(false)
     }
   }
 
   async function handleDelete(): Promise<void> {
-    if (!provider) return
     setDeleting(true)
+    setErrorText(null)
     try {
-      await deleteApiKey(provider.id)
+      await deleteApiKey(selectedProvider.id)
       onOpenChange(false)
     } catch (e) {
       console.error("Failed to delete API key:", e)
+      setErrorText(getDialogErrorMessage(e, copy.apiKeyDialog.deleteError))
     } finally {
       setDeleting(false)
     }
@@ -85,17 +96,17 @@ export function ApiKeyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px]">
-        <DialogHeader>
+      <DialogContent className="w-[calc(100%-2rem)] rounded-2xl sm:max-w-[400px] sm:rounded-2xl">
+        <DialogHeader className="text-left">
           <DialogTitle>
             {hasExistingKey
-              ? copy.apiKeyDialog.updateTitle(provider.name)
-              : copy.apiKeyDialog.addTitle(provider.name)}
+              ? copy.apiKeyDialog.updateTitle(selectedProvider.name)
+              : copy.apiKeyDialog.addTitle(selectedProvider.name)}
           </DialogTitle>
           <DialogDescription>
             {hasExistingKey
               ? copy.apiKeyDialog.updateDescription
-              : copy.apiKeyDialog.addDescription(provider.name)}
+              : copy.apiKeyDialog.addDescription(selectedProvider.name)}
           </DialogDescription>
         </DialogHeader>
 
@@ -118,9 +129,12 @@ export function ApiKeyDialog({
                 {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {copy.apiKeyDialog.envVar}: <code className="text-foreground">{info.envVar}</code>
-            </p>
+            <p className="text-xs text-muted-foreground">{copy.apiKeyDialog.secureStorageHint}</p>
+            {errorText && (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {errorText}
+              </p>
+            )}
           </div>
         </div>
 

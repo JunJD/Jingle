@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { Brain, FolderOpen, Languages, Layers2, Rocket } from "lucide-react"
-import type { AgentConfig, ModelConfig } from "../../../shared/app-types"
-import type { LauncherSettings, LauncherWindowMode } from "../../../shared/launcher-settings"
-import { SUPPORTED_APP_LOCALES, type AppLocale } from "../../../shared/i18n"
+import { useEffect, useState, type ReactNode } from "react"
+import { FolderOpen, Languages, Layers2, Rocket } from "lucide-react"
+import type { AgentConfig } from "@shared/app-types"
+import type { LauncherSettings, LauncherWindowMode } from "@shared/launcher-settings"
+import { SUPPORTED_APP_LOCALES, type AppLocale } from "@shared/i18n"
 import { useI18n } from "../lib/i18n"
 import { getSettingsCopy } from "./copy"
 
@@ -53,48 +53,25 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   const { setLocale } = useI18n()
   const copy = getSettingsCopy(locale)
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null)
-  const [defaultModelId, setDefaultModelId] = useState<string>("")
   const [globalWorkspacePath, setGlobalWorkspacePath] = useState<string | null>(null)
   const [launcherSettings, setLauncherSettings] = useState<LauncherSettings | null>(null)
   const [memorySourcesDraft, setMemorySourcesDraft] = useState("")
-  const [models, setModels] = useState<ModelConfig[]>([])
   const [skillSourcesDraft, setSkillSourcesDraft] = useState("")
   const [status, setStatus] = useState<string>("")
 
   useEffect(() => {
     void Promise.all([
       window.api.settings.getAgentConfig(),
-      window.api.models.getDefault(),
-      window.api.models.list(),
       window.api.workspace.get(),
       window.api.settings.getLauncherSettings()
-    ]).then(
-      ([
-        nextAgentConfig,
-        nextDefaultModelId,
-        nextModels,
-        nextGlobalWorkspacePath,
-        nextLauncherSettings
-      ]) => {
-        setAgentConfig(nextAgentConfig)
-        setDefaultModelId(nextDefaultModelId)
-        setModels(nextModels)
-        setGlobalWorkspacePath(nextGlobalWorkspacePath)
-        setLauncherSettings(nextLauncherSettings)
-        setSkillSourcesDraft(nextAgentConfig.skillSources.join("\n"))
-        setMemorySourcesDraft(nextAgentConfig.memorySources.join("\n"))
-      }
-    )
+    ]).then(([nextAgentConfig, nextGlobalWorkspacePath, nextLauncherSettings]) => {
+      setAgentConfig(nextAgentConfig)
+      setGlobalWorkspacePath(nextGlobalWorkspacePath)
+      setLauncherSettings(nextLauncherSettings)
+      setSkillSourcesDraft(nextAgentConfig.skillSources.join("\n"))
+      setMemorySourcesDraft(nextAgentConfig.memorySources.join("\n"))
+    })
   }, [])
-
-  const modelOptions = useMemo(() => {
-    return models
-      .filter((model) => model.available)
-      .map((model) => ({
-        id: model.id,
-        label: `${model.name} · ${model.provider}`
-      }))
-  }, [models])
 
   const saveSourceLists = async (): Promise<void> => {
     const nextConfig = await window.api.settings.setAgentConfig({
@@ -116,11 +93,6 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   const handleWorkspaceClear = async (): Promise<void> => {
     const nextPath = await window.api.workspace.set(undefined, null)
     setGlobalWorkspacePath(nextPath)
-  }
-
-  const handleDefaultModelChange = async (nextModelId: string): Promise<void> => {
-    await window.api.models.setDefault(nextModelId)
-    setDefaultModelId(nextModelId)
   }
 
   const handleLocaleChange = async (nextLocale: AppLocale): Promise<void> => {
@@ -175,28 +147,6 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
                 {copy.common.clear}
               </button>
             ) : null}
-          </div>
-        </SettingsRow>
-
-        <SettingsRow
-          icon={<Brain className="h-4 w-4" />}
-          title={copy.general.defaultModelTitle}
-          description={copy.general.defaultModelDescription}
-        >
-          <div className="max-w-[420px]">
-            <select
-              className={selectClassName}
-              value={defaultModelId}
-              onChange={(event) => {
-                void handleDefaultModelChange(event.target.value)
-              }}
-            >
-              {modelOptions.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                </option>
-              ))}
-            </select>
           </div>
         </SettingsRow>
 

@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useCurrentThread } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
-import { ApiKeyDialog } from "./ApiKeyDialog"
 import type { Provider, ProviderId } from "@/types"
 import { useI18n } from "@/lib/i18n"
 
@@ -42,17 +41,8 @@ const PROVIDER_ICONS: Record<ProviderId, React.FC<{ className?: string }>> = {
   anthropic: AnthropicIcon,
   openai: OpenAIIcon,
   google: GoogleIcon,
-  dashscope: DashScopeIcon,
-  ollama: () => null // No icon for ollama yet
+  dashscope: DashScopeIcon
 }
-
-// Fallback providers in case the backend hasn't loaded them yet
-const FALLBACK_PROVIDERS: Provider[] = [
-  { id: "anthropic", name: "Anthropic", hasApiKey: false },
-  { id: "openai", name: "OpenAI", hasApiKey: false },
-  { id: "google", name: "Google", hasApiKey: false },
-  { id: "dashscope", name: "DashScope", hasApiKey: false }
-]
 
 interface ModelSwitcherProps {
   threadId: string
@@ -62,32 +52,26 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
   const { copy } = useI18n()
   const [open, setOpen] = useState(false)
   const [selectedProviderId, setSelectedProviderId] = useState<ProviderId | null>(null)
-  const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false)
-  const [apiKeyProvider, setApiKeyProvider] = useState<Provider | null>(null)
 
-  const { models, providers, loadModels, loadProviders } = useHistoryShellStore()
+  const { models, providers, loadModelProviderState } = useHistoryShellStore()
   const { currentModel, setCurrentModel } = useCurrentThread(threadId)
 
   // Load models and providers on mount
   useEffect(() => {
-    loadModels()
-    loadProviders()
-  }, [loadModels, loadProviders])
-
-  // Use fallback providers if none loaded
-  const displayProviders = providers.length > 0 ? providers : FALLBACK_PROVIDERS
+    void loadModelProviderState()
+  }, [loadModelProviderState])
 
   // Determine effective provider ID (manual selection > current model > default)
   const effectiveProviderId =
     selectedProviderId ||
     (currentModel ? models.find((m) => m.id === currentModel)?.provider : null) ||
-    (displayProviders.length > 0 ? displayProviders[0].id : null)
+    (providers.length > 0 ? providers[0].id : null)
 
   const selectedModel = models.find((m) => m.id === currentModel)
   const filteredModels = effectiveProviderId
     ? models.filter((m) => m.provider === effectiveProviderId)
     : []
-  const selectedProvider = displayProviders.find((p) => p.id === effectiveProviderId)
+  const selectedProvider = providers.find((p) => p.id === effectiveProviderId)
 
   function handleProviderClick(provider: Provider): void {
     setSelectedProviderId(provider.id)
@@ -98,139 +82,150 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
     setOpen(false)
   }
 
-  function handleConfigureApiKey(provider: Provider): void {
-    setApiKeyProvider(provider)
-    setApiKeyDialogOpen(true)
-  }
-
-  function handleApiKeyDialogClose(isOpen: boolean): void {
-    setApiKeyDialogOpen(isOpen)
-    if (!isOpen) {
-      // Refresh providers after dialog closes
-      loadProviders()
-      loadModels()
-    }
+  function handleOpenProviderSettings(provider: Provider): void {
+    setOpen(false)
+    void window.electron.openSettingsTab("provider", { providerId: provider.id })
   }
 
   return (
-    <>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 rounded-full bg-background-secondary px-3 text-xs text-muted-foreground hover:bg-background-interactive hover:text-foreground"
-          >
-            {selectedModel ? (
-              <>
-                {PROVIDER_ICONS[selectedModel.provider]?.({ className: "size-3.5" })}
-                <span className="font-mono">{selectedModel.id}</span>
-              </>
-            ) : (
-              <span>{copy.modelSwitcher.selectModel}</span>
-            )}
-            <ChevronDown className="size-3" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          className="w-[420px] border-border bg-popover p-0"
-          align="start"
-          sideOffset={8}
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (nextOpen) {
+          void loadModelProviderState()
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1.5 rounded-full bg-background-secondary px-3 text-xs text-muted-foreground hover:bg-background-interactive hover:text-foreground"
         >
-          <div className="flex min-h-[240px]">
-            <div className="w-[140px] border-r border-border p-2 bg-background/35">
-              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1.5">
-                {copy.modelSwitcher.provider}
+          {selectedModel ? (
+            <>
+              {PROVIDER_ICONS[selectedModel.provider]({ className: "size-3.5" })}
+              <span className="font-mono">{selectedModel.model}</span>
+            </>
+          ) : (
+            <span>{copy.modelSwitcher.selectModel}</span>
+          )}
+          <ChevronDown className="size-3" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[420px] border-border bg-popover p-0"
+        align="start"
+        sideOffset={8}
+      >
+        <div className="flex min-h-[240px]">
+          <div className="w-[140px] border-r border-border p-2 bg-background/35">
+            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1.5">
+              {copy.modelSwitcher.provider}
+            </div>
+            <div className="space-y-0.5">
+              {providers.map((provider) => {
+                const Icon = PROVIDER_ICONS[provider.id]
+                return (
+                  <button
+                    key={provider.id}
+                    onClick={() => handleProviderClick(provider)}
+                    className={cn(
+                      "w-full rounded-[10px] px-2 py-1 text-left text-xs transition-colors",
+                      effectiveProviderId === provider.id
+                        ? "bg-background-secondary text-foreground"
+                        : "text-muted-foreground hover:bg-background-secondary/70 hover:text-foreground"
+                    )}
+                  >
+                    {Icon && <Icon className="size-3.5 shrink-0" />}
+                    <span className="flex-1 truncate">{provider.name}</span>
+                    {provider.modelStatus !== "available" && (
+                      <AlertCircle
+                        className={cn(
+                          "size-3 shrink-0",
+                          provider.modelStatus === "error"
+                            ? "text-destructive"
+                            : "text-status-warning"
+                        )}
+                      />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="flex-1 p-2">
+            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1.5">
+              {copy.modelSwitcher.model}
+            </div>
+
+            {selectedProvider?.modelStatus === "error" ? (
+              <div className="flex h-[180px] flex-col items-center justify-center px-4 text-center">
+                <AlertCircle className="mb-2 size-6 text-destructive" />
+                <p className="mb-1 text-xs font-medium text-foreground">
+                  {copy.modelSwitcher.providerError(selectedProvider.name)}
+                </p>
+                <p className="mb-3 max-w-[220px] truncate text-xs text-muted-foreground">
+                  {selectedProvider.modelError}
+                </p>
+                <Button size="sm" onClick={() => handleOpenProviderSettings(selectedProvider)}>
+                  {copy.modelSwitcher.editApiKey}
+                </Button>
               </div>
-              <div className="space-y-0.5">
-                {displayProviders.map((provider) => {
-                  const Icon = PROVIDER_ICONS[provider.id]
-                  return (
+            ) : selectedProvider && !selectedProvider.hasApiKey ? (
+              <div className="flex flex-col items-center justify-center h-[180px] px-4 text-center">
+                <Key className="size-6 text-muted-foreground mb-2" />
+                <p className="text-xs text-muted-foreground mb-3">
+                  {copy.modelSwitcher.apiKeyRequired(selectedProvider.name)}
+                </p>
+                <Button size="sm" onClick={() => handleOpenProviderSettings(selectedProvider)}>
+                  {copy.modelSwitcher.configureApiKey}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col h-[200px]">
+                <div className="overflow-y-auto flex-1 space-y-0.5">
+                  {filteredModels.map((model) => (
                     <button
-                      key={provider.id}
-                      onClick={() => handleProviderClick(provider)}
+                      key={model.id}
+                      onClick={() => handleModelSelect(model.id)}
                       className={cn(
-                        "w-full rounded-[10px] px-2 py-1 text-left text-xs transition-colors",
-                        effectiveProviderId === provider.id
+                        "w-full rounded-[10px] px-2 py-1 text-left text-xs font-mono transition-colors",
+                        currentModel === model.id
                           ? "bg-background-secondary text-foreground"
                           : "text-muted-foreground hover:bg-background-secondary/70 hover:text-foreground"
                       )}
                     >
-                      {Icon && <Icon className="size-3.5 shrink-0" />}
-                      <span className="flex-1 truncate">{provider.name}</span>
-                      {!provider.hasApiKey && (
-                        <AlertCircle className="size-3 text-status-warning shrink-0" />
+                      <span className="flex-1 truncate">{model.model}</span>
+                      {currentModel === model.id && (
+                        <Check className="size-3.5 shrink-0 text-foreground" />
                       )}
                     </button>
-                  )
-                })}
-              </div>
-            </div>
+                  ))}
 
-            <div className="flex-1 p-2">
-              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1.5">
-                {copy.modelSwitcher.model}
-              </div>
-
-              {selectedProvider && !selectedProvider.hasApiKey ? (
-                <div className="flex flex-col items-center justify-center h-[180px] px-4 text-center">
-                  <Key className="size-6 text-muted-foreground mb-2" />
-                  <p className="text-xs text-muted-foreground mb-3">
-                    {copy.modelSwitcher.apiKeyRequired(selectedProvider.name)}
-                  </p>
-                  <Button size="sm" onClick={() => handleConfigureApiKey(selectedProvider)}>
-                    {copy.modelSwitcher.configureApiKey}
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex flex-col h-[200px]">
-                  <div className="overflow-y-auto flex-1 space-y-0.5">
-                    {filteredModels.map((model) => (
-                      <button
-                        key={model.id}
-                        onClick={() => handleModelSelect(model.id)}
-                        className={cn(
-                          "w-full rounded-[10px] px-2 py-1 text-left text-xs font-mono transition-colors",
-                          currentModel === model.id
-                            ? "bg-background-secondary text-foreground"
-                            : "text-muted-foreground hover:bg-background-secondary/70 hover:text-foreground"
-                        )}
-                      >
-                        <span className="flex-1 truncate">{model.id}</span>
-                        {currentModel === model.id && (
-                          <Check className="size-3.5 shrink-0 text-foreground" />
-                        )}
-                      </button>
-                    ))}
-
-                    {filteredModels.length === 0 && (
-                      <p className="text-xs text-muted-foreground px-2 py-4">
-                        {copy.modelSwitcher.noModelsAvailable}
-                      </p>
-                    )}
-                  </div>
-
-                  {selectedProvider?.hasApiKey && (
-                    <button
-                      onClick={() => handleConfigureApiKey(selectedProvider)}
-                      className="mt-2 w-full rounded-[10px] border-t border-border px-2 pt-2 text-left text-xs text-muted-foreground transition-colors hover:bg-background-secondary/70 hover:text-foreground"
-                    >
-                      <Key className="mr-2 inline size-3.5" />
-                      <span>{copy.modelSwitcher.editApiKey}</span>
-                    </button>
+                  {filteredModels.length === 0 && (
+                    <p className="text-xs text-muted-foreground px-2 py-4">
+                      {copy.modelSwitcher.noModelsAvailable}
+                    </p>
                   )}
                 </div>
-              )}
-            </div>
-          </div>
-        </PopoverContent>
-      </Popover>
 
-      <ApiKeyDialog
-        open={apiKeyDialogOpen}
-        onOpenChange={handleApiKeyDialogClose}
-        provider={apiKeyProvider}
-      />
-    </>
+                {selectedProvider?.hasApiKey && (
+                  <button
+                    onClick={() => handleOpenProviderSettings(selectedProvider)}
+                    className="mt-2 w-full rounded-[10px] border-t border-border px-2 pt-2 text-left text-xs text-muted-foreground transition-colors hover:bg-background-secondary/70 hover:text-foreground"
+                  >
+                    <Key className="mr-2 inline size-3.5" />
+                    <span>{copy.modelSwitcher.editApiKey}</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }

@@ -1,8 +1,9 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages"
-import { getModelConfig } from "../../../main/ipc/models"
-import { getChatModelInstance, inferProviderFromModelId } from "../../../main/llm/get-chat-model"
+import { parseProviderModelId } from "../../../main/model-provider/catalog"
+import { getChatModelInstance } from "../../../main/llm/get-chat-model"
+import { hasProviderApiKey } from "../../../main/model-provider/secrets"
 import { defineNativeExtensionService } from "../../../main/services/native-extensions/sdk"
-import { getEnvValue, hasApiKey } from "../../../main/storage"
+import { getEnvValue } from "../../../main/storage"
 import type {
   TranslateBackendConfig,
   TranslateTextRequest,
@@ -18,21 +19,14 @@ function resolveBackend(backend?: TranslateBackendConfig): TranslateBackendConfi
 
   if (!configuredModelId) {
     throw new Error(
-      `Translation model is not configured. Set the Translate Model command preference or ${TRANSLATE_MODEL_ENV_NAME} in ~/.openwork/.env.`
+      `Translation model is not configured. Set a provider-scoped model id, for example dashscope:glm-4.6, in the Translate Model command preference or ${TRANSLATE_MODEL_ENV_NAME}.`
     )
   }
 
-  const provider =
-    getModelConfig(configuredModelId)?.provider ?? inferProviderFromModelId(configuredModelId)
+  const { providerId } = parseProviderModelId(configuredModelId)
 
-  if (!provider) {
-    throw new Error(
-      `Unknown translation model "${configuredModelId}". Check the Translate Model command preference or ${TRANSLATE_MODEL_ENV_NAME} in ~/.openwork/.env.`
-    )
-  }
-
-  if (!hasApiKey(provider)) {
-    throw new Error(`Translation provider "${provider}" is not configured.`)
+  if (!hasProviderApiKey(providerId)) {
+    throw new Error(`Translation provider "${providerId}" is not configured.`)
   }
 
   return {
@@ -88,10 +82,6 @@ export async function translateText(request: TranslateTextRequest): Promise<Tran
     modelId: backend.modelId,
     temperature: 0
   })
-
-  if (typeof model === "string") {
-    throw new Error(`Model ${backend.modelId} does not support chat translation`)
-  }
 
   const response = await model.invoke([
     new SystemMessage(buildTranslationPrompt(request)),

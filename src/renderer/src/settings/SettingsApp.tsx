@@ -1,17 +1,25 @@
-import { useEffect, useState } from "react"
-import { Keyboard, Puzzle, Settings2 } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import { Keyboard, KeyRound, Puzzle, Settings2 } from "lucide-react"
 import type { SettingsWindowTab, SettingsWindowTarget } from "../../../shared/settings-window"
 import { useI18n } from "../lib/i18n"
 import { getSettingsCopy } from "./copy"
 import { ExtensionsTab } from "./ExtensionsTab"
 import { GeneralTab } from "./GeneralTab"
+import { ProviderTab } from "./ProviderTab"
 import { ShortcutsTab } from "./ShortcutsTab"
+
+const settingsScrollPaneClassName =
+  "h-full overflow-x-hidden overflow-y-auto pr-1 [scrollbar-gutter:stable]"
 
 export default function SettingsApp(): React.JSX.Element {
   const { locale } = useI18n()
   const copy = getSettingsCopy(locale)
   const [activeTab, setActiveTab] = useState<SettingsWindowTab>("general")
   const [focusTarget, setFocusTarget] = useState<SettingsWindowTarget | null>(null)
+
+  const handleFocusTargetConsumed = useCallback(() => {
+    setFocusTarget(null)
+  }, [])
 
   useEffect(() => {
     void window.api.settings.getPendingNavigation().then((payload) => {
@@ -53,6 +61,19 @@ export default function SettingsApp(): React.JSX.Element {
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab("provider")}
+            data-settings-tab="provider"
+            className={`inline-flex items-center gap-2 border-l border-border px-3 py-1.5 text-[12px] font-medium transition ${
+              activeTab === "provider"
+                ? "bg-background text-foreground"
+                : "text-muted-foreground hover:bg-background-secondary hover:text-foreground"
+            }`}
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            {copy.tabs.provider}
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab("extensions")}
             data-settings-tab="extensions"
             className={`inline-flex items-center gap-2 border-l border-border px-3 py-1.5 text-[12px] font-medium transition ${
@@ -86,11 +107,19 @@ export default function SettingsApp(): React.JSX.Element {
 
       <div className="min-h-0 flex-1 overflow-hidden p-5">
         {activeTab === "general" ? (
-          <div className="h-full overflow-y-auto pr-1">
+          <div className={settingsScrollPaneClassName}>
             <GeneralTab locale={locale} />
           </div>
+        ) : activeTab === "provider" ? (
+          <div className={settingsScrollPaneClassName}>
+            <ProviderTab
+              focusTarget={focusTarget}
+              locale={locale}
+              onFocusTargetConsumed={handleFocusTargetConsumed}
+            />
+          </div>
         ) : activeTab === "shortcuts" ? (
-          <div className="h-full overflow-y-auto pr-1">
+          <div className={settingsScrollPaneClassName}>
             <ShortcutsTab locale={locale} />
           </div>
         ) : (

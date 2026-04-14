@@ -19,7 +19,7 @@ import { closeCheckpointer } from "../agent/runtime"
 import { generateTitle } from "../services/title-generator"
 import { formatDefaultThreadTitle } from "../../shared/i18n"
 import { toDisplayUserMessageContent } from "../../shared/message-content"
-import { getAgentConfig } from "./models"
+import { getAgentConfig, getDefaultModel, resolveGlobalWorkspacePath } from "./models"
 import { listArtifacts } from "../artifacts/service"
 import { deleteManagedArtifactsForThread } from "../artifacts/storage"
 import type {
@@ -117,7 +117,11 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
   // Create a new thread
   ipcMain.handle("threads:create", async (_event, metadata?: Record<string, unknown>) => {
     const threadId = uuid()
-    const nextMetadata = { ...metadata }
+    const nextMetadata: Record<string, unknown> = {
+      model: getDefaultModel(),
+      workspacePath: await resolveGlobalWorkspacePath(),
+      ...metadata
+    }
     const title =
       (nextMetadata.title as string) || formatDefaultThreadTitle(getAgentConfig().locale)
 

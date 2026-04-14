@@ -5,6 +5,7 @@ interface SettingsCopy {
   tabs: {
     extensions: string
     general: string
+    provider: string
     shortcuts: string
   }
   common: {
@@ -41,6 +42,33 @@ interface SettingsCopy {
     saved: string
     workspaceHint: string
   }
+  provider: {
+    title: string
+    description: string
+    apiRequired: string
+    connectedSection: string
+    configureTip: string
+    defaultModelTitle: string
+    defaultModelDescription: string
+    defaultBadge: string
+    defaultModelUnavailable: string
+    emptyStateTitle: string
+    emptyStateTip: string
+    configured: string
+    llmBadge: string
+    modelListErrorBadge: string
+    modelsCount: (count: number) => string
+    notConfigured: string
+    addKey: string
+    editKey: string
+    modelsAvailable: (count: number) => string
+    sectionTitle: string
+    secureStorageHint: string
+    showModels: string
+    retryModels: string
+    systemSettings: string
+    toBeConfigured: string
+  }
   extensions: {
     title: string
     rootsDescription: string
@@ -76,6 +104,7 @@ const zhCN: SettingsCopy = {
   tabs: {
     extensions: "Extensions",
     general: "通用",
+    provider: "模型",
     shortcuts: "快捷键"
   },
   common: {
@@ -112,6 +141,33 @@ const zhCN: SettingsCopy = {
     saved: "已保存",
     workspaceHint: "线程级 workspace 仍然可以覆盖这里的默认值。"
   },
+  provider: {
+    title: "Model Provider",
+    description: "集中管理默认模型和各 provider 的凭证状态。",
+    apiRequired: "需要 API Key",
+    connectedSection: "已接入 Provider",
+    configureTip: "先配置凭证，再让这个 provider 参与默认模型和运行时解析。",
+    defaultModelTitle: "默认模型",
+    defaultModelDescription: "这里的选择会直接影响 launcher、新线程和 runtime 默认模型。",
+    defaultBadge: "默认",
+    defaultModelUnavailable: "当前还没有可用模型。先配置任意 provider 的密钥，再设置默认模型。",
+    emptyStateTitle: "还没有可用的模型 provider",
+    emptyStateTip: "先为任意 provider 配置密钥。配置完成后，这里会展示已接入 provider 和模型列表。",
+    configured: "已配置",
+    llmBadge: "LLM",
+    modelListErrorBadge: "模型列表失败",
+    modelsCount: (count) => `${count} 个模型`,
+    notConfigured: "未配置",
+    addKey: "添加密钥",
+    editKey: "编辑密钥",
+    modelsAvailable: (count) => `可用模型 ${count} 个`,
+    sectionTitle: "模型",
+    secureStorageHint: "Provider secret 只写入系统安全存储，不再写入 ~/.openwork/.env。",
+    showModels: "查看模型",
+    retryModels: "重试模型列表",
+    systemSettings: "系统模型设置",
+    toBeConfigured: "待配置"
+  },
   extensions: {
     title: "Extensions",
     rootsDescription: "这里直接展示 Openwork 一方 native extensions 的 schema 和命令设置。",
@@ -147,6 +203,7 @@ const enUS: SettingsCopy = {
   tabs: {
     extensions: "Extensions",
     general: "General",
+    provider: "Models",
     shortcuts: "Shortcuts"
   },
   common: {
@@ -184,6 +241,38 @@ const enUS: SettingsCopy = {
     useEnvironmentFallback: "Use env var / fallback default",
     saved: "Saved",
     workspaceHint: "Thread-level workspace can still override this global default."
+  },
+  provider: {
+    title: "Model Providers",
+    description: "Manage the default model and provider credentials from one place.",
+    apiRequired: "API key required",
+    connectedSection: "Connected Providers",
+    configureTip:
+      "Configure credentials first before this provider participates in default-model and runtime resolution.",
+    defaultModelTitle: "Default Model",
+    defaultModelDescription:
+      "This default is used by launcher flows, new threads, and runtime resolution.",
+    defaultBadge: "Default",
+    defaultModelUnavailable:
+      "No model is available yet. Configure a provider key first, then choose the default model.",
+    emptyStateTitle: "No model provider is available yet",
+    emptyStateTip:
+      "Configure a key for any provider first. Once connected, this page shows providers and model lists.",
+    configured: "Configured",
+    llmBadge: "LLM",
+    modelListErrorBadge: "Model list failed",
+    modelsCount: (count) => `${count} model${count === 1 ? "" : "s"}`,
+    notConfigured: "Not configured",
+    addKey: "Add Key",
+    editKey: "Edit Key",
+    modelsAvailable: (count) => `${count} models available`,
+    sectionTitle: "Models",
+    secureStorageHint:
+      "Provider secrets are stored in secure system storage and are no longer written to ~/.openwork/.env.",
+    showModels: "Show Models",
+    retryModels: "Retry Models",
+    systemSettings: "System Model Settings",
+    toBeConfigured: "To Be Configured"
   },
   extensions: {
     title: "Extensions",
