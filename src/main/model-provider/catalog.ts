@@ -66,10 +66,10 @@ const PROVIDERS: ProviderDefinition[] = [
   },
   {
     configurateMethods: ["fetch-from-remote"],
-    credentialFormSchemas: [apiKeyCredential("Google API Key", "AIza...")],
+    credentialFormSchemas: [apiKeyCredential("Gemini API Key", "AIza...")],
     description: {
-      en_US: "Google Gemini chat models.",
-      zh_Hans: "Google Gemini 聊天模型。"
+      en_US: "Google Gemini chat models via the Gemini API.",
+      zh_Hans: "通过 Gemini API 接入的 Google Gemini 聊天模型。"
     },
     id: "google",
     label: {
@@ -77,6 +77,21 @@ const PROVIDERS: ProviderDefinition[] = [
       zh_Hans: "Google"
     },
     name: "Google",
+    supportedModelTypes: [LLM_MODEL_TYPE]
+  },
+  {
+    configurateMethods: ["fetch-from-remote"],
+    credentialFormSchemas: [apiKeyCredential("Kimi API Key", "sk-...")],
+    description: {
+      en_US: "Moonshot AI Kimi chat models via the OpenAI-compatible API.",
+      zh_Hans: "通过 OpenAI 兼容接口接入的 Moonshot AI Kimi 聊天模型。"
+    },
+    id: "kimi",
+    label: {
+      en_US: "Kimi",
+      zh_Hans: "Kimi"
+    },
+    name: "Kimi",
     supportedModelTypes: [LLM_MODEL_TYPE]
   },
   {
@@ -343,6 +358,36 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "google",
     model: "gemini-2.5-flash-lite",
     description: "Fast, low-cost, high-performance model",
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
+  },
+  {
+    id: toProviderModelId("kimi", "kimi-k2.5"),
+    name: "Kimi K2.5",
+    provider: "kimi",
+    model: "kimi-k2.5",
+    description: "Moonshot AI flagship multimodal model for agentic coding and reasoning",
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
+  },
+  {
+    id: toProviderModelId("kimi", "kimi-k2-thinking"),
+    name: "Kimi K2 Thinking",
+    provider: "kimi",
+    model: "kimi-k2-thinking",
+    description: "Long-thinking Kimi model with strong agentic reasoning and tool use",
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
+  },
+  {
+    id: toProviderModelId("kimi", "moonshot-v1-128k-vision-preview"),
+    name: "Moonshot Vision 128K",
+    provider: "kimi",
+    model: "moonshot-v1-128k-vision-preview",
+    description: "Vision-capable Moonshot model with a 128K context window",
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"

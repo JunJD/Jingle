@@ -98,14 +98,17 @@ export async function fetchGoogleModels(apiKey: string): Promise<RemoteModel[]> 
 
   do {
     const searchParams = new URLSearchParams({
-      key: apiKey,
       pageSize: "1000"
     })
     if (pageToken) {
       searchParams.set("pageToken", pageToken)
     }
 
-    const payload = await requestJson("google", `${GOOGLE_MODELS_URL}?${searchParams}`)
+    const payload = await requestJson("google", `${GOOGLE_MODELS_URL}?${searchParams}`, {
+      headers: {
+        "x-goog-api-key": apiKey
+      }
+    })
     const models = getArrayField(payload, "models", "google")
     result.push(
       ...models.flatMap((item) => {
@@ -171,7 +174,11 @@ async function requestJson(
   }
 
   if (!response.ok) {
-    throw new Error(`${providerId} models list failed: ${response.status} ${response.statusText}`)
+    const errorBody = await response.text()
+    const detail = errorBody.trim() ? ` - ${errorBody.trim()}` : ""
+    throw new Error(
+      `${providerId} models list failed: ${response.status} ${response.statusText}${detail}`
+    )
   }
 
   return response.json() as Promise<unknown>

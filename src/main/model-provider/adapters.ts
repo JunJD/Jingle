@@ -23,6 +23,7 @@ import type {
 } from "./types"
 
 const DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+const KIMI_BASE_URL = "https://api.moonshot.cn/v1"
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 
 export type ChatModelInstance = ChatAnthropic | ChatOpenAI | ChatGoogleGenerativeAI
@@ -96,6 +97,21 @@ const PROVIDER_ADAPTERS = {
     fetchModels: fetchGoogleModels,
     isSupportedModel: isGoogleChatModel,
     providerId: "google"
+  }),
+  kimi: createApiKeyProviderAdapter({
+    createChatModel: (runtimeConfig, options) => {
+      return new ChatOpenAI({
+        apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
+        model: runtimeConfig.modelName,
+        temperature: options.temperature,
+        configuration: {
+          baseURL: KIMI_BASE_URL
+        }
+      })
+    },
+    fetchModels: (apiKey) => fetchOpenAICompatibleModels("kimi", `${KIMI_BASE_URL}/models`, apiKey),
+    isSupportedModel: isKimiChatModel,
+    providerId: "kimi"
   }),
   openai: createApiKeyProviderAdapter({
     createChatModel: (runtimeConfig, options) => {
@@ -253,6 +269,14 @@ function isGoogleChatModel(modelId: string): boolean {
   return isChatCandidate(normalizedModelId) && normalizedModelId.startsWith("gemini-")
 }
 
+function isKimiChatModel(modelId: string): boolean {
+  const normalizedModelId = modelId.toLowerCase()
+  return (
+    isChatCandidate(normalizedModelId) &&
+    (normalizedModelId.startsWith("kimi-") || normalizedModelId.startsWith("moonshot-v1-"))
+  )
+}
+
 function isDashScopeChatModel(modelId: string): boolean {
   const normalizedModelId = modelId.toLowerCase()
   const supportedPrefixes = [
@@ -278,10 +302,14 @@ function isChatCandidate(normalizedModelId: string): boolean {
     "dall-e",
     "embedding",
     "image",
+    "i2i",
     "moderation",
     "rerank",
     "realtime",
+    "seededit",
+    "seedream",
     "speech",
+    "t2i",
     "tts",
     "transcribe",
     "video",

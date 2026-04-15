@@ -89,3 +89,78 @@ test("listRemoteModelsByProvider filters DashScope to supported chat models", as
     ["dashscope:qwen-plus"]
   )
 })
+
+test("listRemoteModelsByProvider uses Gemini API key header for google", async () => {
+  let request: Request | undefined
+  globalThis.fetch = async (input, init) => {
+    request = input instanceof Request ? new Request(input, init) : new Request(input, init)
+
+    return new Response(
+      JSON.stringify({
+        models: [
+          {
+            name: "models/gemini-2.5-flash",
+            displayName: "Gemini 2.5 Flash",
+            supportedGenerationMethods: ["generateContent"]
+          }
+        ]
+      }),
+      {
+        status: 200,
+        statusText: "OK"
+      }
+    )
+  }
+
+  const models = await listRemoteModelsByProvider("google", { apiKey: "AIza-test" })
+
+  assert.equal(request?.headers.get("x-goog-api-key"), "AIza-test")
+  assert.equal(request?.url, "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000")
+  assert.deepEqual(
+    models.map((model) => model.id),
+    ["google:gemini-2.5-flash"]
+  )
+})
+
+test("validateRemoteProviderCredentials surfaces google response body", async () => {
+  mockJsonResponse(
+    {
+      error: {
+        code: 400,
+        message: "API key not valid. Please pass a valid API key."
+      }
+    },
+    400
+  )
+
+  await assert.rejects(
+    validateRemoteProviderCredentials("google", { apiKey: "bad-key" }),
+    /API key not valid/
+  )
+})
+
+test("listRemoteModelsByProvider routes kimi through Moonshot's OpenAI-compatible models endpoint", async () => {
+  let request: Request | undefined
+  globalThis.fetch = async (input, init) => {
+    request = input instanceof Request ? new Request(input, init) : new Request(input, init)
+
+    return new Response(
+      JSON.stringify({
+        data: [{ id: "kimi-k2.5" }, { id: "embedding-2" }]
+      }),
+      {
+        status: 200,
+        statusText: "OK"
+      }
+    )
+  }
+
+  const models = await listRemoteModelsByProvider("kimi", { apiKey: "sk-kimi" })
+
+  assert.equal(request?.headers.get("authorization"), "Bearer sk-kimi")
+  assert.equal(request?.url, "https://api.moonshot.cn/v1/models")
+  assert.deepEqual(
+    models.map((model) => model.id),
+    ["kimi:kimi-k2.5"]
+  )
+})
