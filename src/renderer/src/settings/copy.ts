@@ -46,6 +46,7 @@ interface SettingsCopy {
     apiRequired: string
     connectedSection: string
     configureTip: string
+    credentialColumn: string
     defaultModelTitle: string
     defaultModelDescription: string
     defaultBadge: string
@@ -64,7 +65,11 @@ interface SettingsCopy {
     secureStorageHint: string
     showModels: string
     retryModels: string
+    modelsColumn: string
+    providerColumn: string
+    registryLabel: string
     systemSettings: string
+    typeColumn: string
     toBeConfigured: string
   }
   extensions: {
@@ -143,6 +148,7 @@ const zhCN: SettingsCopy = {
     apiRequired: "需要 API Key",
     connectedSection: "已接入 Provider",
     configureTip: "先配置凭证，再让这个 provider 参与默认模型和运行时解析。",
+    credentialColumn: "凭证",
     defaultModelTitle: "默认模型",
     defaultModelDescription: "这里的选择会直接影响 launcher、新线程和 runtime 默认模型。",
     defaultBadge: "默认",
@@ -161,7 +167,11 @@ const zhCN: SettingsCopy = {
     secureStorageHint: "Provider secret 只写入系统安全存储，不再写入 ~/.openwork/.env。",
     showModels: "查看模型",
     retryModels: "重试模型列表",
+    modelsColumn: "模型",
+    providerColumn: "Provider",
+    registryLabel: "Provider Registry",
     systemSettings: "系统模型设置",
+    typeColumn: "类型",
     toBeConfigured: "待配置"
   },
   extensions: {
@@ -243,6 +253,7 @@ const enUS: SettingsCopy = {
     connectedSection: "Connected Providers",
     configureTip:
       "Configure credentials first before this provider participates in default-model and runtime resolution.",
+    credentialColumn: "Credential",
     defaultModelTitle: "Default Model",
     defaultModelDescription:
       "This default is used by launcher flows, new threads, and runtime resolution.",
@@ -265,7 +276,11 @@ const enUS: SettingsCopy = {
       "Provider secrets are stored in secure system storage and are no longer written to ~/.openwork/.env.",
     showModels: "Show Models",
     retryModels: "Retry Models",
+    modelsColumn: "Models",
+    providerColumn: "Provider",
+    registryLabel: "Provider Registry",
     systemSettings: "System Model Settings",
+    typeColumn: "Type",
     toBeConfigured: "To Be Configured"
   },
   extensions: {

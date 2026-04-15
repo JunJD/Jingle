@@ -1,7 +1,7 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages"
+import { getProviderAdapter } from "../../../main/model-provider/adapters"
 import { parseProviderModelId } from "../../../main/model-provider/catalog"
 import { getChatModelInstance } from "../../../main/llm/get-chat-model"
-import { hasProviderApiKey } from "../../../main/model-provider/secrets"
 import { defineNativeExtensionService } from "../../../main/services/native-extensions/sdk"
 import { getEnvValue } from "../../../main/storage"
 import type {
@@ -25,7 +25,7 @@ function resolveBackend(backend?: TranslateBackendConfig): TranslateBackendConfi
 
   const { providerId } = parseProviderModelId(configuredModelId)
 
-  if (!hasProviderApiKey(providerId)) {
+  if (!getProviderAdapter(providerId).hasCredentials()) {
     throw new Error(`Translation provider "${providerId}" is not configured.`)
   }
 

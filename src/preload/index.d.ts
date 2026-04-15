@@ -4,6 +4,7 @@ import type {
   ModelConfig,
   ModelProviderState,
   ModelType,
+  ProviderModelsResponse,
   ProviderId,
   HITLDecision,
   ThreadRuntimeState,
@@ -101,7 +102,10 @@ interface CustomAPI {
   models: {
     getState: () => Promise<ModelProviderState>
     list: (modelType?: ModelType) => Promise<ModelConfig[]>
-    listByProvider: (provider: ProviderId, modelType?: ModelType) => Promise<ModelConfig[]>
+    listByProvider: (
+      provider: ProviderId,
+      modelType?: ModelType
+    ) => Promise<ProviderModelsResponse>
     getDefault: (modelType: "llm") => Promise<string>
     deleteCredentials: (provider: ProviderId) => Promise<void>
     setCredentials: (provider: ProviderId, credentials: Record<string, string>) => Promise<void>

@@ -10,6 +10,7 @@ export type {
   ModelProviderState,
   ModelType,
   Provider,
+  ProviderModelsResponse,
   ProviderId
 } from "../shared/app-types"
 

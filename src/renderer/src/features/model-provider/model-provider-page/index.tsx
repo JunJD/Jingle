@@ -39,24 +39,26 @@ export default function ModelProviderPage(props: ModelProviderPageProps): React.
     models,
     providers
   })
+  const providerRows = [...configuredProviders, ...notConfiguredProviders]
 
   return (
-    <div className="relative -mt-2 pt-1">
-      <div className="mb-4 overflow-hidden rounded-[26px] border border-border/70 bg-[radial-gradient(circle_at_8%_0%,rgba(254,243,199,0.95),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(248,250,252,0.78))] px-5 py-4 shadow-[0_18px_55px_rgba(32,38,45,0.08)]">
-        <div className="flex items-start gap-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-background-elevated shadow-sm">
-            <Brain className="h-5 w-5 text-foreground" />
-          </div>
-          <div className="min-w-0 grow">
-            <div className="text-[20px] font-semibold tracking-[-0.02em] text-foreground">
+    <div className="relative -mt-1 pb-6">
+      <div className="mb-5 border-b border-border-emphasis pb-5">
+        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:gap-5">
+          <div className="min-w-0">
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              <Brain className="h-3.5 w-3.5" />
+              {copy.provider.registryLabel}
+            </div>
+            <div className="text-[24px] font-semibold tracking-[-0.035em] text-foreground">
               {copy.provider.sectionTitle}
             </div>
-            <div className="mt-1 max-w-[620px] text-[13px] leading-5 text-muted-foreground">
+            <div className="mt-1 max-w-[660px] text-[13px] leading-5 text-muted-foreground">
               {copy.provider.description}
             </div>
             {showWarning && (
-              <div className="mt-3 hidden w-fit max-w-full items-center gap-1 rounded-xl border border-amber-200 bg-amber-50/80 px-2 py-1 text-[12px] font-medium text-amber-900 shadow-sm md:flex">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+              <div className="mt-3 flex w-fit max-w-full items-center gap-2 border-l-2 border-status-warning bg-transparent py-0.5 pl-2 text-[12px] font-medium text-status-warning">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate" title={copy.provider.defaultModelUnavailable}>
                   {copy.provider.defaultModelUnavailable}
                 </span>
@@ -64,7 +66,7 @@ export default function ModelProviderPage(props: ModelProviderPageProps): React.
             )}
           </div>
 
-          <div className="shrink-0">
+          <div className="shrink-0 pt-1">
             <SystemModelSelector
               availableModels={availableModels}
               defaultModel={defaultModel}
@@ -81,63 +83,41 @@ export default function ModelProviderPage(props: ModelProviderPageProps): React.
         </div>
       )}
 
-      {!!configuredProviders.length && (
-        <div className="mb-3 flex items-center gap-3">
-          <div className="min-w-0 grow">
-            <div className="text-[13px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              {copy.provider.connectedSection}
+      <div className="overflow-hidden rounded-[18px] border border-border-emphasis bg-background-elevated/55 shadow-[0_20px_50px_rgba(32,38,45,0.045)]">
+        <div className="hidden grid-cols-[minmax(210px,1.1fr)_112px_132px_minmax(230px,1fr)] border-b border-border bg-background-secondary/55 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground md:grid">
+          <div>{copy.provider.providerColumn}</div>
+          <div>{copy.provider.typeColumn}</div>
+          <div>{copy.provider.modelsColumn}</div>
+          <div className="text-right">{copy.provider.credentialColumn}</div>
+        </div>
+
+        {!providerRows.length ? (
+          <div className="px-4 py-8">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 h-2 w-2 rounded-full bg-status-warning" />
+              <div>
+                <div className="text-[14px] font-medium text-foreground">
+                  {copy.provider.emptyStateTitle}
+                </div>
+                <div className="mt-1 max-w-[560px] text-[12px] leading-5 text-muted-foreground">
+                  {copy.provider.emptyStateTip}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {!configuredProviders.length && (
-        <div className="mb-2 rounded-2xl border border-dashed border-border/80 bg-background-secondary/45 p-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-background-elevated shadow-sm">
-            <Brain className="h-5 w-5 text-foreground" />
-          </div>
-          <div className="mt-2 text-[14px] font-medium text-foreground">
-            {copy.provider.emptyStateTitle}
-          </div>
-          <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-            {copy.provider.emptyStateTip}
-          </div>
-        </div>
-      )}
-
-      {!!configuredProviders.length && (
-        <div className="relative">
-          {configuredProviders.map((provider) => (
+        ) : (
+          providerRows.map((provider) => (
             <ProviderAddedCard
+              notConfigured={provider.configurationStatus !== "active"}
               key={provider.provider}
               provider={provider}
               defaultModelId={defaultModelId}
               onLoadProviderModels={onLoadProviderModels}
               onOpenProviderDialog={onOpenProviderDialog}
             />
-          ))}
-        </div>
-      )}
-
-      {!!notConfiguredProviders.length && (
-        <>
-          <div className="mb-2 flex items-center pt-2 text-[14px] font-semibold text-foreground">
-            {copy.provider.toBeConfigured}
-          </div>
-          <div className="relative">
-            {notConfiguredProviders.map((provider) => (
-              <ProviderAddedCard
-                notConfigured
-                key={provider.provider}
-                provider={provider}
-                defaultModelId={defaultModelId}
-                onLoadProviderModels={onLoadProviderModels}
-                onOpenProviderDialog={onOpenProviderDialog}
-              />
-            ))}
-          </div>
-        </>
-      )}
+          ))
+        )}
+      </div>
     </div>
   )
 }

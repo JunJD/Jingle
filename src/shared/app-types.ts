@@ -117,9 +117,13 @@ export interface ModelConfig {
   status: ModelStatus
 }
 
+export interface ProviderModelsResponse {
+  models: ModelConfig[]
+  provider: Provider
+}
+
 export interface ModelProviderState {
   defaultModels: DefaultModels
-  models: ModelConfig[]
   providers: Provider[]
 }
 

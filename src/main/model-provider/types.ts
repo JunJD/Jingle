@@ -6,6 +6,7 @@ import type {
   ModelProviderState,
   ModelType,
   Provider,
+  ProviderModelsResponse,
   ProviderId
 } from "../../shared/app-types"
 
@@ -19,15 +20,22 @@ export interface ProviderDefinition {
   supportedModelTypes: ModelType[]
 }
 
+export type ProviderCredentials = Record<string, string>
+
 export interface ResolvedModelRuntimeConfig {
-  apiKey?: string
+  credentials: ProviderCredentials
   modelId: string
   modelName: string
   modelType: ModelType
-  options: {
-    baseUrl?: string
-  }
   providerId: ProviderId
 }
 
-export type { DefaultModels, ModelConfig, ModelProviderState, ModelType, Provider, ProviderId }
+export type {
+  DefaultModels,
+  ModelConfig,
+  ModelProviderState,
+  ModelType,
+  Provider,
+  ProviderModelsResponse,
+  ProviderId
+}

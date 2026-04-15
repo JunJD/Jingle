@@ -1,6 +1,5 @@
 import type { ModelConfig, ProviderDefinition, ProviderId } from "./types"
 
-export const DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 const MODEL_ID_SEPARATOR = ":"
 const LLM_MODEL_TYPE = "llm"
 export const API_KEY_CREDENTIAL_VARIABLE = "apiKey"

@@ -19,25 +19,25 @@ export default function CredentialPanel(props: CredentialPanelProps): React.JSX.
   const configured = provider.configurationStatus === "active"
 
   return (
-    <div
-      className={cn(
-        "flex min-w-[220px] items-center justify-between gap-3 rounded-xl border px-3 py-2 shadow-sm",
-        hasProviderError
-          ? "border-destructive/25 bg-destructive/10 text-destructive"
-          : configured
-            ? "border-emerald-200/70 bg-emerald-50/70 text-emerald-950"
-            : "border-amber-200/80 bg-amber-50/80 text-amber-950"
-      )}
-    >
-      <div className="flex min-w-0 items-center gap-2">
-        {hasProviderError ? (
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-        ) : configured ? (
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-        ) : (
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+    <div className="flex items-center justify-between gap-3 md:justify-end">
+      <div
+        className={cn(
+          "flex min-w-0 items-center gap-2 text-[12px] font-medium",
+          hasProviderError
+            ? "text-destructive"
+            : configured
+              ? "text-status-nominal"
+              : "text-status-warning"
         )}
-        <span className="truncate text-[12px] font-medium">
+      >
+        {hasProviderError ? (
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+        ) : configured ? (
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+        ) : (
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+        )}
+        <span className="truncate">
           {hasProviderError
             ? copy.provider.modelListErrorBadge
             : configured
@@ -50,7 +50,7 @@ export default function CredentialPanel(props: CredentialPanelProps): React.JSX.
         type="button"
         size="sm"
         variant="outline"
-        className="h-7 rounded-lg bg-background-elevated/90 px-2.5 text-[11px]"
+        className="h-7 rounded-md bg-background-elevated/80 px-2.5 text-[11px]"
         onClick={() => onOpenProviderDialog(provider.provider)}
       >
         {configured ? copy.provider.editKey : copy.provider.addKey}

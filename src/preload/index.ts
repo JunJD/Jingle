@@ -6,6 +6,7 @@ import type {
   ModelConfig,
   ModelProviderState,
   ModelType,
+  ProviderModelsResponse,
   ProviderId,
   HITLDecision,
   ThreadRuntimeState
@@ -229,7 +230,10 @@ const api = {
     list: (modelType?: ModelType): Promise<ModelConfig[]> => {
       return ipcRenderer.invoke("models:list", modelType)
     },
-    listByProvider: (provider: ProviderId, modelType?: ModelType): Promise<ModelConfig[]> => {
+    listByProvider: (
+      provider: ProviderId,
+      modelType?: ModelType
+    ): Promise<ProviderModelsResponse> => {
       return ipcRenderer.invoke("models:listByProvider", provider, modelType)
     },
     getDefault: (modelType: "llm"): Promise<string> => {

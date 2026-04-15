@@ -1,22 +1,5 @@
 import { deleteProviderSecret, getProviderSecret, setProviderSecret } from "../preferences"
-import { API_KEY_CREDENTIAL_VARIABLE } from "./catalog"
 import type { ProviderId } from "./types"
-
-export function getProviderApiKey(providerId: ProviderId): string | undefined {
-  return getProviderCredential(providerId, API_KEY_CREDENTIAL_VARIABLE)
-}
-
-export function setProviderApiKey(providerId: ProviderId, apiKey: string): void {
-  setProviderCredential(providerId, API_KEY_CREDENTIAL_VARIABLE, apiKey)
-}
-
-export function deleteProviderApiKey(providerId: ProviderId): void {
-  deleteProviderCredential(providerId, API_KEY_CREDENTIAL_VARIABLE)
-}
-
-export function hasProviderApiKey(providerId: ProviderId): boolean {
-  return Boolean(getProviderApiKey(providerId))
-}
 
 export function getProviderCredential(
   providerId: ProviderId,

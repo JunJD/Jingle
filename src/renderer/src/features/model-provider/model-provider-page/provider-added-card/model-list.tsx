@@ -15,49 +15,39 @@ export default function ModelList(props: ModelListProps): React.JSX.Element {
   const copy = getSettingsCopy(locale)
 
   return (
-    <div className="rounded-b-xl px-2 pb-2">
-      <div className="rounded-lg border border-border/60 bg-background-elevated/80 p-2 shadow-inner">
-        <div className="space-y-1">
-          {models.map((model) => {
-            const isDefault = model.id === defaultModelId
+    <div className="px-4 py-2">
+      <div className="divide-y divide-border/70">
+        {models.map((model) => {
+          const isDefault = model.id === defaultModelId
 
-            return (
-              <div
-                key={model.id}
-                className={cn(
-                  "rounded-lg border px-3 py-2",
-                  isDefault
-                    ? "border-foreground/15 bg-background"
-                    : "border-transparent bg-background/45"
-                )}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-[13px] font-medium text-foreground">
-                      {model.name}
-                    </div>
-                    <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
-                      {model.model}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {isDefault && <ModelBadge>{copy.provider.defaultBadge}</ModelBadge>}
-                    {model.status !== "active" && (
-                      <ModelBadge className="border-amber-200 bg-amber-50 text-amber-700">
-                        {copy.provider.notConfigured}
-                      </ModelBadge>
-                    )}
-                  </div>
+          return (
+            <div
+              key={model.id}
+              className={cn(
+                "grid gap-2 py-2.5 md:grid-cols-[minmax(180px,0.9fr)_minmax(220px,1fr)_auto] md:items-center",
+                isDefault && "bg-background-elevated/55"
+              )}
+            >
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-medium text-foreground">{model.name}</div>
+                <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+                  {model.model}
                 </div>
-                {model.description && (
-                  <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                    {model.description}
-                  </div>
+              </div>
+              <div className="min-w-0 text-[12px] leading-5 text-muted-foreground">
+                <span className="line-clamp-2">{model.description}</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1 md:justify-end">
+                {isDefault && <ModelBadge>{copy.provider.defaultBadge}</ModelBadge>}
+                {model.status !== "active" && (
+                  <ModelBadge className="border-status-warning/25 bg-transparent text-status-warning">
+                    {copy.provider.notConfigured}
+                  </ModelBadge>
                 )}
               </div>
-            )
-          })}
-        </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

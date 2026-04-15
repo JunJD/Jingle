@@ -24,11 +24,14 @@ function cacheProviderTabData(data: ProviderTabData): ProviderTabData {
 }
 
 async function fetchProviderTabData(): Promise<ProviderTabData> {
-  const providerState = await window.api.models.getState()
+  const [providerState, models] = await Promise.all([
+    window.api.models.getState(),
+    window.api.models.list("llm")
+  ])
 
   return cacheProviderTabData({
     defaultModelId: providerState.defaultModels.llm,
-    models: providerState.models,
+    models,
     providers: providerState.providers
   })
 }
@@ -47,6 +50,7 @@ function loadProviderTabData(force = false): Promise<ProviderTabData> {
   return providerTabDataRequest
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function preloadProviderTabData(): void {
   void loadProviderTabData()
 }
@@ -84,11 +88,11 @@ export function ProviderTab(props: ProviderTabProps): React.JSX.Element {
     }
     setLoadError(null)
     try {
-      const providerState = await loadProviderTabData(force)
+      const data = await loadProviderTabData(force)
 
-      setProviders(providerState.providers)
-      setModels(providerState.models)
-      setDefaultModelId(providerState.defaultModelId)
+      setProviders(data.providers)
+      setModels(data.models)
+      setDefaultModelId(data.defaultModelId)
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -138,16 +142,15 @@ export function ProviderTab(props: ProviderTabProps): React.JSX.Element {
   }
 
   const handleLoadProviderModels = (providerId: ProviderId): Promise<ModelConfig[]> => {
-    return window.api.models.listByProvider(providerId, "llm").then((nextModels) => {
+    return window.api.models.listByProvider(providerId, "llm").then((response) => {
+      const nextModels = response.models
       setModels((currentModels) => [
         ...currentModels.filter((model) => model.provider !== providerId),
         ...nextModels
       ])
       setProviders((currentProviders) =>
         currentProviders.map((provider) =>
-          provider.id === providerId
-            ? { ...provider, modelListError: undefined, modelListStatus: "active" }
-            : provider
+          provider.id === providerId ? response.provider : provider
         )
       )
       if (providerTabDataCache) {
@@ -158,9 +161,7 @@ export function ProviderTab(props: ProviderTabProps): React.JSX.Element {
             ...nextModels
           ],
           providers: providerTabDataCache.providers.map((provider) =>
-            provider.id === providerId
-              ? { ...provider, modelListError: undefined, modelListStatus: "active" }
-              : provider
+            provider.id === providerId ? response.provider : provider
           )
         }
       }

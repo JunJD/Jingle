@@ -98,8 +98,11 @@ export const useHistoryShellStore = create<HistoryShellState>((set, get) => ({
   },
 
   loadModelProviderState: async () => {
-    const { models, providers } = await window.api.models.getState()
-    set({ models, providers })
+    const [providerState, models] = await Promise.all([
+      window.api.models.getState(),
+      window.api.models.list("llm")
+    ])
+    set({ models, providers: providerState.providers })
   },
 
   setProviderCredentials: async (providerId: ProviderId, credentials: Record<string, string>) => {

@@ -1,14 +1,13 @@
 import type { ModelConfig, ProviderId } from "./types"
-import { DASHSCOPE_BASE_URL, getModelConfig, listModelCatalog, toProviderModelId } from "./catalog"
+import { getModelConfig, listModelCatalog, toProviderModelId } from "./catalog"
 
-type RemoteModel = {
+export type RemoteModel = {
   description?: string
   displayName?: string
   id: string
 }
 
 const GOOGLE_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-const OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 const ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models"
 const MODEL_LIST_REQUEST_TIMEOUT_MS = 10_000
 
@@ -24,13 +23,13 @@ export function listCatalogModelsByProvider(
     }))
 }
 
-export async function listRemoteModelsByProvider(
+export function toRemoteModelConfigs(
   providerId: ProviderId,
-  apiKey: string
-): Promise<ModelConfig[]> {
-  const remoteModels = await fetchRemoteModels(providerId, apiKey)
+  remoteModels: RemoteModel[],
+  isSupportedModel: (modelId: string) => boolean
+): ModelConfig[] {
   const supportedModels = remoteModels
-    .filter((model) => isSupportedChatModel(providerId, model.id))
+    .filter((model) => isSupportedModel(model.id))
     .map((model) => toModelConfig(providerId, model))
 
   if (supportedModels.length === 0) {
@@ -40,30 +39,7 @@ export async function listRemoteModelsByProvider(
   return supportedModels
 }
 
-export async function validateRemoteProviderCredentials(
-  providerId: ProviderId,
-  apiKey: string
-): Promise<void> {
-  await listRemoteModelsByProvider(providerId, apiKey)
-}
-
-async function fetchRemoteModels(providerId: ProviderId, apiKey: string): Promise<RemoteModel[]> {
-  switch (providerId) {
-    case "anthropic":
-      return fetchAnthropicModels(apiKey)
-    case "dashscope":
-      return fetchOpenAICompatibleModels(providerId, `${DASHSCOPE_BASE_URL}/models`, apiKey)
-    case "google":
-      return fetchGoogleModels(apiKey)
-    case "openai":
-      return fetchOpenAICompatibleModels(providerId, OPENAI_MODELS_URL, apiKey)
-  }
-
-  const exhaustiveProviderId: never = providerId
-  throw new Error(`Model provider models list adapter is not implemented: ${exhaustiveProviderId}`)
-}
-
-async function fetchOpenAICompatibleModels(
+export async function fetchOpenAICompatibleModels(
   providerId: ProviderId,
   url: string,
   apiKey: string
@@ -81,7 +57,7 @@ async function fetchOpenAICompatibleModels(
   })
 }
 
-async function fetchAnthropicModels(apiKey: string): Promise<RemoteModel[]> {
+export async function fetchAnthropicModels(apiKey: string): Promise<RemoteModel[]> {
   const result: RemoteModel[] = []
   let afterId: string | null = null
 
@@ -116,7 +92,7 @@ async function fetchAnthropicModels(apiKey: string): Promise<RemoteModel[]> {
   return result
 }
 
-async function fetchGoogleModels(apiKey: string): Promise<RemoteModel[]> {
+export async function fetchGoogleModels(apiKey: string): Promise<RemoteModel[]> {
   const result: RemoteModel[] = []
   let pageToken: string | null = null
 
@@ -154,6 +130,22 @@ async function fetchGoogleModels(apiKey: string): Promise<RemoteModel[]> {
   return result
 }
 
+function toModelConfig(providerId: ProviderId, remoteModel: RemoteModel): ModelConfig {
+  const id = toProviderModelId(providerId, remoteModel.id)
+  const localModel = getModelConfig(id)
+
+  return {
+    description: localModel?.description ?? remoteModel.description,
+    fetchFrom: "fetch-from-remote",
+    id,
+    model: remoteModel.id,
+    modelType: "llm",
+    name: localModel?.name ?? remoteModel.displayName ?? remoteModel.id,
+    provider: providerId,
+    status: "active"
+  }
+}
+
 async function requestJson(
   providerId: ProviderId,
   url: string,
@@ -183,76 +175,6 @@ async function requestJson(
   }
 
   return response.json() as Promise<unknown>
-}
-
-function toModelConfig(providerId: ProviderId, remoteModel: RemoteModel): ModelConfig {
-  const id = toProviderModelId(providerId, remoteModel.id)
-  const localModel = getModelConfig(id)
-
-  return {
-    description: localModel?.description ?? remoteModel.description,
-    fetchFrom: "fetch-from-remote",
-    id,
-    model: remoteModel.id,
-    modelType: "llm",
-    name: localModel?.name ?? remoteModel.displayName ?? remoteModel.id,
-    provider: providerId,
-    status: "active"
-  }
-}
-
-function isSupportedChatModel(providerId: ProviderId, modelId: string): boolean {
-  const blockedFragments = [
-    "audio",
-    "dall-e",
-    "embedding",
-    "image",
-    "moderation",
-    "rerank",
-    "realtime",
-    "speech",
-    "tts",
-    "transcribe",
-    "video",
-    "whisper"
-  ]
-  const normalizedModelId = modelId.toLowerCase()
-  if (blockedFragments.some((fragment) => normalizedModelId.includes(fragment))) {
-    return false
-  }
-
-  if (providerId === "anthropic") {
-    return normalizedModelId.startsWith("claude-")
-  }
-
-  if (providerId === "google") {
-    return normalizedModelId.startsWith("gemini-")
-  }
-
-  if (providerId === "openai") {
-    return (
-      normalizedModelId.startsWith("gpt-") ||
-      normalizedModelId.startsWith("chatgpt-") ||
-      /^o\d/.test(normalizedModelId)
-    )
-  }
-
-  if (providerId === "dashscope") {
-    const supportedPrefixes = [
-      "abab",
-      "baichuan",
-      "deepseek-",
-      "glm-",
-      "moonshot-",
-      "qwen",
-      "qwq-",
-      "yi-"
-    ]
-    return supportedPrefixes.some((prefix) => normalizedModelId.startsWith(prefix))
-  }
-
-  const exhaustiveProviderId: never = providerId
-  throw new Error(`Model provider models list adapter is not implemented: ${exhaustiveProviderId}`)
 }
 
 function supportsGoogleGenerateContent(record: Record<string, unknown>): boolean {

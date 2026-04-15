@@ -1,18 +1,14 @@
-import type { ModelConfig, ModelType, Provider } from "../types"
+import type { ModelConfig, ModelType, Provider, ProviderModelsResponse } from "../types"
 import type { SupportedDefaultModelType } from "../../shared/app-types"
+import { getProviderAdapter, listProviderAdapters } from "./adapters"
+import { getModelConfig, getProviderDefinition, parseProviderModelId } from "./catalog"
+import { listCatalogModelsByProvider } from "./model-list"
 import {
-  API_KEY_CREDENTIAL_VARIABLE,
-  getModelConfig,
-  getProviderDefinition,
-  listProviderDefinitions,
-  parseProviderModelId
-} from "./catalog"
-import {
-  listCatalogModelsByProvider,
-  listRemoteModelsByProvider,
-  validateRemoteProviderCredentials
-} from "./model-list"
-import { deleteProviderCredentials, getProviderApiKey, setProviderCredential } from "./secrets"
+  clearProviderModelListState,
+  getProviderModelListState,
+  setProviderModelListError,
+  setProviderModelListSuccess
+} from "./model-list-state"
 import {
   getModelProviderDefaultModel,
   getModelProviderDefaultModels,
@@ -20,57 +16,79 @@ import {
 } from "./settings"
 import type { ModelProviderState, ProviderDefinition } from "./types"
 
-type ProviderLoadState = Pick<ModelProviderState, "models" | "providers">
-
 export function getModelProviderStateForUI(): ModelProviderState {
-  const providerStates = listProviderDefinitions().map((provider) => loadProviderStateForUI(provider))
-
   return {
     defaultModels: getModelProviderDefaultModels(),
-    models: providerStates.flatMap((state) => state.models),
-    providers: providerStates.flatMap((state) => state.providers)
-  }
-}
-
-function loadProviderStateForUI(provider: ProviderDefinition): ProviderLoadState {
-  const apiKey = getProviderApiKey(provider.id)
-  if (!apiKey) {
-    return {
-      models: listCatalogModelsByProvider(provider.id, "no-configure"),
-      providers: [toProviderState(provider, "no-configure", "no-configure")]
-    }
-  }
-
-  return {
-    models: listCatalogModelsByProvider(provider.id, "active"),
-    providers: [toProviderState(provider, "active", "active")]
+    providers: listProviderAdapters().map((adapter) => getProviderStateForUI(adapter))
   }
 }
 
 export function listModelsForUI(modelType: string = "llm"): ModelConfig[] {
   const supportedModelType = requireSupportedDefaultModelType(modelType)
-  return getModelProviderStateForUI().models.filter((model) => model.modelType === supportedModelType)
+
+  return listProviderAdapters().flatMap((adapter) => {
+    requireProviderSupportsModelType(adapter.definition, supportedModelType)
+
+    if (!adapter.hasCredentials()) {
+      return listCatalogModelsByProvider(adapter.definition.id, "no-configure").filter(
+        (model) => model.modelType === supportedModelType
+      )
+    }
+
+    const modelListState = getProviderModelListState(adapter.definition.id)
+    if (modelListState) {
+      return modelListState.models.filter((model) => model.modelType === supportedModelType)
+    }
+
+    return listCatalogModelsByProvider(adapter.definition.id, "active").filter(
+      (model) => model.modelType === supportedModelType
+    )
+  })
 }
 
 export async function listModelsByProviderForUI(
   provider: string,
   modelType: string = "llm"
-): Promise<ModelConfig[]> {
-  const providerDefinition = requireProviderDefinition(provider)
-  const providerId = providerDefinition.id
+): Promise<ProviderModelsResponse> {
   const supportedModelType = requireSupportedDefaultModelType(modelType)
-  requireProviderSupportsModelType(providerDefinition, supportedModelType)
+  const adapter = requireProviderAdapter(provider)
+  requireProviderSupportsModelType(adapter.definition, supportedModelType)
 
-  const apiKey = getProviderApiKey(providerId)
-  if (!apiKey) {
-    return listCatalogModelsByProvider(providerId, "no-configure").filter(
-      (model) => model.modelType === supportedModelType
-    )
+  const credentials = adapter.getCredentials()
+  if (!credentials) {
+    clearProviderModelListState(adapter.definition.id)
+    return {
+      models: listCatalogModelsByProvider(adapter.definition.id, "no-configure").filter(
+        (model) => model.modelType === supportedModelType
+      ),
+      provider: toProviderState(adapter.definition, "no-configure", "no-configure")
+    }
   }
 
-  return (await listRemoteModelsByProvider(providerId, apiKey)).filter(
-    (model) => model.modelType === supportedModelType
-  )
+  try {
+    const models = (await adapter.listModels(credentials)).filter(
+      (model) => model.modelType === supportedModelType
+    )
+    setProviderModelListSuccess(adapter.definition.id, models)
+
+    return {
+      models,
+      provider: toProviderState(adapter.definition, "active", "active")
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    setProviderModelListError(adapter.definition.id, message)
+
+    return {
+      models: [],
+      provider: toProviderState(
+        adapter.definition,
+        "active",
+        "error",
+        message
+      )
+    }
+  }
 }
 
 export function getDefaultModelForUI(modelType: string): string {
@@ -80,14 +98,15 @@ export function getDefaultModelForUI(modelType: string): string {
 export async function setDefaultModelForUI(modelType: string, modelId: string): Promise<void> {
   const supportedModelType = requireSupportedDefaultModelType(modelType)
   const parsedModelId = parseProviderModelId(modelId)
-  const providerDefinition = requireProviderDefinition(parsedModelId.providerId)
-  requireProviderSupportsModelType(providerDefinition, supportedModelType)
-  const apiKey = getProviderApiKey(parsedModelId.providerId)
-  if (!apiKey) {
-    throw new Error(`Model provider API key is not configured: ${parsedModelId.providerId}`)
+  const adapter = getProviderAdapter(parsedModelId.providerId)
+  requireProviderSupportsModelType(adapter.definition, supportedModelType)
+  const credentials = adapter.getCredentials()
+  if (!credentials) {
+    throw new Error(`Model provider credentials are not configured: ${parsedModelId.providerId}`)
   }
 
-  const providerModels = await listRemoteModelsByProvider(parsedModelId.providerId, apiKey)
+  const providerModels = await adapter.listModels(credentials)
+  setProviderModelListSuccess(parsedModelId.providerId, providerModels)
   const targetModel = providerModels.find(
     (model) => model.id === modelId && model.modelType === supportedModelType
   )
@@ -104,25 +123,39 @@ export async function setProviderCredentialsForUI(
   provider: string,
   credentials: Record<string, string>
 ): Promise<void> {
-  const providerDefinition = requireProviderDefinition(provider)
-  const trimmedApiKey = requireProviderCredential(providerDefinition, credentials)
-  if (!trimmedApiKey) {
-    throw new Error("Provider API key must not be empty")
-  }
+  const adapter = requireProviderAdapter(provider)
+  const normalizedCredentials = adapter.normalizeCredentials(credentials)
+  const models = await adapter.listModels(normalizedCredentials)
 
-  await validateRemoteProviderCredentials(providerDefinition.id, trimmedApiKey)
-  setProviderCredential(providerDefinition.id, API_KEY_CREDENTIAL_VARIABLE, trimmedApiKey)
+  adapter.saveCredentials(normalizedCredentials)
+  setProviderModelListSuccess(adapter.definition.id, models)
 }
 
 export function deleteProviderCredentialsForUI(provider: string): void {
-  const providerDefinition = requireProviderDefinition(provider)
-  deleteProviderCredentials(
-    providerDefinition.id,
-    providerDefinition.credentialFormSchemas.map((schema) => schema.variable)
-  )
+  const adapter = requireProviderAdapter(provider)
+  adapter.deleteCredentials()
+  clearProviderModelListState(adapter.definition.id)
 }
 
 export { getModelConfig }
+
+function getProviderStateForUI(adapter: ReturnType<typeof getProviderAdapter>): Provider {
+  if (!adapter.hasCredentials()) {
+    return toProviderState(adapter.definition, "no-configure", "no-configure")
+  }
+
+  const modelListState = getProviderModelListState(adapter.definition.id)
+  if (modelListState?.status === "error") {
+    return toProviderState(adapter.definition, "active", "error", modelListState.error)
+  }
+
+  return toProviderState(adapter.definition, "active", "active")
+}
+
+function requireProviderAdapter(provider: string) {
+  const providerDefinition = requireProviderDefinition(provider)
+  return getProviderAdapter(providerDefinition.id)
+}
 
 function requireProviderDefinition(provider: string): ProviderDefinition {
   const providerDefinition = getProviderDefinition(provider)
@@ -148,20 +181,6 @@ function requireProviderSupportsModelType(
   if (!provider.supportedModelTypes.includes(modelType)) {
     throw new Error(`Model provider ${provider.id} does not support model type: ${modelType}`)
   }
-}
-
-function requireProviderCredential(
-  provider: ProviderDefinition,
-  credentials: Record<string, string>
-): string {
-  const apiKeySchema = provider.credentialFormSchemas.find(
-    (schema) => schema.variable === API_KEY_CREDENTIAL_VARIABLE
-  )
-  if (!apiKeySchema) {
-    throw new Error(`Model provider ${provider.id} does not declare an API key credential schema`)
-  }
-
-  return credentials[apiKeySchema.variable]?.trim() ?? ""
 }
 
 function toProviderState(

@@ -3,7 +3,7 @@ import test from "node:test"
 import {
   listRemoteModelsByProvider,
   validateRemoteProviderCredentials
-} from "../../src/main/model-provider/model-list"
+} from "../../src/main/model-provider/adapters"
 
 const originalFetch = globalThis.fetch
 
@@ -24,7 +24,7 @@ test("listRemoteModelsByProvider scopes remote model ids by provider", async () 
     data: [{ id: "gpt-4o" }, { id: "text-embedding-3-small" }]
   })
 
-  const models = await listRemoteModelsByProvider("openai", "sk-test")
+  const models = await listRemoteModelsByProvider("openai", { apiKey: "sk-test" })
 
   assert.deepEqual(
     models.map((model) => ({
@@ -52,7 +52,7 @@ test("validateRemoteProviderCredentials rejects provider model-list failures", a
   mockJsonResponse({ error: "invalid api key" }, 401)
 
   await assert.rejects(
-    validateRemoteProviderCredentials("openai", "bad-key"),
+    validateRemoteProviderCredentials("openai", { apiKey: "bad-key" }),
     /openai models list failed: 401 Unauthorized/
   )
 })
@@ -63,7 +63,7 @@ test("validateRemoteProviderCredentials rejects providers without supported chat
   })
 
   await assert.rejects(
-    validateRemoteProviderCredentials("openai", "sk-test"),
+    validateRemoteProviderCredentials("openai", { apiKey: "sk-test" }),
     /openai models list returned no supported chat models/
   )
 })
@@ -72,7 +72,7 @@ test("listRemoteModelsByProvider rejects malformed provider responses", async ()
   mockJsonResponse({ data: [{ object: "model" }] })
 
   await assert.rejects(
-    listRemoteModelsByProvider("openai", "sk-test"),
+    listRemoteModelsByProvider("openai", { apiKey: "sk-test" }),
     /openai models list returned an invalid response/
   )
 })
@@ -82,7 +82,7 @@ test("listRemoteModelsByProvider filters DashScope to supported chat models", as
     data: [{ id: "qwen-plus" }, { id: "text-embedding-v4" }, { id: "wanx2.1-t2i-turbo" }]
   })
 
-  const models = await listRemoteModelsByProvider("dashscope", "sk-test")
+  const models = await listRemoteModelsByProvider("dashscope", { apiKey: "sk-test" })
 
   assert.deepEqual(
     models.map((model) => model.id),
