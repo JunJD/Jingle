@@ -11,6 +11,10 @@ import type {
   LauncherSearchResult
 } from "../../../../shared/launcher-search"
 import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
+import {
+  isWindowsShortcutPath,
+  resolveWindowsApplicationIconPathCandidates
+} from "./windows-shortcut-icon"
 
 interface LauncherApplicationRecord {
   id: string
@@ -600,6 +604,62 @@ async function createIconDataUrlFromPath(iconPath: string): Promise<string | und
   return undefined
 }
 
+function createIconDataUrlFromNativeImage(icon: Electron.NativeImage): string | undefined {
+  if (icon.isEmpty()) {
+    return undefined
+  }
+
+  return icon
+    .resize({
+      height: 64,
+      quality: "best",
+      width: 64
+    })
+    .toDataURL()
+}
+
+function getWindowsApplicationIconPathCandidates(applicationPath: string): string[] {
+  if (!isWindowsShortcutPath(applicationPath)) {
+    return [applicationPath]
+  }
+
+  try {
+    const shortcutDetails = shell.readShortcutLink(applicationPath)
+    return resolveWindowsApplicationIconPathCandidates({
+      applicationPath,
+      shortcutIconPath: shortcutDetails.icon,
+      shortcutTargetPath: shortcutDetails.target
+    })
+  } catch {
+    return [applicationPath]
+  }
+}
+
+async function createWindowsApplicationIconDataUrl(
+  applicationPath: string
+): Promise<string | undefined> {
+  const iconPathCandidates = getWindowsApplicationIconPathCandidates(applicationPath)
+
+  for (const iconPathCandidate of iconPathCandidates) {
+    const iconDataUrl = await createIconDataUrlFromPath(iconPathCandidate)
+    if (iconDataUrl) {
+      return iconDataUrl
+    }
+
+    try {
+      const icon = await app.getFileIcon(iconPathCandidate, { size: "large" })
+      const iconDataUrl = createIconDataUrlFromNativeImage(icon)
+      if (iconDataUrl) {
+        return iconDataUrl
+      }
+    } catch {
+      // Continue to the next icon candidate.
+    }
+  }
+
+  return undefined
+}
+
 function scoreKeywordMatch(keyword: string, query: string): number {
   if (!query) {
     return -1
@@ -804,13 +864,13 @@ class ApplicationsLauncherSearchProvider implements LauncherSearchProvider {
           }
         }
 
+        if (process.platform === "win32") {
+          return createWindowsApplicationIconDataUrl(applicationPath)
+        }
+
         try {
           const icon = await app.getFileIcon(applicationPath, { size: "small" })
-          if (icon.isEmpty()) {
-            return undefined
-          }
-
-          return icon.toDataURL()
+          return createIconDataUrlFromNativeImage(icon)
         } catch {
           return undefined
         }

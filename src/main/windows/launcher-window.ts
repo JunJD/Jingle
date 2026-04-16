@@ -25,7 +25,7 @@ import { getLocalStartItem, recordLocalStartItemUse } from "../services/local-st
 import { getApplicationIconDataUrl } from "../services/launcher-search/providers/applications"
 import { searchLauncher } from "../services/launcher-search"
 
-const LAUNCHER_WIDTH = 760
+const LAUNCHER_CONTENT_WIDTH = 760
 const LAUNCHER_HORIZONTAL_MARGIN = 24
 const LAUNCHER_TOP_MARGIN = 60
 const LAUNCHER_VERTICAL_POSITION_RATIO = 0.28
@@ -33,6 +33,7 @@ const MAC_LAUNCHER_WINDOW_LEVEL = "floating"
 const LAUNCHER_BASE_HEIGHT = getLauncherIdleHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_HEIGHT = getLauncherMaxViewportHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_SCREEN_HEIGHT_RATIO = 0.7
+const LAUNCHER_WINDOW_GUTTER = process.platform === "win32" ? 12 : 0
 const WINDOWS_LAUNCHER_SHAPE_RADIUS = 12
 const EMPTY_CLIPBOARD_CONTEXT: ClipboardContext = { kind: "none" }
 const launcherVisibleOrigins = new WeakMap<BrowserWindow, { x: number; y: number }>()
@@ -42,12 +43,28 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
+function getLauncherWindowWidthForDisplay(display: Electron.Display): number {
+  const maxContentWidth = Math.max(
+    520,
+    display.workArea.width - LAUNCHER_HORIZONTAL_MARGIN * 2 - LAUNCHER_WINDOW_GUTTER * 2
+  )
+  const contentWidth = Math.min(LAUNCHER_CONTENT_WIDTH, maxContentWidth)
+  return contentWidth + LAUNCHER_WINDOW_GUTTER * 2
+}
+
+function getLauncherWindowHeight(display: Electron.Display, requestedHeight: number): number {
+  return getLauncherHeightForDisplay(display, requestedHeight) + LAUNCHER_WINDOW_GUTTER * 2
+}
+
+function getLauncherContentHeight(windowHeight: number): number {
+  return Math.max(LAUNCHER_BASE_HEIGHT, Math.round(windowHeight) - LAUNCHER_WINDOW_GUTTER * 2)
+}
+
 function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): Rectangle {
   const cursorPoint = screen.getCursorScreenPoint()
   const display = screen.getDisplayNearestPoint(cursorPoint)
-  const boundedHeight = getLauncherHeightForDisplay(display, height)
-  const maxWidth = Math.max(520, display.workArea.width - LAUNCHER_HORIZONTAL_MARGIN * 2)
-  const width = Math.min(LAUNCHER_WIDTH, maxWidth)
+  const boundedHeight = getLauncherWindowHeight(display, height)
+  const width = getLauncherWindowWidthForDisplay(display)
   const x = Math.round(display.workArea.x + display.workArea.width / 2 - width / 2)
   const minY = display.workArea.y + LAUNCHER_TOP_MARGIN
   const maxY = display.workArea.y + display.workArea.height - boundedHeight - LAUNCHER_TOP_MARGIN
@@ -78,7 +95,7 @@ function getVisibleLauncherBounds(params: {
   const { anchorX, anchorY, height, launcherWindow } = params
   const currentBounds = launcherWindow.getBounds()
   const display = screen.getDisplayMatching(currentBounds)
-  const boundedHeight = getLauncherHeightForDisplay(display, height)
+  const boundedHeight = getLauncherWindowHeight(display, height)
   const minX = display.workArea.x + LAUNCHER_HORIZONTAL_MARGIN
   const maxX =
     display.workArea.x + display.workArea.width - currentBounds.width - LAUNCHER_HORIZONTAL_MARGIN
@@ -139,13 +156,35 @@ function buildRoundedRectShape(width: number, height: number, radius: number): R
   return rects
 }
 
+function offsetShapeRectangles(rectangles: Rectangle[], x: number, y: number): Rectangle[] {
+  return rectangles.map((rectangle) => ({
+    ...rectangle,
+    x: rectangle.x + x,
+    y: rectangle.y + y
+  }))
+}
+
 function syncLauncherWindowShape(launcherWindow: BrowserWindow): void {
   if (process.platform !== "win32" || launcherWindow.isDestroyed()) {
     return
   }
 
+  if (LAUNCHER_WINDOW_GUTTER > 0) {
+    return
+  }
+
   const { width, height } = launcherWindow.getBounds()
-  launcherWindow.setShape(buildRoundedRectShape(width, height, WINDOWS_LAUNCHER_SHAPE_RADIUS))
+  launcherWindow.setShape(
+    offsetShapeRectangles(
+      buildRoundedRectShape(
+        width - LAUNCHER_WINDOW_GUTTER * 2,
+        height - LAUNCHER_WINDOW_GUTTER * 2,
+        WINDOWS_LAUNCHER_SHAPE_RADIUS
+      ),
+      LAUNCHER_WINDOW_GUTTER,
+      LAUNCHER_WINDOW_GUTTER
+    )
+  )
 }
 
 function setLauncherWindowBounds(launcherWindow: BrowserWindow, bounds: Rectangle): void {
@@ -167,7 +206,9 @@ function emitLauncherShown(launcherWindow: BrowserWindow): void {
 }
 
 export function showLauncherWindow(launcherWindow: BrowserWindow): void {
-  const nextHeight = launcherWindow.getBounds().height || LAUNCHER_BASE_HEIGHT
+  const nextHeight = getLauncherContentHeight(
+    launcherWindow.getBounds().height || LAUNCHER_BASE_HEIGHT
+  )
   const nextBounds = getLauncherBounds(nextHeight)
   setLauncherWindowBounds(launcherWindow, nextBounds)
 
@@ -397,8 +438,8 @@ async function executeLauncherAction(
 
 export function createLauncherWindow(): BrowserWindow {
   const launcherWindow = new BrowserWindow({
-    width: LAUNCHER_WIDTH,
-    height: LAUNCHER_BASE_HEIGHT,
+    width: LAUNCHER_CONTENT_WIDTH + LAUNCHER_WINDOW_GUTTER * 2,
+    height: LAUNCHER_BASE_HEIGHT + LAUNCHER_WINDOW_GUTTER * 2,
     show: false,
     autoHideMenuBar: process.platform !== "darwin",
     ...(process.platform === "darwin"
@@ -465,7 +506,9 @@ export function createLauncherWindow(): BrowserWindow {
 
   const repositionIfVisible = (): void => {
     if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
-      const nextBounds = getLauncherBounds(launcherWindow.getBounds().height)
+      const nextBounds = getLauncherBounds(
+        getLauncherContentHeight(launcherWindow.getBounds().height)
+      )
       launcherVisibleOrigins.set(launcherWindow, {
         x: nextBounds.x,
         y: nextBounds.y
