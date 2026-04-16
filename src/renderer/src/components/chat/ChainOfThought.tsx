@@ -154,7 +154,7 @@ export const ChainOfThoughtStep = memo(
     >
       <div className="flex w-5 shrink-0 flex-col items-center self-stretch pt-0 translate-y-[4px]">
         <Icon className="size-4" />
-        {!isLast ? <div className="mt-1 min-h-3 w-px flex-1 self-center bg-foreground/15" /> : null}
+        {!isLast ? <div className="mt-1 mb-[-0.5rem] min-h-3 w-px flex-1 self-center bg-foreground/15" /> : null}
       </div>
       <div className="flex-1 space-y-2 overflow-hidden">
         <div>{label}</div>
@@ -176,7 +176,7 @@ export const ChainOfThoughtItem = memo(
     <div className={cn("flex gap-2 text-sm", className)} {...props}>
       <div className="flex w-5 shrink-0 flex-col items-center self-stretch pt-0 translate-y-[4px]">
         <Icon className="size-4 text-muted-foreground" />
-        {!isLast ? <div className="mt-1 min-h-3 w-px flex-1 self-center bg-foreground/15" /> : null}
+        {!isLast ? <div className="mt-1 mb-[-0.5rem] min-h-3 w-px flex-1 self-center bg-foreground/15" /> : null}
       </div>
       <div className="min-w-0 flex-1 overflow-hidden">{children}</div>
     </div>

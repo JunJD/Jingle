@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import {
+  createProviderChatModelFromAdapter,
   listRemoteModelsByProvider,
   validateRemoteProviderCredentials
 } from "../../src/main/model-provider/adapters"
@@ -45,6 +46,35 @@ test("listRemoteModelsByProvider scopes remote model ids by provider", async () 
         status: "active"
       }
     ]
+  )
+})
+
+test("listRemoteModelsByProvider routes custom OpenAI base URLs through the compatible models endpoint", async () => {
+  let request: Request | undefined
+  globalThis.fetch = async (input, init) => {
+    request = input instanceof Request ? new Request(input, init) : new Request(input, init)
+
+    return new Response(
+      JSON.stringify({
+        data: [{ id: "glm-4.6" }, { id: "embedding-3" }]
+      }),
+      {
+        status: 200,
+        statusText: "OK"
+      }
+    )
+  }
+
+  const models = await listRemoteModelsByProvider("openai", {
+    apiKey: "sk-zhipu",
+    baseUrl: "https://open.bigmodel.cn/api/paas/v4/"
+  })
+
+  assert.equal(request?.headers.get("authorization"), "Bearer sk-zhipu")
+  assert.equal(request?.url, "https://open.bigmodel.cn/api/paas/v4/models")
+  assert.deepEqual(
+    models.map((model) => model.id),
+    ["openai:glm-4.6"]
   )
 })
 
@@ -115,7 +145,10 @@ test("listRemoteModelsByProvider uses Gemini API key header for google", async (
   const models = await listRemoteModelsByProvider("google", { apiKey: "AIza-test" })
 
   assert.equal(request?.headers.get("x-goog-api-key"), "AIza-test")
-  assert.equal(request?.url, "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000")
+  assert.equal(
+    request?.url,
+    "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000"
+  )
   assert.deepEqual(
     models.map((model) => model.id),
     ["google:gemini-2.5-flash"]
@@ -163,4 +196,19 @@ test("listRemoteModelsByProvider routes kimi through Moonshot's OpenAI-compatibl
     models.map((model) => model.id),
     ["kimi:kimi-k2.5"]
   )
+})
+
+test("createProviderChatModelFromAdapter passes custom base URLs to ChatOpenAI", () => {
+  const chatModel = createProviderChatModelFromAdapter({
+    credentials: {
+      apiKey: "sk-zhipu",
+      baseUrl: "https://open.bigmodel.cn/api/paas/v4/"
+    },
+    modelId: "openai:glm-4.6",
+    modelName: "glm-4.6",
+    modelType: "llm",
+    providerId: "openai"
+  }) as { clientConfig?: { baseURL?: string } }
+
+  assert.equal(chatModel.clientConfig?.baseURL, "https://open.bigmodel.cn/api/paas/v4")
 })

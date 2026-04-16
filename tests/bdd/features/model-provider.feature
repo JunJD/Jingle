@@ -24,3 +24,13 @@
     并且 系统读取全局可用模型列表
     那么 全局可用模型应包含 "openai:gpt-business-only"
     而且 全局可用模型不应包含 "openai:gpt-5.2"
+
+  场景: OpenAI provider 通过自定义 Base URL 接入 OpenAI-compatible 模型
+    假如 OpenAI 模型供应商已保存有效密钥和自定义 Base URL "https://open.bigmodel.cn/api/paas/v4"
+    而且 OpenAI 远程模型接口返回模型:
+      | 模型    |
+      | glm-4.6 |
+    当 系统刷新 OpenAI 的远程模型列表
+    并且 系统读取全局可用模型列表
+    那么 全局可用模型应包含 "openai:glm-4.6"
+    而且 全局可用模型不应包含 "openai:gpt-5.2"

@@ -7,8 +7,7 @@ export type RemoteModel = {
   id: string
 }
 
-const GOOGLE_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-const ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models"
+const GOOGLE_API_VERSION = "v1beta"
 const MODEL_LIST_REQUEST_TIMEOUT_MS = 10_000
 
 export function listCatalogModelsByProvider(
@@ -41,9 +40,12 @@ export function toRemoteModelConfigs(
 
 export async function fetchOpenAICompatibleModels(
   providerId: ProviderId,
-  url: string,
+  baseUrl: string | undefined,
   apiKey: string
 ): Promise<RemoteModel[]> {
+  const apiBaseUrl = baseUrl || getDefaultOpenAICompatibleBaseUrl(providerId)
+  const url = `${apiBaseUrl}/models`
+
   const payload = await requestJson(providerId, url, {
     headers: {
       Authorization: `Bearer ${apiKey}`
@@ -57,9 +59,23 @@ export async function fetchOpenAICompatibleModels(
   })
 }
 
-export async function fetchAnthropicModels(apiKey: string): Promise<RemoteModel[]> {
+function getDefaultOpenAICompatibleBaseUrl(providerId: ProviderId): string {
+  switch (providerId) {
+    case "openai":
+      return "https://api.openai.com/v1"
+    case "dashscope":
+      return "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    case "kimi":
+      return "https://api.moonshot.cn/v1"
+    default:
+      throw new Error(`No default base URL for provider: ${providerId}`)
+  }
+}
+
+export async function fetchAnthropicModels(apiKey: string, baseUrl?: string): Promise<RemoteModel[]> {
   const result: RemoteModel[] = []
   let afterId: string | null = null
+  const apiBaseUrl = baseUrl || "https://api.anthropic.com"
 
   do {
     const searchParams = new URLSearchParams({ limit: "1000" })
@@ -67,12 +83,16 @@ export async function fetchAnthropicModels(apiKey: string): Promise<RemoteModel[
       searchParams.set("after_id", afterId)
     }
 
-    const payload = await requestJson("anthropic", `${ANTHROPIC_MODELS_URL}?${searchParams}`, {
-      headers: {
-        "anthropic-version": "2023-06-01",
-        "x-api-key": apiKey
+    const payload = await requestJson(
+      "anthropic",
+      `${joinUrl(apiBaseUrl, "/v1/models")}?${searchParams}`,
+      {
+        headers: {
+          "anthropic-version": "2023-06-01",
+          "x-api-key": apiKey
+        }
       }
-    })
+    )
     const data = getArrayField(payload, "data", "anthropic")
     result.push(
       ...data.map((item) => {
@@ -92,9 +112,10 @@ export async function fetchAnthropicModels(apiKey: string): Promise<RemoteModel[
   return result
 }
 
-export async function fetchGoogleModels(apiKey: string): Promise<RemoteModel[]> {
+export async function fetchGoogleModels(apiKey: string, baseUrl?: string): Promise<RemoteModel[]> {
   const result: RemoteModel[] = []
   let pageToken: string | null = null
+  const apiBaseUrl = baseUrl || "https://generativelanguage.googleapis.com"
 
   do {
     const searchParams = new URLSearchParams({
@@ -104,11 +125,15 @@ export async function fetchGoogleModels(apiKey: string): Promise<RemoteModel[]> 
       searchParams.set("pageToken", pageToken)
     }
 
-    const payload = await requestJson("google", `${GOOGLE_MODELS_URL}?${searchParams}`, {
-      headers: {
-        "x-goog-api-key": apiKey
+    const payload = await requestJson(
+      "google",
+      `${joinUrl(apiBaseUrl, `/${GOOGLE_API_VERSION}/models`)}?${searchParams}`,
+      {
+        headers: {
+          "x-goog-api-key": apiKey
+        }
       }
-    })
+    )
     const models = getArrayField(payload, "models", "google")
     result.push(
       ...models.flatMap((item) => {
@@ -147,6 +172,13 @@ function toModelConfig(providerId: ProviderId, remoteModel: RemoteModel): ModelC
     provider: providerId,
     status: "active"
   }
+}
+
+function joinUrl(baseUrl: string, path: string): string {
+  const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`
+
+  return `${normalizedBaseUrl}${normalizedPath}`
 }
 
 async function requestJson(
