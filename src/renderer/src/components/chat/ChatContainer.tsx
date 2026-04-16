@@ -274,6 +274,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                 )}
               </div>
             </div>
+
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <ModelSwitcher threadId={threadId} />

@@ -116,6 +116,42 @@ export type ArtifactRecord =
   | LinkArtifactRecord
   | SummaryArtifactRecord
 
+export function getArtifactCapabilities(record: ArtifactRecord): ArtifactCapabilities {
+  switch (record.kind) {
+    case "summary":
+      return {
+        primaryAction: "preview",
+        supportedActions: ["preview"]
+      }
+    case "link":
+      return {
+        primaryAction: "open",
+        supportedActions: ["open", "copy-link"]
+      }
+    case "file":
+      return {
+        primaryAction: "open",
+        supportedActions: ["open", "download", "reveal-source"]
+      }
+    case "patch":
+      if (record.source.type === "inline-text") {
+        return {
+          primaryAction: "preview",
+          supportedActions: ["preview"]
+        }
+      }
+
+      return {
+        primaryAction: "open",
+        supportedActions: ["open", "download", "reveal-source"]
+      }
+  }
+}
+
+export function supportsArtifactAction(record: ArtifactRecord, action: ArtifactActionId): boolean {
+  return getArtifactCapabilities(record).supportedActions.includes(action)
+}
+
 export interface ArtifactPresentationContext {
   threadId: string
   runId?: string | null

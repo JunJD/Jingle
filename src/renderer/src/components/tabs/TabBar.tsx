@@ -1,7 +1,12 @@
-import { Bot, X, FileCode, FileText, FileJson, File } from "lucide-react"
+import { Bot, X, FileCode, FileText, FileJson, File, Link2, PackageOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
-import { useThreadState, type OpenFile } from "@/lib/thread-context"
+import {
+  getArtifactTabId,
+  useThreadState,
+  type OpenArtifactTab,
+  type OpenFile
+} from "@/lib/thread-context"
 
 interface TabBarProps {
   className?: string
@@ -20,7 +25,8 @@ export function TabBar({
     return null
   }
 
-  const { openFiles, activeTab, setActiveTab, closeFile } = threadState
+  const { openFiles, openArtifacts, activeTab, setActiveTab, closeFile, closeArtifactTab } =
+    threadState
 
   return (
     <div className={cn("flex h-full items-center overflow-x-auto scrollbar-hide px-4", className)}>
@@ -46,6 +52,16 @@ export function TabBar({
           isActive={activeTab === file.path}
           onSelect={() => setActiveTab(file.path)}
           onClose={() => closeFile(file.path)}
+        />
+      ))}
+
+      {openArtifacts.map((artifact) => (
+        <ArtifactTab
+          artifact={artifact}
+          isActive={activeTab === getArtifactTabId(artifact.artifactId)}
+          key={artifact.artifactId}
+          onClose={() => closeArtifactTab(artifact.artifactId)}
+          onSelect={() => setActiveTab(getArtifactTabId(artifact.artifactId))}
         />
       ))}
 
@@ -102,6 +118,55 @@ function FileTab({ file, isActive, onSelect, onClose }: FileTabProps): React.JSX
   )
 }
 
+interface ArtifactTabProps {
+  artifact: OpenArtifactTab
+  isActive: boolean
+  onSelect: () => void
+  onClose: () => void
+}
+
+function ArtifactTab(props: ArtifactTabProps): React.JSX.Element {
+  const { artifact, isActive, onClose, onSelect } = props
+
+  const handleClose = (e: React.MouseEvent): void => {
+    e.stopPropagation()
+    onClose()
+  }
+
+  const handleMouseDown = (e: React.MouseEvent): void => {
+    if (e.button === 1) {
+      e.preventDefault()
+      onClose()
+    }
+  }
+
+  return (
+    <button
+      onClick={onSelect}
+      onMouseDown={handleMouseDown}
+      className={cn(
+        "group relative flex h-full max-w-[220px] shrink-0 items-center gap-2 px-3 text-sm transition-colors",
+        isActive
+          ? "text-foreground after:absolute after:bottom-0 after:left-3 after:right-3 after:h-[2px] after:rounded-full after:bg-primary"
+          : "text-muted-foreground hover:text-foreground"
+      )}
+      title={artifact.title}
+    >
+      <ArtifactIcon kind={artifact.kind} />
+      <span className="truncate">{artifact.title}</span>
+      <button
+        onClick={handleClose}
+        className={cn(
+          "flex size-4 items-center justify-center rounded-full transition-colors hover:bg-background-secondary",
+          isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+        )}
+      >
+        <X className="size-3" />
+      </button>
+    </button>
+  )
+}
+
 function FileIcon({ name }: { name: string }): React.JSX.Element {
   const ext = name.includes(".") ? name.split(".").pop()?.toLowerCase() : ""
 
@@ -123,5 +188,18 @@ function FileIcon({ name }: { name: string }): React.JSX.Element {
       return <FileText className="size-3.5 text-muted-foreground shrink-0" />
     default:
       return <File className="size-3.5 text-muted-foreground shrink-0" />
+  }
+}
+
+function ArtifactIcon(props: { kind: OpenArtifactTab["kind"] }): React.JSX.Element {
+  switch (props.kind) {
+    case "file":
+      return <PackageOpen className="size-3.5 shrink-0 text-blue-400" />
+    case "patch":
+      return <FileCode className="size-3.5 shrink-0 text-orange-400" />
+    case "summary":
+      return <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+    case "link":
+      return <Link2 className="size-3.5 shrink-0 text-emerald-400" />
   }
 }

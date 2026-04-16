@@ -17,12 +17,16 @@ import { ElectronIPCTransport } from "./electron-transport"
 import type { Message, Todo, Subagent, HITLRequest } from "@/types"
 import { DEFAULT_MODELS } from "../../../shared/models"
 import type { ArtifactRecord } from "@shared/artifacts"
+import {
+  getArtifactTabId,
+  getNextActiveTabAfterClose,
+  syncOpenArtifactTabs,
+  type OpenArtifactTab,
+  type OpenFile
+} from "@shared/thread-tabs"
 
-// Open file tab type
-export interface OpenFile {
-  path: string
-  name: string
-}
+export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
+export { getArtifactTabId } from "@shared/thread-tabs"
 
 // Token usage tracking for context window monitoring
 export interface TokenUsage {
@@ -45,6 +49,7 @@ export interface ThreadState {
   error: string | null
   currentModel: string
   openFiles: OpenFile[]
+  openArtifacts: OpenArtifactTab[]
   activeTab: "agent" | string
   fileContents: Record<string, string>
   tokenUsage: TokenUsage | null
@@ -75,6 +80,8 @@ export interface ThreadActions {
   setCurrentModel: (modelId: string) => void
   openFile: (path: string, name: string) => void
   closeFile: (path: string) => void
+  openArtifactTab: (tab: OpenArtifactTab) => void
+  closeArtifactTab: (artifactId: string) => void
   setActiveTab: (tab: "agent" | string) => void
   setFileContents: (path: string, content: string) => void
   setDraftInput: (input: string) => void
@@ -109,6 +116,7 @@ const createDefaultThreadState = (): ThreadState => ({
   error: null,
   currentModel: DEFAULT_MODELS.llm,
   openFiles: [],
+  openArtifacts: [],
   activeTab: "agent",
   fileContents: {},
   tokenUsage: null,
@@ -373,7 +381,10 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
           break
         case "artifacts":
           if (Array.isArray(data.artifacts)) {
-            updateThreadState(threadId, () => ({ artifacts: data.artifacts! }))
+            updateThreadState(threadId, (state) => ({
+              artifacts: data.artifacts!,
+              openArtifacts: syncOpenArtifactTabs(state.openArtifacts, data.artifacts!)
+            }))
           }
           break
         case "subagents":
@@ -449,7 +460,10 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
           updateThreadState(threadId, () => ({ messages }))
         },
         setArtifacts: (artifacts: ArtifactRecord[]) => {
-          updateThreadState(threadId, () => ({ artifacts }))
+          updateThreadState(threadId, (state) => ({
+            artifacts,
+            openArtifacts: syncOpenArtifactTabs(state.openArtifacts, artifacts)
+          }))
         },
         setTodos: (todos: Todo[]) => {
           updateThreadState(threadId, () => ({ todos }))
@@ -494,17 +508,59 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
             const newOpenFiles = state.openFiles.filter((f) => f.path !== path)
             const newFileContents = { ...state.fileContents }
             delete newFileContents[path]
-            let newActiveTab = state.activeTab
-            if (state.activeTab === path) {
-              const closedIndex = state.openFiles.findIndex((f) => f.path === path)
-              if (newOpenFiles.length === 0) newActiveTab = "agent"
-              else if (closedIndex > 0) newActiveTab = newOpenFiles[closedIndex - 1].path
-              else newActiveTab = newOpenFiles[0].path
-            }
+            const newActiveTab = getNextActiveTabAfterClose({
+              activeTab: state.activeTab,
+              closedTabId: path,
+              openArtifacts: state.openArtifacts,
+              openFiles: state.openFiles
+            })
+
             return {
               openFiles: newOpenFiles,
               activeTab: newActiveTab,
               fileContents: newFileContents
+            }
+          })
+        },
+        openArtifactTab: (tab: OpenArtifactTab) => {
+          updateThreadState(threadId, (state) => {
+            const nextTabId = getArtifactTabId(tab.artifactId)
+            const existingTabIndex = state.openArtifacts.findIndex(
+              (entry) => entry.artifactId === tab.artifactId
+            )
+
+            if (existingTabIndex >= 0) {
+              const nextOpenArtifacts = [...state.openArtifacts]
+              nextOpenArtifacts[existingTabIndex] = tab
+
+              return {
+                activeTab: nextTabId,
+                openArtifacts: nextOpenArtifacts
+              }
+            }
+
+            return {
+              activeTab: nextTabId,
+              openArtifacts: [...state.openArtifacts, tab]
+            }
+          })
+        },
+        closeArtifactTab: (artifactId: string) => {
+          updateThreadState(threadId, (state) => {
+            const nextOpenArtifacts = state.openArtifacts.filter(
+              (entry) => entry.artifactId !== artifactId
+            )
+            const closedTabId = getArtifactTabId(artifactId)
+            const fallbackTabId = getNextActiveTabAfterClose({
+              activeTab: state.activeTab,
+              closedTabId,
+              openArtifacts: state.openArtifacts,
+              openFiles: state.openFiles
+            })
+
+            return {
+              activeTab: fallbackTabId,
+              openArtifacts: nextOpenArtifacts
             }
           })
         },

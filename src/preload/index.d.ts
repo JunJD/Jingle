@@ -97,15 +97,26 @@ interface CustomAPI {
   artifacts: {
     list: (threadId: string) => Promise<ArtifactRecord[]>
     open: (artifactId: string, action?: ArtifactActionId) => Promise<ArtifactActionResolution>
+    readFile: (artifactId: string) => Promise<{
+      success: boolean
+      content?: string
+      size?: number
+      modified_at?: string
+      error?: string
+    }>
+    readBinaryFile: (artifactId: string) => Promise<{
+      success: boolean
+      content?: string
+      size?: number
+      modified_at?: string
+      error?: string
+    }>
     onChanged: (callback: (event: ArtifactChangedEvent) => void) => () => void
   }
   models: {
     getState: () => Promise<ModelProviderState>
     list: (modelType?: ModelType) => Promise<ModelConfig[]>
-    listByProvider: (
-      provider: ProviderId,
-      modelType?: ModelType
-    ) => Promise<ProviderModelsResponse>
+    listByProvider: (provider: ProviderId, modelType?: ModelType) => Promise<ProviderModelsResponse>
     getDefault: (modelType: "llm") => Promise<string>
     deleteCredentials: (provider: ProviderId) => Promise<void>
     setCredentials: (provider: ProviderId, credentials: Record<string, string>) => Promise<void>

@@ -1,16 +1,19 @@
+import { promises as fs } from "node:fs"
 import { createHash } from "node:crypto"
 import { EventEmitter } from "node:events"
 import { shell } from "electron"
 import { v4 as uuid } from "uuid"
 import type { Prisma } from "@prisma/client"
-import type {
-  ArtifactActionId,
-  ArtifactActionResolution,
-  ArtifactChangedEvent,
-  ArtifactPresentationReceipt,
-  ArtifactRecord,
-  PresentArtifactsRequest,
-  PresentArtifactsResult
+import {
+  getArtifactCapabilities,
+  supportsArtifactAction,
+  type ArtifactActionId,
+  type ArtifactActionResolution,
+  type ArtifactChangedEvent,
+  type ArtifactPresentationReceipt,
+  type ArtifactRecord,
+  type PresentArtifactsRequest,
+  type PresentArtifactsResult
 } from "../../shared/artifacts"
 import { assertSafePublicHttpUrl } from "../services/web-tools/url-guard"
 import { getPrismaClient } from "../db/client"
@@ -147,19 +150,6 @@ function hasArtifactChanges(
     existing.messageId !== draft.messageId ||
     existing.toolCallId !== draft.toolCallId
   )
-}
-
-function getPrimaryAction(record: ArtifactRecord): ArtifactActionId {
-  switch (record.kind) {
-    case "summary":
-      return "preview"
-    case "patch":
-      return record.source.type === "inline-text" ? "preview" : "open"
-    case "link":
-      return "open"
-    case "file":
-      return "open"
-  }
 }
 
 async function getArtifactOrThrow(artifactId: string): Promise<ArtifactRecord> {
@@ -383,7 +373,16 @@ export async function openArtifact(
   action?: ArtifactActionId
 ): Promise<ArtifactActionResolution> {
   const artifact = await getArtifactOrThrow(artifactId)
-  const resolvedAction = action ?? getPrimaryAction(artifact)
+  const capabilities = getArtifactCapabilities(artifact)
+  const resolvedAction = action ?? capabilities.primaryAction
+
+  if (!resolvedAction) {
+    return { type: "detail" }
+  }
+
+  if (!supportsArtifactAction(artifact, resolvedAction)) {
+    throw new Error(`Artifact action "${resolvedAction}" is not supported for ${artifact.kind}`)
+  }
 
   switch (artifact.kind) {
     case "summary":
@@ -428,6 +427,13 @@ export async function openArtifact(
       if (artifact.source.type === "inline-text") {
         return { type: "detail" }
       }
+      if (resolvedAction === "reveal-source") {
+        shell.showItemInFolder(artifact.source.uri)
+        return {
+          path: artifact.source.uri,
+          type: "reveal-source"
+        }
+      }
       if (resolvedAction === "download") {
         return {
           type: "download",
@@ -444,5 +450,40 @@ export async function openArtifact(
         path: artifact.source.uri,
         type: "system-default"
       }
+  }
+}
+
+export async function readArtifactFile(
+  artifactId: string,
+  mode: "binary" | "text"
+): Promise<{
+  content: string
+  modified_at: string
+  size: number
+}> {
+  const artifact = await getArtifactOrThrow(artifactId)
+
+  if (artifact.source.type !== "managed-file-path") {
+    throw new Error("Artifact does not reference a managed file")
+  }
+
+  const stat = await fs.stat(artifact.source.uri)
+  if (stat.isDirectory()) {
+    throw new Error("Cannot read directory as file")
+  }
+
+  if (mode === "binary") {
+    const buffer = await fs.readFile(artifact.source.uri)
+    return {
+      content: buffer.toString("base64"),
+      modified_at: stat.mtime.toISOString(),
+      size: stat.size
+    }
+  }
+
+  return {
+    content: await fs.readFile(artifact.source.uri, "utf-8"),
+    modified_at: stat.mtime.toISOString(),
+    size: stat.size
   }
 }

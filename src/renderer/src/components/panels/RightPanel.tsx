@@ -21,7 +21,12 @@ import { useThreadState } from "@/lib/thread-context"
 import { Badge } from "@/components/ui/badge"
 import { CodeBlock } from "@/components/ui/code-block"
 import type { Todo } from "@/types"
-import type { ArtifactActionId, ArtifactRecord } from "@shared/artifacts"
+import {
+  getArtifactCapabilities,
+  supportsArtifactAction,
+  type ArtifactActionId,
+  type ArtifactRecord
+} from "@shared/artifacts"
 
 const HEADER_HEIGHT = 40 // px
 const HANDLE_HEIGHT = 6 // px
@@ -557,6 +562,17 @@ function ArtifactsContent(): React.JSX.Element {
     []
   )
 
+  const handleArtifactPreview = useCallback(
+    (artifact: ArtifactRecord) => {
+      threadState?.openArtifactTab({
+        artifactId: artifact.id,
+        kind: artifact.kind,
+        title: artifact.title
+      })
+    },
+    [threadState]
+  )
+
   if (artifacts.length === 0) {
     return (
       <div className="flex flex-col h-full">
@@ -593,7 +609,10 @@ function ArtifactsContent(): React.JSX.Element {
               isSelected={artifact.id === activeArtifactId}
               key={artifact.id}
               onAction={handleArtifactAction}
-              onSelect={() => setManuallySelectedArtifactId(artifact.id)}
+              onSelect={() => {
+                setManuallySelectedArtifactId(artifact.id)
+                handleArtifactPreview(artifact)
+              }}
             />
           ))}
         </div>
@@ -611,8 +630,8 @@ function ArtifactCard(props: {
   const { artifact, isSelected, onAction, onSelect } = props
   const descriptor = getArtifactDescriptor(artifact)
   const primaryActionLabel = getArtifactPrimaryActionLabel(artifact)
-  const canRevealSource = artifact.source.type === "managed-file-path"
-  const canCopyLink = artifact.kind === "link"
+  const canRevealSource = supportsArtifactAction(artifact, "reveal-source")
+  const canCopyLink = supportsArtifactAction(artifact, "copy-link")
 
   return (
     <div
@@ -705,14 +724,14 @@ function ArtifactCard(props: {
 }
 
 function getArtifactPrimaryActionLabel(artifact: ArtifactRecord): string | null {
-  switch (artifact.kind) {
-    case "file":
+  switch (getArtifactCapabilities(artifact).primaryAction) {
+    case "open":
       return "Open"
-    case "link":
-      return "Open"
-    case "patch":
-      return artifact.source.type === "inline-text" ? null : "Open"
-    case "summary":
+    case "preview":
+    case "download":
+    case "reveal-source":
+    case "copy-link":
+    case null:
       return null
   }
 }

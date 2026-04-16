@@ -212,6 +212,28 @@ const api = {
     open: (artifactId: string, action?: ArtifactActionId): Promise<ArtifactActionResolution> => {
       return ipcRenderer.invoke("artifacts:open", { action, artifactId })
     },
+    readFile: (
+      artifactId: string
+    ): Promise<{
+      success: boolean
+      content?: string
+      size?: number
+      modified_at?: string
+      error?: string
+    }> => {
+      return ipcRenderer.invoke("artifacts:readFile", artifactId)
+    },
+    readBinaryFile: (
+      artifactId: string
+    ): Promise<{
+      success: boolean
+      content?: string
+      size?: number
+      modified_at?: string
+      error?: string
+    }> => {
+      return ipcRenderer.invoke("artifacts:readBinaryFile", artifactId)
+    },
     onChanged: (callback: (event: ArtifactChangedEvent) => void) => {
       const listener = (_event: unknown, payload: ArtifactChangedEvent): void => {
         callback(payload as ArtifactChangedEvent)

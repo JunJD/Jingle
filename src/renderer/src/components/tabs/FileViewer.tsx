@@ -1,6 +1,6 @@
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Loader2, AlertCircle, FileCode } from "lucide-react"
-import { useCurrentThread } from "@/lib/thread-context"
+import { useThreadContext } from "@/lib/thread-context"
 import { getFileType, isBinaryFile } from "@/lib/file-types"
 import { CodeViewer } from "./CodeViewer"
 import { ImageViewer } from "./ImageViewer"
@@ -8,32 +8,51 @@ import { MediaViewer } from "./MediaViewer"
 import { PDFViewer } from "./PDFViewer"
 import { BinaryFileViewer } from "./BinaryFileViewer"
 
-interface FileViewerProps {
+type WorkspaceFileViewerProps = {
   filePath: string
+  source?: "workspace"
   threadId: string
+  versionToken?: string
 }
 
-export function FileViewer({ filePath, threadId }: FileViewerProps): React.JSX.Element | null {
-  const { fileContents, setFileContents } = useCurrentThread(threadId)
+type ArtifactFileViewerProps = {
+  artifactId: string
+  filePath: string
+  source: "artifact"
+  versionToken?: string
+}
+
+type FileViewerProps = WorkspaceFileViewerProps | ArtifactFileViewerProps
+
+export function FileViewer(props: FileViewerProps): React.JSX.Element | null {
+  const { filePath } = props
+  const threadContext = useThreadContext()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [textContent, setTextContent] = useState<string | undefined>(undefined)
   const [binaryContent, setBinaryContent] = useState<string | null>(null)
   const [fileSize, setFileSize] = useState<number | undefined>()
+  const source = props.source ?? "workspace"
+  const versionToken = props.versionToken ?? null
+  const workspaceThreadId = "threadId" in props ? props.threadId : null
+  const artifactId = "artifactId" in props ? props.artifactId : null
+  const threadState = workspaceThreadId ? threadContext.getThreadState(workspaceThreadId) : null
+  const threadActions = workspaceThreadId ? threadContext.getThreadActions(workspaceThreadId) : null
 
   // Get file type info
   const fileName = filePath.split("/").pop() || filePath
   const fileTypeInfo = useMemo(() => getFileType(fileName), [fileName])
   const isBinary = useMemo(() => isBinaryFile(fileName), [fileName])
 
-  // Get cached content or load it
-  const content = fileContents[filePath]
+  const content = source === "workspace" ? threadState?.fileContents[filePath] : textContent
 
   // Reset state when filePath changes
   useEffect(() => {
     setError(null)
+    setTextContent(undefined)
     setBinaryContent(null)
     setFileSize(undefined)
-  }, [filePath])
+  }, [artifactId, filePath, versionToken, workspaceThreadId])
 
   // Load file content (text or binary depending on file type)
   useEffect(() => {
@@ -48,8 +67,10 @@ export function FileViewer({ filePath, threadId }: FileViewerProps): React.JSX.E
 
       try {
         if (isBinary) {
-          // Read as binary file (base64)
-          const result = await window.api.workspace.readBinaryFile(threadId, filePath)
+          const result =
+            source === "artifact"
+              ? await window.api.artifacts.readBinaryFile(artifactId!)
+              : await window.api.workspace.readBinaryFile(workspaceThreadId!, filePath)
           if (result.success && result.content !== undefined) {
             setBinaryContent(result.content)
             setFileSize(result.size)
@@ -57,10 +78,16 @@ export function FileViewer({ filePath, threadId }: FileViewerProps): React.JSX.E
             setError(result.error || "Failed to read file")
           }
         } else {
-          // Read as text file
-          const result = await window.api.workspace.readFile(threadId, filePath)
+          const result =
+            source === "artifact"
+              ? await window.api.artifacts.readFile(artifactId!)
+              : await window.api.workspace.readFile(workspaceThreadId!, filePath)
           if (result.success && result.content !== undefined) {
-            setFileContents(filePath, result.content)
+            if (source === "artifact") {
+              setTextContent(result.content)
+            } else {
+              threadActions?.setFileContents(filePath, result.content)
+            }
             setFileSize(result.size)
           } else {
             setError(result.error || "Failed to read file")
@@ -74,7 +101,16 @@ export function FileViewer({ filePath, threadId }: FileViewerProps): React.JSX.E
     }
 
     loadFile()
-  }, [threadId, filePath, content, binaryContent, setFileContents, isBinary])
+  }, [
+    artifactId,
+    binaryContent,
+    content,
+    filePath,
+    isBinary,
+    source,
+    threadActions,
+    workspaceThreadId
+  ])
 
   if (isLoading) {
     return (
