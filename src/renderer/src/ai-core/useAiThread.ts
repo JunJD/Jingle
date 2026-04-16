@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
+import { maybeGenerateThreadTitle } from "@/lib/thread-title"
 import { hasComposerMessageInputContent, type ComposerMessageRef } from "@shared/message-content"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 import type { HITLDecision } from "@/types"
@@ -48,6 +49,13 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
       }
     },
     initialInput: host.seedQuery,
+    onAfterAppendMessage: ({ isFirstMessage, message, threadId }) => {
+      if (!isFirstMessage) {
+        return
+      }
+
+      void maybeGenerateThreadTitle(threadId, message)
+    },
     threadId
   })
   const query = invocation.input

@@ -14,7 +14,7 @@ import { ChatTodos } from "./ChatTodos"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
 import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
-import { isDefaultThreadTitle } from "../../../../shared/i18n"
+import { maybeGenerateThreadTitle } from "@/lib/thread-title"
 
 interface ChatContainerProps {
   threadId: string
@@ -27,7 +27,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const isAtBottomRef = useRef(true)
   useDisableTabNavigation(inputRef)
 
-  const { threads, generateTitleForFirstMessage } = useHistoryShellStore()
+  const { threads, updateThread } = useHistoryShellStore()
 
   const { workspacePath, tokenUsage, currentModel, setWorkspacePath } = useCurrentThread(threadId)
   const invocation = useAiInvocation({
@@ -37,11 +37,12 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
       }
 
       const currentThread = threads.find((thread) => thread.thread_id === threadId)
-      if (!isDefaultThreadTitle(currentThread?.title)) {
-        return
-      }
-
-      void generateTitleForFirstMessage(threadId, message)
+      void maybeGenerateThreadTitle(threadId, message, {
+        persistTitle: async (nextThreadId, title) => {
+          await updateThread(nextThreadId, { title })
+        },
+        thread: currentThread
+      })
     },
     threadId,
     validateInvocation: ({ threadState }) => {

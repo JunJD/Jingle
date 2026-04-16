@@ -30,6 +30,11 @@ export interface ThreadSearchMatches {
   messages: ThreadSearchMessageMatchRow[]
 }
 
+export interface CreateThreadInput {
+  metadata?: Record<string, unknown>
+  title?: string | null
+}
+
 function mapThreadRow(row: {
   threadId: string
   createdAt: bigint
@@ -142,7 +147,7 @@ export async function searchThreadMatches(params: {
 
 export async function createThread(
   threadId: string,
-  metadata?: Record<string, unknown>
+  input?: CreateThreadInput
 ): Promise<ThreadRow> {
   const prisma = getPrismaClient()
   const now = BigInt(Date.now())
@@ -152,8 +157,9 @@ export async function createThread(
       threadId,
       createdAt: now,
       updatedAt: now,
-      metadata: metadata ? JSON.stringify(metadata) : null,
-      status: "idle"
+      metadata: input?.metadata ? JSON.stringify(input.metadata) : null,
+      status: "idle",
+      title: input?.title ?? null
     }
   })
 

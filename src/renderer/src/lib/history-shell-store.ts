@@ -15,7 +15,6 @@ interface HistoryShellState {
   selectThread: (threadId: string) => Promise<void>
   deleteThread: (threadId: string) => Promise<void>
   updateThread: (threadId: string, updates: Partial<Thread>) => Promise<void>
-  generateTitleForFirstMessage: (threadId: string, content: string) => Promise<void>
   loadModelProviderState: () => Promise<void>
   setProviderCredentials: (
     providerId: ProviderId,
@@ -86,15 +85,6 @@ export const useHistoryShellStore = create<HistoryShellState>((set, get) => ({
     set((state) => ({
       threads: state.threads.map((thread) => (thread.thread_id === threadId ? updated : thread))
     }))
-  },
-
-  generateTitleForFirstMessage: async (threadId: string, content: string) => {
-    try {
-      const generatedTitle = await window.api.threads.generateTitle(content)
-      await get().updateThread(threadId, { title: generatedTitle })
-    } catch (error) {
-      console.error("[Store] Failed to generate title:", error)
-    }
   },
 
   loadModelProviderState: async () => {

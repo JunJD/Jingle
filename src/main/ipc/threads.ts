@@ -122,10 +122,18 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
       workspacePath: await resolveGlobalWorkspacePath(),
       ...metadata
     }
+    const requestedTitle = nextMetadata.title
     const title =
-      (nextMetadata.title as string) || formatDefaultThreadTitle(getAgentConfig().locale)
+      typeof requestedTitle === "string" && requestedTitle.length > 0
+        ? requestedTitle
+        : formatDefaultThreadTitle(getAgentConfig().locale)
+    const { title: _ignoredTitle, ...threadMetadata } = nextMetadata
+    void _ignoredTitle
 
-    const thread = await dbCreateThread(threadId, { ...nextMetadata, title })
+    const thread = await dbCreateThread(threadId, {
+      metadata: threadMetadata,
+      title
+    })
 
     return {
       thread_id: thread.thread_id,
@@ -134,7 +142,7 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
       metadata: thread.metadata ? JSON.parse(thread.metadata) : undefined,
       status: thread.status as Thread["status"],
       thread_values: thread.thread_values ? JSON.parse(thread.thread_values) : undefined,
-      title
+      title: thread.title ?? title
     } as Thread
   })
 
