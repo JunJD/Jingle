@@ -1,5 +1,5 @@
 import { useCallback, useMemo, type RefObject } from "react"
-import { Settings2, MessageSquare } from "lucide-react"
+import { Settings2 } from "lucide-react"
 import { useI18n } from "@/lib/i18n"
 import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
@@ -152,18 +152,6 @@ export function LauncherSearchPage(props: {
                 aria-label={locale === "zh-CN" ? "打开设置" : "Open settings"}
               >
                 <Settings2 className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void window.api.mainWindow.openWindow()
-                }}
-                onMouseDown={(event) => event.preventDefault()}
-                className="launcher-icon-button flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition hover:text-foreground"
-                title={locale === "zh-CN" ? "打开聊天历史" : "Open chat history"}
-                aria-label={locale === "zh-CN" ? "打开聊天历史" : "Open chat history"}
-              >
-                <MessageSquare className="h-4 w-4" />
               </button>
               <span>{copy.launcher.searchResults}</span>
             </div>

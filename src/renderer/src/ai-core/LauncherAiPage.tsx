@@ -1,4 +1,4 @@
-import { ArrowLeft, Plus, MessageSquare } from "lucide-react"
+import { ArrowLeft, Plus } from "lucide-react"
 import { useCallback, useEffect, useRef } from "react"
 import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
@@ -83,20 +83,8 @@ export function LauncherAiPage(): React.JSX.Element {
     <LauncherChrome
       footer={
         <>
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-            <button
-              type="button"
-              onClick={() => {
-                void window.api.mainWindow.openThread(threadId || '')
-              }}
-              onMouseDown={(event) => event.preventDefault()}
-              className="launcher-icon-button flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition hover:text-foreground"
-              title={copy.locale === "zh-CN" ? "打开聊天历史" : "Open chat history"}
-              aria-label={copy.locale === "zh-CN" ? "打开聊天历史" : "Open chat history"}
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-            </button>
-            <span>{copy.launcher.aiFooterLeading}</span>
+          <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+            {copy.launcher.aiFooterLeading}
           </div>
           <button
             type="button"
