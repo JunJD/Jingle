@@ -60,7 +60,7 @@ Renderer 层：
 Provider 状态不再把 `hasApiKey` 当核心模型，而是对齐 Dify 的概念拆开：
 
 - `customConfiguration.status`：provider credential 是否已配置。
-- `providerCredentialSchema.credentialFormSchemas`：设置弹窗按 schema 渲染字段；当前大多数 provider 只有 `apiKey`，`openai` 额外支持可选 `baseUrl`，用于接入 OpenAI-compatible endpoint。
+- `providerCredentialSchema.credentialFormSchemas`：设置弹窗按 schema 渲染字段，当前各 provider 只有 `apiKey` 这个 `secret-input`。
 - `supportedModelTypes`：当前只声明 `llm`。
 - `modelListStatus` / `modelListError`：远程 models list 的状态和错误。
 - `ModelConfig.modelType` / `fetchFrom` / `status`：模型本身的类型、来源和可用状态。
@@ -83,7 +83,7 @@ Openwork 对应 IPC 是：
 
 有 provider API key 时，`models:listByProvider` 会调供应商真实 models list：
 
-- `openai`：默认 `GET https://api.openai.com/v1/models`；如果配置了自定义 `baseUrl`，则请求 `${baseUrl}/models`
+- `openai`：`GET https://api.openai.com/v1/models`
 - `anthropic`：`GET https://api.anthropic.com/v1/models`
 - `google`：`GET https://generativelanguage.googleapis.com/v1beta/models`
 - `dashscope`：`GET https://dashscope.aliyuncs.com/compatible-mode/v1/models`

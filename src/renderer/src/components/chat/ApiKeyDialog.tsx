@@ -130,16 +130,12 @@ export function ApiKeyDialog({
               const placeholder = schema.placeholder
                 ? getLocalizedText(schema.placeholder, locale)
                 : undefined
-              const tooltip = schema.tooltip ? getLocalizedText(schema.tooltip, locale) : undefined
 
               return (
                 <label key={schema.variable} className="block space-y-1.5">
                   <span className="text-[12px] font-medium text-foreground">
                     {getLocalizedText(schema.label, locale)}
                   </span>
-                  {tooltip && (
-                    <p className="text-[11px] text-muted-foreground">{tooltip}</p>
-                  )}
                   <div className="relative">
                     <Input
                       type={isSecret && !visible ? "password" : "text"}
@@ -150,7 +146,7 @@ export function ApiKeyDialog({
                           [schema.variable]: event.target.value
                         }))
                       }
-                      placeholder={hasExistingKey && isSecret ? "••••••••••••••••" : placeholder}
+                      placeholder={hasExistingKey ? "••••••••••••••••" : placeholder}
                       className={isSecret ? "pr-10" : undefined}
                       autoFocus={index === 0}
                     />
@@ -172,6 +168,7 @@ export function ApiKeyDialog({
                 </label>
               )
             })}
+            <p className="text-xs text-muted-foreground">{copy.apiKeyDialog.secureStorageHint}</p>
             {errorText && (
               <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                 {errorText}

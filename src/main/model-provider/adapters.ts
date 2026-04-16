@@ -1,11 +1,7 @@
 import { ChatAnthropic } from "@langchain/anthropic"
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai"
 import { ChatOpenAI } from "@langchain/openai"
-import {
-  API_KEY_CREDENTIAL_VARIABLE,
-  BASE_URL_CREDENTIAL_VARIABLE,
-  getProviderDefinition
-} from "./catalog"
+import { API_KEY_CREDENTIAL_VARIABLE, getProviderDefinition } from "./catalog"
 import {
   deleteProviderCredentials as deleteStoredProviderCredentials,
   getProviderCredential,
@@ -25,6 +21,9 @@ import type {
   ProviderId,
   ResolvedModelRuntimeConfig
 } from "./types"
+
+const DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+const OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 
 export type ChatModelInstance = ChatAnthropic | ChatOpenAI | ChatGoogleGenerativeAI
 
@@ -52,117 +51,62 @@ type ProviderAdapterConfig = {
     runtimeConfig: ResolvedModelRuntimeConfig,
     options: ChatModelOptions
   ) => ChatModelInstance
-  fetchModels: (credentials: ProviderCredentials) => Promise<RemoteModel[]>
-  isSupportedModel: (modelId: string, credentials: ProviderCredentials) => boolean
+  fetchModels: (apiKey: string) => Promise<RemoteModel[]>
+  isSupportedModel: (modelId: string) => boolean
   providerId: ProviderId
 }
 
 const PROVIDER_ADAPTERS = {
   anthropic: createApiKeyProviderAdapter({
     createChatModel: (runtimeConfig, options) => {
-      const baseUrl = getConfiguredBaseUrl(runtimeConfig.credentials)
-
-      console.log('[Anthropic] Creating chat model with baseUrl:', baseUrl, 'model:', runtimeConfig.modelName)
-
       return new ChatAnthropic({
         anthropicApiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
-        ...(baseUrl && { anthropicApiUrl: baseUrl }),
         model: runtimeConfig.modelName,
         temperature: options.temperature
       })
     },
-    fetchModels: (credentials) => {
-      const baseUrl = getConfiguredBaseUrl(credentials)
-      return fetchAnthropicModels(requireApiKey(credentials, "anthropic"), baseUrl)
-    },
-    isSupportedModel: (modelId) => isAnthropicChatModel(modelId),
+    fetchModels: fetchAnthropicModels,
+    isSupportedModel: isAnthropicChatModel,
     providerId: "anthropic"
   }),
   dashscope: createApiKeyProviderAdapter({
     createChatModel: (runtimeConfig, options) => {
-      const baseURL = getConfiguredBaseUrl(runtimeConfig.credentials)
-
       return new ChatOpenAI({
         apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
         model: runtimeConfig.modelName,
         temperature: options.temperature,
-        ...(baseURL && { configuration: { baseURL } })
+        configuration: {
+          baseURL: DASHSCOPE_BASE_URL
+        }
       })
     },
-    fetchModels: (credentials) => {
-      const baseUrl = getConfiguredBaseUrl(credentials)
-      return fetchOpenAICompatibleModels(
-        "dashscope",
-        baseUrl,
-        requireApiKey(credentials, "dashscope")
-      )
-    },
-    isSupportedModel: (modelId) => isDashScopeChatModel(modelId),
+    fetchModels: (apiKey) =>
+      fetchOpenAICompatibleModels("dashscope", `${DASHSCOPE_BASE_URL}/models`, apiKey),
+    isSupportedModel: isDashScopeChatModel,
     providerId: "dashscope"
   }),
   google: createApiKeyProviderAdapter({
     createChatModel: (runtimeConfig, options) => {
-      const baseUrl = getConfiguredBaseUrl(runtimeConfig.credentials)
-
       return new ChatGoogleGenerativeAI({
         apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
-        ...(baseUrl && { baseUrl }),
         model: runtimeConfig.modelName,
         temperature: options.temperature
       })
     },
-    fetchModels: (credentials) => {
-      const baseUrl = getConfiguredBaseUrl(credentials)
-      return fetchGoogleModels(requireApiKey(credentials, "google"), baseUrl)
-    },
-    isSupportedModel: (modelId) => isGoogleChatModel(modelId),
+    fetchModels: fetchGoogleModels,
+    isSupportedModel: isGoogleChatModel,
     providerId: "google"
-  }),
-  kimi: createApiKeyProviderAdapter({
-    createChatModel: (runtimeConfig, options) => {
-      const baseURL = getConfiguredBaseUrl(runtimeConfig.credentials)
-
-      return new ChatOpenAI({
-        apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
-        model: runtimeConfig.modelName,
-        temperature: options.temperature,
-        ...(baseURL && { configuration: { baseURL } })
-      })
-    },
-    fetchModels: (credentials) => {
-      const baseUrl = getConfiguredBaseUrl(credentials)
-      return fetchOpenAICompatibleModels(
-        "kimi",
-        baseUrl,
-        requireApiKey(credentials, "kimi")
-      )
-    },
-    isSupportedModel: (modelId) => isKimiChatModel(modelId),
-    providerId: "kimi"
   }),
   openai: createApiKeyProviderAdapter({
     createChatModel: (runtimeConfig, options) => {
-      const baseURL = getConfiguredBaseUrl(runtimeConfig.credentials)
-
       return new ChatOpenAI({
         apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
         model: runtimeConfig.modelName,
-        temperature: options.temperature,
-        ...(baseURL && { configuration: { baseURL } })
+        temperature: options.temperature
       })
     },
-    fetchModels: (credentials) => {
-      const baseUrl = getConfiguredBaseUrl(credentials)
-      return fetchOpenAICompatibleModels(
-        "openai",
-        baseUrl,
-        requireApiKey(credentials, "openai")
-      )
-    },
-    isSupportedModel: (modelId, credentials) =>
-      getConfiguredBaseUrl(credentials)
-        ? isOpenAICompatibleChatModel(modelId)
-        : isOpenAIChatModel(modelId),
+    fetchModels: (apiKey) => fetchOpenAICompatibleModels("openai", OPENAI_MODELS_URL, apiKey),
+    isSupportedModel: isOpenAIChatModel,
     providerId: "openai"
   })
 } satisfies Record<ProviderId, ProviderAdapter>
@@ -199,11 +143,10 @@ export function createProviderChatModelFromAdapter(
 function createApiKeyProviderAdapter(config: ProviderAdapterConfig): ProviderAdapter {
   const definition = requireProviderDefinition(config.providerId)
   const listModels = async (credentials: ProviderCredentials): Promise<ModelConfig[]> => {
-    const remoteModels = await config.fetchModels(credentials)
+    const apiKey = requireApiKey(credentials, config.providerId)
+    const remoteModels = await config.fetchModels(apiKey)
 
-    return toRemoteModelConfigs(config.providerId, remoteModels, (modelId) =>
-      config.isSupportedModel(modelId, credentials)
-    )
+    return toRemoteModelConfigs(config.providerId, remoteModels, config.isSupportedModel)
   }
 
   return {
@@ -290,28 +233,14 @@ function requireApiKey(credentials: ProviderCredentials, providerId: ProviderId)
   return apiKey
 }
 
-function getConfiguredBaseUrl(credentials: ProviderCredentials): string | undefined {
-  const baseUrl = credentials[BASE_URL_CREDENTIAL_VARIABLE]
-  if (!baseUrl) {
-    return undefined
-  }
-
-  return baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl
-}
-
 function isOpenAIChatModel(modelId: string): boolean {
   const normalizedModelId = modelId.toLowerCase()
   return (
-    isOpenAICompatibleChatModel(normalizedModelId) &&
+    isChatCandidate(normalizedModelId) &&
     (normalizedModelId.startsWith("gpt-") ||
       normalizedModelId.startsWith("chatgpt-") ||
       /^o\d/.test(normalizedModelId))
   )
-}
-
-function isOpenAICompatibleChatModel(modelId: string): boolean {
-  const normalizedModelId = modelId.toLowerCase()
-  return isChatCandidate(normalizedModelId)
 }
 
 function isAnthropicChatModel(modelId: string): boolean {
@@ -322,14 +251,6 @@ function isAnthropicChatModel(modelId: string): boolean {
 function isGoogleChatModel(modelId: string): boolean {
   const normalizedModelId = modelId.toLowerCase()
   return isChatCandidate(normalizedModelId) && normalizedModelId.startsWith("gemini-")
-}
-
-function isKimiChatModel(modelId: string): boolean {
-  const normalizedModelId = modelId.toLowerCase()
-  return (
-    isChatCandidate(normalizedModelId) &&
-    (normalizedModelId.startsWith("kimi-") || normalizedModelId.startsWith("moonshot-v1-"))
-  )
 }
 
 function isDashScopeChatModel(modelId: string): boolean {
@@ -357,14 +278,10 @@ function isChatCandidate(normalizedModelId: string): boolean {
     "dall-e",
     "embedding",
     "image",
-    "i2i",
     "moderation",
     "rerank",
     "realtime",
-    "seededit",
-    "seedream",
     "speech",
-    "t2i",
     "tts",
     "transcribe",
     "video",

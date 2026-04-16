@@ -3,7 +3,6 @@ import type { ModelConfig, ProviderDefinition, ProviderId } from "./types"
 const MODEL_ID_SEPARATOR = ":"
 const LLM_MODEL_TYPE = "llm"
 export const API_KEY_CREDENTIAL_VARIABLE = "apiKey"
-export const BASE_URL_CREDENTIAL_VARIABLE = "baseUrl"
 
 export interface ProviderModelId {
   modelName: string
@@ -34,49 +33,13 @@ function apiKeyCredential(
   }
 }
 
-function textCredential(
-  label: string,
-  placeholder: string,
-  variable: string,
-  tooltip?: ProviderDefinition["credentialFormSchemas"][number]["tooltip"]
-): ProviderDefinition["credentialFormSchemas"][number] {
-  return {
-    label: {
-      en_US: label,
-      zh_Hans: label
-    },
-    name: label,
-    placeholder: {
-      en_US: placeholder,
-      zh_Hans: placeholder
-    },
-    required: false,
-    tooltip,
-    type: "text-input",
-    variable
-  }
-}
-
-function baseUrlCredential(
-  placeholder: string,
-  tooltip?: ProviderDefinition["credentialFormSchemas"][number]["tooltip"]
-): ProviderDefinition["credentialFormSchemas"][number] {
-  return textCredential("Base URL", placeholder, BASE_URL_CREDENTIAL_VARIABLE, tooltip)
-}
-
 const PROVIDERS: ProviderDefinition[] = [
   {
     configurateMethods: ["fetch-from-remote"],
-    credentialFormSchemas: [
-      apiKeyCredential("Anthropic API Key", "sk-ant-..."),
-      baseUrlCredential("https://api.anthropic.com", {
-        en_US: "Optional. Override the Anthropic API base URL.",
-        zh_Hans: "可选。覆盖 Anthropic API 的基础地址。"
-      })
-    ],
+    credentialFormSchemas: [apiKeyCredential("Anthropic API Key", "sk-ant-...")],
     description: {
-      en_US: "Anthropic Claude chat models with optional custom API base URL.",
-      zh_Hans: "Anthropic Claude 聊天模型，支持可选自定义 API 基础地址。"
+      en_US: "Anthropic Claude chat models.",
+      zh_Hans: "Anthropic Claude 聊天模型。"
     },
     id: "anthropic",
     label: {
@@ -88,20 +51,10 @@ const PROVIDERS: ProviderDefinition[] = [
   },
   {
     configurateMethods: ["fetch-from-remote"],
-    credentialFormSchemas: [
-      apiKeyCredential("OpenAI API Key", "sk-..."),
-      baseUrlCredential(
-        "https://api.openai.com/v1",
-        {
-          en_US:
-            "Optional. Override the OpenAI API base URL or use an OpenAI-compatible endpoint.",
-          zh_Hans: "可选。覆盖 OpenAI API 基础地址，或接入 OpenAI-compatible endpoint。"
-        }
-      )
-    ],
+    credentialFormSchemas: [apiKeyCredential("OpenAI API Key", "sk-...")],
     description: {
-      en_US: "OpenAI chat and reasoning models, or OpenAI-compatible models via a custom base URL.",
-      zh_Hans: "OpenAI 聊天和推理模型，或通过自定义 base URL 接入的 OpenAI-compatible 模型。"
+      en_US: "OpenAI chat and reasoning models.",
+      zh_Hans: "OpenAI 聊天和推理模型。"
     },
     id: "openai",
     label: {
@@ -113,16 +66,10 @@ const PROVIDERS: ProviderDefinition[] = [
   },
   {
     configurateMethods: ["fetch-from-remote"],
-    credentialFormSchemas: [
-      apiKeyCredential("Gemini API Key", "AIza..."),
-      baseUrlCredential("https://generativelanguage.googleapis.com", {
-        en_US: "Optional. Override the Gemini API base URL.",
-        zh_Hans: "可选。覆盖 Gemini API 的基础地址。"
-      })
-    ],
+    credentialFormSchemas: [apiKeyCredential("Google API Key", "AIza...")],
     description: {
-      en_US: "Google Gemini chat models via the Gemini API, with optional custom base URL.",
-      zh_Hans: "通过 Gemini API 接入的 Google Gemini 聊天模型，支持可选自定义基础地址。"
+      en_US: "Google Gemini chat models.",
+      zh_Hans: "Google Gemini 聊天模型。"
     },
     id: "google",
     label: {
@@ -134,38 +81,10 @@ const PROVIDERS: ProviderDefinition[] = [
   },
   {
     configurateMethods: ["fetch-from-remote"],
-    credentialFormSchemas: [
-      apiKeyCredential("Kimi API Key", "sk-..."),
-      baseUrlCredential("https://api.moonshot.cn/v1", {
-        en_US: "Optional. Override the Moonshot OpenAI-compatible base URL.",
-        zh_Hans: "可选。覆盖 Moonshot OpenAI-compatible 基础地址。"
-      })
-    ],
+    credentialFormSchemas: [apiKeyCredential("DashScope API Key", "sk-...")],
     description: {
-      en_US: "Moonshot AI Kimi chat models via the OpenAI-compatible API, with optional custom base URL.",
-      zh_Hans: "通过 OpenAI 兼容接口接入的 Moonshot AI Kimi 聊天模型，支持可选自定义基础地址。"
-    },
-    id: "kimi",
-    label: {
-      en_US: "Kimi",
-      zh_Hans: "Kimi"
-    },
-    name: "Kimi",
-    supportedModelTypes: [LLM_MODEL_TYPE]
-  },
-  {
-    configurateMethods: ["fetch-from-remote"],
-    credentialFormSchemas: [
-      apiKeyCredential("DashScope API Key", "sk-..."),
-      baseUrlCredential("https://dashscope.aliyuncs.com/compatible-mode/v1", {
-        en_US: "Optional. Override the DashScope OpenAI-compatible base URL.",
-        zh_Hans: "可选。覆盖 DashScope OpenAI-compatible 基础地址。"
-      })
-    ],
-    description: {
-      en_US:
-        "Alibaba Cloud DashScope OpenAI-compatible chat models with optional custom base URL.",
-      zh_Hans: "阿里云 DashScope OpenAI-compatible 聊天模型，支持可选自定义基础地址。"
+      en_US: "Alibaba Cloud DashScope OpenAI-compatible chat models.",
+      zh_Hans: "阿里云 DashScope OpenAI-compatible 聊天模型。"
     },
     id: "dashscope",
     label: {
@@ -424,36 +343,6 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "google",
     model: "gemini-2.5-flash-lite",
     description: "Fast, low-cost, high-performance model",
-    fetchFrom: "predefined-model",
-    modelType: "llm",
-    status: "active"
-  },
-  {
-    id: toProviderModelId("kimi", "kimi-k2.5"),
-    name: "Kimi K2.5",
-    provider: "kimi",
-    model: "kimi-k2.5",
-    description: "Moonshot AI flagship multimodal model for agentic coding and reasoning",
-    fetchFrom: "predefined-model",
-    modelType: "llm",
-    status: "active"
-  },
-  {
-    id: toProviderModelId("kimi", "kimi-k2-thinking"),
-    name: "Kimi K2 Thinking",
-    provider: "kimi",
-    model: "kimi-k2-thinking",
-    description: "Long-thinking Kimi model with strong agentic reasoning and tool use",
-    fetchFrom: "predefined-model",
-    modelType: "llm",
-    status: "active"
-  },
-  {
-    id: toProviderModelId("kimi", "moonshot-v1-128k-vision-preview"),
-    name: "Moonshot Vision 128K",
-    provider: "kimi",
-    model: "moonshot-v1-128k-vision-preview",
-    description: "Vision-capable Moonshot model with a 128K context window",
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"

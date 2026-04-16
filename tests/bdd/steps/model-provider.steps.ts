@@ -97,12 +97,9 @@ function mockOpenAIModelListFailure(statusText: string): void {
   }
 }
 
-async function saveOpenAICredentials(baseUrl?: string): Promise<void> {
+async function saveOpenAICredentials(): Promise<void> {
   mockOpenAIModels(["gpt-credential-check"])
-  await modelProviderService.setProviderCredentialsForUI("openai", {
-    apiKey: "sk-bdd",
-    ...(baseUrl ? { baseUrl } : {})
-  })
+  await modelProviderService.setProviderCredentialsForUI("openai", { apiKey: "sk-bdd" })
 }
 
 Before({ tags: "@model-provider" }, function (this: ModelProviderWorld) {
@@ -140,14 +137,6 @@ Given(
   async function (this: ModelProviderWorld, providerName: string) {
     assert.equal(resolveProviderId(providerName), "openai")
     await saveOpenAICredentials()
-  }
-)
-
-Given(
-  "{word} 模型供应商已保存有效密钥和自定义 Base URL {string}",
-  async function (this: ModelProviderWorld, providerName: string, baseUrl: string) {
-    assert.equal(resolveProviderId(providerName), "openai")
-    await saveOpenAICredentials(baseUrl)
   }
 )
 

@@ -33,15 +33,6 @@ function GoogleIcon({ className }: { className?: string }): React.JSX.Element {
   )
 }
 
-function KimiIcon({ className }: { className?: string }): React.JSX.Element {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M15.43 2.1c-4.62 0-8.37 3.75-8.37 8.37 0 4.22 3.13 7.72 7.2 8.29A8.94 8.94 0 015.1 9.93c0-4.73 3.68-8.6 8.34-8.9.66.31 1.33.67 1.99 1.07z" />
-      <path d="M17.62 4.68a7.22 7.22 0 11-7.1 12.9 5.92 5.92 0 107.1-12.9z" />
-    </svg>
-  )
-}
-
 function DashScopeIcon({ className }: { className?: string }): React.JSX.Element {
   return <Cloud className={className} />
 }
@@ -50,7 +41,6 @@ const PROVIDER_ICONS: Record<ProviderId, React.FC<{ className?: string }>> = {
   anthropic: AnthropicIcon,
   openai: OpenAIIcon,
   google: GoogleIcon,
-  kimi: KimiIcon,
   dashscope: DashScopeIcon
 }
 
