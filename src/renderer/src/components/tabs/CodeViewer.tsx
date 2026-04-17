@@ -5,6 +5,7 @@ import { createJavaScriptRegexEngine } from "shiki/engine/javascript"
 
 // Import bundled themes and languages
 import githubDarkDefault from "shiki/themes/github-dark-default.mjs"
+import githubLightDefault from "shiki/themes/github-light-default.mjs"
 import langTypescript from "shiki/langs/typescript.mjs"
 import langTsx from "shiki/langs/tsx.mjs"
 import langJavascript from "shiki/langs/javascript.mjs"
@@ -24,7 +25,7 @@ let highlighterPromise: Promise<HighlighterCore> | null = null
 async function getHighlighter(): Promise<HighlighterCore> {
   if (!highlighterPromise) {
     highlighterPromise = createHighlighterCore({
-      themes: [githubDarkDefault],
+      themes: [githubDarkDefault, githubLightDefault],
       langs: [
         langTypescript,
         langTsx,
@@ -95,11 +96,22 @@ function getLanguage(ext: string | undefined): string | null {
 
 export function CodeViewer({ filePath, content }: CodeViewerProps) {
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null)
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"))
 
   // Get file extension for syntax highlighting
   const fileName = filePath.split("/").pop() || filePath
   const ext = fileName.includes(".") ? fileName.split(".").pop()?.toLowerCase() : undefined
   const language = useMemo(() => getLanguage(ext), [ext])
+
+  useEffect(() => {
+    const root = document.documentElement
+    const observer = new MutationObserver(() => {
+      setIsDark(root.classList.contains("dark"))
+    })
+
+    observer.observe(root, { attributeFilter: ["class"], attributes: true })
+    return () => observer.disconnect()
+  }, [])
 
   // Highlight code with Shiki
   useEffect(() => {
@@ -112,19 +124,17 @@ export function CodeViewer({ filePath, content }: CodeViewerProps) {
       }
 
       try {
-        console.log("[CodeViewer] Starting highlight for", language)
         const highlighter = await getHighlighter()
 
         if (cancelled) return
 
         const html = highlighter.codeToHtml(content, {
           lang: language,
-          theme: "github-dark-default"
+          theme: isDark ? "github-dark-default" : "github-light-default"
         })
 
         if (cancelled) return
 
-        console.log("[CodeViewer] Highlighting complete, html length:", html.length)
         setHighlightedHtml(html)
       } catch (e) {
         console.error("[CodeViewer] Shiki highlighting failed:", e)
@@ -137,7 +147,7 @@ export function CodeViewer({ filePath, content }: CodeViewerProps) {
     return () => {
       cancelled = true
     }
-  }, [content, language])
+  }, [content, isDark, language])
 
   const lineCount = content?.split("\n").length ?? 0
 

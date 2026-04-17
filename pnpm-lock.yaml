@@ -113,6 +113,9 @@ importers:
       deepagents:
         specifier: ^1.5.1
         version: 1.8.4(openai@6.32.0(ws@8.20.0)(zod@4.3.6))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(ws@8.20.0)
+      diff:
+        specifier: ^9.0.0
+        version: 9.0.0
       electron:
         specifier: ^39.2.6
         version: 39.8.3
@@ -2689,6 +2692,10 @@ packages:
 
   diff@8.0.4:
     resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
+    engines: {node: '>=0.3.1'}
+
+  diff@9.0.0:
+    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
     engines: {node: '>=0.3.1'}
 
   doctrine@2.1.0:
@@ -7715,6 +7722,8 @@ snapshots:
   diff@4.0.4: {}
 
   diff@8.0.4: {}
+
+  diff@9.0.0: {}
 
   doctrine@2.1.0:
     dependencies:

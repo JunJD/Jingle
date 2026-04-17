@@ -1,38 +1,30 @@
 import { useCallback } from "react"
-import { Copy, ExternalLink, FolderOpen, PackageOpen } from "lucide-react"
+import { AlertCircle, Copy, ExternalLink, FolderOpen, PackageOpen } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { formatRelativeTime } from "@/lib/utils"
 import { useCurrentThread } from "@/lib/thread-context"
 import {
   getArtifactCapabilities,
+  isInlinePatchArtifactRecord,
+  isManagedArtifactRecord,
   supportsArtifactAction,
-  type ArtifactActionId,
-  type ArtifactRecord,
-  type FileArtifactRecord,
-  type InlinePatchArtifactRecord,
-  type ManagedPatchArtifactRecord
+  type ArtifactActionId
 } from "@shared/artifacts"
 import { FileArtifactPreview } from "@/components/chat/artifact-preview/FileArtifactPreview"
 import { LinkArtifactPreview } from "@/components/chat/artifact-preview/LinkArtifactPreview"
 import { PatchArtifactPreview } from "@/components/chat/artifact-preview/PatchArtifactPreview"
 import { SummaryArtifactPreview } from "@/components/chat/artifact-preview/SummaryArtifactPreview"
 import {
-  getArtifactKindLabel,
-  getArtifactLocation
+  getArtifactDescriptor,
+  getArtifactStatusDescription,
+  getArtifactStatusBadgeVariant,
+  getArtifactStatusLabel
 } from "@/components/chat/artifact-preview/shared"
 
 interface ArtifactViewerProps {
   artifactId: string
   threadId: string
-}
-
-function isManagedFileArtifact(
-  artifact: ArtifactRecord
-): artifact is FileArtifactRecord | ManagedPatchArtifactRecord {
-  return artifact.source.type === "managed-file-path"
-}
-
-function isInlinePatchArtifact(artifact: ArtifactRecord): artifact is InlinePatchArtifactRecord {
-  return artifact.kind === "patch" && artifact.source.type === "inline-text"
 }
 
 export function ArtifactViewer(props: ArtifactViewerProps): React.JSX.Element {
@@ -53,14 +45,28 @@ export function ArtifactViewer(props: ArtifactViewerProps): React.JSX.Element {
 
   if (!artifact) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        Artifact not available
+      <div
+        className="flex flex-1 items-center justify-center p-8"
+        data-artifact-viewer-unavailable="true"
+      >
+        <div className="flex max-w-md flex-col items-center gap-3 rounded-[20px] border border-border bg-background-elevated/70 px-6 py-7 text-center">
+          <AlertCircle className="size-10 text-status-critical" />
+          <div>
+            <div className="font-medium text-foreground">Artifact not available</div>
+            <div className="mt-1 text-sm leading-6 text-muted-foreground">
+              This artifact is no longer available in the current thread snapshot.
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
 
   const currentArtifact = artifact
   const capabilities = getArtifactCapabilities(currentArtifact)
+  const descriptor = getArtifactDescriptor(currentArtifact)
+  const statusLabel = getArtifactStatusLabel(currentArtifact.status)
+  const statusDescription = getArtifactStatusDescription(currentArtifact.status)
 
   function renderPreviewBody(): React.JSX.Element {
     if (currentArtifact.kind === "file") {
@@ -72,11 +78,11 @@ export function ArtifactViewer(props: ArtifactViewerProps): React.JSX.Element {
     }
 
     if (currentArtifact.kind === "patch") {
-      if (isManagedFileArtifact(currentArtifact)) {
+      if (isManagedArtifactRecord(currentArtifact)) {
         return <FileArtifactPreview artifact={currentArtifact} />
       }
 
-      if (isInlinePatchArtifact(currentArtifact)) {
+      if (isInlinePatchArtifactRecord(currentArtifact)) {
         return <PatchArtifactPreview artifact={currentArtifact} />
       }
     }
@@ -91,16 +97,37 @@ export function ArtifactViewer(props: ArtifactViewerProps): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+    <div
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-background"
+      data-artifact-id={currentArtifact.id}
+      data-artifact-kind={currentArtifact.kind}
+      data-artifact-status={currentArtifact.status}
+      data-artifact-title={currentArtifact.title}
+      data-artifact-viewer=""
+    >
       <div className="flex items-start gap-3 border-b border-border bg-background-elevated/70 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-foreground">
             {currentArtifact.title}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>{getArtifactKindLabel(currentArtifact)}</span>
+            <Badge
+              className="shrink-0"
+              variant={getArtifactStatusBadgeVariant(currentArtifact.status)}
+            >
+              {statusLabel}
+            </Badge>
+            <span>{descriptor.label}</span>
             <span className="text-muted-foreground/50">•</span>
-            <span className="truncate">{getArtifactLocation(currentArtifact)}</span>
+            <span className="truncate">{descriptor.location}</span>
+            {currentArtifact.sizeBytes ? (
+              <>
+                <span className="text-muted-foreground/50">•</span>
+                <span>{formatBytes(currentArtifact.sizeBytes)}</span>
+              </>
+            ) : null}
+            <span className="text-muted-foreground/50">•</span>
+            <span>Updated {formatRelativeTime(currentArtifact.updatedAt)}</span>
           </div>
           {currentArtifact.subtitle ? (
             <div className="mt-1 text-xs text-muted-foreground">{currentArtifact.subtitle}</div>
@@ -150,7 +177,37 @@ export function ArtifactViewer(props: ArtifactViewerProps): React.JSX.Element {
         </div>
       </div>
 
+      {currentArtifact.status !== "ready" ? (
+        <div className="border-b border-border bg-background px-4 py-3">
+          <div className="flex items-start gap-3 rounded-[16px] border border-border/80 bg-background-secondary/60 px-4 py-3">
+            <AlertCircle className="mt-0.5 size-4 shrink-0 text-status-warning" />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-foreground">{statusLabel} artifact</div>
+              <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                {statusDescription}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="min-h-0 flex-1">{renderPreviewBody()}</div>
     </div>
   )
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`
+  }
+
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
