@@ -7,7 +7,10 @@ import type {
   PresentArtifactInput
 } from "../../shared/artifacts"
 
-export type ArtifactRecordDraft = Omit<ArtifactRecord, "createdAt" | "id" | "updatedAt">
+export type ArtifactRecordDraft = Omit<
+  ArtifactRecord,
+  "artifactKey" | "createdAt" | "id" | "updatedAt"
+>
 
 export interface ArtifactNormalizer<Input extends PresentArtifactInput = PresentArtifactInput> {
   canHandle: (input: PresentArtifactInput) => input is Input
@@ -26,6 +29,7 @@ export interface ArtifactPersistenceFields {
 
 export interface ArtifactPersistenceRow extends ArtifactPersistenceFields {
   artifactId: string
+  artifactKey: string
   createdAt: bigint
   kind: ArtifactRecord["kind"]
   messageId: string | null
@@ -87,6 +91,7 @@ export function decodeArtifactRecord(row: ArtifactPersistenceRow): ArtifactRecor
   const source = decodeArtifactSource(row)
   const payload = row.payloadJson ? JSON.parse(row.payloadJson) : null
   const baseRecord = {
+    artifactKey: row.artifactKey,
     createdAt: new Date(Number(row.createdAt)),
     id: row.artifactId,
     messageId: row.messageId,

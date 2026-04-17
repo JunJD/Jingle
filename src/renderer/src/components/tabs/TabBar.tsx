@@ -31,6 +31,8 @@ export function TabBar({
   return (
     <div className={cn("flex h-full items-center overflow-x-auto scrollbar-hide px-4", className)}>
       <button
+        data-thread-tab="agent"
+        data-thread-tab-active={activeTab === "agent" ? "true" : "false"}
         onClick={() => setActiveTab("agent")}
         className={cn(
           "relative flex h-full shrink-0 items-center gap-2 px-4 text-sm font-medium transition-colors",
@@ -93,6 +95,9 @@ function FileTab({ file, isActive, onSelect, onClose }: FileTabProps): React.JSX
 
   return (
     <button
+      data-thread-tab="file"
+      data-thread-tab-active={isActive ? "true" : "false"}
+      data-thread-tab-id={file.path}
       onClick={onSelect}
       onMouseDown={handleMouseDown}
       className={cn(
@@ -106,6 +111,8 @@ function FileTab({ file, isActive, onSelect, onClose }: FileTabProps): React.JSX
       <FileIcon name={file.name} />
       <span className="truncate">{file.name}</span>
       <button
+        data-thread-tab-close="file"
+        data-thread-tab-id={file.path}
         onClick={handleClose}
         className={cn(
           "flex size-4 items-center justify-center rounded-full transition-colors hover:bg-background-secondary",
@@ -142,6 +149,10 @@ function ArtifactTab(props: ArtifactTabProps): React.JSX.Element {
 
   return (
     <button
+      data-thread-tab="artifact"
+      data-thread-tab-active={isActive ? "true" : "false"}
+      data-thread-tab-id={artifact.artifactId}
+      data-thread-tab-title={artifact.title}
       onClick={onSelect}
       onMouseDown={handleMouseDown}
       className={cn(
@@ -155,6 +166,9 @@ function ArtifactTab(props: ArtifactTabProps): React.JSX.Element {
       <ArtifactIcon kind={artifact.kind} />
       <span className="truncate">{artifact.title}</span>
       <button
+        data-thread-tab-close="artifact"
+        data-thread-tab-id={artifact.artifactId}
+        data-thread-tab-title={artifact.title}
         onClick={handleClose}
         className={cn(
           "flex size-4 items-center justify-center rounded-full transition-colors hover:bg-background-secondary",

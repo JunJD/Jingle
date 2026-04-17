@@ -1,11 +1,8 @@
 import { createMiddleware, tool, type ToolRuntime } from "langchain"
+import { getToolCallArtifactKey } from "../../shared/artifacts"
 import { parsePresentArtifactToolInput } from "../artifacts/present-artifact-tool-parser"
 import { presentArtifactToolInputSchema } from "../artifacts/present-artifact-tool-schema"
 import { presentArtifacts } from "../artifacts/service"
-
-function buildArtifactKey(toolCallId: string, index: number): string {
-  return `${toolCallId}:${index}`
-}
 
 function summarizePresentation(count: number, titles: string[]): string {
   if (count === 1) {
@@ -24,14 +21,12 @@ export function createArtifactToolsMiddleware(props: { threadId: string; workspa
       const parsedArtifacts = await parsePresentArtifactToolInput(input, props.workspacePath)
       const toolCallId = runtime.toolCallId
       const runId =
-        typeof runtime.configurable?.run_id === "string"
-          ? runtime.configurable.run_id
-          : null
+        typeof runtime.configurable?.run_id === "string" ? runtime.configurable.run_id : null
 
       const result = await presentArtifacts({
         artifacts: parsedArtifacts.map((artifact, index) => ({
           ...artifact,
-          artifactKey: buildArtifactKey(toolCallId, index)
+          artifactKey: getToolCallArtifactKey(toolCallId, index)
         })),
         idempotencyKey: toolCallId,
         runId,

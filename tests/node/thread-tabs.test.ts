@@ -11,6 +11,7 @@ import {
 
 function createLinkArtifact(props: { id: string; title: string }): ArtifactRecord {
   return {
+    artifactKey: "tool-call-1:0",
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     id: props.id,
     kind: "link",

@@ -58,6 +58,7 @@ export interface ArtifactChangedEvent {
 }
 
 interface ArtifactRecordBase {
+  artifactKey: string
   id: string
   threadId: string
   runId: string | null
@@ -115,6 +116,22 @@ export type ArtifactRecord =
   | ManagedPatchArtifactRecord
   | LinkArtifactRecord
   | SummaryArtifactRecord
+
+export function getToolCallArtifactKey(toolCallId: string, index: number): string {
+  return `${toolCallId}:${index}`
+}
+
+export function isManagedArtifactRecord(
+  record: ArtifactRecord
+): record is FileArtifactRecord | ManagedPatchArtifactRecord {
+  return record.source.type === "managed-file-path"
+}
+
+export function isInlinePatchArtifactRecord(
+  record: ArtifactRecord
+): record is InlinePatchArtifactRecord {
+  return record.kind === "patch" && record.source.type === "inline-text"
+}
 
 export function getArtifactCapabilities(record: ArtifactRecord): ArtifactCapabilities {
   switch (record.kind) {

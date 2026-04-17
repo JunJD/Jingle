@@ -120,6 +120,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
           presentation === "grouped" ? "py-0.5" : "py-1",
           "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         )}
+        data-tool-call-toggle={toolCall.name}
         onClick={() => {
           if (hasDetail && !approvalRequest) {
             setManualExpanded((current) => !current)

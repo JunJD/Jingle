@@ -1,6 +1,13 @@
-import { PackageOpen } from "lucide-react"
+import { useMemo } from "react"
+import { ArrowUpRight, PackageOpen } from "lucide-react"
+import type { ArtifactRecord } from "@shared/artifacts"
+import { getToolCallArtifactKey } from "@shared/artifacts"
 import { CodeBlock } from "@/components/ui/code-block"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
+import { useThreadState } from "@/lib/thread-context"
+import { cn } from "@/lib/utils"
 import { defineToolComponent } from "./registry-core"
+import type { ToolComponentProps } from "./types"
 import { ToolDetailSection, ToolDetailStack } from "./shared-components"
 import { getBasename, joinSummaryParts } from "./shared"
 
@@ -28,6 +35,116 @@ function isJsonText(value: string): boolean {
   }
 }
 
+function getArtifactItemKind(item: Record<string, unknown>): string {
+  return typeof item.kind === "string" ? item.kind : "artifact"
+}
+
+function getArtifactItemTitle(item: Record<string, unknown>, index: number): string {
+  if (typeof item.title === "string" && item.title.trim().length > 0) {
+    return item.title
+  }
+
+  if (typeof item.path === "string") {
+    return getBasename(item.path)
+  }
+
+  if (typeof item.url === "string") {
+    return item.url
+  }
+
+  return `Artifact ${index + 1}`
+}
+
+function PresentArtifactsDetail(
+  props: Pick<ToolComponentProps, "args" | "copy" | "rawResult" | "toolCall">
+): React.JSX.Element {
+  const { args, copy, rawResult, toolCall } = props
+  const { currentThreadId } = useHistoryShellStore()
+  const threadState = useThreadState(currentThreadId)
+  const items = getArtifactItems(args)
+  const hasJsonResult = isJsonText(rawResult)
+  const resolvedArtifacts = useMemo(() => {
+    const artifactsByKey = new Map(
+      (threadState?.artifacts ?? [])
+        .filter((artifact) => artifact.toolCallId === toolCall.id)
+        .map((artifact) => [artifact.artifactKey, artifact] satisfies [string, ArtifactRecord])
+    )
+
+    return items.map((item, index) => ({
+      artifact: artifactsByKey.get(getToolCallArtifactKey(toolCall.id, index)) ?? null,
+      kind: getArtifactItemKind(item),
+      title: getArtifactItemTitle(item, index)
+    }))
+  }, [items, threadState?.artifacts, toolCall.id])
+
+  return (
+    <ToolDetailStack>
+      {resolvedArtifacts.length > 0 ? (
+        <ToolDetailSection label={copy.toolCall.labels.present_artifacts}>
+          <div className="grid gap-1.5">
+            {resolvedArtifacts.map(({ artifact, kind, title }, index) => {
+              const canOpen = Boolean(artifact && threadState)
+
+              return (
+                <button
+                  className={cn(
+                    "grid gap-1 rounded-[12px] border px-3 py-2 text-left text-[12px] leading-5 transition-colors",
+                    canOpen
+                      ? "border-border/70 bg-background-secondary/60 text-foreground/90 hover:bg-background-secondary hover:text-foreground"
+                      : "border-border/50 bg-background-secondary/40 text-foreground/75"
+                  )}
+                  data-artifact-openable={canOpen ? "true" : "false"}
+                  data-artifact-title={title}
+                  data-presented-artifact-item=""
+                  disabled={!canOpen}
+                  key={`${kind}-${title}-${index}`}
+                  onClick={() => {
+                    if (!artifact || !threadState) {
+                      return
+                    }
+
+                    threadState.openArtifactTab({
+                      artifactId: artifact.id,
+                      kind: artifact.kind,
+                      title: artifact.title
+                    })
+                  }}
+                  type="button"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-foreground">{title}</div>
+                      <div className="text-muted-foreground">{kind}</div>
+                    </div>
+                    {canOpen ? (
+                      <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                    ) : null}
+                  </div>
+                  {!canOpen ? (
+                    <div className="text-[11px] leading-4 text-muted-foreground">
+                      Artifact not available yet
+                    </div>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+        </ToolDetailSection>
+      ) : null}
+      {rawResult.trim() ? (
+        <ToolDetailSection label={copy.common.rawResult}>
+          <CodeBlock
+            code={rawResult}
+            filename={hasJsonResult ? "result.json" : "result.txt"}
+            language={hasJsonResult ? "json" : "text"}
+            maxLines={12}
+          />
+        </ToolDetailSection>
+      ) : null}
+    </ToolDetailStack>
+  )
+}
+
 defineToolComponent({
   icon: PackageOpen,
   name: "present_artifacts",
@@ -39,50 +156,9 @@ defineToolComponent({
       items.length > 0 ? `${items.length}` : null
     )
   },
-  renderDetail({ copy, args, rawResult }) {
-    const items = getArtifactItems(args)
-    const hasJsonResult = isJsonText(rawResult)
-
+  renderDetail({ copy, args, rawResult, toolCall }) {
     return (
-      <ToolDetailStack>
-        {items.length > 0 ? (
-          <ToolDetailSection label={copy.toolCall.labels.present_artifacts}>
-            <div className="grid gap-1.5">
-              {items.map((item, index) => {
-                const kind = typeof item.kind === "string" ? item.kind : "artifact"
-                const title =
-                  typeof item.title === "string" && item.title.trim().length > 0
-                    ? item.title
-                    : typeof item.path === "string"
-                      ? getBasename(item.path)
-                      : typeof item.url === "string"
-                        ? item.url
-                        : `Artifact ${index + 1}`
-
-                return (
-                  <div
-                    key={`${kind}-${title}-${index}`}
-                    className="rounded-[12px] bg-background-secondary/60 px-3 py-2 text-[12px] leading-5 text-foreground/85"
-                  >
-                    <div className="font-medium">{title}</div>
-                    <div className="text-muted-foreground">{kind}</div>
-                  </div>
-                )
-              })}
-            </div>
-          </ToolDetailSection>
-        ) : null}
-        {rawResult.trim() ? (
-          <ToolDetailSection label={copy.common.rawResult}>
-            <CodeBlock
-              code={rawResult}
-              filename={hasJsonResult ? "result.json" : "result.txt"}
-              language={hasJsonResult ? "json" : "text"}
-              maxLines={12}
-            />
-          </ToolDetailSection>
-        ) : null}
-      </ToolDetailStack>
+      <PresentArtifactsDetail args={args} copy={copy} rawResult={rawResult} toolCall={toolCall} />
     )
   }
 })

@@ -32,6 +32,7 @@ const artifactEvents = new EventEmitter()
 function mapArtifactModel(row: ArtifactModel): ArtifactPersistenceRow {
   return {
     artifactId: row.artifactId,
+    artifactKey: row.artifactKey,
     createdAt: row.createdAt,
     kind: row.kind as ArtifactRecord["kind"],
     messageId: row.messageId,

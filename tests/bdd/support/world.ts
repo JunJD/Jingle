@@ -5,9 +5,9 @@ import {
   setWorldConstructor
 } from "@cucumber/cucumber"
 import { execFile } from "node:child_process"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { promisify } from "node:util"
 import { _electron as electron, type ElectronApplication, type Page } from "playwright"
 
@@ -16,6 +16,13 @@ const DEFAULT_TIMEOUT_MS = 90_000
 const REPO_ROOT = process.cwd()
 const PRISMA_SCHEMA_PATH = resolve(REPO_ROOT, "prisma/schema.prisma")
 const PRISMA_CLI_PATH = require.resolve("prisma/build/index.js")
+const ELECTRON_MODULE_ID = require.resolve("electron")
+const ELECTRON_PATH_FILE = require.resolve("electron/path.txt")
+const electronExecutablePath = join(
+  dirname(ELECTRON_PATH_FILE),
+  "dist",
+  readFileSync(ELECTRON_PATH_FILE, "utf8").trim()
+)
 
 setDefaultTimeout(DEFAULT_TIMEOUT_MS)
 
@@ -81,6 +88,23 @@ async function prepareDatabase(openworkHome: string): Promise<void> {
   }
 }
 
+async function launchElectronApp(options: Parameters<typeof electron.launch>[0]) {
+  const cachedElectronModule = require.cache[ELECTRON_MODULE_ID]
+
+  if (!cachedElectronModule) {
+    return electron.launch(options)
+  }
+
+  const previousExports = cachedElectronModule.exports
+  cachedElectronModule.exports = electronExecutablePath
+
+  try {
+    return await electron.launch(options)
+  } finally {
+    cachedElectronModule.exports = previousExports
+  }
+}
+
 export class OpenworkWorld extends World {
   private electronApp: ElectronApplication | null = null
   private page: Page | null = null
@@ -100,14 +124,15 @@ export class OpenworkWorld extends World {
     process.env.OPENWORK_HOME = this.openworkHome
     await prepareDatabase(this.openworkHome)
 
-    this.electronApp = await electron.launch({
+    this.electronApp = await launchElectronApp({
       args: ["."],
       cwd: REPO_ROOT,
       env: {
         ...process.env,
         CI: "1",
         OPENWORK_BDD: "1",
-        OPENWORK_HOME: this.openworkHome
+        OPENWORK_HOME: this.openworkHome,
+        OPENWORK_REMOTE_DEBUGGING_PORT: ""
       }
     })
 
