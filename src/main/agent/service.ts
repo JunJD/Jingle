@@ -1,28 +1,39 @@
-import { IpcMain, BrowserWindow } from "electron"
 import { HumanMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
-import { isAbortLikeError } from "../agent/errors"
-import { createAgentRuntime } from "../agent/runtime"
-import { getThread, resolvePendingHitlRequests, upsertHitlRequest } from "../db"
+import { normalizeComposerMessageRefs, summarizeMessageContent } from "../../shared/message-content"
 import {
   beginAgentRun,
   markRunAborted,
   markRunFailed,
   resumeAgentRun,
   syncRunFromLatestCheckpoint
-} from "../agent/persistence"
-import { extractHitlRequestFromValuesState } from "../agent/runtime-state"
-import { normalizeComposerMessageRefs, summarizeMessageContent } from "../../shared/message-content"
+} from "./persistence"
+import { isAbortLikeError } from "./errors"
+import { createAgentRuntime } from "./runtime"
+import { extractHitlRequestFromValuesState } from "./runtime-state"
+import { getThread, resolvePendingHitlRequests, upsertHitlRequest } from "../db"
 import type {
+  AgentCancelParams,
+  AgentInterruptParams,
   AgentInvokeParams,
   AgentResumeParams,
-  AgentInterruptParams,
-  AgentCancelParams,
   HITLDecision
 } from "../types"
 
-// Track active runs for cancellation
-const activeRuns = new Map<string, { controller: AbortController; runId: string }>()
+export type AgentStreamPayload =
+  | { type: "done" }
+  | { type: "error"; error: string; message?: string }
+  | { type: "stream"; data: unknown; mode: string }
+
+export interface AgentStreamSink {
+  onClosed: (listener: () => void) => () => void
+  send: (payload: AgentStreamPayload) => void
+}
+
+interface ActiveAgentRun {
+  controller: AbortController
+  runId: string
+}
 
 function mapDecisionToHitlStatus(decision: HITLDecision["type"]): "approved" | "rejected" {
   switch (decision) {
@@ -208,13 +219,10 @@ function serializeStreamChunkForIpc(mode: string, data: unknown): unknown {
   return cloneStreamDataForIpc(data)
 }
 
-export function registerAgentHandlers(ipcMain: IpcMain): void {
-  console.log("[Agent] Registering agent handlers...")
+export class AgentService {
+  private readonly activeRuns = new Map<string, ActiveAgentRun>()
 
-  // Handle agent invocation with streaming
-  ipcMain.on("agent:invoke", async (event, { threadId, message, modelId }: AgentInvokeParams) => {
-    const channel = `agent:stream:${threadId}`
-    const window = BrowserWindow.fromWebContents(event.sender)
+  async invoke({ threadId, message, modelId }: AgentInvokeParams, sink: AgentStreamSink): Promise<void> {
     const messagePreview = summarizeMessageContent(message.content)
 
     console.log("[Agent] Received invoke request:", {
@@ -223,32 +231,21 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
       modelId
     })
 
-    if (!window) {
-      console.error("[Agent] No window found")
-      return
-    }
-
-    // Abort any existing stream for this thread before starting a new one
-    // This prevents concurrent streams which can cause checkpoint corruption
-    const existingRun = activeRuns.get(threadId)
+    const existingRun = this.activeRuns.get(threadId)
     if (existingRun) {
       console.log("[Agent] Aborting existing stream for thread:", threadId)
       existingRun.controller.abort()
-      activeRuns.delete(threadId)
+      this.activeRuns.delete(threadId)
       await markRunAborted(threadId, existingRun.runId)
     }
 
     const abortController = new AbortController()
-
-    // Abort the stream if the window is closed/destroyed
-    const onWindowClosed = (): void => {
+    const removeClosedListener = sink.onClosed(() => {
       console.log("[Agent] Window closed, aborting stream for thread:", threadId)
       abortController.abort()
-    }
-    window.once("closed", onWindowClosed)
+    })
 
     try {
-      // Get workspace path from thread metadata - REQUIRED
       const thread = await getThread(threadId)
       const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
       console.log("[Agent] Thread metadata:", metadata)
@@ -256,7 +253,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
       const workspacePath = metadata.workspacePath as string | undefined
 
       if (!workspacePath) {
-        window.webContents.send(channel, {
+        sink.send({
           type: "error",
           error: "WORKSPACE_REQUIRED",
           message: "Please select a workspace folder before sending messages."
@@ -266,7 +263,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
 
       const normalizedRefs = normalizeComposerMessageRefs(message.additional_kwargs?.refs)
       const { runId } = await beginAgentRun(threadId, modelId)
-      activeRuns.set(threadId, { controller: abortController, runId })
+      this.activeRuns.set(threadId, { controller: abortController, runId })
 
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
       const humanMessage = new HumanMessage({
@@ -275,9 +272,6 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         ...(normalizedRefs.length > 0 ? { additional_kwargs: { refs: normalizedRefs } } : {})
       })
 
-      // Stream with both modes:
-      // - 'messages' for real-time token streaming
-      // - 'values' for full state (todos, files, etc.)
       const stream = await agent.stream(
         { messages: [humanMessage] },
         {
@@ -292,83 +286,68 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
       for await (const chunk of stream) {
         if (abortController.signal.aborted) break
 
-        // With multiple stream modes, chunks are tuples: [mode, data]
         const [mode, data] = chunk as [string, unknown]
         const sawInterrupt = await persistPendingHitlFromStream(threadId, runId, mode, data)
         interrupted = interrupted || sawInterrupt
 
-        // Forward raw stream events - transport layer handles parsing
-        // Serialize to plain objects for IPC (class instances don't transfer)
-        window.webContents.send(channel, {
+        sink.send({
           type: "stream",
           mode,
           data: serializeStreamChunkForIpc(mode, data)
         })
       }
 
-      // Send done event (only if not aborted)
       if (!abortController.signal.aborted) {
         await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
-        window.webContents.send(channel, { type: "done" })
+        sink.send({ type: "done" })
       }
     } catch (error) {
       if (!isAbortLikeError(error, abortController.signal)) {
-        const activeRun = activeRuns.get(threadId)
+        const activeRun = this.activeRuns.get(threadId)
         if (activeRun) {
           await markRunFailed(threadId, activeRun.runId, error)
         }
         console.error("[Agent] Error:", error)
-        window.webContents.send(channel, {
+        sink.send({
           type: "error",
           error: error instanceof Error ? error.message : "Unknown error"
         })
       }
     } finally {
-      const activeRun = activeRuns.get(threadId)
+      const activeRun = this.activeRuns.get(threadId)
       if (activeRun?.controller === abortController && abortController.signal.aborted) {
         await markRunAborted(threadId, activeRun.runId)
       }
-      window.removeListener("closed", onWindowClosed)
-      activeRuns.delete(threadId)
+      removeClosedListener()
+      this.activeRuns.delete(threadId)
     }
-  })
+  }
 
-  // Handle agent resume (after interrupt approval/rejection via useStream)
-  ipcMain.on("agent:resume", async (event, { threadId, command, modelId }: AgentResumeParams) => {
-    const channel = `agent:stream:${threadId}`
-    const window = BrowserWindow.fromWebContents(event.sender)
-
+  async resume({ threadId, command, modelId }: AgentResumeParams, sink: AgentStreamSink): Promise<void> {
     console.log("[Agent] Received resume request:", { threadId, command, modelId })
 
-    if (!window) {
-      console.error("[Agent] No window found for resume")
-      return
-    }
-
-    // Get workspace path from thread metadata
     const thread = await getThread(threadId)
     const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
     const workspacePath = metadata.workspacePath as string | undefined
 
     if (!workspacePath) {
-      window.webContents.send(channel, {
+      sink.send({
         type: "error",
         error: "Workspace path is required"
       })
       return
     }
 
-    // Abort any existing stream before resuming
-    const existingRun = activeRuns.get(threadId)
+    const existingRun = this.activeRuns.get(threadId)
     if (existingRun) {
       existingRun.controller.abort()
-      activeRuns.delete(threadId)
+      this.activeRuns.delete(threadId)
       await markRunAborted(threadId, existingRun.runId)
     }
 
     const abortController = new AbortController()
     const runId = await resumeAgentRun(threadId, { source: "resume", modelId: modelId ?? null })
-    activeRuns.set(threadId, { controller: abortController, runId })
+    this.activeRuns.set(threadId, { controller: abortController, runId })
 
     try {
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
@@ -380,7 +359,6 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         recursionLimit: 1000
       }
 
-      // Resume from checkpoint with the approval middleware response.
       const decision: HITLDecision = command?.resume ?? { type: "approve" }
       const decisionType = decision.type
       await resolvePendingHitlRequests(threadId, mapDecisionToHitlStatus(decisionType), {
@@ -398,7 +376,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         const [mode, data] = chunk as unknown as [string, unknown]
         const sawInterrupt = await persistPendingHitlFromStream(threadId, runId, mode, data)
         interrupted = interrupted || sawInterrupt
-        window.webContents.send(channel, {
+        sink.send({
           type: "stream",
           mode,
           data: serializeStreamChunkForIpc(mode, data)
@@ -407,13 +385,13 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
 
       if (!abortController.signal.aborted) {
         await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
-        window.webContents.send(channel, { type: "done" })
+        sink.send({ type: "done" })
       }
     } catch (error) {
       if (!isAbortLikeError(error, abortController.signal)) {
         await markRunFailed(threadId, runId, error)
         console.error("[Agent] Resume error:", error)
-        window.webContents.send(channel, {
+        sink.send({
           type: "error",
           error: error instanceof Error ? error.message : "Unknown error"
         })
@@ -422,39 +400,28 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
       if (abortController.signal.aborted) {
         await markRunAborted(threadId, runId)
       }
-      activeRuns.delete(threadId)
+      this.activeRuns.delete(threadId)
     }
-  })
+  }
 
-  // Handle HITL interrupt response
-  ipcMain.on("agent:interrupt", async (event, { threadId, decision }: AgentInterruptParams) => {
-    const channel = `agent:stream:${threadId}`
-    const window = BrowserWindow.fromWebContents(event.sender)
-
-    if (!window) {
-      console.error("[Agent] No window found for interrupt response")
-      return
-    }
-
-    // Get workspace path from thread metadata - REQUIRED
+  async interrupt({ threadId, decision }: AgentInterruptParams, sink: AgentStreamSink): Promise<void> {
     const thread = await getThread(threadId)
     const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
     const workspacePath = metadata.workspacePath as string | undefined
     const modelId = metadata.model as string | undefined
 
     if (!workspacePath) {
-      window.webContents.send(channel, {
+      sink.send({
         type: "error",
         error: "Workspace path is required"
       })
       return
     }
 
-    // Abort any existing stream before continuing
-    const existingRun = activeRuns.get(threadId)
+    const existingRun = this.activeRuns.get(threadId)
     if (existingRun) {
       existingRun.controller.abort()
-      activeRuns.delete(threadId)
+      this.activeRuns.delete(threadId)
       await markRunAborted(threadId, existingRun.runId)
     }
 
@@ -469,7 +436,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
       tool_call_id: decision.tool_call_id,
       feedback: decision.feedback
     })
-    activeRuns.set(threadId, { controller: abortController, runId })
+    this.activeRuns.set(threadId, { controller: abortController, runId })
 
     try {
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
@@ -491,7 +458,7 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
         const [mode, data] = chunk as unknown as [string, unknown]
         const sawInterrupt = await persistPendingHitlFromStream(threadId, runId, mode, data)
         interrupted = interrupted || sawInterrupt
-        window.webContents.send(channel, {
+        sink.send({
           type: "stream",
           mode,
           data: serializeStreamChunkForIpc(mode, data)
@@ -500,13 +467,13 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
 
       if (!abortController.signal.aborted) {
         await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
-        window.webContents.send(channel, { type: "done" })
+        sink.send({ type: "done" })
       }
     } catch (error) {
       if (!isAbortLikeError(error, abortController.signal)) {
         await markRunFailed(threadId, runId, error)
         console.error("[Agent] Interrupt error:", error)
-        window.webContents.send(channel, {
+        sink.send({
           type: "error",
           error: error instanceof Error ? error.message : "Unknown error"
         })
@@ -515,17 +482,16 @@ export function registerAgentHandlers(ipcMain: IpcMain): void {
       if (abortController.signal.aborted) {
         await markRunAborted(threadId, runId)
       }
-      activeRuns.delete(threadId)
+      this.activeRuns.delete(threadId)
     }
-  })
+  }
 
-  // Handle cancellation
-  ipcMain.handle("agent:cancel", async (_event, { threadId }: AgentCancelParams) => {
-    const activeRun = activeRuns.get(threadId)
+  async cancel({ threadId }: AgentCancelParams): Promise<void> {
+    const activeRun = this.activeRuns.get(threadId)
     if (activeRun) {
       activeRun.controller.abort()
-      activeRuns.delete(threadId)
+      this.activeRuns.delete(threadId)
       await markRunAborted(threadId, activeRun.runId)
     }
-  })
+  }
 }

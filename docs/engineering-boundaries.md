@@ -100,7 +100,7 @@ It should remain the source of truth for anything that must survive renderer ref
 Current anchors:
 
 - [runtime.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/agent/runtime.ts)
-- [agent.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/ipc/agent.ts)
+- [service.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/agent/service.ts)
 
 ### Harness Persistence
 

@@ -378,6 +378,14 @@ Exit criteria:
 
 `agent` 是最高风险域，最后迁移。
 
+当前状态：
+
+- `agent` 已迁移为 `controller -> service`
+- `agent:*` IPC 适配已从 `ipc/agent.ts` 收口到 agent controller
+- agent controller 负责 Electron `IpcMain`、`BrowserWindow`、stream channel sink
+- agent service 负责 active run、invoke、cancel、resume、interrupt、HITL 持久化和 run 状态同步
+- agent service 不直接依赖 Electron 原始 event 或 `BrowserWindow`
+
 Exit criteria:
 
 - 流式运行、取消、恢复、审批恢复行为全都有 BDD 或等价高价值测试覆盖

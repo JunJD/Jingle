@@ -2,9 +2,9 @@ import "reflect-metadata"
 import type { BrowserWindow, IpcMain } from "electron"
 import { container, type DependencyContainer } from "tsyringe"
 import { LAUNCHER_COMMAND_IDS } from "../shared/shortcuts/ids"
+import { registerAgentIpcHandlers, registerAgentModule } from "./agent/module"
 import { installApplicationMenu } from "./app-menu"
 import { registerAppInfoIpcHandlers, registerAppInfoModule } from "./app-info/module"
-import { registerAgentHandlers } from "./ipc/agent"
 import { registerArtifactsIpcHandlers, registerArtifactsModule } from "./artifacts/module"
 import { registerSettingsWindowHandlers } from "./ipc/settings-window"
 import {
@@ -77,7 +77,7 @@ export class MainCompositionRoot {
   registerIpcHandlers(): void {
     const { ipcMain } = this.context
 
-    registerAgentHandlers(ipcMain)
+    registerAgentIpcHandlers(this.dependencyContainer, ipcMain)
     registerAppInfoIpcHandlers(this.dependencyContainer, ipcMain)
     registerArtifactsIpcHandlers(this.dependencyContainer, ipcMain)
     registerExternalLinksIpcHandlers(this.dependencyContainer, ipcMain)
@@ -141,6 +141,7 @@ export function createMainCompositionRoot(
   const childContainer = parentContainer.createChildContainer()
 
   childContainer.registerInstance<MainCompositionContext>(MAIN_COMPOSITION_CONTEXT_TOKEN, context)
+  registerAgentModule(childContainer)
   registerAppInfoModule(childContainer)
   registerArtifactsModule(childContainer)
   registerExternalLinksModule(childContainer)

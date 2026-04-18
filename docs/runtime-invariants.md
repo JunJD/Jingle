@@ -5,7 +5,6 @@ This document records runtime and persistence rules that future implementation w
 Use it when changing:
 
 - `src/main/agent/**`
-- `src/main/ipc/agent.ts`
 - `src/main/db/**`
 - `prisma/schema.prisma`
 
@@ -52,7 +51,7 @@ Run creation and status transitions happen in main.
 Current anchors:
 
 - [persistence.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/agent/persistence.ts)
-- [agent.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/ipc/agent.ts)
+- [service.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/agent/service.ts)
 
 Current behavior that should remain explicit:
 
@@ -84,7 +83,7 @@ Pending approvals are not temporary UI state.
 
 Current anchor:
 
-- [agent.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/ipc/agent.ts)
+- [service.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/agent/service.ts)
 
 Required behavior:
 
@@ -119,7 +118,7 @@ One important current behavior is still product-significant:
 
 Current anchor:
 
-- [agent.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/ipc/agent.ts)
+- [controller.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/agent/controller.ts)
 
 This is not just a UI detail. It is a lifecycle choice with product impact.
 
