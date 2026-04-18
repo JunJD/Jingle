@@ -393,6 +393,14 @@ Exit criteria:
 
 ### Phase 8 - Remove Temporary Paths
 
+当前状态：
+
+- 未引入迁移期兼容注册、双写或过渡 shim
+- `settings-window-routing` 已迁移为 `controller -> service`
+- `settings:*` 窗口路由 IPC 已从最后一个旧 `ipc/settings-window.ts` 收口到 settings-window-routing controller
+- `src/main/ipc` 下已无剩余 tracked handler 文件
+- [cleanups.md](/Users/junjieding/dingjunjie_dev/2026_03/openwork/cleanups.md) active list 保持空表
+
 Deliverables:
 
 - 删除兼容注册方式

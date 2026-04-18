@@ -6,7 +6,6 @@ import { registerAgentIpcHandlers, registerAgentModule } from "./agent/module"
 import { installApplicationMenu } from "./app-menu"
 import { registerAppInfoIpcHandlers, registerAppInfoModule } from "./app-info/module"
 import { registerArtifactsIpcHandlers, registerArtifactsModule } from "./artifacts/module"
-import { registerSettingsWindowHandlers } from "./ipc/settings-window"
 import {
   registerExternalLinksIpcHandlers,
   registerExternalLinksModule
@@ -43,6 +42,10 @@ import {
   unregisterGlobalShortcutService
 } from "./services/shortcuts/global-shortcut-service"
 import { registerSettingsIpcHandlers, registerSettingsModule } from "./settings/module"
+import {
+  registerSettingsWindowRoutingIpcHandlers,
+  registerSettingsWindowRoutingModule
+} from "./settings-window-routing/module"
 import { registerShortcutsIpcHandlers, registerShortcutsModule } from "./shortcuts/module"
 import { registerThreadsIpcHandlers, registerThreadsModule } from "./threads/module"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
@@ -91,14 +94,10 @@ export class MainCompositionRoot {
     registerNativeExtensionsIpcHandlers(this.dependencyContainer, ipcMain)
     registerNativeMenuBarIpcHandlers(this.dependencyContainer, ipcMain)
     registerMainWindowRoutingIpcHandlers(this.dependencyContainer, ipcMain)
+    registerSettingsWindowRoutingIpcHandlers(this.dependencyContainer, ipcMain)
     registerShortcutsIpcHandlers(this.dependencyContainer, {
       applySettings: () => this.applyShortcutSettings(),
       ipcMain
-    })
-    registerSettingsWindowHandlers({
-      consumePendingNavigation: this.context.consumePendingSettingsNavigation,
-      ipcMain,
-      openSettingsWindow: this.context.openSettingsWindow
     })
   }
 
@@ -159,6 +158,10 @@ export function createMainCompositionRoot(
   registerNativeExtensionsModule(childContainer)
   registerNativeMenuBarModule(childContainer)
   registerSettingsModule(childContainer)
+  registerSettingsWindowRoutingModule(childContainer, {
+    consumePendingNavigation: context.consumePendingSettingsNavigation,
+    openSettingsWindow: context.openSettingsWindow
+  })
   registerShortcutsModule(childContainer)
   registerThreadsModule(childContainer)
   registerWorkspaceModule(childContainer)

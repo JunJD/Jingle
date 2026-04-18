@@ -117,7 +117,7 @@ Important:
 ### Main Process
 
 - watch the terminal running `npm run dev`
-- inspect `src/main/index.ts` and the relevant IPC registration file in `src/main/ipc`
+- inspect `src/main/index.ts`, `src/main/composition-root.ts`, and the relevant domain controller/module
 - follow the boundary: renderer -> preload -> ipcMain -> service/window code
 
 ## Troubleshooting
