@@ -650,6 +650,10 @@ function summarizePolicy(profile: ExecuteCommandProfile, commands: string[]): st
   }
 }
 
+function isGenericAllowlistedReadOnlyReason(reason: string): boolean {
+  return reason.includes("allowlisted read-only")
+}
+
 export interface ExecuteCommandClassifier {
   classify(command: string): ExecuteCommandPolicy
 }
@@ -738,6 +742,14 @@ export class JustBashExecuteCommandClassifier implements ExecuteCommandClassifie
 
       if (classification.profile === "network_read" && finalProfile === "read_only") {
         finalProfile = "network_read"
+        reason = classification.reason
+        continue
+      }
+
+      if (
+        classification.profile === "read_only" &&
+        !isGenericAllowlistedReadOnlyReason(classification.reason)
+      ) {
         reason = classification.reason
       }
     }
