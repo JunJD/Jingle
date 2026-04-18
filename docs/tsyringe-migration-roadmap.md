@@ -236,6 +236,12 @@ Exit criteria:
 - 保存并读取 command preferences
 - preferencesChanged 事件跨 Launcher / Settings 窗口广播
 
+`native-menu-bar` 当前已经有第一批 BDD，覆盖：
+
+- setState 后可读取当前命令状态
+- itemSelected 事件可回到 Launcher renderer
+- clearState 后状态会被清理
+
 `artifacts` 当前已经有第一批 BDD，覆盖：
 
 - 按 threadId list artifacts
@@ -278,6 +284,7 @@ Exit criteria:
 
 当前状态：
 
+- `native-menu-bar` 已迁移为 `controller -> service`
 - `launcher-history` 已迁移为 `controller -> service -> repository`
 - `local-start` 已迁移为 `controller -> service -> repository`
 - `launcher` 对 local start / launcher history 的使用已改为从 composition root 注入 service

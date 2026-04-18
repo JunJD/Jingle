@@ -246,6 +246,20 @@ export class OpenworkWorld extends World {
     }, itemLabel)
   }
 
+  async evaluateInMain<TResult, TArg>(
+    pageFunction: (electron: typeof import("electron"), arg: TArg) => TResult | Promise<TResult>,
+    arg: TArg
+  ): Promise<TResult> {
+    if (!this.electronApp) {
+      throw new Error("BDD Electron app is not available. Launch the app before using main eval.")
+    }
+
+    return this.electronApp.evaluate(
+      pageFunction as never,
+      arg as Parameters<ElectronApplication["evaluate"]>[1]
+    ) as Promise<TResult>
+  }
+
   async closeApp(): Promise<void> {
     if (this.electronApp) {
       await this.electronApp.close()

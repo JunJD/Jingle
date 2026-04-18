@@ -9,7 +9,6 @@ import { registerExternalLinkHandlers } from "./ipc/external-links"
 import { registerMainWindowHandlers } from "./ipc/main-window"
 import { registerModelHandlers } from "./ipc/models"
 import { registerNativeExtensionHandlers } from "./ipc/native-extensions"
-import { registerNativeMenuBarHandlers } from "./ipc/native-menu-bar"
 import { registerSettingsWindowHandlers } from "./ipc/settings-window"
 import { registerShortcutHandlers } from "./ipc/shortcuts"
 import { registerThreadHandlers } from "./ipc/threads"
@@ -24,11 +23,15 @@ import {
   resolveLocalStartService
 } from "./local-start/module"
 import {
+  registerNativeMenuBarIpcHandlers,
+  registerNativeMenuBarModule,
+  resolveNativeMenuBarService
+} from "./native-menu-bar/module"
+import {
   getGlobalShortcutAccelerator,
   registerGlobalShortcutService,
   unregisterGlobalShortcutService
 } from "./services/shortcuts/global-shortcut-service"
-import { initializeNativeMenuBar } from "./services/native-menu-bar"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
 import { registerLauncherHandlers } from "./windows/launcher-window"
 import type { MainWindowNavigationPayload } from "../shared/main-window"
@@ -66,7 +69,7 @@ export class MainCompositionRoot {
     registerThreadHandlers(ipcMain)
     registerModelHandlers(ipcMain)
     registerNativeExtensionHandlers(ipcMain)
-    registerNativeMenuBarHandlers(ipcMain)
+    registerNativeMenuBarIpcHandlers(this.dependencyContainer, ipcMain)
     registerMainWindowHandlers({
       acknowledgePendingNavigation: this.context.acknowledgePendingMainNavigation,
       getPendingNavigation: this.context.getPendingMainNavigation,
@@ -91,7 +94,7 @@ export class MainCompositionRoot {
   }
 
   startServices(): void {
-    initializeNativeMenuBar({
+    resolveNativeMenuBarService(this.dependencyContainer).initialize({
       getLauncherWindow: this.context.getLauncherWindow
     })
     this.applyShortcutSettings()
@@ -99,6 +102,7 @@ export class MainCompositionRoot {
   }
 
   dispose(): void {
+    resolveNativeMenuBarService(this.dependencyContainer).dispose()
     unregisterGlobalShortcutService()
   }
 
@@ -130,6 +134,7 @@ export function createMainCompositionRoot(
   childContainer.registerInstance<MainCompositionContext>(MAIN_COMPOSITION_CONTEXT_TOKEN, context)
   registerLauncherHistoryModule(childContainer)
   registerLocalStartModule(childContainer)
+  registerNativeMenuBarModule(childContainer)
 
   return new MainCompositionRoot(
     childContainer.resolve<MainCompositionContext>(MAIN_COMPOSITION_CONTEXT_TOKEN),
