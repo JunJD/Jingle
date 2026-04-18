@@ -4,6 +4,7 @@ import {
   type ThreadSearchDirectMatchRow,
   type ThreadSearchMessageMatchRow
 } from "../../../db"
+import { buildTrigramFtsQuery, buildUnicodeFtsQuery } from "../../../search-text"
 import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
 
 interface RankedThreadSearchRow {
@@ -12,18 +13,6 @@ interface RankedThreadSearchRow {
   thread_id: string
   title: string | null
   updated_at: number
-}
-
-function buildMessagesFtsQuery(query: string): string | null {
-  const terms = Array.from(query.matchAll(/[\p{L}\p{N}_]+/gu))
-    .map((match) => match[0])
-    .filter(Boolean)
-
-  if (terms.length === 0) {
-    return null
-  }
-
-  return terms.map((term) => `${term}*`).join(" ")
 }
 
 function toSearchExcerpt(value: string | null | undefined): string | null {
@@ -136,9 +125,10 @@ class ThreadsLauncherSearchProvider implements LauncherSearchProvider {
     const limit = Math.min(Math.max(request.limit, 1), 50)
     const matches = await searchThreadMatches({
       directLimit: limit,
-      ftsQuery: buildMessagesFtsQuery(query),
+      ftsQuery: buildUnicodeFtsQuery(query),
       messageLimit: limit * 4,
-      query
+      query,
+      trigramQuery: buildTrigramFtsQuery(query)
     })
     const rows = rankThreadMatches({
       directRows: matches.direct,

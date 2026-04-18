@@ -5,6 +5,7 @@ import {
   summarizeMessageContent,
   type AgentMessageContent
 } from "../../shared/message-content"
+import { buildSegmentedSearchText } from "../search-text"
 import { getPrismaClient } from "./client"
 
 type IndexedCheckpointMessage = {
@@ -52,9 +53,11 @@ function buildIndexedMessageSearchText(message: IndexedCheckpointMessage): strin
     }
   })
 
+  const extractedText = extractMessageText(parsedContent).trim()
   const candidateParts = [
-    extractMessageText(parsedContent).trim(),
+    extractedText,
     summarizeMessageContent(parsedContent).trim(),
+    buildSegmentedSearchText(extractedText)?.trim() ?? "",
     ...refLabels.map((part) => part.trim())
   ]
 
@@ -76,10 +79,18 @@ export async function syncMessageSearchIndexFromSnapshot(
 
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`DELETE FROM "messages_fts" WHERE thread_id = ?`, threadId)
+    await tx.$executeRawUnsafe(`DELETE FROM "messages_fts_trigram" WHERE thread_id = ?`, threadId)
 
     for (const message of indexedMessages) {
       await tx.$executeRawUnsafe(
         `INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text") VALUES (?, ?, ?, ?)`,
+        threadId,
+        message.messageId,
+        message.role,
+        message.searchText
+      )
+      await tx.$executeRawUnsafe(
+        `INSERT INTO "messages_fts_trigram" ("thread_id", "message_id", "role", "search_text") VALUES (?, ?, ?, ?)`,
         threadId,
         message.messageId,
         message.role,

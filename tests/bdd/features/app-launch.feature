@@ -82,6 +82,19 @@ Feature: Openwork 桌面启动
     And Main 窗口消息区包含 "BDD Main Window Message"
     And Launcher 窗口已隐藏
 
+  Scenario: Launcher 线程搜索可以通过英文历史消息片段找到线程
+    Given Openwork 桌面应用已启动
+    And 存在标题为 "BDD English Message Thread" 且包含历史消息 "Openwork remembers cross session agent chats" 的历史线程
+    When 我在 Launcher 中搜索 "cross session agent"
+    Then Launcher 首页展示了名为 "BDD English Message Thread" 的结果
+
+  Scenario: Launcher 线程搜索应该通过中文历史消息片段找到线程
+    Given Openwork 桌面应用已启动
+    And 存在标题为 "BDD CJK Message Thread" 且包含历史消息 "昨天我们搞了一天的A2A通信，也整理了和其他Agent的聊天记录。" 的历史线程
+    And 数据库消息索引用 LIKE 能找到历史消息片段 "和其他Agent的聊天记录"
+    When 我在 Launcher 中搜索 "和其他Agent的聊天记录"
+    Then Launcher 首页展示了名为 "BDD CJK Message Thread" 的结果
+
   Scenario: 从 target 进入 Main 窗口后仍然可以手动切换线程
     Given Openwork 桌面应用已启动
     And 存在标题为 "BDD Primary Thread" 且包含历史消息 "BDD Primary Message" 的历史线程

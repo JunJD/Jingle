@@ -103,11 +103,12 @@ export async function searchThreadMatches(params: {
   ftsQuery: string | null
   messageLimit: number
   query: string
+  trigramQuery: string | null
 }): Promise<ThreadSearchMatches> {
-  const { directLimit, ftsQuery, messageLimit, query } = params
+  const { directLimit, ftsQuery, messageLimit, query, trigramQuery } = params
   const prisma = getPrismaClient()
 
-  const [directRows, messageRows] = await Promise.all([
+  const [directRows, messageRows, trigramRows] = await Promise.all([
     prisma.thread.findMany({
       where: {
         OR: [
@@ -147,6 +148,26 @@ export async function searchThreadMatches(params: {
           ftsQuery,
           messageLimit
         )
+      : Promise.resolve([]),
+    trigramQuery
+      ? prisma.$queryRawUnsafe<
+          {
+            rank: number
+            search_text: string | null
+            title: string | null
+            thread_id: string
+            updated_at: bigint | number
+          }[]
+        >(
+          `SELECT messages_fts_trigram.thread_id, messages_fts_trigram.search_text, bm25(messages_fts_trigram) AS rank, threads.title, threads.updated_at
+           FROM messages_fts_trigram
+           INNER JOIN threads ON threads.thread_id = messages_fts_trigram.thread_id
+           WHERE messages_fts_trigram MATCH ?
+           ORDER BY rank
+           LIMIT ?`,
+          trigramQuery,
+          messageLimit
+        )
       : Promise.resolve([])
   ])
 
@@ -156,7 +177,7 @@ export async function searchThreadMatches(params: {
       title: row.title,
       updated_at: Number(row.updatedAt)
     })),
-    messages: messageRows.map((row) => ({
+    messages: [...trigramRows, ...messageRows].map((row) => ({
       rank: row.rank,
       search_text: row.search_text,
       thread_id: row.thread_id,
@@ -347,6 +368,7 @@ export async function deleteThread(threadId: string): Promise<void> {
 
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`DELETE FROM "messages_fts" WHERE thread_id = ?`, threadId)
+    await tx.$executeRawUnsafe(`DELETE FROM "messages_fts_trigram" WHERE thread_id = ?`, threadId)
     await tx.hitlRequest.deleteMany({
       where: { threadId }
     })

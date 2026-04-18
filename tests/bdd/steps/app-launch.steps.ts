@@ -2,6 +2,7 @@ import { Given, Then, When } from "@cucumber/cucumber"
 import { expect } from "@playwright/test"
 import { OpenworkWorld } from "../support/world"
 import { seedHistoryThreadFixture } from "../support/history-fixtures"
+import { getPrismaClient } from "../../../src/main/db/client"
 
 Given("Openwork 桌面应用已启动", async function (this: OpenworkWorld) {
   await this.launchApp()
@@ -92,6 +93,20 @@ Then(
       .first()
 
     await expect(result).toBeVisible()
+  }
+)
+
+Then(
+  "数据库消息索引用 LIKE 能找到历史消息片段 {string}",
+  async function (this: OpenworkWorld, fragment: string) {
+    const threadId = this.getScenarioValue("threads.lastCreatedThreadId")
+    const [row] = await getPrismaClient().$queryRawUnsafe<Array<{ count: bigint | number }>>(
+      `SELECT COUNT(*) AS count FROM "messages_fts" WHERE thread_id = ? AND search_text LIKE ?`,
+      threadId,
+      `%${fragment}%`
+    )
+
+    expect(Number(row.count)).toBeGreaterThan(0)
   }
 )
 
