@@ -211,8 +211,7 @@ Exit criteria:
 - list 排序
 - pin
 - remove
-
-后续如果要迁移 Launcher action side effects，需要再补从真实 Launcher action 记录 history 的端到端场景。
+- 从 `launcher:executeAction` 执行 local start 打开动作后记录 history
 
 `local-start` 当前已经有第一批 BDD，覆盖：
 
@@ -257,6 +256,12 @@ Deliverables:
 - domain service 注册表
 - controller 注册入口和业务实现解耦
 
+当前状态：
+
+- 已引入 `MainCompositionRoot`，使用 `tsyringe` child container 装配 main-side 启动上下文。
+- `src/main/index.ts` 保留 Electron 生命周期、窗口创建、数据库启动和退出清理。
+- IPC handlers 仍保持现有函数式实现，后续 phase 再按 domain 迁移为 controller/service。
+
 Exit criteria:
 
 - `src/main/index.ts` 只负责生命周期和组装
@@ -270,6 +275,13 @@ Exit criteria:
 - `native-menu-bar`
 - `launcher-history`
 - `local-start`
+
+当前状态：
+
+- `launcher-history` 已迁移为 `controller -> service -> repository`
+- `local-start` 已迁移为 `controller -> service -> repository`
+- `launcher` 对 local start / launcher history 的使用已改为从 composition root 注入 service
+- 当前没有为这次迁移保留兼容 wrapper，`cleanups.md` 仍可保持空表
 
 Exit criteria:
 

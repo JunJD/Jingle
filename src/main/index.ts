@@ -1,35 +1,11 @@
 import { app, BrowserWindow, ipcMain, nativeImage } from "electron"
 import { join } from "path"
-import { installApplicationMenu } from "./app-menu"
-import { registerAgentHandlers } from "./ipc/agent"
-import { registerArtifactHandlers } from "./ipc/artifacts"
-import { registerExternalLinkHandlers } from "./ipc/external-links"
-import { registerLauncherHistoryHandlers } from "./ipc/launcher-history"
-import { registerLocalStartHandlers } from "./ipc/local-start"
-import { registerMainWindowHandlers } from "./ipc/main-window"
-import { registerThreadHandlers } from "./ipc/threads"
-import { registerModelHandlers } from "./ipc/models"
-import { registerNativeExtensionHandlers } from "./ipc/native-extensions"
-import { registerNativeMenuBarHandlers } from "./ipc/native-menu-bar"
-import { registerShortcutHandlers } from "./ipc/shortcuts"
-import { registerSettingsWindowHandlers } from "./ipc/settings-window"
 import { closeDatabase, initializeDatabase } from "./db"
 import { closeRuntime } from "./agent/runtime"
-import { LAUNCHER_COMMAND_IDS } from "../shared/shortcuts/ids"
-import {
-  createLauncherWindow,
-  registerLauncherHandlers,
-  showLauncherWindow
-} from "./windows/launcher-window"
+import { createMainCompositionRoot, type MainCompositionRoot } from "./composition-root"
+import { createLauncherWindow, showLauncherWindow } from "./windows/launcher-window"
 import { createMainWindow, showMainWindow } from "./windows/main-window"
 import { createSettingsWindow, showSettingsWindow } from "./windows/settings-window"
-import {
-  getGlobalShortcutAccelerator,
-  registerGlobalShortcutService,
-  unregisterGlobalShortcutService
-} from "./services/shortcuts/global-shortcut-service"
-import { warmLauncherSearchProviders } from "./services/launcher-search"
-import { initializeNativeMenuBar } from "./services/native-menu-bar"
 import { startNativeMinimalIsland, stopNativeMinimalIsland } from "./services/native-minimal-island"
 import type { MainWindowNavigationPayload } from "../shared/main-window"
 import type { SettingsWindowNavigationPayload } from "../shared/settings-window"
@@ -44,6 +20,7 @@ if (remoteDebuggingPort) {
 let launcherWindow: BrowserWindow | null = null
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
+let mainCompositionRoot: MainCompositionRoot | null = null
 let pendingMainNavigation: MainWindowNavigationPayload | null = null
 let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
 const bypassSingleInstanceLock = process.env.OPENWORK_BDD === "1"
@@ -83,6 +60,24 @@ function getOrCreateSettingsWindow(): BrowserWindow {
   }
 
   return settingsWindow
+}
+
+function getLauncherWindow(): BrowserWindow | null {
+  return launcherWindow && !launcherWindow.isDestroyed() ? launcherWindow : null
+}
+
+function showLauncher(): void {
+  showLauncherWindow(getOrCreateLauncherWindow())
+}
+
+function toggleLauncher(): void {
+  const launcherWindow = getOrCreateLauncherWindow()
+  if (launcherWindow.isVisible()) {
+    launcherWindow.hide()
+    return
+  }
+
+  showLauncherWindow(launcherWindow)
 }
 
 function openMainWindow(payload?: MainWindowNavigationPayload): void {
@@ -149,87 +144,38 @@ if (hasSingleInstanceLock) {
     await initializeDatabase()
 
     // Register IPC handlers
-    registerAgentHandlers(ipcMain)
-    registerArtifactHandlers(ipcMain)
-    registerExternalLinkHandlers(ipcMain)
-    registerLauncherHistoryHandlers(ipcMain)
-    registerLocalStartHandlers(ipcMain)
-    registerThreadHandlers(ipcMain)
-    registerModelHandlers(ipcMain)
-    registerNativeExtensionHandlers(ipcMain)
-    registerNativeMenuBarHandlers(ipcMain)
-    registerMainWindowHandlers({
-      acknowledgePendingNavigation: acknowledgePendingMainNavigation,
-      getPendingNavigation: () => pendingMainNavigation,
-      ipcMain,
-      openMainWindow
-    })
-    const handleGlobalShortcutCommand = (commandId: string): void => {
-      if (commandId !== LAUNCHER_COMMAND_IDS.toggle) {
-        return
-      }
-
-      const launcherWindow = getOrCreateLauncherWindow()
-      if (launcherWindow.isVisible()) {
-        launcherWindow.hide()
-        return
-      }
-
-      showLauncherWindow(launcherWindow)
-    }
-
-    const applyShortcutSettings = (): void => {
-      registerGlobalShortcutService({
-        onCommand: handleGlobalShortcutCommand
-      })
-      installApplicationMenu({
-        isDev,
-        launcherShortcutAccelerator: getGlobalShortcutAccelerator(LAUNCHER_COMMAND_IDS.toggle),
-        showSettings: () => {
-          openSettingsWindow()
-        },
-        showLauncher: () => {
-          showLauncherWindow(getOrCreateLauncherWindow())
-        }
-      })
-    }
-
-    registerShortcutHandlers({
-      applySettings: applyShortcutSettings,
-      ipcMain
-    })
-    registerSettingsWindowHandlers({
-      consumePendingNavigation: () => {
+    mainCompositionRoot = createMainCompositionRoot({
+      acknowledgePendingMainNavigation,
+      consumePendingSettingsNavigation: () => {
         const pending = pendingSettingsNavigation
         pendingSettingsNavigation = null
         return pending
       },
+      getLauncherWindow,
+      getPendingMainNavigation: () => pendingMainNavigation,
       ipcMain,
-      openSettingsWindow
+      isDev,
+      openMainWindow,
+      openSettingsWindow,
+      showLauncherWindow: showLauncher,
+      toggleLauncherWindow: toggleLauncher
     })
-    registerLauncherHandlers({
-      ipcMain,
-      openMainWindow
-    })
-    initializeNativeMenuBar({
-      getLauncherWindow: () =>
-        launcherWindow && !launcherWindow.isDestroyed() ? launcherWindow : null
-    })
-    applyShortcutSettings()
-    void warmLauncherSearchProviders()
+    mainCompositionRoot.registerIpcHandlers()
+    mainCompositionRoot.startServices()
     startNativeMinimalIsland()
 
-    showLauncherWindow(getOrCreateLauncherWindow())
+    showLauncher()
 
     app.on("activate", () => {
-      showLauncherWindow(getOrCreateLauncherWindow())
+      showLauncher()
     })
   })
 }
 
 app.on("will-quit", () => {
   stopNativeMinimalIsland()
-  unregisterGlobalShortcutService()
+  mainCompositionRoot?.dispose()
+  mainCompositionRoot = null
   void closeRuntime()
   void closeDatabase()
 })

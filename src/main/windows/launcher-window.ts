@@ -19,9 +19,9 @@ import type {
   LauncherSearchRequest
 } from "../../shared/launcher-search"
 import type { MainWindowNavigationPayload } from "../../shared/main-window"
+import type { LauncherHistoryService } from "../launcher-history/service"
+import type { LocalStartService } from "../local-start/service"
 import { readClipboardContext } from "../services/clipboard"
-import { recordLauncherHistoryItem } from "../services/launcher-history"
-import { getLocalStartItem, recordLocalStartItemUse } from "../services/local-start"
 import { getApplicationIconDataUrl } from "../services/launcher-search/providers/applications"
 import { searchLauncher } from "../services/launcher-search"
 
@@ -251,6 +251,10 @@ async function openLauncherPath(
   path: string,
   kind: "application" | "file" | "directory"
 ): Promise<void> {
+  if (process.env.OPENWORK_BDD === "1") {
+    return
+  }
+
   if (kind === "application" && process.platform === "darwin") {
     await new Promise<void>((resolve, reject) => {
       const child = spawn("open", [path], {
@@ -307,7 +311,8 @@ function getLauncherPathHistoryKey(target: LauncherOpenPathTarget): string {
 }
 
 async function buildLauncherHistoryRecord(
-  action: LauncherSearchAction
+  action: LauncherSearchAction,
+  localStartService: LocalStartService
 ): Promise<RecordLauncherHistoryItemInput | null> {
   switch (action.type) {
     case "open-path":
@@ -326,7 +331,7 @@ async function buildLauncherHistoryRecord(
       }
 
       {
-        const item = getLocalStartItem(action.localStartItemId)
+        const item = localStartService.getItem(action.localStartItemId)
         const itemKind = item?.kind ?? action.target.kind
         const itemPath = item?.path ?? action.target.path
         return {
@@ -398,16 +403,20 @@ const launcherActionExecutors: Record<
   }
 }
 
-async function applyLauncherActionSideEffects(action: LauncherSearchAction): Promise<void> {
+async function applyLauncherActionSideEffects(
+  action: LauncherSearchAction,
+  launcherHistoryService: LauncherHistoryService,
+  localStartService: LocalStartService
+): Promise<void> {
   switch (action.type) {
     case "open-path": {
       if (action.localStartItemId) {
-        recordLocalStartItemUse(action.localStartItemId)
+        localStartService.recordItemUse(action.localStartItemId)
       }
 
-      const historyRecord = await buildLauncherHistoryRecord(action)
+      const historyRecord = await buildLauncherHistoryRecord(action, localStartService)
       if (historyRecord) {
-        recordLauncherHistoryItem(historyRecord)
+        launcherHistoryService.recordItem(historyRecord)
       }
       return
     }
@@ -426,14 +435,16 @@ async function applyLauncherActionSideEffects(action: LauncherSearchAction): Pro
 
 async function executeLauncherAction(
   action: LauncherSearchAction,
-  runtime: { openMainWindow: (payload?: MainWindowNavigationPayload) => void }
+  runtime: { openMainWindow: (payload?: MainWindowNavigationPayload) => void },
+  launcherHistoryService: LauncherHistoryService,
+  localStartService: LocalStartService
 ): Promise<void> {
   if (action.executor === "internal") {
     await internalLauncherActionExecutor(action, runtime)
   } else {
     await launcherActionExecutors[action.executor](action)
   }
-  await applyLauncherActionSideEffects(action)
+  await applyLauncherActionSideEffects(action, launcherHistoryService, localStartService)
 }
 
 export function createLauncherWindow(): BrowserWindow {
@@ -535,9 +546,11 @@ export function createLauncherWindow(): BrowserWindow {
 
 export function registerLauncherHandlers(params: {
   ipcMain: IpcMain
+  launcherHistoryService: LauncherHistoryService
+  localStartService: LocalStartService
   openMainWindow: (payload?: MainWindowNavigationPayload) => void
 }): void {
-  const { ipcMain, openMainWindow } = params
+  const { ipcMain, launcherHistoryService, localStartService, openMainWindow } = params
 
   ipcMain.handle("launcher:search", async (_event, request: LauncherSearchRequest) => {
     return searchLauncher(request)
@@ -555,7 +568,12 @@ export function registerLauncherHandlers(params: {
     const currentWindow = BrowserWindow.fromWebContents(event.sender)
 
     try {
-      await executeLauncherAction(action, { openMainWindow })
+      await executeLauncherAction(
+        action,
+        { openMainWindow },
+        launcherHistoryService,
+        localStartService
+      )
       currentWindow?.hide()
       return {
         ok: true
