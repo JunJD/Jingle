@@ -5,11 +5,9 @@ import { LAUNCHER_COMMAND_IDS } from "../shared/shortcuts/ids"
 import { installApplicationMenu } from "./app-menu"
 import { registerAppInfoIpcHandlers, registerAppInfoModule } from "./app-info/module"
 import { registerAgentHandlers } from "./ipc/agent"
-import { registerArtifactHandlers } from "./ipc/artifacts"
-import { registerMainWindowHandlers } from "./ipc/main-window"
+import { registerArtifactsIpcHandlers, registerArtifactsModule } from "./artifacts/module"
 import { registerNativeExtensionHandlers } from "./ipc/native-extensions"
 import { registerSettingsWindowHandlers } from "./ipc/settings-window"
-import { registerThreadHandlers } from "./ipc/threads"
 import {
   registerExternalLinksIpcHandlers,
   registerExternalLinksModule
@@ -25,14 +23,17 @@ import {
   resolveLocalStartService
 } from "./local-start/module"
 import {
+  registerMainWindowRoutingIpcHandlers,
+  registerMainWindowRoutingModule
+} from "./main-window-routing/module"
+import {
   registerNativeMenuBarIpcHandlers,
   registerNativeMenuBarModule,
   resolveNativeMenuBarService
 } from "./native-menu-bar/module"
 import {
   registerModelProviderIpcHandlers,
-  registerModelProviderModule,
-  resolveModelProviderService
+  registerModelProviderModule
 } from "./model-provider/module"
 import {
   getGlobalShortcutAccelerator,
@@ -41,12 +42,12 @@ import {
 } from "./services/shortcuts/global-shortcut-service"
 import { registerSettingsIpcHandlers, registerSettingsModule } from "./settings/module"
 import { registerShortcutsIpcHandlers, registerShortcutsModule } from "./shortcuts/module"
+import { registerThreadsIpcHandlers, registerThreadsModule } from "./threads/module"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
 import { registerLauncherHandlers } from "./windows/launcher-window"
 import {
   registerWorkspaceIpcHandlers,
-  registerWorkspaceModule,
-  resolveWorkspaceService
+  registerWorkspaceModule
 } from "./workspace/module"
 import type { MainWindowNavigationPayload } from "../shared/main-window"
 import type { SettingsWindowNavigationPayload } from "../shared/settings-window"
@@ -77,26 +78,17 @@ export class MainCompositionRoot {
 
     registerAgentHandlers(ipcMain)
     registerAppInfoIpcHandlers(this.dependencyContainer, ipcMain)
-    registerArtifactHandlers(ipcMain)
+    registerArtifactsIpcHandlers(this.dependencyContainer, ipcMain)
     registerExternalLinksIpcHandlers(this.dependencyContainer, ipcMain)
     registerLauncherHistoryIpcHandlers(this.dependencyContainer, ipcMain)
     registerLocalStartIpcHandlers(this.dependencyContainer, ipcMain)
     registerModelProviderIpcHandlers(this.dependencyContainer, ipcMain)
-    registerThreadHandlers({
-      ipcMain,
-      modelProviderService: resolveModelProviderService(this.dependencyContainer),
-      workspaceService: resolveWorkspaceService(this.dependencyContainer)
-    })
     registerSettingsIpcHandlers(this.dependencyContainer, ipcMain)
+    registerThreadsIpcHandlers(this.dependencyContainer, ipcMain)
     registerWorkspaceIpcHandlers(this.dependencyContainer, ipcMain)
     registerNativeExtensionHandlers(ipcMain)
     registerNativeMenuBarIpcHandlers(this.dependencyContainer, ipcMain)
-    registerMainWindowHandlers({
-      acknowledgePendingNavigation: this.context.acknowledgePendingMainNavigation,
-      getPendingNavigation: this.context.getPendingMainNavigation,
-      ipcMain,
-      openMainWindow: this.context.openMainWindow
-    })
+    registerMainWindowRoutingIpcHandlers(this.dependencyContainer, ipcMain)
     registerShortcutsIpcHandlers(this.dependencyContainer, {
       applySettings: () => this.applyShortcutSettings(),
       ipcMain
@@ -154,13 +146,20 @@ export function createMainCompositionRoot(
 
   childContainer.registerInstance<MainCompositionContext>(MAIN_COMPOSITION_CONTEXT_TOKEN, context)
   registerAppInfoModule(childContainer)
+  registerArtifactsModule(childContainer)
   registerExternalLinksModule(childContainer)
   registerLauncherHistoryModule(childContainer)
   registerLocalStartModule(childContainer)
+  registerMainWindowRoutingModule(childContainer, {
+    acknowledgePendingNavigation: context.acknowledgePendingMainNavigation,
+    getPendingNavigation: context.getPendingMainNavigation,
+    openMainWindow: context.openMainWindow
+  })
   registerModelProviderModule(childContainer)
   registerNativeMenuBarModule(childContainer)
   registerSettingsModule(childContainer)
   registerShortcutsModule(childContainer)
+  registerThreadsModule(childContainer)
   registerWorkspaceModule(childContainer)
 
   return new MainCompositionRoot(

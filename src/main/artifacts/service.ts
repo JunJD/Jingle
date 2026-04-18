@@ -24,10 +24,69 @@ import {
   type ArtifactPersistenceRow
 } from "./types"
 import { normalizePresentArtifact } from "./normalizers"
-import { materializeManagedArtifactCopy, resolveManagedArtifactPath } from "./storage"
+import {
+  deleteManagedArtifactsForThread,
+  materializeManagedArtifactCopy,
+  resolveManagedArtifactPath
+} from "./storage"
 
 type ArtifactModel = Prisma.ArtifactGetPayload<Record<string, never>>
+export type ArtifactFileReadResult =
+  | {
+      content: string
+      modified_at: string
+      size: number
+      success: true
+    }
+  | {
+      error: string
+      success: false
+    }
+
 const artifactEvents = new EventEmitter()
+
+export class ArtifactsService {
+  list(threadId: string): Promise<ArtifactRecord[]> {
+    return listArtifacts(threadId)
+  }
+
+  open(artifactId: string, action?: ArtifactActionId): Promise<ArtifactActionResolution> {
+    return openArtifact(artifactId, action)
+  }
+
+  readFile(artifactId: string): Promise<ArtifactFileReadResult> {
+    return this.readArtifactFile(artifactId, "text")
+  }
+
+  readBinaryFile(artifactId: string): Promise<ArtifactFileReadResult> {
+    return this.readArtifactFile(artifactId, "binary")
+  }
+
+  onChanged(listener: (event: ArtifactChangedEvent) => void): () => void {
+    return onArtifactsChanged(listener)
+  }
+
+  deleteManagedFilesForThread(threadId: string): Promise<void> {
+    return deleteManagedArtifactsForThread(threadId)
+  }
+
+  private async readArtifactFile(
+    artifactId: string,
+    mode: "binary" | "text"
+  ): Promise<ArtifactFileReadResult> {
+    try {
+      return {
+        success: true,
+        ...(await readArtifactFile(artifactId, mode))
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
+      }
+    }
+  }
+}
 
 function mapArtifactModel(row: ArtifactModel): ArtifactPersistenceRow {
   return {

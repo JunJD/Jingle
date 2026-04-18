@@ -339,6 +339,17 @@ Exit criteria:
 
 这是 main-side 的核心产品流。
 
+当前状态：
+
+- `artifacts` 已迁移为 `controller -> service`
+- artifact list / open / readFile / readBinaryFile IPC 适配已从 `ipc/artifacts.ts` 收口到 artifacts controller
+- `artifacts:changed` renderer 广播桥已从旧 IPC 文件移到 artifacts controller
+- `main-window-routing` 已迁移为 `controller -> service`
+- `main-window:*` IPC 的 open / openThread / pending navigation / ackNavigation 已从 `ipc/main-window.ts` 收口到 main-window-routing controller
+- `threads` 已迁移为 `controller -> service`
+- `threads:*` IPC 适配已从 `ipc/threads.ts` 收口到 threads controller
+- `threads` 对默认模型、workspace、settings、artifacts 的依赖已改为注入对应 service
+
 Exit criteria:
 
 - `threads` controller 不再直接做 DB、runtime、artifact、search index 编排
