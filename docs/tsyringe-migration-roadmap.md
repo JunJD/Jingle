@@ -253,6 +253,11 @@ Exit criteria:
 - 全局模型列表使用供应商真实返回的模型
 - Renderer 通过 `models:*` IPC 读取供应商状态
 
+`settings` 当前已经有第一批 BDD，覆盖：
+
+- Renderer 通过 `settings:*` IPC 保存 agent config locale，重启后仍然保留
+- Renderer 通过 `settings:*` IPC 保存 launcher windowMode，重启后仍然保留
+
 `artifacts` 当前已经有第一批 BDD，覆盖：
 
 - 按 threadId list artifacts
@@ -320,6 +325,9 @@ Exit criteria:
 - `model-provider` 已迁移为 `controller -> service`
 - `models:*` IPC 已从 `models.ts` 分离到 model-provider controller
 - `threads:create` 通过注入的 `ModelProviderService` 读取默认模型，不再从 `models.ts` 跨域获取模型状态
+- `settings` 已迁移为 `controller -> service`
+- `app:version` 已从旧 `models.ts` 分离到 `app-info` controller
+- 旧 `src/main/ipc/models.ts` 已删除
 
 Exit criteria:
 

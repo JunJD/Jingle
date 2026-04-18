@@ -3,10 +3,10 @@ import type { BrowserWindow, IpcMain } from "electron"
 import { container, type DependencyContainer } from "tsyringe"
 import { LAUNCHER_COMMAND_IDS } from "../shared/shortcuts/ids"
 import { installApplicationMenu } from "./app-menu"
+import { registerAppInfoIpcHandlers, registerAppInfoModule } from "./app-info/module"
 import { registerAgentHandlers } from "./ipc/agent"
 import { registerArtifactHandlers } from "./ipc/artifacts"
 import { registerMainWindowHandlers } from "./ipc/main-window"
-import { registerModelHandlers } from "./ipc/models"
 import { registerNativeExtensionHandlers } from "./ipc/native-extensions"
 import { registerSettingsWindowHandlers } from "./ipc/settings-window"
 import { registerThreadHandlers } from "./ipc/threads"
@@ -39,6 +39,7 @@ import {
   registerGlobalShortcutService,
   unregisterGlobalShortcutService
 } from "./services/shortcuts/global-shortcut-service"
+import { registerSettingsIpcHandlers, registerSettingsModule } from "./settings/module"
 import { registerShortcutsIpcHandlers, registerShortcutsModule } from "./shortcuts/module"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
 import { registerLauncherHandlers } from "./windows/launcher-window"
@@ -75,6 +76,7 @@ export class MainCompositionRoot {
     const { ipcMain } = this.context
 
     registerAgentHandlers(ipcMain)
+    registerAppInfoIpcHandlers(this.dependencyContainer, ipcMain)
     registerArtifactHandlers(ipcMain)
     registerExternalLinksIpcHandlers(this.dependencyContainer, ipcMain)
     registerLauncherHistoryIpcHandlers(this.dependencyContainer, ipcMain)
@@ -85,7 +87,7 @@ export class MainCompositionRoot {
       modelProviderService: resolveModelProviderService(this.dependencyContainer),
       workspaceService: resolveWorkspaceService(this.dependencyContainer)
     })
-    registerModelHandlers(ipcMain)
+    registerSettingsIpcHandlers(this.dependencyContainer, ipcMain)
     registerWorkspaceIpcHandlers(this.dependencyContainer, ipcMain)
     registerNativeExtensionHandlers(ipcMain)
     registerNativeMenuBarIpcHandlers(this.dependencyContainer, ipcMain)
@@ -151,11 +153,13 @@ export function createMainCompositionRoot(
   const childContainer = parentContainer.createChildContainer()
 
   childContainer.registerInstance<MainCompositionContext>(MAIN_COMPOSITION_CONTEXT_TOKEN, context)
+  registerAppInfoModule(childContainer)
   registerExternalLinksModule(childContainer)
   registerLauncherHistoryModule(childContainer)
   registerLocalStartModule(childContainer)
   registerModelProviderModule(childContainer)
   registerNativeMenuBarModule(childContainer)
+  registerSettingsModule(childContainer)
   registerShortcutsModule(childContainer)
   registerWorkspaceModule(childContainer)
 
