@@ -6,7 +6,7 @@ export const DEFAULT_HITL_ALLOWED_DECISIONS = ["approve", "reject"] as const
 export type HITLDecisionType = (typeof DEFAULT_HITL_ALLOWED_DECISIONS)[number]
 
 export interface HITLToolCall extends LangChainToolCall<string, Record<string, unknown>> {
-  id?: string
+  id: string
 }
 
 export interface HITLRequest {

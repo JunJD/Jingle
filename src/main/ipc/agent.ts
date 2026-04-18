@@ -72,7 +72,7 @@ async function persistPendingHitlFromStream(
     request_id: request.id,
     thread_id: threadId,
     run_id: runId,
-    tool_call_id: request.tool_call.id || null,
+    tool_call_id: request.tool_call.id,
     tool_name: request.tool_call.name,
     tool_args: request.tool_call.args,
     review_kind: request.review?.kind ?? null,

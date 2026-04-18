@@ -136,7 +136,7 @@ Given(
           value: {
             actionRequests: [
               {
-                id: "request-1",
+                id: "tool-call-1",
                 toolCallId: "tool-call-1",
                 name: "write_file",
                 args: {

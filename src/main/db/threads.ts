@@ -35,6 +35,10 @@ export interface CreateThreadInput {
   title?: string | null
 }
 
+export interface CloneThreadInput extends CreateThreadInput {
+  threadValues?: Record<string, unknown> | null
+}
+
 function mapThreadRow(row: {
   threadId: string
   createdAt: bigint
@@ -53,6 +57,23 @@ function mapThreadRow(row: {
     thread_values: row.threadValues,
     title: row.title
   }
+}
+
+function buildClonedPendingHitlRequestId(targetThreadId: string, index: number): string {
+  return `hitl:${targetThreadId}:clone:${index}`
+}
+
+function getRequiredPendingHitlToolCallId(request: {
+  requestId: string
+  toolCallId: string | null
+}): string {
+  if (typeof request.toolCallId === "string" && request.toolCallId.length > 0) {
+    return request.toolCallId
+  }
+
+  throw new Error(
+    `[cloneThread] Pending HITL request "${request.requestId}" is missing toolCallId.`
+  )
 }
 
 export async function getAllThreads(): Promise<ThreadRow[]> {
@@ -164,6 +185,125 @@ export async function createThread(
   })
 
   return mapThreadRow(row)
+}
+
+export async function cloneThread(
+  sourceThreadId: string,
+  targetThreadId: string,
+  input?: CloneThreadInput
+): Promise<ThreadRow> {
+  const prisma = getPrismaClient()
+  const now = BigInt(Date.now())
+
+  return prisma.$transaction(async (tx) => {
+    const sourceThread = await tx.thread.findUnique({
+      where: {
+        threadId: sourceThreadId
+      }
+    })
+
+    if (!sourceThread) {
+      throw new Error("Thread not found")
+    }
+
+    const checkpoints = await tx.checkpoint.findMany({
+      orderBy: {
+        checkpointId: "asc"
+      },
+      where: {
+        threadId: sourceThreadId
+      }
+    })
+    const checkpointWrites = await tx.checkpointWrite.findMany({
+      orderBy: [{ checkpointId: "asc" }, { taskId: "asc" }, { idx: "asc" }],
+      where: {
+        threadId: sourceThreadId
+      }
+    })
+    const pendingHitlRequests = await tx.hitlRequest.findMany({
+      orderBy: [{ updatedAt: "desc" }, { requestId: "asc" }],
+      where: {
+        threadId: sourceThreadId,
+        status: "pending"
+      }
+    })
+    const nextMetadata =
+      input?.metadata === undefined ? sourceThread.metadata : JSON.stringify(input.metadata)
+    const nextTitle = input?.title ?? sourceThread.title
+    const nextThreadValues =
+      input?.threadValues === undefined
+        ? sourceThread.threadValues
+        : input.threadValues === null
+          ? null
+          : JSON.stringify(input.threadValues)
+    const row = await tx.thread.create({
+      data: {
+        createdAt: now,
+        metadata: nextMetadata,
+        status: "idle",
+        threadId: targetThreadId,
+        threadValues: nextThreadValues,
+        title: nextTitle,
+        updatedAt: now
+      }
+    })
+
+    if (checkpoints.length > 0) {
+      await tx.checkpoint.createMany({
+        data: checkpoints.map((checkpoint) => ({
+          checkpoint: checkpoint.checkpoint,
+          checkpointId: checkpoint.checkpointId,
+          checkpointNs: checkpoint.checkpointNs,
+          metadata: checkpoint.metadata,
+          parentCheckpointId: checkpoint.parentCheckpointId,
+          threadId: targetThreadId,
+          type: checkpoint.type
+        }))
+      })
+    }
+
+    if (checkpointWrites.length > 0) {
+      await tx.checkpointWrite.createMany({
+        data: checkpointWrites.map((write) => ({
+          channel: write.channel,
+          checkpointId: write.checkpointId,
+          checkpointNs: write.checkpointNs,
+          idx: write.idx,
+          taskId: write.taskId,
+          threadId: targetThreadId,
+          type: write.type,
+          value: write.value
+        }))
+      })
+    }
+
+    if (pendingHitlRequests.length > 0) {
+      await tx.hitlRequest.createMany({
+        data: pendingHitlRequests.map((request, index) => {
+          const toolCallId = getRequiredPendingHitlToolCallId(request)
+
+          return {
+            requestId: buildClonedPendingHitlRequestId(targetThreadId, index),
+            threadId: targetThreadId,
+            runId: null,
+            toolCallId,
+            toolName: request.toolName,
+            toolArgs: request.toolArgs,
+            reviewKind: request.reviewKind,
+            reviewPayload: request.reviewPayload,
+            allowedDecisions: request.allowedDecisions,
+            status: "pending",
+            decision: null,
+            createdAt: request.createdAt,
+            updatedAt: request.updatedAt,
+            resolvedAt: null
+          }
+        })
+      })
+    }
+
+    return mapThreadRow(row)
+  })
 }
 
 export async function updateThread(

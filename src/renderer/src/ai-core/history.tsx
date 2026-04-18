@@ -5,6 +5,7 @@ import { RightPanel } from "@/components/panels/RightPanel"
 import { KanbanView, KanbanHeader } from "@/components/kanban"
 import { HomeEntry } from "@/components/home/HomeEntry"
 import { ResizeHandle } from "@/components/ui/resizable"
+import { openHistoryThread, refreshHistoryThreadsAndReloadActive } from "@/lib/history-thread-ops"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { ThreadProvider, useThreadContext } from "@/lib/thread-context"
 import { useI18n } from "@/lib/i18n"
@@ -24,8 +25,7 @@ interface MainAppContentProps {
 
 function MainAppContent(props: MainAppContentProps): React.JSX.Element {
   const { onTargetThreadHandled, targetThreadId } = props
-  const { currentThreadId, loadThreads, createThread, selectThread, showKanbanView } =
-    useHistoryShellStore()
+  const { currentThreadId, createThread, showKanbanView } = useHistoryShellStore()
   const { reloadThread } = useThreadContext()
   const { copy } = useI18n()
   const [isLoading, setIsLoading] = useState(true)
@@ -72,23 +72,10 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
 
   const openThread = useCallback(
     async (threadId: string): Promise<boolean> => {
-      const thread = await window.api.threads.get(threadId)
-
-      if (!thread) {
-        return false
-      }
-
-      const threads = useHistoryShellStore.getState().threads
-      if (!threads.some((candidate) => candidate.thread_id === threadId)) {
-        await loadThreads()
-      }
-
       hydratedThreadIdRef.current = threadId
-      await selectThread(threadId)
-      await reloadThread(threadId)
-      return true
+      return openHistoryThread(threadId, reloadThread)
     },
-    [loadThreads, reloadThread, selectThread]
+    [reloadThread]
   )
 
   const handleTargetThread = useCallback(
@@ -106,12 +93,12 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
 
     async function init(): Promise<void> {
       try {
-        await loadThreads()
+        const threads = await refreshHistoryThreadsAndReloadActive(reloadThread)
         if (cancelled) {
           return
         }
 
-        const { currentThreadId: activeThreadId, threads } = useHistoryShellStore.getState()
+        const activeThreadId = useHistoryShellStore.getState().currentThreadId
         const initialTargetThreadId = initialTargetThreadIdRef.current
 
         if (initialTargetThreadId) {
@@ -126,7 +113,6 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
 
         if (activeThreadId && threads.some((thread) => thread.thread_id === activeThreadId)) {
           hydratedThreadIdRef.current = activeThreadId
-          await reloadThread(activeThreadId)
         } else if (threads.length > 0) {
           await openThread(threads[0]!.thread_id)
         } else {
@@ -150,7 +136,7 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [createThread, handleTargetThread, loadThreads, openThread, reloadThread])
+  }, [createThread, handleTargetThread, openThread, reloadThread])
 
   useEffect(() => {
     if (!normalizedTargetThreadId) {
@@ -178,21 +164,14 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
 
   useEffect(() => {
     const handleWindowFocus = (): void => {
-      void (async () => {
-        await loadThreads()
-
-        const activeThreadId = useHistoryShellStore.getState().currentThreadId
-        if (activeThreadId) {
-          await reloadThread(activeThreadId)
-        }
-      })()
+      void refreshHistoryThreadsAndReloadActive(reloadThread)
     }
 
     window.addEventListener("focus", handleWindowFocus)
     return () => {
       window.removeEventListener("focus", handleWindowFocus)
     }
-  }, [loadThreads, reloadThread])
+  }, [reloadThread])
 
   if (isLoading) {
     return (

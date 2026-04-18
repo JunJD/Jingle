@@ -26,7 +26,7 @@ const LAUNCHER_SHORTCUT_COMMANDS: readonly ShortcutCommandDefinition[] = [
   }),
   defineLauncherShortcutCommand({
     id: LAUNCHER_COMMAND_IDS.searchOpenAi,
-    title: "Ask AI",
+    title: "Open Launcher AI",
     description: "Open the launcher AI page from home search",
     category: "launcher"
   }),
@@ -55,9 +55,45 @@ const LAUNCHER_SHORTCUT_COMMANDS: readonly ShortcutCommandDefinition[] = [
     category: "ai"
   }),
   defineLauncherShortcutCommand({
+    id: LAUNCHER_COMMAND_IDS.aiAddAttachment,
+    title: "Add AI Attachment",
+    description: "Open the file picker for launcher AI attachments",
+    category: "ai"
+  }),
+  defineLauncherShortcutCommand({
     id: LAUNCHER_COMMAND_IDS.aiGoHome,
-    title: "Go Back From AI",
-    description: "Return to launcher home from an empty AI input",
+    title: "Go Home From AI",
+    description: "Return to launcher home from the AI page",
+    category: "ai"
+  }),
+  defineLauncherShortcutCommand({
+    id: LAUNCHER_COMMAND_IDS.aiGoToPreviousChat,
+    title: "Go to Previous AI Chat",
+    description: "Switch to the previous launcher AI chat",
+    category: "ai"
+  }),
+  defineLauncherShortcutCommand({
+    id: LAUNCHER_COMMAND_IDS.aiGoToNextChat,
+    title: "Go to Next AI Chat",
+    description: "Switch to the next launcher AI chat",
+    category: "ai"
+  }),
+  defineLauncherShortcutCommand({
+    id: LAUNCHER_COMMAND_IDS.aiNewQuestion,
+    title: "New AI Question",
+    description: "Start a fresh launcher AI question",
+    category: "ai"
+  }),
+  defineLauncherShortcutCommand({
+    id: LAUNCHER_COMMAND_IDS.aiChangeModel,
+    title: "Change AI Model",
+    description: "Open the launcher AI model picker",
+    category: "ai"
+  }),
+  defineLauncherShortcutCommand({
+    id: LAUNCHER_COMMAND_IDS.aiBranchChat,
+    title: "Branch AI Chat",
+    description: "Branch the current launcher AI chat into a new thread",
     category: "ai"
   }),
   defineLauncherShortcutCommand({

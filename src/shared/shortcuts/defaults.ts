@@ -49,6 +49,37 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
     allowInTextInput: true
   },
   {
+    commandId: LAUNCHER_COMMAND_IDS.searchOpenAi,
+    scope: "launcher.home",
+    chord: {
+      modifiers: ["meta"],
+      key: "]",
+      code: "BracketRight"
+    },
+    allowInTextInput: true,
+    platform: "darwin"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.searchOpenAi,
+    scope: "launcher.home",
+    chord: {
+      modifiers: ["alt"],
+      key: "ArrowRight"
+    },
+    allowInTextInput: true,
+    platform: "win32"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.searchOpenAi,
+    scope: "launcher.home",
+    chord: {
+      modifiers: ["alt"],
+      key: "ArrowRight"
+    },
+    allowInTextInput: true,
+    platform: "linux"
+  },
+  {
     commandId: LAUNCHER_COMMAND_IDS.searchMoveSelectionDown,
     scope: "launcher.home",
     chord: {
@@ -85,6 +116,74 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
     allowInTextInput: true
   },
   {
+    commandId: LAUNCHER_COMMAND_IDS.aiGoToPreviousChat,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["meta"],
+      key: "[",
+      code: "BracketLeft"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "darwin"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiGoToPreviousChat,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["alt"],
+      key: "ArrowLeft"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "win32"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiGoToPreviousChat,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["alt"],
+      key: "ArrowLeft"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "linux"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiGoToNextChat,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["meta"],
+      key: "]",
+      code: "BracketRight"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "darwin"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiGoToNextChat,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["alt"],
+      key: "ArrowRight"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "win32"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiGoToNextChat,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["alt"],
+      key: "ArrowRight"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "linux"
+  },
+  {
     commandId: LAUNCHER_COMMAND_IDS.aiSubmit,
     scope: "launcher.ai",
     chord: {
@@ -92,6 +191,150 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
       key: "Enter"
     },
     allowInTextInput: true
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiAddAttachment,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["meta", "shift"],
+      key: "A",
+      code: "KeyA"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "darwin"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiAddAttachment,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["ctrl", "shift"],
+      key: "A",
+      code: "KeyA"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "win32"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiAddAttachment,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["ctrl", "shift"],
+      key: "A",
+      code: "KeyA"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "linux"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiNewQuestion,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["meta"],
+      key: "N",
+      code: "KeyN"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "darwin"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiNewQuestion,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["ctrl"],
+      key: "N",
+      code: "KeyN"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "win32"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiNewQuestion,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["ctrl"],
+      key: "N",
+      code: "KeyN"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "linux"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiChangeModel,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["meta", "shift"],
+      key: "M",
+      code: "KeyM"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "darwin"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiChangeModel,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["ctrl", "shift"],
+      key: "M",
+      code: "KeyM"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "win32"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiChangeModel,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["ctrl", "shift"],
+      key: "M",
+      code: "KeyM"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "linux"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiBranchChat,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["meta", "shift"],
+      key: "B",
+      code: "KeyB"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "darwin"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiBranchChat,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["ctrl", "shift"],
+      key: "B",
+      code: "KeyB"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "win32"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.aiBranchChat,
+    scope: "launcher.ai",
+    chord: {
+      modifiers: ["ctrl", "shift"],
+      key: "B",
+      code: "KeyB"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "linux"
   },
   {
     commandId: LAUNCHER_COMMAND_IDS.listMoveSelectionDown,

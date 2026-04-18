@@ -1,6 +1,7 @@
 import { IpcMain } from "electron"
 import { v4 as uuid } from "uuid"
 import {
+  cloneThread as dbCloneThread,
   getAllThreads,
   getThread,
   getLatestHitlRequest,
@@ -22,6 +23,7 @@ import { toDisplayUserMessageContent } from "../../shared/message-content"
 import { getAgentConfig, getDefaultModel, resolveGlobalWorkspacePath } from "./models"
 import { listArtifacts } from "../artifacts/service"
 import { deleteManagedArtifactsForThread } from "../artifacts/storage"
+import { syncMessageSearchIndexFromSnapshot } from "../db/message-search"
 import type {
   Message,
   Thread,
@@ -168,6 +170,52 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
       thread_values: row.thread_values ? JSON.parse(row.thread_values) : undefined,
       title: row.title
     }
+  })
+
+  ipcMain.handle("threads:clone", async (_event, sourceThreadId: string) => {
+    const sourceThread = await getThread(sourceThreadId)
+    if (!sourceThread) {
+      throw new Error("Thread not found")
+    }
+
+    const threadId = uuid()
+    const nextMetadata = sourceThread.metadata
+      ? (JSON.parse(sourceThread.metadata) as Record<string, unknown>)
+      : {}
+    const clonedThread = await dbCloneThread(sourceThreadId, threadId, {
+      metadata: nextMetadata,
+      threadValues: sourceThread.thread_values
+        ? (JSON.parse(sourceThread.thread_values) as Record<string, unknown>)
+        : undefined,
+      title: sourceThread.title
+    })
+    try {
+      const checkpointer = await getCheckpointer(threadId)
+      const latest = await checkpointer.getTuple({
+        configurable: {
+          thread_id: threadId
+        }
+      })
+
+      await syncMessageSearchIndexFromSnapshot(
+        threadId,
+        extractMessagesFromCheckpoint(threadId, latest)
+      )
+    } catch (error) {
+      console.warn("[Threads] Failed to sync cloned thread message search index:", error)
+    }
+
+    return {
+      thread_id: clonedThread.thread_id,
+      created_at: new Date(clonedThread.created_at),
+      updated_at: new Date(clonedThread.updated_at),
+      metadata: clonedThread.metadata ? JSON.parse(clonedThread.metadata) : undefined,
+      status: clonedThread.status as Thread["status"],
+      thread_values: clonedThread.thread_values
+        ? JSON.parse(clonedThread.thread_values)
+        : undefined,
+      title: clonedThread.title
+    } as Thread
   })
 
   // Delete a thread

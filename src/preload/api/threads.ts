@@ -11,6 +11,9 @@ export const threadsApi = {
   create: (metadata?: Record<string, unknown>): Promise<Thread> => {
     return ipcRenderer.invoke("threads:create", metadata)
   },
+  clone: (threadId: string): Promise<Thread> => {
+    return ipcRenderer.invoke("threads:clone", threadId)
+  },
   update: (threadId: string, updates: Partial<Thread>): Promise<Thread> => {
     return ipcRenderer.invoke("threads:update", { threadId, updates })
   },

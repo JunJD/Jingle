@@ -23,7 +23,7 @@ export interface UpsertHitlRequestInput {
   request_id: string
   thread_id: string
   run_id?: string | null
-  tool_call_id?: string | null
+  tool_call_id: string
   tool_name: string
   tool_args: Record<string, unknown> | string
   review_kind?: string | null
@@ -74,7 +74,7 @@ export async function upsertHitlRequest(input: UpsertHitlRequestInput): Promise<
       requestId: input.request_id,
       threadId: input.thread_id,
       runId: input.run_id ?? null,
-      toolCallId: input.tool_call_id ?? null,
+      toolCallId: input.tool_call_id,
       toolName: input.tool_name,
       toolArgs:
         typeof input.tool_args === "string" ? input.tool_args : JSON.stringify(input.tool_args),
@@ -92,7 +92,7 @@ export async function upsertHitlRequest(input: UpsertHitlRequestInput): Promise<
     },
     update: {
       runId: input.run_id ?? undefined,
-      toolCallId: input.tool_call_id ?? undefined,
+      toolCallId: input.tool_call_id,
       toolName: input.tool_name,
       toolArgs:
         typeof input.tool_args === "string" ? input.tool_args : JSON.stringify(input.tool_args),

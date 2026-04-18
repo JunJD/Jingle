@@ -60,7 +60,9 @@ export function LauncherSearchPage(props: {
   )
   const handleOpenAiShortcut = useCallback(
     (event: KeyboardEvent): void => {
-      if (!isInputShortcutTarget(event.target)) {
+      const isTabShortcut =
+        event.key === "Tab" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+      if (isTabShortcut && !isInputShortcutTarget(event.target)) {
         return
       }
 

@@ -238,7 +238,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
         request_id: hitlRequest.id,
         thread_id: threadId,
         run_id: runId,
-        tool_call_id: hitlRequest.tool_call.id || null,
+        tool_call_id: hitlRequest.tool_call.id,
         tool_name: hitlRequest.tool_call.name,
         tool_args: hitlRequest.tool_call.args,
         review_kind: hitlRequest.review?.kind ?? null,

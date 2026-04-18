@@ -3,6 +3,7 @@ import type { LauncherShellConfig } from "@shared/launcher"
 import type { LauncherClipboardState } from "@launcher-shell/LauncherClipboardContext"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
+import type { Thread } from "@/types"
 import type {
   LauncherCommandInitialAction,
   LauncherCommandName,
@@ -26,6 +27,7 @@ export interface AiCoreThreadHandle {
 
 export interface AiCoreThreadCreateInput {
   draftInput?: string
+  modelId?: string
   source: string
   title: string
   visibility: string
@@ -44,7 +46,11 @@ export interface AiCoreHostValue {
   seedQuery: string
   surface: AiCoreSurface
   threads: {
+    activate: (threadId: string) => Promise<void>
+    clone: (threadId: string) => Promise<AiCoreThreadHandle>
     create: (input: AiCoreThreadCreateInput) => Promise<AiCoreThreadHandle>
+    getActiveThreadId: () => string | null
+    list: () => Promise<Thread[]>
     reload: (threadId: string) => Promise<void>
     submit: (input: AiCoreThreadSubmitInput) => Promise<void>
   }

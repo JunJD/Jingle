@@ -1,23 +1,11 @@
-import { Fragment, createElement, useCallback, useState, type ReactNode } from "react"
-import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
-import { useShortcutCommandHandler } from "@/shortcuts/shortcut-context"
-import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
+import { Fragment, createElement, type ReactNode } from "react"
+import { useLauncherActionController } from "@/features/launcher-actions/controller"
+import type { LauncherActionController } from "@/features/launcher-actions/model"
 import type { NativeActionDescriptor } from "./actions"
 import { NativeSurfaceHeaderLeading } from "./chrome"
 import { NativeSurfaceActionLayer, NativeSurfaceActionsFooter } from "./surface-actions"
 
-export interface NativeSurfaceActionController {
-  actionPanelShortcut: string | null
-  actions: NativeActionDescriptor[]
-  canOpenActions: boolean
-  closeActions: () => void
-  executePrimaryAction: () => void
-  openActions: () => void
-  primaryAction: NativeActionDescriptor | null
-  primaryActionFallbackTitle: string
-  primaryActionShortcut: string | null
-  showActions: boolean
-}
+export type NativeSurfaceActionController = LauncherActionController
 
 export interface NativeSurfaceController {
   actionController: NativeSurfaceActionController
@@ -26,83 +14,11 @@ export interface NativeSurfaceController {
   headerLeading: React.JSX.Element
 }
 
-function isRichTextInputTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false
-  }
-
-  return target instanceof HTMLTextAreaElement || target.isContentEditable
-}
-
 export function useNativeSurfaceActionController(params: {
   actions: NativeActionDescriptor[]
   primaryActionFallbackTitle: string
 }): NativeSurfaceActionController {
-  const { actions, primaryActionFallbackTitle } = params
-  const [showActions, setShowActions] = useState(false)
-  const primaryAction = actions[0] ?? null
-  const canOpenActions = actions.length > 1
-  const actionPanelShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.actionsOpen)
-  const primaryActionShortcut = useLauncherCommandShortcut(
-    LAUNCHER_COMMAND_IDS.actionsExecutePrimary
-  )
-
-  const executePrimaryAction = useCallback((): void => {
-    if (primaryAction) {
-      void Promise.resolve(primaryAction.onAction())
-    }
-  }, [primaryAction])
-  const openActions = useCallback((): void => {
-    if (!canOpenActions) {
-      return
-    }
-
-    setShowActions(true)
-  }, [canOpenActions])
-  const closeActions = useCallback((): void => {
-    setShowActions(false)
-  }, [])
-  const handleOpenActionsShortcut = useCallback(
-    (event: KeyboardEvent): void => {
-      if (!canOpenActions) {
-        return
-      }
-
-      event.preventDefault()
-      openActions()
-    },
-    [canOpenActions, openActions]
-  )
-  const handleExecutePrimaryShortcut = useCallback(
-    (event: KeyboardEvent): void => {
-      if (isRichTextInputTarget(event.target) || !primaryAction) {
-        return
-      }
-
-      event.preventDefault()
-      executePrimaryAction()
-    },
-    [executePrimaryAction, primaryAction]
-  )
-
-  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.actionsOpen, handleOpenActionsShortcut)
-  useShortcutCommandHandler(
-    LAUNCHER_COMMAND_IDS.actionsExecutePrimary,
-    handleExecutePrimaryShortcut
-  )
-
-  return {
-    actionPanelShortcut,
-    actions,
-    canOpenActions,
-    closeActions,
-    executePrimaryAction,
-    openActions,
-    primaryAction,
-    primaryActionFallbackTitle,
-    primaryActionShortcut,
-    showActions
-  }
+  return useLauncherActionController(params)
 }
 
 function createFooterLeading(params: {

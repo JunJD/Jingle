@@ -4,6 +4,7 @@ import { NativeExtensionHostProvider } from "@extension-host/NativeExtensionHost
 import { LauncherCommandErrorPage } from "@launcher-components/LauncherCommandErrorPage"
 import type { LauncherShellConfig } from "@shared/launcher"
 import { AI_CHAT_COMMAND_NAME } from "@shared/launcher-ai"
+import type { Thread } from "@/types"
 import { deriveLauncherCommandOwnerClipboardContext } from "../../../shared/clipboard-derivations"
 import type { LauncherClipboardState } from "./LauncherClipboardContext"
 import type { LauncherInputElement } from "./input-element"
@@ -18,6 +19,7 @@ import { isLauncherExtensionCommandRoute } from "./pages/types"
 
 interface LauncherThreadCreateInput {
   draftInput?: string
+  modelId?: string
   source: string
   title: string
   visibility: string
@@ -29,6 +31,12 @@ interface LauncherThreadSubmitInput {
 }
 
 interface LauncherCommandSurfaceProps {
+  activatePluginThread: (threadId: string) => Promise<void>
+  branchPluginThread: (threadId: string) => Promise<{
+    modelId: string
+    threadId: string
+    workspacePath: string
+  }>
   clipboard: LauncherClipboardState
   closeActivePlugin: () => void
   commandState: ActiveLauncherCommandState
@@ -37,7 +45,9 @@ interface LauncherCommandSurfaceProps {
     threadId: string
     workspacePath: string
   }>
+  getCurrentPluginThreadId: () => string | null
   hideLauncher: () => Promise<void>
+  listPluginThreads: () => Promise<Thread[]>
   openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
   pluginInputRef: React.RefObject<LauncherInputElement | null>
   pluginInputStatus: LauncherInputStatus
@@ -54,11 +64,15 @@ interface LauncherCommandSurfaceProps {
  */
 export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): React.JSX.Element {
   const {
+    activatePluginThread,
+    branchPluginThread,
     clipboard,
     closeActivePlugin,
     commandState,
     createPluginThread,
+    getCurrentPluginThreadId,
     hideLauncher,
+    listPluginThreads,
     openCommand,
     pluginInputRef,
     pluginInputStatus,
@@ -207,7 +221,11 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
             viewportHeight
           },
           threads: {
+            activate: activatePluginThread,
+            clone: branchPluginThread,
             create: createPluginThread,
+            getActiveThreadId: getCurrentPluginThreadId,
+            list: listPluginThreads,
             reload: reloadThread,
             submit: submitPluginThread
           }

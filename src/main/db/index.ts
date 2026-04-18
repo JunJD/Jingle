@@ -1,5 +1,6 @@
 export { closeDatabase, initializeDatabase } from "./lifecycle"
 export {
+  cloneThread,
   createThread,
   deleteThread,
   getAllThreads,

@@ -29,7 +29,7 @@ test("extractHitlRequestFromValuesState keeps review payload separate from tool 
         value: {
           actionRequests: [
             {
-              id: "request-1",
+              id: "tool-call-1",
               toolCallId: "tool-call-1",
               name: "write_file",
               args: {
@@ -145,4 +145,50 @@ test("mapHitlRowToRequest restores review payload from dedicated columns", () =>
       predictionStatus: "predicted"
     }
   })
+})
+
+test("extractHitlRequestFromValuesState rejects interrupts without toolCallId", () => {
+  assert.throws(
+    () =>
+      extractHitlRequestFromValuesState("thread-1", "run-1", {
+        __interrupt__: [
+          {
+            value: {
+              actionRequests: [
+                {
+                  id: "tool-call-1",
+                  name: "write_file",
+                  args: {
+                    content: "hello",
+                    path: "/tmp/demo.txt"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }),
+    /Missing toolCallId/i
+  )
+})
+
+test("mapHitlRowToRequest rejects rows without tool_call_id", () => {
+  const row: HitlRequestRow = {
+    request_id: "request-1",
+    thread_id: "thread-1",
+    run_id: "run-1",
+    tool_call_id: null,
+    tool_name: "execute",
+    tool_args: JSON.stringify({ command: "echo hello > file.txt" }),
+    review_kind: null,
+    review_payload: null,
+    allowed_decisions: JSON.stringify(["approve", "reject"]),
+    status: "pending",
+    decision: null,
+    created_at: Date.now(),
+    updated_at: Date.now(),
+    resolved_at: null
+  }
+
+  assert.throws(() => mapHitlRowToRequest(row), /missing tool_call_id/i)
 })

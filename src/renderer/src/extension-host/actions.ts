@@ -1,15 +1,9 @@
 import { Children, isValidElement, type ReactNode } from "react"
+import type { LauncherActionDescriptor, LauncherActionStyle } from "@/features/launcher-actions/model"
 
-export type NativeActionStyle = "regular" | "destructive"
+export type NativeActionStyle = LauncherActionStyle
 
-export interface NativeActionDescriptor {
-  icon?: ReactNode
-  id: string
-  onAction: () => void | Promise<void>
-  sectionTitle?: string
-  style?: NativeActionStyle
-  title: string
-}
+export type NativeActionDescriptor = LauncherActionDescriptor
 
 type ActionMarkerRole =
   | "action-panel"

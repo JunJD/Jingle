@@ -74,7 +74,11 @@ export interface AppCopy {
     warning: string
   }
   launcher: {
+    actionsLabel: string
     aiAddAttachment: string
+    branchChat: string
+    branchChatSwitched: string
+    changeModel: string
     aiEmptyEyebrow: string
     aiEntryLabel: string
     aiIntentSubtitle: (query: string) => string
@@ -89,7 +93,11 @@ export interface AppCopy {
     clipboardFiles: (count: number) => string
     clipboardImage: string
     enter: string
+    goHome: string
+    goToNextChat: string
+    goToPreviousChat: string
     jumpToLatest: string
+    newQuestion: string
     openApp: string
     openGeneric: string
     openResult: string
@@ -250,7 +258,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       warning: "警告"
     },
     launcher: {
+      actionsLabel: "操作",
       aiAddAttachment: "添加附件",
+      branchChat: "分叉对话",
+      branchChatSwitched: "已切换到分叉对话",
+      changeModel: "切换模型...",
       aiEmptyEyebrow: "桌面 Agent",
       aiEntryLabel: "问 AI",
       aiIntentSubtitle: (query) => `带着“${query}”进入 AI`,
@@ -265,7 +277,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       clipboardFiles: (count) => `${count} 个文件`,
       clipboardImage: "剪贴板图片",
       enter: "回车",
+      goHome: "回到主页",
+      goToNextChat: "前往下一个对话",
+      goToPreviousChat: "前往上一个对话",
       jumpToLatest: "跳到最新",
+      newQuestion: "新问题",
       openApp: "打开应用",
       openGeneric: "打开",
       openResult: "打开结果",
@@ -438,7 +454,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       warning: "Warning"
     },
     launcher: {
+      actionsLabel: "Actions",
       aiAddAttachment: "Add attachment",
+      branchChat: "Branch Chat",
+      branchChatSwitched: "Switched to branched chat",
+      changeModel: "Change Model...",
       aiEmptyEyebrow: "Launcher AI",
       aiEntryLabel: "Ask AI",
       aiIntentSubtitle: (query) => `Open AI with “${query}”`,
@@ -454,7 +474,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       clipboardFiles: (count) => `${count} file${count === 1 ? "" : "s"}`,
       clipboardImage: "Clipboard image",
       enter: "Enter",
+      goHome: "Go Home",
+      goToNextChat: "Go to Next Chat",
+      goToPreviousChat: "Go to Previous Chat",
       jumpToLatest: "Jump to latest",
+      newQuestion: "New Question",
       openApp: "Open App",
       openGeneric: "Open",
       openResult: "Open Result",

@@ -2,7 +2,7 @@ import type { UseStreamTransport } from "@langchain/langgraph-sdk/react"
 import type { ToolCall, ToolCallChunk } from "@langchain/core/messages"
 import type { ActionRequest, ReviewConfig } from "langchain"
 import type { StreamPayload, StreamEvent, IPCEvent, IPCStreamEvent } from "../../../types"
-import { getDefaultHitlAllowedDecisions, normalizeHitlAllowedDecisions } from "../../../shared/hitl"
+import { normalizeHitlAllowedDecisions } from "../../../shared/hitl"
 import { parseToolApprovalItem } from "../../../shared/tool-approval"
 import type { ContentBlock } from "@/types"
 import type { Subagent } from "../types"
@@ -85,8 +85,8 @@ interface MessageMetadata {
 }
 
 interface InterruptActionRequest extends ActionRequest {
-  id?: string
-  toolCallId?: string
+  id: string
+  toolCallId: string
   description?: string
   review?: unknown
 }
@@ -108,71 +108,20 @@ interface ValuesInterruptState {
   }>
 }
 
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value)
+function getRequiredInterruptToolCallId(action: InterruptActionRequest | undefined): string {
+  if (typeof action?.toolCallId === "string" && action.toolCallId.length > 0) {
+    return action.toolCallId
   }
 
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(",")}]`
-  }
-
-  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
-    a.localeCompare(b)
-  )
-
-  return `{${entries
-    .map(([key, nested]) => `${JSON.stringify(key)}:${stableStringify(nested)}`)
-    .join(",")}}`
+  throw new Error("[ElectronTransport] Missing toolCallId for HITL interrupt action.")
 }
 
-function getLatestToolCallsFromSerializedMessages(
-  messages: SerializedMessageChunk[] | undefined
-): ToolCall[] {
-  if (!Array.isArray(messages)) {
-    return []
+function getRequiredInterruptRequestId(action: InterruptActionRequest | undefined): string {
+  if (typeof action?.id === "string" && action.id.length > 0) {
+    return action.id
   }
 
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const toolCalls = messages[index]?.kwargs?.tool_calls
-    if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-      return toolCalls
-    }
-  }
-
-  return []
-}
-
-function findInterruptedToolCallFromState(
-  state: ValuesInterruptState,
-  actionIndex: number
-): ToolCall | undefined {
-  // Legacy fallback for interrupts emitted before the custom middleware
-  // started carrying toolCallId in the payload.
-  const interruptValue = state.__interrupt__?.[0]?.value
-  const action = interruptValue?.actionRequests?.[actionIndex]
-  if (!action) {
-    return undefined
-  }
-
-  const latestToolCalls = getLatestToolCallsFromSerializedMessages(state.messages)
-  const interruptNames = new Set([
-    ...(interruptValue?.actionRequests ?? []).map((request) => request.name),
-    ...(interruptValue?.reviewConfigs ?? []).map((config) => config.actionName)
-  ])
-  const interruptToolCalls = latestToolCalls.filter((toolCall) => interruptNames.has(toolCall.name))
-  const positionalMatch = interruptToolCalls[actionIndex]
-  const expectedArgs = stableStringify(action.args || {})
-
-  if (
-    positionalMatch &&
-    positionalMatch.name === action.name &&
-    stableStringify(positionalMatch.args ?? {}) === expectedArgs
-  ) {
-    return positionalMatch
-  }
-
-  return undefined
+  throw new Error("[ElectronTransport] Missing id for HITL interrupt action.")
 }
 
 /**
@@ -291,7 +240,20 @@ export class ElectronIPCTransport implements UseStreamTransport {
       command,
       (ipcEvent) => {
         // Convert IPC events to SDK format
-        const sdkEvents = this.convertToSDKEvents(ipcEvent as IPCEvent, threadId)
+        let sdkEvents: StreamEvent[]
+        try {
+          sdkEvents = this.convertToSDKEvents(ipcEvent as IPCEvent, threadId)
+        } catch (error) {
+          sdkEvents = [
+            {
+              event: "error",
+              data: {
+                error: "STREAM_ERROR",
+                message: error instanceof Error ? error.message : String(error)
+              }
+            }
+          ]
+        }
 
         for (const sdkEvent of sdkEvents) {
           if (sdkEvent.event === "done" || sdkEvent.event === "error") {
@@ -422,9 +384,8 @@ export class ElectronIPCTransport implements UseStreamTransport {
           })
         }
 
-        // Emit interrupt - handle both legacy format and new langchain HITL format
+        // Emit interrupt from LangChain HITL action requests.
         if (interrupt) {
-          // Check if this is the new array format from langchain HITL
           if (Array.isArray(interrupt) && interrupt.length > 0) {
             const interruptValue = interrupt[0]?.value
             const actionRequests = interruptValue?.actionRequests
@@ -435,15 +396,17 @@ export class ElectronIPCTransport implements UseStreamTransport {
               const reviewConfig = reviewConfigs?.find(
                 (rc: { actionName: string }) => rc.actionName === firstAction.name
               )
+              const toolCallId = getRequiredInterruptToolCallId(firstAction)
+              const requestId = getRequiredInterruptRequestId(firstAction)
 
               events.push({
                 event: "custom",
                 data: {
                   type: "interrupt",
                   request: {
-                    id: firstAction.id || firstAction.toolCallId || crypto.randomUUID(),
+                    id: requestId,
                     tool_call: {
-                      ...(firstAction.toolCallId ? { id: firstAction.toolCallId } : {}),
+                      id: toolCallId,
                       name: firstAction.name,
                       args: firstAction.args || {}
                     },
@@ -453,20 +416,6 @@ export class ElectronIPCTransport implements UseStreamTransport {
                 }
               })
             }
-          } else if (interrupt.tool_call) {
-            // Legacy format with direct tool_call property
-            events.push({
-              event: "custom",
-              data: {
-                type: "interrupt",
-                request: {
-                  id: interrupt.id || crypto.randomUUID(),
-                  tool_call: interrupt.tool_call,
-                  review: null,
-                  allowed_decisions: getDefaultHitlAllowedDecisions()
-                }
-              }
-            })
           }
         }
         break
@@ -733,13 +682,10 @@ export class ElectronIPCTransport implements UseStreamTransport {
         // For each action request (tool call) that needs approval
         if (actionRequests?.length) {
           // Get the first action request for now (can be extended for batch approvals)
-          const actionIndex = 0
           const firstAction = actionRequests[0]
           const reviewConfig = reviewConfigs?.find((rc) => rc.actionName === firstAction.name)
-          const matchedToolCall = findInterruptedToolCallFromState(state, actionIndex)
-          const toolCallId = firstAction.toolCallId || matchedToolCall?.id
-          const requestId =
-            firstAction.id || firstAction.toolCallId || `hitl:${actionIndex}:${firstAction.name}`
+          const toolCallId = getRequiredInterruptToolCallId(firstAction)
+          const requestId = getRequiredInterruptRequestId(firstAction)
 
           events.push({
             event: "custom",
@@ -748,7 +694,7 @@ export class ElectronIPCTransport implements UseStreamTransport {
               request: {
                 id: requestId,
                 tool_call: {
-                  ...(toolCallId ? { id: toolCallId } : {}),
+                  id: toolCallId,
                   name: firstAction.name,
                   args: firstAction.args || {}
                 },

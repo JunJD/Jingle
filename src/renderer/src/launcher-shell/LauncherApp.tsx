@@ -6,6 +6,11 @@ import { LauncherPageTransition } from "@launcher-components/LauncherPageTransit
 import { LauncherSearchPage } from "@launcher-components/LauncherSearchPage"
 import { NativeExtensionPassiveCommandHosts } from "@extension-host/PassiveCommandHosts"
 import { invokeThreadMessage } from "@/lib/ai-invocation"
+import {
+  activateHistoryThread,
+  getCurrentHistoryThreadId,
+  loadHistoryThreads
+} from "@/lib/history-thread-ops"
 import { useI18n } from "@/lib/i18n"
 import { useShortcutCommandHandler } from "@/shortcuts/shortcut-context"
 import { useThreadContext } from "@/lib/thread-context"
@@ -24,6 +29,7 @@ type PluginInputFocusBehavior = "preserve" | "move-to-end"
 
 interface LauncherThreadCreateInput {
   draftInput?: string
+  modelId?: string
   source: string
   title: string
   visibility: string
@@ -129,8 +135,8 @@ export default function LauncherApp(): React.JSX.Element {
   })
   const createPluginThread = useCallback(
     async (input: LauncherThreadCreateInput) => {
-      const [defaultModelId, workspacePathResult] = await Promise.all([
-        window.api.models.getDefault("llm"),
+      const [resolvedModelId, workspacePathResult] = await Promise.all([
+        input.modelId ? Promise.resolve(input.modelId) : window.api.models.getDefault("llm"),
         window.api.workspace.get()
       ])
 
@@ -140,7 +146,7 @@ export default function LauncherApp(): React.JSX.Element {
       const workspacePath = workspacePathResult
 
       const thread = await window.api.threads.create({
-        model: defaultModelId,
+        model: resolvedModelId,
         source: input.source,
         title: input.title,
         visibility: input.visibility,
@@ -149,18 +155,55 @@ export default function LauncherApp(): React.JSX.Element {
 
       threadContext.ensureThreadRuntime(thread.thread_id)
       const actions = threadContext.getThreadActions(thread.thread_id)
-      actions.setCurrentModel(defaultModelId)
+      actions.setCurrentModel(resolvedModelId)
       actions.setWorkspacePath(workspacePath)
       actions.setDraftInput(input.draftInput ?? "")
 
       return {
-        modelId: defaultModelId,
+        modelId: resolvedModelId,
         threadId: thread.thread_id,
         workspacePath
       }
     },
     [inputNeedsWorkspaceMessage, threadContext]
   )
+  const activatePluginThread = useCallback(
+    async (threadId: string): Promise<void> => {
+      await activateHistoryThread(threadId, (nextThreadId) => threadContext.reloadThread(nextThreadId))
+    },
+    [threadContext]
+  )
+  const branchPluginThread = useCallback(
+    async (threadId: string) => {
+      const branchedThread = await window.api.threads.clone(threadId)
+      const metadata = branchedThread.metadata ?? {}
+      const modelId =
+        typeof metadata.model === "string" ? metadata.model : await window.api.models.getDefault("llm")
+      const workspacePath = typeof metadata.workspacePath === "string" ? metadata.workspacePath : null
+
+      if (!workspacePath) {
+        throw new Error(inputNeedsWorkspaceMessage)
+      }
+
+      threadContext.ensureThreadRuntime(branchedThread.thread_id)
+      await activateHistoryThread(branchedThread.thread_id, (nextThreadId) =>
+        threadContext.reloadThread(nextThreadId)
+      )
+
+      return {
+        modelId,
+        threadId: branchedThread.thread_id,
+        workspacePath
+      }
+    },
+    [inputNeedsWorkspaceMessage, threadContext]
+  )
+  const listPluginThreads = useCallback(async () => {
+    return loadHistoryThreads()
+  }, [])
+  const getCurrentPluginThreadId = useCallback(() => {
+    return getCurrentHistoryThreadId()
+  }, [])
   const submitPluginThread = useCallback(
     async (input: LauncherThreadSubmitInput): Promise<void> => {
       await invokeThreadMessage({
@@ -187,11 +230,15 @@ export default function LauncherApp(): React.JSX.Element {
           <LauncherPageTransition direction={navigationDirection} pageKey={routeKey}>
             {isLauncherCommandRoute(route) ? (
               <LauncherCommandSurface
+                activatePluginThread={activatePluginThread}
+                branchPluginThread={branchPluginThread}
                 clipboard={clipboard}
                 closeActivePlugin={closeActivePlugin}
                 commandState={commandState}
                 createPluginThread={createPluginThread}
+                getCurrentPluginThreadId={getCurrentPluginThreadId}
                 hideLauncher={hideLauncher}
+                listPluginThreads={listPluginThreads}
                 openCommand={openCommand}
                 pluginInputRef={pluginInputRef}
                 pluginInputStatus={pluginInputStatus}
