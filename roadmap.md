@@ -63,7 +63,6 @@ Neither surface owns global presence truth.
 Deliverables:
 
 - `roadmap.md`
-- `cleanups.md`
 - `issue.md`
 
 Exit criteria:
@@ -212,7 +211,7 @@ Deliverables:
 
 Exit criteria:
 
-- `cleanups.md` active list is empty
+- no temporary cleanup debt remains
 
 ### Phase 8 — Validate And Package
 
