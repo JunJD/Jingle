@@ -110,9 +110,27 @@ export class OpenworkWorld extends World {
   private page: Page | null = null
   private openworkHome: string | null = null
   private scenarioValues = new Map<string, string>()
+  private agentRuntimeMode: "default" | "scripted" = "default"
 
   constructor(options: IWorldOptions) {
     super(options)
+  }
+
+  prepareOpenworkHome(): string {
+    if (!this.openworkHome) {
+      this.openworkHome = mkdtempSync(join(tmpdir(), "openwork-bdd-"))
+      process.env.OPENWORK_HOME = this.openworkHome
+    }
+
+    return this.openworkHome
+  }
+
+  useScriptedAgentRuntime(): void {
+    if (this.electronApp) {
+      throw new Error("Scripted agent runtime must be selected before launching Openwork.")
+    }
+
+    this.agentRuntimeMode = "scripted"
   }
 
   async launchApp(): Promise<void> {
@@ -120,9 +138,8 @@ export class OpenworkWorld extends World {
       return
     }
 
-    this.openworkHome = mkdtempSync(join(tmpdir(), "openwork-bdd-"))
-    process.env.OPENWORK_HOME = this.openworkHome
-    await prepareDatabase(this.openworkHome)
+    const openworkHome = this.prepareOpenworkHome()
+    await prepareDatabase(openworkHome)
 
     this.electronApp = await launchElectronApp({
       args: ["."],
@@ -131,7 +148,8 @@ export class OpenworkWorld extends World {
         ...process.env,
         CI: "1",
         OPENWORK_BDD: "1",
-        OPENWORK_HOME: this.openworkHome,
+        OPENWORK_BDD_AGENT_RUNTIME: this.agentRuntimeMode === "scripted" ? "scripted" : "",
+        OPENWORK_HOME: openworkHome,
         OPENWORK_REMOTE_DEBUGGING_PORT: ""
       }
     })
@@ -250,6 +268,27 @@ export class OpenworkWorld extends World {
     }
 
     delete process.env.OPENWORK_HOME
+  }
+
+  async restartApp(): Promise<void> {
+    if (!this.openworkHome) {
+      throw new Error("BDD OPENWORK_HOME is not available before restart.")
+    }
+
+    if (this.electronApp) {
+      await this.electronApp.close()
+      this.electronApp = null
+    }
+
+    try {
+      const { closeDatabase } = await import("../../../src/main/db")
+      await closeDatabase()
+    } catch {
+      // Test process may not have opened its own Prisma client.
+    }
+
+    this.page = null
+    await this.launchApp()
   }
 
   getScenarioValue(key: string): string {

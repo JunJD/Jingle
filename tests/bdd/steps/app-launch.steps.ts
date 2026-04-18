@@ -7,6 +7,10 @@ Given("Openwork 桌面应用已启动", async function (this: OpenworkWorld) {
   await this.launchApp()
 })
 
+When("我重新启动 Openwork 桌面应用", async function (this: OpenworkWorld) {
+  await this.restartApp()
+})
+
 Given("存在标题为 {string} 的历史线程", async function (this: OpenworkWorld, title: string) {
   const { threadId } = await seedHistoryThreadFixture({ title })
 
@@ -171,6 +175,22 @@ When("我从 Launcher 打开设置窗口", async function (this: OpenworkWorld) 
     .first()
 
   await settingsButton.click()
+})
+
+When("我通过 API 打开 Settings 窗口", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+
+  await page.evaluate(async () => {
+    await (
+      window as typeof window & {
+        api: {
+          settings: {
+            openWindow: () => Promise<void>
+          }
+        }
+      }
+    ).api.settings.openWindow()
+  })
 })
 
 Then("Launcher 界面切换到 {string}", async function (this: OpenworkWorld, surface: string) {

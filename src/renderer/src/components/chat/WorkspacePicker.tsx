@@ -41,6 +41,9 @@ export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.E
         <Button
           variant="ghost"
           size="sm"
+          data-workspace-picker-trigger=""
+          data-workspace-picker-path={workspacePath ?? ""}
+          data-workspace-picker-thread-id={threadId}
           className={cn(
             "h-8 gap-1.5 rounded-full bg-background-secondary px-3 text-xs hover:bg-background-interactive",
             workspacePath ? "text-foreground" : "text-status-warning"
@@ -48,7 +51,7 @@ export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.E
           disabled={!threadId}
         >
           <Folder className="size-3.5" />
-          <span className="max-w-[120px] truncate">
+          <span className="max-w-[120px] truncate" data-workspace-picker-label="">
             {workspacePath ? folderName : copy.workspacePicker.selectWorkspace}
           </span>
           <ChevronDown className="size-3 opacity-50" />

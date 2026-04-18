@@ -30,6 +30,7 @@ import { BASE_SYSTEM_PROMPT } from "./system-prompt"
 import { ChatAnthropic } from "@langchain/anthropic"
 import { createArtifactToolsMiddleware } from "./artifact-tools-middleware"
 import { createWebToolsMiddleware } from "./web-tools-middleware"
+import { createBddAgentRuntime } from "./bdd-runtime"
 
 /**
  * Generate the full system prompt for the agent.
@@ -118,6 +119,10 @@ export async function createAgentRuntime(
   console.log("[Runtime] Creating agent runtime...")
   console.log("[Runtime] Thread ID:", threadId)
   console.log("[Runtime] Workspace path:", workspacePath)
+
+  if (process.env.OPENWORK_BDD_AGENT_RUNTIME === "scripted") {
+    return createBddAgentRuntime({ threadId, workspacePath }) as unknown as AgentRuntime
+  }
 
   const model = getChatModelInstance({ modelId })
   console.log("[Runtime] Model instance created:", typeof model)
