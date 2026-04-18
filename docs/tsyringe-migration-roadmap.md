@@ -242,6 +242,17 @@ Exit criteria:
 - itemSelected 事件可回到 Launcher renderer
 - clearState 后状态会被清理
 
+`external-links` 当前已经有第一批 BDD，覆盖：
+
+- 公共 `https://` 链接会被转发给 Electron shell
+- `localhost` 链接会被拒绝且不会触发 Electron shell
+
+`model-provider` 当前已经有第一批 BDD，覆盖：
+
+- 远程模型列表失败后错误状态不会被刷新冲掉
+- 全局模型列表使用供应商真实返回的模型
+- Renderer 通过 `models:*` IPC 读取供应商状态
+
 `artifacts` 当前已经有第一批 BDD，覆盖：
 
 - 按 threadId list artifacts
@@ -284,6 +295,7 @@ Exit criteria:
 
 当前状态：
 
+- `external-links` 已迁移为 `controller -> service`
 - `native-menu-bar` 已迁移为 `controller -> service`
 - `launcher-history` 已迁移为 `controller -> service -> repository`
 - `local-start` 已迁移为 `controller -> service -> repository`
@@ -298,6 +310,16 @@ Exit criteria:
 ### Phase 4 - Migrate Settings / Models / Workspace / Shortcuts
 
 这个阶段开始收口配置类和偏好类状态。
+
+当前状态：
+
+- `shortcuts` 已迁移为 `controller -> service`
+- shortcuts 的 bootstrap 同步读取、设置持久化、全局快捷键重绑和 `settingsChanged` 广播已经从 IPC 文件收口到 service
+- `workspace` 已从 `models.ts` 中分离，迁移为 `controller -> service -> repository`
+- `threads:create` 通过注入的 `WorkspaceService` 读取全局 workspace，不再从 `models.ts` 跨域获取 workspace 状态
+- `model-provider` 已迁移为 `controller -> service`
+- `models:*` IPC 已从 `models.ts` 分离到 model-provider controller
+- `threads:create` 通过注入的 `ModelProviderService` 读取默认模型，不再从 `models.ts` 跨域获取模型状态
 
 Exit criteria:
 

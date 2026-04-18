@@ -20,10 +20,12 @@ import { closeCheckpointer } from "../agent/runtime"
 import { generateTitle } from "../services/title-generator"
 import { formatDefaultThreadTitle } from "../../shared/i18n"
 import { toDisplayUserMessageContent } from "../../shared/message-content"
-import { getAgentConfig, getDefaultModel, resolveGlobalWorkspacePath } from "./models"
+import { getAgentConfig } from "../preferences"
 import { listArtifacts } from "../artifacts/service"
 import { deleteManagedArtifactsForThread } from "../artifacts/storage"
 import { syncMessageSearchIndexFromSnapshot } from "../db/message-search"
+import type { ModelProviderService } from "../model-provider/service"
+import type { WorkspaceService } from "../workspace/service"
 import type {
   Message,
   Thread,
@@ -86,7 +88,13 @@ function mapCheckpointMessagesToThreadMessages(
   })
 }
 
-export function registerThreadHandlers(ipcMain: IpcMain): void {
+export function registerThreadHandlers(params: {
+  ipcMain: IpcMain
+  modelProviderService: ModelProviderService
+  workspaceService: WorkspaceService
+}): void {
+  const { ipcMain, modelProviderService, workspaceService } = params
+
   // List all threads
   ipcMain.handle("threads:list", async () => {
     const threads = await getAllThreads()
@@ -120,8 +128,8 @@ export function registerThreadHandlers(ipcMain: IpcMain): void {
   ipcMain.handle("threads:create", async (_event, metadata?: Record<string, unknown>) => {
     const threadId = uuid()
     const nextMetadata: Record<string, unknown> = {
-      model: getDefaultModel(),
-      workspacePath: await resolveGlobalWorkspacePath(),
+      model: modelProviderService.getDefaultModel("llm"),
+      workspacePath: await workspaceService.resolveGlobalWorkspacePath(),
       ...metadata
     }
     const requestedTitle = nextMetadata.title

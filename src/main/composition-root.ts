@@ -5,13 +5,15 @@ import { LAUNCHER_COMMAND_IDS } from "../shared/shortcuts/ids"
 import { installApplicationMenu } from "./app-menu"
 import { registerAgentHandlers } from "./ipc/agent"
 import { registerArtifactHandlers } from "./ipc/artifacts"
-import { registerExternalLinkHandlers } from "./ipc/external-links"
 import { registerMainWindowHandlers } from "./ipc/main-window"
 import { registerModelHandlers } from "./ipc/models"
 import { registerNativeExtensionHandlers } from "./ipc/native-extensions"
 import { registerSettingsWindowHandlers } from "./ipc/settings-window"
-import { registerShortcutHandlers } from "./ipc/shortcuts"
 import { registerThreadHandlers } from "./ipc/threads"
+import {
+  registerExternalLinksIpcHandlers,
+  registerExternalLinksModule
+} from "./external-links/module"
 import {
   registerLauncherHistoryIpcHandlers,
   registerLauncherHistoryModule,
@@ -28,12 +30,23 @@ import {
   resolveNativeMenuBarService
 } from "./native-menu-bar/module"
 import {
+  registerModelProviderIpcHandlers,
+  registerModelProviderModule,
+  resolveModelProviderService
+} from "./model-provider/module"
+import {
   getGlobalShortcutAccelerator,
   registerGlobalShortcutService,
   unregisterGlobalShortcutService
 } from "./services/shortcuts/global-shortcut-service"
+import { registerShortcutsIpcHandlers, registerShortcutsModule } from "./shortcuts/module"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
 import { registerLauncherHandlers } from "./windows/launcher-window"
+import {
+  registerWorkspaceIpcHandlers,
+  registerWorkspaceModule,
+  resolveWorkspaceService
+} from "./workspace/module"
 import type { MainWindowNavigationPayload } from "../shared/main-window"
 import type { SettingsWindowNavigationPayload } from "../shared/settings-window"
 
@@ -63,11 +76,17 @@ export class MainCompositionRoot {
 
     registerAgentHandlers(ipcMain)
     registerArtifactHandlers(ipcMain)
-    registerExternalLinkHandlers(ipcMain)
+    registerExternalLinksIpcHandlers(this.dependencyContainer, ipcMain)
     registerLauncherHistoryIpcHandlers(this.dependencyContainer, ipcMain)
     registerLocalStartIpcHandlers(this.dependencyContainer, ipcMain)
-    registerThreadHandlers(ipcMain)
+    registerModelProviderIpcHandlers(this.dependencyContainer, ipcMain)
+    registerThreadHandlers({
+      ipcMain,
+      modelProviderService: resolveModelProviderService(this.dependencyContainer),
+      workspaceService: resolveWorkspaceService(this.dependencyContainer)
+    })
     registerModelHandlers(ipcMain)
+    registerWorkspaceIpcHandlers(this.dependencyContainer, ipcMain)
     registerNativeExtensionHandlers(ipcMain)
     registerNativeMenuBarIpcHandlers(this.dependencyContainer, ipcMain)
     registerMainWindowHandlers({
@@ -76,7 +95,7 @@ export class MainCompositionRoot {
       ipcMain,
       openMainWindow: this.context.openMainWindow
     })
-    registerShortcutHandlers({
+    registerShortcutsIpcHandlers(this.dependencyContainer, {
       applySettings: () => this.applyShortcutSettings(),
       ipcMain
     })
@@ -132,9 +151,13 @@ export function createMainCompositionRoot(
   const childContainer = parentContainer.createChildContainer()
 
   childContainer.registerInstance<MainCompositionContext>(MAIN_COMPOSITION_CONTEXT_TOKEN, context)
+  registerExternalLinksModule(childContainer)
   registerLauncherHistoryModule(childContainer)
   registerLocalStartModule(childContainer)
+  registerModelProviderModule(childContainer)
   registerNativeMenuBarModule(childContainer)
+  registerShortcutsModule(childContainer)
+  registerWorkspaceModule(childContainer)
 
   return new MainCompositionRoot(
     childContainer.resolve<MainCompositionContext>(MAIN_COMPOSITION_CONTEXT_TOKEN),

@@ -17,6 +17,7 @@
     "serde",
     "shiki",
     "Tavily",
+    "tsyringe",
     "unins"
   ],
   "editor.formatOnSave": true,
@@ -41,5 +42,6 @@
   },
   "[jsonc]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
-  }
+  },
+  "git.ignoreLimitWarning": true
 }

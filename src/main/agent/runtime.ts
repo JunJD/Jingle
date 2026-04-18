@@ -8,7 +8,7 @@ import {
   createSummarizationMiddleware
 } from "deepagents"
 import { join } from "path"
-import { getAgentConfig } from "../ipc/models"
+import { getAgentConfig } from "../preferences"
 import { getOpenworkDir } from "../storage"
 import { PrismaCheckpointSaver } from "../checkpointer/prisma-saver"
 import { LocalSandbox } from "./local-sandbox"

@@ -4,7 +4,12 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { ModelConfig, Provider, ProviderId } from "../../../src/shared/app-types"
+import type {
+  ModelConfig,
+  ModelProviderState,
+  Provider,
+  ProviderId
+} from "../../../src/shared/app-types"
 import { OpenworkWorld } from "../support/world"
 
 type ModelProviderService = typeof import("../../../src/main/model-provider/service")
@@ -102,6 +107,24 @@ async function saveOpenAICredentials(): Promise<void> {
   await modelProviderService.setProviderCredentialsForUI("openai", { apiKey: "sk-bdd" })
 }
 
+async function readModelProviderStateViaRenderer(
+  world: OpenworkWorld
+): Promise<ModelProviderState> {
+  const page = await world.getPageByKind("launcher")
+
+  return page.evaluate(async () => {
+    return (
+      window as typeof window & {
+        api: {
+          models: {
+            getState: () => Promise<ModelProviderState>
+          }
+        }
+      }
+    ).api.models.getState()
+  })
+}
+
 Before({ tags: "@model-provider" }, function (this: ModelProviderWorld) {
   modelProviderService.deleteProviderCredentialsForUI("openai")
   modelListState.clearProviderModelListStates()
@@ -178,6 +201,10 @@ When("系统读取全局可用模型列表", function (this: ModelProviderWorld)
   getState(this).globalModels = modelProviderService.listModelsForUI("llm")
 })
 
+When("系统通过 renderer 读取模型供应商状态", async function (this: ModelProviderWorld) {
+  getState(this).providers = (await readModelProviderStateViaRenderer(this)).providers
+})
+
 Then(
   "{word} 模型列表状态应为 {string}",
   function (this: ModelProviderWorld, providerName: string, expectedStatus: string) {
@@ -210,6 +237,16 @@ Then(
     assert.ok(
       !getState(this).globalModels.some((model) => model.id === unexpectedModelId),
       `Expected global models not to include ${unexpectedModelId}.`
+    )
+  }
+)
+
+Then(
+  "模型供应商状态应包含 {string}",
+  function (this: ModelProviderWorld, expectedProviderId: ProviderId) {
+    assert.ok(
+      getState(this).providers.some((provider) => provider.id === expectedProviderId),
+      `Expected model provider state to include ${expectedProviderId}.`
     )
   }
 )

@@ -16,6 +16,39 @@ import {
 } from "./settings"
 import type { ModelProviderState, ProviderDefinition } from "./types"
 
+export class ModelProviderService {
+  getState(): ModelProviderState {
+    return getModelProviderStateForUI()
+  }
+
+  listModels(modelType: string = "llm"): ModelConfig[] {
+    return listModelsForUI(modelType)
+  }
+
+  listModelsByProvider(
+    provider: string,
+    modelType: string = "llm"
+  ): Promise<ProviderModelsResponse> {
+    return listModelsByProviderForUI(provider, modelType)
+  }
+
+  getDefaultModel(modelType: string): string {
+    return getDefaultModelForUI(modelType)
+  }
+
+  setDefaultModel(modelType: string, modelId: string): Promise<void> {
+    return setDefaultModelForUI(modelType, modelId)
+  }
+
+  setCredentials(provider: string, credentials: Record<string, string>): Promise<void> {
+    return setProviderCredentialsForUI(provider, credentials)
+  }
+
+  deleteCredentials(provider: string): void {
+    deleteProviderCredentialsForUI(provider)
+  }
+}
+
 export function getModelProviderStateForUI(): ModelProviderState {
   return {
     defaultModels: getModelProviderDefaultModels(),
@@ -81,12 +114,7 @@ export async function listModelsByProviderForUI(
 
     return {
       models: [],
-      provider: toProviderState(
-        adapter.definition,
-        "active",
-        "error",
-        message
-      )
+      provider: toProviderState(adapter.definition, "active", "error", message)
     }
   }
 }

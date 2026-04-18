@@ -24,3 +24,8 @@
     并且 系统读取全局可用模型列表
     那么 全局可用模型应包含 "openai:gpt-business-only"
     而且 全局可用模型不应包含 "openai:gpt-5.2"
+
+  场景: Renderer 可以通过 models IPC 读取供应商状态
+    假如 Openwork 桌面应用已启动
+    当 系统通过 renderer 读取模型供应商状态
+    那么 模型供应商状态应包含 "openai"
