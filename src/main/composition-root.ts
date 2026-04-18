@@ -6,7 +6,6 @@ import { installApplicationMenu } from "./app-menu"
 import { registerAppInfoIpcHandlers, registerAppInfoModule } from "./app-info/module"
 import { registerAgentHandlers } from "./ipc/agent"
 import { registerArtifactsIpcHandlers, registerArtifactsModule } from "./artifacts/module"
-import { registerNativeExtensionHandlers } from "./ipc/native-extensions"
 import { registerSettingsWindowHandlers } from "./ipc/settings-window"
 import {
   registerExternalLinksIpcHandlers,
@@ -14,13 +13,12 @@ import {
 } from "./external-links/module"
 import {
   registerLauncherHistoryIpcHandlers,
-  registerLauncherHistoryModule,
-  resolveLauncherHistoryService
+  registerLauncherHistoryModule
 } from "./launcher-history/module"
+import { registerLauncherIpcHandlers, registerLauncherModule } from "./launcher/module"
 import {
   registerLocalStartIpcHandlers,
-  registerLocalStartModule,
-  resolveLocalStartService
+  registerLocalStartModule
 } from "./local-start/module"
 import {
   registerMainWindowRoutingIpcHandlers,
@@ -31,6 +29,10 @@ import {
   registerNativeMenuBarModule,
   resolveNativeMenuBarService
 } from "./native-menu-bar/module"
+import {
+  registerNativeExtensionsIpcHandlers,
+  registerNativeExtensionsModule
+} from "./native-extensions/module"
 import {
   registerModelProviderIpcHandlers,
   registerModelProviderModule
@@ -44,7 +46,6 @@ import { registerSettingsIpcHandlers, registerSettingsModule } from "./settings/
 import { registerShortcutsIpcHandlers, registerShortcutsModule } from "./shortcuts/module"
 import { registerThreadsIpcHandlers, registerThreadsModule } from "./threads/module"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
-import { registerLauncherHandlers } from "./windows/launcher-window"
 import {
   registerWorkspaceIpcHandlers,
   registerWorkspaceModule
@@ -80,13 +81,14 @@ export class MainCompositionRoot {
     registerAppInfoIpcHandlers(this.dependencyContainer, ipcMain)
     registerArtifactsIpcHandlers(this.dependencyContainer, ipcMain)
     registerExternalLinksIpcHandlers(this.dependencyContainer, ipcMain)
+    registerLauncherIpcHandlers(this.dependencyContainer, ipcMain)
     registerLauncherHistoryIpcHandlers(this.dependencyContainer, ipcMain)
     registerLocalStartIpcHandlers(this.dependencyContainer, ipcMain)
     registerModelProviderIpcHandlers(this.dependencyContainer, ipcMain)
     registerSettingsIpcHandlers(this.dependencyContainer, ipcMain)
     registerThreadsIpcHandlers(this.dependencyContainer, ipcMain)
     registerWorkspaceIpcHandlers(this.dependencyContainer, ipcMain)
-    registerNativeExtensionHandlers(ipcMain)
+    registerNativeExtensionsIpcHandlers(this.dependencyContainer, ipcMain)
     registerNativeMenuBarIpcHandlers(this.dependencyContainer, ipcMain)
     registerMainWindowRoutingIpcHandlers(this.dependencyContainer, ipcMain)
     registerShortcutsIpcHandlers(this.dependencyContainer, {
@@ -97,12 +99,6 @@ export class MainCompositionRoot {
       consumePendingNavigation: this.context.consumePendingSettingsNavigation,
       ipcMain,
       openSettingsWindow: this.context.openSettingsWindow
-    })
-    registerLauncherHandlers({
-      ipcMain,
-      launcherHistoryService: resolveLauncherHistoryService(this.dependencyContainer),
-      localStartService: resolveLocalStartService(this.dependencyContainer),
-      openMainWindow: this.context.openMainWindow
     })
   }
 
@@ -150,12 +146,16 @@ export function createMainCompositionRoot(
   registerExternalLinksModule(childContainer)
   registerLauncherHistoryModule(childContainer)
   registerLocalStartModule(childContainer)
+  registerLauncherModule(childContainer, {
+    openMainWindow: context.openMainWindow
+  })
   registerMainWindowRoutingModule(childContainer, {
     acknowledgePendingNavigation: context.acknowledgePendingMainNavigation,
     getPendingNavigation: context.getPendingMainNavigation,
     openMainWindow: context.openMainWindow
   })
   registerModelProviderModule(childContainer)
+  registerNativeExtensionsModule(childContainer)
   registerNativeMenuBarModule(childContainer)
   registerSettingsModule(childContainer)
   registerShortcutsModule(childContainer)

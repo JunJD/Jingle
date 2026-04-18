@@ -2,6 +2,7 @@ import { DataTable, Then, When } from "@cucumber/cucumber"
 import { expect } from "@playwright/test"
 import type {
   InstalledNativeExtensionSettingsSchema,
+  NativeExtensionInvokeRequest,
   NativeExtensionPreferencesChangedEvent
 } from "../../../src/shared/native-extensions"
 import { OpenworkWorld } from "../support/world"
@@ -13,6 +14,7 @@ type NativeExtensionPageApi = {
       commandName: string
     ) => Promise<Record<string, unknown>>
     getPreferences: (extensionName: string) => Promise<Record<string, unknown>>
+    invoke: (request: NativeExtensionInvokeRequest) => Promise<unknown>
     listSettingsSchemas: () => Promise<InstalledNativeExtensionSettingsSchema[]>
     onPreferencesChanged: (
       callback: (event: NativeExtensionPreferencesChangedEvent) => void
@@ -26,6 +28,37 @@ type NativeExtensionPageApi = {
       extensionName: string,
       nextRecord: Record<string, unknown>
     ) => Promise<Record<string, unknown>>
+  }
+}
+
+async function invokeNativeExtension(
+  world: OpenworkWorld,
+  extensionName: string,
+  method: string
+): Promise<void> {
+  const page = await world.getPageByKind("launcher")
+
+  try {
+    await page.evaluate(
+      async (input) => {
+        return (
+          window as typeof window & {
+            api: NativeExtensionPageApi
+          }
+        ).api.nativeExtensions.invoke({
+          extensionName: input.extensionName,
+          method: input.method,
+          payload: {}
+        })
+      },
+      { extensionName, method }
+    )
+    world.setScenarioValue("nativeExtensions.invokeError", "")
+  } catch (error) {
+    world.setScenarioValue(
+      "nativeExtensions.invokeError",
+      error instanceof Error ? error.message : String(error)
+    )
   }
 }
 
@@ -217,6 +250,13 @@ When(
   }
 )
 
+When(
+  "我调用 native extension {string} RPC method {string}",
+  async function (this: OpenworkWorld, extensionName: string, method: string) {
+    await invokeNativeExtension(this, extensionName, method)
+  }
+)
+
 Then(
   "native extensions schema 包含 extension {string} 标题为 {string}",
   function (this: OpenworkWorld, extensionName: string, title: string) {
@@ -313,5 +353,12 @@ Then(
       extensionName,
       scope: "command"
     })
+  }
+)
+
+Then(
+  "native extension invoke 错误应包含 {string}",
+  function (this: OpenworkWorld, expectedMessage: string) {
+    expect(this.getScenarioValue("nativeExtensions.invokeError")).toContain(expectedMessage)
   }
 )

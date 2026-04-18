@@ -1,29 +1,11 @@
-import { spawn } from "node:child_process"
-import { BrowserWindow, type IpcMain, type Rectangle, screen, shell } from "electron"
-import { basename, extname, join } from "path"
+import { BrowserWindow, type Rectangle, screen } from "electron"
+import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
 import {
   FALLBACK_SHELL_CONFIG,
   getLauncherIdleHeight,
   getLauncherMaxViewportHeight
 } from "../../shared/launcher"
-import type { ClipboardContext } from "../../shared/clipboard"
-import {
-  createLauncherHistoryKey,
-  type RecordLauncherHistoryItemInput
-} from "../../shared/launcher-history"
-import type {
-  LauncherActionExecutor,
-  LauncherOpenPathTarget,
-  LauncherSearchAction,
-  LauncherSearchRequest
-} from "../../shared/launcher-search"
-import type { MainWindowNavigationPayload } from "../../shared/main-window"
-import type { LauncherHistoryService } from "../launcher-history/service"
-import type { LocalStartService } from "../local-start/service"
-import { readClipboardContext } from "../services/clipboard"
-import { getApplicationIconDataUrl } from "../services/launcher-search/providers/applications"
-import { searchLauncher } from "../services/launcher-search"
 
 const LAUNCHER_CONTENT_WIDTH = 760
 const LAUNCHER_HORIZONTAL_MARGIN = 24
@@ -35,7 +17,6 @@ const LAUNCHER_MAX_HEIGHT = getLauncherMaxViewportHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_SCREEN_HEIGHT_RATIO = 0.7
 const LAUNCHER_WINDOW_GUTTER = process.platform === "win32" ? 12 : 0
 const WINDOWS_LAUNCHER_SHAPE_RADIUS = 12
-const EMPTY_CLIPBOARD_CONTEXT: ClipboardContext = { kind: "none" }
 const launcherVisibleOrigins = new WeakMap<BrowserWindow, { x: number; y: number }>()
 let launcherBlurHideSuppressionDepth = 0
 
@@ -247,204 +228,23 @@ export function setLauncherBlurHideSuppressed(active: boolean): void {
   launcherBlurHideSuppressionDepth = Math.max(0, launcherBlurHideSuppressionDepth - 1)
 }
 
-async function openLauncherPath(
-  path: string,
-  kind: "application" | "file" | "directory"
-): Promise<void> {
-  if (process.env.OPENWORK_BDD === "1") {
-    return
-  }
+export function setLauncherWindowViewportHeight(
+  launcherWindow: BrowserWindow,
+  height: number
+): void {
+  const visibleOrigin = launcherVisibleOrigins.get(launcherWindow)
 
-  if (kind === "application" && process.platform === "darwin") {
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn("open", [path], {
-        detached: true,
-        stdio: "ignore"
-      })
-
-      child.once("error", reject)
-      child.once("spawn", () => resolve())
-      child.unref()
-    })
-    return
-  }
-
-  const openPathError = await shell.openPath(path)
-  if (openPathError) {
-    throw new Error(openPathError)
-  }
-}
-
-async function openLauncherUrl(url: string): Promise<void> {
-  await shell.openExternal(url)
-}
-
-function getLauncherPathTitle(target: LauncherOpenPathTarget): string {
-  const fileName = basename(target.path)
-  if (target.kind === "application") {
-    const fileExtension = extname(fileName)
-    return fileExtension ? basename(fileName, fileExtension) : fileName
-  }
-
-  return fileName
-}
-
-function getLauncherPathHistoryKey(target: LauncherOpenPathTarget): string {
-  if (target.kind === "application") {
-    return createLauncherHistoryKey({
-      path: target.path,
-      type: "application"
-    })
-  }
-
-  if (target.kind === "file") {
-    return createLauncherHistoryKey({
-      path: target.path,
-      type: "file"
-    })
-  }
-
-  return createLauncherHistoryKey({
-    path: target.path,
-    type: "directory"
-  })
-}
-
-async function buildLauncherHistoryRecord(
-  action: LauncherSearchAction,
-  localStartService: LocalStartService
-): Promise<RecordLauncherHistoryItemInput | null> {
-  switch (action.type) {
-    case "open-path":
-      if (!action.localStartItemId) {
-        return {
-          action,
-          historyKey: getLauncherPathHistoryKey(action.target),
-          iconDataUrl:
-            action.target.kind === "application"
-              ? await getApplicationIconDataUrl(action.target.path)
-              : undefined,
-          kind: action.target.kind,
-          subtitle: action.target.path,
-          title: getLauncherPathTitle(action.target)
-        }
-      }
-
-      {
-        const item = localStartService.getItem(action.localStartItemId)
-        const itemKind = item?.kind ?? action.target.kind
-        const itemPath = item?.path ?? action.target.path
-        return {
-          action,
-          historyKey: createLauncherHistoryKey({
-            itemId: action.localStartItemId,
-            type: "local-start"
-          }),
-          iconDataUrl:
-            itemKind === "application" ? await getApplicationIconDataUrl(itemPath) : undefined,
-          kind: itemKind,
-          subtitle: itemPath,
-          title:
-            item?.title ??
-            getLauncherPathTitle({
-              kind: action.target.kind,
-              path: action.target.path
-            })
-        }
-      }
-    case "open-url":
-    case "open-history-thread":
-    case "none":
-      return null
-    default: {
-      const exhaustiveAction: never = action
-      throw new Error(`Unsupported launcher history action: ${JSON.stringify(exhaustiveAction)}`)
-    }
-  }
-}
-
-type LauncherActionExecutorHandler = (action: LauncherSearchAction) => Promise<void>
-type InternalLauncherActionExecutorHandler = (
-  action: LauncherSearchAction,
-  runtime: { openMainWindow: (payload?: MainWindowNavigationPayload) => void }
-) => Promise<void>
-
-const internalLauncherActionExecutor: InternalLauncherActionExecutorHandler = async (
-  action,
-  runtime
-) => {
-  switch (action.type) {
-    case "none":
-      return
-    case "open-history-thread":
-      runtime.openMainWindow({ targetThreadId: action.target.threadId })
-      return
-    default: {
-      throw new Error(`Unsupported internal launcher action: ${JSON.stringify(action)}`)
-    }
-  }
-}
-
-const launcherActionExecutors: Record<
-  Exclude<LauncherActionExecutor, "internal">,
-  LauncherActionExecutorHandler
-> = {
-  shell: async (action) => {
-    switch (action.type) {
-      case "open-path":
-        await openLauncherPath(action.target.path, action.target.kind)
-        return
-      case "open-url":
-        await openLauncherUrl(action.target.url)
-        return
-      default:
-        throw new Error(`Unsupported shell launcher action: ${JSON.stringify(action)}`)
-    }
-  }
-}
-
-async function applyLauncherActionSideEffects(
-  action: LauncherSearchAction,
-  launcherHistoryService: LauncherHistoryService,
-  localStartService: LocalStartService
-): Promise<void> {
-  switch (action.type) {
-    case "open-path": {
-      if (action.localStartItemId) {
-        localStartService.recordItemUse(action.localStartItemId)
-      }
-
-      const historyRecord = await buildLauncherHistoryRecord(action, localStartService)
-      if (historyRecord) {
-        launcherHistoryService.recordItem(historyRecord)
-      }
-      return
-    }
-    case "open-url":
-    case "open-history-thread":
-    case "none":
-      return
-    default: {
-      const exhaustiveAction: never = action
-      throw new Error(
-        `Unsupported launcher side effects action: ${JSON.stringify(exhaustiveAction)}`
-      )
-    }
-  }
-}
-
-async function executeLauncherAction(
-  action: LauncherSearchAction,
-  runtime: { openMainWindow: (payload?: MainWindowNavigationPayload) => void },
-  launcherHistoryService: LauncherHistoryService,
-  localStartService: LocalStartService
-): Promise<void> {
-  if (action.executor === "internal") {
-    await internalLauncherActionExecutor(action, runtime)
-  } else {
-    await launcherActionExecutors[action.executor](action)
-  }
-  await applyLauncherActionSideEffects(action, launcherHistoryService, localStartService)
+  setLauncherWindowBounds(
+    launcherWindow,
+    launcherWindow.isVisible()
+      ? getVisibleLauncherBounds({
+          anchorX: visibleOrigin?.x ?? launcherWindow.getBounds().x,
+          anchorY: visibleOrigin?.y ?? launcherWindow.getBounds().y,
+          height,
+          launcherWindow
+        })
+      : getLauncherBounds(height)
+  )
 }
 
 export function createLauncherWindow(): BrowserWindow {
@@ -542,81 +342,4 @@ export function createLauncherWindow(): BrowserWindow {
   void loadRendererWindow(launcherWindow, "launcher")
 
   return launcherWindow
-}
-
-export function registerLauncherHandlers(params: {
-  ipcMain: IpcMain
-  launcherHistoryService: LauncherHistoryService
-  localStartService: LocalStartService
-  openMainWindow: (payload?: MainWindowNavigationPayload) => void
-}): void {
-  const { ipcMain, launcherHistoryService, localStartService, openMainWindow } = params
-
-  ipcMain.handle("launcher:search", async (_event, request: LauncherSearchRequest) => {
-    return searchLauncher(request)
-  })
-
-  ipcMain.handle("launcher:getClipboardContext", (): ClipboardContext => {
-    if (process.env.OPENWORK_BDD === "1") {
-      return EMPTY_CLIPBOARD_CONTEXT
-    }
-
-    return readClipboardContext()
-  })
-
-  ipcMain.handle("launcher:executeAction", async (event, action: LauncherSearchAction) => {
-    const currentWindow = BrowserWindow.fromWebContents(event.sender)
-
-    try {
-      await executeLauncherAction(
-        action,
-        { openMainWindow },
-        launcherHistoryService,
-        localStartService
-      )
-      currentWindow?.hide()
-      return {
-        ok: true
-      }
-    } catch (error) {
-      return {
-        error: error instanceof Error ? error.message : String(error),
-        ok: false
-      }
-    }
-  })
-
-  ipcMain.handle("launcher:hide", (event) => {
-    const currentWindow = BrowserWindow.fromWebContents(event.sender)
-    currentWindow?.hide()
-  })
-
-  ipcMain.handle("launcher:show", (event) => {
-    const currentWindow = BrowserWindow.fromWebContents(event.sender)
-    if (!currentWindow) {
-      return
-    }
-
-    showLauncherWindow(currentWindow)
-  })
-
-  ipcMain.handle("launcher:setViewportHeight", (event, height: number) => {
-    const currentWindow = BrowserWindow.fromWebContents(event.sender)
-    if (!currentWindow) {
-      return
-    }
-    const visibleOrigin = launcherVisibleOrigins.get(currentWindow)
-
-    setLauncherWindowBounds(
-      currentWindow,
-      currentWindow.isVisible()
-        ? getVisibleLauncherBounds({
-            anchorX: visibleOrigin?.x ?? currentWindow.getBounds().x,
-            anchorY: visibleOrigin?.y ?? currentWindow.getBounds().y,
-            height,
-            launcherWindow: currentWindow
-          })
-        : getLauncherBounds(height)
-    )
-  })
 }

@@ -235,6 +235,7 @@ Exit criteria:
 - 保存并读取 extension preferences
 - 保存并读取 command preferences
 - preferencesChanged 事件跨 Launcher / Settings 窗口广播
+- invoke 通过主进程 native extension service 返回错误
 
 `native-menu-bar` 当前已经有第一批 BDD，覆盖：
 
@@ -357,6 +358,16 @@ Exit criteria:
 - main window navigation 保持行为不变
 
 ### Phase 6 - Migrate Launcher And Native Extensions
+
+当前状态：
+
+- `launcher` 已迁移为 `controller -> service`
+- `launcher:*` IPC 适配已从 `windows/launcher-window.ts` 收口到 launcher controller
+- launcher window 文件只保留窗口创建、显示、viewport 调整等窗口语义
+- launcher search / clipboard / executeAction / history side effects 已移入 launcher service
+- `native-extensions` 已迁移为 `controller -> service`
+- `nativeExtensions:*` IPC 适配已从 `ipc/native-extensions.ts` 收口到 native-extensions controller
+- native extension settings schema / preferences / invoke / preferencesChanged 广播已移入 native-extensions service
 
 Exit criteria:
 

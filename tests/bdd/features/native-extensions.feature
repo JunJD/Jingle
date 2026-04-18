@@ -45,3 +45,8 @@
       | showCompleted | true                     |
     那么 Launcher 最近一次 native extension preference 事件应为 command "todo-list:index"
     而且 Settings 最近一次 native extension preference 事件应为 command "todo-list:index"
+
+  场景: invoke 会通过主进程 native extension service 返回错误
+    假如 Openwork 桌面应用已启动
+    当 我调用 native extension "todo-list" RPC method "noop"
+    那么 native extension invoke 错误应包含 "does not expose RPC methods"
