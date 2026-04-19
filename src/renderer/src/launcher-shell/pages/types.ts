@@ -5,7 +5,7 @@ import type {
   LauncherCommandMode as SharedLauncherCommandMode,
   LauncherCommandOwnerManifest as SharedLauncherCommandOwnerManifest
 } from "@shared/launcher-command-owner"
-import type { AppCopy } from "@/lib/i18n/messages"
+import type { AppCopy } from "../../lib/i18n/messages"
 import type { LauncherResultPresentation, LauncherShellItemKind } from "../result-types"
 
 export type LauncherBuiltInId = string & {}

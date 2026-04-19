@@ -11,7 +11,10 @@ export function useLauncherHomeClipboard(params: {
   previewContext: ReturnType<typeof deriveLauncherHomeClipboardState>["previewContext"]
 } {
   const { query, requestSelection, setQuery } = params
-  const { context, contextKey, clearContext, refreshSequence } = useLauncherClipboard()
+  const context = useLauncherClipboard((state) => state.context)
+  const contextKey = useLauncherClipboard((state) => state.contextKey)
+  const clearContext = useLauncherClipboard((state) => state.clearContext)
+  const refreshSequence = useLauncherClipboard((state) => state.refreshSequence)
   const consumedAutofillTokenRef = useRef<string | null>(null)
   const derived = useMemo(() => deriveLauncherHomeClipboardState(context), [context])
   const autofillToken = derived.autofillText ? `${refreshSequence}:${contextKey}` : null

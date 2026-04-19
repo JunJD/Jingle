@@ -1,54 +1,22 @@
-import { useCallback, useMemo, useState } from "react"
-import { getLauncherCommandOwnerId } from "../pages"
-import {
-  type LauncherCommandAddress,
-  type LauncherCommandOpenOptions,
-  LauncherNavigationDirection,
-  LauncherRoute
-} from "../pages/types"
+import { useSyncExternalStore } from "react"
+import { createLauncherRouterStore, type LauncherRouterState } from "./launcher-router-store-core"
 
-const HOME_ROUTE: LauncherRoute = { id: "home" }
+export const launcherRouterStore = createLauncherRouterStore()
 
-export function useLauncherRouter(): {
-  closeActivePlugin: () => void
-  navigationDirection: LauncherNavigationDirection
-  openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
-  route: LauncherRoute
-  routeKey: string
-} {
-  const [navigationDirection, setNavigationDirection] =
-    useState<LauncherNavigationDirection>("forward")
-  const [route, setRoute] = useState<LauncherRoute>(HOME_ROUTE)
-
-  const openCommand = useCallback(
-    (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions): void => {
-      setNavigationDirection("forward")
-      setRoute({
-        ...address,
-        initialAction: options?.initialAction ?? "focus",
-        seedQuery: options?.seedQuery ?? ""
-      })
+export function useLauncherRouter(): LauncherRouterState
+export function useLauncherRouter<T>(selector: (state: LauncherRouterState) => T): T
+export function useLauncherRouter<T>(
+  selector?: (state: LauncherRouterState) => T
+): LauncherRouterState | T {
+  return useSyncExternalStore(
+    launcherRouterStore.subscribe,
+    () => {
+      const state = launcherRouterStore.getState()
+      return selector ? selector(state) : state
     },
-    []
-  )
-
-  const closeActivePlugin = useCallback((): void => {
-    setNavigationDirection("backward")
-    setRoute(HOME_ROUTE)
-  }, [])
-  const routeKey = useMemo(() => {
-    if ("id" in route) {
-      return route.id
+    () => {
+      const state = launcherRouterStore.getState()
+      return selector ? selector(state) : state
     }
-
-    return `${route.kind}:${getLauncherCommandOwnerId(route)}:${route.commandName}:${route.initialAction}:${route.seedQuery}`
-  }, [route])
-
-  return {
-    closeActivePlugin,
-    navigationDirection,
-    openCommand,
-    route,
-    routeKey
-  }
+  )
 }

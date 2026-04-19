@@ -1,26 +1,42 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, type ReactNode } from "react"
-import { useClipboardState } from "./hooks/useClipboardState"
+import {
+  useLauncherClipboardStore,
+  type LauncherClipboardStoreState
+} from "./hooks/launcher-clipboard-store"
+import { useLauncherClipboardRuntime } from "./hooks/useLauncherClipboardRuntime"
 
-export type LauncherClipboardState = ReturnType<typeof useClipboardState>
+export type LauncherClipboardState = LauncherClipboardStoreState
 
-export const LauncherClipboardContext = createContext<LauncherClipboardState | null>(null)
+const launcherClipboardProviderContext = createContext(false)
 
 export function LauncherClipboardProvider(props: { children: ReactNode }): React.JSX.Element {
   const { children } = props
-  const value = useClipboardState()
+
+  useLauncherClipboardRuntime()
 
   return (
-    <LauncherClipboardContext.Provider value={value}>{children}</LauncherClipboardContext.Provider>
+    <launcherClipboardProviderContext.Provider value>
+      {children}
+    </launcherClipboardProviderContext.Provider>
   )
 }
 
-export function useLauncherClipboard(): LauncherClipboardState {
-  const context = useContext(LauncherClipboardContext)
+export function useLauncherClipboard(): LauncherClipboardState
+export function useLauncherClipboard<T>(selector: (state: LauncherClipboardState) => T): T
+export function useLauncherClipboard<T>(
+  selector?: (state: LauncherClipboardState) => T
+): LauncherClipboardState | T {
+  const mounted = useContext(launcherClipboardProviderContext)
+  const resolvedSelector = (selector ??
+    ((state: LauncherClipboardState) => state)) as (
+    state: LauncherClipboardState
+  ) => LauncherClipboardState | T
+  const selectedState = useLauncherClipboardStore(resolvedSelector)
 
-  if (!context) {
+  if (!mounted) {
     throw new Error("useLauncherClipboard must be used within LauncherClipboardProvider")
   }
 
-  return context
+  return selectedState as LauncherClipboardState | T
 }
