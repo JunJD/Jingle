@@ -1,6 +1,6 @@
 import type { ShortcutModifier, ShortcutScope } from "@shared/shortcuts/model"
 import type { ResolvedShortcutBinding } from "@shared/shortcuts/settings"
-import type { ShortcutRuntimeContext } from "./shortcut-context"
+import type { ShortcutRuntimeContext } from "./shortcut-system-store"
 
 interface ShortcutManagerState {
   bindings: readonly ResolvedShortcutBinding[]
