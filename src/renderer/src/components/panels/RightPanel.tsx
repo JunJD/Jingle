@@ -106,7 +106,7 @@ function ResizeHandle({ onDrag }: ResizeHandleProps): React.JSX.Element {
 }
 
 export function RightPanel(): React.JSX.Element {
-  const { currentThreadId } = useHistoryShellStore()
+  const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const threadState = useThreadState(currentThreadId)
   const todos = threadState?.todos ?? []
   const artifactCount = threadState?.artifacts.length ?? 0
@@ -413,7 +413,7 @@ const STATUS_CONFIG = {
 }
 
 function TasksContent(): React.JSX.Element {
-  const { currentThreadId } = useHistoryShellStore()
+  const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const threadState = useThreadState(currentThreadId)
   const todos = threadState?.todos ?? []
   const [completedExpanded, setCompletedExpanded] = useState(false)
@@ -522,7 +522,7 @@ function TaskItem({ todo }: { todo: Todo }): React.JSX.Element {
 }
 
 function ArtifactsContent(): React.JSX.Element {
-  const { currentThreadId } = useHistoryShellStore()
+  const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const threadState = useThreadState(currentThreadId)
   const artifacts = threadState?.artifacts ?? EMPTY_ARTIFACTS
   const activeTab = threadState?.activeTab ?? "agent"
@@ -639,7 +639,7 @@ function ArtifactCard(props: {
 }
 
 function AgentsContent(): React.JSX.Element {
-  const { currentThreadId } = useHistoryShellStore()
+  const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const threadState = useThreadState(currentThreadId)
   const subagents = threadState?.subagents ?? []
 

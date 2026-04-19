@@ -4,7 +4,9 @@ import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { cn } from "@/lib/utils"
 
 export function KanbanHeader({ className }: { className?: string }): React.JSX.Element {
-  const { showSubagentsInKanban, setShowSubagentsInKanban, threads } = useHistoryShellStore()
+  const showSubagentsInKanban = useHistoryShellStore((state) => state.showSubagentsInKanban)
+  const setShowSubagentsInKanban = useHistoryShellStore((state) => state.setShowSubagentsInKanban)
+  const threads = useHistoryShellStore((state) => state.threads)
 
   const activeCount = threads.filter(
     (t) => t.status === "busy" || t.status === "interrupted"

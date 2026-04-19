@@ -7,7 +7,7 @@ import type {
 } from "@shared/shortcuts/model"
 import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import type { ResolvedShortcutBinding } from "@shared/shortcuts/settings"
-import { useShortcutBindings } from "./shortcut-context"
+import { useShortcutBinding } from "./shortcut-context"
 
 const DARWIN_MODIFIER_ORDER: readonly ShortcutModifier[] = ["meta", "shift", "alt", "ctrl"]
 const DEFAULT_MODIFIER_ORDER: readonly ShortcutModifier[] = ["ctrl", "alt", "shift", "meta"]
@@ -88,10 +88,9 @@ export function useLauncherCommandShortcut(
   commandId: string,
   platform = resolveShortcutPlatform(window.electron.process.platform)
 ): string | null {
-  const bindings = useShortcutBindings()
+  const binding = useShortcutBinding(commandId)
 
   return useMemo(() => {
-    const binding = getPrimaryResolvedShortcutBinding(bindings, commandId)
     return binding ? formatShortcutBinding(binding, platform) : null
-  }, [bindings, commandId, platform])
+  }, [binding, platform])
 }

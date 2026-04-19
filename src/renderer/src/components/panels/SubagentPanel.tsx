@@ -53,7 +53,7 @@ function getSubagentTypeBadge(subagentType?: string): string {
 }
 
 export function SubagentPanel(): React.JSX.Element {
-  const { currentThreadId } = useHistoryShellStore()
+  const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const threadState = useThreadState(currentThreadId)
   const subagents = threadState?.subagents ?? []
 

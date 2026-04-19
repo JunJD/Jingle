@@ -136,15 +136,13 @@ function ThreadListItem({
 
 export function ThreadSidebar(): React.JSX.Element {
   const { copy, locale } = useI18n()
-  const {
-    threads,
-    currentThreadId,
-    createThread,
-    selectThread,
-    deleteThread,
-    updateThread,
-    setShowKanbanView
-  } = useHistoryShellStore()
+  const threads = useHistoryShellStore((state) => state.threads)
+  const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
+  const createThread = useHistoryShellStore((state) => state.createThread)
+  const selectThread = useHistoryShellStore((state) => state.selectThread)
+  const deleteThread = useHistoryShellStore((state) => state.deleteThread)
+  const updateThread = useHistoryShellStore((state) => state.updateThread)
+  const setShowKanbanView = useHistoryShellStore((state) => state.setShowKanbanView)
 
   const [editingThreadId, setEditingThreadId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState("")
@@ -171,6 +169,14 @@ export function ThreadSidebar(): React.JSX.Element {
     await createThread()
   }
 
+  const handleDeleteThread = async (threadId: string): Promise<void> => {
+    try {
+      await deleteThread(threadId)
+    } catch (error) {
+      console.error("[ThreadSidebar] Failed to delete thread:", error)
+    }
+  }
+
   return (
     <aside className="flex h-full w-full flex-col overflow-hidden border-r border-border bg-sidebar">
       <div className="border-b border-border px-3 py-3">
@@ -195,7 +201,9 @@ export function ThreadSidebar(): React.JSX.Element {
               isEditing={editingThreadId === thread.thread_id}
               editingTitle={editingTitle}
               onSelect={() => selectThread(thread.thread_id)}
-              onDelete={() => deleteThread(thread.thread_id)}
+              onDelete={() => {
+                void handleDeleteThread(thread.thread_id)
+              }}
               onStartEditing={() => startEditing(thread.thread_id, thread.title || "")}
               onSaveTitle={saveTitle}
               onCancelEditing={cancelEditing}

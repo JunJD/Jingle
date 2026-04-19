@@ -46,7 +46,8 @@ export function ApiKeyDialog({
   const [hasExistingKey, setHasExistingKey] = useState(false)
   const [errorText, setErrorText] = useState<string | null>(null)
 
-  const { setProviderCredentials, deleteProviderCredentials } = useHistoryShellStore()
+  const setProviderCredentials = useHistoryShellStore((state) => state.setProviderCredentials)
+  const deleteProviderCredentials = useHistoryShellStore((state) => state.deleteProviderCredentials)
 
   // Check if there's an existing key when dialog opens
   useEffect(() => {

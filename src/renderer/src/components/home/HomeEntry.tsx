@@ -61,7 +61,10 @@ function RecentThreadItem({
 }
 
 export function HomeEntry(): React.JSX.Element {
-  const { createThread, selectThread, setShowKanbanView, threads } = useHistoryShellStore()
+  const createThread = useHistoryShellStore((state) => state.createThread)
+  const selectThread = useHistoryShellStore((state) => state.selectThread)
+  const setShowKanbanView = useHistoryShellStore((state) => state.setShowKanbanView)
+  const threads = useHistoryShellStore((state) => state.threads)
   const { copy } = useI18n()
   const [isCreating, setIsCreating] = useState(false)
 

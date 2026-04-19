@@ -55,11 +55,11 @@ function getArtifactItemTitle(item: Record<string, unknown>, index: number): str
   return `Artifact ${index + 1}`
 }
 
-function PresentArtifactsDetail(
+export function PresentArtifactsDetail(
   props: Pick<ToolComponentProps, "args" | "copy" | "rawResult" | "toolCall">
 ): React.JSX.Element {
   const { args, copy, rawResult, toolCall } = props
-  const { currentThreadId } = useHistoryShellStore()
+  const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const threadState = useThreadState(currentThreadId)
   const items = getArtifactItems(args)
   const hasJsonResult = isJsonText(rawResult)

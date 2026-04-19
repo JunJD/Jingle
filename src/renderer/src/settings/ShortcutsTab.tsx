@@ -16,7 +16,7 @@ import type {
 import type { AppLocale } from "../../../shared/i18n"
 import { formatShortcutBinding } from "../shortcuts/format-shortcut"
 import { getLauncherShortcutCommand } from "../shortcuts/command-registry"
-import { useShortcutBindings, useShortcutSystem } from "../shortcuts/shortcut-context"
+import { useShortcutBinding, useShortcutSettings } from "../shortcuts/shortcut-context"
 import { getSettingsCopy } from "./copy"
 
 const secondaryButtonClassName =
@@ -101,17 +101,11 @@ function removeShortcutOverride(
 export function ShortcutsTab(props: { locale: AppLocale }): React.JSX.Element {
   const { locale } = props
   const copy = getSettingsCopy(locale)
-  const bindings = useShortcutBindings()
-  const { settings } = useShortcutSystem()
+  const settings = useShortcutSettings()
   const platform = resolveShortcutPlatform(window.electron.process.platform)
   const command = getLauncherShortcutCommand(LAUNCHER_COMMAND_IDS.toggle)
   const defaultBinding = getPrimaryDefaultShortcutBinding(command.id, platform)
-  const currentBinding = useMemo(
-    () =>
-      bindings.find((binding) => binding.commandId === command.id && binding.scope === "global") ??
-      null,
-    [bindings, command.id]
-  )
+  const currentBinding = useShortcutBinding(command.id, "global")
   const currentOverride = useMemo(
     () =>
       settings.overrides.find(

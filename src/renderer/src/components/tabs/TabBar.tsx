@@ -17,7 +17,7 @@ export function TabBar({
   className,
   threadId: propThreadId
 }: TabBarProps): React.JSX.Element | null {
-  const { currentThreadId } = useHistoryShellStore()
+  const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const threadId = propThreadId ?? currentThreadId
   const threadState = useThreadState(threadId)
 

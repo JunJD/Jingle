@@ -27,7 +27,8 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const isAtBottomRef = useRef(true)
   useDisableTabNavigation(inputRef)
 
-  const { threads, updateThread } = useHistoryShellStore()
+  const threads = useHistoryShellStore((state) => state.threads)
+  const updateThread = useHistoryShellStore((state) => state.updateThread)
 
   const { workspacePath, tokenUsage, currentModel, setWorkspacePath } = useCurrentThread(threadId)
   const invocation = useAiInvocation({

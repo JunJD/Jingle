@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react"
 import { ChevronDown } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
-import { ModelSelectionContent, getModelProviderIcon } from "@/features/model-selection/ModelSelectionContent"
+import { ModelSelectionContent } from "@/features/model-selection/ModelSelectionContent"
+import { ProviderIcon } from "@/features/model-selection/provider-icon"
 import { useI18n } from "@/lib/i18n"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useCurrentThread } from "@/lib/thread-context"
@@ -14,7 +15,8 @@ interface ModelSwitcherProps {
 export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Element {
   const { copy } = useI18n()
   const [open, setOpen] = useState(false)
-  const { loadModelProviderState, models } = useHistoryShellStore()
+  const loadModelProviderState = useHistoryShellStore((state) => state.loadModelProviderState)
+  const models = useHistoryShellStore((state) => state.models)
   const { currentModel, setCurrentModel } = useCurrentThread(threadId)
   const selectedModel = useMemo(
     () => models.find((model) => model.id === currentModel) ?? null,
@@ -35,7 +37,7 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
         >
           {selectedModel ? (
             <>
-              {getModelProviderIcon(selectedModel.provider)({ className: "size-3.5" })}
+              <ProviderIcon className="size-3.5" providerId={selectedModel.provider} />
               <span className="font-mono">{selectedModel.model}</span>
             </>
           ) : (
@@ -44,7 +46,11 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
           <ChevronDown className="size-3" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[420px] border-border bg-popover p-0" align="start" sideOffset={8}>
+      <PopoverContent
+        className="w-[420px] border-border bg-popover p-0"
+        align="start"
+        sideOffset={8}
+      >
         <ModelSelectionContent
           currentModelId={currentModel}
           onDone={() => setOpen(false)}

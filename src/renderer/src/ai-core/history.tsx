@@ -5,7 +5,11 @@ import { RightPanel } from "@/components/panels/RightPanel"
 import { KanbanView, KanbanHeader } from "@/components/kanban"
 import { HomeEntry } from "@/components/home/HomeEntry"
 import { ResizeHandle } from "@/components/ui/resizable"
-import { openHistoryThread, refreshHistoryThreadsAndReloadActive } from "@/lib/history-thread-ops"
+import {
+  getCurrentHistoryThreadId,
+  openHistoryThread,
+  refreshHistoryThreadsAndReloadActive
+} from "@/lib/history-thread-ops"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { ThreadProvider, useThreadContext } from "@/lib/thread-context"
 import { useI18n } from "@/lib/i18n"
@@ -25,7 +29,9 @@ interface MainAppContentProps {
 
 function MainAppContent(props: MainAppContentProps): React.JSX.Element {
   const { onTargetThreadHandled, targetThreadId } = props
-  const { currentThreadId, createThread, showKanbanView } = useHistoryShellStore()
+  const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
+  const createThread = useHistoryShellStore((state) => state.createThread)
+  const showKanbanView = useHistoryShellStore((state) => state.showKanbanView)
   const { reloadThread } = useThreadContext()
   const { copy } = useI18n()
   const [isLoading, setIsLoading] = useState(true)
@@ -98,7 +104,7 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
           return
         }
 
-        const activeThreadId = useHistoryShellStore.getState().currentThreadId
+        const activeThreadId = getCurrentHistoryThreadId()
         const initialTargetThreadId = initialTargetThreadIdRef.current
 
         if (initialTargetThreadId) {

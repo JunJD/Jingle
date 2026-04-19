@@ -31,7 +31,9 @@ function getThreadKanbanStatus(
 }
 
 export function KanbanView(): React.JSX.Element {
-  const { threads, selectThread, showSubagentsInKanban } = useHistoryShellStore()
+  const threads = useHistoryShellStore((state) => state.threads)
+  const selectThread = useHistoryShellStore((state) => state.selectThread)
+  const showSubagentsInKanban = useHistoryShellStore((state) => state.showSubagentsInKanban)
   const allThreadStates = useAllThreadStates()
   const loadingStates = useAllStreamLoadingStates()
 
