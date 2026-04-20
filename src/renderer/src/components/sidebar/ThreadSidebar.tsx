@@ -3,7 +3,7 @@ import { Plus, MessageSquare, Trash2, Pencil, Loader2, LayoutGrid, AlertCircle }
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
-import { useThreadStream, useCurrentThread } from "@/lib/thread-context"
+import { useThreadSelector, useThreadStream } from "@/lib/thread-context"
 import { cn, formatRelativeTime, truncate } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n"
 import {
@@ -18,7 +18,7 @@ import type { Thread } from "@/types"
 // Thread status indicator that shows loading, interrupted, or default state
 function ThreadStatusIcon({ threadId }: { threadId: string }): React.JSX.Element {
   const { isLoading } = useThreadStream(threadId)
-  const { pendingApproval } = useCurrentThread(threadId)
+  const pendingApproval = useThreadSelector(threadId, (state) => state?.pendingApproval ?? null)
 
   if (isLoading) {
     return <Loader2 className="size-4 shrink-0 text-status-info animate-spin" />

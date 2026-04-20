@@ -3,7 +3,7 @@ import { Check, ChevronDown, Folder } from "lucide-react"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { useCurrentThread } from "@/lib/thread-context"
+import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n"
 
@@ -13,7 +13,8 @@ interface WorkspacePickerProps {
 
 export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.Element {
   const { copy } = useI18n()
-  const { workspacePath, setWorkspacePath } = useCurrentThread(threadId)
+  const workspacePath = useThreadSelector(threadId, (state) => state?.workspacePath ?? null)
+  const threadActions = useThreadActions(threadId)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -22,15 +23,20 @@ export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.E
     async function loadWorkspace(): Promise<void> {
       if (threadId) {
         const path = await window.api.workspace.get(threadId)
-        setWorkspacePath(path)
+        threadActions?.setWorkspacePath(path)
       }
     }
     loadWorkspace()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threadId])
+  }, [threadActions, threadId])
 
   async function handleSelectFolder(): Promise<void> {
-    await selectWorkspaceFolder(threadId, setWorkspacePath, setLoading, setOpen)
+    await selectWorkspaceFolder(
+      threadId,
+      (path) => threadActions?.setWorkspacePath(path),
+      setLoading,
+      setOpen
+    )
   }
 
   const folderName = workspacePath?.split("/").pop()

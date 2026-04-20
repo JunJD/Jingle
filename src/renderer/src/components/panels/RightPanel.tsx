@@ -13,10 +13,10 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
-import { getArtifactTabId, useThreadState } from "@/lib/thread-context"
+import { getArtifactTabId, useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { Badge } from "@/components/ui/badge"
 import { getArtifactDescriptor } from "@/components/chat/artifact-preview/shared"
-import type { Todo } from "@/types"
+import type { Subagent, Todo } from "@/types"
 import type { ArtifactRecord } from "@shared/artifacts"
 
 const HEADER_HEIGHT = 40 // px
@@ -24,6 +24,8 @@ const HANDLE_HEIGHT = 6 // px
 const MIN_CONTENT_HEIGHT = 60 // px
 const COLLAPSE_THRESHOLD = 55 // px - auto-collapse when below this
 const EMPTY_ARTIFACTS: ArtifactRecord[] = []
+const EMPTY_TODOS: readonly Todo[] = []
+const EMPTY_SUBAGENTS: readonly Subagent[] = []
 
 interface SectionHeaderProps {
   title: string
@@ -107,10 +109,12 @@ function ResizeHandle({ onDrag }: ResizeHandleProps): React.JSX.Element {
 
 export function RightPanel(): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
-  const threadState = useThreadState(currentThreadId)
-  const todos = threadState?.todos ?? []
-  const artifactCount = threadState?.artifacts.length ?? 0
-  const subagents = threadState?.subagents ?? []
+  const todos = useThreadSelector(currentThreadId, (state) => state?.todos ?? EMPTY_TODOS)
+  const artifactCount = useThreadSelector(currentThreadId, (state) => state?.artifacts.length ?? 0)
+  const subagents = useThreadSelector(
+    currentThreadId,
+    (state) => state?.subagents ?? EMPTY_SUBAGENTS
+  )
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerHeight, setContainerHeight] = useState(0)
 
@@ -414,8 +418,7 @@ const STATUS_CONFIG = {
 
 function TasksContent(): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
-  const threadState = useThreadState(currentThreadId)
-  const todos = threadState?.todos ?? []
+  const todos = useThreadSelector(currentThreadId, (state) => state?.todos ?? EMPTY_TODOS)
   const [completedExpanded, setCompletedExpanded] = useState(false)
 
   if (todos.length === 0) {
@@ -523,19 +526,19 @@ function TaskItem({ todo }: { todo: Todo }): React.JSX.Element {
 
 function ArtifactsContent(): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
-  const threadState = useThreadState(currentThreadId)
-  const artifacts = threadState?.artifacts ?? EMPTY_ARTIFACTS
-  const activeTab = threadState?.activeTab ?? "agent"
+  const threadActions = useThreadActions(currentThreadId)
+  const artifacts = useThreadSelector(currentThreadId, (state) => state?.artifacts ?? EMPTY_ARTIFACTS)
+  const activeTab = useThreadSelector(currentThreadId, (state) => state?.activeTab ?? "agent")
 
   const handleArtifactOpen = useCallback(
     (artifact: ArtifactRecord) => {
-      threadState?.openArtifactTab({
+      threadActions?.openArtifactTab({
         artifactId: artifact.id,
         kind: artifact.kind,
         title: artifact.title
       })
     },
-    [threadState]
+    [threadActions]
   )
 
   if (artifacts.length === 0) {
@@ -640,8 +643,10 @@ function ArtifactCard(props: {
 
 function AgentsContent(): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
-  const threadState = useThreadState(currentThreadId)
-  const subagents = threadState?.subagents ?? []
+  const subagents = useThreadSelector(
+    currentThreadId,
+    (state) => state?.subagents ?? EMPTY_SUBAGENTS
+  )
 
   if (subagents.length === 0) {
     return (

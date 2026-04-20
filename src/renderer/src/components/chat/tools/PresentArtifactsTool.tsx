@@ -4,7 +4,7 @@ import type { ArtifactRecord } from "@shared/artifacts"
 import { getToolCallArtifactKey } from "@shared/artifacts"
 import { CodeBlock } from "@/components/ui/code-block"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
-import { useThreadState } from "@/lib/thread-context"
+import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
 import { defineToolComponent } from "./registry-core"
 import type { ToolComponentProps } from "./types"
@@ -55,17 +55,23 @@ function getArtifactItemTitle(item: Record<string, unknown>, index: number): str
   return `Artifact ${index + 1}`
 }
 
+const EMPTY_THREAD_ARTIFACTS: readonly ArtifactRecord[] = []
+
 export function PresentArtifactsDetail(
   props: Pick<ToolComponentProps, "args" | "copy" | "rawResult" | "toolCall">
 ): React.JSX.Element {
   const { args, copy, rawResult, toolCall } = props
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
-  const threadState = useThreadState(currentThreadId)
+  const threadActions = useThreadActions(currentThreadId)
+  const threadArtifacts = useThreadSelector(
+    currentThreadId,
+    (state) => state?.artifacts ?? EMPTY_THREAD_ARTIFACTS
+  )
   const items = getArtifactItems(args)
   const hasJsonResult = isJsonText(rawResult)
   const resolvedArtifacts = useMemo(() => {
     const artifactsByKey = new Map(
-      (threadState?.artifacts ?? [])
+      threadArtifacts
         .filter((artifact) => artifact.toolCallId === toolCall.id)
         .map((artifact) => [artifact.artifactKey, artifact] satisfies [string, ArtifactRecord])
     )
@@ -75,7 +81,7 @@ export function PresentArtifactsDetail(
       kind: getArtifactItemKind(item),
       title: getArtifactItemTitle(item, index)
     }))
-  }, [items, threadState?.artifacts, toolCall.id])
+  }, [items, threadArtifacts, toolCall.id])
 
   return (
     <ToolDetailStack>
@@ -83,7 +89,7 @@ export function PresentArtifactsDetail(
         <ToolDetailSection label={copy.toolCall.labels.present_artifacts}>
           <div className="grid gap-1.5">
             {resolvedArtifacts.map(({ artifact, kind, title }, index) => {
-              const canOpen = Boolean(artifact && threadState)
+              const canOpen = Boolean(artifact && threadActions)
 
               return (
                 <button
@@ -99,11 +105,11 @@ export function PresentArtifactsDetail(
                   disabled={!canOpen}
                   key={`${kind}-${title}-${index}`}
                   onClick={() => {
-                    if (!artifact || !threadState) {
+                    if (!artifact || !threadActions) {
                       return
                     }
 
-                    threadState.openArtifactTab({
+                    threadActions.openArtifactTab({
                       artifactId: artifact.id,
                       kind: artifact.kind,
                       title: artifact.title

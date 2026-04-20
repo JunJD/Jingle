@@ -3,7 +3,7 @@ import { AlertCircle, Copy, ExternalLink, FolderOpen, PackageOpen } from "lucide
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { formatRelativeTime } from "@/lib/utils"
-import { useCurrentThread } from "@/lib/thread-context"
+import { useThreadSelector } from "@/lib/thread-context"
 import {
   getArtifactCapabilities,
   isInlinePatchArtifactRecord,
@@ -11,6 +11,7 @@ import {
   supportsArtifactAction,
   type ArtifactActionId
 } from "@shared/artifacts"
+import type { ArtifactRecord } from "@shared/artifacts"
 import { FileArtifactPreview } from "@/components/chat/artifact-preview/FileArtifactPreview"
 import { LinkArtifactPreview } from "@/components/chat/artifact-preview/LinkArtifactPreview"
 import { PatchArtifactPreview } from "@/components/chat/artifact-preview/PatchArtifactPreview"
@@ -27,9 +28,11 @@ interface ArtifactViewerProps {
   threadId: string
 }
 
+const EMPTY_ARTIFACTS: readonly ArtifactRecord[] = []
+
 export function ArtifactViewer(props: ArtifactViewerProps): React.JSX.Element {
   const { artifactId, threadId } = props
-  const { artifacts } = useCurrentThread(threadId)
+  const artifacts = useThreadSelector(threadId, (state) => state?.artifacts ?? EMPTY_ARTIFACTS)
   const artifact = artifacts.find((entry) => entry.id === artifactId) ?? null
 
   const handleArtifactAction = useCallback(

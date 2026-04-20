@@ -3,7 +3,7 @@ import { Send, Square, Loader2, AlertCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
-import { useCurrentThread } from "@/lib/thread-context"
+import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { Messages } from "./Messages"
 import { ModelSwitcher } from "./ModelSwitcher"
@@ -20,6 +20,8 @@ interface ChatContainerProps {
   threadId: string
 }
 
+const EMPTY_TOKEN_USAGE = null
+
 export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Element {
   const { copy } = useI18n()
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -30,7 +32,10 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const threads = useHistoryShellStore((state) => state.threads)
   const updateThread = useHistoryShellStore((state) => state.updateThread)
 
-  const { workspacePath, tokenUsage, currentModel, setWorkspacePath } = useCurrentThread(threadId)
+  const threadActions = useThreadActions(threadId)
+  const workspacePath = useThreadSelector(threadId, (state) => state?.workspacePath ?? null)
+  const tokenUsage = useThreadSelector(threadId, (state) => state?.tokenUsage ?? EMPTY_TOKEN_USAGE)
+  const currentModel = useThreadSelector(threadId, (state) => state?.currentModel ?? null)
   const invocation = useAiInvocation({
     onAfterAppendMessage: ({ isFirstMessage, message }) => {
       if (!isFirstMessage) {
@@ -146,7 +151,12 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   }
 
   const handleSelectWorkspaceFromEmptyState = async (): Promise<void> => {
-    await selectWorkspaceFolder(threadId, setWorkspacePath, () => {}, undefined)
+    await selectWorkspaceFolder(
+      threadId,
+      (path) => threadActions?.setWorkspacePath(path),
+      () => {},
+      undefined
+    )
   }
 
   return (
@@ -282,7 +292,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                 <div className="h-4 w-px bg-border" />
                 <WorkspacePicker threadId={threadId} />
               </div>
-              {tokenUsage && (
+              {tokenUsage && currentModel && (
                 <ContextUsageIndicator tokenUsage={tokenUsage} modelId={currentModel} />
               )}
             </div>

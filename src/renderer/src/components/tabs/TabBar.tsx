@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import {
   getArtifactTabId,
-  useThreadState,
+  useThreadActions,
+  useThreadSelector,
   type OpenArtifactTab,
   type OpenFile
 } from "@/lib/thread-context"
@@ -13,20 +14,28 @@ interface TabBarProps {
   threadId?: string
 }
 
+const EMPTY_OPEN_FILES: readonly OpenFile[] = []
+const EMPTY_OPEN_ARTIFACTS: readonly OpenArtifactTab[] = []
+
 export function TabBar({
   className,
   threadId: propThreadId
 }: TabBarProps): React.JSX.Element | null {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const threadId = propThreadId ?? currentThreadId
-  const threadState = useThreadState(threadId)
+  const threadActions = useThreadActions(threadId)
+  const activeTab = useThreadSelector(threadId, (state) => state?.activeTab ?? "agent")
+  const openFiles = useThreadSelector(threadId, (state) => state?.openFiles ?? EMPTY_OPEN_FILES)
+  const openArtifacts = useThreadSelector(
+    threadId,
+    (state) => state?.openArtifacts ?? EMPTY_OPEN_ARTIFACTS
+  )
 
-  if (!threadState) {
+  if (!threadActions) {
     return null
   }
 
-  const { openFiles, openArtifacts, activeTab, setActiveTab, closeFile, closeArtifactTab } =
-    threadState
+  const { closeArtifactTab, closeFile, setActiveTab } = threadActions
 
   return (
     <div className={cn("flex h-full items-center overflow-x-auto scrollbar-hide px-4", className)}>

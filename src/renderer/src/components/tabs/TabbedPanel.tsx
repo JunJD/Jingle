@@ -1,4 +1,4 @@
-import { getArtifactTabId, useCurrentThread } from "@/lib/thread-context"
+import { getArtifactTabId, useThreadSelector } from "@/lib/thread-context"
 import { TabBar } from "./TabBar"
 import { ArtifactViewer } from "./ArtifactViewer"
 import { FileViewer } from "./FileViewer"
@@ -9,8 +9,16 @@ interface TabbedPanelProps {
   showTabBar?: boolean
 }
 
+const EMPTY_OPEN_ARTIFACTS: ReadonlyArray<{ artifactId: string }> = []
+const EMPTY_OPEN_FILES: ReadonlyArray<{ path: string }> = []
+
 export function TabbedPanel({ threadId, showTabBar = true }: TabbedPanelProps): React.JSX.Element {
-  const { activeTab, openArtifacts, openFiles } = useCurrentThread(threadId)
+  const activeTab = useThreadSelector(threadId, (state) => state?.activeTab ?? "agent")
+  const openArtifacts = useThreadSelector(
+    threadId,
+    (state) => state?.openArtifacts ?? EMPTY_OPEN_ARTIFACTS
+  )
+  const openFiles = useThreadSelector(threadId, (state) => state?.openFiles ?? EMPTY_OPEN_FILES)
 
   // Determine what to render based on active tab
   const isAgentTab = activeTab === "agent"

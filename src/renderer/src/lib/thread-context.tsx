@@ -14,47 +14,18 @@ import {
 import { useStream } from "@langchain/langgraph-sdk/react"
 import type { DeepAgent } from "deepagents"
 import { ElectronIPCTransport } from "./electron-transport"
-import type { Message, Todo, Subagent, HITLRequest } from "@/types"
-import { DEFAULT_MODELS } from "../../../shared/models"
+import type { HITLRequest } from "@/types"
 import type { ArtifactRecord } from "@shared/artifacts"
 import {
-  getArtifactTabId,
-  getNextActiveTabAfterClose,
-  syncOpenArtifactTabs,
-  type OpenArtifactTab,
-  type OpenFile
-} from "@shared/thread-tabs"
+  createThreadStore,
+  type ThreadActions,
+  type ThreadRecord,
+  type ThreadState
+} from "./thread-store-core"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
+export type { ThreadActions, ThreadRecord, ThreadState, TokenUsage } from "./thread-store-core"
 export { getArtifactTabId } from "@shared/thread-tabs"
-
-// Token usage tracking for context window monitoring
-export interface TokenUsage {
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-  cacheReadTokens?: number
-  cacheCreationTokens?: number
-  lastUpdated: Date
-}
-
-// Per-thread state (persisted/restored from checkpoints)
-export interface ThreadState {
-  artifacts: ArtifactRecord[]
-  messages: Message[]
-  todos: Todo[]
-  workspacePath: string | null
-  subagents: Subagent[]
-  pendingApproval: HITLRequest | null
-  error: string | null
-  currentModel: string
-  openFiles: OpenFile[]
-  openArtifacts: OpenArtifactTab[]
-  activeTab: "agent" | string
-  fileContents: Record<string, string>
-  tokenUsage: TokenUsage | null
-  draftInput: string
-}
 
 // Stream instance type
 type StreamInstance = ReturnType<typeof useStream<DeepAgent>>
@@ -66,62 +37,27 @@ interface StreamData {
   stream: StreamInstance | null
 }
 
-// Actions available on a thread
-export interface ThreadActions {
-  setArtifacts: (artifacts: ArtifactRecord[]) => void
-  appendMessage: (message: Message) => void
-  setMessages: (messages: Message[]) => void
-  setTodos: (todos: Todo[]) => void
-  setWorkspacePath: (path: string | null) => void
-  setSubagents: (subagents: Subagent[]) => void
-  setPendingApproval: (request: HITLRequest | null) => void
-  setError: (error: string | null) => void
-  clearError: () => void
-  setCurrentModel: (modelId: string) => void
-  openFile: (path: string, name: string) => void
-  closeFile: (path: string) => void
-  openArtifactTab: (tab: OpenArtifactTab) => void
-  closeArtifactTab: (artifactId: string) => void
-  setActiveTab: (tab: "agent" | string) => void
-  setFileContents: (path: string, content: string) => void
-  setDraftInput: (input: string) => void
-}
-
 // Context value
 export interface ThreadContextValue {
+  getThreadRecord: (threadId: string) => ThreadRecord
   getThreadState: (threadId: string) => ThreadState
   getThreadActions: (threadId: string) => ThreadActions
   ensureThreadRuntime: (threadId: string) => void
   cleanupThread: (threadId: string) => void
   reloadThread: (threadId: string) => Promise<void>
+  subscribeThread: (threadId: string, callback: () => void) => () => void
   // Stream subscription
   subscribeToStream: (threadId: string, callback: () => void) => () => void
   getStreamData: (threadId: string) => StreamData
   // Get all initialized thread states (for kanban view)
   getAllThreadStates: () => Record<string, ThreadState>
+  subscribeAllThreadStates: (callback: () => void) => () => void
   // Get all stream loading states (for kanban view)
   getAllStreamLoadingStates: () => Record<string, boolean>
+  subscribeAllStreamLoadingStates: (callback: () => void) => () => void
   // Subscribe to all stream updates
   subscribeToAllStreams: (callback: () => void) => () => void
 }
-
-// Default thread state
-const createDefaultThreadState = (): ThreadState => ({
-  artifacts: [],
-  messages: [],
-  todos: [],
-  workspacePath: null,
-  subagents: [],
-  pendingApproval: null,
-  error: null,
-  currentModel: DEFAULT_MODELS.llm,
-  openFiles: [],
-  openArtifacts: [],
-  activeTab: "agent",
-  fileContents: {},
-  tokenUsage: null,
-  draftInput: ""
-})
 
 const defaultStreamData: StreamData = {
   messages: [],
@@ -231,11 +167,24 @@ function ThreadStreamHolder({
 }
 
 export function ThreadProvider({ children }: { children: ReactNode }) {
-  const [threadStates, setThreadStates] = useState<Record<string, ThreadState>>({})
   const [activeThreadIds, setActiveThreadIds] = useState<Set<string>>(new Set())
-  const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({})
   const initializedThreadsRef = useRef<Set<string>>(new Set())
-  const actionsCache = useRef<Record<string, ThreadActions>>({})
+  const threadStoreRef = useRef(
+    createThreadStore({
+      persistCurrentModel: async (threadId: string, modelId: string) => {
+        const thread = await window.api.threads.get(threadId)
+        if (!thread) {
+          return
+        }
+
+        const metadata = thread.metadata || {}
+        await window.api.threads.update(threadId, {
+          metadata: { ...metadata, model: modelId }
+        })
+      }
+    })
+  )
+  const threadStore = threadStoreRef.current
 
   // Stream data store (not React state - we use subscriptions)
   const streamDataRef = useRef<Record<string, StreamData>>({})
@@ -254,13 +203,9 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     (threadId: string, data: StreamData) => {
       streamDataRef.current[threadId] = data
       notifyStreamSubscribers(threadId)
-      // Update loading states for kanban view
-      setLoadingStates((prev) => {
-        if (prev[threadId] === data.isLoading) return prev
-        return { ...prev, [threadId]: data.isLoading }
-      })
+      threadStore.setStreamLoadingState(threadId, data.isLoading)
     },
-    [notifyStreamSubscribers]
+    [notifyStreamSubscribers, threadStore]
   )
 
   // Subscribe to stream updates for a thread
@@ -280,47 +225,41 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     return streamDataRef.current[threadId] || defaultStreamData
   }, [])
 
-  const getThreadState = useCallback(
-    (threadId: string): ThreadState => {
-      const state = threadStates[threadId] || createDefaultThreadState()
-      if (state.pendingApproval) {
-        console.log(
-          "[ThreadContext] getThreadState returning pendingApproval for:",
-          threadId,
-          state.pendingApproval
-        )
-      }
-      return state
-    },
-    [threadStates]
-  )
-
-  const getAllThreadStates = useCallback((): Record<string, ThreadState> => {
-    return threadStates
-  }, [threadStates])
-
-  const getAllStreamLoadingStates = useCallback((): Record<string, boolean> => {
-    return loadingStates
-  }, [loadingStates])
-
   const subscribeToAllStreams = useCallback(() => {
     return () => {}
   }, [])
 
-  const updateThreadState = useCallback(
-    (threadId: string, updater: (prev: ThreadState) => Partial<ThreadState>) => {
-      setThreadStates((prev) => {
-        const currentState = prev[threadId] || createDefaultThreadState()
-        const updates = updater(currentState)
-        return {
-          ...prev,
-          [threadId]: { ...currentState, ...updates }
-        }
-      })
-    },
-    []
+  const getThreadRecord = useCallback(
+    (threadId: string): ThreadRecord => threadStore.getThreadRecord(threadId),
+    [threadStore]
   )
-
+  const getThreadState = useCallback(
+    (threadId: string): ThreadState => threadStore.getThreadState(threadId),
+    [threadStore]
+  )
+  const getThreadActions = useCallback(
+    (threadId: string): ThreadActions => threadStore.getThreadActions(threadId),
+    [threadStore]
+  )
+  const subscribeThread = useCallback(
+    (threadId: string, callback: () => void): (() => void) =>
+      threadStore.subscribeThread(threadId, callback),
+    [threadStore]
+  )
+  const getAllThreadStates = useCallback((): Record<string, ThreadState> => {
+    return threadStore.getAllThreadStates()
+  }, [threadStore])
+  const subscribeAllThreadStates = useCallback(
+    (callback: () => void): (() => void) => threadStore.subscribeAllThreadStates(callback),
+    [threadStore]
+  )
+  const getAllStreamLoadingStates = useCallback((): Record<string, boolean> => {
+    return threadStore.getAllStreamLoadingStates()
+  }, [threadStore])
+  const subscribeAllStreamLoadingStates = useCallback(
+    (callback: () => void): (() => void) => threadStore.subscribeAllStreamLoadingStates(callback),
+    [threadStore]
+  )
   // Parse error messages into user-friendly format
   const parseErrorMessage = useCallback((error: Error | string): string => {
     const errorMessage = typeof error === "string" ? error : error.message
@@ -359,9 +298,9 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     (threadId: string, error: Error) => {
       console.error("[ThreadContext] Stream error:", { threadId, error })
       const userFriendlyMessage = parseErrorMessage(error)
-      updateThreadState(threadId, () => ({ error: userFriendlyMessage }))
+      threadStore.updateThreadState(threadId, () => ({ error: userFriendlyMessage }))
     },
-    [parseErrorMessage, updateThreadState]
+    [parseErrorMessage, threadStore]
   )
 
   // Handle custom events from ThreadStreamHolder (interrupts, subagents, token usage)
@@ -376,20 +315,17 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
               threadId,
               data.request
             )
-            updateThreadState(threadId, () => ({ pendingApproval: data.request }))
+            threadStore.updateThreadState(threadId, () => ({ pendingApproval: data.request }))
           }
           break
         case "artifacts":
           if (Array.isArray(data.artifacts)) {
-            updateThreadState(threadId, (state) => ({
-              artifacts: data.artifacts!,
-              openArtifacts: syncOpenArtifactTabs(state.openArtifacts, data.artifacts!)
-            }))
+            threadStore.getThreadActions(threadId).setArtifacts(data.artifacts)
           }
           break
         case "subagents":
           if (Array.isArray(data.subagents)) {
-            updateThreadState(threadId, () => ({
+            threadStore.updateThreadState(threadId, () => ({
               subagents: data.subagents!.map((s) => ({
                 id: s.id || crypto.randomUUID(),
                 name: s.name || "Subagent",
@@ -411,7 +347,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
               outputTokens: data.usage.outputTokens,
               totalTokens: data.usage.totalTokens
             })
-            updateThreadState(threadId, (prev) => {
+            threadStore.updateThreadState(threadId, (prev) => {
               // Keep the higher of previous or new input tokens
               // This ensures we don't lose accumulated context during tool calls
               const newInputTokens = data.usage!.inputTokens || 0
@@ -437,150 +373,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
           break
       }
     },
-    [updateThreadState]
-  )
-
-  const getThreadActions = useCallback(
-    (threadId: string): ThreadActions => {
-      if (actionsCache.current[threadId]) {
-        return actionsCache.current[threadId]
-      }
-
-      const actions: ThreadActions = {
-        appendMessage: (message: Message) => {
-          updateThreadState(threadId, (state) => {
-            const exists = state.messages.some((m) => m.id === message.id)
-            if (exists) {
-              return { messages: state.messages.map((m) => (m.id === message.id ? message : m)) }
-            }
-            return { messages: [...state.messages, message] }
-          })
-        },
-        setMessages: (messages: Message[]) => {
-          updateThreadState(threadId, () => ({ messages }))
-        },
-        setArtifacts: (artifacts: ArtifactRecord[]) => {
-          updateThreadState(threadId, (state) => ({
-            artifacts,
-            openArtifacts: syncOpenArtifactTabs(state.openArtifacts, artifacts)
-          }))
-        },
-        setTodos: (todos: Todo[]) => {
-          updateThreadState(threadId, () => ({ todos }))
-        },
-        setWorkspacePath: (path: string | null) => {
-          updateThreadState(threadId, () => ({ workspacePath: path }))
-        },
-        setSubagents: (subagents: Subagent[]) => {
-          updateThreadState(threadId, () => ({ subagents }))
-        },
-        setPendingApproval: (request: HITLRequest | null) => {
-          updateThreadState(threadId, () => ({ pendingApproval: request }))
-        },
-        setError: (error: string | null) => {
-          updateThreadState(threadId, () => ({ error }))
-        },
-        clearError: () => {
-          updateThreadState(threadId, () => ({ error: null }))
-        },
-        setCurrentModel: (modelId: string) => {
-          updateThreadState(threadId, () => ({ currentModel: modelId }))
-          // Persist to backend
-          window.api.threads.get(threadId).then((thread) => {
-            if (thread) {
-              const metadata = thread.metadata || {}
-              window.api.threads.update(threadId, {
-                metadata: { ...metadata, model: modelId }
-              })
-            }
-          })
-        },
-        openFile: (path: string, name: string) => {
-          updateThreadState(threadId, (state) => {
-            if (state.openFiles.some((f) => f.path === path)) {
-              return { activeTab: path }
-            }
-            return { openFiles: [...state.openFiles, { path, name }], activeTab: path }
-          })
-        },
-        closeFile: (path: string) => {
-          updateThreadState(threadId, (state) => {
-            const newOpenFiles = state.openFiles.filter((f) => f.path !== path)
-            const newFileContents = { ...state.fileContents }
-            delete newFileContents[path]
-            const newActiveTab = getNextActiveTabAfterClose({
-              activeTab: state.activeTab,
-              closedTabId: path,
-              openArtifacts: state.openArtifacts,
-              openFiles: state.openFiles
-            })
-
-            return {
-              openFiles: newOpenFiles,
-              activeTab: newActiveTab,
-              fileContents: newFileContents
-            }
-          })
-        },
-        openArtifactTab: (tab: OpenArtifactTab) => {
-          updateThreadState(threadId, (state) => {
-            const nextTabId = getArtifactTabId(tab.artifactId)
-            const existingTabIndex = state.openArtifacts.findIndex(
-              (entry) => entry.artifactId === tab.artifactId
-            )
-
-            if (existingTabIndex >= 0) {
-              const nextOpenArtifacts = [...state.openArtifacts]
-              nextOpenArtifacts[existingTabIndex] = tab
-
-              return {
-                activeTab: nextTabId,
-                openArtifacts: nextOpenArtifacts
-              }
-            }
-
-            return {
-              activeTab: nextTabId,
-              openArtifacts: [...state.openArtifacts, tab]
-            }
-          })
-        },
-        closeArtifactTab: (artifactId: string) => {
-          updateThreadState(threadId, (state) => {
-            const nextOpenArtifacts = state.openArtifacts.filter(
-              (entry) => entry.artifactId !== artifactId
-            )
-            const closedTabId = getArtifactTabId(artifactId)
-            const fallbackTabId = getNextActiveTabAfterClose({
-              activeTab: state.activeTab,
-              closedTabId,
-              openArtifacts: state.openArtifacts,
-              openFiles: state.openFiles
-            })
-
-            return {
-              activeTab: fallbackTabId,
-              openArtifacts: nextOpenArtifacts
-            }
-          })
-        },
-        setActiveTab: (tab: "agent" | string) => {
-          updateThreadState(threadId, () => ({ activeTab: tab }))
-        },
-        setFileContents: (path: string, content: string) => {
-          updateThreadState(threadId, (state) => ({
-            fileContents: { ...state.fileContents, [path]: content }
-          }))
-        },
-        setDraftInput: (input: string) => {
-          updateThreadState(threadId, () => ({ draftInput: input }))
-        }
-      }
-
-      actionsCache.current[threadId] = actions
-      return actions
-    },
-    [updateThreadState]
+    [threadStore]
   )
 
   const loadThreadHistory = useCallback(
@@ -597,7 +390,9 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
           }
           if (metadata.model) {
             // Update state directly to avoid triggering persistence in setCurrentModel
-            updateThreadState(threadId, () => ({ currentModel: metadata.model as string }))
+            threadStore.updateThreadState(threadId, () => ({
+              currentModel: metadata.model as string
+            }))
           }
         }
       } catch (error) {
@@ -615,38 +410,38 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
         console.error("[ThreadContext] Failed to load checkpoint-backed thread state:", error)
       }
     },
-    [getThreadActions, updateThreadState]
+    [getThreadActions, threadStore]
   )
 
-  const ensureThreadRuntime = useCallback((threadId: string) => {
-    if (initializedThreadsRef.current.has(threadId)) return
-    initializedThreadsRef.current.add(threadId)
+  const ensureThreadRuntime = useCallback(
+    (threadId: string) => {
+      if (initializedThreadsRef.current.has(threadId)) {
+        return
+      }
 
-    // Add to active threads (this will render a ThreadStreamHolder)
-    setActiveThreadIds((prev) => new Set([...prev, threadId]))
+      initializedThreadsRef.current.add(threadId)
+      threadStore.ensureThreadState(threadId)
 
-    setThreadStates((prev) => {
-      if (prev[threadId]) return prev
-      return { ...prev, [threadId]: createDefaultThreadState() }
-    })
-  }, [])
+      // Add to active threads (this will render a ThreadStreamHolder)
+      setActiveThreadIds((prev) => new Set([...prev, threadId]))
+    },
+    [threadStore]
+  )
 
-  const cleanupThread = useCallback((threadId: string) => {
-    initializedThreadsRef.current.delete(threadId)
-    delete actionsCache.current[threadId]
-    delete streamDataRef.current[threadId]
-    delete streamSubscribersRef.current[threadId]
-    setActiveThreadIds((prev) => {
-      const next = new Set(prev)
-      next.delete(threadId)
-      return next
-    })
-    setThreadStates((prev) => {
-      const { [threadId]: _removed, ...rest } = prev
-      void _removed // Explicitly mark as intentionally unused
-      return rest
-    })
-  }, [])
+  const cleanupThread = useCallback(
+    (threadId: string) => {
+      initializedThreadsRef.current.delete(threadId)
+      delete streamDataRef.current[threadId]
+      delete streamSubscribersRef.current[threadId]
+      threadStore.deleteThreadState(threadId)
+      setActiveThreadIds((prev) => {
+        const next = new Set(prev)
+        next.delete(threadId)
+        return next
+      })
+    },
+    [threadStore]
+  )
 
   const reloadThread = useCallback(
     async (threadId: string) => {
@@ -670,27 +465,35 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
 
   const contextValue = useMemo<ThreadContextValue>(
     () => ({
+      getThreadRecord,
       getThreadState,
       getThreadActions,
       ensureThreadRuntime,
       cleanupThread,
       reloadThread,
+      subscribeThread,
       subscribeToStream,
       getStreamData,
       getAllThreadStates,
+      subscribeAllThreadStates,
       getAllStreamLoadingStates,
+      subscribeAllStreamLoadingStates,
       subscribeToAllStreams
     }),
     [
+      getThreadRecord,
       getThreadState,
       getThreadActions,
       ensureThreadRuntime,
       cleanupThread,
       reloadThread,
+      subscribeThread,
       subscribeToStream,
       getStreamData,
       getAllThreadStates,
+      subscribeAllThreadStates,
       getAllStreamLoadingStates,
+      subscribeAllStreamLoadingStates,
       subscribeToAllStreams
     ]
   )
@@ -718,6 +521,36 @@ export function useThreadContext(): ThreadContextValue {
   return context
 }
 
+function useThreadRecordSnapshot(threadId: string | null): ThreadRecord | null {
+  const context = useThreadContext()
+
+  useEffect(() => {
+    if (threadId) {
+      context.ensureThreadRuntime(threadId)
+    }
+  }, [context, threadId])
+
+  const subscribe = useCallback(
+    (callback: () => void) => {
+      if (!threadId) {
+        return () => {}
+      }
+
+      return context.subscribeThread(threadId, callback)
+    },
+    [context, threadId]
+  )
+  const getSnapshot = useCallback(() => {
+    if (!threadId) {
+      return null
+    }
+
+    return context.getThreadRecord(threadId)
+  }, [context, threadId])
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+}
+
 // Hook to subscribe to stream data for a thread using useSyncExternalStore
 export function useThreadStream(threadId: string): StreamData {
   const context = useThreadContext()
@@ -733,43 +566,81 @@ export function useThreadStream(threadId: string): StreamData {
 }
 
 // Hook to access current thread's state and actions
-export function useCurrentThread(threadId: string): ThreadState & ThreadActions {
-  const context = useThreadContext()
+export function useCurrentThread(threadId: string): ThreadRecord {
+  const record = useThreadRecordSnapshot(threadId)
+  if (!record) {
+    throw new Error("useCurrentThread requires a thread id")
+  }
 
-  useEffect(() => {
-    context.ensureThreadRuntime(threadId)
-  }, [threadId, context])
-
-  const state = context.getThreadState(threadId)
-  const actions = context.getThreadActions(threadId)
-
-  return { ...state, ...actions }
+  return record
 }
 
 // Hook for nullable threadId
-export function useThreadState(threadId: string | null): (ThreadState & ThreadActions) | null {
+export function useThreadState(threadId: string | null): ThreadRecord | null {
+  return useThreadRecordSnapshot(threadId)
+}
+
+export function useThreadActions(threadId: string | null): ThreadActions | null {
   const context = useThreadContext()
 
   useEffect(() => {
-    if (threadId) context.ensureThreadRuntime(threadId)
+    if (threadId) {
+      context.ensureThreadRuntime(threadId)
+    }
   }, [threadId, context])
 
-  if (!threadId) return null
+  if (!threadId) {
+    return null
+  }
 
-  const state = context.getThreadState(threadId)
-  const actions = context.getThreadActions(threadId)
+  return context.getThreadActions(threadId)
+}
 
-  return { ...state, ...actions }
+export function useThreadSelector<T>(
+  threadId: string | null,
+  selector: (record: ThreadRecord | null) => T
+): T {
+  const context = useThreadContext()
+
+  useEffect(() => {
+    if (threadId) {
+      context.ensureThreadRuntime(threadId)
+    }
+  }, [context, threadId])
+
+  const subscribe = useCallback(
+    (callback: () => void) => {
+      if (!threadId) {
+        return () => {}
+      }
+
+      return context.subscribeThread(threadId, callback)
+    },
+    [context, threadId]
+  )
+  const getSnapshot = useCallback(() => {
+    return selector(threadId ? context.getThreadRecord(threadId) : null)
+  }, [context, selector, threadId])
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }
 
 // Hook to get all initialized thread states (for kanban view)
 export function useAllThreadStates(): Record<string, ThreadState> {
   const context = useThreadContext()
-  return context.getAllThreadStates()
+  return useSyncExternalStore(
+    context.subscribeAllThreadStates,
+    context.getAllThreadStates,
+    context.getAllThreadStates
+  )
 }
 
 // Hook to get all stream loading states with reactivity
 export function useAllStreamLoadingStates(): Record<string, boolean> {
   const context = useThreadContext()
-  return context.getAllStreamLoadingStates()
+  return useSyncExternalStore(
+    context.subscribeAllStreamLoadingStates,
+    context.getAllStreamLoadingStates,
+    context.getAllStreamLoadingStates
+  )
 }

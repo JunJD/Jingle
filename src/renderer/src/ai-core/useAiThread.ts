@@ -3,7 +3,7 @@ import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
 import { maybeGenerateThreadTitle } from "@/lib/thread-title"
-import { useThreadState } from "@/lib/thread-context"
+import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { hasComposerMessageInputContent, type ComposerMessageRef } from "@shared/message-content"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 import type { HITLDecision } from "@/types"
@@ -50,8 +50,9 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     seedQuery: host.seedQuery
   })
   const threadId = threadNavigation.threadId
-  const threadState = useThreadState(threadId)
-  const currentModelId = threadState?.currentModel ?? pendingModelId
+  const threadActions = useThreadActions(threadId)
+  const currentModelId =
+    useThreadSelector(threadId, (state) => state?.currentModel ?? null) ?? pendingModelId
   const invocation = useAiInvocation({
     ensureThread: async ({ draftInput }) => {
       const createdThread = await threadNavigation.createThread({
@@ -190,14 +191,14 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   }, [threadNavigation])
   const selectModel = useCallback(
     (modelId: string): void => {
-      if (threadState) {
-        threadState.setCurrentModel(modelId)
+      if (threadActions) {
+        threadActions.setCurrentModel(modelId)
         return
       }
 
       setPendingModelId(modelId)
     },
-    [threadState]
+    [threadActions]
   )
 
   const primaryActionDisabled = isBusy || !hasComposerMessageInputContent(messageInput)

@@ -10,15 +10,14 @@ import {
   type ComposerMessageInput
 } from "../../../shared/message-content"
 import {
+  useThreadActions,
   useThreadContext,
-  useThreadState,
+  useThreadSelector,
   type ThreadActions,
-  type ThreadContextValue,
-  type ThreadState
+  type ThreadRecord,
+  type ThreadContextValue
 } from "./thread-context"
 import { useThreadConversationProjection } from "./thread-conversation"
-
-type ThreadRecord = ThreadState & ThreadActions
 
 export interface EnsureAiThreadInput {
   draftInput: string
@@ -169,13 +168,14 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
 } {
   const { ensureThread, initialInput, onAfterAppendMessage, threadId, validateInvocation } = options
   const threadContext = useThreadContext()
-  const threadState = useThreadState(threadId)
+  const threadActions = useThreadActions(threadId)
+  const draftInputFromThread = useThreadSelector(threadId, (state) => state?.draftInput ?? null)
   const conversation = useThreadConversationProjection(threadId)
   const [pendingInput, setPendingInput] = useState(() => initialInput ?? "")
   const [localError, setLocalError] = useState<string | null>(null)
   const [isPreparing, setIsPreparing] = useState(false)
 
-  const draftInput = threadState?.draftInput ?? pendingInput
+  const draftInput = draftInputFromThread ?? pendingInput
   const visibleError = conversation.error ?? localError
   const isBusy = conversation.isLoading || isPreparing
 
@@ -190,14 +190,14 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
         setLocalError(null)
       }
 
-      if (threadState) {
-        threadState.setDraftInput(value)
+      if (threadActions) {
+        threadActions.setDraftInput(value)
         return
       }
 
       setPendingInput(value)
     },
-    [localError, threadState]
+    [localError, threadActions]
   )
 
   const invoke = useCallback(

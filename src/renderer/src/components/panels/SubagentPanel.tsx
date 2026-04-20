@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
-import { useThreadState } from "@/lib/thread-context"
+import { useThreadSelector } from "@/lib/thread-context"
 import type { Subagent } from "@/types"
 
 // Icon component for subagent type (avoid creating components during render)
@@ -52,10 +52,14 @@ function getSubagentTypeBadge(subagentType?: string): string {
   }
 }
 
+const EMPTY_SUBAGENTS: readonly Subagent[] = []
+
 export function SubagentPanel(): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
-  const threadState = useThreadState(currentThreadId)
-  const subagents = threadState?.subagents ?? []
+  const subagents = useThreadSelector(
+    currentThreadId,
+    (state) => state?.subagents ?? EMPTY_SUBAGENTS
+  )
 
   // Count by status
   const runningCount = subagents.filter((s) => s.status === "running").length

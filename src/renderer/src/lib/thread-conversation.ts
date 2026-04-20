@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react"
-import { useThreadContext, useThreadState } from "./thread-context"
-import type { HITLDecision, HITLRequest, Message } from "@/types"
+import { useThreadActions, useThreadContext, useThreadSelector } from "./thread-context"
+import type { HITLDecision, HITLRequest, Message, Todo } from "@/types"
 
 interface AgentStreamValues {
   todos?: Array<{ id?: string; content?: string; status?: string }>
@@ -26,6 +26,7 @@ const EMPTY_STREAM_DATA = {
   stream: null
 } as const
 const EMPTY_THREAD_MESSAGES: Message[] = []
+const EMPTY_TODOS: Todo[] = []
 
 function toThreadMessage(message: StreamMessage & { id: string }): Message {
   let role: Message["role"] = "assistant"
@@ -54,8 +55,7 @@ export interface ThreadConversationProjection {
   pendingApproval: HITLRequest | null
   resumePendingApproval: (decision: HITLDecision) => Promise<void>
   stream: ReturnType<ReturnType<typeof useThreadContext>["getStreamData"]>["stream"]
-  threadState: ReturnType<typeof useThreadState>
-  todos: NonNullable<ReturnType<typeof useThreadState>>["todos"]
+  todos: Todo[]
   toolResults: Map<string, ToolResultInfo>
 }
 
@@ -66,18 +66,17 @@ export function useThreadConversationProjection(
   }
 ): ThreadConversationProjection {
   const context = useThreadContext()
-  const threadState = useThreadState(threadId)
+  const threadActions = useThreadActions(threadId)
   const onMessagesPersistedRef = useRef(options?.onMessagesPersisted)
   const prevLoadingRef = useRef(false)
-  const threadMessages = threadState?.messages ?? EMPTY_THREAD_MESSAGES
-  const pendingApproval = threadState?.pendingApproval ?? null
-  const todos = threadState?.todos ?? []
-  const error = threadState?.error ?? null
-  const currentModel = threadState?.currentModel ?? null
-  const appendMessage = threadState?.appendMessage
-  const setPendingApproval = threadState?.setPendingApproval
-  const setTodos = threadState?.setTodos
-  const clearError = threadState?.clearError
+  const threadMessages = useThreadSelector(
+    threadId,
+    (state) => state?.messages ?? EMPTY_THREAD_MESSAGES
+  )
+  const pendingApproval = useThreadSelector(threadId, (state) => state?.pendingApproval ?? null)
+  const todos = useThreadSelector(threadId, (state) => state?.todos ?? EMPTY_TODOS)
+  const error = useThreadSelector(threadId, (state) => state?.error ?? null)
+  const currentModel = useThreadSelector(threadId, (state) => state?.currentModel ?? null)
 
   useEffect(() => {
     onMessagesPersistedRef.current = options?.onMessagesPersisted
@@ -108,21 +107,21 @@ export function useThreadConversationProjection(
 
   const streamTodos = (stream?.values as AgentStreamValues | undefined)?.todos
   useEffect(() => {
-    if (!setTodos || !Array.isArray(streamTodos)) {
+    if (!threadActions || !Array.isArray(streamTodos)) {
       return
     }
 
-    setTodos(
+    threadActions.setTodos(
       streamTodos.map((todo) => ({
         id: todo.id || crypto.randomUUID(),
         content: todo.content || "",
         status: (todo.status || "pending") as "pending" | "in_progress" | "completed" | "cancelled"
       }))
     )
-  }, [setTodos, streamTodos])
+  }, [streamTodos, threadActions])
 
   useEffect(() => {
-    if (!appendMessage) {
+    if (!threadActions) {
       prevLoadingRef.current = false
       return
     }
@@ -132,18 +131,17 @@ export function useThreadConversationProjection(
       return
     }
 
-    for (const rawMessage of streamData.messages) {
-      const message = rawMessage as StreamMessage
-      if (!message.id) {
-        continue
-      }
+    const streamingMessages = (streamData.messages as StreamMessage[])
+      .filter((message): message is StreamMessage & { id: string } => Boolean(message.id))
+      .map((message) => toThreadMessage(message))
 
-      appendMessage(toThreadMessage(message as StreamMessage & { id: string }))
+    for (const message of streamingMessages) {
+      threadActions.appendMessage(message)
     }
 
     onMessagesPersistedRef.current?.()
     prevLoadingRef.current = false
-  }, [appendMessage, isLoading, streamData.messages])
+  }, [isLoading, streamData.messages, threadActions])
 
   useEffect(() => {
     if (isLoading) {
@@ -152,7 +150,7 @@ export function useThreadConversationProjection(
   }, [isLoading])
 
   const displayMessages = useMemo(() => {
-    if (!appendMessage) {
+    if (!threadActions) {
       return []
     }
 
@@ -160,16 +158,16 @@ export function useThreadConversationProjection(
       return threadMessages
     }
 
+    const streamingMessages: Message[] = (streamData.messages as StreamMessage[])
+      .filter((message): message is StreamMessage & { id: string } => Boolean(message.id))
+      .map((message) => toThreadMessage(message))
     const threadMessageIds = new Set(threadMessages.map((message) => message.id))
 
-    const streamingMessages: Message[] = (streamData.messages as StreamMessage[])
-      .filter((message): message is StreamMessage & { id: string } => {
-        return Boolean(message.id) && !threadMessageIds.has(message.id!)
-      })
-      .map((message) => toThreadMessage(message))
-
-    return [...threadMessages, ...streamingMessages]
-  }, [appendMessage, isLoading, streamData.messages, threadMessages])
+    return [
+      ...threadMessages,
+      ...streamingMessages.filter((message) => !threadMessageIds.has(message.id))
+    ]
+  }, [isLoading, streamData.messages, threadActions, threadMessages])
 
   const toolResults = useMemo(() => {
     const results = new Map<string, ToolResultInfo>()
@@ -187,11 +185,11 @@ export function useThreadConversationProjection(
 
   const resumePendingApproval = useCallback(
     async (decision: HITLDecision): Promise<void> => {
-      if (!threadId || !pendingApproval || !stream || !setPendingApproval || !currentModel) {
+      if (!threadId || !pendingApproval || !stream || !threadActions || !currentModel) {
         return
       }
 
-      setPendingApproval(null)
+      threadActions.setPendingApproval(null)
 
       try {
         await stream.submit(null, {
@@ -207,18 +205,17 @@ export function useThreadConversationProjection(
         console.error("[ThreadConversation] Resume command failed:", resumeError)
       }
     },
-    [currentModel, pendingApproval, setPendingApproval, stream, threadId]
+    [currentModel, pendingApproval, stream, threadActions, threadId]
   )
 
   return {
-    clearError: clearError ?? (() => {}),
+    clearError: threadActions?.clearError ?? (() => {}),
     displayMessages,
     error,
     isLoading,
     pendingApproval,
     resumePendingApproval,
     stream,
-    threadState,
     todos,
     toolResults
   }

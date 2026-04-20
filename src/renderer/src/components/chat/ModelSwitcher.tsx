@@ -6,7 +6,7 @@ import { ModelSelectionContent } from "@/features/model-selection/ModelSelection
 import { ProviderIcon } from "@/features/model-selection/provider-icon"
 import { useI18n } from "@/lib/i18n"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
-import { useCurrentThread } from "@/lib/thread-context"
+import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 
 interface ModelSwitcherProps {
   threadId: string
@@ -17,7 +17,8 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
   const [open, setOpen] = useState(false)
   const loadModelProviderState = useHistoryShellStore((state) => state.loadModelProviderState)
   const models = useHistoryShellStore((state) => state.models)
-  const { currentModel, setCurrentModel } = useCurrentThread(threadId)
+  const currentModel = useThreadSelector(threadId, (state) => state?.currentModel ?? null)
+  const threadActions = useThreadActions(threadId)
   const selectedModel = useMemo(
     () => models.find((model) => model.id === currentModel) ?? null,
     [currentModel, models]
@@ -54,7 +55,7 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
         <ModelSelectionContent
           currentModelId={currentModel}
           onDone={() => setOpen(false)}
-          onSelectModel={setCurrentModel}
+          onSelectModel={(modelId) => threadActions?.setCurrentModel(modelId)}
         />
       </PopoverContent>
     </Popover>
