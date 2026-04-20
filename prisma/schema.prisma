@@ -146,6 +146,7 @@ model ArtifactPresentation {
 
 model Checkpoint {
   threadId           String  @map("thread_id")
+  runId              String? @map("run_id")
   checkpointNs       String  @default("") @map("checkpoint_ns")
   checkpointId       String  @map("checkpoint_id")
   parentCheckpointId String? @map("parent_checkpoint_id")
@@ -156,6 +157,7 @@ model Checkpoint {
 
   @@id([threadId, checkpointNs, checkpointId])
   @@index([threadId, checkpointNs], map: "idx_checkpoints_thread_ns")
+  @@index([threadId, runId, checkpointNs, checkpointId], map: "idx_checkpoints_thread_run_ns_checkpoint_id")
   @@map("checkpoints")
 }
 
