@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react"
 import { AI_THREAD_SOURCE } from "@shared/launcher-ai"
 import type { Thread } from "@/types"
+import { useThreadContext } from "@/lib/thread-context"
 import type { AiCoreThreadCreateInput, AiCoreThreadHandle } from "./AiCoreHost"
 import { useAiCoreThreads } from "./AiCoreHost"
+import { shouldReloadLauncherAiThreadOnFocus } from "./launcher-ai-thread-navigation-core"
 
 interface UseLauncherAiThreadNavigationOptions {
   initialAction: "focus" | "submit"
@@ -64,6 +66,7 @@ export function useLauncherAiThreadNavigation(
 ): LauncherAiThreadNavigation {
   const { initialAction, seedQuery } = options
   const threadHost = useAiCoreThreads()
+  const threadContext = useThreadContext()
   const [threadId, setThreadId] = useState<string | null>(null)
   const [adjacentThreadIds, setAdjacentThreadIds] = useState<AdjacentThreadIds>({
     next: null,
@@ -181,6 +184,11 @@ export function useLauncherAiThreadNavigation(
           return
         }
 
+        const isStreaming = threadContext.getStreamData(activeThreadId).isLoading
+        if (!shouldReloadLauncherAiThreadOnFocus({ activeThreadId, isStreaming })) {
+          return
+        }
+
         await threadHost.reload(activeThreadId)
       })()
     }
@@ -189,7 +197,7 @@ export function useLauncherAiThreadNavigation(
     return () => {
       window.removeEventListener("focus", handleWindowFocus)
     }
-  }, [refreshAdjacentThreadIds, resolveActiveThreadId, threadHost, threadId])
+  }, [refreshAdjacentThreadIds, resolveActiveThreadId, threadContext, threadHost, threadId])
 
   return {
     branchThread,

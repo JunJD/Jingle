@@ -207,7 +207,7 @@ export function useLauncherSearchPage(props: {
       switch (commandId) {
         case LAUNCHER_COMMAND_IDS.searchOpenAi:
           navigateToCommand(DEFAULT_HOME_COMMAND, {
-            initialAction: query.trim() ? "submit" : "focus",
+            initialAction: "focus",
             seedQuery: query
           })
           return
