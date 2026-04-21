@@ -1,4 +1,4 @@
-import { defineNativeExtensionManifest } from "../../shared/native-extensions"
+import { defineNativeExtensionManifest } from "@shared/native-extensions"
 import { TRANSLATE_EXTENSION_ID } from "./src/contracts"
 
 export const translateManifest = defineNativeExtensionManifest({

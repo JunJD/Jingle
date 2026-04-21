@@ -1,4 +1,4 @@
-import { defineNativeExtensionRenderer } from "../../shared/native-extensions"
+import { defineNativeExtensionRenderer } from "@shared/native-extensions"
 import * as TranslateMeta from "./src/translate.meta"
 import * as TranslateModule from "./src/translate"
 import * as TranslateQuickCopyModule from "./src/translate-quick-copy"

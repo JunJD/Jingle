@@ -1,4 +1,4 @@
-import { extractMessageText, resolveImageBlockUrl } from "../../../../shared/message-content"
+import { extractMessageText, resolveImageBlockUrl } from "@shared/message-content"
 import type { Message as ThreadMessage } from "@/types"
 
 export interface ToolResultInfo {

@@ -1,11 +1,11 @@
 import { globalShortcut } from "electron"
-import { resolveShortcutPlatform } from "../../../shared/shortcuts/model"
+import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import {
   listGlobalShortcutAvailability,
   resolveShortcutBindings,
   type GlobalShortcutAvailability,
   type ResolvedShortcutBinding
-} from "../../../shared/shortcuts/settings"
+} from "@shared/shortcuts/settings"
 import { getShortcutSettings } from "../../preferences"
 import { toElectronAccelerator } from "./global-shortcut-adapter"
 

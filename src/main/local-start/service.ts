@@ -1,4 +1,4 @@
-import type { CreateLocalStartItemInput, LocalStartItem } from "../../shared/local-start"
+import type { CreateLocalStartItemInput, LocalStartItem } from "@shared/local-start"
 import { LocalStartRepository } from "./repository"
 
 export class LocalStartService {

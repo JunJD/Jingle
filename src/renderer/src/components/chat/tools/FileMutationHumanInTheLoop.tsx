@@ -3,7 +3,7 @@ import { ToolCodeBlock, ToolApprovalActions, ToolApprovalCard } from "./shared-c
 import { defineHumanInTheLoop } from "./registry-core"
 import { renderFileMutationApprovalDetail } from "./file-mutation-presentation"
 import { getToolApprovalPresentationMeta } from "./tool-approval-presentation"
-import { isFileMutationToolName } from "../../../../../shared/file-mutation-review"
+import { isFileMutationToolName } from "@shared/file-mutation-review"
 import type { HumanInTheLoopProps } from "./types"
 
 function renderFileMutationApproval(props: HumanInTheLoopProps): React.JSX.Element {

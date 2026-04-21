@@ -1,4 +1,4 @@
-import { defineNativeExtensionManifest } from "../../shared/native-extensions"
+import { defineNativeExtensionManifest } from "@shared/native-extensions"
 
 export const githubManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "surface"],

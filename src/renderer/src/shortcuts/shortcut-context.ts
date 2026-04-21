@@ -1,6 +1,6 @@
 import { createContext, useContext, useLayoutEffect, useSyncExternalStore } from "react"
-import type { ShortcutScope } from "../../../shared/shortcuts/model"
-import type { ResolvedShortcutBinding, ShortcutSettings } from "../../../shared/shortcuts/settings"
+import type { ShortcutScope } from "@shared/shortcuts/model"
+import type { ResolvedShortcutBinding, ShortcutSettings } from "@shared/shortcuts/settings"
 import type {
   ShortcutRuntimeContext,
   ShortcutSystemState,

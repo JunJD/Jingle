@@ -1,7 +1,7 @@
 import path from "node:path"
 import { performance } from "node:perf_hooks"
 import { Bash, OverlayFs, type BashExecResult } from "just-bash"
-import type { MutationPrediction, MutationPredictionChange } from "../../shared/mutation-prediction"
+import type { MutationPrediction, MutationPredictionChange } from "@shared/mutation-prediction"
 import { RecordingFs } from "./recording-fs"
 
 const DEFAULT_TIMEOUT_MS = 2_500

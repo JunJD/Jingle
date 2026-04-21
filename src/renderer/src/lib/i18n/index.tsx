@@ -3,7 +3,7 @@ import {
   DEFAULT_APP_LOCALE,
   normalizeAppLocale,
   type AppLocale
-} from "../../../../shared/i18n"
+} from "@shared/i18n"
 import { appCopy, type AppCopy } from "./messages"
 
 interface I18nContextValue {

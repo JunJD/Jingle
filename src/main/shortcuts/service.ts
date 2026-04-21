@@ -1,11 +1,11 @@
 import { BrowserWindow } from "electron"
-import { resolveShortcutPlatform } from "../../shared/shortcuts/model"
+import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import {
   resolveShortcutBindings,
   type GlobalShortcutAvailability,
   type ResolvedShortcutBinding,
   type ShortcutSettings
-} from "../../shared/shortcuts/settings"
+} from "@shared/shortcuts/settings"
 import { getShortcutSettings, setShortcutSettings } from "../preferences"
 import { getGlobalShortcutAvailability } from "../services/shortcuts/global-shortcut-service"
 

@@ -6,7 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import type { AppCopy } from "@/lib/i18n/messages"
 import { cn } from "@/lib/utils"
 import type { Todo } from "@/types"
-import type { ToolApprovalChange } from "../../../../../shared/tool-approval"
+import type { ToolApprovalChange } from "@shared/tool-approval"
 import { getBasename, type ToolFileEntry } from "./shared"
 
 export function ToolDetailStack(props: {

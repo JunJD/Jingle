@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises"
 import { isAbsolute, relative, resolve } from "node:path"
-import type { PresentArtifactInput } from "../../shared/artifacts"
+import type { PresentArtifactInput } from "@shared/artifacts"
 import { parseToolInputWithSchema } from "../agent/tool-input-schema"
 import { assertSafePublicHttpUrl } from "../services/web-tools/url-guard"
 import type {

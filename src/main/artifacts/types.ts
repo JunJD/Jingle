@@ -5,7 +5,7 @@ import type {
   ArtifactSourceType,
   ArtifactStatus,
   PresentArtifactInput
-} from "../../shared/artifacts"
+} from "@shared/artifacts"
 
 export type ArtifactRecordDraft = Omit<
   ArtifactRecord,

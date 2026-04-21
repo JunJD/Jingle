@@ -1,9 +1,9 @@
-export { Detail } from "../renderer/src/extension-host/detail"
-export { Form } from "../renderer/src/extension-host/form"
-export { MenuBarExtra } from "../renderer/src/extension-host/menu-bar"
-export { List, ActionPanel, Action } from "../renderer/src/extension-host/ui"
-export { useAI } from "../renderer/src/ai-core/useAI"
-export { useI18n } from "../renderer/src/lib/i18n"
+export { Detail } from "@extension-host/detail"
+export { Form } from "@extension-host/form"
+export { MenuBarExtra } from "@extension-host/menu-bar"
+export { List, ActionPanel, Action } from "@extension-host/ui"
+export { useAI } from "@ai-core/useAI"
+export { useI18n } from "@renderer/lib/i18n"
 export {
   useCommandSeedQuery,
   createNativeExtensionClient,
@@ -16,4 +16,4 @@ export {
   useNativeExtensionLifecycle,
   useNativeExtensionNavigation,
   useNativeExtensionThreads
-} from "../renderer/src/extension-host/sdk"
+} from "@extension-host/sdk"

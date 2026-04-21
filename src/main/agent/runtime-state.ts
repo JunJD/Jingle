@@ -2,12 +2,12 @@ import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
 import type { ActionRequest, ReviewConfig } from "langchain"
 import type { HitlRequestRow } from "../db"
 import type { HITLRequest, Todo, ToolCall } from "../types"
-import { getDefaultHitlAllowedDecisions, normalizeHitlAllowedDecisions } from "../../shared/hitl"
-import { parseToolApprovalItem } from "../../shared/tool-approval"
+import { getDefaultHitlAllowedDecisions, normalizeHitlAllowedDecisions } from "@shared/hitl"
+import { parseToolApprovalItem } from "@shared/tool-approval"
 import {
   toComposerMessageMetadata,
   normalizeComposerMessageRefs
-} from "../../shared/message-content"
+} from "@shared/message-content"
 
 interface CheckpointChannelMessage {
   id?: string

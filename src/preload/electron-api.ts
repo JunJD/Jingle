@@ -1,4 +1,4 @@
-import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "../shared/settings-window"
+import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "@shared/settings-window"
 import { invokeIpc, ipcRenderer } from "./ipc"
 
 export const electronAPI = {

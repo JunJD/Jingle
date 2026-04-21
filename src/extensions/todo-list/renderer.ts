@@ -1,4 +1,4 @@
-import { defineNativeExtensionRenderer } from "../../shared/native-extensions"
+import { defineNativeExtensionRenderer } from "@shared/native-extensions"
 import * as IndexMeta from "./src/index.meta"
 import * as IndexModule from "./src/index"
 

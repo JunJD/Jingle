@@ -1,4 +1,4 @@
-import type { NativeMenuBarActionEvent, NativeMenuBarState } from "../../shared/native-menu-bar"
+import type { NativeMenuBarActionEvent, NativeMenuBarState } from "@shared/native-menu-bar"
 import { invokeIpc, ipcRenderer } from "../ipc"
 
 export const nativeMenuBarApi = {

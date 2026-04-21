@@ -1,7 +1,7 @@
 import "reflect-metadata"
 import type { BrowserWindow, IpcMain } from "electron"
 import { container, type DependencyContainer } from "tsyringe"
-import { LAUNCHER_COMMAND_IDS } from "../shared/shortcuts/ids"
+import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { registerAgentIpcHandlers, registerAgentModule } from "./agent/module"
 import { installApplicationMenu } from "./app-menu"
 import { registerAppInfoIpcHandlers, registerAppInfoModule } from "./app-info/module"
@@ -53,8 +53,8 @@ import {
   registerWorkspaceIpcHandlers,
   registerWorkspaceModule
 } from "./workspace/module"
-import type { MainWindowNavigationPayload } from "../shared/main-window"
-import type { SettingsWindowNavigationPayload } from "../shared/settings-window"
+import type { MainWindowNavigationPayload } from "@shared/main-window"
+import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
 export interface MainCompositionContext {
   acknowledgePendingMainNavigation: (payload: MainWindowNavigationPayload) => void

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import ModelProviderPage from "@/features/model-provider/model-provider-page"
-import type { ModelConfig, Provider, ProviderId } from "../../../shared/app-types"
-import type { SettingsWindowTarget } from "../../../shared/settings-window"
+import type { ModelConfig, Provider, ProviderId } from "@shared/app-types"
+import type { SettingsWindowTarget } from "@shared/settings-window"
 import { ApiKeyDialog } from "../components/chat/ApiKeyDialog"
 
 type ProviderTabData = {

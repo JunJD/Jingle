@@ -1,5 +1,5 @@
-import type { IpcErrorCode, IpcErrorPayload } from "../../shared/ipc-error"
-import { getIpcErrorStatus, serializeIpcErrorPayload } from "../../shared/ipc-error"
+import type { IpcErrorCode, IpcErrorPayload } from "@shared/ipc-error"
+import { getIpcErrorStatus, serializeIpcErrorPayload } from "@shared/ipc-error"
 import { IpcSchemaValidationError } from "./schema"
 
 interface OpenworkIpcErrorOptions {

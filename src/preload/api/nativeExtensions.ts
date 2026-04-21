@@ -2,7 +2,7 @@ import type {
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionInvokeRequest,
   NativeExtensionPreferencesChangedEvent
-} from "../../shared/native-extensions"
+} from "@shared/native-extensions"
 import { invokeIpc, ipcRenderer } from "../ipc"
 
 export const nativeExtensionsApi = {

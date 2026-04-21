@@ -1,3 +1,3 @@
-import { defineNativeExtensionMain } from "../../shared/native-extensions"
+import { defineNativeExtensionMain } from "@shared/native-extensions"
 
 export const todoListMain = defineNativeExtensionMain({})

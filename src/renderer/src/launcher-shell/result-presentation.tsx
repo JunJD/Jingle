@@ -1,6 +1,6 @@
 import { FileText, Folder, Globe, History, Languages, Search, Sparkles } from "lucide-react"
 import type { AppCopy } from "@/lib/i18n/messages"
-import type { LauncherResultAvailability, LauncherResultKind } from "../../../shared/launcher"
+import type { LauncherResultAvailability, LauncherResultKind } from "@shared/launcher"
 import type {
   LauncherResultPresentation,
   LauncherResultPresentationIcon,

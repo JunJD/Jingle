@@ -1,5 +1,5 @@
-import type { LauncherResultAvailability } from "../../../shared/launcher"
-import type { LauncherSearchAction } from "../../../shared/launcher-search"
+import type { LauncherResultAvailability } from "@shared/launcher"
+import type { LauncherSearchAction } from "@shared/launcher-search"
 import type { LauncherResultPresentation, LauncherShellItemKind } from "./result-types"
 import type {
   LauncherCommandAddress,

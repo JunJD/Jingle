@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useState } from "react"
 import { Command, Keyboard } from "lucide-react"
-import { getPrimaryDefaultShortcutBinding } from "../../../shared/shortcuts/defaults"
-import { LAUNCHER_COMMAND_IDS } from "../../../shared/shortcuts/ids"
+import { getPrimaryDefaultShortcutBinding } from "@shared/shortcuts/defaults"
+import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import {
   areShortcutChordsEqual,
   normalizeShortcutChord,
   resolveShortcutPlatform,
   type ShortcutChord,
   type ShortcutModifier
-} from "../../../shared/shortcuts/model"
+} from "@shared/shortcuts/model"
 import type {
   GlobalShortcutAvailability,
   ShortcutOverride
-} from "../../../shared/shortcuts/settings"
-import type { AppLocale } from "../../../shared/i18n"
+} from "@shared/shortcuts/settings"
+import type { AppLocale } from "@shared/i18n"
 import { formatShortcutBinding } from "../shortcuts/format-shortcut"
 import { getLauncherShortcutCommand } from "../shortcuts/command-registry"
 import { useShortcutBinding, useShortcutSettings } from "../shortcuts/shortcut-context"

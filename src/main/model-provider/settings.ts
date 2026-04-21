@@ -1,4 +1,4 @@
-import type { SupportedDefaultModelType } from "../../shared/app-types"
+import type { SupportedDefaultModelType } from "@shared/app-types"
 import { getDefaultModelId, getDefaultModels, setDefaultModelId } from "../preferences"
 import type { DefaultModels } from "./types"
 

@@ -14,7 +14,7 @@ import {
   type ArtifactRecord,
   type PresentArtifactsRequest,
   type PresentArtifactsResult
-} from "../../shared/artifacts"
+} from "@shared/artifacts"
 import { assertSafePublicHttpUrl } from "../services/web-tools/url-guard"
 import { getPrismaClient } from "../db/client"
 import {

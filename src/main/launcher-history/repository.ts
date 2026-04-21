@@ -3,8 +3,8 @@ import Store from "electron-store"
 import type {
   LauncherHistoryItem,
   RecordLauncherHistoryItemInput
-} from "../../shared/launcher-history"
-import { sortLauncherHistoryItems } from "../../shared/launcher-history"
+} from "@shared/launcher-history"
+import { sortLauncherHistoryItems } from "@shared/launcher-history"
 import { getOpenworkDir } from "../storage"
 import { getApplicationIconDataUrl } from "../services/launcher-search/providers/applications"
 

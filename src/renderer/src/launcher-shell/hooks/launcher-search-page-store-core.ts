@@ -1,7 +1,7 @@
-import { sortLauncherHistoryItems, type LauncherHistoryItem } from "../../../../shared/launcher-history"
-import type { LauncherSearchResult, LauncherSearchSource } from "../../../../shared/launcher-search"
-import type { LauncherWindowMode } from "../../../../shared/launcher-settings"
-import type { LocalStartItem } from "../../../../shared/local-start"
+import { sortLauncherHistoryItems, type LauncherHistoryItem } from "@shared/launcher-history"
+import type { LauncherSearchResult, LauncherSearchSource } from "@shared/launcher-search"
+import type { LauncherWindowMode } from "@shared/launcher-settings"
+import type { LocalStartItem } from "@shared/local-start"
 
 export const LAUNCHER_SEARCH_SOURCES: readonly LauncherSearchSource[] = [
   "applications",

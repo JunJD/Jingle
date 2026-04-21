@@ -8,7 +8,7 @@ import type {
   Provider,
   ProviderModelsResponse,
   ProviderId
-} from "../../shared/app-types"
+} from "@shared/app-types"
 
 export interface ProviderDefinition {
   configurateMethods: ConfigurationMethod[]

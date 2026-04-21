@@ -3,11 +3,11 @@ import { spawn } from "node:child_process"
 import { promises as fs } from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { createLauncherHistoryKey } from "../../../../shared/launcher-history"
+import { createLauncherHistoryKey } from "@shared/launcher-history"
 import type {
   LauncherSearchRequest,
   LauncherSearchResult
-} from "../../../../shared/launcher-search"
+} from "@shared/launcher-search"
 import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
 
 interface MacFileSearchCandidate {

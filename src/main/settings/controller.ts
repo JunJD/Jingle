@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron"
-import type { LauncherSettings } from "../../shared/launcher-settings"
+import type { LauncherSettings } from "@shared/launcher-settings"
 import type { AgentConfig } from "../types"
 import { registerIpcHandle } from "../ipc/handle"
 import { SettingsService } from "./service"

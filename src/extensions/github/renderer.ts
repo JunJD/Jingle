@@ -1,4 +1,4 @@
-import { defineNativeExtensionRenderer } from "../../shared/native-extensions"
+import { defineNativeExtensionRenderer } from "@shared/native-extensions"
 import * as CreateIssueMeta from "./src/create-issue.meta"
 import * as CreateIssueModule from "./src/create-issue"
 import * as CreatePullRequestMeta from "./src/create-pull-request.meta"

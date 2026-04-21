@@ -5,7 +5,7 @@ import { LauncherCommandErrorPage } from "@launcher-components/LauncherCommandEr
 import type { LauncherShellConfig } from "@shared/launcher"
 import { AI_CHAT_COMMAND_NAME } from "@shared/launcher-ai"
 import type { Thread } from "@/types"
-import { deriveLauncherCommandOwnerClipboardContext } from "../../../shared/clipboard-derivations"
+import { deriveLauncherCommandOwnerClipboardContext } from "@shared/clipboard-derivations"
 import type { LauncherClipboardState } from "./LauncherClipboardContext"
 import type { LauncherInputElement } from "./input-element"
 import type { LauncherInputStatus } from "./launcher-input-status"

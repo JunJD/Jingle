@@ -1,4 +1,4 @@
-import type { AppLocale } from "../../../shared/i18n"
+import type { AppLocale } from "@shared/i18n"
 
 interface SettingsCopy {
   title: string

@@ -5,11 +5,11 @@ import { Dirent, promises as fs } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
-import { createLauncherHistoryKey } from "../../../../shared/launcher-history"
+import { createLauncherHistoryKey } from "@shared/launcher-history"
 import type {
   LauncherSearchRequest,
   LauncherSearchResult
-} from "../../../../shared/launcher-search"
+} from "@shared/launcher-search"
 import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
 import {
   isWindowsShortcutPath,

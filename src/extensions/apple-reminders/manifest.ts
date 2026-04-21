@@ -1,4 +1,4 @@
-import { defineNativeExtensionManifest } from "../../shared/native-extensions"
+import { defineNativeExtensionManifest } from "@shared/native-extensions"
 
 export const appleRemindersManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "rpc", "surface"],

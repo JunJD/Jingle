@@ -1,4 +1,4 @@
-import type { ShortcutChord, ShortcutModifier } from "../../../shared/shortcuts/model"
+import type { ShortcutChord, ShortcutModifier } from "@shared/shortcuts/model"
 
 const MODIFIER_TO_ACCELERATOR: Record<ShortcutModifier, string> = {
   alt: "Alt",

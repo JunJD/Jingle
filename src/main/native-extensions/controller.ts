@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron"
-import type { NativeExtensionInvokeRequest } from "../../shared/native-extensions"
+import type { NativeExtensionInvokeRequest } from "@shared/native-extensions"
 import { registerIpcHandle } from "../ipc/handle"
 import { NativeExtensionsService } from "./service"
 

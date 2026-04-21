@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron"
-import type { CreateLocalStartItemInput } from "../../shared/local-start"
+import type { CreateLocalStartItemInput } from "@shared/local-start"
 import { registerIpcHandle } from "../ipc/handle"
 import { LocalStartService } from "./service"
 

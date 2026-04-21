@@ -1,15 +1,15 @@
-import { DEFAULT_MODELS } from "../../../shared/models"
-import type { ArtifactRecord } from "../../../shared/artifacts"
+import { DEFAULT_MODELS } from "@shared/models"
+import type { ArtifactRecord } from "@shared/artifacts"
 import {
   getArtifactTabId,
   getNextActiveTabAfterClose,
   syncOpenArtifactTabs,
   type OpenArtifactTab,
   type OpenFile
-} from "../../../shared/thread-tabs"
+} from "@shared/thread-tabs"
 import type { HITLRequest, Message, Subagent, Todo } from "../types"
 
-export type { OpenArtifactTab, OpenFile } from "../../../shared/thread-tabs"
+export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
 
 export interface TokenUsage {
   inputTokens: number

@@ -7,7 +7,7 @@ import { I18nProvider } from "./lib/i18n"
 import MainWindowApp from "./main-window/MainWindowApp"
 import SettingsApp from "./settings/SettingsApp"
 import { ShortcutProvider } from "./shortcuts/shortcut-provider"
-import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "../../shared/i18n"
+import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "@shared/i18n"
 import "./index.css"
 
 const windowKind = new URLSearchParams(window.location.search).get("window")

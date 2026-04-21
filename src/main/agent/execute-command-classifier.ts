@@ -2,7 +2,7 @@ import { Bash } from "just-bash"
 import {
   type ExecuteCommandPolicy,
   type ExecuteCommandProfile
-} from "../../shared/execute-command-policy"
+} from "@shared/execute-command-policy"
 import { normalizePublicHttpUrl } from "../services/web-tools/url-guard"
 
 const parser = new Bash()

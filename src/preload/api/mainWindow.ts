@@ -1,4 +1,4 @@
-import type { MainWindowNavigationPayload } from "../../shared/main-window"
+import type { MainWindowNavigationPayload } from "@shared/main-window"
 import { invokeIpc, ipcRenderer } from "../ipc"
 
 export const mainWindowApi = {

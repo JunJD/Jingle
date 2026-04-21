@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron"
-import type { ShortcutSettings } from "../../shared/shortcuts/settings"
+import type { ShortcutSettings } from "@shared/shortcuts/settings"
 import { registerIpcHandle } from "../ipc/handle"
 import { ShortcutsService } from "./service"
 

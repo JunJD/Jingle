@@ -1,10 +1,10 @@
-import type { ContentBlock } from "../../shared/app-types"
+import type { ContentBlock } from "@shared/app-types"
 import {
   extractComposerMessageRefsMetadata,
   extractMessageText,
   summarizeMessageContent,
   type AgentMessageContent
-} from "../../shared/message-content"
+} from "@shared/message-content"
 import { buildSegmentedSearchText } from "../search-text"
 import { getPrismaClient } from "./client"
 

@@ -1,5 +1,5 @@
 import type { ModelConfig, ModelType, Provider, ProviderModelsResponse } from "../types"
-import type { SupportedDefaultModelType } from "../../shared/app-types"
+import type { SupportedDefaultModelType } from "@shared/app-types"
 import { getProviderAdapter, listProviderAdapters } from "./adapters"
 import { getModelConfig, getProviderDefinition, parseProviderModelId } from "./catalog"
 import { listCatalogModelsByProvider } from "./model-list"

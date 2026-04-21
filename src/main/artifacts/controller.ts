@@ -1,5 +1,5 @@
 import { BrowserWindow, type IpcMain } from "electron"
-import type { ArtifactActionId, ArtifactChangedEvent } from "../../shared/artifacts"
+import type { ArtifactActionId, ArtifactChangedEvent } from "@shared/artifacts"
 import { registerIpcHandle } from "../ipc/handle"
 import { ArtifactsService } from "./service"
 

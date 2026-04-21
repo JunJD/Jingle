@@ -1,5 +1,5 @@
 import { createMiddleware, tool, type ToolRuntime } from "langchain"
-import { getToolCallArtifactKey } from "../../shared/artifacts"
+import { getToolCallArtifactKey } from "@shared/artifacts"
 import { parsePresentArtifactToolInput } from "../artifacts/present-artifact-tool-parser"
 import { presentArtifactToolInputSchema } from "../artifacts/present-artifact-tool-schema"
 import { presentArtifacts } from "../artifacts/service"

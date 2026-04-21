@@ -2,7 +2,7 @@ import { existsSync, lstatSync } from "node:fs"
 import { basename } from "node:path"
 import { fileURLToPath } from "node:url"
 import { clipboard } from "electron"
-import type { ClipboardContext, ClipboardFile, ClipboardImage } from "../../shared/clipboard"
+import type { ClipboardContext, ClipboardFile, ClipboardImage } from "@shared/clipboard"
 
 const EMPTY_CLIPBOARD_CONTEXT: ClipboardContext = {
   kind: "none"

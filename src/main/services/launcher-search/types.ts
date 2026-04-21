@@ -2,7 +2,7 @@ import type {
   LauncherSearchRequest,
   LauncherSearchResult,
   LauncherSearchSource
-} from "../../../shared/launcher-search"
+} from "@shared/launcher-search"
 
 export interface LauncherSearchProviderResponse {
   results: LauncherSearchResult[]
