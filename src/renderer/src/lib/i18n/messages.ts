@@ -88,6 +88,7 @@ export interface AppCopy {
     aiInputPlaceholder: string
     aiInputPlaceholderSecondary: string
     aiPrimaryLabel: string
+    aiStopLabel: string
     aiThreadTitle: string
     clearClipboardContext: string
     clipboardFiles: (count: number) => string
@@ -272,6 +273,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       aiInputPlaceholder: "描述你要完成的事情...",
       aiInputPlaceholderSecondary: "也可以直接贴文件、命令或报错信息",
       aiPrimaryLabel: "发给 AI",
+      aiStopLabel: "停止",
       aiThreadTitle: "快速提问",
       clearClipboardContext: "清除剪贴板上下文",
       clipboardFiles: (count) => `${count} 个文件`,
@@ -469,6 +471,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       aiInputPlaceholder: "Ask AI anything...",
       aiInputPlaceholderSecondary: "You can also paste files, commands, or error output",
       aiPrimaryLabel: "Ask AI",
+      aiStopLabel: "Stop",
       aiThreadTitle: "Ask Anything",
       clearClipboardContext: "Clear clipboard context",
       clipboardFiles: (count) => `${count} file${count === 1 ? "" : "s"}`,

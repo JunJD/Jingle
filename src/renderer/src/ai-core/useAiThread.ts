@@ -23,6 +23,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   branchThread: () => Promise<string | null>
   canGoToNextChat: boolean
   canGoToPreviousChat: boolean
+  canStop: boolean
   currentModelId: string | null
   goToNextChat: () => Promise<string | null>
   goToPreviousChat: () => Promise<string | null>
@@ -36,6 +37,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   selectModel: (modelId: string) => void
   setQuery: (value: string) => void
   startNewThread: () => Promise<string | null>
+  stop: () => Promise<void>
   threadId: string | null
 } {
   const { messageRefs = [], onDidInvoke } = options
@@ -224,6 +226,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
       visibleError: invocation.visibleError ?? threadActionError
     },
     branchThread,
+    canStop: invocation.canStop,
     canGoToNextChat: threadNavigation.canGoToNextThread,
     canGoToPreviousChat: threadNavigation.canGoToPreviousThread,
     currentModelId,
@@ -239,6 +242,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     selectModel,
     setQuery: invocation.setInput,
     startNewThread,
+    stop: invocation.stop,
     threadId
   }
 }

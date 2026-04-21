@@ -257,7 +257,10 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
 
   const stop = useCallback(async (): Promise<void> => {
     await conversation.stream?.stop()
-  }, [conversation.stream])
+    if (threadId) {
+      await window.api.agent.cancel(threadId)
+    }
+  }, [conversation.stream, threadId])
 
   const resume = useCallback(
     async (decision: HITLDecision): Promise<void> => {

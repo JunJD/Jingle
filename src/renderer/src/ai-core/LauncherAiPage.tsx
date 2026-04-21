@@ -1,4 +1,4 @@
-import { ArrowLeft, GitBranch, Plus } from "lucide-react"
+import { ArrowLeft, GitBranch, Plus, Square } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
 import { useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
@@ -28,6 +28,7 @@ export function LauncherAiPage(): React.JSX.Element {
     handleApprovalDecision,
     inputStatus,
     isBusy,
+    canStop,
     canGoToNextChat,
     canGoToPreviousChat,
     currentModelId,
@@ -40,6 +41,7 @@ export function LauncherAiPage(): React.JSX.Element {
     selectModel,
     setQuery,
     startNewThread,
+    stop,
     branchThread,
     threadId
   } = useAiThread({
@@ -71,6 +73,9 @@ export function LauncherAiPage(): React.JSX.Element {
     setShowModelPicker(false)
     setBranchFeedbackUntil(Date.now() + 1800)
   }, [attachmentDraft, branchThread])
+  const handleStop = useCallback(async (): Promise<void> => {
+    await stop()
+  }, [stop])
   const handleOpenModelPicker = useCallback(async (): Promise<void> => {
     setShowModelPicker(true)
   }, [])
@@ -177,20 +182,34 @@ export function LauncherAiPage(): React.JSX.Element {
                 </button>
               ) : null}
 
-              <button
-                type="button"
-                onClick={runPrimaryAction}
-                onMouseDown={(event) => event.preventDefault()}
-                disabled={primaryActionDisabled}
-                className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
-              >
-                <span>{copy.launcher.aiPrimaryLabel}</span>
-                {submitShortcut ? (
-                  <span className="launcher-shortcut text-[11px] text-muted-foreground">
-                    {submitShortcut}
-                  </span>
-                ) : null}
-              </button>
+              {canStop ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleStop()
+                  }}
+                  onMouseDown={(event) => event.preventDefault()}
+                  className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground"
+                >
+                  <Square className="size-3.5" />
+                  <span>{copy.launcher.aiStopLabel}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={runPrimaryAction}
+                  onMouseDown={(event) => event.preventDefault()}
+                  disabled={primaryActionDisabled}
+                  className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
+                >
+                  <span>{copy.launcher.aiPrimaryLabel}</span>
+                  {submitShortcut ? (
+                    <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                      {submitShortcut}
+                    </span>
+                  ) : null}
+                </button>
+              )}
             </div>
           </>
         }
