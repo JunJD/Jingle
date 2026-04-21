@@ -15,11 +15,13 @@ interface LauncherChromeProps {
   inputClassName?: string
   inputRef: RefObject<LauncherInputElement | null>
   inputStatus?: LauncherInputStatus
+  inputTrailing?: ReactNode
   inputValue: string
   onInputKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void
   onInputValueChange: (value: string) => void
   placeholders: readonly string[]
   shellConfig: LauncherShellConfig
+  showInputStatusIndicator?: boolean
   showHeaderDivider?: boolean
   surface: string
 }
@@ -34,11 +36,13 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
     inputClassName,
     inputRef,
     inputStatus = "idle",
+    inputTrailing,
     inputValue,
     onInputKeyDown,
     onInputValueChange,
     placeholders,
     shellConfig,
+    showInputStatusIndicator = true,
     showHeaderDivider = true,
     surface
   } = props
@@ -52,6 +56,8 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
         <LauncherInput
           ref={inputRef}
           density={density}
+          trailing={inputTrailing}
+          showStatusIndicator={showInputStatusIndicator}
           status={inputStatus}
           value={inputValue}
           onChange={(event) => onInputValueChange(event.target.value)}

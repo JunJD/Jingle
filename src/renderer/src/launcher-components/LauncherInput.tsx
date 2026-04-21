@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react"
-import { forwardRef, useRef } from "react"
+import { forwardRef, useRef, type ReactNode } from "react"
 import {
   PlaceholdersAndVanishInput,
   type PlaceholdersAndVanishInputProps
@@ -11,6 +11,8 @@ import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 export interface LauncherInputProps extends PlaceholdersAndVanishInputProps {
   readonly density?: "default" | "compact"
   readonly status?: LauncherInputStatus
+  readonly trailing?: ReactNode
+  readonly showStatusIndicator?: boolean
 }
 
 function shouldPreserveNativeInputNavigation(
@@ -36,7 +38,9 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
       onCompositionStart,
       onKeyDown,
       placeholderClassName,
+      showStatusIndicator = true,
       status = "idle",
+      trailing,
       ...props
     },
     ref
@@ -100,7 +104,9 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
           {...props}
         />
 
-        {status === "idle" ? null : (
+        {trailing ? (
+          trailing
+        ) : !showStatusIndicator || status === "idle" ? null : (
           <div
             aria-hidden="true"
             className={cn(

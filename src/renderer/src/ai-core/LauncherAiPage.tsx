@@ -182,34 +182,20 @@ export function LauncherAiPage(): React.JSX.Element {
                 </button>
               ) : null}
 
-              {canStop ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleStop()
-                  }}
-                  onMouseDown={(event) => event.preventDefault()}
-                  className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground"
-                >
-                  <Square className="size-3.5" />
-                  <span>{copy.launcher.aiStopLabel}</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={runPrimaryAction}
-                  onMouseDown={(event) => event.preventDefault()}
-                  disabled={primaryActionDisabled}
-                  className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
-                >
-                  <span>{copy.launcher.aiPrimaryLabel}</span>
-                  {submitShortcut ? (
-                    <span className="launcher-shortcut text-[11px] text-muted-foreground">
-                      {submitShortcut}
-                    </span>
-                  ) : null}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={runPrimaryAction}
+                onMouseDown={(event) => event.preventDefault()}
+                disabled={primaryActionDisabled}
+                className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
+              >
+                <span>{copy.launcher.aiPrimaryLabel}</span>
+                {submitShortcut ? (
+                  <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                    {submitShortcut}
+                  </span>
+                ) : null}
+              </button>
             </div>
           </>
         }
@@ -263,8 +249,25 @@ export function LauncherAiPage(): React.JSX.Element {
             </div>
           </div>
         }
+        inputTrailing={
+          canStop ? (
+            <button
+              type="button"
+              onClick={() => {
+                void handleStop()
+              }}
+              onMouseDown={(event) => event.preventDefault()}
+              aria-label={copy.launcher.aiStopLabel}
+              title={copy.launcher.aiStopLabel}
+              className="launcher-icon-button flex h-5.5 w-5.5 shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
+            >
+              <Square className="size-3" />
+            </button>
+          ) : undefined
+        }
         inputStatus={inputStatus}
         inputRef={inputRef}
+        showInputStatusIndicator={false}
         density="compact"
         inputValue={query}
         onInputValueChange={setQuery}
