@@ -1,4 +1,3 @@
-import { ipcRenderer } from "electron"
 import type { ClipboardContext } from "../../shared/clipboard"
 import type {
   LauncherActionExecutionResult,
@@ -6,25 +5,26 @@ import type {
   LauncherSearchRequest,
   LauncherSearchResponse
 } from "../../shared/launcher-search"
+import { invokeIpc, ipcRenderer } from "../ipc"
 
 export const launcherApi = {
   getClipboardContext: (): Promise<ClipboardContext> => {
-    return ipcRenderer.invoke("launcher:getClipboardContext")
+    return invokeIpc("launcher:getClipboardContext")
   },
   search: (request: LauncherSearchRequest): Promise<LauncherSearchResponse> => {
-    return ipcRenderer.invoke("launcher:search", request)
+    return invokeIpc("launcher:search", request)
   },
   executeAction: (action: LauncherSearchAction): Promise<LauncherActionExecutionResult> => {
-    return ipcRenderer.invoke("launcher:executeAction", action)
+    return invokeIpc("launcher:executeAction", action)
   },
   show: (): Promise<void> => {
-    return ipcRenderer.invoke("launcher:show")
+    return invokeIpc("launcher:show")
   },
   hide: (): Promise<void> => {
-    return ipcRenderer.invoke("launcher:hide")
+    return invokeIpc("launcher:hide")
   },
   setViewportHeight: (height: number): Promise<void> => {
-    return ipcRenderer.invoke("launcher:setViewportHeight", height)
+    return invokeIpc("launcher:setViewportHeight", height)
   },
   onShown: (callback: () => void): (() => void) => {
     const handler = (): void => {

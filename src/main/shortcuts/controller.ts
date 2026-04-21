@@ -1,5 +1,6 @@
 import type { IpcMain } from "electron"
 import type { ShortcutSettings } from "../../shared/shortcuts/settings"
+import { registerIpcHandle } from "../ipc/handle"
 import { ShortcutsService } from "./service"
 
 export class ShortcutsController {
@@ -12,19 +13,19 @@ export class ShortcutsController {
       event.returnValue = this.shortcutsService.getBootstrapSettings()
     })
 
-    ipcMain.handle("shortcuts:getSettings", () => {
+    registerIpcHandle(ipcMain, "shortcuts:getSettings", () => {
       return this.shortcutsService.getSettings()
     })
 
-    ipcMain.handle("shortcuts:setSettings", (_event, updates: Partial<ShortcutSettings>) => {
+    registerIpcHandle(ipcMain, "shortcuts:setSettings", (_event, updates: Partial<ShortcutSettings>) => {
       return this.shortcutsService.setSettings(updates, { applySettings })
     })
 
-    ipcMain.handle("shortcuts:getResolvedBindings", () => {
+    registerIpcHandle(ipcMain, "shortcuts:getResolvedBindings", () => {
       return this.shortcutsService.getResolvedBindings()
     })
 
-    ipcMain.handle("shortcuts:getGlobalAvailability", () => {
+    registerIpcHandle(ipcMain, "shortcuts:getGlobalAvailability", () => {
       return this.shortcutsService.getGlobalAvailability()
     })
   }

@@ -1,5 +1,6 @@
 import type { UseStreamTransport } from "@langchain/langgraph-sdk/react"
 import type { ContentBlock } from "./shared/app-types"
+import type { IpcErrorCode } from "./shared/ipc-error"
 
 export type StreamPayload = Parameters<UseStreamTransport["stream"]>[0]
 
@@ -63,6 +64,10 @@ export interface IPCDoneEvent {
 export interface IPCErrorEvent {
   type: "error"
   error: string
+  code?: IpcErrorCode
+  details?: string[]
+  message?: string
+  status?: number
 }
 
 export type IPCEvent =

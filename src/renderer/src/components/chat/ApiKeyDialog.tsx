@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
+import { getIpcErrorDisplayMessage } from "@/lib/ipc-errors"
 import type { Provider } from "@/types"
 import { useI18n } from "@/lib/i18n"
 import type { AppLocale } from "../../../../shared/i18n"
@@ -22,11 +23,7 @@ interface ApiKeyDialogProps {
 }
 
 function getDialogErrorMessage(error: unknown, fallback: string): string {
-  if (!(error instanceof Error)) {
-    return fallback
-  }
-
-  return error.message.replace(/^Error invoking remote method '[^']+':\s*/, "")
+  return getIpcErrorDisplayMessage(error, fallback)
 }
 
 function getLocalizedText(text: LocalizedText, locale: AppLocale): string {

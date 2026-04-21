@@ -424,7 +424,11 @@ export class ElectronIPCTransport implements UseStreamTransport {
       case "error":
         events.push({
           event: "error",
-          data: { error: "STREAM_ERROR", message: event.error }
+          data: {
+            error: event.code ?? "STREAM_ERROR",
+            message: event.message ?? event.error,
+            name: event.code ?? "STREAM_ERROR"
+          }
         })
         break
 

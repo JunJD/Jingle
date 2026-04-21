@@ -1,14 +1,14 @@
-import { ipcRenderer } from "electron"
 import type { LauncherHistoryItem } from "../../shared/launcher-history"
+import { invokeIpc } from "../ipc"
 
 export const launcherHistoryApi = {
   list: (): Promise<LauncherHistoryItem[]> => {
-    return ipcRenderer.invoke("launcherHistory:list")
+    return invokeIpc("launcherHistory:list")
   },
   remove: (itemId: string): Promise<void> => {
-    return ipcRenderer.invoke("launcherHistory:remove", itemId)
+    return invokeIpc("launcherHistory:remove", itemId)
   },
   setPinned: (itemId: string, pin: boolean): Promise<LauncherHistoryItem> => {
-    return ipcRenderer.invoke("launcherHistory:setPinned", itemId, pin)
+    return invokeIpc("launcherHistory:setPinned", itemId, pin)
   }
 }

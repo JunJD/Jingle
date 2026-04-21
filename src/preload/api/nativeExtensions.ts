@@ -1,35 +1,35 @@
-import { ipcRenderer } from "electron"
 import type {
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionInvokeRequest,
   NativeExtensionPreferencesChangedEvent
 } from "../../shared/native-extensions"
+import { invokeIpc, ipcRenderer } from "../ipc"
 
 export const nativeExtensionsApi = {
   listSettingsSchemas: (): Promise<InstalledNativeExtensionSettingsSchema[]> => {
-    return ipcRenderer.invoke("nativeExtensions:listSettingsSchemas")
+    return invokeIpc("nativeExtensions:listSettingsSchemas")
   },
   getPreferences: (extensionName: string): Promise<Record<string, unknown>> => {
-    return ipcRenderer.invoke("nativeExtensions:getPreferences", extensionName)
+    return invokeIpc("nativeExtensions:getPreferences", extensionName)
   },
   setPreferences: (
     extensionName: string,
     nextRecord: Record<string, unknown>
   ): Promise<Record<string, unknown>> => {
-    return ipcRenderer.invoke("nativeExtensions:setPreferences", extensionName, nextRecord)
+    return invokeIpc("nativeExtensions:setPreferences", extensionName, nextRecord)
   },
   getCommandPreferences: (
     extensionName: string,
     commandName: string
   ): Promise<Record<string, unknown>> => {
-    return ipcRenderer.invoke("nativeExtensions:getCommandPreferences", extensionName, commandName)
+    return invokeIpc("nativeExtensions:getCommandPreferences", extensionName, commandName)
   },
   setCommandPreferences: (
     extensionName: string,
     commandName: string,
     nextRecord: Record<string, unknown>
   ): Promise<Record<string, unknown>> => {
-    return ipcRenderer.invoke(
+    return invokeIpc(
       "nativeExtensions:setCommandPreferences",
       extensionName,
       commandName,
@@ -39,7 +39,7 @@ export const nativeExtensionsApi = {
   invoke: <TPayload, TResult>(
     request: NativeExtensionInvokeRequest<TPayload>
   ): Promise<TResult> => {
-    return ipcRenderer.invoke("nativeExtensions:invoke", request)
+    return invokeIpc("nativeExtensions:invoke", request)
   },
   onPreferencesChanged: (
     callback: (event: NativeExtensionPreferencesChangedEvent) => void

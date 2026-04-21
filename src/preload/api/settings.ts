@@ -1,28 +1,28 @@
-import { ipcRenderer } from "electron"
 import type { AgentConfig } from "../../shared/app-types"
 import type { LauncherSettings } from "../../shared/launcher-settings"
 import type { SettingsWindowNavigationPayload } from "../../shared/settings-window"
+import { invokeIpc } from "../ipc"
 
 export const settingsApi = {
   getAgentConfig: (): Promise<AgentConfig> => {
-    return ipcRenderer.invoke("settings:getAgentConfig")
+    return invokeIpc("settings:getAgentConfig")
   },
   setAgentConfig: (updates: Partial<AgentConfig>): Promise<AgentConfig> => {
-    return ipcRenderer.invoke("settings:setAgentConfig", updates)
+    return invokeIpc("settings:setAgentConfig", updates)
   },
   getLauncherSettings: (): Promise<LauncherSettings> => {
-    return ipcRenderer.invoke("settings:getLauncherSettings")
+    return invokeIpc("settings:getLauncherSettings")
   },
   setLauncherSettings: (updates: Partial<LauncherSettings>): Promise<LauncherSettings> => {
-    return ipcRenderer.invoke("settings:setLauncherSettings", updates)
+    return invokeIpc("settings:setLauncherSettings", updates)
   },
   openWindow: (payload?: SettingsWindowNavigationPayload): Promise<void> => {
-    return ipcRenderer.invoke("settings:openWindow", payload)
+    return invokeIpc("settings:openWindow", payload)
   },
   openTab: (payload: SettingsWindowNavigationPayload): Promise<void> => {
-    return ipcRenderer.invoke("settings:openTab", payload)
+    return invokeIpc("settings:openTab", payload)
   },
   getPendingNavigation: (): Promise<SettingsWindowNavigationPayload | null> => {
-    return ipcRenderer.invoke("settings:getPendingNavigation")
+    return invokeIpc("settings:getPendingNavigation")
   }
 }

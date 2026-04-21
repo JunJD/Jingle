@@ -14,6 +14,7 @@ import {
 import { useI18n } from "@/lib/i18n"
 import { useShortcutCommandHandler } from "@/shortcuts/shortcut-context"
 import { useThreadContext } from "@/lib/thread-context"
+import { shouldReloadLauncherAiThreadOnActivate } from "@/ai-core/launcher-ai-thread-navigation-core"
 import { useLauncherClipboard } from "./LauncherClipboardContext"
 import { LauncherCommandSurface } from "./LauncherCommandSurface"
 import { useActiveLauncherCommand } from "./hooks/useActiveLauncherCommand"
@@ -169,7 +170,18 @@ export default function LauncherApp(): React.JSX.Element {
   )
   const activatePluginThread = useCallback(
     async (threadId: string): Promise<void> => {
-      await activateHistoryThread(threadId, (nextThreadId) => threadContext.reloadThread(nextThreadId))
+      await activateHistoryThread(threadId, async (nextThreadId) => {
+        if (
+          !shouldReloadLauncherAiThreadOnActivate({
+            isStreaming: threadContext.getStreamData(nextThreadId).isLoading
+          })
+        ) {
+          threadContext.ensureThreadRuntime(nextThreadId)
+          return
+        }
+
+        await threadContext.reloadThread(nextThreadId)
+      })
     },
     [threadContext]
   )
@@ -178,8 +190,11 @@ export default function LauncherApp(): React.JSX.Element {
       const branchedThread = await window.api.threads.clone(threadId)
       const metadata = branchedThread.metadata ?? {}
       const modelId =
-        typeof metadata.model === "string" ? metadata.model : await window.api.models.getDefault("llm")
-      const workspacePath = typeof metadata.workspacePath === "string" ? metadata.workspacePath : null
+        typeof metadata.model === "string"
+          ? metadata.model
+          : await window.api.models.getDefault("llm")
+      const workspacePath =
+        typeof metadata.workspacePath === "string" ? metadata.workspacePath : null
 
       if (!workspacePath) {
         throw new Error(inputNeedsWorkspaceMessage)

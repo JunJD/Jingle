@@ -1,17 +1,17 @@
-import { ipcRenderer } from "electron"
 import type { CreateLocalStartItemInput, LocalStartItem } from "../../shared/local-start"
+import { invokeIpc } from "../ipc"
 
 export const localStartApi = {
   list: (): Promise<LocalStartItem[]> => {
-    return ipcRenderer.invoke("localStart:list")
+    return invokeIpc("localStart:list")
   },
   upsert: (input: CreateLocalStartItemInput): Promise<LocalStartItem> => {
-    return ipcRenderer.invoke("localStart:upsert", input)
+    return invokeIpc("localStart:upsert", input)
   },
   remove: (itemId: string): Promise<void> => {
-    return ipcRenderer.invoke("localStart:remove", itemId)
+    return invokeIpc("localStart:remove", itemId)
   },
   recordUse: (itemId: string): Promise<LocalStartItem> => {
-    return ipcRenderer.invoke("localStart:recordUse", itemId)
+    return invokeIpc("localStart:recordUse", itemId)
   }
 }

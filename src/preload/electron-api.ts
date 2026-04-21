@@ -1,5 +1,5 @@
-import { ipcRenderer } from "electron"
 import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "../shared/settings-window"
+import { invokeIpc, ipcRenderer } from "./ipc"
 
 export const electronAPI = {
   ipcRenderer: {
@@ -15,19 +15,19 @@ export const electronAPI = {
     once: (channel: string, listener: (...args: unknown[]) => void) => {
       ipcRenderer.once(channel, (_event, ...args) => listener(...args))
     },
-    invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args)
+    invoke: (channel: string, ...args: unknown[]) => invokeIpc(channel, ...args)
   },
   openSettings: (): Promise<void> => {
-    return ipcRenderer.invoke("settings:openWindow")
+    return invokeIpc("settings:openWindow")
   },
   openExternal: (url: string): Promise<void> => {
-    return ipcRenderer.invoke("shell:openExternal", url)
+    return invokeIpc("shell:openExternal", url)
   },
   openSettingsTab: (
     tab: SettingsWindowTab,
     target?: SettingsWindowNavigationPayload["target"]
   ): Promise<void> => {
-    return ipcRenderer.invoke("settings:openTab", { tab, ...(target ? { target } : {}) })
+    return invokeIpc("settings:openTab", { tab, ...(target ? { target } : {}) })
   },
   onSettingsTabChanged: (
     callback: (payload: SettingsWindowNavigationPayload) => void

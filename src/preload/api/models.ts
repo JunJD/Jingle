@@ -1,4 +1,3 @@
-import { ipcRenderer } from "electron"
 import type {
   ModelConfig,
   ModelProviderState,
@@ -6,30 +5,31 @@ import type {
   ProviderId,
   ProviderModelsResponse
 } from "../../shared/app-types"
+import { invokeIpc } from "../ipc"
 
 export const modelsApi = {
   getState: (): Promise<ModelProviderState> => {
-    return ipcRenderer.invoke("models:getState")
+    return invokeIpc("models:getState")
   },
   list: (modelType?: ModelType): Promise<ModelConfig[]> => {
-    return ipcRenderer.invoke("models:list", modelType)
+    return invokeIpc("models:list", modelType)
   },
   listByProvider: (
     provider: ProviderId,
     modelType?: ModelType
   ): Promise<ProviderModelsResponse> => {
-    return ipcRenderer.invoke("models:listByProvider", provider, modelType)
+    return invokeIpc("models:listByProvider", provider, modelType)
   },
   getDefault: (modelType: "llm"): Promise<string> => {
-    return ipcRenderer.invoke("models:getDefault", modelType)
+    return invokeIpc("models:getDefault", modelType)
   },
   setDefault: (modelType: "llm", modelId: string): Promise<void> => {
-    return ipcRenderer.invoke("models:setDefault", { modelId, modelType })
+    return invokeIpc("models:setDefault", { modelId, modelType })
   },
   setCredentials: (provider: ProviderId, credentials: Record<string, string>): Promise<void> => {
-    return ipcRenderer.invoke("models:setCredentials", { credentials, provider })
+    return invokeIpc("models:setCredentials", { credentials, provider })
   },
   deleteCredentials: (provider: ProviderId): Promise<void> => {
-    return ipcRenderer.invoke("models:deleteCredentials", provider)
+    return invokeIpc("models:deleteCredentials", provider)
   }
 }

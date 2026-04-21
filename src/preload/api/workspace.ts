@@ -1,4 +1,4 @@
-import { ipcRenderer } from "electron"
+import { invokeIpc } from "../ipc"
 
 type WorkspaceFileReadResult = {
   success: boolean
@@ -10,18 +10,18 @@ type WorkspaceFileReadResult = {
 
 export const workspaceApi = {
   get: (threadId?: string): Promise<string | null> => {
-    return ipcRenderer.invoke("workspace:get", threadId)
+    return invokeIpc("workspace:get", threadId)
   },
   set: (threadId: string | undefined, path: string | null): Promise<string | null> => {
-    return ipcRenderer.invoke("workspace:set", { threadId, path })
+    return invokeIpc("workspace:set", { threadId, path })
   },
   select: (threadId?: string): Promise<string | null> => {
-    return ipcRenderer.invoke("workspace:select", threadId)
+    return invokeIpc("workspace:select", threadId)
   },
   readFile: (threadId: string, filePath: string): Promise<WorkspaceFileReadResult> => {
-    return ipcRenderer.invoke("workspace:readFile", { threadId, filePath })
+    return invokeIpc("workspace:readFile", { threadId, filePath })
   },
   readBinaryFile: (threadId: string, filePath: string): Promise<WorkspaceFileReadResult> => {
-    return ipcRenderer.invoke("workspace:readBinaryFile", { threadId, filePath })
+    return invokeIpc("workspace:readBinaryFile", { threadId, filePath })
   }
 }

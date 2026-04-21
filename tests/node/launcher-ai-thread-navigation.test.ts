@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import {
+  shouldReloadLauncherAiThreadOnActivate,
   shouldReloadLauncherAiThreadOnFocus,
   shouldStartFreshLauncherAiThread
 } from "../../src/renderer/src/ai-core/launcher-ai-thread-navigation-core"
@@ -32,6 +33,24 @@ test("shouldReloadLauncherAiThreadOnFocus skips reload when there is no active t
       isStreaming: false
     }),
     false
+  )
+})
+
+test("shouldReloadLauncherAiThreadOnActivate skips reload while the target thread is streaming", () => {
+  assert.equal(
+    shouldReloadLauncherAiThreadOnActivate({
+      isStreaming: true
+    }),
+    false
+  )
+})
+
+test("shouldReloadLauncherAiThreadOnActivate reloads when the target thread is idle", () => {
+  assert.equal(
+    shouldReloadLauncherAiThreadOnActivate({
+      isStreaming: false
+    }),
+    true
   )
 })
 

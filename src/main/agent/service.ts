@@ -13,6 +13,7 @@ import { isAbortLikeError } from "./errors"
 import { createAgentRuntime, runtimeUsesCheckpointPersistence } from "./runtime"
 import { extractHitlRequestFromValuesState } from "./runtime-state"
 import { getHitlRequest, getThread, resolveHitlRequest, upsertHitlRequest } from "../db"
+import { buildIpcErrorEvent, OpenworkIpcError } from "../ipc/error"
 import type {
   AgentCancelParams,
   AgentInvokeParams,
@@ -22,7 +23,14 @@ import type {
 
 export type AgentStreamPayload =
   | { type: "done" }
-  | { type: "error"; error: string; message?: string }
+  | {
+      type: "error"
+      error: string
+      code?: string
+      details?: string[]
+      message?: string
+      status?: number
+    }
   | { type: "stream"; data: unknown; mode: string }
 
 export interface AgentStreamSink {
@@ -76,28 +84,44 @@ async function resolveResumeTarget(
   const requestId = decision?.request_id?.trim()
 
   if (!requestId) {
-    throw new Error("[Agent] HITL resume requires request_id.")
+    throw new OpenworkIpcError({
+      channel: "agent:resume",
+      code: "INVALID_ARGUMENT",
+      message: "[Agent] HITL resume requires request_id."
+    })
   }
 
   const request = await getHitlRequest(requestId)
   if (!request) {
-    throw new Error(`[Agent] HITL request "${requestId}" not found.`)
+    throw new OpenworkIpcError({
+      channel: "agent:resume",
+      code: "NOT_FOUND",
+      message: `[Agent] HITL request "${requestId}" not found.`
+    })
   }
 
   if (request.thread_id !== threadId) {
-    throw new Error(
-      `[Agent] HITL request "${requestId}" belongs to thread "${request.thread_id}", not "${threadId}".`
-    )
+    throw new OpenworkIpcError({
+      channel: "agent:resume",
+      code: "INVALID_ARGUMENT",
+      message: `[Agent] HITL request "${requestId}" belongs to thread "${request.thread_id}", not "${threadId}".`
+    })
   }
 
   if (request.status !== "pending") {
-    throw new Error(
-      `[Agent] HITL request "${requestId}" is already "${request.status}", expected pending.`
-    )
+    throw new OpenworkIpcError({
+      channel: "agent:resume",
+      code: "CONFLICT",
+      message: `[Agent] HITL request "${requestId}" is already "${request.status}", expected pending.`
+    })
   }
 
   if (!request.run_id) {
-    throw new Error(`[Agent] HITL request "${requestId}" is missing run_id.`)
+    throw new OpenworkIpcError({
+      channel: "agent:resume",
+      code: "FAILED_PRECONDITION",
+      message: `[Agent] HITL request "${requestId}" is missing run_id.`
+    })
   }
 
   if (
@@ -105,9 +129,11 @@ async function resolveResumeTarget(
     request.tool_call_id &&
     decision.tool_call_id !== request.tool_call_id
   ) {
-    throw new Error(
-      `[Agent] HITL request "${requestId}" tool_call_id mismatch: expected "${request.tool_call_id}", got "${decision.tool_call_id}".`
-    )
+    throw new OpenworkIpcError({
+      channel: "agent:resume",
+      code: "INVALID_ARGUMENT",
+      message: `[Agent] HITL request "${requestId}" tool_call_id mismatch: expected "${request.tool_call_id}", got "${decision.tool_call_id}".`
+    })
   }
 
   return {
@@ -307,8 +333,14 @@ export class AgentService {
       if (!workspacePath) {
         sink.send({
           type: "error",
-          error: "WORKSPACE_REQUIRED",
-          message: "Please select a workspace folder before sending messages."
+          ...buildIpcErrorEvent(
+            "agent:invoke",
+            new OpenworkIpcError({
+              channel: "agent:invoke",
+              code: "FAILED_PRECONDITION",
+              message: "Please select a workspace folder before sending messages."
+            })
+          )
         })
         return
       }
@@ -366,7 +398,7 @@ export class AgentService {
         console.error("[Agent] Error:", error)
         sink.send({
           type: "error",
-          error: error instanceof Error ? error.message : "Unknown error"
+          ...buildIpcErrorEvent("agent:invoke", error)
         })
       }
     } finally {
@@ -389,7 +421,14 @@ export class AgentService {
     if (!workspacePath) {
       sink.send({
         type: "error",
-        error: "Workspace path is required"
+        ...buildIpcErrorEvent(
+          "agent:resume",
+          new OpenworkIpcError({
+            channel: "agent:resume",
+            code: "FAILED_PRECONDITION",
+            message: "Workspace path is required"
+          })
+        )
       })
       return
     }
@@ -463,7 +502,7 @@ export class AgentService {
         console.error("[Agent] Resume error:", error)
         sink.send({
           type: "error",
-          error: error instanceof Error ? error.message : "Unknown error"
+          ...buildIpcErrorEvent("agent:resume", error)
         })
       }
     } finally {

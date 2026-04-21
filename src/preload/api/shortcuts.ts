@@ -6,6 +6,7 @@ import {
   type ResolvedShortcutBinding,
   type ShortcutSettings
 } from "../../shared/shortcuts/settings"
+import { invokeIpc } from "../ipc"
 
 const initialShortcutSettings = ipcRenderer.sendSync(
   "shortcuts:getBootstrapSettingsSync"
@@ -19,10 +20,10 @@ export const shortcutsApi = {
   initialResolvedBindings: initialResolvedShortcutBindings,
   initialSettings: initialShortcutSettings,
   getSettings: (): Promise<ShortcutSettings> => {
-    return ipcRenderer.invoke("shortcuts:getSettings")
+    return invokeIpc("shortcuts:getSettings")
   },
   setSettings: (updates: Partial<ShortcutSettings>): Promise<ShortcutSettings> => {
-    return ipcRenderer.invoke("shortcuts:setSettings", updates)
+    return invokeIpc("shortcuts:setSettings", updates)
   },
   onSettingsChanged: (callback: (settings: ShortcutSettings) => void): (() => void) => {
     const handler = (_event: unknown, settings: ShortcutSettings): void => {
@@ -35,9 +36,9 @@ export const shortcutsApi = {
     }
   },
   getResolvedBindings: (): Promise<ResolvedShortcutBinding[]> => {
-    return ipcRenderer.invoke("shortcuts:getResolvedBindings")
+    return invokeIpc("shortcuts:getResolvedBindings")
   },
   getGlobalAvailability: (): Promise<GlobalShortcutAvailability[]> => {
-    return ipcRenderer.invoke("shortcuts:getGlobalAvailability")
+    return invokeIpc("shortcuts:getGlobalAvailability")
   }
 }

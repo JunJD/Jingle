@@ -1,6 +1,6 @@
-import { ipcRenderer } from "electron"
 import type { IPCEvent } from "../../types"
 import type { AgentInvokeMessage } from "../../shared/message-content"
+import { invokeIpc, ipcRenderer } from "../ipc"
 
 export const agentApi = {
   invoke: (
@@ -54,6 +54,6 @@ export const agentApi = {
     }
   },
   cancel: (threadId: string): Promise<void> => {
-    return ipcRenderer.invoke("agent:cancel", { threadId })
+    return invokeIpc("agent:cancel", { threadId })
   }
 }

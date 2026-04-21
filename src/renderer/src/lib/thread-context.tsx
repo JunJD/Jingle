@@ -14,6 +14,7 @@ import {
 import { useStream } from "@langchain/langgraph-sdk/react"
 import type { DeepAgent } from "deepagents"
 import { ElectronIPCTransport } from "./electron-transport"
+import { getIpcErrorDisplayMessage, getIpcErrorPayload } from "./ipc-errors"
 import type { HITLRequest } from "@/types"
 import type { ArtifactRecord } from "@shared/artifacts"
 import {
@@ -262,7 +263,8 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
   )
   // Parse error messages into user-friendly format
   const parseErrorMessage = useCallback((error: Error | string): string => {
-    const errorMessage = typeof error === "string" ? error : error.message
+    const ipcError = getIpcErrorPayload(error)
+    const errorMessage = ipcError?.message ?? getIpcErrorDisplayMessage(error, "Unknown error")
 
     // Check for context window exceeded errors
     const contextWindowMatch = errorMessage.match(
