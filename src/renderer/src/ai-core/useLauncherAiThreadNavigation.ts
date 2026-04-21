@@ -4,7 +4,10 @@ import type { Thread } from "@/types"
 import { useThreadContext } from "@/lib/thread-context"
 import type { AiCoreThreadCreateInput, AiCoreThreadHandle } from "./AiCoreHost"
 import { useAiCoreThreads } from "./AiCoreHost"
-import { shouldReloadLauncherAiThreadOnFocus } from "./launcher-ai-thread-navigation-core"
+import {
+  shouldReloadLauncherAiThreadOnFocus,
+  shouldStartFreshLauncherAiThread
+} from "./launcher-ai-thread-navigation-core"
 
 interface UseLauncherAiThreadNavigationOptions {
   initialAction: "focus" | "submit"
@@ -64,7 +67,7 @@ function getAdjacentThreadIds(
 export function useLauncherAiThreadNavigation(
   options: UseLauncherAiThreadNavigationOptions
 ): LauncherAiThreadNavigation {
-  const { initialAction, seedQuery } = options
+  const { seedQuery } = options
   const threadHost = useAiCoreThreads()
   const threadContext = useThreadContext()
   const [threadId, setThreadId] = useState<string | null>(null)
@@ -72,14 +75,18 @@ export function useLauncherAiThreadNavigation(
     next: null,
     previous: null
   })
-  const shouldStartFreshThread = initialAction === "submit" && seedQuery.trim().length > 0
+  const shouldStartFreshThread = shouldStartFreshLauncherAiThread({ seedQuery })
 
   const listAiThreads = useCallback(async (): Promise<Thread[]> => {
     return listLauncherAiThreadsByRecency(await threadHost.list())
   }, [threadHost])
   const resolveActiveThreadId = useCallback((): string | null => {
+    if (shouldStartFreshThread && !threadId) {
+      return null
+    }
+
     return threadHost.getActiveThreadId() ?? threadId
-  }, [threadHost, threadId])
+  }, [shouldStartFreshThread, threadHost, threadId])
   const refreshAdjacentThreadIds = useCallback(
     async (activeThreadId: string | null): Promise<void> => {
       const threads = await listAiThreads()

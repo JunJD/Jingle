@@ -84,9 +84,13 @@ export function useLauncherSearchPage(props: {
   const visibleSearchResultsBySource = useMemo(() => {
     return resolveVisibleLauncherSearchResultsBySource(searchState, trimmedQuery)
   }, [searchState, trimmedQuery])
-  const searchResults = visibleSearchResultsBySource
-    ? mergeLauncherSearchResults(visibleSearchResultsBySource, MAX_LAUNCHER_SEARCH_RESULTS)
-    : []
+  const searchResults = useMemo(() => {
+    if (!visibleSearchResultsBySource) {
+      return []
+    }
+
+    return mergeLauncherSearchResults(visibleSearchResultsBySource, MAX_LAUNCHER_SEARCH_RESULTS)
+  }, [visibleSearchResultsBySource])
   const surface = useMemo(
     () =>
       buildLauncherHomeSurfaceModel({
@@ -199,7 +203,7 @@ export function useLauncherSearchPage(props: {
         }
       })
     },
-    [navigateToCommand, query, surface.items]
+    [navigateToCommand, query, setQuery, surface.items]
   )
 
   const executeHomeCommand = useCallback(
@@ -207,7 +211,7 @@ export function useLauncherSearchPage(props: {
       switch (commandId) {
         case LAUNCHER_COMMAND_IDS.searchOpenAi:
           navigateToCommand(DEFAULT_HOME_COMMAND, {
-            initialAction: "focus",
+            initialAction: query.trim() ? "submit" : "focus",
             seedQuery: query
           })
           return
