@@ -98,6 +98,17 @@ export async function updateRun(runId: string, updates: UpdateRunInput): Promise
   return mapRunRow(row)
 }
 
+export async function getRun(runId: string): Promise<RunRow | null> {
+  const prisma = getPrismaClient()
+  const row = await prisma.run.findUnique({
+    where: {
+      runId
+    }
+  })
+
+  return row ? mapRunRow(row) : null
+}
+
 export async function getLatestRun(threadId: string, statuses?: string[]): Promise<RunRow | null> {
   const prisma = getPrismaClient()
   const row = await prisma.run.findFirst({

@@ -14,8 +14,14 @@ export type {
   ThreadSearchMatches,
   ThreadSearchMessageMatchRow
 } from "./threads"
-export { createRun, getLatestRun, updateRun } from "./runs"
+export { createRun, getLatestRun, getRun, updateRun } from "./runs"
 export type { CreateRunInput, RunRow, UpdateRunInput } from "./runs"
-export { getLatestHitlRequest, resolvePendingHitlRequests, upsertHitlRequest } from "./hitl"
+export {
+  getHitlRequest,
+  getLatestHitlRequest,
+  resolveHitlRequest,
+  resolvePendingHitlRequests,
+  upsertHitlRequest
+} from "./hitl"
 export type { HitlRequestRow, UpsertHitlRequestInput } from "./hitl"
 export { syncMessageSearchIndexFromSnapshot } from "./message-search"

@@ -36,11 +36,6 @@ export interface AgentResumeParams {
   modelId?: string
 }
 
-export interface AgentInterruptParams {
-  threadId: string
-  decision: HITLDecision
-}
-
 export interface AgentCancelParams {
   threadId: string
 }

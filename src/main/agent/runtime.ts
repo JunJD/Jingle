@@ -101,6 +101,10 @@ type SubagentMiddlewareStack = NonNullable<
   Parameters<typeof createSubAgentMiddleware>[0]["defaultMiddleware"]
 >
 
+export function runtimeUsesCheckpointPersistence(): boolean {
+  return process.env.OPENWORK_BDD_AGENT_RUNTIME !== "scripted"
+}
+
 export async function createAgentRuntime(
   options: CreateAgentRuntimeOptions
 ): Promise<AgentRuntime> {
@@ -120,7 +124,7 @@ export async function createAgentRuntime(
   console.log("[Runtime] Thread ID:", threadId)
   console.log("[Runtime] Workspace path:", workspacePath)
 
-  if (process.env.OPENWORK_BDD_AGENT_RUNTIME === "scripted") {
+  if (!runtimeUsesCheckpointPersistence()) {
     return createBddAgentRuntime({ threadId, workspacePath }) as unknown as AgentRuntime
   }
 

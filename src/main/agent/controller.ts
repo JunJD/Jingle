@@ -1,10 +1,5 @@
 import { BrowserWindow, type IpcMain, type IpcMainEvent } from "electron"
-import type {
-  AgentCancelParams,
-  AgentInterruptParams,
-  AgentInvokeParams,
-  AgentResumeParams
-} from "../types"
+import type { AgentCancelParams, AgentInvokeParams, AgentResumeParams } from "../types"
 import { AgentService, type AgentStreamSink } from "./service"
 
 export class AgentController {
@@ -29,15 +24,6 @@ export class AgentController {
       }
 
       void this.agentService.resume(params, sink)
-    })
-
-    ipcMain.on("agent:interrupt", (event, params: AgentInterruptParams) => {
-      const sink = this.createStreamSink(event, params.threadId, "interrupt response")
-      if (!sink) {
-        return
-      }
-
-      void this.agentService.interrupt(params, sink)
     })
 
     ipcMain.handle("agent:cancel", (_event, params: AgentCancelParams) => {

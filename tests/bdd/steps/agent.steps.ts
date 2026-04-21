@@ -27,11 +27,6 @@ interface AgentBddWindow extends Window {
   api: {
     agent: {
       cancel: (threadId: string) => Promise<void>
-      interrupt: (
-        threadId: string,
-        decision: HITLDecision,
-        onEvent?: (event: IPCEvent) => void
-      ) => () => void
       streamAgent: (
         threadId: string,
         message: AgentInvokeMessage,
@@ -150,36 +145,6 @@ async function startStreamAgent(
   world.setScenarioValue("agent.latestStreamKey", streamKey)
 }
 
-async function startInterruptAgent(world: OpenworkWorld, decision: HITLDecision): Promise<void> {
-  const page = await getLauncherPage(world)
-  const threadId = getLatestThreadId(world)
-  const streamKey = `agent:${threadId}:${Date.now()}:${Math.random()}`
-
-  await page.evaluate(
-    ({ decision: inputDecision, threadId: inputThreadId, streamKey: inputStreamKey }) => {
-      const targetWindow = window as unknown as AgentBddWindow
-      targetWindow.__openworkAgentBdd ??= { streams: {} }
-
-      const events: IPCEvent[] = []
-      const cleanup = targetWindow.api.agent.interrupt(inputThreadId, inputDecision, (event) => {
-        events.push(event)
-      })
-
-      targetWindow.__openworkAgentBdd.streams[inputStreamKey] = {
-        cleanup,
-        events
-      }
-    },
-    {
-      decision,
-      streamKey,
-      threadId
-    }
-  )
-
-  world.setScenarioValue("agent.latestStreamKey", streamKey)
-}
-
 async function getPendingApprovalDecision(
   world: OpenworkWorld,
   type: HITLDecision["type"]
@@ -190,6 +155,7 @@ async function getPendingApprovalDecision(
   expect(request).not.toBeNull()
 
   return {
+    request_id: request!.id,
     tool_call_id: request!.tool_call.id,
     type
   }
@@ -275,10 +241,12 @@ When("我通过 agent resume 批准最新待审批请求", async function (this:
   })
 })
 
-When("我通过 agent interrupt 拒绝最新待审批请求", async function (this: OpenworkWorld) {
+When("我通过 agent resume 拒绝最新待审批请求", async function (this: OpenworkWorld) {
   const decision = await getPendingApprovalDecision(this, "reject")
-
-  await startInterruptAgent(this, decision)
+  await startStreamAgent(this, {
+    command: { resume: decision },
+    message: ""
+  })
 })
 
 Then("最新 agent stream 应收到 done", async function (this: OpenworkWorld) {

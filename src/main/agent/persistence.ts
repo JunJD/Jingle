@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto"
 import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
-import { createRun, getLatestRun, updateRun, updateThread } from "../db"
+import { createRun, getRun, updateRun, updateThread } from "../db"
 import { getCheckpointer } from "./runtime"
 
 type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted"
@@ -35,23 +35,28 @@ export async function beginAgentRun(
 
 export async function resumeAgentRun(
   threadId: string,
+  runId: string,
   metadata?: Record<string, unknown>
 ): Promise<string> {
-  const existing = await getLatestRun(threadId, ["running", "interrupted", "pending"])
+  const existing = await getRun(runId)
 
-  if (existing) {
-    await updateRun(existing.run_id, {
-      status: "running",
-      metadata
-    })
-    await updateThread(threadId, {
-      status: "busy"
-    })
-    return existing.run_id
+  if (!existing) {
+    throw new Error(`[Agent] Cannot resume missing run "${runId}".`)
   }
 
-  const runId = randomUUID()
-  await createRun(runId, threadId, {
+  if (existing.thread_id !== threadId) {
+    throw new Error(
+      `[Agent] Cannot resume run "${runId}" from thread "${threadId}"; actual thread is "${existing.thread_id}".`
+    )
+  }
+
+  if (existing.status && !["pending", "running", "interrupted"].includes(existing.status)) {
+    throw new Error(
+      `[Agent] Cannot resume run "${runId}" from status "${existing.status}".`
+    )
+  }
+
+  await updateRun(runId, {
     status: "running",
     metadata
   })
@@ -71,11 +76,36 @@ export async function syncRunFromLatestCheckpoint(
   const checkpointer = await getCheckpointer(threadId)
   const latest = (await checkpointer.getTuple({
     configurable: {
-      thread_id: threadId
+      thread_id: threadId,
+      run_id: runId
     }
   })) as CheckpointTuple | undefined
 
+  if (!latest && !options?.interrupted) {
+    throw new Error(`[Agent] Missing checkpoint for run "${runId}" in thread "${threadId}".`)
+  }
+
   const status = options?.interrupted ? "interrupted" : resolveCheckpointRunStatus(latest)
+
+  await updateRun(runId, {
+    status
+  })
+
+  await updateThread(threadId, {
+    status: status === "interrupted" ? "interrupted" : "idle"
+  })
+
+  return status
+}
+
+export async function finalizeRunWithoutCheckpoint(
+  threadId: string,
+  runId: string,
+  options?: {
+    interrupted?: boolean
+  }
+): Promise<PersistedRunStatus> {
+  const status: PersistedRunStatus = options?.interrupted ? "interrupted" : "success"
 
   await updateRun(runId, {
     status

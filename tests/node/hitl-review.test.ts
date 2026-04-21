@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import type { HitlRequestRow } from "../../src/main/db"
 import {
+  extractHitlRequestFromCheckpoint,
   extractHitlRequestFromValuesState,
   mapHitlRowToRequest
 } from "../../src/main/agent/runtime-state"
@@ -170,6 +171,63 @@ test("extractHitlRequestFromValuesState rejects interrupts without toolCallId", 
       }),
     /Missing toolCallId/i
   )
+})
+
+test("extractHitlRequestFromCheckpoint prefers persisted run_id for request identity", () => {
+  const request = extractHitlRequestFromCheckpoint(
+    "thread-1",
+    {
+      checkpoint: {
+        id: "checkpoint-1",
+        channel_values: {
+          __interrupt__: [
+            {
+              value: {
+                actionRequests: [
+                  {
+                    toolCallId: "tool-call-1",
+                    name: "write_file",
+                    args: {
+                      content: "hello",
+                      path: "/tmp/demo.txt"
+                    }
+                  }
+                ],
+                reviewConfigs: [
+                  {
+                    actionName: "write_file",
+                    allowedDecisions: ["approve", "reject"]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      config: {
+        configurable: {
+          thread_id: "thread-1",
+          checkpoint_id: "checkpoint-1",
+          run_id: "run-1"
+        }
+      },
+      metadata: {}
+    } as never
+  )
+
+  assert.deepEqual(request, {
+    id: "hitl:thread-1:run-1:tool-call-1",
+    tool_call: {
+      id: "tool-call-1",
+      name: "write_file",
+      args: {
+        content: "hello",
+        path: "/tmp/demo.txt"
+      }
+    },
+    allowed_decisions: ["approve", "reject"],
+    review: null
+  })
 })
 
 test("mapHitlRowToRequest rejects rows without tool_call_id", () => {

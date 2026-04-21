@@ -1,7 +1,6 @@
 import { ipcRenderer } from "electron"
 import type { IPCEvent } from "../../types"
 import type { AgentInvokeMessage } from "../../shared/message-content"
-import type { HITLDecision } from "../../shared/app-types"
 
 export const agentApi = {
   invoke: (
@@ -49,27 +48,6 @@ export const agentApi = {
     } else {
       ipcRenderer.send("agent:invoke", { threadId, message, modelId })
     }
-
-    return () => {
-      ipcRenderer.removeListener(channel, handler)
-    }
-  },
-  interrupt: (
-    threadId: string,
-    decision: HITLDecision,
-    onEvent?: (event: IPCEvent) => void
-  ): (() => void) => {
-    const channel = `agent:stream:${threadId}`
-
-    const handler = (_event: unknown, data: IPCEvent): void => {
-      onEvent?.(data)
-      if (data.type === "done" || data.type === "error") {
-        ipcRenderer.removeListener(channel, handler)
-      }
-    }
-
-    ipcRenderer.on(channel, handler)
-    ipcRenderer.send("agent:interrupt", { threadId, decision })
 
     return () => {
       ipcRenderer.removeListener(channel, handler)

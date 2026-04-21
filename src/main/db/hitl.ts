@@ -130,6 +130,49 @@ export async function getLatestHitlRequest(threadId: string): Promise<HitlReques
   return row ? mapHitlRequestRow(row) : null
 }
 
+export async function getHitlRequest(requestId: string): Promise<HitlRequestRow | null> {
+  const prisma = getPrismaClient()
+  const row = await prisma.hitlRequest.findUnique({
+    where: {
+      requestId
+    }
+  })
+
+  return row ? mapHitlRequestRow(row) : null
+}
+
+export async function resolveHitlRequest(
+  requestId: string,
+  status: string,
+  decision?: Record<string, unknown> | string | null
+): Promise<HitlRequestRow | null> {
+  const prisma = getPrismaClient()
+  const existing = await prisma.hitlRequest.findUnique({
+    where: {
+      requestId
+    }
+  })
+
+  if (!existing) {
+    return null
+  }
+
+  const now = BigInt(Date.now())
+  const row = await prisma.hitlRequest.update({
+    where: {
+      requestId
+    },
+    data: {
+      status,
+      decision: decision === undefined ? undefined : (serializeJsonValue(decision) ?? null),
+      updatedAt: now,
+      resolvedAt: now
+    }
+  })
+
+  return mapHitlRequestRow(row)
+}
+
 export async function resolvePendingHitlRequests(
   threadId: string,
   status: string,

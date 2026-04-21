@@ -18,6 +18,7 @@ export interface HITLRequest {
 
 export interface HITLDecision {
   type: HITLDecisionType
+  request_id?: string
   tool_call_id?: string
   feedback?: string
 }

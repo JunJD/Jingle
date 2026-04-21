@@ -21,12 +21,14 @@ async function main() {
 
   const openworkDir = getOpenworkDir()
   mkdirSync(openworkDir, { recursive: true })
+  const databaseUrl = toSqliteDatabaseUrl(join(openworkDir, "openwork.sqlite"))
 
   const env = {
     ...process.env,
-    DATABASE_URL: toSqliteDatabaseUrl(join(openworkDir, "openwork.sqlite"))
+    DATABASE_URL: databaseUrl
   }
 
+  console.error(`[prisma] using ${databaseUrl}`)
   await runLocalCommand("prisma", args, { env })
 }
 

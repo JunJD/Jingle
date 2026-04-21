@@ -3,18 +3,18 @@ import { Command } from "@langchain/langgraph"
 import { normalizeComposerMessageRefs, summarizeMessageContent } from "../../shared/message-content"
 import {
   beginAgentRun,
+  finalizeRunWithoutCheckpoint,
   markRunAborted,
   markRunFailed,
   resumeAgentRun,
   syncRunFromLatestCheckpoint
 } from "./persistence"
 import { isAbortLikeError } from "./errors"
-import { createAgentRuntime } from "./runtime"
+import { createAgentRuntime, runtimeUsesCheckpointPersistence } from "./runtime"
 import { extractHitlRequestFromValuesState } from "./runtime-state"
-import { getThread, resolvePendingHitlRequests, upsertHitlRequest } from "../db"
+import { getHitlRequest, getThread, resolveHitlRequest, upsertHitlRequest } from "../db"
 import type {
   AgentCancelParams,
-  AgentInterruptParams,
   AgentInvokeParams,
   AgentResumeParams,
   HITLDecision
@@ -61,6 +61,58 @@ function buildResumeValue(decision: HITLDecision): {
 } {
   return {
     decisions: [buildResumeDecision(decision)]
+  }
+}
+
+interface ResumeTarget {
+  requestId: string
+  runId: string
+}
+
+async function resolveResumeTarget(
+  threadId: string,
+  decision: HITLDecision | undefined
+): Promise<ResumeTarget> {
+  const requestId = decision?.request_id?.trim()
+
+  if (!requestId) {
+    throw new Error("[Agent] HITL resume requires request_id.")
+  }
+
+  const request = await getHitlRequest(requestId)
+  if (!request) {
+    throw new Error(`[Agent] HITL request "${requestId}" not found.`)
+  }
+
+  if (request.thread_id !== threadId) {
+    throw new Error(
+      `[Agent] HITL request "${requestId}" belongs to thread "${request.thread_id}", not "${threadId}".`
+    )
+  }
+
+  if (request.status !== "pending") {
+    throw new Error(
+      `[Agent] HITL request "${requestId}" is already "${request.status}", expected pending.`
+    )
+  }
+
+  if (!request.run_id) {
+    throw new Error(`[Agent] HITL request "${requestId}" is missing run_id.`)
+  }
+
+  if (
+    decision?.tool_call_id &&
+    request.tool_call_id &&
+    decision.tool_call_id !== request.tool_call_id
+  ) {
+    throw new Error(
+      `[Agent] HITL request "${requestId}" tool_call_id mismatch: expected "${request.tool_call_id}", got "${decision.tool_call_id}".`
+    )
+  }
+
+  return {
+    requestId: request.request_id,
+    runId: request.run_id
   }
 }
 
@@ -298,7 +350,11 @@ export class AgentService {
       }
 
       if (!abortController.signal.aborted) {
-        await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
+        if (runtimeUsesCheckpointPersistence()) {
+          await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
+        } else {
+          await finalizeRunWithoutCheckpoint(threadId, runId, { interrupted })
+        }
         sink.send({ type: "done" })
       }
     } catch (error) {
@@ -346,7 +402,18 @@ export class AgentService {
     }
 
     const abortController = new AbortController()
-    const runId = await resumeAgentRun(threadId, { source: "resume", modelId: modelId ?? null })
+    const decision = command?.resume
+    if (!decision) {
+      throw new Error("[Agent] Resume command is missing HITL decision.")
+    }
+
+    const decisionType = decision.type
+    const resumeTarget = await resolveResumeTarget(threadId, decision)
+    const runId = await resumeAgentRun(threadId, resumeTarget.runId, {
+      source: "resume",
+      modelId: modelId ?? null,
+      requestId: resumeTarget.requestId
+    })
     this.activeRuns.set(threadId, { controller: abortController, runId })
 
     try {
@@ -359,10 +426,9 @@ export class AgentService {
         recursionLimit: 1000
       }
 
-      const decision: HITLDecision = command?.resume ?? { type: "approve" }
-      const decisionType = decision.type
-      await resolvePendingHitlRequests(threadId, mapDecisionToHitlStatus(decisionType), {
+      await resolveHitlRequest(resumeTarget.requestId, mapDecisionToHitlStatus(decisionType), {
         type: decision.type,
+        request_id: resumeTarget.requestId,
         tool_call_id: decision.tool_call_id,
         feedback: decision.feedback
       })
@@ -384,95 +450,17 @@ export class AgentService {
       }
 
       if (!abortController.signal.aborted) {
-        await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
+        if (runtimeUsesCheckpointPersistence()) {
+          await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
+        } else {
+          await finalizeRunWithoutCheckpoint(threadId, runId, { interrupted })
+        }
         sink.send({ type: "done" })
       }
     } catch (error) {
       if (!isAbortLikeError(error, abortController.signal)) {
         await markRunFailed(threadId, runId, error)
         console.error("[Agent] Resume error:", error)
-        sink.send({
-          type: "error",
-          error: error instanceof Error ? error.message : "Unknown error"
-        })
-      }
-    } finally {
-      if (abortController.signal.aborted) {
-        await markRunAborted(threadId, runId)
-      }
-      this.activeRuns.delete(threadId)
-    }
-  }
-
-  async interrupt({ threadId, decision }: AgentInterruptParams, sink: AgentStreamSink): Promise<void> {
-    const thread = await getThread(threadId)
-    const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
-    const workspacePath = metadata.workspacePath as string | undefined
-    const modelId = metadata.model as string | undefined
-
-    if (!workspacePath) {
-      sink.send({
-        type: "error",
-        error: "Workspace path is required"
-      })
-      return
-    }
-
-    const existingRun = this.activeRuns.get(threadId)
-    if (existingRun) {
-      existingRun.controller.abort()
-      this.activeRuns.delete(threadId)
-      await markRunAborted(threadId, existingRun.runId)
-    }
-
-    const abortController = new AbortController()
-    const runId = await resumeAgentRun(threadId, {
-      source: "interrupt",
-      decision: decision.type,
-      modelId: modelId ?? null
-    })
-    await resolvePendingHitlRequests(threadId, mapDecisionToHitlStatus(decision.type), {
-      type: decision.type,
-      tool_call_id: decision.tool_call_id,
-      feedback: decision.feedback
-    })
-    this.activeRuns.set(threadId, { controller: abortController, runId })
-
-    try {
-      const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
-      const streamMode: Array<"messages" | "values"> = ["messages", "values"]
-      const config = {
-        configurable: { thread_id: threadId, run_id: runId },
-        signal: abortController.signal,
-        streamMode,
-        recursionLimit: 1000
-      }
-
-      const resumeValue = buildResumeValue(decision)
-      const stream = await agent.stream(new Command({ resume: resumeValue }), config)
-      let interrupted = false
-
-      for await (const chunk of stream) {
-        if (abortController.signal.aborted) break
-
-        const [mode, data] = chunk as unknown as [string, unknown]
-        const sawInterrupt = await persistPendingHitlFromStream(threadId, runId, mode, data)
-        interrupted = interrupted || sawInterrupt
-        sink.send({
-          type: "stream",
-          mode,
-          data: serializeStreamChunkForIpc(mode, data)
-        })
-      }
-
-      if (!abortController.signal.aborted) {
-        await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
-        sink.send({ type: "done" })
-      }
-    } catch (error) {
-      if (!isAbortLikeError(error, abortController.signal)) {
-        await markRunFailed(threadId, runId, error)
-        console.error("[Agent] Interrupt error:", error)
         sink.send({
           type: "error",
           error: error instanceof Error ? error.message : "Unknown error"

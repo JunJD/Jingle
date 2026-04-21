@@ -36,13 +36,13 @@
     而且 最新 agent runtime state 待审批请求应为空
     而且 最新 agent 线程状态应为 "idle"
 
-  场景: HITL 暂停后可以通过 interrupt 响应拒绝
+  场景: HITL 暂停后可以通过 resume 响应拒绝
     假如 Openwork 桌面应用已使用脚本化 agent runtime 启动
-    当 我通过 agent API 创建可运行测试线程 "BDD Agent Interrupt"
+    当 我通过 agent API 创建可运行测试线程 "BDD Agent Reject"
     并且 我对最新 agent 线程发送脚本消息 "bdd:interrupt"
     那么 最新 agent stream 应收到 done
     而且 最新 agent runtime state 待审批工具应为 "write_file"
-    当 我通过 agent interrupt 拒绝最新待审批请求
+    当 我通过 agent resume 拒绝最新待审批请求
     那么 最新 agent stream 应收到 done
     而且 最新 agent runtime state 待审批请求应为空
     而且 最新 agent 线程状态应为 "idle"

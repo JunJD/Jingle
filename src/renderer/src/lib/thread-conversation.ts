@@ -193,7 +193,13 @@ export function useThreadConversationProjection(
 
       try {
         await stream.submit(null, {
-          command: { resume: decision },
+          command: {
+            resume: {
+              ...decision,
+              request_id: pendingApproval.id,
+              tool_call_id: pendingApproval.tool_call.id
+            }
+          },
           config: {
             configurable: {
               model_id: currentModel,

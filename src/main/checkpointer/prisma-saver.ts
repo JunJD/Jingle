@@ -28,7 +28,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const prisma = getPrismaClient()
-    const { thread_id, checkpoint_ns = "", checkpoint_id } = config.configurable ?? {}
+    const { thread_id, checkpoint_ns = "", checkpoint_id, run_id } = config.configurable ?? {}
 
     if (!thread_id) {
       return undefined
@@ -47,7 +47,8 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       : await prisma.checkpoint.findFirst({
           where: {
             threadId: thread_id,
-            checkpointNs: checkpoint_ns
+            checkpointNs: checkpoint_ns,
+            runId: typeof run_id === "string" ? run_id : undefined
           },
           orderBy: {
             checkpointId: "desc"
@@ -72,15 +73,14 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
 
     return {
       checkpoint,
-      config: checkpoint_id
-        ? config
-        : {
-            configurable: {
-              thread_id: row.threadId,
-              checkpoint_ns: row.checkpointNs,
-              checkpoint_id: row.checkpointId
-            }
-          },
+      config: {
+        configurable: {
+          thread_id: row.threadId,
+          checkpoint_ns: row.checkpointNs,
+          checkpoint_id: row.checkpointId,
+          ...(row.runId ? { run_id: row.runId } : {})
+        }
+      },
       metadata: (await this.serde.loadsTyped(
         metadataPayload.type,
         metadataPayload.value
@@ -106,6 +106,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
     const { limit, before } = options ?? {}
     const thread_id = config.configurable?.thread_id
     const checkpoint_ns = config.configurable?.checkpoint_ns ?? ""
+    const run_id = config.configurable?.run_id
 
     if (!thread_id) {
       return
@@ -115,6 +116,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       where: {
         threadId: thread_id,
         checkpointNs: checkpoint_ns,
+        runId: typeof run_id === "string" ? run_id : undefined,
         checkpointId: before?.configurable?.checkpoint_id
           ? {
               lt: before.configurable.checkpoint_id
@@ -149,7 +151,8 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
           configurable: {
             thread_id: row.threadId,
             checkpoint_ns: row.checkpointNs,
-            checkpoint_id: row.checkpointId
+            checkpoint_id: row.checkpointId,
+            ...(row.runId ? { run_id: row.runId } : {})
           }
         },
         checkpoint,
@@ -210,6 +213,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       },
       create: {
         threadId,
+        runId,
         checkpointNs,
         checkpointId: checkpoint.id,
         parentCheckpointId: parentCheckpointId ?? null,
@@ -218,6 +222,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
         metadata: storedMetadata
       },
       update: {
+        runId,
         parentCheckpointId: parentCheckpointId ?? null,
         type: storedType,
         checkpoint: storedCheckpoint,

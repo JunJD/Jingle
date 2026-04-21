@@ -247,6 +247,10 @@ export function extractHitlRequestFromCheckpoint(
   }
 ): HITLRequest | null {
   const state = tuple as LatestCheckpointState | undefined
+  const tupleRunId =
+    typeof tuple?.config?.configurable?.run_id === "string"
+      ? tuple.config.configurable.run_id
+      : null
   const interruptValue = state?.checkpoint?.channel_values?.__interrupt__?.[0]?.value
   const actionIndex = 0
   const action = interruptValue?.actionRequests?.[actionIndex]
@@ -258,7 +262,7 @@ export function extractHitlRequestFromCheckpoint(
   const checkpointId = state?.checkpoint?.id || "latest"
   const toolArgs = action.args || {}
   const toolCallId = getRequiredInterruptActionToolCallId(action)
-  const requestContextId = options?.runId || checkpointId
+  const requestContextId = options?.runId || tupleRunId || checkpointId
   const requestId = `hitl:${threadId}:${requestContextId}:${toolCallId}`
   const allowedDecisions = normalizeHitlAllowedDecisions(
     interruptValue?.reviewConfigs?.find((config) => config.actionName === action.name)
