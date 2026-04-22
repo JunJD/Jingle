@@ -4,6 +4,20 @@ import { OpenworkWorld } from "../support/world"
 import { seedHistoryThreadFixture } from "../support/history-fixtures"
 import { getPrismaClient } from "../../../src/main/db/client"
 
+function getLauncherAiSurface(page: import("@playwright/test").Page) {
+  return page.locator('.launcher-chrome[data-surface="ai"]').first()
+}
+
+async function countIndexedUserMessagesContaining(fragment: string): Promise<number> {
+  const [row] = await getPrismaClient().$queryRawUnsafe<Array<{ count: bigint | number }>>(
+    `SELECT COUNT(*) AS count FROM "messages_fts" WHERE role = ? AND search_text LIKE ?`,
+    "user",
+    `%${fragment}%`
+  )
+
+  return Number(row?.count ?? 0)
+}
+
 Given("Openwork 桌面应用已启动", async function (this: OpenworkWorld) {
   await this.launchApp()
 })
@@ -221,6 +235,33 @@ Then("Launcher 输入框包含 {string}", async function (this: OpenworkWorld, q
 
   await expect(input).toHaveValue(query)
 })
+
+Then("Launcher AI 输入状态会进入 pending", async function (this: OpenworkWorld) {
+  const page = await this.getPageByKind("launcher")
+
+  await page.waitForFunction(() => {
+    const aiSurface = document.querySelector('.launcher-chrome[data-surface="ai"]')
+    return aiSurface?.getAttribute("data-input-status") === "pending"
+  })
+})
+
+Then(
+  "在接下来 {int} 毫秒内不会提交 Launcher AI 消息 {string}",
+  async function (this: OpenworkWorld, durationMs: number, message: string) {
+    const page = await this.getPageByKind("launcher")
+    const aiSurface = getLauncherAiSurface(page)
+    const deadline = Date.now() + durationMs
+
+    await expect(aiSurface).toBeVisible()
+
+    while (Date.now() < deadline) {
+      expect(await countIndexedUserMessagesContaining(message)).toBe(0)
+      await page.waitForTimeout(60)
+    }
+
+    expect(await countIndexedUserMessagesContaining(message)).toBe(0)
+  }
+)
 
 Then("Launcher 首页当前选中结果为 {string}", async function (this: OpenworkWorld, title: string) {
   const page = await this.getPageByKind("launcher")

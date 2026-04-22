@@ -7,21 +7,37 @@ Feature: Openwork 桌面启动
     And Launcher React 根节点已完成渲染
     And 默认不会打开 Main 窗口
 
-  Scenario: Launcher 搜索可以打开 AI 界面
+  Scenario: Launcher 通过 Enter 打开 AI 时不会自动提交输入
     Given Openwork 桌面应用已启动
     When 我在 Launcher 中搜索 "整理本周计划"
     Then Launcher 首页展示了可执行结果
     When 我执行当前选中的 Launcher 结果
     Then Launcher 界面切换到 "ai"
     And Launcher 输入框包含 "整理本周计划"
+    And 在接下来 700 毫秒内不会提交 Launcher AI 消息 "整理本周计划"
 
-  Scenario: Launcher 首页可以通过 Tab 进入 AI 界面
+  Scenario: Launcher 首页通过 Tab 进入 AI 时会触发快速提交
     Given Openwork 桌面应用已启动
     When 我在 Launcher 中搜索 "整理本周计划"
     Then Launcher 首页展示了可执行结果
     When 我在 Launcher 首页按下 Tab
     Then Launcher 界面切换到 "ai"
     And Launcher 输入框包含 "整理本周计划"
+    And Launcher AI 输入状态会进入 pending
+
+  Scenario: Launcher 首页保留 Enter 与 Tab 分工
+    Given Openwork 桌面应用已启动
+    When 我在 Launcher 中搜索 "todo"
+    Then Launcher 首页展示了可执行结果
+    And Launcher 首页当前选中结果为 "Todo List"
+    When 我执行当前选中的 Launcher 结果
+    Then Launcher 当前命令归属为 "todo-list"
+    When 我在 Launcher 中按下 Escape
+    Then Launcher 界面切换到 "home"
+    And Launcher 输入框包含 "todo"
+    When 我在 Launcher 首页按下 Tab
+    Then Launcher 界面切换到 "ai"
+    And Launcher 输入框包含 "todo"
 
   Scenario: Launcher 首页可以通过方向键切换结果
     Given Openwork 桌面应用已启动
