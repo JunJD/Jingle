@@ -13,7 +13,9 @@ interface ActionMessageProps {
   approvalRequest?: HITLRequest | null
   onApprovalDecision?: (decision: HITLDecision) => void
   density?: "default" | "compact"
+  expanded?: boolean
   presentation?: ToolPresentation
+  showSummary?: boolean
 }
 
 function StatusGlyph(props: {
@@ -55,9 +57,11 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
   const {
     approvalRequest,
     density = "default",
+    expanded,
     onApprovalDecision,
     presentation = "standalone",
     result,
+    showSummary = true,
     toolCall
   } = props
   const { copy } = useI18n()
@@ -74,7 +78,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     [approvalRequest, copy, presentation, result, toolCall]
   )
   const { definition, hitlDefinition, icon, model, status, statusLabel, summary } = view
-  const isExpanded = Boolean(approvalRequest) || manualExpanded
+  const isExpanded = expanded ?? (Boolean(approvalRequest) || manualExpanded)
   const showLeadingIcon = presentation !== "grouped"
   const detail = useMemo<React.ReactNode>(() => {
     if (approvalRequest && onApprovalDecision && hitlDefinition) {
@@ -110,6 +114,22 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
   ])
 
   const hasDetail = Boolean(detail)
+  const detailContent =
+    hasDetail && isExpanded ? (
+      <div
+        className={cn(
+          "min-w-0 max-w-full overflow-hidden",
+          presentation === "grouped" ? "pl-0" : "pl-7"
+        )}
+      >
+        {detail}
+      </div>
+    ) : null
+
+  if (!showSummary) {
+    return detailContent
+  }
+
   return (
     <div
       className={cn("grid min-w-0 max-w-full", presentation === "grouped" ? "gap-1" : "gap-1.5")}
@@ -166,16 +186,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
         </span>
       </button>
 
-      {hasDetail && isExpanded ? (
-        <div
-          className={cn(
-            "min-w-0 max-w-full overflow-hidden",
-            presentation === "grouped" ? "pl-0" : "pl-7"
-          )}
-        >
-          {detail}
-        </div>
-      ) : null}
+      {detailContent}
     </div>
   )
 }

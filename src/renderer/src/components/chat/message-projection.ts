@@ -101,17 +101,20 @@ export function buildMessageTurns(messages: ThreadMessage[]): MessageTurn[] {
 export function buildTurnAssistantEntries(turn: MessageTurn): TurnAssistantEntry[] {
   const entries: TurnAssistantEntry[] = []
   let currentCluster: ThreadMessage[] = []
+  let clusterIndex = 0
 
   const flushCluster = () => {
     if (currentCluster.length === 0) {
       return
     }
 
+    const clusterAnchorMessageId = currentCluster[0]?.id ?? `cluster-${clusterIndex}`
     entries.push({
-      key: `tools:${currentCluster.map((item) => item.id).join(":")}`,
+      key: `tools:${clusterAnchorMessageId}:${clusterIndex}`,
       kind: "tool-cluster",
       messages: currentCluster
     })
+    clusterIndex += 1
     currentCluster = []
   }
 

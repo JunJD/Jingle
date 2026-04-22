@@ -289,7 +289,7 @@ function ToolActivityGroup(props: {
     const needsApproval = Boolean(pendingId) && pendingId === toolCall.id
 
     return {
-      key: `${toolCall.id || `tc-${index}`}-${needsApproval ? "pending" : "done"}`,
+      key: toolCall.id || `tc-${index}`,
       needsApproval,
       result,
       toolCall
@@ -310,10 +310,10 @@ function ToolActivityGroup(props: {
     }
   })
 
-  const shouldGroup = toolCalls.length >= 2
   const hasActiveActions = actionItems.some(
     (item) => item.needsApproval || item.result === undefined
   )
+  const hasSingleAction = actionViews.length === 1
   const isOpen = openOverride ?? hasActiveActions
   const latestActiveAction = [...actionViews]
     .reverse()
@@ -337,27 +337,8 @@ function ToolActivityGroup(props: {
       />
     ) : null
 
-  if (!shouldGroup) {
-    const item = actionItems[0]
-
-    return item ? (
-      <ActionMessage
-        approvalRequest={item.needsApproval ? pendingApproval : null}
-        density={density}
-        onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
-        result={item.result?.content}
-        toolCall={item.toolCall}
-      />
-    ) : null
-  }
-
   return (
-    <ChainOfThought
-      active={hasActiveActions}
-      collapseWhenInactive
-      onOpenChange={setOpenOverride}
-      open={isOpen}
-    >
+    <ChainOfThought active={hasActiveActions} onOpenChange={setOpenOverride} open={isOpen}>
       <ChainOfThoughtHeader
         className={density === "compact" ? "text-[12px] leading-5" : "text-[13px] leading-5"}
         icon={ListTodo}
@@ -375,9 +356,11 @@ function ToolActivityGroup(props: {
             <ActionMessage
               approvalRequest={item.needsApproval ? pendingApproval : null}
               density={density}
+              expanded={hasSingleAction ? true : undefined}
               onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
               presentation="grouped"
               result={item.result?.content}
+              showSummary={hasSingleAction ? false : undefined}
               toolCall={item.toolCall}
             />
           </ChainOfThoughtItem>
