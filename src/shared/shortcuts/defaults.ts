@@ -80,6 +80,42 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
     platform: "linux"
   },
   {
+    commandId: LAUNCHER_COMMAND_IDS.searchOpenSettings,
+    scope: "launcher.home",
+    chord: {
+      modifiers: ["meta"],
+      key: ",",
+      code: "Comma"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "darwin"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.searchOpenSettings,
+    scope: "launcher.home",
+    chord: {
+      modifiers: ["ctrl"],
+      key: ",",
+      code: "Comma"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "win32"
+  },
+  {
+    commandId: LAUNCHER_COMMAND_IDS.searchOpenSettings,
+    scope: "launcher.home",
+    chord: {
+      modifiers: ["ctrl"],
+      key: ",",
+      code: "Comma"
+    },
+    allowInTextInput: true,
+    preventDefault: true,
+    platform: "linux"
+  },
+  {
     commandId: LAUNCHER_COMMAND_IDS.searchMoveSelectionDown,
     scope: "launcher.home",
     chord: {

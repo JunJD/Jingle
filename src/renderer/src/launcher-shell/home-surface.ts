@@ -1,13 +1,7 @@
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { AppLocale } from "@shared/i18n"
-import {
-  getLauncherSectionedResultsHeight,
-  type LauncherShellConfig
-} from "@shared/launcher"
-import {
-  sortLauncherHistoryItems,
-  type LauncherHistoryItem
-} from "@shared/launcher-history"
+import { getLauncherSectionedResultsHeight, type LauncherShellConfig } from "@shared/launcher"
+import { sortLauncherHistoryItems, type LauncherHistoryItem } from "@shared/launcher-history"
 import type { LauncherSearchResult } from "@shared/launcher-search"
 import type { LocalStartItem } from "@shared/local-start"
 import { shouldShowLauncherIdleItems } from "@shared/launcher-settings"
@@ -58,7 +52,12 @@ export interface LauncherHomeSurfaceModel {
 }
 
 function hasLauncherHomeSurfaceSectionHeader(section: LauncherHomeSurfaceSection): boolean {
-  return section.kind === "suggestions"
+  return (
+    section.kind === "commands" ||
+    section.kind === "command-intents" ||
+    section.kind === "search-results" ||
+    section.kind === "suggestions"
+  )
 }
 
 function createHomeSurfaceModel(
@@ -149,9 +148,19 @@ export function buildLauncherHomeSurfaceModel(params: {
   locale: AppLocale
   query: string
   searchResults: LauncherSearchResult[]
+  searchResultsPreview?: boolean
   windowMode: "default" | "compact"
 }): LauncherHomeSurfaceModel {
-  const { copy, historyItems, idleItems, locale, query, searchResults, windowMode } = params
+  const {
+    copy,
+    historyItems,
+    idleItems,
+    locale,
+    query,
+    searchResults,
+    searchResultsPreview = false,
+    windowMode
+  } = params
   const trimmedQuery = query.trim()
 
   if (!trimmedQuery) {
@@ -192,7 +201,9 @@ export function buildLauncherHomeSurfaceModel(params: {
   )
   const rankedSearchResults = rankSearchResultSectionItems(searchResults, historyItems)
   const suggestionItems = createSuggestionSectionItems(copy, trimmedQuery, rankedSearchResults)
-  const searchResultItems = buildLauncherSearchShellItems(copy, rankedSearchResults)
+  const searchResultItems = buildLauncherSearchShellItems(copy, rankedSearchResults, {
+    preview: searchResultsPreview
+  })
 
   if (internalCommandItems.length > 0) {
     sections.push({

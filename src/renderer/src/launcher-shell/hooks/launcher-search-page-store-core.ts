@@ -121,7 +121,24 @@ export function resolveVisibleLauncherSearchResultsBySource(
     return filterCachedLauncherSearchResults(searchState.resultsBySource, trimmedQuery)
   }
 
+  if (searchState.query.startsWith(trimmedQuery)) {
+    return searchState.resultsBySource
+  }
+
   return null
+}
+
+export function shouldPreviewLauncherSearchResults(
+  searchState: LauncherSearchState | null,
+  query: string
+): boolean {
+  const trimmedQuery = query.trim()
+  return Boolean(
+    trimmedQuery &&
+    searchState &&
+    searchState.query !== trimmedQuery &&
+    searchState.query.startsWith(trimmedQuery)
+  )
 }
 
 export function mergeLauncherSearchResults(

@@ -10,24 +10,29 @@ import type { LauncherShellItem } from "./types"
 
 export function buildLauncherSearchShellItems(
   copy: AppCopy,
-  searchResults: LauncherSearchResult[]
+  searchResults: LauncherSearchResult[],
+  options: { preview?: boolean } = {}
 ): LauncherShellItem[] {
-  return searchResults.map((result) => ({
-    action: result.action,
-    availability: result.availability,
-    id: result.id,
-    iconDataUrl: result.iconDataUrl,
-    kind: result.kind,
-    match: result.match,
-    presentation: createLauncherBuiltinResultPresentation({
-      availability: result.availability,
-      copy,
+  return searchResults.map((result) => {
+    const availability = options.preview ? "planned" : result.availability
+
+    return {
+      action: result.action,
+      availability,
+      id: result.id,
       iconDataUrl: result.iconDataUrl,
-      kind: result.kind
-    }),
-    subtitle: result.subtitle,
-    title: result.title
-  }))
+      kind: result.kind,
+      match: result.match,
+      presentation: createLauncherBuiltinResultPresentation({
+        availability,
+        copy,
+        iconDataUrl: result.iconDataUrl,
+        kind: result.kind
+      }),
+      subtitle: result.subtitle,
+      title: result.title
+    }
+  })
 }
 
 export function buildLauncherLocalStartShellItems(
@@ -162,33 +167,37 @@ export function buildLauncherInternalCommandShellItems(
         return []
       }
 
+      const item: LauncherShellItem = {
+        action: {
+          executor: "internal" as const,
+          target: null,
+          type: "none" as const
+        },
+        commandRef: command.address,
+        id:
+          command.address.kind === "built-in-command"
+            ? `command:${command.address.builtInId}:${command.address.commandName}`
+            : `command:${command.address.extensionName}:${command.address.commandName}`,
+        kind: "plugin" as const,
+        match: rankedMatch.match,
+        presentation: {
+          categoryLabel: copy.launcher.resultKindExtension,
+          icon: {
+            name: "search",
+            type: "glyph" as const
+          },
+          listActionLabel: copy.launcher.openGeneric,
+          primaryActionLabel: copy.launcher.openGeneric,
+          tone: "neutral" as const
+        },
+        subtitle: [command.ownerTitle, command.description].filter(Boolean).join(" · "),
+        title: command.title
+      }
+
       return [
         {
-          action: {
-            executor: "internal" as const,
-            target: null,
-            type: "none" as const
-          },
-          commandRef: command.address,
-          id:
-            command.address.kind === "built-in-command"
-              ? `command:${command.address.builtInId}:${command.address.commandName}`
-              : `command:${command.address.extensionName}:${command.address.commandName}`,
-          kind: "plugin" as const,
-          match: rankedMatch.match,
-          presentation: {
-            categoryLabel: copy.launcher.resultKindExtension,
-            icon: {
-              name: "search",
-              type: "glyph" as const
-            },
-            listActionLabel: copy.launcher.openGeneric,
-            primaryActionLabel: copy.launcher.openGeneric,
-            tone: "neutral" as const
-          },
-          score: rankedMatch.score,
-          subtitle: [command.ownerTitle, command.description].filter(Boolean).join(" · "),
-          title: command.title
+          item,
+          score: rankedMatch.score
         }
       ]
     })
@@ -197,9 +206,9 @@ export function buildLauncherInternalCommandShellItems(
         return right.score - left.score
       }
 
-      return left.title.localeCompare(right.title)
+      return left.item.title.localeCompare(right.item.title)
     })
-    .map(({ score: _score, ...item }) => item)
+    .map((entry) => entry.item)
 }
 
 function getTitleMatch(title: string, normalizedQuery: string): [number, number] | undefined {

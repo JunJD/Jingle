@@ -1,5 +1,5 @@
 import { useCallback, useMemo, type RefObject } from "react"
-import { Settings2 } from "lucide-react"
+import { Loader2, Settings2 } from "lucide-react"
 import { useI18n } from "@/lib/i18n"
 import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
@@ -15,6 +15,7 @@ import { LauncherResultList } from "./LauncherResultList"
 const HOME_SHORTCUT_SCOPES = ["launcher.home"] as const
 type LauncherHomeCommandId =
   | typeof LAUNCHER_COMMAND_IDS.searchOpenAi
+  | typeof LAUNCHER_COMMAND_IDS.searchOpenSettings
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionDown
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionUp
   | typeof LAUNCHER_COMMAND_IDS.searchExecuteSelection
@@ -24,6 +25,7 @@ export function LauncherSearchPage(props: {
   executeItem: (index: number) => void
   inputRef: RefObject<HTMLInputElement | null>
   inputValue: string
+  isSearchLoading: boolean
   onClearClipboardContext: () => void
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   onInputValueChange: (value: string) => void
@@ -35,12 +37,13 @@ export function LauncherSearchPage(props: {
   shellConfig: LauncherShellConfig
   surface: LauncherHomeSurfaceModel
 }): React.JSX.Element {
-  const { copy, locale } = useI18n()
+  const { copy } = useI18n()
   const {
     executeHomeCommand,
     executeItem,
     inputRef,
     inputValue,
+    isSearchLoading,
     onClearClipboardContext,
     onInputKeyDown,
     onInputValueChange,
@@ -70,6 +73,13 @@ export function LauncherSearchPage(props: {
       executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenAi)
     },
     [executeHomeCommand, isInputShortcutTarget]
+  )
+  const handleOpenSettingsShortcut = useCallback(
+    (event: KeyboardEvent): void => {
+      event.preventDefault()
+      executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenSettings)
+    },
+    [executeHomeCommand]
   )
   const handleMoveSelectionDownShortcut = useCallback(
     (event: KeyboardEvent): void => {
@@ -106,6 +116,7 @@ export function LauncherSearchPage(props: {
   )
 
   useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.searchOpenAi, handleOpenAiShortcut)
+  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.searchOpenSettings, handleOpenSettingsShortcut)
   useShortcutCommandHandler(
     LAUNCHER_COMMAND_IDS.searchMoveSelectionDown,
     handleMoveSelectionDownShortcut
@@ -125,6 +136,7 @@ export function LauncherSearchPage(props: {
   const resultsVisible = surface.chrome.footerVisible
   const showHistoryGrid = surface.body.kind === "history-grid"
   const askAiShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.searchOpenAi)
+  const settingsShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.searchOpenSettings)
   const executeSelectionShortcut = useLauncherCommandShortcut(
     LAUNCHER_COMMAND_IDS.searchExecuteSelection
   )
@@ -135,27 +147,18 @@ export function LauncherSearchPage(props: {
   const headerLeading = previewClipboardContext ? (
     <ClipboardChip context={previewClipboardContext} onClear={onClearClipboardContext} />
   ) : undefined
+  const openSettingsLabel = copy.launcher.openSettings
 
   return (
     <LauncherChrome
       headerLeading={headerLeading}
+      inputStatus={isSearchLoading ? "pending" : "idle"}
       footer={
         resultsVisible ? (
           <>
             <div className="flex items-center gap-2 text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
-              <button
-                type="button"
-                onClick={() => {
-                  void window.api.settings.openWindow()
-                }}
-                onMouseDown={(event) => event.preventDefault()}
-                className="launcher-icon-button flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition hover:text-foreground"
-                title={locale === "zh-CN" ? "打开设置" : "Open settings"}
-                aria-label={locale === "zh-CN" ? "打开设置" : "Open settings"}
-              >
-                <Settings2 className="h-4 w-4" />
-              </button>
-              <span>{copy.launcher.searchResults}</span>
+              {isSearchLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              <span>{isSearchLoading ? copy.launcher.searching : copy.launcher.searchResults}</span>
             </div>
 
             <button
@@ -182,13 +185,33 @@ export function LauncherSearchPage(props: {
         ) : undefined
       }
       headerTrailing={
-        <div className="flex shrink-0 items-center gap-2 px-0 py-1 text-[13px] font-medium text-muted-foreground">
-          {askAiShortcut ? (
-            <span className="launcher-shortcut text-[11px] text-muted-foreground">
-              {askAiShortcut}
-            </span>
-          ) : null}
-          <span>{copy.launcher.aiEntryLabel}</span>
+        <div className="flex shrink-0 items-center gap-2 text-[13px] font-medium text-muted-foreground">
+          <button
+            data-launcher-open-settings
+            type="button"
+            onClick={() => executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenSettings)}
+            onMouseDown={(event) => event.preventDefault()}
+            className="launcher-header-button flex items-center gap-2 rounded-full px-2 py-1 text-[12px] text-muted-foreground hover:text-foreground"
+            title={openSettingsLabel}
+            aria-label={openSettingsLabel}
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            <span>{openSettingsLabel}</span>
+            {settingsShortcut ? (
+              <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                {settingsShortcut}
+              </span>
+            ) : null}
+          </button>
+
+          <div className="flex items-center gap-2 px-0 py-1">
+            {askAiShortcut ? (
+              <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                {askAiShortcut}
+              </span>
+            ) : null}
+            <span>{copy.launcher.aiEntryLabel}</span>
+          </div>
         </div>
       }
       inputRef={inputRef}
