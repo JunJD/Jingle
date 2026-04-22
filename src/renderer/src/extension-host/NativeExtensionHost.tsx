@@ -9,6 +9,7 @@ import {
 } from "react"
 import type { LauncherShellConfig } from "@shared/launcher"
 import type { LauncherCommandOwnerCapability } from "@shared/launcher-command-owner"
+import { resolveNativeExtensionCapability } from "@shared/native-extension-boundaries"
 import type { LauncherClipboardState } from "@launcher-shell/LauncherClipboardContext"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 import type {
@@ -104,19 +105,7 @@ function requireNativeExtensionCapability<TValue>(
   capability: LauncherCommandOwnerCapability,
   value: TValue | undefined
 ): TValue {
-  if (value) {
-    return value
-  }
-
-  if (!host.capabilities.includes(capability)) {
-    throw new Error(
-      `Native extension "${host.extensionName}" tried to use the "${capability}" capability without declaring it`
-    )
-  }
-
-  throw new Error(
-    `Native extension "${host.extensionName}" declares the "${capability}" capability but the host did not provide it`
-  )
+  return resolveNativeExtensionCapability(host, capability, value)
 }
 
 export function useNativeExtensionClipboard(): NonNullable<NativeExtensionHostValue["clipboard"]> {

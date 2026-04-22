@@ -51,28 +51,38 @@ function PassiveCommandHost(props: {
   }, [commandName, extensionName])
 
   const hostValue = useMemo(
-    () =>
-      commandPreferences
-        ? {
-            capabilities: extensionCapabilities as readonly (
-              | "clipboard"
-              | "navigation"
-              | "rpc"
-              | "surface"
-              | "threads"
-            )[],
-            commandName,
-            commandPreferences,
-            initialAction: "focus" as const,
-            navigation: {
-              goHome: () => {},
+    () => {
+      if (!commandPreferences) {
+        return null
+      }
+
+      const navigationEnabled = extensionCapabilities.includes("navigation")
+      return {
+        capabilities: extensionCapabilities as readonly (
+          | "clipboard"
+          | "navigation"
+          | "rpc"
+          | "surface"
+          | "threads"
+        )[],
+        commandName,
+        commandPreferences,
+        initialAction: "focus" as const,
+        navigation: navigationEnabled
+          ? {
+              goHome: () => {
+                throw new Error(
+                  `Native extension "${extensionName}" command "${commandName}" cannot call navigation.goHome() from a passive host`
+                )
+              },
               hideLauncher: () => window.api.launcher.hide(),
               openCommand
-            },
-            extensionName,
-            seedQuery: ""
-          }
-        : null,
+            }
+          : undefined,
+        extensionName,
+        seedQuery: ""
+      }
+    },
     [commandName, commandPreferences, extensionCapabilities, extensionName, openCommand]
   )
 
