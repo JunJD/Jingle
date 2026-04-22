@@ -185,9 +185,7 @@ When("我在 Launcher AI 输入框按下 Backspace", async function (this: Openw
 
 When("我从 Launcher 打开设置窗口", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("launcher")
-  const settingsButton = page
-    .locator('.launcher-chrome[data-surface="home"] .launcher-chrome-footer button')
-    .first()
+  const settingsButton = page.locator("[data-launcher-open-settings]").first()
 
   await settingsButton.click()
 })

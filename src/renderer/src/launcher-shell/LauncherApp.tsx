@@ -270,6 +270,7 @@ export default function LauncherApp(): React.JSX.Element {
                 executeItem={searchPage.executeItem}
                 inputRef={searchInputRef}
                 inputValue={searchPage.query}
+                isSearchLoading={searchPage.isSearchLoading}
                 onClearClipboardContext={searchPage.clearClipboardContext}
                 onInputKeyDown={handleInputCommandKeyDown}
                 onInputValueChange={searchPage.setQuery}

@@ -19,13 +19,15 @@ import type { LauncherCommandAddress, LauncherCommandOpenOptions } from "../page
 import {
   LAUNCHER_SEARCH_SOURCES,
   mergeLauncherSearchResults,
-  resolveVisibleLauncherSearchResultsBySource
+  resolveVisibleLauncherSearchResultsBySource,
+  shouldPreviewLauncherSearchResults
 } from "./launcher-search-page-store-core"
 import { useLauncherSearchPageStore } from "./launcher-search-page-store"
 import { useLauncherHomeClipboard } from "./useLauncherHomeClipboard"
 
 type LauncherHomeCommandId =
   | typeof LAUNCHER_COMMAND_IDS.searchOpenAi
+  | typeof LAUNCHER_COMMAND_IDS.searchOpenSettings
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionDown
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionUp
   | typeof LAUNCHER_COMMAND_IDS.searchExecuteSelection
@@ -38,6 +40,7 @@ export function useLauncherSearchPage(props: {
   executeHomeCommand: (commandId: LauncherHomeCommandId) => void
   handleInputCommandKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
   homeInputSelectionRequestVersion: number
+  isSearchLoading: boolean
   removeHistoryItem: (itemId: string) => void
   setHistoryItemPinned: (itemId: string, pin: boolean) => void
   previewClipboardContext: Extract<
@@ -84,6 +87,9 @@ export function useLauncherSearchPage(props: {
   const visibleSearchResultsBySource = useMemo(() => {
     return resolveVisibleLauncherSearchResultsBySource(searchState, trimmedQuery)
   }, [searchState, trimmedQuery])
+  const searchResultsPreview = useMemo(() => {
+    return shouldPreviewLauncherSearchResults(searchState, trimmedQuery)
+  }, [searchState, trimmedQuery])
   const searchResults = useMemo(() => {
     if (!visibleSearchResultsBySource) {
       return []
@@ -91,6 +97,19 @@ export function useLauncherSearchPage(props: {
 
     return mergeLauncherSearchResults(visibleSearchResultsBySource, MAX_LAUNCHER_SEARCH_RESULTS)
   }, [visibleSearchResultsBySource])
+  const isSearchLoading = useMemo(() => {
+    if (!trimmedQuery) {
+      return false
+    }
+
+    if (!searchState || searchState.query !== trimmedQuery) {
+      return true
+    }
+
+    return LAUNCHER_SEARCH_SOURCES.some(
+      (source) => searchState.resultsBySource[source] === undefined
+    )
+  }, [searchState, trimmedQuery])
   const surface = useMemo(
     () =>
       buildLauncherHomeSurfaceModel({
@@ -100,9 +119,10 @@ export function useLauncherSearchPage(props: {
         locale,
         query,
         searchResults,
+        searchResultsPreview,
         windowMode
       }),
-    [copy, historyItems, idleItems, locale, query, searchResults, windowMode]
+    [copy, historyItems, idleItems, locale, query, searchResults, searchResultsPreview, windowMode]
   )
   const selectedIndex = useMemo(() => {
     return resolveLauncherHomeSurfaceSelectedIndex(surface, selectedItemId)
@@ -215,6 +235,9 @@ export function useLauncherSearchPage(props: {
             seedQuery: query
           })
           return
+        case LAUNCHER_COMMAND_IDS.searchOpenSettings:
+          void window.api.settings.openWindow()
+          return
         case LAUNCHER_COMMAND_IDS.searchMoveSelectionDown:
           moveSelection(
             surface.items.map((item) => item.id),
@@ -287,6 +310,7 @@ export function useLauncherSearchPage(props: {
     executeHomeCommand,
     handleInputCommandKeyDown,
     homeInputSelectionRequestVersion,
+    isSearchLoading,
     previewClipboardContext: homeClipboard.previewContext,
     removeHistoryItem,
     setHistoryItemPinned,

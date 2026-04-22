@@ -2,8 +2,14 @@ import { useLayoutEffect, useRef } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useI18n } from "@/lib/i18n"
 import { cn, truncateMiddle } from "@/lib/utils"
-import { getLauncherResultToneStyle, renderLauncherResultIcon } from "@launcher-shell/result-presentation"
-import type { LauncherHomeSurfaceSection } from "@launcher-shell/home-surface"
+import {
+  getLauncherResultToneStyle,
+  renderLauncherResultIcon
+} from "@launcher-shell/result-presentation"
+import type {
+  LauncherHomeSurfaceSection,
+  LauncherHomeSurfaceSectionKind
+} from "@launcher-shell/home-surface"
 
 function renderTitle(title: string, match?: [number, number]): React.JSX.Element | string {
   if (!match || match[0] < 0 || match[1] < match[0]) {
@@ -19,6 +25,24 @@ function renderTitle(title: string, match?: [number, number]): React.JSX.Element
       {title.slice(end + 1)}
     </>
   )
+}
+
+function getSectionLabel(
+  sectionKind: LauncherHomeSurfaceSectionKind,
+  copy: ReturnType<typeof useI18n>["copy"]
+): string | null {
+  switch (sectionKind) {
+    case "commands":
+      return copy.launcher.commandMatches
+    case "command-intents":
+      return copy.launcher.actionsLabel
+    case "search-results":
+      return copy.launcher.searchResults
+    case "suggestions":
+      return copy.launcher.suggestions
+    default:
+      return null
+  }
 }
 
 export function LauncherResultList(props: {
@@ -77,7 +101,7 @@ export function LauncherResultList(props: {
       {
         key: `header:${section.kind}`,
         kind: "header" as const,
-        label: section.kind === "suggestions" ? copy.launcher.suggestions : null
+        label: getSectionLabel(section.kind, copy)
       },
       ...section.items.map((item, itemIndex) => ({
         index: precedingItemsCount + itemIndex,

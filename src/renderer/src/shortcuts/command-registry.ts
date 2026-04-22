@@ -31,6 +31,12 @@ const LAUNCHER_SHORTCUT_COMMANDS: readonly ShortcutCommandDefinition[] = [
     category: "launcher"
   }),
   defineLauncherShortcutCommand({
+    id: LAUNCHER_COMMAND_IDS.searchOpenSettings,
+    title: "Open Settings",
+    description: "Open the settings window from launcher home",
+    category: "launcher"
+  }),
+  defineLauncherShortcutCommand({
     id: LAUNCHER_COMMAND_IDS.searchMoveSelectionDown,
     title: "Move Selection Down",
     description: "Move the launcher home selection down",

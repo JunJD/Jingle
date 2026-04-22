@@ -57,8 +57,6 @@ Feature: Openwork 桌面启动
 
   Scenario: Launcher 可以打开设置窗口
     Given Openwork 桌面应用已启动
-    When 我在 Launcher 中搜索 "todo"
-    Then Launcher 首页展示了可执行结果
     When 我从 Launcher 打开设置窗口
     Then Settings 窗口可用
     And Launcher 窗口已隐藏

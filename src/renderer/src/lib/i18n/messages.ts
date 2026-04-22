@@ -99,7 +99,9 @@ export interface AppCopy {
     goToPreviousChat: string
     jumpToLatest: string
     newQuestion: string
+    openSettings: string
     openApp: string
+    commandMatches: string
     openGeneric: string
     openResult: string
     pinHistoryItem: string
@@ -119,6 +121,7 @@ export interface AppCopy {
     searchSuggestionAction: string
     searchPlaceholder: string
     searchPlaceholderSecondary: string
+    searching: string
     searchResults: string
     suggestions: string
     unpinHistoryItem: string
@@ -284,7 +287,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       goToPreviousChat: "前往上一个对话",
       jumpToLatest: "跳到最新",
       newQuestion: "新问题",
+      openSettings: "打开设置",
       openApp: "打开应用",
+      commandMatches: "命令",
       openGeneric: "打开",
       openResult: "打开结果",
       pinHistoryItem: "固定到搜索面板",
@@ -304,6 +309,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       searchSuggestionAction: "搜索",
       searchPlaceholder: "你想处理什么工作？",
       searchPlaceholderSecondary: "搜应用、文件、命令，或直接问 AI",
+      searching: "搜索中",
       searchResults: "搜索结果",
       suggestions: "建议",
       unpinHistoryItem: "取消固定",
@@ -482,7 +488,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       goToPreviousChat: "Go to Previous Chat",
       jumpToLatest: "Jump to latest",
       newQuestion: "New Question",
+      openSettings: "Open Settings",
       openApp: "Open App",
+      commandMatches: "Commands",
       openGeneric: "Open",
       openResult: "Open Result",
       pinHistoryItem: "Pin to launcher",
@@ -502,6 +510,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       searchSuggestionAction: "Search",
       searchPlaceholder: "What do you want to get done?",
       searchPlaceholderSecondary: "Search apps, files, commands, or ask AI",
+      searching: "Searching",
       searchResults: "Search Results",
       suggestions: "Suggestions",
       unpinHistoryItem: "Unpin",

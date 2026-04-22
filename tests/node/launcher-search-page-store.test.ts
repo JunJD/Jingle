@@ -1,9 +1,12 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { appCopy } from "../../src/renderer/src/lib/i18n/messages"
+import { buildLauncherSearchShellItems } from "../../src/renderer/src/launcher-shell/search-items"
 import {
   createLauncherSearchPageStore,
   mergeLauncherSearchResults,
-  resolveVisibleLauncherSearchResultsBySource
+  resolveVisibleLauncherSearchResultsBySource,
+  shouldPreviewLauncherSearchResults
 } from "../../src/renderer/src/launcher-shell/hooks/launcher-search-page-store-core"
 import type { LauncherHistoryItem } from "../../src/shared/launcher-history"
 import type { LauncherSearchResult } from "../../src/shared/launcher-search"
@@ -25,7 +28,10 @@ function createSearchResult(
   }
 }
 
-function createHistoryItem(id: string, overrides: Partial<LauncherHistoryItem> = {}): LauncherHistoryItem {
+function createHistoryItem(
+  id: string,
+  overrides: Partial<LauncherHistoryItem> = {}
+): LauncherHistoryItem {
   return {
     action: {
       executor: "internal",
@@ -65,12 +71,16 @@ test("search responses ignore stale request ids", () => {
   const staleRequestId = store.getState().beginSearchRequest()
   const activeRequestId = store.getState().beginSearchRequest()
 
-  store.getState().applySearchResults(staleRequestId, "doc", "files", [
-    createSearchResult({ id: "stale", source: "files", title: "stale" })
-  ])
-  store.getState().applySearchResults(activeRequestId, "doc", "files", [
-    createSearchResult({ id: "active", source: "files", title: "active" })
-  ])
+  store
+    .getState()
+    .applySearchResults(staleRequestId, "doc", "files", [
+      createSearchResult({ id: "stale", source: "files", title: "stale" })
+    ])
+  store
+    .getState()
+    .applySearchResults(activeRequestId, "doc", "files", [
+      createSearchResult({ id: "active", source: "files", title: "active" })
+    ])
 
   assert.deepEqual(store.getState().searchState, {
     query: "doc",
@@ -96,6 +106,51 @@ test("resolveVisibleLauncherSearchResultsBySource filters cached trailing refine
   assert.deepEqual(visible, {
     files: [createSearchResult({ id: "docs", source: "files", title: "Project Docs" })]
   })
+})
+
+test("resolveVisibleLauncherSearchResultsBySource keeps cached matches while broadening query", () => {
+  const searchState = {
+    query: "project docs",
+    resultsBySource: {
+      files: [createSearchResult({ id: "docs", source: "files", title: "Project Docs" })]
+    }
+  }
+
+  const visible = resolveVisibleLauncherSearchResultsBySource(searchState, "project")
+
+  assert.deepEqual(visible, {
+    files: [createSearchResult({ id: "docs", source: "files", title: "Project Docs" })]
+  })
+})
+
+test("broadened cached search results stay visible as non-executable preview rows", () => {
+  const searchState = {
+    query: "project docs",
+    resultsBySource: {
+      files: [
+        createSearchResult({
+          availability: "ready",
+          id: "docs",
+          score: 10,
+          source: "files",
+          title: "Project Docs"
+        })
+      ]
+    }
+  }
+  assert.equal(shouldPreviewLauncherSearchResults(searchState, "project"), true)
+  assert.equal(shouldPreviewLauncherSearchResults(searchState, "project docs"), false)
+  assert.equal(shouldPreviewLauncherSearchResults(searchState, "project docs today"), false)
+
+  const [searchItem] = buildLauncherSearchShellItems(
+    appCopy["zh-CN"],
+    searchState.resultsBySource.files,
+    { preview: true }
+  )
+
+  assert.equal(searchItem?.availability, "planned")
+  assert.equal(searchItem?.presentation.listActionLabel, appCopy["zh-CN"].launcher.planned)
+  assert.equal(searchItem?.presentation.primaryActionLabel, appCopy["zh-CN"].launcher.planned)
 })
 
 test("mergeLauncherSearchResults orders by score, source priority, and de-duplicates per source key", () => {
@@ -132,8 +187,14 @@ test("moveSelection wraps around the visible item ids", () => {
 test("local idle and history updates stay pure and synchronous", () => {
   const store = createLauncherSearchPageStore()
   const historyItems = [
-    createHistoryItem("older", { lastUsedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }),
-    createHistoryItem("newer", { lastUsedAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z" })
+    createHistoryItem("older", {
+      lastUsedAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z"
+    }),
+    createHistoryItem("newer", {
+      lastUsedAt: "2026-01-02T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z"
+    })
   ]
 
   store.getState().applyIdleState({
@@ -146,7 +207,13 @@ test("local idle and history updates stay pure and synchronous", () => {
   store.getState().requestHomeInputSelection()
 
   assert.equal(store.getState().windowMode, "compact")
-  assert.deepEqual(store.getState().idleItems.map((item) => item.id), ["recent-file"])
-  assert.deepEqual(store.getState().historyItems.map((item) => item.id), ["older"])
+  assert.deepEqual(
+    store.getState().idleItems.map((item) => item.id),
+    ["recent-file"]
+  )
+  assert.deepEqual(
+    store.getState().historyItems.map((item) => item.id),
+    ["older"]
+  )
   assert.equal(store.getState().homeInputSelectionRequestVersion, 1)
 })
