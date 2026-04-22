@@ -7,8 +7,8 @@ import { createLauncherWindow, showLauncherWindow } from "./windows/launcher-win
 import { createMainWindow, showMainWindow } from "./windows/main-window"
 import { createSettingsWindow, showSettingsWindow } from "./windows/settings-window"
 import { startNativeMinimalIsland, stopNativeMinimalIsland } from "./services/native-minimal-island"
-import type { MainWindowNavigationPayload } from "../shared/main-window"
-import type { SettingsWindowNavigationPayload } from "../shared/settings-window"
+import type { MainWindowNavigationPayload } from "@shared/main-window"
+import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
 const remoteDebuggingPort = process.env.OPENWORK_REMOTE_DEBUGGING_PORT
 if (remoteDebuggingPort) {

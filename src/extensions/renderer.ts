@@ -1,7 +1,7 @@
 import {
   type NativeExtensionRendererDefinition,
   validateNativeExtensionRendererDefinition
-} from "../shared/native-extensions"
+} from "@shared/native-extensions"
 import { appleRemindersManifest } from "./apple-reminders/manifest"
 import { appleRemindersRenderer } from "./apple-reminders/renderer"
 import { githubManifest } from "./github/manifest"

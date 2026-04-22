@@ -3,24 +3,24 @@ import Store from "electron-store"
 import { homedir } from "os"
 import type { AgentConfig, ProviderId } from "./types"
 import { getOpenworkDir } from "./storage"
-import { listNativeExtensionManifests } from "../extensions"
-import { DEFAULT_MODELS } from "../shared/models"
-import { DEFAULT_APP_LOCALE, normalizeAppLocale } from "../shared/i18n"
-import type { DefaultModels, SupportedDefaultModelType } from "../shared/app-types"
+import { listNativeExtensionManifests } from "@extensions/index"
+import { DEFAULT_MODELS } from "@shared/models"
+import { DEFAULT_APP_LOCALE, normalizeAppLocale } from "@shared/i18n"
+import type { DefaultModels, SupportedDefaultModelType } from "@shared/app-types"
 import type {
   NativeExtensionPreferenceSchema,
   NativeExtensionPreferencesState
-} from "../shared/native-extensions"
+} from "@shared/native-extensions"
 import {
   DEFAULT_LAUNCHER_SETTINGS,
   normalizeLauncherSettings,
   type LauncherSettings
-} from "../shared/launcher-settings"
+} from "@shared/launcher-settings"
 import {
   DEFAULT_SHORTCUT_SETTINGS,
   normalizeShortcutSettings,
   type ShortcutSettings
-} from "../shared/shortcuts/settings"
+} from "@shared/shortcuts/settings"
 
 export interface PersistedWindowState {
   width: number

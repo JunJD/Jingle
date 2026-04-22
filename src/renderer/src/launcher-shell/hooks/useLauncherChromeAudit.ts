@@ -3,7 +3,7 @@ import type { RefObject } from "react"
 import {
   validateLauncherChromeMeasurement,
   type LauncherShellConfig
-} from "../../../../shared/launcher"
+} from "@shared/launcher"
 
 export function useLauncherChromeAudit(params: {
   footerRef?: RefObject<HTMLElement | null>

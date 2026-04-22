@@ -5,9 +5,9 @@ import {
   getLauncherViewportHeightForBody,
   getLauncherViewportHeight,
   type LauncherShellConfig
-} from "../../../../shared/launcher"
+} from "@shared/launcher"
 import { useI18n } from "@/lib/i18n"
-import { LAUNCHER_COMMAND_IDS } from "../../../../shared/shortcuts/ids"
+import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { DEFAULT_HOME_COMMAND, resolveLauncherCommand } from "../pages"
 import {
   buildLauncherHomeSurfaceModel,

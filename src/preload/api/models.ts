@@ -4,7 +4,7 @@ import type {
   ModelType,
   ProviderId,
   ProviderModelsResponse
-} from "../../shared/app-types"
+} from "@shared/app-types"
 import { invokeIpc } from "../ipc"
 
 export const modelsApi = {

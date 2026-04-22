@@ -5,7 +5,7 @@ import {
   FALLBACK_SHELL_CONFIG,
   getLauncherIdleHeight,
   getLauncherMaxViewportHeight
-} from "../../shared/launcher"
+} from "@shared/launcher"
 
 const LAUNCHER_CONTENT_WIDTH = 760
 const LAUNCHER_HORIZONTAL_MARGIN = 24

@@ -1,5 +1,5 @@
 import type { AppCopy } from "@/lib/i18n/messages"
-import type { ToolApprovalItem } from "../../../../../shared/tool-approval"
+import type { ToolApprovalItem } from "@shared/tool-approval"
 import { truncateMiddle } from "./shared"
 import {
   ToolChangeList,

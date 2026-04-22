@@ -1,5 +1,5 @@
 import type { IPCEvent } from "../../types"
-import type { AgentInvokeMessage } from "../../shared/message-content"
+import type { AgentInvokeMessage } from "@shared/message-content"
 import { invokeIpc, ipcRenderer } from "../ipc"
 
 export const agentApi = {

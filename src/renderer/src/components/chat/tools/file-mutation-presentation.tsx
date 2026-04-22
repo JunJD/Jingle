@@ -2,8 +2,8 @@ import type { AppCopy } from "@/lib/i18n/messages"
 import {
   getFileMutationReview,
   type FileMutationToolName
-} from "../../../../../shared/file-mutation-review"
-import type { FileMutationToolApprovalItem } from "../../../../../shared/tool-approval"
+} from "@shared/file-mutation-review"
+import type { FileMutationToolApprovalItem } from "@shared/tool-approval"
 import { countLines, getBasename, joinSummaryParts } from "./shared"
 import {
   ToolCodeBlock,

@@ -3,8 +3,8 @@ import { createMiddleware } from "langchain"
 import {
   withExecuteCommandPolicy,
   type ExecuteCommandPolicy
-} from "../../shared/execute-command-policy"
-import { withMutationPrediction, type MutationPrediction } from "../../shared/mutation-prediction"
+} from "@shared/execute-command-policy"
+import { withMutationPrediction, type MutationPrediction } from "@shared/mutation-prediction"
 
 export interface GuardrailReason {
   code: string

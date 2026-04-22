@@ -1,15 +1,15 @@
 import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
-import type { AppLocale } from "../../shared/i18n"
-import type { HITLRequest } from "../../shared/hitl"
-import type { ArtifactRecord } from "../../shared/artifacts"
-export type { HITLDecision, HITLRequest } from "../../shared/hitl"
+import type { AppLocale } from "@shared/i18n"
+import type { HITLRequest } from "@shared/hitl"
+import type { ArtifactRecord } from "@shared/artifacts"
+export type { HITLDecision, HITLRequest } from "@shared/hitl"
 export type {
   ModelConfig,
   ModelProviderState,
   ModelType,
   Provider,
   ProviderId
-} from "../../shared/app-types"
+} from "@shared/app-types"
 
 // Re-export types from electron for use in renderer
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"

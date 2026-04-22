@@ -1,4 +1,4 @@
-import type { MainWindowNavigationPayload } from "../../shared/main-window"
+import type { MainWindowNavigationPayload } from "@shared/main-window"
 
 export interface MainWindowRoutingRuntime {
   acknowledgePendingNavigation: (payload: MainWindowNavigationPayload) => void

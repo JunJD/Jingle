@@ -1,4 +1,4 @@
-import type { SettingsWindowNavigationPayload } from "../../shared/settings-window"
+import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
 export interface SettingsWindowRoutingRuntime {
   consumePendingNavigation: () => SettingsWindowNavigationPayload | null

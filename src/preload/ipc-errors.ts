@@ -1,5 +1,5 @@
-import type { IpcErrorCode, IpcErrorPayload } from "../shared/ipc-error"
-import { extractIpcErrorPayload } from "../shared/ipc-error"
+import type { IpcErrorCode, IpcErrorPayload } from "@shared/ipc-error"
+import { extractIpcErrorPayload } from "@shared/ipc-error"
 
 export class OpenworkIpcClientError extends Error {
   readonly channel?: string

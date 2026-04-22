@@ -1,4 +1,4 @@
-import { defineNativeExtensionRenderer } from "../../shared/native-extensions"
+import { defineNativeExtensionRenderer } from "@shared/native-extensions"
 import * as CreateReminderMeta from "./src/create-reminder.meta"
 import * as CreateReminderModule from "./src/create-reminder"
 import * as MenuBarRemindersModule from "./src/menu-bar-reminders"

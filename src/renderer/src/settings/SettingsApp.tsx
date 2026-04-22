@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { Keyboard, KeyRound, Puzzle, Settings2 } from "lucide-react"
-import type { SettingsWindowTab, SettingsWindowTarget } from "../../../shared/settings-window"
+import type { SettingsWindowTab, SettingsWindowTarget } from "@shared/settings-window"
 import { useI18n } from "../lib/i18n"
 import { getSettingsCopy } from "./copy"
 import { ExtensionsTab } from "./ExtensionsTab"

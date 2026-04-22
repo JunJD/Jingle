@@ -1,5 +1,5 @@
-import type { IpcErrorPayload } from "../../../shared/ipc-error"
-import { extractIpcErrorPayload } from "../../../shared/ipc-error"
+import type { IpcErrorPayload } from "@shared/ipc-error"
+import { extractIpcErrorPayload } from "@shared/ipc-error"
 
 export function getIpcErrorPayload(error: unknown): IpcErrorPayload | null {
   return extractIpcErrorPayload(error)

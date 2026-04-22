@@ -1,10 +1,10 @@
-import type { ClipboardContext } from "../../shared/clipboard"
+import type { ClipboardContext } from "@shared/clipboard"
 import type {
   LauncherActionExecutionResult,
   LauncherSearchAction,
   LauncherSearchRequest,
   LauncherSearchResponse
-} from "../../shared/launcher-search"
+} from "@shared/launcher-search"
 import { invokeIpc, ipcRenderer } from "../ipc"
 
 export const launcherApi = {

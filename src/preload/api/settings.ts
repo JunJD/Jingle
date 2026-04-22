@@ -1,6 +1,6 @@
-import type { AgentConfig } from "../../shared/app-types"
-import type { LauncherSettings } from "../../shared/launcher-settings"
-import type { SettingsWindowNavigationPayload } from "../../shared/settings-window"
+import type { AgentConfig } from "@shared/app-types"
+import type { LauncherSettings } from "@shared/launcher-settings"
+import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 import { invokeIpc } from "../ipc"
 
 export const settingsApi = {

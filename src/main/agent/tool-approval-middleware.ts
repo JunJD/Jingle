@@ -3,11 +3,11 @@ import { ToolMessage } from "@langchain/core/messages"
 import { interrupt } from "@langchain/langgraph"
 import { createMiddleware } from "langchain"
 import type { ActionRequest, DecisionType, ReviewConfig } from "langchain"
-import { getDefaultHitlAllowedDecisions } from "../../shared/hitl"
-import { getExecuteCommandPolicy } from "../../shared/execute-command-policy"
-import type { MutationChangeType } from "../../shared/mutation-prediction"
-import { buildToolApprovalItem, type ToolApprovalItem } from "../../shared/tool-approval"
-import { getFileMutationReview, isFileMutationToolName } from "../../shared/file-mutation-review"
+import { getDefaultHitlAllowedDecisions } from "@shared/hitl"
+import { getExecuteCommandPolicy } from "@shared/execute-command-policy"
+import type { MutationChangeType } from "@shared/mutation-prediction"
+import { buildToolApprovalItem, type ToolApprovalItem } from "@shared/tool-approval"
+import { getFileMutationReview, isFileMutationToolName } from "@shared/file-mutation-review"
 
 const TOOL_APPROVAL_ALLOWED_DECISIONS = getDefaultHitlAllowedDecisions()
 

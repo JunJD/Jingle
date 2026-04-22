@@ -1,5 +1,5 @@
 import type { Thread } from "@/types"
-import { shouldAutoGenerateThreadTitle } from "../../../shared/thread-title"
+import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 
 interface GenerateThreadTitleOptions {
   persistTitle?: (threadId: string, title: string) => Promise<void>

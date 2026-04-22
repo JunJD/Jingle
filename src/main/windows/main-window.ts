@@ -1,7 +1,7 @@
 import { BrowserWindow, shell } from "electron"
 import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
-import type { MainWindowNavigationPayload } from "../../shared/main-window"
+import type { MainWindowNavigationPayload } from "@shared/main-window"
 
 const MAIN_WINDOW_WIDTH = 1380
 const MAIN_WINDOW_HEIGHT = 900

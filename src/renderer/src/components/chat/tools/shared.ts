@@ -2,11 +2,11 @@ import type { FileInfo, Todo } from "@/types"
 import {
   getExecuteCommandPolicy,
   type ExecuteCommandPolicy
-} from "../../../../../shared/execute-command-policy"
+} from "@shared/execute-command-policy"
 import {
   getMutationPrediction,
   type MutationPrediction
-} from "../../../../../shared/mutation-prediction"
+} from "@shared/mutation-prediction"
 
 export type ToolFileEntry = string | FileInfo
 

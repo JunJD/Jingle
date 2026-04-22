@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import Store from "electron-store"
-import type { CreateLocalStartItemInput, LocalStartItem } from "../../shared/local-start"
+import type { CreateLocalStartItemInput, LocalStartItem } from "@shared/local-start"
 import { getOpenworkDir } from "../storage"
 
 interface LocalStartStoreShape {

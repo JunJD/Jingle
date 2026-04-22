@@ -8,7 +8,7 @@ import {
   toAgentMessageContent,
   toMessageContent,
   type ComposerMessageInput
-} from "../../../shared/message-content"
+} from "@shared/message-content"
 import {
   useThreadActions,
   useThreadContext,

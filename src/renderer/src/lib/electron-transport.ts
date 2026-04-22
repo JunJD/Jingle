@@ -2,11 +2,11 @@ import type { UseStreamTransport } from "@langchain/langgraph-sdk/react"
 import type { ToolCall, ToolCallChunk } from "@langchain/core/messages"
 import type { ActionRequest, ReviewConfig } from "langchain"
 import type { StreamPayload, StreamEvent, IPCEvent, IPCStreamEvent } from "../../../types"
-import { normalizeHitlAllowedDecisions } from "../../../shared/hitl"
-import { parseToolApprovalItem } from "../../../shared/tool-approval"
+import { normalizeHitlAllowedDecisions } from "@shared/hitl"
+import { parseToolApprovalItem } from "@shared/tool-approval"
 import type { ContentBlock } from "@/types"
 import type { Subagent } from "../types"
-import type { AgentInvokeMessage, AgentMessageContent } from "../../../shared/message-content"
+import type { AgentInvokeMessage, AgentMessageContent } from "@shared/message-content"
 import {
   extractComposerMessageRefsMetadata,
   hasMessageContent,
@@ -14,7 +14,7 @@ import {
   toComposerMessageMetadata,
   toDisplayMessageContent,
   toDisplayUserMessageContent
-} from "../../../shared/message-content"
+} from "@shared/message-content"
 
 /**
  * Usage metadata from LangChain model responses.

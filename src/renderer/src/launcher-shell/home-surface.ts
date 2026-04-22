@@ -1,16 +1,16 @@
 import type { AppCopy } from "@/lib/i18n/messages"
-import type { AppLocale } from "../../../shared/i18n"
+import type { AppLocale } from "@shared/i18n"
 import {
   getLauncherSectionedResultsHeight,
   type LauncherShellConfig
-} from "../../../shared/launcher"
+} from "@shared/launcher"
 import {
   sortLauncherHistoryItems,
   type LauncherHistoryItem
-} from "../../../shared/launcher-history"
-import type { LauncherSearchResult } from "../../../shared/launcher-search"
-import type { LocalStartItem } from "../../../shared/local-start"
-import { shouldShowLauncherIdleItems } from "../../../shared/launcher-settings"
+} from "@shared/launcher-history"
+import type { LauncherSearchResult } from "@shared/launcher-search"
+import type { LocalStartItem } from "@shared/local-start"
+import { shouldShowLauncherIdleItems } from "@shared/launcher-settings"
 import { getLauncherCommandIntents, listLauncherCommands } from "./pages"
 import {
   buildLauncherBrowserSearchSuggestionItem,

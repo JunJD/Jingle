@@ -1,4 +1,4 @@
-import type { ClipboardContext } from "../../../../shared/clipboard"
+import type { ClipboardContext } from "@shared/clipboard"
 
 const EMPTY_CLIPBOARD_CONTEXT: ClipboardContext = {
   kind: "none"

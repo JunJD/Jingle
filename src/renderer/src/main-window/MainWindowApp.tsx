@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import HistoryApp from "@ai-core/history"
-import type { MainWindowNavigationPayload } from "../../../shared/main-window"
+import type { MainWindowNavigationPayload } from "@shared/main-window"
 
 export default function MainWindowApp(): React.JSX.Element {
   const [targetThreadId, setTargetThreadId] = useState<string | undefined>(undefined)

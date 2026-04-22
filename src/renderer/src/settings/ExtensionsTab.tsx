@@ -1,12 +1,12 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react"
 import { Puzzle, Search, Settings2, TerminalSquare } from "lucide-react"
-import type { ModelConfig } from "../../../shared/app-types"
-import type { AppLocale } from "../../../shared/i18n"
+import type { ModelConfig } from "@shared/app-types"
+import type { AppLocale } from "@shared/i18n"
 import type {
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionPreferenceSchema
-} from "../../../shared/native-extensions"
-import type { SettingsWindowTarget } from "../../../shared/settings-window"
+} from "@shared/native-extensions"
+import type { SettingsWindowTarget } from "@shared/settings-window"
 import { getSettingsCopy } from "./copy"
 
 function PreferenceField(props: {

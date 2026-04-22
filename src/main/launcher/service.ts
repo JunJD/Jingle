@@ -1,19 +1,19 @@
 import { spawn } from "node:child_process"
 import { basename, extname } from "node:path"
 import { shell } from "electron"
-import type { ClipboardContext } from "../../shared/clipboard"
+import type { ClipboardContext } from "@shared/clipboard"
 import {
   createLauncherHistoryKey,
   type RecordLauncherHistoryItemInput
-} from "../../shared/launcher-history"
+} from "@shared/launcher-history"
 import type {
   LauncherActionExecutor,
   LauncherOpenPathTarget,
   LauncherSearchAction,
   LauncherSearchRequest,
   LauncherSearchResponse
-} from "../../shared/launcher-search"
-import type { MainWindowNavigationPayload } from "../../shared/main-window"
+} from "@shared/launcher-search"
+import type { MainWindowNavigationPayload } from "@shared/main-window"
 import type { LauncherHistoryService } from "../launcher-history/service"
 import type { LocalStartService } from "../local-start/service"
 import { readClipboardContext } from "../services/clipboard"

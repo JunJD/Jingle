@@ -22,8 +22,8 @@ import { SettingsService } from "../settings/service"
 import { WorkspaceService } from "../workspace/service"
 import { generateTitle } from "../services/title-generator"
 import { syncMessageSearchIndexFromSnapshot } from "../db/message-search"
-import { formatDefaultThreadTitle } from "../../shared/i18n"
-import { toDisplayUserMessageContent } from "../../shared/message-content"
+import { formatDefaultThreadTitle } from "@shared/i18n"
+import { toDisplayUserMessageContent } from "@shared/message-content"
 import type {
   HITLRequest,
   Message,

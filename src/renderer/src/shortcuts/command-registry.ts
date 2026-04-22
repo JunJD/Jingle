@@ -1,6 +1,6 @@
-import { isShortcutCommandConfigurable } from "../../../shared/shortcuts/configurable"
-import { LAUNCHER_COMMAND_IDS } from "../../../shared/shortcuts/ids"
-import type { ShortcutCommandDefinition } from "../../../shared/shortcuts/model"
+import { isShortcutCommandConfigurable } from "@shared/shortcuts/configurable"
+import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
+import type { ShortcutCommandDefinition } from "@shared/shortcuts/model"
 
 function defineLauncherShortcutCommand(
   definition: Omit<ShortcutCommandDefinition, "configurable">

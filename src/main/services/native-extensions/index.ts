@@ -4,13 +4,13 @@ import {
   type NativeExtensionService,
   toInstalledNativeExtensionSettingsSchema,
   toLauncherCommandOwnerManifest
-} from "../../../shared/native-extensions"
+} from "@shared/native-extensions"
 import {
   hasLauncherCommandOwnerCapability,
   validateLauncherCommandOwnerManifest
-} from "../../../shared/launcher-command-owner"
-import { listNativeExtensionManifests } from "../../../extensions"
-import { nativeExtensionMainDefinitions } from "../../../extensions/main"
+} from "@shared/launcher-command-owner"
+import { listNativeExtensionManifests } from "@extensions/index"
+import { nativeExtensionMainDefinitions } from "@extensions/main"
 
 const supportedNativeExtensionManifests = listNativeExtensionManifests(process.platform)
 

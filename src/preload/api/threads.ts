@@ -1,4 +1,4 @@
-import type { Thread, ThreadHistoryState, ThreadRuntimeState } from "../../shared/app-types"
+import type { Thread, ThreadHistoryState, ThreadRuntimeState } from "@shared/app-types"
 import { invokeIpc } from "../ipc"
 
 export const threadsApi = {

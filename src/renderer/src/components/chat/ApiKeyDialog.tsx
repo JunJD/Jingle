@@ -13,8 +13,8 @@ import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { getIpcErrorDisplayMessage } from "@/lib/ipc-errors"
 import type { Provider } from "@/types"
 import { useI18n } from "@/lib/i18n"
-import type { AppLocale } from "../../../../shared/i18n"
-import type { LocalizedText } from "../../../../shared/app-types"
+import type { AppLocale } from "@shared/i18n"
+import type { LocalizedText } from "@shared/app-types"
 
 interface ApiKeyDialogProps {
   open: boolean

@@ -1,5 +1,5 @@
 import { BrowserWindow, type IpcMain } from "electron"
-import type { LauncherSearchAction, LauncherSearchRequest } from "../../shared/launcher-search"
+import type { LauncherSearchAction, LauncherSearchRequest } from "@shared/launcher-search"
 import { setLauncherWindowViewportHeight, showLauncherWindow } from "../windows/launcher-window"
 import { registerIpcHandle } from "../ipc/handle"
 import { LauncherService } from "./service"

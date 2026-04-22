@@ -1,4 +1,4 @@
-import type { LauncherSettings } from "../../shared/launcher-settings"
+import type { LauncherSettings } from "@shared/launcher-settings"
 import type { AgentConfig } from "../types"
 import {
   getAgentConfig,

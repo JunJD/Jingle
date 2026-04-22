@@ -8,7 +8,7 @@ import type {
   MkdirOptions,
   RmOptions
 } from "just-bash"
-import type { MutationPredictionChange } from "../../shared/mutation-prediction"
+import type { MutationPredictionChange } from "@shared/mutation-prediction"
 
 interface FileSnapshot {
   contentHash: string

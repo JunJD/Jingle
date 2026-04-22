@@ -1,6 +1,6 @@
 import { HumanMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
-import { normalizeComposerMessageRefs, summarizeMessageContent } from "../../shared/message-content"
+import { normalizeComposerMessageRefs, summarizeMessageContent } from "@shared/message-content"
 import {
   beginAgentRun,
   finalizeRunWithoutCheckpoint,

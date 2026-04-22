@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react"
-import { deriveLauncherHomeClipboardState } from "../../../../shared/clipboard-derivations"
+import { deriveLauncherHomeClipboardState } from "@shared/clipboard-derivations"
 import { useLauncherClipboard } from "../LauncherClipboardContext"
 
 export function useLauncherHomeClipboard(params: {

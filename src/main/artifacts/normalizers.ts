@@ -6,7 +6,7 @@ import type {
   PresentLinkArtifactInput,
   PresentPatchArtifactInput,
   PresentSummaryArtifactInput
-} from "../../shared/artifacts"
+} from "@shared/artifacts"
 import type { ArtifactNormalizer, ArtifactRecordDraft } from "./types"
 
 type AnyArtifactNormalizer =

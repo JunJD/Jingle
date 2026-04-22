@@ -1,4 +1,4 @@
-import type { LauncherHistoryItem } from "../../shared/launcher-history"
+import type { LauncherHistoryItem } from "@shared/launcher-history"
 import { invokeIpc } from "../ipc"
 
 export const launcherHistoryApi = {

@@ -1,7 +1,7 @@
 import type {
   LauncherHistoryItem,
   RecordLauncherHistoryItemInput
-} from "../../shared/launcher-history"
+} from "@shared/launcher-history"
 import { LauncherHistoryRepository } from "./repository"
 
 export class LauncherHistoryService {

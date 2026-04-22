@@ -3,7 +3,7 @@ import type {
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionInvokeRequest,
   NativeExtensionPreferencesChangedEvent
-} from "../../shared/native-extensions"
+} from "@shared/native-extensions"
 import {
   getNativeExtensionCommandPreferenceRecord,
   getNativeExtensionPreferenceRecord,

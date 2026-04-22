@@ -1,5 +1,5 @@
 import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron"
-import type { SettingsWindowNavigationPayload } from "../../shared/settings-window"
+import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 import { registerIpcHandle } from "../ipc/handle"
 import { SettingsWindowRoutingService } from "./service"
 

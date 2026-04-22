@@ -1,11 +1,11 @@
 import { ipcRenderer } from "electron"
-import { resolveShortcutPlatform } from "../../shared/shortcuts/model"
+import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import {
   resolveShortcutBindings,
   type GlobalShortcutAvailability,
   type ResolvedShortcutBinding,
   type ShortcutSettings
-} from "../../shared/shortcuts/settings"
+} from "@shared/shortcuts/settings"
 import { invokeIpc } from "../ipc"
 
 const initialShortcutSettings = ipcRenderer.sendSync(

@@ -1,4 +1,4 @@
-import type { LauncherSearchRequest, LauncherSearchResponse } from "../../../shared/launcher-search"
+import type { LauncherSearchRequest, LauncherSearchResponse } from "@shared/launcher-search"
 import { applicationsLauncherSearchProvider } from "./providers/applications"
 import { browserHistoryLauncherSearchProvider } from "./providers/browser-history"
 import { filesLauncherSearchProvider } from "./providers/files"

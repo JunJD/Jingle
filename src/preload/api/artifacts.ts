@@ -3,7 +3,7 @@ import type {
   ArtifactActionResolution,
   ArtifactChangedEvent,
   ArtifactRecord
-} from "../../shared/artifacts"
+} from "@shared/artifacts"
 import { invokeIpc, ipcRenderer } from "../ipc"
 
 type ArtifactFileReadResult = {

@@ -1,4 +1,4 @@
-import type { Thread } from "../../../shared/app-types"
+import type { Thread } from "@shared/app-types"
 import type { HistoryShellState } from "./history-shell-store-core"
 
 type HistoryThreadOpsState = Pick<

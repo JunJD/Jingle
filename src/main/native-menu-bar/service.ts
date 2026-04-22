@@ -1,5 +1,5 @@
 import { BrowserWindow, Menu, Tray, nativeImage } from "electron"
-import type { NativeMenuBarActionEvent, NativeMenuBarState } from "../../shared/native-menu-bar"
+import type { NativeMenuBarActionEvent, NativeMenuBarState } from "@shared/native-menu-bar"
 
 interface NativeMenuBarBddProbe {
   getStates: () => NativeMenuBarState[]

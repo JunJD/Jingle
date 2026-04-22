@@ -1,7 +1,7 @@
 import { BrowserWindow, shell } from "electron"
 import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
-import type { SettingsWindowNavigationPayload } from "../../shared/settings-window"
+import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
 const SETTINGS_WINDOW_WIDTH = 1220
 const SETTINGS_WINDOW_HEIGHT = 820

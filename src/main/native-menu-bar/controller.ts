@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron"
-import type { NativeMenuBarState } from "../../shared/native-menu-bar"
+import type { NativeMenuBarState } from "@shared/native-menu-bar"
 import { registerIpcHandle } from "../ipc/handle"
 import { NativeMenuBarService } from "./service"
 

@@ -1,5 +1,5 @@
 import type { OpenworkAPI } from "../../../preload/api"
-import type { ModelConfig, Provider, ProviderId, Thread } from "../../../shared/app-types"
+import type { ModelConfig, Provider, ProviderId, Thread } from "@shared/app-types"
 
 export type HistoryRightPanelTab = "todos" | "artifacts" | "subagents"
 

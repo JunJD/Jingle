@@ -1,6 +1,6 @@
 import { CopyIcon, FileText, ListTodo, RefreshCcwIcon } from "lucide-react"
 import { useMemo, useState } from "react"
-import { resolveImageBlockUrl } from "../../../../shared/message-content"
+import { resolveImageBlockUrl } from "@shared/message-content"
 import type {
   ContentBlock,
   HITLDecision,

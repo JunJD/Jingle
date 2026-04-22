@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "../../../shared/i18n"
+import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "@shared/i18n"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))

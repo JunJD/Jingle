@@ -1,4 +1,4 @@
-import { supportsNativeExtensionPlatform } from "../shared/native-extensions"
+import { supportsNativeExtensionPlatform } from "@shared/native-extensions"
 import { appleRemindersManifest } from "./apple-reminders/manifest"
 import { githubManifest } from "./github/manifest"
 import { todoListManifest } from "./todo-list/manifest"

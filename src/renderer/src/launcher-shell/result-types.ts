@@ -1,4 +1,4 @@
-import type { LauncherResultKind } from "../../../shared/launcher"
+import type { LauncherResultKind } from "@shared/launcher"
 
 export type LauncherShellItemKind = LauncherResultKind | "plugin" | "suggestion"
 

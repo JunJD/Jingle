@@ -1,10 +1,10 @@
 import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
-import type { AgentInvokeMessage } from "../shared/message-content"
-import type { AppLocale } from "../shared/i18n"
-import type { HITLDecision, HITLRequest } from "../shared/hitl"
-import type { ArtifactRecord } from "../shared/artifacts"
-import type { ProviderId } from "../shared/app-types"
-export type { HITLDecision, HITLRequest } from "../shared/hitl"
+import type { AgentInvokeMessage } from "@shared/message-content"
+import type { AppLocale } from "@shared/i18n"
+import type { HITLDecision, HITLRequest } from "@shared/hitl"
+import type { ArtifactRecord } from "@shared/artifacts"
+import type { ProviderId } from "@shared/app-types"
+export type { HITLDecision, HITLRequest } from "@shared/hitl"
 export type {
   ModelConfig,
   ModelProviderState,
@@ -12,7 +12,7 @@ export type {
   Provider,
   ProviderModelsResponse,
   ProviderId
-} from "../shared/app-types"
+} from "@shared/app-types"
 
 // Thread types matching langgraph-api
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"

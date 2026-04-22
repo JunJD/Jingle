@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron"
-import type { MainWindowNavigationPayload } from "../../shared/main-window"
+import type { MainWindowNavigationPayload } from "@shared/main-window"
 import { registerIpcHandle } from "../ipc/handle"
 import { MainWindowRoutingService } from "./service"
 
