@@ -1,6 +1,7 @@
 import { useEffect, useMemo, type ComponentType, type ReactNode } from "react"
 import type { AppLocale } from "@shared/i18n"
 import type { LauncherShellConfig } from "@shared/launcher"
+import { createNativeExtensionNavigationBridge } from "@shared/native-extension-boundaries"
 import type { NativeExtensionInvokeRequest } from "@shared/native-extensions"
 import type { AppCopy } from "@/lib/i18n/messages"
 import type {
@@ -21,6 +22,7 @@ import {
   useNativeExtensionHost as useNativeExtensionHostBase,
   useNativeExtensionHostOptional as useNativeExtensionHostOptionalBase,
   useNativeExtensionLifecycle as useNativeExtensionLifecycleBase,
+  useNativeExtensionNavigation as useNativeExtensionNavigationBase,
   useNativeExtensionSurface as useNativeExtensionSurfaceBase,
   useNativeExtensionThreads as useNativeExtensionThreadsBase,
   type NativeExtensionHostValue
@@ -193,18 +195,18 @@ export const useNativeExtensionThreads = useNativeExtensionThreadsBase
 
 export function useNativeExtensionNavigation(): NativeExtensionNavigation {
   const host = useNativeExtensionHost()
+  const navigation = useNativeExtensionNavigationBase()
   const stack = useNativeExtensionViewStack()
 
   return useMemo(
-    () => ({
-      canPop: stack?.canPop ?? false,
-      goHome: host.navigation?.goHome ?? (() => {}),
-      hideLauncher: host.navigation?.hideLauncher ?? (() => Promise.resolve()),
-      openCommand: host.navigation?.openCommand ?? (() => {}),
-      pop: stack?.pop ?? (() => {}),
-      push: stack?.push ?? (() => {})
-    }),
-    [host.navigation, stack]
+    () =>
+      createNativeExtensionNavigationBridge({
+        commandName: host.commandName,
+        extensionName: host.extensionName,
+        navigation,
+        stack
+      }),
+    [host.commandName, host.extensionName, navigation, stack]
   )
 }
 
