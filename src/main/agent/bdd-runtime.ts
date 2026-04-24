@@ -62,19 +62,24 @@ async function waitForAbort(signal: AbortSignal | undefined): Promise<void> {
   })
 }
 
-function createCompletionState(options: CreateBddAgentRuntimeOptions, content: string) {
+function createCompletionState(
+  options: CreateBddAgentRuntimeOptions,
+  content: string,
+  assistantMessageId: string,
+  todoId: string
+) {
   return {
     messages: [
       createSerializedMessage({
         content,
-        id: `${options.threadId}:bdd:assistant`,
+        id: assistantMessageId,
         role: "ai"
       })
     ],
     todos: [
       {
         content,
-        id: `${options.threadId}:bdd:todo`,
+        id: todoId,
         status: "completed"
       }
     ],
@@ -82,8 +87,8 @@ function createCompletionState(options: CreateBddAgentRuntimeOptions, content: s
   }
 }
 
-function createInterruptState(options: CreateBddAgentRuntimeOptions) {
-  const toolCallId = `${options.threadId}:bdd:write-file`
+function createInterruptState(options: CreateBddAgentRuntimeOptions, invocationId: string) {
+  const toolCallId = `${options.threadId}:${invocationId}:bdd:write-file`
   const targetPath = `${options.workspacePath}/approval.txt`
   const toolArgs = {
     content: "approved by human",
@@ -94,7 +99,7 @@ function createInterruptState(options: CreateBddAgentRuntimeOptions) {
     messages: [
       createSerializedMessage({
         content: "",
-        id: `${options.threadId}:bdd:approval-request`,
+        id: `${options.threadId}:${invocationId}:bdd:approval-request`,
         role: "ai",
         toolCalls: [
           {
@@ -111,7 +116,7 @@ function createInterruptState(options: CreateBddAgentRuntimeOptions) {
           actionRequests: [
             {
               args: toolArgs,
-              id: `${options.threadId}:bdd:approval-action`,
+              id: `${options.threadId}:${invocationId}:bdd:approval-action`,
               name: "write_file",
               review: {
                 changes: [
@@ -147,6 +152,9 @@ export function createBddAgentRuntime(options: CreateBddAgentRuntimeOptions): Bd
   return {
     async *stream(input, config): AsyncGenerator<BddStreamChunk> {
       const promptText = readPromptText(input)
+      const invocationId = crypto.randomUUID()
+      const assistantMessageId = `${options.threadId}:${invocationId}:bdd:assistant`
+      const todoId = `${options.threadId}:${invocationId}:bdd:todo`
 
       if (promptText.includes("bdd:long")) {
         yield [
@@ -155,14 +163,14 @@ export function createBddAgentRuntime(options: CreateBddAgentRuntimeOptions): Bd
             messages: [
               createSerializedMessage({
                 content: "scripted agent long task started",
-                id: `${options.threadId}:bdd:long`,
+                id: `${options.threadId}:${invocationId}:bdd:long`,
                 role: "ai"
               })
             ],
             todos: [
               {
                 content: "scripted agent long task started",
-                id: `${options.threadId}:bdd:long-task`,
+                id: `${options.threadId}:${invocationId}:bdd:long-task`,
                 status: "in_progress"
               }
             ],
@@ -175,7 +183,7 @@ export function createBddAgentRuntime(options: CreateBddAgentRuntimeOptions): Bd
       }
 
       if (promptText.includes("bdd:interrupt")) {
-        yield ["values", createInterruptState(options)]
+        yield ["values", createInterruptState(options, invocationId)]
         return
       }
 
@@ -186,13 +194,13 @@ export function createBddAgentRuntime(options: CreateBddAgentRuntimeOptions): Bd
           [
             createSerializedMessage({
               content,
-              id: `${options.threadId}:bdd:resume-message`,
+              id: assistantMessageId,
               role: "ai"
             }),
             { langgraph_node: "agent" }
           ]
         ]
-        yield ["values", createCompletionState(options, content)]
+        yield ["values", createCompletionState(options, content, assistantMessageId, todoId)]
         return
       }
 
@@ -202,13 +210,13 @@ export function createBddAgentRuntime(options: CreateBddAgentRuntimeOptions): Bd
         [
           createSerializedMessage({
             content,
-            id: `${options.threadId}:bdd:success-message`,
+            id: assistantMessageId,
             role: "ai"
           }),
           { langgraph_node: "agent" }
         ]
       ]
-      yield ["values", createCompletionState(options, content)]
+      yield ["values", createCompletionState(options, content, assistantMessageId, todoId)]
     }
   }
 }

@@ -1,3 +1,5 @@
+process.env.TSX_TSCONFIG_PATH ??= "tsconfig.node.json"
+
 /** @type {import('@cucumber/cucumber').IProfiles} */
 module.exports = {
   default: {
