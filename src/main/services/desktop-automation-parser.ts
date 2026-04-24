@@ -48,6 +48,19 @@ function parseApplicationTarget(
   return { bundleId, name }
 }
 
+function parseOptionalApplicationTarget(
+  input: Record<string, unknown>,
+  toolName: string
+): DesktopAutomationApplicationTarget {
+  const bundleId = readOptionalNonEmptyString(input.bundleId, "bundleId", toolName)
+  const name = readOptionalNonEmptyString(input.name, "name", toolName)
+
+  return {
+    ...(bundleId ? { bundleId } : {}),
+    ...(name ? { name } : {})
+  }
+}
+
 function parseOptionalRole(input: Record<string, unknown>, toolName: string): string | undefined {
   return readOptionalNonEmptyString(input.role, "role", toolName)
 }
@@ -84,7 +97,10 @@ export function parseOpenDesktopRouteRequest(input: unknown): OpenDesktopRouteRe
     throw new Error('open_desktop_route requires a valid "url" value.')
   }
 
-  return { url: url.toString() }
+  return {
+    ...parseOptionalApplicationTarget(input, "open_desktop_route"),
+    url: url.toString()
+  }
 }
 
 export function parseFindAxElementsRequest(input: unknown): FindAxElementsRequest {
@@ -151,6 +167,7 @@ export function parseClickScreenPointRequest(input: unknown): ClickScreenPointRe
   }
 
   return {
+    ...parseOptionalApplicationTarget(input, "click_screen_point"),
     hideCursor: parseOptionalBoolean(input.hideCursor, "hideCursor", "click_screen_point"),
     x: input.x as number,
     y: input.y as number

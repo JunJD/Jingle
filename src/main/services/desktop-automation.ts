@@ -5,7 +5,7 @@ export interface DesktopAutomationApplicationTarget {
 
 export interface OpenApplicationRequest extends DesktopAutomationApplicationTarget {}
 
-export interface OpenDesktopRouteRequest {
+export interface OpenDesktopRouteRequest extends DesktopAutomationApplicationTarget {
   url: string
 }
 
@@ -22,7 +22,7 @@ export interface PressAxElementRequest extends DesktopAutomationApplicationTarge
   titleContains: string
 }
 
-export interface ClickScreenPointRequest {
+export interface ClickScreenPointRequest extends DesktopAutomationApplicationTarget {
   hideCursor?: boolean
   x: number
   y: number

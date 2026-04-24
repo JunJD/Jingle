@@ -47,6 +47,7 @@ interface SecretsStoreShape {
 }
 
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
+  desktopAutomationAllowlist: [],
   skillSources: [],
   memorySources: [],
   locale: DEFAULT_APP_LOCALE
@@ -101,6 +102,21 @@ const secretsStore = new Store<SecretsStoreShape>({
 })
 
 function normalizePathList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0)
+    )
+  )
+}
+
+function normalizeDesktopAutomationAllowlist(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return []
   }
@@ -492,6 +508,9 @@ export function getAgentConfig(): AgentConfig {
     | undefined
 
   return {
+    desktopAutomationAllowlist: normalizeDesktopAutomationAllowlist(
+      stored?.desktopAutomationAllowlist
+    ),
     skillSources: normalizePathList(stored?.skillSources),
     memorySources: normalizePathList(stored?.memorySources),
     locale: normalizeAppLocale(stored?.locale)
@@ -501,6 +520,13 @@ export function getAgentConfig(): AgentConfig {
 export function setAgentConfig(updates: Partial<AgentConfig>): AgentConfig {
   const nextConfig: AgentConfig = {
     ...getAgentConfig(),
+    ...(updates.desktopAutomationAllowlist !== undefined
+      ? {
+          desktopAutomationAllowlist: normalizeDesktopAutomationAllowlist(
+            updates.desktopAutomationAllowlist
+          )
+        }
+      : {}),
     ...(updates.skillSources ? { skillSources: normalizePathList(updates.skillSources) } : {}),
     ...(updates.memorySources ? { memorySources: normalizePathList(updates.memorySources) } : {}),
     ...(updates.locale ? { locale: normalizeAppLocale(updates.locale) } : {})

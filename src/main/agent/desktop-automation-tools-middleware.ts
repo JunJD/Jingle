@@ -50,11 +50,19 @@ const openDesktopRouteTool = tool(
   },
   {
     description:
-      "Open a desktop route through macOS Launch Services, including app URL schemes like orpheus:// and normal URLs.",
+      "Open a desktop route through macOS Launch Services, including app URL schemes like orpheus:// and normal URLs. Include bundleId or name when the route targets an allowlisted desktop app.",
     name: "open_desktop_route",
     schema: {
       additionalProperties: false,
       properties: {
+        bundleId: {
+          description: "Optional target app bundle identifier used for desktop automation allowlist checks.",
+          type: "string"
+        },
+        name: {
+          description: "Optional target app visible name used for desktop automation allowlist checks.",
+          type: "string"
+        },
         url: {
           description: "The absolute URL or app route to open.",
           type: "string"
@@ -154,14 +162,22 @@ const clickScreenPointTool = tool(
   },
   {
     description:
-      "Post a macOS left click to absolute screen coordinates. This can support hidden-cursor or background-style interaction when the target window accepts coordinate-based clicks.",
+      "Post a macOS left click to absolute screen coordinates. Include bundleId or name for allowlist checks when the click targets a specific desktop app.",
     name: "click_screen_point",
     schema: {
       additionalProperties: false,
       properties: {
+        bundleId: {
+          description: "Optional target app bundle identifier used for desktop automation allowlist checks.",
+          type: "string"
+        },
         hideCursor: {
           description: "Hide the cursor briefly while posting the click.",
           type: "boolean"
+        },
+        name: {
+          description: "Optional target app visible name used for desktop automation allowlist checks.",
+          type: "string"
         },
         x: {
           description: "Absolute screen X coordinate in macOS points.",

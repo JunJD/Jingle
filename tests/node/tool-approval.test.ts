@@ -103,11 +103,11 @@ test("buildToolApprovalItem marks existing write_file targets as upcoming modifi
   })
 })
 
-test("requiresToolApproval marks desktop automation tools as approval-gated", () => {
-  assert.equal(requiresToolApproval("open_application"), true)
-  assert.equal(requiresToolApproval("open_desktop_route"), true)
-  assert.equal(requiresToolApproval("find_ax_elements"), true)
-  assert.equal(requiresToolApproval("press_ax_element"), true)
-  assert.equal(requiresToolApproval("click_screen_point"), true)
+test("requiresToolApproval does not gate desktop automation tools once allowlist policy owns them", () => {
+  assert.equal(requiresToolApproval("open_application"), false)
+  assert.equal(requiresToolApproval("open_desktop_route"), false)
+  assert.equal(requiresToolApproval("find_ax_elements"), false)
+  assert.equal(requiresToolApproval("press_ax_element"), false)
+  assert.equal(requiresToolApproval("click_screen_point"), false)
   assert.equal(requiresToolApproval("web_search"), false)
 })

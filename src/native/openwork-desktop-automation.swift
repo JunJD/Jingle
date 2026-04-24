@@ -241,7 +241,9 @@ func findAXMatches(for request: DesktopAutomationRequest) throws -> (NSRunningAp
     try requireAccessibilityTrust()
 
     guard let application = runningApplication(bundleId: request.bundleId, name: request.name) else {
-        throw DesktopAutomationError(description: "Target application is not running.")
+        throw DesktopAutomationError(
+            description: "Target application is not running. Use open_application first."
+        )
     }
 
     let appElement = AXUIElementCreateApplication(application.processIdentifier)

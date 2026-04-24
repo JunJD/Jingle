@@ -27,9 +27,16 @@ test("parseOpenApplicationRequest requires bundleId or name", () => {
 test("parseOpenDesktopRouteRequest validates absolute URLs", () => {
   assert.throws(() => parseOpenDesktopRouteRequest({}), /url/)
   assert.throws(() => parseOpenDesktopRouteRequest({ url: "网易云" }), /valid "url"/)
-  assert.deepEqual(parseOpenDesktopRouteRequest({ url: "orpheus://songrcmd?autoplay=1" }), {
-    url: "orpheus://songrcmd?autoplay=1"
-  })
+  assert.deepEqual(
+    parseOpenDesktopRouteRequest({
+      bundleId: "com.netease.163music",
+      url: "orpheus://songrcmd?autoplay=1"
+    }),
+    {
+      bundleId: "com.netease.163music",
+      url: "orpheus://songrcmd?autoplay=1"
+    }
+  )
 })
 
 test("parseFindAxElementsRequest defaults the AX limit", () => {
@@ -61,11 +68,20 @@ test("parsePressAxElementRequest validates titleContains and matchIndex", () => 
 
 test("parseClickScreenPointRequest requires finite coordinates", () => {
   assert.throws(() => parseClickScreenPointRequest({ x: Number.NaN, y: 1 }), /finite/)
-  assert.deepEqual(parseClickScreenPointRequest({ hideCursor: true, x: 120, y: 40.5 }), {
-    hideCursor: true,
-    x: 120,
-    y: 40.5
-  })
+  assert.deepEqual(
+    parseClickScreenPointRequest({
+      bundleId: "com.netease.163music",
+      hideCursor: true,
+      x: 120,
+      y: 40.5
+    }),
+    {
+      bundleId: "com.netease.163music",
+      hideCursor: true,
+      x: 120,
+      y: 40.5
+    }
+  )
 })
 
 test("desktop automation service forwards open_application to the runner", async () => {
@@ -99,6 +115,7 @@ test("desktop automation service forwards open_desktop_route to the runner", asy
     platform: "darwin",
     run: async (request) => {
       assert.deepEqual(request, {
+        bundleId: "com.netease.163music",
         type: "open_desktop_route",
         url: "orpheus://songrcmd?autoplay=1"
       })
@@ -110,7 +127,13 @@ test("desktop automation service forwards open_desktop_route to the runner", asy
   }
 
   assert.deepEqual(
-    await openDesktopRoute({ url: "orpheus://songrcmd?autoplay=1" }, runner),
+    await openDesktopRoute(
+      {
+        bundleId: "com.netease.163music",
+        url: "orpheus://songrcmd?autoplay=1"
+      },
+      runner
+    ),
     {
       type: "open_desktop_route",
       url: "orpheus://songrcmd?autoplay=1"
@@ -215,6 +238,7 @@ test("desktop automation service forwards click_screen_point to the runner", asy
     platform: "darwin",
     run: async (request) => {
       assert.deepEqual(request, {
+        bundleId: "com.netease.163music",
         hideCursor: true,
         type: "click_screen_point",
         x: 320,
@@ -229,12 +253,18 @@ test("desktop automation service forwards click_screen_point to the runner", asy
     }
   }
 
-  assert.deepEqual(await clickScreenPoint({ hideCursor: true, x: 320, y: 180 }, runner), {
-    hideCursor: true,
-    type: "click_screen_point",
-    x: 320,
-    y: 180
-  })
+  assert.deepEqual(
+    await clickScreenPoint(
+      { bundleId: "com.netease.163music", hideCursor: true, x: 320, y: 180 },
+      runner
+    ),
+    {
+      hideCursor: true,
+      type: "click_screen_point",
+      x: 320,
+      y: 180
+    }
+  )
 })
 
 test("desktop automation service stays macOS-only", async () => {

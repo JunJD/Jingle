@@ -12,6 +12,9 @@ import {
   type ToolApprovalItem
 } from "@shared/tool-approval"
 import { getFileMutationReview, isFileMutationToolName } from "@shared/file-mutation-review"
+import { getAgentConfig } from "../preferences"
+import type { AgentConfig } from "../types"
+import { getDesktopAutomationPolicyDecision } from "./desktop-automation-policy"
 
 const TOOL_APPROVAL_ALLOWED_DECISIONS = getDefaultHitlAllowedDecisions()
 
@@ -36,6 +39,10 @@ interface ToolApprovalInterruptValue {
   kind: "tool-approval"
   actionRequests: ToolApprovalActionRequest[]
   reviewConfigs: ReviewConfig[]
+}
+
+interface CreateToolApprovalMiddlewareOptions {
+  getAgentConfig?: () => AgentConfig
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -75,6 +82,21 @@ function buildRejectedToolMessage(input: {
 
   return new ToolMessage({
     content: feedback ?? `User rejected the ${toolName} tool call with id ${toolCallId}.`,
+    name: toolName,
+    tool_call_id: toolCallId,
+    status: "error"
+  })
+}
+
+function buildErroredToolMessage(input: {
+  content: string
+  toolCallId: string
+  toolName: string
+}): ToolMessage {
+  const { content, toolCallId, toolName } = input
+
+  return new ToolMessage({
+    content,
     name: toolName,
     tool_call_id: toolCallId,
     status: "error"
@@ -126,18 +148,44 @@ function buildApprovalDescription(toolName: string): string {
   return `Openwork approval required for ${toolName}.`
 }
 
-export function createToolApprovalMiddleware() {
+export function createToolApprovalMiddleware(options: CreateToolApprovalMiddlewareOptions = {}) {
+  const readAgentConfig = options.getAgentConfig ?? getAgentConfig
+
   return createMiddleware({
     name: "ToolApprovalMiddleware",
     wrapToolCall: async (request, handler) => {
       const toolName = request.toolCall.name
+      const toolArgs = isRecord(request.toolCall.args) ? request.toolCall.args : {}
+
+      const desktopAutomationDecision = getDesktopAutomationPolicyDecision(
+        toolName,
+        toolArgs,
+        readAgentConfig()
+      )
+
+      if (desktopAutomationDecision?.disposition === "allow") {
+        return handler(request)
+      }
+
+      if (desktopAutomationDecision?.disposition === "deny") {
+        if (!request.toolCall.id) {
+          throw new Error(
+            `[ToolApprovalMiddleware] Missing tool_call.id for ${request.toolCall.name} tool call.`
+          )
+        }
+
+        return buildErroredToolMessage({
+          content: desktopAutomationDecision.reason,
+          toolCallId: request.toolCall.id,
+          toolName
+        })
+      }
 
       if (toolName === "execute") {
         if (!isRecord(request.toolCall.args)) {
           throw new Error("[ToolApprovalMiddleware] Execute tool call args must be an object.")
         }
 
-        const toolArgs = request.toolCall.args
         const policy = getExecuteCommandPolicy(toolArgs)
 
         if (!policy) {
@@ -153,11 +201,10 @@ export function createToolApprovalMiddleware() {
         }
 
         if (policy.disposition === "deny") {
-          return new ToolMessage({
+          return buildErroredToolMessage({
             content: policy.reason,
-            name: toolName,
-            tool_call_id: request.toolCall.id,
-            status: "error"
+            toolCallId: request.toolCall.id,
+            toolName
           })
         }
       } else if (!isFileMutationToolName(toolName) && !requiresToolApproval(toolName)) {
@@ -170,7 +217,6 @@ export function createToolApprovalMiddleware() {
         )
       }
 
-      const toolArgs = isRecord(request.toolCall.args) ? request.toolCall.args : {}
       const approvalReview = await buildApprovalReview(toolName, toolArgs)
       const resumeValue = (await interrupt({
         kind: "tool-approval",
