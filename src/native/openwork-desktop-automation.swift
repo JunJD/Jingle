@@ -104,10 +104,26 @@ func normalize(_ value: String?) -> String? {
     return trimmed.isEmpty ? nil : trimmed
 }
 
+func accessibilityPromptOptions() -> CFDictionary {
+    [
+        kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true
+    ] as CFDictionary
+}
+
+func desktopAutomationExecutablePath() -> String {
+    URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().path
+}
+
 func requireAccessibilityTrust() throws {
     if !AXIsProcessTrusted() {
+        _ = AXIsProcessTrustedWithOptions(accessibilityPromptOptions())
         throw DesktopAutomationError(
-            description: "Accessibility permission is required for AX and click desktop automation."
+            description: """
+            Accessibility permission is required for AX and click desktop automation.
+            Grant access in System Settings > Privacy & Security > Accessibility for:
+            \(desktopAutomationExecutablePath())
+            Then retry the tool call.
+            """
         )
     }
 }
