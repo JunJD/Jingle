@@ -103,8 +103,11 @@ test("buildToolApprovalItem marks existing write_file targets as upcoming modifi
   })
 })
 
-test("requiresToolApproval marks run_apple_shortcut as approval-gated", () => {
-  assert.equal(requiresToolApproval("run_apple_shortcut"), true)
-  assert.equal(requiresToolApproval("list_apple_shortcuts"), false)
+test("requiresToolApproval marks desktop automation tools as approval-gated", () => {
+  assert.equal(requiresToolApproval("open_application"), true)
+  assert.equal(requiresToolApproval("open_desktop_route"), true)
+  assert.equal(requiresToolApproval("find_ax_elements"), true)
+  assert.equal(requiresToolApproval("press_ax_element"), true)
+  assert.equal(requiresToolApproval("click_screen_point"), true)
   assert.equal(requiresToolApproval("web_search"), false)
 })

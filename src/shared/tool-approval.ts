@@ -41,7 +41,13 @@ export interface BuildToolApprovalItemOptions {
   fileMutationChangeType?: MutationChangeType
 }
 
-const APPROVAL_REQUIRED_TOOL_NAMES = new Set(["run_apple_shortcut"])
+const APPROVAL_REQUIRED_TOOL_NAMES = new Set([
+  "click_screen_point",
+  "find_ax_elements",
+  "open_application",
+  "open_desktop_route",
+  "press_ax_element"
+])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
