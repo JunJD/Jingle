@@ -8,6 +8,7 @@ import {
 import { buildIpcErrorEvent } from "../ipc/error"
 import { registerIpcHandle } from "../ipc/handle"
 import { IpcSchemaValidationError } from "../ipc/schema"
+import { startAgentStreamOperation } from "./stream-operation"
 
 export class AgentController {
   constructor(private readonly agentService: AgentService) {}
@@ -26,7 +27,7 @@ export class AgentController {
         return
       }
 
-      void this.agentService.invoke(params, sink)
+      startAgentStreamOperation("invoke", sink, this.agentService.invoke(params, sink))
     })
 
     ipcMain.on("agent:resume", (event, rawParams: unknown) => {
@@ -40,7 +41,7 @@ export class AgentController {
         return
       }
 
-      void this.agentService.resume(params, sink)
+      startAgentStreamOperation("resume", sink, this.agentService.resume(params, sink))
     })
 
     registerIpcHandle(ipcMain, "agent:cancel", (_event, rawParams: unknown) => {
