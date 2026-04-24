@@ -281,6 +281,72 @@ Then("最新 agent stream 应收到 HITL 中断", async function (this: Openwork
     .toContain("__interrupt__")
 })
 
+Then("最新 agent stream HITL 请求 id 应与 runtime state 一致", async function (this: OpenworkWorld) {
+  await expect
+    .poll(async () => {
+      const [runtimeState, streamEvents] = await Promise.all([getRuntimeState(this), getStreamEvents(this)])
+      const streamRequestId = streamEvents
+        .filter((event): event is Extract<IPCEvent, { type: "stream" }> => event.type === "stream")
+        .flatMap((event) => {
+          if (event.mode !== "values" || !event.data || typeof event.data !== "object") {
+            return []
+          }
+
+          const interrupt = (event.data as {
+            __interrupt__?: Array<{
+              value?: {
+                actionRequests?: Array<{
+                  id?: string
+                }>
+              }
+            }>
+          }).__interrupt__
+
+          const requestId = interrupt?.[0]?.value?.actionRequests?.[0]?.id
+          return typeof requestId === "string" ? [requestId] : []
+        })
+        .at(-1)
+
+      return {
+        runtimeRequestId: runtimeState.pendingApproval?.id ?? null,
+        streamRequestId: streamRequestId ?? null
+      }
+    })
+    .toEqual({
+      runtimeRequestId: expect.any(String),
+      streamRequestId: expect.any(String)
+    })
+
+  await expect
+    .poll(async () => {
+      const [runtimeState, streamEvents] = await Promise.all([getRuntimeState(this), getStreamEvents(this)])
+      const streamRequestId = streamEvents
+        .filter((event): event is Extract<IPCEvent, { type: "stream" }> => event.type === "stream")
+        .flatMap((event) => {
+          if (event.mode !== "values" || !event.data || typeof event.data !== "object") {
+            return []
+          }
+
+          const interrupt = (event.data as {
+            __interrupt__?: Array<{
+              value?: {
+                actionRequests?: Array<{
+                  id?: string
+                }>
+              }
+            }>
+          }).__interrupt__
+
+          const requestId = interrupt?.[0]?.value?.actionRequests?.[0]?.id
+          return typeof requestId === "string" ? [requestId] : []
+        })
+        .at(-1)
+
+      return streamRequestId === (runtimeState.pendingApproval?.id ?? null)
+    })
+    .toBe(true)
+})
+
 Then(
   "最新 agent runtime state 待审批工具应为 {string}",
   async function (this: OpenworkWorld, toolName: string) {

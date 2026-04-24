@@ -28,6 +28,7 @@
     并且 我对最新 agent 线程发送脚本消息 "bdd:interrupt"
     那么 最新 agent stream 应收到 done
     而且 最新 agent stream 应收到 HITL 中断
+    而且 最新 agent stream HITL 请求 id 应与 runtime state 一致
     而且 最新 agent runtime state 待审批工具应为 "write_file"
     而且 最新 agent 线程状态应为 "interrupted"
     当 我通过 agent resume 批准最新待审批请求
