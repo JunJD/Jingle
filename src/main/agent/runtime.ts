@@ -28,6 +28,7 @@ import type * as _lcZodTypes from "@langchain/core/utils/types"
 
 import { BASE_SYSTEM_PROMPT } from "./system-prompt"
 import { ChatAnthropic } from "@langchain/anthropic"
+import { createAppleShortcutsToolsMiddleware } from "./apple-shortcuts-tools-middleware"
 import { createArtifactToolsMiddleware } from "./artifact-tools-middleware"
 import { createWebToolsMiddleware } from "./web-tools-middleware"
 import { createBddAgentRuntime } from "./bdd-runtime"
@@ -211,6 +212,7 @@ The workspace root is: ${workspacePath}`
   function createRootAgentLoopMiddleware() {
     return [
       ...createSharedAgentLoopMiddleware(),
+      createAppleShortcutsToolsMiddleware(),
       createGuardrailMiddleware({
         provider: guardrailProvider,
         threadId,

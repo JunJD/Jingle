@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { withExecuteCommandPolicy } from "../../src/shared/execute-command-policy"
 import { withMutationPrediction } from "../../src/shared/mutation-prediction"
-import { buildToolApprovalItem } from "../../src/shared/tool-approval"
+import { buildToolApprovalItem, requiresToolApproval } from "../../src/shared/tool-approval"
 
 test("buildToolApprovalItem maps execute predictions to upcoming file changes", () => {
   const args = withMutationPrediction(
@@ -101,4 +101,10 @@ test("buildToolApprovalItem marks existing write_file targets as upcoming modifi
       }
     ]
   })
+})
+
+test("requiresToolApproval marks run_apple_shortcut as approval-gated", () => {
+  assert.equal(requiresToolApproval("run_apple_shortcut"), true)
+  assert.equal(requiresToolApproval("list_apple_shortcuts"), false)
+  assert.equal(requiresToolApproval("web_search"), false)
 })

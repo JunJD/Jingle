@@ -6,7 +6,11 @@ import type { ActionRequest, DecisionType, ReviewConfig } from "langchain"
 import { getDefaultHitlAllowedDecisions } from "@shared/hitl"
 import { getExecuteCommandPolicy } from "@shared/execute-command-policy"
 import type { MutationChangeType } from "@shared/mutation-prediction"
-import { buildToolApprovalItem, type ToolApprovalItem } from "@shared/tool-approval"
+import {
+  buildToolApprovalItem,
+  requiresToolApproval,
+  type ToolApprovalItem
+} from "@shared/tool-approval"
 import { getFileMutationReview, isFileMutationToolName } from "@shared/file-mutation-review"
 
 const TOOL_APPROVAL_ALLOWED_DECISIONS = getDefaultHitlAllowedDecisions()
@@ -156,7 +160,7 @@ export function createToolApprovalMiddleware() {
             status: "error"
           })
         }
-      } else if (!isFileMutationToolName(toolName)) {
+      } else if (!isFileMutationToolName(toolName) && !requiresToolApproval(toolName)) {
         return handler(request)
       }
 
