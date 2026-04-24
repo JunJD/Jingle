@@ -32,11 +32,41 @@ When(
 
 When("我在 Main 窗口展开 present_artifacts 工具消息", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("main")
+  const threadId = this.getScenarioValue("artifactTabs.threadId")
   const toggle = page.locator('[data-tool-call-toggle="present_artifacts"]').first()
   const artifactTitle = this.getScenarioValue("artifactTabs.artifactTitle")
   const artifactItem = page.locator(
     `[data-presented-artifact-item][data-artifact-title="${artifactTitle}"]`
   )
+
+  await expect
+    .poll(async () => {
+      const envelope = await page.evaluate(async (targetThreadId) => {
+        return (
+          window as typeof window & {
+            api: {
+              agent: {
+                getProjection: (threadId: string) => Promise<{
+                  projection: {
+                    messages: Array<{
+                      role: string
+                      tool_calls?: Array<{ name?: string }>
+                    }>
+                  }
+                }>
+              }
+            }
+          }
+        ).api.agent.getProjection(targetThreadId)
+      }, threadId)
+
+      return envelope.projection.messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          (message.tool_calls ?? []).some((toolCall) => toolCall.name === "present_artifacts")
+      )
+    })
+    .toBe(true)
 
   await expect(toggle).toBeVisible()
 

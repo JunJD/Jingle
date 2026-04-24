@@ -341,6 +341,7 @@ function ToolActivityGroup(props: {
     <ChainOfThought active={hasActiveActions} onOpenChange={setOpenOverride} open={isOpen}>
       <ChainOfThoughtHeader
         className={density === "compact" ? "text-[12px] leading-5" : "text-[13px] leading-5"}
+        {...(headerAction ? { "data-tool-call-toggle": headerAction.toolCall.name } : {})}
         icon={ListTodo}
         meta={headerStatusMeta}
       >
