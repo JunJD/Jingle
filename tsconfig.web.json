@@ -8,7 +8,9 @@
     "src/plugins/**/*",
     "src/preload/*.d.ts",
     "src/shared/**/*",
-    "src/types.ts"
+    "src/preload/api/**/*",
+    "src/preload/ipc-errors.ts",
+    "src/preload/ipc.ts"
   ],
   "compilerOptions": {
     "composite": true,

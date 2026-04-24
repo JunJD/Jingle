@@ -1,11 +1,10 @@
 import { useCallback, useMemo, useState } from "react"
-import type { HITLDecision, Message } from "@/types"
+import type { HITLDecision } from "@/types"
 import {
   hasComposerMessageInputContent,
   hasMessageContent,
-  toComposerMessageMetadata,
-  toComposerMessageInput,
   toAgentMessageContent,
+  toComposerMessageInput,
   toMessageContent,
   type ComposerMessageInput
 } from "@shared/message-content"
@@ -14,8 +13,8 @@ import {
   useThreadContext,
   useThreadSelector,
   type ThreadActions,
-  type ThreadRecord,
-  type ThreadContextValue
+  type ThreadContextValue,
+  type ThreadRecord
 } from "./thread-context"
 import { useThreadConversationProjection } from "./thread-conversation"
 
@@ -55,22 +54,6 @@ interface UseAiInvocationOptions {
   validateInvocation?: InvokeThreadMessageArgs["validateInvocation"]
 }
 
-export async function waitForThreadStream(
-  threadContext: ThreadContextValue,
-  threadId: string
-): Promise<NonNullable<ReturnType<ThreadContextValue["getStreamData"]>["stream"]>> {
-  let stream = threadContext.getStreamData(threadId).stream
-
-  while (!stream) {
-    await new Promise<void>((resolve) => {
-      window.requestAnimationFrame(() => resolve())
-    })
-    stream = threadContext.getStreamData(threadId).stream
-  }
-
-  return stream
-}
-
 export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promise<boolean> {
   const { input, onAfterAppendMessage, threadContext, threadId, validateInvocation } = args
   const message = input.text.trim()
@@ -79,6 +62,8 @@ export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promis
   if (!hasMessageContent(displayContent) || !hasMessageContent(submitContent)) {
     return false
   }
+
+  threadContext.ensureThreadRuntime(threadId)
 
   const threadState = threadContext.getThreadState(threadId)
   const actions = threadContext.getThreadActions(threadId)
@@ -94,28 +79,10 @@ export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promis
     return false
   }
 
-  const stream = await waitForThreadStream(threadContext, threadId)
-
-  if (threadState.error) {
-    actions.clearError()
-  }
-
-  if (threadState.pendingApproval) {
-    actions.setPendingApproval(null)
-  }
-
   const isFirstMessage = threadState.messages.length === 0
   const userMessageId = crypto.randomUUID()
-  const userMessageMetadata = toComposerMessageMetadata({ refs: input.refs })
 
   actions.setDraftInput("")
-  actions.appendMessage({
-    id: userMessageId,
-    role: "user",
-    content: displayContent,
-    ...(userMessageMetadata ? { metadata: userMessageMetadata } : {}),
-    created_at: new Date()
-  } satisfies Message)
 
   await onAfterAppendMessage?.({
     actions,
@@ -125,25 +92,14 @@ export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promis
     threadState: { ...threadState, ...actions }
   })
 
-  await stream.submit(
+  window.api.agent.invoke(
+    threadId,
     {
-      messages: [
-        {
-          id: userMessageId,
-          type: "human",
-          content: submitContent,
-          ...(input.refs.length > 0 ? { additional_kwargs: { refs: input.refs } } : {})
-        }
-      ]
+      id: userMessageId,
+      content: submitContent,
+      ...(input.refs.length > 0 ? { additional_kwargs: { refs: input.refs } } : {})
     },
-    {
-      config: {
-        configurable: {
-          model_id: threadState.currentModel,
-          thread_id: threadId
-        }
-      }
-    }
+    threadState.currentModel
   )
 
   return true
@@ -256,11 +212,10 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
   )
 
   const stop = useCallback(async (): Promise<void> => {
-    await conversation.stream?.stop()
     if (threadId) {
       await window.api.agent.cancel(threadId)
     }
-  }, [conversation.stream, threadId])
+  }, [threadId])
 
   const resume = useCallback(
     async (decision: HITLDecision): Promise<void> => {
@@ -294,7 +249,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
     canInvoke: Boolean(draftInput.trim()) && !isBusy,
     canResume: Boolean(conversation.pendingApproval) && !isPreparing,
     canRetry: Boolean(lastUserMessageInput) && !isBusy,
-    canStop: Boolean(conversation.stream) && conversation.isLoading,
+    canStop: Boolean(threadId) && conversation.isLoading,
     clearVisibleError,
     conversation,
     input: draftInput,

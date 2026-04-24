@@ -1,114 +1,140 @@
-import { BrowserWindow, type IpcMain, type IpcMainEvent } from "electron"
+import { type IpcMain, type WebContents } from "electron"
 import { AgentService, type AgentStreamSink } from "./service"
+import { AgentStreamHub } from "./stream-hub"
 import {
   parseAgentCancelParams,
   parseAgentInvokeParams,
   parseAgentResumeParams
 } from "./controller-schema"
+import type { AgentInvokeParams, AgentResumeParams } from "../types"
 import { buildIpcErrorEvent } from "../ipc/error"
 import { registerIpcHandle } from "../ipc/handle"
 import { IpcSchemaValidationError } from "../ipc/schema"
 
 export class AgentController {
-  constructor(private readonly agentService: AgentService) {}
+  private readonly projectionSubscriptionCleanups = new Map<string, () => void>()
+
+  constructor(
+    private readonly agentService: AgentService,
+    private readonly agentStreamHub: AgentStreamHub
+  ) {}
 
   register(ipcMain: IpcMain): void {
     console.log("[Agent] Registering agent handlers...")
 
-    ipcMain.on("agent:invoke", (event, rawParams: unknown) => {
-      const params = this.parseInvokeParams(event, rawParams)
-      if (!params) {
-        return
-      }
-
-      const sink = this.createStreamSink(event, params.threadId, "invoke")
-      if (!sink) {
-        return
-      }
-
-      void this.agentService.invoke(params, sink)
+    ipcMain.on("agent:invoke", (_event, rawParams: unknown) => {
+      void this.handleInvoke(rawParams)
     })
 
-    ipcMain.on("agent:resume", (event, rawParams: unknown) => {
-      const params = this.parseResumeParams(event, rawParams)
-      if (!params) {
-        return
-      }
-
-      const sink = this.createStreamSink(event, params.threadId, "resume")
-      if (!sink) {
-        return
-      }
-
-      void this.agentService.resume(params, sink)
+    ipcMain.on("agent:resume", (_event, rawParams: unknown) => {
+      void this.handleResume(rawParams)
     })
 
-    registerIpcHandle(ipcMain, "agent:cancel", (_event, rawParams: unknown) => {
-      return this.agentService.cancel(parseAgentCancelParams(rawParams))
+    registerIpcHandle(ipcMain, "agent:cancel", async (_event, rawParams: unknown) => {
+      const params = parseAgentCancelParams(rawParams)
+      const didCancel = await this.agentService.cancel(params)
+      if (didCancel) {
+        await this.agentStreamHub.handlePayload(params.threadId, { type: "cancelled" })
+      }
+    })
+
+    registerIpcHandle(ipcMain, "agent:getProjection", async (_event, rawParams: unknown) => {
+      const params = parseAgentCancelParams(rawParams)
+      return this.agentStreamHub.getProjectionEnvelope(params.threadId)
+    })
+
+    registerIpcHandle(ipcMain, "agent:subscribeProjection", async (event, rawParams: unknown) => {
+      const params = parseAgentCancelParams(rawParams)
+      await this.ensureProjectionSubscription(event.sender, params.threadId)
+      return this.agentStreamHub.getProjectionEnvelope(params.threadId)
+    })
+
+    registerIpcHandle(ipcMain, "agent:unsubscribeProjection", async (event, rawParams: unknown) => {
+      const params = parseAgentCancelParams(rawParams)
+      this.removeProjectionSubscription(event.sender.id, params.threadId)
     })
   }
 
-  private parseInvokeParams(event: IpcMainEvent, rawParams: unknown) {
+  private async handleInvoke(rawParams: unknown): Promise<void> {
+    let params: AgentInvokeParams
+
     try {
-      return parseAgentInvokeParams(rawParams)
+      params = parseAgentInvokeParams(rawParams)
     } catch (error) {
-      this.handleStreamValidationError(event, rawParams, "invoke", error)
-      return null
+      this.handleStreamValidationError(rawParams, "invoke", error)
+      return
     }
+
+    await this.agentStreamHub.prepareInvoke(params.threadId, params.message)
+    void this.agentService.invoke(params, this.createStreamSink(params.threadId))
   }
 
-  private parseResumeParams(event: IpcMainEvent, rawParams: unknown) {
+  private async handleResume(rawParams: unknown): Promise<void> {
+    let params: AgentResumeParams
+
     try {
-      return parseAgentResumeParams(rawParams)
+      params = parseAgentResumeParams(rawParams)
     } catch (error) {
-      this.handleStreamValidationError(event, rawParams, "resume", error)
-      return null
+      this.handleStreamValidationError(rawParams, "resume", error)
+      return
     }
+
+    await this.agentStreamHub.prepareResume(params.threadId)
+    void this.agentService.resume(params, this.createStreamSink(params.threadId))
   }
 
-  private createStreamSink(
-    event: IpcMainEvent,
-    threadId: string,
-    operation: string
-  ): AgentStreamSink | null {
-    const window = BrowserWindow.fromWebContents(event.sender)
+  private createProjectionChannel(threadId: string): string {
+    return `agent:projection:${threadId}`
+  }
 
-    if (!window) {
-      console.error(`[Agent] No window found for ${operation}`)
-      return null
-    }
-
-    const channel = `agent:stream:${threadId}`
-
+  private createStreamSink(threadId: string): AgentStreamSink {
     return {
-      onClosed: (listener) => {
-        window.once("closed", listener)
-        return () => {
-          window.removeListener("closed", listener)
-        }
-      },
       send: (payload) => {
-        window.webContents.send(channel, payload)
+        void this.agentStreamHub.handlePayload(threadId, payload)
       }
     }
+  }
+
+  private async ensureProjectionSubscription(sender: WebContents, threadId: string): Promise<void> {
+    const subscriptionKey = this.getProjectionSubscriptionKey(sender.id, threadId)
+    if (this.projectionSubscriptionCleanups.has(subscriptionKey)) {
+      return
+    }
+
+    await this.agentStreamHub.subscribe(threadId, subscriptionKey, (envelope) => {
+      if (!sender.isDestroyed()) {
+        sender.send(this.createProjectionChannel(threadId), envelope)
+      }
+    })
+
+    const cleanup = () => {
+      this.agentStreamHub.unsubscribe(threadId, subscriptionKey)
+      this.projectionSubscriptionCleanups.delete(subscriptionKey)
+    }
+
+    this.projectionSubscriptionCleanups.set(subscriptionKey, cleanup)
+
+    sender.once("destroyed", () => {
+      this.removeAllProjectionSubscriptionsForSender(sender.id)
+    })
+  }
+
+  private getProjectionSubscriptionKey(senderId: number, threadId: string): string {
+    return `${senderId}:${threadId}`
   }
 
   private handleStreamValidationError(
-    event: IpcMainEvent,
     rawParams: unknown,
     operation: "invoke" | "resume",
     error: unknown
   ): void {
     const rawThreadId = this.getRawThreadId(rawParams)
-    if (error instanceof IpcSchemaValidationError) {
-      const sink = rawThreadId ? this.createStreamSink(event, rawThreadId, operation) : null
-      if (sink) {
-        sink.send({
-          type: "error",
-          ...buildIpcErrorEvent(`agent:${operation}`, error)
-        })
-        return
-      }
+    if (error instanceof IpcSchemaValidationError && rawThreadId) {
+      void this.agentStreamHub.handlePayload(rawThreadId, {
+        type: "error",
+        ...buildIpcErrorEvent(`agent:${operation}`, error)
+      })
+      return
     }
 
     throw error
@@ -121,5 +147,22 @@ export class AgentController {
 
     const threadId = (value as { threadId?: unknown }).threadId
     return typeof threadId === "string" && threadId.trim().length > 0 ? threadId.trim() : null
+  }
+
+  private removeAllProjectionSubscriptionsForSender(senderId: number): void {
+    const prefix = `${senderId}:`
+    for (const [subscriptionKey, cleanup] of this.projectionSubscriptionCleanups.entries()) {
+      if (!subscriptionKey.startsWith(prefix)) {
+        continue
+      }
+
+      cleanup()
+    }
+  }
+
+  private removeProjectionSubscription(senderId: number, threadId: string): void {
+    const subscriptionKey = this.getProjectionSubscriptionKey(senderId, threadId)
+    const cleanup = this.projectionSubscriptionCleanups.get(subscriptionKey)
+    cleanup?.()
   }
 }

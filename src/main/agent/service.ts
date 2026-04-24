@@ -23,6 +23,7 @@ import type {
 
 export type AgentStreamPayload =
   | { type: "done" }
+  | { type: "cancelled" }
   | {
       type: "error"
       error: string
@@ -31,10 +32,10 @@ export type AgentStreamPayload =
       message?: string
       status?: number
     }
+  | { type: "run_started"; runId: string }
   | { type: "stream"; data: unknown; mode: string }
 
 export interface AgentStreamSink {
-  onClosed: (listener: () => void) => () => void
   send: (payload: AgentStreamPayload) => void
 }
 
@@ -318,10 +319,6 @@ export class AgentService {
     }
 
     const abortController = new AbortController()
-    const removeClosedListener = sink.onClosed(() => {
-      console.log("[Agent] Window closed, aborting stream for thread:", threadId)
-      abortController.abort()
-    })
 
     try {
       const thread = await getThread(threadId)
@@ -348,6 +345,7 @@ export class AgentService {
       const normalizedRefs = normalizeComposerMessageRefs(message.additional_kwargs?.refs)
       const { runId } = await beginAgentRun(threadId, modelId)
       this.activeRuns.set(threadId, { controller: abortController, runId })
+      sink.send({ type: "run_started", runId })
 
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
       const humanMessage = new HumanMessage({
@@ -406,7 +404,6 @@ export class AgentService {
       if (activeRun?.controller === abortController && abortController.signal.aborted) {
         await markRunAborted(threadId, activeRun.runId)
       }
-      removeClosedListener()
       this.activeRuns.delete(threadId)
     }
   }
@@ -454,6 +451,7 @@ export class AgentService {
       requestId: resumeTarget.requestId
     })
     this.activeRuns.set(threadId, { controller: abortController, runId })
+    sink.send({ type: "run_started", runId })
 
     try {
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
@@ -513,12 +511,15 @@ export class AgentService {
     }
   }
 
-  async cancel({ threadId }: AgentCancelParams): Promise<void> {
+  async cancel({ threadId }: AgentCancelParams): Promise<boolean> {
     const activeRun = this.activeRuns.get(threadId)
-    if (activeRun) {
-      activeRun.controller.abort()
-      this.activeRuns.delete(threadId)
-      await markRunAborted(threadId, activeRun.runId)
+    if (!activeRun) {
+      return false
     }
+
+    activeRun.controller.abort()
+    this.activeRuns.delete(threadId)
+    await markRunAborted(threadId, activeRun.runId)
+    return true
   }
 }

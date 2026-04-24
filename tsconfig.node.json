@@ -12,8 +12,7 @@
     "src/plugins/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
-    "tests/node/**/*",
-    "src/types.ts"
+    "tests/node/**/*"
   ],
   "compilerOptions": {
     "composite": true,
