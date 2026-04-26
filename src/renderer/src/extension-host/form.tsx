@@ -98,7 +98,7 @@ function FormTextField(props: {
   return (
     <FormField description={description} title={title}>
       <input
-        className="flex h-10 w-full rounded-[12px] border border-input bg-background-elevated px-3 text-sm text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex h-8 w-full rounded-[var(--ow-radius-md)] border border-input bg-background-elevated px-3 text-[var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
@@ -119,7 +119,7 @@ function FormTextArea(props: {
   return (
     <FormField description={description} title={title}>
       <textarea
-        className="min-h-36 w-full rounded-[12px] border border-input bg-background-elevated px-3 py-3 text-sm text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+        className="min-h-28 w-full rounded-[var(--ow-radius-md)] border border-input bg-background-elevated px-3 py-2 text-[var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
@@ -177,7 +177,7 @@ function FormDropdown(props: {
   return (
     <FormField description={description} title={title}>
       <NativeExtensionSelect
-        className="flex h-10 w-full appearance-none rounded-[12px] border border-input bg-background-elevated pl-3 pr-10 text-sm text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex h-8 w-full appearance-none rounded-[var(--ow-radius-md)] border border-input bg-background-elevated pl-3 pr-9 text-[var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
         value={value}
         onChange={onChange}
       >

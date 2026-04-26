@@ -30,12 +30,18 @@ export const LAUNCHER_LAYOUT_TOLERANCE_PX = 2
 
 export const MAX_LAUNCHER_SEARCH_RESULTS = 20
 
+export const LAUNCHER_HEADER_HEIGHT = 56
+export const LAUNCHER_FOOTER_HEIGHT = 40
+export const LAUNCHER_HISTORY_GRID_ITEM_HEIGHT = 80
+export const LAUNCHER_RESULT_ITEM_HEIGHT = 48
+export const LAUNCHER_SECTION_HEADER_HEIGHT = 28
+
 export const FALLBACK_SHELL_CONFIG: LauncherShellConfig = {
-  headerHeight: 68,
-  footerHeight: 46,
-  historyGridItemHeight: 88,
-  resultItemHeight: 56,
-  sectionHeaderHeight: 30,
+  headerHeight: LAUNCHER_HEADER_HEIGHT,
+  footerHeight: LAUNCHER_FOOTER_HEIGHT,
+  historyGridItemHeight: LAUNCHER_HISTORY_GRID_ITEM_HEIGHT,
+  resultItemHeight: LAUNCHER_RESULT_ITEM_HEIGHT,
+  sectionHeaderHeight: LAUNCHER_SECTION_HEADER_HEIGHT,
   maxVisibleResults: 8
 }
 
