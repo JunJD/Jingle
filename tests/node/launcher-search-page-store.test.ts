@@ -218,7 +218,7 @@ test("non-empty launcher search uses a fixed results viewport instead of result-
   )
 })
 
-test("home idle surfaces do not show the search results footer", () => {
+test("home idle and search surfaces both keep a footer", () => {
   const copy = appCopy["zh-CN"]
   const historySurface = buildLauncherHomeSurfaceModel({
     copy,
@@ -240,7 +240,7 @@ test("home idle surfaces do not show the search results footer", () => {
   })
 
   assert.equal(historySurface.body.kind, "history-grid")
-  assert.equal(historySurface.chrome.footerVisible, false)
+  assert.equal(historySurface.chrome.footerVisible, true)
   assert.equal(searchSurface.chrome.footerVisible, true)
 })
 

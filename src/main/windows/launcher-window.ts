@@ -14,6 +14,7 @@ const LAUNCHER_VERTICAL_POSITION_RATIO = 0.28
 const MAC_LAUNCHER_WINDOW_LEVEL = "floating"
 const LAUNCHER_BASE_HEIGHT = getLauncherIdleHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_HEIGHT = getLauncherMaxViewportHeight(FALLBACK_SHELL_CONFIG)
+const LAUNCHER_POSITION_REFERENCE_HEIGHT = LAUNCHER_MAX_HEIGHT
 const LAUNCHER_MAX_SCREEN_HEIGHT_RATIO = 0.7
 const LAUNCHER_WINDOW_GUTTER = process.platform === "win32" ? 12 : 0
 const WINDOWS_LAUNCHER_SHAPE_RADIUS = 12
@@ -45,11 +46,17 @@ function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): Rectangle {
   const cursorPoint = screen.getCursorScreenPoint()
   const display = screen.getDisplayNearestPoint(cursorPoint)
   const boundedHeight = getLauncherWindowHeight(display, height)
+  const positionReferenceHeight = getLauncherWindowHeight(
+    display,
+    LAUNCHER_POSITION_REFERENCE_HEIGHT
+  )
   const width = getLauncherWindowWidthForDisplay(display)
   const x = Math.round(display.workArea.x + display.workArea.width / 2 - width / 2)
   const minY = display.workArea.y + LAUNCHER_TOP_MARGIN
   const maxY = display.workArea.y + display.workArea.height - boundedHeight - LAUNCHER_TOP_MARGIN
-  const targetY = Math.round(minY + (maxY - minY) * LAUNCHER_VERTICAL_POSITION_RATIO)
+  const referenceMaxY =
+    display.workArea.y + display.workArea.height - positionReferenceHeight - LAUNCHER_TOP_MARGIN
+  const targetY = Math.round(minY + (referenceMaxY - minY) * LAUNCHER_VERTICAL_POSITION_RATIO)
   const y = clamp(targetY, minY, Math.max(minY, maxY))
 
   return {

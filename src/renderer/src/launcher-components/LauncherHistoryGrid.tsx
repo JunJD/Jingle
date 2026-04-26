@@ -12,6 +12,7 @@ import { getLauncherResultToneStyle, renderLauncherResultIcon } from "@launcher-
 import type { LauncherShellItem } from "@launcher-shell/types"
 
 export function LauncherHistoryGrid(props: {
+  height: number
   items: LauncherShellItem[]
   onExecute: (index: number) => void
   onRemove: (itemId: string) => void
@@ -19,14 +20,17 @@ export function LauncherHistoryGrid(props: {
   selectedIndex: number
 }): React.JSX.Element | null {
   const { copy } = useI18n()
-  const { items, onExecute, onRemove, onSetPinned, selectedIndex } = props
+  const { height, items, onExecute, onRemove, onSetPinned, selectedIndex } = props
 
   if (items.length === 0) {
     return null
   }
 
   return (
-    <div className="grid grid-cols-8 border-t border-dashed border-[var(--launcher-border)]">
+    <div
+      className="grid grid-cols-8 overflow-hidden border-t border-dashed border-[var(--launcher-border)]"
+      style={{ gridAutoRows: "minmax(0, 1fr)", height }}
+    >
       {items.map((item, index) => {
         const isSelected = index === selectedIndex
 
@@ -34,7 +38,7 @@ export function LauncherHistoryGrid(props: {
           <div
             key={item.id}
             className={cn(
-              "relative h-[70px] border-r border-dashed border-[var(--launcher-border)]",
+              "relative h-full border-r border-dashed border-[var(--launcher-border)]",
               "text-foreground"
             )}
           >
@@ -45,7 +49,7 @@ export function LauncherHistoryGrid(props: {
                   onClick={() => onExecute(index)}
                   onMouseDown={(event) => event.preventDefault()}
                   className={cn(
-                    "flex h-full w-full appearance-none flex-col items-center justify-center gap-1.5 border-0 px-2 text-center transition",
+                    "flex h-full w-full appearance-none flex-col items-center justify-center gap-2 border-0 px-2 pb-2 pt-3 text-center transition",
                     "text-foreground",
                     isSelected && "bg-[var(--launcher-item-hover)]"
                   )}

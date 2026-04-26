@@ -15,6 +15,7 @@ export interface LauncherResultItem {
 export interface LauncherShellConfig {
   headerHeight: number
   footerHeight: number
+  historyGridItemHeight: number
   resultItemHeight: number
   sectionHeaderHeight: number
   maxVisibleResults: number
@@ -32,6 +33,7 @@ export const MAX_LAUNCHER_SEARCH_RESULTS = 20
 export const FALLBACK_SHELL_CONFIG: LauncherShellConfig = {
   headerHeight: 68,
   footerHeight: 46,
+  historyGridItemHeight: 88,
   resultItemHeight: 56,
   sectionHeaderHeight: 30,
   maxVisibleResults: 8

@@ -183,19 +183,20 @@ export function buildLauncherHomeSurfaceModel(params: {
             kind: "history-grid"
           }
         ],
-        { footerVisible: false }
+        { footerVisible: true }
       )
     }
 
+    const localStartItems = buildLauncherLocalStartShellItems(copy, idleItems)
     return createHomeSurfaceModel(
       "result-list",
       [
         {
-          items: buildLauncherLocalStartShellItems(copy, idleItems),
+          items: localStartItems,
           kind: "idle-list"
         }
       ],
-      { footerVisible: false }
+      { footerVisible: localStartItems.length > 0 }
     )
   }
 
@@ -256,7 +257,7 @@ export function getLauncherHomeSurfaceResultsHeight(
   if (surface.body.kind === "history-grid") {
     const columns = 8
     const rows = Math.ceil(surface.items.length / columns)
-    return rows * 70
+    return rows * shellConfig.historyGridItemHeight
   }
 
   const sectionHeaderCount = surface.sections.filter(hasLauncherHomeSurfaceSectionHeader).length
