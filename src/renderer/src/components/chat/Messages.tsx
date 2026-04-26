@@ -14,8 +14,10 @@ import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import {
   buildTurnAssistantEntries,
+  countToolCalls,
   getTurnCopyText,
   projectMessages,
+  shouldDefaultExpandToolEntries,
   type MessageTurn,
   type ToolResultInfo
 } from "./message-projection"
@@ -261,17 +263,23 @@ function renderStructuredContent(
 }
 
 function ToolActivityGroup(props: {
+  defaultOpen?: boolean
   density?: "default" | "compact"
   preferLatestToolSummary?: boolean
   onApprovalDecision?: (decision: HITLDecision) => void
+  onOpenChange?: (open: boolean) => void
+  open?: boolean
   pendingApproval?: HITLRequest | null
   toolCalls: ToolCall[]
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
   const { copy } = useI18n()
   const {
+    defaultOpen = false,
     density = "default",
     onApprovalDecision,
+    onOpenChange,
+    open,
     pendingApproval,
     preferLatestToolSummary,
     toolCalls,
@@ -313,8 +321,7 @@ function ToolActivityGroup(props: {
   const hasActiveActions = actionItems.some(
     (item) => item.needsApproval || item.result === undefined
   )
-  const hasSingleAction = actionViews.length === 1
-  const isOpen = openOverride ?? hasActiveActions
+  const isOpen = open ?? openOverride ?? defaultOpen
   const latestActiveAction = [...actionViews]
     .reverse()
     .find((item) => item.needsApproval || item.result === undefined)
@@ -338,7 +345,11 @@ function ToolActivityGroup(props: {
     ) : null
 
   return (
-    <ChainOfThought active={hasActiveActions} onOpenChange={setOpenOverride} open={isOpen}>
+    <ChainOfThought
+      active={hasActiveActions}
+      onOpenChange={onOpenChange ?? setOpenOverride}
+      open={isOpen}
+    >
       <ChainOfThoughtHeader
         className={density === "compact" ? "text-[12px] leading-5" : "text-[13px] leading-5"}
         {...(headerAction ? { "data-tool-call-toggle": headerAction.toolCall.name } : {})}
@@ -357,11 +368,9 @@ function ToolActivityGroup(props: {
             <ActionMessage
               approvalRequest={item.needsApproval ? pendingApproval : null}
               density={density}
-              expanded={hasSingleAction ? true : undefined}
               onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
               presentation="grouped"
               result={item.result?.content}
-              showSummary={hasSingleAction ? false : undefined}
               toolCall={item.toolCall}
             />
           </ChainOfThoughtItem>
@@ -372,6 +381,7 @@ function ToolActivityGroup(props: {
 }
 
 function AssistantToolCluster(props: {
+  defaultExpanded?: boolean
   density?: "default" | "compact"
   preferLatestToolSummary?: boolean
   messages: ThreadMessage[]
@@ -380,6 +390,7 @@ function AssistantToolCluster(props: {
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
   const {
+    defaultExpanded = false,
     density = "default",
     messages,
     onApprovalDecision,
@@ -388,17 +399,49 @@ function AssistantToolCluster(props: {
     toolResults
   } = props
   const toolCalls = messages.flatMap((message) => message.tool_calls ?? [])
+  const toolCallCount = countToolCalls(messages)
+  const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null)
+  const isExpanded = expandedOverride ?? defaultExpanded
 
   if (toolCalls.length === 0) {
     return null
+  }
+
+  if (toolCallCount === 1) {
+    const toolCall = toolCalls[0]
+
+    if (!toolCall) {
+      return null
+    }
+
+    const needsApproval = pendingApproval?.tool_call?.id === toolCall.id
+
+    return (
+      <Message className="max-w-full" from="assistant">
+        <MessageContent className="w-full gap-3">
+          <ActionMessage
+            approvalRequest={needsApproval ? pendingApproval : null}
+            density={density}
+            expanded={isExpanded}
+            onApprovalDecision={needsApproval ? onApprovalDecision : undefined}
+            onExpandedChange={setExpandedOverride}
+            result={toolResults.get(toolCall.id)?.content}
+            toolCall={toolCall}
+          />
+        </MessageContent>
+      </Message>
+    )
   }
 
   return (
     <Message className="max-w-full" from="assistant">
       <MessageContent className="w-full gap-3">
         <ToolActivityGroup
+          defaultOpen={defaultExpanded}
           density={density}
           onApprovalDecision={onApprovalDecision}
+          onOpenChange={setExpandedOverride}
+          open={isExpanded}
           pendingApproval={pendingApproval}
           preferLatestToolSummary={preferLatestToolSummary}
           toolCalls={toolCalls}
@@ -488,6 +531,11 @@ function MessageTurnView(props: {
   const hasAssistantMessages = turn.assistants.length > 0
   const shouldHideToolbar = Boolean(isLoading) && isActiveTurn
   const assistantEntries = useMemo(() => buildTurnAssistantEntries(turn), [turn])
+  const isStreamingTurn = Boolean(isLoading) && isActiveTurn
+  const defaultExpandToolEntries = useMemo(
+    () => shouldDefaultExpandToolEntries(turn, { isStreaming: isStreamingTurn }),
+    [isStreamingTurn, turn]
+  )
 
   return (
     <div className={density === "compact" ? "space-y-2.5" : "space-y-3"}>
@@ -507,6 +555,7 @@ function MessageTurnView(props: {
 
         return (
           <AssistantToolCluster
+            defaultExpanded={defaultExpandToolEntries}
             density={density}
             key={entry.key}
             messages={entry.messages}
