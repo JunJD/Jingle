@@ -184,7 +184,7 @@ const zhCN: SettingsCopy = {
   },
   shortcuts: {
     title: "快捷键",
-    description: "当前只开放应用级快捷键。页面内部导航快捷键仍保持固定产品语义。",
+    description: "配置 Launcher 唤起、主页入口等少数稳定快捷键。",
     edit: "编辑快捷键",
     useDefault: "恢复默认",
     cancel: "取消",
@@ -293,8 +293,7 @@ const enUS: SettingsCopy = {
   },
   shortcuts: {
     title: "Shortcuts",
-    description:
-      "Only app-level shortcuts are configurable right now. Surface navigation shortcuts remain fixed product semantics.",
+    description: "Configure stable shortcuts such as launcher toggle and home actions.",
     edit: "Edit Shortcut",
     useDefault: "Use Default",
     cancel: "Cancel",
