@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react"
+import { useRef } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useI18n } from "@/lib/i18n"
 import { cn, truncateMiddle } from "@/lib/utils"
@@ -11,6 +11,7 @@ import type {
   LauncherHomeSurfaceSectionKind
 } from "@launcher-shell/home-surface"
 import type { LauncherShellItem } from "@launcher-shell/types"
+import { useSelectedRowScrollIntoView } from "./useSelectedRowScrollIntoView"
 
 function renderTitle(title: string, match?: [number, number]): React.JSX.Element | string {
   if (!match || match[0] < 0 || match[1] < match[0]) {
@@ -78,35 +79,12 @@ export function LauncherResultList(props: {
   const items = sections.flatMap((section) => section.items)
   const itemsKey = items.map((item) => item.id).join("|")
 
-  useLayoutEffect(() => {
-    if (selectedIndex < 0) {
-      return
-    }
-
-    const viewport = scrollAreaRef.current?.querySelector(
-      "[data-radix-scroll-area-viewport]"
-    ) as HTMLDivElement | null
-    const item = itemRefs.current[selectedIndex]
-
-    if (!viewport || !item) {
-      return
-    }
-
-    const tolerance = 2
-    const viewportRect = viewport.getBoundingClientRect()
-    const itemRect = item.getBoundingClientRect()
-    const deltaTop = itemRect.top - viewportRect.top
-    const deltaBottom = itemRect.bottom - viewportRect.bottom
-
-    if (deltaTop < -tolerance) {
-      viewport.scrollTop += deltaTop
-      return
-    }
-
-    if (deltaBottom > tolerance) {
-      viewport.scrollTop += deltaBottom
-    }
-  }, [itemsKey, selectedIndex])
+  useSelectedRowScrollIntoView({
+    itemRefs,
+    itemsKey,
+    scrollAreaRef,
+    selectedIndex
+  })
 
   if (items.length === 0) {
     return null

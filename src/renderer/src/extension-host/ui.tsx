@@ -5,7 +5,6 @@ import {
   isValidElement,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -16,6 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
+import { useSelectedRowScrollIntoView } from "@launcher-components/useSelectedRowScrollIntoView"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import {
   ActionMarker,
@@ -375,30 +375,13 @@ function NativeListRows(props: {
   )
   const itemsKey = items.map((item) => item.id).join("|")
 
-  useLayoutEffect(() => {
-    if (selectedIndex < 0) {
-      return
-    }
-
-    const viewport = scrollAreaRef.current?.querySelector(
-      "[data-radix-scroll-area-viewport]"
-    ) as HTMLDivElement | null
-    const item = itemRefs.current[selectedIndex]
-    if (!viewport || !item) {
-      return
-    }
-
-    const viewportRect = viewport.getBoundingClientRect()
-    const itemRect = item.getBoundingClientRect()
-    if (itemRect.top < viewportRect.top) {
-      viewport.scrollTop += itemRect.top - viewportRect.top
-      return
-    }
-
-    if (itemRect.bottom > viewportRect.bottom) {
-      viewport.scrollTop += itemRect.bottom - viewportRect.bottom
-    }
-  }, [itemsKey, selectedIndex])
+  useSelectedRowScrollIntoView({
+    itemRefs,
+    itemsKey,
+    scrollAreaRef,
+    selectedIndex,
+    tolerance: 0
+  })
 
   if (items.length === 0) {
     return null
