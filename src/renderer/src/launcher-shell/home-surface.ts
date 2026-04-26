@@ -1,6 +1,10 @@
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { AppLocale } from "@shared/i18n"
-import { getLauncherSectionedResultsHeight, type LauncherShellConfig } from "@shared/launcher"
+import {
+  getLauncherResultsHeight,
+  getLauncherSectionedResultsHeight,
+  type LauncherShellConfig
+} from "@shared/launcher"
 import { sortLauncherHistoryItems, type LauncherHistoryItem } from "@shared/launcher-history"
 import type { LauncherSearchResult } from "@shared/launcher-search"
 import type { LocalStartItem } from "@shared/local-start"
@@ -248,6 +252,12 @@ export function getLauncherHomeSurfaceResultsHeight(
 
   const sectionHeaderCount = surface.sections.filter(hasLauncherHomeSurfaceSectionHeader).length
   return getLauncherSectionedResultsHeight(surface.items.length, sectionHeaderCount, shellConfig)
+}
+
+export function getLauncherSearchResultsViewportHeight(
+  shellConfig: LauncherShellConfig
+): number {
+  return getLauncherResultsHeight(shellConfig.maxVisibleResults, shellConfig)
 }
 
 export function resolveLauncherHomeSurfaceSelectedIndex(

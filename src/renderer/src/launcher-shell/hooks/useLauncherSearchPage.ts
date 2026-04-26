@@ -12,6 +12,7 @@ import { DEFAULT_HOME_COMMAND, resolveLauncherCommand } from "../pages"
 import {
   buildLauncherHomeSurfaceModel,
   getLauncherHomeSurfaceResultsHeight,
+  getLauncherSearchResultsViewportHeight,
   resolveLauncherHomeSurfaceSelectedIndex,
   type LauncherHomeSurfaceModel
 } from "../home-surface"
@@ -128,8 +129,12 @@ export function useLauncherSearchPage(props: {
     return resolveLauncherHomeSurfaceSelectedIndex(surface, selectedItemId)
   }, [selectedItemId, surface])
   const resultsViewportHeight = useMemo(() => {
+    if (trimmedQuery) {
+      return getLauncherSearchResultsViewportHeight(shellConfig)
+    }
+
     return getLauncherHomeSurfaceResultsHeight(surface, shellConfig)
-  }, [shellConfig, surface])
+  }, [shellConfig, surface, trimmedQuery])
   const viewportHeight = useMemo(() => {
     if (resultsViewportHeight === 0) {
       return getLauncherViewportHeight(0, shellConfig)

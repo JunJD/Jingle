@@ -1,7 +1,13 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { appCopy } from "../../src/renderer/src/lib/i18n/messages"
+import {
+  buildLauncherHomeSurfaceModel,
+  getLauncherHomeSurfaceResultsHeight,
+  getLauncherSearchResultsViewportHeight
+} from "../../src/renderer/src/launcher-shell/home-surface"
 import { buildLauncherSearchShellItems } from "../../src/renderer/src/launcher-shell/search-items"
+import { FALLBACK_SHELL_CONFIG } from "../../src/shared/launcher"
 import {
   createLauncherSearchPageStore,
   mergeLauncherSearchResults,
@@ -171,6 +177,44 @@ test("mergeLauncherSearchResults orders by score, source priority, and de-duplic
   assert.deepEqual(
     merged.map((result) => `${result.source}:${result.id}`),
     ["applications:shared", "files:shared", "applications:app-only", "files:file-only"]
+  )
+})
+
+test("non-empty launcher search uses a fixed results viewport instead of result-count height", () => {
+  const copy = appCopy["zh-CN"]
+  const oneResultSurface = buildLauncherHomeSurfaceModel({
+    copy,
+    historyItems: [],
+    idleItems: [],
+    locale: "zh-CN",
+    query: "todo",
+    searchResults: [createSearchResult({ id: "todo-1", source: "files", title: "Todo" })],
+    windowMode: "default"
+  })
+  const manyResultsSurface = buildLauncherHomeSurfaceModel({
+    copy,
+    historyItems: [],
+    idleItems: [],
+    locale: "zh-CN",
+    query: "todo",
+    searchResults: Array.from({ length: 12 }, (_, index) =>
+      createSearchResult({
+        id: `todo-${index}`,
+        score: 12 - index,
+        source: "files",
+        title: `Todo ${index}`
+      })
+    ),
+    windowMode: "default"
+  })
+
+  assert.notEqual(
+    getLauncherHomeSurfaceResultsHeight(oneResultSurface, FALLBACK_SHELL_CONFIG),
+    getLauncherHomeSurfaceResultsHeight(manyResultsSurface, FALLBACK_SHELL_CONFIG)
+  )
+  assert.equal(
+    getLauncherSearchResultsViewportHeight(FALLBACK_SHELL_CONFIG),
+    FALLBACK_SHELL_CONFIG.resultItemHeight * FALLBACK_SHELL_CONFIG.maxVisibleResults
   )
 })
 
