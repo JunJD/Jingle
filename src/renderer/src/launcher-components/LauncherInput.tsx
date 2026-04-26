@@ -61,16 +61,16 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
           aria-busy={status === "idle" ? undefined : true}
           className={cn(
             isCompact
-              ? "h-7 min-w-0 border-0 bg-transparent px-1 py-0 text-[16px] font-medium leading-7 shadow-none"
-              : "h-8 min-w-0 border-0 bg-transparent px-1.5 py-0 text-[18px] font-medium leading-8 shadow-none",
+              ? "h-7 min-w-0 border-0 bg-transparent px-1 py-0 text-[15px] font-medium leading-7 shadow-none"
+              : "h-8 min-w-0 border-0 bg-transparent px-1.5 py-0 text-[16px] font-medium leading-8 shadow-none",
             "focus-visible:ring-0 focus-visible:ring-offset-0",
             "placeholder:text-transparent",
             className
           )}
           placeholderClassName={cn(
             isCompact
-              ? "text-[16px] font-medium leading-7 text-muted-foreground/52"
-              : "text-[18px] font-medium leading-8 text-muted-foreground/55",
+              ? "text-[15px] font-medium leading-7 text-muted-foreground/52"
+              : "text-[16px] font-medium leading-8 text-muted-foreground/55",
             placeholderClassName
           )}
           data-status={status}

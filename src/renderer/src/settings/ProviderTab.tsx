@@ -58,11 +58,11 @@ export function preloadProviderTabData(): void {
 function ProviderTabSkeleton(): React.JSX.Element {
   return (
     <div className="mx-auto w-full max-w-[1040px] space-y-4">
-      <div className="h-[124px] animate-pulse rounded-[26px] border border-border/70 bg-background-secondary/70" />
-      <div className="h-[118px] animate-pulse rounded-2xl border border-dashed border-border/80 bg-background-secondary/45" />
+      <div className="h-[112px] animate-pulse rounded-[var(--ow-radius-panel)] border border-border/70 bg-background-secondary/70" />
+      <div className="h-[104px] animate-pulse rounded-[var(--ow-radius-panel)] border border-dashed border-border/80 bg-background-secondary/45" />
       <div className="space-y-2">
-        <div className="h-[112px] animate-pulse rounded-2xl border border-border/80 bg-background-elevated/70" />
-        <div className="h-[112px] animate-pulse rounded-2xl border border-border/80 bg-background-elevated/70" />
+        <div className="h-[96px] animate-pulse rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-elevated/70" />
+        <div className="h-[96px] animate-pulse rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-elevated/70" />
       </div>
     </div>
   )

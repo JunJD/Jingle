@@ -41,13 +41,13 @@ export default function SettingsApp(): React.JSX.Element {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      <div className="app-drag-region flex h-[52px] shrink-0 items-center border-b border-border bg-[var(--window-chrome)] px-5">
+      <div className="app-drag-region flex h-12 shrink-0 items-center border-b border-border bg-[var(--window-chrome)] px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 text-[12px] font-semibold tracking-[0.08em] text-[var(--window-chrome-foreground)]">
           <Settings2 className="h-4 w-4" />
           <span>{copy.title}</span>
         </div>
 
-        <div className="app-no-drag inline-flex items-stretch overflow-hidden rounded-lg border border-border bg-background-elevated shadow-sm">
+        <div className="app-no-drag inline-flex items-stretch overflow-hidden rounded-[var(--ow-radius-md)] border border-border bg-background-elevated shadow-sm">
           <button
             type="button"
             onClick={() => setActiveTab("general")}
@@ -107,7 +107,7 @@ export default function SettingsApp(): React.JSX.Element {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden p-5">
+      <div className="min-h-0 flex-1 overflow-hidden p-4">
         {activeTab === "general" ? (
           <div className={settingsScrollPaneClassName}>
             <GeneralTab locale={locale} />

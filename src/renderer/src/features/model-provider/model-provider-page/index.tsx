@@ -50,7 +50,7 @@ export default function ModelProviderPage(props: ModelProviderPageProps): React.
               <Brain className="h-3.5 w-3.5" />
               {copy.provider.registryLabel}
             </div>
-            <div className="text-[24px] font-semibold tracking-[-0.035em] text-foreground">
+            <div className="text-[20px] font-semibold tracking-normal text-foreground">
               {copy.provider.sectionTitle}
             </div>
             <div className="mt-1 max-w-[660px] text-[13px] leading-5 text-muted-foreground">
@@ -78,12 +78,12 @@ export default function ModelProviderPage(props: ModelProviderPageProps): React.
       </div>
 
       {loadError && (
-        <div className="mb-3 rounded-2xl border border-destructive/25 bg-destructive/10 px-4 py-3 text-[12px] leading-5 text-destructive">
+        <div className="mb-3 rounded-[var(--ow-radius-panel)] border border-destructive/25 bg-destructive/10 px-4 py-3 text-[12px] leading-5 text-destructive">
           {loadError}
         </div>
       )}
 
-      <div className="overflow-hidden rounded-[18px] border border-border-emphasis bg-background-elevated/55 shadow-[0_20px_50px_rgba(32,38,45,0.045)]">
+      <div className="overflow-hidden rounded-[var(--ow-radius-dialog)] border border-border-emphasis bg-background-elevated/55 shadow-[0_16px_40px_rgba(32,38,45,0.04)]">
         <div className="hidden grid-cols-[minmax(210px,1.1fr)_112px_132px_minmax(230px,1fr)] border-b border-border bg-background-secondary/55 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground md:grid">
           <div>{copy.provider.providerColumn}</div>
           <div>{copy.provider.typeColumn}</div>

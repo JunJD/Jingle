@@ -189,7 +189,7 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
-      <div className="flex h-[52px] shrink-0 border-b border-border bg-[var(--window-chrome)] app-drag-region">
+      <div className="flex h-12 shrink-0 border-b border-border bg-[var(--window-chrome)] app-drag-region">
         <div style={{ width: leftWidth }} className="shrink-0 border-r border-border bg-sidebar">
           <div
             className="flex h-full min-w-0 flex-col justify-center pr-4"

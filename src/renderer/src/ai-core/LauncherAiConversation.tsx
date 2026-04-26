@@ -10,10 +10,10 @@ export function LauncherAiEmptyState(props: { error?: string | null }): React.JS
   const { error } = props
 
   return (
-    <div className="relative flex flex-1 items-center justify-center overflow-hidden px-6">
+    <div className="relative flex flex-1 items-center justify-center overflow-hidden px-5">
       <div className="relative flex w-full max-w-3xl flex-col items-center text-center">
         <div className="text-section-header mb-2.5">{copy.launcher.aiEmptyEyebrow}</div>
-        <h1 className="text-[30px] font-semibold tracking-[-0.05em] text-foreground sm:text-[34px]">
+        <h1 className="text-[24px] font-semibold tracking-normal text-foreground sm:text-[28px]">
           {copy.launcher.aiHeroTitle}
         </h1>
         <p className="mt-3 max-w-2xl text-[13px] leading-6 text-muted-foreground">

@@ -147,7 +147,7 @@ function DetailRoot(props: {
               </div>
 
               {metadataEntries.length > 0 ? (
-                <div className="space-y-3 rounded-2xl border border-border/80 bg-background-elevated/70 p-4">
+                <div className="space-y-3 rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-elevated/70 p-4">
                   <div className="text-[12px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                     Metadata
                   </div>

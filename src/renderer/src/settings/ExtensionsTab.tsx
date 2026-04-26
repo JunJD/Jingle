@@ -375,10 +375,10 @@ export function ExtensionsTab(props: {
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[320px_minmax(0,1fr)] gap-5">
-      <aside className="flex min-h-0 flex-col gap-4 overflow-hidden rounded-2xl border border-border/80 bg-background-secondary/55 p-4 shadow-[0_18px_44px_rgba(32,38,45,0.06)]">
+    <div className="grid h-full min-h-0 grid-cols-[300px_minmax(0,1fr)] gap-4">
+      <aside className="flex min-h-0 flex-col gap-3 overflow-hidden rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-secondary/55 p-3.5 shadow-[0_12px_32px_rgba(32,38,45,0.05)]">
         <div className="space-y-1">
-          <div className="text-[18px] font-semibold text-foreground">{copy.extensions.title}</div>
+          <div className="text-[16px] font-semibold text-foreground">{copy.extensions.title}</div>
           <div className="text-[13px] text-muted-foreground">
             {copy.extensions.rootsDescription}
           </div>
@@ -387,7 +387,7 @@ export function ExtensionsTab(props: {
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
-            className="w-full rounded-md border border-border bg-background-elevated py-2 pl-9 pr-3 text-[13px] text-foreground outline-none transition focus:border-[var(--ring)]"
+            className="w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated py-1.5 pl-9 pr-3 text-[13px] text-foreground outline-none transition focus:border-[var(--ring)]"
             placeholder={copy.extensions.installedTitle}
             value={search}
             onChange={(event) => {
@@ -398,7 +398,7 @@ export function ExtensionsTab(props: {
 
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
           {filteredSchemas.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border bg-background px-4 py-4 text-[12px] text-muted-foreground">
+            <div className="rounded-[var(--ow-radius-lg)] border border-dashed border-border bg-background px-3 py-3 text-[12px] text-muted-foreground">
               {copy.extensions.empty}
             </div>
           ) : (
@@ -410,7 +410,7 @@ export function ExtensionsTab(props: {
                   key={schema.extName}
                   type="button"
                   onClick={() => setSelectedExtName(schema.extName)}
-                  className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                  className={`w-full rounded-[var(--ow-radius-lg)] border px-3 py-2.5 text-left transition ${
                     isSelected
                       ? "border-[var(--ring)] bg-background"
                       : "border-border/70 bg-background-elevated/60 hover:bg-background"
@@ -442,11 +442,11 @@ export function ExtensionsTab(props: {
       <section className="min-h-0 overflow-y-auto pr-1">
         {selectedSchema ? (
           <div className="space-y-4">
-            <div className="rounded-2xl border border-border/80 bg-background-secondary/55 p-5 shadow-[0_18px_44px_rgba(32,38,45,0.06)]">
+            <div className="rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-secondary/55 p-4 shadow-[0_12px_32px_rgba(32,38,45,0.05)]">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <Settings2 className="h-4 w-4 text-muted-foreground" />
-                  <h2 className="text-[18px] font-semibold text-foreground">
+                  <h2 className="text-[16px] font-semibold text-foreground">
                     {selectedSchema.title}
                   </h2>
                 </div>
@@ -496,7 +496,7 @@ export function ExtensionsTab(props: {
             </div>
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-border bg-background-elevated/60 text-[13px] text-muted-foreground">
+          <div className="flex h-full items-center justify-center rounded-[var(--ow-radius-panel)] border border-dashed border-border bg-background-elevated/60 text-[13px] text-muted-foreground">
             {copy.extensions.empty}
           </div>
         )}

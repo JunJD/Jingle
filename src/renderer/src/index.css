@@ -64,7 +64,7 @@
 
 :root {
   /* Foundation */
-  --radius: 10px;
+  --radius: 8px;
   --background: #f3f4f1;
   --background-elevated: #fbfbf8;
   --background-secondary: #f0f1ed;
@@ -81,6 +81,30 @@
   --muted: #f0f1ed;
   --muted-foreground: #5f6873;
   --tertiary-foreground: #8a929b;
+
+  /* Density */
+  --ow-font-caption: 11px;
+  --ow-font-meta: 12px;
+  --ow-font-body: 13px;
+  --ow-font-control: 13px;
+  --ow-font-title: 16px;
+  --ow-font-display: 18px;
+
+  --ow-line-tight: 1.2;
+  --ow-line-body: 1.45;
+  --ow-line-reading: 1.55;
+
+  --ow-radius-xs: 4px;
+  --ow-radius-sm: 6px;
+  --ow-radius-md: 8px;
+  --ow-radius-lg: 10px;
+  --ow-radius-panel: 12px;
+  --ow-radius-dialog: 14px;
+
+  --ow-control-h-sm: 28px;
+  --ow-control-h-md: 32px;
+  --ow-control-h-lg: 36px;
+  --ow-row-h-md: 48px;
 
   /* Semantic mapping for shadcn compatibility */
   --card: #fbfbf8;
@@ -132,9 +156,9 @@
   --launcher-border: rgba(67, 76, 88, 0.08);
   --launcher-border-strong: rgba(67, 76, 88, 0.16);
   --launcher-outline: rgba(67, 76, 88, 0.12);
-  --launcher-panel-radius: 12px;
-  --launcher-panel-radius-inner: 12px;
-  --launcher-shell-radius: 12px;
+  --launcher-panel-radius: var(--ow-radius-panel);
+  --launcher-panel-radius-inner: var(--ow-radius-panel);
+  --launcher-shell-radius: var(--ow-radius-panel);
   --launcher-shell-native-radius: 0px;
   --launcher-window-gutter: 0px;
   --launcher-shell-fill: color-mix(in srgb, var(--launcher-surface) 76%, white 24%);
@@ -156,7 +180,11 @@
   --launcher-row-active: color-mix(in srgb, var(--primary) 12%, var(--launcher-shell-fill));
   --launcher-row-hover: color-mix(in srgb, var(--foreground) 4%, var(--launcher-shell-fill));
   --launcher-accent-line: var(--primary);
-  --launcher-pin-indicator: color-mix(in srgb, var(--status-warning) 82%, var(--background-elevated) 18%);
+  --launcher-pin-indicator: color-mix(
+    in srgb,
+    var(--status-warning) 82%,
+    var(--background-elevated) 18%
+  );
   --launcher-app-chip-bg: transparent;
   --launcher-app-chip-fg: var(--primary);
   --launcher-ai-chip-bg: transparent;
@@ -242,9 +270,9 @@
 html[data-platform="darwin"],
 body[data-platform="darwin"] {
   --window-controls-offset-inline: 84px;
-  --launcher-panel-radius: 22px;
+  --launcher-panel-radius: 18px;
   --launcher-shell-radius: 0px;
-  --launcher-shell-native-radius: 12px;
+  --launcher-shell-native-radius: var(--ow-radius-panel);
   --launcher-border: rgba(67, 76, 88, 0.028);
   --launcher-shell-fill: color-mix(in srgb, var(--launcher-surface) 72%, transparent);
   --launcher-shell-fill-strong: color-mix(in srgb, var(--launcher-surface) 82%, transparent);
@@ -267,8 +295,8 @@ body[data-platform="darwin"] {
 html[data-platform="win32"],
 body[data-platform="win32"] {
   --window-controls-offset-inline: 18px;
-  --launcher-panel-radius: 12px;
-  --launcher-shell-radius: 12px;
+  --launcher-panel-radius: var(--ow-radius-panel);
+  --launcher-shell-radius: var(--ow-radius-panel);
   --launcher-window-gutter: 12px;
   --launcher-shell-blur: 0px;
   --launcher-shell-outline: rgba(67, 76, 88, 0.06);
@@ -277,8 +305,8 @@ body[data-platform="win32"] {
 html[data-platform="linux"],
 body[data-platform="linux"] {
   --window-controls-offset-inline: 18px;
-  --launcher-panel-radius: 12px;
-  --launcher-shell-radius: 12px;
+  --launcher-panel-radius: var(--ow-radius-panel);
+  --launcher-shell-radius: var(--ow-radius-panel);
   --launcher-shell-blur: 0px;
   --launcher-shell-outline: rgba(67, 76, 88, 0.06);
 }
@@ -347,10 +375,11 @@ body[data-window="launcher"] {
   flex-direction: column;
   overflow: hidden;
   border-radius: var(--launcher-shell-radius);
-  background:
-    linear-gradient(180deg,
-      color-mix(in srgb, var(--launcher-shell-fill) 88%, white 12%),
-      color-mix(in srgb, var(--launcher-shell-fill-strong) 96%, var(--background-secondary) 4%));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--launcher-shell-fill) 88%, white 12%),
+    color-mix(in srgb, var(--launcher-shell-fill-strong) 96%, var(--background-secondary) 4%)
+  );
   box-shadow:
     inset 0 1px 0 var(--launcher-shell-highlight),
     inset 0 -1px 0 color-mix(in srgb, var(--foreground) 4%, transparent),
@@ -510,15 +539,19 @@ body[data-platform="darwin"] .launcher-window-shell {
 }
 
 .launcher-chrome-header {
-  background: linear-gradient(180deg,
-      color-mix(in srgb, var(--launcher-header-strip) 100%, transparent),
-      color-mix(in srgb, var(--launcher-shell-fill) 82%, transparent));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--launcher-header-strip) 100%, transparent),
+    color-mix(in srgb, var(--launcher-shell-fill) 82%, transparent)
+  );
 }
 
 .launcher-chrome-footer {
-  background: linear-gradient(180deg,
-      color-mix(in srgb, var(--launcher-shell-fill) 78%, transparent),
-      color-mix(in srgb, var(--launcher-footer-strip) 100%, transparent));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--launcher-shell-fill) 78%, transparent),
+    color-mix(in srgb, var(--launcher-footer-strip) 100%, transparent)
+  );
 }
 
 .launcher-header-button,
@@ -717,7 +750,6 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 /* Pulse animation for live indicators */
 @keyframes tactical-pulse {
-
   0%,
   100% {
     opacity: 1;
@@ -781,7 +813,6 @@ body[data-platform="darwin"] .launcher-window-shell {
 }
 
 @keyframes launcher-intelligence-glow-breathe {
-
   0%,
   100% {
     opacity: 0.92;
@@ -805,10 +836,16 @@ body[data-platform="darwin"] .launcher-window-shell {
   min-height: 0;
   padding: 16px;
   background:
-    radial-gradient(circle at top, color-mix(in srgb, var(--primary) 14%, transparent), transparent 42%),
-    linear-gradient(180deg,
+    radial-gradient(
+      circle at top,
+      color-mix(in srgb, var(--primary) 14%, transparent),
+      transparent 42%
+    ),
+    linear-gradient(
+      180deg,
       color-mix(in srgb, var(--launcher-surface) 92%, white 8%),
-      color-mix(in srgb, var(--background-secondary) 84%, white 16%));
+      color-mix(in srgb, var(--background-secondary) 84%, white 16%)
+    );
 }
 
 .launcher-translate-grid {
@@ -820,7 +857,7 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 .launcher-translate-toolbar-title {
   color: var(--launcher-text);
-  font-size: 13px;
+  font-size: var(--ow-font-body);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -828,8 +865,8 @@ body[data-platform="darwin"] .launcher-window-shell {
 .launcher-translate-toolbar-subtitle {
   margin-top: 2px;
   color: var(--launcher-text-muted);
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: var(--ow-font-caption);
+  line-height: var(--ow-line-body);
 }
 
 .launcher-translate-center-action {
@@ -847,7 +884,7 @@ body[data-platform="darwin"] .launcher-window-shell {
   border: 1px solid color-mix(in srgb, var(--launcher-border-strong) 82%, transparent);
   background: color-mix(in srgb, var(--launcher-surface) 82%, white 18%);
   padding: 0 10px;
-  border-radius: 12px;
+  border-radius: var(--ow-radius-lg);
   color: var(--launcher-text);
 }
 
@@ -861,7 +898,7 @@ body[data-platform="darwin"] .launcher-window-shell {
   border: 0;
   background: transparent;
   color: inherit;
-  font-size: 13px;
+  font-size: var(--ow-font-control);
   line-height: 40px;
   height: 40px;
   padding-right: 4px;
@@ -875,8 +912,8 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 .launcher-translate-swap {
   display: inline-flex;
-  height: 42px;
-  width: 42px;
+  height: 38px;
+  width: 38px;
   align-items: center;
   justify-content: center;
   border: 1px solid color-mix(in srgb, var(--launcher-border-strong) 90%, transparent);
@@ -901,11 +938,12 @@ body[data-platform="darwin"] .launcher-window-shell {
   min-height: 0;
   flex-direction: column;
   border: 1px solid color-mix(in srgb, var(--launcher-border-strong) 70%, transparent);
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg,
-      color-mix(in srgb, var(--background-elevated) 92%, white 8%),
-      color-mix(in srgb, var(--launcher-surface) 96%, var(--background-secondary) 4%));
+  border-radius: var(--ow-radius-dialog);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--background-elevated) 92%, white 8%),
+    color-mix(in srgb, var(--launcher-surface) 96%, var(--background-secondary) 4%)
+  );
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, white 72%, transparent),
     0 16px 40px color-mix(in srgb, var(--foreground) 6%, transparent);
@@ -920,7 +958,7 @@ body[data-platform="darwin"] .launcher-window-shell {
   gap: 12px;
   padding: 12px 14px;
   color: var(--launcher-text-muted);
-  font-size: 11px;
+  font-size: var(--ow-font-caption);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -951,10 +989,10 @@ body[data-platform="darwin"] .launcher-window-shell {
 .launcher-translate-output {
   flex: 1;
   min-height: 0;
-  padding: 18px 16px 20px;
+  padding: 15px 14px 18px;
   color: var(--launcher-text);
-  font-size: 18px;
-  line-height: 1.65;
+  font-size: var(--ow-font-title);
+  line-height: var(--ow-line-reading);
 }
 
 .launcher-translate-textarea {
@@ -978,8 +1016,8 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 .launcher-translate-placeholder-hint {
   margin-top: 10px;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: var(--ow-font-body);
+  line-height: var(--ow-line-body);
 }
 
 .launcher-translate-submit {
@@ -991,7 +1029,7 @@ body[data-platform="darwin"] .launcher-window-shell {
   background: color-mix(in srgb, var(--primary) 10%, var(--launcher-surface));
   color: var(--launcher-text);
   padding: 6px 8px 6px 12px;
-  font-size: 12px;
+  font-size: var(--ow-font-meta);
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: none;
@@ -1172,7 +1210,6 @@ body[data-platform="darwin"] .launcher-window-shell {
 }
 
 @media (prefers-reduced-motion: reduce) {
-
   .launcher-shell-intelligence-glow,
   .launcher-page-transition-panel,
   .launcher-jump-orbit-primary,

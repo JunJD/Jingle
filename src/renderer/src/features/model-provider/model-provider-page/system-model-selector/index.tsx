@@ -75,7 +75,7 @@ export default function SystemModelSelector(props: SystemModelSelectorProps): Re
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="w-[calc(100%-2rem)] rounded-2xl sm:max-w-[480px] sm:rounded-2xl">
+        <DialogContent className="w-[calc(100%-2rem)] rounded-[var(--ow-radius-dialog)] sm:max-w-[480px] sm:rounded-[var(--ow-radius-dialog)]">
           <DialogHeader className="text-left">
             <DialogTitle>{copy.provider.systemSettings}</DialogTitle>
             <DialogDescription>{copy.provider.defaultModelDescription}</DialogDescription>

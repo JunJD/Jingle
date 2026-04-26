@@ -17,7 +17,7 @@ function SettingsRow(props: {
 
   return (
     <div
-      className={`grid gap-3 px-4 py-4 md:grid-cols-[240px_minmax(0,1fr)] ${
+      className={`grid gap-3 px-4 py-3.5 md:grid-cols-[240px_minmax(0,1fr)] ${
         withBorder ? "border-b border-border/70" : ""
       }`}
     >
@@ -41,12 +41,12 @@ function parseLineList(value: string): string[] {
 }
 
 const inputClassName =
-  "w-full rounded-md border border-border bg-background-elevated px-3 py-2 text-[13px] text-foreground outline-none transition focus:border-[var(--ring)]"
+  "w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-3 py-1.5 text-[13px] text-foreground outline-none transition focus:border-[var(--ring)]"
 
 const selectClassName = `${inputClassName} pr-8`
 
 const secondaryButtonClassName =
-  "inline-flex items-center gap-2 rounded-md border border-border bg-background-elevated px-3 py-2 text-[12px] font-medium text-foreground transition hover:bg-background-secondary"
+  "inline-flex items-center gap-1.5 rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-3 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-background-secondary"
 
 export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   const { locale } = props
@@ -117,18 +117,18 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   return (
     <div className="mx-auto flex w-full max-w-[1040px] flex-col gap-4">
       <div className="px-1">
-        <div className="text-[18px] font-semibold text-foreground">{copy.general.title}</div>
+        <div className="text-[16px] font-semibold text-foreground">{copy.general.title}</div>
         <div className="mt-1 text-[13px] text-muted-foreground">{copy.general.workspaceHint}</div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-border/80 bg-background-secondary/55 shadow-[0_18px_44px_rgba(32,38,45,0.06)]">
+      <div className="overflow-hidden rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-secondary/55 shadow-[0_12px_32px_rgba(32,38,45,0.05)]">
         <SettingsRow
           icon={<FolderOpen className="h-4 w-4" />}
           title={copy.general.workspaceTitle}
           description={copy.general.workspaceDescription}
         >
           <div className="flex flex-wrap items-center gap-3">
-            <div className="min-w-[280px] flex-1 rounded-md border border-border/70 bg-background-elevated px-3 py-2 text-[13px] text-foreground">
+            <div className="min-w-[280px] flex-1 rounded-[var(--ow-radius-md)] border border-border/70 bg-background-elevated px-3 py-1.5 text-[13px] text-foreground">
               {globalWorkspacePath || copy.common.none}
             </div>
             <button

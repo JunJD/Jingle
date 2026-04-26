@@ -64,7 +64,7 @@ export function LauncherActionOverlay(props: {
   return (
     <div className="absolute inset-0 z-50 bg-black/28" data-surface={surfaceId} onClick={onClose}>
       <div
-        className="absolute bottom-12 right-3 w-80 overflow-hidden rounded-2xl border border-border/80 bg-background shadow-2xl"
+        className="absolute bottom-12 right-3 w-80 overflow-hidden rounded-[var(--ow-radius-dialog)] border border-border/80 bg-background shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="max-h-[60vh] overflow-y-auto py-2">

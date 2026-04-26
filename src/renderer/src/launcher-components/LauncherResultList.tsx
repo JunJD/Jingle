@@ -165,7 +165,7 @@ export function LauncherResultList(props: {
             onClick={() => onExecute(row.index)}
             onMouseDown={(event) => event.preventDefault()}
             className={cn(
-              "launcher-result-row relative mx-3 grid h-14 w-[calc(100%-1.5rem)] appearance-none grid-cols-[32px_minmax(0,1fr)_104px] items-center gap-3 rounded-[12px] border-0 px-3 text-left transition",
+              "launcher-result-row relative mx-3 grid h-12 w-[calc(100%-1.5rem)] appearance-none grid-cols-[30px_minmax(0,1fr)_96px] items-center gap-2.5 rounded-[var(--ow-radius-lg)] border-0 px-3 text-left transition",
               isSelected && "launcher-result-row--selected"
             )}
             style={{
@@ -181,7 +181,7 @@ export function LauncherResultList(props: {
             </div>
 
             <div className="min-w-0">
-              <div className="truncate text-[14px] font-medium leading-[1.15] text-foreground">
+              <div className="truncate text-[13px] font-medium leading-[1.15] text-foreground">
                 {renderTitle(row.item.title, row.item.match)}
               </div>
               <div className="mt-0.5 truncate text-[12px] leading-[1.15] text-muted-foreground">

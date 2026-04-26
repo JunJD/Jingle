@@ -29,7 +29,7 @@ export function NativeSurfaceChrome(props: {
       headerLeading={headerLeading}
       headerMain={
         title ? (
-          <div className="truncate text-[20px] font-semibold tracking-[-0.03em] text-foreground">
+          <div className="truncate text-[var(--ow-font-display)] font-semibold tracking-normal text-foreground">
             {title}
           </div>
         ) : null

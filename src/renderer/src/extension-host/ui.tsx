@@ -429,7 +429,7 @@ function NativeListRows(props: {
                   onClick={() => onExecute(index)}
                   onMouseEnter={() => onSelect(index)}
                   className={cn(
-                    "grid h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 text-left transition",
+                    "grid h-12 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2.5 px-3 text-left transition",
                     isSelected ? "bg-background-secondary" : "hover:bg-background-secondary/60"
                   )}
                 >

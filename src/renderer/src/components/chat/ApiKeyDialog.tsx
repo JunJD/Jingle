@@ -106,7 +106,7 @@ export function ApiKeyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100%-2rem)] rounded-2xl sm:max-w-[400px] sm:rounded-2xl">
+      <DialogContent className="w-[calc(100%-2rem)] rounded-[var(--ow-radius-dialog)] sm:max-w-[400px] sm:rounded-[var(--ow-radius-dialog)]">
         <DialogHeader className="text-left">
           <DialogTitle>
             {hasExistingKey

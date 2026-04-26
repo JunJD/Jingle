@@ -9,10 +9,7 @@ import {
   type ShortcutChord,
   type ShortcutModifier
 } from "@shared/shortcuts/model"
-import type {
-  GlobalShortcutAvailability,
-  ShortcutOverride
-} from "@shared/shortcuts/settings"
+import type { GlobalShortcutAvailability, ShortcutOverride } from "@shared/shortcuts/settings"
 import type { AppLocale } from "@shared/i18n"
 import { formatShortcutBinding } from "../shortcuts/format-shortcut"
 import { getLauncherShortcutCommand } from "../shortcuts/command-registry"
@@ -20,7 +17,7 @@ import { useShortcutBinding, useShortcutSettings } from "../shortcuts/shortcut-c
 import { getSettingsCopy } from "./copy"
 
 const secondaryButtonClassName =
-  "inline-flex items-center gap-2 rounded-md border border-border bg-background-elevated px-3 py-2 text-[12px] font-medium text-foreground transition hover:bg-background-secondary disabled:cursor-default disabled:opacity-50"
+  "inline-flex items-center gap-1.5 rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-3 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-background-secondary disabled:cursor-default disabled:opacity-50"
 
 const statusClassName = {
   available: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
@@ -209,17 +206,15 @@ function ShortcutCommandCard(props: {
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/80 bg-background-secondary/55 shadow-[0_18px_44px_rgba(32,38,45,0.06)]">
-      <div className="grid gap-3 border-b border-border/70 px-4 py-4 md:grid-cols-[240px_minmax(0,1fr)]">
+    <div className="overflow-hidden rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-secondary/55 shadow-[0_12px_32px_rgba(32,38,45,0.05)]">
+      <div className="grid gap-3 border-b border-border/70 px-4 py-3.5 md:grid-cols-[240px_minmax(0,1fr)]">
         <div className="flex items-start gap-3">
           <div className="mt-0.5 text-muted-foreground">
             <Command className="h-4 w-4" />
           </div>
           <div className="space-y-1">
             <div className="text-[13px] font-semibold text-foreground">{command.title}</div>
-            <div className="text-[12px] leading-5 text-muted-foreground">
-              {command.description}
-            </div>
+            <div className="text-[12px] leading-5 text-muted-foreground">{command.description}</div>
           </div>
         </div>
 
@@ -231,7 +226,7 @@ function ShortcutCommandCard(props: {
           <div className="flex flex-wrap items-center gap-3">
             <div
               data-shortcut-current-binding={command.id}
-              className="rounded-md border border-border/70 bg-background-elevated px-3 py-2 text-[13px] font-medium text-foreground"
+              className="rounded-[var(--ow-radius-md)] border border-border/70 bg-background-elevated px-3 py-1.5 text-[13px] font-medium text-foreground"
             >
               {displayedBindingText}
             </div>
@@ -397,7 +392,7 @@ export function ShortcutsTab(props: { locale: AppLocale }): React.JSX.Element {
   return (
     <div className="mx-auto flex w-full max-w-[1040px] flex-col gap-4">
       <div className="px-1">
-        <div className="text-[18px] font-semibold text-foreground">{copy.shortcuts.title}</div>
+        <div className="text-[16px] font-semibold text-foreground">{copy.shortcuts.title}</div>
         <div className="mt-1 text-[13px] text-muted-foreground">{copy.shortcuts.description}</div>
       </div>
 
