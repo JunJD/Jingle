@@ -12,7 +12,9 @@ interface ActionMessageProps {
   result?: unknown
   approvalRequest?: HITLRequest | null
   onApprovalDecision?: (decision: HITLDecision) => void
+  onExpandedChange?: (expanded: boolean) => void
   density?: "default" | "compact"
+  defaultExpanded?: boolean
   expanded?: boolean
   presentation?: ToolPresentation
   showSummary?: boolean
@@ -56,16 +58,18 @@ export function ToolStatusIndicator(props: {
 export function ActionMessage(props: ActionMessageProps): React.JSX.Element | null {
   const {
     approvalRequest,
+    defaultExpanded = false,
     density = "default",
     expanded,
     onApprovalDecision,
+    onExpandedChange,
     presentation = "standalone",
     result,
     showSummary = true,
     toolCall
   } = props
   const { copy } = useI18n()
-  const [manualExpanded, setManualExpanded] = useState(Boolean(approvalRequest))
+  const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   const view = useMemo(
     () =>
       createActionMessageView({
@@ -78,7 +82,8 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     [approvalRequest, copy, presentation, result, toolCall]
   )
   const { definition, hitlDefinition, icon, model, status, statusLabel, summary } = view
-  const isExpanded = expanded ?? (Boolean(approvalRequest) || manualExpanded)
+  const autoExpanded = Boolean(approvalRequest) || defaultExpanded
+  const isExpanded = approvalRequest ? true : (expanded ?? manualExpanded ?? autoExpanded)
   const showLeadingIcon = presentation !== "grouped"
   const detail = useMemo<React.ReactNode>(() => {
     if (approvalRequest && onApprovalDecision && hitlDefinition) {
@@ -143,7 +148,12 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
         data-tool-call-toggle={toolCall.name}
         onClick={() => {
           if (hasDetail && !approvalRequest) {
-            setManualExpanded((current) => !current)
+            const nextExpanded = !isExpanded
+            onExpandedChange?.(nextExpanded)
+
+            if (expanded === undefined) {
+              setManualExpanded(nextExpanded)
+            }
           }
         }}
         type="button"
