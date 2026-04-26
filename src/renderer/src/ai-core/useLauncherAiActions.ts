@@ -71,6 +71,9 @@ export function useLauncherAiActions(
   const newQuestionShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.aiNewQuestion)
   const changeModelShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.aiChangeModel)
   const branchChatShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.aiBranchChat)
+  const openMainHistoryShortcut = useLauncherCommandShortcut(
+    LAUNCHER_COMMAND_IDS.searchOpenMainHistory
+  )
   const isAiInputTarget = useCallback(
     (target: EventTarget | null): boolean => target === inputRef.current,
     [inputRef]
@@ -201,6 +204,15 @@ export function useLauncherAiActions(
           ]
         : []),
       {
+        id: "launcher-ai-open-main-history",
+        onAction: async () => {
+          await window.api.mainWindow.openWindow()
+          await window.api.launcher.hide()
+        },
+        shortcut: openMainHistoryShortcut,
+        title: copy.openAiHistory
+      },
+      {
         id: "launcher-ai-change-model",
         onAction: openModelPicker,
         shortcut: changeModelShortcut,
@@ -229,6 +241,7 @@ export function useLauncherAiActions(
       copy.changeModel,
       copy.goToNextChat,
       copy.goToPreviousChat,
+      copy.openAiHistory,
       goToNextChat,
       goToPreviousChat,
       copy.newQuestion,
@@ -236,6 +249,7 @@ export function useLauncherAiActions(
       newQuestionShortcut,
       nextChatShortcut,
       openModelPicker,
+      openMainHistoryShortcut,
       previousChatShortcut
     ]
   )

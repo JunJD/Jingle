@@ -31,6 +31,12 @@ const LAUNCHER_SHORTCUT_COMMANDS: readonly ShortcutCommandDefinition[] = [
     category: "launcher"
   }),
   defineLauncherShortcutCommand({
+    id: LAUNCHER_COMMAND_IDS.searchOpenMainHistory,
+    title: "Open AI History",
+    description: "Open the main AI history window from launcher home",
+    category: "launcher"
+  }),
+  defineLauncherShortcutCommand({
     id: LAUNCHER_COMMAND_IDS.searchOpenSettings,
     title: "Open Settings",
     description: "Open the settings window from launcher home",

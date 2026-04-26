@@ -100,6 +100,7 @@ export interface AppCopy {
     jumpToLatest: string
     newQuestion: string
     openSettings: string
+    openAiHistory: string
     openApp: string
     commandMatches: string
     openGeneric: string
@@ -288,6 +289,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       jumpToLatest: "跳到最新",
       newQuestion: "新问题",
       openSettings: "打开设置",
+      openAiHistory: "打开 AI 页面",
       openApp: "打开应用",
       commandMatches: "命令",
       openGeneric: "打开",
@@ -489,6 +491,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       jumpToLatest: "Jump to latest",
       newQuestion: "New Question",
       openSettings: "Open Settings",
+      openAiHistory: "Open AI",
       openApp: "Open App",
       commandMatches: "Commands",
       openGeneric: "Open",

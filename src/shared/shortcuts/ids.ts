@@ -18,6 +18,7 @@ export const LAUNCHER_COMMAND_IDS = {
   listMoveSelectionUp: "launcher.list.move-selection-up",
   searchExecuteSelection: "launcher.search.execute-selection",
   searchMoveSelectionDown: "launcher.search.move-selection-down",
+  searchOpenMainHistory: "launcher.search.open-main-history",
   searchOpenSettings: "launcher.search.open-settings",
   searchMoveSelectionUp: "launcher.search.move-selection-up",
   searchOpenAi: "launcher.search.open-ai",

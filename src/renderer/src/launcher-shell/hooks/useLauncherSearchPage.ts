@@ -29,12 +29,14 @@ import { useLauncherHomeClipboard } from "./useLauncherHomeClipboard"
 
 type LauncherHomeCommandId =
   | typeof LAUNCHER_COMMAND_IDS.searchOpenAi
+  | typeof LAUNCHER_COMMAND_IDS.searchOpenMainHistory
   | typeof LAUNCHER_COMMAND_IDS.searchOpenSettings
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionDown
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionUp
   | typeof LAUNCHER_COMMAND_IDS.searchExecuteSelection
 
 export function useLauncherSearchPage(props: {
+  openMainHistory: () => void
   openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
 }): {
   executeItem: (index: number) => void
@@ -57,7 +59,7 @@ export function useLauncherSearchPage(props: {
   surface: LauncherHomeSurfaceModel
   viewportHeight: number
 } {
-  const { openCommand: navigateToCommand } = props
+  const { openCommand: navigateToCommand, openMainHistory } = props
   const { copy, locale } = useI18n()
   const query = useLauncherSearchPageStore((state) => state.query)
   const historyItems = useLauncherSearchPageStore((state) => state.historyItems)
@@ -245,6 +247,9 @@ export function useLauncherSearchPage(props: {
             seedQuery: query
           })
           return
+        case LAUNCHER_COMMAND_IDS.searchOpenMainHistory:
+          openMainHistory()
+          return
         case LAUNCHER_COMMAND_IDS.searchOpenSettings:
           void window.api.settings.openWindow()
           return
@@ -269,7 +274,15 @@ export function useLauncherSearchPage(props: {
           return
       }
     },
-    [executeItem, moveSelection, navigateToCommand, query, selectedIndex, surface.items]
+    [
+      executeItem,
+      moveSelection,
+      navigateToCommand,
+      openMainHistory,
+      query,
+      selectedIndex,
+      surface.items
+    ]
   )
 
   const handleInputCommandKeyDown = useCallback(

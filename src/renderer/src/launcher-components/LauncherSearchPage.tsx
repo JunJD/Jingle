@@ -15,6 +15,7 @@ import { LauncherResultList } from "./LauncherResultList"
 const HOME_SHORTCUT_SCOPES = ["launcher.home"] as const
 type LauncherHomeCommandId =
   | typeof LAUNCHER_COMMAND_IDS.searchOpenAi
+  | typeof LAUNCHER_COMMAND_IDS.searchOpenMainHistory
   | typeof LAUNCHER_COMMAND_IDS.searchOpenSettings
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionDown
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionUp
@@ -130,13 +131,18 @@ export function LauncherSearchPage(props: {
     handleExecuteSelectionShortcut
   )
 
-  const primaryActionLabel =
-    selectedItem?.presentation.primaryActionLabel ?? copy.launcher.openGeneric
-  const isPrimaryActionDisabled = !selectedItem || selectedItem.availability === "planned"
-  const resultsVisible = surface.chrome.footerVisible
+  const footerVisible = surface.chrome.footerVisible
+  const isSearchMode = inputValue.trim().length > 0
+  const primaryActionLabel = isSearchMode
+    ? (selectedItem?.presentation.primaryActionLabel ?? copy.launcher.openGeneric)
+    : copy.launcher.openAiHistory
+  const isPrimaryActionDisabled = isSearchMode
+    ? !selectedItem || selectedItem.availability === "planned"
+    : false
   const showHistoryGrid = surface.body.kind === "history-grid"
-  const askAiShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.searchOpenAi)
-  const settingsShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.searchOpenSettings)
+  const openMainHistoryShortcut = useLauncherCommandShortcut(
+    LAUNCHER_COMMAND_IDS.searchOpenMainHistory
+  )
   const executeSelectionShortcut = useLauncherCommandShortcut(
     LAUNCHER_COMMAND_IDS.searchExecuteSelection
   )
@@ -154,16 +160,38 @@ export function LauncherSearchPage(props: {
       headerLeading={headerLeading}
       inputStatus={isSearchLoading ? "pending" : "idle"}
       footer={
-        resultsVisible ? (
+        footerVisible ? (
           <>
-            <div className="flex items-center gap-2 text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
-              {isSearchLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              <span>{isSearchLoading ? copy.launcher.searching : copy.launcher.searchResults}</span>
-            </div>
+            {isSearchMode ? (
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                {isSearchLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                <span>
+                  {isSearchLoading ? copy.launcher.searching : copy.launcher.searchResults}
+                </span>
+              </div>
+            ) : (
+              <button
+                data-launcher-open-settings
+                type="button"
+                onClick={() => executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenSettings)}
+                onMouseDown={(event) => event.preventDefault()}
+                className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground"
+                title={openSettingsLabel}
+                aria-label={openSettingsLabel}
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                <span>{openSettingsLabel}</span>
+              </button>
+            )}
 
             <button
               type="button"
               onClick={() => {
+                if (!isSearchMode) {
+                  executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenMainHistory)
+                  return
+                }
+
                 if (!selectedItem) {
                   return
                 }
@@ -172,12 +200,12 @@ export function LauncherSearchPage(props: {
               }}
               onMouseDown={(event) => event.preventDefault()}
               disabled={isPrimaryActionDisabled}
-              className="launcher-action-link flex appearance-none items-center gap-2 rounded-[10px] border-0 px-3 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
+              className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
             >
               <span>{primaryActionLabel}</span>
-              {executeSelectionShortcut ? (
+              {(isSearchMode ? executeSelectionShortcut : openMainHistoryShortcut) ? (
                 <span className="launcher-shortcut text-[11px] text-muted-foreground">
-                  {executeSelectionShortcut}
+                  {isSearchMode ? executeSelectionShortcut : openMainHistoryShortcut}
                 </span>
               ) : null}
             </button>
@@ -186,31 +214,13 @@ export function LauncherSearchPage(props: {
       }
       headerTrailing={
         <div className="flex shrink-0 items-center gap-2 text-[13px] font-medium text-muted-foreground">
-          <button
-            data-launcher-open-settings
-            type="button"
-            onClick={() => executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenSettings)}
-            onMouseDown={(event) => event.preventDefault()}
-            className="launcher-header-button flex items-center gap-2 rounded-full px-2 py-1 text-[12px] text-muted-foreground hover:text-foreground"
-            title={openSettingsLabel}
-            aria-label={openSettingsLabel}
-          >
-            <Settings2 className="h-3.5 w-3.5" />
-            <span>{openSettingsLabel}</span>
-            {settingsShortcut ? (
-              <span className="launcher-shortcut text-[11px] text-muted-foreground">
-                {settingsShortcut}
-              </span>
-            ) : null}
-          </button>
-
           <div className="flex items-center gap-2 px-0 py-1">
-            {askAiShortcut ? (
+            {openMainHistoryShortcut ? (
               <span className="launcher-shortcut text-[11px] text-muted-foreground">
-                {askAiShortcut}
+                {openMainHistoryShortcut}
               </span>
             ) : null}
-            <span>{copy.launcher.aiEntryLabel}</span>
+            <span>{copy.launcher.openAiHistory}</span>
           </div>
         </div>
       }
@@ -226,6 +236,7 @@ export function LauncherSearchPage(props: {
     >
       {showHistoryGrid ? (
         <LauncherHistoryGrid
+          height={resultsViewportHeight}
           items={surface.items}
           onExecute={executeItem}
           onRemove={onRemoveHistoryItem}
