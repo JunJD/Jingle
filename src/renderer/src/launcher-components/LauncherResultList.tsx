@@ -10,6 +10,7 @@ import type {
   LauncherHomeSurfaceSection,
   LauncherHomeSurfaceSectionKind
 } from "@launcher-shell/home-surface"
+import type { LauncherShellItem } from "@launcher-shell/types"
 
 function renderTitle(title: string, match?: [number, number]): React.JSX.Element | string {
   if (!match || match[0] < 0 || match[1] < match[0]) {
@@ -33,7 +34,7 @@ function getSectionLabel(
 ): string | null {
   switch (sectionKind) {
     case "commands":
-      return copy.launcher.commandMatches
+      return null
     case "command-intents":
       return copy.launcher.actionsLabel
     case "search-results":
@@ -43,6 +44,25 @@ function getSectionLabel(
     default:
       return null
   }
+}
+
+function getResultTrailingLabel(
+  item: LauncherShellItem,
+  copy: ReturnType<typeof useI18n>["copy"]
+): string {
+  if (item.kind === "ai") {
+    return copy.launcher.resultKindAgent
+  }
+
+  if (item.kind === "application") {
+    return "Application"
+  }
+
+  if (item.kind === "plugin") {
+    return "Command"
+  }
+
+  return copy.launcher.openGeneric
 }
 
 export function LauncherResultList(props: {
@@ -117,13 +137,15 @@ export function LauncherResultList(props: {
       {sectionRows.map((row) => {
         if (row.kind === "header") {
           if (!row.label) {
-            return null
+            return row.key === "header:commands" ? (
+              <div key={row.key} className="mx-6 my-2 h-px bg-border/70" aria-hidden="true" />
+            ) : null
           }
 
           return (
             <div
               key={row.key}
-              className="px-4 pt-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+              className="px-6 pb-1 pt-3 text-[12px] font-semibold text-muted-foreground"
             >
               {row.label}
             </div>
@@ -143,7 +165,7 @@ export function LauncherResultList(props: {
             onClick={() => onExecute(row.index)}
             onMouseDown={(event) => event.preventDefault()}
             className={cn(
-              "launcher-result-row relative grid h-14 w-full appearance-none grid-cols-[72px_minmax(0,1fr)_80px] items-center gap-3 border-0 px-4 text-left transition",
+              "launcher-result-row relative mx-3 grid h-14 w-[calc(100%-1.5rem)] appearance-none grid-cols-[32px_minmax(0,1fr)_104px] items-center gap-3 rounded-[12px] border-0 px-3 text-left transition",
               isSelected && "launcher-result-row--selected"
             )}
             style={{
@@ -151,31 +173,24 @@ export function LauncherResultList(props: {
               opacity: isPlanned ? 0.72 : 1
             }}
           >
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              {row.item.presentation.categoryLabel}
+            <div
+              className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[7px]"
+              style={getLauncherResultToneStyle(row.item.presentation.tone)}
+            >
+              {renderLauncherResultIcon(row.item.presentation.icon)}
             </div>
 
             <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <div
-                  className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden"
-                  style={getLauncherResultToneStyle(row.item.presentation.tone)}
-                >
-                  {renderLauncherResultIcon(row.item.presentation.icon)}
-                </div>
-                <div className="min-w-0">
-                  <div className="truncate text-[14px] font-medium leading-[1.15] text-foreground">
-                    {renderTitle(row.item.title, row.item.match)}
-                  </div>
-                  <div className="mt-0.5 truncate text-[12px] leading-[1.15] text-muted-foreground">
-                    {truncateMiddle(row.item.subtitle, 63, 14)}
-                  </div>
-                </div>
+              <div className="truncate text-[14px] font-medium leading-[1.15] text-foreground">
+                {renderTitle(row.item.title, row.item.match)}
+              </div>
+              <div className="mt-0.5 truncate text-[12px] leading-[1.15] text-muted-foreground">
+                {truncateMiddle(row.item.subtitle, 72, 16)}
               </div>
             </div>
 
-            <div className="justify-self-end text-[11px] font-medium text-muted-foreground">
-              {row.item.presentation.listActionLabel}
+            <div className="justify-self-end text-right text-[12px] font-medium text-muted-foreground">
+              {getResultTrailingLabel(row.item, copy)}
             </div>
           </button>
         )

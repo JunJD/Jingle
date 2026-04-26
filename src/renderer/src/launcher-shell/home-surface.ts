@@ -219,24 +219,18 @@ export function buildLauncherHomeSurfaceModel(params: {
     preview: searchResultsPreview
   })
 
+  const resultItems = [...commandIntentItems, ...searchResultItems]
+  if (resultItems.length > 0) {
+    sections.push({
+      items: resultItems,
+      kind: "search-results"
+    })
+  }
+
   if (internalCommandItems.length > 0) {
     sections.push({
       items: internalCommandItems,
       kind: "commands"
-    })
-  }
-
-  if (commandIntentItems.length > 0) {
-    sections.push({
-      items: commandIntentItems,
-      kind: "command-intents"
-    })
-  }
-
-  if (searchResultItems.length > 0) {
-    sections.push({
-      items: searchResultItems,
-      kind: "search-results"
     })
   }
 
@@ -264,9 +258,7 @@ export function getLauncherHomeSurfaceResultsHeight(
   return getLauncherSectionedResultsHeight(surface.items.length, sectionHeaderCount, shellConfig)
 }
 
-export function getLauncherSearchResultsViewportHeight(
-  shellConfig: LauncherShellConfig
-): number {
+export function getLauncherSearchResultsViewportHeight(shellConfig: LauncherShellConfig): number {
   return getLauncherResultsHeight(shellConfig.maxVisibleResults, shellConfig)
 }
 
