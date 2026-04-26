@@ -1314,3 +1314,20 @@ body[data-platform="darwin"] .launcher-window-shell {
 .shiki-content .line:hover {
   background-color: var(--background-interactive);
 }
+
+@keyframes glide {
+  0% {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+
+  35%,
+  65% {
+    opacity: 0.52;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(48px);
+  }
+}

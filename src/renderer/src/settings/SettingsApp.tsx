@@ -42,7 +42,10 @@ export default function SettingsApp(): React.JSX.Element {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <div className="app-drag-region flex h-12 shrink-0 items-center border-b border-border bg-[var(--window-chrome)] px-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2 text-[12px] font-semibold tracking-[0.08em] text-[var(--window-chrome-foreground)]">
+        <div
+          className="flex min-w-0 flex-1 items-center gap-2 text-[12px] font-semibold tracking-[0.08em] text-[var(--window-chrome-foreground)]"
+          style={{ paddingLeft: "calc(var(--window-controls-offset-inline) + 6px)" }}
+        >
           <Settings2 className="h-4 w-4" />
           <span>{copy.title}</span>
         </div>

@@ -181,8 +181,14 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-muted-foreground">{copy.app.initializing}</div>
+      <div
+        aria-label={copy.app.initializing}
+        className="flex h-screen items-center justify-center overflow-hidden bg-background text-foreground"
+        role="status"
+      >
+        <div className="h-0.5 w-11 overflow-hidden rounded-full bg-muted">
+          <div className="h-full w-[18px] animate-[glide_1.2s_ease-in-out_infinite] rounded-full bg-foreground/55" />
+        </div>
       </div>
     )
   }
