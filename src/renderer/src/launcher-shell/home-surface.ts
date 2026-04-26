@@ -66,7 +66,8 @@ function hasLauncherHomeSurfaceSectionHeader(section: LauncherHomeSurfaceSection
 
 function createHomeSurfaceModel(
   bodyKind: LauncherHomeSurfaceBodyKind,
-  sections: LauncherHomeSurfaceSection[]
+  sections: LauncherHomeSurfaceSection[],
+  chrome?: Partial<LauncherHomeSurfaceChrome>
 ): LauncherHomeSurfaceModel {
   const items = sections.flatMap((section) => section.items)
 
@@ -75,8 +76,8 @@ function createHomeSurfaceModel(
       kind: bodyKind
     },
     chrome: {
-      footerVisible: items.length > 0,
-      headerDividerVisible: items.length > 0
+      footerVisible: chrome?.footerVisible ?? items.length > 0,
+      headerDividerVisible: chrome?.headerDividerVisible ?? items.length > 0
     },
     items,
     sections,
@@ -174,20 +175,28 @@ export function buildLauncherHomeSurfaceModel(params: {
 
     if (historyItems.length > 0) {
       const rankedHistoryItems = rankHistorySectionItems(historyItems)
-      return createHomeSurfaceModel("history-grid", [
-        {
-          items: buildLauncherHistoryShellItems(copy, rankedHistoryItems),
-          kind: "history-grid"
-        }
-      ])
+      return createHomeSurfaceModel(
+        "history-grid",
+        [
+          {
+            items: buildLauncherHistoryShellItems(copy, rankedHistoryItems),
+            kind: "history-grid"
+          }
+        ],
+        { footerVisible: false }
+      )
     }
 
-    return createHomeSurfaceModel("result-list", [
-      {
-        items: buildLauncherLocalStartShellItems(copy, idleItems),
-        kind: "idle-list"
-      }
-    ])
+    return createHomeSurfaceModel(
+      "result-list",
+      [
+        {
+          items: buildLauncherLocalStartShellItems(copy, idleItems),
+          kind: "idle-list"
+        }
+      ],
+      { footerVisible: false }
+    )
   }
 
   const sections: LauncherHomeSurfaceSection[] = []
@@ -237,7 +246,7 @@ export function buildLauncherHomeSurfaceModel(params: {
     })
   }
 
-  return createHomeSurfaceModel("result-list", sections)
+  return createHomeSurfaceModel("result-list", sections, { footerVisible: true })
 }
 
 export function getLauncherHomeSurfaceResultsHeight(

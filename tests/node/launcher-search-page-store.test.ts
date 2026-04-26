@@ -218,6 +218,32 @@ test("non-empty launcher search uses a fixed results viewport instead of result-
   )
 })
 
+test("home idle surfaces do not show the search results footer", () => {
+  const copy = appCopy["zh-CN"]
+  const historySurface = buildLauncherHomeSurfaceModel({
+    copy,
+    historyItems: [createHistoryItem("wechat")],
+    idleItems: [],
+    locale: "zh-CN",
+    query: "",
+    searchResults: [],
+    windowMode: "default"
+  })
+  const searchSurface = buildLauncherHomeSurfaceModel({
+    copy,
+    historyItems: [],
+    idleItems: [],
+    locale: "zh-CN",
+    query: "todo",
+    searchResults: [createSearchResult({ id: "todo-1", source: "files", title: "Todo" })],
+    windowMode: "default"
+  })
+
+  assert.equal(historySurface.body.kind, "history-grid")
+  assert.equal(historySurface.chrome.footerVisible, false)
+  assert.equal(searchSurface.chrome.footerVisible, true)
+})
+
 test("moveSelection wraps around the visible item ids", () => {
   const store = createLauncherSearchPageStore()
 

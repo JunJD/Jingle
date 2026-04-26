@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from "react"
 import {
   FALLBACK_SHELL_CONFIG,
   MAX_LAUNCHER_SEARCH_RESULTS,
+  getLauncherIdleHeight,
   getLauncherViewportHeightForBody,
   getLauncherViewportHeight,
   type LauncherShellConfig
@@ -140,8 +141,12 @@ export function useLauncherSearchPage(props: {
       return getLauncherViewportHeight(0, shellConfig)
     }
 
+    if (!surface.chrome.footerVisible) {
+      return getLauncherIdleHeight(shellConfig) + resultsViewportHeight
+    }
+
     return getLauncherViewportHeightForBody(resultsViewportHeight, shellConfig)
-  }, [resultsViewportHeight, shellConfig])
+  }, [resultsViewportHeight, shellConfig, surface.chrome.footerVisible])
   const homeClipboard = useLauncherHomeClipboard({
     query,
     requestSelection: requestHomeInputSelection,
