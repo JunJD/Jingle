@@ -11,6 +11,10 @@ import {
   registerExternalLinksModule
 } from "./external-links/module"
 import {
+  registerExtensionRuntimeModule,
+  resolveExtensionRuntimeManager
+} from "./services/extension-runtime"
+import {
   registerLauncherHistoryIpcHandlers,
   registerLauncherHistoryModule
 } from "./launcher-history/module"
@@ -110,6 +114,7 @@ export class MainCompositionRoot {
   }
 
   dispose(): void {
+    resolveExtensionRuntimeManager(this.dependencyContainer).dispose()
     resolveNativeMenuBarService(this.dependencyContainer).dispose()
     unregisterGlobalShortcutService()
   }
@@ -162,6 +167,7 @@ export function createMainCompositionRoot(
     consumePendingNavigation: context.consumePendingSettingsNavigation,
     openSettingsWindow: context.openSettingsWindow
   })
+  registerExtensionRuntimeModule(childContainer)
   registerShortcutsModule(childContainer)
   registerThreadsModule(childContainer)
   registerWorkspaceModule(childContainer)

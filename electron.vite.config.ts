@@ -51,7 +51,10 @@ export default defineConfig({
     // Bundle all dependencies into the main process
     build: {
       lib: {
-        entry: "src/main/index.ts",
+        entry: {
+          "extension-runtime-entry": resolve("src/extension-runtime/entry.ts"),
+          index: resolve("src/main/index.ts")
+        },
         formats: ["cjs"]
       },
       rollupOptions: {
