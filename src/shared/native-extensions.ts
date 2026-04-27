@@ -21,6 +21,7 @@ export interface NativeExtensionPreferenceSchema {
 
 export interface NativeExtensionCommandManifest<TCommandName extends string = string> {
   description?: string
+  iconName?: string
   keywords?: string[]
   mode: NativeExtensionCommandMode
   name: TCommandName
@@ -36,6 +37,7 @@ export interface NativeExtensionPackageManifest<
   commands: Array<NativeExtensionCommandManifest<TCommandName>>
   defaultCommandName?: TCommandName
   description?: string
+  iconName?: string
   name: TExtensionName
   preferences?: NativeExtensionPreferenceSchema[]
   rpcMethods?: string[]
@@ -268,6 +270,7 @@ export function toLauncherCommandOwnerManifest(
     capabilities: manifest.capabilities,
     commands: launcherCommands.map((command) => ({
       description: command.description,
+      iconName: command.iconName ?? manifest.iconName,
       keywords: command.keywords,
       mode: command.mode,
       name: command.name,

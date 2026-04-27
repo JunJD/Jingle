@@ -15,6 +15,7 @@ export interface LauncherCommandOwnerClipboardManifest {
 
 export interface LauncherCommandManifest<TCommandName extends string = string> {
   description?: string
+  iconName?: string
   keywords?: string[]
   mode: LauncherCommandMode
   name: TCommandName

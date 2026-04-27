@@ -104,6 +104,21 @@ function openSettingsWindow(payload?: SettingsWindowNavigationPayload): void {
   showSettingsWindow(settingsWindow, payload)
 }
 
+function setMacDockIcon(): void {
+  if (process.platform !== "darwin" || !app.dock) {
+    return
+  }
+
+  const iconPath = join(__dirname, "../../resources/icon.png")
+  const icon = nativeImage.createFromPath(iconPath)
+  if (icon.isEmpty()) {
+    throw new Error(`Dock icon is empty: ${iconPath}`)
+  }
+
+  app.dock.setIcon(icon)
+  app.dock.show()
+}
+
 if (!hasSingleInstanceLock) {
   app.quit()
 }
@@ -115,18 +130,7 @@ if (hasSingleInstanceLock) {
       app.setAppUserModelId(isDev ? process.execPath : "com.langchain.openwork")
     }
 
-    // Set dock icon on macOS
-    if (process.platform === "darwin" && app.dock) {
-      const iconPath = join(__dirname, "../../resources/icon.png")
-      try {
-        const icon = nativeImage.createFromPath(iconPath)
-        if (!icon.isEmpty()) {
-          app.dock.setIcon(icon)
-        }
-      } catch {
-        // Icon not found, use default
-      }
-    }
+    setMacDockIcon()
 
     // Default open or close DevTools by F12 in development
     if (isDev) {
@@ -157,6 +161,7 @@ if (hasSingleInstanceLock) {
       isDev,
       openMainWindow,
       openSettingsWindow,
+      quitApplication: () => app.quit(),
       showLauncherWindow: showLauncher,
       toggleLauncherWindow: toggleLauncher
     })
@@ -167,7 +172,7 @@ if (hasSingleInstanceLock) {
     showLauncher()
 
     app.on("activate", () => {
-      showLauncher()
+      openMainWindow()
     })
   })
 }

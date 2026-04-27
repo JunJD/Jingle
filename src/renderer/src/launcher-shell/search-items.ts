@@ -183,7 +183,7 @@ export function buildLauncherInternalCommandShellItems(
         presentation: {
           categoryLabel: copy.launcher.resultKindExtension,
           icon: {
-            name: "search",
+            name: command.iconName ?? "search",
             type: "glyph" as const
           },
           listActionLabel: copy.launcher.openGeneric,

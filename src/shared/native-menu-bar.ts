@@ -1,5 +1,18 @@
+export type NativeMenuBarIconName =
+  | "bell"
+  | "check"
+  | "gear"
+  | "github"
+  | "openwork"
+  | "plus"
+  | "refresh"
+  | "reminder-item"
+  | "reminders"
+  | "todo"
+
 export interface NativeMenuBarItemState {
   disabled?: boolean
+  iconName?: NativeMenuBarIconName
   id: string
   subtitle?: string
   title: string
@@ -12,6 +25,7 @@ export interface NativeMenuBarSectionState {
 
 export interface NativeMenuBarState {
   commandKey: string
+  iconName?: NativeMenuBarIconName
   isLoading?: boolean
   sections: NativeMenuBarSectionState[]
   title?: string

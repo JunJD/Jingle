@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs"
+import { join } from "node:path"
 import { BrowserWindow, Menu, Tray, nativeImage } from "electron"
 import type { NativeMenuBarActionEvent, NativeMenuBarState } from "@shared/native-menu-bar"
 
@@ -7,12 +9,18 @@ interface NativeMenuBarBddProbe {
 }
 
 const BDD_NATIVE_MENU_BAR_PROBE_KEY = "__OPENWORK_BDD_NATIVE_MENU_BAR__"
+const MENU_BAR_ITEM_ICON_SIZE = 16
+const MENU_BAR_STATUS_ICON_SIZE = 18
+
+export type NativeMenuBarActionHandlers = Record<string, () => void>
 
 export class NativeMenuBarService {
   private readonly stateByCommandKey = new Map<string, NativeMenuBarState>()
   private readonly trayByCommandKey = new Map<string, Tray>()
   private getLauncherWindow: () => BrowserWindow | null = () => null
-  private defaultMenuBarImage: Electron.NativeImage | null = null
+  private readonly menuBarImageByName = new Map<string, Electron.NativeImage>()
+  private readonly nativeActionByEventKey = new Map<string, () => void>()
+  private readonly nativeActionItemIdsByCommandKey = new Map<string, Set<string>>()
 
   initialize(params: { getLauncherWindow: () => BrowserWindow | null }): void {
     this.getLauncherWindow = params.getLauncherWindow
@@ -29,13 +37,17 @@ export class NativeMenuBarService {
 
     this.trayByCommandKey.clear()
     this.stateByCommandKey.clear()
+    this.nativeActionByEventKey.clear()
+    this.nativeActionItemIdsByCommandKey.clear()
     this.detachBddProbe()
   }
 
-  setState(state: NativeMenuBarState): void {
+  setState(state: NativeMenuBarState, nativeActionHandlers?: NativeMenuBarActionHandlers): void {
     const tray = this.getOrCreateTray(state.commandKey)
 
     this.stateByCommandKey.set(state.commandKey, this.cloneState(state))
+    this.setNativeActionHandlers(state.commandKey, nativeActionHandlers)
+    tray.setImage(this.createMenuBarImage(state.iconName, MENU_BAR_STATUS_ICON_SIZE))
     tray.setContextMenu(Menu.buildFromTemplate(this.buildMenuTemplate(state)))
     tray.setToolTip(state.tooltip ?? state.title ?? "Openwork")
 
@@ -52,6 +64,7 @@ export class NativeMenuBarService {
     }
 
     this.stateByCommandKey.delete(commandKey)
+    this.setNativeActionHandlers(commandKey)
   }
 
   getStateSnapshot(): NativeMenuBarState[] {
@@ -63,7 +76,11 @@ export class NativeMenuBarService {
       throw new Error(`Native menu bar command not found: ${event.commandKey}`)
     }
 
-    this.emitMenuBarAction(event)
+    this.selectItem(event)
+  }
+
+  private createEventKey(commandKey: string, itemId: string): string {
+    return `${commandKey}:${itemId}`
   }
 
   private attachBddProbe(): void {
@@ -89,23 +106,54 @@ export class NativeMenuBarService {
     return JSON.parse(JSON.stringify(state)) as NativeMenuBarState
   }
 
-  private createDefaultMenuBarImage(): Electron.NativeImage {
-    if (this.defaultMenuBarImage) {
-      return this.defaultMenuBarImage
+  private setNativeActionHandlers(
+    commandKey: string,
+    handlers?: NativeMenuBarActionHandlers
+  ): void {
+    const existingItemIds = this.nativeActionItemIdsByCommandKey.get(commandKey)
+    if (existingItemIds) {
+      for (const itemId of existingItemIds) {
+        this.nativeActionByEventKey.delete(this.createEventKey(commandKey, itemId))
+      }
+      this.nativeActionItemIdsByCommandKey.delete(commandKey)
     }
 
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
-        <circle cx="9" cy="9" r="8" fill="white" opacity="0.95" />
-        <path d="M5.5 9.2L7.8 11.5L12.5 6.8" stroke="black" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-      </svg>
-    `.trim()
+    if (!handlers) {
+      return
+    }
 
-    this.defaultMenuBarImage = nativeImage.createFromDataURL(
-      `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`
-    )
-    this.defaultMenuBarImage.setTemplateImage(true)
-    return this.defaultMenuBarImage
+    const itemIds = new Set<string>()
+    for (const [itemId, handler] of Object.entries(handlers)) {
+      this.nativeActionByEventKey.set(this.createEventKey(commandKey, itemId), handler)
+      itemIds.add(itemId)
+    }
+    this.nativeActionItemIdsByCommandKey.set(commandKey, itemIds)
+  }
+
+  private createMenuBarImage(
+    iconName: NativeMenuBarState["iconName"] = "openwork",
+    size: number
+  ): Electron.NativeImage {
+    const cacheKey = `${iconName}:${size}`
+    const cachedImage = this.menuBarImageByName.get(cacheKey)
+    if (cachedImage) {
+      return cachedImage
+    }
+
+    const iconPath = join(__dirname, "../../resources/assets/menu-bar", `${iconName}.png`)
+    if (!existsSync(iconPath)) {
+      throw new Error(`Native menu bar icon not found: ${iconPath}`)
+    }
+
+    const image = nativeImage.createFromPath(iconPath)
+    if (image.isEmpty()) {
+      throw new Error(`Native menu bar icon is empty: ${iconPath}`)
+    }
+
+    const resizedImage = image.resize({ height: size, width: size })
+    resizedImage.setTemplateImage(true)
+    this.menuBarImageByName.set(cacheKey, resizedImage)
+    return resizedImage
   }
 
   private emitMenuBarAction(event: NativeMenuBarActionEvent): void {
@@ -115,6 +163,18 @@ export class NativeMenuBarService {
     }
 
     launcherWindow.webContents.send("nativeMenuBar:itemSelected", event)
+  }
+
+  private selectItem(event: NativeMenuBarActionEvent): void {
+    const nativeAction = this.nativeActionByEventKey.get(
+      this.createEventKey(event.commandKey, event.itemId)
+    )
+    if (nativeAction) {
+      nativeAction()
+      return
+    }
+
+    this.emitMenuBarAction(event)
   }
 
   private buildMenuTemplate(state: NativeMenuBarState): Electron.MenuItemConstructorOptions[] {
@@ -138,12 +198,15 @@ export class NativeMenuBarService {
       for (const item of section.items) {
         template.push({
           click: () => {
-            this.emitMenuBarAction({
+            this.selectItem({
               commandKey: state.commandKey,
               itemId: item.id
             })
           },
           enabled: item.disabled !== true,
+          icon: item.iconName
+            ? this.createMenuBarImage(item.iconName, MENU_BAR_ITEM_ICON_SIZE)
+            : undefined,
           label: item.title,
           sublabel: item.subtitle
         })
@@ -172,7 +235,7 @@ export class NativeMenuBarService {
       return existingTray
     }
 
-    const tray = new Tray(this.createDefaultMenuBarImage())
+    const tray = new Tray(this.createMenuBarImage("openwork", MENU_BAR_STATUS_ICON_SIZE))
     tray.setIgnoreDoubleClickEvents(true)
     this.trayByCommandKey.set(commandKey, tray)
     return tray

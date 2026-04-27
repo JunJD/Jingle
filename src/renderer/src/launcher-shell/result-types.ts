@@ -3,13 +3,18 @@ import type { LauncherResultKind } from "@shared/launcher"
 export type LauncherShellItemKind = LauncherResultKind | "plugin" | "suggestion"
 
 export type LauncherResultPresentationIconName =
+  | "bell"
+  | "check-circle"
   | "file-text"
   | "folder"
+  | "github"
   | "globe"
   | "history"
   | "languages"
+  | "reminders"
   | "search"
   | "sparkles"
+  | "todo"
   | (string & {})
 
 export type LauncherResultPresentationTone = "accent" | "brand" | "neutral"

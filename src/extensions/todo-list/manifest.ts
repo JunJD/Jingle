@@ -2,9 +2,11 @@ import { defineNativeExtensionManifest } from "@shared/native-extensions"
 
 export const todoListManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "surface"],
+  iconName: "todo",
   commands: [
     {
       description: "Create and organize todo items.",
+      iconName: "todo",
       keywords: ["todo", "todos", "task", "tasks", "待办", "待办事项"],
       mode: "view",
       name: "index",

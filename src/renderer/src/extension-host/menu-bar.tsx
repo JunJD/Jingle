@@ -23,6 +23,7 @@ const MenuBarSectionMarker = createMenuBarMarkerComponent<{
 
 const MenuBarItemMarker = createMenuBarMarkerComponent<{
   disabled?: boolean
+  iconName?: NativeMenuBarState["iconName"]
   onAction?: () => void | Promise<void>
   subtitle?: string
   title: string
@@ -59,6 +60,7 @@ function collectMenuBarSections(children: ReactNode): {
 
     const props = node.props as {
       disabled?: boolean
+      iconName?: NativeMenuBarState["iconName"]
       onAction?: () => void | Promise<void>
       subtitle?: string
       title: string
@@ -78,6 +80,7 @@ function collectMenuBarSections(children: ReactNode): {
 
     return {
       disabled: props.disabled,
+      iconName: props.iconName,
       id,
       subtitle: props.subtitle,
       title: props.title
@@ -125,11 +128,12 @@ function collectMenuBarSections(children: ReactNode): {
 
 function MenuBarRoot(props: {
   children?: ReactNode
+  iconName?: NativeMenuBarState["iconName"]
   isLoading?: boolean
   title?: string
   tooltip?: string
 }): null {
-  const { children, isLoading = false, title, tooltip } = props
+  const { children, iconName, isLoading = false, title, tooltip } = props
   const host = useNativeExtensionHost()
   const commandKey = `${host.extensionName}:${host.commandName}`
   const descriptor = useMemo(() => collectMenuBarSections(children), [children])
@@ -137,6 +141,7 @@ function MenuBarRoot(props: {
   useEffect(() => {
     void window.api.nativeMenuBar.setState({
       commandKey,
+      iconName,
       isLoading,
       sections: descriptor.stateSections,
       title,
@@ -146,7 +151,7 @@ function MenuBarRoot(props: {
     return () => {
       void window.api.nativeMenuBar.clearState(commandKey)
     }
-  }, [commandKey, descriptor.stateSections, isLoading, title, tooltip])
+  }, [commandKey, descriptor.stateSections, iconName, isLoading, title, tooltip])
 
   useEffect(() => {
     return window.api.nativeMenuBar.onItemSelected((event) => {
