@@ -35,14 +35,14 @@ version: "1.0.0"
 .agents/skills/launcher-extension-guardrails/scripts/
 ```
 
-`package.json` 里的 `npm run` 只是这批 skill 脚本的便捷入口。
+`package.json` 只暴露两个入口：`npm run doctor` 和 `npm run check:guardrails`。具体子检查留在本目录的脚本里，避免把内部 guardrail 细节摊到项目脚本表。
 
 ### 1. 先看现状
 
 先跑：
 
 ```bash
-npm run doctor:architecture
+npm run doctor
 ```
 
 这会给你两类提醒：
@@ -67,19 +67,18 @@ npm run check:guardrails
 npm run typecheck
 ```
 
-如果只动了 extension contract 或 registry，至少跑：
-
-```bash
-npm run check:extension-contract
-npm run check:extension-registry
-```
-
 ## 各脚本职责
 
-- `npm run check:architecture`
+- `npm run doctor`
+  运行架构诊断。当前包含 route language 和 secrets boundary 两类提示，默认告警不阻断。
+
+- `npm run check:guardrails`
+  运行所有阻断型 guardrail 检查。
+
+- `check-architecture-imports.mjs`
   检查 import 边界，尤其是 `shared`、`extensions`、`src/extensions/api.ts`
 
-- `npm run check:extension-contract`
+- `check-extension-contract.mjs`
   检查每个 extension 是否满足最小结构：
   - `manifest.ts`
   - `index.ts`
@@ -87,22 +86,25 @@ npm run check:extension-registry
   - `view` command 有 `.meta.ts`
   - rpc/service 声明对齐
 
-- `npm run check:extension-registry`
+- `check-extension-registry.mjs`
   检查跨 extension 的唯一性和 registry 基本一致性：
   - extension id
   - extension title
   - default command
 
-- `npm run check:no-glob-sprawl`
+- `check-runtime-backed-renderer-imports.mjs`
+  禁止 renderer import 已标记为 runtime-backed 的 extension command module
+
+- `check-no-glob-sprawl.mjs`
   禁止新的 `import.meta.glob` 到处长
 
-- `npm run check:no-legacy-plugin-coupling`
+- `check-no-legacy-plugin-coupling.mjs`
   禁止 extension 新代码直接依赖旧 `LauncherPlugin*` / `built-plugins` 骨架
 
-- `npm run doctor:route-language`
+- `doctor-route-language.mjs`
   统计 `internal-plugin / pluginId / LauncherPlugin` 这类旧语言还剩多少
 
-- `npm run doctor:secrets-boundary`
+- `doctor-secrets-boundary.mjs`
   统计 `password` preferences，并提示当前是否仍像普通 settings 一样存储
 
 ## 输出方式

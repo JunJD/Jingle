@@ -8,6 +8,7 @@
     "src/extensions/*/main.ts",
     "src/extensions/*/manifest.ts",
     "src/extensions/*/src/contracts.ts",
+    "src/extension-runtime/**/*",
     "src/main/**/*",
     "src/plugins/**/*",
     "src/preload/**/*",
