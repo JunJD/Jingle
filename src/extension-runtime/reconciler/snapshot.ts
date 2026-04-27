@@ -1,6 +1,7 @@
 import type {
   ExtensionActionNode,
   ExtensionActionStyle,
+  ExtensionHostResponse,
   ExtensionListDropdownItemNode,
   ExtensionListDropdownNode,
   ExtensionListDropdownSectionNode,
@@ -11,7 +12,7 @@ import type {
   ExtensionSurfaceSnapshot,
   ExtensionVisualNode
 } from "../../shared/extension-runtime-protocol"
-import { ExtensionHostElement } from "../sdk/host-elements"
+import { ExtensionHostActionKind, ExtensionHostElement } from "../sdk/host-elements"
 import type {
   RuntimeActionHandler,
   RuntimeHostChild,
@@ -208,15 +209,30 @@ function collectActionNodes(
 ): ExtensionActionNode[] {
   if (node.type === ExtensionHostElement.Action) {
     const title = readStringProp(node.props, "title")
-    const onAction = node.props.onAction
-    if (!title || typeof onAction !== "function") {
+    if (!title) {
       return []
     }
 
+    const actionKind = readStringProp(node.props, "actionKind")
+    let handler: RuntimeActionHandler["handler"]
+    if (actionKind === ExtensionHostActionKind.OpenInBrowser) {
+      const url = readStringProp(node.props, "url")
+      if (!url) {
+        return []
+      }
+
+      handler = () => requestOpenExternal(container, url)
+    } else {
+      const onAction = node.props.onAction
+      if (typeof onAction !== "function") {
+        return []
+      }
+
+      handler = onAction as RuntimeActionHandler["handler"]
+    }
+
     const id = params.nextActionId()
-    container.actionHandlers.set(id, {
-      handler: onAction as RuntimeActionHandler["handler"]
-    })
+    container.actionHandlers.set(id, { handler })
 
     return [
       {
@@ -242,6 +258,24 @@ function collectActionNodes(
       sectionTitle: nextSectionTitle
     })
   )
+}
+
+async function requestOpenExternal(container: RuntimeHostContainer, url: string): Promise<void> {
+  if (!container.requestHost) {
+    throw new Error("Extension runtime host request handler is not configured.")
+  }
+
+  const response: ExtensionHostResponse = await container.requestHost({
+    capability: "shell",
+    id: container.nextHostRequestId(),
+    method: "open-external",
+    payload: {
+      url
+    }
+  })
+  if (!response.ok) {
+    throw new Error(response.error.message)
+  }
 }
 
 function createSnapshotBuildState(): SnapshotBuildState {

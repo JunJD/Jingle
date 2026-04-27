@@ -15,6 +15,7 @@ import {
   type RuntimeHostContainer,
   type RuntimeHostElementNode,
   type RuntimeHostProps,
+  type RuntimeHostRequestHandler,
   type RuntimeHostTextNode,
   type RuntimeSnapshotContext
 } from "./host-tree"
@@ -197,12 +198,14 @@ export interface ExtensionRuntimeRenderer {
 export function createExtensionRuntimeRenderer(
   context: RuntimeSnapshotContext,
   params: {
+    onHostRequest?: RuntimeHostRequestHandler
     onSnapshot?: (snapshot: ReturnType<typeof createSurfaceSnapshot>) => void
   } = {}
 ): ExtensionRuntimeRenderer {
   let snapshotQueued = false
   const container = createHostContainer({
     context,
+    requestHost: params.onHostRequest,
     onCommit: () => {
       if (snapshotQueued) {
         return

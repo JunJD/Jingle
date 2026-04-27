@@ -3,13 +3,21 @@ import test from "node:test"
 import { createElement, useState } from "react"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
 import { Action, ActionPanel, List } from "../../src/extension-runtime/sdk"
-import type { ExtensionListSurfaceSnapshot } from "../../src/shared/extension-runtime-protocol"
+import type {
+  ExtensionHostRequest,
+  ExtensionListSurfaceSnapshot
+} from "../../src/shared/extension-runtime-protocol"
 
-function createTestRenderer() {
-  return createExtensionRuntimeRenderer({
-    commandName: "counter",
-    extensionName: "runtime-fixture"
-  })
+type TestRendererParams = Parameters<typeof createExtensionRuntimeRenderer>[1]
+
+function createTestRenderer(params?: TestRendererParams) {
+  return createExtensionRuntimeRenderer(
+    {
+      commandName: "counter",
+      extensionName: "runtime-fixture"
+    },
+    params
+  )
 }
 
 function assertListSnapshot(
@@ -161,6 +169,66 @@ test("runtime reconciler keeps action ids unique across list and item actions", 
   assert.equal(new Set(actionIds).size, actionIds.length)
 })
 
+test("runtime reconciler dispatches OpenInBrowser actions through host requests", async () => {
+  const hostRequests: ExtensionHostRequest[] = []
+  const renderer = createTestRenderer({
+    onHostRequest: (request) => {
+      hostRequests.push(request)
+      return {
+        id: request.id,
+        ok: true,
+        result: null
+      }
+    }
+  })
+
+  renderer.render(
+    createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.OpenInBrowser, {
+            title: "Open Link in Browser",
+            url: "https://example.com/item"
+          })
+        ),
+        id: "item",
+        title: "Item"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const action = snapshot.sections[0]?.items[0]?.actions[0]
+  assert.ok(action)
+  assert.equal(action.title, "Open Link in Browser")
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  assert.deepEqual(hostRequests, [
+    {
+      capability: "shell",
+      id: "host-request-0",
+      method: "open-external",
+      payload: {
+        url: "https://example.com/item"
+      }
+    }
+  ])
+})
+
 test("runtime reconciler rejects stale action events from an old snapshot revision", async () => {
   let latestActionExecutions = 0
 
@@ -239,4 +307,98 @@ test("runtime reconciler rejects stale action events from an old snapshot revisi
     true
   )
   assert.equal(latestActionExecutions, 1)
+})
+
+test("runtime reconciler preserves keyed item order across reorder and removal", async () => {
+  function ReorderableList() {
+    const [reordered, setReordered] = useState(false)
+    const items = reordered
+      ? [
+          { id: "c", title: "Gamma" },
+          { id: "a", title: "Alpha" }
+        ]
+      : [
+          { id: "a", title: "Alpha" },
+          { id: "b", title: "Beta" },
+          { id: "c", title: "Gamma" }
+        ]
+
+    return createElement(
+      List,
+      {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: () => setReordered(true),
+            title: "Reorder"
+          })
+        )
+      },
+      items.map((item) =>
+        createElement(List.Item, {
+          id: item.id,
+          key: item.id,
+          title: item.title
+        })
+      )
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(createElement(ReorderableList))
+  await renderer.flushSnapshots()
+
+  const firstSnapshot = renderer.getSnapshot()
+  assertListSnapshot(firstSnapshot)
+  assert.deepEqual(
+    firstSnapshot.sections[0]?.items.map((item) => item.id),
+    ["a", "b", "c"]
+  )
+  const actionId = firstSnapshot.actions[0]?.id
+  assert.ok(actionId)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId,
+      revision: firstSnapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  const nextSnapshot = renderer.getSnapshot()
+  assertListSnapshot(nextSnapshot)
+  assert.deepEqual(
+    nextSnapshot.sections[0]?.items.map((item) => item.id),
+    ["c", "a"]
+  )
+  assert.deepEqual(
+    nextSnapshot.sections[0]?.items.map((item) => item.title),
+    ["Gamma", "Alpha"]
+  )
+})
+
+test("runtime reconciler clears the host container when the root unmounts", async () => {
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        id: "item",
+        title: "Item"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+  assertListSnapshot(renderer.getSnapshot())
+
+  renderer.render(null)
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assert.ok(snapshot)
+  assert.equal(snapshot.kind, "error")
+  assert.equal(snapshot.title, "No renderable surface")
 })

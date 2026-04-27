@@ -1,4 +1,8 @@
-import type { ExtensionSurfaceSnapshot } from "../../shared/extension-runtime-protocol"
+import type {
+  ExtensionHostRequest,
+  ExtensionHostResponse,
+  ExtensionSurfaceSnapshot
+} from "../../shared/extension-runtime-protocol"
 import type { ExtensionHostElementType } from "../sdk/host-elements"
 
 export type RuntimeHostProps = Record<string, unknown>
@@ -21,6 +25,10 @@ export interface RuntimeActionHandler {
   handler: () => Promise<void> | void
 }
 
+export type RuntimeHostRequestHandler = (
+  request: ExtensionHostRequest
+) => Promise<ExtensionHostResponse> | ExtensionHostResponse
+
 export interface RuntimeSnapshotContext {
   commandName: string
   extensionName: string
@@ -31,7 +39,9 @@ export interface RuntimeHostContainer {
   children: RuntimeHostChild[]
   context: RuntimeSnapshotContext
   latestSnapshot: ExtensionSurfaceSnapshot | null
+  nextHostRequestId: () => string
   onCommit: () => void
+  requestHost: RuntimeHostRequestHandler | null
   revision: number
   snapshots: ExtensionSurfaceSnapshot[]
 }
@@ -39,13 +49,17 @@ export interface RuntimeHostContainer {
 export function createHostContainer(params: {
   context: RuntimeSnapshotContext
   onCommit: () => void
+  requestHost?: RuntimeHostRequestHandler
 }): RuntimeHostContainer {
+  let hostRequestIndex = 0
   return {
     actionHandlers: new Map(),
     children: [],
     context: params.context,
     latestSnapshot: null,
+    nextHostRequestId: () => `host-request-${hostRequestIndex++}`,
     onCommit: params.onCommit,
+    requestHost: params.requestHost ?? null,
     revision: 0,
     snapshots: []
   }

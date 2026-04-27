@@ -28,3 +28,10 @@ export const ExtensionHostElement = {
 
 export type ExtensionHostElementType =
   (typeof ExtensionHostElement)[keyof typeof ExtensionHostElement]
+
+export const ExtensionHostActionKind = {
+  OpenInBrowser: "open-in-browser"
+} as const
+
+export type ExtensionHostActionKindType =
+  (typeof ExtensionHostActionKind)[keyof typeof ExtensionHostActionKind]

@@ -1,5 +1,5 @@
 import { createElement, type ReactElement, type ReactNode } from "react"
-import { ExtensionHostElement } from "./host-elements"
+import { ExtensionHostActionKind, ExtensionHostElement } from "./host-elements"
 
 export type RuntimeActionStyle = "destructive" | "regular"
 
@@ -63,6 +63,7 @@ function ActionRoot(props: RuntimeActionProps): ReactElement {
 function OpenInBrowserAction(props: RuntimeOpenInBrowserActionProps): ReactElement {
   const { title = "Open in Browser", ...hostProps } = props
   return createElement(ExtensionHostElement.Action, {
+    actionKind: ExtensionHostActionKind.OpenInBrowser,
     ...hostProps,
     title
   })
