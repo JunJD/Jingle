@@ -178,7 +178,7 @@ function renderTextBlock(
         key={key}
         className={cn(
           "whitespace-pre-wrap [overflow-wrap:anywhere]",
-          density === "compact" ? "text-[14px] leading-6" : "text-[15px] leading-7"
+          density === "compact" ? "text-[var(--ow-font-body)] leading-5" : "text-[15px] leading-7"
         )}
       >
         {text}
@@ -191,7 +191,7 @@ function renderTextBlock(
       key={key}
       className={cn(
         "min-w-0",
-        density === "compact" ? "text-[14px] leading-6" : "text-[15px] leading-7"
+        density === "compact" ? "text-[var(--ow-font-body)] leading-5" : "text-[15px] leading-7"
       )}
       isAnimating={isStreaming}
     >

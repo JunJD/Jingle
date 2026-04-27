@@ -412,7 +412,9 @@ function renderTodoRow(props: {
       key={item.id}
       accessories={
         item.pinned ? (
-          <span className="rounded-full bg-background px-2 py-1 text-[11px]">Pinned</span>
+          <span className="rounded-full bg-background px-2 py-0.5 text-[var(--ow-font-caption)]">
+            Pinned
+          </span>
         ) : null
       }
       actions={

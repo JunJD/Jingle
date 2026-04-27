@@ -393,9 +393,11 @@ function NativeListRows(props: {
         {indexedSections.map((section) => (
           <div key={section.id}>
             {section.title ? (
-              <div className="flex items-center justify-between gap-3 px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <div className="flex items-center justify-between gap-3 px-5 pb-1 pt-3 text-[var(--ow-font-caption)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                 <span>{section.title}</span>
-                {section.subtitle ? <span className="text-[10px]">{section.subtitle}</span> : null}
+                {section.subtitle ? (
+                  <span className="text-[10px] font-medium">{section.subtitle}</span>
+                ) : null}
               </div>
             ) : null}
             {section.indexedItems.map(({ index, item }) => {
@@ -412,7 +414,7 @@ function NativeListRows(props: {
                   onClick={() => onExecute(index)}
                   onMouseEnter={() => onSelect(index)}
                   className={cn(
-                    "grid h-12 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2.5 px-3 text-left transition",
+                    "mx-2 grid h-[var(--ow-row-h-md)] grid-cols-[minmax(0,1fr)_auto] items-center gap-2.5 rounded-[var(--ow-radius-md)] px-3 text-left transition",
                     isSelected ? "bg-background-secondary" : "hover:bg-background-secondary/60"
                   )}
                 >
@@ -424,11 +426,11 @@ function NativeListRows(props: {
                         </div>
                       ) : null}
                       <div className="min-w-0">
-                        <div className="truncate text-[14px] font-medium text-foreground">
+                        <div className="truncate text-[var(--ow-font-body)] font-medium text-foreground">
                           {item.title}
                         </div>
                         {item.subtitle ? (
-                          <div className="truncate text-[12px] text-muted-foreground">
+                          <div className="truncate text-[var(--ow-font-meta)] text-muted-foreground">
                             {item.subtitle}
                           </div>
                         ) : null}
@@ -438,7 +440,7 @@ function NativeListRows(props: {
 
                   <div className="flex items-center gap-3">
                     {item.accessories ? (
-                      <div className="shrink-0 text-[12px] text-muted-foreground">
+                      <div className="shrink-0 text-[var(--ow-font-meta)] text-muted-foreground">
                         {item.accessories}
                       </div>
                     ) : null}
@@ -448,12 +450,12 @@ function NativeListRows(props: {
                           event.stopPropagation()
                           onOpenActions(index)
                         }}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition hover:text-foreground"
+                        className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition hover:text-foreground"
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </div>
                     ) : item.actions[0] ? (
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <div className="flex items-center gap-2 text-[var(--ow-font-caption)] text-muted-foreground">
                         <span>{item.actions[0].title}</span>
                         <ChevronRight className="h-3.5 w-3.5" />
                       </div>
@@ -483,7 +485,7 @@ function NativeListDropdown(props: {
 
   return (
     <NativeExtensionSelect
-      className="h-9 max-w-[220px] appearance-none rounded-full border border-border/80 bg-background pl-3 pr-10 text-[12px] font-medium text-foreground outline-none transition focus:border-[var(--ring)]"
+      className="h-8 max-w-[220px] appearance-none rounded-[var(--ow-radius-md)] border border-border/80 bg-background pl-3 pr-9 text-[var(--ow-font-meta)] font-medium text-foreground outline-none transition focus:border-[var(--ring)]"
       value={selectedValue}
       onChange={(value) => {
         descriptor.onChange?.(value)
@@ -655,20 +657,20 @@ function ListRoot(props: {
             selectedIndex={selectedIndex}
           />
         ) : (
-          <div className="flex flex-1 items-center justify-center px-8">
+          <div className="flex flex-1 items-center justify-center px-6">
             {isLoading ? (
-              <div className="flex items-center gap-3 text-[13px] text-muted-foreground">
+              <div className="flex items-center gap-2 text-[var(--ow-font-body)] text-muted-foreground">
                 <LoaderCircle className="h-4 w-4 animate-spin" />
                 <span>Loading...</span>
               </div>
             ) : emptyView ? (
-              <div className="max-w-[420px] space-y-4 text-center">
+              <div className="max-w-[380px] space-y-3 text-center">
                 <div className="space-y-1">
-                  <div className="text-[15px] font-semibold text-foreground">
+                  <div className="text-[var(--ow-font-title)] font-semibold text-foreground">
                     {emptyView.title ?? "No items"}
                   </div>
                   {emptyView.description ? (
-                    <div className="text-[13px] leading-6 text-muted-foreground">
+                    <div className="text-[var(--ow-font-body)] leading-5 text-muted-foreground">
                       {emptyView.description}
                     </div>
                   ) : null}
@@ -678,7 +680,7 @@ function ListRoot(props: {
                     type="button"
                     onClick={surfaceController.actionController.executePrimaryAction}
                     onMouseDown={(event) => event.preventDefault()}
-                    className="inline-flex items-center gap-2 rounded-[10px] border border-border bg-background px-3 py-2 text-[13px] font-medium text-foreground transition hover:bg-background-secondary"
+                    className="inline-flex h-8 items-center gap-2 rounded-[var(--ow-radius-md)] border border-border bg-background px-3 text-[var(--ow-font-control)] font-medium text-foreground transition hover:bg-background-secondary"
                   >
                     <span>{surfaceController.actionController.primaryAction?.title ?? "Open"}</span>
                     <ChevronRight className="h-3.5 w-3.5" />
@@ -686,7 +688,7 @@ function ListRoot(props: {
                 ) : null}
               </div>
             ) : (
-              <div className="text-[13px] text-muted-foreground">No items</div>
+              <div className="text-[var(--ow-font-body)] text-muted-foreground">No items</div>
             )}
           </div>
         )}

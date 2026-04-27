@@ -224,7 +224,7 @@ export function CreateReminderForm(props: CreateReminderFormProps): React.JSX.El
       navigationTitle="Create Reminder"
     >
       {submitError ? (
-        <div className="rounded-[12px] border border-destructive/30 bg-destructive/8 px-3 py-3 text-sm text-destructive">
+        <div className="rounded-[var(--ow-radius-sm)] border border-destructive/30 bg-destructive/8 px-2.5 py-1.5 text-[12px] text-destructive">
           {submitError}
         </div>
       ) : null}

@@ -23,8 +23,12 @@ export function LauncherAiEmptyState(props: { error?: string | null }): React.JS
           <div className="mt-6 flex w-full items-start gap-3 bg-destructive/8 px-4 py-3 text-left">
             <AlertCircle className="mt-0.5 size-5 shrink-0 text-destructive" />
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-destructive">{copy.chat.agentError}</div>
-              <div className="mt-1 break-words text-sm text-muted-foreground">{error}</div>
+              <div className="text-[var(--ow-font-body)] font-medium text-destructive">
+                {copy.chat.agentError}
+              </div>
+              <div className="mt-1 break-words text-[var(--ow-font-body)] text-muted-foreground">
+                {error}
+              </div>
             </div>
           </div>
         ) : null}
@@ -95,7 +99,7 @@ export function LauncherAiConversation(props: {
         className="h-full overflow-x-hidden overflow-y-scroll overscroll-contain scrollbar-hide"
       >
         <div ref={contentRef} className="overflow-x-hidden px-4 py-3 sm:px-5">
-          <div className="mx-auto flex w-full min-w-0 max-w-[860px] flex-col gap-5">
+          <div className="mx-auto flex w-full min-w-0 max-w-[840px] flex-col gap-4">
             <Messages
               density="compact"
               isLoading={isLoading}
@@ -111,7 +115,7 @@ export function LauncherAiConversation(props: {
 
             {isLoading && (
               <div className="space-y-3 border-t border-border/80 pt-4">
-                <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+                <div className="flex items-center gap-2 text-[var(--ow-font-body)] text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" />
                   {copy.chat.agentThinking}
                 </div>
@@ -123,8 +127,12 @@ export function LauncherAiConversation(props: {
               <div className="flex items-start gap-3 border-l-[3px] border-destructive bg-destructive/8 px-4 py-3">
                 <AlertCircle className="mt-0.5 size-5 shrink-0 text-destructive" />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-destructive">{copy.chat.agentError}</div>
-                  <div className="mt-1 break-words text-sm text-muted-foreground">{error}</div>
+                  <div className="text-[var(--ow-font-body)] font-medium text-destructive">
+                    {copy.chat.agentError}
+                  </div>
+                  <div className="mt-1 break-words text-[var(--ow-font-body)] text-muted-foreground">
+                    {error}
+                  </div>
                 </div>
                 <button
                   aria-label={copy.chat.dismissError}

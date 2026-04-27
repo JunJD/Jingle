@@ -123,41 +123,45 @@ function DetailRoot(props: {
       >
         <ScrollArea className="flex-1">
           {isLoading ? (
-            <div className="flex h-full items-center justify-center gap-3 text-[13px] text-muted-foreground">
+            <div className="flex h-full items-center justify-center gap-2 text-[var(--ow-font-body)] text-muted-foreground">
               <LoaderCircle className="h-4 w-4 animate-spin" />
               <span>Loading...</span>
             </div>
           ) : (
             <div
               className={cn(
-                "grid h-full min-h-full gap-6 px-6 py-5",
+                "grid h-full min-h-full gap-4 px-5 py-4",
                 metadataEntries.length > 0 ? "grid-cols-[minmax(0,1fr)_280px]" : "grid-cols-1"
               )}
             >
               <div className="min-w-0">
                 {markdown ? (
-                  <div className="native-detail-markdown text-[14px] leading-7 text-foreground">
+                  <div className="native-detail-markdown text-[var(--ow-font-body)] leading-6 text-foreground">
                     <Streamdown parseIncompleteMarkdown={false} plugins={streamdownPlugins}>
                       {markdown}
                     </Streamdown>
                   </div>
                 ) : (
-                  <div className="text-[13px] text-muted-foreground">No details available.</div>
+                  <div className="text-[var(--ow-font-body)] text-muted-foreground">
+                    No details available.
+                  </div>
                 )}
               </div>
 
               {metadataEntries.length > 0 ? (
-                <div className="space-y-3 rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-elevated/70 p-4">
-                  <div className="text-[12px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                <div className="space-y-3 rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-elevated/70 p-3">
+                  <div className="text-[var(--ow-font-meta)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                     Metadata
                   </div>
                   <div className="space-y-3">
                     {metadataEntries.map((entry) => (
                       <div key={`${entry.title}:${entry.text}`} className="space-y-1">
-                        <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+                        <div className="text-[var(--ow-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
                           {entry.title}
                         </div>
-                        <div className="break-words text-[13px] text-foreground">{entry.text}</div>
+                        <div className="break-words text-[var(--ow-font-body)] text-foreground">
+                          {entry.text}
+                        </div>
                       </div>
                     ))}
                   </div>

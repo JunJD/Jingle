@@ -71,7 +71,7 @@ export function LauncherActionOverlay(props: {
           {groupedActions.map((group, groupIndex) => (
             <Fragment key={`launcher-action-group-${groupIndex}`}>
               {group.title ? (
-                <div className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                <div className="px-4 pb-1 pt-2 text-[var(--ow-font-caption)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                   {group.title}
                 </div>
               ) : null}
@@ -87,7 +87,7 @@ export function LauncherActionOverlay(props: {
                       void Promise.resolve(action.onAction()).finally(onClose)
                     }}
                     className={cn(
-                      "flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-[13px] transition",
+                      "mx-2 flex h-9 w-[calc(100%-1rem)] items-center justify-between gap-3 rounded-[var(--ow-radius-md)] px-3 text-left text-[var(--ow-font-body)] transition",
                       isSelected ? "bg-background-secondary" : "hover:bg-background-secondary/70",
                       action.style === "destructive" ? "text-red-500" : "text-foreground"
                     )}

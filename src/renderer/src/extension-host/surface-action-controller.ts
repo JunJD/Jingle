@@ -33,7 +33,8 @@ function createFooterLeading(params: {
     createElement(
       "div",
       {
-        className: "truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground"
+        className:
+          "truncate text-[var(--ow-font-meta)] uppercase tracking-[0.1em] text-muted-foreground"
       },
       footerLabel
     ),
@@ -41,7 +42,7 @@ function createFooterLeading(params: {
       ? createElement(
           "div",
           {
-            className: "shrink-0 text-[12px] text-muted-foreground"
+            className: "shrink-0 text-[var(--ow-font-meta)] text-muted-foreground"
           },
           footerCount
         )
