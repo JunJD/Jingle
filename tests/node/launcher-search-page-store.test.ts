@@ -270,6 +270,7 @@ test("local idle and history updates stay pure and synchronous", () => {
   store.getState().applyIdleState({
     historyItems,
     idleItems: [createIdleItem("recent-file")],
+    useWithDisabledCommandKeys: ["files:open"],
     windowMode: "compact"
   })
   store.getState().setHistoryItemPinnedLocal("older", true, "2026-01-03T00:00:00.000Z")
@@ -277,6 +278,7 @@ test("local idle and history updates stay pure and synchronous", () => {
   store.getState().requestHomeInputSelection()
 
   assert.equal(store.getState().windowMode, "compact")
+  assert.deepEqual(store.getState().useWithDisabledCommandKeys, ["files:open"])
   assert.deepEqual(
     store.getState().idleItems.map((item) => item.id),
     ["recent-file"]

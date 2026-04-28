@@ -103,6 +103,13 @@ export interface AppCopy {
     openAiHistory: string
     openApp: string
     commandMatches: string
+    manageUseWithCommands: string
+    useWithAvailable: string
+    useWithDisableCommand: string
+    useWithDisabledSubtitle: string
+    useWithEnableCommand: string
+    useWithEnabled: string
+    useWithManagerTitle: string
     openGeneric: string
     openResult: string
     pinHistoryItem: string
@@ -129,6 +136,7 @@ export interface AppCopy {
     useSuggestedQueryAction: string
     useSuggestedQuerySubtitle: string
     useSuggestedQueryTitle: (query: string) => string
+    useWithSectionTitle: (query: string) => string
   }
   modelSwitcher: {
     apiKeyRequired: (providerName: string) => string
@@ -292,6 +300,13 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openAiHistory: "打开 AI 页面",
       openApp: "打开应用",
       commandMatches: "命令",
+      manageUseWithCommands: "管理 Use With 命令",
+      useWithAvailable: "可用",
+      useWithDisableCommand: "停用",
+      useWithDisabledSubtitle: "不会出现在 Use With 分组中",
+      useWithEnableCommand: "启用",
+      useWithEnabled: "已启用",
+      useWithManagerTitle: "Use With 命令",
       openGeneric: "打开",
       openResult: "打开结果",
       pinHistoryItem: "固定到搜索面板",
@@ -317,7 +332,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       unpinHistoryItem: "取消固定",
       useSuggestedQueryAction: "填充",
       useSuggestedQuerySubtitle: "只填充输入框",
-      useSuggestedQueryTitle: (query) => `补全为“${query}”`
+      useSuggestedQueryTitle: (query) => `补全为“${query}”`,
+      useWithSectionTitle: (query) => `使用“${query}”打开...`
     },
     modelSwitcher: {
       apiKeyRequired: (providerName) => `${providerName} 需要 API Key`,
@@ -494,6 +510,13 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openAiHistory: "Open AI",
       openApp: "Open App",
       commandMatches: "Commands",
+      manageUseWithCommands: "Manage Fallback Commands",
+      useWithAvailable: "Available",
+      useWithDisableCommand: "Disable",
+      useWithDisabledSubtitle: "Hidden from the Use With section",
+      useWithEnableCommand: "Enable",
+      useWithEnabled: "Enabled",
+      useWithManagerTitle: "Use With Commands",
       openGeneric: "Open",
       openResult: "Open Result",
       pinHistoryItem: "Pin to launcher",
@@ -519,7 +542,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       unpinHistoryItem: "Unpin",
       useSuggestedQueryAction: "Fill",
       useSuggestedQuerySubtitle: "Only fill the input",
-      useSuggestedQueryTitle: (query) => `Complete as “${query}”`
+      useSuggestedQueryTitle: (query) => `Complete as “${query}”`,
+      useWithSectionTitle: (query) => `Use “${query}” with...`
     },
     modelSwitcher: {
       apiKeyRequired: (providerName) => `API key required for ${providerName}`,

@@ -17,7 +17,8 @@ import {
   buildLauncherHistoryShellItems,
   buildLauncherInternalCommandShellItems,
   buildLauncherLocalStartShellItems,
-  buildLauncherSearchShellItems
+  buildLauncherSearchShellItems,
+  buildLauncherUseWithShellItems
 } from "./search-items"
 import type { LauncherShellItem } from "./types"
 
@@ -25,15 +26,20 @@ export type LauncherHomeSurfaceSectionKind =
   | "history-grid"
   | "idle-list"
   | "commands"
-  | "command-intents"
   | "suggestions"
   | "search-results"
+  | "use-with"
 
 export type LauncherHomeSurfaceBodyKind = "history-grid" | "result-list"
 
 export interface LauncherHomeSurfaceSection {
+  action?: {
+    title: string
+    type: "manage-use-with"
+  }
   items: LauncherShellItem[]
   kind: LauncherHomeSurfaceSectionKind
+  title?: string
 }
 
 export interface LauncherHomeSurfaceBody {
@@ -58,9 +64,9 @@ export interface LauncherHomeSurfaceModel {
 function hasLauncherHomeSurfaceSectionHeader(section: LauncherHomeSurfaceSection): boolean {
   return (
     section.kind === "commands" ||
-    section.kind === "command-intents" ||
     section.kind === "search-results" ||
-    section.kind === "suggestions"
+    section.kind === "suggestions" ||
+    section.kind === "use-with"
   )
 }
 
@@ -154,6 +160,7 @@ export function buildLauncherHomeSurfaceModel(params: {
   query: string
   searchResults: LauncherSearchResult[]
   searchResultsPreview?: boolean
+  useWithDisabledCommandKeys?: readonly string[]
   windowMode: "default" | "compact"
 }): LauncherHomeSurfaceModel {
   const {
@@ -164,6 +171,7 @@ export function buildLauncherHomeSurfaceModel(params: {
     query,
     searchResults,
     searchResultsPreview = false,
+    useWithDisabledCommandKeys = [],
     windowMode
   } = params
   const trimmedQuery = query.trim()
@@ -201,29 +209,52 @@ export function buildLauncherHomeSurfaceModel(params: {
   }
 
   const sections: LauncherHomeSurfaceSection[] = []
-  const internalCommandItems = buildLauncherInternalCommandShellItems(
+  const launcherCommands = listLauncherCommands()
+  const extensionCommands = launcherCommands.filter(
+    (command) => command.address.kind === "extension-command"
+  )
+  const builtInCommands = launcherCommands.filter(
+    (command) => command.address.kind === "built-in-command"
+  )
+  const internalCommandItems = buildLauncherInternalCommandShellItems(copy, builtInCommands, query)
+  const commandIntentItems = getLauncherCommandIntents({
     copy,
-    listLauncherCommands(),
+    locale,
     query
+  })
+  const builtInCommandIntentItems = buildLauncherCommandIntentShellItems(
+    commandIntentItems.filter((item) => item.address.kind === "built-in-command")
   )
-  const commandIntentItems = buildLauncherCommandIntentShellItems(
-    getLauncherCommandIntents({
-      copy,
-      locale,
-      query
-    })
-  )
+  const useWithItems = buildLauncherUseWithShellItems({
+    commands: extensionCommands,
+    copy,
+    disabledCommandKeys: useWithDisabledCommandKeys,
+    intentItems: commandIntentItems,
+    query: trimmedQuery
+  })
   const rankedSearchResults = rankSearchResultSectionItems(searchResults, historyItems)
   const suggestionItems = createSuggestionSectionItems(copy, trimmedQuery, rankedSearchResults)
   const searchResultItems = buildLauncherSearchShellItems(copy, rankedSearchResults, {
     preview: searchResultsPreview
   })
 
-  const resultItems = [...commandIntentItems, ...searchResultItems]
-  if (resultItems.length > 0) {
+  const primaryResultItems = [...builtInCommandIntentItems, ...searchResultItems]
+  if (primaryResultItems.length > 0) {
     sections.push({
-      items: resultItems,
+      items: primaryResultItems,
       kind: "search-results"
+    })
+  }
+
+  if (useWithItems.length > 0 || extensionCommands.length > 0) {
+    sections.push({
+      action: {
+        title: copy.launcher.manageUseWithCommands,
+        type: "manage-use-with"
+      },
+      items: useWithItems,
+      kind: "use-with",
+      title: copy.launcher.useWithSectionTitle(trimmedQuery)
     })
   }
 

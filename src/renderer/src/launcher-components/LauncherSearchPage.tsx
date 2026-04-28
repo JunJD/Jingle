@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type RefObject } from "react"
+import { useCallback, useMemo, useState, type RefObject } from "react"
 import { Loader2, Settings2 } from "lucide-react"
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
 import { useLauncherActionController } from "@/features/launcher-actions/controller"
@@ -9,11 +9,16 @@ import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/sh
 import type { LauncherShellConfig } from "@shared/launcher"
 import type { ClipboardContext } from "@shared/clipboard"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
-import type { LauncherHomeSurfaceModel } from "@launcher-shell/home-surface"
+import type {
+  LauncherHomeSurfaceModel,
+  LauncherHomeSurfaceSection
+} from "@launcher-shell/home-surface"
+import type { LauncherIndexedCommand } from "@launcher-shell/pages"
 import { ClipboardChip } from "./ClipboardChip"
 import { LauncherChrome } from "./LauncherChrome"
 import { LauncherHistoryGrid } from "./LauncherHistoryGrid"
 import { LauncherResultList } from "./LauncherResultList"
+import { LauncherUseWithManager } from "./LauncherUseWithManager"
 
 const HOME_SHORTCUT_SCOPES = ["launcher.home"] as const
 type LauncherHomeCommandId =
@@ -40,6 +45,11 @@ export function LauncherSearchPage(props: {
   selectedIndex: number
   shellConfig: LauncherShellConfig
   surface: LauncherHomeSurfaceModel
+  useWithManager: {
+    availableCommands: LauncherIndexedCommand[]
+    enabledCommands: LauncherIndexedCommand[]
+    setCommandEnabled: (command: LauncherIndexedCommand, enabled: boolean) => void
+  }
 }): React.JSX.Element {
   const { copy } = useI18n()
   const {
@@ -57,8 +67,10 @@ export function LauncherSearchPage(props: {
     resultsViewportHeight,
     selectedIndex,
     shellConfig,
-    surface
+    surface,
+    useWithManager
   } = props
+  const [showUseWithManager, setShowUseWithManager] = useState(false)
   useShortcutScopeLayer(HOME_SHORTCUT_SCOPES)
   const selectedItem = selectedIndex >= 0 ? surface.items[selectedIndex] : null
   const isInputShortcutTarget = useCallback(
@@ -114,9 +126,14 @@ export function LauncherSearchPage(props: {
       }
 
       event.preventDefault()
+      if (showUseWithManager) {
+        setShowUseWithManager(false)
+        return
+      }
+
       executeHomeCommand(LAUNCHER_COMMAND_IDS.searchExecuteSelection)
     },
-    [executeHomeCommand, isInputShortcutTarget]
+    [executeHomeCommand, isInputShortcutTarget, showUseWithManager]
   )
 
   useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.searchOpenAi, handleOpenAiShortcut)
@@ -135,16 +152,26 @@ export function LauncherSearchPage(props: {
   )
 
   const footerVisible = surface.chrome.footerVisible
-  const isSearchMode = inputValue.trim().length > 0
-  const primaryActionLabel = isSearchMode
-    ? selectedItem?.kind === "ai"
-      ? copy.launcher.aiPrimaryLabel
-      : copy.launcher.openGeneric
-    : copy.launcher.openAiHistory
-  const isPrimaryActionDisabled = isSearchMode
-    ? !selectedItem || selectedItem.availability === "planned"
-    : false
+  const hasQuery = inputValue.trim().length > 0
+  const isSearchMode = hasQuery && !showUseWithManager
+  const primaryActionLabel = showUseWithManager
+    ? copy.launcher.goHome
+    : isSearchMode
+      ? selectedItem?.kind === "ai"
+        ? copy.launcher.aiPrimaryLabel
+        : copy.launcher.openGeneric
+      : copy.launcher.openAiHistory
+  const isPrimaryActionDisabled = showUseWithManager
+    ? false
+    : isSearchMode
+      ? !selectedItem || selectedItem.availability === "planned"
+      : false
   const runPrimaryAction = useCallback((): void => {
+    if (showUseWithManager) {
+      setShowUseWithManager(false)
+      return
+    }
+
     if (!isSearchMode) {
       executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenMainHistory)
       return
@@ -161,7 +188,8 @@ export function LauncherSearchPage(props: {
     isPrimaryActionDisabled,
     isSearchMode,
     selectedIndex,
-    selectedItem
+    selectedItem,
+    showUseWithManager
   ])
   const primaryAction = useMemo<LauncherActionDescriptor | null>(() => {
     if (isPrimaryActionDisabled) {
@@ -175,7 +203,7 @@ export function LauncherSearchPage(props: {
     }
   }, [isPrimaryActionDisabled, primaryActionLabel, runPrimaryAction])
   const searchActions = useMemo<LauncherActionDescriptor[]>(() => {
-    if (!isSearchMode) {
+    if (!isSearchMode || showUseWithManager) {
       return []
     }
 
@@ -186,7 +214,7 @@ export function LauncherSearchPage(props: {
         title: copy.launcher.openAiHistory
       }
     ]
-  }, [copy.launcher.openAiHistory, executeHomeCommand, isSearchMode])
+  }, [copy.launcher.openAiHistory, executeHomeCommand, isSearchMode, showUseWithManager])
   const actionController = useLauncherActionController({
     actions: searchActions,
     primaryAction,
@@ -202,6 +230,24 @@ export function LauncherSearchPage(props: {
     <ClipboardChip context={previewClipboardContext} onClear={onClearClipboardContext} />
   ) : undefined
   const openSettingsLabel = copy.launcher.openSettings
+  const handleInputValueChange = useCallback(
+    (value: string): void => {
+      if (showUseWithManager) {
+        setShowUseWithManager(false)
+      }
+
+      onInputValueChange(value)
+    },
+    [onInputValueChange, showUseWithManager]
+  )
+  const handleSectionAction = useCallback(
+    (action: NonNullable<LauncherHomeSurfaceSection["action"]>): void => {
+      if (action.type === "manage-use-with") {
+        setShowUseWithManager(true)
+      }
+    },
+    []
+  )
 
   return (
     <div className="relative h-full">
@@ -212,7 +258,11 @@ export function LauncherSearchPage(props: {
           footerVisible ? (
             <>
               <div className="flex min-w-0 items-center gap-[var(--ow-gap-md)]">
-                {isSearchMode ? (
+                {showUseWithManager ? (
+                  <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
+                    <span>{copy.launcher.useWithManagerTitle}</span>
+                  </div>
+                ) : isSearchMode ? (
                   <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
                     {isSearchLoading ? (
                       <Loader2 className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)] animate-spin" />
@@ -291,13 +341,20 @@ export function LauncherSearchPage(props: {
         density="compact"
         inputValue={inputValue}
         onInputKeyDown={onInputKeyDown}
-        onInputValueChange={onInputValueChange}
+        onInputValueChange={handleInputValueChange}
         placeholders={placeholders}
         shellConfig={shellConfig}
         showHeaderDivider={surface.chrome.headerDividerVisible}
         surface="home"
       >
-        {showHistoryGrid ? (
+        {showUseWithManager ? (
+          <LauncherUseWithManager
+            availableCommands={useWithManager.availableCommands}
+            enabledCommands={useWithManager.enabledCommands}
+            height={resultsViewportHeight}
+            onSetCommandEnabled={useWithManager.setCommandEnabled}
+          />
+        ) : showHistoryGrid ? (
           <LauncherHistoryGrid
             height={resultsViewportHeight}
             items={surface.items}
@@ -310,6 +367,7 @@ export function LauncherSearchPage(props: {
           <LauncherResultList
             height={resultsViewportHeight}
             onExecute={executeItem}
+            onSectionAction={handleSectionAction}
             sections={surface.sections}
             selectedIndex={selectedIndex}
           />

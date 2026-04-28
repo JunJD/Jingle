@@ -1,10 +1,12 @@
 export type LauncherWindowMode = "default" | "compact"
 
 export interface LauncherSettings {
+  useWithDisabledCommandKeys: string[]
   windowMode: LauncherWindowMode
 }
 
 export const DEFAULT_LAUNCHER_SETTINGS: LauncherSettings = {
+  useWithDisabledCommandKeys: [],
   windowMode: "default"
 }
 
@@ -19,6 +21,9 @@ export function normalizeLauncherSettings(value: unknown): LauncherSettings {
 
   const partial = value as Partial<LauncherSettings>
   return {
+    useWithDisabledCommandKeys: Array.isArray(partial.useWithDisabledCommandKeys)
+      ? [...new Set(partial.useWithDisabledCommandKeys.filter((key) => typeof key === "string"))]
+      : [],
     windowMode: normalizeLauncherWindowMode(partial.windowMode)
   }
 }
