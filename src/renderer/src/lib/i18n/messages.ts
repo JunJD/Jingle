@@ -103,6 +103,13 @@ export interface AppCopy {
     openAiHistory: string
     openApp: string
     commandMatches: string
+    manageUseWithCommands: string
+    useWithAvailable: string
+    useWithDisableCommand: string
+    useWithDisabledSubtitle: string
+    useWithEnableCommand: string
+    useWithEnabled: string
+    useWithManagerTitle: string
     openGeneric: string
     openResult: string
     pinHistoryItem: string
@@ -293,6 +300,13 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openAiHistory: "打开 AI 页面",
       openApp: "打开应用",
       commandMatches: "命令",
+      manageUseWithCommands: "管理 Use With 命令",
+      useWithAvailable: "可用",
+      useWithDisableCommand: "停用",
+      useWithDisabledSubtitle: "不会出现在 Use With 分组中",
+      useWithEnableCommand: "启用",
+      useWithEnabled: "已启用",
+      useWithManagerTitle: "Use With 命令",
       openGeneric: "打开",
       openResult: "打开结果",
       pinHistoryItem: "固定到搜索面板",
@@ -496,6 +510,13 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openAiHistory: "Open AI",
       openApp: "Open App",
       commandMatches: "Commands",
+      manageUseWithCommands: "Manage Fallback Commands",
+      useWithAvailable: "Available",
+      useWithDisableCommand: "Disable",
+      useWithDisabledSubtitle: "Hidden from the Use With section",
+      useWithEnableCommand: "Enable",
+      useWithEnabled: "Enabled",
+      useWithManagerTitle: "Use With Commands",
       openGeneric: "Open",
       openResult: "Open Result",
       pinHistoryItem: "Pin to launcher",

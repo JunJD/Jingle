@@ -1,4 +1,5 @@
 import { useRef } from "react"
+import { Settings2 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useI18n } from "@/lib/i18n"
 import { cn, truncateMiddle } from "@/lib/utils"
@@ -6,9 +7,7 @@ import {
   getLauncherResultToneStyle,
   renderLauncherResultIcon
 } from "@launcher-shell/result-presentation"
-import type {
-  LauncherHomeSurfaceSection
-} from "@launcher-shell/home-surface"
+import type { LauncherHomeSurfaceSection } from "@launcher-shell/home-surface"
 import type { LauncherShellItem } from "@launcher-shell/types"
 import { useSelectedRowScrollIntoView } from "./useSelectedRowScrollIntoView"
 
@@ -70,11 +69,12 @@ function getResultTrailingLabel(
 export function LauncherResultList(props: {
   height: number
   onExecute: (index: number) => void
+  onSectionAction?: (action: NonNullable<LauncherHomeSurfaceSection["action"]>) => void
   sections: LauncherHomeSurfaceSection[]
   selectedIndex: number
 }): React.JSX.Element | null {
   const { copy } = useI18n()
-  const { height, onExecute, sections, selectedIndex } = props
+  const { height, onExecute, onSectionAction, sections, selectedIndex } = props
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
   const items = sections.flatMap((section) => section.items)
@@ -98,6 +98,7 @@ export function LauncherResultList(props: {
 
     return [
       {
+        action: section.action,
         key: `header:${section.kind}`,
         kind: "header" as const,
         label: getSectionLabel(section, copy)
@@ -121,12 +122,26 @@ export function LauncherResultList(props: {
             ) : null
           }
 
+          const sectionAction = row.action
+
           return (
             <div
               key={row.key}
-              className="flex h-6 items-center px-6 text-[11px] font-semibold text-muted-foreground"
+              className="flex h-6 items-center justify-between px-6 text-[11px] font-semibold text-muted-foreground"
             >
-              {row.label}
+              <span>{row.label}</span>
+              {sectionAction ? (
+                <button
+                  type="button"
+                  className="launcher-action-link flex h-5 w-5 appearance-none items-center justify-center rounded-[6px] border-0 text-muted-foreground transition hover:text-foreground"
+                  title={sectionAction.title}
+                  aria-label={sectionAction.title}
+                  onClick={() => onSectionAction?.(sectionAction)}
+                  onMouseDown={(event) => event.preventDefault()}
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
             </div>
           )
         }

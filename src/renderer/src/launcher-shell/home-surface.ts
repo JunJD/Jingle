@@ -33,6 +33,10 @@ export type LauncherHomeSurfaceSectionKind =
 export type LauncherHomeSurfaceBodyKind = "history-grid" | "result-list"
 
 export interface LauncherHomeSurfaceSection {
+  action?: {
+    title: string
+    type: "manage-use-with"
+  }
   items: LauncherShellItem[]
   kind: LauncherHomeSurfaceSectionKind
   title?: string
@@ -156,6 +160,7 @@ export function buildLauncherHomeSurfaceModel(params: {
   query: string
   searchResults: LauncherSearchResult[]
   searchResultsPreview?: boolean
+  useWithDisabledCommandKeys?: readonly string[]
   windowMode: "default" | "compact"
 }): LauncherHomeSurfaceModel {
   const {
@@ -166,6 +171,7 @@ export function buildLauncherHomeSurfaceModel(params: {
     query,
     searchResults,
     searchResultsPreview = false,
+    useWithDisabledCommandKeys = [],
     windowMode
   } = params
   const trimmedQuery = query.trim()
@@ -222,6 +228,7 @@ export function buildLauncherHomeSurfaceModel(params: {
   const useWithItems = buildLauncherUseWithShellItems({
     commands: extensionCommands,
     copy,
+    disabledCommandKeys: useWithDisabledCommandKeys,
     intentItems: commandIntentItems,
     query: trimmedQuery
   })
@@ -239,8 +246,12 @@ export function buildLauncherHomeSurfaceModel(params: {
     })
   }
 
-  if (useWithItems.length > 0) {
+  if (useWithItems.length > 0 || extensionCommands.length > 0) {
     sections.push({
+      action: {
+        title: copy.launcher.manageUseWithCommands,
+        type: "manage-use-with"
+      },
       items: useWithItems,
       kind: "use-with",
       title: copy.launcher.useWithSectionTitle(trimmedQuery)

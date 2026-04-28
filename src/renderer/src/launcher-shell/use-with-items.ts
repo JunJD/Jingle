@@ -1,13 +1,8 @@
 import type { AppCopy } from "../lib/i18n/messages"
 import type { LauncherIndexedCommand } from "./pages"
-import type { LauncherCommandAddress, LauncherResolvedCommandIntent } from "./pages/types"
+import type { LauncherResolvedCommandIntent } from "./pages/types"
 import type { LauncherShellItem } from "./types"
-
-function getLauncherCommandAddressKey(address: LauncherCommandAddress): string {
-  return address.kind === "built-in-command"
-    ? `${address.builtInId}:${address.commandName}`
-    : `${address.extensionName}:${address.commandName}`
-}
+import { getLauncherCommandAddressKey, splitLauncherUseWithCommands } from "./use-with-preferences"
 
 export function buildLauncherCommandIntentShellItems(
   items: LauncherResolvedCommandIntent[]
@@ -71,16 +66,26 @@ export function buildLauncherUseWithCommandShellItems(
 export function buildLauncherUseWithShellItems(params: {
   commands: LauncherIndexedCommand[]
   copy: AppCopy
+  disabledCommandKeys?: readonly string[]
   intentItems: LauncherResolvedCommandIntent[]
   query: string
 }): LauncherShellItem[] {
+  const { enabledCommands } = splitLauncherUseWithCommands(
+    params.commands,
+    params.disabledCommandKeys ?? []
+  )
+  const enabledCommandKeys = new Set(
+    enabledCommands.map((command) => getLauncherCommandAddressKey(command.address))
+  )
   const extensionIntentItems = params.intentItems.filter(
-    (item) => item.address.kind === "extension-command"
+    (item) =>
+      item.address.kind === "extension-command" &&
+      enabledCommandKeys.has(getLauncherCommandAddressKey(item.address))
   )
   const intentCommandKeys = new Set(
     extensionIntentItems.map((item) => getLauncherCommandAddressKey(item.address))
   )
-  const fallbackCommands = params.commands.filter(
+  const fallbackCommands = enabledCommands.filter(
     (command) => !intentCommandKeys.has(getLauncherCommandAddressKey(command.address))
   )
 

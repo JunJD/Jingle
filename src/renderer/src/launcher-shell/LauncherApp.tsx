@@ -288,6 +288,7 @@ export default function LauncherApp(): React.JSX.Element {
                 selectedIndex={searchPage.selectedIndex}
                 shellConfig={searchPage.shellConfig}
                 surface={searchPage.surface}
+                useWithManager={searchPage.useWithManager}
               />
             )}
           </LauncherPageTransition>

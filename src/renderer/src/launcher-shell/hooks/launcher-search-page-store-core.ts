@@ -23,6 +23,7 @@ export interface LauncherSearchPageStoreState {
   applyIdleState: (input: {
     historyItems: LauncherHistoryItem[]
     idleItems: LocalStartItem[]
+    useWithDisabledCommandKeys: string[]
     windowMode: LauncherWindowMode
   }) => void
   applySearchResults: (
@@ -45,6 +46,8 @@ export interface LauncherSearchPageStoreState {
   setHistoryItemPinnedLocal: (itemId: string, pin: boolean, updatedAt: string) => void
   setQuery: (value: string) => void
   setSelectedItemId: (value: string | null) => void
+  setUseWithDisabledCommandKeysLocal: (commandKeys: string[]) => void
+  useWithDisabledCommandKeys: string[]
   windowMode: LauncherWindowMode
 }
 
@@ -60,6 +63,7 @@ interface LauncherSearchPageData {
   query: string
   searchState: LauncherSearchState | null
   selectedItemId: string | null
+  useWithDisabledCommandKeys: string[]
   windowMode: LauncherWindowMode
 }
 
@@ -70,6 +74,7 @@ const initialData: LauncherSearchPageData = {
   query: "",
   searchState: null,
   selectedItemId: null,
+  useWithDisabledCommandKeys: [],
   windowMode: "default"
 }
 
@@ -229,11 +234,13 @@ export function createLauncherSearchPageStore(): LauncherSearchPageStore {
     applyIdleState: (input: {
       historyItems: LauncherHistoryItem[]
       idleItems: LocalStartItem[]
+      useWithDisabledCommandKeys: string[]
       windowMode: LauncherWindowMode
     }): void => {
       setData({
         historyItems: input.historyItems,
         idleItems: input.idleItems,
+        useWithDisabledCommandKeys: input.useWithDisabledCommandKeys,
         windowMode: input.windowMode
       })
     },
@@ -295,6 +302,9 @@ export function createLauncherSearchPageStore(): LauncherSearchPageStore {
       setData((current) => ({
         historyItems: current.historyItems.filter((item) => item.id !== itemId)
       }))
+    },
+    setUseWithDisabledCommandKeysLocal: (commandKeys: string[]): void => {
+      setData({ useWithDisabledCommandKeys: commandKeys })
     }
   }
 
