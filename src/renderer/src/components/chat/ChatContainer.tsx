@@ -160,37 +160,39 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   }
 
   return (
-    <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+    <div className="chat-thread-surface flex min-h-0 flex-1 flex-col overflow-hidden">
       <ScrollArea className="flex-1 min-h-0" ref={scrollRef}>
-        <div className="px-8 py-7">
-          <div className="mx-auto max-w-4xl space-y-8">
+        <div className="px-[var(--ow-chat-thread-x)] py-[var(--ow-chat-thread-y)]">
+          <div className="mx-auto max-w-[var(--ow-chat-thread-max-width)] space-y-[var(--ow-chat-thread-gap)]">
             {displayMessages.length === 0 && !isLoading && (
-              <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
+              <div className="flex flex-col items-center justify-center py-[var(--ow-chat-empty-y)] text-muted-foreground">
                 <div className="mb-3 text-section-header">{copy.chat.newThreadEyebrow}</div>
                 {workspacePath ? (
                   <div className="text-center">
-                    <div className="text-[28px] font-semibold tracking-[-0.04em] text-foreground">
+                    <div className="[font-size:var(--ow-chat-hero-title)] font-semibold tracking-normal text-foreground">
                       {copy.chat.startConversation}
                     </div>
-                    <div className="mt-3 text-sm text-muted-foreground">
+                    <div className="mt-[var(--ow-space-3)] [font-size:var(--ow-font-body)] text-muted-foreground">
                       {copy.chat.describeOutcome}
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-3 text-center text-sm">
+                  <div className="space-y-[var(--ow-space-3)] text-center [font-size:var(--ow-font-body)]">
                     <div>
                       <span className="text-status-warning">{copy.chat.selectWorkspaceTitle}</span>
-                      <span className="block text-xs mt-1 opacity-75">
+                      <span className="mt-[var(--ow-space-1)] block [font-size:var(--ow-font-meta)] opacity-75">
                         {copy.chat.selectWorkspaceHint}
                       </span>
                     </div>
                     <button
                       type="button"
-                      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full bg-background-secondary px-3 text-xs text-status-warning transition-colors duration-100 hover:bg-background-interactive disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-[var(--ow-control-h-md)] items-center justify-center gap-[var(--ow-space-1-5)] rounded-full bg-background-secondary px-[var(--ow-space-3)] [font-size:var(--ow-font-meta)] text-status-warning transition-colors duration-100 hover:bg-background-interactive disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={handleSelectWorkspaceFromEmptyState}
                     >
-                      <Folder className="size-3.5" />
-                      <span className="max-w-[120px] truncate">{copy.chat.selectWorkspace}</span>
+                      <Folder className="size-[var(--ow-icon-sm)]" />
+                      <span className="max-w-[var(--ow-chip-label-max-width)] truncate">
+                        {copy.chat.selectWorkspace}
+                      </span>
                     </button>
                   </div>
                 )}
@@ -211,9 +213,9 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
 
             {/* Streaming indicator and inline TODOs */}
             {isBusy && (
-              <div className="space-y-4 border-t border-border pt-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" />
+              <div className="space-y-[var(--ow-space-4)] border-t border-border pt-[var(--ow-space-4)]">
+                <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] text-muted-foreground">
+                  <Loader2 className="size-[var(--ow-icon-action)] animate-spin" />
                   {copy.chat.agentThinking}
                 </div>
                 {todos.length > 0 && <ChatTodos todos={todos} />}
@@ -222,23 +224,25 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
 
             {/* Error state */}
             {visibleError && !isBusy && (
-              <div className="flex items-start gap-3 border-l-[3px] border-destructive bg-destructive/8 px-4 py-3">
-                <AlertCircle className="size-5 text-destructive shrink-0 mt-0.5" />
+              <div className="flex items-start gap-[var(--ow-gap-md)] border-l-[3px] border-destructive bg-destructive/8 px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
+                <AlertCircle className="size-[var(--ow-icon-md)] text-destructive shrink-0 mt-[var(--ow-leading-nudge)]" />
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-destructive text-sm">{copy.chat.agentError}</div>
-                  <div className="text-sm text-muted-foreground mt-1 break-words">
+                  <div className="[font-size:var(--ow-font-body)] font-medium text-destructive">
+                    {copy.chat.agentError}
+                  </div>
+                  <div className="mt-[var(--ow-space-1)] break-words [font-size:var(--ow-font-body)] text-muted-foreground">
                     {visibleError}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-2">
+                  <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-muted-foreground">
                     {copy.chat.agentErrorRecovery}
                   </div>
                 </div>
                 <button
                   onClick={handleDismissError}
-                  className="shrink-0 rounded p-1 hover:bg-destructive/20 transition-colors"
+                  className="shrink-0 rounded p-[var(--ow-space-1)] hover:bg-destructive/20 transition-colors"
                   aria-label={copy.chat.dismissError}
                 >
-                  <X className="size-4 text-muted-foreground" />
+                  <X className="size-[var(--ow-icon-action)] text-muted-foreground" />
                 </button>
               </div>
             )}
@@ -246,10 +250,10 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
         </div>
       </ScrollArea>
 
-      <div className="border-t border-border bg-background-elevated/60 px-8 py-5">
-        <form onSubmit={handleSubmit} className="mx-auto max-w-4xl">
-          <div className="flex flex-col gap-3">
-            <div className="flex items-end gap-3 rounded-[20px] bg-background-secondary px-4 py-4">
+      <div className="border-t border-border bg-background-elevated/60 px-[var(--ow-chat-thread-x)] py-[var(--ow-chat-footer-y)]">
+        <form onSubmit={handleSubmit} className="mx-auto max-w-[var(--ow-chat-thread-max-width)]">
+          <div className="flex flex-col gap-[var(--ow-gap-md)]">
+            <div className="flex items-end gap-[var(--ow-gap-md)] rounded-[var(--ow-chat-composer-radius)] bg-background-secondary px-[var(--ow-space-4)] py-[var(--ow-space-4)]">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -257,11 +261,11 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                 onKeyDown={handleKeyDown}
                 placeholder={copy.chat.messagePlaceholder}
                 disabled={isBusy}
-                className="flex-1 min-w-0 resize-none bg-transparent px-0 py-0 text-[15px] leading-7 text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
+                className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
                 rows={1}
-                style={{ minHeight: "48px", maxHeight: "200px" }}
+                style={{ minHeight: "var(--ow-chat-composer-input-min-h)", maxHeight: "200px" }}
               />
-              <div className="flex h-12 shrink-0 items-center justify-center">
+              <div className="flex h-[var(--ow-chat-composer-action-h)] shrink-0 items-center justify-center">
                 {isBusy ? (
                   <Button
                     type="button"
@@ -270,7 +274,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                     onClick={handleCancel}
                     className="rounded-full bg-background-elevated"
                   >
-                    <Square className="size-4" />
+                    <Square className="size-[var(--ow-icon-action)]" />
                   </Button>
                 ) : (
                   <Button
@@ -280,16 +284,16 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                     disabled={!invocation.canInvoke}
                     className="rounded-full"
                   >
-                    <Send className="size-4" />
+                    <Send className="size-[var(--ow-icon-action)]" />
                   </Button>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-[var(--ow-gap-lg)]">
+              <div className="flex items-center gap-[var(--ow-gap-sm)]">
                 <ModelSwitcher threadId={threadId} />
-                <div className="h-4 w-px bg-border" />
+                <div className="h-[var(--ow-control-divider-h)] w-px bg-border" />
                 <WorkspacePicker threadId={threadId} />
               </div>
               {tokenUsage && currentModel && (

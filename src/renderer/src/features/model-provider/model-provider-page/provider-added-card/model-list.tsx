@@ -15,7 +15,7 @@ export default function ModelList(props: ModelListProps): React.JSX.Element {
   const copy = getSettingsCopy(locale)
 
   return (
-    <div className="px-4 py-2">
+    <div className="px-[var(--ow-space-4)] py-[var(--ow-space-2)]">
       <div className="divide-y divide-border/70">
         {models.map((model) => {
           const isDefault = model.id === defaultModelId
@@ -24,17 +24,19 @@ export default function ModelList(props: ModelListProps): React.JSX.Element {
             <div
               key={model.id}
               className={cn(
-                "grid gap-2 py-2.5 md:grid-cols-[minmax(180px,0.9fr)_minmax(220px,1fr)_auto] md:items-center",
+                "grid gap-[var(--ow-gap-sm)] py-[var(--ow-space-2-5)] md:grid-cols-[minmax(180px,0.9fr)_minmax(220px,1fr)_auto] md:items-center",
                 isDefault && "bg-background-elevated/55"
               )}
             >
               <div className="min-w-0">
-                <div className="truncate text-[13px] font-medium text-foreground">{model.name}</div>
-                <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+                <div className="truncate [font-size:var(--ow-font-label)] font-medium text-foreground">
+                  {model.name}
+                </div>
+                <div className="mt-0.5 truncate font-mono [font-size:var(--ow-font-meta)] text-muted-foreground">
                   {model.model}
                 </div>
               </div>
-              <div className="min-w-0 text-[12px] leading-5 text-muted-foreground">
+              <div className="min-w-0 [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
                 <span className="line-clamp-2">{model.description}</span>
               </div>
               <div className="flex shrink-0 items-center gap-1 md:justify-end">

@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto"
 import Store from "electron-store"
-import type {
-  LauncherHistoryItem,
-  RecordLauncherHistoryItemInput
-} from "@shared/launcher-history"
-import { sortLauncherHistoryItems } from "@shared/launcher-history"
+import type { LauncherHistoryItem, RecordLauncherHistoryItemInput } from "@shared/launcher-history"
+import { createLauncherHistoryKey, sortLauncherHistoryItems } from "@shared/launcher-history"
 import { getOpenworkDir } from "../storage"
-import { getApplicationIconDataUrl } from "../services/launcher-search/providers/applications"
+import {
+  getApplicationDisplayName,
+  getApplicationIconDataUrl
+} from "../services/launcher-search/providers/applications"
 
 interface LauncherHistoryStoreShape {
   items: LauncherHistoryItem[]
@@ -125,7 +125,7 @@ export class LauncherHistoryRepository {
   }
 
   private async enrichItem(item: LauncherHistoryItem): Promise<LauncherHistoryItem> {
-    if (item.iconDataUrl || item.kind !== "application") {
+    if (item.kind !== "application") {
       return item
     }
 
@@ -138,14 +138,27 @@ export class LauncherHistoryRepository {
       return item
     }
 
-    const iconDataUrl = await getApplicationIconDataUrl(applicationPath)
-    if (!iconDataUrl) {
+    const shouldRefreshTitle =
+      item.historyKey ===
+      createLauncherHistoryKey({
+        path: applicationPath,
+        type: "application"
+      })
+    const [iconDataUrl, displayName] = await Promise.all([
+      item.iconDataUrl
+        ? Promise.resolve(item.iconDataUrl)
+        : getApplicationIconDataUrl(applicationPath),
+      shouldRefreshTitle ? getApplicationDisplayName(applicationPath) : Promise.resolve(undefined)
+    ])
+
+    if (iconDataUrl === item.iconDataUrl && (!displayName || displayName === item.title)) {
       return item
     }
 
     return {
       ...item,
-      iconDataUrl
+      ...(iconDataUrl ? { iconDataUrl } : {}),
+      ...(displayName ? { title: displayName } : {})
     }
   }
 }

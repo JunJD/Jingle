@@ -84,26 +84,26 @@ export const ChainOfThoughtHeader = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          "inline-flex max-w-full min-w-0 items-center gap-2 py-1 text-muted-foreground text-sm transition-colors hover:text-foreground",
+          "inline-flex max-w-full min-w-0 items-center gap-[var(--ow-gap-sm)] py-[var(--ow-space-1)] [font-size:var(--ow-font-body)] text-muted-foreground transition-colors hover:text-foreground",
           className
         )}
         {...props}
       >
-        <span className="flex h-5 shrink-0 items-center">
-          <Icon className="size-4 shrink-0" />
+        <span className="flex h-[var(--ow-hit-target-xs)] shrink-0 items-center">
+          <Icon className="size-[var(--ow-icon-action)] shrink-0" />
         </span>
         <span className="min-w-0 text-left [overflow-wrap:anywhere]">
           {children ?? "Chain of Thought"}
         </span>
         {meta ? (
-          <span className="flex h-5 shrink-0 items-center text-xs text-muted-foreground">
+          <span className="flex h-[var(--ow-icon-md)] shrink-0 items-center [font-size:var(--ow-font-meta)] text-muted-foreground">
             {meta}
           </span>
         ) : null}
-        <span className="flex h-5 shrink-0 items-center">
+        <span className="flex h-[var(--ow-hit-target-xs)] shrink-0 items-center">
           <ChevronDownIcon
             className={cn(
-              "size-4 shrink-0 transition-transform",
+              "size-[var(--ow-icon-action)] shrink-0 transition-transform",
               isOpen ? "rotate-180" : "rotate-0"
             )}
           />
@@ -145,20 +145,24 @@ export const ChainOfThoughtStep = memo(
   }: ChainOfThoughtStepProps) => (
     <div
       className={cn(
-        "flex gap-2 text-sm",
+        "flex gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)]",
         stepStatusStyles[status],
         "fade-in-0 slide-in-from-top-2 animate-in",
         className
       )}
       {...props}
     >
-      <div className="flex w-5 shrink-0 flex-col items-center self-stretch pt-0 translate-y-[4px]">
-        <Icon className="size-4" />
-        {!isLast ? <div className="mt-1 min-h-3 w-px flex-1 self-center bg-foreground/15" /> : null}
+      <div className="flex w-[var(--ow-icon-md)] shrink-0 translate-y-[var(--ow-space-1)] flex-col items-center self-stretch pt-0">
+        <Icon className="size-[var(--ow-icon-action)]" />
+        {!isLast ? (
+          <div className="mt-[var(--ow-space-1)] min-h-[var(--ow-space-3)] w-px flex-1 self-center bg-foreground/15" />
+        ) : null}
       </div>
-      <div className="flex-1 space-y-2 overflow-hidden">
+      <div className="flex-1 space-y-[var(--ow-space-2)] overflow-hidden">
         <div>{label}</div>
-        {description && <div className="text-muted-foreground text-xs">{description}</div>}
+        {description && (
+          <div className="[font-size:var(--ow-font-meta)] text-muted-foreground">{description}</div>
+        )}
         {children}
       </div>
     </div>
@@ -173,10 +177,15 @@ export const ChainOfThoughtItem = memo(
     children,
     ...props
   }: ChainOfThoughtItemProps) => (
-    <div className={cn("flex gap-2 text-sm", className)} {...props}>
-      <div className="flex w-5 shrink-0 flex-col items-center self-stretch pt-0 translate-y-[4px]">
-        <Icon className="size-4 text-muted-foreground" />
-        {!isLast ? <div className="mt-1 min-h-3 w-px flex-1 self-center bg-foreground/15" /> : null}
+    <div
+      className={cn("flex gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)]", className)}
+      {...props}
+    >
+      <div className="flex w-[var(--ow-icon-md)] shrink-0 translate-y-[var(--ow-space-1)] flex-col items-center self-stretch pt-0">
+        <Icon className="size-[var(--ow-icon-action)] text-muted-foreground" />
+        {!isLast ? (
+          <div className="mt-[var(--ow-space-1)] min-h-[var(--ow-space-3)] w-px flex-1 self-center bg-foreground/15" />
+        ) : null}
       </div>
       <div className="min-w-0 flex-1 overflow-hidden">{children}</div>
     </div>
@@ -187,7 +196,10 @@ export type ChainOfThoughtSearchResultsProps = ComponentProps<"div">
 
 export const ChainOfThoughtSearchResults = memo(
   ({ className, ...props }: ChainOfThoughtSearchResultsProps) => (
-    <div className={cn("flex flex-wrap items-center gap-2", className)} {...props} />
+    <div
+      className={cn("flex flex-wrap items-center gap-[var(--ow-gap-sm)]", className)}
+      {...props}
+    />
   )
 )
 
@@ -196,7 +208,10 @@ export type ChainOfThoughtSearchResultProps = ComponentProps<typeof Badge>
 export const ChainOfThoughtSearchResult = memo(
   ({ className, children, ...props }: ChainOfThoughtSearchResultProps) => (
     <Badge
-      className={cn("gap-1 px-2 py-0.5 font-normal text-xs", className)}
+      className={cn(
+        "gap-[var(--ow-gap-xs)] px-[var(--ow-space-2)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-meta)] font-normal",
+        className
+      )}
       variant="secondary"
       {...props}
     >
@@ -214,9 +229,9 @@ export const ChainOfThoughtContent = memo(
     return (
       <CollapsibleContent
         className={cn(
-          "space-y-3 data-[state=open]:mt-2",
+          "space-y-[var(--ow-space-3)] data-[state=open]:mt-[var(--ow-space-2)]",
           withRail &&
-            "relative pl-6 before:absolute before:top-0 before:bottom-0 before:left-[7px] before:w-px before:bg-foreground/15",
+            "relative pl-[var(--ow-space-6)] before:absolute before:bottom-0 before:left-[7px] before:top-0 before:w-px before:bg-foreground/15",
           "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
           className
         )}
@@ -234,11 +249,13 @@ export type ChainOfThoughtImageProps = ComponentProps<"div"> & {
 
 export const ChainOfThoughtImage = memo(
   ({ className, children, caption, ...props }: ChainOfThoughtImageProps) => (
-    <div className={cn("mt-2 space-y-2", className)} {...props}>
-      <div className="relative flex max-h-[22rem] items-center justify-center overflow-hidden rounded-lg bg-muted p-3">
+    <div className={cn("mt-[var(--ow-space-2)] space-y-[var(--ow-space-2)]", className)} {...props}>
+      <div className="relative flex max-h-[var(--ow-code-preview-max-h)] items-center justify-center overflow-hidden rounded-[var(--ow-radius-lg)] bg-muted p-[var(--ow-space-3)]">
         {children}
       </div>
-      {caption && <p className="text-muted-foreground text-xs">{caption}</p>}
+      {caption && (
+        <p className="[font-size:var(--ow-font-meta)] text-muted-foreground">{caption}</p>
+      )}
     </div>
   )
 )

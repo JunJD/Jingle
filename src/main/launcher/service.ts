@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process"
-import { basename, extname } from "node:path"
 import { shell } from "electron"
 import type { ClipboardContext } from "@shared/clipboard"
 import {
@@ -18,7 +17,11 @@ import type { LauncherHistoryService } from "../launcher-history/service"
 import type { LocalStartService } from "../local-start/service"
 import { readClipboardContext } from "../services/clipboard"
 import { searchLauncher } from "../services/launcher-search"
-import { getApplicationIconDataUrl } from "../services/launcher-search/providers/applications"
+import {
+  getApplicationDisplayName,
+  getApplicationIconDataUrl
+} from "../services/launcher-search/providers/applications"
+import { getLauncherOpenPathHistoryTitle } from "./history-title"
 
 const EMPTY_CLIPBOARD_CONTEXT: ClipboardContext = { kind: "none" }
 
@@ -58,16 +61,6 @@ async function openLauncherUrl(url: string): Promise<void> {
   await shell.openExternal(url)
 }
 
-function getLauncherPathTitle(target: LauncherOpenPathTarget): string {
-  const fileName = basename(target.path)
-  if (target.kind === "application") {
-    const fileExtension = extname(fileName)
-    return fileExtension ? basename(fileName, fileExtension) : fileName
-  }
-
-  return fileName
-}
-
 function getLauncherPathHistoryKey(target: LauncherOpenPathTarget): string {
   if (target.kind === "application") {
     return createLauncherHistoryKey({
@@ -105,7 +98,7 @@ async function buildLauncherHistoryRecord(
               : undefined,
           kind: action.target.kind,
           subtitle: action.target.path,
-          title: getLauncherPathTitle(action.target)
+          title: await getLauncherOpenPathHistoryTitle(action.target, getApplicationDisplayName)
         }
       }
 
@@ -113,6 +106,16 @@ async function buildLauncherHistoryRecord(
         const item = localStartService.getItem(action.localStartItemId)
         const itemKind = item?.kind ?? action.target.kind
         const itemPath = item?.path ?? action.target.path
+        const title =
+          item?.title ??
+          (await getLauncherOpenPathHistoryTitle(
+            {
+              kind: action.target.kind,
+              path: action.target.path
+            },
+            getApplicationDisplayName
+          ))
+
         return {
           action,
           historyKey: createLauncherHistoryKey({
@@ -123,12 +126,7 @@ async function buildLauncherHistoryRecord(
             itemKind === "application" ? await getApplicationIconDataUrl(itemPath) : undefined,
           kind: itemKind,
           subtitle: itemPath,
-          title:
-            item?.title ??
-            getLauncherPathTitle({
-              kind: action.target.kind,
-              path: action.target.path
-            })
+          title
         }
       }
     case "open-url":

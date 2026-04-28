@@ -111,11 +111,11 @@ export const CodeBlock = ({
   return (
     <div
       className={cn(
-        "relative min-w-0 max-w-full overflow-hidden rounded-[12px] bg-background-secondary/60 px-3 py-2.5 font-mono text-[12px] leading-5 text-foreground/85",
+        "relative min-w-0 max-w-full overflow-hidden rounded-[var(--ow-radius-panel)] bg-background-secondary/60 px-[var(--ow-space-3)] py-[var(--ow-space-2-5)] font-mono [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground/85",
         className
       )}
     >
-      <div className="flex flex-col gap-2 border-b border-border/50 pb-2">
+      <div className="flex flex-col gap-[var(--ow-gap-sm)] border-b border-border/50 pb-2">
         {tabsExist && (
           <div className="flex flex-wrap gap-1">
             {tabs.map((tab, index) => (
@@ -123,7 +123,7 @@ export const CodeBlock = ({
                 key={index}
                 type="button"
                 onClick={() => setActiveTab(index)}
-                className={`rounded-md px-2 py-1 font-sans text-[11px] leading-4 transition-colors ${
+                className={`rounded-md px-2 py-1 font-sans [font-size:var(--ow-font-meta)] leading-4 transition-colors ${
                   activeTab === index
                     ? "bg-background-interactive text-foreground"
                     : "text-muted-foreground hover:bg-background-interactive/60 hover:text-foreground"
@@ -136,13 +136,13 @@ export const CodeBlock = ({
         )}
         {activeFilename ? (
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 truncate font-mono text-[11px] leading-4 text-muted-foreground">
+            <div className="min-w-0 truncate font-mono [font-size:var(--ow-font-meta)] leading-4 text-muted-foreground">
               {activeFilename}
             </div>
             <button
               type="button"
               onClick={copyToClipboard}
-              className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 font-sans text-[11px] leading-4 text-muted-foreground transition-colors hover:bg-background-interactive hover:text-foreground"
+              className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 font-sans [font-size:var(--ow-font-meta)] leading-4 text-muted-foreground transition-colors hover:bg-background-interactive hover:text-foreground"
             >
               {copied ? <Check size={14} /> : <Copy size={14} />}
             </button>
@@ -195,7 +195,7 @@ export const CodeBlock = ({
         {visible.code}
       </SyntaxHighlighter>
       {visible.hidden > 0 ? (
-        <div className="pt-2 font-sans text-[11px] leading-4 text-muted-foreground">
+        <div className="pt-2 font-sans [font-size:var(--ow-font-meta)] leading-4 text-muted-foreground">
           +{visible.hidden}
         </div>
       ) : null}

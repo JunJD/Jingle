@@ -19,10 +19,10 @@ export default function CredentialPanel(props: CredentialPanelProps): React.JSX.
   const configured = provider.configurationStatus === "active"
 
   return (
-    <div className="flex items-center justify-between gap-3 md:justify-end">
+    <div className="flex items-center justify-between gap-[var(--ow-gap-md)] md:justify-end">
       <div
         className={cn(
-          "flex min-w-0 items-center gap-2 text-[12px] font-medium",
+          "flex min-w-0 items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] font-medium",
           hasProviderError
             ? "text-destructive"
             : configured
@@ -50,7 +50,7 @@ export default function CredentialPanel(props: CredentialPanelProps): React.JSX.
         type="button"
         size="sm"
         variant="outline"
-        className="h-7 rounded-md bg-background-elevated/80 px-2.5 text-[11px]"
+        className="h-[var(--ow-control-h-compact)] rounded-md bg-background-elevated/80 px-2.5 [font-size:var(--ow-font-meta)]"
         onClick={() => onOpenProviderDialog(provider.provider)}
       >
         {configured ? copy.provider.editKey : copy.provider.addKey}

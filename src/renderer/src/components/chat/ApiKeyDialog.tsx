@@ -106,7 +106,7 @@ export function ApiKeyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100%-2rem)] rounded-[var(--ow-radius-dialog)] sm:max-w-[400px] sm:rounded-[var(--ow-radius-dialog)]">
+      <DialogContent className="w-[var(--ow-dialog-mobile-w)] rounded-[var(--ow-radius-dialog)] sm:max-w-[var(--ow-dialog-w-sm)] sm:rounded-[var(--ow-radius-dialog)]">
         <DialogHeader className="text-left">
           <DialogTitle>
             {hasExistingKey
@@ -120,8 +120,8 @@ export function ApiKeyDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          <div className="space-y-3">
+        <div className="space-y-[var(--ow-space-4)] py-[var(--ow-space-2)]">
+          <div className="space-y-[var(--ow-space-3)]">
             {credentialSchemas.map((schema, index) => {
               const isSecret = schema.type === "secret-input"
               const visible = visibleCredentials[schema.variable] === true
@@ -130,8 +130,8 @@ export function ApiKeyDialog({
                 : undefined
 
               return (
-                <label key={schema.variable} className="block space-y-1.5">
-                  <span className="text-[12px] font-medium text-foreground">
+                <label key={schema.variable} className="block space-y-[var(--ow-space-1-5)]">
+                  <span className="[font-size:var(--ow-font-body)] font-medium text-foreground">
                     {getLocalizedText(schema.label, locale)}
                   </span>
                   <div className="relative">
@@ -145,7 +145,7 @@ export function ApiKeyDialog({
                         }))
                       }
                       placeholder={hasExistingKey ? "••••••••••••••••" : placeholder}
-                      className={isSecret ? "pr-10" : undefined}
+                      className={isSecret ? "pr-[var(--ow-control-icon-inset)]" : undefined}
                       autoFocus={index === 0}
                     />
                     {isSecret && (
@@ -157,18 +157,24 @@ export function ApiKeyDialog({
                             [schema.variable]: !visible
                           }))
                         }
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                        className="absolute right-2 top-[var(--ow-space-1)]/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                       >
-                        {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        {visible ? (
+                          <EyeOff className="size-[var(--ow-icon-action)]" />
+                        ) : (
+                          <Eye className="size-[var(--ow-icon-action)]" />
+                        )}
                       </button>
                     )}
                   </div>
                 </label>
               )
             })}
-            <p className="text-xs text-muted-foreground">{copy.apiKeyDialog.secureStorageHint}</p>
+            <p className="[font-size:var(--ow-font-meta)] text-muted-foreground">
+              {copy.apiKeyDialog.secureStorageHint}
+            </p>
             {errorText && (
-              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <p className="rounded-[var(--ow-radius-lg)] border border-destructive/30 bg-destructive/10 px-[var(--ow-space-3)] py-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-destructive">
                 {errorText}
               </p>
             )}
@@ -185,21 +191,25 @@ export function ApiKeyDialog({
               disabled={deleting || saving}
             >
               {deleting ? (
-                <Loader2 className="size-4 animate-spin mr-2" />
+                <Loader2 className="size-[var(--ow-icon-action)] animate-spin mr-[var(--ow-space-2)]" />
               ) : (
-                <Trash2 className="size-4 mr-2" />
+                <Trash2 className="size-[var(--ow-icon-action)] mr-[var(--ow-space-2)]" />
               )}
               {copy.apiKeyDialog.removeKey}
             </Button>
           ) : (
             <div />
           )}
-          <div className="flex gap-2">
+          <div className="flex gap-[var(--ow-gap-sm)]">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {copy.apiKeyDialog.cancel}
             </Button>
             <Button type="button" onClick={handleSave} disabled={!canSave || saving}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : copy.apiKeyDialog.save}
+              {saving ? (
+                <Loader2 className="size-[var(--ow-icon-action)] animate-spin" />
+              ) : (
+                copy.apiKeyDialog.save
+              )}
             </Button>
           </div>
         </div>

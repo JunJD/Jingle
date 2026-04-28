@@ -52,7 +52,7 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
       <div
         className={cn(
           "launcher-input flex min-w-0 flex-1 items-center",
-          isCompact ? "gap-2" : "gap-2.5"
+          isCompact ? "gap-[var(--ow-gap-sm)]" : "gap-[var(--ow-space-2-5)]"
         )}
         data-status={status}
       >
@@ -61,16 +61,16 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
           aria-busy={status === "idle" ? undefined : true}
           className={cn(
             isCompact
-              ? "h-6 min-w-0 border-0 bg-transparent px-1 py-0 text-[var(--ow-font-control)] font-medium leading-6 shadow-none"
-              : "h-7 min-w-0 border-0 bg-transparent px-1.5 py-0 text-[14px] font-medium leading-7 shadow-none",
+              ? "h-[var(--ow-control-h-sm)] min-w-0 border-0 bg-transparent px-[var(--ow-space-1)] py-0 [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] shadow-none"
+              : "h-[var(--ow-control-h-md)] min-w-0 border-0 bg-transparent px-[var(--ow-space-1-5)] py-0 [font-size:var(--ow-font-title)] font-medium leading-[var(--ow-line-control-md)] shadow-none",
             "focus-visible:ring-0 focus-visible:ring-offset-0",
             "placeholder:text-transparent",
             className
           )}
           placeholderClassName={cn(
             isCompact
-              ? "text-[var(--ow-font-control)] font-medium leading-6 text-muted-foreground/52"
-              : "text-[14px] font-medium leading-7 text-muted-foreground/55",
+              ? "[font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] text-muted-foreground/52"
+              : "[font-size:var(--ow-font-title)] font-medium leading-[var(--ow-line-control-md)] text-muted-foreground/55",
             placeholderClassName
           )}
           data-status={status}
@@ -111,7 +111,9 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
             aria-hidden="true"
             className={cn(
               "relative flex shrink-0 items-center justify-center rounded-full border backdrop-blur-sm transition",
-              isCompact ? "h-5 w-5" : "h-6 w-6",
+              isCompact
+                ? "h-[var(--ow-icon-md)] w-[var(--ow-icon-md)]"
+                : "h-[var(--ow-icon-lg)] w-[var(--ow-icon-lg)]",
               status === "pending" &&
                 "border-status-warning/25 bg-status-warning/10 text-status-warning",
               status === "tooling" &&
@@ -123,12 +125,15 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
                 <span className="absolute inset-[-3px] rounded-full border border-status-info/35" />
                 <span className="absolute inset-0 rounded-full bg-status-info/18 animate-ping" />
                 <Loader2
-                  className={cn("relative animate-spin", isCompact ? "size-3" : "size-3.5")}
+                  className={cn(
+                    "relative animate-spin",
+                    isCompact ? "size-[var(--ow-icon-compact)]" : "size-[var(--ow-icon-sm)]"
+                  )}
                   strokeWidth={2.25}
                 />
               </>
             ) : (
-              <span className="animate-tactical-pulse h-1.5 w-1.5 rounded-full bg-current" />
+              <span className="animate-tactical-pulse h-[var(--ow-status-dot-size)] w-[var(--ow-status-dot-size)] rounded-full bg-current" />
             )}
           </div>
         )}

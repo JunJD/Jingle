@@ -11,8 +11,8 @@ export function MarkdownViewer(props: MarkdownViewerProps): React.JSX.Element {
   const lineCount = content.split("\n").length
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-background/50 px-4 py-2 text-xs text-muted-foreground">
+    <div className="markdown-viewer-surface flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)] border-b border-border bg-background/50 px-[var(--ow-space-4)] py-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-muted-foreground">
         <span className="truncate">{filePath}</span>
         <span className="text-muted-foreground/50">•</span>
         <span>{lineCount} lines</span>
@@ -21,9 +21,9 @@ export function MarkdownViewer(props: MarkdownViewerProps): React.JSX.Element {
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto w-full max-w-4xl px-6 py-8">
-          <div className="rounded-2xl border border-border/70 bg-background-elevated px-7 py-6">
-            <MessageResponse className="min-w-0 max-w-none text-[15px] leading-7 text-foreground">
+        <div className="mx-auto w-full max-w-[var(--ow-chat-thread-max-width)] px-[var(--ow-space-6)] py-[var(--ow-chat-thread-y)]">
+          <div className="rounded-2xl border border-border/70 bg-background-elevated px-[var(--ow-space-7)] py-[var(--ow-space-6)]">
+            <MessageResponse className="min-w-0 max-w-none [font-size:var(--ow-font-reading)] leading-[var(--ow-line-reading)] text-foreground">
               {content}
             </MessageResponse>
           </div>

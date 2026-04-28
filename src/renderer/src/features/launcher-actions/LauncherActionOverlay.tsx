@@ -64,14 +64,14 @@ export function LauncherActionOverlay(props: {
   return (
     <div className="absolute inset-0 z-50 bg-black/28" data-surface={surfaceId} onClick={onClose}>
       <div
-        className="absolute bottom-12 right-3 w-80 overflow-hidden rounded-[var(--ow-radius-dialog)] border border-border/80 bg-background shadow-2xl"
+        className="absolute bottom-[var(--launcher-action-panel-bottom)] right-[var(--launcher-action-panel-right)] w-[var(--launcher-action-panel-width)] overflow-hidden rounded-[var(--ow-radius-dialog)] border border-border/80 bg-background shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="max-h-[60vh] overflow-y-auto py-2">
+        <div className="max-h-[var(--launcher-action-panel-max-h)] overflow-y-auto py-[var(--ow-space-2)]">
           {groupedActions.map((group, groupIndex) => (
             <Fragment key={`launcher-action-group-${groupIndex}`}>
               {group.title ? (
-                <div className="px-4 pb-1 pt-2 text-[var(--ow-font-caption)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                <div className="px-[var(--ow-space-4)] pb-[var(--ow-space-1)] pt-[var(--ow-space-2)] [font-size:var(--ow-font-caption)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                   {group.title}
                 </div>
               ) : null}
@@ -87,18 +87,18 @@ export function LauncherActionOverlay(props: {
                       void Promise.resolve(action.onAction()).finally(onClose)
                     }}
                     className={cn(
-                      "mx-2 flex h-9 w-[calc(100%-1rem)] items-center justify-between gap-3 rounded-[var(--ow-radius-md)] px-3 text-left text-[var(--ow-font-body)] transition",
+                      "mx-[var(--ow-space-2)] flex h-[var(--ow-control-h-lg)] w-[calc(100%-(var(--ow-space-2)*2))] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-3)] text-left [font-size:var(--ow-font-body)] transition",
                       isSelected ? "bg-background-secondary" : "hover:bg-background-secondary/70",
                       action.style === "destructive" ? "text-red-500" : "text-foreground"
                     )}
                   >
-                    <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-[var(--ow-gap-md)]">
                       {action.icon ? <div className="shrink-0">{action.icon}</div> : null}
                       <span className="truncate">{action.title}</span>
                     </div>
 
                     {action.shortcut ? (
-                      <span className="launcher-shortcut shrink-0 text-[11px] text-muted-foreground">
+                      <span className="launcher-shortcut shrink-0 [font-size:var(--ow-font-meta)] text-muted-foreground">
                         {action.shortcut}
                       </span>
                     ) : null}

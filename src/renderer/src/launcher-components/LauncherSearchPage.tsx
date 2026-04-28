@@ -257,14 +257,16 @@ export function LauncherSearchPage(props: {
         footer={
           footerVisible ? (
             <>
-              <div className="flex min-w-0 items-center gap-3">
+              <div className="flex min-w-0 items-center gap-[var(--ow-gap-md)]">
                 {showUseWithManager ? (
-                  <div className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground">
+                  <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
                     <span>{copy.launcher.useWithManagerTitle}</span>
                   </div>
                 ) : isSearchMode ? (
-                  <div className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground">
-                    {isSearchLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
+                    {isSearchLoading ? (
+                      <Loader2 className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)] animate-spin" />
+                    ) : null}
                     <span>
                       {isSearchLoading ? copy.launcher.searching : copy.launcher.searchResults}
                     </span>
@@ -275,27 +277,27 @@ export function LauncherSearchPage(props: {
                     type="button"
                     onClick={() => executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenSettings)}
                     onMouseDown={(event) => event.preventDefault()}
-                    className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground"
+                    className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground"
                     title={openSettingsLabel}
                     aria-label={openSettingsLabel}
                   >
-                    <Settings2 className="h-3.5 w-3.5" />
+                    <Settings2 className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
                     <span>{openSettingsLabel}</span>
                   </button>
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-[var(--ow-gap-sm)]">
                 {actionController.canOpenActions ? (
                   <button
                     type="button"
                     onClick={actionController.openActions}
                     onMouseDown={(event) => event.preventDefault()}
-                    className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground"
+                    className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground"
                   >
                     <span>{copy.launcher.actionsLabel}</span>
                     {actionController.actionPanelShortcut ? (
-                      <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                      <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
                         {actionController.actionPanelShortcut}
                       </span>
                     ) : null}
@@ -307,14 +309,14 @@ export function LauncherSearchPage(props: {
                   onClick={actionController.executePrimaryAction}
                   onMouseDown={(event) => event.preventDefault()}
                   disabled={!actionController.primaryAction}
-                  className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
+                  className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
                 >
                   <span>
                     {actionController.primaryAction?.title ??
                       actionController.primaryActionFallbackTitle}
                   </span>
                   {actionController.primaryActionShortcut ? (
-                    <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                    <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
                       {actionController.primaryActionShortcut}
                     </span>
                   ) : null}
@@ -324,11 +326,11 @@ export function LauncherSearchPage(props: {
           ) : undefined
         }
         headerTrailing={
-          <div className="flex shrink-0 items-center gap-2 text-[13px] font-medium text-muted-foreground">
-            <div className="flex items-center gap-2 px-0 py-1">
+          <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
+            <div className="flex items-center gap-[var(--ow-gap-sm)] px-0 py-[var(--ow-space-1)]">
               <span>{copy.launcher.aiEntryLabel}</span>
               {openAiShortcut ? (
-                <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
                   {openAiShortcut}
                 </span>
               ) : null}

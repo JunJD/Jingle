@@ -1,4 +1,3 @@
-import { ChevronRight, LoaderCircle, MoreHorizontal } from "lucide-react"
 import {
   Children,
   Fragment,
@@ -6,16 +5,12 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactElement,
   type ReactNode
 } from "react"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { cn } from "@/lib/utils"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
-import { useSelectedRowScrollIntoView } from "@launcher-components/useSelectedRowScrollIntoView"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import {
   ActionMarker,
@@ -27,6 +22,12 @@ import {
   type NativeActionStyle,
   OpenInBrowserActionMarker
 } from "./actions"
+import {
+  NativeSurfaceListEmptyState,
+  NativeSurfaceListRows,
+  nativeSurfaceListDropdownClassName,
+  type NativeSurfaceListSectionPresentation
+} from "./list-presentation"
 import { useNativeSurfaceController } from "./surface-action-controller"
 import { NativeExtensionSelect } from "./select"
 import { useNativeExtensionSurface } from "./sdk"
@@ -343,134 +344,6 @@ function filterSections(
     .filter((section) => section.items.length > 0)
 }
 
-function NativeListRows(props: {
-  onExecute: (index: number) => void
-  onOpenActions: (index: number) => void
-  onSelect: (index: number) => void
-  sections: NativeListSectionDescriptor[]
-  selectedIndex: number
-}): React.JSX.Element | null {
-  const { onExecute, onOpenActions, onSelect, sections, selectedIndex } = props
-  const scrollAreaRef = useRef<HTMLDivElement | null>(null)
-  const itemRefs = useRef<Array<HTMLDivElement | null>>([])
-  const indexedSections = useMemo(
-    () =>
-      sections.map((section, sectionIndex) => {
-        const sectionStartIndex = sections
-          .slice(0, sectionIndex)
-          .reduce((count, current) => count + current.items.length, 0)
-
-        return {
-          ...section,
-          indexedItems: section.items.map((item, itemIndex) => ({
-            index: sectionStartIndex + itemIndex,
-            item
-          }))
-        }
-      }),
-    [sections]
-  )
-  const items = indexedSections.flatMap((section) =>
-    section.indexedItems.map((indexedItem) => indexedItem.item)
-  )
-  const itemsKey = items.map((item) => item.id).join("|")
-
-  useSelectedRowScrollIntoView({
-    itemRefs,
-    itemsKey,
-    scrollAreaRef,
-    selectedIndex,
-    tolerance: 0
-  })
-
-  if (items.length === 0) {
-    return null
-  }
-
-  return (
-    <ScrollArea ref={scrollAreaRef} className="flex-1">
-      <div className="py-2">
-        {indexedSections.map((section) => (
-          <div key={section.id}>
-            {section.title ? (
-              <div className="flex h-6 items-center justify-between gap-3 px-6 text-[11px] font-semibold text-muted-foreground">
-                <span>{section.title}</span>
-                {section.subtitle ? (
-                  <span className="text-[10px] font-medium">{section.subtitle}</span>
-                ) : null}
-              </div>
-            ) : null}
-            {section.indexedItems.map(({ index, item }) => {
-              const isSelected = index === selectedIndex
-
-              return (
-                <div
-                  key={item.id}
-                  ref={(element) => {
-                    itemRefs.current[index] = element
-                  }}
-                  role="button"
-                  tabIndex={-1}
-                  onClick={() => onExecute(index)}
-                  onMouseEnter={() => onSelect(index)}
-                  className={cn(
-                    "mx-2 grid h-[var(--ow-row-h-md)] grid-cols-[minmax(0,1fr)_auto] items-center gap-2.5 rounded-[var(--ow-radius-md)] px-3 text-left transition",
-                    isSelected ? "bg-background-secondary" : "hover:bg-background-secondary/60"
-                  )}
-                >
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-3">
-                      {item.icon ? (
-                        <div className="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground">
-                          {item.icon}
-                        </div>
-                      ) : null}
-                      <div className="min-w-0">
-                        <div className="truncate text-[var(--ow-font-body)] font-medium text-foreground">
-                          {item.title}
-                        </div>
-                        {item.subtitle ? (
-                          <div className="truncate text-[var(--ow-font-meta)] text-muted-foreground">
-                            {item.subtitle}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    {item.accessories ? (
-                      <div className="shrink-0 text-[var(--ow-font-meta)] text-muted-foreground">
-                        {item.accessories}
-                      </div>
-                    ) : null}
-                    {item.actions.length > 1 && isSelected ? (
-                      <div
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          onOpenActions(index)
-                        }}
-                        className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition hover:text-foreground"
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </div>
-                    ) : item.actions[0] ? (
-                      <div className="flex items-center gap-2 text-[var(--ow-font-caption)] text-muted-foreground">
-                        <span>{item.actions[0].title}</span>
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        ))}
-      </div>
-    </ScrollArea>
-  )
-}
-
 function NativeListDropdown(props: {
   descriptor: NativeListDropdownDescriptor
 }): React.JSX.Element {
@@ -485,7 +358,7 @@ function NativeListDropdown(props: {
 
   return (
     <NativeExtensionSelect
-      className="h-8 max-w-[220px] appearance-none rounded-[var(--ow-radius-md)] border border-border/80 bg-background pl-3 pr-9 text-[var(--ow-font-meta)] font-medium text-foreground outline-none transition focus:border-[var(--ring)]"
+      className={nativeSurfaceListDropdownClassName}
       value={selectedValue}
       onChange={(value) => {
         descriptor.onChange?.(value)
@@ -547,6 +420,24 @@ function ListRoot(props: {
         ? filterSections(collectSections(children), resolvedSearchText)
         : collectSections(children),
     [children, filtering, resolvedSearchText]
+  )
+  const presentationSections = useMemo<NativeSurfaceListSectionPresentation[]>(
+    () =>
+      sections.map((section) => ({
+        ...section,
+        items: section.items.map((item) => ({
+          accessory: item.accessories ? (
+            <span className="shrink-0 [font-size:var(--ow-font-meta)]">{item.accessories}</span>
+          ) : undefined,
+          actionLabel: item.actions[0]?.title,
+          hasActionPanel: item.actions.length > 1,
+          icon: item.icon,
+          id: item.id,
+          subtitle: item.subtitle,
+          title: item.title
+        }))
+      })),
+    [sections]
   )
   const emptyView = useMemo(() => collectEmptyView(children), [children])
   const dropdown = useMemo(() => collectDropdown(searchBarAccessory), [searchBarAccessory])
@@ -639,7 +530,7 @@ function ListRoot(props: {
         surface="native-list"
       >
         {items.length > 0 ? (
-          <NativeListRows
+          <NativeSurfaceListRows
             onExecute={(index) => {
               setSelectedIndex(index)
               const itemActions = items[index]?.actions.length ? items[index]!.actions : listActions
@@ -653,44 +544,21 @@ function ListRoot(props: {
               surfaceController.actionController.openActions()
             }}
             onSelect={setSelectedIndex}
-            sections={sections}
+            sections={presentationSections}
             selectedIndex={selectedIndex}
           />
         ) : (
-          <div className="flex flex-1 items-center justify-center px-6">
-            {isLoading ? (
-              <div className="flex items-center gap-2 text-[var(--ow-font-body)] text-muted-foreground">
-                <LoaderCircle className="h-4 w-4 animate-spin" />
-                <span>Loading...</span>
-              </div>
-            ) : emptyView ? (
-              <div className="max-w-[380px] space-y-3 text-center">
-                <div className="space-y-1">
-                  <div className="text-[var(--ow-font-title)] font-semibold text-foreground">
-                    {emptyView.title ?? "No items"}
-                  </div>
-                  {emptyView.description ? (
-                    <div className="text-[var(--ow-font-body)] leading-5 text-muted-foreground">
-                      {emptyView.description}
-                    </div>
-                  ) : null}
-                </div>
-                {emptyView.actions[0] ? (
-                  <button
-                    type="button"
-                    onClick={surfaceController.actionController.executePrimaryAction}
-                    onMouseDown={(event) => event.preventDefault()}
-                    className="inline-flex h-8 items-center gap-2 rounded-[var(--ow-radius-md)] border border-border bg-background px-3 text-[var(--ow-font-control)] font-medium text-foreground transition hover:bg-background-secondary"
-                  >
-                    <span>{surfaceController.actionController.primaryAction?.title ?? "Open"}</span>
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </button>
-                ) : null}
-              </div>
-            ) : (
-              <div className="text-[var(--ow-font-body)] text-muted-foreground">No items</div>
-            )}
-          </div>
+          <NativeSurfaceListEmptyState
+            actionTitle={surfaceController.actionController.primaryAction?.title}
+            description={emptyView?.description}
+            isLoading={isLoading}
+            onAction={
+              emptyView?.actions[0]
+                ? surfaceController.actionController.executePrimaryAction
+                : undefined
+            }
+            title={emptyView?.title}
+          />
         )}
       </LauncherChrome>
 

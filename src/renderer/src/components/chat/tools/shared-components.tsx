@@ -22,7 +22,7 @@ export function ToolDetailStack(props: {
   return (
     <div
       className={cn(
-        "grid min-w-0 max-w-full gap-2.5 text-[13px] leading-5 text-muted-foreground [&>*]:min-w-0",
+        "grid min-w-0 max-w-full gap-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)] text-muted-foreground [&>*]:min-w-0",
         className
       )}
     >
@@ -44,7 +44,7 @@ export function ToolCodeBlock(props: {
   return (
     <pre
       className={cn(
-        "min-w-0 max-w-full overflow-x-auto rounded-[12px] bg-background-secondary/60 px-3 py-2.5 whitespace-pre-wrap break-all font-mono text-[12px] leading-5 text-foreground/85",
+        "min-w-0 max-w-full overflow-x-auto rounded-[var(--ow-radius-panel)] bg-background-secondary/60 px-[var(--ow-space-3)] py-[var(--ow-space-2-5)] whitespace-pre-wrap break-all font-mono [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground/85",
         className
       )}
     >
@@ -66,19 +66,21 @@ export function ToolPreviewLines(props: {
   }
 
   return (
-    <div className="overflow-hidden rounded-[14px] bg-background-secondary/60">
-      <div className="grid gap-0 font-mono text-[12px] leading-5 text-foreground/85">
+    <div className="overflow-hidden rounded-[var(--ow-radius-dialog)] bg-background-secondary/60">
+      <div className="grid gap-0 font-mono [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground/85">
         {preview.map((line, index) => (
           <div key={`${index}-${line}`} className="grid grid-cols-[40px,minmax(0,1fr)]">
-            <span className="px-2 py-1.5 text-right text-[11px] text-muted-foreground/80 tabular-nums">
+            <span className="px-[var(--ow-space-2)] py-[var(--ow-space-1-5)] text-right [font-size:var(--ow-font-meta)] text-muted-foreground/80 tabular-nums">
               {index + 1}
             </span>
-            <span className="min-w-0 whitespace-pre-wrap break-all px-3 py-1.5">{line || " "}</span>
+            <span className="min-w-0 whitespace-pre-wrap break-all px-[var(--ow-space-3)] py-[var(--ow-space-1-5)]">
+              {line || " "}
+            </span>
           </div>
         ))}
       </div>
       {lines.length > maxLines ? (
-        <div className="px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+        <div className="px-[var(--ow-space-3)] py-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
           +{lines.length - maxLines}
         </div>
       ) : null}
@@ -98,8 +100,10 @@ export function ToolDetailSection(props: {
   }
 
   return (
-    <div className={cn("grid gap-1.5", className)}>
-      <div className="text-[11px] font-medium text-muted-foreground/90">{label}</div>
+    <div className={cn("grid gap-[var(--ow-space-1-5)]", className)}>
+      <div className="[font-size:var(--ow-font-meta)] font-medium text-muted-foreground/90">
+        {label}
+      </div>
       <div className="min-w-0">{children}</div>
     </div>
   )
@@ -115,18 +119,20 @@ export function ToolApprovalCard(props: {
   const { actions, badgeLabel, children, subtitle, title } = props
 
   return (
-    <div className="rounded-[18px] border border-border/70 bg-background-elevated shadow-[0_14px_34px_rgba(32,38,45,0.05)]">
-      <div className="grid gap-4 px-4 py-4">
-        <div className="grid min-w-0 gap-1">
+    <div className="rounded-[var(--ow-radius-dialog)] border border-border/70 bg-background-elevated shadow-[0_14px_34px_rgba(32,38,45,0.05)]">
+      <div className="grid gap-[var(--ow-gap-lg)] px-[var(--ow-space-4)] py-[var(--ow-space-4)]">
+        <div className="grid min-w-0 gap-[var(--ow-gap-xs)]">
           <Badge
-            className="w-fit rounded-full border-status-warning/25 bg-status-warning/10 px-2.5 py-1 text-[10px] tracking-[0.12em] text-status-warning"
+            className="w-fit rounded-full border-status-warning/25 bg-status-warning/10 px-[var(--ow-space-2-5)] py-[var(--ow-space-1)] [font-size:var(--ow-font-caption)] tracking-[0.12em] text-status-warning"
             variant="warning"
           >
             {badgeLabel}
           </Badge>
-          <div className="min-w-0 text-[13px] font-medium leading-5 text-foreground">{title}</div>
+          <div className="min-w-0 [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-chat)] text-foreground">
+            {title}
+          </div>
           {subtitle ? (
-            <div className="min-w-0 font-mono text-[11px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+            <div className="min-w-0 font-mono [font-size:var(--ow-font-meta)] leading-[var(--ow-line-chat)] text-muted-foreground [overflow-wrap:anywhere]">
               {subtitle}
             </div>
           ) : null}
@@ -158,10 +164,10 @@ export function ToolApprovalActions(props: {
   } = props
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-[var(--ow-gap-sm)]">
       {canEdit && onEdit && editLabel ? (
         <Button
-          className="rounded-[10px] border-border/70 bg-background text-foreground hover:bg-background-secondary"
+          className="rounded-[var(--ow-radius-lg)] border-border/70 bg-background text-foreground hover:bg-background-secondary"
           onClick={onEdit}
           size="sm"
           type="button"
@@ -171,7 +177,7 @@ export function ToolApprovalActions(props: {
         </Button>
       ) : null}
       <Button
-        className="rounded-[10px] border-border/70 bg-background text-foreground hover:bg-background-secondary"
+        className="rounded-[var(--ow-radius-lg)] border-border/70 bg-background text-foreground hover:bg-background-secondary"
         onClick={onReject}
         size="sm"
         type="button"
@@ -180,7 +186,7 @@ export function ToolApprovalActions(props: {
         {rejectLabel}
       </Button>
       <Button
-        className="rounded-[10px]"
+        className="rounded-[var(--ow-radius-lg)]"
         onClick={onApprove}
         size="sm"
         type="button"
@@ -205,7 +211,7 @@ export function ToolFileList(props: {
   }
 
   return (
-    <div className="grid gap-1">
+    <div className="grid gap-[var(--ow-gap-xs)]">
       {preview.map((item, index) => {
         const path = typeof item === "string" ? item : item.path
         const isDirectory = typeof item === "object" && Boolean(item.is_dir)
@@ -214,19 +220,19 @@ export function ToolFileList(props: {
         return (
           <div
             key={`${path}-${index}`}
-            className="flex min-w-0 items-start gap-2 text-[12px] leading-5"
+            className="flex min-w-0 items-start gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
           >
             {isDirectory ? (
-              <Folder className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              <Folder className="mt-[var(--ow-leading-nudge)] size-[var(--ow-icon-sm)] shrink-0 text-muted-foreground" />
             ) : (
-              <File className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              <File className="mt-[var(--ow-leading-nudge)] size-[var(--ow-icon-sm)] shrink-0 text-muted-foreground" />
             )}
             <span className="min-w-0 break-all text-foreground/80">{label}</span>
           </div>
         )
       })}
       {items.length > maxItems ? (
-        <div className="text-[11px] leading-4 text-muted-foreground">
+        <div className="[font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
           +{items.length - maxItems}
         </div>
       ) : null}
@@ -269,15 +275,15 @@ export function ToolChangeList(props: {
   }
 
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-[var(--ow-gap-sm)]">
       {preview.map((item, index) => (
         <div
           key={`${item.changeType}:${item.path}:${index}`}
-          className="flex min-w-0 items-start gap-2 rounded-[12px] bg-background-secondary/55 px-3 py-2 text-[12px] leading-5"
+          className="flex min-w-0 items-start gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-panel)] bg-background-secondary/55 px-[var(--ow-space-3)] py-[var(--ow-space-2)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
         >
           <span
             className={cn(
-              "mt-0.5 inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
+              "mt-[var(--ow-leading-nudge)] inline-flex shrink-0 rounded-full px-[var(--ow-space-2)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)] font-medium",
               getChangeClassName(item.changeType)
             )}
           >
@@ -287,7 +293,7 @@ export function ToolChangeList(props: {
         </div>
       ))}
       {items.length > maxItems ? (
-        <div className="text-[11px] leading-4 text-muted-foreground">
+        <div className="[font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
           +{items.length - maxItems}
         </div>
       ) : null}
@@ -310,24 +316,26 @@ export function ToolCollapsibleSection(props: {
 
   return (
     <Collapsible onOpenChange={setOpen} open={open}>
-      <div className="rounded-[14px] bg-background-secondary/45 px-3 py-2.5">
-        <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 text-left">
-          <div className="grid min-w-0 gap-0.5">
-            <div className="text-[11px] font-medium text-muted-foreground/90">{label}</div>
+      <div className="rounded-[var(--ow-radius-dialog)] bg-background-secondary/45 px-[var(--ow-space-3)] py-[var(--ow-space-2-5)]">
+        <CollapsibleTrigger className="flex w-full items-center justify-between gap-[var(--ow-gap-md)] text-left">
+          <div className="grid min-w-0 gap-[var(--ow-space-0-5)]">
+            <div className="[font-size:var(--ow-font-meta)] font-medium text-muted-foreground/90">
+              {label}
+            </div>
             {summary ? (
-              <div className="min-w-0 text-[12px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+              <div className="min-w-0 [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground [overflow-wrap:anywhere]">
                 {summary}
               </div>
             ) : null}
           </div>
           <ChevronDown
             className={cn(
-              "size-4 shrink-0 text-muted-foreground transition-transform",
+              "size-[var(--ow-icon-action)] shrink-0 text-muted-foreground transition-transform",
               open ? "rotate-180" : "rotate-0"
             )}
           />
         </CollapsibleTrigger>
-        <CollapsibleContent className="pt-3 data-[state=closed]:animate-out data-[state=open]:animate-in">
+        <CollapsibleContent className="pt-[var(--ow-space-3)] data-[state=closed]:animate-out data-[state=open]:animate-in">
           {children}
         </CollapsibleContent>
       </div>
@@ -343,7 +351,7 @@ export function ToolTodoList(props: { todos: Todo[] }): React.JSX.Element | null
   }
 
   return (
-    <div className="grid gap-1.5">
+    <div className="grid gap-[var(--ow-space-1-5)]">
       {todos.map((todo) => {
         const isDone = todo.status === "completed" || todo.status === "cancelled"
         const Icon =
@@ -359,11 +367,11 @@ export function ToolTodoList(props: { todos: Todo[] }): React.JSX.Element | null
           <div
             key={todo.id}
             className={cn(
-              "flex min-w-0 items-start gap-2 text-[12px] leading-5 text-foreground/80",
+              "flex min-w-0 items-start gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground/80",
               isDone && "opacity-60"
             )}
           >
-            <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+            <Icon className="mt-[var(--ow-leading-nudge)] size-[var(--ow-icon-sm)] shrink-0 text-muted-foreground" />
             <span className={cn("min-w-0 break-all", isDone && "line-through")}>
               {todo.content}
             </span>

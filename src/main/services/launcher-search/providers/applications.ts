@@ -6,10 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
 import { createLauncherHistoryKey } from "@shared/launcher-history"
-import type {
-  LauncherSearchRequest,
-  LauncherSearchResult
-} from "@shared/launcher-search"
+import type { LauncherSearchRequest, LauncherSearchResult } from "@shared/launcher-search"
 import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
 import {
   isWindowsShortcutPath,
@@ -178,6 +175,36 @@ function getWindowsStartMenuRoots(): WindowsStartMenuRoot[] {
 
 function normalizeWindowsPath(filePath: string): string {
   return path.win32.normalize(filePath).toLowerCase()
+}
+
+function getApplicationPathLookupKey(applicationPath: string): string {
+  if (process.platform === "win32") {
+    return normalizeWindowsPath(applicationPath)
+  }
+
+  return path.normalize(applicationPath)
+}
+
+async function resolveMacApplicationDisplayName(
+  applicationPath: string
+): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFileAsync("/usr/bin/mdls", [
+      "-raw",
+      "-name",
+      "kMDItemDisplayName",
+      applicationPath
+    ])
+    const displayName = stdout.toString().trim()
+
+    if (!displayName || displayName === "(null)") {
+      return undefined
+    }
+
+    return displayName
+  } catch {
+    return undefined
+  }
 }
 
 function getWindowsApplicationSubtitle(shortcutPath: string, rootPath: string): string {
@@ -786,6 +813,7 @@ function getApplicationMatch(
 class ApplicationsLauncherSearchProvider implements LauncherSearchProvider {
   readonly source = "applications" as const
   private applicationCatalogPromise: Promise<LauncherApplicationRecord[]> | null = null
+  private applicationDisplayNamePromiseCache = new Map<string, Promise<string | undefined>>()
   private applicationIconPromiseCache = new Map<string, Promise<string | undefined>>()
 
   async warmup(): Promise<void> {
@@ -882,6 +910,33 @@ class ApplicationsLauncherSearchProvider implements LauncherSearchProvider {
     return iconPromise
   }
 
+  async getApplicationDisplayName(applicationPath: string): Promise<string | undefined> {
+    const lookupKey = getApplicationPathLookupKey(applicationPath)
+    let displayNamePromise = this.applicationDisplayNamePromiseCache.get(lookupKey)
+
+    if (!displayNamePromise) {
+      displayNamePromise = (async () => {
+        if (process.platform === "darwin") {
+          const displayName = await resolveMacApplicationDisplayName(applicationPath)
+          if (displayName) {
+            return displayName
+          }
+        }
+
+        const catalog = await this.getApplicationCatalog()
+        const application = catalog.find(
+          (entry) => getApplicationPathLookupKey(entry.path) === lookupKey
+        )
+
+        return application?.displayName
+      })()
+
+      this.applicationDisplayNamePromiseCache.set(lookupKey, displayNamePromise)
+    }
+
+    return displayNamePromise
+  }
+
   private async getApplicationCatalog(): Promise<LauncherApplicationRecord[]> {
     if (!this.applicationCatalogPromise) {
       this.applicationCatalogPromise = loadApplicationCatalog()
@@ -927,4 +982,10 @@ export async function getApplicationIconDataUrl(
   applicationPath: string
 ): Promise<string | undefined> {
   return applicationsLauncherSearchProvider.getApplicationIconDataUrl(applicationPath)
+}
+
+export async function getApplicationDisplayName(
+  applicationPath: string
+): Promise<string | undefined> {
+  return applicationsLauncherSearchProvider.getApplicationDisplayName(applicationPath)
 }

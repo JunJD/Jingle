@@ -17,7 +17,7 @@ import { useShortcutBinding, useShortcutSettings } from "../shortcuts/shortcut-c
 import { getSettingsCopy } from "./copy"
 
 const secondaryButtonClassName =
-  "inline-flex items-center gap-1.5 rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-3 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-background-secondary disabled:cursor-default disabled:opacity-50"
+  "inline-flex items-center gap-[var(--ow-space-1-5)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-body)] font-medium text-foreground transition hover:bg-background-secondary disabled:cursor-default disabled:opacity-50"
 
 const statusClassName = {
   available: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
@@ -207,42 +207,50 @@ function ShortcutCommandCard(props: {
 
   return (
     <div className="overflow-hidden rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-secondary/55 shadow-[0_12px_32px_rgba(32,38,45,0.05)]">
-      <div className="grid gap-3 border-b border-border/70 px-4 py-3.5 md:grid-cols-[240px_minmax(0,1fr)]">
-        <div className="flex items-start gap-3">
+      <div className="grid gap-[var(--ow-gap-md)] border-b border-border/70 px-[var(--ow-space-4)] py-[var(--ow-space-3)] md:grid-cols-[var(--ow-settings-label-column-w)_minmax(0,1fr)]">
+        <div className="flex items-start gap-[var(--ow-gap-md)]">
           <div className="mt-0.5 text-muted-foreground">
-            <Command className="h-4 w-4" />
+            <Command className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
           </div>
-          <div className="space-y-1">
-            <div className="text-[13px] font-semibold text-foreground">{command.title}</div>
-            <div className="text-[12px] leading-5 text-muted-foreground">{command.description}</div>
+          <div className="space-y-[var(--ow-space-1)]">
+            <div className="[font-size:var(--ow-font-label)] font-semibold text-foreground">
+              {command.title}
+            </div>
+            <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
+              {command.description}
+            </div>
           </div>
         </div>
 
         <div
-          className="space-y-4"
+          className="space-y-[var(--ow-space-4)]"
           data-command-id={command.id}
           data-shortcut-configurable={command.configurable ? "true" : "false"}
         >
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-[var(--ow-gap-md)]">
             <div
               data-shortcut-current-binding={command.id}
-              className="rounded-[var(--ow-radius-md)] border border-border/70 bg-background-elevated px-3 py-1.5 text-[13px] font-medium text-foreground"
+              className="rounded-[var(--ow-radius-md)] border border-border/70 bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-label)] font-medium text-foreground"
             >
               {displayedBindingText}
             </div>
             <span
               data-shortcut-binding-source={command.id}
               data-shortcut-binding-source-value={currentOverride?.chord ? "custom" : "default"}
-              className="text-[12px] text-muted-foreground"
+              className="[font-size:var(--ow-font-body)] text-muted-foreground"
             >
               {currentOverride?.chord
                 ? copy.shortcuts.customBinding
                 : copy.shortcuts.defaultBinding}
             </span>
-            {status ? <span className="text-[12px] text-muted-foreground">{status}</span> : null}
+            {status ? (
+              <span className="[font-size:var(--ow-font-body)] text-muted-foreground">
+                {status}
+              </span>
+            ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-[var(--ow-gap-md)]">
             <button
               type="button"
               data-shortcut-edit={command.id}
@@ -254,7 +262,7 @@ function ShortcutCommandCard(props: {
               }}
               disabled={isSaving}
             >
-              <Keyboard className="h-3.5 w-3.5" />
+              <Keyboard className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
               {copy.shortcuts.edit}
             </button>
 
@@ -270,17 +278,17 @@ function ShortcutCommandCard(props: {
           </div>
 
           {isRecording ? (
-            <div className="rounded-xl border border-border/70 bg-background px-4 py-4">
-              <div className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            <div className="rounded-xl border border-border/70 bg-background px-[var(--ow-space-4)] py-[var(--ow-space-4)]">
+              <div className="[font-size:var(--ow-font-body)] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                 {copy.shortcuts.recordingTitle}
               </div>
-              <div className="mt-2 text-[13px] text-muted-foreground">
+              <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-label)] text-muted-foreground">
                 {copy.shortcuts.recordingDescription}
               </div>
               <button
                 type="button"
                 data-shortcut-recorder={command.id}
-                className="mt-4 min-w-[220px] rounded-md border border-[var(--ring)] bg-background-elevated px-3 py-2 text-left text-[13px] font-medium text-foreground outline-none"
+                className="mt-[var(--ow-space-4)] min-w-[var(--ow-settings-select-w)] rounded-md border border-[var(--ring)] bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left [font-size:var(--ow-font-label)] font-medium text-foreground outline-none"
                 onKeyDown={(event) => {
                   event.preventDefault()
                   event.stopPropagation()
@@ -297,7 +305,7 @@ function ShortcutCommandCard(props: {
                 {draftBindingText ?? copy.shortcuts.recordingPlaceholder}
               </button>
 
-              <div className="mt-4 flex flex-wrap items-center gap-3">
+              <div className="mt-[var(--ow-space-4)] flex flex-wrap items-center gap-[var(--ow-gap-md)]">
                 <button
                   type="button"
                   data-shortcut-save={command.id}
@@ -322,26 +330,26 @@ function ShortcutCommandCard(props: {
             </div>
           ) : null}
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-xl border border-border/70 bg-background px-4 py-3">
-              <div className="text-[12px] uppercase tracking-[0.08em] text-muted-foreground">
+          <div className="grid gap-[var(--ow-gap-md)] md:grid-cols-2">
+            <div className="rounded-xl border border-border/70 bg-background px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
+              <div className="[font-size:var(--ow-font-body)] uppercase tracking-[0.08em] text-muted-foreground">
                 {copy.shortcuts.defaultBindingLabel}
               </div>
-              <div className="mt-2 text-[13px] font-medium text-foreground">
+              <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-label)] font-medium text-foreground">
                 {defaultBindingText}
               </div>
             </div>
 
             {defaultBinding.scope === "global" ? (
-              <div className="rounded-xl border border-border/70 bg-background px-4 py-3">
-                <div className="text-[12px] uppercase tracking-[0.08em] text-muted-foreground">
+              <div className="rounded-xl border border-border/70 bg-background px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
+                <div className="[font-size:var(--ow-font-body)] uppercase tracking-[0.08em] text-muted-foreground">
                   {copy.shortcuts.registrationStatus}
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-3">
+                <div className="mt-[var(--ow-space-2)] flex flex-wrap items-center gap-[var(--ow-gap-md)]">
                   <span
                     data-shortcut-registration-state={command.id}
                     data-shortcut-registration-state-value={availability?.state ?? "unknown"}
-                    className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-medium ${
+                    className={`inline-flex rounded-full border px-[var(--ow-space-2)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] font-medium ${
                       statusClassName[availability?.state ?? "unknown"]
                     }`}
                   >
@@ -354,14 +362,14 @@ function ShortcutCommandCard(props: {
                   {availability?.accelerator ? (
                     <span
                       data-shortcut-registration-accelerator={command.id}
-                      className="text-[12px] text-muted-foreground"
+                      className="[font-size:var(--ow-font-body)] text-muted-foreground"
                     >
                       {availability.accelerator}
                     </span>
                   ) : null}
                 </div>
                 {availability?.reason ? (
-                  <div className="mt-2 text-[12px] leading-5 text-muted-foreground">
+                  <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
                     {availability.reason}
                   </div>
                 ) : null}
@@ -383,17 +391,21 @@ export function ShortcutsTab(props: { locale: AppLocale }): React.JSX.Element {
 
   if (commandIds.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
+      <div className="flex h-full items-center justify-center [font-size:var(--ow-font-label)] text-muted-foreground">
         {copy.shortcuts.unavailable}
       </div>
     )
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1040px] flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-[var(--ow-settings-content-max-width)] flex-col gap-[var(--ow-gap-lg)]">
       <div className="px-1">
-        <div className="text-[16px] font-semibold text-foreground">{copy.shortcuts.title}</div>
-        <div className="mt-1 text-[13px] text-muted-foreground">{copy.shortcuts.description}</div>
+        <div className="[font-size:var(--ow-font-display)] font-semibold text-foreground">
+          {copy.shortcuts.title}
+        </div>
+        <div className="mt-[var(--ow-space-1)] [font-size:var(--ow-font-label)] text-muted-foreground">
+          {copy.shortcuts.description}
+        </div>
       </div>
 
       {commandIds.map((commandId) => (

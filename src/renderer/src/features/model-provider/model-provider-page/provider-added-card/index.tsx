@@ -77,7 +77,7 @@ function ProviderAddedCard(props: ProviderAddedCardProps): React.JSX.Element {
         hasProviderError && "bg-destructive/5"
       )}
     >
-      <div className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(210px,1.1fr)_112px_132px_minmax(230px,1fr)] md:items-center">
+      <div className="grid gap-[var(--ow-gap-md)] px-[var(--ow-space-4)] py-[var(--ow-space-3)] md:grid-cols-[minmax(210px,1.1fr)_112px_132px_minmax(230px,1fr)] md:items-center">
         <div className="min-w-0">
           <ProviderIcon provider={provider} />
           <div className="mt-2 flex flex-wrap gap-1 md:hidden">
@@ -101,7 +101,7 @@ function ProviderAddedCard(props: ProviderAddedCardProps): React.JSX.Element {
         <div>
           <button
             type="button"
-            className="inline-flex h-8 items-center gap-1.5 rounded-md px-0 text-[12px] font-medium text-foreground transition hover:text-primary"
+            className="inline-flex h-[var(--ow-control-h-md)] items-center gap-[var(--ow-space-1-5)] rounded-md px-0 [font-size:var(--ow-font-body)] font-medium text-foreground transition hover:text-primary"
             aria-label={
               expanded ? copy.provider.modelsCount(visibleModels.length) : copy.provider.showModels
             }
@@ -126,14 +126,14 @@ function ProviderAddedCard(props: ProviderAddedCardProps): React.JSX.Element {
             </span>
           </button>
           {hasProviderError ? (
-            <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-destructive md:hidden">
+            <div className="mt-0.5 flex min-w-0 items-center gap-1 [font-size:var(--ow-font-meta)] text-destructive md:hidden">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate" title={provider.modelListError}>
                 {provider.modelListError}
               </span>
             </div>
           ) : notConfigured ? (
-            <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground md:hidden">
+            <div className="mt-0.5 flex min-w-0 items-center gap-1 [font-size:var(--ow-font-meta)] text-muted-foreground md:hidden">
               <Info className="h-3.5 w-3.5 shrink-0 text-status-info" />
               <span className="truncate">{copy.provider.configureTip}</span>
             </div>
@@ -143,14 +143,14 @@ function ProviderAddedCard(props: ProviderAddedCardProps): React.JSX.Element {
         <div className="min-w-0 md:text-right">
           <CredentialPanel provider={provider} onOpenProviderDialog={handleOpenCredentialDialog} />
           {hasProviderError ? (
-            <div className="mt-1 hidden min-w-0 items-center justify-end gap-1 text-[11px] text-destructive md:flex">
+            <div className="mt-[var(--ow-space-1)] hidden min-w-0 items-center justify-end gap-1 [font-size:var(--ow-font-meta)] text-destructive md:flex">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate" title={provider.modelListError}>
                 {provider.modelListError}
               </span>
             </div>
           ) : notConfigured ? (
-            <div className="mt-1 hidden min-w-0 items-center justify-end gap-1 text-[11px] text-muted-foreground md:flex">
+            <div className="mt-[var(--ow-space-1)] hidden min-w-0 items-center justify-end gap-1 [font-size:var(--ow-font-meta)] text-muted-foreground md:flex">
               <Info className="h-3.5 w-3.5 shrink-0 text-status-info" />
               <span className="truncate">{copy.provider.configureTip}</span>
             </div>
@@ -165,7 +165,7 @@ function ProviderAddedCard(props: ProviderAddedCardProps): React.JSX.Element {
       )}
 
       {modelLoadError && (
-        <div className="border-t border-destructive/20 bg-destructive/10 px-4 py-2 text-[12px] text-destructive">
+        <div className="border-t border-destructive/20 bg-destructive/10 px-[var(--ow-space-4)] py-[var(--ow-space-2)] [font-size:var(--ow-font-body)] text-destructive">
           {modelLoadError}
         </div>
       )}
