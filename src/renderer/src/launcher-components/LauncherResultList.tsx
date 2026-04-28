@@ -127,21 +127,23 @@ export function LauncherResultList(props: {
           return (
             <div
               key={row.key}
-              className="flex h-[var(--ow-section-h)] items-center justify-between px-[var(--launcher-list-section-x)] [font-size:var(--ow-font-meta)] font-semibold text-muted-foreground"
+              className="flex h-[var(--ow-section-h)] items-center px-[var(--launcher-list-section-x)] [font-size:var(--ow-font-meta)] font-semibold text-muted-foreground"
             >
-              <span>{row.label}</span>
-              {sectionAction ? (
-                <button
-                  type="button"
-                  className="launcher-action-link flex h-5 w-5 appearance-none items-center justify-center rounded-[6px] border-0 text-muted-foreground transition hover:text-foreground"
-                  title={sectionAction.title}
-                  aria-label={sectionAction.title}
-                  onClick={() => onSectionAction?.(sectionAction)}
-                  onMouseDown={(event) => event.preventDefault()}
-                >
-                  <Settings2 className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
+              <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
+                <span>{row.label}</span>
+                {sectionAction ? (
+                  <button
+                    type="button"
+                    className="launcher-action-link flex h-5 w-5 shrink-0 appearance-none items-center justify-center rounded-[6px] border-0 text-muted-foreground transition hover:text-foreground"
+                    title={sectionAction.title}
+                    aria-label={sectionAction.title}
+                    onClick={() => onSectionAction?.(sectionAction)}
+                    onMouseDown={(event) => event.preventDefault()}
+                  >
+                    <Settings2 className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </div>
             </div>
           )
         }
