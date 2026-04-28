@@ -11,6 +11,7 @@ import {
   registerExternalLinksModule
 } from "./external-links/module"
 import {
+  registerExtensionRuntimeIpcHandlers,
   registerExtensionRuntimeModule,
   resolveExtensionRuntimeManager
 } from "./services/extension-runtime"
@@ -19,10 +20,7 @@ import {
   registerLauncherHistoryModule
 } from "./launcher-history/module"
 import { registerLauncherIpcHandlers, registerLauncherModule } from "./launcher/module"
-import {
-  registerLocalStartIpcHandlers,
-  registerLocalStartModule
-} from "./local-start/module"
+import { registerLocalStartIpcHandlers, registerLocalStartModule } from "./local-start/module"
 import {
   registerMainWindowRoutingIpcHandlers,
   registerMainWindowRoutingModule
@@ -53,10 +51,7 @@ import {
 import { registerShortcutsIpcHandlers, registerShortcutsModule } from "./shortcuts/module"
 import { registerThreadsIpcHandlers, registerThreadsModule } from "./threads/module"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
-import {
-  registerWorkspaceIpcHandlers,
-  registerWorkspaceModule
-} from "./workspace/module"
+import { registerWorkspaceIpcHandlers, registerWorkspaceModule } from "./workspace/module"
 import type { MainWindowNavigationPayload } from "@shared/main-window"
 import type { NativeMenuBarState } from "@shared/native-menu-bar"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
@@ -137,6 +132,7 @@ export class MainCompositionRoot {
     registerNativeMenuBarIpcHandlers(this.dependencyContainer, ipcMain)
     registerMainWindowRoutingIpcHandlers(this.dependencyContainer, ipcMain)
     registerSettingsWindowRoutingIpcHandlers(this.dependencyContainer, ipcMain)
+    registerExtensionRuntimeIpcHandlers(this.dependencyContainer, ipcMain)
     registerShortcutsIpcHandlers(this.dependencyContainer, {
       applySettings: () => this.applyShortcutSettings(),
       ipcMain

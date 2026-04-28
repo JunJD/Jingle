@@ -57,16 +57,29 @@ function ActionPanelSubmenu(props: RuntimeActionPanelSectionProps): ReactElement
 }
 
 function ActionRoot(props: RuntimeActionProps): ReactElement {
-  return createElement(ExtensionHostElement.Action, props)
+  const { icon, ...hostProps } = props
+  return createElement(ExtensionHostElement.Action, hostProps, createVisualElement("icon", icon))
 }
 
 function OpenInBrowserAction(props: RuntimeOpenInBrowserActionProps): ReactElement {
-  const { title = "Open in Browser", ...hostProps } = props
-  return createElement(ExtensionHostElement.Action, {
-    actionKind: ExtensionHostActionKind.OpenInBrowser,
-    ...hostProps,
-    title
-  })
+  const { icon, title = "Open in Browser", ...hostProps } = props
+  return createElement(
+    ExtensionHostElement.Action,
+    {
+      actionKind: ExtensionHostActionKind.OpenInBrowser,
+      ...hostProps,
+      title
+    },
+    createVisualElement("icon", icon)
+  )
+}
+
+function createVisualElement(slot: string, node: ReactNode): ReactElement | null {
+  if (node === null || node === undefined || typeof node === "boolean") {
+    return null
+  }
+
+  return createElement(ExtensionHostElement.Visual, { slot }, node)
 }
 
 export const ActionPanel: RuntimeActionPanelComponent = Object.assign(ActionPanelRoot, {

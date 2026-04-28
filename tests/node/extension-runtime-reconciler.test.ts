@@ -169,6 +169,68 @@ test("runtime reconciler keeps action ids unique across list and item actions", 
   assert.equal(new Set(actionIds).size, actionIds.length)
 })
 
+test("runtime reconciler serializes JSX icon visuals", async () => {
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        accessories: createElement("span", null, "Pinned"),
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            icon: createElement(
+              "svg",
+              {
+                className: "action-icon",
+                viewBox: "0 0 24 24"
+              },
+              createElement("path", {
+                d: "M12 5v14",
+                stroke: "currentColor",
+                strokeWidth: 2
+              })
+            ),
+            onAction: () => {},
+            title: "Create"
+          })
+        ),
+        icon: createElement(
+          "svg",
+          {
+            className: "item-icon",
+            viewBox: "0 0 24 24"
+          },
+          createElement("circle", {
+            cx: 12,
+            cy: 12,
+            r: 8
+          })
+        ),
+        id: "with-icon",
+        title: "With Icon"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const item = snapshot.sections[0]?.items[0]
+  assert.equal(item?.icon?.kind, "svg")
+  assert.equal(item.icon.tagName, "svg")
+  assert.equal(item.icon.props.className, "item-icon")
+  assert.equal(item.icon.children[0]?.tagName, "circle")
+  assert.equal(item.accessories[0]?.kind, "text")
+  assert.equal(item.accessories[0]?.text, "Pinned")
+  const actionIcon = item.actions[0]?.icon
+  assert.equal(actionIcon?.kind, "svg")
+  assert.equal(actionIcon.props.className, "action-icon")
+  assert.equal(actionIcon.children[0]?.tagName, "path")
+})
+
 test("runtime reconciler dispatches OpenInBrowser actions through host requests", async () => {
   const hostRequests: ExtensionHostRequest[] = []
   const renderer = createTestRenderer({
@@ -227,6 +289,41 @@ test("runtime reconciler dispatches OpenInBrowser actions through host requests"
       }
     }
   ])
+})
+
+test("runtime reconciler dispatches list query changes to List handlers", async () => {
+  function SearchList() {
+    const [query, setQuery] = useState("")
+
+    return createElement(
+      List,
+      {
+        onSearchTextChange: setQuery,
+        searchText: query
+      },
+      createElement(List.Item, {
+        id: "query",
+        title: `Query: ${query}`
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(createElement(SearchList))
+  await renderer.flushSnapshots()
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      query: "ship runtime",
+      type: "list.query.change"
+    }),
+    true
+  )
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  assert.equal(snapshot.searchText, "ship runtime")
+  assert.equal(snapshot.sections[0]?.items[0]?.title, "Query: ship runtime")
 })
 
 test("runtime reconciler rejects stale action events from an old snapshot revision", async () => {

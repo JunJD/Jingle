@@ -1,4 +1,8 @@
-export { registerExtensionRuntimeModule, resolveExtensionRuntimeManager } from "./module"
+export {
+  registerExtensionRuntimeIpcHandlers,
+  registerExtensionRuntimeModule,
+  resolveExtensionRuntimeManager
+} from "./module"
 export {
   ExtensionRuntimeManager,
   type ExtensionRuntimeHostCapabilities,

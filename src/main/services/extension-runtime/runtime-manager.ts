@@ -6,11 +6,20 @@ import type {
   ExtensionRuntimeEvent,
   ExtensionRuntimeLaunchContext,
   ExtensionRuntimeMetrics,
+  ExtensionRuntimeSessionError,
+  ExtensionRuntimeSessionInfo,
+  ExtensionRuntimeSessionKind,
   ExtensionRuntimeToHostMessage,
   ExtensionSurfaceSnapshot
 } from "@shared/extension-runtime-protocol"
 import type { NativeExtensionInvokeRequest } from "@shared/native-extensions"
 import type { ExtensionRuntimeProcess, ExtensionRuntimeProcessLauncher } from "./runtime-process"
+
+export type {
+  ExtensionRuntimeSessionError,
+  ExtensionRuntimeSessionInfo,
+  ExtensionRuntimeSessionKind
+} from "@shared/extension-runtime-protocol"
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -37,23 +46,16 @@ export interface ExtensionRuntimeHostCapabilities {
   ) => MaybePromise<void>
 }
 
-export interface ExtensionRuntimeSessionError {
-  error: ExtensionRuntimeError
-  sessionId: string
-}
-
-export interface ExtensionRuntimeSessionInfo {
-  context: ExtensionRuntimeLaunchContext
-  kind: ExtensionRuntimeSessionKind
-  pid?: number
-  sessionId: string
-}
-
-export type ExtensionRuntimeSessionKind = "foreground" | "run-once"
-
 export type ExtensionRuntimeRunResult =
   | { sessionId: string; status: "ready" }
   | { error: ExtensionRuntimeError; sessionId: string; status: "error" }
+
+export type ExtensionRuntimeSurfaceListener = (
+  surface: ExtensionSurfaceSnapshot,
+  session: ExtensionRuntimeSessionInfo
+) => void
+
+export type ExtensionRuntimeErrorListener = (error: ExtensionRuntimeSessionError) => void
 
 export interface ExtensionRuntimeManagerOptions {
   createSessionId?: () => string
@@ -77,7 +79,9 @@ interface RuntimeSession {
 export class ExtensionRuntimeManager {
   private foregroundSession: RuntimeSession | null = null
   private lastError: ExtensionRuntimeSessionError | null = null
+  private readonly errorListeners = new Set<ExtensionRuntimeErrorListener>()
   private readonly sessions = new Map<string, RuntimeSession>()
+  private readonly surfaceListeners = new Set<ExtensionRuntimeSurfaceListener>()
 
   constructor(private readonly options: ExtensionRuntimeManagerOptions) {}
 
@@ -93,6 +97,20 @@ export class ExtensionRuntimeManager {
 
   getLastError(): ExtensionRuntimeSessionError | null {
     return this.lastError
+  }
+
+  onError(listener: ExtensionRuntimeErrorListener): () => void {
+    this.errorListeners.add(listener)
+    return () => {
+      this.errorListeners.delete(listener)
+    }
+  }
+
+  onSurface(listener: ExtensionRuntimeSurfaceListener): () => void {
+    this.surfaceListeners.add(listener)
+    return () => {
+      this.surfaceListeners.delete(listener)
+    }
   }
 
   runOnce(context: ExtensionRuntimeLaunchContext): Promise<ExtensionRuntimeRunResult> {
@@ -205,7 +223,7 @@ export class ExtensionRuntimeManager {
         }
         return
       case "surface":
-        this.options.onSurface?.(message.surface, toSessionInfo(session))
+        this.emitSurface(message.surface, toSessionInfo(session))
         return
       case "host-request":
         void this.answerHostRequest(session, message.request)
@@ -231,6 +249,9 @@ export class ExtensionRuntimeManager {
       status: "error"
     })
     this.options.onError?.(sessionError)
+    for (const listener of this.errorListeners) {
+      listener(sessionError)
+    }
     if (session.kind === "run-once" && this.sessions.get(session.sessionId) === session) {
       this.stopSession(session)
     }
@@ -310,6 +331,16 @@ export class ExtensionRuntimeManager {
     })
 
     return session
+  }
+
+  private emitSurface(
+    surface: ExtensionSurfaceSnapshot,
+    sessionInfo: ExtensionRuntimeSessionInfo
+  ): void {
+    this.options.onSurface?.(surface, sessionInfo)
+    for (const listener of this.surfaceListeners) {
+      listener(surface, sessionInfo)
+    }
   }
 
   private stopSession(session: RuntimeSession): void {

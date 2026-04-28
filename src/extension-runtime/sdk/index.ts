@@ -1,4 +1,13 @@
 export { Action, ActionPanel } from "./actions"
+export {
+  ExtensionRuntimeSdkProvider,
+  useCommandSeedQuery,
+  useExtensionRuntimeSdk,
+  useExtensionStorageState,
+  useNativeCommandPreferences,
+  type ExtensionRuntimeHostRequestInput,
+  type ExtensionRuntimeSdkContextValue
+} from "./context"
 export type {
   RuntimeActionPanelProps,
   RuntimeActionPanelSectionProps,

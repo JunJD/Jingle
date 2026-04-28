@@ -181,7 +181,9 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
             : undefined
         }}
       >
-        <ActivePluginComponent />
+        <ActivePluginComponent
+          key={`${route.kind}:${route.extensionName}:${route.commandName}:${route.initialAction}:${route.seedQuery}`}
+        />
       </NativeExtensionHostProvider>
     )
   }
@@ -231,7 +233,9 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
           }
         }}
       >
-        <ActivePluginComponent />
+        <ActivePluginComponent
+          key={`${route.kind}:${route.commandName}:${route.initialAction}:${route.seedQuery}`}
+        />
       </AiCoreHostProvider>
     )
   }

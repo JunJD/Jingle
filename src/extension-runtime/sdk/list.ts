@@ -73,8 +73,15 @@ function ListSection(props: RuntimeListSectionProps): ReactElement {
 }
 
 function ListItem(props: RuntimeListItemProps): ReactElement {
-  const { actions, children, ...hostProps } = props
-  return createElement(ExtensionHostElement.ListItem, hostProps, actions, children)
+  const { accessories, actions, children, icon, ...hostProps } = props
+  return createElement(
+    ExtensionHostElement.ListItem,
+    hostProps,
+    actions,
+    createVisualElement("icon", icon),
+    createVisualElement("accessory", accessories),
+    children
+  )
 }
 
 function ListEmptyView(props: RuntimeListEmptyViewProps): ReactElement {
@@ -94,6 +101,14 @@ function ListDropdownSection(props: RuntimeListDropdownSectionProps): ReactEleme
 
 function ListDropdownItem(props: RuntimeListDropdownItemProps): ReactElement {
   return createElement(ExtensionHostElement.ListDropdownItem, props)
+}
+
+function createVisualElement(slot: string, node: ReactNode): ReactElement | null {
+  if (node === null || node === undefined || typeof node === "boolean") {
+    return null
+  }
+
+  return createElement(ExtensionHostElement.Visual, { slot }, node)
 }
 
 export const List: RuntimeListComponent = Object.assign(ListRoot, {

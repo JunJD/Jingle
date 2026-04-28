@@ -23,11 +23,13 @@ export const ExtensionHostElement = {
   ListSection: "ow-list-section",
   MenuBarExtra: "ow-menu-bar-extra",
   MenuBarExtraItem: "ow-menu-bar-extra-item",
-  MenuBarExtraSection: "ow-menu-bar-extra-section"
+  MenuBarExtraSection: "ow-menu-bar-extra-section",
+  Visual: "ow-visual"
 } as const
 
 export type ExtensionHostElementType =
-  (typeof ExtensionHostElement)[keyof typeof ExtensionHostElement]
+  | (typeof ExtensionHostElement)[keyof typeof ExtensionHostElement]
+  | string
 
 export const ExtensionHostActionKind = {
   OpenInBrowser: "open-in-browser"

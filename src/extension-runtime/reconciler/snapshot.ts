@@ -10,6 +10,7 @@ import type {
   ExtensionListSectionNode,
   ExtensionListSurfaceSnapshot,
   ExtensionSurfaceSnapshot,
+  ExtensionSvgVisualNode,
   ExtensionVisualNode
 } from "../../shared/extension-runtime-protocol"
 import { ExtensionHostActionKind, ExtensionHostElement } from "../sdk/host-elements"
@@ -24,6 +25,26 @@ import type {
 interface SnapshotBuildState {
   nextActionId: () => string
 }
+
+const SVG_TAG_NAMES = new Set([
+  "circle",
+  "clipPath",
+  "defs",
+  "ellipse",
+  "g",
+  "line",
+  "linearGradient",
+  "mask",
+  "path",
+  "polygon",
+  "polyline",
+  "radialGradient",
+  "rect",
+  "stop",
+  "svg",
+  "text",
+  "tspan"
+])
 
 export function createSurfaceSnapshot(container: RuntimeHostContainer): ExtensionSurfaceSnapshot {
   container.actionHandlers.clear()
@@ -107,13 +128,13 @@ function createListItem(
   fallbackId: () => string
 ): ExtensionListItemNode {
   return {
-    accessories: readVisualArrayProp(item.props, "accessories"),
+    accessories: collectVisuals(item, "accessory"),
     actions: collectActions(
       container,
       state,
       directChildrenOfType(item, ExtensionHostElement.ActionPanel)
     ),
-    icon: readVisualProp(item.props, "icon"),
+    icon: collectVisual(item, "icon"),
     id: readStringProp(item.props, "id") ?? fallbackId(),
     keywords: readStringArrayProp(item.props, "keywords"),
     subtitle: readStringProp(item.props, "subtitle"),
@@ -237,7 +258,7 @@ function collectActionNodes(
     return [
       {
         disabled: readBooleanProp(node.props, "disabled", false),
-        icon: readVisualProp(node.props, "icon"),
+        icon: collectVisual(node, "icon"),
         id,
         sectionTitle: params.sectionTitle,
         style: readActionStyleProp(node.props),
@@ -334,28 +355,107 @@ function readStringArrayProp(props: RuntimeHostProps, name: string): string[] {
   return Array.isArray(props[name]) ? props[name].filter((item) => typeof item === "string") : []
 }
 
-function readVisualProp(props: RuntimeHostProps, name: string): ExtensionVisualNode | undefined {
-  const value = props[name]
-  if (typeof value === "string") {
+function collectVisual(
+  node: RuntimeHostElementNode,
+  slot: string
+): ExtensionVisualNode | undefined {
+  const visuals = collectVisuals(node, slot)
+  if (visuals.length === 0) {
+    return undefined
+  }
+
+  if (visuals.length === 1) {
+    return visuals[0]
+  }
+
+  return {
+    children: visuals,
+    kind: "inline"
+  }
+}
+
+function collectVisuals(node: RuntimeHostElementNode, slot: string): ExtensionVisualNode[] {
+  return directChildrenOfType(node, ExtensionHostElement.Visual)
+    .filter((visual) => readStringProp(visual.props, "slot") === slot)
+    .flatMap((visual) => serializeVisualChildren(visual.children))
+}
+
+function serializeVisualChildren(children: RuntimeHostChild[]): ExtensionVisualNode[] {
+  return children.flatMap((child) => {
+    const visual = serializeVisualChild(child)
+    return visual ? [visual] : []
+  })
+}
+
+function serializeVisualChild(child: RuntimeHostChild): ExtensionVisualNode | undefined {
+  if (child.kind === "text") {
+    return child.text
+      ? {
+          kind: "text",
+          text: child.text
+        }
+      : undefined
+  }
+
+  if (child.type === ExtensionHostElement.Visual) {
+    return inlineVisual(serializeVisualChildren(child.children))
+  }
+
+  if (isSvgHostElement(child)) {
     return {
-      kind: "text",
-      text: value
+      children: directElementChildren(child)
+        .filter(isSvgHostElement)
+        .map((svgChild) => serializeSvgVisual(svgChild)),
+      kind: "svg",
+      props: createSvgProps(child.props),
+      tagName: child.type
     }
   }
 
-  return undefined
+  return inlineVisual(serializeVisualChildren(child.children))
 }
 
-function readVisualArrayProp(props: RuntimeHostProps, name: string): ExtensionVisualNode[] {
-  const value = props[name]
-  if (typeof value === "string") {
-    return [
-      {
-        kind: "text",
-        text: value
-      }
-    ]
+function serializeSvgVisual(node: RuntimeHostElementNode): ExtensionSvgVisualNode {
+  return {
+    children: directElementChildren(node)
+      .filter(isSvgHostElement)
+      .map((child) => serializeSvgVisual(child)),
+    kind: "svg",
+    props: createSvgProps(node.props),
+    tagName: node.type
+  }
+}
+
+function inlineVisual(children: ExtensionVisualNode[]): ExtensionVisualNode | undefined {
+  if (children.length === 0) {
+    return undefined
   }
 
-  return []
+  if (children.length === 1) {
+    return children[0]
+  }
+
+  return {
+    children,
+    kind: "inline"
+  }
+}
+
+function isSvgHostElement(node: RuntimeHostElementNode): boolean {
+  return SVG_TAG_NAMES.has(node.type)
+}
+
+function createSvgProps(props: RuntimeHostProps): ExtensionSvgVisualNode["props"] {
+  const svgProps: ExtensionSvgVisualNode["props"] = {}
+  for (const [key, value] of Object.entries(props)) {
+    if (key === "children" || key === "dangerouslySetInnerHTML" || key === "ref") {
+      continue
+    }
+
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      svgProps[key] = value
+    }
+  }
+
+  return svgProps
 }

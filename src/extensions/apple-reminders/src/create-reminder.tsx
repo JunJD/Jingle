@@ -51,9 +51,7 @@ function dueOptionToDate(option: DueOption): string | null {
   return `${year}-${month}-${day}`
 }
 
-function CreateReminderSuccessDetail(props: {
-  reminder: AppleReminder
-}): React.JSX.Element {
+function CreateReminderSuccessDetail(props: { reminder: AppleReminder }): React.JSX.Element {
   const navigation = useNativeExtensionNavigation()
   const { reminder } = props
 
@@ -154,11 +152,7 @@ export function CreateReminderForm(props: CreateReminderFormProps): React.JSX.El
     return () => {
       cancelled = true
     }
-  }, [
-    commandPreferences.selectDefaultList,
-    initialListId,
-    reloadVersion
-  ])
+  }, [commandPreferences.selectDefaultList, initialListId, reloadVersion])
 
   if (isLoading && lists.length === 0) {
     return <Detail markdown="Loading reminder lists..." navigationTitle="Create Reminder" />
@@ -208,9 +202,7 @@ export function CreateReminderForm(props: CreateReminderFormProps): React.JSX.El
                 })
                 .catch((nextError) => {
                   setSubmitError(
-                    nextError instanceof Error
-                      ? nextError.message
-                      : "Failed to create reminder"
+                    nextError instanceof Error ? nextError.message : "Failed to create reminder"
                   )
                 })
                 .finally(() => {

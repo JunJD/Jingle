@@ -12,6 +12,20 @@ export interface ExtensionRuntimeLaunchContext {
   seedQuery: string
 }
 
+export type ExtensionRuntimeSessionKind = "foreground" | "run-once"
+
+export interface ExtensionRuntimeSessionInfo {
+  context: ExtensionRuntimeLaunchContext
+  kind: ExtensionRuntimeSessionKind
+  pid?: number
+  sessionId: string
+}
+
+export interface ExtensionRuntimeSessionError {
+  error: ExtensionRuntimeError
+  sessionId: string
+}
+
 export type ExtensionSurfaceSnapshot =
   | ExtensionDetailSurfaceSnapshot
   | ExtensionErrorSurfaceSnapshot
@@ -205,15 +219,30 @@ export interface ExtensionSvgVisualNode {
 }
 
 export interface ExtensionSvgProps {
+  [key: string]: boolean | number | string | undefined
+  "aria-hidden"?: boolean | string
+  clipRule?: string
   className?: string
+  cx?: number | string
+  cy?: number | string
+  d?: string
   fill?: string
+  fillRule?: string
+  focusable?: boolean | string
   height?: number | string
+  points?: string
+  r?: number | string
+  role?: string
   stroke?: string
   strokeLinecap?: string
   strokeLinejoin?: string
   strokeWidth?: number | string
   viewBox?: string
   width?: number | string
+  x1?: number | string
+  x2?: number | string
+  y1?: number | string
+  y2?: number | string
 }
 
 export type ExtensionRuntimeEvent =

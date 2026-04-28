@@ -2,7 +2,7 @@ import { createContext, type ReactNode } from "react"
 import Reconciler from "react-reconciler"
 import { DefaultEventPriority, LegacyRoot } from "react-reconciler/constants"
 import type { ExtensionRuntimeEvent } from "../../shared/extension-runtime-protocol"
-import type { ExtensionHostElementType } from "../sdk/host-elements"
+import { ExtensionHostElement, type ExtensionHostElementType } from "../sdk/host-elements"
 import {
   appendHostChild,
   createHostContainer,
@@ -237,6 +237,14 @@ export function createExtensionRuntimeRenderer(
 
   return {
     async dispatchEvent(event) {
+      if (event.type === "list.query.change") {
+        return dispatchListChange(container, "onSearchTextChange", event.query)
+      }
+
+      if (event.type === "list.dropdown.change") {
+        return dispatchListDropdownChange(container, event.value)
+      }
+
       if (event.type !== "action.execute") {
         return false
       }
@@ -279,6 +287,75 @@ async function flushSnapshotQueue(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0))
   runtimeReconciler.flushPassiveEffects()
   await Promise.resolve()
+}
+
+async function dispatchListChange(
+  container: RuntimeHostContainer,
+  handlerName: "onSearchTextChange",
+  value: string
+): Promise<boolean> {
+  const list = findFirstHostElement(container.children, ExtensionHostElement.List)
+  const handler = list?.props[handlerName]
+  if (typeof handler !== "function") {
+    return false
+  }
+
+  await runtimeReconciler.flushSyncFromReconciler(() => handler(value))
+  runtimeReconciler.flushSyncWork()
+  await flushSnapshotQueue()
+  return true
+}
+
+async function dispatchListDropdownChange(
+  container: RuntimeHostContainer,
+  value: string
+): Promise<boolean> {
+  const list = findFirstHostElement(container.children, ExtensionHostElement.List)
+  const dropdown = list
+    ? findDirectHostElement(list.children, ExtensionHostElement.ListDropdown)
+    : null
+  const handler = dropdown?.props.onChange
+  if (typeof handler !== "function") {
+    return false
+  }
+
+  await runtimeReconciler.flushSyncFromReconciler(() => handler(value))
+  runtimeReconciler.flushSyncWork()
+  await flushSnapshotQueue()
+  return true
+}
+
+function findFirstHostElement(
+  children: RuntimeHostChild[],
+  type: ExtensionHostElementType
+): RuntimeHostElementNode | null {
+  for (const child of children) {
+    if (child.kind !== "element") {
+      continue
+    }
+
+    if (child.type === type) {
+      return child
+    }
+
+    const nested = findFirstHostElement(child.children, type)
+    if (nested) {
+      return nested
+    }
+  }
+
+  return null
+}
+
+function findDirectHostElement(
+  children: RuntimeHostChild[],
+  type: ExtensionHostElementType
+): RuntimeHostElementNode | null {
+  return (
+    children.find(
+      (child): child is RuntimeHostElementNode => child.kind === "element" && child.type === type
+    ) ?? null
+  )
 }
 
 function reportRuntimeError(error: Error): void {
