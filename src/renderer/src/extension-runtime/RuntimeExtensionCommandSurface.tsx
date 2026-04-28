@@ -222,7 +222,7 @@ function RuntimeListRows(props: {
         {indexedSections.map((section) => (
           <div key={section.id}>
             {section.title ? (
-              <div className="flex items-center justify-between gap-3 px-5 pb-1 pt-3 text-[var(--ow-font-caption)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+              <div className="flex items-center justify-between gap-3 px-6 pb-1 pt-3 text-[12px] font-semibold text-muted-foreground">
                 <span>{section.title}</span>
                 {section.subtitle ? (
                   <span className="text-[10px] font-medium">{section.subtitle}</span>

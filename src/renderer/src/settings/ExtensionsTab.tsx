@@ -9,28 +9,55 @@ import type {
 import type { SettingsWindowTarget } from "@shared/settings-window"
 import { getSettingsCopy } from "./copy"
 
+function formatCommandMode(mode: string): string {
+  if (mode === "no-view") {
+    return "No View"
+  }
+
+  if (mode === "menu-bar") {
+    return "Menu Bar"
+  }
+
+  return mode.charAt(0).toUpperCase() + mode.slice(1)
+}
+
 function PreferenceField(props: {
+  disabledLabel: string
+  enabledLabel: string
   modelOptions: Array<{ id: string; label: string }>
   onChange: (nextValue: unknown) => void
   preference: NativeExtensionPreferenceSchema
   useEnvironmentFallbackLabel: string
   value: unknown
 }): React.JSX.Element {
-  const { modelOptions, onChange, preference, useEnvironmentFallbackLabel, value } = props
+  const {
+    disabledLabel,
+    enabledLabel,
+    modelOptions,
+    onChange,
+    preference,
+    useEnvironmentFallbackLabel,
+    value
+  } = props
   const inputClassName =
-    "w-full rounded-md border border-border bg-background-elevated px-3 py-2 text-[13px] text-foreground outline-none transition focus:border-[var(--ring)]"
+    "h-8 w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-3 text-[var(--ow-font-control)] text-foreground outline-none transition focus:border-[var(--ring)]"
 
   return (
-    <label className="block space-y-2">
-      <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+    <div className="block space-y-1.5">
+      <div className="flex items-center gap-2 text-[var(--ow-font-meta)] font-medium text-foreground">
         <span>{preference.title || preference.label || preference.name}</span>
         {preference.required ? <span className="text-[11px] text-muted-foreground">*</span> : null}
       </div>
       {preference.description ? (
-        <div className="text-[12px] leading-5 text-muted-foreground">{preference.description}</div>
+        <div className="text-[var(--ow-font-meta)] leading-4 text-muted-foreground">
+          {preference.description}
+        </div>
       ) : null}
       {preference.type === "checkbox" ? (
-        <label className="inline-flex items-center gap-2 text-[13px] text-foreground">
+        <label className="flex h-8 items-center justify-between gap-3 rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-3 text-[var(--ow-font-control)] text-foreground">
+          <span className="text-muted-foreground">
+            {value === true ? enabledLabel : disabledLabel}
+          </span>
           <input
             type="checkbox"
             checked={value === true}
@@ -38,7 +65,6 @@ function PreferenceField(props: {
               onChange(event.target.checked)
             }}
           />
-          <span>{preference.title || preference.name}</span>
         </label>
       ) : preference.type === "dropdown" ? (
         <select
@@ -81,21 +107,25 @@ function PreferenceField(props: {
           spellCheck={false}
         />
       )}
-    </label>
+    </div>
   )
 }
 
 function PreferenceSection(props: {
+  disabledLabel: string
   emptyLabel: string
+  enabledLabel: string
   modelOptions: Array<{ id: string; label: string }>
   onChange: (preferenceName: string, nextValue: unknown) => void
   preferences: NativeExtensionPreferenceSchema[]
-  title: string
+  title?: string
   useEnvironmentFallbackLabel: string
   values: Record<string, unknown>
 }): React.JSX.Element {
   const {
+    disabledLabel,
     emptyLabel,
+    enabledLabel,
     modelOptions,
     onChange,
     preferences,
@@ -105,8 +135,8 @@ function PreferenceSection(props: {
   } = props
 
   return (
-    <div className="space-y-3 rounded-xl border border-border/80 bg-background-elevated/70 p-4">
-      <div className="text-[13px] font-semibold text-foreground">{title}</div>
+    <div className="space-y-3">
+      {title ? <div className="text-[13px] font-semibold text-foreground">{title}</div> : null}
       {preferences.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-background px-3 py-3 text-[12px] text-muted-foreground">
           {emptyLabel}
@@ -115,7 +145,9 @@ function PreferenceSection(props: {
         <div className="space-y-4">
           {preferences.map((preference) => (
             <PreferenceField
-              key={`${title}:${preference.name}`}
+              key={preference.name}
+              disabledLabel={disabledLabel}
+              enabledLabel={enabledLabel}
               modelOptions={modelOptions}
               onChange={(nextValue) => {
                 onChange(preference.name, nextValue)
@@ -134,7 +166,9 @@ function PreferenceSection(props: {
 function CommandCard(props: {
   commandName: string
   commandNameFocus?: string
+  disabledLabel: string
   emptyLabel: string
+  enabledLabel: string
   labelMode: string
   modelOptions: Array<{ id: string; label: string }>
   onChange: (preferenceName: string, nextValue: unknown) => void
@@ -149,7 +183,9 @@ function CommandCard(props: {
     commandName,
     commandNameFocus,
     description,
+    disabledLabel,
     emptyLabel,
+    enabledLabel,
     labelMode,
     modelOptions,
     mode,
@@ -164,7 +200,7 @@ function CommandCard(props: {
 
   return (
     <div
-      className={`rounded-xl border bg-background-elevated/65 p-4 ${
+      className={`rounded-[var(--ow-radius-panel)] border bg-background-elevated/65 p-4 ${
         isFocused ? "border-[var(--ring)]" : "border-border/80"
       }`}
     >
@@ -177,16 +213,17 @@ function CommandCard(props: {
           <div className="text-[12px] text-muted-foreground">{description}</div>
         </div>
         <div className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-          {labelMode}: {mode}
+          {labelMode}: {formatCommandMode(mode)}
         </div>
       </div>
       <div className="mt-4">
         <PreferenceSection
+          disabledLabel={disabledLabel}
           emptyLabel={emptyLabel}
+          enabledLabel={enabledLabel}
           modelOptions={modelOptions}
           onChange={onChange}
           preferences={preferences}
-          title={title}
           useEnvironmentFallbackLabel={useEnvironmentFallbackLabel}
           values={values}
         />
@@ -457,17 +494,26 @@ export function ExtensionsTab(props: {
             </div>
 
             <div className="space-y-3">
-              <PreferenceSection
-                emptyLabel={copy.extensions.noPreferences}
-                modelOptions={modelOptions}
-                onChange={(preferenceName, nextValue) => {
-                  void updateExtensionPreference(selectedSchema.extName, preferenceName, nextValue)
-                }}
-                preferences={selectedSchema.preferences}
-                title={selectedSchema.title}
-                useEnvironmentFallbackLabel={copy.general.useEnvironmentFallback}
-                values={extensionRecords[selectedSchema.extName] ?? {}}
-              />
+              {selectedSchema.preferences.length > 0 ? (
+                <div className="rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-secondary/55 p-4 shadow-[0_12px_32px_rgba(32,38,45,0.05)]">
+                  <PreferenceSection
+                    disabledLabel={copy.extensions.disabled}
+                    emptyLabel={copy.extensions.noPreferences}
+                    enabledLabel={copy.extensions.enabled}
+                    modelOptions={modelOptions}
+                    onChange={(preferenceName, nextValue) => {
+                      void updateExtensionPreference(
+                        selectedSchema.extName,
+                        preferenceName,
+                        nextValue
+                      )
+                    }}
+                    preferences={selectedSchema.preferences}
+                    useEnvironmentFallbackLabel={copy.general.useEnvironmentFallback}
+                    values={extensionRecords[selectedSchema.extName] ?? {}}
+                  />
+                </div>
+              ) : null}
 
               {selectedSchema.commands.map((command) => (
                 <CommandCard
@@ -475,7 +521,9 @@ export function ExtensionsTab(props: {
                   key={`${selectedSchema.extName}:${command.name}`}
                   commandNameFocus={focusedCommandName}
                   description={command.description || command.name}
+                  disabledLabel={copy.extensions.disabled}
                   emptyLabel={copy.extensions.noPreferences}
+                  enabledLabel={copy.extensions.enabled}
                   labelMode={copy.extensions.mode}
                   mode={command.mode}
                   modelOptions={modelOptions}

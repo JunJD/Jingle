@@ -73,6 +73,8 @@ interface SettingsCopy {
     toBeConfigured: string
   }
   extensions: {
+    disabled: string
+    enabled: string
     title: string
     rootsDescription: string
     installedTitle: string
@@ -136,7 +138,7 @@ const zhCN: SettingsCopy = {
     memorySourcesTitle: "Memory Sources",
     memorySourcesDescription: "每行一个文件或目录，会并入 agent 默认记忆源。",
     nativeExtensionsTitle: "Native Extensions",
-    nativeExtensionsDescription: "这些设置直接来自 first-party extension package 的 schema。",
+    nativeExtensionsDescription: "管理 Openwork 内置 extension 的偏好设置。",
     noNativeExtensions: "当前没有带设置项的 native extension。",
     useEnvironmentFallback: "跟随环境变量 / 默认值",
     saved: "已保存",
@@ -175,8 +177,10 @@ const zhCN: SettingsCopy = {
     toBeConfigured: "待配置"
   },
   extensions: {
+    disabled: "关闭",
+    enabled: "开启",
     title: "Extensions",
-    rootsDescription: "这里直接展示 Openwork 一方 native extensions 的 schema 和命令设置。",
+    rootsDescription: "管理 Openwork 内置 extension 的偏好和命令设置。",
     installedTitle: "搜索 Extensions",
     empty: "还没有扫描到 extension。",
     mode: "模式",
@@ -239,8 +243,7 @@ const enUS: SettingsCopy = {
     memorySourcesDescription:
       "One file or directory per line. Merged into the default agent memory sources.",
     nativeExtensionsTitle: "Native Extensions",
-    nativeExtensionsDescription:
-      "These settings are generated directly from first-party extension package schemas.",
+    nativeExtensionsDescription: "Manage preferences for built-in Openwork extensions.",
     noNativeExtensions: "No native extensions expose preferences yet.",
     useEnvironmentFallback: "Use env var / fallback default",
     saved: "Saved",
@@ -284,8 +287,10 @@ const enUS: SettingsCopy = {
     toBeConfigured: "To Be Configured"
   },
   extensions: {
+    disabled: "Off",
+    enabled: "On",
     title: "Extensions",
-    rootsDescription: "These settings are generated from native Openwork extension schemas.",
+    rootsDescription: "Manage preferences and commands for built-in Openwork extensions.",
     installedTitle: "Search Extensions",
     empty: "No extensions were discovered yet.",
     mode: "Mode",

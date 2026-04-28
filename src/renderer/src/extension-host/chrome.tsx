@@ -68,7 +68,7 @@ export function NativeSurfaceHeaderLeading(props: { label?: string }): React.JSX
     <div className="flex min-w-0 items-center gap-2">
       <NativeSurfaceBackButton />
       {label ? (
-        <span className="truncate text-[var(--ow-font-meta)] uppercase tracking-[0.1em] text-muted-foreground">
+        <span className="truncate text-[var(--ow-font-body)] font-medium text-muted-foreground">
           {label}
         </span>
       ) : null}

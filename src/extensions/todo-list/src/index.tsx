@@ -63,6 +63,23 @@ function extractFirstUrl(value: string): string | null {
   return match?.[0] ?? null
 }
 
+function formatTodoTimestamp(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short"
+  }).format(new Date(value))
+}
+
+function renderCreateTodoActions(props: { onSubmit: () => void }): React.JSX.Element {
+  return (
+    <ActionPanel>
+      <Action icon={<Plus className="h-4 w-4" />} onAction={props.onSubmit} title="Create Todo" />
+    </ActionPanel>
+  )
+}
+
 function renderTodoListActions(props: {
   mode: TodoListMode
   onCancelEditing: () => void
@@ -103,7 +120,6 @@ function renderTodoListActions(props: {
 
   return (
     <ActionPanel>
-      <Action icon={<Plus className="h-4 w-4" />} onAction={onSubmit} title="Create Todo" />
       <Action
         icon={<Search className="h-4 w-4" />}
         onAction={onEnterSearchMode}
@@ -213,6 +229,9 @@ export default function TodoList(): React.JSX.Element {
     setEditingTodoId(todo.id)
     setInputText(todo.title)
   }
+  const createTodoActions = renderCreateTodoActions({
+    onSubmit: submit
+  })
 
   const listActions = renderTodoListActions({
     mode,
@@ -226,8 +245,8 @@ export default function TodoList(): React.JSX.Element {
     onSubmit: submit
   })
 
-  const showRowActions = isSearchMode || (!trimmedInput && !isEditing)
-  const showCreateRow = mode === "create" && trimmedInput.length > 0
+  const showRowActions = !isEditing
+  const showCreateRow = mode === "create"
   const hasVisibleTodos =
     pinnedTodos.length > 0 || activeTodos.length > 0 || completedTodos.length > 0
   const navigationTitle = `Todo List${isEditing ? " • Editing" : isSearchMode ? " • Searching" : ""}`
@@ -248,10 +267,10 @@ export default function TodoList(): React.JSX.Element {
     >
       {showCreateRow ? (
         <List.Item
-          actions={listActions}
+          actions={createTodoActions}
           icon={<Plus className="h-4 w-4 text-muted-foreground" />}
           keywords={["create", "new", "add", trimmedInput]}
-          subtitle={trimmedInput}
+          subtitle={trimmedInput || "No title yet"}
           title="Create Todo"
         />
       ) : null}
@@ -274,7 +293,6 @@ export default function TodoList(): React.JSX.Element {
           {pinnedTodos.map((item) =>
             renderTodoRow({
               item,
-              listActions,
               mode,
               onDelete: () => deleteTodo(item.id),
               onEdit: () => startEditingTodo(item),
@@ -296,7 +314,6 @@ export default function TodoList(): React.JSX.Element {
         {activeTodos.map((item) =>
           renderTodoRow({
             item,
-            listActions,
             mode,
             onDelete: () => deleteTodo(item.id),
             onEdit: () => startEditingTodo(item),
@@ -318,7 +335,6 @@ export default function TodoList(): React.JSX.Element {
           {completedTodos.map((item) =>
             renderTodoRow({
               item,
-              listActions,
               mode,
               onDelete: () => deleteTodo(item.id),
               onEdit: () => startEditingTodo(item),
@@ -341,7 +357,6 @@ export default function TodoList(): React.JSX.Element {
 
 function renderTodoRow(props: {
   item: TodoItem
-  listActions: React.ReactElement
   mode: TodoListMode
   onDelete: () => void
   onEdit: () => void
@@ -353,7 +368,6 @@ function renderTodoRow(props: {
 }): React.JSX.Element {
   const {
     item,
-    listActions,
     mode,
     onDelete,
     onEdit,
@@ -411,9 +425,7 @@ function renderTodoRow(props: {
               />
             )}
           </ActionPanel>
-        ) : (
-          listActions
-        )
+        ) : undefined
       }
       icon={
         item.completed ? (
@@ -423,7 +435,7 @@ function renderTodoRow(props: {
         )
       }
       keywords={[item.pinned ? "pinned" : "", item.completed ? "completed" : "active"]}
-      subtitle={new Date(item.createdAt).toLocaleString()}
+      subtitle={formatTodoTimestamp(item.createdAt)}
       title={item.title}
     />
   )
