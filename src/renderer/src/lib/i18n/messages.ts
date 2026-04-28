@@ -129,6 +129,7 @@ export interface AppCopy {
     useSuggestedQueryAction: string
     useSuggestedQuerySubtitle: string
     useSuggestedQueryTitle: (query: string) => string
+    useWithSectionTitle: (query: string) => string
   }
   modelSwitcher: {
     apiKeyRequired: (providerName: string) => string
@@ -317,7 +318,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       unpinHistoryItem: "取消固定",
       useSuggestedQueryAction: "填充",
       useSuggestedQuerySubtitle: "只填充输入框",
-      useSuggestedQueryTitle: (query) => `补全为“${query}”`
+      useSuggestedQueryTitle: (query) => `补全为“${query}”`,
+      useWithSectionTitle: (query) => `使用“${query}”打开...`
     },
     modelSwitcher: {
       apiKeyRequired: (providerName) => `${providerName} 需要 API Key`,
@@ -519,7 +521,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       unpinHistoryItem: "Unpin",
       useSuggestedQueryAction: "Fill",
       useSuggestedQuerySubtitle: "Only fill the input",
-      useSuggestedQueryTitle: (query) => `Complete as “${query}”`
+      useSuggestedQueryTitle: (query) => `Complete as “${query}”`,
+      useWithSectionTitle: (query) => `Use “${query}” with...`
     },
     modelSwitcher: {
       apiKeyRequired: (providerName) => `API key required for ${providerName}`,

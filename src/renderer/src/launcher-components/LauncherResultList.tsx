@@ -7,8 +7,7 @@ import {
   renderLauncherResultIcon
 } from "@launcher-shell/result-presentation"
 import type {
-  LauncherHomeSurfaceSection,
-  LauncherHomeSurfaceSectionKind
+  LauncherHomeSurfaceSection
 } from "@launcher-shell/home-surface"
 import type { LauncherShellItem } from "@launcher-shell/types"
 import { useSelectedRowScrollIntoView } from "./useSelectedRowScrollIntoView"
@@ -30,14 +29,16 @@ function renderTitle(title: string, match?: [number, number]): React.JSX.Element
 }
 
 function getSectionLabel(
-  sectionKind: LauncherHomeSurfaceSectionKind,
+  section: LauncherHomeSurfaceSection,
   copy: ReturnType<typeof useI18n>["copy"]
 ): string | null {
-  switch (sectionKind) {
+  if (section.title) {
+    return section.title
+  }
+
+  switch (section.kind) {
     case "commands":
       return null
-    case "command-intents":
-      return copy.launcher.actionsLabel
     case "search-results":
       return copy.launcher.searchResults
     case "suggestions":
@@ -99,7 +100,7 @@ export function LauncherResultList(props: {
       {
         key: `header:${section.kind}`,
         kind: "header" as const,
-        label: getSectionLabel(section.kind, copy)
+        label: getSectionLabel(section, copy)
       },
       ...section.items.map((item, itemIndex) => ({
         index: precedingItemsCount + itemIndex,

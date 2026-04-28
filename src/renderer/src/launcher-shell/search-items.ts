@@ -2,11 +2,15 @@ import type { AppCopy } from "@/lib/i18n/messages"
 import type { LauncherHistoryItem } from "@shared/launcher-history"
 import type { LocalStartItem } from "@shared/local-start"
 import type { LauncherSearchResult } from "@shared/launcher-search"
-import type { LauncherResolvedCommandIntent } from "./pages/types"
 import type { LauncherIndexedCommand } from "./pages"
 import { createLauncherBuiltinResultPresentation } from "./result-presentation"
 import type { LauncherResultPresentation } from "./result-types"
 import type { LauncherShellItem } from "./types"
+export {
+  buildLauncherCommandIntentShellItems,
+  buildLauncherUseWithCommandShellItems,
+  buildLauncherUseWithShellItems
+} from "./use-with-items"
 
 export function buildLauncherSearchShellItems(
   copy: AppCopy,
@@ -75,25 +79,6 @@ export function buildLauncherHistoryShellItems(
       iconDataUrl: item.iconDataUrl,
       kind: item.kind
     }),
-    subtitle: item.subtitle,
-    title: item.title
-  }))
-}
-
-export function buildLauncherCommandIntentShellItems(
-  items: LauncherResolvedCommandIntent[]
-): LauncherShellItem[] {
-  return items.map((item) => ({
-    action: {
-      executor: "internal",
-      target: null,
-      type: "none"
-    },
-    commandOpenOptions: item.openOptions,
-    commandRef: item.address,
-    id: item.id,
-    kind: item.kind,
-    presentation: item.presentation,
     subtitle: item.subtitle,
     title: item.title
   }))
