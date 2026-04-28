@@ -123,7 +123,7 @@ export function LauncherResultList(props: {
           return (
             <div
               key={row.key}
-              className="flex h-6 items-center px-6 text-[11px] font-semibold text-muted-foreground"
+              className="flex h-[var(--ow-section-h)] items-center px-[var(--launcher-list-section-x)] [font-size:var(--ow-font-meta)] font-semibold text-muted-foreground"
             >
               {row.label}
             </div>
@@ -143,7 +143,7 @@ export function LauncherResultList(props: {
             onClick={() => onExecute(row.index)}
             onMouseDown={(event) => event.preventDefault()}
             className={cn(
-              "launcher-result-row relative mx-2.5 grid h-11 w-[calc(100%-1.25rem)] appearance-none grid-cols-[26px_minmax(0,1fr)_88px] items-center gap-2 rounded-[var(--ow-radius-md)] border-0 px-3 text-left transition",
+              "launcher-result-row relative mx-[var(--launcher-result-row-x)] grid h-[var(--ow-row-h-md)] w-[calc(100%-(var(--launcher-result-row-x)*2))] appearance-none grid-cols-[var(--launcher-result-icon-column)_minmax(0,1fr)_var(--launcher-result-trailing-column)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--launcher-result-row-padding-x)] text-left transition",
               isSelected && "launcher-result-row--selected"
             )}
             style={{
@@ -152,22 +152,22 @@ export function LauncherResultList(props: {
             }}
           >
             <div
-              className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[6px]"
+              className="flex h-[var(--ow-icon-md)] w-[var(--ow-icon-md)] shrink-0 items-center justify-center overflow-hidden rounded-[var(--ow-radius-sm)]"
               style={getLauncherResultToneStyle(row.item.presentation.tone)}
             >
               {renderLauncherResultIcon(row.item.presentation.icon)}
             </div>
 
             <div className="min-w-0">
-              <div className="truncate text-[var(--ow-font-body)] font-medium leading-[1.15] text-foreground">
+              <div className="truncate [font-size:var(--ow-font-body)] font-medium leading-[var(--ow-line-tight)] text-foreground">
                 {renderTitle(row.item.title, row.item.match)}
               </div>
-              <div className="mt-0.5 truncate text-[var(--ow-font-meta)] leading-[1.15] text-muted-foreground">
+              <div className="mt-[var(--ow-leading-nudge)] truncate [font-size:var(--ow-font-meta)] leading-[var(--ow-line-tight)] text-muted-foreground">
                 {truncateMiddle(row.item.subtitle, 72, 16)}
               </div>
             </div>
 
-            <div className="justify-self-end text-right text-[var(--ow-font-meta)] font-medium text-muted-foreground">
+            <div className="justify-self-end text-right [font-size:var(--ow-font-meta)] font-medium text-muted-foreground">
               {getResultTrailingLabel(row.item, copy)}
             </div>
           </button>

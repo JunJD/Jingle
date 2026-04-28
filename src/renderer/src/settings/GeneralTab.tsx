@@ -17,15 +17,19 @@ function SettingsRow(props: {
 
   return (
     <div
-      className={`grid gap-3 px-4 py-3.5 md:grid-cols-[240px_minmax(0,1fr)] ${
+      className={`grid gap-[var(--ow-gap-md)] px-[var(--ow-space-4)] py-[var(--ow-space-3)] md:grid-cols-[var(--ow-settings-label-column-w)_minmax(0,1fr)] ${
         withBorder ? "border-b border-border/70" : ""
       }`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-[var(--ow-gap-md)]">
         <div className="mt-0.5 text-muted-foreground">{icon}</div>
-        <div className="space-y-1">
-          <div className="text-[13px] font-semibold text-foreground">{title}</div>
-          <div className="text-[12px] leading-5 text-muted-foreground">{description}</div>
+        <div className="space-y-[var(--ow-space-1)]">
+          <div className="[font-size:var(--ow-font-label)] font-semibold text-foreground">
+            {title}
+          </div>
+          <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
+            {description}
+          </div>
         </div>
       </div>
       <div className="min-w-0">{children}</div>
@@ -41,12 +45,12 @@ function parseLineList(value: string): string[] {
 }
 
 const inputClassName =
-  "w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-3 py-1.5 text-[13px] text-foreground outline-none transition focus:border-[var(--ring)]"
+  "w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-label)] text-foreground outline-none transition focus:border-[var(--ring)]"
 
 const selectClassName = `${inputClassName} pr-8`
 
 const secondaryButtonClassName =
-  "inline-flex items-center gap-1.5 rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-3 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-background-secondary"
+  "inline-flex items-center gap-[var(--ow-space-1-5)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-body)] font-medium text-foreground transition hover:bg-background-secondary"
 
 export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   const { locale } = props
@@ -108,27 +112,31 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
 
   if (!agentConfig || !launcherSettings) {
     return (
-      <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
+      <div className="flex h-full items-center justify-center [font-size:var(--ow-font-label)] text-muted-foreground">
         {locale === "zh-CN" ? "正在加载设置..." : "Loading settings..."}
       </div>
     )
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1040px] flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-[var(--ow-settings-content-max-width)] flex-col gap-[var(--ow-gap-lg)]">
       <div className="px-1">
-        <div className="text-[16px] font-semibold text-foreground">{copy.general.title}</div>
-        <div className="mt-1 text-[13px] text-muted-foreground">{copy.general.workspaceHint}</div>
+        <div className="[font-size:var(--ow-font-display)] font-semibold text-foreground">
+          {copy.general.title}
+        </div>
+        <div className="mt-[var(--ow-space-1)] [font-size:var(--ow-font-label)] text-muted-foreground">
+          {copy.general.workspaceHint}
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-secondary/55 shadow-[0_12px_32px_rgba(32,38,45,0.05)]">
         <SettingsRow
-          icon={<FolderOpen className="h-4 w-4" />}
+          icon={<FolderOpen className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
           title={copy.general.workspaceTitle}
           description={copy.general.workspaceDescription}
         >
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="min-w-[280px] flex-1 rounded-[var(--ow-radius-md)] border border-border/70 bg-background-elevated px-3 py-1.5 text-[13px] text-foreground">
+          <div className="flex flex-wrap items-center gap-[var(--ow-gap-md)]">
+            <div className="min-w-[var(--ow-settings-field-min-width)] flex-1 rounded-[var(--ow-radius-md)] border border-border/70 bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-label)] text-foreground">
               {globalWorkspacePath || copy.common.none}
             </div>
             <button
@@ -151,11 +159,11 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
         </SettingsRow>
 
         <SettingsRow
-          icon={<Rocket className="h-4 w-4" />}
+          icon={<Rocket className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
           title={copy.general.launcherModeTitle}
           description={copy.general.launcherModeDescription}
         >
-          <div className="max-w-[220px]">
+          <div className="max-w-[var(--ow-settings-select-w)]">
             <select
               className={selectClassName}
               value={launcherSettings.windowMode}
@@ -170,11 +178,11 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
         </SettingsRow>
 
         <SettingsRow
-          icon={<Languages className="h-4 w-4" />}
+          icon={<Languages className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
           title={copy.general.localeTitle}
           description={copy.general.localeDescription}
         >
-          <div className="max-w-[220px]">
+          <div className="max-w-[var(--ow-settings-select-w)]">
             <select
               className={selectClassName}
               value={agentConfig.locale}
@@ -192,12 +200,12 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
         </SettingsRow>
 
         <SettingsRow
-          icon={<Layers2 className="h-4 w-4" />}
+          icon={<Layers2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
           title={copy.general.skillSourcesTitle}
           description={copy.general.skillSourcesDescription}
         >
           <textarea
-            className={`${inputClassName} min-h-[112px] resize-y`}
+            className={`${inputClassName} min-h-[var(--ow-settings-textarea-min-h)] resize-y`}
             value={skillSourcesDraft}
             onChange={(event) => {
               setSkillSourcesDraft(event.target.value)
@@ -207,20 +215,20 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
         </SettingsRow>
 
         <SettingsRow
-          icon={<Layers2 className="h-4 w-4" />}
+          icon={<Layers2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
           title={copy.general.memorySourcesTitle}
           description={copy.general.memorySourcesDescription}
         >
-          <div className="space-y-3">
+          <div className="space-y-[var(--ow-space-3)]">
             <textarea
-              className={`${inputClassName} min-h-[112px] resize-y`}
+              className={`${inputClassName} min-h-[var(--ow-settings-textarea-min-h)] resize-y`}
               value={memorySourcesDraft}
               onChange={(event) => {
                 setMemorySourcesDraft(event.target.value)
               }}
               spellCheck={false}
             />
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-[var(--ow-gap-md)]">
               <button
                 type="button"
                 className={secondaryButtonClassName}
@@ -228,7 +236,11 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
               >
                 {copy.common.save}
               </button>
-              {status ? <span className="text-[12px] text-muted-foreground">{status}</span> : null}
+              {status ? (
+                <span className="[font-size:var(--ow-font-body)] text-muted-foreground">
+                  {status}
+                </span>
+              ) : null}
             </div>
           </div>
         </SettingsRow>

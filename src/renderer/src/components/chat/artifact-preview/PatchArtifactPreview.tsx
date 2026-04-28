@@ -15,8 +15,8 @@ export function PatchArtifactPreview(props: PatchArtifactPreviewProps): React.JS
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="border-b border-border bg-background px-4 py-3">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <div className="border-b border-border bg-background px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
+        <div className="flex flex-wrap items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-meta)] text-muted-foreground">
           <Badge variant="outline">
             {parsedPatch.files} {parsedPatch.files === 1 ? "file" : "files"}
           </Badge>
@@ -29,8 +29,8 @@ export function PatchArtifactPreview(props: PatchArtifactPreviewProps): React.JS
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="overflow-x-auto px-4 py-4">
-          <div className="min-w-[760px] overflow-hidden rounded-[18px] border border-border/80 bg-background-elevated/70 font-mono text-[12px] leading-6">
+        <div className="overflow-x-auto px-[var(--ow-space-4)] py-[var(--ow-space-4)]">
+          <div className="min-w-[var(--ow-chat-code-preview-min-w)] overflow-hidden rounded-[var(--ow-radius-dialog)] border border-border/80 bg-background-elevated/70 font-mono [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
             {parsedPatch.rows.map((row, index) => (
               <div
                 className={cn(
@@ -44,13 +44,15 @@ export function PatchArtifactPreview(props: PatchArtifactPreviewProps): React.JS
                 )}
                 key={`${row.kind}-${index}-${row.text}`}
               >
-                <div className="border-r border-border/50 px-3 py-1 text-right text-muted-foreground">
+                <div className="border-r border-border/50 px-[var(--ow-space-3)] py-[var(--ow-space-1)] text-right text-muted-foreground">
                   {row.oldLineNumber ?? ""}
                 </div>
-                <div className="border-r border-border/50 px-3 py-1 text-right text-muted-foreground">
+                <div className="border-r border-border/50 px-[var(--ow-space-3)] py-[var(--ow-space-1)] text-right text-muted-foreground">
                   {row.newLineNumber ?? ""}
                 </div>
-                <div className="overflow-x-auto px-3 py-1 whitespace-pre">{row.text || " "}</div>
+                <div className="overflow-x-auto whitespace-pre px-[var(--ow-space-3)] py-[var(--ow-space-1)]">
+                  {row.text || " "}
+                </div>
               </div>
             ))}
           </div>

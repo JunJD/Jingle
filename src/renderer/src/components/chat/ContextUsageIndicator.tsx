@@ -109,28 +109,34 @@ export function ContextUsageIndicator({
       <PopoverTrigger asChild>
         <button
           className={cn(
-            "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors hover:opacity-80",
+            "flex items-center gap-[var(--ow-space-1-5)] rounded-full px-[var(--ow-space-2-5)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] transition-colors hover:opacity-80",
             bgColorClass,
             colorClass,
             className
           )}
         >
-          <CircleGauge className="size-3.5" />
+          <CircleGauge className="size-[var(--ow-icon-sm)]" />
           <span className="font-mono">
             {formatCompactNumber(usedTokens, locale)} / {formatCompactNumber(contextLimit, locale)}
           </span>
-          <span className="text-[10px] opacity-70">({usagePercent.toFixed(0)}%)</span>
+          <span className="[font-size:var(--ow-font-caption)] opacity-70">
+            ({usagePercent.toFixed(0)}%)
+          </span>
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 border-border bg-popover p-0" align="end" sideOffset={8}>
-        <div className="p-3 space-y-3">
+      <PopoverContent
+        className="context-usage-popover w-[var(--ow-context-popover-w)] border-border bg-popover p-0"
+        align="end"
+        sideOffset={8}
+      >
+        <div className="p-[var(--ow-space-3)] space-y-[var(--ow-space-3)]">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-foreground">
+            <span className="[font-size:var(--ow-font-meta)] font-medium text-foreground">
               {copy.contextUsage.contextWindow}
             </span>
             <span
               className={cn(
-                "text-[10px] font-medium px-1.5 py-0.5 rounded",
+                "rounded px-[var(--ow-space-1-5)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)] font-medium",
                 bgColorClass,
                 colorClass
               )}
@@ -139,14 +145,14 @@ export function ContextUsageIndicator({
             </span>
           </div>
 
-          <div className="space-y-1">
-            <div className="h-2 overflow-hidden rounded-full bg-background-secondary">
+          <div className="space-y-[var(--ow-space-1)]">
+            <div className="h-[var(--ow-progress-track-h-md)] overflow-hidden rounded-full bg-background-secondary">
               <div
                 className={cn("h-full rounded-full transition-all", barColorClass)}
                 style={{ width: `${usagePercent}%` }}
               />
             </div>
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between [font-size:var(--ow-font-caption)] text-muted-foreground">
               <span>
                 {formatNumber(usedTokens, locale)} {copy.contextUsage.tokens}
               </span>
@@ -156,34 +162,34 @@ export function ContextUsageIndicator({
             </div>
           </div>
 
-          <div className="space-y-1.5 pt-2 border-t border-border">
-            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          <div className="space-y-[var(--ow-space-1-5)] pt-[var(--ow-space-2)] border-t border-border">
+            <div className="[font-size:var(--ow-font-caption)] font-medium uppercase tracking-wider text-muted-foreground">
               {copy.contextUsage.tokenBreakdown}
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-[var(--ow-space-1)]">
               {/* Input tokens */}
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5 text-muted-foreground">
-                  <ArrowUp className="size-3" />
+              <div className="flex items-center justify-between [font-size:var(--ow-font-meta)]">
+                <div className="flex items-center gap-[var(--ow-space-1-5)] text-muted-foreground">
+                  <ArrowUp className="size-[var(--ow-icon-compact)]" />
                   <span>{copy.contextUsage.input}</span>
                 </div>
                 <span className="font-mono">{formatNumber(tokenUsage.inputTokens, locale)}</span>
               </div>
 
               {/* Output tokens */}
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5 text-muted-foreground">
-                  <ArrowDown className="size-3" />
+              <div className="flex items-center justify-between [font-size:var(--ow-font-meta)]">
+                <div className="flex items-center gap-[var(--ow-space-1-5)] text-muted-foreground">
+                  <ArrowDown className="size-[var(--ow-icon-compact)]" />
                   <span>{copy.contextUsage.output}</span>
                 </div>
                 <span className="font-mono">{formatNumber(tokenUsage.outputTokens, locale)}</span>
               </div>
 
               {/* Total */}
-              <div className="flex items-center justify-between text-xs pt-1 border-t border-border/50">
-                <div className="flex items-center gap-1.5 text-muted-foreground">
-                  <Zap className="size-3" />
+              <div className="flex items-center justify-between border-t border-border/50 pt-[var(--ow-space-1)] [font-size:var(--ow-font-meta)]">
+                <div className="flex items-center gap-[var(--ow-space-1-5)] text-muted-foreground">
+                  <Zap className="size-[var(--ow-icon-compact)]" />
                   <span>{copy.contextUsage.total}</span>
                 </div>
                 <span className="font-mono">{formatNumber(tokenUsage.totalTokens, locale)}</span>
@@ -191,18 +197,18 @@ export function ContextUsageIndicator({
             </div>
           </div>
 
-          <div className="space-y-1.5 pt-2 border-t border-border">
-            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          <div className="space-y-[var(--ow-space-1-5)] pt-[var(--ow-space-2)] border-t border-border">
+            <div className="[font-size:var(--ow-font-caption)] font-medium uppercase tracking-wider text-muted-foreground">
               {copy.contextUsage.cache}
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-[var(--ow-space-1)]">
               {hasCacheData ? (
                 <>
                   {tokenUsage.cacheReadTokens !== undefined && tokenUsage.cacheReadTokens > 0 && (
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 text-status-nominal">
-                        <Database className="size-3" />
+                    <div className="flex items-center justify-between [font-size:var(--ow-font-meta)]">
+                      <div className="flex items-center gap-[var(--ow-space-1-5)] text-status-nominal">
+                        <Database className="size-[var(--ow-icon-compact)]" />
                         <span>{copy.contextUsage.cacheHits}</span>
                       </div>
                       <span className="font-mono text-status-nominal">
@@ -213,9 +219,9 @@ export function ContextUsageIndicator({
 
                   {tokenUsage.cacheCreationTokens !== undefined &&
                     tokenUsage.cacheCreationTokens > 0 && (
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1.5 text-status-info">
-                          <Database className="size-3" />
+                      <div className="flex items-center justify-between [font-size:var(--ow-font-meta)]">
+                        <div className="flex items-center gap-[var(--ow-space-1-5)] text-status-info">
+                          <Database className="size-[var(--ow-icon-compact)]" />
                           <span>{copy.contextUsage.cacheCreated}</span>
                         </div>
                         <span className="font-mono text-status-info">
@@ -225,15 +231,15 @@ export function ContextUsageIndicator({
                     )}
                 </>
               ) : (
-                <div className="text-xs text-muted-foreground">
+                <div className="[font-size:var(--ow-font-meta)] text-muted-foreground">
                   {copy.contextUsage.noCachedTokens}
                 </div>
               )}
             </div>
           </div>
 
-          <div className="pt-2 border-t border-border">
-            <div className="text-[10px] text-muted-foreground">
+          <div className="pt-[var(--ow-space-2)] border-t border-border">
+            <div className="[font-size:var(--ow-font-caption)] text-muted-foreground">
               {copy.contextUsage.lastUpdated}: {formatTime(tokenUsage.lastUpdated, locale)}
             </div>
           </div>

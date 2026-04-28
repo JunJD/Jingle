@@ -21,7 +21,7 @@ type SystemModelSelectorProps = {
 }
 
 const selectClassName =
-  "w-full rounded-md border border-border bg-background-elevated px-3 py-2 pr-8 text-[13px] text-foreground outline-none transition focus:border-[var(--ring)]"
+  "w-full rounded-md border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-2)] pr-[var(--ow-control-icon-inset)] [font-size:var(--ow-font-label)] text-foreground outline-none transition focus:border-[var(--ring)]"
 
 export default function SystemModelSelector(props: SystemModelSelectorProps): React.JSX.Element {
   const { availableModels, defaultModel, notConfigured, onSave } = props
@@ -67,22 +67,22 @@ export default function SystemModelSelector(props: SystemModelSelectorProps): Re
         type="button"
         size="sm"
         variant={notConfigured ? "warning" : "outline"}
-        className="relative h-8 rounded-lg"
+        className="relative h-[var(--ow-control-h-md)] rounded-lg"
         onClick={() => setOpen(true)}
       >
-        <SlidersHorizontal className="h-3.5 w-3.5" />
+        <SlidersHorizontal className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
         {copy.provider.systemSettings}
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="w-[calc(100%-2rem)] rounded-[var(--ow-radius-dialog)] sm:max-w-[480px] sm:rounded-[var(--ow-radius-dialog)]">
+        <DialogContent className="system-model-selector-dialog w-[var(--ow-dialog-mobile-w)] rounded-[var(--ow-radius-dialog)] sm:max-w-[var(--ow-dialog-w-model-selector)] sm:rounded-[var(--ow-radius-dialog)]">
           <DialogHeader className="text-left">
             <DialogTitle>{copy.provider.systemSettings}</DialogTitle>
             <DialogDescription>{copy.provider.defaultModelDescription}</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-2 py-2">
-            <div className="text-[13px] font-medium text-foreground">
+          <div className="space-y-2 py-[var(--ow-space-2)]">
+            <div className="[font-size:var(--ow-font-label)] font-medium text-foreground">
               {copy.provider.defaultModelTitle}
             </div>
             {availableModels.length > 0 ? (
@@ -98,12 +98,12 @@ export default function SystemModelSelector(props: SystemModelSelectorProps): Re
                 ))}
               </select>
             ) : (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-900">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-[var(--ow-space-3)] py-[var(--ow-space-2)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-amber-900">
                 {copy.provider.defaultModelUnavailable}
               </div>
             )}
             {errorText && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] leading-5 text-destructive">
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-[var(--ow-space-3)] py-[var(--ow-space-2)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-destructive">
                 {errorText}
               </div>
             )}
@@ -120,7 +120,11 @@ export default function SystemModelSelector(props: SystemModelSelectorProps): Re
                 void handleSave()
               }}
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : copy.common.save}
+              {saving ? (
+                <Loader2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] animate-spin" />
+              ) : (
+                copy.common.save
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

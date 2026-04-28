@@ -131,10 +131,14 @@ const renderAttachmentMetadata = (
   const label = getAttachmentLabel(data)
 
   return (
-    <div className={cn("space-y-1 px-0.5", className)}>
-      <h4 className="font-semibold text-sm leading-none text-foreground">{label}</h4>
+    <div className={cn("space-y-[var(--ow-space-1)] px-[var(--ow-space-0-5)]", className)}>
+      <h4 className="[font-size:var(--ow-font-body)] font-semibold leading-none text-foreground">
+        {label}
+      </h4>
       {showMediaType && data.mediaType ? (
-        <p className="font-mono text-[11px] text-muted-foreground">{data.mediaType}</p>
+        <p className="font-mono [font-size:var(--ow-font-meta)] text-muted-foreground">
+          {data.mediaType}
+        </p>
       ) : null}
     </div>
   )
@@ -193,7 +197,7 @@ export const Attachments = ({
     <AttachmentsContext.Provider value={contextValue}>
       <div
         className={cn(
-          "flex items-start",
+          "ow-attachments flex items-start",
           variant === "list" ? "flex-col gap-2" : "flex-wrap gap-2",
           variant === "grid" && "ml-auto w-fit",
           className
@@ -229,15 +233,16 @@ export const Attachment = ({ data, onRemove, className, children, ...props }: At
       <div
         className={cn(
           "group relative",
-          variant === "grid" && "size-24 overflow-hidden rounded-lg",
+          variant === "grid" &&
+            "size-[var(--ow-chat-attachment-image-size)] overflow-hidden rounded-lg",
           variant === "inline" && [
-            "flex h-8 cursor-pointer select-none items-center gap-1.5",
-            "rounded-md border border-border px-1.5",
-            "font-medium text-sm transition-all",
+            "flex h-[var(--ow-control-h-md)] cursor-pointer select-none items-center gap-[var(--ow-space-1-5)]",
+            "rounded-md border border-border px-[var(--ow-space-1-5)]",
+            "[font-size:var(--ow-font-body)] font-medium transition-all",
             "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50"
           ],
           variant === "list" && [
-            "flex w-full items-center gap-3 rounded-lg border p-3",
+            "flex w-full items-center gap-[var(--ow-gap-md)] rounded-lg border p-[var(--ow-space-3)]",
             "hover:bg-accent/50"
           ],
           className
@@ -324,7 +329,9 @@ export const AttachmentInfo = ({
     <div className={cn("min-w-0 flex-1", className)} {...props}>
       <span className="block truncate">{label}</span>
       {showMediaType && data.mediaType && (
-        <span className="block truncate text-muted-foreground text-xs">{data.mediaType}</span>
+        <span className="block truncate [font-size:var(--ow-font-meta)] text-muted-foreground">
+          {data.mediaType}
+        </span>
       )}
     </div>
   )
@@ -454,21 +461,29 @@ export const AttachmentHoverPreview = ({
   const Icon = mediaCategoryIcons[mediaCategory]
 
   return (
-    <div className={cn("space-y-3", className)} {...props}>
+    <div
+      className={cn("attachment-hover-preview space-y-[var(--ow-space-3)]", className)}
+      {...props}
+    >
       {mediaCategory === "image" && data.type === "file" && data.url ? (
-        <div className="flex max-h-96 w-80 items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-muted/30 p-2">
+        <div className="flex max-h-[var(--ow-attachment-hover-preview-h)] w-[var(--ow-attachment-hover-preview-w)] items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-muted/30 p-[var(--ow-space-2)]">
           <img
             alt={getAttachmentLabel(data)}
-            className={cn("max-h-[22rem] max-w-full rounded-md object-contain", imageClassName)}
+            className={cn(
+              "max-h-[var(--ow-attachment-hover-image-max-h)] max-w-full rounded-md object-contain",
+              imageClassName
+            )}
             height={384}
             src={data.url}
             width={320}
           />
         </div>
       ) : (
-        <div className="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/30 px-3 py-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-background">
-            {fallbackIcon ?? <Icon className="size-4 text-muted-foreground" />}
+        <div className="flex items-center gap-[var(--ow-gap-md)] rounded-lg border border-border/70 bg-muted/30 px-[var(--ow-space-3)] py-[var(--ow-space-3)]">
+          <div className="flex h-[var(--ow-attachment-hover-icon-size)] w-[var(--ow-attachment-hover-icon-size)] shrink-0 items-center justify-center rounded-md bg-background">
+            {fallbackIcon ?? (
+              <Icon className="size-[var(--ow-icon-action)] text-muted-foreground" />
+            )}
           </div>
           <div className="min-w-0 flex-1">{renderAttachmentMetadata(data, { showMediaType })}</div>
         </div>
@@ -487,7 +502,10 @@ export type AttachmentEmptyProps = HTMLAttributes<HTMLDivElement>
 
 export const AttachmentEmpty = ({ className, children, ...props }: AttachmentEmptyProps) => (
   <div
-    className={cn("flex items-center justify-center p-4 text-muted-foreground text-sm", className)}
+    className={cn(
+      "flex items-center justify-center p-[var(--ow-space-4)] [font-size:var(--ow-font-body)] text-muted-foreground",
+      className
+    )}
     {...props}
   >
     {children ?? "No attachments"}

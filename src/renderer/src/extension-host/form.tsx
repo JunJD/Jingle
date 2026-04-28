@@ -32,12 +32,14 @@ function FormField(props: {
   const { children, description, title } = props
 
   return (
-    <label className="block space-y-1.5">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+    <label className="block space-y-[var(--ow-space-1-5)]">
+      <div className="[font-size:var(--ow-font-meta)] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
         {title}
       </div>
       {description ? (
-        <div className="text-[12px] leading-4 text-muted-foreground">{description}</div>
+        <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-muted-foreground">
+          {description}
+        </div>
       ) : null}
       {children}
     </label>
@@ -77,7 +79,9 @@ function FormRoot(props: {
         title={navigationTitle}
       >
         <ScrollArea className="flex-1">
-          <div className="space-y-3 px-4 py-3">{children}</div>
+          <div className="space-y-[var(--ow-space-3)] px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
+            {children}
+          </div>
         </ScrollArea>
       </NativeSurfaceChrome>
 
@@ -98,7 +102,7 @@ function FormTextField(props: {
   return (
     <FormField description={description} title={title}>
       <input
-        className="flex h-7 w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-2.5 text-[12px] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex h-[var(--ow-control-h-sm)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
@@ -119,7 +123,7 @@ function FormTextArea(props: {
   return (
     <FormField description={description} title={title}>
       <textarea
-        className="min-h-20 w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-2.5 py-1.5 text-[12px] leading-5 text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+        className="min-h-[var(--ow-textarea-min-h)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
@@ -139,7 +143,7 @@ function FormCheckbox(props: {
 
   return (
     <FormField description={description} title={title}>
-      <label className="inline-flex items-center gap-2 text-[12px] text-foreground">
+      <label className="inline-flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] text-foreground">
         <input
           type="checkbox"
           checked={value}
@@ -177,7 +181,7 @@ function FormDropdown(props: {
   return (
     <FormField description={description} title={title}>
       <NativeExtensionSelect
-        className="flex h-7 w-full appearance-none rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated pl-2.5 pr-8 text-[12px] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex h-[var(--ow-control-h-sm)] w-full appearance-none rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated pl-[var(--ow-space-2-5)] pr-[var(--ow-space-6)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
         value={value}
         onChange={onChange}
       >

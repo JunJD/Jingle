@@ -153,29 +153,29 @@ export function LauncherAiPage(): React.JSX.Element {
       <LauncherChrome
         footer={
           <>
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+            <div className="flex min-w-0 items-center gap-[var(--ow-gap-md)]">
+              <div className="[font-size:var(--ow-font-meta)] uppercase tracking-[0.14em] text-muted-foreground">
                 {copy.launcher.aiFooterLeading}
               </div>
               {branchFeedbackUntil !== null ? (
-                <div className="inline-flex items-center gap-1.5 rounded-full bg-foreground/6 px-2.5 py-1 text-[11px] font-medium text-foreground">
-                  <GitBranch className="size-3" />
+                <div className="inline-flex items-center gap-[var(--ow-space-1-5)] rounded-full bg-foreground/6 px-[var(--ow-space-2-5)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] font-medium text-foreground">
+                  <GitBranch className="size-[var(--ow-icon-compact)]" />
                   <span>{copy.launcher.branchChatSwitched}</span>
                 </div>
               ) : null}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-[var(--ow-gap-sm)]">
               {actionController.canOpenActions ? (
                 <button
                   type="button"
                   onClick={actionController.openActions}
                   onMouseDown={(event) => event.preventDefault()}
-                  className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground"
+                  className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground"
                 >
                   <span>{copy.launcher.actionsLabel}</span>
                   {actionController.actionPanelShortcut ? (
-                    <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                    <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
                       {actionController.actionPanelShortcut}
                     </span>
                   ) : null}
@@ -187,11 +187,11 @@ export function LauncherAiPage(): React.JSX.Element {
                 onClick={runPrimaryAction}
                 onMouseDown={(event) => event.preventDefault()}
                 disabled={primaryActionDisabled}
-                className="launcher-action-link flex h-7 appearance-none items-center gap-2 rounded-[9px] border-0 px-2.5 text-[12px] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
+                className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
               >
                 <span>{copy.launcher.aiPrimaryLabel}</span>
                 {submitShortcut ? (
-                  <span className="launcher-shortcut text-[11px] text-muted-foreground">
+                  <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
                     {submitShortcut}
                   </span>
                 ) : null}
@@ -200,19 +200,19 @@ export function LauncherAiPage(): React.JSX.Element {
           </>
         }
         headerLeading={
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
             <button
               type="button"
               onClick={navigation.goHome}
               onMouseDown={(event) => event.preventDefault()}
               aria-label={copy.launcher.goHome}
               title={copy.launcher.goHome}
-              className="launcher-icon-button flex h-7 w-7 shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
+              className="launcher-icon-button flex h-[var(--launcher-icon-button-size)] w-[var(--launcher-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
             >
-              <ArrowLeft className="size-3.5" />
+              <ArrowLeft className="size-[var(--ow-icon-sm)]" />
             </button>
 
-            <div className="flex min-w-0 items-center gap-1">
+            <div className="flex min-w-0 items-center gap-[var(--ow-gap-xs)]">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -237,9 +237,9 @@ export function LauncherAiPage(): React.JSX.Element {
                     ? `${copy.launcher.aiAddAttachment} (${addAttachmentShortcut})`
                     : copy.launcher.aiAddAttachment
                 }
-                className="launcher-icon-button flex h-5.5 w-5.5 shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
+                className="launcher-icon-button flex h-[var(--launcher-inline-icon-button-size)] w-[var(--launcher-inline-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
               >
-                <Plus className="size-2.5" />
+                <Plus className="size-[var(--ow-icon-xs)]" />
               </button>
 
               <LauncherAttachmentStrip
@@ -259,9 +259,9 @@ export function LauncherAiPage(): React.JSX.Element {
               onMouseDown={(event) => event.preventDefault()}
               aria-label={copy.launcher.aiStopLabel}
               title={copy.launcher.aiStopLabel}
-              className="launcher-icon-button flex h-5.5 w-5.5 shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
+              className="launcher-icon-button flex h-[var(--launcher-inline-icon-button-size)] w-[var(--launcher-inline-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
             >
-              <Square className="size-3" />
+              <Square className="size-[var(--ow-icon-compact)]" />
             </button>
           ) : undefined
         }

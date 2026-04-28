@@ -61,13 +61,15 @@ export default function ProviderIcon(props: ProviderIconProps): React.JSX.Elemen
   const { className, provider } = props
 
   return (
-    <div className={cn("inline-flex items-center gap-2", className)}>
-      <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background-secondary/70 text-foreground">
+    <div className={cn("inline-flex items-center gap-[var(--ow-gap-sm)]", className)}>
+      <div className="flex h-[var(--ow-control-h-md)] w-8 items-center justify-center rounded-md border border-border bg-background-secondary/70 text-foreground">
         <ProviderGlyph provider={provider} />
       </div>
       <div className="min-w-0">
-        <div className="truncate text-[14px] font-semibold text-foreground">{provider.label}</div>
-        <div className="mt-0.5 hidden text-[11px] uppercase tracking-[0.12em] text-muted-foreground md:block">
+        <div className="truncate [font-size:var(--ow-font-title)] font-semibold text-foreground">
+          {provider.label}
+        </div>
+        <div className="mt-0.5 hidden [font-size:var(--ow-font-meta)] uppercase tracking-[0.12em] text-muted-foreground md:block">
           {provider.provider}
         </div>
       </div>

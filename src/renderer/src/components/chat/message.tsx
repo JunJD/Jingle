@@ -20,7 +20,7 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
 export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
-      "group flex w-full max-w-[95%] flex-col gap-2",
+      "group flex w-full max-w-[var(--ow-message-max-w)] flex-col gap-[var(--ow-message-gap)]",
       from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
       className
     )}
@@ -33,8 +33,8 @@ export type MessageContentProps = HTMLAttributes<HTMLDivElement>
 export const MessageContent = ({ children, className, ...props }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
+      "is-user:dark flex w-fit min-w-0 max-w-full flex-col gap-[var(--ow-message-gap)] overflow-hidden [font-size:var(--ow-font-body)]",
+      "group-[.is-user]:ml-auto group-[.is-user]:rounded-[var(--ow-radius-md)] group-[.is-user]:bg-secondary group-[.is-user]:px-[var(--ow-message-bubble-x)] group-[.is-user]:py-[var(--ow-message-bubble-y)] group-[.is-user]:text-foreground",
       "group-[.is-assistant]:text-foreground",
       className
     )}
@@ -47,7 +47,7 @@ export const MessageContent = ({ children, className, ...props }: MessageContent
 export type MessageActionsProps = ComponentProps<"div">
 
 export const MessageActions = ({ className, children, ...props }: MessageActionsProps) => (
-  <div className={cn("flex items-center gap-1", className)} {...props}>
+  <div className={cn("flex items-center gap-[var(--ow-gap-xs)]", className)} {...props}>
     {children}
   </div>
 )
@@ -157,7 +157,10 @@ export const MessageBranch = ({
 
   return (
     <MessageBranchContext.Provider value={contextValue}>
-      <div className={cn("grid w-full gap-2 [&>div]:pb-0", className)} {...props} />
+      <div
+        className={cn("grid w-full gap-[var(--ow-gap-sm)] [&>div]:pb-0", className)}
+        {...props}
+      />
     </MessageBranchContext.Provider>
   )
 }
@@ -174,7 +177,7 @@ export const MessageBranchContent = ({ children, ...props }: MessageBranchConten
   }
 
   return (
-    <div className="grid gap-2 overflow-hidden [&>div]:pb-0" {...props}>
+    <div className="grid gap-[var(--ow-gap-sm)] overflow-hidden [&>div]:pb-0" {...props}>
       {branch}
     </div>
   )
@@ -278,7 +281,13 @@ MessageResponse.displayName = "MessageResponse"
 export type MessageToolbarProps = ComponentProps<"div">
 
 export const MessageToolbar = ({ className, children, ...props }: MessageToolbarProps) => (
-  <div className={cn("mt-4 flex w-full items-center justify-between gap-4", className)} {...props}>
+  <div
+    className={cn(
+      "mt-[var(--ow-space-4)] flex w-full items-center justify-between gap-[var(--ow-gap-lg)]",
+      className
+    )}
+    {...props}
+  >
     {children}
   </div>
 )

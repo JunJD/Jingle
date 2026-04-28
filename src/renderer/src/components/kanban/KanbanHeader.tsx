@@ -32,7 +32,7 @@ export function KanbanHeader({ className }: { className?: string }): React.JSX.E
       </div>
 
       {/* Left side - Status indicator */}
-      <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+      <div className="flex items-center gap-1.5 [font-size:var(--ow-font-caption)] font-mono uppercase tracking-wider text-muted-foreground">
         <div
           className={cn(
             "size-1.5 rounded-full",

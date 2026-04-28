@@ -103,7 +103,7 @@ function toAttachmentData(
           ? { url: block.content }
           : {})
       },
-      fallbackIcon: <FileText className="size-7 text-muted-foreground" />
+      fallbackIcon: <FileText className="size-[var(--ow-icon-display)] text-muted-foreground" />
     }
   }
 
@@ -127,7 +127,10 @@ function MessageAttachments(props: {
   return (
     <Attachments
       variant="grid"
-      className={cn("w-fit max-w-full gap-3", isUser ? "ml-auto justify-end" : "justify-start")}
+      className={cn(
+        "w-fit max-w-full gap-[var(--ow-gap-md)]",
+        isUser ? "ml-auto justify-end" : "justify-start"
+      )}
     >
       {attachments.map(({ data, fallbackIcon }) => (
         <AttachmentHoverCard key={data.id}>
@@ -135,8 +138,8 @@ function MessageAttachments(props: {
             <Attachment
               data={data}
               className={cn(
-                "size-24 overflow-hidden rounded-[18px] border-0 bg-background-secondary shadow-[0_8px_24px_rgba(0,0,0,0.14)]",
-                "sm:size-28"
+                "size-[var(--ow-chat-attachment-image-size)] overflow-hidden rounded-[var(--ow-chat-attachment-image-radius)] border-0 bg-background-secondary shadow-[0_8px_24px_rgba(0,0,0,0.14)]",
+                "sm:size-[var(--ow-chat-attachment-image-size-wide)]"
               )}
             >
               <AttachmentPreview
@@ -178,7 +181,9 @@ function renderTextBlock(
         key={key}
         className={cn(
           "whitespace-pre-wrap [overflow-wrap:anywhere]",
-          density === "compact" ? "text-[var(--ow-font-body)] leading-5" : "text-[15px] leading-7"
+          density === "compact"
+            ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
+            : "[font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)]"
         )}
       >
         {text}
@@ -191,7 +196,9 @@ function renderTextBlock(
       key={key}
       className={cn(
         "min-w-0",
-        density === "compact" ? "text-[var(--ow-font-body)] leading-5" : "text-[15px] leading-7"
+        density === "compact"
+          ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
+          : "[font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)]"
       )}
       isAnimating={isStreaming}
     >
@@ -351,14 +358,22 @@ function ToolActivityGroup(props: {
       open={isOpen}
     >
       <ChainOfThoughtHeader
-        className={density === "compact" ? "text-[12px] leading-5" : "text-[13px] leading-5"}
+        className={
+          density === "compact"
+            ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
+            : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)]"
+        }
         {...(headerAction ? { "data-tool-call-toggle": headerAction.toolCall.name } : {})}
         icon={ListTodo}
         meta={headerStatusMeta}
       >
         {headerTitle}
       </ChainOfThoughtHeader>
-      <ChainOfThoughtContent className={density === "compact" ? "space-y-2" : "space-y-2.5"}>
+      <ChainOfThoughtContent
+        className={
+          density === "compact" ? "space-y-[var(--ow-space-2)]" : "space-y-[var(--ow-space-2-5)]"
+        }
+      >
         {actionViews.map((item, index) => (
           <ChainOfThoughtItem
             icon={item.view.icon}
@@ -418,7 +433,13 @@ function AssistantToolCluster(props: {
 
     return (
       <Message className="max-w-full" from="assistant">
-        <MessageContent className={density === "compact" ? "w-full gap-2.5" : "w-full gap-3"}>
+        <MessageContent
+          className={
+            density === "compact"
+              ? "w-full gap-[var(--ow-space-2-5)]"
+              : "w-full gap-[var(--ow-gap-md)]"
+          }
+        >
           <ActionMessage
             approvalRequest={needsApproval ? pendingApproval : null}
             density={density}
@@ -435,7 +456,7 @@ function AssistantToolCluster(props: {
 
   return (
     <Message className="max-w-full" from="assistant">
-      <MessageContent className="w-full gap-3">
+      <MessageContent className="w-full gap-[var(--ow-gap-md)]">
         <ToolActivityGroup
           defaultOpen={defaultExpanded}
           density={density}
@@ -471,10 +492,14 @@ function AssistantBlock(props: {
 
   return (
     <Message className="max-w-full" from="assistant">
-      <MessageContent className="w-full gap-3">
+      <MessageContent className="w-full gap-[var(--ow-gap-md)]">
         {content.attachments}
         {content.textContent ? (
-          <div className={density === "compact" ? "space-y-3" : "space-y-4"}>
+          <div
+            className={
+              density === "compact" ? "space-y-[var(--ow-space-3)]" : "space-y-[var(--ow-space-4)]"
+            }
+          >
             {content.textContent}
           </div>
         ) : null}
@@ -499,11 +524,7 @@ function UserMessage(props: {
       {content.attachments}
       {content.textContent ? (
         <MessageContent
-          className={
-            density === "compact"
-              ? "gap-2.5 group-[.is-user]:rounded-[var(--ow-radius-md)] group-[.is-user]:px-3 group-[.is-user]:py-2"
-              : "gap-3"
-          }
+          className={density === "compact" ? "gap-[var(--ow-space-2-5)]" : "gap-[var(--ow-gap-md)]"}
         >
           {content.textContent}
         </MessageContent>
@@ -546,7 +567,11 @@ function MessageTurnView(props: {
   )
 
   return (
-    <div className={density === "compact" ? "space-y-2.5" : "space-y-3"}>
+    <div
+      className={
+        density === "compact" ? "space-y-[var(--ow-space-2-5)]" : "space-y-[var(--ow-space-3)]"
+      }
+    >
       {turn.user ? <UserMessage density={density} message={turn.user} /> : null}
       {assistantEntries.map((entry) => {
         if (entry.kind === "assistant-content") {
@@ -584,7 +609,7 @@ function MessageTurnView(props: {
                 onClick={() => void onRetry()}
                 tooltip={copy.chat.retryMessage}
               >
-                <RefreshCcwIcon className="size-4" />
+                <RefreshCcwIcon className="size-[var(--ow-icon-action)]" />
               </MessageAction>
             ) : null}
             {copyText ? (
@@ -593,7 +618,7 @@ function MessageTurnView(props: {
                 onClick={() => void navigator.clipboard.writeText(copyText)}
                 tooltip={copy.chat.copyMessage}
               >
-                <CopyIcon className="size-4" />
+                <CopyIcon className="size-[var(--ow-icon-action)]" />
               </MessageAction>
             ) : null}
           </MessageActions>

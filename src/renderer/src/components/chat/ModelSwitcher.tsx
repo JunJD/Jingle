@@ -34,21 +34,24 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 gap-1.5 rounded-full bg-background-secondary px-3 text-xs text-muted-foreground hover:bg-background-interactive hover:text-foreground"
+          className="h-[var(--ow-control-h-md)] gap-[var(--ow-space-1-5)] rounded-full bg-background-secondary px-[var(--ow-space-3)] [font-size:var(--ow-font-meta)] text-muted-foreground hover:bg-background-interactive hover:text-foreground"
         >
           {selectedModel ? (
             <>
-              <ProviderIcon className="size-3.5" providerId={selectedModel.provider} />
+              <ProviderIcon
+                className="size-[var(--ow-icon-sm)]"
+                providerId={selectedModel.provider}
+              />
               <span className="font-mono">{selectedModel.model}</span>
             </>
           ) : (
             <span>{copy.modelSwitcher.selectModel}</span>
           )}
-          <ChevronDown className="size-3" />
+          <ChevronDown className="size-[var(--ow-icon-compact)]" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[420px] border-border bg-popover p-0"
+        className="model-switcher-popover w-[var(--ow-model-popover-w)] border-border bg-popover p-0"
         align="start"
         sideOffset={8}
       >

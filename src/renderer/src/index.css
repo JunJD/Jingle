@@ -85,14 +85,21 @@
   /* Density */
   --ow-font-caption: 10px;
   --ow-font-meta: 11px;
+  --ow-font-micro: 9px;
   --ow-font-body: 12px;
   --ow-font-control: 12px;
+  --ow-font-label: 13px;
   --ow-font-title: 14px;
+  --ow-font-reading: 15px;
   --ow-font-display: 16px;
+  --ow-font-page-title: 20px;
 
   --ow-line-tight: 1.2;
   --ow-line-body: 1.45;
   --ow-line-reading: 1.55;
+  --ow-line-chat: 20px;
+  --ow-line-control-sm: 24px;
+  --ow-line-control-md: 28px;
 
   --ow-radius-xs: 4px;
   --ow-radius-sm: 6px;
@@ -101,10 +108,57 @@
   --ow-radius-panel: 12px;
   --ow-radius-dialog: 14px;
 
+  --ow-space-0-5: 2px;
+  --ow-space-1: 4px;
+  --ow-space-1-5: 6px;
+  --ow-space-2: 8px;
+  --ow-space-2-5: 10px;
+  --ow-space-3: 12px;
+  --ow-space-4: 16px;
+  --ow-space-5: 20px;
+  --ow-space-6: 24px;
+  --ow-space-7: 28px;
+  --ow-space-8: 32px;
+
+  --ow-gap-xs: var(--ow-space-1);
+  --ow-gap-sm: var(--ow-space-2);
+  --ow-gap-md: var(--ow-space-3);
+  --ow-gap-lg: var(--ow-space-4);
+
+  --ow-icon-xs: 10px;
+  --ow-icon-sm: 14px;
+  --ow-icon-md: 20px;
+  --ow-icon-lg: 24px;
+  --ow-icon-micro: 8px;
+  --ow-icon-close-glyph: 9px;
+  --ow-icon-compact: 12px;
+  --ow-icon-action: 16px;
+  --ow-icon-display: 28px;
+  --ow-icon-xl: 32px;
+
   --ow-control-h-sm: 26px;
+  --ow-control-h-compact: 28px;
   --ow-control-h-md: 30px;
   --ow-control-h-lg: 34px;
   --ow-row-h-md: 44px;
+  --ow-section-h: 24px;
+  --ow-control-icon-inset: 40px;
+  --ow-control-divider-h: 16px;
+  --ow-hit-target-xs: 20px;
+  --ow-hit-target-sm: 24px;
+  --ow-status-dot-size: 6px;
+  --ow-leading-nudge: 2px;
+  --ow-progress-track-h-sm: 4px;
+  --ow-progress-track-h-md: 8px;
+  --ow-progress-track-w: 64px;
+  --ow-shimmer-track-h: 2px;
+  --ow-shimmer-track-w: 44px;
+  --ow-shimmer-thumb-w: 18px;
+  --ow-textarea-min-h: 80px;
+  --ow-popover-w-sm: 256px;
+  --ow-dialog-mobile-w: calc(100% - 2rem);
+  --ow-dialog-w-sm: 400px;
+  --ow-dialog-w-md: 560px;
 
   /* Semantic mapping for shadcn compatibility */
   --card: #fbfbf8;
@@ -143,12 +197,10 @@
   --window-controls-offset-inline: 18px;
   --window-controls-gap: 18px;
 
-  /* Chat surfaces */
-  --chat-user-surface: color-mix(in srgb, var(--primary) 16%, transparent);
-  --chat-user-line: color-mix(in srgb, var(--primary) 28%, transparent);
-  --chat-tool-surface: color-mix(in srgb, var(--background-secondary) 88%, transparent);
-  --chat-emphasis-surface: color-mix(in srgb, var(--status-warning) 10%, transparent);
+}
 
+body[data-window="launcher"],
+.launcher-chrome {
   /* Launcher surfaces derive from the app theme */
   --launcher-surface: #fbfbf8;
   --launcher-surface-strong: #f0f1ed;
@@ -185,12 +237,139 @@
     var(--status-warning) 82%,
     var(--background-elevated) 18%
   );
+}
+
+.launcher-window-shell,
+.launcher-chrome {
+  --ow-code-preview-max-h: 22rem;
+  --ow-empty-max-w: 380px;
+  --ow-error-panel-max-w: 448px;
+  --ow-message-max-w: 92%;
+  --ow-message-gap: var(--ow-space-2);
+  --ow-message-bubble-x: var(--ow-space-3);
+  --ow-message-bubble-y: var(--ow-space-2);
+  --ow-chat-action-indent: 28px;
+  --ow-chat-artifact-max-w: 56rem;
+  --ow-chat-code-preview-min-w: 760px;
+  --ow-chat-attachment-image-size: 96px;
+  --ow-chat-attachment-image-size-wide: 112px;
+  --ow-chat-attachment-image-radius: 18px;
+  --launcher-chrome-x: var(--ow-space-4);
+  --launcher-chrome-x-compact: var(--ow-space-3);
+  --launcher-footer-x: var(--ow-space-3);
+  --launcher-dropdown-max-width: 220px;
+  --launcher-result-row-x: var(--ow-space-2-5);
+  --launcher-result-row-padding-x: var(--ow-space-3);
+  --launcher-result-icon-column: 26px;
+  --launcher-result-trailing-column: 88px;
+  --launcher-list-section-x: var(--ow-space-6);
+  --launcher-list-row-x: var(--ow-space-2);
+  --launcher-list-row-padding-x: var(--ow-space-3);
+  --launcher-side-rail-w: 6px;
+  --launcher-history-icon-size: var(--ow-icon-lg);
+  --launcher-history-pin-size: 6px;
+  --launcher-action-control-h: 28px;
+  --launcher-action-panel-bottom: 48px;
+  --launcher-action-panel-right: var(--ow-space-3);
+  --launcher-action-panel-width: 320px;
+  --launcher-action-panel-max-h: 60vh;
+  --launcher-icon-button-size: 28px;
+  --launcher-inline-icon-button-size: 22px;
+  --launcher-chip-max-width: 220px;
+  --launcher-attachment-max-width: 188px;
+  --launcher-attachment-name-max-width: 124px;
   --launcher-app-chip-bg: transparent;
   --launcher-app-chip-fg: var(--primary);
   --launcher-ai-chip-bg: transparent;
   --launcher-ai-chip-fg: var(--accent);
   --launcher-history-chip-bg: transparent;
   --launcher-history-chip-fg: var(--muted-foreground);
+  --launcher-model-dialog-w: 560px;
+  --launcher-jump-bottom: var(--ow-space-4);
+  --launcher-ai-content-x: var(--ow-space-3);
+  --launcher-ai-content-y: var(--ow-space-2);
+  --launcher-ai-content-max-width: 720px;
+  --launcher-ai-empty-max-width: 48rem;
+  --launcher-ai-empty-copy-max-width: 42rem;
+  --launcher-ai-turn-gap: var(--ow-space-3);
+  --launcher-ai-empty-title: 22px;
+  --launcher-ai-empty-title-wide: 24px;
+}
+
+.settings-app {
+  --ow-settings-content-max-width: 1040px;
+  --ow-settings-sidebar-w: 300px;
+  --ow-settings-label-column-w: 240px;
+  --ow-settings-field-min-width: 280px;
+  --ow-settings-select-w: 220px;
+  --ow-settings-textarea-min-h: 112px;
+  --ow-settings-provider-skeleton-sm: 96px;
+  --ow-settings-provider-skeleton-md: 104px;
+  --ow-settings-provider-skeleton-lg: 112px;
+  --ow-model-provider-copy-max-width: 660px;
+  --ow-model-badge-h: 18px;
+  --ow-model-badge-x: 5px;
+  --ow-model-badge-radius: 5px;
+}
+
+.model-selection-content {
+  --ow-model-selector-min-h: 240px;
+  --ow-model-selector-sidebar-w: 140px;
+  --ow-model-selector-state-h: 180px;
+  --ow-model-selector-list-h: 200px;
+  --ow-model-selector-row-radius: 10px;
+  --ow-model-selector-error-max-w: 220px;
+}
+
+.system-model-selector-dialog {
+  --ow-dialog-w-model-selector: 480px;
+}
+
+.ow-attachments,
+.attachment-hover-preview {
+  --ow-chat-attachment-image-size: 96px;
+  --ow-chat-attachment-image-size-wide: 112px;
+  --ow-chat-attachment-image-radius: 18px;
+  --ow-attachment-hover-preview-w: 320px;
+  --ow-attachment-hover-preview-h: 384px;
+  --ow-attachment-hover-image-max-h: 22rem;
+  --ow-attachment-hover-icon-size: 40px;
+}
+
+.chat-history-shell,
+.chat-thread-surface,
+.markdown-viewer-surface {
+  --ow-code-preview-max-h: 22rem;
+  --ow-chip-label-max-width: 120px;
+  --ow-message-max-w: 92%;
+  --ow-message-gap: var(--ow-space-2);
+  --ow-message-bubble-x: var(--ow-space-3);
+  --ow-message-bubble-y: var(--ow-space-2);
+  --ow-chat-hero-title: 28px;
+  --ow-chat-composer-radius: 20px;
+  --ow-chat-composer-input-min-h: 48px;
+  --ow-chat-composer-action-h: 48px;
+  --ow-chat-artifact-max-w: 56rem;
+  --ow-chat-code-preview-min-w: 760px;
+  --ow-chat-thread-x: 32px;
+  --ow-chat-thread-y: 28px;
+  --ow-chat-thread-max-width: 56rem;
+  --ow-chat-thread-gap: 32px;
+  --ow-chat-empty-y: 96px;
+  --ow-chat-footer-y: 20px;
+  --ow-chat-composer-gap: 12px;
+  --ow-chat-action-indent: 28px;
+  --ow-chat-attachment-image-size: 96px;
+  --ow-chat-attachment-image-size-wide: 112px;
+  --ow-chat-attachment-image-radius: 18px;
+}
+
+.context-usage-popover {
+  --ow-context-popover-w: 288px;
+}
+
+.model-switcher-popover {
+  --ow-model-popover-w: 420px;
 }
 
 .dark {
@@ -239,7 +418,11 @@
   --window-divider: rgba(219, 227, 235, 0.08);
   --window-chrome-foreground: #eff2f5;
   --window-chrome-muted: #8f98a3;
+}
 
+body.dark[data-window="launcher"],
+html.dark body[data-window="launcher"],
+.dark .launcher-chrome {
   --launcher-surface: #1b2026;
   --launcher-surface-strong: #222831;
   --launcher-surface-interactive: #29303a;
@@ -270,6 +453,12 @@
 html[data-platform="darwin"],
 body[data-platform="darwin"] {
   --window-controls-offset-inline: 84px;
+}
+
+html[data-platform="darwin"] body[data-window="launcher"],
+body[data-platform="darwin"][data-window="launcher"],
+html[data-platform="darwin"] .launcher-chrome,
+body[data-platform="darwin"] .launcher-chrome {
   --launcher-panel-radius: 18px;
   --launcher-shell-radius: 0px;
   --launcher-shell-native-radius: var(--ow-radius-panel);
@@ -295,6 +484,12 @@ body[data-platform="darwin"] {
 html[data-platform="win32"],
 body[data-platform="win32"] {
   --window-controls-offset-inline: 18px;
+}
+
+html[data-platform="win32"] body[data-window="launcher"],
+body[data-platform="win32"][data-window="launcher"],
+html[data-platform="win32"] .launcher-chrome,
+body[data-platform="win32"] .launcher-chrome {
   --launcher-panel-radius: var(--ow-radius-panel);
   --launcher-shell-radius: var(--ow-radius-panel);
   --launcher-window-gutter: 12px;
@@ -305,6 +500,12 @@ body[data-platform="win32"] {
 html[data-platform="linux"],
 body[data-platform="linux"] {
   --window-controls-offset-inline: 18px;
+}
+
+html[data-platform="linux"] body[data-window="launcher"],
+body[data-platform="linux"][data-window="launcher"],
+html[data-platform="linux"] .launcher-chrome,
+body[data-platform="linux"] .launcher-chrome {
   --launcher-panel-radius: var(--ow-radius-panel);
   --launcher-shell-radius: var(--ow-radius-panel);
   --launcher-shell-blur: 0px;
@@ -672,7 +873,7 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 /* Tactical typography utilities */
 .text-section-header {
-  @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground;
+  @apply [font-size:var(--ow-font-meta)] font-semibold uppercase tracking-[0.12em] text-muted-foreground;
 }
 
 .text-data {

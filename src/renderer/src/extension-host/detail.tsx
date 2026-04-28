@@ -123,43 +123,46 @@ function DetailRoot(props: {
       >
         <ScrollArea className="flex-1">
           {isLoading ? (
-            <div className="flex h-full items-center justify-center gap-2 text-[var(--ow-font-body)] text-muted-foreground">
-              <LoaderCircle className="h-4 w-4 animate-spin" />
+            <div className="flex h-full items-center justify-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] text-muted-foreground">
+              <LoaderCircle className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] animate-spin" />
               <span>Loading...</span>
             </div>
           ) : (
             <div
               className={cn(
-                "grid h-full min-h-full gap-4 px-5 py-4",
+                "grid h-full min-h-full gap-[var(--ow-gap-lg)] px-[var(--ow-space-5)] py-[var(--ow-space-4)]",
                 metadataEntries.length > 0 ? "grid-cols-[minmax(0,1fr)_280px]" : "grid-cols-1"
               )}
             >
               <div className="min-w-0">
                 {markdown ? (
-                  <div className="native-detail-markdown text-[var(--ow-font-body)] leading-6 text-foreground">
+                  <div className="native-detail-markdown [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground">
                     <Streamdown parseIncompleteMarkdown={false} plugins={streamdownPlugins}>
                       {markdown}
                     </Streamdown>
                   </div>
                 ) : (
-                  <div className="text-[var(--ow-font-body)] text-muted-foreground">
+                  <div className="[font-size:var(--ow-font-body)] text-muted-foreground">
                     No details available.
                   </div>
                 )}
               </div>
 
               {metadataEntries.length > 0 ? (
-                <div className="space-y-3 rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-elevated/70 p-3">
-                  <div className="text-[var(--ow-font-meta)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                <div className="space-y-[var(--ow-space-3)] rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-elevated/70 p-[var(--ow-space-3)]">
+                  <div className="[font-size:var(--ow-font-meta)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                     Metadata
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-[var(--ow-space-3)]">
                     {metadataEntries.map((entry) => (
-                      <div key={`${entry.title}:${entry.text}`} className="space-y-1">
-                        <div className="text-[var(--ow-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
+                      <div
+                        key={`${entry.title}:${entry.text}`}
+                        className="space-y-[var(--ow-space-1)]"
+                      >
+                        <div className="[font-size:var(--ow-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
                           {entry.title}
                         </div>
-                        <div className="break-words text-[var(--ow-font-body)] text-foreground">
+                        <div className="break-words [font-size:var(--ow-font-body)] text-foreground">
                           {entry.text}
                         </div>
                       </div>

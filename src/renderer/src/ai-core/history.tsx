@@ -186,31 +186,31 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
         className="flex h-screen items-center justify-center overflow-hidden bg-background text-foreground"
         role="status"
       >
-        <div className="h-0.5 w-11 overflow-hidden rounded-full bg-muted">
-          <div className="h-full w-[18px] animate-[glide_1.2s_ease-in-out_infinite] rounded-full bg-foreground/55" />
+        <div className="h-[var(--ow-shimmer-track-h)] w-[var(--ow-shimmer-track-w)] overflow-hidden rounded-full bg-muted">
+          <div className="h-full w-[var(--ow-shimmer-thumb-w)] animate-[glide_1.2s_ease-in-out_infinite] rounded-full bg-foreground/55" />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
-      <div className="flex h-12 shrink-0 border-b border-border bg-[var(--window-chrome)] app-drag-region">
+    <div className="chat-history-shell flex h-screen flex-col overflow-hidden bg-background">
+      <div className="flex h-[var(--ow-chat-composer-input-min-h)] shrink-0 border-b border-border bg-[var(--window-chrome)] app-drag-region">
         <div style={{ width: leftWidth }} className="shrink-0 border-r border-border bg-sidebar">
           <div
-            className="flex h-full min-w-0 flex-col justify-center pr-4"
+            className="flex h-full min-w-0 flex-col justify-center pr-[var(--ow-space-4)]"
             style={{ paddingLeft: "calc(var(--window-controls-offset-inline) + 6px)" }}
           >
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--window-chrome-muted)]">
+            <div className="[font-size:var(--ow-font-meta)] font-semibold uppercase tracking-[0.14em] text-[var(--window-chrome-muted)]">
               Openwork
             </div>
-            <div className="truncate text-[13px] text-[var(--window-chrome-foreground)]">
+            <div className="truncate [font-size:var(--ow-font-control)] text-[var(--window-chrome-foreground)]">
               {copy.app.workspaceSubtitle}
             </div>
           </div>
         </div>
 
-        <div className="w-[6px] shrink-0 bg-[var(--window-chrome)]" />
+        <div className="w-[var(--launcher-side-rail-w)] shrink-0 bg-[var(--window-chrome)]" />
 
         <div className="min-w-0 flex-1 border-r border-border bg-[var(--window-chrome)]">
           {showKanbanView ? (
@@ -218,7 +218,7 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
           ) : currentThreadId ? (
             <TabBar className="h-full border-b-0 bg-transparent" />
           ) : (
-            <div className="flex h-full items-center px-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--window-chrome-muted)]">
+            <div className="flex h-full items-center px-[var(--ow-space-6)] [font-size:var(--ow-font-meta)] font-semibold uppercase tracking-[0.14em] text-[var(--window-chrome-muted)]">
               {copy.app.conversation}
             </div>
           )}
@@ -226,13 +226,13 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
 
         {!showKanbanView && (
           <>
-            <div className="w-[6px] shrink-0 bg-[var(--window-chrome)]" />
+            <div className="w-[var(--launcher-side-rail-w)] shrink-0 bg-[var(--window-chrome)]" />
             <div style={{ width: rightWidth }} className="shrink-0 bg-[var(--window-chrome)]">
-              <div className="flex h-full items-center justify-between px-4">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--window-chrome-muted)]">
+              <div className="flex h-full items-center justify-between px-[var(--ow-space-4)]">
+                <span className="[font-size:var(--ow-font-meta)] font-semibold uppercase tracking-[0.14em] text-[var(--window-chrome-muted)]">
                   {copy.app.inspector}
                 </span>
-                <span className="text-[12px] text-muted-foreground">
+                <span className="[font-size:var(--ow-font-body)] text-muted-foreground">
                   {copy.app.inspectorSummary}
                 </span>
               </div>
