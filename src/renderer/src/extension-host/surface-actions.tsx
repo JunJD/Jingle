@@ -18,7 +18,7 @@ export function NativeSurfaceActionsFooter(props: {
             type="button"
             onClick={controller.openActions}
             onMouseDown={(event) => event.preventDefault()}
-            className="launcher-action-link flex h-[var(--launcher-action-control-h)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground"
+            className="launcher-action-link flex h-[var(--launcher-action-control-h)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)] font-medium text-foreground"
           >
             <span>Actions</span>
             {controller.actionPanelShortcut ? (
@@ -34,7 +34,7 @@ export function NativeSurfaceActionsFooter(props: {
           onClick={controller.executePrimaryAction}
           onMouseDown={(event) => event.preventDefault()}
           disabled={!controller.primaryAction}
-          className="launcher-action-link flex h-[var(--launcher-action-control-h)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground disabled:opacity-40"
+          className="launcher-action-link flex h-[var(--launcher-action-control-h)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)] font-medium text-foreground disabled:opacity-40"
         >
           <span>{controller.primaryAction?.title ?? controller.primaryActionFallbackTitle}</span>
           {controller.primaryActionShortcut ? (
