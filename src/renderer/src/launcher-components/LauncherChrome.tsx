@@ -65,14 +65,14 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
           placeholders={placeholders}
           className={cn(
             density === "compact"
-              ? "flex-1 text-[15px] font-medium text-foreground"
-              : "flex-1 text-[16px] font-medium text-foreground",
+              ? "flex-1 text-[var(--ow-font-control)] font-medium text-foreground"
+              : "flex-1 text-[14px] font-medium text-foreground",
             inputClassName
           )}
           placeholderClassName={
             density === "compact"
-              ? "text-[15px] font-medium text-muted-foreground/64"
-              : "text-[16px] font-medium text-muted-foreground/68"
+              ? "text-[var(--ow-font-control)] font-medium text-muted-foreground/64"
+              : "text-[14px] font-medium text-muted-foreground/68"
           }
         />
       }

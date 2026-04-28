@@ -49,7 +49,7 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
       <div
         ref={headerRef}
         className={`launcher-chrome-header flex shrink-0 items-center ${
-          density === "compact" ? "gap-2.5 px-4" : "gap-3 px-5"
+          density === "compact" ? "gap-2 px-3" : "gap-2.5 px-4"
         }`}
         style={{
           borderBottom: showHeaderDivider ? "1px solid var(--launcher-border)" : "none",
@@ -62,7 +62,7 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
 
         {headerTrailing ? (
           <div
-            className={`flex shrink-0 items-center ${density === "compact" ? "gap-2.5" : "gap-3"}`}
+            className={`flex shrink-0 items-center ${density === "compact" ? "gap-2" : "gap-2.5"}`}
           >
             {headerTrailing}
           </div>
@@ -75,7 +75,7 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
         <div
           ref={footerRef}
           className={`launcher-chrome-footer flex shrink-0 items-center justify-between ${
-            density === "compact" ? "px-3" : "px-4"
+            density === "compact" ? "px-3" : "px-3.5"
           }`}
           style={{
             borderTop: "1px solid var(--launcher-border)",

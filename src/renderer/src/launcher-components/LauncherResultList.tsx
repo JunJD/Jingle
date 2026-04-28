@@ -123,7 +123,7 @@ export function LauncherResultList(props: {
           return (
             <div
               key={row.key}
-              className="px-6 pb-1 pt-3 text-[12px] font-semibold text-muted-foreground"
+              className="flex h-6 items-center px-6 text-[11px] font-semibold text-muted-foreground"
             >
               {row.label}
             </div>
@@ -143,7 +143,7 @@ export function LauncherResultList(props: {
             onClick={() => onExecute(row.index)}
             onMouseDown={(event) => event.preventDefault()}
             className={cn(
-              "launcher-result-row relative mx-3 grid h-12 w-[calc(100%-1.5rem)] appearance-none grid-cols-[30px_minmax(0,1fr)_96px] items-center gap-2.5 rounded-[var(--ow-radius-lg)] border-0 px-3 text-left transition",
+              "launcher-result-row relative mx-2.5 grid h-11 w-[calc(100%-1.25rem)] appearance-none grid-cols-[26px_minmax(0,1fr)_88px] items-center gap-2 rounded-[var(--ow-radius-md)] border-0 px-3 text-left transition",
               isSelected && "launcher-result-row--selected"
             )}
             style={{
@@ -152,22 +152,22 @@ export function LauncherResultList(props: {
             }}
           >
             <div
-              className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[7px]"
+              className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[6px]"
               style={getLauncherResultToneStyle(row.item.presentation.tone)}
             >
               {renderLauncherResultIcon(row.item.presentation.icon)}
             </div>
 
             <div className="min-w-0">
-              <div className="truncate text-[13px] font-medium leading-[1.15] text-foreground">
+              <div className="truncate text-[var(--ow-font-body)] font-medium leading-[1.15] text-foreground">
                 {renderTitle(row.item.title, row.item.match)}
               </div>
-              <div className="mt-0.5 truncate text-[12px] leading-[1.15] text-muted-foreground">
+              <div className="mt-0.5 truncate text-[var(--ow-font-meta)] leading-[1.15] text-muted-foreground">
                 {truncateMiddle(row.item.subtitle, 72, 16)}
               </div>
             </div>
 
-            <div className="justify-self-end text-right text-[12px] font-medium text-muted-foreground">
+            <div className="justify-self-end text-right text-[var(--ow-font-meta)] font-medium text-muted-foreground">
               {getResultTrailingLabel(row.item, copy)}
             </div>
           </button>

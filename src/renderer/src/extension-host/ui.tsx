@@ -393,7 +393,7 @@ function NativeListRows(props: {
         {indexedSections.map((section) => (
           <div key={section.id}>
             {section.title ? (
-              <div className="flex items-center justify-between gap-3 px-6 pb-1 pt-3 text-[12px] font-semibold text-muted-foreground">
+              <div className="flex h-6 items-center justify-between gap-3 px-6 text-[11px] font-semibold text-muted-foreground">
                 <span>{section.title}</span>
                 {section.subtitle ? (
                   <span className="text-[10px] font-medium">{section.subtitle}</span>

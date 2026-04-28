@@ -83,12 +83,12 @@
   --tertiary-foreground: #8a929b;
 
   /* Density */
-  --ow-font-caption: 11px;
-  --ow-font-meta: 12px;
-  --ow-font-body: 13px;
-  --ow-font-control: 13px;
-  --ow-font-title: 16px;
-  --ow-font-display: 18px;
+  --ow-font-caption: 10px;
+  --ow-font-meta: 11px;
+  --ow-font-body: 12px;
+  --ow-font-control: 12px;
+  --ow-font-title: 14px;
+  --ow-font-display: 16px;
 
   --ow-line-tight: 1.2;
   --ow-line-body: 1.45;
@@ -101,10 +101,10 @@
   --ow-radius-panel: 12px;
   --ow-radius-dialog: 14px;
 
-  --ow-control-h-sm: 28px;
-  --ow-control-h-md: 32px;
-  --ow-control-h-lg: 36px;
-  --ow-row-h-md: 48px;
+  --ow-control-h-sm: 26px;
+  --ow-control-h-md: 30px;
+  --ow-control-h-lg: 34px;
+  --ow-row-h-md: 44px;
 
   /* Semantic mapping for shadcn compatibility */
   --card: #fbfbf8;

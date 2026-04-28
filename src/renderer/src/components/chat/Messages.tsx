@@ -418,7 +418,7 @@ function AssistantToolCluster(props: {
 
     return (
       <Message className="max-w-full" from="assistant">
-        <MessageContent className="w-full gap-3">
+        <MessageContent className={density === "compact" ? "w-full gap-2.5" : "w-full gap-3"}>
           <ActionMessage
             approvalRequest={needsApproval ? pendingApproval : null}
             density={density}
@@ -498,7 +498,15 @@ function UserMessage(props: {
     <Message from="user">
       {content.attachments}
       {content.textContent ? (
-        <MessageContent className="gap-3">{content.textContent}</MessageContent>
+        <MessageContent
+          className={
+            density === "compact"
+              ? "gap-2.5 group-[.is-user]:rounded-[var(--ow-radius-md)] group-[.is-user]:px-3 group-[.is-user]:py-2"
+              : "gap-3"
+          }
+        >
+          {content.textContent}
+        </MessageContent>
       ) : null}
     </Message>
   )
