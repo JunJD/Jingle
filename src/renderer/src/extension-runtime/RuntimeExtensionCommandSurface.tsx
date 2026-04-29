@@ -622,7 +622,9 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   const hostNavigation = useNativeExtensionNavigation()
   const surface = useNativeExtensionSurface()
   const activeSessionIdRef = useRef<string | null>(null)
+  const initialSeedQueryRef = useRef(host.seedQuery)
   const lastLocalInputRef = useRef(host.seedQuery)
+  const hasReceivedListSurfaceRef = useRef(false)
   const nextFormChangeIdRef = useRef(0)
   const syncInputAfterActionRef = useRef(false)
   const [formState, dispatchFormState] = useReducer(
@@ -782,8 +784,11 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         }))
 
         if (event.surface.kind === "list") {
+          const isFirstListSurface = !hasReceivedListSurfaceRef.current
+          hasReceivedListSurfaceRef.current = true
           const shouldSyncInput =
             syncInputAfterActionRef.current ||
+            (isFirstListSurface && lastLocalInputRef.current === initialSeedQueryRef.current) ||
             event.surface.searchText === lastLocalInputRef.current
           if (shouldSyncInput) {
             syncInputAfterActionRef.current = false
@@ -842,6 +847,8 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false
     let sessionId: string | null = null
+
+    hasReceivedListSurfaceRef.current = false
 
     void window.api.extensionRuntime
       .startForeground({
