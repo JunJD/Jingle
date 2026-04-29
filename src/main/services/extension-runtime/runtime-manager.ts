@@ -2,6 +2,7 @@ import { randomUUID } from "crypto"
 import type {
   ExtensionHostRequest,
   ExtensionHostResponse,
+  ExtensionRuntimeEventAck,
   ExtensionRuntimeError,
   ExtensionRuntimeEvent,
   ExtensionRuntimeLaunchContext,
@@ -62,9 +63,15 @@ export type ExtensionRuntimeSurfaceListener = (
 
 export type ExtensionRuntimeErrorListener = (error: ExtensionRuntimeSessionError) => void
 
+export type ExtensionRuntimeEventAckListener = (
+  ack: ExtensionRuntimeEventAck,
+  session: ExtensionRuntimeSessionInfo
+) => void
+
 export interface ExtensionRuntimeManagerOptions {
   createSessionId?: () => string
   host: ExtensionRuntimeHostCapabilities
+  onEventAck?: (ack: ExtensionRuntimeEventAck, session: ExtensionRuntimeSessionInfo) => void
   onError?: (error: ExtensionRuntimeSessionError) => void
   onMetrics?: (metrics: ExtensionRuntimeMetrics, session: ExtensionRuntimeSessionInfo) => void
   onSurface?: (surface: ExtensionSurfaceSnapshot, session: ExtensionRuntimeSessionInfo) => void
@@ -84,6 +91,7 @@ interface RuntimeSession {
 export class ExtensionRuntimeManager {
   private foregroundSession: RuntimeSession | null = null
   private lastError: ExtensionRuntimeSessionError | null = null
+  private readonly eventAckListeners = new Set<ExtensionRuntimeEventAckListener>()
   private readonly errorListeners = new Set<ExtensionRuntimeErrorListener>()
   private readonly sessions = new Map<string, RuntimeSession>()
   private readonly surfaceListeners = new Set<ExtensionRuntimeSurfaceListener>()
@@ -102,6 +110,13 @@ export class ExtensionRuntimeManager {
 
   getLastError(): ExtensionRuntimeSessionError | null {
     return this.lastError
+  }
+
+  onEventAck(listener: ExtensionRuntimeEventAckListener): () => void {
+    this.eventAckListeners.add(listener)
+    return () => {
+      this.eventAckListeners.delete(listener)
+    }
   }
 
   onError(listener: ExtensionRuntimeErrorListener): () => void {
@@ -230,6 +245,9 @@ export class ExtensionRuntimeManager {
       case "surface":
         this.emitSurface(message.surface, toSessionInfo(session))
         return
+      case "event-ack":
+        this.emitEventAck(message.ack, toSessionInfo(session))
+        return
       case "host-request":
         void this.answerHostRequest(session, message.request)
         return
@@ -349,6 +367,16 @@ export class ExtensionRuntimeManager {
     this.options.onSurface?.(surface, sessionInfo)
     for (const listener of this.surfaceListeners) {
       listener(surface, sessionInfo)
+    }
+  }
+
+  private emitEventAck(
+    ack: ExtensionRuntimeEventAck,
+    sessionInfo: ExtensionRuntimeSessionInfo
+  ): void {
+    this.options.onEventAck?.(ack, sessionInfo)
+    for (const listener of this.eventAckListeners) {
+      listener(ack, sessionInfo)
     }
   }
 

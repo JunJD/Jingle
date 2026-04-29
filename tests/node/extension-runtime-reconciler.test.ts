@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { createElement, useState, type ReactElement } from "react"
+import { createElement, useEffect, useState, type ReactElement } from "react"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
 import {
   Action,
@@ -9,6 +9,8 @@ import {
   ExtensionRuntimeNavigationProvider,
   Form,
   List,
+  createNativeExtensionClient,
+  defineNativeExtensionClientMethod,
   useNativeExtensionNavigation
 } from "../../src/extension-runtime/sdk"
 import type {
@@ -68,9 +70,9 @@ function withRuntimeProvider(element: ReactElement): ReactElement {
           result: null
         }),
         seedQuery: ""
-      },
-      children: element
-    }
+      }
+    },
+    element
   )
 }
 
@@ -121,6 +123,65 @@ test("runtime reconciler snapshots a list and applies action state updates", asy
   const nextSnapshot = renderer.getSnapshot()
   assertListSnapshot(nextSnapshot)
   assert.equal(nextSnapshot.sections[0]?.items[0]?.title, "Count 1")
+})
+
+test("runtime SDK client is available to first passive effects", async () => {
+  const client = createNativeExtensionClient("runtime-fixture", ["ping"], {
+    ping: defineNativeExtensionClientMethod<Record<string, never>, string>()
+  })
+  const calls: string[] = []
+  const errors: string[] = []
+  const renderer = createTestRenderer()
+
+  function EffectClientList() {
+    useEffect(() => {
+      void client
+        .ping({})
+        .then((result) => {
+          calls.push(result)
+        })
+        .catch((error) => {
+          errors.push(error instanceof Error ? error.message : String(error))
+        })
+    }, [])
+
+    return createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        id: "ready",
+        title: "Ready"
+      })
+    )
+  }
+
+  renderer.render(
+    createElement(
+      ExtensionRuntimeNavigationProvider,
+      {
+        value: {
+          commandName: "counter",
+          commandPreferences: {},
+          extensionName: "runtime-fixture",
+          extensionPreferences: {},
+          initialAction: "open",
+          mode: "view",
+          requestHost: async () => ({
+            id: "effect-response",
+            ok: true as const,
+            result: "pong"
+          }),
+          seedQuery: ""
+        }
+      },
+      createElement(EffectClientList)
+    )
+  )
+  await renderer.flushSnapshots()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  assert.deepEqual(calls, ["pong"])
+  assert.deepEqual(errors, [])
 })
 
 test("runtime reconciler batches multiple state updates into one snapshot", async () => {
@@ -387,21 +448,18 @@ test("runtime reconciler snapshots detail surfaces and navigates back", async ()
           createElement(Action, {
             onAction: () => {
               navigation.push(
-                createElement(
-                  Detail,
-                  {
-                    markdown: "# Detail",
-                    metadata: createElement(
-                      Detail.Metadata,
-                      null,
-                      createElement(Detail.Metadata.Label, {
-                        text: "Inbox",
-                        title: "List"
-                      })
-                    ),
-                    navigationTitle: "Reminder"
-                  }
-                )
+                createElement(Detail, {
+                  markdown: "# Detail",
+                  metadata: createElement(
+                    Detail.Metadata,
+                    null,
+                    createElement(Detail.Metadata.Label, {
+                      text: "Inbox",
+                      title: "List"
+                    })
+                  ),
+                  navigationTitle: "Reminder"
+                })
               )
             },
             title: "Open Detail"
@@ -482,7 +540,9 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
   assertFormSnapshot(firstSnapshot)
   assert.equal(firstSnapshot.navigationTitle, "Create Reminder")
   const textField = firstSnapshot.fields.find(
-    (field): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "text-field" }> =>
+    (
+      field
+    ): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "text-field" }> =>
       field.kind === "text-field"
   )
   assert.ok(textField)
@@ -490,6 +550,7 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
 
   assert.equal(
     await renderer.dispatchEvent({
+      changeId: "change-1",
       fieldId: firstSnapshot.fields[0]?.id ?? "",
       type: "form.field.change",
       value: "Walk the dog"
@@ -500,7 +561,9 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
   const nextSnapshot = renderer.getSnapshot()
   assertFormSnapshot(nextSnapshot)
   const nextTextField = nextSnapshot.fields.find(
-    (field): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "text-field" }> =>
+    (
+      field
+    ): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "text-field" }> =>
       field.kind === "text-field"
   )
   assert.ok(nextTextField)
@@ -508,6 +571,7 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
 
   assert.equal(
     await renderer.dispatchEvent({
+      changeId: "change-2",
       fieldId: nextSnapshot.fields[1]?.id ?? "",
       type: "form.field.change",
       value: true
@@ -518,7 +582,9 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
   const finalSnapshot = renderer.getSnapshot()
   assertFormSnapshot(finalSnapshot)
   const checkboxField = finalSnapshot.fields.find(
-    (field): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "checkbox" }> =>
+    (
+      field
+    ): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "checkbox" }> =>
       field.kind === "checkbox"
   )
   assert.ok(checkboxField)

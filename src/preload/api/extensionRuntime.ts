@@ -1,4 +1,5 @@
 import type {
+  ExtensionRuntimeEventAck,
   ExtensionRuntimeEvent,
   ExtensionRuntimeLaunchContext,
   ExtensionRuntimeNavigationRequestEvent,
@@ -12,6 +13,11 @@ import { invokeIpc, ipcRenderer } from "../ipc"
 export interface ExtensionRuntimeSurfaceEvent {
   session: ExtensionRuntimeSessionInfo
   surface: ExtensionSurfaceSnapshot
+}
+
+export interface ExtensionRuntimeEventAckEvent {
+  ack: ExtensionRuntimeEventAck
+  session: ExtensionRuntimeSessionInfo
 }
 
 export const extensionRuntimeApi = {
@@ -28,6 +34,25 @@ export const extensionRuntimeApi = {
   },
   completeNavigationRequest: (response: ExtensionRuntimeNavigationResponse): Promise<boolean> => {
     return invokeIpc("extensionRuntime:completeNavigationRequest", response)
+  },
+  subscribeEventAcks: (callback: (event: ExtensionRuntimeEventAckEvent) => void): (() => void) => {
+    let disposed = false
+    const listener = (_event: unknown, payload: ExtensionRuntimeEventAckEvent): void => {
+      if (!disposed) {
+        callback(payload)
+      }
+    }
+
+    ipcRenderer.on("extensionRuntime:eventAck", listener)
+
+    return () => {
+      if (disposed) {
+        return
+      }
+
+      disposed = true
+      ipcRenderer.removeListener("extensionRuntime:eventAck", listener)
+    }
   },
   subscribeNavigationRequests: (
     callback: (event: ExtensionRuntimeNavigationRequestEvent) => void

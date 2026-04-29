@@ -10,6 +10,7 @@ import { ExtensionRuntimeManager } from "./runtime-manager"
 
 const SURFACE_CHANNEL = "extensionRuntime:surface"
 const ERROR_CHANNEL = "extensionRuntime:error"
+const EVENT_ACK_CHANNEL = "extensionRuntime:eventAck"
 
 export class ExtensionRuntimeController {
   private readonly surfaceSubscribers = new Map<number, WebContents>()
@@ -30,6 +31,13 @@ export class ExtensionRuntimeController {
       for (const subscriber of this.surfaceSubscribers.values()) {
         if (!subscriber.isDestroyed()) {
           subscriber.send(ERROR_CHANNEL, error)
+        }
+      }
+    })
+    this.runtimeManager.onEventAck((ack, session) => {
+      for (const subscriber of this.surfaceSubscribers.values()) {
+        if (!subscriber.isDestroyed()) {
+          subscriber.send(EVENT_ACK_CHANNEL, { ack, session })
         }
       }
     })
@@ -81,8 +89,8 @@ export class ExtensionRuntimeController {
     registerIpcHandle(
       ipcMain,
       "extensionRuntime:completeNavigationRequest",
-      (_event, response: ExtensionRuntimeNavigationResponse) => {
-        return this.rendererBridge.completeNavigationRequest(response)
+      (event, response: ExtensionRuntimeNavigationResponse) => {
+        return this.rendererBridge.completeNavigationRequest(event.sender, response)
       }
     )
   }

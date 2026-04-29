@@ -12,12 +12,13 @@ import type {
 
 class FakeWebContents {
   destroyed = false
-  id = 1
   sentMessages: Array<{
     channel: string
     payload: ExtensionRuntimeNavigationRequestEvent
   }> = []
   private readonly destroyedListeners = new Set<() => void>()
+
+  constructor(readonly id = 1) {}
 
   destroy(): void {
     this.destroyed = true
@@ -75,7 +76,37 @@ test("runtime renderer bridge sends navigation requests to the owning renderer",
     }
   ])
   assert.equal(
-    bridge.completeNavigationRequest({
+    bridge.completeNavigationRequest(webContents as unknown as WebContents, {
+      ok: true,
+      requestId: "navigation-1",
+      sessionId: "session-1"
+    }),
+    true
+  )
+  await requestPromise
+})
+
+test("runtime renderer bridge only accepts navigation completion from the owning renderer", async () => {
+  const bridge = new ExtensionRuntimeRendererBridge()
+  const owner = new FakeWebContents(1)
+  const other = new FakeWebContents(2)
+
+  bridge.bindSession("session-1", owner as unknown as WebContents)
+  const requestPromise = bridge.handleNavigationRequest({
+    request: createNavigationRequest(),
+    sessionId: "session-1"
+  })
+
+  assert.equal(
+    bridge.completeNavigationRequest(other as unknown as WebContents, {
+      ok: true,
+      requestId: "navigation-1",
+      sessionId: "session-1"
+    }),
+    false
+  )
+  assert.equal(
+    bridge.completeNavigationRequest(owner as unknown as WebContents, {
       ok: true,
       requestId: "navigation-1",
       sessionId: "session-1"

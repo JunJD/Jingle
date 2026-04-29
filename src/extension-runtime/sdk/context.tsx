@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useInsertionEffect,
   useMemo,
   useRef,
   useState,
@@ -59,16 +60,14 @@ export function ExtensionRuntimeSdkProvider(props: {
   children?: ReactNode
   value: ExtensionRuntimeSdkContextValue
 }): React.JSX.Element {
-  activeRuntimeSdkContextValue = props.value
-
-  useEffect(
-    () => () => {
+  useInsertionEffect(() => {
+    activeRuntimeSdkContextValue = props.value
+    return () => {
       if (activeRuntimeSdkContextValue === props.value) {
         activeRuntimeSdkContextValue = null
       }
-    },
-    [props.value]
-  )
+    }
+  }, [props.value])
 
   return createElement(extensionRuntimeSdkContext.Provider, { value: props.value }, props.children)
 }
@@ -122,7 +121,7 @@ export function useRuntimeSurfaceNavigationProps(): {
 }
 
 export function ExtensionRuntimeNavigationProvider(props: {
-  children: ReactElement
+  children?: ReactElement
   value: Omit<ExtensionRuntimeSdkContextValue, "navigation">
 }): React.JSX.Element {
   const { children, value } = props

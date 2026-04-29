@@ -113,6 +113,7 @@ function createManager(
   params: {
     host?: ExtensionRuntimeHostCapabilities
     launcher?: FakeRuntimeProcessLauncher
+    onEventAck?: ConstructorParameters<typeof ExtensionRuntimeManager>[0]["onEventAck"]
     onError?: ConstructorParameters<typeof ExtensionRuntimeManager>[0]["onError"]
     onSurface?: ConstructorParameters<typeof ExtensionRuntimeManager>[0]["onSurface"]
     sessionIds?: string[]
@@ -127,6 +128,7 @@ function createManager(
       return sessionId
     },
     host: params.host ?? createHost(),
+    onEventAck: params.onEventAck,
     onError: params.onError,
     onSurface: params.onSurface,
     processLauncher: launcher
@@ -220,6 +222,53 @@ test("runtime manager records structured crash errors", () => {
   assert.equal(manager.getForegroundSession(), null)
   assert.equal(manager.getLastError()?.error.code, "runtime_crashed")
   assert.deepEqual(errors, ["runtime_crashed"])
+})
+
+test("runtime manager forwards event acks for the active session", () => {
+  const acks: string[] = []
+  const { launcher, manager } = createManager({
+    onEventAck: (ack, session) => {
+      acks.push(`${session.sessionId}:${ack.changeId}:${ack.ok}`)
+    }
+  })
+
+  manager.startForeground(createLaunchContext())
+  launcher.processes[0]?.emitMessage({
+    ack: {
+      changeId: "change-1",
+      eventType: "form.field.change",
+      fieldId: "title",
+      ok: true
+    },
+    sessionId: "session-1",
+    type: "event-ack"
+  })
+
+  assert.deepEqual(acks, ["session-1:change-1:true"])
+})
+
+test("runtime manager drops event acks from stopped sessions", () => {
+  const acks: string[] = []
+  const { launcher, manager } = createManager({
+    onEventAck: (ack) => {
+      acks.push(ack.changeId)
+    }
+  })
+
+  manager.startForeground(createLaunchContext())
+  manager.startForeground(createLaunchContext())
+  launcher.processes[0]?.emitMessage({
+    ack: {
+      changeId: "change-1",
+      eventType: "form.field.change",
+      fieldId: "title",
+      ok: true
+    },
+    sessionId: "session-1",
+    type: "event-ack"
+  })
+
+  assert.deepEqual(acks, [])
 })
 
 test("runtime manager responds to host requests and drops late responses after stop", async () => {

@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   type ReactNode
@@ -23,6 +24,7 @@ import type {
   ExtensionDetailSurfaceSnapshot,
   ExtensionFormFieldNode,
   ExtensionFormSurfaceSnapshot,
+  ExtensionRuntimeEventAck,
   ExtensionListItemNode,
   ExtensionListSectionNode,
   ExtensionListSurfaceSnapshot,
@@ -49,8 +51,10 @@ import {
   type NativeSurfaceListSectionPresentation
 } from "../extension-host/list-presentation"
 import {
+  acknowledgeRuntimeFormLocalValue,
   reconcileRuntimeFormLocalValues,
   type RuntimeFormLocalValues,
+  type RuntimeFormPendingValue,
   type RuntimeFormValue
 } from "./form-local-values"
 
@@ -69,6 +73,77 @@ interface RuntimeSurfaceState {
   error: string | null
   sessionId: string | null
   snapshot: ExtensionSurfaceSnapshot | null
+}
+
+interface RuntimeFormState {
+  localValues: RuntimeFormLocalValues
+  pendingValues: ReadonlyMap<string, RuntimeFormPendingValue>
+}
+
+type RuntimeFormStateAction =
+  | { ack: ExtensionRuntimeEventAck; type: "field.ack" }
+  | { changeId: string; fieldId: string; type: "field.change"; value: RuntimeFormValue }
+  | { fields: readonly ExtensionFormFieldNode[]; type: "surface.reconcile" }
+  | { type: "reset" }
+
+function createRuntimeFormState(): RuntimeFormState {
+  return {
+    localValues: {},
+    pendingValues: new Map()
+  }
+}
+
+function runtimeFormStateReducer(
+  state: RuntimeFormState,
+  action: RuntimeFormStateAction
+): RuntimeFormState {
+  if (action.type === "reset") {
+    return Object.keys(state.localValues).length === 0 && state.pendingValues.size === 0
+      ? state
+      : createRuntimeFormState()
+  }
+
+  if (action.type === "surface.reconcile") {
+    const reconciled = reconcileRuntimeFormLocalValues({
+      fields: action.fields,
+      localValues: state.localValues,
+      pendingValues: state.pendingValues
+    })
+
+    if (
+      reconciled.localValues === state.localValues &&
+      reconciled.pendingValues === state.pendingValues
+    ) {
+      return state
+    }
+
+    return reconciled
+  }
+
+  if (action.type === "field.ack") {
+    return acknowledgeRuntimeFormLocalValue({
+      changeId: action.ack.changeId,
+      fieldId: action.ack.fieldId,
+      localValues: state.localValues,
+      pendingValues: state.pendingValues
+    })
+  }
+
+  const pendingValues = new Map(state.pendingValues)
+  pendingValues.set(action.fieldId, {
+    changeId: action.changeId,
+    value: action.value
+  })
+
+  return {
+    localValues: Object.is(state.localValues[action.fieldId], action.value)
+      ? state.localValues
+      : {
+          ...state.localValues,
+          [action.fieldId]: action.value
+        },
+    pendingValues
+  }
 }
 
 function isListSnapshot(
@@ -533,9 +608,13 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   const surface = useNativeExtensionSurface()
   const activeSessionIdRef = useRef<string | null>(null)
   const lastLocalInputRef = useRef(host.seedQuery)
-  const pendingFormValuesRef = useRef<ReadonlyMap<string, RuntimeFormValue>>(new Map())
+  const nextFormChangeIdRef = useRef(0)
   const syncInputAfterActionRef = useRef(false)
-  const [formLocalValues, setFormLocalValues] = useState<RuntimeFormLocalValues>({})
+  const [formState, dispatchFormState] = useReducer(
+    runtimeFormStateReducer,
+    undefined,
+    createRuntimeFormState
+  )
   const [inputText, setInputText] = useState(host.seedQuery)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [runtimeState, setRuntimeState] = useState<RuntimeSurfaceState>({
@@ -699,19 +778,12 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         }
 
         if (event.surface.kind === "form") {
-          const { fields } = event.surface
-          setFormLocalValues((current) => {
-            const reconciled = reconcileRuntimeFormLocalValues({
-              fields,
-              localValues: current,
-              pendingValues: pendingFormValuesRef.current
-            })
-            pendingFormValuesRef.current = reconciled.pendingValues
-            return reconciled.localValues
+          dispatchFormState({
+            fields: event.surface.fields,
+            type: "surface.reconcile"
           })
-        } else if (pendingFormValuesRef.current.size > 0) {
-          pendingFormValuesRef.current = new Map()
-          setFormLocalValues({})
+        } else {
+          dispatchFormState({ type: "reset" })
         }
       },
       (error) => {
@@ -740,6 +812,19 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   }, [hostNavigation])
 
   useEffect(() => {
+    return window.api.extensionRuntime.subscribeEventAcks((event) => {
+      if (event.session.sessionId !== activeSessionIdRef.current) {
+        return
+      }
+
+      dispatchFormState({
+        ack: event.ack,
+        type: "field.ack"
+      })
+    })
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
     let sessionId: string | null = null
 
@@ -761,8 +846,8 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         }
 
         activeSessionIdRef.current = session.sessionId
-        pendingFormValuesRef.current = new Map()
-        setFormLocalValues({})
+        nextFormChangeIdRef.current = 0
+        dispatchFormState({ type: "reset" })
         setRuntimeState((current) => {
           if (current.sessionId === session.sessionId) {
             return current
@@ -811,20 +896,10 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   }
 
   const handleFieldChange = (fieldId: string, value: RuntimeFormValue): void => {
-    const nextPendingValues = new Map(pendingFormValuesRef.current)
-    nextPendingValues.set(fieldId, value)
-    pendingFormValuesRef.current = nextPendingValues
-    setFormLocalValues((current) => {
-      if (Object.is(current[fieldId], value)) {
-        return current
-      }
-
-      return {
-        ...current,
-        [fieldId]: value
-      }
-    })
+    const changeId = `form-change-${nextFormChangeIdRef.current++}`
+    dispatchFormState({ changeId, fieldId, type: "field.change", value })
     sendRuntimeEvent({
+      changeId,
       fieldId,
       type: "form.field.change",
       value
@@ -851,7 +926,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     return (
       <RuntimeFormSurface
         createActionDescriptor={createActionDescriptor}
-        localValues={formLocalValues}
+        localValues={formState.localValues}
         onFieldChange={handleFieldChange}
         onNavigateBack={handleNavigateBack}
         snapshot={formSnapshot}

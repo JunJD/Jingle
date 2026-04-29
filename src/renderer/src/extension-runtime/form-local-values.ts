@@ -2,17 +2,21 @@ import type { ExtensionFormFieldNode } from "@shared/extension-runtime-protocol"
 
 export type RuntimeFormValue = boolean | string
 export type RuntimeFormLocalValues = Record<string, RuntimeFormValue>
+export interface RuntimeFormPendingValue {
+  changeId: string
+  value: RuntimeFormValue
+}
 
 export function reconcileRuntimeFormLocalValues(params: {
   fields: readonly ExtensionFormFieldNode[]
   localValues: RuntimeFormLocalValues
-  pendingValues: ReadonlyMap<string, RuntimeFormValue>
+  pendingValues: ReadonlyMap<string, RuntimeFormPendingValue>
 }): {
   localValues: RuntimeFormLocalValues
-  pendingValues: ReadonlyMap<string, RuntimeFormValue>
+  pendingValues: ReadonlyMap<string, RuntimeFormPendingValue>
 } {
   let nextLocalValues = params.localValues
-  let nextPendingValues: Map<string, RuntimeFormValue> | null = null
+  let nextPendingValues: Map<string, RuntimeFormPendingValue> | null = null
   const liveFieldIds = new Set<string>()
 
   const mutableLocalValues = (): RuntimeFormLocalValues => {
@@ -22,7 +26,7 @@ export function reconcileRuntimeFormLocalValues(params: {
     return nextLocalValues
   }
 
-  const mutablePendingValues = (): Map<string, RuntimeFormValue> => {
+  const mutablePendingValues = (): Map<string, RuntimeFormPendingValue> => {
     if (!nextPendingValues) {
       nextPendingValues = new Map(params.pendingValues)
     }
@@ -46,13 +50,7 @@ export function reconcileRuntimeFormLocalValues(params: {
       continue
     }
 
-    const pendingValue = params.pendingValues.get(field.id)
-    if (Object.is(pendingValue, field.value)) {
-      mutablePendingValues().delete(field.id)
-      deleteLocalValue(field.id)
-      continue
-    }
-
+    const pendingValue = params.pendingValues.get(field.id)?.value
     if (!Object.is(nextLocalValues[field.id], pendingValue)) {
       mutableLocalValues()[field.id] = pendingValue as RuntimeFormValue
     }
@@ -73,5 +71,41 @@ export function reconcileRuntimeFormLocalValues(params: {
   return {
     localValues: nextLocalValues,
     pendingValues: nextPendingValues ?? params.pendingValues
+  }
+}
+
+export function acknowledgeRuntimeFormLocalValue(params: {
+  changeId: string
+  fieldId: string
+  localValues: RuntimeFormLocalValues
+  pendingValues: ReadonlyMap<string, RuntimeFormPendingValue>
+}): {
+  localValues: RuntimeFormLocalValues
+  pendingValues: ReadonlyMap<string, RuntimeFormPendingValue>
+} {
+  const pendingValue = params.pendingValues.get(params.fieldId)
+  if (!pendingValue || pendingValue.changeId !== params.changeId) {
+    return {
+      localValues: params.localValues,
+      pendingValues: params.pendingValues
+    }
+  }
+
+  const pendingValues = new Map(params.pendingValues)
+  pendingValues.delete(params.fieldId)
+
+  if (!Object.prototype.hasOwnProperty.call(params.localValues, params.fieldId)) {
+    return {
+      localValues: params.localValues,
+      pendingValues
+    }
+  }
+
+  const localValues = { ...params.localValues }
+  delete localValues[params.fieldId]
+
+  return {
+    localValues,
+    pendingValues
   }
 }

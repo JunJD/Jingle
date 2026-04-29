@@ -64,7 +64,15 @@ export class ExtensionRuntimeRendererBridge {
     })
   }
 
-  completeNavigationRequest(response: ExtensionRuntimeNavigationResponse): boolean {
+  completeNavigationRequest(
+    sender: WebContents,
+    response: ExtensionRuntimeNavigationResponse
+  ): boolean {
+    const owner = this.sessionOwners.get(response.sessionId)
+    if (!owner || owner.isDestroyed() || owner.id !== sender.id) {
+      return false
+    }
+
     const pendingKey = getNavigationRequestKey(response.sessionId, response.requestId)
     const pending = this.pendingNavigationRequests.get(pendingKey)
     if (!pending || pending.sessionId !== response.sessionId) {

@@ -248,7 +248,7 @@ export interface ExtensionSvgProps {
 
 export type ExtensionRuntimeEvent =
   | { actionId: string; revision: number; type: "action.execute" }
-  | { fieldId: string; type: "form.field.change"; value: boolean | string }
+  | { changeId: string; fieldId: string; type: "form.field.change"; value: boolean | string }
   | { query: string; type: "list.query.change" }
   | { type: "list.dropdown.change"; value: string }
   | { itemId: string; type: "menu-bar.item.execute" }
@@ -329,6 +329,14 @@ export interface ExtensionRuntimeNavigationRequestEvent {
   sessionId: string
 }
 
+export interface ExtensionRuntimeEventAck {
+  changeId: string
+  error?: ExtensionRuntimeError
+  eventType: "form.field.change"
+  fieldId: string
+  ok: boolean
+}
+
 export type ExtensionRuntimeNavigationResponse =
   | {
       ok: true
@@ -373,6 +381,7 @@ export type ExtensionHostResponse =
 export type ExtensionRuntimeToHostMessage =
   | { sessionId: string; type: "ready" }
   | { sessionId: string; surface: ExtensionSurfaceSnapshot; type: "surface" }
+  | { ack: ExtensionRuntimeEventAck; sessionId: string; type: "event-ack" }
   | { request: ExtensionHostRequest; sessionId: string; type: "host-request" }
   | { error: ExtensionRuntimeError; sessionId: string; type: "error" }
   | { metrics: ExtensionRuntimeMetrics; sessionId: string; type: "metrics" }

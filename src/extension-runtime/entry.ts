@@ -4,14 +4,13 @@ import type {
   ExtensionHostRequest,
   ExtensionHostResponse,
   ExtensionHostToRuntimeMessage,
+  ExtensionRuntimeError,
+  ExtensionRuntimeEvent,
   ExtensionRuntimeLaunchContext,
   ExtensionRuntimeToHostMessage
 } from "@shared/extension-runtime-protocol"
 import { createExtensionRuntimeRenderer, type ExtensionRuntimeRenderer } from "./reconciler/render"
-import {
-  ExtensionRuntimeNavigationProvider,
-  type ExtensionRuntimeHostRequestInput
-} from "./sdk"
+import { ExtensionRuntimeNavigationProvider, type ExtensionRuntimeHostRequestInput } from "./sdk"
 
 let activeRenderer: ExtensionRuntimeRenderer | null = null
 const pendingHostResponses = new Map<string, (response: ExtensionHostResponse) => void>()
@@ -30,9 +29,7 @@ parentPort.on("message", (event) => {
       process.exit(0)
       return
     case "event":
-      void activeRenderer?.dispatchEvent(message.event).catch((error) => {
-        postRuntimeError(message.sessionId, error)
-      })
+      void handleRuntimeEvent(message.sessionId, message.event)
       return
     case "host-response":
       pendingHostResponses.get(message.response.id)?.(message.response)
@@ -40,6 +37,43 @@ parentPort.on("message", (event) => {
       return
   }
 })
+
+async function handleRuntimeEvent(
+  sessionId: string,
+  runtimeEvent: ExtensionRuntimeEvent
+): Promise<void> {
+  try {
+    const handled = (await activeRenderer?.dispatchEvent(runtimeEvent)) ?? false
+    postRuntimeEventAck(sessionId, runtimeEvent, handled)
+  } catch (error) {
+    const runtimeError = toRuntimeError("runtime_error", error)
+    postRuntimeEventAck(sessionId, runtimeEvent, false, runtimeError)
+    postRuntimeError(sessionId, error)
+  }
+}
+
+function postRuntimeEventAck(
+  sessionId: string,
+  runtimeEvent: ExtensionRuntimeEvent,
+  ok: boolean,
+  error?: ExtensionRuntimeError
+): void {
+  if (runtimeEvent.type !== "form.field.change") {
+    return
+  }
+
+  postToHost({
+    ack: {
+      changeId: runtimeEvent.changeId,
+      error,
+      eventType: runtimeEvent.type,
+      fieldId: runtimeEvent.fieldId,
+      ok
+    },
+    sessionId,
+    type: "event-ack"
+  })
+}
 
 function postToHost(message: ExtensionRuntimeToHostMessage): void {
   parentPort.postMessage(message)
@@ -77,9 +111,9 @@ function startRuntime(sessionId: string, context: ExtensionRuntimeLaunchContext)
           value: {
             ...context,
             requestHost: (request) => requestHost(sessionId, withHostRequestId(request))
-          },
-          children: createElement(command.Component)
-        }
+          }
+        },
+        createElement(command.Component)
       )
     )
     void activeRenderer
@@ -121,13 +155,17 @@ function requestHost(
 
 function postRuntimeError(sessionId: string, error: unknown): void {
   postToHost({
-    error: {
-      code: "runtime_error",
-      message: error instanceof Error ? error.message : String(error)
-    },
+    error: toRuntimeError("runtime_error", error),
     sessionId,
     type: "error"
   })
+}
+
+function toRuntimeError(code: string, error: unknown): ExtensionRuntimeError {
+  return {
+    code,
+    message: error instanceof Error ? error.message : String(error)
+  }
 }
 
 function getParentPort(): NonNullable<typeof process.parentPort> {
