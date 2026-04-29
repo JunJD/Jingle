@@ -34,7 +34,31 @@ Acceptance:
 - Tool execution does not depend on renderer state.
 - Tool metadata declares read/write/external access and approval policy.
 
-## M2: Source Middleware MVP
+## M2: Unified Permission Mode
+
+Goal: make Permission Mode a shared product and runtime primitive for shell, files, extension tools, and future generated tools.
+
+Tasks:
+
+- Define product modes:
+  - `explore`
+  - `ask-to-edit`
+  - `auto`
+- Map existing command classification and just-bash mutation prediction into the same policy language.
+- Add an extension tool permission resolver that consumes tool metadata and active mode.
+- Store default permission mode on SourceProfile.
+- Snapshot active permission mode into RunSourceBinding.
+- Keep approval/HITL as the durable execution interception point.
+
+Acceptance:
+
+- Read tools are allowed in `explore`.
+- Write/external tools do not silently run in `explore`.
+- Write/external tools require HITL in `ask-to-edit`.
+- Trusted write/external tools may run in `auto`, still subject to guardrails.
+- Extension tools, shell commands, and file mutation tools can be explained with the same product language.
+
+## M3: Source Middleware MVP
 
 Goal: expose selected extension source tools to the agent.
 
@@ -53,7 +77,7 @@ Acceptance:
 - A disabled source does not expose tools.
 - Missing auth is represented as source status, not as a callable broken tool.
 
-## M3: Apple Reminders Vertical Slice
+## M4: Apple Reminders Vertical Slice
 
 Goal: validate real read/write source behavior and approval.
 
@@ -66,7 +90,7 @@ Tasks:
   - `deleteReminder`
 - Define Apple Reminders SourceDefinition.
 - Create an implicit default SourceProfile.
-- Extend approval middleware to inspect extension tool metadata.
+- Route write tools through unified Permission Mode and approval middleware.
 - Record source usage in run evidence.
 
 Acceptance:
@@ -77,7 +101,7 @@ Acceptance:
 - Approving continues the run and executes the tool.
 - Pending approval can survive renderer refresh/reopen.
 
-## M4: GitHub Read-Only Work Source
+## M5: GitHub Read-Only Work Source
 
 Goal: validate Source as real work-agent context.
 
@@ -97,9 +121,9 @@ Acceptance:
 
 - The agent can use GitHub source to summarize open issues, PRs, notifications, or workflow failures.
 - GitHub source execution does not depend on renderer command code.
-- Large results are summarized or stored as artifacts instead of flooding the model context.
+- Tool results are bounded enough to avoid flooding the model context.
 
-## M5: SourceProfile UI And Selection
+## M6: SourceProfile UI And Selection
 
 Goal: make sources user-visible and selectable.
 
@@ -109,6 +133,7 @@ Tasks:
 - Add settings UI for enabling/disabling source profiles.
 - Add per-profile enabled tool list.
 - Add auth status display.
+- Add default permission mode per profile.
 - Add agent composer source selection, starting with `@github` style selection.
 
 Acceptance:
@@ -118,7 +143,7 @@ Acceptance:
 - Run start resolves selected SourceProfiles in main.
 - Renderer does not become the source of truth for active source state.
 
-## M6: Durable RunSourceBinding
+## M7: Durable RunSourceBinding
 
 Goal: make source usage part of Openwork's harness.
 
@@ -135,28 +160,27 @@ Acceptance:
 - Later SourceProfile edits do not change historical run evidence.
 - Approval records can identify extension source tool calls.
 
-## M7: Skill + Source Linkage
+## M8: Skill + Source Linkage Concept
 
-Goal: compose workflow knowledge with work systems.
+Goal: evaluate the Craft-inspired `requiredSources` idea without making it part of the first implementation path.
 
 Tasks:
 
-- Add optional skill frontmatter support:
+- Document optional skill frontmatter:
   - `requiredSources`
   - `optionalSources`
-- When a skill is selected, check source availability.
-- Suggest connecting/enabling missing required sources.
-- Keep skill instructions and source guide separate in the prompt.
+- Decide whether Openwork skills should own this metadata or whether it should live in a higher-level workflow descriptor.
+- Prototype source availability checks only after native SourceProfiles are working.
 
 Acceptance:
 
-- A GitHub triage skill can declare GitHub as a required source.
-- The agent can explain when a skill cannot run because a source is missing.
+- The team can explain why this is new product surface, not required for the initial source implementation.
 - Skills remain methodology; sources remain work context and tools.
+- No first-slice implementation depends on `requiredSources`.
 
-## M8: Generic MCP / REST / Local Source Profiles
+## Deferred: Generic MCP / REST / Local Source Profiles
 
-Goal: generalize only after native extension sources prove the path.
+Goal: keep generic source types out of the current roadmap until native extension sources prove the path.
 
 Tasks:
 
@@ -181,6 +205,7 @@ Acceptance:
 Week 1: M0 + M1
 Week 2: M2 + M3
 Week 3: M4
-Week 4: M5 + M6
-Week 5+: M7 + M8
+Week 4: M5
+Week 5: M6 + M7
+Later: M8 concept validation and deferred generic source types
 ```

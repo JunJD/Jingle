@@ -23,7 +23,7 @@ It should not depend on React, renderer state, launcher state, or extension UI c
 
 ```ts
 type ExtensionToolAccess = "read" | "write" | "external"
-type ExtensionToolApproval = "never" | "ask" | "always"
+type ExtensionToolApproval = "never" | "ask" | "always" | "mode-governed"
 
 interface ExtensionToolDefinition<TInput, TOutput> {
   name: string
@@ -49,6 +49,10 @@ interface ExtensionSourceDefinition {
   extensionName: string
   title: string
   description: string
+  /**
+   * Agent-facing source guide. This is separate from skill instructions.
+   * It explains when and how to use this work system.
+   */
   guide: string
   defaultToolNames: string[]
   writeToolNames?: string[]
@@ -79,6 +83,7 @@ interface SourceProfile {
   enabled: boolean
   config: Record<string, unknown>
   enabledToolNames: string[]
+  defaultPermissionMode: "explore" | "ask-to-edit" | "auto"
   authStatus: "connected" | "missing" | "failed"
   createdAt: string
   updatedAt: string
@@ -108,6 +113,95 @@ interface RunSourceBinding {
 ```
 
 This belongs to the harness evidence chain. It should survive later edits to SourceProfile.
+
+## Permission Mode
+
+Permission Mode is a user-facing product concept that should drive all tool authorization.
+
+It should sit above individual tool implementations:
+
+```txt
+Permission Mode
+  -> permission resolver
+  -> allow / require approval / deny
+  -> existing HITL and guardrail flow
+```
+
+Initial modes:
+
+```txt
+Explore
+  read-only.
+  read tools are allowed.
+  write/external tools are denied or ask the user to switch mode.
+
+Ask to Edit
+  read tools are allowed.
+  write/external tools require durable HITL approval.
+
+Auto
+  trusted write/external tools can run without approval.
+  guardrails still apply.
+```
+
+The same resolver should cover:
+
+- shell commands classified through just-bash and command classifiers
+- file mutation tools
+- extension common tools
+- future generated MCP/API tools
+
+Tool metadata should be simple:
+
+```txt
+access: read | write | external
+approval: mode-governed | never | ask | always
+```
+
+The resolver combines:
+
+```txt
+tool access
+tool approval metadata
+active Permission Mode
+source profile defaults
+run-level overrides
+guardrail decision
+```
+
+The output should be the same shape Openwork already understands:
+
+```txt
+allow
+require_approval
+deny
+```
+
+This keeps permission product language unified while still letting the existing approval middleware remain the durable interception point.
+
+## Source Guide
+
+Source Guide is part of SourceDefinition from the start.
+
+It is not a Skill. It should answer:
+
+- what work system this source represents
+- when the agent should use it
+- which tools are read/write/external
+- source-specific conventions and constraints
+- when to ask the user before acting
+
+First version can be code/manifest-provided. Later versions may allow per-profile user override.
+
+Source Guide should be injected separately from Skill instructions so the model can distinguish:
+
+```txt
+Source Guide
+  "How to use GitHub as a work system."
+
+Skill
+  "How to triage bugs or review PRs."
+```
 
 ## Runtime Flow
 
@@ -173,3 +267,6 @@ Do not store secrets in normal extension preferences or run evidence.
 - Do not execute agent tools in renderer.
 - Do not build generic REST/MCP Source before Apple Reminders and GitHub prove the vertical path.
 - Do not let current SourceProfile changes rewrite historical run truth.
+- Do not include agent-guided source setup in the current roadmap.
+- Do not include inbox, source-triggered automations, or work queue design in this roadmap.
+- Do not make Skill `requiredSources` part of the first source implementation.

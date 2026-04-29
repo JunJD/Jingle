@@ -6,6 +6,7 @@ This checklist is intentionally implementation-oriented. It should be updated as
 
 - [ ] Create shared extension tool types.
 - [ ] Create shared extension source types.
+- [ ] Define shared Permission Mode names and internal policy values.
 - [ ] Decide whether initial SourceProfile storage uses existing preferences/electron-store or a dedicated source profile store.
 - [ ] Decide whether first RunSourceBinding lands in Prisma schema or `Run.metadata`.
 - [ ] Add naming helpers for generated agent tool names.
@@ -28,7 +29,18 @@ This checklist is intentionally implementation-oriented. It should be updated as
 - [ ] Resolve secrets through secure storage.
 - [ ] Pass `threadId`, `runId`, `workspacePath`, and `sourceProfileId` into handlers.
 - [ ] Normalize tool success/error output.
-- [ ] Add result summarization or artifact reference support for large outputs.
+- [ ] Define a bounded output contract so tools do not flood model context.
+
+## Unified Permission Mode
+
+- [ ] Define `explore`, `ask-to-edit`, and `auto` as product-level modes.
+- [ ] Map existing execute command policy to unified permission decisions.
+- [ ] Keep just-bash mutation prediction as an input to command permission policy.
+- [ ] Add extension tool permission resolver.
+- [ ] Resolve extension tool policy from access, approval metadata, active mode, and source profile defaults.
+- [ ] Store SourceProfile default permission mode.
+- [ ] Snapshot permission mode into RunSourceBinding.
+- [ ] Add tests for read/write/external tool policy under each mode.
 
 ## Source Middleware
 
@@ -36,16 +48,16 @@ This checklist is intentionally implementation-oriented. It should be updated as
 - [ ] Build LangChain tools from active SourceProfiles.
 - [ ] Inject active source context through `wrapModelCall`.
 - [ ] Exclude disabled profiles.
-- [ ] Exclude write tools when source or permission mode requires read-only behavior.
+- [ ] Exclude or deny write tools when Permission Mode requires read-only behavior.
 - [ ] Represent missing auth as status text, not callable tools.
 - [ ] Add unit tests for prompt injection and tool generation.
 
-## Approval And Guardrails
+## Approval, Permission, And Guardrails
 
-- [ ] Extend approval middleware to recognize generated extension source tool names.
+- [ ] Extend approval middleware to recognize generated extension source tool names after Permission Mode resolution.
 - [ ] Map generated tool name to source tool metadata.
-- [ ] Require approval for `approval: "always"`.
-- [ ] Treat write/external tools as approval candidates by default.
+- [ ] Require approval for `approval: "always"` and `ask-to-edit` write/external decisions.
+- [ ] Treat write/external tools as mode-governed by default.
 - [ ] Link approval request to source profile and extension tool metadata.
 - [ ] Decide whether guardrail provider needs source-specific context.
 
@@ -75,6 +87,7 @@ This checklist is intentionally implementation-oriented. It should be updated as
 - [ ] Add enable/disable toggle.
 - [ ] Add profile auth status.
 - [ ] Add enabled tool list per profile.
+- [ ] Add default permission mode per profile.
 - [ ] Add source picker in agent composer.
 - [ ] Persist selected source profiles when starting a run.
 
@@ -86,14 +99,14 @@ This checklist is intentionally implementation-oriented. It should be updated as
 - [ ] Show source usage in run/history UI.
 - [ ] Verify historical run display is stable after SourceProfile changes.
 
-## Skill Linkage
+## Skill Linkage Concept
 
-- [ ] Add `requiredSources` and `optionalSources` support to Openwork skill metadata if not already covered by deepagents skill metadata.
-- [ ] Add source availability checks when selected skills require sources.
-- [ ] Prompt the user to connect or enable missing sources.
+- [ ] Write down whether `requiredSources` belongs in skill metadata or a higher-level workflow descriptor.
+- [ ] Prototype `requiredSources` only after SourceProfile selection is stable.
+- [ ] Do not block Apple Reminders or GitHub slices on this concept.
 - [ ] Keep source guide and skill guide as separate prompt sections.
 
-## Generic Source Types
+## Deferred Generic Source Types
 
 - [ ] Define `sourceType: "extension-native" | "mcp" | "rest-api" | "local-folder"`.
 - [ ] Decide whether generic MCP/REST/local sources are built-in extensions or a separate source manager.

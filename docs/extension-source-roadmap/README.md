@@ -8,6 +8,7 @@ The goal is not to copy Craft Agents directly. The goal is to translate the usef
 - Extensions are capability packages.
 - Human commands and agent tools should share common execution logic.
 - Agent source usage must enter the harness: approvals, persistence, recovery, and evidence.
+- Permission Mode should be a product primitive, not just a tool implementation detail.
 
 ## Documents
 
@@ -37,6 +38,19 @@ RunSourceBinding
   is the per-run evidence snapshot of which source profile was used
 ```
 
+Permission Mode should apply consistently across shell commands, file mutation tools, extension tools, and future generated MCP/API tools:
+
+```txt
+Explore
+  read-only; write/external actions are blocked or require changing mode
+
+Ask to Edit
+  read actions are allowed; write/external actions require HITL approval
+
+Auto
+  trusted write/external actions may run without approval, still inside guardrails
+```
+
 ## First Vertical Slice
 
 Do not begin with a generic Source platform. Begin with two real sources:
@@ -45,3 +59,21 @@ Do not begin with a generic Source platform. Begin with two real sources:
 2. GitHub validates real work-agent value with read-only work context.
 
 If both work cleanly, MCP/API/local-folder generalization becomes an extension of a proven path instead of an abstract platform bet.
+
+## Current Scope
+
+In scope now:
+
+- unified Permission Mode
+- Source Guide as part of SourceDefinition
+- extension common tools
+- source middleware
+- Apple Reminders and GitHub vertical slices
+
+Deferred:
+
+- agent-guided source setup
+- inbox/work queue
+- source-triggered automations
+- generic MCP/API/local source platform
+- Skill `requiredSources`, except as a later concept validation

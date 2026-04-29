@@ -15,6 +15,12 @@ Relevant observed design:
 
 This supports the Openwork direction of making Source an agent-facing projection of extension capability.
 
+Permission Mode is the most relevant product-language lesson from Craft for the current Openwork roadmap. It turns low-level permission mechanics into user-understandable modes. Openwork already has command classification, just-bash mutation prediction, guardrails, and HITL approvals; the opportunity is to put one product-level mode system above all of them.
+
+Source Guide is already part of the proposed SourceDefinition. It should remain separate from Skill instructions.
+
+Skill `requiredSources` is a useful new concept, but it should be treated as later concept validation. It should not block the first Source implementation.
+
 ## MCP
 
 MCP is a protocol-level way to expose tools, resources, and prompts. It can back a Source, but it is not the Source abstraction itself.
@@ -53,6 +59,7 @@ The missing pieces are:
 - extension tool executor
 - source profile selection
 - source middleware
+- unified Permission Mode for extension tools
 - run source evidence
 
 ## Important Local Anchors
@@ -80,3 +87,13 @@ Harness = durable truth and evidence
 ```
 
 If these layers collapse into one abstraction, Openwork becomes harder to reason about and harder to verify.
+
+## Current Non-Scope
+
+Do not include these in the current implementation roadmap:
+
+- agent-guided source setup
+- inbox/work queue
+- source-triggered automations
+
+They may be revisited later, but the current roadmap should stay focused on Source, Common Tool, Permission Mode, Source Guide, and durable run evidence.
