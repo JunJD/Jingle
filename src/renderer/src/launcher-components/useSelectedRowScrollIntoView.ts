@@ -25,6 +25,13 @@ export function useSelectedRowScrollIntoView<TElement extends HTMLElement>(param
       return
     }
 
+    if (selectedIndex === 0) {
+      if (viewport.scrollTop > tolerance) {
+        viewport.scrollTop = 0
+      }
+      return
+    }
+
     const viewportRect = viewport.getBoundingClientRect()
     const itemRect = item.getBoundingClientRect()
     const deltaTop = itemRect.top - viewportRect.top
