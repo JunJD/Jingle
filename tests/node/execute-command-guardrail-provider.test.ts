@@ -95,6 +95,38 @@ test("predictable mutations require a successful prediction before they are allo
   assert.equal(decision.metadata?.mutationPrediction?.status, "predicted")
 })
 
+test("managed process commands require approval without mutation prediction", async () => {
+  let predictorCalls = 0
+  const provider = createExecuteCommandGuardrailProvider({
+    classifier: {
+      classify() {
+        return buildPolicy({
+          command: "python3 -m http.server",
+          commands: ["python3"],
+          disposition: "require_approval",
+          profile: "managed_process",
+          reason: "python3 -m http.server starts a managed process and requires approval.",
+          summary: "Managed process command requires approval (python3)."
+        })
+      }
+    },
+    predictor: {
+      async predictExecute() {
+        predictorCalls += 1
+        return buildPrediction()
+      }
+    }
+  })
+
+  const decision = await provider.evaluate(buildRequest("python3 -m http.server"))
+
+  assert.equal(decision.allow, true)
+  assert.equal(predictorCalls, 0)
+  assert.equal(decision.metadata?.executeCommandPolicy?.profile, "managed_process")
+  assert.equal(decision.metadata?.executeCommandPolicy?.disposition, "require_approval")
+  assert.equal(decision.metadata?.mutationPrediction, undefined)
+})
+
 test("predictable mutations are denied when target files cannot be predicted", async () => {
   const provider = createExecuteCommandGuardrailProvider({
     classifier: {
@@ -128,6 +160,45 @@ test("predictable mutations are denied when target files cannot be predicted", a
   assert.equal(decision.metadata?.executeCommandPolicy?.profile, "predictable_mutation")
   assert.equal(decision.metadata?.mutationPrediction?.status, "simulation_error")
   assert.match(decision.reasons?.[0]?.message ?? "", /target files could not be predicted/i)
+})
+
+test("predictable mutations are denied when the predictor marks them unsupported", async () => {
+  const provider = createExecuteCommandGuardrailProvider({
+    classifier: {
+      classify() {
+        return buildPolicy({
+          command: `python3 -c "open('notes.txt', 'w').write('hello')"`,
+          commands: ["python3"],
+          disposition: "require_approval",
+          profile: "predictable_mutation",
+          reason: "python3 inline code execution requires mutation prediction and approval.",
+          summary: "Command may modify workspace files and requires approval (python3)."
+        })
+      }
+    },
+    predictor: {
+      async predictExecute() {
+        return buildPrediction({
+          command: `python3 -c "open('notes.txt', 'w').write('hello')"`,
+          status: "unsupported_command",
+          confidence: "none",
+          summary:
+            "Simulator could not execute this command in just-bash, so target files are unknown.",
+          changes: [],
+          exitCode: 127
+        })
+      }
+    }
+  })
+
+  const decision = await provider.evaluate(
+    buildRequest(`python3 -c "open('notes.txt', 'w').write('hello')"`)
+  )
+
+  assert.equal(decision.allow, false)
+  assert.equal(decision.metadata?.executeCommandPolicy?.profile, "predictable_mutation")
+  assert.equal(decision.metadata?.mutationPrediction?.status, "unsupported_command")
+  assert.match(decision.reasons?.[0]?.message ?? "", /unsupported_command/i)
 })
 
 test("host-unsafe commands are denied before prediction runs", async () => {

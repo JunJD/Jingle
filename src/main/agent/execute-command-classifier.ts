@@ -104,6 +104,8 @@ const GIT_READ_ONLY_SUBCOMMANDS = new Set([
 ])
 const NPM_READ_ONLY_SUBCOMMANDS = new Set(["help", "view"])
 const PNPM_READ_ONLY_SUBCOMMANDS = new Set(["--version", "-v", "help", "view"])
+const MANAGED_PACKAGE_SCRIPTS = new Set(["dev", "preview", "start"])
+const MANAGED_PYTHON_MODULES = new Set(["http.server"])
 const CURL_METHOD_FLAGS = new Set(["-X", "--request"])
 const CURL_BODY_FLAGS = new Set([
   "-d",
@@ -126,7 +128,11 @@ const WRITE_REDIRECTION_OPERATORS = new Set([">", ">>", ">|", "<>"])
 
 type InvocationClassification =
   | {
-      profile: "read_only" | "network_read" | "predictable_mutation"
+      profile:
+        | "read_only"
+        | "network_read"
+        | "predictable_mutation"
+        | "managed_process"
       reason: string
       networkTargets?: string[]
     }
@@ -293,6 +299,40 @@ function extractCliSubcommand(args: Array<string | null>): string | null {
 
     if (token.startsWith("-")) {
       continue
+    }
+
+    return token
+  }
+
+  return null
+}
+
+function extractPackageScriptName(args: Array<string | null>): string | null {
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]
+    if (!token) {
+      return null
+    }
+
+    if (isEnvAssignmentToken(token) || token.startsWith("-")) {
+      continue
+    }
+
+    if (token === "run" || token === "run-script") {
+      for (let scriptIndex = index + 1; scriptIndex < args.length; scriptIndex += 1) {
+        const scriptName = args[scriptIndex]
+        if (!scriptName) {
+          return null
+        }
+
+        if (scriptName.startsWith("-")) {
+          continue
+        }
+
+        return scriptName
+      }
+
+      return null
     }
 
     return token
@@ -474,6 +514,116 @@ function classifyCurl(
   }
 }
 
+function classifyPythonCommand(
+  name: "python" | "python3",
+  args: Array<string | null>
+): InvocationClassification {
+  const [firstArg, secondArg] = args
+  if (!firstArg) {
+    return {
+      profile: "host_unsafe",
+      reason: `${name} must use --version, -c CODE, or a script file in the controlled shell profile.`
+    }
+  }
+
+  if (firstArg === "--version" || firstArg === "-V") {
+    return {
+      profile: "read_only",
+      reason: `${name} version inspection is read-only.`
+    }
+  }
+
+  if (firstArg === "-c") {
+    if (!secondArg) {
+      return {
+        profile: "host_unsafe",
+        reason: `${name} requires inline code after -c.`
+      }
+    }
+
+    return {
+      profile: "predictable_mutation",
+      reason: `${name} inline code execution requires mutation prediction and approval.`
+    }
+  }
+
+  if (firstArg === "-m") {
+    if (!secondArg) {
+      return {
+        profile: "host_unsafe",
+        reason: `${name} requires a module name after -m.`
+      }
+    }
+
+    if (MANAGED_PYTHON_MODULES.has(secondArg)) {
+      return {
+        profile: "managed_process",
+        reason: `${name} -m ${secondArg} starts a managed process and requires approval.`
+      }
+    }
+
+    return {
+      profile: "host_unsafe",
+      reason: `${name} module '${secondArg}' is outside the controlled shell profile.`
+    }
+  }
+
+  if (firstArg.startsWith("-")) {
+    return {
+      profile: "host_unsafe",
+      reason: `${name} option '${firstArg}' is outside the controlled shell profile.`
+    }
+  }
+
+  return {
+    profile: "predictable_mutation",
+    reason: `${name} script execution requires mutation prediction and approval.`
+  }
+}
+
+function classifyNodeCommand(args: Array<string | null>): InvocationClassification {
+  const [firstArg, secondArg] = args
+  if (!firstArg) {
+    return {
+      profile: "host_unsafe",
+      reason: "node must use --version, -e CODE, or a script file in the controlled shell profile."
+    }
+  }
+
+  if (firstArg === "--version" || firstArg === "-v") {
+    return {
+      profile: "read_only",
+      reason: "node version inspection is read-only."
+    }
+  }
+
+  if (firstArg === "-e" || firstArg === "--eval") {
+    if (!secondArg) {
+      return {
+        profile: "host_unsafe",
+        reason: "node requires inline code after -e/--eval."
+      }
+    }
+
+    return {
+      profile: "predictable_mutation",
+      reason: "node inline code execution requires mutation prediction and approval."
+    }
+  }
+
+  if (firstArg.startsWith("-")) {
+    return {
+      profile: "host_unsafe",
+      reason: `node option '${firstArg}' is outside the controlled shell profile.`
+    }
+  }
+
+  return {
+    profile: "predictable_mutation",
+    reason: "node script execution requires mutation prediction and approval."
+  }
+}
+
 function classifyInvocation(invocation: CollectedCommand): InvocationClassification {
   if (!invocation.name) {
     return {
@@ -538,6 +688,14 @@ function classifyInvocation(invocation: CollectedCommand): InvocationClassificat
 
   if (name === "npm") {
     if (!hasWriteTarget) {
+      const scriptName = extractPackageScriptName(invocation.args)
+      if (scriptName && MANAGED_PACKAGE_SCRIPTS.has(scriptName)) {
+        return {
+          profile: "managed_process",
+          reason: `npm ${scriptName} starts a managed process and requires approval.`
+        }
+      }
+
       const subcommand = extractCliSubcommand(invocation.args)
       if (subcommand && NPM_READ_ONLY_SUBCOMMANDS.has(subcommand)) {
         return {
@@ -562,6 +720,14 @@ function classifyInvocation(invocation: CollectedCommand): InvocationClassificat
 
   if (name === "pnpm") {
     if (!hasWriteTarget) {
+      const scriptName = extractPackageScriptName(invocation.args)
+      if (scriptName && MANAGED_PACKAGE_SCRIPTS.has(scriptName)) {
+        return {
+          profile: "managed_process",
+          reason: `pnpm ${scriptName} starts a managed process and requires approval.`
+        }
+      }
+
       if (invocation.args.some((token) => token === "--version" || token === "-v")) {
         return {
           profile: "read_only",
@@ -586,6 +752,21 @@ function classifyInvocation(invocation: CollectedCommand): InvocationClassificat
 
   if (name === "find") {
     return classifyFind(invocation.args)
+  }
+
+  if (name === "python" || name === "python3") {
+    return classifyPythonCommand(name, invocation.args)
+  }
+
+  if (name === "node") {
+    return classifyNodeCommand(invocation.args)
+  }
+
+  if (name === "js-exec") {
+    return {
+      profile: "host_unsafe",
+      reason: "js-exec is only available inside the mutation simulator and is not a host command."
+    }
   }
 
   if (name === "sed" && hasSedInPlace(invocation.args)) {
@@ -645,6 +826,8 @@ function summarizePolicy(profile: ExecuteCommandProfile, commands: string[]): st
       return `Public network read command allowed without approval (${preview}).`
     case "predictable_mutation":
       return `Command may modify workspace files and requires approval (${preview}).`
+    case "managed_process":
+      return `Managed process command requires approval (${preview}).`
     case "host_unsafe":
       return `Command blocked by the controlled shell policy (${preview}).`
   }
@@ -734,8 +917,17 @@ export class JustBashExecuteCommandClassifier implements ExecuteCommandClassifie
         networkTargets.add(target)
       }
 
-      if (classification.profile === "predictable_mutation") {
+      if (
+        classification.profile === "predictable_mutation" &&
+        finalProfile !== "managed_process"
+      ) {
         finalProfile = "predictable_mutation"
+        reason = classification.reason
+        continue
+      }
+
+      if (classification.profile === "managed_process") {
+        finalProfile = "managed_process"
         reason = classification.reason
         continue
       }
@@ -755,7 +947,7 @@ export class JustBashExecuteCommandClassifier implements ExecuteCommandClassifie
     }
 
     const disposition =
-      finalProfile === "predictable_mutation"
+      finalProfile === "predictable_mutation" || finalProfile === "managed_process"
         ? "require_approval"
         : finalProfile === "host_unsafe"
           ? "deny"

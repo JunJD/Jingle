@@ -47,6 +47,31 @@ test("buildToolApprovalItem maps execute predictions to upcoming file changes", 
   })
 })
 
+test("buildToolApprovalItem represents managed process approvals without file changes", () => {
+  const args = withExecuteCommandPolicy(
+    { command: "python3 -m http.server" },
+    {
+      command: "python3 -m http.server",
+      profile: "managed_process",
+      disposition: "require_approval",
+      summary: "Managed process command requires approval (python3).",
+      reason: "python3 -m http.server starts a managed process and requires approval.",
+      commands: ["python3"]
+    }
+  )
+
+  const approvalItem = buildToolApprovalItem("execute", args)
+
+  assert.deepEqual(approvalItem, {
+    kind: "execute_command",
+    toolName: "execute",
+    command: "python3 -m http.server",
+    changes: [],
+    profile: "managed_process",
+    predictionStatus: null
+  })
+})
+
 test("buildToolApprovalItem marks new write_file targets as upcoming creations", () => {
   const approvalItem = buildToolApprovalItem(
     "write_file",
