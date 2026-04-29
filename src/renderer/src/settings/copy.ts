@@ -3,6 +3,7 @@ import type { AppLocale } from "@shared/i18n"
 interface SettingsCopy {
   title: string
   tabs: {
+    appearance: string
     extensions: string
     general: string
     provider: string
@@ -39,6 +40,41 @@ interface SettingsCopy {
     useEnvironmentFallback: string
     saved: string
     workspaceHint: string
+  }
+  appearance: {
+    accentColor: string
+    behaviorDescription: string
+    behaviorTitle: string
+    codeFont: string
+    codeTheme: string
+    colorsDescription: string
+    colorsTitle: string
+    contrast: string
+    copied: string
+    copyTheme: string
+    customTheme: string
+    darkVariant: string
+    description: string
+    diffAddedColor: string
+    diffRemovedColor: string
+    fontsDescription: string
+    fontsTitle: string
+    importDescription: string
+    importFailed: string
+    importTheme: string
+    importTitle: string
+    imported: string
+    inkColor: string
+    lightVariant: string
+    skillColor: string
+    surfaceColor: string
+    themeDescription: string
+    themeTitle: string
+    title: string
+    tokenFormat: string
+    translucentWindows: string
+    uiFont: string
+    variant: string
   }
   provider: {
     title: string
@@ -107,6 +143,7 @@ interface SettingsCopy {
 const zhCN: SettingsCopy = {
   title: "设置",
   tabs: {
+    appearance: "外观",
     extensions: "Extensions",
     general: "通用",
     provider: "模型",
@@ -143,6 +180,41 @@ const zhCN: SettingsCopy = {
     useEnvironmentFallback: "跟随环境变量 / 默认值",
     saved: "已保存",
     workspaceHint: "线程级 workspace 仍然可以覆盖这里的默认值。"
+  },
+  appearance: {
+    accentColor: "强调色",
+    behaviorDescription: "控制窗口透明度、主题风格、主题明暗和整体对比度。",
+    behaviorTitle: "主题行为",
+    codeFont: "代码字体",
+    codeTheme: "主题风格 ID",
+    colorsDescription: "这些颜色会映射到 Openwork 的 semantic token。",
+    colorsTitle: "颜色",
+    contrast: "对比度",
+    copied: "已复制主题",
+    copyTheme: "复制主题",
+    customTheme: "自定义",
+    darkVariant: "深色",
+    description: "配置 Codex theme v1 格式，实时应用到窗口、Launcher 和设置页。",
+    diffAddedColor: "Diff 新增",
+    diffRemovedColor: "Diff 删除",
+    fontsDescription: "留空时使用 Openwork 默认 UI 字体和代码字体。",
+    fontsTitle: "字体",
+    importDescription: "粘贴 codex-theme-v1 token 后导入当前主题。",
+    importFailed: "主题格式不正确",
+    importTheme: "导入主题",
+    importTitle: "导入",
+    imported: "已导入主题",
+    inkColor: "前景色",
+    lightVariant: "浅色",
+    skillColor: "Skill 语义色",
+    surfaceColor: "背景",
+    themeDescription: "选择一个基础主题，再按需微调颜色、字体和对比度。",
+    themeTitle: "主题",
+    title: "外观",
+    tokenFormat: "codex-theme-v1",
+    translucentWindows: "半透明窗口",
+    uiFont: "UI 字体",
+    variant: "模式"
   },
   provider: {
     title: "Model Provider",
@@ -211,6 +283,7 @@ const zhCN: SettingsCopy = {
 const enUS: SettingsCopy = {
   title: "Settings",
   tabs: {
+    appearance: "Appearance",
     extensions: "Extensions",
     general: "General",
     provider: "Models",
@@ -248,6 +321,41 @@ const enUS: SettingsCopy = {
     useEnvironmentFallback: "Use env var / fallback default",
     saved: "Saved",
     workspaceHint: "Thread-level workspace can still override this global default."
+  },
+  appearance: {
+    accentColor: "Accent",
+    behaviorDescription: "Controls opacity, theme style, light mode, dark mode, and contrast.",
+    behaviorTitle: "Theme Behavior",
+    codeFont: "Code Font",
+    codeTheme: "Theme Style ID",
+    colorsDescription: "These colors map into Openwork semantic tokens.",
+    colorsTitle: "Colors",
+    contrast: "Contrast",
+    copied: "Theme copied",
+    copyTheme: "Copy Theme",
+    customTheme: "Custom",
+    darkVariant: "Dark",
+    description: "Configure Codex theme v1 and apply it to windows, Launcher, and Settings.",
+    diffAddedColor: "Diff Added",
+    diffRemovedColor: "Diff Removed",
+    fontsDescription: "Leave blank to use the Openwork default UI and code fonts.",
+    fontsTitle: "Fonts",
+    importDescription: "Paste a codex-theme-v1 token to import it as the current theme.",
+    importFailed: "Theme token is invalid",
+    importTheme: "Import Theme",
+    importTitle: "Import",
+    imported: "Theme imported",
+    inkColor: "Ink",
+    lightVariant: "Light",
+    skillColor: "Skill Semantic",
+    surfaceColor: "Surface",
+    themeDescription: "Start from a preset, then adjust colors, fonts, and contrast.",
+    themeTitle: "Theme",
+    title: "Appearance",
+    tokenFormat: "codex-theme-v1",
+    translucentWindows: "Translucent Windows",
+    uiFont: "UI Font",
+    variant: "Variant"
   },
   provider: {
     title: "Model Providers",

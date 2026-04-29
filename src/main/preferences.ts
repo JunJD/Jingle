@@ -7,6 +7,11 @@ import { listNativeExtensionManifests } from "@extensions/index"
 import { DEFAULT_MODELS } from "@shared/models"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale } from "@shared/i18n"
 import type { DefaultModels, SupportedDefaultModelType } from "@shared/app-types"
+import {
+  DEFAULT_APP_THEME_SETTINGS,
+  normalizeAppThemeSettings,
+  type AppThemeSettings
+} from "@shared/app-theme"
 import type {
   NativeExtensionPreferenceSchema,
   NativeExtensionPreferencesState
@@ -32,6 +37,7 @@ export interface PersistedWindowState {
 
 interface SettingsStoreShape {
   agentConfig: AgentConfig
+  appThemeSettings: AppThemeSettings
   defaultModels: DefaultModels
   launcherSettings: LauncherSettings
   mainWindowState: PersistedWindowState | null
@@ -81,6 +87,7 @@ const settingsStore = new Store<SettingsStoreShape>({
   cwd: getOpenworkDir(),
   defaults: {
     agentConfig: DEFAULT_AGENT_CONFIG,
+    appThemeSettings: DEFAULT_APP_THEME_SETTINGS,
     defaultModels: DEFAULT_MODELS,
     launcherSettings: DEFAULT_LAUNCHER_SETTINGS,
     mainWindowState: null,
@@ -508,6 +515,24 @@ export function setAgentConfig(updates: Partial<AgentConfig>): AgentConfig {
 
   settingsStore.set("agentConfig", nextConfig)
   return nextConfig
+}
+
+export function getAppThemeSettings(): AppThemeSettings {
+  const stored = settingsStore.get("appThemeSettings", DEFAULT_APP_THEME_SETTINGS) as
+    | AppThemeSettings
+    | undefined
+
+  return normalizeAppThemeSettings(stored)
+}
+
+export function setAppThemeSettings(updates: Partial<AppThemeSettings>): AppThemeSettings {
+  const nextSettings = normalizeAppThemeSettings({
+    ...getAppThemeSettings(),
+    ...updates
+  })
+
+  settingsStore.set("appThemeSettings", nextSettings)
+  return nextSettings
 }
 
 export function getProviderSecret(providerId: ProviderId, secretName: string): string | null {

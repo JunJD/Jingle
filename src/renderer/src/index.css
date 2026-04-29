@@ -159,6 +159,11 @@
   --ow-dialog-mobile-w: calc(100% - 2rem);
   --ow-dialog-w-sm: 400px;
   --ow-dialog-w-md: 560px;
+  --ow-font-ui-family:
+    "OW Sans CN", "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
+    "Segoe UI", sans-serif;
+  --ow-font-code-family: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace;
+  --ow-semantic-skill: #5f6ac2;
 
   /* Semantic mapping for shadcn compatibility */
   --card: #fbfbf8;
@@ -196,18 +201,17 @@
   --window-chrome-muted: #8a929b;
   --window-controls-offset-inline: 18px;
   --window-controls-gap: 18px;
-
 }
 
 body[data-window="launcher"],
 .launcher-chrome {
   /* Launcher surfaces derive from the app theme */
-  --launcher-surface: #fbfbf8;
-  --launcher-surface-strong: #f0f1ed;
-  --launcher-surface-interactive: #e7e9e4;
-  --launcher-border: rgba(67, 76, 88, 0.08);
-  --launcher-border-strong: rgba(67, 76, 88, 0.16);
-  --launcher-outline: rgba(67, 76, 88, 0.12);
+  --launcher-surface: var(--background-elevated);
+  --launcher-surface-strong: var(--background-secondary);
+  --launcher-surface-interactive: var(--background-interactive);
+  --launcher-border: var(--border);
+  --launcher-border-strong: var(--border-emphasis);
+  --launcher-outline: var(--border);
   --launcher-panel-radius: var(--ow-radius-panel);
   --launcher-panel-radius-inner: var(--ow-radius-panel);
   --launcher-shell-radius: var(--ow-radius-panel);
@@ -227,7 +231,7 @@ body[data-window="launcher"],
   --launcher-shell-sheen-accent: color-mix(in srgb, var(--primary) 12%, transparent);
   --launcher-shell-sheen-linear: rgba(255, 255, 255, 0.18);
   --launcher-shell-sheen-opacity: 0.9;
-  --launcher-text: #20262d;
+  --launcher-text: var(--foreground);
   --launcher-text-muted: var(--muted-foreground);
   --launcher-row-active: color-mix(in srgb, var(--primary) 12%, var(--launcher-shell-fill));
   --launcher-row-hover: color-mix(in srgb, var(--foreground) 4%, var(--launcher-shell-fill));
@@ -297,16 +301,35 @@ body[data-window="launcher"],
 }
 
 .settings-app {
-  --ow-settings-content-max-width: 1040px;
-  --ow-settings-sidebar-w: 300px;
-  --ow-settings-label-column-w: 240px;
-  --ow-settings-field-min-width: 280px;
-  --ow-settings-select-w: 220px;
-  --ow-settings-textarea-min-h: 112px;
-  --ow-settings-provider-skeleton-sm: 96px;
-  --ow-settings-provider-skeleton-md: 104px;
-  --ow-settings-provider-skeleton-lg: 112px;
-  --ow-model-provider-copy-max-width: 660px;
+  --ow-settings-content-max-width: 940px;
+  --ow-settings-sidebar-w: 264px;
+  --ow-settings-label-column-w: 208px;
+  --ow-settings-field-min-width: 220px;
+  --ow-settings-select-w: 208px;
+  --ow-settings-textarea-min-h: 96px;
+  --ow-settings-provider-skeleton-sm: 84px;
+  --ow-settings-provider-skeleton-md: 92px;
+  --ow-settings-provider-skeleton-lg: 104px;
+  --ow-theme-color-input-w: 108px;
+  --ow-theme-preview-line-column: 42px;
+  --ow-model-provider-copy-max-width: 560px;
+  --ow-settings-page-gap: 14px;
+  --ow-settings-card-x: 14px;
+  --ow-settings-card-y: 12px;
+  --ow-settings-row-gap: 10px;
+  --ow-settings-header-gap: 10px;
+  --ow-settings-window-pad: 14px;
+  --ow-settings-toolbar-h: 38px;
+  --ow-settings-control-h: 28px;
+  --ow-settings-title-size: 15px;
+  --ow-settings-description-size: 12px;
+  --ow-settings-control-font: 12px;
+  --ow-settings-tab-font: 12px;
+  --ow-settings-card-radius: 10px;
+  --ow-settings-nav-radius: 8px;
+  --ow-settings-card-shadow: 0 10px 24px rgba(32, 38, 45, 0.04);
+  --ow-settings-tab-x: 12px;
+  --ow-settings-tab-y: 5px;
   --ow-model-badge-h: 18px;
   --ow-model-badge-x: 5px;
   --ow-model-badge-radius: 5px;
@@ -423,14 +446,18 @@ body[data-window="launcher"],
 body.dark[data-window="launcher"],
 html.dark body[data-window="launcher"],
 .dark .launcher-chrome {
-  --launcher-surface: #1b2026;
-  --launcher-surface-strong: #222831;
-  --launcher-surface-interactive: #29303a;
-  --launcher-border: rgba(219, 227, 235, 0.08);
-  --launcher-border-strong: rgba(219, 227, 235, 0.16);
-  --launcher-outline: rgba(219, 227, 235, 0.12);
-  --launcher-shell-fill: color-mix(in srgb, var(--launcher-surface) 82%, #2b3340 18%);
-  --launcher-shell-fill-strong: color-mix(in srgb, var(--launcher-surface) 90%, #2d3641 10%);
+  --launcher-surface: var(--background-elevated);
+  --launcher-surface-strong: var(--background-secondary);
+  --launcher-surface-interactive: var(--background-interactive);
+  --launcher-border: var(--border);
+  --launcher-border-strong: var(--border-emphasis);
+  --launcher-outline: var(--border);
+  --launcher-shell-fill: color-mix(in srgb, var(--launcher-surface) 82%, var(--foreground) 18%);
+  --launcher-shell-fill-strong: color-mix(
+    in srgb,
+    var(--launcher-surface) 90%,
+    var(--foreground) 10%
+  );
   --launcher-shell-border: rgba(255, 255, 255, 0.12);
   --launcher-shell-outline: rgba(255, 255, 255, 0.08);
   --launcher-shell-highlight: rgba(255, 255, 255, 0.08);
@@ -443,7 +470,7 @@ html.dark body[data-window="launcher"],
   --launcher-shell-sheen-accent: color-mix(in srgb, var(--primary) 12%, transparent);
   --launcher-shell-sheen-linear: rgba(255, 255, 255, 0.06);
   --launcher-shell-sheen-opacity: 0.72;
-  --launcher-text: #eff2f5;
+  --launcher-text: var(--foreground);
   --launcher-text-muted: var(--muted-foreground);
   --launcher-row-active: color-mix(in srgb, var(--primary) 14%, var(--launcher-shell-fill));
   --launcher-row-hover: color-mix(in srgb, var(--foreground) 5%, var(--launcher-shell-fill));
@@ -479,6 +506,17 @@ body[data-platform="darwin"] .launcher-chrome {
   --launcher-shell-outline: transparent;
   --launcher-row-active: color-mix(in srgb, var(--primary) 6%, var(--launcher-shell-fill));
   --launcher-row-hover: color-mix(in srgb, var(--foreground) 1.5%, var(--launcher-shell-fill));
+}
+
+html[data-opaque-windows="true"][data-platform="darwin"] body[data-window="launcher"],
+body[data-opaque-windows="true"][data-platform="darwin"][data-window="launcher"],
+html[data-opaque-windows="true"][data-platform="darwin"] .launcher-chrome,
+body[data-opaque-windows="true"][data-platform="darwin"] .launcher-chrome {
+  --launcher-shell-fill: color-mix(in srgb, var(--launcher-surface) 92%, white 8%);
+  --launcher-shell-fill-strong: color-mix(in srgb, var(--launcher-surface) 96%, white 4%);
+  --launcher-footer-strip: color-mix(in srgb, var(--launcher-surface-strong) 58%, white 42%);
+  --launcher-header-strip: color-mix(in srgb, var(--launcher-surface-strong) 54%, white 46%);
+  --launcher-shell-blur: 0px;
 }
 
 html[data-platform="win32"],
@@ -519,10 +557,16 @@ body[data-platform="linux"] .launcher-chrome {
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family:
-      "OW Sans CN", "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
-      "Segoe UI", sans-serif;
+    font-family: var(--ow-font-ui-family);
   }
+}
+
+.font-sans {
+  font-family: var(--ow-font-ui-family);
+}
+
+.font-mono {
+  font-family: var(--ow-font-code-family);
 }
 
 html,
