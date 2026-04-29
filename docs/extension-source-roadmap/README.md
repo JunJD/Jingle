@@ -13,6 +13,7 @@ The goal is not to copy Craft Agents directly. The goal is to translate the usef
 ## Documents
 
 - [architecture.md](./architecture.md): concept model and boundaries.
+- [start-here.md](./start-here.md): first implementation slice and PR order.
 - [roadmap.md](./roadmap.md): phased implementation plan.
 - [task-breakdown.md](./task-breakdown.md): concrete task checklist.
 - [research-notes.md](./research-notes.md): supporting research from Craft Agents, MCP, and current Openwork code.
