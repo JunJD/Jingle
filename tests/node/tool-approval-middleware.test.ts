@@ -46,6 +46,119 @@ test("read-only execute commands bypass approval and continue to the handler", a
   assert.equal(result.content, "executed without approval")
 })
 
+test("allowlisted desktop automation tools bypass approval and continue to the handler", async () => {
+  const middleware = createToolApprovalMiddleware({
+    getAgentConfig: () => ({
+      desktopAutomationAllowlist: ["com.apple.finder"],
+      locale: "zh-CN",
+      memorySources: [],
+      skillSources: []
+    })
+  })
+
+  let handlerCalls = 0
+  const request = {
+    toolCall: {
+      args: {
+        bundleId: "com.apple.finder"
+      },
+      id: "tool-call-allowlisted",
+      name: "open_application",
+      type: "tool_call"
+    }
+  }
+
+  const result = (await middleware.wrapToolCall!(request as never, async () => {
+    handlerCalls += 1
+    return new ToolMessage({
+      content: "finder opened",
+      name: "open_application",
+      tool_call_id: "tool-call-allowlisted"
+    })
+  })) as ToolMessage
+
+  assert.equal(handlerCalls, 1)
+  assert.equal(result.content, "finder opened")
+})
+
+test("non-allowlisted desktop automation tools return an error without approval", async () => {
+  const middleware = createToolApprovalMiddleware({
+    getAgentConfig: () => ({
+      desktopAutomationAllowlist: ["com.apple.finder"],
+      locale: "zh-CN",
+      memorySources: [],
+      skillSources: []
+    })
+  })
+
+  let handlerCalls = 0
+  const request = {
+    toolCall: {
+      args: {
+        bundleId: "com.netease.163music"
+      },
+      id: "tool-call-denied",
+      name: "open_application",
+      type: "tool_call"
+    }
+  }
+
+  const result = (await middleware.wrapToolCall!(request as never, async () => {
+    handlerCalls += 1
+    return new ToolMessage({
+      content: "should not run",
+      name: "open_application",
+      tool_call_id: "tool-call-denied"
+    })
+  })) as ToolMessage
+
+  assert.equal(handlerCalls, 0)
+  assert.equal(result.status, "error")
+  assert.match(
+    typeof result.content === "string" ? result.content : "",
+    /not allowlisted/i
+  )
+})
+
+test("app-targeted desktop route calls require target metadata for allowlist checks", async () => {
+  const middleware = createToolApprovalMiddleware({
+    getAgentConfig: () => ({
+      desktopAutomationAllowlist: ["com.netease.163music"],
+      locale: "zh-CN",
+      memorySources: [],
+      skillSources: []
+    })
+  })
+
+  let handlerCalls = 0
+  const request = {
+    toolCall: {
+      args: {
+        url: "orpheus://songrcmd?autoplay=1"
+      },
+      id: "tool-call-route-without-target",
+      name: "open_desktop_route",
+      type: "tool_call"
+    }
+  }
+
+  const result = (await middleware.wrapToolCall!(request as never, async () => {
+    handlerCalls += 1
+    return new ToolMessage({
+      content: "should not run",
+      name: "open_desktop_route",
+      tool_call_id: "tool-call-route-without-target"
+    })
+  })) as ToolMessage
+
+  assert.equal(handlerCalls, 0)
+  assert.equal(result.status, "error")
+  assert.match(
+    typeof result.content === "string" ? result.content : "",
+    /requires a target application/i
+  )
+})
+
 test("denied execute commands do not reach the handler", async () => {
   let handlerCalls = 0
   const request = {
@@ -102,6 +215,46 @@ test("file mutation tools require tool_call.id before approval", async () => {
         throw new Error("handler should not be reached")
       }),
     /Missing tool_call\.id/i
+  )
+})
+
+test("click_screen_point requires an allowlisted target application", async () => {
+  const middleware = createToolApprovalMiddleware({
+    getAgentConfig: () => ({
+      desktopAutomationAllowlist: ["com.netease.163music"],
+      locale: "zh-CN",
+      memorySources: [],
+      skillSources: []
+    })
+  })
+
+  let handlerCalls = 0
+  const request = {
+    toolCall: {
+      args: {
+        x: 100,
+        y: 200
+      },
+      id: "tool-call-click-without-target",
+      name: "click_screen_point",
+      type: "tool_call"
+    }
+  }
+
+  const result = (await middleware.wrapToolCall!(request as never, async () => {
+    handlerCalls += 1
+    return new ToolMessage({
+      content: "should not run",
+      name: "click_screen_point",
+      tool_call_id: "tool-call-click-without-target"
+    })
+  })) as ToolMessage
+
+  assert.equal(handlerCalls, 0)
+  assert.equal(result.status, "error")
+  assert.match(
+    typeof result.content === "string" ? result.content : "",
+    /requires a target application/i
   )
 })
 

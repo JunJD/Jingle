@@ -95,6 +95,15 @@ async function getStreamEvents(world: OpenworkWorld): Promise<AgentProjectionEnv
   }, streamKey)
 }
 
+function getLatestStreamPendingApprovalId(events: AgentProjectionEnvelope[]): string | null {
+  return (
+    events
+      .map((event) => event.projection.pendingApproval?.id)
+      .filter((requestId): requestId is string => typeof requestId === "string")
+      .at(-1) ?? null
+  )
+}
+
 async function waitForStreamEventType(world: OpenworkWorld, type: string): Promise<void> {
   const page = await getLauncherPage(world)
   const streamKey = getLatestStreamKey(world)
@@ -313,6 +322,32 @@ Then("最新 agent stream 应收到 HITL 中断", async function (this: Openwork
     .poll(async () =>
       (await getStreamEvents(this)).some((event) => Boolean(event.projection.pendingApproval))
     )
+    .toBe(true)
+})
+
+Then("最新 agent stream HITL 请求 id 应与 runtime state 一致", async function (this: OpenworkWorld) {
+  await expect
+    .poll(async () => {
+      const [runtimeState, streamEvents] = await Promise.all([getRuntimeState(this), getStreamEvents(this)])
+      const streamRequestId = getLatestStreamPendingApprovalId(streamEvents)
+
+      return {
+        runtimeRequestId: runtimeState.pendingApproval?.id ?? null,
+        streamRequestId
+      }
+    })
+    .toEqual({
+      runtimeRequestId: expect.any(String),
+      streamRequestId: expect.any(String)
+    })
+
+  await expect
+    .poll(async () => {
+      const [runtimeState, streamEvents] = await Promise.all([getRuntimeState(this), getStreamEvents(this)])
+      const streamRequestId = getLatestStreamPendingApprovalId(streamEvents)
+
+      return streamRequestId === (runtimeState.pendingApproval?.id ?? null)
+    })
     .toBe(true)
 })
 

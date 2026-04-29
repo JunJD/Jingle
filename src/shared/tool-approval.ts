@@ -41,6 +41,8 @@ export interface BuildToolApprovalItemOptions {
   fileMutationChangeType?: MutationChangeType
 }
 
+const APPROVAL_REQUIRED_TOOL_NAMES = new Set<string>()
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -92,6 +94,10 @@ function isExecuteCommandProfile(value: unknown): value is ExecuteCommandProfile
     value === "predictable_mutation" ||
     value === "host_unsafe"
   )
+}
+
+export function requiresToolApproval(toolName: string): boolean {
+  return APPROVAL_REQUIRED_TOOL_NAMES.has(toolName)
 }
 
 export function parseToolApprovalItem(value: unknown): ToolApprovalItem | null {
