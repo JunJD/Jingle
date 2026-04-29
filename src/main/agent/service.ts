@@ -11,6 +11,7 @@ import {
 } from "./persistence"
 import { isAbortLikeError } from "./errors"
 import { createAgentRuntime, runtimeUsesCheckpointPersistence } from "./runtime"
+import { buildAgentResumeConfig, buildAgentRunConfig } from "./run-config"
 import { extractHitlRequestFromValuesState } from "./runtime-state"
 import { getHitlRequest, getThread, resolveHitlRequest, upsertHitlRequest } from "../db"
 import { buildIpcErrorEvent, OpenworkIpcError } from "../ipc/error"
@@ -356,12 +357,7 @@ export class AgentService {
 
       const stream = await agent.stream(
         { messages: [humanMessage] },
-        {
-          configurable: { thread_id: threadId, run_id: runId },
-          signal: abortController.signal,
-          streamMode: ["messages", "values"],
-          recursionLimit: 1000
-        }
+        buildAgentRunConfig(threadId, runId, abortController)
       )
       let interrupted = false
 
@@ -455,13 +451,7 @@ export class AgentService {
 
     try {
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
-      const streamMode: Array<"messages" | "values"> = ["messages", "values"]
-      const config = {
-        configurable: { thread_id: threadId, run_id: runId },
-        signal: abortController.signal,
-        streamMode,
-        recursionLimit: 1000
-      }
+      const config = buildAgentResumeConfig(threadId, runId, abortController)
 
       await resolveHitlRequest(resumeTarget.requestId, mapDecisionToHitlStatus(decisionType), {
         type: decision.type,
