@@ -1,4 +1,6 @@
 import type { ComponentType } from "react"
+import AppleRemindersCreateReminder from "./apple-reminders/src/create-reminder"
+import AppleRemindersMyReminders from "./apple-reminders/src/my-reminders"
 import TodoList from "./todo-list/src/index"
 
 interface NativeExtensionRuntimeCommandDefinition {
@@ -8,6 +10,16 @@ interface NativeExtensionRuntimeCommandDefinition {
 }
 
 const nativeExtensionRuntimeCommandDefinitions: NativeExtensionRuntimeCommandDefinition[] = [
+  {
+    Component: AppleRemindersCreateReminder,
+    commandName: "create-reminder",
+    extensionName: "apple-reminders"
+  },
+  {
+    Component: AppleRemindersMyReminders,
+    commandName: "my-reminders",
+    extensionName: "apple-reminders"
+  },
   {
     Component: TodoList,
     commandName: "index",

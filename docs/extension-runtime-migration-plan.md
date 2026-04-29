@@ -57,7 +57,13 @@ Launcher 搜索和 extension surface 要保持同一套信息架构。
 
 这个文件是“哪些 command 已正式走 runtime”的事实来源。没有登记在这里的 command，不应被当成已经迁入 runtime。
 
-截至本文档创建时，`todo-list:index` 已登记为 runtime-backed。GitHub、Reminders、Translate 仍需要按下面计划处理。
+截至本文档最近更新，以下 command 已登记为 runtime-backed：
+
+- `todo-list:index`
+- `apple-reminders:my-reminders`
+- `apple-reminders:create-reminder`
+
+Apple Reminders 的 `quick-add-reminder` 和 `menu-bar-reminders` 仍保留在 legacy renderer path，等待 `runOnce` / menu bar runtime 调度链路接入后再迁。GitHub、Translate 仍需要按下面计划处理。
 
 ## 模块边界
 

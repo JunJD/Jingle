@@ -7,13 +7,13 @@ import {
   Form,
   useCommandSeedQuery,
   useNativeExtensionNavigation
-} from "../../api"
+} from "../../runtime-api"
 import {
   createAppleReminder,
   getAppleRemindersData,
   showAppleReminder,
   useAppleRemindersCommandPreferences
-} from "./client"
+} from "./runtime-client"
 import type { AppleReminder, AppleReminderList } from "./contracts"
 
 interface CreateReminderCommandPreferences {
@@ -176,6 +176,20 @@ export function CreateReminderForm(props: CreateReminderFormProps): React.JSX.El
     )
   }
 
+  if (submitError) {
+    return (
+      <Detail
+        actions={
+          <ActionPanel>
+            <Action onAction={() => setSubmitError(null)} title="Edit Reminder" />
+          </ActionPanel>
+        }
+        markdown={`# Apple Reminders Request Failed\n\n${submitError}`}
+        navigationTitle="Create Reminder"
+      />
+    )
+  }
+
   return (
     <Form
       actions={
@@ -215,12 +229,6 @@ export function CreateReminderForm(props: CreateReminderFormProps): React.JSX.El
       }
       navigationTitle="Create Reminder"
     >
-      {submitError ? (
-        <div className="rounded-[var(--ow-radius-sm)] border border-destructive/30 bg-destructive/8 px-2.5 py-1.5 text-[12px] text-destructive">
-          {submitError}
-        </div>
-      ) : null}
-
       <Form.Dropdown
         description="Choose which list should receive the reminder."
         onChange={setListId}

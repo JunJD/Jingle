@@ -5,14 +5,14 @@ import {
   ActionPanel,
   List,
   useNativeExtensionNavigation
-} from "../../api"
+} from "../../runtime-api"
 import {
   deleteAppleReminder,
   getAppleRemindersData,
   setAppleReminderCompleted,
   showAppleReminder,
   useAppleRemindersCommandPreferences
-} from "./client"
+} from "./runtime-client"
 import { CreateReminderForm } from "./create-reminder"
 import type { AppleReminder } from "./contracts"
 import {
@@ -22,9 +22,9 @@ import {
   getReminderFilterOptions,
   getReminderIcon,
   getReminderKeywords,
-  getReminderRowActions,
   type ReminderFilterValue
 } from "./helpers"
+import { getReminderRowActions } from "./reminder-row-actions"
 
 interface MyRemindersCommandPreferences {
   displayCompletionDate: boolean

@@ -3,12 +3,9 @@ import {
   CheckCircle2,
   Circle,
   Clock3,
-  Flag,
-  ListTodo,
-  Trash2
+  Flag
 } from "lucide-react"
 import type { ReactNode } from "react"
-import { Action, ActionPanel } from "../../api"
 import type { AppleReminder, AppleReminderList } from "./contracts"
 
 export type ReminderFilterValue = "all" | "overdue" | "scheduled" | "today" | string
@@ -353,34 +350,4 @@ export function buildReminderMenuBarTitle(params: {
   }
 
   return params.count > 0 ? String(params.count) : "Reminders"
-}
-
-export function getReminderRowActions(props: {
-  onDelete: () => void
-  onOpen: () => void
-  onToggleCompleted: () => void
-  reminder: AppleReminder
-}): React.JSX.Element {
-  const { onDelete, onOpen, onToggleCompleted, reminder } = props
-
-  return (
-    <ActionPanel>
-      <Action
-        icon={<ListTodo className="h-4 w-4" />}
-        onAction={onOpen}
-        title="Open in Reminders"
-      />
-      <Action
-        icon={reminder.isCompleted ? <Circle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-        onAction={onToggleCompleted}
-        title={reminder.isCompleted ? "Mark as Incomplete" : "Mark as Complete"}
-      />
-      <Action
-        icon={<Trash2 className="h-4 w-4" />}
-        onAction={onDelete}
-        style="destructive"
-        title="Delete Reminder"
-      />
-    </ActionPanel>
-  )
 }
