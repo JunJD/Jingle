@@ -4,6 +4,7 @@ import type {
   ExtensionRuntimeLaunchContext,
   ExtensionRuntimeNavigationRequestEvent,
   ExtensionRuntimeNavigationResponse,
+  ExtensionRuntimeRunResult,
   ExtensionRuntimeSessionError,
   ExtensionRuntimeSessionInfo,
   ExtensionSurfaceSnapshot
@@ -25,6 +26,9 @@ export const extensionRuntimeApi = {
     context: ExtensionRuntimeLaunchContext
   ): Promise<ExtensionRuntimeSessionInfo> => {
     return invokeIpc("extensionRuntime:startForeground", context)
+  },
+  runOnce: (context: ExtensionRuntimeLaunchContext): Promise<ExtensionRuntimeRunResult> => {
+    return invokeIpc("extensionRuntime:runOnce", context)
   },
   stopForeground: (sessionId?: string): Promise<boolean> => {
     return invokeIpc("extensionRuntime:stopForeground", sessionId)
@@ -52,6 +56,27 @@ export const extensionRuntimeApi = {
 
       disposed = true
       ipcRenderer.removeListener("extensionRuntime:eventAck", listener)
+    }
+  },
+  subscribeRunOnceSessions: (
+    callback: (session: ExtensionRuntimeSessionInfo) => void
+  ): (() => void) => {
+    let disposed = false
+    const listener = (_event: unknown, payload: ExtensionRuntimeSessionInfo): void => {
+      if (!disposed) {
+        callback(payload)
+      }
+    }
+
+    ipcRenderer.on("extensionRuntime:runOnceSession", listener)
+
+    return () => {
+      if (disposed) {
+        return
+      }
+
+      disposed = true
+      ipcRenderer.removeListener("extensionRuntime:runOnceSession", listener)
     }
   },
   subscribeNavigationRequests: (

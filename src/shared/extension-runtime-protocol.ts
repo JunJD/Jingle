@@ -26,6 +26,10 @@ export interface ExtensionRuntimeSessionError {
   sessionId: string
 }
 
+export type ExtensionRuntimeRunResult =
+  | { sessionId: string; status: "ready" }
+  | { error: ExtensionRuntimeError; sessionId: string; status: "error" }
+
 export type ExtensionSurfaceSnapshot =
   | ExtensionDetailSurfaceSnapshot
   | ExtensionErrorSurfaceSnapshot

@@ -20,7 +20,7 @@ export interface NativeExtensionPreferenceSchema {
 }
 
 export interface NativeExtensionRuntimeCommandManifest {
-  viewport: {
+  viewport?: {
     bodyHeight: number
   }
 }
@@ -233,9 +233,15 @@ export function validateNativeExtensionPackageManifest(
 
     commandNames.add(command.name)
 
-    if (command.runtime && command.mode !== "view") {
+    if (command.runtime && command.mode !== "view" && command.mode !== "no-view") {
       throw new Error(
-        `Native extension "${manifest.name}" runtime command "${command.name}" must be a view command`
+        `Native extension "${manifest.name}" runtime command "${command.name}" must be a view or no-view command`
+      )
+    }
+
+    if (command.runtime && command.mode === "view" && !command.runtime.viewport) {
+      throw new Error(
+        `Native extension "${manifest.name}" runtime view command "${command.name}" must declare viewport metadata`
       )
     }
   }

@@ -2,7 +2,8 @@ import type { IpcMain, WebContents } from "electron"
 import type {
   ExtensionRuntimeEvent,
   ExtensionRuntimeLaunchContext,
-  ExtensionRuntimeNavigationResponse
+  ExtensionRuntimeNavigationResponse,
+  ExtensionRuntimeRunResult
 } from "@shared/extension-runtime-protocol"
 import { registerIpcHandle } from "../../ipc/handle"
 import { ExtensionRuntimeRendererBridge } from "./renderer-bridge"
@@ -11,6 +12,7 @@ import { ExtensionRuntimeManager } from "./runtime-manager"
 const SURFACE_CHANNEL = "extensionRuntime:surface"
 const ERROR_CHANNEL = "extensionRuntime:error"
 const EVENT_ACK_CHANNEL = "extensionRuntime:eventAck"
+const RUN_ONCE_SESSION_CHANNEL = "extensionRuntime:runOnceSession"
 
 export class ExtensionRuntimeController {
   private readonly surfaceSubscribers = new Map<number, WebContents>()
@@ -66,6 +68,27 @@ export class ExtensionRuntimeController {
         }
         this.rendererBridge.bindSession(session.sessionId, event.sender)
         return session
+      }
+    )
+
+    registerIpcHandle(
+      ipcMain,
+      "extensionRuntime:runOnce",
+      async (event, context: ExtensionRuntimeLaunchContext): Promise<ExtensionRuntimeRunResult> => {
+        let sessionId: string | null = null
+        try {
+          return await this.runtimeManager.runOnce(context, {
+            onSessionStart: (session) => {
+              sessionId = session.sessionId
+              this.rendererBridge.bindSession(session.sessionId, event.sender)
+              event.sender.send(RUN_ONCE_SESSION_CHANNEL, session)
+            }
+          })
+        } finally {
+          if (sessionId) {
+            this.rendererBridge.releaseSession(sessionId)
+          }
+        }
       }
     )
 

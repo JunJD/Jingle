@@ -1,8 +1,10 @@
 export { Action, ActionPanel } from "./actions"
 export { createNativeExtensionClient, defineNativeExtensionClientMethod } from "./client"
 export {
+  createExtensionRuntimeNavigation,
   ExtensionRuntimeNavigationProvider,
   ExtensionRuntimeSdkProvider,
+  runWithExtensionRuntimeSdk,
   useCommandSeedQuery,
   useExtensionRuntimeSdk,
   useExtensionStorageState,

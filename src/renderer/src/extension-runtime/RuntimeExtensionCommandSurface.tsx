@@ -251,9 +251,14 @@ async function completeRuntimeNavigationRequest(
   await window.api.extensionRuntime.completeNavigationRequest(response)
 }
 
-async function handleRuntimeNavigationRequest(
+type RuntimeNavigationTarget = Pick<
+  NativeExtensionNavigation,
+  "goHome" | "hideLauncher" | "openCommand"
+>
+
+export async function handleRuntimeNavigationRequest(
   event: ExtensionRuntimeNavigationRequestEvent,
-  navigation: NativeExtensionNavigation
+  navigation: RuntimeNavigationTarget
 ): Promise<void> {
   const { request, sessionId } = event
   const okResponse: ExtensionRuntimeNavigationResponse = {

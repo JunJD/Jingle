@@ -7,6 +7,7 @@ import type {
   ExtensionRuntimeEvent,
   ExtensionRuntimeLaunchContext,
   ExtensionRuntimeMetrics,
+  ExtensionRuntimeRunResult,
   ExtensionRuntimeSessionError,
   ExtensionRuntimeSessionInfo,
   ExtensionRuntimeSessionKind,
@@ -18,6 +19,7 @@ import type { NativeExtensionInvokeRequest } from "@shared/native-extensions"
 import type { ExtensionRuntimeProcess, ExtensionRuntimeProcessLauncher } from "./runtime-process"
 
 export type {
+  ExtensionRuntimeRunResult,
   ExtensionRuntimeSessionError,
   ExtensionRuntimeSessionInfo,
   ExtensionRuntimeSessionKind
@@ -51,10 +53,6 @@ export interface ExtensionRuntimeHostCapabilities {
     params: ExtensionRuntimeStorageParams & { value: unknown }
   ) => MaybePromise<void>
 }
-
-export type ExtensionRuntimeRunResult =
-  | { sessionId: string; status: "ready" }
-  | { error: ExtensionRuntimeError; sessionId: string; status: "error" }
 
 export type ExtensionRuntimeSurfaceListener = (
   surface: ExtensionSurfaceSnapshot,
@@ -133,10 +131,17 @@ export class ExtensionRuntimeManager {
     }
   }
 
-  runOnce(context: ExtensionRuntimeLaunchContext): Promise<ExtensionRuntimeRunResult> {
+  runOnce(
+    context: ExtensionRuntimeLaunchContext,
+    options?: { onSessionStart?: (session: ExtensionRuntimeSessionInfo) => void }
+  ): Promise<ExtensionRuntimeRunResult> {
     return new Promise((resolve) => {
-      const session = this.startSession("run-once", context)
-      session.resolveRunOnce = resolve
+      this.startSession("run-once", context, {
+        beforeStart: (session) => {
+          session.resolveRunOnce = resolve
+          options?.onSessionStart?.(toSessionInfo(session))
+        }
+      })
     })
   }
 
@@ -333,7 +338,8 @@ export class ExtensionRuntimeManager {
 
   private startSession(
     kind: ExtensionRuntimeSessionKind,
-    context: ExtensionRuntimeLaunchContext
+    context: ExtensionRuntimeLaunchContext,
+    options?: { beforeStart?: (session: RuntimeSession) => void }
   ): RuntimeSession {
     const sessionId = this.options.createSessionId?.() ?? randomUUID()
     const process = this.options.processLauncher.launch()
@@ -351,6 +357,7 @@ export class ExtensionRuntimeManager {
       process.onMessage((message) => this.handleMessage(session, message)),
       process.onExit((code) => this.handleExit(session, code))
     )
+    options?.beforeStart?.(session)
     process.postMessage({
       context,
       sessionId,

@@ -7,7 +7,10 @@ import {
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { listNativeExtensionManifests } from "@extensions/index"
 import { nativeExtensionRendererDefinitions } from "@extensions/renderer"
-import { RuntimeExtensionCommandSurface } from "@renderer/extension-runtime/RuntimeExtensionCommandSurface"
+import {
+  handleRuntimeNavigationRequest,
+  RuntimeExtensionCommandSurface
+} from "@renderer/extension-runtime/RuntimeExtensionCommandSurface"
 import type { LauncherCommandOwnerDefinition } from "@launcher-shell/pages/types"
 import type { NativeNoViewCommandModule, NativeViewCommandModule } from "./sdk"
 import { useNativeExtensionViewStack } from "./view-stack-context"
@@ -139,19 +142,77 @@ export const nativeLauncherCommandOwners = supportedNativeExtensionManifests.red
       }
 
       if (command.runtime) {
-        if (command.mode !== "view") {
-          throw new Error(
-            `Native extension "${extension.name}" runtime command "${command.name}" must be a view command`
-          )
+        if (command.mode === "view") {
+          if (!command.runtime.viewport) {
+            throw new Error(
+              `Native extension "${extension.name}" runtime view command "${command.name}" must declare viewport metadata`
+            )
+          }
+
+          return {
+            Component: RuntimeExtensionCommandSurface,
+            commandName: command.name,
+            getViewportHeight: getViewportHeight(command.runtime.viewport),
+            loadCommandPreferences,
+            mode: "view" as const,
+            validateCommandPreferences
+          }
         }
 
-        return {
-          Component: RuntimeExtensionCommandSurface,
-          commandName: command.name,
-          getViewportHeight: getViewportHeight(command.runtime.viewport),
-          loadCommandPreferences,
-          mode: "view" as const,
-          validateCommandPreferences
+        if (command.mode === "no-view") {
+          return {
+            commandName: command.name,
+            loadCommandPreferences,
+            mode: "no-view" as const,
+            validateCommandPreferences,
+            run: async (context) => {
+              let runOnceSessionId: string | null = null
+              const unsubscribeRunOnceSessions =
+                window.api.extensionRuntime.subscribeRunOnceSessions((session) => {
+                  if (
+                    session.context.extensionName === extension.name &&
+                    session.context.commandName === command.name &&
+                    session.context.mode === "no-view"
+                  ) {
+                    runOnceSessionId = session.sessionId
+                  }
+                })
+              const unsubscribeNavigationRequests = context.navigation
+                ? window.api.extensionRuntime.subscribeNavigationRequests((event) => {
+                    if (event.sessionId !== runOnceSessionId || !context.navigation) {
+                      return
+                    }
+
+                    void handleRuntimeNavigationRequest(event, context.navigation)
+                  })
+                : undefined
+
+              try {
+                const result = await window.api.extensionRuntime.runOnce({
+                  commandName: command.name,
+                  commandPreferences: context.commandPreferences,
+                  extensionName: extension.name,
+                  extensionPreferences: {},
+                  initialAction: context.initialAction,
+                  mode: "no-view",
+                  seedQuery: context.seedQuery
+                })
+
+                if (result.status === "error") {
+                  throw new Error(result.error.message)
+                }
+              } finally {
+                unsubscribeNavigationRequests?.()
+                unsubscribeRunOnceSessions()
+              }
+            }
+          }
+        }
+
+        if (command.mode === "menu-bar" || command.mode === "background") {
+          throw new Error(
+            `Native extension "${extension.name}" runtime command "${command.name}" must be a view or no-view command`
+          )
         }
       }
 

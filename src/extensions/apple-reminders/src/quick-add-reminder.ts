@@ -1,4 +1,4 @@
-import { createAppleReminder, getAppleRemindersData } from "./client"
+import { createAppleReminder, getAppleRemindersData } from "./runtime-client"
 import type { AppleReminderList } from "./contracts"
 
 function normalizeListName(value: string): string {

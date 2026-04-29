@@ -401,6 +401,28 @@ test("runtime manager stops run-once sessions after ready", async () => {
   assert.equal(launcher.processes[0]?.killed, true)
 })
 
+test("runtime manager reports run-once sessions when started", async () => {
+  const { launcher, manager } = createManager()
+  const startedSessionIds: string[] = []
+  const processMessageCountsWhenStarted: number[] = []
+  const resultPromise = manager.runOnce(createLaunchContext(), {
+    onSessionStart: (session) => {
+      startedSessionIds.push(session.sessionId)
+      processMessageCountsWhenStarted.push(launcher.processes[0]?.messages.length ?? -1)
+    }
+  })
+
+  assert.deepEqual(startedSessionIds, ["session-1"])
+  assert.deepEqual(processMessageCountsWhenStarted, [0])
+  assert.equal(launcher.processes[0]?.messages[0]?.type, "start")
+
+  launcher.processes[0]?.emitMessage({
+    sessionId: "session-1",
+    type: "ready"
+  })
+  await resultPromise
+})
+
 test("runtime manager stops run-once sessions after runtime errors", async () => {
   const { launcher, manager } = createManager()
   const resultPromise = manager.runOnce(createLaunchContext())

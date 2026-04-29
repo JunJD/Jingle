@@ -10,7 +10,12 @@ import type {
   ExtensionRuntimeToHostMessage
 } from "@shared/extension-runtime-protocol"
 import { createExtensionRuntimeRenderer, type ExtensionRuntimeRenderer } from "./reconciler/render"
-import { ExtensionRuntimeNavigationProvider, type ExtensionRuntimeHostRequestInput } from "./sdk"
+import {
+  createExtensionRuntimeNavigation,
+  ExtensionRuntimeNavigationProvider,
+  runWithExtensionRuntimeSdk,
+  type ExtensionRuntimeHostRequestInput
+} from "./sdk"
 
 let activeRenderer: ExtensionRuntimeRenderer | null = null
 const pendingHostResponses = new Map<string, (response: ExtensionHostResponse) => void>()
@@ -88,6 +93,43 @@ function startRuntime(sessionId: string, context: ExtensionRuntimeLaunchContext)
       )
     }
 
+    if (command.mode !== context.mode) {
+      throw new Error(
+        `Extension runtime command "${context.extensionName}:${context.commandName}" is registered for "${command.mode}" but launched as "${context.mode}".`
+      )
+    }
+
+    const requestHostWithId = (request: ExtensionRuntimeHostRequestInput) =>
+      requestHost(sessionId, withHostRequestId(request))
+
+    if (command.mode === "no-view") {
+      const navigation = createExtensionRuntimeNavigation({
+        requestHost: requestHostWithId
+      })
+      void runWithExtensionRuntimeSdk(
+        {
+          ...context,
+          navigation,
+          requestHost: requestHostWithId
+        },
+        () =>
+          command.run({
+            ...context,
+            navigation
+          })
+      )
+        .then(() => {
+          postToHost({
+            sessionId,
+            type: "ready"
+          })
+        })
+        .catch((error) => {
+          postRuntimeError(sessionId, error)
+        })
+      return
+    }
+
     activeRenderer = createExtensionRuntimeRenderer(
       {
         commandName: context.commandName,
@@ -110,7 +152,7 @@ function startRuntime(sessionId: string, context: ExtensionRuntimeLaunchContext)
         {
           value: {
             ...context,
-            requestHost: (request) => requestHost(sessionId, withHostRequestId(request))
+            requestHost: requestHostWithId
           }
         },
         createElement(command.Component)

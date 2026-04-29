@@ -56,6 +56,47 @@ export interface ExtensionRuntimeNavigation {
 const extensionRuntimeSdkContext = createContext<ExtensionRuntimeSdkContextValue | null>(null)
 let activeRuntimeSdkContextValue: ExtensionRuntimeSdkContextValue | null = null
 
+export function createExtensionRuntimeNavigation(params: {
+  canPop?: boolean
+  onPop?: () => void
+  onPush?: (view: ReactNode) => void
+  requestHost: (request: ExtensionRuntimeHostRequestInput) => Promise<ExtensionHostResponse>
+}): ExtensionRuntimeNavigation {
+  const { requestHost } = params
+
+  return {
+    canPop: params.canPop ?? false,
+    goHome: () => {
+      void requestHost({
+        capability: "navigation",
+        method: "go-home"
+      })
+    },
+    hideLauncher: async () => {
+      const response = await requestHost({
+        capability: "navigation",
+        method: "hide-launcher"
+      })
+      if (!response.ok) {
+        throw new Error(response.error.message)
+      }
+    },
+    openCommand: (address, options) => {
+      void requestHost({
+        capability: "navigation",
+        method: "open-command",
+        payload: {
+          commandName: address.commandName,
+          extensionName: address.extensionName,
+          showLauncher: options?.showLauncher
+        }
+      })
+    },
+    pop: params.onPop ?? (() => {}),
+    push: params.onPush ?? (() => {})
+  }
+}
+
 export function ExtensionRuntimeSdkProvider(props: {
   children?: ReactNode
   value: ExtensionRuntimeSdkContextValue
@@ -78,6 +119,22 @@ export function getActiveExtensionRuntimeSdk(): ExtensionRuntimeSdkContextValue 
   }
 
   return activeRuntimeSdkContextValue
+}
+
+export async function runWithExtensionRuntimeSdk<T>(
+  value: ExtensionRuntimeSdkContextValue,
+  callback: () => Promise<T> | T
+): Promise<T> {
+  const previousValue = activeRuntimeSdkContextValue
+  activeRuntimeSdkContextValue = value
+
+  try {
+    return await callback()
+  } finally {
+    if (activeRuntimeSdkContextValue === value) {
+      activeRuntimeSdkContextValue = previousValue
+    }
+  }
 }
 
 export function useExtensionRuntimeSdk(): ExtensionRuntimeSdkContextValue {
@@ -134,39 +191,15 @@ export function ExtensionRuntimeNavigationProvider(props: {
   }, [])
 
   const navigation = useMemo<ExtensionRuntimeNavigation>(
-    () => ({
-      canPop: stack.length > 0,
-      goHome: () => {
-        void requestHost({
-          capability: "navigation",
-          method: "go-home"
-        })
-      },
-      hideLauncher: async () => {
-        const response = await requestHost({
-          capability: "navigation",
-          method: "hide-launcher"
-        })
-        if (!response.ok) {
-          throw new Error(response.error.message)
-        }
-      },
-      openCommand: (address, options) => {
-        void requestHost({
-          capability: "navigation",
-          method: "open-command",
-          payload: {
-            commandName: address.commandName,
-            extensionName: address.extensionName,
-            showLauncher: options?.showLauncher
-          }
-        })
-      },
-      pop,
-      push: (view) => {
-        setStack((current) => [...current, view])
-      }
-    }),
+    () =>
+      createExtensionRuntimeNavigation({
+        canPop: stack.length > 0,
+        onPop: pop,
+        onPush: (view) => {
+          setStack((current) => [...current, view])
+        },
+        requestHost
+      }),
     [pop, requestHost, stack.length]
   )
 

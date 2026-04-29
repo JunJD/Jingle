@@ -67,6 +67,7 @@ export const appleRemindersManifest = defineNativeExtensionManifest({
       keywords: ["apple", "reminders", "quick add", "add", "capture"],
       mode: "no-view",
       name: "quick-add-reminder",
+      runtime: {},
       title: "Quick Add Reminder"
     },
     {
