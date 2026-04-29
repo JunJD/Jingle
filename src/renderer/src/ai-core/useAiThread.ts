@@ -80,6 +80,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   })
   const query = invocation.input
   const isBusy = invocation.isBusy
+  const hasPendingApproval = Boolean(invocation.conversation.pendingApproval)
   const messageInput = useMemo(
     () => ({
       refs: messageRefs,
@@ -96,7 +97,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   )
 
   const runPrimaryAction = useCallback((): void => {
-    if (isBusy || !hasComposerMessageInputContent(messageInput)) {
+    if (isBusy || hasPendingApproval || !hasComposerMessageInputContent(messageInput)) {
       return
     }
 
@@ -106,7 +107,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
         onDidInvoke?.()
       }
     })
-  }, [invocation, isBusy, messageInput, onDidInvoke])
+  }, [hasPendingApproval, invocation, isBusy, messageInput, onDidInvoke])
 
   useEffect(() => {
     if (hasRunInitialActionRef.current || host.initialAction !== "submit") {
@@ -203,7 +204,8 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     [threadActions]
   )
 
-  const primaryActionDisabled = isBusy || !hasComposerMessageInputContent(messageInput)
+  const primaryActionDisabled =
+    isBusy || hasPendingApproval || !hasComposerMessageInputContent(messageInput)
 
   useEffect(() => {
     if (isBusy) {

@@ -47,6 +47,7 @@ import {
 } from "./message"
 
 interface MessagesProps {
+  approvalPlacement?: "inline" | "composer"
   density?: "default" | "compact"
   messages: ThreadMessage[]
   isLoading?: boolean
@@ -270,6 +271,7 @@ function renderStructuredContent(
 }
 
 function ToolActivityGroup(props: {
+  approvalPlacement?: "inline" | "composer"
   defaultOpen?: boolean
   density?: "default" | "compact"
   preferLatestToolSummary?: boolean
@@ -283,6 +285,7 @@ function ToolActivityGroup(props: {
   const { copy } = useI18n()
   const {
     defaultOpen = false,
+    approvalPlacement = "inline",
     density = "default",
     onApprovalDecision,
     onOpenChange,
@@ -385,6 +388,7 @@ function ToolActivityGroup(props: {
               density={density}
               onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
               presentation="grouped"
+              renderApprovalDetail={approvalPlacement === "inline"}
               result={item.result?.content}
               toolCall={item.toolCall}
             />
@@ -396,6 +400,7 @@ function ToolActivityGroup(props: {
 }
 
 function AssistantToolCluster(props: {
+  approvalPlacement?: "inline" | "composer"
   defaultExpanded?: boolean
   density?: "default" | "compact"
   preferLatestToolSummary?: boolean
@@ -406,6 +411,7 @@ function AssistantToolCluster(props: {
 }): React.JSX.Element | null {
   const {
     defaultExpanded = false,
+    approvalPlacement = "inline",
     density = "default",
     messages,
     onApprovalDecision,
@@ -447,6 +453,7 @@ function AssistantToolCluster(props: {
             onApprovalDecision={needsApproval ? onApprovalDecision : undefined}
             onExpandedChange={setExpandedOverride}
             result={toolResults.get(toolCall.id)?.content}
+            renderApprovalDetail={approvalPlacement === "inline"}
             toolCall={toolCall}
           />
         </MessageContent>
@@ -460,6 +467,7 @@ function AssistantToolCluster(props: {
         <ToolActivityGroup
           defaultOpen={defaultExpanded}
           density={density}
+          approvalPlacement={approvalPlacement}
           onApprovalDecision={onApprovalDecision}
           onOpenChange={setExpandedOverride}
           open={isExpanded}
@@ -534,6 +542,7 @@ function UserMessage(props: {
 }
 
 function MessageTurnView(props: {
+  approvalPlacement?: "inline" | "composer"
   density?: "default" | "compact"
   isActiveTurn: boolean
   isLoading?: boolean
@@ -547,6 +556,7 @@ function MessageTurnView(props: {
   const { copy } = useI18n()
   const {
     density = "default",
+    approvalPlacement = "inline",
     isActiveTurn,
     isLoading,
     lastAssistantId,
@@ -592,6 +602,7 @@ function MessageTurnView(props: {
             density={density}
             key={entry.key}
             messages={entry.messages}
+            approvalPlacement={approvalPlacement}
             onApprovalDecision={onApprovalDecision}
             pendingApproval={pendingApproval}
             preferLatestToolSummary={isActiveTurn && Boolean(isLoading)}
@@ -630,6 +641,7 @@ function MessageTurnView(props: {
 
 export function Messages(props: MessagesProps): React.JSX.Element {
   const {
+    approvalPlacement = "inline",
     density = "default",
     isLoading,
     messages,
@@ -647,6 +659,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
       {turns.map((turn) => (
         <MessageTurnView
           density={density}
+          approvalPlacement={approvalPlacement}
           isActiveTurn={turn.key === activeTurnKey}
           isLoading={isLoading}
           key={turn.key}

@@ -156,7 +156,12 @@ export interface AppCopy {
     rename: string
   }
   toolCall: {
+    approvalApplyTitle: string
+    approvalConfirmTitle: string
     approvalItem: string
+    approvalRunTitle: string
+    approvalSubmit: string
+    approve: string
     approveAndApply: string
     approveAndRun: string
     changeCreate: string
@@ -181,6 +186,8 @@ export interface AppCopy {
     moreMatches: (count: number) => string
     readLines: (count: number) => string
     reject: string
+    rejectAndAdjust: string
+    rejectFeedbackPlaceholder: string
     taskCompleted: string
     upcomingChanges: string
     writeLinesToFile: (count: number, fileName: string) => string
@@ -353,7 +360,12 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       rename: "重命名"
     },
     toolCall: {
+      approvalApplyTitle: "是否应用这些变更？",
+      approvalConfirmTitle: "是否继续执行？",
       approvalItem: "审批事项",
+      approvalRunTitle: "是否执行这个命令？",
+      approvalSubmit: "提交",
+      approve: "批准",
       approveAndApply: "批准并修改",
       approveAndRun: "批准并执行",
       changeCreate: "新增",
@@ -392,6 +404,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       moreMatches: (count) => `另外 ${count} 个匹配`,
       readLines: (count) => `读取了 ${count} 行`,
       reject: "拒绝",
+      rejectAndAdjust: "拒绝，请告知 Agent 如何调整",
+      rejectFeedbackPlaceholder: "告诉 Agent 需要怎么调整（可选）",
       taskCompleted: "任务已完成",
       upcomingChanges: "即将变更",
       writeLinesToFile: (count, fileName) => `向 ${fileName} 写入 ${count} 行`
@@ -563,7 +577,12 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       rename: "Rename"
     },
     toolCall: {
+      approvalApplyTitle: "Apply these changes?",
+      approvalConfirmTitle: "Continue with this action?",
       approvalItem: "Approval Item",
+      approvalRunTitle: "Run this command?",
+      approvalSubmit: "Submit",
+      approve: "Approve",
       approveAndApply: "Approve & Apply",
       approveAndRun: "Approve & Run",
       changeCreate: "Create",
@@ -607,6 +626,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       moreMatches: (count) => `+${count} more matches`,
       readLines: (count) => `Read ${count} lines`,
       reject: "Reject",
+      rejectAndAdjust: "Reject and tell the agent what to adjust",
+      rejectFeedbackPlaceholder: "Tell the agent what to adjust (optional)",
       taskCompleted: "Task completed",
       upcomingChanges: "Upcoming changes",
       writeLinesToFile: (count, fileName) => `Writing ${count} lines to ${fileName}`
