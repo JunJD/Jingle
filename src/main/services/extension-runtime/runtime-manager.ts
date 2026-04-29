@@ -10,7 +10,8 @@ import type {
   ExtensionRuntimeSessionInfo,
   ExtensionRuntimeSessionKind,
   ExtensionRuntimeToHostMessage,
-  ExtensionSurfaceSnapshot
+  ExtensionSurfaceSnapshot,
+  ExtensionNavigationHostRequest
 } from "@shared/extension-runtime-protocol"
 import type { NativeExtensionInvokeRequest } from "@shared/native-extensions"
 import type { ExtensionRuntimeProcess, ExtensionRuntimeProcessLauncher } from "./runtime-process"
@@ -35,6 +36,10 @@ export interface ExtensionRuntimeHostCapabilities {
   }) => MaybePromise<Record<string, unknown>>
   getExtensionPreferences: (extensionName: string) => MaybePromise<Record<string, unknown>>
   getStorageValue: (params: ExtensionRuntimeStorageParams) => MaybePromise<unknown>
+  handleNavigationRequest: (params: {
+    request: ExtensionNavigationHostRequest
+    sessionId: string
+  }) => MaybePromise<void>
   invokeNativeExtension: (request: NativeExtensionInvokeRequest) => Promise<unknown>
   openExtensionSettings: (params: {
     commandName?: string
@@ -296,9 +301,13 @@ export class ExtensionRuntimeManager {
       case "rpc":
         assertOwnExtension(session, request.payload.extensionName)
         return this.options.host.invokeNativeExtension(request.payload)
+      case "navigation":
+        return this.options.host.handleNavigationRequest({
+          request,
+          sessionId: session.sessionId
+        })
       case "ai":
       case "clipboard":
-      case "navigation":
       case "scheduler":
         throw new Error(`Unsupported runtime host capability "${request.capability}"`)
     }

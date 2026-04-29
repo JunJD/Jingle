@@ -324,6 +324,24 @@ export interface ExtensionNavigationHostRequest extends ExtensionHostRequestBase
   }
 }
 
+export interface ExtensionRuntimeNavigationRequestEvent {
+  request: ExtensionNavigationHostRequest
+  sessionId: string
+}
+
+export type ExtensionRuntimeNavigationResponse =
+  | {
+      ok: true
+      requestId: string
+      sessionId: string
+    }
+  | {
+      error: ExtensionRuntimeError
+      ok: false
+      requestId: string
+      sessionId: string
+    }
+
 export interface ExtensionClipboardHostRequest extends ExtensionHostRequestBase {
   capability: "clipboard"
   method: "write-text"

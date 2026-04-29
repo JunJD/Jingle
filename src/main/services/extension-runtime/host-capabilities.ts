@@ -7,6 +7,7 @@ import type {
   ExtensionRuntimeHostCapabilities,
   ExtensionRuntimeStorageParams
 } from "./runtime-manager"
+import type { ExtensionRuntimeRendererBridge } from "./renderer-bridge"
 
 interface RuntimeStorageStoreShape {
   values: Record<string, unknown>
@@ -24,7 +25,8 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
   constructor(
     private readonly nativeExtensionsService: NativeExtensionsService,
     private readonly externalLinksService: ExternalLinksService,
-    private readonly settingsWindowRoutingService: SettingsWindowRoutingService
+    private readonly settingsWindowRoutingService: SettingsWindowRoutingService,
+    private readonly rendererBridge: ExtensionRuntimeRendererBridge
   ) {}
 
   getCommandPreferences(params: {
@@ -60,6 +62,12 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
 
   openExternal(url: string): Promise<void> {
     return this.externalLinksService.openExternal(url)
+  }
+
+  handleNavigationRequest(
+    params: Parameters<ExtensionRuntimeRendererBridge["handleNavigationRequest"]>[0]
+  ): Promise<void> {
+    return this.rendererBridge.handleNavigationRequest(params)
   }
 
   setStorageValue(params: ExtensionRuntimeStorageParams & { value: unknown }): void {

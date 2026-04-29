@@ -100,6 +100,7 @@ function createHost(
     getCommandPreferences: () => ({ showCreated: true }),
     getExtensionPreferences: () => ({ apiBaseUrl: "https://api.github.com" }),
     getStorageValue: () => undefined,
+    handleNavigationRequest: () => undefined,
     invokeNativeExtension: async () => null,
     openExtensionSettings: () => undefined,
     openExternal: async () => undefined,
@@ -250,6 +251,53 @@ test("runtime manager responds to host requests and drops late responses after s
   assert.equal(
     launcher.processes[0]?.messages.some((message) => message.type === "host-response"),
     false
+  )
+})
+
+test("runtime manager forwards navigation requests to the host capability", async () => {
+  let capturedRequest:
+    | Parameters<ExtensionRuntimeHostCapabilities["handleNavigationRequest"]>[0]
+    | null = null
+  const host = createHost({
+    handleNavigationRequest: (params) => {
+      capturedRequest = params
+    }
+  })
+  const { launcher, manager } = createManager({ host })
+
+  manager.startForeground(createLaunchContext())
+  const request: ExtensionHostRequest = {
+    capability: "navigation",
+    id: "navigation-1",
+    method: "open-command",
+    payload: {
+      commandName: "my-pull-requests",
+      extensionName: "github"
+    }
+  }
+
+  launcher.processes[0]?.emitMessage({
+    request,
+    sessionId: "session-1",
+    type: "host-request"
+  })
+  await flushPromises()
+
+  assert.deepEqual(capturedRequest, {
+    request,
+    sessionId: "session-1"
+  })
+  assert.deepEqual(
+    launcher.processes[0]?.messages.find((message) => message.type === "host-response"),
+    {
+      response: {
+        id: "navigation-1",
+        ok: true,
+        result: undefined
+      },
+      sessionId: "session-1",
+      type: "host-response"
+    }
   )
 })
 

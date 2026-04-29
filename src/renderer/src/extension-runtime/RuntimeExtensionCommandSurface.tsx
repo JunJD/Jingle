@@ -26,6 +26,8 @@ import type {
   ExtensionListItemNode,
   ExtensionListSectionNode,
   ExtensionListSurfaceSnapshot,
+  ExtensionRuntimeNavigationRequestEvent,
+  ExtensionRuntimeNavigationResponse,
   ExtensionSurfaceSnapshot,
   ExtensionSvgVisualNode,
   ExtensionVisualNode
@@ -34,7 +36,8 @@ import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import {
   useNativeExtensionHost,
   useNativeExtensionNavigation,
-  useNativeExtensionSurface
+  useNativeExtensionSurface,
+  type NativeExtensionNavigation
 } from "../extension-host/sdk"
 import { NativeSurfaceChrome } from "../extension-host/chrome"
 import { NativeExtensionSelect } from "../extension-host/select"
@@ -45,11 +48,14 @@ import {
   nativeSurfaceListDropdownClassName,
   type NativeSurfaceListSectionPresentation
 } from "../extension-host/list-presentation"
+import {
+  reconcileRuntimeFormLocalValues,
+  type RuntimeFormLocalValues,
+  type RuntimeFormValue
+} from "./form-local-values"
 
 const RUNTIME_LIST_SHORTCUT_SCOPES = ["launcher.list"] as const
 const streamdownPlugins = { cjk, code, math, mermaid }
-
-type RuntimeFormValue = boolean | string
 
 interface RuntimeListItemDescriptor extends ExtensionListItemNode {
   sectionTitle?: string
@@ -158,6 +164,67 @@ function renderAccessoryVisuals(nodes: ExtensionVisualNode[]): ReactNode {
       {renderVisual(node)}
     </span>
   ))
+}
+
+function getRuntimeNavigationErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+async function completeRuntimeNavigationRequest(
+  response: ExtensionRuntimeNavigationResponse
+): Promise<void> {
+  await window.api.extensionRuntime.completeNavigationRequest(response)
+}
+
+async function handleRuntimeNavigationRequest(
+  event: ExtensionRuntimeNavigationRequestEvent,
+  navigation: NativeExtensionNavigation
+): Promise<void> {
+  const { request, sessionId } = event
+  const okResponse: ExtensionRuntimeNavigationResponse = {
+    ok: true,
+    requestId: request.id,
+    sessionId
+  }
+
+  try {
+    switch (request.method) {
+      case "go-home":
+        await completeRuntimeNavigationRequest(okResponse)
+        navigation.goHome()
+        return
+      case "hide-launcher":
+        await navigation.hideLauncher()
+        await completeRuntimeNavigationRequest(okResponse)
+        return
+      case "open-command":
+        if (!request.payload) {
+          throw new Error("Runtime navigation open-command request is missing a payload.")
+        }
+
+        if (request.payload.showLauncher) {
+          await window.api.launcher.show()
+        }
+
+        await completeRuntimeNavigationRequest(okResponse)
+        navigation.openCommand({
+          commandName: request.payload.commandName,
+          extensionName: request.payload.extensionName,
+          kind: "extension-command"
+        })
+        return
+    }
+  } catch (error) {
+    await completeRuntimeNavigationRequest({
+      error: {
+        code: "navigation_failed",
+        message: getRuntimeNavigationErrorMessage(error)
+      },
+      ok: false,
+      requestId: request.id,
+      sessionId
+    })
+  }
 }
 
 function RuntimeListDropdown(props: {
@@ -321,12 +388,12 @@ function RuntimeDetailSurface(props: {
 
 function RuntimeFormSurface(props: {
   createActionDescriptor: (action: ExtensionActionNode) => LauncherActionDescriptor
+  localValues: RuntimeFormLocalValues
   onFieldChange: (fieldId: string, value: RuntimeFormValue) => void
   onNavigateBack: () => void
   snapshot: ExtensionFormSurfaceSnapshot
 }): React.JSX.Element {
-  const { createActionDescriptor, onFieldChange, onNavigateBack, snapshot } = props
-  const [fieldValues, setFieldValues] = useState<Record<string, RuntimeFormValue>>({})
+  const { createActionDescriptor, localValues, onFieldChange, onNavigateBack, snapshot } = props
   const actionItems = useMemo(
     () => snapshot.actions.map(createActionDescriptor),
     [createActionDescriptor, snapshot.actions]
@@ -337,25 +404,7 @@ function RuntimeFormSurface(props: {
     primaryActionFallbackTitle: "Submit"
   })
 
-  useEffect(() => {
-    setFieldValues(
-      Object.fromEntries(
-        snapshot.fields.flatMap((field) => {
-          if (field.kind === "separator") {
-            return []
-          }
-
-          return [[field.id, field.value]]
-        })
-      )
-    )
-  }, [snapshot])
-
   const handleFieldChange = (fieldId: string, value: RuntimeFormValue): void => {
-    setFieldValues((current) => ({
-      ...current,
-      [fieldId]: value
-    }))
     onFieldChange(fieldId, value)
   }
 
@@ -375,7 +424,7 @@ function RuntimeFormSurface(props: {
               <RuntimeFormField
                 key={field.id}
                 field={field}
-                localValue={fieldValues[field.id]}
+                localValue={localValues[field.id]}
                 onChange={(value) => handleFieldChange(field.id, value)}
               />
             ))}
@@ -480,10 +529,13 @@ function RuntimeFormField(props: {
 
 export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   const host = useNativeExtensionHost()
+  const hostNavigation = useNativeExtensionNavigation()
   const surface = useNativeExtensionSurface()
   const activeSessionIdRef = useRef<string | null>(null)
   const lastLocalInputRef = useRef(host.seedQuery)
+  const pendingFormValuesRef = useRef<ReadonlyMap<string, RuntimeFormValue>>(new Map())
   const syncInputAfterActionRef = useRef(false)
+  const [formLocalValues, setFormLocalValues] = useState<RuntimeFormLocalValues>({})
   const [inputText, setInputText] = useState(host.seedQuery)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [runtimeState, setRuntimeState] = useState<RuntimeSurfaceState>({
@@ -645,6 +697,22 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
             setInputText(event.surface.searchText)
           }
         }
+
+        if (event.surface.kind === "form") {
+          const { fields } = event.surface
+          setFormLocalValues((current) => {
+            const reconciled = reconcileRuntimeFormLocalValues({
+              fields,
+              localValues: current,
+              pendingValues: pendingFormValuesRef.current
+            })
+            pendingFormValuesRef.current = reconciled.pendingValues
+            return reconciled.localValues
+          })
+        } else if (pendingFormValuesRef.current.size > 0) {
+          pendingFormValuesRef.current = new Map()
+          setFormLocalValues({})
+        }
       },
       (error) => {
         if (error.sessionId !== activeSessionIdRef.current) {
@@ -660,6 +728,16 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
 
     return unsubscribe
   }, [])
+
+  useEffect(() => {
+    return window.api.extensionRuntime.subscribeNavigationRequests((event) => {
+      if (event.sessionId !== activeSessionIdRef.current) {
+        return
+      }
+
+      void handleRuntimeNavigationRequest(event, hostNavigation)
+    })
+  }, [hostNavigation])
 
   useEffect(() => {
     let cancelled = false
@@ -683,6 +761,8 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         }
 
         activeSessionIdRef.current = session.sessionId
+        pendingFormValuesRef.current = new Map()
+        setFormLocalValues({})
         setRuntimeState((current) => {
           if (current.sessionId === session.sessionId) {
             return current
@@ -731,6 +811,19 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   }
 
   const handleFieldChange = (fieldId: string, value: RuntimeFormValue): void => {
+    const nextPendingValues = new Map(pendingFormValuesRef.current)
+    nextPendingValues.set(fieldId, value)
+    pendingFormValuesRef.current = nextPendingValues
+    setFormLocalValues((current) => {
+      if (Object.is(current[fieldId], value)) {
+        return current
+      }
+
+      return {
+        ...current,
+        [fieldId]: value
+      }
+    })
     sendRuntimeEvent({
       fieldId,
       type: "form.field.change",
@@ -758,6 +851,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     return (
       <RuntimeFormSurface
         createActionDescriptor={createActionDescriptor}
+        localValues={formLocalValues}
         onFieldChange={handleFieldChange}
         onNavigateBack={handleNavigateBack}
         snapshot={formSnapshot}
@@ -795,10 +889,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
             {runtimeState.error}
           </div>
         ) : snapshot?.kind === "error" ? (
-          <NativeSurfaceListEmptyState
-            description={snapshot.description}
-            title={snapshot.title}
-          />
+          <NativeSurfaceListEmptyState description={snapshot.description} title={snapshot.title} />
         ) : !listSnapshot ? (
           <NativeSurfaceListEmptyState isLoading />
         ) : items.length > 0 ? (

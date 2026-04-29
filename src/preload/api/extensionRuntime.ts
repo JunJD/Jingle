@@ -1,6 +1,8 @@
 import type {
   ExtensionRuntimeEvent,
   ExtensionRuntimeLaunchContext,
+  ExtensionRuntimeNavigationRequestEvent,
+  ExtensionRuntimeNavigationResponse,
   ExtensionRuntimeSessionError,
   ExtensionRuntimeSessionInfo,
   ExtensionSurfaceSnapshot
@@ -23,6 +25,30 @@ export const extensionRuntimeApi = {
   },
   sendEvent: (sessionId: string, event: ExtensionRuntimeEvent): Promise<boolean> => {
     return invokeIpc("extensionRuntime:sendEvent", sessionId, event)
+  },
+  completeNavigationRequest: (response: ExtensionRuntimeNavigationResponse): Promise<boolean> => {
+    return invokeIpc("extensionRuntime:completeNavigationRequest", response)
+  },
+  subscribeNavigationRequests: (
+    callback: (event: ExtensionRuntimeNavigationRequestEvent) => void
+  ): (() => void) => {
+    let disposed = false
+    const listener = (_event: unknown, payload: ExtensionRuntimeNavigationRequestEvent): void => {
+      if (!disposed) {
+        callback(payload)
+      }
+    }
+
+    ipcRenderer.on("extensionRuntime:navigationRequest", listener)
+
+    return () => {
+      if (disposed) {
+        return
+      }
+
+      disposed = true
+      ipcRenderer.removeListener("extensionRuntime:navigationRequest", listener)
+    }
   },
   subscribeSurfaces: (
     callback: (event: ExtensionRuntimeSurfaceEvent) => void,

@@ -1,9 +1,11 @@
 import type { IpcMain, WebContents } from "electron"
 import type {
   ExtensionRuntimeEvent,
-  ExtensionRuntimeLaunchContext
+  ExtensionRuntimeLaunchContext,
+  ExtensionRuntimeNavigationResponse
 } from "@shared/extension-runtime-protocol"
 import { registerIpcHandle } from "../../ipc/handle"
+import { ExtensionRuntimeRendererBridge } from "./renderer-bridge"
 import { ExtensionRuntimeManager } from "./runtime-manager"
 
 const SURFACE_CHANNEL = "extensionRuntime:surface"
@@ -12,7 +14,10 @@ const ERROR_CHANNEL = "extensionRuntime:error"
 export class ExtensionRuntimeController {
   private readonly surfaceSubscribers = new Map<number, WebContents>()
 
-  constructor(private readonly runtimeManager: ExtensionRuntimeManager) {
+  constructor(
+    private readonly runtimeManager: ExtensionRuntimeManager,
+    private readonly rendererBridge: ExtensionRuntimeRendererBridge
+  ) {
     this.runtimeManager.onSurface((surface, session) => {
       for (const subscriber of this.surfaceSubscribers.values()) {
         if (!subscriber.isDestroyed()) {
@@ -21,6 +26,7 @@ export class ExtensionRuntimeController {
       }
     })
     this.runtimeManager.onError((error) => {
+      this.rendererBridge.releaseSession(error.sessionId)
       for (const subscriber of this.surfaceSubscribers.values()) {
         if (!subscriber.isDestroyed()) {
           subscriber.send(ERROR_CHANNEL, error)
@@ -44,13 +50,24 @@ export class ExtensionRuntimeController {
     registerIpcHandle(
       ipcMain,
       "extensionRuntime:startForeground",
-      (_event, context: ExtensionRuntimeLaunchContext) => {
-        return this.runtimeManager.startForeground(context)
+      (event, context: ExtensionRuntimeLaunchContext) => {
+        const previousSessionId = this.runtimeManager.getForegroundSession()?.sessionId
+        const session = this.runtimeManager.startForeground(context)
+        if (previousSessionId) {
+          this.rendererBridge.releaseSession(previousSessionId)
+        }
+        this.rendererBridge.bindSession(session.sessionId, event.sender)
+        return session
       }
     )
 
     registerIpcHandle(ipcMain, "extensionRuntime:stopForeground", (_event, sessionId?: string) => {
-      return this.runtimeManager.stopForeground(sessionId)
+      const stoppedSessionId = sessionId ?? this.runtimeManager.getForegroundSession()?.sessionId
+      const stopped = this.runtimeManager.stopForeground(sessionId)
+      if (stopped && stoppedSessionId) {
+        this.rendererBridge.releaseSession(stoppedSessionId)
+      }
+      return stopped
     })
 
     registerIpcHandle(
@@ -58,6 +75,14 @@ export class ExtensionRuntimeController {
       "extensionRuntime:sendEvent",
       (_event, sessionId: string, runtimeEvent: ExtensionRuntimeEvent) => {
         return this.runtimeManager.sendEvent(sessionId, runtimeEvent)
+      }
+    )
+
+    registerIpcHandle(
+      ipcMain,
+      "extensionRuntime:completeNavigationRequest",
+      (_event, response: ExtensionRuntimeNavigationResponse) => {
+        return this.rendererBridge.completeNavigationRequest(response)
       }
     )
   }

@@ -5,17 +5,23 @@ import { NativeExtensionsService } from "../../native-extensions/service"
 import { SettingsWindowRoutingService } from "../../settings-window-routing/service"
 import { ExtensionRuntimeController } from "./controller"
 import { DefaultExtensionRuntimeHostCapabilities } from "./host-capabilities"
+import { ExtensionRuntimeRendererBridge } from "./renderer-bridge"
 import { ExtensionRuntimeManager } from "./runtime-manager"
 import { UtilityProcessExtensionRuntimeProcessLauncher } from "./utility-process-launcher"
 
 export function registerExtensionRuntimeModule(container: DependencyContainer): void {
+  container.register(ExtensionRuntimeRendererBridge, {
+    useFactory: instanceCachingFactory(() => new ExtensionRuntimeRendererBridge())
+  })
   container.register(ExtensionRuntimeManager, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
+      const rendererBridge = dependencyContainer.resolve(ExtensionRuntimeRendererBridge)
       return new ExtensionRuntimeManager({
         host: new DefaultExtensionRuntimeHostCapabilities(
           dependencyContainer.resolve(NativeExtensionsService),
           dependencyContainer.resolve(ExternalLinksService),
-          dependencyContainer.resolve(SettingsWindowRoutingService)
+          dependencyContainer.resolve(SettingsWindowRoutingService),
+          rendererBridge
         ),
         processLauncher: new UtilityProcessExtensionRuntimeProcessLauncher()
       })
@@ -23,7 +29,10 @@ export function registerExtensionRuntimeModule(container: DependencyContainer): 
   })
   container.register(ExtensionRuntimeController, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
-      return new ExtensionRuntimeController(dependencyContainer.resolve(ExtensionRuntimeManager))
+      return new ExtensionRuntimeController(
+        dependencyContainer.resolve(ExtensionRuntimeManager),
+        dependencyContainer.resolve(ExtensionRuntimeRendererBridge)
+      )
     })
   })
 }
