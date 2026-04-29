@@ -18,6 +18,8 @@
       | git -C /tmp/repo status -sb  | read-only allowlist       |
       | npm --version                | version inspection        |
       | pnpm --version               | version inspection        |
+      | python3 --version            | version inspection        |
+      | node --version               | version inspection        |
       | find src -name '*.ts'        | only reads workspace paths |
 
   场景: 只读命令链会保留每个命令名
@@ -59,7 +61,27 @@
       | echo hello \| tee notes.txt         | explicit file targets       |
       | mkdir dist                          | modifies files or directories |
       | chmod +x script.sh                  | modifies files or directories |
+      | python3 scripts/update.py           | mutation prediction and approval |
+      | node scripts/update.js              | mutation prediction and approval |
       | find src -delete                    | deletes files with -delete  |
+
+  场景: Python 内联代码写文件需要审批
+    当系统分类命令:
+      """
+      python3 -c "open('notes.txt', 'w').write('hello')"
+      """
+    那么分类结果应为 "predictable_mutation"
+    而且处置应为 "require_approval"
+    而且分类原因应包含 "mutation prediction and approval"
+
+  场景: Node 内联代码写文件需要审批
+    当系统分类命令:
+      """
+      node -e "require('fs').writeFileSync('notes.txt', 'hello')"
+      """
+    那么分类结果应为 "predictable_mutation"
+    而且处置应为 "require_approval"
+    而且分类原因应包含 "mutation prediction and approval"
 
   场景: 网络读取后再创建目录仍然需要审批
     当系统分类命令 "curl https://example.com && mkdir dist"
@@ -78,6 +100,8 @@
       | 命令                                      | 原因片段                         |
       | npm run dev                               | outside the controlled shell profile |
       | pnpm install                              | outside the controlled shell profile |
+      | python3 -m http.server                    | outside the controlled shell profile |
+      | node --inspect scripts/update.js          | outside the controlled shell profile |
       | curl -XPOST https://example.com           | request method 'POST'            |
       | curl -o out.txt https://example.com       | output-to-file flags             |
       | find src -name package.json -exec cat {} + | executes nested commands         |
@@ -85,6 +109,15 @@
       | /bin/ls                                   | outside the controlled shell profile |
       | bash scripts/dev.sh                       | outside the controlled shell profile |
       | sleep 1 &                                 | Background shell execution       |
+
+  场景: js-exec 不是宿主命令所以会被拒绝
+    当系统分类命令:
+      """
+      js-exec -c "console.log('hello')"
+      """
+    那么分类结果应为 "host_unsafe"
+    而且处置应为 "deny"
+    而且分类原因应包含 "not a host command"
 
   场景: 命令链里只要出现被拒绝的命令就整体拒绝
     当系统分类命令 "echo hello > notes.txt && npm run dev"
