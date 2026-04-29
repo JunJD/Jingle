@@ -474,6 +474,95 @@ function classifyCurl(
   }
 }
 
+function classifyPythonCommand(
+  name: "python" | "python3",
+  args: Array<string | null>
+): InvocationClassification {
+  const [firstArg, secondArg] = args
+  if (!firstArg) {
+    return {
+      profile: "host_unsafe",
+      reason: `${name} must use --version, -c CODE, or a script file in the controlled shell profile.`
+    }
+  }
+
+  if (firstArg === "--version" || firstArg === "-V") {
+    return {
+      profile: "read_only",
+      reason: `${name} version inspection is read-only.`
+    }
+  }
+
+  if (firstArg === "-c") {
+    if (!secondArg) {
+      return {
+        profile: "host_unsafe",
+        reason: `${name} requires inline code after -c.`
+      }
+    }
+
+    return {
+      profile: "predictable_mutation",
+      reason: `${name} inline code execution requires mutation prediction and approval.`
+    }
+  }
+
+  if (firstArg.startsWith("-")) {
+    return {
+      profile: "host_unsafe",
+      reason: `${name} option '${firstArg}' is outside the controlled shell profile.`
+    }
+  }
+
+  return {
+    profile: "predictable_mutation",
+    reason: `${name} script execution requires mutation prediction and approval.`
+  }
+}
+
+function classifyNodeCommand(args: Array<string | null>): InvocationClassification {
+  const [firstArg, secondArg] = args
+  if (!firstArg) {
+    return {
+      profile: "host_unsafe",
+      reason: "node must use --version, -e CODE, or a script file in the controlled shell profile."
+    }
+  }
+
+  if (firstArg === "--version" || firstArg === "-v") {
+    return {
+      profile: "read_only",
+      reason: "node version inspection is read-only."
+    }
+  }
+
+  if (firstArg === "-e" || firstArg === "--eval") {
+    if (!secondArg) {
+      return {
+        profile: "host_unsafe",
+        reason: "node requires inline code after -e/--eval."
+      }
+    }
+
+    return {
+      profile: "predictable_mutation",
+      reason: "node inline code execution requires mutation prediction and approval."
+    }
+  }
+
+  if (firstArg.startsWith("-")) {
+    return {
+      profile: "host_unsafe",
+      reason: `node option '${firstArg}' is outside the controlled shell profile.`
+    }
+  }
+
+  return {
+    profile: "predictable_mutation",
+    reason: "node script execution requires mutation prediction and approval."
+  }
+}
+
 function classifyInvocation(invocation: CollectedCommand): InvocationClassification {
   if (!invocation.name) {
     return {
@@ -586,6 +675,21 @@ function classifyInvocation(invocation: CollectedCommand): InvocationClassificat
 
   if (name === "find") {
     return classifyFind(invocation.args)
+  }
+
+  if (name === "python" || name === "python3") {
+    return classifyPythonCommand(name, invocation.args)
+  }
+
+  if (name === "node") {
+    return classifyNodeCommand(invocation.args)
+  }
+
+  if (name === "js-exec") {
+    return {
+      profile: "host_unsafe",
+      reason: "js-exec is only available inside the mutation simulator and is not a host command."
+    }
   }
 
   if (name === "sed" && hasSedInPlace(invocation.args)) {
