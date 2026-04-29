@@ -1,6 +1,7 @@
 import { resolve } from "path"
 import { readFileSync, copyFileSync, cpSync, existsSync, mkdirSync } from "fs"
 import { defineConfig } from "electron-vite"
+import { buildSync } from "esbuild"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 
@@ -19,6 +20,9 @@ function copyResources(): { name: string; closeBundle: () => void } {
       const nativeSource = resolve("src/native/openwork-minimal-island.swift")
       const nativeDestDir = resolve("out/native")
       const nativeDestFile = resolve("out/native/openwork-minimal-island.swift")
+      const mutationPredictorWorkerSource = resolve("src/main/agent/mutation-predictor-worker.ts")
+      const mutationPredictorWorkerDestDir = resolve("out/main")
+      const mutationPredictorWorkerDest = resolve("out/main/mutation-predictor-worker.mjs")
 
       if (existsSync(srcIcon)) {
         if (!existsSync(destDir)) {
@@ -39,6 +43,21 @@ function copyResources(): { name: string; closeBundle: () => void } {
           mkdirSync(nativeDestDir, { recursive: true })
         }
         copyFileSync(nativeSource, nativeDestFile)
+      }
+
+      if (existsSync(mutationPredictorWorkerSource)) {
+        if (!existsSync(mutationPredictorWorkerDestDir)) {
+          mkdirSync(mutationPredictorWorkerDestDir, { recursive: true })
+        }
+        buildSync({
+          bundle: true,
+          entryPoints: [mutationPredictorWorkerSource],
+          external: ["just-bash"],
+          format: "esm",
+          outfile: mutationPredictorWorkerDest,
+          platform: "node",
+          target: "node18"
+        })
       }
     }
   }

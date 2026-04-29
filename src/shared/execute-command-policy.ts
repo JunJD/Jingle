@@ -4,6 +4,7 @@ export type ExecuteCommandProfile =
   | "read_only"
   | "network_read"
   | "predictable_mutation"
+  | "managed_process"
   | "host_unsafe"
 
 export type ExecuteCommandDisposition = "allow" | "require_approval" | "deny"
@@ -27,6 +28,7 @@ function isExecuteCommandProfile(value: unknown): value is ExecuteCommandProfile
     value === "read_only" ||
     value === "network_read" ||
     value === "predictable_mutation" ||
+    value === "managed_process" ||
     value === "host_unsafe"
   )
 }
