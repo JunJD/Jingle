@@ -94,6 +94,7 @@ export interface Run {
 }
 
 export interface AgentConfig {
+  desktopAutomationAllowlist: string[]
   skillSources: string[]
   memorySources: string[]
   locale: AppLocale

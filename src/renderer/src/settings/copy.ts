@@ -21,6 +21,8 @@ interface SettingsCopy {
     save: string
   }
   general: {
+    desktopAutomationAllowlistDescription: string
+    desktopAutomationAllowlistTitle: string
     title: string
     workspaceTitle: string
     workspaceDescription: string
@@ -161,6 +163,9 @@ const zhCN: SettingsCopy = {
     save: "保存"
   },
   general: {
+    desktopAutomationAllowlistDescription:
+      "每行一个 bundle id 或应用名。白名单内的桌面自动化会直接执行，不再弹审批。",
+    desktopAutomationAllowlistTitle: "Desktop Automation 白名单",
     title: "Openwork 基础设置",
     workspaceTitle: "默认 Workspace",
     workspaceDescription: "Launcher 和新建线程会优先使用这个全局 workspace。",
@@ -301,6 +306,9 @@ const enUS: SettingsCopy = {
     save: "Save"
   },
   general: {
+    desktopAutomationAllowlistDescription:
+      "One bundle id or app name per line. Allowlisted desktop automation runs directly without HITL approval.",
+    desktopAutomationAllowlistTitle: "Desktop Automation Allowlist",
     title: "Openwork Foundation",
     workspaceTitle: "Default Workspace",
     workspaceDescription: "Launcher and new threads use this global workspace by default.",

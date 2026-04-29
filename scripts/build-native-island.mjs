@@ -6,24 +6,41 @@ if (process.platform !== "darwin") {
   process.exit(0)
 }
 
-const sourcePath = resolve("src/native/openwork-minimal-island.swift")
-const outputPath = resolve("out/native/openwork-minimal-island")
+const targets = [
+  {
+    frameworks: ["AppKit"],
+    label: "native-island",
+    outputPath: resolve("out/native/openwork-minimal-island"),
+    sourcePath: resolve("src/native/openwork-minimal-island.swift")
+  },
+  {
+    frameworks: ["AppKit", "ApplicationServices"],
+    label: "desktop-automation",
+    outputPath: resolve("out/native/openwork-desktop-automation"),
+    sourcePath: resolve("src/native/openwork-desktop-automation.swift")
+  }
+]
 
-if (!existsSync(sourcePath)) {
-  throw new Error(`Native island Swift source not found: ${sourcePath}`)
+for (const target of targets) {
+  if (!existsSync(target.sourcePath)) {
+    throw new Error(`Native Swift source not found: ${target.sourcePath}`)
+  }
+
+  mkdirSync(dirname(target.outputPath), { recursive: true })
+  execFileSync(
+    "swiftc",
+    [
+      "-parse-as-library",
+      "-O",
+      target.sourcePath,
+      "-o",
+      target.outputPath,
+      ...target.frameworks.flatMap((framework) => ["-framework", framework])
+    ],
+    {
+      stdio: "inherit"
+    }
+  )
+  chmodSync(target.outputPath, 0o755)
+  console.log(`[${target.label}] built ${target.outputPath}`)
 }
-
-mkdirSync(dirname(outputPath), { recursive: true })
-execFileSync("swiftc", [
-  "-parse-as-library",
-  "-O",
-  sourcePath,
-  "-o",
-  outputPath,
-  "-framework",
-  "AppKit"
-], {
-  stdio: "inherit"
-})
-chmodSync(outputPath, 0o755)
-console.log(`[native-island] built ${outputPath}`)

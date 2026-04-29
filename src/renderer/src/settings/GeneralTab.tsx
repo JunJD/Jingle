@@ -29,6 +29,7 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   const { setLocale } = useI18n()
   const copy = getSettingsCopy(locale)
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null)
+  const [desktopAutomationAllowlistDraft, setDesktopAutomationAllowlistDraft] = useState("")
   const [globalWorkspacePath, setGlobalWorkspacePath] = useState<string | null>(null)
   const [launcherSettings, setLauncherSettings] = useState<LauncherSettings | null>(null)
   const [memorySourcesDraft, setMemorySourcesDraft] = useState("")
@@ -44,13 +45,15 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
       setAgentConfig(nextAgentConfig)
       setGlobalWorkspacePath(nextGlobalWorkspacePath)
       setLauncherSettings(nextLauncherSettings)
+      setDesktopAutomationAllowlistDraft(nextAgentConfig.desktopAutomationAllowlist.join("\n"))
       setSkillSourcesDraft(nextAgentConfig.skillSources.join("\n"))
       setMemorySourcesDraft(nextAgentConfig.memorySources.join("\n"))
     })
   }, [])
 
-  const saveSourceLists = async (): Promise<void> => {
+  const saveAgentConfig = async (): Promise<void> => {
     const nextConfig = await window.api.settings.setAgentConfig({
+      desktopAutomationAllowlist: parseLineList(desktopAutomationAllowlistDraft),
       memorySources: parseLineList(memorySourcesDraft),
       skillSources: parseLineList(skillSourcesDraft)
     })
@@ -187,12 +190,27 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
           title={copy.general.memorySourcesTitle}
           description={copy.general.memorySourcesDescription}
         >
+          <textarea
+            className={`${inputClassName} min-h-[var(--ow-settings-textarea-min-h)] resize-y`}
+            value={memorySourcesDraft}
+            onChange={(event) => {
+              setMemorySourcesDraft(event.target.value)
+            }}
+            spellCheck={false}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          icon={<Layers2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+          title={copy.general.desktopAutomationAllowlistTitle}
+          description={copy.general.desktopAutomationAllowlistDescription}
+        >
           <div className="space-y-[var(--ow-space-3)]">
             <textarea
               className={`${inputClassName} min-h-[var(--ow-settings-textarea-min-h)] resize-y`}
-              value={memorySourcesDraft}
+              value={desktopAutomationAllowlistDraft}
               onChange={(event) => {
-                setMemorySourcesDraft(event.target.value)
+                setDesktopAutomationAllowlistDraft(event.target.value)
               }}
               spellCheck={false}
             />
@@ -200,7 +218,7 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
               <button
                 type="button"
                 className={secondaryButtonClassName}
-                onClick={() => void saveSourceLists()}
+                onClick={() => void saveAgentConfig()}
               >
                 {copy.common.save}
               </button>

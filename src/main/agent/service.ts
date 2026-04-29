@@ -291,9 +291,70 @@ function projectValuesStreamDataForIpc(data: unknown): Record<string, unknown> {
   return projectedState
 }
 
-function serializeStreamChunkForIpc(mode: string, data: unknown): unknown {
+export function projectInterruptForIpc(
+  threadId: string,
+  runId: string,
+  data: unknown
+): unknown[] | undefined {
+  const state = data as {
+    __interrupt__?: Array<{
+      value?: {
+        actionRequests?: Array<Record<string, unknown>>
+      }
+    }>
+  } | null
+
+  if (!Array.isArray(state?.__interrupt__)) {
+    return undefined
+  }
+
+  const request = extractHitlRequestFromValuesState(threadId, runId, data)
+  if (!request) {
+    return state.__interrupt__
+  }
+
+  const firstInterrupt = state.__interrupt__[0]
+  const firstAction = firstInterrupt?.value?.actionRequests?.[0]
+  if (!firstInterrupt || !firstAction) {
+    return state.__interrupt__
+  }
+
+  return [
+    {
+      ...firstInterrupt,
+      value: {
+        ...firstInterrupt.value,
+        actionRequests: [
+          {
+            ...firstAction,
+            id: request.id,
+            toolCallId: request.tool_call.id
+          },
+          ...(firstInterrupt.value?.actionRequests?.slice(1) ?? [])
+        ]
+      }
+    },
+    ...state.__interrupt__.slice(1)
+  ]
+}
+
+export function serializeStreamChunkForIpc(
+  mode: string,
+  data: unknown,
+  options?: {
+    runId?: string
+    threadId?: string
+  }
+): unknown {
   if (mode === "values") {
-    return cloneStreamDataForIpc(projectValuesStreamDataForIpc(data))
+    const projectedState = projectValuesStreamDataForIpc(data)
+    if (options?.threadId && options?.runId) {
+      const projectedInterrupt = projectInterruptForIpc(options.threadId, options.runId, data)
+      if (projectedInterrupt) {
+        projectedState.__interrupt__ = projectedInterrupt
+      }
+    }
+    return cloneStreamDataForIpc(projectedState)
   }
 
   return cloneStreamDataForIpc(data)
@@ -371,7 +432,7 @@ export class AgentService {
         sink.send({
           type: "stream",
           mode,
-          data: serializeStreamChunkForIpc(mode, data)
+          data: serializeStreamChunkForIpc(mode, data, { threadId, runId })
         })
       }
 
@@ -485,7 +546,7 @@ export class AgentService {
         sink.send({
           type: "stream",
           mode,
-          data: serializeStreamChunkForIpc(mode, data)
+          data: serializeStreamChunkForIpc(mode, data, { threadId, runId })
         })
       }
 
