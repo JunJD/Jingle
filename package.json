@@ -60,8 +60,8 @@
     "test:bdd:smoke": "npm run build && cucumber-js --config tests/bdd/cucumber.config.cjs --tags @smoke",
     "test:bdd": "npm run build && npm run test:bdd:run",
     "build:native-island": "node scripts/build-native-island.mjs",
-    "test:node": "node --import tsx --test tests/node/*.test.ts",
-    "test:node:target": "node --import tsx --test"
+    "test:node": "tsx --tsconfig tsconfig.node.json --test tests/node/*.test.ts",
+    "test:node:target": "tsx --tsconfig tsconfig.node.json --test"
   },
   "dependencies": {
     "@ag-ui/core": "0.0.52",
