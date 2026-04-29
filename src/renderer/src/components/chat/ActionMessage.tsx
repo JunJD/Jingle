@@ -17,6 +17,7 @@ interface ActionMessageProps {
   defaultExpanded?: boolean
   expanded?: boolean
   presentation?: ToolPresentation
+  renderApprovalDetail?: boolean
   showSummary?: boolean
 }
 
@@ -64,6 +65,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     onApprovalDecision,
     onExpandedChange,
     presentation = "standalone",
+    renderApprovalDetail = true,
     result,
     showSummary = true,
     toolCall
@@ -86,16 +88,20 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
   const isExpanded = approvalRequest ? true : (expanded ?? manualExpanded ?? autoExpanded)
   const showLeadingIcon = presentation !== "grouped"
   const detail = useMemo<React.ReactNode>(() => {
-    if (approvalRequest && onApprovalDecision && hitlDefinition) {
-      return hitlDefinition.render({
-        copy,
-        isExpanded,
-        presentation,
-        request: approvalRequest,
-        respond: onApprovalDecision,
-        toolCall,
-        ...model
-      })
+    if (approvalRequest) {
+      if (onApprovalDecision && hitlDefinition && renderApprovalDetail) {
+        return hitlDefinition.render({
+          copy,
+          isExpanded,
+          presentation,
+          request: approvalRequest,
+          respond: onApprovalDecision,
+          toolCall,
+          ...model
+        })
+      }
+
+      return null
     }
 
     const contentDetail = definition.renderDetail?.({
@@ -115,6 +121,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     model,
     onApprovalDecision,
     presentation,
+    renderApprovalDetail,
     toolCall
   ])
 

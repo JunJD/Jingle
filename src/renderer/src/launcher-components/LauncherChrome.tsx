@@ -12,6 +12,7 @@ interface LauncherChromeProps {
   footer?: ReactNode
   headerLeading?: ReactNode
   headerTrailing?: ReactNode
+  inputAccessory?: ReactNode
   inputClassName?: string
   inputRef: RefObject<LauncherInputElement | null>
   inputStatus?: LauncherInputStatus
@@ -33,6 +34,7 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
     footer,
     headerLeading,
     headerTrailing,
+    inputAccessory,
     inputClassName,
     inputRef,
     inputStatus = "idle",
@@ -77,6 +79,7 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
         />
       }
       headerTrailing={headerTrailing}
+      inputAccessory={inputAccessory}
       inputStatus={inputStatus}
       shellConfig={shellConfig}
       showHeaderDivider={showHeaderDivider}

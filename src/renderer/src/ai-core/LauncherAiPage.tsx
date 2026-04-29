@@ -1,6 +1,7 @@
 import { ArrowLeft, GitBranch, Plus, Square } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
+import { ComposerApprovalPrompt } from "@/components/chat/ComposerApprovalPrompt"
 import { useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { AI_ATTACHMENT_FILE_EXTENSIONS } from "@shared/launcher-attachments"
@@ -263,6 +264,22 @@ export function LauncherAiPage(): React.JSX.Element {
             >
               <Square className="size-[var(--ow-icon-compact)]" />
             </button>
+          ) : undefined
+        }
+        inputAccessory={
+          conversation.pendingApproval ? (
+            <div className="shrink-0 px-[var(--launcher-ai-content-x)] py-[var(--ow-space-3)]">
+              <div className="mx-auto w-full max-w-[var(--launcher-ai-content-max-width)]">
+                <ComposerApprovalPrompt
+                  key={conversation.pendingApproval.id}
+                  density="compact"
+                  onDecision={(decision) => {
+                    void handleApprovalDecision(decision)
+                  }}
+                  request={conversation.pendingApproval}
+                />
+              </div>
+            </div>
           ) : undefined
         }
         inputStatus={inputStatus}

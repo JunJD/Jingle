@@ -134,6 +134,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
   const draftInput = draftInputFromThread ?? pendingInput
   const visibleError = conversation.error ?? localError
   const isBusy = conversation.isLoading || isPreparing
+  const hasPendingApproval = Boolean(conversation.pendingApproval)
 
   const clearVisibleError = useCallback((): void => {
     setLocalError(null)
@@ -164,7 +165,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
       }
       const message = input.text.trim()
 
-      if (isBusy || !hasComposerMessageInputContent(input)) {
+      if (isBusy || hasPendingApproval || !hasComposerMessageInputContent(input)) {
         return false
       }
 
@@ -203,6 +204,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
     [
       draftInput,
       ensureThread,
+      hasPendingApproval,
       isBusy,
       onAfterAppendMessage,
       threadContext,
@@ -246,9 +248,9 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
   }, [invoke, lastUserMessageInput])
 
   return {
-    canInvoke: Boolean(draftInput.trim()) && !isBusy,
+    canInvoke: Boolean(draftInput.trim()) && !isBusy && !hasPendingApproval,
     canResume: Boolean(conversation.pendingApproval) && !isPreparing,
-    canRetry: Boolean(lastUserMessageInput) && !isBusy,
+    canRetry: Boolean(lastUserMessageInput) && !isBusy && !hasPendingApproval,
     canStop: Boolean(threadId) && conversation.isLoading,
     clearVisibleError,
     conversation,

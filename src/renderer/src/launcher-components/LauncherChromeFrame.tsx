@@ -10,6 +10,7 @@ interface LauncherChromeFrameProps {
   headerLeading?: ReactNode
   headerMain?: ReactNode
   headerTrailing?: ReactNode
+  inputAccessory?: ReactNode
   inputStatus?: LauncherInputStatus
   shellConfig: LauncherShellConfig
   showHeaderDivider?: boolean
@@ -24,6 +25,7 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
     headerLeading,
     headerMain,
     headerTrailing,
+    inputAccessory,
     inputStatus,
     shellConfig,
     showHeaderDivider = true,
@@ -72,6 +74,8 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
           </div>
         ) : null}
       </div>
+
+      {inputAccessory}
 
       {children}
 

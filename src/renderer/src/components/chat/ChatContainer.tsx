@@ -11,6 +11,7 @@ import { Folder } from "lucide-react"
 import { WorkspacePicker } from "./WorkspacePicker"
 import { selectWorkspaceFolder } from "@/lib/workspace-utils"
 import { ChatTodos } from "./ChatTodos"
+import { ComposerApprovalPrompt } from "./ComposerApprovalPrompt"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
 import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
@@ -200,6 +201,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
             )}
 
             <Messages
+              approvalPlacement="composer"
               isLoading={isLoading}
               messages={displayMessages}
               onApprovalDecision={resume}
@@ -253,6 +255,16 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
       <div className="border-t border-border bg-background-elevated/60 px-[var(--ow-chat-thread-x)] py-[var(--ow-chat-footer-y)]">
         <form onSubmit={handleSubmit} className="mx-auto max-w-[var(--ow-chat-thread-max-width)]">
           <div className="flex flex-col gap-[var(--ow-gap-md)]">
+            {pendingApproval ? (
+              <ComposerApprovalPrompt
+                key={pendingApproval.id}
+                onDecision={(decision) => {
+                  void resume(decision)
+                }}
+                request={pendingApproval}
+              />
+            ) : null}
+
             <div className="flex items-end gap-[var(--ow-gap-md)] rounded-[var(--ow-chat-composer-radius)] bg-background-secondary px-[var(--ow-space-4)] py-[var(--ow-space-4)]">
               <textarea
                 ref={inputRef}
@@ -260,7 +272,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={copy.chat.messagePlaceholder}
-                disabled={isBusy}
+                disabled={isBusy || Boolean(pendingApproval)}
                 className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
                 rows={1}
                 style={{ minHeight: "var(--ow-chat-composer-input-min-h)", maxHeight: "200px" }}

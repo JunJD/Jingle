@@ -106,6 +106,7 @@ export function LauncherAiConversation(props: {
         >
           <div className="mx-auto flex w-full min-w-0 max-w-[var(--launcher-ai-content-max-width)] flex-col gap-[var(--launcher-ai-turn-gap)]">
             <Messages
+              approvalPlacement="composer"
               density="compact"
               isLoading={isLoading}
               messages={displayMessages}
