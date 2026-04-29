@@ -1,6 +1,6 @@
 import { AlertCircle, GitPullRequest, Github, RefreshCw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
-import { Action, ActionPanel, Detail, Form, useNativeExtensionNavigation } from "../../api"
+import { Action, ActionPanel, Detail, Form, useNativeExtensionNavigation } from "../../runtime-api"
 import {
   createGitHubPullRequest,
   listGitHubRepositoryBranches,
@@ -10,7 +10,7 @@ import {
   type GitHubBranch,
   type GitHubViewerRepository,
   useGitHubCommandPreferences
-} from "./client"
+} from "./runtime-client"
 
 function getDefaultHeadBranch(params: { branches: GitHubBranch[]; defaultBranch: string }): string {
   const nonDefaultBranch = params.branches.find((branch) => branch.name !== params.defaultBranch)
@@ -357,9 +357,7 @@ export default function GitHubCreatePullRequest(): React.JSX.Element {
       navigationTitle="Create Pull Request"
     >
       {formStateMessage ? (
-        <div className="rounded-[var(--ow-radius-sm)] border border-red-500/20 bg-red-500/8 px-2.5 py-1.5 text-[12px] text-red-600">
-          {formStateMessage}
-        </div>
+        <Form.Message id="form-state-message" text={formStateMessage} tone="critical" />
       ) : null}
 
       <Form.Dropdown
@@ -368,6 +366,7 @@ export default function GitHubCreatePullRequest(): React.JSX.Element {
             ? "Loading your repositories…"
             : "Choose where to create the pull request."
         }
+        id="repository"
         onChange={(value) => {
           setSubmissionError(null)
           setRepository(value)
@@ -388,6 +387,7 @@ export default function GitHubCreatePullRequest(): React.JSX.Element {
             ? "Loading source branches…"
             : "Choose the branch that contains your changes."
         }
+        id="head-branch"
         onChange={(value) => {
           setSubmissionError(null)
           setHeadBranch(value)
@@ -402,6 +402,7 @@ export default function GitHubCreatePullRequest(): React.JSX.Element {
 
       <Form.Dropdown
         description="Choose the branch you want to merge into."
+        id="base-branch"
         onChange={(value) => {
           setSubmissionError(null)
           setBaseBranch(value)
@@ -418,6 +419,7 @@ export default function GitHubCreatePullRequest(): React.JSX.Element {
 
       <Form.TextField
         description="Short summary shown in the pull request list."
+        id="title"
         onChange={(value) => {
           setSubmissionError(null)
           setTitle(value)
@@ -429,6 +431,7 @@ export default function GitHubCreatePullRequest(): React.JSX.Element {
 
       <Form.TextArea
         description="Markdown is supported by GitHub."
+        id="body"
         onChange={(value) => {
           setSubmissionError(null)
           setBody(value)
@@ -440,6 +443,7 @@ export default function GitHubCreatePullRequest(): React.JSX.Element {
 
       <Form.Checkbox
         description="Create the pull request as a draft."
+        id="draft"
         onChange={(value) => {
           setSubmissionError(null)
           setDraft(value)

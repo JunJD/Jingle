@@ -40,7 +40,7 @@ export function reconcileRuntimeFormLocalValues(params: {
   }
 
   for (const field of params.fields) {
-    if (field.kind === "separator") {
+    if (field.kind === "message" || field.kind === "separator") {
       continue
     }
 

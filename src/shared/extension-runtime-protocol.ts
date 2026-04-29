@@ -115,6 +115,7 @@ export interface ExtensionFormSurfaceSnapshot extends ExtensionSurfaceBase {
 export type ExtensionFormFieldNode =
   | ExtensionFormCheckboxFieldNode
   | ExtensionFormDropdownFieldNode
+  | ExtensionFormMessageNode
   | ExtensionFormSeparatorNode
   | ExtensionFormTextAreaFieldNode
   | ExtensionFormTextFieldNode
@@ -152,6 +153,13 @@ export interface ExtensionFormDropdownFieldNode extends ExtensionFormFieldBase {
 export interface ExtensionFormDropdownItemNode {
   title: string
   value: string
+}
+
+export interface ExtensionFormMessageNode {
+  id: string
+  kind: "message"
+  text: string
+  tone: "critical" | "info"
 }
 
 export interface ExtensionFormSeparatorNode {

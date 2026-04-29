@@ -4,14 +4,10 @@ import {
   Circle,
   CircleDotDashed,
   Clock3,
-  GitFork,
-  GitPullRequest,
-  Lock,
-  MessageSquare,
-  Star
+  GitPullRequest
 } from "lucide-react"
 import type { ReactNode } from "react"
-import type { GitHubIssueLike, GitHubRepository, GitHubWorkflowRun } from "./client"
+import type { GitHubIssueLike, GitHubRepository, GitHubWorkflowRun } from "./client-core"
 
 export function formatUpdatedAt(isoTimestamp: string): string {
   const parsed = new Date(isoTimestamp)
@@ -43,44 +39,35 @@ export function getIssueLikeIcon(item: GitHubIssueLike): ReactNode {
 }
 
 export function getIssueLikeAccessories(item: GitHubIssueLike): ReactNode {
-  return (
-    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-      <span>{item.repositoryName}</span>
-      {item.comments > 0 ? (
-        <span className="inline-flex items-center gap-1">
-          <MessageSquare className="h-3 w-3" />
-          {item.comments}
-        </span>
-      ) : null}
-      {item.isDraft ? <span>Draft</span> : null}
-    </div>
-  )
+  const parts = [item.repositoryName]
+  if (item.comments > 0) {
+    parts.push(`${item.comments} comments`)
+  }
+  if (item.isDraft) {
+    parts.push("Draft")
+  }
+
+  return parts.join(" · ")
 }
 
 export function getRepositoryAccessories(
   repository: GitHubRepository,
   displayOwnerName: boolean
 ): ReactNode {
-  return (
-    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-      {displayOwnerName ? <span>{repository.ownerLogin}</span> : null}
-      {repository.language ? <span>{repository.language}</span> : null}
-      <span className="inline-flex items-center gap-1">
-        <Star className="h-3 w-3" />
-        {repository.stars}
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <GitFork className="h-3 w-3" />
-        {repository.forks}
-      </span>
-      {repository.isPrivate ? (
-        <span className="inline-flex items-center gap-1">
-          <Lock className="h-3 w-3" />
-          Private
-        </span>
-      ) : null}
-    </div>
-  )
+  const parts: string[] = []
+  if (displayOwnerName) {
+    parts.push(repository.ownerLogin)
+  }
+  if (repository.language) {
+    parts.push(repository.language)
+  }
+
+  parts.push(`${repository.stars} stars`, `${repository.forks} forks`)
+  if (repository.isPrivate) {
+    parts.push("Private")
+  }
+
+  return parts.join(" · ")
 }
 
 export function getWorkflowRunIcon(run: GitHubWorkflowRun): ReactNode {
@@ -108,11 +95,7 @@ export function getWorkflowRunIcon(run: GitHubWorkflowRun): ReactNode {
 }
 
 export function getWorkflowRunAccessories(run: GitHubWorkflowRun): ReactNode {
-  return (
-    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-      {run.headBranch ? <span>{run.headBranch}</span> : null}
-      {run.headSha ? <span>{run.headSha.slice(0, 7)}</span> : null}
-      <span>#{run.runNumber}</span>
-    </div>
-  )
+  return [run.headBranch, run.headSha ? run.headSha.slice(0, 7) : null, `#${run.runNumber}`]
+    .filter((value): value is string => Boolean(value))
+    .join(" · ")
 }

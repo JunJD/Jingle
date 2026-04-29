@@ -62,8 +62,19 @@ Launcher 搜索和 extension surface 要保持同一套信息架构。
 - `todo-list:index`
 - `apple-reminders:my-reminders`
 - `apple-reminders:create-reminder`
+- `github:create-issue`
+- `github:create-pull-request`
+- `github:my-issues`
+- `github:my-latest-repositories`
+- `github:my-pull-requests`
+- `github:my-starred-repositories`
+- `github:notifications`
+- `github:search-issues`
+- `github:search-pull-requests`
+- `github:search-repositories`
+- `github:workflow-runs`
 
-Apple Reminders 的 `quick-add-reminder` 和 `menu-bar-reminders` 仍保留在 legacy renderer path，等待 `runOnce` / menu bar runtime 调度链路接入后再迁。GitHub、Translate 仍需要按下面计划处理。
+Apple Reminders 的 `quick-add-reminder` / `menu-bar-reminders` 和 GitHub 的 `unread-notifications` 仍保留在 legacy renderer path，等待 `runOnce` / menu bar runtime 调度链路接入后再迁。Translate 仍需要按下面计划处理。
 
 ## 模块边界
 

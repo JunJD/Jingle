@@ -1,6 +1,6 @@
 import { AlertCircle, Github, Plus } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
-import { Action, ActionPanel, Detail, Form, useNativeExtensionNavigation } from "../../api"
+import { Action, ActionPanel, Detail, Form, useNativeExtensionNavigation } from "../../runtime-api"
 import {
   createGitHubIssue,
   listGitHubViewerRepositories,
@@ -8,7 +8,7 @@ import {
   openGitHubSettings,
   type GitHubViewerRepository,
   useGitHubCommandPreferences
-} from "./client"
+} from "./runtime-client"
 
 function CreateIssueSuccessDetail(props: {
   body: string
@@ -177,6 +177,7 @@ export default function GitHubCreateIssue(): React.JSX.Element {
     >
       <Form.Dropdown
         description={isLoading ? "Loading your repositories…" : "Choose where to create the issue."}
+        id="repository"
         onChange={setRepository}
         title="Repository"
         value={repository}
@@ -190,6 +191,7 @@ export default function GitHubCreateIssue(): React.JSX.Element {
 
       <Form.TextField
         description="Short summary shown in your issue list."
+        id="title"
         onChange={setTitle}
         placeholder="Issue title"
         title="Title"
@@ -198,6 +200,7 @@ export default function GitHubCreateIssue(): React.JSX.Element {
 
       <Form.TextArea
         description="Markdown is supported by GitHub. Keep it concise."
+        id="body"
         onChange={setBody}
         placeholder="Describe the issue"
         title="Description"

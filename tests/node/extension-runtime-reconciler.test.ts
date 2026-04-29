@@ -11,6 +11,9 @@ import {
   List,
   createNativeExtensionClient,
   defineNativeExtensionClientMethod,
+  openNativeExtensionSettings,
+  type ExtensionRuntimeHostRequestInput,
+  type ExtensionRuntimeSdkContextValue,
   useNativeExtensionNavigation
 } from "../../src/extension-runtime/sdk"
 import type {
@@ -21,6 +24,7 @@ import type {
 } from "../../src/shared/extension-runtime-protocol"
 
 type TestRendererParams = Parameters<typeof createExtensionRuntimeRenderer>[1]
+type TestHostRequestHandler = ExtensionRuntimeSdkContextValue["requestHost"]
 
 function createTestRenderer(params?: TestRendererParams) {
   return createExtensionRuntimeRenderer(
@@ -53,7 +57,14 @@ function assertFormSnapshot(
   assert.equal(snapshot.kind, "form")
 }
 
-function withRuntimeProvider(element: ReactElement): ReactElement {
+function withRuntimeProvider(
+  element: ReactElement,
+  requestHost: TestHostRequestHandler = async () => ({
+    id: "host-response",
+    ok: true as const,
+    result: null
+  })
+): ReactElement {
   return createElement(
     ExtensionRuntimeNavigationProvider,
     {
@@ -64,11 +75,7 @@ function withRuntimeProvider(element: ReactElement): ReactElement {
         extensionPreferences: {},
         initialAction: "open",
         mode: "view",
-        requestHost: async () => ({
-          id: "host-response",
-          ok: true as const,
-          result: null
-        }),
+        requestHost,
         seedQuery: ""
       }
     },
@@ -589,6 +596,103 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
   )
   assert.ok(checkboxField)
   assert.equal(checkboxField.value, true)
+})
+
+test("runtime reconciler snapshots form messages", async () => {
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      Form,
+      null,
+      createElement(Form.Message, {
+        id: "form-message",
+        text: "Choose both source and target branches.",
+        tone: "critical"
+      }),
+      createElement(Form.TextField, {
+        id: "title",
+        onChange: () => {},
+        title: "Title",
+        value: ""
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertFormSnapshot(snapshot)
+  assert.deepEqual(snapshot.fields[0], {
+    id: "form-message",
+    kind: "message",
+    text: "Choose both source and target branches.",
+    tone: "critical"
+  })
+  assert.equal(snapshot.fields[1]?.id, "title")
+})
+
+test("runtime SDK opens extension settings through host requests", async () => {
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const renderer = createTestRenderer()
+
+  function SettingsList() {
+    return createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: () =>
+              openNativeExtensionSettings({
+                commandName: "my-issues",
+                extensionName: "github"
+              }),
+            title: "Open Settings"
+          })
+        ),
+        id: "settings",
+        title: "Settings"
+      })
+    )
+  }
+
+  renderer.render(
+    withRuntimeProvider(createElement(SettingsList), async (request) => {
+      requests.push(request)
+      return {
+        id: "settings-response",
+        ok: true,
+        result: null
+      }
+    })
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const action = snapshot.sections[0]?.items[0]?.actions[0]
+  assert.ok(action)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  assert.deepEqual(requests, [
+    {
+      capability: "settings",
+      method: "open-extension",
+      payload: {
+        commandName: "my-issues",
+        extensionName: "github"
+      }
+    }
+  ])
 })
 
 test("runtime reconciler rejects stale action events from an old snapshot revision", async () => {

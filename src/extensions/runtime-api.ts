@@ -6,6 +6,7 @@ export {
   Detail,
   Form,
   List,
+  openNativeExtensionSettings,
   useCommandSeedQuery,
   useExtensionStorageState,
   useNativeCommandPreferences,

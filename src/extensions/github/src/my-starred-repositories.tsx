@@ -1,13 +1,13 @@
 import { AlertCircle, RefreshCw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
-import { Action, ActionPanel, List } from "../../api"
+import { Action, ActionPanel, List } from "../../runtime-api"
 import {
   listGitHubStarredRepositories,
   normalizeGitHubPreferences,
   openGitHubSettings,
   type GitHubRepository,
   useGitHubCommandPreferences
-} from "./client"
+} from "./runtime-client"
 import { formatResultCount, formatUpdatedAt, getRepositoryAccessories } from "./view-helpers"
 
 export default function GitHubMyStarredRepositories(): React.JSX.Element {

@@ -25,10 +25,12 @@ export type {
   RuntimeFormDropdownItemProps,
   RuntimeFormDropdownProps,
   RuntimeFormFieldProps,
+  RuntimeFormMessageProps,
   RuntimeFormProps,
   RuntimeFormTextAreaProps,
   RuntimeFormTextFieldProps
 } from "./form"
+export { openNativeExtensionSettings } from "./settings"
 export type {
   RuntimeActionPanelProps,
   RuntimeActionPanelSectionProps,

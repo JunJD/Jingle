@@ -1,13 +1,13 @@
 import { AlertCircle, RefreshCw } from "lucide-react"
 import { useDeferredValue, useEffect, useMemo, useState } from "react"
-import { Action, ActionPanel, List } from "../../api"
+import { Action, ActionPanel, List } from "../../runtime-api"
 import {
   normalizeGitHubPreferences,
   openGitHubSettings,
   searchGitHubIssueLikes,
   type GitHubIssueLike,
   useGitHubCommandPreferences
-} from "./client"
+} from "./runtime-client"
 import {
   formatResultCount,
   formatUpdatedAt,

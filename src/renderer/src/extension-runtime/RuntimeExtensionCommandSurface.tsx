@@ -523,6 +523,21 @@ function RuntimeFormField(props: {
     return <div className="h-px w-full bg-border/80" />
   }
 
+  if (field.kind === "message") {
+    const toneClass =
+      field.tone === "critical"
+        ? "border-red-500/20 bg-red-500/8 text-red-600"
+        : "border-border bg-background-elevated text-muted-foreground"
+
+    return (
+      <div
+        className={`rounded-[var(--ow-radius-sm)] border px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] ${toneClass}`}
+      >
+        {field.text}
+      </div>
+    )
+  }
+
   const label = (
     <>
       <div className="[font-size:var(--ow-font-meta)] font-semibold uppercase tracking-[0.06em] text-muted-foreground">

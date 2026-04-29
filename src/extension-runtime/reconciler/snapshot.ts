@@ -377,6 +377,17 @@ function createFormFieldNode(
     ]
   }
 
+  if (node.type === ExtensionHostElement.FormMessage) {
+    return [
+      {
+        id,
+        kind: "message",
+        text: readStringProp(node.props, "text") ?? "",
+        tone: node.props.tone === "critical" ? "critical" : "info"
+      }
+    ]
+  }
+
   if (node.type === ExtensionHostElement.FormSeparator) {
     return [
       {
@@ -393,6 +404,7 @@ function isFormFieldElement(node: RuntimeHostElementNode): boolean {
   return (
     node.type === ExtensionHostElement.FormCheckbox ||
     node.type === ExtensionHostElement.FormDropdown ||
+    node.type === ExtensionHostElement.FormMessage ||
     node.type === ExtensionHostElement.FormSeparator ||
     node.type === ExtensionHostElement.FormTextArea ||
     node.type === ExtensionHostElement.FormTextField

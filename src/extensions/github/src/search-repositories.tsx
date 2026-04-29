@@ -1,6 +1,6 @@
 import { AlertCircle, RefreshCw } from "lucide-react"
 import { useDeferredValue, useEffect, useMemo, useState } from "react"
-import { Action, ActionPanel, List } from "../../api"
+import { Action, ActionPanel, List } from "../../runtime-api"
 import {
   loadGitHubViewer,
   normalizeGitHubPreferences,
@@ -10,7 +10,7 @@ import {
   type GitHubSearchRepositoriesPreferences,
   type GitHubViewer,
   useGitHubCommandPreferences
-} from "./client"
+} from "./runtime-client"
 import { formatResultCount, formatUpdatedAt, getRepositoryAccessories } from "./view-helpers"
 
 function buildRepositorySearchQuery(params: {

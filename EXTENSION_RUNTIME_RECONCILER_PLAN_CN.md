@@ -462,11 +462,16 @@ Main 负责下一次唤醒 command。
 - view commands：issues、pull requests、search、workflow、notifications、create issue、create PR、repositories。
 - menu-bar command：`unread-notifications`。
 
+当前状态：
+
+- GitHub view commands 已登记为 runtime-backed，并使用 runtime SDK / runtime client。
+- `unread-notifications` 仍在 legacy renderer path，等待 menu-bar runtime 调度链路完成后再迁。
+
 需要改动：
 
-- `openGitHubSettings` 不再调用 `window.api.settings.openTab`，改为 runtime settings bridge。
-- menu-bar action 中的 `window.open` 改为 `openExternal`。
-- menu-bar action 中的 `window.api.launcher.show()` 改为 `navigation.openCommand(..., { showLauncher: true })`。
+- view command 的 `openGitHubSettings` 已改为 runtime settings bridge。
+- menu-bar action 中的 `window.open` 后续改为 `openExternal`。
+- menu-bar action 中的 `window.api.launcher.show()` 后续改为 `navigation.openCommand(..., { showLauncher: true })`。
 - Octokit 可以在 runtime process 中运行；token 从 preferences bridge 进入。
 
 ### Apple Reminders

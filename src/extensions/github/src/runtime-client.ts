@@ -1,4 +1,4 @@
-import { useNativeCommandPreferences } from "../../api"
+import { openNativeExtensionSettings, useNativeCommandPreferences } from "../../runtime-api"
 import type { GitHubExtensionPreferences } from "./client-core"
 
 export * from "./client-core"
@@ -8,11 +8,8 @@ export function useGitHubCommandPreferences<T extends object>() {
 }
 
 export function openGitHubSettings(commandName: string): Promise<void> {
-  return window.api.settings.openTab({
-    tab: "extensions",
-    target: {
-      commandName,
-      extensionName: "github"
-    }
+  return openNativeExtensionSettings({
+    commandName,
+    extensionName: "github"
   })
 }

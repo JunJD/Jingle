@@ -1,6 +1,6 @@
 import { AlertCircle, RefreshCw, Workflow } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
-import { Action, ActionPanel, Detail, List, useNativeExtensionNavigation } from "../../api"
+import { Action, ActionPanel, Detail, List, useNativeExtensionNavigation } from "../../runtime-api"
 import {
   listGitHubViewerRepositories,
   listGitHubWorkflowRuns,
@@ -9,7 +9,7 @@ import {
   type GitHubViewerRepository,
   type GitHubWorkflowRun,
   useGitHubCommandPreferences
-} from "./client"
+} from "./runtime-client"
 import {
   formatResultCount,
   formatUpdatedAt,

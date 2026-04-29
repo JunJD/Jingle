@@ -43,11 +43,18 @@ export interface RuntimeFormDropdownItemProps {
   value: string
 }
 
+export interface RuntimeFormMessageProps {
+  id?: string
+  text: string
+  tone?: "critical" | "info"
+}
+
 type RuntimeFormComponent = ((props: RuntimeFormProps) => ReactElement) & {
   Checkbox: (props: RuntimeFormCheckboxProps) => ReactElement
   Dropdown: ((props: RuntimeFormDropdownProps) => ReactElement) & {
     Item: (props: RuntimeFormDropdownItemProps) => ReactElement
   }
+  Message: (props: RuntimeFormMessageProps) => ReactElement
   Separator: () => ReactElement
   TextArea: (props: RuntimeFormTextAreaProps) => ReactElement
   TextField: (props: RuntimeFormTextFieldProps) => ReactElement
@@ -89,6 +96,10 @@ function FormDropdownItem(props: RuntimeFormDropdownItemProps): ReactElement {
   return createElement(ExtensionHostElement.FormDropdownItem, props)
 }
 
+function FormMessage(props: RuntimeFormMessageProps): ReactElement {
+  return createElement(ExtensionHostElement.FormMessage, props)
+}
+
 function FormSeparator(): ReactElement {
   return createElement(ExtensionHostElement.FormSeparator)
 }
@@ -98,6 +109,7 @@ export const Form: RuntimeFormComponent = Object.assign(FormRoot, {
   Dropdown: Object.assign(FormDropdown, {
     Item: FormDropdownItem
   }),
+  Message: FormMessage,
   Separator: FormSeparator,
   TextArea: FormTextArea,
   TextField: FormTextField

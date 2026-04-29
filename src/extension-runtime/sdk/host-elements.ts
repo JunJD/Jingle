@@ -11,6 +11,7 @@ export const ExtensionHostElement = {
   FormCheckbox: "ow-form-checkbox",
   FormDropdown: "ow-form-dropdown",
   FormDropdownItem: "ow-form-dropdown-item",
+  FormMessage: "ow-form-message",
   FormSeparator: "ow-form-separator",
   FormTextArea: "ow-form-text-area",
   FormTextField: "ow-form-text-field",

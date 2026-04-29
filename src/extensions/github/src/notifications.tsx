@@ -1,6 +1,6 @@
 import { AlertCircle, Bell, CheckCheck, RefreshCw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
-import { Action, ActionPanel, Detail, List, useNativeExtensionNavigation } from "../../api"
+import { Action, ActionPanel, Detail, List, useNativeExtensionNavigation } from "../../runtime-api"
 import {
   listGitHubNotifications,
   markAllGitHubNotificationsAsRead,
@@ -9,7 +9,7 @@ import {
   openGitHubSettings,
   type GitHubNotification,
   useGitHubCommandPreferences
-} from "./client"
+} from "./runtime-client"
 
 function NotificationDetail(props: {
   notification: GitHubNotification
