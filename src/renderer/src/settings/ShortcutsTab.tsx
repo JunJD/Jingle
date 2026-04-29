@@ -15,9 +15,14 @@ import { formatShortcutBinding } from "../shortcuts/format-shortcut"
 import { getLauncherShortcutCommand } from "../shortcuts/command-registry"
 import { useShortcutBinding, useShortcutSettings } from "../shortcuts/shortcut-context"
 import { getSettingsCopy } from "./copy"
-
-const secondaryButtonClassName =
-  "inline-flex items-center gap-[var(--ow-space-1-5)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-body)] font-medium text-foreground transition hover:bg-background-secondary disabled:cursor-default disabled:opacity-50"
+import {
+  secondaryButtonClassName,
+  settingsCardClassName,
+  settingsPageClassName,
+  settingsPageDescriptionClassName,
+  settingsPageHeaderClassName,
+  settingsPageTitleClassName
+} from "./settings-ui"
 
 const statusClassName = {
   available: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
@@ -206,9 +211,9 @@ function ShortcutCommandCard(props: {
   }
 
   return (
-    <div className="overflow-hidden rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-secondary/55 shadow-[0_12px_32px_rgba(32,38,45,0.05)]">
-      <div className="grid gap-[var(--ow-gap-md)] border-b border-border/70 px-[var(--ow-space-4)] py-[var(--ow-space-3)] md:grid-cols-[var(--ow-settings-label-column-w)_minmax(0,1fr)]">
-        <div className="flex items-start gap-[var(--ow-gap-md)]">
+    <div className={settingsCardClassName}>
+      <div className="grid gap-[var(--ow-settings-row-gap)] border-b border-border/70 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] md:grid-cols-[var(--ow-settings-label-column-w)_minmax(0,1fr)]">
+        <div className="flex items-start gap-[var(--ow-settings-header-gap)]">
           <div className="mt-0.5 text-muted-foreground">
             <Command className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
           </div>
@@ -216,7 +221,7 @@ function ShortcutCommandCard(props: {
             <div className="[font-size:var(--ow-font-label)] font-semibold text-foreground">
               {command.title}
             </div>
-            <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
+            <div className="[font-size:var(--ow-settings-description-size)] leading-[var(--ow-line-body)] text-muted-foreground">
               {command.description}
             </div>
           </div>
@@ -278,7 +283,7 @@ function ShortcutCommandCard(props: {
           </div>
 
           {isRecording ? (
-            <div className="rounded-xl border border-border/70 bg-background px-[var(--ow-space-4)] py-[var(--ow-space-4)]">
+            <div className="rounded-[var(--ow-settings-card-radius)] border border-border/70 bg-background px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
               <div className="[font-size:var(--ow-font-body)] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                 {copy.shortcuts.recordingTitle}
               </div>
@@ -288,7 +293,7 @@ function ShortcutCommandCard(props: {
               <button
                 type="button"
                 data-shortcut-recorder={command.id}
-                className="mt-[var(--ow-space-4)] min-w-[var(--ow-settings-select-w)] rounded-md border border-[var(--ring)] bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left [font-size:var(--ow-font-label)] font-medium text-foreground outline-none"
+                className="mt-[var(--ow-space-3)] min-h-[var(--ow-settings-control-h)] min-w-[var(--ow-settings-select-w)] rounded-[var(--ow-radius-md)] border border-[var(--ring)] bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)] text-left [font-size:var(--ow-settings-control-font)] font-medium text-foreground outline-none"
                 onKeyDown={(event) => {
                   event.preventDefault()
                   event.stopPropagation()
@@ -331,7 +336,7 @@ function ShortcutCommandCard(props: {
           ) : null}
 
           <div className="grid gap-[var(--ow-gap-md)] md:grid-cols-2">
-            <div className="rounded-xl border border-border/70 bg-background px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
+            <div className="rounded-[var(--ow-settings-card-radius)] border border-border/70 bg-background px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
               <div className="[font-size:var(--ow-font-body)] uppercase tracking-[0.08em] text-muted-foreground">
                 {copy.shortcuts.defaultBindingLabel}
               </div>
@@ -341,7 +346,7 @@ function ShortcutCommandCard(props: {
             </div>
 
             {defaultBinding.scope === "global" ? (
-              <div className="rounded-xl border border-border/70 bg-background px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
+              <div className="rounded-[var(--ow-settings-card-radius)] border border-border/70 bg-background px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
                 <div className="[font-size:var(--ow-font-body)] uppercase tracking-[0.08em] text-muted-foreground">
                   {copy.shortcuts.registrationStatus}
                 </div>
@@ -398,14 +403,10 @@ export function ShortcutsTab(props: { locale: AppLocale }): React.JSX.Element {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[var(--ow-settings-content-max-width)] flex-col gap-[var(--ow-gap-lg)]">
-      <div className="px-1">
-        <div className="[font-size:var(--ow-font-display)] font-semibold text-foreground">
-          {copy.shortcuts.title}
-        </div>
-        <div className="mt-[var(--ow-space-1)] [font-size:var(--ow-font-label)] text-muted-foreground">
-          {copy.shortcuts.description}
-        </div>
+    <div className={settingsPageClassName}>
+      <div className={settingsPageHeaderClassName}>
+        <div className={settingsPageTitleClassName}>{copy.shortcuts.title}</div>
+        <div className={settingsPageDescriptionClassName}>{copy.shortcuts.description}</div>
       </div>
 
       {commandIds.map((commandId) => (

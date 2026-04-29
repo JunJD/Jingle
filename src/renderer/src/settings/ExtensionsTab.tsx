@@ -206,7 +206,7 @@ function CommandCard(props: {
 
   return (
     <div
-      className={`rounded-[var(--ow-radius-panel)] border bg-background-elevated/65 p-[var(--ow-space-4)] ${
+      className={`rounded-[var(--ow-settings-card-radius)] border bg-background-elevated/65 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] ${
         isFocused ? "border-[var(--ring)]" : "border-border/80"
       }`}
     >
@@ -224,7 +224,7 @@ function CommandCard(props: {
           {labelMode}: {formatCommandMode(mode)}
         </div>
       </div>
-      <div className="mt-[var(--ow-space-4)]">
+      <div className="mt-[var(--ow-space-3)]">
         <PreferenceSection
           disabledLabel={disabledLabel}
           emptyLabel={emptyLabel}
@@ -421,12 +421,12 @@ export function ExtensionsTab(props: {
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[var(--ow-settings-sidebar-w)_minmax(0,1fr)] gap-[var(--ow-gap-lg)]">
-      <aside className="flex min-h-0 flex-col gap-[var(--ow-gap-md)] overflow-hidden rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-secondary/55 p-[var(--ow-space-3)] shadow-[0_12px_32px_rgba(32,38,45,0.05)]">
+      <aside className="flex min-h-0 flex-col gap-[var(--ow-gap-md)] overflow-hidden rounded-[var(--ow-settings-card-radius)] border border-border/80 bg-background-secondary/55 p-[var(--ow-settings-card-y)] shadow-[var(--ow-settings-card-shadow)]">
         <div className="space-y-[var(--ow-space-1)]">
-          <div className="[font-size:var(--ow-font-display)] font-semibold text-foreground">
+          <div className="[font-size:var(--ow-settings-title-size)] font-semibold text-foreground">
             {copy.extensions.title}
           </div>
-          <div className="[font-size:var(--ow-font-label)] text-muted-foreground">
+          <div className="[font-size:var(--ow-settings-description-size)] leading-[var(--ow-line-body)] text-muted-foreground">
             {copy.extensions.rootsDescription}
           </div>
         </div>
@@ -434,7 +434,7 @@ export function ExtensionsTab(props: {
         <div className="relative">
           <Search className="pointer-events-none absolute left-[var(--ow-space-3)] top-1/2 h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] -translate-y-1/2 text-muted-foreground" />
           <input
-            className="w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated py-[var(--ow-space-1-5)] pl-[var(--ow-control-icon-inset)] pr-[var(--ow-space-3)] [font-size:var(--ow-font-label)] text-foreground outline-none transition focus:border-[var(--ring)]"
+            className="min-h-[var(--ow-settings-control-h)] w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated py-[var(--ow-space-1)] pl-[var(--ow-control-icon-inset)] pr-[var(--ow-space-3)] [font-size:var(--ow-settings-control-font)] text-foreground outline-none transition focus:border-[var(--ring)]"
             placeholder={copy.extensions.installedTitle}
             value={search}
             onChange={(event) => {
@@ -445,7 +445,7 @@ export function ExtensionsTab(props: {
 
         <div className="min-h-0 flex-1 space-y-[var(--ow-space-2)] overflow-y-auto pr-[var(--ow-space-1)]">
           {filteredSchemas.length === 0 ? (
-            <div className="rounded-[var(--ow-radius-lg)] border border-dashed border-border bg-background px-[var(--ow-space-3)] py-[var(--ow-space-3)] [font-size:var(--ow-font-body)] text-muted-foreground">
+            <div className="rounded-[var(--ow-settings-card-radius)] border border-dashed border-border bg-background px-[var(--ow-space-3)] py-[var(--ow-space-3)] [font-size:var(--ow-font-body)] text-muted-foreground">
               {copy.extensions.empty}
             </div>
           ) : (
@@ -457,7 +457,7 @@ export function ExtensionsTab(props: {
                   key={schema.extName}
                   type="button"
                   onClick={() => setSelectedExtName(schema.extName)}
-                  className={`w-full rounded-[var(--ow-radius-lg)] border px-[var(--ow-space-3)] py-[var(--ow-space-2-5)] text-left transition ${
+                  className={`w-full rounded-[var(--ow-settings-card-radius)] border px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left transition ${
                     isSelected
                       ? "border-[var(--ring)] bg-background"
                       : "border-border/70 bg-background-elevated/60 hover:bg-background"
@@ -489,15 +489,15 @@ export function ExtensionsTab(props: {
       <section className="min-h-0 overflow-y-auto pr-[var(--ow-space-1)]">
         {selectedSchema ? (
           <div className="space-y-[var(--ow-space-4)]">
-            <div className="rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-secondary/55 p-[var(--ow-space-4)] shadow-[0_12px_32px_rgba(32,38,45,0.05)]">
+            <div className="rounded-[var(--ow-settings-card-radius)] border border-border/80 bg-background-secondary/55 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] shadow-[var(--ow-settings-card-shadow)]">
               <div className="space-y-[var(--ow-space-1)]">
                 <div className="flex items-center gap-[var(--ow-gap-sm)]">
                   <Settings2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
-                  <h2 className="[font-size:var(--ow-font-display)] font-semibold text-foreground">
+                  <h2 className="[font-size:var(--ow-settings-title-size)] font-semibold text-foreground">
                     {selectedSchema.title}
                   </h2>
                 </div>
-                <div className="[font-size:var(--ow-font-label)] leading-[var(--ow-line-control-sm)] text-muted-foreground">
+                <div className="[font-size:var(--ow-settings-description-size)] leading-[var(--ow-line-body)] text-muted-foreground">
                   {selectedSchema.description || selectedSchema.extName}
                 </div>
               </div>
@@ -505,7 +505,7 @@ export function ExtensionsTab(props: {
 
             <div className="space-y-[var(--ow-space-3)]">
               {selectedSchema.preferences.length > 0 ? (
-                <div className="rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-secondary/55 p-[var(--ow-space-4)] shadow-[0_12px_32px_rgba(32,38,45,0.05)]">
+                <div className="rounded-[var(--ow-settings-card-radius)] border border-border/80 bg-background-secondary/55 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] shadow-[var(--ow-settings-card-shadow)]">
                   <PreferenceSection
                     disabledLabel={copy.extensions.disabled}
                     emptyLabel={copy.extensions.noPreferences}
@@ -554,7 +554,7 @@ export function ExtensionsTab(props: {
             </div>
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center rounded-[var(--ow-radius-panel)] border border-dashed border-border bg-background-elevated/60 [font-size:var(--ow-font-label)] text-muted-foreground">
+          <div className="flex h-full items-center justify-center rounded-[var(--ow-settings-card-radius)] border border-dashed border-border bg-background-elevated/60 [font-size:var(--ow-font-label)] text-muted-foreground">
             {copy.extensions.empty}
           </div>
         )}
