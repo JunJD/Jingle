@@ -1,11 +1,12 @@
+import { EventType } from "@ag-ui/core"
 import { After, Given, Then, When } from "@cucumber/cucumber"
 import { expect } from "@playwright/test"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import type { Page } from "playwright"
+import type { AgentProjectionEnvelope } from "../../../src/shared/agent-projection"
 import type { HITLDecision, ThreadRuntimeState } from "../../../src/shared/app-types"
 import type { AgentInvokeMessage } from "../../../src/shared/message-content"
-import type { IPCEvent } from "../../../src/types"
 import { OpenworkWorld } from "../support/world"
 
 interface AgentThreadSnapshot {
@@ -15,7 +16,7 @@ interface AgentThreadSnapshot {
 
 interface AgentBddStream {
   cleanup: (() => void) | null
-  events: IPCEvent[]
+  events: AgentProjectionEnvelope[]
 }
 
 interface AgentBddStore {
@@ -27,12 +28,12 @@ interface AgentBddWindow extends Window {
   api: {
     agent: {
       cancel: (threadId: string) => Promise<void>
-      streamAgent: (
+      getProjection: (threadId: string) => Promise<AgentProjectionEnvelope>
+      invoke: (threadId: string, message: AgentInvokeMessage, modelId?: string) => void
+      resume: (threadId: string, decision: HITLDecision, modelId?: string) => void
+      subscribeProjection: (
         threadId: string,
-        message: AgentInvokeMessage,
-        command: unknown,
-        onEvent: (event: IPCEvent) => void,
-        modelId?: string
+        onEnvelope: (event: AgentProjectionEnvelope) => void
       ) => () => void
     }
     threads: {
@@ -74,7 +75,17 @@ async function getRuntimeState(world: OpenworkWorld): Promise<ThreadRuntimeState
   }, threadId)
 }
 
-async function getStreamEvents(world: OpenworkWorld): Promise<IPCEvent[]> {
+async function getProjection(world: OpenworkWorld): Promise<AgentProjectionEnvelope["projection"]> {
+  const page = await getLauncherPage(world)
+  const threadId = getLatestThreadId(world)
+
+  return page.evaluate(async (inputThreadId) => {
+    const envelope = await (window as unknown as AgentBddWindow).api.agent.getProjection(inputThreadId)
+    return envelope.projection
+  }, threadId)
+}
+
+async function getStreamEvents(world: OpenworkWorld): Promise<AgentProjectionEnvelope[]> {
   const page = await getLauncherPage(world)
   const streamKey = getLatestStreamKey(world)
 
@@ -84,7 +95,16 @@ async function getStreamEvents(world: OpenworkWorld): Promise<IPCEvent[]> {
   }, streamKey)
 }
 
-async function waitForStreamEventType(world: OpenworkWorld, type: IPCEvent["type"]): Promise<void> {
+function getLatestStreamPendingApprovalId(events: AgentProjectionEnvelope[]): string | null {
+  return (
+    events
+      .map((event) => event.projection.pendingApproval?.id)
+      .filter((requestId): requestId is string => typeof requestId === "string")
+      .at(-1) ?? null
+  )
+}
+
+async function waitForStreamEventType(world: OpenworkWorld, type: string): Promise<void> {
   const page = await getLauncherPage(world)
   const streamKey = getLatestStreamKey(world)
 
@@ -92,7 +112,7 @@ async function waitForStreamEventType(world: OpenworkWorld, type: IPCEvent["type
     ({ inputStreamKey, expectedType }) => {
       const store = (window as unknown as AgentBddWindow).__openworkAgentBdd
       const events = store?.streams[inputStreamKey]?.events ?? []
-      return events.some((event) => event.type === expectedType)
+      return events.some((event) => event.event?.type === expectedType)
     },
     { expectedType: type, inputStreamKey: streamKey },
     { timeout: 10_000 }
@@ -102,7 +122,7 @@ async function waitForStreamEventType(world: OpenworkWorld, type: IPCEvent["type
 async function startStreamAgent(
   world: OpenworkWorld,
   input: {
-    command: unknown
+    command: { resume: HITLDecision } | null
     message: string
   }
 ): Promise<void> {
@@ -115,24 +135,29 @@ async function startStreamAgent(
       const targetWindow = window as unknown as AgentBddWindow
       targetWindow.__openworkAgentBdd ??= { streams: {} }
 
-      const events: IPCEvent[] = []
-      const cleanup = targetWindow.api.agent.streamAgent(
-        inputThreadId,
-        {
-          content: message,
-          id: `${inputStreamKey}:message`
-        },
-        command,
-        (event) => {
-          events.push(event)
-        },
-        "bdd-scripted-model"
-      )
+      const events: AgentProjectionEnvelope[] = []
+      const cleanup = targetWindow.api.agent.subscribeProjection(inputThreadId, (event) => {
+        events.push(event)
+      })
 
       targetWindow.__openworkAgentBdd.streams[inputStreamKey] = {
         cleanup,
         events
       }
+
+      if (command?.resume) {
+        targetWindow.api.agent.resume(inputThreadId, command.resume, "bdd-scripted-model")
+        return
+      }
+
+      targetWindow.api.agent.invoke(
+        inputThreadId,
+        {
+          content: message,
+          id: `${inputStreamKey}:message`
+        },
+        "bdd-scripted-model"
+      )
     },
     {
       command: input.command,
@@ -250,14 +275,31 @@ When("我通过 agent resume 拒绝最新待审批请求", async function (this:
 })
 
 Then("最新 agent stream 应收到 done", async function (this: OpenworkWorld) {
-  await waitForStreamEventType(this, "done")
+  await waitForStreamEventType(this, EventType.RUN_FINISHED)
 })
 
 Then("最新 agent stream 不应收到 done", async function (this: OpenworkWorld) {
   const page = await getLauncherPage(this)
 
   await page.waitForTimeout(250)
-  expect((await getStreamEvents(this)).some((event) => event.type === "done")).toBe(false)
+  expect(
+    (await getStreamEvents(this)).some((event) => event.event?.type === EventType.RUN_FINISHED)
+  ).toBe(false)
+})
+
+Then("最新 agent stream 应收到取消完成事件", async function (this: OpenworkWorld) {
+  await expect
+    .poll(async () =>
+      (await getStreamEvents(this)).some((envelope) => {
+        if (envelope.event?.type !== EventType.RUN_FINISHED) {
+          return false
+        }
+
+        const result = (envelope.event as { result?: { cancelled?: boolean } }).result
+        return result?.cancelled === true
+      })
+    )
+    .toBe(true)
 })
 
 Then(
@@ -277,39 +319,21 @@ Then("最新 agent stream 应进入长任务", async function (this: OpenworkWor
 
 Then("最新 agent stream 应收到 HITL 中断", async function (this: OpenworkWorld) {
   await expect
-    .poll(async () => JSON.stringify(await getStreamEvents(this)))
-    .toContain("__interrupt__")
+    .poll(async () =>
+      (await getStreamEvents(this)).some((event) => Boolean(event.projection.pendingApproval))
+    )
+    .toBe(true)
 })
 
 Then("最新 agent stream HITL 请求 id 应与 runtime state 一致", async function (this: OpenworkWorld) {
   await expect
     .poll(async () => {
       const [runtimeState, streamEvents] = await Promise.all([getRuntimeState(this), getStreamEvents(this)])
-      const streamRequestId = streamEvents
-        .filter((event): event is Extract<IPCEvent, { type: "stream" }> => event.type === "stream")
-        .flatMap((event) => {
-          if (event.mode !== "values" || !event.data || typeof event.data !== "object") {
-            return []
-          }
-
-          const interrupt = (event.data as {
-            __interrupt__?: Array<{
-              value?: {
-                actionRequests?: Array<{
-                  id?: string
-                }>
-              }
-            }>
-          }).__interrupt__
-
-          const requestId = interrupt?.[0]?.value?.actionRequests?.[0]?.id
-          return typeof requestId === "string" ? [requestId] : []
-        })
-        .at(-1)
+      const streamRequestId = getLatestStreamPendingApprovalId(streamEvents)
 
       return {
         runtimeRequestId: runtimeState.pendingApproval?.id ?? null,
-        streamRequestId: streamRequestId ?? null
+        streamRequestId
       }
     })
     .toEqual({
@@ -320,27 +344,7 @@ Then("最新 agent stream HITL 请求 id 应与 runtime state 一致", async fun
   await expect
     .poll(async () => {
       const [runtimeState, streamEvents] = await Promise.all([getRuntimeState(this), getStreamEvents(this)])
-      const streamRequestId = streamEvents
-        .filter((event): event is Extract<IPCEvent, { type: "stream" }> => event.type === "stream")
-        .flatMap((event) => {
-          if (event.mode !== "values" || !event.data || typeof event.data !== "object") {
-            return []
-          }
-
-          const interrupt = (event.data as {
-            __interrupt__?: Array<{
-              value?: {
-                actionRequests?: Array<{
-                  id?: string
-                }>
-              }
-            }>
-          }).__interrupt__
-
-          const requestId = interrupt?.[0]?.value?.actionRequests?.[0]?.id
-          return typeof requestId === "string" ? [requestId] : []
-        })
-        .at(-1)
+      const streamRequestId = getLatestStreamPendingApprovalId(streamEvents)
 
       return streamRequestId === (runtimeState.pendingApproval?.id ?? null)
     })
@@ -359,6 +363,28 @@ Then(
 Then("最新 agent runtime state 待审批请求应为空", async function (this: OpenworkWorld) {
   await expect.poll(async () => (await getRuntimeState(this)).pendingApproval).toBeNull()
 })
+
+Then("最新 agent projection 消息数应为 {int}", async function (this: OpenworkWorld, expectedCount: number) {
+  await expect.poll(async () => (await getProjection(this)).messages.length).toBe(expectedCount)
+})
+
+Then(
+  "最新 agent projection 应包含 {int} 条用户消息和 {int} 条助手消息",
+  async function (this: OpenworkWorld, expectedUserCount: number, expectedAssistantCount: number) {
+    await expect
+      .poll(async () => {
+        const messages = (await getProjection(this)).messages
+        return {
+          assistant: messages.filter((message) => message.role === "assistant").length,
+          user: messages.filter((message) => message.role === "user").length
+        }
+      })
+      .toEqual({
+        assistant: expectedAssistantCount,
+        user: expectedUserCount
+      })
+  }
+)
 
 Then(
   "最新 agent 线程状态应为 {string}",

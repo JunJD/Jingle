@@ -37,7 +37,6 @@ interface CheckpointChannelMessage {
 }
 
 interface InterruptActionRequest extends ActionRequest {
-  id: string
   toolCallId: string
   description?: string
   review?: unknown
@@ -156,6 +155,14 @@ function getInterruptActionReview(action: InterruptActionRequest | undefined) {
   return parseToolApprovalItem(action?.review)
 }
 
+export function buildHitlRequestId(
+  threadId: string,
+  requestContextId: string,
+  toolCallId: string
+): string {
+  return `hitl:${threadId}:${requestContextId}:${toolCallId}`
+}
+
 export function extractMessagesFromCheckpoint(
   threadId: string,
   tuple: CheckpointTuple | undefined
@@ -263,7 +270,7 @@ export function extractHitlRequestFromCheckpoint(
   const toolArgs = action.args || {}
   const toolCallId = getRequiredInterruptActionToolCallId(action)
   const requestContextId = options?.runId || tupleRunId || checkpointId
-  const requestId = `hitl:${threadId}:${requestContextId}:${toolCallId}`
+  const requestId = buildHitlRequestId(threadId, requestContextId, toolCallId)
   const allowedDecisions = normalizeHitlAllowedDecisions(
     interruptValue?.reviewConfigs?.find((config) => config.actionName === action.name)
       ?.allowedDecisions
@@ -297,7 +304,7 @@ export function extractHitlRequestFromValuesState(
 
   const toolArgs = action.args || {}
   const toolCallId = getRequiredInterruptActionToolCallId(action)
-  const requestId = `hitl:${threadId}:${runId}:${toolCallId}`
+  const requestId = buildHitlRequestId(threadId, runId, toolCallId)
   const allowedDecisions = normalizeHitlAllowedDecisions(
     interruptValue?.reviewConfigs?.find((config) => config.actionName === action.name)
       ?.allowedDecisions

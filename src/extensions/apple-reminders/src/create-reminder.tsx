@@ -7,13 +7,13 @@ import {
   Form,
   useCommandSeedQuery,
   useNativeExtensionNavigation
-} from "../../api"
+} from "../../runtime-api"
 import {
   createAppleReminder,
   getAppleRemindersData,
   showAppleReminder,
   useAppleRemindersCommandPreferences
-} from "./client"
+} from "./runtime-client"
 import type { AppleReminder, AppleReminderList } from "./contracts"
 
 interface CreateReminderCommandPreferences {
@@ -51,9 +51,7 @@ function dueOptionToDate(option: DueOption): string | null {
   return `${year}-${month}-${day}`
 }
 
-function CreateReminderSuccessDetail(props: {
-  reminder: AppleReminder
-}): React.JSX.Element {
+function CreateReminderSuccessDetail(props: { reminder: AppleReminder }): React.JSX.Element {
   const navigation = useNativeExtensionNavigation()
   const { reminder } = props
 
@@ -154,11 +152,7 @@ export function CreateReminderForm(props: CreateReminderFormProps): React.JSX.El
     return () => {
       cancelled = true
     }
-  }, [
-    commandPreferences.selectDefaultList,
-    initialListId,
-    reloadVersion
-  ])
+  }, [commandPreferences.selectDefaultList, initialListId, reloadVersion])
 
   if (isLoading && lists.length === 0) {
     return <Detail markdown="Loading reminder lists..." navigationTitle="Create Reminder" />
@@ -177,6 +171,20 @@ export function CreateReminderForm(props: CreateReminderFormProps): React.JSX.El
           </ActionPanel>
         }
         markdown={`# Apple Reminders Request Failed\n\n${loadError}`}
+        navigationTitle="Create Reminder"
+      />
+    )
+  }
+
+  if (submitError) {
+    return (
+      <Detail
+        actions={
+          <ActionPanel>
+            <Action onAction={() => setSubmitError(null)} title="Edit Reminder" />
+          </ActionPanel>
+        }
+        markdown={`# Apple Reminders Request Failed\n\n${submitError}`}
         navigationTitle="Create Reminder"
       />
     )
@@ -208,9 +216,7 @@ export function CreateReminderForm(props: CreateReminderFormProps): React.JSX.El
                 })
                 .catch((nextError) => {
                   setSubmitError(
-                    nextError instanceof Error
-                      ? nextError.message
-                      : "Failed to create reminder"
+                    nextError instanceof Error ? nextError.message : "Failed to create reminder"
                   )
                 })
                 .finally(() => {
@@ -223,12 +229,6 @@ export function CreateReminderForm(props: CreateReminderFormProps): React.JSX.El
       }
       navigationTitle="Create Reminder"
     >
-      {submitError ? (
-        <div className="rounded-[12px] border border-destructive/30 bg-destructive/8 px-3 py-3 text-sm text-destructive">
-          {submitError}
-        </div>
-      ) : null}
-
       <Form.Dropdown
         description="Choose which list should receive the reminder."
         onChange={setListId}

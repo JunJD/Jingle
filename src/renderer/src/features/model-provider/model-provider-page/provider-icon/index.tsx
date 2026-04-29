@@ -31,6 +31,14 @@ function GoogleIcon({ className }: { className?: string }): React.JSX.Element {
   )
 }
 
+function DeepSeekIcon({ className }: { className?: string }): React.JSX.Element {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M5.24 3.75h6.56c3.53 0 5.89 2.14 5.89 5.35 0 2.1-1.06 3.67-2.96 4.55l3.03 6.6h-3.44l-2.56-5.78H8.2v5.78H5.24V3.75zm6.26 8.11c2.03 0 3.19-.99 3.19-2.65 0-1.68-1.16-2.64-3.19-2.64H8.2v5.29h3.3z" />
+    </svg>
+  )
+}
+
 function ProviderGlyph({ provider }: { provider: ModelProvider }): React.JSX.Element {
   switch (provider.provider) {
     case "anthropic":
@@ -41,6 +49,8 @@ function ProviderGlyph({ provider }: { provider: ModelProvider }): React.JSX.Ele
       return <GoogleIcon className="h-4 w-4" />
     case "dashscope":
       return <Cloud className="h-4 w-4" />
+    case "deepseek":
+      return <DeepSeekIcon className="h-4 w-4" />
   }
 
   const exhaustiveProvider: never = provider.provider
@@ -51,13 +61,15 @@ export default function ProviderIcon(props: ProviderIconProps): React.JSX.Elemen
   const { className, provider } = props
 
   return (
-    <div className={cn("inline-flex items-center gap-2", className)}>
-      <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background-secondary/70 text-foreground">
+    <div className={cn("inline-flex items-center gap-[var(--ow-gap-sm)]", className)}>
+      <div className="flex h-[var(--ow-control-h-md)] w-8 items-center justify-center rounded-md border border-border bg-background-secondary/70 text-foreground">
         <ProviderGlyph provider={provider} />
       </div>
       <div className="min-w-0">
-        <div className="truncate text-[14px] font-semibold text-foreground">{provider.label}</div>
-        <div className="mt-0.5 hidden text-[11px] uppercase tracking-[0.12em] text-muted-foreground md:block">
+        <div className="truncate [font-size:var(--ow-font-title)] font-semibold text-foreground">
+          {provider.label}
+        </div>
+        <div className="mt-0.5 hidden [font-size:var(--ow-font-meta)] uppercase tracking-[0.12em] text-muted-foreground md:block">
           {provider.provider}
         </div>
       </div>

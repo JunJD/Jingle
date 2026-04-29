@@ -13,6 +13,18 @@
     而且 最新 agent stream 应包含文本 "scripted agent completed"
     而且 最新 agent 线程状态应为 "idle"
 
+  场景: 同一 thread 连续两轮 invoke 不会覆盖前一轮消息
+    假如 Openwork 桌面应用已使用脚本化 agent runtime 启动
+    当 我通过 agent API 创建可运行测试线程 "BDD Agent Multi Turn"
+    并且 我对最新 agent 线程发送脚本消息 "bdd:success:first"
+    那么 最新 agent stream 应收到 done
+    而且 最新 agent projection 消息数应为 2
+    当 我对最新 agent 线程发送脚本消息 "bdd:success:second"
+    那么 最新 agent stream 应收到 done
+    而且 最新 agent projection 消息数应为 4
+    而且 最新 agent projection 应包含 2 条用户消息和 2 条助手消息
+    而且 最新 agent 线程状态应为 "idle"
+
   场景: cancel 会中断长时间运行的 agent stream
     假如 Openwork 桌面应用已使用脚本化 agent runtime 启动
     当 我通过 agent API 创建可运行测试线程 "BDD Agent Cancel"
@@ -20,7 +32,7 @@
     那么 最新 agent stream 应进入长任务
     当 我取消最新 agent 线程
     那么 最新 agent 线程状态应为 "interrupted"
-    而且 最新 agent stream 不应收到 done
+    而且 最新 agent stream 应收到取消完成事件
 
   场景: HITL 暂停后可以通过 resume 批准并继续
     假如 Openwork 桌面应用已使用脚本化 agent runtime 启动

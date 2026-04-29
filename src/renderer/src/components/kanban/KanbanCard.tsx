@@ -23,9 +23,11 @@ function ThreadStatusIcon({ threadId }: { threadId: string }): React.JSX.Element
   const { isLoading } = useThreadStream(threadId)
 
   if (isLoading) {
-    return <Loader2 className="size-4 shrink-0 text-status-info animate-spin" />
+    return (
+      <Loader2 className="size-[var(--ow-icon-action)] shrink-0 text-status-info animate-spin" />
+    )
   }
-  return <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
+  return <MessageSquare className="size-[var(--ow-icon-action)] shrink-0 text-muted-foreground" />
 }
 
 export function ThreadKanbanCard({ thread, status, onClick }: ThreadCardProps): React.JSX.Element {
@@ -38,26 +40,26 @@ export function ThreadKanbanCard({ thread, status, onClick }: ThreadCardProps): 
       )}
       onClick={onClick}
     >
-      <CardContent className="p-3">
-        <div className="flex items-start gap-2">
+      <CardContent className="p-[var(--ow-space-3)]">
+        <div className="flex items-start gap-[var(--ow-gap-sm)]">
           {status === "interrupted" ? (
-            <MessageSquare className="size-4 shrink-0 text-amber-500" />
+            <MessageSquare className="size-[var(--ow-icon-action)] shrink-0 text-amber-500" />
           ) : (
             <ThreadStatusIcon threadId={thread.thread_id} />
           )}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium truncate">
+            <div className="flex items-center justify-between gap-[var(--ow-gap-sm)]">
+              <span className="truncate [font-size:var(--ow-font-body)] font-medium">
                 {thread.title || truncate(thread.thread_id, 20)}
               </span>
               {status === "done" && (
-                <Badge variant="nominal" className="shrink-0 text-[9px]">
+                <Badge variant="nominal" className="shrink-0 [font-size:var(--ow-font-micro)]">
                   DONE
                 </Badge>
               )}
             </div>
-            <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
-              <Clock className="size-3" />
+            <div className="mt-[var(--ow-space-1)] flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-caption)] text-muted-foreground">
+              <Clock className="size-[var(--ow-icon-compact)]" />
               {formatRelativeTime(thread.updated_at)}
             </div>
           </div>
@@ -82,30 +84,32 @@ export function SubagentKanbanCard({
       )}
       onClick={onClick}
     >
-      <CardContent className="p-3 overflow-hidden">
-        <div className="flex items-start gap-2 min-w-0">
+      <CardContent className="overflow-hidden p-[var(--ow-space-3)]">
+        <div className="flex min-w-0 items-start gap-[var(--ow-gap-sm)]">
           <Bot
             className={cn(
-              "size-4 shrink-0",
+              "size-[var(--ow-icon-action)] shrink-0",
               subagent.status === "running" ? "text-status-info" : "text-muted-foreground"
             )}
           />
           <div className="flex-1 min-w-0 overflow-hidden">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium truncate">{subagent.name}</span>
+            <div className="flex items-center justify-between gap-[var(--ow-gap-sm)]">
+              <span className="truncate [font-size:var(--ow-font-body)] font-medium">
+                {subagent.name}
+              </span>
               {isDone && (
                 <Badge
                   variant={subagent.status === "failed" ? "critical" : "nominal"}
-                  className="shrink-0 text-[9px]"
+                  className="shrink-0 [font-size:var(--ow-font-micro)]"
                 >
                   {subagent.status === "failed" ? "FAILED" : "DONE"}
                 </Badge>
               )}
             </div>
-            <p className="text-[10px] text-muted-foreground line-clamp-2 mt-0.5 break-words">
+            <p className="mt-[var(--ow-space-0-5)] line-clamp-2 break-words [font-size:var(--ow-font-caption)] text-muted-foreground">
               {subagent.description}
             </p>
-            <div className="flex items-center gap-1 mt-1 text-[10px] text-muted-foreground">
+            <div className="mt-[var(--ow-space-1)] flex items-center gap-[var(--ow-gap-xs)] [font-size:var(--ow-font-caption)] text-muted-foreground">
               <span className="truncate">
                 ↳ {parentThread.title || truncate(parentThread.thread_id, 15)}
               </span>

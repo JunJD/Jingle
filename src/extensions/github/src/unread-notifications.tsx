@@ -88,9 +88,14 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
 
   if (!resolvedPreferences.accessToken) {
     return (
-      <MenuBarExtra title="GitHub" tooltip="Configure GitHub to enable menu bar notifications">
+      <MenuBarExtra
+        iconName="github"
+        title="GitHub"
+        tooltip="Configure GitHub to enable menu bar notifications"
+      >
         <MenuBarExtra.Section title="GitHub">
           <MenuBarExtra.Item
+            iconName="gear"
             title="Configure GitHub"
             onAction={() => void openGitHubSettings("unread-notifications")}
           />
@@ -101,6 +106,7 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
 
   return (
     <MenuBarExtra
+      iconName="github"
       isLoading={isLoading}
       title={
         commandPreferences.showUnreadCount === false
@@ -116,6 +122,7 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
           items.map((notification) => (
             <MenuBarExtra.Item
               key={notification.id}
+              iconName="bell"
               subtitle={notification.repositoryFullName}
               title={notification.title}
               onAction={() => {
@@ -147,6 +154,7 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
 
       <MenuBarExtra.Section title="Actions">
         <MenuBarExtra.Item
+          iconName="bell"
           title="Open Notifications Command"
           onAction={() => {
             void window.api.launcher.show().then(() => {
@@ -159,6 +167,7 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
           }}
         />
         <MenuBarExtra.Item
+          iconName={items.length > 0 ? "check" : "bell"}
           title={items.length > 0 ? "Mark All as Read" : "Refresh"}
           onAction={() => {
             if (items.length > 0) {
@@ -174,6 +183,7 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
           }}
         />
         <MenuBarExtra.Item
+          iconName="gear"
           title="Open GitHub Settings"
           onAction={() => void openGitHubSettings("unread-notifications")}
         />

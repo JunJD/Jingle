@@ -2,7 +2,9 @@ import React from "react"
 import ReactDOM from "react-dom/client"
 import LauncherApp from "@launcher-shell/LauncherApp"
 import { LauncherClipboardProvider } from "@launcher-shell/LauncherClipboardContext"
+import { DEFAULT_APP_THEME_SETTINGS, type AppThemeSettings } from "@shared/app-theme"
 import { ThreadProvider } from "./lib/thread-context"
+import { applyAppThemeSettings } from "./lib/app-theme"
 import { I18nProvider } from "./lib/i18n"
 import MainWindowApp from "./main-window/MainWindowApp"
 import SettingsApp from "./settings/SettingsApp"
@@ -28,14 +30,28 @@ async function resolveInitialLocale(): Promise<AppLocale> {
   }
 }
 
+async function resolveInitialAppThemeSettings(): Promise<AppThemeSettings> {
+  try {
+    return await window.api.settings.getAppThemeSettings()
+  } catch {
+    return DEFAULT_APP_THEME_SETTINGS
+  }
+}
+
 async function bootstrap(): Promise<void> {
-  const initialLocale = await resolveInitialLocale()
+  const [initialLocale, initialAppThemeSettings] = await Promise.all([
+    resolveInitialLocale(),
+    resolveInitialAppThemeSettings()
+  ])
   const shortcutWindowKind =
     resolvedWindowKind === "launcher"
       ? "launcher"
       : resolvedWindowKind === "settings"
         ? "settings"
         : "main"
+
+  applyAppThemeSettings(initialAppThemeSettings)
+  window.api.settings.onAppThemeSettingsChanged(applyAppThemeSettings)
 
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>

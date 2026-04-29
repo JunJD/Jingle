@@ -58,8 +58,6 @@ export default function LauncherApp(): React.JSX.Element {
     routeKey,
     status: "idle"
   })
-  const searchPage = useLauncherSearchPage({ openCommand })
-  const { executeHomeCommand, handleInputCommandKeyDown } = searchPage
   const pluginInputStatus =
     pluginInputSurface.routeKey === routeKey ? pluginInputSurface.status : "idle"
   const setPluginInputStatus = useCallback(
@@ -110,6 +108,11 @@ export default function LauncherApp(): React.JSX.Element {
   const hideLauncher = useCallback(() => {
     return window.api.launcher.hide()
   }, [])
+  const openMainHistory = useCallback((): void => {
+    void window.api.mainWindow.openWindow().then(() => hideLauncher())
+  }, [hideLauncher])
+  const searchPage = useLauncherSearchPage({ openCommand, openMainHistory })
+  const { executeHomeCommand, handleInputCommandKeyDown } = searchPage
   const commandState = useActiveLauncherCommand({
     closeActivePlugin,
     fallbackViewportHeight: searchPage.viewportHeight,
@@ -126,6 +129,10 @@ export default function LauncherApp(): React.JSX.Element {
     }
 
     void hideLauncher()
+  })
+  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.searchOpenMainHistory, (event) => {
+    event.preventDefault()
+    openMainHistory()
   })
   const { shownSequence } = useLauncherShellEffects({
     focusActiveInput,
@@ -281,6 +288,7 @@ export default function LauncherApp(): React.JSX.Element {
                 selectedIndex={searchPage.selectedIndex}
                 shellConfig={searchPage.shellConfig}
                 surface={searchPage.surface}
+                useWithManager={searchPage.useWithManager}
               />
             )}
           </LauncherPageTransition>

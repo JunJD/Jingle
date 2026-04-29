@@ -1,5 +1,5 @@
 import { resolve } from "path"
-import { readFileSync, copyFileSync, existsSync, mkdirSync } from "fs"
+import { readFileSync, copyFileSync, cpSync, existsSync, mkdirSync } from "fs"
 import { defineConfig } from "electron-vite"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
@@ -12,7 +12,9 @@ function copyResources(): { name: string; closeBundle: () => void } {
     name: "copy-resources",
     closeBundle(): void {
       const srcIcon = resolve("resources/icon.png")
+      const srcAssets = resolve("resources/assets")
       const destDir = resolve("out/resources")
+      const destAssets = resolve("out/resources/assets")
       const destIcon = resolve("out/resources/icon.png")
       const nativeSource = resolve("src/native/openwork-minimal-island.swift")
       const nativeDestDir = resolve("out/native")
@@ -23,6 +25,13 @@ function copyResources(): { name: string; closeBundle: () => void } {
           mkdirSync(destDir, { recursive: true })
         }
         copyFileSync(srcIcon, destIcon)
+      }
+
+      if (existsSync(srcAssets)) {
+        if (!existsSync(destDir)) {
+          mkdirSync(destDir, { recursive: true })
+        }
+        cpSync(srcAssets, destAssets, { recursive: true })
       }
 
       if (existsSync(nativeSource)) {
@@ -51,7 +60,10 @@ export default defineConfig({
     // Bundle all dependencies into the main process
     build: {
       lib: {
-        entry: "src/main/index.ts",
+        entry: {
+          "extension-runtime-entry": resolve("src/extension-runtime/entry.ts"),
+          index: resolve("src/main/index.ts")
+        },
         formats: ["cjs"]
       },
       rollupOptions: {

@@ -66,14 +66,14 @@ export function SubagentPanel(): React.JSX.Element {
   const completedCount = subagents.filter((s) => s.status === "completed").length
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-border">
+    <div className="flex h-full flex-col">
+      <div className="border-b border-border p-[var(--ow-space-4)]">
         <div className="flex items-center justify-between">
           <span className="text-section-header">SUBAGENTS</span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-[var(--ow-gap-sm)]">
             {runningCount > 0 && (
               <Badge variant="info">
-                <Loader2 className="size-3 mr-1 animate-spin" />
+                <Loader2 className="mr-[var(--ow-space-1)] size-[var(--ow-icon-compact)] animate-spin" />
                 {runningCount} ACTIVE
               </Badge>
             )}
@@ -82,13 +82,15 @@ export function SubagentPanel(): React.JSX.Element {
         </div>
       </div>
 
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="p-4 space-y-3">
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="space-y-[var(--ow-space-3)] p-[var(--ow-space-4)]">
           {subagents.length === 0 ? (
-            <div className="text-center text-sm text-muted-foreground py-8">
-              <Bot className="size-8 mx-auto mb-2 opacity-50" />
+            <div className="py-[var(--ow-space-8)] text-center [font-size:var(--ow-font-body)] text-muted-foreground">
+              <Bot className="mx-auto mb-[var(--ow-space-2)] size-[var(--ow-icon-xl)] opacity-50" />
               No subagent tasks
-              <div className="text-xs mt-1">Subagents will appear here when spawned</div>
+              <div className="mt-[var(--ow-space-1)] [font-size:var(--ow-font-meta)]">
+                Subagents will appear here when spawned
+              </div>
             </div>
           ) : (
             subagents.map((subagent) => <SubagentCard key={subagent.id} subagent={subagent} />)
@@ -98,10 +100,10 @@ export function SubagentPanel(): React.JSX.Element {
 
       {/* Summary footer when there are completed subagents */}
       {completedCount > 0 && (
-        <div className="p-3 border-t border-border bg-muted/30">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <CheckCircle2 className="size-3 text-status-nominal" />
+        <div className="border-t border-border bg-muted/30 p-[var(--ow-space-3)]">
+          <div className="flex items-center justify-between [font-size:var(--ow-font-meta)] text-muted-foreground">
+            <span className="flex items-center gap-[var(--ow-gap-xs)]">
+              <CheckCircle2 className="size-[var(--ow-icon-compact)] text-status-nominal" />
               {completedCount} completed
             </span>
           </div>
@@ -147,13 +149,13 @@ function SubagentCard({ subagent }: { subagent: Subagent }): React.JSX.Element {
 
   return (
     <Card className={cn(subagent.status === "running" && "border-status-info/50")}>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2 text-sm font-medium truncate">
+      <CardHeader className="pb-[var(--ow-space-2)]">
+        <div className="flex items-center justify-between gap-[var(--ow-gap-sm)]">
+          <CardTitle className="flex items-center gap-[var(--ow-gap-sm)] truncate [font-size:var(--ow-font-body)] font-medium">
             <SubagentTypeIcon
               subagentType={subagent.subagentType}
               className={cn(
-                "size-4 shrink-0",
+                "size-[var(--ow-icon-action)] shrink-0",
                 subagent.status === "running" ? "text-status-info" : "text-muted-foreground"
               )}
             />
@@ -161,32 +163,40 @@ function SubagentCard({ subagent }: { subagent: Subagent }): React.JSX.Element {
           </CardTitle>
           <Badge variant={config.badge} className="shrink-0">
             <StatusIcon
-              className={cn("size-3 mr-1", subagent.status === "running" && "animate-spin")}
+              className={cn(
+                "mr-[var(--ow-space-1)] size-[var(--ow-icon-compact)]",
+                subagent.status === "running" && "animate-spin"
+              )}
             />
             {config.label}
           </Badge>
         </div>
         {subagent.subagentType && (
-          <Badge variant="outline" className="w-fit text-[10px] mt-1">
+          <Badge
+            variant="outline"
+            className="mt-[var(--ow-space-1)] w-fit [font-size:var(--ow-font-caption)]"
+          >
             {getSubagentTypeBadge(subagent.subagentType)}
           </Badge>
         )}
       </CardHeader>
       <CardContent className="pt-0">
-        <p className="text-sm text-muted-foreground line-clamp-2">{subagent.description}</p>
-        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+        <p className="line-clamp-2 [font-size:var(--ow-font-body)] text-muted-foreground">
+          {subagent.description}
+        </p>
+        <div className="mt-[var(--ow-space-2)] flex items-center gap-[var(--ow-gap-md)] [font-size:var(--ow-font-meta)] text-muted-foreground">
           {subagent.startedAt && (
-            <span className="flex items-center gap-1">
-              <Clock className="size-3" />
+            <span className="flex items-center gap-[var(--ow-gap-xs)]">
+              <Clock className="size-[var(--ow-icon-compact)]" />
               {new Date(subagent.startedAt).toLocaleTimeString()}
             </span>
           )}
           {duration && (
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-[var(--ow-gap-xs)]">
               {subagent.status === "running" ? (
-                <Loader2 className="size-3 animate-spin" />
+                <Loader2 className="size-[var(--ow-icon-compact)] animate-spin" />
               ) : (
-                <CheckCircle2 className="size-3" />
+                <CheckCircle2 className="size-[var(--ow-icon-compact)]" />
               )}
               {duration}
             </span>

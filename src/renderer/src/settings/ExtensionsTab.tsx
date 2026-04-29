@@ -9,28 +9,57 @@ import type {
 import type { SettingsWindowTarget } from "@shared/settings-window"
 import { getSettingsCopy } from "./copy"
 
+function formatCommandMode(mode: string): string {
+  if (mode === "no-view") {
+    return "No View"
+  }
+
+  if (mode === "menu-bar") {
+    return "Menu Bar"
+  }
+
+  return mode.charAt(0).toUpperCase() + mode.slice(1)
+}
+
 function PreferenceField(props: {
+  disabledLabel: string
+  enabledLabel: string
   modelOptions: Array<{ id: string; label: string }>
   onChange: (nextValue: unknown) => void
   preference: NativeExtensionPreferenceSchema
   useEnvironmentFallbackLabel: string
   value: unknown
 }): React.JSX.Element {
-  const { modelOptions, onChange, preference, useEnvironmentFallbackLabel, value } = props
+  const {
+    disabledLabel,
+    enabledLabel,
+    modelOptions,
+    onChange,
+    preference,
+    useEnvironmentFallbackLabel,
+    value
+  } = props
   const inputClassName =
-    "w-full rounded-md border border-border bg-background-elevated px-3 py-2 text-[13px] text-foreground outline-none transition focus:border-[var(--ring)]"
+    "h-[var(--ow-control-h-md)] w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus:border-[var(--ring)]"
 
   return (
-    <label className="block space-y-2">
-      <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+    <div className="block space-y-[var(--ow-space-1-5)]">
+      <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-meta)] font-medium text-foreground">
         <span>{preference.title || preference.label || preference.name}</span>
-        {preference.required ? <span className="text-[11px] text-muted-foreground">*</span> : null}
+        {preference.required ? (
+          <span className="[font-size:var(--ow-font-meta)] text-muted-foreground">*</span>
+        ) : null}
       </div>
       {preference.description ? (
-        <div className="text-[12px] leading-5 text-muted-foreground">{preference.description}</div>
+        <div className="[font-size:var(--ow-font-meta)] leading-4 text-muted-foreground">
+          {preference.description}
+        </div>
       ) : null}
       {preference.type === "checkbox" ? (
-        <label className="inline-flex items-center gap-2 text-[13px] text-foreground">
+        <label className="flex h-[var(--ow-control-h-md)] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] [font-size:var(--ow-font-control)] text-foreground">
+          <span className="text-muted-foreground">
+            {value === true ? enabledLabel : disabledLabel}
+          </span>
           <input
             type="checkbox"
             checked={value === true}
@@ -38,7 +67,6 @@ function PreferenceField(props: {
               onChange(event.target.checked)
             }}
           />
-          <span>{preference.title || preference.name}</span>
         </label>
       ) : preference.type === "dropdown" ? (
         <select
@@ -81,21 +109,25 @@ function PreferenceField(props: {
           spellCheck={false}
         />
       )}
-    </label>
+    </div>
   )
 }
 
 function PreferenceSection(props: {
+  disabledLabel: string
   emptyLabel: string
+  enabledLabel: string
   modelOptions: Array<{ id: string; label: string }>
   onChange: (preferenceName: string, nextValue: unknown) => void
   preferences: NativeExtensionPreferenceSchema[]
-  title: string
+  title?: string
   useEnvironmentFallbackLabel: string
   values: Record<string, unknown>
 }): React.JSX.Element {
   const {
+    disabledLabel,
     emptyLabel,
+    enabledLabel,
     modelOptions,
     onChange,
     preferences,
@@ -105,17 +137,23 @@ function PreferenceSection(props: {
   } = props
 
   return (
-    <div className="space-y-3 rounded-xl border border-border/80 bg-background-elevated/70 p-4">
-      <div className="text-[13px] font-semibold text-foreground">{title}</div>
+    <div className="space-y-[var(--ow-space-3)]">
+      {title ? (
+        <div className="[font-size:var(--ow-font-label)] font-semibold text-foreground">
+          {title}
+        </div>
+      ) : null}
       {preferences.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-background px-3 py-3 text-[12px] text-muted-foreground">
+        <div className="rounded-lg border border-dashed border-border bg-background px-[var(--ow-space-3)] py-[var(--ow-space-3)] [font-size:var(--ow-font-body)] text-muted-foreground">
           {emptyLabel}
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-[var(--ow-space-4)]">
           {preferences.map((preference) => (
             <PreferenceField
-              key={`${title}:${preference.name}`}
+              key={preference.name}
+              disabledLabel={disabledLabel}
+              enabledLabel={enabledLabel}
               modelOptions={modelOptions}
               onChange={(nextValue) => {
                 onChange(preference.name, nextValue)
@@ -134,7 +172,9 @@ function PreferenceSection(props: {
 function CommandCard(props: {
   commandName: string
   commandNameFocus?: string
+  disabledLabel: string
   emptyLabel: string
+  enabledLabel: string
   labelMode: string
   modelOptions: Array<{ id: string; label: string }>
   onChange: (preferenceName: string, nextValue: unknown) => void
@@ -149,7 +189,9 @@ function CommandCard(props: {
     commandName,
     commandNameFocus,
     description,
+    disabledLabel,
     emptyLabel,
+    enabledLabel,
     labelMode,
     modelOptions,
     mode,
@@ -164,29 +206,32 @@ function CommandCard(props: {
 
   return (
     <div
-      className={`rounded-xl border bg-background-elevated/65 p-4 ${
+      className={`rounded-[var(--ow-settings-card-radius)] border bg-background-elevated/65 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] ${
         isFocused ? "border-[var(--ring)]" : "border-border/80"
       }`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <TerminalSquare className="h-4 w-4 text-muted-foreground" />
-            <span className="text-[13px] font-semibold text-foreground">{title}</span>
+      <div className="flex flex-wrap items-start justify-between gap-[var(--ow-gap-md)]">
+        <div className="space-y-[var(--ow-space-1)]">
+          <div className="flex items-center gap-[var(--ow-gap-sm)]">
+            <TerminalSquare className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
+            <span className="[font-size:var(--ow-font-label)] font-semibold text-foreground">
+              {title}
+            </span>
           </div>
-          <div className="text-[12px] text-muted-foreground">{description}</div>
+          <div className="[font-size:var(--ow-font-body)] text-muted-foreground">{description}</div>
         </div>
-        <div className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-          {labelMode}: {mode}
+        <div className="rounded-full border border-border bg-background px-[var(--ow-space-2-5)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] uppercase tracking-[0.08em] text-muted-foreground">
+          {labelMode}: {formatCommandMode(mode)}
         </div>
       </div>
-      <div className="mt-4">
+      <div className="mt-[var(--ow-space-3)]">
         <PreferenceSection
+          disabledLabel={disabledLabel}
           emptyLabel={emptyLabel}
+          enabledLabel={enabledLabel}
           modelOptions={modelOptions}
           onChange={onChange}
           preferences={preferences}
-          title={title}
           useEnvironmentFallbackLabel={useEnvironmentFallbackLabel}
           values={values}
         />
@@ -375,19 +420,21 @@ export function ExtensionsTab(props: {
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[320px_minmax(0,1fr)] gap-5">
-      <aside className="flex min-h-0 flex-col gap-4 overflow-hidden rounded-2xl border border-border/80 bg-background-secondary/55 p-4 shadow-[0_18px_44px_rgba(32,38,45,0.06)]">
-        <div className="space-y-1">
-          <div className="text-[18px] font-semibold text-foreground">{copy.extensions.title}</div>
-          <div className="text-[13px] text-muted-foreground">
+    <div className="grid h-full min-h-0 grid-cols-[var(--ow-settings-sidebar-w)_minmax(0,1fr)] gap-[var(--ow-gap-lg)]">
+      <aside className="flex min-h-0 flex-col gap-[var(--ow-gap-md)] overflow-hidden rounded-[var(--ow-settings-card-radius)] border border-border/80 bg-background-secondary/55 p-[var(--ow-settings-card-y)] shadow-[var(--ow-settings-card-shadow)]">
+        <div className="space-y-[var(--ow-space-1)]">
+          <div className="[font-size:var(--ow-settings-title-size)] font-semibold text-foreground">
+            {copy.extensions.title}
+          </div>
+          <div className="[font-size:var(--ow-settings-description-size)] leading-[var(--ow-line-body)] text-muted-foreground">
             {copy.extensions.rootsDescription}
           </div>
         </div>
 
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-[var(--ow-space-3)] top-1/2 h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] -translate-y-1/2 text-muted-foreground" />
           <input
-            className="w-full rounded-md border border-border bg-background-elevated py-2 pl-9 pr-3 text-[13px] text-foreground outline-none transition focus:border-[var(--ring)]"
+            className="min-h-[var(--ow-settings-control-h)] w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated py-[var(--ow-space-1)] pl-[var(--ow-control-icon-inset)] pr-[var(--ow-space-3)] [font-size:var(--ow-settings-control-font)] text-foreground outline-none transition focus:border-[var(--ring)]"
             placeholder={copy.extensions.installedTitle}
             value={search}
             onChange={(event) => {
@@ -396,9 +443,9 @@ export function ExtensionsTab(props: {
           />
         </div>
 
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+        <div className="min-h-0 flex-1 space-y-[var(--ow-space-2)] overflow-y-auto pr-[var(--ow-space-1)]">
           {filteredSchemas.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border bg-background px-4 py-4 text-[12px] text-muted-foreground">
+            <div className="rounded-[var(--ow-settings-card-radius)] border border-dashed border-border bg-background px-[var(--ow-space-3)] py-[var(--ow-space-3)] [font-size:var(--ow-font-body)] text-muted-foreground">
               {copy.extensions.empty}
             </div>
           ) : (
@@ -410,25 +457,25 @@ export function ExtensionsTab(props: {
                   key={schema.extName}
                   type="button"
                   onClick={() => setSelectedExtName(schema.extName)}
-                  className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                  className={`w-full rounded-[var(--ow-settings-card-radius)] border px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left transition ${
                     isSelected
                       ? "border-[var(--ring)] bg-background"
                       : "border-border/70 bg-background-elevated/60 hover:bg-background"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Puzzle className="h-4 w-4 text-muted-foreground" />
-                        <span className="truncate text-[13px] font-semibold text-foreground">
+                  <div className="flex items-start justify-between gap-[var(--ow-gap-md)]">
+                    <div className="min-w-0 space-y-[var(--ow-space-1)]">
+                      <div className="flex items-center gap-[var(--ow-gap-sm)]">
+                        <Puzzle className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
+                        <span className="truncate [font-size:var(--ow-font-label)] font-semibold text-foreground">
                           {schema.title}
                         </span>
                       </div>
-                      <div className="line-clamp-2 text-[12px] leading-5 text-muted-foreground">
+                      <div className="line-clamp-2 [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
                         {schema.description || schema.extName}
                       </div>
                     </div>
-                    <div className="shrink-0 rounded-full border border-border bg-background px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                    <div className="shrink-0 rounded-full border border-border bg-background px-[var(--ow-space-2)] py-0.5 [font-size:var(--ow-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
                       {schema.commands.length}
                     </div>
                   </div>
@@ -439,35 +486,44 @@ export function ExtensionsTab(props: {
         </div>
       </aside>
 
-      <section className="min-h-0 overflow-y-auto pr-1">
+      <section className="min-h-0 overflow-y-auto pr-[var(--ow-space-1)]">
         {selectedSchema ? (
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-border/80 bg-background-secondary/55 p-5 shadow-[0_18px_44px_rgba(32,38,45,0.06)]">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <Settings2 className="h-4 w-4 text-muted-foreground" />
-                  <h2 className="text-[18px] font-semibold text-foreground">
+          <div className="space-y-[var(--ow-space-4)]">
+            <div className="rounded-[var(--ow-settings-card-radius)] border border-border/80 bg-background-secondary/55 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] shadow-[var(--ow-settings-card-shadow)]">
+              <div className="space-y-[var(--ow-space-1)]">
+                <div className="flex items-center gap-[var(--ow-gap-sm)]">
+                  <Settings2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
+                  <h2 className="[font-size:var(--ow-settings-title-size)] font-semibold text-foreground">
                     {selectedSchema.title}
                   </h2>
                 </div>
-                <div className="text-[13px] leading-6 text-muted-foreground">
+                <div className="[font-size:var(--ow-settings-description-size)] leading-[var(--ow-line-body)] text-muted-foreground">
                   {selectedSchema.description || selectedSchema.extName}
                 </div>
               </div>
             </div>
 
-            <div className="space-y-3">
-              <PreferenceSection
-                emptyLabel={copy.extensions.noPreferences}
-                modelOptions={modelOptions}
-                onChange={(preferenceName, nextValue) => {
-                  void updateExtensionPreference(selectedSchema.extName, preferenceName, nextValue)
-                }}
-                preferences={selectedSchema.preferences}
-                title={selectedSchema.title}
-                useEnvironmentFallbackLabel={copy.general.useEnvironmentFallback}
-                values={extensionRecords[selectedSchema.extName] ?? {}}
-              />
+            <div className="space-y-[var(--ow-space-3)]">
+              {selectedSchema.preferences.length > 0 ? (
+                <div className="rounded-[var(--ow-settings-card-radius)] border border-border/80 bg-background-secondary/55 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] shadow-[var(--ow-settings-card-shadow)]">
+                  <PreferenceSection
+                    disabledLabel={copy.extensions.disabled}
+                    emptyLabel={copy.extensions.noPreferences}
+                    enabledLabel={copy.extensions.enabled}
+                    modelOptions={modelOptions}
+                    onChange={(preferenceName, nextValue) => {
+                      void updateExtensionPreference(
+                        selectedSchema.extName,
+                        preferenceName,
+                        nextValue
+                      )
+                    }}
+                    preferences={selectedSchema.preferences}
+                    useEnvironmentFallbackLabel={copy.general.useEnvironmentFallback}
+                    values={extensionRecords[selectedSchema.extName] ?? {}}
+                  />
+                </div>
+              ) : null}
 
               {selectedSchema.commands.map((command) => (
                 <CommandCard
@@ -475,7 +531,9 @@ export function ExtensionsTab(props: {
                   key={`${selectedSchema.extName}:${command.name}`}
                   commandNameFocus={focusedCommandName}
                   description={command.description || command.name}
+                  disabledLabel={copy.extensions.disabled}
                   emptyLabel={copy.extensions.noPreferences}
+                  enabledLabel={copy.extensions.enabled}
                   labelMode={copy.extensions.mode}
                   mode={command.mode}
                   modelOptions={modelOptions}
@@ -496,7 +554,7 @@ export function ExtensionsTab(props: {
             </div>
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-border bg-background-elevated/60 text-[13px] text-muted-foreground">
+          <div className="flex h-full items-center justify-center rounded-[var(--ow-settings-card-radius)] border border-dashed border-border bg-background-elevated/60 [font-size:var(--ow-font-label)] text-muted-foreground">
             {copy.extensions.empty}
           </div>
         )}

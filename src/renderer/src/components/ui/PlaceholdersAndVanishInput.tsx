@@ -132,7 +132,7 @@ export const PlaceholdersAndVanishInput = forwardRef<
               exit={{ y: -12, opacity: 0 }}
               transition={{ duration: 0.22, ease: "easeOut" }}
               className={cn(
-                "w-full truncate px-1.5 text-left text-[18px] font-medium leading-8 text-muted-foreground/55",
+                "w-full truncate px-[var(--ow-space-1-5)] text-left [font-size:var(--ow-font-title)] font-medium leading-[var(--ow-line-control-md)] text-muted-foreground/55",
                 placeholderClassName
               )}
             >

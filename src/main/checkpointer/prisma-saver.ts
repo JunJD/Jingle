@@ -17,6 +17,26 @@ import {
 } from "../agent/runtime-state"
 import { decodeSerializedPayload, encodeSerializedPayload } from "./storage-codec"
 
+function readStringField(value: unknown, key: string): string | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const field = (value as Record<string, unknown>)[key]
+  return typeof field === "string" && field.length > 0 ? field : null
+}
+
+function getRunIdForStorage(
+  config: RunnableConfig,
+  metadata?: CheckpointMetadata
+): string | null {
+  return (
+    readStringField(config.configurable, "run_id") ??
+    readStringField(config.metadata, "run_id") ??
+    readStringField(metadata, "run_id")
+  )
+}
+
 export class PrismaCheckpointSaver extends BaseCheckpointSaver {
   constructor(serde?: SerializerProtocol) {
     super(serde)
@@ -29,6 +49,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const prisma = getPrismaClient()
     const { thread_id, checkpoint_ns = "", checkpoint_id, run_id } = config.configurable ?? {}
+    const isRunScopedRead = typeof run_id === "string"
 
     if (!thread_id) {
       return undefined
@@ -48,7 +69,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
           where: {
             threadId: thread_id,
             checkpointNs: checkpoint_ns,
-            runId: typeof run_id === "string" ? run_id : undefined
+            runId: isRunScopedRead ? run_id : undefined
           },
           orderBy: {
             checkpointId: "desc"
@@ -78,7 +99,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
           thread_id: row.threadId,
           checkpoint_ns: row.checkpointNs,
           checkpoint_id: row.checkpointId,
-          ...(row.runId ? { run_id: row.runId } : {})
+          ...(isRunScopedRead && row.runId ? { run_id: row.runId } : {})
         }
       },
       metadata: (await this.serde.loadsTyped(
@@ -107,6 +128,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
     const thread_id = config.configurable?.thread_id
     const checkpoint_ns = config.configurable?.checkpoint_ns ?? ""
     const run_id = config.configurable?.run_id
+    const isRunScopedRead = typeof run_id === "string"
 
     if (!thread_id) {
       return
@@ -116,7 +138,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       where: {
         threadId: thread_id,
         checkpointNs: checkpoint_ns,
-        runId: typeof run_id === "string" ? run_id : undefined,
+        runId: isRunScopedRead ? run_id : undefined,
         checkpointId: before?.configurable?.checkpoint_id
           ? {
               lt: before.configurable.checkpoint_id
@@ -152,7 +174,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
             thread_id: row.threadId,
             checkpoint_ns: row.checkpointNs,
             checkpoint_id: row.checkpointId,
-            ...(row.runId ? { run_id: row.runId } : {})
+            ...(isRunScopedRead && row.runId ? { run_id: row.runId } : {})
           }
         },
         checkpoint,
@@ -186,7 +208,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
     }
 
     const threadId = config.configurable.thread_id
-    const runId = typeof config.configurable.run_id === "string" ? config.configurable.run_id : null
+    const runId = getRunIdForStorage(config, metadata)
     const checkpointNs = config.configurable.checkpoint_ns ?? ""
     const parentCheckpointId = config.configurable.checkpoint_id
     const preparedCheckpoint = copyCheckpoint(checkpoint)

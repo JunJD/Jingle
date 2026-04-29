@@ -2,31 +2,33 @@ import { defineNativeExtensionManifest } from "@shared/native-extensions"
 
 export const todoListManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "surface"],
+  iconName: "todo",
   commands: [
     {
-      description: "Create and organize todo items.",
+      description: "Capture and organize lightweight tasks.",
+      iconName: "todo",
       keywords: ["todo", "todos", "task", "tasks", "待办", "待办事项"],
       mode: "view",
       name: "index",
       preferences: [
         {
           data: [
-            { title: "Creation Date (newest first)", value: "creation_date_descending" },
-            { title: "Creation Date (oldest first)", value: "creation_date_ascending" },
-            { title: "Title (A-Z)", value: "title_ascending" },
-            { title: "Title (Z-A)", value: "title_descending" }
+            { title: "Newest first", value: "creation_date_descending" },
+            { title: "Oldest first", value: "creation_date_ascending" },
+            { title: "Title A-Z", value: "title_ascending" },
+            { title: "Title Z-A", value: "title_descending" }
           ],
           default: "creation_date_descending",
-          description: "Choose how todo items are ordered inside each section.",
+          description: "Order todos inside each group.",
           name: "sortOrder",
-          title: "Task Sorting",
+          title: "Sort order",
           type: "dropdown"
         },
         {
           default: true,
-          description: "Whether completed tasks stay visible in the list.",
+          description: "Keep completed todos visible in the list.",
           name: "showCompleted",
-          title: "Show Completed Tasks",
+          title: "Show completed",
           type: "checkbox"
         }
       ],

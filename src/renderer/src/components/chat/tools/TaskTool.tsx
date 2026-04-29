@@ -22,9 +22,15 @@ defineToolComponent({
 
     return (
       <ToolDetailStack>
-        {name ? <div className="text-[13px] leading-5 text-foreground/80">{name}</div> : null}
+        {name ? (
+          <div className="[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)] text-foreground/80">
+            {name}
+          </div>
+        ) : null}
         {description ? (
-          <div className="break-all text-[12px] leading-5 text-muted-foreground">{description}</div>
+          <div className="break-all [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
+            {description}
+          </div>
         ) : null}
         {output ? <ToolCodeBlock>{output}</ToolCodeBlock> : null}
       </ToolDetailStack>

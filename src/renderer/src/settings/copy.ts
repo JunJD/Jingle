@@ -3,6 +3,7 @@ import type { AppLocale } from "@shared/i18n"
 interface SettingsCopy {
   title: string
   tabs: {
+    appearance: string
     extensions: string
     general: string
     provider: string
@@ -42,6 +43,41 @@ interface SettingsCopy {
     saved: string
     workspaceHint: string
   }
+  appearance: {
+    accentColor: string
+    behaviorDescription: string
+    behaviorTitle: string
+    codeFont: string
+    codeTheme: string
+    colorsDescription: string
+    colorsTitle: string
+    contrast: string
+    copied: string
+    copyTheme: string
+    customTheme: string
+    darkVariant: string
+    description: string
+    diffAddedColor: string
+    diffRemovedColor: string
+    fontsDescription: string
+    fontsTitle: string
+    importDescription: string
+    importFailed: string
+    importTheme: string
+    importTitle: string
+    imported: string
+    inkColor: string
+    lightVariant: string
+    skillColor: string
+    surfaceColor: string
+    themeDescription: string
+    themeTitle: string
+    title: string
+    tokenFormat: string
+    translucentWindows: string
+    uiFont: string
+    variant: string
+  }
   provider: {
     title: string
     description: string
@@ -75,6 +111,8 @@ interface SettingsCopy {
     toBeConfigured: string
   }
   extensions: {
+    disabled: string
+    enabled: string
     title: string
     rootsDescription: string
     installedTitle: string
@@ -107,6 +145,7 @@ interface SettingsCopy {
 const zhCN: SettingsCopy = {
   title: "设置",
   tabs: {
+    appearance: "外观",
     extensions: "Extensions",
     general: "通用",
     provider: "模型",
@@ -141,11 +180,46 @@ const zhCN: SettingsCopy = {
     memorySourcesTitle: "Memory Sources",
     memorySourcesDescription: "每行一个文件或目录，会并入 agent 默认记忆源。",
     nativeExtensionsTitle: "Native Extensions",
-    nativeExtensionsDescription: "这些设置直接来自 first-party extension package 的 schema。",
+    nativeExtensionsDescription: "管理 Openwork 内置 extension 的偏好设置。",
     noNativeExtensions: "当前没有带设置项的 native extension。",
     useEnvironmentFallback: "跟随环境变量 / 默认值",
     saved: "已保存",
     workspaceHint: "线程级 workspace 仍然可以覆盖这里的默认值。"
+  },
+  appearance: {
+    accentColor: "强调色",
+    behaviorDescription: "控制窗口透明度、主题风格、主题明暗和整体对比度。",
+    behaviorTitle: "主题行为",
+    codeFont: "代码字体",
+    codeTheme: "主题风格 ID",
+    colorsDescription: "这些颜色会映射到 Openwork 的 semantic token。",
+    colorsTitle: "颜色",
+    contrast: "对比度",
+    copied: "已复制主题",
+    copyTheme: "复制主题",
+    customTheme: "自定义",
+    darkVariant: "深色",
+    description: "配置 Codex theme v1 格式，实时应用到窗口、Launcher 和设置页。",
+    diffAddedColor: "Diff 新增",
+    diffRemovedColor: "Diff 删除",
+    fontsDescription: "留空时使用 Openwork 默认 UI 字体和代码字体。",
+    fontsTitle: "字体",
+    importDescription: "粘贴 codex-theme-v1 token 后导入当前主题。",
+    importFailed: "主题格式不正确",
+    importTheme: "导入主题",
+    importTitle: "导入",
+    imported: "已导入主题",
+    inkColor: "前景色",
+    lightVariant: "浅色",
+    skillColor: "Skill 语义色",
+    surfaceColor: "背景",
+    themeDescription: "选择一个基础主题，再按需微调颜色、字体和对比度。",
+    themeTitle: "主题",
+    title: "外观",
+    tokenFormat: "codex-theme-v1",
+    translucentWindows: "半透明窗口",
+    uiFont: "UI 字体",
+    variant: "模式"
   },
   provider: {
     title: "Model Provider",
@@ -180,8 +254,10 @@ const zhCN: SettingsCopy = {
     toBeConfigured: "待配置"
   },
   extensions: {
+    disabled: "关闭",
+    enabled: "开启",
     title: "Extensions",
-    rootsDescription: "这里直接展示 Openwork 一方 native extensions 的 schema 和命令设置。",
+    rootsDescription: "管理 Openwork 内置 extension 的偏好和命令设置。",
     installedTitle: "搜索 Extensions",
     empty: "还没有扫描到 extension。",
     mode: "模式",
@@ -189,7 +265,7 @@ const zhCN: SettingsCopy = {
   },
   shortcuts: {
     title: "快捷键",
-    description: "当前只开放应用级快捷键。页面内部导航快捷键仍保持固定产品语义。",
+    description: "配置 Launcher 唤起、主页入口等少数稳定快捷键。",
     edit: "编辑快捷键",
     useDefault: "恢复默认",
     cancel: "取消",
@@ -212,6 +288,7 @@ const zhCN: SettingsCopy = {
 const enUS: SettingsCopy = {
   title: "Settings",
   tabs: {
+    appearance: "Appearance",
     extensions: "Extensions",
     general: "General",
     provider: "Models",
@@ -247,12 +324,46 @@ const enUS: SettingsCopy = {
     memorySourcesDescription:
       "One file or directory per line. Merged into the default agent memory sources.",
     nativeExtensionsTitle: "Native Extensions",
-    nativeExtensionsDescription:
-      "These settings are generated directly from first-party extension package schemas.",
+    nativeExtensionsDescription: "Manage preferences for built-in Openwork extensions.",
     noNativeExtensions: "No native extensions expose preferences yet.",
     useEnvironmentFallback: "Use env var / fallback default",
     saved: "Saved",
     workspaceHint: "Thread-level workspace can still override this global default."
+  },
+  appearance: {
+    accentColor: "Accent",
+    behaviorDescription: "Controls opacity, theme style, light mode, dark mode, and contrast.",
+    behaviorTitle: "Theme Behavior",
+    codeFont: "Code Font",
+    codeTheme: "Theme Style ID",
+    colorsDescription: "These colors map into Openwork semantic tokens.",
+    colorsTitle: "Colors",
+    contrast: "Contrast",
+    copied: "Theme copied",
+    copyTheme: "Copy Theme",
+    customTheme: "Custom",
+    darkVariant: "Dark",
+    description: "Configure Codex theme v1 and apply it to windows, Launcher, and Settings.",
+    diffAddedColor: "Diff Added",
+    diffRemovedColor: "Diff Removed",
+    fontsDescription: "Leave blank to use the Openwork default UI and code fonts.",
+    fontsTitle: "Fonts",
+    importDescription: "Paste a codex-theme-v1 token to import it as the current theme.",
+    importFailed: "Theme token is invalid",
+    importTheme: "Import Theme",
+    importTitle: "Import",
+    imported: "Theme imported",
+    inkColor: "Ink",
+    lightVariant: "Light",
+    skillColor: "Skill Semantic",
+    surfaceColor: "Surface",
+    themeDescription: "Start from a preset, then adjust colors, fonts, and contrast.",
+    themeTitle: "Theme",
+    title: "Appearance",
+    tokenFormat: "codex-theme-v1",
+    translucentWindows: "Translucent Windows",
+    uiFont: "UI Font",
+    variant: "Variant"
   },
   provider: {
     title: "Model Providers",
@@ -292,8 +403,10 @@ const enUS: SettingsCopy = {
     toBeConfigured: "To Be Configured"
   },
   extensions: {
+    disabled: "Off",
+    enabled: "On",
     title: "Extensions",
-    rootsDescription: "These settings are generated from native Openwork extension schemas.",
+    rootsDescription: "Manage preferences and commands for built-in Openwork extensions.",
     installedTitle: "Search Extensions",
     empty: "No extensions were discovered yet.",
     mode: "Mode",
@@ -301,8 +414,7 @@ const enUS: SettingsCopy = {
   },
   shortcuts: {
     title: "Shortcuts",
-    description:
-      "Only app-level shortcuts are configurable right now. Surface navigation shortcuts remain fixed product semantics.",
+    description: "Configure stable shortcuts such as launcher toggle and home actions.",
     edit: "Edit Shortcut",
     useDefault: "Use Default",
     cancel: "Cancel",

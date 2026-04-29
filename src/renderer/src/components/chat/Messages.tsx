@@ -14,8 +14,10 @@ import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import {
   buildTurnAssistantEntries,
+  countToolCalls,
   getTurnCopyText,
   projectMessages,
+  shouldDefaultExpandToolEntries,
   type MessageTurn,
   type ToolResultInfo
 } from "./message-projection"
@@ -45,6 +47,7 @@ import {
 } from "./message"
 
 interface MessagesProps {
+  approvalPlacement?: "inline" | "composer"
   density?: "default" | "compact"
   messages: ThreadMessage[]
   isLoading?: boolean
@@ -101,7 +104,7 @@ function toAttachmentData(
           ? { url: block.content }
           : {})
       },
-      fallbackIcon: <FileText className="size-7 text-muted-foreground" />
+      fallbackIcon: <FileText className="size-[var(--ow-icon-display)] text-muted-foreground" />
     }
   }
 
@@ -125,7 +128,10 @@ function MessageAttachments(props: {
   return (
     <Attachments
       variant="grid"
-      className={cn("w-fit max-w-full gap-3", isUser ? "ml-auto justify-end" : "justify-start")}
+      className={cn(
+        "w-fit max-w-full gap-[var(--ow-gap-md)]",
+        isUser ? "ml-auto justify-end" : "justify-start"
+      )}
     >
       {attachments.map(({ data, fallbackIcon }) => (
         <AttachmentHoverCard key={data.id}>
@@ -133,8 +139,8 @@ function MessageAttachments(props: {
             <Attachment
               data={data}
               className={cn(
-                "size-24 overflow-hidden rounded-[18px] border-0 bg-background-secondary shadow-[0_8px_24px_rgba(0,0,0,0.14)]",
-                "sm:size-28"
+                "size-[var(--ow-chat-attachment-image-size)] overflow-hidden rounded-[var(--ow-chat-attachment-image-radius)] border-0 bg-background-secondary shadow-[0_8px_24px_rgba(0,0,0,0.14)]",
+                "sm:size-[var(--ow-chat-attachment-image-size-wide)]"
               )}
             >
               <AttachmentPreview
@@ -176,7 +182,9 @@ function renderTextBlock(
         key={key}
         className={cn(
           "whitespace-pre-wrap [overflow-wrap:anywhere]",
-          density === "compact" ? "text-[14px] leading-6" : "text-[15px] leading-7"
+          density === "compact"
+            ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
+            : "[font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)]"
         )}
       >
         {text}
@@ -189,7 +197,9 @@ function renderTextBlock(
       key={key}
       className={cn(
         "min-w-0",
-        density === "compact" ? "text-[14px] leading-6" : "text-[15px] leading-7"
+        density === "compact"
+          ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
+          : "[font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)]"
       )}
       isAnimating={isStreaming}
     >
@@ -261,17 +271,25 @@ function renderStructuredContent(
 }
 
 function ToolActivityGroup(props: {
+  approvalPlacement?: "inline" | "composer"
+  defaultOpen?: boolean
   density?: "default" | "compact"
   preferLatestToolSummary?: boolean
   onApprovalDecision?: (decision: HITLDecision) => void
+  onOpenChange?: (open: boolean) => void
+  open?: boolean
   pendingApproval?: HITLRequest | null
   toolCalls: ToolCall[]
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
   const { copy } = useI18n()
   const {
+    defaultOpen = false,
+    approvalPlacement = "inline",
     density = "default",
     onApprovalDecision,
+    onOpenChange,
+    open,
     pendingApproval,
     preferLatestToolSummary,
     toolCalls,
@@ -313,8 +331,7 @@ function ToolActivityGroup(props: {
   const hasActiveActions = actionItems.some(
     (item) => item.needsApproval || item.result === undefined
   )
-  const hasSingleAction = actionViews.length === 1
-  const isOpen = openOverride ?? hasActiveActions
+  const isOpen = open ?? openOverride ?? defaultOpen
   const latestActiveAction = [...actionViews]
     .reverse()
     .find((item) => item.needsApproval || item.result === undefined)
@@ -338,15 +355,28 @@ function ToolActivityGroup(props: {
     ) : null
 
   return (
-    <ChainOfThought active={hasActiveActions} onOpenChange={setOpenOverride} open={isOpen}>
+    <ChainOfThought
+      active={hasActiveActions}
+      onOpenChange={onOpenChange ?? setOpenOverride}
+      open={isOpen}
+    >
       <ChainOfThoughtHeader
-        className={density === "compact" ? "text-[12px] leading-5" : "text-[13px] leading-5"}
+        className={
+          density === "compact"
+            ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
+            : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)]"
+        }
+        {...(headerAction ? { "data-tool-call-toggle": headerAction.toolCall.name } : {})}
         icon={ListTodo}
         meta={headerStatusMeta}
       >
         {headerTitle}
       </ChainOfThoughtHeader>
-      <ChainOfThoughtContent className={density === "compact" ? "space-y-2" : "space-y-2.5"}>
+      <ChainOfThoughtContent
+        className={
+          density === "compact" ? "space-y-[var(--ow-space-2)]" : "space-y-[var(--ow-space-2-5)]"
+        }
+      >
         {actionViews.map((item, index) => (
           <ChainOfThoughtItem
             icon={item.view.icon}
@@ -356,11 +386,10 @@ function ToolActivityGroup(props: {
             <ActionMessage
               approvalRequest={item.needsApproval ? pendingApproval : null}
               density={density}
-              expanded={hasSingleAction ? true : undefined}
               onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
               presentation="grouped"
+              renderApprovalDetail={approvalPlacement === "inline"}
               result={item.result?.content}
-              showSummary={hasSingleAction ? false : undefined}
               toolCall={item.toolCall}
             />
           </ChainOfThoughtItem>
@@ -371,6 +400,8 @@ function ToolActivityGroup(props: {
 }
 
 function AssistantToolCluster(props: {
+  approvalPlacement?: "inline" | "composer"
+  defaultExpanded?: boolean
   density?: "default" | "compact"
   preferLatestToolSummary?: boolean
   messages: ThreadMessage[]
@@ -379,6 +410,8 @@ function AssistantToolCluster(props: {
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
   const {
+    defaultExpanded = false,
+    approvalPlacement = "inline",
     density = "default",
     messages,
     onApprovalDecision,
@@ -387,17 +420,57 @@ function AssistantToolCluster(props: {
     toolResults
   } = props
   const toolCalls = messages.flatMap((message) => message.tool_calls ?? [])
+  const toolCallCount = countToolCalls(messages)
+  const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null)
+  const isExpanded = expandedOverride ?? defaultExpanded
 
   if (toolCalls.length === 0) {
     return null
   }
 
+  if (toolCallCount === 1) {
+    const toolCall = toolCalls[0]
+
+    if (!toolCall) {
+      return null
+    }
+
+    const needsApproval = pendingApproval?.tool_call?.id === toolCall.id
+
+    return (
+      <Message className="max-w-full" from="assistant">
+        <MessageContent
+          className={
+            density === "compact"
+              ? "w-full gap-[var(--ow-space-2-5)]"
+              : "w-full gap-[var(--ow-gap-md)]"
+          }
+        >
+          <ActionMessage
+            approvalRequest={needsApproval ? pendingApproval : null}
+            density={density}
+            expanded={isExpanded}
+            onApprovalDecision={needsApproval ? onApprovalDecision : undefined}
+            onExpandedChange={setExpandedOverride}
+            result={toolResults.get(toolCall.id)?.content}
+            renderApprovalDetail={approvalPlacement === "inline"}
+            toolCall={toolCall}
+          />
+        </MessageContent>
+      </Message>
+    )
+  }
+
   return (
     <Message className="max-w-full" from="assistant">
-      <MessageContent className="w-full gap-3">
+      <MessageContent className="w-full gap-[var(--ow-gap-md)]">
         <ToolActivityGroup
+          defaultOpen={defaultExpanded}
           density={density}
+          approvalPlacement={approvalPlacement}
           onApprovalDecision={onApprovalDecision}
+          onOpenChange={setExpandedOverride}
+          open={isExpanded}
           pendingApproval={pendingApproval}
           preferLatestToolSummary={preferLatestToolSummary}
           toolCalls={toolCalls}
@@ -427,10 +500,14 @@ function AssistantBlock(props: {
 
   return (
     <Message className="max-w-full" from="assistant">
-      <MessageContent className="w-full gap-3">
+      <MessageContent className="w-full gap-[var(--ow-gap-md)]">
         {content.attachments}
         {content.textContent ? (
-          <div className={density === "compact" ? "space-y-3" : "space-y-4"}>
+          <div
+            className={
+              density === "compact" ? "space-y-[var(--ow-space-3)]" : "space-y-[var(--ow-space-4)]"
+            }
+          >
             {content.textContent}
           </div>
         ) : null}
@@ -454,13 +531,18 @@ function UserMessage(props: {
     <Message from="user">
       {content.attachments}
       {content.textContent ? (
-        <MessageContent className="gap-3">{content.textContent}</MessageContent>
+        <MessageContent
+          className={density === "compact" ? "gap-[var(--ow-space-2-5)]" : "gap-[var(--ow-gap-md)]"}
+        >
+          {content.textContent}
+        </MessageContent>
       ) : null}
     </Message>
   )
 }
 
 function MessageTurnView(props: {
+  approvalPlacement?: "inline" | "composer"
   density?: "default" | "compact"
   isActiveTurn: boolean
   isLoading?: boolean
@@ -474,6 +556,7 @@ function MessageTurnView(props: {
   const { copy } = useI18n()
   const {
     density = "default",
+    approvalPlacement = "inline",
     isActiveTurn,
     isLoading,
     lastAssistantId,
@@ -487,9 +570,18 @@ function MessageTurnView(props: {
   const hasAssistantMessages = turn.assistants.length > 0
   const shouldHideToolbar = Boolean(isLoading) && isActiveTurn
   const assistantEntries = useMemo(() => buildTurnAssistantEntries(turn), [turn])
+  const isStreamingTurn = Boolean(isLoading) && isActiveTurn
+  const defaultExpandToolEntries = useMemo(
+    () => shouldDefaultExpandToolEntries(turn, { isStreaming: isStreamingTurn }),
+    [isStreamingTurn, turn]
+  )
 
   return (
-    <div className={density === "compact" ? "space-y-2.5" : "space-y-3"}>
+    <div
+      className={
+        density === "compact" ? "space-y-[var(--ow-space-2-5)]" : "space-y-[var(--ow-space-3)]"
+      }
+    >
       {turn.user ? <UserMessage density={density} message={turn.user} /> : null}
       {assistantEntries.map((entry) => {
         if (entry.kind === "assistant-content") {
@@ -506,9 +598,11 @@ function MessageTurnView(props: {
 
         return (
           <AssistantToolCluster
+            defaultExpanded={defaultExpandToolEntries}
             density={density}
             key={entry.key}
             messages={entry.messages}
+            approvalPlacement={approvalPlacement}
             onApprovalDecision={onApprovalDecision}
             pendingApproval={pendingApproval}
             preferLatestToolSummary={isActiveTurn && Boolean(isLoading)}
@@ -526,7 +620,7 @@ function MessageTurnView(props: {
                 onClick={() => void onRetry()}
                 tooltip={copy.chat.retryMessage}
               >
-                <RefreshCcwIcon className="size-4" />
+                <RefreshCcwIcon className="size-[var(--ow-icon-action)]" />
               </MessageAction>
             ) : null}
             {copyText ? (
@@ -535,7 +629,7 @@ function MessageTurnView(props: {
                 onClick={() => void navigator.clipboard.writeText(copyText)}
                 tooltip={copy.chat.copyMessage}
               >
-                <CopyIcon className="size-4" />
+                <CopyIcon className="size-[var(--ow-icon-action)]" />
               </MessageAction>
             ) : null}
           </MessageActions>
@@ -547,6 +641,7 @@ function MessageTurnView(props: {
 
 export function Messages(props: MessagesProps): React.JSX.Element {
   const {
+    approvalPlacement = "inline",
     density = "default",
     isLoading,
     messages,
@@ -564,6 +659,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
       {turns.map((turn) => (
         <MessageTurnView
           density={density}
+          approvalPlacement={approvalPlacement}
           isActiveTurn={turn.key === activeTurnKey}
           isLoading={isLoading}
           key={turn.key}

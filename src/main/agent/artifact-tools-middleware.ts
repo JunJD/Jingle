@@ -1,5 +1,6 @@
 import { createMiddleware, tool, type ToolRuntime } from "langchain"
 import { getToolCallArtifactKey } from "@shared/artifacts"
+import { getRunIdFromToolRuntime } from "./run-config"
 import { parsePresentArtifactToolInput } from "../artifacts/present-artifact-tool-parser"
 import { presentArtifactToolInputSchema } from "../artifacts/present-artifact-tool-schema"
 import { presentArtifacts } from "../artifacts/service"
@@ -20,8 +21,7 @@ export function createArtifactToolsMiddleware(props: { threadId: string; workspa
     async (input, runtime: ToolRuntime) => {
       const parsedArtifacts = await parsePresentArtifactToolInput(input, props.workspacePath)
       const toolCallId = runtime.toolCallId
-      const runId =
-        typeof runtime.configurable?.run_id === "string" ? runtime.configurable.run_id : null
+      const runId = getRunIdFromToolRuntime(runtime)
 
       const result = await presentArtifacts({
         artifacts: parsedArtifacts.map((artifact, index) => ({

@@ -11,14 +11,16 @@ import {
   registerExternalLinksModule
 } from "./external-links/module"
 import {
+  registerExtensionRuntimeIpcHandlers,
+  registerExtensionRuntimeModule,
+  resolveExtensionRuntimeManager
+} from "./services/extension-runtime"
+import {
   registerLauncherHistoryIpcHandlers,
   registerLauncherHistoryModule
 } from "./launcher-history/module"
 import { registerLauncherIpcHandlers, registerLauncherModule } from "./launcher/module"
-import {
-  registerLocalStartIpcHandlers,
-  registerLocalStartModule
-} from "./local-start/module"
+import { registerLocalStartIpcHandlers, registerLocalStartModule } from "./local-start/module"
 import {
   registerMainWindowRoutingIpcHandlers,
   registerMainWindowRoutingModule
@@ -49,11 +51,9 @@ import {
 import { registerShortcutsIpcHandlers, registerShortcutsModule } from "./shortcuts/module"
 import { registerThreadsIpcHandlers, registerThreadsModule } from "./threads/module"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
-import {
-  registerWorkspaceIpcHandlers,
-  registerWorkspaceModule
-} from "./workspace/module"
+import { registerWorkspaceIpcHandlers, registerWorkspaceModule } from "./workspace/module"
 import type { MainWindowNavigationPayload } from "@shared/main-window"
+import type { NativeMenuBarState } from "@shared/native-menu-bar"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
 export interface MainCompositionContext {
@@ -65,11 +65,48 @@ export interface MainCompositionContext {
   isDev: boolean
   openMainWindow: (payload?: MainWindowNavigationPayload) => void
   openSettingsWindow: (payload?: SettingsWindowNavigationPayload) => void
+  quitApplication: () => void
   showLauncherWindow: () => void
   toggleLauncherWindow: () => void
 }
 
 const MAIN_COMPOSITION_CONTEXT_TOKEN = Symbol("MainCompositionContext")
+const OPENWORK_ACTION_BAR_COMMAND_KEY = "openwork:action-bar"
+
+const openworkActionBarState: NativeMenuBarState = {
+  commandKey: OPENWORK_ACTION_BAR_COMMAND_KEY,
+  iconName: "openwork",
+  sections: [
+    {
+      items: [
+        {
+          iconName: "openwork",
+          id: "open-launcher",
+          title: "Open Launcher"
+        },
+        {
+          iconName: "openwork",
+          id: "open-history",
+          title: "Open History"
+        },
+        {
+          iconName: "gear",
+          id: "open-settings",
+          title: "Settings"
+        }
+      ]
+    },
+    {
+      items: [
+        {
+          id: "quit",
+          title: "Quit Openwork"
+        }
+      ]
+    }
+  ],
+  tooltip: "Openwork"
+}
 
 export class MainCompositionRoot {
   constructor(
@@ -95,6 +132,7 @@ export class MainCompositionRoot {
     registerNativeMenuBarIpcHandlers(this.dependencyContainer, ipcMain)
     registerMainWindowRoutingIpcHandlers(this.dependencyContainer, ipcMain)
     registerSettingsWindowRoutingIpcHandlers(this.dependencyContainer, ipcMain)
+    registerExtensionRuntimeIpcHandlers(this.dependencyContainer, ipcMain)
     registerShortcutsIpcHandlers(this.dependencyContainer, {
       applySettings: () => this.applyShortcutSettings(),
       ipcMain
@@ -102,14 +140,22 @@ export class MainCompositionRoot {
   }
 
   startServices(): void {
-    resolveNativeMenuBarService(this.dependencyContainer).initialize({
+    const nativeMenuBarService = resolveNativeMenuBarService(this.dependencyContainer)
+    nativeMenuBarService.initialize({
       getLauncherWindow: this.context.getLauncherWindow
+    })
+    nativeMenuBarService.setState(openworkActionBarState, {
+      "open-history": () => this.context.openMainWindow(),
+      "open-launcher": this.context.showLauncherWindow,
+      "open-settings": () => this.context.openSettingsWindow(),
+      quit: this.context.quitApplication
     })
     this.applyShortcutSettings()
     void warmLauncherSearchProviders()
   }
 
   dispose(): void {
+    resolveExtensionRuntimeManager(this.dependencyContainer).dispose()
     resolveNativeMenuBarService(this.dependencyContainer).dispose()
     unregisterGlobalShortcutService()
   }
@@ -162,6 +208,7 @@ export function createMainCompositionRoot(
     consumePendingNavigation: context.consumePendingSettingsNavigation,
     openSettingsWindow: context.openSettingsWindow
   })
+  registerExtensionRuntimeModule(childContainer)
   registerShortcutsModule(childContainer)
   registerThreadsModule(childContainer)
   registerWorkspaceModule(childContainer)

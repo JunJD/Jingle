@@ -1,6 +1,6 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { mkdirSync } from "node:fs"
+import { closeSync, existsSync, mkdirSync, openSync } from "node:fs"
 import { runLocalCommand } from "./lib/run-local-command.mjs"
 
 function getOpenworkDir() {
@@ -21,7 +21,11 @@ async function main() {
 
   const openworkDir = getOpenworkDir()
   mkdirSync(openworkDir, { recursive: true })
-  const databaseUrl = toSqliteDatabaseUrl(join(openworkDir, "openwork.sqlite"))
+  const databasePath = join(openworkDir, "openwork.sqlite")
+  if (args[0] === "migrate" && !existsSync(databasePath)) {
+    closeSync(openSync(databasePath, "w"))
+  }
+  const databaseUrl = toSqliteDatabaseUrl(databasePath)
 
   const env = {
     ...process.env,

@@ -23,6 +23,7 @@ import type {
 } from "./types"
 
 const DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+const DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 
 export type ChatModelInstance = ChatAnthropic | ChatOpenAI | ChatGoogleGenerativeAI
@@ -84,6 +85,22 @@ const PROVIDER_ADAPTERS = {
       fetchOpenAICompatibleModels("dashscope", `${DASHSCOPE_BASE_URL}/models`, apiKey),
     isSupportedModel: isDashScopeChatModel,
     providerId: "dashscope"
+  }),
+  deepseek: createApiKeyProviderAdapter({
+    createChatModel: (runtimeConfig, options) => {
+      return new ChatOpenAI({
+        apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
+        model: runtimeConfig.modelName,
+        temperature: options.temperature,
+        configuration: {
+          baseURL: DEEPSEEK_BASE_URL
+        }
+      })
+    },
+    fetchModels: (apiKey) =>
+      fetchOpenAICompatibleModels("deepseek", `${DEEPSEEK_BASE_URL}/models`, apiKey),
+    isSupportedModel: isDeepSeekChatModel,
+    providerId: "deepseek"
   }),
   google: createApiKeyProviderAdapter({
     createChatModel: (runtimeConfig, options) => {
@@ -269,6 +286,15 @@ function isDashScopeChatModel(modelId: string): boolean {
   return (
     isChatCandidate(normalizedModelId) &&
     supportedPrefixes.some((prefix) => normalizedModelId.startsWith(prefix))
+  )
+}
+
+function isDeepSeekChatModel(modelId: string): boolean {
+  const normalizedModelId = modelId.toLowerCase()
+
+  return (
+    isChatCandidate(normalizedModelId) &&
+    (normalizedModelId.startsWith("deepseek-") || normalizedModelId.startsWith("deepseek_v"))
   )
 }
 

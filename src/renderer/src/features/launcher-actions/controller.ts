@@ -2,6 +2,7 @@ import { useCallback, useState } from "react"
 import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { useShortcutCommandHandler } from "@/shortcuts/shortcut-context"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
+import { resolveActionPanelShortcutOpenState } from "./controller-core"
 import type { LauncherActionController, LauncherActionDescriptor } from "./model"
 
 function isRichTextInputTarget(target: EventTarget | null): boolean {
@@ -42,16 +43,21 @@ export function useLauncherActionController(params: {
   const closeActions = useCallback((): void => {
     setShowActions(false)
   }, [])
+  const toggleActionsForShortcut = useCallback((): void => {
+    setShowActions((currentOpen) =>
+      resolveActionPanelShortcutOpenState(currentOpen, canOpenActions)
+    )
+  }, [canOpenActions])
   const handleOpenActionsShortcut = useCallback(
     (event: KeyboardEvent): void => {
-      if (!canOpenActions) {
+      if (!canOpenActions && !showActions) {
         return
       }
 
       event.preventDefault()
-      openActions()
+      toggleActionsForShortcut()
     },
-    [canOpenActions, openActions]
+    [canOpenActions, showActions, toggleActionsForShortcut]
   )
   const handleExecutePrimaryShortcut = useCallback(
     (event: KeyboardEvent): void => {

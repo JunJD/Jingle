@@ -395,6 +395,15 @@ Then("Settings 展示 launcher.toggle 快捷键", async function (this: Openwork
   await expect(page.locator('[data-command-id="launcher.toggle"]')).toBeVisible()
 })
 
+Then(
+  "Settings 展示 launcher.search.open-settings 快捷键",
+  async function (this: OpenworkWorld) {
+    const page = await this.getPageByKind("settings")
+
+    await expect(page.locator('[data-command-id="launcher.search.open-settings"]')).toBeVisible()
+  }
+)
+
 Then("Settings 将 launcher.toggle 标记为可配置", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("settings")
 
@@ -403,6 +412,18 @@ Then("Settings 将 launcher.toggle 标记为可配置", async function (this: Op
     "true"
   )
 })
+
+Then(
+  "Settings 将 launcher.search.open-settings 标记为可配置",
+  async function (this: OpenworkWorld) {
+    const page = await this.getPageByKind("settings")
+
+    await expect(page.locator('[data-command-id="launcher.search.open-settings"]')).toHaveAttribute(
+      "data-shortcut-configurable",
+      "true"
+    )
+  }
+)
 
 Then("Settings 将 launcher.toggle 显示为自定义快捷键", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("settings")

@@ -28,7 +28,7 @@ export interface Run {
   metadata?: Record<string, unknown>
 }
 
-export type ProviderId = "anthropic" | "openai" | "google" | "dashscope"
+export type ProviderId = "anthropic" | "openai" | "google" | "dashscope" | "deepseek"
 
 export type ModelType = "llm" | "text-embedding" | "rerank" | "speech2text" | "moderation" | "tts"
 

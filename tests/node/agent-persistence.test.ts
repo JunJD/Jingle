@@ -137,7 +137,9 @@ test("syncRunFromLatestCheckpoint reads the latest checkpoint for that run only"
   await saver.put(
     {
       configurable: {
-        thread_id: threadId,
+        thread_id: threadId
+      },
+      metadata: {
         run_id: interruptedRunId
       }
     },
@@ -151,7 +153,9 @@ test("syncRunFromLatestCheckpoint reads the latest checkpoint for that run only"
   await saver.put(
     {
       configurable: {
-        thread_id: threadId,
+        thread_id: threadId
+      },
+      metadata: {
         run_id: successRunId
       }
     },
@@ -170,4 +174,84 @@ test("syncRunFromLatestCheckpoint reads the latest checkpoint for that run only"
   assert.equal(status, "interrupted")
   assert.equal(interruptedRun?.status, "interrupted")
   assert.equal(successRun?.status, "running")
+})
+
+test("thread-scoped checkpoint reads keep run ids out of conversation resume config", async () => {
+  const { createRun, createThread } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-1"
+  const firstRunId = "run-first"
+  const secondRunId = "run-second"
+
+  await createThread(threadId)
+  await createRun(firstRunId, threadId, { status: "success" })
+  await createRun(secondRunId, threadId, { status: "success" })
+
+  const firstCheckpoint = emptyCheckpoint()
+  firstCheckpoint.id = "checkpoint-0001"
+  firstCheckpoint.channel_values = {
+    messages: [{ type: "human", content: "first question" }]
+  }
+
+  const secondCheckpoint = emptyCheckpoint()
+  secondCheckpoint.id = "checkpoint-0002"
+  secondCheckpoint.channel_values = {
+    messages: [
+      { type: "human", content: "first question" },
+      { type: "ai", content: "first answer" },
+      { type: "human", content: "second question" }
+    ]
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: firstRunId
+      }
+    },
+    firstCheckpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: secondRunId
+      }
+    },
+    secondCheckpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 1
+    }
+  )
+
+  const latestForThread = await saver.getTuple({
+    configurable: {
+      thread_id: threadId
+    }
+  })
+  const firstRunScoped = await saver.getTuple({
+    configurable: {
+      thread_id: threadId,
+      run_id: firstRunId
+    }
+  })
+
+  assert.equal(latestForThread?.checkpoint.id, secondCheckpoint.id)
+  assert.equal(latestForThread?.config.configurable?.run_id, undefined)
+  assert.equal(firstRunScoped?.checkpoint.id, firstCheckpoint.id)
+  assert.equal(firstRunScoped?.config.configurable?.run_id, firstRunId)
 })

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Openwork</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --splash-bg: #f3f4f1;
+        --splash-fg: #2f3437;
+        --splash-muted: #9ca3a3;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --splash-bg: #171a1b;
+          --splash-fg: #ecefed;
+          --splash-muted: #6f7775;
+        }
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        overflow: hidden;
+        color: var(--splash-fg);
+        background:
+          radial-gradient(circle at 72% 28%, rgba(186, 210, 165, 0.42), transparent 28%),
+          radial-gradient(circle at 18% 34%, rgba(190, 218, 224, 0.36), transparent 32%),
+          var(--splash-bg);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+
+      .drag-region {
+        position: fixed;
+        top: 0;
+        right: 0;
+        left: 0;
+        height: 56px;
+        -webkit-app-region: drag;
+      }
+
+      .surface {
+        display: grid;
+        width: 100%;
+        height: 100%;
+        place-items: center;
+      }
+
+      .content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        user-select: none;
+      }
+
+      .title {
+        margin: 0;
+        font-size: 30px;
+        font-weight: 620;
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      .pulse {
+        width: 44px;
+        height: 2px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--splash-muted) 32%, transparent);
+      }
+
+      .pulse::before {
+        display: block;
+        width: 18px;
+        height: 100%;
+        border-radius: inherit;
+        background: currentColor;
+        content: "";
+        animation: glide 1.2s ease-in-out infinite;
+      }
+
+      @keyframes glide {
+        0% {
+          transform: translateX(-20px);
+          opacity: 0;
+        }
+
+        35%,
+        65% {
+          opacity: 0.52;
+        }
+
+        100% {
+          transform: translateX(48px);
+          opacity: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="drag-region"></div>
+    <main class="surface" aria-label="Loading">
+      <div class="content" role="status">
+        <h1 class="title">Hello You</h1>
+        <div class="pulse" aria-hidden="true"></div>
+      </div>
+    </main>
+  </body>
+</html>

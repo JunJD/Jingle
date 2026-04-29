@@ -21,6 +21,7 @@ export interface NativeExtensionPreferenceSchema {
 
 export interface NativeExtensionCommandManifest<TCommandName extends string = string> {
   description?: string
+  iconName?: string
   keywords?: string[]
   mode: NativeExtensionCommandMode
   name: TCommandName
@@ -36,6 +37,7 @@ export interface NativeExtensionPackageManifest<
   commands: Array<NativeExtensionCommandManifest<TCommandName>>
   defaultCommandName?: TCommandName
   description?: string
+  iconName?: string
   name: TExtensionName
   preferences?: NativeExtensionPreferenceSchema[]
   rpcMethods?: string[]
@@ -143,11 +145,20 @@ export function defineNativeExtensionManifest(manifest: unknown): NativeExtensio
 
 export function validateNativeExtensionRendererDefinition(
   manifest: NativeExtensionPackageManifest,
-  renderer: NativeExtensionRendererDefinition
+  renderer: NativeExtensionRendererDefinition,
+  options: {
+    runtimeBackedCommandNames?: readonly string[]
+  } = {}
 ): void {
   validateNativeExtensionPackageManifest(manifest)
 
   const manifestCommandNames = new Set(manifest.commands.map((command) => command.name))
+  const runtimeBackedCommandNames = new Set(options.runtimeBackedCommandNames ?? [])
+  const rendererRequiredCommandNames = new Set(
+    manifest.commands
+      .map((command) => command.name)
+      .filter((commandName) => !runtimeBackedCommandNames.has(commandName))
+  )
   const commandModuleNames = new Set<string>()
 
   for (const command of renderer.commands) {
@@ -163,10 +174,16 @@ export function validateNativeExtensionRendererDefinition(
       )
     }
 
+    if (runtimeBackedCommandNames.has(command.name)) {
+      throw new Error(
+        `Native extension "${manifest.name}" runtime-backed command "${command.name}" must not be declared in renderer definition`
+      )
+    }
+
     commandModuleNames.add(command.name)
   }
 
-  if (commandModuleNames.size !== manifestCommandNames.size) {
+  if (commandModuleNames.size !== rendererRequiredCommandNames.size) {
     throw new Error(
       `Native extension "${manifest.name}" manifest and command modules are out of sync`
     )
@@ -268,6 +285,7 @@ export function toLauncherCommandOwnerManifest(
     capabilities: manifest.capabilities,
     commands: launcherCommands.map((command) => ({
       description: command.description,
+      iconName: command.iconName ?? manifest.iconName,
       keywords: command.keywords,
       mode: command.mode,
       name: command.name,

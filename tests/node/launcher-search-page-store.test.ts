@@ -1,7 +1,13 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { appCopy } from "../../src/renderer/src/lib/i18n/messages"
+import {
+  buildLauncherHomeSurfaceModel,
+  getLauncherHomeSurfaceResultsHeight,
+  getLauncherSearchResultsViewportHeight
+} from "../../src/renderer/src/launcher-shell/home-surface"
 import { buildLauncherSearchShellItems } from "../../src/renderer/src/launcher-shell/search-items"
+import { FALLBACK_SHELL_CONFIG } from "../../src/shared/launcher"
 import {
   createLauncherSearchPageStore,
   mergeLauncherSearchResults,
@@ -174,6 +180,70 @@ test("mergeLauncherSearchResults orders by score, source priority, and de-duplic
   )
 })
 
+test("non-empty launcher search uses a fixed results viewport instead of result-count height", () => {
+  const copy = appCopy["zh-CN"]
+  const oneResultSurface = buildLauncherHomeSurfaceModel({
+    copy,
+    historyItems: [],
+    idleItems: [],
+    locale: "zh-CN",
+    query: "todo",
+    searchResults: [createSearchResult({ id: "todo-1", source: "files", title: "Todo" })],
+    windowMode: "default"
+  })
+  const manyResultsSurface = buildLauncherHomeSurfaceModel({
+    copy,
+    historyItems: [],
+    idleItems: [],
+    locale: "zh-CN",
+    query: "todo",
+    searchResults: Array.from({ length: 12 }, (_, index) =>
+      createSearchResult({
+        id: `todo-${index}`,
+        score: 12 - index,
+        source: "files",
+        title: `Todo ${index}`
+      })
+    ),
+    windowMode: "default"
+  })
+
+  assert.notEqual(
+    getLauncherHomeSurfaceResultsHeight(oneResultSurface, FALLBACK_SHELL_CONFIG),
+    getLauncherHomeSurfaceResultsHeight(manyResultsSurface, FALLBACK_SHELL_CONFIG)
+  )
+  assert.equal(
+    getLauncherSearchResultsViewportHeight(FALLBACK_SHELL_CONFIG),
+    FALLBACK_SHELL_CONFIG.resultItemHeight * FALLBACK_SHELL_CONFIG.maxVisibleResults
+  )
+})
+
+test("home idle and search surfaces both keep a footer", () => {
+  const copy = appCopy["zh-CN"]
+  const historySurface = buildLauncherHomeSurfaceModel({
+    copy,
+    historyItems: [createHistoryItem("wechat")],
+    idleItems: [],
+    locale: "zh-CN",
+    query: "",
+    searchResults: [],
+    windowMode: "default"
+  })
+  const searchSurface = buildLauncherHomeSurfaceModel({
+    copy,
+    historyItems: [],
+    idleItems: [],
+    locale: "zh-CN",
+    query: "todo",
+    searchResults: [createSearchResult({ id: "todo-1", source: "files", title: "Todo" })],
+    windowMode: "default"
+  })
+
+  assert.equal(historySurface.body.kind, "history-grid")
+  assert.equal(historySurface.chrome.footerVisible, true)
+  assert.equal(searchSurface.chrome.footerVisible, true)
+})
+
 test("moveSelection wraps around the visible item ids", () => {
   const store = createLauncherSearchPageStore()
 
@@ -200,6 +270,7 @@ test("local idle and history updates stay pure and synchronous", () => {
   store.getState().applyIdleState({
     historyItems,
     idleItems: [createIdleItem("recent-file")],
+    useWithDisabledCommandKeys: ["files:open"],
     windowMode: "compact"
   })
   store.getState().setHistoryItemPinnedLocal("older", true, "2026-01-03T00:00:00.000Z")
@@ -207,6 +278,7 @@ test("local idle and history updates stay pure and synchronous", () => {
   store.getState().requestHomeInputSelection()
 
   assert.equal(store.getState().windowMode, "compact")
+  assert.deepEqual(store.getState().useWithDisabledCommandKeys, ["files:open"])
   assert.deepEqual(
     store.getState().idleItems.map((item) => item.id),
     ["recent-file"]

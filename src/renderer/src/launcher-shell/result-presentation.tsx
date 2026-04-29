@@ -1,4 +1,16 @@
-import { FileText, Folder, Globe, History, Languages, Search, Sparkles } from "lucide-react"
+import {
+  Bell,
+  CheckCircle2,
+  FileText,
+  Folder,
+  Github,
+  Globe,
+  History,
+  Languages,
+  ListTodo,
+  Search,
+  Sparkles
+} from "lucide-react"
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { LauncherResultAvailability, LauncherResultKind } from "@shared/launcher"
 import type {
@@ -6,6 +18,35 @@ import type {
   LauncherResultPresentationIcon,
   LauncherResultPresentationTone
 } from "./result-types"
+
+function TodoGlyph(): React.JSX.Element {
+  return (
+    <svg
+      aria-hidden="true"
+      className="size-4"
+      fill="none"
+      viewBox="0 0 18 18"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <rect
+        height="13.6"
+        rx="3.4"
+        stroke="currentColor"
+        strokeWidth="2"
+        width="13.6"
+        x="2.2"
+        y="2.2"
+      />
+      <path
+        d="M8.8 5.6v3.2l2.3 1.4"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    </svg>
+  )
+}
 
 function getBuiltinResultActionLabel(params: {
   availability?: LauncherResultAvailability
@@ -153,18 +194,28 @@ export function renderLauncherResultIcon(icon: LauncherResultPresentationIcon): 
   }
 
   switch (icon.name) {
+    case "bell":
+      return <Bell className="size-4" />
+    case "check-circle":
+      return <CheckCircle2 className="size-4" />
     case "file-text":
       return <FileText className="size-4" />
     case "folder":
       return <Folder className="size-4" />
+    case "github":
+      return <Github className="size-4" />
     case "globe":
       return <Globe className="size-4" />
     case "history":
       return <History className="size-4" />
     case "languages":
       return <Languages className="size-4" />
+    case "reminders":
+      return <ListTodo className="size-4" />
     case "sparkles":
       return <Sparkles className="size-4" />
+    case "todo":
+      return <TodoGlyph />
     case "search":
     default:
       return <Search className="size-4" />

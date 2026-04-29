@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react"
-import { Keyboard, KeyRound, Puzzle, Settings2 } from "lucide-react"
+import { Keyboard, KeyRound, Palette, Puzzle, Settings2 } from "lucide-react"
 import type { SettingsWindowTab, SettingsWindowTarget } from "@shared/settings-window"
 import { useI18n } from "../lib/i18n"
+import { AppearanceTab } from "./AppearanceTab"
 import { getSettingsCopy } from "./copy"
 import { ExtensionsTab } from "./ExtensionsTab"
 import { GeneralTab } from "./GeneralTab"
@@ -9,7 +10,19 @@ import { ProviderTab, preloadProviderTabData } from "./ProviderTab"
 import { ShortcutsTab } from "./ShortcutsTab"
 
 const settingsScrollPaneClassName =
-  "h-full overflow-x-hidden overflow-y-auto pr-1 [scrollbar-gutter:stable]"
+  "h-full overflow-x-hidden overflow-y-auto pr-[var(--ow-space-1)] [scrollbar-gutter:stable]"
+
+function getSettingsTabClassName(active: boolean, withBorder = true): string {
+  return [
+    "inline-flex items-center gap-[var(--ow-gap-sm)] px-[var(--ow-settings-tab-x)] py-[var(--ow-settings-tab-y)] [font-size:var(--ow-settings-tab-font)] font-medium transition",
+    withBorder ? "border-l border-border" : "",
+    active
+      ? "bg-background text-foreground"
+      : "text-muted-foreground hover:bg-background-secondary hover:text-foreground"
+  ]
+    .filter(Boolean)
+    .join(" ")
+}
 
 export default function SettingsApp(): React.JSX.Element {
   const { locale } = useI18n()
@@ -40,77 +53,77 @@ export default function SettingsApp(): React.JSX.Element {
   }, [])
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      <div className="app-drag-region flex h-[52px] shrink-0 items-center border-b border-border bg-[var(--window-chrome)] px-5">
-        <div className="flex min-w-0 flex-1 items-center gap-2 text-[12px] font-semibold tracking-[0.08em] text-[var(--window-chrome-foreground)]">
-          <Settings2 className="h-4 w-4" />
+    <div className="settings-app flex h-screen flex-col overflow-hidden bg-background text-foreground">
+      <div className="app-drag-region flex h-[var(--ow-settings-toolbar-h)] shrink-0 items-center border-b border-border bg-[var(--window-chrome)] px-[var(--ow-settings-window-pad)]">
+        <div
+          className="flex min-w-0 flex-1 items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-settings-tab-font)] font-semibold tracking-[0.05em] text-[var(--window-chrome-foreground)]"
+          style={{ paddingLeft: "calc(var(--window-controls-offset-inline) + 6px)" }}
+        >
+          <Settings2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
           <span>{copy.title}</span>
         </div>
 
-        <div className="app-no-drag inline-flex items-stretch overflow-hidden rounded-lg border border-border bg-background-elevated shadow-sm">
+        <div className="app-no-drag inline-flex items-stretch overflow-hidden rounded-[var(--ow-settings-nav-radius)] border border-border bg-background-elevated shadow-sm">
           <button
             type="button"
             onClick={() => setActiveTab("general")}
             data-settings-tab="general"
-            className={`inline-flex items-center gap-2 px-3 py-1.5 text-[12px] font-medium transition ${
-              activeTab === "general"
-                ? "bg-background text-foreground"
-                : "text-muted-foreground hover:bg-background-secondary hover:text-foreground"
-            }`}
+            className={getSettingsTabClassName(activeTab === "general", false)}
           >
-            <Settings2 className="h-3.5 w-3.5" />
+            <Settings2 className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
             {copy.tabs.general}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("appearance")}
+            data-settings-tab="appearance"
+            className={getSettingsTabClassName(activeTab === "appearance")}
+          >
+            <Palette className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+            {copy.tabs.appearance}
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("provider")}
             data-settings-tab="provider"
-            className={`inline-flex items-center gap-2 border-l border-border px-3 py-1.5 text-[12px] font-medium transition ${
-              activeTab === "provider"
-                ? "bg-background text-foreground"
-                : "text-muted-foreground hover:bg-background-secondary hover:text-foreground"
-            }`}
+            className={getSettingsTabClassName(activeTab === "provider")}
           >
-            <KeyRound className="h-3.5 w-3.5" />
+            <KeyRound className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
             {copy.tabs.provider}
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("extensions")}
             data-settings-tab="extensions"
-            className={`inline-flex items-center gap-2 border-l border-border px-3 py-1.5 text-[12px] font-medium transition ${
-              activeTab === "extensions"
-                ? "bg-background text-foreground"
-                : "text-muted-foreground hover:bg-background-secondary hover:text-foreground"
-            }`}
+            className={getSettingsTabClassName(activeTab === "extensions")}
           >
-            <Puzzle className="h-3.5 w-3.5" />
+            <Puzzle className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
             {copy.tabs.extensions}
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("shortcuts")}
             data-settings-tab="shortcuts"
-            className={`inline-flex items-center gap-2 border-l border-border px-3 py-1.5 text-[12px] font-medium transition ${
-              activeTab === "shortcuts"
-                ? "bg-background text-foreground"
-                : "text-muted-foreground hover:bg-background-secondary hover:text-foreground"
-            }`}
+            className={getSettingsTabClassName(activeTab === "shortcuts")}
           >
-            <Keyboard className="h-3.5 w-3.5" />
+            <Keyboard className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
             {copy.tabs.shortcuts}
           </button>
         </div>
 
-        <div className="flex min-w-0 flex-1 justify-end text-[12px] text-[var(--window-chrome-muted)]">
+        <div className="flex min-w-0 flex-1 justify-end [font-size:var(--ow-settings-tab-font)] text-[var(--window-chrome-muted)]">
           Openwork
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden p-5">
+      <div className="min-h-0 flex-1 overflow-hidden p-[var(--ow-settings-window-pad)]">
         {activeTab === "general" ? (
           <div className={settingsScrollPaneClassName}>
             <GeneralTab locale={locale} />
+          </div>
+        ) : activeTab === "appearance" ? (
+          <div className={settingsScrollPaneClassName}>
+            <AppearanceTab locale={locale} />
           </div>
         ) : activeTab === "provider" ? (
           <div className={settingsScrollPaneClassName}>

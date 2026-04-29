@@ -93,6 +93,21 @@ const PROVIDERS: ProviderDefinition[] = [
     },
     name: "DashScope",
     supportedModelTypes: [LLM_MODEL_TYPE]
+  },
+  {
+    configurateMethods: ["fetch-from-remote"],
+    credentialFormSchemas: [apiKeyCredential("DeepSeek API Key", "sk-...")],
+    description: {
+      en_US: "DeepSeek OpenAI-compatible chat and reasoning models.",
+      zh_Hans: "DeepSeek OpenAI-compatible 聊天和推理模型。"
+    },
+    id: "deepseek",
+    label: {
+      en_US: "DeepSeek",
+      zh_Hans: "DeepSeek"
+    },
+    name: "DeepSeek",
+    supportedModelTypes: [LLM_MODEL_TYPE]
   }
 ]
 
@@ -293,6 +308,46 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "dashscope",
     model: "qwen-plus",
     description: "Balanced Qwen model for general-purpose tasks",
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
+  },
+  {
+    id: toProviderModelId("deepseek", "deepseek-v4-pro"),
+    name: "DeepSeek V4 Pro",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    description: "Frontier reasoning and coding model exposed by DeepSeek's OpenAI-compatible API",
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
+  },
+  {
+    id: toProviderModelId("deepseek", "deepseek-v4-flash"),
+    name: "DeepSeek V4 Flash",
+    provider: "deepseek",
+    model: "deepseek-v4-flash",
+    description: "Faster general-purpose DeepSeek model with OpenAI-compatible API access",
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
+  },
+  {
+    id: toProviderModelId("deepseek", "deepseek-chat"),
+    name: "DeepSeek Chat",
+    provider: "deepseek",
+    model: "deepseek-chat",
+    description: "Legacy non-thinking alias retained by DeepSeek for compatibility",
+    fetchFrom: "predefined-model",
+    modelType: "llm",
+    status: "active"
+  },
+  {
+    id: toProviderModelId("deepseek", "deepseek-reasoner"),
+    name: "DeepSeek Reasoner",
+    provider: "deepseek",
+    model: "deepseek-reasoner",
+    description: "Legacy thinking alias retained by DeepSeek for compatibility",
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"

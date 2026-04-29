@@ -87,14 +87,14 @@ export function PresentArtifactsDetail(
     <ToolDetailStack>
       {resolvedArtifacts.length > 0 ? (
         <ToolDetailSection label={copy.toolCall.labels.present_artifacts}>
-          <div className="grid gap-1.5">
+          <div className="grid gap-[var(--ow-space-1-5)]">
             {resolvedArtifacts.map(({ artifact, kind, title }, index) => {
               const canOpen = Boolean(artifact && threadActions)
 
               return (
                 <button
                   className={cn(
-                    "grid gap-1 rounded-[12px] border px-3 py-2 text-left text-[12px] leading-5 transition-colors",
+                    "grid gap-[var(--ow-gap-xs)] rounded-[var(--ow-radius-panel)] border px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] transition-colors",
                     canOpen
                       ? "border-border/70 bg-background-secondary/60 text-foreground/90 hover:bg-background-secondary hover:text-foreground"
                       : "border-border/50 bg-background-secondary/40 text-foreground/75"
@@ -117,17 +117,17 @@ export function PresentArtifactsDetail(
                   }}
                   type="button"
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start justify-between gap-[var(--ow-gap-md)]">
                     <div className="min-w-0">
                       <div className="font-medium text-foreground">{title}</div>
                       <div className="text-muted-foreground">{kind}</div>
                     </div>
                     {canOpen ? (
-                      <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                      <ArrowUpRight className="mt-[var(--ow-leading-nudge)] size-[var(--ow-icon-sm)] shrink-0 text-muted-foreground" />
                     ) : null}
                   </div>
                   {!canOpen ? (
-                    <div className="text-[11px] leading-4 text-muted-foreground">
+                    <div className="[font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
                       Artifact not available yet
                     </div>
                   ) : null}

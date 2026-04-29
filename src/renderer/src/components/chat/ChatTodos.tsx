@@ -39,16 +39,16 @@ export function ChatTodos({ todos }: ChatTodosProps): React.JSX.Element | null {
   const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 
   return (
-    <div className="border-t border-border pt-4">
-      <div className="flex items-center gap-2">
-        <ListTodo className="size-4 text-status-info" />
-        <span className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+    <div className="border-t border-border pt-[var(--ow-space-4)]">
+      <div className="flex items-center gap-[var(--ow-gap-sm)]">
+        <ListTodo className="size-[var(--ow-icon-action)] text-status-info" />
+        <span className="[font-size:var(--ow-font-meta)] font-medium uppercase tracking-[0.12em] text-muted-foreground">
           {copy.chat.agentTasks}
         </span>
-        <span className="ml-auto text-xs text-muted-foreground">
+        <span className="ml-auto [font-size:var(--ow-font-meta)] text-muted-foreground">
           {completedCount}/{totalCount}
         </span>
-        <div className="h-1 w-16 overflow-hidden rounded-full bg-background-secondary">
+        <div className="h-[var(--ow-progress-track-h-sm)] w-[var(--ow-progress-track-w)] overflow-hidden rounded-full bg-background-secondary">
           <div
             className="h-full bg-status-nominal transition-all duration-300"
             style={{ width: `${progress}%` }}
@@ -57,13 +57,21 @@ export function ChatTodos({ todos }: ChatTodosProps): React.JSX.Element | null {
       </div>
 
       {activeTodos.length > 0 && (
-        <div className="space-y-2 pt-3">
+        <div className="space-y-[var(--ow-space-2)] pt-[var(--ow-space-3)]">
           {activeTodos.map((todo) => {
             const config = STATUS_CONFIG[todo.status]
             const Icon = config.icon
             return (
-              <div key={todo.id} className="flex items-start gap-2 text-sm text-foreground/90">
-                <Icon className={cn("size-3.5 mt-0.5 shrink-0", config.color)} />
+              <div
+                key={todo.id}
+                className="flex items-start gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] text-foreground/90"
+              >
+                <Icon
+                  className={cn(
+                    "size-[var(--ow-icon-sm)] mt-[var(--ow-leading-nudge)] shrink-0",
+                    config.color
+                  )}
+                />
                 <span>{todo.content}</span>
               </div>
             )
@@ -72,7 +80,7 @@ export function ChatTodos({ todos }: ChatTodosProps): React.JSX.Element | null {
       )}
 
       {completedCount > 0 && activeTodos.length > 0 && (
-        <div className="border-t border-border pt-3 text-xs text-muted-foreground">
+        <div className="border-t border-border pt-[var(--ow-space-3)] [font-size:var(--ow-font-meta)] text-muted-foreground">
           {copy.chat.tasksCompleted(completedCount)}
         </div>
       )}

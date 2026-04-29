@@ -11,7 +11,7 @@ export type ModelProvider = {
   supportedModelTypes: Provider["supportedModelTypes"]
 }
 
-export const FIXED_MODEL_PROVIDER_ORDER: ProviderId[] = ["openai", "anthropic"]
+export const FIXED_MODEL_PROVIDER_ORDER: ProviderId[] = ["openai", "anthropic", "deepseek"]
 
 export function toModelProvider(provider: Provider, models: ModelConfig[]): ModelProvider {
   return {

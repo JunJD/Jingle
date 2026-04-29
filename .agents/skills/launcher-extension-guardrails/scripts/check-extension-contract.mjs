@@ -6,10 +6,12 @@ import {
   loadNativeExtensionManifest,
   listNativeExtensionRendererCommandNames,
   nativeExtensionMainDeclaresService,
+  readSourceText,
   resolveExtensionCommandFile
 } from "./lib/architecture-guardrails.mjs"
 
 const violations = []
+const runtimeBackedCommands = listRuntimeBackedCommands()
 
 for (const extensionDirectory of listNativeExtensionDirectories()) {
   const manifestPath = path.join(extensionDirectory.absolutePath, "manifest.ts")
@@ -42,6 +44,7 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
 
   const manifest = loadNativeExtensionManifest(extensionDirectory)
   const manifestCommandMap = new Map(manifest.commands.map((command) => [command.name, command]))
+  const runtimeBackedCommandNames = runtimeBackedCommands.get(manifest.name) ?? new Set()
   let rendererCommandNames = []
 
   try {
@@ -54,7 +57,9 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
     continue
   }
 
-  const definitionCommandMap = new Map(rendererCommandNames.map((commandName) => [commandName, true]))
+  const definitionCommandMap = new Map(
+    rendererCommandNames.map((commandName) => [commandName, true])
+  )
 
   if (manifest.name !== extensionDirectory.name) {
     violations.push({
@@ -65,10 +70,18 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
 
   for (const command of manifest.commands) {
     const commandReference = definitionCommandMap.get(command.name)
-    if (!commandReference) {
+    if (!commandReference && !runtimeBackedCommandNames.has(command.name)) {
       violations.push({
         file: `${extensionDirectory.repoPath}/renderer.ts`,
         reason: `manifest 声明了 command "${command.name}"，但 renderer.ts 没有导出对应 command name`
+      })
+      continue
+    }
+
+    if (commandReference && runtimeBackedCommandNames.has(command.name)) {
+      violations.push({
+        file: `${extensionDirectory.repoPath}/renderer.ts`,
+        reason: `runtime-backed command "${command.name}" 不应由 renderer.ts 导出`
       })
       continue
     }
@@ -127,3 +140,21 @@ if (violations.length === 0) {
 
 console.error(formatViolations("extension contract check", violations))
 process.exit(1)
+
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function listRuntimeBackedCommands() {
+  const registryPath = "src/extensions/runtime-backed.ts"
+  const sourceText = readSourceText(registryPath)
+  const commands = new Map()
+  const entryPattern = /extensionName:\s*["']([^"']+)["'][\s\S]*?commandName:\s*["']([^"']+)["']/g
+
+  for (const match of sourceText.matchAll(entryPattern)) {
+    const extensionName = match[1]
+    const commandName = match[2]
+    const commandNames = commands.get(extensionName) ?? new Set()
+    commandNames.add(commandName)
+    commands.set(extensionName, commandNames)
+  }
+
+  return commands
+}

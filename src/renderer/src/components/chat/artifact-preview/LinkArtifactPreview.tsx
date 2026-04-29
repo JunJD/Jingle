@@ -17,50 +17,56 @@ export function LinkArtifactPreview(props: LinkArtifactPreviewProps): React.JSX.
 
   return (
     <ScrollArea className="h-full">
-      <div className="mx-auto flex min-h-full w-full max-w-4xl items-center px-6 py-8">
-        <div className="w-full rounded-[24px] border border-border bg-background-elevated/80 p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="mx-auto flex min-h-full w-full max-w-[var(--ow-chat-artifact-max-w)] items-center px-[var(--ow-space-6)] py-[var(--ow-space-6)]">
+        <div className="w-full rounded-[var(--ow-radius-dialog)] border border-border bg-background-elevated/80 p-[var(--ow-space-6)]">
+          <div className="flex flex-wrap items-start justify-between gap-[var(--ow-gap-lg)]">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                <Link2 className="size-3.5" />
+              <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-meta)] uppercase tracking-[0.12em] text-muted-foreground">
+                <Link2 className="size-[var(--ow-icon-sm)]" />
                 External link
               </div>
-              <div className="mt-3 text-lg font-semibold text-foreground">{artifact.title}</div>
+              <div className="mt-[var(--ow-space-3)] [font-size:var(--ow-font-display)] font-semibold text-foreground">
+                {artifact.title}
+              </div>
               {artifact.subtitle ? (
-                <div className="mt-1 text-sm text-muted-foreground">{artifact.subtitle}</div>
+                <div className="mt-[var(--ow-space-1)] [font-size:var(--ow-font-body)] text-muted-foreground">
+                  {artifact.subtitle}
+                </div>
               ) : null}
             </div>
             {urlMetadata.hostname ? <Badge variant="outline">{urlMetadata.hostname}</Badge> : null}
           </div>
 
           {artifact.previewText ? (
-            <div className="mt-5 rounded-[16px] border border-border/70 bg-background-secondary/60 px-4 py-3 text-sm leading-6 text-foreground/85">
+            <div className="mt-[var(--ow-space-5)] rounded-[var(--ow-radius-dialog)] border border-border/70 bg-background-secondary/60 px-[var(--ow-space-4)] py-[var(--ow-space-3)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground/85">
               {artifact.previewText}
             </div>
           ) : null}
 
-          <div className="mt-5 grid gap-4 rounded-[16px] border border-border/70 bg-background-secondary/40 px-4 py-4 text-sm">
+          <div className="mt-[var(--ow-space-5)] grid gap-[var(--ow-gap-lg)] rounded-[var(--ow-radius-dialog)] border border-border/70 bg-background-secondary/40 px-[var(--ow-space-4)] py-[var(--ow-space-4)] [font-size:var(--ow-font-body)]">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+              <div className="[font-size:var(--ow-font-meta)] uppercase tracking-[0.08em] text-muted-foreground">
                 URL
               </div>
-              <div className="mt-1 break-all leading-6 text-foreground">{artifact.source.uri}</div>
+              <div className="mt-[var(--ow-space-1)] break-all leading-[var(--ow-line-chat)] text-foreground">
+                {artifact.source.uri}
+              </div>
             </div>
             {urlMetadata.origin ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-[var(--ow-gap-md)] sm:grid-cols-2">
                 <div>
-                  <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+                  <div className="[font-size:var(--ow-font-meta)] uppercase tracking-[0.08em] text-muted-foreground">
                     Origin
                   </div>
-                  <div className="mt-1 break-all leading-6 text-foreground">
+                  <div className="mt-[var(--ow-space-1)] break-all leading-[var(--ow-line-chat)] text-foreground">
                     {urlMetadata.origin}
                   </div>
                 </div>
                 <div>
-                  <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+                  <div className="[font-size:var(--ow-font-meta)] uppercase tracking-[0.08em] text-muted-foreground">
                     Path
                   </div>
-                  <div className="mt-1 break-all leading-6 text-foreground">
+                  <div className="mt-[var(--ow-space-1)] break-all leading-[var(--ow-line-chat)] text-foreground">
                     {urlMetadata.displayPath}
                   </div>
                 </div>
@@ -68,13 +74,18 @@ export function LinkArtifactPreview(props: LinkArtifactPreviewProps): React.JSX.
             ) : null}
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-2">
-            <Button className="gap-1" onClick={onCopyLink} size="sm" variant="outline">
-              <Copy className="size-3.5" />
+          <div className="mt-[var(--ow-space-5)] flex flex-wrap gap-[var(--ow-gap-sm)]">
+            <Button
+              className="gap-[var(--ow-gap-xs)]"
+              onClick={onCopyLink}
+              size="sm"
+              variant="outline"
+            >
+              <Copy className="size-[var(--ow-icon-sm)]" />
               Copy link
             </Button>
-            <Button className="gap-1" onClick={onOpenLink} size="sm">
-              <ExternalLink className="size-3.5" />
+            <Button className="gap-[var(--ow-gap-xs)]" onClick={onOpenLink} size="sm">
+              <ExternalLink className="size-[var(--ow-icon-sm)]" />
               Open link
             </Button>
           </div>

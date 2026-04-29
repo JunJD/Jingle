@@ -23,6 +23,22 @@ export type TurnAssistantEntry =
       messages: ThreadMessage[]
     }
 
+export function countToolCalls(messages: ThreadMessage[]): number {
+  return messages.reduce((count, message) => count + (message.tool_calls?.length ?? 0), 0)
+}
+
+export function shouldDefaultExpandToolEntries(
+  turn: MessageTurn,
+  options: { isStreaming: boolean }
+): boolean {
+  if (options.isStreaming) {
+    return true
+  }
+
+  const lastAssistantMessage = turn.assistants[turn.assistants.length - 1]
+  return !lastAssistantMessage || !hasRenderableAssistantContent(lastAssistantMessage.content)
+}
+
 export interface MessagesProjection {
   activeTurnKey: string | null
   lastAssistantId: string | null

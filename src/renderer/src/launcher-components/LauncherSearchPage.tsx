@@ -1,20 +1,29 @@
-import { useCallback, useMemo, type RefObject } from "react"
+import { useCallback, useMemo, useState, type RefObject } from "react"
 import { Loader2, Settings2 } from "lucide-react"
+import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
+import { useLauncherActionController } from "@/features/launcher-actions/controller"
+import type { LauncherActionDescriptor } from "@/features/launcher-actions/model"
 import { useI18n } from "@/lib/i18n"
 import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import type { LauncherShellConfig } from "@shared/launcher"
 import type { ClipboardContext } from "@shared/clipboard"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
-import type { LauncherHomeSurfaceModel } from "@launcher-shell/home-surface"
+import type {
+  LauncherHomeSurfaceModel,
+  LauncherHomeSurfaceSection
+} from "@launcher-shell/home-surface"
+import type { LauncherIndexedCommand } from "@launcher-shell/pages"
 import { ClipboardChip } from "./ClipboardChip"
 import { LauncherChrome } from "./LauncherChrome"
 import { LauncherHistoryGrid } from "./LauncherHistoryGrid"
 import { LauncherResultList } from "./LauncherResultList"
+import { LauncherUseWithManager } from "./LauncherUseWithManager"
 
 const HOME_SHORTCUT_SCOPES = ["launcher.home"] as const
 type LauncherHomeCommandId =
   | typeof LAUNCHER_COMMAND_IDS.searchOpenAi
+  | typeof LAUNCHER_COMMAND_IDS.searchOpenMainHistory
   | typeof LAUNCHER_COMMAND_IDS.searchOpenSettings
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionDown
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionUp
@@ -36,6 +45,11 @@ export function LauncherSearchPage(props: {
   selectedIndex: number
   shellConfig: LauncherShellConfig
   surface: LauncherHomeSurfaceModel
+  useWithManager: {
+    availableCommands: LauncherIndexedCommand[]
+    enabledCommands: LauncherIndexedCommand[]
+    setCommandEnabled: (command: LauncherIndexedCommand, enabled: boolean) => void
+  }
 }): React.JSX.Element {
   const { copy } = useI18n()
   const {
@@ -53,8 +67,10 @@ export function LauncherSearchPage(props: {
     resultsViewportHeight,
     selectedIndex,
     shellConfig,
-    surface
+    surface,
+    useWithManager
   } = props
+  const [showUseWithManager, setShowUseWithManager] = useState(false)
   useShortcutScopeLayer(HOME_SHORTCUT_SCOPES)
   const selectedItem = selectedIndex >= 0 ? surface.items[selectedIndex] : null
   const isInputShortcutTarget = useCallback(
@@ -110,9 +126,14 @@ export function LauncherSearchPage(props: {
       }
 
       event.preventDefault()
+      if (showUseWithManager) {
+        setShowUseWithManager(false)
+        return
+      }
+
       executeHomeCommand(LAUNCHER_COMMAND_IDS.searchExecuteSelection)
     },
-    [executeHomeCommand, isInputShortcutTarget]
+    [executeHomeCommand, isInputShortcutTarget, showUseWithManager]
   )
 
   useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.searchOpenAi, handleOpenAiShortcut)
@@ -130,16 +151,77 @@ export function LauncherSearchPage(props: {
     handleExecuteSelectionShortcut
   )
 
-  const primaryActionLabel =
-    selectedItem?.presentation.primaryActionLabel ?? copy.launcher.openGeneric
-  const isPrimaryActionDisabled = !selectedItem || selectedItem.availability === "planned"
-  const resultsVisible = surface.chrome.footerVisible
+  const footerVisible = surface.chrome.footerVisible
+  const hasQuery = inputValue.trim().length > 0
+  const isSearchMode = hasQuery && !showUseWithManager
+  const primaryActionLabel = showUseWithManager
+    ? copy.launcher.goHome
+    : isSearchMode
+      ? selectedItem?.kind === "ai"
+        ? copy.launcher.aiPrimaryLabel
+        : copy.launcher.openGeneric
+      : copy.launcher.openAiHistory
+  const isPrimaryActionDisabled = showUseWithManager
+    ? false
+    : isSearchMode
+      ? !selectedItem || selectedItem.availability === "planned"
+      : false
+  const runPrimaryAction = useCallback((): void => {
+    if (showUseWithManager) {
+      setShowUseWithManager(false)
+      return
+    }
+
+    if (!isSearchMode) {
+      executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenMainHistory)
+      return
+    }
+
+    if (!selectedItem || isPrimaryActionDisabled) {
+      return
+    }
+
+    executeItem(selectedIndex)
+  }, [
+    executeHomeCommand,
+    executeItem,
+    isPrimaryActionDisabled,
+    isSearchMode,
+    selectedIndex,
+    selectedItem,
+    showUseWithManager
+  ])
+  const primaryAction = useMemo<LauncherActionDescriptor | null>(() => {
+    if (isPrimaryActionDisabled) {
+      return null
+    }
+
+    return {
+      id: "launcher-search-primary",
+      onAction: runPrimaryAction,
+      title: primaryActionLabel
+    }
+  }, [isPrimaryActionDisabled, primaryActionLabel, runPrimaryAction])
+  const searchActions = useMemo<LauncherActionDescriptor[]>(() => {
+    if (!isSearchMode || showUseWithManager) {
+      return []
+    }
+
+    return [
+      {
+        id: "launcher-search-open-ai",
+        onAction: () => executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenMainHistory),
+        title: copy.launcher.openAiHistory
+      }
+    ]
+  }, [copy.launcher.openAiHistory, executeHomeCommand, isSearchMode, showUseWithManager])
+  const actionController = useLauncherActionController({
+    actions: searchActions,
+    primaryAction,
+    primaryActionFallbackTitle: primaryActionLabel
+  })
   const showHistoryGrid = surface.body.kind === "history-grid"
-  const askAiShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.searchOpenAi)
-  const settingsShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.searchOpenSettings)
-  const executeSelectionShortcut = useLauncherCommandShortcut(
-    LAUNCHER_COMMAND_IDS.searchExecuteSelection
-  )
+  const openAiShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.searchOpenAi)
   const placeholders = useMemo(
     () => [copy.launcher.searchPlaceholder, copy.launcher.searchPlaceholderSecondary],
     [copy]
@@ -148,98 +230,157 @@ export function LauncherSearchPage(props: {
     <ClipboardChip context={previewClipboardContext} onClear={onClearClipboardContext} />
   ) : undefined
   const openSettingsLabel = copy.launcher.openSettings
+  const handleInputValueChange = useCallback(
+    (value: string): void => {
+      if (showUseWithManager) {
+        setShowUseWithManager(false)
+      }
+
+      onInputValueChange(value)
+    },
+    [onInputValueChange, showUseWithManager]
+  )
+  const handleSectionAction = useCallback(
+    (action: NonNullable<LauncherHomeSurfaceSection["action"]>): void => {
+      if (action.type === "manage-use-with") {
+        setShowUseWithManager(true)
+      }
+    },
+    []
+  )
 
   return (
-    <LauncherChrome
-      headerLeading={headerLeading}
-      inputStatus={isSearchLoading ? "pending" : "idle"}
-      footer={
-        resultsVisible ? (
-          <>
-            <div className="flex items-center gap-2 text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
-              {isSearchLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              <span>{isSearchLoading ? copy.launcher.searching : copy.launcher.searchResults}</span>
-            </div>
+    <div className="relative h-full">
+      <LauncherChrome
+        headerLeading={headerLeading}
+        inputStatus={isSearchLoading ? "pending" : "idle"}
+        footer={
+          footerVisible ? (
+            <>
+              <div className="flex min-w-0 items-center gap-[var(--ow-gap-md)]">
+                {showUseWithManager ? (
+                  <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
+                    <span>{copy.launcher.useWithManagerTitle}</span>
+                  </div>
+                ) : isSearchMode ? (
+                  <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
+                    {isSearchLoading ? (
+                      <Loader2 className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)] animate-spin" />
+                    ) : null}
+                    <span>
+                      {isSearchLoading ? copy.launcher.searching : copy.launcher.searchResults}
+                    </span>
+                  </div>
+                ) : (
+                  <button
+                    data-launcher-open-settings
+                    type="button"
+                    onClick={() => executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenSettings)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground"
+                    title={openSettingsLabel}
+                    aria-label={openSettingsLabel}
+                  >
+                    <Settings2 className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+                    <span>{openSettingsLabel}</span>
+                  </button>
+                )}
+              </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (!selectedItem) {
-                  return
-                }
+              <div className="flex items-center gap-[var(--ow-gap-sm)]">
+                {actionController.canOpenActions ? (
+                  <button
+                    type="button"
+                    onClick={actionController.openActions}
+                    onMouseDown={(event) => event.preventDefault()}
+                    className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground"
+                  >
+                    <span>{copy.launcher.actionsLabel}</span>
+                    {actionController.actionPanelShortcut ? (
+                      <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
+                        {actionController.actionPanelShortcut}
+                      </span>
+                    ) : null}
+                  </button>
+                ) : null}
 
-                executeItem(selectedIndex)
-              }}
-              onMouseDown={(event) => event.preventDefault()}
-              disabled={isPrimaryActionDisabled}
-              className="launcher-action-link flex appearance-none items-center gap-2 rounded-[10px] border-0 px-3 py-1 text-[13px] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
-            >
-              <span>{primaryActionLabel}</span>
-              {executeSelectionShortcut ? (
-                <span className="launcher-shortcut text-[11px] text-muted-foreground">
-                  {executeSelectionShortcut}
+                <button
+                  type="button"
+                  onClick={actionController.executePrimaryAction}
+                  onMouseDown={(event) => event.preventDefault()}
+                  disabled={!actionController.primaryAction}
+                  className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground disabled:cursor-default disabled:opacity-50"
+                >
+                  <span>
+                    {actionController.primaryAction?.title ??
+                      actionController.primaryActionFallbackTitle}
+                  </span>
+                  {actionController.primaryActionShortcut ? (
+                    <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
+                      {actionController.primaryActionShortcut}
+                    </span>
+                  ) : null}
+                </button>
+              </div>
+            </>
+          ) : undefined
+        }
+        headerTrailing={
+          <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
+            <div className="flex items-center gap-[var(--ow-gap-sm)] px-0 py-[var(--ow-space-1)]">
+              <span>{copy.launcher.aiEntryLabel}</span>
+              {openAiShortcut ? (
+                <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
+                  {openAiShortcut}
                 </span>
               ) : null}
-            </button>
-          </>
-        ) : undefined
-      }
-      headerTrailing={
-        <div className="flex shrink-0 items-center gap-2 text-[13px] font-medium text-muted-foreground">
-          <button
-            data-launcher-open-settings
-            type="button"
-            onClick={() => executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenSettings)}
-            onMouseDown={(event) => event.preventDefault()}
-            className="launcher-header-button flex items-center gap-2 rounded-full px-2 py-1 text-[12px] text-muted-foreground hover:text-foreground"
-            title={openSettingsLabel}
-            aria-label={openSettingsLabel}
-          >
-            <Settings2 className="h-3.5 w-3.5" />
-            <span>{openSettingsLabel}</span>
-            {settingsShortcut ? (
-              <span className="launcher-shortcut text-[11px] text-muted-foreground">
-                {settingsShortcut}
-              </span>
-            ) : null}
-          </button>
-
-          <div className="flex items-center gap-2 px-0 py-1">
-            {askAiShortcut ? (
-              <span className="launcher-shortcut text-[11px] text-muted-foreground">
-                {askAiShortcut}
-              </span>
-            ) : null}
-            <span>{copy.launcher.aiEntryLabel}</span>
+            </div>
           </div>
-        </div>
-      }
-      inputRef={inputRef}
-      density="compact"
-      inputValue={inputValue}
-      onInputKeyDown={onInputKeyDown}
-      onInputValueChange={onInputValueChange}
-      placeholders={placeholders}
-      shellConfig={shellConfig}
-      showHeaderDivider={surface.chrome.headerDividerVisible}
-      surface="home"
-    >
-      {showHistoryGrid ? (
-        <LauncherHistoryGrid
-          items={surface.items}
-          onExecute={executeItem}
-          onRemove={onRemoveHistoryItem}
-          onSetPinned={onSetHistoryItemPinned}
-          selectedIndex={selectedIndex}
+        }
+        inputRef={inputRef}
+        density="compact"
+        inputValue={inputValue}
+        onInputKeyDown={onInputKeyDown}
+        onInputValueChange={handleInputValueChange}
+        placeholders={placeholders}
+        shellConfig={shellConfig}
+        showHeaderDivider={surface.chrome.headerDividerVisible}
+        surface="home"
+      >
+        {showUseWithManager ? (
+          <LauncherUseWithManager
+            availableCommands={useWithManager.availableCommands}
+            enabledCommands={useWithManager.enabledCommands}
+            height={resultsViewportHeight}
+            onSetCommandEnabled={useWithManager.setCommandEnabled}
+          />
+        ) : showHistoryGrid ? (
+          <LauncherHistoryGrid
+            height={resultsViewportHeight}
+            items={surface.items}
+            onExecute={executeItem}
+            onRemove={onRemoveHistoryItem}
+            onSetPinned={onSetHistoryItemPinned}
+            selectedIndex={selectedIndex}
+          />
+        ) : (
+          <LauncherResultList
+            height={resultsViewportHeight}
+            onExecute={executeItem}
+            onSectionAction={handleSectionAction}
+            sections={surface.sections}
+            selectedIndex={selectedIndex}
+          />
+        )}
+      </LauncherChrome>
+
+      {actionController.showActions && actionController.canOpenActions ? (
+        <LauncherActionOverlay
+          actions={actionController.actions}
+          onClose={actionController.closeActions}
+          surfaceId="launcher-search-action-panel"
         />
-      ) : (
-        <LauncherResultList
-          height={resultsViewportHeight}
-          onExecute={executeItem}
-          sections={surface.sections}
-          selectedIndex={selectedIndex}
-        />
-      )}
-    </LauncherChrome>
+      ) : null}
+    </div>
   )
 }

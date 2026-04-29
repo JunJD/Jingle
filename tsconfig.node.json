@@ -8,17 +8,21 @@
     "src/extensions/*/main.ts",
     "src/extensions/*/manifest.ts",
     "src/extensions/*/src/contracts.ts",
+    "src/extension-runtime/**/*",
     "src/main/**/*",
     "src/plugins/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
-    "tests/node/**/*",
-    "src/types.ts"
+    "tests/node/**/*"
   ],
   "compilerOptions": {
     "composite": true,
+    "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
+      "@/*": [
+        "src/renderer/src/*"
+      ],
       "@ai-core/*": [
         "src/renderer/src/ai-core/*"
       ],
@@ -36,6 +40,9 @@
       ],
       "@plugins/*": [
         "src/plugins/*"
+      ],
+      "@renderer/*": [
+        "src/renderer/src/*"
       ],
       "@shared/*": [
         "src/shared/*"

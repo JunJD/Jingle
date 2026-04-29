@@ -100,8 +100,16 @@ export interface AppCopy {
     jumpToLatest: string
     newQuestion: string
     openSettings: string
+    openAiHistory: string
     openApp: string
     commandMatches: string
+    manageUseWithCommands: string
+    useWithAvailable: string
+    useWithDisableCommand: string
+    useWithDisabledSubtitle: string
+    useWithEnableCommand: string
+    useWithEnabled: string
+    useWithManagerTitle: string
     openGeneric: string
     openResult: string
     pinHistoryItem: string
@@ -128,6 +136,7 @@ export interface AppCopy {
     useSuggestedQueryAction: string
     useSuggestedQuerySubtitle: string
     useSuggestedQueryTitle: (query: string) => string
+    useWithSectionTitle: (query: string) => string
   }
   modelSwitcher: {
     apiKeyRequired: (providerName: string) => string
@@ -147,7 +156,12 @@ export interface AppCopy {
     rename: string
   }
   toolCall: {
+    approvalApplyTitle: string
+    approvalConfirmTitle: string
     approvalItem: string
+    approvalRunTitle: string
+    approvalSubmit: string
+    approve: string
     approveAndApply: string
     approveAndRun: string
     changeCreate: string
@@ -172,6 +186,8 @@ export interface AppCopy {
     moreMatches: (count: number) => string
     readLines: (count: number) => string
     reject: string
+    rejectAndAdjust: string
+    rejectFeedbackPlaceholder: string
     taskCompleted: string
     upcomingChanges: string
     writeLinesToFile: (count: number, fileName: string) => string
@@ -288,8 +304,16 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       jumpToLatest: "跳到最新",
       newQuestion: "新问题",
       openSettings: "打开设置",
+      openAiHistory: "打开 AI 页面",
       openApp: "打开应用",
       commandMatches: "命令",
+      manageUseWithCommands: "管理 Use With 命令",
+      useWithAvailable: "可用",
+      useWithDisableCommand: "停用",
+      useWithDisabledSubtitle: "不会出现在 Use With 分组中",
+      useWithEnableCommand: "启用",
+      useWithEnabled: "已启用",
+      useWithManagerTitle: "Use With 命令",
       openGeneric: "打开",
       openResult: "打开结果",
       pinHistoryItem: "固定到搜索面板",
@@ -315,7 +339,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       unpinHistoryItem: "取消固定",
       useSuggestedQueryAction: "填充",
       useSuggestedQuerySubtitle: "只填充输入框",
-      useSuggestedQueryTitle: (query) => `补全为“${query}”`
+      useSuggestedQueryTitle: (query) => `补全为“${query}”`,
+      useWithSectionTitle: (query) => `使用“${query}”打开...`
     },
     modelSwitcher: {
       apiKeyRequired: (providerName) => `${providerName} 需要 API Key`,
@@ -335,7 +360,12 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       rename: "重命名"
     },
     toolCall: {
+      approvalApplyTitle: "是否应用这些变更？",
+      approvalConfirmTitle: "是否继续执行？",
       approvalItem: "审批事项",
+      approvalRunTitle: "是否执行这个命令？",
+      approvalSubmit: "提交",
+      approve: "批准",
       approveAndApply: "批准并修改",
       approveAndRun: "批准并执行",
       changeCreate: "新增",
@@ -379,6 +409,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       moreMatches: (count) => `另外 ${count} 个匹配`,
       readLines: (count) => `读取了 ${count} 行`,
       reject: "拒绝",
+      rejectAndAdjust: "拒绝，请告知 Agent 如何调整",
+      rejectFeedbackPlaceholder: "告诉 Agent 需要怎么调整（可选）",
       taskCompleted: "任务已完成",
       upcomingChanges: "即将变更",
       writeLinesToFile: (count, fileName) => `向 ${fileName} 写入 ${count} 行`
@@ -494,8 +526,16 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       jumpToLatest: "Jump to latest",
       newQuestion: "New Question",
       openSettings: "Open Settings",
+      openAiHistory: "Open AI",
       openApp: "Open App",
       commandMatches: "Commands",
+      manageUseWithCommands: "Manage Fallback Commands",
+      useWithAvailable: "Available",
+      useWithDisableCommand: "Disable",
+      useWithDisabledSubtitle: "Hidden from the Use With section",
+      useWithEnableCommand: "Enable",
+      useWithEnabled: "Enabled",
+      useWithManagerTitle: "Use With Commands",
       openGeneric: "Open",
       openResult: "Open Result",
       pinHistoryItem: "Pin to launcher",
@@ -521,7 +561,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       unpinHistoryItem: "Unpin",
       useSuggestedQueryAction: "Fill",
       useSuggestedQuerySubtitle: "Only fill the input",
-      useSuggestedQueryTitle: (query) => `Complete as “${query}”`
+      useSuggestedQueryTitle: (query) => `Complete as “${query}”`,
+      useWithSectionTitle: (query) => `Use “${query}” with...`
     },
     modelSwitcher: {
       apiKeyRequired: (providerName) => `API key required for ${providerName}`,
@@ -541,7 +582,12 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       rename: "Rename"
     },
     toolCall: {
+      approvalApplyTitle: "Apply these changes?",
+      approvalConfirmTitle: "Continue with this action?",
       approvalItem: "Approval Item",
+      approvalRunTitle: "Run this command?",
+      approvalSubmit: "Submit",
+      approve: "Approve",
       approveAndApply: "Approve & Apply",
       approveAndRun: "Approve & Run",
       changeCreate: "Create",
@@ -590,6 +636,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       moreMatches: (count) => `+${count} more matches`,
       readLines: (count) => `Read ${count} lines`,
       reject: "Reject",
+      rejectAndAdjust: "Reject and tell the agent what to adjust",
+      rejectFeedbackPlaceholder: "Tell the agent what to adjust (optional)",
       taskCompleted: "Task completed",
       upcomingChanges: "Upcoming changes",
       writeLinesToFile: (count, fileName) => `Writing ${count} lines to ${fileName}`

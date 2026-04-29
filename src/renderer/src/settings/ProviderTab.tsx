@@ -57,12 +57,12 @@ export function preloadProviderTabData(): void {
 
 function ProviderTabSkeleton(): React.JSX.Element {
   return (
-    <div className="mx-auto w-full max-w-[1040px] space-y-4">
-      <div className="h-[124px] animate-pulse rounded-[26px] border border-border/70 bg-background-secondary/70" />
-      <div className="h-[118px] animate-pulse rounded-2xl border border-dashed border-border/80 bg-background-secondary/45" />
-      <div className="space-y-2">
-        <div className="h-[112px] animate-pulse rounded-2xl border border-border/80 bg-background-elevated/70" />
-        <div className="h-[112px] animate-pulse rounded-2xl border border-border/80 bg-background-elevated/70" />
+    <div className="mx-auto w-full max-w-[var(--ow-settings-content-max-width)] space-y-[var(--ow-space-4)]">
+      <div className="h-[var(--ow-settings-provider-skeleton-lg)] animate-pulse rounded-[var(--ow-radius-panel)] border border-border/70 bg-background-secondary/70" />
+      <div className="h-[var(--ow-settings-provider-skeleton-md)] animate-pulse rounded-[var(--ow-radius-panel)] border border-dashed border-border/80 bg-background-secondary/45" />
+      <div className="space-y-[var(--ow-space-2)]">
+        <div className="h-[var(--ow-settings-provider-skeleton-sm)] animate-pulse rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-elevated/70" />
+        <div className="h-[var(--ow-settings-provider-skeleton-sm)] animate-pulse rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-elevated/70" />
       </div>
     </div>
   )
@@ -183,7 +183,7 @@ export function ProviderTab(props: ProviderTabProps): React.JSX.Element {
 
   return (
     <>
-      <div className="mx-auto w-full max-w-[1040px]">
+      <div className="mx-auto w-full max-w-[var(--ow-settings-content-max-width)]">
         <ModelProviderPage
           providers={providers}
           models={models}

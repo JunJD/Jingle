@@ -130,6 +130,8 @@ Feature: Openwork 桌面启动
     When 我切换到 Settings 快捷键页
     Then Settings 展示 launcher.toggle 快捷键
     And Settings 将 launcher.toggle 标记为可配置
+    And Settings 展示 launcher.search.open-settings 快捷键
+    And Settings 将 launcher.search.open-settings 标记为可配置
 
   Scenario: Settings 修改 Launcher 唤起快捷键会同步菜单提示
     Given Openwork 桌面应用已启动

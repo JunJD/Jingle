@@ -25,11 +25,12 @@ export function NativeSurfaceChrome(props: {
 
   return (
     <LauncherChromeFrame
+      density="compact"
       footer={footer}
       headerLeading={headerLeading}
       headerMain={
         title ? (
-          <div className="truncate text-[20px] font-semibold tracking-[-0.03em] text-foreground">
+          <div className="truncate [font-size:var(--ow-font-title)] font-semibold tracking-normal text-foreground">
             {title}
           </div>
         ) : null
@@ -52,10 +53,10 @@ export function NativeSurfaceBackButton(): React.JSX.Element {
       type="button"
       onClick={navigation.canPop ? navigation.pop : navigation.goHome}
       onMouseDown={(event) => event.preventDefault()}
-      className="launcher-icon-button flex h-9 w-9 shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
+      className="launcher-icon-button flex h-[var(--launcher-icon-button-size)] w-[var(--launcher-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
       aria-label={navigation.canPop ? "Go Back" : "Go Home"}
     >
-      <ArrowLeft className="size-5" />
+      <ArrowLeft className="size-[var(--ow-icon-sm)]" />
     </button>
   )
 }
@@ -64,10 +65,10 @@ export function NativeSurfaceHeaderLeading(props: { label?: string }): React.JSX
   const { label } = props
 
   return (
-    <div className="flex min-w-0 items-center gap-3">
+    <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
       <NativeSurfaceBackButton />
       {label ? (
-        <span className="truncate text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
+        <span className="truncate [font-size:var(--ow-font-body)] font-medium text-muted-foreground">
           {label}
         </span>
       ) : null}

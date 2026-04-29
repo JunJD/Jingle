@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { Command, Keyboard } from "lucide-react"
 import { getPrimaryDefaultShortcutBinding } from "@shared/shortcuts/defaults"
-import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
+import { listConfigurableShortcutCommandIds } from "@shared/shortcuts/configurable"
 import {
   areShortcutChordsEqual,
   normalizeShortcutChord,
@@ -9,24 +9,28 @@ import {
   type ShortcutChord,
   type ShortcutModifier
 } from "@shared/shortcuts/model"
-import type {
-  GlobalShortcutAvailability,
-  ShortcutOverride
-} from "@shared/shortcuts/settings"
+import type { GlobalShortcutAvailability, ShortcutOverride } from "@shared/shortcuts/settings"
 import type { AppLocale } from "@shared/i18n"
 import { formatShortcutBinding } from "../shortcuts/format-shortcut"
 import { getLauncherShortcutCommand } from "../shortcuts/command-registry"
 import { useShortcutBinding, useShortcutSettings } from "../shortcuts/shortcut-context"
 import { getSettingsCopy } from "./copy"
-
-const secondaryButtonClassName =
-  "inline-flex items-center gap-2 rounded-md border border-border bg-background-elevated px-3 py-2 text-[12px] font-medium text-foreground transition hover:bg-background-secondary disabled:cursor-default disabled:opacity-50"
+import {
+  secondaryButtonClassName,
+  settingsCardClassName,
+  settingsPageClassName,
+  settingsPageDescriptionClassName,
+  settingsPageHeaderClassName,
+  settingsPageTitleClassName
+} from "./settings-ui"
 
 const statusClassName = {
   available: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   unavailable: "border-destructive/30 bg-destructive/10 text-destructive",
   unknown: "border-border/70 bg-background-elevated text-muted-foreground"
 } as const
+
+type SettingsCopy = ReturnType<typeof getSettingsCopy>
 
 function toShortcutChordFromKeyboardEvent(
   event: React.KeyboardEvent<HTMLButtonElement>
@@ -98,14 +102,16 @@ function removeShortcutOverride(
   )
 }
 
-export function ShortcutsTab(props: { locale: AppLocale }): React.JSX.Element {
-  const { locale } = props
-  const copy = getSettingsCopy(locale)
-  const settings = useShortcutSettings()
-  const platform = resolveShortcutPlatform(window.electron.process.platform)
-  const command = getLauncherShortcutCommand(LAUNCHER_COMMAND_IDS.toggle)
+function ShortcutCommandCard(props: {
+  commandId: string
+  copy: SettingsCopy
+  platform: ReturnType<typeof resolveShortcutPlatform>
+  settings: ReturnType<typeof useShortcutSettings>
+}): React.JSX.Element | null {
+  const { commandId, copy, platform, settings } = props
+  const command = getLauncherShortcutCommand(commandId)
   const defaultBinding = getPrimaryDefaultShortcutBinding(command.id, platform)
-  const currentBinding = useShortcutBinding(command.id, "global")
+  const currentBinding = useShortcutBinding(command.id, defaultBinding?.scope)
   const currentOverride = useMemo(
     () =>
       settings.overrides.find(
@@ -122,10 +128,15 @@ export function ShortcutsTab(props: { locale: AppLocale }): React.JSX.Element {
   const [status, setStatus] = useState("")
 
   useEffect(() => {
+    if (defaultBinding?.scope !== "global") {
+      setAvailability(null)
+      return
+    }
+
     void window.api.shortcuts.getGlobalAvailability().then((records) => {
       setAvailability(records.find((record) => record.commandId === command.id) ?? null)
     })
-  }, [command.id, settings])
+  }, [command.id, defaultBinding?.scope, settings])
 
   const displayedBinding = currentBinding ?? defaultBinding
   const displayedBindingText = displayedBinding
@@ -135,7 +146,10 @@ export function ShortcutsTab(props: { locale: AppLocale }): React.JSX.Element {
     ? formatShortcutBinding(defaultBinding, platform)
     : copy.shortcuts.notSet
   const draftBindingText = draftChord
-    ? formatShortcutBinding({ chord: draftChord, commandId: command.id, scope: "global" }, platform)
+    ? formatShortcutBinding(
+        { chord: draftChord, commandId: command.id, scope: defaultBinding?.scope ?? "launcher" },
+        platform
+      )
     : null
 
   const saveOverride = async (): Promise<void> => {
@@ -193,157 +207,154 @@ export function ShortcutsTab(props: { locale: AppLocale }): React.JSX.Element {
   }, [status])
 
   if (!defaultBinding) {
-    return (
-      <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
-        {copy.shortcuts.unavailable}
-      </div>
-    )
+    return null
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1040px] flex-col gap-4">
-      <div className="px-1">
-        <div className="text-[18px] font-semibold text-foreground">{copy.shortcuts.title}</div>
-        <div className="mt-1 text-[13px] text-muted-foreground">{copy.shortcuts.description}</div>
-      </div>
-
-      <div className="overflow-hidden rounded-2xl border border-border/80 bg-background-secondary/55 shadow-[0_18px_44px_rgba(32,38,45,0.06)]">
-        <div className="grid gap-3 border-b border-border/70 px-4 py-4 md:grid-cols-[240px_minmax(0,1fr)]">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 text-muted-foreground">
-              <Command className="h-4 w-4" />
+    <div className={settingsCardClassName}>
+      <div className="grid gap-[var(--ow-settings-row-gap)] border-b border-border/70 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] md:grid-cols-[var(--ow-settings-label-column-w)_minmax(0,1fr)]">
+        <div className="flex items-start gap-[var(--ow-settings-header-gap)]">
+          <div className="mt-0.5 text-muted-foreground">
+            <Command className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
+          </div>
+          <div className="space-y-[var(--ow-space-1)]">
+            <div className="[font-size:var(--ow-font-label)] font-semibold text-foreground">
+              {command.title}
             </div>
-            <div className="space-y-1">
-              <div className="text-[13px] font-semibold text-foreground">{command.title}</div>
-              <div className="text-[12px] leading-5 text-muted-foreground">
-                {command.description}
-              </div>
+            <div className="[font-size:var(--ow-settings-description-size)] leading-[var(--ow-line-body)] text-muted-foreground">
+              {command.description}
             </div>
           </div>
+        </div>
 
-          <div
-            className="space-y-4"
-            data-command-id={command.id}
-            data-shortcut-configurable={command.configurable ? "true" : "false"}
-          >
-            <div className="flex flex-wrap items-center gap-3">
-              <div
-                data-shortcut-current-binding={command.id}
-                className="rounded-md border border-border/70 bg-background-elevated px-3 py-2 text-[13px] font-medium text-foreground"
-              >
-                {displayedBindingText}
-              </div>
-              <span
-                data-shortcut-binding-source={command.id}
-                data-shortcut-binding-source-value={currentOverride?.chord ? "custom" : "default"}
-                className="text-[12px] text-muted-foreground"
-              >
-                {currentOverride?.chord
-                  ? copy.shortcuts.customBinding
-                  : copy.shortcuts.defaultBinding}
+        <div
+          className="space-y-[var(--ow-space-4)]"
+          data-command-id={command.id}
+          data-shortcut-configurable={command.configurable ? "true" : "false"}
+        >
+          <div className="flex flex-wrap items-center gap-[var(--ow-gap-md)]">
+            <div
+              data-shortcut-current-binding={command.id}
+              className="rounded-[var(--ow-radius-md)] border border-border/70 bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-label)] font-medium text-foreground"
+            >
+              {displayedBindingText}
+            </div>
+            <span
+              data-shortcut-binding-source={command.id}
+              data-shortcut-binding-source-value={currentOverride?.chord ? "custom" : "default"}
+              className="[font-size:var(--ow-font-body)] text-muted-foreground"
+            >
+              {currentOverride?.chord
+                ? copy.shortcuts.customBinding
+                : copy.shortcuts.defaultBinding}
+            </span>
+            {status ? (
+              <span className="[font-size:var(--ow-font-body)] text-muted-foreground">
+                {status}
               </span>
-              {status ? <span className="text-[12px] text-muted-foreground">{status}</span> : null}
-            </div>
+            ) : null}
+          </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-[var(--ow-gap-md)]">
+            <button
+              type="button"
+              data-shortcut-edit={command.id}
+              className={secondaryButtonClassName}
+              onClick={() => {
+                setStatus("")
+                setDraftChord(null)
+                setIsRecording(true)
+              }}
+              disabled={isSaving}
+            >
+              <Keyboard className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+              {copy.shortcuts.edit}
+            </button>
+
+            <button
+              type="button"
+              data-shortcut-use-default={command.id}
+              className={secondaryButtonClassName}
+              onClick={() => void resetOverride()}
+              disabled={isSaving || !currentOverride}
+            >
+              {copy.shortcuts.useDefault}
+            </button>
+          </div>
+
+          {isRecording ? (
+            <div className="rounded-[var(--ow-settings-card-radius)] border border-border/70 bg-background px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
+              <div className="[font-size:var(--ow-font-body)] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                {copy.shortcuts.recordingTitle}
+              </div>
+              <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-label)] text-muted-foreground">
+                {copy.shortcuts.recordingDescription}
+              </div>
               <button
                 type="button"
-                data-shortcut-edit={command.id}
-                className={secondaryButtonClassName}
-                onClick={() => {
-                  setStatus("")
-                  setDraftChord(null)
-                  setIsRecording(true)
+                data-shortcut-recorder={command.id}
+                className="mt-[var(--ow-space-3)] min-h-[var(--ow-settings-control-h)] min-w-[var(--ow-settings-select-w)] rounded-[var(--ow-radius-md)] border border-[var(--ring)] bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)] text-left [font-size:var(--ow-settings-control-font)] font-medium text-foreground outline-none"
+                onKeyDown={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  const nextChord = toShortcutChordFromKeyboardEvent(event)
+                  if (nextChord) {
+                    setDraftChord(nextChord)
+                  }
                 }}
-                disabled={isSaving}
+                onClick={(event) => {
+                  event.preventDefault()
+                }}
+                autoFocus
               >
-                <Keyboard className="h-3.5 w-3.5" />
-                {copy.shortcuts.edit}
+                {draftBindingText ?? copy.shortcuts.recordingPlaceholder}
               </button>
 
-              <button
-                type="button"
-                data-shortcut-use-default={command.id}
-                className={secondaryButtonClassName}
-                onClick={() => void resetOverride()}
-                disabled={isSaving || !currentOverride}
-              >
-                {copy.shortcuts.useDefault}
-              </button>
-            </div>
-
-            {isRecording ? (
-              <div className="rounded-xl border border-border/70 bg-background px-4 py-4">
-                <div className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                  {copy.shortcuts.recordingTitle}
-                </div>
-                <div className="mt-2 text-[13px] text-muted-foreground">
-                  {copy.shortcuts.recordingDescription}
-                </div>
+              <div className="mt-[var(--ow-space-4)] flex flex-wrap items-center gap-[var(--ow-gap-md)]">
                 <button
                   type="button"
-                  data-shortcut-recorder={command.id}
-                  className="mt-4 min-w-[220px] rounded-md border border-[var(--ring)] bg-background-elevated px-3 py-2 text-left text-[13px] font-medium text-foreground outline-none"
-                  onKeyDown={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    const nextChord = toShortcutChordFromKeyboardEvent(event)
-                    if (nextChord) {
-                      setDraftChord(nextChord)
-                    }
-                  }}
-                  onClick={(event) => {
-                    event.preventDefault()
-                  }}
-                  autoFocus
+                  data-shortcut-save={command.id}
+                  className={secondaryButtonClassName}
+                  onClick={() => void saveOverride()}
+                  disabled={isSaving || !draftChord}
                 >
-                  {draftBindingText ?? copy.shortcuts.recordingPlaceholder}
+                  {copy.common.save}
                 </button>
-
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    data-shortcut-save={command.id}
-                    className={secondaryButtonClassName}
-                    onClick={() => void saveOverride()}
-                    disabled={isSaving || !draftChord}
-                  >
-                    {copy.common.save}
-                  </button>
-                  <button
-                    type="button"
-                    className={secondaryButtonClassName}
-                    onClick={() => {
-                      setIsRecording(false)
-                      setDraftChord(null)
-                    }}
-                    disabled={isSaving}
-                  >
-                    {copy.shortcuts.cancel}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className={secondaryButtonClassName}
+                  onClick={() => {
+                    setIsRecording(false)
+                    setDraftChord(null)
+                  }}
+                  disabled={isSaving}
+                >
+                  {copy.shortcuts.cancel}
+                </button>
               </div>
-            ) : null}
+            </div>
+          ) : null}
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-xl border border-border/70 bg-background px-4 py-3">
-                <div className="text-[12px] uppercase tracking-[0.08em] text-muted-foreground">
-                  {copy.shortcuts.defaultBindingLabel}
-                </div>
-                <div className="mt-2 text-[13px] font-medium text-foreground">
-                  {defaultBindingText}
-                </div>
+          <div className="grid gap-[var(--ow-gap-md)] md:grid-cols-2">
+            <div className="rounded-[var(--ow-settings-card-radius)] border border-border/70 bg-background px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
+              <div className="[font-size:var(--ow-font-body)] uppercase tracking-[0.08em] text-muted-foreground">
+                {copy.shortcuts.defaultBindingLabel}
               </div>
+              <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-label)] font-medium text-foreground">
+                {defaultBindingText}
+              </div>
+            </div>
 
-              <div className="rounded-xl border border-border/70 bg-background px-4 py-3">
-                <div className="text-[12px] uppercase tracking-[0.08em] text-muted-foreground">
+            {defaultBinding.scope === "global" ? (
+              <div className="rounded-[var(--ow-settings-card-radius)] border border-border/70 bg-background px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
+                <div className="[font-size:var(--ow-font-body)] uppercase tracking-[0.08em] text-muted-foreground">
                   {copy.shortcuts.registrationStatus}
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-3">
+                <div className="mt-[var(--ow-space-2)] flex flex-wrap items-center gap-[var(--ow-gap-md)]">
                   <span
                     data-shortcut-registration-state={command.id}
                     data-shortcut-registration-state-value={availability?.state ?? "unknown"}
-                    className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-medium ${
+                    className={`inline-flex rounded-full border px-[var(--ow-space-2)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] font-medium ${
                       statusClassName[availability?.state ?? "unknown"]
                     }`}
                   >
@@ -356,22 +367,57 @@ export function ShortcutsTab(props: { locale: AppLocale }): React.JSX.Element {
                   {availability?.accelerator ? (
                     <span
                       data-shortcut-registration-accelerator={command.id}
-                      className="text-[12px] text-muted-foreground"
+                      className="[font-size:var(--ow-font-body)] text-muted-foreground"
                     >
                       {availability.accelerator}
                     </span>
                   ) : null}
                 </div>
                 {availability?.reason ? (
-                  <div className="mt-2 text-[12px] leading-5 text-muted-foreground">
+                  <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
                     {availability.reason}
                   </div>
                 ) : null}
               </div>
-            </div>
+            ) : null}
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+export function ShortcutsTab(props: { locale: AppLocale }): React.JSX.Element {
+  const { locale } = props
+  const copy = getSettingsCopy(locale)
+  const settings = useShortcutSettings()
+  const platform = resolveShortcutPlatform(window.electron.process.platform)
+  const commandIds = listConfigurableShortcutCommandIds()
+
+  if (commandIds.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center [font-size:var(--ow-font-label)] text-muted-foreground">
+        {copy.shortcuts.unavailable}
+      </div>
+    )
+  }
+
+  return (
+    <div className={settingsPageClassName}>
+      <div className={settingsPageHeaderClassName}>
+        <div className={settingsPageTitleClassName}>{copy.shortcuts.title}</div>
+        <div className={settingsPageDescriptionClassName}>{copy.shortcuts.description}</div>
+      </div>
+
+      {commandIds.map((commandId) => (
+        <ShortcutCommandCard
+          commandId={commandId}
+          copy={copy}
+          key={commandId}
+          platform={platform}
+          settings={settings}
+        />
+      ))}
     </div>
   )
 }

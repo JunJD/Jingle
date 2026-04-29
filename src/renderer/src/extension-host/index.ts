@@ -7,6 +7,8 @@ import {
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { listNativeExtensionManifests } from "@extensions/index"
 import { nativeExtensionRendererDefinitions } from "@extensions/renderer"
+import { getNativeExtensionRuntimeBackedCommand } from "@extensions/runtime-backed"
+import { RuntimeExtensionCommandSurface } from "@renderer/extension-runtime/RuntimeExtensionCommandSurface"
 import type { LauncherCommandOwnerDefinition } from "@launcher-shell/pages/types"
 import type { NativeNoViewCommandModule, NativeViewCommandModule } from "./sdk"
 import { useNativeExtensionViewStack } from "./view-stack-context"
@@ -28,6 +30,14 @@ export const nativeExtensionCommandEntries: NativeExtensionCommandEntry[] =
   supportedNativeExtensionManifests
     .flatMap((manifest) =>
       manifest.commands.map((command) => {
+        const runtimeBackedCommand = getNativeExtensionRuntimeBackedCommand({
+          commandName: command.name,
+          extensionName: manifest.name
+        })
+        if (runtimeBackedCommand) {
+          return null
+        }
+
         const rendererEntry = nativeExtensionRendererDefinitions
           .get(manifest.name)
           ?.commands.find((candidate) => candidate.name === command.name)
@@ -49,6 +59,7 @@ export const nativeExtensionCommandEntries: NativeExtensionCommandEntry[] =
         } satisfies NativeExtensionCommandEntry
       })
     )
+    .filter((entry): entry is NativeExtensionCommandEntry => entry !== null)
     .sort((left, right) => {
       const extensionOrder = left.extensionTitle.localeCompare(right.extensionTitle)
       if (extensionOrder !== 0) {
@@ -117,17 +128,10 @@ export const nativeLauncherCommandOwners = supportedNativeExtensionManifests.red
 
   owners.push({
     commands: routeableCommands.map((command) => {
-      const registryEntry = nativeExtensionCommandEntryMap.get(`${extension.name}:${command.name}`)
-      if (!registryEntry) {
-        throw new Error(
-          `Native extension "${extension.name}" command "${command.name}" is missing from the renderer definition`
-        )
-      }
-
-      const search = registryEntry.module.search as
-        | NativeViewCommandModule["search"]
-        | NativeNoViewCommandModule["search"]
-        | undefined
+      const runtimeBackedCommand = getNativeExtensionRuntimeBackedCommand({
+        commandName: command.name,
+        extensionName: extension.name
+      })
       const loadCommandPreferences = () =>
         window.api.nativeExtensions.getCommandPreferences(extension.name, command.name)
       const validateCommandPreferences = (preferences: Record<string, unknown>) => {
@@ -142,6 +146,35 @@ export const nativeLauncherCommandOwners = supportedNativeExtensionManifests.red
 
         return `Open Settings and configure ${missingPreferences.join(", ")} to run ${command.title ?? command.name}.`
       }
+
+      if (runtimeBackedCommand) {
+        if (command.mode !== "view") {
+          throw new Error(
+            `Native extension "${extension.name}" runtime-backed command "${command.name}" must be a view command`
+          )
+        }
+
+        return {
+          Component: RuntimeExtensionCommandSurface,
+          commandName: command.name,
+          getViewportHeight: getViewportHeight(runtimeBackedCommand.viewport),
+          loadCommandPreferences,
+          mode: "view" as const,
+          validateCommandPreferences
+        }
+      }
+
+      const registryEntry = nativeExtensionCommandEntryMap.get(`${extension.name}:${command.name}`)
+      if (!registryEntry) {
+        throw new Error(
+          `Native extension "${extension.name}" command "${command.name}" is missing from the renderer definition`
+        )
+      }
+
+      const search = registryEntry.module.search as
+        | NativeViewCommandModule["search"]
+        | NativeNoViewCommandModule["search"]
+        | undefined
 
       if (command.mode === "view") {
         const Component = registryEntry.module.default as

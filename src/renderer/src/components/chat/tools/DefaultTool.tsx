@@ -26,7 +26,7 @@ export const defaultToolComponent: ToolComponentDefinition = {
       <ToolDetailStack>
         {detailArgs ? (
           <>
-            <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            <div className="[font-size:var(--ow-font-meta)] font-medium uppercase tracking-[0.08em] text-muted-foreground">
               {copy.common.rawArguments}
             </div>
             <ToolCodeBlock>{detailArgs}</ToolCodeBlock>
@@ -34,7 +34,7 @@ export const defaultToolComponent: ToolComponentDefinition = {
         ) : null}
         {detailResult ? (
           <>
-            <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            <div className="[font-size:var(--ow-font-meta)] font-medium uppercase tracking-[0.08em] text-muted-foreground">
               {copy.common.rawResult}
             </div>
             <ToolCodeBlock>{detailResult}</ToolCodeBlock>

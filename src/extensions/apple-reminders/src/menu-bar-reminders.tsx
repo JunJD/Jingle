@@ -133,9 +133,10 @@ export default function AppleRemindersMenuBar(): React.JSX.Element {
 
   if (error) {
     return (
-      <MenuBarExtra title={title} tooltip="Apple Reminders">
+      <MenuBarExtra iconName="reminders" title={title} tooltip="Apple Reminders">
         <MenuBarExtra.Section title="Apple Reminders">
           <MenuBarExtra.Item
+            iconName="reminder-item"
             title={error}
             onAction={() => {
               void window.api.launcher.show().then(() => {
@@ -153,12 +154,18 @@ export default function AppleRemindersMenuBar(): React.JSX.Element {
   }
 
   return (
-    <MenuBarExtra isLoading={isLoading} title={title} tooltip="Apple Reminders">
+    <MenuBarExtra
+      iconName="reminders"
+      isLoading={isLoading}
+      title={title}
+      tooltip="Apple Reminders"
+    >
       <MenuBarExtra.Section title="Reminders">
         {visibleItems.length > 0 ? (
           visibleItems.slice(0, 12).map((reminder) => (
             <MenuBarExtra.Item
               key={reminder.id}
+              iconName="reminder-item"
               subtitle={
                 commandPreferences.displayListTitleForMenuBarReminders
                   ? reminder.list?.title
@@ -173,6 +180,7 @@ export default function AppleRemindersMenuBar(): React.JSX.Element {
         ) : (
           <MenuBarExtra.Item
             disabled
+            iconName="reminder-item"
             title={isLoading ? "Loading reminders…" : "No reminders"}
             onAction={() => {}}
           />
@@ -181,6 +189,7 @@ export default function AppleRemindersMenuBar(): React.JSX.Element {
 
       <MenuBarExtra.Section title="Actions">
         <MenuBarExtra.Item
+          iconName="reminder-item"
           subtitle="Open the full reminders list"
           title="Open My Reminders"
           onAction={() => {
@@ -194,6 +203,7 @@ export default function AppleRemindersMenuBar(): React.JSX.Element {
           }}
         />
         <MenuBarExtra.Item
+          iconName="plus"
           subtitle="Create a new reminder"
           title="Create Reminder"
           onAction={() => {
@@ -207,6 +217,7 @@ export default function AppleRemindersMenuBar(): React.JSX.Element {
           }}
         />
         <MenuBarExtra.Item
+          iconName="refresh"
           subtitle="Refresh menu bar reminders"
           title="Refresh"
           onAction={() => {

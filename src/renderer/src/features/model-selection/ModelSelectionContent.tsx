@@ -50,12 +50,12 @@ export function ModelSelectionContent(props: {
   }
 
   return (
-    <div className="flex min-h-[240px]">
-      <div className="w-[140px] border-r border-border bg-background/35 p-2">
-        <div className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+    <div className="model-selection-content flex min-h-[var(--ow-model-selector-min-h)]">
+      <div className="w-[var(--ow-model-selector-sidebar-w)] border-r border-border bg-background/35 p-[var(--ow-space-2)]">
+        <div className="px-[var(--ow-space-2)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-caption)] font-medium uppercase tracking-wider text-muted-foreground">
           {copy.modelSwitcher.provider}
         </div>
-        <div className="space-y-0.5">
+        <div className="space-y-[var(--ow-space-0-5)]">
           {providers.map((provider) => {
             return (
               <button
@@ -63,18 +63,21 @@ export function ModelSelectionContent(props: {
                 type="button"
                 onClick={() => handleProviderClick(provider)}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-[10px] px-2 py-1 text-left text-xs transition-colors",
+                  "flex w-full items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-model-selector-row-radius)] px-[var(--ow-space-2)] py-[var(--ow-space-1)] text-left [font-size:var(--ow-font-meta)] transition-colors",
                   effectiveProviderId === provider.id
                     ? "bg-background-secondary text-foreground"
                     : "text-muted-foreground hover:bg-background-secondary/70 hover:text-foreground"
                 )}
               >
-                <ProviderIcon className="size-3.5 shrink-0" providerId={provider.id} />
+                <ProviderIcon
+                  className="size-[var(--ow-icon-sm)] shrink-0"
+                  providerId={provider.id}
+                />
                 <span className="flex-1 truncate">{provider.name}</span>
                 {provider.modelListStatus !== "active" ? (
                   <AlertCircle
                     className={cn(
-                      "size-3 shrink-0",
+                      "size-[var(--ow-icon-compact)] shrink-0",
                       provider.modelListStatus === "error"
                         ? "text-destructive"
                         : "text-status-warning"
@@ -87,18 +90,18 @@ export function ModelSelectionContent(props: {
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col p-2">
-        <div className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+      <div className="flex flex-1 flex-col p-[var(--ow-space-2)]">
+        <div className="px-[var(--ow-space-2)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-caption)] font-medium uppercase tracking-wider text-muted-foreground">
           {copy.modelSwitcher.model}
         </div>
 
         {selectedProvider?.modelListStatus === "error" ? (
-          <div className="flex h-[180px] flex-col items-center justify-center px-4 text-center">
-            <AlertCircle className="mb-2 size-6 text-destructive" />
-            <p className="mb-1 text-xs font-medium text-foreground">
+          <div className="flex h-[var(--ow-model-selector-state-h)] flex-col items-center justify-center px-[var(--ow-space-4)] text-center">
+            <AlertCircle className="mb-[var(--ow-space-2)] size-[var(--ow-icon-lg)] text-destructive" />
+            <p className="mb-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] font-medium text-foreground">
               {copy.modelSwitcher.providerError(selectedProvider.name)}
             </p>
-            <p className="mb-3 max-w-[220px] truncate text-xs text-muted-foreground">
+            <p className="mb-[var(--ow-space-3)] max-w-[var(--ow-model-selector-error-max-w)] truncate [font-size:var(--ow-font-meta)] text-muted-foreground">
               {selectedProvider.modelListError}
             </p>
             <Button size="sm" onClick={() => handleOpenProviderSettings(selectedProvider)}>
@@ -106,9 +109,9 @@ export function ModelSelectionContent(props: {
             </Button>
           </div>
         ) : selectedProvider && !selectedProviderConfigured ? (
-          <div className="flex h-[180px] flex-col items-center justify-center px-4 text-center">
-            <Key className="mb-2 size-6 text-muted-foreground" />
-            <p className="mb-3 text-xs text-muted-foreground">
+          <div className="flex h-[var(--ow-model-selector-state-h)] flex-col items-center justify-center px-[var(--ow-space-4)] text-center">
+            <Key className="mb-[var(--ow-space-2)] size-[var(--ow-icon-lg)] text-muted-foreground" />
+            <p className="mb-[var(--ow-space-3)] [font-size:var(--ow-font-meta)] text-muted-foreground">
               {copy.modelSwitcher.apiKeyRequired(selectedProvider.name)}
             </p>
             <Button size="sm" onClick={() => handleOpenProviderSettings(selectedProvider)}>
@@ -116,15 +119,15 @@ export function ModelSelectionContent(props: {
             </Button>
           </div>
         ) : (
-          <div className="flex h-[200px] flex-col">
-            <div className="flex-1 space-y-0.5 overflow-y-auto">
+          <div className="flex h-[var(--ow-model-selector-list-h)] flex-col">
+            <div className="flex-1 space-y-[var(--ow-space-0-5)] overflow-y-auto">
               {filteredModels.map((model) => (
                 <button
                   key={model.id}
                   type="button"
                   onClick={() => handleModelSelect(model.id)}
                   className={cn(
-                    "flex w-full items-center gap-2 rounded-[10px] px-2 py-1 text-left text-xs font-mono transition-colors",
+                    "flex w-full items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-model-selector-row-radius)] px-[var(--ow-space-2)] py-[var(--ow-space-1)] text-left [font-size:var(--ow-font-meta)] font-mono transition-colors",
                     currentModelId === model.id
                       ? "bg-background-secondary text-foreground"
                       : "text-muted-foreground hover:bg-background-secondary/70 hover:text-foreground"
@@ -132,13 +135,13 @@ export function ModelSelectionContent(props: {
                 >
                   <span className="flex-1 truncate">{model.model}</span>
                   {currentModelId === model.id ? (
-                    <Check className="size-3.5 shrink-0 text-foreground" />
+                    <Check className="size-[var(--ow-icon-sm)] shrink-0 text-foreground" />
                   ) : null}
                 </button>
               ))}
 
               {filteredModels.length === 0 ? (
-                <p className="px-2 py-4 text-xs text-muted-foreground">
+                <p className="px-[var(--ow-space-2)] py-[var(--ow-space-4)] [font-size:var(--ow-font-meta)] text-muted-foreground">
                   {copy.modelSwitcher.noModelsAvailable}
                 </p>
               ) : null}
@@ -148,7 +151,7 @@ export function ModelSelectionContent(props: {
               <button
                 type="button"
                 onClick={() => handleOpenProviderSettings(selectedProvider)}
-                className="mt-2 w-full rounded-[10px] border-t border-border px-2 pt-2 text-left text-xs text-muted-foreground transition-colors hover:bg-background-secondary/70 hover:text-foreground"
+                className="mt-[var(--ow-space-2)] w-full rounded-[var(--ow-model-selector-row-radius)] border-t border-border px-[var(--ow-space-2)] pt-[var(--ow-space-2)] text-left [font-size:var(--ow-font-meta)] text-muted-foreground transition-colors hover:bg-background-secondary/70 hover:text-foreground"
               >
                 {copy.modelSwitcher.editApiKey}
               </button>
@@ -157,7 +160,7 @@ export function ModelSelectionContent(props: {
         )}
 
         {!selectedModel && providers.length === 0 ? (
-          <div className="flex h-[180px] items-center justify-center px-4 text-center text-xs text-muted-foreground">
+          <div className="flex h-[var(--ow-model-selector-state-h)] items-center justify-center px-[var(--ow-space-4)] text-center [font-size:var(--ow-font-meta)] text-muted-foreground">
             {copy.modelSwitcher.noModelsAvailable}
           </div>
         ) : null}

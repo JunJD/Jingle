@@ -11,6 +11,7 @@ import {
 } from "./persistence"
 import { isAbortLikeError } from "./errors"
 import { createAgentRuntime, runtimeUsesCheckpointPersistence } from "./runtime"
+import { buildAgentResumeConfig, buildAgentRunConfig } from "./run-config"
 import { extractHitlRequestFromValuesState } from "./runtime-state"
 import { getHitlRequest, getThread, resolveHitlRequest, upsertHitlRequest } from "../db"
 import { buildIpcErrorEvent, OpenworkIpcError } from "../ipc/error"
@@ -23,6 +24,7 @@ import type {
 
 export type AgentStreamPayload =
   | { type: "done" }
+  | { type: "cancelled" }
   | {
       type: "error"
       error: string
@@ -31,10 +33,10 @@ export type AgentStreamPayload =
       message?: string
       status?: number
     }
+  | { type: "run_started"; runId: string }
   | { type: "stream"; data: unknown; mode: string }
 
 export interface AgentStreamSink {
-  onClosed: (listener: () => void) => () => void
   send: (payload: AgentStreamPayload) => void
 }
 
@@ -379,10 +381,6 @@ export class AgentService {
     }
 
     const abortController = new AbortController()
-    const removeClosedListener = sink.onClosed(() => {
-      console.log("[Agent] Window closed, aborting stream for thread:", threadId)
-      abortController.abort()
-    })
 
     try {
       const thread = await getThread(threadId)
@@ -409,6 +407,7 @@ export class AgentService {
       const normalizedRefs = normalizeComposerMessageRefs(message.additional_kwargs?.refs)
       const { runId } = await beginAgentRun(threadId, modelId)
       this.activeRuns.set(threadId, { controller: abortController, runId })
+      sink.send({ type: "run_started", runId })
 
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
       const humanMessage = new HumanMessage({
@@ -419,12 +418,7 @@ export class AgentService {
 
       const stream = await agent.stream(
         { messages: [humanMessage] },
-        {
-          configurable: { thread_id: threadId, run_id: runId },
-          signal: abortController.signal,
-          streamMode: ["messages", "values"],
-          recursionLimit: 1000
-        }
+        buildAgentRunConfig(threadId, runId, abortController)
       )
       let interrupted = false
 
@@ -467,7 +461,6 @@ export class AgentService {
       if (activeRun?.controller === abortController && abortController.signal.aborted) {
         await markRunAborted(threadId, activeRun.runId)
       }
-      removeClosedListener()
       this.activeRuns.delete(threadId)
     }
   }
@@ -508,23 +501,31 @@ export class AgentService {
     }
 
     const decisionType = decision.type
-    const resumeTarget = await resolveResumeTarget(threadId, decision)
-    const runId = await resumeAgentRun(threadId, resumeTarget.runId, {
-      source: "resume",
-      modelId: modelId ?? null,
-      requestId: resumeTarget.requestId
-    })
+    let resumeTarget: ResumeTarget
+    let runId: string
+
+    try {
+      resumeTarget = await resolveResumeTarget(threadId, decision)
+      runId = await resumeAgentRun(threadId, resumeTarget.runId, {
+        source: "resume",
+        modelId: modelId ?? null,
+        requestId: resumeTarget.requestId
+      })
+    } catch (error) {
+      console.error("[Agent] Resume error:", error)
+      sink.send({
+        type: "error",
+        ...buildIpcErrorEvent("agent:resume", error)
+      })
+      return
+    }
+
     this.activeRuns.set(threadId, { controller: abortController, runId })
+    sink.send({ type: "run_started", runId })
 
     try {
       const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
-      const streamMode: Array<"messages" | "values"> = ["messages", "values"]
-      const config = {
-        configurable: { thread_id: threadId, run_id: runId },
-        signal: abortController.signal,
-        streamMode,
-        recursionLimit: 1000
-      }
+      const config = buildAgentResumeConfig(threadId, runId, abortController)
 
       await resolveHitlRequest(resumeTarget.requestId, mapDecisionToHitlStatus(decisionType), {
         type: decision.type,
@@ -574,12 +575,15 @@ export class AgentService {
     }
   }
 
-  async cancel({ threadId }: AgentCancelParams): Promise<void> {
+  async cancel({ threadId }: AgentCancelParams): Promise<boolean> {
     const activeRun = this.activeRuns.get(threadId)
-    if (activeRun) {
-      activeRun.controller.abort()
-      this.activeRuns.delete(threadId)
-      await markRunAborted(threadId, activeRun.runId)
+    if (!activeRun) {
+      return false
     }
+
+    activeRun.controller.abort()
+    this.activeRuns.delete(threadId)
+    await markRunAborted(threadId, activeRun.runId)
+    return true
   }
 }

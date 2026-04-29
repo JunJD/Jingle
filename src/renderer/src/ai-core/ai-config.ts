@@ -1,8 +1,8 @@
 import { getLauncherViewportHeightForBody, type LauncherShellConfig } from "@shared/launcher"
 
 const AI_PAGE_CONTENT_HEIGHT = 468
-const AI_HEADER_HEIGHT = 56
-const AI_FOOTER_HEIGHT = 40
+const AI_HEADER_HEIGHT = 48
+const AI_FOOTER_HEIGHT = 36
 
 export function getAiShellConfig(shellConfig: LauncherShellConfig): LauncherShellConfig {
   return {

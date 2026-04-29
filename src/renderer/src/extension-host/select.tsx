@@ -20,8 +20,8 @@ export function NativeExtensionSelect(props: {
         {children}
       </select>
 
-      <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-muted-foreground">
-        <ChevronDown className="h-3.5 w-3.5" />
+      <div className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-muted-foreground">
+        <ChevronDown className="h-3 w-3" />
       </div>
     </div>
   )

@@ -16,8 +16,7 @@ async function loadAgentServiceApi(): Promise<{
     }
   ) => unknown
 }> {
-  const module = await import("../../src/main/agent/service")
-  const api = (module.default ?? module) as {
+  const api = (await import("../../src/main/agent/service")) as {
     projectInterruptForIpc: (
       threadId: string,
       runId: string,

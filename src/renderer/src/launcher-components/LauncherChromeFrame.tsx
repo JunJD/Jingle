@@ -10,6 +10,7 @@ interface LauncherChromeFrameProps {
   headerLeading?: ReactNode
   headerMain?: ReactNode
   headerTrailing?: ReactNode
+  inputAccessory?: ReactNode
   inputStatus?: LauncherInputStatus
   shellConfig: LauncherShellConfig
   showHeaderDivider?: boolean
@@ -24,6 +25,7 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
     headerLeading,
     headerMain,
     headerTrailing,
+    inputAccessory,
     inputStatus,
     shellConfig,
     showHeaderDivider = true,
@@ -49,7 +51,9 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
       <div
         ref={headerRef}
         className={`launcher-chrome-header flex shrink-0 items-center ${
-          density === "compact" ? "gap-2.5 px-4" : "gap-3 px-6"
+          density === "compact"
+            ? "gap-[var(--ow-gap-sm)] px-[var(--launcher-chrome-x-compact)]"
+            : "gap-[var(--ow-space-2-5)] px-[var(--launcher-chrome-x)]"
         }`}
         style={{
           borderBottom: showHeaderDivider ? "1px solid var(--launcher-border)" : "none",
@@ -62,12 +66,16 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
 
         {headerTrailing ? (
           <div
-            className={`flex shrink-0 items-center ${density === "compact" ? "gap-3" : "gap-4"}`}
+            className={`flex shrink-0 items-center ${
+              density === "compact" ? "gap-[var(--ow-gap-sm)]" : "gap-[var(--ow-space-2-5)]"
+            }`}
           >
             {headerTrailing}
           </div>
         ) : null}
       </div>
+
+      {inputAccessory}
 
       {children}
 
@@ -75,7 +83,9 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
         <div
           ref={footerRef}
           className={`launcher-chrome-footer flex shrink-0 items-center justify-between ${
-            density === "compact" ? "px-3" : "px-4"
+            density === "compact"
+              ? "px-[var(--launcher-footer-x)]"
+              : "px-[var(--launcher-chrome-x-compact)]"
           }`}
           style={{
             borderTop: "1px solid var(--launcher-border)",

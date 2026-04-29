@@ -46,9 +46,9 @@ function LauncherAttachmentItem(props: {
   const fallbackIcon =
     attachment.kind === "file" ? (
       attachment.isDirectory ? (
-        <Folder className="size-3.5 text-muted-foreground" />
+        <Folder className="size-[var(--ow-icon-sm)] text-muted-foreground" />
       ) : (
-        <FileText className="size-3.5 text-muted-foreground" />
+        <FileText className="size-[var(--ow-icon-sm)] text-muted-foreground" />
       )
     ) : undefined
 
@@ -60,15 +60,15 @@ function LauncherAttachmentItem(props: {
           onRemove={() => onRemove(attachment.id)}
           className={
             attachment.kind === "image"
-              ? "h-6 w-6 overflow-hidden rounded-lg border border-white/10 bg-black/[0.035] p-0 shadow-sm ring-1 ring-black/5"
-              : "max-w-[188px] rounded-xl border border-white/10 bg-black/[0.035] px-2.5 py-2 text-[12px] shadow-sm ring-1 ring-black/5"
+              ? "h-[var(--ow-icon-lg)] w-[var(--ow-icon-lg)] overflow-hidden rounded-[var(--ow-radius-md)] border border-white/10 bg-black/[0.035] p-0 shadow-sm ring-1 ring-black/5"
+              : "max-w-[var(--launcher-attachment-max-width)] rounded-[var(--ow-radius-lg)] border border-white/10 bg-black/[0.035] px-[var(--ow-space-2-5)] py-[var(--ow-space-2)] [font-size:var(--ow-font-control)] shadow-sm ring-1 ring-black/5"
           }
         >
           {attachment.kind === "image" ? (
             <>
               <AttachmentPreview className="h-full w-full rounded-[inherit] bg-transparent" />
               <AttachmentRemove
-                className="absolute right-0.5 top-0.5 size-3 rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-zinc-600 [&>svg]:size-[9px]"
+                className="absolute right-[var(--ow-leading-nudge)] top-[var(--ow-leading-nudge)] size-[var(--ow-icon-compact)] rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-zinc-600 [&>svg]:size-[var(--ow-icon-close-glyph)]"
                 label={removeLabel}
               />
             </>
@@ -76,11 +76,11 @@ function LauncherAttachmentItem(props: {
             <>
               <AttachmentPreview
                 fallbackIcon={fallbackIcon}
-                className="size-8 rounded-lg bg-black/[0.04]"
+                className="size-[var(--ow-control-h-md)] rounded-lg bg-black/[0.04]"
               />
-              <AttachmentInfo className="max-w-[124px] text-[12px] font-medium text-foreground" />
+              <AttachmentInfo className="max-w-[var(--launcher-attachment-name-max-width)] [font-size:var(--ow-font-control)] font-medium text-foreground" />
               <AttachmentRemove
-                className="absolute right-1 top-1 size-3.5 rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-zinc-600 [&>svg]:size-2"
+                className="absolute right-[var(--ow-space-1)] top-[var(--ow-space-1)] size-[var(--ow-icon-sm)] rounded-full border-0 bg-zinc-500/95 p-0 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-zinc-600 [&>svg]:size-[var(--ow-icon-micro)]"
                 label={removeLabel}
               />
             </>
@@ -109,7 +109,7 @@ export function LauncherAttachmentStrip(props: {
   const overflowCount = attachments.length - visibleAttachments.length
 
   return (
-    <div className="flex min-w-0 items-center gap-1.5 px-1 py-1">
+    <div className="flex min-w-0 items-center gap-[var(--ow-space-1-5)] px-[var(--ow-space-1)] py-[var(--ow-space-1)]">
       <Attachments variant="inline" className="min-w-0 flex-nowrap items-center overflow-hidden">
         {visibleAttachments.map((attachment) => (
           <LauncherAttachmentItem
@@ -121,7 +121,7 @@ export function LauncherAttachmentStrip(props: {
           />
         ))}
         {overflowCount > 0 ? (
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/[0.035] text-[10px] font-medium text-muted-foreground shadow-sm ring-1 ring-black/5">
+          <div className="flex h-[var(--ow-icon-lg)] w-[var(--ow-icon-lg)] shrink-0 items-center justify-center rounded-[var(--ow-radius-md)] border border-white/10 bg-black/[0.035] [font-size:var(--ow-font-caption)] font-medium text-muted-foreground shadow-sm ring-1 ring-black/5">
             +{overflowCount}
           </div>
         ) : null}

@@ -30,7 +30,6 @@ interface ToolApprovalResumeValue {
 }
 
 interface ToolApprovalActionRequest extends ActionRequest {
-  id: string
   review?: ToolApprovalItem | null
   toolCallId: string
 }
@@ -222,7 +221,6 @@ export function createToolApprovalMiddleware(options: CreateToolApprovalMiddlewa
         kind: "tool-approval",
         actionRequests: [
           {
-            id: request.toolCall.id,
             toolCallId: request.toolCall.id,
             name: request.toolCall.name,
             args: toolArgs,

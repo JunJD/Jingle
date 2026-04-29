@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef } from "react"
+import { useRef } from "react"
+import { Settings2 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useI18n } from "@/lib/i18n"
 import { cn, truncateMiddle } from "@/lib/utils"
@@ -6,10 +7,9 @@ import {
   getLauncherResultToneStyle,
   renderLauncherResultIcon
 } from "@launcher-shell/result-presentation"
-import type {
-  LauncherHomeSurfaceSection,
-  LauncherHomeSurfaceSectionKind
-} from "@launcher-shell/home-surface"
+import type { LauncherHomeSurfaceSection } from "@launcher-shell/home-surface"
+import type { LauncherShellItem } from "@launcher-shell/types"
+import { useSelectedRowScrollIntoView } from "./useSelectedRowScrollIntoView"
 
 function renderTitle(title: string, match?: [number, number]): React.JSX.Element | string {
   if (!match || match[0] < 0 || match[1] < match[0]) {
@@ -28,14 +28,16 @@ function renderTitle(title: string, match?: [number, number]): React.JSX.Element
 }
 
 function getSectionLabel(
-  sectionKind: LauncherHomeSurfaceSectionKind,
+  section: LauncherHomeSurfaceSection,
   copy: ReturnType<typeof useI18n>["copy"]
 ): string | null {
-  switch (sectionKind) {
+  if (section.title) {
+    return section.title
+  }
+
+  switch (section.kind) {
     case "commands":
-      return copy.launcher.commandMatches
-    case "command-intents":
-      return copy.launcher.actionsLabel
+      return null
     case "search-results":
       return copy.launcher.searchResults
     case "suggestions":
@@ -45,48 +47,45 @@ function getSectionLabel(
   }
 }
 
+function getResultTrailingLabel(
+  item: LauncherShellItem,
+  copy: ReturnType<typeof useI18n>["copy"]
+): string {
+  if (item.kind === "ai") {
+    return copy.launcher.resultKindAgent
+  }
+
+  if (item.kind === "application") {
+    return "Application"
+  }
+
+  if (item.kind === "plugin") {
+    return "Command"
+  }
+
+  return copy.launcher.openGeneric
+}
+
 export function LauncherResultList(props: {
   height: number
   onExecute: (index: number) => void
+  onSectionAction?: (action: NonNullable<LauncherHomeSurfaceSection["action"]>) => void
   sections: LauncherHomeSurfaceSection[]
   selectedIndex: number
 }): React.JSX.Element | null {
   const { copy } = useI18n()
-  const { height, onExecute, sections, selectedIndex } = props
+  const { height, onExecute, onSectionAction, sections, selectedIndex } = props
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
   const items = sections.flatMap((section) => section.items)
   const itemsKey = items.map((item) => item.id).join("|")
 
-  useLayoutEffect(() => {
-    if (selectedIndex < 0) {
-      return
-    }
-
-    const viewport = scrollAreaRef.current?.querySelector(
-      "[data-radix-scroll-area-viewport]"
-    ) as HTMLDivElement | null
-    const item = itemRefs.current[selectedIndex]
-
-    if (!viewport || !item) {
-      return
-    }
-
-    const tolerance = 2
-    const viewportRect = viewport.getBoundingClientRect()
-    const itemRect = item.getBoundingClientRect()
-    const deltaTop = itemRect.top - viewportRect.top
-    const deltaBottom = itemRect.bottom - viewportRect.bottom
-
-    if (deltaTop < -tolerance) {
-      viewport.scrollTop += deltaTop
-      return
-    }
-
-    if (deltaBottom > tolerance) {
-      viewport.scrollTop += deltaBottom
-    }
-  }, [itemsKey, selectedIndex])
+  useSelectedRowScrollIntoView({
+    itemRefs,
+    itemsKey,
+    scrollAreaRef,
+    selectedIndex
+  })
 
   if (items.length === 0) {
     return null
@@ -99,9 +98,10 @@ export function LauncherResultList(props: {
 
     return [
       {
+        action: section.action,
         key: `header:${section.kind}`,
         kind: "header" as const,
-        label: getSectionLabel(section.kind, copy)
+        label: getSectionLabel(section, copy)
       },
       ...section.items.map((item, itemIndex) => ({
         index: precedingItemsCount + itemIndex,
@@ -117,15 +117,33 @@ export function LauncherResultList(props: {
       {sectionRows.map((row) => {
         if (row.kind === "header") {
           if (!row.label) {
-            return null
+            return row.key === "header:commands" ? (
+              <div key={row.key} className="mx-6 my-2 h-px bg-border/70" aria-hidden="true" />
+            ) : null
           }
+
+          const sectionAction = row.action
 
           return (
             <div
               key={row.key}
-              className="px-4 pt-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+              className="flex h-[var(--ow-section-h)] items-center px-[var(--launcher-list-section-x)] [font-size:var(--ow-font-meta)] font-semibold text-muted-foreground"
             >
-              {row.label}
+              <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
+                <span>{row.label}</span>
+                {sectionAction ? (
+                  <button
+                    type="button"
+                    className="launcher-action-link flex h-5 w-5 shrink-0 appearance-none items-center justify-center rounded-[6px] border-0 text-muted-foreground transition hover:text-foreground"
+                    title={sectionAction.title}
+                    aria-label={sectionAction.title}
+                    onClick={() => onSectionAction?.(sectionAction)}
+                    onMouseDown={(event) => event.preventDefault()}
+                  >
+                    <Settings2 className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </div>
             </div>
           )
         }
@@ -143,7 +161,7 @@ export function LauncherResultList(props: {
             onClick={() => onExecute(row.index)}
             onMouseDown={(event) => event.preventDefault()}
             className={cn(
-              "launcher-result-row relative grid h-14 w-full appearance-none grid-cols-[72px_minmax(0,1fr)_80px] items-center gap-3 border-0 px-4 text-left transition",
+              "launcher-result-row relative mx-[var(--launcher-result-row-x)] grid h-[var(--ow-row-h-md)] w-[calc(100%-(var(--launcher-result-row-x)*2))] appearance-none grid-cols-[var(--launcher-result-icon-column)_minmax(0,1fr)_var(--launcher-result-trailing-column)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--launcher-result-row-padding-x)] text-left transition",
               isSelected && "launcher-result-row--selected"
             )}
             style={{
@@ -151,31 +169,24 @@ export function LauncherResultList(props: {
               opacity: isPlanned ? 0.72 : 1
             }}
           >
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              {row.item.presentation.categoryLabel}
+            <div
+              className="flex h-[var(--ow-icon-md)] w-[var(--ow-icon-md)] shrink-0 items-center justify-center overflow-hidden rounded-[var(--ow-radius-sm)]"
+              style={getLauncherResultToneStyle(row.item.presentation.tone)}
+            >
+              {renderLauncherResultIcon(row.item.presentation.icon)}
             </div>
 
             <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <div
-                  className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden"
-                  style={getLauncherResultToneStyle(row.item.presentation.tone)}
-                >
-                  {renderLauncherResultIcon(row.item.presentation.icon)}
-                </div>
-                <div className="min-w-0">
-                  <div className="truncate text-[14px] font-medium leading-[1.15] text-foreground">
-                    {renderTitle(row.item.title, row.item.match)}
-                  </div>
-                  <div className="mt-0.5 truncate text-[12px] leading-[1.15] text-muted-foreground">
-                    {truncateMiddle(row.item.subtitle, 63, 14)}
-                  </div>
-                </div>
+              <div className="truncate [font-size:var(--ow-font-body)] font-medium leading-[var(--ow-line-tight)] text-foreground">
+                {renderTitle(row.item.title, row.item.match)}
+              </div>
+              <div className="mt-[var(--ow-leading-nudge)] truncate [font-size:var(--ow-font-meta)] leading-[var(--ow-line-tight)] text-muted-foreground">
+                {truncateMiddle(row.item.subtitle, 72, 16)}
               </div>
             </div>
 
-            <div className="justify-self-end text-[11px] font-medium text-muted-foreground">
-              {row.item.presentation.listActionLabel}
+            <div className="justify-self-end text-right [font-size:var(--ow-font-meta)] font-medium text-muted-foreground">
+              {getResultTrailingLabel(row.item, copy)}
             </div>
           </button>
         )

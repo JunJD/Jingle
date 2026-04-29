@@ -357,7 +357,7 @@ export default function GitHubCreatePullRequest(): React.JSX.Element {
       navigationTitle="Create Pull Request"
     >
       {formStateMessage ? (
-        <div className="rounded-[14px] border border-red-500/20 bg-red-500/8 px-4 py-3 text-[13px] text-red-600">
+        <div className="rounded-[var(--ow-radius-sm)] border border-red-500/20 bg-red-500/8 px-2.5 py-1.5 text-[12px] text-red-600">
           {formStateMessage}
         </div>
       ) : null}

@@ -12,9 +12,12 @@ interface ActionMessageProps {
   result?: unknown
   approvalRequest?: HITLRequest | null
   onApprovalDecision?: (decision: HITLDecision) => void
+  onExpandedChange?: (expanded: boolean) => void
   density?: "default" | "compact"
+  defaultExpanded?: boolean
   expanded?: boolean
   presentation?: ToolPresentation
+  renderApprovalDetail?: boolean
   showSummary?: boolean
 }
 
@@ -25,10 +28,10 @@ function StatusGlyph(props: {
   const { Icon, status } = props
 
   if (status === "approval") {
-    return <TriangleAlert className="size-3.5 text-status-warning" />
+    return <TriangleAlert className="size-[var(--ow-icon-sm)] text-status-warning" />
   }
 
-  return <Icon className={cn("size-3.5 text-muted-foreground")} />
+  return <Icon className={cn("size-[var(--ow-icon-sm)] text-muted-foreground")} />
 }
 
 export function ToolStatusIndicator(props: {
@@ -42,7 +45,7 @@ export function ToolStatusIndicator(props: {
     return (
       <span
         aria-label={runningLabel}
-        className="inline-flex h-4 w-7 shrink-0 items-center justify-center"
+        className="inline-flex h-[var(--ow-space-4)] w-[var(--launcher-action-control-h)] shrink-0 items-center justify-center"
         role="status"
       >
         <LoaderOne />
@@ -56,16 +59,19 @@ export function ToolStatusIndicator(props: {
 export function ActionMessage(props: ActionMessageProps): React.JSX.Element | null {
   const {
     approvalRequest,
+    defaultExpanded = false,
     density = "default",
     expanded,
     onApprovalDecision,
+    onExpandedChange,
     presentation = "standalone",
+    renderApprovalDetail = true,
     result,
     showSummary = true,
     toolCall
   } = props
   const { copy } = useI18n()
-  const [manualExpanded, setManualExpanded] = useState(Boolean(approvalRequest))
+  const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   const view = useMemo(
     () =>
       createActionMessageView({
@@ -78,19 +84,24 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     [approvalRequest, copy, presentation, result, toolCall]
   )
   const { definition, hitlDefinition, icon, model, status, statusLabel, summary } = view
-  const isExpanded = expanded ?? (Boolean(approvalRequest) || manualExpanded)
+  const autoExpanded = Boolean(approvalRequest) || defaultExpanded
+  const isExpanded = approvalRequest ? true : (expanded ?? manualExpanded ?? autoExpanded)
   const showLeadingIcon = presentation !== "grouped"
   const detail = useMemo<React.ReactNode>(() => {
-    if (approvalRequest && onApprovalDecision && hitlDefinition) {
-      return hitlDefinition.render({
-        copy,
-        isExpanded,
-        presentation,
-        request: approvalRequest,
-        respond: onApprovalDecision,
-        toolCall,
-        ...model
-      })
+    if (approvalRequest) {
+      if (onApprovalDecision && hitlDefinition && renderApprovalDetail) {
+        return hitlDefinition.render({
+          copy,
+          isExpanded,
+          presentation,
+          request: approvalRequest,
+          respond: onApprovalDecision,
+          toolCall,
+          ...model
+        })
+      }
+
+      return null
     }
 
     const contentDetail = definition.renderDetail?.({
@@ -110,6 +121,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     model,
     onApprovalDecision,
     presentation,
+    renderApprovalDetail,
     toolCall
   ])
 
@@ -119,7 +131,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       <div
         className={cn(
           "min-w-0 max-w-full overflow-hidden",
-          presentation === "grouped" ? "pl-0" : "pl-7"
+          presentation === "grouped" ? "pl-0" : "pl-[var(--ow-chat-action-indent)]"
         )}
       >
         {detail}
@@ -132,24 +144,32 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
 
   return (
     <div
-      className={cn("grid min-w-0 max-w-full", presentation === "grouped" ? "gap-1" : "gap-1.5")}
+      className={cn(
+        "grid min-w-0 max-w-full",
+        presentation === "grouped" ? "gap-[var(--ow-gap-xs)]" : "gap-[var(--ow-space-1-5)]"
+      )}
     >
       <button
         className={cn(
-          "inline-flex max-w-full min-w-0 items-center gap-3 rounded-lg px-0 text-left transition-colors",
-          presentation === "grouped" ? "py-0.5" : "py-1",
+          "inline-flex max-w-full min-w-0 items-center gap-[var(--ow-gap-md)] rounded-lg px-0 text-left transition-colors",
+          presentation === "grouped" ? "py-[var(--ow-space-0-5)]" : "py-[var(--ow-space-1)]",
           "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         )}
         data-tool-call-toggle={toolCall.name}
         onClick={() => {
           if (hasDetail && !approvalRequest) {
-            setManualExpanded((current) => !current)
+            const nextExpanded = !isExpanded
+            onExpandedChange?.(nextExpanded)
+
+            if (expanded === undefined) {
+              setManualExpanded(nextExpanded)
+            }
           }
         }}
         type="button"
       >
         {showLeadingIcon ? (
-          <span className="inline-flex size-4 shrink-0 items-center justify-center">
+          <span className="inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
             <StatusGlyph Icon={icon} status={status} />
           </span>
         ) : null}
@@ -158,8 +178,8 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
           className={cn(
             "min-w-0 [overflow-wrap:anywhere]",
             density === "compact"
-              ? "text-[12px] leading-5 text-muted-foreground"
-              : "text-[13px] leading-5 text-muted-foreground"
+              ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground"
+              : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)] text-muted-foreground"
           )}
         >
           {summary}
@@ -167,8 +187,10 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
 
         <span
           className={cn(
-            "flex shrink-0 items-center gap-2 font-medium uppercase tracking-[0.08em] text-muted-foreground",
-            density === "compact" ? "text-[10px]" : "text-[11px]"
+            "flex shrink-0 items-center gap-[var(--ow-gap-sm)] font-medium uppercase tracking-[0.08em] text-muted-foreground",
+            density === "compact"
+              ? "[font-size:var(--ow-font-caption)]"
+              : "[font-size:var(--ow-font-meta)]"
           )}
         >
           <ToolStatusIndicator
@@ -178,9 +200,9 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
           />
           {hasDetail ? (
             isExpanded ? (
-              <ChevronDown className="size-3.5" />
+              <ChevronDown className="size-[var(--ow-icon-sm)]" />
             ) : (
-              <ChevronRight className="size-3.5" />
+              <ChevronRight className="size-[var(--ow-icon-sm)]" />
             )
           ) : null}
         </span>

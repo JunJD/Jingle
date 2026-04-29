@@ -57,7 +57,9 @@ function SectionHeader({
       <Icon className="size-4" />
       <span className="flex-1 text-left">{title}</span>
       {badge !== undefined && badge > 0 && (
-        <span className="text-[10px] text-muted-foreground tabular-nums">{badge}</span>
+        <span className="[font-size:var(--ow-font-caption)] text-muted-foreground tabular-nums">
+          {badge}
+        </span>
       )}
     </button>
   )
@@ -423,10 +425,12 @@ function TasksContent(): React.JSX.Element {
 
   if (todos.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center text-center text-sm text-muted-foreground py-8 px-4">
-        <ListTodo className="size-8 mb-2 opacity-50" />
+      <div className="flex flex-col items-center justify-center px-[var(--ow-space-4)] py-[var(--ow-space-8)] text-center [font-size:var(--ow-font-body)] text-muted-foreground">
+        <ListTodo className="mb-[var(--ow-space-2)] size-[var(--ow-icon-xl)] opacity-50" />
         <span>No tasks yet</span>
-        <span className="text-xs mt-1">Tasks appear when the agent creates them</span>
+        <span className="mt-[var(--ow-space-1)] [font-size:var(--ow-font-meta)]">
+          Tasks appear when the agent creates them
+        </span>
       </div>
     )
   }
@@ -447,7 +451,7 @@ function TasksContent(): React.JSX.Element {
     <div>
       {/* Progress bar */}
       <div className="p-3 border-b border-border/50">
-        <div className="flex items-center justify-between mb-1.5 text-xs">
+        <div className="mb-[var(--ow-space-1-5)] flex items-center justify-between [font-size:var(--ow-font-meta)]">
           <span className="text-muted-foreground">PROGRESS</span>
           <span className="font-mono">
             {done}/{total}
@@ -462,25 +466,25 @@ function TasksContent(): React.JSX.Element {
       </div>
 
       {/* Todo list */}
-      <div className="p-3 space-y-2">
+      <div className="p-3 space-y-[var(--ow-space-2)]">
         {/* Completed/Cancelled Section (Collapsible) */}
         {doneItems.length > 0 && (
           <div className="mb-1">
             <button
               onClick={() => setCompletedExpanded(!completedExpanded)}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-2 w-full"
+              className="mb-[var(--ow-space-2)] flex w-full items-center gap-[var(--ow-space-1-5)] [font-size:var(--ow-font-meta)] text-muted-foreground transition-colors hover:text-foreground"
             >
               {completedExpanded ? (
-                <ChevronDown className="size-3.5" />
+                <ChevronDown className="size-[var(--ow-icon-sm)]" />
               ) : (
-                <ChevronRight className="size-3.5" />
+                <ChevronRight className="size-[var(--ow-icon-sm)]" />
               )}
               <span className="uppercase tracking-wider font-medium">
                 Completed ({doneItems.length})
               </span>
             </button>
             {completedExpanded && (
-              <div className="space-y-2 pl-5 mb-3">
+              <div className="mb-[var(--ow-space-3)] space-y-[var(--ow-space-2)] pl-[var(--ow-space-5)]">
                 {doneItems.map((todo) => (
                   <TaskItem key={todo.id} todo={todo} />
                 ))}
@@ -511,13 +515,20 @@ function TaskItem({ todo }: { todo: Todo }): React.JSX.Element {
   return (
     <div
       className={cn(
-        "flex items-start gap-3 rounded-sm border border-border p-3",
+        "flex items-start gap-[var(--ow-gap-md)] rounded-sm border border-border p-3",
         isDone && "opacity-50"
       )}
     >
-      <Icon className={cn("size-4 shrink-0 mt-0.5", config.color)} />
-      <span className={cn("flex-1 text-sm", isDone && "line-through")}>{todo.content}</span>
-      <Badge variant={config.badge} className="shrink-0 text-[10px]">
+      <Icon
+        className={cn(
+          "mt-[var(--ow-space-0-5)] size-[var(--ow-icon-action)] shrink-0",
+          config.color
+        )}
+      />
+      <span className={cn("flex-1 [font-size:var(--ow-font-body)]", isDone && "line-through")}>
+        {todo.content}
+      </span>
+      <Badge variant={config.badge} className="shrink-0 [font-size:var(--ow-font-caption)]">
         {config.label}
       </Badge>
     </div>
@@ -527,7 +538,10 @@ function TaskItem({ todo }: { todo: Todo }): React.JSX.Element {
 function ArtifactsContent(): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const threadActions = useThreadActions(currentThreadId)
-  const artifacts = useThreadSelector(currentThreadId, (state) => state?.artifacts ?? EMPTY_ARTIFACTS)
+  const artifacts = useThreadSelector(
+    currentThreadId,
+    (state) => state?.artifacts ?? EMPTY_ARTIFACTS
+  )
   const activeTab = useThreadSelector(currentThreadId, (state) => state?.activeTab ?? "agent")
 
   const handleArtifactOpen = useCallback(
@@ -545,16 +559,18 @@ function ArtifactsContent(): React.JSX.Element {
     return (
       <div className="flex flex-col h-full">
         <div className="px-3 py-2 border-b border-border/50 bg-background/30">
-          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+          <div className="[font-size:var(--ow-font-caption)] uppercase tracking-[0.12em] text-muted-foreground">
             Thread outputs
           </div>
         </div>
 
-        <div className="flex flex-col items-center justify-center text-center text-sm text-muted-foreground py-8 px-4 flex-1 gap-3">
-          <PackageOpen className="size-8 opacity-50" />
+        <div className="flex flex-1 flex-col items-center justify-center gap-[var(--ow-gap-md)] px-[var(--ow-space-4)] py-[var(--ow-space-8)] text-center [font-size:var(--ow-font-body)] text-muted-foreground">
+          <PackageOpen className="size-[var(--ow-icon-xl)] opacity-50" />
           <div className="space-y-1">
             <div>No artifacts yet</div>
-            <div className="text-xs">Presented outputs will appear here</div>
+            <div className="[font-size:var(--ow-font-meta)]">
+              Presented outputs will appear here
+            </div>
           </div>
         </div>
       </div>
@@ -564,7 +580,7 @@ function ArtifactsContent(): React.JSX.Element {
   return (
     <div className="flex h-full flex-col">
       <div className="px-3 py-2 border-b border-border/50 bg-background/30">
-        <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+        <div className="[font-size:var(--ow-font-caption)] uppercase tracking-[0.12em] text-muted-foreground">
           Thread outputs
         </div>
       </div>
@@ -608,31 +624,31 @@ function ArtifactCard(props: {
       onClick={onSelect}
       type="button"
     >
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-background">
-          <descriptor.icon className="size-3.5 text-muted-foreground" />
+      <div className="flex min-w-0 items-start gap-[var(--ow-gap-md)]">
+        <div className="mt-[var(--ow-space-0-5)] flex size-[var(--ow-icon-display)] shrink-0 items-center justify-center rounded-md border border-border bg-background">
+          <descriptor.icon className="size-[var(--ow-icon-sm)] text-muted-foreground" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="truncate text-sm font-medium leading-5 text-foreground">
+          <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
+            <div className="truncate [font-size:var(--ow-font-body)] font-medium leading-[var(--ow-line-chat)] text-foreground">
               {artifact.title}
             </div>
-            <span className="shrink-0 rounded-full border border-border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            <span className="shrink-0 rounded-full border border-border px-[var(--ow-space-1-5)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-micro)] font-medium uppercase tracking-[0.12em] text-muted-foreground">
               {descriptor.label}
             </span>
           </div>
-          <div className="mt-1 truncate text-[11px] text-muted-foreground">
+          <div className="mt-1 truncate [font-size:var(--ow-font-meta)] text-muted-foreground">
             {descriptor.location}
           </div>
           {descriptor.preview ? (
-            <div className="mt-1 line-clamp-1 text-xs leading-5 text-muted-foreground">
+            <div className="mt-[var(--ow-space-1)] line-clamp-1 [font-size:var(--ow-font-meta)] leading-[var(--ow-line-chat)] text-muted-foreground">
               {descriptor.preview}
             </div>
           ) : null}
         </div>
         <ChevronRight
           className={cn(
-            "mt-1 size-3.5 shrink-0 text-muted-foreground transition-colors",
+            "mt-[var(--ow-space-1)] size-[var(--ow-icon-sm)] shrink-0 text-muted-foreground transition-colors",
             isActive && "text-foreground"
           )}
         />
@@ -650,24 +666,26 @@ function AgentsContent(): React.JSX.Element {
 
   if (subagents.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center px-4 py-8 text-center text-sm text-muted-foreground">
-        <GitBranch className="size-8 mb-2 opacity-50" />
+      <div className="flex flex-col items-center justify-center px-[var(--ow-space-4)] py-[var(--ow-space-8)] text-center [font-size:var(--ow-font-body)] text-muted-foreground">
+        <GitBranch className="mb-[var(--ow-space-2)] size-[var(--ow-icon-xl)] opacity-50" />
         <span>No subagent tasks</span>
-        <span className="text-xs mt-1">Subagents appear when spawned</span>
+        <span className="mt-[var(--ow-space-1)] [font-size:var(--ow-font-meta)]">
+          Subagents appear when spawned
+        </span>
       </div>
     )
   }
 
   return (
-    <div className="p-3 space-y-2">
+    <div className="p-3 space-y-[var(--ow-space-2)]">
       {subagents.map((agent) => (
         <div key={agent.id} className="p-3 rounded-sm border border-border">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <GitBranch className="size-3.5 text-status-info" />
+          <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] font-medium">
+            <GitBranch className="size-[var(--ow-icon-sm)] text-status-info" />
             <span className="flex-1">{agent.name}</span>
             <span
               className={cn(
-                "text-[10px] px-1.5 py-0.5 rounded",
+                "rounded px-[var(--ow-space-1-5)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)]",
                 agent.status === "pending" && "bg-muted text-muted-foreground",
                 agent.status === "running" && "bg-status-info/20 text-status-info",
                 agent.status === "completed" && "bg-status-nominal/20 text-status-nominal",
@@ -678,7 +696,9 @@ function AgentsContent(): React.JSX.Element {
             </span>
           </div>
           {agent.description && (
-            <p className="text-xs text-muted-foreground mt-1">{agent.description}</p>
+            <p className="mt-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] text-muted-foreground">
+              {agent.description}
+            </p>
           )}
         </div>
       ))}

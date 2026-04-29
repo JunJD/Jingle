@@ -1,6 +1,6 @@
 import type { ProviderId } from "./app-types"
 
-export type SettingsWindowTab = "general" | "provider" | "extensions" | "shortcuts"
+export type SettingsWindowTab = "appearance" | "general" | "provider" | "extensions" | "shortcuts"
 
 export interface SettingsWindowTarget {
   commandName?: string

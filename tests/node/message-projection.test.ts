@@ -2,6 +2,8 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import {
   buildTurnAssistantEntries,
+  countToolCalls,
+  shouldDefaultExpandToolEntries,
   type MessageTurn
 } from "../../src/renderer/src/components/chat/message-projection"
 import type { Message, ToolCall } from "../../src/renderer/src/types"
@@ -75,4 +77,60 @@ test("tool cluster key remains stable when first tool message later gains render
   assert.ok(initialCluster)
   assert.ok(updatedCluster)
   assert.equal(updatedCluster.key, initialCluster.key)
+})
+
+test("single tool call stays standalone while multiple tool calls switch to grouped presentation", () => {
+  const singleToolMessages = [
+    createAssistantMessage({
+      id: "assistant-1",
+      toolCalls: [createToolCall("tool-call-1")]
+    })
+  ]
+  const multiToolMessages = [
+    createAssistantMessage({
+      id: "assistant-1",
+      toolCalls: [createToolCall("tool-call-1")]
+    }),
+    createAssistantMessage({
+      id: "assistant-2",
+      toolCalls: [createToolCall("tool-call-2")]
+    })
+  ]
+
+  assert.equal(countToolCalls(singleToolMessages), 1)
+  assert.equal(countToolCalls(multiToolMessages), 2)
+})
+
+test("tool entries collapse by default only after a non-streaming turn ends with assistant content", () => {
+  const toolOnlyTurn = createTurn([
+    createAssistantMessage({
+      id: "assistant-1",
+      toolCalls: [createToolCall("tool-call-1")]
+    })
+  ])
+  const toolThenAnswerTurn = createTurn([
+    createAssistantMessage({
+      id: "assistant-1",
+      toolCalls: [createToolCall("tool-call-1")]
+    }),
+    createAssistantMessage({
+      id: "assistant-2",
+      content: "Done."
+    })
+  ])
+  const toolAndAnswerSameMessageTurn = createTurn([
+    createAssistantMessage({
+      id: "assistant-1",
+      content: "Done.",
+      toolCalls: [createToolCall("tool-call-1")]
+    })
+  ])
+
+  assert.equal(shouldDefaultExpandToolEntries(toolOnlyTurn, { isStreaming: false }), true)
+  assert.equal(shouldDefaultExpandToolEntries(toolThenAnswerTurn, { isStreaming: false }), false)
+  assert.equal(
+    shouldDefaultExpandToolEntries(toolAndAnswerSameMessageTurn, { isStreaming: false }),
+    false
+  )
+  assert.equal(shouldDefaultExpandToolEntries(toolThenAnswerTurn, { isStreaming: true }), true)
 })
