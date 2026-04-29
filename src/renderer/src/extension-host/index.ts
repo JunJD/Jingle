@@ -7,7 +7,6 @@ import {
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { listNativeExtensionManifests } from "@extensions/index"
 import { nativeExtensionRendererDefinitions } from "@extensions/renderer"
-import { getNativeExtensionRuntimeBackedCommand } from "@extensions/runtime-backed"
 import { RuntimeExtensionCommandSurface } from "@renderer/extension-runtime/RuntimeExtensionCommandSurface"
 import type { LauncherCommandOwnerDefinition } from "@launcher-shell/pages/types"
 import type { NativeNoViewCommandModule, NativeViewCommandModule } from "./sdk"
@@ -30,11 +29,7 @@ export const nativeExtensionCommandEntries: NativeExtensionCommandEntry[] =
   supportedNativeExtensionManifests
     .flatMap((manifest) =>
       manifest.commands.map((command) => {
-        const runtimeBackedCommand = getNativeExtensionRuntimeBackedCommand({
-          commandName: command.name,
-          extensionName: manifest.name
-        })
-        if (runtimeBackedCommand) {
+        if (command.runtime) {
           return null
         }
 
@@ -128,10 +123,6 @@ export const nativeLauncherCommandOwners = supportedNativeExtensionManifests.red
 
   owners.push({
     commands: routeableCommands.map((command) => {
-      const runtimeBackedCommand = getNativeExtensionRuntimeBackedCommand({
-        commandName: command.name,
-        extensionName: extension.name
-      })
       const loadCommandPreferences = () =>
         window.api.nativeExtensions.getCommandPreferences(extension.name, command.name)
       const validateCommandPreferences = (preferences: Record<string, unknown>) => {
@@ -147,17 +138,17 @@ export const nativeLauncherCommandOwners = supportedNativeExtensionManifests.red
         return `Open Settings and configure ${missingPreferences.join(", ")} to run ${command.title ?? command.name}.`
       }
 
-      if (runtimeBackedCommand) {
+      if (command.runtime) {
         if (command.mode !== "view") {
           throw new Error(
-            `Native extension "${extension.name}" runtime-backed command "${command.name}" must be a view command`
+            `Native extension "${extension.name}" runtime command "${command.name}" must be a view command`
           )
         }
 
         return {
           Component: RuntimeExtensionCommandSurface,
           commandName: command.name,
-          getViewportHeight: getViewportHeight(runtimeBackedCommand.viewport),
+          getViewportHeight: getViewportHeight(command.runtime.viewport),
           loadCommandPreferences,
           mode: "view" as const,
           validateCommandPreferences

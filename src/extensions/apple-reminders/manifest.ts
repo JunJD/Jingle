@@ -1,4 +1,6 @@
 import { defineNativeExtensionManifest } from "@shared/native-extensions"
+import { viewport as createReminderViewport } from "./src/create-reminder.meta"
+import { viewport as myRemindersViewport } from "./src/my-reminders.meta"
 
 export const appleRemindersManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "rpc", "surface"],
@@ -20,12 +22,16 @@ export const appleRemindersManifest = defineNativeExtensionManifest({
         },
         {
           default: false,
-          description: "When enabled, today's reminders are grouped by the time of day they are due.",
+          description:
+            "When enabled, today's reminders are grouped by the time of day they are due.",
           name: "useTimeOfDayGrouping",
           title: "Use Time of Day Grouping",
           type: "checkbox"
         }
       ],
+      runtime: {
+        viewport: myRemindersViewport
+      },
       title: "My Reminders"
     },
     {
@@ -50,6 +56,9 @@ export const appleRemindersManifest = defineNativeExtensionManifest({
           type: "checkbox"
         }
       ],
+      runtime: {
+        viewport: createReminderViewport
+      },
       title: "Create Reminder"
     },
     {

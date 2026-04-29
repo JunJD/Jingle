@@ -2,41 +2,19 @@
 import path from "node:path"
 import {
   collectImports,
-  fileExists,
   formatViolations,
   isExact,
   isUnder,
   listNativeExtensionDirectories,
   listSourceFiles,
-  readSourceText,
-  repoRoot,
+  loadNativeExtensionManifest,
   resolveExtensionCommandFile,
   resolveImportPath,
   srcRoot,
   toRepoPath
 } from "./lib/architecture-guardrails.mjs"
 
-const registryPath = "src/extensions/runtime-backed.ts"
 const violations = []
-
-function listRuntimeBackedCommands() {
-  if (!fileExists(path.join(repoRoot, registryPath))) {
-    return []
-  }
-
-  const sourceText = readSourceText(registryPath)
-  const entries = []
-  const entryPattern = /extensionName:\s*["']([^"']+)["'][\s\S]*?commandName:\s*["']([^"']+)["']/g
-
-  for (const match of sourceText.matchAll(entryPattern)) {
-    entries.push({
-      commandName: match[2],
-      extensionName: match[1]
-    })
-  }
-
-  return entries
-}
 
 function isRendererImportOwner(repoFilePath) {
   return (
@@ -46,38 +24,28 @@ function isRendererImportOwner(repoFilePath) {
   )
 }
 
-const extensionDirectories = new Map(
-  listNativeExtensionDirectories().map((extensionDirectory) => [
-    extensionDirectory.name,
-    extensionDirectory
-  ])
-)
+const runtimeCommandFiles = new Map()
 
-const runtimeBackedCommandFiles = new Map()
+for (const extensionDirectory of listNativeExtensionDirectories()) {
+  const manifest = loadNativeExtensionManifest(extensionDirectory)
+  for (const command of manifest.commands.filter((entry) => entry.runtime)) {
+    const commandFile = resolveExtensionCommandFile(extensionDirectory, command.name)
+    if (!commandFile) {
+      violations.push({
+        file: `${extensionDirectory.repoPath}/manifest.ts`,
+        reason: `runtime command "${manifest.name}:${command.name}" does not resolve to an extension command file`
+      })
+      continue
+    }
 
-for (const command of listRuntimeBackedCommands()) {
-  const extensionDirectory = extensionDirectories.get(command.extensionName)
-  if (!extensionDirectory) {
-    violations.push({
-      file: registryPath,
-      reason: `runtime-backed command references unknown extension "${command.extensionName}"`
+    runtimeCommandFiles.set(path.resolve(commandFile), {
+      commandName: command.name,
+      extensionName: manifest.name
     })
-    continue
   }
-
-  const commandFile = resolveExtensionCommandFile(extensionDirectory, command.commandName)
-  if (!commandFile) {
-    violations.push({
-      file: registryPath,
-      reason: `runtime-backed command "${command.extensionName}:${command.commandName}" does not resolve to an extension command file`
-    })
-    continue
-  }
-
-  runtimeBackedCommandFiles.set(path.resolve(commandFile), command)
 }
 
-if (runtimeBackedCommandFiles.size > 0) {
+if (runtimeCommandFiles.size > 0) {
   for (const absoluteFilePath of listSourceFiles(srcRoot)) {
     const repoFilePath = toRepoPath(absoluteFilePath)
     if (!isRendererImportOwner(repoFilePath)) {
@@ -90,7 +58,7 @@ if (runtimeBackedCommandFiles.size > 0) {
         continue
       }
 
-      const command = runtimeBackedCommandFiles.get(path.resolve(resolved))
+      const command = runtimeCommandFiles.get(path.resolve(resolved))
       if (!command) {
         continue
       }
@@ -99,7 +67,7 @@ if (runtimeBackedCommandFiles.size > 0) {
         file: repoFilePath,
         import: entry.specifier,
         line: entry.line,
-        reason: `runtime-backed command "${command.extensionName}:${command.commandName}" must not be imported by renderer code`,
+        reason: `runtime command "${command.extensionName}:${command.commandName}" must not be imported by renderer code`,
         target: toRepoPath(path.resolve(resolved))
       })
     }
@@ -107,9 +75,9 @@ if (runtimeBackedCommandFiles.size > 0) {
 }
 
 if (violations.length === 0) {
-  console.log("runtime-backed renderer import check passed")
+  console.log("runtime command renderer import check passed")
   process.exit(0)
 }
 
-console.error(formatViolations("runtime-backed renderer import check", violations))
+console.error(formatViolations("runtime command renderer import check", violations))
 process.exit(1)

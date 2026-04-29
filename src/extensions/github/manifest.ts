@@ -1,4 +1,15 @@
 import { defineNativeExtensionManifest } from "@shared/native-extensions"
+import { viewport as createIssueViewport } from "./src/create-issue.meta"
+import { viewport as createPullRequestViewport } from "./src/create-pull-request.meta"
+import { viewport as myIssuesViewport } from "./src/my-issues.meta"
+import { viewport as myLatestRepositoriesViewport } from "./src/my-latest-repositories.meta"
+import { viewport as myPullRequestsViewport } from "./src/my-pull-requests.meta"
+import { viewport as myStarredRepositoriesViewport } from "./src/my-starred-repositories.meta"
+import { viewport as notificationsViewport } from "./src/notifications.meta"
+import { viewport as searchIssuesViewport } from "./src/search-issues.meta"
+import { viewport as searchPullRequestsViewport } from "./src/search-pull-requests.meta"
+import { viewport as searchRepositoriesViewport } from "./src/search-repositories.meta"
+import { viewport as workflowRunsViewport } from "./src/workflow-runs.meta"
 
 export const githubManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "surface"],
@@ -73,6 +84,9 @@ export const githubManifest = defineNativeExtensionManifest({
           type: "checkbox"
         }
       ],
+      runtime: {
+        viewport: myIssuesViewport
+      },
       title: "My Issues"
     },
     {
@@ -125,6 +139,9 @@ export const githubManifest = defineNativeExtensionManifest({
           type: "checkbox"
         }
       ],
+      runtime: {
+        viewport: myPullRequestsViewport
+      },
       title: "My Pull Requests"
     },
     {
@@ -133,6 +150,9 @@ export const githubManifest = defineNativeExtensionManifest({
       keywords: ["github", "search", "issue", "issues"],
       mode: "view",
       name: "search-issues",
+      runtime: {
+        viewport: searchIssuesViewport
+      },
       title: "Search Issues"
     },
     {
@@ -141,6 +161,9 @@ export const githubManifest = defineNativeExtensionManifest({
       keywords: ["github", "search", "pull request", "pr"],
       mode: "view",
       name: "search-pull-requests",
+      runtime: {
+        viewport: searchPullRequestsViewport
+      },
       title: "Search Pull Requests"
     },
     {
@@ -172,6 +195,9 @@ export const githubManifest = defineNativeExtensionManifest({
           type: "checkbox"
         }
       ],
+      runtime: {
+        viewport: searchRepositoriesViewport
+      },
       title: "Search Repositories"
     },
     {
@@ -180,6 +206,9 @@ export const githubManifest = defineNativeExtensionManifest({
       keywords: ["github", "actions", "workflow", "workflow runs", "ci", "build"],
       mode: "view",
       name: "workflow-runs",
+      runtime: {
+        viewport: workflowRunsViewport
+      },
       title: "Workflow Runs"
     },
     {
@@ -188,6 +217,9 @@ export const githubManifest = defineNativeExtensionManifest({
       keywords: ["github", "create", "issue", "new issue"],
       mode: "view",
       name: "create-issue",
+      runtime: {
+        viewport: createIssueViewport
+      },
       title: "Create Issue"
     },
     {
@@ -196,6 +228,9 @@ export const githubManifest = defineNativeExtensionManifest({
       keywords: ["github", "create", "pull request", "pr", "merge request"],
       mode: "view",
       name: "create-pull-request",
+      runtime: {
+        viewport: createPullRequestViewport
+      },
       title: "Create Pull Request"
     },
     {
@@ -204,6 +239,9 @@ export const githubManifest = defineNativeExtensionManifest({
       keywords: ["github", "notifications", "inbox", "mentions"],
       mode: "view",
       name: "notifications",
+      runtime: {
+        viewport: notificationsViewport
+      },
       title: "Notifications"
     },
     {
@@ -212,6 +250,9 @@ export const githubManifest = defineNativeExtensionManifest({
       keywords: ["github", "repositories", "recent", "repo"],
       mode: "view",
       name: "my-latest-repositories",
+      runtime: {
+        viewport: myLatestRepositoriesViewport
+      },
       title: "My Latest Repositories"
     },
     {
@@ -220,6 +261,9 @@ export const githubManifest = defineNativeExtensionManifest({
       keywords: ["github", "repositories", "starred", "repo"],
       mode: "view",
       name: "my-starred-repositories",
+      runtime: {
+        viewport: myStarredRepositoriesViewport
+      },
       title: "My Starred Repositories"
     },
     {

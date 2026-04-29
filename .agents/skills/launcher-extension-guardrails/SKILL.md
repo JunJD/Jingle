@@ -93,7 +93,7 @@ npm run typecheck
   - default command
 
 - `check-runtime-backed-renderer-imports.mjs`
-  禁止 renderer import 已标记为 runtime-backed 的 extension command module
+  禁止 renderer import 已在 manifest 声明 `runtime` 的 extension command module
 
 - `check-no-glob-sprawl.mjs`
   禁止新的 `import.meta.glob` 到处长

@@ -1,4 +1,5 @@
 import { defineNativeExtensionManifest } from "@shared/native-extensions"
+import { viewport as todoListViewport } from "./src/index.meta"
 
 export const todoListManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "surface"],
@@ -32,6 +33,9 @@ export const todoListManifest = defineNativeExtensionManifest({
           type: "checkbox"
         }
       ],
+      runtime: {
+        viewport: todoListViewport
+      },
       title: "Todo List"
     }
   ],

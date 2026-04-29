@@ -19,6 +19,12 @@ export interface NativeExtensionPreferenceSchema {
   type?: string
 }
 
+export interface NativeExtensionRuntimeCommandManifest {
+  viewport: {
+    bodyHeight: number
+  }
+}
+
 export interface NativeExtensionCommandManifest<TCommandName extends string = string> {
   description?: string
   iconName?: string
@@ -26,6 +32,7 @@ export interface NativeExtensionCommandManifest<TCommandName extends string = st
   mode: NativeExtensionCommandMode
   name: TCommandName
   preferences?: NativeExtensionPreferenceSchema[]
+  runtime?: NativeExtensionRuntimeCommandManifest
   title?: string
 }
 
@@ -145,19 +152,18 @@ export function defineNativeExtensionManifest(manifest: unknown): NativeExtensio
 
 export function validateNativeExtensionRendererDefinition(
   manifest: NativeExtensionPackageManifest,
-  renderer: NativeExtensionRendererDefinition,
-  options: {
-    runtimeBackedCommandNames?: readonly string[]
-  } = {}
+  renderer: NativeExtensionRendererDefinition
 ): void {
   validateNativeExtensionPackageManifest(manifest)
 
   const manifestCommandNames = new Set(manifest.commands.map((command) => command.name))
-  const runtimeBackedCommandNames = new Set(options.runtimeBackedCommandNames ?? [])
+  const runtimeCommandNames = new Set(
+    manifest.commands.filter((command) => command.runtime).map((command) => command.name)
+  )
   const rendererRequiredCommandNames = new Set(
     manifest.commands
       .map((command) => command.name)
-      .filter((commandName) => !runtimeBackedCommandNames.has(commandName))
+      .filter((commandName) => !runtimeCommandNames.has(commandName))
   )
   const commandModuleNames = new Set<string>()
 
@@ -174,9 +180,9 @@ export function validateNativeExtensionRendererDefinition(
       )
     }
 
-    if (runtimeBackedCommandNames.has(command.name)) {
+    if (runtimeCommandNames.has(command.name)) {
       throw new Error(
-        `Native extension "${manifest.name}" runtime-backed command "${command.name}" must not be declared in renderer definition`
+        `Native extension "${manifest.name}" runtime command "${command.name}" must not be declared in renderer definition`
       )
     }
 
@@ -226,6 +232,12 @@ export function validateNativeExtensionPackageManifest(
     }
 
     commandNames.add(command.name)
+
+    if (command.runtime && command.mode !== "view") {
+      throw new Error(
+        `Native extension "${manifest.name}" runtime command "${command.name}" must be a view command`
+      )
+    }
   }
 
   const defaultCommandName = manifest.defaultCommandName ?? manifest.commands[0]?.name

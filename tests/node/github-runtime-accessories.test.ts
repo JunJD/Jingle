@@ -3,11 +3,8 @@ import test from "node:test"
 import { createElement } from "react"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
 import { List } from "../../src/extension-runtime/sdk"
+import { githubManifest } from "../../src/extensions/github/manifest"
 import { getNativeExtensionRuntimeCommand } from "../../src/extensions/runtime"
-import {
-  getNativeExtensionRuntimeBackedCommand,
-  nativeExtensionRuntimeBackedCommands
-} from "../../src/extensions/runtime-backed"
 import {
   getIssueLikeAccessories,
   getRepositoryAccessories,
@@ -33,10 +30,10 @@ const GITHUB_RUNTIME_VIEW_COMMANDS = [
   "workflow-runs"
 ]
 
-test("GitHub view commands are runtime-backed while the menu bar command stays legacy", () => {
-  const githubRuntimeCommands = nativeExtensionRuntimeBackedCommands
-    .filter((command) => command.extensionName === "github")
-    .map((command) => command.commandName)
+test("GitHub view commands declare runtime metadata while the menu bar command stays legacy", () => {
+  const githubRuntimeCommands = githubManifest.commands
+    .filter((command) => command.runtime)
+    .map((command) => command.name)
     .sort()
 
   assert.deepEqual(githubRuntimeCommands, [...GITHUB_RUNTIME_VIEW_COMMANDS].sort())
@@ -49,11 +46,8 @@ test("GitHub view commands are runtime-backed while the menu bar command stays l
     )
   }
   assert.equal(
-    getNativeExtensionRuntimeBackedCommand({
-      commandName: "unread-notifications",
-      extensionName: "github"
-    }),
-    null
+    githubManifest.commands.find((command) => command.name === "unread-notifications")?.runtime,
+    undefined
   )
 })
 
