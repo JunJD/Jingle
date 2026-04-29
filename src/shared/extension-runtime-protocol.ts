@@ -34,6 +34,7 @@ export type ExtensionSurfaceSnapshot =
   | ExtensionMenuBarSurfaceSnapshot
 
 export interface ExtensionSurfaceBase {
+  canPop?: boolean
   commandName: string
   extensionName: string
   navigationTitle?: string

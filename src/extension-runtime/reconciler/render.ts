@@ -237,12 +237,20 @@ export function createExtensionRuntimeRenderer(
 
   return {
     async dispatchEvent(event) {
+      if (event.type === "form.field.change") {
+        return dispatchFormFieldChange(container, event.fieldId, event.value)
+      }
+
       if (event.type === "list.query.change") {
         return dispatchListChange(container, "onSearchTextChange", event.query)
       }
 
       if (event.type === "list.dropdown.change") {
         return dispatchListDropdownChange(container, event.value)
+      }
+
+      if (event.type === "navigation.pop") {
+        return dispatchNavigationPop(container)
       }
 
       if (event.type !== "action.execute") {
@@ -289,6 +297,24 @@ async function flushSnapshotQueue(): Promise<void> {
   await Promise.resolve()
 }
 
+async function dispatchFormFieldChange(
+  container: RuntimeHostContainer,
+  fieldId: string,
+  value: boolean | string
+): Promise<boolean> {
+  const form = findFirstHostElement(container.children, ExtensionHostElement.Form)
+  const field = form ? findFormFieldById(form, fieldId) : null
+  const handler = field?.props.onChange
+  if (typeof handler !== "function") {
+    return false
+  }
+
+  await runtimeReconciler.flushSyncFromReconciler(() => handler(value))
+  runtimeReconciler.flushSyncWork()
+  await flushSnapshotQueue()
+  return true
+}
+
 async function dispatchListChange(
   container: RuntimeHostContainer,
   handlerName: "onSearchTextChange",
@@ -301,6 +327,19 @@ async function dispatchListChange(
   }
 
   await runtimeReconciler.flushSyncFromReconciler(() => handler(value))
+  runtimeReconciler.flushSyncWork()
+  await flushSnapshotQueue()
+  return true
+}
+
+async function dispatchNavigationPop(container: RuntimeHostContainer): Promise<boolean> {
+  const surface = findFirstSurfaceHostElement(container.children)
+  const handler = surface?.props.onNavigationPop
+  if (!surface?.props.navigationCanPop || typeof handler !== "function") {
+    return false
+  }
+
+  await runtimeReconciler.flushSyncFromReconciler(() => handler())
   runtimeReconciler.flushSyncWork()
   await flushSnapshotQueue()
   return true
@@ -356,6 +395,65 @@ function findDirectHostElement(
       (child): child is RuntimeHostElementNode => child.kind === "element" && child.type === type
     ) ?? null
   )
+}
+
+function findFirstSurfaceHostElement(children: RuntimeHostChild[]): RuntimeHostElementNode | null {
+  for (const child of children) {
+    if (child.kind !== "element") {
+      continue
+    }
+
+    if (
+      child.type === ExtensionHostElement.Detail ||
+      child.type === ExtensionHostElement.Form ||
+      child.type === ExtensionHostElement.List
+    ) {
+      return child
+    }
+
+    const nested = findFirstSurfaceHostElement(child.children)
+    if (nested) {
+      return nested
+    }
+  }
+
+  return null
+}
+
+function findFormFieldById(
+  form: RuntimeHostElementNode,
+  fieldId: string
+): RuntimeHostElementNode | null {
+  let fieldIndex = 0
+
+  for (const child of directHostElementChildren(form)) {
+    if (!isFormFieldElement(child)) {
+      continue
+    }
+
+    const id = typeof child.props.id === "string" ? child.props.id : `form-field-${fieldIndex}`
+    fieldIndex += 1
+
+    if (id === fieldId) {
+      return child
+    }
+  }
+
+  return null
+}
+
+function isFormFieldElement(node: RuntimeHostElementNode): boolean {
+  return (
+    node.type === ExtensionHostElement.FormCheckbox ||
+    node.type === ExtensionHostElement.FormDropdown ||
+    node.type === ExtensionHostElement.FormSeparator ||
+    node.type === ExtensionHostElement.FormTextArea ||
+    node.type === ExtensionHostElement.FormTextField
+  )
+}
+
+function directHostElementChildren(node: RuntimeHostElementNode): RuntimeHostElementNode[] {
+  return node.children.filter((child): child is RuntimeHostElementNode => child.kind === "element")
 }
 
 function reportRuntimeError(error: Error): void {

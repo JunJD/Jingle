@@ -1,5 +1,6 @@
 import { createElement, type ReactElement, type ReactNode } from "react"
 import { ExtensionHostElement } from "./host-elements"
+import { useRuntimeSurfaceNavigationProps } from "./context"
 
 export interface RuntimeListProps {
   actions?: ReactNode
@@ -64,7 +65,17 @@ type RuntimeListComponent = ((props: RuntimeListProps) => ReactElement) & {
 
 function ListRoot(props: RuntimeListProps): ReactElement {
   const { actions, children, searchBarAccessory, ...hostProps } = props
-  return createElement(ExtensionHostElement.List, hostProps, actions, searchBarAccessory, children)
+  const navigationProps = useRuntimeSurfaceNavigationProps()
+  return createElement(
+    ExtensionHostElement.List,
+    {
+      ...hostProps,
+      ...navigationProps
+    },
+    actions,
+    searchBarAccessory,
+    children
+  )
 }
 
 function ListSection(props: RuntimeListSectionProps): ReactElement {

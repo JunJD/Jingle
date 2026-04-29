@@ -7,11 +7,22 @@ import {
   useState,
   type ReactNode
 } from "react"
+import { cjk } from "@streamdown/cjk"
+import { code } from "@streamdown/code"
+import { math } from "@streamdown/math"
+import { mermaid } from "@streamdown/mermaid"
+import { ArrowLeft, LoaderCircle } from "lucide-react"
+import { Streamdown } from "streamdown"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import type { LauncherActionDescriptor } from "@/features/launcher-actions/model"
+import { cn } from "@/lib/utils"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
 import type {
   ExtensionActionNode,
+  ExtensionDetailSurfaceSnapshot,
+  ExtensionFormFieldNode,
+  ExtensionFormSurfaceSnapshot,
   ExtensionListItemNode,
   ExtensionListSectionNode,
   ExtensionListSurfaceSnapshot,
@@ -20,7 +31,12 @@ import type {
   ExtensionVisualNode
 } from "@shared/extension-runtime-protocol"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
-import { useNativeExtensionHost, useNativeExtensionSurface } from "../extension-host/sdk"
+import {
+  useNativeExtensionHost,
+  useNativeExtensionNavigation,
+  useNativeExtensionSurface
+} from "../extension-host/sdk"
+import { NativeSurfaceChrome } from "../extension-host/chrome"
 import { NativeExtensionSelect } from "../extension-host/select"
 import { useNativeSurfaceController } from "../extension-host/surface-action-controller"
 import {
@@ -31,6 +47,9 @@ import {
 } from "../extension-host/list-presentation"
 
 const RUNTIME_LIST_SHORTCUT_SCOPES = ["launcher.list"] as const
+const streamdownPlugins = { cjk, code, math, mermaid }
+
+type RuntimeFormValue = boolean | string
 
 interface RuntimeListItemDescriptor extends ExtensionListItemNode {
   sectionTitle?: string
@@ -50,6 +69,18 @@ function isListSnapshot(
   snapshot: ExtensionSurfaceSnapshot | null
 ): snapshot is ExtensionListSurfaceSnapshot {
   return snapshot?.kind === "list"
+}
+
+function isDetailSnapshot(
+  snapshot: ExtensionSurfaceSnapshot | null
+): snapshot is ExtensionDetailSurfaceSnapshot {
+  return snapshot?.kind === "detail"
+}
+
+function isFormSnapshot(
+  snapshot: ExtensionSurfaceSnapshot | null
+): snapshot is ExtensionFormSurfaceSnapshot {
+  return snapshot?.kind === "form"
 }
 
 function filterSections(
@@ -173,6 +204,280 @@ function RuntimeListDropdown(props: {
   )
 }
 
+function RuntimeSurfaceHeaderLeading(props: {
+  canPop: boolean
+  label?: string
+  onPop: () => void
+}): React.JSX.Element {
+  const { canPop, label, onPop } = props
+  const navigation = useNativeExtensionNavigation()
+  const buttonLabel = canPop ? "Go Back" : "Go Home"
+
+  return (
+    <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
+      <button
+        type="button"
+        onClick={canPop ? onPop : navigation.goHome}
+        onMouseDown={(event) => event.preventDefault()}
+        className="launcher-icon-button flex h-[var(--launcher-icon-button-size)] w-[var(--launcher-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
+        aria-label={buttonLabel}
+        title={buttonLabel}
+      >
+        <ArrowLeft className="size-[var(--ow-icon-sm)]" />
+      </button>
+      {label ? (
+        <span className="truncate [font-size:var(--ow-font-body)] font-medium text-muted-foreground">
+          {label}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+function RuntimeDetailSurface(props: {
+  createActionDescriptor: (action: ExtensionActionNode) => LauncherActionDescriptor
+  onNavigateBack: () => void
+  snapshot: ExtensionDetailSurfaceSnapshot
+}): React.JSX.Element {
+  const { createActionDescriptor, onNavigateBack, snapshot } = props
+  const actionItems = useMemo(
+    () => snapshot.actions.map(createActionDescriptor),
+    [createActionDescriptor, snapshot.actions]
+  )
+  const surfaceController = useNativeSurfaceController({
+    actions: actionItems,
+    footerLabel: snapshot.navigationTitle ?? "Detail",
+    primaryActionFallbackTitle: "Open"
+  })
+
+  return (
+    <div className="relative h-full">
+      <NativeSurfaceChrome
+        footer={surfaceController.footer}
+        headerLeading={
+          <RuntimeSurfaceHeaderLeading canPop={snapshot.canPop === true} onPop={onNavigateBack} />
+        }
+        surface="runtime-detail"
+        title={snapshot.navigationTitle}
+      >
+        <ScrollArea className="flex-1">
+          {snapshot.isLoading ? (
+            <div className="flex h-full items-center justify-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] text-muted-foreground">
+              <LoaderCircle className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] animate-spin" />
+              <span>Loading...</span>
+            </div>
+          ) : (
+            <div
+              className={cn(
+                "grid h-full min-h-full gap-[var(--ow-gap-lg)] px-[var(--ow-space-5)] py-[var(--ow-space-4)]",
+                snapshot.metadata.length > 0 ? "grid-cols-[minmax(0,1fr)_280px]" : "grid-cols-1"
+              )}
+            >
+              <div className="min-w-0">
+                {snapshot.markdown ? (
+                  <div className="native-detail-markdown [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground">
+                    <Streamdown parseIncompleteMarkdown={false} plugins={streamdownPlugins}>
+                      {snapshot.markdown}
+                    </Streamdown>
+                  </div>
+                ) : (
+                  <div className="[font-size:var(--ow-font-body)] text-muted-foreground">
+                    No details available.
+                  </div>
+                )}
+              </div>
+
+              {snapshot.metadata.length > 0 ? (
+                <div className="space-y-[var(--ow-space-3)] rounded-[var(--ow-radius-panel)] border border-border/80 bg-background-elevated/70 p-[var(--ow-space-3)]">
+                  <div className="[font-size:var(--ow-font-meta)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                    Metadata
+                  </div>
+                  <div className="space-y-[var(--ow-space-3)]">
+                    {snapshot.metadata.map((entry) => (
+                      <div
+                        key={`${entry.title}:${entry.text}`}
+                        className="space-y-[var(--ow-space-1)]"
+                      >
+                        <div className="[font-size:var(--ow-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
+                          {entry.title}
+                        </div>
+                        <div className="break-words [font-size:var(--ow-font-body)] text-foreground">
+                          {entry.text}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </ScrollArea>
+      </NativeSurfaceChrome>
+
+      {surfaceController.actionLayer}
+    </div>
+  )
+}
+
+function RuntimeFormSurface(props: {
+  createActionDescriptor: (action: ExtensionActionNode) => LauncherActionDescriptor
+  onFieldChange: (fieldId: string, value: RuntimeFormValue) => void
+  onNavigateBack: () => void
+  snapshot: ExtensionFormSurfaceSnapshot
+}): React.JSX.Element {
+  const { createActionDescriptor, onFieldChange, onNavigateBack, snapshot } = props
+  const [fieldValues, setFieldValues] = useState<Record<string, RuntimeFormValue>>({})
+  const actionItems = useMemo(
+    () => snapshot.actions.map(createActionDescriptor),
+    [createActionDescriptor, snapshot.actions]
+  )
+  const surfaceController = useNativeSurfaceController({
+    actions: actionItems,
+    footerLabel: snapshot.navigationTitle ?? "Form",
+    primaryActionFallbackTitle: "Submit"
+  })
+
+  useEffect(() => {
+    setFieldValues(
+      Object.fromEntries(
+        snapshot.fields.flatMap((field) => {
+          if (field.kind === "separator") {
+            return []
+          }
+
+          return [[field.id, field.value]]
+        })
+      )
+    )
+  }, [snapshot])
+
+  const handleFieldChange = (fieldId: string, value: RuntimeFormValue): void => {
+    setFieldValues((current) => ({
+      ...current,
+      [fieldId]: value
+    }))
+    onFieldChange(fieldId, value)
+  }
+
+  return (
+    <div className="relative h-full">
+      <NativeSurfaceChrome
+        footer={surfaceController.footer}
+        headerLeading={
+          <RuntimeSurfaceHeaderLeading canPop={snapshot.canPop === true} onPop={onNavigateBack} />
+        }
+        surface="runtime-form"
+        title={snapshot.navigationTitle}
+      >
+        <ScrollArea className="flex-1">
+          <div className="space-y-[var(--ow-space-3)] px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
+            {snapshot.fields.map((field) => (
+              <RuntimeFormField
+                key={field.id}
+                field={field}
+                localValue={fieldValues[field.id]}
+                onChange={(value) => handleFieldChange(field.id, value)}
+              />
+            ))}
+          </div>
+        </ScrollArea>
+      </NativeSurfaceChrome>
+
+      {surfaceController.actionLayer}
+    </div>
+  )
+}
+
+function RuntimeFormField(props: {
+  field: ExtensionFormFieldNode
+  localValue: RuntimeFormValue | undefined
+  onChange: (value: RuntimeFormValue) => void
+}): React.JSX.Element {
+  const { field, localValue, onChange } = props
+
+  if (field.kind === "separator") {
+    return <div className="h-px w-full bg-border/80" />
+  }
+
+  const label = (
+    <>
+      <div className="[font-size:var(--ow-font-meta)] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+        {field.title}
+      </div>
+      {field.description ? (
+        <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-muted-foreground">
+          {field.description}
+        </div>
+      ) : null}
+    </>
+  )
+
+  if (field.kind === "checkbox") {
+    const value = typeof localValue === "boolean" ? localValue : field.value
+
+    return (
+      <label className="block space-y-[var(--ow-space-1-5)]">
+        {label}
+        <span className="inline-flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] text-foreground">
+          <input
+            type="checkbox"
+            checked={value}
+            onChange={(event) => onChange(event.target.checked)}
+          />
+          <span>{field.label ?? field.title}</span>
+        </span>
+      </label>
+    )
+  }
+
+  const value = typeof localValue === "string" ? localValue : field.value
+
+  if (field.kind === "dropdown") {
+    return (
+      <label className="block space-y-[var(--ow-space-1-5)]">
+        {label}
+        <NativeExtensionSelect
+          className="flex h-[var(--ow-control-h-sm)] w-full appearance-none rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated pl-[var(--ow-space-2-5)] pr-[var(--ow-space-6)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+          value={value}
+          onChange={(nextValue) => onChange(nextValue)}
+        >
+          {field.items.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.title}
+            </option>
+          ))}
+        </NativeExtensionSelect>
+      </label>
+    )
+  }
+
+  if (field.kind === "text-area") {
+    return (
+      <label className="block space-y-[var(--ow-space-1-5)]">
+        {label}
+        <textarea
+          className="min-h-[var(--ow-textarea-min-h)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+          value={value}
+          placeholder={field.placeholder}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </label>
+    )
+  }
+
+  return (
+    <label className="block space-y-[var(--ow-space-1-5)]">
+      {label}
+      <input
+        className="flex h-[var(--ow-control-h-sm)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+        value={value}
+        placeholder={field.placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  )
+}
+
 export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   const host = useNativeExtensionHost()
   const surface = useNativeExtensionSurface()
@@ -187,9 +492,9 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     snapshot: null
   })
   const snapshot = runtimeState.snapshot
+  const detailSnapshot = isDetailSnapshot(snapshot) ? snapshot : null
+  const formSnapshot = isFormSnapshot(snapshot) ? snapshot : null
   const listSnapshot = isListSnapshot(snapshot) ? snapshot : null
-  const isRuntimeStructurePending =
-    listSnapshot !== null && !listSnapshot.filtering && listSnapshot.searchText !== inputText
   const sections = useMemo(
     () =>
       listSnapshot
@@ -233,18 +538,21 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
 
   const executeActionNode = useCallback(
     (action: ExtensionActionNode): void => {
-      if (!listSnapshot) {
+      if (!snapshot) {
         return
       }
 
-      syncInputAfterActionRef.current = true
+      if (snapshot.kind === "list") {
+        syncInputAfterActionRef.current = true
+      }
+
       sendRuntimeEvent({
         actionId: action.id,
-        revision: listSnapshot.revision,
+        revision: snapshot.revision,
         type: "action.execute"
       })
     },
-    [listSnapshot, sendRuntimeEvent]
+    [sendRuntimeEvent, snapshot]
   )
 
   const createActionDescriptor = useCallback(
@@ -422,11 +730,53 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     })
   }
 
+  const handleFieldChange = (fieldId: string, value: RuntimeFormValue): void => {
+    sendRuntimeEvent({
+      fieldId,
+      type: "form.field.change",
+      value
+    })
+  }
+
+  const handleNavigateBack = (): void => {
+    sendRuntimeEvent({
+      type: "navigation.pop"
+    })
+  }
+
+  if (!runtimeState.error && detailSnapshot) {
+    return (
+      <RuntimeDetailSurface
+        createActionDescriptor={createActionDescriptor}
+        onNavigateBack={handleNavigateBack}
+        snapshot={detailSnapshot}
+      />
+    )
+  }
+
+  if (!runtimeState.error && formSnapshot) {
+    return (
+      <RuntimeFormSurface
+        createActionDescriptor={createActionDescriptor}
+        onFieldChange={handleFieldChange}
+        onNavigateBack={handleNavigateBack}
+        snapshot={formSnapshot}
+      />
+    )
+  }
+
   return (
     <div className="relative h-full">
       <LauncherChrome
+        density="compact"
         footer={surfaceController.footer}
-        headerLeading={surfaceController.headerLeading}
+        headerLeading={
+          <RuntimeSurfaceHeaderLeading
+            canPop={listSnapshot?.canPop === true}
+            label={listSnapshot?.navigationTitle}
+            onPop={handleNavigateBack}
+          />
+        }
         headerTrailing={
           listSnapshot && runtimeState.sessionId ? (
             <RuntimeListDropdown sessionId={runtimeState.sessionId} snapshot={listSnapshot} />
@@ -444,6 +794,11 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
           <div className="flex flex-1 items-center justify-center px-[var(--ow-space-6)] [font-size:var(--ow-font-body)] text-muted-foreground">
             {runtimeState.error}
           </div>
+        ) : snapshot?.kind === "error" ? (
+          <NativeSurfaceListEmptyState
+            description={snapshot.description}
+            title={snapshot.title}
+          />
         ) : !listSnapshot ? (
           <NativeSurfaceListEmptyState isLoading />
         ) : items.length > 0 ? (
@@ -466,8 +821,6 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
             sections={presentationSections}
             selectedIndex={selectedIndex}
           />
-        ) : isRuntimeStructurePending ? (
-          <div className="flex-1" />
         ) : (
           <NativeSurfaceListEmptyState
             actionTitle={surfaceController.actionController.primaryAction?.title}

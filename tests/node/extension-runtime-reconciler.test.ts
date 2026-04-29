@@ -1,9 +1,19 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { createElement, useState } from "react"
+import { createElement, useState, type ReactElement } from "react"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
-import { Action, ActionPanel, List } from "../../src/extension-runtime/sdk"
+import {
+  Action,
+  ActionPanel,
+  Detail,
+  ExtensionRuntimeNavigationProvider,
+  Form,
+  List,
+  useNativeExtensionNavigation
+} from "../../src/extension-runtime/sdk"
 import type {
+  ExtensionDetailSurfaceSnapshot,
+  ExtensionFormSurfaceSnapshot,
   ExtensionHostRequest,
   ExtensionListSurfaceSnapshot
 } from "../../src/shared/extension-runtime-protocol"
@@ -25,6 +35,43 @@ function assertListSnapshot(
 ): asserts snapshot is ExtensionListSurfaceSnapshot {
   assert.ok(snapshot)
   assert.equal(snapshot.kind, "list")
+}
+
+function assertDetailSnapshot(
+  snapshot: ReturnType<ReturnType<typeof createTestRenderer>["getSnapshot"]>
+): asserts snapshot is ExtensionDetailSurfaceSnapshot {
+  assert.ok(snapshot)
+  assert.equal(snapshot.kind, "detail")
+}
+
+function assertFormSnapshot(
+  snapshot: ReturnType<ReturnType<typeof createTestRenderer>["getSnapshot"]>
+): asserts snapshot is ExtensionFormSurfaceSnapshot {
+  assert.ok(snapshot)
+  assert.equal(snapshot.kind, "form")
+}
+
+function withRuntimeProvider(element: ReactElement): ReactElement {
+  return createElement(
+    ExtensionRuntimeNavigationProvider,
+    {
+      value: {
+        commandName: "counter",
+        commandPreferences: {},
+        extensionName: "runtime-fixture",
+        extensionPreferences: {},
+        initialAction: "open",
+        mode: "view",
+        requestHost: async () => ({
+          id: "host-response",
+          ok: true as const,
+          result: null
+        }),
+        seedQuery: ""
+      },
+      children: element
+    }
+  )
 }
 
 test("runtime reconciler snapshots a list and applies action state updates", async () => {
@@ -324,6 +371,158 @@ test("runtime reconciler dispatches list query changes to List handlers", async 
   assertListSnapshot(snapshot)
   assert.equal(snapshot.searchText, "ship runtime")
   assert.equal(snapshot.sections[0]?.items[0]?.title, "Query: ship runtime")
+})
+
+test("runtime reconciler snapshots detail surfaces and navigates back", async () => {
+  function DetailFlow() {
+    const navigation = useNativeExtensionNavigation()
+
+    return createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: () => {
+              navigation.push(
+                createElement(
+                  Detail,
+                  {
+                    markdown: "# Detail",
+                    metadata: createElement(
+                      Detail.Metadata,
+                      null,
+                      createElement(Detail.Metadata.Label, {
+                        text: "Inbox",
+                        title: "List"
+                      })
+                    ),
+                    navigationTitle: "Reminder"
+                  }
+                )
+              )
+            },
+            title: "Open Detail"
+          })
+        ),
+        id: "item",
+        title: "Item"
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(withRuntimeProvider(createElement(DetailFlow)))
+  await renderer.flushSnapshots()
+
+  const firstSnapshot = renderer.getSnapshot()
+  assertListSnapshot(firstSnapshot)
+  const actionId = firstSnapshot.sections[0]?.items[0]?.actions[0]?.id
+  assert.ok(actionId)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId,
+      revision: firstSnapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  const detailSnapshot = renderer.getSnapshot()
+  assertDetailSnapshot(detailSnapshot)
+  assert.equal(detailSnapshot.canPop, true)
+  assert.equal(detailSnapshot.navigationTitle, "Reminder")
+  assert.equal(detailSnapshot.metadata[0]?.title, "List")
+  assert.equal(detailSnapshot.metadata[0]?.text, "Inbox")
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      type: "navigation.pop"
+    }),
+    true
+  )
+
+  const nextSnapshot = renderer.getSnapshot()
+  assertListSnapshot(nextSnapshot)
+})
+
+test("runtime reconciler snapshots form fields and syncs local input", async () => {
+  function FormFlow() {
+    const [title, setTitle] = useState("Buy milk")
+    const [completed, setCompleted] = useState(false)
+
+    return createElement(
+      Form,
+      {
+        navigationTitle: "Create Reminder"
+      },
+      createElement(Form.TextField, {
+        onChange: setTitle,
+        placeholder: "Reminder title",
+        title: "Title",
+        value: title
+      }),
+      createElement(Form.Checkbox, {
+        label: "Done",
+        onChange: setCompleted,
+        title: "Completed",
+        value: completed
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(withRuntimeProvider(createElement(FormFlow)))
+  await renderer.flushSnapshots()
+
+  const firstSnapshot = renderer.getSnapshot()
+  assertFormSnapshot(firstSnapshot)
+  assert.equal(firstSnapshot.navigationTitle, "Create Reminder")
+  const textField = firstSnapshot.fields.find(
+    (field): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "text-field" }> =>
+      field.kind === "text-field"
+  )
+  assert.ok(textField)
+  assert.equal(textField.value, "Buy milk")
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      fieldId: firstSnapshot.fields[0]?.id ?? "",
+      type: "form.field.change",
+      value: "Walk the dog"
+    }),
+    true
+  )
+
+  const nextSnapshot = renderer.getSnapshot()
+  assertFormSnapshot(nextSnapshot)
+  const nextTextField = nextSnapshot.fields.find(
+    (field): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "text-field" }> =>
+      field.kind === "text-field"
+  )
+  assert.ok(nextTextField)
+  assert.equal(nextTextField.value, "Walk the dog")
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      fieldId: nextSnapshot.fields[1]?.id ?? "",
+      type: "form.field.change",
+      value: true
+    }),
+    true
+  )
+
+  const finalSnapshot = renderer.getSnapshot()
+  assertFormSnapshot(finalSnapshot)
+  const checkboxField = finalSnapshot.fields.find(
+    (field): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "checkbox" }> =>
+      field.kind === "checkbox"
+  )
+  assert.ok(checkboxField)
+  assert.equal(checkboxField.value, true)
 })
 
 test("runtime reconciler rejects stale action events from an old snapshot revision", async () => {

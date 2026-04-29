@@ -8,7 +8,10 @@ import type {
   ExtensionRuntimeToHostMessage
 } from "@shared/extension-runtime-protocol"
 import { createExtensionRuntimeRenderer, type ExtensionRuntimeRenderer } from "./reconciler/render"
-import { ExtensionRuntimeSdkProvider, type ExtensionRuntimeHostRequestInput } from "./sdk"
+import {
+  ExtensionRuntimeNavigationProvider,
+  type ExtensionRuntimeHostRequestInput
+} from "./sdk"
 
 let activeRenderer: ExtensionRuntimeRenderer | null = null
 const pendingHostResponses = new Map<string, (response: ExtensionHostResponse) => void>()
@@ -69,14 +72,14 @@ function startRuntime(sessionId: string, context: ExtensionRuntimeLaunchContext)
     )
     activeRenderer.render(
       createElement(
-        ExtensionRuntimeSdkProvider,
+        ExtensionRuntimeNavigationProvider,
         {
           value: {
             ...context,
             requestHost: (request) => requestHost(sessionId, withHostRequestId(request))
-          }
-        },
-        createElement(command.Component)
+          },
+          children: createElement(command.Component)
+        }
       )
     )
     void activeRenderer

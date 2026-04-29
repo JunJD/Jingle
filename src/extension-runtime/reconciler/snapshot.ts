@@ -1,6 +1,10 @@
 import type {
   ExtensionActionNode,
   ExtensionActionStyle,
+  ExtensionDetailMetadataNode,
+  ExtensionDetailSurfaceSnapshot,
+  ExtensionFormFieldNode,
+  ExtensionFormSurfaceSnapshot,
   ExtensionHostResponse,
   ExtensionListDropdownItemNode,
   ExtensionListDropdownNode,
@@ -50,6 +54,16 @@ export function createSurfaceSnapshot(container: RuntimeHostContainer): Extensio
   container.actionHandlers.clear()
   const state = createSnapshotBuildState()
 
+  const detail = findFirstElement(container.children, ExtensionHostElement.Detail)
+  if (detail) {
+    return createDetailSnapshot(container, state, detail)
+  }
+
+  const form = findFirstElement(container.children, ExtensionHostElement.Form)
+  if (form) {
+    return createFormSnapshot(container, state, form)
+  }
+
   const list = findFirstElement(container.children, ExtensionHostElement.List)
   if (!list) {
     return {
@@ -75,6 +89,7 @@ function createListSnapshot(
       state,
       directChildrenOfType(list, ExtensionHostElement.ActionPanel)
     ),
+    canPop: readBooleanProp(list.props, "navigationCanPop", false),
     commandName: container.context.commandName,
     emptyView: collectEmptyView(container, state, list),
     extensionName: container.context.extensionName,
@@ -87,6 +102,50 @@ function createListSnapshot(
     searchBarPlaceholder: readStringProp(list.props, "searchBarPlaceholder"),
     searchText: readStringProp(list.props, "searchText") ?? "",
     sections: collectSections(container, state, list)
+  }
+}
+
+function createDetailSnapshot(
+  container: RuntimeHostContainer,
+  state: SnapshotBuildState,
+  detail: RuntimeHostElementNode
+): ExtensionDetailSurfaceSnapshot {
+  return {
+    actions: collectActions(
+      container,
+      state,
+      directChildrenOfType(detail, ExtensionHostElement.ActionPanel)
+    ),
+    canPop: readBooleanProp(detail.props, "navigationCanPop", false),
+    commandName: container.context.commandName,
+    extensionName: container.context.extensionName,
+    isLoading: readBooleanProp(detail.props, "isLoading", false),
+    kind: "detail",
+    markdown: readStringProp(detail.props, "markdown"),
+    metadata: collectDetailMetadata(detail),
+    navigationTitle: readStringProp(detail.props, "navigationTitle"),
+    revision: container.revision
+  }
+}
+
+function createFormSnapshot(
+  container: RuntimeHostContainer,
+  state: SnapshotBuildState,
+  form: RuntimeHostElementNode
+): ExtensionFormSurfaceSnapshot {
+  return {
+    actions: collectActions(
+      container,
+      state,
+      directChildrenOfType(form, ExtensionHostElement.ActionPanel)
+    ),
+    canPop: readBooleanProp(form.props, "navigationCanPop", false),
+    commandName: container.context.commandName,
+    extensionName: container.context.extensionName,
+    fields: collectFormFields(form),
+    kind: "form",
+    navigationTitle: readStringProp(form.props, "navigationTitle"),
+    revision: container.revision
   }
 }
 
@@ -206,6 +265,138 @@ function createDropdownItem(item: RuntimeHostElementNode): ExtensionListDropdown
     title: readStringProp(item.props, "title") ?? "",
     value: readStringProp(item.props, "value") ?? ""
   }
+}
+
+function collectDetailMetadata(detail: RuntimeHostElementNode): ExtensionDetailMetadataNode[] {
+  return directChildrenOfType(detail, ExtensionHostElement.DetailMetadata).flatMap((metadata) =>
+    collectDetailMetadataEntries(metadata)
+  )
+}
+
+function collectDetailMetadataEntries(node: RuntimeHostElementNode): ExtensionDetailMetadataNode[] {
+  return directElementChildren(node).flatMap((child) => {
+    if (child.type === ExtensionHostElement.DetailMetadataLabel) {
+      return [
+        {
+          text: readStringProp(child.props, "text") ?? "",
+          title: readStringProp(child.props, "title") ?? ""
+        }
+      ]
+    }
+
+    if (child.type === ExtensionHostElement.DetailMetadataTagList) {
+      return [
+        {
+          text: readStringArrayProp(child.props, "tags").join(", "),
+          title: readStringProp(child.props, "title") ?? ""
+        }
+      ]
+    }
+
+    if (child.type === ExtensionHostElement.DetailMetadata) {
+      return collectDetailMetadataEntries(child)
+    }
+
+    return []
+  })
+}
+
+function collectFormFields(form: RuntimeHostElementNode): ExtensionFormFieldNode[] {
+  let fieldIndex = 0
+
+  return directElementChildren(form).flatMap((child) => {
+    if (!isFormFieldElement(child)) {
+      return []
+    }
+
+    const fallbackId = `form-field-${fieldIndex++}`
+    return createFormFieldNode(child, fallbackId)
+  })
+}
+
+function createFormFieldNode(
+  node: RuntimeHostElementNode,
+  fallbackId: string
+): ExtensionFormFieldNode[] {
+  const id = readStringProp(node.props, "id") ?? fallbackId
+  const title = readStringProp(node.props, "title") ?? ""
+  const description = readStringProp(node.props, "description")
+
+  if (node.type === ExtensionHostElement.FormTextField) {
+    return [
+      {
+        description,
+        id,
+        kind: "text-field",
+        placeholder: readStringProp(node.props, "placeholder"),
+        title,
+        value: readStringProp(node.props, "value") ?? ""
+      }
+    ]
+  }
+
+  if (node.type === ExtensionHostElement.FormTextArea) {
+    return [
+      {
+        description,
+        id,
+        kind: "text-area",
+        placeholder: readStringProp(node.props, "placeholder"),
+        title,
+        value: readStringProp(node.props, "value") ?? ""
+      }
+    ]
+  }
+
+  if (node.type === ExtensionHostElement.FormCheckbox) {
+    return [
+      {
+        description,
+        id,
+        kind: "checkbox",
+        label: readStringProp(node.props, "label"),
+        title,
+        value: readBooleanProp(node.props, "value", false)
+      }
+    ]
+  }
+
+  if (node.type === ExtensionHostElement.FormDropdown) {
+    return [
+      {
+        description,
+        id,
+        items: directChildrenOfType(node, ExtensionHostElement.FormDropdownItem).map((item) => ({
+          title: readStringProp(item.props, "title") ?? "",
+          value: readStringProp(item.props, "value") ?? ""
+        })),
+        kind: "dropdown",
+        title,
+        value: readStringProp(node.props, "value") ?? ""
+      }
+    ]
+  }
+
+  if (node.type === ExtensionHostElement.FormSeparator) {
+    return [
+      {
+        id,
+        kind: "separator"
+      }
+    ]
+  }
+
+  return []
+}
+
+function isFormFieldElement(node: RuntimeHostElementNode): boolean {
+  return (
+    node.type === ExtensionHostElement.FormCheckbox ||
+    node.type === ExtensionHostElement.FormDropdown ||
+    node.type === ExtensionHostElement.FormSeparator ||
+    node.type === ExtensionHostElement.FormTextArea ||
+    node.type === ExtensionHostElement.FormTextField
+  )
 }
 
 function collectActions(
