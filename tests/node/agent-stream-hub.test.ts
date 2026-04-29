@@ -83,7 +83,7 @@ test("AgentStreamHub hydrates history and fans out projection updates", async ()
   assert.equal(afterCancel.projection.status, "cancelled")
 })
 
-test("AgentStreamHub converts values payloads into interrupted projection snapshots", async () => {
+test("AgentStreamHub derives persisted HITL request ids from run and tool call ids", async () => {
   const history: ThreadHistoryState = {
     artifacts: [],
     messages: [createUserMessage("history-user", "hello")],
@@ -100,6 +100,7 @@ test("AgentStreamHub converts values payloads into interrupted projection snapsh
   })
 
   await hub.prepareResume("thread-2")
+  await hub.handlePayload("thread-2", { type: "run_started", runId: "run-2" })
   await hub.handlePayload("thread-2", {
     type: "stream",
     mode: "values",
@@ -110,7 +111,7 @@ test("AgentStreamHub converts values payloads into interrupted projection snapsh
             actionRequests: [
               {
                 args: { command: "echo hello" },
-                id: "request-1",
+                id: "langchain-action-id-is-not-the-request-id",
                 name: "bash",
                 toolCallId: "tool-1"
               }
@@ -137,7 +138,7 @@ test("AgentStreamHub converts values payloads into interrupted projection snapsh
   const envelope = await hub.getProjectionEnvelope("thread-2")
   assert.equal(envelope.projection.isLoading, false)
   assert.equal(envelope.projection.status, "interrupted")
-  assert.equal(envelope.projection.pendingApproval?.id, "request-1")
+  assert.equal(envelope.projection.pendingApproval?.id, "hitl:thread-2:run-2:tool-1")
   assert.equal(envelope.projection.pendingApproval?.tool_call.id, "tool-1")
   assert.deepEqual(envelope.projection.todos, [
     {

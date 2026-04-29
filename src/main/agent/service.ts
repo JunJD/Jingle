@@ -440,12 +440,25 @@ export class AgentService {
     }
 
     const decisionType = decision.type
-    const resumeTarget = await resolveResumeTarget(threadId, decision)
-    const runId = await resumeAgentRun(threadId, resumeTarget.runId, {
-      source: "resume",
-      modelId: modelId ?? null,
-      requestId: resumeTarget.requestId
-    })
+    let resumeTarget: ResumeTarget
+    let runId: string
+
+    try {
+      resumeTarget = await resolveResumeTarget(threadId, decision)
+      runId = await resumeAgentRun(threadId, resumeTarget.runId, {
+        source: "resume",
+        modelId: modelId ?? null,
+        requestId: resumeTarget.requestId
+      })
+    } catch (error) {
+      console.error("[Agent] Resume error:", error)
+      sink.send({
+        type: "error",
+        ...buildIpcErrorEvent("agent:resume", error)
+      })
+      return
+    }
+
     this.activeRuns.set(threadId, { controller: abortController, runId })
     sink.send({ type: "run_started", runId })
 

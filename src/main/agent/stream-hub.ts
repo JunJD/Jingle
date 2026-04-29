@@ -28,12 +28,12 @@ import {
 } from "@shared/agent-projection"
 import { getIpcErrorStatus, isIpcErrorCode, type IpcErrorPayload } from "@shared/ipc-error"
 import { parseToolApprovalItem } from "@shared/tool-approval"
+import { buildHitlRequestId } from "./runtime-state"
 import type { ThreadsService } from "../threads/service"
 import type { AgentStreamPayload } from "./service"
 
 interface InterruptActionRequest extends ActionRequest {
   description?: string
-  id: string
   review?: unknown
   toolCallId: string
 }
@@ -121,12 +121,12 @@ function getRequiredInterruptToolCallId(action: InterruptActionRequest | undefin
   throw new Error("[AgentStreamHub] Missing toolCallId for interrupt action.")
 }
 
-function getRequiredInterruptRequestId(action: InterruptActionRequest | undefined): string {
-  if (typeof action?.id === "string" && action.id.length > 0) {
-    return action.id
+function getRequiredProjectionRunId(runId: string | null): string {
+  if (runId) {
+    return runId
   }
 
-  throw new Error("[AgentStreamHub] Missing request id for interrupt action.")
+  throw new Error("[AgentStreamHub] Missing run id for interrupt projection.")
 }
 
 function toProjectionError(
@@ -520,13 +520,18 @@ class ThreadProjectionProjector {
 
     const firstAction = actionRequests[0]
     const reviewConfig = reviewConfigs?.find((review) => review.actionName === firstAction.name)
+    const toolCallId = getRequiredInterruptToolCallId(firstAction)
     return {
       allowed_decisions: normalizeHitlAllowedDecisions(reviewConfig?.allowedDecisions),
-      id: getRequiredInterruptRequestId(firstAction),
+      id: buildHitlRequestId(
+        this.projection.threadId,
+        getRequiredProjectionRunId(this.projection.runId),
+        toolCallId
+      ),
       review: parseToolApprovalItem(firstAction.review),
       tool_call: {
         args: firstAction.args || {},
-        id: getRequiredInterruptToolCallId(firstAction),
+        id: toolCallId,
         name: firstAction.name
       }
     }
