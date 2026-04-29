@@ -1,10 +1,4 @@
-import {
-  Calendar,
-  CheckCircle2,
-  Circle,
-  Clock3,
-  Flag
-} from "lucide-react"
+import { Calendar, CheckCircle2, Circle, Clock3 } from "lucide-react"
 import type { ReactNode } from "react"
 import type { AppleReminder, AppleReminderList } from "./contracts"
 
@@ -44,11 +38,7 @@ export function formatReminderDateLabel(value: string): string {
   const target = toDateParts(date)
   const tomorrow = toDateParts(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 12))
 
-  if (
-    target.year === today.year &&
-    target.month === today.month &&
-    target.day === today.day
-  ) {
+  if (target.year === today.year && target.month === today.month && target.day === today.day) {
     if (isDateOnlyValue(value)) {
       return "Today"
     }
@@ -297,23 +287,23 @@ export function getReminderAccessories(params: {
   showListName: boolean
 }): ReactNode {
   const { displayCompletionDate, reminder, showListName } = params
+  const parts: string[] = []
 
-  return (
-    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-      {showListName && reminder.list ? <span>{reminder.list.title}</span> : null}
-      {reminder.priority ? (
-        <span className="inline-flex items-center gap-1">
-          <Flag className="h-3 w-3" />
-          {reminder.priority}
-        </span>
-      ) : null}
-      {reminder.isCompleted && displayCompletionDate && reminder.completionDate ? (
-        <span>{new Date(reminder.completionDate).toLocaleString()}</span>
-      ) : reminder.dueDate ? (
-        <span>{formatReminderDateLabel(reminder.dueDate)}</span>
-      ) : null}
-    </div>
-  )
+  if (showListName && reminder.list) {
+    parts.push(reminder.list.title)
+  }
+
+  if (reminder.priority) {
+    parts.push(reminder.priority)
+  }
+
+  if (reminder.isCompleted && displayCompletionDate && reminder.completionDate) {
+    parts.push(new Date(reminder.completionDate).toLocaleString())
+  } else if (reminder.dueDate) {
+    parts.push(formatReminderDateLabel(reminder.dueDate))
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : null
 }
 
 export function getReminderFilterOptions(
