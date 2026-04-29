@@ -64,14 +64,14 @@ export default async function AppleRemindersQuickAddReminder(context: {
       commandName: string
       extensionName: string
       kind: "extension-command"
-    }) => void
+    }) => Promise<void>
   }
   seedQuery: string
 }): Promise<void> {
   const seedQuery = context.seedQuery.trim()
 
   if (!seedQuery) {
-    context.navigation?.openCommand({
+    await context.navigation?.openCommand({
       commandName: "create-reminder",
       extensionName: "apple-reminders",
       kind: "extension-command"

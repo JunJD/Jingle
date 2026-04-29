@@ -120,9 +120,9 @@ export function useActiveLauncherCommand(
       : null
   const activeCommandHostReady = Boolean(
     isLauncherCommandRoute(route) &&
-      activeCommand &&
-      activeCommandOwner &&
-      (!activeCommand.loadCommandPreferences || (activeCommandPreferences && !activeCommandError))
+    activeCommand &&
+    activeCommandOwner &&
+    (!activeCommand.loadCommandPreferences || (activeCommandPreferences && !activeCommandError))
   )
   const activeBuiltInCommand =
     isLauncherCommandRoute(route) && isLauncherBuiltInCommandAddress(route)
@@ -203,11 +203,18 @@ export function useActiveLauncherCommand(
 
     lastExecutedNoViewRouteKeyRef.current = routeKey
 
+    let didNavigate = false
     const navigation = activeCommandNavigationEnabled
       ? {
-          goHome: closeActivePlugin,
+          goHome: () => {
+            didNavigate = true
+            closeActivePlugin()
+          },
           hideLauncher,
-          openCommand
+          openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => {
+            didNavigate = true
+            openCommand(address, options)
+          }
         }
       : undefined
 
@@ -226,7 +233,7 @@ export function useActiveLauncherCommand(
         )
       })
       .finally(() => {
-        if (latestRouteKeyRef.current === routeKey) {
+        if (!didNavigate && latestRouteKeyRef.current === routeKey) {
           closeActivePlugin()
         }
       })

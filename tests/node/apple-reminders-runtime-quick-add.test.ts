@@ -17,17 +17,22 @@ import type {
 
 test("Apple Reminders runtime quick-add opens create reminder when the seed query is empty", async () => {
   const hostRequests: ExtensionRuntimeHostRequestInput[] = []
+  const navigationResponse = createDeferred<ExtensionHostResponse>()
+  let quickAddResolved = false
   const navigation = createExtensionRuntimeNavigation({
     requestHost: async (request) => {
       hostRequests.push(request)
-      return createHostResponse(null)
+      return navigationResponse.promise
     }
   })
 
-  await AppleRemindersQuickAddReminder({
+  const quickAddPromise = AppleRemindersQuickAddReminder({
     navigation,
     seedQuery: "   "
+  }).then(() => {
+    quickAddResolved = true
   })
+  await flushPromises()
 
   assert.equal(hostRequests.length, 1)
   assert.deepEqual(hostRequests[0], {
@@ -39,6 +44,11 @@ test("Apple Reminders runtime quick-add opens create reminder when the seed quer
       showLauncher: undefined
     }
   })
+  assert.equal(quickAddResolved, false)
+
+  navigationResponse.resolve(createHostResponse(null))
+  await quickAddPromise
+  assert.equal(quickAddResolved, true)
 })
 
 test("Apple Reminders runtime quick-add creates a parsed reminder through runtime RPC", async () => {
@@ -150,4 +160,22 @@ function todayDateOnly(): string {
   const month = String(value.getMonth() + 1).padStart(2, "0")
   const day = String(value.getDate()).padStart(2, "0")
   return `${year}-${month}-${day}`
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve
+  })
+
+  return {
+    promise,
+    resolve
+  }
+}
+
+function flushPromises(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(resolve)
+  })
 }

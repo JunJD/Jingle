@@ -183,7 +183,9 @@ export const nativeLauncherCommandOwners = supportedNativeExtensionManifests.red
                       return
                     }
 
-                    void handleRuntimeNavigationRequest(event, context.navigation)
+                    void handleRuntimeNavigationRequest(event, context.navigation, {
+                      completeOpenCommandBeforeNavigation: false
+                    })
                   })
                 : undefined
 

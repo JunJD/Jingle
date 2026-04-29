@@ -48,7 +48,7 @@ export interface ExtensionRuntimeNavigation {
   openCommand: (
     address: ExtensionRuntimeCommandAddress,
     options?: ExtensionRuntimeCommandOpenOptions
-  ) => void
+  ) => Promise<void>
   pop: () => void
   push: (view: ReactNode) => void
 }
@@ -81,8 +81,8 @@ export function createExtensionRuntimeNavigation(params: {
         throw new Error(response.error.message)
       }
     },
-    openCommand: (address, options) => {
-      void requestHost({
+    openCommand: async (address, options) => {
+      const response = await requestHost({
         capability: "navigation",
         method: "open-command",
         payload: {
@@ -91,6 +91,9 @@ export function createExtensionRuntimeNavigation(params: {
           showLauncher: options?.showLauncher
         }
       })
+      if (!response.ok) {
+        throw new Error(response.error.message)
+      }
     },
     pop: params.onPop ?? (() => {}),
     push: params.onPush ?? (() => {})

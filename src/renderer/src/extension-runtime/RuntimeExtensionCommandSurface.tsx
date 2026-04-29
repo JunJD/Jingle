@@ -6,6 +6,7 @@ import {
   useReducer,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode
 } from "react"
 import { cjk } from "@streamdown/cjk"
@@ -60,6 +61,16 @@ import {
 
 const RUNTIME_LIST_SHORTCUT_SCOPES = ["launcher.list"] as const
 const streamdownPlugins = { cjk, code, math, mermaid }
+
+function isPlainDeletionKey(event: ReactKeyboardEvent<HTMLInputElement>): boolean {
+  return (
+    (event.key === "Backspace" || event.key === "Delete") &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    !event.shiftKey
+  )
+}
 
 interface RuntimeListItemDescriptor extends ExtensionListItemNode {
   sectionTitle?: string
@@ -256,9 +267,14 @@ type RuntimeNavigationTarget = Pick<
   "goHome" | "hideLauncher" | "openCommand"
 >
 
+interface RuntimeNavigationRequestOptions {
+  completeOpenCommandBeforeNavigation?: boolean
+}
+
 export async function handleRuntimeNavigationRequest(
   event: ExtensionRuntimeNavigationRequestEvent,
-  navigation: RuntimeNavigationTarget
+  navigation: RuntimeNavigationTarget,
+  options: RuntimeNavigationRequestOptions = {}
 ): Promise<void> {
   const { request, sessionId } = event
   const okResponse: ExtensionRuntimeNavigationResponse = {
@@ -286,12 +302,22 @@ export async function handleRuntimeNavigationRequest(
           await window.api.launcher.show()
         }
 
-        await completeRuntimeNavigationRequest(okResponse)
+        if (options.completeOpenCommandBeforeNavigation ?? true) {
+          await completeRuntimeNavigationRequest(okResponse)
+          navigation.openCommand({
+            commandName: request.payload.commandName,
+            extensionName: request.payload.extensionName,
+            kind: "extension-command"
+          })
+          return
+        }
+
         navigation.openCommand({
           commandName: request.payload.commandName,
           extensionName: request.payload.extensionName,
           kind: "extension-command"
         })
+        await completeRuntimeNavigationRequest(okResponse)
         return
     }
   } catch (error) {
@@ -922,6 +948,16 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     })
   }
 
+  const handleInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
+    if (event.currentTarget.value.length > 0 || !isPlainDeletionKey(event)) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    hostNavigation.goHome()
+  }
+
   const handleFieldChange = (fieldId: string, value: RuntimeFormValue): void => {
     const changeId = `form-change-${nextFormChangeIdRef.current++}`
     dispatchFormState({ changeId, fieldId, type: "field.change", value })
@@ -981,6 +1017,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         inputRef={surface.inputRef}
         inputStatus={snapshot ? surface.inputStatus : "pending"}
         inputValue={inputText}
+        onInputKeyDown={handleInputKeyDown}
         onInputValueChange={handleInputChange}
         placeholders={[listSnapshot?.searchBarPlaceholder ?? "Search"]}
         shellConfig={surface.shellConfig}
