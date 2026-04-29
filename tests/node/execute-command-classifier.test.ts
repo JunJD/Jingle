@@ -62,11 +62,25 @@ test("classifies python3 script execution as a predictable mutation", () => {
   assert.equal(policy.disposition, "require_approval")
 })
 
-test("blocks python3 module execution outside the controlled shell profile", () => {
+test("classifies python3 http.server module execution as a managed process", () => {
   const policy = classifier.classify("python3 -m http.server")
+
+  assert.equal(policy.profile, "managed_process")
+  assert.equal(policy.disposition, "require_approval")
+})
+
+test("blocks unclassified python3 module execution outside the controlled shell profile", () => {
+  const policy = classifier.classify("python3 -m pip install pytest")
 
   assert.equal(policy.profile, "host_unsafe")
   assert.equal(policy.disposition, "deny")
+})
+
+test("classifies package dev scripts as managed processes", () => {
+  const policy = classifier.classify("npm run dev")
+
+  assert.equal(policy.profile, "managed_process")
+  assert.equal(policy.disposition, "require_approval")
 })
 
 test("classifies node version inspection as read-only", () => {
@@ -104,8 +118,8 @@ test("classifies safe curl GET requests as network reads", () => {
   assert.equal(policy.disposition, "allow")
 })
 
-test("blocks npm run because it is outside the controlled shell profile", () => {
-  const policy = classifier.classify("npm run dev")
+test("blocks unclassified npm scripts outside the controlled shell profile", () => {
+  const policy = classifier.classify("npm run build")
 
   assert.equal(policy.profile, "host_unsafe")
   assert.equal(policy.disposition, "deny")

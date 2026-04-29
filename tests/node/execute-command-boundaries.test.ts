@@ -60,8 +60,20 @@ const boundaryCases: BoundaryCase[] = [
   },
   {
     command: "python3 -m http.server",
+    disposition: "require_approval",
+    label: "python managed local server",
+    profile: "managed_process"
+  },
+  {
+    command: "npm run dev",
+    disposition: "require_approval",
+    label: "package managed dev server",
+    profile: "managed_process"
+  },
+  {
+    command: "python3 -m pip install pytest",
     disposition: "deny",
-    label: "python module execution",
+    label: "unclassified python module execution",
     profile: "host_unsafe"
   },
   {

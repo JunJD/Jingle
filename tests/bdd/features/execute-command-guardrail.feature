@@ -30,6 +30,13 @@
     而且守卫拒绝原因应包含 "target files could not be predicted"
     而且预测器调用次数应为 1
 
+  场景: 可管理进程不触发文件预测但会进入后续审批流程
+    当系统使用受控 shell 守卫评估命令 "python3 -m http.server"
+    那么守卫结果应为 "allow"
+    而且守卫记录的分类应为 "managed_process"
+    而且守卫记录的处置应为 "require_approval"
+    而且预测器调用次数应为 0
+
   场景: js-exec 因为不是宿主命令而被立即拒绝
     当系统使用受控 shell 守卫评估命令 "js-exec -c 'console.log(\"hello\")'"
     那么守卫结果应为 "deny"

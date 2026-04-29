@@ -94,6 +94,10 @@ export function createExecuteCommandGuardrailProvider(
         return buildAllowedDecision(classification)
       }
 
+      if (classification.profile !== "predictable_mutation") {
+        return buildAllowedDecision(classification)
+      }
+
       const prediction = await options.predictor.predictExecute(command)
       if (prediction.status !== "predicted") {
         return buildDeniedDecision(

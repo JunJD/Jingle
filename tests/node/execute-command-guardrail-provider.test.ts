@@ -95,6 +95,38 @@ test("predictable mutations require a successful prediction before they are allo
   assert.equal(decision.metadata?.mutationPrediction?.status, "predicted")
 })
 
+test("managed process commands require approval without mutation prediction", async () => {
+  let predictorCalls = 0
+  const provider = createExecuteCommandGuardrailProvider({
+    classifier: {
+      classify() {
+        return buildPolicy({
+          command: "python3 -m http.server",
+          commands: ["python3"],
+          disposition: "require_approval",
+          profile: "managed_process",
+          reason: "python3 -m http.server starts a managed process and requires approval.",
+          summary: "Managed process command requires approval (python3)."
+        })
+      }
+    },
+    predictor: {
+      async predictExecute() {
+        predictorCalls += 1
+        return buildPrediction()
+      }
+    }
+  })
+
+  const decision = await provider.evaluate(buildRequest("python3 -m http.server"))
+
+  assert.equal(decision.allow, true)
+  assert.equal(predictorCalls, 0)
+  assert.equal(decision.metadata?.executeCommandPolicy?.profile, "managed_process")
+  assert.equal(decision.metadata?.executeCommandPolicy?.disposition, "require_approval")
+  assert.equal(decision.metadata?.mutationPrediction, undefined)
+})
+
 test("predictable mutations are denied when target files cannot be predicted", async () => {
   const provider = createExecuteCommandGuardrailProvider({
     classifier: {

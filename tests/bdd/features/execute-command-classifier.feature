@@ -3,7 +3,7 @@
 功能: Execute command classifier 为受控 shell 标记风险等级
   为了让 Openwork 只自动放行明确安全的命令
   作为代理运行时维护者
-  我需要把 shell 命令稳定分类为只读、网络读取、可预测变更或直接拒绝
+  我需要把 shell 命令稳定分类为只读、网络读取、可预测变更、可管理进程或直接拒绝
 
   场景大纲: 明确只读的命令可以直接放行
     当系统分类命令 "<命令>"
@@ -90,6 +90,18 @@
     而且分类原因应包含 "modifies files or directories"
     而且网络目标应为 "https://example.com/"
 
+  场景大纲: 明确启动本地服务的命令需要审批并作为可管理进程处理
+    当系统分类命令 "<命令>"
+    那么分类结果应为 "managed_process"
+    而且处置应为 "require_approval"
+    而且分类原因应包含 "managed process"
+
+    例子:
+      | 命令                   |
+      | python3 -m http.server |
+      | npm run dev            |
+      | pnpm run preview       |
+
   场景大纲: 不安全或不明确的命令会被直接拒绝
     当系统分类命令 "<命令>"
     那么分类结果应为 "host_unsafe"
@@ -98,9 +110,9 @@
 
     例子:
       | 命令                                      | 原因片段                         |
-      | npm run dev                               | outside the controlled shell profile |
+      | npm run build                             | outside the controlled shell profile |
       | pnpm install                              | outside the controlled shell profile |
-      | python3 -m http.server                    | outside the controlled shell profile |
+      | python3 -m pip install pytest             | outside the controlled shell profile |
       | node --inspect scripts/update.js          | outside the controlled shell profile |
       | curl -XPOST https://example.com           | request method 'POST'            |
       | curl -o out.txt https://example.com       | output-to-file flags             |

@@ -90,6 +90,7 @@ function isExecuteCommandProfile(value: unknown): value is ExecuteCommandProfile
     value === "read_only" ||
     value === "network_read" ||
     value === "predictable_mutation" ||
+    value === "managed_process" ||
     value === "host_unsafe"
   )
 }
