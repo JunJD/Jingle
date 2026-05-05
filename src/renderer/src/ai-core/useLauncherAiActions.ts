@@ -1,5 +1,7 @@
-import { useCallback, useMemo, type RefObject } from "react"
+import { Check } from "lucide-react"
+import { createElement, useCallback, useMemo, type RefObject } from "react"
 import type { AppCopy } from "@/lib/i18n/messages"
+import type { PermissionModeName } from "@shared/permission-mode"
 import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { useShortcutCommandHandler } from "@/shortcuts/shortcut-context"
 import { useLauncherActionController } from "@/features/launcher-actions/controller"
@@ -17,9 +19,11 @@ interface UseLauncherAiActionsOptions {
   canGoToPreviousChat: boolean
   canStartNewQuestion: boolean
   copy: AppCopy["launcher"]
+  currentPermissionMode: PermissionModeName
   goToNextChat: () => Promise<void>
   goToPreviousChat: () => Promise<void>
   inputRef: RefObject<LauncherInputElement | null>
+  isApprovalPending: boolean
   isBusy: boolean
   navigateHome: () => void
   newQuestion: () => Promise<void>
@@ -27,7 +31,10 @@ interface UseLauncherAiActionsOptions {
   openModelPicker: () => Promise<void>
   query: string
   runPrimaryAction: () => void
+  selectPermissionMode: (permissionMode: PermissionModeName) => void
 }
+
+const LAUNCHER_PERMISSION_MODE_ORDER: PermissionModeName[] = ["ask-to-edit", "explore", "auto"]
 
 function isPlainBackspaceShortcut(event: KeyboardEvent): boolean {
   return (
@@ -39,11 +46,21 @@ function isPlainBackspaceShortcut(event: KeyboardEvent): boolean {
   )
 }
 
-export function useLauncherAiActions(
-  options: UseLauncherAiActionsOptions
-): {
+function getPermissionModeLabel(copy: AppCopy["launcher"], mode: PermissionModeName): string {
+  switch (mode) {
+    case "explore":
+      return copy.permissionModeExplore
+    case "ask-to-edit":
+      return copy.permissionModeAskToEdit
+    case "auto":
+      return copy.permissionModeAuto
+  }
+}
+
+export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
   actionController: LauncherActionController
   addAttachmentShortcut: string | null
+  permissionModeLabel: string
   submitShortcut: string | null
 } {
   const {
@@ -53,16 +70,19 @@ export function useLauncherAiActions(
     canGoToPreviousChat,
     canStartNewQuestion,
     copy,
+    currentPermissionMode,
     goToNextChat,
     goToPreviousChat,
     inputRef,
+    isApprovalPending,
     isBusy,
     navigateHome,
     newQuestion,
     openAttachmentPicker,
     openModelPicker,
     query,
-    runPrimaryAction
+    runPrimaryAction,
+    selectPermissionMode
   } = options
   const submitShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.aiSubmit)
   const addAttachmentShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.aiAddAttachment)
@@ -85,17 +105,25 @@ export function useLauncherAiActions(
         return
       }
 
+      if (isApprovalPending) {
+        return
+      }
+
       event.preventDefault()
       runPrimaryAction()
     },
-    [isAiInputTarget, runPrimaryAction]
+    [isAiInputTarget, isApprovalPending, runPrimaryAction]
   )
   const handleAddAttachmentShortcut = useCallback(
     (event: KeyboardEvent): void => {
+      if (isApprovalPending) {
+        return
+      }
+
       event.preventDefault()
       openAttachmentPicker()
     },
-    [openAttachmentPicker]
+    [isApprovalPending, openAttachmentPicker]
   )
   const handleGoHomeShortcut = useCallback(
     (event: KeyboardEvent): void => {
@@ -171,8 +199,12 @@ export function useLauncherAiActions(
   useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.aiChangeModel, handleChangeModelShortcut)
   useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.aiBranchChat, handleBranchChatShortcut)
 
-  const actions = useMemo<LauncherActionDescriptor[]>(
-    () => [
+  const actions = useMemo<LauncherActionDescriptor[]>(() => {
+    if (isApprovalPending) {
+      return []
+    }
+
+    return [
       ...(canGoToPreviousChat
         ? [
             {
@@ -203,6 +235,19 @@ export function useLauncherAiActions(
             } satisfies LauncherActionDescriptor
           ]
         : []),
+      ...LAUNCHER_PERMISSION_MODE_ORDER.map(
+        (permissionMode) =>
+          ({
+            icon:
+              permissionMode === currentPermissionMode
+                ? createElement(Check, { className: "size-[var(--ow-icon-sm)]" })
+                : undefined,
+            id: `launcher-ai-permission-mode-${permissionMode}`,
+            onAction: () => selectPermissionMode(permissionMode),
+            sectionTitle: copy.permissionModeSection,
+            title: getPermissionModeLabel(copy, permissionMode)
+          }) satisfies LauncherActionDescriptor
+      ),
       {
         id: "launcher-ai-open-main-history",
         onAction: async () => {
@@ -228,39 +273,48 @@ export function useLauncherAiActions(
             } satisfies LauncherActionDescriptor
           ]
         : [])
-    ],
-    [
-      branchChatShortcut,
-      branchThread,
-      canBranchThread,
-      canGoToNextChat,
-      canGoToPreviousChat,
-      canStartNewQuestion,
-      changeModelShortcut,
-      copy.branchChat,
-      copy.changeModel,
-      copy.goToNextChat,
-      copy.goToPreviousChat,
-      copy.openAiHistory,
-      goToNextChat,
-      goToPreviousChat,
-      copy.newQuestion,
-      newQuestion,
-      newQuestionShortcut,
-      nextChatShortcut,
-      openModelPicker,
-      openMainHistoryShortcut,
-      previousChatShortcut
     ]
-  )
-  const primaryAction = useMemo<LauncherActionDescriptor>(
-    () => ({
-      id: "launcher-ai-submit",
-      onAction: runPrimaryAction,
-      shortcut: submitShortcut,
-      title: copy.aiPrimaryLabel
-    }),
-    [copy.aiPrimaryLabel, runPrimaryAction, submitShortcut]
+  }, [
+    branchChatShortcut,
+    branchThread,
+    canBranchThread,
+    canGoToNextChat,
+    canGoToPreviousChat,
+    canStartNewQuestion,
+    changeModelShortcut,
+    copy.branchChat,
+    copy.changeModel,
+    copy.goToNextChat,
+    copy.goToPreviousChat,
+    copy.openAiHistory,
+    copy.permissionModeAskToEdit,
+    copy.permissionModeAuto,
+    copy.permissionModeExplore,
+    copy.permissionModeSection,
+    currentPermissionMode,
+    goToNextChat,
+    goToPreviousChat,
+    isApprovalPending,
+    copy.newQuestion,
+    newQuestion,
+    newQuestionShortcut,
+    nextChatShortcut,
+    openModelPicker,
+    openMainHistoryShortcut,
+    previousChatShortcut,
+    selectPermissionMode
+  ])
+  const primaryAction = useMemo<LauncherActionDescriptor | null>(
+    () =>
+      isApprovalPending
+        ? null
+        : {
+            id: "launcher-ai-submit",
+            onAction: runPrimaryAction,
+            shortcut: submitShortcut,
+            title: copy.aiPrimaryLabel
+          },
+    [copy.aiPrimaryLabel, isApprovalPending, runPrimaryAction, submitShortcut]
   )
   const actionController = useLauncherActionController({
     actions,
@@ -271,6 +325,7 @@ export function useLauncherAiActions(
   return {
     actionController,
     addAttachmentShortcut,
+    permissionModeLabel: getPermissionModeLabel(copy, currentPermissionMode),
     submitShortcut
   }
 }

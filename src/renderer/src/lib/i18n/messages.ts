@@ -102,6 +102,10 @@ export interface AppCopy {
     openSettings: string
     openAiHistory: string
     openApp: string
+    permissionModeAskToEdit: string
+    permissionModeAuto: string
+    permissionModeExplore: string
+    permissionModeSection: string
     commandMatches: string
     manageUseWithCommands: string
     useWithAvailable: string
@@ -306,6 +310,10 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openSettings: "打开设置",
       openAiHistory: "打开 AI 页面",
       openApp: "打开应用",
+      permissionModeAskToEdit: "默认权限",
+      permissionModeAuto: "完全访问权限",
+      permissionModeExplore: "自动审查",
+      permissionModeSection: "权限模式",
       commandMatches: "命令",
       manageUseWithCommands: "管理 Use With 命令",
       useWithAvailable: "可用",
@@ -528,6 +536,10 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openSettings: "Open Settings",
       openAiHistory: "Open AI",
       openApp: "Open App",
+      permissionModeAskToEdit: "Default Permission",
+      permissionModeAuto: "Full Access",
+      permissionModeExplore: "Auto Review",
+      permissionModeSection: "Permission Mode",
       commandMatches: "Commands",
       manageUseWithCommands: "Manage Fallback Commands",
       useWithAvailable: "Available",

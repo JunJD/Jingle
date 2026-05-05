@@ -1,7 +1,8 @@
-import { ArrowLeft, GitBranch, Plus, Square } from "lucide-react"
+import { ArrowLeft, ChevronDown, GitBranch, Plus, ShieldCheck, Square } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
 import { ComposerApprovalPrompt } from "@/components/chat/ComposerApprovalPrompt"
+import { getToolApprovalPresentationMeta } from "@/components/chat/tools/tool-approval-presentation"
 import { useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { AI_ATTACHMENT_FILE_EXTENSIONS } from "@shared/launcher-attachments"
@@ -14,6 +15,7 @@ import { useAiAttachments } from "./useAiAttachments"
 import { useAiThread } from "./useAiThread"
 import { useLauncherAiActions } from "./useLauncherAiActions"
 import { useI18n } from "@/lib/i18n"
+import { cn } from "@/lib/utils"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
@@ -33,6 +35,7 @@ export function LauncherAiPage(): React.JSX.Element {
     canGoToNextChat,
     canGoToPreviousChat,
     currentModelId,
+    currentPermissionMode,
     goToNextChat,
     goToPreviousChat,
     primaryActionDisabled,
@@ -40,6 +43,7 @@ export function LauncherAiPage(): React.JSX.Element {
     retry,
     runPrimaryAction,
     selectModel,
+    selectPermissionMode,
     setQuery,
     startNewThread,
     stop,
@@ -52,6 +56,11 @@ export function LauncherAiPage(): React.JSX.Element {
   const { inputRef, setInputStatus } = surface
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showModelPicker, setShowModelPicker] = useState(false)
+  const pendingApproval = conversation.pendingApproval
+  const isApprovalPending = Boolean(pendingApproval)
+  const pendingApprovalMeta = pendingApproval
+    ? getToolApprovalPresentationMeta(copy, pendingApproval.review, pendingApproval.tool_call.name)
+    : null
   const openAttachmentPicker = useCallback((): void => {
     fileInputRef.current?.click()
   }, [])
@@ -84,40 +93,44 @@ export function LauncherAiPage(): React.JSX.Element {
     query.trim().length > 0 ||
     attachmentDraft.attachments.length > 0 ||
     conversation.displayMessages.length > 0
-  const { actionController, addAttachmentShortcut, submitShortcut } = useLauncherAiActions({
-    branchThread: handleBranchChat,
-    canBranchThread: Boolean(threadId && conversation.displayMessages.length > 0 && !isBusy),
-    canGoToNextChat,
-    canGoToPreviousChat,
-    canStartNewQuestion,
-    copy: copy.launcher,
-    goToNextChat: async () => {
-      const nextThreadId = await goToNextChat()
-      if (!nextThreadId) {
-        return
-      }
+  const { actionController, addAttachmentShortcut, permissionModeLabel, submitShortcut } =
+    useLauncherAiActions({
+      branchThread: handleBranchChat,
+      canBranchThread: Boolean(threadId && conversation.displayMessages.length > 0 && !isBusy),
+      canGoToNextChat,
+      canGoToPreviousChat,
+      canStartNewQuestion,
+      copy: copy.launcher,
+      currentPermissionMode,
+      goToNextChat: async () => {
+        const nextThreadId = await goToNextChat()
+        if (!nextThreadId) {
+          return
+        }
 
-      attachmentDraft.clearAllAttachments()
-      setShowModelPicker(false)
-    },
-    goToPreviousChat: async () => {
-      const previousThreadId = await goToPreviousChat()
-      if (!previousThreadId) {
-        return
-      }
+        attachmentDraft.clearAllAttachments()
+        setShowModelPicker(false)
+      },
+      goToPreviousChat: async () => {
+        const previousThreadId = await goToPreviousChat()
+        if (!previousThreadId) {
+          return
+        }
 
-      attachmentDraft.clearAllAttachments()
-      setShowModelPicker(false)
-    },
-    inputRef,
-    isBusy,
-    navigateHome: navigation.goHome,
-    newQuestion: handleNewQuestion,
-    openAttachmentPicker,
-    openModelPicker: handleOpenModelPicker,
-    query,
-    runPrimaryAction
-  })
+        attachmentDraft.clearAllAttachments()
+        setShowModelPicker(false)
+      },
+      inputRef,
+      isApprovalPending,
+      isBusy,
+      navigateHome: navigation.goHome,
+      newQuestion: handleNewQuestion,
+      openAttachmentPicker,
+      openModelPicker: handleOpenModelPicker,
+      query,
+      runPrimaryAction,
+      selectPermissionMode
+    })
 
   useShortcutScopeLayer(AI_SHORTCUT_SCOPES)
   useDisableTabNavigation(inputRef)
@@ -164,40 +177,54 @@ export function LauncherAiPage(): React.JSX.Element {
                   <span>{copy.launcher.branchChatSwitched}</span>
                 </div>
               ) : null}
-            </div>
-
-            <div className="flex items-center gap-[var(--ow-gap-sm)]">
-              {actionController.canOpenActions ? (
+              {isApprovalPending ? null : (
                 <button
                   type="button"
                   onClick={actionController.openActions}
                   onMouseDown={(event) => event.preventDefault()}
-                  className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground"
+                  className="launcher-action-link inline-flex h-[var(--launcher-action-control-h)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground"
                 >
-                  <span>{copy.launcher.actionsLabel}</span>
-                  {actionController.actionPanelShortcut ? (
+                  <ShieldCheck className="size-[var(--ow-icon-compact)] text-status-warning" />
+                  <span>{permissionModeLabel}</span>
+                  <ChevronDown className="size-[var(--ow-icon-compact)] text-muted-foreground" />
+                </button>
+              )}
+            </div>
+
+            {isApprovalPending ? null : (
+              <div className="flex items-center gap-[var(--ow-gap-sm)]">
+                {actionController.canOpenActions ? (
+                  <button
+                    type="button"
+                    onClick={actionController.openActions}
+                    onMouseDown={(event) => event.preventDefault()}
+                    className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground"
+                  >
+                    <span>{copy.launcher.actionsLabel}</span>
+                    {actionController.actionPanelShortcut ? (
+                      <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
+                        {actionController.actionPanelShortcut}
+                      </span>
+                    ) : null}
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={runPrimaryAction}
+                  onMouseDown={(event) => event.preventDefault()}
+                  disabled={primaryActionDisabled}
+                  className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
+                >
+                  <span>{copy.launcher.aiPrimaryLabel}</span>
+                  {submitShortcut ? (
                     <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
-                      {actionController.actionPanelShortcut}
+                      {submitShortcut}
                     </span>
                   ) : null}
                 </button>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={runPrimaryAction}
-                onMouseDown={(event) => event.preventDefault()}
-                disabled={primaryActionDisabled}
-                className="launcher-action-link flex h-[var(--launcher-action-control-h)] appearance-none items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border-0 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] font-medium text-foreground disabled:cursor-default disabled:opacity-45"
-              >
-                <span>{copy.launcher.aiPrimaryLabel}</span>
-                {submitShortcut ? (
-                  <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
-                    {submitShortcut}
-                  </span>
-                ) : null}
-              </button>
-            </div>
+              </div>
+            )}
           </>
         }
         headerLeading={
@@ -228,20 +255,22 @@ export function LauncherAiPage(): React.JSX.Element {
                 }}
               />
 
-              <button
-                type="button"
-                onClick={openAttachmentPicker}
-                onMouseDown={(event) => event.preventDefault()}
-                aria-label={copy.launcher.aiAddAttachment}
-                title={
-                  addAttachmentShortcut
-                    ? `${copy.launcher.aiAddAttachment} (${addAttachmentShortcut})`
-                    : copy.launcher.aiAddAttachment
-                }
-                className="launcher-icon-button flex h-[var(--launcher-inline-icon-button-size)] w-[var(--launcher-inline-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
-              >
-                <Plus className="size-[var(--ow-icon-xs)]" />
-              </button>
+              {isApprovalPending ? null : (
+                <button
+                  type="button"
+                  onClick={openAttachmentPicker}
+                  onMouseDown={(event) => event.preventDefault()}
+                  aria-label={copy.launcher.aiAddAttachment}
+                  title={
+                    addAttachmentShortcut
+                      ? `${copy.launcher.aiAddAttachment} (${addAttachmentShortcut})`
+                      : copy.launcher.aiAddAttachment
+                  }
+                  className="launcher-icon-button flex h-[var(--launcher-inline-icon-button-size)] w-[var(--launcher-inline-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
+                >
+                  <Plus className="size-[var(--ow-icon-xs)]" />
+                </button>
+              )}
 
               <LauncherAttachmentStrip
                 attachments={attachmentDraft.attachments}
@@ -267,18 +296,38 @@ export function LauncherAiPage(): React.JSX.Element {
           ) : undefined
         }
         inputAccessory={
-          conversation.pendingApproval ? (
+          pendingApproval ? (
             <div className="shrink-0 px-[var(--launcher-ai-content-x)] py-[var(--ow-space-3)]">
               <div className="mx-auto w-full max-w-[var(--launcher-ai-content-max-width)]">
                 <ComposerApprovalPrompt
-                  key={conversation.pendingApproval.id}
+                  key={pendingApproval.id}
                   density="compact"
                   onDecision={(decision) => {
                     void handleApprovalDecision(decision)
                   }}
-                  request={conversation.pendingApproval}
+                  request={pendingApproval}
                 />
               </div>
+            </div>
+          ) : undefined
+        }
+        inputReplacement={
+          pendingApprovalMeta ? (
+            <div
+              className={cn(
+                "flex h-[var(--ow-control-h-sm)] min-w-0 items-center gap-[var(--ow-gap-sm)] px-[var(--ow-space-1)]",
+                "[font-size:var(--ow-font-control)] font-medium text-foreground"
+              )}
+            >
+              <span className="shrink-0 text-muted-foreground/72">
+                {copy.toolCall.approvalItem}
+              </span>
+              <span className="min-w-0 truncate">{pendingApprovalMeta.title}</span>
+              {pendingApprovalMeta.subtitle ? (
+                <span className="min-w-0 truncate text-muted-foreground/64">
+                  {pendingApprovalMeta.subtitle}
+                </span>
+              ) : null}
             </div>
           ) : undefined
         }
@@ -300,7 +349,7 @@ export function LauncherAiPage(): React.JSX.Element {
             isLoading={conversation.isLoading}
             onApprovalDecision={handleApprovalDecision}
             onRetry={retry}
-            pendingApproval={conversation.pendingApproval}
+            pendingApproval={pendingApproval}
             todos={conversation.todos}
           />
         ) : (

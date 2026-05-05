@@ -1,6 +1,11 @@
 import { HumanMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
+import { readSourceProfilesSnapshotFromMetadata } from "@shared/extension-sources"
 import { normalizeComposerMessageRefs, summarizeMessageContent } from "@shared/message-content"
+import {
+  createDefaultNativeExtensionSourceBindings,
+  hydrateNativeExtensionSourceBindings
+} from "@extensions/sources"
 import {
   beginAgentRun,
   finalizeRunWithoutCheckpoint,
@@ -13,8 +18,9 @@ import { isAbortLikeError } from "./errors"
 import { createAgentRuntime, runtimeUsesCheckpointPersistence } from "./runtime"
 import { buildAgentResumeConfig, buildAgentRunConfig } from "./run-config"
 import { extractHitlRequestFromValuesState } from "./runtime-state"
-import { getHitlRequest, getThread, resolveHitlRequest, upsertHitlRequest } from "../db"
+import { getHitlRequest, getRun, getThread, resolveHitlRequest, upsertHitlRequest } from "../db"
 import { buildIpcErrorEvent, OpenworkIpcError } from "../ipc/error"
+import { readRunPermissionModeSnapshot, readThreadPermissionMode } from "./permission-mode"
 import type {
   AgentCancelParams,
   AgentInvokeParams,
@@ -363,13 +369,17 @@ export function serializeStreamChunkForIpc(
 export class AgentService {
   private readonly activeRuns = new Map<string, ActiveAgentRun>()
 
-  async invoke({ threadId, message, modelId }: AgentInvokeParams, sink: AgentStreamSink): Promise<void> {
+  async invoke(
+    { threadId, message, modelId, permissionMode: requestedPermissionMode }: AgentInvokeParams,
+    sink: AgentStreamSink
+  ): Promise<void> {
     const messagePreview = summarizeMessageContent(message.content)
 
     console.log("[Agent] Received invoke request:", {
       threadId,
       message: messagePreview.substring(0, 50),
-      modelId
+      modelId,
+      permissionMode: requestedPermissionMode
     })
 
     const existingRun = this.activeRuns.get(threadId)
@@ -405,11 +415,23 @@ export class AgentService {
       }
 
       const normalizedRefs = normalizeComposerMessageRefs(message.additional_kwargs?.refs)
-      const { runId } = await beginAgentRun(threadId, modelId)
+      const permissionMode = requestedPermissionMode ?? readThreadPermissionMode(thread)
+      const sourceBindings = createDefaultNativeExtensionSourceBindings()
+
+      const { runId } = await beginAgentRun(threadId, modelId, {
+        permissionMode,
+        sourceBindings
+      })
       this.activeRuns.set(threadId, { controller: abortController, runId })
       sink.send({ type: "run_started", runId })
 
-      const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
+      const agent = await createAgentRuntime({
+        threadId,
+        workspacePath,
+        modelId,
+        permissionMode,
+        sourceBindings
+      })
       const humanMessage = new HumanMessage({
         content: message.content,
         id: message.id,
@@ -465,7 +487,10 @@ export class AgentService {
     }
   }
 
-  async resume({ threadId, command, modelId }: AgentResumeParams, sink: AgentStreamSink): Promise<void> {
+  async resume(
+    { threadId, command, modelId }: AgentResumeParams,
+    sink: AgentStreamSink
+  ): Promise<void> {
     console.log("[Agent] Received resume request:", { threadId, command, modelId })
 
     const thread = await getThread(threadId)
@@ -524,23 +549,48 @@ export class AgentService {
     sink.send({ type: "run_started", runId })
 
     try {
-      const agent = await createAgentRuntime({ threadId, workspacePath, modelId })
+      const resumedRun = await getRun(runId)
+      const permissionMode = readRunPermissionModeSnapshot(resumedRun)
+      const sourceProfiles = readSourceProfilesSnapshotFromMetadata(resumedRun?.metadata)
+      const sourceBindings =
+        sourceProfiles === null
+          ? createDefaultNativeExtensionSourceBindings()
+          : hydrateNativeExtensionSourceBindings(sourceProfiles)
+      const agent = await createAgentRuntime({
+        threadId,
+        workspacePath,
+        modelId,
+        permissionMode,
+        sourceBindings
+      })
       const config = buildAgentResumeConfig(threadId, runId, abortController)
-
-      await resolveHitlRequest(resumeTarget.requestId, mapDecisionToHitlStatus(decisionType), {
+      const resolvedHitlDecision = {
         type: decision.type,
         request_id: resumeTarget.requestId,
         tool_call_id: decision.tool_call_id,
         feedback: decision.feedback
-      })
+      }
+      const resolveConsumedHitlRequest = async (): Promise<void> => {
+        await resolveHitlRequest(
+          resumeTarget.requestId,
+          mapDecisionToHitlStatus(decisionType),
+          resolvedHitlDecision
+        )
+      }
       const resumeValue = buildResumeValue(decision)
       const stream = await agent.stream(new Command({ resume: resumeValue }), config)
       let interrupted = false
+      let hitlRequestResolved = false
 
       for await (const chunk of stream) {
         if (abortController.signal.aborted) break
 
         const [mode, data] = chunk as unknown as [string, unknown]
+        if (!hitlRequestResolved) {
+          // Keep newer interrupts ordered after the decision that resumed this run.
+          await resolveConsumedHitlRequest()
+          hitlRequestResolved = true
+        }
         const sawInterrupt = await persistPendingHitlFromStream(threadId, runId, mode, data)
         interrupted = interrupted || sawInterrupt
         sink.send({
@@ -551,6 +601,9 @@ export class AgentService {
       }
 
       if (!abortController.signal.aborted) {
+        if (!hitlRequestResolved) {
+          await resolveConsumedHitlRequest()
+        }
         if (runtimeUsesCheckpointPersistence()) {
           await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
         } else {

@@ -263,44 +263,44 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                 }}
                 request={pendingApproval}
               />
-            ) : null}
-
-            <div className="flex items-end gap-[var(--ow-gap-md)] rounded-[var(--ow-chat-composer-radius)] bg-background-secondary px-[var(--ow-space-4)] py-[var(--ow-space-4)]">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={copy.chat.messagePlaceholder}
-                disabled={isBusy || Boolean(pendingApproval)}
-                className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
-                rows={1}
-                style={{ minHeight: "var(--ow-chat-composer-input-min-h)", maxHeight: "200px" }}
-              />
-              <div className="flex h-[var(--ow-chat-composer-action-h)] shrink-0 items-center justify-center">
-                {isBusy ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleCancel}
-                    className="rounded-full bg-background-elevated"
-                  >
-                    <Square className="size-[var(--ow-icon-action)]" />
-                  </Button>
-                ) : (
-                  <Button
-                    type="submit"
-                    variant="default"
-                    size="icon"
-                    disabled={!invocation.canInvoke}
-                    className="rounded-full"
-                  >
-                    <Send className="size-[var(--ow-icon-action)]" />
-                  </Button>
-                )}
+            ) : (
+              <div className="flex items-end gap-[var(--ow-gap-md)] rounded-[var(--ow-chat-composer-radius)] bg-background-secondary px-[var(--ow-space-4)] py-[var(--ow-space-4)]">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={copy.chat.messagePlaceholder}
+                  disabled={isBusy}
+                  className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
+                  rows={1}
+                  style={{ minHeight: "var(--ow-chat-composer-input-min-h)", maxHeight: "200px" }}
+                />
+                <div className="flex h-[var(--ow-chat-composer-action-h)] shrink-0 items-center justify-center">
+                  {isBusy ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleCancel}
+                      className="rounded-full bg-background-elevated"
+                    >
+                      <Square className="size-[var(--ow-icon-action)]" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="submit"
+                      variant="default"
+                      size="icon"
+                      disabled={!invocation.canInvoke}
+                      className="rounded-full"
+                    >
+                      <Send className="size-[var(--ow-icon-action)]" />
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="flex items-center justify-between gap-[var(--ow-gap-lg)]">
               <div className="flex items-center gap-[var(--ow-gap-sm)]">

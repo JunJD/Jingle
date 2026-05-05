@@ -37,7 +37,11 @@ function getApproveLabel(copy: AppCopy, request: HITLRequest): string {
 }
 
 function getChangeSummary(request: HITLRequest): string | null {
-  const changes = request.review?.changes ?? []
+  if (!request.review || request.review.kind === "extension_tool") {
+    return null
+  }
+
+  const changes = request.review.changes
   if (changes.length === 0) {
     return null
   }
@@ -123,7 +127,12 @@ export function ComposerApprovalPrompt(props: {
       ? renderFileMutationApprovalDetail(copy, approvalItem, { rawArgs })
       : renderToolApprovalOverview(copy, approvalItem, { rawArgs })
   const changeSummary = getChangeSummary(request)
-  const Icon = request.review?.kind === "execute_command" ? Terminal : FileDiff
+  const Icon =
+    request.review?.kind === "execute_command"
+      ? Terminal
+      : request.review?.kind === "extension_tool"
+        ? ArrowUpRight
+        : FileDiff
   const approveLabel = getApproveLabel(copy, request)
   const trimmedFeedback = feedback.trim()
 

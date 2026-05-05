@@ -185,3 +185,82 @@ test("AgentStreamHub merges partial values message snapshots without dropping pr
     ]
   )
 })
+
+test("AgentStreamHub hides provider-emitted tool call markup from assistant text", async () => {
+  const history: ThreadHistoryState = {
+    artifacts: [],
+    messages: [],
+    pendingApproval: null,
+    todos: []
+  }
+  const hub = new AgentStreamHub(createThreadsService(history))
+
+  await hub.handlePayload("thread-4", {
+    type: "stream",
+    mode: "messages",
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content:
+            "<function=ext__appleReminders__createReminder> <parameter=title> 本周内整理书桌 <parameter=notes> 清理不需要的文件和物品 </tool_call>",
+          id: "assistant-tool-call",
+          tool_calls: [
+            {
+              args: {
+                notes: "清理不需要的文件和物品",
+                title: "本周内整理书桌"
+              },
+              id: "tool-call-1",
+              name: "ext__appleReminders__createReminder",
+              type: "tool_call"
+            }
+          ]
+        },
+        type: "ai" as const
+      },
+      {}
+    ]
+  })
+
+  const envelope = await hub.getProjectionEnvelope("thread-4")
+  const message = envelope.projection.messages.at(-1)
+  assert.equal(message?.id, "assistant-tool-call")
+  assert.equal(message?.content, "")
+  assert.equal(message?.tool_calls?.[0]?.name, "ext__appleReminders__createReminder")
+})
+
+test("AgentStreamHub hides provider-emitted tool call markup when hydrating history", async () => {
+  const history: ThreadHistoryState = {
+    artifacts: [],
+    messages: [
+      {
+        content:
+          "<function=ext__appleReminders__createReminder> <parameter=title> 周末去超市采购 </tool_call>",
+        created_at: new Date("2025-01-01T00:00:00.000Z"),
+        id: "assistant-history-tool-call",
+        role: "assistant",
+        tool_calls: [
+          {
+            args: {
+              title: "周末去超市采购"
+            },
+            id: "tool-call-history",
+            name: "ext__appleReminders__createReminder",
+            type: "tool_call"
+          }
+        ]
+      }
+    ],
+    pendingApproval: null,
+    todos: []
+  }
+  const hub = new AgentStreamHub(createThreadsService(history))
+
+  const envelope = await hub.getProjectionEnvelope("thread-5")
+  assert.equal(envelope.projection.messages[0]?.content, "")
+  assert.equal(
+    envelope.projection.messages[0]?.tool_calls?.[0]?.name,
+    "ext__appleReminders__createReminder"
+  )
+})

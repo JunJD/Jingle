@@ -39,6 +39,13 @@ export interface CloneThreadInput extends CreateThreadInput {
   threadValues?: Record<string, unknown> | null
 }
 
+export interface UpdateThreadInput {
+  metadata?: Record<string, unknown> | string | null
+  status?: string
+  thread_values?: string | null
+  title?: string | null
+}
+
 function mapThreadRow(row: {
   threadId: string
   createdAt: bigint
@@ -329,7 +336,7 @@ export async function cloneThread(
 
 export async function updateThread(
   threadId: string,
-  updates: Partial<Omit<ThreadRow, "thread_id" | "created_at">>
+  updates: UpdateThreadInput
 ): Promise<ThreadRow | null> {
   const prisma = getPrismaClient()
   const existing = await prisma.thread.findUnique({

@@ -3,11 +3,15 @@ import { createProviderChatModel, type ChatModelInstance } from "../model-provid
 
 export interface ChatModelOptions {
   modelId?: string
+  parallelToolCalls?: boolean
   temperature?: number
 }
 
 export function getChatModelInstance(options: ChatModelOptions = {}): ChatModelInstance {
   const resolvedRuntime = resolveModelRuntimeConfig(options.modelId)
 
-  return createProviderChatModel(resolvedRuntime, { temperature: options.temperature })
+  return createProviderChatModel(resolvedRuntime, {
+    parallelToolCalls: options.parallelToolCalls,
+    temperature: options.temperature
+  })
 }

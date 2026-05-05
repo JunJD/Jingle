@@ -1,8 +1,9 @@
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { HITLRequest, ToolCall } from "@/types"
+import { isExtensionToolCallPresentation } from "@shared/tool-presentation"
 import {
   defaultHumanInTheLoop,
-  defaultToolComponent,
+  extensionToolComponent,
   getHumanInTheLoop,
   getToolComponent,
   type ToolComponentStatus,
@@ -36,7 +37,12 @@ export function createActionMessageView(input: CreateActionMessageViewInput) {
     result,
     toolCall
   })
-  const definition = getToolComponent(toolCall.name) || defaultToolComponent
+  const definition =
+    getToolComponent(toolCall.name) ??
+    (isExtensionToolCallPresentation(toolCall.presentation) ? extensionToolComponent : null)
+  if (!definition) {
+    throw new Error(`[ActionMessage] Missing tool component for "${toolCall.name}".`)
+  }
   const hitlDefinition = approvalRequest
     ? getHumanInTheLoop(toolCall.name) || defaultHumanInTheLoop
     : null

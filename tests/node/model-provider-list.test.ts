@@ -1,9 +1,13 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { ChatAnthropic } from "@langchain/anthropic"
+import { ChatOpenAI } from "@langchain/openai"
 import {
+  createProviderChatModelFromAdapter,
   listRemoteModelsByProvider,
   validateRemoteProviderCredentials
 } from "../../src/main/model-provider/adapters"
+import type { ProviderId, ResolvedModelRuntimeConfig } from "../../src/main/model-provider/types"
 
 const originalFetch = globalThis.fetch
 
@@ -17,6 +21,40 @@ function mockJsonResponse(payload: unknown, status = 200): void {
 
 test.afterEach(() => {
   globalThis.fetch = originalFetch
+})
+
+function createRuntimeConfig(
+  providerId: ProviderId,
+  modelName: string
+): ResolvedModelRuntimeConfig {
+  return {
+    credentials: {
+      apiKey: "sk-test"
+    },
+    modelId: `${providerId}:${modelName}`,
+    modelName,
+    modelType: "llm",
+    providerId
+  }
+}
+
+test("anthropic chat models can disable parallel tool use for agent approvals", () => {
+  const model = createProviderChatModelFromAdapter(
+    createRuntimeConfig("anthropic", "claude-sonnet-4-5-20250929"),
+    { parallelToolCalls: false }
+  )
+
+  assert.ok(model instanceof ChatAnthropic)
+  assert.equal(model.invocationParams({}).disable_parallel_tool_use, true)
+})
+
+test("openai-compatible chat models can disable parallel tool calls for agent approvals", () => {
+  const model = createProviderChatModelFromAdapter(createRuntimeConfig("dashscope", "glm-4.6"), {
+    parallelToolCalls: false
+  })
+
+  assert.ok(model instanceof ChatOpenAI)
+  assert.equal(model.invocationParams({}).parallel_tool_calls, false)
 })
 
 test("listRemoteModelsByProvider scopes remote model ids by provider", async () => {

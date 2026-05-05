@@ -40,7 +40,8 @@ test("parseAgentInvokeParams trims routing identifiers and preserves message con
         ]
       }
     },
-    modelId: "  gpt-5  "
+    modelId: "  gpt-5  ",
+    permissionMode: "auto"
   })
 
   assert.deepEqual(parsed, {
@@ -75,7 +76,8 @@ test("parseAgentInvokeParams trims routing identifiers and preserves message con
         ]
       }
     },
-    modelId: "gpt-5"
+    modelId: "gpt-5",
+    permissionMode: "auto"
   })
 })
 
@@ -95,6 +97,28 @@ test("parseAgentResumeParams requires request_id at the IPC boundary", () => {
       assert.equal(error.channel, "agent:resume")
       assert.deepEqual(error.issues, [
         "command.resume.request_id: Invalid input: expected string, received undefined"
+      ])
+      return true
+    }
+  )
+})
+
+test("parseAgentInvokeParams rejects unsupported permission mode", () => {
+  assert.throws(
+    () =>
+      parseAgentInvokeParams({
+        threadId: "thread-1",
+        message: {
+          id: "message-1",
+          content: "hello"
+        },
+        permissionMode: "unsafe-auto"
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof IpcSchemaValidationError)
+      assert.equal(error.channel, "agent:invoke")
+      assert.deepEqual(error.issues, [
+        'permissionMode: Invalid option: expected one of "explore"|"ask-to-edit"|"auto"'
       ])
       return true
     }

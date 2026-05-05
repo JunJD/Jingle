@@ -1,7 +1,20 @@
 import { randomUUID } from "crypto"
 import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
+import {
+  createRunSourceBindingsSnapshot,
+  snapshotSourceProfiles,
+  RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY,
+  RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY,
+  type ExtensionSourceBinding
+} from "@shared/extension-sources"
 import { createRun, getRun, updateRun, updateThread } from "../db"
 import { getCheckpointer } from "./runtime"
+import type { PermissionModeName } from "@shared/permission-mode"
+import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
+import {
+  mergeRunMetadata,
+  RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY
+} from "./permission-mode"
 
 type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted"
 
@@ -13,14 +26,27 @@ function resolveCheckpointRunStatus(tuple: CheckpointTuple | undefined): Persist
 
 export async function beginAgentRun(
   threadId: string,
-  modelId?: string
+  modelId?: string,
+  options?: {
+    permissionMode?: PermissionModeName
+    sourceBindings?: ExtensionSourceBinding[]
+  }
 ): Promise<{ runId: string }> {
   const runId = randomUUID()
+  const permissionMode = options?.permissionMode ?? DEFAULT_PERMISSION_MODE
+  const sourceBindings = options?.sourceBindings ?? []
 
   await createRun(runId, threadId, {
     status: "running",
     metadata: {
-      modelId: modelId ?? null
+      modelId: modelId ?? null,
+      [RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY]: permissionMode,
+      [RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY]: snapshotSourceProfiles(sourceBindings),
+      [RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY]: createRunSourceBindingsSnapshot({
+        permissionMode,
+        runId,
+        sourceBindings
+      })
     }
   })
 
@@ -58,7 +84,7 @@ export async function resumeAgentRun(
 
   await updateRun(runId, {
     status: "running",
-    metadata
+    metadata: mergeRunMetadata(existing, metadata ?? {})
   })
   await updateThread(threadId, {
     status: "busy"
@@ -131,9 +157,9 @@ export async function markRunFailed(
 
   await updateRun(runId, {
     status: "error",
-    metadata: {
+    metadata: mergeRunMetadata(await getRun(runId), {
       error: error instanceof Error ? error.message : String(error)
-    }
+    })
   })
 
   await updateThread(threadId, {

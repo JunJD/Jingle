@@ -2,6 +2,7 @@ import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
 import type { AppLocale } from "./i18n"
 import type { HITLRequest } from "./hitl"
 import type { ArtifactRecord } from "./artifacts"
+import type { ExtensionToolCallPresentation, ToolCallDisplay } from "./tool-presentation"
 export type { HITLDecision, HITLRequest } from "./hitl"
 
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
@@ -179,7 +180,9 @@ export interface ContentBlock {
 }
 
 export interface ToolCall extends LangChainToolCall<string, Record<string, unknown>> {
+  display?: ToolCallDisplay
   id: string
+  presentation?: ExtensionToolCallPresentation
 }
 
 export interface ToolResult {

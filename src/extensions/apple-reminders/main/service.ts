@@ -21,10 +21,14 @@ import {
 const execFileAsync = promisify(execFile)
 
 const REMINDERS_JXA_SCRIPT = String.raw`
+function pad2(value) {
+  return value < 10 ? "0" + value : String(value)
+}
+
 function toDateOnlyString(value) {
   var year = value.getFullYear()
-  var month = String(value.getMonth() + 1).padStart(2, "0")
-  var day = String(value.getDate()).padStart(2, "0")
+  var month = pad2(value.getMonth() + 1)
+  var day = pad2(value.getDate())
   return year + "-" + month + "-" + day
 }
 
@@ -184,17 +188,26 @@ function getData(app) {
   var defaultList = app.defaultList()
   var defaultListId = defaultList ? toOptionalString(defaultList.properties().id) : ""
   var lists = app.lists()
+  var serializedLists = []
+  var serializedReminders = []
+
+  for (var listIndex = 0; listIndex < lists.length; listIndex += 1) {
+    var list = lists[listIndex]
+    var listProperties = list.properties()
+    var reminders = list.reminders()
+    serializedLists.push(serializeList(listProperties, defaultListId))
+
+    for (var reminderIndex = 0; reminderIndex < reminders.length; reminderIndex += 1) {
+      var reminder = reminders[reminderIndex]
+      serializedReminders.push(
+        serializeReminder(reminder.properties(), listProperties, defaultListId)
+      )
+    }
+  }
 
   return {
-    lists: lists.map(function (list) {
-      return serializeList(list.properties(), defaultListId)
-    }),
-    reminders: lists.flatMap(function (list) {
-      var listProperties = list.properties()
-      return list.reminders().map(function (reminder) {
-        return serializeReminder(reminder.properties(), listProperties, defaultListId)
-      })
-    })
+    lists: serializedLists,
+    reminders: serializedReminders
   }
 }
 
@@ -281,12 +294,22 @@ function assertAppleRemindersAvailable(): void {
 }
 
 function normalizeAppleRemindersError(error: unknown): Error {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : JSON.stringify(error)
+  const execError = error as NodeJS.ErrnoException & {
+    stderr?: string
+    stdout?: string
+  }
+  const stderr = typeof execError.stderr === "string" ? execError.stderr.trim() : ""
+  const stdout = typeof execError.stdout === "string" ? execError.stdout.trim() : ""
+  let message = stderr || stdout
+  if (!message) {
+    if (error instanceof Error) {
+      message = error.message
+    } else if (typeof error === "string") {
+      message = error
+    } else {
+      message = JSON.stringify(error)
+    }
+  }
 
   if (message.includes("timed out")) {
     return new Error(
@@ -303,6 +326,10 @@ function normalizeAppleRemindersError(error: unknown): Error {
     return new Error(
       "Openwork needs permission to control Reminders. Grant automation access in System Settings and try again."
     )
+  }
+
+  if (message.startsWith("Command failed: /usr/bin/osascript")) {
+    return new Error("Apple Reminders command failed.")
   }
 
   return new Error(message)
@@ -336,15 +363,17 @@ async function invokeAppleReminders<TResult>(method: string, payload: unknown): 
   }
 }
 
-async function getAppleRemindersData(): Promise<AppleRemindersData> {
+export async function getAppleRemindersData(): Promise<AppleRemindersData> {
   return invokeAppleReminders<AppleRemindersData>(APPLE_REMINDERS_RPC_METHOD_GET_DATA, {})
 }
 
-async function createAppleReminder(payload: CreateAppleReminderRequest): Promise<AppleReminder> {
+export async function createAppleReminder(
+  payload: CreateAppleReminderRequest
+): Promise<AppleReminder> {
   return invokeAppleReminders<AppleReminder>(APPLE_REMINDERS_RPC_METHOD_CREATE_REMINDER, payload)
 }
 
-async function setAppleReminderCompleted(
+export async function setAppleReminderCompleted(
   payload: SetAppleReminderCompletedRequest
 ): Promise<AppleReminder> {
   return invokeAppleReminders<AppleReminder>(
@@ -353,7 +382,7 @@ async function setAppleReminderCompleted(
   )
 }
 
-async function deleteAppleReminder(
+export async function deleteAppleReminder(
   payload: DeleteAppleReminderRequest
 ): Promise<{ reminderId: string }> {
   return invokeAppleReminders<{ reminderId: string }>(
@@ -362,7 +391,7 @@ async function deleteAppleReminder(
   )
 }
 
-async function showAppleReminder(payload: ShowAppleReminderRequest): Promise<null> {
+export async function showAppleReminder(payload: ShowAppleReminderRequest): Promise<null> {
   return invokeAppleReminders<null>(APPLE_REMINDERS_RPC_METHOD_SHOW_REMINDER, payload)
 }
 

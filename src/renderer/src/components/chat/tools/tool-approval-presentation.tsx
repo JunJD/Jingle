@@ -19,7 +19,10 @@ export function getToolApprovalPresentationMeta(
   fallbackToolName?: string
 ): ToolApprovalPresentationMeta {
   const title = approvalItem
-    ? copy.toolCall.labels[approvalItem.toolName]
+    ? copy.toolCall.labels[approvalItem.toolName] ||
+      (approvalItem.kind === "extension_tool" ? approvalItem.toolTitle : null) ||
+      fallbackToolName ||
+      approvalItem.toolName
     : fallbackToolName
       ? copy.toolCall.labels[fallbackToolName] || fallbackToolName
       : copy.toolCall.approvalItem
@@ -34,6 +37,13 @@ export function getToolApprovalPresentationMeta(
   if (approvalItem.kind === "execute_command") {
     return {
       subtitle: approvalItem.command ? truncateMiddle(approvalItem.command, 96) : null,
+      title
+    }
+  }
+
+  if (approvalItem.kind === "extension_tool") {
+    return {
+      subtitle: approvalItem.sourceDisplayName,
       title
     }
   }
@@ -64,12 +74,12 @@ export function renderToolApprovalOverview(
           <ToolCodeBlock>{`$ ${approvalItem.command}`}</ToolCodeBlock>
         </ToolDetailSection>
       ) : null}
-      {approvalItem && approvalItem.changes.length > 0 ? (
+      {approvalItem && approvalItem.kind !== "extension_tool" && approvalItem.changes.length > 0 ? (
         <ToolDetailSection label={copy.toolCall.upcomingChanges}>
           <ToolChangeList copy={copy} items={approvalItem.changes} />
         </ToolDetailSection>
       ) : null}
-      {!approvalItem && rawArgs ? (
+      {(!approvalItem || approvalItem.kind === "extension_tool") && rawArgs ? (
         <ToolDetailSection label={copy.common.rawArguments}>
           <ToolCodeBlock>{rawArgs}</ToolCodeBlock>
         </ToolDetailSection>

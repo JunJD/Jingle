@@ -13,6 +13,7 @@ The goal is not to copy Craft Agents directly. The goal is to translate the usef
 ## Documents
 
 - [architecture.md](./architecture.md): concept model and boundaries.
+- [craft-comparison.md](./craft-comparison.md): architecture diagram and comparison with Craft Agents OSS.
 - [start-here.md](./start-here.md): first implementation slice and PR order.
 - [roadmap.md](./roadmap.md): phased implementation plan.
 - [task-breakdown.md](./task-breakdown.md): concrete task checklist.

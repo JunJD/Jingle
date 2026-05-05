@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import test from "node:test"
+import test, { mock } from "node:test"
 import { emptyCheckpoint } from "@langchain/langgraph-checkpoint"
 
 const repoRoot = process.cwd()
@@ -100,6 +100,140 @@ test("resume primitives target the request's run instead of the latest active ru
   assert.equal(latestRun?.status, "interrupted")
   assert.equal(resolvedRequest?.status, "approved")
   assert.equal(untouchedRequest?.status, "pending")
+})
+
+test("agent resume keeps HITL request pending when resumed stream fails before first chunk", async () => {
+  const { createRun, createThread, getHitlRequest, upsertHitlRequest } = await loadDbModules()
+  const { AgentService } = await import("../../src/main/agent/service")
+  const consoleLog = mock.method(console, "log", () => {})
+  const consoleError = mock.method(console, "error", () => {})
+  const previousRuntimeMode = process.env.OPENWORK_BDD_AGENT_RUNTIME
+
+  const threadId = "thread-resume-failure"
+  const runId = "run-resume-failure"
+  const requestId = "request-resume-failure"
+  await createThread(threadId, { metadata: { workspacePath: repoRoot } })
+  await createRun(runId, threadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    request_id: requestId,
+    thread_id: threadId,
+    run_id: runId,
+    tool_call_id: "tool-call-resume-failure",
+    tool_name: "write_file",
+    tool_args: { path: `${repoRoot}/approval.txt` },
+    allowed_decisions: ["approve", "reject"],
+    status: "pending"
+  })
+
+  const events: Array<{ type: string }> = []
+  process.env.OPENWORK_BDD_AGENT_RUNTIME = "scripted"
+  try {
+    await new AgentService().resume(
+      {
+        command: {
+          resume: {
+            feedback: "bdd:fail-before-first-chunk",
+            request_id: requestId,
+            tool_call_id: "tool-call-resume-failure",
+            type: "approve"
+          }
+        },
+        modelId: "bdd",
+        threadId
+      },
+      {
+        send: (event) => events.push({ type: event.type })
+      }
+    )
+  } finally {
+    if (previousRuntimeMode === undefined) {
+      delete process.env.OPENWORK_BDD_AGENT_RUNTIME
+    } else {
+      process.env.OPENWORK_BDD_AGENT_RUNTIME = previousRuntimeMode
+    }
+    consoleError.mock.restore()
+    consoleLog.mock.restore()
+  }
+
+  const request = await getHitlRequest(requestId)
+  assert.equal(request?.status, "pending")
+  assert.equal(request?.decision, null)
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["run_started", "error"]
+  )
+})
+
+test("agent run metadata snapshots permission mode and preserves it through resume", async () => {
+  const { createThread, getRun } = await loadDbModules()
+  const { beginAgentRun, resumeAgentRun } = await import("../../src/main/agent/persistence")
+  const { readRunPermissionModeSnapshot } = await import("../../src/main/agent/permission-mode")
+  const {
+    createRunSourceBindingsSnapshot,
+    readSourceProfilesSnapshotFromMetadata,
+    RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY,
+    RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY
+  } = await import("../../src/shared/extension-sources")
+  const { createDefaultNativeExtensionSourceBindings } = await import("../../src/extensions/sources")
+
+  const threadId = "thread-permission"
+  await createThread(threadId)
+  const sourceBindings = createDefaultNativeExtensionSourceBindings({
+    now: "2026-04-30T00:00:00.000Z",
+    platform: "darwin"
+  })
+
+  const { runId } = await beginAgentRun(threadId, "gpt-test", {
+    permissionMode: "auto",
+    sourceBindings
+  })
+  const createdRun = await getRun(runId)
+  assert.equal(readRunPermissionModeSnapshot(createdRun), "auto")
+  const createdMetadata = JSON.parse(createdRun?.metadata ?? "{}") as Record<string, unknown>
+  assert.deepEqual(
+    readSourceProfilesSnapshotFromMetadata(createdRun?.metadata),
+    sourceBindings.map((binding) => binding.profile)
+  )
+  const sourceProfilesSnapshot = createdMetadata[
+    RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY
+  ] as Array<Record<string, unknown>>
+  assert.equal("config" in sourceProfilesSnapshot[0], false)
+  assert.deepEqual(sourceProfilesSnapshot[0]?.publicConfig, {})
+  const runSourceBindingsSnapshot = createdMetadata[RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY]
+  assert.ok(Array.isArray(runSourceBindingsSnapshot))
+  const [firstSnapshot] = runSourceBindingsSnapshot as Array<Record<string, unknown>>
+  assert.equal(typeof firstSnapshot?.createdAt, "string")
+  assert.deepEqual(
+    [
+      {
+        ...createRunSourceBindingsSnapshot({
+          permissionMode: "auto",
+          runId,
+          sourceBindings
+        })[0],
+        createdAt: firstSnapshot?.createdAt
+      }
+    ],
+    runSourceBindingsSnapshot
+  )
+
+  await resumeAgentRun(threadId, runId, {
+    requestId: "request-1",
+    source: "resume"
+  })
+
+  const resumedRun = await getRun(runId)
+  assert.equal(readRunPermissionModeSnapshot(resumedRun), "auto")
+  assert.deepEqual(
+    readSourceProfilesSnapshotFromMetadata(resumedRun?.metadata),
+    sourceBindings.map((binding) => binding.profile)
+  )
+  const resumedMetadata = JSON.parse(resumedRun?.metadata ?? "{}") as Record<string, unknown>
+  assert.deepEqual(
+    resumedMetadata[RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY],
+    runSourceBindingsSnapshot
+  )
+  assert.match(resumedRun?.metadata ?? "", /request-1/)
 })
 
 test("syncRunFromLatestCheckpoint reads the latest checkpoint for that run only", async () => {

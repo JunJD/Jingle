@@ -52,6 +52,20 @@ function readPromptText(input: unknown): string {
   return ""
 }
 
+function readResumeFeedback(input: unknown): string {
+  const decisions = (input as { resume?: { decisions?: Array<{ feedback?: unknown }> } }).resume
+    ?.decisions
+
+  if (!Array.isArray(decisions)) {
+    return ""
+  }
+
+  return decisions
+    .map((decision) => (typeof decision.feedback === "string" ? decision.feedback : ""))
+    .filter(Boolean)
+    .join("\n")
+}
+
 async function waitForAbort(signal: AbortSignal | undefined): Promise<void> {
   if (!signal || signal.aborted) {
     return
@@ -152,9 +166,14 @@ export function createBddAgentRuntime(options: CreateBddAgentRuntimeOptions): Bd
   return {
     async *stream(input, config): AsyncGenerator<BddStreamChunk> {
       const promptText = readPromptText(input)
+      const resumeFeedback = readResumeFeedback(input)
       const invocationId = crypto.randomUUID()
       const assistantMessageId = `${options.threadId}:${invocationId}:bdd:assistant`
       const todoId = `${options.threadId}:${invocationId}:bdd:todo`
+
+      if (resumeFeedback.includes("bdd:fail-before-first-chunk")) {
+        throw new Error("scripted agent failed before first chunk")
+      }
 
       if (promptText.includes("bdd:long")) {
         yield [

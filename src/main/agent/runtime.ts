@@ -17,6 +17,7 @@ import { JustBashExecuteCommandClassifier } from "./execute-command-classifier"
 import { createExecuteCommandGuardrailProvider } from "./execute-command-guardrail-provider"
 import { JustBashMutationPredictor } from "./mutation-predictor"
 import { createSubagentReadOnlyGuardrailMiddleware } from "./subagent-read-only-guardrail"
+import { createSerializedToolCallMiddleware } from "./serialized-tool-call-middleware"
 import { createToolApprovalMiddleware } from "./tool-approval-middleware"
 import { anthropicPromptCachingMiddleware, createAgent, todoListMiddleware } from "langchain"
 import { getChatModelInstance } from "../llm/get-chat-model"
@@ -32,6 +33,14 @@ import { createArtifactToolsMiddleware } from "./artifact-tools-middleware"
 import { createDesktopAutomationToolsMiddleware } from "./desktop-automation-tools-middleware"
 import { createWebToolsMiddleware } from "./web-tools-middleware"
 import { createBddAgentRuntime } from "./bdd-runtime"
+import { nativeExtensionMainDefinitions } from "@extensions/main"
+import { nativeExtensionManifests } from "@extensions/index"
+import { createDefaultNativeExtensionSourceBindings } from "@extensions/sources"
+import { createNativeExtensionToolRegistry } from "../extension-tools/native-extension-tools"
+import { createExtensionSourceRuntime } from "./extension-source-runtime"
+import type { PermissionModeName } from "@shared/permission-mode"
+import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
+import type { ExtensionSourceBinding } from "@shared/extension-sources"
 
 /**
  * Generate the full system prompt for the agent.
@@ -92,6 +101,10 @@ export interface CreateAgentRuntimeOptions {
   threadId: string
   /** Model ID to use (defaults to configured default model) */
   modelId?: string
+  /** Permission mode snapshot for this run. */
+  permissionMode?: PermissionModeName
+  /** Source bindings snapshot for this run. */
+  sourceBindings?: ExtensionSourceBinding[]
   /** Workspace path - REQUIRED for agent to operate on files */
   workspacePath: string
 }
@@ -110,6 +123,8 @@ export async function createAgentRuntime(
   options: CreateAgentRuntimeOptions
 ): Promise<AgentRuntime> {
   const { threadId, modelId, workspacePath } = options
+  const permissionMode = options.permissionMode ?? DEFAULT_PERMISSION_MODE
+  const sourceBindings = options.sourceBindings ?? createDefaultNativeExtensionSourceBindings()
 
   if (!threadId) {
     throw new Error("Thread ID is required for checkpointing.")
@@ -129,7 +144,7 @@ export async function createAgentRuntime(
     return createBddAgentRuntime({ threadId, workspacePath }) as unknown as AgentRuntime
   }
 
-  const model = getChatModelInstance({ modelId })
+  const model = getChatModelInstance({ modelId, parallelToolCalls: false })
   console.log("[Runtime] Model instance created:", typeof model)
 
   const checkpointer = await getCheckpointer(threadId)
@@ -148,6 +163,16 @@ export async function createAgentRuntime(
   const guardrailProvider = createExecuteCommandGuardrailProvider({
     classifier: commandClassifier,
     predictor: mutationPredictor
+  })
+  const extensionSourceRuntime = createExtensionSourceRuntime({
+    permissionMode,
+    registry: createNativeExtensionToolRegistry({
+      definitions: nativeExtensionMainDefinitions,
+      manifests: nativeExtensionManifests
+    }),
+    sourceBindings,
+    threadId,
+    workspacePath
   })
 
   const systemPrompt = getSystemPrompt(workspacePath)
@@ -197,6 +222,7 @@ The workspace root is: ${workspacePath}`
         minMessagesToCache: 1
       }),
       createPatchToolCallsMiddleware(),
+      createSerializedToolCallMiddleware(),
       createSkillsMiddleware({
         backend,
         sources: skillSources
@@ -213,12 +239,16 @@ The workspace root is: ${workspacePath}`
     return [
       ...createSharedAgentLoopMiddleware(),
       createDesktopAutomationToolsMiddleware(),
+      extensionSourceRuntime.middleware,
       createGuardrailMiddleware({
         provider: guardrailProvider,
         threadId,
         workspacePath
       }),
-      createToolApprovalMiddleware()
+      createToolApprovalMiddleware({
+        extensionToolPolicyProvider: extensionSourceRuntime.approvalPolicyProvider,
+        permissionMode
+      })
     ] as const
   }
 

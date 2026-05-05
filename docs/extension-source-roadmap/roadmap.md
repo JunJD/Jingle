@@ -49,6 +49,7 @@ Tasks:
 - Store default permission mode on SourceProfile.
 - Snapshot active permission mode into RunSourceBinding.
 - Keep approval/HITL as the durable execution interception point.
+- Keep approval granularity at one tool call per pending approval.
 
 Acceptance:
 
@@ -57,6 +58,7 @@ Acceptance:
 - Write/external tools require HITL in `ask-to-edit`.
 - Trusted write/external tools may run in `auto`, still subject to guardrails.
 - Extension tools, shell commands, and file mutation tools can be explained with the same product language.
+- A pending approval is displayed and resolved as one concrete action, not as a combined group of multiple tool calls.
 
 ## M3: Source Middleware MVP
 
@@ -100,6 +102,7 @@ Acceptance:
 - Rejecting approval prevents execution.
 - Approving continues the run and executes the tool.
 - Pending approval can survive renderer refresh/reopen.
+- If the model proposes multiple write actions, the runtime should still surface one approval at a time.
 
 ## M5: GitHub Read-Only Work Source
 

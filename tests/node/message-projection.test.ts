@@ -39,7 +39,7 @@ function createTurn(assistants: Message[]): MessageTurn {
   }
 }
 
-test("tool cluster key stays stable when multi-call tool activity grows", () => {
+test("distinct assistant tool responses stay in separate clusters", () => {
   const firstToolMessage = createAssistantMessage({
     id: "assistant-1",
     toolCalls: [createToolCall("tool-call-1")]
@@ -54,8 +54,10 @@ test("tool cluster key stays stable when multi-call tool activity grows", () => 
 
   assert.equal(beforeGrowth.length, 1)
   assert.equal(beforeGrowth[0]?.kind, "tool-cluster")
+  assert.equal(afterGrowth.length, 2)
   assert.equal(afterGrowth[0]?.kind, "tool-cluster")
-  assert.equal(afterGrowth[0]?.key, beforeGrowth[0]?.key)
+  assert.equal(afterGrowth[1]?.kind, "tool-cluster")
+  assert.notEqual(afterGrowth[0]?.key, afterGrowth[1]?.key)
 })
 
 test("tool cluster key remains stable when first tool message later gains renderable content", () => {

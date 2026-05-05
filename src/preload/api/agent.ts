@@ -1,6 +1,7 @@
 import type { AgentProjectionEnvelope } from "@shared/agent-projection"
 import type { HITLDecision } from "@shared/hitl"
 import type { AgentInvokeMessage } from "@shared/message-content"
+import type { PermissionModeName } from "@shared/permission-mode"
 import { invokeIpc, ipcRenderer } from "../ipc"
 
 function getProjectionChannel(threadId: string): string {
@@ -8,8 +9,13 @@ function getProjectionChannel(threadId: string): string {
 }
 
 export const agentApi = {
-  invoke: (threadId: string, message: AgentInvokeMessage, modelId?: string): void => {
-    ipcRenderer.send("agent:invoke", { threadId, message, modelId })
+  invoke: (
+    threadId: string,
+    message: AgentInvokeMessage,
+    modelId?: string,
+    permissionMode?: PermissionModeName
+  ): void => {
+    ipcRenderer.send("agent:invoke", { threadId, message, modelId, permissionMode })
   },
   resume: (threadId: string, decision: HITLDecision, modelId?: string): void => {
     ipcRenderer.send("agent:resume", {

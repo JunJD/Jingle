@@ -29,7 +29,7 @@ Useful mapping:
 
 ```txt
 MCP tool
-  -> generated source tool
+  -> profile-declared source tool
 
 MCP resource
   -> source-readable context or artifact

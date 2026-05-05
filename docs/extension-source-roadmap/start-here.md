@@ -22,7 +22,7 @@ This slice should prove that an extension common tool can be registered, resolve
 Scope:
 
 - Add shared extension tool/source/permission types.
-- Add generated tool name helpers.
+- Add schema validation for profile-declared agent tool ids.
 - Add registry collision validation.
 - Add a minimal executor that can run a mock tool.
 - Add permission mode resolver for read/write/external tools.

@@ -29,6 +29,7 @@ const OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 export type ChatModelInstance = ChatAnthropic | ChatOpenAI | ChatGoogleGenerativeAI
 
 export interface ChatModelOptions {
+  parallelToolCalls?: boolean
   temperature?: number
 }
 
@@ -62,6 +63,13 @@ const PROVIDER_ADAPTERS = {
     createChatModel: (runtimeConfig, options) => {
       return new ChatAnthropic({
         anthropicApiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
+        ...(options.parallelToolCalls === false
+          ? {
+              invocationKwargs: {
+                disable_parallel_tool_use: true
+              }
+            }
+          : {}),
         model: runtimeConfig.modelName,
         temperature: options.temperature
       })
@@ -75,6 +83,7 @@ const PROVIDER_ADAPTERS = {
       return new ChatOpenAI({
         apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
         model: runtimeConfig.modelName,
+        ...createOpenAICompatibleToolCallOptions(options),
         temperature: options.temperature,
         configuration: {
           baseURL: DASHSCOPE_BASE_URL
@@ -91,6 +100,7 @@ const PROVIDER_ADAPTERS = {
       return new ChatOpenAI({
         apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
         model: runtimeConfig.modelName,
+        ...createOpenAICompatibleToolCallOptions(options),
         temperature: options.temperature,
         configuration: {
           baseURL: DEEPSEEK_BASE_URL
@@ -119,6 +129,7 @@ const PROVIDER_ADAPTERS = {
       return new ChatOpenAI({
         apiKey: requireApiKey(runtimeConfig.credentials, runtimeConfig.providerId),
         model: runtimeConfig.modelName,
+        ...createOpenAICompatibleToolCallOptions(options),
         temperature: options.temperature
       })
     },
@@ -155,6 +166,20 @@ export function createProviderChatModelFromAdapter(
   options: ChatModelOptions = {}
 ): ChatModelInstance {
   return getProviderAdapter(runtimeConfig.providerId).createChatModel(runtimeConfig, options)
+}
+
+function createOpenAICompatibleToolCallOptions(options: ChatModelOptions): {
+  modelKwargs?: Record<string, unknown>
+} {
+  if (options.parallelToolCalls !== false) {
+    return {}
+  }
+
+  return {
+    modelKwargs: {
+      parallel_tool_calls: false
+    }
+  }
 }
 
 function createApiKeyProviderAdapter(config: ProviderAdapterConfig): ProviderAdapter {

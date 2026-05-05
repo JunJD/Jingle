@@ -1,4 +1,5 @@
 import { DEFAULT_MODELS } from "@shared/models"
+import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
 import type { ArtifactRecord } from "@shared/artifacts"
 import {
   getArtifactTabId,
@@ -29,6 +30,7 @@ export interface ThreadState {
   pendingApproval: HITLRequest | null
   error: string | null
   currentModel: string
+  permissionMode: PermissionModeName
   openFiles: OpenFile[]
   openArtifacts: OpenArtifactTab[]
   activeTab: "agent" | string
@@ -48,6 +50,7 @@ export interface ThreadActions {
   setError: (error: string | null) => void
   clearError: () => void
   setCurrentModel: (modelId: string) => void
+  setPermissionMode: (permissionMode: PermissionModeName) => void
   openFile: (path: string, name: string) => void
   closeFile: (path: string) => void
   openArtifactTab: (tab: OpenArtifactTab) => void
@@ -61,6 +64,10 @@ export type ThreadRecord = ThreadState & ThreadActions
 
 export interface ThreadStoreEffects {
   persistCurrentModel?: (threadId: string, modelId: string) => void | Promise<void>
+  persistPermissionMode?: (
+    threadId: string,
+    permissionMode: PermissionModeName
+  ) => void | Promise<void>
 }
 
 export interface ThreadStore {
@@ -92,6 +99,7 @@ export function createDefaultThreadState(): ThreadState {
     pendingApproval: null,
     error: null,
     currentModel: DEFAULT_MODELS.llm,
+    permissionMode: DEFAULT_PERMISSION_MODE,
     openFiles: [],
     openArtifacts: [],
     activeTab: "agent",
@@ -209,6 +217,10 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
       setCurrentModel: (modelId: string) => {
         updateThreadState(threadId, () => ({ currentModel: modelId }))
         void effects.persistCurrentModel?.(threadId, modelId)
+      },
+      setPermissionMode: (permissionMode: PermissionModeName) => {
+        updateThreadState(threadId, () => ({ permissionMode }))
+        void effects.persistPermissionMode?.(threadId, permissionMode)
       },
       openFile: (path: string, name: string) => {
         updateThreadState(threadId, (state) => {

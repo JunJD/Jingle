@@ -14,6 +14,7 @@ interface LauncherChromeProps {
   headerTrailing?: ReactNode
   inputAccessory?: ReactNode
   inputClassName?: string
+  inputReplacement?: ReactNode
   inputRef: RefObject<LauncherInputElement | null>
   inputStatus?: LauncherInputStatus
   inputTrailing?: ReactNode
@@ -36,6 +37,7 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
     headerTrailing,
     inputAccessory,
     inputClassName,
+    inputReplacement,
     inputRef,
     inputStatus = "idle",
     inputTrailing,
@@ -55,28 +57,30 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
       density={density}
       headerLeading={headerLeading}
       headerMain={
-        <LauncherInput
-          ref={inputRef}
-          density={density}
-          trailing={inputTrailing}
-          showStatusIndicator={showInputStatusIndicator}
-          status={inputStatus}
-          value={inputValue}
-          onChange={(event) => onInputValueChange(event.target.value)}
-          onKeyDown={onInputKeyDown}
-          placeholders={placeholders}
-          className={cn(
-            density === "compact"
-              ? "flex-1 [font-size:var(--ow-font-control)] font-medium text-foreground"
-              : "flex-1 [font-size:var(--ow-font-title)] font-medium text-foreground",
-            inputClassName
-          )}
-          placeholderClassName={
-            density === "compact"
-              ? "[font-size:var(--ow-font-control)] font-medium text-muted-foreground/64"
-              : "[font-size:var(--ow-font-title)] font-medium text-muted-foreground/68"
-          }
-        />
+        inputReplacement ?? (
+          <LauncherInput
+            ref={inputRef}
+            density={density}
+            trailing={inputTrailing}
+            showStatusIndicator={showInputStatusIndicator}
+            status={inputStatus}
+            value={inputValue}
+            onChange={(event) => onInputValueChange(event.target.value)}
+            onKeyDown={onInputKeyDown}
+            placeholders={placeholders}
+            className={cn(
+              density === "compact"
+                ? "flex-1 [font-size:var(--ow-font-control)] font-medium text-foreground"
+                : "flex-1 [font-size:var(--ow-font-title)] font-medium text-foreground",
+              inputClassName
+            )}
+            placeholderClassName={
+              density === "compact"
+                ? "[font-size:var(--ow-font-control)] font-medium text-muted-foreground/64"
+                : "[font-size:var(--ow-font-title)] font-medium text-muted-foreground/68"
+            }
+          />
+        )
       }
       headerTrailing={headerTrailing}
       inputAccessory={inputAccessory}

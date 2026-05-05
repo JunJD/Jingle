@@ -4,10 +4,7 @@ import type { HitlRequestRow } from "../db"
 import type { HITLRequest, Todo, ToolCall } from "../types"
 import { getDefaultHitlAllowedDecisions, normalizeHitlAllowedDecisions } from "@shared/hitl"
 import { parseToolApprovalItem } from "@shared/tool-approval"
-import {
-  toComposerMessageMetadata,
-  normalizeComposerMessageRefs
-} from "@shared/message-content"
+import { toComposerMessageMetadata, normalizeComposerMessageRefs } from "@shared/message-content"
 
 interface CheckpointChannelMessage {
   id?: string
@@ -155,6 +152,38 @@ function getInterruptActionReview(action: InterruptActionRequest | undefined) {
   return parseToolApprovalItem(action?.review)
 }
 
+function buildHitlRequestFromInterruptValue(input: {
+  interruptValue?: CheckpointInterruptValue
+  requestContextId: string
+  threadId: string
+}): HITLRequest | null {
+  const actionIndex = 0
+  const action = input.interruptValue?.actionRequests?.[actionIndex]
+
+  if (!action) {
+    return null
+  }
+
+  const toolArgs = action.args || {}
+  const toolCallId = getRequiredInterruptActionToolCallId(action)
+  const requestId = buildHitlRequestId(input.threadId, input.requestContextId, toolCallId)
+  const allowedDecisions = normalizeHitlAllowedDecisions(
+    input.interruptValue?.reviewConfigs?.find((config) => config.actionName === action.name)
+      ?.allowedDecisions
+  )
+
+  return {
+    id: requestId,
+    tool_call: {
+      id: toolCallId,
+      name: action.name,
+      args: toolArgs
+    },
+    allowed_decisions: allowedDecisions,
+    review: getInterruptActionReview(action)
+  }
+}
+
 export function buildHitlRequestId(
   threadId: string,
   requestContextId: string,
@@ -259,33 +288,14 @@ export function extractHitlRequestFromCheckpoint(
       ? tuple.config.configurable.run_id
       : null
   const interruptValue = state?.checkpoint?.channel_values?.__interrupt__?.[0]?.value
-  const actionIndex = 0
-  const action = interruptValue?.actionRequests?.[actionIndex]
-
-  if (!action) {
-    return null
-  }
-
   const checkpointId = state?.checkpoint?.id || "latest"
-  const toolArgs = action.args || {}
-  const toolCallId = getRequiredInterruptActionToolCallId(action)
   const requestContextId = options?.runId || tupleRunId || checkpointId
-  const requestId = buildHitlRequestId(threadId, requestContextId, toolCallId)
-  const allowedDecisions = normalizeHitlAllowedDecisions(
-    interruptValue?.reviewConfigs?.find((config) => config.actionName === action.name)
-      ?.allowedDecisions
-  )
 
-  return {
-    id: requestId,
-    tool_call: {
-      id: toolCallId,
-      name: action.name,
-      args: toolArgs
-    },
-    allowed_decisions: allowedDecisions,
-    review: getInterruptActionReview(action)
-  }
+  return buildHitlRequestFromInterruptValue({
+    interruptValue,
+    requestContextId,
+    threadId
+  })
 }
 
 export function extractHitlRequestFromValuesState(
@@ -295,31 +305,12 @@ export function extractHitlRequestFromValuesState(
 ): HITLRequest | null {
   const state = data as ValuesRuntimeState | undefined
   const interruptValue = state?.__interrupt__?.[0]?.value
-  const actionIndex = 0
-  const action = interruptValue?.actionRequests?.[actionIndex]
 
-  if (!action) {
-    return null
-  }
-
-  const toolArgs = action.args || {}
-  const toolCallId = getRequiredInterruptActionToolCallId(action)
-  const requestId = buildHitlRequestId(threadId, runId, toolCallId)
-  const allowedDecisions = normalizeHitlAllowedDecisions(
-    interruptValue?.reviewConfigs?.find((config) => config.actionName === action.name)
-      ?.allowedDecisions
-  )
-
-  return {
-    id: requestId,
-    tool_call: {
-      id: toolCallId,
-      name: action.name,
-      args: toolArgs
-    },
-    allowed_decisions: allowedDecisions,
-    review: getInterruptActionReview(action)
-  }
+  return buildHitlRequestFromInterruptValue({
+    interruptValue,
+    requestContextId: runId,
+    threadId
+  })
 }
 
 export function mapHitlRowToRequest(row: HitlRequestRow): HITLRequest {

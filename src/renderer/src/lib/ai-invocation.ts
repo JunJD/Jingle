@@ -99,7 +99,8 @@ export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promis
       content: submitContent,
       ...(input.refs.length > 0 ? { additional_kwargs: { refs: input.refs } } : {})
     },
-    threadState.currentModel
+    threadState.currentModel,
+    threadState.permissionMode
   )
 
   return true

@@ -116,30 +116,12 @@ export function buildMessageTurns(messages: ThreadMessage[]): MessageTurn[] {
 
 export function buildTurnAssistantEntries(turn: MessageTurn): TurnAssistantEntry[] {
   const entries: TurnAssistantEntry[] = []
-  let currentCluster: ThreadMessage[] = []
-  let clusterIndex = 0
-
-  const flushCluster = () => {
-    if (currentCluster.length === 0) {
-      return
-    }
-
-    const clusterAnchorMessageId = currentCluster[0]?.id ?? `cluster-${clusterIndex}`
-    entries.push({
-      key: `tools:${clusterAnchorMessageId}:${clusterIndex}`,
-      kind: "tool-cluster",
-      messages: currentCluster
-    })
-    clusterIndex += 1
-    currentCluster = []
-  }
 
   for (const message of turn.assistants) {
     const hasContent = hasRenderableAssistantContent(message.content)
     const hasTools = (message.tool_calls?.length ?? 0) > 0
 
     if (hasContent) {
-      flushCluster()
       entries.push({
         key: `assistant:${message.id}`,
         kind: "assistant-content",
@@ -148,14 +130,13 @@ export function buildTurnAssistantEntries(turn: MessageTurn): TurnAssistantEntry
     }
 
     if (hasTools) {
-      currentCluster.push(message)
-      continue
+      entries.push({
+        key: `tools:${message.id}`,
+        kind: "tool-cluster",
+        messages: [message]
+      })
     }
-
-    flushCluster()
   }
-
-  flushCluster()
 
   return entries
 }

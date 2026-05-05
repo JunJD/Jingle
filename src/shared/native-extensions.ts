@@ -3,6 +3,7 @@ import type {
   LauncherCommandOwnerCapability,
   LauncherCommandOwnerManifest
 } from "./launcher-command-owner"
+import type { ExtensionToolDefinition } from "./extension-sources"
 
 export type NativeExtensionCommandMode = "background" | "menu-bar" | "no-view" | "view"
 export type NativeExtensionSupportedPlatform = "darwin" | "linux" | "win32"
@@ -70,6 +71,7 @@ export interface NativeExtensionService {
 
 export interface NativeExtensionMainDefinition {
   service?: NativeExtensionService
+  tools?: ExtensionToolDefinition[]
 }
 
 export interface NativeExtensionCommandSettingsSchema {

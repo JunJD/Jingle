@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { DEFAULT_PERMISSION_MODE } from "../../src/shared/permission-mode"
 import type { ArtifactRecord } from "../../src/shared/artifacts"
 import { createThreadStore } from "../../src/renderer/src/lib/thread-store-core"
 
@@ -56,6 +57,7 @@ test("thread subscriptions stay scoped to the matching thread id", () => {
   assert.equal(allThreadCalls, 3)
   assert.equal(store.getThreadRecord("thread-a").draftInput, "hello")
   assert.equal(store.getThreadRecord("thread-b").draftInput, "")
+  assert.equal(store.getThreadRecord("thread-b").permissionMode, DEFAULT_PERMISSION_MODE)
 })
 
 test("setCurrentModel updates state and runs the injected persistence effect", () => {
@@ -70,6 +72,20 @@ test("setCurrentModel updates state and runs the injected persistence effect", (
 
   assert.equal(store.getThreadState("thread-a").currentModel, "gpt-test")
   assert.deepEqual(persisted, [{ modelId: "gpt-test", threadId: "thread-a" }])
+})
+
+test("setPermissionMode updates state and runs the injected persistence effect", () => {
+  const persisted: Array<{ permissionMode: string; threadId: string }> = []
+  const store = createThreadStore({
+    persistPermissionMode: (threadId, permissionMode) => {
+      persisted.push({ permissionMode, threadId })
+    }
+  })
+
+  store.getThreadActions("thread-a").setPermissionMode("auto")
+
+  assert.equal(store.getThreadState("thread-a").permissionMode, "auto")
+  assert.deepEqual(persisted, [{ permissionMode: "auto", threadId: "thread-a" }])
 })
 
 test("setArtifacts refreshes metadata for already open artifact tabs", () => {

@@ -1,6 +1,11 @@
 import { useCallback, useRef, useState } from "react"
 import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
+import {
+  DEFAULT_PERMISSION_MODE,
+  THREAD_PERMISSION_MODE_METADATA_KEY
+} from "@shared/permission-mode"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
+import type { PermissionModeName } from "@shared/permission-mode"
 import { LauncherIntelligenceGlow } from "@launcher-components/LauncherIntelligenceGlow"
 import { LauncherPageTransition } from "@launcher-components/LauncherPageTransition"
 import { LauncherSearchPage } from "@launcher-components/LauncherSearchPage"
@@ -31,6 +36,7 @@ type PluginInputFocusBehavior = "preserve" | "move-to-end"
 interface LauncherThreadCreateInput {
   draftInput?: string
   modelId?: string
+  permissionMode?: PermissionModeName
   source: string
   title: string
   visibility: string
@@ -155,6 +161,7 @@ export default function LauncherApp(): React.JSX.Element {
 
       const thread = await window.api.threads.create({
         model: resolvedModelId,
+        [THREAD_PERMISSION_MODE_METADATA_KEY]: input.permissionMode ?? DEFAULT_PERMISSION_MODE,
         source: input.source,
         title: input.title,
         visibility: input.visibility,
@@ -164,6 +171,7 @@ export default function LauncherApp(): React.JSX.Element {
       threadContext.ensureThreadRuntime(thread.thread_id)
       const actions = threadContext.getThreadActions(thread.thread_id)
       actions.setCurrentModel(resolvedModelId)
+      actions.setPermissionMode(input.permissionMode ?? DEFAULT_PERMISSION_MODE)
       actions.setWorkspacePath(workspacePath)
       actions.setDraftInput(input.draftInput ?? "")
 

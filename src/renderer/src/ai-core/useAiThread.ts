@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
+import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
 import { maybeGenerateThreadTitle } from "@/lib/thread-title"
@@ -25,6 +26,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   canGoToPreviousChat: boolean
   canStop: boolean
   currentModelId: string | null
+  currentPermissionMode: PermissionModeName
   goToNextChat: () => Promise<string | null>
   goToPreviousChat: () => Promise<string | null>
   handleApprovalDecision: (decision: HITLDecision) => Promise<void>
@@ -35,6 +37,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   retry: () => Promise<void>
   runPrimaryAction: () => void
   selectModel: (modelId: string) => void
+  selectPermissionMode: (permissionMode: PermissionModeName) => void
   setQuery: (value: string) => void
   startNewThread: () => Promise<string | null>
   stop: () => Promise<void>
@@ -46,6 +49,8 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const hasRunInitialActionRef = useRef(false)
   const [inputStatus, setInputStatus] = useState<LauncherInputStatus>("idle")
   const [pendingModelId, setPendingModelId] = useState<string | null>(null)
+  const [pendingPermissionMode, setPendingPermissionMode] =
+    useState<PermissionModeName>(DEFAULT_PERMISSION_MODE)
   const [threadActionError, setThreadActionError] = useState<string | null>(null)
   const threadNavigation = useLauncherAiThreadNavigation({
     initialAction: host.initialAction,
@@ -55,11 +60,14 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const threadActions = useThreadActions(threadId)
   const currentModelId =
     useThreadSelector(threadId, (state) => state?.currentModel ?? null) ?? pendingModelId
+  const currentPermissionMode =
+    useThreadSelector(threadId, (state) => state?.permissionMode ?? null) ?? pendingPermissionMode
   const invocation = useAiInvocation({
     ensureThread: async ({ draftInput }) => {
       const createdThread = await threadNavigation.createThread({
         draftInput,
         modelId: pendingModelId ?? undefined,
+        permissionMode: currentPermissionMode,
         source: AI_THREAD_SOURCE,
         title: copy.launcher.aiThreadTitle,
         visibility: AI_THREAD_VISIBILITY
@@ -150,6 +158,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
       setThreadActionError(null)
       const createdThread = await threadNavigation.createThread({
         modelId: currentModelId ?? undefined,
+        permissionMode: currentPermissionMode,
         source: AI_THREAD_SOURCE,
         title: copy.launcher.aiThreadTitle,
         visibility: AI_THREAD_VISIBILITY
@@ -159,7 +168,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
       setThreadActionError(error instanceof Error ? error.message : String(error))
       return null
     }
-  }, [copy.launcher.aiThreadTitle, currentModelId, threadNavigation])
+  }, [copy.launcher.aiThreadTitle, currentModelId, currentPermissionMode, threadNavigation])
   const branchThread = useCallback(async (): Promise<string | null> => {
     if (!threadId) {
       return null
@@ -203,6 +212,17 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     },
     [threadActions]
   )
+  const selectPermissionMode = useCallback(
+    (permissionMode: PermissionModeName): void => {
+      if (threadActions) {
+        threadActions.setPermissionMode(permissionMode)
+        return
+      }
+
+      setPendingPermissionMode(permissionMode)
+    },
+    [threadActions]
+  )
 
   const primaryActionDisabled =
     isBusy || hasPendingApproval || !hasComposerMessageInputContent(messageInput)
@@ -232,6 +252,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     canGoToNextChat: threadNavigation.canGoToNextThread,
     canGoToPreviousChat: threadNavigation.canGoToPreviousThread,
     currentModelId,
+    currentPermissionMode,
     goToNextChat,
     goToPreviousChat,
     handleApprovalDecision,
@@ -242,6 +263,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     retry: invocation.retry,
     runPrimaryAction,
     selectModel,
+    selectPermissionMode,
     setQuery: invocation.setInput,
     startNewThread,
     stop: invocation.stop,

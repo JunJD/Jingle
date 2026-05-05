@@ -81,7 +81,7 @@ interface SourceProfile {
   extensionName: string
   displayName: string
   enabled: boolean
-  config: Record<string, unknown>
+  publicConfig: Record<string, unknown>
   enabledToolNames: string[]
   defaultPermissionMode: "explore" | "ask-to-edit" | "auto"
   authStatus: "connected" | "missing" | "failed"
@@ -91,6 +91,9 @@ interface SourceProfile {
 ```
 
 SourceProfile is current user/workspace configuration. It can change over time.
+`publicConfig` is intentionally named: only non-secret settings that are safe to
+persist into run evidence belong there. Tokens, OAuth credentials, cookies, and
+other secrets must stay in secure storage and be resolved by extension services.
 
 ### RunSourceBinding
 
@@ -179,6 +182,57 @@ deny
 
 This keeps permission product language unified while still letting the existing approval middleware remain the durable interception point.
 
+## Approval Granularity
+
+Approval is intentionally scoped to one tool call at a time for the first implementation path.
+
+The model and message store may still represent an assistant turn with multiple tool calls:
+
+```txt
+assistant message
+  tool_calls: [toolCallA, toolCallB, toolCallC]
+```
+
+But the approval surface should bind to a single `toolCallId`:
+
+```txt
+pending approval
+  tool_call_id: toolCallA
+```
+
+This keeps the user decision clear:
+
+```txt
+The agent wants to perform one action.
+The user approves or rejects that action.
+The runtime executes or returns a rejection result for that action.
+The agent then continues from that result.
+```
+
+The first source-tool path should not introduce a multi-action approval group. Group approvals create product and runtime questions that are not needed yet:
+
+- partial approve/reject semantics
+- mixed tool result ordering
+- incomplete action summaries in a compact card
+- failure handling when only one action in the group fails
+- restore semantics for partially decided approval groups
+
+If multi-action review becomes necessary later, it should be designed as a separate feature with explicit group and item state. It should not leak into the current single-approval model by simply rendering `actionRequests[]` as one combined card.
+
+## Composer Approval State
+
+When a pending approval exists, the composer should enter an approval state instead of showing a disabled input next to the approval UI.
+
+```txt
+composer state
+  typing: text input + send/stop action
+  approval: approval card + approve/reject actions
+```
+
+The two states should not coexist visually. A disabled text input beside an approval prompt implies the user can keep chatting while the run is blocked, and it makes the approval card feel like a secondary warning instead of the current primary decision.
+
+For the launcher AI surface, the header input can be replaced by a compact approval summary while the full approval card sits in the input area. For the full chat surface, the approval card should occupy the composer body directly.
+
 ## Source Guide
 
 Source Guide is part of SourceDefinition from the start.
@@ -212,7 +266,7 @@ User selects @github or default sources
   -> RunSourceBinding snapshot is persisted
   -> createExtensionSourcesMiddleware receives bindings
   -> middleware injects source guide + source tools
-  -> model calls ext__github__searchIssues
+  -> model calls a profile-declared agent tool id
   -> ExtensionToolExecutor validates and executes common tool
   -> write tools pass through approval middleware
   -> results and approvals enter run evidence
@@ -222,22 +276,35 @@ User selects @github or default sources
 
 `createExtensionSourcesMiddleware` should do three things:
 
-1. Register tools generated from selected SourceProfiles.
+1. Register agent tools declared by selected SourceProfiles.
 2. Inject a compact source context into the model call.
 3. Route extension tool execution through `ExtensionToolExecutor`.
 
-Generated tool names should be stable and namespaced:
+Agent tool ids are machine identifiers. They should be stable, unique, and declared by the
+SourceProfile schema rather than inferred from display text:
 
 ```txt
-ext__github__searchIssues
-ext__appleReminders__createReminder
+ext__github__work__searchIssues
+ext__appleReminders__personal__createReminder
 ```
 
-The registry maps generated names back to:
+The registry maps agent tool ids back to:
 
 ```txt
 extensionName + sourceId + profileId + toolName
 ```
+
+User-facing labels are separate schema fields:
+
+```txt
+display.title
+display.description
+presentation.sourceTitle
+presentation.profileTitle
+```
+
+Renderer components must consume those display fields. They should not parse or humanize the
+machine id.
 
 ## Storage Boundary
 

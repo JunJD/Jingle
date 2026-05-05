@@ -53,7 +53,10 @@ function getPreferredTargetIdentifier(target: DesktopAutomationTarget): string |
   return target.bundleId ?? target.name ?? null
 }
 
-function isTargetAllowlisted(target: DesktopAutomationTarget, allowlist: readonly string[]): boolean {
+function isTargetAllowlisted(
+  target: DesktopAutomationTarget,
+  allowlist: readonly string[]
+): boolean {
   const identifiers = [target.bundleId, target.name]
     .filter((value): value is string => typeof value === "string")
     .map(normalizeIdentifier)
@@ -102,6 +105,6 @@ export function getDesktopAutomationPolicyDecision(
     disposition: "deny",
     reason:
       `Desktop automation for "${identifier}" is not allowlisted. ` +
-      'Add the bundle id or app name to Settings > General > Desktop Automation Allowlist.'
+      "Add the bundle id or app name to Settings > General > Desktop Automation Allowlist."
   }
 }

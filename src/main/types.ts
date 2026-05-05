@@ -2,8 +2,10 @@ import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
 import type { AgentInvokeMessage } from "@shared/message-content"
 import type { AppLocale } from "@shared/i18n"
 import type { HITLDecision, HITLRequest } from "@shared/hitl"
+import type { PermissionModeName } from "@shared/permission-mode"
 import type { ArtifactRecord } from "@shared/artifacts"
 import type { ProviderId } from "@shared/app-types"
+import type { ExtensionToolCallPresentation, ToolCallDisplay } from "@shared/tool-presentation"
 export type { HITLDecision, HITLRequest } from "@shared/hitl"
 export type {
   ModelConfig,
@@ -26,6 +28,7 @@ export interface AgentInvokeParams {
   threadId: string
   message: AgentInvokeMessage
   modelId?: string
+  permissionMode?: PermissionModeName
 }
 
 export interface AgentResumeParams {
@@ -143,7 +146,9 @@ export interface ContentBlock {
 }
 
 export interface ToolCall extends LangChainToolCall<string, Record<string, unknown>> {
+  display?: ToolCallDisplay
   id: string
+  presentation?: ExtensionToolCallPresentation
 }
 
 export interface ToolResult {

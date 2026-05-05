@@ -12,6 +12,7 @@ import {
 /* eslint-disable react-refresh/only-export-components */
 import type { AgentThreadProjection } from "@shared/agent-projection"
 import type { ArtifactRecord } from "@shared/artifacts"
+import { isPermissionModeName, THREAD_PERMISSION_MODE_METADATA_KEY } from "@shared/permission-mode"
 import { getIpcErrorDisplayMessage, getIpcErrorPayload } from "./ipc-errors"
 import {
   createThreadStore,
@@ -96,6 +97,17 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
         const metadata = thread.metadata || {}
         await window.api.threads.update(threadId, {
           metadata: { ...metadata, model: modelId }
+        })
+      },
+      persistPermissionMode: async (threadId, permissionMode) => {
+        const thread = await window.api.threads.get(threadId)
+        if (!thread) {
+          return
+        }
+
+        const metadata = thread.metadata || {}
+        await window.api.threads.update(threadId, {
+          metadata: { ...metadata, [THREAD_PERMISSION_MODE_METADATA_KEY]: permissionMode }
         })
       }
     })
@@ -225,6 +237,12 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
           if (metadata.model) {
             threadStore.updateThreadState(threadId, () => ({
               currentModel: metadata.model as string
+            }))
+          }
+          const permissionMode = metadata[THREAD_PERMISSION_MODE_METADATA_KEY]
+          if (isPermissionModeName(permissionMode)) {
+            threadStore.updateThreadState(threadId, () => ({
+              permissionMode
             }))
           }
         }

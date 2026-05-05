@@ -1,7 +1,9 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {
+  stripSerializedToolCallMarkup,
   toComposerMessageInput,
+  toDisplayAssistantMessageContent,
   toDisplayUserMessageContent
 } from "../../src/shared/message-content"
 
@@ -69,4 +71,46 @@ test("toComposerMessageInput preserves real user text when refs metadata is also
     ],
     text: "Please review spec.pdf"
   })
+})
+
+test("stripSerializedToolCallMarkup removes provider-emitted tool call tags", () => {
+  const text =
+    "我先创建提醒。\n<function=ext__appleReminders__createReminder> <parameter=title> 本周内整理书桌 <parameter=notes> 清理不需要的文件和物品 </tool_call>"
+
+  assert.equal(
+    stripSerializedToolCallMarkup(text, {
+      toolNames: ["ext__appleReminders__createReminder"]
+    }),
+    "我先创建提醒。"
+  )
+})
+
+test("toDisplayAssistantMessageContent hides raw tool call markup blocks", () => {
+  const content = toDisplayAssistantMessageContent([
+    {
+      text: "<function=ext__appleReminders__createReminder> <parameter=title> 周末去超市采购 </tool_call>",
+      type: "text"
+    },
+    {
+      text: "已准备创建。",
+      type: "text"
+    }
+  ], {
+    toolNames: ["ext__appleReminders__createReminder"]
+  })
+
+  assert.deepEqual(content, [
+    {
+      text: "已准备创建。",
+      type: "text"
+    }
+  ])
+})
+
+test("toDisplayAssistantMessageContent preserves unconfirmed tool markup text", () => {
+  const content = toDisplayAssistantMessageContent(
+    "解释一下 <function=ext__appleReminders__createReminder> 这个格式"
+  )
+
+  assert.equal(content, "解释一下 <function=ext__appleReminders__createReminder> 这个格式")
 })

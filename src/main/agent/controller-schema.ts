@@ -45,6 +45,8 @@ const agentMessageContentBlockSchema = z.discriminatedUnion("type", [
     .strict()
 ])
 
+const permissionModeSchema = z.enum(["explore", "ask-to-edit", "auto"])
+
 export const agentInvokeParamsSchema = z
   .object({
     threadId: nonEmptyTrimmedStringSchema,
@@ -60,7 +62,8 @@ export const agentInvokeParamsSchema = z
         id: nonEmptyTrimmedStringSchema
       })
       .strict(),
-    modelId: optionalNormalizedTrimmedStringSchema
+    modelId: optionalNormalizedTrimmedStringSchema,
+    permissionMode: permissionModeSchema.optional()
   })
   .strict()
 

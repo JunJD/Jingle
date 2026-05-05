@@ -1,11 +1,10 @@
 import { EventType, type BaseEvent, type Message as AGUIMessage } from "@ag-ui/core"
 import type { ToolCall as LangChainToolCall, ToolCallChunk } from "@langchain/core/messages"
-import type { ActionRequest, ReviewConfig } from "langchain"
-import { normalizeHitlAllowedDecisions } from "@shared/hitl"
 import {
   extractComposerMessageRefsMetadata,
   extractMessageText,
   normalizeComposerMessageRefs,
+  toDisplayAssistantMessageContent,
   summarizeMessageContent,
   toComposerMessageMetadata,
   toDisplayMessageContent,
@@ -27,16 +26,9 @@ import {
   type AgentTokenUsage
 } from "@shared/agent-projection"
 import { getIpcErrorStatus, isIpcErrorCode, type IpcErrorPayload } from "@shared/ipc-error"
-import { parseToolApprovalItem } from "@shared/tool-approval"
-import { buildHitlRequestId } from "./runtime-state"
+import { extractHitlRequestFromValuesState } from "./runtime-state"
 import type { ThreadsService } from "../threads/service"
 import type { AgentStreamPayload } from "./service"
-
-interface InterruptActionRequest extends ActionRequest {
-  description?: string
-  review?: unknown
-  toolCallId: string
-}
 
 interface UsageMetadata {
   input_token_details?: {
@@ -91,12 +83,7 @@ interface MessageMetadata {
 }
 
 interface ValuesInterruptState {
-  __interrupt__?: Array<{
-    value?: {
-      actionRequests?: InterruptActionRequest[]
-      reviewConfigs?: ReviewConfig[]
-    }
-  }>
+  __interrupt__?: unknown[]
   messages?: SerializedMessageChunk[]
   todos?: Array<{ content?: string; id?: string; status?: string }>
 }
@@ -111,14 +98,6 @@ interface AgentHubEntry {
   hydratePromise: Promise<void> | null
   projector: ThreadProjectionProjector
   subscribers: Map<string, (envelope: AgentProjectionEnvelope) => void>
-}
-
-function getRequiredInterruptToolCallId(action: InterruptActionRequest | undefined): string {
-  if (typeof action?.toolCallId === "string" && action.toolCallId.length > 0) {
-    return action.toolCallId
-  }
-
-  throw new Error("[AgentStreamHub] Missing toolCallId for interrupt action.")
 }
 
 function getRequiredProjectionRunId(runId: string | null): string {
@@ -157,6 +136,16 @@ function stringifyToolArgs(args: unknown): string {
   } catch {
     return "{}"
   }
+}
+
+function getToolCallNames(toolCalls: readonly { name?: string }[] | undefined): string[] {
+  return Array.from(
+    new Set(
+      (toolCalls ?? [])
+        .map((toolCall) => toolCall.name)
+        .filter((name): name is string => typeof name === "string" && name.length > 0)
+    )
+  )
 }
 
 function toAGUIMessage(message: Message): AGUIMessage {
@@ -229,7 +218,7 @@ class ThreadProjectionProjector {
     this.resetStreamingState()
     this.projection = {
       ...createDefaultAgentThreadProjection(this.projection.threadId),
-      messages: history.messages,
+      messages: this.sanitizeHistoryMessages(history.messages),
       pendingApproval: history.pendingApproval,
       status: history.pendingApproval ? "interrupted" : "idle",
       todos: history.todos
@@ -305,7 +294,7 @@ class ThreadProjectionProjector {
       const isAIMessage = className.includes("AI") || className.includes("AIMessageChunk")
 
       if (isAIMessage) {
-        const content = this.extractContent(kwargs.content)
+        const content = this.extractAssistantContent(kwargs.content, getToolCallNames(kwargs.tool_calls))
         const messageId = kwargs.id || this.currentMessageId || crypto.randomUUID()
         this.currentMessageId = messageId
 
@@ -504,6 +493,13 @@ class ThreadProjectionProjector {
     return toDisplayMessageContent(content)
   }
 
+  private extractAssistantContent(
+    content: string | ContentBlock[] | AgentMessageContent | undefined,
+    toolNames: readonly string[] = []
+  ): string | ContentBlock[] {
+    return toDisplayAssistantMessageContent(content, { toolNames })
+  }
+
   private extractPendingApproval(
     state: ValuesInterruptState
   ): AgentThreadProjection["pendingApproval"] {
@@ -511,30 +507,11 @@ class ThreadProjectionProjector {
       return null
     }
 
-    const interruptValue = state.__interrupt__[0]?.value
-    const actionRequests = interruptValue?.actionRequests
-    const reviewConfigs = interruptValue?.reviewConfigs
-    if (!actionRequests?.length) {
-      return null
-    }
-
-    const firstAction = actionRequests[0]
-    const reviewConfig = reviewConfigs?.find((review) => review.actionName === firstAction.name)
-    const toolCallId = getRequiredInterruptToolCallId(firstAction)
-    return {
-      allowed_decisions: normalizeHitlAllowedDecisions(reviewConfig?.allowedDecisions),
-      id: buildHitlRequestId(
-        this.projection.threadId,
-        getRequiredProjectionRunId(this.projection.runId),
-        toolCallId
-      ),
-      review: parseToolApprovalItem(firstAction.review),
-      tool_call: {
-        args: firstAction.args || {},
-        id: toolCallId,
-        name: firstAction.name
-      }
-    }
+    return extractHitlRequestFromValuesState(
+      this.projection.threadId,
+      getRequiredProjectionRunId(this.projection.runId),
+      state
+    )
   }
 
   private formatSubagentName(subagentType: string): string {
@@ -565,7 +542,9 @@ class ThreadProjectionProjector {
       const content =
         role === "user"
           ? toDisplayUserMessageContent(kwargs.content, metadata)
-          : this.extractContent(kwargs.content)
+          : role === "assistant"
+            ? this.extractAssistantContent(kwargs.content, getToolCallNames(kwargs.tool_calls))
+            : this.extractContent(kwargs.content)
       const messageId = kwargs.id || crypto.randomUUID()
 
       return {
@@ -677,6 +656,19 @@ class ThreadProjectionProjector {
     this.accumulatedToolCalls.clear()
     this.activeSubagents.clear()
     this.currentMessageId = null
+  }
+
+  private sanitizeHistoryMessages(messages: Message[]): Message[] {
+    return messages.map((message) => {
+      if (message.role !== "assistant") {
+        return message
+      }
+
+      return {
+        ...message,
+        content: this.extractAssistantContent(message.content, getToolCallNames(message.tool_calls))
+      }
+    })
   }
 
   private syncSubagentsFromValues(messages: SerializedMessageChunk[]): boolean {

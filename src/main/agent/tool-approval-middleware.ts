@@ -1,22 +1,22 @@
-import { lstat } from "node:fs/promises"
 import { ToolMessage } from "@langchain/core/messages"
-import { interrupt } from "@langchain/langgraph"
+import { interrupt, isGraphInterrupt } from "@langchain/langgraph"
 import { createMiddleware } from "langchain"
 import type { ActionRequest, DecisionType, ReviewConfig } from "langchain"
 import { getDefaultHitlAllowedDecisions } from "@shared/hitl"
-import { getExecuteCommandPolicy } from "@shared/execute-command-policy"
-import type { MutationChangeType } from "@shared/mutation-prediction"
-import {
-  buildToolApprovalItem,
-  requiresToolApproval,
-  type ToolApprovalItem
-} from "@shared/tool-approval"
-import { getFileMutationReview, isFileMutationToolName } from "@shared/file-mutation-review"
+import type { PermissionModeName } from "@shared/permission-mode"
+import type { ToolApprovalItem } from "@shared/tool-approval"
 import { getAgentConfig } from "../preferences"
 import type { AgentConfig } from "../types"
-import { getDesktopAutomationPolicyDecision } from "./desktop-automation-policy"
+import type { ExtensionToolApprovalPolicyProvider } from "../extension-tools/permission"
+import {
+  createToolPermissionRuntime,
+  resolveFileMutationChangeType,
+  type ToolPermissionRuntime
+} from "./tool-permission-runtime"
 
 const TOOL_APPROVAL_ALLOWED_DECISIONS = getDefaultHitlAllowedDecisions()
+
+export { resolveFileMutationChangeType }
 
 type ToolApprovalDecisionType = (typeof TOOL_APPROVAL_ALLOWED_DECISIONS)[number]
 
@@ -28,6 +28,18 @@ interface ToolApprovalDecision {
 interface ToolApprovalResumeValue {
   decisions?: ToolApprovalDecision[]
 }
+
+interface ApprovalBatch {
+  activeCount: number
+  consumedDecision: boolean
+}
+
+type ToolApprovalRequester = (input: {
+  review?: ToolApprovalItem | null
+  toolArgs: Record<string, unknown>
+  toolCallId: string
+  toolName: string
+}) => Promise<ToolApprovalDecision>
 
 interface ToolApprovalActionRequest extends ActionRequest {
   review?: ToolApprovalItem | null
@@ -41,11 +53,11 @@ interface ToolApprovalInterruptValue {
 }
 
 interface CreateToolApprovalMiddlewareOptions {
+  extensionToolPolicyProvider?: ExtensionToolApprovalPolicyProvider
   getAgentConfig?: () => AgentConfig
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  permissionMode?: PermissionModeName
+  permissionRuntime?: ToolPermissionRuntime
+  requestToolApproval?: ToolApprovalRequester
 }
 
 function isToolApprovalDecisionType(value: DecisionType): value is ToolApprovalDecisionType {
@@ -102,44 +114,15 @@ function buildErroredToolMessage(input: {
   })
 }
 
-async function pathExists(filePath: string): Promise<boolean> {
-  try {
-    await lstat(filePath)
-    return true
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return false
-    }
+function buildDeferredToolMessage(input: { toolCallId: string; toolName: string }): ToolMessage {
+  const { toolCallId, toolName } = input
 
-    throw error
-  }
-}
-
-export async function resolveFileMutationChangeType(
-  toolName: string,
-  args: Record<string, unknown>
-): Promise<MutationChangeType | null> {
-  const review = getFileMutationReview(toolName, args)
-  if (!review?.path) {
-    return null
-  }
-
-  if (review.toolName === "edit_file") {
-    return "modify"
-  }
-
-  return (await pathExists(review.path)) ? "modify" : "create"
-}
-
-async function buildApprovalReview(
-  toolName: string,
-  args: Record<string, unknown>
-): Promise<ToolApprovalItem | null> {
-  const fileMutationChangeType = isFileMutationToolName(toolName)
-    ? await resolveFileMutationChangeType(toolName, args)
-    : undefined
-  return buildToolApprovalItem(toolName, args, {
-    fileMutationChangeType: fileMutationChangeType ?? undefined
+  return new ToolMessage({
+    content:
+      "Openwork skipped this concurrent approval-required tool call because only one approval-required action can be evaluated per assistant step.",
+    name: toolName,
+    tool_call_id: toolCallId,
+    status: "error"
   })
 }
 
@@ -147,66 +130,90 @@ function buildApprovalDescription(toolName: string): string {
   return `Openwork approval required for ${toolName}.`
 }
 
+async function requestToolApproval(input: {
+  review?: ToolApprovalItem | null
+  toolArgs: Record<string, unknown>
+  toolCallId: string
+  toolName: string
+}): Promise<ToolApprovalDecision> {
+  const resumeValue = (await interrupt({
+    kind: "tool-approval",
+    actionRequests: [
+      {
+        toolCallId: input.toolCallId,
+        name: input.toolName,
+        args: input.toolArgs,
+        description: buildApprovalDescription(input.toolName),
+        review: input.review ?? null
+      }
+    ],
+    reviewConfigs: [
+      {
+        actionName: input.toolName,
+        allowedDecisions: [...TOOL_APPROVAL_ALLOWED_DECISIONS]
+      }
+    ]
+  } satisfies ToolApprovalInterruptValue)) as ToolApprovalResumeValue
+
+  return normalizeToolApprovalDecision(resumeValue)
+}
+
 export function createToolApprovalMiddleware(options: CreateToolApprovalMiddlewareOptions = {}) {
-  const readAgentConfig = options.getAgentConfig ?? getAgentConfig
+  const permissionRuntime =
+    options.permissionRuntime ??
+    createToolPermissionRuntime({
+      extensionToolPolicyProvider: options.extensionToolPolicyProvider,
+      getAgentConfig: options.getAgentConfig ?? getAgentConfig,
+      permissionMode: options.permissionMode
+    })
+  const approvalRequester = options.requestToolApproval ?? requestToolApproval
+  let approvalGate: Promise<void> = Promise.resolve()
+  let approvalBatch: ApprovalBatch | null = null
+
+  async function runWithApprovalGate<T>(operation: () => Promise<T>): Promise<T> {
+    const batch =
+      approvalBatch ??
+      {
+        activeCount: 0,
+        consumedDecision: false
+      }
+    approvalBatch = batch
+    batch.activeCount += 1
+    const previousGate = approvalGate
+    let releaseGate!: () => void
+    approvalGate = new Promise<void>((resolve) => {
+      releaseGate = resolve
+    })
+    await previousGate
+
+    try {
+      const result = await operation()
+      batch.consumedDecision = true
+      releaseGate()
+      return result
+    } catch (error) {
+      if (!isGraphInterrupt(error)) {
+        releaseGate()
+      }
+      throw error
+    } finally {
+      batch.activeCount -= 1
+      if (batch.activeCount === 0 && approvalBatch === batch) {
+        approvalBatch = null
+      }
+    }
+  }
 
   return createMiddleware({
     name: "ToolApprovalMiddleware",
     wrapToolCall: async (request, handler) => {
       const toolName = request.toolCall.name
-      const toolArgs = isRecord(request.toolCall.args) ? request.toolCall.args : {}
+      const decision = await permissionRuntime.evaluate({
+        args: request.toolCall.args,
+        toolName
+      })
 
-      const desktopAutomationDecision = getDesktopAutomationPolicyDecision(
-        toolName,
-        toolArgs,
-        readAgentConfig()
-      )
-
-      if (desktopAutomationDecision?.disposition === "allow") {
-        return handler(request)
-      }
-
-      if (desktopAutomationDecision?.disposition === "deny") {
-        if (!request.toolCall.id) {
-          throw new Error(
-            `[ToolApprovalMiddleware] Missing tool_call.id for ${request.toolCall.name} tool call.`
-          )
-        }
-
-        return buildErroredToolMessage({
-          content: desktopAutomationDecision.reason,
-          toolCallId: request.toolCall.id,
-          toolName
-        })
-      }
-
-      if (toolName === "execute") {
-        if (!isRecord(request.toolCall.args)) {
-          throw new Error("[ToolApprovalMiddleware] Execute tool call args must be an object.")
-        }
-
-        const policy = getExecuteCommandPolicy(toolArgs)
-
-        if (!policy) {
-          throw new Error("[ToolApprovalMiddleware] Missing execute command policy metadata.")
-        }
-
-        if (policy.disposition === "allow") {
-          return handler(request)
-        }
-
-        if (!request.toolCall.id) {
-          throw new Error("[ToolApprovalMiddleware] Missing tool_call.id for execute tool call.")
-        }
-
-        if (policy.disposition === "deny") {
-          return buildErroredToolMessage({
-            content: policy.reason,
-            toolCallId: request.toolCall.id,
-            toolName
-          })
-        }
-      } else if (!isFileMutationToolName(toolName) && !requiresToolApproval(toolName)) {
+      if (decision.disposition === "allow") {
         return handler(request)
       }
 
@@ -215,37 +222,40 @@ export function createToolApprovalMiddleware(options: CreateToolApprovalMiddlewa
           `[ToolApprovalMiddleware] Missing tool_call.id for ${request.toolCall.name} tool call.`
         )
       }
+      const toolCallId = request.toolCall.id
 
-      const approvalReview = await buildApprovalReview(toolName, toolArgs)
-      const resumeValue = (await interrupt({
-        kind: "tool-approval",
-        actionRequests: [
-          {
-            toolCallId: request.toolCall.id,
-            name: request.toolCall.name,
-            args: toolArgs,
-            description: buildApprovalDescription(toolName),
-            review: approvalReview
-          }
-        ],
-        reviewConfigs: [
-          {
-            actionName: request.toolCall.name,
-            allowedDecisions: [...TOOL_APPROVAL_ALLOWED_DECISIONS]
-          }
-        ]
-      } satisfies ToolApprovalInterruptValue)) as ToolApprovalResumeValue
-
-      const decision = normalizeToolApprovalDecision(resumeValue)
-      if (decision.type === "reject") {
-        return buildRejectedToolMessage({
-          feedback: decision.feedback,
-          toolCallId: request.toolCall.id,
-          toolName: request.toolCall.name
+      if (decision.disposition === "deny") {
+        return buildErroredToolMessage({
+          content: decision.reason ?? `Openwork denied ${toolName}.`,
+          toolCallId,
+          toolName
         })
       }
 
-      return handler(request)
+      return runWithApprovalGate(async () => {
+        if (approvalBatch?.consumedDecision) {
+          return buildDeferredToolMessage({
+            toolCallId,
+            toolName: request.toolCall.name
+          })
+        }
+
+        const approvalDecision = await approvalRequester({
+          review: decision.review,
+          toolArgs: decision.args,
+          toolCallId,
+          toolName: request.toolCall.name
+        })
+        if (approvalDecision.type === "reject") {
+          return buildRejectedToolMessage({
+            feedback: approvalDecision.feedback,
+            toolCallId,
+            toolName: request.toolCall.name
+          })
+        }
+
+        return handler(request)
+      })
     }
   })
 }

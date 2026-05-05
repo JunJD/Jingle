@@ -12,7 +12,8 @@ export type {
   ThreadRow,
   ThreadSearchDirectMatchRow,
   ThreadSearchMatches,
-  ThreadSearchMessageMatchRow
+  ThreadSearchMessageMatchRow,
+  UpdateThreadInput
 } from "./threads"
 export { createRun, getLatestRun, getRun, updateRun } from "./runs"
 export type { CreateRunInput, RunRow, UpdateRunInput } from "./runs"

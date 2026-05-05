@@ -14,7 +14,7 @@ export {
   getToolComponent
 } from "./registry-core"
 export { defaultHumanInTheLoop } from "./DefaultHumanInTheLoop"
-export { defaultToolComponent } from "./DefaultTool"
+export { extensionToolComponent } from "./ExtensionTool"
 
 import "./ReadFileTool"
 import "./FileMutationTool"
@@ -24,6 +24,7 @@ import "./ExecuteTool"
 import "./TodosTool"
 import "./TaskTool"
 import "./PresentArtifactsTool"
+import "./DesktopAutomationTool"
 import "./ExecuteHumanInTheLoop"
 import "./FileMutationHumanInTheLoop"
 import "./WebSearchTool"

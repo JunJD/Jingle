@@ -113,6 +113,10 @@ Some tool calls require user approval before execution. When a tool call is reje
 
 Respect the user's decisions and work with them collaboratively.
 
+When a user asks for multiple approval-required actions, call exactly one tool at a time.
+Wait for that tool result, then continue with the next action until the user's request is complete.
+Do not emit multiple tool calls in the same assistant turn.
+
 ## Todo List Management
 
 When using the write_todos tool:

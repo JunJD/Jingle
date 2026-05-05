@@ -1,4 +1,5 @@
 import type { ContentBlock } from "./app-types"
+import { parseToolCallMarkup, stripToolCallMarkup } from "./tool-call-markup"
 
 export type AgentMessageContent =
   | string
@@ -151,6 +152,22 @@ function isContentBlockLike(value: unknown): value is ContentBlock {
   )
 }
 
+export interface DisplayAssistantMessageContentOptions {
+  toolNames?: readonly string[]
+}
+
+export function stripSerializedToolCallMarkup(
+  text: string,
+  options: DisplayAssistantMessageContentOptions = {}
+): string {
+  if (!options.toolNames?.length) {
+    return text
+  }
+
+  const calls = parseToolCallMarkup(text, { availableToolNames: options.toolNames })
+  return stripToolCallMarkup(text, calls)
+}
+
 export function resolveImageBlockUrl(
   block: Pick<ContentBlock, "content" | "image_url">
 ): string | null {
@@ -186,6 +203,34 @@ export function toDisplayMessageContent(
   }
 
   return content.filter(isContentBlockLike)
+}
+
+export function toDisplayAssistantMessageContent(
+  content: string | ContentBlock[] | AgentMessageContent | undefined,
+  options: DisplayAssistantMessageContentOptions = {}
+): string | ContentBlock[] {
+  const displayContent = toDisplayMessageContent(content)
+
+  if (typeof displayContent === "string") {
+    return stripSerializedToolCallMarkup(displayContent, options)
+  }
+
+  return displayContent.flatMap((block) => {
+    if (block.type === "image" || block.type === "image_url" || block.type === "file") {
+      return [block]
+    }
+
+    const nextBlock = { ...block }
+    if (typeof nextBlock.text === "string") {
+      nextBlock.text = stripSerializedToolCallMarkup(nextBlock.text, options)
+    }
+
+    if (typeof nextBlock.content === "string") {
+      nextBlock.content = stripSerializedToolCallMarkup(nextBlock.content, options)
+    }
+
+    return nextBlock.text?.trim() || nextBlock.content?.trim() ? [nextBlock] : []
+  })
 }
 
 function getDisplayBlockText(block: ContentBlock): string {
