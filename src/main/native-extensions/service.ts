@@ -7,6 +7,8 @@ import type {
 import {
   getNativeExtensionCommandPreferenceRecord,
   getNativeExtensionPreferenceRecord,
+  getResolvedNativeExtensionCommandPreferenceRecord,
+  getResolvedNativeExtensionPreferenceRecord,
   setNativeExtensionCommandPreferenceRecord,
   setNativeExtensionPreferenceRecord
 } from "../preferences"
@@ -22,6 +24,10 @@ export class NativeExtensionsService {
 
   getPreferences(extensionName: string): Record<string, unknown> {
     return getNativeExtensionPreferenceRecord(extensionName)
+  }
+
+  getResolvedPreferences(extensionName: string): Record<string, unknown> {
+    return getResolvedNativeExtensionPreferenceRecord(extensionName)
   }
 
   setPreferences(
@@ -40,17 +46,20 @@ export class NativeExtensionsService {
     return getNativeExtensionCommandPreferenceRecord(extensionName, commandName)
   }
 
+  getResolvedCommandPreferences(
+    extensionName: string,
+    commandName: string
+  ): Record<string, unknown> {
+    return getResolvedNativeExtensionCommandPreferenceRecord(extensionName, commandName)
+  }
+
   setCommandPreferences(params: {
     commandName: string
     extensionName: string
     nextRecord: Record<string, unknown>
   }): Record<string, unknown> {
     const { commandName, extensionName, nextRecord } = params
-    const record = setNativeExtensionCommandPreferenceRecord(
-      extensionName,
-      commandName,
-      nextRecord
-    )
+    const record = setNativeExtensionCommandPreferenceRecord(extensionName, commandName, nextRecord)
     this.emitPreferencesChanged({
       commandName,
       extensionName,

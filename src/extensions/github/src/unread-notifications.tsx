@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { MenuBarExtra, useBackgroundRefresh, useNativeExtensionNavigation } from "../../api"
 import {
-  listGitHubNotifications,
-  markAllGitHubNotificationsAsRead,
-  markGitHubNotificationAsRead,
-  normalizeGitHubPreferences,
+  listUnreadGitHubNotifications,
+  markAllUnreadGitHubNotificationsAsRead,
+  markUnreadGitHubNotificationAsRead,
   openGitHubSettings,
   type GitHubNotification,
   useGitHubCommandPreferences
@@ -27,48 +26,34 @@ function normalizeRefreshIntervalSeconds(value: number | string | undefined): nu
 export default function GitHubUnreadNotifications(): React.JSX.Element {
   const navigation = useNativeExtensionNavigation()
   const commandPreferences = useGitHubCommandPreferences<GitHubUnreadNotificationPreferences>()
-  const resolvedPreferences = useMemo(
-    () => normalizeGitHubPreferences(commandPreferences),
-    [commandPreferences]
-  )
   const refreshIntervalSeconds = normalizeRefreshIntervalSeconds(
     commandPreferences.refreshIntervalSeconds
   )
   const [items, setItems] = useState<GitHubNotification[]>([])
+  const [isConfigured, setIsConfigured] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
 
   const refresh = useCallback(() => {
-    if (!resolvedPreferences.accessToken) {
-      setItems([])
-      return Promise.resolve()
-    }
-
     setIsLoading(true)
-    return listGitHubNotifications({
-      preferences: resolvedPreferences
-    })
-      .then((nextItems) => {
-        setItems(nextItems.filter((item) => item.unread))
+    return listUnreadGitHubNotifications()
+      .then((response) => {
+        setIsConfigured(response.configured)
+        setItems(response.notifications)
       })
       .finally(() => {
         setIsLoading(false)
       })
-  }, [resolvedPreferences])
+  }, [commandPreferences])
 
   useEffect(() => {
     let cancelled = false
     const run = async (): Promise<void> => {
-      if (!resolvedPreferences.accessToken) {
-        return
-      }
-
       setIsLoading(true)
       try {
-        const nextItems = await listGitHubNotifications({
-          preferences: resolvedPreferences
-        })
+        const response = await listUnreadGitHubNotifications()
         if (!cancelled) {
-          setItems(nextItems.filter((item) => item.unread))
+          setIsConfigured(response.configured)
+          setItems(response.notifications)
         }
       } finally {
         if (!cancelled) {
@@ -82,11 +67,11 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [resolvedPreferences])
+  }, [])
 
   useBackgroundRefresh(refresh, refreshIntervalSeconds * 1000)
 
-  if (!resolvedPreferences.accessToken) {
+  if (!isConfigured) {
     return (
       <MenuBarExtra
         iconName="github"
@@ -126,9 +111,8 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
               subtitle={notification.repositoryFullName}
               title={notification.title}
               onAction={() => {
-                void markGitHubNotificationAsRead({
-                  notificationId: notification.id,
-                  preferences: resolvedPreferences
+                void markUnreadGitHubNotificationAsRead({
+                  notificationId: notification.id
                 })
                   .then(() => {
                     window.open(notification.url, "_blank", "noopener,noreferrer")
@@ -171,9 +155,7 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
           title={items.length > 0 ? "Mark All as Read" : "Refresh"}
           onAction={() => {
             if (items.length > 0) {
-              void markAllGitHubNotificationsAsRead({
-                preferences: resolvedPreferences
-              }).then(() => {
+              void markAllUnreadGitHubNotificationsAsRead().then(() => {
                 setItems([])
               })
               return

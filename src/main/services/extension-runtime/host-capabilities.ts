@@ -34,14 +34,14 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
     commandName: string
     extensionName: string
   }): Record<string, unknown> {
-    return this.nativeExtensionsService.getCommandPreferences(
+    return this.nativeExtensionsService.getResolvedCommandPreferences(
       params.extensionName,
       params.commandName
     )
   }
 
   getExtensionPreferences(extensionName: string): Record<string, unknown> {
-    return this.nativeExtensionsService.getPreferences(extensionName)
+    return this.nativeExtensionsService.getResolvedPreferences(extensionName)
   }
 
   getStorageValue(params: ExtensionRuntimeStorageParams): unknown {

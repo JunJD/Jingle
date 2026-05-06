@@ -65,8 +65,15 @@ export interface NativeExtensionRendererDefinition<TCommandName extends string =
 
 export interface NativeExtensionService {
   extensionName: string
-  invoke: (request: NativeExtensionInvokeRequest) => Promise<unknown>
+  invoke: (
+    request: NativeExtensionInvokeRequest,
+    context: NativeExtensionInvokeContext
+  ) => Promise<unknown>
   methods: string[]
+}
+
+export interface NativeExtensionInvokeContext {
+  extensionPreferences: Record<string, unknown>
 }
 
 export interface NativeExtensionMainDefinition {

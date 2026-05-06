@@ -28,7 +28,7 @@ parentPort.on("message", (event) => {
 
   switch (message.type) {
     case "start":
-      startRuntime(message.sessionId, message.context)
+      void startRuntime(message.sessionId, message.context)
       return
     case "stop":
       process.exit(0)
@@ -84,7 +84,10 @@ function postToHost(message: ExtensionRuntimeToHostMessage): void {
   parentPort.postMessage(message)
 }
 
-function startRuntime(sessionId: string, context: ExtensionRuntimeLaunchContext): void {
+async function startRuntime(
+  sessionId: string,
+  context: ExtensionRuntimeLaunchContext
+): Promise<void> {
   try {
     const command = getNativeExtensionRuntimeCommand(context)
     if (!command) {
@@ -101,6 +104,7 @@ function startRuntime(sessionId: string, context: ExtensionRuntimeLaunchContext)
 
     const requestHostWithId = (request: ExtensionRuntimeHostRequestInput) =>
       requestHost(sessionId, withHostRequestId(request))
+    const resolvedContext = await resolveRuntimeLaunchContext(context, requestHostWithId)
 
     if (command.mode === "no-view") {
       const navigation = createExtensionRuntimeNavigation({
@@ -108,13 +112,13 @@ function startRuntime(sessionId: string, context: ExtensionRuntimeLaunchContext)
       })
       void runWithExtensionRuntimeSdk(
         {
-          ...context,
+          ...resolvedContext,
           navigation,
           requestHost: requestHostWithId
         },
         () =>
           command.run({
-            ...context,
+            ...resolvedContext,
             navigation
           })
       )
@@ -151,7 +155,7 @@ function startRuntime(sessionId: string, context: ExtensionRuntimeLaunchContext)
         ExtensionRuntimeNavigationProvider,
         {
           value: {
-            ...context,
+            ...resolvedContext,
             requestHost: requestHostWithId
           }
         },
@@ -171,6 +175,40 @@ function startRuntime(sessionId: string, context: ExtensionRuntimeLaunchContext)
       })
   } catch (error) {
     postRuntimeError(sessionId, error)
+  }
+}
+
+async function resolveRuntimeLaunchContext(
+  context: ExtensionRuntimeLaunchContext,
+  requestHost: (request: ExtensionRuntimeHostRequestInput) => Promise<ExtensionHostResponse>
+): Promise<ExtensionRuntimeLaunchContext> {
+  const extensionPreferencesResponse = await requestHost({
+    capability: "preferences",
+    method: "get-extension-preferences",
+    payload: {
+      extensionName: context.extensionName
+    }
+  })
+  if (!extensionPreferencesResponse.ok) {
+    throw new Error(extensionPreferencesResponse.error.message)
+  }
+
+  const commandPreferencesResponse = await requestHost({
+    capability: "preferences",
+    method: "get-command-preferences",
+    payload: {
+      commandName: context.commandName,
+      extensionName: context.extensionName
+    }
+  })
+  if (!commandPreferencesResponse.ok) {
+    throw new Error(commandPreferencesResponse.error.message)
+  }
+
+  return {
+    ...context,
+    commandPreferences: commandPreferencesResponse.result as Record<string, unknown>,
+    extensionPreferences: extensionPreferencesResponse.result as Record<string, unknown>
   }
 }
 

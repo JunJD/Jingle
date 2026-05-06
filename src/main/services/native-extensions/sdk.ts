@@ -1,9 +1,11 @@
 import type {
+  NativeExtensionInvokeContext,
   NativeExtensionService
 } from "@shared/native-extensions"
 
 type NativeExtensionMethodHandler<TPayload = unknown, TResult = unknown> = (
-  payload: TPayload
+  payload: TPayload,
+  context: NativeExtensionInvokeContext
 ) => Promise<TResult> | TResult
 
 type UnknownNativeExtensionMethodHandler = NativeExtensionMethodHandler<unknown, unknown>
@@ -19,7 +21,7 @@ export function defineNativeExtensionService<TMethods extends NativeExtensionMet
   return {
     extensionName,
     methods: methodNames,
-    invoke: async (request) => {
+    invoke: async (request, context) => {
       const method = methods[request.method] as UnknownNativeExtensionMethodHandler | undefined
       if (!method) {
         throw new Error(
@@ -27,7 +29,7 @@ export function defineNativeExtensionService<TMethods extends NativeExtensionMet
         )
       }
 
-      return method(request.payload)
+      return method(request.payload, context)
     }
   }
 }

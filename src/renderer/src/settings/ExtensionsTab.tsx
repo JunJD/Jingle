@@ -169,6 +169,53 @@ function PreferenceSection(props: {
   )
 }
 
+function buildPreferenceUpdateRecord(params: {
+  currentRecord: Record<string, unknown>
+  nextValue: unknown
+  preferenceName: string
+  preferences: NativeExtensionPreferenceSchema[]
+}): Record<string, unknown> {
+  const passwordPreferenceNames = new Set(
+    params.preferences
+      .filter((preference) => preference.type === "password")
+      .map((preference) => preference.name)
+  )
+
+  return {
+    ...Object.fromEntries(
+      Object.entries(params.currentRecord).filter(
+        ([key]) => !passwordPreferenceNames.has(key) || key === params.preferenceName
+      )
+    ),
+    [params.preferenceName]: params.nextValue
+  }
+}
+
+function isPasswordPreference(
+  preferences: NativeExtensionPreferenceSchema[],
+  preferenceName: string
+): boolean {
+  return preferences.some(
+    (preference) => preference.name === preferenceName && preference.type === "password"
+  )
+}
+
+function buildPreferenceRecordForLocalState(params: {
+  nextRecord: Record<string, unknown>
+  nextValue: unknown
+  preferenceName: string
+  preferences: NativeExtensionPreferenceSchema[]
+}): Record<string, unknown> {
+  if (!isPasswordPreference(params.preferences, params.preferenceName)) {
+    return params.nextRecord
+  }
+
+  return {
+    ...params.nextRecord,
+    [params.preferenceName]: params.nextValue
+  }
+}
+
 function CommandCard(props: {
   commandName: string
   commandNameFocus?: string
@@ -382,6 +429,7 @@ export function ExtensionsTab(props: {
   const updateCommandPreference = async (
     extensionName: string,
     commandName: string,
+    preferences: NativeExtensionPreferenceSchema[],
     preferenceName: string,
     nextValue: unknown
   ): Promise<void> => {
@@ -390,32 +438,50 @@ export function ExtensionsTab(props: {
     const nextRecord = await window.api.nativeExtensions.setCommandPreferences(
       extensionName,
       commandName,
-      {
-        ...currentRecord,
-        [preferenceName]: nextValue
-      }
+      buildPreferenceUpdateRecord({
+        currentRecord,
+        nextValue,
+        preferenceName,
+        preferences
+      })
     )
 
     setCommandRecords((current) => ({
       ...current,
-      [recordKey]: nextRecord
+      [recordKey]: buildPreferenceRecordForLocalState({
+        nextRecord,
+        nextValue,
+        preferenceName,
+        preferences
+      })
     }))
   }
 
   const updateExtensionPreference = async (
     extensionName: string,
+    preferences: NativeExtensionPreferenceSchema[],
     preferenceName: string,
     nextValue: unknown
   ): Promise<void> => {
     const currentRecord = extensionRecords[extensionName] ?? {}
-    const nextRecord = await window.api.nativeExtensions.setPreferences(extensionName, {
-      ...currentRecord,
-      [preferenceName]: nextValue
-    })
+    const nextRecord = await window.api.nativeExtensions.setPreferences(
+      extensionName,
+      buildPreferenceUpdateRecord({
+        currentRecord,
+        nextValue,
+        preferenceName,
+        preferences
+      })
+    )
 
     setExtensionRecords((current) => ({
       ...current,
-      [extensionName]: nextRecord
+      [extensionName]: buildPreferenceRecordForLocalState({
+        nextRecord,
+        nextValue,
+        preferenceName,
+        preferences
+      })
     }))
   }
 
@@ -514,6 +580,7 @@ export function ExtensionsTab(props: {
                     onChange={(preferenceName, nextValue) => {
                       void updateExtensionPreference(
                         selectedSchema.extName,
+                        selectedSchema.preferences,
                         preferenceName,
                         nextValue
                       )
@@ -541,6 +608,7 @@ export function ExtensionsTab(props: {
                     void updateCommandPreference(
                       selectedSchema.extName,
                       command.name,
+                      command.preferences,
                       preferenceName,
                       nextValue
                     )

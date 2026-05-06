@@ -11,6 +11,7 @@ import {
 } from "@shared/launcher-command-owner"
 import { listNativeExtensionManifests } from "@extensions/index"
 import { nativeExtensionMainDefinitions } from "@extensions/main"
+import { getResolvedNativeExtensionPreferenceRecord } from "../../preferences"
 
 const supportedNativeExtensionManifests = listNativeExtensionManifests(process.platform)
 
@@ -91,5 +92,7 @@ export async function invokeNativeExtension(
     throw new Error(`Native extension "${request.extensionName}" does not expose RPC methods`)
   }
 
-  return definition.service.invoke(request)
+  return definition.service.invoke(request, {
+    extensionPreferences: getResolvedNativeExtensionPreferenceRecord(request.extensionName)
+  })
 }
