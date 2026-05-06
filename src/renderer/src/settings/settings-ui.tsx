@@ -1,4 +1,11 @@
-import type { ReactNode } from "react"
+import {
+  useState,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes
+} from "react"
+import { Eye, EyeOff } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 export function SettingsRow(props: {
   children: ReactNode
@@ -45,6 +52,15 @@ export const settingsPageDescriptionClassName =
 export const settingsCardClassName =
   "overflow-hidden rounded-[var(--ow-settings-card-radius)] border border-border/80 bg-background-secondary/55 shadow-[var(--ow-settings-card-shadow)]"
 
+export const settingsInsetCardClassName =
+  "rounded-[var(--ow-settings-card-radius)] border border-border/70 bg-background px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]"
+
+export const settingsFieldLabelClassName =
+  "[font-size:var(--ow-font-body)] font-medium text-muted-foreground"
+
+export const settingsFieldDescriptionClassName =
+  "[font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground"
+
 export const inputClassName =
   "min-h-[var(--ow-settings-control-h)] w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)] [font-size:var(--ow-settings-control-font)] leading-[var(--ow-line-body)] text-foreground outline-none transition focus:border-[var(--ring)]"
 
@@ -52,3 +68,132 @@ export const selectClassName = `${inputClassName} pr-8`
 
 export const secondaryButtonClassName =
   "inline-flex min-h-[var(--ow-settings-control-h)] items-center gap-[var(--ow-space-1-5)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)] [font-size:var(--ow-settings-control-font)] font-medium text-foreground transition hover:bg-background-secondary disabled:cursor-default disabled:opacity-50"
+
+type SettingsFieldProps = {
+  children: ReactNode
+  description?: string
+  htmlFor?: string
+  label: string
+  required?: boolean
+}
+
+export function SettingsField(props: SettingsFieldProps): React.JSX.Element {
+  const { children, description, htmlFor, label, required = false } = props
+
+  return (
+    <div className="grid gap-[var(--ow-space-1-5)]">
+      {htmlFor ? (
+        <label className="flex items-center gap-[var(--ow-gap-sm)]" htmlFor={htmlFor}>
+          <span className={settingsFieldLabelClassName}>{label}</span>
+          {required ? (
+            <span className="[font-size:var(--ow-font-meta)] text-muted-foreground">*</span>
+          ) : null}
+        </label>
+      ) : (
+        <div className="flex items-center gap-[var(--ow-gap-sm)]">
+          <span className={settingsFieldLabelClassName}>{label}</span>
+          {required ? (
+            <span className="[font-size:var(--ow-font-meta)] text-muted-foreground">*</span>
+          ) : null}
+        </div>
+      )}
+      {description ? (
+        <span className={settingsFieldDescriptionClassName}>{description}</span>
+      ) : null}
+      {children}
+    </div>
+  )
+}
+
+type SettingsTextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "className"> & {
+  className?: string
+}
+
+export function SettingsTextInput(props: SettingsTextInputProps): React.JSX.Element {
+  const { className, ...inputProps } = props
+
+  return <input className={cn(inputClassName, className)} {...inputProps} />
+}
+
+type SettingsSelectProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, "className"> & {
+  className?: string
+}
+
+export function SettingsSelect(props: SettingsSelectProps): React.JSX.Element {
+  const { className, children, ...selectProps } = props
+
+  return (
+    <select className={cn(selectClassName, className)} {...selectProps}>
+      {children}
+    </select>
+  )
+}
+
+type SettingsPasswordInputProps = Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  "className" | "type"
+> & {
+  className?: string
+  hideLabel: string
+  showLabel: string
+}
+
+export function SettingsPasswordInput(props: SettingsPasswordInputProps): React.JSX.Element {
+  const { className, hideLabel, showLabel, ...inputProps } = props
+  const [visible, setVisible] = useState(false)
+
+  return (
+    <div className={cn("relative", className)}>
+      <input
+        className={cn(inputClassName, "pr-[var(--ow-control-icon-inset)]")}
+        type={visible ? "text" : "password"}
+        {...inputProps}
+      />
+      <button
+        type="button"
+        aria-label={visible ? hideLabel : showLabel}
+        className="absolute inset-y-0 right-0 inline-flex w-[var(--ow-control-icon-inset)] items-center justify-center rounded-r-[var(--ow-radius-md)] text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        onClick={() => setVisible((current) => !current)}
+      >
+        {visible ? (
+          <EyeOff className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
+        ) : (
+          <Eye className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />
+        )}
+      </button>
+    </div>
+  )
+}
+
+type SettingsSwitchProps = {
+  checked: boolean
+  disabled?: boolean
+  label: string
+  onCheckedChange: (checked: boolean) => void
+}
+
+export function SettingsSwitch(props: SettingsSwitchProps): React.JSX.Element {
+  const { checked, disabled = false, label, onCheckedChange } = props
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      className={cn(
+        "inline-flex h-[var(--ow-settings-switch-h)] w-[var(--ow-settings-switch-w)] items-center rounded-full border p-[var(--ow-settings-switch-pad)] transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50",
+        checked ? "border-[var(--ring)] bg-[var(--ring)]" : "border-border bg-background-elevated"
+      )}
+      onClick={() => onCheckedChange(!checked)}
+    >
+      <span
+        className={cn(
+          "block h-[var(--ow-settings-switch-thumb)] w-[var(--ow-settings-switch-thumb)] rounded-full bg-background shadow-sm transition-transform",
+          checked ? "translate-x-[var(--ow-settings-switch-travel)]" : "translate-x-0"
+        )}
+      />
+    </button>
+  )
+}

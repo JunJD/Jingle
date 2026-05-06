@@ -20,7 +20,8 @@ import {
   settingsPageDescriptionClassName,
   settingsPageHeaderClassName,
   settingsPageTitleClassName,
-  SettingsRow
+  SettingsRow,
+  SettingsSwitch
 } from "./settings-ui"
 
 const codeThemeOptions = [
@@ -445,22 +446,22 @@ export function AppearanceTab(props: { locale: AppLocale }): React.JSX.Element {
                 ))}
               </select>
             </div>
-            <label className="flex items-center justify-between gap-[var(--ow-gap-md)]">
+            <div className="flex min-h-[var(--ow-settings-control-h)] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)]">
               <span className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground">
                 {copy.appearance.translucentWindows}
               </span>
-              <input
-                type="checkbox"
+              <SettingsSwitch
                 checked={!theme.opaqueWindows}
-                onChange={(event) => {
-                  const opaqueWindows = !event.target.checked
+                label={copy.appearance.translucentWindows}
+                onCheckedChange={(checked) => {
+                  const opaqueWindows = !checked
                   updateConfig((current) => ({
                     ...current,
                     theme: { ...current.theme, opaqueWindows }
                   }))
                 }}
               />
-            </label>
+            </div>
             <label className="grid gap-[var(--ow-space-1)]">
               <span className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground">
                 {copy.appearance.contrast}: {theme.contrast}
