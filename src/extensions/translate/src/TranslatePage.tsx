@@ -62,7 +62,7 @@ export function TranslatePage(): React.JSX.Element {
   return (
     <div className="flex h-full w-full flex-col">
       <div
-        className="grid shrink-0 grid-cols-[32px_1fr] items-center gap-3 border-b px-4"
+        className="grid shrink-0 grid-cols-[28px_1fr] items-center gap-2.5 border-b px-4"
         style={{
           borderColor: "var(--launcher-border)",
           height: FALLBACK_SHELL_CONFIG.headerHeight
@@ -70,12 +70,12 @@ export function TranslatePage(): React.JSX.Element {
       >
         <button
           aria-label={copy.backLabel}
-          className="flex h-8 w-8 appearance-none items-center justify-center rounded-full border-0 bg-[var(--launcher-surface-strong)] text-muted-foreground transition hover:text-foreground"
+          className="flex h-7 w-7 appearance-none items-center justify-center rounded-full border-0 bg-[var(--launcher-surface-strong)] text-muted-foreground transition hover:text-foreground"
           type="button"
           onClick={navigation.goHome}
           onMouseDown={(event) => event.preventDefault()}
         >
-          <ArrowLeft className="size-4" />
+          <ArrowLeft className="size-3.5" />
         </button>
 
         <div className="min-w-0">

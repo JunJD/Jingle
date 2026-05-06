@@ -1084,7 +1084,7 @@ body[data-platform="darwin"] .launcher-window-shell {
 .launcher-translate-stage {
   flex: 1;
   min-height: 0;
-  padding: 12px;
+  padding: 10px;
   background:
     radial-gradient(
       circle at top,
@@ -1101,15 +1101,15 @@ body[data-platform="darwin"] .launcher-window-shell {
 .launcher-translate-grid {
   display: grid;
   height: 100%;
-  grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr);
+  gap: 6px;
 }
 
 .launcher-translate-toolbar-title {
   color: var(--launcher-text);
   font-size: var(--ow-font-body);
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 
 .launcher-translate-toolbar-subtitle {
@@ -1133,8 +1133,8 @@ body[data-platform="darwin"] .launcher-window-shell {
   gap: 6px;
   border: 1px solid color-mix(in srgb, var(--launcher-border-strong) 82%, transparent);
   background: color-mix(in srgb, var(--launcher-surface) 82%, white 18%);
-  padding: 0 9px;
-  border-radius: var(--ow-radius-md);
+  padding: 0 8px;
+  border-radius: var(--ow-radius-sm);
   color: var(--launcher-text);
 }
 
@@ -1148,9 +1148,9 @@ body[data-platform="darwin"] .launcher-window-shell {
   border: 0;
   background: transparent;
   color: inherit;
-  font-size: var(--ow-font-control);
-  line-height: 32px;
-  height: 32px;
+  font-size: var(--ow-font-meta);
+  line-height: var(--ow-control-h-sm);
+  height: var(--ow-control-h-sm);
   padding-right: 4px;
   outline: none;
 }
@@ -1162,8 +1162,8 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 .launcher-translate-swap {
   display: inline-flex;
-  height: 34px;
-  width: 34px;
+  height: var(--ow-control-h-md);
+  width: var(--ow-control-h-md);
   align-items: center;
   justify-content: center;
   border: 1px solid color-mix(in srgb, var(--launcher-border-strong) 90%, transparent);
@@ -1205,11 +1205,11 @@ body[data-platform="darwin"] .launcher-window-shell {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 8px 10px;
   color: var(--launcher-text-muted);
   font-size: var(--ow-font-caption);
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -1227,7 +1227,7 @@ body[data-platform="darwin"] .launcher-window-shell {
   display: inline-flex;
   min-width: 0;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .launcher-translate-panel-status {
@@ -1239,10 +1239,10 @@ body[data-platform="darwin"] .launcher-window-shell {
 .launcher-translate-output {
   flex: 1;
   min-height: 0;
-  padding: 13px 12px 16px;
+  padding: 10px 10px 12px;
   color: var(--launcher-text);
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: var(--ow-font-body);
+  line-height: var(--ow-line-reading);
 }
 
 .launcher-translate-textarea {
@@ -1265,23 +1265,24 @@ body[data-platform="darwin"] .launcher-window-shell {
 }
 
 .launcher-translate-placeholder-hint {
-  margin-top: 10px;
-  font-size: var(--ow-font-body);
+  margin-top: 8px;
+  font-size: var(--ow-font-meta);
   line-height: var(--ow-line-body);
 }
 
 .launcher-translate-submit {
   display: inline-flex;
+  min-height: var(--ow-control-h-sm);
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--launcher-border-strong));
-  border-radius: 999px;
+  border-radius: var(--ow-radius-md);
   background: color-mix(in srgb, var(--primary) 10%, var(--launcher-surface));
   color: var(--launcher-text);
-  padding: 5px 7px 5px 10px;
+  padding: 0 6px 0 9px;
   font-size: var(--ow-font-meta);
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   text-transform: none;
   transition:
     color 140ms ease,
@@ -1301,22 +1302,22 @@ body[data-platform="darwin"] .launcher-window-shell {
 }
 
 .launcher-translate-submit-shortcut {
-  border-radius: 999px;
+  border-radius: var(--ow-radius-sm);
   background: color-mix(in srgb, var(--launcher-surface-strong) 88%, white 12%);
   color: var(--launcher-text-muted);
-  padding: 4px 8px;
+  padding: 3px 6px;
   font-size: 10px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
 }
 
 .launcher-translate-copy {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: var(--ow-control-h-sm);
+  height: var(--ow-control-h-sm);
   border: 1px solid color-mix(in srgb, var(--launcher-border-strong) 80%, transparent);
-  border-radius: 999px;
+  border-radius: var(--ow-radius-md);
   background: color-mix(in srgb, var(--background-elevated) 82%, white 18%);
   color: var(--launcher-text-muted);
   transition:
