@@ -5,10 +5,8 @@ import { tmpdir } from "node:os"
 import test from "node:test"
 import { ToolMessage } from "@langchain/core/messages"
 import { GraphInterrupt } from "@langchain/langgraph"
-import {
-  createToolApprovalMiddleware,
-  resolveFileMutationChangeType
-} from "../../src/main/agent/tool-approval-middleware"
+import { createToolApprovalMiddleware } from "../../src/main/agent/tool-approval-middleware"
+import { resolveFileMutationChangeType } from "../../src/main/agent/tool-permission-runtime"
 import { createToolPermissionRuntime } from "../../src/main/agent/tool-permission-runtime"
 import { createExtensionToolApprovalPolicyProvider } from "../../src/main/extension-tools/permission"
 import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
