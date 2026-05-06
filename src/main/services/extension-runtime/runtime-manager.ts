@@ -52,6 +52,7 @@ export interface ExtensionRuntimeHostCapabilities {
   setStorageValue: (
     params: ExtensionRuntimeStorageParams & { value: unknown }
   ) => MaybePromise<void>
+  writeClipboardText: (text: string) => MaybePromise<void>
 }
 
 export type ExtensionRuntimeSurfaceListener = (
@@ -329,8 +330,10 @@ export class ExtensionRuntimeManager {
           request,
           sessionId: session.sessionId
         })
-      case "ai":
       case "clipboard":
+        await this.options.host.writeClipboardText(request.payload.text)
+        return null
+      case "ai":
       case "scheduler":
         throw new Error(`Unsupported runtime host capability "${request.capability}"`)
     }

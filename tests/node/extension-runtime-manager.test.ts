@@ -105,6 +105,7 @@ function createHost(
     openExtensionSettings: () => undefined,
     openExternal: async () => undefined,
     setStorageValue: () => undefined,
+    writeClipboardText: () => undefined,
     ...overrides
   }
 }
@@ -343,6 +344,47 @@ test("runtime manager forwards navigation requests to the host capability", asyn
         id: "navigation-1",
         ok: true,
         result: undefined
+      },
+      sessionId: "session-1",
+      type: "host-response"
+    }
+  )
+})
+
+test("runtime manager forwards clipboard write requests to the host capability", async () => {
+  const clipboardWrites: string[] = []
+  const host = createHost({
+    writeClipboardText: (text) => {
+      clipboardWrites.push(text)
+    }
+  })
+  const { launcher, manager } = createManager({ host })
+
+  manager.startForeground(createLaunchContext())
+  const request: ExtensionHostRequest = {
+    capability: "clipboard",
+    id: "clipboard-1",
+    method: "write-text",
+    payload: {
+      text: "Copied from runtime"
+    }
+  }
+
+  launcher.processes[0]?.emitMessage({
+    request,
+    sessionId: "session-1",
+    type: "host-request"
+  })
+  await flushPromises()
+
+  assert.deepEqual(clipboardWrites, ["Copied from runtime"])
+  assert.deepEqual(
+    launcher.processes[0]?.messages.find((message) => message.type === "host-response"),
+    {
+      response: {
+        id: "clipboard-1",
+        ok: true,
+        result: null
       },
       sessionId: "session-1",
       type: "host-response"

@@ -33,6 +33,7 @@ export type ExtensionHostElementType =
   | string
 
 export const ExtensionHostActionKind = {
+  CopyToClipboard: "copy-to-clipboard",
   OpenInBrowser: "open-in-browser"
 } as const
 

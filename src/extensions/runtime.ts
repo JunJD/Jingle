@@ -16,6 +16,7 @@ import GitHubSearchPullRequests from "./github/src/search-pull-requests"
 import GitHubSearchRepositories from "./github/src/search-repositories"
 import GitHubWorkflowRuns from "./github/src/workflow-runs"
 import TodoList from "./todo-list/src/index"
+import TranslateQuickCopy from "./translate/src/translate-quick-copy"
 
 export interface NativeExtensionRuntimeNoViewRunContext extends ExtensionRuntimeLaunchContext {
   navigation: ExtensionRuntimeNavigation
@@ -129,6 +130,12 @@ const nativeExtensionRuntimeCommandDefinitions: NativeExtensionRuntimeCommandDef
     commandName: "index",
     extensionName: "todo-list",
     mode: "view"
+  },
+  {
+    commandName: "translate-quick-copy",
+    extensionName: "translate",
+    mode: "no-view",
+    run: TranslateQuickCopy
   }
 ]
 

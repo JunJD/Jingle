@@ -6,7 +6,10 @@ import {
 } from "@shared/native-extensions"
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { listNativeExtensionManifests } from "@extensions/index"
-import { nativeExtensionRendererDefinitions } from "@extensions/renderer"
+import {
+  nativeExtensionRendererDefinitions,
+  nativeExtensionRuntimeRendererMetadata
+} from "@extensions/renderer"
 import {
   handleRuntimeNavigationRequest,
   RuntimeExtensionCommandSurface
@@ -142,6 +145,13 @@ export const nativeLauncherCommandOwners = supportedNativeExtensionManifests.red
       }
 
       if (command.runtime) {
+        const runtimeSearch = nativeExtensionRuntimeRendererMetadata
+          .get(extension.name)
+          ?.commands.find((candidate) => candidate.name === command.name)?.metaModule?.search as
+          | NativeViewCommandModule["search"]
+          | NativeNoViewCommandModule["search"]
+          | undefined
+
         if (command.mode === "view") {
           if (!command.runtime.viewport) {
             throw new Error(
@@ -151,19 +161,23 @@ export const nativeLauncherCommandOwners = supportedNativeExtensionManifests.red
 
           return {
             Component: RuntimeExtensionCommandSurface,
+            buildIntentItems: runtimeSearch?.buildIntentItems,
             commandName: command.name,
             getViewportHeight: getViewportHeight(command.runtime.viewport),
             loadCommandPreferences,
             mode: "view" as const,
+            resolveCommand: runtimeSearch?.resolveCommand,
             validateCommandPreferences
           }
         }
 
         if (command.mode === "no-view") {
           return {
+            buildIntentItems: runtimeSearch?.buildIntentItems,
             commandName: command.name,
             loadCommandPreferences,
             mode: "no-view" as const,
+            resolveCommand: runtimeSearch?.resolveCommand,
             validateCommandPreferences,
             run: async (context) => {
               let runOnceSessionId: string | null = null

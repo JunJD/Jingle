@@ -3,6 +3,7 @@ import type { SettingsWindowRoutingService } from "../../settings-window-routing
 import type { ExternalLinksService } from "../../external-links/service"
 import type { NativeExtensionsService } from "../../native-extensions/service"
 import { getOpenworkDir } from "../../storage"
+import { writeClipboardText } from "../clipboard"
 import type {
   ExtensionRuntimeHostCapabilities,
   ExtensionRuntimeStorageParams
@@ -75,6 +76,10 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
       ...runtimeStorageStore.get("values", {}),
       [getRuntimeStorageKey(params)]: params.value
     })
+  }
+
+  writeClipboardText(text: string): void {
+    writeClipboardText(text)
   }
 }
 

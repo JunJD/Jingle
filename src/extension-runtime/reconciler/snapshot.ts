@@ -439,7 +439,14 @@ function collectActionNodes(
 
     const actionKind = readStringProp(node.props, "actionKind")
     let handler: RuntimeActionHandler["handler"]
-    if (actionKind === ExtensionHostActionKind.OpenInBrowser) {
+    if (actionKind === ExtensionHostActionKind.CopyToClipboard) {
+      const content = readStringProp(node.props, "content")
+      if (content === undefined) {
+        return []
+      }
+
+      handler = () => requestWriteClipboardText(container, content)
+    } else if (actionKind === ExtensionHostActionKind.OpenInBrowser) {
       const url = readStringProp(node.props, "url")
       if (!url) {
         return []
@@ -482,6 +489,27 @@ function collectActionNodes(
       sectionTitle: nextSectionTitle
     })
   )
+}
+
+async function requestWriteClipboardText(
+  container: RuntimeHostContainer,
+  text: string
+): Promise<void> {
+  if (!container.requestHost) {
+    throw new Error("Extension runtime host request handler is not configured.")
+  }
+
+  const response: ExtensionHostResponse = await container.requestHost({
+    capability: "clipboard",
+    id: container.nextHostRequestId(),
+    method: "write-text",
+    payload: {
+      text
+    }
+  })
+  if (!response.ok) {
+    throw new Error(response.error.message)
+  }
 }
 
 async function requestOpenExternal(container: RuntimeHostContainer, url: string): Promise<void> {

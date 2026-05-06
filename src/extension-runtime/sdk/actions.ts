@@ -20,6 +20,14 @@ export interface RuntimeActionProps {
   title: string
 }
 
+export interface RuntimeCopyToClipboardActionProps {
+  content: string
+  disabled?: boolean
+  icon?: ReactNode
+  style?: RuntimeActionStyle
+  title?: string
+}
+
 export interface RuntimeOpenInBrowserActionProps {
   disabled?: boolean
   icon?: ReactNode
@@ -34,6 +42,7 @@ type RuntimeActionPanelComponent = ((props: RuntimeActionPanelProps) => ReactEle
 }
 
 type RuntimeActionComponent = ((props: RuntimeActionProps) => ReactElement) & {
+  CopyToClipboard: (props: RuntimeCopyToClipboardActionProps) => ReactElement
   OpenInBrowser: (props: RuntimeOpenInBrowserActionProps) => ReactElement
   SubmitForm: (props: RuntimeActionProps) => ReactElement
   Style: {
@@ -59,6 +68,19 @@ function ActionPanelSubmenu(props: RuntimeActionPanelSectionProps): ReactElement
 function ActionRoot(props: RuntimeActionProps): ReactElement {
   const { icon, ...hostProps } = props
   return createElement(ExtensionHostElement.Action, hostProps, createVisualElement("icon", icon))
+}
+
+function CopyToClipboardAction(props: RuntimeCopyToClipboardActionProps): ReactElement {
+  const { icon, title = "Copy to Clipboard", ...hostProps } = props
+  return createElement(
+    ExtensionHostElement.Action,
+    {
+      actionKind: ExtensionHostActionKind.CopyToClipboard,
+      ...hostProps,
+      title
+    },
+    createVisualElement("icon", icon)
+  )
 }
 
 function OpenInBrowserAction(props: RuntimeOpenInBrowserActionProps): ReactElement {
@@ -88,6 +110,7 @@ export const ActionPanel: RuntimeActionPanelComponent = Object.assign(ActionPane
 })
 
 export const Action: RuntimeActionComponent = Object.assign(ActionRoot, {
+  CopyToClipboard: CopyToClipboardAction,
   OpenInBrowser: OpenInBrowserAction,
   SubmitForm: ActionRoot,
   Style: {

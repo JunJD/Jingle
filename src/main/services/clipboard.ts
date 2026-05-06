@@ -165,3 +165,7 @@ export function readClipboardContext(): ClipboardContext {
 
   return EMPTY_CLIPBOARD_CONTEXT
 }
+
+export function writeClipboardText(text: string): void {
+  clipboard.writeText(text)
+}

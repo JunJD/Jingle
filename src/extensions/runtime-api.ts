@@ -10,5 +10,6 @@ export {
   useCommandSeedQuery,
   useExtensionStorageState,
   useNativeCommandPreferences,
-  useNativeExtensionNavigation
+  useNativeExtensionNavigation,
+  writeClipboardText
 } from "../extension-runtime/sdk"

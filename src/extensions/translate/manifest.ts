@@ -2,7 +2,7 @@ import { defineNativeExtensionManifest } from "@shared/native-extensions"
 import { TRANSLATE_EXTENSION_ID } from "./src/contracts"
 
 export const translateManifest = defineNativeExtensionManifest({
-  capabilities: ["navigation", "rpc", "surface"],
+  capabilities: ["clipboard", "navigation", "rpc", "surface"],
   commands: [
     {
       description: "Translate selected text or free-form input.",
@@ -36,6 +36,7 @@ export const translateManifest = defineNativeExtensionManifest({
           type: "model"
         }
       ],
+      runtime: {},
       title: "Quick Translate & Copy"
     }
   ],

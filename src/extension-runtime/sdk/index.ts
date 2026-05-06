@@ -1,4 +1,5 @@
 export { Action, ActionPanel } from "./actions"
+export { writeClipboardText } from "./clipboard"
 export { createNativeExtensionClient, defineNativeExtensionClientMethod } from "./client"
 export {
   createExtensionRuntimeNavigation,
@@ -34,6 +35,7 @@ export type {
 } from "./form"
 export { openNativeExtensionSettings } from "./settings"
 export type {
+  RuntimeCopyToClipboardActionProps,
   RuntimeActionPanelProps,
   RuntimeActionPanelSectionProps,
   RuntimeActionProps,

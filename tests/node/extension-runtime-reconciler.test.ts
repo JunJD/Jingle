@@ -406,6 +406,66 @@ test("runtime reconciler dispatches OpenInBrowser actions through host requests"
   ])
 })
 
+test("runtime reconciler dispatches CopyToClipboard actions through host requests", async () => {
+  const hostRequests: ExtensionHostRequest[] = []
+  const renderer = createTestRenderer({
+    onHostRequest: (request) => {
+      hostRequests.push(request)
+      return {
+        id: request.id,
+        ok: true,
+        result: null
+      }
+    }
+  })
+
+  renderer.render(
+    createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.CopyToClipboard, {
+            content: "Runtime clipboard text",
+            title: "Copy Text"
+          })
+        ),
+        id: "item",
+        title: "Item"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const action = snapshot.sections[0]?.items[0]?.actions[0]
+  assert.ok(action)
+  assert.equal(action.title, "Copy Text")
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  assert.deepEqual(hostRequests, [
+    {
+      capability: "clipboard",
+      id: "host-request-0",
+      method: "write-text",
+      payload: {
+        text: "Runtime clipboard text"
+      }
+    }
+  ])
+})
+
 test("runtime reconciler dispatches list query changes to List handlers", async () => {
   function SearchList() {
     const [query, setQuery] = useState("")
