@@ -8,6 +8,16 @@ import type {
 } from "@shared/native-extensions"
 import type { SettingsWindowTarget } from "@shared/settings-window"
 import { getSettingsCopy } from "./copy"
+import {
+  inputClassName,
+  settingsCardClassName,
+  settingsInsetCardClassName,
+  SettingsField,
+  SettingsPasswordInput,
+  SettingsSelect,
+  SettingsSwitch,
+  SettingsTextInput
+} from "./settings-ui"
 
 function formatCommandMode(mode: string): string {
   if (mode === "no-view") {
@@ -27,50 +37,39 @@ function PreferenceField(props: {
   modelOptions: Array<{ id: string; label: string }>
   onChange: (nextValue: unknown) => void
   preference: NativeExtensionPreferenceSchema
+  hideSecretLabel: string
+  showSecretLabel: string
   useEnvironmentFallbackLabel: string
   value: unknown
 }): React.JSX.Element {
   const {
     disabledLabel,
     enabledLabel,
+    hideSecretLabel,
     modelOptions,
     onChange,
     preference,
+    showSecretLabel,
     useEnvironmentFallbackLabel,
     value
   } = props
-  const inputClassName =
-    "h-[var(--ow-control-h-md)] w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus:border-[var(--ring)]"
+  const fieldLabel = preference.title || preference.label || preference.name
 
   return (
-    <div className="block space-y-[var(--ow-space-1-5)]">
-      <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-meta)] font-medium text-foreground">
-        <span>{preference.title || preference.label || preference.name}</span>
-        {preference.required ? (
-          <span className="[font-size:var(--ow-font-meta)] text-muted-foreground">*</span>
-        ) : null}
-      </div>
-      {preference.description ? (
-        <div className="[font-size:var(--ow-font-meta)] leading-4 text-muted-foreground">
-          {preference.description}
-        </div>
-      ) : null}
+    <SettingsField
+      label={fieldLabel}
+      description={preference.description}
+      required={preference.required}
+    >
       {preference.type === "checkbox" ? (
-        <label className="flex h-[var(--ow-control-h-md)] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] [font-size:var(--ow-font-control)] text-foreground">
-          <span className="text-muted-foreground">
+        <div className="flex min-h-[var(--ow-settings-control-h)] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)] [font-size:var(--ow-settings-control-font)] text-foreground">
+          <span className="min-w-0 truncate text-muted-foreground">
             {value === true ? enabledLabel : disabledLabel}
           </span>
-          <input
-            type="checkbox"
-            checked={value === true}
-            onChange={(event) => {
-              onChange(event.target.checked)
-            }}
-          />
-        </label>
+          <SettingsSwitch checked={value === true} label={fieldLabel} onCheckedChange={onChange} />
+        </div>
       ) : preference.type === "dropdown" ? (
-        <select
-          className={inputClassName}
+        <SettingsSelect
           value={String(value ?? "")}
           onChange={(event) => {
             onChange(event.target.value)
@@ -81,10 +80,9 @@ function PreferenceField(props: {
               {entry.title ?? entry.value ?? ""}
             </option>
           ))}
-        </select>
+        </SettingsSelect>
       ) : preference.type === "model" ? (
-        <select
-          className={inputClassName}
+        <SettingsSelect
           value={String(value ?? "")}
           onChange={(event) => {
             onChange(event.target.value || null)
@@ -96,11 +94,21 @@ function PreferenceField(props: {
               {model.label}
             </option>
           ))}
-        </select>
+        </SettingsSelect>
+      ) : preference.type === "password" ? (
+        <SettingsPasswordInput
+          value={String(value ?? "")}
+          placeholder={preference.placeholder}
+          showLabel={showSecretLabel}
+          hideLabel={hideSecretLabel}
+          onChange={(event) => {
+            onChange(event.target.value)
+          }}
+          spellCheck={false}
+        />
       ) : (
-        <input
-          className={inputClassName}
-          type={preference.type === "password" ? "password" : "text"}
+        <SettingsTextInput
+          type="text"
           value={String(value ?? "")}
           placeholder={preference.placeholder}
           onChange={(event) => {
@@ -109,7 +117,7 @@ function PreferenceField(props: {
           spellCheck={false}
         />
       )}
-    </div>
+    </SettingsField>
   )
 }
 
@@ -120,6 +128,8 @@ function PreferenceSection(props: {
   modelOptions: Array<{ id: string; label: string }>
   onChange: (preferenceName: string, nextValue: unknown) => void
   preferences: NativeExtensionPreferenceSchema[]
+  hideSecretLabel: string
+  showSecretLabel: string
   title?: string
   useEnvironmentFallbackLabel: string
   values: Record<string, unknown>
@@ -128,9 +138,11 @@ function PreferenceSection(props: {
     disabledLabel,
     emptyLabel,
     enabledLabel,
+    hideSecretLabel,
     modelOptions,
     onChange,
     preferences,
+    showSecretLabel,
     title,
     useEnvironmentFallbackLabel,
     values
@@ -144,21 +156,25 @@ function PreferenceSection(props: {
         </div>
       ) : null}
       {preferences.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-background px-[var(--ow-space-3)] py-[var(--ow-space-3)] [font-size:var(--ow-font-body)] text-muted-foreground">
+        <div
+          className={`${settingsInsetCardClassName} border-dashed [font-size:var(--ow-font-body)] text-muted-foreground`}
+        >
           {emptyLabel}
         </div>
       ) : (
-        <div className="space-y-[var(--ow-space-4)]">
+        <div className="space-y-[var(--ow-space-3)]">
           {preferences.map((preference) => (
             <PreferenceField
               key={preference.name}
               disabledLabel={disabledLabel}
               enabledLabel={enabledLabel}
+              hideSecretLabel={hideSecretLabel}
               modelOptions={modelOptions}
               onChange={(nextValue) => {
                 onChange(preference.name, nextValue)
               }}
               preference={preference}
+              showSecretLabel={showSecretLabel}
               useEnvironmentFallbackLabel={useEnvironmentFallbackLabel}
               value={values[preference.name]}
             />
@@ -222,10 +238,12 @@ function CommandCard(props: {
   disabledLabel: string
   emptyLabel: string
   enabledLabel: string
+  hideSecretLabel: string
   labelMode: string
   modelOptions: Array<{ id: string; label: string }>
   onChange: (preferenceName: string, nextValue: unknown) => void
   preferences: NativeExtensionPreferenceSchema[]
+  showSecretLabel: string
   title: string
   useEnvironmentFallbackLabel: string
   values: Record<string, unknown>
@@ -239,11 +257,13 @@ function CommandCard(props: {
     disabledLabel,
     emptyLabel,
     enabledLabel,
+    hideSecretLabel,
     labelMode,
     modelOptions,
     mode,
     onChange,
     preferences,
+    showSecretLabel,
     title,
     useEnvironmentFallbackLabel,
     values
@@ -276,9 +296,11 @@ function CommandCard(props: {
           disabledLabel={disabledLabel}
           emptyLabel={emptyLabel}
           enabledLabel={enabledLabel}
+          hideSecretLabel={hideSecretLabel}
           modelOptions={modelOptions}
           onChange={onChange}
           preferences={preferences}
+          showSecretLabel={showSecretLabel}
           useEnvironmentFallbackLabel={useEnvironmentFallbackLabel}
           values={values}
         />
@@ -487,7 +509,9 @@ export function ExtensionsTab(props: {
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[var(--ow-settings-sidebar-w)_minmax(0,1fr)] gap-[var(--ow-gap-lg)]">
-      <aside className="flex min-h-0 flex-col gap-[var(--ow-gap-md)] overflow-hidden rounded-[var(--ow-settings-card-radius)] border border-border/80 bg-background-secondary/55 p-[var(--ow-settings-card-y)] shadow-[var(--ow-settings-card-shadow)]">
+      <aside
+        className={`${settingsCardClassName} flex min-h-0 flex-col gap-[var(--ow-gap-md)] p-[var(--ow-settings-card-y)]`}
+      >
         <div className="space-y-[var(--ow-space-1)]">
           <div className="[font-size:var(--ow-settings-title-size)] font-semibold text-foreground">
             {copy.extensions.title}
@@ -500,7 +524,7 @@ export function ExtensionsTab(props: {
         <div className="relative">
           <Search className="pointer-events-none absolute left-[var(--ow-space-3)] top-1/2 h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] -translate-y-1/2 text-muted-foreground" />
           <input
-            className="min-h-[var(--ow-settings-control-h)] w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated py-[var(--ow-space-1)] pl-[var(--ow-control-icon-inset)] pr-[var(--ow-space-3)] [font-size:var(--ow-settings-control-font)] text-foreground outline-none transition focus:border-[var(--ring)]"
+            className={`${inputClassName} pl-[var(--ow-control-icon-inset)]`}
             placeholder={copy.extensions.installedTitle}
             value={search}
             onChange={(event) => {
@@ -511,7 +535,9 @@ export function ExtensionsTab(props: {
 
         <div className="min-h-0 flex-1 space-y-[var(--ow-space-2)] overflow-y-auto pr-[var(--ow-space-1)]">
           {filteredSchemas.length === 0 ? (
-            <div className="rounded-[var(--ow-settings-card-radius)] border border-dashed border-border bg-background px-[var(--ow-space-3)] py-[var(--ow-space-3)] [font-size:var(--ow-font-body)] text-muted-foreground">
+            <div
+              className={`${settingsInsetCardClassName} border-dashed [font-size:var(--ow-font-body)] text-muted-foreground`}
+            >
               {copy.extensions.empty}
             </div>
           ) : (
@@ -555,7 +581,9 @@ export function ExtensionsTab(props: {
       <section className="min-h-0 overflow-y-auto pr-[var(--ow-space-1)]">
         {selectedSchema ? (
           <div className="space-y-[var(--ow-space-4)]">
-            <div className="rounded-[var(--ow-settings-card-radius)] border border-border/80 bg-background-secondary/55 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] shadow-[var(--ow-settings-card-shadow)]">
+            <div
+              className={`${settingsCardClassName} px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]`}
+            >
               <div className="space-y-[var(--ow-space-1)]">
                 <div className="flex items-center gap-[var(--ow-gap-sm)]">
                   <Settings2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
@@ -571,11 +599,14 @@ export function ExtensionsTab(props: {
 
             <div className="space-y-[var(--ow-space-3)]">
               {selectedSchema.preferences.length > 0 ? (
-                <div className="rounded-[var(--ow-settings-card-radius)] border border-border/80 bg-background-secondary/55 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] shadow-[var(--ow-settings-card-shadow)]">
+                <div
+                  className={`${settingsCardClassName} px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]`}
+                >
                   <PreferenceSection
                     disabledLabel={copy.extensions.disabled}
                     emptyLabel={copy.extensions.noPreferences}
                     enabledLabel={copy.extensions.enabled}
+                    hideSecretLabel={copy.common.hideSecret}
                     modelOptions={modelOptions}
                     onChange={(preferenceName, nextValue) => {
                       void updateExtensionPreference(
@@ -586,6 +617,7 @@ export function ExtensionsTab(props: {
                       )
                     }}
                     preferences={selectedSchema.preferences}
+                    showSecretLabel={copy.common.showSecret}
                     useEnvironmentFallbackLabel={copy.general.useEnvironmentFallback}
                     values={extensionRecords[selectedSchema.extName] ?? {}}
                   />
@@ -601,6 +633,7 @@ export function ExtensionsTab(props: {
                   disabledLabel={copy.extensions.disabled}
                   emptyLabel={copy.extensions.noPreferences}
                   enabledLabel={copy.extensions.enabled}
+                  hideSecretLabel={copy.common.hideSecret}
                   labelMode={copy.extensions.mode}
                   mode={command.mode}
                   modelOptions={modelOptions}
@@ -614,6 +647,7 @@ export function ExtensionsTab(props: {
                     )
                   }}
                   preferences={command.preferences}
+                  showSecretLabel={copy.common.showSecret}
                   title={command.title}
                   useEnvironmentFallbackLabel={copy.general.useEnvironmentFallback}
                   values={commandRecords[`${selectedSchema.extName}:${command.name}`] ?? {}}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Eye, EyeOff, Loader2, Trash2 } from "lucide-react"
+import { Loader2, Trash2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -8,9 +8,10 @@ import {
   DialogTitle
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { getIpcErrorDisplayMessage } from "@/lib/ipc-errors"
+import { getSettingsCopy } from "@/settings/copy"
+import { SettingsField, SettingsPasswordInput, SettingsTextInput } from "@/settings/settings-ui"
 import type { Provider } from "@/types"
 import { useI18n } from "@/lib/i18n"
 import type { AppLocale } from "@shared/i18n"
@@ -36,8 +37,8 @@ export function ApiKeyDialog({
   provider
 }: ApiKeyDialogProps): React.JSX.Element | null {
   const { copy, locale } = useI18n()
+  const settingsCopy = getSettingsCopy(locale)
   const [credentials, setCredentials] = useState<Record<string, string>>({})
-  const [visibleCredentials, setVisibleCredentials] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [hasExistingKey, setHasExistingKey] = useState(false)
@@ -46,7 +47,6 @@ export function ApiKeyDialog({
   const setProviderCredentials = useHistoryShellStore((state) => state.setProviderCredentials)
   const deleteProviderCredentials = useHistoryShellStore((state) => state.deleteProviderCredentials)
 
-  // Check if there's an existing key when dialog opens
   useEffect(() => {
     if (open && provider) {
       const credentialValues = Object.fromEntries(
@@ -57,7 +57,6 @@ export function ApiKeyDialog({
       )
       setHasExistingKey(provider.customConfiguration.status === "active")
       setCredentials(credentialValues)
-      setVisibleCredentials({})
       setErrorText(null)
     }
   }, [open, provider])
@@ -124,19 +123,14 @@ export function ApiKeyDialog({
           <div className="space-y-[var(--ow-space-3)]">
             {credentialSchemas.map((schema, index) => {
               const isSecret = schema.type === "secret-input"
-              const visible = visibleCredentials[schema.variable] === true
               const placeholder = schema.placeholder
                 ? getLocalizedText(schema.placeholder, locale)
                 : undefined
 
               return (
-                <label key={schema.variable} className="block space-y-[var(--ow-space-1-5)]">
-                  <span className="[font-size:var(--ow-font-body)] font-medium text-foreground">
-                    {getLocalizedText(schema.label, locale)}
-                  </span>
-                  <div className="relative">
-                    <Input
-                      type={isSecret && !visible ? "password" : "text"}
+                <SettingsField key={schema.variable} label={getLocalizedText(schema.label, locale)}>
+                  {isSecret ? (
+                    <SettingsPasswordInput
                       value={credentials[schema.variable] ?? ""}
                       onChange={(event) =>
                         setCredentials((currentCredentials) => ({
@@ -145,29 +139,25 @@ export function ApiKeyDialog({
                         }))
                       }
                       placeholder={hasExistingKey ? "••••••••••••••••" : placeholder}
-                      className={isSecret ? "pr-[var(--ow-control-icon-inset)]" : undefined}
+                      showLabel={settingsCopy.common.showSecret}
+                      hideLabel={settingsCopy.common.hideSecret}
                       autoFocus={index === 0}
                     />
-                    {isSecret && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setVisibleCredentials((current) => ({
-                            ...current,
-                            [schema.variable]: !visible
-                          }))
-                        }
-                        className="absolute right-2 top-[var(--ow-space-1)]/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        {visible ? (
-                          <EyeOff className="size-[var(--ow-icon-action)]" />
-                        ) : (
-                          <Eye className="size-[var(--ow-icon-action)]" />
-                        )}
-                      </button>
-                    )}
-                  </div>
-                </label>
+                  ) : (
+                    <SettingsTextInput
+                      type="text"
+                      value={credentials[schema.variable] ?? ""}
+                      onChange={(event) =>
+                        setCredentials((currentCredentials) => ({
+                          ...currentCredentials,
+                          [schema.variable]: event.target.value
+                        }))
+                      }
+                      placeholder={hasExistingKey ? "••••••••••••••••" : placeholder}
+                      autoFocus={index === 0}
+                    />
+                  )}
+                </SettingsField>
               )
             })}
             <p className="[font-size:var(--ow-font-meta)] text-muted-foreground">

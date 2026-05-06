@@ -19,6 +19,8 @@ interface SettingsCopy {
     remove: string
     reveal: string
     save: string
+    hideSecret: string
+    showSecret: string
   }
   general: {
     desktopAutomationAllowlistDescription: string
@@ -160,7 +162,9 @@ const zhCN: SettingsCopy = {
     none: "未设置",
     remove: "移除",
     reveal: "在 Finder 中显示",
-    save: "保存"
+    save: "保存",
+    hideSecret: "隐藏密钥",
+    showSecret: "显示密钥"
   },
   general: {
     desktopAutomationAllowlistDescription:
@@ -303,7 +307,9 @@ const enUS: SettingsCopy = {
     none: "Not set",
     remove: "Remove",
     reveal: "Reveal in Finder",
-    save: "Save"
+    save: "Save",
+    hideSecret: "Hide secret",
+    showSecret: "Show secret"
   },
   general: {
     desktopAutomationAllowlistDescription:

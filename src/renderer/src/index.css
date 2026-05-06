@@ -330,6 +330,11 @@ body[data-window="launcher"],
   --ow-settings-card-shadow: 0 10px 24px rgba(32, 38, 45, 0.04);
   --ow-settings-tab-x: 12px;
   --ow-settings-tab-y: 5px;
+  --ow-settings-switch-h: 18px;
+  --ow-settings-switch-w: 32px;
+  --ow-settings-switch-pad: 2px;
+  --ow-settings-switch-thumb: 12px;
+  --ow-settings-switch-travel: 14px;
   --ow-model-badge-h: 18px;
   --ow-model-badge-x: 5px;
   --ow-model-badge-radius: 5px;
