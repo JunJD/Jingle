@@ -10,13 +10,10 @@ import type { AgentConfig } from "../types"
 import type { ExtensionToolApprovalPolicyProvider } from "../extension-tools/permission"
 import {
   createToolPermissionRuntime,
-  resolveFileMutationChangeType,
   type ToolPermissionRuntime
 } from "./tool-permission-runtime"
 
 const TOOL_APPROVAL_ALLOWED_DECISIONS = getDefaultHitlAllowedDecisions()
-
-export { resolveFileMutationChangeType }
 
 type ToolApprovalDecisionType = (typeof TOOL_APPROVAL_ALLOWED_DECISIONS)[number]
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { resolveFileMutationChangeType } from "../../../src/main/agent/tool-approval-middleware"
+import { resolveFileMutationChangeType } from "../../../src/main/agent/tool-permission-runtime"
 import { extractHitlRequestFromValuesState } from "../../../src/main/agent/runtime-state"
 import type { HITLRequest } from "../../../src/shared/hitl"
 import {
