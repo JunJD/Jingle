@@ -32,42 +32,58 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
   const [items, setItems] = useState<GitHubNotification[]>([])
   const [isConfigured, setIsConfigured] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true)
-    return listUnreadGitHubNotifications()
-      .then((response) => {
-        setIsConfigured(response.configured)
-        setItems(response.notifications)
-      })
-      .finally(() => {
-        setIsLoading(false)
-      })
-  }, [commandPreferences])
+    setRefreshError(null)
 
-  useEffect(() => {
-    let cancelled = false
-    const run = async (): Promise<void> => {
-      setIsLoading(true)
-      try {
-        const response = await listUnreadGitHubNotifications()
-        if (!cancelled) {
-          setIsConfigured(response.configured)
-          setItems(response.notifications)
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false)
-        }
+    try {
+      const response = await listUnreadGitHubNotifications()
+      if (signal?.aborted) {
+        return
+      }
+
+      setIsConfigured(response.configured)
+      setItems(response.notifications)
+    } catch (error) {
+      if (signal?.aborted) {
+        return
+      }
+
+      console.error("[GitHub] Failed to refresh menu bar notifications", error)
+      setRefreshError(
+        error instanceof Error ? error.message : "Failed to refresh GitHub notifications"
+      )
+    } finally {
+      if (!signal?.aborted) {
+        setIsLoading(false)
       }
     }
+  }, [])
 
-    void run()
+  useEffect(() => {
+    const controller = new AbortController()
+    void refresh(controller.signal)
 
     return () => {
-      cancelled = true
+      controller.abort()
     }
-  }, [])
+  }, [refresh])
+
+  useEffect(() => {
+    return window.api.nativeExtensions.onPreferencesChanged((event) => {
+      if (event.extensionName !== "github") {
+        return
+      }
+
+      if (event.scope === "command" && event.commandName !== "unread-notifications") {
+        return
+      }
+
+      void refresh()
+    })
+  }, [refresh])
 
   useBackgroundRefresh(refresh, refreshIntervalSeconds * 1000)
 
@@ -103,7 +119,15 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
       tooltip="Unread GitHub notifications"
     >
       <MenuBarExtra.Section title="Unread Notifications">
-        {items.length > 0 ? (
+        {refreshError ? (
+          <MenuBarExtra.Item
+            disabled
+            iconName="refresh"
+            subtitle={refreshError}
+            title="Refresh failed"
+            onAction={() => {}}
+          />
+        ) : items.length > 0 ? (
           items.map((notification) => (
             <MenuBarExtra.Item
               key={notification.id}
@@ -155,9 +179,22 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
           title={items.length > 0 ? "Mark All as Read" : "Refresh"}
           onAction={() => {
             if (items.length > 0) {
-              void markAllUnreadGitHubNotificationsAsRead().then(() => {
-                setItems([])
-              })
+              void markAllUnreadGitHubNotificationsAsRead()
+                .then(() => {
+                  setRefreshError(null)
+                  setItems([])
+                })
+                .catch((error) => {
+                  console.error(
+                    "[GitHub] Failed to mark all notifications as read from menu bar",
+                    error
+                  )
+                  setRefreshError(
+                    error instanceof Error
+                      ? error.message
+                      : "Failed to mark GitHub notifications as read"
+                  )
+                })
               return
             }
 
