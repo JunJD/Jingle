@@ -169,8 +169,10 @@ export interface Message {
 }
 
 export interface ContentBlock {
-  type: "text" | "image" | "image_url" | "file" | "tool_use" | "tool_result"
+  type: "text" | "reasoning" | "image" | "image_url" | "file" | "tool_use" | "tool_result"
   text?: string
+  reasoning?: string
+  signature?: string
   tool_use_id?: string
   name?: string
   input?: unknown

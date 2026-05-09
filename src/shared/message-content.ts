@@ -39,6 +39,11 @@ export interface AgentInvokeMessage {
   id: string
 }
 
+export interface AssistantMessageContentSource {
+  additional_kwargs?: unknown
+  response_metadata?: unknown
+}
+
 function normalizeComposerMessageRef(value: unknown): ComposerMessageRef | null {
   if (!value || typeof value !== "object") {
     return null
@@ -152,8 +157,95 @@ function isContentBlockLike(value: unknown): value is ContentBlock {
   )
 }
 
-export interface DisplayAssistantMessageContentOptions {
+export interface DisplayAssistantMessageContentOptions extends AssistantMessageContentSource {
   toolNames?: readonly string[]
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function readStringProperty(value: Record<string, unknown>, key: string): string | null {
+  const property = value[key]
+  return typeof property === "string" ? property : null
+}
+
+function extractReasoningPayloadText(value: unknown): string {
+  if (typeof value === "string") {
+    return value
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(extractReasoningPayloadText).join("")
+  }
+
+  if (!isRecord(value)) {
+    return ""
+  }
+
+  const direct =
+    readStringProperty(value, "reasoning") ??
+    readStringProperty(value, "reasoning_content") ??
+    readStringProperty(value, "thinking") ??
+    readStringProperty(value, "text") ??
+    readStringProperty(value, "content")
+
+  if (direct !== null) {
+    return direct
+  }
+
+  return [value.summary, value.content].map(extractReasoningPayloadText).join("")
+}
+
+function extractAssistantReasoningText(source: AssistantMessageContentSource): string {
+  const additionalKwargs = isRecord(source.additional_kwargs) ? source.additional_kwargs : null
+  const responseMetadata = isRecord(source.response_metadata) ? source.response_metadata : null
+
+  return (
+    extractReasoningPayloadText(additionalKwargs?.reasoning_content) ||
+    extractReasoningPayloadText(additionalKwargs?.reasoning) ||
+    extractReasoningPayloadText(additionalKwargs?.thinking) ||
+    extractReasoningPayloadText(responseMetadata?.reasoning_content) ||
+    extractReasoningPayloadText(responseMetadata?.reasoning) ||
+    extractReasoningPayloadText(responseMetadata?.thinking)
+  )
+}
+
+function normalizeDisplayContentBlock(value: unknown): ContentBlock | null {
+  if (!isContentBlockLike(value)) {
+    return null
+  }
+
+  const block = value as ContentBlock & Record<string, unknown>
+  const blockType = block.type as string
+
+  if (blockType === "reasoning") {
+    const reasoning =
+      readStringProperty(block, "reasoning") ??
+      readStringProperty(block, "text") ??
+      readStringProperty(block, "content")
+    return reasoning !== null ? { reasoning, type: "reasoning" } : null
+  }
+
+  if (blockType === "thinking" || blockType === "thinking_delta") {
+    const reasoning =
+      readStringProperty(block, "thinking") ??
+      readStringProperty(block, "text") ??
+      readStringProperty(block, "content")
+    return reasoning !== null
+      ? {
+          reasoning,
+          ...(typeof block.signature === "string" ? { signature: block.signature } : {}),
+          type: "reasoning"
+        }
+      : null
+  }
+
+  if (blockType === "redacted_thinking" || blockType === "signature_delta") {
+    return null
+  }
+
+  return block
 }
 
 export function stripSerializedToolCallMarkup(
@@ -192,7 +284,7 @@ export function resolveImageBlockUrl(
 }
 
 export function toDisplayMessageContent(
-  content: string | ContentBlock[] | AgentMessageContent | undefined
+  content: string | unknown[] | AgentMessageContent | undefined
 ): string | ContentBlock[] {
   if (typeof content === "string") {
     return content
@@ -202,22 +294,45 @@ export function toDisplayMessageContent(
     return ""
   }
 
-  return content.filter(isContentBlockLike)
+  return content.flatMap((block) => {
+    const normalized = normalizeDisplayContentBlock(block)
+    return normalized ? [normalized] : []
+  })
 }
 
 export function toDisplayAssistantMessageContent(
-  content: string | ContentBlock[] | AgentMessageContent | undefined,
+  content: string | unknown[] | AgentMessageContent | undefined,
   options: DisplayAssistantMessageContentOptions = {}
 ): string | ContentBlock[] {
   const displayContent = toDisplayMessageContent(content)
+  const reasoning = extractAssistantReasoningText(options)
 
   if (typeof displayContent === "string") {
-    return stripSerializedToolCallMarkup(displayContent, options)
+    const text = stripSerializedToolCallMarkup(displayContent, options)
+    if (!reasoning.trim()) {
+      return text
+    }
+
+    const blocks: ContentBlock[] = [{ reasoning, type: "reasoning" }]
+    if (text.trim()) {
+      blocks.push({ text, type: "text" })
+    }
+    return blocks
   }
 
-  return displayContent.flatMap((block) => {
+  const withReasoning =
+    reasoning.trim() &&
+    !displayContent.some((block) => block.type === "reasoning" && block.reasoning?.trim())
+      ? [{ reasoning, type: "reasoning" } satisfies ContentBlock, ...displayContent]
+      : displayContent
+
+  return withReasoning.flatMap((block) => {
     if (block.type === "image" || block.type === "image_url" || block.type === "file") {
       return [block]
+    }
+
+    if (block.type === "reasoning") {
+      return block.reasoning?.trim() ? [block] : []
     }
 
     const nextBlock = { ...block }
@@ -251,6 +366,10 @@ export function extractMessageText(
   return content
     .map((block) => {
       if (typeof block !== "object" || block === null || !("type" in block)) {
+        return ""
+      }
+
+      if (block.type === "reasoning") {
         return ""
       }
 

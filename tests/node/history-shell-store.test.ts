@@ -88,6 +88,7 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
       getDefault: async () => "openai:gpt-4o",
       setDefault: async () => undefined,
       setCredentials: async () => undefined,
+      getCredentials: async () => null,
       deleteCredentials: async () => undefined
     },
     ...overrides

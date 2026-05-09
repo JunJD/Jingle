@@ -23,7 +23,10 @@ import { WorkspaceService } from "../workspace/service"
 import { generateTitle } from "../services/title-generator"
 import { syncMessageSearchIndexFromSnapshot } from "../db/message-search"
 import { formatDefaultThreadTitle } from "@shared/i18n"
-import { toDisplayUserMessageContent } from "@shared/message-content"
+import {
+  toDisplayAssistantMessageContent,
+  toDisplayUserMessageContent
+} from "@shared/message-content"
 import type {
   HITLRequest,
   Message,
@@ -88,7 +91,14 @@ function mapCheckpointMessagesToThreadMessages(
     return {
       id: row.message_id,
       role: row.role as Message["role"],
-      content: row.role === "user" ? toDisplayUserMessageContent(content, metadata) : content,
+      content:
+        row.role === "user"
+          ? toDisplayUserMessageContent(content, metadata)
+          : row.role === "assistant"
+            ? toDisplayAssistantMessageContent(content, {
+                toolNames: tool_calls?.map((toolCall) => toolCall.name)
+              })
+            : content,
       tool_calls,
       metadata,
       ...(row.tool_call_id ? { tool_call_id: row.tool_call_id } : {}),

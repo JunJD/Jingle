@@ -29,6 +29,9 @@ export const modelsApi = {
   setCredentials: (provider: ProviderId, credentials: Record<string, string>): Promise<void> => {
     return invokeIpc("models:setCredentials", { credentials, provider })
   },
+  getCredentials: (provider: ProviderId): Promise<Record<string, string> | null> => {
+    return invokeIpc("models:getCredentials", provider)
+  },
   deleteCredentials: (provider: ProviderId): Promise<void> => {
     return invokeIpc("models:deleteCredentials", provider)
   }

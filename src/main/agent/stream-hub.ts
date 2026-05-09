@@ -59,7 +59,7 @@ interface SerializedMessageChunk {
         id?: string
       }>
     }
-    content?: string | ContentBlock[] | AgentMessageContent
+    content?: string | unknown[] | AgentMessageContent
     id?: string
     name?: string
     response_metadata?: {
@@ -146,6 +146,77 @@ function getToolCallNames(toolCalls: readonly { name?: string }[] | undefined): 
         .filter((name): name is string => typeof name === "string" && name.length > 0)
     )
   )
+}
+
+function getContentBlockText(block: ContentBlock): string {
+  return block.text ?? block.content ?? ""
+}
+
+function getContentBlockReasoning(block: ContentBlock): string {
+  return block.reasoning ?? block.text ?? block.content ?? ""
+}
+
+function toContentBlocks(content: Message["content"]): ContentBlock[] {
+  if (typeof content === "string") {
+    return content.length > 0 ? [{ text: content, type: "text" }] : []
+  }
+
+  return content
+}
+
+function appendContentBlocks(existing: ContentBlock[], incoming: ContentBlock[]): ContentBlock[] {
+  const next = [...existing]
+
+  for (const block of incoming) {
+    const lastIndex = next.length - 1
+    const last = lastIndex >= 0 ? next[lastIndex] : null
+
+    if (block.type === "text") {
+      const text = getContentBlockText(block)
+      if (text.length === 0) {
+        continue
+      }
+
+      if (last?.type === "text") {
+        next[lastIndex] = {
+          ...last,
+          text: `${getContentBlockText(last)}${text}`
+        }
+        continue
+      }
+    }
+
+    if (block.type === "reasoning") {
+      const reasoning = getContentBlockReasoning(block)
+      if (reasoning.length === 0) {
+        continue
+      }
+
+      if (last?.type === "reasoning") {
+        next[lastIndex] = {
+          ...last,
+          ...(block.signature ? { signature: block.signature } : {}),
+          reasoning: `${getContentBlockReasoning(last)}${reasoning}`
+        }
+        continue
+      }
+    }
+
+    next.push(block)
+  }
+
+  return next
+}
+
+function appendAssistantMessageContent(
+  existing: Message["content"],
+  incoming: Message["content"]
+): Message["content"] {
+  if (typeof existing === "string" && typeof incoming === "string") {
+    return `${existing}${incoming}`
+  }
+
+  return appendContentBlocks(toContentBlocks(existing), toContentBlocks(incoming))
 }
 
 function toAGUIMessage(message: Message): AGUIMessage {
@@ -294,7 +365,7 @@ class ThreadProjectionProjector {
       const isAIMessage = className.includes("AI") || className.includes("AIMessageChunk")
 
       if (isAIMessage) {
-        const content = this.extractAssistantContent(kwargs.content, getToolCallNames(kwargs.tool_calls))
+        const content = this.extractAssistantContent(kwargs)
         const messageId = kwargs.id || this.currentMessageId || crypto.randomUUID()
         this.currentMessageId = messageId
 
@@ -488,16 +559,20 @@ class ThreadProjectionProjector {
   }
 
   private extractContent(
-    content: string | ContentBlock[] | AgentMessageContent | undefined
+    content: string | unknown[] | AgentMessageContent | undefined
   ): string | ContentBlock[] {
     return toDisplayMessageContent(content)
   }
 
   private extractAssistantContent(
-    content: string | ContentBlock[] | AgentMessageContent | undefined,
-    toolNames: readonly string[] = []
+    kwargs: SerializedMessageChunk["kwargs"],
+    toolNames: readonly string[] = getToolCallNames(kwargs?.tool_calls)
   ): string | ContentBlock[] {
-    return toDisplayAssistantMessageContent(content, { toolNames })
+    return toDisplayAssistantMessageContent(kwargs?.content, {
+      additional_kwargs: kwargs?.additional_kwargs,
+      response_metadata: kwargs?.response_metadata,
+      toolNames
+    })
   }
 
   private extractPendingApproval(
@@ -541,9 +616,9 @@ class ThreadProjectionProjector {
       })
       const content =
         role === "user"
-          ? toDisplayUserMessageContent(kwargs.content, metadata)
+          ? toDisplayUserMessageContent(this.extractContent(kwargs.content), metadata)
           : role === "assistant"
-            ? this.extractAssistantContent(kwargs.content, getToolCallNames(kwargs.tool_calls))
+            ? this.extractAssistantContent(kwargs)
             : this.extractContent(kwargs.content)
       const messageId = kwargs.id || crypto.randomUUID()
 
@@ -666,7 +741,9 @@ class ThreadProjectionProjector {
 
       return {
         ...message,
-        content: this.extractAssistantContent(message.content, getToolCallNames(message.tool_calls))
+        content: toDisplayAssistantMessageContent(message.content, {
+          toolNames: getToolCallNames(message.tool_calls)
+        })
       }
     })
   }
@@ -747,13 +824,11 @@ class ThreadProjectionProjector {
     if (
       options.appendAssistantText &&
       existingMessage.role === "assistant" &&
-      message.role === "assistant" &&
-      typeof existingMessage.content === "string" &&
-      typeof message.content === "string"
+      message.role === "assistant"
     ) {
       nextMessage = {
         ...message,
-        content: `${existingMessage.content}${message.content}`,
+        content: appendAssistantMessageContent(existingMessage.content, message.content),
         created_at: existingMessage.created_at
       }
     }

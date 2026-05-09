@@ -72,6 +72,10 @@ function hasRenderableAssistantContent(content: ThreadMessage["content"]): boole
   }
 
   return content.some((block) => {
+    if (block.type === "reasoning") {
+      return Boolean((block.reasoning ?? block.text ?? block.content ?? "").trim())
+    }
+
     if (block.type === "image" || block.type === "image_url") {
       return Boolean(resolveImageBlockUrl(block))
     }

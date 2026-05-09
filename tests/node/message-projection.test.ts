@@ -81,6 +81,23 @@ test("tool cluster key remains stable when first tool message later gains render
   assert.equal(updatedCluster.key, initialCluster.key)
 })
 
+test("reasoning-only assistant messages render as assistant content", () => {
+  const reasoningMessage = createAssistantMessage({
+    id: "assistant-1",
+    content: [
+      {
+        reasoning: "I should inspect the available files first.",
+        type: "reasoning"
+      }
+    ]
+  })
+
+  const entries = buildTurnAssistantEntries(createTurn([reasoningMessage]))
+
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0]?.kind, "assistant-content")
+})
+
 test("single tool call stays standalone while multiple tool calls switch to grouped presentation", () => {
   const singleToolMessages = [
     createAssistantMessage({

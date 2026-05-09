@@ -48,18 +48,53 @@ export function ApiKeyDialog({
   const deleteProviderCredentials = useHistoryShellStore((state) => state.deleteProviderCredentials)
 
   useEffect(() => {
-    if (open && provider) {
+    if (!open || !provider) {
+      return
+    }
+
+    let cancelled = false
+
+    async function loadCredentials(): Promise<void> {
+      if (!provider) return
       const credentialValues = Object.fromEntries(
         provider.providerCredentialSchema.credentialFormSchemas.map((schema) => [
           schema.variable,
           ""
         ])
       )
-      setHasExistingKey(provider.customConfiguration.status === "active")
-      setCredentials(credentialValues)
-      setErrorText(null)
+
+      try {
+        const existingCredentials =
+          provider.customConfiguration.status === "active"
+            ? await window.api.models.getCredentials(provider.id)
+            : null
+
+        if (cancelled) {
+          return
+        }
+
+        setHasExistingKey(provider.customConfiguration.status === "active")
+        setCredentials({
+          ...credentialValues,
+          ...(existingCredentials ?? {})
+        })
+        setErrorText(null)
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+
+        setCredentials(credentialValues)
+        setErrorText(getDialogErrorMessage(error, copy.apiKeyDialog.saveError))
+      }
     }
-  }, [open, provider])
+
+    void loadCredentials()
+
+    return () => {
+      cancelled = true
+    }
+  }, [copy.apiKeyDialog.saveError, open, provider])
 
   if (!provider) return null
 

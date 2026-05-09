@@ -39,6 +39,10 @@ export class ModelProviderController {
       }
     )
 
+    registerIpcHandle(ipcMain, "models:getCredentials", async (_event, provider: string) => {
+      return this.modelProviderService.getCredentials(provider)
+    })
+
     registerIpcHandle(ipcMain, "models:deleteCredentials", async (_event, provider: string) => {
       this.modelProviderService.deleteCredentials(provider)
     })

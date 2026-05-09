@@ -4,7 +4,11 @@ import type { HitlRequestRow } from "../db"
 import type { HITLRequest, Todo, ToolCall } from "../types"
 import { getDefaultHitlAllowedDecisions, normalizeHitlAllowedDecisions } from "@shared/hitl"
 import { parseToolApprovalItem } from "@shared/tool-approval"
-import { toComposerMessageMetadata, normalizeComposerMessageRefs } from "@shared/message-content"
+import {
+  normalizeComposerMessageRefs,
+  toComposerMessageMetadata,
+  toDisplayAssistantMessageContent
+} from "@shared/message-content"
 
 interface CheckpointChannelMessage {
   id?: string
@@ -22,6 +26,7 @@ interface CheckpointChannelMessage {
         }
       }>
     }
+    response_metadata?: unknown
     tool_call_id?: string
     name?: string
   }
@@ -217,9 +222,17 @@ export function extractMessagesFromCheckpoint(
   return messages.map((message, index) => {
     const role = resolveMessageRole(message)
     const rawContent = getCheckpointMessageContent(message)
-    const content =
-      typeof rawContent === "string" ? rawContent : Array.isArray(rawContent) ? rawContent : ""
     const toolCalls = getCheckpointToolCalls(message)
+    const messageContent =
+      typeof rawContent === "string" ? rawContent : Array.isArray(rawContent) ? rawContent : ""
+    const content =
+      role === "assistant"
+        ? toDisplayAssistantMessageContent(messageContent, {
+            additional_kwargs: message.kwargs?.additional_kwargs,
+            response_metadata: message.kwargs?.response_metadata,
+            toolNames: toolCalls.map((toolCall) => toolCall.name)
+          })
+        : messageContent
     const messageId = getCheckpointMessageId(threadId, index, role, message)
     const messageMetadata = getCheckpointMessageMetadata(message)
 

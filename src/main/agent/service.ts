@@ -14,7 +14,7 @@ import {
   resumeAgentRun,
   syncRunFromLatestCheckpoint
 } from "./persistence"
-import { isAbortLikeError } from "./errors"
+import { isAbortLikeError, isModelAuthenticationError, normalizeAgentRuntimeError } from "./errors"
 import { createAgentRuntime, runtimeUsesCheckpointPersistence } from "./runtime"
 import { buildAgentResumeConfig, buildAgentRunConfig } from "./run-config"
 import { extractHitlRequestFromValuesState } from "./runtime-state"
@@ -468,14 +468,17 @@ export class AgentService {
       }
     } catch (error) {
       if (!isAbortLikeError(error, abortController.signal)) {
+        const normalizedError = normalizeAgentRuntimeError("agent:invoke", error)
         const activeRun = this.activeRuns.get(threadId)
         if (activeRun) {
-          await markRunFailed(threadId, activeRun.runId, error)
+          await markRunFailed(threadId, activeRun.runId, normalizedError)
         }
-        console.error("[Agent] Error:", error)
+        if (!isModelAuthenticationError(error)) {
+          console.error("[Agent] Error:", error)
+        }
         sink.send({
           type: "error",
-          ...buildIpcErrorEvent("agent:invoke", error)
+          ...buildIpcErrorEvent("agent:invoke", normalizedError)
         })
       }
     } finally {
@@ -613,11 +616,14 @@ export class AgentService {
       }
     } catch (error) {
       if (!isAbortLikeError(error, abortController.signal)) {
-        await markRunFailed(threadId, runId, error)
-        console.error("[Agent] Resume error:", error)
+        const normalizedError = normalizeAgentRuntimeError("agent:resume", error)
+        await markRunFailed(threadId, runId, normalizedError)
+        if (!isModelAuthenticationError(error)) {
+          console.error("[Agent] Resume error:", error)
+        }
         sink.send({
           type: "error",
-          ...buildIpcErrorEvent("agent:resume", error)
+          ...buildIpcErrorEvent("agent:resume", normalizedError)
         })
       }
     } finally {

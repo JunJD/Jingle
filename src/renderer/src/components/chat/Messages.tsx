@@ -58,6 +58,7 @@ interface MessagesProps {
 
 interface StructuredMessageContent {
   attachments: React.ReactNode
+  reasoningContent: React.ReactNode
   textContent: React.ReactNode
 }
 
@@ -208,6 +209,46 @@ function renderTextBlock(
   )
 }
 
+function getReasoningBlockText(block: ContentBlock): string {
+  return block.reasoning ?? block.text ?? block.content ?? ""
+}
+
+function ReasoningBlock(props: {
+  density?: "default" | "compact"
+  isStreaming?: boolean
+  text: string
+}): React.JSX.Element | null {
+  const { copy } = useI18n()
+  const { density = "default", isStreaming, text } = props
+
+  if (!text.trim()) {
+    return null
+  }
+
+  return (
+    <ChainOfThought active={isStreaming} defaultOpen={isStreaming}>
+      <ChainOfThoughtHeader
+        className={
+          density === "compact"
+            ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
+            : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)]"
+        }
+      >
+        {copy.chat.agentThinking}
+      </ChainOfThoughtHeader>
+      <ChainOfThoughtContent
+        className={
+          density === "compact" ? "space-y-[var(--ow-space-2)]" : "space-y-[var(--ow-space-2-5)]"
+        }
+      >
+        <div className="whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
+          {text}
+        </div>
+      </ChainOfThoughtContent>
+    </ChainOfThought>
+  )
+}
+
 function renderStructuredContent(
   content: ThreadMessage["content"],
   options: {
@@ -221,6 +262,7 @@ function renderStructuredContent(
   if (typeof content === "string") {
     return {
       attachments: null,
+      reasoningContent: null,
       textContent: renderTextBlock(content, {
         density,
         isStreaming,
@@ -235,11 +277,18 @@ function renderStructuredContent(
     .filter(
       ({ block }) => block.type === "image" || block.type === "image_url" || block.type === "file"
     )
+  const reasoningText = isUser
+    ? ""
+    : content
+        .filter((block) => block.type === "reasoning")
+        .map(getReasoningBlockText)
+        .join("")
 
   const lastTextBlockIndex = [...content]
     .reverse()
     .findIndex(
       (block) =>
+        block.type !== "reasoning" &&
         block.type !== "image" &&
         block.type !== "image_url" &&
         block.type !== "file" &&
@@ -251,6 +300,10 @@ function renderStructuredContent(
   const textBlocks = content
     .map((block, index) => {
       if (block.type === "image" || block.type === "image_url" || block.type === "file") {
+        return null
+      }
+
+      if (block.type === "reasoning") {
         return null
       }
 
@@ -266,6 +319,9 @@ function renderStructuredContent(
 
   return {
     attachments: <MessageAttachments blocks={attachmentBlocks} isUser={isUser} />,
+    reasoningContent: reasoningText.trim() ? (
+      <ReasoningBlock density={density} isStreaming={isStreaming} text={reasoningText} />
+    ) : null,
     textContent: textBlocks.length > 0 ? textBlocks : null
   }
 }
@@ -494,7 +550,7 @@ function AssistantBlock(props: {
     isUser: false
   })
 
-  if (!content.attachments && !content.textContent) {
+  if (!content.attachments && !content.reasoningContent && !content.textContent) {
     return null
   }
 
@@ -502,6 +558,7 @@ function AssistantBlock(props: {
     <Message className="max-w-full" from="assistant">
       <MessageContent className="w-full gap-[var(--ow-gap-md)]">
         {content.attachments}
+        {content.reasoningContent}
         {content.textContent ? (
           <div
             className={

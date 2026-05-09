@@ -264,3 +264,83 @@ test("AgentStreamHub hides provider-emitted tool call markup when hydrating hist
     "ext__appleReminders__createReminder"
   )
 })
+
+test("AgentStreamHub appends streamed reasoning and text content blocks", async () => {
+  const history: ThreadHistoryState = {
+    artifacts: [],
+    messages: [createUserMessage("user-1", "think out loud")],
+    pendingApproval: null,
+    todos: []
+  }
+  const hub = new AgentStreamHub(createThreadsService(history))
+
+  await hub.handlePayload("thread-6", {
+    type: "stream",
+    mode: "messages",
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: [
+            {
+              thinking: "First, ",
+              type: "thinking"
+            }
+          ],
+          id: "assistant-1"
+        }
+      },
+      {}
+    ]
+  })
+  await hub.handlePayload("thread-6", {
+    type: "stream",
+    mode: "messages",
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: [
+            {
+              thinking: "inspect context.",
+              type: "thinking"
+            }
+          ],
+          id: "assistant-1"
+        }
+      },
+      {}
+    ]
+  })
+  await hub.handlePayload("thread-6", {
+    type: "stream",
+    mode: "messages",
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: [
+            {
+              text: "Here is the result.",
+              type: "text"
+            }
+          ],
+          id: "assistant-1"
+        }
+      },
+      {}
+    ]
+  })
+
+  const envelope = await hub.getProjectionEnvelope("thread-6")
+  assert.deepEqual(envelope.projection.messages.at(-1)?.content, [
+    {
+      reasoning: "First, inspect context.",
+      type: "reasoning"
+    },
+    {
+      text: "Here is the result.",
+      type: "text"
+    }
+  ])
+})

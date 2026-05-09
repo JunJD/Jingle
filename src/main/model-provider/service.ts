@@ -44,6 +44,10 @@ export class ModelProviderService {
     return setProviderCredentialsForUI(provider, credentials)
   }
 
+  getCredentials(provider: string): Record<string, string> | null {
+    return getProviderCredentialsForUI(provider)
+  }
+
   deleteCredentials(provider: string): void {
     deleteProviderCredentialsForUI(provider)
   }
@@ -157,6 +161,10 @@ export async function setProviderCredentialsForUI(
 
   adapter.saveCredentials(normalizedCredentials)
   setProviderModelListSuccess(adapter.definition.id, models)
+}
+
+export function getProviderCredentialsForUI(provider: string): Record<string, string> | null {
+  return requireProviderAdapter(provider).getCredentials()
 }
 
 export function deleteProviderCredentialsForUI(provider: string): void {
