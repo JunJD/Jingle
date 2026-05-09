@@ -32,7 +32,7 @@ export function buildUnicodeFtsQuery(query: string): string | null {
     return null
   }
 
-  return uniqueTerms.map((term) => `${term}*`).join(" ")
+  return uniqueTerms.map((term) => `"${term.replaceAll('"', '""')}"*`).join(" ")
 }
 
 export function buildTrigramFtsQuery(query: string): string | null {

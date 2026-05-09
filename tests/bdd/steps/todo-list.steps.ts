@@ -9,7 +9,7 @@ function getTodoListRoot(page: import("@playwright/test").Page) {
 
 function getTodoListInput(page: import("@playwright/test").Page) {
   return getTodoListRoot(page).locator(
-    '.launcher-chrome[data-surface="native-list"] .launcher-input input'
+    '.launcher-chrome[data-surface="runtime-list"] .launcher-input input'
   )
 }
 

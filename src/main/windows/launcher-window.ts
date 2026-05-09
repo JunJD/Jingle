@@ -262,7 +262,6 @@ export function createLauncherWindow(): BrowserWindow {
     autoHideMenuBar: process.platform !== "darwin",
     ...(process.platform === "darwin"
       ? {
-          type: "panel" as const,
           vibrancy: "popover" as const,
           visualEffectState: "active" as const
         }

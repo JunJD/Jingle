@@ -6,6 +6,7 @@ import {
   extensionToolComponent,
   getHumanInTheLoop,
   getToolComponent,
+  type ToolComponentDefinition,
   type ToolComponentStatus,
   type ToolPresentation
 } from "./tools"
@@ -17,6 +18,14 @@ interface CreateActionMessageViewInput {
   presentation: ToolPresentation
   result?: unknown
   toolCall: ToolCall
+}
+
+const fallbackToolComponent: ToolComponentDefinition = {
+  icon: extensionToolComponent.icon,
+  name: "*",
+  renderSummary({ copy, toolCall }) {
+    return copy.toolCall.labels[toolCall.name] || toolCall.display?.title || toolCall.name
+  }
 }
 
 export function getToolStatusLabel(copy: AppCopy, status: ToolComponentStatus): string | null {
@@ -39,10 +48,9 @@ export function createActionMessageView(input: CreateActionMessageViewInput) {
   })
   const definition =
     getToolComponent(toolCall.name) ??
-    (isExtensionToolCallPresentation(toolCall.presentation) ? extensionToolComponent : null)
-  if (!definition) {
-    throw new Error(`[ActionMessage] Missing tool component for "${toolCall.name}".`)
-  }
+    (isExtensionToolCallPresentation(toolCall.presentation)
+      ? extensionToolComponent
+      : fallbackToolComponent)
   const hitlDefinition = approvalRequest
     ? getHumanInTheLoop(toolCall.name) || defaultHumanInTheLoop
     : null
