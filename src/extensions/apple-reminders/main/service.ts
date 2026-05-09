@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
+import type { IpcErrorCode } from "@shared/ipc-error"
 import { defineNativeExtensionService } from "../../../main/services/native-extensions/sdk"
 import type {
   AppleReminder,
@@ -19,6 +20,20 @@ import {
 } from "../src/contracts"
 
 const execFileAsync = promisify(execFile)
+
+export class AppleRemindersRequestError extends Error {
+  readonly code: IpcErrorCode
+
+  constructor(message: string, code: IpcErrorCode = "UNAVAILABLE") {
+    super(message)
+    this.name = "AppleRemindersRequestError"
+    this.code = code
+  }
+}
+
+export function isAppleRemindersRequestError(error: unknown): error is AppleRemindersRequestError {
+  return error instanceof AppleRemindersRequestError
+}
 
 const REMINDERS_JXA_SCRIPT = String.raw`
 function pad2(value) {
@@ -289,8 +304,17 @@ function run(argv) {
 
 function assertAppleRemindersAvailable(): void {
   if (process.platform !== "darwin") {
-    throw new Error("Apple Reminders is only available on macOS.")
+    throw new AppleRemindersRequestError("Apple Reminders is only available on macOS.")
   }
+}
+
+function stripOsascriptCommandPrefix(message: string): string {
+  if (!message.startsWith("Command failed: /usr/bin/osascript")) {
+    return message
+  }
+
+  const details = message.split("\n").slice(1).join("\n").trim()
+  return details || message
 }
 
 function normalizeAppleRemindersError(error: unknown): Error {
@@ -310,9 +334,10 @@ function normalizeAppleRemindersError(error: unknown): Error {
       message = JSON.stringify(error)
     }
   }
+  message = stripOsascriptCommandPrefix(message)
 
   if (message.includes("timed out")) {
-    return new Error(
+    return new AppleRemindersRequestError(
       "Timed out while talking to Reminders. Allow automation access if macOS is showing a permission prompt, then try again."
     )
   }
@@ -323,16 +348,19 @@ function normalizeAppleRemindersError(error: unknown): Error {
     message.includes("not permitted") ||
     message.includes("(-1743)")
   ) {
-    return new Error(
-      "Openwork needs permission to control Reminders. Grant automation access in System Settings and try again."
+    return new AppleRemindersRequestError(
+      "Openwork needs permission to control Reminders. Grant automation access in System Settings and try again.",
+      "PERMISSION_DENIED"
     )
   }
 
-  if (message.startsWith("Command failed: /usr/bin/osascript")) {
-    return new Error("Apple Reminders command failed.")
+  if (message.includes("Application can't be found") || message.includes("(-2700)")) {
+    return new AppleRemindersRequestError(
+      "macOS automation could not find Reminders. Open Reminders once, then try again."
+    )
   }
 
-  return new Error(message)
+  return new AppleRemindersRequestError(`Apple Reminders command failed: ${message}`)
 }
 
 async function invokeAppleReminders<TResult>(method: string, payload: unknown): Promise<TResult> {

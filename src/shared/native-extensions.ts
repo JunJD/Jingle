@@ -4,6 +4,7 @@ import type {
   LauncherCommandOwnerManifest
 } from "./launcher-command-owner"
 import type { ExtensionToolDefinition } from "./extension-sources"
+import type { IpcErrorPayload } from "./ipc-error"
 
 export type NativeExtensionCommandMode = "background" | "menu-bar" | "no-view" | "view"
 export type NativeExtensionSupportedPlatform = "darwin" | "linux" | "win32"
@@ -114,6 +115,10 @@ export interface NativeExtensionInvokeRequest<TPayload = unknown> {
   method: string
   payload: TPayload
 }
+
+export type NativeExtensionInvokeIpcResponse<TResult = unknown> =
+  | { ok: false; error: IpcErrorPayload }
+  | { ok: true; result: TResult }
 
 function isMissingRequiredNativeExtensionPreferenceValue(value: unknown): boolean {
   if (typeof value === "string") {

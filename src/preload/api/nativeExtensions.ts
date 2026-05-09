@@ -1,9 +1,11 @@
 import type {
+  NativeExtensionInvokeIpcResponse,
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionInvokeRequest,
   NativeExtensionPreferencesChangedEvent
 } from "@shared/native-extensions"
 import { invokeIpc, ipcRenderer } from "../ipc"
+import { OpenworkIpcClientError } from "../ipc-errors"
 
 export const nativeExtensionsApi = {
   listSettingsSchemas: (): Promise<InstalledNativeExtensionSettingsSchema[]> => {
@@ -39,7 +41,16 @@ export const nativeExtensionsApi = {
   invoke: <TPayload, TResult>(
     request: NativeExtensionInvokeRequest<TPayload>
   ): Promise<TResult> => {
-    return invokeIpc("nativeExtensions:invoke", request)
+    return invokeIpc<NativeExtensionInvokeIpcResponse<TResult>>(
+      "nativeExtensions:invoke",
+      request
+    ).then((response) => {
+      if (!response.ok) {
+        throw new OpenworkIpcClientError(response.error)
+      }
+
+      return response.result
+    })
   },
   onPreferencesChanged: (
     callback: (event: NativeExtensionPreferencesChangedEvent) => void

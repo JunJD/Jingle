@@ -5,7 +5,7 @@ import type {
   AppleRemindersData,
   CreateAppleReminderRequest
 } from "../src/contracts"
-import { createAppleReminder, getAppleRemindersData } from "./service"
+import { createAppleReminder, getAppleRemindersData, isAppleRemindersRequestError } from "./service"
 
 const listRemindersInputSchema = z.object({
   includeCompleted: z.boolean().optional().default(false),
@@ -42,21 +42,43 @@ function selectReminders(data: AppleRemindersData, input: ListRemindersInput): A
   }
 }
 
+async function runAppleRemindersTool<TResult>(
+  action: string,
+  operation: () => Promise<TResult>
+): Promise<TResult | string> {
+  try {
+    return await operation()
+  } catch (error) {
+    if (!isAppleRemindersRequestError(error)) {
+      throw error
+    }
+
+    return `Apple Reminders ${action} failed. ${error.message}`
+  }
+}
+
 export function createAppleRemindersTools(
   services: AppleRemindersToolServices = defaultAppleRemindersToolServices
 ): ExtensionToolDefinition[] {
-  const listRemindersTool: ExtensionToolDefinition<ListRemindersInput, AppleRemindersData> = {
+  const listRemindersTool: ExtensionToolDefinition<
+    ListRemindersInput,
+    AppleRemindersData | string
+  > = {
     access: "read",
     description: "List Apple Reminders tasks and lists.",
-    handler: async (_ctx, input) => selectReminders(await services.getData(), input),
+    handler: async (_ctx, input) =>
+      runAppleRemindersTool("list reminders", async () =>
+        selectReminders(await services.getData(), input)
+      ),
     inputSchema: listRemindersInputSchema,
     name: "listReminders",
     title: "List Reminders"
   }
-  const createReminderTool: ExtensionToolDefinition<CreateReminderInput, AppleReminder> = {
+  const createReminderTool: ExtensionToolDefinition<CreateReminderInput, AppleReminder | string> = {
     access: "write",
     description: "Create a new Apple Reminders task.",
-    handler: (_ctx, input) => services.createReminder(input),
+    handler: (_ctx, input) =>
+      runAppleRemindersTool("create reminder", () => services.createReminder(input)),
     inputSchema: createReminderInputSchema,
     name: "createReminder",
     title: "Create Reminder"

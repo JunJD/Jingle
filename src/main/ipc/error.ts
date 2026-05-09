@@ -1,5 +1,5 @@
 import type { IpcErrorCode, IpcErrorPayload } from "@shared/ipc-error"
-import { getIpcErrorStatus, serializeIpcErrorPayload } from "@shared/ipc-error"
+import { getIpcErrorStatus, isIpcErrorCode, serializeIpcErrorPayload } from "@shared/ipc-error"
 import { IpcSchemaValidationError } from "./schema"
 
 interface OpenworkIpcErrorOptions {
@@ -36,6 +36,11 @@ export class OpenworkIpcError extends Error {
   }
 }
 
+function readErrorCode(error: Error): IpcErrorCode | null {
+  const record = error as Error & { code?: unknown }
+  return isIpcErrorCode(record.code) ? record.code : null
+}
+
 export function buildIpcError(channel: string, error: unknown): OpenworkIpcError {
   if (error instanceof OpenworkIpcError) {
     return error
@@ -48,6 +53,17 @@ export function buildIpcError(channel: string, error: unknown): OpenworkIpcError
       details: error.issues,
       message: error.message
     })
+  }
+
+  if (error instanceof Error) {
+    const code = readErrorCode(error)
+    if (code) {
+      return new OpenworkIpcError({
+        channel,
+        code,
+        message: error.message
+      })
+    }
   }
 
   return new OpenworkIpcError({

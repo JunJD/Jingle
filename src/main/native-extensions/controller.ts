@@ -1,5 +1,9 @@
 import type { IpcMain } from "electron"
-import type { NativeExtensionInvokeRequest } from "@shared/native-extensions"
+import type {
+  NativeExtensionInvokeIpcResponse,
+  NativeExtensionInvokeRequest
+} from "@shared/native-extensions"
+import { buildIpcErrorPayload } from "../ipc/error"
 import { registerIpcHandle } from "../ipc/handle"
 import { NativeExtensionsService } from "./service"
 
@@ -50,8 +54,21 @@ export class NativeExtensionsController {
     registerIpcHandle(
       ipcMain,
       "nativeExtensions:invoke",
-      (_event, request: NativeExtensionInvokeRequest) => {
-        return this.nativeExtensionsService.invoke(request)
+      async (
+        _event,
+        request: NativeExtensionInvokeRequest
+      ): Promise<NativeExtensionInvokeIpcResponse> => {
+        try {
+          return {
+            ok: true,
+            result: await this.nativeExtensionsService.invoke(request)
+          }
+        } catch (error) {
+          return {
+            error: buildIpcErrorPayload("nativeExtensions:invoke", error),
+            ok: false
+          }
+        }
       }
     )
   }

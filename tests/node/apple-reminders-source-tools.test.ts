@@ -3,6 +3,7 @@ import test, { mock } from "node:test"
 import { createExtensionSourceRuntime } from "../../src/main/agent/extension-source-runtime"
 import { ExtensionToolExecutor } from "../../src/main/extension-tools/executor"
 import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
+import { AppleRemindersRequestError } from "../../src/extensions/apple-reminders/main/service"
 import { createAppleRemindersTools } from "../../src/extensions/apple-reminders/main/tools"
 import {
   appleRemindersSourceDefinition,
@@ -180,4 +181,55 @@ test("Apple Reminders tools validate input and call main-side services", async (
     }),
     /input validation failed/i
   )
+})
+
+test("Apple Reminders tools return external Reminders failures as tool output", async () => {
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["apple-reminders"]
+  })
+  registry.registerExtensionTools(
+    "apple-reminders",
+    createAppleRemindersTools({
+      createReminder: async () => {
+        throw new AppleRemindersRequestError(
+          "Openwork needs permission to control Reminders.",
+          "PERMISSION_DENIED"
+        )
+      },
+      getData: async () => {
+        throw new AppleRemindersRequestError(
+          "Openwork needs permission to control Reminders.",
+          "PERMISSION_DENIED"
+        )
+      }
+    })
+  )
+  const sourceBinding = createDefaultAppleRemindersSourceBinding({
+    now: createdAt,
+    platform: "darwin"
+  })
+  const [listBinding, createBinding] = registry.createSourceToolBindings([sourceBinding])
+  const executor = new ExtensionToolExecutor({
+    bindings: [listBinding, createBinding]
+  })
+
+  const listOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__listReminders",
+    args: {},
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(listOutput, /Apple Reminders list reminders failed/)
+  assert.match(listOutput, /permission to control Reminders/)
+
+  const createOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__createReminder",
+    args: {
+      title: "Create through source"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(createOutput, /Apple Reminders create reminder failed/)
+  assert.match(createOutput, /permission to control Reminders/)
 })

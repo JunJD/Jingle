@@ -85,6 +85,18 @@ test("buildSerializedIpcErrorMessage preserves explicit IPC codes", () => {
   })
 })
 
+test("buildIpcErrorPayload preserves error code metadata", () => {
+  const error = new Error("Reminders is unavailable.") as Error & { code: "UNAVAILABLE" }
+  error.code = "UNAVAILABLE"
+
+  assert.deepEqual(buildIpcErrorPayload("nativeExtensions:invoke", error), {
+    channel: "nativeExtensions:invoke",
+    code: "UNAVAILABLE",
+    message: "Reminders is unavailable.",
+    status: 503
+  })
+})
+
 test("normalizeInvokeError rehydrates preload errors into client errors", () => {
   const error = normalizeInvokeError(
     new Error(
