@@ -13,6 +13,8 @@
     "minimizable",
     "osascript",
     "Prefs",
+    "REMCD",
+    "reminderkit",
     "Renderable",
     "serde",
     "shiki",
