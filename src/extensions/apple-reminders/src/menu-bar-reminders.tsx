@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   MenuBarExtra,
-  useBackgroundRefresh,
+  useInterval,
   useNativeExtensionNavigation
-} from "../../api"
+} from "../../runtime-api"
 import {
   getAppleRemindersData,
   showAppleReminder,
   useAppleRemindersCommandPreferences
-} from "./client"
+} from "./runtime-client"
 import type { AppleReminder } from "./contracts"
 import {
   buildReminderMenuBarTitle,
@@ -104,7 +104,7 @@ export default function AppleRemindersMenuBar(): React.JSX.Element {
     void refresh()
   }, [refresh])
 
-  useBackgroundRefresh(
+  useInterval(
     refresh,
     normalizeRefreshIntervalSeconds(commandPreferences.refreshIntervalSeconds) * 1000
   )
@@ -139,13 +139,13 @@ export default function AppleRemindersMenuBar(): React.JSX.Element {
             iconName="reminder-item"
             title={error}
             onAction={() => {
-              void window.api.launcher.show().then(() => {
-                navigation.openCommand({
+              void navigation.openCommand(
+                {
                   commandName: "my-reminders",
-                  extensionName: "apple-reminders",
-                  kind: "extension-command"
-                })
-              })
+                  extensionName: "apple-reminders"
+                },
+                { showLauncher: true }
+              )
             }}
           />
         </MenuBarExtra.Section>
@@ -193,13 +193,13 @@ export default function AppleRemindersMenuBar(): React.JSX.Element {
           subtitle="Open the full reminders list"
           title="Open My Reminders"
           onAction={() => {
-            void window.api.launcher.show().then(() => {
-              navigation.openCommand({
+            void navigation.openCommand(
+              {
                 commandName: "my-reminders",
-                extensionName: "apple-reminders",
-                kind: "extension-command"
-              })
-            })
+                extensionName: "apple-reminders"
+              },
+              { showLauncher: true }
+            )
           }}
         />
         <MenuBarExtra.Item
@@ -207,13 +207,13 @@ export default function AppleRemindersMenuBar(): React.JSX.Element {
           subtitle="Create a new reminder"
           title="Create Reminder"
           onAction={() => {
-            void window.api.launcher.show().then(() => {
-              navigation.openCommand({
+            void navigation.openCommand(
+              {
                 commandName: "create-reminder",
-                extensionName: "apple-reminders",
-                kind: "extension-command"
-              })
-            })
+                extensionName: "apple-reminders"
+              },
+              { showLauncher: true }
+            )
           }}
         />
         <MenuBarExtra.Item

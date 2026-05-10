@@ -15,6 +15,7 @@ import { GITHUB_EXTENSION_ID, GITHUB_RPC_METHODS } from "./src/contracts"
 export const githubManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "rpc", "surface"],
   iconName: "github",
+  runtimeCapabilities: ["navigation", "preferences", "rpc", "settings", "shell"],
   preferences: [
     {
       description:
@@ -289,6 +290,7 @@ export const githubManifest = defineNativeExtensionManifest({
           type: "checkbox"
         }
       ],
+      runtime: {},
       title: "Unread Notifications"
     }
   ],

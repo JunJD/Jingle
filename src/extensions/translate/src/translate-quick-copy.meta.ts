@@ -1,4 +1,4 @@
-import { createNativeExtensionIntentPresentation } from "../../api"
+import { createLauncherIntentPresentation } from "@shared/launcher"
 import { getTranslatePluginCopy } from "./copy"
 import { matchTranslateIntent } from "./languages"
 
@@ -27,7 +27,7 @@ export const search = {
         openOptions: {
           seedQuery: trimmedQuery
         },
-        presentation: createNativeExtensionIntentPresentation({
+        presentation: createLauncherIntentPresentation({
           categoryLabel: pluginCopy.searchItemCategoryLabel,
           icon: {
             name: "copy",

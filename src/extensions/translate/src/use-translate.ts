@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useCommandSeedQuery, useI18n, useNativeCommandPreferences } from "../../api"
-import { translateClient } from "./api"
+import {
+  useCommandSeedQuery,
+  useNativeCommandPreferences,
+  useRuntimeAppLocale,
+  writeClipboardText
+} from "../../runtime-api"
+import { translateRuntimeClient } from "./runtime-client"
 import {
   TRANSLATE_LANGUAGE_OPTIONS,
   detectTranslateLanguageId,
@@ -30,7 +35,7 @@ export function useTranslate(): {
   targetLanguageId: string
   translatedText: string
 } {
-  const { locale } = useI18n()
+  const locale = useRuntimeAppLocale()
   const seedQuery = useCommandSeedQuery()
   const preferences = useNativeCommandPreferences<TranslateCommandPreferences>()
   const requestRef = useRef(0)
@@ -99,7 +104,7 @@ export function useTranslate(): {
 
     try {
       const modelId = preferences.modelId.trim()
-      const response = await translateClient.translate({
+      const response = await translateRuntimeClient.translate({
         backend: {
           kind: "llm",
           ...(modelId ? { modelId } : {})
@@ -179,7 +184,7 @@ export function useTranslate(): {
       return
     }
 
-    await navigator.clipboard.writeText(translatedText)
+    await writeClipboardText(translatedText)
     setCopied(true)
 
     if (copyResetTimerRef.current !== null) {

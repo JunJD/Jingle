@@ -13,18 +13,21 @@ import type {
   ExtensionRuntimeLaunchContext
 } from "../../src/shared/extension-runtime-protocol"
 
-test("Translate quick-copy is a runtime no-view command while the main translate view stays legacy", () => {
+test("Translate commands resolve through runtime", () => {
   assert.deepEqual(
     translateManifest.commands
       .filter((command) => command.runtime)
       .map((command) => command.name),
-    ["translate-quick-copy"]
-  )
-  assert.equal(
-    translateManifest.commands.find((command) => command.name === "translate")?.runtime,
-    undefined
+    ["translate", "translate-quick-copy"]
   )
   assert.ok(translateManifest.capabilities.includes("clipboard"))
+  assert.equal(
+    getNativeExtensionRuntimeCommand({
+      commandName: "translate",
+      extensionName: "translate"
+    })?.mode,
+    "view"
+  )
   assert.equal(
     getNativeExtensionRuntimeCommand({
       commandName: "translate-quick-copy",
@@ -98,6 +101,7 @@ function createLaunchContext(seedQuery: string): ExtensionRuntimeLaunchContext {
     extensionName: "translate",
     extensionPreferences: {},
     initialAction: "submit",
+    locale: "zh-CN",
     mode: "no-view",
     seedQuery
   }

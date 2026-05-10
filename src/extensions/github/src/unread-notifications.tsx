@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react"
-import { MenuBarExtra, useBackgroundRefresh, useNativeExtensionNavigation } from "../../api"
+import {
+  MenuBarExtra,
+  openExternal,
+  useInterval,
+  useNativeExtensionNavigation
+} from "../../runtime-api"
 import {
   listUnreadGitHubNotifications,
   markAllUnreadGitHubNotificationsAsRead,
@@ -7,7 +12,7 @@ import {
   openGitHubSettings,
   type GitHubNotification,
   useGitHubCommandPreferences
-} from "./client"
+} from "./runtime-client"
 
 interface GitHubUnreadNotificationPreferences {
   refreshIntervalSeconds?: number | string
@@ -71,21 +76,7 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
     }
   }, [refresh])
 
-  useEffect(() => {
-    return window.api.nativeExtensions.onPreferencesChanged((event) => {
-      if (event.extensionName !== "github") {
-        return
-      }
-
-      if (event.scope === "command" && event.commandName !== "unread-notifications") {
-        return
-      }
-
-      void refresh()
-    })
-  }, [refresh])
-
-  useBackgroundRefresh(refresh, refreshIntervalSeconds * 1000)
+  useInterval(refresh, refreshIntervalSeconds * 1000)
 
   if (!isConfigured) {
     return (
@@ -139,7 +130,7 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
                   notificationId: notification.id
                 })
                   .then(() => {
-                    window.open(notification.url, "_blank", "noopener,noreferrer")
+                    void openExternal(notification.url)
                     setItems((current) => current.filter((item) => item.id !== notification.id))
                   })
                   .catch((error) => {
@@ -165,13 +156,13 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
           iconName="bell"
           title="Open Notifications Command"
           onAction={() => {
-            void window.api.launcher.show().then(() => {
-              navigation.openCommand({
+            void navigation.openCommand(
+              {
                 commandName: "notifications",
-                extensionName: "github",
-                kind: "extension-command"
-              })
-            })
+                extensionName: "github"
+              },
+              { showLauncher: true }
+            )
           }}
         />
         <MenuBarExtra.Item

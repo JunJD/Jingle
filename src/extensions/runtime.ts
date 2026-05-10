@@ -2,6 +2,7 @@ import type { ComponentType } from "react"
 import type { ExtensionRuntimeLaunchContext } from "@shared/extension-runtime-protocol"
 import type { ExtensionRuntimeNavigation } from "../extension-runtime/sdk"
 import AppleRemindersCreateReminder from "./apple-reminders/src/create-reminder"
+import AppleRemindersMenuBar from "./apple-reminders/src/menu-bar-reminders"
 import AppleRemindersMyReminders from "./apple-reminders/src/my-reminders"
 import AppleRemindersQuickAddReminder from "./apple-reminders/src/quick-add-reminder"
 import GitHubCreateIssue from "./github/src/create-issue"
@@ -14,8 +15,10 @@ import GitHubNotifications from "./github/src/notifications"
 import GitHubSearchIssues from "./github/src/search-issues"
 import GitHubSearchPullRequests from "./github/src/search-pull-requests"
 import GitHubSearchRepositories from "./github/src/search-repositories"
+import GitHubUnreadNotifications from "./github/src/unread-notifications"
 import GitHubWorkflowRuns from "./github/src/workflow-runs"
 import TodoList from "./todo-list/src/index"
+import { TranslatePage } from "./translate/src/TranslatePage"
 import TranslateQuickCopy from "./translate/src/translate-quick-copy"
 
 export interface NativeExtensionRuntimeNoViewRunContext extends ExtensionRuntimeLaunchContext {
@@ -26,7 +29,7 @@ interface NativeExtensionRuntimeViewCommandDefinition {
   Component: ComponentType
   commandName: string
   extensionName: string
-  mode: "view"
+  mode: "menu-bar" | "view"
 }
 
 interface NativeExtensionRuntimeNoViewCommandDefinition {
@@ -46,6 +49,12 @@ const nativeExtensionRuntimeCommandDefinitions: NativeExtensionRuntimeCommandDef
     commandName: "create-reminder",
     extensionName: "apple-reminders",
     mode: "view"
+  },
+  {
+    Component: AppleRemindersMenuBar,
+    commandName: "menu-bar-reminders",
+    extensionName: "apple-reminders",
+    mode: "menu-bar"
   },
   {
     Component: AppleRemindersMyReminders,
@@ -120,6 +129,12 @@ const nativeExtensionRuntimeCommandDefinitions: NativeExtensionRuntimeCommandDef
     mode: "view"
   },
   {
+    Component: GitHubUnreadNotifications,
+    commandName: "unread-notifications",
+    extensionName: "github",
+    mode: "menu-bar"
+  },
+  {
     Component: GitHubWorkflowRuns,
     commandName: "workflow-runs",
     extensionName: "github",
@@ -129,6 +144,12 @@ const nativeExtensionRuntimeCommandDefinitions: NativeExtensionRuntimeCommandDef
     Component: TodoList,
     commandName: "index",
     extensionName: "todo-list",
+    mode: "view"
+  },
+  {
+    Component: TranslatePage,
+    commandName: "translate",
+    extensionName: "translate",
     mode: "view"
   },
   {

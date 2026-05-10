@@ -1,8 +1,10 @@
 import { defineNativeExtensionManifest } from "@shared/native-extensions"
+import { viewport as translateViewport } from "./src/translate.meta"
 import { TRANSLATE_EXTENSION_ID } from "./src/contracts"
 
 export const translateManifest = defineNativeExtensionManifest({
   capabilities: ["clipboard", "navigation", "rpc", "surface"],
+  runtimeCapabilities: ["clipboard", "navigation", "preferences", "rpc"],
   commands: [
     {
       description: "Translate selected text or free-form input.",
@@ -19,6 +21,9 @@ export const translateManifest = defineNativeExtensionManifest({
           type: "model"
         }
       ],
+      runtime: {
+        viewport: translateViewport
+      },
       title: "Translate"
     },
     {

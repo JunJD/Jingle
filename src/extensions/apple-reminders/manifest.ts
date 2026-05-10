@@ -5,6 +5,7 @@ import { viewport as myRemindersViewport } from "./src/my-reminders.meta"
 export const appleRemindersManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "rpc", "surface"],
   iconName: "reminders",
+  runtimeCapabilities: ["navigation", "preferences", "rpc"],
   commands: [
     {
       description: "View, complete, and organize reminders from Apple Reminders.",
@@ -142,6 +143,7 @@ export const appleRemindersManifest = defineNativeExtensionManifest({
           type: "text"
         }
       ],
+      runtime: {},
       title: "Menu Bar Reminders"
     }
   ],

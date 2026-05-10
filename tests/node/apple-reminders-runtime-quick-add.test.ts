@@ -95,6 +95,7 @@ function createLaunchContext(seedQuery: string): ExtensionRuntimeLaunchContext {
     extensionName: "apple-reminders",
     extensionPreferences: {},
     initialAction: "submit",
+    locale: "zh-CN",
     mode: "no-view",
     seedQuery
   }
