@@ -1,10 +1,13 @@
 import type { IpcMain } from "electron"
 import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
 import { ExternalLinksService } from "../../external-links/service"
+import { NativeMenuBarService } from "../../native-menu-bar/service"
 import { NativeExtensionsService } from "../../native-extensions/service"
+import { SettingsService } from "../../settings/service"
 import { SettingsWindowRoutingService } from "../../settings-window-routing/service"
 import { ExtensionRuntimeController } from "./controller"
 import { DefaultExtensionRuntimeHostCapabilities } from "./host-capabilities"
+import { ExtensionRuntimeMenuBarService } from "./menu-bar-service"
 import { ExtensionRuntimeRendererBridge } from "./renderer-bridge"
 import { ExtensionRuntimeManager } from "./runtime-manager"
 import { UtilityProcessExtensionRuntimeProcessLauncher } from "./utility-process-launcher"
@@ -35,6 +38,16 @@ export function registerExtensionRuntimeModule(container: DependencyContainer): 
       )
     })
   })
+  container.register(ExtensionRuntimeMenuBarService, {
+    useFactory: instanceCachingFactory((dependencyContainer) => {
+      const settingsService = dependencyContainer.resolve(SettingsService)
+      return new ExtensionRuntimeMenuBarService(
+        dependencyContainer.resolve(ExtensionRuntimeManager),
+        dependencyContainer.resolve(NativeMenuBarService),
+        () => settingsService.getAgentConfig().locale
+      )
+    })
+  })
 }
 
 export function registerExtensionRuntimeIpcHandlers(
@@ -48,4 +61,10 @@ export function resolveExtensionRuntimeManager(
   container: DependencyContainer
 ): ExtensionRuntimeManager {
   return container.resolve(ExtensionRuntimeManager)
+}
+
+export function resolveExtensionRuntimeMenuBarService(
+  container: DependencyContainer
+): ExtensionRuntimeMenuBarService {
+  return container.resolve(ExtensionRuntimeMenuBarService)
 }

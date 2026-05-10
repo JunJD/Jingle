@@ -4,8 +4,10 @@ import { BrowserWindow, Menu, Tray, nativeImage } from "electron"
 import type { NativeMenuBarActionEvent, NativeMenuBarState } from "@shared/native-menu-bar"
 
 interface NativeMenuBarBddProbe {
+  clearState: (commandKey: string) => void
   getStates: () => NativeMenuBarState[]
   selectItem: (event: NativeMenuBarActionEvent) => void
+  setState: (state: NativeMenuBarState) => void
 }
 
 const BDD_NATIVE_MENU_BAR_PROBE_KEY = "__OPENWORK_BDD_NATIVE_MENU_BAR__"
@@ -89,8 +91,10 @@ export class NativeMenuBarService {
         [BDD_NATIVE_MENU_BAR_PROBE_KEY]?: NativeMenuBarBddProbe
       }
     )[BDD_NATIVE_MENU_BAR_PROBE_KEY] = {
+      clearState: (commandKey) => this.clearState(commandKey),
       getStates: () => this.getStateSnapshot(),
-      selectItem: (event) => this.emitSelectionForTesting(event)
+      selectItem: (event) => this.emitSelectionForTesting(event),
+      setState: (state) => this.setState(state)
     }
   }
 

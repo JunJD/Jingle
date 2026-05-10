@@ -9,6 +9,8 @@ import { OpenworkWorld } from "../support/world"
 interface NativeMenuBarBddProbe {
   getStates: () => NativeMenuBarState[]
   selectItem: (event: NativeMenuBarActionEvent) => void
+  setState: (state: NativeMenuBarState) => void
+  clearState: (commandKey: string) => void
 }
 
 async function getNativeMenuBarSnapshot(world: OpenworkWorld): Promise<NativeMenuBarState[]> {
@@ -28,35 +30,41 @@ async function getNativeMenuBarSnapshot(world: OpenworkWorld): Promise<NativeMen
 }
 
 async function setNativeMenuBarState(world: OpenworkWorld, state: NativeMenuBarState): Promise<void> {
-  const page = await world.getPageByKind("launcher")
-
-  await page.evaluate(async (inputState) => {
-    await (
-      window as typeof window & {
-        api: {
-          nativeMenuBar: {
-            setState: (state: NativeMenuBarState) => Promise<void>
-          }
+  await world.evaluateInMain(
+    (_, inputState) => {
+      const probe = (
+        globalThis as typeof globalThis & {
+          __OPENWORK_BDD_NATIVE_MENU_BAR__?: NativeMenuBarBddProbe
         }
+      ).__OPENWORK_BDD_NATIVE_MENU_BAR__
+
+      if (!probe) {
+        throw new Error("Native menu bar BDD probe is not available.")
       }
-    ).api.nativeMenuBar.setState(inputState)
-  }, state)
+
+      probe.setState(inputState)
+    },
+    state
+  )
 }
 
 async function clearNativeMenuBarState(world: OpenworkWorld, commandKey: string): Promise<void> {
-  const page = await world.getPageByKind("launcher")
-
-  await page.evaluate(async (inputCommandKey) => {
-    await (
-      window as typeof window & {
-        api: {
-          nativeMenuBar: {
-            clearState: (commandKey: string) => Promise<void>
-          }
+  await world.evaluateInMain(
+    (_, inputCommandKey) => {
+      const probe = (
+        globalThis as typeof globalThis & {
+          __OPENWORK_BDD_NATIVE_MENU_BAR__?: NativeMenuBarBddProbe
         }
+      ).__OPENWORK_BDD_NATIVE_MENU_BAR__
+
+      if (!probe) {
+        throw new Error("Native menu bar BDD probe is not available.")
       }
-    ).api.nativeMenuBar.clearState(inputCommandKey)
-  }, commandKey)
+
+      probe.clearState(inputCommandKey)
+    },
+    commandKey
+  )
 }
 
 When("我开始监听 native menu bar itemSelected 事件", async function (this: OpenworkWorld) {

@@ -1,6 +1,7 @@
 export {
   registerExtensionRuntimeIpcHandlers,
   registerExtensionRuntimeModule,
+  resolveExtensionRuntimeMenuBarService,
   resolveExtensionRuntimeManager
 } from "./module"
 export {

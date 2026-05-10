@@ -13,6 +13,7 @@ import {
 import {
   registerExtensionRuntimeIpcHandlers,
   registerExtensionRuntimeModule,
+  resolveExtensionRuntimeMenuBarService,
   resolveExtensionRuntimeManager
 } from "./services/extension-runtime"
 import {
@@ -150,11 +151,13 @@ export class MainCompositionRoot {
       "open-settings": () => this.context.openSettingsWindow(),
       quit: this.context.quitApplication
     })
+    resolveExtensionRuntimeMenuBarService(this.dependencyContainer).start()
     this.applyShortcutSettings()
     void warmLauncherSearchProviders()
   }
 
   dispose(): void {
+    resolveExtensionRuntimeMenuBarService(this.dependencyContainer).dispose()
     resolveExtensionRuntimeManager(this.dependencyContainer).dispose()
     resolveNativeMenuBarService(this.dependencyContainer).dispose()
     unregisterGlobalShortcutService()
