@@ -109,6 +109,7 @@ export class OpenworkWorld extends World {
   private electronApp: ElectronApplication | null = null
   private page: Page | null = null
   private openworkHome: string | null = null
+  private extensionRuntimeFixtures: Record<string, unknown> = {}
   private scenarioValues = new Map<string, string>()
   private agentRuntimeMode: "default" | "scripted" = "default"
 
@@ -133,6 +134,14 @@ export class OpenworkWorld extends World {
     this.agentRuntimeMode = "scripted"
   }
 
+  setExtensionRuntimeFixture(key: string, value: unknown): void {
+    if (this.electronApp) {
+      throw new Error("Extension runtime fixtures must be configured before launching Openwork.")
+    }
+
+    this.extensionRuntimeFixtures[key] = value
+  }
+
   async launchApp(): Promise<void> {
     if (this.electronApp) {
       return
@@ -149,6 +158,7 @@ export class OpenworkWorld extends World {
         CI: "1",
         OPENWORK_BDD: "1",
         OPENWORK_BDD_AGENT_RUNTIME: this.agentRuntimeMode === "scripted" ? "scripted" : "",
+        OPENWORK_BDD_EXTENSION_RUNTIME_FIXTURES: JSON.stringify(this.extensionRuntimeFixtures),
         OPENWORK_HOME: openworkHome,
         OPENWORK_REMOTE_DEBUGGING_PORT: ""
       }
@@ -274,6 +284,7 @@ export class OpenworkWorld extends World {
     }
 
     this.page = null
+    this.extensionRuntimeFixtures = {}
     this.scenarioValues.clear()
 
     if (this.openworkHome) {

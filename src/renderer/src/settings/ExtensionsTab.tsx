@@ -548,6 +548,7 @@ export function ExtensionsTab(props: {
                 <button
                   key={schema.extName}
                   type="button"
+                  data-extension-selected={isSelected ? schema.extName : undefined}
                   onClick={() => setSelectedExtName(schema.extName)}
                   className={`w-full rounded-[var(--ow-settings-card-radius)] border px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left transition ${
                     isSelected

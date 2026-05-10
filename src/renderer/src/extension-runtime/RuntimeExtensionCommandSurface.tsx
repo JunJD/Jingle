@@ -551,7 +551,7 @@ function RuntimeFormField(props: {
   const { field, localValue, onChange } = props
 
   if (field.kind === "separator") {
-    return <div className="h-px w-full bg-border/80" />
+    return <div className="h-px w-full bg-border/80" data-runtime-form-field={field.id} />
   }
 
   if (field.kind === "message") {
@@ -562,6 +562,7 @@ function RuntimeFormField(props: {
 
     return (
       <div
+        data-runtime-form-field={field.id}
         className={`rounded-[var(--ow-radius-sm)] border px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] ${toneClass}`}
       >
         {field.text}
@@ -586,7 +587,7 @@ function RuntimeFormField(props: {
     const value = typeof localValue === "boolean" ? localValue : field.value
 
     return (
-      <label className="block space-y-[var(--ow-space-1-5)]">
+      <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
         <span className="inline-flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] text-foreground">
           <input
@@ -604,7 +605,7 @@ function RuntimeFormField(props: {
 
   if (field.kind === "dropdown") {
     return (
-      <label className="block space-y-[var(--ow-space-1-5)]">
+      <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
         <NativeExtensionSelect
           className="flex h-[var(--ow-control-h-sm)] w-full appearance-none rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated pl-[var(--ow-space-2-5)] pr-[var(--ow-space-6)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
@@ -623,7 +624,7 @@ function RuntimeFormField(props: {
 
   if (field.kind === "text-area") {
     return (
-      <label className="block space-y-[var(--ow-space-1-5)]">
+      <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
         <textarea
           className="min-h-[var(--ow-textarea-min-h)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
@@ -636,7 +637,7 @@ function RuntimeFormField(props: {
   }
 
   return (
-    <label className="block space-y-[var(--ow-space-1-5)]">
+    <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
       {label}
       <input
         className="flex h-[var(--ow-control-h-sm)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"

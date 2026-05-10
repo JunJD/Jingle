@@ -5,6 +5,7 @@ import { NativeMenuBarService } from "../../native-menu-bar/service"
 import { NativeExtensionsService } from "../../native-extensions/service"
 import { SettingsService } from "../../settings/service"
 import { SettingsWindowRoutingService } from "../../settings-window-routing/service"
+import { wrapExtensionRuntimeHostForBdd } from "./bdd-host-capabilities"
 import { ExtensionRuntimeController } from "./controller"
 import { DefaultExtensionRuntimeHostCapabilities } from "./host-capabilities"
 import { ExtensionRuntimeMenuBarService } from "./menu-bar-service"
@@ -19,13 +20,15 @@ export function registerExtensionRuntimeModule(container: DependencyContainer): 
   container.register(ExtensionRuntimeManager, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
       const rendererBridge = dependencyContainer.resolve(ExtensionRuntimeRendererBridge)
+      const host = new DefaultExtensionRuntimeHostCapabilities(
+        dependencyContainer.resolve(NativeExtensionsService),
+        dependencyContainer.resolve(ExternalLinksService),
+        dependencyContainer.resolve(SettingsWindowRoutingService),
+        rendererBridge
+      )
+
       return new ExtensionRuntimeManager({
-        host: new DefaultExtensionRuntimeHostCapabilities(
-          dependencyContainer.resolve(NativeExtensionsService),
-          dependencyContainer.resolve(ExternalLinksService),
-          dependencyContainer.resolve(SettingsWindowRoutingService),
-          rendererBridge
-        ),
+        host: wrapExtensionRuntimeHostForBdd(host),
         processLauncher: new UtilityProcessExtensionRuntimeProcessLauncher()
       })
     })

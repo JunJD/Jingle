@@ -3,7 +3,7 @@ import { join } from "path"
 
 export type AppWindowKind = "main" | "launcher" | "settings"
 
-const SPLASH_WINDOW_KINDS = new Set<AppWindowKind>(["main", "settings"])
+const SPLASH_WINDOW_KINDS = new Set<AppWindowKind>(["main"])
 
 export async function loadRendererWindow(
   browserWindow: BrowserWindow,

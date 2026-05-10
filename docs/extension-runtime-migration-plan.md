@@ -67,7 +67,7 @@ Launcher 搜索和 extension surface 要保持同一套信息架构。
 
 - `src/extensions/*/manifest.ts`
 
-带有 `command.runtime` 的 command 会由 launcher renderer 路由到 extension runtime surface；没有该字段的 command 仍走 legacy renderer path。
+所有 launcher-facing bundled extension command 都必须声明 `command.runtime`，并通过 package-level `runtime.ts` 进入 extension runtime。缺少 `runtime` 字段不是兼容路径，而是 contract 违规，应由 guardrail fail fast。
 
 截至本文档最近更新，以下 command 已声明 runtime metadata：
 

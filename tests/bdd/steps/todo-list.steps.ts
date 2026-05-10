@@ -53,7 +53,12 @@ When("我在 Todo List 输入框按下 Enter", async function (this: OpenworkWor
 
 When("我在当前 Launcher surface 打开动作面板", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("launcher")
-  const input = getTodoListInput(page)
+  const shell = page.locator(".launcher-window-shell")
+  const focusTarget = shell
+    .locator(
+      '.launcher-chrome[data-surface^="runtime"] input, .launcher-chrome[data-surface^="runtime"] textarea'
+    )
+    .first()
   const platform = await page.evaluate(() => {
     return (
       window as unknown as Window & {
@@ -62,7 +67,8 @@ When("我在当前 Launcher surface 打开动作面板", async function (this: O
     ).electron.process.platform
   })
 
-  await input.focus()
+  await expect(focusTarget).toBeVisible()
+  await focusTarget.focus()
   await page.keyboard.press(platform === "darwin" ? "Meta+K" : "Control+K")
 })
 
