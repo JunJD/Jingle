@@ -19,7 +19,6 @@ import GitHubUnreadNotifications from "./github/src/unread-notifications"
 import GitHubWorkflowRuns from "./github/src/workflow-runs"
 import TodoList from "./todo-list/src/index"
 import { TranslatePage } from "./translate/src/TranslatePage"
-import TranslateQuickCopy from "./translate/src/translate-quick-copy"
 
 export interface NativeExtensionRuntimeNoViewRunContext extends ExtensionRuntimeLaunchContext {
   navigation: ExtensionRuntimeNavigation
@@ -151,12 +150,6 @@ const nativeExtensionRuntimeCommandDefinitions: NativeExtensionRuntimeCommandDef
     commandName: "translate",
     extensionName: "translate",
     mode: "view"
-  },
-  {
-    commandName: "translate-quick-copy",
-    extensionName: "translate",
-    mode: "no-view",
-    run: TranslateQuickCopy
   }
 ]
 

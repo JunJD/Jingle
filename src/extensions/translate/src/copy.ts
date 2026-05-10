@@ -10,9 +10,6 @@ export interface TranslatePluginCopy {
   inputPlaceholder: string
   retryTranslation: string
   outputPlaceholder: string
-  quickCopyEntryLabel: string
-  quickCopyPrimaryActionLabel: string
-  quickCopySubtitle: (sourceText: string, targetLabel: string) => string
   resultLabel: string
   searchItemCategoryLabel: string
   searchItemPrimaryActionLabel: string
@@ -22,7 +19,6 @@ export interface TranslatePluginCopy {
   swapLanguages: string
   targetLanguage: string
   translateAction: string
-  translateShortcut: string
   updateTranslationHint: string
   translating: string
 }
@@ -38,10 +34,6 @@ const translatePluginCopy: Record<AppLocale, TranslatePluginCopy> = {
     inputPlaceholder: "Paste or type text to translate...",
     retryTranslation: "Retry",
     outputPlaceholder: "The translation will appear here.",
-    quickCopyEntryLabel: "Quick Translate & Copy",
-    quickCopyPrimaryActionLabel: "Translate & Copy",
-    quickCopySubtitle: (sourceText, targetLabel) =>
-      `Translate "${sourceText}" to ${targetLabel} and copy the result`,
     resultLabel: "Translation",
     searchItemCategoryLabel: "Plugin",
     searchItemPrimaryActionLabel: "Translate",
@@ -51,7 +43,6 @@ const translatePluginCopy: Record<AppLocale, TranslatePluginCopy> = {
     swapLanguages: "Swap languages",
     targetLanguage: "Target language",
     translateAction: "Translate",
-    translateShortcut: "⌘↵ / Ctrl↵",
     updateTranslationHint: "Press Translate to update the result.",
     translating: "Translating..."
   },
@@ -65,10 +56,6 @@ const translatePluginCopy: Record<AppLocale, TranslatePluginCopy> = {
     inputPlaceholder: "输入或粘贴要翻译的内容...",
     retryTranslation: "重试",
     outputPlaceholder: "译文会在这里出现。",
-    quickCopyEntryLabel: "快速翻译并复制",
-    quickCopyPrimaryActionLabel: "翻译并复制",
-    quickCopySubtitle: (sourceText, targetLabel) =>
-      `把“${sourceText}”翻译成${targetLabel}并复制结果`,
     resultLabel: "译文",
     searchItemCategoryLabel: "插件",
     searchItemPrimaryActionLabel: "翻译",
@@ -78,8 +65,7 @@ const translatePluginCopy: Record<AppLocale, TranslatePluginCopy> = {
     swapLanguages: "切换语言方向",
     targetLanguage: "目标语言",
     translateAction: "翻译",
-    translateShortcut: "⌘↵ / Ctrl↵",
-    updateTranslationHint: "点击翻译，或按 ⌘↵ / Ctrl↵ 更新结果。",
+    updateTranslationHint: "点击“翻译”更新结果。",
     translating: "正在翻译..."
   }
 }

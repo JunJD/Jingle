@@ -97,7 +97,7 @@ export function TranslatePage(): React.JSX.Element {
       </Form.Dropdown>
       <Form.TextArea
         id="source-text"
-        description={sourceStatus ?? copy.translateShortcut}
+        description={sourceStatus ?? copy.updateTranslationHint}
         placeholder={copy.inputPlaceholder}
         title={copy.sourceLabel}
         value={translate.sourceText}

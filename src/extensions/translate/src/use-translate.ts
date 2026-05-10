@@ -5,13 +5,13 @@ import {
   useRuntimeAppLocale,
   writeClipboardText
 } from "../../runtime-api"
-import { translateRuntimeClient } from "./runtime-client"
 import {
   TRANSLATE_LANGUAGE_OPTIONS,
   detectTranslateLanguageId,
   getTranslateLanguageOption,
   parseTranslateSeedQuery
 } from "./languages"
+import { translateText } from "./translation"
 
 interface TranslateCommandPreferences {
   modelId: string
@@ -103,12 +103,8 @@ export function useTranslate(): {
     setIsTranslating(true)
 
     try {
-      const modelId = preferences.modelId.trim()
-      const response = await translateRuntimeClient.translate({
-        backend: {
-          kind: "llm",
-          ...(modelId ? { modelId } : {})
-        },
+      const translatedText = await translateText({
+        modelId: preferences.modelId,
         sourceLanguage: sourceLanguage.promptLabel,
         targetLanguage: targetLanguage.promptLabel,
         text: sourceText
@@ -118,7 +114,7 @@ export function useTranslate(): {
         return
       }
 
-      setTranslatedText(response.translatedText)
+      setTranslatedText(translatedText)
       setLastCompletedRequestKey(currentRequestKey)
     } catch (nextError: unknown) {
       if (requestRef.current !== requestId) {

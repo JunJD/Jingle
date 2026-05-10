@@ -1,8 +1,15 @@
 import { createLauncherIntentPresentation } from "@shared/launcher"
+import type { AppLocale } from "@shared/i18n"
 import { getTranslatePluginCopy } from "./copy"
 import { matchTranslateCommandQuery, matchTranslateIntent } from "./languages"
 
 const TRANSLATE_INTENT_ID = "feature-translate-intent"
+
+interface TranslateSearchCopy {
+  launcher: {
+    openGeneric: string
+  }
+}
 
 export const viewport = {
   bodyHeight: 392
@@ -14,8 +21,8 @@ export const search = {
     locale,
     query
   }: {
-    copy: import("../../../renderer/src/lib/i18n/messages").AppCopy
-    locale: import("../../../shared/i18n").AppLocale
+    copy: TranslateSearchCopy
+    locale: AppLocale
     query: string
   }) => {
     const pluginCopy = getTranslatePluginCopy(locale)
