@@ -4,6 +4,7 @@ import { repoRoot } from "./lib/architecture-guardrails.mjs"
 const commands = [
   ["node", [".agents/skills/launcher-extension-guardrails/scripts/check-architecture-imports.mjs"]],
   ["node", [".agents/skills/launcher-extension-guardrails/scripts/check-extension-contract.mjs"]],
+  ["node", [".agents/skills/launcher-extension-guardrails/scripts/check-extension-ai-contract.mjs"]],
   ["node", [".agents/skills/launcher-extension-guardrails/scripts/check-extension-registry.mjs"]],
   [
     "node",

@@ -637,7 +637,6 @@ Translate 迁移到 runtime 时：
 
 - `translateClient.translate()` 逐步替换为 `useAI().translateText()`。
 - `translate/main/service.ts` 中的 `translateText()` 保留，但移动到 main AI task service，成为共享实现。
-- `translate-quick-copy` 的 no-view command 也走同一个 `ai.translateText` capability。
 - `modelId` 仍从 command preference 读取，但解析 provider、检查 credentials、创建 model instance 都在 main。
 - copy clipboard 通过 clipboard host capability，不直接用 `navigator.clipboard`。
 
@@ -1071,8 +1070,7 @@ npm run typecheck
 2. renderer 现有 `useAI` 重命名为 `useAiToolRegistry`。
 3. runtime SDK 新增 `useAI()`，走 host capability。
 4. Translate UI 改用 runtime SDK。
-5. `translate-quick-copy` no-view 改用 `ai.translateText`。
-6. clipboard copy 改走 clipboard host capability。
+5. clipboard copy 改走 clipboard host capability。
 
 验收：
 
