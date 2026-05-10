@@ -88,6 +88,7 @@ function createLaunchContext(): ExtensionRuntimeLaunchContext {
     extensionName: "github",
     extensionPreferences: {},
     initialAction: "open",
+    locale: "zh-CN",
     mode: "view",
     seedQuery: ""
   }
@@ -97,6 +98,15 @@ function createHost(
   overrides: Partial<ExtensionRuntimeHostCapabilities> = {}
 ): ExtensionRuntimeHostCapabilities {
   return {
+    getRuntimeCapabilities: () => [
+      "clipboard",
+      "navigation",
+      "preferences",
+      "rpc",
+      "settings",
+      "shell",
+      "storage"
+    ],
     getCommandPreferences: () => ({ showCreated: true }),
     getExtensionPreferences: () => ({ apiBaseUrl: "https://api.github.com" }),
     getStorageValue: () => undefined,
@@ -158,10 +168,10 @@ async function flushPromises(): Promise<void> {
   })
 }
 
-test("runtime manager starts and stops a foreground utility session", () => {
+test("runtime manager starts and stops a foreground utility session", async () => {
   const { launcher, manager } = createManager()
 
-  const session = manager.startForeground(createLaunchContext())
+  const session = await manager.startForeground(createLaunchContext())
 
   assert.equal(session.sessionId, "session-1")
   assert.equal(session.pid, 100)
@@ -181,7 +191,7 @@ test("runtime manager starts and stops a foreground utility session", () => {
   assert.equal(manager.getForegroundSession(), null)
 })
 
-test("runtime manager drops messages from a stopped foreground session", () => {
+test("runtime manager drops messages from a stopped foreground session", async () => {
   const surfaces: ExtensionSurfaceSnapshot[] = []
   const { launcher, manager } = createManager({
     onSurface: (surface) => {
@@ -189,8 +199,8 @@ test("runtime manager drops messages from a stopped foreground session", () => {
     }
   })
 
-  manager.startForeground(createLaunchContext())
-  manager.startForeground(createLaunchContext())
+  await manager.startForeground(createLaunchContext())
+  await manager.startForeground(createLaunchContext())
 
   launcher.processes[0]?.emitMessage({
     sessionId: "session-1",
@@ -209,7 +219,7 @@ test("runtime manager drops messages from a stopped foreground session", () => {
   assert.equal(surfaces[0]?.description, "session-2")
 })
 
-test("runtime manager records structured crash errors", () => {
+test("runtime manager records structured crash errors", async () => {
   const errors: string[] = []
   const { launcher, manager } = createManager({
     onError: (error) => {
@@ -217,7 +227,7 @@ test("runtime manager records structured crash errors", () => {
     }
   })
 
-  manager.startForeground(createLaunchContext())
+  await manager.startForeground(createLaunchContext())
   launcher.processes[0]?.emitExit(42)
 
   assert.equal(manager.getForegroundSession(), null)
@@ -225,7 +235,7 @@ test("runtime manager records structured crash errors", () => {
   assert.deepEqual(errors, ["runtime_crashed"])
 })
 
-test("runtime manager forwards event acks for the active session", () => {
+test("runtime manager forwards event acks for the active session", async () => {
   const acks: string[] = []
   const { launcher, manager } = createManager({
     onEventAck: (ack, session) => {
@@ -233,7 +243,7 @@ test("runtime manager forwards event acks for the active session", () => {
     }
   })
 
-  manager.startForeground(createLaunchContext())
+  await manager.startForeground(createLaunchContext())
   launcher.processes[0]?.emitMessage({
     ack: {
       changeId: "change-1",
@@ -248,7 +258,7 @@ test("runtime manager forwards event acks for the active session", () => {
   assert.deepEqual(acks, ["session-1:change-1:true"])
 })
 
-test("runtime manager drops event acks from stopped sessions", () => {
+test("runtime manager drops event acks from stopped sessions", async () => {
   const acks: string[] = []
   const { launcher, manager } = createManager({
     onEventAck: (ack) => {
@@ -256,8 +266,8 @@ test("runtime manager drops event acks from stopped sessions", () => {
     }
   })
 
-  manager.startForeground(createLaunchContext())
-  manager.startForeground(createLaunchContext())
+  await manager.startForeground(createLaunchContext())
+  await manager.startForeground(createLaunchContext())
   launcher.processes[0]?.emitMessage({
     ack: {
       changeId: "change-1",
@@ -279,7 +289,7 @@ test("runtime manager responds to host requests and drops late responses after s
   })
   const { launcher, manager } = createManager({ host })
 
-  manager.startForeground(createLaunchContext())
+  await manager.startForeground(createLaunchContext())
   const request: ExtensionHostRequest = {
     capability: "preferences",
     id: "preferences-1",
@@ -315,7 +325,7 @@ test("runtime manager forwards navigation requests to the host capability", asyn
   })
   const { launcher, manager } = createManager({ host })
 
-  manager.startForeground(createLaunchContext())
+  await manager.startForeground(createLaunchContext())
   const request: ExtensionHostRequest = {
     capability: "navigation",
     id: "navigation-1",
@@ -360,7 +370,7 @@ test("runtime manager forwards clipboard write requests to the host capability",
   })
   const { launcher, manager } = createManager({ host })
 
-  manager.startForeground(createLaunchContext())
+  await manager.startForeground(createLaunchContext())
   const request: ExtensionHostRequest = {
     capability: "clipboard",
     id: "clipboard-1",
@@ -402,7 +412,7 @@ test("runtime manager rejects cross-extension host capability requests", async (
   })
   const { launcher, manager } = createManager({ host })
 
-  manager.startForeground(createLaunchContext())
+  await manager.startForeground(createLaunchContext())
   const request: ExtensionHostRequest = {
     capability: "preferences",
     id: "preferences-1",
@@ -430,6 +440,7 @@ test("runtime manager rejects cross-extension host capability requests", async (
 test("runtime manager stops run-once sessions after ready", async () => {
   const { launcher, manager } = createManager()
   const resultPromise = manager.runOnce(createLaunchContext())
+  await flushPromises()
 
   launcher.processes[0]?.emitMessage({
     sessionId: "session-1",
@@ -453,6 +464,7 @@ test("runtime manager reports run-once sessions when started", async () => {
       processMessageCountsWhenStarted.push(launcher.processes[0]?.messages.length ?? -1)
     }
   })
+  await flushPromises()
 
   assert.deepEqual(startedSessionIds, ["session-1"])
   assert.deepEqual(processMessageCountsWhenStarted, [0])
@@ -468,6 +480,7 @@ test("runtime manager reports run-once sessions when started", async () => {
 test("runtime manager stops run-once sessions after runtime errors", async () => {
   const { launcher, manager } = createManager()
   const resultPromise = manager.runOnce(createLaunchContext())
+  await flushPromises()
 
   launcher.processes[0]?.emitMessage({
     error: {
@@ -487,4 +500,39 @@ test("runtime manager stops run-once sessions after runtime errors", async () =>
     status: "error"
   })
   assert.equal(launcher.processes[0]?.killed, true)
+})
+
+test("runtime manager rejects undeclared host capability requests", async () => {
+  let clipboardWriteCount = 0
+  const host = createHost({
+    getRuntimeCapabilities: () => ["preferences"],
+    writeClipboardText: () => {
+      clipboardWriteCount += 1
+    }
+  })
+  const { launcher, manager } = createManager({ host })
+
+  await manager.startForeground(createLaunchContext())
+  const request: ExtensionHostRequest = {
+    capability: "clipboard",
+    id: "clipboard-1",
+    method: "write-text",
+    payload: {
+      text: "Copied from runtime"
+    }
+  }
+
+  launcher.processes[0]?.emitMessage({
+    request,
+    sessionId: "session-1",
+    type: "host-request"
+  })
+  await flushPromises()
+
+  const response = launcher.processes[0]?.messages.find(
+    (message) => message.type === "host-response"
+  )
+  assert.equal(response?.type, "host-response")
+  assert.equal(response?.response.ok, false)
+  assert.equal(clipboardWriteCount, 0)
 })

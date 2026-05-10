@@ -1,4 +1,5 @@
 import Store from "electron-store"
+import type { ExtensionRuntimeHostCapability } from "@shared/extension-runtime-protocol"
 import type { SettingsWindowRoutingService } from "../../settings-window-routing/service"
 import type { ExternalLinksService } from "../../external-links/service"
 import type { NativeExtensionsService } from "../../native-extensions/service"
@@ -29,6 +30,20 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
     private readonly settingsWindowRoutingService: SettingsWindowRoutingService,
     private readonly rendererBridge: ExtensionRuntimeRendererBridge
   ) {}
+
+  getRuntimeCapabilities(params: {
+    commandName: string
+    extensionName: string
+  }): readonly ExtensionRuntimeHostCapability[] {
+    const manifest = this.nativeExtensionsService.getManifest(params.extensionName)
+    if (!manifest.commands.some((command) => command.name === params.commandName)) {
+      throw new Error(
+        `Native extension "${params.extensionName}" does not declare command "${params.commandName}"`
+      )
+    }
+
+    return manifest.runtimeCapabilities ?? []
+  }
 
   getCommandPreferences(params: {
     commandName: string

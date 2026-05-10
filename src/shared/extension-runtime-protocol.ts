@@ -1,6 +1,20 @@
+import type { AppLocale } from "./i18n"
+import type { NativeMenuBarIconName } from "./native-menu-bar"
+
 export type ExtensionRuntimeCommandMode = "menu-bar" | "no-view" | "view"
 
 export type ExtensionRuntimeInitialAction = "focus" | "open" | "submit"
+
+export type ExtensionRuntimeHostCapability =
+  | "ai"
+  | "clipboard"
+  | "navigation"
+  | "preferences"
+  | "rpc"
+  | "scheduler"
+  | "settings"
+  | "shell"
+  | "storage"
 
 export interface ExtensionRuntimeLaunchContext {
   commandName: string
@@ -8,11 +22,12 @@ export interface ExtensionRuntimeLaunchContext {
   extensionName: string
   extensionPreferences: Record<string, unknown>
   initialAction: ExtensionRuntimeInitialAction
+  locale: AppLocale
   mode: ExtensionRuntimeCommandMode
   seedQuery: string
 }
 
-export type ExtensionRuntimeSessionKind = "foreground" | "run-once"
+export type ExtensionRuntimeSessionKind = "ambient" | "foreground" | "run-once"
 
 export interface ExtensionRuntimeSessionInfo {
   context: ExtensionRuntimeLaunchContext
@@ -172,6 +187,7 @@ export interface ExtensionFormSeparatorNode {
 }
 
 export interface ExtensionMenuBarSurfaceSnapshot extends ExtensionSurfaceBase {
+  iconName?: NativeMenuBarIconName
   isLoading: boolean
   kind: "menu-bar"
   sections: ExtensionMenuBarSectionNode[]
@@ -187,6 +203,7 @@ export interface ExtensionMenuBarSectionNode {
 
 export interface ExtensionMenuBarItemNode {
   disabled: boolean
+  iconName?: NativeMenuBarIconName
   id: string
   subtitle?: string
   title: string

@@ -60,9 +60,9 @@ export class ExtensionRuntimeController {
     registerIpcHandle(
       ipcMain,
       "extensionRuntime:startForeground",
-      (event, context: ExtensionRuntimeLaunchContext) => {
+      async (event, context: ExtensionRuntimeLaunchContext) => {
         const previousSessionId = this.runtimeManager.getForegroundSession()?.sessionId
-        const session = this.runtimeManager.startForeground(context)
+        const session = await this.runtimeManager.startForeground(context)
         if (previousSessionId) {
           this.rendererBridge.releaseSession(previousSessionId)
         }

@@ -1,3 +1,4 @@
+import type { ExtensionRuntimeHostCapability } from "./extension-runtime-protocol"
 import type {
   LauncherCommandMode,
   LauncherCommandOwnerCapability,
@@ -50,18 +51,9 @@ export interface NativeExtensionPackageManifest<
   name: TExtensionName
   preferences?: NativeExtensionPreferenceSchema[]
   rpcMethods?: string[]
+  runtimeCapabilities?: ExtensionRuntimeHostCapability[]
   supportedPlatforms?: NativeExtensionSupportedPlatform[]
   title: string
-}
-
-export interface NativeExtensionRendererCommandDefinition<TCommandName extends string = string> {
-  commandModule: Record<string, unknown>
-  metaModule?: Record<string, unknown>
-  name: TCommandName
-}
-
-export interface NativeExtensionRendererDefinition<TCommandName extends string = string> {
-  commands: Array<NativeExtensionRendererCommandDefinition<TCommandName>>
 }
 
 export interface NativeExtensionService {
@@ -146,12 +138,6 @@ export function listMissingRequiredNativeExtensionPreferences(
     .map((preference) => getNativeExtensionPreferenceDisplayName(preference))
 }
 
-export function defineNativeExtensionRenderer(
-  renderer: NativeExtensionRendererDefinition
-): NativeExtensionRendererDefinition {
-  return renderer
-}
-
 export function defineNativeExtensionMain(
   main: NativeExtensionMainDefinition
 ): NativeExtensionMainDefinition {
@@ -162,52 +148,6 @@ export function defineNativeExtensionManifest(manifest: unknown): NativeExtensio
   const resolvedManifest = manifest as NativeExtensionPackageManifest
   validateNativeExtensionPackageManifest(resolvedManifest)
   return resolvedManifest
-}
-
-export function validateNativeExtensionRendererDefinition(
-  manifest: NativeExtensionPackageManifest,
-  renderer: NativeExtensionRendererDefinition
-): void {
-  validateNativeExtensionPackageManifest(manifest)
-
-  const manifestCommandNames = new Set(manifest.commands.map((command) => command.name))
-  const runtimeCommandNames = new Set(
-    manifest.commands.filter((command) => command.runtime).map((command) => command.name)
-  )
-  const rendererRequiredCommandNames = new Set(
-    manifest.commands
-      .map((command) => command.name)
-      .filter((commandName) => !runtimeCommandNames.has(commandName))
-  )
-  const commandModuleNames = new Set<string>()
-
-  for (const command of renderer.commands) {
-    if (commandModuleNames.has(command.name)) {
-      throw new Error(
-        `Native extension "${manifest.name}" declares duplicate command module "${command.name}"`
-      )
-    }
-
-    if (!manifestCommandNames.has(command.name)) {
-      throw new Error(
-        `Native extension "${manifest.name}" command module "${command.name}" is missing from its manifest`
-      )
-    }
-
-    if (runtimeCommandNames.has(command.name)) {
-      throw new Error(
-        `Native extension "${manifest.name}" runtime command "${command.name}" must not be declared in renderer definition`
-      )
-    }
-
-    commandModuleNames.add(command.name)
-  }
-
-  if (commandModuleNames.size !== rendererRequiredCommandNames.size) {
-    throw new Error(
-      `Native extension "${manifest.name}" manifest and command modules are out of sync`
-    )
-  }
 }
 
 export function validateNativeExtensionMainDefinition(
@@ -247,12 +187,6 @@ export function validateNativeExtensionPackageManifest(
 
     commandNames.add(command.name)
 
-    if (command.runtime && command.mode !== "view" && command.mode !== "no-view") {
-      throw new Error(
-        `Native extension "${manifest.name}" runtime command "${command.name}" must be a view or no-view command`
-      )
-    }
-
     if (command.runtime && command.mode === "view" && !command.runtime.viewport) {
       throw new Error(
         `Native extension "${manifest.name}" runtime view command "${command.name}" must declare viewport metadata`
@@ -276,6 +210,12 @@ export function validateNativeExtensionPackageManifest(
   const rpcMethodSet = new Set(rpcMethods)
   if (rpcMethodSet.size !== rpcMethods.length) {
     throw new Error(`Native extension "${manifest.name}" declares duplicate RPC methods`)
+  }
+
+  const runtimeCapabilities = manifest.runtimeCapabilities ?? []
+  const runtimeCapabilitySet = new Set(runtimeCapabilities)
+  if (runtimeCapabilitySet.size !== runtimeCapabilities.length) {
+    throw new Error(`Native extension "${manifest.name}" declares duplicate runtime capabilities`)
   }
 
   const supportedPlatforms = manifest.supportedPlatforms ?? []

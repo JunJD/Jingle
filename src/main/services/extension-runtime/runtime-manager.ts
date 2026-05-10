@@ -13,7 +13,8 @@ import type {
   ExtensionRuntimeSessionKind,
   ExtensionRuntimeToHostMessage,
   ExtensionSurfaceSnapshot,
-  ExtensionNavigationHostRequest
+  ExtensionNavigationHostRequest,
+  ExtensionRuntimeHostCapability
 } from "@shared/extension-runtime-protocol"
 import type { NativeExtensionInvokeRequest } from "@shared/native-extensions"
 import type { ExtensionRuntimeProcess, ExtensionRuntimeProcessLauncher } from "./runtime-process"
@@ -33,6 +34,10 @@ export interface ExtensionRuntimeStorageParams {
 }
 
 export interface ExtensionRuntimeHostCapabilities {
+  getRuntimeCapabilities: (params: {
+    commandName: string
+    extensionName: string
+  }) => MaybePromise<readonly ExtensionRuntimeHostCapability[]>
   getCommandPreferences: (params: {
     commandName: string
     extensionName: string
@@ -83,6 +88,7 @@ interface RuntimeSession {
   kind: ExtensionRuntimeSessionKind
   process: ExtensionRuntimeProcess
   resolveRunOnce?: (result: ExtensionRuntimeRunResult) => void
+  runtimeCapabilities: Set<ExtensionRuntimeHostCapability>
   sessionId: string
   stopping: boolean
 }
@@ -137,11 +143,17 @@ export class ExtensionRuntimeManager {
     options?: { onSessionStart?: (session: ExtensionRuntimeSessionInfo) => void }
   ): Promise<ExtensionRuntimeRunResult> {
     return new Promise((resolve) => {
-      this.startSession("run-once", context, {
+      void this.startSession("run-once", context, {
         beforeStart: (session) => {
           session.resolveRunOnce = resolve
           options?.onSessionStart?.(toSessionInfo(session))
         }
+      }).catch((error) => {
+        resolve({
+          error: toRuntimeError("runtime_start_failed", error),
+          sessionId: "",
+          status: "error"
+        })
       })
     })
   }
@@ -160,12 +172,17 @@ export class ExtensionRuntimeManager {
     return true
   }
 
-  startForeground(context: ExtensionRuntimeLaunchContext): ExtensionRuntimeSessionInfo {
+  async startAmbient(context: ExtensionRuntimeLaunchContext): Promise<ExtensionRuntimeSessionInfo> {
+    const session = await this.startSession("ambient", context)
+    return toSessionInfo(session)
+  }
+
+  async startForeground(context: ExtensionRuntimeLaunchContext): Promise<ExtensionRuntimeSessionInfo> {
+    const session = await this.startSession("foreground", context)
     if (this.foregroundSession) {
       this.stopSession(this.foregroundSession)
     }
 
-    const session = this.startSession("foreground", context)
     this.foregroundSession = session
     return toSessionInfo(session)
   }
@@ -290,6 +307,8 @@ export class ExtensionRuntimeManager {
     session: RuntimeSession,
     request: ExtensionHostRequest
   ): Promise<unknown> {
+    assertRuntimeCapability(session, request.capability)
+
     switch (request.capability) {
       case "preferences":
         assertOwnExtension(session, request.payload.extensionName)
@@ -339,11 +358,17 @@ export class ExtensionRuntimeManager {
     }
   }
 
-  private startSession(
+  private async startSession(
     kind: ExtensionRuntimeSessionKind,
     context: ExtensionRuntimeLaunchContext,
     options?: { beforeStart?: (session: RuntimeSession) => void }
-  ): RuntimeSession {
+  ): Promise<RuntimeSession> {
+    const runtimeCapabilities = new Set(
+      await this.options.host.getRuntimeCapabilities({
+        commandName: context.commandName,
+        extensionName: context.extensionName
+      })
+    )
     const sessionId = this.options.createSessionId?.() ?? randomUUID()
     const process = this.options.processLauncher.launch()
     const session: RuntimeSession = {
@@ -351,6 +376,7 @@ export class ExtensionRuntimeManager {
       disposeListeners: [],
       kind,
       process,
+      runtimeCapabilities,
       sessionId,
       stopping: false
     }
@@ -416,6 +442,17 @@ function assertOwnExtension(session: RuntimeSession, extensionName: string): voi
   if (extensionName !== session.context.extensionName) {
     throw new Error(
       `Runtime session "${session.sessionId}" cannot access extension "${extensionName}"`
+    )
+  }
+}
+
+function assertRuntimeCapability(
+  session: RuntimeSession,
+  capability: ExtensionRuntimeHostCapability
+): void {
+  if (!session.runtimeCapabilities.has(capability)) {
+    throw new Error(
+      `Runtime command "${session.context.extensionName}:${session.context.commandName}" tried to use undeclared host capability "${capability}"`
     )
   }
 }

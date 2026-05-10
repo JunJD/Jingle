@@ -1,9 +1,11 @@
 import { BrowserWindow } from "electron"
 import type {
+  NativeExtensionPackageManifest,
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionInvokeRequest,
   NativeExtensionPreferencesChangedEvent
 } from "@shared/native-extensions"
+import { listNativeExtensionManifests } from "@extensions/index"
 import {
   getNativeExtensionCommandPreferenceRecord,
   getNativeExtensionPreferenceRecord,
@@ -18,6 +20,17 @@ import {
 } from "../services/native-extensions"
 
 export class NativeExtensionsService {
+  getManifest(extensionName: string): NativeExtensionPackageManifest {
+    const manifest = listNativeExtensionManifests(process.platform).find(
+      (candidate) => candidate.name === extensionName
+    )
+    if (!manifest) {
+      throw new Error(`Unknown native extension "${extensionName}"`)
+    }
+
+    return manifest
+  }
+
   listSettingsSchemas(): InstalledNativeExtensionSettingsSchema[] {
     return listNativeExtensionSettingsSchemas()
   }
