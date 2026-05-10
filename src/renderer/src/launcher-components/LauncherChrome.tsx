@@ -14,12 +14,13 @@ interface LauncherChromeProps {
   headerTrailing?: ReactNode
   inputAccessory?: ReactNode
   inputClassName?: string
+  inputMultiline?: boolean
   inputReplacement?: ReactNode
-  inputRef: RefObject<LauncherInputElement | null>
+  inputRef: RefObject<LauncherInputElement | null> | ((element: LauncherInputElement | null) => void)
   inputStatus?: LauncherInputStatus
   inputTrailing?: ReactNode
   inputValue: string
-  onInputKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void
+  onInputKeyDown?: (event: React.KeyboardEvent<LauncherInputElement>) => void
   onInputValueChange: (value: string) => void
   placeholders: readonly string[]
   shellConfig: LauncherShellConfig
@@ -37,6 +38,7 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
     headerTrailing,
     inputAccessory,
     inputClassName,
+    inputMultiline = false,
     inputReplacement,
     inputRef,
     inputStatus = "idle",
@@ -61,6 +63,7 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
           <LauncherInput
             ref={inputRef}
             density={density}
+            multiline={inputMultiline}
             trailing={inputTrailing}
             showStatusIndicator={showInputStatusIndicator}
             status={inputStatus}

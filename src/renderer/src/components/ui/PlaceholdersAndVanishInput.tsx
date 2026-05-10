@@ -1,15 +1,39 @@
 "use client"
 
 import { AnimatePresence, motion } from "motion/react"
-import { forwardRef, useEffect, useMemo, useState } from "react"
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react"
 import { cn } from "@/lib/utils"
 
-export interface PlaceholdersAndVanishInputProps extends Omit<
-  React.InputHTMLAttributes<HTMLInputElement>,
-  "placeholder"
-> {
+type PlaceholderInputElement = HTMLInputElement | HTMLTextAreaElement
+
+export interface PlaceholdersAndVanishInputProps
+  extends Omit<
+    React.InputHTMLAttributes<HTMLInputElement>,
+    | "defaultValue"
+    | "onChange"
+    | "onCompositionEnd"
+    | "onCompositionStart"
+    | "onKeyDown"
+    | "placeholder"
+    | "value"
+  > {
+  readonly defaultValue?: string | number | readonly string[]
+  readonly multiline?: boolean
+  readonly onChange?: React.ChangeEventHandler<PlaceholderInputElement>
+  readonly onCompositionEnd?: React.CompositionEventHandler<PlaceholderInputElement>
+  readonly onCompositionStart?: React.CompositionEventHandler<PlaceholderInputElement>
+  readonly onKeyDown?: React.KeyboardEventHandler<PlaceholderInputElement>
   readonly placeholders: readonly string[]
   readonly placeholderClassName?: string
+  readonly value?: string | number | readonly string[]
   readonly wrapperClassName?: string
 }
 
@@ -30,12 +54,13 @@ function normalizeInputValue(value: string | number | readonly string[] | undefi
 }
 
 export const PlaceholdersAndVanishInput = forwardRef<
-  HTMLInputElement,
+  PlaceholderInputElement,
   PlaceholdersAndVanishInputProps
 >(function PlaceholdersAndVanishInput(
   {
     className,
     defaultValue,
+    multiline = false,
     onChange,
     placeholderClassName,
     placeholders,
@@ -45,6 +70,7 @@ export const PlaceholdersAndVanishInput = forwardRef<
   },
   ref
 ) {
+  const inputElementRef = useRef<PlaceholderInputElement | null>(null)
   const [currentPlaceholder, setCurrentPlaceholder] = useState(0)
   const [uncontrolledValue, setUncontrolledValue] = useState(() =>
     normalizeInputValue(defaultValue)
@@ -58,6 +84,24 @@ export const PlaceholdersAndVanishInput = forwardRef<
     resolvedPlaceholders.length === 0 ? 0 : currentPlaceholder % resolvedPlaceholders.length
   const resolvedValue = value === undefined ? uncontrolledValue : normalizeInputValue(value)
   const shouldShowPlaceholder = resolvedValue.length === 0
+  const controlClassName = cn(
+    "relative z-10 w-full appearance-none border-0 bg-transparent outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0",
+    className
+  )
+  const setInputRef = useCallback(
+    (element: PlaceholderInputElement | null): void => {
+      inputElementRef.current = element
+      if (typeof ref === "function") {
+        ref(element)
+        return
+      }
+
+      if (ref) {
+        ref.current = element
+      }
+    },
+    [ref]
+  )
 
   useEffect(() => {
     if (resolvedPlaceholders.length <= 1) {
@@ -103,26 +147,58 @@ export const PlaceholdersAndVanishInput = forwardRef<
     }
   }, [placeholderKey, resolvedPlaceholders.length])
 
+  useLayoutEffect(() => {
+    const element = inputElementRef.current
+    if (!multiline || !(element instanceof HTMLTextAreaElement)) {
+      return
+    }
+
+    element.style.height = "auto"
+    const maxHeight = Number.parseFloat(window.getComputedStyle(element).maxHeight)
+    const nextHeight = Number.isFinite(maxHeight)
+      ? Math.min(element.scrollHeight, maxHeight)
+      : element.scrollHeight
+    element.style.height = `${Math.ceil(nextHeight)}px`
+  }, [multiline, resolvedValue])
+
   return (
     <div className={cn("relative min-w-0 flex-1", wrapperClassName)}>
-      <input
-        {...props}
-        ref={ref}
-        value={resolvedValue}
-        onChange={(event) => {
-          if (value === undefined) {
-            setUncontrolledValue(event.target.value)
-          }
+      {multiline ? (
+        <textarea
+          {...(props as React.TextareaHTMLAttributes<HTMLTextAreaElement>)}
+          ref={setInputRef as React.Ref<HTMLTextAreaElement>}
+          rows={1}
+          value={resolvedValue}
+          onChange={(event) => {
+            if (value === undefined) {
+              setUncontrolledValue(event.target.value)
+            }
 
-          onChange?.(event)
-        }}
+            onChange?.(event)
+          }}
+          className={controlClassName}
+        />
+      ) : (
+        <input
+          {...props}
+          ref={setInputRef as React.Ref<HTMLInputElement>}
+          value={resolvedValue}
+          onChange={(event) => {
+            if (value === undefined) {
+              setUncontrolledValue(event.target.value)
+            }
+
+            onChange?.(event)
+          }}
+          className={controlClassName}
+        />
+      )}
+
+      <div
         className={cn(
-          "relative z-10 w-full appearance-none border-0 bg-transparent outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0",
-          className
+          "pointer-events-none absolute inset-0 flex items-center overflow-hidden"
         )}
-      />
-
-      <div className="pointer-events-none absolute inset-0 flex items-center overflow-hidden">
+      >
         <AnimatePresence initial={false} mode="wait">
           {shouldShowPlaceholder && resolvedPlaceholders.length > 0 ? (
             <motion.p

@@ -20,6 +20,7 @@ import type { LauncherActionDescriptor } from "@/features/launcher-actions/model
 import { cn } from "@/lib/utils"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
+import type { LauncherInputElement } from "@launcher-shell/input-element"
 import type {
   ExtensionActionNode,
   ExtensionDetailSurfaceSnapshot,
@@ -62,7 +63,7 @@ import {
 const RUNTIME_LIST_SHORTCUT_SCOPES = ["launcher.list"] as const
 const streamdownPlugins = { cjk, code, math, mermaid }
 
-function isPlainDeletionKey(event: ReactKeyboardEvent<HTMLInputElement>): boolean {
+function isPlainDeletionKey(event: ReactKeyboardEvent<LauncherInputElement>): boolean {
   return (
     (event.key === "Backspace" || event.key === "Delete") &&
     !event.metaKey &&
@@ -950,7 +951,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     })
   }
 
-  const handleInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
+  const handleInputKeyDown = (event: ReactKeyboardEvent<LauncherInputElement>): void => {
     if (event.currentTarget.value.length > 0 || !isPlainDeletionKey(event)) {
       return
     }

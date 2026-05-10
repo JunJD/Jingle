@@ -13,6 +13,7 @@ import type {
   LauncherHomeSurfaceModel,
   LauncherHomeSurfaceSection
 } from "@launcher-shell/home-surface"
+import type { LauncherInputElement } from "@launcher-shell/input-element"
 import type { LauncherIndexedCommand } from "@launcher-shell/pages"
 import { ClipboardChip } from "./ClipboardChip"
 import { LauncherChrome } from "./LauncherChrome"
@@ -32,11 +33,11 @@ type LauncherHomeCommandId =
 export function LauncherSearchPage(props: {
   executeHomeCommand: (commandId: LauncherHomeCommandId) => void
   executeItem: (index: number) => void
-  inputRef: RefObject<HTMLInputElement | null>
+  inputRef: RefObject<LauncherInputElement | null>
   inputValue: string
   isSearchLoading: boolean
   onClearClipboardContext: () => void
-  onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
+  onInputKeyDown: (event: React.KeyboardEvent<LauncherInputElement>) => void
   onInputValueChange: (value: string) => void
   onRemoveHistoryItem: (itemId: string) => void
   onSetHistoryItemPinned: (itemId: string, pin: boolean) => void
@@ -248,7 +249,6 @@ export function LauncherSearchPage(props: {
     },
     []
   )
-
   return (
     <div className="relative h-full">
       <LauncherChrome
@@ -326,19 +326,22 @@ export function LauncherSearchPage(props: {
           ) : undefined
         }
         headerTrailing={
-          <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
-            <div className="flex items-center gap-[var(--ow-gap-sm)] px-0 py-[var(--ow-space-1)]">
-              <span>{copy.launcher.aiEntryLabel}</span>
-              {openAiShortcut ? (
-                <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
-                  {openAiShortcut}
-                </span>
-              ) : null}
+          isSearchMode ? null : (
+            <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
+              <div className="flex items-center gap-[var(--ow-gap-sm)] px-0 py-[var(--ow-space-1)]">
+                <span>{copy.launcher.aiEntryLabel}</span>
+                {openAiShortcut ? (
+                  <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
+                    {openAiShortcut}
+                  </span>
+                ) : null}
+              </div>
             </div>
-          </div>
+          )
         }
         inputRef={inputRef}
         density="compact"
+        inputMultiline
         inputValue={inputValue}
         onInputKeyDown={onInputKeyDown}
         onInputValueChange={handleInputValueChange}

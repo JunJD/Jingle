@@ -48,7 +48,7 @@ export function useLauncherSearchPage(props: {
   executeItem: (index: number) => void
   clearClipboardContext: () => void
   executeHomeCommand: (commandId: LauncherHomeCommandId) => void
-  handleInputCommandKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
+  handleInputCommandKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void
   homeInputSelectionRequestVersion: number
   isSearchLoading: boolean
   removeHistoryItem: (itemId: string) => void
@@ -323,7 +323,7 @@ export function useLauncherSearchPage(props: {
   )
 
   const handleInputCommandKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLInputElement>): void => {
+    (event: React.KeyboardEvent<HTMLElement>): void => {
       const commandMatch = resolveLauncherCommand({
         altKey: event.altKey,
         ctrlKey: event.ctrlKey,

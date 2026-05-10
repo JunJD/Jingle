@@ -11,6 +11,9 @@ import type { LauncherHomeSurfaceSection } from "@launcher-shell/home-surface"
 import type { LauncherShellItem } from "@launcher-shell/types"
 import { useSelectedRowScrollIntoView } from "./useSelectedRowScrollIntoView"
 
+const SECTION_HEADER_LABEL_START_LENGTH = 34
+const SECTION_HEADER_LABEL_END_LENGTH = 12
+
 function renderTitle(title: string, match?: [number, number]): React.JSX.Element | string {
   if (!match || match[0] < 0 || match[1] < match[0]) {
     return title
@@ -130,7 +133,16 @@ export function LauncherResultList(props: {
               className="flex h-[var(--ow-section-h)] items-center px-[var(--launcher-list-section-x)] [font-size:var(--ow-font-meta)] font-semibold text-muted-foreground"
             >
               <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
-                <span>{row.label}</span>
+                <span
+                  className="block max-w-[420px] truncate"
+                  title={row.label}
+                >
+                  {truncateMiddle(
+                    row.label,
+                    SECTION_HEADER_LABEL_START_LENGTH,
+                    SECTION_HEADER_LABEL_END_LENGTH
+                  )}
+                </span>
                 {sectionAction ? (
                   <button
                     type="button"

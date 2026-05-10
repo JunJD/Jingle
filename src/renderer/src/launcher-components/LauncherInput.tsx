@@ -10,13 +10,14 @@ import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 
 export interface LauncherInputProps extends PlaceholdersAndVanishInputProps {
   readonly density?: "default" | "compact"
+  readonly multiline?: boolean
   readonly status?: LauncherInputStatus
   readonly trailing?: ReactNode
   readonly showStatusIndicator?: boolean
 }
 
 function shouldPreserveNativeInputNavigation(
-  event: React.KeyboardEvent<HTMLInputElement>
+  event: React.KeyboardEvent<LauncherInputElement>
 ): boolean {
   if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
     return true
@@ -34,6 +35,7 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
     {
       className,
       density = "default",
+      multiline = false,
       onCompositionEnd,
       onCompositionStart,
       onKeyDown,
@@ -57,12 +59,18 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
         data-status={status}
       >
         <PlaceholdersAndVanishInput
-          ref={ref as React.Ref<HTMLInputElement>}
+          ref={ref as React.Ref<LauncherInputElement>}
           aria-busy={status === "idle" ? undefined : true}
+          multiline={multiline}
           className={cn(
             isCompact
-              ? "h-[var(--ow-control-h-sm)] min-w-0 border-0 bg-transparent px-[var(--ow-space-1)] py-0 [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] shadow-none"
-              : "h-[var(--ow-control-h-md)] min-w-0 border-0 bg-transparent px-[var(--ow-space-1-5)] py-0 [font-size:var(--ow-font-title)] font-medium leading-[var(--ow-line-control-md)] shadow-none",
+              ? "min-w-0 border-0 bg-transparent px-[var(--ow-space-1)] py-0 [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] shadow-none"
+              : "min-w-0 border-0 bg-transparent px-[var(--ow-space-1-5)] py-0 [font-size:var(--ow-font-title)] font-medium leading-[var(--ow-line-control-md)] shadow-none",
+            multiline
+              ? "max-h-[40px] resize-none overflow-y-auto whitespace-pre-wrap break-words leading-[20px] [overflow-wrap:anywhere] scrollbar-hide"
+              : isCompact
+                ? "h-[var(--ow-control-h-sm)]"
+                : "h-[var(--ow-control-h-md)]",
             "focus-visible:ring-0 focus-visible:ring-offset-0",
             "placeholder:text-transparent",
             className

@@ -51,7 +51,7 @@ export default function LauncherApp(): React.JSX.Element {
   const inputNeedsWorkspaceMessage = copy.chat.inputNeedsWorkspace
   const clipboard = useLauncherClipboard()
   const threadContext = useThreadContext()
-  const searchInputRef = useRef<HTMLInputElement>(null)
+  const searchInputRef = useRef<LauncherInputElement>(null)
   const pluginInputRef = useRef<LauncherInputElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const { closeActivePlugin, navigationDirection, openCommand, route, routeKey } =
