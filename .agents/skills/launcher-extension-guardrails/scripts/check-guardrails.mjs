@@ -8,6 +8,10 @@ const commands = [
   ["node", [".agents/skills/launcher-extension-guardrails/scripts/check-extension-registry.mjs"]],
   [
     "node",
+    [".agents/skills/launcher-extension-guardrails/scripts/check-extension-runtime-registry.mjs"]
+  ],
+  [
+    "node",
     [".agents/skills/launcher-extension-guardrails/scripts/check-runtime-backed-renderer-imports.mjs"]
   ],
   ["node", [".agents/skills/launcher-extension-guardrails/scripts/check-no-glob-sprawl.mjs"]],

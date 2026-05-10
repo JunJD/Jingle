@@ -92,6 +92,14 @@ npm run typecheck
   - extension title
   - default command
 
+- `check-extension-runtime-registry.mjs`
+  检查 manifest runtime command 与 package-level runtime entry 一致性：
+  - manifest runtime command 必须由 `src/extensions/<extension>/runtime.ts` 导出
+  - package runtime entry 不能导出 manifest 不存在或未声明 runtime 的 command
+  - command mode 必须一致
+  - `view` / `menu-bar` command 必须有 `Component`
+  - `no-view` command 必须有 `run`
+
 - `check-runtime-backed-renderer-imports.mjs`
   禁止 renderer import 已在 manifest 声明 `runtime` 的 extension command module
 
