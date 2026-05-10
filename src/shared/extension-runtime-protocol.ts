@@ -399,8 +399,16 @@ export interface ExtensionSchedulerHostRequest extends ExtensionHostRequestBase 
 
 export interface ExtensionAiHostRequest extends ExtensionHostRequestBase {
   capability: "ai"
-  method: "generate" | "translate-text"
-  payload: unknown
+  method: "ask"
+  payload: ExtensionAiAskPayload
+}
+
+export interface ExtensionAiAskPayload {
+  modelPreference?: "fast"
+  modelId?: string
+  prompt: string
+  system?: string
+  temperature?: number
 }
 
 export type ExtensionHostResponse =

@@ -1,4 +1,5 @@
 export {
+  AI,
   Action,
   ActionPanel,
   createNativeExtensionClient,

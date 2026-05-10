@@ -46,9 +46,8 @@ test.after(async () => {
 })
 
 test("model provider credentials can be read back for settings edits", async () => {
-  const { getProviderCredentialsForUI, setProviderCredentialsForUI } = await import(
-    "../../src/main/model-provider/service"
-  )
+  const { getProviderCredentialsForUI, setProviderCredentialsForUI } =
+    await import("../../src/main/model-provider/service")
 
   globalThis.fetch = async () =>
     new Response(JSON.stringify({ data: [{ id: "deepseek-chat" }] }), {
@@ -61,4 +60,22 @@ test("model provider credentials can be read back for settings edits", async () 
   assert.deepEqual(getProviderCredentialsForUI("deepseek"), {
     apiKey: "sk-local-user-key"
   })
+})
+
+test("fast model preference resolves to a configured low-latency model", async () => {
+  const { setProviderCredentialsForUI } = await import("../../src/main/model-provider/service")
+  const { resolveModelRuntimeConfig } = await import("../../src/main/model-provider/resolver")
+
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ data: [{ id: "deepseek-v4-flash" }] }), {
+      status: 200,
+      statusText: "OK"
+    })
+
+  await setProviderCredentialsForUI("deepseek", { apiKey: "sk-fast-model-key" })
+
+  assert.equal(
+    resolveModelRuntimeConfig({ modelPreference: "fast" }).modelId,
+    "deepseek:deepseek-v4-flash"
+  )
 })

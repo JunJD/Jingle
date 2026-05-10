@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto"
 import type {
+  ExtensionAiAskPayload,
   ExtensionHostRequest,
   ExtensionHostResponse,
   ExtensionRuntimeEventAck,
@@ -34,6 +35,7 @@ export interface ExtensionRuntimeStorageParams {
 }
 
 export interface ExtensionRuntimeHostCapabilities {
+  askAI: (input: ExtensionAiAskPayload) => Promise<string>
   getRuntimeCapabilities: (params: {
     commandName: string
     extensionName: string
@@ -353,6 +355,7 @@ export class ExtensionRuntimeManager {
         await this.options.host.writeClipboardText(request.payload.text)
         return null
       case "ai":
+        return this.options.host.askAI(request.payload)
       case "scheduler":
         throw new Error(`Unsupported runtime host capability "${request.capability}"`)
     }

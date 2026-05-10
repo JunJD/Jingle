@@ -1,3 +1,4 @@
+export { AI, type RuntimeAiAskInput } from "./ai"
 export { Action, ActionPanel } from "./actions"
 export { writeClipboardText } from "./clipboard"
 export { createNativeExtensionClient, defineNativeExtensionClientMethod } from "./client"

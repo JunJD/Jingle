@@ -1,5 +1,8 @@
 import Store from "electron-store"
+import { HumanMessage, SystemMessage } from "@langchain/core/messages"
 import type { ExtensionRuntimeHostCapability } from "@shared/extension-runtime-protocol"
+import type { ExtensionAiAskPayload } from "@shared/extension-runtime-protocol"
+import { getChatModelInstance } from "../../llm/get-chat-model"
 import type { SettingsWindowRoutingService } from "../../settings-window-routing/service"
 import type { ExternalLinksService } from "../../external-links/service"
 import type { NativeExtensionsService } from "../../native-extensions/service"
@@ -43,6 +46,25 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
     }
 
     return manifest.runtimeCapabilities ?? []
+  }
+
+  async askAI(input: ExtensionAiAskPayload): Promise<string> {
+    const model = getChatModelInstance({
+      modelPreference: input.modelPreference,
+      modelId: input.modelId?.trim() || undefined,
+      temperature: input.temperature
+    })
+    const messages = input.system
+      ? [new SystemMessage(input.system), new HumanMessage(input.prompt)]
+      : [new HumanMessage(input.prompt)]
+    const response = await model.invoke(messages)
+    const text = extractTextContent(response.content).trim()
+
+    if (!text) {
+      throw new Error("AI request returned empty output")
+    }
+
+    return text
   }
 
   getCommandPreferences(params: {
@@ -100,4 +122,28 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
 
 function getRuntimeStorageKey(params: ExtensionRuntimeStorageParams): string {
   return JSON.stringify([params.context.extensionName, params.context.commandName, params.key])
+}
+
+function extractTextContent(content: unknown): string {
+  if (typeof content === "string") {
+    return content
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === "string") {
+          return item
+        }
+
+        if (item && typeof item === "object" && "text" in item && typeof item.text === "string") {
+          return item.text
+        }
+
+        return ""
+      })
+      .join("")
+  }
+
+  return ""
 }

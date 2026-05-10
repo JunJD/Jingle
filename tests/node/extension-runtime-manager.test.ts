@@ -98,8 +98,10 @@ function createHost(
   overrides: Partial<ExtensionRuntimeHostCapabilities> = {}
 ): ExtensionRuntimeHostCapabilities {
   return {
+    askAI: async () => "AI response",
     getRuntimeCapabilities: () => [
       "clipboard",
+      "ai",
       "navigation",
       "preferences",
       "rpc",
@@ -402,6 +404,58 @@ test("runtime manager forwards clipboard write requests to the host capability",
   )
 })
 
+test("runtime manager forwards AI ask requests to the host capability", async () => {
+  const aiRequests: unknown[] = []
+  const host = createHost({
+    askAI: async (input) => {
+      aiRequests.push(input)
+      return "Translated text"
+    }
+  })
+  const { launcher, manager } = createManager({ host })
+
+  await manager.startForeground(createLaunchContext())
+  const request: ExtensionHostRequest = {
+    capability: "ai",
+    id: "ai-1",
+    method: "ask",
+    payload: {
+      modelId: "openai:gpt-test",
+      prompt: "hello",
+      system: "Translate.",
+      temperature: 0
+    }
+  }
+
+  launcher.processes[0]?.emitMessage({
+    request,
+    sessionId: "session-1",
+    type: "host-request"
+  })
+  await flushPromises()
+
+  assert.deepEqual(aiRequests, [
+    {
+      modelId: "openai:gpt-test",
+      prompt: "hello",
+      system: "Translate.",
+      temperature: 0
+    }
+  ])
+  assert.deepEqual(
+    launcher.processes[0]?.messages.find((message) => message.type === "host-response"),
+    {
+      response: {
+        id: "ai-1",
+        ok: true,
+        result: "Translated text"
+      },
+      sessionId: "session-1",
+      type: "host-response"
+    }
+  )
+})
+
 test("runtime manager rejects cross-extension host capability requests", async () => {
   let preferencesReadCount = 0
   const host = createHost({
@@ -535,4 +589,40 @@ test("runtime manager rejects undeclared host capability requests", async () => 
   assert.equal(response?.type, "host-response")
   assert.equal(response?.response.ok, false)
   assert.equal(clipboardWriteCount, 0)
+})
+
+test("runtime manager rejects undeclared AI host capability requests", async () => {
+  let aiRequestCount = 0
+  const host = createHost({
+    askAI: async () => {
+      aiRequestCount += 1
+      return "Translated text"
+    },
+    getRuntimeCapabilities: () => ["preferences"]
+  })
+  const { launcher, manager } = createManager({ host })
+
+  await manager.startForeground(createLaunchContext())
+  const request: ExtensionHostRequest = {
+    capability: "ai",
+    id: "ai-1",
+    method: "ask",
+    payload: {
+      prompt: "hello"
+    }
+  }
+
+  launcher.processes[0]?.emitMessage({
+    request,
+    sessionId: "session-1",
+    type: "host-request"
+  })
+  await flushPromises()
+
+  const response = launcher.processes[0]?.messages.find(
+    (message) => message.type === "host-response"
+  )
+  assert.equal(response?.type, "host-response")
+  assert.equal(response?.response.ok, false)
+  assert.equal(aiRequestCount, 0)
 })
