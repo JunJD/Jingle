@@ -30,14 +30,15 @@ const GITHUB_RUNTIME_VIEW_COMMANDS = [
   "workflow-runs"
 ]
 
-test("GitHub view commands declare runtime metadata while the menu bar command stays legacy", () => {
+test("GitHub runtime commands declare manifest metadata and registry entries", () => {
   const githubRuntimeCommands = githubManifest.commands
     .filter((command) => command.runtime)
     .map((command) => command.name)
     .sort()
+  const expectedRuntimeCommands = [...GITHUB_RUNTIME_VIEW_COMMANDS, "unread-notifications"]
 
-  assert.deepEqual(githubRuntimeCommands, [...GITHUB_RUNTIME_VIEW_COMMANDS].sort())
-  for (const commandName of GITHUB_RUNTIME_VIEW_COMMANDS) {
+  assert.deepEqual(githubRuntimeCommands, expectedRuntimeCommands.sort())
+  for (const commandName of expectedRuntimeCommands) {
     assert.ok(
       getNativeExtensionRuntimeCommand({
         commandName,
@@ -45,10 +46,6 @@ test("GitHub view commands declare runtime metadata while the menu bar command s
       })
     )
   }
-  assert.equal(
-    githubManifest.commands.find((command) => command.name === "unread-notifications")?.runtime,
-    undefined
-  )
 })
 
 test("GitHub runtime accessories serialize as stable text visuals", async () => {
