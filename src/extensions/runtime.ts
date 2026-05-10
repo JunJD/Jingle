@@ -1,163 +1,26 @@
-import type { ComponentType } from "react"
-import type { ExtensionRuntimeLaunchContext } from "@shared/extension-runtime-protocol"
-import type { ExtensionRuntimeNavigation } from "../extension-runtime/sdk"
-import AppleRemindersCreateReminder from "./apple-reminders/src/create-reminder"
-import AppleRemindersMenuBar from "./apple-reminders/src/menu-bar-reminders"
-import AppleRemindersMyReminders from "./apple-reminders/src/my-reminders"
-import AppleRemindersQuickAddReminder from "./apple-reminders/src/quick-add-reminder"
-import GitHubCreateIssue from "./github/src/create-issue"
-import GitHubCreatePullRequest from "./github/src/create-pull-request"
-import GitHubMyIssues from "./github/src/my-issues"
-import GitHubMyLatestRepositories from "./github/src/my-latest-repositories"
-import GitHubMyPullRequests from "./github/src/my-pull-requests"
-import GitHubMyStarredRepositories from "./github/src/my-starred-repositories"
-import GitHubNotifications from "./github/src/notifications"
-import GitHubSearchIssues from "./github/src/search-issues"
-import GitHubSearchPullRequests from "./github/src/search-pull-requests"
-import GitHubSearchRepositories from "./github/src/search-repositories"
-import GitHubUnreadNotifications from "./github/src/unread-notifications"
-import GitHubWorkflowRuns from "./github/src/workflow-runs"
-import TodoList from "./todo-list/src/index"
-import { TranslatePage } from "./translate/src/TranslatePage"
+import type {
+  NativeExtensionRuntimeCommandDefinition,
+  NativeExtensionRuntimePackage
+} from "./runtime-contract"
+import { nativeExtensionRuntimePackages } from "./runtime-packages"
 
-export interface NativeExtensionRuntimeNoViewRunContext extends ExtensionRuntimeLaunchContext {
-  navigation: ExtensionRuntimeNavigation
-}
-
-interface NativeExtensionRuntimeViewCommandDefinition {
-  Component: ComponentType
-  commandName: string
-  extensionName: string
-  mode: "menu-bar" | "view"
-}
-
-interface NativeExtensionRuntimeNoViewCommandDefinition {
-  commandName: string
-  extensionName: string
-  mode: "no-view"
-  run: (context: NativeExtensionRuntimeNoViewRunContext) => Promise<void> | void
-}
-
-export type NativeExtensionRuntimeCommandDefinition =
-  | NativeExtensionRuntimeViewCommandDefinition
-  | NativeExtensionRuntimeNoViewCommandDefinition
-
-const nativeExtensionRuntimeCommandDefinitions: NativeExtensionRuntimeCommandDefinition[] = [
-  {
-    Component: AppleRemindersCreateReminder,
-    commandName: "create-reminder",
-    extensionName: "apple-reminders",
-    mode: "view"
-  },
-  {
-    Component: AppleRemindersMenuBar,
-    commandName: "menu-bar-reminders",
-    extensionName: "apple-reminders",
-    mode: "menu-bar"
-  },
-  {
-    Component: AppleRemindersMyReminders,
-    commandName: "my-reminders",
-    extensionName: "apple-reminders",
-    mode: "view"
-  },
-  {
-    commandName: "quick-add-reminder",
-    extensionName: "apple-reminders",
-    mode: "no-view",
-    run: AppleRemindersQuickAddReminder
-  },
-  {
-    Component: GitHubCreateIssue,
-    commandName: "create-issue",
-    extensionName: "github",
-    mode: "view"
-  },
-  {
-    Component: GitHubCreatePullRequest,
-    commandName: "create-pull-request",
-    extensionName: "github",
-    mode: "view"
-  },
-  {
-    Component: GitHubMyIssues,
-    commandName: "my-issues",
-    extensionName: "github",
-    mode: "view"
-  },
-  {
-    Component: GitHubMyLatestRepositories,
-    commandName: "my-latest-repositories",
-    extensionName: "github",
-    mode: "view"
-  },
-  {
-    Component: GitHubMyPullRequests,
-    commandName: "my-pull-requests",
-    extensionName: "github",
-    mode: "view"
-  },
-  {
-    Component: GitHubMyStarredRepositories,
-    commandName: "my-starred-repositories",
-    extensionName: "github",
-    mode: "view"
-  },
-  {
-    Component: GitHubNotifications,
-    commandName: "notifications",
-    extensionName: "github",
-    mode: "view"
-  },
-  {
-    Component: GitHubSearchIssues,
-    commandName: "search-issues",
-    extensionName: "github",
-    mode: "view"
-  },
-  {
-    Component: GitHubSearchPullRequests,
-    commandName: "search-pull-requests",
-    extensionName: "github",
-    mode: "view"
-  },
-  {
-    Component: GitHubSearchRepositories,
-    commandName: "search-repositories",
-    extensionName: "github",
-    mode: "view"
-  },
-  {
-    Component: GitHubUnreadNotifications,
-    commandName: "unread-notifications",
-    extensionName: "github",
-    mode: "menu-bar"
-  },
-  {
-    Component: GitHubWorkflowRuns,
-    commandName: "workflow-runs",
-    extensionName: "github",
-    mode: "view"
-  },
-  {
-    Component: TodoList,
-    commandName: "index",
-    extensionName: "todo-list",
-    mode: "view"
-  },
-  {
-    Component: TranslatePage,
-    commandName: "translate",
-    extensionName: "translate",
-    mode: "view"
-  }
-]
-
-const nativeExtensionRuntimeCommandDefinitionMap = new Map(
-  nativeExtensionRuntimeCommandDefinitions.map(
-    (definition) => [`${definition.extensionName}:${definition.commandName}`, definition] as const
+const nativeExtensionRuntimeCommandDefinitionMap = new Map<
+  string,
+  NativeExtensionRuntimeCommandDefinition
+>(
+  nativeExtensionRuntimePackages.flatMap((runtimePackage) =>
+    Object.entries(runtimePackage.commands).map(([commandName, command]) => [
+      getCommandKey(runtimePackage.extensionName, commandName),
+      {
+        ...command,
+        commandName,
+        extensionName: runtimePackage.extensionName
+      } satisfies NativeExtensionRuntimeCommandDefinition
+    ])
   )
 )
+
+export type { NativeExtensionRuntimeCommandDefinition, NativeExtensionRuntimePackage }
 
 export function getNativeExtensionRuntimeCommand(params: {
   commandName: string
@@ -165,7 +28,11 @@ export function getNativeExtensionRuntimeCommand(params: {
 }): NativeExtensionRuntimeCommandDefinition | null {
   return (
     nativeExtensionRuntimeCommandDefinitionMap.get(
-      `${params.extensionName}:${params.commandName}`
+      getCommandKey(params.extensionName, params.commandName)
     ) ?? null
   )
+}
+
+function getCommandKey(extensionName: string, commandName: string): string {
+  return `${extensionName}:${commandName}`
 }

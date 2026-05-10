@@ -1,26 +1,6 @@
-import type { LauncherCommandSearchDefinition } from "@shared/launcher"
-import * as TranslateMeta from "./translate/src/translate.meta"
-import { translateManifest } from "./translate/manifest"
+import type { NativeExtensionRuntimePackageMetadata } from "./runtime-metadata-contract"
+import { nativeExtensionRuntimeMetadataPackages } from "./runtime-metadata-packages"
 
-interface NativeExtensionRuntimeCommandMetadata {
-  name: string
-  search?: LauncherCommandSearchDefinition
-}
-
-interface NativeExtensionRuntimeMetadata {
-  commands: NativeExtensionRuntimeCommandMetadata[]
-}
-
-export const nativeExtensionRuntimeMetadata = new Map<string, NativeExtensionRuntimeMetadata>([
-  [
-    translateManifest.name,
-    {
-      commands: [
-        {
-          name: "translate",
-          search: TranslateMeta.search
-        }
-      ]
-    }
-  ]
-])
+export const nativeExtensionRuntimeMetadata = new Map<string, NativeExtensionRuntimePackageMetadata>(
+  nativeExtensionRuntimeMetadataPackages.map((metadata) => [metadata.extensionName, metadata])
+)
