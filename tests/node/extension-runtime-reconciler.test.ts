@@ -74,6 +74,7 @@ function withRuntimeProvider(
         extensionName: "runtime-fixture",
         extensionPreferences: {},
         initialAction: "open",
+        locale: "zh-CN",
         mode: "view",
         requestHost,
         seedQuery: ""
@@ -172,6 +173,7 @@ test("runtime SDK client is available to first passive effects", async () => {
           extensionName: "runtime-fixture",
           extensionPreferences: {},
           initialAction: "open",
+          locale: "zh-CN",
           mode: "view",
           requestHost: async () => ({
             id: "effect-response",

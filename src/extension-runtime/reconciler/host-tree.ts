@@ -39,6 +39,7 @@ export interface RuntimeHostContainer {
   children: RuntimeHostChild[]
   context: RuntimeSnapshotContext
   latestSnapshot: ExtensionSurfaceSnapshot | null
+  menuBarActionHandlers: Map<string, RuntimeActionHandler>
   nextHostRequestId: () => string
   onCommit: () => void
   requestHost: RuntimeHostRequestHandler | null
@@ -57,6 +58,7 @@ export function createHostContainer(params: {
     children: [],
     context: params.context,
     latestSnapshot: null,
+    menuBarActionHandlers: new Map(),
     nextHostRequestId: () => `host-request-${hostRequestIndex++}`,
     onCommit: params.onCommit,
     requestHost: params.requestHost ?? null,

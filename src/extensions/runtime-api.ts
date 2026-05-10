@@ -6,9 +6,13 @@ export {
   Detail,
   Form,
   List,
+  MenuBarExtra,
+  openExternal,
   openNativeExtensionSettings,
   useCommandSeedQuery,
   useExtensionStorageState,
+  useInterval,
+  useRuntimeAppLocale,
   useNativeCommandPreferences,
   useNativeExtensionNavigation,
   writeClipboardText

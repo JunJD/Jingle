@@ -9,8 +9,10 @@ export {
   useCommandSeedQuery,
   useExtensionRuntimeSdk,
   useExtensionStorageState,
+  useInterval,
   useNativeCommandPreferences,
   useNativeExtensionNavigation,
+  useRuntimeAppLocale,
   type ExtensionRuntimeHostRequestInput,
   type ExtensionRuntimeNavigation,
   type ExtensionRuntimeSdkContextValue
@@ -34,6 +36,7 @@ export type {
   RuntimeFormTextFieldProps
 } from "./form"
 export { openNativeExtensionSettings } from "./settings"
+export { openExternal } from "./shell"
 export type {
   RuntimeCopyToClipboardActionProps,
   RuntimeActionPanelProps,
@@ -52,3 +55,9 @@ export type {
   RuntimeListProps,
   RuntimeListSectionProps
 } from "./list"
+export { MenuBarExtra } from "./menu-bar"
+export type {
+  RuntimeMenuBarExtraItemProps,
+  RuntimeMenuBarExtraProps,
+  RuntimeMenuBarExtraSectionProps
+} from "./menu-bar"

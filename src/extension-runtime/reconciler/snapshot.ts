@@ -13,6 +13,9 @@ import type {
   ExtensionListItemNode,
   ExtensionListSectionNode,
   ExtensionListSurfaceSnapshot,
+  ExtensionMenuBarItemNode,
+  ExtensionMenuBarSectionNode,
+  ExtensionMenuBarSurfaceSnapshot,
   ExtensionSurfaceSnapshot,
   ExtensionSvgVisualNode,
   ExtensionVisualNode
@@ -52,7 +55,13 @@ const SVG_TAG_NAMES = new Set([
 
 export function createSurfaceSnapshot(container: RuntimeHostContainer): ExtensionSurfaceSnapshot {
   container.actionHandlers.clear()
+  container.menuBarActionHandlers.clear()
   const state = createSnapshotBuildState()
+
+  const menuBar = findFirstElement(container.children, ExtensionHostElement.MenuBarExtra)
+  if (menuBar) {
+    return createMenuBarSnapshot(container, menuBar)
+  }
 
   const detail = findFirstElement(container.children, ExtensionHostElement.Detail)
   if (detail) {
@@ -76,6 +85,84 @@ export function createSurfaceSnapshot(container: RuntimeHostContainer): Extensio
   }
 
   return createListSnapshot(container, state, list)
+}
+
+function createMenuBarSnapshot(
+  container: RuntimeHostContainer,
+  menuBar: RuntimeHostElementNode
+): ExtensionMenuBarSurfaceSnapshot {
+  return {
+    commandName: container.context.commandName,
+    extensionName: container.context.extensionName,
+    iconName: readMenuBarIconNameProp(menuBar.props, "iconName"),
+    isLoading: readBooleanProp(menuBar.props, "isLoading", false),
+    kind: "menu-bar",
+    revision: container.revision,
+    sections: collectMenuBarSections(container, menuBar),
+    title: readStringProp(menuBar.props, "title"),
+    tooltip: readStringProp(menuBar.props, "tooltip")
+  }
+}
+
+function collectMenuBarSections(
+  container: RuntimeHostContainer,
+  menuBar: RuntimeHostElementNode
+): ExtensionMenuBarSectionNode[] {
+  let implicitItemIndex = 0
+  const implicitItems = directChildrenOfType(menuBar, ExtensionHostElement.MenuBarExtraItem)
+    .map((item) =>
+      createMenuBarItem(container, item, () => `menu-bar-item-${implicitItemIndex++}`)
+    )
+    .filter((item): item is ExtensionMenuBarItemNode => item !== null)
+
+  const sections = directChildrenOfType(menuBar, ExtensionHostElement.MenuBarExtraSection)
+    .map((section, sectionIndex) => ({
+      id: `menu-bar-section-${sectionIndex}`,
+      items: directChildrenOfType(section, ExtensionHostElement.MenuBarExtraItem)
+        .map((item, itemIndex) =>
+          createMenuBarItem(container, item, () => `menu-bar-section-${sectionIndex}-item-${itemIndex}`)
+        )
+        .filter((item): item is ExtensionMenuBarItemNode => item !== null),
+      title: readStringProp(section.props, "title")
+    }))
+    .filter((section) => section.items.length > 0)
+
+  if (implicitItems.length > 0) {
+    sections.unshift({
+      id: "menu-bar-section-implicit",
+      items: implicitItems,
+      title: undefined
+    })
+  }
+
+  return sections
+}
+
+function createMenuBarItem(
+  container: RuntimeHostContainer,
+  item: RuntimeHostElementNode,
+  fallbackId: () => string
+): ExtensionMenuBarItemNode | null {
+  const title = readStringProp(item.props, "title")
+  if (!title) {
+    return null
+  }
+
+  const id = fallbackId()
+  const onAction = item.props.onAction
+  if (typeof onAction === "function") {
+    container.menuBarActionHandlers.set(id, {
+      handler: onAction as RuntimeActionHandler["handler"]
+    })
+  }
+
+  return {
+    disabled: readBooleanProp(item.props, "disabled", false),
+    iconName: readMenuBarIconNameProp(item.props, "iconName"),
+    id,
+    subtitle: readStringProp(item.props, "subtitle"),
+    title
+  }
 }
 
 function createListSnapshot(
@@ -580,6 +667,13 @@ function readBooleanProp(props: RuntimeHostProps, name: string, fallback: boolea
 
 function readStringProp(props: RuntimeHostProps, name: string): string | undefined {
   return typeof props[name] === "string" ? props[name] : undefined
+}
+
+function readMenuBarIconNameProp(
+  props: RuntimeHostProps,
+  name: string
+): ExtensionMenuBarItemNode["iconName"] {
+  return readStringProp(props, name) as ExtensionMenuBarItemNode["iconName"]
 }
 
 function readStringArrayProp(props: RuntimeHostProps, name: string): string[] {

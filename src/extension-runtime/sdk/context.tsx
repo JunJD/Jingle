@@ -157,6 +157,10 @@ export function useCommandSeedQuery(): string {
   return useExtensionRuntimeSdk().seedQuery
 }
 
+export function useRuntimeAppLocale(): ExtensionRuntimeSdkContextValue["locale"] {
+  return useExtensionRuntimeSdk().locale
+}
+
 export function useNativeCommandPreferences<TPreferences extends object>(): TPreferences {
   return useExtensionRuntimeSdk().commandPreferences as TPreferences
 }
@@ -276,4 +280,37 @@ export function useExtensionStorageState<TValue>(
   }
 
   return [value, setStoredValue]
+}
+
+export function useInterval(
+  callback: () => Promise<void> | void,
+  intervalMs: number | null | undefined
+): void {
+  const callbackRef = useRef(callback)
+
+  useEffect(() => {
+    callbackRef.current = callback
+  }, [callback])
+
+  useEffect(() => {
+    if (!intervalMs || intervalMs <= 0) {
+      return
+    }
+
+    let pending = false
+    const timer = setInterval(() => {
+      if (pending) {
+        return
+      }
+
+      pending = true
+      void Promise.resolve(callbackRef.current()).finally(() => {
+        pending = false
+      })
+    }, intervalMs)
+
+    return () => {
+      clearInterval(timer)
+    }
+  }, [intervalMs])
 }

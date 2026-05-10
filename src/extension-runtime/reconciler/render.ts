@@ -253,6 +253,10 @@ export function createExtensionRuntimeRenderer(
         return dispatchNavigationPop(container)
       }
 
+      if (event.type === "menu-bar.item.execute") {
+        return dispatchMenuBarItem(container, event.itemId)
+      }
+
       if (event.type !== "action.execute") {
         return false
       }
@@ -359,6 +363,21 @@ async function dispatchListDropdownChange(
   }
 
   await runtimeReconciler.flushSyncFromReconciler(() => handler(value))
+  runtimeReconciler.flushSyncWork()
+  await flushSnapshotQueue()
+  return true
+}
+
+async function dispatchMenuBarItem(
+  container: RuntimeHostContainer,
+  itemId: string
+): Promise<boolean> {
+  const handler = container.menuBarActionHandlers.get(itemId)
+  if (!handler) {
+    return false
+  }
+
+  await runtimeReconciler.flushSyncFromReconciler(() => handler.handler())
   runtimeReconciler.flushSyncWork()
   await flushSnapshotQueue()
   return true
