@@ -888,6 +888,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         extensionName: host.extensionName,
         extensionPreferences: {},
         initialAction: host.initialAction,
+        locale: host.locale,
         mode: "view",
         seedQuery: host.seedQuery
       })

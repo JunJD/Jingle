@@ -4,6 +4,7 @@ import { NativeExtensionHostProvider } from "@extension-host/NativeExtensionHost
 import { LauncherCommandErrorPage } from "@launcher-components/LauncherCommandErrorPage"
 import type { LauncherShellConfig } from "@shared/launcher"
 import { AI_CHAT_COMMAND_NAME } from "@shared/launcher-ai"
+import { useI18n } from "@/lib/i18n"
 import type { Thread } from "@/types"
 import { deriveLauncherCommandOwnerClipboardContext } from "@shared/clipboard-derivations"
 import type { LauncherClipboardState } from "./LauncherClipboardContext"
@@ -83,6 +84,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
     shownSequence,
     submitPluginThread
   } = props
+  const { locale } = useI18n()
   const {
     activeBuiltInCommand,
     activeCommandCapabilities,
@@ -154,6 +156,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
           commandPreferences: activeCommandPreferences ?? {},
           extensionName: route.extensionName,
           initialAction: route.initialAction,
+          locale,
           navigation: activeCommandNavigationEnabled
             ? {
                 goHome: closeActivePlugin,

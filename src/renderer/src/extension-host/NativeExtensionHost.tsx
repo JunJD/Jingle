@@ -8,6 +8,7 @@ import {
   type RefObject
 } from "react"
 import type { LauncherShellConfig } from "@shared/launcher"
+import type { AppLocale } from "@shared/i18n"
 import type { LauncherCommandOwnerCapability } from "@shared/launcher-command-owner"
 import { resolveNativeExtensionCapability } from "@shared/native-extension-boundaries"
 import type { LauncherClipboardState } from "@launcher-shell/LauncherClipboardContext"
@@ -55,6 +56,7 @@ export interface NativeExtensionHostValue {
   commandPreferences: Record<string, unknown>
   extensionName: LauncherExtensionName
   initialAction: LauncherCommandInitialAction
+  locale: AppLocale
   navigation?: LauncherCommandNavigation
   seedQuery: string
   surface?: NativeExtensionSurface

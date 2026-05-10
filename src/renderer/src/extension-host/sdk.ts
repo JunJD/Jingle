@@ -1,20 +1,18 @@
 import { useEffect, useMemo, type ComponentType, type ReactNode } from "react"
-import type { AppLocale } from "@shared/i18n"
-import type { LauncherShellConfig } from "@shared/launcher"
+import {
+  createLauncherIntentPresentation,
+  type LauncherCommandSearchDefinition,
+  type LauncherResultPresentation,
+  type LauncherResultPresentationIcon,
+  type LauncherResultPresentationTone,
+  type LauncherShellConfig
+} from "@shared/launcher"
 import { createNativeExtensionNavigationBridge } from "@shared/native-extension-boundaries"
 import type { NativeExtensionInvokeRequest } from "@shared/native-extensions"
 import type { AppCopy } from "@/lib/i18n/messages"
 import type {
-  LauncherResultPresentation,
-  LauncherResultPresentationIcon,
-  LauncherResultPresentationTone
-} from "@launcher-shell/result-types"
-import type {
   LauncherCommandAddress,
-  LauncherCommandMatch,
   LauncherCommandOpenOptions,
-  LauncherCommandParams,
-  LauncherCommandIntent,
   LauncherNoViewCommandRunContext
 } from "@launcher-shell/pages/types"
 import {
@@ -29,14 +27,7 @@ import {
 } from "./NativeExtensionHost"
 import { useNativeExtensionViewStack } from "./view-stack-context"
 
-export interface NativeExtensionSearchDefinition {
-  buildIntentItems?: (context: {
-    copy: AppCopy
-    locale: AppLocale
-    query: string
-  }) => LauncherCommandIntent[]
-  resolveCommand?: (params: LauncherCommandParams) => LauncherCommandMatch | null
-}
+export type NativeExtensionSearchDefinition = LauncherCommandSearchDefinition<AppCopy>
 
 export type NativeExtensionViewport =
   | {
@@ -80,13 +71,7 @@ export interface NativeExtensionIntentPresentationInput {
 export function createNativeExtensionIntentPresentation(
   input: NativeExtensionIntentPresentationInput
 ): LauncherResultPresentation {
-  return {
-    categoryLabel: input.categoryLabel,
-    icon: input.icon,
-    listActionLabel: input.listActionLabel ?? input.primaryActionLabel,
-    primaryActionLabel: input.primaryActionLabel,
-    tone: input.tone ?? "accent"
-  }
+  return createLauncherIntentPresentation(input)
 }
 
 export function createNativeExtensionClient<

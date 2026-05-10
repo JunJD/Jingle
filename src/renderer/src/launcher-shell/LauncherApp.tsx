@@ -9,7 +9,6 @@ import type { PermissionModeName } from "@shared/permission-mode"
 import { LauncherIntelligenceGlow } from "@launcher-components/LauncherIntelligenceGlow"
 import { LauncherPageTransition } from "@launcher-components/LauncherPageTransition"
 import { LauncherSearchPage } from "@launcher-components/LauncherSearchPage"
-import { NativeExtensionPassiveCommandHosts } from "@extension-host/PassiveCommandHosts"
 import { invokeThreadMessage } from "@/lib/ai-invocation"
 import {
   activateHistoryThread,
@@ -311,7 +310,6 @@ export default function LauncherApp(): React.JSX.Element {
         ) : null}
 
         <div className="hidden" aria-hidden="true">
-          <NativeExtensionPassiveCommandHosts openCommand={openCommand} />
         </div>
       </div>
     </div>

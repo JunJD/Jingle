@@ -21,6 +21,103 @@ export interface LauncherShellConfig {
   maxVisibleResults: number
 }
 
+export type LauncherShellItemKind = LauncherResultKind | "plugin" | "suggestion"
+
+export type LauncherResultPresentationIconName =
+  | "bell"
+  | "check-circle"
+  | "file-text"
+  | "folder"
+  | "github"
+  | "globe"
+  | "history"
+  | "languages"
+  | "reminders"
+  | "search"
+  | "sparkles"
+  | "todo"
+  | (string & {})
+
+export type LauncherResultPresentationTone = "accent" | "brand" | "neutral"
+
+export type LauncherResultPresentationIcon =
+  | {
+      name: LauncherResultPresentationIconName
+      type: "glyph"
+    }
+  | {
+      src: string
+      type: "image"
+    }
+
+export interface LauncherResultPresentation {
+  categoryLabel: string
+  icon: LauncherResultPresentationIcon
+  listActionLabel: string
+  primaryActionLabel: string
+  tone: LauncherResultPresentationTone
+}
+
+export interface LauncherCommandIntent {
+  commandName?: string
+  id: string
+  kind: LauncherShellItemKind
+  openOptions?: {
+    initialAction?: "focus" | "submit"
+    seedQuery?: string
+  }
+  presentation: LauncherResultPresentation
+  priority?: number
+  subtitle: string
+  title: string
+}
+
+export interface LauncherCommandMatch {
+  commandName?: string
+  openOptions?: {
+    initialAction?: "focus" | "submit"
+    seedQuery?: string
+  }
+}
+
+export interface LauncherCommandParams {
+  altKey: boolean
+  ctrlKey: boolean
+  key: string
+  metaKey: boolean
+  query: string
+  shiftKey: boolean
+}
+
+export type LauncherCommandSearchDefinition<TCopy = any> = {
+  buildIntentItems?: (params: {
+    copy: TCopy
+    locale: import("./i18n").AppLocale
+    query: string
+  }) => LauncherCommandIntent[]
+  resolveCommand?: (params: LauncherCommandParams) => LauncherCommandMatch | null
+}
+
+export interface LauncherIntentPresentationInput {
+  categoryLabel: string
+  icon: LauncherResultPresentationIcon
+  listActionLabel?: string
+  primaryActionLabel: string
+  tone?: LauncherResultPresentationTone
+}
+
+export function createLauncherIntentPresentation(
+  input: LauncherIntentPresentationInput
+): LauncherResultPresentation {
+  return {
+    categoryLabel: input.categoryLabel,
+    icon: input.icon,
+    listActionLabel: input.listActionLabel ?? input.primaryActionLabel,
+    primaryActionLabel: input.primaryActionLabel,
+    tone: input.tone ?? "accent"
+  }
+}
+
 export interface LauncherChromeMeasurement {
   footerHeight?: number
   headerHeight: number
