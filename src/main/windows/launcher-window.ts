@@ -202,7 +202,6 @@ export function showLauncherWindow(launcherWindow: BrowserWindow): void {
 
   if (process.platform === "darwin") {
     launcherWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-    //// 保持启动器位于应用窗口上方，但不遮挡输入法候选窗口。
     launcherWindow.setAlwaysOnTop(true, MAC_LAUNCHER_WINDOW_LEVEL)
   } else {
     launcherWindow.setAlwaysOnTop(true)
@@ -212,14 +211,6 @@ export function showLauncherWindow(launcherWindow: BrowserWindow): void {
   launcherWindow.focus()
   launcherWindow.moveTop()
   emitLauncherShown(launcherWindow)
-
-  if (process.platform === "darwin") {
-    setTimeout(() => {
-      if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
-        launcherWindow.setVisibleOnAllWorkspaces(false, { visibleOnFullScreen: true })
-      }
-    }, 0)
-  }
 }
 
 function hideLauncherWindow(launcherWindow: BrowserWindow): void {
@@ -262,6 +253,9 @@ export function createLauncherWindow(): BrowserWindow {
     autoHideMenuBar: process.platform !== "darwin",
     ...(process.platform === "darwin"
       ? {
+          // Electron's macOS panel type adds NSWindowStyleMaskNonactivatingPanel,
+          // which is the documented path for floating above full-screen apps.
+          type: "panel" as const,
           vibrancy: "popover" as const,
           visualEffectState: "active" as const
         }
@@ -312,6 +306,10 @@ export function createLauncherWindow(): BrowserWindow {
 
   launcherWindow.on("hide", () => {
     launcherVisibleOrigins.delete(launcherWindow)
+    if (process.platform === "darwin") {
+      launcherWindow.setAlwaysOnTop(false)
+      launcherWindow.setVisibleOnAllWorkspaces(false, { visibleOnFullScreen: true })
+    }
   })
 
   launcherWindow.webContents.on("before-input-event", (event, input) => {
