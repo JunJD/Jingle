@@ -23,6 +23,7 @@ let settingsWindow: BrowserWindow | null = null
 let mainCompositionRoot: MainCompositionRoot | null = null
 let pendingMainNavigation: MainWindowNavigationPayload | null = null
 let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
+let shutdownComplete = false
 const bypassSingleInstanceLock = process.env.OPENWORK_BDD === "1"
 const hasSingleInstanceLock = bypassSingleInstanceLock ? true : app.requestSingleInstanceLock()
 
@@ -119,6 +120,19 @@ function setMacDockIcon(): void {
   app.dock.show()
 }
 
+async function shutdownMainProcess(): Promise<void> {
+  if (shutdownComplete) {
+    return
+  }
+
+  stopNativeMinimalIsland()
+  mainCompositionRoot?.dispose()
+  mainCompositionRoot = null
+  await closeRuntime()
+  await closeDatabase()
+  shutdownComplete = true
+}
+
 if (!hasSingleInstanceLock) {
   app.quit()
 }
@@ -177,12 +191,20 @@ if (hasSingleInstanceLock) {
   })
 }
 
-app.on("will-quit", () => {
-  stopNativeMinimalIsland()
-  mainCompositionRoot?.dispose()
-  mainCompositionRoot = null
-  void closeRuntime()
-  void closeDatabase()
+app.on("before-quit", (event) => {
+  if (shutdownComplete) {
+    return
+  }
+
+  event.preventDefault()
+  void shutdownMainProcess()
+    .catch((error) => {
+      console.error("[Main] Failed to shut down cleanly:", error)
+    })
+    .finally(() => {
+      shutdownComplete = true
+      app.quit()
+    })
 })
 
 app.on("window-all-closed", () => {
