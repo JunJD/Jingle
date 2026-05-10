@@ -4,7 +4,6 @@ import {
   formatViolations,
   listNativeExtensionDirectories,
   loadNativeExtensionManifest,
-  listNativeExtensionRendererCommandNames,
   nativeExtensionMainDeclaresService,
   resolveExtensionCommandFile
 } from "./lib/architecture-guardrails.mjs"
@@ -13,21 +12,12 @@ const violations = []
 
 for (const extensionDirectory of listNativeExtensionDirectories()) {
   const manifestPath = path.join(extensionDirectory.absolutePath, "manifest.ts")
-  const rendererPath = path.join(extensionDirectory.absolutePath, "renderer.ts")
   const mainPath = path.join(extensionDirectory.absolutePath, "main.ts")
 
   if (!fileExists(manifestPath)) {
     violations.push({
       file: `${extensionDirectory.repoPath}/manifest.ts`,
       reason: "native extension 缺少 manifest.ts"
-    })
-    continue
-  }
-
-  if (!fileExists(rendererPath)) {
-    violations.push({
-      file: `${extensionDirectory.repoPath}/renderer.ts`,
-      reason: "native extension 缺少 renderer.ts"
     })
     continue
   }
@@ -41,25 +31,6 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
   }
 
   const manifest = loadNativeExtensionManifest(extensionDirectory)
-  const manifestCommandMap = new Map(manifest.commands.map((command) => [command.name, command]))
-  const runtimeCommandNames = new Set(
-    manifest.commands.filter((command) => command.runtime).map((command) => command.name)
-  )
-  let rendererCommandNames = []
-
-  try {
-    rendererCommandNames = listNativeExtensionRendererCommandNames(extensionDirectory)
-  } catch (error) {
-    violations.push({
-      file: `${extensionDirectory.repoPath}/renderer.ts`,
-      reason: error instanceof Error ? error.message : String(error)
-    })
-    continue
-  }
-
-  const definitionCommandMap = new Map(
-    rendererCommandNames.map((commandName) => [commandName, true])
-  )
 
   if (manifest.name !== extensionDirectory.name) {
     violations.push({
@@ -69,19 +40,10 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
   }
 
   for (const command of manifest.commands) {
-    const commandReference = definitionCommandMap.get(command.name)
-    if (!commandReference && !runtimeCommandNames.has(command.name)) {
+    if (!command.runtime) {
       violations.push({
-        file: `${extensionDirectory.repoPath}/renderer.ts`,
-        reason: `manifest 声明了 command "${command.name}"，但 renderer.ts 没有导出对应 command name`
-      })
-      continue
-    }
-
-    if (commandReference && runtimeCommandNames.has(command.name)) {
-      violations.push({
-        file: `${extensionDirectory.repoPath}/renderer.ts`,
-        reason: `runtime command "${command.name}" 不应由 renderer.ts 导出`
+        file: `${extensionDirectory.repoPath}/manifest.ts`,
+        reason: `command "${command.name}" 必须声明 runtime metadata`
       })
       continue
     }
@@ -90,7 +52,7 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
 
     if (!commandFilePath || !fileExists(commandFilePath)) {
       violations.push({
-        file: `${extensionDirectory.repoPath}/renderer.ts`,
+        file: `${extensionDirectory.repoPath}/manifest.ts`,
         reason: `command "${command.name}" 对应的文件不存在：${extensionDirectory.repoPath}/src/${command.name}.ts(x)`
       })
       continue
@@ -104,15 +66,6 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
           reason: `view command "${command.name}" 缺少对应的 .meta.ts 文件`
         })
       }
-    }
-  }
-
-  for (const commandName of rendererCommandNames) {
-    if (!manifestCommandMap.has(commandName)) {
-      violations.push({
-        file: `${extensionDirectory.repoPath}/renderer.ts`,
-        reason: `renderer.ts 导出了 command "${commandName}"，但 manifest.ts 未声明`
-      })
     }
   }
 

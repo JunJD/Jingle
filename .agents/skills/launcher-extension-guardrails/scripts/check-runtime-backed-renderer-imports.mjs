@@ -19,8 +19,7 @@ const violations = []
 function isRendererImportOwner(repoFilePath) {
   return (
     isUnder(repoFilePath, "src/renderer/") ||
-    isExact(repoFilePath, "src/extensions/renderer.ts") ||
-    /^src\/extensions\/[^/]+\/renderer\.ts$/.test(repoFilePath)
+    isExact(repoFilePath, "src/extensions/runtime-metadata.ts")
   )
 }
 

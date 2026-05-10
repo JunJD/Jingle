@@ -179,37 +179,6 @@ export function loadNativeExtensionManifest(extensionDirectory) {
   return manifest
 }
 
-export function listNativeExtensionRendererCommandNames(extensionDirectory) {
-  const rendererObject = findTopLevelDefineCallObjectLiteral(
-    path.join(extensionDirectory.absolutePath, "renderer.ts"),
-    "defineNativeExtensionRenderer"
-  )
-  const commandsInitializer = getObjectPropertyInitializer(rendererObject, "commands")
-
-  if (!commandsInitializer || !ts.isArrayLiteralExpression(commandsInitializer)) {
-    throw new Error(
-      `${extensionDirectory.repoPath}/renderer.ts must pass a commands array to defineNativeExtensionRenderer(...)`
-    )
-  }
-
-  return commandsInitializer.elements.map((element) => {
-    if (!ts.isObjectLiteralExpression(element)) {
-      throw new Error(
-        `${extensionDirectory.repoPath}/renderer.ts must declare commands as object literals`
-      )
-    }
-
-    const nameInitializer = getObjectPropertyInitializer(element, "name")
-    if (!nameInitializer || !ts.isStringLiteral(nameInitializer)) {
-      throw new Error(
-        `${extensionDirectory.repoPath}/renderer.ts must declare each command name as a string literal`
-      )
-    }
-
-    return nameInitializer.text
-  })
-}
-
 export function nativeExtensionMainDeclaresService(extensionDirectory) {
   const mainObject = findTopLevelDefineCallObjectLiteral(
     path.join(extensionDirectory.absolutePath, "main.ts"),
@@ -260,13 +229,6 @@ export function listTopLevelManifestRegistryExtensionNames() {
   return listTopLevelArrayRegistryExtensionNames(
     path.join(repoRoot, "src/extensions/index.ts"),
     "nativeExtensionManifests"
-  )
-}
-
-export function listTopLevelRendererRegistryExtensionNames() {
-  return listTopLevelMapRegistryExtensionNames(
-    path.join(repoRoot, "src/extensions/renderer.ts"),
-    "nativeExtensionRendererDefinitions"
   )
 }
 

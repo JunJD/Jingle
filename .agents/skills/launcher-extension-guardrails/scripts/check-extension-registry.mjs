@@ -5,7 +5,6 @@ import {
   listNativeExtensionDirectories,
   listTopLevelMainRegistryExtensionNames,
   listTopLevelManifestRegistryExtensionNames,
-  listTopLevelRendererRegistryExtensionNames,
   loadNativeExtensionManifest,
   repoRoot
 } from "./lib/architecture-guardrails.mjs"
@@ -52,14 +51,6 @@ if (!fileExists(extensionsIndexPath)) {
   })
 }
 
-const extensionsRendererPath = path.join(repoRoot, "src/extensions/renderer.ts")
-if (!fileExists(extensionsRendererPath)) {
-  violations.push({
-    file: "src/extensions/renderer.ts",
-    reason: "缺少 native extension renderer registry"
-  })
-}
-
 const extensionsMainPath = path.join(repoRoot, "src/extensions/main.ts")
 if (!fileExists(extensionsMainPath)) {
   violations.push({
@@ -79,20 +70,6 @@ if (fileExists(extensionsIndexPath)) {
   } catch (error) {
     violations.push({
       file: "src/extensions/index.ts",
-      reason: error instanceof Error ? error.message : String(error)
-    })
-  }
-}
-
-if (fileExists(extensionsRendererPath)) {
-  try {
-    compareRegistryCoverage(
-      "src/extensions/renderer.ts",
-      new Set(listTopLevelRendererRegistryExtensionNames())
-    )
-  } catch (error) {
-    violations.push({
-      file: "src/extensions/renderer.ts",
       reason: error instanceof Error ? error.message : String(error)
     })
   }

@@ -2,7 +2,6 @@ import path from "node:path"
 import {
   collectImports,
   formatViolations,
-  isExact,
   isUnder,
   listSourceFiles,
   repoRoot,
@@ -56,10 +55,6 @@ console.error(formatViolations("no legacy plugin coupling check", violations))
 process.exit(1)
 
 function shouldCheck(file, target) {
-  if (isExact(file, "src/extensions/api.ts")) {
-    return true
-  }
-
   if (!isUnder(file, "src/extensions/")) {
     return false
   }

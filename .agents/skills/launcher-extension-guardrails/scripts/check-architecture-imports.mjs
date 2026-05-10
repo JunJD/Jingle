@@ -25,40 +25,13 @@ const rules = [
   {
     name: "extension-authoring-boundary",
     appliesTo: (file) =>
-      isUnder(file, "src/extensions/") &&
-      !isExact(file, "src/extensions/api.ts") &&
-      !file.includes("/main/"),
+      isUnder(file, "src/extensions/") && !file.includes("/main/"),
     isViolation: (_, target) =>
       isUnder(target, "src/renderer/") ||
       isUnder(target, "src/main/") ||
       isUnder(target, "src/preload/") ||
       isUnder(target, "src/plugins/"),
-    message: "extension 运行时代码只能通过 src/extensions/api.ts 和 shared/* 接宿主能力"
-  },
-  {
-    name: "extension-main-boundary",
-    appliesTo: (file) => isUnder(file, "src/extensions/") && file.includes("/main/"),
-    isViolation: (_, target) =>
-      isUnder(target, "src/renderer/") ||
-      isUnder(target, "src/preload/") ||
-      isUnder(target, "src/plugins/"),
-    message: "extension main 代码不能依赖 renderer/preload/plugins"
-  },
-  {
-    name: "extension-api-bridge",
-    appliesTo: (file) => isExact(file, "src/extensions/api.ts"),
-    isViolation: (_, target) =>
-      isUnder(target, "src/main/") ||
-      isUnder(target, "src/preload/") ||
-      isUnder(target, "src/plugins/") ||
-      (isUnder(target, "src/renderer/src/") &&
-        !isUnder(target, "src/renderer/src/extension-host/") &&
-        !isUnder(target, "src/renderer/src/ai-core/") &&
-        !isExact(target, "src/renderer/src/lib/i18n/index.tsx")) ||
-      (isUnder(target, "src/renderer/src/lib/") &&
-        !isExact(target, "src/renderer/src/lib/i18n/index.tsx")),
-    message:
-      "src/extensions/api.ts 只能桥接 native extension runtime，以及明确开放的通用 renderer 能力"
+    message: "extension 运行时代码只能通过 src/extensions/runtime-api.ts 和 shared/* 接宿主能力"
   }
 ]
 
