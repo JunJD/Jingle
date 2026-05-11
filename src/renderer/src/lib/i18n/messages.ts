@@ -27,6 +27,7 @@ export interface AppCopy {
     agentLabel: string
     copyMessage: string
     agentTasks: string
+    agentThought: string
     agentThinking: string
     agentWorking: string
     executedSteps: (count: number) => string
@@ -235,6 +236,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentLabel: "AGENT",
       copyMessage: "复制消息",
       agentTasks: "Agent 任务",
+      agentThought: "已思考",
       agentThinking: "Agent 正在思考...",
       agentWorking: "正在工作",
       executedSteps: (count) => `已执行 ${count} 个步骤`,
@@ -460,6 +462,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentLabel: "AGENT",
       copyMessage: "Copy message",
       agentTasks: "Agent Tasks",
+      agentThought: "Thought",
       agentThinking: "Agent is thinking...",
       agentWorking: "Working",
       executedSteps: (count) => `${count} steps completed`,

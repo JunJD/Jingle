@@ -261,6 +261,12 @@ body[data-window="launcher"],
   --ow-message-gap: var(--ow-space-2);
   --ow-message-bubble-x: var(--ow-space-3);
   --ow-message-bubble-y: var(--ow-space-2);
+  --ow-chat-prose-gap: var(--ow-space-2-5);
+  --ow-chat-prose-block-gap: var(--ow-space-4);
+  --ow-chat-prose-list-gap: var(--ow-space-1);
+  --ow-reasoning-content-gap: var(--ow-space-2-5);
+  --ow-reasoning-rail: color-mix(in srgb, var(--status-info) 28%, transparent);
+  --ow-reasoning-bg: color-mix(in srgb, var(--status-info) 5%, transparent);
   --ow-chat-action-indent: 28px;
   --ow-chat-artifact-max-w: 56rem;
   --ow-chat-code-preview-min-w: 760px;
@@ -382,6 +388,12 @@ body[data-window="launcher"],
   --ow-message-gap: var(--ow-space-2);
   --ow-message-bubble-x: var(--ow-space-3);
   --ow-message-bubble-y: var(--ow-space-2);
+  --ow-chat-prose-gap: var(--ow-space-2-5);
+  --ow-chat-prose-block-gap: var(--ow-space-4);
+  --ow-chat-prose-list-gap: var(--ow-space-1);
+  --ow-reasoning-content-gap: var(--ow-space-2-5);
+  --ow-reasoning-rail: color-mix(in srgb, var(--status-info) 28%, transparent);
+  --ow-reasoning-bg: color-mix(in srgb, var(--status-info) 5%, transparent);
   --ow-chat-hero-title: 28px;
   --ow-chat-composer-radius: 20px;
   --ow-chat-composer-input-min-h: 48px;
@@ -1521,6 +1533,48 @@ body[data-platform="darwin"] .launcher-window-shell {
 }
 
 /* Code typography surfaces */
+.ow-chat-markdown {
+  white-space: normal;
+}
+
+.ow-chat-markdown :where(p) {
+  margin: 0;
+  padding: 0;
+}
+
+.ow-chat-markdown :where(ul, ol) {
+  margin-block: var(--ow-chat-prose-gap);
+  padding-inline-start: var(--ow-space-5);
+}
+
+.ow-chat-markdown :where(li + li) {
+  margin-top: var(--ow-chat-prose-list-gap);
+}
+
+.ow-chat-markdown :where(blockquote) {
+  margin-block: var(--ow-chat-prose-block-gap);
+}
+
+.ow-reasoning-message {
+  border-left: 1px solid var(--ow-reasoning-rail);
+  padding-left: var(--ow-space-3);
+}
+
+.ow-reasoning-trigger {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.ow-reasoning-trigger:hover {
+  background: var(--ow-reasoning-bg);
+}
+
+.ow-reasoning-content {
+  border-left: 1px solid color-mix(in srgb, var(--ow-reasoning-rail) 70%, transparent);
+  margin-left: var(--ow-space-2);
+  padding-left: var(--ow-space-3);
+}
+
 [data-streamdown="inline-code"] {
   border-radius: var(--ow-radius-xs);
   background: color-mix(in srgb, var(--foreground) 7%, transparent);

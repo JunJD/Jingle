@@ -226,20 +226,29 @@ function ReasoningBlock(props: {
   }
 
   return (
-    <ChainOfThought active={isStreaming} defaultOpen={isStreaming}>
+    <ChainOfThought
+      active={isStreaming}
+      className="ow-reasoning-message"
+      collapseWhenInactive
+      defaultOpen={isStreaming}
+    >
       <ChainOfThoughtHeader
-        className={
+        className={cn(
+          "ow-reasoning-trigger rounded-[var(--ow-radius-sm)] px-[var(--ow-space-1)]",
           density === "compact"
             ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
             : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)]"
-        }
+        )}
       >
-        {copy.chat.agentThinking}
+        {isStreaming ? copy.chat.agentThinking : copy.chat.agentThought}
       </ChainOfThoughtHeader>
       <ChainOfThoughtContent
-        className={
-          density === "compact" ? "space-y-[var(--ow-space-2)]" : "space-y-[var(--ow-space-2-5)]"
-        }
+        className={cn(
+          "ow-reasoning-content",
+          density === "compact"
+            ? "space-y-[var(--ow-space-2)]"
+            : "space-y-[var(--ow-reasoning-content-gap)]"
+        )}
       >
         <div className="whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
           {text}
