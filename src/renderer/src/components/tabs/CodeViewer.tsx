@@ -154,7 +154,7 @@ export function CodeViewer({ filePath, content }: CodeViewerProps) {
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
       {/* File path header */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-background/50 text-xs text-muted-foreground shrink-0">
+      <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)] border-b border-border bg-background/50 px-[var(--ow-space-4)] py-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-muted-foreground">
         <span className="truncate">{filePath}</span>
         <span className="text-muted-foreground/50">•</span>
         <span>{lineCount} lines</span>
@@ -169,7 +169,7 @@ export function CodeViewer({ filePath, content }: CodeViewerProps) {
             <div className="shiki-content" dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
           ) : (
             // Fallback plain text rendering
-            <pre className="p-4 text-sm font-mono leading-relaxed whitespace-pre-wrap break-all">
+            <pre className="whitespace-pre-wrap break-all p-[var(--ow-space-4)] font-mono [font-size:var(--ow-font-code)] leading-[var(--ow-line-code)]">
               {content}
             </pre>
           )}

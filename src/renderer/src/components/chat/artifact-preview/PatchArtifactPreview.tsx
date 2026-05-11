@@ -30,7 +30,7 @@ export function PatchArtifactPreview(props: PatchArtifactPreviewProps): React.JS
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="overflow-x-auto px-[var(--ow-space-4)] py-[var(--ow-space-4)]">
-          <div className="min-w-[var(--ow-chat-code-preview-min-w)] overflow-hidden rounded-[var(--ow-radius-dialog)] border border-border/80 bg-background-elevated/70 font-mono [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
+          <div className="min-w-[var(--ow-chat-code-preview-min-w)] overflow-hidden rounded-[var(--ow-radius-dialog)] border border-border/80 bg-background-elevated/70 font-mono [font-size:var(--ow-font-code)] leading-[var(--ow-line-code)]">
             {parsedPatch.rows.map((row, index) => (
               <div
                 className={cn(

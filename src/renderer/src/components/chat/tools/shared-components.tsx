@@ -44,7 +44,7 @@ export function ToolCodeBlock(props: {
   return (
     <pre
       className={cn(
-        "min-w-0 max-w-full overflow-x-auto rounded-[var(--ow-radius-panel)] bg-background-secondary/60 px-[var(--ow-space-3)] py-[var(--ow-space-2-5)] whitespace-pre-wrap break-all font-mono [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground/85",
+        "min-w-0 max-w-full overflow-x-auto rounded-[var(--ow-radius-panel)] bg-background-secondary/60 px-[var(--ow-space-3)] py-[var(--ow-space-2-5)] whitespace-pre-wrap break-all font-mono [font-size:var(--ow-font-code)] leading-[var(--ow-line-code)] text-foreground/85",
         className
       )}
     >
@@ -67,7 +67,7 @@ export function ToolPreviewLines(props: {
 
   return (
     <div className="overflow-hidden rounded-[var(--ow-radius-dialog)] bg-background-secondary/60">
-      <div className="grid gap-0 font-mono [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground/85">
+      <div className="grid gap-0 font-mono [font-size:var(--ow-font-code)] leading-[var(--ow-line-code)] text-foreground/85">
         {preview.map((line, index) => (
           <div key={`${index}-${line}`} className="grid grid-cols-[40px,minmax(0,1fr)]">
             <span className="px-[var(--ow-space-2)] py-[var(--ow-space-1-5)] text-right [font-size:var(--ow-font-meta)] text-muted-foreground/80 tabular-nums">

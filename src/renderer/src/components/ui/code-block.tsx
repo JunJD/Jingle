@@ -111,7 +111,7 @@ export const CodeBlock = ({
   return (
     <div
       className={cn(
-        "relative min-w-0 max-w-full overflow-hidden rounded-[var(--ow-radius-panel)] bg-background-secondary/60 px-[var(--ow-space-3)] py-[var(--ow-space-2-5)] font-mono [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground/85",
+        "relative min-w-0 max-w-full overflow-hidden rounded-[var(--ow-radius-panel)] bg-background-secondary/60 px-[var(--ow-space-3)] py-[var(--ow-space-2-5)] font-mono [font-size:var(--ow-font-code)] leading-[var(--ow-line-code)] text-foreground/85",
         className
       )}
     >
@@ -157,8 +157,8 @@ export const CodeBlock = ({
           padding: "0.625rem 0 0",
           background: "transparent",
           color: "var(--foreground)",
-          fontSize: "0.75rem",
-          lineHeight: "1.25rem",
+          fontSize: "var(--ow-font-code)",
+          lineHeight: "var(--ow-line-code)",
           overflowX: "auto",
           whiteSpace: "pre"
         }}
@@ -176,6 +176,8 @@ export const CodeBlock = ({
           minWidth: "2.25rem",
           opacity: 0.72,
           paddingRight: "0.75rem",
+          fontSize: "var(--ow-font-meta)",
+          lineHeight: "var(--ow-line-code)",
           userSelect: "none"
         }}
         wrapLines

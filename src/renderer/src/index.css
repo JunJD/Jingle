@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+@source "../../../node_modules/streamdown/dist/*.js";
+@source "../../../node_modules/@streamdown/cjk/dist/*.js";
+@source "../../../node_modules/@streamdown/code/dist/*.js";
+@source "../../../node_modules/@streamdown/math/dist/*.js";
+@source "../../../node_modules/@streamdown/mermaid/dist/*.js";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -88,6 +94,8 @@
   --ow-font-micro: 9px;
   --ow-font-body: 12px;
   --ow-font-control: 12px;
+  --ow-font-code: 13px;
+  --ow-font-inline-code: 0.94em;
   --ow-font-label: 13px;
   --ow-font-title: 14px;
   --ow-font-reading: 15px;
@@ -96,6 +104,7 @@
 
   --ow-line-tight: 1.2;
   --ow-line-body: 1.45;
+  --ow-line-code: 20px;
   --ow-line-reading: 1.55;
   --ow-line-chat: 20px;
   --ow-line-control-sm: 24px;
@@ -1511,6 +1520,57 @@ body[data-platform="darwin"] .launcher-window-shell {
   background: color-mix(in srgb, var(--muted-foreground) 44%, transparent);
 }
 
+/* Code typography surfaces */
+[data-streamdown="inline-code"] {
+  border-radius: var(--ow-radius-xs);
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  padding: 0.08em 0.34em;
+  font-family: var(--ow-font-code-family);
+  font-size: var(--ow-font-inline-code);
+  line-height: 1;
+}
+
+[data-streamdown="code-block"],
+[data-streamdown="mermaid-block"] {
+  margin-block: var(--ow-space-4);
+  gap: var(--ow-space-2);
+  border-color: var(--border);
+  border-radius: var(--ow-radius-panel);
+  background: color-mix(in srgb, var(--background-secondary) 62%, transparent);
+  padding: var(--ow-space-2);
+}
+
+[data-streamdown="code-block-header"],
+[data-streamdown="mermaid-block"] > div:first-child {
+  height: var(--ow-control-h-compact);
+  color: var(--muted-foreground);
+  font-size: var(--ow-font-meta);
+  line-height: var(--ow-control-h-compact);
+}
+
+[data-streamdown="code-block-body"] {
+  border-color: color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: var(--ow-radius-md);
+  background: color-mix(in srgb, var(--background-elevated) 72%, transparent);
+  padding: var(--ow-space-3);
+  font-size: var(--ow-font-code);
+  line-height: var(--ow-line-code);
+}
+
+[data-streamdown="code-block-body"] pre,
+[data-streamdown="code-block-body"] code,
+.shiki-wrapper,
+.shiki-content code {
+  font-family: var(--ow-font-code-family);
+  font-size: inherit;
+  line-height: inherit;
+}
+
+[data-streamdown="code-block-body"] code > span::before {
+  font-size: var(--ow-font-meta);
+  line-height: var(--ow-line-code);
+}
+
 /* Hide scrollbar but allow scrolling */
 .scrollbar-hide {
   -ms-overflow-style: none;
@@ -1539,27 +1599,25 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 /* Shiki syntax highlighting styles */
 .shiki-wrapper {
-  font-size: 0.875rem;
-  line-height: 1.6;
+  font-size: var(--ow-font-code);
+  line-height: var(--ow-line-code);
 }
 
 .shiki-content pre {
   margin: 0;
-  padding: 1rem;
+  padding: var(--ow-space-4);
   background-color: transparent !important;
   overflow-x: auto;
 }
 
 .shiki-content code {
-  font-family: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace;
-  font-size: inherit;
   background: transparent !important;
 }
 
 .shiki-content .line {
   display: inline-block;
   width: 100%;
-  min-height: 1.6em;
+  min-height: var(--ow-line-code);
 }
 
 .shiki-content .line:hover {
