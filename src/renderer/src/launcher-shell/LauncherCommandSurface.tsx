@@ -2,6 +2,7 @@ import { AiCoreHostProvider } from "@ai-core/AiCoreHost"
 import { getAiShellConfig } from "@ai-core/ai-config"
 import { NativeExtensionHostProvider } from "@extension-host/NativeExtensionHost"
 import { LauncherCommandErrorPage } from "@launcher-components/LauncherCommandErrorPage"
+import { Suspense } from "react"
 import type { LauncherShellConfig } from "@shared/launcher"
 import { AI_CHAT_COMMAND_NAME } from "@shared/launcher-ai"
 import { useI18n } from "@/lib/i18n"
@@ -184,9 +185,11 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
             : undefined
         }}
       >
-        <ActivePluginComponent
-          key={`${route.kind}:${route.extensionName}:${route.commandName}:${route.initialAction}:${route.seedQuery}`}
-        />
+        <Suspense fallback={<div aria-busy="true" className="h-full w-full" />}>
+          <ActivePluginComponent
+            key={`${route.kind}:${route.extensionName}:${route.commandName}:${route.initialAction}:${route.seedQuery}`}
+          />
+        </Suspense>
       </NativeExtensionHostProvider>
     )
   }
@@ -236,9 +239,11 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
           }
         }}
       >
-        <ActivePluginComponent
-          key={`${route.kind}:${route.commandName}:${route.initialAction}:${route.seedQuery}`}
-        />
+        <Suspense fallback={<div aria-busy="true" className="h-full w-full" />}>
+          <ActivePluginComponent
+            key={`${route.kind}:${route.commandName}:${route.initialAction}:${route.seedQuery}`}
+          />
+        </Suspense>
       </AiCoreHostProvider>
     )
   }

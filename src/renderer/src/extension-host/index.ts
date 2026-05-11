@@ -6,19 +6,46 @@ import {
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { listNativeExtensionManifests } from "@extensions/index"
 import { nativeExtensionRuntimeMetadata } from "@extensions/runtime-metadata"
-import {
-  handleRuntimeNavigationRequest,
-  RuntimeExtensionCommandSurface
-} from "@renderer/extension-runtime/RuntimeExtensionCommandSurface"
+import { handleRuntimeNavigationRequest } from "@renderer/extension-runtime/runtime-navigation"
 import type { LauncherCommandOwnerDefinition } from "@launcher-shell/pages/types"
+import { lazy, type ComponentType } from "react"
 
-const supportedNativeExtensionManifests = listNativeExtensionManifests(
-  window.electron.process.platform
-)
+type NativeExtensionPlatformHost = typeof globalThis & {
+  process?: {
+    platform?: string
+  }
+  window?: {
+    electron?: {
+      process?: {
+        platform?: string
+      }
+    }
+  }
+}
+
+const RuntimeExtensionCommandSurface = lazy(async () => {
+  const module = await import("@renderer/extension-runtime/RuntimeExtensionCommandSurface")
+  return { default: module.RuntimeExtensionCommandSurface }
+}) as ComponentType
+
+function getNativeExtensionPlatform(): string {
+  const host = globalThis as NativeExtensionPlatformHost
+  const platform = host.window?.electron?.process?.platform ?? host.process?.platform
+
+  if (!platform) {
+    throw new Error("Native extension platform is unavailable.")
+  }
+
+  return platform
+}
+
+function getSupportedNativeExtensionManifests() {
+  return listNativeExtensionManifests(getNativeExtensionPlatform())
+}
 
 function getViewportHeight(
   viewport: NonNullable<
-    (typeof supportedNativeExtensionManifests)[number]["commands"][number]["runtime"]
+    ReturnType<typeof getSupportedNativeExtensionManifests>[number]["commands"][number]["runtime"]
   >["viewport"]
 ): (shellConfig: LauncherShellConfig) => number {
   if (!viewport) {
@@ -28,7 +55,7 @@ function getViewportHeight(
   return (shellConfig) => getLauncherViewportHeightForBody(viewport.bodyHeight, shellConfig)
 }
 
-export const nativeLauncherCommandOwners = supportedNativeExtensionManifests.reduce<
+export const nativeLauncherCommandOwners = getSupportedNativeExtensionManifests().reduce<
   LauncherCommandOwnerDefinition[]
 >((owners, extension) => {
   const routeableCommands = extension.commands.filter(
@@ -90,8 +117,8 @@ export const nativeLauncherCommandOwners = supportedNativeExtensionManifests.red
         validateCommandPreferences,
         run: async (context) => {
           let runOnceSessionId: string | null = null
-          const unsubscribeRunOnceSessions =
-            window.api.extensionRuntime.subscribeRunOnceSessions((session) => {
+          const unsubscribeRunOnceSessions = window.api.extensionRuntime.subscribeRunOnceSessions(
+            (session) => {
               if (
                 session.context.extensionName === extension.name &&
                 session.context.commandName === command.name &&
@@ -99,7 +126,8 @@ export const nativeLauncherCommandOwners = supportedNativeExtensionManifests.red
               ) {
                 runOnceSessionId = session.sessionId
               }
-            })
+            }
+          )
           const unsubscribeNavigationRequests = context.navigation
             ? window.api.extensionRuntime.subscribeNavigationRequests((event) => {
                 if (event.sessionId !== runOnceSessionId || !context.navigation) {

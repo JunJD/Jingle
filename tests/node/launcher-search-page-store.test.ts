@@ -208,7 +208,7 @@ test("non-empty launcher search uses a fixed results viewport instead of result-
     windowMode: "default"
   })
 
-  assert.notEqual(
+  assert.equal(
     getLauncherHomeSurfaceResultsHeight(oneResultSurface, FALLBACK_SHELL_CONFIG),
     getLauncherHomeSurfaceResultsHeight(manyResultsSurface, FALLBACK_SHELL_CONFIG)
   )

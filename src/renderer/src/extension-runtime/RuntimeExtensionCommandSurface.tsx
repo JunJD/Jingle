@@ -30,8 +30,6 @@ import type {
   ExtensionListItemNode,
   ExtensionListSectionNode,
   ExtensionListSurfaceSnapshot,
-  ExtensionRuntimeNavigationRequestEvent,
-  ExtensionRuntimeNavigationResponse,
   ExtensionSurfaceSnapshot,
   ExtensionSvgVisualNode,
   ExtensionVisualNode
@@ -40,8 +38,7 @@ import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import {
   useNativeExtensionHost,
   useNativeExtensionNavigation,
-  useNativeExtensionSurface,
-  type NativeExtensionNavigation
+  useNativeExtensionSurface
 } from "../extension-host/sdk"
 import { NativeSurfaceChrome } from "../extension-host/chrome"
 import { NativeExtensionSelect } from "../extension-host/select"
@@ -59,6 +56,7 @@ import {
   type RuntimeFormPendingValue,
   type RuntimeFormValue
 } from "./form-local-values"
+import { handleRuntimeNavigationRequest } from "./runtime-navigation"
 
 const RUNTIME_LIST_SHORTCUT_SCOPES = ["launcher.list"] as const
 const streamdownPlugins = { cjk, code, math, mermaid }
@@ -251,87 +249,6 @@ function renderAccessoryVisuals(nodes: ExtensionVisualNode[]): ReactNode {
       {renderVisual(node)}
     </span>
   ))
-}
-
-function getRuntimeNavigationErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-async function completeRuntimeNavigationRequest(
-  response: ExtensionRuntimeNavigationResponse
-): Promise<void> {
-  await window.api.extensionRuntime.completeNavigationRequest(response)
-}
-
-type RuntimeNavigationTarget = Pick<
-  NativeExtensionNavigation,
-  "goHome" | "hideLauncher" | "openCommand"
->
-
-interface RuntimeNavigationRequestOptions {
-  completeOpenCommandBeforeNavigation?: boolean
-}
-
-export async function handleRuntimeNavigationRequest(
-  event: ExtensionRuntimeNavigationRequestEvent,
-  navigation: RuntimeNavigationTarget,
-  options: RuntimeNavigationRequestOptions = {}
-): Promise<void> {
-  const { request, sessionId } = event
-  const okResponse: ExtensionRuntimeNavigationResponse = {
-    ok: true,
-    requestId: request.id,
-    sessionId
-  }
-
-  try {
-    switch (request.method) {
-      case "go-home":
-        await completeRuntimeNavigationRequest(okResponse)
-        navigation.goHome()
-        return
-      case "hide-launcher":
-        await navigation.hideLauncher()
-        await completeRuntimeNavigationRequest(okResponse)
-        return
-      case "open-command":
-        if (!request.payload) {
-          throw new Error("Runtime navigation open-command request is missing a payload.")
-        }
-
-        if (request.payload.showLauncher) {
-          await window.api.launcher.show()
-        }
-
-        if (options.completeOpenCommandBeforeNavigation ?? true) {
-          await completeRuntimeNavigationRequest(okResponse)
-          navigation.openCommand({
-            commandName: request.payload.commandName,
-            extensionName: request.payload.extensionName,
-            kind: "extension-command"
-          })
-          return
-        }
-
-        navigation.openCommand({
-          commandName: request.payload.commandName,
-          extensionName: request.payload.extensionName,
-          kind: "extension-command"
-        })
-        await completeRuntimeNavigationRequest(okResponse)
-        return
-    }
-  } catch (error) {
-    await completeRuntimeNavigationRequest({
-      error: {
-        code: "navigation_failed",
-        message: getRuntimeNavigationErrorMessage(error)
-      },
-      ok: false,
-      requestId: request.id,
-      sessionId
-    })
-  }
 }
 
 function RuntimeListDropdown(props: {
@@ -938,6 +855,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     host.commandPreferences,
     host.extensionName,
     host.initialAction,
+    host.locale,
     host.seedQuery
   ])
 
