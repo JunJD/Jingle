@@ -85,7 +85,7 @@ export const PlaceholdersAndVanishInput = forwardRef<
   const resolvedValue = value === undefined ? uncontrolledValue : normalizeInputValue(value)
   const shouldShowPlaceholder = resolvedValue.length === 0
   const controlClassName = cn(
-    "relative z-10 w-full appearance-none border-0 bg-transparent outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0",
+    "relative z-10 block w-full appearance-none border-0 bg-transparent outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0",
     className
   )
   const setInputRef = useCallback(

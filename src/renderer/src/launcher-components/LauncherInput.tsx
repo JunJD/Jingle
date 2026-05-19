@@ -67,7 +67,7 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
               ? "min-w-0 border-0 bg-transparent px-[var(--ow-space-1)] py-0 [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] shadow-none"
               : "min-w-0 border-0 bg-transparent px-[var(--ow-space-1-5)] py-0 [font-size:var(--ow-font-title)] font-medium leading-[var(--ow-line-control-md)] shadow-none",
             multiline
-              ? "max-h-[40px] resize-none overflow-y-auto whitespace-pre-wrap break-words leading-[20px] [overflow-wrap:anywhere] scrollbar-hide"
+              ? "min-h-[var(--ow-control-h-sm)] max-h-[40px] resize-none overflow-y-auto whitespace-pre-wrap break-words py-[3px] leading-[20px] [overflow-wrap:anywhere] scrollbar-hide"
               : isCompact
                 ? "h-[var(--ow-control-h-sm)]"
                 : "h-[var(--ow-control-h-md)]",
@@ -76,9 +76,12 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
             className
           )}
           placeholderClassName={cn(
-            isCompact
-              ? "[font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] text-muted-foreground/52"
-              : "[font-size:var(--ow-font-title)] font-medium leading-[var(--ow-line-control-md)] text-muted-foreground/55",
+            multiline
+              ? "[font-size:var(--ow-font-control)] font-medium leading-[20px] text-muted-foreground/52"
+              : isCompact
+                ? "[font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] text-muted-foreground/52"
+                : "[font-size:var(--ow-font-title)] font-medium leading-[var(--ow-line-control-md)] text-muted-foreground/55",
+            isCompact ? "px-[var(--ow-space-1)]" : "px-[var(--ow-space-1-5)]",
             placeholderClassName
           )}
           data-status={status}
