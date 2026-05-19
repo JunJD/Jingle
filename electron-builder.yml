@@ -1,0 +1,26 @@
+appId: com.langchain.openwork
+productName: Openwork
+directories:
+  output: dist
+files:
+  - out/**
+  - package.json
+  - resources/**
+asarUnpack:
+  - out/native/**
+mac:
+  category: public.app-category.productivity
+  icon: resources/icon.icns
+  target:
+    - dmg
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+win:
+  icon: resources/icon.ico
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+publish:
+  provider: github
