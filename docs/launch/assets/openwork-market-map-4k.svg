@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="3840" height="2160" viewBox="0 0 3840 2160">
+  <defs>
+    <linearGradient id="soft" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#171c24"/>
+      <stop offset="100%" stop-color="#0f1217"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="30" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect fill="#0f1217" height="2160" rx="0" stroke="#0f1217" stroke-width="2" width="3840" x="0" y="0"></rect>
+  <path d="M0 0 H3840 V180 C3220 250 2780 120 2200 190 C1560 268 960 130 0 260 Z" fill="#171c24" opacity="0.75"></path>
+  <path d="M0 2160 H3840 V1900 C3180 1840 2750 2040 2180 1970 C1450 1880 880 2060 0 1940 Z" fill="#141922" opacity="0.8"></path>
+  
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="112" font-weight="850" fill="#f5f7fa" text-anchor="start" x="220" y="220">AI 产品分化，但信任层还很空</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="52" font-weight="500" fill="#a7b0be" text-anchor="start" x="226" y="370">Raycast 赢在调用瞬间；Openwork 要赢在委托工作的完整生命周期。</text>
+    <line stroke="#313a49" stroke-linecap="round" stroke-width="6" x1="520" x2="3310" y1="1180" y2="1180"></line>
+    <line stroke="#313a49" stroke-linecap="round" stroke-width="6" x1="1920" x2="1920" y1="610" y2="1740"></line>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="62" font-weight="800" fill="#4aa8ff" text-anchor="start" x="650" y="620">Interaction</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="38" font-weight="500" fill="#a7b0be" text-anchor="start" x="650" y="705">快捷入口 / Action / Chat</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="62" font-weight="800" fill="#3ddc97" text-anchor="start" x="2450" y="620">Time</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="38" font-weight="500" fill="#a7b0be" text-anchor="start" x="2450" y="705">异步任务 / 后台执行</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="62" font-weight="800" fill="#f2c94c" text-anchor="start" x="650" y="1390">Space</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="38" font-weight="500" fill="#a7b0be" text-anchor="start" x="650" y="1475">workspace / sandbox / browser</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="62" font-weight="800" fill="#ff4b4b" text-anchor="start" x="2450" y="1390">Evidence + Control</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="38" font-weight="500" fill="#a7b0be" text-anchor="start" x="2450" y="1475">审批 / diff / artifact / replay</text>
+    <rect fill="#171c24" height="210" rx="48" stroke="#4aa8ff" stroke-width="2" width="820" x="420" y="860"></rect>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="62" font-weight="850" fill="#f5f7fa" text-anchor="middle" x="830" y="925">Raycast</text>
+    <rect fill="#171c24" height="230" rx="48" stroke="#ff4b4b" stroke-width="2" width="980" x="2350" y="1580"></rect>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="66" font-weight="850" fill="#f5f7fa" text-anchor="middle" x="2840" y="1648">Openwork</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="500" fill="#a7b0be" text-anchor="middle" x="2840" y="1735">delegated work lifetime</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="54" font-weight="650" fill="#f5f7fa" text-anchor="start" x="220" y="1930">产品差异不在“有没有 AI”，而在用户敢不敢把真实工作交出去。</text>
+  
+</svg>
