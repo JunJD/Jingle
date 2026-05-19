@@ -1,10 +1,9 @@
 import { useCallback, useMemo, useState, type RefObject } from "react"
-import { Loader2, Settings2 } from "lucide-react"
+import { ArrowRightToLine, Loader2, Settings2 } from "lucide-react"
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
 import { useLauncherActionController } from "@/features/launcher-actions/controller"
 import type { LauncherActionDescriptor } from "@/features/launcher-actions/model"
 import { useI18n } from "@/lib/i18n"
-import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import type { LauncherShellConfig } from "@shared/launcher"
 import type { ClipboardContext } from "@shared/clipboard"
@@ -222,7 +221,6 @@ export function LauncherSearchPage(props: {
     primaryActionFallbackTitle: primaryActionLabel
   })
   const showHistoryGrid = surface.body.kind === "history-grid"
-  const openAiShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.searchOpenAi)
   const placeholders = useMemo(
     () => [copy.launcher.searchPlaceholder, copy.launcher.searchPlaceholderSecondary],
     [copy]
@@ -328,14 +326,17 @@ export function LauncherSearchPage(props: {
         headerTrailing={
           isSearchMode ? null : (
             <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] font-medium text-muted-foreground">
-              <div className="flex items-center gap-[var(--ow-gap-sm)] px-0 py-[var(--ow-space-1)]">
-                <span>{copy.launcher.aiEntryLabel}</span>
-                {openAiShortcut ? (
-                  <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
-                    {openAiShortcut}
-                  </span>
-                ) : null}
-              </div>
+              <span>{copy.launcher.aiFooterLeading}</span>
+              <button
+                type="button"
+                onClick={() => executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenAi)}
+                onMouseDown={(event) => event.preventDefault()}
+                className="flex size-[var(--ow-hit-target-sm)] shrink-0 appearance-none items-center justify-center rounded-[var(--ow-radius-sm)] border border-border bg-background-secondary text-muted-foreground shadow-none transition hover:bg-background-interactive hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                title={copy.launcher.aiEntryLabel}
+                aria-label={copy.launcher.aiEntryLabel}
+              >
+                <ArrowRightToLine className="size-[var(--ow-icon-compact)]" strokeWidth={1.8} />
+              </button>
             </div>
           )
         }

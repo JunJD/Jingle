@@ -308,6 +308,12 @@ body[data-window="launcher"],
   --launcher-ai-content-x: var(--ow-space-3);
   --launcher-ai-content-y: var(--ow-space-2);
   --launcher-ai-content-max-width: 720px;
+  --launcher-ai-composer-page-x: var(--ow-space-3);
+  --launcher-ai-composer-x: var(--ow-space-3);
+  --launcher-ai-composer-y: var(--ow-space-2);
+  --launcher-ai-composer-submit-size: 28px;
+  --launcher-ai-composer-expanded-input-min-h: 112px;
+  --launcher-ai-composer-expanded-input-max-h: 148px;
   --launcher-ai-empty-max-width: 48rem;
   --launcher-ai-empty-copy-max-width: 42rem;
   --launcher-ai-turn-gap: var(--ow-space-3);
@@ -825,6 +831,13 @@ body[data-platform="darwin"] .launcher-window-shell {
   );
 }
 
+.launcher-chrome-footer[data-variant="composer"] {
+  z-index: 3;
+  padding: 0;
+  background: transparent;
+  border-top: 1px solid color-mix(in srgb, var(--launcher-border) 72%, transparent);
+}
+
 .launcher-header-button,
 .launcher-icon-button,
 .launcher-action-button,
@@ -919,6 +932,64 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 .launcher-jump-to-latest:hover {
   background: color-mix(in srgb, var(--launcher-surface-strong) 36%, transparent);
+}
+
+.launcher-ai-composer-wrap {
+  position: relative;
+  z-index: 2;
+}
+
+.launcher-ai-composer {
+  border: 1px solid color-mix(in srgb, var(--launcher-border-strong) 74%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--launcher-shell-fill) 88%, white 12%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 64%, transparent),
+    0 14px 38px color-mix(in srgb, var(--foreground) 10%, transparent);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.launcher-ai-composer:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--launcher-border-strong));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 64%, transparent),
+    0 16px 44px color-mix(in srgb, var(--foreground) 12%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+.launcher-ai-composer--expanded {
+  border-radius: 14px;
+}
+
+.launcher-ai-composer .launcher-input {
+  align-self: stretch;
+}
+
+.launcher-ai-composer-attachment {
+  margin-top: 3px;
+}
+
+.launcher-ai-composer-submit {
+  margin-top: 0;
+  background: color-mix(in srgb, var(--launcher-surface-interactive) 80%, white 20%);
+}
+
+.launcher-ai-composer-submit:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--launcher-surface-interactive) 92%, white 8%);
+}
+
+.dark .launcher-ai-composer {
+  background: color-mix(in srgb, var(--launcher-shell-fill) 86%, black 14%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 10%, transparent),
+    0 16px 42px color-mix(in srgb, black 26%, transparent);
+}
+
+.dark .launcher-ai-composer-submit {
+  background: color-mix(in srgb, var(--launcher-surface-interactive) 84%, white 16%);
 }
 
 .launcher-result-row {

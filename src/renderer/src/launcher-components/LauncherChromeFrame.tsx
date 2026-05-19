@@ -7,6 +7,7 @@ interface LauncherChromeFrameProps {
   children?: ReactNode
   density?: "default" | "compact"
   footer?: ReactNode
+  footerVariant?: "strip" | "composer"
   headerLeading?: ReactNode
   headerMain?: ReactNode
   headerTrailing?: ReactNode
@@ -22,6 +23,7 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
     children,
     density = "default",
     footer,
+    footerVariant = "strip",
     headerLeading,
     headerMain,
     headerTrailing,
@@ -87,9 +89,11 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
               ? "px-[var(--launcher-footer-x)]"
               : "px-[var(--launcher-chrome-x-compact)]"
           }`}
+          data-variant={footerVariant}
           style={{
-            borderTop: "1px solid var(--launcher-border)",
-            backgroundColor: "var(--launcher-footer-strip)",
+            borderTop: footerVariant === "strip" ? "1px solid var(--launcher-border)" : "none",
+            backgroundColor:
+              footerVariant === "strip" ? "var(--launcher-footer-strip)" : "transparent",
             height: shellConfig.footerHeight
           }}
         >

@@ -10,13 +10,17 @@ interface LauncherChromeProps {
   children?: ReactNode
   density?: "default" | "compact"
   footer?: ReactNode
+  footerVariant?: "strip" | "composer"
   headerLeading?: ReactNode
   headerTrailing?: ReactNode
+  hideInputChrome?: boolean
   inputAccessory?: ReactNode
   inputClassName?: string
   inputMultiline?: boolean
   inputReplacement?: ReactNode
-  inputRef: RefObject<LauncherInputElement | null> | ((element: LauncherInputElement | null) => void)
+  inputRef:
+    | RefObject<LauncherInputElement | null>
+    | ((element: LauncherInputElement | null) => void)
   inputStatus?: LauncherInputStatus
   inputTrailing?: ReactNode
   inputValue: string
@@ -34,8 +38,10 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
     children,
     density = "default",
     footer,
+    footerVariant,
     headerLeading,
     headerTrailing,
+    hideInputChrome = false,
     inputAccessory,
     inputClassName,
     inputMultiline = false,
@@ -56,34 +62,37 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
   return (
     <LauncherChromeFrame
       footer={footer}
+      footerVariant={footerVariant}
       density={density}
       headerLeading={headerLeading}
       headerMain={
-        inputReplacement ?? (
-          <LauncherInput
-            ref={inputRef}
-            density={density}
-            multiline={inputMultiline}
-            trailing={inputTrailing}
-            showStatusIndicator={showInputStatusIndicator}
-            status={inputStatus}
-            value={inputValue}
-            onChange={(event) => onInputValueChange(event.target.value)}
-            onKeyDown={onInputKeyDown}
-            placeholders={placeholders}
-            className={cn(
-              density === "compact"
-                ? "flex-1 [font-size:var(--ow-font-control)] font-medium text-foreground"
-                : "flex-1 [font-size:var(--ow-font-title)] font-medium text-foreground",
-              inputClassName
-            )}
-            placeholderClassName={
-              density === "compact"
-                ? "[font-size:var(--ow-font-control)] font-medium text-muted-foreground/64"
-                : "[font-size:var(--ow-font-title)] font-medium text-muted-foreground/68"
-            }
-          />
-        )
+        hideInputChrome
+          ? null
+          : (inputReplacement ?? (
+              <LauncherInput
+                ref={inputRef}
+                density={density}
+                multiline={inputMultiline}
+                trailing={inputTrailing}
+                showStatusIndicator={showInputStatusIndicator}
+                status={inputStatus}
+                value={inputValue}
+                onChange={(event) => onInputValueChange(event.target.value)}
+                onKeyDown={onInputKeyDown}
+                placeholders={placeholders}
+                className={cn(
+                  density === "compact"
+                    ? "flex-1 [font-size:var(--ow-font-control)] font-medium text-foreground"
+                    : "flex-1 [font-size:var(--ow-font-title)] font-medium text-foreground",
+                  inputClassName
+                )}
+                placeholderClassName={
+                  density === "compact"
+                    ? "[font-size:var(--ow-font-control)] font-medium text-muted-foreground/64"
+                    : "[font-size:var(--ow-font-title)] font-medium text-muted-foreground/68"
+                }
+              />
+            ))
       }
       headerTrailing={headerTrailing}
       inputAccessory={inputAccessory}

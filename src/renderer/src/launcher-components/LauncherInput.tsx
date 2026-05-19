@@ -10,6 +10,7 @@ import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 
 export interface LauncherInputProps extends PlaceholdersAndVanishInputProps {
   readonly density?: "default" | "compact"
+  readonly expanded?: boolean
   readonly multiline?: boolean
   readonly status?: LauncherInputStatus
   readonly trailing?: ReactNode
@@ -35,6 +36,7 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
     {
       className,
       density = "default",
+      expanded = false,
       multiline = false,
       onCompositionEnd,
       onCompositionStart,
@@ -49,11 +51,13 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
   ) {
     const isComposingRef = useRef(false)
     const isCompact = density === "compact"
+    const isExpandedMultiline = multiline && expanded
 
     return (
       <div
         className={cn(
           "launcher-input flex min-w-0 flex-1 items-center",
+          isExpandedMultiline && "items-start",
           isCompact ? "gap-[var(--ow-gap-sm)]" : "gap-[var(--ow-space-2-5)]"
         )}
         data-status={status}
@@ -67,7 +71,12 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
               ? "min-w-0 border-0 bg-transparent px-[var(--ow-space-1)] py-0 [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] shadow-none"
               : "min-w-0 border-0 bg-transparent px-[var(--ow-space-1-5)] py-0 [font-size:var(--ow-font-title)] font-medium leading-[var(--ow-line-control-md)] shadow-none",
             multiline
-              ? "min-h-[var(--ow-control-h-sm)] max-h-[40px] resize-none overflow-y-auto whitespace-pre-wrap break-words py-[3px] leading-[20px] [overflow-wrap:anywhere] scrollbar-hide"
+              ? cn(
+                  "resize-none overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] scrollbar-hide",
+                  isExpandedMultiline
+                    ? "min-h-[var(--launcher-ai-composer-expanded-input-min-h)] max-h-[var(--launcher-ai-composer-expanded-input-max-h)] py-[var(--ow-space-2-5)] leading-[var(--ow-line-chat)]"
+                    : "min-h-[var(--ow-control-h-sm)] max-h-[40px] py-[3px] leading-[20px]"
+                )
               : isCompact
                 ? "h-[var(--ow-control-h-sm)]"
                 : "h-[var(--ow-control-h-md)]",
@@ -77,7 +86,12 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
           )}
           placeholderClassName={cn(
             multiline
-              ? "[font-size:var(--ow-font-control)] font-medium leading-[20px] text-muted-foreground/52"
+              ? cn(
+                  "[font-size:var(--ow-font-control)] font-medium text-muted-foreground/52",
+                  isExpandedMultiline
+                    ? "items-start pt-[var(--ow-space-2-5)] leading-[var(--ow-line-chat)]"
+                    : "leading-[20px]"
+                )
               : isCompact
                 ? "[font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] text-muted-foreground/52"
                 : "[font-size:var(--ow-font-title)] font-medium leading-[var(--ow-line-control-md)] text-muted-foreground/55",
