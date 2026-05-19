@@ -40,6 +40,26 @@ Or configure them in-app via the settings panel.
 
 For CDP-based debugging against the real Electron window, see [docs/openwork-electron-debugging.md](docs/openwork-electron-debugging.md).
 
+## Desktop Release
+
+The desktop packaging workflow runs on every branch push and can also be started manually from GitHub Actions. It only packages macOS and Windows builds.
+
+Pushing a tag publishes a GitHub Release with the generated desktop assets:
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+Tags may use either `v1.2.3` or `app-v1.2.3`. The workflow strips the prefix and uses `1.2.3` as the app version. Prerelease tags such as `v1.2.3-beta.1` are marked as prereleases.
+
+To package locally:
+
+```bash
+pnpm run dist:mac
+pnpm run dist:win
+```
+
 ## BDD Testing
 
 The repository now includes a minimal Electron BDD harness built on Cucumber and Playwright.
