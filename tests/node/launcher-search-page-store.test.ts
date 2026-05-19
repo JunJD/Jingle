@@ -159,24 +159,68 @@ test("broadened cached search results stay visible as non-executable preview row
   assert.equal(searchItem?.presentation.primaryActionLabel, appCopy["zh-CN"].launcher.planned)
 })
 
-test("mergeLauncherSearchResults orders by score, source priority, and de-duplicates per source key", () => {
+test("mergeLauncherSearchResults orders by source priority, score, and de-duplicates per source key", () => {
   const merged = mergeLauncherSearchResults(
     {
       files: [
-        createSearchResult({ id: "shared", score: 10, source: "files", title: "A" }),
-        createSearchResult({ id: "file-only", score: 8, source: "files", title: "B" })
+        createSearchResult({ id: "shared", score: 100, source: "files", title: "A" }),
+        createSearchResult({ id: "file-only", score: 80, source: "files", title: "B" }),
+        createSearchResult({ id: "file-only", score: 1, source: "files", title: "Duplicate" })
       ],
       applications: [
-        createSearchResult({ id: "shared", score: 10, source: "applications", title: "C" }),
-        createSearchResult({ id: "app-only", score: 9, source: "applications", title: "D" })
-      ]
+        createSearchResult({ id: "app-low", score: 1, source: "applications", title: "D" }),
+        createSearchResult({ id: "app-high", score: 2, source: "applications", title: "C" })
+      ],
+      threads: [createSearchResult({ id: "thread", score: 900, source: "threads", title: "Thread" })]
     },
     10
   )
 
   assert.deepEqual(
     merged.map((result) => `${result.source}:${result.id}`),
-    ["applications:shared", "files:shared", "applications:app-only", "files:file-only"]
+    [
+      "applications:app-high",
+      "applications:app-low",
+      "files:shared",
+      "files:file-only",
+      "threads:thread"
+    ]
+  )
+})
+
+test("mergeLauncherSearchResults caps thread results after app and file results", () => {
+  const merged = mergeLauncherSearchResults(
+    {
+      "browser-history": [
+        createSearchResult({ id: "browser", score: 10, source: "browser-history", title: "Browser" })
+      ],
+      files: [createSearchResult({ id: "file", score: 10, source: "files", title: "File" })],
+      threads: Array.from({ length: 5 }, (_, index) =>
+        createSearchResult({
+          id: `thread-${index}`,
+          kind: "history",
+          score: 10,
+          source: "threads",
+          title: `Thread ${index}`
+        })
+      ),
+      applications: [
+        createSearchResult({ id: "app", score: 10, source: "applications", title: "App" })
+      ]
+    },
+    20
+  )
+
+  assert.deepEqual(
+    merged.map((result) => `${result.source}:${result.id}`),
+    [
+      "applications:app",
+      "files:file",
+      "threads:thread-0",
+      "threads:thread-1",
+      "threads:thread-2",
+      "browser-history:browser"
+    ]
   )
 })
 

@@ -5,14 +5,15 @@ import type { LocalStartItem } from "@shared/local-start"
 
 export const LAUNCHER_SEARCH_SOURCES: readonly LauncherSearchSource[] = [
   "applications",
-  "threads",
   "files",
+  "threads",
   "browser-history"
 ]
 
-const launcherSearchSourceOrder = new Map(
+export const launcherSearchSourceOrder = new Map(
   LAUNCHER_SEARCH_SOURCES.map((source, index) => [source, index])
 )
+const MAX_VISIBLE_THREAD_SEARCH_RESULTS = 3
 
 export interface LauncherSearchState {
   query: string
@@ -151,18 +152,19 @@ export function mergeLauncherSearchResults(
   limit: number
 ): LauncherSearchResult[] {
   const seen = new Set<string>()
+  let visibleThreadResults = 0
 
   return Object.values(resultsBySource)
     .flat()
     .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score
-      }
-
       const leftOrder = launcherSearchSourceOrder.get(left.source) ?? Number.MAX_SAFE_INTEGER
       const rightOrder = launcherSearchSourceOrder.get(right.source) ?? Number.MAX_SAFE_INTEGER
       if (leftOrder !== rightOrder) {
         return leftOrder - rightOrder
+      }
+
+      if (right.score !== left.score) {
+        return right.score - left.score
       }
 
       return left.title.localeCompare(right.title)
@@ -174,6 +176,14 @@ export function mergeLauncherSearchResults(
       }
 
       seen.add(key)
+      if (result.source === "threads") {
+        if (visibleThreadResults >= MAX_VISIBLE_THREAD_SEARCH_RESULTS) {
+          return false
+        }
+
+        visibleThreadResults += 1
+      }
+
       return true
     })
     .slice(0, limit)

@@ -9,6 +9,7 @@ import { sortLauncherHistoryItems, type LauncherHistoryItem } from "@shared/laun
 import type { LauncherSearchResult } from "@shared/launcher-search"
 import type { LocalStartItem } from "@shared/local-start"
 import { shouldShowLauncherIdleItems } from "@shared/launcher-settings"
+import { launcherSearchSourceOrder } from "./hooks/launcher-search-page-store-core"
 import { getLauncherCommandIntents, listLauncherCommands } from "./pages"
 import {
   buildLauncherBrowserSearchSuggestionItem,
@@ -110,6 +111,14 @@ function rankSearchResultSectionItems(
       result
     }))
     .sort((left, right) => {
+      const leftSourceOrder =
+        launcherSearchSourceOrder.get(left.result.source) ?? Number.MAX_SAFE_INTEGER
+      const rightSourceOrder =
+        launcherSearchSourceOrder.get(right.result.source) ?? Number.MAX_SAFE_INTEGER
+      if (leftSourceOrder !== rightSourceOrder) {
+        return leftSourceOrder - rightSourceOrder
+      }
+
       if (right.result.score !== left.result.score) {
         return right.result.score - left.result.score
       }
