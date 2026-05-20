@@ -87,7 +87,11 @@ export const MessageAction = ({
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{button}</TooltipTrigger>
-          <TooltipContent>
+          <TooltipContent
+            side="top"
+            sideOffset={6}
+            className="z-50 rounded-[var(--ow-radius-sm)] bg-foreground px-[var(--ow-space-2)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-tight)] text-background shadow-md"
+          >
             <p>{tooltip}</p>
           </TooltipContent>
         </Tooltip>

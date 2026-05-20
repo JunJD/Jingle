@@ -1,4 +1,4 @@
-import { Brain, CopyIcon, FileText, GitForkIcon, RefreshCcwIcon } from "lucide-react"
+import { CopyIcon, FileText, GitForkIcon, RefreshCcwIcon } from "lucide-react"
 import { useMemo, useState } from "react"
 import { resolveImageBlockUrl } from "@shared/message-content"
 import type {
@@ -48,6 +48,36 @@ import {
   MessageResponse,
   MessageToolbar
 } from "./message"
+
+function ThinkingIcon(props: React.SVGProps<SVGSVGElement>): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M3.5 19A1.5 1.5 0 0 1 5 20.5A1.5 1.5 0 0 1 3.5 22A1.5 1.5 0 0 1 2 20.5A1.5 1.5 0 0 1 3.5 19m5-3a2.5 2.5 0 0 1 2.5 2.5A2.5 2.5 0 0 1 8.5 21A2.5 2.5 0 0 1 6 18.5A2.5 2.5 0 0 1 8.5 16m6-1c-1.19 0-2.27-.5-3-1.35c-.73.85-1.81 1.35-3 1.35c-1.96 0-3.59-1.41-3.93-3.26A4.02 4.02 0 0 1 2 8a4 4 0 0 1 4-4c.26 0 .5.03.77.07C7.5 3.41 8.45 3 9.5 3c1.19 0 2.27.5 3 1.35c.73-.85 1.81-1.35 3-1.35c1.96 0 3.59 1.41 3.93 3.26A4.02 4.02 0 0 1 22 10a4 4 0 0 1-4 4l-.77-.07c-.73.66-1.68 1.07-2.73 1.07" />
+    </svg>
+  )
+}
+
+function ThinkingPulseIcon(props: React.SVGProps<SVGSVGElement>): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M5 12.5c0-2.4 1.7-4.4 4-4.9" strokeLinecap="round" />
+      <path
+        d="M10.5 7.5c1.1-1.5 2.9-2.5 4.9-2.5 3.4 0 6.1 2.7 6.1 6.1 0 1.9-.9 3.7-2.3 4.8"
+        strokeLinecap="round"
+      />
+      <path d="M7.2 16.9c1 1.4 2.7 2.3 4.7 2.3 2.4 0 4.5-1.4 5.5-3.5" strokeLinecap="round" />
+      <circle cx="9" cy="18.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="16.8" cy="5.7" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
 
 interface MessagesProps {
   approvalPlacement?: "inline" | "composer"
@@ -238,7 +268,16 @@ function ReasoningBlock(props: {
             ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
             : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)]"
         )}
-        icon={<Brain className="size-[var(--ow-icon-action)]" />}
+        icon={
+          <ThinkingIcon className="size-[var(--ow-icon-action)] opacity-90 transition-opacity group-hover:opacity-100" />
+        }
+        meta={
+          isStreaming ? (
+            <span className="inline-flex size-[var(--ow-icon-action)] items-center justify-center overflow-visible text-muted-foreground/90">
+              <ThinkingPulseIcon className="size-[0.9rem] motion-safe:animate-pulse" />
+            </span>
+          ) : null
+        }
       >
         {isStreaming ? copy.chat.agentThinking : copy.chat.agentThought}
       </AgentStepsTrigger>
@@ -611,6 +650,7 @@ function MessageTurnView(props: {
   approvalPlacement?: "inline" | "composer"
   density?: "default" | "compact"
   isActiveTurn: boolean
+  isLatestTurn: boolean
   isLoading?: boolean
   lastAssistantId: string | null
   onApprovalDecision?: (decision: HITLDecision) => void
@@ -625,6 +665,7 @@ function MessageTurnView(props: {
     density = "default",
     approvalPlacement = "inline",
     isActiveTurn,
+    isLatestTurn,
     isLoading,
     lastAssistantId,
     onApprovalDecision,
@@ -680,7 +721,7 @@ function MessageTurnView(props: {
       })}
 
       {hasAssistantMessages && !shouldHideToolbar ? (
-        <MessageToolbar className="mt-0 justify-end">
+        <MessageToolbar className="mt-0 justify-start">
           <MessageActions>
             {isActiveTurn && onRetry && !isLoading ? (
               <MessageAction
@@ -691,7 +732,7 @@ function MessageTurnView(props: {
                 <RefreshCcwIcon className="size-[var(--ow-icon-action)]" />
               </MessageAction>
             ) : null}
-            {isActiveTurn && onBranch && !isLoading ? (
+            {isLatestTurn && onBranch && !isLoading ? (
               <MessageAction
                 label={copy.launcher.branchChat}
                 onClick={() => void onBranch()}
@@ -734,11 +775,12 @@ export function Messages(props: MessagesProps): React.JSX.Element {
 
   return (
     <>
-      {turns.map((turn) => (
+      {turns.map((turn, turnIndex) => (
         <MessageTurnView
           density={density}
           approvalPlacement={approvalPlacement}
           isActiveTurn={turn.key === activeTurnKey}
+          isLatestTurn={turnIndex === turns.length - 1}
           isLoading={isLoading}
           key={turn.key}
           lastAssistantId={lastAssistantId}

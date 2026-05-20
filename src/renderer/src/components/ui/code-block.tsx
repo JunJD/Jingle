@@ -107,6 +107,7 @@ export const CodeBlock = ({
     (tabsExist ? tabs[activeTab].language : language) ?? getLanguageFromFilename(activeFilename)
   const activeHighlightLines = tabsExist ? tabs[activeTab].highlightLines || [] : highlightLines
   const visible = getVisibleCode(activeCode, maxLines)
+  const showHeader = tabsExist || Boolean(activeFilename)
 
   return (
     <div
@@ -115,40 +116,42 @@ export const CodeBlock = ({
         className
       )}
     >
-      <div className="flex flex-col gap-[var(--ow-gap-sm)] border-b border-border/50 pb-2">
-        {tabsExist && (
-          <div className="flex flex-wrap gap-1">
-            {tabs.map((tab, index) => (
-              <button
-                key={index}
-                type="button"
-                onClick={() => setActiveTab(index)}
-                className={`rounded-md px-2 py-1 font-sans [font-size:var(--ow-font-meta)] leading-4 transition-colors ${
-                  activeTab === index
-                    ? "bg-background-interactive text-foreground"
-                    : "text-muted-foreground hover:bg-background-interactive/60 hover:text-foreground"
-                }`}
-              >
-                {tab.name}
-              </button>
-            ))}
-          </div>
-        )}
-        {activeFilename ? (
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 truncate font-mono [font-size:var(--ow-font-meta)] leading-4 text-muted-foreground">
-              {activeFilename}
+      {showHeader ? (
+        <div className="flex flex-col gap-[var(--ow-gap-sm)] border-b border-border/50 pb-2">
+          {tabsExist && (
+            <div className="flex flex-wrap gap-1">
+              {tabs.map((tab, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => setActiveTab(index)}
+                  className={`rounded-md px-2 py-1 font-sans [font-size:var(--ow-font-meta)] leading-4 transition-colors ${
+                    activeTab === index
+                      ? "bg-background-interactive text-foreground"
+                      : "text-muted-foreground hover:bg-background-interactive/60 hover:text-foreground"
+                  }`}
+                >
+                  {tab.name}
+                </button>
+              ))}
             </div>
-            <button
-              type="button"
-              onClick={copyToClipboard}
-              className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 font-sans [font-size:var(--ow-font-meta)] leading-4 text-muted-foreground transition-colors hover:bg-background-interactive hover:text-foreground"
-            >
-              {copied ? <Check size={14} /> : <Copy size={14} />}
-            </button>
-          </div>
-        ) : null}
-      </div>
+          )}
+          {activeFilename ? (
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 truncate font-mono [font-size:var(--ow-font-meta)] leading-4 text-muted-foreground">
+                {activeFilename}
+              </div>
+              <button
+                type="button"
+                onClick={copyToClipboard}
+                className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 font-sans [font-size:var(--ow-font-meta)] leading-4 text-muted-foreground transition-colors hover:bg-background-interactive hover:text-foreground"
+              >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <SyntaxHighlighter
         language={activeLanguage}
         style={oneLight}

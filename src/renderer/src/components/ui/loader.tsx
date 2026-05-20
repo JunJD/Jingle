@@ -15,7 +15,7 @@ export const LoaderOne = ({ className }: { className?: string }) => {
   return (
     <div
       aria-hidden="true"
-      className={cn("inline-flex h-4 items-center gap-1 text-muted-foreground", className)}
+      className={cn("inline-flex h-3.5 items-center gap-1 text-muted-foreground", className)}
     >
       {[0, 1, 2].map((index) => (
         <motion.div

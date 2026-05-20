@@ -93,7 +93,11 @@ export function LauncherActionOverlay(props: {
                     )}
                   >
                     <div className="flex min-w-0 items-center gap-[var(--ow-gap-md)]">
-                      {action.icon ? <div className="shrink-0">{action.icon}</div> : null}
+                      {action.icon ? (
+                        <div className="flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center [&>svg]:size-[var(--ow-icon-action)]">
+                          {action.icon}
+                        </div>
+                      ) : null}
                       <span className="truncate">{action.title}</span>
                     </div>
 
