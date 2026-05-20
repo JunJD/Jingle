@@ -86,7 +86,7 @@ interface MessagesProps {
   isLoading?: boolean
   pendingApproval?: HITLRequest | null
   onApprovalDecision?: (decision: HITLDecision) => void
-  onBranch?: () => Promise<void> | void
+  onBranch?: (messageId: string) => Promise<void> | void
   onRetry?: () => Promise<void> | void
 }
 
@@ -650,11 +650,10 @@ function MessageTurnView(props: {
   approvalPlacement?: "inline" | "composer"
   density?: "default" | "compact"
   isActiveTurn: boolean
-  isLatestTurn: boolean
   isLoading?: boolean
   lastAssistantId: string | null
   onApprovalDecision?: (decision: HITLDecision) => void
-  onBranch?: () => Promise<void> | void
+  onBranch?: (messageId: string) => Promise<void> | void
   onRetry?: () => Promise<void> | void
   pendingApproval?: HITLRequest | null
   toolResults: Map<string, ToolResultInfo>
@@ -665,7 +664,6 @@ function MessageTurnView(props: {
     density = "default",
     approvalPlacement = "inline",
     isActiveTurn,
-    isLatestTurn,
     isLoading,
     lastAssistantId,
     onApprovalDecision,
@@ -732,10 +730,14 @@ function MessageTurnView(props: {
                 <RefreshCcwIcon className="size-[var(--ow-icon-action)]" />
               </MessageAction>
             ) : null}
-            {isLatestTurn && onBranch && !isLoading ? (
+            {turn.branchMessageId && onBranch && !isLoading ? (
               <MessageAction
                 label={copy.launcher.branchChat}
-                onClick={() => void onBranch()}
+                onClick={() => {
+                  if (turn.branchMessageId) {
+                    void onBranch(turn.branchMessageId)
+                  }
+                }}
                 tooltip={copy.launcher.branchChat}
               >
                 <GitForkIcon className="size-[var(--ow-icon-sm)]" />
@@ -775,12 +777,11 @@ export function Messages(props: MessagesProps): React.JSX.Element {
 
   return (
     <>
-      {turns.map((turn, turnIndex) => (
+      {turns.map((turn) => (
         <MessageTurnView
           density={density}
           approvalPlacement={approvalPlacement}
           isActiveTurn={turn.key === activeTurnKey}
-          isLatestTurn={turnIndex === turns.length - 1}
           isLoading={isLoading}
           key={turn.key}
           lastAssistantId={lastAssistantId}

@@ -76,7 +76,7 @@ export function LauncherAiPage(): React.JSX.Element {
     selectModel,
     selectPermissionMode,
     setQuery,
-    startNewThread,
+    startFreshDraft,
     stop,
     branchThread,
     threadId
@@ -120,23 +120,26 @@ export function LauncherAiPage(): React.JSX.Element {
     fileInputRef.current?.click()
   }, [])
   const handleNewQuestion = useCallback(async (): Promise<void> => {
-    const nextThreadId = await startNewThread()
-    if (!nextThreadId) {
+    const didStart = await startFreshDraft()
+    if (!didStart) {
       return
     }
 
     attachmentDraft.clearAllAttachments()
     setShowModelPicker(false)
-  }, [attachmentDraft, startNewThread])
-  const handleBranchChat = useCallback(async (): Promise<void> => {
-    const nextThreadId = await branchThread()
-    if (!nextThreadId) {
-      return
-    }
+  }, [attachmentDraft, startFreshDraft])
+  const handleBranchChat = useCallback(
+    async (messageId?: string): Promise<void> => {
+      const nextThreadId = await branchThread(messageId)
+      if (!nextThreadId) {
+        return
+      }
 
-    attachmentDraft.clearAllAttachments()
-    setShowModelPicker(false)
-  }, [attachmentDraft, branchThread])
+      attachmentDraft.clearAllAttachments()
+      setShowModelPicker(false)
+    },
+    [attachmentDraft, branchThread]
+  )
   const handleStop = useCallback(async (): Promise<void> => {
     await stop()
   }, [stop])

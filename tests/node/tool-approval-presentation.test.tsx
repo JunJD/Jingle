@@ -21,7 +21,6 @@ const copy = {
 test("extension approval presentation falls back to extension tool titles", () => {
   const approvalItem: ExtensionToolApprovalItem = {
     access: "write",
-    approval: "mode-governed",
     args: {
       title: "Ship it"
     },
@@ -69,7 +68,6 @@ test("extension tool presentation renders from schema display metadata", () => {
       name: "ext__appleReminders__createReminder",
       presentation: {
         access: "write",
-        approval: "mode-governed",
         kind: "extension",
         profileTitle: "Personal",
         sourceTitle: "Apple Reminders"

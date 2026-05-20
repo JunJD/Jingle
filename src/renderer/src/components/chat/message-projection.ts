@@ -7,6 +7,7 @@ export interface ToolResultInfo {
 
 export interface MessageTurn {
   assistants: ThreadMessage[]
+  branchMessageId: string | null
   key: string
   user: ThreadMessage | null
 }
@@ -96,6 +97,7 @@ export function buildMessageTurns(messages: ThreadMessage[]): MessageTurn[] {
     if (message.role === "user") {
       currentTurn = {
         assistants: [],
+        branchMessageId: message.id,
         key: message.id,
         user: message
       }
@@ -106,6 +108,7 @@ export function buildMessageTurns(messages: ThreadMessage[]): MessageTurn[] {
     if (!currentTurn) {
       currentTurn = {
         assistants: [],
+        branchMessageId: null,
         key: message.id,
         user: null
       }
@@ -113,6 +116,7 @@ export function buildMessageTurns(messages: ThreadMessage[]): MessageTurn[] {
     }
 
     currentTurn.assistants.push(message)
+    currentTurn.branchMessageId = message.id
   }
 
   return turns

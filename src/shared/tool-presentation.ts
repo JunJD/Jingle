@@ -10,7 +10,6 @@ export const toolCallDisplaySchema = z
 export const extensionToolCallPresentationSchema = z
   .object({
     access: z.enum(["read", "write", "external"]),
-    approval: z.enum(["never", "ask", "always", "mode-governed"]),
     kind: z.literal("extension"),
     profileTitle: z.string().trim().min(1),
     sourceTitle: z.string().trim().min(1)

@@ -123,7 +123,6 @@ export class ExtensionToolRegistry {
 
         const presentation = extensionToolCallPresentationSchema.parse({
           access: definition.access,
-          approval: definition.approval ?? "mode-governed",
           kind: "extension",
           profileTitle: profile.displayName,
           sourceTitle: source.title

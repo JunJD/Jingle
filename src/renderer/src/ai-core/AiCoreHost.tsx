@@ -58,6 +58,7 @@ export interface AiCoreHostValue {
   threads: {
     activate: (threadId: string) => Promise<void>
     clone: (threadId: string) => Promise<AiCoreThreadHandle>
+    cloneUntilMessage: (threadId: string, messageId: string) => Promise<AiCoreThreadHandle>
     create: (input: AiCoreThreadCreateInput) => Promise<AiCoreThreadHandle>
     getActiveThreadId: () => string | null
     list: () => Promise<Thread[]>

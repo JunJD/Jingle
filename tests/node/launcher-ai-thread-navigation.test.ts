@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import {
+  resolveLauncherAiAdjacentThreadIds,
   shouldReloadLauncherAiThreadOnActivate,
   shouldReloadLauncherAiThreadOnFocus,
   shouldStartFreshLauncherAiThread
@@ -60,4 +61,32 @@ test("shouldStartFreshLauncherAiThread starts fresh when launcher opens AI with 
 
 test("shouldStartFreshLauncherAiThread restores history when launcher opens AI without a seed query", () => {
   assert.equal(shouldStartFreshLauncherAiThread({ seedQuery: "   " }), false)
+})
+
+test("resolveLauncherAiAdjacentThreadIds treats fresh draft as newest non-persisted entry", () => {
+  assert.deepEqual(
+    resolveLauncherAiAdjacentThreadIds({
+      activeThreadId: null,
+      isFreshDraftActive: true,
+      threadIdsByRecency: ["thread-newest", "thread-older"]
+    }),
+    {
+      next: null,
+      previous: "thread-newest"
+    }
+  )
+})
+
+test("resolveLauncherAiAdjacentThreadIds returns persisted neighbors by recency", () => {
+  assert.deepEqual(
+    resolveLauncherAiAdjacentThreadIds({
+      activeThreadId: "thread-middle",
+      isFreshDraftActive: false,
+      threadIdsByRecency: ["thread-newest", "thread-middle", "thread-oldest"]
+    }),
+    {
+      next: "thread-newest",
+      previous: "thread-oldest"
+    }
+  )
 })

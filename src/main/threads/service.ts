@@ -1,6 +1,8 @@
 import { v4 as uuid } from "uuid"
+import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
 import {
   cloneThread as dbCloneThread,
+  cloneThreadUntilCheckpoint as dbCloneThreadUntilCheckpoint,
   createThread as dbCreateThread,
   deleteThread as dbDeleteThread,
   getAllThreads,
@@ -108,6 +110,16 @@ function mapCheckpointMessagesToThreadMessages(
   })
 }
 
+function checkpointIncludesMessage(
+  threadId: string,
+  tuple: CheckpointTuple | undefined,
+  messageId: string
+): boolean {
+  return extractMessagesFromCheckpoint(threadId, tuple).some(
+    (message) => message.message_id === messageId
+  )
+}
+
 export class ThreadsService {
   constructor(
     private readonly artifactsService: ArtifactsService,
@@ -197,6 +209,77 @@ export class ThreadsService {
       )
     } catch (error) {
       console.warn("[Threads] Failed to sync cloned thread message search index:", error)
+    }
+
+    return mapThreadRowToThread(clonedThread)
+  }
+
+  async cloneUntilMessage(sourceThreadId: string, messageId: string): Promise<Thread> {
+    const sourceThread = await getThread(sourceThreadId)
+    if (!sourceThread) {
+      throw new Error("Thread not found")
+    }
+
+    const checkpointer = await getCheckpointer(sourceThreadId)
+    const latest = await checkpointer.getTuple({
+      configurable: {
+        thread_id: sourceThreadId
+      }
+    })
+
+    if (!latest || !checkpointIncludesMessage(sourceThreadId, latest, messageId)) {
+      throw new Error("Message not found")
+    }
+
+    let targetCheckpoint: CheckpointTuple = latest
+    let cursor: CheckpointTuple = latest
+    while (cursor.parentConfig) {
+      const parent = await checkpointer.getTuple(cursor.parentConfig)
+      if (!parent) {
+        throw new Error("Checkpoint parent not found")
+      }
+
+      if (!checkpointIncludesMessage(sourceThreadId, parent, messageId)) {
+        break
+      }
+
+      targetCheckpoint = parent
+      cursor = parent
+    }
+
+    const targetCheckpointId = targetCheckpoint.config.configurable?.checkpoint_id
+    if (!targetCheckpointId) {
+      throw new Error("Checkpoint not found")
+    }
+
+    const threadId = uuid()
+    const nextMetadata = sourceThread.metadata
+      ? (JSON.parse(sourceThread.metadata) as Record<string, unknown>)
+      : {}
+    const clonedThread = await dbCloneThreadUntilCheckpoint(sourceThreadId, threadId, {
+      checkpointId: targetCheckpointId,
+      checkpointNs: targetCheckpoint.config.configurable?.checkpoint_ns,
+      metadata: nextMetadata,
+      threadValues: sourceThread.thread_values
+        ? (JSON.parse(sourceThread.thread_values) as Record<string, unknown>)
+        : undefined,
+      title: sourceThread.title
+    })
+
+    try {
+      const targetCheckpointer = await getCheckpointer(threadId)
+      const clonedLatest = await targetCheckpointer.getTuple({
+        configurable: {
+          thread_id: threadId
+        }
+      })
+
+      await syncMessageSearchIndexFromSnapshot(
+        threadId,
+        extractMessagesFromCheckpoint(threadId, clonedLatest)
+      )
+    } catch (error) {
+      console.warn("[Threads] Failed to sync message-limited cloned thread search index:", error)
     }
 
     return mapThreadRowToThread(clonedThread)

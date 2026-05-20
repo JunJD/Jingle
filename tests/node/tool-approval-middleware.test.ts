@@ -11,11 +11,7 @@ import { createToolPermissionRuntime } from "../../src/main/agent/tool-permissio
 import { createExtensionToolApprovalPolicyProvider } from "../../src/main/extension-tools/permission"
 import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
 import { withExecuteCommandPolicy } from "../../src/shared/execute-command-policy"
-import type {
-  ExtensionSourceBinding,
-  ExtensionToolApproval,
-  PermissionModeName
-} from "../../src/shared/extension-sources"
+import type { ExtensionSourceBinding, PermissionModeName } from "../../src/shared/extension-sources"
 import { z } from "../../src/main/agent/tool-input-schema"
 
 const middleware = createToolApprovalMiddleware()
@@ -48,17 +44,13 @@ function createToolCallRequest(input: { id: string; name?: string }) {
   }
 }
 
-function createExtensionApprovalPolicyProvider(
-  permissionMode: PermissionModeName,
-  approval?: ExtensionToolApproval
-) {
+function createExtensionApprovalPolicyProvider(permissionMode: PermissionModeName) {
   const registry = new ExtensionToolRegistry({
     knownExtensionNames: ["mockExtension"]
   })
   registry.registerExtensionTools("mockExtension", [
     {
       access: "write",
-      ...(approval ? { approval } : {}),
       description: "Create a mock item.",
       handler: () => ({
         id: "item-1"
@@ -292,9 +284,9 @@ test("auto-mode extension write tools bypass approval and continue to the handle
   assert.equal(result.content, "created")
 })
 
-test('ask-to-edit extension write tools require approval even when tool approval is "never"', async () => {
+test("ask-to-edit extension write tools require approval", async () => {
   const permissionRuntime = createToolPermissionRuntime({
-    extensionToolPolicyProvider: createExtensionApprovalPolicyProvider("ask-to-edit", "never")
+    extensionToolPolicyProvider: createExtensionApprovalPolicyProvider("ask-to-edit")
   })
 
   const decision = await permissionRuntime.evaluate({
@@ -309,7 +301,6 @@ test('ask-to-edit extension write tools require approval even when tool approval
   if (decision.review?.kind !== "extension_tool") {
     throw new Error("Expected extension tool approval review.")
   }
-  assert.equal(decision.review.approval, "never")
   assert.equal(decision.review.permissionMode, "ask-to-edit")
 })
 

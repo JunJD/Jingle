@@ -200,8 +200,10 @@ export default function LauncherApp(): React.JSX.Element {
     [threadContext]
   )
   const branchPluginThread = useCallback(
-    async (threadId: string) => {
-      const branchedThread = await window.api.threads.clone(threadId)
+    async (threadId: string, messageId?: string) => {
+      const branchedThread = messageId
+        ? await window.api.threads.cloneUntilMessage(threadId, messageId)
+        : await window.api.threads.clone(threadId)
       const metadata = branchedThread.metadata ?? {}
       const modelId =
         typeof metadata.model === "string"
@@ -309,8 +311,7 @@ export default function LauncherApp(): React.JSX.Element {
           />
         ) : null}
 
-        <div className="hidden" aria-hidden="true">
-        </div>
+        <div className="hidden" aria-hidden="true"></div>
       </div>
     </div>
   )

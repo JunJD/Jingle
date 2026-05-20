@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
-import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
+import { type PermissionModeName } from "@shared/permission-mode"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
@@ -22,7 +22,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     clearVisibleError: () => void
     visibleError: string | null
   }
-  branchThread: () => Promise<string | null>
+  branchThread: (messageId?: string) => Promise<string | null>
   canGoToNextChat: boolean
   canGoToPreviousChat: boolean
   canStop: boolean
@@ -40,7 +40,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   selectModel: (modelId: string) => void
   selectPermissionMode: (permissionMode: PermissionModeName) => void
   setQuery: (value: string) => void
-  startNewThread: () => Promise<string | null>
+  startFreshDraft: () => Promise<boolean>
   stop: () => Promise<void>
   threadId: string | null
 } {
@@ -49,9 +49,6 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const host = useAiCoreHost()
   const hasRunInitialActionRef = useRef(false)
   const [inputStatus, setInputStatus] = useState<LauncherInputStatus>("idle")
-  const [pendingModelId, setPendingModelId] = useState<string | null>(null)
-  const [pendingPermissionMode, setPendingPermissionMode] =
-    useState<PermissionModeName>(DEFAULT_PERMISSION_MODE)
   const [threadActionError, setThreadActionError] = useState<string | null>(null)
   const threads = useHistoryShellStore((state) => state.threads)
   const updateThread = useHistoryShellStore((state) => state.updateThread)
@@ -60,17 +57,20 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     seedQuery: host.seedQuery
   })
   const threadId = threadNavigation.threadId
+  const draftTarget = threadNavigation.target?.kind === "draft" ? threadNavigation.target : null
   const threadActions = useThreadActions(threadId)
   const currentModelId =
-    useThreadSelector(threadId, (state) => state?.currentModel ?? null) ?? pendingModelId
+    useThreadSelector(threadId, (state) => state?.currentModel ?? null) ?? draftTarget?.modelId ?? null
   const currentPermissionMode =
-    useThreadSelector(threadId, (state) => state?.permissionMode ?? null) ?? pendingPermissionMode
+    useThreadSelector(threadId, (state) => state?.permissionMode ?? null) ??
+    draftTarget?.permissionMode ??
+    threadNavigation.defaultDraftPermissionMode
   const invocation = useAiInvocation({
     ensureThread: async ({ draftInput }) => {
       const createdThread = await threadNavigation.createThread({
         draftInput,
-        modelId: pendingModelId ?? undefined,
-        permissionMode: currentPermissionMode,
+        modelId: draftTarget?.modelId ?? undefined,
+        permissionMode: draftTarget?.permissionMode ?? threadNavigation.defaultDraftPermissionMode,
         source: AI_THREAD_SOURCE,
         title: copy.launcher.aiThreadTitle,
         visibility: AI_THREAD_VISIBILITY
@@ -162,36 +162,39 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     setThreadActionError(null)
     invocation.clearVisibleError()
   }, [invocation])
-  const startNewThread = useCallback(async (): Promise<string | null> => {
+  const startFreshDraft = useCallback(async (): Promise<boolean> => {
     try {
       setThreadActionError(null)
-      const createdThread = await threadNavigation.createThread({
-        modelId: currentModelId ?? undefined,
-        permissionMode: currentPermissionMode,
-        source: AI_THREAD_SOURCE,
-        title: copy.launcher.aiThreadTitle,
-        visibility: AI_THREAD_VISIBILITY
+      await threadNavigation.startFreshDraft({
+        modelId: currentModelId,
+        permissionMode: currentPermissionMode
       })
-      return createdThread.threadId
+      invocation.resetPendingInput()
+      return true
     } catch (error) {
       setThreadActionError(error instanceof Error ? error.message : String(error))
-      return null
+      return false
     }
-  }, [copy.launcher.aiThreadTitle, currentModelId, currentPermissionMode, threadNavigation])
-  const branchThread = useCallback(async (): Promise<string | null> => {
-    if (!threadId) {
-      return null
-    }
+  }, [currentModelId, currentPermissionMode, invocation, threadNavigation])
+  const branchThread = useCallback(
+    async (messageId?: string): Promise<string | null> => {
+      if (!threadId) {
+        return null
+      }
 
-    try {
-      setThreadActionError(null)
-      const branchedThread = await threadNavigation.branchThread(threadId)
-      return branchedThread.threadId
-    } catch (error) {
-      setThreadActionError(error instanceof Error ? error.message : String(error))
-      return null
-    }
-  }, [threadId, threadNavigation])
+      try {
+        setThreadActionError(null)
+        const branchedThread = messageId
+          ? await threadNavigation.branchThreadUntilMessage(threadId, messageId)
+          : await threadNavigation.branchThread(threadId)
+        return branchedThread.threadId
+      } catch (error) {
+        setThreadActionError(error instanceof Error ? error.message : String(error))
+        return null
+      }
+    },
+    [threadId, threadNavigation]
+  )
   const goToPreviousChat = useCallback(async (): Promise<string | null> => {
     try {
       setThreadActionError(null)
@@ -217,9 +220,9 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
         return
       }
 
-      setPendingModelId(modelId)
+      threadNavigation.updateFreshDraft({ modelId })
     },
-    [threadActions]
+    [threadActions, threadNavigation]
   )
   const selectPermissionMode = useCallback(
     (permissionMode: PermissionModeName): void => {
@@ -228,9 +231,9 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
         return
       }
 
-      setPendingPermissionMode(permissionMode)
+      threadNavigation.updateFreshDraft({ permissionMode })
     },
-    [threadActions]
+    [threadActions, threadNavigation]
   )
 
   const primaryActionDisabled =
@@ -274,7 +277,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     selectModel,
     selectPermissionMode,
     setQuery: invocation.setInput,
-    startNewThread,
+    startFreshDraft,
     stop: invocation.stop,
     threadId
   }

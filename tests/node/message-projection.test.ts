@@ -34,6 +34,7 @@ function createAssistantMessage(props: {
 function createTurn(assistants: Message[]): MessageTurn {
   return {
     assistants,
+    branchMessageId: assistants.at(-1)?.id ?? null,
     key: "turn-1",
     user: null
   }

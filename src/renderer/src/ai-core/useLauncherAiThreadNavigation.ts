@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react"
 import { AI_THREAD_SOURCE } from "@shared/launcher-ai"
+import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
 import type { Thread } from "@/types"
 import { useThreadContext } from "@/lib/thread-context"
 import type { AiCoreThreadCreateInput, AiCoreThreadHandle } from "./AiCoreHost"
 import { useAiCoreThreads } from "./AiCoreHost"
 import {
+  resolveLauncherAiAdjacentThreadIds,
   shouldReloadLauncherAiThreadOnFocus,
   shouldStartFreshLauncherAiThread
 } from "./launcher-ai-thread-navigation-core"
@@ -14,11 +16,33 @@ interface UseLauncherAiThreadNavigationOptions {
   seedQuery: string
 }
 
+export type LauncherAiActiveTarget =
+  | {
+      kind: "draft"
+      modelId: string | null
+      permissionMode: PermissionModeName
+    }
+  | {
+      kind: "thread"
+      threadId: string
+    }
+
 export interface LauncherAiThreadNavigation {
   branchThread: (threadId: string) => Promise<AiCoreThreadHandle>
+  branchThreadUntilMessage: (threadId: string, messageId: string) => Promise<AiCoreThreadHandle>
   canGoToNextThread: boolean
   canGoToPreviousThread: boolean
   createThread: (input: AiCoreThreadCreateInput) => Promise<AiCoreThreadHandle>
+  defaultDraftPermissionMode: PermissionModeName
+  startFreshDraft: (input: {
+    modelId: string | null
+    permissionMode: PermissionModeName
+  }) => Promise<void>
+  target: LauncherAiActiveTarget | null
+  updateFreshDraft: (input: Partial<{
+    modelId: string | null
+    permissionMode: PermissionModeName
+  }>) => void
   goToNextThread: () => Promise<string | null>
   goToPreviousThread: () => Promise<string | null>
   threadId: string | null
@@ -36,32 +60,21 @@ function isLauncherAiThread(thread: Thread): boolean {
 function listLauncherAiThreadsByRecency(threads: readonly Thread[]): Thread[] {
   return threads
     .filter(isLauncherAiThread)
-    .sort((left, right) => right.updated_at.getTime() - left.updated_at.getTime())
+    .sort(
+      (left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
+    )
 }
 
 function getAdjacentThreadIds(
   threads: readonly Thread[],
-  activeThreadId: string | null
+  activeThreadId: string | null,
+  isFreshDraftActive: boolean
 ): AdjacentThreadIds {
-  if (!activeThreadId) {
-    return {
-      next: null,
-      previous: null
-    }
-  }
-
-  const activeIndex = threads.findIndex((thread) => thread.thread_id === activeThreadId)
-  if (activeIndex < 0) {
-    return {
-      next: null,
-      previous: null
-    }
-  }
-
-  return {
-    next: threads[activeIndex - 1]?.thread_id ?? null,
-    previous: threads[activeIndex + 1]?.thread_id ?? null
-  }
+  return resolveLauncherAiAdjacentThreadIds({
+    activeThreadId,
+    isFreshDraftActive,
+    threadIdsByRecency: threads.map((thread) => thread.thread_id)
+  })
 }
 
 export function useLauncherAiThreadNavigation(
@@ -70,35 +83,57 @@ export function useLauncherAiThreadNavigation(
   const { seedQuery } = options
   const threadHost = useAiCoreThreads()
   const threadContext = useThreadContext()
-  const [threadId, setThreadId] = useState<string | null>(null)
+  const shouldStartFreshThread = shouldStartFreshLauncherAiThread({ seedQuery })
+  const [target, setTarget] = useState<LauncherAiActiveTarget | null>(
+    shouldStartFreshThread
+      ? {
+          kind: "draft",
+          modelId: null,
+          permissionMode: DEFAULT_PERMISSION_MODE
+        }
+      : null
+  )
   const [adjacentThreadIds, setAdjacentThreadIds] = useState<AdjacentThreadIds>({
     next: null,
     previous: null
   })
-  const shouldStartFreshThread = shouldStartFreshLauncherAiThread({ seedQuery })
+  const threadId = target?.kind === "thread" ? target.threadId : null
+  const isFreshDraftActive = target?.kind === "draft"
 
   const listAiThreads = useCallback(async (): Promise<Thread[]> => {
     return listLauncherAiThreadsByRecency(await threadHost.list())
   }, [threadHost])
   const resolveActiveThreadId = useCallback((): string | null => {
-    if (shouldStartFreshThread && !threadId) {
+    if (isFreshDraftActive || (shouldStartFreshThread && !threadId)) {
       return null
     }
 
     return threadHost.getActiveThreadId() ?? threadId
-  }, [shouldStartFreshThread, threadHost, threadId])
+  }, [isFreshDraftActive, shouldStartFreshThread, threadHost, threadId])
   const refreshAdjacentThreadIds = useCallback(
-    async (activeThreadId: string | null): Promise<void> => {
+    async (
+      activeThreadId: string | null,
+      options?: { freshDraftActive?: boolean }
+    ): Promise<void> => {
       const threads = await listAiThreads()
-      setAdjacentThreadIds(getAdjacentThreadIds(threads, activeThreadId))
+      setAdjacentThreadIds(
+        getAdjacentThreadIds(
+          threads,
+          activeThreadId,
+          options?.freshDraftActive ?? isFreshDraftActive
+        )
+      )
     },
-    [listAiThreads]
+    [isFreshDraftActive, listAiThreads]
   )
   const activateThread = useCallback(
     async (nextThreadId: string): Promise<void> => {
+      setTarget({
+        kind: "thread",
+        threadId: nextThreadId
+      })
       await threadHost.activate(nextThreadId)
-      setThreadId(nextThreadId)
-      await refreshAdjacentThreadIds(nextThreadId)
+      await refreshAdjacentThreadIds(nextThreadId, { freshDraftActive: false })
     },
     [refreshAdjacentThreadIds, threadHost]
   )
@@ -118,20 +153,70 @@ export function useLauncherAiThreadNavigation(
     },
     [activateThread, threadHost]
   )
+  const branchThreadUntilMessage = useCallback(
+    async (sourceThreadId: string, messageId: string): Promise<AiCoreThreadHandle> => {
+      const branchedThread = await threadHost.cloneUntilMessage(sourceThreadId, messageId)
+      await activateThread(branchedThread.threadId)
+      return branchedThread
+    },
+    [activateThread, threadHost]
+  )
+  const startFreshDraft = useCallback(async (input: {
+    modelId: string | null
+    permissionMode: PermissionModeName
+  }): Promise<void> => {
+    const threads = await listAiThreads()
+    setTarget({
+      kind: "draft",
+      modelId: input.modelId,
+      permissionMode: input.permissionMode
+    })
+    setAdjacentThreadIds(getAdjacentThreadIds(threads, null, true))
+  }, [listAiThreads])
+  const updateFreshDraft = useCallback(
+    (input: Partial<{ modelId: string | null; permissionMode: PermissionModeName }>): void => {
+      setTarget((currentTarget) => {
+        if (!currentTarget) {
+          return {
+            kind: "draft",
+            modelId:
+              input.modelId !== undefined
+                ? input.modelId
+                : null,
+            permissionMode: input.permissionMode ?? DEFAULT_PERMISSION_MODE
+          }
+        }
+
+        if (currentTarget?.kind !== "draft") {
+          return currentTarget
+        }
+
+        return {
+          ...currentTarget,
+          ...input
+        }
+      })
+    },
+    []
+  )
   const goToAdjacentThread = useCallback(
     async (direction: keyof AdjacentThreadIds): Promise<string | null> => {
       const threads = await listAiThreads()
       const activeThreadId = resolveActiveThreadId()
-      const adjacentThreadId = getAdjacentThreadIds(threads, activeThreadId)[direction]
+      const adjacentThreadId = getAdjacentThreadIds(
+        threads,
+        activeThreadId,
+        isFreshDraftActive
+      )[direction]
       if (!adjacentThreadId) {
-        setAdjacentThreadIds(getAdjacentThreadIds(threads, activeThreadId))
+        setAdjacentThreadIds(getAdjacentThreadIds(threads, activeThreadId, isFreshDraftActive))
         return null
       }
 
       await activateThread(adjacentThreadId)
       return adjacentThreadId
     },
-    [activateThread, listAiThreads, resolveActiveThreadId]
+    [activateThread, isFreshDraftActive, listAiThreads, resolveActiveThreadId]
   )
   const goToPreviousThread = useCallback(async (): Promise<string | null> => {
     return goToAdjacentThread("previous")
@@ -146,7 +231,12 @@ export function useLauncherAiThreadNavigation(
     async function hydrateInitialThread(): Promise<void> {
       const threads = await listAiThreads()
 
-      if (cancelled || shouldStartFreshThread || threadId) {
+      if (cancelled || target?.kind === "thread") {
+        return
+      }
+
+      if (shouldStartFreshThread || target?.kind === "draft") {
+        await refreshAdjacentThreadIds(null, { freshDraftActive: true })
         return
       }
 
@@ -174,16 +264,25 @@ export function useLauncherAiThreadNavigation(
     listAiThreads,
     refreshAdjacentThreadIds,
     resolveActiveThreadId,
+    target,
     shouldStartFreshThread,
-    threadId
   ])
 
   useEffect(() => {
     const handleWindowFocus = (): void => {
       void (async () => {
+        if (target?.kind === "draft") {
+          await refreshAdjacentThreadIds(null, { freshDraftActive: true })
+          return
+        }
+
         const activeThreadId = resolveActiveThreadId()
-        if (activeThreadId !== threadId) {
-          setThreadId(activeThreadId)
+        const currentThreadId = target?.kind === "thread" ? target.threadId : null
+        if (activeThreadId && activeThreadId !== currentThreadId) {
+          setTarget({
+            kind: "thread",
+            threadId: activeThreadId
+          })
         }
 
         await refreshAdjacentThreadIds(activeThreadId)
@@ -204,13 +303,18 @@ export function useLauncherAiThreadNavigation(
     return () => {
       window.removeEventListener("focus", handleWindowFocus)
     }
-  }, [refreshAdjacentThreadIds, resolveActiveThreadId, threadContext, threadHost, threadId])
+  }, [refreshAdjacentThreadIds, resolveActiveThreadId, target, threadContext, threadHost])
 
   return {
     branchThread,
+    branchThreadUntilMessage,
     canGoToNextThread: Boolean(adjacentThreadIds.next),
     canGoToPreviousThread: Boolean(adjacentThreadIds.previous),
     createThread,
+    defaultDraftPermissionMode: DEFAULT_PERMISSION_MODE,
+    startFreshDraft,
+    target,
+    updateFreshDraft,
     goToNextThread,
     goToPreviousThread,
     threadId

@@ -1,9 +1,6 @@
 import type { ExecuteCommandProfile } from "./execute-command-policy"
 import { getExecuteCommandPolicy } from "./execute-command-policy"
-import type {
-  ExtensionToolAccess,
-  ExtensionToolApproval
-} from "./extension-sources"
+import type { ExtensionToolAccess } from "./extension-sources"
 import { isPermissionModeName, type PermissionModeName } from "./permission-mode"
 import {
   getFileMutationReview,
@@ -42,7 +39,6 @@ export interface FileMutationToolApprovalItem {
 
 export interface ExtensionToolApprovalItem {
   access: ExtensionToolAccess
-  approval: ExtensionToolApproval
   args: Record<string, unknown>
   extensionName: string
   kind: "extension_tool"
@@ -124,10 +120,6 @@ function isExtensionToolAccess(value: unknown): value is ExtensionToolAccess {
   return value === "read" || value === "write" || value === "external"
 }
 
-function isExtensionToolApproval(value: unknown): value is ExtensionToolApproval {
-  return value === "never" || value === "ask" || value === "always" || value === "mode-governed"
-}
-
 export function requiresToolApproval(toolName: string): boolean {
   return APPROVAL_REQUIRED_TOOL_NAMES.has(toolName)
 }
@@ -165,13 +157,11 @@ export function parseToolApprovalItem(value: unknown): ToolApprovalItem | null {
   if (
     value.kind === "extension_tool" &&
     isExtensionToolAccess(value.access) &&
-    isExtensionToolApproval(value.approval) &&
     isPermissionModeName(value.permissionMode) &&
     isRecord(value.args)
   ) {
     return {
       access: value.access,
-      approval: value.approval,
       args: value.args,
       extensionName: readOptionalString(value.extensionName) ?? "",
       kind: "extension_tool",

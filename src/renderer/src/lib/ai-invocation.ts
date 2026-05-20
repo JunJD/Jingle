@@ -119,6 +119,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
   isPreparing: boolean
   resume: (decision: HITLDecision) => Promise<void>
   retry: () => Promise<void>
+  resetPendingInput: (value?: string) => void
   setInput: (value: string) => void
   stop: () => Promise<void>
   visibleError: string | null
@@ -157,6 +158,10 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
     },
     [localError, threadActions]
   )
+  const resetPendingInput = useCallback((value = ""): void => {
+    setLocalError(null)
+    setPendingInput(value)
+  }, [])
 
   const invoke = useCallback(
     async (nextInput?: ComposerMessageInput): Promise<boolean> => {
@@ -261,6 +266,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
     isPreparing,
     resume,
     retry,
+    resetPendingInput,
     setInput,
     stop,
     visibleError

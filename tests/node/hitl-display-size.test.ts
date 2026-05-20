@@ -49,7 +49,6 @@ test("classifies file-impacting approvals as large", () => {
 test("classifies extension approvals by access and argument density", () => {
   const base = {
     extensionName: "apple-reminders",
-    approval: "mode-governed",
     kind: "extension_tool",
     permissionMode: "ask-to-edit",
     reason: "Ask to Edit mode requires approval for write and external extension tools.",

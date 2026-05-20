@@ -69,6 +69,7 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
       create: async (metadata?: Record<string, unknown>) =>
         createThread("thread-created", { metadata }),
       clone: async () => createThread("thread-clone"),
+      cloneUntilMessage: async () => createThread("thread-clone"),
       update: async (threadId: string, updates: Partial<Thread>) => createThread(threadId, updates),
       delete: async () => undefined,
       getHistory: async () => {

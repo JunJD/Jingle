@@ -27,6 +27,14 @@ export class ThreadsController {
       return this.threadsService.clone(sourceThreadId)
     })
 
+    registerIpcHandle(
+      ipcMain,
+      "threads:cloneUntilMessage",
+      async (_event, sourceThreadId: string, messageId: string) => {
+        return this.threadsService.cloneUntilMessage(sourceThreadId, messageId)
+      }
+    )
+
     registerIpcHandle(ipcMain, "threads:delete", async (_event, threadId: string) => {
       await this.threadsService.delete(threadId)
     })

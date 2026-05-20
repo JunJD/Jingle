@@ -5,6 +5,7 @@ import { LauncherCommandErrorPage } from "@launcher-components/LauncherCommandEr
 import { Suspense } from "react"
 import type { LauncherShellConfig } from "@shared/launcher"
 import { AI_CHAT_COMMAND_NAME } from "@shared/launcher-ai"
+import type { PermissionModeName } from "@shared/permission-mode"
 import { useI18n } from "@/lib/i18n"
 import type { Thread } from "@/types"
 import { deriveLauncherCommandOwnerClipboardContext } from "@shared/clipboard-derivations"
@@ -22,6 +23,7 @@ import { isLauncherExtensionCommandRoute } from "./pages/types"
 interface LauncherThreadCreateInput {
   draftInput?: string
   modelId?: string
+  permissionMode?: PermissionModeName
   source: string
   title: string
   visibility: string
@@ -34,7 +36,10 @@ interface LauncherThreadSubmitInput {
 
 interface LauncherCommandSurfaceProps {
   activatePluginThread: (threadId: string) => Promise<void>
-  branchPluginThread: (threadId: string) => Promise<{
+  branchPluginThread: (
+    threadId: string,
+    messageId?: string
+  ) => Promise<{
     modelId: string
     threadId: string
     workspacePath: string
@@ -230,7 +235,8 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
           },
           threads: {
             activate: activatePluginThread,
-            clone: branchPluginThread,
+            clone: (threadId) => branchPluginThread(threadId),
+            cloneUntilMessage: branchPluginThread,
             create: createPluginThread,
             getActiveThreadId: getCurrentPluginThreadId,
             list: listPluginThreads,

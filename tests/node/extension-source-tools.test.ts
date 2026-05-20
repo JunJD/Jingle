@@ -110,7 +110,6 @@ test("extension permission mode resolves read, write, and external tools", () =>
   assert.equal(
     resolveExtensionToolPermission({
       access: "write",
-      approval: "never",
       mode: "ask-to-edit"
     }).disposition,
     "require_approval"
@@ -131,11 +130,10 @@ test("extension permission mode resolves read, write, and external tools", () =>
   )
   assert.equal(
     resolveExtensionToolPermission({
-      access: "read",
-      approval: "always",
+      access: "write",
       mode: "auto"
     }).disposition,
-    "require_approval"
+    "allow"
   )
 })
 
@@ -344,7 +342,6 @@ test("extension source middleware injects guides and exposes mock tools", async 
   })
   assert.deepEqual(toolCall.presentation, {
     access: "read",
-    approval: "mode-governed",
     kind: "extension",
     profileTitle: "Mock Profile",
     sourceTitle: "Mock Source"
@@ -366,7 +363,6 @@ test("extension source guide keeps missing auth non-callable", () => {
 test("extension source runtime exposes only read bindings in explore mode", async () => {
   const writeTool: ExtensionToolDefinition<{ title: string }, { id: string }> = {
     access: "write",
-    approval: "never",
     description: "Create a mock item.",
     handler: () => ({
       id: "item-1"

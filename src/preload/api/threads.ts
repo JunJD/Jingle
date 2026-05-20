@@ -14,6 +14,9 @@ export const threadsApi = {
   clone: (threadId: string): Promise<Thread> => {
     return invokeIpc("threads:clone", threadId)
   },
+  cloneUntilMessage: (threadId: string, messageId: string): Promise<Thread> => {
+    return invokeIpc("threads:cloneUntilMessage", threadId, messageId)
+  },
   update: (threadId: string, updates: Partial<Thread>): Promise<Thread> => {
     return invokeIpc("threads:update", { threadId, updates })
   },

@@ -1,5 +1,6 @@
 export { closeDatabase, initializeDatabase } from "./lifecycle"
 export {
+  cloneThreadUntilCheckpoint,
   cloneThread,
   createThread,
   deleteThread,
@@ -9,6 +10,7 @@ export {
   updateThread
 } from "./threads"
 export type {
+  CloneThreadUntilCheckpointInput,
   ThreadRow,
   ThreadSearchDirectMatchRow,
   ThreadSearchMatches,

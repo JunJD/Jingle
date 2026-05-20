@@ -17,12 +17,11 @@ export interface CreateExtensionSourcesMiddlewareOptions {
 
 function buildToolDescription(input: {
   access: string
-  approval: string
   description: string
   profileTitle: string
   sourceTitle: string
 }): string {
-  return `${input.description}\n\nSource: ${input.sourceTitle}. Profile: ${input.profileTitle}. Access: ${input.access}. Approval: ${input.approval}.`
+  return `${input.description}\n\nSource: ${input.sourceTitle}. Profile: ${input.profileTitle}. Access: ${input.access}.`
 }
 
 export function buildExtensionSourceGuide(
@@ -96,7 +95,6 @@ export function createExtensionSourcesMiddleware(options: CreateExtensionSources
       {
         description: buildToolDescription({
           access: binding.definition.access,
-          approval: binding.definition.approval ?? "mode-governed",
           description: binding.display.description,
           profileTitle: binding.profile.displayName,
           sourceTitle: binding.source.title

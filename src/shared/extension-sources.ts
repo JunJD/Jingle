@@ -11,14 +11,12 @@ export {
 export type { PermissionModeName } from "./permission-mode"
 
 export type ExtensionToolAccess = "read" | "write" | "external"
-export type ExtensionToolApproval = "never" | "ask" | "always" | "mode-governed"
 export type ExtensionPermissionDisposition = "allow" | "require_approval" | "deny"
 export const RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY = "runSourceBindingsSnapshot"
 export const RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY = "sourceProfilesSnapshot"
 
 export interface ExtensionPermissionDecision {
   access: ExtensionToolAccess
-  approval: ExtensionToolApproval
   disposition: ExtensionPermissionDisposition
   mode: PermissionModeName
   reason: string
@@ -37,7 +35,6 @@ export interface ExtensionToolContext {
 
 export interface ExtensionToolDefinition<TInput = unknown, TOutput = unknown> {
   access: ExtensionToolAccess
-  approval?: ExtensionToolApproval
   description: string
   inputSchema: ZodType<TInput>
   name: string
@@ -183,38 +180,20 @@ function parseEnabledTools(value: unknown): ExtensionSourceProfileTool[] {
 
 export function resolveExtensionToolPermission(input: {
   access: ExtensionToolAccess
-  approval?: ExtensionToolApproval
   mode: PermissionModeName
 }): ExtensionPermissionDecision {
-  const approval = input.approval ?? "mode-governed"
-
   if (input.mode === "explore" && input.access !== "read") {
     return {
       access: input.access,
-      approval,
       disposition: "deny",
       mode: input.mode,
       reason: "Explore mode allows read-only extension tools only."
     }
   }
 
-  if (approval === "always" || approval === "ask") {
-    return {
-      access: input.access,
-      approval,
-      disposition: "require_approval",
-      mode: input.mode,
-      reason:
-        approval === "always"
-          ? "This extension tool always requires approval."
-          : "This extension tool is configured to ask before execution."
-    }
-  }
-
   if (input.mode === "ask-to-edit" && input.access !== "read") {
     return {
       access: input.access,
-      approval,
       disposition: "require_approval",
       mode: input.mode,
       reason: "Ask to Edit mode requires approval for write and external extension tools."
@@ -224,29 +203,17 @@ export function resolveExtensionToolPermission(input: {
   if (input.access === "read") {
     return {
       access: input.access,
-      approval,
       disposition: "allow",
       mode: input.mode,
       reason: "Read-only extension tool is allowed."
     }
   }
 
-  if (approval === "never") {
-    return {
-      access: input.access,
-      approval,
-      disposition: "allow",
-      mode: input.mode,
-      reason: "This extension tool does not require approval in the active mode."
-    }
-  }
-
   return {
     access: input.access,
-    approval,
     disposition: "allow",
     mode: input.mode,
-    reason: "Auto mode allows mode-governed extension tools."
+    reason: "Auto mode allows extension tools."
   }
 }
 

@@ -36,7 +36,6 @@ test("createActionMessageView falls back for extension approval tool calls witho
     id: "hitl:thread:run:call_1",
     review: {
       access: "write",
-      approval: "mode-governed",
       args: toolCall.args,
       extensionName: "apple-reminders",
       kind: "extension_tool",
@@ -50,9 +49,8 @@ test("createActionMessageView falls back for extension approval tool calls witho
     },
     tool_call: toolCall
   }
-  const { createActionMessageView } = await import(
-    "../../src/renderer/src/components/chat/action-message-view"
-  )
+  const { createActionMessageView } =
+    await import("../../src/renderer/src/components/chat/action-message-view")
 
   const view = createActionMessageView({
     approvalRequest,

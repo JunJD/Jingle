@@ -1,3 +1,4 @@
+import type { Checkpoint as PrismaCheckpoint } from "@prisma/client"
 import { getPrismaClient } from "./client"
 import { toNumber } from "./utils"
 
@@ -37,6 +38,11 @@ export interface CreateThreadInput {
 
 export interface CloneThreadInput extends CreateThreadInput {
   threadValues?: Record<string, unknown> | null
+}
+
+export interface CloneThreadUntilCheckpointInput extends CloneThreadInput {
+  checkpointId: string
+  checkpointNs?: string
 }
 
 export interface UpdateThreadInput {
@@ -327,6 +333,125 @@ export async function cloneThread(
             resolvedAt: null
           }
         })
+      })
+    }
+
+    return mapThreadRow(row)
+  })
+}
+
+export async function cloneThreadUntilCheckpoint(
+  sourceThreadId: string,
+  targetThreadId: string,
+  input: CloneThreadUntilCheckpointInput
+): Promise<ThreadRow> {
+  const prisma = getPrismaClient()
+  const now = BigInt(Date.now())
+  const checkpointNs = input.checkpointNs ?? ""
+
+  return prisma.$transaction(async (tx) => {
+    const sourceThread = await tx.thread.findUnique({
+      where: {
+        threadId: sourceThreadId
+      }
+    })
+
+    if (!sourceThread) {
+      throw new Error("Thread not found")
+    }
+
+    const checkpoints = await tx.checkpoint.findMany({
+      where: {
+        checkpointNs,
+        threadId: sourceThreadId
+      }
+    })
+    const checkpointsById = new Map(
+      checkpoints.map((checkpoint) => [checkpoint.checkpointId, checkpoint])
+    )
+    const targetCheckpoint = checkpointsById.get(input.checkpointId)
+
+    if (!targetCheckpoint) {
+      throw new Error("Checkpoint not found")
+    }
+
+    const checkpointChain: PrismaCheckpoint[] = []
+    let cursor: typeof targetCheckpoint | undefined = targetCheckpoint
+    while (cursor) {
+      checkpointChain.push(cursor)
+
+      if (!cursor.parentCheckpointId) {
+        break
+      }
+
+      cursor = checkpointsById.get(cursor.parentCheckpointId)
+      if (!cursor) {
+        throw new Error(
+          `Checkpoint "${input.checkpointId}" has missing parent "${checkpointChain[checkpointChain.length - 1]?.parentCheckpointId}".`
+        )
+      }
+    }
+    checkpointChain.reverse()
+
+    const checkpointIds = checkpointChain.map((checkpoint) => checkpoint.checkpointId)
+    const checkpointWrites =
+      checkpointIds.length > 0
+        ? await tx.checkpointWrite.findMany({
+            orderBy: [{ checkpointId: "asc" }, { taskId: "asc" }, { idx: "asc" }],
+            where: {
+              checkpointId: {
+                in: checkpointIds
+              },
+              checkpointNs,
+              threadId: sourceThreadId
+            }
+          })
+        : []
+    const nextMetadata =
+      input.metadata === undefined ? sourceThread.metadata : JSON.stringify(input.metadata)
+    const nextTitle = input.title ?? sourceThread.title
+    const nextThreadValues =
+      input.threadValues === undefined
+        ? sourceThread.threadValues
+        : input.threadValues === null
+          ? null
+          : JSON.stringify(input.threadValues)
+    const row = await tx.thread.create({
+      data: {
+        createdAt: now,
+        metadata: nextMetadata,
+        status: "idle",
+        threadId: targetThreadId,
+        threadValues: nextThreadValues,
+        title: nextTitle,
+        updatedAt: now
+      }
+    })
+
+    await tx.checkpoint.createMany({
+      data: checkpointChain.map((checkpoint) => ({
+        checkpoint: checkpoint.checkpoint,
+        checkpointId: checkpoint.checkpointId,
+        checkpointNs: checkpoint.checkpointNs,
+        metadata: checkpoint.metadata,
+        parentCheckpointId: checkpoint.parentCheckpointId,
+        threadId: targetThreadId,
+        type: checkpoint.type
+      }))
+    })
+
+    if (checkpointWrites.length > 0) {
+      await tx.checkpointWrite.createMany({
+        data: checkpointWrites.map((write) => ({
+          channel: write.channel,
+          checkpointId: write.checkpointId,
+          checkpointNs: write.checkpointNs,
+          idx: write.idx,
+          taskId: write.taskId,
+          threadId: targetThreadId,
+          type: write.type,
+          value: write.value
+        }))
       })
     }
 

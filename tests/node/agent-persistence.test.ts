@@ -389,3 +389,126 @@ test("thread-scoped checkpoint reads keep run ids out of conversation resume con
   assert.equal(firstRunScoped?.checkpoint.id, firstCheckpoint.id)
   assert.equal(firstRunScoped?.config.configurable?.run_id, firstRunId)
 })
+
+test("cloneUntilMessage branches from the checkpoint that first contains the target message", async () => {
+  const { createRun, createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+  const { ThreadsService } = await import("../../src/main/threads/service")
+  const { ArtifactsService } = await import("../../src/main/artifacts/service")
+  const { THREAD_PERMISSION_MODE_METADATA_KEY } = await import("../../src/shared/permission-mode")
+
+  const sourceThreadId = "thread-source"
+  const firstRunId = "run-first"
+  const secondRunId = "run-second"
+
+  await createThread(sourceThreadId, {
+    metadata: {
+      model: "openai:gpt-test",
+      source: "launcher-ai",
+      [THREAD_PERMISSION_MODE_METADATA_KEY]: "ask-to-edit",
+      visibility: "launcher-ai",
+      workspacePath: repoRoot
+    },
+    title: "Source thread"
+  })
+  await createRun(firstRunId, sourceThreadId, { status: "success" })
+  await createRun(secondRunId, sourceThreadId, { status: "success" })
+
+  const firstCheckpoint = emptyCheckpoint()
+  firstCheckpoint.id = "checkpoint-0001"
+  firstCheckpoint.channel_values = {
+    messages: [
+      { kwargs: { content: "first question", id: "message-user-1" }, type: "human" },
+      { kwargs: { content: "first answer", id: "message-ai-1" }, type: "ai" }
+    ]
+  }
+
+  const secondCheckpoint = emptyCheckpoint()
+  secondCheckpoint.id = "checkpoint-0002"
+  secondCheckpoint.channel_values = {
+    messages: [
+      { kwargs: { content: "first question", id: "message-user-1" }, type: "human" },
+      { kwargs: { content: "first answer", id: "message-ai-1" }, type: "ai" },
+      { kwargs: { content: "second question", id: "message-user-2" }, type: "human" }
+    ]
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  const firstConfig = await saver.put(
+    {
+      configurable: {
+        thread_id: sourceThreadId
+      },
+      metadata: {
+        run_id: firstRunId
+      }
+    },
+    firstCheckpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+  await saver.putWrites(firstConfig, [["messages", { marker: "first-write" }]], "task-first")
+  await saver.put(
+    {
+      configurable: {
+        checkpoint_id: firstCheckpoint.id,
+        thread_id: sourceThreadId
+      },
+      metadata: {
+        run_id: secondRunId
+      }
+    },
+    secondCheckpoint,
+    {
+      parents: { "": firstCheckpoint.id },
+      source: "update",
+      step: 1
+    }
+  )
+
+  const service = new ThreadsService(
+    new ArtifactsService(),
+    { getDefaultModel: () => "openai:gpt-test" } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[1],
+    { getAgentConfig: () => ({ locale: "en_US" }) } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[2],
+    { resolveGlobalWorkspacePath: async () => repoRoot } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[3]
+  )
+  const clonedThread = await service.cloneUntilMessage(sourceThreadId, "message-ai-1")
+  const prisma = getPrismaClient()
+  const clonedCheckpointRows = await prisma.checkpoint.findMany({
+    orderBy: { checkpointId: "asc" },
+    where: { threadId: clonedThread.thread_id }
+  })
+  const clonedWriteRows = await prisma.checkpointWrite.findMany({
+    where: { threadId: clonedThread.thread_id }
+  })
+  const clonedRunRows = await prisma.run.findMany({
+    where: { threadId: clonedThread.thread_id }
+  })
+  const clonedSearchRows = await prisma.$queryRawUnsafe<Array<{ message_id: string }>>(
+    `SELECT message_id FROM "messages_fts" WHERE thread_id = ? ORDER BY message_id`,
+    clonedThread.thread_id
+  )
+
+  assert.deepEqual(
+    clonedCheckpointRows.map((checkpoint) => checkpoint.checkpointId),
+    [firstCheckpoint.id]
+  )
+  assert.deepEqual(
+    clonedWriteRows.map((write) => write.checkpointId),
+    [firstCheckpoint.id]
+  )
+  assert.deepEqual(clonedRunRows, [])
+  assert.deepEqual(
+    clonedSearchRows.map((row) => row.message_id),
+    ["message-ai-1", "message-user-1"]
+  )
+})

@@ -34,7 +34,6 @@ export function createExtensionToolApprovalPolicyProvider(input: {
         binding,
         decision: resolveExtensionToolPermission({
           access: binding.definition.access,
-          approval: binding.definition.approval,
           mode
         })
       }
@@ -48,14 +47,12 @@ export function createExtensionToolApprovalPolicyProvider(input: {
       const mode = input.permissionMode ?? policy.profile.defaultPermissionMode
       const decision = resolveExtensionToolPermission({
         access: policy.definition.access,
-        approval: policy.definition.approval,
         mode
       })
 
       return buildExtensionToolApprovalItem(
         {
           access: policy.definition.access,
-          approval: decision.approval,
           extensionName: policy.definition.extensionName,
           permissionMode: mode,
           reason: decision.reason,

@@ -13,7 +13,7 @@ import type { LauncherInputElement } from "@launcher-shell/input-element"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 
 interface UseLauncherAiActionsOptions {
-  branchThread: () => Promise<void>
+  branchThread: (messageId?: string) => Promise<void>
   canBranchThread: boolean
   canGoToNextChat: boolean
   canGoToPreviousChat: boolean
