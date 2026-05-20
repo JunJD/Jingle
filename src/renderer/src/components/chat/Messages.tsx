@@ -1,4 +1,4 @@
-import { Brain, CopyIcon, FileText, RefreshCcwIcon } from "lucide-react"
+import { Brain, CopyIcon, FileText, GitForkIcon, RefreshCcwIcon } from "lucide-react"
 import { useMemo, useState } from "react"
 import { resolveImageBlockUrl } from "@shared/message-content"
 import type {
@@ -56,6 +56,7 @@ interface MessagesProps {
   isLoading?: boolean
   pendingApproval?: HITLRequest | null
   onApprovalDecision?: (decision: HITLDecision) => void
+  onBranch?: () => Promise<void> | void
   onRetry?: () => Promise<void> | void
 }
 
@@ -613,6 +614,7 @@ function MessageTurnView(props: {
   isLoading?: boolean
   lastAssistantId: string | null
   onApprovalDecision?: (decision: HITLDecision) => void
+  onBranch?: () => Promise<void> | void
   onRetry?: () => Promise<void> | void
   pendingApproval?: HITLRequest | null
   toolResults: Map<string, ToolResultInfo>
@@ -626,6 +628,7 @@ function MessageTurnView(props: {
     isLoading,
     lastAssistantId,
     onApprovalDecision,
+    onBranch,
     onRetry,
     pendingApproval,
     toolResults,
@@ -688,6 +691,15 @@ function MessageTurnView(props: {
                 <RefreshCcwIcon className="size-[var(--ow-icon-action)]" />
               </MessageAction>
             ) : null}
+            {isActiveTurn && onBranch && !isLoading ? (
+              <MessageAction
+                label={copy.launcher.branchChat}
+                onClick={() => void onBranch()}
+                tooltip={copy.launcher.branchChat}
+              >
+                <GitForkIcon className="size-[var(--ow-icon-sm)]" />
+              </MessageAction>
+            ) : null}
             {copyText ? (
               <MessageAction
                 label={copy.chat.copyMessage}
@@ -711,6 +723,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     isLoading,
     messages,
     onApprovalDecision,
+    onBranch,
     onRetry,
     pendingApproval
   } = props
@@ -730,6 +743,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
           key={turn.key}
           lastAssistantId={lastAssistantId}
           onApprovalDecision={onApprovalDecision}
+          onBranch={onBranch}
           onRetry={onRetry}
           pendingApproval={pendingApproval}
           toolResults={toolResults}

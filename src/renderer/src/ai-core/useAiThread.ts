@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
 import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
 import { useAiInvocation } from "@/lib/ai-invocation"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
 import { maybeGenerateThreadTitle } from "@/lib/thread-title"
 import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
@@ -52,6 +53,8 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const [pendingPermissionMode, setPendingPermissionMode] =
     useState<PermissionModeName>(DEFAULT_PERMISSION_MODE)
   const [threadActionError, setThreadActionError] = useState<string | null>(null)
+  const threads = useHistoryShellStore((state) => state.threads)
+  const updateThread = useHistoryShellStore((state) => state.updateThread)
   const threadNavigation = useLauncherAiThreadNavigation({
     initialAction: host.initialAction,
     seedQuery: host.seedQuery
@@ -82,7 +85,13 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
         return
       }
 
-      void maybeGenerateThreadTitle(threadId, message)
+      const currentThread = threads.find((thread) => thread.thread_id === threadId)
+      void maybeGenerateThreadTitle(threadId, message, {
+        persistTitle: async (nextThreadId, title) => {
+          await updateThread(nextThreadId, { title })
+        },
+        thread: currentThread
+      })
     },
     threadId
   })

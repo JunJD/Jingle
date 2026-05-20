@@ -304,12 +304,12 @@ body[data-window="launcher"],
   --launcher-history-chip-bg: transparent;
   --launcher-history-chip-fg: var(--muted-foreground);
   --launcher-model-dialog-w: 560px;
+  --launcher-ai-model-popover-w: 356px;
+  --launcher-ai-model-popover-max-h: 320px;
   --launcher-jump-bottom: var(--ow-space-4);
   --launcher-ai-content-x: var(--ow-space-3);
   --launcher-ai-content-y: var(--ow-space-2);
   --launcher-ai-content-max-width: 720px;
-  --launcher-ai-model-popover-w: 356px;
-  --launcher-ai-model-popover-list-h: 266px;
   --launcher-ai-composer-page-x: var(--ow-space-3);
   --launcher-ai-composer-x: var(--ow-space-3);
   --launcher-ai-composer-y: var(--ow-space-2);
@@ -1655,6 +1655,14 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 .ow-chat-markdown :where(blockquote) {
   margin-block: var(--ow-chat-prose-block-gap);
+}
+
+.launcher-ai-model-popover {
+  width: var(--launcher-ai-model-popover-w, 356px);
+  height: min(
+    var(--launcher-ai-model-popover-max-h, 320px),
+    var(--radix-popover-content-available-height, 320px)
+  );
 }
 
 .ow-reasoning-message {

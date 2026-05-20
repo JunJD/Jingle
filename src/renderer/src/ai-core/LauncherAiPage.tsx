@@ -24,6 +24,7 @@ import { LauncherAttachmentStrip } from "./LauncherAttachmentStrip"
 import { useAiAttachments } from "./useAiAttachments"
 import { useAiThread } from "./useAiThread"
 import { useLauncherAiActions } from "./useLauncherAiActions"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 
@@ -86,6 +87,13 @@ export function LauncherAiPage(): React.JSX.Element {
   const { inputRef, setInputStatus } = surface
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showModelPicker, setShowModelPicker] = useState(false)
+  const currentThreadTitle = useHistoryShellStore((state) => {
+    if (!threadId) {
+      return null
+    }
+
+    return state.threads.find((thread) => thread.thread_id === threadId)?.title ?? null
+  })
   const pendingApproval = conversation.pendingApproval
   const hasAttachmentDraft = attachmentDraft.attachments.length > 0
   const isComposerExpanded = !pendingApproval && (query.includes("\n") || hasAttachmentDraft)
@@ -376,7 +384,7 @@ export function LauncherAiPage(): React.JSX.Element {
 
             <div className="flex min-w-0 flex-col items-start">
               <div className="truncate [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] text-foreground">
-                {copy.launcher.newQuestion}
+                {currentThreadTitle?.trim() || copy.launcher.newQuestion}
               </div>
               <LauncherAiHeaderModelPicker
                 currentModelId={currentModelId}
@@ -420,6 +428,7 @@ export function LauncherAiPage(): React.JSX.Element {
             error={conversation.visibleError}
             isLoading={conversation.isLoading}
             onApprovalDecision={handleApprovalDecision}
+            onBranch={handleBranchChat}
             onRetry={retry}
             pendingApproval={pendingApproval}
             todos={conversation.todos}

@@ -70,6 +70,7 @@ export function LauncherAiConversation(props: {
   error: string | null
   isLoading: boolean
   onApprovalDecision: (decision: HITLDecision) => Promise<void>
+  onBranch?: () => Promise<void>
   onRetry: () => Promise<void>
   pendingApproval: HITLRequest | null
   todos: Todo[]
@@ -85,6 +86,7 @@ export function LauncherAiConversation(props: {
     error,
     isLoading,
     onApprovalDecision,
+    onBranch,
     onRetry,
     pendingApproval,
     todos
@@ -111,6 +113,7 @@ export function LauncherAiConversation(props: {
               isLoading={isLoading}
               messages={displayMessages}
               onApprovalDecision={onApprovalDecision}
+              onBranch={onBranch}
               onRetry={onRetry}
               pendingApproval={pendingApproval}
             />

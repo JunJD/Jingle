@@ -117,10 +117,10 @@ export function LauncherAiHeaderModelPicker(
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="launcher-ai-model-popover w-[var(--launcher-ai-model-popover-w)] overflow-hidden border-border/72 bg-popover/96 p-0"
+        className="launcher-ai-model-popover flex flex-col overflow-hidden border-border/72 bg-popover/96 p-0"
         sideOffset={6}
       >
-        <div className="max-h-[var(--launcher-ai-model-popover-list-h)] overflow-y-auto p-[var(--ow-space-1)]">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-[var(--ow-space-1)]">
           {visibleModels.length > 0 ? (
             visibleModels.map((model) => {
               const provider = providerById.get(model.provider)
@@ -161,7 +161,7 @@ export function LauncherAiHeaderModelPicker(
           )}
         </div>
 
-        <div className="border-t border-border/64 p-[var(--ow-space-1)]">
+        <div className="shrink-0 border-t border-border/64 p-[var(--ow-space-1)]">
           <label className="flex h-[30px] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-2)] text-muted-foreground">
             <Search className="size-[var(--ow-icon-sm)] shrink-0" />
             <input
