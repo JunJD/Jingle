@@ -1,5 +1,8 @@
-import { execFile } from "node:child_process"
+import { execFile, execFileSync } from "node:child_process"
+import { existsSync, mkdirSync } from "node:fs"
+import { join } from "node:path"
 import { promisify } from "node:util"
+import { app } from "electron"
 import type { IpcErrorCode } from "@shared/ipc-error"
 import { defineNativeExtensionService } from "../../../main/services/native-extensions/sdk"
 import type {
@@ -20,6 +23,21 @@ import {
 } from "../src/contracts"
 
 const execFileAsync = promisify(execFile)
+const APPLE_REMINDERS_COMMAND_TIMEOUT_MS = 10_000
+const APPLE_REMINDERS_HELPER_NAME = "openwork-apple-reminders"
+const APPLE_REMINDERS_HELPER_INFO_PLIST_NAME = "openwork-apple-reminders-info.plist"
+
+interface AppleRemindersHelperRequest {
+  method: string
+  payload: unknown
+}
+
+interface AppleRemindersExecError extends NodeJS.ErrnoException {
+  killed?: boolean
+  signal?: NodeJS.Signals | null
+  stderr?: string
+  stdout?: string
+}
 
 export class AppleRemindersRequestError extends Error {
   readonly code: IpcErrorCode
@@ -35,328 +53,164 @@ export function isAppleRemindersRequestError(error: unknown): error is AppleRemi
   return error instanceof AppleRemindersRequestError
 }
 
-const REMINDERS_JXA_SCRIPT = String.raw`
-function pad2(value) {
-  return value < 10 ? "0" + value : String(value)
-}
-
-function toDateOnlyString(value) {
-  var year = value.getFullYear()
-  var month = pad2(value.getMonth() + 1)
-  var day = pad2(value.getDate())
-  return year + "-" + month + "-" + day
-}
-
-function toIsoString(value) {
-  return value instanceof Date ? value.toISOString() : null
-}
-
-function toOptionalString(value) {
-  return value === undefined || value === null ? "" : String(value)
-}
-
-function normalizeReminderOpenUrl(reminderId) {
-  return reminderId.indexOf("x-apple-reminder://") === 0
-    ? reminderId
-    : "x-apple-reminderkit://REMCDReminder/" + encodeURIComponent(reminderId)
-}
-
-function toPriority(value) {
-  if (typeof value !== "number" || value <= 0) {
-    return null
-  }
-
-  if (value <= 4) {
-    return "high"
-  }
-
-  if (value === 5) {
-    return "medium"
-  }
-
-  return "low"
-}
-
-function toNativePriority(value) {
-  if (value === "high") {
-    return 1
-  }
-
-  if (value === "medium") {
-    return 5
-  }
-
-  if (value === "low") {
-    return 9
-  }
-
-  return 0
-}
-
-function serializeList(listProperties, defaultListId) {
-  var listId = toOptionalString(listProperties.id)
-
-  return {
-    color: toOptionalString(listProperties.color),
-    id: listId,
-    isDefault: listId.length > 0 && listId === defaultListId,
-    title: toOptionalString(listProperties.name)
-  }
-}
-
-function serializeReminder(reminderProperties, listProperties, defaultListId) {
-  var reminderId = toOptionalString(reminderProperties.id)
-  var allDayDueDate = reminderProperties.alldayDueDate
-  var dueDate = reminderProperties.dueDate
-  var completionDate = reminderProperties.completionDate
-  var creationDate = reminderProperties.creationDate
-
-  return {
-    completionDate: completionDate ? toIsoString(completionDate) : null,
-    creationDate: creationDate ? toIsoString(creationDate) : null,
-    dueDate: allDayDueDate
-      ? toDateOnlyString(allDayDueDate)
-      : dueDate
-        ? toIsoString(dueDate)
-        : null,
-    id: reminderId,
-    isCompleted: reminderProperties.completed === true,
-    list: listProperties ? serializeList(listProperties, defaultListId) : null,
-    notes: toOptionalString(reminderProperties.body),
-    openUrl: normalizeReminderOpenUrl(reminderId),
-    priority: toPriority(Number(reminderProperties.priority || 0)),
-    title: toOptionalString(reminderProperties.name)
-  }
-}
-
-function findListById(app, listId) {
-  var lists = app.lists()
-
-  for (var index = 0; index < lists.length; index += 1) {
-    if (toOptionalString(lists[index].properties().id) === listId) {
-      return lists[index]
-    }
-  }
-
-  return null
-}
-
-function findReminderRecord(app, reminderId) {
-  var lists = app.lists()
-
-  for (var listIndex = 0; listIndex < lists.length; listIndex += 1) {
-    var list = lists[listIndex]
-    var reminders = list.reminders()
-
-    for (var reminderIndex = 0; reminderIndex < reminders.length; reminderIndex += 1) {
-      var reminder = reminders[reminderIndex]
-      if (toOptionalString(reminder.properties().id) === reminderId) {
-        return {
-          list: list,
-          reminder: reminder
-        }
-      }
-    }
-  }
-
-  throw new Error("Reminder not found")
-}
-
-function parseDueDate(value) {
-  if (!value) {
-    return null
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    var parts = value.split("-").map(function (entry) {
-      return Number(entry)
-    })
-
-    return {
-      kind: "date-only",
-      value: new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0)
-    }
-  }
-
-  return {
-    kind: "date-time",
-    value: new Date(value)
-  }
-}
-
-function setReminderDueDate(reminder, value) {
-  var parsed = parseDueDate(value)
-
-  if (!parsed) {
-    return
-  }
-
-  if (parsed.kind === "date-only") {
-    reminder.alldayDueDate = parsed.value
-    return
-  }
-
-  reminder.dueDate = parsed.value
-}
-
-function getData(app) {
-  var defaultList = app.defaultList()
-  var defaultListId = defaultList ? toOptionalString(defaultList.properties().id) : ""
-  var lists = app.lists()
-  var serializedLists = []
-  var serializedReminders = []
-
-  for (var listIndex = 0; listIndex < lists.length; listIndex += 1) {
-    var list = lists[listIndex]
-    var listProperties = list.properties()
-    var reminders = list.reminders()
-    serializedLists.push(serializeList(listProperties, defaultListId))
-
-    for (var reminderIndex = 0; reminderIndex < reminders.length; reminderIndex += 1) {
-      var reminder = reminders[reminderIndex]
-      serializedReminders.push(
-        serializeReminder(reminder.properties(), listProperties, defaultListId)
-      )
-    }
-  }
-
-  return {
-    lists: serializedLists,
-    reminders: serializedReminders
-  }
-}
-
-function createReminder(app, payload) {
-  var targetList = payload.listId ? findListById(app, payload.listId) : app.defaultList()
-  if (!targetList) {
-    throw new Error("Target reminder list not found")
-  }
-
-  var reminder = app.make({
-    at: targetList,
-    new: "reminder",
-    withProperties: {
-      body: payload.notes || "",
-      name: payload.title
-    }
-  })
-
-  reminder.priority = toNativePriority(payload.priority || null)
-  setReminderDueDate(reminder, payload.dueDate || null)
-
-  var defaultList = app.defaultList()
-  var defaultListId = defaultList ? toOptionalString(defaultList.properties().id) : ""
-  return serializeReminder(
-    reminder.properties(),
-    targetList.properties(),
-    defaultListId
-  )
-}
-
-function setReminderCompleted(app, payload) {
-  var record = findReminderRecord(app, payload.reminderId)
-  record.reminder.completed = payload.completed === true
-
-  var defaultList = app.defaultList()
-  var defaultListId = defaultList ? toOptionalString(defaultList.properties().id) : ""
-  return serializeReminder(
-    record.reminder.properties(),
-    record.list.properties(),
-    defaultListId
-  )
-}
-
-function deleteReminder(app, payload) {
-  var record = findReminderRecord(app, payload.reminderId)
-  app.delete(record.reminder)
-  return {
-    reminderId: payload.reminderId
-  }
-}
-
-function showReminder(app, payload) {
-  var record = findReminderRecord(app, payload.reminderId)
-  app.show(record.reminder)
-  return null
-}
-
-function run(argv) {
-  var request = JSON.parse(argv[0] || "{}")
-  var app = Application("Reminders")
-  app.includeStandardAdditions = true
-
-  switch (request.method) {
-    case "create-reminder":
-      return JSON.stringify(createReminder(app, request.payload || {}))
-    case "delete-reminder":
-      return JSON.stringify(deleteReminder(app, request.payload || {}))
-    case "get-data":
-      return JSON.stringify(getData(app))
-    case "set-reminder-completed":
-      return JSON.stringify(setReminderCompleted(app, request.payload || {}))
-    case "show-reminder":
-      return JSON.stringify(showReminder(app, request.payload || {}))
-    default:
-      throw new Error("Unknown method: " + request.method)
-  }
-}
-`
-
 function assertAppleRemindersAvailable(): void {
   if (process.platform !== "darwin") {
     throw new AppleRemindersRequestError("Apple Reminders is only available on macOS.")
   }
 }
 
-function stripOsascriptCommandPrefix(message: string): string {
-  if (!message.startsWith("Command failed: /usr/bin/osascript")) {
-    return message
+function resolvePackagedUnpackedPath(candidatePath: string): string {
+  if (!app.isPackaged || !candidatePath.includes("app.asar")) {
+    return candidatePath
   }
 
-  const details = message.split("\n").slice(1).join("\n").trim()
-  return details || message
+  const unpackedPath = candidatePath.replace("app.asar", "app.asar.unpacked")
+  return existsSync(unpackedPath) ? unpackedPath : candidatePath
 }
 
-function normalizeAppleRemindersError(error: unknown): Error {
-  const execError = error as NodeJS.ErrnoException & {
-    stderr?: string
-    stdout?: string
+function resolveAppleRemindersBinaryPath(): string | null {
+  const candidates = [
+    join(app.getAppPath(), "out/native", APPLE_REMINDERS_HELPER_NAME),
+    join(process.cwd(), "out/native", APPLE_REMINDERS_HELPER_NAME),
+    join(__dirname, "..", "native", APPLE_REMINDERS_HELPER_NAME)
+  ].map(resolvePackagedUnpackedPath)
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? null
+}
+
+function resolveAppleRemindersSwiftSourcePath(): string | null {
+  const candidates = [
+    join(app.getAppPath(), "src/native/openwork-apple-reminders.swift"),
+    join(process.cwd(), "src/native/openwork-apple-reminders.swift"),
+    join(__dirname, "..", "..", "src", "native", "openwork-apple-reminders.swift"),
+    join(app.getAppPath(), "out/native/openwork-apple-reminders.swift"),
+    join(process.cwd(), "out/native/openwork-apple-reminders.swift"),
+    join(__dirname, "..", "native", "openwork-apple-reminders.swift")
+  ]
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? null
+}
+
+function resolveAppleRemindersInfoPlistPath(): string | null {
+  const candidates = [
+    join(app.getAppPath(), "src/native", APPLE_REMINDERS_HELPER_INFO_PLIST_NAME),
+    join(process.cwd(), "src/native", APPLE_REMINDERS_HELPER_INFO_PLIST_NAME),
+    join(__dirname, "..", "..", "src", "native", APPLE_REMINDERS_HELPER_INFO_PLIST_NAME),
+    join(app.getAppPath(), "out/native", APPLE_REMINDERS_HELPER_INFO_PLIST_NAME),
+    join(process.cwd(), "out/native", APPLE_REMINDERS_HELPER_INFO_PLIST_NAME),
+    join(__dirname, "..", "native", APPLE_REMINDERS_HELPER_INFO_PLIST_NAME)
+  ]
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? null
+}
+
+function compileAppleRemindersBinary(sourcePath: string): string {
+  const nativeDir = join(app.getPath("userData"), "native")
+  const binaryPath = join(nativeDir, APPLE_REMINDERS_HELPER_NAME)
+  const infoPlistPath = resolveAppleRemindersInfoPlistPath()
+
+  mkdirSync(nativeDir, { recursive: true })
+  execFileSync("swiftc", [
+    "-parse-as-library",
+    "-O",
+    sourcePath,
+    "-o",
+    binaryPath,
+    ...(infoPlistPath
+      ? ["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", infoPlistPath]
+      : []),
+    "-framework",
+    "EventKit",
+    "-framework",
+    "AppKit"
+  ])
+
+  return binaryPath
+}
+
+function ensureAppleRemindersBinary(): string {
+  const binaryPath = resolveAppleRemindersBinaryPath()
+  if (binaryPath) {
+    return binaryPath
   }
+
+  if (app.isPackaged) {
+    throw new AppleRemindersRequestError("Packaged Apple Reminders helper not found.")
+  }
+
+  const sourcePath = resolveAppleRemindersSwiftSourcePath()
+  if (!sourcePath) {
+    throw new AppleRemindersRequestError("Apple Reminders Swift helper source not found.")
+  }
+
+  return compileAppleRemindersBinary(sourcePath)
+}
+
+function getAppleRemindersDiagnostic(error: unknown): string {
+  const execError = error as AppleRemindersExecError
   const stderr = typeof execError.stderr === "string" ? execError.stderr.trim() : ""
   const stdout = typeof execError.stdout === "string" ? execError.stdout.trim() : ""
-  let message = stderr || stdout
-  if (!message) {
-    if (error instanceof Error) {
-      message = error.message
-    } else if (typeof error === "string") {
-      message = error
-    } else {
-      message = JSON.stringify(error)
-    }
+  if (stderr || stdout) {
+    return stderr || stdout
   }
-  message = stripOsascriptCommandPrefix(message)
 
-  if (message.includes("timed out")) {
+  if (error instanceof Error) {
+    return error.message.trim()
+  }
+
+  if (typeof error === "string") {
+    return error
+  }
+
+  return JSON.stringify(error)
+}
+
+export function normalizeAppleRemindersError(error: unknown): AppleRemindersRequestError {
+  if (isAppleRemindersRequestError(error)) {
+    return error
+  }
+
+  const execError = error as AppleRemindersExecError
+  const message = getAppleRemindersDiagnostic(error)
+
+  if (execError.code === "ETIMEDOUT" || execError.killed === true || message.includes("timed out")) {
     return new AppleRemindersRequestError(
-      "Timed out while talking to Reminders. Allow automation access if macOS is showing a permission prompt, then try again."
+      "Timed out while talking to Reminders. Grant Reminders access if macOS is showing a permission prompt, then try again."
     )
   }
 
   if (
-    message.includes("Not authorised") ||
+    message.includes("OpenworkRemindersAccessDenied") ||
     message.includes("not authorized") ||
-    message.includes("not permitted") ||
-    message.includes("(-1743)")
+    message.includes("not authorised") ||
+    message.includes("authorization denied")
   ) {
     return new AppleRemindersRequestError(
-      "Openwork needs permission to control Reminders. Grant automation access in System Settings and try again.",
+      "Openwork needs permission to access Reminders. Grant Reminders access in System Settings and try again.",
       "PERMISSION_DENIED"
     )
   }
 
-  if (message.includes("Application can't be found") || message.includes("(-2700)")) {
+  if (message.includes("OpenworkReminderNotFound")) {
+    return new AppleRemindersRequestError("Apple Reminders could not find that reminder.", "NOT_FOUND")
+  }
+
+  if (message.includes("OpenworkReminderListNotFound")) {
     return new AppleRemindersRequestError(
-      "macOS automation could not find Reminders. Open Reminders once, then try again."
+      "Apple Reminders could not find the target reminder list.",
+      "NOT_FOUND"
+    )
+  }
+
+  if (message.includes("OpenworkUnsupportedMethod")) {
+    return new AppleRemindersRequestError(
+      "Openwork could not complete the Reminders request. Restart Openwork and try again."
+    )
+  }
+
+  if (!message) {
+    return new AppleRemindersRequestError(
+      "Apple Reminders command failed. Open Reminders once, then try again."
     )
   }
 
@@ -366,24 +220,17 @@ function normalizeAppleRemindersError(error: unknown): Error {
 async function invokeAppleReminders<TResult>(method: string, payload: unknown): Promise<TResult> {
   assertAppleRemindersAvailable()
 
+  const binaryPath = ensureAppleRemindersBinary()
+  const request: AppleRemindersHelperRequest = {
+    method,
+    payload
+  }
+
   try {
-    const { stdout } = await execFileAsync(
-      "/usr/bin/osascript",
-      [
-        "-l",
-        "JavaScript",
-        "-e",
-        REMINDERS_JXA_SCRIPT,
-        JSON.stringify({
-          method,
-          payload
-        })
-      ],
-      {
-        maxBuffer: 1024 * 1024 * 4,
-        timeout: 10_000
-      }
-    )
+    const { stdout } = await execFileAsync(binaryPath, [JSON.stringify(request)], {
+      maxBuffer: 1024 * 1024 * 4,
+      timeout: APPLE_REMINDERS_COMMAND_TIMEOUT_MS
+    })
 
     return JSON.parse(stdout.trim() || "null") as TResult
   } catch (error) {

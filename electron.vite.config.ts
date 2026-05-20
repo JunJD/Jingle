@@ -17,9 +17,13 @@ function copyResources(): { name: string; closeBundle: () => void } {
       const destDir = resolve("out/resources")
       const destAssets = resolve("out/resources/assets")
       const destIcon = resolve("out/resources/icon.png")
-      const nativeSource = resolve("src/native/openwork-minimal-island.swift")
       const nativeDestDir = resolve("out/native")
-      const nativeDestFile = resolve("out/native/openwork-minimal-island.swift")
+      const nativeSources = [
+        "openwork-apple-reminders.swift",
+        "openwork-apple-reminders-info.plist",
+        "openwork-desktop-automation.swift",
+        "openwork-minimal-island.swift"
+      ]
       const mutationPredictorWorkerSource = resolve("src/main/agent/mutation-predictor-worker.ts")
       const mutationPredictorWorkerDestDir = resolve("out/main")
       const mutationPredictorWorkerDest = resolve("out/main/mutation-predictor-worker.mjs")
@@ -38,11 +42,14 @@ function copyResources(): { name: string; closeBundle: () => void } {
         cpSync(srcAssets, destAssets, { recursive: true })
       }
 
-      if (existsSync(nativeSource)) {
-        if (!existsSync(nativeDestDir)) {
-          mkdirSync(nativeDestDir, { recursive: true })
+      for (const nativeSourceName of nativeSources) {
+        const nativeSource = resolve("src/native", nativeSourceName)
+        if (existsSync(nativeSource)) {
+          if (!existsSync(nativeDestDir)) {
+            mkdirSync(nativeDestDir, { recursive: true })
+          }
+          copyFileSync(nativeSource, resolve("out/native", nativeSourceName))
         }
-        copyFileSync(nativeSource, nativeDestFile)
       }
 
       if (existsSync(mutationPredictorWorkerSource)) {

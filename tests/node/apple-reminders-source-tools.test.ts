@@ -3,7 +3,10 @@ import test, { mock } from "node:test"
 import { createExtensionSourceRuntime } from "../../src/main/agent/extension-source-runtime"
 import { ExtensionToolExecutor } from "../../src/main/extension-tools/executor"
 import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
-import { AppleRemindersRequestError } from "../../src/extensions/apple-reminders/main/service"
+import {
+  AppleRemindersRequestError,
+  normalizeAppleRemindersError
+} from "../../src/extensions/apple-reminders/main/service"
 import { createAppleRemindersTools } from "../../src/extensions/apple-reminders/main/tools"
 import {
   appleRemindersSourceDefinition,
@@ -192,13 +195,13 @@ test("Apple Reminders tools return external Reminders failures as tool output", 
     createAppleRemindersTools({
       createReminder: async () => {
         throw new AppleRemindersRequestError(
-          "Openwork needs permission to control Reminders.",
+          "Openwork needs permission to access Reminders.",
           "PERMISSION_DENIED"
         )
       },
       getData: async () => {
         throw new AppleRemindersRequestError(
-          "Openwork needs permission to control Reminders.",
+          "Openwork needs permission to access Reminders.",
           "PERMISSION_DENIED"
         )
       }
@@ -220,7 +223,7 @@ test("Apple Reminders tools return external Reminders failures as tool output", 
     workspacePath: "/workspace"
   })
   assert.match(listOutput, /Apple Reminders list reminders failed/)
-  assert.match(listOutput, /permission to control Reminders/)
+  assert.match(listOutput, /permission to access Reminders/)
 
   const createOutput = await executor.executeAgentTool({
     agentToolName: "ext__appleReminders__createReminder",
@@ -231,5 +234,44 @@ test("Apple Reminders tools return external Reminders failures as tool output", 
     workspacePath: "/workspace"
   })
   assert.match(createOutput, /Apple Reminders create reminder failed/)
-  assert.match(createOutput, /permission to control Reminders/)
+  assert.match(createOutput, /permission to access Reminders/)
+})
+
+test("Apple Reminders helper access denial maps to permission errors", () => {
+  const normalized = normalizeAppleRemindersError({
+    stderr: "OpenworkRemindersAccessDenied",
+    stdout: ""
+  })
+
+  assert.equal(
+    normalized.message,
+    "Openwork needs permission to access Reminders. Grant Reminders access in System Settings and try again."
+  )
+  assert.equal(normalized.code, "PERMISSION_DENIED")
+})
+
+test("Apple Reminders helper timeout asks for Reminders access", () => {
+  const normalized = normalizeAppleRemindersError({
+    code: "ETIMEDOUT",
+    killed: true,
+    stderr: "",
+    stdout: ""
+  })
+
+  assert.equal(
+    normalized.message,
+    "Timed out while talking to Reminders. Grant Reminders access if macOS is showing a permission prompt, then try again."
+  )
+})
+
+test("Apple Reminders unknown helper methods stay user-facing", () => {
+  const normalized = normalizeAppleRemindersError({
+    stderr: "OpenworkUnsupportedMethod: get-data",
+    stdout: ""
+  })
+
+  assert.equal(
+    normalized.message,
+    "Openwork could not complete the Reminders request. Restart Openwork and try again."
+  )
 })

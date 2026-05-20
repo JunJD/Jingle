@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.langchain.openwork.apple-reminders-helper</string>
+  <key>CFBundleName</key>
+  <string>Openwork Apple Reminders</string>
+  <key>NSRemindersFullAccessUsageDescription</key>
+  <string>Openwork needs access to Reminders to list, create, complete, and delete reminders you request.</string>
+  <key>NSRemindersUsageDescription</key>
+  <string>Openwork needs access to Reminders to list, create, complete, and delete reminders you request.</string>
+</dict>
+</plist>

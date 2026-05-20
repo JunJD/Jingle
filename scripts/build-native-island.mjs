@@ -18,6 +18,13 @@ const targets = [
     label: "desktop-automation",
     outputPath: resolve("out/native/openwork-desktop-automation"),
     sourcePath: resolve("src/native/openwork-desktop-automation.swift")
+  },
+  {
+    frameworks: ["EventKit", "AppKit"],
+    infoPlistPath: resolve("src/native/openwork-apple-reminders-info.plist"),
+    label: "apple-reminders",
+    outputPath: resolve("out/native/openwork-apple-reminders"),
+    sourcePath: resolve("src/native/openwork-apple-reminders.swift")
   }
 ]
 
@@ -35,6 +42,7 @@ for (const target of targets) {
       target.sourcePath,
       "-o",
       target.outputPath,
+      ...(target.infoPlistPath ? ["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", target.infoPlistPath] : []),
       ...target.frameworks.flatMap((framework) => ["-framework", framework])
     ],
     {
