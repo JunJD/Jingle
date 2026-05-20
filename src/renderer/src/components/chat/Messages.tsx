@@ -1,4 +1,4 @@
-import { CopyIcon, FileText, ListTodo, RefreshCcwIcon } from "lucide-react"
+import { Brain, CopyIcon, FileText, RefreshCcwIcon } from "lucide-react"
 import { useMemo, useState } from "react"
 import { resolveImageBlockUrl } from "@shared/message-content"
 import type {
@@ -9,6 +9,15 @@ import type {
   ToolCall
 } from "@/types"
 import { ActionMessage, ToolStatusIndicator } from "./ActionMessage"
+import {
+  AgentSteps,
+  AgentStepsContent,
+  AgentStepsTrigger,
+  AgentToolGroup,
+  AgentToolGroupContent,
+  AgentToolGroupItem,
+  AgentToolGroupTrigger
+} from "@/components/agent-ui"
 import { createActionMessageView } from "./action-message-view"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -31,12 +40,6 @@ import {
   AttachmentPreview,
   type AttachmentData
 } from "../ui/attachments"
-import {
-  ChainOfThought,
-  ChainOfThoughtContent,
-  ChainOfThoughtHeader,
-  ChainOfThoughtItem
-} from "./ChainOfThought"
 import {
   Message,
   MessageAction,
@@ -226,23 +229,20 @@ function ReasoningBlock(props: {
   }
 
   return (
-    <ChainOfThought
-      active={isStreaming}
-      className="ow-reasoning-message"
-      collapseWhenInactive
-      defaultOpen={isStreaming}
-    >
-      <ChainOfThoughtHeader
+    <AgentSteps active={isStreaming} className="ow-reasoning-message" defaultOpen={isStreaming}>
+      <AgentStepsTrigger
         className={cn(
-          "ow-reasoning-trigger rounded-[var(--ow-radius-sm)] px-[var(--ow-space-1)]",
+          "ow-reasoning-trigger",
           density === "compact"
             ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
             : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)]"
         )}
+        icon={<Brain className="size-[var(--ow-icon-action)]" />}
       >
         {isStreaming ? copy.chat.agentThinking : copy.chat.agentThought}
-      </ChainOfThoughtHeader>
-      <ChainOfThoughtContent
+      </AgentStepsTrigger>
+      <AgentStepsContent
+        bar={false}
         className={cn(
           "ow-reasoning-content",
           density === "compact"
@@ -250,11 +250,11 @@ function ReasoningBlock(props: {
             : "space-y-[var(--ow-reasoning-content-gap)]"
         )}
       >
-        <div className="whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
+        <div className="pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
           {text}
         </div>
-      </ChainOfThoughtContent>
-    </ChainOfThought>
+      </AgentStepsContent>
+    </AgentSteps>
   )
 }
 
@@ -420,47 +420,46 @@ function ToolActivityGroup(props: {
     ) : null
 
   return (
-    <ChainOfThought
+    <AgentToolGroup
       active={hasActiveActions}
       onOpenChange={onOpenChange ?? setOpenOverride}
       open={isOpen}
     >
-      <ChainOfThoughtHeader
+      <AgentToolGroupTrigger
         className={
           density === "compact"
             ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
             : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)]"
         }
         {...(headerAction ? { "data-tool-call-toggle": headerAction.toolCall.name } : {})}
-        icon={ListTodo}
         meta={headerStatusMeta}
       >
         {headerTitle}
-      </ChainOfThoughtHeader>
-      <ChainOfThoughtContent
+      </AgentToolGroupTrigger>
+      <AgentToolGroupContent
         className={
           density === "compact" ? "space-y-[var(--ow-space-2)]" : "space-y-[var(--ow-space-2-5)]"
         }
       >
-        {actionViews.map((item, index) => (
-          <ChainOfThoughtItem
-            icon={item.view.icon}
-            isLast={index === actionViews.length - 1}
-            key={item.key}
-          >
-            <ActionMessage
-              approvalRequest={item.needsApproval ? pendingApproval : null}
-              density={density}
-              onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
-              presentation="grouped"
-              renderApprovalDetail={approvalPlacement === "inline"}
-              result={item.result?.content}
-              toolCall={item.toolCall}
-            />
-          </ChainOfThoughtItem>
-        ))}
-      </ChainOfThoughtContent>
-    </ChainOfThought>
+        {actionViews.map((item) => {
+          const Icon = item.view.icon
+
+          return (
+            <AgentToolGroupItem icon={<Icon className="size-[var(--ow-icon-sm)]" />} key={item.key}>
+              <ActionMessage
+                approvalRequest={item.needsApproval ? pendingApproval : null}
+                density={density}
+                onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
+                presentation="grouped"
+                renderApprovalDetail={approvalPlacement === "inline"}
+                result={item.result?.content}
+                toolCall={item.toolCall}
+              />
+            </AgentToolGroupItem>
+          )
+        })}
+      </AgentToolGroupContent>
+    </AgentToolGroup>
   )
 }
 

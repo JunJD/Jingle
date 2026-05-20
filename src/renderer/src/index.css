@@ -308,17 +308,26 @@ body[data-window="launcher"],
   --launcher-ai-content-x: var(--ow-space-3);
   --launcher-ai-content-y: var(--ow-space-2);
   --launcher-ai-content-max-width: 720px;
+  --launcher-ai-model-popover-w: 356px;
+  --launcher-ai-model-popover-list-h: 266px;
   --launcher-ai-composer-page-x: var(--ow-space-3);
   --launcher-ai-composer-x: var(--ow-space-3);
   --launcher-ai-composer-y: var(--ow-space-2);
   --launcher-ai-composer-submit-size: 28px;
-  --launcher-ai-composer-expanded-input-min-h: 112px;
-  --launcher-ai-composer-expanded-input-max-h: 148px;
+  --launcher-ai-composer-input-min-h: 34px;
+  --launcher-ai-composer-input-max-h: 114px;
   --launcher-ai-empty-max-width: 48rem;
   --launcher-ai-empty-copy-max-width: 42rem;
   --launcher-ai-turn-gap: var(--ow-space-3);
   --launcher-ai-empty-title: 22px;
   --launcher-ai-empty-title-wide: 24px;
+  --ow-prompt-input-radius: 18px;
+  --ow-prompt-input-shadow:
+    0 18px 48px rgba(32, 38, 45, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.56);
+  --ow-prompt-input-shadow-focus:
+    0 22px 58px rgba(32, 38, 45, 0.12), 0 0 0 1px color-mix(in srgb, var(--ring) 9%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.66);
+  --ow-prompt-input-action-size: 30px;
 }
 
 .settings-app {
@@ -404,6 +413,11 @@ body[data-window="launcher"],
   --ow-chat-composer-radius: 20px;
   --ow-chat-composer-input-min-h: 48px;
   --ow-chat-composer-action-h: 48px;
+  --ow-prompt-input-radius: var(--ow-chat-composer-radius);
+  --ow-prompt-input-action-size: var(--ow-control-h-md);
+  --ow-prompt-input-shadow: 0 12px 30px rgba(32, 38, 45, 0.06);
+  --ow-prompt-input-shadow-focus:
+    0 14px 34px rgba(32, 38, 45, 0.09), 0 0 0 1px color-mix(in srgb, var(--ring) 10%, transparent);
   --ow-chat-artifact-max-w: 56rem;
   --ow-chat-code-preview-min-w: 760px;
   --ow-chat-thread-x: 32px;
@@ -979,6 +993,23 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 .launcher-ai-composer-submit:hover:not(:disabled) {
   background: color-mix(in srgb, var(--launcher-surface-interactive) 92%, white 8%);
+}
+
+.ow-text-shimmer {
+  background-size: 200% auto;
+  background-clip: text;
+  color: transparent;
+  animation: ow-text-shimmer 4s linear infinite;
+}
+
+@keyframes ow-text-shimmer {
+  0% {
+    background-position: 200% 50%;
+  }
+
+  100% {
+    background-position: -200% 50%;
+  }
 }
 
 .dark .launcher-ai-composer {
@@ -1627,8 +1658,8 @@ body[data-platform="darwin"] .launcher-window-shell {
 }
 
 .ow-reasoning-message {
-  border-left: 1px solid var(--ow-reasoning-rail);
-  padding-left: var(--ow-space-3);
+  border-left: 0;
+  padding-left: 0;
 }
 
 .ow-reasoning-trigger {
@@ -1637,13 +1668,13 @@ body[data-platform="darwin"] .launcher-window-shell {
 }
 
 .ow-reasoning-trigger:hover {
-  background: var(--ow-reasoning-bg);
+  background: transparent;
 }
 
 .ow-reasoning-content {
-  border-left: 1px solid color-mix(in srgb, var(--ow-reasoning-rail) 70%, transparent);
-  margin-left: var(--ow-space-2);
-  padding-left: var(--ow-space-3);
+  border-left: 0;
+  margin-left: 0;
+  padding-left: var(--ow-space-1);
 }
 
 [data-streamdown="inline-code"] {

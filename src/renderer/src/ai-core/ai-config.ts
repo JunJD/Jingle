@@ -2,20 +2,20 @@ import { getLauncherViewportHeightForBody, type LauncherShellConfig } from "@sha
 
 const AI_PAGE_CONTENT_HEIGHT = 468
 const AI_HEADER_HEIGHT = 48
-const AI_FOOTER_HEIGHT = 64
-const AI_EXPANDED_FOOTER_HEIGHT = 196
+export const AI_FOOTER_HEIGHT = 64
+export const AI_MAX_FOOTER_HEIGHT = 180
 
 export function getAiShellConfig(
   shellConfig: LauncherShellConfig,
   options: {
-    footerExpanded?: boolean
+    footerHeight?: number
   } = {}
 ): LauncherShellConfig {
-  const { footerExpanded = false } = options
+  const { footerHeight = AI_FOOTER_HEIGHT } = options
 
   return {
     ...shellConfig,
-    footerHeight: footerExpanded ? AI_EXPANDED_FOOTER_HEIGHT : AI_FOOTER_HEIGHT,
+    footerHeight,
     headerHeight: AI_HEADER_HEIGHT
   }
 }

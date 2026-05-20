@@ -119,15 +119,7 @@ export function LauncherAiConversation(props: {
               <ChatTodos todos={todos} />
             )}
 
-            {isLoading && (
-              <div className="space-y-[var(--ow-space-3)] border-t border-border/80 pt-[var(--ow-space-4)]">
-                <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] text-muted-foreground">
-                  <Loader2 className="size-[var(--ow-icon-action)] animate-spin" />
-                  {copy.chat.agentThinking}
-                </div>
-                {todos.length > 0 && <ChatTodos todos={todos} />}
-              </div>
-            )}
+            {isLoading && todos.length > 0 && <ChatTodos todos={todos} />}
 
             {error && !isLoading && (
               <div className="flex items-start gap-[var(--ow-gap-md)] border-l-[3px] border-destructive bg-destructive/8 px-[var(--ow-space-4)] py-[var(--ow-space-3)]">

@@ -22,7 +22,6 @@ interface UseLauncherAiActionsOptions {
   currentPermissionMode: PermissionModeName
   goToNextChat: () => Promise<void>
   goToPreviousChat: () => Promise<void>
-  insertLineBreak: () => void
   inputRef: RefObject<LauncherInputElement | null>
   isApprovalPending: boolean
   isBusy: boolean
@@ -74,7 +73,6 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
     currentPermissionMode,
     goToNextChat,
     goToPreviousChat,
-    insertLineBreak,
     inputRef,
     isApprovalPending,
     isBusy,
@@ -107,12 +105,6 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
         return
       }
 
-      if (event.shiftKey || event.ctrlKey) {
-        event.preventDefault()
-        insertLineBreak()
-        return
-      }
-
       if (isApprovalPending) {
         return
       }
@@ -120,7 +112,7 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
       event.preventDefault()
       runPrimaryAction()
     },
-    [insertLineBreak, isAiInputTarget, isApprovalPending, runPrimaryAction]
+    [isAiInputTarget, isApprovalPending, runPrimaryAction]
   )
   const handleAddAttachmentShortcut = useCallback(
     (event: KeyboardEvent): void => {

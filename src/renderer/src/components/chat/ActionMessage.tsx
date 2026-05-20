@@ -1,6 +1,12 @@
-import { ChevronDown, ChevronRight, TriangleAlert } from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import { useMemo, useState } from "react"
 import { LoaderOne } from "@/components/ui/loader"
+import {
+  AgentTool,
+  AgentToolInline,
+  AgentToolStatusBadge,
+  type AgentToolState
+} from "@/components/agent-ui"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import type { HITLDecision, HITLRequest, ToolCall } from "@/types"
@@ -19,19 +25,6 @@ interface ActionMessageProps {
   presentation?: ToolPresentation
   renderApprovalDetail?: boolean
   showSummary?: boolean
-}
-
-function StatusGlyph(props: {
-  status: ToolComponentStatus
-  Icon: React.ComponentType<{ className?: string }>
-}): React.JSX.Element {
-  const { Icon, status } = props
-
-  if (status === "approval") {
-    return <TriangleAlert className="size-[var(--ow-icon-sm)] text-status-warning" />
-  }
-
-  return <Icon className={cn("size-[var(--ow-icon-sm)] text-muted-foreground")} />
 }
 
 export function ToolStatusIndicator(props: {
@@ -56,11 +49,22 @@ export function ToolStatusIndicator(props: {
   return statusLabel ? <span>{statusLabel}</span> : null
 }
 
+function toAgentToolState(status: ToolComponentStatus): AgentToolState {
+  switch (status) {
+    case "approval":
+      return "approval"
+    case "complete":
+      return "complete"
+    case "running":
+      return "running"
+  }
+}
+
 export function ActionMessage(props: ActionMessageProps): React.JSX.Element | null {
   const {
     approvalRequest,
     defaultExpanded = false,
-    density = "default",
+    density: _density,
     expanded,
     onApprovalDecision,
     onExpandedChange,
@@ -83,10 +87,9 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       }),
     [approvalRequest, copy, presentation, result, toolCall]
   )
-  const { definition, hitlDefinition, icon, model, status, statusLabel, summary } = view
+  const { definition, hitlDefinition, model, status, statusLabel, summary } = view
   const autoExpanded = Boolean(approvalRequest) || defaultExpanded
   const isExpanded = approvalRequest ? true : (expanded ?? manualExpanded ?? autoExpanded)
-  const showLeadingIcon = presentation !== "grouped"
   const detail = useMemo<React.ReactNode>(() => {
     if (approvalRequest) {
       if (onApprovalDecision && hitlDefinition && renderApprovalDetail) {
@@ -126,89 +129,77 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
   ])
 
   const hasDetail = Boolean(detail)
-  const detailContent =
-    hasDetail && isExpanded ? (
-      <div
-        className={cn(
-          "min-w-0 max-w-full overflow-hidden",
-          presentation === "grouped" ? "pl-0" : "pl-[var(--ow-chat-action-indent)]"
-        )}
-      >
-        {detail}
-      </div>
-    ) : null
+  const toolState = toAgentToolState(status)
+  const meta = statusLabel ? (
+    <AgentToolStatusBadge state={toolState}>{statusLabel}</AgentToolStatusBadge>
+  ) : null
+  const detailContent = hasDetail ? (
+    <div className="min-w-0 max-w-full overflow-hidden">{detail}</div>
+  ) : null
 
   if (!showSummary) {
-    return detailContent
+    return hasDetail && isExpanded ? detailContent : null
+  }
+
+  if (presentation === "grouped") {
+    return (
+      <div className="min-w-0">
+        <AgentToolInline
+          data-tool-call-toggle={toolCall.name}
+          meta={
+            <>
+              {meta}
+              {hasDetail ? (
+                <ChevronRight
+                  className={cn(
+                    "size-[var(--ow-icon-sm)] text-muted-foreground transition-transform",
+                    isExpanded && "rotate-90"
+                  )}
+                />
+              ) : null}
+            </>
+          }
+          onClick={() => {
+            if (hasDetail && !approvalRequest) {
+              const nextExpanded = !isExpanded
+              onExpandedChange?.(nextExpanded)
+
+              if (expanded === undefined) {
+                setManualExpanded(nextExpanded)
+              }
+            }
+          }}
+          title={summary}
+        />
+        {hasDetail && isExpanded ? (
+          <div className="mt-[var(--ow-space-2)] pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))]">
+            {detailContent}
+          </div>
+        ) : null}
+      </div>
+    )
   }
 
   return (
-    <div
-      className={cn(
-        "grid min-w-0 max-w-full",
-        presentation === "grouped" ? "gap-[var(--ow-gap-xs)]" : "gap-[var(--ow-space-1-5)]"
-      )}
-    >
-      <button
-        className={cn(
-          "inline-flex max-w-full min-w-0 items-center gap-[var(--ow-gap-md)] rounded-lg px-0 text-left transition-colors",
-          presentation === "grouped" ? "py-[var(--ow-space-0-5)]" : "py-[var(--ow-space-1)]",
-          "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        )}
-        data-tool-call-toggle={toolCall.name}
-        onClick={() => {
-          if (hasDetail && !approvalRequest) {
-            const nextExpanded = !isExpanded
-            onExpandedChange?.(nextExpanded)
+    <AgentTool
+      data-tool-call-toggle={toolCall.name}
+      defaultOpen={autoExpanded}
+      detail={detailContent}
+      meta={meta}
+      onOpenChange={(nextExpanded) => {
+        if (approvalRequest) {
+          return
+        }
 
-            if (expanded === undefined) {
-              setManualExpanded(nextExpanded)
-            }
-          }
-        }}
-        type="button"
-      >
-        {showLeadingIcon ? (
-          <span className="inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
-            <StatusGlyph Icon={icon} status={status} />
-          </span>
-        ) : null}
+        onExpandedChange?.(nextExpanded)
 
-        <span
-          className={cn(
-            "min-w-0 [overflow-wrap:anywhere]",
-            density === "compact"
-              ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground"
-              : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)] text-muted-foreground"
-          )}
-        >
-          {summary}
-        </span>
-
-        <span
-          className={cn(
-            "flex shrink-0 items-center gap-[var(--ow-gap-sm)] font-medium uppercase tracking-[0.08em] text-muted-foreground",
-            density === "compact"
-              ? "[font-size:var(--ow-font-caption)]"
-              : "[font-size:var(--ow-font-meta)]"
-          )}
-        >
-          <ToolStatusIndicator
-            runningLabel={copy.common.running}
-            status={status}
-            statusLabel={statusLabel}
-          />
-          {hasDetail ? (
-            isExpanded ? (
-              <ChevronDown className="size-[var(--ow-icon-sm)]" />
-            ) : (
-              <ChevronRight className="size-[var(--ow-icon-sm)]" />
-            )
-          ) : null}
-        </span>
-      </button>
-
-      {detailContent}
-    </div>
+        if (expanded === undefined) {
+          setManualExpanded(nextExpanded)
+        }
+      }}
+      open={isExpanded}
+      state={toolState}
+      title={summary}
+    />
   )
 }

@@ -151,6 +151,7 @@ export interface AppCopy {
     noModelsAvailable: string
     provider: string
     providerError: (providerName: string) => string
+    searchModels: string
     selectModel: string
   }
   sidebar: {
@@ -360,6 +361,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       noModelsAvailable: "没有可用模型",
       provider: "提供商",
       providerError: (providerName) => `${providerName} 模型列表读取失败`,
+      searchModels: "搜索模型...",
       selectModel: "选择模型"
     },
     sidebar: {
@@ -587,6 +589,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       noModelsAvailable: "No models available",
       provider: "Provider",
       providerError: (providerName) => `Failed to load ${providerName} models`,
+      searchModels: "Search models...",
       selectModel: "Select model"
     },
     sidebar: {

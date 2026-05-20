@@ -1,13 +1,17 @@
 import { useRef, useEffect, useCallback } from "react"
-import { Send, Square, Loader2, AlertCircle, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Send, Square, AlertCircle, Folder, X } from "lucide-react"
+import {
+  PromptInput,
+  PromptInputAction,
+  PromptInputTextarea,
+  ThinkingBar
+} from "@/components/agent-ui"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { Messages } from "./Messages"
 import { ModelSwitcher } from "./ModelSwitcher"
-import { Folder } from "lucide-react"
 import { WorkspacePicker } from "./WorkspacePicker"
 import { selectWorkspaceFolder } from "@/lib/workspace-utils"
 import { ChatTodos } from "./ChatTodos"
@@ -69,25 +73,21 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     visibleError
   } = invocation
 
-  // Get the actual scrollable viewport element from Radix ScrollArea
   const getViewport = useCallback((): HTMLDivElement | null => {
     return scrollRef.current?.querySelector(
       "[data-radix-scroll-area-viewport]"
     ) as HTMLDivElement | null
   }, [])
 
-  // Track scroll position to determine if user is at bottom
   const handleScroll = useCallback((): void => {
     const viewport = getViewport()
     if (!viewport) return
 
     const { scrollTop, scrollHeight, clientHeight } = viewport
-    // Consider "at bottom" if within 50px of the bottom
     const threshold = 50
     isAtBottomRef.current = scrollHeight - scrollTop - clientHeight < threshold
   }, [getViewport])
 
-  // Attach scroll listener to viewport
   useEffect(() => {
     const viewport = getViewport()
     if (!viewport) return
@@ -96,7 +96,6 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     return () => viewport.removeEventListener("scroll", handleScroll)
   }, [getViewport, handleScroll])
 
-  // Auto-scroll on new messages only if already at bottom
   useEffect(() => {
     const viewport = getViewport()
     if (viewport && isAtBottomRef.current) {
@@ -104,7 +103,6 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     }
   }, [displayMessages, isBusy, getViewport])
 
-  // Always scroll to bottom when switching threads
   useEffect(() => {
     const viewport = getViewport()
     if (viewport) {
@@ -113,7 +111,6 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     }
   }, [threadId, getViewport])
 
-  // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus()
   }, [threadId])
@@ -128,24 +125,11 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   }
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) {
       e.preventDefault()
       handleSubmit(e)
     }
   }
-
-  // Auto-resize textarea based on content
-  const adjustTextareaHeight = (): void => {
-    const textarea = inputRef.current
-    if (textarea) {
-      textarea.style.height = "auto"
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
-    }
-  }
-
-  useEffect(() => {
-    adjustTextareaHeight()
-  }, [input])
 
   const handleCancel = async (): Promise<void> => {
     await stop()
@@ -213,16 +197,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
               <ChatTodos todos={todos} />
             )}
 
-            {/* Streaming indicator and inline TODOs */}
-            {isBusy && (
-              <div className="space-y-[var(--ow-space-4)] border-t border-border pt-[var(--ow-space-4)]">
-                <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] text-muted-foreground">
-                  <Loader2 className="size-[var(--ow-icon-action)] animate-spin" />
-                  {copy.chat.agentThinking}
-                </div>
-                {todos.length > 0 && <ChatTodos todos={todos} />}
-              </div>
-            )}
+            {isBusy && todos.length > 0 && <ChatTodos todos={todos} />}
 
             {/* Error state */}
             {visibleError && !isBusy && (
@@ -255,6 +230,8 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
       <div className="border-t border-border bg-background-elevated/60 px-[var(--ow-chat-thread-x)] py-[var(--ow-chat-footer-y)]">
         <form onSubmit={handleSubmit} className="mx-auto max-w-[var(--ow-chat-thread-max-width)]">
           <div className="flex flex-col gap-[var(--ow-gap-md)]">
+            {isBusy ? <ThinkingBar text={copy.chat.agentThinking} /> : null}
+
             {pendingApproval ? (
               <ComposerApprovalPrompt
                 key={pendingApproval.id}
@@ -264,42 +241,46 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                 request={pendingApproval}
               />
             ) : (
-              <div className="flex items-end gap-[var(--ow-gap-md)] rounded-[var(--ow-chat-composer-radius)] bg-background-secondary px-[var(--ow-space-4)] py-[var(--ow-space-4)]">
-                <textarea
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={copy.chat.messagePlaceholder}
-                  disabled={isBusy}
-                  className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
-                  rows={1}
-                  style={{ minHeight: "var(--ow-chat-composer-input-min-h)", maxHeight: "200px" }}
-                />
-                <div className="flex h-[var(--ow-chat-composer-action-h)] shrink-0 items-center justify-center">
-                  {isBusy ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleCancel}
-                      className="rounded-full bg-background-elevated"
-                    >
-                      <Square className="size-[var(--ow-icon-action)]" />
-                    </Button>
-                  ) : (
-                    <Button
-                      type="submit"
-                      variant="default"
-                      size="icon"
-                      disabled={!invocation.canInvoke}
-                      className="rounded-full"
-                    >
-                      <Send className="size-[var(--ow-icon-action)]" />
-                    </Button>
-                  )}
+              <PromptInput
+                className="px-[var(--ow-space-4)] py-[var(--ow-space-4)]"
+                disabled={isBusy}
+                isLoading={isBusy}
+                maxHeight="200px"
+                minHeight="var(--ow-chat-composer-input-min-h)"
+                onSubmit={() => {
+                  void invoke()
+                }}
+                onValueChange={setInput}
+                textareaRef={inputRef}
+                value={input}
+              >
+                <div className="flex min-w-0 items-end gap-[var(--ow-gap-md)]">
+                  <PromptInputTextarea
+                    ref={inputRef}
+                    onKeyDown={handleKeyDown}
+                    placeholder={copy.chat.messagePlaceholder}
+                    className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
+                  />
+                  <div className="flex h-[var(--ow-chat-composer-action-h)] shrink-0 items-center justify-center">
+                    {isBusy ? (
+                      <PromptInputAction
+                        onClick={handleCancel}
+                        icon={<Square className="size-[var(--ow-icon-action)]" />}
+                        label={copy.launcher.aiStopLabel}
+                        className="size-[var(--ow-control-h-md)] bg-background-elevated"
+                      />
+                    ) : (
+                      <PromptInputAction
+                        type="submit"
+                        disabled={!invocation.canInvoke}
+                        icon={<Send className="size-[var(--ow-icon-action)]" />}
+                        label={copy.launcher.aiPrimaryLabel}
+                        className="size-[var(--ow-control-h-md)] bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
+              </PromptInput>
             )}
 
             <div className="flex items-center justify-between gap-[var(--ow-gap-lg)]">
