@@ -173,6 +173,7 @@ export interface AppCopy {
     changeCreate: string
     changeDelete: string
     changeModify: string
+    compactChangeSummary: (count: number) => string
     commandCompleted: string
     commandCompletedNoOutput: string
     completed: string
@@ -383,6 +384,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       changeCreate: "新增",
       changeDelete: "删除",
       changeModify: "修改",
+      compactChangeSummary: (count) => `${count} 个文件`,
       commandCompleted: "命令已完成",
       commandCompletedNoOutput: "命令已完成，无输出",
       completed: "已完成",
@@ -611,6 +613,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       changeCreate: "Create",
       changeDelete: "Delete",
       changeModify: "Modify",
+      compactChangeSummary: (count) => `${count} file${count === 1 ? "" : "s"}`,
       commandCompleted: "Command completed",
       commandCompletedNoOutput: "Command completed (no output)",
       completed: "Completed",
