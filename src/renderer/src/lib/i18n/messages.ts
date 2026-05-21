@@ -162,11 +162,19 @@ export interface AppCopy {
     rename: string
   }
   toolCall: {
+    approvalAction: string
     approvalApplyTitle: string
     approvalConfirmTitle: string
+    approvalImpact: string
     approvalItem: string
+    approvalParameters: string
+    approvalPrediction: string
+    approvalProfile: string
+    approvalReason: string
     approvalRunTitle: string
+    approvalSource: string
     approvalSubmit: string
+    approvalTarget: string
     approve: string
     approveAndApply: string
     approveAndRun: string
@@ -373,11 +381,19 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       rename: "重命名"
     },
     toolCall: {
+      approvalAction: "动作",
       approvalApplyTitle: "是否应用这些变更？",
       approvalConfirmTitle: "是否继续执行？",
+      approvalImpact: "预期影响",
       approvalItem: "审批事项",
+      approvalParameters: "参数",
+      approvalPrediction: "预测状态",
+      approvalProfile: "执行类型",
+      approvalReason: "原因",
       approvalRunTitle: "是否执行这个命令？",
+      approvalSource: "来源",
       approvalSubmit: "提交",
+      approvalTarget: "目标",
       approve: "批准",
       approveAndApply: "批准并修改",
       approveAndRun: "批准并执行",
@@ -602,11 +618,19 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       rename: "Rename"
     },
     toolCall: {
+      approvalAction: "Action",
       approvalApplyTitle: "Apply these changes?",
       approvalConfirmTitle: "Continue with this action?",
+      approvalImpact: "Expected impact",
       approvalItem: "Approval Item",
+      approvalParameters: "Parameters",
+      approvalPrediction: "Prediction",
+      approvalProfile: "Profile",
+      approvalReason: "Reason",
       approvalRunTitle: "Run this command?",
+      approvalSource: "Source",
       approvalSubmit: "Submit",
+      approvalTarget: "Target",
       approve: "Approve",
       approveAndApply: "Approve & Apply",
       approveAndRun: "Approve & Run",

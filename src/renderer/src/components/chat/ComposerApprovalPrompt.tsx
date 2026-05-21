@@ -9,13 +9,17 @@ import {
   getCompactToolApprovalPresentation,
   getToolApprovalPresentationMeta
 } from "./tools/tool-approval-presentation"
+import { renderLargeApprovalBody } from "./tools/approval-large-presentation"
+import { stringifyToolValue } from "./tools/shared"
 
 function getApprovalTitle(metaTitle: string): string {
   return metaTitle
 }
 
 function getApproveLabel(copy: AppCopy, request: HITLRequest): string {
-  return request.review?.kind === "execute_command" ? copy.toolCall.approveAndRun : copy.toolCall.approve
+  return request.review?.kind === "execute_command"
+    ? copy.toolCall.approveAndRun
+    : copy.toolCall.approve
 }
 
 export function ComposerApprovalPrompt(props: {
@@ -41,6 +45,14 @@ export function ComposerApprovalPrompt(props: {
   const trimmedFeedback = feedback.trim()
   const displaySize = getHitlRequestDisplaySize(request)
   const isLarge = displaySize === "large"
+  const rawArgs = stringifyToolValue(request.tool_call.args)
+  const largeBody = isLarge
+    ? renderLargeApprovalBody({
+        approvalItem,
+        copy,
+        rawArgs
+      })
+    : null
 
   return (
     <ComposerInterruptShell
@@ -97,7 +109,7 @@ export function ComposerApprovalPrompt(props: {
           </div>
         </div>
       }
-      body={isLarge ? compact.detail : null}
+      body={largeBody}
       className={className}
       density={density}
       header={
