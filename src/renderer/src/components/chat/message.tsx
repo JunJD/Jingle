@@ -282,7 +282,7 @@ export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn(
-        "ow-chat-markdown size-full space-y-[var(--ow-chat-prose-gap)] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        "ow-markdown ow-chat-markdown size-full space-y-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
       )}
       plugins={streamdownPlugins}
