@@ -8,17 +8,20 @@ import {
   getAllThreads,
   getLatestHitlRequest,
   getThread,
+  hasPendingHitlRequest,
   updateThread as dbUpdateThread,
   type ThreadRow
 } from "../db"
 import { closeCheckpointer, getCheckpointer } from "../agent/runtime"
 import {
+  checkpointHasInterrupt,
   extractHitlRequestFromCheckpoint,
   extractMessagesFromCheckpoint,
   extractTodosFromCheckpoint,
   mapHitlRowToRequest
 } from "../agent/runtime-state"
 import { ArtifactsService } from "../artifacts/service"
+import { OpenworkIpcError } from "../ipc/error"
 import { ModelProviderService } from "../model-provider/service"
 import { SettingsService } from "../settings/service"
 import { WorkspaceService } from "../workspace/service"
@@ -33,9 +36,10 @@ import type {
   HITLRequest,
   Message,
   Thread,
+  ThreadForkState,
   ThreadHistoryState,
-  ThreadUpdateParams,
-  Todo
+  ThreadRuntimeState,
+  ThreadUpdateParams
 } from "../types"
 
 async function resolvePendingHitlRequest(
@@ -120,6 +124,61 @@ function checkpointIncludesMessage(
   )
 }
 
+async function computeThreadForkState(input: {
+  checkpoint: CheckpointTuple | undefined
+  thread: ThreadRow
+  threadId: string
+}): Promise<ThreadForkState> {
+  if (input.thread.status === "busy") {
+    return {
+      canFork: false,
+      reason: "busy"
+    }
+  }
+
+  if (await hasPendingHitlRequest(input.threadId)) {
+    return {
+      canFork: false,
+      reason: "pending_hitl"
+    }
+  }
+
+  if (checkpointHasInterrupt(input.checkpoint)) {
+    return {
+      canFork: false,
+      reason: "checkpoint_interrupt"
+    }
+  }
+
+  return {
+    canFork: true
+  }
+}
+
+async function assertThreadCanFork(input: {
+  channel: string
+  checkpoint: CheckpointTuple | undefined
+  thread: ThreadRow
+  threadId: string
+}): Promise<void> {
+  const forkState = await computeThreadForkState(input)
+  if (!forkState.canFork) {
+    const message =
+      forkState.reason === "busy"
+        ? "Cannot fork a thread while it is running."
+        : forkState.reason === "pending_hitl"
+          ? "Cannot fork a thread while human approval is pending."
+          : "Cannot fork from a message that is waiting for human approval."
+
+    throw new OpenworkIpcError({
+      channel: input.channel,
+      code: "FAILED_PRECONDITION",
+      message,
+      details: forkState.reason ? [`reason: ${forkState.reason}`] : undefined
+    })
+  }
+}
+
 export class ThreadsService {
   constructor(
     private readonly artifactsService: ArtifactsService,
@@ -183,6 +242,19 @@ export class ThreadsService {
       throw new Error("Thread not found")
     }
 
+    const sourceCheckpointer = await getCheckpointer(sourceThreadId)
+    const sourceLatest = await sourceCheckpointer.getTuple({
+      configurable: {
+        thread_id: sourceThreadId
+      }
+    })
+    await assertThreadCanFork({
+      channel: "threads:clone",
+      checkpoint: sourceLatest,
+      thread: sourceThread,
+      threadId: sourceThreadId
+    })
+
     const threadId = uuid()
     const nextMetadata = sourceThread.metadata
       ? (JSON.parse(sourceThread.metadata) as Record<string, unknown>)
@@ -225,6 +297,12 @@ export class ThreadsService {
       configurable: {
         thread_id: sourceThreadId
       }
+    })
+    await assertThreadCanFork({
+      channel: "threads:cloneUntilMessage",
+      checkpoint: latest,
+      thread: sourceThread,
+      threadId: sourceThreadId
     })
 
     if (!latest || !checkpointIncludesMessage(sourceThreadId, latest, messageId)) {
@@ -307,11 +385,15 @@ export class ThreadsService {
   }
 
   async getHistory(threadId: string): Promise<ThreadHistoryState> {
-    const [checkpointer, latestHitl, artifacts] = await Promise.all([
+    const [checkpointer, latestHitl, artifacts, row] = await Promise.all([
       getCheckpointer(threadId),
       getLatestHitlRequest(threadId),
-      this.artifactsService.list(threadId)
+      this.artifactsService.list(threadId),
+      getThread(threadId)
     ])
+    if (!row) {
+      throw new Error("Thread not found")
+    }
 
     const latest = await checkpointer.getTuple({
       configurable: {
@@ -325,13 +407,19 @@ export class ThreadsService {
     const todos = extractTodosFromCheckpoint(latest)
     const checkpointRequest = extractHitlRequestFromCheckpoint(threadId, latest)
     const pendingApproval = await resolvePendingHitlRequest(latestHitl)
+    const forkState = await computeThreadForkState({
+      checkpoint: latest,
+      thread: row,
+      threadId
+    })
 
     if (latestHitl) {
       if (pendingApproval) {
-        return { artifacts, messages, todos, pendingApproval }
+        return { artifacts, forkState, messages, todos, pendingApproval }
       }
       return {
         artifacts,
+        forkState,
         messages,
         todos,
         pendingApproval: null
@@ -340,19 +428,22 @@ export class ThreadsService {
 
     return {
       artifacts,
+      forkState,
       messages,
       todos,
       pendingApproval: checkpointRequest
     }
   }
 
-  async getRuntimeState(
-    threadId: string
-  ): Promise<{ pendingApproval: HITLRequest | null; todos: Todo[] }> {
-    const [checkpointer, latestHitl] = await Promise.all([
+  async getRuntimeState(threadId: string): Promise<ThreadRuntimeState> {
+    const [checkpointer, latestHitl, row] = await Promise.all([
       getCheckpointer(threadId),
-      getLatestHitlRequest(threadId)
+      getLatestHitlRequest(threadId),
+      getThread(threadId)
     ])
+    if (!row) {
+      throw new Error("Thread not found")
+    }
 
     const latest = await checkpointer.getTuple({
       configurable: {
@@ -363,18 +454,25 @@ export class ThreadsService {
     const todos = extractTodosFromCheckpoint(latest)
     const checkpointRequest = extractHitlRequestFromCheckpoint(threadId, latest)
     const pendingApproval = await resolvePendingHitlRequest(latestHitl)
+    const forkState = await computeThreadForkState({
+      checkpoint: latest,
+      thread: row,
+      threadId
+    })
 
     if (latestHitl) {
       if (pendingApproval) {
-        return { todos, pendingApproval }
+        return { forkState, todos, pendingApproval }
       }
       return {
+        forkState,
         todos,
         pendingApproval: null
       }
     }
 
     return {
+      forkState,
       todos,
       pendingApproval: checkpointRequest
     }

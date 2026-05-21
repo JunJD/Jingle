@@ -130,6 +130,21 @@ export async function getLatestHitlRequest(threadId: string): Promise<HitlReques
   return row ? mapHitlRequestRow(row) : null
 }
 
+export async function hasPendingHitlRequest(threadId: string): Promise<boolean> {
+  const prisma = getPrismaClient()
+  const row = await prisma.hitlRequest.findFirst({
+    select: {
+      requestId: true
+    },
+    where: {
+      threadId,
+      status: "pending"
+    }
+  })
+
+  return row !== null
+}
+
 export async function getHitlRequest(requestId: string): Promise<HitlRequestRow | null> {
   const prisma = getPrismaClient()
   const row = await prisma.hitlRequest.findUnique({

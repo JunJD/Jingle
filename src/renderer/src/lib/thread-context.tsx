@@ -120,8 +120,26 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     streamSubscribersRef.current[threadId]?.forEach((callback) => callback())
   }, [])
 
+  const refreshThreadForkState = useCallback(
+    async (threadId: string): Promise<void> => {
+      try {
+        const runtimeState = await window.api.threads.getRuntimeState(threadId)
+        threadStore.getThreadActions(threadId).setForkState(runtimeState.forkState)
+      } catch (error) {
+        console.error("[ThreadContext] Failed to refresh thread fork state:", error)
+      }
+    },
+    [threadStore]
+  )
+
   const applyProjectionUpdate = useCallback(
     (threadId: string, projection: AgentThreadProjection): void => {
+      const previousState = threadStore.getThreadState(threadId)
+      const wasLoading = streamDataRef.current[threadId]?.isLoading ?? false
+      const shouldRefreshForkState =
+        wasLoading !== projection.isLoading ||
+        previousState.pendingApproval?.id !== projection.pendingApproval?.id
+
       threadStore.updateThreadState(threadId, () => ({
         error: projection.error ? parseErrorMessage(projection.error) : null,
         messages: projection.messages,
@@ -138,8 +156,12 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       }
       threadStore.setStreamLoadingState(threadId, projection.isLoading)
       notifyStreamSubscribers(threadId)
+
+      if (shouldRefreshForkState) {
+        void refreshThreadForkState(threadId)
+      }
     },
-    [notifyStreamSubscribers, threadStore]
+    [notifyStreamSubscribers, refreshThreadForkState, threadStore]
   )
 
   const getThreadRecord = useCallback(
@@ -253,6 +275,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       try {
         const history = await window.api.threads.getHistory(threadId)
         actions.setArtifacts(history.artifacts)
+        actions.setForkState(history.forkState)
       } catch (error) {
         console.error("[ThreadContext] Failed to load thread artifacts:", error)
       }
@@ -260,6 +283,8 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       try {
         const envelope = await window.api.agent.getProjection(threadId)
         applyProjectionUpdate(threadId, envelope.projection)
+        const runtimeState = await window.api.threads.getRuntimeState(threadId)
+        actions.setForkState(runtimeState.forkState)
       } catch (error) {
         console.error("[ThreadContext] Failed to load thread projection:", error)
       }

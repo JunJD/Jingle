@@ -512,3 +512,189 @@ test("cloneUntilMessage branches from the checkpoint that first contains the tar
     ["message-ai-1", "message-user-1"]
   )
 })
+test("thread fork rejects threads with pending HITL requests", async () => {
+  const { createRun, createThread, upsertHitlRequest } = await loadDbModules()
+  const { ThreadsService } = await import("../../src/main/threads/service")
+  const { ArtifactsService } = await import("../../src/main/artifacts/service")
+
+  const sourceThreadId = "thread-pending-hitl"
+  const runId = "run-pending-hitl"
+
+  await createThread(sourceThreadId, {
+    metadata: {
+      model: "openai:gpt-test",
+      workspacePath: repoRoot
+    }
+  })
+  await createRun(runId, sourceThreadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    request_id: "request-pending-hitl",
+    thread_id: sourceThreadId,
+    run_id: runId,
+    tool_call_id: "tool-call-pending-hitl",
+    tool_name: "write_file",
+    tool_args: { path: `${repoRoot}/pending.txt` },
+    allowed_decisions: ["approve", "reject"],
+    status: "pending"
+  })
+
+  const service = new ThreadsService(
+    new ArtifactsService(),
+    { getDefaultModel: () => "openai:gpt-test" } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[1],
+    { getAgentConfig: () => ({ locale: "en_US" }) } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[2],
+    { resolveGlobalWorkspacePath: async () => repoRoot } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[3]
+  )
+
+  await assert.rejects(
+    service.cloneUntilMessage(sourceThreadId, "message-user-1"),
+    /Cannot fork a thread while human approval is pending/
+  )
+  await assert.rejects(
+    service.clone(sourceThreadId),
+    /Cannot fork a thread while human approval is pending/
+  )
+
+  const runtimeState = await service.getRuntimeState(sourceThreadId)
+  const history = await service.getHistory(sourceThreadId)
+  assert.deepEqual(runtimeState.forkState, {
+    canFork: false,
+    reason: "pending_hitl"
+  })
+  assert.deepEqual(history.forkState, runtimeState.forkState)
+})
+
+test("thread fork state blocks busy threads", async () => {
+  const { createThread, updateThread } = await loadDbModules()
+  const { ThreadsService } = await import("../../src/main/threads/service")
+  const { ArtifactsService } = await import("../../src/main/artifacts/service")
+
+  const sourceThreadId = "thread-busy-fork-state"
+
+  await createThread(sourceThreadId, {
+    metadata: {
+      model: "openai:gpt-test",
+      workspacePath: repoRoot
+    }
+  })
+  await updateThread(sourceThreadId, {
+    status: "busy"
+  })
+
+  const service = new ThreadsService(
+    new ArtifactsService(),
+    { getDefaultModel: () => "openai:gpt-test" } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[1],
+    { getAgentConfig: () => ({ locale: "en_US" }) } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[2],
+    { resolveGlobalWorkspacePath: async () => repoRoot } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[3]
+  )
+
+  const runtimeState = await service.getRuntimeState(sourceThreadId)
+  assert.deepEqual(runtimeState.forkState, {
+    canFork: false,
+    reason: "busy"
+  })
+  await assert.rejects(service.clone(sourceThreadId), /Cannot fork a thread while it is running/)
+})
+
+test("thread fork rejects checkpoints that contain HITL interrupts", async () => {
+  const { createRun, createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+  const { ThreadsService } = await import("../../src/main/threads/service")
+  const { ArtifactsService } = await import("../../src/main/artifacts/service")
+
+  const sourceThreadId = "thread-interrupt-checkpoint"
+  const runId = "run-interrupt-checkpoint"
+
+  await createThread(sourceThreadId, {
+    metadata: {
+      model: "openai:gpt-test",
+      workspacePath: repoRoot
+    }
+  })
+  await createRun(runId, sourceThreadId, { status: "interrupted" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-interrupt"
+  checkpoint.channel_values = {
+    __interrupt__: [
+      {
+        value: {
+          actionRequests: [
+            {
+              args: { path: `${repoRoot}/pending.txt` },
+              name: "write_file",
+              toolCallId: "tool-call-interrupt"
+            }
+          ]
+        }
+      }
+    ],
+    messages: [
+      { kwargs: { content: "needs approval", id: "message-user-interrupt" }, type: "human" }
+    ]
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: sourceThreadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+  await getPrismaClient().hitlRequest.deleteMany({
+    where: {
+      threadId: sourceThreadId
+    }
+  })
+
+  const service = new ThreadsService(
+    new ArtifactsService(),
+    { getDefaultModel: () => "openai:gpt-test" } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[1],
+    { getAgentConfig: () => ({ locale: "en_US" }) } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[2],
+    { resolveGlobalWorkspacePath: async () => repoRoot } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[3]
+  )
+
+  await assert.rejects(
+    service.cloneUntilMessage(sourceThreadId, "message-user-interrupt"),
+    /Cannot fork from a message that is waiting for human approval/
+  )
+  await assert.rejects(
+    service.clone(sourceThreadId),
+    /Cannot fork from a message that is waiting for human approval/
+  )
+
+  const runtimeState = await service.getRuntimeState(sourceThreadId)
+  const history = await service.getHistory(sourceThreadId)
+  assert.deepEqual(runtimeState.forkState, {
+    canFork: false,
+    reason: "checkpoint_interrupt"
+  })
+  assert.deepEqual(history.forkState, runtimeState.forkState)
+})

@@ -1,7 +1,7 @@
 import { AlertCircle, ArrowDown, Loader2, X } from "lucide-react"
 import { Messages } from "@/components/chat/Messages"
 import { ChatTodos } from "@/components/chat/ChatTodos"
-import type { HITLDecision, HITLRequest, Message, Todo } from "@/types"
+import type { HITLDecision, HITLRequest, Message, ThreadForkState, Todo } from "@/types"
 import { useI18n } from "@/lib/i18n"
 import { useStickToBottom } from "use-stick-to-bottom"
 
@@ -68,6 +68,7 @@ export function LauncherAiConversation(props: {
   clearError: () => void
   displayMessages: Message[]
   error: string | null
+  forkState: ThreadForkState
   isLoading: boolean
   onApprovalDecision: (decision: HITLDecision) => Promise<void>
   onBranch?: (messageId?: string) => Promise<void>
@@ -84,6 +85,7 @@ export function LauncherAiConversation(props: {
     clearError,
     displayMessages,
     error,
+    forkState,
     isLoading,
     onApprovalDecision,
     onBranch,
@@ -113,7 +115,7 @@ export function LauncherAiConversation(props: {
               isLoading={isLoading}
               messages={displayMessages}
               onApprovalDecision={onApprovalDecision}
-              onBranch={onBranch}
+              onBranch={forkState.canFork ? onBranch : undefined}
               onRetry={onRetry}
               pendingApproval={pendingApproval}
             />

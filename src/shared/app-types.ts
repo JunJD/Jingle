@@ -193,6 +193,7 @@ export interface ToolResult {
 }
 
 export interface ThreadRuntimeState {
+  forkState: ThreadForkState
   todos: Todo[]
   pendingApproval: HITLRequest | null
 }
@@ -200,6 +201,13 @@ export interface ThreadRuntimeState {
 export interface ThreadHistoryState extends ThreadRuntimeState {
   artifacts: ArtifactRecord[]
   messages: Message[]
+}
+
+export type ThreadForkBlockReason = "busy" | "checkpoint_interrupt" | "pending_hitl"
+
+export interface ThreadForkState {
+  canFork: boolean
+  reason?: ThreadForkBlockReason
 }
 
 export interface Todo {

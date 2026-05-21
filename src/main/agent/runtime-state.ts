@@ -288,6 +288,12 @@ export function extractTodosFromCheckpoint(tuple: CheckpointTuple | undefined): 
   }))
 }
 
+export function checkpointHasInterrupt(tuple: CheckpointTuple | undefined): boolean {
+  const state = tuple as LatestCheckpointState | undefined
+  const interrupts = state?.checkpoint?.channel_values?.__interrupt__
+  return Array.isArray(interrupts) && interrupts.length > 0
+}
+
 export function extractHitlRequestFromCheckpoint(
   threadId: string,
   tuple: CheckpointTuple | undefined,

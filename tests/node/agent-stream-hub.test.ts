@@ -40,13 +40,24 @@ function createSerializedAiMessage(id: string, content: string) {
   }
 }
 
-test("AgentStreamHub hydrates history and fans out projection updates", async () => {
-  const history: ThreadHistoryState = {
+function createHistory(overrides: Partial<ThreadHistoryState> = {}): ThreadHistoryState {
+  return {
     artifacts: [],
-    messages: [createUserMessage("history-user", "hello")],
+    forkState: {
+      canFork: true
+    },
+    messages: [],
     pendingApproval: null,
-    todos: []
+    todos: [],
+    ...overrides
   }
+}
+
+test("AgentStreamHub hydrates history and fans out projection updates", async () => {
+  const history = createHistory({
+    messages: [createUserMessage("history-user", "hello")],
+    todos: []
+  })
   const hub = new AgentStreamHub(createThreadsService(history))
   const seenByFirst: string[] = []
   const seenBySecond: string[] = []
@@ -84,12 +95,10 @@ test("AgentStreamHub hydrates history and fans out projection updates", async ()
 })
 
 test("AgentStreamHub derives persisted HITL request ids from run and tool call ids", async () => {
-  const history: ThreadHistoryState = {
-    artifacts: [],
+  const history = createHistory({
     messages: [createUserMessage("history-user", "hello")],
-    pendingApproval: null,
     todos: []
-  }
+  })
   const hub = new AgentStreamHub(createThreadsService(history))
   const events: string[] = []
 
@@ -151,15 +160,13 @@ test("AgentStreamHub derives persisted HITL request ids from run and tool call i
 })
 
 test("AgentStreamHub merges partial values message snapshots without dropping prior turns", async () => {
-  const history: ThreadHistoryState = {
-    artifacts: [],
+  const history = createHistory({
     messages: [
       createUserMessage("user-1", "hello"),
       createAssistantMessage("assistant-1", "hi there")
     ],
-    pendingApproval: null,
     todos: []
-  }
+  })
   const hub = new AgentStreamHub(createThreadsService(history))
 
   await hub.prepareInvoke("thread-3", {
@@ -187,12 +194,10 @@ test("AgentStreamHub merges partial values message snapshots without dropping pr
 })
 
 test("AgentStreamHub hides provider-emitted tool call markup from assistant text", async () => {
-  const history: ThreadHistoryState = {
-    artifacts: [],
+  const history = createHistory({
     messages: [],
-    pendingApproval: null,
     todos: []
-  }
+  })
   const hub = new AgentStreamHub(createThreadsService(history))
 
   await hub.handlePayload("thread-4", {
@@ -231,8 +236,7 @@ test("AgentStreamHub hides provider-emitted tool call markup from assistant text
 })
 
 test("AgentStreamHub hides provider-emitted tool call markup when hydrating history", async () => {
-  const history: ThreadHistoryState = {
-    artifacts: [],
+  const history = createHistory({
     messages: [
       {
         content:
@@ -252,9 +256,8 @@ test("AgentStreamHub hides provider-emitted tool call markup when hydrating hist
         ]
       }
     ],
-    pendingApproval: null,
     todos: []
-  }
+  })
   const hub = new AgentStreamHub(createThreadsService(history))
 
   const envelope = await hub.getProjectionEnvelope("thread-5")
@@ -266,12 +269,10 @@ test("AgentStreamHub hides provider-emitted tool call markup when hydrating hist
 })
 
 test("AgentStreamHub appends streamed reasoning and text content blocks", async () => {
-  const history: ThreadHistoryState = {
-    artifacts: [],
+  const history = createHistory({
     messages: [createUserMessage("user-1", "think out loud")],
-    pendingApproval: null,
     todos: []
-  }
+  })
   const hub = new AgentStreamHub(createThreadsService(history))
 
   await hub.handlePayload("thread-6", {

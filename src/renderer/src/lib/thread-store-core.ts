@@ -8,7 +8,7 @@ import {
   type OpenArtifactTab,
   type OpenFile
 } from "@shared/thread-tabs"
-import type { HITLRequest, Message, Subagent, Todo } from "../types"
+import type { HITLRequest, Message, Subagent, ThreadForkState, Todo } from "../types"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
 
@@ -23,6 +23,7 @@ export interface TokenUsage {
 
 export interface ThreadState {
   artifacts: ArtifactRecord[]
+  forkState: ThreadForkState
   messages: Message[]
   todos: Todo[]
   workspacePath: string | null
@@ -41,6 +42,7 @@ export interface ThreadState {
 
 export interface ThreadActions {
   setArtifacts: (artifacts: ArtifactRecord[]) => void
+  setForkState: (forkState: ThreadForkState) => void
   appendMessage: (message: Message) => void
   setMessages: (messages: Message[]) => void
   setTodos: (todos: Todo[]) => void
@@ -92,6 +94,9 @@ export interface ThreadStore {
 export function createDefaultThreadState(): ThreadState {
   return {
     artifacts: [],
+    forkState: {
+      canFork: true
+    },
     messages: [],
     todos: [],
     workspacePath: null,
@@ -195,6 +200,9 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
           artifacts,
           openArtifacts: syncOpenArtifactTabs(state.openArtifacts, artifacts)
         }))
+      },
+      setForkState: (forkState: ThreadForkState) => {
+        updateThreadState(threadId, () => ({ forkState }))
       },
       setTodos: (todos: Todo[]) => {
         updateThreadState(threadId, () => ({ todos }))

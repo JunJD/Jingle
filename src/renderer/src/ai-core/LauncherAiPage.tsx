@@ -95,6 +95,7 @@ export function LauncherAiPage(): React.JSX.Element {
     return state.threads.find((thread) => thread.thread_id === threadId)?.title ?? null
   })
   const pendingApproval = conversation.pendingApproval
+  const canForkThread = conversation.forkState.canFork
   const hasAttachmentDraft = attachmentDraft.attachments.length > 0
   const isComposerExpanded = !pendingApproval && (query.includes("\n") || hasAttachmentDraft)
   const composerTextHeight = 14 + getVisibleLineCount(query) * AI_COMPOSER_LINE_HEIGHT
@@ -189,7 +190,9 @@ export function LauncherAiPage(): React.JSX.Element {
     conversation.displayMessages.length > 0
   const { actionController, addAttachmentShortcut, submitShortcut } = useLauncherAiActions({
     branchThread: handleBranchChat,
-    canBranchThread: Boolean(threadId && conversation.displayMessages.length > 0 && !isBusy),
+    canBranchThread: Boolean(
+      threadId && conversation.displayMessages.length > 0 && canForkThread
+    ),
     canGoToNextChat,
     canGoToPreviousChat,
     canStartNewQuestion,
@@ -429,6 +432,7 @@ export function LauncherAiPage(): React.JSX.Element {
             clearError={conversation.clearVisibleError}
             displayMessages={conversation.displayMessages}
             error={conversation.visibleError}
+            forkState={conversation.forkState}
             isLoading={conversation.isLoading}
             onApprovalDecision={handleApprovalDecision}
             onBranch={handleBranchChat}

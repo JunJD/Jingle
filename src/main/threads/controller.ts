@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron"
-import type { ThreadHistoryState, ThreadUpdateParams, Todo, HITLRequest } from "../types"
+import type { ThreadHistoryState, ThreadRuntimeState, ThreadUpdateParams } from "../types"
 import { registerIpcHandle } from "../ipc/handle"
 import { ThreadsService } from "./service"
 
@@ -50,10 +50,7 @@ export class ThreadsController {
     registerIpcHandle(
       ipcMain,
       "threads:runtimeState",
-      async (
-        _event,
-        threadId: string
-      ): Promise<{ pendingApproval: HITLRequest | null; todos: Todo[] }> => {
+      async (_event, threadId: string): Promise<ThreadRuntimeState> => {
         return this.threadsService.getRuntimeState(threadId)
       }
     )

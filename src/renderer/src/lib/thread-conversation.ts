@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react"
-import type { HITLDecision, HITLRequest, Message, Todo } from "@/types"
+import type { HITLDecision, HITLRequest, Message, ThreadForkState, Todo } from "@/types"
 import { useThreadActions, useThreadSelector, useThreadStream } from "./thread-context"
 
 export interface ToolResultInfo {
@@ -8,11 +8,15 @@ export interface ToolResultInfo {
 
 const EMPTY_THREAD_MESSAGES: Message[] = []
 const EMPTY_TODOS: Todo[] = []
+const DEFAULT_FORK_STATE: ThreadForkState = {
+  canFork: true
+}
 
 export interface ThreadConversationProjection {
   clearError: () => void
   displayMessages: Message[]
   error: string | null
+  forkState: ThreadForkState
   isLoading: boolean
   pendingApproval: HITLRequest | null
   resumePendingApproval: (decision: HITLDecision) => Promise<void>
@@ -32,6 +36,7 @@ export function useThreadConversationProjection(
     (state) => state?.messages ?? EMPTY_THREAD_MESSAGES
   )
   const pendingApproval = useThreadSelector(threadId, (state) => state?.pendingApproval ?? null)
+  const forkState = useThreadSelector(threadId, (state) => state?.forkState ?? DEFAULT_FORK_STATE)
   const todos = useThreadSelector(threadId, (state) => state?.todos ?? EMPTY_TODOS)
   const error = useThreadSelector(threadId, (state) => state?.error ?? null)
   const currentModel = useThreadSelector(threadId, (state) => state?.currentModel ?? null)
@@ -75,6 +80,7 @@ export function useThreadConversationProjection(
     clearError: threadActions?.clearError ?? (() => {}),
     displayMessages: threadMessages,
     error,
+    forkState,
     isLoading,
     pendingApproval,
     resumePendingApproval,
