@@ -1636,7 +1636,34 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 /* Code typography surfaces */
 .ow-chat-markdown {
+  --ow-chat-table-cell-x: var(--ow-space-4);
+  --ow-chat-table-cell-y: var(--ow-space-2);
+  --ow-chat-table-font: 14px;
+  --ow-chat-table-gap: var(--ow-space-2);
+  --ow-chat-table-line: var(--ow-line-chat);
+  --ow-chat-table-margin-y: var(--ow-space-4);
+  --ow-chat-table-max-h: none;
+  --ow-chat-table-min-w: 100%;
+  --ow-chat-table-padding: var(--ow-space-2);
+  --ow-chat-table-radius: var(--ow-radius-md);
+  --ow-chat-table-width: 100%;
+  --ow-chat-table-wrapper-w: 100%;
   white-space: normal;
+}
+
+body[data-window="launcher"] .ow-chat-markdown,
+.launcher-chrome .ow-chat-markdown {
+  --ow-chat-table-cell-x: var(--ow-space-2);
+  --ow-chat-table-cell-y: var(--ow-space-1);
+  --ow-chat-table-font: var(--ow-font-body);
+  --ow-chat-table-gap: var(--ow-space-1);
+  --ow-chat-table-margin-y: var(--ow-space-2);
+  --ow-chat-table-max-h: min(220px, 42vh);
+  --ow-chat-table-min-w: 0;
+  --ow-chat-table-padding: var(--ow-space-1);
+  --ow-chat-table-radius: var(--ow-radius-sm);
+  --ow-chat-table-width: max-content;
+  --ow-chat-table-wrapper-w: fit-content;
 }
 
 .ow-chat-markdown :where(p) {
@@ -1655,6 +1682,50 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 .ow-chat-markdown :where(blockquote) {
   margin-block: var(--ow-chat-prose-block-gap);
+}
+
+body[data-window="launcher"] .ow-chat-markdown [data-streamdown="table-wrapper"],
+.launcher-chrome .ow-chat-markdown [data-streamdown="table-wrapper"] {
+  width: var(--ow-chat-table-wrapper-w);
+  max-width: 100%;
+  margin-block: var(--ow-chat-table-margin-y);
+  gap: var(--ow-chat-table-gap);
+  border-color: var(--border);
+  border-radius: var(--ow-chat-table-radius);
+  background: color-mix(in srgb, var(--background-secondary) 58%, transparent);
+  padding: var(--ow-chat-table-padding);
+}
+
+body[data-window="launcher"] .ow-chat-markdown [data-streamdown="table-wrapper"] > div:last-child,
+.launcher-chrome .ow-chat-markdown [data-streamdown="table-wrapper"] > div:last-child {
+  max-width: 100%;
+  max-height: var(--ow-chat-table-max-h);
+  border-color: var(--border);
+  border-radius: var(--ow-chat-table-radius);
+  background: color-mix(in srgb, var(--background-elevated) 86%, transparent);
+}
+
+body[data-window="launcher"] .ow-chat-markdown [data-streamdown="table"],
+.launcher-chrome .ow-chat-markdown [data-streamdown="table"] {
+  width: var(--ow-chat-table-width);
+  min-width: var(--ow-chat-table-min-w);
+}
+
+body[data-window="launcher"]
+  .ow-chat-markdown
+  :where([data-streamdown="table-header-cell"], [data-streamdown="table-cell"]),
+.launcher-chrome
+  .ow-chat-markdown
+  :where([data-streamdown="table-header-cell"], [data-streamdown="table-cell"]) {
+  padding: var(--ow-chat-table-cell-y) var(--ow-chat-table-cell-x);
+  font-size: var(--ow-chat-table-font);
+  line-height: var(--ow-chat-table-line);
+  vertical-align: top;
+}
+
+body[data-window="launcher"] .ow-chat-markdown [data-streamdown="table-cell"],
+.launcher-chrome .ow-chat-markdown [data-streamdown="table-cell"] {
+  overflow-wrap: anywhere;
 }
 
 .launcher-ai-model-popover {
