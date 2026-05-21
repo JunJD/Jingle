@@ -54,6 +54,7 @@ interface LatestCheckpointState {
     id?: string
     channel_values?: {
       messages?: CheckpointChannelMessage[]
+      title?: string | null
       todos?: Array<{ id?: string; content?: string; status?: string }>
       __interrupt__?: Array<{
         value?: CheckpointInterruptValue
@@ -286,6 +287,12 @@ export function extractTodosFromCheckpoint(tuple: CheckpointTuple | undefined): 
     content: todo.content || "",
     status: (todo.status || "pending") as Todo["status"]
   }))
+}
+
+export function extractTitleFromCheckpoint(tuple: CheckpointTuple | undefined): string | null {
+  const state = tuple as LatestCheckpointState | undefined
+  const title = state?.checkpoint?.channel_values?.title
+  return typeof title === "string" && title.trim().length > 0 ? title.trim() : null
 }
 
 export function checkpointHasInterrupt(tuple: CheckpointTuple | undefined): boolean {

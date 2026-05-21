@@ -77,8 +77,7 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
       },
       getRuntimeState: async () => {
         throw new Error("Not implemented in test stub")
-      },
-      generateTitle: async () => "title"
+      }
     },
     models: {
       getState: async () => providerState,

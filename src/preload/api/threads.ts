@@ -28,8 +28,5 @@ export const threadsApi = {
   },
   getRuntimeState: (threadId: string): Promise<ThreadRuntimeState> => {
     return invokeIpc("threads:runtimeState", threadId)
-  },
-  generateTitle: (message: string): Promise<string> => {
-    return invokeIpc("threads:generateTitle", message)
   }
 }

@@ -7,7 +7,6 @@ import {
   ThinkingBar
 } from "@/components/agent-ui"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { Messages } from "./Messages"
@@ -19,7 +18,6 @@ import { ComposerApprovalPrompt } from "./ComposerApprovalPrompt"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
 import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
-import { maybeGenerateThreadTitle } from "@/lib/thread-title"
 
 interface ChatContainerProps {
   threadId: string
@@ -34,27 +32,11 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const isAtBottomRef = useRef(true)
   useDisableTabNavigation(inputRef)
 
-  const threads = useHistoryShellStore((state) => state.threads)
-  const updateThread = useHistoryShellStore((state) => state.updateThread)
-
   const threadActions = useThreadActions(threadId)
   const workspacePath = useThreadSelector(threadId, (state) => state?.workspacePath ?? null)
   const tokenUsage = useThreadSelector(threadId, (state) => state?.tokenUsage ?? EMPTY_TOKEN_USAGE)
   const currentModel = useThreadSelector(threadId, (state) => state?.currentModel ?? null)
   const invocation = useAiInvocation({
-    onAfterAppendMessage: ({ isFirstMessage, message }) => {
-      if (!isFirstMessage) {
-        return
-      }
-
-      const currentThread = threads.find((thread) => thread.thread_id === threadId)
-      void maybeGenerateThreadTitle(threadId, message, {
-        persistTitle: async (nextThreadId, title) => {
-          await updateThread(nextThreadId, { title })
-        },
-        thread: currentThread
-      })
-    },
     threadId,
     validateInvocation: ({ threadState }) => {
       return threadState.workspacePath ? null : copy.chat.inputNeedsWorkspace

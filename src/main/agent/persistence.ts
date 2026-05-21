@@ -7,8 +7,10 @@ import {
   RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY,
   type ExtensionSourceBinding
 } from "@shared/extension-sources"
-import { createRun, getRun, updateRun, updateThread } from "../db"
+import { createRun, getRun, getThread, updateRun, updateThread } from "../db"
 import { getCheckpointer } from "./runtime"
+import { extractTitleFromCheckpoint } from "./runtime-state"
+import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
 import {
@@ -112,13 +114,23 @@ export async function syncRunFromLatestCheckpoint(
   }
 
   const status = options?.interrupted ? "interrupted" : resolveCheckpointRunStatus(latest)
+  const generatedTitle = extractTitleFromCheckpoint(latest)
 
   await updateRun(runId, {
     status
   })
 
+  const thread = await getThread(threadId)
+  const shouldSyncTitle =
+    generatedTitle !== null &&
+    shouldAutoGenerateThreadTitle({
+      metadata: thread?.metadata ? JSON.parse(thread.metadata) : undefined,
+      title: thread?.title ?? undefined
+    })
+
   await updateThread(threadId, {
-    status: status === "interrupted" ? "interrupted" : "idle"
+    status: status === "interrupted" ? "interrupted" : "idle",
+    ...(shouldSyncTitle ? { title: generatedTitle } : {})
   })
 
   return status

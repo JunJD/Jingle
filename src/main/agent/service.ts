@@ -2,6 +2,7 @@ import { HumanMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
 import { readSourceProfilesSnapshotFromMetadata } from "@shared/extension-sources"
 import { normalizeComposerMessageRefs, summarizeMessageContent } from "@shared/message-content"
+import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import {
   createDefaultNativeExtensionSourceBindings,
   hydrateNativeExtensionSourceBindings
@@ -437,9 +438,19 @@ export class AgentService {
         id: message.id,
         ...(normalizedRefs.length > 0 ? { additional_kwargs: { refs: normalizedRefs } } : {})
       })
+      const initialState = {
+        messages: [humanMessage],
+        ...(thread?.title &&
+        !shouldAutoGenerateThreadTitle({
+          metadata,
+          title: thread.title
+        })
+          ? { title: thread.title }
+          : {})
+      }
 
       const stream = await agent.stream(
-        { messages: [humanMessage] },
+        initialState,
         buildAgentRunConfig(threadId, runId, abortController)
       )
       let interrupted = false

@@ -14,6 +14,7 @@ import type { AgentThreadProjection } from "@shared/agent-projection"
 import type { ArtifactRecord } from "@shared/artifacts"
 import { isPermissionModeName, THREAD_PERMISSION_MODE_METADATA_KEY } from "@shared/permission-mode"
 import { getIpcErrorDisplayMessage, getIpcErrorPayload } from "./ipc-errors"
+import { historyShellStore } from "./history-shell-store"
 import {
   createThreadStore,
   type ThreadActions,
@@ -156,6 +157,10 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       }
       threadStore.setStreamLoadingState(threadId, projection.isLoading)
       notifyStreamSubscribers(threadId)
+
+      if (wasLoading && !projection.isLoading) {
+        void historyShellStore.getState().loadThreads()
+      }
 
       if (shouldRefreshForkState) {
         void refreshThreadForkState(threadId)

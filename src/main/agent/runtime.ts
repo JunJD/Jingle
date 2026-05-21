@@ -32,6 +32,7 @@ import { ChatAnthropic } from "@langchain/anthropic"
 import { createArtifactToolsMiddleware } from "./artifact-tools-middleware"
 import { createDesktopAutomationToolsMiddleware } from "./desktop-automation-tools-middleware"
 import { createWebToolsMiddleware } from "./web-tools-middleware"
+import { createTitleMiddleware } from "./title-middleware"
 import { createBddAgentRuntime } from "./bdd-runtime"
 import { nativeExtensionMainDefinitions } from "@extensions/main"
 import { nativeExtensionManifests } from "@extensions/index"
@@ -238,6 +239,7 @@ The workspace root is: ${workspacePath}`
   function createRootAgentLoopMiddleware() {
     return [
       ...createSharedAgentLoopMiddleware(),
+      createTitleMiddleware(),
       createDesktopAutomationToolsMiddleware(),
       extensionSourceRuntime.middleware,
       createGuardrailMiddleware({

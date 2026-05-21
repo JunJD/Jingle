@@ -20,6 +20,16 @@ test("auto-generates for launcher threads even with the generic launcher title",
   )
 })
 
+test("does not auto-generate for launcher threads after manual rename", () => {
+  assert.equal(
+    shouldAutoGenerateThreadTitle({
+      metadata: { source: "launcher-ai" },
+      title: "修复 SQLite 迁移"
+    }),
+    false
+  )
+})
+
 test("does not overwrite a non-default user-facing title", () => {
   assert.equal(
     shouldAutoGenerateThreadTitle({

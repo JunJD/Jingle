@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
 import { type PermissionModeName } from "@shared/permission-mode"
 import { useAiInvocation } from "@/lib/ai-invocation"
-import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
-import { maybeGenerateThreadTitle } from "@/lib/thread-title"
 import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { hasComposerMessageInputContent, type ComposerMessageRef } from "@shared/message-content"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
@@ -50,8 +48,6 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const hasRunInitialActionRef = useRef(false)
   const [inputStatus, setInputStatus] = useState<LauncherInputStatus>("idle")
   const [threadActionError, setThreadActionError] = useState<string | null>(null)
-  const threads = useHistoryShellStore((state) => state.threads)
-  const updateThread = useHistoryShellStore((state) => state.updateThread)
   const threadNavigation = useLauncherAiThreadNavigation({
     initialAction: host.initialAction,
     seedQuery: host.seedQuery
@@ -80,19 +76,6 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
       }
     },
     initialInput: host.seedQuery,
-    onAfterAppendMessage: ({ isFirstMessage, message, threadId }) => {
-      if (!isFirstMessage) {
-        return
-      }
-
-      const currentThread = threads.find((thread) => thread.thread_id === threadId)
-      void maybeGenerateThreadTitle(threadId, message, {
-        persistTitle: async (nextThreadId, title) => {
-          await updateThread(nextThreadId, { title })
-        },
-        thread: currentThread
-      })
-    },
     threadId
   })
   const query = invocation.input

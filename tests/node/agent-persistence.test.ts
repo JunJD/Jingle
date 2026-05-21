@@ -310,6 +310,102 @@ test("syncRunFromLatestCheckpoint reads the latest checkpoint for that run only"
   assert.equal(successRun?.status, "running")
 })
 
+test("syncRunFromLatestCheckpoint copies a generated checkpoint title onto auto-titled threads", async () => {
+  const { createRun, createThread, getThread } = await loadDbModules()
+  const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-title"
+  const runId = "run-title"
+
+  await createThread(threadId, {
+    metadata: { source: "launcher-ai" },
+    title: "快速提问"
+  })
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-title"
+  checkpoint.channel_values = {
+    messages: [
+      { type: "human", content: "帮我整理一下这次发布的标题和摘要" },
+      { type: "ai", content: "好，开始整理" }
+    ],
+    title: "发布摘要整理"
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+
+  await syncRunFromLatestCheckpoint(threadId, runId)
+
+  const thread = await getThread(threadId)
+  assert.equal(thread?.title, "发布摘要整理")
+})
+
+test("syncRunFromLatestCheckpoint preserves manually renamed launcher titles", async () => {
+  const { createRun, createThread, getThread } = await loadDbModules()
+  const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-manual-title"
+  const runId = "run-manual-title"
+
+  await createThread(threadId, {
+    metadata: { source: "launcher-ai" },
+    title: "我改过的标题"
+  })
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-manual-title"
+  checkpoint.channel_values = {
+    messages: [
+      { type: "human", content: "帮我整理一下这次发布的标题和摘要" },
+      { type: "ai", content: "好，开始整理" }
+    ],
+    title: "发布摘要整理"
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+
+  await syncRunFromLatestCheckpoint(threadId, runId)
+
+  const thread = await getThread(threadId)
+  assert.equal(thread?.title, "我改过的标题")
+})
+
 test("thread-scoped checkpoint reads keep run ids out of conversation resume config", async () => {
   const { createRun, createThread } = await loadDbModules()
   const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
@@ -512,6 +608,7 @@ test("cloneUntilMessage branches from the checkpoint that first contains the tar
     ["message-ai-1", "message-user-1"]
   )
 })
+
 test("thread fork rejects threads with pending HITL requests", async () => {
   const { createRun, createThread, upsertHitlRequest } = await loadDbModules()
   const { ThreadsService } = await import("../../src/main/threads/service")

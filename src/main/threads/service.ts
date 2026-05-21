@@ -25,7 +25,6 @@ import { OpenworkIpcError } from "../ipc/error"
 import { ModelProviderService } from "../model-provider/service"
 import { SettingsService } from "../settings/service"
 import { WorkspaceService } from "../workspace/service"
-import { generateTitle } from "../services/title-generator"
 import { syncMessageSearchIndexFromSnapshot } from "../db/message-search"
 import { formatDefaultThreadTitle } from "@shared/i18n"
 import {
@@ -476,9 +475,5 @@ export class ThreadsService {
       todos,
       pendingApproval: checkpointRequest
     }
-  }
-
-  generateTitle(message: string): string {
-    return generateTitle(message)
   }
 }

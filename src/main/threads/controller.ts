@@ -54,9 +54,5 @@ export class ThreadsController {
         return this.threadsService.getRuntimeState(threadId)
       }
     )
-
-    registerIpcHandle(ipcMain, "threads:generateTitle", async (_event, message: string) => {
-      return this.threadsService.generateTitle(message)
-    })
   }
 }
