@@ -4,8 +4,7 @@ import type {
   SourceProfile
 } from "@shared/extension-sources"
 import { APPLE_REMINDERS_EXTENSION_ID } from "../src/contracts"
-
-export const APPLE_REMINDERS_SOURCE_ID = "appleReminders" as const
+import { APPLE_REMINDERS_SOURCE_ID } from "../source-mention"
 
 export const appleRemindersSourceDefinition: ExtensionSourceDefinition = {
   defaultToolNames: ["listReminders"],

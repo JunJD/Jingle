@@ -13,7 +13,14 @@ import {
   createDefaultAppleRemindersSourceBinding,
   createDefaultAppleRemindersSourceProfile
 } from "../../src/extensions/apple-reminders/main/source"
-import { hydrateNativeExtensionSourceBindings } from "../../src/extensions/sources"
+import {
+  createNativeExtensionSourceBindingsForRefs,
+  hydrateNativeExtensionSourceBindings
+} from "../../src/extensions/sources"
+import {
+  listNativeExtensionSourceMentions,
+  nativeExtensionSourceMentions
+} from "../../src/extensions/source-mentions"
 
 const createdAt = "2026-04-30T00:00:00.000Z"
 
@@ -106,6 +113,63 @@ test("stored native source profiles skip definitions that are no longer register
     }
 
     assert.deepEqual(hydrateNativeExtensionSourceBindings([profile]), [])
+  } finally {
+    consoleWarn.mock.restore()
+  }
+})
+
+test("Apple Reminders source binding is loaded only from an explicit extension source ref", () => {
+  assert.deepEqual(createNativeExtensionSourceBindingsForRefs([]), [])
+  assert.deepEqual(nativeExtensionSourceMentions, [
+    {
+      extensionName: "apple-reminders",
+      iconName: "reminders",
+      label: "Apple Reminders",
+      sourceId: "appleReminders",
+      supportedPlatforms: ["darwin"],
+      value: "apple-reminders"
+    }
+  ])
+  assert.deepEqual(
+    listNativeExtensionSourceMentions("darwin").map((mention) => mention.sourceId),
+    ["appleReminders"]
+  )
+  assert.deepEqual(listNativeExtensionSourceMentions("linux"), [])
+
+  const bindings = createNativeExtensionSourceBindingsForRefs(
+    [
+      {
+        extensionName: "apple-reminders",
+        name: "Apple Reminders",
+        sourceId: "appleReminders",
+        type: "extension-source"
+      }
+    ],
+    {
+      now: createdAt,
+      platform: "darwin"
+    }
+  )
+
+  assert.equal(bindings.length, 1)
+  assert.equal(bindings[0]?.source.id, appleRemindersSourceDefinition.id)
+  assert.equal(bindings[0]?.source.guide, appleRemindersSourceDefinition.guide)
+})
+
+test("unknown extension source refs are ignored", () => {
+  const consoleWarn = mock.method(console, "warn", () => {})
+  try {
+    assert.deepEqual(
+      createNativeExtensionSourceBindingsForRefs([
+        {
+          extensionName: "unknown",
+          name: "Unknown",
+          sourceId: "unknown",
+          type: "extension-source"
+        }
+      ]),
+      []
+    )
   } finally {
     consoleWarn.mock.restore()
   }

@@ -36,7 +36,6 @@ import { createTitleMiddleware } from "./title-middleware"
 import { createBddAgentRuntime } from "./bdd-runtime"
 import { nativeExtensionMainDefinitions } from "@extensions/main"
 import { nativeExtensionManifests } from "@extensions/index"
-import { createDefaultNativeExtensionSourceBindings } from "@extensions/sources"
 import { createNativeExtensionToolRegistry } from "../extension-tools/native-extension-tools"
 import { createExtensionSourceRuntime } from "./extension-source-runtime"
 import type { PermissionModeName } from "@shared/permission-mode"
@@ -125,7 +124,7 @@ export async function createAgentRuntime(
 ): Promise<AgentRuntime> {
   const { threadId, modelId, workspacePath } = options
   const permissionMode = options.permissionMode ?? DEFAULT_PERMISSION_MODE
-  const sourceBindings = options.sourceBindings ?? createDefaultNativeExtensionSourceBindings()
+  const sourceBindings = options.sourceBindings ?? []
 
   if (!threadId) {
     throw new Error("Thread ID is required for checkpointing.")

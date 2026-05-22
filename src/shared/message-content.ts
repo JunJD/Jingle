@@ -25,6 +25,12 @@ export type ComposerMessageRef =
       name?: string
       url: string
     }
+  | {
+      type: "extension-source"
+      extensionName: string
+      name: string
+      sourceId: string
+    }
 
 export interface ComposerMessageInput {
   refs: ComposerMessageRef[]
@@ -50,8 +56,10 @@ function normalizeComposerMessageRef(value: unknown): ComposerMessageRef | null 
   }
 
   const ref = value as {
+    extensionName?: unknown
     name?: unknown
     path?: unknown
+    sourceId?: unknown
     type?: unknown
     url?: unknown
   }
@@ -89,6 +97,30 @@ function normalizeComposerMessageRef(value: unknown): ComposerMessageRef | null 
       ...(name ? { name } : {}),
       type: "image",
       url
+    }
+  }
+
+  if (ref.type === "extension-source") {
+    if (
+      typeof ref.extensionName !== "string" ||
+      typeof ref.name !== "string" ||
+      typeof ref.sourceId !== "string"
+    ) {
+      return null
+    }
+
+    const extensionName = ref.extensionName.trim()
+    const name = ref.name.trim()
+    const sourceId = ref.sourceId.trim()
+    if (!extensionName || !name || !sourceId) {
+      return null
+    }
+
+    return {
+      extensionName,
+      name,
+      sourceId,
+      type: "extension-source"
     }
   }
 
@@ -458,6 +490,8 @@ export function hasComposerMessageInputContent(input: ComposerMessageInput | und
         return ref.path.trim().length > 0
       case "image":
         return ref.url.trim().length > 0
+      case "extension-source":
+        return false
       default:
         return false
     }
@@ -528,6 +562,8 @@ export function toMessageContent(input: ComposerMessageInput): string | ContentB
           ...(ref.name ? { name: ref.name } : {}),
           type: "image"
         })
+        break
+      case "extension-source":
         break
     }
   }

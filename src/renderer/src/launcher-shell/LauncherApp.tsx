@@ -26,6 +26,7 @@ import { useLauncherRouter } from "./hooks/useLauncherRouter"
 import { useLauncherSearchPage } from "./hooks/useLauncherSearchPage"
 import { useLauncherShellEffects } from "./hooks/useLauncherShellEffects"
 import type { LauncherInputElement } from "./input-element"
+import type { ComposerAreaHandle } from "@/composer-area"
 import type { LauncherInputStatus } from "./launcher-input-status"
 import { isLauncherCommandRoute } from "./pages/types"
 
@@ -52,7 +53,7 @@ export default function LauncherApp(): React.JSX.Element {
   const clipboard = useLauncherClipboard()
   const threadContext = useThreadContext()
   const searchInputRef = useRef<LauncherInputElement>(null)
-  const pluginInputRef = useRef<LauncherInputElement>(null)
+  const pluginInputRef = useRef<LauncherInputElement | ComposerAreaHandle>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const { closeActivePlugin, navigationDirection, openCommand, route, routeKey } =
     useLauncherRouter()
@@ -95,6 +96,10 @@ export default function LauncherApp(): React.JSX.Element {
     input.focus()
 
     if (behavior === "move-to-end") {
+      if ("getElement" in input) {
+        return
+      }
+
       const caretPosition = input.value.length
       input.setSelectionRange(caretPosition, caretPosition)
     }

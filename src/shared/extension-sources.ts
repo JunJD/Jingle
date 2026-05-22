@@ -55,6 +55,15 @@ export interface ExtensionSourceDefinition {
   writeToolNames?: string[]
 }
 
+export interface ExtensionSourceMention {
+  extensionName: string
+  iconName: string
+  label: string
+  supportedPlatforms?: string[]
+  sourceId: string
+  value: string
+}
+
 export interface SourceProfile {
   authStatus: "connected" | "missing" | "failed"
   createdAt: string

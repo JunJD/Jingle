@@ -2,7 +2,10 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {
   extractMessageText,
+  hasComposerMessageInputContent,
+  normalizeComposerMessageRefs,
   stripSerializedToolCallMarkup,
+  toMessageContent,
   toComposerMessageInput,
   toDisplayAssistantMessageContent,
   toDisplayUserMessageContent
@@ -29,6 +32,33 @@ test("toComposerMessageInput preserves refs from metadata when content is a stri
     ],
     text: ""
   })
+})
+
+test("extension source refs round-trip through metadata without becoming visible attachments", () => {
+  const refs = normalizeComposerMessageRefs([
+    {
+      type: "extension-source",
+      extensionName: "  apple-reminders  ",
+      name: "  Apple Reminders  ",
+      sourceId: "  appleReminders  "
+    }
+  ])
+
+  assert.deepEqual(refs, [
+    {
+      extensionName: "apple-reminders",
+      name: "Apple Reminders",
+      sourceId: "appleReminders",
+      type: "extension-source"
+    }
+  ])
+  assert.equal(hasComposerMessageInputContent({ refs, text: "" }), false)
+  assert.deepEqual(toMessageContent({ refs, text: "@apple-reminders remind me" }), [
+    {
+      text: "@apple-reminders remind me",
+      type: "text"
+    }
+  ])
 })
 
 test("toDisplayUserMessageContent reconstructs file blocks from metadata refs", () => {

@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowUp, Command, Plus, Square } from "lucide-react"
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   PromptInput,
   PromptInputAction,
@@ -14,7 +14,6 @@ import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { AI_ATTACHMENT_FILE_EXTENSIONS } from "@shared/launcher-attachments"
 import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
-import type { LauncherInputElement } from "@launcher-shell/input-element"
 import { AI_MAX_FOOTER_HEIGHT, getAiShellConfig } from "./ai-config"
 import { LauncherAiConversation, LauncherAiEmptyState } from "./LauncherAiConversation"
 import { LauncherAiHeaderModelPicker } from "./LauncherAiHeaderModelPicker"
@@ -27,6 +26,8 @@ import { useLauncherAiActions } from "./useLauncherAiActions"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
+import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
+import type { ComposerAreaHandle } from "@/composer-area"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 const AI_COMPOSER_CHROME_HEIGHT = 30
@@ -36,25 +37,16 @@ const AI_ATTACHMENT_STRIP_HEIGHT = 48
 const AI_THINKING_STATUS_HEIGHT = 28
 const AI_COMPOSER_BOTTOM_GAP = 8
 
-function insertTextAtSelection(input: LauncherInputElement, text: string): string {
-  const start = input.selectionStart ?? input.value.length
-  const end = input.selectionEnd ?? start
-  const nextValue = `${input.value.slice(0, start)}${text}${input.value.slice(end)}`
-  const nextSelection = start + text.length
-
-  window.requestAnimationFrame(() => {
-    input.setSelectionRange(nextSelection, nextSelection)
-  })
-
-  return nextValue
-}
-
 function getVisibleLineCount(value: string): number {
   return Math.min(AI_COMPOSER_VISIBLE_LINES, value.split("\n").length)
 }
 
 export function LauncherAiPage(): React.JSX.Element {
   const { copy } = useI18n()
+  const sourceMentions = useMemo(
+    () => listNativeExtensionSourceMentions(window.electron.process.platform),
+    []
+  )
   const attachmentDraft = useAiAttachments()
   const navigation = useAiCoreNavigation()
   const surface = useAiCoreSurface()
@@ -76,6 +68,7 @@ export function LauncherAiPage(): React.JSX.Element {
     runPrimaryAction,
     selectModel,
     selectPermissionMode,
+    setComposerRefs,
     setQuery,
     startFreshDraft,
     stop,
@@ -148,7 +141,7 @@ export function LauncherAiPage(): React.JSX.Element {
     setShowModelPicker(true)
   }, [])
   const handleComposerKeyDown = useCallback(
-    (event: React.KeyboardEvent<LauncherInputElement>): void => {
+    (event: React.KeyboardEvent<HTMLElement>): void => {
       if (event.key !== "Enter") {
         return
       }
@@ -166,12 +159,12 @@ export function LauncherAiPage(): React.JSX.Element {
       if (event.ctrlKey) {
         const input = inputRef.current
 
-        if (!input) {
+        if (!input || !("getElement" in input)) {
           return
         }
 
         event.preventDefault()
-        setQuery(insertTextAtSelection(input, "\n"))
+        input.insertText("\n")
         return
       }
 
@@ -182,7 +175,7 @@ export function LauncherAiPage(): React.JSX.Element {
       event.preventDefault()
       runPrimaryAction()
     },
-    [inputRef, runPrimaryAction, setQuery]
+    [inputRef, runPrimaryAction]
   )
   const canStartNewQuestion =
     query.trim().length > 0 ||
@@ -293,7 +286,6 @@ export function LauncherAiPage(): React.JSX.Element {
           ) : undefined
         }
         inputStatus={inputStatus}
-        inputRef={inputRef}
         showInputStatusIndicator={false}
         hideInputChrome
         density="compact"
@@ -351,7 +343,6 @@ export function LauncherAiPage(): React.JSX.Element {
             minHeight="var(--launcher-ai-composer-input-min-h)"
             onSubmit={runPrimaryAction}
             onValueChange={setQuery}
-            textareaRef={inputRef as RefObject<HTMLTextAreaElement | null>}
             value={query}
           >
             <input
@@ -388,11 +379,14 @@ export function LauncherAiPage(): React.JSX.Element {
 
               <div className="flex min-w-0 flex-1 flex-col gap-[var(--ow-space-1)]">
                 <PromptInputTextarea
-                  ref={inputRef as RefObject<HTMLTextAreaElement | null>}
+                  composerRef={inputRef as React.RefObject<ComposerAreaHandle | null>}
+                  mode="composer"
                   onKeyDown={handleComposerKeyDown}
+                  onRefsChange={setComposerRefs}
                   placeholder={copy.launcher.aiInputPlaceholder}
+                  sourceMentions={sourceMentions}
                   submitOnEnter={false}
-                  className="w-full py-[7px] [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-chat)]"
+                  className="w-full py-[7px] [font-size:var(--ow-font-control)] font-medium"
                 />
 
                 <LauncherAttachmentStrip

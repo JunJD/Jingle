@@ -18,7 +18,7 @@ interface LauncherChromeProps {
   inputClassName?: string
   inputMultiline?: boolean
   inputReplacement?: ReactNode
-  inputRef:
+  inputRef?:
     | RefObject<LauncherInputElement | null>
     | ((element: LauncherInputElement | null) => void)
   inputStatus?: LauncherInputStatus
@@ -70,7 +70,7 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
           ? null
           : (inputReplacement ?? (
               <LauncherInput
-                ref={inputRef}
+                ref={inputRef ?? undefined}
                 density={density}
                 multiline={inputMultiline}
                 trailing={inputTrailing}

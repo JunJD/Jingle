@@ -4,7 +4,7 @@ import { readSourceProfilesSnapshotFromMetadata } from "@shared/extension-source
 import { normalizeComposerMessageRefs, summarizeMessageContent } from "@shared/message-content"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import {
-  createDefaultNativeExtensionSourceBindings,
+  createNativeExtensionSourceBindingsForRefs,
   hydrateNativeExtensionSourceBindings
 } from "@extensions/sources"
 import {
@@ -417,7 +417,7 @@ export class AgentService {
 
       const normalizedRefs = normalizeComposerMessageRefs(message.additional_kwargs?.refs)
       const permissionMode = requestedPermissionMode ?? readThreadPermissionMode(thread)
-      const sourceBindings = createDefaultNativeExtensionSourceBindings()
+      const sourceBindings = createNativeExtensionSourceBindingsForRefs(normalizedRefs)
 
       const { runId } = await beginAgentRun(threadId, modelId, {
         permissionMode,
@@ -568,7 +568,7 @@ export class AgentService {
       const sourceProfiles = readSourceProfilesSnapshotFromMetadata(resumedRun?.metadata)
       const sourceBindings =
         sourceProfiles === null
-          ? createDefaultNativeExtensionSourceBindings()
+          ? []
           : hydrateNativeExtensionSourceBindings(sourceProfiles)
       const agent = await createAgentRuntime({
         threadId,
