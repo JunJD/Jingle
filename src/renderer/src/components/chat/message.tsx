@@ -68,6 +68,7 @@ export const MessageAction = ({
 }: MessageActionProps) => {
   const button = (
     <Button
+      aria-label={label || tooltip}
       className={cn(
         "size-[22px] rounded-[var(--ow-radius-sm)] text-muted-foreground hover:text-foreground [&_svg]:size-[var(--ow-icon-sm)]",
         className
@@ -78,7 +79,6 @@ export const MessageAction = ({
       {...props}
     >
       {children}
-      <span className="sr-only">{label || tooltip}</span>
     </Button>
   )
 

@@ -118,12 +118,71 @@ user-invocable: true
 4. 临时校验
 5. 最后才执行业务逻辑
 
+## 前端组件审查：以组件为核心分责
+
+前端实现里，最核心的分层单元不是“页面”或“功能描述”，而是组件本身。审查 React / renderer 改动时，必须把组件作为最小责任边界来判断：
+
+1. 这个状态是不是这个组件自己拥有的交互状态？
+2. 这个组件是在做 presentation primitive，还是 feature / page wiring？
+3. 这段逻辑应该收口在基础组件、组合组件，还是业务组件？
+4. 这个组件的 props 是 typed data，还是已经开始泄漏具体 UI 行为策略？
+
+### 前端组件分责规则
+
+- 瞬时交互状态必须放在真实 owner 组件：
+  - hover / pressed / copied / expanded / local loading / transient success
+- 业务组件不应持有可下沉到基础组件的瞬时 UI 状态：
+  - 例如 copy 后对号恢复、按钮 hover/press、局部 reveal/hide、局部 tooltip 文案切换
+- 基础组件应负责复用型交互策略：
+  - copy-to-check
+  - open/close toggle
+  - local loading / success / error visual feedback
+  - icon swap / tooltip swap / transient timer reset
+- 业务组件应只负责：
+  - 传入数据
+  - 选择使用哪个基础组件
+  - 决定是否渲染
+  - 处理真正的业务回调
+
+### 组件层级判断
+
+审查时必须先判断当前逻辑属于哪一层：
+
+- primitive / base component：
+  - 通用按钮、复制按钮、消息 action、toolbar item、popover trigger、input shell
+- composed component：
+  - message toolbar、attachment strip、approval panel、tool cluster
+- feature / page component：
+  - LauncherAiPage、Settings page、thread view、detail surface
+
+### 必须点名的前端异味
+
+以下情况应直接作为审查问题指出：
+
+- 页面/feature 组件里持有基础交互状态，例如 copied / hovered / pressed / local open
+- 同一种微交互在多个业务组件里重复实现一遍，而不是下沉到 primitive
+- 基础组件只暴露视觉壳，所有交互语义都散落在业务组件里
+- 组件 props 开始携带过多 UI 控制开关，说明边界切错
+- 为了一个局部交互，在 page 层引入 timer / effect / transient state
+- 组件内部既做业务选择，又做可复用微交互策略，导致职责混杂
+
+### 前端组件最小修正方向
+
+遇到上述问题时，优先修正为：
+
+- 把局部交互状态下沉到基础组件
+- 让组合组件只拼装 primitive，不重复实现 primitive 行为
+- 让 feature / page 组件只负责数据和业务回调，不负责按钮级微交互
+- 如果交互已经在仓库其他 primitive 中存在，优先复用同类实现，不要再写一套
+
 ## 输出要求
 
 - 审查结论一律使用中文
 - 先给 findings，按严重程度排序；架构问题必须排在普通代码问题之前
 - 每条 finding 都要写清：
   - 具体文件
+  - 该逻辑当前落在哪一层组件（primitive / composed / feature / page）
+  - 正确 owner 应该是哪一层
   - 失败模式或实现风险
   - 为什么这件事重要
   - 最小修正方向
