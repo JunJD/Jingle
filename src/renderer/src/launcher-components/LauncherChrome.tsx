@@ -17,7 +17,7 @@ interface LauncherChromeProps {
   inputClassName?: string
   inputMultiline?: boolean
   inputReplacement?: ReactNode
-  inputRef:
+  inputRef?:
     | RefObject<LauncherInputElement | null>
     | ((element: LauncherInputElement | null) => void)
   inputStatus?: LauncherInputStatus

@@ -10,6 +10,7 @@ import type {
   LauncherActionDescriptor
 } from "@/features/launcher-actions/model"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
+import type { ComposerAreaHandle } from "@/composer-area"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 
 interface UseLauncherAiActionsOptions {
@@ -22,7 +23,7 @@ interface UseLauncherAiActionsOptions {
   currentPermissionMode: PermissionModeName
   goToNextChat: () => Promise<void>
   goToPreviousChat: () => Promise<void>
-  inputRef: RefObject<LauncherInputElement | null>
+  inputRef: RefObject<LauncherInputElement | ComposerAreaHandle | null>
   isApprovalPending: boolean
   isBusy: boolean
   navigateHome: () => void
@@ -95,7 +96,14 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
     LAUNCHER_COMMAND_IDS.searchOpenMainHistory
   )
   const isAiInputTarget = useCallback(
-    (target: EventTarget | null): boolean => target === inputRef.current,
+    (target: EventTarget | null): boolean => {
+      const input = inputRef.current
+      if (!input) {
+        return false
+      }
+
+      return target === ("getElement" in input ? input.getElement() : input)
+    },
     [inputRef]
   )
 

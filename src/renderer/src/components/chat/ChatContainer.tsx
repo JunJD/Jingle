@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from "react"
+import { useRef, useEffect, useCallback, useMemo } from "react"
 import { Send, Square, AlertCircle, Folder, X } from "lucide-react"
 import {
   PromptInput,
@@ -18,6 +18,9 @@ import { ComposerApprovalPrompt } from "./ComposerApprovalPrompt"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
 import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
+import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
+import type { ComposerAreaHandle } from "@/composer-area"
+import type { ComposerMessageRef } from "@shared/message-content"
 
 interface ChatContainerProps {
   threadId: string
@@ -27,7 +30,12 @@ const EMPTY_TOKEN_USAGE = null
 
 export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Element {
   const { copy } = useI18n()
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const sourceMentions = useMemo(
+    () => listNativeExtensionSourceMentions(window.electron.process.platform),
+    []
+  )
+  const inputRef = useRef<ComposerAreaHandle>(null)
+  const composerRefsRef = useRef<ComposerMessageRef[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef = useRef(true)
   useDisableTabNavigation(inputRef)
@@ -101,9 +109,20 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     clearVisibleError()
   }
 
+  const invokeWithComposerRefs = useCallback(async (): Promise<boolean> => {
+    const didInvoke = await invoke({
+      refs: composerRefsRef.current,
+      text: input
+    })
+    if (didInvoke) {
+      composerRefsRef.current = []
+    }
+    return didInvoke
+  }, [input, invoke])
+
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
-    await invoke()
+    await invokeWithComposerRefs()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {
@@ -230,18 +249,22 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                 maxHeight="200px"
                 minHeight="var(--ow-chat-composer-input-min-h)"
                 onSubmit={() => {
-                  void invoke()
+                  void invokeWithComposerRefs()
                 }}
                 onValueChange={setInput}
-                textareaRef={inputRef}
                 value={input}
               >
                 <div className="flex min-w-0 items-end gap-[var(--ow-gap-md)]">
                   <PromptInputTextarea
-                    ref={inputRef}
+                    composerRef={inputRef}
+                    mode="composer"
                     onKeyDown={handleKeyDown}
+                    onRefsChange={(refs) => {
+                      composerRefsRef.current = refs
+                    }}
                     placeholder={copy.chat.messagePlaceholder}
-                    className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
+                    sourceMentions={sourceMentions}
+                    className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
                   />
                   <div className="flex h-[var(--ow-chat-composer-action-h)] shrink-0 items-center justify-center">
                     {isBusy ? (

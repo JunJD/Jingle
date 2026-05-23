@@ -12,6 +12,7 @@ import type { PermissionModeName } from "@shared/permission-mode"
 import type { LauncherClipboardState } from "@launcher-shell/LauncherClipboardContext"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
+import type { ComposerAreaHandle } from "@/composer-area"
 import type { Thread } from "@/types"
 import type {
   LauncherCommandInitialAction,
@@ -20,7 +21,7 @@ import type {
 } from "@launcher-shell/pages/types"
 
 export interface AiCoreSurface {
-  inputRef: RefObject<LauncherInputElement | null>
+  inputRef: RefObject<LauncherInputElement | ComposerAreaHandle | null>
   inputStatus: LauncherInputStatus
   shellConfig: LauncherShellConfig
   setInputStatus: (status: LauncherInputStatus) => void

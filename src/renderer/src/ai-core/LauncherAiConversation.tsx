@@ -5,12 +5,24 @@ import type { HITLDecision, HITLRequest, Message, ThreadForkState, Todo } from "
 import { useI18n } from "@/lib/i18n"
 import { useStickToBottom } from "use-stick-to-bottom"
 
-export function LauncherAiEmptyState(props: { error?: string | null }): React.JSX.Element {
+export function LauncherAiEmptyState(props: {
+  bottomInset?: number
+  error?: string | null
+}): React.JSX.Element {
   const { copy } = useI18n()
-  const { error } = props
+  const { bottomInset = 0, error } = props
 
   return (
-    <div className="relative flex flex-1 items-center justify-center overflow-hidden px-[var(--launcher-ai-content-x)]">
+    <div
+      className="relative flex flex-1 items-center justify-center overflow-hidden px-[var(--launcher-ai-content-x)]"
+      style={
+        bottomInset > 0
+          ? {
+              paddingBottom: bottomInset
+            }
+          : undefined
+      }
+    >
       <div className="relative flex w-full max-w-[var(--launcher-ai-empty-max-width)] flex-col items-center text-center">
         <div className="text-section-header mb-[var(--ow-space-2-5)]">
           {copy.launcher.aiEmptyEyebrow}
@@ -40,16 +52,20 @@ export function LauncherAiEmptyState(props: { error?: string | null }): React.JS
 }
 
 function LauncherJumpToLatestButton(props: {
+  bottomInset: number
   isLoading: boolean
   label: string
   onClick: () => void
 }): React.JSX.Element {
-  const { isLoading, label, onClick } = props
+  const { bottomInset, isLoading, label, onClick } = props
 
   return (
     <button
       type="button"
       className="launcher-jump-to-latest absolute bottom-[var(--launcher-jump-bottom)] left-1/2 flex -translate-x-1/2 items-center gap-[var(--ow-gap-sm)] bg-background/88 px-[var(--ow-space-3)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-meta)] font-medium text-foreground backdrop-blur-md transition"
+      style={{
+        bottom: `calc(var(--launcher-jump-bottom) + ${bottomInset}px)`
+      }}
       onClick={onClick}
     >
       <span className="relative z-10 flex items-center gap-[var(--ow-gap-sm)]">
@@ -65,6 +81,7 @@ function LauncherJumpToLatestButton(props: {
 }
 
 export function LauncherAiConversation(props: {
+  bottomInset: number
   clearError: () => void
   displayMessages: Message[]
   error: string | null
@@ -82,6 +99,7 @@ export function LauncherAiConversation(props: {
     resize: "smooth"
   })
   const {
+    bottomInset,
     clearError,
     displayMessages,
     error,
@@ -95,7 +113,7 @@ export function LauncherAiConversation(props: {
   } = props
 
   if (!displayMessages.length && !isLoading && !error) {
-    return <LauncherAiEmptyState />
+    return <LauncherAiEmptyState bottomInset={bottomInset} />
   }
 
   return (
@@ -107,6 +125,9 @@ export function LauncherAiConversation(props: {
         <div
           ref={contentRef}
           className="overflow-x-hidden px-[var(--launcher-ai-content-x)] py-[var(--launcher-ai-content-y)]"
+          style={{
+            paddingBottom: `calc(var(--launcher-ai-content-y) + ${bottomInset}px)`
+          }}
         >
           <div className="mx-auto flex w-full min-w-0 max-w-[var(--launcher-ai-content-max-width)] flex-col gap-[var(--launcher-ai-turn-gap)]">
             <Messages
@@ -153,6 +174,7 @@ export function LauncherAiConversation(props: {
 
       {!isAtBottom && (
         <LauncherJumpToLatestButton
+          bottomInset={bottomInset}
           isLoading={isLoading}
           label={copy.launcher.jumpToLatest}
           onClick={() => void scrollToBottom({ animation: "smooth" })}

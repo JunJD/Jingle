@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
+import { CheckIcon, CopyIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
@@ -50,5 +51,66 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 )
 Button.displayName = "Button"
 
+export interface CopyButtonProps extends Omit<ButtonProps, "children" | "onClick"> {
+  copiedLabel?: string
+  copyLabel?: string
+  iconClassName?: string
+  text: string
+}
+
+const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
+  (
+    {
+      className,
+      copiedLabel = "Copied",
+      copyLabel = "Copy",
+      iconClassName,
+      text,
+      type = "button",
+      variant = "ghost",
+      ...props
+    },
+    ref
+  ) => {
+    const [copied, setCopied] = React.useState(false)
+
+    React.useEffect(() => {
+      if (!copied) {
+        return
+      }
+
+      const timeoutId = window.setTimeout(() => {
+        setCopied(false)
+      }, 1500)
+
+      return () => window.clearTimeout(timeoutId)
+    }, [copied])
+
+    const handleClick = React.useCallback(async () => {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+    }, [text])
+
+    const label = copied ? copiedLabel : copyLabel
+
+    return (
+      <Button
+        {...props}
+        ref={ref}
+        className={className}
+        onClick={() => {
+          void handleClick()
+        }}
+        type={type}
+        variant={variant}
+      >
+        {copied ? <CheckIcon className={iconClassName} /> : <CopyIcon className={iconClassName} />}
+        <span className="sr-only">{label}</span>
+      </Button>
+    )
+  }
+)
+CopyButton.displayName = "CopyButton"
+
 // eslint-disable-next-line react-refresh/only-export-components
-export { Button, buttonVariants }
+export { Button, CopyButton, buttonVariants }

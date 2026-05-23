@@ -57,10 +57,9 @@ export class ExtensionToolExecutor {
     const result = await binding.definition.handler(
       {
         agentToolName: input.agentToolName,
+        capabilityId: binding.capability.id,
         extensionName: binding.definition.extensionName,
         runId: input.runId,
-        sourceId: binding.source.id,
-        sourceProfileId: binding.profile.id,
         threadId: input.threadId,
         toolName: binding.definition.name,
         workspacePath: input.workspacePath

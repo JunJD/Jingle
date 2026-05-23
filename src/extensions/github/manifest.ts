@@ -13,6 +13,25 @@ import { viewport as workflowRunsViewport } from "./src/workflow-runs.meta"
 import { GITHUB_EXTENSION_ID, GITHUB_RPC_METHODS } from "./src/contracts"
 
 export const githubManifest = defineNativeExtensionManifest({
+  aiCapability: {
+    description: "GitHub issues, pull requests, repositories, notifications, and workflow runs.",
+    guide:
+      "Use this capability for GitHub work only after the user connects GitHub. If auth status is missing, explain that GitHub needs to be connected in Settings before you can inspect repositories, issues, pull requests, notifications, or workflow runs.",
+    id: "github",
+    instructions: [
+      "Use GitHub for issues, pull requests, repositories, notifications, and workflow runs.",
+      "If GitHub is not connected, explain that GitHub needs to be connected in Settings before you can inspect or modify GitHub data.",
+      "Do not claim to have searched GitHub unless a GitHub tool was available and called."
+    ],
+    mention: {
+      label: "GitHub",
+      value: "github"
+    },
+    publicPreferenceNames: ["apiBaseUrl"],
+    requiredPreferenceNames: ["accessToken"],
+    title: "GitHub",
+    toolNames: []
+  },
   capabilities: ["navigation", "rpc", "surface"],
   iconName: "github",
   runtimeCapabilities: ["navigation", "preferences", "rpc", "settings", "shell"],

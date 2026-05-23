@@ -37,13 +37,12 @@ test("createActionMessageView falls back for extension approval tool calls witho
     review: {
       access: "write",
       args: toolCall.args,
+      capabilityDisplayName: "Apple Reminders",
+      capabilityId: "appleReminders",
       extensionName: "apple-reminders",
       kind: "extension_tool",
       permissionMode: "ask-to-edit",
       reason: "Ask to Edit mode requires approval for write and external extension tools.",
-      sourceDisplayName: "Apple Reminders",
-      sourceId: "appleReminders",
-      sourceProfileId: "apple-reminders-default",
       toolName: "ext__appleReminders__createReminder",
       toolTitle: "Create Reminder"
     },

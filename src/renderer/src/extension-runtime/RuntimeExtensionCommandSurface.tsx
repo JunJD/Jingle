@@ -367,7 +367,11 @@ function RuntimeDetailSurface(props: {
               <div className="min-w-0">
                 {snapshot.markdown ? (
                   <div className="native-detail-markdown [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground">
-                    <Streamdown parseIncompleteMarkdown={false} plugins={streamdownPlugins}>
+                    <Streamdown
+                      className="ow-markdown ow-native-detail-markdown space-y-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                      parseIncompleteMarkdown={false}
+                      plugins={streamdownPlugins}
+                    >
                       {snapshot.markdown}
                     </Streamdown>
                   </div>

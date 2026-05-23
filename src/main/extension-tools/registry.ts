@@ -1,9 +1,8 @@
 import type {
-  ExtensionSourceBinding,
-  ExtensionSourceDefinition,
-  ExtensionSourceProfileTool,
+  ExtensionAiCapability,
+  ExtensionAiCapabilityTool,
   ExtensionToolDefinition,
-  SourceProfile
+  ResolvedExtensionAiCapability
 } from "@shared/extension-sources"
 import { assertExtensionAgentToolName } from "@shared/extension-sources"
 import {
@@ -21,11 +20,11 @@ export interface RegisteredExtensionToolDefinition<
 
 export interface ExtensionAgentToolBinding<TInput = unknown, TOutput = unknown> {
   agentToolName: string
+  capability: ExtensionAiCapability
   definition: RegisteredExtensionToolDefinition<TInput, TOutput>
-  display: ExtensionSourceProfileTool["display"]
+  display: ExtensionAiCapabilityTool["display"]
   presentation: ExtensionToolCallPresentation
-  profile: SourceProfile
-  source: ExtensionSourceDefinition
+  resolvedCapability: ResolvedExtensionAiCapability
 }
 
 export class ExtensionToolRegistry {
@@ -73,44 +72,37 @@ export class ExtensionToolRegistry {
     return this.toolsByExtension.get(input.extensionName)?.get(input.toolName) ?? null
   }
 
-  createSourceToolBindings(sourceBindings: ExtensionSourceBinding[]): ExtensionAgentToolBinding[] {
+  createAiCapabilityToolBindings(
+    aiCapabilities: ResolvedExtensionAiCapability[]
+  ): ExtensionAgentToolBinding[] {
     const agentToolNames = new Set<string>()
     const toolBindings: ExtensionAgentToolBinding[] = []
 
-    for (const sourceBinding of sourceBindings) {
-      const { profile, source } = sourceBinding
-      if (!profile.enabled || profile.authStatus !== "connected") {
+    for (const resolvedCapability of aiCapabilities) {
+      const { capability } = resolvedCapability
+      if (!resolvedCapability.enabled || resolvedCapability.authStatus !== "connected") {
         continue
       }
 
-      if (profile.sourceId !== source.id || profile.extensionName !== source.extensionName) {
-        throw new Error(
-          `Source profile "${profile.id}" does not match source definition "${source.id}".`
-        )
-      }
+      const declaredToolNames = new Set(capability.toolNames)
 
-      const declaredSourceToolNames = new Set([
-        ...source.defaultToolNames,
-        ...(source.writeToolNames ?? [])
-      ])
-
-      for (const toolExposure of profile.enabledTools) {
+      for (const toolExposure of resolvedCapability.toolExposures) {
         const { agentToolName, toolName } = toolExposure
-        if (!declaredSourceToolNames.has(toolName)) {
+        if (!declaredToolNames.has(toolName)) {
           console.warn(
-            `[ExtensionTools] Skipping stale source tool "${source.id}:${toolName}" for profile "${profile.id}".`
+            `[ExtensionTools] Skipping stale AI capability tool "${resolvedCapability.extensionName}:${capability.id}:${toolName}".`
           )
           continue
         }
 
         const definition = this.getExtensionTool({
-          extensionName: source.extensionName,
+          extensionName: resolvedCapability.extensionName,
           toolName
         })
 
         if (!definition) {
           console.warn(
-            `[ExtensionTools] Skipping unavailable extension tool "${source.extensionName}:${toolName}" for source "${source.id}".`
+            `[ExtensionTools] Skipping unavailable extension tool "${resolvedCapability.extensionName}:${toolName}" for AI capability "${capability.id}".`
           )
           continue
         }
@@ -123,9 +115,9 @@ export class ExtensionToolRegistry {
 
         const presentation = extensionToolCallPresentationSchema.parse({
           access: definition.access,
-          kind: "extension",
-          profileTitle: profile.displayName,
-          sourceTitle: source.title
+          capabilityDisplayName: resolvedCapability.displayName,
+          capabilityTitle: capability.title,
+          kind: "extension"
         })
         extensionToolCallUiSchema.parse({
           display: toolExposure.display,
@@ -138,8 +130,8 @@ export class ExtensionToolRegistry {
           definition,
           display: toolExposure.display,
           presentation,
-          profile,
-          source
+          resolvedCapability,
+          capability
         })
       }
     }

@@ -221,11 +221,11 @@ function buildExtensionLargeApprovalViewModel(
         ]
       : [],
     parameters,
-    target: approvalItem.sourceDisplayName
+    target: approvalItem.capabilityDisplayName
       ? [
           {
             label: copy.toolCall.approvalSource,
-            value: approvalItem.sourceDisplayName
+            value: approvalItem.capabilityDisplayName
           }
         ]
       : []
