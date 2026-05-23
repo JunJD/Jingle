@@ -8,6 +8,22 @@
 
 @custom-variant dark (&:is(.dark *));
 
+.ow-extension-source-reference {
+  gap: 4px;
+}
+
+.ow-extension-source-reference--with-icon::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  background-image: var(--ow-extension-source-icon-url);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
 @theme inline {
   /* Radius scale */
   --radius-sm: calc(var(--radius) - 2px);

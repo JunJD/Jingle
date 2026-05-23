@@ -33,7 +33,7 @@ export const githubManifest = defineNativeExtensionManifest({
     toolNames: []
   },
   capabilities: ["navigation", "rpc", "surface"],
-  iconName: "github",
+  icon: "assets/icon.svg",
   runtimeCapabilities: ["navigation", "preferences", "rpc", "settings", "shell"],
   preferences: [
     {
@@ -71,7 +71,6 @@ export const githubManifest = defineNativeExtensionManifest({
   commands: [
     {
       description: "List GitHub issues created by you, assigned to you, or mentioning you.",
-      iconName: "github",
       keywords: ["github", "issue", "issues", "pull request", "pr", "代码审查"],
       mode: "view",
       name: "my-issues",
@@ -112,7 +111,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "List your GitHub pull requests for review and tracking.",
-      iconName: "github",
       keywords: ["github", "pull requests", "pr", "merge", "review"],
       mode: "view",
       name: "my-pull-requests",
@@ -167,7 +165,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Search GitHub issues across repositories.",
-      iconName: "github",
       keywords: ["github", "search", "issue", "issues"],
       mode: "view",
       name: "search-issues",
@@ -178,7 +175,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Search GitHub pull requests across repositories.",
-      iconName: "github",
       keywords: ["github", "search", "pull request", "pr"],
       mode: "view",
       name: "search-pull-requests",
@@ -189,7 +185,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Search GitHub repositories.",
-      iconName: "github",
       keywords: ["github", "repository", "repo", "search"],
       mode: "view",
       name: "search-repositories",
@@ -223,7 +218,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Inspect recent GitHub Actions workflow runs for one of your repositories.",
-      iconName: "github",
       keywords: ["github", "actions", "workflow", "workflow runs", "ci", "build"],
       mode: "view",
       name: "workflow-runs",
@@ -234,7 +228,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Create a new issue in one of your GitHub repositories.",
-      iconName: "github",
       keywords: ["github", "create", "issue", "new issue"],
       mode: "view",
       name: "create-issue",
@@ -245,7 +238,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Create a pull request in one of your GitHub repositories.",
-      iconName: "github",
       keywords: ["github", "create", "pull request", "pr", "merge request"],
       mode: "view",
       name: "create-pull-request",
@@ -256,7 +248,7 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "List inbox notifications from all repositories or a selected repository.",
-      iconName: "bell",
+      icon: "assets/notifications.svg",
       keywords: ["github", "notifications", "inbox", "mentions"],
       mode: "view",
       name: "notifications",
@@ -267,7 +259,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Show repositories you worked on most recently.",
-      iconName: "github",
       keywords: ["github", "repositories", "recent", "repo"],
       mode: "view",
       name: "my-latest-repositories",
@@ -278,7 +269,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Show repositories you starred on GitHub.",
-      iconName: "github",
       keywords: ["github", "repositories", "starred", "repo"],
       mode: "view",
       name: "my-starred-repositories",
@@ -289,7 +279,7 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Show unread GitHub notifications in the menu bar.",
-      iconName: "bell",
+      icon: "assets/notifications.svg",
       keywords: ["github", "notifications", "menu bar", "tray"],
       mode: "menu-bar",
       name: "unread-notifications",

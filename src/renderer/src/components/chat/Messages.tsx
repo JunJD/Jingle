@@ -48,6 +48,7 @@ import {
   MessageResponse,
   MessageToolbar
 } from "./message"
+import { ExtensionSourceTextViewer } from "./ExtensionSourceTextViewer"
 import { LoaderOne } from "../ui/loader"
 import { CopyButton } from "../ui/button"
 
@@ -202,7 +203,7 @@ function renderTextBlock(
             : "[font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)]"
         )}
       >
-        {text}
+        <ExtensionSourceTextViewer text={text} />
       </div>
     )
   }

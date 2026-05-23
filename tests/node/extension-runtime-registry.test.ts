@@ -1,7 +1,13 @@
 import assert from "node:assert/strict"
+import { existsSync } from "node:fs"
 import test from "node:test"
 import { nativeExtensionManifests } from "../../src/extensions"
 import { getNativeExtensionRuntimeCommand } from "../../src/extensions/runtime"
+import {
+  createNativeExtensionAssetUrl,
+  resolveNativeExtensionAssetPath
+} from "../../src/main/native-extensions/assets"
+import { toInstalledNativeExtensionSettingsSchema } from "../../src/shared/native-extensions"
 
 test("manifest runtime commands resolve through the package-level runtime registry", () => {
   const missingCommands: string[] = []
@@ -45,4 +51,67 @@ test("manifest runtime commands resolve through the package-level runtime regist
   })
   assert.equal(unreadNotifications?.mode, "menu-bar")
   assert.equal(typeof unreadNotifications?.Component, "function")
+})
+
+test("extension package icons are owned by extension manifests and flow into settings schemas", () => {
+  const manifestIcons = Object.fromEntries(
+    nativeExtensionManifests.map((manifest) => [manifest.name, manifest.icon])
+  )
+
+  assert.deepEqual(manifestIcons, {
+    "apple-reminders": "assets/icon.png",
+    github: "assets/icon.svg",
+    "todo-list": "assets/icon.svg",
+    translate: "assets/icon.svg"
+  })
+
+  const appleRemindersSchema = toInstalledNativeExtensionSettingsSchema(
+    nativeExtensionManifests.find((manifest) => manifest.name === "apple-reminders")!
+  )
+  assert.equal(appleRemindersSchema.icon, "assets/icon.png")
+  assert.equal(appleRemindersSchema.iconName, undefined)
+  assert.deepEqual(
+    appleRemindersSchema.commands.map((command) => command.icon),
+    ["assets/icon.png", "assets/icon.png", "assets/icon.png", "assets/icon.png"]
+  )
+
+  const githubSchema = toInstalledNativeExtensionSettingsSchema(
+    nativeExtensionManifests.find((manifest) => manifest.name === "github")!
+  )
+  assert.equal(
+    githubSchema.commands.find((command) => command.name === "notifications")?.icon,
+    "assets/notifications.svg"
+  )
+})
+
+test("declared extension icon assets exist inside their extension packages", () => {
+  const missingIcons: string[] = []
+
+  for (const manifest of nativeExtensionManifests) {
+    for (const icon of [
+      manifest.icon,
+      ...manifest.commands.map((command) => command.icon)
+    ]) {
+      if (!icon) {
+        continue
+      }
+
+      const resolvedPath = resolveNativeExtensionAssetPath({
+        extensionName: manifest.name,
+        path: icon
+      })
+      if (!existsSync(resolvedPath)) {
+        missingIcons.push(`${manifest.name}:${icon}`)
+      }
+    }
+  }
+
+  assert.deepEqual(missingIcons, [])
+  assert.equal(
+    createNativeExtensionAssetUrl({
+      extensionName: "github",
+      path: "assets/icon.svg"
+    }),
+    "openwork-extension-asset://github/assets/icon.svg"
+  )
 })

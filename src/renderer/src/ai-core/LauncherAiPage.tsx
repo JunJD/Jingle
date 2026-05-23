@@ -28,6 +28,8 @@ import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
 import type { ComposerAreaHandle } from "@/composer-area"
+import type { ComposerMessageInput } from "@shared/message-content"
+import { shouldGoHomeFromComposerKeyDown } from "./composer-keyboard"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 const AI_COMPOSER_CHROME_HEIGHT = 30
@@ -68,7 +70,6 @@ export function LauncherAiPage(): React.JSX.Element {
     runPrimaryAction,
     selectModel,
     selectPermissionMode,
-    setComposerRefs,
     setQuery,
     startFreshDraft,
     stop,
@@ -140,8 +141,41 @@ export function LauncherAiPage(): React.JSX.Element {
   const handleOpenModelPicker = useCallback(async (): Promise<void> => {
     setShowModelPicker(true)
   }, [])
+  const getCurrentMessageInput = useCallback((): ComposerMessageInput => {
+    const input = inputRef.current
+    if (input && "getModelText" in input) {
+      return {
+        refs: [...input.getRefs(), ...attachmentDraft.messageRefs],
+        text: input.getModelText()
+      }
+    }
+
+    return {
+      refs: attachmentDraft.messageRefs,
+      text: query
+    }
+  }, [attachmentDraft.messageRefs, inputRef, query])
+  const submitCurrentInput = useCallback((): void => {
+    runPrimaryAction(getCurrentMessageInput())
+  }, [getCurrentMessageInput, runPrimaryAction])
   const handleComposerKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>): void => {
+      const input = inputRef.current
+      const composerText =
+        input && "getModelText" in input ? input.getModelText() : query
+
+      if (
+        shouldGoHomeFromComposerKeyDown({
+          attachmentCount: attachmentDraft.attachments.length,
+          composerText,
+          event
+        })
+      ) {
+        event.preventDefault()
+        navigation.goHome()
+        return
+      }
+
       if (event.key !== "Enter") {
         return
       }
@@ -173,9 +207,9 @@ export function LauncherAiPage(): React.JSX.Element {
       }
 
       event.preventDefault()
-      runPrimaryAction()
+      submitCurrentInput()
     },
-    [inputRef, runPrimaryAction]
+    [attachmentDraft.attachments.length, inputRef, navigation, query, submitCurrentInput]
   )
   const canStartNewQuestion =
     query.trim().length > 0 ||
@@ -217,7 +251,7 @@ export function LauncherAiPage(): React.JSX.Element {
     openAttachmentPicker,
     openModelPicker: handleOpenModelPicker,
     query,
-    runPrimaryAction,
+    runPrimaryAction: submitCurrentInput,
     selectPermissionMode
   })
   const submitShortcutLabel =
@@ -321,7 +355,7 @@ export function LauncherAiPage(): React.JSX.Element {
           className="pointer-events-none absolute inset-x-0 z-20 flex w-full flex-col justify-end px-[var(--launcher-ai-composer-page-x)]"
           onSubmit={(event) => {
             event.preventDefault()
-            runPrimaryAction()
+            submitCurrentInput()
           }}
           style={{
             bottom: AI_COMPOSER_BOTTOM_GAP,
@@ -340,7 +374,7 @@ export function LauncherAiPage(): React.JSX.Element {
             isLoading={isBusy}
             maxHeight="var(--launcher-ai-composer-input-max-h)"
             minHeight="var(--launcher-ai-composer-input-min-h)"
-            onSubmit={runPrimaryAction}
+            onSubmit={submitCurrentInput}
             onValueChange={setQuery}
             value={query}
           >
@@ -381,7 +415,6 @@ export function LauncherAiPage(): React.JSX.Element {
                   composerRef={inputRef as React.RefObject<ComposerAreaHandle | null>}
                   mode="composer"
                   onKeyDown={handleComposerKeyDown}
-                  onRefsChange={setComposerRefs}
                   placeholder={copy.launcher.aiInputPlaceholder}
                   sourceMentions={sourceMentions}
                   submitOnEnter={false}
@@ -427,7 +460,7 @@ export function LauncherAiPage(): React.JSX.Element {
                   />
                 ) : (
                   <PromptInputAction
-                    onClick={runPrimaryAction}
+                    onClick={submitCurrentInput}
                     onMouseDown={(event) => event.preventDefault()}
                     disabled={primaryActionDisabled}
                     icon={<ArrowUp className="size-[var(--ow-icon-sm)]" />}

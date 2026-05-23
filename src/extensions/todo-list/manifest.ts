@@ -3,12 +3,11 @@ import { viewport as todoListViewport } from "./src/index.meta"
 
 export const todoListManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "surface"],
-  iconName: "todo",
+  icon: "assets/icon.svg",
   runtimeCapabilities: ["preferences", "shell", "storage"],
   commands: [
     {
       description: "Capture and organize lightweight tasks.",
-      iconName: "todo",
       keywords: ["todo", "todos", "task", "tasks", "待办", "待办事项"],
       mode: "view",
       name: "index",

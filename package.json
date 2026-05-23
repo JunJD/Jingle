@@ -111,7 +111,6 @@
     "just-bash": "^2.14.0",
     "langchain": "^1.2.12",
     "lexical": "^0.44.0",
-    "lexical-beautiful-mentions": "^0.1.48",
     "lucide-react": "^0.469.0",
     "motion": "^12.38.0",
     "nanoid": "^5.1.7",

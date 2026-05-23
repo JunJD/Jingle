@@ -10,16 +10,21 @@ const nativeExtensionSourceMentionRegistry: ExtensionSourceMention[] =
     }
     const supportedPlatforms = capability.supportedPlatforms ?? manifest.supportedPlatforms
 
-    return [
-      {
-        extensionName: manifest.name,
-        iconName: manifest.iconName ?? "extension",
-        label: capability.mention.label ?? capability.title,
-        sourceId: capability.id,
-        supportedPlatforms: supportedPlatforms ? [...supportedPlatforms] : undefined,
-        value: capability.mention.value ?? manifest.name
-      }
-    ]
+    const mention: ExtensionSourceMention = {
+      extensionName: manifest.name,
+      label: capability.mention.label ?? capability.title,
+      sourceId: capability.id,
+      supportedPlatforms: supportedPlatforms ? [...supportedPlatforms] : undefined,
+      value: capability.mention.value ?? manifest.name
+    }
+    if (manifest.icon) {
+      mention.icon = manifest.icon
+    }
+    if (manifest.iconName) {
+      mention.iconName = manifest.iconName
+    }
+
+    return [mention]
   })
 
 export const nativeExtensionSourceMentions = nativeExtensionSourceMentionRegistry.map(

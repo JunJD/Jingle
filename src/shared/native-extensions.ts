@@ -9,6 +9,7 @@ import type { ExtensionToolDefinition } from "./extension-sources"
 import type { IpcErrorPayload } from "./ipc-error"
 
 export type NativeExtensionCommandMode = "background" | "menu-bar" | "no-view" | "view"
+export type NativeExtensionIcon = string
 export type NativeExtensionSupportedPlatform = "darwin" | "linux" | "win32"
 
 export interface NativeExtensionPreferenceSchema {
@@ -31,6 +32,8 @@ export interface NativeExtensionRuntimeCommandManifest {
 
 export interface NativeExtensionCommandManifest<TCommandName extends string = string> {
   description?: string
+  /** Extension-package-relative asset path, for example "assets/icon.svg". */
+  icon?: NativeExtensionIcon
   iconName?: string
   keywords?: string[]
   mode: NativeExtensionCommandMode
@@ -68,6 +71,8 @@ export interface NativeExtensionPackageManifest<
   commands: Array<NativeExtensionCommandManifest<TCommandName>>
   defaultCommandName?: TCommandName
   description?: string
+  /** Extension-package-relative asset path, for example "assets/icon.svg". */
+  icon?: NativeExtensionIcon
   iconName?: string
   name: TExtensionName
   preferences?: NativeExtensionPreferenceSchema[]
@@ -97,6 +102,8 @@ export interface NativeExtensionMainDefinition {
 
 export interface NativeExtensionCommandSettingsSchema {
   description: string
+  icon?: NativeExtensionIcon
+  iconName?: string
   keywords?: string[]
   mode: NativeExtensionCommandMode
   name: string
@@ -108,6 +115,8 @@ export interface InstalledNativeExtensionSettingsSchema {
   commands: NativeExtensionCommandSettingsSchema[]
   description: string
   extName: string
+  icon?: NativeExtensionIcon
+  iconName?: string
   preferences: NativeExtensionPreferenceSchema[]
   title: string
 }
@@ -149,6 +158,26 @@ function getNativeExtensionPreferenceDisplayName(
   preference: NativeExtensionPreferenceSchema
 ): string {
   return preference.title ?? preference.label ?? preference.name
+}
+
+function validateNativeExtensionIcon(
+  manifestName: string,
+  label: string,
+  icon: NativeExtensionIcon | undefined
+): void {
+  if (icon === undefined) {
+    return
+  }
+
+  if (!icon.trim()) {
+    throw new Error(`Native extension "${manifestName}" declares an empty ${label} icon path`)
+  }
+
+  if (icon.startsWith("/") || icon.includes("..") || !icon.startsWith("assets/")) {
+    throw new Error(
+      `Native extension "${manifestName}" ${label} icon must be an extension-package-relative assets/ path`
+    )
+  }
 }
 
 function assertNonEmptyString(value: unknown, message: string): asserts value is string {
@@ -319,6 +348,8 @@ export function validateNativeExtensionPackageManifest(
     }
   }
 
+  validateNativeExtensionIcon(manifest.name, "package", manifest.icon)
+
   const commandNames = new Set<string>()
   for (const command of manifest.commands) {
     if (commandNames.has(command.name)) {
@@ -328,6 +359,7 @@ export function validateNativeExtensionPackageManifest(
     }
 
     commandNames.add(command.name)
+    validateNativeExtensionIcon(manifest.name, `command "${command.name}"`, command.icon)
 
     if (command.runtime && command.mode === "view" && !command.runtime.viewport) {
       throw new Error(
@@ -408,6 +440,7 @@ export function toLauncherCommandOwnerManifest(
     capabilities: manifest.capabilities,
     commands: launcherCommands.map((command) => ({
       description: command.description,
+      icon: command.icon ?? manifest.icon,
       iconName: command.iconName ?? manifest.iconName,
       keywords: command.keywords,
       mode: command.mode,
@@ -416,6 +449,7 @@ export function toLauncherCommandOwnerManifest(
     })),
     defaultCommandName: defaultLauncherCommandName,
     displayName: manifest.title,
+    icon: manifest.icon,
     id: manifest.name,
     rpcMethods: manifest.rpcMethods
   }
@@ -427,6 +461,8 @@ export function toInstalledNativeExtensionSettingsSchema(
   return {
     commands: manifest.commands.map((command) => ({
       description: command.description ?? "",
+      icon: command.icon ?? manifest.icon,
+      iconName: command.iconName ?? manifest.iconName,
       keywords: command.keywords,
       mode: command.mode,
       name: command.name,
@@ -435,6 +471,8 @@ export function toInstalledNativeExtensionSettingsSchema(
     })),
     description: manifest.description ?? "",
     extName: manifest.name,
+    icon: manifest.icon,
+    iconName: manifest.iconName,
     preferences: manifest.preferences ?? [],
     title: manifest.title
   }

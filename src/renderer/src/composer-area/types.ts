@@ -6,6 +6,7 @@ export interface ComposerAreaHandle {
   blur: () => void
   focus: () => void
   getElement: () => HTMLElement | null
+  getModelText: () => string
   getRefs: () => ComposerMessageRef[]
   insertText: (text: string) => void
 }
@@ -17,7 +18,6 @@ export interface ComposerAreaProps {
   minHeight: number | string
   sourceMentions?: ExtensionSourceMention[]
   onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void
-  onRefsChange?: (refs: ComposerMessageRef[]) => void
   onSubmit?: () => void
   onValueChange?: (value: string) => void
   placeholder?: string

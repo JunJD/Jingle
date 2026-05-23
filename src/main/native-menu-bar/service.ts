@@ -49,7 +49,11 @@ export class NativeMenuBarService {
 
     this.stateByCommandKey.set(state.commandKey, this.cloneState(state))
     this.setNativeActionHandlers(state.commandKey, nativeActionHandlers)
-    tray.setImage(this.createMenuBarImage(state.iconName, MENU_BAR_STATUS_ICON_SIZE))
+    tray.setImage(
+      state.iconName
+        ? this.createMenuBarImage(state.iconName, MENU_BAR_STATUS_ICON_SIZE)
+        : this.createMenuBarImage(state.extensionIcon, MENU_BAR_STATUS_ICON_SIZE)
+    )
     tray.setContextMenu(Menu.buildFromTemplate(this.buildMenuTemplate(state)))
     tray.setToolTip(state.tooltip ?? state.title ?? "Openwork")
 
@@ -135,16 +139,20 @@ export class NativeMenuBarService {
   }
 
   private createMenuBarImage(
-    iconName: NativeMenuBarState["iconName"] = "openwork",
+    icon: NativeMenuBarState["extensionIcon"] | NativeMenuBarState["iconName"] = "openwork",
     size: number
   ): Electron.NativeImage {
-    const cacheKey = `${iconName}:${size}`
+    const cacheKey =
+      typeof icon === "string" ? `${icon}:${size}` : `${icon.extensionName}:${icon.path}:${size}`
     const cachedImage = this.menuBarImageByName.get(cacheKey)
     if (cachedImage) {
       return cachedImage
     }
 
-    const iconPath = join(__dirname, "../../resources/assets/menu-bar", `${iconName}.png`)
+    const iconPath =
+      typeof icon === "string"
+        ? join(__dirname, "../../resources/assets/menu-bar", `${icon}.png`)
+        : join(__dirname, "../../resources/extensions", icon.extensionName, icon.path)
     if (!existsSync(iconPath)) {
       throw new Error(`Native menu bar icon not found: ${iconPath}`)
     }
@@ -154,7 +162,17 @@ export class NativeMenuBarService {
       throw new Error(`Native menu bar icon is empty: ${iconPath}`)
     }
 
-    const resizedImage = image.resize({ height: size, width: size })
+    const resizedImage = nativeImage.createEmpty()
+    for (const scaleFactor of [1, 2]) {
+      const scaledSize = size * scaleFactor
+      resizedImage.addRepresentation({
+        dataURL: image
+          .resize({ height: scaledSize, quality: "best", width: scaledSize })
+          .toDataURL(),
+        scaleFactor
+      })
+    }
+
     resizedImage.setTemplateImage(true)
     this.menuBarImageByName.set(cacheKey, resizedImage)
     return resizedImage

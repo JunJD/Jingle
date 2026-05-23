@@ -108,7 +108,7 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
   assert.deepEqual(nativeExtensionSourceMentions, [
     {
       extensionName: "apple-reminders",
-      iconName: "reminders",
+      icon: "assets/icon.png",
       label: "Apple Reminders",
       sourceId: "appleReminders",
       supportedPlatforms: ["darwin"],
@@ -116,7 +116,7 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
     },
     {
       extensionName: "github",
-      iconName: "github",
+      icon: "assets/icon.svg",
       label: "GitHub",
       sourceId: "github",
       supportedPlatforms: undefined,

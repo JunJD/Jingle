@@ -1,6 +1,7 @@
 import { LexicalComposer } from "@lexical/react/LexicalComposer"
 import { ContentEditable } from "@lexical/react/LexicalContentEditable"
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
+import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin"
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin"
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
@@ -12,20 +13,12 @@ import {
   $getSelection,
   $isRangeSelection,
   COMMAND_PRIORITY_LOW,
+  KEY_BACKSPACE_COMMAND,
+  KEY_DELETE_COMMAND,
   KEY_ENTER_COMMAND,
   ParagraphNode,
-  type EditorState,
   type LexicalEditor
 } from "lexical"
-import {
-  BeautifulMentionsPlugin,
-  createBeautifulMentionNode,
-  useBeautifulMentions,
-  type BeautifulMentionComponentProps,
-  type BeautifulMentionsItem,
-  type BeautifulMentionsMenuItemProps,
-  type BeautifulMentionsMenuProps
-} from "lexical-beautiful-mentions"
 import {
   forwardRef,
   useCallback,
@@ -35,46 +28,17 @@ import {
   useMemo,
   useRef
 } from "react"
-import { AtSign, FileText, Github, ListTodo, NotebookText, Puzzle, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { ComposerMessageRef } from "@shared/message-content"
-import type { ExtensionSourceMention } from "@shared/extension-sources"
 import {
-  areComposerRefsEqual,
-  getComposerRefFromMention,
-  type ComposerMentionData
-} from "./mention-refs"
+  getComposerRefsFromEditorState,
+  getPlainTextFromEditorState,
+  serializeComposerEditorStateForModel
+} from "./extension-source-serialization"
+import { ExtensionSourceReferenceNode } from "./extension-source-node"
+import { ExtensionSourceTypeaheadPlugin } from "./extension-source-typeahead"
 import type { ComposerAreaHandle, ComposerAreaProps } from "./types"
 
 const COMPOSER_AREA_SYNC_TAG = "composer-area-sync"
-
-function getComposerMentionIcon(kind?: string, iconName?: string): typeof AtSign {
-  if (kind === "extension") {
-    if (iconName === "github") {
-      return Github
-    }
-
-    if (iconName === "notion") {
-      return NotebookText
-    }
-
-    if (iconName === "reminders" || iconName === "todo") {
-      return ListTodo
-    }
-
-    return Puzzle
-  }
-
-  if (kind === "skill") {
-    return Sparkles
-  }
-
-  if (kind === "file") {
-    return FileText
-  }
-
-  return AtSign
-}
 
 function resolveCssSize(value: number | string): string {
   return typeof value === "number" ? `${value}px` : value
@@ -104,208 +68,18 @@ function writePlainTextToEditor(editor: LexicalEditor, value: string): void {
   )
 }
 
-function getPlainTextFromEditorState(editorState: EditorState): string {
-  return editorState.read(() =>
-    $getRoot()
-      .getChildren()
-      .map((node) => node.getTextContent())
-      .join("\n")
-  )
-}
-
-function getComposerMentionItems(
-  sourceMentions: ExtensionSourceMention[]
-): Record<string, BeautifulMentionsItem[]> {
-  return {
-    "@": sourceMentions.map((mention) => ({
-      extensionName: mention.extensionName,
-      iconName: mention.iconName,
-      id: mention.label,
-      kind: "extension",
-      sourceId: mention.sourceId,
-      value: mention.value
-    }))
-  }
-}
-
-function ComposerMentionChip(props: BeautifulMentionComponentProps): React.JSX.Element {
-  const { children, data, trigger, value, ...rest } = props
-  const mentionData = data as Partial<ComposerMentionData> | undefined
-  const Icon = getComposerMentionIcon(mentionData?.kind, mentionData?.iconName)
-
-  return (
-    <span
-      {...rest}
-      className={cn(
-        "inline-flex h-[20px] max-w-full items-center gap-[4px] whitespace-nowrap rounded-[4px] px-[4px] align-top leading-[20px] text-foreground",
-        rest.className
-      )}
-      title={`${trigger}${value}`}
-    >
-      <Icon className="size-[14px] shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="box-border block h-[20px] min-w-0 max-w-full truncate border-b border-border-emphasis [border-bottom-width:0.5px] [font-size:14px] font-semibold leading-[20px] tracking-normal">
-        {value}
-      </span>
-    </span>
-  )
-}
-
-function positionComposerMentionMenu(menu: HTMLUListElement): void {
-  const anchor = menu.parentElement
-  if (!anchor) {
-    return
-  }
-
-  const viewportMargin = 8
-  const menuGap = 8
-  menu.style.maxHeight = ""
-  menu.style.transform = ""
-  menu.style.transformOrigin = "top left"
-
-  const menuRect = menu.getBoundingClientRect()
-  const anchorRect = anchor.getBoundingClientRect()
-  const belowTop = anchorRect.bottom + menuGap
-  const availableBelow = window.innerHeight - viewportMargin - belowTop
-  const availableAbove = anchorRect.top - viewportMargin - menuGap
-
-  if (availableBelow >= menuRect.height || availableBelow >= availableAbove) {
-    if (menuRect.height > availableBelow) {
-      menu.style.maxHeight = `${Math.max(34, availableBelow)}px`
-    }
-
-    const nextRect = menu.getBoundingClientRect()
-    menu.style.transform = `translateY(${Math.floor(belowTop - nextRect.top)}px)`
-    return
-  }
-
-  if (menuRect.height > availableAbove) {
-    menu.style.maxHeight = `${Math.max(34, availableAbove)}px`
-  }
-
-  const nextRect = menu.getBoundingClientRect()
-  const desiredTop = Math.max(viewportMargin, anchorRect.top - nextRect.height - menuGap)
-  menu.style.transform = `translateY(${Math.floor(desiredTop - nextRect.top)}px)`
-  menu.style.transformOrigin = "bottom left"
-}
-
-const ComposerMentionMenu = forwardRef<HTMLUListElement, BeautifulMentionsMenuProps>(
-  function ComposerMentionMenu({ children, className, loading: _loading, ...props }, ref) {
-    const menuRef = useRef<HTMLUListElement | null>(null)
-    const updateMenuRef = useCallback(
-      (node: HTMLUListElement | null) => {
-        menuRef.current = node
-
-        if (typeof ref === "function") {
-          ref(node)
-          return
-        }
-
-        if (ref) {
-          ref.current = node
-        }
-      },
-      [ref]
-    )
-
-    useLayoutEffect(() => {
-      const menu = menuRef.current
-      if (!menu) {
-        return
-      }
-
-      positionComposerMentionMenu(menu)
-
-      const frame = window.requestAnimationFrame(() => {
-        positionComposerMentionMenu(menu)
-      })
-      const handleResize = () => {
-        positionComposerMentionMenu(menu)
-      }
-
-      window.addEventListener("resize", handleResize)
-
-      return () => {
-        window.cancelAnimationFrame(frame)
-        window.removeEventListener("resize", handleResize)
-      }
-    }, [children])
-
-    return (
-      <ul
-        ref={updateMenuRef}
-        className={cn(
-          "relative z-[9999] m-0 min-w-[236px] max-w-[320px] list-none overflow-y-auto rounded-[var(--ow-radius-md)] border border-border bg-popover p-[var(--ow-space-1)] text-popover-foreground shadow-[0_14px_38px_rgba(15,23,42,0.16)] outline-none",
-          className
-        )}
-        {...props}
-      >
-        {children}
-      </ul>
-    )
-  }
-)
-
-const ComposerMentionMenuItem = forwardRef<HTMLLIElement, BeautifulMentionsMenuItemProps>(
-  function ComposerMentionMenuItem(
-    {
-      children: _children,
-      className,
-      iconName: _iconName,
-      id: _id,
-      item,
-      itemValue: _itemValue,
-      kind: _kind,
-      label: _label,
-      selected,
-      sourceId: _sourceId,
-      ...props
-    },
-    ref
-  ) {
-    const mentionData = item.data as Partial<ComposerMentionData> | undefined
-    const Icon = getComposerMentionIcon(mentionData?.kind, mentionData?.iconName)
-
-    return (
-      <li
-        ref={ref}
-        className={cn(
-          "flex h-[34px] cursor-default select-none items-center gap-[var(--ow-space-2)] rounded-[var(--ow-radius-sm)] px-[var(--ow-space-2)] [font-size:var(--ow-font-control)] text-foreground outline-none transition-colors duration-100",
-          selected ? "bg-background-secondary" : "hover:bg-background-secondary/72",
-          className
-        )}
-        {...props}
-      >
-        <span className="flex size-[var(--ow-icon-md)] shrink-0 items-center justify-center rounded-[var(--ow-radius-xs)] bg-background-tertiary text-muted-foreground">
-          <Icon className="size-[var(--ow-icon-xs)]" aria-hidden="true" />
-        </span>
-        <span className="min-w-0 flex-1 truncate font-medium">
-          {item.trigger}
-          {item.value}
-        </span>
-      </li>
-    )
-  }
-)
-
-const composerMentionNodes = createBeautifulMentionNode(ComposerMentionChip)
-
 function ComposerAreaHandlePlugin(props: {
   disabled: boolean
   handleRef: React.Ref<ComposerAreaHandle>
-  onRefsChange?: (refs: ComposerMessageRef[]) => void
   value: string
 }): null {
-  const { disabled, handleRef, onRefsChange, value } = props
+  const { disabled, handleRef, value } = props
   const [editor] = useLexicalComposerContext()
-  const { getMentions } = useBeautifulMentions()
   const lastEditorValueRef = useRef(value)
-  const lastRefsRef = useRef<ComposerMessageRef[]>([])
-  const getRefs = useCallback(
-    () =>
-      getMentions()
-        .map(getComposerRefFromMention)
-        .filter((ref): ref is ComposerMessageRef => Boolean(ref)),
-    [getMentions]
+  const getRefs = useCallback(() => getComposerRefsFromEditorState(editor.getEditorState()), [editor])
+  const getModelText = useCallback(
+    () => serializeComposerEditorStateForModel(editor.getEditorState()),
+    [editor]
   )
 
   useEffect(() => {
@@ -318,14 +92,8 @@ function ComposerAreaHandlePlugin(props: {
         if (!tags.has(COMPOSER_AREA_SYNC_TAG)) {
           lastEditorValueRef.current = getPlainTextFromEditorState(editorState)
         }
-
-        const refs = getRefs()
-        if (!areComposerRefsEqual(refs, lastRefsRef.current)) {
-          lastRefsRef.current = refs
-          onRefsChange?.(refs)
-        }
       }),
-    [editor, getRefs, onRefsChange]
+    [editor]
   )
 
   useLayoutEffect(() => {
@@ -347,6 +115,7 @@ function ComposerAreaHandlePlugin(props: {
         editor.focus()
       },
       getElement: () => editor.getRootElement(),
+      getModelText,
       getRefs,
       insertText: (text: string) => {
         editor.update(() => {
@@ -364,13 +133,13 @@ function ComposerAreaHandlePlugin(props: {
         })
       }
     }),
-    [editor, getRefs, handleRef]
+    [editor, getModelText, getRefs, handleRef]
   )
 
   return null
 }
 
-function ComposerAreaEnterPlugin(props: {
+function ComposerAreaKeyboardPlugin(props: {
   mentionMenuOpenRef: React.RefObject<boolean>
   onSubmit?: () => void
   onUserKeyDown?: (event: React.KeyboardEvent<HTMLElement>) => void
@@ -402,9 +171,27 @@ function ComposerAreaEnterPlugin(props: {
     }
   }, [editor])
 
+  const handleDeleteKey = useCallback(
+    (event: KeyboardEvent): boolean => {
+      onUserKeyDown?.(event as unknown as React.KeyboardEvent<HTMLElement>)
+      return event.defaultPrevented
+    },
+    [onUserKeyDown]
+  )
+
   useEffect(
     () =>
       mergeRegister(
+        editor.registerCommand<KeyboardEvent>(
+          KEY_BACKSPACE_COMMAND,
+          handleDeleteKey,
+          COMMAND_PRIORITY_LOW
+        ),
+        editor.registerCommand<KeyboardEvent>(
+          KEY_DELETE_COMMAND,
+          handleDeleteKey,
+          COMMAND_PRIORITY_LOW
+        ),
         editor.registerCommand<KeyboardEvent>(
           KEY_ENTER_COMMAND,
           (event) => {
@@ -426,8 +213,7 @@ function ComposerAreaEnterPlugin(props: {
             }
 
             if (mentionMenuOpenRef.current) {
-              event.preventDefault()
-              return true
+              return false
             }
 
             if (!submitOnEnter) {
@@ -442,7 +228,7 @@ function ComposerAreaEnterPlugin(props: {
           COMMAND_PRIORITY_LOW
         )
       ),
-    [editor, mentionMenuOpenRef, onSubmit, onUserKeyDown, submitOnEnter]
+    [editor, handleDeleteKey, mentionMenuOpenRef, onSubmit, onUserKeyDown, submitOnEnter]
   )
 
   return null
@@ -455,7 +241,6 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
     maxHeight,
     minHeight,
     onKeyDown,
-    onRefsChange,
     onSubmit,
     onValueChange,
     placeholder,
@@ -465,7 +250,6 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
   },
   ref
 ) {
-  const mentionItems = useMemo(() => getComposerMentionItems(sourceMentions), [sourceMentions])
   const mentionMenuOpenRef = useRef(false)
   const handleMentionMenuOpen = useCallback(() => {
     mentionMenuOpenRef.current = true
@@ -479,7 +263,7 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
         writePlainTextToEditor(editor, value)
       },
       namespace: "OpenworkComposerArea",
-      nodes: [ParagraphNode, ...composerMentionNodes],
+      nodes: [ParagraphNode, ExtensionSourceReferenceNode],
       onError: (error: Error) => {
         throw error
       },
@@ -548,30 +332,23 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
           placeholder={null}
           ErrorBoundary={LexicalErrorBoundary}
         />
+        <HistoryPlugin />
         <OnChangePlugin
           ignoreHistoryMergeTagChange={true}
           ignoreSelectionChange={true}
-          onChange={(_, editor, tags) => {
+          onChange={(editorState, _editor, tags) => {
             if (tags.has(COMPOSER_AREA_SYNC_TAG)) {
               return
             }
-            handleValueChange(getPlainTextFromEditorState(editor.getEditorState()))
+            handleValueChange(getPlainTextFromEditorState(editorState))
           }}
         />
-        <BeautifulMentionsPlugin
-          items={mentionItems}
-          creatable={false}
-          menuAnchorClassName="z-[9999]"
-          menuComponent={ComposerMentionMenu}
-          menuItemComponent={ComposerMentionMenuItem}
-          menuItemLimit={8}
+        <ExtensionSourceTypeaheadPlugin
           onMenuClose={handleMentionMenuClose}
-          onMenuItemSelect={handleMentionMenuClose}
           onMenuOpen={handleMentionMenuOpen}
-          preTriggerChars={"\\S"}
-          triggers={["@"]}
+          sourceMentions={sourceMentions}
         />
-        <ComposerAreaEnterPlugin
+        <ComposerAreaKeyboardPlugin
           mentionMenuOpenRef={mentionMenuOpenRef}
           onSubmit={onSubmit}
           onUserKeyDown={onKeyDown}
@@ -580,7 +357,6 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
         <ComposerAreaHandlePlugin
           disabled={disabled}
           handleRef={ref}
-          onRefsChange={onRefsChange}
           value={value}
         />
       </div>

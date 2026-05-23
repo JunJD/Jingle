@@ -6,6 +6,7 @@ import {
   getLauncherResultToneStyle,
   renderLauncherResultIcon
 } from "@launcher-shell/result-presentation"
+import { getLauncherIndexedCommandIcon } from "@launcher-shell/search-items"
 import { getLauncherCommandAddressKey } from "@launcher-shell/use-with-preferences"
 import type { LauncherIndexedCommand } from "@launcher-shell/pages"
 
@@ -44,10 +45,7 @@ function LauncherUseWithManagerSection(props: {
             className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[6px]"
             style={getLauncherResultToneStyle("neutral")}
           >
-            {renderLauncherResultIcon({
-              name: command.iconName ?? "search",
-              type: "glyph"
-            })}
+            {renderLauncherResultIcon(getLauncherIndexedCommandIcon(command))}
           </div>
 
           <div className="min-w-0">

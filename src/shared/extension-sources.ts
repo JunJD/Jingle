@@ -87,7 +87,8 @@ export interface RunExtensionAiCapabilitySnapshot {
 
 export interface ExtensionSourceMention {
   extensionName: string
-  iconName: string
+  icon?: string
+  iconName?: string
   label: string
   supportedPlatforms?: NativeExtensionSupportedPlatform[]
   sourceId: string

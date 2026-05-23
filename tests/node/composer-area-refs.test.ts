@@ -1,45 +1,51 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { checkForMentions } from "lexical-beautiful-mentions"
-import { createEditor, type SerializedEditorState, type SerializedLexicalNode } from "lexical"
-import { BeautifulMentionNode, type BeautifulMentionsItemData } from "lexical-beautiful-mentions"
-import { getComposerRefFromMention } from "../../src/renderer/src/composer-area/mention-refs"
-import type { ComposerMessageRef } from "../../src/shared/message-content"
+import {
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  $isElementNode,
+  createEditor,
+  ParagraphNode,
+  type SerializedEditorState,
+  type SerializedParagraphNode,
+  type SerializedTextNode
+} from "lexical"
+import { getExtensionSourceTriggerMatch } from "../../src/renderer/src/composer-area/extension-source-typeahead"
+import {
+  $createExtensionSourceReferenceNode,
+  ExtensionSourceReferenceNode,
+  type SerializedExtensionSourceReferenceNode
+} from "../../src/renderer/src/composer-area/extension-source-node"
+import {
+  getComposerRefsFromEditorState,
+  serializeComposerEditorStateForModel
+} from "../../src/renderer/src/composer-area/extension-source-serialization"
 
-const COMPOSER_AREA_SYNC_TAG = "composer-area-sync"
-const composerMentionPunctuation = '\\.,\\*\\?\\$\\|#{}\\(\\)\\^\\[\\]\\\\/!%\'"~=<>_:;'
-
-type MentionRecord = {
-  data?: Record<string, BeautifulMentionsItemData>
-  trigger: string
-  value: string
+type SerializedComposerNode = SerializedExtensionSourceReferenceNode | SerializedTextNode
+type SerializedComposerParagraphNode = SerializedParagraphNode & {
+  children: SerializedComposerNode[]
 }
+type SerializedComposerEditorState = SerializedEditorState<SerializedComposerParagraphNode>
 
-type SerializedComposerNode = SerializedLexicalNode & {
-  [key: string]: unknown
-  children?: SerializedComposerNode[]
-  data?: Record<string, BeautifulMentionsItemData>
-  trigger?: string
-  value?: string
-}
-
-const mentionEditorState = {
+const referenceEditorState = {
   root: {
     children: [
       {
         children: [
           {
-            data: {
-              extensionName: "apple-reminders",
-              id: "Apple Reminders",
-              kind: "extension",
-              sourceId: "appleReminders"
-            },
-            trigger: "@",
-            type: "beautifulMention",
-            value: "apple-reminders",
+            detail: 2,
+            displayName: "Apple Reminders",
+            extensionName: "apple-reminders",
+            format: 0,
+            label: "@apple-reminders",
+            mode: "token",
+            sourceId: "appleReminders",
+            style: "",
+            text: "@apple-reminders",
+            type: "extension-source-reference",
             version: 1
-          }
+          } satisfies SerializedExtensionSourceReferenceNode
         ],
         direction: null,
         format: "",
@@ -56,7 +62,7 @@ const mentionEditorState = {
     type: "root",
     version: 1
   }
-} satisfies SerializedEditorState<SerializedComposerNode>
+} satisfies SerializedComposerEditorState
 
 const plainEditorState = {
   root: {
@@ -71,7 +77,7 @@ const plainEditorState = {
             text: "plain follow-up",
             type: "text",
             version: 1
-          }
+          } satisfies SerializedTextNode
         ],
         direction: null,
         format: "",
@@ -88,87 +94,96 @@ const plainEditorState = {
     type: "root",
     version: 1
   }
-} satisfies SerializedEditorState<SerializedComposerNode>
+} satisfies SerializedComposerEditorState
 
-function createMentionEditor(): ReturnType<typeof createEditor> {
+function createComposerEditor(): ReturnType<typeof createEditor> {
   return createEditor({
     namespace: "composer-area-refs-test",
-    nodes: [BeautifulMentionNode],
+    nodes: [ParagraphNode, ExtensionSourceReferenceNode],
     onError: (error) => {
       throw error
     }
   })
 }
 
-function refsFromSerializedMentions(mentions: MentionRecord[]): ComposerMessageRef[] {
-  return mentions
-    .map((mention) => getComposerRefFromMention(mention))
-    .filter((ref): ref is ComposerMessageRef => Boolean(ref))
-}
+test("extension source reference node serializes refs and model markdown from editor state", () => {
+  const editor = createComposerEditor()
 
-test("composer refs use source identity from mention metadata instead of display value", () => {
-  assert.deepEqual(
-    getComposerRefFromMention({
-      data: {
-        extensionName: "apple-reminders",
-        id: "Apple Reminders",
-        kind: "extension",
-        sourceId: "appleReminders"
-      },
-      trigger: "@",
-      value: "Apple Reminders"
-    }),
+  editor.update(
+    () => {
+      const root = $getRoot()
+      root.clear()
+      const paragraph = $createParagraphNode()
+      paragraph.append(
+        $createTextNode("Use "),
+        $createExtensionSourceReferenceNode({
+          displayName: "Apple Reminders",
+          extensionName: "apple-reminders",
+          label: "@apple-reminders",
+          sourceId: "appleReminders"
+        }),
+        $createTextNode(" today")
+      )
+      root.append(paragraph)
+    },
+    { discrete: true }
+  )
+
+  assert.deepEqual(getComposerRefsFromEditorState(editor.getEditorState()), [
     {
       extensionName: "apple-reminders",
       name: "Apple Reminders",
       sourceId: "appleReminders",
       type: "extension-source"
     }
+  ])
+  assert.equal(
+    serializeComposerEditorStateForModel(editor.getEditorState()),
+    "Use [@apple-reminders](openwork-extension-source://apple-reminders/appleReminders) today"
   )
 })
 
-test("composer mention matcher accepts @ without a leading space", () => {
-  const match = checkForMentions("foo@apple-reminders", ["@"], "\\S", composerMentionPunctuation, false)
+test("extension source reference node removal clears refs and model markdown", () => {
+  const editor = createComposerEditor()
 
-  assert.deepEqual(match, {
-    leadOffset: 3,
-    matchingString: "apple-reminders",
-    replaceableString: "@apple-reminders"
+  editor.setEditorState(editor.parseEditorState(referenceEditorState), {
+    tag: "user-select-reference"
   })
+  editor.update(
+    () => {
+      const root = $getRoot()
+      const paragraph = root.getFirstChild()
+      if (!$isElementNode(paragraph)) {
+        return
+      }
+
+      paragraph.getFirstChild()?.remove()
+    },
+    { discrete: true }
+  )
+
+  assert.deepEqual(getComposerRefsFromEditorState(editor.getEditorState()), [])
+  assert.equal(serializeComposerEditorStateForModel(editor.getEditorState()), "")
 })
 
-test("composer refs are recalculated when a tagged controlled sync clears mention nodes", () => {
-  const editor = createMentionEditor()
-  const refsByUpdate: ComposerMessageRef[][] = []
-  let lastRefs: ComposerMessageRef[] = []
+test("composer refs are recalculated when controlled sync clears reference nodes", () => {
+  const editor = createComposerEditor()
+  const refsByUpdate: ReturnType<typeof getComposerRefsFromEditorState>[] = []
+  let lastRefs: ReturnType<typeof getComposerRefsFromEditorState> = []
 
   editor.registerUpdateListener(({ editorState }) => {
-    const serialized = editorState.toJSON()
-    const paragraph = serialized.root.children[0]
-    const mentions =
-      "children" in paragraph && Array.isArray(paragraph.children)
-        ? paragraph.children
-            .filter((node): node is MentionRecord & SerializedComposerNode => {
-              return node.type === "beautifulMention"
-            })
-            .map((node) => ({
-              data: node.data,
-              trigger: node.trigger,
-              value: node.value
-            }))
-        : []
-    const refs = refsFromSerializedMentions(mentions)
+    const refs = getComposerRefsFromEditorState(editorState)
     if (JSON.stringify(refs) !== JSON.stringify(lastRefs)) {
       lastRefs = refs
       refsByUpdate.push(refs)
     }
   })
 
-  editor.setEditorState(editor.parseEditorState(mentionEditorState), {
-    tag: "user-select-mention"
+  editor.setEditorState(editor.parseEditorState(referenceEditorState), {
+    tag: "user-select-reference"
   })
   editor.setEditorState(editor.parseEditorState(plainEditorState), {
-    tag: COMPOSER_AREA_SYNC_TAG
+    tag: "composer-area-sync"
   })
 
   assert.deepEqual(refsByUpdate, [
@@ -182,4 +197,18 @@ test("composer refs are recalculated when a tagged controlled sync clears mentio
     ],
     []
   ])
+})
+
+test("extension source typeahead opens only for standalone @ queries", () => {
+  assert.deepEqual(getExtensionSourceTriggerMatch("@apple"), {
+    leadOffset: 0,
+    matchingString: "apple",
+    replaceableString: "@apple"
+  })
+  assert.deepEqual(getExtensionSourceTriggerMatch("use @apple"), {
+    leadOffset: 4,
+    matchingString: "apple",
+    replaceableString: "@apple"
+  })
+  assert.equal(getExtensionSourceTriggerMatch("hello@example.com"), null)
 })
