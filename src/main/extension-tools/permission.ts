@@ -29,7 +29,7 @@ export function createExtensionToolApprovalPolicyProvider(input: {
         return null
       }
 
-      const mode = input.permissionMode ?? binding.profile.defaultPermissionMode
+      const mode = input.permissionMode ?? binding.resolvedCapability.permissionMode
       return {
         binding,
         decision: resolveExtensionToolPermission({
@@ -44,7 +44,7 @@ export function createExtensionToolApprovalPolicyProvider(input: {
         return null
       }
 
-      const mode = input.permissionMode ?? policy.profile.defaultPermissionMode
+      const mode = input.permissionMode ?? policy.resolvedCapability.permissionMode
       const decision = resolveExtensionToolPermission({
         access: policy.definition.access,
         mode
@@ -53,12 +53,11 @@ export function createExtensionToolApprovalPolicyProvider(input: {
       return buildExtensionToolApprovalItem(
         {
           access: policy.definition.access,
+          capabilityDisplayName: policy.resolvedCapability.displayName,
+          capabilityId: policy.capability.id,
           extensionName: policy.definition.extensionName,
           permissionMode: mode,
           reason: decision.reason,
-          sourceDisplayName: policy.profile.displayName,
-          sourceId: policy.source.id,
-          sourceProfileId: policy.profile.id,
           toolName: agentToolName,
           toolTitle: policy.display.title
         },

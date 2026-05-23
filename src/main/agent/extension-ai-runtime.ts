@@ -1,13 +1,13 @@
-import type { ExtensionSourceBinding, PermissionModeName } from "@shared/extension-sources"
+import type { PermissionModeName, ResolvedExtensionAiCapability } from "@shared/extension-sources"
 import { createExtensionToolApprovalPolicyProvider } from "../extension-tools/permission"
 import type { ExtensionAgentToolBinding, ExtensionToolRegistry } from "../extension-tools/registry"
-import { createExtensionSourcesMiddleware } from "./extension-sources-middleware"
+import { createExtensionAiMiddleware } from "./extension-ai-middleware"
 
-export interface CreateExtensionSourceRuntimeOptions {
+export interface CreateExtensionAiRuntimeOptions {
+  aiCapabilities: ResolvedExtensionAiCapability[]
   permissionMode?: PermissionModeName
   registry: ExtensionToolRegistry
   runId?: string | null
-  sourceBindings: ExtensionSourceBinding[]
   threadId: string
   workspacePath: string
 }
@@ -16,32 +16,32 @@ function isBindingVisibleInPermissionMode(
   binding: ExtensionAgentToolBinding,
   permissionMode?: PermissionModeName
 ): boolean {
-  const mode = permissionMode ?? binding.profile.defaultPermissionMode
+  const mode = permissionMode ?? binding.resolvedCapability.permissionMode
   return mode !== "explore" || binding.definition.access === "read"
 }
 
-export function createExtensionSourceRuntime(options: CreateExtensionSourceRuntimeOptions) {
-  const sourceToolBindings = options.registry.createSourceToolBindings(options.sourceBindings)
-  const visibleSourceToolBindings = sourceToolBindings.filter((binding) =>
+export function createExtensionAiRuntime(options: CreateExtensionAiRuntimeOptions) {
+  const aiToolBindings = options.registry.createAiCapabilityToolBindings(options.aiCapabilities)
+  const visibleAiToolBindings = aiToolBindings.filter((binding) =>
     isBindingVisibleInPermissionMode(binding, options.permissionMode)
   )
   const approvalPolicyProvider = createExtensionToolApprovalPolicyProvider({
-    bindings: sourceToolBindings,
+    bindings: aiToolBindings,
     permissionMode: options.permissionMode
   })
-  const middleware = createExtensionSourcesMiddleware({
+  const middleware = createExtensionAiMiddleware({
+    aiCapabilities: options.aiCapabilities,
+    aiToolBindings: visibleAiToolBindings,
     permissionMode: options.permissionMode,
     runId: options.runId,
-    sourceBindings: options.sourceBindings,
-    sourceToolBindings: visibleSourceToolBindings,
     threadId: options.threadId,
     workspacePath: options.workspacePath
   })
 
   return {
+    aiToolBindings,
     approvalPolicyProvider,
     middleware,
-    sourceToolBindings,
-    visibleSourceToolBindings
+    visibleAiToolBindings
   }
 }

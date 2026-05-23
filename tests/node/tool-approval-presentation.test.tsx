@@ -24,13 +24,12 @@ test("extension approval presentation falls back to extension tool titles", () =
     args: {
       title: "Ship it"
     },
+    capabilityDisplayName: "Mock Profile",
+    capabilityId: "mockSource",
     extensionName: "mockExtension",
     kind: "extension_tool",
     permissionMode: "ask-to-edit",
     reason: "Ask to Edit mode requires approval for write and external extension tools.",
-    sourceDisplayName: "Mock Profile",
-    sourceId: "mockSource",
-    sourceProfileId: "profile-1",
     toolName: "ext__mockSource__createItem",
     toolTitle: "Create Item"
   }

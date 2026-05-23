@@ -118,13 +118,12 @@ test("large extension approval adapts business parameters without file assumptio
       labels: ["frontend", "agent"],
       title: "Create issue"
     },
+    capabilityDisplayName: "Openwork GitHub",
+    capabilityId: "github",
     extensionName: "github",
     kind: "extension_tool",
     permissionMode: "ask-to-edit",
     reason: "Ask to Edit mode requires approval for write and external extension tools.",
-    sourceDisplayName: "Openwork GitHub",
-    sourceId: "github",
-    sourceProfileId: "github-default",
     toolName: "ext__github__default__createIssue",
     toolTitle: "Create Issue"
   }

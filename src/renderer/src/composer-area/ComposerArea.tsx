@@ -35,7 +35,7 @@ import {
   useMemo,
   useRef
 } from "react"
-import { AtSign, FileText, Puzzle, Sparkles } from "lucide-react"
+import { AtSign, FileText, Github, ListTodo, NotebookText, Puzzle, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ComposerMessageRef } from "@shared/message-content"
 import type { ExtensionSourceMention } from "@shared/extension-sources"
@@ -48,8 +48,20 @@ import type { ComposerAreaHandle, ComposerAreaProps } from "./types"
 
 const COMPOSER_AREA_SYNC_TAG = "composer-area-sync"
 
-function getComposerMentionIcon(kind?: string): typeof AtSign {
+function getComposerMentionIcon(kind?: string, iconName?: string): typeof AtSign {
   if (kind === "extension") {
+    if (iconName === "github") {
+      return Github
+    }
+
+    if (iconName === "notion") {
+      return NotebookText
+    }
+
+    if (iconName === "reminders" || iconName === "todo") {
+      return ListTodo
+    }
+
     return Puzzle
   }
 
@@ -119,7 +131,7 @@ function getComposerMentionItems(
 function ComposerMentionChip(props: BeautifulMentionComponentProps): React.JSX.Element {
   const { children, data, trigger, value, ...rest } = props
   const mentionData = data as Partial<ComposerMentionData> | undefined
-  const Icon = getComposerMentionIcon(mentionData?.kind)
+  const Icon = getComposerMentionIcon(mentionData?.kind, mentionData?.iconName)
 
   return (
     <span
@@ -251,7 +263,7 @@ const ComposerMentionMenuItem = forwardRef<HTMLLIElement, BeautifulMentionsMenuI
     ref
   ) {
     const mentionData = item.data as Partial<ComposerMentionData> | undefined
-    const Icon = getComposerMentionIcon(mentionData?.kind)
+    const Icon = getComposerMentionIcon(mentionData?.kind, mentionData?.iconName)
 
     return (
       <li
@@ -556,6 +568,7 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
           onMenuClose={handleMentionMenuClose}
           onMenuItemSelect={handleMentionMenuClose}
           onMenuOpen={handleMentionMenuOpen}
+          preTriggerChars={"\\S"}
           triggers={["@"]}
         />
         <ComposerAreaEnterPlugin

@@ -1,11 +1,13 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { checkForMentions } from "lexical-beautiful-mentions"
 import { createEditor, type SerializedEditorState, type SerializedLexicalNode } from "lexical"
 import { BeautifulMentionNode, type BeautifulMentionsItemData } from "lexical-beautiful-mentions"
 import { getComposerRefFromMention } from "../../src/renderer/src/composer-area/mention-refs"
 import type { ComposerMessageRef } from "../../src/shared/message-content"
 
 const COMPOSER_AREA_SYNC_TAG = "composer-area-sync"
+const composerMentionPunctuation = '\\.,\\*\\?\\$\\|#{}\\(\\)\\^\\[\\]\\\\/!%\'"~=<>_:;'
 
 type MentionRecord = {
   data?: Record<string, BeautifulMentionsItemData>
@@ -123,6 +125,16 @@ test("composer refs use source identity from mention metadata instead of display
       type: "extension-source"
     }
   )
+})
+
+test("composer mention matcher accepts @ without a leading space", () => {
+  const match = checkForMentions("foo@apple-reminders", ["@"], "\\S", composerMentionPunctuation, false)
+
+  assert.deepEqual(match, {
+    leadOffset: 3,
+    matchingString: "apple-reminders",
+    replaceableString: "@apple-reminders"
+  })
 })
 
 test("composer refs are recalculated when a tagged controlled sync clears mention nodes", () => {

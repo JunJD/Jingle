@@ -8,6 +8,7 @@ import {
   History,
   Languages,
   ListTodo,
+  NotebookText,
   Search,
   Sparkles
 } from "lucide-react"
@@ -210,6 +211,8 @@ export function renderLauncherResultIcon(icon: LauncherResultPresentationIcon): 
       return <History className="size-4" />
     case "languages":
       return <Languages className="size-4" />
+    case "notion":
+      return <NotebookText className="size-4" />
     case "reminders":
       return <ListTodo className="size-4" />
     case "sparkles":

@@ -169,52 +169,62 @@ test("agent run metadata snapshots permission mode and preserves it through resu
   const { beginAgentRun, resumeAgentRun } = await import("../../src/main/agent/persistence")
   const { readRunPermissionModeSnapshot } = await import("../../src/main/agent/permission-mode")
   const {
-    createRunSourceBindingsSnapshot,
-    readSourceProfilesSnapshotFromMetadata,
-    RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY,
-    RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY
+    createRunExtensionAiCapabilitiesSnapshot,
+    LEGACY_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY,
+    readLegacySourceProfilesSnapshotFromMetadata,
+    readRunExtensionAiCapabilitiesSnapshotFromMetadata,
+    RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY
   } = await import("../../src/shared/extension-sources")
-  const { createDefaultNativeExtensionSourceBindings } = await import("../../src/extensions/sources")
+  const { resolveNativeExtensionAiCapabilitiesForRefs } = await import("../../src/extensions/sources")
 
   const threadId = "thread-permission"
   await createThread(threadId)
-  const sourceBindings = createDefaultNativeExtensionSourceBindings({
-    now: "2026-04-30T00:00:00.000Z",
-    platform: "darwin"
-  })
+  const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefs(
+    [
+      {
+        extensionName: "apple-reminders",
+        name: "Apple Reminders",
+        sourceId: "appleReminders",
+        type: "extension-source"
+      }
+    ],
+    {
+      permissionMode: "auto",
+      platform: "darwin"
+    }
+  )
 
   const { runId } = await beginAgentRun(threadId, "gpt-test", {
-    permissionMode: "auto",
-    sourceBindings
+    aiCapabilities,
+    permissionMode: "auto"
   })
   const createdRun = await getRun(runId)
   assert.equal(readRunPermissionModeSnapshot(createdRun), "auto")
   const createdMetadata = JSON.parse(createdRun?.metadata ?? "{}") as Record<string, unknown>
-  assert.deepEqual(
-    readSourceProfilesSnapshotFromMetadata(createdRun?.metadata),
-    sourceBindings.map((binding) => binding.profile)
-  )
-  const sourceProfilesSnapshot = createdMetadata[
-    RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY
-  ] as Array<Record<string, unknown>>
-  assert.equal("config" in sourceProfilesSnapshot[0], false)
-  assert.deepEqual(sourceProfilesSnapshot[0]?.publicConfig, {})
-  const runSourceBindingsSnapshot = createdMetadata[RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY]
-  assert.ok(Array.isArray(runSourceBindingsSnapshot))
-  const [firstSnapshot] = runSourceBindingsSnapshot as Array<Record<string, unknown>>
+  assert.equal(readLegacySourceProfilesSnapshotFromMetadata(createdRun?.metadata), null)
+  assert.equal(LEGACY_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY in createdMetadata, false)
+  const aiCapabilitiesSnapshot =
+    createdMetadata[RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]
+  assert.ok(Array.isArray(aiCapabilitiesSnapshot))
+  const [firstSnapshot] = aiCapabilitiesSnapshot as Array<Record<string, unknown>>
   assert.equal(typeof firstSnapshot?.createdAt, "string")
+  assert.equal("sourceProfileId" in firstSnapshot, false)
+  assert.deepEqual(firstSnapshot?.publicConfigSnapshot, {})
+  const expectedAiCapabilitiesSnapshot = createRunExtensionAiCapabilitiesSnapshot({
+    aiCapabilities,
+    permissionMode: "auto",
+    runId
+  }).map((snapshot) => ({
+    ...snapshot,
+    createdAt: firstSnapshot?.createdAt
+  }))
   assert.deepEqual(
-    [
-      {
-        ...createRunSourceBindingsSnapshot({
-          permissionMode: "auto",
-          runId,
-          sourceBindings
-        })[0],
-        createdAt: firstSnapshot?.createdAt
-      }
-    ],
-    runSourceBindingsSnapshot
+    expectedAiCapabilitiesSnapshot,
+    aiCapabilitiesSnapshot
+  )
+  assert.deepEqual(
+    readRunExtensionAiCapabilitiesSnapshotFromMetadata(createdRun?.metadata),
+    aiCapabilitiesSnapshot
   )
 
   await resumeAgentRun(threadId, runId, {
@@ -225,13 +235,13 @@ test("agent run metadata snapshots permission mode and preserves it through resu
   const resumedRun = await getRun(runId)
   assert.equal(readRunPermissionModeSnapshot(resumedRun), "auto")
   assert.deepEqual(
-    readSourceProfilesSnapshotFromMetadata(resumedRun?.metadata),
-    sourceBindings.map((binding) => binding.profile)
+    readRunExtensionAiCapabilitiesSnapshotFromMetadata(resumedRun?.metadata),
+    aiCapabilitiesSnapshot
   )
   const resumedMetadata = JSON.parse(resumedRun?.metadata ?? "{}") as Record<string, unknown>
   assert.deepEqual(
-    resumedMetadata[RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY],
-    runSourceBindingsSnapshot
+    resumedMetadata[RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY],
+    aiCapabilitiesSnapshot
   )
   assert.match(resumedRun?.metadata ?? "", /request-1/)
 })
