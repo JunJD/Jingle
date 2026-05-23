@@ -25,7 +25,6 @@ export function NativeSurfaceChrome(props: {
 
   return (
     <LauncherChromeFrame
-      density="compact"
       footer={footer}
       headerLeading={headerLeading}
       headerMain={

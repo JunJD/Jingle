@@ -31,7 +31,11 @@ export function useLauncherShellEffects(props: UseLauncherShellEffectsProps): {
   const [shownSequence, setShownSequence] = useState(0)
 
   useEffect(() => {
-    const nextHeight = Math.round(viewportHeight)
+    const viewportScale =
+      window.visualViewport && window.visualViewport.width > 0
+        ? window.outerWidth / window.visualViewport.width
+        : 1
+    const nextHeight = Math.round(viewportHeight * viewportScale)
     if (nextHeight <= 0 || nextHeight === appliedViewportHeightRef.current) {
       return
     }

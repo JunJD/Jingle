@@ -14,6 +14,9 @@ import {
 } from "@launcher-shell/result-presentation"
 import type { LauncherShellItem } from "@launcher-shell/types"
 
+const historyMenuItemClassName =
+  "gap-[var(--ow-gap-sm)] px-[var(--ow-space-2)] py-[var(--ow-space-1)] [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-body)]"
+
 export function LauncherHistoryGrid(props: {
   height: number
   items: LauncherShellItem[]
@@ -64,24 +67,31 @@ export function LauncherHistoryGrid(props: {
                     {renderLauncherResultIcon(item.presentation.icon)}
                   </span>
 
-                  <span className="line-clamp-1 w-full [font-size:var(--ow-font-meta)] leading-[var(--ow-line-tight)] text-foreground/92">
+                  <span className="w-full truncate [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-foreground/92">
                     {item.title}
                   </span>
                 </button>
               </ContextMenuTrigger>
 
-              <ContextMenuContent>
-                <ContextMenuItem onClick={() => onSetPinned(item.id, !item.pin)}>
+              <ContextMenuContent className="min-w-[166px]">
+                <ContextMenuItem
+                  className={historyMenuItemClassName}
+                  onClick={() => onSetPinned(item.id, !item.pin)}
+                >
                   {item.pin ? (
-                    <PinOff className="size-[var(--ow-icon-action)]" strokeWidth={1.8} />
+                    <PinOff className="size-[var(--ow-icon-sm)]" strokeWidth={1.8} />
                   ) : (
-                    <Pin className="size-[var(--ow-icon-action)]" strokeWidth={1.8} />
+                    <Pin className="size-[var(--ow-icon-sm)]" strokeWidth={1.8} />
                   )}
                   {item.pin ? copy.launcher.unpinHistoryItem : copy.launcher.pinHistoryItem}
                 </ContextMenuItem>
                 <ContextMenuSeparator />
-                <ContextMenuItem variant="destructive" onClick={() => onRemove(item.id)}>
-                  <Trash2 className="size-[var(--ow-icon-action)]" strokeWidth={1.8} />
+                <ContextMenuItem
+                  className={historyMenuItemClassName}
+                  variant="destructive"
+                  onClick={() => onRemove(item.id)}
+                >
+                  <Trash2 className="size-[var(--ow-icon-sm)]" strokeWidth={1.8} />
                   {copy.launcher.removeHistoryItem}
                 </ContextMenuItem>
               </ContextMenuContent>
