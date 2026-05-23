@@ -11,7 +11,10 @@ import { createToolPermissionRuntime } from "../../src/main/agent/tool-permissio
 import { createExtensionToolApprovalPolicyProvider } from "../../src/main/extension-tools/permission"
 import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
 import { withExecuteCommandPolicy } from "../../src/shared/execute-command-policy"
-import type { ExtensionSourceBinding, PermissionModeName } from "../../src/shared/extension-sources"
+import type {
+  PermissionModeName,
+  ResolvedExtensionAiCapability
+} from "../../src/shared/extension-sources"
 import { z } from "../../src/main/agent/tool-input-schema"
 
 const middleware = createToolApprovalMiddleware()
@@ -63,43 +66,35 @@ function createExtensionApprovalPolicyProvider(permissionMode: PermissionModeNam
     }
   ])
 
-  const sourceBinding: ExtensionSourceBinding = {
-    profile: {
-      authStatus: "connected",
-      createdAt: "2026-04-30T00:00:00.000Z",
-      defaultPermissionMode: permissionMode,
-      displayName: "Mock Profile",
-      enabled: true,
-      enabledTools: [
-        {
-          agentToolName: "ext__mockSource__profile_1__createItem",
-          display: {
-            description: "Create a mock item for Mock Profile.",
-            title: "Create Item"
-          },
-          toolName: "createItem"
-        }
-      ],
-      enabledToolNames: ["createItem"],
-      extensionName: "mockExtension",
-      id: "profile-1",
-      publicConfig: {},
-      sourceId: "mockSource",
-      updatedAt: "2026-04-30T00:00:00.000Z"
-    },
-    source: {
-      defaultToolNames: [],
+  const aiCapability: ResolvedExtensionAiCapability = {
+    authStatus: "connected",
+    capability: {
       description: "Mock source.",
-      extensionName: "mockExtension",
       guide: "Use mock items.",
       id: "mockSource",
       title: "Mock Source",
-      writeToolNames: ["createItem"]
-    }
+      toolNames: ["createItem"]
+    },
+    displayName: "Mock Profile",
+    enabled: true,
+    enabledToolNames: ["createItem"],
+    extensionName: "mockExtension",
+    permissionMode,
+    publicConfig: {},
+    toolExposures: [
+      {
+        agentToolName: "ext__mockSource__profile_1__createItem",
+        display: {
+          description: "Create a mock item for Mock Profile.",
+          title: "Create Item"
+        },
+        toolName: "createItem"
+      }
+    ]
   }
 
   return createExtensionToolApprovalPolicyProvider({
-    bindings: registry.createSourceToolBindings([sourceBinding])
+    bindings: registry.createAiCapabilityToolBindings([aiCapability])
   })
 }
 

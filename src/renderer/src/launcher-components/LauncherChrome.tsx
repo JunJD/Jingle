@@ -8,7 +8,6 @@ import { LauncherInput } from "./LauncherInput"
 
 interface LauncherChromeProps {
   children?: ReactNode
-  density?: "default" | "compact"
   footer?: ReactNode
   footerVariant?: "strip" | "composer"
   headerLeading?: ReactNode
@@ -36,7 +35,6 @@ interface LauncherChromeProps {
 export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
   const {
     children,
-    density = "default",
     footer,
     footerVariant,
     headerLeading,
@@ -63,15 +61,13 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
     <LauncherChromeFrame
       footer={footer}
       footerVariant={footerVariant}
-      density={density}
       headerLeading={headerLeading}
       headerMain={
         hideInputChrome
           ? null
           : (inputReplacement ?? (
               <LauncherInput
-                ref={inputRef ?? undefined}
-                density={density}
+                ref={inputRef}
                 multiline={inputMultiline}
                 trailing={inputTrailing}
                 showStatusIndicator={showInputStatusIndicator}
@@ -81,16 +77,10 @@ export function LauncherChrome(props: LauncherChromeProps): React.JSX.Element {
                 onKeyDown={onInputKeyDown}
                 placeholders={placeholders}
                 className={cn(
-                  density === "compact"
-                    ? "flex-1 [font-size:var(--ow-font-control)] font-medium text-foreground"
-                    : "flex-1 [font-size:var(--ow-font-title)] font-medium text-foreground",
+                  "flex-1 [font-size:var(--ow-font-control)] font-medium text-foreground",
                   inputClassName
                 )}
-                placeholderClassName={
-                  density === "compact"
-                    ? "[font-size:var(--ow-font-control)] font-medium text-muted-foreground/64"
-                    : "[font-size:var(--ow-font-title)] font-medium text-muted-foreground/68"
-                }
+                placeholderClassName="[font-size:var(--ow-font-control)] font-medium text-muted-foreground/64"
               />
             ))
       }

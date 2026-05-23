@@ -5,10 +5,7 @@ import {
   toInstalledNativeExtensionSettingsSchema,
   toLauncherCommandOwnerManifest
 } from "@shared/native-extensions"
-import {
-  hasLauncherCommandOwnerCapability,
-  validateLauncherCommandOwnerManifest
-} from "@shared/launcher-command-owner"
+import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { listNativeExtensionManifests } from "@extensions/index"
 import { nativeExtensionMainDefinitions } from "@extensions/main"
 import { getResolvedNativeExtensionPreferenceRecord } from "../../preferences"
@@ -33,9 +30,16 @@ const nativeExtensionDefinitionMap = new Map(
 )
 
 for (const definition of nativeExtensionDefinitions) {
-  const launcherManifest = toLauncherCommandOwnerManifest(definition.manifest)
-  validateLauncherCommandOwnerManifest(launcherManifest)
-  const manifestRpcMethods = launcherManifest.rpcMethods ?? []
+  const hasLauncherCommands = definition.manifest.commands.some(
+    (command) => command.mode === "view" || command.mode === "no-view"
+  )
+  const launcherManifest = hasLauncherCommands
+    ? toLauncherCommandOwnerManifest(definition.manifest)
+    : null
+  if (launcherManifest) {
+    validateLauncherCommandOwnerManifest(launcherManifest)
+  }
+  const manifestRpcMethods = definition.manifest.rpcMethods ?? []
 
   if (!definition.service) {
     if (manifestRpcMethods.length > 0) {
@@ -53,7 +57,7 @@ for (const definition of nativeExtensionDefinitions) {
     )
   }
 
-  if (!hasLauncherCommandOwnerCapability(launcherManifest, "rpc")) {
+  if (!definition.manifest.capabilities.includes("rpc")) {
     throw new Error(
       `Native extension "${definition.manifest.name}" exposes a main-side service without the "rpc" capability`
     )

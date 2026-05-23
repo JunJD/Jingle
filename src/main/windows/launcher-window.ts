@@ -69,7 +69,7 @@ function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): Rectangle {
 
 function getLauncherHeightForDisplay(display: Electron.Display, requestedHeight: number): number {
   const maxHeightByScreen = Math.floor(display.workArea.height * LAUNCHER_MAX_SCREEN_HEIGHT_RATIO)
-  const maxHeight = Math.max(LAUNCHER_BASE_HEIGHT, Math.min(LAUNCHER_MAX_HEIGHT, maxHeightByScreen))
+  const maxHeight = Math.max(LAUNCHER_BASE_HEIGHT, maxHeightByScreen)
 
   return clamp(Math.round(requestedHeight), LAUNCHER_BASE_HEIGHT, maxHeight)
 }
@@ -81,7 +81,7 @@ function getVisibleLauncherBounds(params: {
   launcherWindow: BrowserWindow
 }): Rectangle {
   const { anchorX, anchorY, height, launcherWindow } = params
-  const currentBounds = launcherWindow.getBounds()
+  const currentBounds = launcherWindow.getContentBounds()
   const display = screen.getDisplayMatching(currentBounds)
   const boundedHeight = getLauncherWindowHeight(display, height)
   const minX = display.workArea.x + LAUNCHER_HORIZONTAL_MARGIN
@@ -175,8 +175,8 @@ function syncLauncherWindowShape(launcherWindow: BrowserWindow): void {
   )
 }
 
-function setLauncherWindowBounds(launcherWindow: BrowserWindow, bounds: Rectangle): void {
-  launcherWindow.setBounds(bounds, false)
+function setLauncherWindowContentBounds(launcherWindow: BrowserWindow, bounds: Rectangle): void {
+  launcherWindow.setContentBounds(bounds, false)
   syncLauncherWindowShape(launcherWindow)
 }
 
@@ -195,10 +195,10 @@ function emitLauncherShown(launcherWindow: BrowserWindow): void {
 
 export function showLauncherWindow(launcherWindow: BrowserWindow): void {
   const nextHeight = getLauncherContentHeight(
-    launcherWindow.getBounds().height || LAUNCHER_BASE_HEIGHT
+    launcherWindow.getContentBounds().height || LAUNCHER_BASE_HEIGHT
   )
   const nextBounds = getLauncherBounds(nextHeight)
-  setLauncherWindowBounds(launcherWindow, nextBounds)
+  setLauncherWindowContentBounds(launcherWindow, nextBounds)
 
   if (process.platform === "darwin") {
     launcherWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
@@ -232,12 +232,12 @@ export function setLauncherWindowViewportHeight(
 ): void {
   const visibleOrigin = launcherVisibleOrigins.get(launcherWindow)
 
-  setLauncherWindowBounds(
+  setLauncherWindowContentBounds(
     launcherWindow,
     launcherWindow.isVisible()
       ? getVisibleLauncherBounds({
-          anchorX: visibleOrigin?.x ?? launcherWindow.getBounds().x,
-          anchorY: visibleOrigin?.y ?? launcherWindow.getBounds().y,
+          anchorX: visibleOrigin?.x ?? launcherWindow.getContentBounds().x,
+          anchorY: visibleOrigin?.y ?? launcherWindow.getContentBounds().y,
           height,
           launcherWindow
         })
@@ -284,7 +284,6 @@ export function createLauncherWindow(): BrowserWindow {
       sandbox: false
     }
   })
-
   launcherWindow.on("blur", () => {
     if (launcherBlurHideSuppressionDepth > 0) {
       return
@@ -300,7 +299,7 @@ export function createLauncherWindow(): BrowserWindow {
   })
 
   launcherWindow.on("show", () => {
-    const { x, y } = launcherWindow.getBounds()
+    const { x, y } = launcherWindow.getContentBounds()
     launcherVisibleOrigins.set(launcherWindow, { x, y })
   })
 
@@ -322,13 +321,13 @@ export function createLauncherWindow(): BrowserWindow {
   const repositionIfVisible = (): void => {
     if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
       const nextBounds = getLauncherBounds(
-        getLauncherContentHeight(launcherWindow.getBounds().height)
+        getLauncherContentHeight(launcherWindow.getContentBounds().height)
       )
       launcherVisibleOrigins.set(launcherWindow, {
         x: nextBounds.x,
         y: nextBounds.y
       })
-      setLauncherWindowBounds(launcherWindow, nextBounds)
+      setLauncherWindowContentBounds(launcherWindow, nextBounds)
     }
   }
 

@@ -110,7 +110,7 @@ export function startNativeMinimalIsland(): void {
     })
 
     nativeIslandProcess = child
-    setNativeMinimalIslandState("approval")
+    setNativeMinimalIslandState("idle")
   } catch (error) {
     console.warn("[native-minimal-island] failed to start", error)
   }

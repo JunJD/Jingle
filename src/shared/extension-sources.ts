@@ -1,6 +1,10 @@
 import { z, type ZodType } from "zod/v4"
 import { isPermissionModeName } from "./permission-mode"
 import type { PermissionModeName } from "./permission-mode"
+import type {
+  NativeExtensionAiCapability,
+  NativeExtensionSupportedPlatform
+} from "./native-extensions"
 import { toolCallDisplaySchema, type ToolCallDisplay } from "./tool-presentation"
 
 export {
@@ -12,8 +16,10 @@ export type { PermissionModeName } from "./permission-mode"
 
 export type ExtensionToolAccess = "read" | "write" | "external"
 export type ExtensionPermissionDisposition = "allow" | "require_approval" | "deny"
-export const RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY = "runSourceBindingsSnapshot"
-export const RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY = "sourceProfilesSnapshot"
+export type ExtensionAiAuthStatus = "connected" | "missing" | "failed"
+export const RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY =
+  "extensionAiCapabilitiesSnapshot"
+export const LEGACY_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY = "sourceProfilesSnapshot"
 
 export interface ExtensionPermissionDecision {
   access: ExtensionToolAccess
@@ -24,10 +30,9 @@ export interface ExtensionPermissionDecision {
 
 export interface ExtensionToolContext {
   agentToolName?: string
+  capabilityId?: string
   extensionName: string
   runId?: string | null
-  sourceId?: string
-  sourceProfileId?: string
   threadId: string
   toolName: string
   workspacePath: string
@@ -43,16 +48,41 @@ export interface ExtensionToolDefinition<TInput = unknown, TOutput = unknown> {
   handler(ctx: ExtensionToolContext, input: TInput): Promise<TOutput> | TOutput
 }
 
-export interface ExtensionSourceDefinition {
-  defaultToolNames: string[]
-  description: string
+export type ExtensionAiCapability = NativeExtensionAiCapability
+export type ExtensionAgentToolDisplay = ToolCallDisplay
+
+export interface ExtensionAiCapabilityTool {
+  agentToolName: string
+  display: ExtensionAgentToolDisplay
+  toolName: string
+}
+
+export interface ResolvedExtensionAiCapability {
+  authStatus: ExtensionAiAuthStatus
+  capability: ExtensionAiCapability
+  displayName: string
+  enabled: boolean
+  enabledToolNames: string[]
   extensionName: string
-  guide: string
+  iconName?: string
+  permissionMode: PermissionModeName
+  publicConfig: Record<string, unknown>
+  toolExposures: ExtensionAiCapabilityTool[]
+}
+
+export interface RunExtensionAiCapabilitySnapshot {
+  authStateSnapshot: ExtensionAiAuthStatus
+  capabilityId: string
+  capabilityVersion: string
+  createdAt: string
+  displayNameSnapshot: string
+  enabledSnapshot: boolean
+  enabledToolNamesSnapshot: string[]
+  extensionName: string
   id: string
-  requiredPreferenceNames?: string[]
-  supportsMultipleProfiles?: boolean
-  title: string
-  writeToolNames?: string[]
+  permissionModeSnapshot: PermissionModeName
+  publicConfigSnapshot: Record<string, unknown>
+  runId: string
 }
 
 export interface ExtensionSourceMention {
@@ -60,18 +90,18 @@ export interface ExtensionSourceMention {
   icon?: string
   iconName?: string
   label: string
-  supportedPlatforms?: string[]
+  supportedPlatforms?: NativeExtensionSupportedPlatform[]
   sourceId: string
   value: string
 }
 
-export interface SourceProfile {
-  authStatus: "connected" | "missing" | "failed"
+export interface LegacySourceProfileSnapshot {
+  authStatus: ExtensionAiAuthStatus
   createdAt: string
   defaultPermissionMode: PermissionModeName
   displayName: string
   enabled: boolean
-  enabledTools: ExtensionSourceProfileTool[]
+  enabledTools: ExtensionAiCapabilityTool[]
   enabledToolNames: string[]
   extensionName: string
   id: string
@@ -81,36 +111,9 @@ export interface SourceProfile {
   updatedAt: string
 }
 
-export interface RunSourceBinding {
-  authStateSnapshot: string
-  createdAt: string
-  displayNameSnapshot: string
-  enabledToolNamesSnapshot: string[]
-  extensionName: string
-  id: string
-  permissionModeSnapshot: PermissionModeName
-  runId: string
-  sourceId: string
-  sourceProfileId: string
-  sourceVersion: string
-}
-
-export interface ExtensionSourceBinding {
-  profile: SourceProfile
-  source: ExtensionSourceDefinition
-}
-
 const AGENT_TOOL_NAME_PREFIX = "ext"
 const AGENT_TOOL_NAME_SEPARATOR = "__"
 const AGENT_TOOL_NAME_SEGMENT_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/
-
-export type ExtensionAgentToolDisplay = ToolCallDisplay
-
-export interface ExtensionSourceProfileTool {
-  agentToolName: string
-  display: ExtensionAgentToolDisplay
-  toolName: string
-}
 
 function assertAgentToolNameSegment(label: string, value: string): void {
   if (!AGENT_TOOL_NAME_SEGMENT_PATTERN.test(value)) {
@@ -162,7 +165,7 @@ export function assertExtensionAgentToolName(agentToolName: string): void {
   }
 }
 
-export const extensionSourceProfileToolSchema = z
+export const extensionAiCapabilityToolSchema = z
   .object({
     agentToolName: z.string().trim().min(1),
     display: toolCallDisplaySchema,
@@ -181,11 +184,80 @@ export const extensionSourceProfileToolSchema = z
     }
   })
 
-export const extensionSourceProfileToolsSchema = z.array(extensionSourceProfileToolSchema)
+export const extensionAiCapabilityToolsSchema = z.array(extensionAiCapabilityToolSchema)
 
-function parseEnabledTools(value: unknown): ExtensionSourceProfileTool[] {
-  const parsed = extensionSourceProfileToolsSchema.safeParse(value)
+export const extensionAiCapabilitySchema = z
+  .object({
+    description: z.string().trim().min(1).optional(),
+    guide: z.string().trim().min(1),
+    id: z.string().trim().min(1),
+    instructions: z.array(z.string().trim().min(1)).optional(),
+    mention: z
+      .object({
+        label: z.string().trim().min(1).optional(),
+        value: z.string().trim().min(1).optional()
+      })
+      .strict()
+      .optional(),
+    publicPreferenceNames: z.array(z.string().trim().min(1)).optional(),
+    requiredPreferenceNames: z.array(z.string().trim().min(1)).optional(),
+    supportedPlatforms: z.array(z.enum(["darwin", "linux", "win32"])).optional(),
+    title: z.string().trim().min(1),
+    toolDisplays: z.record(z.string(), toolCallDisplaySchema).optional(),
+    toolNames: z.array(z.string().trim().min(1))
+  })
+  .strict()
+
+export const resolvedExtensionAiCapabilitySchema = z
+  .object({
+    authStatus: z.enum(["connected", "missing", "failed"]),
+    capability: extensionAiCapabilitySchema,
+    displayName: z.string().trim().min(1),
+    enabled: z.boolean(),
+    enabledToolNames: z.array(z.string().trim().min(1)),
+    extensionName: z.string().trim().min(1),
+    iconName: z.string().trim().min(1).optional(),
+    permissionMode: z.custom<PermissionModeName>(isPermissionModeName),
+    publicConfig: z.record(z.string(), z.unknown()),
+    toolExposures: extensionAiCapabilityToolsSchema
+  })
+  .strict()
+
+export const legacySourceProfileSnapshotSchema = z
+  .object({
+    authStatus: z.enum(["connected", "missing", "failed"]),
+    createdAt: z.string().trim().min(1),
+    defaultPermissionMode: z.custom<PermissionModeName>(isPermissionModeName),
+    displayName: z.string().trim().min(1),
+    enabled: z.boolean(),
+    enabledTools: extensionAiCapabilityToolsSchema,
+    enabledToolNames: z.array(z.string().trim().min(1)),
+    extensionName: z.string().trim().min(1),
+    id: z.string().trim().min(1),
+    publicConfig: z.record(z.string(), z.unknown()),
+    sourceId: z.string().trim().min(1),
+    updatedAt: z.string().trim().min(1)
+  })
+  .strict()
+
+export const extensionSourceMentionSchema = z
+  .object({
+    extensionName: z.string().trim().min(1),
+    iconName: z.string().trim().min(1),
+    label: z.string().trim().min(1),
+    sourceId: z.string().trim().min(1),
+    supportedPlatforms: z.array(z.enum(["darwin", "linux", "win32"])).optional(),
+    value: z.string().trim().min(1)
+  })
+  .strict()
+
+function parseEnabledTools(value: unknown): ExtensionAiCapabilityTool[] {
+  const parsed = extensionAiCapabilityToolsSchema.safeParse(value)
   return parsed.success ? parsed.data : []
+}
+
+function parseAuthStatus(value: unknown): ExtensionAiAuthStatus | null {
+  return value === "connected" || value === "missing" || value === "failed" ? value : null
 }
 
 export function resolveExtensionToolPermission(input: {
@@ -227,44 +299,95 @@ export function resolveExtensionToolPermission(input: {
   }
 }
 
-export function snapshotSourceProfiles(sourceBindings: ExtensionSourceBinding[]): SourceProfile[] {
-  return sourceBindings.map((binding) => ({
-    ...binding.profile,
-    enabledTools: structuredClone(binding.profile.enabledTools),
-    enabledToolNames: [...binding.profile.enabledToolNames],
-    publicConfig: structuredClone(binding.profile.publicConfig)
-  }))
-}
-
-export function createRunSourceBindingsSnapshot(input: {
+export function createRunExtensionAiCapabilitiesSnapshot(input: {
+  aiCapabilities: ResolvedExtensionAiCapability[]
   now?: string
   permissionMode: PermissionModeName
   runId: string
-  sourceBindings: ExtensionSourceBinding[]
-}): RunSourceBinding[] {
+}): RunExtensionAiCapabilitySnapshot[] {
   const createdAt = input.now ?? new Date().toISOString()
 
-  return input.sourceBindings.map((binding) => ({
-    authStateSnapshot: binding.profile.authStatus,
+  return input.aiCapabilities.map((resolvedCapability) => ({
+    authStateSnapshot: resolvedCapability.authStatus,
+    capabilityId: resolvedCapability.capability.id,
+    capabilityVersion: "1",
     createdAt,
-    displayNameSnapshot: binding.profile.displayName,
-    enabledToolNamesSnapshot: [...binding.profile.enabledToolNames],
-    extensionName: binding.source.extensionName,
-    id: `${input.runId}:${binding.profile.id}`,
+    displayNameSnapshot: resolvedCapability.displayName,
+    enabledSnapshot: resolvedCapability.enabled,
+    enabledToolNamesSnapshot: [...resolvedCapability.enabledToolNames],
+    extensionName: resolvedCapability.extensionName,
+    id: `${input.runId}:${resolvedCapability.extensionName}:${resolvedCapability.capability.id}`,
     permissionModeSnapshot: input.permissionMode,
-    runId: input.runId,
-    sourceId: binding.source.id,
-    sourceProfileId: binding.profile.id,
-    sourceVersion: "1"
+    publicConfigSnapshot: structuredClone(resolvedCapability.publicConfig),
+    runId: input.runId
   }))
 }
 
-export function parseSourceProfilesSnapshot(value: unknown): SourceProfile[] {
+export function parseRunExtensionAiCapabilitiesSnapshot(
+  value: unknown
+): RunExtensionAiCapabilitySnapshot[] {
   if (!Array.isArray(value)) {
     return []
   }
 
-  const profiles: SourceProfile[] = []
+  const snapshots: RunExtensionAiCapabilitySnapshot[] = []
+
+  for (const entry of value) {
+    if (!isRecord(entry)) {
+      continue
+    }
+
+    const id = readString(entry.id)
+    const runId = readString(entry.runId)
+    const capabilityId = readString(entry.capabilityId)
+    const extensionName = readString(entry.extensionName)
+    const displayNameSnapshot = readString(entry.displayNameSnapshot)
+    const authStateSnapshot = parseAuthStatus(entry.authStateSnapshot)
+    const permissionModeSnapshot = entry.permissionModeSnapshot
+    const capabilityVersion = readString(entry.capabilityVersion)
+    const createdAt = readString(entry.createdAt)
+
+    if (
+      !id ||
+      !runId ||
+      !capabilityId ||
+      !extensionName ||
+      !displayNameSnapshot ||
+      !authStateSnapshot ||
+      !isPermissionModeName(permissionModeSnapshot) ||
+      !capabilityVersion ||
+      !createdAt
+    ) {
+      continue
+    }
+
+    snapshots.push({
+      authStateSnapshot,
+      capabilityId,
+      capabilityVersion,
+      createdAt,
+      displayNameSnapshot,
+      enabledSnapshot: entry.enabledSnapshot !== false,
+      enabledToolNamesSnapshot: readStringArray(entry.enabledToolNamesSnapshot),
+      extensionName,
+      id,
+      permissionModeSnapshot,
+      publicConfigSnapshot: isRecord(entry.publicConfigSnapshot)
+        ? entry.publicConfigSnapshot
+        : {},
+      runId
+    })
+  }
+
+  return snapshots
+}
+
+export function parseLegacySourceProfilesSnapshot(value: unknown): LegacySourceProfileSnapshot[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const profiles: LegacySourceProfileSnapshot[] = []
 
   for (const entry of value) {
     if (!isRecord(entry)) {
@@ -312,13 +435,48 @@ export function parseSourceProfilesSnapshot(value: unknown): SourceProfile[] {
   return profiles
 }
 
-export function readSourceProfilesSnapshotFromMetadata(
+export function parseExtensionAiCapability(value: unknown): ExtensionAiCapability | null {
+  const parsed = extensionAiCapabilitySchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
+export function parseExtensionSourceMention(value: unknown): ExtensionSourceMention | null {
+  const parsed = extensionSourceMentionSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
+export function parseLegacySourceProfileSnapshot(
+  value: unknown
+): LegacySourceProfileSnapshot | null {
+  const parsed = legacySourceProfileSnapshotSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
+export function readLegacySourceProfilesSnapshotFromMetadata(
   metadata: string | null | undefined
-): SourceProfile[] | null {
+): LegacySourceProfileSnapshot[] | null {
   const parsed = parseMetadataValue(metadata)
-  if (!Object.prototype.hasOwnProperty.call(parsed, RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY)) {
+  if (!Object.prototype.hasOwnProperty.call(parsed, LEGACY_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY)) {
     return null
   }
 
-  return parseSourceProfilesSnapshot(parsed[RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY])
+  return parseLegacySourceProfilesSnapshot(parsed[LEGACY_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY])
+}
+
+export function readRunExtensionAiCapabilitiesSnapshotFromMetadata(
+  metadata: string | null | undefined
+): RunExtensionAiCapabilitySnapshot[] | null {
+  const parsed = parseMetadataValue(metadata)
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      parsed,
+      RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY
+    )
+  ) {
+    return null
+  }
+
+  return parseRunExtensionAiCapabilitiesSnapshot(
+    parsed[RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]
+  )
 }

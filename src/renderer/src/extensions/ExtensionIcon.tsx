@@ -8,6 +8,7 @@ import {
   History,
   Languages,
   ListTodo,
+  NotebookText,
   Puzzle,
   Search,
   Sparkles
@@ -67,6 +68,8 @@ function renderGlyphIcon(
       return <History className={className} aria-hidden="true" />
     case "languages":
       return <Languages className={className} aria-hidden="true" />
+    case "notion":
+      return <NotebookText className={className} aria-hidden="true" />
     case "reminders":
       return <ListTodo className={className} aria-hidden="true" />
     case "sparkles":

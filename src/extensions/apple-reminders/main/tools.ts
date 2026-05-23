@@ -3,9 +3,19 @@ import type { ExtensionToolDefinition } from "@shared/extension-sources"
 import type {
   AppleReminder,
   AppleRemindersData,
-  CreateAppleReminderRequest
+  CreateAppleReminderRequest,
+  DeleteAppleReminderRequest,
+  SetAppleReminderCompletedRequest,
+  ShowAppleReminderRequest
 } from "../src/contracts"
-import { createAppleReminder, getAppleRemindersData, isAppleRemindersRequestError } from "./service"
+import {
+  createAppleReminder,
+  deleteAppleReminder,
+  getAppleRemindersData,
+  isAppleRemindersRequestError,
+  setAppleReminderCompleted,
+  showAppleReminder
+} from "./service"
 
 const listRemindersInputSchema = z.object({
   includeCompleted: z.boolean().optional().default(false),
@@ -20,17 +30,28 @@ const createReminderInputSchema = z.object({
   title: z.string().trim().min(1)
 })
 
+const reminderIdInputSchema = z.object({
+  reminderId: z.string().trim().min(1)
+})
+
 type ListRemindersInput = z.infer<typeof listRemindersInputSchema>
 type CreateReminderInput = z.infer<typeof createReminderInputSchema>
+type ReminderIdInput = z.infer<typeof reminderIdInputSchema>
 
 export interface AppleRemindersToolServices {
   createReminder: (payload: CreateAppleReminderRequest) => Promise<AppleReminder>
+  deleteReminder: (payload: DeleteAppleReminderRequest) => Promise<{ reminderId: string }>
   getData: () => Promise<AppleRemindersData>
+  setReminderCompleted: (payload: SetAppleReminderCompletedRequest) => Promise<AppleReminder>
+  showReminder: (payload: ShowAppleReminderRequest) => Promise<null>
 }
 
 const defaultAppleRemindersToolServices: AppleRemindersToolServices = {
   createReminder: createAppleReminder,
-  getData: getAppleRemindersData
+  deleteReminder: deleteAppleReminder,
+  getData: getAppleRemindersData,
+  setReminderCompleted: setAppleReminderCompleted,
+  showReminder: showAppleReminder
 }
 
 function selectReminders(data: AppleRemindersData, input: ListRemindersInput): AppleRemindersData {
@@ -83,6 +104,56 @@ export function createAppleRemindersTools(
     name: "createReminder",
     title: "Create Reminder"
   }
+  const completeReminderTool: ExtensionToolDefinition<ReminderIdInput, AppleReminder | string> = {
+    access: "write",
+    description: "Mark an Apple Reminders task as complete.",
+    handler: (_ctx, input) =>
+      runAppleRemindersTool("complete reminder", () =>
+        services.setReminderCompleted({
+          completed: true,
+          reminderId: input.reminderId
+        })
+      ),
+    inputSchema: reminderIdInputSchema,
+    name: "completeReminder",
+    title: "Complete Reminder"
+  }
+  const deleteReminderTool: ExtensionToolDefinition<
+    ReminderIdInput,
+    { reminderId: string } | string
+  > = {
+    access: "write",
+    description: "Delete an Apple Reminders task.",
+    handler: (_ctx, input) =>
+      runAppleRemindersTool("delete reminder", () => services.deleteReminder(input)),
+    inputSchema: reminderIdInputSchema,
+    name: "deleteReminder",
+    title: "Delete Reminder"
+  }
+  const openReminderTool: ExtensionToolDefinition<
+    ReminderIdInput,
+    { opened: true; reminderId: string } | string
+  > = {
+    access: "external",
+    description: "Open an Apple Reminders task in the Reminders app.",
+    handler: (_ctx, input) =>
+      runAppleRemindersTool("open reminder", async () => {
+        await services.showReminder(input)
+        return {
+          opened: true,
+          reminderId: input.reminderId
+        }
+      }),
+    inputSchema: reminderIdInputSchema,
+    name: "openReminder",
+    title: "Open Reminder"
+  }
 
-  return [listRemindersTool, createReminderTool]
+  return [
+    listRemindersTool,
+    createReminderTool,
+    completeReminderTool,
+    deleteReminderTool,
+    openReminderTool
+  ]
 }

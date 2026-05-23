@@ -341,7 +341,6 @@ export function LauncherSearchPage(props: {
           )
         }
         inputRef={inputRef}
-        density="compact"
         inputMultiline
         inputValue={inputValue}
         onInputKeyDown={onInputKeyDown}

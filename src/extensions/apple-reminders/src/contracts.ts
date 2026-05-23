@@ -1,8 +1,8 @@
 export const APPLE_REMINDERS_EXTENSION_ID = "apple-reminders" as const
+export const APPLE_REMINDERS_SOURCE_ID = "appleReminders" as const
 export const APPLE_REMINDERS_RPC_METHOD_GET_DATA = "get-data" as const
 export const APPLE_REMINDERS_RPC_METHOD_CREATE_REMINDER = "create-reminder" as const
-export const APPLE_REMINDERS_RPC_METHOD_SET_REMINDER_COMPLETED =
-  "set-reminder-completed" as const
+export const APPLE_REMINDERS_RPC_METHOD_SET_REMINDER_COMPLETED = "set-reminder-completed" as const
 export const APPLE_REMINDERS_RPC_METHOD_DELETE_REMINDER = "delete-reminder" as const
 export const APPLE_REMINDERS_RPC_METHOD_SHOW_REMINDER = "show-reminder" as const
 

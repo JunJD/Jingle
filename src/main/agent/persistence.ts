@@ -1,11 +1,9 @@
 import { randomUUID } from "crypto"
 import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
 import {
-  createRunSourceBindingsSnapshot,
-  snapshotSourceProfiles,
-  RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY,
-  RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY,
-  type ExtensionSourceBinding
+  createRunExtensionAiCapabilitiesSnapshot,
+  RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY,
+  type ResolvedExtensionAiCapability
 } from "@shared/extension-sources"
 import { createRun, getRun, getThread, updateRun, updateThread } from "../db"
 import { getCheckpointer } from "./runtime"
@@ -30,25 +28,25 @@ export async function beginAgentRun(
   threadId: string,
   modelId?: string,
   options?: {
+    aiCapabilities?: ResolvedExtensionAiCapability[]
     permissionMode?: PermissionModeName
-    sourceBindings?: ExtensionSourceBinding[]
   }
 ): Promise<{ runId: string }> {
   const runId = randomUUID()
   const permissionMode = options?.permissionMode ?? DEFAULT_PERMISSION_MODE
-  const sourceBindings = options?.sourceBindings ?? []
+  const aiCapabilities = options?.aiCapabilities ?? []
 
   await createRun(runId, threadId, {
     status: "running",
     metadata: {
       modelId: modelId ?? null,
       [RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY]: permissionMode,
-      [RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY]: snapshotSourceProfiles(sourceBindings),
-      [RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY]: createRunSourceBindingsSnapshot({
-        permissionMode,
-        runId,
-        sourceBindings
-      })
+      [RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]:
+        createRunExtensionAiCapabilitiesSnapshot({
+          aiCapabilities,
+          permissionMode,
+          runId
+        })
     }
   })
 

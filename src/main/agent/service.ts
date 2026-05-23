@@ -1,12 +1,17 @@
 import { HumanMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
-import { readSourceProfilesSnapshotFromMetadata } from "@shared/extension-sources"
+import {
+  readLegacySourceProfilesSnapshotFromMetadata,
+  readRunExtensionAiCapabilitiesSnapshotFromMetadata
+} from "@shared/extension-sources"
 import { normalizeComposerMessageRefs, summarizeMessageContent } from "@shared/message-content"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import {
-  createNativeExtensionSourceBindingsForRefs,
-  hydrateNativeExtensionSourceBindings
+  createNativeExtensionAiCapabilitiesFromLegacySourceProfiles,
+  hydrateNativeExtensionAiCapabilities,
+  resolveNativeExtensionAiCapabilitiesForRefs
 } from "@extensions/sources"
+import { getResolvedNativeExtensionPreferenceRecord } from "../preferences"
 import {
   beginAgentRun,
   finalizeRunWithoutCheckpoint,
@@ -417,11 +422,15 @@ export class AgentService {
 
       const normalizedRefs = normalizeComposerMessageRefs(message.additional_kwargs?.refs)
       const permissionMode = requestedPermissionMode ?? readThreadPermissionMode(thread)
-      const sourceBindings = createNativeExtensionSourceBindingsForRefs(normalizedRefs)
+      const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefs(normalizedRefs, {
+        getPreferences: getResolvedNativeExtensionPreferenceRecord,
+        permissionMode,
+        platform: process.platform
+      })
 
       const { runId } = await beginAgentRun(threadId, modelId, {
-        permissionMode,
-        sourceBindings
+        aiCapabilities,
+        permissionMode
       })
       this.activeRuns.set(threadId, { controller: abortController, runId })
       sink.send({ type: "run_started", runId })
@@ -431,7 +440,7 @@ export class AgentService {
         workspacePath,
         modelId,
         permissionMode,
-        sourceBindings
+        aiCapabilities
       })
       const humanMessage = new HumanMessage({
         content: message.content,
@@ -565,17 +574,28 @@ export class AgentService {
     try {
       const resumedRun = await getRun(runId)
       const permissionMode = readRunPermissionModeSnapshot(resumedRun)
-      const sourceProfiles = readSourceProfilesSnapshotFromMetadata(resumedRun?.metadata)
-      const sourceBindings =
-        sourceProfiles === null
-          ? []
-          : hydrateNativeExtensionSourceBindings(sourceProfiles)
+      const aiCapabilitySnapshots = readRunExtensionAiCapabilitiesSnapshotFromMetadata(
+        resumedRun?.metadata
+      )
+      const legacySourceProfiles = readLegacySourceProfilesSnapshotFromMetadata(
+        resumedRun?.metadata
+      )
+      const aiCapabilities =
+        aiCapabilitySnapshots === null
+          ? null
+          : hydrateNativeExtensionAiCapabilities(aiCapabilitySnapshots)
+      const runtimeAiCapabilities =
+        aiCapabilities === null
+          ? legacySourceProfiles === null
+            ? []
+            : createNativeExtensionAiCapabilitiesFromLegacySourceProfiles(legacySourceProfiles)
+          : aiCapabilities
       const agent = await createAgentRuntime({
         threadId,
         workspacePath,
         modelId,
         permissionMode,
-        sourceBindings
+        aiCapabilities: runtimeAiCapabilities
       })
       const config = buildAgentResumeConfig(threadId, runId, abortController)
       const resolvedHitlDecision = {

@@ -48,13 +48,12 @@ test("classifies file-impacting approvals as large", () => {
 
 test("classifies extension approvals by access and argument density", () => {
   const base = {
+    capabilityDisplayName: "Apple Reminders",
+    capabilityId: "appleReminders",
     extensionName: "apple-reminders",
     kind: "extension_tool",
     permissionMode: "ask-to-edit",
     reason: "Ask to Edit mode requires approval for write and external extension tools.",
-    sourceDisplayName: "Apple Reminders",
-    sourceId: "appleReminders",
-    sourceProfileId: "default",
     toolName: "ext__appleReminders__default__listReminders",
     toolTitle: "List Reminders"
   } satisfies Omit<ToolApprovalItem & { kind: "extension_tool" }, "access" | "args">
