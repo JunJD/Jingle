@@ -9,7 +9,9 @@ struct AppleRemindersRequest: Decodable {
     struct Payload: Decodable {
         let completed: Bool?
         let dueDate: String?
+        let includeCompleted: Bool?
         let listId: String?
+        let limit: Int?
         let notes: String?
         let priority: String?
         let reminderId: String?
@@ -261,29 +263,35 @@ func getDefaultListId(_ eventStore: EKEventStore) -> String? {
     eventStore.defaultCalendarForNewReminders()?.calendarIdentifier
 }
 
-func getData(_ eventStore: EKEventStore) async throws -> AppleRemindersData {
+func getData(_ eventStore: EKEventStore, payload: AppleRemindersRequest.Payload?) async throws -> AppleRemindersData {
     let incompletePredicate = eventStore.predicateForIncompleteReminders(
         withDueDateStarting: nil,
         ending: nil,
         calendars: nil
     )
-    let completedPredicate = eventStore.predicateForCompletedReminders(
-        withCompletionDateStarting: nil,
-        ending: nil,
-        calendars: nil
-    )
     let incompleteReminders = await fetchReminders(eventStore: eventStore, predicate: incompletePredicate) ?? []
-    let completedReminders = await fetchReminders(eventStore: eventStore, predicate: completedPredicate) ?? []
+    let completedReminders: [EKReminder]
+    if payload?.includeCompleted == false {
+        completedReminders = []
+    } else {
+        let completedPredicate = eventStore.predicateForCompletedReminders(
+            withCompletionDateStarting: nil,
+            ending: nil,
+            calendars: nil
+        )
+        completedReminders = await fetchReminders(eventStore: eventStore, predicate: completedPredicate) ?? []
+    }
     var seenReminderIds = Set<String>()
     let reminders = (incompleteReminders + completedReminders).filter { reminder in
         seenReminderIds.insert(reminder.calendarItemIdentifier).inserted
     }
     let defaultListId = getDefaultListId(eventStore)
     let lists = eventStore.calendars(for: .reminder)
+    let limit = min(max(0, payload?.limit ?? 1000), 1000)
 
     return AppleRemindersData(
         lists: lists.map { serializeList($0, defaultListId: defaultListId) },
-        reminders: reminders.prefix(1000).map { serializeReminder($0, defaultListId: defaultListId) }
+        reminders: reminders.prefix(limit).map { serializeReminder($0, defaultListId: defaultListId) }
     )
 }
 
@@ -407,7 +415,7 @@ struct OpenworkAppleRemindersMain {
 
             switch request.method {
             case "get-data":
-                try await writeResponse(getData(eventStore))
+                try await writeResponse(getData(eventStore, payload: request.payload))
             case "create-reminder":
                 try writeResponse(createReminder(eventStore, payload: request.payload))
             case "set-reminder-completed":

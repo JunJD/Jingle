@@ -41,6 +41,11 @@ export interface AppleRemindersData {
   reminders: AppleReminder[]
 }
 
+export interface GetAppleRemindersDataRequest {
+  includeCompleted?: boolean
+  limit?: number
+}
+
 export interface CreateAppleReminderRequest {
   dueDate?: string | null
   listId?: string

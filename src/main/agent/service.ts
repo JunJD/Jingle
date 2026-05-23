@@ -9,6 +9,8 @@ import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import {
   createNativeExtensionAiCapabilitiesFromLegacySourceProfiles,
   hydrateNativeExtensionAiCapabilities,
+  listNativeExtensionAiCapabilityCatalog,
+  resolveNativeExtensionAiCapabilityForExtensionName,
   resolveNativeExtensionAiCapabilitiesForRefs
 } from "@extensions/sources"
 import { getResolvedNativeExtensionPreferenceRecord } from "../preferences"
@@ -18,7 +20,8 @@ import {
   markRunAborted,
   markRunFailed,
   resumeAgentRun,
-  syncRunFromLatestCheckpoint
+  syncRunFromLatestCheckpoint,
+  updateRunExtensionAiCapabilitiesSnapshot
 } from "./persistence"
 import { isAbortLikeError, isModelAuthenticationError, normalizeAgentRuntimeError } from "./errors"
 import { createAgentRuntime, runtimeUsesCheckpointPersistence } from "./runtime"
@@ -427,6 +430,13 @@ export class AgentService {
         permissionMode,
         platform: process.platform
       })
+      const aiCapabilityCatalog = listNativeExtensionAiCapabilityCatalog(process.platform)
+      const getAiCapabilityByExtensionName = (extensionName: string) =>
+        resolveNativeExtensionAiCapabilityForExtensionName(extensionName, {
+          getPreferences: getResolvedNativeExtensionPreferenceRecord,
+          permissionMode,
+          platform: process.platform
+        })
 
       const { runId } = await beginAgentRun(threadId, modelId, {
         aiCapabilities,
@@ -440,7 +450,14 @@ export class AgentService {
         workspacePath,
         modelId,
         permissionMode,
-        aiCapabilities
+        aiCapabilities,
+        aiCapabilityCatalog,
+        getAiCapabilityByExtensionName,
+        onLoadedAiCapabilitiesChanged: ({ aiCapabilities, permissionMode, runId }) =>
+          updateRunExtensionAiCapabilitiesSnapshot(runId, {
+            aiCapabilities,
+            permissionMode
+          })
       })
       const humanMessage = new HumanMessage({
         content: message.content,
@@ -595,7 +612,19 @@ export class AgentService {
         workspacePath,
         modelId,
         permissionMode,
-        aiCapabilities: runtimeAiCapabilities
+        aiCapabilities: runtimeAiCapabilities,
+        aiCapabilityCatalog: listNativeExtensionAiCapabilityCatalog(process.platform),
+        getAiCapabilityByExtensionName: (extensionName: string) =>
+          resolveNativeExtensionAiCapabilityForExtensionName(extensionName, {
+            getPreferences: getResolvedNativeExtensionPreferenceRecord,
+            permissionMode,
+            platform: process.platform
+          }),
+        onLoadedAiCapabilitiesChanged: ({ aiCapabilities, permissionMode, runId }) =>
+          updateRunExtensionAiCapabilitiesSnapshot(runId, {
+            aiCapabilities,
+            permissionMode
+          })
       })
       const config = buildAgentResumeConfig(threadId, runId, abortController)
       const resolvedHitlDecision = {

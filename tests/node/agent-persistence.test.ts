@@ -175,7 +175,8 @@ test("agent run metadata snapshots permission mode and preserves it through resu
     readRunExtensionAiCapabilitiesSnapshotFromMetadata,
     RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY
   } = await import("../../src/shared/extension-sources")
-  const { resolveNativeExtensionAiCapabilitiesForRefs } = await import("../../src/extensions/sources")
+  const { resolveNativeExtensionAiCapabilitiesForRefs } =
+    await import("../../src/extensions/sources")
 
   const threadId = "thread-permission"
   await createThread(threadId)
@@ -218,10 +219,7 @@ test("agent run metadata snapshots permission mode and preserves it through resu
     ...snapshot,
     createdAt: firstSnapshot?.createdAt
   }))
-  assert.deepEqual(
-    expectedAiCapabilitiesSnapshot,
-    aiCapabilitiesSnapshot
-  )
+  assert.deepEqual(expectedAiCapabilitiesSnapshot, aiCapabilitiesSnapshot)
   assert.deepEqual(
     readRunExtensionAiCapabilitiesSnapshotFromMetadata(createdRun?.metadata),
     aiCapabilitiesSnapshot
@@ -244,6 +242,60 @@ test("agent run metadata snapshots permission mode and preserves it through resu
     aiCapabilitiesSnapshot
   )
   assert.match(resumedRun?.metadata ?? "", /request-1/)
+})
+
+test("run metadata updates preserve loaded extension snapshots and resume metadata", async () => {
+  const { createThread, getRun } = await loadDbModules()
+  const { beginAgentRun, resumeAgentRun, updateRunExtensionAiCapabilitiesSnapshot } =
+    await import("../../src/main/agent/persistence")
+  const { readRunExtensionAiCapabilitiesSnapshotFromMetadata } =
+    await import("../../src/shared/extension-sources")
+  const { resolveNativeExtensionAiCapabilitiesForRefs } =
+    await import("../../src/extensions/sources")
+
+  const threadId = "thread-extension-metadata-merge"
+  await createThread(threadId)
+
+  const { runId } = await beginAgentRun(threadId, "gpt-test", {
+    aiCapabilities: [],
+    permissionMode: "ask-to-edit"
+  })
+  const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefs(
+    [
+      {
+        extensionName: "apple-reminders",
+        name: "Apple Reminders",
+        sourceId: "appleReminders",
+        type: "extension-source"
+      }
+    ],
+    {
+      permissionMode: "ask-to-edit",
+      platform: "darwin"
+    }
+  )
+
+  await Promise.all([
+    updateRunExtensionAiCapabilitiesSnapshot(runId, {
+      aiCapabilities,
+      permissionMode: "ask-to-edit"
+    }),
+    resumeAgentRun(threadId, runId, {
+      requestId: "request-loaded-extension",
+      source: "resume"
+    })
+  ])
+
+  const run = await getRun(runId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  assert.equal(metadata.requestId, "request-loaded-extension")
+  assert.equal(metadata.source, "resume")
+  assert.deepEqual(
+    readRunExtensionAiCapabilitiesSnapshotFromMetadata(run?.metadata)?.map(
+      (snapshot) => snapshot.extensionName
+    ),
+    ["apple-reminders"]
+  )
 })
 
 test("syncRunFromLatestCheckpoint reads the latest checkpoint for that run only", async () => {

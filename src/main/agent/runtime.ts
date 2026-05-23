@@ -40,7 +40,11 @@ import { createNativeExtensionToolRegistry } from "../extension-tools/native-ext
 import { createExtensionAiRuntime } from "./extension-ai-runtime"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
-import type { ResolvedExtensionAiCapability } from "@shared/extension-sources"
+import type {
+  ExtensionAiCapabilityCatalogItem,
+  ResolvedExtensionAiCapability
+} from "@shared/extension-sources"
+import type { LoadedExtensionAiCapabilitiesChange } from "./extension-ai-session"
 
 /**
  * Generate the full system prompt for the agent.
@@ -105,6 +109,11 @@ export interface CreateAgentRuntimeOptions {
   permissionMode?: PermissionModeName
   /** Resolved extension AI capabilities snapshot for this run. */
   aiCapabilities?: ResolvedExtensionAiCapability[]
+  aiCapabilityCatalog?: ExtensionAiCapabilityCatalogItem[]
+  getAiCapabilityByExtensionName?: (extensionName: string) => ResolvedExtensionAiCapability | null
+  onLoadedAiCapabilitiesChanged?: (
+    change: LoadedExtensionAiCapabilitiesChange
+  ) => Promise<void> | void
   /** Workspace path - REQUIRED for agent to operate on files */
   workspacePath: string
 }
@@ -166,6 +175,9 @@ export async function createAgentRuntime(
   })
   const extensionAiRuntime = createExtensionAiRuntime({
     aiCapabilities,
+    aiCapabilityCatalog: options.aiCapabilityCatalog,
+    getAiCapabilityByExtensionName: options.getAiCapabilityByExtensionName,
+    onLoadedAiCapabilitiesChanged: options.onLoadedAiCapabilitiesChanged,
     permissionMode,
     registry: createNativeExtensionToolRegistry({
       definitions: nativeExtensionMainDefinitions,

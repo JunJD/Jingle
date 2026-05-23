@@ -2,6 +2,7 @@ import type {
   ExtensionAiAuthStatus,
   ExtensionAiCapability,
   ExtensionAiCapabilityTool,
+  ExtensionAiCapabilityCatalogItem,
   LegacySourceProfileSnapshot,
   RunExtensionAiCapabilitySnapshot,
   ResolvedExtensionAiCapability
@@ -75,6 +76,10 @@ const aiCapabilityRegistryByKey = new Map(
     }),
     entry
   ])
+)
+
+const aiCapabilityRegistryByExtensionName = new Map(
+  nativeExtensionAiCapabilityRegistry.map((entry) => [entry.manifest.name, entry])
 )
 
 function isMissingRequiredPreferenceValue(value: unknown): boolean {
@@ -273,6 +278,49 @@ export function resolveNativeExtensionAiCapabilitiesForRefs(
     }
 
     return [resolveEntryCapability(entry, input)]
+  })
+}
+
+export function resolveNativeExtensionAiCapabilityForExtensionName(
+  extensionName: string,
+  input: ResolveNativeExtensionAiCapabilityInput = {}
+): ResolvedExtensionAiCapability | null {
+  const entry = aiCapabilityRegistryByExtensionName.get(extensionName)
+  if (!entry) {
+    console.warn(`[Sources] Skipping unknown extension AI capability "${extensionName}".`)
+    return null
+  }
+
+  return resolveEntryCapability(entry, input)
+}
+
+export function listNativeExtensionAiCapabilityCatalog(
+  platform?: string
+): ExtensionAiCapabilityCatalogItem[] {
+  return nativeExtensionAiCapabilityRegistry.flatMap((entry) => {
+    const supportedPlatforms = getCapabilitySupportedPlatforms(entry.manifest, entry.capability)
+    if (
+      platform &&
+      !supportsNativeExtensionPlatformList(supportedPlatforms, platform)
+    ) {
+      return []
+    }
+
+    return [
+      {
+        description: entry.capability.description ?? entry.manifest.description ?? entry.capability.title,
+        extensionName: entry.manifest.name,
+        mention: entry.capability.mention
+          ? {
+              label: entry.capability.mention.label ?? entry.capability.title,
+              value: entry.capability.mention.value ?? entry.manifest.name
+            }
+          : undefined,
+        sourceId: entry.capability.id,
+        supportedPlatforms: supportedPlatforms ? [...supportedPlatforms] : undefined,
+        title: entry.capability.title
+      }
+    ]
   })
 }
 

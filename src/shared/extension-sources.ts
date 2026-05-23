@@ -57,6 +57,18 @@ export interface ExtensionAiCapabilityTool {
   toolName: string
 }
 
+export interface ExtensionAiCapabilityCatalogItem {
+  description: string
+  extensionName: string
+  mention?: {
+    label: string
+    value: string
+  }
+  sourceId: string
+  supportedPlatforms?: NativeExtensionSupportedPlatform[]
+  title: string
+}
+
 export interface ResolvedExtensionAiCapability {
   authStatus: ExtensionAiAuthStatus
   capability: ExtensionAiCapability

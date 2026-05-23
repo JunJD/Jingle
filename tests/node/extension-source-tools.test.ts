@@ -19,7 +19,10 @@ import {
   buildExtensionInstructions,
   createExtensionAiMiddleware
 } from "../../src/main/agent/extension-ai-middleware"
-import { createExtensionAiRuntime } from "../../src/main/agent/extension-ai-runtime"
+import {
+  createExtensionAiRuntime,
+  createExtensionAiSession
+} from "../../src/main/agent/extension-ai-runtime"
 import { createExtensionToolApprovalPolicyProvider } from "../../src/main/extension-tools/permission"
 import { ExtensionToolExecutor } from "../../src/main/extension-tools/executor"
 import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
@@ -244,6 +247,34 @@ test("extension AI capability binding skips stale enabled tool names", () => {
   }
 })
 
+test("extension AI session replaces stale bindings when a capability is reloaded", () => {
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  registry.registerExtensionTools("mockExtension", [createSearchTool()])
+
+  const session = createExtensionAiSession({
+    aiCapabilities: [createAiCapability()],
+    registry
+  })
+  assert.deepEqual(
+    session.getAllToolBindings().map((binding) => binding.agentToolName),
+    ["ext__mockSource__profile_1__searchItems"]
+  )
+
+  session.loadAiCapability(
+    createAiCapability({
+      authStatus: "missing",
+      enabledToolNames: [],
+      toolExposures: []
+    })
+  )
+
+  assert.deepEqual(session.getAllToolBindings(), [])
+  assert.deepEqual(session.getVisibleToolBindings(), [])
+  assert.equal(session.getAiCapabilities()[0]?.authStatus, "missing")
+})
+
 test("extension tool executor validates input and passes source context to handlers", async () => {
   let observedContext: ExtensionToolContext | null = null
   const registry = new ExtensionToolRegistry({
@@ -289,27 +320,38 @@ test("extension tool executor validates input and passes source context to handl
   )
 })
 
-test("extension AI middleware injects guides and exposes mock tools", async () => {
+test("extension AI middleware injects loaded guides and executes through stable tools", async () => {
   const registry = new ExtensionToolRegistry({
     knownExtensionNames: ["mockExtension"]
   })
   registry.registerExtensionTools("mockExtension", [createSearchTool()])
 
   const aiCapability = createAiCapability()
-  const aiToolBindings = registry.createAiCapabilityToolBindings([aiCapability])
-  const middleware = createExtensionAiMiddleware({
+  const session = createExtensionAiSession({
     aiCapabilities: [aiCapability],
-    aiToolBindings,
+    registry
+  })
+  const middleware = createExtensionAiMiddleware({
+    aiCapabilityCatalog: [],
+    session,
     threadId: "thread-1",
     workspacePath: "/workspace"
   })
 
   const tools = middleware.tools ?? []
-  assert.equal(tools.length, 1)
-  assert.equal(tools[0].name, "ext__mockSource__profile_1__searchItems")
+  const callExtensionTool = tools[1]
+  assert.ok(callExtensionTool)
+  assert.deepEqual(
+    tools.map((tool) => tool.name),
+    ["loadExtension", "callExtensionTool"]
+  )
 
-  const toolOutput = await tools[0].invoke({
-    query: "beta"
+  const toolOutput = await callExtensionTool.invoke({
+    args: {
+      query: "beta"
+    },
+    extensionName: "mockExtension",
+    toolName: "searchItems"
   })
   assert.equal(toolOutput, '{\n  "result": "beta"\n}')
 
@@ -344,10 +386,14 @@ test("extension AI middleware injects guides and exposes mock tools", async () =
         tool_calls: [
           {
             args: {
-              query: "beta"
+              args: {
+                query: "beta"
+              },
+              extensionName: "mockExtension",
+              toolName: "searchItems"
             },
             id: "tool-call-1",
-            name: "ext__mockSource__profile_1__searchItems",
+            name: "callExtensionTool",
             type: "tool_call"
           }
         ]
@@ -437,7 +483,10 @@ test("extension AI runtime exposes only read bindings in explore mode", async ()
 
   assert.equal(runtime.aiToolBindings[0]?.agentToolName, "ext__mockSource__profile_1__createItem")
   assert.deepEqual(runtime.visibleAiToolBindings, [])
-  assert.deepEqual(runtime.middleware.tools, [])
+  assert.deepEqual(
+    runtime.middleware.tools?.map((tool) => tool.name),
+    ["loadExtension", "callExtensionTool"]
+  )
   assert.equal(
     runtime.approvalPolicyProvider.getPolicy("ext__mockSource__profile_1__createItem")?.decision
       .disposition,

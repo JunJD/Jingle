@@ -5,6 +5,7 @@ import type {
   AppleRemindersData,
   CreateAppleReminderRequest,
   DeleteAppleReminderRequest,
+  GetAppleRemindersDataRequest,
   SetAppleReminderCompletedRequest,
   ShowAppleReminderRequest
 } from "../src/contracts"
@@ -41,7 +42,7 @@ type ReminderIdInput = z.infer<typeof reminderIdInputSchema>
 export interface AppleRemindersToolServices {
   createReminder: (payload: CreateAppleReminderRequest) => Promise<AppleReminder>
   deleteReminder: (payload: DeleteAppleReminderRequest) => Promise<{ reminderId: string }>
-  getData: () => Promise<AppleRemindersData>
+  getData: (payload?: GetAppleRemindersDataRequest) => Promise<AppleRemindersData>
   setReminderCompleted: (payload: SetAppleReminderCompletedRequest) => Promise<AppleReminder>
   showReminder: (payload: ShowAppleReminderRequest) => Promise<null>
 }
@@ -89,7 +90,7 @@ export function createAppleRemindersTools(
     description: "List Apple Reminders tasks and lists.",
     handler: async (_ctx, input) =>
       runAppleRemindersTool("list reminders", async () =>
-        selectReminders(await services.getData(), input)
+        selectReminders(await services.getData(input), input)
       ),
     inputSchema: listRemindersInputSchema,
     name: "listReminders",

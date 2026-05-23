@@ -10,6 +10,7 @@ import type {
   AppleRemindersData,
   CreateAppleReminderRequest,
   DeleteAppleReminderRequest,
+  GetAppleRemindersDataRequest,
   SetAppleReminderCompletedRequest,
   ShowAppleReminderRequest
 } from "../src/contracts"
@@ -217,6 +218,23 @@ export function normalizeAppleRemindersError(error: unknown): AppleRemindersRequ
   return new AppleRemindersRequestError(`Apple Reminders command failed: ${message}`)
 }
 
+function normalizeGetDataRequest(payload: unknown): GetAppleRemindersDataRequest {
+  const record = typeof payload === "object" && payload !== null ? payload : {}
+  const includeCompleted =
+    "includeCompleted" in record && typeof record.includeCompleted === "boolean"
+      ? record.includeCompleted
+      : undefined
+  const limit =
+    "limit" in record && typeof record.limit === "number" && Number.isInteger(record.limit)
+      ? record.limit
+      : undefined
+
+  return {
+    includeCompleted,
+    limit
+  }
+}
+
 async function invokeAppleReminders<TResult>(method: string, payload: unknown): Promise<TResult> {
   assertAppleRemindersAvailable()
 
@@ -238,8 +256,13 @@ async function invokeAppleReminders<TResult>(method: string, payload: unknown): 
   }
 }
 
-export async function getAppleRemindersData(): Promise<AppleRemindersData> {
-  return invokeAppleReminders<AppleRemindersData>(APPLE_REMINDERS_RPC_METHOD_GET_DATA, {})
+export async function getAppleRemindersData(
+  payload: GetAppleRemindersDataRequest = {}
+): Promise<AppleRemindersData> {
+  return invokeAppleReminders<AppleRemindersData>(
+    APPLE_REMINDERS_RPC_METHOD_GET_DATA,
+    normalizeGetDataRequest(payload)
+  )
 }
 
 export async function createAppleReminder(

@@ -8,7 +8,11 @@ import {
   normalizeAppleRemindersError
 } from "../../src/extensions/apple-reminders/main/service"
 import { createAppleRemindersTools } from "../../src/extensions/apple-reminders/main/tools"
-import { resolveNativeExtensionAiCapabilitiesForRefs } from "../../src/extensions/sources"
+import {
+  listNativeExtensionAiCapabilityCatalog,
+  resolveNativeExtensionAiCapabilityForExtensionName,
+  resolveNativeExtensionAiCapabilitiesForRefs
+} from "../../src/extensions/sources"
 import {
   listNativeExtensionSourceMentions,
   nativeExtensionSourceMentions
@@ -33,7 +37,8 @@ const fakeReminder = {
   title: "Ship source tools"
 } as const
 
-function createRegistry(): ExtensionToolRegistry {
+function createRegistry(): { getDataCalls: unknown[]; registry: ExtensionToolRegistry } {
+  const getDataCalls: unknown[] = []
   const registry = new ExtensionToolRegistry({
     knownExtensionNames: ["apple-reminders"]
   })
@@ -49,18 +54,21 @@ function createRegistry(): ExtensionToolRegistry {
       deleteReminder: async (input) => ({
         reminderId: input.reminderId
       }),
-      getData: async () => ({
-        lists: [fakeReminder.list],
-        reminders: [
-          fakeReminder,
-          {
-            ...fakeReminder,
-            id: "reminder-2",
-            isCompleted: true,
-            title: "Completed item"
-          }
-        ]
-      }),
+      getData: async (input) => {
+        getDataCalls.push(input)
+        return {
+          lists: [fakeReminder.list],
+          reminders: [
+            fakeReminder,
+            {
+              ...fakeReminder,
+              id: "reminder-2",
+              isCompleted: true,
+              title: "Completed item"
+            }
+          ]
+        }
+      },
       setReminderCompleted: async (input) => ({
         ...fakeReminder,
         completionDate: input.completed ? "2026-05-01T00:00:00.000Z" : null,
@@ -69,7 +77,10 @@ function createRegistry(): ExtensionToolRegistry {
       showReminder: async () => null
     })
   )
-  return registry
+  return {
+    getDataCalls,
+    registry
+  }
 }
 
 const appleRemindersRef: ComposerMessageRef = {
@@ -188,6 +199,29 @@ test("single GitHub AI capability ref reads only GitHub preferences", () => {
   assert.equal(capability?.authStatus, "missing")
   assert.deepEqual(capability?.enabledToolNames, [])
   assert.deepEqual(capability?.toolExposures, [])
+})
+
+test("extension AI capability catalog does not read preferences", () => {
+  assert.deepEqual(
+    listNativeExtensionAiCapabilityCatalog("darwin").map((item) => item.extensionName),
+    ["apple-reminders", "github", "notion"]
+  )
+})
+
+test("loadExtension resolution reads only the requested extension preferences", () => {
+  const calls: string[] = []
+  const capability = resolveNativeExtensionAiCapabilityForExtensionName("github", {
+    getPreferences: (extensionName) => {
+      calls.push(extensionName)
+      return {}
+    },
+    platform: "darwin"
+  })
+
+  assert.deepEqual(calls, ["github"])
+  assert.equal(capability?.extensionName, "github")
+  assert.equal(capability?.authStatus, "missing")
+  assert.deepEqual(capability?.enabledToolNames, [])
 })
 
 test("selected AI capability preference read failures become failed auth without tools", () => {
@@ -316,9 +350,10 @@ test("unknown extension source refs are ignored", () => {
 })
 
 test("Apple Reminders source exposes read tools and protects write tools with Permission Mode", async () => {
+  const { registry } = createRegistry()
   const runtime = createExtensionAiRuntime({
     aiCapabilities: resolveAppleRemindersCapabilities(),
-    registry: createRegistry(),
+    registry,
     threadId: "thread-1",
     workspacePath: "/workspace"
   })
@@ -362,8 +397,9 @@ test("Apple Reminders source exposes read tools and protects write tools with Pe
 
 test("Apple Reminders tools validate input and call main-side services", async () => {
   const aiCapabilities = resolveAppleRemindersCapabilities()
+  const { getDataCalls, registry } = createRegistry()
   const [listBinding, createBinding, completeBinding, deleteBinding, openBinding] =
-    createRegistry().createAiCapabilityToolBindings(aiCapabilities)
+    registry.createAiCapabilityToolBindings(aiCapabilities)
   const executor = new ExtensionToolExecutor({
     bindings: [listBinding, createBinding, completeBinding, deleteBinding, openBinding]
   })
@@ -376,6 +412,12 @@ test("Apple Reminders tools validate input and call main-side services", async (
   })
   assert.match(listOutput, /Ship source tools/)
   assert.doesNotMatch(listOutput, /Completed item/)
+  assert.deepEqual(getDataCalls, [
+    {
+      includeCompleted: false,
+      limit: 25
+    }
+  ])
 
   const createOutput = await executor.executeAgentTool({
     agentToolName: "ext__appleReminders__createReminder",

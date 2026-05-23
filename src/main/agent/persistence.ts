@@ -11,12 +11,12 @@ import { extractTitleFromCheckpoint } from "./runtime-state"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
-import {
-  mergeRunMetadata,
-  RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY
-} from "./permission-mode"
+import { mergeRunMetadata, RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY } from "./permission-mode"
 
 type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted"
+type ExistingRun = NonNullable<Awaited<ReturnType<typeof getRun>>>
+
+const runMetadataUpdateQueues = new Map<string, Promise<void>>()
 
 function resolveCheckpointRunStatus(tuple: CheckpointTuple | undefined): PersistedRunStatus {
   const interrupts = (tuple as { checkpoint?: { channel_values?: { __interrupt__?: unknown[] } } })
@@ -59,6 +59,87 @@ export async function beginAgentRun(
   }
 }
 
+export async function updateRunExtensionAiCapabilitiesSnapshot(
+  runId: string,
+  input: {
+    aiCapabilities: ResolvedExtensionAiCapability[]
+    permissionMode: PermissionModeName
+  }
+): Promise<void> {
+  await updateRunMetadata(runId, {
+    merge: (run) =>
+      mergeRunExtensionAiCapabilitiesSnapshotMetadata(run, {
+        aiCapabilities: input.aiCapabilities,
+        permissionMode: input.permissionMode,
+        runId
+      })
+  })
+}
+
+async function updateRunMetadata(
+  runId: string,
+  input: {
+    merge: (run: ExistingRun) => Record<string, unknown>
+    status?: string
+  }
+): Promise<void> {
+  const previous = runMetadataUpdateQueues.get(runId) ?? Promise.resolve()
+  const next = previous
+    .catch(() => undefined)
+    .then(async () => {
+      const run = await getRun(runId)
+      if (!run) {
+        return
+      }
+
+      await updateRun(runId, {
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        metadata: input.merge(run)
+      })
+    })
+
+  runMetadataUpdateQueues.set(runId, next)
+  try {
+    await next
+  } finally {
+    if (runMetadataUpdateQueues.get(runId) === next) {
+      runMetadataUpdateQueues.delete(runId)
+    }
+  }
+}
+
+function mergeRunResumeMetadata(
+  run: ExistingRun,
+  metadata: Record<string, unknown> | undefined
+): Record<string, unknown> {
+  return mergeRunMetadata(run, metadata ?? {})
+}
+
+function mergeRunExtensionAiCapabilitiesSnapshotMetadata(
+  run: ExistingRun,
+  input: {
+    aiCapabilities: ResolvedExtensionAiCapability[]
+    permissionMode: PermissionModeName
+    runId: string
+  }
+): Record<string, unknown> {
+  return mergeRunMetadata(run, {
+    [RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]: createRunExtensionAiCapabilitiesSnapshot(
+      {
+        aiCapabilities: input.aiCapabilities,
+        permissionMode: input.permissionMode,
+        runId: input.runId
+      }
+    )
+  })
+}
+
+function mergeRunErrorMetadata(run: ExistingRun, error: unknown): Record<string, unknown> {
+  return mergeRunMetadata(run, {
+    error: error instanceof Error ? error.message : String(error)
+  })
+}
+
 export async function resumeAgentRun(
   threadId: string,
   runId: string,
@@ -77,15 +158,14 @@ export async function resumeAgentRun(
   }
 
   if (existing.status && !["pending", "running", "interrupted"].includes(existing.status)) {
-    throw new Error(
-      `[Agent] Cannot resume run "${runId}" from status "${existing.status}".`
-    )
+    throw new Error(`[Agent] Cannot resume run "${runId}" from status "${existing.status}".`)
   }
 
-  await updateRun(runId, {
+  await updateRunMetadata(runId, {
     status: "running",
-    metadata: mergeRunMetadata(existing, metadata ?? {})
+    merge: (run) => mergeRunResumeMetadata(run, metadata)
   })
+
   await updateThread(threadId, {
     status: "busy"
   })
@@ -165,11 +245,9 @@ export async function markRunFailed(
     // Best effort: preserve the failure even if checkpoint sync fails.
   }
 
-  await updateRun(runId, {
+  await updateRunMetadata(runId, {
     status: "error",
-    metadata: mergeRunMetadata(await getRun(runId), {
-      error: error instanceof Error ? error.message : String(error)
-    })
+    merge: (run) => mergeRunErrorMetadata(run, error)
   })
 
   await updateThread(threadId, {

@@ -195,6 +195,32 @@ export function createToolPermissionRuntime(
         return executeDecision
       }
 
+      if (request.toolName === "callExtensionTool") {
+        const extensionCallPolicy = options.extensionToolPolicyProvider?.getCallToolPolicy?.(
+          toolArgs
+        )
+        if (extensionCallPolicy) {
+          const { decision, toolArgs: extensionToolArgs, binding } = extensionCallPolicy
+
+          if (decision.disposition === "allow") {
+            return allow(toolArgs, decision.reason)
+          }
+
+          if (decision.disposition === "deny") {
+            return deny(toolArgs, decision.reason)
+          }
+
+          return requireApproval(
+            toolArgs,
+            options.extensionToolPolicyProvider?.getReview(
+              binding.agentToolName,
+              extensionToolArgs
+            ) ?? null,
+            decision.reason
+          )
+        }
+      }
+
       const extensionToolPolicy = options.extensionToolPolicyProvider?.getPolicy(request.toolName)
       if (extensionToolPolicy) {
         const { decision } = extensionToolPolicy

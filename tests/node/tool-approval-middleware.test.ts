@@ -299,6 +299,33 @@ test("ask-to-edit extension write tools require approval", async () => {
   assert.equal(decision.review.permissionMode, "ask-to-edit")
 })
 
+test("ask-to-edit callExtensionTool resolves approval from the underlying extension tool", async () => {
+  const permissionRuntime = createToolPermissionRuntime({
+    extensionToolPolicyProvider: createExtensionApprovalPolicyProvider("ask-to-edit")
+  })
+
+  const decision = await permissionRuntime.evaluate({
+    args: {
+      args: {
+        title: "Ship it"
+      },
+      extensionName: "mockExtension",
+      toolName: "createItem"
+    },
+    toolName: "callExtensionTool"
+  })
+
+  assert.equal(decision.disposition, "require_approval")
+  assert.equal(decision.review?.kind, "extension_tool")
+  if (decision.review?.kind !== "extension_tool") {
+    throw new Error("Expected extension tool approval review.")
+  }
+  assert.equal(decision.review.toolName, "ext__mockSource__profile_1__createItem")
+  assert.deepEqual(decision.review.args, {
+    title: "Ship it"
+  })
+})
+
 test("explore-mode extension write tools return an error without reaching the handler", async () => {
   const middleware = createToolApprovalMiddleware({
     extensionToolPolicyProvider: createExtensionApprovalPolicyProvider("explore")
