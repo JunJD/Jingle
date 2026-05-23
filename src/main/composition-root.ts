@@ -54,7 +54,6 @@ import { registerThreadsIpcHandlers, registerThreadsModule } from "./threads/mod
 import { warmLauncherSearchProviders } from "./services/launcher-search"
 import { registerWorkspaceIpcHandlers, registerWorkspaceModule } from "./workspace/module"
 import type { MainWindowNavigationPayload } from "@shared/main-window"
-import type { NativeMenuBarState } from "@shared/native-menu-bar"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
 export interface MainCompositionContext {
@@ -72,42 +71,6 @@ export interface MainCompositionContext {
 }
 
 const MAIN_COMPOSITION_CONTEXT_TOKEN = Symbol("MainCompositionContext")
-const OPENWORK_ACTION_BAR_COMMAND_KEY = "openwork:action-bar"
-
-const openworkActionBarState: NativeMenuBarState = {
-  commandKey: OPENWORK_ACTION_BAR_COMMAND_KEY,
-  iconName: "openwork",
-  sections: [
-    {
-      items: [
-        {
-          iconName: "openwork",
-          id: "open-launcher",
-          title: "Open Launcher"
-        },
-        {
-          iconName: "openwork",
-          id: "open-history",
-          title: "Open History"
-        },
-        {
-          iconName: "gear",
-          id: "open-settings",
-          title: "Settings"
-        }
-      ]
-    },
-    {
-      items: [
-        {
-          id: "quit",
-          title: "Quit Openwork"
-        }
-      ]
-    }
-  ],
-  tooltip: "Openwork"
-}
 
 export class MainCompositionRoot {
   constructor(
@@ -144,12 +107,6 @@ export class MainCompositionRoot {
     const nativeMenuBarService = resolveNativeMenuBarService(this.dependencyContainer)
     nativeMenuBarService.initialize({
       getLauncherWindow: this.context.getLauncherWindow
-    })
-    nativeMenuBarService.setState(openworkActionBarState, {
-      "open-history": () => this.context.openMainWindow(),
-      "open-launcher": this.context.showLauncherWindow,
-      "open-settings": () => this.context.openSettingsWindow(),
-      quit: this.context.quitApplication
     })
     resolveExtensionRuntimeMenuBarService(this.dependencyContainer).start()
     this.applyShortcutSettings()
