@@ -115,9 +115,9 @@ export class ExtensionToolRegistry {
 
         const presentation = extensionToolCallPresentationSchema.parse({
           access: definition.access,
-          kind: "extension",
-          profileTitle: resolvedCapability.displayName,
-          sourceTitle: capability.title
+          capabilityDisplayName: resolvedCapability.displayName,
+          capabilityTitle: capability.title,
+          kind: "extension"
         })
         extensionToolCallUiSchema.parse({
           display: toolExposure.display,

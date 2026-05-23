@@ -365,9 +365,9 @@ test("extension AI middleware injects guides and exposes mock tools", async () =
   })
   assert.deepEqual(toolCall.presentation, {
     access: "read",
-    kind: "extension",
-    profileTitle: "Mock Profile",
-    sourceTitle: "Mock Source"
+    capabilityDisplayName: "Mock Profile",
+    capabilityTitle: "Mock Source",
+    kind: "extension"
   })
 })
 
@@ -435,10 +435,7 @@ test("extension AI runtime exposes only read bindings in explore mode", async ()
     workspacePath: "/workspace"
   })
 
-  assert.equal(
-    runtime.aiToolBindings[0]?.agentToolName,
-    "ext__mockSource__profile_1__createItem"
-  )
+  assert.equal(runtime.aiToolBindings[0]?.agentToolName, "ext__mockSource__profile_1__createItem")
   assert.deepEqual(runtime.visibleAiToolBindings, [])
   assert.deepEqual(runtime.middleware.tools, [])
   assert.equal(

@@ -16,14 +16,14 @@ export const extensionToolComponent: ToolComponentDefinition = {
   icon: Plug,
   renderSummary(props) {
     const ui = parseExtensionToolCallUi(props.toolCall)
-    return joinSummaryParts(ui.display.title, ui.presentation.profileTitle)
+    return joinSummaryParts(ui.display.title, ui.presentation.capabilityDisplayName)
   },
   renderDetail(props) {
     const ui = parseExtensionToolCallUi(props.toolCall)
 
     return (
       <ToolDetailStack>
-        <ToolDetailSection label={ui.presentation.sourceTitle}>
+        <ToolDetailSection label={ui.presentation.capabilityTitle}>
           <div className="[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)] text-muted-foreground">
             {ui.display.description}
           </div>
