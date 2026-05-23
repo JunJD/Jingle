@@ -288,7 +288,6 @@ export function LauncherAiPage(): React.JSX.Element {
         inputStatus={inputStatus}
         showInputStatusIndicator={false}
         hideInputChrome
-        density="compact"
         inputValue={query}
         onInputValueChange={setQuery}
         placeholders={[copy.launcher.aiInputPlaceholder, copy.launcher.aiInputPlaceholderSecondary]}

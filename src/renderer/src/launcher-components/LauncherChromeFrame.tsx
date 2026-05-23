@@ -5,7 +5,6 @@ import { useLauncherChromeAudit } from "@launcher-shell/hooks/useLauncherChromeA
 
 interface LauncherChromeFrameProps {
   children?: ReactNode
-  density?: "default" | "compact"
   footer?: ReactNode
   footerVariant?: "strip" | "composer"
   headerLeading?: ReactNode
@@ -21,7 +20,6 @@ interface LauncherChromeFrameProps {
 export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.Element {
   const {
     children,
-    density = "default",
     footer,
     footerVariant = "strip",
     headerLeading,
@@ -52,11 +50,7 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
     >
       <div
         ref={headerRef}
-        className={`launcher-chrome-header flex shrink-0 items-center ${
-          density === "compact"
-            ? "gap-[var(--ow-gap-sm)] px-[var(--launcher-chrome-x-compact)]"
-            : "gap-[var(--ow-space-2-5)] px-[var(--launcher-chrome-x)]"
-        }`}
+        className="launcher-chrome-header flex shrink-0 items-center gap-[var(--ow-gap-sm)] px-[var(--launcher-chrome-x-compact)]"
         style={{
           borderBottom: showHeaderDivider ? "1px solid var(--launcher-border)" : "none",
           height: shellConfig.headerHeight
@@ -67,11 +61,7 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
         <div className="min-w-0 flex-1">{headerMain}</div>
 
         {headerTrailing ? (
-          <div
-            className={`flex shrink-0 items-center ${
-              density === "compact" ? "gap-[var(--ow-gap-sm)]" : "gap-[var(--ow-space-2-5)]"
-            }`}
-          >
+          <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">
             {headerTrailing}
           </div>
         ) : null}
@@ -84,11 +74,7 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
       {footer ? (
         <div
           ref={footerRef}
-          className={`launcher-chrome-footer flex shrink-0 items-center justify-between ${
-            density === "compact"
-              ? "px-[var(--launcher-footer-x)]"
-              : "px-[var(--launcher-chrome-x-compact)]"
-          }`}
+          className="launcher-chrome-footer flex shrink-0 items-center justify-between px-[var(--launcher-footer-x)]"
           data-variant={footerVariant}
           style={{
             borderTop: footerVariant === "strip" ? "1px solid var(--launcher-border)" : "none",
