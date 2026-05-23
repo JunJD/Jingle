@@ -3,6 +3,7 @@ import type { BrowserWindow, IpcMain } from "electron"
 import { container, type DependencyContainer } from "tsyringe"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { registerAgentIpcHandlers, registerAgentModule } from "./agent/module"
+import { AgentStreamHub } from "./agent/stream-hub"
 import { installApplicationMenu } from "./app-menu"
 import { registerAppInfoIpcHandlers, registerAppInfoModule } from "./app-info/module"
 import { registerArtifactsIpcHandlers, registerArtifactsModule } from "./artifacts/module"
@@ -44,6 +45,7 @@ import {
   registerGlobalShortcutService,
   unregisterGlobalShortcutService
 } from "./services/shortcuts/global-shortcut-service"
+import { startNativeMinimalIslandAgentStatus } from "./services/native-minimal-island-agent-status"
 import { registerSettingsIpcHandlers, registerSettingsModule } from "./settings/module"
 import {
   registerSettingsWindowRoutingIpcHandlers,
@@ -73,6 +75,8 @@ export interface MainCompositionContext {
 const MAIN_COMPOSITION_CONTEXT_TOKEN = Symbol("MainCompositionContext")
 
 export class MainCompositionRoot {
+  private stopNativeIslandAgentStatus: (() => void) | null = null
+
   constructor(
     private readonly context: MainCompositionContext,
     private readonly dependencyContainer: DependencyContainer
@@ -109,11 +113,17 @@ export class MainCompositionRoot {
       getLauncherWindow: this.context.getLauncherWindow
     })
     resolveExtensionRuntimeMenuBarService(this.dependencyContainer).start()
+    this.stopNativeIslandAgentStatus?.()
+    this.stopNativeIslandAgentStatus = startNativeMinimalIslandAgentStatus(
+      this.dependencyContainer.resolve(AgentStreamHub)
+    )
     this.applyShortcutSettings()
     void warmLauncherSearchProviders()
   }
 
   dispose(): void {
+    this.stopNativeIslandAgentStatus?.()
+    this.stopNativeIslandAgentStatus = null
     resolveExtensionRuntimeMenuBarService(this.dependencyContainer).dispose()
     resolveExtensionRuntimeManager(this.dependencyContainer).dispose()
     resolveNativeMenuBarService(this.dependencyContainer).dispose()

@@ -4,11 +4,7 @@ import { join } from "node:path"
 import { app } from "electron"
 
 export type NativeMinimalIslandState = "idle" | "working" | "approval"
-export type NativeMinimalIslandAction =
-  | "openLauncher"
-  | "openMainWindow"
-  | "openSettings"
-  | "quit"
+export type NativeMinimalIslandAction = "openLauncher" | "openMainWindow" | "openSettings" | "quit"
 
 export interface NativeMinimalIslandActionHandlers {
   openLauncher: () => void
@@ -184,7 +180,11 @@ export function setNativeMinimalIslandState(state: NativeMinimalIslandState): vo
     return
   }
 
-  nativeIslandProcess.stdin.write(JSON.stringify({ type: "setState", state }) + "\n")
+  try {
+    nativeIslandProcess.stdin.write(JSON.stringify({ type: "setState", state }) + "\n")
+  } catch (error) {
+    console.warn("[native-minimal-island] failed to write state", error)
+  }
 }
 
 export function stopNativeMinimalIsland(): void {
