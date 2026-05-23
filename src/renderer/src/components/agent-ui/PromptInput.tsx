@@ -15,7 +15,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@radix
 import { cn } from "@/lib/utils"
 import { ComposerArea, type ComposerAreaHandle } from "@/composer-area"
 import type { ExtensionSourceMention } from "@shared/extension-sources"
-import type { ComposerMessageRef } from "@shared/message-content"
 
 interface PromptInputFocusTarget {
   focus: () => void
@@ -157,7 +156,6 @@ export interface PromptInputTextareaProps extends Omit<
   composerRef?: React.RefObject<ComposerAreaHandle | null>
   disableAutosize?: boolean
   mode?: "textarea" | "composer"
-  onRefsChange?: (refs: ComposerMessageRef[]) => void
   onValueChange?: (value: string) => void
   sourceMentions?: ExtensionSourceMention[]
   submitOnEnter?: boolean
@@ -177,7 +175,6 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
       onCompositionEnd,
       onCompositionStart,
       onKeyDown,
-      onRefsChange,
       onValueChange,
       placeholder,
       sourceMentions,
@@ -267,7 +264,6 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
             onKeyDown?.(keyboardEvent as unknown as React.KeyboardEvent<HTMLTextAreaElement>)
           }}
           onSubmit={onSubmit}
-          onRefsChange={onRefsChange}
           onValueChange={(nextValue) => {
             setValue(nextValue)
             onValueChange?.(nextValue)

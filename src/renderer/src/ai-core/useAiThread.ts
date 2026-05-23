@@ -4,7 +4,11 @@ import { type PermissionModeName } from "@shared/permission-mode"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { useI18n } from "@/lib/i18n"
 import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
-import { hasComposerMessageInputContent, type ComposerMessageRef } from "@shared/message-content"
+import {
+  hasComposerMessageInputContent,
+  type ComposerMessageInput,
+  type ComposerMessageRef
+} from "@shared/message-content"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 import type { HITLDecision } from "@/types"
 import { useAiCoreHost } from "./AiCoreHost"
@@ -34,10 +38,9 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   primaryActionDisabled: boolean
   query: string
   retry: () => Promise<void>
-  runPrimaryAction: () => void
+  runPrimaryAction: (inputOverride?: ComposerMessageInput) => void
   selectModel: (modelId: string) => void
   selectPermissionMode: (permissionMode: PermissionModeName) => void
-  setComposerRefs: (refs: ComposerMessageRef[]) => void
   setQuery: (value: string) => void
   startFreshDraft: () => Promise<boolean>
   stop: () => Promise<void>
@@ -48,7 +51,6 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const host = useAiCoreHost()
   const hasRunInitialActionRef = useRef(false)
   const [inputStatus, setInputStatus] = useState<LauncherInputStatus>("idle")
-  const [composerRefs, setComposerRefs] = useState<ComposerMessageRef[]>([])
   const [threadActionError, setThreadActionError] = useState<string | null>(null)
   const threadNavigation = useLauncherAiThreadNavigation({
     initialAction: host.initialAction,
@@ -85,32 +87,35 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const hasPendingApproval = Boolean(invocation.conversation.pendingApproval)
   const messageInput = useMemo(
     () => ({
-      refs: [...composerRefs, ...messageRefs],
+      refs: [...messageRefs],
       text: query
     }),
-    [composerRefs, messageRefs, query]
+    [messageRefs, query]
   )
   const initialMessageInput = useMemo(
     () => ({
-      refs: [...composerRefs, ...messageRefs],
+      refs: [...messageRefs],
       text: host.seedQuery
     }),
-    [composerRefs, host.seedQuery, messageRefs]
+    [host.seedQuery, messageRefs]
   )
 
-  const runPrimaryAction = useCallback((): void => {
-    if (isBusy || hasPendingApproval || !hasComposerMessageInputContent(messageInput)) {
-      return
-    }
-
-    setInputStatus("pending")
-    void invocation.invoke(messageInput).then((didInvoke) => {
-      if (didInvoke) {
-        setComposerRefs([])
-        onDidInvoke?.()
+  const runPrimaryAction = useCallback(
+    (inputOverride?: ComposerMessageInput): void => {
+      const input = inputOverride ?? messageInput
+      if (isBusy || hasPendingApproval || !hasComposerMessageInputContent(input)) {
+        return
       }
-    })
-  }, [hasPendingApproval, invocation, isBusy, messageInput, onDidInvoke])
+
+      setInputStatus("pending")
+      void invocation.invoke(input).then((didInvoke) => {
+        if (didInvoke) {
+          onDidInvoke?.()
+        }
+      })
+    },
+    [hasPendingApproval, invocation, isBusy, messageInput, onDidInvoke]
+  )
 
   useEffect(() => {
     if (hasRunInitialActionRef.current || host.initialAction !== "submit") {
@@ -127,7 +132,6 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
       setInputStatus("pending")
       void invocation.invoke(initialMessageInput).then((didInvoke) => {
         if (didInvoke) {
-          setComposerRefs([])
           onDidInvoke?.()
         }
       })
@@ -263,7 +267,6 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     runPrimaryAction,
     selectModel,
     selectPermissionMode,
-    setComposerRefs,
     setQuery: invocation.setInput,
     startFreshDraft,
     stop: invocation.stop,
