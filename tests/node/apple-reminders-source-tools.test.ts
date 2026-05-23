@@ -80,10 +80,7 @@ test("Apple Reminders AI capability is enabled only on macOS", () => {
   const [darwinCapability] = resolveAppleRemindersCapabilities("darwin")
   assert.equal(darwinCapability?.enabled, true)
   assert.equal(darwinCapability?.authStatus, "connected")
-  assert.deepEqual(darwinCapability?.enabledToolNames, [
-    "listReminders",
-    "createReminder"
-  ])
+  assert.deepEqual(darwinCapability?.enabledToolNames, ["listReminders", "createReminder"])
 
   const [linuxCapability] = resolveAppleRemindersCapabilities("linux")
   assert.equal(linuxCapability?.enabled, false)
@@ -128,12 +125,9 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
     ["github", "notion"]
   )
 
-  const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
-    [appleRemindersRef],
-    {
-      platform: "darwin"
-    }
-  )
+  const [capability] = resolveNativeExtensionAiCapabilitiesForRefs([appleRemindersRef], {
+    platform: "darwin"
+  })
 
   assert.equal(capability?.capability.id, "appleReminders")
   assert.equal(capability?.capability.title, "Apple Reminders")
@@ -179,6 +173,39 @@ test("single GitHub AI capability ref reads only GitHub preferences", () => {
   assert.equal(capability?.authStatus, "missing")
   assert.deepEqual(capability?.enabledToolNames, [])
   assert.deepEqual(capability?.toolExposures, [])
+})
+
+test("selected AI capability preference read failures become failed auth without tools", () => {
+  const calls: string[] = []
+  const consoleWarn = mock.method(console, "warn", () => {})
+
+  try {
+    const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
+      [
+        {
+          extensionName: "github",
+          name: "GitHub",
+          sourceId: "github",
+          type: "extension-source"
+        }
+      ],
+      {
+        getPreferences: (extensionName) => {
+          calls.push(extensionName)
+          throw new Error("secret store unavailable")
+        }
+      }
+    )
+
+    assert.deepEqual(calls, ["github"])
+    assert.equal(consoleWarn.mock.callCount(), 1)
+    assert.equal(capability?.extensionName, "github")
+    assert.equal(capability?.authStatus, "failed")
+    assert.deepEqual(capability?.enabledToolNames, [])
+    assert.deepEqual(capability?.toolExposures, [])
+  } finally {
+    consoleWarn.mock.restore()
+  }
 })
 
 test("GitHub and Notion mentions load missing AI capabilities without tools", () => {

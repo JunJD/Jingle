@@ -20,6 +20,16 @@ type ResolveNativeExtensionAiCapabilityInput = {
   preferencesByExtension?: Record<string, Record<string, unknown>>
 }
 
+type ResolvedExtensionPreferences =
+  | {
+      authStatus: "failed"
+      preferences: Record<string, unknown>
+    }
+  | {
+      authStatus: null
+      preferences: Record<string, unknown>
+    }
+
 interface NativeExtensionAiCapabilityRegistryEntry {
   capability: ExtensionAiCapability
   manifest: NativeExtensionPackageManifest
@@ -78,8 +88,37 @@ function isMissingRequiredPreferenceValue(value: unknown): boolean {
 function resolveExtensionPreferences(
   extensionName: string,
   input: ResolveNativeExtensionAiCapabilityInput
-): Record<string, unknown> {
-  return input.preferencesByExtension?.[extensionName] ?? input.getPreferences?.(extensionName) ?? {}
+): ResolvedExtensionPreferences {
+  const persistedPreferences = input.preferencesByExtension?.[extensionName]
+  if (persistedPreferences) {
+    return {
+      authStatus: null,
+      preferences: persistedPreferences
+    }
+  }
+
+  if (!input.getPreferences) {
+    return {
+      authStatus: null,
+      preferences: {}
+    }
+  }
+
+  try {
+    return {
+      authStatus: null,
+      preferences: input.getPreferences(extensionName)
+    }
+  } catch (error) {
+    console.warn(
+      `[Sources] Failed to read preferences for extension AI capability "${extensionName}".`,
+      error
+    )
+    return {
+      authStatus: "failed",
+      preferences: {}
+    }
+  }
 }
 
 function resolveAuthStatus(input: {
@@ -113,10 +152,7 @@ function resolvePublicConfig(input: {
   )
 }
 
-function toAgentToolName(input: {
-  capability: ExtensionAiCapability
-  toolName: string
-}): string {
+function toAgentToolName(input: { capability: ExtensionAiCapability; toolName: string }): string {
   return `ext__${input.capability.id}__${input.toolName}`
 }
 
@@ -146,12 +182,20 @@ function resolveEntryCapability(
         input.platform
       )
     : true
-  const preferences = resolveExtensionPreferences(entry.manifest.name, input)
-  const authStatus = resolveAuthStatus({
-    capability: entry.capability,
-    preferences,
-    supported: platformSupported
-  })
+  const preferenceResolution = platformSupported
+    ? resolveExtensionPreferences(entry.manifest.name, input)
+    : {
+        authStatus: null,
+        preferences: {}
+      }
+  const preferences = preferenceResolution.preferences
+  const authStatus =
+    preferenceResolution.authStatus ??
+    resolveAuthStatus({
+      capability: entry.capability,
+      preferences,
+      supported: platformSupported
+    })
   const enabled = platformSupported
   const enabledToolNames =
     enabled && authStatus === "connected" ? [...entry.capability.toolNames] : []
