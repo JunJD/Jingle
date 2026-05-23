@@ -13,6 +13,7 @@ export const appleRemindersManifest = defineNativeExtensionManifest({
       "Use Apple Reminders for the user's personal tasks and reminders.",
       "List reminders before changing existing reminders unless the user provided an exact reminder id.",
       "Creating, updating, completing, or deleting reminders writes to Apple Reminders and must follow the current Permission Mode.",
+      "Opening a reminder launches the Reminders app and should only be used when the user asks to inspect that specific reminder.",
       "When the user gives relative dates such as today, tomorrow, or next Friday, resolve them using the user's current timezone before calling tools.",
       "Do not invent reminder lists. If the target list is unclear, use the default list or ask a short clarification when needed."
     ],
@@ -27,12 +28,30 @@ export const appleRemindersManifest = defineNativeExtensionManifest({
         description: "Create a reminder in Apple Reminders.",
         title: "Create Reminder"
       },
+      completeReminder: {
+        description: "Mark a reminder as complete in Apple Reminders.",
+        title: "Complete Reminder"
+      },
+      deleteReminder: {
+        description: "Delete a reminder from Apple Reminders.",
+        title: "Delete Reminder"
+      },
       listReminders: {
         description: "List active reminders and reminder lists from Apple Reminders.",
         title: "List Reminders"
+      },
+      openReminder: {
+        description: "Open a reminder in the Reminders app.",
+        title: "Open Reminder"
       }
     },
-    toolNames: ["listReminders", "createReminder"]
+    toolNames: [
+      "listReminders",
+      "createReminder",
+      "completeReminder",
+      "deleteReminder",
+      "openReminder"
+    ]
   },
   capabilities: ["navigation", "rpc", "surface"],
   iconName: "reminders",

@@ -46,6 +46,9 @@ function createRegistry(): ExtensionToolRegistry {
         priority: input.priority ?? null,
         title: input.title
       }),
+      deleteReminder: async (input) => ({
+        reminderId: input.reminderId
+      }),
       getData: async () => ({
         lists: [fakeReminder.list],
         reminders: [
@@ -57,7 +60,13 @@ function createRegistry(): ExtensionToolRegistry {
             title: "Completed item"
           }
         ]
-      })
+      }),
+      setReminderCompleted: async (input) => ({
+        ...fakeReminder,
+        completionDate: input.completed ? "2026-05-01T00:00:00.000Z" : null,
+        isCompleted: input.completed
+      }),
+      showReminder: async () => null
     })
   )
   return registry
@@ -80,7 +89,13 @@ test("Apple Reminders AI capability is enabled only on macOS", () => {
   const [darwinCapability] = resolveAppleRemindersCapabilities("darwin")
   assert.equal(darwinCapability?.enabled, true)
   assert.equal(darwinCapability?.authStatus, "connected")
-  assert.deepEqual(darwinCapability?.enabledToolNames, ["listReminders", "createReminder"])
+  assert.deepEqual(darwinCapability?.enabledToolNames, [
+    "listReminders",
+    "createReminder",
+    "completeReminder",
+    "deleteReminder",
+    "openReminder"
+  ])
 
   const [linuxCapability] = resolveAppleRemindersCapabilities("linux")
   assert.equal(linuxCapability?.enabled, false)
@@ -310,7 +325,13 @@ test("Apple Reminders source exposes read tools and protects write tools with Pe
 
   assert.deepEqual(
     runtime.aiToolBindings.map((binding) => binding.agentToolName),
-    ["ext__appleReminders__listReminders", "ext__appleReminders__createReminder"]
+    [
+      "ext__appleReminders__listReminders",
+      "ext__appleReminders__createReminder",
+      "ext__appleReminders__completeReminder",
+      "ext__appleReminders__deleteReminder",
+      "ext__appleReminders__openReminder"
+    ]
   )
   assert.equal(
     runtime.approvalPolicyProvider.getPolicy("ext__appleReminders__listReminders")?.decision
@@ -322,14 +343,29 @@ test("Apple Reminders source exposes read tools and protects write tools with Pe
       .disposition,
     "require_approval"
   )
+  assert.equal(
+    runtime.approvalPolicyProvider.getPolicy("ext__appleReminders__completeReminder")?.decision
+      .disposition,
+    "require_approval"
+  )
+  assert.equal(
+    runtime.approvalPolicyProvider.getPolicy("ext__appleReminders__deleteReminder")?.decision
+      .disposition,
+    "require_approval"
+  )
+  assert.equal(
+    runtime.approvalPolicyProvider.getPolicy("ext__appleReminders__openReminder")?.decision
+      .disposition,
+    "require_approval"
+  )
 })
 
 test("Apple Reminders tools validate input and call main-side services", async () => {
   const aiCapabilities = resolveAppleRemindersCapabilities()
-  const [listBinding, createBinding] =
+  const [listBinding, createBinding, completeBinding, deleteBinding, openBinding] =
     createRegistry().createAiCapabilityToolBindings(aiCapabilities)
   const executor = new ExtensionToolExecutor({
-    bindings: [listBinding, createBinding]
+    bindings: [listBinding, createBinding, completeBinding, deleteBinding, openBinding]
   })
 
   const listOutput = await executor.executeAgentTool({
@@ -353,6 +389,38 @@ test("Apple Reminders tools validate input and call main-side services", async (
   })
   assert.match(createOutput, /Create through source/)
   assert.match(createOutput, /From agent/)
+
+  const completeOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__completeReminder",
+    args: {
+      reminderId: "reminder-1"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(completeOutput, /2026-05-01/)
+  assert.match(completeOutput, /"isCompleted": true/)
+
+  const deleteOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__deleteReminder",
+    args: {
+      reminderId: "reminder-1"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(deleteOutput, /"reminderId": "reminder-1"/)
+
+  const openOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__openReminder",
+    args: {
+      reminderId: "reminder-1"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(openOutput, /"opened": true/)
+  assert.match(openOutput, /"reminderId": "reminder-1"/)
 
   assert.equal(aiCapabilities[0]?.capability.id, "appleReminders")
   await assert.rejects(
@@ -381,7 +449,25 @@ test("Apple Reminders tools return external Reminders failures as tool output", 
           "PERMISSION_DENIED"
         )
       },
+      deleteReminder: async () => {
+        throw new AppleRemindersRequestError(
+          "Openwork needs permission to access Reminders.",
+          "PERMISSION_DENIED"
+        )
+      },
       getData: async () => {
+        throw new AppleRemindersRequestError(
+          "Openwork needs permission to access Reminders.",
+          "PERMISSION_DENIED"
+        )
+      },
+      setReminderCompleted: async () => {
+        throw new AppleRemindersRequestError(
+          "Openwork needs permission to access Reminders.",
+          "PERMISSION_DENIED"
+        )
+      },
+      showReminder: async () => {
         throw new AppleRemindersRequestError(
           "Openwork needs permission to access Reminders.",
           "PERMISSION_DENIED"
@@ -390,9 +476,10 @@ test("Apple Reminders tools return external Reminders failures as tool output", 
     })
   )
   const aiCapabilities = resolveAppleRemindersCapabilities()
-  const [listBinding, createBinding] = registry.createAiCapabilityToolBindings(aiCapabilities)
+  const [listBinding, createBinding, completeBinding, deleteBinding, openBinding] =
+    registry.createAiCapabilityToolBindings(aiCapabilities)
   const executor = new ExtensionToolExecutor({
-    bindings: [listBinding, createBinding]
+    bindings: [listBinding, createBinding, completeBinding, deleteBinding, openBinding]
   })
 
   const listOutput = await executor.executeAgentTool({
@@ -414,6 +501,39 @@ test("Apple Reminders tools return external Reminders failures as tool output", 
   })
   assert.match(createOutput, /Apple Reminders create reminder failed/)
   assert.match(createOutput, /permission to access Reminders/)
+
+  const completeOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__completeReminder",
+    args: {
+      reminderId: "reminder-1"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(completeOutput, /Apple Reminders complete reminder failed/)
+  assert.match(completeOutput, /permission to access Reminders/)
+
+  const deleteOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__deleteReminder",
+    args: {
+      reminderId: "reminder-1"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(deleteOutput, /Apple Reminders delete reminder failed/)
+  assert.match(deleteOutput, /permission to access Reminders/)
+
+  const openOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__openReminder",
+    args: {
+      reminderId: "reminder-1"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(openOutput, /Apple Reminders open reminder failed/)
+  assert.match(openOutput, /permission to access Reminders/)
 })
 
 test("Apple Reminders helper access denial maps to permission errors", () => {
