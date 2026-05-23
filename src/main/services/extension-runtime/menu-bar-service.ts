@@ -6,6 +6,9 @@ import type { ExtensionRuntimeManager } from "./runtime-manager"
 
 export class ExtensionRuntimeMenuBarService {
   private readonly sessionIdsByCommandKey = new Map<string, string>()
+  private readonly manifestByName = new Map(
+    listNativeExtensionManifests(process.platform).map((manifest) => [manifest.name, manifest])
+  )
   private readonly stopListening: Array<() => void> = []
 
   constructor(
@@ -25,6 +28,7 @@ export class ExtensionRuntimeMenuBarService {
         this.nativeMenuBarService.setState(
           {
             commandKey,
+            extensionIcon: this.getPackageMenuBarIcon(surface.extensionName),
             iconName: surface.iconName,
             isLoading: surface.isLoading,
             sections: surface.sections.map((section) => ({
@@ -79,7 +83,7 @@ export class ExtensionRuntimeMenuBarService {
   }
 
   private async startRuntimeMenuBarCommands(): Promise<void> {
-    for (const manifest of listNativeExtensionManifests(process.platform)) {
+    for (const manifest of this.manifestByName.values()) {
       for (const command of manifest.commands) {
         if (!command.runtime || command.mode !== "menu-bar") {
           continue
@@ -97,6 +101,20 @@ export class ExtensionRuntimeMenuBarService {
         })
         this.sessionIdsByCommandKey.set(getCommandKey(manifest.name, command.name), session.sessionId)
       }
+    }
+  }
+
+  private getPackageMenuBarIcon(
+    extensionName: string
+  ): NativeMenuBarState["extensionIcon"] | undefined {
+    const icon = this.manifestByName.get(extensionName)?.icon
+    if (!icon) {
+      return undefined
+    }
+
+    return {
+      extensionName,
+      path: icon
     }
   }
 }

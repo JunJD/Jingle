@@ -4,12 +4,11 @@ import { viewport as myRemindersViewport } from "./src/my-reminders.meta"
 
 export const appleRemindersManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "rpc", "surface"],
-  iconName: "reminders",
+  icon: "assets/icon.png",
   runtimeCapabilities: ["navigation", "preferences", "rpc"],
   commands: [
     {
       description: "View, complete, and organize reminders from Apple Reminders.",
-      iconName: "reminders",
       keywords: ["apple", "reminders", "todo", "tasks"],
       mode: "view",
       name: "my-reminders",
@@ -37,7 +36,6 @@ export const appleRemindersManifest = defineNativeExtensionManifest({
     },
     {
       description: "Create a new reminder in Apple Reminders.",
-      iconName: "reminders",
       keywords: ["apple", "reminders", "create", "new reminder", "todo"],
       mode: "view",
       name: "create-reminder",
@@ -64,7 +62,6 @@ export const appleRemindersManifest = defineNativeExtensionManifest({
     },
     {
       description: "Quickly add a reminder from the current launcher query.",
-      iconName: "reminders",
       keywords: ["apple", "reminders", "quick add", "add", "capture"],
       mode: "no-view",
       name: "quick-add-reminder",
@@ -73,7 +70,6 @@ export const appleRemindersManifest = defineNativeExtensionManifest({
     },
     {
       description: "Show Apple Reminders in the menu bar.",
-      iconName: "reminders",
       keywords: ["apple", "reminders", "menu bar", "tray"],
       mode: "menu-bar",
       name: "menu-bar-reminders",

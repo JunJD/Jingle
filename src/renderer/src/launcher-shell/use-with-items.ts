@@ -1,6 +1,7 @@
 import type { AppCopy } from "../lib/i18n/messages"
 import type { LauncherIndexedCommand } from "./pages"
 import type { LauncherResolvedCommandIntent } from "./pages/types"
+import type { LauncherResultPresentation } from "./result-types"
 import type { LauncherShellItem } from "./types"
 import { getLauncherCommandAddressKey, splitLauncherUseWithCommands } from "./use-with-preferences"
 
@@ -21,6 +22,24 @@ export function buildLauncherCommandIntentShellItems(
     subtitle: item.subtitle,
     title: item.title
   }))
+}
+
+export function getLauncherIndexedCommandIcon(
+  command: LauncherIndexedCommand
+): LauncherResultPresentation["icon"] {
+  if (command.address.kind === "extension-command") {
+    return {
+      extensionName: command.address.extensionName,
+      icon: command.icon,
+      iconName: command.iconName,
+      type: "extension"
+    }
+  }
+
+  return {
+    name: command.iconName ?? "search",
+    type: "glyph"
+  }
 }
 
 export function buildLauncherUseWithCommandShellItems(
@@ -50,10 +69,7 @@ export function buildLauncherUseWithCommandShellItems(
     kind: "plugin" as const,
     presentation: {
       categoryLabel: copy.launcher.resultKindExtension,
-      icon: {
-        name: command.iconName ?? "search",
-        type: "glyph" as const
-      },
+      icon: getLauncherIndexedCommandIcon(command),
       listActionLabel: copy.launcher.openGeneric,
       primaryActionLabel: copy.launcher.openGeneric,
       tone: "neutral" as const

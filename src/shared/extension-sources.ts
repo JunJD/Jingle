@@ -57,7 +57,8 @@ export interface ExtensionSourceDefinition {
 
 export interface ExtensionSourceMention {
   extensionName: string
-  iconName: string
+  icon?: string
+  iconName?: string
   label: string
   supportedPlatforms?: string[]
   sourceId: string

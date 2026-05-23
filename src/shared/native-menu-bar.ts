@@ -10,6 +10,11 @@ export type NativeMenuBarIconName =
   | "reminders"
   | "todo"
 
+export interface NativeMenuBarExtensionIconState {
+  extensionName: string
+  path: string
+}
+
 export interface NativeMenuBarItemState {
   disabled?: boolean
   iconName?: NativeMenuBarIconName
@@ -25,6 +30,7 @@ export interface NativeMenuBarSectionState {
 
 export interface NativeMenuBarState {
   commandKey: string
+  extensionIcon?: NativeMenuBarExtensionIconState
   iconName?: NativeMenuBarIconName
   isLoading?: boolean
   sections: NativeMenuBarSectionState[]

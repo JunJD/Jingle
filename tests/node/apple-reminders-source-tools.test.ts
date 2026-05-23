@@ -123,7 +123,7 @@ test("Apple Reminders source binding is loaded only from an explicit extension s
   assert.deepEqual(nativeExtensionSourceMentions, [
     {
       extensionName: "apple-reminders",
-      iconName: "reminders",
+      icon: "assets/icon.png",
       label: "Apple Reminders",
       sourceId: "appleReminders",
       supportedPlatforms: ["darwin"],
