@@ -36,12 +36,11 @@ import { createTitleMiddleware } from "./title-middleware"
 import { createBddAgentRuntime } from "./bdd-runtime"
 import { nativeExtensionMainDefinitions } from "@extensions/main"
 import { nativeExtensionManifests } from "@extensions/index"
-import { createDefaultNativeExtensionSourceBindings } from "@extensions/sources"
 import { createNativeExtensionToolRegistry } from "../extension-tools/native-extension-tools"
-import { createExtensionSourceRuntime } from "./extension-source-runtime"
+import { createExtensionAiRuntime } from "./extension-ai-runtime"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
-import type { ExtensionSourceBinding } from "@shared/extension-sources"
+import type { ResolvedExtensionAiCapability } from "@shared/extension-sources"
 
 /**
  * Generate the full system prompt for the agent.
@@ -104,8 +103,8 @@ export interface CreateAgentRuntimeOptions {
   modelId?: string
   /** Permission mode snapshot for this run. */
   permissionMode?: PermissionModeName
-  /** Source bindings snapshot for this run. */
-  sourceBindings?: ExtensionSourceBinding[]
+  /** Resolved extension AI capabilities snapshot for this run. */
+  aiCapabilities?: ResolvedExtensionAiCapability[]
   /** Workspace path - REQUIRED for agent to operate on files */
   workspacePath: string
 }
@@ -125,7 +124,7 @@ export async function createAgentRuntime(
 ): Promise<AgentRuntime> {
   const { threadId, modelId, workspacePath } = options
   const permissionMode = options.permissionMode ?? DEFAULT_PERMISSION_MODE
-  const sourceBindings = options.sourceBindings ?? createDefaultNativeExtensionSourceBindings()
+  const aiCapabilities = options.aiCapabilities ?? []
 
   if (!threadId) {
     throw new Error("Thread ID is required for checkpointing.")
@@ -165,13 +164,13 @@ export async function createAgentRuntime(
     classifier: commandClassifier,
     predictor: mutationPredictor
   })
-  const extensionSourceRuntime = createExtensionSourceRuntime({
+  const extensionAiRuntime = createExtensionAiRuntime({
+    aiCapabilities,
     permissionMode,
     registry: createNativeExtensionToolRegistry({
       definitions: nativeExtensionMainDefinitions,
       manifests: nativeExtensionManifests
     }),
-    sourceBindings,
     threadId,
     workspacePath
   })
@@ -241,14 +240,14 @@ The workspace root is: ${workspacePath}`
       ...createSharedAgentLoopMiddleware(),
       createTitleMiddleware(),
       createDesktopAutomationToolsMiddleware(),
-      extensionSourceRuntime.middleware,
+      extensionAiRuntime.middleware,
       createGuardrailMiddleware({
         provider: guardrailProvider,
         threadId,
         workspacePath
       }),
       createToolApprovalMiddleware({
-        extensionToolPolicyProvider: extensionSourceRuntime.approvalPolicyProvider,
+        extensionToolPolicyProvider: extensionAiRuntime.approvalPolicyProvider,
         permissionMode
       })
     ] as const

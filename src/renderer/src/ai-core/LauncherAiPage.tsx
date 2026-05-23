@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowUp, Command, Plus, Square } from "lucide-react"
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   PromptInput,
   PromptInputAction,
@@ -14,8 +14,7 @@ import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { AI_ATTACHMENT_FILE_EXTENSIONS } from "@shared/launcher-attachments"
 import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
-import type { LauncherInputElement } from "@launcher-shell/input-element"
-import { AI_FOOTER_HEIGHT, AI_MAX_FOOTER_HEIGHT, getAiShellConfig } from "./ai-config"
+import { AI_MAX_FOOTER_HEIGHT, getAiShellConfig } from "./ai-config"
 import { LauncherAiConversation, LauncherAiEmptyState } from "./LauncherAiConversation"
 import { LauncherAiHeaderModelPicker } from "./LauncherAiHeaderModelPicker"
 import { LauncherAiModelPicker } from "./LauncherAiModelPicker"
@@ -27,6 +26,8 @@ import { useLauncherAiActions } from "./useLauncherAiActions"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
+import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
+import type { ComposerAreaHandle } from "@/composer-area"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 const AI_COMPOSER_CHROME_HEIGHT = 30
@@ -34,19 +35,7 @@ const AI_COMPOSER_LINE_HEIGHT = 20
 const AI_COMPOSER_VISIBLE_LINES = 5
 const AI_ATTACHMENT_STRIP_HEIGHT = 48
 const AI_THINKING_STATUS_HEIGHT = 28
-
-function insertTextAtSelection(input: LauncherInputElement, text: string): string {
-  const start = input.selectionStart ?? input.value.length
-  const end = input.selectionEnd ?? start
-  const nextValue = `${input.value.slice(0, start)}${text}${input.value.slice(end)}`
-  const nextSelection = start + text.length
-
-  window.requestAnimationFrame(() => {
-    input.setSelectionRange(nextSelection, nextSelection)
-  })
-
-  return nextValue
-}
+const AI_COMPOSER_BOTTOM_GAP = 8
 
 function getVisibleLineCount(value: string): number {
   return Math.min(AI_COMPOSER_VISIBLE_LINES, value.split("\n").length)
@@ -54,6 +43,10 @@ function getVisibleLineCount(value: string): number {
 
 export function LauncherAiPage(): React.JSX.Element {
   const { copy } = useI18n()
+  const sourceMentions = useMemo(
+    () => listNativeExtensionSourceMentions(window.electron.process.platform),
+    []
+  )
   const attachmentDraft = useAiAttachments()
   const navigation = useAiCoreNavigation()
   const surface = useAiCoreSurface()
@@ -75,6 +68,7 @@ export function LauncherAiPage(): React.JSX.Element {
     runPrimaryAction,
     selectModel,
     selectPermissionMode,
+    setComposerRefs,
     setQuery,
     startFreshDraft,
     stop,
@@ -99,23 +93,22 @@ export function LauncherAiPage(): React.JSX.Element {
   const hasAttachmentDraft = attachmentDraft.attachments.length > 0
   const isComposerExpanded = !pendingApproval && (query.includes("\n") || hasAttachmentDraft)
   const composerTextHeight = 14 + getVisibleLineCount(query) * AI_COMPOSER_LINE_HEIGHT
-  const composerFooterHeight = pendingApproval
-    ? AI_FOOTER_HEIGHT
+  const composerOverlayHeight = pendingApproval
+    ? 0
     : Math.min(
         AI_MAX_FOOTER_HEIGHT,
-        Math.max(
-          AI_FOOTER_HEIGHT,
-          Math.ceil(
-            composerTextHeight +
-              AI_COMPOSER_CHROME_HEIGHT +
-              (conversation.isLoading ? AI_THINKING_STATUS_HEIGHT : 0) +
-              (hasAttachmentDraft ? AI_ATTACHMENT_STRIP_HEIGHT : 0)
-          )
+        Math.ceil(
+          composerTextHeight +
+            AI_COMPOSER_CHROME_HEIGHT +
+            (conversation.isLoading ? AI_THINKING_STATUS_HEIGHT : 0) +
+            (hasAttachmentDraft ? AI_ATTACHMENT_STRIP_HEIGHT : 0)
         )
       )
-  const shellConfig = getAiShellConfig(surface.shellConfig, {
-    footerHeight: composerFooterHeight
-  })
+  const shellConfig = getAiShellConfig(surface.shellConfig)
+  const conversationBottomInset =
+    pendingApproval || composerOverlayHeight === 0
+      ? 0
+      : composerOverlayHeight + AI_COMPOSER_BOTTOM_GAP
   const isApprovalPending = Boolean(pendingApproval)
   const openAttachmentPicker = useCallback((): void => {
     fileInputRef.current?.click()
@@ -148,7 +141,7 @@ export function LauncherAiPage(): React.JSX.Element {
     setShowModelPicker(true)
   }, [])
   const handleComposerKeyDown = useCallback(
-    (event: React.KeyboardEvent<LauncherInputElement>): void => {
+    (event: React.KeyboardEvent<HTMLElement>): void => {
       if (event.key !== "Enter") {
         return
       }
@@ -166,12 +159,12 @@ export function LauncherAiPage(): React.JSX.Element {
       if (event.ctrlKey) {
         const input = inputRef.current
 
-        if (!input) {
+        if (!input || !("getElement" in input)) {
           return
         }
 
         event.preventDefault()
-        setQuery(insertTextAtSelection(input, "\n"))
+        input.insertText("\n")
         return
       }
 
@@ -182,7 +175,7 @@ export function LauncherAiPage(): React.JSX.Element {
       event.preventDefault()
       runPrimaryAction()
     },
-    [inputRef, runPrimaryAction, setQuery]
+    [inputRef, runPrimaryAction]
   )
   const canStartNewQuestion =
     query.trim().length > 0 ||
@@ -251,130 +244,6 @@ export function LauncherAiPage(): React.JSX.Element {
   return (
     <div className="relative h-full">
       <LauncherChrome
-        footer={
-          pendingApproval ? undefined : (
-            <form
-              className="flex h-full w-full shrink-0 flex-col justify-end px-[var(--launcher-ai-composer-page-x)] py-[var(--ow-space-2)]"
-              onSubmit={(event) => {
-                event.preventDefault()
-                runPrimaryAction()
-              }}
-            >
-              {conversation.isLoading ? (
-                <div className="mx-auto mb-[var(--ow-space-1)] w-full max-w-[var(--launcher-ai-content-max-width)] px-[var(--ow-space-2)]">
-                  <ThinkingBar text={copy.chat.agentThinking} />
-                </div>
-              ) : null}
-
-              <PromptInput
-                className="mx-auto w-full max-w-[var(--launcher-ai-content-max-width)] px-[var(--ow-space-2)] py-[var(--ow-space-1)]"
-                isLoading={isBusy}
-                maxHeight="var(--launcher-ai-composer-input-max-h)"
-                minHeight="var(--launcher-ai-composer-input-min-h)"
-                onSubmit={runPrimaryAction}
-                onValueChange={setQuery}
-                textareaRef={inputRef as RefObject<HTMLTextAreaElement | null>}
-                value={query}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  accept={AI_ATTACHMENT_FILE_EXTENSIONS.map((extension) => `.${extension}`).join(
-                    ","
-                  )}
-                  onChange={(event) => {
-                    if (event.target.files) {
-                      void attachmentDraft.addSelectedFiles(event.target.files)
-                    }
-                    event.target.value = ""
-                  }}
-                />
-
-                <div
-                  className={`flex min-w-0 gap-[var(--ow-gap-sm)] ${
-                    isComposerExpanded ? "items-end" : "items-center"
-                  }`}
-                >
-                  <PromptInputAction
-                    onClick={openAttachmentPicker}
-                    onMouseDown={(event) => event.preventDefault()}
-                    icon={<Plus className="size-[var(--ow-icon-xs)]" />}
-                    label={copy.launcher.aiAddAttachment}
-                    title={
-                      addAttachmentShortcut
-                        ? `${copy.launcher.aiAddAttachment} (${addAttachmentShortcut})`
-                        : copy.launcher.aiAddAttachment
-                    }
-                    tooltip={copy.launcher.aiAddAttachment}
-                  />
-
-                  <div className="flex min-w-0 flex-1 flex-col gap-[var(--ow-space-1)]">
-                    <PromptInputTextarea
-                      ref={inputRef as RefObject<HTMLTextAreaElement | null>}
-                      onKeyDown={handleComposerKeyDown}
-                      placeholder={copy.launcher.aiInputPlaceholder}
-                      submitOnEnter={false}
-                      className="w-full py-[7px] [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-chat)]"
-                    />
-
-                    <LauncherAttachmentStrip
-                      attachments={attachmentDraft.attachments}
-                      onRemove={attachmentDraft.removeAttachment}
-                    />
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">
-                    {actionController.canOpenActions ? (
-                      <PromptInputAction
-                        onClick={() => actionController.openActions()}
-                        onMouseDown={(event) => event.preventDefault()}
-                        icon={<Command className="size-[var(--ow-icon-sm)]" />}
-                        label={copy.launcher.actionsLabel}
-                        title={
-                          actionController.actionPanelShortcut
-                            ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
-                            : copy.launcher.actionsLabel
-                        }
-                        tooltip={
-                          actionController.actionPanelShortcut
-                            ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
-                            : copy.launcher.actionsLabel
-                        }
-                      />
-                    ) : null}
-
-                    {canStop ? (
-                      <PromptInputAction
-                        onClick={() => {
-                          void handleStop()
-                        }}
-                        onMouseDown={(event) => event.preventDefault()}
-                        icon={<Square className="size-[var(--ow-icon-compact)]" />}
-                        label={copy.launcher.aiStopLabel}
-                        title={copy.launcher.aiStopLabel}
-                        tooltip={copy.launcher.aiStopLabel}
-                      />
-                    ) : (
-                      <PromptInputAction
-                        onClick={runPrimaryAction}
-                        onMouseDown={(event) => event.preventDefault()}
-                        disabled={primaryActionDisabled}
-                        icon={<ArrowUp className="size-[var(--ow-icon-sm)]" />}
-                        label={copy.launcher.aiPrimaryLabel}
-                        title={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
-                        tooltip={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
-                        className="bg-background-secondary/72 text-foreground hover:bg-background-secondary"
-                      />
-                    )}
-                  </div>
-                </div>
-              </PromptInput>
-            </form>
-          )
-        }
-        footerVariant="composer"
         headerLeading={
           <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
             <button
@@ -417,7 +286,6 @@ export function LauncherAiPage(): React.JSX.Element {
           ) : undefined
         }
         inputStatus={inputStatus}
-        inputRef={inputRef}
         showInputStatusIndicator={false}
         hideInputChrome
         density="compact"
@@ -429,6 +297,7 @@ export function LauncherAiPage(): React.JSX.Element {
       >
         {threadId ? (
           <LauncherAiConversation
+            bottomInset={conversationBottomInset}
             clearError={conversation.clearVisibleError}
             displayMessages={conversation.displayMessages}
             error={conversation.visibleError}
@@ -441,9 +310,139 @@ export function LauncherAiPage(): React.JSX.Element {
             todos={conversation.todos}
           />
         ) : (
-          <LauncherAiEmptyState error={conversation.visibleError} />
+          <LauncherAiEmptyState
+            bottomInset={conversationBottomInset}
+            error={conversation.visibleError}
+          />
         )}
       </LauncherChrome>
+
+      {!pendingApproval ? (
+        <form
+          className="pointer-events-none absolute inset-x-0 z-20 flex w-full flex-col justify-end px-[var(--launcher-ai-composer-page-x)]"
+          onSubmit={(event) => {
+            event.preventDefault()
+            runPrimaryAction()
+          }}
+          style={{
+            bottom: AI_COMPOSER_BOTTOM_GAP,
+            maxHeight: AI_MAX_FOOTER_HEIGHT
+          }}
+        >
+          {conversation.isLoading ? (
+            <div className="pointer-events-auto mx-auto mb-[var(--ow-space-1)] w-full max-w-[var(--launcher-ai-content-max-width)] px-[var(--ow-space-2)]">
+              <ThinkingBar text={copy.chat.agentThinking} />
+            </div>
+          ) : null}
+
+          <PromptInput
+            className="pointer-events-auto mx-auto w-full max-w-[var(--launcher-ai-content-max-width)] px-[var(--ow-space-2)] py-[var(--ow-space-1)]"
+            style={{ backgroundColor: "var(--background-elevated)" }}
+            isLoading={isBusy}
+            maxHeight="var(--launcher-ai-composer-input-max-h)"
+            minHeight="var(--launcher-ai-composer-input-min-h)"
+            onSubmit={runPrimaryAction}
+            onValueChange={setQuery}
+            value={query}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              accept={AI_ATTACHMENT_FILE_EXTENSIONS.map((extension) => `.${extension}`).join(",")}
+              onChange={(event) => {
+                if (event.target.files) {
+                  void attachmentDraft.addSelectedFiles(event.target.files)
+                }
+                event.target.value = ""
+              }}
+            />
+
+            <div
+              className={`flex min-w-0 gap-[var(--ow-gap-sm)] ${
+                isComposerExpanded ? "items-end" : "items-center"
+              }`}
+            >
+              <PromptInputAction
+                onClick={openAttachmentPicker}
+                onMouseDown={(event) => event.preventDefault()}
+                icon={<Plus className="size-[var(--ow-icon-xs)]" />}
+                label={copy.launcher.aiAddAttachment}
+                title={
+                  addAttachmentShortcut
+                    ? `${copy.launcher.aiAddAttachment} (${addAttachmentShortcut})`
+                    : copy.launcher.aiAddAttachment
+                }
+                tooltip={copy.launcher.aiAddAttachment}
+              />
+
+              <div className="flex min-w-0 flex-1 flex-col gap-[var(--ow-space-1)]">
+                <PromptInputTextarea
+                  composerRef={inputRef as React.RefObject<ComposerAreaHandle | null>}
+                  mode="composer"
+                  onKeyDown={handleComposerKeyDown}
+                  onRefsChange={setComposerRefs}
+                  placeholder={copy.launcher.aiInputPlaceholder}
+                  sourceMentions={sourceMentions}
+                  submitOnEnter={false}
+                  className="w-full py-[7px] [font-size:var(--ow-font-control)] font-medium"
+                />
+
+                <LauncherAttachmentStrip
+                  attachments={attachmentDraft.attachments}
+                  onRemove={attachmentDraft.removeAttachment}
+                />
+              </div>
+
+              <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">
+                {actionController.canOpenActions ? (
+                  <PromptInputAction
+                    onClick={() => actionController.openActions()}
+                    onMouseDown={(event) => event.preventDefault()}
+                    icon={<Command className="size-[var(--ow-icon-sm)]" />}
+                    label={copy.launcher.actionsLabel}
+                    title={
+                      actionController.actionPanelShortcut
+                        ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
+                        : copy.launcher.actionsLabel
+                    }
+                    tooltip={
+                      actionController.actionPanelShortcut
+                        ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
+                        : copy.launcher.actionsLabel
+                    }
+                  />
+                ) : null}
+
+                {canStop ? (
+                  <PromptInputAction
+                    onClick={() => {
+                      void handleStop()
+                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                    icon={<Square className="size-[var(--ow-icon-compact)]" />}
+                    label={copy.launcher.aiStopLabel}
+                    title={copy.launcher.aiStopLabel}
+                    tooltip={copy.launcher.aiStopLabel}
+                  />
+                ) : (
+                  <PromptInputAction
+                    onClick={runPrimaryAction}
+                    onMouseDown={(event) => event.preventDefault()}
+                    disabled={primaryActionDisabled}
+                    icon={<ArrowUp className="size-[var(--ow-icon-sm)]" />}
+                    label={copy.launcher.aiPrimaryLabel}
+                    title={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
+                    tooltip={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
+                    className="bg-background-secondary/72 text-foreground hover:bg-background-secondary"
+                  />
+                )}
+              </div>
+            </div>
+          </PromptInput>
+        </form>
+      ) : null}
 
       {actionController.showActions && actionController.canOpenActions ? (
         <LauncherActionOverlay

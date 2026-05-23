@@ -68,6 +68,7 @@ export const MessageAction = ({
 }: MessageActionProps) => {
   const button = (
     <Button
+      aria-label={label || tooltip}
       className={cn(
         "size-[22px] rounded-[var(--ow-radius-sm)] text-muted-foreground hover:text-foreground [&_svg]:size-[var(--ow-icon-sm)]",
         className
@@ -78,7 +79,6 @@ export const MessageAction = ({
       {...props}
     >
       {children}
-      <span className="sr-only">{label || tooltip}</span>
     </Button>
   )
 
@@ -282,7 +282,7 @@ export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn(
-        "ow-chat-markdown size-full space-y-[var(--ow-chat-prose-gap)] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        "ow-markdown ow-chat-markdown size-full space-y-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
       )}
       plugins={streamdownPlugins}

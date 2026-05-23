@@ -37,6 +37,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   runPrimaryAction: () => void
   selectModel: (modelId: string) => void
   selectPermissionMode: (permissionMode: PermissionModeName) => void
+  setComposerRefs: (refs: ComposerMessageRef[]) => void
   setQuery: (value: string) => void
   startFreshDraft: () => Promise<boolean>
   stop: () => Promise<void>
@@ -47,6 +48,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const host = useAiCoreHost()
   const hasRunInitialActionRef = useRef(false)
   const [inputStatus, setInputStatus] = useState<LauncherInputStatus>("idle")
+  const [composerRefs, setComposerRefs] = useState<ComposerMessageRef[]>([])
   const [threadActionError, setThreadActionError] = useState<string | null>(null)
   const threadNavigation = useLauncherAiThreadNavigation({
     initialAction: host.initialAction,
@@ -83,17 +85,17 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const hasPendingApproval = Boolean(invocation.conversation.pendingApproval)
   const messageInput = useMemo(
     () => ({
-      refs: messageRefs,
+      refs: [...composerRefs, ...messageRefs],
       text: query
     }),
-    [messageRefs, query]
+    [composerRefs, messageRefs, query]
   )
   const initialMessageInput = useMemo(
     () => ({
-      refs: messageRefs,
+      refs: [...composerRefs, ...messageRefs],
       text: host.seedQuery
     }),
-    [host.seedQuery, messageRefs]
+    [composerRefs, host.seedQuery, messageRefs]
   )
 
   const runPrimaryAction = useCallback((): void => {
@@ -104,6 +106,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     setInputStatus("pending")
     void invocation.invoke(messageInput).then((didInvoke) => {
       if (didInvoke) {
+        setComposerRefs([])
         onDidInvoke?.()
       }
     })
@@ -124,6 +127,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
       setInputStatus("pending")
       void invocation.invoke(initialMessageInput).then((didInvoke) => {
         if (didInvoke) {
+          setComposerRefs([])
           onDidInvoke?.()
         }
       })
@@ -259,6 +263,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     runPrimaryAction,
     selectModel,
     selectPermissionMode,
+    setComposerRefs,
     setQuery: invocation.setInput,
     startFreshDraft,
     stop: invocation.stop,

@@ -48,6 +48,7 @@ export interface AppCopy {
     arguments: string
     approval: string
     completed: string
+    copied: string
     error: string
     justNow: string
     ok: string
@@ -267,6 +268,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       arguments: "参数",
       approval: "待审批",
       completed: "已完成",
+      copied: "已复制",
       error: "错误",
       justNow: "刚刚",
       ok: "正常",
@@ -503,6 +505,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       arguments: "Arguments",
       approval: "Approval",
       completed: "Completed",
+      copied: "Copied",
       error: "Error",
       justNow: "just now",
       ok: "OK",

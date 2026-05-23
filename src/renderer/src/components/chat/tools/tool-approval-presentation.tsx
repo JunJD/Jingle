@@ -50,7 +50,7 @@ export function getToolApprovalPresentationMeta(
 
   if (approvalItem.kind === "extension_tool") {
     return {
-      subtitle: approvalItem.sourceDisplayName,
+      subtitle: approvalItem.capabilityDisplayName,
       title
     }
   }
@@ -129,7 +129,7 @@ function getTargetLabel(approvalItem: ToolApprovalItem | null, fallback: string 
   }
 
   if (approvalItem?.kind === "extension_tool") {
-    return approvalItem.sourceDisplayName || approvalItem.extensionName || approvalItem.toolTitle
+    return approvalItem.capabilityDisplayName || approvalItem.extensionName || approvalItem.toolTitle
   }
 
   return fallback

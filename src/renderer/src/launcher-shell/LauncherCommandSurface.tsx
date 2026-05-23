@@ -12,6 +12,7 @@ import { deriveLauncherCommandOwnerClipboardContext } from "@shared/clipboard-de
 import type { LauncherClipboardState } from "./LauncherClipboardContext"
 import type { LauncherInputElement } from "./input-element"
 import type { LauncherInputStatus } from "./launcher-input-status"
+import type { ComposerAreaHandle } from "@/composer-area"
 import type { ActiveLauncherCommandState } from "./hooks/useActiveLauncherCommand"
 import type {
   LauncherCommandAddress,
@@ -56,7 +57,7 @@ interface LauncherCommandSurfaceProps {
   hideLauncher: () => Promise<void>
   listPluginThreads: () => Promise<Thread[]>
   openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
-  pluginInputRef: React.RefObject<LauncherInputElement | null>
+  pluginInputRef: React.RefObject<LauncherInputElement | ComposerAreaHandle | null>
   pluginInputStatus: LauncherInputStatus
   reloadThread: (threadId: string) => Promise<void>
   route: LauncherCommandRoute
@@ -107,6 +108,8 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
     viewportHeight
   } = commandState
   const ActivePluginComponent = activeViewCommand?.Component ?? null
+  const nativeExtensionInputRef =
+    pluginInputRef as React.RefObject<LauncherInputElement | null>
   const builtInSurfaceShellConfig =
     activeBuiltInCommand && route.commandName === AI_CHAT_COMMAND_NAME
       ? getAiShellConfig(searchShellConfig)
@@ -173,7 +176,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
           seedQuery: route.seedQuery,
           surface: activeCommandSurfaceEnabled
             ? {
-                inputRef: pluginInputRef,
+                inputRef: nativeExtensionInputRef,
                 inputStatus: pluginInputStatus,
                 shellConfig: searchShellConfig,
                 setInputStatus: setPluginInputStatus,

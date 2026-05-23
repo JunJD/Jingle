@@ -19,6 +19,14 @@ const composerMessageRefSchema = z.discriminatedUnion("type", [
       name: optionalNormalizedTrimmedStringSchema,
       url: nonEmptyTrimmedStringSchema
     })
+    .strict(),
+  z
+    .object({
+      type: z.literal("extension-source"),
+      extensionName: nonEmptyTrimmedStringSchema,
+      name: nonEmptyTrimmedStringSchema,
+      sourceId: nonEmptyTrimmedStringSchema
+    })
     .strict()
 ])
 

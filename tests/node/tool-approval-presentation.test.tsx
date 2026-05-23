@@ -24,13 +24,12 @@ test("extension approval presentation falls back to extension tool titles", () =
     args: {
       title: "Ship it"
     },
+    capabilityDisplayName: "Mock Profile",
+    capabilityId: "mockSource",
     extensionName: "mockExtension",
     kind: "extension_tool",
     permissionMode: "ask-to-edit",
     reason: "Ask to Edit mode requires approval for write and external extension tools.",
-    sourceDisplayName: "Mock Profile",
-    sourceId: "mockSource",
-    sourceProfileId: "profile-1",
     toolName: "ext__mockSource__createItem",
     toolTitle: "Create Item"
   }
@@ -68,10 +67,46 @@ test("extension tool presentation renders from schema display metadata", () => {
       name: "ext__appleReminders__createReminder",
       presentation: {
         access: "write",
+        capabilityDisplayName: "Personal",
+        capabilityTitle: "Apple Reminders",
+        kind: "extension"
+      },
+      type: "tool_call"
+    }
+  })
+
+  assert.equal(summary, "Create Reminder · Personal")
+})
+
+test("extension tool presentation still reads legacy presentation metadata", () => {
+  const summary = extensionToolComponent.renderSummary({
+    args: {
+      title: "Ship it"
+    },
+    copy,
+    hasResult: false,
+    isExpanded: false,
+    presentation: "standalone",
+    rawArgs: "{}",
+    rawResult: "",
+    result: null,
+    status: "running",
+    toolCall: {
+      args: {
+        title: "Ship it"
+      },
+      display: {
+        description: "Create a reminder in Apple Reminders.",
+        title: "Create Reminder"
+      },
+      id: "tool-call-1",
+      name: "ext__appleReminders__createReminder",
+      presentation: {
+        access: "write",
         kind: "extension",
         profileTitle: "Personal",
         sourceTitle: "Apple Reminders"
-      },
+      } as unknown as never,
       type: "tool_call"
     }
   })

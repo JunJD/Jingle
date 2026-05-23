@@ -1,6 +1,11 @@
 import { useEffect, type RefObject } from "react"
+import type { ComposerAreaHandle } from "@/composer-area"
 
-type TextInputElement = HTMLInputElement | HTMLTextAreaElement
+type TextInputElement = HTMLInputElement | HTMLTextAreaElement | ComposerAreaHandle
+
+function isComposerAreaHandle(input: TextInputElement): input is ComposerAreaHandle {
+  return "getElement" in input
+}
 
 function focusTextInput(input: TextInputElement | null): void {
   if (!input) {
@@ -8,6 +13,11 @@ function focusTextInput(input: TextInputElement | null): void {
   }
 
   input.focus()
+
+  if (isComposerAreaHandle(input)) {
+    return
+  }
+
   const caretPosition = input.value.length
   input.setSelectionRange(caretPosition, caretPosition)
 }

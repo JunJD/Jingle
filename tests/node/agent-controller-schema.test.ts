@@ -36,6 +36,12 @@ test("parseAgentInvokeParams trims routing identifiers and preserves message con
             type: "image",
             name: "  screenshot  ",
             url: "  https://example.com/screenshot.png  "
+          },
+          {
+            type: "extension-source",
+            extensionName: "  apple-reminders  ",
+            name: "  Apple Reminders  ",
+            sourceId: "  appleReminders  "
           }
         ]
       }
@@ -72,6 +78,12 @@ test("parseAgentInvokeParams trims routing identifiers and preserves message con
             type: "image",
             name: "screenshot",
             url: "https://example.com/screenshot.png"
+          },
+          {
+            type: "extension-source",
+            extensionName: "apple-reminders",
+            name: "Apple Reminders",
+            sourceId: "appleReminders"
           }
         ]
       }

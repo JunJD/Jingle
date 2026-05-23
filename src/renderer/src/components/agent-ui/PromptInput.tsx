@@ -13,6 +13,13 @@ import {
 } from "react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip"
 import { cn } from "@/lib/utils"
+import { ComposerArea, type ComposerAreaHandle } from "@/composer-area"
+import type { ExtensionSourceMention } from "@shared/extension-sources"
+import type { ComposerMessageRef } from "@shared/message-content"
+
+interface PromptInputFocusTarget {
+  focus: () => void
+}
 
 interface PromptInputContextValue {
   disabled: boolean
@@ -20,6 +27,7 @@ interface PromptInputContextValue {
   maxHeight: number | string
   minHeight: number | string
   onSubmit?: () => void
+  setFocusTarget: (target: PromptInputFocusTarget | null) => void
   setTextareaRef: (element: HTMLTextAreaElement | null) => void
   setValue: (value: string) => void
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
@@ -65,9 +73,13 @@ export function PromptInput(props: PromptInputProps): React.JSX.Element {
     ...rest
   } = props
   const internalTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const focusTargetRef = useRef<PromptInputFocusTarget | null>(null)
   const resolvedTextareaRef = textareaRef ?? internalTextareaRef
   const [internalValue, setInternalValue] = useState(value ?? "")
   const resolvedValue = value ?? internalValue
+  const setFocusTarget = useCallback((target: PromptInputFocusTarget | null): void => {
+    focusTargetRef.current = target
+  }, [])
   const setTextareaRef = useCallback(
     (element: HTMLTextAreaElement | null): void => {
       resolvedTextareaRef.current = element
@@ -91,6 +103,7 @@ export function PromptInput(props: PromptInputProps): React.JSX.Element {
       maxHeight,
       minHeight,
       onSubmit,
+      setFocusTarget,
       setTextareaRef,
       setValue,
       textareaRef: resolvedTextareaRef,
@@ -104,6 +117,7 @@ export function PromptInput(props: PromptInputProps): React.JSX.Element {
       onSubmit,
       resolvedTextareaRef,
       resolvedValue,
+      setFocusTarget,
       setTextareaRef,
       setValue
     ]
@@ -121,7 +135,8 @@ export function PromptInput(props: PromptInputProps): React.JSX.Element {
           )}
           onClick={(event) => {
             if (!disabled) {
-              resolvedTextareaRef.current?.focus()
+              const focusTarget = focusTargetRef.current ?? resolvedTextareaRef.current
+              focusTarget?.focus()
             }
 
             onClick?.(event)
@@ -139,8 +154,12 @@ export interface PromptInputTextareaProps extends Omit<
   React.TextareaHTMLAttributes<HTMLTextAreaElement>,
   "onChange" | "value"
 > {
+  composerRef?: React.RefObject<ComposerAreaHandle | null>
   disableAutosize?: boolean
+  mode?: "textarea" | "composer"
+  onRefsChange?: (refs: ComposerMessageRef[]) => void
   onValueChange?: (value: string) => void
+  sourceMentions?: ExtensionSourceMention[]
   submitOnEnter?: boolean
 }
 
@@ -152,12 +171,16 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
   function PromptInputTextarea(
     {
       className,
+      composerRef,
       disableAutosize = false,
+      mode = "textarea",
       onCompositionEnd,
       onCompositionStart,
       onKeyDown,
+      onRefsChange,
       onValueChange,
       placeholder,
+      sourceMentions,
       submitOnEnter = true,
       ...props
     },
@@ -168,6 +191,7 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
       maxHeight,
       minHeight,
       onSubmit,
+      setFocusTarget,
       setTextareaRef,
       setValue,
       textareaRef,
@@ -178,6 +202,7 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
     const updateTextareaRef = useCallback(
       (element: HTMLTextAreaElement | null): void => {
         setTextareaRef(element)
+        setFocusTarget(element)
 
         if (typeof ref === "function") {
           ref(element)
@@ -188,7 +213,17 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
           ref.current = element
         }
       },
-      [ref, setTextareaRef]
+      [ref, setFocusTarget, setTextareaRef]
+    )
+    const updateComposerRef = useCallback(
+      (handle: ComposerAreaHandle | null): void => {
+        setFocusTarget(handle)
+
+        if (composerRef) {
+          composerRef.current = handle
+        }
+      },
+      [composerRef, setFocusTarget]
     )
     const adjustHeight = useCallback(
       (element: HTMLTextAreaElement | null): void => {
@@ -207,6 +242,43 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
     useLayoutEffect(() => {
       adjustHeight(textareaRef.current)
     }, [adjustHeight, textareaRef, value])
+
+    if (mode === "composer") {
+      return (
+        <ComposerArea
+          ref={updateComposerRef}
+          className={cn(
+            "min-w-0 resize-none border-0 bg-transparent px-0 py-0 text-foreground outline-none placeholder:text-muted-foreground/58 focus:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:bg-transparent disabled:opacity-100",
+            "scrollbar-hide whitespace-pre-wrap break-words [overflow-wrap:anywhere]",
+            className
+          )}
+          disabled={disabled}
+          maxHeight={maxHeight}
+          minHeight={minHeight}
+          onKeyDown={(event) => {
+            const keyboardEvent = event as unknown as KeyboardEvent & {
+              nativeEvent?: KeyboardEvent
+            }
+
+            if (!("nativeEvent" in keyboardEvent)) {
+              keyboardEvent.nativeEvent = keyboardEvent
+            }
+
+            onKeyDown?.(keyboardEvent as unknown as React.KeyboardEvent<HTMLTextAreaElement>)
+          }}
+          onSubmit={onSubmit}
+          onRefsChange={onRefsChange}
+          onValueChange={(nextValue) => {
+            setValue(nextValue)
+            onValueChange?.(nextValue)
+          }}
+          placeholder={placeholder}
+          sourceMentions={sourceMentions}
+          submitOnEnter={submitOnEnter}
+          value={value}
+        />
+      )
+    }
 
     return (
       <textarea

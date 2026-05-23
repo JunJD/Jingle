@@ -1,8 +1,39 @@
 import { defineNativeExtensionManifest } from "@shared/native-extensions"
 import { viewport as createReminderViewport } from "./src/create-reminder.meta"
 import { viewport as myRemindersViewport } from "./src/my-reminders.meta"
+import { APPLE_REMINDERS_EXTENSION_ID, APPLE_REMINDERS_SOURCE_ID } from "./src/contracts"
 
 export const appleRemindersManifest = defineNativeExtensionManifest({
+  aiCapability: {
+    description: "Apple Reminders tasks and lists.",
+    guide:
+      "This capability is the current macOS user's local Reminders database. List reminders before modifying existing reminders unless the user provided an exact reminder id. Write operations follow the current Permission Mode.",
+    id: APPLE_REMINDERS_SOURCE_ID,
+    instructions: [
+      "Use Apple Reminders for the user's personal tasks and reminders.",
+      "List reminders before changing existing reminders unless the user provided an exact reminder id.",
+      "Creating, updating, completing, or deleting reminders writes to Apple Reminders and must follow the current Permission Mode.",
+      "When the user gives relative dates such as today, tomorrow, or next Friday, resolve them using the user's current timezone before calling tools.",
+      "Do not invent reminder lists. If the target list is unclear, use the default list or ask a short clarification when needed."
+    ],
+    mention: {
+      label: "Apple Reminders",
+      value: "apple-reminders"
+    },
+    supportedPlatforms: ["darwin"],
+    title: "Apple Reminders",
+    toolDisplays: {
+      createReminder: {
+        description: "Create a reminder in Apple Reminders.",
+        title: "Create Reminder"
+      },
+      listReminders: {
+        description: "List active reminders and reminder lists from Apple Reminders.",
+        title: "List Reminders"
+      }
+    },
+    toolNames: ["listReminders", "createReminder"]
+  },
   capabilities: ["navigation", "rpc", "surface"],
   iconName: "reminders",
   runtimeCapabilities: ["navigation", "preferences", "rpc"],
@@ -148,7 +179,7 @@ export const appleRemindersManifest = defineNativeExtensionManifest({
     }
   ],
   description: "Manage Apple Reminders inside Openwork.",
-  name: "apple-reminders",
+  name: APPLE_REMINDERS_EXTENSION_ID,
   rpcMethods: [
     "create-reminder",
     "delete-reminder",

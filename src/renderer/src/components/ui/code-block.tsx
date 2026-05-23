@@ -2,7 +2,7 @@
 import { useState } from "react"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneLight } from "react-syntax-highlighter/dist/cjs/styles/prism"
-import { Check, Copy } from "lucide-react"
+import { CopyButton } from "./button"
 import { cn } from "@/lib/utils"
 
 interface CodeBlockTab {
@@ -88,18 +88,9 @@ export const CodeBlock = ({
   showLineNumbers = true,
   tabs = []
 }: CodeBlockProps): React.JSX.Element => {
-  const [copied, setCopied] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
 
   const tabsExist = tabs.length > 0
-  const copyToClipboard = async () => {
-    const textToCopy = tabsExist ? tabs[activeTab].code : code
-    if (textToCopy) {
-      await navigator.clipboard.writeText(textToCopy)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
 
   const activeCode = tabsExist ? tabs[activeTab].code : (code ?? "")
   const activeFilename = tabsExist ? tabs[activeTab].name : filename
@@ -141,13 +132,13 @@ export const CodeBlock = ({
               <div className="min-w-0 truncate font-mono [font-size:var(--ow-font-meta)] leading-4 text-muted-foreground">
                 {activeFilename}
               </div>
-              <button
-                type="button"
-                onClick={copyToClipboard}
+              <CopyButton
                 className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 font-sans [font-size:var(--ow-font-meta)] leading-4 text-muted-foreground transition-colors hover:bg-background-interactive hover:text-foreground"
-              >
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-              </button>
+                copiedLabel="Copied"
+                copyLabel="Copy"
+                iconClassName="size-[14px]"
+                text={activeCode}
+              />
             </div>
           ) : null}
         </div>
