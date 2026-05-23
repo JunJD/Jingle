@@ -195,7 +195,12 @@ if (hasSingleInstanceLock) {
     })
     mainCompositionRoot.registerIpcHandlers()
     mainCompositionRoot.startServices()
-    startNativeMinimalIsland()
+    startNativeMinimalIsland({
+      openLauncher: showLauncher,
+      openMainWindow: () => openMainWindow(),
+      openSettings: () => openSettingsWindow(),
+      quit: () => app.quit()
+    })
 
     showLauncher()
 

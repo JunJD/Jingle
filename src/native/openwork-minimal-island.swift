@@ -13,6 +13,18 @@ struct IslandCommand: Codable {
     let type: String
 }
 
+enum IslandAction: String, Codable {
+    case openLauncher
+    case openMainWindow
+    case openSettings
+    case quit
+}
+
+struct IslandActionEvent: Codable {
+    let action: IslandAction
+    let type: String
+}
+
 extension NSScreen {
     var openworkBuiltinDisplay: Bool {
         guard let screenNumber = deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else {
@@ -34,6 +46,12 @@ extension NSScreen {
 final class IslandPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+}
+
+struct IslandActionButton {
+    let action: IslandAction
+    let frame: NSRect
+    let title: String
 }
 
 private let spriteTiles: [[Bool]] = [
@@ -191,6 +209,7 @@ final class StatusIslandView: NSView {
 }
 
 final class ExpandedIslandView: NSView {
+    var onAction: ((IslandAction) -> Void)?
     var state: IslandState = .idle {
         didSet {
             needsDisplay = true
@@ -210,6 +229,15 @@ final class ExpandedIslandView: NSView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let button = actionButtons().first(where: { $0.frame.contains(point) }) else {
+            return
+        }
+
+        onAction?(button.action)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -239,20 +267,21 @@ final class ExpandedIslandView: NSView {
             withAttributes: subtitleAttributes
         )
 
-        let spriteSize: CGFloat = state == .working ? 60 : 56
+        let spriteSize: CGFloat = state == .working ? 56 : 52
         let spriteRect = NSRect(
             x: bounds.midX - spriteSize / 2,
-            y: 62,
+            y: 78,
             width: spriteSize,
             height: spriteSize
         )
         drawIslandSprite(in: spriteRect, state: state, phase: animationPhase)
 
+        drawActionButtons()
         drawProgressLine()
     }
 
     private func drawProgressLine() {
-        let trackRect = NSRect(x: 28, y: 28, width: bounds.width - 56, height: 7)
+        let trackRect = NSRect(x: 28, y: 22, width: bounds.width - 56, height: 7)
         NSColor(calibratedWhite: 0.86, alpha: 1).setFill()
         NSBezierPath(roundedRect: trackRect, xRadius: 4, yRadius: 4).fill()
 
@@ -275,6 +304,55 @@ final class ExpandedIslandView: NSView {
         spriteFillColor(for: state, phase: animationPhase).setFill()
         NSBezierPath(roundedRect: fillRect, xRadius: 4, yRadius: 4).fill()
     }
+
+    private func actionButtons() -> [IslandActionButton] {
+        let y: CGFloat = 48
+        let gap: CGFloat = 8
+        let buttonWidth: CGFloat = (bounds.width - 56 - gap * 3) / 4
+        let buttonHeight: CGFloat = 26
+        let titles: [(IslandAction, String)] = [
+            (.openLauncher, "Launcher"),
+            (.openMainWindow, "Main"),
+            (.openSettings, "Settings"),
+            (.quit, "Quit")
+        ]
+
+        return titles.enumerated().map { index, item in
+            IslandActionButton(
+                action: item.0,
+                frame: NSRect(
+                    x: 28 + CGFloat(index) * (buttonWidth + gap),
+                    y: y,
+                    width: buttonWidth,
+                    height: buttonHeight
+                ),
+                title: item.1
+            )
+        }
+    }
+
+    private func drawActionButtons() {
+        let titleAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+            .foregroundColor: NSColor(calibratedWhite: 0.08, alpha: 0.92)
+        ]
+
+        for button in actionButtons() {
+            NSColor.white.withAlphaComponent(0.62).setFill()
+            NSBezierPath(roundedRect: button.frame, xRadius: 8, yRadius: 8).fill()
+            NSColor(calibratedWhite: 0.86, alpha: 0.9).setStroke()
+            NSBezierPath(roundedRect: button.frame, xRadius: 8, yRadius: 8).stroke()
+
+            let titleSize = button.title.size(withAttributes: titleAttributes)
+            button.title.draw(
+                at: NSPoint(
+                    x: button.frame.midX - titleSize.width / 2,
+                    y: button.frame.midY - titleSize.height / 2
+                ),
+                withAttributes: titleAttributes
+            )
+        }
+    }
 }
 
 final class IslandController: NSObject {
@@ -291,6 +369,10 @@ final class IslandController: NSObject {
 
     override init() {
         super.init()
+        expandedView.onAction = { [weak self] action in
+            Self.emitAction(action)
+            self?.setExpanded(false)
+        }
         configureStatusItem()
         startAnimationTimer()
     }
@@ -349,9 +431,13 @@ final class IslandController: NSObject {
     }
 
     private func toggleExpanded() {
-        isExpanded.toggle()
+        setExpanded(!isExpanded)
+    }
 
-        if isExpanded {
+    private func setExpanded(_ nextIsExpanded: Bool) {
+        isExpanded = nextIsExpanded
+
+        if nextIsExpanded {
             let panel = ensurePanel()
             panel.orderFrontRegardless()
             updatePanelFrame(animated: false)
@@ -438,6 +524,18 @@ final class IslandController: NSObject {
 
         let rectInWindow = statusView.convert(statusView.bounds, to: nil)
         return window.convertToScreen(rectInWindow)
+    }
+
+    private static func emitAction(_ action: IslandAction) {
+        guard
+            let data = try? JSONEncoder().encode(IslandActionEvent(action: action, type: "action")),
+            let line = String(data: data, encoding: .utf8)
+        else {
+            return
+        }
+
+        print(line)
+        fflush(stdout)
     }
 }
 

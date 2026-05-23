@@ -100,6 +100,8 @@ interface AgentHubEntry {
   subscribers: Map<string, (envelope: AgentProjectionEnvelope) => void>
 }
 
+type ProjectionListener = (envelope: AgentProjectionEnvelope) => void
+
 function getRequiredProjectionRunId(runId: string | null): string {
   if (runId) {
     return runId
@@ -842,6 +844,7 @@ class ThreadProjectionProjector {
 
 export class AgentStreamHub {
   private readonly entries = new Map<string, AgentHubEntry>()
+  private readonly projectionListeners = new Map<string, ProjectionListener>()
 
   constructor(private readonly threadsService: ThreadsService) {}
 
@@ -876,6 +879,14 @@ export class AgentStreamHub {
     }
 
     entry.subscribers.delete(subscriberId)
+  }
+
+  subscribeAll(subscriberId: string, listener: ProjectionListener): () => void {
+    this.projectionListeners.set(subscriberId, listener)
+
+    return () => {
+      this.projectionListeners.delete(subscriberId)
+    }
   }
 
   async handlePayload(threadId: string, payload: AgentStreamPayload): Promise<void> {
@@ -927,6 +938,9 @@ export class AgentStreamHub {
 
     for (const event of events) {
       const envelope = entry.projector.getEnvelope(event)
+      for (const listener of this.projectionListeners.values()) {
+        listener(envelope)
+      }
       for (const listener of entry.subscribers.values()) {
         listener(envelope)
       }

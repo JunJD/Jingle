@@ -3,6 +3,7 @@ import type { BrowserWindow, IpcMain } from "electron"
 import { container, type DependencyContainer } from "tsyringe"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { registerAgentIpcHandlers, registerAgentModule } from "./agent/module"
+import { AgentStreamHub } from "./agent/stream-hub"
 import { installApplicationMenu } from "./app-menu"
 import { registerAppInfoIpcHandlers, registerAppInfoModule } from "./app-info/module"
 import { registerArtifactsIpcHandlers, registerArtifactsModule } from "./artifacts/module"
@@ -44,6 +45,7 @@ import {
   registerGlobalShortcutService,
   unregisterGlobalShortcutService
 } from "./services/shortcuts/global-shortcut-service"
+import { startNativeMinimalIslandAgentStatus } from "./services/native-minimal-island-agent-status"
 import { registerSettingsIpcHandlers, registerSettingsModule } from "./settings/module"
 import {
   registerSettingsWindowRoutingIpcHandlers,
@@ -54,7 +56,6 @@ import { registerThreadsIpcHandlers, registerThreadsModule } from "./threads/mod
 import { warmLauncherSearchProviders } from "./services/launcher-search"
 import { registerWorkspaceIpcHandlers, registerWorkspaceModule } from "./workspace/module"
 import type { MainWindowNavigationPayload } from "@shared/main-window"
-import type { NativeMenuBarState } from "@shared/native-menu-bar"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
 export interface MainCompositionContext {
@@ -72,44 +73,10 @@ export interface MainCompositionContext {
 }
 
 const MAIN_COMPOSITION_CONTEXT_TOKEN = Symbol("MainCompositionContext")
-const OPENWORK_ACTION_BAR_COMMAND_KEY = "openwork:action-bar"
-
-const openworkActionBarState: NativeMenuBarState = {
-  commandKey: OPENWORK_ACTION_BAR_COMMAND_KEY,
-  iconName: "openwork",
-  sections: [
-    {
-      items: [
-        {
-          iconName: "openwork",
-          id: "open-launcher",
-          title: "Open Launcher"
-        },
-        {
-          iconName: "openwork",
-          id: "open-history",
-          title: "Open History"
-        },
-        {
-          iconName: "gear",
-          id: "open-settings",
-          title: "Settings"
-        }
-      ]
-    },
-    {
-      items: [
-        {
-          id: "quit",
-          title: "Quit Openwork"
-        }
-      ]
-    }
-  ],
-  tooltip: "Openwork"
-}
 
 export class MainCompositionRoot {
+  private stopNativeIslandAgentStatus: (() => void) | null = null
+
   constructor(
     private readonly context: MainCompositionContext,
     private readonly dependencyContainer: DependencyContainer
@@ -145,18 +112,18 @@ export class MainCompositionRoot {
     nativeMenuBarService.initialize({
       getLauncherWindow: this.context.getLauncherWindow
     })
-    nativeMenuBarService.setState(openworkActionBarState, {
-      "open-history": () => this.context.openMainWindow(),
-      "open-launcher": this.context.showLauncherWindow,
-      "open-settings": () => this.context.openSettingsWindow(),
-      quit: this.context.quitApplication
-    })
     resolveExtensionRuntimeMenuBarService(this.dependencyContainer).start()
+    this.stopNativeIslandAgentStatus?.()
+    this.stopNativeIslandAgentStatus = startNativeMinimalIslandAgentStatus(
+      this.dependencyContainer.resolve(AgentStreamHub)
+    )
     this.applyShortcutSettings()
     void warmLauncherSearchProviders()
   }
 
   dispose(): void {
+    this.stopNativeIslandAgentStatus?.()
+    this.stopNativeIslandAgentStatus = null
     resolveExtensionRuntimeMenuBarService(this.dependencyContainer).dispose()
     resolveExtensionRuntimeManager(this.dependencyContainer).dispose()
     resolveNativeMenuBarService(this.dependencyContainer).dispose()
