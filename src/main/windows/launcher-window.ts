@@ -1,40 +1,62 @@
-import { spawn } from "node:child_process"
-import { BrowserWindow, type IpcMain, globalShortcut, screen, shell } from "electron"
+import { BrowserWindow, type Rectangle, screen } from "electron"
 import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
-import { FALLBACK_SHELL_CONFIG, getLauncherMaxViewportHeight } from "../../shared/launcher"
-import type { LauncherSearchAction, LauncherSearchRequest } from "../../shared/launcher-search"
-import { searchLauncher } from "../services/launcher-search"
+import {
+  FALLBACK_SHELL_CONFIG,
+  getLauncherIdleHeight,
+  getLauncherMaxViewportHeight
+} from "@shared/launcher"
 
-const LAUNCHER_WIDTH = 800
+const LAUNCHER_CONTENT_WIDTH = 760
 const LAUNCHER_HORIZONTAL_MARGIN = 24
 const LAUNCHER_TOP_MARGIN = 60
+const LAUNCHER_VERTICAL_POSITION_RATIO = 0.28
 const MAC_LAUNCHER_WINDOW_LEVEL = "floating"
-const LAUNCHER_BASE_HEIGHT = FALLBACK_SHELL_CONFIG.baseHeight
+const LAUNCHER_BASE_HEIGHT = getLauncherIdleHeight(FALLBACK_SHELL_CONFIG)
 const LAUNCHER_MAX_HEIGHT = getLauncherMaxViewportHeight(FALLBACK_SHELL_CONFIG)
+const LAUNCHER_POSITION_REFERENCE_HEIGHT = LAUNCHER_MAX_HEIGHT
 const LAUNCHER_MAX_SCREEN_HEIGHT_RATIO = 0.7
-
-export const DEFAULT_LAUNCHER_SHORTCUT = "CommandOrControl+Shift+Space"
+const LAUNCHER_WINDOW_GUTTER = process.platform === "win32" ? 12 : 0
+const WINDOWS_LAUNCHER_SHAPE_RADIUS = 12
+const launcherVisibleOrigins = new WeakMap<BrowserWindow, { x: number; y: number }>()
+let launcherBlurHideSuppressionDepth = 0
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
-function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): {
-  x: number
-  y: number
-  width: number
-  height: number
-} {
+function getLauncherWindowWidthForDisplay(display: Electron.Display): number {
+  const maxContentWidth = Math.max(
+    520,
+    display.workArea.width - LAUNCHER_HORIZONTAL_MARGIN * 2 - LAUNCHER_WINDOW_GUTTER * 2
+  )
+  const contentWidth = Math.min(LAUNCHER_CONTENT_WIDTH, maxContentWidth)
+  return contentWidth + LAUNCHER_WINDOW_GUTTER * 2
+}
+
+function getLauncherWindowHeight(display: Electron.Display, requestedHeight: number): number {
+  return getLauncherHeightForDisplay(display, requestedHeight) + LAUNCHER_WINDOW_GUTTER * 2
+}
+
+function getLauncherContentHeight(windowHeight: number): number {
+  return Math.max(LAUNCHER_BASE_HEIGHT, Math.round(windowHeight) - LAUNCHER_WINDOW_GUTTER * 2)
+}
+
+function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): Rectangle {
   const cursorPoint = screen.getCursorScreenPoint()
   const display = screen.getDisplayNearestPoint(cursorPoint)
-  const boundedHeight = getLauncherHeightForDisplay(display, height)
-  const maxWidth = Math.max(520, display.workArea.width - LAUNCHER_HORIZONTAL_MARGIN * 2)
-  const width = Math.min(LAUNCHER_WIDTH, maxWidth)
+  const boundedHeight = getLauncherWindowHeight(display, height)
+  const positionReferenceHeight = getLauncherWindowHeight(
+    display,
+    LAUNCHER_POSITION_REFERENCE_HEIGHT
+  )
+  const width = getLauncherWindowWidthForDisplay(display)
   const x = Math.round(display.workArea.x + display.workArea.width / 2 - width / 2)
   const minY = display.workArea.y + LAUNCHER_TOP_MARGIN
   const maxY = display.workArea.y + display.workArea.height - boundedHeight - LAUNCHER_TOP_MARGIN
-  const targetY = Math.round(display.workArea.y + display.workArea.height * 0.16)
+  const referenceMaxY =
+    display.workArea.y + display.workArea.height - positionReferenceHeight - LAUNCHER_TOP_MARGIN
+  const targetY = Math.round(minY + (referenceMaxY - minY) * LAUNCHER_VERTICAL_POSITION_RATIO)
   const y = clamp(targetY, minY, Math.max(minY, maxY))
 
   return {
@@ -47,9 +69,115 @@ function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): {
 
 function getLauncherHeightForDisplay(display: Electron.Display, requestedHeight: number): number {
   const maxHeightByScreen = Math.floor(display.workArea.height * LAUNCHER_MAX_SCREEN_HEIGHT_RATIO)
-  const maxHeight = Math.max(LAUNCHER_BASE_HEIGHT, Math.min(LAUNCHER_MAX_HEIGHT, maxHeightByScreen))
+  const maxHeight = Math.max(LAUNCHER_BASE_HEIGHT, maxHeightByScreen)
 
   return clamp(Math.round(requestedHeight), LAUNCHER_BASE_HEIGHT, maxHeight)
+}
+
+function getVisibleLauncherBounds(params: {
+  anchorX: number
+  anchorY: number
+  height: number
+  launcherWindow: BrowserWindow
+}): Rectangle {
+  const { anchorX, anchorY, height, launcherWindow } = params
+  const currentBounds = launcherWindow.getContentBounds()
+  const display = screen.getDisplayMatching(currentBounds)
+  const boundedHeight = getLauncherWindowHeight(display, height)
+  const minX = display.workArea.x + LAUNCHER_HORIZONTAL_MARGIN
+  const maxX =
+    display.workArea.x + display.workArea.width - currentBounds.width - LAUNCHER_HORIZONTAL_MARGIN
+  const minY = display.workArea.y + LAUNCHER_TOP_MARGIN
+  const maxY = display.workArea.y + display.workArea.height - boundedHeight - LAUNCHER_TOP_MARGIN
+
+  return {
+    x: clamp(anchorX, minX, Math.max(minX, maxX)),
+    y: clamp(anchorY, minY, Math.max(minY, maxY)),
+    width: currentBounds.width,
+    height: boundedHeight
+  }
+}
+
+function buildRoundedRectShape(width: number, height: number, radius: number): Rectangle[] {
+  if (width <= 0 || height <= 0) {
+    return []
+  }
+
+  const boundedRadius = clamp(Math.round(radius), 0, Math.floor(Math.min(width, height) / 2))
+  if (boundedRadius === 0) {
+    return [{ x: 0, y: 0, width, height }]
+  }
+
+  const rects: Rectangle[] = []
+  let currentRect: Rectangle | null = null
+
+  for (let y = 0; y < height; y += 1) {
+    const topDy = Math.max(0, boundedRadius - (y + 0.5))
+    const bottomDy = Math.max(0, y + 0.5 - (height - boundedRadius))
+    const cornerDy = Math.max(topDy, bottomDy)
+    const inset =
+      cornerDy > 0
+        ? Math.max(
+            0,
+            Math.ceil(
+              boundedRadius - Math.sqrt(boundedRadius * boundedRadius - cornerDy * cornerDy)
+            )
+          )
+        : 0
+    const lineWidth = Math.max(1, width - inset * 2)
+    const lineX = inset
+
+    if (
+      currentRect &&
+      currentRect.x === lineX &&
+      currentRect.width === lineWidth &&
+      currentRect.y + currentRect.height === y
+    ) {
+      currentRect.height += 1
+      continue
+    }
+
+    currentRect = { x: lineX, y, width: lineWidth, height: 1 }
+    rects.push(currentRect)
+  }
+
+  return rects
+}
+
+function offsetShapeRectangles(rectangles: Rectangle[], x: number, y: number): Rectangle[] {
+  return rectangles.map((rectangle) => ({
+    ...rectangle,
+    x: rectangle.x + x,
+    y: rectangle.y + y
+  }))
+}
+
+function syncLauncherWindowShape(launcherWindow: BrowserWindow): void {
+  if (process.platform !== "win32" || launcherWindow.isDestroyed()) {
+    return
+  }
+
+  if (LAUNCHER_WINDOW_GUTTER > 0) {
+    return
+  }
+
+  const { width, height } = launcherWindow.getBounds()
+  launcherWindow.setShape(
+    offsetShapeRectangles(
+      buildRoundedRectShape(
+        width - LAUNCHER_WINDOW_GUTTER * 2,
+        height - LAUNCHER_WINDOW_GUTTER * 2,
+        WINDOWS_LAUNCHER_SHAPE_RADIUS
+      ),
+      LAUNCHER_WINDOW_GUTTER,
+      LAUNCHER_WINDOW_GUTTER
+    )
+  )
+}
+
+function setLauncherWindowContentBounds(launcherWindow: BrowserWindow, bounds: Rectangle): void {
+  launcherWindow.setContentBounds(bounds, false)
+  syncLauncherWindowShape(launcherWindow)
 }
 
 function emitLauncherShown(launcherWindow: BrowserWindow): void {
@@ -65,12 +193,15 @@ function emitLauncherShown(launcherWindow: BrowserWindow): void {
   launcherWindow.webContents.send("launcher:shown")
 }
 
-function showLauncherWindow(launcherWindow: BrowserWindow): void {
-  launcherWindow.setBounds(getLauncherBounds(LAUNCHER_BASE_HEIGHT), false)
+export function showLauncherWindow(launcherWindow: BrowserWindow): void {
+  const nextHeight = getLauncherContentHeight(
+    launcherWindow.getContentBounds().height || LAUNCHER_BASE_HEIGHT
+  )
+  const nextBounds = getLauncherBounds(nextHeight)
+  setLauncherWindowContentBounds(launcherWindow, nextBounds)
 
   if (process.platform === "darwin") {
     launcherWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-    //// 保持启动器位于应用窗口上方，但不遮挡输入法候选窗口。
     launcherWindow.setAlwaysOnTop(true, MAC_LAUNCHER_WINDOW_LEVEL)
   } else {
     launcherWindow.setAlwaysOnTop(true)
@@ -80,59 +211,64 @@ function showLauncherWindow(launcherWindow: BrowserWindow): void {
   launcherWindow.focus()
   launcherWindow.moveTop()
   emitLauncherShown(launcherWindow)
-
-  if (process.platform === "darwin") {
-    setTimeout(() => {
-      if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
-        launcherWindow.setVisibleOnAllWorkspaces(false, { visibleOnFullScreen: true })
-      }
-    }, 0)
-  }
 }
 
 function hideLauncherWindow(launcherWindow: BrowserWindow): void {
   launcherWindow.hide()
 }
 
-async function executeLauncherAction(action: LauncherSearchAction): Promise<void> {
-  switch (action.type) {
-    case "launch-application":
-      if (process.platform === "darwin") {
-        await new Promise<void>((resolve, reject) => {
-          const child = spawn("open", [action.applicationPath], {
-            detached: true,
-            stdio: "ignore"
-          })
-
-          child.once("error", reject)
-          child.once("spawn", () => resolve())
-          child.unref()
-        })
-        return
-      }
-
-      {
-        const openPathError = await shell.openPath(action.applicationPath)
-        if (openPathError) {
-          throw new Error(openPathError)
-        }
-      }
-      return
-    case "none":
-      return
-    default: {
-      const exhaustiveAction: never = action
-      throw new Error(`Unsupported launcher action: ${JSON.stringify(exhaustiveAction)}`)
-    }
+export function setLauncherBlurHideSuppressed(active: boolean): void {
+  if (active) {
+    launcherBlurHideSuppressionDepth += 1
+    return
   }
+
+  launcherBlurHideSuppressionDepth = Math.max(0, launcherBlurHideSuppressionDepth - 1)
+}
+
+export function setLauncherWindowViewportHeight(
+  launcherWindow: BrowserWindow,
+  height: number
+): void {
+  const visibleOrigin = launcherVisibleOrigins.get(launcherWindow)
+
+  setLauncherWindowContentBounds(
+    launcherWindow,
+    launcherWindow.isVisible()
+      ? getVisibleLauncherBounds({
+          anchorX: visibleOrigin?.x ?? launcherWindow.getContentBounds().x,
+          anchorY: visibleOrigin?.y ?? launcherWindow.getContentBounds().y,
+          height,
+          launcherWindow
+        })
+      : getLauncherBounds(height)
+  )
 }
 
 export function createLauncherWindow(): BrowserWindow {
   const launcherWindow = new BrowserWindow({
-    width: LAUNCHER_WIDTH,
-    height: LAUNCHER_BASE_HEIGHT,
+    width: LAUNCHER_CONTENT_WIDTH + LAUNCHER_WINDOW_GUTTER * 2,
+    height: LAUNCHER_BASE_HEIGHT + LAUNCHER_WINDOW_GUTTER * 2,
     show: false,
-    ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
+    autoHideMenuBar: process.platform !== "darwin",
+    ...(process.platform === "darwin"
+      ? {
+          // Electron's macOS panel type adds NSWindowStyleMaskNonactivatingPanel,
+          // which is the documented path for floating above full-screen apps.
+          type: "panel" as const,
+          vibrancy: "popover" as const,
+          visualEffectState: "active" as const
+        }
+      : {}),
+    ...(process.platform === "win32"
+      ? {
+          backgroundMaterial: "none" as const,
+          hasShadow: false,
+          roundedCorners: true
+        }
+      : {
+          hasShadow: true
+        }),
     frame: false,
     useContentSize: true,
     resizable: false,
@@ -141,17 +277,37 @@ export function createLauncherWindow(): BrowserWindow {
     fullscreenable: false,
     skipTaskbar: true,
     hiddenInMissionControl: true,
-    hasShadow: true,
-    backgroundColor: "#141418",
+    transparent: true,
+    backgroundColor: "#00000000",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false
     }
   })
-
   launcherWindow.on("blur", () => {
+    if (launcherBlurHideSuppressionDepth > 0) {
+      return
+    }
+
     if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
       hideLauncherWindow(launcherWindow)
+    }
+  })
+
+  launcherWindow.on("resize", () => {
+    syncLauncherWindowShape(launcherWindow)
+  })
+
+  launcherWindow.on("show", () => {
+    const { x, y } = launcherWindow.getContentBounds()
+    launcherVisibleOrigins.set(launcherWindow, { x, y })
+  })
+
+  launcherWindow.on("hide", () => {
+    launcherVisibleOrigins.delete(launcherWindow)
+    if (process.platform === "darwin") {
+      launcherWindow.setAlwaysOnTop(false)
+      launcherWindow.setVisibleOnAllWorkspaces(false, { visibleOnFullScreen: true })
     }
   })
 
@@ -164,7 +320,14 @@ export function createLauncherWindow(): BrowserWindow {
 
   const repositionIfVisible = (): void => {
     if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
-      launcherWindow.setBounds(getLauncherBounds(launcherWindow.getBounds().height), false)
+      const nextBounds = getLauncherBounds(
+        getLauncherContentHeight(launcherWindow.getContentBounds().height)
+      )
+      launcherVisibleOrigins.set(launcherWindow, {
+        x: nextBounds.x,
+        y: nextBounds.y
+      })
+      setLauncherWindowContentBounds(launcherWindow, nextBounds)
     }
   }
 
@@ -178,67 +341,8 @@ export function createLauncherWindow(): BrowserWindow {
     screen.removeListener("display-removed", repositionIfVisible)
   })
 
+  syncLauncherWindowShape(launcherWindow)
   void loadRendererWindow(launcherWindow, "launcher")
 
   return launcherWindow
-}
-
-export function registerLauncherHandlers(ipcMain: IpcMain): void {
-  ipcMain.handle("launcher:getShellConfig", () => {
-    return FALLBACK_SHELL_CONFIG
-  })
-
-  ipcMain.handle("launcher:search", async (_event, request: LauncherSearchRequest) => {
-    return searchLauncher(request)
-  })
-
-  ipcMain.handle("launcher:executeAction", async (event, action: LauncherSearchAction) => {
-    const currentWindow = BrowserWindow.fromWebContents(event.sender)
-
-    try {
-      await executeLauncherAction(action)
-      currentWindow?.hide()
-      return {
-        ok: true
-      }
-    } catch (error) {
-      return {
-        error: error instanceof Error ? error.message : String(error),
-        ok: false
-      }
-    }
-  })
-
-  ipcMain.handle("launcher:hide", (event) => {
-    const currentWindow = BrowserWindow.fromWebContents(event.sender)
-    currentWindow?.hide()
-  })
-
-  ipcMain.handle("launcher:setViewportHeight", (event, height: number) => {
-    const currentWindow = BrowserWindow.fromWebContents(event.sender)
-    if (!currentWindow) {
-      return
-    }
-
-    currentWindow.setBounds(getLauncherBounds(height), false)
-  })
-}
-
-export function registerLauncherShortcut(getLauncherWindow: () => BrowserWindow): void {
-  const registered = globalShortcut.register(DEFAULT_LAUNCHER_SHORTCUT, () => {
-    const launcherWindow = getLauncherWindow()
-    if (launcherWindow.isVisible()) {
-      hideLauncherWindow(launcherWindow)
-      return
-    }
-    showLauncherWindow(launcherWindow)
-  })
-
-  if (!registered) {
-    console.warn(`Failed to register launcher shortcut: ${DEFAULT_LAUNCHER_SHORTCUT}`)
-  }
-}
-
-export function unregisterLauncherShortcut(): void {
-  globalShortcut.unregister(DEFAULT_LAUNCHER_SHORTCUT)
 }

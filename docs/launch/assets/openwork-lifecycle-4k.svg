@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="3840" height="2160" viewBox="0 0 3840 2160">
+  <defs>
+    <linearGradient id="soft" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#171c24"/>
+      <stop offset="100%" stop-color="#0f1217"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="30" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect fill="#0f1217" height="2160" rx="0" stroke="#0f1217" stroke-width="2" width="3840" x="0" y="0"></rect>
+  <path d="M0 0 H3840 V180 C3220 250 2780 120 2200 190 C1560 268 960 130 0 260 Z" fill="#171c24" opacity="0.75"></path>
+  <path d="M0 2160 H3840 V1900 C3180 1840 2750 2040 2180 1970 C1450 1880 880 2060 0 1940 Z" fill="#141922" opacity="0.8"></path>
+  
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="118" font-weight="850" fill="#f5f7fa" text-anchor="start" x="220" y="220">一次委托，不是一段聊天</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="54" font-weight="500" fill="#a7b0be" text-anchor="start" x="226" y="380">Openwork 把软件任务变成可追踪的工作单元</text>
+    <circle cx="260" cy="742" fill="#4aa8ff" r="72" stroke="#4aa8ff" stroke-width="2"></circle>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="850" fill="#f5f7fa" text-anchor="middle" x="260" y="702">1</text>
+<rect fill="#171c24" height="230" rx="42" stroke="#4aa8ff" stroke-width="2" width="860" x="380" y="650"></rect>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="700" fill="#f5f7fa" text-anchor="start" x="434" y="698">说出目标</text>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="434" y="782">我要改网站 / 连 API / 修脚本</text>
+<line stroke="#697386" stroke-linecap="round" stroke-width="6" x1="1270" x2="1400" y1="766" y2="766"></line><polygon fill="#697386" points="1400,766 1359.029437251523,782.9705627484772 1359.029437251523,749.0294372515228"></polygon><circle cx="1420" cy="742" fill="#f2c94c" r="72" stroke="#f2c94c" stroke-width="2"></circle>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="850" fill="#f5f7fa" text-anchor="middle" x="1420" y="702">2</text>
+<rect fill="#171c24" height="230" rx="42" stroke="#f2c94c" stroke-width="2" width="860" x="1540" y="650"></rect>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="700" fill="#f5f7fa" text-anchor="start" x="1594" y="698">确认边界</text>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="1594" y="782">workspace、权限、账号配置</text>
+<line stroke="#697386" stroke-linecap="round" stroke-width="6" x1="2430" x2="2560" y1="766" y2="766"></line><polygon fill="#697386" points="2560,766 2519.0294372515227,782.9705627484772 2519.0294372515227,749.0294372515228"></polygon><circle cx="2580" cy="742" fill="#3ddc97" r="72" stroke="#3ddc97" stroke-width="2"></circle>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="850" fill="#f5f7fa" text-anchor="middle" x="2580" y="702">3</text>
+<rect fill="#171c24" height="230" rx="42" stroke="#3ddc97" stroke-width="2" width="860" x="2700" y="650"></rect>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="700" fill="#f5f7fa" text-anchor="start" x="2754" y="698">执行任务</text>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="2754" y="782">读文件、改代码、跑命令</text>
+<circle cx="260" cy="1302" fill="#ff4b4b" r="72" stroke="#ff4b4b" stroke-width="2"></circle>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="850" fill="#f5f7fa" text-anchor="middle" x="260" y="1262">4</text>
+<rect fill="#171c24" height="230" rx="42" stroke="#ff4b4b" stroke-width="2" width="860" x="380" y="1210"></rect>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="700" fill="#f5f7fa" text-anchor="start" x="434" y="1258">关键审批</text>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="434" y="1342">危险动作执行前停下来</text>
+<line stroke="#697386" stroke-linecap="round" stroke-width="6" x1="1270" x2="1400" y1="1326" y2="1326"></line><polygon fill="#697386" points="1400,1326 1359.029437251523,1342.970562748477 1359.029437251523,1309.029437251523"></polygon><circle cx="1420" cy="1302" fill="#a78bfa" r="72" stroke="#a78bfa" stroke-width="2"></circle>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="850" fill="#f5f7fa" text-anchor="middle" x="1420" y="1262">5</text>
+<rect fill="#171c24" height="230" rx="42" stroke="#a78bfa" stroke-width="2" width="860" x="1540" y="1210"></rect>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="700" fill="#f5f7fa" text-anchor="start" x="1594" y="1258">留下证据</text>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="1594" y="1342">artifact、diff、日志、结果</text>
+<line stroke="#697386" stroke-linecap="round" stroke-width="6" x1="2430" x2="2560" y1="1326" y2="1326"></line><polygon fill="#697386" points="2560,1326 2519.0294372515227,1342.970562748477 2519.0294372515227,1309.029437251523"></polygon><circle cx="2580" cy="1302" fill="#ff9f43" r="72" stroke="#ff9f43" stroke-width="2"></circle>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="850" fill="#f5f7fa" text-anchor="middle" x="2580" y="1262">6</text>
+<rect fill="#171c24" height="230" rx="42" stroke="#ff9f43" stroke-width="2" width="860" x="2700" y="1210"></rect>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="700" fill="#f5f7fa" text-anchor="start" x="2754" y="1258">恢复继续</text>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="2754" y="1342">失败后知道从哪里接回</text>
+
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="62" font-weight="700" fill="#f5f7fa" text-anchor="start" x="232" y="1880">从开始到结束，每一步都能看见、能批准、能复查。</text>
+  
+</svg>

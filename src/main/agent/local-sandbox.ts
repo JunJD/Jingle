@@ -96,6 +96,8 @@ export class LocalSandbox extends FilesystemBackend implements SandboxBackendPro
       }
     }
 
+    console.log("[LocalSandbox] Executing command:", command)
+
     return new Promise<ExecuteResponse>((resolve) => {
       const outputParts: string[] = []
       let totalBytes = 0

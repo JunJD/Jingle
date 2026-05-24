@@ -1,25 +1,19 @@
 import { homedir } from "os"
 import { join } from "path"
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
-import type { ProviderId } from "./types"
+import { existsSync, mkdirSync, readFileSync } from "fs"
+const DEFAULT_OPENWORK_DIR = join(homedir(), ".openwork")
 
-const OPENWORK_DIR = join(homedir(), ".openwork")
-const ENV_FILE = join(OPENWORK_DIR, ".env")
-
-// Environment variable names for each provider
-const ENV_VAR_NAMES: Record<ProviderId, string> = {
-  anthropic: "ANTHROPIC_API_KEY",
-  openai: "OPENAI_API_KEY",
-  google: "GOOGLE_API_KEY",
-  dashscope: "DASHSCOPE_API_KEY",
-  ollama: "" // Ollama doesn't require an API key
+function resolveOpenworkDir(): string {
+  const override = process.env["OPENWORK_HOME"]?.trim()
+  return override && override.length > 0 ? override : DEFAULT_OPENWORK_DIR
 }
 
 export function getOpenworkDir(): string {
-  if (!existsSync(OPENWORK_DIR)) {
-    mkdirSync(OPENWORK_DIR, { recursive: true })
+  const openworkDir = resolveOpenworkDir()
+  if (!existsSync(openworkDir)) {
+    mkdirSync(openworkDir, { recursive: true })
   }
-  return OPENWORK_DIR
+  return openworkDir
 }
 
 export function getDbPath(): string {
@@ -27,7 +21,16 @@ export function getDbPath(): string {
 }
 
 export function getEnvFilePath(): string {
-  return ENV_FILE
+  return join(getOpenworkDir(), ".env")
+}
+
+export function getEnvValue(name: string): string | undefined {
+  const env = parseEnvFile()
+  if (env[name]) {
+    return env[name]
+  }
+
+  return process.env[name]
 }
 
 // Read .env file and parse into object
@@ -49,54 +52,4 @@ function parseEnvFile(): Record<string, string> {
     }
   }
   return result
-}
-
-// Write object back to .env file
-function writeEnvFile(env: Record<string, string>): void {
-  getOpenworkDir() // ensure dir exists
-  const lines = Object.entries(env)
-    .filter((entry) => entry[1])
-    .map(([k, v]) => `${k}=${v}`)
-  writeFileSync(getEnvFilePath(), lines.join("\n") + "\n")
-}
-
-// API key management
-export function getApiKey(provider: string): string | undefined {
-  const envVarName = ENV_VAR_NAMES[provider]
-  if (!envVarName) return undefined
-
-  // Check .env file first
-  const env = parseEnvFile()
-  if (env[envVarName]) return env[envVarName]
-
-  // Fall back to process environment
-  return process.env[envVarName]
-}
-
-export function setApiKey(provider: string, apiKey: string): void {
-  const envVarName = ENV_VAR_NAMES[provider]
-  if (!envVarName) return
-
-  const env = parseEnvFile()
-  env[envVarName] = apiKey
-  writeEnvFile(env)
-
-  // Also set in process.env for current session
-  process.env[envVarName] = apiKey
-}
-
-export function deleteApiKey(provider: string): void {
-  const envVarName = ENV_VAR_NAMES[provider]
-  if (!envVarName) return
-
-  const env = parseEnvFile()
-  delete env[envVarName]
-  writeEnvFile(env)
-
-  // Also clear from process.env
-  delete process.env[envVarName]
-}
-
-export function hasApiKey(provider: string): boolean {
-  return !!getApiKey(provider)
 }

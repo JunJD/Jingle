@@ -1,14 +1,17 @@
-import { app, nativeImage } from "electron"
+import { app, nativeImage, shell } from "electron"
+import PinyinMatch from "pinyin-match"
 import { execFile } from "node:child_process"
 import { Dirent, promises as fs } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
-import type {
-  LauncherSearchRequest,
-  LauncherSearchResult
-} from "../../../../shared/launcher-search"
+import { createLauncherHistoryKey } from "@shared/launcher-history"
+import type { LauncherSearchRequest, LauncherSearchResult } from "@shared/launcher-search"
 import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
+import {
+  isWindowsShortcutPath,
+  resolveWindowsApplicationIconPathCandidates
+} from "./windows-shortcut-icon"
 
 interface LauncherApplicationRecord {
   id: string
@@ -28,6 +31,19 @@ interface SystemProfilerApplicationsPayload {
   SPApplicationsDataType?: SystemProfilerApplicationEntry[]
 }
 
+type WindowsStartMenuRootKind = "user-start-menu" | "system-start-menu"
+
+interface WindowsStartMenuRoot {
+  kind: WindowsStartMenuRootKind
+  path: string
+  priority: number
+}
+
+interface WindowsApplicationRecord extends LauncherApplicationRecord {
+  sourcePriority: number
+  targetPath?: string
+}
+
 const MAX_SCAN_DEPTH = 3
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
 const execFileAsync = promisify(execFile)
@@ -40,9 +56,7 @@ const MAC_APPLICATION_DIRECTORIES = [
   "/System/Applications/Utilities",
   "/System/Library/CoreServices/Applications"
 ]
-
-let applicationCatalogPromise: Promise<LauncherApplicationRecord[]> | null = null
-const applicationIconPromiseCache = new Map<string, Promise<string | undefined>>()
+const WINDOWS_START_MENU_FALLBACK_SUBTITLE = "开始菜单"
 
 function normalizeSearchValue(value: string): string {
   return value
@@ -60,11 +74,11 @@ function getTitleMatchRange(title: string, query: string): [number, number] | un
   }
 
   const index = title.toLocaleLowerCase().indexOf(trimmedQuery.toLocaleLowerCase())
-  if (index < 0) {
-    return undefined
+  if (index >= 0) {
+    return [index, index + trimmedQuery.length - 1]
   }
 
-  return [index, index + trimmedQuery.length - 1]
+  return getPinyinMatchRange(title, trimmedQuery)
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -109,7 +123,7 @@ function normalizeApplicationContainerLabel(label: string): string {
   }
 }
 
-function getApplicationSubtitle(applicationPath: string): string {
+function getMacApplicationSubtitle(applicationPath: string): string {
   const parentDirectoryName = normalizeApplicationContainerLabel(
     path.basename(path.dirname(applicationPath))
   )
@@ -135,6 +149,78 @@ function getApplicationSubtitle(applicationPath: string): string {
   }
 
   return "应用程序"
+}
+
+function getWindowsStartMenuRoots(): WindowsStartMenuRoot[] {
+  const appData = process.env.APPDATA
+  const programData = process.env.PROGRAMDATA
+
+  if (!appData || !programData) {
+    throw new Error("Missing Windows Start Menu environment variables")
+  }
+
+  return [
+    {
+      kind: "user-start-menu",
+      path: path.join(appData, "Microsoft", "Windows", "Start Menu", "Programs"),
+      priority: 0
+    },
+    {
+      kind: "system-start-menu",
+      path: path.join(programData, "Microsoft", "Windows", "Start Menu", "Programs"),
+      priority: 1
+    }
+  ]
+}
+
+function normalizeWindowsPath(filePath: string): string {
+  return path.win32.normalize(filePath).toLowerCase()
+}
+
+function getApplicationPathLookupKey(applicationPath: string): string {
+  if (process.platform === "win32") {
+    return normalizeWindowsPath(applicationPath)
+  }
+
+  return path.normalize(applicationPath)
+}
+
+async function resolveMacApplicationDisplayName(
+  applicationPath: string
+): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFileAsync("/usr/bin/mdls", [
+      "-raw",
+      "-name",
+      "kMDItemDisplayName",
+      applicationPath
+    ])
+    const displayName = stdout.toString().trim()
+
+    if (!displayName || displayName === "(null)") {
+      return undefined
+    }
+
+    return displayName
+  } catch {
+    return undefined
+  }
+}
+
+function getWindowsApplicationSubtitle(shortcutPath: string, rootPath: string): string {
+  const relativePath = path.win32.relative(rootPath, shortcutPath)
+  const relativeDirectory = path.win32.dirname(relativePath)
+
+  if (!relativeDirectory || relativeDirectory === ".") {
+    return WINDOWS_START_MENU_FALLBACK_SUBTITLE
+  }
+
+  const containerLabel = normalizeApplicationContainerLabel(path.win32.basename(relativeDirectory))
+  return containerLabel || WINDOWS_START_MENU_FALLBACK_SUBTITLE
+}
+
+function isWindowsUninstallEntry(label: string): boolean {
+  return /(^|[\s._-])(uninstall|unins|卸载)([\s._-]|$)/i.test(label)
 }
 
 async function collectMacApplicationPaths(
@@ -204,7 +290,7 @@ async function loadMacApplicationsFromSystemProfiler(): Promise<LauncherApplicat
       id: applicationPath,
       keywords: buildSearchKeywords(displayName, bundleName),
       path: applicationPath,
-      subtitle: getApplicationSubtitle(applicationPath)
+      subtitle: getMacApplicationSubtitle(applicationPath)
     })
   }
 
@@ -243,27 +329,182 @@ async function loadMacApplications(): Promise<LauncherApplicationRecord[]> {
         id: applicationPath,
         keywords: buildSearchKeywords(bundleName),
         path: applicationPath,
-        subtitle: getApplicationSubtitle(applicationPath)
+        subtitle: getMacApplicationSubtitle(applicationPath)
       }
     })
     .sort((left, right) => collator.compare(left.displayName, right.displayName))
+}
+
+async function collectWindowsShortcutPaths(
+  directoryPath: string,
+  target: Set<string>
+): Promise<void> {
+  let entries: Dirent[] = []
+
+  try {
+    entries = await fs.readdir(directoryPath, { withFileTypes: true })
+  } catch {
+    return
+  }
+
+  await Promise.all(
+    entries.map(async (entry) => {
+      if (entry.name.startsWith(".")) {
+        return
+      }
+
+      const fullPath = path.join(directoryPath, entry.name)
+      const isShortcut = entry.name.toLowerCase().endsWith(".lnk")
+
+      if (isShortcut && entry.isFile()) {
+        target.add(fullPath)
+        return
+      }
+
+      if (!entry.isDirectory()) {
+        return
+      }
+
+      await collectWindowsShortcutPaths(fullPath, target)
+    })
+  )
+}
+
+function compareWindowsApplicationRecords(
+  left: WindowsApplicationRecord,
+  right: WindowsApplicationRecord
+): number {
+  if (left.sourcePriority !== right.sourcePriority) {
+    return left.sourcePriority - right.sourcePriority
+  }
+
+  if (left.displayName.length !== right.displayName.length) {
+    return left.displayName.length - right.displayName.length
+  }
+
+  const displayOrder = collator.compare(left.displayName, right.displayName)
+  if (displayOrder !== 0) {
+    return displayOrder
+  }
+
+  return collator.compare(left.path, right.path)
+}
+
+function toLauncherApplicationRecord(
+  application: WindowsApplicationRecord
+): LauncherApplicationRecord {
+  return {
+    bundleName: application.bundleName,
+    displayName: application.displayName,
+    id: application.id,
+    keywords: application.keywords,
+    path: application.path,
+    subtitle: application.subtitle
+  }
+}
+
+function parseWindowsApplicationRecord(
+  shortcutPath: string,
+  root: WindowsStartMenuRoot
+): WindowsApplicationRecord | null {
+  const shortcutDetails = shell.readShortcutLink(shortcutPath)
+  const targetPath = shortcutDetails.target.trim()
+
+  if (!targetPath) {
+    return null
+  }
+
+  const bundleName = path.win32.basename(shortcutPath, path.win32.extname(shortcutPath)).trim()
+  if (!bundleName) {
+    return null
+  }
+
+  const targetName = path.win32.basename(targetPath, path.win32.extname(targetPath)).trim()
+  if (isWindowsUninstallEntry(bundleName) || isWindowsUninstallEntry(targetName)) {
+    return null
+  }
+
+  return {
+    bundleName,
+    displayName: bundleName,
+    id: shortcutPath,
+    keywords: buildSearchKeywords(bundleName, targetName),
+    path: shortcutPath,
+    sourcePriority: root.priority,
+    subtitle: getWindowsApplicationSubtitle(shortcutPath, root.path),
+    targetPath
+  }
+}
+
+async function loadWindowsApplications(): Promise<LauncherApplicationRecord[]> {
+  const shortcutPaths = new Set<string>()
+  const startMenuRoots = getWindowsStartMenuRoots()
+  const normalizedStartMenuRoots = startMenuRoots.map((root) => ({
+    normalizedPath: `${normalizeWindowsPath(root.path)}\\`,
+    root
+  }))
+
+  await Promise.all(
+    startMenuRoots.map((root) => collectWindowsShortcutPaths(root.path, shortcutPaths))
+  )
+
+  const applicationsByTarget = new Map<string, WindowsApplicationRecord>()
+
+  for (const shortcutPath of shortcutPaths) {
+    const normalizedShortcutPath = normalizeWindowsPath(shortcutPath)
+    const root = normalizedStartMenuRoots.find((entry) =>
+      normalizedShortcutPath.startsWith(entry.normalizedPath)
+    )?.root
+    if (!root) {
+      continue
+    }
+
+    let application: WindowsApplicationRecord | null = null
+
+    try {
+      application = parseWindowsApplicationRecord(shortcutPath, root)
+    } catch {
+      continue
+    }
+
+    if (!application) {
+      continue
+    }
+
+    const dedupeKey = normalizeWindowsPath(application.targetPath ?? application.path)
+    const existing = applicationsByTarget.get(dedupeKey)
+
+    if (!existing || compareWindowsApplicationRecords(application, existing) < 0) {
+      applicationsByTarget.set(dedupeKey, application)
+    }
+  }
+
+  return [...applicationsByTarget.values()]
+    .map((application) => toLauncherApplicationRecord(application))
+    .sort((left, right) => {
+      const displayOrder = collator.compare(left.displayName, right.displayName)
+      if (displayOrder !== 0) {
+        return displayOrder
+      }
+
+      const bundleOrder = collator.compare(left.bundleName, right.bundleName)
+      if (bundleOrder !== 0) {
+        return bundleOrder
+      }
+
+      return collator.compare(left.path, right.path)
+    })
 }
 
 async function loadApplicationCatalog(): Promise<LauncherApplicationRecord[]> {
   switch (process.platform) {
     case "darwin":
       return loadMacApplications()
+    case "win32":
+      return loadWindowsApplications()
     default:
       return []
   }
-}
-
-async function getApplicationCatalog(): Promise<LauncherApplicationRecord[]> {
-  if (!applicationCatalogPromise) {
-    applicationCatalogPromise = loadApplicationCatalog()
-  }
-
-  return applicationCatalogPromise
 }
 
 async function readPlistRawValue(
@@ -390,6 +631,62 @@ async function createIconDataUrlFromPath(iconPath: string): Promise<string | und
   return undefined
 }
 
+function createIconDataUrlFromNativeImage(icon: Electron.NativeImage): string | undefined {
+  if (icon.isEmpty()) {
+    return undefined
+  }
+
+  return icon
+    .resize({
+      height: 64,
+      quality: "best",
+      width: 64
+    })
+    .toDataURL()
+}
+
+function getWindowsApplicationIconPathCandidates(applicationPath: string): string[] {
+  if (!isWindowsShortcutPath(applicationPath)) {
+    return [applicationPath]
+  }
+
+  try {
+    const shortcutDetails = shell.readShortcutLink(applicationPath)
+    return resolveWindowsApplicationIconPathCandidates({
+      applicationPath,
+      shortcutIconPath: shortcutDetails.icon,
+      shortcutTargetPath: shortcutDetails.target
+    })
+  } catch {
+    return [applicationPath]
+  }
+}
+
+async function createWindowsApplicationIconDataUrl(
+  applicationPath: string
+): Promise<string | undefined> {
+  const iconPathCandidates = getWindowsApplicationIconPathCandidates(applicationPath)
+
+  for (const iconPathCandidate of iconPathCandidates) {
+    const iconDataUrl = await createIconDataUrlFromPath(iconPathCandidate)
+    if (iconDataUrl) {
+      return iconDataUrl
+    }
+
+    try {
+      const icon = await app.getFileIcon(iconPathCandidate, { size: "large" })
+      const iconDataUrl = createIconDataUrlFromNativeImage(icon)
+      if (iconDataUrl) {
+        return iconDataUrl
+      }
+    } catch {
+      // Continue to the next icon candidate.
+    }
+  }
+
+  return undefined
+}
+
 function scoreKeywordMatch(keyword: string, query: string): number {
   if (!query) {
     return -1
@@ -411,131 +708,150 @@ function scoreKeywordMatch(keyword: string, query: string): number {
   return -1
 }
 
-function getDisplayNameForQuery(application: LauncherApplicationRecord, query: string): string {
-  const displayNameScore = scoreKeywordMatch(normalizeSearchValue(application.displayName), query)
-  if (displayNameScore >= 0) {
-    return application.displayName
+function getPinyinMatchRange(value: string, query: string): [number, number] | undefined {
+  const match = PinyinMatch.match(value, query)
+  return Array.isArray(match) ? match : undefined
+}
+
+function scorePinyinMatch(
+  value: string,
+  query: string
+): { match: [number, number]; score: number } | null {
+  if (!query) {
+    return null
   }
 
-  const bundleNameScore = scoreKeywordMatch(normalizeSearchValue(application.bundleName), query)
-  if (bundleNameScore >= 0) {
-    return application.bundleName
+  const match = getPinyinMatchRange(value, query)
+  if (!match) {
+    return null
   }
 
-  return application.displayName
+  const [start, end] = match
+  const span = end - start
+
+  return {
+    match,
+    score: 68 - Math.min(start, 10) * 3 - Math.min(span, 6)
+  }
 }
 
 function getApplicationMatch(
   application: LauncherApplicationRecord,
   query: string
 ): {
+  match?: [number, number]
   score: number
   title: string
 } | null {
-  let bestScore = -1
+  const candidates = [
+    {
+      normalizedValue: normalizeSearchValue(application.displayName),
+      title: application.displayName,
+      value: application.displayName
+    },
+    {
+      normalizedValue: normalizeSearchValue(application.bundleName),
+      title: application.bundleName,
+      value: application.bundleName
+    }
+  ]
+  let bestMatch: { match?: [number, number]; score: number; title: string } | null = null
 
-  for (const keyword of application.keywords) {
-    const score = scoreKeywordMatch(keyword, query)
-    if (score > bestScore) {
-      bestScore = score
+  for (const candidate of candidates) {
+    const literalScore = scoreKeywordMatch(candidate.normalizedValue, query)
+    if (literalScore >= 0) {
+      const nextMatch = {
+        match: getTitleMatchRange(candidate.title, query),
+        score: literalScore,
+        title: candidate.title
+      }
+
+      if (!bestMatch || nextMatch.score > bestMatch.score) {
+        bestMatch = nextMatch
+      }
+    }
+
+    const pinyinScore = scorePinyinMatch(candidate.value, query)
+    if (!pinyinScore) {
+      continue
+    }
+
+    const nextMatch = {
+      match: pinyinScore.match,
+      score: pinyinScore.score,
+      title: candidate.title
+    }
+
+    if (!bestMatch || nextMatch.score > bestMatch.score) {
+      bestMatch = nextMatch
     }
   }
 
-  if (bestScore < 0) {
+  if (bestMatch) {
+    return bestMatch
+  }
+
+  let bestKeywordScore = -1
+
+  for (const keyword of application.keywords) {
+    const score = scoreKeywordMatch(keyword, query)
+    if (score > bestKeywordScore) {
+      bestKeywordScore = score
+    }
+  }
+
+  if (bestKeywordScore < 0) {
     return null
   }
 
   return {
-    score: bestScore,
-    title: getDisplayNameForQuery(application, query)
+    score: bestKeywordScore,
+    title: application.displayName
   }
 }
 
-async function getApplicationIconDataUrl(applicationPath: string): Promise<string | undefined> {
-  let iconPromise = applicationIconPromiseCache.get(applicationPath)
+class ApplicationsLauncherSearchProvider implements LauncherSearchProvider {
+  readonly source = "applications" as const
+  private applicationCatalogPromise: Promise<LauncherApplicationRecord[]> | null = null
+  private applicationDisplayNamePromiseCache = new Map<string, Promise<string | undefined>>()
+  private applicationIconPromiseCache = new Map<string, Promise<string | undefined>>()
 
-  if (!iconPromise) {
-    iconPromise = (async () => {
-      if (process.platform === "darwin") {
-        const iconPath = await resolveMacApplicationIconPath(applicationPath)
-        if (iconPath) {
-          const iconDataUrl = await createIconDataUrlFromPath(iconPath)
-          if (iconDataUrl) {
-            return iconDataUrl
-          }
-        }
+  async warmup(): Promise<void> {
+    await this.getApplicationCatalog()
+  }
+
+  async search(request: LauncherSearchRequest): Promise<LauncherSearchProviderResponse> {
+    const query = normalizeSearchValue(request.query)
+
+    if (!query) {
+      return {
+        results: []
       }
-
-      try {
-        const icon = await app.getFileIcon(applicationPath, { size: "small" })
-        if (icon.isEmpty()) {
-          return undefined
-        }
-
-        return icon.toDataURL()
-      } catch {
-        return undefined
-      }
-    })()
-
-    applicationIconPromiseCache.set(applicationPath, iconPromise)
-  }
-
-  return iconPromise
-}
-
-async function mapApplicationResult(
-  application: LauncherApplicationRecord,
-  rawQuery: string,
-  title: string,
-  score: number
-): Promise<LauncherSearchResult> {
-  return {
-    action: {
-      applicationPath: application.path,
-      type: "launch-application"
-    },
-    id: application.id,
-    iconDataUrl: await getApplicationIconDataUrl(application.path),
-    kind: "application",
-    match: getTitleMatchRange(title, rawQuery),
-    score,
-    source: "applications",
-    subtitle: application.subtitle,
-    title
-  }
-}
-
-async function searchApplications(
-  request: LauncherSearchRequest
-): Promise<LauncherSearchProviderResponse> {
-  const query = normalizeSearchValue(request.query)
-
-  if (!query) {
-    return {
-      results: []
     }
-  }
 
-  const catalog = await getApplicationCatalog()
-  const matches = catalog
-    .map((application) => {
+    const catalog = await this.getApplicationCatalog()
+    const matches: Array<{
+      application: LauncherApplicationRecord
+      match?: [number, number]
+      score: number
+      title: string
+    }> = []
+
+    for (const application of catalog) {
       const match = getApplicationMatch(application, query)
       if (!match) {
-        return null
+        continue
       }
 
-      return {
+      matches.push({
         application,
+        match: match.match,
         score: match.score,
         title: match.title
-      }
-    })
-    .filter(
-      (entry): entry is { application: LauncherApplicationRecord; score: number; title: string } =>
-        Boolean(entry)
-    )
-    .sort((left, right) => {
+      })
+    }
+
+    matches.sort((left, right) => {
       if (right.score !== left.score) {
         return right.score - left.score
       }
@@ -547,23 +863,129 @@ async function searchApplications(
 
       return collator.compare(left.application.path, right.application.path)
     })
-  const results = await Promise.all(
-    matches
-      .slice(0, Math.max(request.limit, 1))
-      .map((entry) =>
-        mapApplicationResult(entry.application, request.query, entry.title, entry.score)
-      )
-  )
 
-  return {
-    results
+    const results = await Promise.all(
+      matches
+        .slice(0, Math.max(request.limit, 1))
+        .map((entry) =>
+          this.mapApplicationResult(entry.application, entry.title, entry.score, entry.match)
+        )
+    )
+
+    return {
+      results
+    }
+  }
+
+  async getApplicationIconDataUrl(applicationPath: string): Promise<string | undefined> {
+    let iconPromise = this.applicationIconPromiseCache.get(applicationPath)
+
+    if (!iconPromise) {
+      iconPromise = (async () => {
+        if (process.platform === "darwin") {
+          const iconPath = await resolveMacApplicationIconPath(applicationPath)
+          if (iconPath) {
+            const iconDataUrl = await createIconDataUrlFromPath(iconPath)
+            if (iconDataUrl) {
+              return iconDataUrl
+            }
+          }
+        }
+
+        if (process.platform === "win32") {
+          return createWindowsApplicationIconDataUrl(applicationPath)
+        }
+
+        try {
+          const icon = await app.getFileIcon(applicationPath, { size: "small" })
+          return createIconDataUrlFromNativeImage(icon)
+        } catch {
+          return undefined
+        }
+      })()
+
+      this.applicationIconPromiseCache.set(applicationPath, iconPromise)
+    }
+
+    return iconPromise
+  }
+
+  async getApplicationDisplayName(applicationPath: string): Promise<string | undefined> {
+    const lookupKey = getApplicationPathLookupKey(applicationPath)
+    let displayNamePromise = this.applicationDisplayNamePromiseCache.get(lookupKey)
+
+    if (!displayNamePromise) {
+      displayNamePromise = (async () => {
+        if (process.platform === "darwin") {
+          const displayName = await resolveMacApplicationDisplayName(applicationPath)
+          if (displayName) {
+            return displayName
+          }
+        }
+
+        const catalog = await this.getApplicationCatalog()
+        const application = catalog.find(
+          (entry) => getApplicationPathLookupKey(entry.path) === lookupKey
+        )
+
+        return application?.displayName
+      })()
+
+      this.applicationDisplayNamePromiseCache.set(lookupKey, displayNamePromise)
+    }
+
+    return displayNamePromise
+  }
+
+  private async getApplicationCatalog(): Promise<LauncherApplicationRecord[]> {
+    if (!this.applicationCatalogPromise) {
+      this.applicationCatalogPromise = loadApplicationCatalog()
+    }
+
+    return this.applicationCatalogPromise
+  }
+
+  private async mapApplicationResult(
+    application: LauncherApplicationRecord,
+    title: string,
+    score: number,
+    match?: [number, number]
+  ): Promise<LauncherSearchResult> {
+    return {
+      action: {
+        executor: "shell",
+        target: {
+          kind: "application",
+          path: application.path
+        },
+        type: "open-path"
+      },
+      historyKey: createLauncherHistoryKey({
+        path: application.path,
+        type: "application"
+      }),
+      id: application.id,
+      iconDataUrl: await this.getApplicationIconDataUrl(application.path),
+      kind: "application",
+      match,
+      score,
+      source: "applications",
+      subtitle: application.subtitle,
+      title
+    }
   }
 }
 
-export const applicationsLauncherSearchProvider: LauncherSearchProvider = {
-  search: searchApplications,
-  source: "applications",
-  warmup: async () => {
-    await getApplicationCatalog()
-  }
+export const applicationsLauncherSearchProvider = new ApplicationsLauncherSearchProvider()
+
+export async function getApplicationIconDataUrl(
+  applicationPath: string
+): Promise<string | undefined> {
+  return applicationsLauncherSearchProvider.getApplicationIconDataUrl(applicationPath)
+}
+
+export async function getApplicationDisplayName(
+  applicationPath: string
+): Promise<string | undefined> {
+  return applicationsLauncherSearchProvider.getApplicationDisplayName(applicationPath)
 }

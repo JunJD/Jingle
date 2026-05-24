@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Package Audit"
+  short_description: "Checks renderer imports against package.json deps and scripts."
+  default_prompt: "Use $frontend-package-script-audit to inspect which frontend packages are actually used, which are only referenced by package.json scripts, and which dependency removals still need manual verification."

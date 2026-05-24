@@ -1,129 +1,70 @@
 import { randomUUID } from "crypto"
 import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
 import {
-  createMessage,
+  createRunExtensionAiCapabilitiesSnapshot,
+  RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY,
+  type ResolvedExtensionAiCapability
+} from "@shared/extension-sources"
+import {
   createRun,
-  getLatestRun,
-  syncMessagesFromSnapshot,
+  getRun,
+  getThread,
+  hasPendingHitlRequestForRun,
   updateRun,
   updateThread
 } from "../db"
 import { getCheckpointer } from "./runtime"
+import { extractTitleFromCheckpoint } from "./runtime-state"
+import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
+import type { PermissionModeName } from "@shared/permission-mode"
+import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
+import { mergeRunMetadata, RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY } from "./permission-mode"
+import {
+  OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY,
+  OPENWORK_MEMORY_TEMPORARY_MODE_METADATA_KEY,
+  type OpenworkMemoryContextSnapshot
+} from "@shared/openwork-memory"
 
 type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted"
+type ExistingRun = NonNullable<Awaited<ReturnType<typeof getRun>>>
 
-interface CheckpointChannelMessage {
-  id?: string
-  _getType?: () => string
-  type?: string
-  content?: string | unknown[]
-  tool_calls?: unknown[]
-  tool_call_id?: string
-  name?: string
-}
+const runMetadataUpdateQueues = new Map<string, Promise<void>>()
 
-interface LatestCheckpointState {
-  checkpoint?: {
-    channel_values?: {
-      messages?: CheckpointChannelMessage[]
-      __interrupt__?: unknown[]
-    }
-  }
-}
-
-function resolveMessageRole(
-  message: CheckpointChannelMessage
-): "user" | "assistant" | "system" | "tool" {
-  if (typeof message._getType === "function") {
-    const type = message._getType()
-    if (type === "human") return "user"
-    if (type === "system") return "system"
-    if (type === "tool") return "tool"
-    return "assistant"
-  }
-
-  if (message.type === "human") return "user"
-  if (message.type === "system") return "system"
-  if (message.type === "tool") return "tool"
-  return "assistant"
-}
-
-function extractMessagesFromCheckpoint(
-  threadId: string,
-  state: LatestCheckpointState | undefined
-): Array<{
-  message_id: string
-  role: string
-  kind: string
-  content: string
-  tool_calls?: string | null
-  tool_call_id?: string | null
-  name?: string | null
-  metadata?: string | null
-  created_at: number
-}> {
-  const messages = state?.checkpoint?.channel_values?.messages
-  if (!Array.isArray(messages)) {
-    return []
-  }
-
-  const now = Date.now()
-
-  return messages.map((message, index) => {
-    const role = resolveMessageRole(message)
-    const content =
-      typeof message.content === "string"
-        ? message.content
-        : Array.isArray(message.content)
-          ? message.content
-          : ""
-
-    const messageId =
-      message.id || message.tool_call_id || `checkpoint:${threadId}:${index}:${role}`
-
-    return {
-      message_id: messageId,
-      role,
-      kind: role === "tool" ? "tool_result" : "message",
-      content: JSON.stringify(content),
-      tool_calls: message.tool_calls ? JSON.stringify(message.tool_calls) : null,
-      tool_call_id: message.tool_call_id ?? null,
-      name: message.name ?? null,
-      metadata: null,
-      created_at: now + index
-    }
-  })
-}
-
-function resolveCheckpointRunStatus(state: LatestCheckpointState | undefined): PersistedRunStatus {
-  const interrupts = state?.checkpoint?.channel_values?.__interrupt__
+function resolveCheckpointRunStatus(tuple: CheckpointTuple | undefined): PersistedRunStatus {
+  const interrupts = (tuple as { checkpoint?: { channel_values?: { __interrupt__?: unknown[] } } })
+    ?.checkpoint?.channel_values?.__interrupt__
   return Array.isArray(interrupts) && interrupts.length > 0 ? "interrupted" : "success"
 }
 
 export async function beginAgentRun(
   threadId: string,
-  message: string,
-  modelId?: string
-): Promise<{ runId: string; userMessageId: string }> {
+  modelId?: string,
+  options?: {
+    aiCapabilities?: ResolvedExtensionAiCapability[]
+    openworkMemoryContextSnapshot?: OpenworkMemoryContextSnapshot | null
+    openworkMemoryTemporaryMode?: boolean
+    permissionMode?: PermissionModeName
+  }
+): Promise<{ runId: string }> {
   const runId = randomUUID()
-  const userMessageId = randomUUID()
-  const now = Date.now()
+  const permissionMode = options?.permissionMode ?? DEFAULT_PERMISSION_MODE
+  const aiCapabilities = options?.aiCapabilities ?? []
 
   await createRun(runId, threadId, {
     status: "running",
     metadata: {
-      modelId: modelId ?? null
+      modelId: modelId ?? null,
+      [RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY]: permissionMode,
+      [OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY]:
+        options?.openworkMemoryContextSnapshot ?? null,
+      [OPENWORK_MEMORY_TEMPORARY_MODE_METADATA_KEY]: options?.openworkMemoryTemporaryMode ?? false,
+      [RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]:
+        createRunExtensionAiCapabilitiesSnapshot({
+          aiCapabilities,
+          permissionMode,
+          runId
+        })
     }
-  })
-
-  await createMessage({
-    message_id: userMessageId,
-    thread_id: threadId,
-    run_id: runId,
-    role: "user",
-    kind: "message",
-    content: JSON.stringify(message),
-    created_at: now
   })
 
   await updateThread(threadId, {
@@ -131,33 +72,117 @@ export async function beginAgentRun(
   })
 
   return {
-    runId,
-    userMessageId
+    runId
   }
+}
+
+export async function updateRunExtensionAiCapabilitiesSnapshot(
+  runId: string,
+  input: {
+    aiCapabilities: ResolvedExtensionAiCapability[]
+    permissionMode: PermissionModeName
+  }
+): Promise<void> {
+  await updateRunMetadata(runId, {
+    merge: (run) =>
+      mergeRunExtensionAiCapabilitiesSnapshotMetadata(run, {
+        aiCapabilities: input.aiCapabilities,
+        permissionMode: input.permissionMode,
+        runId
+      })
+  })
+}
+
+async function updateRunMetadata(
+  runId: string,
+  input: {
+    merge: (run: ExistingRun) => Record<string, unknown>
+    status?: string
+  }
+): Promise<void> {
+  const previous = runMetadataUpdateQueues.get(runId) ?? Promise.resolve()
+  const next = previous
+    .catch(() => undefined)
+    .then(async () => {
+      const run = await getRun(runId)
+      if (!run) {
+        return
+      }
+
+      await updateRun(runId, {
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        metadata: input.merge(run)
+      })
+    })
+
+  runMetadataUpdateQueues.set(runId, next)
+  try {
+    await next
+  } finally {
+    if (runMetadataUpdateQueues.get(runId) === next) {
+      runMetadataUpdateQueues.delete(runId)
+    }
+  }
+}
+
+function mergeRunResumeMetadata(
+  run: ExistingRun,
+  metadata: Record<string, unknown> | undefined
+): Record<string, unknown> {
+  return mergeRunMetadata(run, metadata ?? {})
+}
+
+function mergeRunExtensionAiCapabilitiesSnapshotMetadata(
+  run: ExistingRun,
+  input: {
+    aiCapabilities: ResolvedExtensionAiCapability[]
+    permissionMode: PermissionModeName
+    runId: string
+  }
+): Record<string, unknown> {
+  return mergeRunMetadata(run, {
+    [RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]: createRunExtensionAiCapabilitiesSnapshot(
+      {
+        aiCapabilities: input.aiCapabilities,
+        permissionMode: input.permissionMode,
+        runId: input.runId
+      }
+    )
+  })
+}
+
+function mergeRunErrorMetadata(run: ExistingRun, error: unknown): Record<string, unknown> {
+  return mergeRunMetadata(run, {
+    error: error instanceof Error ? error.message : String(error)
+  })
 }
 
 export async function resumeAgentRun(
   threadId: string,
+  runId: string,
   metadata?: Record<string, unknown>
 ): Promise<string> {
-  const existing = await getLatestRun(threadId, ["running", "interrupted", "pending"])
+  const existing = await getRun(runId)
 
-  if (existing) {
-    await updateRun(existing.run_id, {
-      status: "running",
-      metadata
-    })
-    await updateThread(threadId, {
-      status: "busy"
-    })
-    return existing.run_id
+  if (!existing) {
+    throw new Error(`[Agent] Cannot resume missing run "${runId}".`)
   }
 
-  const runId = randomUUID()
-  await createRun(runId, threadId, {
+  if (existing.thread_id !== threadId) {
+    throw new Error(
+      `[Agent] Cannot resume run "${runId}" from thread "${threadId}"; actual thread is "${existing.thread_id}".`
+    )
+  }
+
+  if (existing.status && !["pending", "running", "interrupted"].includes(existing.status)) {
+    throw new Error(`[Agent] Cannot resume run "${runId}" from status "${existing.status}".`)
+  }
+
+  await updateRunMetadata(runId, {
     status: "running",
-    metadata
+    merge: (run) => mergeRunResumeMetadata(run, metadata)
   })
+
   await updateThread(threadId, {
     status: "busy"
   })
@@ -166,23 +191,54 @@ export async function resumeAgentRun(
 
 export async function syncRunFromLatestCheckpoint(
   threadId: string,
-  runId: string
+  runId: string,
+  options?: {
+    interrupted?: boolean
+  }
 ): Promise<PersistedRunStatus> {
   const checkpointer = await getCheckpointer(threadId)
   const latest = (await checkpointer.getTuple({
     configurable: {
-      thread_id: threadId
+      thread_id: threadId,
+      run_id: runId
     }
   })) as CheckpointTuple | undefined
 
-  const state = latest as LatestCheckpointState | undefined
-  const messages = extractMessagesFromCheckpoint(threadId, state)
-
-  if (messages.length > 0) {
-    await syncMessagesFromSnapshot(threadId, runId, messages)
+  if (!latest && !options?.interrupted) {
+    throw new Error(`[Agent] Missing checkpoint for run "${runId}" in thread "${threadId}".`)
   }
 
-  const status = resolveCheckpointRunStatus(state)
+  const status = options?.interrupted ? "interrupted" : resolveCheckpointRunStatus(latest)
+  const generatedTitle = extractTitleFromCheckpoint(latest)
+
+  await updateRun(runId, {
+    status
+  })
+
+  const thread = await getThread(threadId)
+  const shouldSyncTitle =
+    generatedTitle !== null &&
+    shouldAutoGenerateThreadTitle({
+      metadata: thread?.metadata ? JSON.parse(thread.metadata) : undefined,
+      title: thread?.title ?? undefined
+    })
+
+  await updateThread(threadId, {
+    status: status === "interrupted" ? "interrupted" : "idle",
+    ...(shouldSyncTitle ? { title: generatedTitle } : {})
+  })
+
+  return status
+}
+
+export async function finalizeRunWithoutCheckpoint(
+  threadId: string,
+  runId: string,
+  options?: {
+    interrupted?: boolean
+  }
+): Promise<PersistedRunStatus> {
+  const status: PersistedRunStatus = options?.interrupted ? "interrupted" : "success"
 
   await updateRun(runId, {
     status
@@ -200,17 +256,28 @@ export async function markRunFailed(
   runId: string,
   error: unknown
 ): Promise<void> {
+  let syncedStatus: PersistedRunStatus | null = null
   try {
-    await syncRunFromLatestCheckpoint(threadId, runId)
+    syncedStatus = await syncRunFromLatestCheckpoint(threadId, runId)
   } catch {
     // Best effort: preserve the failure even if checkpoint sync fails.
   }
 
-  await updateRun(runId, {
+  if (syncedStatus === "interrupted" || (await hasPendingHitlRequestForRun(threadId, runId))) {
+    await updateRunMetadata(runId, {
+      status: "interrupted",
+      merge: (run) => mergeRunErrorMetadata(run, error)
+    })
+
+    await updateThread(threadId, {
+      status: "interrupted"
+    })
+    return
+  }
+
+  await updateRunMetadata(runId, {
     status: "error",
-    metadata: {
-      error: error instanceof Error ? error.message : String(error)
-    }
+    merge: (run) => mergeRunErrorMetadata(run, error)
   })
 
   await updateThread(threadId, {

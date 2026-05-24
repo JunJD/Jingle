@@ -1,3 +1,17 @@
+import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
+import type { AppLocale } from "@shared/i18n"
+import type { HITLRequest } from "@shared/hitl"
+import type { ArtifactRecord } from "@shared/artifacts"
+import type { ExtensionToolCallPresentation, ToolCallDisplay } from "@shared/tool-presentation"
+export type { HITLDecision, HITLRequest } from "@shared/hitl"
+export type {
+  ModelConfig,
+  ModelProviderState,
+  ModelType,
+  Provider,
+  ProviderId
+} from "@shared/app-types"
+
 // Re-export types from electron for use in renderer
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
 
@@ -23,22 +37,10 @@ export interface Run {
   metadata?: Record<string, unknown>
 }
 
-// Provider configuration
-export type ProviderId = "anthropic" | "openai" | "google" | "dashscope" | "ollama"
-
-export interface Provider {
-  id: ProviderId
-  name: string
-  hasApiKey: boolean
-}
-
-export interface ModelConfig {
-  id: string
-  name: string
-  provider: ProviderId
-  model: string
-  description?: string
-  available: boolean
+export interface AgentConfig {
+  desktopAutomationAllowlist: string[]
+  skillSources: string[]
+  locale: AppLocale
 }
 
 // Subagent types (from deepagentsjs)
@@ -62,7 +64,6 @@ export type StreamEvent =
   | { type: "interrupt"; request: HITLRequest }
   | { type: "token"; token: string }
   | { type: "todos"; todos: Todo[] }
-  | { type: "workspace"; files: FileInfo[]; path: string }
   | { type: "subagents"; subagents: Subagent[] }
   | { type: "done"; result: unknown }
   | { type: "error"; error: string }
@@ -72,6 +73,7 @@ export interface Message {
   role: "user" | "assistant" | "system" | "tool"
   content: string | ContentBlock[]
   tool_calls?: ToolCall[]
+  metadata?: Record<string, unknown>
   // For tool messages - links result to its tool call
   tool_call_id?: string
   // For tool messages - the name of the tool
@@ -80,37 +82,45 @@ export interface Message {
 }
 
 export interface ContentBlock {
-  type: "text" | "image" | "tool_use" | "tool_result"
+  type: "text" | "reasoning" | "image" | "image_url" | "file" | "tool_use" | "tool_result"
   text?: string
+  reasoning?: string
+  signature?: string
   tool_use_id?: string
   name?: string
   input?: unknown
   content?: string
+  image_url?: string | { detail?: "auto" | "high" | "low"; url: string }
+  mimeType?: string
 }
 
-export interface ToolCall {
+export interface ToolCall extends LangChainToolCall<string, Record<string, unknown>> {
+  display?: ToolCallDisplay
   id: string
-  name: string
-  args: Record<string, unknown>
+  presentation?: ExtensionToolCallPresentation
 }
 
 export interface ToolResult {
   tool_call_id: string
   content: string | unknown
-  is_error?: boolean
 }
 
-export interface HITLRequest {
-  id: string
-  tool_call: ToolCall
-  allowed_decisions: HITLDecision["type"][]
+export interface ThreadRuntimeState {
+  forkState: ThreadForkState
+  todos: Todo[]
+  pendingApproval: HITLRequest | null
 }
 
-export interface HITLDecision {
-  type: "approve" | "reject" | "edit"
-  tool_call_id: string
-  edited_args?: Record<string, unknown>
-  feedback?: string
+export interface ThreadHistoryState extends ThreadRuntimeState {
+  artifacts: ArtifactRecord[]
+  messages: Message[]
+}
+
+export type ThreadForkBlockReason = "busy" | "checkpoint_interrupt" | "pending_hitl"
+
+export interface ThreadForkState {
+  canFork: boolean
+  reason?: ThreadForkBlockReason
 }
 
 export interface Todo {

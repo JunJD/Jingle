@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="3840" height="2160" viewBox="0 0 3840 2160">
+  <defs>
+    <linearGradient id="soft" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#171c24"/>
+      <stop offset="100%" stop-color="#0f1217"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="30" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect fill="#0f1217" height="2160" rx="0" stroke="#0f1217" stroke-width="2" width="3840" x="0" y="0"></rect>
+  <path d="M0 0 H3840 V180 C3220 250 2780 120 2200 190 C1560 268 960 130 0 260 Z" fill="#171c24" opacity="0.75"></path>
+  <path d="M0 2160 H3840 V1900 C3180 1840 2750 2040 2180 1970 C1450 1880 880 2060 0 1940 Z" fill="#141922" opacity="0.8"></path>
+  
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="118" font-weight="850" fill="#f5f7fa" text-anchor="start" x="220" y="220">能力给 Agent，用权限收住</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="54" font-weight="500" fill="#a7b0be" text-anchor="start" x="226" y="380">人可以自然操作；Agent 只能调用受控工具。</text>
+    <rect fill="#171c24" height="500" rx="42" stroke="#3ddc97" stroke-width="2" width="960" x="260" y="670"></rect>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="700" fill="#f5f7fa" text-anchor="start" x="314" y="718">Read</text>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="314" y="802">默认可用</text><text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="314" y="852">读取信息、搜索、查看状态</text><text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="314" y="902">不改变外部世界</text>
+    <rect fill="#171c24" height="500" rx="42" stroke="#ff4b4b" stroke-width="2" width="960" x="1440" y="670"></rect>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="700" fill="#f5f7fa" text-anchor="start" x="1494" y="718">Write</text>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="1494" y="802">需要审批</text><text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="1494" y="852">创建、修改、删除</text><text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="1494" y="902">执行前把决定权交回人</text>
+    <rect fill="#171c24" height="500" rx="42" stroke="#f2c94c" stroke-width="2" width="960" x="2620" y="670"></rect>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="58" font-weight="700" fill="#f5f7fa" text-anchor="start" x="2674" y="718">External</text>
+<text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="2674" y="802">需要边界</text><text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="2674" y="852">调用 GitHub、Reminders、API</text><text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="36" font-weight="450" fill="#a7b0be" text-anchor="start" x="2674" y="902">账号和 token 留在 Settings</text>
+    <line stroke="#697386" stroke-linecap="round" stroke-width="6" x1="1220" x2="1400" y1="920" y2="920"></line><polygon fill="#697386" points="1400,920 1359.029437251523,936.9705627484772 1359.029437251523,903.0294372515228"></polygon>
+    <line stroke="#697386" stroke-linecap="round" stroke-width="6" x1="2400" x2="2580" y1="920" y2="920"></line><polygon fill="#697386" points="2580,920 2539.0294372515227,936.9705627484772 2539.0294372515227,903.0294372515228"></polygon>
+    <rect fill="#202733" height="360" rx="60" stroke="#313a49" stroke-width="2" width="2600" x="620" y="1410"></rect>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="62" font-weight="750" fill="#f5f7fa" text-anchor="start" x="800" y="1488">模型负责理解意图和整理参数</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="50" font-weight="500" fill="#a7b0be" text-anchor="start" x="800" y="1590">系统负责权限、审批、留痕和恢复</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="42" font-weight="500" fill="#697386" text-anchor="start" x="220" y="1920">Secret 不临时交给模型。危险动作不静默执行。</text>
+  
+</svg>

@@ -79,6 +79,22 @@ The execute tool runs commands directly on the user's machine. Use it for:
 - Avoid using shell for file searching (use grep/glob instead)
 - When running non-trivial commands, briefly explain what they do
 
+### Web Tools
+- web_search: Search the public web for current or external information
+
+Use web_search when you need up-to-date facts, external documentation, or public sources that are not already in the workspace.
+
+### Artifact Tools
+- present_artifacts: Present user-visible results to the Artifacts panel
+
+Use present_artifacts when you have a deliverable the user should be able to revisit later, such as:
+- a workspace file worth opening
+- a patch or diff
+- a public link
+- a concise summary
+
+Do not use present_artifacts for every intermediate edit, scratch file, or execution log.
+
 ## Code References
 When referencing code, use format: \`file_path:line_number\`
 
@@ -96,6 +112,10 @@ Some tool calls require user approval before execution. When a tool call is reje
 4. Never attempt the exact same rejected command again
 
 Respect the user's decisions and work with them collaboratively.
+
+When a user asks for multiple approval-required actions, call exactly one tool at a time.
+Wait for that tool result, then continue with the next action until the user's request is complete.
+Do not emit multiple tool calls in the same assistant turn.
 
 ## Todo List Management
 

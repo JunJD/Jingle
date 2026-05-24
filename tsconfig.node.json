@@ -2,13 +2,52 @@
   "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
   "include": [
     "electron.vite.config.*",
+    "src/extensions/index.ts",
+    "src/extensions/main.ts",
+    "src/extensions/*/main/**/*.ts",
+    "src/extensions/*/main.ts",
+    "src/extensions/*/manifest.ts",
+    "src/extensions/*/src/contracts.ts",
+    "src/extension-runtime/**/*",
     "src/main/**/*",
+    "src/plugins/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
-    "src/types.ts"
+    "tests/node/**/*"
   ],
   "compilerOptions": {
     "composite": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "src/renderer/src/*"
+      ],
+      "@ai-core/*": [
+        "src/renderer/src/ai-core/*"
+      ],
+      "@extension-host/*": [
+        "src/renderer/src/extension-host/*"
+      ],
+      "@extensions/*": [
+        "src/extensions/*"
+      ],
+      "@launcher-components/*": [
+        "src/renderer/src/launcher-components/*"
+      ],
+      "@launcher-shell/*": [
+        "src/renderer/src/launcher-shell/*"
+      ],
+      "@plugins/*": [
+        "src/plugins/*"
+      ],
+      "@renderer/*": [
+        "src/renderer/src/*"
+      ],
+      "@shared/*": [
+        "src/shared/*"
+      ]
+    },
     "types": [
       "electron-vite/node"
     ]

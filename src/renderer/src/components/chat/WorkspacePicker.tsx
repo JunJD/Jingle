@@ -3,40 +3,46 @@ import { Check, ChevronDown, Folder } from "lucide-react"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { useCurrentThread } from "@/lib/thread-context"
+import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 
 interface WorkspacePickerProps {
   threadId: string
 }
 
 export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.Element {
-  const { workspacePath, setWorkspacePath, setWorkspaceFiles } = useCurrentThread(threadId)
+  const { copy } = useI18n()
+  const workspacePath = useThreadSelector(threadId, (state) => state?.workspacePath ?? null)
+  const threadActions = useThreadActions(threadId)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [blockedMessage, setBlockedMessage] = useState<string | null>(null)
 
-  // Load workspace path and files for current thread
+  // Load workspace path for current thread. File discovery is no longer implicit.
   useEffect(() => {
     async function loadWorkspace(): Promise<void> {
       if (threadId) {
         const path = await window.api.workspace.get(threadId)
-        setWorkspacePath(path)
-
-        // If a folder is linked, load files from disk
-        if (path) {
-          const result = await window.api.workspace.loadFromDisk(threadId)
-          if (result.success && result.files) {
-            setWorkspaceFiles(result.files)
-          }
-        }
+        threadActions?.setWorkspacePath(path)
       }
     }
     loadWorkspace()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threadId])
+  }, [threadActions, threadId])
 
   async function handleSelectFolder(): Promise<void> {
-    await selectWorkspaceFolder(threadId, setWorkspacePath, setWorkspaceFiles, setLoading, setOpen)
+    setBlockedMessage(null)
+    await selectWorkspaceFolder(
+      threadId,
+      (path) => threadActions?.setWorkspacePath(path),
+      setLoading,
+      setOpen,
+      {
+        onBlockedByPendingWorkspaceMemory: () => {
+          setBlockedMessage(copy.chat.pendingWorkspaceMemoryBlocksWorkspaceChange)
+        }
+      }
+    )
   }
 
   const folderName = workspacePath?.split("/").pop()
@@ -47,61 +53,82 @@ export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.E
         <Button
           variant="ghost"
           size="sm"
+          data-workspace-picker-trigger=""
+          data-workspace-picker-path={workspacePath ?? ""}
+          data-workspace-picker-thread-id={threadId}
           className={cn(
-            "h-7 px-2 text-xs gap-1.5",
-            workspacePath ? "text-foreground" : "text-amber-500"
+            "h-[var(--ow-control-h-md)] gap-[var(--ow-space-1-5)] rounded-full bg-background-secondary px-[var(--ow-space-3)] [font-size:var(--ow-font-meta)] hover:bg-background-interactive",
+            workspacePath ? "text-foreground" : "text-status-warning"
           )}
           disabled={!threadId}
         >
-          <Folder className="size-3.5" />
-          <span className="max-w-[120px] truncate">
-            {workspacePath ? folderName : "Select workspace"}
+          <Folder className="size-[var(--ow-icon-sm)]" />
+          <span
+            className="max-w-[var(--ow-chip-label-max-width)] truncate"
+            data-workspace-picker-label=""
+          >
+            {workspacePath ? folderName : copy.workspacePicker.selectWorkspace}
           </span>
-          <ChevronDown className="size-3 opacity-50" />
+          <ChevronDown className="size-[var(--ow-icon-compact)] opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-3" align="start">
-        <div className="space-y-3">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Workspace Folder
+      <PopoverContent
+        className="w-[var(--ow-popover-w-sm)] border-border bg-popover p-[var(--ow-space-3)]"
+        align="start"
+      >
+        <div className="space-y-[var(--ow-space-3)]">
+          <div className="[font-size:var(--ow-font-meta)] font-medium uppercase tracking-wider text-muted-foreground">
+            {copy.workspacePicker.title}
           </div>
 
           {workspacePath ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 p-2 rounded-md bg-background-secondary border border-border">
-                <Check className="size-3.5 text-status-nominal shrink-0" />
-                <span className="text-sm truncate flex-1" title={workspacePath}>
+            <div className="space-y-[var(--ow-space-2)]">
+              {blockedMessage ? (
+                <div className="rounded-[var(--ow-radius-md)] border border-status-warning/40 bg-status-warning/10 px-[var(--ow-space-2)] py-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-status-warning">
+                  {blockedMessage}
+                </div>
+              ) : null}
+              <div className="flex items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-panel)] border border-border bg-background-secondary p-[var(--ow-space-2)]">
+                <Check className="size-[var(--ow-icon-sm)] text-status-nominal shrink-0" />
+                <span
+                  className="flex-1 truncate [font-size:var(--ow-font-body)]"
+                  title={workspacePath}
+                >
                   {folderName}
                 </span>
               </div>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                The agent will read and write files in this folder.
+              <p className="[font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
+                {copy.workspacePicker.linkedHint}
               </p>
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full h-8 text-xs"
+                className="h-[var(--ow-control-h-md)] w-full [font-size:var(--ow-font-meta)]"
                 onClick={handleSelectFolder}
                 disabled={loading}
               >
-                Change Folder
+                {copy.workspacePicker.changeFolder}
               </Button>
             </div>
           ) : (
-            <div className="space-y-2">
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Select a folder for the agent to work in. The agent will read and write files
-                directly to this location.
+            <div className="space-y-[var(--ow-space-2)]">
+              {blockedMessage ? (
+                <div className="rounded-[var(--ow-radius-md)] border border-status-warning/40 bg-status-warning/10 px-[var(--ow-space-2)] py-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-status-warning">
+                  {blockedMessage}
+                </div>
+              ) : null}
+              <p className="[font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
+                {copy.workspacePicker.selectHint}
               </p>
               <Button
                 variant="default"
                 size="sm"
-                className="w-full h-8 text-xs"
+                className="h-[var(--ow-control-h-md)] w-full [font-size:var(--ow-font-meta)]"
                 onClick={handleSelectFolder}
                 disabled={loading}
               >
-                <Folder className="size-3.5 mr-1.5" />
-                Select Folder
+                <Folder className="size-[var(--ow-icon-sm)] mr-[var(--ow-space-1-5)]" />
+                {copy.workspacePicker.selectFolder}
               </Button>
             </div>
           )}

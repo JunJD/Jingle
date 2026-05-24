@@ -1,3 +1,21 @@
+import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
+import type { AgentInvokeMessage } from "@shared/message-content"
+import type { AppLocale } from "@shared/i18n"
+import type { HITLDecision, HITLRequest } from "@shared/hitl"
+import type { PermissionModeName } from "@shared/permission-mode"
+import type { ArtifactRecord } from "@shared/artifacts"
+import type { ProviderId } from "@shared/app-types"
+import type { ExtensionToolCallPresentation, ToolCallDisplay } from "@shared/tool-presentation"
+export type { HITLDecision, HITLRequest } from "@shared/hitl"
+export type {
+  ModelConfig,
+  ModelProviderState,
+  ModelType,
+  Provider,
+  ProviderModelsResponse,
+  ProviderId
+} from "@shared/app-types"
+
 // Thread types matching langgraph-api
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
 
@@ -8,19 +26,18 @@ export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
 // Agent IPC
 export interface AgentInvokeParams {
   threadId: string
-  message: string
+  message: AgentInvokeMessage
   modelId?: string
+  permissionMode?: PermissionModeName
+  temporaryMode?: boolean
 }
 
 export interface AgentResumeParams {
   threadId: string
-  command: { resume?: { decision?: string } }
+  command: {
+    resume?: HITLDecision
+  }
   modelId?: string
-}
-
-export interface AgentInterruptParams {
-  threadId: string
-  decision: HITLDecision
 }
 
 export interface AgentCancelParams {
@@ -39,19 +56,20 @@ export interface WorkspaceSetParams {
   path: string | null
 }
 
-export interface WorkspaceLoadParams {
-  threadId: string
-}
-
 export interface WorkspaceFileParams {
   threadId: string
   filePath: string
 }
 
 // Model IPC
-export interface SetApiKeyParams {
-  provider: string
-  apiKey: string
+export interface SetProviderCredentialsParams {
+  credentials: Record<string, string>
+  provider: ProviderId
+}
+
+export interface SetDefaultModelParams {
+  modelId: string
+  modelType: "llm"
 }
 
 // =============================================================================
@@ -79,23 +97,10 @@ export interface Run {
   metadata?: Record<string, unknown>
 }
 
-// Provider configuration
-export type ProviderId = "anthropic" | "openai" | "google" | "dashscope" | "ollama"
-
-export interface Provider {
-  id: ProviderId
-  name: string
-  hasApiKey: boolean
-}
-
-// Model configuration
-export interface ModelConfig {
-  id: string
-  name: string
-  provider: ProviderId
-  model: string
-  description?: string
-  available: boolean
+export interface AgentConfig {
+  desktopAutomationAllowlist: string[]
+  skillSources: string[]
+  locale: AppLocale
 }
 
 // Subagent types (from deepagentsjs)
@@ -116,7 +121,6 @@ export type StreamEvent =
   | { type: "interrupt"; request: HITLRequest }
   | { type: "token"; token: string }
   | { type: "todos"; todos: Todo[] }
-  | { type: "workspace"; files: FileInfo[]; path: string }
   | { type: "subagents"; subagents: Subagent[] }
   | { type: "done"; result: unknown }
   | { type: "error"; error: string }
@@ -126,42 +130,50 @@ export interface Message {
   role: "user" | "assistant" | "system" | "tool"
   content: string | ContentBlock[]
   tool_calls?: ToolCall[]
+  metadata?: Record<string, unknown>
   created_at: Date
 }
 
 export interface ContentBlock {
-  type: "text" | "image" | "tool_use" | "tool_result"
+  type: "text" | "reasoning" | "image" | "image_url" | "file" | "tool_use" | "tool_result"
   text?: string
+  reasoning?: string
+  signature?: string
   tool_use_id?: string
   name?: string
   input?: unknown
   content?: string
+  image_url?: string | { detail?: "auto" | "high" | "low"; url: string }
+  mimeType?: string
 }
 
-export interface ToolCall {
+export interface ToolCall extends LangChainToolCall<string, Record<string, unknown>> {
+  display?: ToolCallDisplay
   id: string
-  name: string
-  args: Record<string, unknown>
+  presentation?: ExtensionToolCallPresentation
 }
 
 export interface ToolResult {
   tool_call_id: string
   content: string | unknown
-  is_error?: boolean
 }
 
-// Human-in-the-loop
-export interface HITLRequest {
-  id: string
-  tool_call: ToolCall
-  allowed_decisions: HITLDecision["type"][]
+export interface ThreadRuntimeState {
+  forkState: ThreadForkState
+  todos: Todo[]
+  pendingApproval: HITLRequest | null
 }
 
-export interface HITLDecision {
-  type: "approve" | "reject" | "edit"
-  tool_call_id: string
-  edited_args?: Record<string, unknown>
-  feedback?: string
+export interface ThreadHistoryState extends ThreadRuntimeState {
+  artifacts: ArtifactRecord[]
+  messages: Message[]
+}
+
+export type ThreadForkBlockReason = "busy" | "checkpoint_interrupt" | "pending_hitl"
+
+export interface ThreadForkState {
+  canFork: boolean
+  reason?: ThreadForkBlockReason
 }
 
 // Todo types (from deepagentsjs)

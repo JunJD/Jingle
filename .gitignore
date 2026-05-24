@@ -6,3 +6,9 @@ out
 *.log*
 release
 .env
+raycast
+.ow-build/
+test-results
+electron.vite.config.*.mjs
+prisma/dev.sqlite*
+/dev.sqlite

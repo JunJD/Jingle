@@ -1,0 +1,30 @@
+# 默认忽略所有
+*
+
+# 保留根目录文件
+!.gitignore
+!README.md
+!CLAUDE.md
+
+# 保留插件清单
+!.claude-plugin/
+!.claude-plugin/**
+
+# 保留脚本
+!scripts/
+!scripts/**
+
+# 保留技能目录
+!skills/
+!skills/**/
+!skills/**/*
+
+# 排除构建产物
+node_modules/
+.DS_Store
+*.pyc
+__pycache__/
+*.log
+
+# 本地插件配置
+.claude/*.local.md

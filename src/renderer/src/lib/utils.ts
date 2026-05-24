@@ -1,36 +1,82 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "@shared/i18n"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatDate(date: Date | string): string {
+export function formatDate(date: Date | string, locale: AppLocale = DEFAULT_APP_LOCALE): string {
   const d = typeof date === "string" ? new Date(date) : date
-  return d.toLocaleDateString("en-US", {
+  return new Intl.DateTimeFormat(normalizeAppLocale(locale), {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit"
-  })
+  }).format(d)
 }
 
-export function formatRelativeTime(date: Date | string): string {
+export function formatDateOnly(
+  date: Date | string,
+  locale: AppLocale = DEFAULT_APP_LOCALE
+): string {
+  const d = typeof date === "string" ? new Date(date) : date
+  return new Intl.DateTimeFormat(normalizeAppLocale(locale), {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric"
+  }).format(d)
+}
+
+export function formatTime(date: Date | string, locale: AppLocale = DEFAULT_APP_LOCALE): string {
+  const d = typeof date === "string" ? new Date(date) : date
+  return new Intl.DateTimeFormat(normalizeAppLocale(locale), {
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(d)
+}
+
+export function formatNumber(value: number, locale: AppLocale = DEFAULT_APP_LOCALE): string {
+  return new Intl.NumberFormat(normalizeAppLocale(locale)).format(value)
+}
+
+export function formatCompactNumber(value: number, locale: AppLocale = DEFAULT_APP_LOCALE): string {
+  return new Intl.NumberFormat(normalizeAppLocale(locale), {
+    notation: "compact",
+    maximumFractionDigits: value >= 1_000_000 ? 1 : 0
+  }).format(value)
+}
+
+export function formatRelativeTime(
+  date: Date | string,
+  locale: AppLocale = DEFAULT_APP_LOCALE
+): string {
   const d = typeof date === "string" ? new Date(date) : date
   const now = new Date()
-  const diff = now.getTime() - d.getTime()
+  const resolvedLocale = normalizeAppLocale(locale)
+  const diffMs = d.getTime() - now.getTime()
+  const diffSeconds = Math.round(diffMs / 1000)
+  const absSeconds = Math.abs(diffSeconds)
 
-  const seconds = Math.floor(diff / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
+  if (absSeconds < 60) {
+    return resolvedLocale === "zh-CN" ? "刚刚" : "just now"
+  }
 
-  if (seconds < 60) return "just now"
-  if (minutes < 60) return `${minutes}m ago`
-  if (hours < 24) return `${hours}h ago`
-  if (days < 7) return `${days}d ago`
+  const formatter = new Intl.RelativeTimeFormat(resolvedLocale, { numeric: "auto" })
 
-  return formatDate(d)
+  if (absSeconds < 3600) {
+    return formatter.format(Math.round(diffSeconds / 60), "minute")
+  }
+
+  if (absSeconds < 86_400) {
+    return formatter.format(Math.round(diffSeconds / 3600), "hour")
+  }
+
+  if (absSeconds < 604_800) {
+    return formatter.format(Math.round(diffSeconds / 86_400), "day")
+  }
+
+  return formatDate(d, resolvedLocale)
 }
 
 export function truncate(str: string, length: number): string {

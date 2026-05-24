@@ -1,10 +1,12 @@
 import { Bot } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useAppStore } from "@/lib/store"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { cn } from "@/lib/utils"
 
 export function KanbanHeader({ className }: { className?: string }): React.JSX.Element {
-  const { showSubagentsInKanban, setShowSubagentsInKanban, threads } = useAppStore()
+  const showSubagentsInKanban = useHistoryShellStore((state) => state.showSubagentsInKanban)
+  const setShowSubagentsInKanban = useHistoryShellStore((state) => state.setShowSubagentsInKanban)
+  const threads = useHistoryShellStore((state) => state.threads)
 
   const activeCount = threads.filter(
     (t) => t.status === "busy" || t.status === "interrupted"
@@ -30,7 +32,7 @@ export function KanbanHeader({ className }: { className?: string }): React.JSX.E
       </div>
 
       {/* Left side - Status indicator */}
-      <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+      <div className="flex items-center gap-1.5 [font-size:var(--ow-font-caption)] font-mono uppercase tracking-wider text-muted-foreground">
         <div
           className={cn(
             "size-1.5 rounded-full",

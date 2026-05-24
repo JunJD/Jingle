@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="3840" height="2160" viewBox="0 0 3840 2160">
+  <defs>
+    <linearGradient id="soft" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#171c24"/>
+      <stop offset="100%" stop-color="#0f1217"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="30" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect fill="#0f1217" height="2160" rx="0" stroke="#0f1217" stroke-width="2" width="3840" x="0" y="0"></rect>
+  <path d="M0 0 H3840 V180 C3220 250 2780 120 2200 190 C1560 268 960 130 0 260 Z" fill="#171c24" opacity="0.75"></path>
+  <path d="M0 2160 H3840 V1900 C3180 1840 2750 2040 2180 1970 C1450 1880 880 2060 0 1940 Z" fill="#141922" opacity="0.8"></path>
+  
+    <image height="190" href="openwork-logo.png" width="190" x="220" y="210"></image>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="86" font-weight="800" fill="#f5f7fa" text-anchor="start" x="450" y="240">Openwork</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="148" font-weight="850" fill="#f5f7fa" text-anchor="start" x="224" y="515">把软件工作交给 AI</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="148" font-weight="850" fill="#ff4b4b" text-anchor="start" x="224" y="700">但不把控制权交出去</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="54" font-weight="450" fill="#a7b0be" text-anchor="start" x="230" y="970">一个面向非程序员的桌面 Agent。</text><text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="54" font-weight="450" fill="#a7b0be" text-anchor="start" x="230" y="1044">它能执行真实软件任务，也会在关键步骤停下来让你决定。</text>
+    <rect fill="#171c24" height="390" rx="52" stroke="#313a49" stroke-width="2" width="1040" x="220" y="1320"></rect>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="54" font-weight="800" fill="#4aa8ff" text-anchor="start" x="290" y="1390">Plan</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="48" font-weight="650" fill="#f5f7fa" text-anchor="start" x="290" y="1480">先说清楚要做什么</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="38" font-weight="500" fill="#a7b0be" text-anchor="start" x="290" y="1560">不是直接黑箱开跑</text>
+    <rect fill="#171c24" height="390" rx="52" stroke="#ff4b4b" stroke-width="2" width="1040" x="1400" y="1320"></rect>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="54" font-weight="800" fill="#ff4b4b" text-anchor="start" x="1470" y="1390">Approve</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="48" font-weight="650" fill="#f5f7fa" text-anchor="start" x="1470" y="1480">危险动作先问你</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="38" font-weight="500" fill="#a7b0be" text-anchor="start" x="1470" y="1560">写入、外部调用、删除都留边界</text>
+    <rect fill="#171c24" height="390" rx="52" stroke="#3ddc97" stroke-width="2" width="1040" x="2580" y="1320"></rect>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="54" font-weight="800" fill="#3ddc97" text-anchor="start" x="2650" y="1390">Recover</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="48" font-weight="650" fill="#f5f7fa" text-anchor="start" x="2650" y="1480">错了还能接回来</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="38" font-weight="500" fill="#a7b0be" text-anchor="start" x="2650" y="1560">记录、产物、检查点都在</text>
+    <text dominant-baseline="hanging" font-family="Inter, SF Pro Display, PingFang SC, Arial, sans-serif" font-size="42" font-weight="500" fill="#697386" text-anchor="start" x="220" y="1930">Safe, controllable software work delegation</text>
+  
+</svg>

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Jobs Thinking"
+  short_description: "Jobs-style product judgment for agent systems."
+  default_prompt: "Use $jobs-thinking to clarify the product, cut scope aggressively, and turn this idea into a sharp thesis and next decisions."

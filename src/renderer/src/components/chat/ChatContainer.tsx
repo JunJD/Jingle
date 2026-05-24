@@ -1,189 +1,87 @@
-import { useRef, useEffect, useMemo, useCallback } from "react"
-import { Send, Square, Loader2, AlertCircle, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { useRef, useEffect, useCallback, useMemo, useState } from "react"
+import { Send, Square, AlertCircle, Brain, Folder, Shield, X } from "lucide-react"
+import {
+  PromptInput,
+  PromptInputAction,
+  PromptInputTextarea,
+  ThinkingBar
+} from "@/components/agent-ui"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { useAppStore } from "@/lib/store"
-import { useCurrentThread, useThreadStream } from "@/lib/thread-context"
-import { MessageBubble } from "./MessageBubble"
+import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
+import { useAiInvocation } from "@/lib/ai-invocation"
+import { Messages } from "./Messages"
+import { MemoryReviewPanel } from "./MemoryReviewPanel"
 import { ModelSwitcher } from "./ModelSwitcher"
-import { Folder } from "lucide-react"
+import { IncludedMemoriesPanel } from "./IncludedMemoriesPanel"
 import { WorkspacePicker } from "./WorkspacePicker"
 import { selectWorkspaceFolder } from "@/lib/workspace-utils"
 import { ChatTodos } from "./ChatTodos"
+import { ComposerApprovalPrompt } from "./ComposerApprovalPrompt"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
-import type { Message } from "@/types"
-
-interface AgentStreamValues {
-  todos?: Array<{ id?: string; content?: string; status?: string }>
-}
-
-interface StreamMessage {
-  id?: string
-  type?: string
-  content?: string | unknown[]
-  tool_calls?: Message["tool_calls"]
-  tool_call_id?: string
-  name?: string
-}
+import { useI18n } from "@/lib/i18n"
+import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
+import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
+import type { ComposerAreaHandle } from "@/composer-area"
 
 interface ChatContainerProps {
   threadId: string
 }
 
+const EMPTY_TOKEN_USAGE = null
+
 export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Element {
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const { copy } = useI18n()
+  const sourceMentions = useMemo(
+    () => listNativeExtensionSourceMentions(window.electron.process.platform),
+    []
+  )
+  const inputRef = useRef<ComposerAreaHandle>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef = useRef(true)
+  const [temporaryMode, setTemporaryMode] = useState(false)
+  const [workspaceChangeError, setWorkspaceChangeError] = useState<string | null>(null)
+  useDisableTabNavigation(inputRef)
 
-  const { threads, loadThreads, generateTitleForFirstMessage } = useAppStore()
-
-  // Get persisted thread state and actions from context
+  const threadActions = useThreadActions(threadId)
+  const workspacePath = useThreadSelector(threadId, (state) => state?.workspacePath ?? null)
+  const tokenUsage = useThreadSelector(threadId, (state) => state?.tokenUsage ?? EMPTY_TOKEN_USAGE)
+  const runId = useThreadSelector(threadId, (state) => state?.runId ?? null)
+  const currentModel = useThreadSelector(threadId, (state) => state?.currentModel ?? null)
+  const invocation = useAiInvocation({
+    threadId,
+    temporaryMode,
+    validateInvocation: ({ threadState }) => {
+      return threadState.workspacePath ? null : copy.chat.inputNeedsWorkspace
+    }
+  })
   const {
-    messages: threadMessages,
-    pendingApproval,
-    todos,
-    error: threadError,
-    workspacePath,
-    tokenUsage,
-    currentModel,
-    draftInput: input,
-    setTodos,
-    setWorkspaceFiles,
-    setWorkspacePath,
-    setPendingApproval,
-    appendMessage,
-    setError,
-    clearError,
-    setDraftInput: setInput
-  } = useCurrentThread(threadId)
+    clearVisibleError,
+    conversation: { displayMessages, isLoading, pendingApproval, todos },
+    input,
+    invoke,
+    isBusy,
+    retry,
+    resume,
+    setInput,
+    stop,
+    visibleError
+  } = invocation
 
-  // Get the stream data via subscription - reactive updates without re-rendering provider
-  const streamData = useThreadStream(threadId)
-  const stream = streamData.stream
-  const isLoading = streamData.isLoading
-
-  const handleApprovalDecision = useCallback(
-    async (decision: "approve" | "reject" | "edit"): Promise<void> => {
-      if (!pendingApproval || !stream) return
-
-      setPendingApproval(null)
-
-      try {
-        await stream.submit(null, {
-          command: { resume: { decision } },
-          config: { configurable: { thread_id: threadId, model_id: currentModel } }
-        })
-      } catch (err) {
-        console.error("[ChatContainer] Resume command failed:", err)
-      }
-    },
-    [pendingApproval, setPendingApproval, stream, threadId, currentModel]
-  )
-
-  const agentValues = stream?.values as AgentStreamValues | undefined
-  const streamTodos = agentValues?.todos
-  useEffect(() => {
-    if (Array.isArray(streamTodos)) {
-      setTodos(
-        streamTodos.map((t) => ({
-          id: t.id || crypto.randomUUID(),
-          content: t.content || "",
-          status: (t.status || "pending") as "pending" | "in_progress" | "completed" | "cancelled"
-        }))
-      )
-    }
-  }, [streamTodos, setTodos])
-
-  const prevLoadingRef = useRef(false)
-  useEffect(() => {
-    if (prevLoadingRef.current && !isLoading) {
-      for (const rawMsg of streamData.messages) {
-        const msg = rawMsg as StreamMessage
-        if (msg.id) {
-          const streamMsg = msg as StreamMessage & { id: string }
-
-          let role: Message["role"] = "assistant"
-          if (streamMsg.type === "human") role = "user"
-          else if (streamMsg.type === "tool") role = "tool"
-          else if (streamMsg.type === "ai") role = "assistant"
-
-          const storeMsg: Message = {
-            id: streamMsg.id,
-            role,
-            content: typeof streamMsg.content === "string" ? streamMsg.content : "",
-            tool_calls: streamMsg.tool_calls,
-            ...(role === "tool" &&
-              streamMsg.tool_call_id && { tool_call_id: streamMsg.tool_call_id }),
-            ...(role === "tool" && streamMsg.name && { name: streamMsg.name }),
-            created_at: new Date()
-          }
-          appendMessage(storeMsg)
-        }
-      }
-      loadThreads()
-    }
-    prevLoadingRef.current = isLoading
-  }, [isLoading, streamData.messages, loadThreads, appendMessage])
-
-  const displayMessages = useMemo(() => {
-    const threadMessageIds = new Set(threadMessages.map((m) => m.id))
-
-    const streamingMsgs: Message[] = ((streamData.messages || []) as StreamMessage[])
-      .filter((m): m is StreamMessage & { id: string } => !!m.id && !threadMessageIds.has(m.id))
-      .map((streamMsg) => {
-        let role: Message["role"] = "assistant"
-        if (streamMsg.type === "human") role = "user"
-        else if (streamMsg.type === "tool") role = "tool"
-        else if (streamMsg.type === "ai") role = "assistant"
-
-        return {
-          id: streamMsg.id,
-          role,
-          content: typeof streamMsg.content === "string" ? streamMsg.content : "",
-          tool_calls: streamMsg.tool_calls,
-          ...(role === "tool" &&
-            streamMsg.tool_call_id && { tool_call_id: streamMsg.tool_call_id }),
-          ...(role === "tool" && streamMsg.name && { name: streamMsg.name }),
-          created_at: new Date()
-        }
-      })
-
-    return [...threadMessages, ...streamingMsgs]
-  }, [threadMessages, streamData.messages])
-
-  // Build tool results map from tool messages
-  const toolResults = useMemo(() => {
-    const results = new Map<string, { content: string | unknown; is_error?: boolean }>()
-    for (const msg of displayMessages) {
-      if (msg.role === "tool" && msg.tool_call_id) {
-        results.set(msg.tool_call_id, {
-          content: msg.content,
-          is_error: false // Could be enhanced to track errors
-        })
-      }
-    }
-    return results
-  }, [displayMessages])
-
-  // Get the actual scrollable viewport element from Radix ScrollArea
   const getViewport = useCallback((): HTMLDivElement | null => {
     return scrollRef.current?.querySelector(
       "[data-radix-scroll-area-viewport]"
     ) as HTMLDivElement | null
   }, [])
 
-  // Track scroll position to determine if user is at bottom
   const handleScroll = useCallback((): void => {
     const viewport = getViewport()
     if (!viewport) return
 
     const { scrollTop, scrollHeight, clientHeight } = viewport
-    // Consider "at bottom" if within 50px of the bottom
     const threshold = 50
     isAtBottomRef.current = scrollHeight - scrollTop - clientHeight < threshold
   }, [getViewport])
 
-  // Attach scroll listener to viewport
   useEffect(() => {
     const viewport = getViewport()
     if (!viewport) return
@@ -192,15 +90,13 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     return () => viewport.removeEventListener("scroll", handleScroll)
   }, [getViewport, handleScroll])
 
-  // Auto-scroll on new messages only if already at bottom
   useEffect(() => {
     const viewport = getViewport()
     if (viewport && isAtBottomRef.current) {
       viewport.scrollTop = viewport.scrollHeight
     }
-  }, [displayMessages, isLoading, getViewport])
+  }, [displayMessages, isBusy, getViewport])
 
-  // Always scroll to bottom when switching threads
   useEffect(() => {
     const viewport = getViewport()
     if (viewport) {
@@ -209,169 +105,139 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     }
   }, [threadId, getViewport])
 
-  // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus()
   }, [threadId])
 
   const handleDismissError = (): void => {
-    clearError()
+    clearVisibleError()
   }
+
+  const invokeWithComposerRefs = useCallback(async (): Promise<boolean> => {
+    const composer = inputRef.current
+    const didInvoke = await invoke({
+      refs: composer?.getRefs() ?? [],
+      text: composer?.getModelText() ?? input
+    })
+    return didInvoke
+  }, [input, invoke])
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
-    if (!input.trim() || isLoading || !stream) return
-
-    if (!workspacePath) {
-      setError("Please select a workspace folder before sending messages.")
-      return
-    }
-
-    if (threadError) {
-      clearError()
-    }
-
-    if (pendingApproval) {
-      setPendingApproval(null)
-    }
-
-    const message = input.trim()
-    setInput("")
-
-    const isFirstMessage = threadMessages.length === 0
-
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: message,
-      created_at: new Date()
-    }
-    appendMessage(userMessage)
-
-    if (isFirstMessage) {
-      const currentThread = threads.find((t) => t.thread_id === threadId)
-      const hasDefaultTitle = currentThread?.title?.startsWith("Thread ")
-      if (hasDefaultTitle) {
-        generateTitleForFirstMessage(threadId, message)
-      }
-    }
-
-    await stream.submit(
-      {
-        messages: [{ type: "human", content: message }]
-      },
-      {
-        config: {
-          configurable: { thread_id: threadId, model_id: currentModel }
-        }
-      }
-    )
+    await invokeWithComposerRefs()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) {
       e.preventDefault()
       handleSubmit(e)
     }
   }
 
-  // Auto-resize textarea based on content
-  const adjustTextareaHeight = (): void => {
-    const textarea = inputRef.current
-    if (textarea) {
-      textarea.style.height = "auto"
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
-    }
-  }
-
-  useEffect(() => {
-    adjustTextareaHeight()
-  }, [input])
-
   const handleCancel = async (): Promise<void> => {
-    await stream?.stop()
+    await stop()
   }
 
   const handleSelectWorkspaceFromEmptyState = async (): Promise<void> => {
-    await selectWorkspaceFolder(threadId, setWorkspacePath, setWorkspaceFiles, () => {}, undefined)
+    setWorkspaceChangeError(null)
+    await selectWorkspaceFolder(
+      threadId,
+      (path) => threadActions?.setWorkspacePath(path),
+      () => {},
+      undefined,
+      {
+        onBlockedByPendingWorkspaceMemory: () => {
+          setWorkspaceChangeError(copy.chat.pendingWorkspaceMemoryBlocksWorkspaceChange)
+        }
+      }
+    )
   }
 
   return (
-    <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-      {/* Messages */}
+    <div className="chat-thread-surface flex min-h-0 flex-1 flex-col overflow-hidden">
       <ScrollArea className="flex-1 min-h-0" ref={scrollRef}>
-        <div className="p-4">
-          <div className="max-w-3xl mx-auto space-y-4">
+        <div className="px-[var(--ow-chat-thread-x)] py-[var(--ow-chat-thread-y)]">
+          <div className="mx-auto max-w-[var(--ow-chat-thread-max-width)] space-y-[var(--ow-chat-thread-gap)]">
             {displayMessages.length === 0 && !isLoading && (
-              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-                <div className="text-section-header mb-2">NEW THREAD</div>
+              <div className="flex flex-col items-center justify-center py-[var(--ow-chat-empty-y)] text-muted-foreground">
+                <div className="mb-3 text-section-header">{copy.chat.newThreadEyebrow}</div>
                 {workspacePath ? (
-                  <div className="text-sm">Start a conversation with the agent</div>
+                  <div className="text-center">
+                    <div className="[font-size:var(--ow-chat-hero-title)] font-semibold tracking-normal text-foreground">
+                      {copy.chat.startConversation}
+                    </div>
+                    <div className="mt-[var(--ow-space-3)] [font-size:var(--ow-font-body)] text-muted-foreground">
+                      {copy.chat.describeOutcome}
+                    </div>
+                  </div>
                 ) : (
-                  <div className="text-sm text-center space-y-3">
+                  <div className="space-y-[var(--ow-space-3)] text-center [font-size:var(--ow-font-body)]">
                     <div>
-                      <span className="text-amber-500">Select a workspace folder</span>
-                      <span className="block text-xs mt-1 opacity-75">
-                        The agent needs a workspace to create and modify files
+                      <span className="text-status-warning">{copy.chat.selectWorkspaceTitle}</span>
+                      <span className="mt-[var(--ow-space-1)] block [font-size:var(--ow-font-meta)] opacity-75">
+                        {copy.chat.selectWorkspaceHint}
                       </span>
                     </div>
                     <button
                       type="button"
-                      className="inline-flex items-center justify-center rounded-md border border-border bg-background px-2 h-7 text-xs gap-1.5 text-amber-500 hover:bg-accent/50 transition-color duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex h-[var(--ow-control-h-md)] items-center justify-center gap-[var(--ow-space-1-5)] rounded-full bg-background-secondary px-[var(--ow-space-3)] [font-size:var(--ow-font-meta)] text-status-warning transition-colors duration-100 hover:bg-background-interactive disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={handleSelectWorkspaceFromEmptyState}
                     >
-                      <Folder className="size-3.5" />
-                      <span className="max-w-[120px] truncate">Select workspace</span>
+                      <Folder className="size-[var(--ow-icon-sm)]" />
+                      <span className="max-w-[var(--ow-chip-label-max-width)] truncate">
+                        {copy.chat.selectWorkspace}
+                      </span>
                     </button>
+                    {workspaceChangeError ? (
+                      <div className="mx-auto max-w-[var(--ow-chat-empty-copy-max-width)] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-status-warning">
+                        {workspaceChangeError}
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
             )}
 
-            {displayMessages.map((message) => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                toolResults={toolResults}
-                pendingApproval={pendingApproval}
-                onApprovalDecision={handleApprovalDecision}
-              />
-            ))}
+            <Messages
+              approvalPlacement="composer"
+              isLoading={isLoading}
+              messages={displayMessages}
+              onApprovalDecision={resume}
+              onRetry={retry}
+              pendingApproval={pendingApproval}
+            />
 
             {!isLoading && todos.length > 0 && (pendingApproval || displayMessages.length > 0) && (
               <ChatTodos todos={todos} />
             )}
 
-            {/* Streaming indicator and inline TODOs */}
-            {isLoading && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                  <Loader2 className="size-4 animate-spin" />
-                  Agent is thinking...
-                </div>
-                {todos.length > 0 && <ChatTodos todos={todos} />}
-              </div>
-            )}
+            {isBusy && todos.length > 0 && <ChatTodos todos={todos} />}
+
+            {!isBusy && <IncludedMemoriesPanel runId={runId} />}
+
+            {!isBusy && <MemoryReviewPanel threadId={threadId} />}
 
             {/* Error state */}
-            {threadError && !isLoading && (
-              <div className="flex items-start gap-3 rounded-md border border-destructive/50 bg-destructive/10 p-4">
-                <AlertCircle className="size-5 text-destructive shrink-0 mt-0.5" />
+            {visibleError && !isBusy && (
+              <div className="flex items-start gap-[var(--ow-gap-md)] border-l-[3px] border-destructive bg-destructive/8 px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
+                <AlertCircle className="size-[var(--ow-icon-md)] text-destructive shrink-0 mt-[var(--ow-leading-nudge)]" />
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-destructive text-sm">Agent Error</div>
-                  <div className="text-sm text-muted-foreground mt-1 break-words">
-                    {threadError}
+                  <div className="[font-size:var(--ow-font-body)] font-medium text-destructive">
+                    {copy.chat.agentError}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-2">
-                    You can try sending a new message to continue the conversation.
+                  <div className="mt-[var(--ow-space-1)] break-words [font-size:var(--ow-font-body)] text-muted-foreground">
+                    {visibleError}
+                  </div>
+                  <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-muted-foreground">
+                    {copy.chat.agentErrorRecovery}
                   </div>
                 </div>
                 <button
                   onClick={handleDismissError}
-                  className="shrink-0 rounded p-1 hover:bg-destructive/20 transition-colors"
-                  aria-label="Dismiss error"
+                  className="shrink-0 rounded p-[var(--ow-space-1)] hover:bg-destructive/20 transition-colors"
+                  aria-label={copy.chat.dismissError}
                 >
-                  <X className="size-4 text-muted-foreground" />
+                  <X className="size-[var(--ow-icon-action)] text-muted-foreground" />
                 </button>
               </div>
             )}
@@ -379,47 +245,89 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
         </div>
       </ScrollArea>
 
-      {/* Input */}
-      <div className="border-t border-border p-4">
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
-          <div className="flex flex-col gap-2">
-            <div className="flex items-end gap-2">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Message..."
-                disabled={isLoading}
-                className="flex-1 min-w-0 resize-none rounded-sm border border-border bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
-                rows={1}
-                style={{ minHeight: "48px", maxHeight: "200px" }}
+      <div className="border-t border-border bg-background-elevated/60 px-[var(--ow-chat-thread-x)] py-[var(--ow-chat-footer-y)]">
+        <form onSubmit={handleSubmit} className="mx-auto max-w-[var(--ow-chat-thread-max-width)]">
+          <div className="flex flex-col gap-[var(--ow-gap-md)]">
+            {isBusy ? <ThinkingBar text={copy.chat.agentThinking} /> : null}
+
+            {pendingApproval ? (
+              <ComposerApprovalPrompt
+                key={pendingApproval.id}
+                onDecision={(decision) => {
+                  void resume(decision)
+                }}
+                request={pendingApproval}
               />
-              <div className="flex items-center justify-center shrink-0 h-12">
-                {isLoading ? (
-                  <Button type="button" variant="ghost" size="icon" onClick={handleCancel}>
-                    <Square className="size-4" />
-                  </Button>
-                ) : (
-                  <Button
-                    type="submit"
-                    variant="default"
-                    size="icon"
-                    disabled={!input.trim()}
-                    className="rounded-md"
-                  >
-                    <Send className="size-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            ) : (
+              <PromptInput
+                className="px-[var(--ow-space-4)] py-[var(--ow-space-4)]"
+                disabled={isBusy}
+                isLoading={isBusy}
+                maxHeight="200px"
+                minHeight="var(--ow-chat-composer-input-min-h)"
+                onSubmit={() => {
+                  void invokeWithComposerRefs()
+                }}
+                onValueChange={setInput}
+                value={input}
+              >
+                <div className="flex min-w-0 items-end gap-[var(--ow-gap-md)]">
+                  <PromptInputTextarea
+                    composerRef={inputRef}
+                    mode="composer"
+                    onKeyDown={handleKeyDown}
+                    placeholder={copy.chat.messagePlaceholder}
+                    sourceMentions={sourceMentions}
+                    className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
+                  />
+                  <div className="flex h-[var(--ow-chat-composer-action-h)] shrink-0 items-center justify-center">
+                    {isBusy ? (
+                      <PromptInputAction
+                        onClick={handleCancel}
+                        icon={<Square className="size-[var(--ow-icon-action)]" />}
+                        label={copy.launcher.aiStopLabel}
+                        className="size-[var(--ow-control-h-md)] bg-background-elevated"
+                      />
+                    ) : (
+                      <PromptInputAction
+                        type="submit"
+                        disabled={!invocation.canInvoke}
+                        icon={<Send className="size-[var(--ow-icon-action)]" />}
+                        label={copy.launcher.aiPrimaryLabel}
+                        className="size-[var(--ow-control-h-md)] bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
+                      />
+                    )}
+                  </div>
+                </div>
+              </PromptInput>
+            )}
+
+            <div className="flex items-center justify-between gap-[var(--ow-gap-lg)]">
+              <div className="flex items-center gap-[var(--ow-gap-sm)]">
                 <ModelSwitcher threadId={threadId} />
-                <div className="w-px h-4 bg-border" />
+                <div className="h-[var(--ow-control-divider-h)] w-px bg-border" />
                 <WorkspacePicker threadId={threadId} />
+                <button
+                  type="button"
+                  className={`inline-flex h-[var(--ow-control-h-md)] items-center gap-[var(--ow-space-1-5)] rounded-full border px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)] transition ${
+                    temporaryMode
+                      ? "border-status-warning/40 bg-status-warning/10 text-status-warning"
+                      : "border-border bg-background-elevated text-muted-foreground hover:bg-background-secondary hover:text-foreground"
+                  }`}
+                  onClick={() => setTemporaryMode((current) => !current)}
+                  aria-pressed={temporaryMode}
+                >
+                  {temporaryMode ? (
+                    <Shield className="size-[var(--ow-icon-sm)]" />
+                  ) : (
+                    <Brain className="size-[var(--ow-icon-sm)]" />
+                  )}
+                  <span className="max-w-[var(--ow-chip-label-max-width)] truncate">
+                    {temporaryMode ? copy.chat.memoryTemporaryOn : copy.chat.memoryTemporaryOff}
+                  </span>
+                </button>
               </div>
-              {tokenUsage && (
+              {tokenUsage && currentModel && (
                 <ContextUsageIndicator tokenUsage={tokenUsage} modelId={currentModel} />
               )}
             </div>

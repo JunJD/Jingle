@@ -1,0 +1,4 @@
+interface:
+  display_name: "Openwork Electron CDP"
+  short_description: "Connects dev3000 or agent-browser to the real Openwork Electron window via CDP."
+  default_prompt: "Use $openwork-electron-cdp to start an isolated Openwork Electron instance with a CDP port, verify the Electron target, and attach agent-browser to the real renderer window."

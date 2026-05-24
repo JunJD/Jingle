@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Eye, EyeOff, Loader2, Trash2 } from "lucide-react"
+import { Loader2, Trash2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -8,9 +8,14 @@ import {
   DialogTitle
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { useAppStore } from "@/lib/store"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
+import { getIpcErrorDisplayMessage } from "@/lib/ipc-errors"
+import { getSettingsCopy } from "@/settings/copy"
+import { SettingsField, SettingsPasswordInput, SettingsTextInput } from "@/settings/settings-ui"
 import type { Provider } from "@/types"
+import { useI18n } from "@/lib/i18n"
+import type { AppLocale } from "@shared/i18n"
+import type { LocalizedText } from "@shared/app-types"
 
 interface ApiKeyDialogProps {
   open: boolean
@@ -18,11 +23,12 @@ interface ApiKeyDialogProps {
   provider: Provider | null
 }
 
-const PROVIDER_INFO: Record<string, { placeholder: string; envVar: string }> = {
-  anthropic: { placeholder: "sk-ant-...", envVar: "ANTHROPIC_API_KEY" },
-  openai: { placeholder: "sk-...", envVar: "OPENAI_API_KEY" },
-  google: { placeholder: "AIza...", envVar: "GOOGLE_API_KEY" },
-  dashscope: { placeholder: "sk-...", envVar: "DASHSCOPE_API_KEY" }
+function getDialogErrorMessage(error: unknown, fallback: string): string {
+  return getIpcErrorDisplayMessage(error, fallback)
+}
+
+function getLocalizedText(text: LocalizedText, locale: AppLocale): string {
+  return locale === "zh-CN" ? text.zh_Hans : text.en_US
 }
 
 export function ApiKeyDialog({
@@ -30,52 +36,103 @@ export function ApiKeyDialog({
   onOpenChange,
   provider
 }: ApiKeyDialogProps): React.JSX.Element | null {
-  const [apiKey, setApiKey] = useState("")
-  const [showKey, setShowKey] = useState(false)
+  const { copy, locale } = useI18n()
+  const settingsCopy = getSettingsCopy(locale)
+  const [credentials, setCredentials] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [hasExistingKey, setHasExistingKey] = useState(false)
+  const [errorText, setErrorText] = useState<string | null>(null)
 
-  const { setApiKey: saveApiKey, deleteApiKey } = useAppStore()
+  const setProviderCredentials = useHistoryShellStore((state) => state.setProviderCredentials)
+  const deleteProviderCredentials = useHistoryShellStore((state) => state.deleteProviderCredentials)
 
-  // Check if there's an existing key when dialog opens
   useEffect(() => {
-    if (open && provider) {
-      setHasExistingKey(provider.hasApiKey)
-      setApiKey("")
-      setShowKey(false)
+    if (!open || !provider) {
+      return
     }
-  }, [open, provider])
+
+    let cancelled = false
+
+    async function loadCredentials(): Promise<void> {
+      if (!provider) return
+      const credentialValues = Object.fromEntries(
+        provider.providerCredentialSchema.credentialFormSchemas.map((schema) => [
+          schema.variable,
+          ""
+        ])
+      )
+
+      try {
+        const existingCredentials =
+          provider.customConfiguration.status === "active"
+            ? await window.api.models.getCredentials(provider.id)
+            : null
+
+        if (cancelled) {
+          return
+        }
+
+        setHasExistingKey(provider.customConfiguration.status === "active")
+        setCredentials({
+          ...credentialValues,
+          ...(existingCredentials ?? {})
+        })
+        setErrorText(null)
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+
+        setCredentials(credentialValues)
+        setErrorText(getDialogErrorMessage(error, copy.apiKeyDialog.saveError))
+      }
+    }
+
+    void loadCredentials()
+
+    return () => {
+      cancelled = true
+    }
+  }, [copy.apiKeyDialog.saveError, open, provider])
 
   if (!provider) return null
 
-  const info = PROVIDER_INFO[provider.id] || { placeholder: "...", envVar: "" }
+  const selectedProvider = provider
+  const credentialSchemas = selectedProvider.providerCredentialSchema.credentialFormSchemas
+  const canSave = credentialSchemas.every((schema) => {
+    if (!schema.required) {
+      return true
+    }
+
+    return Boolean(credentials[schema.variable]?.trim())
+  })
 
   async function handleSave(): Promise<void> {
-    if (!apiKey.trim()) return
-    if (!provider) return
+    if (!canSave) return
 
-    console.log("[ApiKeyDialog] Saving API key for provider:", provider.id)
     setSaving(true)
+    setErrorText(null)
     try {
-      await saveApiKey(provider.id, apiKey.trim())
-      console.log("[ApiKeyDialog] API key saved successfully")
+      await setProviderCredentials(selectedProvider.id, credentials)
       onOpenChange(false)
     } catch (e) {
       console.error("[ApiKeyDialog] Failed to save API key:", e)
+      setErrorText(getDialogErrorMessage(e, copy.apiKeyDialog.saveError))
     } finally {
       setSaving(false)
     }
   }
 
   async function handleDelete(): Promise<void> {
-    if (!provider) return
     setDeleting(true)
+    setErrorText(null)
     try {
-      await deleteApiKey(provider.id)
+      await deleteProviderCredentials(selectedProvider.id)
       onOpenChange(false)
     } catch (e) {
       console.error("Failed to delete API key:", e)
+      setErrorText(getDialogErrorMessage(e, copy.apiKeyDialog.deleteError))
     } finally {
       setDeleting(false)
     }
@@ -83,40 +140,69 @@ export function ApiKeyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px]">
-        <DialogHeader>
+      <DialogContent className="w-[var(--ow-dialog-mobile-w)] rounded-[var(--ow-radius-dialog)] sm:max-w-[var(--ow-dialog-w-sm)] sm:rounded-[var(--ow-radius-dialog)]">
+        <DialogHeader className="text-left">
           <DialogTitle>
-            {hasExistingKey ? `Update ${provider.name} API Key` : `Add ${provider.name} API Key`}
+            {hasExistingKey
+              ? copy.apiKeyDialog.updateTitle(selectedProvider.name)
+              : copy.apiKeyDialog.addTitle(selectedProvider.name)}
           </DialogTitle>
           <DialogDescription>
             {hasExistingKey
-              ? "Enter a new API key to replace the existing one, or remove it."
-              : `Enter your ${provider.name} API key to use their models.`}
+              ? copy.apiKeyDialog.updateDescription
+              : copy.apiKeyDialog.addDescription(selectedProvider.name)}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <div className="relative">
-              <Input
-                type={showKey ? "text" : "password"}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={hasExistingKey ? "••••••••••••••••" : info.placeholder}
-                className="pr-10"
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Environment variable: <code className="text-foreground">{info.envVar}</code>
+        <div className="space-y-[var(--ow-space-4)] py-[var(--ow-space-2)]">
+          <div className="space-y-[var(--ow-space-3)]">
+            {credentialSchemas.map((schema, index) => {
+              const isSecret = schema.type === "secret-input"
+              const placeholder = schema.placeholder
+                ? getLocalizedText(schema.placeholder, locale)
+                : undefined
+
+              return (
+                <SettingsField key={schema.variable} label={getLocalizedText(schema.label, locale)}>
+                  {isSecret ? (
+                    <SettingsPasswordInput
+                      value={credentials[schema.variable] ?? ""}
+                      onChange={(event) =>
+                        setCredentials((currentCredentials) => ({
+                          ...currentCredentials,
+                          [schema.variable]: event.target.value
+                        }))
+                      }
+                      placeholder={hasExistingKey ? "••••••••••••••••" : placeholder}
+                      showLabel={settingsCopy.common.showSecret}
+                      hideLabel={settingsCopy.common.hideSecret}
+                      autoFocus={index === 0}
+                    />
+                  ) : (
+                    <SettingsTextInput
+                      type="text"
+                      value={credentials[schema.variable] ?? ""}
+                      onChange={(event) =>
+                        setCredentials((currentCredentials) => ({
+                          ...currentCredentials,
+                          [schema.variable]: event.target.value
+                        }))
+                      }
+                      placeholder={hasExistingKey ? "••••••••••••••••" : placeholder}
+                      autoFocus={index === 0}
+                    />
+                  )}
+                </SettingsField>
+              )
+            })}
+            <p className="[font-size:var(--ow-font-meta)] text-muted-foreground">
+              {copy.apiKeyDialog.secureStorageHint}
             </p>
+            {errorText && (
+              <p className="rounded-[var(--ow-radius-lg)] border border-destructive/30 bg-destructive/10 px-[var(--ow-space-3)] py-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-destructive">
+                {errorText}
+              </p>
+            )}
           </div>
         </div>
 
@@ -130,21 +216,25 @@ export function ApiKeyDialog({
               disabled={deleting || saving}
             >
               {deleting ? (
-                <Loader2 className="size-4 animate-spin mr-2" />
+                <Loader2 className="size-[var(--ow-icon-action)] animate-spin mr-[var(--ow-space-2)]" />
               ) : (
-                <Trash2 className="size-4 mr-2" />
+                <Trash2 className="size-[var(--ow-icon-action)] mr-[var(--ow-space-2)]" />
               )}
-              Remove Key
+              {copy.apiKeyDialog.removeKey}
             </Button>
           ) : (
             <div />
           )}
-          <div className="flex gap-2">
+          <div className="flex gap-[var(--ow-gap-sm)]">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {copy.apiKeyDialog.cancel}
             </Button>
-            <Button type="button" onClick={handleSave} disabled={!apiKey.trim() || saving}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : "Save"}
+            <Button type="button" onClick={handleSave} disabled={!canSave || saving}>
+              {saving ? (
+                <Loader2 className="size-[var(--ow-icon-action)] animate-spin" />
+              ) : (
+                copy.apiKeyDialog.save
+              )}
             </Button>
           </div>
         </div>

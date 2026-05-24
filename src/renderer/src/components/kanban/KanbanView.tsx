@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { useAppStore } from "@/lib/store"
+import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useAllThreadStates, useAllStreamLoadingStates } from "@/lib/thread-context"
 import { KanbanColumn } from "./KanbanColumn"
 import { ThreadKanbanCard, SubagentKanbanCard } from "./KanbanCard"
@@ -31,7 +31,9 @@ function getThreadKanbanStatus(
 }
 
 export function KanbanView(): React.JSX.Element {
-  const { threads, selectThread, showSubagentsInKanban } = useAppStore()
+  const threads = useHistoryShellStore((state) => state.threads)
+  const selectThread = useHistoryShellStore((state) => state.selectThread)
+  const showSubagentsInKanban = useHistoryShellStore((state) => state.showSubagentsInKanban)
   const allThreadStates = useAllThreadStates()
   const loadingStates = useAllStreamLoadingStates()
 

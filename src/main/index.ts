@@ -1,60 +1,48 @@
-import { app, shell, BrowserWindow, ipcMain, nativeImage } from "electron"
+import "./observability/bootstrap"
+import { app, BrowserWindow, ipcMain, nativeImage, protocol } from "electron"
 import { join } from "path"
-import { registerAgentHandlers } from "./ipc/agent"
-import { registerThreadHandlers } from "./ipc/threads"
-import { registerModelHandlers } from "./ipc/models"
 import { closeDatabase, initializeDatabase } from "./db"
 import { closeRuntime } from "./agent/runtime"
-import {
-  createLauncherWindow,
-  registerLauncherHandlers,
-  registerLauncherShortcut,
-  unregisterLauncherShortcut
-} from "./windows/launcher-window"
-import { loadRendererWindow } from "./windows/load-renderer-window"
-import { warmLauncherSearchProviders } from "./services/launcher-search"
+import { createMainCompositionRoot, type MainCompositionRoot } from "./composition-root"
+import { createLauncherWindow, showLauncherWindow } from "./windows/launcher-window"
+import { createMainWindow, showMainWindow } from "./windows/main-window"
+import { createSettingsWindow, showSettingsWindow } from "./windows/settings-window"
+import { registerNativeExtensionAssetProtocol } from "./native-extensions/asset-protocol"
+import { NATIVE_EXTENSION_ASSET_PROTOCOL } from "./native-extensions/assets"
+import { startNativeMinimalIsland, stopNativeMinimalIsland } from "./services/native-minimal-island"
+import type { MainWindowNavigationPayload } from "@shared/main-window"
+import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
-let mainWindow: BrowserWindow | null = null
+const remoteDebuggingPort = process.env.OPENWORK_REMOTE_DEBUGGING_PORT
+if (remoteDebuggingPort) {
+  // Expose Electron's Chromium target for external CDP clients like agent-browser.
+  app.commandLine.appendSwitch("remote-debugging-port", remoteDebuggingPort)
+  app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1")
+}
+
 let launcherWindow: BrowserWindow | null = null
+let mainWindow: BrowserWindow | null = null
+let settingsWindow: BrowserWindow | null = null
+let mainCompositionRoot: MainCompositionRoot | null = null
+let pendingMainNavigation: MainWindowNavigationPayload | null = null
+let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
+let shutdownComplete = false
+const bypassSingleInstanceLock = process.env.OPENWORK_BDD === "1"
+const hasSingleInstanceLock = bypassSingleInstanceLock ? true : app.requestSingleInstanceLock()
 
 // Simple dev check - replaces @electron-toolkit/utils is.dev
 const isDev = !app.isPackaged
 
-function createWindow(): void {
-  mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1200,
-    minHeight: 700,
-    show: false,
-    backgroundColor: "#0D0D0F",
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 16, y: 16 },
-    webPreferences: {
-      preload: join(__dirname, "../preload/index.js"),
-      sandbox: false
-    }
-  })
-
-  mainWindow.on("ready-to-show", () => {
-    mainWindow?.show()
-  })
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: "deny" }
-  })
-
-  void loadRendererWindow(mainWindow, "main")
-
-  mainWindow.on("closed", () => {
-    if (launcherWindow && !launcherWindow.isDestroyed()) {
-      launcherWindow.close()
-      launcherWindow = null
-    }
-    mainWindow = null
-  })
-}
+protocol.registerSchemesAsPrivileged([
+  {
+    privileges: {
+      secure: true,
+      standard: true,
+      supportFetchAPI: true
+    },
+    scheme: NATIVE_EXTENSION_ASSET_PROTOCOL
+  }
+])
 
 function getOrCreateLauncherWindow(): BrowserWindow {
   if (!launcherWindow || launcherWindow.isDestroyed()) {
@@ -67,62 +55,176 @@ function getOrCreateLauncherWindow(): BrowserWindow {
   return launcherWindow
 }
 
-app.whenReady().then(async () => {
-  // Set app user model id for windows
-  if (process.platform === "win32") {
-    app.setAppUserModelId(isDev ? process.execPath : "com.langchain.openwork")
-  }
-
-  // Set dock icon on macOS
-  if (process.platform === "darwin" && app.dock) {
-    const iconPath = join(__dirname, "../../resources/icon.png")
-    try {
-      const icon = nativeImage.createFromPath(iconPath)
-      if (!icon.isEmpty()) {
-        app.dock.setIcon(icon)
-      }
-    } catch {
-      // Icon not found, use default
-    }
-  }
-
-  // Default open or close DevTools by F12 in development
-  if (isDev) {
-    app.on("browser-window-created", (_, window) => {
-      window.webContents.on("before-input-event", (event, input) => {
-        if (input.key === "F12") {
-          window.webContents.toggleDevTools()
-          event.preventDefault()
-        }
-      })
+function getOrCreateMainWindow(): BrowserWindow {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createMainWindow()
+    mainWindow.on("closed", () => {
+      mainWindow = null
     })
   }
 
-  // Initialize database
-  await initializeDatabase()
+  return mainWindow
+}
 
-  // Register IPC handlers
-  registerAgentHandlers(ipcMain)
-  registerThreadHandlers(ipcMain)
-  registerModelHandlers(ipcMain)
-  registerLauncherHandlers(ipcMain)
-  void warmLauncherSearchProviders()
+function getOrCreateSettingsWindow(): BrowserWindow {
+  if (!settingsWindow || settingsWindow.isDestroyed()) {
+    settingsWindow = createSettingsWindow()
+    settingsWindow.on("closed", () => {
+      settingsWindow = null
+    })
+  }
 
-  createWindow()
-  getOrCreateLauncherWindow()
-  registerLauncherShortcut(getOrCreateLauncherWindow)
+  return settingsWindow
+}
 
-  app.on("activate", () => {
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      createWindow()
+function getLauncherWindow(): BrowserWindow | null {
+  return launcherWindow && !launcherWindow.isDestroyed() ? launcherWindow : null
+}
+
+function showLauncher(): void {
+  showLauncherWindow(getOrCreateLauncherWindow())
+}
+
+function toggleLauncher(): void {
+  const launcherWindow = getOrCreateLauncherWindow()
+  if (launcherWindow.isVisible()) {
+    launcherWindow.hide()
+    return
+  }
+
+  showLauncherWindow(launcherWindow)
+}
+
+function openMainWindow(payload?: MainWindowNavigationPayload): void {
+  const mainWindow = getOrCreateMainWindow()
+  pendingMainNavigation = payload ?? null
+  showMainWindow(mainWindow, payload)
+}
+
+function acknowledgePendingMainNavigation(payload: MainWindowNavigationPayload): void {
+  if (payload.targetThreadId && pendingMainNavigation?.targetThreadId === payload.targetThreadId) {
+    pendingMainNavigation = null
+  }
+}
+
+function openSettingsWindow(payload?: SettingsWindowNavigationPayload): void {
+  const settingsWindow = getOrCreateSettingsWindow()
+
+  if (payload && settingsWindow.webContents.isLoadingMainFrame()) {
+    pendingSettingsNavigation = payload
+  } else {
+    pendingSettingsNavigation = null
+  }
+
+  showSettingsWindow(settingsWindow, payload)
+}
+
+function setMacDockIcon(): void {
+  if (process.platform !== "darwin" || !app.dock) {
+    return
+  }
+
+  const iconPath = join(__dirname, "../../resources/icon.png")
+  const icon = nativeImage.createFromPath(iconPath)
+  if (icon.isEmpty()) {
+    throw new Error(`Dock icon is empty: ${iconPath}`)
+  }
+
+  app.dock.setIcon(icon)
+  app.dock.show()
+}
+
+async function shutdownMainProcess(): Promise<void> {
+  if (shutdownComplete) {
+    return
+  }
+
+  stopNativeMinimalIsland()
+  mainCompositionRoot?.dispose()
+  mainCompositionRoot = null
+  await closeRuntime()
+  await closeDatabase()
+  shutdownComplete = true
+}
+
+if (!hasSingleInstanceLock) {
+  app.quit()
+}
+
+if (hasSingleInstanceLock) {
+  app.whenReady().then(async () => {
+    // Set app user model id for windows
+    if (process.platform === "win32") {
+      app.setAppUserModelId(isDev ? process.execPath : "com.langchain.openwork")
     }
-  })
-})
 
-app.on("will-quit", () => {
-  unregisterLauncherShortcut()
-  void closeRuntime()
-  void closeDatabase()
+    setMacDockIcon()
+    registerNativeExtensionAssetProtocol()
+
+    // Default open or close DevTools by F12 in development
+    if (isDev) {
+      app.on("browser-window-created", (_, window) => {
+        window.webContents.on("before-input-event", (event, input) => {
+          if (input.key === "F12") {
+            window.webContents.toggleDevTools()
+            event.preventDefault()
+          }
+        })
+      })
+    }
+
+    // Initialize database
+    await initializeDatabase()
+
+    // Register IPC handlers
+    mainCompositionRoot = createMainCompositionRoot({
+      acknowledgePendingMainNavigation,
+      consumePendingSettingsNavigation: () => {
+        const pending = pendingSettingsNavigation
+        pendingSettingsNavigation = null
+        return pending
+      },
+      getLauncherWindow,
+      getPendingMainNavigation: () => pendingMainNavigation,
+      ipcMain,
+      isDev,
+      openMainWindow,
+      openSettingsWindow,
+      quitApplication: () => app.quit(),
+      showLauncherWindow: showLauncher,
+      toggleLauncherWindow: toggleLauncher
+    })
+    mainCompositionRoot.registerIpcHandlers()
+    mainCompositionRoot.startServices()
+    startNativeMinimalIsland({
+      openLauncher: showLauncher,
+      openMainWindow: () => openMainWindow(),
+      openSettings: () => openSettingsWindow(),
+      quit: () => app.quit()
+    })
+
+    showLauncher()
+
+    app.on("activate", () => {
+      openMainWindow()
+    })
+  })
+}
+
+app.on("before-quit", (event) => {
+  if (shutdownComplete) {
+    return
+  }
+
+  event.preventDefault()
+  void shutdownMainProcess()
+    .catch((error) => {
+      console.error("[Main] Failed to shut down cleanly:", error)
+    })
+    .finally(() => {
+      shutdownComplete = true
+      app.quit()
+    })
 })
 
 app.on("window-all-closed", () => {

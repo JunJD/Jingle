@@ -7,9 +7,7 @@
 [license-badge]: https://img.shields.io/badge/License-MIT-yellow.svg
 [license-url]: https://opensource.org/licenses/MIT
 
-A desktop interface for [deepagentsjs](https://github.com/langchain-ai/deepagentsjs) — an opinionated harness for building deep agents with filesystem capabilities planning, and subagent delegation.
-
-![openwork screenshot](docs/screenshot.png)
+A harness-first desktop agent for non-programmers, built on [deepagentsjs](https://github.com/langchain-ai/deepagentsjs), with controlled execution, approvals, and persistent run visibility.
 
 > [!CAUTION]
 > openwork gives AI agents direct access to your filesystem and the ability to execute shell commands. Always review tool calls before approving them, and only run in workspaces you trust.
@@ -38,12 +36,47 @@ npm run dev
 
 Or configure them in-app via the settings panel.
 
+## Electron Debugging
+
+For CDP-based debugging against the real Electron window, see [docs/openwork-electron-debugging.md](docs/openwork-electron-debugging.md).
+
+## Desktop Release
+
+The desktop packaging workflow runs on every branch push and can also be started manually from GitHub Actions. It only packages macOS and Windows builds.
+
+Pushing a tag publishes a GitHub Release with the generated desktop assets:
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+Tags may use either `v1.2.3` or `app-v1.2.3`. The workflow strips the prefix and uses `1.2.3` as the app version. Prerelease tags such as `v1.2.3-beta.1` are marked as prereleases.
+
+To package locally:
+
+```bash
+pnpm run dist:mac
+pnpm run dist:win
+```
+
+## BDD Testing
+
+The repository now includes a minimal Electron BDD harness built on Cucumber and Playwright.
+
+```bash
+npm run test:bdd:smoke
+npm run test:bdd
+```
+
+The BDD runner builds the app first, launches the packaged Electron entrypoint, creates an isolated `OPENWORK_HOME` temp directory for each scenario, and applies Prisma migrations before the app starts.
+
 ## Supported Models
 
-| Provider  | Models                                                                                 |
-| --------- | -------------------------------------------------------------------------------------- |
-| Anthropic | Claude Opus 4.5, Claude Sonnet 4.5, Claude Haiku 4.5, Claude Opus 4.1, Claude Sonnet 4 |
-| OpenAI    | GPT-5.2, GPT-5.1, o3, o3 Mini, o4 Mini, o1, GPT-4.1, GPT-4o                            |
+| Provider  | Models                                                                                                |
+| --------- | ----------------------------------------------------------------------------------------------------- |
+| Anthropic | Claude Opus 4.5, Claude Sonnet 4.5, Claude Haiku 4.5, Claude Opus 4.1, Claude Sonnet 4                |
+| OpenAI    | GPT-5.2, GPT-5.1, o3, o3 Mini, o4 Mini, o1, GPT-4.1, GPT-4o                                           |
 | Google    | Gemini 3 Pro Preview, Gemini 3 Flash Preview, Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 2.5 Flash Lite |
 
 ## Contributing

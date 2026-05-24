@@ -1,3 +1,10 @@
+import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
+import type { AppLocale } from "./i18n"
+import type { HITLRequest } from "./hitl"
+import type { ArtifactRecord } from "./artifacts"
+import type { ExtensionToolCallPresentation, ToolCallDisplay } from "./tool-presentation"
+export type { HITLDecision, HITLRequest } from "./hitl"
+
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
 
 export interface Thread {
@@ -22,21 +29,109 @@ export interface Run {
   metadata?: Record<string, unknown>
 }
 
-export type ProviderId = "anthropic" | "openai" | "google" | "dashscope" | "ollama"
+export type ProviderId = "anthropic" | "openai" | "google" | "dashscope" | "deepseek"
+
+export type ModelType = "llm" | "text-embedding" | "rerank" | "speech2text" | "moderation" | "tts"
+
+export type SupportedDefaultModelType = "llm"
+
+export type ConfigurationMethod = "predefined-model" | "customizable-model" | "fetch-from-remote"
+
+export type ModelFeature =
+  | "tool-call"
+  | "multi-tool-call"
+  | "vision"
+  | "video"
+  | "document"
+  | "audio"
+  | "structured-output"
+
+export type ModelStatus =
+  | "active"
+  | "no-configure"
+  | "quota-exceeded"
+  | "no-permission"
+  | "disabled"
+  | "credential-removed"
+
+export type ProviderModelListStatus = "active" | "error" | "no-configure"
+
+export type CustomConfigurationStatus = "active" | "no-configure"
+
+export type CredentialFormType = "secret-input" | "text-input"
+
+export interface LocalizedText {
+  en_US: string
+  zh_Hans: string
+}
+
+export interface CredentialFormSchema {
+  label: LocalizedText
+  name: string
+  placeholder?: LocalizedText
+  required: boolean
+  tooltip?: LocalizedText
+  type: CredentialFormType
+  variable: string
+}
+
+export interface ModelProviderCredentialSchema {
+  credentialFormSchemas: CredentialFormSchema[]
+}
+
+export interface ModelProviderCustomConfiguration {
+  currentCredentialName?: string
+  status: CustomConfigurationStatus
+}
+
+export interface ModelProviderSystemConfiguration {
+  enabled: boolean
+}
+
+export interface DefaultModels {
+  llm: string
+}
 
 export interface Provider {
+  configurateMethods: ConfigurationMethod[]
+  customConfiguration: ModelProviderCustomConfiguration
+  description?: LocalizedText
   id: ProviderId
+  label: LocalizedText
+  modelListError?: string
+  modelListStatus: ProviderModelListStatus
   name: string
-  hasApiKey: boolean
+  providerCredentialSchema: ModelProviderCredentialSchema
+  supportedModelTypes: ModelType[]
+  systemConfiguration: ModelProviderSystemConfiguration
 }
 
 export interface ModelConfig {
+  description?: string
+  fetchFrom: ConfigurationMethod
+  features?: ModelFeature[]
   id: string
+  model: string
+  modelType: ModelType
   name: string
   provider: ProviderId
-  model: string
-  description?: string
-  available: boolean
+  status: ModelStatus
+}
+
+export interface ProviderModelsResponse {
+  models: ModelConfig[]
+  provider: Provider
+}
+
+export interface ModelProviderState {
+  defaultModels: DefaultModels
+  providers: Provider[]
+}
+
+export interface AgentConfig {
+  desktopAutomationAllowlist: string[]
+  skillSources: string[]
+  locale: AppLocale
 }
 
 export interface Subagent {
@@ -57,7 +152,6 @@ export type StreamEvent =
   | { type: "interrupt"; request: HITLRequest }
   | { type: "token"; token: string }
   | { type: "todos"; todos: Todo[] }
-  | { type: "workspace"; files: FileInfo[]; path: string }
   | { type: "subagents"; subagents: Subagent[] }
   | { type: "done"; result: unknown }
   | { type: "error"; error: string }
@@ -69,41 +163,50 @@ export interface Message {
   tool_calls?: ToolCall[]
   tool_call_id?: string
   name?: string
+  metadata?: Record<string, unknown>
   created_at: Date
 }
 
 export interface ContentBlock {
-  type: "text" | "image" | "tool_use" | "tool_result"
+  type: "text" | "reasoning" | "image" | "image_url" | "file" | "tool_use" | "tool_result"
   text?: string
+  reasoning?: string
+  signature?: string
   tool_use_id?: string
   name?: string
   input?: unknown
   content?: string
+  image_url?: string | { detail?: "auto" | "high" | "low"; url: string }
+  mimeType?: string
 }
 
-export interface ToolCall {
+export interface ToolCall extends LangChainToolCall<string, Record<string, unknown>> {
+  display?: ToolCallDisplay
   id: string
-  name: string
-  args: Record<string, unknown>
+  presentation?: ExtensionToolCallPresentation
 }
 
 export interface ToolResult {
   tool_call_id: string
   content: string | unknown
-  is_error?: boolean
 }
 
-export interface HITLRequest {
-  id: string
-  tool_call: ToolCall
-  allowed_decisions: HITLDecision["type"][]
+export interface ThreadRuntimeState {
+  forkState: ThreadForkState
+  todos: Todo[]
+  pendingApproval: HITLRequest | null
 }
 
-export interface HITLDecision {
-  type: "approve" | "reject" | "edit"
-  tool_call_id: string
-  edited_args?: Record<string, unknown>
-  feedback?: string
+export interface ThreadHistoryState extends ThreadRuntimeState {
+  artifacts: ArtifactRecord[]
+  messages: Message[]
+}
+
+export type ThreadForkBlockReason = "busy" | "checkpoint_interrupt" | "pending_hitl"
+
+export interface ThreadForkState {
+  canFork: boolean
+  reason?: ThreadForkBlockReason
 }
 
 export interface Todo {

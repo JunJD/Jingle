@@ -9,8 +9,34 @@ import {
   type PendingWrite,
   type SerializerProtocol
 } from "@langchain/langgraph-checkpoint"
+import type { Prisma } from "@prisma/client"
+import { syncMessageSearchIndexFromSnapshot, upsertHitlRequest } from "../db"
 import { getPrismaClient } from "../db/client"
+import {
+  extractHitlRequestFromCheckpoint,
+  extractMessagesFromCheckpoint
+} from "../agent/runtime-state"
 import { decodeSerializedPayload, encodeSerializedPayload } from "./storage-codec"
+
+function readStringField(value: unknown, key: string): string | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const field = (value as Record<string, unknown>)[key]
+  return typeof field === "string" && field.length > 0 ? field : null
+}
+
+function getRunIdForStorage(
+  config: RunnableConfig,
+  metadata?: CheckpointMetadata
+): string | null {
+  return (
+    readStringField(config.configurable, "run_id") ??
+    readStringField(config.metadata, "run_id") ??
+    readStringField(metadata, "run_id")
+  )
+}
 
 export class PrismaCheckpointSaver extends BaseCheckpointSaver {
   constructor(serde?: SerializerProtocol) {
@@ -23,7 +49,8 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const prisma = getPrismaClient()
-    const { thread_id, checkpoint_ns = "", checkpoint_id } = config.configurable ?? {}
+    const { thread_id, checkpoint_ns = "", checkpoint_id, run_id } = config.configurable ?? {}
+    const isRunScopedRead = typeof run_id === "string"
 
     if (!thread_id) {
       return undefined
@@ -42,7 +69,8 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       : await prisma.checkpoint.findFirst({
           where: {
             threadId: thread_id,
-            checkpointNs: checkpoint_ns
+            checkpointNs: checkpoint_ns,
+            runId: isRunScopedRead ? run_id : undefined
           },
           orderBy: {
             checkpointId: "desc"
@@ -67,15 +95,14 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
 
     return {
       checkpoint,
-      config: checkpoint_id
-        ? config
-        : {
-            configurable: {
-              thread_id: row.threadId,
-              checkpoint_ns: row.checkpointNs,
-              checkpoint_id: row.checkpointId
-            }
-          },
+      config: {
+        configurable: {
+          thread_id: row.threadId,
+          checkpoint_ns: row.checkpointNs,
+          checkpoint_id: row.checkpointId,
+          ...(isRunScopedRead && row.runId ? { run_id: row.runId } : {})
+        }
+      },
       metadata: (await this.serde.loadsTyped(
         metadataPayload.type,
         metadataPayload.value
@@ -101,6 +128,8 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
     const { limit, before } = options ?? {}
     const thread_id = config.configurable?.thread_id
     const checkpoint_ns = config.configurable?.checkpoint_ns ?? ""
+    const run_id = config.configurable?.run_id
+    const isRunScopedRead = typeof run_id === "string"
 
     if (!thread_id) {
       return
@@ -110,6 +139,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       where: {
         threadId: thread_id,
         checkpointNs: checkpoint_ns,
+        runId: isRunScopedRead ? run_id : undefined,
         checkpointId: before?.configurable?.checkpoint_id
           ? {
               lt: before.configurable.checkpoint_id
@@ -144,7 +174,8 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
           configurable: {
             thread_id: row.threadId,
             checkpoint_ns: row.checkpointNs,
-            checkpoint_id: row.checkpointId
+            checkpoint_id: row.checkpointId,
+            ...(isRunScopedRead && row.runId ? { run_id: row.runId } : {})
           }
         },
         checkpoint,
@@ -178,6 +209,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
     }
 
     const threadId = config.configurable.thread_id
+    const runId = getRunIdForStorage(config, metadata)
     const checkpointNs = config.configurable.checkpoint_ns ?? ""
     const parentCheckpointId = config.configurable.checkpoint_id
     const preparedCheckpoint = copyCheckpoint(checkpoint)
@@ -204,6 +236,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       },
       create: {
         threadId,
+        runId,
         checkpointNs,
         checkpointId: checkpoint.id,
         parentCheckpointId: parentCheckpointId ?? null,
@@ -212,6 +245,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
         metadata: storedMetadata
       },
       update: {
+        runId,
         parentCheckpointId: parentCheckpointId ?? null,
         type: storedType,
         checkpoint: storedCheckpoint,
@@ -219,8 +253,32 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       }
     })
 
+    const tuple = {
+      checkpoint: preparedCheckpoint,
+      metadata
+    } as CheckpointTuple
+    const messages = extractMessagesFromCheckpoint(threadId, tuple)
+    await syncMessageSearchIndexFromSnapshot(threadId, messages)
+
+    const hitlRequest = extractHitlRequestFromCheckpoint(threadId, tuple, { runId })
+    if (hitlRequest) {
+      await upsertHitlRequest({
+        request_id: hitlRequest.id,
+        thread_id: threadId,
+        run_id: runId,
+        tool_call_id: hitlRequest.tool_call.id,
+        tool_name: hitlRequest.tool_call.name,
+        tool_args: hitlRequest.tool_call.args,
+        review_kind: hitlRequest.review?.kind ?? null,
+        review_payload: hitlRequest.review,
+        allowed_decisions: hitlRequest.allowed_decisions,
+        status: "pending"
+      })
+    }
+
     return {
       configurable: {
+        ...config.configurable,
         thread_id: threadId,
         checkpoint_ns: checkpointNs,
         checkpoint_id: checkpoint.id
@@ -243,37 +301,44 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
     const checkpointNs = config.configurable.checkpoint_ns ?? ""
     const checkpointId = config.configurable.checkpoint_id
 
+    const operations: Prisma.PrismaPromise<unknown>[] = []
     for (let idx = 0; idx < writes.length; idx += 1) {
       const write = writes[idx]
       const [type, serializedValue] = await this.serde.dumpsTyped(write[1])
       const [storedType, storedValue] = encodeSerializedPayload(type, serializedValue)
 
-      await prisma.checkpointWrite.upsert({
-        where: {
-          threadId_checkpointNs_checkpointId_taskId_idx: {
+      operations.push(
+        prisma.checkpointWrite.upsert({
+          where: {
+            threadId_checkpointNs_checkpointId_taskId_idx: {
+              threadId,
+              checkpointNs,
+              checkpointId,
+              taskId,
+              idx
+            }
+          },
+          create: {
             threadId,
             checkpointNs,
             checkpointId,
             taskId,
-            idx
+            idx,
+            channel: write[0],
+            type: storedType,
+            value: storedValue
+          },
+          update: {
+            channel: write[0],
+            type: storedType,
+            value: storedValue
           }
-        },
-        create: {
-          threadId,
-          checkpointNs,
-          checkpointId,
-          taskId,
-          idx,
-          channel: write[0],
-          type: storedType,
-          value: storedValue
-        },
-        update: {
-          channel: write[0],
-          type: storedType,
-          value: storedValue
-        }
-      })
+        })
+      )
+    }
+
+    if (operations.length > 0) {
+      await prisma.$transaction(operations)
     }
   }
 

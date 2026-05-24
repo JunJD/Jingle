@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "electron-skills": {
+      "source": "llama-farm/llamafarm",
+      "sourceType": "github",
+      "computedHash": "08f344f7d41a84f94eceafbf17688daacd064eb6555cf6bcacb6948f3d5dc4b0"
+    },
+    "typescript-skills": {
+      "source": "llama-farm/llamafarm",
+      "sourceType": "github",
+      "computedHash": "5f0a9d04ab254e57e880443b65e2846b280f9a16a728c58d76f8f8a84d06e4b3"
+    }
+  }
+}
