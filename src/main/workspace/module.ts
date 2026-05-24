@@ -3,6 +3,7 @@ import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
 import { WorkspaceController } from "./controller"
 import { WorkspaceRepository } from "./repository"
 import { WorkspaceService } from "./service"
+import { OpenworkMemoryService } from "../openwork-memory/service"
 
 export function registerWorkspaceModule(container: DependencyContainer): void {
   container.register(WorkspaceRepository, {
@@ -12,7 +13,10 @@ export function registerWorkspaceModule(container: DependencyContainer): void {
   })
   container.register(WorkspaceService, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
-      return new WorkspaceService(dependencyContainer.resolve(WorkspaceRepository))
+      return new WorkspaceService(
+        dependencyContainer.resolve(WorkspaceRepository),
+        dependencyContainer.resolve(OpenworkMemoryService)
+      )
     })
   })
   container.register(WorkspaceController, {

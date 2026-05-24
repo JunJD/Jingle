@@ -71,7 +71,8 @@ export const agentInvokeParamsSchema = z
       })
       .strict(),
     modelId: optionalNormalizedTrimmedStringSchema,
-    permissionMode: permissionModeSchema.optional()
+    permissionMode: permissionModeSchema.optional(),
+    temporaryMode: z.boolean().optional()
   })
   .strict()
 

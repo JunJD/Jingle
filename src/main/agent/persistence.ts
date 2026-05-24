@@ -17,6 +17,11 @@ import {
   mergeRunMetadata,
   RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY
 } from "./permission-mode"
+import {
+  OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY,
+  OPENWORK_MEMORY_TEMPORARY_MODE_METADATA_KEY,
+  type OpenworkMemoryContextSnapshot
+} from "@shared/openwork-memory"
 
 type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted"
 
@@ -30,6 +35,8 @@ export async function beginAgentRun(
   threadId: string,
   modelId?: string,
   options?: {
+    openworkMemoryContextSnapshot?: OpenworkMemoryContextSnapshot | null
+    openworkMemoryTemporaryMode?: boolean
     permissionMode?: PermissionModeName
     sourceBindings?: ExtensionSourceBinding[]
   }
@@ -43,6 +50,9 @@ export async function beginAgentRun(
     metadata: {
       modelId: modelId ?? null,
       [RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY]: permissionMode,
+      [OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY]:
+        options?.openworkMemoryContextSnapshot ?? null,
+      [OPENWORK_MEMORY_TEMPORARY_MODE_METADATA_KEY]: options?.openworkMemoryTemporaryMode ?? false,
       [RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY]: snapshotSourceProfiles(sourceBindings),
       [RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY]: createRunSourceBindingsSnapshot({
         permissionMode,

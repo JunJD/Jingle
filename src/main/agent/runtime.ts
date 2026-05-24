@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   createFilesystemMiddleware,
-  createMemoryMiddleware,
   createPatchToolCallsMiddleware,
   createSkillsMiddleware,
   createSubAgentMiddleware,
@@ -28,7 +27,6 @@ import type * as _lcLanggraph from "@langchain/langgraph"
 import type * as _lcZodTypes from "@langchain/core/utils/types"
 
 import { BASE_SYSTEM_PROMPT } from "./system-prompt"
-import { ChatAnthropic } from "@langchain/anthropic"
 import { createArtifactToolsMiddleware } from "./artifact-tools-middleware"
 import { createDesktopAutomationToolsMiddleware } from "./desktop-automation-tools-middleware"
 import { createWebToolsMiddleware } from "./web-tools-middleware"
@@ -41,6 +39,13 @@ import { createExtensionSourceRuntime } from "./extension-source-runtime"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
 import type { ExtensionSourceBinding } from "@shared/extension-sources"
+import type { OpenworkMemoryContextPack, OpenworkWorkspaceIdentity } from "@shared/openwork-memory"
+import {
+  createOpenworkMemoryInclusionCollector,
+  createOpenworkMemoryMiddleware,
+  type OpenworkMemoryInclusionCollector
+} from "../openwork-memory/middleware"
+import type { OpenworkMemoryService } from "../openwork-memory/service"
 
 /**
  * Generate the full system prompt for the agent.
@@ -92,15 +97,21 @@ function getDefaultSkillSources(workspacePath: string): string[] {
   return [join(getOpenworkDir(), "skills"), join(workspacePath, ".openwork", "skills")]
 }
 
-function getDefaultMemorySources(workspacePath: string): string[] {
-  return [join(getOpenworkDir(), "AGENTS.md"), join(workspacePath, ".openwork", "AGENTS.md")]
-}
-
 export interface CreateAgentRuntimeOptions {
   /** Thread ID - REQUIRED for per-thread checkpointing */
   threadId: string
+  /** Run ID - REQUIRED for memory suggestions and usage tracking */
+  runId: string
   /** Model ID to use (defaults to configured default model) */
   modelId?: string
+  /** Openwork memory context snapshot for this run. */
+  openworkMemoryContextPack?: OpenworkMemoryContextPack | null
+  /** Openwork memory service used by runtime tools. */
+  openworkMemoryService?: OpenworkMemoryService
+  /** Whether this run should bypass memory read/write behavior. */
+  openworkMemoryTemporaryMode?: boolean
+  /** Main-owned workspace identity used for workspace-scoped memory suggestions. */
+  openworkMemoryWorkspaceIdentity?: OpenworkWorkspaceIdentity
   /** Permission mode snapshot for this run. */
   permissionMode?: PermissionModeName
   /** Source bindings snapshot for this run. */
@@ -111,6 +122,10 @@ export interface CreateAgentRuntimeOptions {
 
 // Create agent runtime with configured model and checkpointer
 export type AgentRuntime = ReturnType<typeof createAgent>
+export interface AgentRuntimeHandle {
+  agent: AgentRuntime
+  openworkMemoryInclusionCollector: OpenworkMemoryInclusionCollector
+}
 type SubagentMiddlewareStack = NonNullable<
   Parameters<typeof createSubAgentMiddleware>[0]["defaultMiddleware"]
 >
@@ -121,13 +136,17 @@ export function runtimeUsesCheckpointPersistence(): boolean {
 
 export async function createAgentRuntime(
   options: CreateAgentRuntimeOptions
-): Promise<AgentRuntime> {
-  const { threadId, modelId, workspacePath } = options
+): Promise<AgentRuntimeHandle> {
+  const { threadId, runId, modelId, workspacePath } = options
   const permissionMode = options.permissionMode ?? DEFAULT_PERMISSION_MODE
   const sourceBindings = options.sourceBindings ?? []
 
   if (!threadId) {
     throw new Error("Thread ID is required for checkpointing.")
+  }
+
+  if (!runId) {
+    throw new Error("Run ID is required for runtime memory tracking.")
   }
 
   if (!workspacePath) {
@@ -141,7 +160,10 @@ export async function createAgentRuntime(
   console.log("[Runtime] Workspace path:", workspacePath)
 
   if (!runtimeUsesCheckpointPersistence()) {
-    return createBddAgentRuntime({ threadId, workspacePath }) as unknown as AgentRuntime
+    return {
+      agent: createBddAgentRuntime({ threadId, workspacePath }) as unknown as AgentRuntime,
+      openworkMemoryInclusionCollector: createOpenworkMemoryInclusionCollector()
+    }
   }
 
   const model = getChatModelInstance({ modelId, parallelToolCalls: false })
@@ -181,13 +203,12 @@ export async function createAgentRuntime(
     ...getDefaultSkillSources(workspacePath),
     ...agentConfig.skillSources
   ])
-  const memorySources = dedupePaths([
-    ...getDefaultMemorySources(workspacePath),
-    ...agentConfig.memorySources
-  ])
 
   console.log("[Runtime] Skill sources:", skillSources)
-  console.log("[Runtime] Memory sources:", memorySources)
+  console.log(
+    "[Runtime] Openwork memory items:",
+    options.openworkMemoryContextPack?.items.length ?? 0
+  )
 
   // Custom filesystem prompt for absolute paths (matches virtualMode: false)
   const filesystemSystemPrompt = `You have access to a filesystem. All file paths use fully qualified absolute system paths.
@@ -200,6 +221,33 @@ export async function createAgentRuntime(
 - grep: search for text within files
 
 The workspace root is: ${workspacePath}`
+
+  const openworkMemoryService = options.openworkMemoryService ?? null
+  const useOpenworkMemory = openworkMemoryService !== null
+  const allowOpenworkMemorySuggestions =
+    useOpenworkMemory &&
+    !options.openworkMemoryTemporaryMode &&
+    openworkMemoryService.getSettings().useMemory === true
+  const openworkMemoryWorkspaceIdentity =
+    options.openworkMemoryContextPack?.workspaceIdentity ?? options.openworkMemoryWorkspaceIdentity
+  const openworkMemoryInclusionCollector = createOpenworkMemoryInclusionCollector()
+  const rootOpenworkMemoryRuntime = useOpenworkMemory
+    ? createOpenworkMemoryMiddleware({
+        allowSuggestions: allowOpenworkMemorySuggestions,
+        collector: openworkMemoryInclusionCollector,
+        contextPack: options.openworkMemoryContextPack ?? null,
+        mode: "root",
+        runId,
+        service: openworkMemoryService,
+        temporaryMode: false,
+        threadId,
+        workspaceIdentity: openworkMemoryWorkspaceIdentity ?? {
+          canonicalWorkspacePath: workspacePath,
+          displayName: workspacePath,
+          workspaceKey: workspacePath
+        }
+      })
+    : null
 
   function createSharedAgentLoopMiddleware() {
     return [
@@ -226,11 +274,6 @@ The workspace root is: ${workspacePath}`
       createSkillsMiddleware({
         backend,
         sources: skillSources
-      }),
-      createMemoryMiddleware({
-        backend,
-        sources: memorySources,
-        addCacheControl: model instanceof ChatAnthropic
       })
     ] as const
   }
@@ -238,6 +281,7 @@ The workspace root is: ${workspacePath}`
   function createRootAgentLoopMiddleware() {
     return [
       ...createSharedAgentLoopMiddleware(),
+      ...(rootOpenworkMemoryRuntime ? [rootOpenworkMemoryRuntime.middleware] : []),
       createTitleMiddleware(),
       createDesktopAutomationToolsMiddleware(),
       extensionSourceRuntime.middleware,
@@ -254,8 +298,27 @@ The workspace root is: ${workspacePath}`
   }
 
   function createSubagentAgentLoopMiddleware() {
+    const subagentOpenworkMemoryRuntime = useOpenworkMemory
+      ? createOpenworkMemoryMiddleware({
+          allowSuggestions: false,
+          collector: openworkMemoryInclusionCollector,
+          contextPack: options.openworkMemoryContextPack ?? null,
+          mode: "subagent",
+          runId,
+          service: openworkMemoryService,
+          temporaryMode: false,
+          threadId,
+          workspaceIdentity: openworkMemoryWorkspaceIdentity ?? {
+            canonicalWorkspacePath: workspacePath,
+            displayName: workspacePath,
+            workspaceKey: workspacePath
+          }
+        })
+      : null
+
     return [
       ...createSharedAgentLoopMiddleware(),
+      ...(subagentOpenworkMemoryRuntime ? [subagentOpenworkMemoryRuntime.middleware] : []),
       createSubagentReadOnlyGuardrailMiddleware({
         threadId,
         workspacePath
@@ -293,7 +356,10 @@ The workspace root is: ${workspacePath}`
   })
 
   console.log("[Runtime] Agent created with subagent middleware at:", workspacePath)
-  return agent
+  return {
+    agent,
+    openworkMemoryInclusionCollector
+  }
 }
 
 export type DeepAgent = ReturnType<typeof createAgent>
