@@ -39,6 +39,7 @@ import { nativeExtensionMainDefinitions } from "@extensions/main"
 import { nativeExtensionManifests } from "@extensions/index"
 import { createNativeExtensionToolRegistry } from "../extension-tools/native-extension-tools"
 import { createExtensionAiRuntime } from "./extension-ai-runtime"
+import { buildAgentRuntimeTraceConfig } from "../observability"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
 import type {
@@ -304,7 +305,11 @@ The workspace root is: ${workspacePath}`
     ]
   }).withConfig({
     recursionLimit: 1e4,
-    metadata: { ls_integration: "openwork" }
+    ...buildAgentRuntimeTraceConfig({
+      aiCapabilities,
+      modelId,
+      permissionMode
+    })
   })
 
   console.log("[Runtime] Agent created with subagent middleware at:", workspacePath)

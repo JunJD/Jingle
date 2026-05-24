@@ -1,3 +1,4 @@
+import "./observability/bootstrap"
 import { app, BrowserWindow, ipcMain, nativeImage, protocol } from "electron"
 import { join } from "path"
 import { closeDatabase, initializeDatabase } from "./db"

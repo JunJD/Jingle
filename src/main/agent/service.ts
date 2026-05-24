@@ -477,7 +477,10 @@ export class AgentService {
 
       const stream = await agent.stream(
         initialState,
-        buildAgentRunConfig(threadId, runId, abortController)
+        buildAgentRunConfig(threadId, runId, abortController, {
+          modelId,
+          permissionMode
+        })
       )
       let interrupted = false
 
@@ -618,7 +621,10 @@ export class AgentService {
             permissionMode
           })
       })
-      const config = buildAgentResumeConfig(threadId, runId, abortController)
+      const config = buildAgentResumeConfig(threadId, runId, abortController, {
+        modelId,
+        permissionMode
+      })
       const resolvedHitlDecision = {
         type: decision.type,
         request_id: resumeTarget.requestId,
