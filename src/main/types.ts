@@ -29,6 +29,7 @@ export interface AgentInvokeParams {
   message: AgentInvokeMessage
   modelId?: string
   permissionMode?: PermissionModeName
+  temporaryMode?: boolean
 }
 
 export interface AgentResumeParams {
@@ -99,7 +100,6 @@ export interface Run {
 export interface AgentConfig {
   desktopAutomationAllowlist: string[]
   skillSources: string[]
-  memorySources: string[]
   locale: AppLocale
 }
 

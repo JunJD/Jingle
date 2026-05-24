@@ -40,6 +40,10 @@ import {
   registerModelProviderModule
 } from "./model-provider/module"
 import {
+  registerOpenworkMemoryIpcHandlers,
+  registerOpenworkMemoryModule
+} from "./openwork-memory/module"
+import {
   getGlobalShortcutAccelerator,
   registerGlobalShortcutService,
   unregisterGlobalShortcutService
@@ -126,6 +130,7 @@ export class MainCompositionRoot {
     registerLauncherHistoryIpcHandlers(this.dependencyContainer, ipcMain)
     registerLocalStartIpcHandlers(this.dependencyContainer, ipcMain)
     registerModelProviderIpcHandlers(this.dependencyContainer, ipcMain)
+    registerOpenworkMemoryIpcHandlers(this.dependencyContainer, ipcMain)
     registerSettingsIpcHandlers(this.dependencyContainer, ipcMain)
     registerThreadsIpcHandlers(this.dependencyContainer, ipcMain)
     registerWorkspaceIpcHandlers(this.dependencyContainer, ipcMain)
@@ -204,6 +209,7 @@ export function createMainCompositionRoot(
     openMainWindow: context.openMainWindow
   })
   registerModelProviderModule(childContainer)
+  registerOpenworkMemoryModule(childContainer)
   registerNativeExtensionsModule(childContainer)
   registerNativeMenuBarModule(childContainer)
   registerSettingsModule(childContainer)

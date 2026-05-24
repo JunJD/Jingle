@@ -26,6 +26,11 @@ import {
   normalizeShortcutSettings,
   type ShortcutSettings
 } from "@shared/shortcuts/settings"
+import {
+  DEFAULT_OPENWORK_MEMORY_SETTINGS,
+  normalizeOpenworkMemorySettings,
+  type OpenworkMemorySettings
+} from "@shared/openwork-memory"
 
 export interface PersistedWindowState {
   width: number
@@ -42,6 +47,7 @@ interface SettingsStoreShape {
   launcherSettings: LauncherSettings
   mainWindowState: PersistedWindowState | null
   nativeExtensionPreferences: NativeExtensionPreferencesState
+  openworkMemorySettings: OpenworkMemorySettings
   shortcutSettings: ShortcutSettings
   workspaceDialogPath: string | null
   workspacePath: string | null
@@ -55,7 +61,6 @@ interface SecretsStoreShape {
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
   desktopAutomationAllowlist: [],
   skillSources: [],
-  memorySources: [],
   locale: DEFAULT_APP_LOCALE
 }
 
@@ -93,6 +98,7 @@ const settingsStore = new Store<SettingsStoreShape>({
     launcherSettings: DEFAULT_LAUNCHER_SETTINGS,
     mainWindowState: null,
     nativeExtensionPreferences: DEFAULT_NATIVE_EXTENSION_PREFERENCES,
+    openworkMemorySettings: DEFAULT_OPENWORK_MEMORY_SETTINGS,
     shortcutSettings: DEFAULT_SHORTCUT_SETTINGS,
     workspaceDialogPath: null,
     workspacePath: DEFAULT_WORKSPACE_PATH
@@ -536,7 +542,6 @@ export function getAgentConfig(): AgentConfig {
       stored?.desktopAutomationAllowlist
     ),
     skillSources: normalizePathList(stored?.skillSources),
-    memorySources: normalizePathList(stored?.memorySources),
     locale: normalizeAppLocale(stored?.locale)
   }
 }
@@ -552,7 +557,6 @@ export function setAgentConfig(updates: Partial<AgentConfig>): AgentConfig {
         }
       : {}),
     ...(updates.skillSources ? { skillSources: normalizePathList(updates.skillSources) } : {}),
-    ...(updates.memorySources ? { memorySources: normalizePathList(updates.memorySources) } : {}),
     ...(updates.locale ? { locale: normalizeAppLocale(updates.locale) } : {})
   }
 
@@ -575,6 +579,27 @@ export function setAppThemeSettings(updates: Partial<AppThemeSettings>): AppThem
   })
 
   settingsStore.set("appThemeSettings", nextSettings)
+  return nextSettings
+}
+
+export function getOpenworkMemorySettings(): OpenworkMemorySettings {
+  const stored = settingsStore.get(
+    "openworkMemorySettings",
+    DEFAULT_OPENWORK_MEMORY_SETTINGS
+  ) as Partial<OpenworkMemorySettings> | undefined
+
+  return normalizeOpenworkMemorySettings(stored)
+}
+
+export function setOpenworkMemorySettings(
+  updates: Partial<OpenworkMemorySettings>
+): OpenworkMemorySettings {
+  const nextSettings = normalizeOpenworkMemorySettings({
+    ...getOpenworkMemorySettings(),
+    ...updates
+  })
+
+  settingsStore.set("openworkMemorySettings", nextSettings)
   return nextSettings
 }
 
