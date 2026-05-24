@@ -15,7 +15,10 @@ const REQUIRED_TABLES = [
   "session_bindings",
   "hitl_requests",
   "checkpoints",
-  "writes"
+  "writes",
+  "agent_memories",
+  "agent_memory_suggestions",
+  "agent_memory_inclusions"
 ] as const
 
 const REQUIRED_TABLE_COLUMNS = {
@@ -24,6 +27,37 @@ const REQUIRED_TABLE_COLUMNS = {
 } as const
 
 let initialized = false
+
+async function recoverIncompleteAgentRuns(): Promise<void> {
+  const prisma = getPrismaClient()
+  const now = BigInt(Date.now())
+  const [runs, threads] = await prisma.$transaction([
+    prisma.run.updateMany({
+      data: {
+        status: "interrupted",
+        updatedAt: now
+      },
+      where: {
+        status: "running"
+      }
+    }),
+    prisma.thread.updateMany({
+      data: {
+        status: "interrupted",
+        updatedAt: now
+      },
+      where: {
+        status: "busy"
+      }
+    })
+  ])
+
+  if (runs.count > 0 || threads.count > 0) {
+    console.warn(
+      `[DB] Recovered incomplete agent state: interrupted ${runs.count} run(s), ${threads.count} thread(s).`
+    )
+  }
+}
 
 async function ensurePrismaSchemaApplied(): Promise<void> {
   const prisma = getPrismaClient()
@@ -68,6 +102,7 @@ export async function initializeDatabase(): Promise<void> {
   await prisma.$connect()
   await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON")
   await ensurePrismaSchemaApplied()
+  await recoverIncompleteAgentRuns()
 
   initialized = true
 }

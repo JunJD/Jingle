@@ -29,4 +29,3 @@ test("extension source viewer parses schema markdown into inline tokens", () => 
 test("extension source viewer leaves plain text unparsed", () => {
   assert.equal(parseExtensionSourceTextForViewer("plain text"), null)
 })
-

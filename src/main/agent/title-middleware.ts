@@ -5,6 +5,7 @@ import { getChatModelInstance } from "../llm/get-chat-model"
 
 const MAX_TITLE_CHARS = 60
 const FALLBACK_TITLE_CHARS = 50
+const TITLE_GENERATION_TIMEOUT_MS = 2_500
 
 const titleStateSchema = z.object({
   title: z.string().nullable().optional()
@@ -77,7 +78,36 @@ function shouldGenerateTitle(state: TitleState): boolean {
   const userMessages = state.messages.filter((message) => HumanMessage.isInstance(message))
   const assistantMessages = state.messages.filter((message) => AIMessage.isInstance(message))
 
-  return userMessages.length === 1 && assistantMessages.length >= 1
+  if (userMessages.length !== 1 || assistantMessages.length < 1) {
+    return false
+  }
+
+  const latestAssistantMessage = assistantMessages.at(-1)
+  return latestAssistantMessage ? !hasPendingToolCalls(latestAssistantMessage) : false
+}
+
+function hasPendingToolCalls(message: BaseMessage): boolean {
+  const toolCallMessage = message as BaseMessage & {
+    additional_kwargs?: { tool_calls?: unknown[] }
+    tool_call_chunks?: unknown[]
+    tool_calls?: unknown[]
+  }
+
+  if (Array.isArray(toolCallMessage.tool_calls) && toolCallMessage.tool_calls.length > 0) {
+    return true
+  }
+
+  if (
+    Array.isArray(toolCallMessage.tool_call_chunks) &&
+    toolCallMessage.tool_call_chunks.length > 0
+  ) {
+    return true
+  }
+
+  return (
+    Array.isArray(toolCallMessage.additional_kwargs?.tool_calls) &&
+    toolCallMessage.additional_kwargs.tool_calls.length > 0
+  )
 }
 
 function buildTitlePrompt(state: TitleState): { prompt: string; userMessage: string } {
@@ -111,9 +141,10 @@ async function generateAiTitle(state: TitleState): Promise<string | null> {
       modelPreference: "fast",
       temperature: 0
     })
-    const response = await model.withConfig({ runName: "thread_title" }).invoke([
-      new HumanMessage(prompt)
-    ])
+    const response = await model.withConfig({ runName: "thread_title" }).invoke(
+      [new HumanMessage(prompt)],
+      { timeout: TITLE_GENERATION_TIMEOUT_MS }
+    )
     const title = parseTitle(response.content)
     return title || fallbackTitle(userMessage)
   } catch (error) {
@@ -145,5 +176,6 @@ export const titleMiddlewareInternals = {
   normalizeContent,
   parseTitle,
   shouldGenerateTitle,
+  hasPendingToolCalls,
   stripThinkTags
 }

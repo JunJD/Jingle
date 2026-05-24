@@ -1,5 +1,5 @@
-import { useRef, useEffect, useCallback, useMemo } from "react"
-import { Send, Square, AlertCircle, Folder, X } from "lucide-react"
+import { useRef, useEffect, useCallback, useMemo, useState } from "react"
+import { Send, Square, AlertCircle, Brain, Folder, Shield, X } from "lucide-react"
 import {
   PromptInput,
   PromptInputAction,
@@ -10,7 +10,9 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { Messages } from "./Messages"
+import { MemoryReviewPanel } from "./MemoryReviewPanel"
 import { ModelSwitcher } from "./ModelSwitcher"
+import { IncludedMemoriesPanel } from "./IncludedMemoriesPanel"
 import { WorkspacePicker } from "./WorkspacePicker"
 import { selectWorkspaceFolder } from "@/lib/workspace-utils"
 import { ChatTodos } from "./ChatTodos"
@@ -36,14 +38,18 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const inputRef = useRef<ComposerAreaHandle>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef = useRef(true)
+  const [temporaryMode, setTemporaryMode] = useState(false)
+  const [workspaceChangeError, setWorkspaceChangeError] = useState<string | null>(null)
   useDisableTabNavigation(inputRef)
 
   const threadActions = useThreadActions(threadId)
   const workspacePath = useThreadSelector(threadId, (state) => state?.workspacePath ?? null)
   const tokenUsage = useThreadSelector(threadId, (state) => state?.tokenUsage ?? EMPTY_TOKEN_USAGE)
+  const runId = useThreadSelector(threadId, (state) => state?.runId ?? null)
   const currentModel = useThreadSelector(threadId, (state) => state?.currentModel ?? null)
   const invocation = useAiInvocation({
     threadId,
+    temporaryMode,
     validateInvocation: ({ threadState }) => {
       return threadState.workspacePath ? null : copy.chat.inputNeedsWorkspace
     }
@@ -133,11 +139,17 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   }
 
   const handleSelectWorkspaceFromEmptyState = async (): Promise<void> => {
+    setWorkspaceChangeError(null)
     await selectWorkspaceFolder(
       threadId,
       (path) => threadActions?.setWorkspacePath(path),
       () => {},
-      undefined
+      undefined,
+      {
+        onBlockedByPendingWorkspaceMemory: () => {
+          setWorkspaceChangeError(copy.chat.pendingWorkspaceMemoryBlocksWorkspaceChange)
+        }
+      }
     )
   }
 
@@ -176,6 +188,11 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                         {copy.chat.selectWorkspace}
                       </span>
                     </button>
+                    {workspaceChangeError ? (
+                      <div className="mx-auto max-w-[var(--ow-chat-empty-copy-max-width)] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-status-warning">
+                        {workspaceChangeError}
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -195,6 +212,10 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
             )}
 
             {isBusy && todos.length > 0 && <ChatTodos todos={todos} />}
+
+            {!isBusy && <IncludedMemoriesPanel runId={runId} />}
+
+            {!isBusy && <MemoryReviewPanel threadId={threadId} />}
 
             {/* Error state */}
             {visibleError && !isBusy && (
@@ -286,6 +307,25 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                 <ModelSwitcher threadId={threadId} />
                 <div className="h-[var(--ow-control-divider-h)] w-px bg-border" />
                 <WorkspacePicker threadId={threadId} />
+                <button
+                  type="button"
+                  className={`inline-flex h-[var(--ow-control-h-md)] items-center gap-[var(--ow-space-1-5)] rounded-full border px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)] transition ${
+                    temporaryMode
+                      ? "border-status-warning/40 bg-status-warning/10 text-status-warning"
+                      : "border-border bg-background-elevated text-muted-foreground hover:bg-background-secondary hover:text-foreground"
+                  }`}
+                  onClick={() => setTemporaryMode((current) => !current)}
+                  aria-pressed={temporaryMode}
+                >
+                  {temporaryMode ? (
+                    <Shield className="size-[var(--ow-icon-sm)]" />
+                  ) : (
+                    <Brain className="size-[var(--ow-icon-sm)]" />
+                  )}
+                  <span className="max-w-[var(--ow-chip-label-max-width)] truncate">
+                    {temporaryMode ? copy.chat.memoryTemporaryOn : copy.chat.memoryTemporaryOff}
+                  </span>
+                </button>
               </div>
               {tokenUsage && currentModel && (
                 <ContextUsageIndicator tokenUsage={tokenUsage} modelId={currentModel} />

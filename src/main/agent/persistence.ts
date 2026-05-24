@@ -19,6 +19,11 @@ import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
 import { mergeRunMetadata, RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY } from "./permission-mode"
+import {
+  OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY,
+  OPENWORK_MEMORY_TEMPORARY_MODE_METADATA_KEY,
+  type OpenworkMemoryContextSnapshot
+} from "@shared/openwork-memory"
 
 type PersistedRunStatus = "pending" | "running" | "error" | "success" | "interrupted"
 type ExistingRun = NonNullable<Awaited<ReturnType<typeof getRun>>>
@@ -36,6 +41,8 @@ export async function beginAgentRun(
   modelId?: string,
   options?: {
     aiCapabilities?: ResolvedExtensionAiCapability[]
+    openworkMemoryContextSnapshot?: OpenworkMemoryContextSnapshot | null
+    openworkMemoryTemporaryMode?: boolean
     permissionMode?: PermissionModeName
   }
 ): Promise<{ runId: string }> {
@@ -48,6 +55,9 @@ export async function beginAgentRun(
     metadata: {
       modelId: modelId ?? null,
       [RUN_PERMISSION_MODE_SNAPSHOT_METADATA_KEY]: permissionMode,
+      [OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY]:
+        options?.openworkMemoryContextSnapshot ?? null,
+      [OPENWORK_MEMORY_TEMPORARY_MODE_METADATA_KEY]: options?.openworkMemoryTemporaryMode ?? false,
       [RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]:
         createRunExtensionAiCapabilitiesSnapshot({
           aiCapabilities,

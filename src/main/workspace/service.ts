@@ -2,6 +2,7 @@ import { dialog } from "electron"
 import * as fs from "fs/promises"
 import * as path from "path"
 import type { WorkspaceFileParams, WorkspaceSetParams } from "../types"
+import { OpenworkMemoryService } from "../openwork-memory/service"
 import { WorkspaceRepository } from "./repository"
 
 export type WorkspaceFileReadResult =
@@ -19,7 +20,10 @@ export type WorkspaceFileReadResult =
 type WorkspaceFileReadFailure = Extract<WorkspaceFileReadResult, { success: false }>
 
 export class WorkspaceService {
-  constructor(private readonly workspaceRepository: WorkspaceRepository) {}
+  constructor(
+    private readonly workspaceRepository: WorkspaceRepository,
+    private readonly openworkMemoryService: OpenworkMemoryService
+  ) {}
 
   resolveGlobalWorkspacePath(): Promise<string | null> {
     return Promise.resolve(this.workspaceRepository.getGlobalWorkspacePath())
@@ -40,6 +44,8 @@ export class WorkspaceService {
       this.workspaceRepository.setGlobalWorkspacePath(newPath)
       return this.resolveGlobalWorkspacePath()
     }
+
+    await this.assertCanChangeThreadWorkspace(threadId)
 
     const didUpdate = await this.workspaceRepository.setThreadWorkspacePath(threadId, newPath)
     if (!didUpdate) return null
@@ -71,6 +77,8 @@ export class WorkspaceService {
     this.workspaceRepository.setWorkspaceDialogPath(selectedPath)
 
     if (threadId) {
+      await this.assertCanChangeThreadWorkspace(threadId)
+
       const didUpdate = await this.workspaceRepository.setThreadWorkspacePath(threadId, selectedPath)
       if (didUpdate) {
         this.workspaceRepository.setGlobalWorkspacePath(selectedPath)
@@ -80,6 +88,17 @@ export class WorkspaceService {
     }
 
     return selectedPath
+  }
+
+  private async assertCanChangeThreadWorkspace(threadId: string): Promise<void> {
+    const hasPendingWorkspaceSuggestions =
+      await this.openworkMemoryService.hasPendingWorkspaceSuggestions(threadId)
+
+    if (hasPendingWorkspaceSuggestions) {
+      throw new Error(
+        "Resolve pending workspace memories before changing this thread's workspace."
+      )
+    }
   }
 
   async readFile(params: WorkspaceFileParams): Promise<WorkspaceFileReadResult> {

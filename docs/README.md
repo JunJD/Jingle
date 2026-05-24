@@ -13,6 +13,8 @@
 | [windows-support-gap-audit.md](./windows-support-gap-audit.md) | Windows 支持现状、缺口和优先补齐路径审计 |
 | [model-provider-design.md](./model-provider-design.md) | 模型 provider 设计调研与方案说明 |
 | [product-narrative.md](./product-narrative.md) | 产品叙事、定位和体验方向背景 |
+| [personal-agent-memory-product-plan.md](./personal-agent-memory-product-plan.md) | 个人 Agent 记忆 V1 产品方案：定位、范围、设置、交互和验收 |
+| [personal-agent-memory-technical-overview.md](./personal-agent-memory-technical-overview.md) | 个人 Agent 记忆 V1 技术概要：边界、middleware、数据模型、UI 状态和验证 |
 | [ag-ui-thread-projection-architecture.md](./ag-ui-thread-projection-architecture.md) | AG UI thread projection 架构调研与方案说明 |
 | [renderer-external-store-architecture.md](./renderer-external-store-architecture.md) | renderer external store 架构方案说明 |
 
@@ -31,4 +33,3 @@
 | [history-shell-store-cleanups.md](./history-shell-store-cleanups.md) | history shell store 清理任务和执行顺序 |
 | [artifact-tab-roadmap.md](./artifact-tab-roadmap.md) | artifact tab 演进计划 |
 | [openwork-electron-debugging.md](./openwork-electron-debugging.md) | Electron 调试流程和本地验证约束 |
-

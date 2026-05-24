@@ -6,6 +6,7 @@ import { launcherHistoryApi } from "./launcherHistory"
 import { localStartApi } from "./localStart"
 import { mainWindowApi } from "./mainWindow"
 import { modelsApi } from "./models"
+import { memoryApi } from "./memory"
 import { nativeExtensionsApi } from "./nativeExtensions"
 import { nativeMenuBarApi } from "./nativeMenuBar"
 import { settingsApi } from "./settings"
@@ -18,6 +19,7 @@ export const api = {
   threads: threadsApi,
   artifacts: artifactsApi,
   extensionRuntime: extensionRuntimeApi,
+  memory: memoryApi,
   models: modelsApi,
   settings: settingsApi,
   mainWindow: mainWindowApi,

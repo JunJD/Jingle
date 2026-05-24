@@ -1,10 +1,8 @@
 import { HumanMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
+import { normalizeComposerMessageRefs, summarizeMessageContent } from "@shared/message-content"
+import { OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } from "@shared/openwork-memory"
 import { readRunExtensionAiCapabilitiesSnapshotFromMetadata } from "@shared/extension-sources"
-import {
-  normalizeComposerMessageRefs,
-  summarizeMessageContent
-} from "@shared/message-content"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import {
   hydrateNativeExtensionAiCapabilities,
@@ -23,12 +21,22 @@ import {
   updateRunExtensionAiCapabilitiesSnapshot
 } from "./persistence"
 import { isAbortLikeError, isModelAuthenticationError, normalizeAgentRuntimeError } from "./errors"
-import { createAgentRuntime, runtimeUsesCheckpointPersistence } from "./runtime"
+import {
+  createAgentRuntime,
+  runtimeUsesCheckpointPersistence,
+  type AgentRuntimeHandle
+} from "./runtime"
 import { buildAgentResumeConfig, buildAgentRunConfig } from "./run-config"
 import { extractHitlRequestFromValuesState } from "./runtime-state"
 import { getHitlRequest, getRun, getThread, resolveHitlRequest, upsertHitlRequest } from "../db"
 import { buildIpcErrorEvent, OpenworkIpcError } from "../ipc/error"
+import { OpenworkMemoryService } from "../openwork-memory/service"
 import { readRunPermissionModeSnapshot, readThreadPermissionMode } from "./permission-mode"
+import { resolveOpenworkWorkspaceIdentity } from "../workspace/identity"
+import type {
+  OpenworkMemoryContextSnapshot,
+  OpenworkWorkspaceIdentity
+} from "@shared/openwork-memory"
 import type {
   AgentCancelParams,
   AgentInvokeParams,
@@ -91,6 +99,37 @@ function buildResumeValue(decision: HITLDecision): {
 interface ResumeTarget {
   requestId: string
   runId: string
+}
+
+function readOpenworkMemoryContextSnapshot(
+  metadata: string | null | undefined
+): OpenworkMemoryContextSnapshot | null {
+  if (!metadata) {
+    return null
+  }
+
+  const value = (JSON.parse(metadata) as Record<string, unknown>)[
+    OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY
+  ]
+
+  return value && typeof value === "object" ? (value as OpenworkMemoryContextSnapshot) : null
+}
+
+function createWorkspaceMismatchError(input: {
+  currentWorkspace: OpenworkWorkspaceIdentity
+  snapshot: OpenworkMemoryContextSnapshot
+}): OpenworkIpcError {
+  return new OpenworkIpcError({
+    channel: "agent:resume",
+    code: "FAILED_PRECONDITION",
+    details: [
+      `originalWorkspace=${input.snapshot.canonicalWorkspacePath}`,
+      `currentWorkspace=${input.currentWorkspace.canonicalWorkspacePath}`,
+      "decision=return_to_original_workspace|fork_current_workspace|view_history_only|cancel"
+    ],
+    message:
+      "This run was started in a different workspace. Return to the original workspace, fork this conversation for the current workspace, or view history only before resuming."
+  })
 }
 
 async function resolveResumeTarget(
@@ -377,8 +416,32 @@ export function serializeStreamChunkForIpc(
 export class AgentService {
   private readonly activeRuns = new Map<string, ActiveAgentRun>()
 
+  constructor(private readonly openworkMemoryService = new OpenworkMemoryService()) {}
+
+  private async recordOpenworkMemoryInclusions(input: {
+    runtime: AgentRuntimeHandle
+    runId: string
+    threadId: string
+  }): Promise<void> {
+    try {
+      await this.openworkMemoryService.recordInclusions({
+        memoryIds: input.runtime.openworkMemoryInclusionCollector.getIncludedStructuredMemoryIds(),
+        runId: input.runId,
+        threadId: input.threadId
+      })
+    } catch (error) {
+      console.error("[Agent] Failed to record Openwork memory inclusions:", error)
+    }
+  }
+
   async invoke(
-    { threadId, message, modelId, permissionMode: requestedPermissionMode }: AgentInvokeParams,
+    {
+      threadId,
+      message,
+      modelId,
+      permissionMode: requestedPermissionMode,
+      temporaryMode = false
+    }: AgentInvokeParams,
     sink: AgentStreamSink
   ): Promise<void> {
     const messagePreview = summarizeMessageContent(message.content)
@@ -436,18 +499,31 @@ export class AgentService {
           permissionMode,
           platform: process.platform
         })
+      const workspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
+      const openworkMemoryContextPack = await this.openworkMemoryService.buildContextPack({
+        temporaryMode,
+        workspaceIdentity
+      })
 
       const { runId } = await beginAgentRun(threadId, modelId, {
+        openworkMemoryContextSnapshot:
+          this.openworkMemoryService.createContextSnapshot(openworkMemoryContextPack),
+        openworkMemoryTemporaryMode: openworkMemoryContextPack?.temporaryMode === true,
         aiCapabilities,
         permissionMode
       })
       this.activeRuns.set(threadId, { controller: abortController, runId })
       sink.send({ type: "run_started", runId })
 
-      const agent = await createAgentRuntime({
+      const runtime = await createAgentRuntime({
         threadId,
+        runId,
         workspacePath,
         modelId,
+        openworkMemoryContextPack,
+        openworkMemoryService: this.openworkMemoryService,
+        openworkMemoryTemporaryMode: temporaryMode,
+        openworkMemoryWorkspaceIdentity: workspaceIdentity,
         permissionMode,
         aiCapabilities,
         aiCapabilityCatalog,
@@ -475,7 +551,7 @@ export class AgentService {
           : {})
       }
 
-      const stream = await agent.stream(
+      const stream = await runtime.agent.stream(
         initialState,
         buildAgentRunConfig(threadId, runId, abortController, {
           modelId,
@@ -504,6 +580,7 @@ export class AgentService {
         } else {
           await finalizeRunWithoutCheckpoint(threadId, runId, { interrupted })
         }
+        await this.recordOpenworkMemoryInclusions({ runtime, runId, threadId })
         sink.send({ type: "done" })
       }
     } catch (error) {
@@ -574,6 +651,19 @@ export class AgentService {
 
     try {
       resumeTarget = await resolveResumeTarget(threadId, decision)
+      const targetRun = await getRun(resumeTarget.runId)
+      const openworkMemoryContextSnapshot = readOpenworkMemoryContextSnapshot(targetRun?.metadata)
+      const workspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
+      if (
+        openworkMemoryContextSnapshot &&
+        openworkMemoryContextSnapshot.workspaceKey !== workspaceIdentity.workspaceKey
+      ) {
+        throw createWorkspaceMismatchError({
+          currentWorkspace: workspaceIdentity,
+          snapshot: openworkMemoryContextSnapshot
+        })
+      }
+
       runId = await resumeAgentRun(threadId, resumeTarget.runId, {
         source: "resume",
         modelId: modelId ?? null,
@@ -594,6 +684,12 @@ export class AgentService {
     try {
       const resumedRun = await getRun(runId)
       const permissionMode = readRunPermissionModeSnapshot(resumedRun)
+      const openworkMemoryContextSnapshot = readOpenworkMemoryContextSnapshot(
+        resumedRun?.metadata
+      )
+      const openworkMemoryContextPack =
+        this.openworkMemoryService.rebuildContextPackFromSnapshot(openworkMemoryContextSnapshot)
+      const workspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
       const aiCapabilitySnapshots = readRunExtensionAiCapabilitiesSnapshotFromMetadata(
         resumedRun?.metadata
       )
@@ -601,10 +697,15 @@ export class AgentService {
         aiCapabilitySnapshots === null
           ? []
           : hydrateNativeExtensionAiCapabilities(aiCapabilitySnapshots)
-      const agent = await createAgentRuntime({
+      const runtime = await createAgentRuntime({
         threadId,
+        runId,
         workspacePath,
         modelId,
+        openworkMemoryContextPack,
+        openworkMemoryService: this.openworkMemoryService,
+        openworkMemoryTemporaryMode: openworkMemoryContextPack?.temporaryMode === true,
+        openworkMemoryWorkspaceIdentity: workspaceIdentity,
         permissionMode,
         aiCapabilities: runtimeAiCapabilities,
         aiCapabilityCatalog: listNativeExtensionAiCapabilityCatalog(process.platform),
@@ -639,7 +740,7 @@ export class AgentService {
         )
       }
       const resumeValue = buildResumeValue(decision)
-      const stream = await agent.stream(new Command({ resume: resumeValue }), config)
+      const stream = await runtime.agent.stream(new Command({ resume: resumeValue }), config)
       let interrupted = false
       let hitlRequestResolved = false
 
@@ -670,6 +771,7 @@ export class AgentService {
         } else {
           await finalizeRunWithoutCheckpoint(threadId, runId, { interrupted })
         }
+        await this.recordOpenworkMemoryInclusions({ runtime, runId, threadId })
         sink.send({ type: "done" })
       }
     } catch (error) {

@@ -13,9 +13,10 @@ export const agentApi = {
     threadId: string,
     message: AgentInvokeMessage,
     modelId?: string,
-    permissionMode?: PermissionModeName
+    permissionMode?: PermissionModeName,
+    temporaryMode?: boolean
   ): void => {
-    ipcRenderer.send("agent:invoke", { threadId, message, modelId, permissionMode })
+    ipcRenderer.send("agent:invoke", { threadId, message, modelId, permissionMode, temporaryMode })
   },
   resume: (threadId: string, decision: HITLDecision, modelId?: string): void => {
     ipcRenderer.send("agent:resume", {

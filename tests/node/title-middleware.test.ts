@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { AIMessage, HumanMessage } from "@langchain/core/messages"
+import { AIMessage, AIMessageChunk, HumanMessage } from "@langchain/core/messages"
 import { createTitleMiddleware, titleMiddlewareInternals } from "../../src/main/agent/title-middleware"
 
 type AfterModelTestHook = (state: unknown, runtime: unknown) => unknown | Promise<unknown>
@@ -48,6 +48,44 @@ test("title middleware only generates after the first complete exchange", async 
   assert.equal(existingTitleTurn, undefined)
 })
 
+test("title middleware waits until pending tool calls are resolved", async () => {
+  const middleware = createTitleMiddleware({
+    generateTitle: async () => "AI title"
+  })
+  const afterModel = getAfterModelHook(middleware)
+
+  const afterToolRequest = await afterModel(
+    {
+      messages: [
+        new HumanMessage("Remember this"),
+        new AIMessage({
+          content: "",
+          tool_calls: [{ args: {}, id: "tool-call-1", name: "suggest_personal_memory" }]
+        })
+      ],
+      title: null
+    },
+    {}
+  )
+  const afterFinalAssistantText = await afterModel(
+    {
+      messages: [
+        new HumanMessage("Remember this"),
+        new AIMessage({
+          content: "",
+          tool_calls: [{ args: {}, id: "tool-call-1", name: "suggest_personal_memory" }]
+        }),
+        new AIMessageChunk("Saved")
+      ],
+      title: null
+    },
+    {}
+  )
+
+  assert.equal(afterToolRequest, undefined)
+  assert.deepEqual(afterFinalAssistantText, { title: "AI title" })
+})
+
 test("title middleware cleans output and falls back to the first user message", () => {
   const title = titleMiddlewareInternals.parseTitle(' "<think>ignore</think>  Release notes  " ')
   const fallback = titleMiddlewareInternals.fallbackTitle(
@@ -73,5 +111,15 @@ test("title middleware detects the first user and assistant messages", () => {
       title: null
     }),
     false
+  )
+
+  assert.equal(
+    titleMiddlewareInternals.hasPendingToolCalls(
+      new AIMessage({
+        content: "",
+        tool_calls: [{ args: {}, id: "tool-call-1", name: "suggest_personal_memory" }]
+      })
+    ),
+    true
   )
 })

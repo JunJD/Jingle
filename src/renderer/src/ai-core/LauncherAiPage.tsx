@@ -25,6 +25,7 @@ import { useAiThread } from "./useAiThread"
 import { useLauncherAiActions } from "./useLauncherAiActions"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
+import { useThreadSelector } from "@/lib/thread-context"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
 import type { ComposerAreaHandle } from "@/composer-area"
@@ -82,6 +83,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const { inputRef, setInputStatus } = surface
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showModelPicker, setShowModelPicker] = useState(false)
+  const runId = useThreadSelector(threadId, (state) => state?.runId ?? null)
   const currentThreadTitle = useHistoryShellStore((state) => {
     if (!threadId) {
       return null
@@ -340,6 +342,8 @@ export function LauncherAiPage(): React.JSX.Element {
             onBranch={handleBranchChat}
             onRetry={retry}
             pendingApproval={pendingApproval}
+            runId={runId}
+            threadId={threadId}
             todos={conversation.todos}
           />
         ) : (

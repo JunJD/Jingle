@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react"
-import { Keyboard, KeyRound, Palette, Puzzle, Settings2 } from "lucide-react"
+import { Brain, Keyboard, KeyRound, Palette, Puzzle, Settings2 } from "lucide-react"
 import type { SettingsWindowTab, SettingsWindowTarget } from "@shared/settings-window"
 import { useI18n } from "../lib/i18n"
 import { AppearanceTab } from "./AppearanceTab"
 import { getSettingsCopy } from "./copy"
 import { ExtensionsTab } from "./ExtensionsTab"
 import { GeneralTab } from "./GeneralTab"
+import { MemoryTab } from "./MemoryTab"
 import { ProviderTab, preloadProviderTabData } from "./ProviderTab"
 import { ShortcutsTab } from "./ShortcutsTab"
 
@@ -84,6 +85,15 @@ export default function SettingsApp(): React.JSX.Element {
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab("memory")}
+            data-settings-tab="memory"
+            className={getSettingsTabClassName(activeTab === "memory")}
+          >
+            <Brain className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+            {copy.tabs.memory}
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab("provider")}
             data-settings-tab="provider"
             className={getSettingsTabClassName(activeTab === "provider")}
@@ -131,6 +141,10 @@ export default function SettingsApp(): React.JSX.Element {
               focusTarget={focusTarget}
               onFocusTargetConsumed={handleFocusTargetConsumed}
             />
+          </div>
+        ) : activeTab === "memory" ? (
+          <div className={settingsScrollPaneClassName}>
+            <MemoryTab locale={locale} />
           </div>
         ) : activeTab === "shortcuts" ? (
           <div className={settingsScrollPaneClassName}>

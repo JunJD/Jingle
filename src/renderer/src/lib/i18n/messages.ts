@@ -34,6 +34,13 @@ export interface AppCopy {
     describeOutcome: string
     dismissError: string
     inputNeedsWorkspace: string
+    memoryTemporaryOff: string
+    memoryTemporaryOn: string
+    pendingWorkspaceMemoryBlocksWorkspaceChange: string
+    pendingMemoryAccept: string
+    pendingMemoryReject: string
+    pendingMemoryTitle: string
+    includedMemoriesTitle: (count: number) => string
     messagePlaceholder: string
     newThreadEyebrow: string
     selectWorkspace: string
@@ -254,6 +261,14 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       describeOutcome: "描述你想达成的结果。workspace 和 tools 会随后接上。",
       dismissError: "关闭错误",
       inputNeedsWorkspace: "请先选择一个 workspace 文件夹，再发送消息。",
+      memoryTemporaryOff: "使用记忆",
+      memoryTemporaryOn: "临时模式",
+      pendingWorkspaceMemoryBlocksWorkspaceChange:
+        "当前对话有待确认的工作区记忆。请先保存或忽略这些记忆，再更换 workspace。",
+      pendingMemoryAccept: "保存",
+      pendingMemoryReject: "忽略",
+      pendingMemoryTitle: "待确认记忆",
+      includedMemoriesTitle: (count) => `本轮纳入了 ${count} 条记忆`,
       messagePlaceholder: "给 Agent 发送消息...",
       newThreadEyebrow: "新对话",
       selectWorkspace: "选择 workspace",
@@ -491,6 +506,15 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       describeOutcome: "Describe the outcome you want. The workspace and tools will follow.",
       dismissError: "Dismiss error",
       inputNeedsWorkspace: "Please select a workspace folder before sending messages.",
+      memoryTemporaryOff: "Use memory",
+      memoryTemporaryOn: "Temporary",
+      pendingWorkspaceMemoryBlocksWorkspaceChange:
+        "This conversation has pending workspace memories. Save or ignore them before changing workspace.",
+      pendingMemoryAccept: "Save",
+      pendingMemoryReject: "Ignore",
+      pendingMemoryTitle: "Pending Memory",
+      includedMemoriesTitle: (count) =>
+        `${count} memory${count === 1 ? "" : "ies"} included`,
       messagePlaceholder: "Message the agent...",
       newThreadEyebrow: "New Thread",
       selectWorkspace: "Select workspace",

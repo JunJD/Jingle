@@ -1,6 +1,8 @@
 import { AlertCircle, ArrowDown, Loader2, X } from "lucide-react"
 import { Messages } from "@/components/chat/Messages"
 import { ChatTodos } from "@/components/chat/ChatTodos"
+import { IncludedMemoriesPanel } from "@/components/chat/IncludedMemoriesPanel"
+import { MemoryReviewPanel } from "@/components/chat/MemoryReviewPanel"
 import type { HITLDecision, HITLRequest, Message, ThreadForkState, Todo } from "@/types"
 import { useI18n } from "@/lib/i18n"
 import { useStickToBottom } from "use-stick-to-bottom"
@@ -91,6 +93,8 @@ export function LauncherAiConversation(props: {
   onBranch?: (messageId?: string) => Promise<void>
   onRetry: () => Promise<void>
   pendingApproval: HITLRequest | null
+  runId: string | null
+  threadId: string
   todos: Todo[]
 }): React.JSX.Element {
   const { copy } = useI18n()
@@ -109,6 +113,8 @@ export function LauncherAiConversation(props: {
     onBranch,
     onRetry,
     pendingApproval,
+    runId,
+    threadId,
     todos
   } = props
 
@@ -146,6 +152,10 @@ export function LauncherAiConversation(props: {
             )}
 
             {isLoading && todos.length > 0 && <ChatTodos todos={todos} />}
+
+            {!isLoading && <IncludedMemoriesPanel runId={runId} />}
+
+            {!isLoading && <MemoryReviewPanel threadId={threadId} />}
 
             {error && !isLoading && (
               <div className="flex items-start gap-[var(--ow-gap-md)] border-l-[3px] border-destructive bg-destructive/8 px-[var(--ow-space-4)] py-[var(--ow-space-3)]">

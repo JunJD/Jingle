@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test, { mock } from "node:test"
@@ -33,6 +33,40 @@ test.beforeEach(async () => {
   await closeDatabase()
   await initializeDatabase()
   await getPrismaClient().thread.deleteMany()
+  await getPrismaClient().agentMemory.deleteMany()
+})
+
+test("database startup interrupts agent state left active by a previous process", async () => {
+  const {
+    closeDatabase,
+    createRun,
+    createThread,
+    getRun,
+    getThread,
+    initializeDatabase,
+    updateThread
+  } = await loadDbModules()
+  const consoleWarn = mock.method(console, "warn", () => {})
+  const threadId = "thread-startup-recovery"
+  const runId = "run-startup-recovery"
+
+  try {
+    await createThread(threadId)
+    await createRun(runId, threadId, { status: "running" })
+    await updateThread(threadId, { status: "busy" })
+
+    await closeDatabase()
+    await initializeDatabase()
+
+    const run = await getRun(runId)
+    const thread = await getThread(threadId)
+
+    assert.equal(run?.status, "interrupted")
+    assert.equal(thread?.status, "interrupted")
+    assert.equal(consoleWarn.mock.callCount(), 1)
+  } finally {
+    consoleWarn.mock.restore()
+  }
 })
 
 test.after(async () => {
@@ -164,6 +198,81 @@ test("agent resume keeps HITL request pending when resumed stream fails before f
   )
 })
 
+test("agent resume rejects workspace mismatch before mutating the run", async () => {
+  const { createRun, createThread, getRun, upsertHitlRequest } = await loadDbModules()
+  const { AgentService } = await import("../../src/main/agent/service")
+  const consoleLog = mock.method(console, "log", () => {})
+  const consoleError = mock.method(console, "error", () => {})
+
+  const originalWorkspacePath = await mkdtemp(join(openworkHome, "workspace-original-"))
+  const currentWorkspacePath = await mkdtemp(join(openworkHome, "workspace-current-"))
+  const threadId = "thread-resume-workspace-mismatch"
+  const runId = "run-resume-workspace-mismatch"
+  const requestId = "request-resume-workspace-mismatch"
+  await createThread(threadId, { metadata: { workspacePath: currentWorkspacePath } })
+  await createRun(runId, threadId, {
+    metadata: {
+      openworkMemoryContextSnapshot: {
+        canonicalWorkspacePath: originalWorkspacePath,
+        generatedAt: 1,
+        items: [],
+        workspaceIdentity: {
+          canonicalWorkspacePath: originalWorkspacePath,
+          displayName: "original",
+          workspaceKey: originalWorkspacePath
+        },
+        workspaceKey: originalWorkspacePath
+      }
+    },
+    status: "interrupted"
+  })
+  await upsertHitlRequest({
+    request_id: requestId,
+    thread_id: threadId,
+    run_id: runId,
+    tool_call_id: "tool-call-resume-workspace-mismatch",
+    tool_name: "write_file",
+    tool_args: { path: `${currentWorkspacePath}/approval.txt` },
+    allowed_decisions: ["approve", "reject"],
+    status: "pending"
+  })
+
+  const events: Array<{ details?: string[]; type: string }> = []
+  try {
+    await new AgentService().resume(
+      {
+        command: {
+          resume: {
+            request_id: requestId,
+            tool_call_id: "tool-call-resume-workspace-mismatch",
+            type: "approve"
+          }
+        },
+        modelId: "bdd",
+        threadId
+      },
+      {
+        send: (event) =>
+          events.push({
+            details: "details" in event ? event.details : undefined,
+            type: event.type
+          })
+      }
+    )
+  } finally {
+    consoleError.mock.restore()
+    consoleLog.mock.restore()
+  }
+
+  const run = await getRun(runId)
+  assert.equal(run?.status, "interrupted")
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["error"]
+  )
+  assert.equal(events[0].details?.some((detail) => detail.includes("fork_current_workspace")), true)
+})
+
 test("run failure preserves interrupted status when pending HITL remains", async () => {
   const { createRun, createThread, getRun, getThread, upsertHitlRequest } = await loadDbModules()
   const { markRunFailed } = await import("../../src/main/agent/persistence")
@@ -272,6 +381,323 @@ test("agent run metadata snapshots permission mode and preserves it through resu
     aiCapabilitiesSnapshot
   )
   assert.match(resumedRun?.metadata ?? "", /request-1/)
+})
+
+test("personal memory suggestions require acceptance before becoming active memory", async () => {
+  const { createRun, createThread } = await loadDbModules()
+  const {
+    acceptAgentMemorySuggestion,
+    createAgentMemorySuggestion,
+    listAgentMemoryInclusionsForRun,
+    listAgentMemories,
+    listAgentMemorySuggestions,
+    recordAgentMemoryInclusions
+  } = await import("../../src/main/db/agent-memory")
+
+  const threadId = "thread-memory"
+  const runId = "run-memory"
+  await createThread(threadId)
+  await createRun(runId, threadId)
+
+  const suggestion = await createAgentMemorySuggestion({
+    content: "User prefers concise implementation notes.",
+    reason: "The user asked for developer-oriented documents.",
+    scope: "global",
+    sourceRunId: runId,
+    threadId,
+    type: "about_me"
+  })
+
+  const pendingSuggestions = await listAgentMemorySuggestions({
+    status: "pending",
+    threadId
+  })
+  const activeMemoriesBeforeAcceptance = await listAgentMemories({ status: "active" })
+
+  assert.equal(pendingSuggestions.length, 1)
+  assert.equal(pendingSuggestions[0].suggestionId, suggestion.suggestionId)
+  assert.equal(activeMemoriesBeforeAcceptance.length, 0)
+
+  const memory = await acceptAgentMemorySuggestion(suggestion.suggestionId)
+  const activeMemories = await listAgentMemories({ status: "active" })
+  const acceptedSuggestions = await listAgentMemorySuggestions({
+    status: "accepted",
+    threadId
+  })
+
+  assert.equal(memory.source, "agent_suggestion")
+  assert.equal(activeMemories.length, 1)
+  assert.equal(activeMemories[0].memoryId, memory.memoryId)
+  assert.equal(acceptedSuggestions.length, 1)
+
+  await recordAgentMemoryInclusions({
+    memoryIds: [memory.memoryId, memory.memoryId],
+    runId,
+    threadId
+  })
+  const inclusions = await listAgentMemoryInclusionsForRun(runId)
+
+  assert.equal(inclusions.length, 1)
+  assert.equal(inclusions[0].memoryId, memory.memoryId)
+})
+
+test("personal memory persistence normalizes scope workspace ownership", async () => {
+  const {
+    acceptAgentMemorySuggestion,
+    createAgentMemory,
+    createAgentMemorySuggestion,
+    updateAgentMemory
+  } = await import("../../src/main/db/agent-memory")
+
+  const globalMemory = await createAgentMemory({
+    content: "Global memory ignores workspace keys.",
+    scope: "global",
+    type: "about_me",
+    workspaceKey: repoRoot
+  })
+  assert.equal(globalMemory.workspaceKey, null)
+
+  await assert.rejects(
+    createAgentMemory({
+      content: "Workspace memory needs a workspace key.",
+      scope: "workspace",
+      type: "workspace_context"
+    }),
+    /Workspace-scoped memory requires workspaceKey/
+  )
+
+  const workspaceSuggestion = await createAgentMemorySuggestion({
+    content: "Workspace suggestion can be accepted globally.",
+    scope: "workspace",
+    type: "workspace_context",
+    workspaceKey: repoRoot
+  })
+  const acceptedAsGlobal = await acceptAgentMemorySuggestion(workspaceSuggestion.suggestionId, {
+    scope: "global"
+  })
+  assert.equal(acceptedAsGlobal.scope, "global")
+  assert.equal(acceptedAsGlobal.workspaceKey, null)
+
+  await assert.rejects(
+    updateAgentMemory(globalMemory.memoryId, { scope: "workspace" }),
+    /Workspace-scoped memory requires workspaceKey/
+  )
+})
+
+test("accepting workspace memory suggestions preserves suggestion workspace ownership by default", async () => {
+  const { acceptAgentMemorySuggestion, createAgentMemorySuggestion } = await import(
+    "../../src/main/db/agent-memory"
+  )
+
+  const suggestion = await createAgentMemorySuggestion({
+    content: "Workspace A uses pnpm.",
+    scope: "workspace",
+    type: "workspace_context",
+    workspaceKey: "workspace-a"
+  })
+  const memory = await acceptAgentMemorySuggestion(suggestion.suggestionId)
+
+  assert.equal(memory.scope, "workspace")
+  assert.equal(memory.workspaceKey, "workspace-a")
+})
+
+test("workspace memory suggestions cannot be accepted from a different thread workspace", async () => {
+  const { createAgentMemorySuggestion } = await import("../../src/main/db/agent-memory")
+  const { createThread } = await loadDbModules()
+  const { OpenworkMemoryService } = await import("../../src/main/openwork-memory/service")
+
+  await createThread("thread-workspace-a", {
+    metadata: { workspacePath: join(openworkHome, "workspace-a") }
+  })
+  const suggestion = await createAgentMemorySuggestion({
+    content: "Workspace A uses pnpm.",
+    scope: "workspace",
+    threadId: "thread-workspace-a",
+    type: "workspace_context",
+    workspaceKey: join(openworkHome, "workspace-b")
+  })
+
+  await assert.rejects(
+    new OpenworkMemoryService().acceptSuggestion(suggestion.suggestionId, {}),
+    /does not belong to the current workspace/
+  )
+})
+
+test("workspace changes are blocked while thread has pending workspace memory suggestions", async () => {
+  const { createAgentMemorySuggestion } = await import("../../src/main/db/agent-memory")
+  const { createThread, getThread } = await loadDbModules()
+  const { OpenworkMemoryService } = await import("../../src/main/openwork-memory/service")
+  const { WorkspaceRepository } = await import("../../src/main/workspace/repository")
+  const { WorkspaceService } = await import("../../src/main/workspace/service")
+  const threadId = "thread-pending-workspace-memory-guard"
+
+  await createThread(threadId, {
+    metadata: { workspacePath: "workspace-a" }
+  })
+  await createAgentMemorySuggestion({
+    content: "Workspace A uses pnpm.",
+    scope: "workspace",
+    threadId,
+    type: "workspace_context",
+    workspaceKey: "workspace-a"
+  })
+
+  const service = new WorkspaceService(new WorkspaceRepository(), new OpenworkMemoryService())
+
+  await assert.rejects(
+    service.setWorkspacePath({
+      path: "workspace-b",
+      threadId
+    }),
+    /Resolve pending workspace memories/
+  )
+
+  const thread = await getThread(threadId)
+  const metadata = JSON.parse(thread?.metadata ?? "{}") as { workspacePath?: string }
+  assert.equal(metadata.workspacePath, "workspace-a")
+})
+
+test("agent run memory snapshot stores frozen context content", async () => {
+  const { createRun, createThread, getRun } = await loadDbModules()
+  const { beginAgentRun } = await import("../../src/main/agent/persistence")
+  const { OpenworkMemoryService } = await import("../../src/main/openwork-memory/service")
+  const { OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } = await import(
+    "../../src/shared/openwork-memory"
+  )
+
+  const service = new OpenworkMemoryService()
+  const threadId = "thread-memory-snapshot"
+  const workspaceIdentity = {
+    canonicalWorkspacePath: repoRoot,
+    displayName: "openwork",
+    workspaceKey: repoRoot
+  }
+  const contextPack = {
+    canonicalWorkspacePath: repoRoot,
+    generatedAt: 1,
+    items: [
+      {
+        content: "Freeze this personal memory body in run metadata.",
+        id: "memory:memory-snapshot",
+        kind: "about_me" as const,
+        scope: "global" as const,
+        sourceLabel: "Global personal memory",
+        sourceType: "structured" as const,
+        structuredMemoryId: "memory-snapshot"
+      }
+    ],
+    workspaceIdentity,
+    workspaceKey: repoRoot
+  }
+  await createThread(threadId)
+  await createRun("run-memory-snapshot-source", threadId)
+
+  const { runId } = await beginAgentRun(threadId, "gpt-test", {
+    openworkMemoryContextSnapshot: service.createContextSnapshot(contextPack)
+  })
+  const run = await getRun(runId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  const snapshot = metadata[OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY] as {
+    items: Array<Record<string, unknown>>
+  }
+
+  assert.equal(run?.metadata?.includes("Freeze this personal memory body"), true)
+  assert.equal(snapshot.items[0]?.structuredMemoryId, "memory-snapshot")
+  assert.equal(snapshot.items[0]?.content, "Freeze this personal memory body in run metadata.")
+})
+
+test("memory context snapshot rebuild uses frozen file content", async () => {
+  const { OpenworkMemoryService } = await import("../../src/main/openwork-memory/service")
+  const { resolveOpenworkWorkspaceIdentity } = await import("../../src/main/workspace/identity")
+
+  const workspacePath = await mkdtemp(join(openworkHome, "workspace-memory-snapshot-"))
+  await mkdir(join(workspacePath, ".openwork"), { recursive: true })
+  await writeFile(join(workspacePath, ".openwork", "AGENTS.md"), "Workspace rule for resume.")
+
+  const service = new OpenworkMemoryService()
+  const contextPack = await service.buildContextPack({
+    workspaceIdentity: await resolveOpenworkWorkspaceIdentity(workspacePath)
+  })
+  const snapshot = service.createContextSnapshot(contextPack)
+  await writeFile(join(workspacePath, ".openwork", "AGENTS.md"), "Changed after snapshot.")
+  const rebuilt = service.rebuildContextPackFromSnapshot(snapshot)
+
+  assert.equal(
+    rebuilt?.items.some(
+      (item) => item.id === "workspace:agents" && item.content === "Workspace rule for resume."
+    ),
+    true
+  )
+})
+
+test("memory off and temporary mode keep file context but exclude structured memory", async () => {
+  const { createAgentMemory } = await import("../../src/main/db/agent-memory")
+  const { OpenworkMemoryService } = await import("../../src/main/openwork-memory/service")
+  const { resolveOpenworkWorkspaceIdentity } = await import("../../src/main/workspace/identity")
+  const { setOpenworkMemorySettings } = await import("../../src/main/preferences")
+
+  const workspacePath = await mkdtemp(join(openworkHome, "workspace-memory-off-"))
+  await mkdir(join(workspacePath, ".openwork"), { recursive: true })
+  await writeFile(join(workspacePath, ".openwork", "AGENTS.md"), "Workspace rule stays active.")
+  const workspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
+  await createAgentMemory({
+    content: "Structured memory should be disabled.",
+    scope: "global",
+    type: "about_me"
+  })
+
+  const service = new OpenworkMemoryService()
+  setOpenworkMemorySettings({ useMemory: false })
+  const memoryOffPack = await service.buildContextPack({ workspaceIdentity })
+  const temporaryPack = await service.buildContextPack({ temporaryMode: true, workspaceIdentity })
+  setOpenworkMemorySettings({ useMemory: true })
+
+  assert.equal(
+    memoryOffPack?.items.some((item) => item.id === "workspace:agents"),
+    true
+  )
+  assert.equal(
+    memoryOffPack?.items.some((item) => item.kind === "about_me"),
+    false
+  )
+  assert.equal(
+    temporaryPack?.items.some((item) => item.id === "workspace:agents"),
+    true
+  )
+  assert.equal(
+    temporaryPack?.items.some((item) => item.kind === "about_me"),
+    false
+  )
+})
+
+test("memory context snapshots truncate large file context", async () => {
+  const { OpenworkMemoryService } = await import("../../src/main/openwork-memory/service")
+  const service = new OpenworkMemoryService()
+  const workspaceIdentity = {
+    canonicalWorkspacePath: repoRoot,
+    displayName: "openwork",
+    workspaceKey: repoRoot
+  }
+  const snapshot = service.createContextSnapshot({
+    canonicalWorkspacePath: repoRoot,
+    generatedAt: 1,
+    items: [
+      {
+        content: "x".repeat(60_000),
+        id: "workspace:agents",
+        kind: "rules",
+        scope: "workspace",
+        sourceLabel: "Workspace AGENTS.md",
+        sourceType: "file"
+      }
+    ],
+    workspaceIdentity,
+    workspaceKey: repoRoot
+  })
+
+  assert.equal(snapshot?.snapshotTruncated, true)
+  assert.equal(snapshot?.items[0].truncated, true)
+  assert.equal(snapshot?.items[0].content.length, 8_000)
 })
 
 test("run metadata updates preserve loaded extension snapshots and resume metadata", async () => {
