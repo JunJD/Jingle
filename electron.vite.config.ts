@@ -1,5 +1,5 @@
 import { resolve } from "path"
-import { readFileSync, copyFileSync, cpSync, existsSync, mkdirSync } from "fs"
+import { readFileSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "fs"
 import { defineConfig } from "electron-vite"
 import { buildSync } from "esbuild"
 import react from "@vitejs/plugin-react"
@@ -14,8 +14,10 @@ function copyResources(): { name: string; closeBundle: () => void } {
     closeBundle(): void {
       const srcIcon = resolve("resources/icon.png")
       const srcAssets = resolve("resources/assets")
+      const srcExtensionAssets = resolve("src/extensions")
       const destDir = resolve("out/resources")
       const destAssets = resolve("out/resources/assets")
+      const destExtensionAssets = resolve("out/resources/extensions")
       const destIcon = resolve("out/resources/icon.png")
       const nativeDestDir = resolve("out/native")
       const nativeSources = [
@@ -40,6 +42,21 @@ function copyResources(): { name: string; closeBundle: () => void } {
           mkdirSync(destDir, { recursive: true })
         }
         cpSync(srcAssets, destAssets, { recursive: true })
+      }
+
+      if (existsSync(srcExtensionAssets)) {
+        const extensionAssetDirs = readdirSync(srcExtensionAssets, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => entry.name)
+
+        for (const extensionName of extensionAssetDirs) {
+          const sourceAssetDir = resolve(srcExtensionAssets, extensionName, "assets")
+          if (existsSync(sourceAssetDir)) {
+            const targetAssetDir = resolve(destExtensionAssets, extensionName, "assets")
+            rmSync(targetAssetDir, { recursive: true, force: true })
+            cpSync(sourceAssetDir, targetAssetDir, { recursive: true })
+          }
+        }
       }
 
       for (const nativeSourceName of nativeSources) {

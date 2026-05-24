@@ -9,7 +9,6 @@ import type { LauncherInputElement } from "@launcher-shell/input-element"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 
 export interface LauncherInputProps extends PlaceholdersAndVanishInputProps {
-  readonly density?: "default" | "compact"
   readonly expanded?: boolean
   readonly multiline?: boolean
   readonly status?: LauncherInputStatus
@@ -35,7 +34,6 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
   function LauncherInput(
     {
       className,
-      density = "default",
       expanded = false,
       multiline = false,
       onCompositionEnd,
@@ -50,7 +48,6 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
     ref
   ) {
     const isComposingRef = useRef(false)
-    const isCompact = density === "compact"
     const isExpandedMultiline = multiline && expanded
 
     return (
@@ -58,7 +55,7 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
         className={cn(
           "launcher-input flex min-w-0 flex-1 items-center",
           isExpandedMultiline && "items-start",
-          isCompact ? "gap-[var(--ow-gap-sm)]" : "gap-[var(--ow-space-2-5)]"
+          "gap-[var(--ow-gap-sm)]"
         )}
         data-status={status}
       >
@@ -67,9 +64,7 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
           aria-busy={status === "idle" ? undefined : true}
           multiline={multiline}
           className={cn(
-            isCompact
-              ? "min-w-0 border-0 bg-transparent px-[var(--ow-space-1)] py-0 [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] shadow-none"
-              : "min-w-0 border-0 bg-transparent px-[var(--ow-space-1-5)] py-0 [font-size:var(--ow-font-title)] font-medium leading-[var(--ow-line-control-md)] shadow-none",
+            "min-w-0 border-0 bg-transparent px-[var(--ow-space-1)] py-0 [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] shadow-none",
             multiline
               ? cn(
                   "resize-none overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] scrollbar-hide",
@@ -77,9 +72,7 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
                     ? "min-h-[var(--launcher-ai-composer-expanded-input-min-h)] max-h-[var(--launcher-ai-composer-expanded-input-max-h)] py-[var(--ow-space-2-5)] leading-[var(--ow-line-chat)]"
                     : "min-h-[var(--ow-control-h-sm)] max-h-[40px] py-[3px] leading-[20px]"
                 )
-              : isCompact
-                ? "h-[var(--ow-control-h-sm)]"
-                : "h-[var(--ow-control-h-md)]",
+              : "h-[var(--ow-control-h-sm)]",
             "focus-visible:ring-0 focus-visible:ring-offset-0",
             "placeholder:text-transparent",
             className
@@ -92,10 +85,8 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
                     ? "items-start pt-[var(--ow-space-2-5)] leading-[var(--ow-line-chat)]"
                     : "leading-[20px]"
                 )
-              : isCompact
-                ? "[font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] text-muted-foreground/52"
-                : "[font-size:var(--ow-font-title)] font-medium leading-[var(--ow-line-control-md)] text-muted-foreground/55",
-            isCompact ? "px-[var(--ow-space-1)]" : "px-[var(--ow-space-1-5)]",
+              : "[font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] text-muted-foreground/52",
+            "px-[var(--ow-space-1)]",
             placeholderClassName
           )}
           data-status={status}
@@ -136,9 +127,7 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
             aria-hidden="true"
             className={cn(
               "relative flex shrink-0 items-center justify-center rounded-full border backdrop-blur-sm transition",
-              isCompact
-                ? "h-[var(--ow-icon-md)] w-[var(--ow-icon-md)]"
-                : "h-[var(--ow-icon-lg)] w-[var(--ow-icon-lg)]",
+              "h-[var(--ow-icon-md)] w-[var(--ow-icon-md)]",
               status === "pending" &&
                 "border-status-warning/25 bg-status-warning/10 text-status-warning",
               status === "tooling" &&
@@ -150,10 +139,7 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
                 <span className="absolute inset-[-3px] rounded-full border border-status-info/35" />
                 <span className="absolute inset-0 rounded-full bg-status-info/18 animate-ping" />
                 <Loader2
-                  className={cn(
-                    "relative animate-spin",
-                    isCompact ? "size-[var(--ow-icon-compact)]" : "size-[var(--ow-icon-sm)]"
-                  )}
+                  className="relative size-[var(--ow-icon-compact)] animate-spin"
                   strokeWidth={2.25}
                 />
               </>

@@ -46,6 +46,7 @@ export const DEFAULT_HOME_COMMAND: LauncherBuiltInCommandAddress = {
 export interface LauncherIndexedCommand {
   address: LauncherCommandAddress
   description: string
+  icon?: string
   iconName?: string
   keywords: string[]
   ownerTitle: string
@@ -113,6 +114,7 @@ export function listLauncherCommands(): LauncherIndexedCommand[] {
           commandName: command.name
         }),
         description: command.description ?? "",
+        icon: command.icon,
         iconName: command.iconName,
         keywords: command.keywords ?? [],
         ownerTitle: owner.manifest.displayName,
@@ -126,6 +128,7 @@ export function listLauncherCommands(): LauncherIndexedCommand[] {
           extensionName: owner.manifest.id as LauncherExtensionName
         }),
         description: command.description ?? "",
+        icon: command.icon,
         iconName: command.iconName,
         keywords: command.keywords ?? [],
         ownerTitle: owner.manifest.displayName,

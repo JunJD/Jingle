@@ -1,20 +1,24 @@
 import { HumanMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
-import { readSourceProfilesSnapshotFromMetadata } from "@shared/extension-sources"
 import { normalizeComposerMessageRefs, summarizeMessageContent } from "@shared/message-content"
 import { OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } from "@shared/openwork-memory"
+import { readRunExtensionAiCapabilitiesSnapshotFromMetadata } from "@shared/extension-sources"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import {
-  createNativeExtensionSourceBindingsForRefs,
-  hydrateNativeExtensionSourceBindings
+  hydrateNativeExtensionAiCapabilities,
+  listNativeExtensionAiCapabilityCatalog,
+  resolveNativeExtensionAiCapabilityForExtensionName,
+  resolveNativeExtensionAiCapabilitiesForRefs
 } from "@extensions/sources"
+import { getResolvedNativeExtensionPreferenceRecord } from "../preferences"
 import {
   beginAgentRun,
   finalizeRunWithoutCheckpoint,
   markRunAborted,
   markRunFailed,
   resumeAgentRun,
-  syncRunFromLatestCheckpoint
+  syncRunFromLatestCheckpoint,
+  updateRunExtensionAiCapabilitiesSnapshot
 } from "./persistence"
 import { isAbortLikeError, isModelAuthenticationError, normalizeAgentRuntimeError } from "./errors"
 import {
@@ -483,7 +487,18 @@ export class AgentService {
 
       const normalizedRefs = normalizeComposerMessageRefs(message.additional_kwargs?.refs)
       const permissionMode = requestedPermissionMode ?? readThreadPermissionMode(thread)
-      const sourceBindings = createNativeExtensionSourceBindingsForRefs(normalizedRefs)
+      const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefs(normalizedRefs, {
+        getPreferences: getResolvedNativeExtensionPreferenceRecord,
+        permissionMode,
+        platform: process.platform
+      })
+      const aiCapabilityCatalog = listNativeExtensionAiCapabilityCatalog(process.platform)
+      const getAiCapabilityByExtensionName = (extensionName: string) =>
+        resolveNativeExtensionAiCapabilityForExtensionName(extensionName, {
+          getPreferences: getResolvedNativeExtensionPreferenceRecord,
+          permissionMode,
+          platform: process.platform
+        })
       const workspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
       const openworkMemoryContextPack = await this.openworkMemoryService.buildContextPack({
         temporaryMode,
@@ -494,8 +509,8 @@ export class AgentService {
         openworkMemoryContextSnapshot:
           this.openworkMemoryService.createContextSnapshot(openworkMemoryContextPack),
         openworkMemoryTemporaryMode: openworkMemoryContextPack?.temporaryMode === true,
-        permissionMode,
-        sourceBindings
+        aiCapabilities,
+        permissionMode
       })
       this.activeRuns.set(threadId, { controller: abortController, runId })
       sink.send({ type: "run_started", runId })
@@ -510,7 +525,15 @@ export class AgentService {
         openworkMemoryTemporaryMode: temporaryMode,
         openworkMemoryWorkspaceIdentity: workspaceIdentity,
         permissionMode,
-        sourceBindings
+        aiCapabilities,
+        aiCapabilityCatalog,
+        getAiCapabilityByExtensionName,
+        getExtensionPreferences: getResolvedNativeExtensionPreferenceRecord,
+        onLoadedAiCapabilitiesChanged: ({ aiCapabilities, permissionMode, runId }) =>
+          updateRunExtensionAiCapabilitiesSnapshot(runId, {
+            aiCapabilities,
+            permissionMode
+          })
       })
       const humanMessage = new HumanMessage({
         content: message.content,
@@ -530,7 +553,10 @@ export class AgentService {
 
       const stream = await runtime.agent.stream(
         initialState,
-        buildAgentRunConfig(threadId, runId, abortController)
+        buildAgentRunConfig(threadId, runId, abortController, {
+          modelId,
+          permissionMode
+        })
       )
       let interrupted = false
 
@@ -664,11 +690,13 @@ export class AgentService {
       const openworkMemoryContextPack =
         this.openworkMemoryService.rebuildContextPackFromSnapshot(openworkMemoryContextSnapshot)
       const workspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
-      const sourceProfiles = readSourceProfilesSnapshotFromMetadata(resumedRun?.metadata)
-      const sourceBindings =
-        sourceProfiles === null
+      const aiCapabilitySnapshots = readRunExtensionAiCapabilitiesSnapshotFromMetadata(
+        resumedRun?.metadata
+      )
+      const runtimeAiCapabilities =
+        aiCapabilitySnapshots === null
           ? []
-          : hydrateNativeExtensionSourceBindings(sourceProfiles)
+          : hydrateNativeExtensionAiCapabilities(aiCapabilitySnapshots)
       const runtime = await createAgentRuntime({
         threadId,
         runId,
@@ -679,9 +707,25 @@ export class AgentService {
         openworkMemoryTemporaryMode: openworkMemoryContextPack?.temporaryMode === true,
         openworkMemoryWorkspaceIdentity: workspaceIdentity,
         permissionMode,
-        sourceBindings
+        aiCapabilities: runtimeAiCapabilities,
+        aiCapabilityCatalog: listNativeExtensionAiCapabilityCatalog(process.platform),
+        getAiCapabilityByExtensionName: (extensionName: string) =>
+          resolveNativeExtensionAiCapabilityForExtensionName(extensionName, {
+            getPreferences: getResolvedNativeExtensionPreferenceRecord,
+            permissionMode,
+            platform: process.platform
+          }),
+        getExtensionPreferences: getResolvedNativeExtensionPreferenceRecord,
+        onLoadedAiCapabilitiesChanged: ({ aiCapabilities, permissionMode, runId }) =>
+          updateRunExtensionAiCapabilitiesSnapshot(runId, {
+            aiCapabilities,
+            permissionMode
+          })
       })
-      const config = buildAgentResumeConfig(threadId, runId, abortController)
+      const config = buildAgentResumeConfig(threadId, runId, abortController, {
+        modelId,
+        permissionMode
+      })
       const resolvedHitlDecision = {
         type: decision.type,
         request_id: resumeTarget.requestId,

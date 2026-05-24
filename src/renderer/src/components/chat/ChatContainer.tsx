@@ -22,7 +22,6 @@ import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
 import type { ComposerAreaHandle } from "@/composer-area"
-import type { ComposerMessageRef } from "@shared/message-content"
 
 interface ChatContainerProps {
   threadId: string
@@ -37,7 +36,6 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     []
   )
   const inputRef = useRef<ComposerAreaHandle>(null)
-  const composerRefsRef = useRef<ComposerMessageRef[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef = useRef(true)
   const [temporaryMode, setTemporaryMode] = useState(false)
@@ -116,13 +114,11 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   }
 
   const invokeWithComposerRefs = useCallback(async (): Promise<boolean> => {
+    const composer = inputRef.current
     const didInvoke = await invoke({
-      refs: composerRefsRef.current,
-      text: input
+      refs: composer?.getRefs() ?? [],
+      text: composer?.getModelText() ?? input
     })
-    if (didInvoke) {
-      composerRefsRef.current = []
-    }
     return didInvoke
   }, [input, invoke])
 
@@ -280,9 +276,6 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                     composerRef={inputRef}
                     mode="composer"
                     onKeyDown={handleKeyDown}
-                    onRefsChange={(refs) => {
-                      composerRefsRef.current = refs
-                    }}
                     placeholder={copy.chat.messagePlaceholder}
                     sourceMentions={sourceMentions}
                     className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"

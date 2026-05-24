@@ -13,8 +13,78 @@ import { viewport as workflowRunsViewport } from "./src/workflow-runs.meta"
 import { GITHUB_EXTENSION_ID, GITHUB_RPC_METHODS } from "./src/contracts"
 
 export const githubManifest = defineNativeExtensionManifest({
+  aiCapability: {
+    description: "GitHub issues, pull requests, repositories, notifications, and workflow runs.",
+    guide:
+      "Use this capability for GitHub work only after the user connects GitHub. If auth status is missing, explain that GitHub needs to be connected in Settings before you can inspect repositories, issues, pull requests, notifications, or workflow runs.",
+    id: "github",
+    instructions: [
+      "Use GitHub for issues, pull requests, repositories, notifications, and workflow runs.",
+      "If GitHub is not connected, explain that GitHub needs to be connected in Settings before you can inspect or modify GitHub data.",
+      "Use search qualifiers directly when the user gives repository, author, assignee, state, label, or text filters.",
+      "Create issues only when the user explicitly asks to create or file an issue.",
+      "Do not claim to have searched GitHub unless a GitHub tool was available and called."
+    ],
+    mention: {
+      label: "GitHub",
+      value: "github"
+    },
+    publicPreferenceNames: ["apiBaseUrl"],
+    requiredPreferenceNames: ["accessToken"],
+    title: "GitHub",
+    toolDisplays: {
+      createIssue: {
+        description: "Create a GitHub issue in a repository.",
+        title: "Create Issue"
+      },
+      listMyIssues: {
+        description: "List issues created by, assigned to, or mentioning the current user.",
+        title: "List My Issues"
+      },
+      listMyPullRequests: {
+        description:
+          "List pull requests authored by, assigned to, mentioning, reviewed by, or requesting review from the current user.",
+        title: "List My Pull Requests"
+      },
+      listNotifications: {
+        description: "List GitHub notifications for the current user.",
+        title: "List Notifications"
+      },
+      listRepositories: {
+        description: "List recently updated or starred repositories for the current user.",
+        title: "List Repositories"
+      },
+      listWorkflowRuns: {
+        description: "List recent GitHub Actions workflow runs for a repository.",
+        title: "List Workflow Runs"
+      },
+      searchIssues: {
+        description: "Search GitHub issues with GitHub search qualifiers.",
+        title: "Search Issues"
+      },
+      searchPullRequests: {
+        description: "Search GitHub pull requests with GitHub search qualifiers.",
+        title: "Search Pull Requests"
+      },
+      searchRepositories: {
+        description: "Search GitHub repositories with GitHub search qualifiers.",
+        title: "Search Repositories"
+      }
+    },
+    toolNames: [
+      "listMyIssues",
+      "listMyPullRequests",
+      "searchIssues",
+      "searchPullRequests",
+      "searchRepositories",
+      "listRepositories",
+      "listNotifications",
+      "listWorkflowRuns",
+      "createIssue"
+    ]
+  },
   capabilities: ["navigation", "rpc", "surface"],
-  iconName: "github",
+  icon: "assets/icon.svg",
   runtimeCapabilities: ["navigation", "preferences", "rpc", "settings", "shell"],
   preferences: [
     {
@@ -52,7 +122,6 @@ export const githubManifest = defineNativeExtensionManifest({
   commands: [
     {
       description: "List GitHub issues created by you, assigned to you, or mentioning you.",
-      iconName: "github",
       keywords: ["github", "issue", "issues", "pull request", "pr", "代码审查"],
       mode: "view",
       name: "my-issues",
@@ -93,7 +162,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "List your GitHub pull requests for review and tracking.",
-      iconName: "github",
       keywords: ["github", "pull requests", "pr", "merge", "review"],
       mode: "view",
       name: "my-pull-requests",
@@ -148,7 +216,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Search GitHub issues across repositories.",
-      iconName: "github",
       keywords: ["github", "search", "issue", "issues"],
       mode: "view",
       name: "search-issues",
@@ -159,7 +226,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Search GitHub pull requests across repositories.",
-      iconName: "github",
       keywords: ["github", "search", "pull request", "pr"],
       mode: "view",
       name: "search-pull-requests",
@@ -170,7 +236,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Search GitHub repositories.",
-      iconName: "github",
       keywords: ["github", "repository", "repo", "search"],
       mode: "view",
       name: "search-repositories",
@@ -204,7 +269,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Inspect recent GitHub Actions workflow runs for one of your repositories.",
-      iconName: "github",
       keywords: ["github", "actions", "workflow", "workflow runs", "ci", "build"],
       mode: "view",
       name: "workflow-runs",
@@ -215,7 +279,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Create a new issue in one of your GitHub repositories.",
-      iconName: "github",
       keywords: ["github", "create", "issue", "new issue"],
       mode: "view",
       name: "create-issue",
@@ -226,7 +289,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Create a pull request in one of your GitHub repositories.",
-      iconName: "github",
       keywords: ["github", "create", "pull request", "pr", "merge request"],
       mode: "view",
       name: "create-pull-request",
@@ -237,7 +299,7 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "List inbox notifications from all repositories or a selected repository.",
-      iconName: "bell",
+      icon: "assets/notifications.svg",
       keywords: ["github", "notifications", "inbox", "mentions"],
       mode: "view",
       name: "notifications",
@@ -248,7 +310,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Show repositories you worked on most recently.",
-      iconName: "github",
       keywords: ["github", "repositories", "recent", "repo"],
       mode: "view",
       name: "my-latest-repositories",
@@ -259,7 +320,6 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Show repositories you starred on GitHub.",
-      iconName: "github",
       keywords: ["github", "repositories", "starred", "repo"],
       mode: "view",
       name: "my-starred-repositories",
@@ -270,7 +330,7 @@ export const githubManifest = defineNativeExtensionManifest({
     },
     {
       description: "Show unread GitHub notifications in the menu bar.",
-      iconName: "bell",
+      icon: "assets/notifications.svg",
       keywords: ["github", "notifications", "menu bar", "tray"],
       mode: "menu-bar",
       name: "unread-notifications",

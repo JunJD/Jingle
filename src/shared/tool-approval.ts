@@ -40,13 +40,12 @@ export interface FileMutationToolApprovalItem {
 export interface ExtensionToolApprovalItem {
   access: ExtensionToolAccess
   args: Record<string, unknown>
+  capabilityDisplayName: string
+  capabilityId: string
   extensionName: string
   kind: "extension_tool"
   permissionMode: PermissionModeName
   reason: string
-  sourceDisplayName: string
-  sourceId: string
-  sourceProfileId: string
   toolName: string
   toolTitle: string
 }
@@ -163,13 +162,16 @@ export function parseToolApprovalItem(value: unknown): ToolApprovalItem | null {
     return {
       access: value.access,
       args: value.args,
+      capabilityDisplayName:
+        readOptionalString(value.capabilityDisplayName) ??
+        readOptionalString(value.sourceDisplayName) ??
+        "",
+      capabilityId:
+        readOptionalString(value.capabilityId) ?? readOptionalString(value.sourceId) ?? "",
       extensionName: readOptionalString(value.extensionName) ?? "",
       kind: "extension_tool",
       permissionMode: value.permissionMode,
       reason: readOptionalString(value.reason) ?? "",
-      sourceDisplayName: readOptionalString(value.sourceDisplayName) ?? "",
-      sourceId: readOptionalString(value.sourceId) ?? "",
-      sourceProfileId: readOptionalString(value.sourceProfileId) ?? "",
       toolName: value.toolName,
       toolTitle: readOptionalString(value.toolTitle) ?? value.toolName
     }

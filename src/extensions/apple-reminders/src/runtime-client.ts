@@ -8,6 +8,7 @@ import type {
   AppleRemindersData,
   CreateAppleReminderRequest,
   DeleteAppleReminderRequest,
+  GetAppleRemindersDataRequest,
   SetAppleReminderCompletedRequest,
   ShowAppleReminderRequest
 } from "./contracts"
@@ -29,7 +30,10 @@ export const appleRemindersRuntimeClient = createNativeExtensionClient(
       DeleteAppleReminderRequest,
       { reminderId: string }
     >(),
-    "get-data": defineNativeExtensionClientMethod<Record<string, never>, AppleRemindersData>(),
+    "get-data": defineNativeExtensionClientMethod<
+      GetAppleRemindersDataRequest,
+      AppleRemindersData
+    >(),
     "set-reminder-completed": defineNativeExtensionClientMethod<
       SetAppleReminderCompletedRequest,
       AppleReminder

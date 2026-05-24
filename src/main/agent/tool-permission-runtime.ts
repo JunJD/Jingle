@@ -11,6 +11,7 @@ import {
   type ToolApprovalItem
 } from "@shared/tool-approval"
 import { getFileMutationReview, isFileMutationToolName } from "@shared/file-mutation-review"
+import { assertExtensionAgentToolName } from "@shared/extension-sources"
 import { getAgentConfig } from "../preferences"
 import type { AgentConfig } from "../types"
 import { getDesktopAutomationPolicyDecision } from "./desktop-automation-policy"
@@ -158,6 +159,15 @@ async function evaluateExecuteTool(
   return requireApproval(args, await buildApprovalReview(toolName, args), policy.reason)
 }
 
+function isExtensionAgentToolName(toolName: string): boolean {
+  try {
+    assertExtensionAgentToolName(toolName)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function createToolPermissionRuntime(
   options: CreateToolPermissionRuntimeOptions = {}
 ): ToolPermissionRuntime {
@@ -195,9 +205,24 @@ export function createToolPermissionRuntime(
         return executeDecision
       }
 
-      const extensionToolPolicy = options.extensionToolPolicyProvider?.getPolicy(request.toolName)
-      if (extensionToolPolicy) {
-        const { decision } = extensionToolPolicy
+      if (request.toolName === "callExtensionTool") {
+        const extensionToolPolicyProvider = options.extensionToolPolicyProvider
+        if (!extensionToolPolicyProvider) {
+          return deny(
+            toolArgs,
+            "Extension tool unavailable. Extension tools must be loaded before callExtensionTool can run."
+          )
+        }
+
+        const extensionCallPolicy = extensionToolPolicyProvider.getCallToolPolicy(toolArgs)
+        if (!extensionCallPolicy) {
+          return deny(
+            toolArgs,
+            "Extension tool unavailable. Call loadExtension first, then call a listed extension tool."
+          )
+        }
+
+        const { decision, toolArgs: extensionToolArgs, binding } = extensionCallPolicy
 
         if (decision.disposition === "allow") {
           return allow(toolArgs, decision.reason)
@@ -209,8 +234,15 @@ export function createToolPermissionRuntime(
 
         return requireApproval(
           toolArgs,
-          options.extensionToolPolicyProvider?.getReview(request.toolName, toolArgs) ?? null,
+          extensionToolPolicyProvider.getReview(binding, extensionToolArgs),
           decision.reason
+        )
+      }
+
+      if (isExtensionAgentToolName(request.toolName)) {
+        return deny(
+          toolArgs,
+          "Extension tools must be called through callExtensionTool after the extension is loaded."
         )
       }
 

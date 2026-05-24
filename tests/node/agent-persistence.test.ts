@@ -273,57 +273,95 @@ test("agent resume rejects workspace mismatch before mutating the run", async ()
   assert.equal(events[0].details?.some((detail) => detail.includes("fork_current_workspace")), true)
 })
 
+test("run failure preserves interrupted status when pending HITL remains", async () => {
+  const { createRun, createThread, getRun, getThread, upsertHitlRequest } = await loadDbModules()
+  const { markRunFailed } = await import("../../src/main/agent/persistence")
+
+  const threadId = "thread-failed-with-pending-hitl"
+  const runId = "run-failed-with-pending-hitl"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+  await upsertHitlRequest({
+    request_id: "request-still-pending",
+    thread_id: threadId,
+    run_id: runId,
+    tool_call_id: "tool-call-still-pending",
+    tool_name: "callExtensionTool",
+    tool_args: {
+      args: {
+        reminderId: "reminder-2"
+      },
+      extensionName: "apple-reminders",
+      toolName: "deleteReminder"
+    },
+    allowed_decisions: ["approve", "reject"],
+    status: "pending"
+  })
+
+  await markRunFailed(threadId, runId, new Error("checkpoint write timed out"))
+
+  const run = await getRun(runId)
+  const thread = await getThread(threadId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  assert.equal(run?.status, "interrupted")
+  assert.equal(thread?.status, "interrupted")
+  assert.equal(metadata.error, "checkpoint write timed out")
+})
+
 test("agent run metadata snapshots permission mode and preserves it through resume", async () => {
   const { createThread, getRun } = await loadDbModules()
   const { beginAgentRun, resumeAgentRun } = await import("../../src/main/agent/persistence")
   const { readRunPermissionModeSnapshot } = await import("../../src/main/agent/permission-mode")
   const {
-    createRunSourceBindingsSnapshot,
-    readSourceProfilesSnapshotFromMetadata,
-    RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY,
-    RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY
+    createRunExtensionAiCapabilitiesSnapshot,
+    readRunExtensionAiCapabilitiesSnapshotFromMetadata,
+    RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY
   } = await import("../../src/shared/extension-sources")
-  const { createDefaultNativeExtensionSourceBindings } = await import("../../src/extensions/sources")
+  const { resolveNativeExtensionAiCapabilitiesForRefs } =
+    await import("../../src/extensions/sources")
 
   const threadId = "thread-permission"
   await createThread(threadId)
-  const sourceBindings = createDefaultNativeExtensionSourceBindings({
-    now: "2026-04-30T00:00:00.000Z",
-    platform: "darwin"
-  })
+  const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefs(
+    [
+      {
+        extensionName: "apple-reminders",
+        name: "Apple Reminders",
+        sourceId: "appleReminders",
+        type: "extension-source"
+      }
+    ],
+    {
+      permissionMode: "auto",
+      platform: "darwin"
+    }
+  )
 
   const { runId } = await beginAgentRun(threadId, "gpt-test", {
-    permissionMode: "auto",
-    sourceBindings
+    aiCapabilities,
+    permissionMode: "auto"
   })
   const createdRun = await getRun(runId)
   assert.equal(readRunPermissionModeSnapshot(createdRun), "auto")
   const createdMetadata = JSON.parse(createdRun?.metadata ?? "{}") as Record<string, unknown>
-  assert.deepEqual(
-    readSourceProfilesSnapshotFromMetadata(createdRun?.metadata),
-    sourceBindings.map((binding) => binding.profile)
-  )
-  const sourceProfilesSnapshot = createdMetadata[
-    RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY
-  ] as Array<Record<string, unknown>>
-  assert.equal("config" in sourceProfilesSnapshot[0], false)
-  assert.deepEqual(sourceProfilesSnapshot[0]?.publicConfig, {})
-  const runSourceBindingsSnapshot = createdMetadata[RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY]
-  assert.ok(Array.isArray(runSourceBindingsSnapshot))
-  const [firstSnapshot] = runSourceBindingsSnapshot as Array<Record<string, unknown>>
+  const aiCapabilitiesSnapshot =
+    createdMetadata[RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]
+  assert.ok(Array.isArray(aiCapabilitiesSnapshot))
+  const [firstSnapshot] = aiCapabilitiesSnapshot as Array<Record<string, unknown>>
   assert.equal(typeof firstSnapshot?.createdAt, "string")
+  assert.deepEqual(firstSnapshot?.publicConfigSnapshot, {})
+  const expectedAiCapabilitiesSnapshot = createRunExtensionAiCapabilitiesSnapshot({
+    aiCapabilities,
+    permissionMode: "auto",
+    runId
+  }).map((snapshot) => ({
+    ...snapshot,
+    createdAt: firstSnapshot?.createdAt
+  }))
+  assert.deepEqual(expectedAiCapabilitiesSnapshot, aiCapabilitiesSnapshot)
   assert.deepEqual(
-    [
-      {
-        ...createRunSourceBindingsSnapshot({
-          permissionMode: "auto",
-          runId,
-          sourceBindings
-        })[0],
-        createdAt: firstSnapshot?.createdAt
-      }
-    ],
-    runSourceBindingsSnapshot
+    readRunExtensionAiCapabilitiesSnapshotFromMetadata(createdRun?.metadata),
+    aiCapabilitiesSnapshot
   )
 
   await resumeAgentRun(threadId, runId, {
@@ -334,13 +372,13 @@ test("agent run metadata snapshots permission mode and preserves it through resu
   const resumedRun = await getRun(runId)
   assert.equal(readRunPermissionModeSnapshot(resumedRun), "auto")
   assert.deepEqual(
-    readSourceProfilesSnapshotFromMetadata(resumedRun?.metadata),
-    sourceBindings.map((binding) => binding.profile)
+    readRunExtensionAiCapabilitiesSnapshotFromMetadata(resumedRun?.metadata),
+    aiCapabilitiesSnapshot
   )
   const resumedMetadata = JSON.parse(resumedRun?.metadata ?? "{}") as Record<string, unknown>
   assert.deepEqual(
-    resumedMetadata[RUN_SOURCE_BINDINGS_SNAPSHOT_METADATA_KEY],
-    runSourceBindingsSnapshot
+    resumedMetadata[RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY],
+    aiCapabilitiesSnapshot
   )
   assert.match(resumedRun?.metadata ?? "", /request-1/)
 })
@@ -660,6 +698,60 @@ test("memory context snapshots truncate large file context", async () => {
   assert.equal(snapshot?.snapshotTruncated, true)
   assert.equal(snapshot?.items[0].truncated, true)
   assert.equal(snapshot?.items[0].content.length, 8_000)
+})
+
+test("run metadata updates preserve loaded extension snapshots and resume metadata", async () => {
+  const { createThread, getRun } = await loadDbModules()
+  const { beginAgentRun, resumeAgentRun, updateRunExtensionAiCapabilitiesSnapshot } =
+    await import("../../src/main/agent/persistence")
+  const { readRunExtensionAiCapabilitiesSnapshotFromMetadata } =
+    await import("../../src/shared/extension-sources")
+  const { resolveNativeExtensionAiCapabilitiesForRefs } =
+    await import("../../src/extensions/sources")
+
+  const threadId = "thread-extension-metadata-merge"
+  await createThread(threadId)
+
+  const { runId } = await beginAgentRun(threadId, "gpt-test", {
+    aiCapabilities: [],
+    permissionMode: "ask-to-edit"
+  })
+  const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefs(
+    [
+      {
+        extensionName: "apple-reminders",
+        name: "Apple Reminders",
+        sourceId: "appleReminders",
+        type: "extension-source"
+      }
+    ],
+    {
+      permissionMode: "ask-to-edit",
+      platform: "darwin"
+    }
+  )
+
+  await Promise.all([
+    updateRunExtensionAiCapabilitiesSnapshot(runId, {
+      aiCapabilities,
+      permissionMode: "ask-to-edit"
+    }),
+    resumeAgentRun(threadId, runId, {
+      requestId: "request-loaded-extension",
+      source: "resume"
+    })
+  ])
+
+  const run = await getRun(runId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  assert.equal(metadata.requestId, "request-loaded-extension")
+  assert.equal(metadata.source, "resume")
+  assert.deepEqual(
+    readRunExtensionAiCapabilitiesSnapshotFromMetadata(run?.metadata)?.map(
+      (snapshot) => snapshot.extensionName
+    ),
+    ["apple-reminders"]
+  )
 })
 
 test("syncRunFromLatestCheckpoint reads the latest checkpoint for that run only", async () => {

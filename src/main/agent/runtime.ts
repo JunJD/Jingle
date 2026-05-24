@@ -8,6 +8,7 @@ import {
 } from "deepagents"
 import { join } from "path"
 import { getAgentConfig } from "../preferences"
+import type { getResolvedNativeExtensionPreferenceRecord } from "../preferences"
 import { getOpenworkDir } from "../storage"
 import { PrismaCheckpointSaver } from "../checkpointer/prisma-saver"
 import { LocalSandbox } from "./local-sandbox"
@@ -35,10 +36,10 @@ import { createBddAgentRuntime } from "./bdd-runtime"
 import { nativeExtensionMainDefinitions } from "@extensions/main"
 import { nativeExtensionManifests } from "@extensions/index"
 import { createNativeExtensionToolRegistry } from "../extension-tools/native-extension-tools"
-import { createExtensionSourceRuntime } from "./extension-source-runtime"
+import { createExtensionAiRuntime } from "./extension-ai-runtime"
+import { buildAgentRuntimeTraceConfig } from "../observability"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
-import type { ExtensionSourceBinding } from "@shared/extension-sources"
 import type { OpenworkMemoryContextPack, OpenworkWorkspaceIdentity } from "@shared/openwork-memory"
 import {
   createOpenworkMemoryInclusionCollector,
@@ -46,6 +47,11 @@ import {
   type OpenworkMemoryInclusionCollector
 } from "../openwork-memory/middleware"
 import type { OpenworkMemoryService } from "../openwork-memory/service"
+import type {
+  ExtensionAiCapabilityCatalogItem,
+  ResolvedExtensionAiCapability
+} from "@shared/extension-sources"
+import type { LoadedExtensionAiCapabilitiesChange } from "./extension-ai-session"
 
 /**
  * Generate the full system prompt for the agent.
@@ -114,8 +120,14 @@ export interface CreateAgentRuntimeOptions {
   openworkMemoryWorkspaceIdentity?: OpenworkWorkspaceIdentity
   /** Permission mode snapshot for this run. */
   permissionMode?: PermissionModeName
-  /** Source bindings snapshot for this run. */
-  sourceBindings?: ExtensionSourceBinding[]
+  /** Resolved extension AI capabilities snapshot for this run. */
+  aiCapabilities?: ResolvedExtensionAiCapability[]
+  aiCapabilityCatalog?: ExtensionAiCapabilityCatalogItem[]
+  getAiCapabilityByExtensionName?: (extensionName: string) => ResolvedExtensionAiCapability | null
+  getExtensionPreferences?: typeof getResolvedNativeExtensionPreferenceRecord
+  onLoadedAiCapabilitiesChanged?: (
+    change: LoadedExtensionAiCapabilitiesChange
+  ) => Promise<void> | void
   /** Workspace path - REQUIRED for agent to operate on files */
   workspacePath: string
 }
@@ -139,7 +151,7 @@ export async function createAgentRuntime(
 ): Promise<AgentRuntimeHandle> {
   const { threadId, runId, modelId, workspacePath } = options
   const permissionMode = options.permissionMode ?? DEFAULT_PERMISSION_MODE
-  const sourceBindings = options.sourceBindings ?? []
+  const aiCapabilities = options.aiCapabilities ?? []
 
   if (!threadId) {
     throw new Error("Thread ID is required for checkpointing.")
@@ -186,13 +198,17 @@ export async function createAgentRuntime(
     classifier: commandClassifier,
     predictor: mutationPredictor
   })
-  const extensionSourceRuntime = createExtensionSourceRuntime({
+  const extensionAiRuntime = createExtensionAiRuntime({
+    aiCapabilities,
+    aiCapabilityCatalog: options.aiCapabilityCatalog,
+    getAiCapabilityByExtensionName: options.getAiCapabilityByExtensionName,
+    getExtensionPreferences: options.getExtensionPreferences,
+    onLoadedAiCapabilitiesChanged: options.onLoadedAiCapabilitiesChanged,
     permissionMode,
     registry: createNativeExtensionToolRegistry({
       definitions: nativeExtensionMainDefinitions,
       manifests: nativeExtensionManifests
     }),
-    sourceBindings,
     threadId,
     workspacePath
   })
@@ -284,14 +300,14 @@ The workspace root is: ${workspacePath}`
       ...(rootOpenworkMemoryRuntime ? [rootOpenworkMemoryRuntime.middleware] : []),
       createTitleMiddleware(),
       createDesktopAutomationToolsMiddleware(),
-      extensionSourceRuntime.middleware,
+      extensionAiRuntime.middleware,
       createGuardrailMiddleware({
         provider: guardrailProvider,
         threadId,
         workspacePath
       }),
       createToolApprovalMiddleware({
-        extensionToolPolicyProvider: extensionSourceRuntime.approvalPolicyProvider,
+        extensionToolPolicyProvider: extensionAiRuntime.approvalPolicyProvider,
         permissionMode
       })
     ] as const
@@ -352,7 +368,11 @@ The workspace root is: ${workspacePath}`
     ]
   }).withConfig({
     recursionLimit: 1e4,
-    metadata: { ls_integration: "openwork" }
+    ...buildAgentRuntimeTraceConfig({
+      aiCapabilities,
+      modelId,
+      permissionMode
+    })
   })
 
   console.log("[Runtime] Agent created with subagent middleware at:", workspacePath)

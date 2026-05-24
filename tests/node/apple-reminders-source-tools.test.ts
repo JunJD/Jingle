@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test, { mock } from "node:test"
-import { createExtensionSourceRuntime } from "../../src/main/agent/extension-source-runtime"
+import { createExtensionAiRuntime } from "../../src/main/agent/extension-ai-runtime"
 import { ExtensionToolExecutor } from "../../src/main/extension-tools/executor"
 import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
 import {
@@ -9,20 +9,15 @@ import {
 } from "../../src/extensions/apple-reminders/main/service"
 import { createAppleRemindersTools } from "../../src/extensions/apple-reminders/main/tools"
 import {
-  appleRemindersSourceDefinition,
-  createDefaultAppleRemindersSourceBinding,
-  createDefaultAppleRemindersSourceProfile
-} from "../../src/extensions/apple-reminders/main/source"
-import {
-  createNativeExtensionSourceBindingsForRefs,
-  hydrateNativeExtensionSourceBindings
+  listNativeExtensionAiCapabilityCatalog,
+  resolveNativeExtensionAiCapabilityForExtensionName,
+  resolveNativeExtensionAiCapabilitiesForRefs
 } from "../../src/extensions/sources"
 import {
   listNativeExtensionSourceMentions,
   nativeExtensionSourceMentions
 } from "../../src/extensions/source-mentions"
-
-const createdAt = "2026-04-30T00:00:00.000Z"
+import type { ComposerMessageRef } from "../../src/shared/message-content"
 
 const fakeReminder = {
   completionDate: null,
@@ -42,7 +37,8 @@ const fakeReminder = {
   title: "Ship source tools"
 } as const
 
-function createRegistry(): ExtensionToolRegistry {
+function createRegistry(): { getDataCalls: unknown[]; registry: ExtensionToolRegistry } {
+  const getDataCalls: unknown[] = []
   const registry = new ExtensionToolRegistry({
     knownExtensionNames: ["apple-reminders"]
   })
@@ -55,112 +51,341 @@ function createRegistry(): ExtensionToolRegistry {
         priority: input.priority ?? null,
         title: input.title
       }),
-      getData: async () => ({
-        lists: [fakeReminder.list],
-        reminders: [
-          fakeReminder,
-          {
-            ...fakeReminder,
-            id: "reminder-2",
-            isCompleted: true,
-            title: "Completed item"
-          }
-        ]
-      })
+      deleteReminder: async (input) => ({
+        reminderId: input.reminderId
+      }),
+      getData: async (input) => {
+        getDataCalls.push(input)
+        return {
+          lists: [fakeReminder.list],
+          reminders: [
+            fakeReminder,
+            {
+              ...fakeReminder,
+              id: "reminder-2",
+              isCompleted: true,
+              title: "Completed item"
+            }
+          ]
+        }
+      },
+      setReminderCompleted: async (input) => ({
+        ...fakeReminder,
+        completionDate: input.completed ? "2026-05-01T00:00:00.000Z" : null,
+        isCompleted: input.completed
+      }),
+      showReminder: async () => null
     })
   )
-  return registry
+  return {
+    getDataCalls,
+    registry
+  }
 }
 
-test("default Apple Reminders source profile is enabled only on macOS", () => {
-  assert.equal(
-    createDefaultAppleRemindersSourceProfile({
-      now: createdAt,
-      platform: "darwin"
-    }).enabled,
-    true
-  )
-  assert.equal(
-    createDefaultAppleRemindersSourceProfile({
-      now: createdAt,
-      platform: "linux"
-    }).authStatus,
-    "missing"
-  )
+const appleRemindersRef: ComposerMessageRef = {
+  extensionName: "apple-reminders",
+  name: "Apple Reminders",
+  sourceId: "appleReminders",
+  type: "extension-source"
+}
+
+function resolveAppleRemindersCapabilities(platform = "darwin") {
+  return resolveNativeExtensionAiCapabilitiesForRefs([appleRemindersRef], {
+    platform
+  })
+}
+
+test("Apple Reminders AI capability is enabled only on macOS", () => {
+  const [darwinCapability] = resolveAppleRemindersCapabilities("darwin")
+  assert.equal(darwinCapability?.enabled, true)
+  assert.equal(darwinCapability?.authStatus, "connected")
+  assert.deepEqual(darwinCapability?.enabledToolNames, [
+    "listReminders",
+    "createReminder",
+    "completeReminder",
+    "deleteReminder",
+    "openReminder"
+  ])
+
+  const [linuxCapability] = resolveAppleRemindersCapabilities("linux")
+  assert.equal(linuxCapability?.enabled, false)
+  assert.equal(linuxCapability?.authStatus, "missing")
+  assert.deepEqual(linuxCapability?.enabledToolNames, [])
 })
 
-test("stored Apple Reminders source profiles hydrate back into runtime bindings", () => {
-  const profile = createDefaultAppleRemindersSourceProfile({
-    now: createdAt,
+test("AI capability is loaded only from an explicit extension source ref", () => {
+  assert.deepEqual(resolveNativeExtensionAiCapabilitiesForRefs([]), [])
+  assert.deepEqual(nativeExtensionSourceMentions, [
+    {
+      extensionName: "apple-reminders",
+      icon: "assets/icon.png",
+      label: "Apple Reminders",
+      sourceId: "appleReminders",
+      supportedPlatforms: ["darwin"],
+      value: "apple-reminders"
+    },
+    {
+      extensionName: "github",
+      icon: "assets/icon.svg",
+      label: "GitHub",
+      sourceId: "github",
+      supportedPlatforms: undefined,
+      value: "github"
+    },
+    {
+      extensionName: "notion",
+      iconName: "notion",
+      label: "Notion",
+      sourceId: "notion",
+      supportedPlatforms: undefined,
+      value: "notion"
+    }
+  ])
+  assert.deepEqual(
+    listNativeExtensionSourceMentions("darwin").map((mention) => mention.sourceId),
+    ["appleReminders", "github", "notion"]
+  )
+  assert.deepEqual(
+    listNativeExtensionSourceMentions("linux").map((mention) => mention.sourceId),
+    ["github", "notion"]
+  )
+
+  const [capability] = resolveNativeExtensionAiCapabilitiesForRefs([appleRemindersRef], {
     platform: "darwin"
   })
 
-  const [binding] = hydrateNativeExtensionSourceBindings([profile])
-  assert.equal(binding.profile.id, profile.id)
-  assert.equal(binding.source.id, appleRemindersSourceDefinition.id)
-  assert.equal(binding.source.extensionName, "apple-reminders")
+  assert.equal(capability?.capability.id, "appleReminders")
+  assert.equal(capability?.capability.title, "Apple Reminders")
+  assert.match(capability?.capability.guide ?? "", /local Reminders database/)
 })
 
-test("stored native source profiles skip definitions that are no longer registered", () => {
-  const consoleWarn = mock.method(console, "warn", () => {})
-  try {
-    const profile = {
-      ...createDefaultAppleRemindersSourceProfile({
-        now: createdAt,
-        platform: "darwin"
-      }),
-      sourceId: "removedSource"
-    }
+test("empty AI capability refs do not read extension preferences", () => {
+  const calls: string[] = []
 
-    assert.deepEqual(hydrateNativeExtensionSourceBindings([profile]), [])
+  assert.deepEqual(
+    resolveNativeExtensionAiCapabilitiesForRefs([], {
+      getPreferences: (extensionName) => {
+        calls.push(extensionName)
+        return {}
+      }
+    }),
+    []
+  )
+  assert.deepEqual(calls, [])
+})
+
+test("single GitHub AI capability ref reads only GitHub preferences", () => {
+  const calls: string[] = []
+  const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
+    [
+      {
+        extensionName: "github",
+        name: "GitHub",
+        sourceId: "github",
+        type: "extension-source"
+      }
+    ],
+    {
+      getPreferences: (extensionName) => {
+        calls.push(extensionName)
+        return {}
+      }
+    }
+  )
+
+  assert.deepEqual(calls, ["github"])
+  assert.equal(capability?.extensionName, "github")
+  assert.equal(capability?.authStatus, "missing")
+  assert.deepEqual(capability?.enabledToolNames, [])
+  assert.deepEqual(capability?.toolExposures, [])
+})
+
+test("extension AI capability catalog does not read preferences", () => {
+  assert.deepEqual(
+    listNativeExtensionAiCapabilityCatalog("darwin").map((item) => item.extensionName),
+    ["apple-reminders", "github", "notion"]
+  )
+})
+
+test("loadExtension resolution reads only the requested extension preferences", () => {
+  const calls: string[] = []
+  const capability = resolveNativeExtensionAiCapabilityForExtensionName("github", {
+    getPreferences: (extensionName) => {
+      calls.push(extensionName)
+      return {}
+    },
+    platform: "darwin"
+  })
+
+  assert.deepEqual(calls, ["github"])
+  assert.equal(capability?.extensionName, "github")
+  assert.equal(capability?.authStatus, "missing")
+  assert.deepEqual(capability?.enabledToolNames, [])
+})
+
+test("selected AI capability preference read failures become failed auth without tools", () => {
+  const calls: string[] = []
+  const consoleWarn = mock.method(console, "warn", () => {})
+
+  try {
+    const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
+      [
+        {
+          extensionName: "github",
+          name: "GitHub",
+          sourceId: "github",
+          type: "extension-source"
+        }
+      ],
+      {
+        getPreferences: (extensionName) => {
+          calls.push(extensionName)
+          throw new Error("secret store unavailable")
+        }
+      }
+    )
+
+    assert.deepEqual(calls, ["github"])
+    assert.equal(consoleWarn.mock.callCount(), 1)
+    assert.equal(capability?.extensionName, "github")
+    assert.equal(capability?.authStatus, "failed")
+    assert.deepEqual(capability?.enabledToolNames, [])
+    assert.deepEqual(capability?.toolExposures, [])
   } finally {
     consoleWarn.mock.restore()
   }
 })
 
-test("Apple Reminders source binding is loaded only from an explicit extension source ref", () => {
-  assert.deepEqual(createNativeExtensionSourceBindingsForRefs([]), [])
-  assert.deepEqual(nativeExtensionSourceMentions, [
-    {
-      extensionName: "apple-reminders",
-      iconName: "reminders",
-      label: "Apple Reminders",
-      sourceId: "appleReminders",
-      supportedPlatforms: ["darwin"],
-      value: "apple-reminders"
-    }
-  ])
-  assert.deepEqual(
-    listNativeExtensionSourceMentions("darwin").map((mention) => mention.sourceId),
-    ["appleReminders"]
-  )
-  assert.deepEqual(listNativeExtensionSourceMentions("linux"), [])
-
-  const bindings = createNativeExtensionSourceBindingsForRefs(
+test("GitHub and Notion mentions load missing AI capabilities without tools", () => {
+  const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefs(
     [
       {
-        extensionName: "apple-reminders",
-        name: "Apple Reminders",
-        sourceId: "appleReminders",
+        extensionName: "github",
+        name: "GitHub",
+        sourceId: "github",
+        type: "extension-source"
+      },
+      {
+        extensionName: "notion",
+        name: "Notion",
+        sourceId: "notion",
         type: "extension-source"
       }
     ],
     {
-      now: createdAt,
       platform: "darwin"
     }
   )
 
-  assert.equal(bindings.length, 1)
-  assert.equal(bindings[0]?.source.id, appleRemindersSourceDefinition.id)
-  assert.equal(bindings[0]?.source.guide, appleRemindersSourceDefinition.guide)
+  assert.deepEqual(
+    aiCapabilities.map((capability) => ({
+      authStatus: capability.authStatus,
+      extensionName: capability.extensionName,
+      tools: capability.enabledToolNames
+    })),
+    [
+      {
+        authStatus: "missing",
+        extensionName: "github",
+        tools: []
+      },
+      {
+        authStatus: "missing",
+        extensionName: "notion",
+        tools: []
+      }
+    ]
+  )
+})
+
+test("GitHub AI capability becomes connected from persisted auth and exposes AI tools", () => {
+  const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
+    [
+      {
+        extensionName: "github",
+        name: "GitHub",
+        sourceId: "github",
+        type: "extension-source"
+      }
+    ],
+    {
+      preferencesByExtension: {
+        github: {
+          accessToken: "ghp_secret",
+          apiBaseUrl: "https://github.example.test/api/v3",
+          defaultSearchTerms: "",
+          numberOfResults: "25"
+        }
+      }
+    }
+  )
+
+  assert.equal(capability?.authStatus, "connected")
+  assert.deepEqual(capability?.capability.toolNames, [
+    "listMyIssues",
+    "listMyPullRequests",
+    "searchIssues",
+    "searchPullRequests",
+    "searchRepositories",
+    "listRepositories",
+    "listNotifications",
+    "listWorkflowRuns",
+    "createIssue"
+  ])
+  assert.deepEqual(capability?.enabledToolNames, capability?.capability.toolNames)
+  assert.deepEqual(
+    capability?.toolExposures.map((tool) => tool.toolName),
+    capability?.capability.toolNames
+  )
+  assert.deepEqual(capability?.publicConfig, {
+    apiBaseUrl: "https://github.example.test/api/v3"
+  })
+})
+
+test("Notion AI capability becomes connected from persisted auth and exposes read tools", () => {
+  const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
+    [
+      {
+        extensionName: "notion",
+        name: "Notion",
+        sourceId: "notion",
+        type: "extension-source"
+      }
+    ],
+    {
+      preferencesByExtension: {
+        notion: {
+          accessToken: "secret_token",
+          apiBaseUrl: "https://api.notion.com/v1"
+        }
+      }
+    }
+  )
+
+  assert.equal(capability?.authStatus, "connected")
+  assert.deepEqual(capability?.capability.toolNames, [
+    "searchPages",
+    "retrievePage",
+    "listBlockChildren",
+    "retrieveDataSource",
+    "queryDataSource"
+  ])
+  assert.deepEqual(capability?.enabledToolNames, capability?.capability.toolNames)
+  assert.deepEqual(
+    capability?.toolExposures.map((tool) => tool.toolName),
+    capability?.capability.toolNames
+  )
+  assert.deepEqual(capability?.publicConfig, {
+    apiBaseUrl: "https://api.notion.com/v1"
+  })
 })
 
 test("unknown extension source refs are ignored", () => {
   const consoleWarn = mock.method(console, "warn", () => {})
   try {
     assert.deepEqual(
-      createNativeExtensionSourceBindingsForRefs([
+      resolveNativeExtensionAiCapabilitiesForRefs([
         {
           extensionName: "unknown",
           name: "Unknown",
@@ -176,42 +401,84 @@ test("unknown extension source refs are ignored", () => {
 })
 
 test("Apple Reminders source exposes read tools and protects write tools with Permission Mode", async () => {
-  const runtime = createExtensionSourceRuntime({
-    registry: createRegistry(),
-    sourceBindings: [
-      createDefaultAppleRemindersSourceBinding({
-        now: createdAt,
-        platform: "darwin"
-      })
-    ],
+  const { registry } = createRegistry()
+  const runtime = createExtensionAiRuntime({
+    aiCapabilities: resolveAppleRemindersCapabilities(),
+    registry,
     threadId: "thread-1",
     workspacePath: "/workspace"
   })
 
   assert.deepEqual(
-    runtime.sourceToolBindings.map((binding) => binding.agentToolName),
-    ["ext__appleReminders__listReminders", "ext__appleReminders__createReminder"]
+    runtime.aiToolBindings.map((binding) => binding.agentToolName),
+    [
+      "ext__appleReminders__listReminders",
+      "ext__appleReminders__createReminder",
+      "ext__appleReminders__completeReminder",
+      "ext__appleReminders__deleteReminder",
+      "ext__appleReminders__openReminder"
+    ]
   )
   assert.equal(
-    runtime.approvalPolicyProvider.getPolicy("ext__appleReminders__listReminders")?.decision
-      .disposition,
+    runtime.approvalPolicyProvider.getCallToolPolicy({
+      args: {
+        limit: 10
+      },
+      extensionName: "apple-reminders",
+      toolName: "listReminders"
+    })?.decision.disposition,
     "allow"
   )
   assert.equal(
-    runtime.approvalPolicyProvider.getPolicy("ext__appleReminders__createReminder")?.decision
-      .disposition,
+    runtime.approvalPolicyProvider.getCallToolPolicy({
+      args: {
+        title: "Ship it"
+      },
+      extensionName: "apple-reminders",
+      toolName: "createReminder"
+    })?.decision.disposition,
+    "require_approval"
+  )
+  assert.equal(
+    runtime.approvalPolicyProvider.getCallToolPolicy({
+      args: {
+        completed: true,
+        reminderId: "reminder-1"
+      },
+      extensionName: "apple-reminders",
+      toolName: "completeReminder"
+    })?.decision.disposition,
+    "require_approval"
+  )
+  assert.equal(
+    runtime.approvalPolicyProvider.getCallToolPolicy({
+      args: {
+        reminderId: "reminder-1"
+      },
+      extensionName: "apple-reminders",
+      toolName: "deleteReminder"
+    })?.decision.disposition,
+    "require_approval"
+  )
+  assert.equal(
+    runtime.approvalPolicyProvider.getCallToolPolicy({
+      args: {
+        reminderId: "reminder-1"
+      },
+      extensionName: "apple-reminders",
+      toolName: "openReminder"
+    })?.decision.disposition,
     "require_approval"
   )
 })
 
 test("Apple Reminders tools validate input and call main-side services", async () => {
-  const sourceBinding = createDefaultAppleRemindersSourceBinding({
-    now: createdAt,
-    platform: "darwin"
-  })
-  const [listBinding, createBinding] = createRegistry().createSourceToolBindings([sourceBinding])
+  const aiCapabilities = resolveAppleRemindersCapabilities()
+  const { getDataCalls, registry } = createRegistry()
+  const [listBinding, createBinding, completeBinding, deleteBinding, openBinding] =
+    registry.createAiCapabilityToolBindings(aiCapabilities)
   const executor = new ExtensionToolExecutor({
-    bindings: [listBinding, createBinding]
+    bindings: [listBinding, createBinding, completeBinding, deleteBinding, openBinding]
   })
 
   const listOutput = await executor.executeAgentTool({
@@ -222,6 +489,12 @@ test("Apple Reminders tools validate input and call main-side services", async (
   })
   assert.match(listOutput, /Ship source tools/)
   assert.doesNotMatch(listOutput, /Completed item/)
+  assert.deepEqual(getDataCalls, [
+    {
+      includeCompleted: false,
+      limit: 25
+    }
+  ])
 
   const createOutput = await executor.executeAgentTool({
     agentToolName: "ext__appleReminders__createReminder",
@@ -236,7 +509,39 @@ test("Apple Reminders tools validate input and call main-side services", async (
   assert.match(createOutput, /Create through source/)
   assert.match(createOutput, /From agent/)
 
-  assert.equal(appleRemindersSourceDefinition.id, "appleReminders")
+  const completeOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__completeReminder",
+    args: {
+      reminderId: "reminder-1"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(completeOutput, /2026-05-01/)
+  assert.match(completeOutput, /"isCompleted": true/)
+
+  const deleteOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__deleteReminder",
+    args: {
+      reminderId: "reminder-1"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(deleteOutput, /"reminderId": "reminder-1"/)
+
+  const openOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__openReminder",
+    args: {
+      reminderId: "reminder-1"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(openOutput, /"opened": true/)
+  assert.match(openOutput, /"reminderId": "reminder-1"/)
+
+  assert.equal(aiCapabilities[0]?.capability.id, "appleReminders")
   await assert.rejects(
     executor.executeAgentTool({
       agentToolName: "ext__appleReminders__createReminder",
@@ -263,7 +568,25 @@ test("Apple Reminders tools return external Reminders failures as tool output", 
           "PERMISSION_DENIED"
         )
       },
+      deleteReminder: async () => {
+        throw new AppleRemindersRequestError(
+          "Openwork needs permission to access Reminders.",
+          "PERMISSION_DENIED"
+        )
+      },
       getData: async () => {
+        throw new AppleRemindersRequestError(
+          "Openwork needs permission to access Reminders.",
+          "PERMISSION_DENIED"
+        )
+      },
+      setReminderCompleted: async () => {
+        throw new AppleRemindersRequestError(
+          "Openwork needs permission to access Reminders.",
+          "PERMISSION_DENIED"
+        )
+      },
+      showReminder: async () => {
         throw new AppleRemindersRequestError(
           "Openwork needs permission to access Reminders.",
           "PERMISSION_DENIED"
@@ -271,13 +594,11 @@ test("Apple Reminders tools return external Reminders failures as tool output", 
       }
     })
   )
-  const sourceBinding = createDefaultAppleRemindersSourceBinding({
-    now: createdAt,
-    platform: "darwin"
-  })
-  const [listBinding, createBinding] = registry.createSourceToolBindings([sourceBinding])
+  const aiCapabilities = resolveAppleRemindersCapabilities()
+  const [listBinding, createBinding, completeBinding, deleteBinding, openBinding] =
+    registry.createAiCapabilityToolBindings(aiCapabilities)
   const executor = new ExtensionToolExecutor({
-    bindings: [listBinding, createBinding]
+    bindings: [listBinding, createBinding, completeBinding, deleteBinding, openBinding]
   })
 
   const listOutput = await executor.executeAgentTool({
@@ -299,6 +620,39 @@ test("Apple Reminders tools return external Reminders failures as tool output", 
   })
   assert.match(createOutput, /Apple Reminders create reminder failed/)
   assert.match(createOutput, /permission to access Reminders/)
+
+  const completeOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__completeReminder",
+    args: {
+      reminderId: "reminder-1"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(completeOutput, /Apple Reminders complete reminder failed/)
+  assert.match(completeOutput, /permission to access Reminders/)
+
+  const deleteOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__deleteReminder",
+    args: {
+      reminderId: "reminder-1"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(deleteOutput, /Apple Reminders delete reminder failed/)
+  assert.match(deleteOutput, /permission to access Reminders/)
+
+  const openOutput = await executor.executeAgentTool({
+    agentToolName: "ext__appleReminders__openReminder",
+    args: {
+      reminderId: "reminder-1"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.match(openOutput, /Apple Reminders open reminder failed/)
+  assert.match(openOutput, /permission to access Reminders/)
 })
 
 test("Apple Reminders helper access denial maps to permission errors", () => {

@@ -925,7 +925,6 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   return (
     <div className="relative h-full">
       <LauncherChrome
-        density="compact"
         footer={surfaceController.footer}
         headerLeading={
           <RuntimeSurfaceHeaderLeading

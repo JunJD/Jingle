@@ -32,7 +32,7 @@ const GITHUB_RUNTIME_VIEW_COMMANDS = [
 
 test("GitHub runtime commands declare manifest metadata and registry entries", () => {
   const githubRuntimeCommands = githubManifest.commands
-    .filter((command) => command.runtime)
+    .filter((command) => command.mode !== "background" && command.runtime)
     .map((command) => command.name)
     .sort()
   const expectedRuntimeCommands = [...GITHUB_RUNTIME_VIEW_COMMANDS, "unread-notifications"]

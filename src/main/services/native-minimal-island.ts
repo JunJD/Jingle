@@ -4,8 +4,18 @@ import { join } from "node:path"
 import { app } from "electron"
 
 export type NativeMinimalIslandState = "idle" | "working" | "approval"
+export type NativeMinimalIslandAction = "openLauncher" | "openMainWindow" | "openSettings" | "quit"
+
+export interface NativeMinimalIslandActionHandlers {
+  openLauncher: () => void
+  openMainWindow: () => void
+  openSettings: () => void
+  quit: () => void
+}
 
 let nativeIslandProcess: ChildProcess | null = null
+let nativeIslandStdoutBuffer = ""
+let nativeIslandActionHandlers: NativeMinimalIslandActionHandlers | null = null
 
 function resolvePackagedUnpackedPath(candidatePath: string): string {
   if (!app.isPackaged || !candidatePath.includes("app.asar")) {
@@ -77,7 +87,52 @@ function ensureNativeIslandBinary(): string | null {
   return compileNativeIsland(sourcePath)
 }
 
-export function startNativeMinimalIsland(): void {
+function handleNativeIslandMessage(message: unknown): void {
+  if (
+    !message ||
+    typeof message !== "object" ||
+    !("type" in message) ||
+    message.type !== "action" ||
+    !("action" in message)
+  ) {
+    return
+  }
+
+  const action = message.action
+  if (
+    action !== "openLauncher" &&
+    action !== "openMainWindow" &&
+    action !== "openSettings" &&
+    action !== "quit"
+  ) {
+    return
+  }
+
+  nativeIslandActionHandlers?.[action]()
+}
+
+function consumeNativeIslandStdout(chunk: Buffer): void {
+  nativeIslandStdoutBuffer += chunk.toString("utf8")
+  const lines = nativeIslandStdoutBuffer.split("\n")
+  nativeIslandStdoutBuffer = lines.pop() ?? ""
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) {
+      continue
+    }
+
+    try {
+      handleNativeIslandMessage(JSON.parse(trimmed) as unknown)
+    } catch (error) {
+      console.warn("[native-minimal-island] failed to parse message", error)
+    }
+  }
+}
+
+export function startNativeMinimalIsland(handlers: NativeMinimalIslandActionHandlers): void {
+  nativeIslandActionHandlers = handlers
+
   if (process.platform !== "darwin" || nativeIslandProcess) {
     return
   }
@@ -93,12 +148,15 @@ export function startNativeMinimalIsland(): void {
         ...process.env,
         OPENWORK_PARENT_PID: String(process.pid)
       },
-      stdio: ["pipe", "ignore", "ignore"]
+      stdio: ["pipe", "pipe", "ignore"]
     })
+
+    child.stdout?.on("data", consumeNativeIslandStdout)
 
     child.on("exit", () => {
       if (nativeIslandProcess === child) {
         nativeIslandProcess = null
+        nativeIslandStdoutBuffer = ""
       }
     })
 
@@ -106,11 +164,12 @@ export function startNativeMinimalIsland(): void {
       console.warn("[native-minimal-island] process failed", error)
       if (nativeIslandProcess === child) {
         nativeIslandProcess = null
+        nativeIslandStdoutBuffer = ""
       }
     })
 
     nativeIslandProcess = child
-    setNativeMinimalIslandState("approval")
+    setNativeMinimalIslandState("idle")
   } catch (error) {
     console.warn("[native-minimal-island] failed to start", error)
   }
@@ -121,7 +180,11 @@ export function setNativeMinimalIslandState(state: NativeMinimalIslandState): vo
     return
   }
 
-  nativeIslandProcess.stdin.write(JSON.stringify({ type: "setState", state }) + "\n")
+  try {
+    nativeIslandProcess.stdin.write(JSON.stringify({ type: "setState", state }) + "\n")
+  } catch (error) {
+    console.warn("[native-minimal-island] failed to write state", error)
+  }
 }
 
 export function stopNativeMinimalIsland(): void {
@@ -131,6 +194,8 @@ export function stopNativeMinimalIsland(): void {
 
   const child = nativeIslandProcess
   nativeIslandProcess = null
+  nativeIslandStdoutBuffer = ""
+  nativeIslandActionHandlers = null
 
   let didExit = false
   child.once("exit", () => {

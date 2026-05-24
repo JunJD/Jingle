@@ -46,6 +46,12 @@ export type LauncherResultPresentationIcon =
       type: "glyph"
     }
   | {
+      extensionName: string
+      icon?: string
+      iconName?: LauncherResultPresentationIconName
+      type: "extension"
+    }
+  | {
       src: string
       type: "image"
     }

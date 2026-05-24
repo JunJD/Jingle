@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react"
-import { Puzzle, Search, Settings2, TerminalSquare } from "lucide-react"
+import { Search, Settings2 } from "lucide-react"
 import type { ModelConfig } from "@shared/app-types"
 import type { AppLocale } from "@shared/i18n"
 import type {
@@ -7,6 +7,7 @@ import type {
   NativeExtensionPreferenceSchema
 } from "@shared/native-extensions"
 import type { SettingsWindowTarget } from "@shared/settings-window"
+import { ExtensionIcon } from "@/extensions/ExtensionIcon"
 import { getSettingsCopy } from "./copy"
 import {
   inputClassName,
@@ -248,6 +249,9 @@ function CommandCard(props: {
   useEnvironmentFallbackLabel: string
   values: Record<string, unknown>
   description: string
+  extensionName: string
+  icon?: string
+  iconName?: string
   mode: string
 }): React.JSX.Element {
   const {
@@ -257,7 +261,10 @@ function CommandCard(props: {
     disabledLabel,
     emptyLabel,
     enabledLabel,
+    extensionName,
     hideSecretLabel,
+    icon,
+    iconName,
     labelMode,
     modelOptions,
     mode,
@@ -280,7 +287,12 @@ function CommandCard(props: {
       <div className="flex flex-wrap items-start justify-between gap-[var(--ow-gap-md)]">
         <div className="space-y-[var(--ow-space-1)]">
           <div className="flex items-center gap-[var(--ow-gap-sm)]">
-            <TerminalSquare className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
+            <ExtensionIcon
+              className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground"
+              extensionName={extensionName}
+              icon={icon}
+              iconName={iconName}
+            />
             <span className="[font-size:var(--ow-font-label)] font-semibold text-foreground">
               {title}
             </span>
@@ -559,7 +571,12 @@ export function ExtensionsTab(props: {
                   <div className="flex items-start justify-between gap-[var(--ow-gap-md)]">
                     <div className="min-w-0 space-y-[var(--ow-space-1)]">
                       <div className="flex items-center gap-[var(--ow-gap-sm)]">
-                        <Puzzle className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
+                        <ExtensionIcon
+                          className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground"
+                          extensionName={schema.extName}
+                          icon={schema.icon}
+                          iconName={schema.iconName}
+                        />
                         <span className="truncate [font-size:var(--ow-font-label)] font-semibold text-foreground">
                           {schema.title}
                         </span>
@@ -634,7 +651,10 @@ export function ExtensionsTab(props: {
                   disabledLabel={copy.extensions.disabled}
                   emptyLabel={copy.extensions.noPreferences}
                   enabledLabel={copy.extensions.enabled}
+                  extensionName={selectedSchema.extName}
                   hideSecretLabel={copy.common.hideSecret}
+                  icon={command.icon}
+                  iconName={command.iconName}
                   labelMode={copy.extensions.mode}
                   mode={command.mode}
                   modelOptions={modelOptions}

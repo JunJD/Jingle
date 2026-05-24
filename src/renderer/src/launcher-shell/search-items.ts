@@ -6,8 +6,10 @@ import type { LauncherIndexedCommand } from "./pages"
 import { createLauncherBuiltinResultPresentation } from "./result-presentation"
 import type { LauncherResultPresentation } from "./result-types"
 import type { LauncherShellItem } from "./types"
+import { getLauncherIndexedCommandIcon } from "./use-with-items"
 export {
   buildLauncherCommandIntentShellItems,
+  getLauncherIndexedCommandIcon,
   buildLauncherUseWithCommandShellItems,
   buildLauncherUseWithShellItems
 } from "./use-with-items"
@@ -167,10 +169,7 @@ export function buildLauncherInternalCommandShellItems(
         match: rankedMatch.match,
         presentation: {
           categoryLabel: copy.launcher.resultKindExtension,
-          icon: {
-            name: command.iconName ?? "search",
-            type: "glyph" as const
-          },
+          icon: getLauncherIndexedCommandIcon(command),
           listActionLabel: copy.launcher.openGeneric,
           primaryActionLabel: copy.launcher.openGeneric,
           tone: "neutral" as const

@@ -35,7 +35,10 @@ for (const extensionDirectory of listNativeExtensionDirectories()) {
   }
 
   const defaultCommandName = manifest.defaultCommandName ?? manifest.commands[0]?.name
-  if (!manifest.commands.some((command) => command.name === defaultCommandName)) {
+  if (
+    manifest.commands.length > 0 &&
+    !manifest.commands.some((command) => command.name === defaultCommandName)
+  ) {
     violations.push({
       file: `${extensionDirectory.repoPath}/manifest.ts`,
       reason: `defaultCommandName "${defaultCommandName}" 没有出现在 manifest.commands 里`

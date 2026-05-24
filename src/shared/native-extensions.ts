@@ -1,4 +1,5 @@
 import type { ExtensionRuntimeHostCapability } from "./extension-runtime-protocol"
+import type { ToolCallDisplay } from "./tool-presentation"
 import type {
   LauncherCommandMode,
   LauncherCommandOwnerCapability,
@@ -8,6 +9,7 @@ import type { ExtensionToolDefinition } from "./extension-sources"
 import type { IpcErrorPayload } from "./ipc-error"
 
 export type NativeExtensionCommandMode = "background" | "menu-bar" | "no-view" | "view"
+export type NativeExtensionIcon = string
 export type NativeExtensionSupportedPlatform = "darwin" | "linux" | "win32"
 
 export interface NativeExtensionPreferenceSchema {
@@ -30,6 +32,8 @@ export interface NativeExtensionRuntimeCommandManifest {
 
 export interface NativeExtensionCommandManifest<TCommandName extends string = string> {
   description?: string
+  /** Extension-package-relative asset path, for example "assets/icon.svg". */
+  icon?: NativeExtensionIcon
   iconName?: string
   keywords?: string[]
   mode: NativeExtensionCommandMode
@@ -39,14 +43,36 @@ export interface NativeExtensionCommandManifest<TCommandName extends string = st
   title?: string
 }
 
+export interface NativeExtensionAiCapabilityMentionManifest {
+  label?: string
+  value?: string
+}
+
+export interface NativeExtensionAiCapability {
+  description?: string
+  guide: string
+  id: string
+  instructions?: string[]
+  mention?: NativeExtensionAiCapabilityMentionManifest
+  publicPreferenceNames?: string[]
+  requiredPreferenceNames?: string[]
+  supportedPlatforms?: NativeExtensionSupportedPlatform[]
+  title: string
+  toolDisplays?: Record<string, ToolCallDisplay>
+  toolNames: string[]
+}
+
 export interface NativeExtensionPackageManifest<
   TExtensionName extends string = string,
   TCommandName extends string = string
 > {
+  aiCapability?: NativeExtensionAiCapability
   capabilities: LauncherCommandOwnerCapability[]
   commands: Array<NativeExtensionCommandManifest<TCommandName>>
   defaultCommandName?: TCommandName
   description?: string
+  /** Extension-package-relative asset path, for example "assets/icon.svg". */
+  icon?: NativeExtensionIcon
   iconName?: string
   name: TExtensionName
   preferences?: NativeExtensionPreferenceSchema[]
@@ -76,6 +102,8 @@ export interface NativeExtensionMainDefinition {
 
 export interface NativeExtensionCommandSettingsSchema {
   description: string
+  icon?: NativeExtensionIcon
+  iconName?: string
   keywords?: string[]
   mode: NativeExtensionCommandMode
   name: string
@@ -87,6 +115,8 @@ export interface InstalledNativeExtensionSettingsSchema {
   commands: NativeExtensionCommandSettingsSchema[]
   description: string
   extName: string
+  icon?: NativeExtensionIcon
+  iconName?: string
   preferences: NativeExtensionPreferenceSchema[]
   title: string
 }
@@ -120,10 +150,63 @@ function isMissingRequiredNativeExtensionPreferenceValue(value: unknown): boolea
   return value === null || value === undefined
 }
 
+function hasOwnRecordKey(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
+}
+
 function getNativeExtensionPreferenceDisplayName(
   preference: NativeExtensionPreferenceSchema
 ): string {
   return preference.title ?? preference.label ?? preference.name
+}
+
+function validateNativeExtensionIcon(
+  manifestName: string,
+  label: string,
+  icon: NativeExtensionIcon | undefined
+): void {
+  if (icon === undefined) {
+    return
+  }
+
+  if (!icon.trim()) {
+    throw new Error(`Native extension "${manifestName}" declares an empty ${label} icon path`)
+  }
+
+  if (icon.startsWith("/") || icon.includes("..") || !icon.startsWith("assets/")) {
+    throw new Error(
+      `Native extension "${manifestName}" ${label} icon must be an extension-package-relative assets/ path`
+    )
+  }
+}
+
+function assertNonEmptyString(value: unknown, message: string): asserts value is string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(message)
+  }
+}
+
+function validateOptionalStringArray(input: {
+  extensionName: string
+  fieldName: string
+  values: unknown
+}): string[] {
+  if (input.values === undefined) {
+    return []
+  }
+
+  if (!Array.isArray(input.values)) {
+    throw new Error(`Native extension "${input.extensionName}" ${input.fieldName} must be an array`)
+  }
+
+  for (const value of input.values) {
+    assertNonEmptyString(
+      value,
+      `Native extension "${input.extensionName}" ${input.fieldName} must contain non-empty strings`
+    )
+  }
+
+  return input.values
 }
 
 export function listMissingRequiredNativeExtensionPreferences(
@@ -173,9 +256,99 @@ export function validateNativeExtensionPackageManifest(
     throw new Error(`Native extension "${manifest.name}" must declare a non-empty title`)
   }
 
-  if (manifest.commands.length === 0) {
-    throw new Error(`Native extension "${manifest.name}" must declare at least one command`)
+  if (hasOwnRecordKey(manifest, "ai")) {
+    throw new Error(
+      `Native extension "${manifest.name}" must declare agent integration through aiCapability, not ai`
+    )
   }
+
+  if (manifest.aiCapability) {
+    const capability = manifest.aiCapability
+    assertNonEmptyString(
+      capability.id,
+      `Native extension "${manifest.name}" aiCapability.id must be non-empty`
+    )
+    assertNonEmptyString(
+      capability.title,
+      `Native extension "${manifest.name}" aiCapability.title must be non-empty`
+    )
+    assertNonEmptyString(
+      capability.guide,
+      `Native extension "${manifest.name}" aiCapability.guide must be non-empty`
+    )
+
+    validateOptionalStringArray({
+      extensionName: manifest.name,
+      fieldName: "aiCapability.instructions",
+      values: capability.instructions
+    })
+    validateOptionalStringArray({
+      extensionName: manifest.name,
+      fieldName: "aiCapability.toolNames",
+      values: capability.toolNames
+    })
+    validateOptionalStringArray({
+      extensionName: manifest.name,
+      fieldName: "aiCapability.requiredPreferenceNames",
+      values: capability.requiredPreferenceNames
+    })
+    validateOptionalStringArray({
+      extensionName: manifest.name,
+      fieldName: "aiCapability.publicPreferenceNames",
+      values: capability.publicPreferenceNames
+    })
+
+    const supportedCapabilityPlatforms = capability.supportedPlatforms ?? []
+    if (
+      !Array.isArray(supportedCapabilityPlatforms) ||
+      supportedCapabilityPlatforms.some(
+        (platform) => platform !== "darwin" && platform !== "linux" && platform !== "win32"
+      )
+    ) {
+      throw new Error(
+        `Native extension "${manifest.name}" aiCapability.supportedPlatforms must contain supported platform names`
+      )
+    }
+    if (new Set(supportedCapabilityPlatforms).size !== supportedCapabilityPlatforms.length) {
+      throw new Error(
+        `Native extension "${manifest.name}" declares duplicate aiCapability supported platforms`
+      )
+    }
+
+    if (capability.mention) {
+      if (capability.mention.value !== undefined && !capability.mention.value.trim()) {
+        throw new Error(
+          `Native extension "${manifest.name}" aiCapability.mention value must be non-empty when declared`
+        )
+      }
+
+      if (capability.mention.label !== undefined && !capability.mention.label.trim()) {
+        throw new Error(
+          `Native extension "${manifest.name}" aiCapability.mention label must be non-empty when declared`
+        )
+      }
+    }
+
+    const declaredToolNames = new Set(capability.toolNames)
+    for (const [toolName, display] of Object.entries(capability.toolDisplays ?? {})) {
+      if (!declaredToolNames.has(toolName)) {
+        throw new Error(
+          `Native extension "${manifest.name}" aiCapability.toolDisplays declares unknown tool "${toolName}"`
+        )
+      }
+
+      assertNonEmptyString(
+        display.title,
+        `Native extension "${manifest.name}" aiCapability.toolDisplays.${toolName}.title must be non-empty`
+      )
+      assertNonEmptyString(
+        display.description,
+        `Native extension "${manifest.name}" aiCapability.toolDisplays.${toolName}.description must be non-empty`
+      )
+    }
+  }
+
+  validateNativeExtensionIcon(manifest.name, "package", manifest.icon)
 
   const commandNames = new Set<string>()
   for (const command of manifest.commands) {
@@ -186,6 +359,7 @@ export function validateNativeExtensionPackageManifest(
     }
 
     commandNames.add(command.name)
+    validateNativeExtensionIcon(manifest.name, `command "${command.name}"`, command.icon)
 
     if (command.runtime && command.mode === "view" && !command.runtime.viewport) {
       throw new Error(
@@ -195,7 +369,10 @@ export function validateNativeExtensionPackageManifest(
   }
 
   const defaultCommandName = manifest.defaultCommandName ?? manifest.commands[0]?.name
-  if (!defaultCommandName || !commandNames.has(defaultCommandName)) {
+  if (
+    manifest.commands.length > 0 &&
+    (!defaultCommandName || !commandNames.has(defaultCommandName))
+  ) {
     throw new Error(
       `Native extension "${manifest.name}" default command "${defaultCommandName}" is not declared`
     )
@@ -228,7 +405,13 @@ export function supportsNativeExtensionPlatform(
   manifest: NativeExtensionPackageManifest,
   platform: string
 ): boolean {
-  const supportedPlatforms = manifest.supportedPlatforms
+  return supportsNativeExtensionPlatformList(manifest.supportedPlatforms, platform)
+}
+
+export function supportsNativeExtensionPlatformList(
+  supportedPlatforms: readonly NativeExtensionSupportedPlatform[] | undefined,
+  platform: string
+): boolean {
   if (!supportedPlatforms || supportedPlatforms.length === 0) {
     return true
   }
@@ -257,6 +440,7 @@ export function toLauncherCommandOwnerManifest(
     capabilities: manifest.capabilities,
     commands: launcherCommands.map((command) => ({
       description: command.description,
+      icon: command.icon ?? manifest.icon,
       iconName: command.iconName ?? manifest.iconName,
       keywords: command.keywords,
       mode: command.mode,
@@ -265,6 +449,7 @@ export function toLauncherCommandOwnerManifest(
     })),
     defaultCommandName: defaultLauncherCommandName,
     displayName: manifest.title,
+    icon: manifest.icon,
     id: manifest.name,
     rpcMethods: manifest.rpcMethods
   }
@@ -276,6 +461,8 @@ export function toInstalledNativeExtensionSettingsSchema(
   return {
     commands: manifest.commands.map((command) => ({
       description: command.description ?? "",
+      icon: command.icon ?? manifest.icon,
+      iconName: command.iconName ?? manifest.iconName,
       keywords: command.keywords,
       mode: command.mode,
       name: command.name,
@@ -284,6 +471,8 @@ export function toInstalledNativeExtensionSettingsSchema(
     })),
     description: manifest.description ?? "",
     extName: manifest.name,
+    icon: manifest.icon,
+    iconName: manifest.iconName,
     preferences: manifest.preferences ?? [],
     title: manifest.title
   }

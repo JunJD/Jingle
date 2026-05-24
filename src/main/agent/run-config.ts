@@ -1,4 +1,6 @@
 import type { ToolRuntime } from "langchain"
+import type { PermissionModeName } from "@shared/permission-mode"
+import { buildAgentRunTraceConfig } from "../observability"
 
 const AGENT_STREAM_MODE = ["messages", "values"] as Array<"messages" | "values">
 
@@ -14,11 +16,21 @@ function readStringField(value: unknown, key: string): string | null {
 export function buildAgentRunConfig(
   threadId: string,
   runId: string,
-  abortController: AbortController
+  abortController: AbortController,
+  options: {
+    modelId?: string
+    permissionMode?: PermissionModeName
+  } = {}
 ) {
   return {
     configurable: { thread_id: threadId },
-    metadata: { run_id: runId },
+    ...buildAgentRunTraceConfig({
+      modelId: options.modelId,
+      permissionMode: options.permissionMode,
+      runId,
+      source: "invoke",
+      threadId
+    }),
     signal: abortController.signal,
     streamMode: [...AGENT_STREAM_MODE],
     recursionLimit: 1000
@@ -28,11 +40,21 @@ export function buildAgentRunConfig(
 export function buildAgentResumeConfig(
   threadId: string,
   runId: string,
-  abortController: AbortController
+  abortController: AbortController,
+  options: {
+    modelId?: string
+    permissionMode?: PermissionModeName
+  } = {}
 ) {
   return {
     configurable: { thread_id: threadId, run_id: runId },
-    metadata: { run_id: runId },
+    ...buildAgentRunTraceConfig({
+      modelId: options.modelId,
+      permissionMode: options.permissionMode,
+      runId,
+      source: "resume",
+      threadId
+    }),
     signal: abortController.signal,
     streamMode: [...AGENT_STREAM_MODE],
     recursionLimit: 1000

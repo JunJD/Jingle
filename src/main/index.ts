@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, nativeImage } from "electron"
+import "./observability/bootstrap"
+import { app, BrowserWindow, ipcMain, nativeImage, protocol } from "electron"
 import { join } from "path"
 import { closeDatabase, initializeDatabase } from "./db"
 import { closeRuntime } from "./agent/runtime"
@@ -6,6 +7,8 @@ import { createMainCompositionRoot, type MainCompositionRoot } from "./compositi
 import { createLauncherWindow, showLauncherWindow } from "./windows/launcher-window"
 import { createMainWindow, showMainWindow } from "./windows/main-window"
 import { createSettingsWindow, showSettingsWindow } from "./windows/settings-window"
+import { registerNativeExtensionAssetProtocol } from "./native-extensions/asset-protocol"
+import { NATIVE_EXTENSION_ASSET_PROTOCOL } from "./native-extensions/assets"
 import { startNativeMinimalIsland, stopNativeMinimalIsland } from "./services/native-minimal-island"
 import type { MainWindowNavigationPayload } from "@shared/main-window"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
@@ -29,6 +32,17 @@ const hasSingleInstanceLock = bypassSingleInstanceLock ? true : app.requestSingl
 
 // Simple dev check - replaces @electron-toolkit/utils is.dev
 const isDev = !app.isPackaged
+
+protocol.registerSchemesAsPrivileged([
+  {
+    privileges: {
+      secure: true,
+      standard: true,
+      supportFetchAPI: true
+    },
+    scheme: NATIVE_EXTENSION_ASSET_PROTOCOL
+  }
+])
 
 function getOrCreateLauncherWindow(): BrowserWindow {
   if (!launcherWindow || launcherWindow.isDestroyed()) {
@@ -145,6 +159,7 @@ if (hasSingleInstanceLock) {
     }
 
     setMacDockIcon()
+    registerNativeExtensionAssetProtocol()
 
     // Default open or close DevTools by F12 in development
     if (isDev) {
@@ -181,7 +196,12 @@ if (hasSingleInstanceLock) {
     })
     mainCompositionRoot.registerIpcHandlers()
     mainCompositionRoot.startServices()
-    startNativeMinimalIsland()
+    startNativeMinimalIsland({
+      openLauncher: showLauncher,
+      openMainWindow: () => openMainWindow(),
+      openSettings: () => openSettingsWindow(),
+      quit: () => app.quit()
+    })
 
     showLauncher()
 

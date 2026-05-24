@@ -2,67 +2,74 @@ import assert from "node:assert/strict"
 import test, { mock } from "node:test"
 import { AIMessage } from "@langchain/core/messages"
 import type {
-  ExtensionSourceBinding,
+  ExtensionAiCapabilityTool,
   ExtensionToolContext,
   ExtensionToolDefinition,
-  SourceProfile
+  ResolvedExtensionAiCapability
 } from "../../src/shared/extension-sources"
 import {
   assertExtensionAgentToolName,
-  readSourceProfilesSnapshotFromMetadata,
-  resolveExtensionToolPermission,
-  RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY
+  resolveExtensionToolPermission
 } from "../../src/shared/extension-sources"
 import { z } from "../../src/main/agent/tool-input-schema"
 import {
-  buildExtensionSourceGuide,
-  createExtensionSourcesMiddleware
-} from "../../src/main/agent/extension-sources-middleware"
-import { createExtensionSourceRuntime } from "../../src/main/agent/extension-source-runtime"
-import { createExtensionToolApprovalPolicyProvider } from "../../src/main/extension-tools/permission"
+  buildExtensionAiCapabilityGuide,
+  buildExtensionInstructions,
+  createExtensionAiMiddleware
+} from "../../src/main/agent/extension-ai-middleware"
+import {
+  createExtensionAiRuntime,
+  createExtensionAiSession
+} from "../../src/main/agent/extension-ai-runtime"
 import { ExtensionToolExecutor } from "../../src/main/extension-tools/executor"
 import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
+import { defineNativeExtensionManifest } from "../../src/shared/native-extensions"
 
-const createdAt = "2026-04-30T00:00:00.000Z"
-
-function createProfile(overrides: Partial<SourceProfile> = {}): SourceProfile {
-  const enabledToolNames = overrides.enabledToolNames ?? ["searchItems"]
-  return {
-    authStatus: "connected",
-    createdAt,
-    defaultPermissionMode: "ask-to-edit",
-    displayName: "Mock Profile",
-    enabled: true,
-    enabledTools: enabledToolNames.map((toolName) => ({
-      agentToolName: `ext__mockSource__${overrides.id ?? "profile_1"}__${toolName}`,
-      display: {
-        description: `${toolName} for ${overrides.displayName ?? "Mock Profile"}.`,
-        title: `${toolName} (${overrides.displayName ?? "Mock Profile"})`
-      },
-      toolName
-    })),
-    enabledToolNames,
-    extensionName: "mockExtension",
-    id: "profile-1",
-    publicConfig: {},
-    sourceId: "mockSource",
-    updatedAt: createdAt,
-    ...overrides
-  }
+type MockResolvedCapabilityInput = {
+  authStatus?: ResolvedExtensionAiCapability["authStatus"]
+  displayName?: string
+  enabled?: boolean
+  enabledToolNames?: string[]
+  id?: string
+  permissionMode?: ResolvedExtensionAiCapability["permissionMode"]
+  publicConfig?: Record<string, unknown>
+  toolExposures?: ExtensionAiCapabilityTool[]
 }
 
-function createSourceBinding(profile: SourceProfile = createProfile()): ExtensionSourceBinding {
+function createAiCapability(
+  overrides: MockResolvedCapabilityInput = {}
+): ResolvedExtensionAiCapability {
+  const enabledToolNames = overrides.enabledToolNames ?? ["searchItems"]
+  const displayName = overrides.displayName ?? "Mock Profile"
+  const exposureId = overrides.id ?? "profile_1"
+  const toolExposures =
+    overrides.toolExposures ??
+    enabledToolNames.map((toolName) => ({
+      agentToolName: `ext__mockSource__${exposureId}__${toolName}`,
+      display: {
+        description: `${toolName} for ${displayName}.`,
+        title: `${toolName} (${displayName})`
+      },
+      toolName
+    }))
+
   return {
-    profile,
-    source: {
-      defaultToolNames: ["searchItems"],
+    authStatus: overrides.authStatus ?? "connected",
+    capability: {
       description: "Mock source for tests.",
-      extensionName: "mockExtension",
       guide: "Use this source for mock work items.",
       id: "mockSource",
+      instructions: ["Use the Mock extension for tests."],
       title: "Mock Source",
-      writeToolNames: ["createItem"]
-    }
+      toolNames: ["searchItems", "createItem"]
+    },
+    displayName,
+    enabled: overrides.enabled ?? true,
+    enabledToolNames,
+    extensionName: "mockExtension",
+    permissionMode: overrides.permissionMode ?? "ask-to-edit",
+    publicConfig: structuredClone(overrides.publicConfig ?? {}),
+    toolExposures: structuredClone(toolExposures)
   }
 }
 
@@ -137,15 +144,19 @@ test("extension permission mode resolves read, write, and external tools", () =>
   )
 })
 
-test("source profile snapshot reader distinguishes missing snapshot from empty snapshot", () => {
-  assert.equal(readSourceProfilesSnapshotFromMetadata(JSON.stringify({})), null)
-  assert.deepEqual(
-    readSourceProfilesSnapshotFromMetadata(
-      JSON.stringify({
-        [RUN_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY]: []
-      })
-    ),
-    []
+test("native extension manifest rejects legacy ai configuration", () => {
+  assert.throws(
+    () =>
+      defineNativeExtensionManifest({
+        ai: {
+          instructions: ["Use the legacy field."]
+        },
+        capabilities: [],
+        commands: [],
+        name: "legacy-ai",
+        title: "Legacy AI"
+      }),
+    /aiCapability, not ai/
   )
 })
 
@@ -161,15 +172,15 @@ test("extension tool registry rejects duplicate extension tool names", () => {
   )
 })
 
-test("extension source binding allows same source tool through distinct profile tool ids", () => {
+test("extension AI capability binding allows same tool through distinct resolved tool ids", () => {
   const registry = new ExtensionToolRegistry({
     knownExtensionNames: ["mockExtension"]
   })
   registry.registerExtensionTools("mockExtension", [createSearchTool()])
 
-  const bindings = registry.createSourceToolBindings([
-    createSourceBinding(createProfile({ displayName: "Personal", id: "personal" })),
-    createSourceBinding(createProfile({ displayName: "Work", id: "work" }))
+  const bindings = registry.createAiCapabilityToolBindings([
+    createAiCapability({ displayName: "Personal", id: "personal" }),
+    createAiCapability({ displayName: "Work", id: "work" })
   ])
 
   assert.deepEqual(
@@ -182,7 +193,7 @@ test("extension source binding allows same source tool through distinct profile 
   )
 })
 
-test("extension source binding rejects duplicate externally provided agent tool ids", () => {
+test("extension AI capability binding rejects duplicate externally provided agent tool ids", () => {
   const registry = new ExtensionToolRegistry({
     knownExtensionNames: ["mockExtension"]
   })
@@ -190,15 +201,15 @@ test("extension source binding rejects duplicate externally provided agent tool 
 
   assert.throws(
     () =>
-      registry.createSourceToolBindings([
-        createSourceBinding(createProfile({ id: "profile_1" })),
-        createSourceBinding(createProfile({ id: "profile_1" }))
+      registry.createAiCapabilityToolBindings([
+        createAiCapability({ id: "profile_1" }),
+        createAiCapability({ id: "profile_1" })
       ]),
     /not unique/
   )
 })
 
-test("extension source binding skips stale enabled tool names", () => {
+test("extension AI capability binding skips stale enabled tool names", () => {
   const consoleWarn = mock.method(console, "warn", () => {})
   try {
     const registry = new ExtensionToolRegistry({
@@ -206,21 +217,47 @@ test("extension source binding skips stale enabled tool names", () => {
     })
     registry.registerExtensionTools("mockExtension", [createSearchTool()])
 
-    const sourceBinding = createSourceBinding(
-      createProfile({ enabledToolNames: ["searchItems", "removedTool"] })
-    )
-    const bindings = registry.createSourceToolBindings([sourceBinding])
+    const aiCapability = createAiCapability({ enabledToolNames: ["searchItems", "removedTool"] })
+    const bindings = registry.createAiCapabilityToolBindings([aiCapability])
 
     assert.deepEqual(
       bindings.map((binding) => binding.agentToolName),
       ["ext__mockSource__profile_1__searchItems"]
     )
-    const guide = buildExtensionSourceGuide([sourceBinding], undefined, bindings)
+    const guide = buildExtensionAiCapabilityGuide([aiCapability], undefined, bindings)
     assert.match(guide, /Callable tools: searchItems \(Mock Profile\)/)
     assert.doesNotMatch(guide, /removedTool/)
   } finally {
     consoleWarn.mock.restore()
   }
+})
+
+test("extension AI session replaces stale bindings when a capability is reloaded", () => {
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  registry.registerExtensionTools("mockExtension", [createSearchTool()])
+
+  const session = createExtensionAiSession({
+    aiCapabilities: [createAiCapability()],
+    registry
+  })
+  assert.deepEqual(
+    session.getAllToolBindings().map((binding) => binding.agentToolName),
+    ["ext__mockSource__profile_1__searchItems"]
+  )
+
+  session.loadAiCapability(
+    createAiCapability({
+      authStatus: "missing",
+      enabledToolNames: [],
+      toolExposures: []
+    })
+  )
+
+  assert.deepEqual(session.getAllToolBindings(), [])
+  assert.deepEqual(session.getVisibleToolBindings(), [])
+  assert.equal(session.getAiCapabilities()[0]?.authStatus, "missing")
 })
 
 test("extension tool executor validates input and passes source context to handlers", async () => {
@@ -237,7 +274,7 @@ test("extension tool executor validates input and passes source context to handl
     })
   ])
 
-  const [binding] = registry.createSourceToolBindings([createSourceBinding()])
+  const [binding] = registry.createAiCapabilityToolBindings([createAiCapability()])
   const executor = new ExtensionToolExecutor({ bindings: [binding] })
 
   const output = await executor.executeAgentTool({
@@ -254,7 +291,8 @@ test("extension tool executor validates input and passes source context to handl
   const context = observedContext as ExtensionToolContext | null
   assert.ok(context)
   assert.equal(context.agentToolName, "ext__mockSource__profile_1__searchItems")
-  assert.equal(context.sourceProfileId, "profile-1")
+  assert.equal(context.capabilityId, "mockSource")
+  assert.deepEqual(context.extensionPreferences, {})
   await assert.rejects(
     executor.executeAgentTool({
       agentToolName: "ext__mockSource__profile_1__searchItems",
@@ -268,27 +306,78 @@ test("extension tool executor validates input and passes source context to handl
   )
 })
 
-test("extension source middleware injects guides and exposes mock tools", async () => {
+test("extension tool executor injects resolved extension preferences", async () => {
+  let observedContext: ExtensionToolContext | null = null
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  registry.registerExtensionTools("mockExtension", [
+    createSearchTool((ctx, input) => {
+      observedContext = ctx
+      return {
+        result: input.query
+      }
+    })
+  ])
+
+  const [binding] = registry.createAiCapabilityToolBindings([createAiCapability()])
+  const executor = new ExtensionToolExecutor({
+    bindings: [binding],
+    getExtensionPreferences: (extensionName) => ({
+      extensionName,
+      token: "secret-token"
+    })
+  })
+
+  await executor.executeAgentTool({
+    agentToolName: "ext__mockSource__profile_1__searchItems",
+    args: {
+      query: "alpha"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+
+  const context = observedContext as ExtensionToolContext | null
+  assert.ok(context)
+  assert.deepEqual(context.extensionPreferences, {
+    extensionName: "mockExtension",
+    token: "secret-token"
+  })
+})
+
+test("extension AI middleware injects loaded guides and executes through stable tools", async () => {
   const registry = new ExtensionToolRegistry({
     knownExtensionNames: ["mockExtension"]
   })
   registry.registerExtensionTools("mockExtension", [createSearchTool()])
 
-  const sourceBinding = createSourceBinding()
-  const sourceToolBindings = registry.createSourceToolBindings([sourceBinding])
-  const middleware = createExtensionSourcesMiddleware({
-    sourceBindings: [sourceBinding],
-    sourceToolBindings,
+  const aiCapability = createAiCapability()
+  const session = createExtensionAiSession({
+    aiCapabilities: [aiCapability],
+    registry
+  })
+  const middleware = createExtensionAiMiddleware({
+    aiCapabilityCatalog: [],
+    session,
     threadId: "thread-1",
     workspacePath: "/workspace"
   })
 
   const tools = middleware.tools ?? []
-  assert.equal(tools.length, 1)
-  assert.equal(tools[0].name, "ext__mockSource__profile_1__searchItems")
+  const callExtensionTool = tools[1]
+  assert.ok(callExtensionTool)
+  assert.deepEqual(
+    tools.map((tool) => tool.name),
+    ["loadExtension", "callExtensionTool"]
+  )
 
-  const toolOutput = await tools[0].invoke({
-    query: "beta"
+  const toolOutput = await callExtensionTool.invoke({
+    args: {
+      query: "beta"
+    },
+    extensionName: "mockExtension",
+    toolName: "searchItems"
   })
   assert.equal(toolOutput, '{\n  "result": "beta"\n}')
 
@@ -305,7 +394,9 @@ test("extension source middleware injects guides and exposes mock tools", async 
     }
   )
 
-  assert.match(observedSystemPrompt, /### Source Guides/)
+  assert.match(observedSystemPrompt, /### Extension AI Capability Guides/)
+  assert.match(observedSystemPrompt, /### Extension Instructions/)
+  assert.match(observedSystemPrompt, /Use the Mock extension for tests/)
   assert.match(observedSystemPrompt, /Mock Source/)
   assert.match(observedSystemPrompt, /Use this source for mock work items/)
 
@@ -321,10 +412,14 @@ test("extension source middleware injects guides and exposes mock tools", async 
         tool_calls: [
           {
             args: {
-              query: "beta"
+              args: {
+                query: "beta"
+              },
+              extensionName: "mockExtension",
+              toolName: "searchItems"
             },
             id: "tool-call-1",
-            name: "ext__mockSource__profile_1__searchItems",
+            name: "callExtensionTool",
             type: "tool_call"
           }
         ]
@@ -342,25 +437,190 @@ test("extension source middleware injects guides and exposes mock tools", async 
   })
   assert.deepEqual(toolCall.presentation, {
     access: "read",
-    kind: "extension",
-    profileTitle: "Mock Profile",
-    sourceTitle: "Mock Source"
+    capabilityDisplayName: "Mock Profile",
+    capabilityTitle: "Mock Source",
+    kind: "extension"
   })
 })
 
-test("extension source guide keeps missing auth non-callable", () => {
-  const guide = buildExtensionSourceGuide([
-    createSourceBinding(
-      createProfile({
-        authStatus: "missing"
+test("loaded extension stays callable while catalog only lists unloaded extensions", async () => {
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  registry.registerExtensionTools("mockExtension", [createSearchTool()])
+
+  const session = createExtensionAiSession({
+    aiCapabilities: [createAiCapability()],
+    registry
+  })
+  const middleware = createExtensionAiMiddleware({
+    aiCapabilityCatalog: [
+      {
+        description: "Mock source for tests.",
+        extensionName: "mockExtension",
+        sourceId: "mockSource",
+        title: "Mock Source"
+      },
+      {
+        description: "Another source for tests.",
+        extensionName: "otherExtension",
+        sourceId: "otherSource",
+        title: "Other Source"
+      }
+    ],
+    session,
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+
+  assert.deepEqual(
+    middleware.tools?.map((tool) => tool.name),
+    ["loadExtension", "callExtensionTool"]
+  )
+  const loadExtensionTool = middleware.tools?.find((candidate) => candidate.name === "loadExtension")
+  const loadExtensionSchema = (
+    loadExtensionTool?.schema as { toJSONSchema?: () => { properties?: Record<string, unknown> } }
+  )?.toJSONSchema?.()
+  assert.deepEqual(loadExtensionSchema?.properties?.extensionName, {
+    enum: ["otherExtension"],
+    type: "string"
+  })
+
+  const callExtensionTool = middleware.tools?.find(
+    (candidate) => candidate.name === "callExtensionTool"
+  )
+  assert.ok(callExtensionTool)
+  const toolOutput = await callExtensionTool.invoke({
+    args: {
+      query: "loaded"
+    },
+    extensionName: "mockExtension",
+    toolName: "searchItems"
+  })
+  assert.equal(toolOutput, '{\n  "result": "loaded"\n}')
+
+  let observedSystemPrompt = ""
+  await middleware.wrapModelCall!(
+    {
+      messages: [],
+      systemPrompt: "base prompt",
+      tools: middleware.tools
+    } as never,
+    async (request) => {
+      observedSystemPrompt = request.systemPrompt ?? ""
+      const currentLoadExtensionTool = request.tools?.find(
+        (candidate) => candidate.name === "loadExtension"
+      )
+      const currentLoadExtensionSchema = (
+        currentLoadExtensionTool?.schema as {
+          toJSONSchema?: () => { properties?: Record<string, unknown> }
+        }
+      )?.toJSONSchema?.()
+      assert.deepEqual(currentLoadExtensionSchema?.properties?.extensionName, {
+        enum: ["otherExtension"],
+        type: "string"
       })
-    )
-  ])
+      return {} as never
+    }
+  )
+
+  assert.match(observedSystemPrompt, /### Extension AI Capability Guides/)
+  assert.match(observedSystemPrompt, /### Extension Instructions/)
+  assert.match(observedSystemPrompt, /### Available Extensions/)
+  assert.doesNotMatch(observedSystemPrompt, /Mock Source \(mockExtension\)/)
+  assert.match(observedSystemPrompt, /Other Source \(otherExtension\)/)
+})
+
+test("extension AI middleware keeps model tools stable after all catalog extensions are loaded", async () => {
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  registry.registerExtensionTools("mockExtension", [createSearchTool()])
+
+  const session = createExtensionAiSession({
+    aiCapabilities: [createAiCapability()],
+    registry
+  })
+  const middleware = createExtensionAiMiddleware({
+    aiCapabilityCatalog: [
+      {
+        description: "Mock source for tests.",
+        extensionName: "mockExtension",
+        sourceId: "mockSource",
+        title: "Mock Source"
+      }
+    ],
+    session,
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+
+  const registeredTools = middleware.tools ?? []
+  let observedTools: string[] = []
+  let observedToolRefs: unknown[] = []
+  let observedSystemPrompt = ""
+  await middleware.wrapModelCall!(
+    {
+      messages: [],
+      systemPrompt: "base prompt",
+      tools: middleware.tools
+    } as never,
+    async (request) => {
+      observedSystemPrompt = request.systemPrompt ?? ""
+      observedToolRefs = request.tools
+      observedTools = request.tools.flatMap((tool) =>
+        typeof tool.name === "string" ? [tool.name] : []
+      )
+      return {} as never
+    }
+  )
+
+  assert.deepEqual(observedTools, ["loadExtension", "callExtensionTool"])
+  assert.equal(observedToolRefs[0], registeredTools[0])
+  assert.equal(observedToolRefs[1], registeredTools[1])
+  assert.doesNotMatch(observedSystemPrompt, /### Available Extensions/)
+  assert.match(observedSystemPrompt, /### Extension AI Capability Guides/)
+})
+
+test("extension instructions are separate from source guides", () => {
+  const aiCapability = createAiCapability()
+  const instructions = buildExtensionInstructions([aiCapability])
+  const guide = buildExtensionAiCapabilityGuide([aiCapability])
+
+  assert.match(instructions, /### Extension Instructions/)
+  assert.match(instructions, /Use the Mock extension for tests/)
+  assert.doesNotMatch(instructions, /Use this source for mock work items/)
+  assert.match(guide, /### Extension AI Capability Guides/)
+  assert.match(guide, /Use this source for mock work items/)
+  assert.doesNotMatch(guide, /Use the Mock extension for tests/)
+})
+
+test("extension AI capability guide keeps missing auth non-callable", () => {
+  const missingCapability = createAiCapability({
+    authStatus: "missing",
+    enabled: true
+  })
+  const guide = buildExtensionAiCapabilityGuide([missingCapability])
 
   assert.match(guide, /Callable tools: none; auth status is missing/)
 })
 
-test("extension source runtime exposes only read bindings in explore mode", async () => {
+test("missing auth still injects extension instructions and source guide", () => {
+  const missingCapability = createAiCapability({
+    authStatus: "missing",
+    enabled: true,
+    enabledToolNames: [],
+    toolExposures: []
+  })
+
+  assert.match(buildExtensionInstructions([missingCapability]), /Use the Mock extension for tests/)
+  assert.match(
+    buildExtensionAiCapabilityGuide([missingCapability]),
+    /Use this source for mock work items/
+  )
+})
+
+test("extension AI runtime exposes only read bindings in explore mode", async () => {
   const writeTool: ExtensionToolDefinition<{ title: string }, { id: string }> = {
     access: "write",
     description: "Create a mock item.",
@@ -378,61 +638,18 @@ test("extension source runtime exposes only read bindings in explore mode", asyn
   })
   registry.registerExtensionTools("mockExtension", [writeTool])
 
-  const runtime = createExtensionSourceRuntime({
+  const runtime = createExtensionAiRuntime({
+    aiCapabilities: [createAiCapability({ enabledToolNames: ["createItem"] })],
     permissionMode: "explore",
     registry,
-    sourceBindings: [createSourceBinding(createProfile({ enabledToolNames: ["createItem"] }))],
     threadId: "thread-1",
     workspacePath: "/workspace"
   })
 
-  assert.equal(
-    runtime.sourceToolBindings[0]?.agentToolName,
-    "ext__mockSource__profile_1__createItem"
+  assert.equal(runtime.aiToolBindings[0]?.agentToolName, "ext__mockSource__profile_1__createItem")
+  assert.deepEqual(runtime.visibleAiToolBindings, [])
+  assert.deepEqual(
+    runtime.middleware.tools?.map((tool) => tool.name),
+    ["loadExtension", "callExtensionTool"]
   )
-  assert.deepEqual(runtime.visibleSourceToolBindings, [])
-  assert.deepEqual(runtime.middleware.tools, [])
-  assert.equal(
-    runtime.approvalPolicyProvider.getPolicy("ext__mockSource__profile_1__createItem")?.decision
-      .disposition,
-    "deny"
-  )
-})
-
-test("extension tool approval policy provider maps generated names to permission decisions", () => {
-  const writeTool: ExtensionToolDefinition<{ title: string }, { id: string }> = {
-    access: "write",
-    description: "Create a mock item.",
-    handler: () => ({
-      id: "item-1"
-    }),
-    inputSchema: z.object({
-      title: z.string()
-    }),
-    name: "createItem",
-    title: "Create Item"
-  }
-  const registry = new ExtensionToolRegistry({
-    knownExtensionNames: ["mockExtension"]
-  })
-  registry.registerExtensionTools("mockExtension", [createSearchTool(), writeTool])
-
-  const [binding] = registry.createSourceToolBindings([
-    createSourceBinding(createProfile({ enabledToolNames: ["createItem"] }))
-  ])
-  const provider = createExtensionToolApprovalPolicyProvider({
-    bindings: [binding],
-    permissionMode: "ask-to-edit"
-  })
-  const policy = provider.getPolicy("ext__mockSource__profile_1__createItem")
-
-  assert.equal(policy?.decision.disposition, "require_approval")
-  assert.equal(
-    provider.getReview("ext__mockSource__profile_1__createItem", { title: "Ship it" })?.kind,
-    "extension_tool"
-  )
-  const review = provider.getReview("ext__mockSource__profile_1__createItem", { title: "Ship it" })
-  assert.equal(review?.kind, "extension_tool")
-  assert.equal(review.toolTitle, "createItem (Mock Profile)")
-  assert.equal(provider.getPolicy("web_search"), null)
 })

@@ -81,6 +81,29 @@ test("toDisplayUserMessageContent reconstructs file blocks from metadata refs", 
   ])
 })
 
+test("toDisplayUserMessageContent preserves extension source markdown for renderer viewer", () => {
+  const content = toDisplayUserMessageContent(
+    "Use [@apple-reminders](openwork-extension-source://apple-reminders/appleReminders) today",
+    {
+      refs: [
+        {
+          extensionName: "apple-reminders",
+          name: "Apple Reminders",
+          sourceId: "appleReminders",
+          type: "extension-source"
+        }
+      ]
+    }
+  )
+
+  assert.deepEqual(content, [
+    {
+      text: "Use [@apple-reminders](openwork-extension-source://apple-reminders/appleReminders) today",
+      type: "text"
+    }
+  ])
+})
+
 test("toComposerMessageInput preserves real user text when refs metadata is also present", () => {
   const input = toComposerMessageInput("Please review spec.pdf", {
     refs: [

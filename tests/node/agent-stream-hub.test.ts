@@ -94,6 +94,30 @@ test("AgentStreamHub hydrates history and fans out projection updates", async ()
   assert.equal(afterCancel.projection.status, "cancelled")
 })
 
+test("AgentStreamHub global subscribers receive every thread projection update", async () => {
+  const hub = new AgentStreamHub(createThreadsService(createHistory()))
+  const seen: Array<{ status: string; threadId: string }> = []
+  const unsubscribe = hub.subscribeAll("global", (envelope) => {
+    seen.push({
+      status: envelope.projection.status,
+      threadId: envelope.projection.threadId
+    })
+  })
+
+  await hub.prepareInvoke("thread-1", {
+    content: "Ship it",
+    id: "user-1"
+  })
+  await hub.prepareResume("thread-2")
+  unsubscribe()
+  await hub.handlePayload("thread-1", { type: "run_started", runId: "run-1" })
+
+  assert.deepEqual(seen, [
+    { status: "running", threadId: "thread-1" },
+    { status: "running", threadId: "thread-2" }
+  ])
+})
+
 test("AgentStreamHub derives persisted HITL request ids from run and tool call ids", async () => {
   const history = createHistory({
     messages: [createUserMessage("history-user", "hello")],

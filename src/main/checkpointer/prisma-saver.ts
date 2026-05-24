@@ -9,6 +9,7 @@ import {
   type PendingWrite,
   type SerializerProtocol
 } from "@langchain/langgraph-checkpoint"
+import type { Prisma } from "@prisma/client"
 import { syncMessageSearchIndexFromSnapshot, upsertHitlRequest } from "../db"
 import { getPrismaClient } from "../db/client"
 import {
@@ -300,37 +301,44 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
     const checkpointNs = config.configurable.checkpoint_ns ?? ""
     const checkpointId = config.configurable.checkpoint_id
 
+    const operations: Prisma.PrismaPromise<unknown>[] = []
     for (let idx = 0; idx < writes.length; idx += 1) {
       const write = writes[idx]
       const [type, serializedValue] = await this.serde.dumpsTyped(write[1])
       const [storedType, storedValue] = encodeSerializedPayload(type, serializedValue)
 
-      await prisma.checkpointWrite.upsert({
-        where: {
-          threadId_checkpointNs_checkpointId_taskId_idx: {
+      operations.push(
+        prisma.checkpointWrite.upsert({
+          where: {
+            threadId_checkpointNs_checkpointId_taskId_idx: {
+              threadId,
+              checkpointNs,
+              checkpointId,
+              taskId,
+              idx
+            }
+          },
+          create: {
             threadId,
             checkpointNs,
             checkpointId,
             taskId,
-            idx
+            idx,
+            channel: write[0],
+            type: storedType,
+            value: storedValue
+          },
+          update: {
+            channel: write[0],
+            type: storedType,
+            value: storedValue
           }
-        },
-        create: {
-          threadId,
-          checkpointNs,
-          checkpointId,
-          taskId,
-          idx,
-          channel: write[0],
-          type: storedType,
-          value: storedValue
-        },
-        update: {
-          channel: write[0],
-          type: storedType,
-          value: storedValue
-        }
-      })
+        })
+      )
+    }
+
+    if (operations.length > 0) {
+      await prisma.$transaction(operations)
     }
   }
 
