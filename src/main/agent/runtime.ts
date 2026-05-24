@@ -9,6 +9,7 @@ import {
 } from "deepagents"
 import { join } from "path"
 import { getAgentConfig } from "../preferences"
+import type { getResolvedNativeExtensionPreferenceRecord } from "../preferences"
 import { getOpenworkDir } from "../storage"
 import { PrismaCheckpointSaver } from "../checkpointer/prisma-saver"
 import { LocalSandbox } from "./local-sandbox"
@@ -111,6 +112,7 @@ export interface CreateAgentRuntimeOptions {
   aiCapabilities?: ResolvedExtensionAiCapability[]
   aiCapabilityCatalog?: ExtensionAiCapabilityCatalogItem[]
   getAiCapabilityByExtensionName?: (extensionName: string) => ResolvedExtensionAiCapability | null
+  getExtensionPreferences?: typeof getResolvedNativeExtensionPreferenceRecord
   onLoadedAiCapabilitiesChanged?: (
     change: LoadedExtensionAiCapabilitiesChange
   ) => Promise<void> | void
@@ -177,6 +179,7 @@ export async function createAgentRuntime(
     aiCapabilities,
     aiCapabilityCatalog: options.aiCapabilityCatalog,
     getAiCapabilityByExtensionName: options.getAiCapabilityByExtensionName,
+    getExtensionPreferences: options.getExtensionPreferences,
     onLoadedAiCapabilitiesChanged: options.onLoadedAiCapabilitiesChanged,
     permissionMode,
     registry: createNativeExtensionToolRegistry({

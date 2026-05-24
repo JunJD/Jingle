@@ -13,6 +13,7 @@ export interface ExecuteExtensionAgentToolInput {
 
 export interface ExtensionToolExecutorOptions {
   bindings: ExtensionAgentToolBinding[]
+  getExtensionPreferences?: (extensionName: string) => Record<string, unknown>
   maxAgentOutputChars?: number
 }
 
@@ -29,12 +30,14 @@ function serializeExtensionToolOutput(value: unknown, maxChars: number): string 
 
 export class ExtensionToolExecutor {
   private readonly bindingsByAgentToolName: Map<string, ExtensionAgentToolBinding>
+  private readonly getExtensionPreferences?: (extensionName: string) => Record<string, unknown>
   private readonly maxAgentOutputChars: number
 
   constructor(options: ExtensionToolExecutorOptions) {
     this.bindingsByAgentToolName = new Map(
       options.bindings.map((binding) => [binding.agentToolName, binding])
     )
+    this.getExtensionPreferences = options.getExtensionPreferences
     this.maxAgentOutputChars = options.maxAgentOutputChars ?? DEFAULT_MAX_AGENT_OUTPUT_CHARS
   }
 
@@ -59,6 +62,9 @@ export class ExtensionToolExecutor {
         agentToolName: input.agentToolName,
         capabilityId: binding.capability.id,
         extensionName: binding.definition.extensionName,
+        extensionPreferences:
+          this.getExtensionPreferences?.(binding.definition.extensionName) ??
+          binding.resolvedCapability.publicConfig,
         runId: input.runId,
         threadId: input.threadId,
         toolName: binding.definition.name,

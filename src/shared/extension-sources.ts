@@ -17,8 +17,7 @@ export type { PermissionModeName } from "./permission-mode"
 export type ExtensionToolAccess = "read" | "write" | "external"
 export type ExtensionPermissionDisposition = "allow" | "require_approval" | "deny"
 export type ExtensionAiAuthStatus = "connected" | "missing" | "failed"
-export const RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY =
-  "extensionAiCapabilitiesSnapshot"
+export const RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY = "extensionAiCapabilitiesSnapshot"
 
 export interface ExtensionPermissionDecision {
   access: ExtensionToolAccess
@@ -31,6 +30,7 @@ export interface ExtensionToolContext {
   agentToolName?: string
   capabilityId?: string
   extensionName: string
+  extensionPreferences: Record<string, unknown>
   runId?: string | null
   threadId: string
   toolName: string
@@ -345,9 +345,7 @@ export function parseRunExtensionAiCapabilitiesSnapshot(
       extensionName,
       id,
       permissionModeSnapshot,
-      publicConfigSnapshot: isRecord(entry.publicConfigSnapshot)
-        ? entry.publicConfigSnapshot
-        : {},
+      publicConfigSnapshot: isRecord(entry.publicConfigSnapshot) ? entry.publicConfigSnapshot : {},
       runId
     })
   }

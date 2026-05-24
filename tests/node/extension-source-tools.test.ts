@@ -292,6 +292,7 @@ test("extension tool executor validates input and passes source context to handl
   assert.ok(context)
   assert.equal(context.agentToolName, "ext__mockSource__profile_1__searchItems")
   assert.equal(context.capabilityId, "mockSource")
+  assert.deepEqual(context.extensionPreferences, {})
   await assert.rejects(
     executor.executeAgentTool({
       agentToolName: "ext__mockSource__profile_1__searchItems",
@@ -303,6 +304,46 @@ test("extension tool executor validates input and passes source context to handl
     }),
     /input validation failed/
   )
+})
+
+test("extension tool executor injects resolved extension preferences", async () => {
+  let observedContext: ExtensionToolContext | null = null
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  registry.registerExtensionTools("mockExtension", [
+    createSearchTool((ctx, input) => {
+      observedContext = ctx
+      return {
+        result: input.query
+      }
+    })
+  ])
+
+  const [binding] = registry.createAiCapabilityToolBindings([createAiCapability()])
+  const executor = new ExtensionToolExecutor({
+    bindings: [binding],
+    getExtensionPreferences: (extensionName) => ({
+      extensionName,
+      token: "secret-token"
+    })
+  })
+
+  await executor.executeAgentTool({
+    agentToolName: "ext__mockSource__profile_1__searchItems",
+    args: {
+      query: "alpha"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+
+  const context = observedContext as ExtensionToolContext | null
+  assert.ok(context)
+  assert.deepEqual(context.extensionPreferences, {
+    extensionName: "mockExtension",
+    token: "secret-token"
+  })
 })
 
 test("extension AI middleware injects loaded guides and executes through stable tools", async () => {
@@ -400,6 +441,145 @@ test("extension AI middleware injects loaded guides and executes through stable 
     capabilityTitle: "Mock Source",
     kind: "extension"
   })
+})
+
+test("loaded extension stays callable while catalog only lists unloaded extensions", async () => {
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  registry.registerExtensionTools("mockExtension", [createSearchTool()])
+
+  const session = createExtensionAiSession({
+    aiCapabilities: [createAiCapability()],
+    registry
+  })
+  const middleware = createExtensionAiMiddleware({
+    aiCapabilityCatalog: [
+      {
+        description: "Mock source for tests.",
+        extensionName: "mockExtension",
+        sourceId: "mockSource",
+        title: "Mock Source"
+      },
+      {
+        description: "Another source for tests.",
+        extensionName: "otherExtension",
+        sourceId: "otherSource",
+        title: "Other Source"
+      }
+    ],
+    session,
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+
+  assert.deepEqual(
+    middleware.tools?.map((tool) => tool.name),
+    ["loadExtension", "callExtensionTool"]
+  )
+  const loadExtensionTool = middleware.tools?.find((candidate) => candidate.name === "loadExtension")
+  const loadExtensionSchema = (
+    loadExtensionTool?.schema as { toJSONSchema?: () => { properties?: Record<string, unknown> } }
+  )?.toJSONSchema?.()
+  assert.deepEqual(loadExtensionSchema?.properties?.extensionName, {
+    enum: ["otherExtension"],
+    type: "string"
+  })
+
+  const callExtensionTool = middleware.tools?.find(
+    (candidate) => candidate.name === "callExtensionTool"
+  )
+  assert.ok(callExtensionTool)
+  const toolOutput = await callExtensionTool.invoke({
+    args: {
+      query: "loaded"
+    },
+    extensionName: "mockExtension",
+    toolName: "searchItems"
+  })
+  assert.equal(toolOutput, '{\n  "result": "loaded"\n}')
+
+  let observedSystemPrompt = ""
+  await middleware.wrapModelCall!(
+    {
+      messages: [],
+      systemPrompt: "base prompt",
+      tools: middleware.tools
+    } as never,
+    async (request) => {
+      observedSystemPrompt = request.systemPrompt ?? ""
+      const currentLoadExtensionTool = request.tools?.find(
+        (candidate) => candidate.name === "loadExtension"
+      )
+      const currentLoadExtensionSchema = (
+        currentLoadExtensionTool?.schema as {
+          toJSONSchema?: () => { properties?: Record<string, unknown> }
+        }
+      )?.toJSONSchema?.()
+      assert.deepEqual(currentLoadExtensionSchema?.properties?.extensionName, {
+        enum: ["otherExtension"],
+        type: "string"
+      })
+      return {} as never
+    }
+  )
+
+  assert.match(observedSystemPrompt, /### Extension AI Capability Guides/)
+  assert.match(observedSystemPrompt, /### Extension Instructions/)
+  assert.match(observedSystemPrompt, /### Available Extensions/)
+  assert.doesNotMatch(observedSystemPrompt, /Mock Source \(mockExtension\)/)
+  assert.match(observedSystemPrompt, /Other Source \(otherExtension\)/)
+})
+
+test("extension AI middleware keeps model tools stable after all catalog extensions are loaded", async () => {
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  registry.registerExtensionTools("mockExtension", [createSearchTool()])
+
+  const session = createExtensionAiSession({
+    aiCapabilities: [createAiCapability()],
+    registry
+  })
+  const middleware = createExtensionAiMiddleware({
+    aiCapabilityCatalog: [
+      {
+        description: "Mock source for tests.",
+        extensionName: "mockExtension",
+        sourceId: "mockSource",
+        title: "Mock Source"
+      }
+    ],
+    session,
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+
+  const registeredTools = middleware.tools ?? []
+  let observedTools: string[] = []
+  let observedToolRefs: unknown[] = []
+  let observedSystemPrompt = ""
+  await middleware.wrapModelCall!(
+    {
+      messages: [],
+      systemPrompt: "base prompt",
+      tools: middleware.tools
+    } as never,
+    async (request) => {
+      observedSystemPrompt = request.systemPrompt ?? ""
+      observedToolRefs = request.tools
+      observedTools = request.tools.flatMap((tool) =>
+        typeof tool.name === "string" ? [tool.name] : []
+      )
+      return {} as never
+    }
+  )
+
+  assert.deepEqual(observedTools, ["loadExtension", "callExtensionTool"])
+  assert.equal(observedToolRefs[0], registeredTools[0])
+  assert.equal(observedToolRefs[1], registeredTools[1])
+  assert.doesNotMatch(observedSystemPrompt, /### Available Extensions/)
+  assert.match(observedSystemPrompt, /### Extension AI Capability Guides/)
 })
 
 test("extension instructions are separate from source guides", () => {

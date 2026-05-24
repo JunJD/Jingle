@@ -15,6 +15,7 @@ export interface CreateExtensionAiRuntimeOptions {
   aiCapabilities: ResolvedExtensionAiCapability[]
   aiCapabilityCatalog?: ExtensionAiCapabilityCatalogItem[]
   getAiCapabilityByExtensionName?: (extensionName: string) => ResolvedExtensionAiCapability | null
+  getExtensionPreferences?: (extensionName: string) => Record<string, unknown>
   onLoadedAiCapabilitiesChanged?: (
     change: LoadedExtensionAiCapabilitiesChange
   ) => Promise<void> | void
@@ -93,6 +94,7 @@ export function createExtensionAiRuntime(options: CreateExtensionAiRuntimeOption
   const middleware = createExtensionAiMiddleware({
     aiCapabilityCatalog: options.aiCapabilityCatalog ?? [],
     getAiCapabilityByExtensionName: options.getAiCapabilityByExtensionName,
+    getExtensionPreferences: options.getExtensionPreferences,
     onLoadedAiCapabilitiesChanged: options.onLoadedAiCapabilitiesChanged,
     permissionMode: options.permissionMode,
     runId: options.runId,

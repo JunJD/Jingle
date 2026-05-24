@@ -1,7 +1,10 @@
 import { HumanMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
 import { readRunExtensionAiCapabilitiesSnapshotFromMetadata } from "@shared/extension-sources"
-import { normalizeComposerMessageRefs, summarizeMessageContent } from "@shared/message-content"
+import {
+  normalizeComposerMessageRefs,
+  summarizeMessageContent
+} from "@shared/message-content"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import {
   hydrateNativeExtensionAiCapabilities,
@@ -449,6 +452,7 @@ export class AgentService {
         aiCapabilities,
         aiCapabilityCatalog,
         getAiCapabilityByExtensionName,
+        getExtensionPreferences: getResolvedNativeExtensionPreferenceRecord,
         onLoadedAiCapabilitiesChanged: ({ aiCapabilities, permissionMode, runId }) =>
           updateRunExtensionAiCapabilitiesSnapshot(runId, {
             aiCapabilities,
@@ -607,6 +611,7 @@ export class AgentService {
             permissionMode,
             platform: process.platform
           }),
+        getExtensionPreferences: getResolvedNativeExtensionPreferenceRecord,
         onLoadedAiCapabilitiesChanged: ({ aiCapabilities, permissionMode, runId }) =>
           updateRunExtensionAiCapabilitiesSnapshot(runId, {
             aiCapabilities,
