@@ -23,6 +23,7 @@ export {
   getHitlRequest,
   getLatestHitlRequest,
   hasPendingHitlRequest,
+  hasPendingHitlRequestForRun,
   resolveHitlRequest,
   resolvePendingHitlRequests,
   upsertHitlRequest

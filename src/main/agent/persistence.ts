@@ -5,7 +5,14 @@ import {
   RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY,
   type ResolvedExtensionAiCapability
 } from "@shared/extension-sources"
-import { createRun, getRun, getThread, updateRun, updateThread } from "../db"
+import {
+  createRun,
+  getRun,
+  getThread,
+  hasPendingHitlRequestForRun,
+  updateRun,
+  updateThread
+} from "../db"
 import { getCheckpointer } from "./runtime"
 import { extractTitleFromCheckpoint } from "./runtime-state"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
@@ -239,10 +246,23 @@ export async function markRunFailed(
   runId: string,
   error: unknown
 ): Promise<void> {
+  let syncedStatus: PersistedRunStatus | null = null
   try {
-    await syncRunFromLatestCheckpoint(threadId, runId)
+    syncedStatus = await syncRunFromLatestCheckpoint(threadId, runId)
   } catch {
     // Best effort: preserve the failure even if checkpoint sync fails.
+  }
+
+  if (syncedStatus === "interrupted" || (await hasPendingHitlRequestForRun(threadId, runId))) {
+    await updateRunMetadata(runId, {
+      status: "interrupted",
+      merge: (run) => mergeRunErrorMetadata(run, error)
+    })
+
+    await updateThread(threadId, {
+      status: "interrupted"
+    })
+    return
   }
 
   await updateRunMetadata(runId, {

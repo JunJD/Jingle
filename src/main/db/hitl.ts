@@ -145,6 +145,22 @@ export async function hasPendingHitlRequest(threadId: string): Promise<boolean> 
   return row !== null
 }
 
+export async function hasPendingHitlRequestForRun(threadId: string, runId: string): Promise<boolean> {
+  const prisma = getPrismaClient()
+  const row = await prisma.hitlRequest.findFirst({
+    select: {
+      requestId: true
+    },
+    where: {
+      runId,
+      threadId,
+      status: "pending"
+    }
+  })
+
+  return row !== null
+}
+
 export async function getHitlRequest(requestId: string): Promise<HitlRequestRow | null> {
   const prisma = getPrismaClient()
   const row = await prisma.hitlRequest.findUnique({

@@ -164,6 +164,41 @@ test("agent resume keeps HITL request pending when resumed stream fails before f
   )
 })
 
+test("run failure preserves interrupted status when pending HITL remains", async () => {
+  const { createRun, createThread, getRun, getThread, upsertHitlRequest } = await loadDbModules()
+  const { markRunFailed } = await import("../../src/main/agent/persistence")
+
+  const threadId = "thread-failed-with-pending-hitl"
+  const runId = "run-failed-with-pending-hitl"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+  await upsertHitlRequest({
+    request_id: "request-still-pending",
+    thread_id: threadId,
+    run_id: runId,
+    tool_call_id: "tool-call-still-pending",
+    tool_name: "callExtensionTool",
+    tool_args: {
+      args: {
+        reminderId: "reminder-2"
+      },
+      extensionName: "apple-reminders",
+      toolName: "deleteReminder"
+    },
+    allowed_decisions: ["approve", "reject"],
+    status: "pending"
+  })
+
+  await markRunFailed(threadId, runId, new Error("checkpoint write timed out"))
+
+  const run = await getRun(runId)
+  const thread = await getThread(threadId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  assert.equal(run?.status, "interrupted")
+  assert.equal(thread?.status, "interrupted")
+  assert.equal(metadata.error, "checkpoint write timed out")
+})
+
 test("agent run metadata snapshots permission mode and preserves it through resume", async () => {
   const { createThread, getRun } = await loadDbModules()
   const { beginAgentRun, resumeAgentRun } = await import("../../src/main/agent/persistence")
