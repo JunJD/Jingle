@@ -8,7 +8,7 @@ import { GraphInterrupt } from "@langchain/langgraph"
 import { createToolApprovalMiddleware } from "../../src/main/agent/tool-approval-middleware"
 import { resolveFileMutationChangeType } from "../../src/main/agent/tool-permission-runtime"
 import { createToolPermissionRuntime } from "../../src/main/agent/tool-permission-runtime"
-import { createExtensionToolApprovalPolicyProvider } from "../../src/main/extension-tools/permission"
+import { createDynamicExtensionToolApprovalPolicyProvider } from "../../src/main/extension-tools/permission"
 import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
 import { withExecuteCommandPolicy } from "../../src/shared/execute-command-policy"
 import type {
@@ -48,6 +48,14 @@ function createToolCallRequest(input: { id: string; name?: string }) {
 }
 
 function createExtensionApprovalPolicyProvider(permissionMode: PermissionModeName) {
+  const { aiCapability, registry } = createExtensionApprovalFixture(permissionMode)
+
+  return createDynamicExtensionToolApprovalPolicyProvider({
+    getBindings: () => registry.createAiCapabilityToolBindings([aiCapability])
+  })
+}
+
+function createExtensionApprovalFixture(permissionMode: PermissionModeName) {
   const registry = new ExtensionToolRegistry({
     knownExtensionNames: ["mockExtension"]
   })
@@ -93,9 +101,10 @@ function createExtensionApprovalPolicyProvider(permissionMode: PermissionModeNam
     ]
   }
 
-  return createExtensionToolApprovalPolicyProvider({
-    bindings: registry.createAiCapabilityToolBindings([aiCapability])
-  })
+  return {
+    aiCapability,
+    registry
+  }
 }
 
 test("read-only execute commands bypass approval and continue to the handler", async () => {
@@ -249,7 +258,7 @@ test("non-allowlisted desktop automation tools return an error without approval"
   assert.match(typeof result.content === "string" ? result.content : "", /not allowlisted/i)
 })
 
-test("auto-mode extension write tools bypass approval and continue to the handler", async () => {
+test("direct extension agent tool calls are denied before reaching the handler", async () => {
   const middleware = createToolApprovalMiddleware({
     extensionToolPolicyProvider: createExtensionApprovalPolicyProvider("auto")
   })
@@ -275,11 +284,15 @@ test("auto-mode extension write tools bypass approval and continue to the handle
     })
   })) as ToolMessage
 
-  assert.equal(handlerCalls, 1)
-  assert.equal(result.content, "created")
+  assert.equal(handlerCalls, 0)
+  assert.equal(result.status, "error")
+  assert.match(
+    typeof result.content === "string" ? result.content : "",
+    /called through callExtensionTool/i
+  )
 })
 
-test("ask-to-edit extension write tools require approval", async () => {
+test("direct extension agent tool permission checks are denied", async () => {
   const permissionRuntime = createToolPermissionRuntime({
     extensionToolPolicyProvider: createExtensionApprovalPolicyProvider("ask-to-edit")
   })
@@ -291,12 +304,8 @@ test("ask-to-edit extension write tools require approval", async () => {
     toolName: "ext__mockSource__profile_1__createItem"
   })
 
-  assert.equal(decision.disposition, "require_approval")
-  assert.equal(decision.review?.kind, "extension_tool")
-  if (decision.review?.kind !== "extension_tool") {
-    throw new Error("Expected extension tool approval review.")
-  }
-  assert.equal(decision.review.permissionMode, "ask-to-edit")
+  assert.equal(decision.disposition, "deny")
+  assert.match(decision.reason ?? "", /called through callExtensionTool/i)
 })
 
 test("ask-to-edit callExtensionTool resolves approval from the underlying extension tool", async () => {
@@ -326,7 +335,50 @@ test("ask-to-edit callExtensionTool resolves approval from the underlying extens
   })
 })
 
-test("explore-mode extension write tools return an error without reaching the handler", async () => {
+test("callExtensionTool is denied when the extension binding is not loaded during approval", async () => {
+  const { aiCapability, registry } = createExtensionApprovalFixture("ask-to-edit")
+  let loaded = false
+  const middleware = createToolApprovalMiddleware({
+    extensionToolPolicyProvider: createDynamicExtensionToolApprovalPolicyProvider({
+      getBindings: () => (loaded ? registry.createAiCapabilityToolBindings([aiCapability]) : [])
+    })
+  })
+
+  let handlerCalls = 0
+  const request = {
+    toolCall: {
+      args: {
+        args: {
+          title: "Ship it"
+        },
+        extensionName: "mockExtension",
+        toolName: "createItem"
+      },
+      id: "tool-call-extension-race",
+      name: "callExtensionTool",
+      type: "tool_call"
+    }
+  }
+
+  const result = (await middleware.wrapToolCall!(request as never, async () => {
+    loaded = true
+    handlerCalls += 1
+    return new ToolMessage({
+      content: "created",
+      name: "callExtensionTool",
+      tool_call_id: "tool-call-extension-race"
+    })
+  })) as ToolMessage
+
+  assert.equal(handlerCalls, 0)
+  assert.equal(result.status, "error")
+  assert.match(
+    typeof result.content === "string" ? result.content : "",
+    /loadExtension first/i
+  )
+})
+
+test("explore-mode callExtensionTool write calls return an error without reaching the handler", async () => {
   const middleware = createToolApprovalMiddleware({
     extensionToolPolicyProvider: createExtensionApprovalPolicyProvider("explore")
   })
@@ -335,10 +387,14 @@ test("explore-mode extension write tools return an error without reaching the ha
   const request = {
     toolCall: {
       args: {
-        title: "Ship it"
+        args: {
+          title: "Ship it"
+        },
+        extensionName: "mockExtension",
+        toolName: "createItem"
       },
       id: "tool-call-extension-deny",
-      name: "ext__mockSource__profile_1__createItem",
+      name: "callExtensionTool",
       type: "tool_call"
     }
   }
@@ -347,7 +403,7 @@ test("explore-mode extension write tools return an error without reaching the ha
     handlerCalls += 1
     return new ToolMessage({
       content: "should not run",
-      name: "ext__mockSource__profile_1__createItem",
+      name: "callExtensionTool",
       tool_call_id: "tool-call-extension-deny"
     })
   })) as ToolMessage

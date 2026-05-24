@@ -369,28 +369,54 @@ test("Apple Reminders source exposes read tools and protects write tools with Pe
     ]
   )
   assert.equal(
-    runtime.approvalPolicyProvider.getPolicy("ext__appleReminders__listReminders")?.decision
-      .disposition,
+    runtime.approvalPolicyProvider.getCallToolPolicy({
+      args: {
+        limit: 10
+      },
+      extensionName: "apple-reminders",
+      toolName: "listReminders"
+    })?.decision.disposition,
     "allow"
   )
   assert.equal(
-    runtime.approvalPolicyProvider.getPolicy("ext__appleReminders__createReminder")?.decision
-      .disposition,
+    runtime.approvalPolicyProvider.getCallToolPolicy({
+      args: {
+        title: "Ship it"
+      },
+      extensionName: "apple-reminders",
+      toolName: "createReminder"
+    })?.decision.disposition,
     "require_approval"
   )
   assert.equal(
-    runtime.approvalPolicyProvider.getPolicy("ext__appleReminders__completeReminder")?.decision
-      .disposition,
+    runtime.approvalPolicyProvider.getCallToolPolicy({
+      args: {
+        completed: true,
+        reminderId: "reminder-1"
+      },
+      extensionName: "apple-reminders",
+      toolName: "completeReminder"
+    })?.decision.disposition,
     "require_approval"
   )
   assert.equal(
-    runtime.approvalPolicyProvider.getPolicy("ext__appleReminders__deleteReminder")?.decision
-      .disposition,
+    runtime.approvalPolicyProvider.getCallToolPolicy({
+      args: {
+        reminderId: "reminder-1"
+      },
+      extensionName: "apple-reminders",
+      toolName: "deleteReminder"
+    })?.decision.disposition,
     "require_approval"
   )
   assert.equal(
-    runtime.approvalPolicyProvider.getPolicy("ext__appleReminders__openReminder")?.decision
-      .disposition,
+    runtime.approvalPolicyProvider.getCallToolPolicy({
+      args: {
+        reminderId: "reminder-1"
+      },
+      extensionName: "apple-reminders",
+      toolName: "openReminder"
+    })?.decision.disposition,
     "require_approval"
   )
 })

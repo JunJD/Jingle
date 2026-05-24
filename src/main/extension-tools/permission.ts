@@ -10,31 +10,16 @@ export interface ExtensionToolApprovalPolicy {
 }
 
 export interface ExtensionToolApprovalPolicyProvider {
-  getCallToolPolicy?: (
+  getCallToolPolicy: (
     args: Record<string, unknown>
   ) => (ExtensionToolApprovalPolicy & { toolArgs: Record<string, unknown> }) | null
-  getPolicy: (agentToolName: string) => ExtensionToolApprovalPolicy | null
-  getReview: (agentToolName: string, args: Record<string, unknown>) => ToolApprovalItem | null
-}
-
-export function createExtensionToolApprovalPolicyProvider(input: {
-  bindings: ExtensionAgentToolBinding[]
-  permissionMode?: PermissionModeName
-}): ExtensionToolApprovalPolicyProvider {
-  return createDynamicExtensionToolApprovalPolicyProvider({
-    getBindings: () => input.bindings,
-    permissionMode: input.permissionMode
-  })
+  getReview: (binding: ExtensionAgentToolBinding, args: Record<string, unknown>) => ToolApprovalItem
 }
 
 export function createDynamicExtensionToolApprovalPolicyProvider(input: {
   getBindings: () => ExtensionAgentToolBinding[]
   permissionMode?: PermissionModeName
 }): ExtensionToolApprovalPolicyProvider {
-  function getBindingByAgentToolName(agentToolName: string): ExtensionAgentToolBinding | null {
-    return input.getBindings().find((binding) => binding.agentToolName === agentToolName) ?? null
-  }
-
   function getBindingForExtensionToolCall(
     args: Record<string, unknown>
   ): { binding: ExtensionAgentToolBinding; toolArgs: Record<string, unknown> } | null {
@@ -116,21 +101,6 @@ export function createDynamicExtensionToolApprovalPolicyProvider(input: {
         toolArgs: resolved.toolArgs
       }
     },
-    getPolicy: (agentToolName) => {
-      const binding = getBindingByAgentToolName(agentToolName)
-      if (!binding) {
-        return null
-      }
-
-      return buildPolicy(binding)
-    },
-    getReview: (agentToolName, args) => {
-      const policy = getBindingByAgentToolName(agentToolName)
-      if (!policy) {
-        return null
-      }
-
-      return buildReview(policy, args)
-    }
+    getReview: buildReview
   }
 }
