@@ -6,6 +6,7 @@ interface SettingsCopy {
     appearance: string
     extensions: string
     general: string
+    memory: string
     provider: string
     shortcuts: string
   }
@@ -15,6 +16,7 @@ interface SettingsCopy {
     change: string
     choose: string
     clear: string
+    error: string
     none: string
     remove: string
     reveal: string
@@ -36,8 +38,6 @@ interface SettingsCopy {
     localeDescription: string
     skillSourcesTitle: string
     skillSourcesDescription: string
-    memorySourcesTitle: string
-    memorySourcesDescription: string
     nativeExtensionsTitle: string
     nativeExtensionsDescription: string
     noNativeExtensions: string
@@ -122,6 +122,36 @@ interface SettingsCopy {
     mode: string
     noPreferences: string
   }
+  memory: {
+    accept: string
+    add: string
+    archive: string
+    askBeforeSaving: string
+    askBeforeSavingDescription: string
+    content: string
+    contextSources: string
+    correction: string
+    delete: string
+    description: string
+    emptyMemories: string
+    emptySuggestions: string
+    global: string
+    loading: string
+    memoryType: string
+    pendingSuggestions: string
+    reject: string
+    savedMemories: string
+    savedStatus: string
+    scope: string
+    showIncludedMemories: string
+    showIncludedMemoriesDescription: string
+    title: string
+    useMemory: string
+    useMemoryDescription: string
+    workspace: string
+    workspaceContext: string
+    aboutMe: string
+  }
   shortcuts: {
     title: string
     description: string
@@ -150,6 +180,7 @@ const zhCN: SettingsCopy = {
     appearance: "外观",
     extensions: "Extensions",
     general: "通用",
+    memory: "记忆",
     provider: "模型",
     shortcuts: "快捷键"
   },
@@ -159,6 +190,7 @@ const zhCN: SettingsCopy = {
     change: "更换",
     choose: "选择",
     clear: "清空",
+    error: "错误",
     none: "未设置",
     remove: "移除",
     reveal: "在 Finder 中显示",
@@ -181,8 +213,6 @@ const zhCN: SettingsCopy = {
     localeDescription: "影响应用文案和设置页语言。",
     skillSourcesTitle: "Skill Sources",
     skillSourcesDescription: "每行一个目录，会并入 agent 默认技能源。",
-    memorySourcesTitle: "Memory Sources",
-    memorySourcesDescription: "每行一个文件或目录，会并入 agent 默认记忆源。",
     nativeExtensionsTitle: "Native Extensions",
     nativeExtensionsDescription: "管理 Openwork 内置 extension 的偏好设置。",
     noNativeExtensions: "当前没有带设置项的 native extension。",
@@ -267,6 +297,36 @@ const zhCN: SettingsCopy = {
     mode: "模式",
     noPreferences: "没有可配置项。"
   },
+  memory: {
+    accept: "保存",
+    add: "添加记忆",
+    archive: "归档",
+    askBeforeSaving: "保存前确认",
+    askBeforeSavingDescription: "V1 固定开启；Agent 只能创建待确认建议。",
+    content: "内容",
+    contextSources: "上下文来源",
+    correction: "纠偏",
+    delete: "删除",
+    description: "管理本地个人记忆、当前工作区记忆和 Agent 建议。",
+    emptyMemories: "还没有保存的记忆。",
+    emptySuggestions: "没有待确认建议。",
+    global: "全局",
+    loading: "正在加载记忆...",
+    memoryType: "类型",
+    pendingSuggestions: "待确认建议",
+    reject: "忽略",
+    savedMemories: "已保存记忆",
+    savedStatus: "已保存",
+    scope: "范围",
+    showIncludedMemories: "展示纳入记录",
+    showIncludedMemoriesDescription: "对话完成后允许界面展示本轮纳入上下文的记忆。",
+    title: "记忆",
+    useMemory: "启用记忆",
+    useMemoryDescription: "开启后，Agent 会在每次运行前读取本地记忆和上下文文件。",
+    workspace: "当前工作区",
+    workspaceContext: "当前工作区上下文",
+    aboutMe: "关于我"
+  },
   shortcuts: {
     title: "快捷键",
     description: "配置 Launcher 唤起、主页入口等少数稳定快捷键。",
@@ -295,6 +355,7 @@ const enUS: SettingsCopy = {
     appearance: "Appearance",
     extensions: "Extensions",
     general: "General",
+    memory: "Memory",
     provider: "Models",
     shortcuts: "Shortcuts"
   },
@@ -304,6 +365,7 @@ const enUS: SettingsCopy = {
     change: "Change",
     choose: "Choose",
     clear: "Clear",
+    error: "Error",
     none: "Not set",
     remove: "Remove",
     reveal: "Reveal in Finder",
@@ -326,9 +388,6 @@ const enUS: SettingsCopy = {
     localeDescription: "Affects app copy and settings language.",
     skillSourcesTitle: "Skill Sources",
     skillSourcesDescription: "One directory per line. Merged into the default agent skill sources.",
-    memorySourcesTitle: "Memory Sources",
-    memorySourcesDescription:
-      "One file or directory per line. Merged into the default agent memory sources.",
     nativeExtensionsTitle: "Native Extensions",
     nativeExtensionsDescription: "Manage preferences for built-in Openwork extensions.",
     noNativeExtensions: "No native extensions expose preferences yet.",
@@ -417,6 +476,37 @@ const enUS: SettingsCopy = {
     empty: "No extensions were discovered yet.",
     mode: "Mode",
     noPreferences: "No configurable preferences."
+  },
+  memory: {
+    accept: "Save",
+    add: "Add memory",
+    archive: "Archive",
+    askBeforeSaving: "Confirm before saving",
+    askBeforeSavingDescription: "Always on in V1. The agent can only create pending suggestions.",
+    content: "Content",
+    contextSources: "Context Sources",
+    correction: "Correction",
+    delete: "Delete",
+    description: "Manage local personal memory, current workspace memory, and agent suggestions.",
+    emptyMemories: "No saved memories yet.",
+    emptySuggestions: "No pending suggestions.",
+    global: "Global",
+    loading: "Loading memory...",
+    memoryType: "Type",
+    pendingSuggestions: "Pending Suggestions",
+    reject: "Ignore",
+    savedMemories: "Saved Memories",
+    savedStatus: "Saved",
+    scope: "Scope",
+    showIncludedMemories: "Show included memories",
+    showIncludedMemoriesDescription:
+      "Allow the UI to show which memories were included after a run.",
+    title: "Memory",
+    useMemory: "Use memory",
+    useMemoryDescription: "When enabled, the agent reads local memory and context files before a run.",
+    workspace: "Current Workspace",
+    workspaceContext: "Current workspace context",
+    aboutMe: "About me"
   },
   shortcuts: {
     title: "Shortcuts",

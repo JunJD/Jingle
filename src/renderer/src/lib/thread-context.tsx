@@ -145,6 +145,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
         error: projection.error ? parseErrorMessage(projection.error) : null,
         messages: projection.messages,
         pendingApproval: projection.pendingApproval,
+        runId: projection.runId,
         subagents: projection.subagents,
         todos: projection.todos,
         tokenUsage: projection.tokenUsage

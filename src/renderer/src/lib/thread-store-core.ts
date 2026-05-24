@@ -36,6 +36,7 @@ export interface ThreadState {
   openArtifacts: OpenArtifactTab[]
   activeTab: "agent" | string
   fileContents: Record<string, string>
+  runId: string | null
   tokenUsage: TokenUsage | null
   draftInput: string
 }
@@ -109,6 +110,7 @@ export function createDefaultThreadState(): ThreadState {
     openArtifacts: [],
     activeTab: "agent",
     fileContents: {},
+    runId: null,
     tokenUsage: null,
     draftInput: ""
   }

@@ -31,6 +31,7 @@ interface InvokeThreadMessageArgs {
   input: ComposerMessageInput
   threadContext: ThreadContextValue
   threadId: string
+  temporaryMode?: boolean
   onAfterAppendMessage?: (input: {
     actions: ThreadActions
     isFirstMessage: boolean
@@ -50,12 +51,20 @@ interface UseAiInvocationOptions {
   ensureThread?: (input: EnsureAiThreadInput) => Promise<EnsureAiThreadResult>
   initialInput?: string
   onAfterAppendMessage?: InvokeThreadMessageArgs["onAfterAppendMessage"]
+  temporaryMode?: boolean
   threadId: string | null
   validateInvocation?: InvokeThreadMessageArgs["validateInvocation"]
 }
 
 export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promise<boolean> {
-  const { input, onAfterAppendMessage, threadContext, threadId, validateInvocation } = args
+  const {
+    input,
+    onAfterAppendMessage,
+    temporaryMode = false,
+    threadContext,
+    threadId,
+    validateInvocation
+  } = args
   const message = input.text.trim()
   const displayContent = toMessageContent(input)
   const submitContent = toAgentMessageContent(displayContent)
@@ -100,7 +109,8 @@ export async function invokeThreadMessage(args: InvokeThreadMessageArgs): Promis
       ...(input.refs.length > 0 ? { additional_kwargs: { refs: input.refs } } : {})
     },
     threadState.currentModel,
-    threadState.permissionMode
+    threadState.permissionMode,
+    temporaryMode
   )
 
   return true
@@ -124,7 +134,14 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
   stop: () => Promise<void>
   visibleError: string | null
 } {
-  const { ensureThread, initialInput, onAfterAppendMessage, threadId, validateInvocation } = options
+  const {
+    ensureThread,
+    initialInput,
+    onAfterAppendMessage,
+    temporaryMode = false,
+    threadId,
+    validateInvocation
+  } = options
   const threadContext = useThreadContext()
   const threadActions = useThreadActions(threadId)
   const draftInputFromThread = useThreadSelector(threadId, (state) => state?.draftInput ?? null)
@@ -196,6 +213,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
         return await invokeThreadMessage({
           input,
           onAfterAppendMessage,
+          temporaryMode,
           threadContext,
           threadId: nextThreadId,
           validateInvocation
@@ -213,6 +231,7 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
       hasPendingApproval,
       isBusy,
       onAfterAppendMessage,
+      temporaryMode,
       threadContext,
       threadId,
       validateInvocation

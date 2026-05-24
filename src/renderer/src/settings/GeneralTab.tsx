@@ -32,7 +32,6 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   const [desktopAutomationAllowlistDraft, setDesktopAutomationAllowlistDraft] = useState("")
   const [globalWorkspacePath, setGlobalWorkspacePath] = useState<string | null>(null)
   const [launcherSettings, setLauncherSettings] = useState<LauncherSettings | null>(null)
-  const [memorySourcesDraft, setMemorySourcesDraft] = useState("")
   const [skillSourcesDraft, setSkillSourcesDraft] = useState("")
   const [status, setStatus] = useState<string>("")
 
@@ -47,14 +46,12 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
       setLauncherSettings(nextLauncherSettings)
       setDesktopAutomationAllowlistDraft(nextAgentConfig.desktopAutomationAllowlist.join("\n"))
       setSkillSourcesDraft(nextAgentConfig.skillSources.join("\n"))
-      setMemorySourcesDraft(nextAgentConfig.memorySources.join("\n"))
     })
   }, [])
 
   const saveAgentConfig = async (): Promise<void> => {
     const nextConfig = await window.api.settings.setAgentConfig({
       desktopAutomationAllowlist: parseLineList(desktopAutomationAllowlistDraft),
-      memorySources: parseLineList(memorySourcesDraft),
       skillSources: parseLineList(skillSourcesDraft)
     })
     setAgentConfig(nextConfig)
@@ -180,21 +177,6 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
             value={skillSourcesDraft}
             onChange={(event) => {
               setSkillSourcesDraft(event.target.value)
-            }}
-            spellCheck={false}
-          />
-        </SettingsRow>
-
-        <SettingsRow
-          icon={<Layers2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
-          title={copy.general.memorySourcesTitle}
-          description={copy.general.memorySourcesDescription}
-        >
-          <textarea
-            className={`${inputClassName} min-h-[var(--ow-settings-textarea-min-h)] resize-y`}
-            value={memorySourcesDraft}
-            onChange={(event) => {
-              setMemorySourcesDraft(event.target.value)
             }}
             spellCheck={false}
           />

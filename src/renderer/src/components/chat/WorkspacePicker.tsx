@@ -17,6 +17,7 @@ export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.E
   const threadActions = useThreadActions(threadId)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [blockedMessage, setBlockedMessage] = useState<string | null>(null)
 
   // Load workspace path for current thread. File discovery is no longer implicit.
   useEffect(() => {
@@ -30,11 +31,17 @@ export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.E
   }, [threadActions, threadId])
 
   async function handleSelectFolder(): Promise<void> {
+    setBlockedMessage(null)
     await selectWorkspaceFolder(
       threadId,
       (path) => threadActions?.setWorkspacePath(path),
       setLoading,
-      setOpen
+      setOpen,
+      {
+        onBlockedByPendingWorkspaceMemory: () => {
+          setBlockedMessage(copy.chat.pendingWorkspaceMemoryBlocksWorkspaceChange)
+        }
+      }
     )
   }
 
@@ -76,6 +83,11 @@ export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.E
 
           {workspacePath ? (
             <div className="space-y-[var(--ow-space-2)]">
+              {blockedMessage ? (
+                <div className="rounded-[var(--ow-radius-md)] border border-status-warning/40 bg-status-warning/10 px-[var(--ow-space-2)] py-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-status-warning">
+                  {blockedMessage}
+                </div>
+              ) : null}
               <div className="flex items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-panel)] border border-border bg-background-secondary p-[var(--ow-space-2)]">
                 <Check className="size-[var(--ow-icon-sm)] text-status-nominal shrink-0" />
                 <span
@@ -100,6 +112,11 @@ export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.E
             </div>
           ) : (
             <div className="space-y-[var(--ow-space-2)]">
+              {blockedMessage ? (
+                <div className="rounded-[var(--ow-radius-md)] border border-status-warning/40 bg-status-warning/10 px-[var(--ow-space-2)] py-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-status-warning">
+                  {blockedMessage}
+                </div>
+              ) : null}
               <p className="[font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
                 {copy.workspacePicker.selectHint}
               </p>
