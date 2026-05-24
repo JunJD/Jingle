@@ -21,6 +21,8 @@ export const githubManifest = defineNativeExtensionManifest({
     instructions: [
       "Use GitHub for issues, pull requests, repositories, notifications, and workflow runs.",
       "If GitHub is not connected, explain that GitHub needs to be connected in Settings before you can inspect or modify GitHub data.",
+      "Use search qualifiers directly when the user gives repository, author, assignee, state, label, or text filters.",
+      "Create issues only when the user explicitly asks to create or file an issue.",
       "Do not claim to have searched GitHub unless a GitHub tool was available and called."
     ],
     mention: {
@@ -30,7 +32,56 @@ export const githubManifest = defineNativeExtensionManifest({
     publicPreferenceNames: ["apiBaseUrl"],
     requiredPreferenceNames: ["accessToken"],
     title: "GitHub",
-    toolNames: []
+    toolDisplays: {
+      createIssue: {
+        description: "Create a GitHub issue in a repository.",
+        title: "Create Issue"
+      },
+      listMyIssues: {
+        description: "List issues created by, assigned to, or mentioning the current user.",
+        title: "List My Issues"
+      },
+      listMyPullRequests: {
+        description:
+          "List pull requests authored by, assigned to, mentioning, reviewed by, or requesting review from the current user.",
+        title: "List My Pull Requests"
+      },
+      listNotifications: {
+        description: "List GitHub notifications for the current user.",
+        title: "List Notifications"
+      },
+      listRepositories: {
+        description: "List recently updated or starred repositories for the current user.",
+        title: "List Repositories"
+      },
+      listWorkflowRuns: {
+        description: "List recent GitHub Actions workflow runs for a repository.",
+        title: "List Workflow Runs"
+      },
+      searchIssues: {
+        description: "Search GitHub issues with GitHub search qualifiers.",
+        title: "Search Issues"
+      },
+      searchPullRequests: {
+        description: "Search GitHub pull requests with GitHub search qualifiers.",
+        title: "Search Pull Requests"
+      },
+      searchRepositories: {
+        description: "Search GitHub repositories with GitHub search qualifiers.",
+        title: "Search Repositories"
+      }
+    },
+    toolNames: [
+      "listMyIssues",
+      "listMyPullRequests",
+      "searchIssues",
+      "searchPullRequests",
+      "searchRepositories",
+      "listRepositories",
+      "listNotifications",
+      "listWorkflowRuns",
+      "createIssue"
+    ]
   },
   capabilities: ["navigation", "rpc", "surface"],
   icon: "assets/icon.svg",

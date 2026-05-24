@@ -299,7 +299,7 @@ test("GitHub and Notion mentions load missing AI capabilities without tools", ()
   )
 })
 
-test("GitHub AI capability becomes connected from persisted auth but still exposes no tools", () => {
+test("GitHub AI capability becomes connected from persisted auth and exposes AI tools", () => {
   const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
     [
       {
@@ -322,11 +322,62 @@ test("GitHub AI capability becomes connected from persisted auth but still expos
   )
 
   assert.equal(capability?.authStatus, "connected")
-  assert.deepEqual(capability?.capability.toolNames, [])
-  assert.deepEqual(capability?.enabledToolNames, [])
-  assert.deepEqual(capability?.toolExposures, [])
+  assert.deepEqual(capability?.capability.toolNames, [
+    "listMyIssues",
+    "listMyPullRequests",
+    "searchIssues",
+    "searchPullRequests",
+    "searchRepositories",
+    "listRepositories",
+    "listNotifications",
+    "listWorkflowRuns",
+    "createIssue"
+  ])
+  assert.deepEqual(capability?.enabledToolNames, capability?.capability.toolNames)
+  assert.deepEqual(
+    capability?.toolExposures.map((tool) => tool.toolName),
+    capability?.capability.toolNames
+  )
   assert.deepEqual(capability?.publicConfig, {
     apiBaseUrl: "https://github.example.test/api/v3"
+  })
+})
+
+test("Notion AI capability becomes connected from persisted auth and exposes read tools", () => {
+  const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
+    [
+      {
+        extensionName: "notion",
+        name: "Notion",
+        sourceId: "notion",
+        type: "extension-source"
+      }
+    ],
+    {
+      preferencesByExtension: {
+        notion: {
+          accessToken: "secret_token",
+          apiBaseUrl: "https://api.notion.com/v1"
+        }
+      }
+    }
+  )
+
+  assert.equal(capability?.authStatus, "connected")
+  assert.deepEqual(capability?.capability.toolNames, [
+    "searchPages",
+    "retrievePage",
+    "listBlockChildren",
+    "retrieveDataSource",
+    "queryDataSource"
+  ])
+  assert.deepEqual(capability?.enabledToolNames, capability?.capability.toolNames)
+  assert.deepEqual(
+    capability?.toolExposures.map((tool) => tool.toolName),
+    capability?.capability.toolNames
+  )
+  assert.deepEqual(capability?.publicConfig, {
+    apiBaseUrl: "https://api.notion.com/v1"
   })
 })
 
