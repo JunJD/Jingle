@@ -3,7 +3,6 @@ import type {
   ExtensionAiCapability,
   ExtensionAiCapabilityTool,
   ExtensionAiCapabilityCatalogItem,
-  LegacySourceProfileSnapshot,
   RunExtensionAiCapabilitySnapshot,
   ResolvedExtensionAiCapability
 } from "@shared/extension-sources"
@@ -343,57 +342,5 @@ export function hydrateNativeExtensionAiCapabilities(
     }
 
     return [resolveEntryCapabilityFromSnapshot(entry, snapshot)]
-  })
-}
-
-export function createNativeExtensionAiCapabilitiesFromLegacySourceProfiles(
-  sourceProfiles: LegacySourceProfileSnapshot[]
-): ResolvedExtensionAiCapability[] {
-  return sourceProfiles.flatMap((profile) => {
-    const entry = aiCapabilityRegistryByKey.get(
-      getCapabilityKey({
-        capabilityId: profile.sourceId,
-        extensionName: profile.extensionName
-      })
-    )
-    if (!entry) {
-      console.warn(
-        `[Sources] Skipping legacy source profile "${profile.id}" because "${profile.extensionName}:${profile.sourceId}" is no longer registered.`
-      )
-      return []
-    }
-
-    const enabledToolNames = profile.enabledToolNames.filter((toolName) =>
-      entry.capability.toolNames.includes(toolName)
-    )
-    const toolExposuresByName = new Map(profile.enabledTools.map((tool) => [tool.toolName, tool]))
-
-    return [
-      {
-        authStatus: profile.authStatus,
-        capability: entry.capability,
-        displayName: profile.displayName,
-        enabled: profile.enabled,
-        enabledToolNames,
-        extensionName: entry.manifest.name,
-        iconName: entry.manifest.iconName,
-        permissionMode: profile.defaultPermissionMode,
-        publicConfig: structuredClone(profile.publicConfig),
-        toolExposures:
-          profile.authStatus === "connected" && profile.enabled
-            ? enabledToolNames.flatMap((toolName) => {
-                const existingExposure = toolExposuresByName.get(toolName)
-                return existingExposure
-                  ? [existingExposure]
-                  : [
-                      toToolExposure({
-                        capability: entry.capability,
-                        toolName
-                      })
-                    ]
-              })
-            : []
-      }
-    ]
   })
 }

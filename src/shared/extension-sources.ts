@@ -19,7 +19,6 @@ export type ExtensionPermissionDisposition = "allow" | "require_approval" | "den
 export type ExtensionAiAuthStatus = "connected" | "missing" | "failed"
 export const RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY =
   "extensionAiCapabilitiesSnapshot"
-export const LEGACY_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY = "sourceProfilesSnapshot"
 
 export interface ExtensionPermissionDecision {
   access: ExtensionToolAccess
@@ -105,22 +104,6 @@ export interface ExtensionSourceMention {
   supportedPlatforms?: NativeExtensionSupportedPlatform[]
   sourceId: string
   value: string
-}
-
-export interface LegacySourceProfileSnapshot {
-  authStatus: ExtensionAiAuthStatus
-  createdAt: string
-  defaultPermissionMode: PermissionModeName
-  displayName: string
-  enabled: boolean
-  enabledTools: ExtensionAiCapabilityTool[]
-  enabledToolNames: string[]
-  extensionName: string
-  id: string
-  /** Non-secret profile settings that are safe to persist in run evidence. */
-  publicConfig: Record<string, unknown>
-  sourceId: string
-  updatedAt: string
 }
 
 const AGENT_TOOL_NAME_PREFIX = "ext"
@@ -235,23 +218,6 @@ export const resolvedExtensionAiCapabilitySchema = z
   })
   .strict()
 
-export const legacySourceProfileSnapshotSchema = z
-  .object({
-    authStatus: z.enum(["connected", "missing", "failed"]),
-    createdAt: z.string().trim().min(1),
-    defaultPermissionMode: z.custom<PermissionModeName>(isPermissionModeName),
-    displayName: z.string().trim().min(1),
-    enabled: z.boolean(),
-    enabledTools: extensionAiCapabilityToolsSchema,
-    enabledToolNames: z.array(z.string().trim().min(1)),
-    extensionName: z.string().trim().min(1),
-    id: z.string().trim().min(1),
-    publicConfig: z.record(z.string(), z.unknown()),
-    sourceId: z.string().trim().min(1),
-    updatedAt: z.string().trim().min(1)
-  })
-  .strict()
-
 export const extensionSourceMentionSchema = z
   .object({
     extensionName: z.string().trim().min(1),
@@ -262,11 +228,6 @@ export const extensionSourceMentionSchema = z
     value: z.string().trim().min(1)
   })
   .strict()
-
-function parseEnabledTools(value: unknown): ExtensionAiCapabilityTool[] {
-  const parsed = extensionAiCapabilityToolsSchema.safeParse(value)
-  return parsed.success ? parsed.data : []
-}
 
 function parseAuthStatus(value: unknown): ExtensionAiAuthStatus | null {
   return value === "connected" || value === "missing" || value === "failed" ? value : null
@@ -394,59 +355,6 @@ export function parseRunExtensionAiCapabilitiesSnapshot(
   return snapshots
 }
 
-export function parseLegacySourceProfilesSnapshot(value: unknown): LegacySourceProfileSnapshot[] {
-  if (!Array.isArray(value)) {
-    return []
-  }
-
-  const profiles: LegacySourceProfileSnapshot[] = []
-
-  for (const entry of value) {
-    if (!isRecord(entry)) {
-      continue
-    }
-
-    const id = readString(entry.id)
-    const sourceId = readString(entry.sourceId)
-    const extensionName = readString(entry.extensionName)
-    const displayName = readString(entry.displayName)
-    const createdAt = readString(entry.createdAt)
-    const updatedAt = readString(entry.updatedAt)
-    const authStatus = readString(entry.authStatus)
-    const defaultPermissionMode = entry.defaultPermissionMode
-
-    if (
-      !id ||
-      !sourceId ||
-      !extensionName ||
-      !displayName ||
-      !createdAt ||
-      !updatedAt ||
-      (authStatus !== "connected" && authStatus !== "missing" && authStatus !== "failed") ||
-      !isPermissionModeName(defaultPermissionMode)
-    ) {
-      continue
-    }
-
-    profiles.push({
-      authStatus,
-      createdAt,
-      defaultPermissionMode,
-      displayName,
-      enabled: entry.enabled === true,
-      enabledTools: parseEnabledTools(entry.enabledTools),
-      enabledToolNames: readStringArray(entry.enabledToolNames),
-      extensionName,
-      id,
-      publicConfig: isRecord(entry.publicConfig) ? entry.publicConfig : {},
-      sourceId,
-      updatedAt
-    })
-  }
-
-  return profiles
-}
-
 export function parseExtensionAiCapability(value: unknown): ExtensionAiCapability | null {
   const parsed = extensionAiCapabilitySchema.safeParse(value)
   return parsed.success ? parsed.data : null
@@ -455,24 +363,6 @@ export function parseExtensionAiCapability(value: unknown): ExtensionAiCapabilit
 export function parseExtensionSourceMention(value: unknown): ExtensionSourceMention | null {
   const parsed = extensionSourceMentionSchema.safeParse(value)
   return parsed.success ? parsed.data : null
-}
-
-export function parseLegacySourceProfileSnapshot(
-  value: unknown
-): LegacySourceProfileSnapshot | null {
-  const parsed = legacySourceProfileSnapshotSchema.safeParse(value)
-  return parsed.success ? parsed.data : null
-}
-
-export function readLegacySourceProfilesSnapshotFromMetadata(
-  metadata: string | null | undefined
-): LegacySourceProfileSnapshot[] | null {
-  const parsed = parseMetadataValue(metadata)
-  if (!Object.prototype.hasOwnProperty.call(parsed, LEGACY_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY)) {
-    return null
-  }
-
-  return parseLegacySourceProfilesSnapshot(parsed[LEGACY_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY])
 }
 
 export function readRunExtensionAiCapabilitiesSnapshotFromMetadata(

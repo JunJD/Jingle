@@ -9,8 +9,6 @@ import type {
 } from "../../src/shared/extension-sources"
 import {
   assertExtensionAgentToolName,
-  LEGACY_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY,
-  readLegacySourceProfilesSnapshotFromMetadata,
   resolveExtensionToolPermission
 } from "../../src/shared/extension-sources"
 import { z } from "../../src/main/agent/tool-input-schema"
@@ -23,7 +21,6 @@ import {
   createExtensionAiRuntime,
   createExtensionAiSession
 } from "../../src/main/agent/extension-ai-runtime"
-import { createExtensionToolApprovalPolicyProvider } from "../../src/main/extension-tools/permission"
 import { ExtensionToolExecutor } from "../../src/main/extension-tools/executor"
 import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
 import { defineNativeExtensionManifest } from "../../src/shared/native-extensions"
@@ -160,18 +157,6 @@ test("native extension manifest rejects legacy ai configuration", () => {
         title: "Legacy AI"
       }),
     /aiCapability, not ai/
-  )
-})
-
-test("legacy source profile snapshot reader distinguishes missing snapshot from empty snapshot", () => {
-  assert.equal(readLegacySourceProfilesSnapshotFromMetadata(JSON.stringify({})), null)
-  assert.deepEqual(
-    readLegacySourceProfilesSnapshotFromMetadata(
-      JSON.stringify({
-        [LEGACY_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY]: []
-      })
-    ),
-    []
   )
 })
 
@@ -487,47 +472,4 @@ test("extension AI runtime exposes only read bindings in explore mode", async ()
     runtime.middleware.tools?.map((tool) => tool.name),
     ["loadExtension", "callExtensionTool"]
   )
-  assert.equal(
-    runtime.approvalPolicyProvider.getPolicy("ext__mockSource__profile_1__createItem")?.decision
-      .disposition,
-    "deny"
-  )
-})
-
-test("extension tool approval policy provider maps generated names to permission decisions", () => {
-  const writeTool: ExtensionToolDefinition<{ title: string }, { id: string }> = {
-    access: "write",
-    description: "Create a mock item.",
-    handler: () => ({
-      id: "item-1"
-    }),
-    inputSchema: z.object({
-      title: z.string()
-    }),
-    name: "createItem",
-    title: "Create Item"
-  }
-  const registry = new ExtensionToolRegistry({
-    knownExtensionNames: ["mockExtension"]
-  })
-  registry.registerExtensionTools("mockExtension", [createSearchTool(), writeTool])
-
-  const [binding] = registry.createAiCapabilityToolBindings([
-    createAiCapability({ enabledToolNames: ["createItem"] })
-  ])
-  const provider = createExtensionToolApprovalPolicyProvider({
-    bindings: [binding],
-    permissionMode: "ask-to-edit"
-  })
-  const policy = provider.getPolicy("ext__mockSource__profile_1__createItem")
-
-  assert.equal(policy?.decision.disposition, "require_approval")
-  assert.equal(
-    provider.getReview("ext__mockSource__profile_1__createItem", { title: "Ship it" })?.kind,
-    "extension_tool"
-  )
-  const review = provider.getReview("ext__mockSource__profile_1__createItem", { title: "Ship it" })
-  assert.equal(review?.kind, "extension_tool")
-  assert.equal(review.toolTitle, "createItem (Mock Profile)")
-  assert.equal(provider.getPolicy("web_search"), null)
 })

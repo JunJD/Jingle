@@ -1,13 +1,9 @@
 import { HumanMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
-import {
-  readLegacySourceProfilesSnapshotFromMetadata,
-  readRunExtensionAiCapabilitiesSnapshotFromMetadata
-} from "@shared/extension-sources"
+import { readRunExtensionAiCapabilitiesSnapshotFromMetadata } from "@shared/extension-sources"
 import { normalizeComposerMessageRefs, summarizeMessageContent } from "@shared/message-content"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import {
-  createNativeExtensionAiCapabilitiesFromLegacySourceProfiles,
   hydrateNativeExtensionAiCapabilities,
   listNativeExtensionAiCapabilityCatalog,
   resolveNativeExtensionAiCapabilityForExtensionName,
@@ -594,19 +590,10 @@ export class AgentService {
       const aiCapabilitySnapshots = readRunExtensionAiCapabilitiesSnapshotFromMetadata(
         resumedRun?.metadata
       )
-      const legacySourceProfiles = readLegacySourceProfilesSnapshotFromMetadata(
-        resumedRun?.metadata
-      )
-      const aiCapabilities =
-        aiCapabilitySnapshots === null
-          ? null
-          : hydrateNativeExtensionAiCapabilities(aiCapabilitySnapshots)
       const runtimeAiCapabilities =
-        aiCapabilities === null
-          ? legacySourceProfiles === null
-            ? []
-            : createNativeExtensionAiCapabilitiesFromLegacySourceProfiles(legacySourceProfiles)
-          : aiCapabilities
+        aiCapabilitySnapshots === null
+          ? []
+          : hydrateNativeExtensionAiCapabilities(aiCapabilitySnapshots)
       const agent = await createAgentRuntime({
         threadId,
         workspacePath,

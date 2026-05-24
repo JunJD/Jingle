@@ -170,8 +170,6 @@ test("agent run metadata snapshots permission mode and preserves it through resu
   const { readRunPermissionModeSnapshot } = await import("../../src/main/agent/permission-mode")
   const {
     createRunExtensionAiCapabilitiesSnapshot,
-    LEGACY_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY,
-    readLegacySourceProfilesSnapshotFromMetadata,
     readRunExtensionAiCapabilitiesSnapshotFromMetadata,
     RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY
   } = await import("../../src/shared/extension-sources")
@@ -202,14 +200,11 @@ test("agent run metadata snapshots permission mode and preserves it through resu
   const createdRun = await getRun(runId)
   assert.equal(readRunPermissionModeSnapshot(createdRun), "auto")
   const createdMetadata = JSON.parse(createdRun?.metadata ?? "{}") as Record<string, unknown>
-  assert.equal(readLegacySourceProfilesSnapshotFromMetadata(createdRun?.metadata), null)
-  assert.equal(LEGACY_SOURCE_PROFILES_SNAPSHOT_METADATA_KEY in createdMetadata, false)
   const aiCapabilitiesSnapshot =
     createdMetadata[RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]
   assert.ok(Array.isArray(aiCapabilitiesSnapshot))
   const [firstSnapshot] = aiCapabilitiesSnapshot as Array<Record<string, unknown>>
   assert.equal(typeof firstSnapshot?.createdAt, "string")
-  assert.equal("sourceProfileId" in firstSnapshot, false)
   assert.deepEqual(firstSnapshot?.publicConfigSnapshot, {})
   const expectedAiCapabilitiesSnapshot = createRunExtensionAiCapabilitiesSnapshot({
     aiCapabilities,
