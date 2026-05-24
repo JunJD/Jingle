@@ -8,7 +8,7 @@ import {
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { listNativeExtensionManifests } from "@extensions/index"
 import { nativeExtensionMainDefinitions } from "@extensions/main"
-import { getResolvedNativeExtensionPreferenceRecord } from "../../preferences"
+import { resolveNativeExtensionExecutionContext } from "../../native-extensions/connection-resolver"
 
 const supportedNativeExtensionManifests = listNativeExtensionManifests(process.platform)
 
@@ -96,7 +96,13 @@ export async function invokeNativeExtension(
     throw new Error(`Native extension "${request.extensionName}" does not expose RPC methods`)
   }
 
+  const context = resolveNativeExtensionExecutionContext({
+    extensionName: request.extensionName,
+    platform: process.platform
+  })
+
   return definition.service.invoke(request, {
-    extensionPreferences: getResolvedNativeExtensionPreferenceRecord(request.extensionName)
+    connection: context.connection,
+    extensionPreferences: context.extensionPreferences
   })
 }

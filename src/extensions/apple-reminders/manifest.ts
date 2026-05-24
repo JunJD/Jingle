@@ -5,6 +5,7 @@ import { APPLE_REMINDERS_EXTENSION_ID, APPLE_REMINDERS_SOURCE_ID } from "./src/c
 
 export const appleRemindersManifest = defineNativeExtensionManifest({
   aiCapability: {
+    connectionId: "default",
     description: "Apple Reminders tasks and lists.",
     guide:
       "This capability is the current macOS user's local Reminders database. List reminders before modifying existing reminders unless the user provided an exact reminder id. Write operations follow the current Permission Mode.",
@@ -54,6 +55,14 @@ export const appleRemindersManifest = defineNativeExtensionManifest({
     ]
   },
   capabilities: ["navigation", "rpc", "surface"],
+  connection: {
+    auth: {
+      type: "none"
+    },
+    id: "default",
+    provider: APPLE_REMINDERS_EXTENSION_ID,
+    title: "Apple Reminders"
+  },
   icon: "assets/icon.png",
   runtimeCapabilities: ["navigation", "preferences", "rpc"],
   commands: [

@@ -2,6 +2,7 @@ import { defineNativeExtensionManifest } from "@shared/native-extensions"
 
 export const notionManifest = defineNativeExtensionManifest({
   aiCapability: {
+    connectionId: "default",
     description: "Notion workspace pages, data sources, tasks, and docs.",
     guide:
       "Use this capability for Notion work only after the user connects Notion. Notion only returns pages and data sources shared with the connected integration. If auth status is missing, explain that Notion needs an integration token in Settings before you can inspect pages, data sources, tasks, docs, or workspace knowledge.",
@@ -52,6 +53,18 @@ export const notionManifest = defineNativeExtensionManifest({
   },
   capabilities: [],
   commands: [],
+  connection: {
+    auth: {
+      secretNames: ["accessToken"],
+      type: "apiKey"
+    },
+    connectGuide:
+      "Create a Notion internal integration token, share pages or data sources with that integration, and save the token in Openwork Settings.",
+    id: "default",
+    provider: "notion",
+    publicPreferenceNames: ["apiBaseUrl"],
+    title: "Notion"
+  },
   description: "Use Notion with Openwork AI after connecting your workspace.",
   iconName: "notion",
   preferences: [

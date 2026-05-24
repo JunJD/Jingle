@@ -14,6 +14,7 @@ import { GITHUB_EXTENSION_ID, GITHUB_RPC_METHODS } from "./src/contracts"
 
 export const githubManifest = defineNativeExtensionManifest({
   aiCapability: {
+    connectionId: "default",
     description: "GitHub issues, pull requests, repositories, notifications, and workflow runs.",
     guide:
       "Use this capability for GitHub work only after the user connects GitHub. If auth status is missing, explain that GitHub needs to be connected in Settings before you can inspect repositories, issues, pull requests, notifications, or workflow runs.",
@@ -84,6 +85,18 @@ export const githubManifest = defineNativeExtensionManifest({
     ]
   },
   capabilities: ["navigation", "rpc", "surface"],
+  connection: {
+    auth: {
+      secretNames: ["accessToken"],
+      type: "personalAccessToken"
+    },
+    connectGuide:
+      "Create a GitHub personal access token and save it in Openwork Settings before using GitHub commands or AI tools.",
+    id: "default",
+    provider: "github",
+    publicPreferenceNames: ["apiBaseUrl"],
+    title: "GitHub"
+  },
   icon: "assets/icon.svg",
   runtimeCapabilities: ["navigation", "preferences", "rpc", "settings", "shell"],
   preferences: [

@@ -9,11 +9,10 @@ import { listNativeExtensionManifests } from "@extensions/index"
 import {
   getNativeExtensionCommandPreferenceRecord,
   getNativeExtensionPreferenceRecord,
-  getResolvedNativeExtensionCommandPreferenceRecord,
-  getResolvedNativeExtensionPreferenceRecord,
   setNativeExtensionCommandPreferenceRecord,
   setNativeExtensionPreferenceRecord
 } from "../preferences"
+import { resolveNativeExtensionExecutionContext } from "./connection-resolver"
 import {
   invokeNativeExtension,
   listNativeExtensionSettingsSchemas
@@ -40,7 +39,10 @@ export class NativeExtensionsService {
   }
 
   getResolvedPreferences(extensionName: string): Record<string, unknown> {
-    return getResolvedNativeExtensionPreferenceRecord(extensionName)
+    return resolveNativeExtensionExecutionContext({
+      extensionName,
+      platform: process.platform
+    }).extensionPreferences
   }
 
   setPreferences(
@@ -63,7 +65,13 @@ export class NativeExtensionsService {
     extensionName: string,
     commandName: string
   ): Record<string, unknown> {
-    return getResolvedNativeExtensionCommandPreferenceRecord(extensionName, commandName)
+    const context = resolveNativeExtensionExecutionContext({
+      commandName,
+      extensionName,
+      platform: process.platform
+    })
+
+    return context.commandPreferences ?? context.extensionPreferences
   }
 
   setCommandPreferences(params: {

@@ -437,6 +437,57 @@ function getNativeExtensionSecretRecord(params: {
   )
 }
 
+function hasStoredPasswordPreferenceValue(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0
+}
+
+export function getResolvedNativeExtensionLegacyCommandScopedPasswordRecord(params: {
+  extensionName: string
+  passwordPreferenceNames: string[]
+}): Record<string, string> {
+  const commandKeyPrefix = `${params.extensionName}:`
+  const passwordPreferenceNames = params.passwordPreferenceNames.filter((entry) => entry.trim())
+  const secretsState = getNativeExtensionSecretsState()
+  const settingsState = getNativeExtensionPreferencesState()
+  const legacyRecord: Record<string, string> = {}
+
+  for (const [commandKey, encryptedRecord] of Object.entries(secretsState.commandSecrets)) {
+    if (!commandKey.startsWith(commandKeyPrefix)) {
+      continue
+    }
+
+    for (const preferenceName of passwordPreferenceNames) {
+      if (legacyRecord[preferenceName]) {
+        continue
+      }
+
+      const encryptedValue = encryptedRecord[preferenceName]
+      if (encryptedValue) {
+        legacyRecord[preferenceName] = decryptSecretValue(encryptedValue)
+      }
+    }
+  }
+
+  for (const [commandKey, record] of Object.entries(settingsState.commandPreferences)) {
+    if (!commandKey.startsWith(commandKeyPrefix)) {
+      continue
+    }
+
+    for (const preferenceName of passwordPreferenceNames) {
+      if (legacyRecord[preferenceName]) {
+        continue
+      }
+
+      const value = record[preferenceName]
+      if (hasStoredPasswordPreferenceValue(value)) {
+        legacyRecord[preferenceName] = value
+      }
+    }
+  }
+
+  return legacyRecord
+}
+
 function setNativeExtensionSecretRecord(params: {
   key: string
   nextRecord: Record<string, string>
@@ -758,13 +809,15 @@ function readNativeExtensionPreferenceRecord(params: {
     return stripPasswordPreferenceValues(schema, resolvedRecord)
   }
 
+  const extensionSecretRecord = getNativeExtensionSecretRecord({
+    key,
+    schema,
+    scope: "extension"
+  })
+
   return {
     ...resolvedRecord,
-    ...getNativeExtensionSecretRecord({
-      key,
-      schema,
-      scope: "extension"
-    })
+    ...extensionSecretRecord
   }
 }
 

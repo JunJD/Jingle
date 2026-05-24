@@ -3,6 +3,7 @@ import { isPermissionModeName } from "./permission-mode"
 import type { PermissionModeName } from "./permission-mode"
 import type {
   NativeExtensionAiCapability,
+  NativeExtensionResolvedConnection,
   NativeExtensionSupportedPlatform
 } from "./native-extensions"
 import { toolCallDisplaySchema, type ToolCallDisplay } from "./tool-presentation"
@@ -29,6 +30,7 @@ export interface ExtensionPermissionDecision {
 export interface ExtensionToolContext {
   agentToolName?: string
   capabilityId?: string
+  connection?: NativeExtensionResolvedConnection
   extensionName: string
   extensionPreferences: Record<string, unknown>
   runId?: string | null
@@ -183,6 +185,7 @@ export const extensionAiCapabilityToolsSchema = z.array(extensionAiCapabilityToo
 
 export const extensionAiCapabilitySchema = z
   .object({
+    connectionId: z.string().trim().min(1).optional(),
     description: z.string().trim().min(1).optional(),
     guide: z.string().trim().min(1),
     id: z.string().trim().min(1),

@@ -9,6 +9,7 @@ import type {
 } from "../../src/shared/extension-sources"
 import {
   assertExtensionAgentToolName,
+  parseExtensionAiCapability,
   resolveExtensionToolPermission
 } from "../../src/shared/extension-sources"
 import { z } from "../../src/main/agent/tool-input-schema"
@@ -158,6 +159,18 @@ test("native extension manifest rejects legacy ai configuration", () => {
       }),
     /aiCapability, not ai/
   )
+})
+
+test("extension AI capability schema accepts connection ids", () => {
+  const capability = parseExtensionAiCapability({
+    connectionId: "default",
+    guide: "Use this capability in tests.",
+    id: "mockSource",
+    title: "Mock Source",
+    toolNames: []
+  })
+
+  assert.equal(capability?.connectionId, "default")
 })
 
 test("extension tool registry rejects duplicate extension tool names", () => {
@@ -346,6 +359,61 @@ test("extension tool executor injects resolved extension preferences", async () 
   })
 })
 
+test("extension tool executor prefers execution context over preference fallback", async () => {
+  let observedContext: ExtensionToolContext | null = null
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  registry.registerExtensionTools("mockExtension", [
+    createSearchTool((ctx, input) => {
+      observedContext = ctx
+      return {
+        result: input.query
+      }
+    })
+  ])
+
+  const [binding] = registry.createAiCapabilityToolBindings([createAiCapability()])
+  const executor = new ExtensionToolExecutor({
+    bindings: [binding],
+    getExtensionExecutionContext: (extensionName) => ({
+      connection: {
+        connectionId: "default",
+        extensionName,
+        missingSecretNames: [],
+        provider: "mock",
+        publicConfig: {
+          apiBaseUrl: "https://mock.example.test"
+        },
+        status: "connected"
+      },
+      extensionName,
+      extensionPreferences: {
+        token: "context-token"
+      }
+    }),
+    getExtensionPreferences: () => ({
+      token: "fallback-token"
+    })
+  })
+
+  await executor.executeAgentTool({
+    agentToolName: binding.agentToolName,
+    args: {
+      query: "alpha"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+
+  const context = observedContext as ExtensionToolContext | null
+  assert.ok(context)
+  assert.equal(context.connection?.status, "connected")
+  assert.deepEqual(context.extensionPreferences, {
+    token: "context-token"
+  })
+})
+
 test("extension AI middleware injects loaded guides and executes through stable tools", async () => {
   const registry = new ExtensionToolRegistry({
     knownExtensionNames: ["mockExtension"]
@@ -482,9 +550,15 @@ test("loaded extension stays callable while catalog only lists unloaded extensio
     loadExtensionTool?.schema as { toJSONSchema?: () => { properties?: Record<string, unknown> } }
   )?.toJSONSchema?.()
   assert.deepEqual(loadExtensionSchema?.properties?.extensionName, {
-    enum: ["otherExtension"],
+    minLength: 1,
     type: "string"
   })
+  assert.match(
+    await loadExtensionTool!.invoke({
+      extensionName: "mockExtension"
+    }),
+    /Extension already loaded: Mock Source/
+  )
 
   const callExtensionTool = middleware.tools?.find(
     (candidate) => candidate.name === "callExtensionTool"
@@ -508,18 +582,10 @@ test("loaded extension stays callable while catalog only lists unloaded extensio
     } as never,
     async (request) => {
       observedSystemPrompt = request.systemPrompt ?? ""
-      const currentLoadExtensionTool = request.tools?.find(
-        (candidate) => candidate.name === "loadExtension"
+      assert.strictEqual(
+        request.tools?.find((candidate) => candidate.name === "loadExtension"),
+        loadExtensionTool
       )
-      const currentLoadExtensionSchema = (
-        currentLoadExtensionTool?.schema as {
-          toJSONSchema?: () => { properties?: Record<string, unknown> }
-        }
-      )?.toJSONSchema?.()
-      assert.deepEqual(currentLoadExtensionSchema?.properties?.extensionName, {
-        enum: ["otherExtension"],
-        type: "string"
-      })
       return {} as never
     }
   )
