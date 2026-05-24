@@ -10,24 +10,28 @@ import type { ComposerMessageRef } from "@shared/message-content"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
 import { supportsNativeExtensionPlatformList } from "@shared/native-extensions"
-import type { NativeExtensionPackageManifest } from "@shared/native-extensions"
+import type {
+  NativeExtensionPackageManifest,
+  NativeExtensionResolvedConnection
+} from "@shared/native-extensions"
 import { nativeExtensionManifests } from "./index"
 
 type ResolveNativeExtensionAiCapabilityInput = {
+  getConnection?: (extensionName: string) => NativeExtensionResolvedConnection
   getPreferences?: (extensionName: string) => Record<string, unknown>
   permissionMode?: PermissionModeName
   platform?: string
   preferencesByExtension?: Record<string, Record<string, unknown>>
 }
 
-type ResolvedExtensionPreferences =
+type ResolvedExtensionConnectionState =
   | {
       authStatus: "failed"
-      preferences: Record<string, unknown>
+      publicConfig: Record<string, unknown>
     }
   | {
-      authStatus: null
-      preferences: Record<string, unknown>
+      authStatus: ExtensionAiAuthStatus
+      publicConfig: Record<string, unknown>
     }
 
 interface NativeExtensionAiCapabilityRegistryEntry {
@@ -89,43 +93,7 @@ function isMissingRequiredPreferenceValue(value: unknown): boolean {
   return value === null || value === undefined
 }
 
-function resolveExtensionPreferences(
-  extensionName: string,
-  input: ResolveNativeExtensionAiCapabilityInput
-): ResolvedExtensionPreferences {
-  const persistedPreferences = input.preferencesByExtension?.[extensionName]
-  if (persistedPreferences) {
-    return {
-      authStatus: null,
-      preferences: persistedPreferences
-    }
-  }
-
-  if (!input.getPreferences) {
-    return {
-      authStatus: null,
-      preferences: {}
-    }
-  }
-
-  try {
-    return {
-      authStatus: null,
-      preferences: input.getPreferences(extensionName)
-    }
-  } catch (error) {
-    console.warn(
-      `[Sources] Failed to read preferences for extension AI capability "${extensionName}".`,
-      error
-    )
-    return {
-      authStatus: "failed",
-      preferences: {}
-    }
-  }
-}
-
-function resolveAuthStatus(input: {
+function resolveConnectionStatusFromPreferences(input: {
   capability: ExtensionAiCapability
   preferences: Record<string, unknown>
   supported: boolean
@@ -141,7 +109,7 @@ function resolveAuthStatus(input: {
   return missingRequiredPreference ? "missing" : "connected"
 }
 
-function resolvePublicConfig(input: {
+function resolvePublicConfigFromPreferences(input: {
   capability: ExtensionAiCapability
   preferences: Record<string, unknown>
 }): Record<string, unknown> {
@@ -154,6 +122,146 @@ function resolvePublicConfig(input: {
         : []
     )
   )
+}
+
+function resolveConnectionStateFromPreferences(input: {
+  capability: ExtensionAiCapability
+  extensionName: string
+  resolverInput: ResolveNativeExtensionAiCapabilityInput
+  supported: boolean
+}): ResolvedExtensionConnectionState {
+  if (!input.supported) {
+    return {
+      authStatus: "missing",
+      publicConfig: {}
+    }
+  }
+
+  const extensionName = input.extensionName
+  const resolverInput = input.resolverInput
+  const persistedPreferences = resolverInput.preferencesByExtension?.[extensionName]
+  if (persistedPreferences) {
+    return {
+      authStatus: resolveConnectionStatusFromPreferences({
+        capability: input.capability,
+        preferences: persistedPreferences,
+        supported: input.supported
+      }),
+      publicConfig: resolvePublicConfigFromPreferences({
+        capability: input.capability,
+        preferences: persistedPreferences
+      })
+    }
+  }
+
+  if (!resolverInput.getPreferences) {
+    const preferences: Record<string, unknown> = {}
+    return {
+      authStatus: resolveConnectionStatusFromPreferences({
+        capability: input.capability,
+        preferences,
+        supported: input.supported
+      }),
+      publicConfig: resolvePublicConfigFromPreferences({
+        capability: input.capability,
+        preferences
+      })
+    }
+  }
+
+  try {
+    const preferences = resolverInput.getPreferences(extensionName)
+    return {
+      authStatus: resolveConnectionStatusFromPreferences({
+        capability: input.capability,
+        preferences,
+        supported: input.supported
+      }),
+      publicConfig: resolvePublicConfigFromPreferences({
+        capability: input.capability,
+        preferences
+      })
+    }
+  } catch (error) {
+    console.warn(
+      `[Sources] Failed to read preferences for extension AI capability "${extensionName}".`,
+      error
+    )
+    return {
+      authStatus: "failed",
+      publicConfig: {}
+    }
+  }
+}
+
+function mapConnectionStatusToAuthStatus(
+  status: NativeExtensionResolvedConnection["status"]
+): ExtensionAiAuthStatus {
+  switch (status) {
+    case "connected":
+      return "connected"
+    case "failed":
+      return "failed"
+    case "missing":
+    case "unsupported":
+      return "missing"
+  }
+}
+
+function resolveConnectionState(
+  extensionName: string,
+  capability: ExtensionAiCapability,
+  supported: boolean,
+  input: ResolveNativeExtensionAiCapabilityInput
+): ResolvedExtensionConnectionState {
+  if (!supported) {
+    return {
+      authStatus: "missing",
+      publicConfig: {}
+    }
+  }
+
+  if (input.getConnection) {
+    try {
+      const connection = input.getConnection(extensionName)
+      return {
+        authStatus: mapConnectionStatusToAuthStatus(connection.status),
+        publicConfig: connection.publicConfig
+      }
+    } catch (error) {
+      console.warn(
+        `[Sources] Failed to read connection for extension AI capability "${extensionName}".`,
+        error
+      )
+      return {
+        authStatus: "failed",
+        publicConfig: {}
+      }
+    }
+  }
+
+  return resolveConnectionStateFromPreferences({
+    capability,
+    extensionName,
+    resolverInput: input,
+    supported
+  })
+}
+
+function resolveAuthStatus(input: {
+  connectionState: ResolvedExtensionConnectionState
+}): ExtensionAiAuthStatus {
+  if (input.connectionState.authStatus === "failed") {
+    return "failed"
+  }
+
+  return input.connectionState.authStatus
+}
+
+function resolvePublicConfig(input: {
+  connectionState: ResolvedExtensionConnectionState
+}): Record<string, unknown> {
+  return input.connectionState.publicConfig
 }
 
 function toAgentToolName(input: { capability: ExtensionAiCapability; toolName: string }): string {
@@ -186,20 +294,13 @@ function resolveEntryCapability(
         input.platform
       )
     : true
-  const preferenceResolution = platformSupported
-    ? resolveExtensionPreferences(entry.manifest.name, input)
-    : {
-        authStatus: null,
-        preferences: {}
-      }
-  const preferences = preferenceResolution.preferences
-  const authStatus =
-    preferenceResolution.authStatus ??
-    resolveAuthStatus({
-      capability: entry.capability,
-      preferences,
-      supported: platformSupported
-    })
+  const connectionState = resolveConnectionState(
+    entry.manifest.name,
+    entry.capability,
+    platformSupported,
+    input
+  )
+  const authStatus = resolveAuthStatus({ connectionState })
   const enabled = platformSupported
   const enabledToolNames =
     enabled && authStatus === "connected" ? [...entry.capability.toolNames] : []
@@ -214,8 +315,7 @@ function resolveEntryCapability(
     iconName: entry.manifest.iconName,
     permissionMode: input.permissionMode ?? DEFAULT_PERMISSION_MODE,
     publicConfig: resolvePublicConfig({
-      capability: entry.capability,
-      preferences
+      connectionState
     }),
     toolExposures: enabledToolNames.map((toolName) =>
       toToolExposure({

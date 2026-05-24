@@ -160,13 +160,17 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
   assert.match(capability?.capability.guide ?? "", /local Reminders database/)
 })
 
-test("empty AI capability refs do not read extension preferences", () => {
+test("empty AI capability refs do not read extension connection state", () => {
   const calls: string[] = []
 
   assert.deepEqual(
     resolveNativeExtensionAiCapabilitiesForRefs([], {
+      getConnection: (extensionName) => {
+        calls.push(`connection:${extensionName}`)
+        throw new Error("connection should not be read")
+      },
       getPreferences: (extensionName) => {
-        calls.push(extensionName)
+        calls.push(`preferences:${extensionName}`)
         return {}
       }
     }),
@@ -175,7 +179,7 @@ test("empty AI capability refs do not read extension preferences", () => {
   assert.deepEqual(calls, [])
 })
 
-test("single GitHub AI capability ref reads only GitHub preferences", () => {
+test("single GitHub AI capability ref reads only GitHub connection state", () => {
   const calls: string[] = []
   const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
     [
@@ -187,9 +191,18 @@ test("single GitHub AI capability ref reads only GitHub preferences", () => {
       }
     ],
     {
-      getPreferences: (extensionName) => {
+      getConnection: (extensionName) => {
         calls.push(extensionName)
-        return {}
+        return {
+          connectionId: "default",
+          extensionName,
+          missingSecretNames: ["accessToken"],
+          provider: "github",
+          publicConfig: {
+            apiBaseUrl: "https://api.github.com"
+          },
+          status: "missing"
+        }
       }
     }
   )
@@ -201,6 +214,41 @@ test("single GitHub AI capability ref reads only GitHub preferences", () => {
   assert.deepEqual(capability?.toolExposures, [])
 })
 
+test("GitHub connected connection state exposes the current manifest tool names", () => {
+  const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
+    [
+      {
+        extensionName: "github",
+        name: "GitHub",
+        sourceId: "github",
+        type: "extension-source"
+      }
+    ],
+    {
+      getConnection: (extensionName) => ({
+        connectionId: "default",
+        extensionName,
+        missingSecretNames: [],
+        provider: "github",
+        publicConfig: {
+          apiBaseUrl: "https://github.example.test/api/v3"
+        },
+        status: "connected"
+      })
+    }
+  )
+
+  assert.equal(capability?.authStatus, "connected")
+  assert.deepEqual(capability?.enabledToolNames, capability?.capability.toolNames)
+  assert.deepEqual(
+    capability?.toolExposures.map((tool) => tool.toolName),
+    capability?.capability.toolNames
+  )
+  assert.deepEqual(capability?.publicConfig, {
+    apiBaseUrl: "https://github.example.test/api/v3"
+  })
+})
+
 test("extension AI capability catalog does not read preferences", () => {
   assert.deepEqual(
     listNativeExtensionAiCapabilityCatalog("darwin").map((item) => item.extensionName),
@@ -208,12 +256,19 @@ test("extension AI capability catalog does not read preferences", () => {
   )
 })
 
-test("loadExtension resolution reads only the requested extension preferences", () => {
+test("loadExtension resolution reads only the requested extension connection state", () => {
   const calls: string[] = []
   const capability = resolveNativeExtensionAiCapabilityForExtensionName("github", {
-    getPreferences: (extensionName) => {
+    getConnection: (extensionName) => {
       calls.push(extensionName)
-      return {}
+      return {
+        connectionId: "default",
+        extensionName,
+        missingSecretNames: ["accessToken"],
+        provider: "github",
+        publicConfig: {},
+        status: "missing"
+      }
     },
     platform: "darwin"
   })
@@ -224,7 +279,7 @@ test("loadExtension resolution reads only the requested extension preferences", 
   assert.deepEqual(capability?.enabledToolNames, [])
 })
 
-test("selected AI capability preference read failures become failed auth without tools", () => {
+test("selected AI capability connection read failures become failed auth without tools", () => {
   const calls: string[] = []
   const consoleWarn = mock.method(console, "warn", () => {})
 
@@ -239,7 +294,7 @@ test("selected AI capability preference read failures become failed auth without
         }
       ],
       {
-        getPreferences: (extensionName) => {
+        getConnection: (extensionName) => {
           calls.push(extensionName)
           throw new Error("secret store unavailable")
         }
