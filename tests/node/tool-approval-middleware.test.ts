@@ -188,7 +188,6 @@ test("allowlisted desktop automation tools bypass approval and continue to the h
     getAgentConfig: () => ({
       desktopAutomationAllowlist: ["com.apple.finder"],
       locale: "zh-CN",
-      memorySources: [],
       skillSources: []
     })
   })
@@ -223,7 +222,6 @@ test("non-allowlisted desktop automation tools return an error without approval"
     getAgentConfig: () => ({
       desktopAutomationAllowlist: ["com.apple.finder"],
       locale: "zh-CN",
-      memorySources: [],
       skillSources: []
     })
   })
@@ -343,7 +341,6 @@ test("app-targeted desktop route calls require target metadata for allowlist che
     getAgentConfig: () => ({
       desktopAutomationAllowlist: ["com.netease.163music"],
       locale: "zh-CN",
-      memorySources: [],
       skillSources: []
     })
   })
@@ -580,7 +577,6 @@ test("click_screen_point requires an allowlisted target application", async () =
     getAgentConfig: () => ({
       desktopAutomationAllowlist: ["com.netease.163music"],
       locale: "zh-CN",
-      memorySources: [],
       skillSources: []
     })
   })
