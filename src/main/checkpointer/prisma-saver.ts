@@ -39,6 +39,8 @@ function getRunIdForStorage(
 }
 
 export class PrismaCheckpointSaver extends BaseCheckpointSaver {
+  private writeQueue: Promise<void> = Promise.resolve()
+
   constructor(serde?: SerializerProtocol) {
     super(serde)
   }
@@ -202,161 +204,177 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
-    const prisma = getPrismaClient()
+    return this.enqueueWrite(async () => {
+      const prisma = getPrismaClient()
 
-    if (!config.configurable?.thread_id) {
-      throw new Error('Missing "thread_id" field in passed "config.configurable".')
-    }
+      if (!config.configurable?.thread_id) {
+        throw new Error('Missing "thread_id" field in passed "config.configurable".')
+      }
 
-    const threadId = config.configurable.thread_id
-    const runId = getRunIdForStorage(config, metadata)
-    const checkpointNs = config.configurable.checkpoint_ns ?? ""
-    const parentCheckpointId = config.configurable.checkpoint_id
-    const preparedCheckpoint = copyCheckpoint(checkpoint)
+      const threadId = config.configurable.thread_id
+      const runId = getRunIdForStorage(config, metadata)
+      const checkpointNs = config.configurable.checkpoint_ns ?? ""
+      const parentCheckpointId = config.configurable.checkpoint_id
+      const preparedCheckpoint = copyCheckpoint(checkpoint)
 
-    const [[type, serializedCheckpoint], [metadataType, serializedMetadata]] = await Promise.all([
-      this.serde.dumpsTyped(preparedCheckpoint),
-      this.serde.dumpsTyped(metadata)
-    ])
+      const [[type, serializedCheckpoint], [metadataType, serializedMetadata]] =
+        await Promise.all([
+          this.serde.dumpsTyped(preparedCheckpoint),
+          this.serde.dumpsTyped(metadata)
+        ])
 
-    if (type !== metadataType) {
-      throw new Error("Failed to serialize checkpoint and metadata to the same type.")
-    }
+      if (type !== metadataType) {
+        throw new Error("Failed to serialize checkpoint and metadata to the same type.")
+      }
 
-    const [storedType, storedCheckpoint] = encodeSerializedPayload(type, serializedCheckpoint)
-    const [, storedMetadata] = encodeSerializedPayload(metadataType, serializedMetadata)
+      const [storedType, storedCheckpoint] = encodeSerializedPayload(type, serializedCheckpoint)
+      const [, storedMetadata] = encodeSerializedPayload(metadataType, serializedMetadata)
 
-    await prisma.checkpoint.upsert({
-      where: {
-        threadId_checkpointNs_checkpointId: {
+      await prisma.checkpoint.upsert({
+        where: {
+          threadId_checkpointNs_checkpointId: {
+            threadId,
+            checkpointNs,
+            checkpointId: checkpoint.id
+          }
+        },
+        create: {
           threadId,
+          runId,
           checkpointNs,
-          checkpointId: checkpoint.id
+          checkpointId: checkpoint.id,
+          parentCheckpointId: parentCheckpointId ?? null,
+          type: storedType,
+          checkpoint: storedCheckpoint,
+          metadata: storedMetadata
+        },
+        update: {
+          runId,
+          parentCheckpointId: parentCheckpointId ?? null,
+          type: storedType,
+          checkpoint: storedCheckpoint,
+          metadata: storedMetadata
         }
-      },
-      create: {
-        threadId,
-        runId,
-        checkpointNs,
-        checkpointId: checkpoint.id,
-        parentCheckpointId: parentCheckpointId ?? null,
-        type: storedType,
-        checkpoint: storedCheckpoint,
-        metadata: storedMetadata
-      },
-      update: {
-        runId,
-        parentCheckpointId: parentCheckpointId ?? null,
-        type: storedType,
-        checkpoint: storedCheckpoint,
-        metadata: storedMetadata
+      })
+
+      const tuple = {
+        checkpoint: preparedCheckpoint,
+        metadata
+      } as CheckpointTuple
+      const messages = extractMessagesFromCheckpoint(threadId, tuple)
+      await syncMessageSearchIndexFromSnapshot(threadId, messages)
+
+      const hitlRequest = extractHitlRequestFromCheckpoint(threadId, tuple, { runId })
+      if (hitlRequest) {
+        await upsertHitlRequest({
+          request_id: hitlRequest.id,
+          thread_id: threadId,
+          run_id: runId,
+          tool_call_id: hitlRequest.tool_call.id,
+          tool_name: hitlRequest.tool_call.name,
+          tool_args: hitlRequest.tool_call.args,
+          review_kind: hitlRequest.review?.kind ?? null,
+          review_payload: hitlRequest.review,
+          allowed_decisions: hitlRequest.allowed_decisions,
+          status: "pending"
+        })
+      }
+
+      return {
+        configurable: {
+          ...config.configurable,
+          thread_id: threadId,
+          checkpoint_ns: checkpointNs,
+          checkpoint_id: checkpoint.id
+        }
       }
     })
-
-    const tuple = {
-      checkpoint: preparedCheckpoint,
-      metadata
-    } as CheckpointTuple
-    const messages = extractMessagesFromCheckpoint(threadId, tuple)
-    await syncMessageSearchIndexFromSnapshot(threadId, messages)
-
-    const hitlRequest = extractHitlRequestFromCheckpoint(threadId, tuple, { runId })
-    if (hitlRequest) {
-      await upsertHitlRequest({
-        request_id: hitlRequest.id,
-        thread_id: threadId,
-        run_id: runId,
-        tool_call_id: hitlRequest.tool_call.id,
-        tool_name: hitlRequest.tool_call.name,
-        tool_args: hitlRequest.tool_call.args,
-        review_kind: hitlRequest.review?.kind ?? null,
-        review_payload: hitlRequest.review,
-        allowed_decisions: hitlRequest.allowed_decisions,
-        status: "pending"
-      })
-    }
-
-    return {
-      configurable: {
-        ...config.configurable,
-        thread_id: threadId,
-        checkpoint_ns: checkpointNs,
-        checkpoint_id: checkpoint.id
-      }
-    }
   }
 
   async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
-    const prisma = getPrismaClient()
+    return this.enqueueWrite(async () => {
+      const prisma = getPrismaClient()
 
-    if (!config.configurable?.thread_id) {
-      throw new Error("Missing thread_id field in config.configurable.")
-    }
+      if (!config.configurable?.thread_id) {
+        throw new Error("Missing thread_id field in config.configurable.")
+      }
 
-    if (!config.configurable?.checkpoint_id) {
-      throw new Error("Missing checkpoint_id field in config.configurable.")
-    }
+      if (!config.configurable?.checkpoint_id) {
+        throw new Error("Missing checkpoint_id field in config.configurable.")
+      }
 
-    const threadId = config.configurable.thread_id
-    const checkpointNs = config.configurable.checkpoint_ns ?? ""
-    const checkpointId = config.configurable.checkpoint_id
+      const threadId = config.configurable.thread_id
+      const checkpointNs = config.configurable.checkpoint_ns ?? ""
+      const checkpointId = config.configurable.checkpoint_id
 
-    const operations: Prisma.PrismaPromise<unknown>[] = []
-    for (let idx = 0; idx < writes.length; idx += 1) {
-      const write = writes[idx]
-      const [type, serializedValue] = await this.serde.dumpsTyped(write[1])
-      const [storedType, storedValue] = encodeSerializedPayload(type, serializedValue)
+      const operations: Prisma.PrismaPromise<unknown>[] = []
+      for (let idx = 0; idx < writes.length; idx += 1) {
+        const write = writes[idx]
+        const [type, serializedValue] = await this.serde.dumpsTyped(write[1])
+        const [storedType, storedValue] = encodeSerializedPayload(type, serializedValue)
 
-      operations.push(
-        prisma.checkpointWrite.upsert({
-          where: {
-            threadId_checkpointNs_checkpointId_taskId_idx: {
+        operations.push(
+          prisma.checkpointWrite.upsert({
+            where: {
+              threadId_checkpointNs_checkpointId_taskId_idx: {
+                threadId,
+                checkpointNs,
+                checkpointId,
+                taskId,
+                idx
+              }
+            },
+            create: {
               threadId,
               checkpointNs,
               checkpointId,
               taskId,
-              idx
+              idx,
+              channel: write[0],
+              type: storedType,
+              value: storedValue
+            },
+            update: {
+              channel: write[0],
+              type: storedType,
+              value: storedValue
             }
-          },
-          create: {
-            threadId,
-            checkpointNs,
-            checkpointId,
-            taskId,
-            idx,
-            channel: write[0],
-            type: storedType,
-            value: storedValue
-          },
-          update: {
-            channel: write[0],
-            type: storedType,
-            value: storedValue
-          }
-        })
-      )
-    }
+          })
+        )
+      }
 
-    if (operations.length > 0) {
-      await prisma.$transaction(operations)
-    }
+      if (operations.length > 0) {
+        await prisma.$transaction(operations)
+      }
+    })
   }
 
   async deleteThread(threadId: string): Promise<void> {
-    const prisma = getPrismaClient()
+    return this.enqueueWrite(async () => {
+      const prisma = getPrismaClient()
 
-    await prisma.$transaction([
-      prisma.checkpointWrite.deleteMany({
-        where: { threadId }
-      }),
-      prisma.checkpoint.deleteMany({
-        where: { threadId }
-      })
-    ])
+      await prisma.$transaction([
+        prisma.checkpointWrite.deleteMany({
+          where: { threadId }
+        }),
+        prisma.checkpoint.deleteMany({
+          where: { threadId }
+        })
+      ])
+    })
   }
 
   async close(): Promise<void> {
-    return
+    await this.writeQueue
+  }
+
+  private enqueueWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const next = this.writeQueue.then(operation, operation)
+    this.writeQueue = next.then(
+      () => undefined,
+      () => undefined
+    )
+    return next
   }
 
   private async loadPendingWrites(

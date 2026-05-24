@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test, { mock } from "node:test"
 import { emptyCheckpoint } from "@langchain/langgraph-checkpoint"
+import type { SerializerProtocol } from "@langchain/langgraph-checkpoint"
 
 const repoRoot = process.cwd()
 let openworkHome = ""
@@ -826,6 +827,95 @@ test("syncRunFromLatestCheckpoint reads the latest checkpoint for that run only"
   assert.equal(status, "interrupted")
   assert.equal(interruptedRun?.status, "interrupted")
   assert.equal(successRun?.status, "running")
+})
+
+test("checkpoint writes are serialized on one saver instance", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-checkpoint-write-queue"
+  const checkpointId = "checkpoint-write-queue"
+  const jsonSerializer: SerializerProtocol = {
+    dumpsTyped: async (value: unknown) => ["json", Buffer.from(JSON.stringify(value), "utf8")],
+    loadsTyped: async (_type: string, value: Uint8Array | string) =>
+      JSON.parse(typeof value === "string" ? value : Buffer.from(value).toString("utf8"))
+  }
+  let firstWriteBlocked = false
+  let releaseFirstWrite: () => void = () => {
+    throw new Error("First checkpoint write did not reach the serializer.")
+  }
+  const firstWriteGate = new Promise<void>((resolve) => {
+    releaseFirstWrite = resolve
+  })
+  let activeWrites = 0
+  let maxActiveWrites = 0
+  let serializedSecondWrite = false
+  const blockingSerializer: SerializerProtocol = {
+    dumpsTyped: async (value: unknown) => {
+      if (value && typeof value === "object" && "marker" in value) {
+        activeWrites += 1
+        maxActiveWrites = Math.max(maxActiveWrites, activeWrites)
+        try {
+          if ((value as { marker?: unknown }).marker === "first") {
+            firstWriteBlocked = true
+            await firstWriteGate
+          }
+          if ((value as { marker?: unknown }).marker === "second") {
+            serializedSecondWrite = true
+          }
+        } finally {
+          activeWrites -= 1
+        }
+      }
+
+      return jsonSerializer.dumpsTyped(value)
+    },
+    loadsTyped: (type, value) => jsonSerializer.loadsTyped(type, value)
+  }
+
+  await createThread(threadId)
+  const saver = new PrismaCheckpointSaver(blockingSerializer)
+  const firstWrite = saver.putWrites(
+    {
+      configurable: {
+        checkpoint_id: checkpointId,
+        thread_id: threadId
+      }
+    },
+    [["messages", { marker: "first" }]],
+    "task-first"
+  )
+  const secondWrite = saver.putWrites(
+    {
+      configurable: {
+        checkpoint_id: checkpointId,
+        thread_id: threadId
+      }
+    },
+    [["messages", { marker: "second" }]],
+    "task-second"
+  )
+
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(firstWriteBlocked, true)
+  assert.equal(serializedSecondWrite, false)
+  assert.equal(maxActiveWrites, 1)
+
+  releaseFirstWrite()
+  await Promise.all([firstWrite, secondWrite])
+
+  const rows = await getPrismaClient().checkpointWrite.findMany({
+    orderBy: [{ taskId: "asc" }, { idx: "asc" }],
+    where: {
+      checkpointId,
+      threadId
+    }
+  })
+  assert.deepEqual(
+    rows.map((row) => row.taskId),
+    ["task-first", "task-second"]
+  )
+  assert.equal(maxActiveWrites, 1)
 })
 
 test("syncRunFromLatestCheckpoint copies a generated checkpoint title onto auto-titled threads", async () => {
