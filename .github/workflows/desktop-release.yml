@@ -29,6 +29,9 @@ jobs:
           - name: windows
             runner: windows-latest
             command: pnpm run dist:win
+          - name: linux
+            runner: ubuntu-latest
+            command: pnpm run dist:linux
 
     steps:
       - name: Checkout repository
@@ -69,6 +72,7 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.exe
+            dist/*.AppImage
             dist/*.blockmap
             dist/latest*.yml
           if-no-files-found: error
@@ -98,6 +102,7 @@ jobs:
           files: |
             release-assets/*.dmg
             release-assets/*.exe
+            release-assets/*.AppImage
             release-assets/*.blockmap
             release-assets/latest*.yml
         env:

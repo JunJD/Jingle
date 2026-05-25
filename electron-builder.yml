@@ -22,6 +22,7 @@ files:
       - index.js
       - schema.prisma
       - libquery_engine-*.node
+      - query_engine-*.node
   - from: node_modules/just-bash
     to: node_modules/just-bash
     filter:
@@ -91,6 +92,11 @@ win:
   icon: resources/icon.ico
   target:
     - nsis
+linux:
+  category: Utility
+  icon: resources/icon.png
+  target:
+    - AppImage
 nsis:
   oneClick: false
   perMachine: false

@@ -30,11 +30,39 @@ function collectMatching(start, predicate, matches = []) {
 
 function findPackagedApps() {
   return collectMatching(root, (path, entry) => {
-    return entry.isDirectory() && path.endsWith(".app") && existsSync(join(path, "Contents", "Resources", "app.asar"))
-  }).sort()
+    if (!entry.isDirectory()) {
+      return false
+    }
+
+    if (path.endsWith(".app")) {
+      return existsSync(join(path, "Contents", "Resources", "app.asar"))
+    }
+
+    return !path.split(sep).some((part) => part.endsWith(".app")) && existsSync(join(path, "resources", "app.asar"))
+  })
+    .map((appPath) => {
+      const macResourcesPath = join(appPath, "Contents", "Resources")
+      if (existsSync(join(macResourcesPath, "app.asar"))) {
+        return {
+          appPath,
+          appAsarPath: join(macResourcesPath, "app.asar"),
+          executablePath: findMacAppExecutable(appPath),
+          resourcesPath: macResourcesPath
+        }
+      }
+
+      const resourcesPath = join(appPath, "resources")
+      return {
+        appPath,
+        appAsarPath: join(resourcesPath, "app.asar"),
+        executablePath: findRootAppExecutable(appPath),
+        resourcesPath
+      }
+    })
+    .sort((left, right) => left.appPath.localeCompare(right.appPath))
 }
 
-function findAppExecutable(appPath) {
+function findMacAppExecutable(appPath) {
   const macosPath = join(appPath, "Contents", "MacOS")
   if (!existsSync(macosPath)) {
     return null
@@ -49,8 +77,33 @@ function findAppExecutable(appPath) {
   return null
 }
 
-function findNativeFiles(appPath) {
-  const resourcesPath = join(appPath, "Contents", "Resources")
+function findRootAppExecutable(appPath) {
+  const candidates = []
+
+  for (const child of readdirSync(appPath).sort()) {
+    const childPath = join(appPath, child)
+    const childStats = statSync(childPath)
+    if (!childStats.isFile()) {
+      continue
+    }
+
+    const lowerName = child.toLowerCase()
+    if (process.platform === "win32") {
+      if (lowerName.endsWith(".exe") && !lowerName.startsWith("uninstall")) {
+        candidates.push(childPath)
+      }
+      continue
+    }
+
+    if ((childStats.mode & 0o111) && lowerName !== "chrome-sandbox") {
+      candidates.push(childPath)
+    }
+  }
+
+  return candidates.find((path) => basename(path).toLowerCase().includes("openwork")) ?? candidates[0] ?? null
+}
+
+function findNativeFiles(resourcesPath) {
   return collectMatching(resourcesPath, (path, entry) => {
     if (entry.isDirectory()) {
       return false
@@ -74,10 +127,14 @@ function otoolLinkedLibraries(path) {
     .filter(Boolean)
 }
 
-function assertMacNativeLinks(appPath) {
+function assertMacNativeLinks({ resourcesPath }) {
+  if (process.platform !== "darwin") {
+    return
+  }
+
   const offenders = []
 
-  for (const filePath of findNativeFiles(appPath)) {
+  for (const filePath of findNativeFiles(resourcesPath)) {
     const linkedLibraries = otoolLinkedLibraries(filePath)
     for (const libraryPath of linkedLibraries) {
       if (forbiddenMacLinkPrefixes.some((prefix) => libraryPath.startsWith(prefix))) {
@@ -101,9 +158,7 @@ function packagePathFragments(packageName) {
   return [parts[0]]
 }
 
-function assertForbiddenPackagesNotPackaged(appPath) {
-  const resourcesPath = join(appPath, "Contents", "Resources")
-  const appAsarPath = join(resourcesPath, "app.asar")
+function assertForbiddenPackagesNotPackaged({ appAsarPath, resourcesPath }) {
   const asarBin = resolve("node_modules/.bin/asar")
   if (!existsSync(asarBin)) {
     throw new Error(`Could not find asar binary: ${asarBin}`)
@@ -129,14 +184,11 @@ function assertForbiddenPackagesNotPackaged(appPath) {
   }
 }
 
-function runPackagedRuntimeSmoke(appPath) {
-  const executablePath = findAppExecutable(appPath)
+function runPackagedRuntimeSmoke({ appAsarPath, appPath, executablePath, resourcesPath }) {
   if (!executablePath) {
     throw new Error(`Could not find packaged app executable in ${appPath}`)
   }
 
-  const resourcesPath = join(appPath, "Contents", "Resources")
-  const appAsarPath = join(resourcesPath, "app.asar")
   if (!existsSync(appAsarPath)) {
     throw new Error(`Could not find app.asar in ${appPath}`)
   }
@@ -230,14 +282,14 @@ try {
   }
 }
 
-const appPaths = findPackagedApps()
-if (appPaths.length === 0) {
-  throw new Error(`No packaged .app found under ${root}`)
+const packagedApps = findPackagedApps()
+if (packagedApps.length === 0) {
+  throw new Error(`No packaged app with resources/app.asar found under ${root}`)
 }
 
-for (const appPath of appPaths) {
-  assertMacNativeLinks(appPath)
-  assertForbiddenPackagesNotPackaged(appPath)
-  runPackagedRuntimeSmoke(appPath)
-  console.log(`packaged runtime audit passed: ${appPath}`)
+for (const packagedApp of packagedApps) {
+  assertMacNativeLinks(packagedApp)
+  assertForbiddenPackagesNotPackaged(packagedApp)
+  runPackagedRuntimeSmoke(packagedApp)
+  console.log(`packaged runtime audit passed: ${packagedApp.appPath}`)
 }
