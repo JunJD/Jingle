@@ -105,6 +105,7 @@ const command = process.platform === "win32" ? "npm.cmd" : "npm"
 const child = spawn(command, ["exec", "--", "electron-builder", ...args], {
   cwd: process.cwd(),
   env: process.env,
+  shell: process.platform === "win32",
   stdio: "inherit"
 })
 

@@ -50,6 +50,7 @@ function run(command, args, options = {}) {
 async function main() {
   const npm = npmCommand()
 
+  await run(npm, ["run", "prisma:generate"])
   await run(npm, ["run", "typecheck"])
   const buildOutput = await run(npm, ["run", "build:electron"])
 
