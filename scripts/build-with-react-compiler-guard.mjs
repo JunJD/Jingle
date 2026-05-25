@@ -14,6 +14,7 @@ function run(command, args, options = {}) {
     const child = spawn(command, args, {
       cwd: process.cwd(),
       env: process.env,
+      shell: process.platform === "win32",
       stdio: ["inherit", "pipe", "pipe"],
       ...options
     })
@@ -49,6 +50,7 @@ function run(command, args, options = {}) {
 async function main() {
   const npm = npmCommand()
 
+  await run(npm, ["run", "prisma:generate"])
   await run(npm, ["run", "typecheck"])
   const buildOutput = await run(npm, ["run", "build:electron"])
 
