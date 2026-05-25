@@ -2,6 +2,7 @@ appId: com.langchain.openwork
 productName: Openwork
 directories:
   output: dist
+npmRebuild: false
 files:
   - out/**
   - package.json
