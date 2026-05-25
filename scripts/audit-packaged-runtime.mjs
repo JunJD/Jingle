@@ -158,20 +158,19 @@ function packagePathFragments(packageName) {
   return [parts[0]]
 }
 
-function findAsarBin() {
-  const binName = process.platform === "win32" ? "asar.cmd" : "asar"
-  const asarBin = resolve("node_modules/.bin", binName)
-  if (!existsSync(asarBin)) {
-    throw new Error(`Could not find asar binary: ${asarBin}`)
+function findAsarCli() {
+  const asarCliPath = resolve("node_modules/@electron/asar/bin/asar.js")
+  if (!existsSync(asarCliPath)) {
+    throw new Error(`Could not find @electron/asar CLI: ${asarCliPath}`)
   }
 
-  return asarBin
+  return asarCliPath
 }
 
 function assertForbiddenPackagesNotPackaged({ appAsarPath, resourcesPath }) {
-  const asarBin = findAsarBin()
+  const asarCliPath = findAsarCli()
 
-  const asarEntries = execFileSync(asarBin, ["list", appAsarPath], {
+  const asarEntries = execFileSync(process.execPath, [asarCliPath, "list", appAsarPath], {
     encoding: "utf-8",
     maxBuffer: 128 * 1024 * 1024
   }).split("\n")
@@ -282,7 +281,8 @@ try {
         OPENWORK_PACKAGED_RESOURCES: resourcesPath,
         OPENWORK_PACKAGED_SMOKE_HOME: smokeHome
       },
-      stdio: "pipe"
+      stdio: "pipe",
+      timeout: 120_000
     })
   } finally {
     rmSync(smokeHome, { force: true, recursive: true })
