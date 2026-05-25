@@ -158,11 +158,18 @@ function packagePathFragments(packageName) {
   return [parts[0]]
 }
 
-function assertForbiddenPackagesNotPackaged({ appAsarPath, resourcesPath }) {
-  const asarBin = resolve("node_modules/.bin/asar")
+function findAsarBin() {
+  const binName = process.platform === "win32" ? "asar.cmd" : "asar"
+  const asarBin = resolve("node_modules/.bin", binName)
   if (!existsSync(asarBin)) {
     throw new Error(`Could not find asar binary: ${asarBin}`)
   }
+
+  return asarBin
+}
+
+function assertForbiddenPackagesNotPackaged({ appAsarPath, resourcesPath }) {
+  const asarBin = findAsarBin()
 
   const asarEntries = execFileSync(asarBin, ["list", appAsarPath], {
     encoding: "utf-8",
