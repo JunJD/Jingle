@@ -1,4 +1,5 @@
 import { parseToolInputWithSchema } from "../agent/tool-input-schema"
+import type { NativeExtensionExecutionContext } from "@shared/native-extensions"
 import type { ExtensionAgentToolBinding } from "./registry"
 
 const DEFAULT_MAX_AGENT_OUTPUT_CHARS = 12_000
@@ -13,6 +14,7 @@ export interface ExecuteExtensionAgentToolInput {
 
 export interface ExtensionToolExecutorOptions {
   bindings: ExtensionAgentToolBinding[]
+  getExtensionExecutionContext?: (extensionName: string) => NativeExtensionExecutionContext
   getExtensionPreferences?: (extensionName: string) => Record<string, unknown>
   maxAgentOutputChars?: number
 }
@@ -30,6 +32,7 @@ function serializeExtensionToolOutput(value: unknown, maxChars: number): string 
 
 export class ExtensionToolExecutor {
   private readonly bindingsByAgentToolName: Map<string, ExtensionAgentToolBinding>
+  private readonly getExtensionExecutionContext?: (extensionName: string) => NativeExtensionExecutionContext
   private readonly getExtensionPreferences?: (extensionName: string) => Record<string, unknown>
   private readonly maxAgentOutputChars: number
 
@@ -37,6 +40,7 @@ export class ExtensionToolExecutor {
     this.bindingsByAgentToolName = new Map(
       options.bindings.map((binding) => [binding.agentToolName, binding])
     )
+    this.getExtensionExecutionContext = options.getExtensionExecutionContext
     this.getExtensionPreferences = options.getExtensionPreferences
     this.maxAgentOutputChars = options.maxAgentOutputChars ?? DEFAULT_MAX_AGENT_OUTPUT_CHARS
   }
@@ -56,15 +60,19 @@ export class ExtensionToolExecutor {
       binding.definition.inputSchema,
       input.args
     )
+    const executionContext = this.getExtensionExecutionContext?.(binding.definition.extensionName)
+    const extensionPreferences =
+      executionContext?.extensionPreferences ??
+      this.getExtensionPreferences?.(binding.definition.extensionName) ??
+      binding.resolvedCapability.publicConfig
 
     const result = await binding.definition.handler(
       {
         agentToolName: input.agentToolName,
         capabilityId: binding.capability.id,
+        connection: executionContext?.connection,
         extensionName: binding.definition.extensionName,
-        extensionPreferences:
-          this.getExtensionPreferences?.(binding.definition.extensionName) ??
-          binding.resolvedCapability.publicConfig,
+        extensionPreferences,
         runId: input.runId,
         threadId: input.threadId,
         toolName: binding.definition.name,

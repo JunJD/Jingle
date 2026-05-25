@@ -3,6 +3,7 @@ import type {
   PermissionModeName,
   ResolvedExtensionAiCapability
 } from "@shared/extension-sources"
+import type { NativeExtensionExecutionContext } from "@shared/native-extensions"
 import { createDynamicExtensionToolApprovalPolicyProvider } from "../extension-tools/permission"
 import type { ExtensionAgentToolBinding, ExtensionToolRegistry } from "../extension-tools/registry"
 import { createExtensionAiMiddleware } from "./extension-ai-middleware"
@@ -15,6 +16,7 @@ export interface CreateExtensionAiRuntimeOptions {
   aiCapabilities: ResolvedExtensionAiCapability[]
   aiCapabilityCatalog?: ExtensionAiCapabilityCatalogItem[]
   getAiCapabilityByExtensionName?: (extensionName: string) => ResolvedExtensionAiCapability | null
+  getExtensionExecutionContext?: (extensionName: string) => NativeExtensionExecutionContext
   getExtensionPreferences?: (extensionName: string) => Record<string, unknown>
   onLoadedAiCapabilitiesChanged?: (
     change: LoadedExtensionAiCapabilitiesChange
@@ -94,6 +96,7 @@ export function createExtensionAiRuntime(options: CreateExtensionAiRuntimeOption
   const middleware = createExtensionAiMiddleware({
     aiCapabilityCatalog: options.aiCapabilityCatalog ?? [],
     getAiCapabilityByExtensionName: options.getAiCapabilityByExtensionName,
+    getExtensionExecutionContext: options.getExtensionExecutionContext,
     getExtensionPreferences: options.getExtensionPreferences,
     onLoadedAiCapabilitiesChanged: options.onLoadedAiCapabilitiesChanged,
     permissionMode: options.permissionMode,

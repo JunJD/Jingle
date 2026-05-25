@@ -91,7 +91,9 @@ class BddExtensionRuntimeHostCapabilities implements ExtensionRuntimeHostCapabil
     this.record("rpc", request)
     if (this.probe.invokeNativeExtension) {
       const extensionPreferences = await this.host.getExtensionPreferences(request.extensionName)
-      return this.probe.invokeNativeExtension(request, { extensionPreferences })
+      return this.probe.invokeNativeExtension(request, {
+        extensionPreferences
+      })
     }
 
     return this.host.invokeNativeExtension(request)

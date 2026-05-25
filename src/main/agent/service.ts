@@ -10,7 +10,10 @@ import {
   resolveNativeExtensionAiCapabilityForExtensionName,
   resolveNativeExtensionAiCapabilitiesForRefs
 } from "@extensions/sources"
-import { getResolvedNativeExtensionPreferenceRecord } from "../preferences"
+import {
+  resolveNativeExtensionConnection,
+  resolveNativeExtensionExecutionContext
+} from "../native-extensions/connection-resolver"
 import {
   beginAgentRun,
   finalizeRunWithoutCheckpoint,
@@ -488,14 +491,22 @@ export class AgentService {
       const normalizedRefs = normalizeComposerMessageRefs(message.additional_kwargs?.refs)
       const permissionMode = requestedPermissionMode ?? readThreadPermissionMode(thread)
       const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefs(normalizedRefs, {
-        getPreferences: getResolvedNativeExtensionPreferenceRecord,
+        getConnection: (extensionName) =>
+          resolveNativeExtensionConnection({
+            extensionName,
+            platform: process.platform
+          }),
         permissionMode,
         platform: process.platform
       })
       const aiCapabilityCatalog = listNativeExtensionAiCapabilityCatalog(process.platform)
       const getAiCapabilityByExtensionName = (extensionName: string) =>
         resolveNativeExtensionAiCapabilityForExtensionName(extensionName, {
-          getPreferences: getResolvedNativeExtensionPreferenceRecord,
+          getConnection: (extensionName) =>
+            resolveNativeExtensionConnection({
+              extensionName,
+              platform: process.platform
+            }),
           permissionMode,
           platform: process.platform
         })
@@ -528,7 +539,11 @@ export class AgentService {
         aiCapabilities,
         aiCapabilityCatalog,
         getAiCapabilityByExtensionName,
-        getExtensionPreferences: getResolvedNativeExtensionPreferenceRecord,
+        getExtensionExecutionContext: (extensionName) =>
+          resolveNativeExtensionExecutionContext({
+            extensionName,
+            platform: process.platform
+          }),
         onLoadedAiCapabilitiesChanged: ({ aiCapabilities, permissionMode, runId }) =>
           updateRunExtensionAiCapabilitiesSnapshot(runId, {
             aiCapabilities,
@@ -711,11 +726,19 @@ export class AgentService {
         aiCapabilityCatalog: listNativeExtensionAiCapabilityCatalog(process.platform),
         getAiCapabilityByExtensionName: (extensionName: string) =>
           resolveNativeExtensionAiCapabilityForExtensionName(extensionName, {
-            getPreferences: getResolvedNativeExtensionPreferenceRecord,
+            getConnection: (extensionName) =>
+              resolveNativeExtensionConnection({
+                extensionName,
+                platform: process.platform
+              }),
             permissionMode,
             platform: process.platform
           }),
-        getExtensionPreferences: getResolvedNativeExtensionPreferenceRecord,
+        getExtensionExecutionContext: (extensionName) =>
+          resolveNativeExtensionExecutionContext({
+            extensionName,
+            platform: process.platform
+          }),
         onLoadedAiCapabilitiesChanged: ({ aiCapabilities, permissionMode, runId }) =>
           updateRunExtensionAiCapabilitiesSnapshot(runId, {
             aiCapabilities,
