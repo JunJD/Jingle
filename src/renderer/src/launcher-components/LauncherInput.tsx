@@ -64,7 +64,7 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
           aria-busy={status === "idle" ? undefined : true}
           multiline={multiline}
           className={cn(
-            "min-w-0 border-0 bg-transparent px-[var(--ow-space-1)] py-0 [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] shadow-none",
+            "min-w-0 border-0 bg-transparent px-[var(--launcher-input-content-inset-x)] py-0 [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] shadow-none",
             multiline
               ? cn(
                   "resize-none overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] scrollbar-hide",
@@ -86,7 +86,7 @@ export const LauncherInput = forwardRef<LauncherInputElement, LauncherInputProps
                     : "leading-[20px]"
                 )
               : "[font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] text-muted-foreground/52",
-            "px-[var(--ow-space-1)]",
+            "px-[var(--launcher-input-content-inset-x)]",
             placeholderClassName
           )}
           data-status={status}
