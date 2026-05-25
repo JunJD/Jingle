@@ -6,8 +6,78 @@ files:
   - out/**
   - package.json
   - resources/**
+  - "!node_modules/**"
+  - from: node_modules/@prisma/client
+    to: node_modules/@prisma/client
+    filter:
+      - package.json
+      - default.js
+      - index.js
+      - runtime/library.js
+  - from: node_modules/.prisma/client
+    to: node_modules/.prisma/client
+    filter:
+      - package.json
+      - default.js
+      - index.js
+      - schema.prisma
+      - libquery_engine-*.node
+  - from: node_modules/just-bash
+    to: node_modules/just-bash
+    filter:
+      - package.json
+      - dist/bundle/**
+      - node_modules/**
+      - vendor/**
+  - from: node_modules/quickjs-emscripten
+    to: node_modules/quickjs-emscripten
+    filter:
+      - package.json
+      - dist/**
+  - from: node_modules/quickjs-emscripten-core
+    to: node_modules/quickjs-emscripten-core
+    filter:
+      - package.json
+      - dist/**
+  - from: node_modules/@jitl
+    to: node_modules/@jitl
+  - from: node_modules/sql.js
+    to: node_modules/sql.js
+    filter:
+      - package.json
+      - dist/**
+  - from: node_modules/compressjs
+    to: node_modules/compressjs
+    filter:
+      - package.json
+      - main.js
+      - lib/**
+      - node_modules/**
+  - from: node_modules/amdefine
+    to: node_modules/amdefine
+    filter:
+      - package.json
+      - amdefine.js
+      - intercept.js
+  - from: node_modules/sprintf-js
+    to: node_modules/sprintf-js
+    filter:
+      - package.json
+      - src/**
+      - dist/**
+  - from: node_modules/turndown
+    to: node_modules/turndown
+    filter:
+      - package.json
+      - lib/**
+  - from: node_modules/@mixmark-io/domino
+    to: node_modules/@mixmark-io/domino
+    filter:
+      - package.json
+      - lib/**
 asarUnpack:
   - out/native/**
+  - node_modules/.prisma/client/*.node
 mac:
   category: public.app-category.productivity
   icon: resources/icon.icns
