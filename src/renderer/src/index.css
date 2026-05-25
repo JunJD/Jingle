@@ -293,8 +293,13 @@ body[data-window="launcher"],
   --launcher-chrome-x-compact: var(--ow-space-3);
   --launcher-footer-x: var(--ow-space-3);
   --launcher-dropdown-max-width: 220px;
-  --launcher-result-row-x: var(--ow-space-2-5);
+  --launcher-input-content-inset-x: var(--ow-space-1);
+  --launcher-result-content-x: calc(
+    var(--launcher-chrome-x-compact) + var(--launcher-input-content-inset-x)
+  );
+  --launcher-result-section-x: var(--launcher-result-content-x);
   --launcher-result-row-padding-x: var(--ow-space-3);
+  --launcher-result-row-x: calc(var(--launcher-result-content-x) - var(--launcher-result-row-padding-x));
   --launcher-result-icon-column: 26px;
   --launcher-result-trailing-column: 88px;
   --launcher-list-section-x: var(--ow-space-6);

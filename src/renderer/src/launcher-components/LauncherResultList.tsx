@@ -130,7 +130,7 @@ export function LauncherResultList(props: {
           return (
             <div
               key={row.key}
-              className="flex h-[var(--ow-section-h)] items-center px-[var(--launcher-list-section-x)] [font-size:var(--ow-font-meta)] font-semibold text-muted-foreground"
+              className="flex h-[var(--ow-section-h)] items-center px-[var(--launcher-result-section-x)] [font-size:var(--ow-font-meta)] font-semibold text-muted-foreground"
             >
               <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
                 <span
