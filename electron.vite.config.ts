@@ -102,6 +102,7 @@ export default defineConfig({
     },
     // Bundle all dependencies into the main process
     build: {
+      externalizeDeps: false,
       lib: {
         entry: {
           "extension-runtime-entry": resolve("src/extension-runtime/entry.ts"),
@@ -110,7 +111,7 @@ export default defineConfig({
         formats: ["cjs"]
       },
       rollupOptions: {
-        external: ["electron", "@prisma/client", "prisma"],
+        external: ["electron", "@prisma/client", "just-bash"],
         plugins: [copyResources()]
       }
     }
