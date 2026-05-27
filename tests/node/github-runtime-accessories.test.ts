@@ -3,18 +3,18 @@ import test from "node:test"
 import { createElement } from "react"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
 import { List } from "../../src/extension-runtime/sdk"
-import { githubManifest } from "../../src/extensions/github/manifest"
+import { githubManifest } from "../../extensions/github/manifest"
 import { getNativeExtensionRuntimeCommand } from "../../src/extensions/runtime"
 import {
   getIssueLikeAccessories,
   getRepositoryAccessories,
   getWorkflowRunAccessories
-} from "../../src/extensions/github/src/view-helpers"
+} from "../../extensions/github/src/view-helpers"
 import type {
   GitHubIssueLike,
   GitHubRepository,
   GitHubWorkflowRun
-} from "../../src/extensions/github/src/client-core"
+} from "../../extensions/github/src/client-core"
 
 const GITHUB_RUNTIME_VIEW_COMMANDS = [
   "create-issue",

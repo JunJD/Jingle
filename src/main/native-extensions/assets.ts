@@ -20,10 +20,13 @@ function getMimeType(filePath: string): string {
   }
 }
 
-function getExtensionAssetsRoot(): string {
+function getExtensionAssetsRoots(): string[] {
+  const packageRoots = [join(process.cwd(), "extensions"), join(process.cwd(), "src/extensions")]
+  const builtResourcesRoot = join(__dirname, "../resources/extensions")
+
   return process.env.ELECTRON_RENDERER_URL
-    ? join(process.cwd(), "src/extensions")
-    : join(__dirname, "../../resources/extensions")
+    ? [...packageRoots, builtResourcesRoot]
+    : [builtResourcesRoot]
 }
 
 export function resolveNativeExtensionAssetPath(params: {
@@ -41,13 +44,15 @@ export function resolveNativeExtensionAssetPath(params: {
     throw new Error(`Invalid native extension asset path: ${extensionName}/${path}`)
   }
 
-  const extensionRoot = join(getExtensionAssetsRoot(), extensionName)
-  const assetPath = join(extensionRoot, normalizedPath)
-  if (!existsSync(assetPath)) {
-    throw new Error(`Native extension asset not found: ${extensionName}/${path}`)
+  for (const assetsRoot of getExtensionAssetsRoots()) {
+    const extensionRoot = join(assetsRoot, extensionName)
+    const assetPath = join(extensionRoot, normalizedPath)
+    if (existsSync(assetPath)) {
+      return assetPath
+    }
   }
 
-  return assetPath
+  throw new Error(`Native extension asset not found: ${extensionName}/${path}`)
 }
 
 export function createNativeExtensionAssetUrl(params: {

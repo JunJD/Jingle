@@ -3,8 +3,8 @@ import test from "node:test"
 import { createElement } from "react"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
 import { List } from "../../src/extension-runtime/sdk"
-import { getReminderAccessories } from "../../src/extensions/apple-reminders/src/helpers"
-import type { AppleReminder } from "../../src/extensions/apple-reminders/src/contracts"
+import { getReminderAccessories } from "../../extensions/apple-reminders/src/helpers"
+import type { AppleReminder } from "../../extensions/apple-reminders/src/contracts"
 
 function createReminder(overrides: Partial<AppleReminder> = {}): AppleReminder {
   return {

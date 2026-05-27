@@ -134,7 +134,9 @@ function listRuntimeRegistryExtensionIds(absolutePath) {
       continue
     }
 
-    const match = statement.moduleSpecifier.text.match(/^\.\/([^/]+)\/runtime$/)
+    const match = statement.moduleSpecifier.text.match(
+      /^(?:\.\/|\.\.\/\.\.\/extensions\/)([^/]+)\/runtime$/
+    )
     if (!match) {
       continue
     }

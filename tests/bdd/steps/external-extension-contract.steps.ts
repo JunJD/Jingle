@@ -5,8 +5,8 @@ import type {
   NativeExtensionInvokeContext,
   NativeExtensionInvokeRequest
 } from "../../../src/shared/native-extensions"
-import type { AppleReminder, AppleRemindersData } from "../../../src/extensions/apple-reminders/src/contracts"
-import type { GitHubNotification } from "../../../src/extensions/github/src/client-core"
+import type { AppleReminder, AppleRemindersData } from "../../../extensions/apple-reminders/src/contracts"
+import type { GitHubNotification } from "../../../extensions/github/src/client-core"
 import { OpenworkWorld } from "../support/world"
 
 interface ExtensionRuntimeBddProbe {

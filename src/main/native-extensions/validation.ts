@@ -12,7 +12,8 @@ import type { NativeExtensionRuntimePackage } from "@extensions/runtime-contract
 import type { NativeExtensionRuntimePackageMetadata } from "@extensions/runtime-metadata-contract"
 
 export interface NativeExtensionValidationInput {
-  assetRoot: string
+  assetRoot?: string
+  assetRoots?: string[]
   mainDefinitions: Map<string, NativeExtensionMainDefinition>
   manifests: NativeExtensionPackageManifest[]
   runtimeMetadataPackages: NativeExtensionRuntimePackageMetadata[]
@@ -42,7 +43,7 @@ function collectDuplicateValues(values: readonly string[]): string[] {
 }
 
 function validateIconAsset(input: {
-  assetRoot: string
+  assetRoots: string[]
   errors: string[]
   extensionName: string
   icon: string | undefined
@@ -52,8 +53,11 @@ function validateIconAsset(input: {
     return
   }
 
-  const assetPath = join(input.assetRoot, input.extensionName, input.icon)
-  if (!existsSync(assetPath)) {
+  const icon = input.icon
+  const assetPaths = input.assetRoots.map((assetRoot) =>
+    join(assetRoot, input.extensionName, icon)
+  )
+  if (!assetPaths.some((assetPath) => existsSync(assetPath))) {
     input.errors.push(
       `Native extension "${input.extensionName}" ${input.label} icon asset does not exist: ${input.icon}`
     )
@@ -94,6 +98,7 @@ export function validateNativeExtensionRegistry(
   input: NativeExtensionValidationInput
 ): NativeExtensionValidationResult {
   const errors: string[] = []
+  const assetRoots = input.assetRoots ?? (input.assetRoot ? [input.assetRoot] : [])
   const manifestNames = input.manifests.map((manifest) => manifest.name)
   const manifestNamesSet = new Set(manifestNames)
   const runtimeExtensionNames = input.runtimePackages.map(
@@ -143,7 +148,7 @@ export function validateNativeExtensionRegistry(
     }
 
     validateIconAsset({
-      assetRoot: input.assetRoot,
+      assetRoots,
       errors,
       extensionName: manifest.name,
       icon: manifest.icon,
@@ -158,7 +163,7 @@ export function validateNativeExtensionRegistry(
 
     for (const command of manifest.commands) {
       validateIconAsset({
-        assetRoot: input.assetRoot,
+        assetRoots,
         errors,
         extensionName: manifest.name,
         icon: command.icon,

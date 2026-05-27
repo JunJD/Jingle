@@ -6,8 +6,8 @@ import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
 import {
   AppleRemindersRequestError,
   normalizeAppleRemindersError
-} from "../../src/extensions/apple-reminders/main/service"
-import { createAppleRemindersTools } from "../../src/extensions/apple-reminders/main/tools"
+} from "../../extensions/apple-reminders/main/service"
+import { createAppleRemindersTools } from "../../extensions/apple-reminders/main/tools"
 import {
   listNativeExtensionAiCapabilityCatalog,
   resolveNativeExtensionAiCapabilityForExtensionName,

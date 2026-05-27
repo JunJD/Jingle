@@ -17,7 +17,7 @@ async function main() {
   ])
 
   const result = validateNativeExtensionRegistry({
-    assetRoot: resolve("src/extensions"),
+    assetRoots: [resolve("extensions"), resolve("src/extensions")],
     mainDefinitions: nativeExtensionMainDefinitions,
     manifests: nativeExtensionManifests,
     runtimeMetadataPackages: nativeExtensionRuntimeMetadataPackages,

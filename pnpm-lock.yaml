@@ -38,12 +38,9 @@ importers:
       '@lexical/utils':
         specifier: ^0.44.0
         version: 0.44.0
-      '@octokit/plugin-throttling':
-        specifier: ^11.0.3
-        version: 11.0.3(@octokit/core@7.0.6)
-      '@octokit/rest':
-        specifier: ^22.0.1
-        version: 22.0.1
+      '@openwork/extension-api':
+        specifier: workspace:*
+        version: link:packages/extension-api
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -267,6 +264,54 @@ importers:
       vite:
         specifier: ^7.2.6
         version: 7.3.1(@types/node@22.19.15)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.2)
+
+  extensions/apple-reminders:
+    dependencies:
+      '@openwork/extension-api':
+        specifier: workspace:*
+        version: link:../../packages/extension-api
+      electron:
+        specifier: ^39.2.6
+        version: 39.8.3
+      lucide-react:
+        specifier: ^0.469.0
+        version: 0.469.0(react@19.2.4)
+      react:
+        specifier: ^19.2.1
+        version: 19.2.4
+      zod:
+        specifier: ^4.0.0
+        version: 4.3.6
+
+  extensions/github:
+    dependencies:
+      '@octokit/plugin-throttling':
+        specifier: ^11.0.3
+        version: 11.0.3(@octokit/core@7.0.6)
+      '@octokit/rest':
+        specifier: ^22.0.1
+        version: 22.0.1
+      '@openwork/extension-api':
+        specifier: workspace:*
+        version: link:../../packages/extension-api
+      lucide-react:
+        specifier: ^0.469.0
+        version: 0.469.0(react@19.2.4)
+      react:
+        specifier: ^19.2.1
+        version: 19.2.4
+      zod:
+        specifier: ^4.0.0
+        version: 4.3.6
+
+  packages/extension-api:
+    dependencies:
+      react:
+        specifier: ^19.2.1
+        version: 19.2.4
+      zod:
+        specifier: ^4.0.0
+        version: 4.3.6
 
 packages:
 

@@ -6,6 +6,7 @@ import ts from "typescript"
 
 export const repoRoot = process.cwd()
 export const srcRoot = path.join(repoRoot, "src")
+export const bundledExtensionsRoot = path.join(repoRoot, "extensions")
 export const sourceExtensions = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]
 
 export const allowedImportMetaGlobFiles = new Set([
@@ -126,6 +127,10 @@ export function resolveImportPath(fromFile, specifier) {
     )
   }
 
+  if (specifier === "@openwork/extension-api") {
+    return resolveResolvedBase(path.join(repoRoot, "packages/extension-api/src"), "index")
+  }
+
   if (specifier.startsWith("@plugins/")) {
     return resolveResolvedBase(path.join(repoRoot, "src/plugins"), specifier.slice("@plugins/".length))
   }
@@ -155,16 +160,30 @@ export function parseSourceFile(absolutePath) {
 }
 
 export function listNativeExtensionDirectories() {
-  const extensionsRoot = path.join(srcRoot, "extensions")
+  const roots = [
+    { absolutePath: bundledExtensionsRoot, repoPath: "extensions" },
+    { absolutePath: path.join(srcRoot, "extensions"), repoPath: "src/extensions" }
+  ]
+  const extensionDirectories = []
 
-  return fs
-    .readdirSync(extensionsRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => ({
-      absolutePath: path.join(extensionsRoot, entry.name),
-      name: entry.name,
-      repoPath: `src/extensions/${entry.name}`
-    }))
+  for (const root of roots) {
+    if (!fs.existsSync(root.absolutePath)) {
+      continue
+    }
+
+    extensionDirectories.push(
+      ...fs
+        .readdirSync(root.absolutePath, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => ({
+          absolutePath: path.join(root.absolutePath, entry.name),
+          name: entry.name,
+          repoPath: `${root.repoPath}/${entry.name}`
+        }))
+    )
+  }
+
+  return extensionDirectories
     .sort((left, right) => left.name.localeCompare(right.name))
 }
 
@@ -435,7 +454,7 @@ function collectImportedExtensionIds(sourceFile) {
 }
 
 function inferImportedExtensionId(specifier) {
-  const match = specifier.match(/^\.\/([^/]+)\/(?:manifest|renderer|main)$/)
+  const match = specifier.match(/^(?:\.\/|\.\.\/\.\.\/extensions\/)([^/]+)\/(?:manifest|renderer|main)$/)
   return match?.[1] ?? null
 }
 
@@ -531,6 +550,7 @@ function loadTypeScriptModule(absolutePath) {
       specifier.startsWith("@launcher-components/") ||
       specifier.startsWith("@launcher-shell/") ||
       specifier.startsWith("@launcher/") ||
+      specifier === "@openwork/extension-api" ||
       specifier.startsWith("@plugins/") ||
       specifier.startsWith("@shared/")
     ) {

@@ -1,5 +1,5 @@
-import { appleRemindersRuntimeMetadata } from "./apple-reminders/runtime-metadata"
-import { githubRuntimeMetadata } from "./github/runtime-metadata"
+import { appleRemindersRuntimeMetadata } from "../../extensions/apple-reminders/runtime-metadata"
+import { githubRuntimeMetadata } from "../../extensions/github/runtime-metadata"
 import { notionRuntimeMetadata } from "./notion/runtime-metadata"
 import { todoListRuntimeMetadata } from "./todo-list/runtime-metadata"
 import { translateRuntimeMetadata } from "./translate/runtime-metadata"

@@ -19,25 +19,30 @@ const rules = [
       isUnder(target, "src/main/") ||
       isUnder(target, "src/preload/") ||
       isUnder(target, "src/extensions/") ||
+      isUnder(target, "extensions/") ||
       isUnder(target, "src/plugins/"),
     message: "shared 层不能依赖 renderer/main/preload/extensions/plugins"
   },
   {
     name: "extension-authoring-boundary",
     appliesTo: (file) =>
-      isUnder(file, "src/extensions/") && !file.includes("/main/"),
+      (isUnder(file, "src/extensions/") || isUnder(file, "extensions/")) &&
+      !file.includes("/main/"),
     isViolation: (_, target) =>
       isUnder(target, "src/renderer/") ||
       isUnder(target, "src/main/") ||
       isUnder(target, "src/preload/") ||
       isUnder(target, "src/plugins/"),
-    message: "extension 运行时代码只能通过 src/extensions/runtime-api.ts 和 shared/* 接宿主能力"
+    message: "extension 运行时代码只能通过 @openwork/extension-api 和 shared/* 接宿主能力"
   }
 ]
 
 const violations = []
 
-for (const absoluteFilePath of listSourceFiles(srcRoot)) {
+for (const absoluteFilePath of [
+  ...listSourceFiles(srcRoot),
+  ...listSourceFiles(path.join(process.cwd(), "extensions"))
+]) {
   const repoFilePath = toRepoPath(absoluteFilePath)
   const imports = collectImports(absoluteFilePath)
 

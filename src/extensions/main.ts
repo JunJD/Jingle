@@ -2,10 +2,10 @@ import {
   type NativeExtensionMainDefinition,
   validateNativeExtensionMainDefinition
 } from "@shared/native-extensions"
-import { appleRemindersMain } from "./apple-reminders/main"
-import { appleRemindersManifest } from "./apple-reminders/manifest"
-import { githubMain } from "./github/main"
-import { githubManifest } from "./github/manifest"
+import { appleRemindersMain } from "../../extensions/apple-reminders/main"
+import { appleRemindersManifest } from "../../extensions/apple-reminders/manifest"
+import { githubMain } from "../../extensions/github/main"
+import { githubManifest } from "../../extensions/github/manifest"
 import { notionMain } from "./notion/main"
 import { notionManifest } from "./notion/manifest"
 import { todoListMain } from "./todo-list/main"

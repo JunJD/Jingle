@@ -5,11 +5,11 @@ import {
   runWithExtensionRuntimeSdk,
   type ExtensionRuntimeHostRequestInput
 } from "../../src/extension-runtime/sdk"
-import AppleRemindersQuickAddReminder from "../../src/extensions/apple-reminders/src/quick-add-reminder"
+import AppleRemindersQuickAddReminder from "../../extensions/apple-reminders/src/quick-add-reminder"
 import type {
   AppleReminder,
   AppleRemindersData
-} from "../../src/extensions/apple-reminders/src/contracts"
+} from "../../extensions/apple-reminders/src/contracts"
 import type {
   ExtensionHostResponse,
   ExtensionRuntimeLaunchContext

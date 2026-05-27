@@ -1,6 +1,6 @@
 import { supportsNativeExtensionPlatform } from "@shared/native-extensions"
-import { appleRemindersManifest } from "./apple-reminders/manifest"
-import { githubManifest } from "./github/manifest"
+import { appleRemindersManifest } from "../../extensions/apple-reminders/manifest"
+import { githubManifest } from "../../extensions/github/manifest"
 import { notionManifest } from "./notion/manifest"
 import { todoListManifest } from "./todo-list/manifest"
 import { translateManifest } from "./translate/manifest"

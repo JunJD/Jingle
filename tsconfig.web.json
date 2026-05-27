@@ -1,7 +1,9 @@
 {
   "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
   "include": [
+    "extensions/**/*",
     "src/extensions/**/*",
+    "packages/*/src/**/*",
     "src/renderer/src/env.d.ts",
     "src/renderer/src/**/*",
     "src/renderer/src/**/*.tsx",
@@ -35,6 +37,9 @@
       "@launcher-shell/*": [
         "src/renderer/src/launcher-shell/*"
       ],
+      "@openwork/extension-api": [
+        "packages/extension-api/src/index.ts"
+      ],
       "@plugins/*": [
         "src/plugins/*"
       ],
@@ -47,6 +52,7 @@
     }
   },
   "exclude": [
+    "extensions/*/main/**/*",
     "src/extensions/*/main/**/*"
   ]
 }

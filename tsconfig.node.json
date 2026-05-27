@@ -2,6 +2,11 @@
   "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
   "include": [
     "electron.vite.config.*",
+    "extensions/*/main/**/*.ts",
+    "extensions/*/main.ts",
+    "extensions/*/manifest.ts",
+    "extensions/*/src/contracts.ts",
+    "extensions/*/types.d.ts",
     "src/extensions/index.ts",
     "src/extensions/main.ts",
     "src/extensions/*/main/**/*.ts",
@@ -10,6 +15,7 @@
     "src/extensions/*/src/contracts.ts",
     "src/extension-runtime/**/*",
     "src/main/**/*",
+    "packages/*/src/**/*",
     "src/plugins/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
@@ -37,6 +43,9 @@
       ],
       "@launcher-shell/*": [
         "src/renderer/src/launcher-shell/*"
+      ],
+      "@openwork/extension-api": [
+        "packages/extension-api/src/index.ts"
       ],
       "@plugins/*": [
         "src/plugins/*"

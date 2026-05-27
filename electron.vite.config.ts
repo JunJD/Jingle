@@ -15,6 +15,7 @@ function copyResources(): { name: string; closeBundle: () => void } {
       const srcIcon = resolve("resources/icon.png")
       const srcAssets = resolve("resources/assets")
       const srcExtensionAssets = resolve("src/extensions")
+      const bundledExtensionAssets = resolve("extensions")
       const destDir = resolve("out/resources")
       const destAssets = resolve("out/resources/assets")
       const destExtensionAssets = resolve("out/resources/extensions")
@@ -44,13 +45,17 @@ function copyResources(): { name: string; closeBundle: () => void } {
         cpSync(srcAssets, destAssets, { recursive: true })
       }
 
-      if (existsSync(srcExtensionAssets)) {
-        const extensionAssetDirs = readdirSync(srcExtensionAssets, { withFileTypes: true })
+      for (const extensionAssetsRoot of [srcExtensionAssets, bundledExtensionAssets]) {
+        if (!existsSync(extensionAssetsRoot)) {
+          continue
+        }
+
+        const extensionAssetDirs = readdirSync(extensionAssetsRoot, { withFileTypes: true })
           .filter((entry) => entry.isDirectory())
           .map((entry) => entry.name)
 
         for (const extensionName of extensionAssetDirs) {
-          const sourceAssetDir = resolve(srcExtensionAssets, extensionName, "assets")
+          const sourceAssetDir = resolve(extensionAssetsRoot, extensionName, "assets")
           if (existsSync(sourceAssetDir)) {
             const targetAssetDir = resolve(destExtensionAssets, extensionName, "assets")
             rmSync(targetAssetDir, { recursive: true, force: true })
@@ -96,6 +101,7 @@ export default defineConfig({
         "@extensions": resolve("src/extensions"),
         "@launcher-components": resolve("src/renderer/src/launcher-components"),
         "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
+        "@openwork/extension-api": resolve("packages/extension-api/src/index.ts"),
         "@plugins": resolve("src/plugins"),
         "@shared": resolve("src/shared")
       }
@@ -124,6 +130,7 @@ export default defineConfig({
         "@extensions": resolve("src/extensions"),
         "@launcher-components": resolve("src/renderer/src/launcher-components"),
         "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
+        "@openwork/extension-api": resolve("packages/extension-api/src/index.ts"),
         "@plugins": resolve("src/plugins"),
         "@shared": resolve("src/shared")
       }
@@ -141,6 +148,7 @@ export default defineConfig({
         "@extensions": resolve("src/extensions"),
         "@launcher-components": resolve("src/renderer/src/launcher-components"),
         "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
+        "@openwork/extension-api": resolve("packages/extension-api/src/index.ts"),
         "@plugins": resolve("src/plugins"),
         "@renderer": resolve("src/renderer/src"),
         "@shared": resolve("src/shared")
