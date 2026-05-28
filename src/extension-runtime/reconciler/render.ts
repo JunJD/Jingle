@@ -276,7 +276,7 @@ export function createExtensionRuntimeRenderer(
           return false
         }
 
-        await runtimeReconciler.flushSyncFromReconciler(() => action.handler())
+        await runRuntimeHandler(() => action.handler())
         runtimeReconciler.flushSyncWork()
         await flushSnapshotQueue()
         return true
@@ -295,9 +295,7 @@ export function createExtensionRuntimeRenderer(
         return false
       }
 
-      await runtimeReconciler.flushSyncFromReconciler(() =>
-        action.handler({ formValues: event.formValues })
-      )
+      await runRuntimeHandler(() => action.handler({ formValues: event.formValues }))
       runtimeReconciler.flushSyncWork()
       await flushSnapshotQueue()
       return true
@@ -348,7 +346,7 @@ async function dispatchFormFieldChange(
     return false
   }
 
-  await runtimeReconciler.flushSyncFromReconciler(() => handler(value))
+  await runRuntimeHandler(() => handler(value))
   runtimeReconciler.flushSyncWork()
   await flushSnapshotQueue()
   return true
@@ -365,7 +363,7 @@ async function dispatchListChange(
     return false
   }
 
-  await runtimeReconciler.flushSyncFromReconciler(() => handler(value))
+  await runRuntimeHandler(() => handler(value))
   runtimeReconciler.flushSyncWork()
   await flushSnapshotQueue()
   return true
@@ -377,7 +375,7 @@ async function dispatchListPaginationLoadMore(container: RuntimeHostContainer): 
     return false
   }
 
-  await runtimeReconciler.flushSyncFromReconciler(() => action.handler())
+  await runRuntimeHandler(() => action.handler())
   runtimeReconciler.flushSyncWork()
   await flushSnapshotQueue()
   return true
@@ -390,7 +388,7 @@ async function dispatchNavigationPop(container: RuntimeHostContainer): Promise<b
     return false
   }
 
-  await runtimeReconciler.flushSyncFromReconciler(() => handler())
+  await runRuntimeHandler(() => handler())
   runtimeReconciler.flushSyncWork()
   await flushSnapshotQueue()
   return true
@@ -409,7 +407,7 @@ async function dispatchListDropdownChange(
     return false
   }
 
-  await runtimeReconciler.flushSyncFromReconciler(() => handler(value))
+  await runRuntimeHandler(() => handler(value))
   runtimeReconciler.flushSyncWork()
   await flushSnapshotQueue()
   return true
@@ -431,7 +429,7 @@ async function dispatchFormDropdownSearch(
     return false
   }
 
-  await runtimeReconciler.flushSyncFromReconciler(() => handler(query))
+  await runRuntimeHandler(() => handler(query))
   runtimeReconciler.flushSyncWork()
   await flushSnapshotQueue()
   return true
@@ -446,10 +444,18 @@ async function dispatchMenuBarItem(
     return false
   }
 
-  await runtimeReconciler.flushSyncFromReconciler(() => handler.handler())
+  await runRuntimeHandler(() => handler.handler())
   runtimeReconciler.flushSyncWork()
   await flushSnapshotQueue()
   return true
+}
+
+async function runRuntimeHandler(handler: () => Promise<unknown> | unknown): Promise<void> {
+  let result: Promise<unknown> | unknown
+  runtimeReconciler.flushSyncFromReconciler(() => {
+    result = handler()
+  })
+  await result
 }
 
 function findFirstHostElement(

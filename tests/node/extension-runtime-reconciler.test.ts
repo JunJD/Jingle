@@ -203,6 +203,52 @@ test("runtime reconciler snapshots a list and applies action state updates", asy
   assert.equal(nextSnapshot.sections[0]?.items[0]?.title, "Count 1")
 })
 
+test("runtime reconciler waits for asynchronous action handlers", async () => {
+  const events: string[] = []
+
+  function AsyncActionList() {
+    return createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: async () => {
+              events.push("start")
+              await Promise.resolve()
+              events.push("after-await")
+            },
+            title: "Run Async"
+          })
+        ),
+        id: "async",
+        title: "Async"
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(createElement(AsyncActionList))
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const actionId = snapshot.sections[0]?.items[0]?.actions[0]?.id
+  assert.ok(actionId)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+  assert.deepEqual(events, ["start", "after-await"])
+})
+
 test("runtime reconciler executes registered toast actions", async () => {
   const requests: ExtensionRuntimeHostRequestInput[] = []
   const renderer = createTestRenderer()
