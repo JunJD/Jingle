@@ -131,11 +131,11 @@
     而且处置应为 "deny"
     而且分类原因应包含 "not a host command"
 
-  场景: 命令链里只要出现被拒绝的命令就整体拒绝
+  场景: 命令链里只要出现写入风险就整体需要审批
     当系统分类命令 "echo hello > notes.txt && npm run dev"
-    那么分类结果应为 "host_unsafe"
-    而且处置应为 "deny"
-    而且分类原因应包含 "outside the controlled shell profile"
+    那么分类结果应为 "predictable_mutation"
+    而且处置应为 "require_approval"
+    而且分类原因应包含 "shell redirection"
     而且识别出的命令列表应为 "echo, npm"
 
   场景: 空命令会被拒绝

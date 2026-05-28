@@ -917,16 +917,13 @@ export class JustBashExecuteCommandClassifier implements ExecuteCommandClassifie
         networkTargets.add(target)
       }
 
-      if (
-        classification.profile === "predictable_mutation" &&
-        finalProfile !== "managed_process"
-      ) {
+      if (classification.profile === "predictable_mutation") {
         finalProfile = "predictable_mutation"
         reason = classification.reason
         continue
       }
 
-      if (classification.profile === "managed_process") {
+      if (classification.profile === "managed_process" && finalProfile !== "predictable_mutation") {
         finalProfile = "managed_process"
         reason = classification.reason
         continue
