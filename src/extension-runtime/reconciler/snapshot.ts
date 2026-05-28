@@ -798,9 +798,13 @@ function readSubmitFormValues(
   params: RuntimeActionHandlerParams | undefined,
   container: RuntimeHostContainer
 ): RuntimeSubmitFormValues {
+  const values = collectFormValues(container)
   return isRuntimeSubmitFormValues(params?.formValues)
-    ? params.formValues
-    : collectFormValues(container)
+    ? {
+        ...values,
+        ...params.formValues
+      }
+    : values
 }
 
 function isRuntimeSubmitFormValues(

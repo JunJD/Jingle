@@ -53,7 +53,7 @@ import {
 } from "../extension-host/list-presentation"
 import {
   acknowledgeRuntimeFormLocalValue,
-  createRuntimeFormValues,
+  createRuntimeFormValueOverrides,
   reconcileRuntimeFormLocalValues,
   type RuntimeFormLocalValues,
   type RuntimeFormPendingValue,
@@ -837,7 +837,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         actionId: action.id,
         formValues:
           snapshot.kind === "form"
-            ? createRuntimeFormValues({
+            ? createRuntimeFormValueOverrides({
                 fields: snapshot.fields,
                 localValues: formState.localValues
               })

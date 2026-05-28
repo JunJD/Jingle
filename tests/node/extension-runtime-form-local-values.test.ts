@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import {
   acknowledgeRuntimeFormLocalValue,
+  createRuntimeFormValueOverrides,
   reconcileRuntimeFormLocalValues
 } from "../../src/renderer/src/extension-runtime/form-local-values"
 import type { ExtensionFormFieldNode } from "../../src/shared/extension-runtime-protocol"
@@ -10,6 +11,15 @@ function textField(id: string, value: string): ExtensionFormFieldNode {
   return {
     id,
     kind: "text-field",
+    title: id,
+    value
+  }
+}
+
+function datePicker(id: string, value: string): ExtensionFormFieldNode {
+  return {
+    id,
+    kind: "date-picker",
     title: id,
     value
   }
@@ -110,4 +120,26 @@ test("runtime form local values drop pending state for removed fields", () => {
 
   assert.deepEqual(result.localValues, {})
   assert.equal(result.pendingValues.size, 0)
+})
+
+test("runtime form submit values only include local overrides", () => {
+  const result = createRuntimeFormValueOverrides({
+    fields: [textField("title", "Snapshot title"), datePicker("due", "2026-06-01")],
+    localValues: {
+      title: "Pending title"
+    }
+  })
+
+  assert.deepEqual(result, {
+    title: "Pending title"
+  })
+})
+
+test("runtime form submit values omit empty override payload", () => {
+  const result = createRuntimeFormValueOverrides({
+    fields: [datePicker("due", "2026-06-01")],
+    localValues: {}
+  })
+
+  assert.equal(result, undefined)
 })

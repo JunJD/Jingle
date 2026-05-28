@@ -2159,6 +2159,7 @@ test("runtime Action.SubmitForm passes current form values to onSubmit", async (
 
 test("runtime Action.SubmitForm prefers event form values from the renderer", async () => {
   let submittedValues: RuntimeSubmitFormValues | null = null
+  const dueDate = new Date(2026, 5, 1)
 
   const renderer = createTestRenderer()
   renderer.render(
@@ -2181,6 +2182,12 @@ test("runtime Action.SubmitForm prefers event form values from the renderer", as
         onChange: () => {},
         title: "Title",
         value: "Stale title"
+      }),
+      createElement(Form.DatePicker, {
+        id: "due",
+        onChange: () => {},
+        title: "Due",
+        value: dueDate
       })
     )
   )
@@ -2204,6 +2211,7 @@ test("runtime Action.SubmitForm prefers event form values from the renderer", as
   )
 
   assert.deepEqual(submittedValues, {
+    due: dueDate,
     title: "Current renderer title"
   })
 })

@@ -110,21 +110,23 @@ export function acknowledgeRuntimeFormLocalValue(params: {
   }
 }
 
-export function createRuntimeFormValues(params: {
+export function createRuntimeFormValueOverrides(params: {
   fields: readonly ExtensionFormFieldNode[]
   localValues: RuntimeFormLocalValues
-}): Record<string, RuntimeFormValue> {
-  const values: Record<string, RuntimeFormValue> = {}
+}): Record<string, RuntimeFormValue> | undefined {
+  let values: Record<string, RuntimeFormValue> | null = null
 
   for (const field of params.fields) {
-    if (field.kind === "message" || field.kind === "separator") {
+    if (
+      (field.kind === "message" || field.kind === "separator") ||
+      !Object.prototype.hasOwnProperty.call(params.localValues, field.id)
+    ) {
       continue
     }
 
-    values[field.id] = Object.prototype.hasOwnProperty.call(params.localValues, field.id)
-      ? params.localValues[field.id]
-      : field.value
+    values ??= {}
+    values[field.id] = params.localValues[field.id]
   }
 
-  return values
+  return values ?? undefined
 }
