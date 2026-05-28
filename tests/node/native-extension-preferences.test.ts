@@ -77,10 +77,22 @@ function installElectronSafeStorageMock(): void {
   assert.ok(electronModule, "Expected electron module to be loaded before mocking safeStorage.")
 
   electronModule.exports = {
+    dialog: {
+      showMessageBox: async () => ({ response: 0 })
+    },
     safeStorage: {
       decryptString: (value: Buffer) => value.toString("utf8").replace(/^encrypted:/, ""),
       encryptString: (value: string) => Buffer.from(`encrypted:${value}`, "utf8"),
       isEncryptionAvailable: () => true
+    },
+    shell: {
+      openExternal: async (url: string) => {
+        ;(
+          globalThis as typeof globalThis & {
+            __OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__?: string[]
+          }
+        ).__OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__?.push(url)
+      }
     }
   }
 }
@@ -286,4 +298,183 @@ test("extension runtime host resolves preferences with secrets through main-side
     extensionName: "github"
   })
   assert.deepEqual(publicReadCalls, [])
+})
+
+test("extension runtime shell host only opens declared desktop URL schemes", async () => {
+  const publicOpenedUrls: string[] = []
+  const shellOpenedUrls: string[] = []
+  ;(
+    globalThis as typeof globalThis & {
+      __OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__?: string[]
+    }
+  ).__OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__ = shellOpenedUrls
+  const nativeExtensionsService = {
+    getManifest: (extensionName: string) => ({
+      commands: [{ mode: "view", name: "search-page" }],
+      name: extensionName,
+      runtimeShell: extensionName === "notion" ? { allowedUrlSchemes: ["notion"] } : undefined
+    }),
+    getResolvedCommandPreferences: () => ({}),
+    getResolvedPreferences: () => ({}),
+    invoke: async () => null
+  } as unknown as ConstructorParameters<typeof DefaultExtensionRuntimeHostCapabilities>[0]
+
+  const host = new DefaultExtensionRuntimeHostCapabilities(
+    nativeExtensionsService,
+    {
+      openExternal: async (url: string) => {
+        publicOpenedUrls.push(url)
+      }
+    } as ConstructorParameters<typeof DefaultExtensionRuntimeHostCapabilities>[1],
+    createRuntimeHostQuicklinkServiceMock(),
+    { openWindow: () => undefined } as ConstructorParameters<
+      typeof DefaultExtensionRuntimeHostCapabilities
+    >[3],
+    { handleNavigationRequest: async () => undefined } as unknown as ConstructorParameters<
+      typeof DefaultExtensionRuntimeHostCapabilities
+    >[4]
+  )
+
+  await host.openExternal({
+    allowedUrlSchemes: [],
+    context: {
+      commandName: "search-page",
+      commandPreferences: {},
+      extensionName: "notion",
+      extensionPreferences: {},
+      initialAction: "open",
+      locale: "zh-CN",
+      mode: "view",
+      seedQuery: ""
+    },
+    url: "https://example.com/docs"
+  })
+
+  await assert.rejects(
+    () =>
+      host.openExternal({
+        allowedUrlSchemes: ["notion"],
+        context: {
+          commandName: "search-page",
+          commandPreferences: {},
+          extensionName: "github",
+          extensionPreferences: {},
+          initialAction: "open",
+          locale: "zh-CN",
+          mode: "view",
+          seedQuery: ""
+        },
+        url: "notion://www.notion.so/page-1"
+      }),
+    /cannot open URL scheme "notion"/
+  )
+
+  await host.openExternal({
+    allowedUrlSchemes: ["notion"],
+    context: {
+      commandName: "search-page",
+      commandPreferences: {},
+      extensionName: "notion",
+      extensionPreferences: {},
+      initialAction: "open",
+      locale: "zh-CN",
+      mode: "view",
+      seedQuery: ""
+    },
+    url: "notion://www.notion.so/page-1"
+  })
+
+  assert.deepEqual(publicOpenedUrls, ["https://example.com/docs"])
+  assert.deepEqual(shellOpenedUrls, ["notion://www.notion.so/page-1"])
+})
+
+test("extension runtime shell host opens URLs with a requested desktop application target", async () => {
+  const openedWithApplications: Array<{
+    application: { bundleId?: string; name?: string; path?: string }
+    url: string
+  }> = []
+  const nativeExtensionsService = {
+    getManifest: (extensionName: string) => ({
+      commands: [{ mode: "view", name: "search-page" }],
+      name: extensionName,
+      runtimeShell: { allowedUrlSchemes: ["notion"] }
+    }),
+    getResolvedCommandPreferences: () => ({}),
+    getResolvedPreferences: () => ({}),
+    invoke: async () => null
+  } as unknown as ConstructorParameters<typeof DefaultExtensionRuntimeHostCapabilities>[0]
+
+  const host = new DefaultExtensionRuntimeHostCapabilities(
+    nativeExtensionsService,
+    {
+      openExternal: async () => {
+        throw new Error("Expected application-targeted open to bypass public external links")
+      }
+    } as ConstructorParameters<typeof DefaultExtensionRuntimeHostCapabilities>[1],
+    createRuntimeHostQuicklinkServiceMock(),
+    { openWindow: () => undefined } as ConstructorParameters<
+      typeof DefaultExtensionRuntimeHostCapabilities
+    >[3],
+    { handleNavigationRequest: async () => undefined } as unknown as ConstructorParameters<
+      typeof DefaultExtensionRuntimeHostCapabilities
+    >[4],
+    async (url, application) => {
+      openedWithApplications.push({ application, url })
+    }
+  )
+
+  await host.openExternal({
+    allowedUrlSchemes: [],
+    application: {
+      bundleId: "notion.id",
+      name: "Notion"
+    },
+    context: {
+      commandName: "search-page",
+      commandPreferences: {},
+      extensionName: "notion",
+      extensionPreferences: {},
+      initialAction: "open",
+      locale: "zh-CN",
+      mode: "view",
+      seedQuery: ""
+    },
+    url: "https://www.notion.so/page-1"
+  })
+
+  await host.openExternal({
+    allowedUrlSchemes: ["notion"],
+    application: {
+      bundleId: "notion.id",
+      name: "Notion"
+    },
+    context: {
+      commandName: "search-page",
+      commandPreferences: {},
+      extensionName: "notion",
+      extensionPreferences: {},
+      initialAction: "open",
+      locale: "zh-CN",
+      mode: "view",
+      seedQuery: ""
+    },
+    url: "notion://www.notion.so/page-1"
+  })
+
+  assert.deepEqual(openedWithApplications, [
+    {
+      application: {
+        bundleId: "notion.id",
+        name: "Notion"
+      },
+      url: "https://www.notion.so/page-1"
+    },
+    {
+      application: {
+        bundleId: "notion.id",
+        name: "Notion"
+      },
+      url: "notion://www.notion.so/page-1"
+    }
+  ])
 })
