@@ -62,6 +62,18 @@ function createExtensionApprovalFixture(permissionMode: PermissionModeName) {
   registry.registerExtensionTools("mockExtension", [
     {
       access: "write",
+      approval: {
+        confirmation: (input) => ({
+          facts: [
+            {
+              label: "Title",
+              value: (input as { title: string }).title
+            }
+          ],
+          message: "Create this mock item?",
+          title: "Confirm Mock Item"
+        })
+      },
       description: "Create a mock item.",
       handler: () => ({
         id: "item-1"
@@ -331,6 +343,17 @@ test("ask-to-edit callExtensionTool resolves approval from the underlying extens
   assert.deepEqual(decision.review.args, {
     title: "Ship it"
   })
+  assert.deepEqual(decision.review.confirmation, {
+    facts: [
+      {
+        label: "Title",
+        value: "Ship it"
+      }
+    ],
+    message: "Create this mock item?",
+    title: "Confirm Mock Item",
+    tone: "default"
+  })
 })
 
 test("callExtensionTool is denied when the extension binding is not loaded during approval", async () => {
@@ -370,10 +393,7 @@ test("callExtensionTool is denied when the extension binding is not loaded durin
 
   assert.equal(handlerCalls, 0)
   assert.equal(result.status, "error")
-  assert.match(
-    typeof result.content === "string" ? result.content : "",
-    /loadExtension first/i
-  )
+  assert.match(typeof result.content === "string" ? result.content : "", /loadExtension first/i)
 })
 
 test("explore-mode callExtensionTool write calls return an error without reaching the handler", async () => {

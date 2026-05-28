@@ -37,11 +37,25 @@ export interface FileMutationToolApprovalItem {
   changes: ToolApprovalChange[]
 }
 
+export interface ToolApprovalConfirmationFact {
+  label: string
+  mono?: boolean
+  value: string
+}
+
+export interface ToolApprovalConfirmation {
+  facts: ToolApprovalConfirmationFact[]
+  message?: string
+  title: string
+  tone: "default" | "warning" | "danger"
+}
+
 export interface ExtensionToolApprovalItem {
   access: ExtensionToolAccess
   args: Record<string, unknown>
   capabilityDisplayName: string
   capabilityId: string
+  confirmation?: ToolApprovalConfirmation
   extensionName: string
   kind: "extension_tool"
   permissionMode: PermissionModeName
@@ -103,6 +117,57 @@ function parseToolApprovalChanges(value: unknown): ToolApprovalChange[] {
 
 function readOptionalString(value: unknown): string | null {
   return typeof value === "string" ? value : null
+}
+
+function readOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined
+}
+
+function isToolApprovalConfirmationTone(value: unknown): value is ToolApprovalConfirmation["tone"] {
+  return value === "default" || value === "warning" || value === "danger"
+}
+
+function parseToolApprovalConfirmationFact(value: unknown): ToolApprovalConfirmationFact | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const label = readOptionalString(value.label)
+  const factValue = readOptionalString(value.value)
+  if (!label || factValue === null) {
+    return null
+  }
+
+  return {
+    label,
+    ...(readOptionalBoolean(value.mono) === undefined
+      ? {}
+      : { mono: readOptionalBoolean(value.mono) }),
+    value: factValue
+  }
+}
+
+function parseToolApprovalConfirmation(value: unknown): ToolApprovalConfirmation | undefined {
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  const title = readOptionalString(value.title)
+  if (!title) {
+    return undefined
+  }
+
+  return {
+    facts: Array.isArray(value.facts)
+      ? value.facts.flatMap((entry) => {
+          const fact = parseToolApprovalConfirmationFact(entry)
+          return fact ? [fact] : []
+        })
+      : [],
+    message: readOptionalString(value.message) ?? undefined,
+    title,
+    tone: isToolApprovalConfirmationTone(value.tone) ? value.tone : "default"
+  }
 }
 
 function isExecuteCommandProfile(value: unknown): value is ExecuteCommandProfile {
@@ -168,6 +233,7 @@ export function parseToolApprovalItem(value: unknown): ToolApprovalItem | null {
         "",
       capabilityId:
         readOptionalString(value.capabilityId) ?? readOptionalString(value.sourceId) ?? "",
+      confirmation: parseToolApprovalConfirmation(value.confirmation),
       extensionName: readOptionalString(value.extensionName) ?? "",
       kind: "extension_tool",
       permissionMode: value.permissionMode,

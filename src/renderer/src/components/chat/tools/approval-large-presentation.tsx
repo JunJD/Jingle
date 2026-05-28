@@ -186,10 +186,17 @@ function buildExtensionLargeApprovalViewModel(
   copy: AppCopy,
   approvalItem: Extract<ToolApprovalItem, { kind: "extension_tool" }>
 ): LargeApprovalViewModel {
-  const parameters: LargeApprovalFact[] = []
+  const confirmationFacts =
+    approvalItem.confirmation?.facts.map((fact) => ({
+      label: fact.label,
+      presentation: fact.mono ? ("mono" as const) : ("text" as const),
+      value: fact.value
+    })) ?? []
+  const parameters: LargeApprovalFact[] = [...confirmationFacts]
+  const confirmationFactLabels = new Set(confirmationFacts.map((fact) => fact.label))
 
   for (const [key, value] of Object.entries(approvalItem.args)) {
-    if (key.startsWith("__")) {
+    if (key.startsWith("__") || confirmationFactLabels.has(key)) {
       continue
     }
 
@@ -209,17 +216,29 @@ function buildExtensionLargeApprovalViewModel(
     action: {
       detail: approvalItem.toolName,
       presentation: "text",
-      title: getActionTitle(copy, approvalItem)
+      title: approvalItem.confirmation?.title ?? getActionTitle(copy, approvalItem)
     },
-    impact: approvalItem.reason
-      ? [
-          {
+    impact: [
+      approvalItem.confirmation?.message
+        ? ({
+            detail: approvalItem.confirmation.message,
+            label: copy.toolCall.approvalReason,
+            tone:
+              approvalItem.confirmation.tone === "danger"
+                ? "destructive"
+                : approvalItem.confirmation.tone === "warning"
+                  ? "warning"
+                  : "neutral"
+          } satisfies LargeApprovalImpact)
+        : null,
+      approvalItem.reason
+        ? {
             detail: approvalItem.reason,
             label: copy.toolCall.approvalReason,
-            tone: "warning"
+            tone: "warning" as const
           }
-        ]
-      : [],
+        : null
+    ].filter((entry) => entry !== null),
     parameters,
     target: approvalItem.capabilityDisplayName
       ? [
@@ -322,9 +341,7 @@ function ApprovalImpactList(props: { items: LargeApprovalImpact[] }): React.JSX.
   )
 }
 
-function ApprovalFactList(props: {
-  items: LargeApprovalFact[]
-}): React.JSX.Element | null {
+function ApprovalFactList(props: { items: LargeApprovalFact[] }): React.JSX.Element | null {
   const { items } = props
 
   if (items.length === 0) {
@@ -422,5 +439,8 @@ export function renderLargeApprovalBody(input: {
   rawArgs: string
 }): React.JSX.Element | null {
   const { approvalItem, copy, rawArgs } = input
-  return renderLargeApprovalViewModel(copy, buildLargeApprovalViewModel(copy, approvalItem, rawArgs))
+  return renderLargeApprovalViewModel(
+    copy,
+    buildLargeApprovalViewModel(copy, approvalItem, rawArgs)
+  )
 }

@@ -1,4 +1,4 @@
-import { z, type ZodType } from "zod/v4"
+import { z } from "zod/v4"
 import { isPermissionModeName } from "./permission-mode"
 import type { PermissionModeName } from "./permission-mode"
 import type {
@@ -39,12 +39,55 @@ export interface ExtensionToolContext {
   workspacePath: string
 }
 
+export interface ExtensionToolSchema<TValue = unknown> {
+  parseAsync(value: unknown): Promise<TValue> | TValue
+  toJSONSchema?(): unknown
+}
+
+export interface ExtensionToolConfirmationFact {
+  label: string
+  mono?: boolean
+  value: string
+}
+
+export interface ExtensionToolConfirmationInfoFact {
+  mono?: boolean
+  name: string
+  value: string
+}
+
+export interface ExtensionToolConfirmation {
+  facts?: ExtensionToolConfirmationFact[]
+  info?: ExtensionToolConfirmationInfoFact[]
+  message?: string
+  title?: string
+  tone?: "default" | "warning" | "danger"
+}
+
+export interface ExtensionToolConfirmationContext extends ExtensionToolContext {
+  access: ExtensionToolAccess
+  capabilityDisplayName: string
+  permissionMode: PermissionModeName
+  toolTitle: string
+}
+
+export type ExtensionToolConfirmationBuilder = (
+  input: unknown,
+  context: ExtensionToolConfirmationContext
+) => Promise<ExtensionToolConfirmation> | ExtensionToolConfirmation
+
+export interface ExtensionToolApprovalDefinition {
+  confirmation?: ExtensionToolConfirmationBuilder
+  riskLabel?: "write" | "external" | "destructive"
+}
+
 export interface ExtensionToolDefinition<TInput = unknown, TOutput = unknown> {
   access: ExtensionToolAccess
+  approval?: ExtensionToolApprovalDefinition
   description: string
-  inputSchema: ZodType<TInput>
+  inputSchema: ExtensionToolSchema<TInput>
   name: string
-  outputSchema?: ZodType<TOutput>
+  outputSchema?: ExtensionToolSchema<TOutput>
   title: string
   handler(ctx: ExtensionToolContext, input: TInput): Promise<TOutput> | TOutput
 }

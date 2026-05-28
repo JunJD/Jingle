@@ -1,4 +1,5 @@
-import { ZodError, type ZodType } from "zod/v4"
+import { ZodError } from "zod/v4"
+import type { ExtensionToolSchema } from "@shared/extension-sources"
 export { z } from "zod/v4"
 
 export class ToolSchemaValidationError extends Error {
@@ -21,16 +22,25 @@ export function formatToolSchemaIssues(error: ZodError): string[] {
   })
 }
 
-export async function parseToolInputWithSchema<TSchema extends ZodType>(
+function isZodErrorLike(error: unknown): error is { issues: ZodError["issues"] } {
+  return (
+    error instanceof ZodError ||
+    (typeof error === "object" &&
+      error !== null &&
+      Array.isArray((error as { issues?: unknown }).issues))
+  )
+}
+
+export async function parseToolInputWithSchema<TInput>(
   toolName: string,
-  schema: TSchema,
+  schema: ExtensionToolSchema<TInput>,
   value: unknown
-): Promise<TSchema["_output"]> {
+): Promise<TInput> {
   try {
     return await schema.parseAsync(value)
   } catch (error) {
-    if (error instanceof ZodError) {
-      throw new ToolSchemaValidationError(toolName, formatToolSchemaIssues(error))
+    if (isZodErrorLike(error)) {
+      throw new ToolSchemaValidationError(toolName, formatToolSchemaIssues(error as ZodError))
     }
 
     throw error

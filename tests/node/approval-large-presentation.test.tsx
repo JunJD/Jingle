@@ -120,6 +120,22 @@ test("large extension approval adapts business parameters without file assumptio
     },
     capabilityDisplayName: "Openwork GitHub",
     capabilityId: "github",
+    confirmation: {
+      facts: [
+        {
+          label: "title",
+          value: "Create issue"
+        },
+        {
+          label: "Repository",
+          mono: true,
+          value: "JunJD/Jingle"
+        }
+      ],
+      message: "Create this issue?",
+      title: "Confirm GitHub Issue",
+      tone: "warning"
+    },
     extensionName: "github",
     kind: "extension_tool",
     permissionMode: "ask-to-edit",
@@ -133,10 +149,15 @@ test("large extension approval adapts business parameters without file assumptio
   assert.deepEqual(viewModel.action, {
     detail: "ext__github__default__createIssue",
     presentation: "text",
-    title: "Create Issue"
+    title: "Confirm GitHub Issue"
   })
   assert.deepEqual(viewModel.target, [{ label: "Source", value: "Openwork GitHub" }])
   assert.deepEqual(viewModel.impact, [
+    {
+      detail: "Create this issue?",
+      label: "Reason",
+      tone: "warning"
+    },
     {
       detail: "Ask to Edit mode requires approval for write and external extension tools.",
       label: "Reason",
@@ -144,12 +165,13 @@ test("large extension approval adapts business parameters without file assumptio
     }
   ])
   assert.deepEqual(viewModel.parameters, [
+    { label: "title", presentation: "text", value: "Create issue" },
+    { label: "Repository", presentation: "mono", value: "JunJD/Jingle" },
     { label: "body", presentation: "text", value: "Ship the approval adapter" },
     {
       label: "labels",
       presentation: "mono",
       value: '[\n  "frontend",\n  "agent"\n]'
-    },
-    { label: "title", presentation: "text", value: "Create issue" }
+    }
   ])
 })

@@ -1,10 +1,7 @@
 import { lstat } from "node:fs/promises"
 import { getExecuteCommandPolicy } from "@shared/execute-command-policy"
 import type { MutationChangeType } from "@shared/mutation-prediction"
-import {
-  DEFAULT_PERMISSION_MODE,
-  type PermissionModeName
-} from "@shared/permission-mode"
+import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
 import {
   buildToolApprovalItem,
   requiresToolApproval,
@@ -234,7 +231,7 @@ export function createToolPermissionRuntime(
 
         return requireApproval(
           toolArgs,
-          extensionToolPolicyProvider.getReview(binding, extensionToolArgs),
+          await extensionToolPolicyProvider.getReview(binding, extensionToolArgs),
           decision.reason
         )
       }
