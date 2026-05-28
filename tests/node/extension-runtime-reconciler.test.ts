@@ -1388,6 +1388,50 @@ test("runtime reconciler dispatches list query changes to List handlers", async 
   assert.equal(snapshot.sections[0]?.items[0]?.title, "Query: ship runtime")
 })
 
+test("runtime reconciler treats object filtering config as remote filtering", async () => {
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      List,
+      {
+        filtering: {
+          keepSectionOrder: true
+        }
+      },
+      createElement(List.Item, {
+        id: "page",
+        title: "Runtime Notes"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  assert.equal(snapshot.filtering, false)
+})
+
+test("runtime reconciler preserves List throttle in snapshots", async () => {
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      List,
+      {
+        throttle: true
+      },
+      createElement(List.Item, {
+        id: "page",
+        title: "Runtime Notes"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  assert.equal(snapshot.throttle, true)
+})
+
 test("runtime reconciler dispatches form dropdown search changes", async () => {
   function SearchableForm() {
     const [query, setQuery] = useState("")

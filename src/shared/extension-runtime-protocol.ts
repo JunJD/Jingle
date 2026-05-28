@@ -84,6 +84,7 @@ export interface ExtensionListSurfaceSnapshot extends ExtensionSurfaceBase {
   searchBarPlaceholder?: string
   searchText: string
   sections: ExtensionListSectionNode[]
+  throttle: boolean
 }
 
 export interface ExtensionListPaginationNode {

@@ -187,7 +187,7 @@ function createListSnapshot(
     commandName: container.context.commandName,
     emptyView: collectEmptyView(container, state, list),
     extensionName: container.context.extensionName,
-    filtering: readBooleanProp(list.props, "filtering", true),
+    filtering: readListFilteringProp(list.props),
     isLoading: readBooleanProp(list.props, "isLoading", false),
     kind: "list",
     navigationTitle: readStringProp(list.props, "navigationTitle"),
@@ -196,7 +196,8 @@ function createListSnapshot(
     searchBarAccessory: collectDropdown(list),
     searchBarPlaceholder: readStringProp(list.props, "searchBarPlaceholder"),
     searchText: readStringProp(list.props, "searchText") ?? "",
-    sections: collectSections(container, state, list)
+    sections: collectSections(container, state, list),
+    throttle: readBooleanProp(list.props, "throttle", false)
   }
 }
 
@@ -1033,6 +1034,15 @@ function readShortcutPlatform(value: unknown): { key: string; modifiers: unknown
 
 function readBooleanProp(props: RuntimeHostProps, name: string, fallback: boolean): boolean {
   return typeof props[name] === "boolean" ? props[name] : fallback
+}
+
+function readListFilteringProp(props: RuntimeHostProps): boolean {
+  const value = props.filtering
+  if (typeof value === "boolean") {
+    return value
+  }
+
+  return value === undefined
 }
 
 function isListPaginationProp(value: unknown): value is {

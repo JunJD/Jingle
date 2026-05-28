@@ -64,6 +64,7 @@ import { handleRuntimeNavigationRequest } from "./runtime-navigation"
 import { resolveRuntimeVisualImageSource } from "./runtime-visual-assets"
 
 const RUNTIME_LIST_SHORTCUT_SCOPES = ["launcher.list"] as const
+const RUNTIME_LIST_QUERY_THROTTLE_MS = 250
 const streamdownPlugins = { cjk, code, math, mermaid }
 
 function isOpenableMetadataTarget(value: string): boolean {
@@ -756,6 +757,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   const initialSeedQueryRef = useRef(host.seedQuery)
   const lastLocalInputRef = useRef(host.seedQuery)
   const hasReceivedListSurfaceRef = useRef(false)
+  const listQueryThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const nextFormChangeIdRef = useRef(0)
   const syncInputAfterActionRef = useRef(false)
   const [formState, dispatchFormState] = useReducer(
@@ -821,6 +823,38 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
       void window.api.extensionRuntime.sendEvent(runtimeState.sessionId, event)
     },
     [runtimeState.sessionId]
+  )
+  const sendListQueryChange = useCallback(
+    (query: string): void => {
+      sendRuntimeEvent({
+        query,
+        type: "list.query.change"
+      })
+    },
+    [sendRuntimeEvent]
+  )
+  const clearListQueryThrottleTimer = useCallback((): void => {
+    if (!listQueryThrottleTimerRef.current) {
+      return
+    }
+
+    clearTimeout(listQueryThrottleTimerRef.current)
+    listQueryThrottleTimerRef.current = null
+  }, [])
+  const scheduleListQueryChange = useCallback(
+    (query: string, throttle: boolean): void => {
+      clearListQueryThrottleTimer()
+      if (!throttle) {
+        sendListQueryChange(query)
+        return
+      }
+
+      listQueryThrottleTimerRef.current = setTimeout(() => {
+        listQueryThrottleTimerRef.current = null
+        sendListQueryChange(query)
+      }, RUNTIME_LIST_QUERY_THROTTLE_MS)
+    },
+    [clearListQueryThrottleTimer, sendListQueryChange]
   )
 
   const executeActionNode = useCallback(
@@ -979,7 +1013,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     )
 
     return unsubscribe
-  }, [])
+  }, [clearListQueryThrottleTimer])
 
   useEffect(() => {
     return window.api.extensionRuntime.subscribeNavigationRequests((event) => {
@@ -1032,6 +1066,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         activeSessionIdRef.current = session.sessionId
         nextFormChangeIdRef.current = 0
         dispatchFormState({ type: "reset" })
+        clearListQueryThrottleTimer()
         setRuntimeState((current) => {
           if (current.sessionId === session.sessionId) {
             return current
@@ -1056,6 +1091,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
 
     return () => {
       cancelled = true
+      clearListQueryThrottleTimer()
       if (sessionId) {
         void window.api.extensionRuntime.stopForeground(sessionId)
       }
@@ -1068,17 +1104,15 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     host.initialAction,
     host.launchProps,
     host.locale,
-    host.seedQuery
+    host.seedQuery,
+    clearListQueryThrottleTimer
   ])
 
   const handleInputChange = (value: string): void => {
     lastLocalInputRef.current = value
     setInputText(value)
     setSelectedIndex(0)
-    sendRuntimeEvent({
-      query: value,
-      type: "list.query.change"
-    })
+    scheduleListQueryChange(value, listSnapshot?.throttle === true)
   }
 
   const handleInputKeyDown = (event: ReactKeyboardEvent<LauncherInputElement>): void => {
