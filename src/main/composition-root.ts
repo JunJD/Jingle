@@ -11,6 +11,8 @@ import {
   registerExternalLinksIpcHandlers,
   registerExternalLinksModule
 } from "./external-links/module"
+import { registerExtensionQuicklinkModule } from "./extension-quicklinks/module"
+import { ExtensionQuicklinkService } from "./extension-quicklinks/service"
 import {
   registerExtensionRuntimeIpcHandlers,
   registerExtensionRuntimeModule,
@@ -58,6 +60,7 @@ import {
 import { registerShortcutsIpcHandlers, registerShortcutsModule } from "./shortcuts/module"
 import { registerThreadsIpcHandlers, registerThreadsModule } from "./threads/module"
 import { warmLauncherSearchProviders } from "./services/launcher-search"
+import { configureQuicklinksLauncherSearchProvider } from "./services/launcher-search/providers/quicklinks"
 import { registerWorkspaceIpcHandlers, registerWorkspaceModule } from "./workspace/module"
 import type { MainWindowNavigationPayload } from "@shared/main-window"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
@@ -165,6 +168,7 @@ export function createMainCompositionRoot(
   registerAppInfoModule(childContainer)
   registerArtifactsModule(childContainer)
   registerExternalLinksModule(childContainer)
+  registerExtensionQuicklinkModule(childContainer)
   registerLauncherHistoryModule(childContainer)
   registerLocalStartModule(childContainer)
   registerLauncherModule(childContainer, {
@@ -188,6 +192,9 @@ export function createMainCompositionRoot(
   registerShortcutsModule(childContainer)
   registerThreadsModule(childContainer)
   registerWorkspaceModule(childContainer)
+  configureQuicklinksLauncherSearchProvider({
+    listQuicklinks: () => childContainer.resolve(ExtensionQuicklinkService).listQuicklinks()
+  })
 
   return new MainCompositionRoot(
     childContainer.resolve<MainCompositionContext>(MAIN_COMPOSITION_CONTEXT_TOKEN),

@@ -1,0 +1,81 @@
+import { randomUUID } from "node:crypto"
+import Store from "electron-store"
+import type {
+  ExtensionQuicklinkRecord,
+  RegisterExtensionQuicklinkInput
+} from "@shared/extension-quicklinks"
+import { getOpenworkDir } from "../storage"
+
+interface ExtensionQuicklinksStoreShape {
+  quicklinks: ExtensionQuicklinkRecord[]
+}
+
+function isExtensionQuicklinkRecord(value: unknown): value is ExtensionQuicklinkRecord {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    "link" in value &&
+    "name" in value &&
+    typeof (value as { id?: unknown }).id === "string" &&
+    typeof (value as { link?: unknown }).link === "string" &&
+    typeof (value as { name?: unknown }).name === "string"
+  )
+}
+
+export class ExtensionQuicklinkRepository {
+  private readonly store = new Store<ExtensionQuicklinksStoreShape>({
+    cwd: getOpenworkDir(),
+    defaults: {
+      quicklinks: []
+    },
+    name: "extension-quicklinks"
+  })
+
+  list(): ExtensionQuicklinkRecord[] {
+    return this.readQuicklinks().sort((left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt)
+    )
+  }
+
+  register(input: RegisterExtensionQuicklinkInput): ExtensionQuicklinkRecord {
+    const now = new Date().toISOString()
+    const quicklinks = this.readQuicklinks()
+    const name = input.name?.trim() || "Quicklink"
+    const existingIndex = quicklinks.findIndex((quicklink) => quicklink.link === input.link)
+
+    if (existingIndex >= 0) {
+      const nextQuicklink: ExtensionQuicklinkRecord = {
+        ...quicklinks[existingIndex],
+        extensionName: input.extensionName,
+        name,
+        shortcut: input.shortcut,
+        updatedAt: now
+      }
+      const nextQuicklinks = [...quicklinks]
+      nextQuicklinks[existingIndex] = nextQuicklink
+      this.writeQuicklinks(nextQuicklinks)
+      return nextQuicklink
+    }
+
+    const nextQuicklink: ExtensionQuicklinkRecord = {
+      createdAt: now,
+      extensionName: input.extensionName,
+      id: randomUUID(),
+      link: input.link,
+      name,
+      shortcut: input.shortcut,
+      updatedAt: now
+    }
+    this.writeQuicklinks([...quicklinks, nextQuicklink])
+    return nextQuicklink
+  }
+
+  private readQuicklinks(): ExtensionQuicklinkRecord[] {
+    return (this.store.get("quicklinks", []) as unknown[]).filter(isExtensionQuicklinkRecord)
+  }
+
+  private writeQuicklinks(quicklinks: ExtensionQuicklinkRecord[]): void {
+    this.store.set("quicklinks", quicklinks)
+  }
+}

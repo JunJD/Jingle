@@ -11,6 +11,7 @@ import type {
 } from "@shared/extension-runtime-protocol"
 import { createExtensionRuntimeRenderer, type ExtensionRuntimeRenderer } from "./reconciler/render"
 import {
+  createExtensionRuntimeLaunchProps,
   createExtensionRuntimeNavigation,
   ExtensionRuntimeNavigationProvider,
   runWithExtensionRuntimeSdk,
@@ -159,7 +160,7 @@ async function startRuntime(
             requestHost: requestHostWithId
           }
         },
-        createElement(command.Component)
+        createElement(command.Component, createExtensionRuntimeLaunchProps(resolvedContext))
       )
     )
     void activeRenderer

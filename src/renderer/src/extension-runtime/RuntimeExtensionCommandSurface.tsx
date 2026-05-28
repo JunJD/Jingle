@@ -13,7 +13,7 @@ import { cjk } from "@streamdown/cjk"
 import { code } from "@streamdown/code"
 import { math } from "@streamdown/math"
 import { mermaid } from "@streamdown/mermaid"
-import { ArrowLeft, LoaderCircle } from "lucide-react"
+import { ArrowLeft, Loader2, LoaderCircle } from "lucide-react"
 import { Streamdown } from "streamdown"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { LauncherActionDescriptor } from "@/features/launcher-actions/model"
@@ -57,9 +57,37 @@ import {
   type RuntimeFormValue
 } from "./form-local-values"
 import { handleRuntimeNavigationRequest } from "./runtime-navigation"
+import { resolveRuntimeVisualImageSource } from "./runtime-visual-assets"
 
 const RUNTIME_LIST_SHORTCUT_SCOPES = ["launcher.list"] as const
 const streamdownPlugins = { cjk, code, math, mermaid }
+
+function formatRuntimeActionShortcut(
+  actionShortcut: ExtensionActionNode["shortcut"]
+): string | null {
+  if (!actionShortcut) {
+    return null
+  }
+
+  const modifiers = actionShortcut.modifiers.map((modifier) => {
+    if (modifier === "cmd") {
+      return "⌘"
+    }
+    if (modifier === "ctrl") {
+      return "⌃"
+    }
+    if (modifier === "opt") {
+      return "⌥"
+    }
+    if (modifier === "shift") {
+      return "⇧"
+    }
+
+    return modifier
+  })
+
+  return [...modifiers, actionShortcut.key.toUpperCase()].join("")
+}
 
 function isPlainDeletionKey(event: ReactKeyboardEvent<LauncherInputElement>): boolean {
   return (
@@ -88,6 +116,10 @@ interface RuntimeSurfaceState {
 interface RuntimeFormState {
   localValues: RuntimeFormLocalValues
   pendingValues: ReadonlyMap<string, RuntimeFormPendingValue>
+}
+
+interface RuntimeVisualRenderContext {
+  extensionName: string
 }
 
 type RuntimeFormStateAction =
@@ -214,7 +246,10 @@ function mapSections(sections: ExtensionListSectionNode[]): RuntimeListSectionDe
     .filter((section) => section.items.length > 0)
 }
 
-function renderVisual(node: ExtensionVisualNode | undefined): ReactNode {
+function renderVisual(
+  node: ExtensionVisualNode | undefined,
+  context: RuntimeVisualRenderContext
+): ReactNode {
   if (!node) {
     return null
   }
@@ -223,9 +258,24 @@ function renderVisual(node: ExtensionVisualNode | undefined): ReactNode {
     return node.text
   }
 
+  if (node.kind === "image") {
+    return (
+      <img
+        alt=""
+        aria-hidden="true"
+        className={cn("h-4 w-4 object-contain", node.mask === "circle" ? "rounded-full" : null)}
+        src={resolveRuntimeVisualImageSource({
+          extensionName: context.extensionName,
+          source: node.source
+        })}
+        style={{ color: node.tintColor }}
+      />
+    )
+  }
+
   if (node.kind === "inline") {
     return node.children.map((child, index) => (
-      <span key={`runtime-inline-${index}`}>{renderVisual(child)}</span>
+      <span key={`runtime-inline-${index}`}>{renderVisual(child, context)}</span>
     ))
   }
 
@@ -240,13 +290,16 @@ function renderSvgVisual(node: ExtensionSvgVisualNode, key?: string): ReactNode 
   )
 }
 
-function renderAccessoryVisuals(nodes: ExtensionVisualNode[]): ReactNode {
+function renderAccessoryVisuals(
+  nodes: ExtensionVisualNode[],
+  context: RuntimeVisualRenderContext
+): ReactNode {
   return nodes.map((node, index) => (
     <span
       key={`runtime-accessory-${index}`}
       className="rounded-full bg-background px-[var(--ow-space-2)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)]"
     >
-      {renderVisual(node)}
+      {renderVisual(node, context)}
     </span>
   ))
 }
@@ -393,7 +446,14 @@ function RuntimeDetailSurface(props: {
                         key={`${entry.title}:${entry.text}`}
                         className="space-y-[var(--ow-space-1)]"
                       >
-                        <div className="[font-size:var(--ow-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
+                        <div className="flex items-center gap-[var(--ow-gap-xs)] [font-size:var(--ow-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
+                          {entry.icon ? (
+                            <span className="flex size-[var(--ow-icon-sm)] items-center justify-center">
+                              {renderVisual(entry.icon, {
+                                extensionName: snapshot.extensionName
+                              })}
+                            </span>
+                          ) : null}
                           {entry.title}
                         </div>
                         <div className="break-words [font-size:var(--ow-font-body)] text-foreground">
@@ -448,6 +508,12 @@ function RuntimeFormSurface(props: {
       >
         <ScrollArea className="flex-1">
           <div className="space-y-[var(--ow-space-3)] px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
+            {snapshot.isLoading ? (
+              <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] text-muted-foreground">
+                <Loader2 className="size-[var(--ow-icon-sm)] animate-spin" />
+                <span>Loading...</span>
+              </div>
+            ) : null}
             {snapshot.fields.map((field) => (
               <RuntimeFormField
                 key={field.id}
@@ -502,6 +568,16 @@ function RuntimeFormField(props: {
           {field.description}
         </div>
       ) : null}
+      {"info" in field && field.info ? (
+        <div className="[font-size:var(--ow-font-caption)] leading-[var(--ow-line-body)] text-muted-foreground">
+          {field.info}
+        </div>
+      ) : null}
+      {"error" in field && field.error ? (
+        <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-red-600">
+          {field.error}
+        </div>
+      ) : null}
     </>
   )
 
@@ -523,9 +599,9 @@ function RuntimeFormField(props: {
     )
   }
 
-  const value = typeof localValue === "string" ? localValue : field.value
-
   if (field.kind === "dropdown") {
+    const value = typeof localValue === "string" ? localValue : field.value
+
     return (
       <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
@@ -544,7 +620,33 @@ function RuntimeFormField(props: {
     )
   }
 
+  if (field.kind === "tag-picker") {
+    const value = Array.isArray(localValue) ? localValue : field.value
+
+    return (
+      <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
+        {label}
+        <select
+          className="min-h-[calc(var(--ow-control-h-sm)*2)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+          multiple
+          value={value}
+          onChange={(event) =>
+            onChange(Array.from(event.currentTarget.selectedOptions, (option) => option.value))
+          }
+        >
+          {field.items.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.title}
+            </option>
+          ))}
+        </select>
+      </label>
+    )
+  }
+
   if (field.kind === "text-area") {
+    const value = typeof localValue === "string" ? localValue : field.value
+
     return (
       <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
@@ -558,11 +660,15 @@ function RuntimeFormField(props: {
     )
   }
 
+  const value = typeof localValue === "string" ? localValue : field.value
+  const inputType = field.kind === "date-picker" ? "date" : "text"
+
   return (
     <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
       {label}
       <input
         className="flex h-[var(--ow-control-h-sm)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+        type={inputType}
         value={value}
         placeholder={field.placeholder}
         onChange={(event) => onChange(event.target.value)}
@@ -597,6 +703,12 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   const detailSnapshot = isDetailSnapshot(snapshot) ? snapshot : null
   const formSnapshot = isFormSnapshot(snapshot) ? snapshot : null
   const listSnapshot = isListSnapshot(snapshot) ? snapshot : null
+  const visualRenderContext = useMemo<RuntimeVisualRenderContext>(
+    () => ({
+      extensionName: snapshot?.extensionName ?? host.extensionName
+    }),
+    [host.extensionName, snapshot?.extensionName]
+  )
   const sections = useMemo(
     () =>
       listSnapshot
@@ -612,16 +724,18 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         ...section,
         items: section.items.map((item) => ({
           accessory:
-            item.accessories.length > 0 ? renderAccessoryVisuals(item.accessories) : undefined,
+            item.accessories.length > 0
+              ? renderAccessoryVisuals(item.accessories, visualRenderContext)
+              : undefined,
           actionLabel: item.actions[0]?.title,
           hasActionPanel: item.actions.length > 1,
-          icon: renderVisual(item.icon),
+          icon: renderVisual(item.icon, visualRenderContext),
           id: item.id,
           subtitle: item.subtitle,
           title: item.title
         }))
       })),
-    [sections]
+    [sections, visualRenderContext]
   )
   const items = sections.flatMap((section) => section.items)
   const activeSelectedIndex = Math.min(selectedIndex, Math.max(items.length - 1, 0))
@@ -659,7 +773,8 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
 
   const createActionDescriptor = useCallback(
     (action: ExtensionActionNode): LauncherActionDescriptor => ({
-      icon: renderVisual(action.icon),
+      icon: renderVisual(action.icon, visualRenderContext),
+      disabled: action.disabled,
       id: action.id,
       onAction: () => {
         if (!action.disabled) {
@@ -667,10 +782,11 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         }
       },
       sectionTitle: action.sectionTitle,
+      shortcut: formatRuntimeActionShortcut(action.shortcut),
       style: action.style,
       title: action.title
     }),
-    [executeActionNode]
+    [executeActionNode, visualRenderContext]
   )
   const listActions = useMemo(
     () => (listSnapshot?.actions ?? []).map(createActionDescriptor),
@@ -740,14 +856,20 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         if (event.surface.kind === "list") {
           const isFirstListSurface = !hasReceivedListSurfaceRef.current
           hasReceivedListSurfaceRef.current = true
+          const localInputText = lastLocalInputRef.current
           const shouldSyncInput =
             syncInputAfterActionRef.current ||
-            (isFirstListSurface && lastLocalInputRef.current === initialSeedQueryRef.current) ||
-            event.surface.searchText === lastLocalInputRef.current
+            (isFirstListSurface && localInputText === initialSeedQueryRef.current) ||
+            event.surface.searchText === localInputText
           if (shouldSyncInput) {
             syncInputAfterActionRef.current = false
             lastLocalInputRef.current = event.surface.searchText
             setInputText(event.surface.searchText)
+          } else {
+            void window.api.extensionRuntime.sendEvent(event.session.sessionId, {
+              query: localInputText,
+              type: "list.query.change"
+            })
           }
         }
 
@@ -811,6 +933,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         extensionName: host.extensionName,
         extensionPreferences: {},
         initialAction: host.initialAction,
+        launchProps: host.launchProps,
         locale: host.locale,
         mode: "view",
         seedQuery: host.seedQuery
@@ -859,6 +982,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     host.commandPreferences,
     host.extensionName,
     host.initialAction,
+    host.launchProps,
     host.locale,
     host.seedQuery
   ])
@@ -957,13 +1081,22 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
           <NativeSurfaceListEmptyState isLoading />
         ) : items.length > 0 ? (
           <NativeSurfaceListRows
+            isLoadingMore={listSnapshot.pagination?.isLoading === true}
+            onLoadMore={
+              listSnapshot.pagination?.hasMore
+                ? () =>
+                    sendRuntimeEvent({
+                      type: "list.pagination.load-more"
+                    })
+                : undefined
+            }
             onExecute={(index) => {
               setSelectedIndex(index)
               const itemActions = items[index]?.actions.length
                 ? items[index]!.actions
                 : listSnapshot.actions
               const primaryAction = itemActions[0]
-              if (primaryAction) {
+              if (primaryAction && !primaryAction.disabled) {
                 executeActionNode(primaryAction)
               }
             }}

@@ -2,13 +2,18 @@ import { getActiveExtensionRuntimeSdk } from "./context"
 
 export function openNativeExtensionSettings(params: {
   commandName?: string
-  extensionName: string
+  extensionName?: string
 }): Promise<void> {
-  return getActiveExtensionRuntimeSdk()
+  const context = getActiveExtensionRuntimeSdk()
+
+  return context
     .requestHost({
       capability: "settings",
       method: "open-extension",
-      payload: params
+      payload: {
+        ...params,
+        extensionName: params.extensionName ?? context.extensionName
+      }
     })
     .then((response) => {
       if (!response.ok) {

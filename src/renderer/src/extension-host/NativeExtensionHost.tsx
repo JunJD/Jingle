@@ -8,6 +8,7 @@ import {
   type RefObject
 } from "react"
 import type { LauncherShellConfig } from "@shared/launcher"
+import type { ExtensionRuntimeLaunchProps } from "@shared/extension-runtime-protocol"
 import type { AppLocale } from "@shared/i18n"
 import type { LauncherCommandOwnerCapability } from "@shared/launcher-command-owner"
 import { resolveNativeExtensionCapability } from "@shared/native-extension-boundaries"
@@ -56,6 +57,7 @@ export interface NativeExtensionHostValue {
   commandPreferences: Record<string, unknown>
   extensionName: LauncherExtensionName
   initialAction: LauncherCommandInitialAction
+  launchProps?: ExtensionRuntimeLaunchProps
   locale: AppLocale
   navigation?: LauncherCommandNavigation
   seedQuery: string

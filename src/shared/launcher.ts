@@ -1,3 +1,5 @@
+import type { ExtensionRuntimeLaunchProps } from "./extension-runtime-protocol"
+
 export type LauncherResultKind = "application" | "file" | "directory" | "url" | "ai" | "history"
 
 export type LauncherResultAvailability = "ready" | "planned"
@@ -26,6 +28,7 @@ export type LauncherShellItemKind = LauncherResultKind | "plugin" | "suggestion"
 export type LauncherResultPresentationIconName =
   | "bell"
   | "check-circle"
+  | "external-link"
   | "file-text"
   | "folder"
   | "github"
@@ -70,6 +73,7 @@ export interface LauncherCommandIntent {
   kind: LauncherShellItemKind
   openOptions?: {
     initialAction?: "focus" | "submit"
+    launchProps?: ExtensionRuntimeLaunchProps
     seedQuery?: string
   }
   presentation: LauncherResultPresentation
@@ -82,6 +86,7 @@ export interface LauncherCommandMatch {
   commandName?: string
   openOptions?: {
     initialAction?: "focus" | "submit"
+    launchProps?: ExtensionRuntimeLaunchProps
     seedQuery?: string
   }
 }

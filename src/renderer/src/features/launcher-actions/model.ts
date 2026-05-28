@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 export type LauncherActionStyle = "regular" | "destructive"
 
 export interface LauncherActionDescriptor {
+  disabled?: boolean
   icon?: ReactNode
   id: string
   onAction: () => void | Promise<void>

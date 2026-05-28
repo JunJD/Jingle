@@ -1,4 +1,5 @@
 import type { ComponentType } from "react"
+import type { ExtensionRuntimeLaunchProps } from "@shared/extension-runtime-protocol"
 import type { AppLocale } from "@shared/i18n"
 import type { LauncherShellConfig } from "@shared/launcher"
 import type {
@@ -29,11 +30,13 @@ export type LauncherCommandAddress = LauncherBuiltInCommandAddress | LauncherExt
 
 export interface LauncherBuiltInCommandRoute extends LauncherBuiltInCommandAddress {
   initialAction: LauncherCommandInitialAction
+  launchProps?: ExtensionRuntimeLaunchProps
   seedQuery: string
 }
 
 export interface LauncherExtensionCommandRoute extends LauncherExtensionCommandAddress {
   initialAction: LauncherCommandInitialAction
+  launchProps?: ExtensionRuntimeLaunchProps
   seedQuery: string
 }
 
@@ -51,6 +54,7 @@ export interface LauncherCommandNavigation {
 
 export interface LauncherCommandOpenOptions {
   initialAction?: LauncherCommandInitialAction
+  launchProps?: ExtensionRuntimeLaunchProps
   seedQuery?: string
 }
 
@@ -115,6 +119,7 @@ interface LauncherCommandSearchDefinition {
 export interface LauncherNoViewCommandRunContext {
   commandPreferences: Record<string, unknown>
   initialAction: LauncherCommandInitialAction
+  launchProps?: ExtensionRuntimeLaunchProps
   navigation?: LauncherCommandNavigation
   seedQuery: string
 }
@@ -130,7 +135,9 @@ export interface LauncherNoViewCommandDefinition extends LauncherCommandSearchDe
   run: (context: LauncherNoViewCommandRunContext) => Promise<void> | void
 }
 
-export type LauncherCommandDefinition = LauncherViewCommandDefinition | LauncherNoViewCommandDefinition
+export type LauncherCommandDefinition =
+  | LauncherViewCommandDefinition
+  | LauncherNoViewCommandDefinition
 
 export function isLauncherViewCommand(
   command: LauncherCommandDefinition

@@ -25,13 +25,15 @@ export interface NativeSurfaceListSectionPresentation {
 }
 
 export function NativeSurfaceListRows(props: {
+  isLoadingMore?: boolean
+  onLoadMore?: () => void
   onExecute: (index: number) => void
   onOpenActions: (index: number) => void
   onSelect: (index: number) => void
   sections: NativeSurfaceListSectionPresentation[]
   selectedIndex: number
 }): React.JSX.Element | null {
-  const { onExecute, onOpenActions, onSelect, sections, selectedIndex } = props
+  const { isLoadingMore = false, onExecute, onLoadMore, onOpenActions, onSelect, sections, selectedIndex } = props
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<Array<HTMLDivElement | null>>([])
   const indexedSections = useMemo(
@@ -150,6 +152,19 @@ export function NativeSurfaceListRows(props: {
             })}
           </div>
         ))}
+        {onLoadMore ? (
+          <button
+            type="button"
+            onClick={onLoadMore}
+            disabled={isLoadingMore}
+            className="mx-[var(--launcher-list-row-x)] mt-[var(--ow-space-1)] flex h-[var(--ow-row-h-md)] w-[calc(100%-(var(--launcher-list-row-x)*2))] items-center justify-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--launcher-list-row-padding-x)] [font-size:var(--ow-font-body)] font-medium text-muted-foreground transition hover:bg-background-secondary/60 hover:text-foreground disabled:opacity-60"
+          >
+            {isLoadingMore ? (
+              <LoaderCircle className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] animate-spin" />
+            ) : null}
+            <span>{isLoadingMore ? "Loading..." : "Load More"}</span>
+          </button>
+        ) : null}
       </div>
     </ScrollArea>
   )

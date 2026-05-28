@@ -1,6 +1,6 @@
 import type { ExtensionFormFieldNode } from "@shared/extension-runtime-protocol"
 
-export type RuntimeFormValue = boolean | string
+export type RuntimeFormValue = unknown
 export type RuntimeFormLocalValues = Record<string, RuntimeFormValue>
 export interface RuntimeFormPendingValue {
   changeId: string
@@ -52,7 +52,7 @@ export function reconcileRuntimeFormLocalValues(params: {
 
     const pendingValue = params.pendingValues.get(field.id)?.value
     if (!Object.is(nextLocalValues[field.id], pendingValue)) {
-      mutableLocalValues()[field.id] = pendingValue as RuntimeFormValue
+      mutableLocalValues()[field.id] = pendingValue
     }
   }
 

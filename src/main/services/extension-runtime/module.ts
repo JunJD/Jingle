@@ -1,6 +1,7 @@
 import type { IpcMain } from "electron"
 import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
 import { ExternalLinksService } from "../../external-links/service"
+import { ExtensionQuicklinkService } from "../../extension-quicklinks/service"
 import { NativeMenuBarService } from "../../native-menu-bar/service"
 import { NativeExtensionsService } from "../../native-extensions/service"
 import { SettingsService } from "../../settings/service"
@@ -23,6 +24,7 @@ export function registerExtensionRuntimeModule(container: DependencyContainer): 
       const host = new DefaultExtensionRuntimeHostCapabilities(
         dependencyContainer.resolve(NativeExtensionsService),
         dependencyContainer.resolve(ExternalLinksService),
+        dependencyContainer.resolve(ExtensionQuicklinkService),
         dependencyContainer.resolve(SettingsWindowRoutingService),
         rendererBridge
       )

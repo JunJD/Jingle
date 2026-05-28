@@ -2,7 +2,9 @@ import type { AppCopy } from "@/lib/i18n/messages"
 import type { LauncherHistoryItem } from "@shared/launcher-history"
 import type { LocalStartItem } from "@shared/local-start"
 import type { LauncherSearchResult } from "@shared/launcher-search"
+import type { LauncherExtensionCommandAddress } from "./pages/types"
 import type { LauncherIndexedCommand } from "./pages"
+import { getLauncherIndexedCommand } from "./pages"
 import { createLauncherBuiltinResultPresentation } from "./result-presentation"
 import type { LauncherResultPresentation } from "./result-types"
 import type { LauncherShellItem } from "./types"
@@ -21,20 +23,49 @@ export function buildLauncherSearchShellItems(
 ): LauncherShellItem[] {
   return searchResults.map((result) => {
     const availability = options.preview ? "planned" : result.availability
+    const extensionCommand =
+      result.action.type === "open-extension-command" ? result.action.target : null
+    const commandRef: LauncherExtensionCommandAddress | undefined = extensionCommand
+      ? {
+          commandName: extensionCommand.commandName,
+          extensionName: extensionCommand.extensionName,
+          kind: "extension-command"
+        }
+      : undefined
+    const indexedCommand = commandRef ? getLauncherIndexedCommand(commandRef) : null
 
     return {
       action: result.action,
       availability,
+      commandOpenOptions: extensionCommand
+        ? {
+            launchProps: extensionCommand.launchProps
+          }
+        : undefined,
+      commandRef,
       id: result.id,
       iconDataUrl: result.iconDataUrl,
       kind: result.kind,
       match: result.match,
-      presentation: createLauncherBuiltinResultPresentation({
-        availability,
-        copy,
-        iconDataUrl: result.iconDataUrl,
-        kind: result.kind
-      }),
+      presentation: extensionCommand
+        ? {
+            categoryLabel: copy.launcher.resultKindExtension,
+            icon: indexedCommand
+              ? getLauncherIndexedCommandIcon(indexedCommand)
+              : {
+                  extensionName: extensionCommand.extensionName,
+                  type: "extension"
+                },
+            listActionLabel: copy.launcher.openGeneric,
+            primaryActionLabel: copy.launcher.openGeneric,
+            tone: "neutral"
+          }
+        : createLauncherBuiltinResultPresentation({
+            availability,
+            copy,
+            iconDataUrl: result.iconDataUrl,
+            kind: result.kind
+          }),
       subtitle: result.subtitle,
       title: result.title
     }

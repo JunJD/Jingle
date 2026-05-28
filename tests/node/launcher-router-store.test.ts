@@ -33,7 +33,7 @@ test("openCommand enters the command route and fills default options", () => {
   })
   assert.equal(
     state.routeKey,
-    `built-in-command:${AI_LAUNCHER_PLUGIN_ID}:${AI_CHAT_COMMAND_NAME}:focus:`
+    `built-in-command:${AI_LAUNCHER_PLUGIN_ID}:${AI_CHAT_COMMAND_NAME}:focus::`
   )
 })
 
@@ -42,6 +42,16 @@ test("openCommand preserves explicit options in the route key", () => {
 
   store.getState().openCommand(EXTENSION_ADDRESS, {
     initialAction: "submit",
+    launchProps: {
+      arguments: {
+        text: "Captured text"
+      },
+      launchContext: {
+        defaults: {
+          pageId: "page-1"
+        }
+      }
+    },
     seedQuery: "docs"
   })
   const state = store.getState()
@@ -49,9 +59,22 @@ test("openCommand preserves explicit options in the route key", () => {
   assert.deepEqual(state.route, {
     ...EXTENSION_ADDRESS,
     initialAction: "submit",
+    launchProps: {
+      arguments: {
+        text: "Captured text"
+      },
+      launchContext: {
+        defaults: {
+          pageId: "page-1"
+        }
+      }
+    },
     seedQuery: "docs"
   })
-  assert.equal(state.routeKey, "extension-command:test-extension:open-panel:submit:docs")
+  assert.equal(
+    state.routeKey,
+    'extension-command:test-extension:open-panel:submit:docs:{"arguments":{"text":"Captured text"},"launchContext":{"defaults":{"pageId":"page-1"}}}'
+  )
 })
 
 test("closeActivePlugin returns to home and flips navigation direction backward", () => {

@@ -22,7 +22,8 @@ export interface RuntimeHostTextNode {
 export type RuntimeHostChild = RuntimeHostElementNode | RuntimeHostTextNode
 
 export interface RuntimeActionHandler {
-  handler: () => Promise<void> | void
+  disabled: boolean
+  handler: (...args: never[]) => Promise<unknown> | unknown
 }
 
 export type RuntimeHostRequestHandler = (

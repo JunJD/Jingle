@@ -99,24 +99,36 @@ function createHost(
 ): ExtensionRuntimeHostCapabilities {
   return {
     askAI: async () => "AI response",
+    confirmAlert: () => true,
     getRuntimeCapabilities: () => [
       "clipboard",
+      "dialog",
       "ai",
       "navigation",
       "preferences",
       "rpc",
       "settings",
       "shell",
-      "storage"
+      "storage",
+      "toast",
+      "quicklinks"
     ],
     getCommandPreferences: () => ({ showCreated: true }),
     getExtensionPreferences: () => ({ apiBaseUrl: "https://api.github.com" }),
     getStorageValue: () => undefined,
+    listStorageValues: () => ({}),
+    removeStorageValue: () => undefined,
+    clearStorageValues: () => undefined,
     handleNavigationRequest: () => undefined,
     invokeNativeExtension: async () => null,
     openExtensionSettings: () => undefined,
     openExternal: async () => undefined,
+    pasteClipboardText: () => undefined,
+    readClipboardText: () => "",
+    readSelectedText: () => "",
+    registerQuicklink: () => undefined,
     setStorageValue: () => undefined,
+    showToast: () => undefined,
     writeClipboardText: () => undefined,
     ...overrides
   }
@@ -404,6 +416,387 @@ test("runtime manager forwards clipboard write requests to the host capability",
   )
 })
 
+test("runtime manager forwards clipboard paste requests to the host capability", async () => {
+  const clipboardPastes: string[] = []
+  const host = createHost({
+    pasteClipboardText: (text) => {
+      clipboardPastes.push(text)
+    }
+  })
+  const { launcher, manager } = createManager({ host })
+
+  await manager.startForeground(createLaunchContext())
+  const request: ExtensionHostRequest = {
+    capability: "clipboard",
+    id: "clipboard-paste-1",
+    method: "paste-text",
+    payload: {
+      text: "Pasted from runtime"
+    }
+  }
+
+  launcher.processes[0]?.emitMessage({
+    request,
+    sessionId: "session-1",
+    type: "host-request"
+  })
+  await flushPromises()
+
+  assert.deepEqual(clipboardPastes, ["Pasted from runtime"])
+  assert.deepEqual(
+    launcher.processes[0]?.messages.find((message) => message.type === "host-response"),
+    {
+      response: {
+        id: "clipboard-paste-1",
+        ok: true,
+        result: null
+      },
+      sessionId: "session-1",
+      type: "host-response"
+    }
+  )
+})
+
+test("runtime manager forwards clipboard read requests to the host capability", async () => {
+  const host = createHost({
+    readClipboardText: () => "Clipboard text from host"
+  })
+  const { launcher, manager } = createManager({ host })
+
+  await manager.startForeground(createLaunchContext())
+  const request: ExtensionHostRequest = {
+    capability: "clipboard",
+    id: "clipboard-read-1",
+    method: "read-text"
+  }
+
+  launcher.processes[0]?.emitMessage({
+    request,
+    sessionId: "session-1",
+    type: "host-request"
+  })
+  await flushPromises()
+
+  assert.deepEqual(
+    launcher.processes[0]?.messages.find((message) => message.type === "host-response"),
+    {
+      response: {
+        id: "clipboard-read-1",
+        ok: true,
+        result: "Clipboard text from host"
+      },
+      sessionId: "session-1",
+      type: "host-response"
+    }
+  )
+})
+
+test("runtime manager forwards selected text read requests to the host capability", async () => {
+  const host = createHost({
+    readSelectedText: () => "Selected text from host"
+  })
+  const { launcher, manager } = createManager({ host })
+
+  await manager.startForeground(createLaunchContext())
+  const request: ExtensionHostRequest = {
+    capability: "clipboard",
+    id: "selected-text-read-1",
+    method: "read-selected-text"
+  }
+
+  launcher.processes[0]?.emitMessage({
+    request,
+    sessionId: "session-1",
+    type: "host-request"
+  })
+  await flushPromises()
+
+  assert.deepEqual(
+    launcher.processes[0]?.messages.find((message) => message.type === "host-response"),
+    {
+      response: {
+        id: "selected-text-read-1",
+        ok: true,
+        result: "Selected text from host"
+      },
+      sessionId: "session-1",
+      type: "host-response"
+    }
+  )
+})
+
+test("runtime manager forwards toast requests to the host capability", async () => {
+  const toasts: unknown[] = []
+  const host = createHost({
+    showToast: (toast) => {
+      toasts.push(toast)
+    }
+  })
+  const { launcher, manager } = createManager({ host })
+
+  await manager.startForeground(createLaunchContext())
+  const request: ExtensionHostRequest = {
+    capability: "toast",
+    id: "toast-1",
+    method: "show",
+    payload: {
+      message: "Page title",
+      primaryAction: {
+        title: "Copy URL"
+      },
+      style: "success",
+      title: "Page created"
+    }
+  }
+
+  launcher.processes[0]?.emitMessage({
+    request,
+    sessionId: "session-1",
+    type: "host-request"
+  })
+  await flushPromises()
+
+  assert.deepEqual(toasts, [
+    {
+      message: "Page title",
+      primaryAction: {
+        title: "Copy URL"
+      },
+      style: "success",
+      title: "Page created"
+    }
+  ])
+  assert.deepEqual(
+    launcher.processes[0]?.messages.find((message) => message.type === "host-response"),
+    {
+      response: {
+        id: "toast-1",
+        ok: true,
+        result: null
+      },
+      sessionId: "session-1",
+      type: "host-response"
+    }
+  )
+})
+
+test("runtime manager forwards dialog confirm requests to the host capability", async () => {
+  const alerts: unknown[] = []
+  const host = createHost({
+    confirmAlert: (alert) => {
+      alerts.push(alert)
+      return false
+    }
+  })
+  const { launcher, manager } = createManager({ host })
+
+  await manager.startForeground(createLaunchContext())
+  const request: ExtensionHostRequest = {
+    capability: "dialog",
+    id: "dialog-1",
+    method: "confirm-alert",
+    payload: {
+      message: "This page can be restored from trash.",
+      primaryAction: {
+        style: "destructive",
+        title: "Delete Page"
+      },
+      title: "Delete Page"
+    }
+  }
+
+  launcher.processes[0]?.emitMessage({
+    request,
+    sessionId: "session-1",
+    type: "host-request"
+  })
+  await flushPromises()
+
+  assert.deepEqual(alerts, [
+    {
+      message: "This page can be restored from trash.",
+      primaryAction: {
+        style: "destructive",
+        title: "Delete Page"
+      },
+      title: "Delete Page"
+    }
+  ])
+  assert.deepEqual(
+    launcher.processes[0]?.messages.find((message) => message.type === "host-response"),
+    {
+      response: {
+        id: "dialog-1",
+        ok: true,
+        result: false
+      },
+      sessionId: "session-1",
+      type: "host-response"
+    }
+  )
+})
+
+test("runtime manager forwards extension-scoped storage requests to the host capability", async () => {
+  const storageCalls: unknown[] = []
+  const host = createHost({
+    getStorageValue: (params) => {
+      storageCalls.push(["get", params])
+      return "stored value"
+    },
+    setStorageValue: (params) => {
+      storageCalls.push(["set", params])
+    },
+    removeStorageValue: (params) => {
+      storageCalls.push(["remove", params])
+    },
+    listStorageValues: (params) => {
+      storageCalls.push(["all-items", params])
+      return {
+        recentPage: "page-1"
+      }
+    },
+    clearStorageValues: (params) => {
+      storageCalls.push(["clear", params])
+    }
+  })
+  const { launcher, manager } = createManager({ host })
+  const context = createLaunchContext()
+
+  await manager.startForeground(context)
+  const requests: ExtensionHostRequest[] = [
+    {
+      capability: "storage",
+      id: "storage-get",
+      method: "get",
+      payload: {
+        key: "recentPage",
+        scope: "extension"
+      }
+    },
+    {
+      capability: "storage",
+      id: "storage-set",
+      method: "set",
+      payload: {
+        key: "recentPage",
+        scope: "extension",
+        value: "page-2"
+      }
+    },
+    {
+      capability: "storage",
+      id: "storage-all",
+      method: "all-items",
+      payload: {
+        scope: "extension"
+      }
+    },
+    {
+      capability: "storage",
+      id: "storage-remove",
+      method: "remove",
+      payload: {
+        key: "recentPage",
+        scope: "extension"
+      }
+    },
+    {
+      capability: "storage",
+      id: "storage-clear",
+      method: "clear",
+      payload: {
+        scope: "extension"
+      }
+    }
+  ]
+
+  for (const request of requests) {
+    launcher.processes[0]?.emitMessage({
+      request,
+      sessionId: "session-1",
+      type: "host-request"
+    })
+    await flushPromises()
+  }
+
+  assert.deepEqual(storageCalls, [
+    [
+      "get",
+      {
+        context,
+        key: "recentPage",
+        scope: "extension"
+      }
+    ],
+    [
+      "set",
+      {
+        context,
+        key: "recentPage",
+        scope: "extension",
+        value: "page-2"
+      }
+    ],
+    [
+      "all-items",
+      {
+        context,
+        scope: "extension"
+      }
+    ],
+    [
+      "remove",
+      {
+        context,
+        key: "recentPage",
+        scope: "extension"
+      }
+    ],
+    [
+      "clear",
+      {
+        context,
+        scope: "extension"
+      }
+    ]
+  ])
+
+  assert.deepEqual(
+    launcher.processes[0]?.messages
+      .filter((message) => message.type === "host-response")
+      .map((message) => message.response),
+    [
+      {
+        id: "storage-get",
+        ok: true,
+        result: "stored value"
+      },
+      {
+        id: "storage-set",
+        ok: true,
+        result: null
+      },
+      {
+        id: "storage-all",
+        ok: true,
+        result: {
+          recentPage: "page-1"
+        }
+      },
+      {
+        id: "storage-remove",
+        ok: true,
+        result: null
+      },
+      {
+        id: "storage-clear",
+        ok: true,
+        result: null
+      }
+    ]
+  )
+})
+
 test("runtime manager forwards AI ask requests to the host capability", async () => {
   const aiRequests: unknown[] = []
   const host = createHost({
@@ -589,6 +982,57 @@ test("runtime manager rejects undeclared host capability requests", async () => 
   assert.equal(response?.type, "host-response")
   assert.equal(response?.response.ok, false)
   assert.equal(clipboardWriteCount, 0)
+})
+
+test("runtime manager forwards requested desktop URL schemes and app targets with shell requests", async () => {
+  const opened: Array<{
+    allowedUrlSchemes: readonly string[]
+    application?: { bundleId?: string; name?: string; path?: string }
+    url: string
+  }> = []
+  const host = createHost({
+    openExternal: async (params) => {
+      opened.push({
+        allowedUrlSchemes: params.allowedUrlSchemes,
+        application: params.application,
+        url: params.url
+      })
+    }
+  })
+  const { launcher, manager } = createManager({ host })
+
+  await manager.startForeground(createLaunchContext())
+  const request: ExtensionHostRequest = {
+    capability: "shell",
+    id: "shell-1",
+    method: "open-external",
+    payload: {
+      allowedUrlSchemes: ["notion"],
+      application: {
+        bundleId: "notion.id",
+        name: "Notion"
+      },
+      url: "notion://www.notion.so/page-1"
+    }
+  }
+
+  launcher.processes[0]?.emitMessage({
+    request,
+    sessionId: "session-1",
+    type: "host-request"
+  })
+  await flushPromises()
+
+  assert.deepEqual(opened, [
+    {
+      allowedUrlSchemes: ["notion"],
+      application: {
+        bundleId: "notion.id",
+        name: "Notion"
+      },
+      url: "notion://www.notion.so/page-1"
+    }
+  ])
 })
 
 test("runtime manager rejects undeclared AI host capability requests", async () => {

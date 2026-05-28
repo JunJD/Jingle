@@ -1,17 +1,26 @@
 import { createElement, type ReactElement, type ReactNode } from "react"
 import { ExtensionHostElement } from "./host-elements"
 import { useRuntimeSurfaceNavigationProps } from "./context"
+import { createVisualElement, normalizeVisual, type ColorLike, type IconLike } from "./visual"
 
 export interface RuntimeListProps {
   actions?: ReactNode
   children?: ReactNode
-  filtering?: boolean
+  filtering?: boolean | { keepSectionOrder?: boolean }
   isLoading?: boolean
   navigationTitle?: string
   onSearchTextChange?: (value: string) => Promise<void> | void
+  pagination?: RuntimeListPagination
   searchBarAccessory?: ReactNode
   searchBarPlaceholder?: string
   searchText?: string
+  throttle?: boolean
+}
+
+export interface RuntimeListPagination {
+  hasMore: boolean
+  isLoading?: boolean
+  onLoadMore: () => Promise<void> | void
 }
 
 export interface RuntimeListSectionProps {
@@ -21,14 +30,30 @@ export interface RuntimeListSectionProps {
 }
 
 export interface RuntimeListItemProps {
-  accessories?: ReactNode
+  accessories?: IconLike | RuntimeListItemAccessory | RuntimeListItemAccessory[]
   actions?: ReactNode
   children?: ReactNode
-  icon?: ReactNode
+  icon?: IconLike | RuntimeListItemIcon
   id?: string
   keywords?: string[]
   subtitle?: string
   title: string
+}
+
+export interface RuntimeListItemIcon {
+  tooltip?: string
+  value: IconLike
+}
+
+export interface RuntimeListItemAccessory {
+  date?: Date
+  icon?: IconLike
+  tag?: {
+    color?: ColorLike
+    value: string
+  }
+  text?: string
+  tooltip?: string
 }
 
 export interface RuntimeListEmptyViewProps {
@@ -40,6 +65,8 @@ export interface RuntimeListEmptyViewProps {
 export interface RuntimeListDropdownProps {
   children?: ReactNode
   onChange?: (value: string) => Promise<void> | void
+  storeValue?: boolean
+  tooltip?: string
   value?: string
 }
 
@@ -49,6 +76,7 @@ export interface RuntimeListDropdownSectionProps {
 }
 
 export interface RuntimeListDropdownItemProps {
+  icon?: IconLike
   title: string
   value: string
 }
@@ -89,8 +117,8 @@ function ListItem(props: RuntimeListItemProps): ReactElement {
     ExtensionHostElement.ListItem,
     hostProps,
     actions,
-    createVisualElement("icon", icon),
-    createVisualElement("accessory", accessories),
+    createVisualElement("icon", normalizeListItemIcon(icon)),
+    renderListItemAccessories(accessories),
     children
   )
 }
@@ -111,15 +139,73 @@ function ListDropdownSection(props: RuntimeListDropdownSectionProps): ReactEleme
 }
 
 function ListDropdownItem(props: RuntimeListDropdownItemProps): ReactElement {
-  return createElement(ExtensionHostElement.ListDropdownItem, props)
+  const { icon, ...hostProps } = props
+  return createElement(
+    ExtensionHostElement.ListDropdownItem,
+    hostProps,
+    createVisualElement("icon", icon)
+  )
 }
 
-function createVisualElement(slot: string, node: ReactNode): ReactElement | null {
-  if (node === null || node === undefined || typeof node === "boolean") {
-    return null
+function normalizeListItemIcon(icon: RuntimeListItemProps["icon"]): IconLike | undefined {
+  if (isListItemIcon(icon)) {
+    return icon.value
   }
 
-  return createElement(ExtensionHostElement.Visual, { slot }, node)
+  return icon
+}
+
+function renderListItemAccessories(accessories: RuntimeListItemProps["accessories"]): ReactNode {
+  if (isListItemAccessoryArray(accessories)) {
+    return accessories.map((accessory, index) => renderListItemAccessory(accessory, index))
+  }
+
+  if (isListItemAccessory(accessories)) {
+    return renderListItemAccessory(accessories, 0)
+  }
+
+  return createVisualElement("accessory", accessories)
+}
+
+function renderListItemAccessory(
+  accessory: RuntimeListItemAccessory,
+  index: number
+): ReactElement | null {
+  const text =
+    accessory.text ??
+    accessory.tag?.value ??
+    (accessory.date instanceof Date && !Number.isNaN(accessory.date.getTime())
+      ? accessory.date.toLocaleString()
+      : "")
+
+  return createVisualElement(
+    "accessory",
+    createElement(
+      "span",
+      {
+        title: accessory.tooltip
+      },
+      normalizeVisual(accessory.icon, "image"),
+      text
+    ),
+    `list-accessory-${index}`
+  )
+}
+
+function isListItemIcon(value: unknown): value is RuntimeListItemIcon {
+  return value !== null && typeof value === "object" && "value" in value
+}
+
+function isListItemAccessory(value: unknown): value is RuntimeListItemAccessory {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    ("text" in value || "tag" in value || "date" in value || "icon" in value)
+  )
+}
+
+function isListItemAccessoryArray(value: unknown): value is RuntimeListItemAccessory[] {
+  return Array.isArray(value) && value.every(isListItemAccessory)
 }
 
 export const List: RuntimeListComponent = Object.assign(ListRoot, {
@@ -131,3 +217,9 @@ export const List: RuntimeListComponent = Object.assign(ListRoot, {
   Item: ListItem,
   Section: ListSection
 })
+
+export namespace List {
+  export namespace Item {
+    export type Accessory = RuntimeListItemAccessory
+  }
+}

@@ -5,6 +5,7 @@ export type LauncherSearchSource =
   | "applications"
   | "browser-history"
   | "files"
+  | "quicklinks"
   | "semantic-history"
   | "threads"
 
@@ -48,6 +49,15 @@ export type LauncherSearchAction =
         threadId: string
       }
       type: "open-history-thread"
+    }
+  | {
+      executor: "internal"
+      target: {
+        commandName: string
+        extensionName: string
+        launchProps?: import("./extension-runtime-protocol").ExtensionRuntimeLaunchProps
+      }
+      type: "open-extension-command"
     }
 
 export interface LauncherActionExecutionResult {

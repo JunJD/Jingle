@@ -1,30 +1,96 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { createElement, useEffect, useState, type ReactElement } from "react"
+import { createElement, useEffect, useRef, useState, type ReactElement } from "react"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
 import {
   Action,
   ActionPanel,
+  Alert,
+  Color,
   Detail,
   ExtensionRuntimeNavigationProvider,
   Form,
+  Icon,
+  Image,
+  Keyboard,
   List,
+  confirmAlert,
+  createExtensionRuntimeLaunchProps,
   createNativeExtensionClient,
   defineNativeExtensionClientMethod,
+  getPreferenceValues,
+  open,
   openNativeExtensionSettings,
   type ExtensionRuntimeHostRequestInput,
   type ExtensionRuntimeSdkContextValue,
-  useNativeExtensionNavigation
+  type RuntimeFormFieldProps,
+  type RuntimeSubmitFormValues,
+  useNavigation,
+  type LaunchProps
 } from "../../src/extension-runtime/sdk"
+import {
+  useCachedPromise,
+  useFetch,
+  useForm,
+  useLocalStorage
+} from "../../packages/extension-utils/src"
 import type {
   ExtensionDetailSurfaceSnapshot,
   ExtensionFormSurfaceSnapshot,
   ExtensionHostRequest,
   ExtensionListSurfaceSnapshot
 } from "../../src/shared/extension-runtime-protocol"
+import type { PaginationLoader } from "../../packages/extension-utils/src"
+import { resolveRuntimeVisualImageSource } from "../../src/renderer/src/extension-runtime/runtime-visual-assets"
 
 type TestRendererParams = Parameters<typeof createExtensionRuntimeRenderer>[1]
 type TestHostRequestHandler = ExtensionRuntimeSdkContextValue["requestHost"]
+type _RuntimeFixtureListAccessory = List.Item.Accessory
+type _RuntimeFixtureQuicklink = Action.CreateQuicklink.Props["quicklink"]
+type _RuntimeFixtureLaunchProps = LaunchProps<{ text?: string }>
+type _RuntimeFixtureFormValue = Form.Value
+type _RuntimeFixtureFormValues = Form.Values
+type _RuntimeFixtureFormItemProps = Form.ItemProps<string>
+
+const runtimeFixtureTypeContract: {
+  accessory: _RuntimeFixtureListAccessory
+  formFieldProps: Pick<RuntimeFormFieldProps, "description" | "error" | "info" | "title">
+  formItemProps: _RuntimeFixtureFormItemProps
+  formValue: _RuntimeFixtureFormValue
+  formValues: _RuntimeFixtureFormValues
+  launchProps: _RuntimeFixtureLaunchProps
+  quicklink: _RuntimeFixtureQuicklink
+} = {
+  accessory: {
+    tag: {
+      color: Color.Green,
+      value: "Done"
+    }
+  },
+  formFieldProps: {
+    title: "Title"
+  },
+  formItemProps: {
+    id: "title",
+    onChange: () => {},
+    value: ""
+  },
+  formValue: "Untitled",
+  formValues: {
+    title: "Untitled"
+  },
+  launchProps: {
+    arguments: {
+      text: "Captured text"
+    }
+  },
+  quicklink: {
+    link: "https://www.notion.so",
+    name: "Notion"
+  }
+}
+
+void runtimeFixtureTypeContract
 
 function createTestRenderer(params?: TestRendererParams) {
   return createExtensionRuntimeRenderer(
@@ -193,6 +259,236 @@ test("runtime SDK client is available to first passive effects", async () => {
   assert.deepEqual(errors, [])
 })
 
+test("runtime SDK exposes merged command preference values", async () => {
+  const observedPreferences: Array<Record<string, unknown>> = []
+
+  function PreferenceList() {
+    observedPreferences.push(getPreferenceValues<Record<string, unknown>>())
+
+    return createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        id: "ready",
+        title: "Ready"
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      ExtensionRuntimeNavigationProvider,
+      {
+        value: {
+          commandName: "counter",
+          commandPreferences: {
+            open_in: "browser",
+            primaryAction: "open"
+          },
+          extensionName: "runtime-fixture",
+          extensionPreferences: {
+            notion_token: "secret",
+            open_in: "notion"
+          },
+          initialAction: "open",
+          locale: "zh-CN",
+          mode: "view",
+          requestHost: async () => ({
+            id: "host-response",
+            ok: true as const,
+            result: null
+          }),
+          seedQuery: ""
+        }
+      },
+      createElement(PreferenceList)
+    )
+  )
+  await renderer.flushSnapshots()
+
+  assert.deepEqual(observedPreferences[0], {
+    notion_token: "secret",
+    open_in: "browser",
+    primaryAction: "open"
+  })
+})
+
+test("runtime SDK creates launch props", () => {
+  const launchProps = createExtensionRuntimeLaunchProps({
+    launchProps: {
+      arguments: {
+        text: "Captured text"
+      },
+      draftValues: {
+        page: "page-1"
+      },
+      fallbackText: "Fallback",
+      launchContext: {
+        defaults: {
+          captureAs: "url"
+        }
+      }
+    }
+  })
+
+  assert.deepEqual(launchProps, {
+    arguments: {
+      text: "Captured text"
+    },
+    draftValues: {
+      page: "page-1"
+    },
+    fallbackText: "Fallback",
+    launchContext: {
+      defaults: {
+        captureAs: "url"
+      }
+    }
+  })
+})
+
+test("runtime command component can render with launch props", async () => {
+  function LaunchPropsDetail(props: LaunchProps<{ arguments: { text?: string } }>) {
+    return createElement(Detail, {
+      markdown: props.arguments.text ?? "missing"
+    })
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    withRuntimeProvider(
+      createElement(
+        LaunchPropsDetail,
+        createExtensionRuntimeLaunchProps({
+          launchProps: {
+            arguments: {
+              text: "Captured text"
+            }
+          }
+        }) as LaunchProps<{ arguments: { text?: string } }>
+      )
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertDetailSnapshot(snapshot)
+  assert.equal(snapshot.markdown, "Captured text")
+})
+
+test("runtime SDK open delegates URL targets to shell host capability", async () => {
+  const hostRequests: ExtensionRuntimeHostRequestInput[] = []
+
+  function OpenList() {
+    return createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: () =>
+              open("notion://www.notion.so/page-1", {
+                bundleId: "notion.id",
+                name: "Notion"
+              }),
+            title: "Open in App"
+          })
+        ),
+        id: "page",
+        title: "Page"
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    withRuntimeProvider(createElement(OpenList), async (request) => {
+      hostRequests.push(request)
+      return {
+        id: "host-response",
+        ok: true as const,
+        result: null
+      }
+    })
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const action = snapshot.sections[0]?.items[0]?.actions[0]
+  assert.ok(action)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  assert.deepEqual(hostRequests, [
+    {
+      capability: "shell",
+      method: "open-external",
+      payload: {
+        allowedUrlSchemes: ["notion"],
+        application: {
+          bundleId: "notion.id",
+          name: "Notion"
+        },
+        url: "notion://www.notion.so/page-1"
+      }
+    }
+  ])
+})
+
+test("runtime actions preserve keyboard shortcuts", async () => {
+  function ShortcutList() {
+    return createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(
+            ActionPanel.Submenu,
+            {
+              shortcut: {
+                macOS: { key: "p", modifiers: ["cmd", "shift"] },
+                Windows: { key: "p", modifiers: ["ctrl", "shift"] }
+              },
+              title: "Edit Property"
+            },
+            createElement(Action, {
+              onAction: () => {},
+              shortcut: Keyboard.Shortcut.Common.New,
+              title: "Create New Page"
+            })
+          )
+        ),
+        id: "page",
+        title: "Page"
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(createElement(ShortcutList))
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  assert.deepEqual(snapshot.sections[0]?.items[0]?.actions[0]?.shortcut, {
+    key: "n",
+    modifiers: ["cmd"]
+  })
+})
+
 test("runtime reconciler batches multiple state updates into one snapshot", async () => {
   function BatchedCounterList() {
     const [count, setCount] = useState(0)
@@ -348,6 +644,128 @@ test("runtime reconciler serializes JSX icon visuals", async () => {
   assert.equal(actionIcon.children[0]?.tagName, "path")
 })
 
+test("runtime reconciler serializes extension API icon and image-like visuals", async () => {
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        accessories: [
+          {
+            icon: {
+              mask: Image.Mask.Circle,
+              source: "https://example.com/avatar.png"
+            },
+            text: "Edited"
+          },
+          {
+            icon: "./icon/view_list.png",
+            text: "List"
+          },
+          {
+            tag: {
+              color: Color.Green,
+              value: "Done"
+            }
+          }
+        ],
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            icon: {
+              source: Icon.Trash,
+              tintColor: Color.Red
+            },
+            onAction: () => {},
+            title: "Delete"
+          })
+        ),
+        icon: {
+          tooltip: "Notion page",
+          value: Icon.BlankDocument
+        },
+        id: "image-like",
+        title: "Image-like Visuals"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const item = snapshot.sections[0]?.items[0]
+  assert.equal(item?.icon?.kind, "svg")
+  assert.equal(item.icon.children[0]?.tagName, "path")
+  assert.equal(item.accessories[0]?.kind, "inline")
+  assert.equal(item.accessories[1]?.kind, "inline")
+  assert.equal(item.accessories[2]?.kind, "text")
+  assert.equal(item.accessories[2]?.text, "Done")
+  const actionIcon = item.actions[0]?.icon
+  assert.ok(actionIcon)
+  assert.notEqual(actionIcon.kind, "text")
+})
+
+test("runtime reconciler preserves JSX accessory arrays separately from plain accessory arrays", async () => {
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        accessories: [
+          createElement("span", { key: "one" }, "First"),
+          createElement("span", { key: "two" }, "Second")
+        ],
+        icon: "notion-logo.png",
+        id: "jsx-accessories",
+        title: "JSX Accessories"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const item = snapshot.sections[0]?.items[0]
+  assert.equal(item?.icon?.kind, "image")
+  assert.equal(item.icon.source, "notion-logo.png")
+  assert.equal(
+    resolveRuntimeVisualImageSource({
+      extensionName: snapshot.extensionName,
+      source: item.icon.source
+    }),
+    "openwork-extension-asset://runtime-fixture/assets/notion-logo.png"
+  )
+  assert.equal(
+    resolveRuntimeVisualImageSource({
+      extensionName: snapshot.extensionName,
+      source: "./icon/view_list.png"
+    }),
+    "openwork-extension-asset://runtime-fixture/assets/icon/view_list.png"
+  )
+  assert.equal(
+    resolveRuntimeVisualImageSource({
+      extensionName: snapshot.extensionName,
+      source: "assets/icon/view_list.png"
+    }),
+    "openwork-extension-asset://runtime-fixture/assets/icon/view_list.png"
+  )
+  assert.equal(
+    resolveRuntimeVisualImageSource({
+      extensionName: snapshot.extensionName,
+      source: "https://example.com/avatar.png"
+    }),
+    "https://example.com/avatar.png"
+  )
+  assert.equal(item.accessories.length, 2)
+  assert.equal(item.accessories[0]?.kind, "text")
+  assert.equal(item.accessories[0]?.text, "First")
+  assert.equal(item.accessories[1]?.kind, "text")
+  assert.equal(item.accessories[1]?.text, "Second")
+})
+
 test("runtime reconciler dispatches OpenInBrowser actions through host requests", async () => {
   const hostRequests: ExtensionHostRequest[] = []
   const renderer = createTestRenderer({
@@ -468,6 +886,235 @@ test("runtime reconciler dispatches CopyToClipboard actions through host request
   ])
 })
 
+test("runtime Action.CreateQuicklink registers a launcher quicklink", async () => {
+  const hostRequests: ExtensionHostRequest[] = []
+  const renderer = createTestRenderer({
+    onHostRequest: (request) => {
+      hostRequests.push(request)
+      return {
+        id: request.id,
+        ok: true,
+        result: null
+      }
+    }
+  })
+
+  renderer.render(
+    createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.CreateQuicklink, {
+            quicklink: {
+              link: "openwork://extensions/notion/create-database-page",
+              name: "Create Notion page"
+            },
+            shortcut: {
+              macOS: { key: "l", modifiers: ["cmd"] },
+              Windows: { key: "l", modifiers: ["ctrl"] }
+            }
+          })
+        ),
+        id: "item",
+        title: "Item"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const action = snapshot.sections[0]?.items[0]?.actions[0]
+  assert.ok(action)
+  assert.equal(action.title, "Create Quicklink")
+  assert.deepEqual(action.shortcut, {
+    key: "l",
+    modifiers: ["cmd"]
+  })
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  assert.deepEqual(hostRequests, [
+    {
+      capability: "quicklinks",
+      id: "host-request-0",
+      method: "register",
+      payload: {
+        extensionName: "runtime-fixture",
+        link: "openwork://extensions/notion/create-database-page",
+        name: "Create Notion page",
+        shortcut: {
+          key: "l",
+          modifiers: ["cmd"],
+          platform: "macOS"
+        }
+      }
+    }
+  ])
+})
+
+test("runtime reconciler dispatches Paste actions through host requests", async () => {
+  const hostRequests: ExtensionHostRequest[] = []
+  const renderer = createTestRenderer({
+    onHostRequest: async (request) => {
+      hostRequests.push(request)
+      return {
+        id: request.id,
+        ok: true,
+        result: null
+      }
+    }
+  })
+
+  renderer.render(
+    createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.Paste, {
+            content: "https://www.notion.so/page-1",
+            shortcut: Keyboard.Shortcut.Common.CopyPath,
+            title: "Paste Page URL"
+          })
+        ),
+        id: "item",
+        title: "Item"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const action = snapshot.sections[0]?.items[0]?.actions[0]
+  assert.ok(action)
+  assert.equal(action.title, "Paste Page URL")
+  assert.deepEqual(action.shortcut, {
+    key: "c",
+    modifiers: ["cmd", "opt"]
+  })
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  assert.deepEqual(hostRequests, [
+    {
+      capability: "clipboard",
+      id: "host-request-0",
+      method: "paste-text",
+      payload: {
+        text: "https://www.notion.so/page-1"
+      }
+    }
+  ])
+})
+
+test("runtime SDK confirmAlert delegates confirmation to dialog host capability", async () => {
+  const hostRequests: ExtensionRuntimeHostRequestInput[] = []
+  const results: boolean[] = []
+
+  function ConfirmList() {
+    return createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: async () => {
+              results.push(
+                await confirmAlert({
+                  dismissAction: {
+                    style: Alert.ActionStyle.Cancel,
+                    title: "Cancel"
+                  },
+                  message: "This page can be restored from Notion trash.",
+                  primaryAction: {
+                    style: Alert.ActionStyle.Destructive,
+                    title: "Delete Page"
+                  },
+                  title: "Delete Page"
+                })
+              )
+            },
+            style: Action.Style.Destructive,
+            title: "Delete Page"
+          })
+        ),
+        id: "page",
+        title: "Page"
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    withRuntimeProvider(createElement(ConfirmList), async (request) => {
+      hostRequests.push(request)
+      return {
+        id: "host-response",
+        ok: true as const,
+        result: true
+      }
+    })
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const action = snapshot.sections[0]?.items[0]?.actions[0]
+  assert.ok(action)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  assert.deepEqual(results, [true])
+  assert.deepEqual(hostRequests, [
+    {
+      capability: "dialog",
+      method: "confirm-alert",
+      payload: {
+        dismissAction: {
+          style: "cancel",
+          title: "Cancel"
+        },
+        message: "This page can be restored from Notion trash.",
+        primaryAction: {
+          style: "destructive",
+          title: "Delete Page"
+        },
+        title: "Delete Page"
+      }
+    }
+  ])
+})
+
 test("runtime reconciler dispatches list query changes to List handlers", async () => {
   function SearchList() {
     const [query, setQuery] = useState("")
@@ -505,7 +1152,7 @@ test("runtime reconciler dispatches list query changes to List handlers", async 
 
 test("runtime reconciler snapshots detail surfaces and navigates back", async () => {
   function DetailFlow() {
-    const navigation = useNativeExtensionNavigation()
+    const navigation = useNavigation()
 
     return createElement(
       List,
@@ -523,6 +1170,7 @@ test("runtime reconciler snapshots detail surfaces and navigates back", async ()
                     Detail.Metadata,
                     null,
                     createElement(Detail.Metadata.Label, {
+                      icon: Icon.List,
                       text: "Inbox",
                       title: "List"
                     })
@@ -564,6 +1212,7 @@ test("runtime reconciler snapshots detail surfaces and navigates back", async ()
   assert.equal(detailSnapshot.navigationTitle, "Reminder")
   assert.equal(detailSnapshot.metadata[0]?.title, "List")
   assert.equal(detailSnapshot.metadata[0]?.text, "Inbox")
+  assert.equal(detailSnapshot.metadata[0]?.icon?.kind, "svg")
 
   assert.equal(
     await renderer.dispatchEvent({
@@ -576,19 +1225,110 @@ test("runtime reconciler snapshots detail surfaces and navigates back", async ()
   assertListSnapshot(nextSnapshot)
 })
 
+test("runtime reconciler serializes Detail metadata tag list items", async () => {
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(Detail, {
+      markdown: "# Metadata",
+      metadata: createElement(
+        Detail.Metadata,
+        null,
+        createElement(
+          Detail.Metadata.TagList,
+          {
+            title: "Tags"
+          },
+          createElement(Detail.Metadata.TagList.Item, {
+            color: Color.Blue,
+            text: "Migration"
+          }),
+          createElement(Detail.Metadata.TagList.Item, {
+            icon: Icon.Person,
+            text: "Alex Chen"
+          })
+        )
+      )
+    })
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertDetailSnapshot(snapshot)
+  assert.deepEqual(snapshot.metadata, [
+    {
+      text: "Migration, Alex Chen",
+      title: "Tags"
+    }
+  ])
+})
+
+test("runtime Action.Push opens a detail surface through the navigation stack", async () => {
+  function PushFlow() {
+    return createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.Push, {
+            target: createElement(Detail, {
+              markdown: "# Action Push",
+              navigationTitle: "Pushed Detail"
+            }),
+            title: "Push Detail"
+          })
+        ),
+        id: "item",
+        title: "Item"
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(withRuntimeProvider(createElement(PushFlow)))
+  await renderer.flushSnapshots()
+
+  const firstSnapshot = renderer.getSnapshot()
+  assertListSnapshot(firstSnapshot)
+  const actionId = firstSnapshot.sections[0]?.items[0]?.actions[0]?.id
+  assert.ok(actionId)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId,
+      revision: firstSnapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  const detailSnapshot = renderer.getSnapshot()
+  assertDetailSnapshot(detailSnapshot)
+  assert.equal(detailSnapshot.canPop, true)
+  assert.equal(detailSnapshot.navigationTitle, "Pushed Detail")
+  assert.equal(detailSnapshot.markdown, "# Action Push")
+})
+
 test("runtime reconciler snapshots form fields and syncs local input", async () => {
   function FormFlow() {
     const [title, setTitle] = useState("Buy milk")
     const [completed, setCompleted] = useState(false)
+    const [dueDate, setDueDate] = useState("2026-05-26")
+    const [tags, setTags] = useState<string[]>(["Work"])
 
     return createElement(
       Form,
       {
+        isLoading: true,
         navigationTitle: "Create Reminder"
       },
       createElement(Form.TextField, {
+        autoFocus: true,
+        info: "Supports inline Markdown",
         onChange: setTitle,
         placeholder: "Reminder title",
+        storeValue: true,
         title: "Title",
         value: title
       }),
@@ -597,7 +1337,32 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
         onChange: setCompleted,
         title: "Completed",
         value: completed
-      })
+      }),
+      createElement(Form.DatePicker, {
+        onChange: setDueDate,
+        storeValue: true,
+        title: "Due",
+        value: dueDate
+      }),
+      createElement(
+        Form.TagPicker,
+        {
+          autoFocus: false,
+          onChange: setTags,
+          storeValue: true,
+          title: "Tags",
+          value: tags
+        },
+        createElement(Form.TagPicker.Item, {
+          icon: Icon.Checkmark,
+          title: "Work",
+          value: "Work"
+        }),
+        createElement(Form.TagPicker.Item, {
+          title: "Personal",
+          value: "Personal"
+        })
+      )
     )
   }
 
@@ -608,6 +1373,7 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
   const firstSnapshot = renderer.getSnapshot()
   assertFormSnapshot(firstSnapshot)
   assert.equal(firstSnapshot.navigationTitle, "Create Reminder")
+  assert.equal(firstSnapshot.isLoading, true)
   const textField = firstSnapshot.fields.find(
     (
       field
@@ -616,6 +1382,7 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
   )
   assert.ok(textField)
   assert.equal(textField.value, "Buy milk")
+  assert.equal(textField.info, "Supports inline Markdown")
 
   assert.equal(
     await renderer.dispatchEvent({
@@ -658,6 +1425,169 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
   )
   assert.ok(checkboxField)
   assert.equal(checkboxField.value, true)
+
+  const dateField = finalSnapshot.fields.find(
+    (
+      field
+    ): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "date-picker" }> =>
+      field.kind === "date-picker"
+  )
+  assert.ok(dateField)
+  assert.equal(dateField.value, "2026-05-26")
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      changeId: "change-3",
+      fieldId: dateField.id,
+      type: "form.field.change",
+      value: "2026-06-01"
+    }),
+    true
+  )
+
+  const dateSnapshot = renderer.getSnapshot()
+  assertFormSnapshot(dateSnapshot)
+  assert.equal(
+    dateSnapshot.fields.find((field) => field.kind === "date-picker")?.value,
+    "2026-06-01"
+  )
+
+  const tagField = dateSnapshot.fields.find(
+    (
+      field
+    ): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "tag-picker" }> =>
+      field.kind === "tag-picker"
+  )
+  assert.ok(tagField)
+  assert.deepEqual(tagField.value, ["Work"])
+  assert.ok(tagField.items[0]?.icon)
+  assert.notEqual(tagField.items[0]?.icon?.kind, "text")
+  assert.deepEqual(
+    tagField.items.map((item) => ({ title: item.title, value: item.value })),
+    [
+      {
+        title: "Work",
+        value: "Work"
+      },
+      {
+        title: "Personal",
+        value: "Personal"
+      }
+    ]
+  )
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      changeId: "change-4",
+      fieldId: tagField.id,
+      type: "form.field.change",
+      value: ["Work", "Personal"]
+    }),
+    true
+  )
+
+  const tagSnapshot = renderer.getSnapshot()
+  assertFormSnapshot(tagSnapshot)
+  assert.deepEqual(tagSnapshot.fields.find((field) => field.kind === "tag-picker")?.value, [
+    "Work",
+    "Personal"
+  ])
+})
+
+test("runtime Action.SubmitForm passes current form values to onSubmit", async () => {
+  const dueDate = new Date(2026, 5, 1)
+  let submittedValues: RuntimeSubmitFormValues | null = null
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      Form,
+      {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.SubmitForm, {
+            onSubmit: (values) => {
+              submittedValues = values
+            },
+            title: "Submit"
+          })
+        )
+      },
+      createElement(Form.TextField, {
+        id: "title",
+        onChange: () => {},
+        title: "Title",
+        value: "Buy milk"
+      }),
+      createElement(Form.Checkbox, {
+        id: "completed",
+        onChange: () => {},
+        title: "Completed",
+        value: true
+      }),
+      createElement(Form.DatePicker, {
+        id: "due",
+        onChange: () => {},
+        title: "Due",
+        value: dueDate
+      }),
+      createElement(
+        Form.Dropdown,
+        {
+          id: "list",
+          onChange: () => {},
+          title: "List",
+          value: "inbox"
+        },
+        createElement(Form.Dropdown.Item, {
+          title: "Inbox",
+          value: "inbox"
+        })
+      ),
+      createElement(
+        Form.TagPicker,
+        {
+          id: "tags",
+          onChange: () => {},
+          title: "Tags",
+          value: ["Work", "Personal"]
+        },
+        createElement(Form.TagPicker.Item, {
+          title: "Work",
+          value: "Work"
+        }),
+        createElement(Form.TagPicker.Item, {
+          title: "Personal",
+          value: "Personal"
+        })
+      )
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertFormSnapshot(snapshot)
+  const actionId = snapshot.actions[0]?.id
+  assert.ok(actionId)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  assert.deepEqual(submittedValues, {
+    completed: true,
+    due: dueDate,
+    list: "inbox",
+    tags: ["Work", "Personal"],
+    title: "Buy milk"
+  })
+  assert.equal(Form.DatePicker.isFullDay(dueDate), true)
 })
 
 test("runtime reconciler snapshots form messages", async () => {
@@ -690,6 +1620,114 @@ test("runtime reconciler snapshots form messages", async () => {
     tone: "critical"
   })
   assert.equal(snapshot.fields[1]?.id, "title")
+})
+
+test("runtime SDK Form.Description renders as an informational form message", async () => {
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      Form,
+      null,
+      createElement(Form.Description, {
+        id: "description",
+        text: "Add to Runtime Notes"
+      }),
+      createElement(Form.TextArea, {
+        id: "content",
+        onChange: () => {},
+        title: "Content",
+        value: ""
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertFormSnapshot(snapshot)
+  assert.deepEqual(snapshot.fields[0], {
+    id: "description",
+    kind: "message",
+    text: "Add to Runtime Notes",
+    tone: "info"
+  })
+})
+
+test("useForm exposes itemProps object, reset, and focus compatibility", async () => {
+  function FormFlow() {
+    const { focus, itemProps, reset } = useForm({
+      initialValues: {
+        title: "Draft title"
+      }
+    })
+
+    return createElement(
+      Form,
+      {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: () => {
+              reset({ title: "Reset title" })
+              focus("title")
+            },
+            title: "Reset"
+          })
+        )
+      },
+      createElement(Form.TextField, {
+        title: "Title",
+        ...itemProps.title
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(withRuntimeProvider(createElement(FormFlow)))
+  await renderer.flushSnapshots()
+
+  const initialSnapshot = renderer.getSnapshot()
+  assertFormSnapshot(initialSnapshot)
+  assert.equal(initialSnapshot.fields[0]?.kind, "text-field")
+  assert.equal(
+    initialSnapshot.fields.find((field) => field.kind === "text-field")?.value,
+    "Draft title"
+  )
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      changeId: "change-title",
+      fieldId: "title",
+      type: "form.field.change",
+      value: "Edited title"
+    }),
+    true
+  )
+
+  const editedSnapshot = renderer.getSnapshot()
+  assertFormSnapshot(editedSnapshot)
+  assert.equal(
+    editedSnapshot.fields.find((field) => field.kind === "text-field")?.value,
+    "Edited title"
+  )
+
+  const actionId = editedSnapshot.actions[0]?.id
+  assert.ok(actionId)
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId,
+      revision: editedSnapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  const resetSnapshot = renderer.getSnapshot()
+  assertFormSnapshot(resetSnapshot)
+  assert.equal(
+    resetSnapshot.fields.find((field) => field.kind === "text-field")?.value,
+    "Reset title"
+  )
 })
 
 test("runtime SDK opens extension settings through host requests", async () => {
@@ -837,6 +1875,49 @@ test("runtime reconciler rejects stale action events from an old snapshot revisi
   assert.equal(latestActionExecutions, 1)
 })
 
+test("runtime reconciler rejects disabled action events", async () => {
+  let executionCount = 0
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            disabled: true,
+            onAction: () => {
+              executionCount += 1
+            },
+            title: "Disabled Action"
+          })
+        ),
+        id: "item",
+        title: "Item"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const action = snapshot.sections[0]?.items[0]?.actions[0]
+  assert.ok(action)
+  assert.equal(action.disabled, true)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    false
+  )
+  assert.equal(executionCount, 0)
+})
+
 test("runtime reconciler preserves keyed item order across reorder and removal", async () => {
   function ReorderableList() {
     const [reordered, setReordered] = useState(false)
@@ -930,3 +2011,727 @@ test("runtime reconciler clears the host container when the root unmounts", asyn
   assert.equal(snapshot.kind, "error")
   assert.equal(snapshot.title, "No renderable surface")
 })
+
+test("runtime reconciler snapshots list pagination and dispatches load more", async () => {
+  function PaginatedList() {
+    const [items, setItems] = useState(["Alpha"])
+    const hasMore = items.length < 2
+
+    return createElement(
+      List,
+      {
+        pagination: {
+          hasMore,
+          isLoading: false,
+          onLoadMore: () => {
+            setItems((current) => [...current, "Beta"])
+          }
+        }
+      },
+      items.map((item) =>
+        createElement(List.Item, {
+          id: item.toLowerCase(),
+          key: item,
+          title: item
+        })
+      )
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(createElement(PaginatedList))
+  await renderer.flushSnapshots()
+
+  const firstSnapshot = renderer.getSnapshot()
+  assertListSnapshot(firstSnapshot)
+  assert.deepEqual(
+    firstSnapshot.sections[0]?.items.map((item) => item.title),
+    ["Alpha"]
+  )
+  assert.deepEqual(firstSnapshot.pagination, {
+    hasMore: true,
+    isLoading: false
+  })
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      type: "list.pagination.load-more"
+    }),
+    true
+  )
+
+  const nextSnapshot = renderer.getSnapshot()
+  assertListSnapshot(nextSnapshot)
+  assert.deepEqual(
+    nextSnapshot.sections[0]?.items.map((item) => item.title),
+    ["Alpha", "Beta"]
+  )
+  assert.deepEqual(nextSnapshot.pagination, {
+    hasMore: false,
+    isLoading: false
+  })
+})
+
+test("useCachedPromise exposes pagination to runtime lists", async () => {
+  const loadPages =
+    (query: string): PaginationLoader<string[]> =>
+    async ({ cursor }) => {
+      if (cursor === "next") {
+        return {
+          data: [`${query} Beta`],
+          hasMore: false
+        }
+      }
+
+      return {
+        cursor: "next",
+        data: [`${query} Alpha`],
+        hasMore: true
+      }
+    }
+
+  function PaginatedHookList() {
+    const { data, pagination } = useCachedPromise(loadPages, ["Page"])
+
+    return createElement(
+      List,
+      {
+        isLoading: !data,
+        pagination
+      },
+      (data ?? []).map((item) =>
+        createElement(List.Item, {
+          id: item,
+          key: item,
+          title: item
+        })
+      )
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(createElement(PaginatedHookList))
+  await renderer.flushSnapshots()
+
+  const firstSnapshot = renderer.getSnapshot()
+  assertListSnapshot(firstSnapshot)
+  assert.deepEqual(
+    firstSnapshot.sections[0]?.items.map((item) => item.title),
+    ["Page Alpha"]
+  )
+  assert.equal(firstSnapshot.pagination?.hasMore, true)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      type: "list.pagination.load-more"
+    }),
+    true
+  )
+
+  const nextSnapshot = renderer.getSnapshot()
+  assertListSnapshot(nextSnapshot)
+  assert.deepEqual(
+    nextSnapshot.sections[0]?.items.map((item) => item.title),
+    ["Page Alpha", "Page Beta"]
+  )
+  assert.equal(nextSnapshot.pagination?.hasMore, false)
+})
+
+test("useCachedPromise reports loading before the first promise resolves", async () => {
+  let resolveItems: ((items: string[]) => void) | undefined
+
+  function LoadingList() {
+    const { data, isLoading } = useCachedPromise(
+      () =>
+        new Promise<string[]>((resolve) => {
+          resolveItems = resolve
+        })
+    )
+
+    return createElement(
+      List,
+      {
+        isLoading
+      },
+      (data ?? []).map((item) =>
+        createElement(List.Item, {
+          id: item,
+          key: item,
+          title: item
+        })
+      )
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(createElement(LoadingList))
+  await renderer.flushSnapshots()
+
+  const loadingSnapshot = renderer.getSnapshot()
+  assertListSnapshot(loadingSnapshot)
+  assert.equal(loadingSnapshot.isLoading, true)
+
+  assert.ok(resolveItems)
+  resolveItems(["Loaded Item"])
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  const loadedSnapshot = renderer.getSnapshot()
+  assertListSnapshot(loadedSnapshot)
+  assert.equal(loadedSnapshot.isLoading, false)
+  assert.deepEqual(
+    loadedSnapshot.sections[0]?.items.map((item) => item.title),
+    ["Loaded Item"]
+  )
+})
+
+test("useCachedPromise supports initialData and data/error callbacks", async () => {
+  const receivedData: string[][] = []
+  const receivedErrors: string[] = []
+  let resolveItems: ((items: string[]) => void) | undefined
+  let shouldFail = false
+
+  function CallbackList() {
+    const { data, error, isLoading, revalidate } = useCachedPromise(
+      async () => {
+        if (shouldFail) {
+          throw new Error("Failed to load")
+        }
+
+        return new Promise<string[]>((resolve) => {
+          resolveItems = resolve
+        })
+      },
+      [],
+      {
+        initialData: ["Initial Item"],
+        onData: (nextData) => {
+          receivedData.push(nextData)
+        },
+        onError: (nextError) => {
+          receivedErrors.push(nextError.message)
+        }
+      }
+    )
+
+    return createElement(
+      List,
+      {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: () => {
+              shouldFail = true
+              void revalidate()
+            },
+            title: "Reload With Error"
+          })
+        ),
+        isLoading
+      },
+      createElement(List.Item, {
+        id: "status",
+        title: error?.message ?? data?.[0] ?? "Empty"
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(createElement(CallbackList))
+  await renderer.flushSnapshots()
+
+  const initialSnapshot = renderer.getSnapshot()
+  assertListSnapshot(initialSnapshot)
+  assert.equal(initialSnapshot.isLoading, true)
+  assert.equal(initialSnapshot.sections[0]?.items[0]?.title, "Initial Item")
+
+  assert.ok(resolveItems)
+  resolveItems(["Loaded Item"])
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  const loadedSnapshot = renderer.getSnapshot()
+  assertListSnapshot(loadedSnapshot)
+  assert.equal(loadedSnapshot.isLoading, false)
+  assert.equal(loadedSnapshot.sections[0]?.items[0]?.title, "Loaded Item")
+  assert.deepEqual(receivedData, [["Loaded Item"]])
+
+  const action = loadedSnapshot.actions[0]
+  assert.ok(action)
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: loadedSnapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  const errorSnapshot = renderer.getSnapshot()
+  assertListSnapshot(errorSnapshot)
+  assert.equal(errorSnapshot.sections[0]?.items[0]?.title, "Failed to load")
+  assert.deepEqual(receivedErrors, ["Failed to load"])
+})
+
+test("useCachedPromise exposes abortable controllers", async () => {
+  const observedSignals: AbortSignal[] = []
+  let resolveSecondQuery: ((items: string[]) => void) | undefined
+
+  function AbortableList() {
+    const abortable = useRef<AbortController | null>(null)
+    const [query, setQuery] = useState("first")
+    const { data } = useCachedPromise(
+      (currentQuery: string) =>
+        new Promise<string[]>((resolve) => {
+          const signal = abortable.current?.signal
+          assert.ok(signal)
+          observedSignals.push(signal)
+
+          if (currentQuery === "second") {
+            resolveSecondQuery = resolve
+          }
+        }),
+      [query],
+      {
+        abortable
+      }
+    )
+
+    return createElement(
+      List,
+      {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: () => setQuery("second"),
+            title: "Search Again"
+          })
+        )
+      },
+      createElement(List.Item, {
+        id: "query",
+        title: data?.[0] ?? query
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(createElement(AbortableList))
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  const firstSnapshot = renderer.getSnapshot()
+  assertListSnapshot(firstSnapshot)
+  const action = firstSnapshot.actions[0]
+  assert.ok(action)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: firstSnapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+  await renderer.flushSnapshots()
+
+  assert.equal(observedSignals.length, 2)
+  assert.equal(observedSignals[0]?.aborted, true)
+  assert.equal(observedSignals[1]?.aborted, false)
+
+  assert.ok(resolveSecondQuery)
+  resolveSecondQuery(["Second Result"])
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  const secondSnapshot = renderer.getSnapshot()
+  assertListSnapshot(secondSnapshot)
+  assert.equal(secondSnapshot.sections[0]?.items[0]?.title, "Second Result")
+  assert.equal(observedSignals[1]?.aborted, false)
+})
+
+test("useFetch loads JSON data and applies mapResult callbacks", async () => {
+  const originalFetch = globalThis.fetch
+  const receivedData: string[][] = []
+  const requestedUrls: string[] = []
+  let resolveFetch: (() => void) | undefined
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requestedUrls.push(String(input))
+    await new Promise<void>((resolve) => {
+      resolveFetch = resolve
+    })
+    return new Response(
+      JSON.stringify({
+        results: [{ title: "Spec" }]
+      }),
+      {
+        headers: {
+          "content-type": "application/json"
+        },
+        status: 200
+      }
+    )
+  }) as typeof fetch
+
+  try {
+    function FetchList() {
+      const { data, isLoading } = useFetch<{ results: Array<{ title: string }> }, string[]>(
+        "https://api.notion.test/search",
+        {
+          initialData: ["Loading Seed"],
+          mapResult: (result) => ({
+            data: result.results.map((item) => item.title)
+          }),
+          onData: (nextData) => {
+            receivedData.push(nextData)
+          }
+        }
+      )
+
+      return createElement(
+        List,
+        {
+          isLoading
+        },
+        (data ?? []).map((item) =>
+          createElement(List.Item, {
+            id: item,
+            key: item,
+            title: item
+          })
+        )
+      )
+    }
+
+    const renderer = createTestRenderer()
+    renderer.render(createElement(FetchList))
+    await renderer.flushSnapshots()
+
+    const initialSnapshot = renderer.getSnapshot()
+    assertListSnapshot(initialSnapshot)
+    assert.equal(initialSnapshot.isLoading, true)
+    assert.deepEqual(
+      initialSnapshot.sections[0]?.items.map((item) => item.title),
+      ["Loading Seed"]
+    )
+
+    assert.ok(resolveFetch)
+    resolveFetch()
+    await renderer.flushSnapshots()
+    await renderer.flushSnapshots()
+
+    const loadedSnapshot = renderer.getSnapshot()
+    assertListSnapshot(loadedSnapshot)
+    assert.equal(loadedSnapshot.isLoading, false)
+    assert.deepEqual(
+      loadedSnapshot.sections[0]?.items.map((item) => item.title),
+      ["Spec"]
+    )
+    assert.deepEqual(receivedData, [["Spec"]])
+    assert.deepEqual(requestedUrls, ["https://api.notion.test/search"])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("useFetch exposes pagination", async () => {
+  const originalFetch = globalThis.fetch
+  const requestedUrls: string[] = []
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input)
+    requestedUrls.push(url)
+    const isNextPage = url.includes("cursor=next")
+
+    return new Response(
+      JSON.stringify({
+        nextCursor: isNextPage ? null : "next",
+        results: [isNextPage ? "Beta" : "Alpha"]
+      }),
+      {
+        headers: {
+          "content-type": "application/json"
+        },
+        status: 200
+      }
+    )
+  }) as typeof fetch
+
+  try {
+    function PaginatedFetchList() {
+      const { data, pagination } = useFetch<
+        { nextCursor: string | null; results: string[] },
+        string[]
+      >(({ cursor }) => `https://api.notion.test/search${cursor ? `?cursor=${cursor}` : ""}`, {
+        mapResult: (result) => ({
+          cursor: result.nextCursor,
+          data: result.results,
+          hasMore: Boolean(result.nextCursor)
+        })
+      })
+
+      return createElement(
+        List,
+        {
+          pagination
+        },
+        (data ?? []).map((item) =>
+          createElement(List.Item, {
+            id: item,
+            key: item,
+            title: item
+          })
+        )
+      )
+    }
+
+    const renderer = createTestRenderer()
+    renderer.render(createElement(PaginatedFetchList))
+    await renderer.flushSnapshots()
+    await renderer.flushSnapshots()
+
+    const firstSnapshot = renderer.getSnapshot()
+    assertListSnapshot(firstSnapshot)
+    assert.deepEqual(
+      firstSnapshot.sections[0]?.items.map((item) => item.title),
+      ["Alpha"]
+    )
+    assert.equal(firstSnapshot.pagination?.hasMore, true)
+
+    assert.equal(
+      await renderer.dispatchEvent({
+        type: "list.pagination.load-more"
+      }),
+      true
+    )
+
+    const secondSnapshot = renderer.getSnapshot()
+    assertListSnapshot(secondSnapshot)
+    assert.deepEqual(
+      secondSnapshot.sections[0]?.items.map((item) => item.title),
+      ["Alpha", "Beta"]
+    )
+    assert.equal(secondSnapshot.pagination?.hasMore, false)
+    assert.deepEqual(requestedUrls, [
+      "https://api.notion.test/search",
+      "https://api.notion.test/search?cursor=next"
+    ])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("useFetch reports failed requests through failure toasts by default", async () => {
+  const originalFetch = globalThis.fetch
+  const hostRequests: ExtensionRuntimeHostRequestInput[] = []
+  globalThis.fetch = (async () =>
+    new Response("Unauthorized", {
+      status: 401
+    })) as typeof fetch
+
+  try {
+    function FailedFetchList() {
+      useFetch("https://api.notion.test/search", {
+        failureToastOptions: {
+          title: "Could not load Notion"
+        }
+      })
+
+      return createElement(List, null)
+    }
+
+    const renderer = createTestRenderer()
+    renderer.render(
+      withRuntimeProvider(createElement(FailedFetchList), async (request) => {
+        hostRequests.push(request)
+        return {
+          id: "host-response",
+          ok: true,
+          result: null
+        }
+      })
+    )
+    await renderer.flushSnapshots()
+    await renderer.flushSnapshots()
+
+    assert.deepEqual(hostRequests, [
+      {
+        capability: "toast",
+        method: "show",
+        payload: {
+          message: "Request failed with status 401",
+          primaryAction: undefined,
+          secondaryAction: undefined,
+          style: "failure",
+          title: "Could not load Notion"
+        }
+      }
+    ])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("useLocalStorage reads and writes extension-scoped storage", async () => {
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const storage = new Map<string, unknown>([["visibleProperties", ["status"]]])
+
+  function StorageBackedList() {
+    const { isLoading, removeValue, setValue, value } = useLocalStorage<string[]>(
+      "visibleProperties",
+      ["done"]
+    )
+
+    return createElement(
+      List,
+      {
+        isLoading
+      },
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: () => void setValue((current) => [...(current ?? []), "tags"]),
+            title: "Add Tags"
+          }),
+          createElement(Action, {
+            onAction: () => void removeValue(),
+            title: "Reset"
+          })
+        ),
+        id: "properties",
+        title: (value ?? []).join(",")
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    withRuntimeProvider(createElement(StorageBackedList), async (request) =>
+      resolveStorageRequest(request, requests, storage)
+    )
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  const loadedSnapshot = renderer.getSnapshot()
+  assertListSnapshot(loadedSnapshot)
+  assert.equal(loadedSnapshot.sections[0]?.items[0]?.title, "status")
+
+  const addAction = loadedSnapshot.sections[0]?.items[0]?.actions.find(
+    (action) => action.title === "Add Tags"
+  )
+  assert.ok(addAction)
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: addAction.id,
+      revision: loadedSnapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+  await renderer.flushSnapshots()
+
+  const updatedSnapshot = renderer.getSnapshot()
+  assertListSnapshot(updatedSnapshot)
+  assert.equal(updatedSnapshot.sections[0]?.items[0]?.title, "status,tags")
+  assert.deepEqual(storage.get("visibleProperties"), ["status", "tags"])
+
+  const resetAction = updatedSnapshot.sections[0]?.items[0]?.actions.find(
+    (action) => action.title === "Reset"
+  )
+  assert.ok(resetAction)
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: resetAction.id,
+      revision: updatedSnapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+  await renderer.flushSnapshots()
+
+  const resetSnapshot = renderer.getSnapshot()
+  assertListSnapshot(resetSnapshot)
+  assert.equal(resetSnapshot.sections[0]?.items[0]?.title, "done")
+  assert.equal(storage.has("visibleProperties"), false)
+  assert.deepEqual(
+    requests.map((request) => ({
+      method: request.method,
+      payload: request.payload
+    })),
+    [
+      {
+        method: "get",
+        payload: {
+          key: "visibleProperties",
+          scope: "extension"
+        }
+      },
+      {
+        method: "set",
+        payload: {
+          key: "visibleProperties",
+          scope: "extension",
+          value: ["status", "tags"]
+        }
+      },
+      {
+        method: "remove",
+        payload: {
+          key: "visibleProperties",
+          scope: "extension"
+        }
+      }
+    ]
+  )
+})
+
+function resolveStorageRequest(
+  request: ExtensionRuntimeHostRequestInput,
+  requests: ExtensionRuntimeHostRequestInput[],
+  storage: Map<string, unknown>
+) {
+  requests.push(request)
+
+  if (request.capability === "storage") {
+    if (request.method === "get") {
+      return {
+        id: "storage-response",
+        ok: true as const,
+        result: storage.get(request.payload.key)
+      }
+    }
+
+    if (request.method === "set") {
+      storage.set(request.payload.key, request.payload.value)
+      return {
+        id: "storage-response",
+        ok: true as const,
+        result: null
+      }
+    }
+
+    if (request.method === "remove") {
+      storage.delete(request.payload.key)
+      return {
+        id: "storage-response",
+        ok: true as const,
+        result: null
+      }
+    }
+  }
+
+  return {
+    error: {
+      code: "unexpected_request",
+      message: `Unexpected ${request.capability} request`
+    },
+    id: "unexpected-response",
+    ok: false as const
+  }
+}

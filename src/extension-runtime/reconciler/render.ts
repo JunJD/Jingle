@@ -249,6 +249,10 @@ export function createExtensionRuntimeRenderer(
         return dispatchListDropdownChange(container, event.value)
       }
 
+      if (event.type === "list.pagination.load-more") {
+        return dispatchListPaginationLoadMore(container)
+      }
+
       if (event.type === "navigation.pop") {
         return dispatchNavigationPop(container)
       }
@@ -266,7 +270,7 @@ export function createExtensionRuntimeRenderer(
       }
 
       const action = container.actionHandlers.get(event.actionId)
-      if (!action) {
+      if (!action || action.disabled) {
         return false
       }
 
@@ -304,7 +308,7 @@ async function flushSnapshotQueue(): Promise<void> {
 async function dispatchFormFieldChange(
   container: RuntimeHostContainer,
   fieldId: string,
-  value: boolean | string
+  value: unknown
 ): Promise<boolean> {
   const form = findFirstHostElement(container.children, ExtensionHostElement.Form)
   const field = form ? findFormFieldById(form, fieldId) : null
@@ -331,6 +335,18 @@ async function dispatchListChange(
   }
 
   await runtimeReconciler.flushSyncFromReconciler(() => handler(value))
+  runtimeReconciler.flushSyncWork()
+  await flushSnapshotQueue()
+  return true
+}
+
+async function dispatchListPaginationLoadMore(container: RuntimeHostContainer): Promise<boolean> {
+  const action = container.actionHandlers.get("list-pagination.load-more")
+  if (!action || action.disabled) {
+    return false
+  }
+
+  await runtimeReconciler.flushSyncFromReconciler(() => action.handler())
   runtimeReconciler.flushSyncWork()
   await flushSnapshotQueue()
   return true
@@ -373,7 +389,7 @@ async function dispatchMenuBarItem(
   itemId: string
 ): Promise<boolean> {
   const handler = container.menuBarActionHandlers.get(itemId)
-  if (!handler) {
+  if (!handler || handler.disabled) {
     return false
   }
 
@@ -464,8 +480,10 @@ function findFormFieldById(
 function isFormFieldElement(node: RuntimeHostElementNode): boolean {
   return (
     node.type === ExtensionHostElement.FormCheckbox ||
+    node.type === ExtensionHostElement.FormDatePicker ||
     node.type === ExtensionHostElement.FormDropdown ||
     node.type === ExtensionHostElement.FormSeparator ||
+    node.type === ExtensionHostElement.FormTagPicker ||
     node.type === ExtensionHostElement.FormTextArea ||
     node.type === ExtensionHostElement.FormTextField
   )

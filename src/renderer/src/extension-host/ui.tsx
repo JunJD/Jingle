@@ -535,7 +535,7 @@ function ListRoot(props: {
               setSelectedIndex(index)
               const itemActions = items[index]?.actions.length ? items[index]!.actions : listActions
               const nextPrimaryAction = itemActions[0]
-              if (nextPrimaryAction) {
+              if (nextPrimaryAction && !nextPrimaryAction.disabled) {
                 void Promise.resolve(nextPrimaryAction.onAction())
               }
             }}
@@ -605,18 +605,21 @@ const ActionBase = ActionMarker as typeof ActionMarker & {
 }
 
 type NativeActionComponent = React.FC<{
+  disabled?: boolean
   icon?: ReactNode
   onAction?: () => void | Promise<void>
   style?: NativeActionStyle
   title: string
 }> & {
   OpenInBrowser: React.FC<{
+    disabled?: boolean
     icon?: ReactNode
     style?: NativeActionStyle
     title?: string
     url: string
   }>
   SubmitForm: React.FC<{
+    disabled?: boolean
     icon?: ReactNode
     onAction?: () => void | Promise<void>
     style?: NativeActionStyle

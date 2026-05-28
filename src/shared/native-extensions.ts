@@ -12,6 +12,12 @@ export type NativeExtensionCommandMode = "background" | "menu-bar" | "no-view" |
 export type NativeExtensionIcon = string
 export type NativeExtensionSupportedPlatform = "darwin" | "linux" | "win32"
 
+export interface NativeExtensionApplicationPreferenceValue {
+  bundleId?: string
+  name?: string
+  path?: string
+}
+
 export interface NativeExtensionPreferenceSchema {
   data?: Array<{ title?: string; value?: string }>
   default?: unknown
@@ -28,6 +34,10 @@ export interface NativeExtensionRuntimeCommandManifest {
   viewport?: {
     bodyHeight: number
   }
+}
+
+export interface NativeExtensionRuntimeShellManifest {
+  allowedUrlSchemes?: string[]
 }
 
 export interface NativeExtensionCommandManifest<TCommandName extends string = string> {
@@ -143,6 +153,7 @@ export interface NativeExtensionPackageManifest<
   preferences?: NativeExtensionPreferenceSchema[]
   rpcMethods?: string[]
   runtimeCapabilities?: ExtensionRuntimeHostCapability[]
+  runtimeShell?: NativeExtensionRuntimeShellManifest
   supportedPlatforms?: NativeExtensionSupportedPlatform[]
   title: string
 }
@@ -389,6 +400,50 @@ function validateConnectionManifest(
   validateConnectionAuthManifest(manifestName, connection)
 }
 
+function validateRuntimeShellManifest(
+  manifestName: string,
+  runtimeShell: NativeExtensionRuntimeShellManifest | undefined,
+  runtimeCapabilities: readonly ExtensionRuntimeHostCapability[]
+): void {
+  if (!runtimeShell) {
+    return
+  }
+
+  const allowedUrlSchemes = validateOptionalStringArray({
+    extensionName: manifestName,
+    fieldName: "runtimeShell.allowedUrlSchemes",
+    values: runtimeShell.allowedUrlSchemes
+  })
+  const normalizedSchemes = allowedUrlSchemes.map((scheme) => scheme.trim().toLowerCase())
+  const blockedSchemes = new Set(["data", "file", "http", "https", "javascript"])
+
+  for (const scheme of normalizedSchemes) {
+    if (!/^[a-z][a-z0-9+.-]*$/.test(scheme)) {
+      throw new Error(
+        `Native extension "${manifestName}" runtimeShell.allowedUrlSchemes must contain URL schemes without ":"`
+      )
+    }
+
+    if (blockedSchemes.has(scheme)) {
+      throw new Error(
+        `Native extension "${manifestName}" runtimeShell.allowedUrlSchemes cannot declare "${scheme}"`
+      )
+    }
+  }
+
+  if (new Set(normalizedSchemes).size !== normalizedSchemes.length) {
+    throw new Error(
+      `Native extension "${manifestName}" declares duplicate runtimeShell allowed URL schemes`
+    )
+  }
+
+  if (normalizedSchemes.length > 0 && !runtimeCapabilities.includes("shell")) {
+    throw new Error(
+      `Native extension "${manifestName}" declares runtimeShell URL schemes without the "shell" runtime capability`
+    )
+  }
+}
+
 export function listMissingRequiredNativeExtensionPreferences(
   schema: NativeExtensionPreferenceSchema[],
   values: Record<string, unknown>
@@ -586,6 +641,7 @@ export function validateNativeExtensionPackageManifest(
   if (runtimeCapabilitySet.size !== runtimeCapabilities.length) {
     throw new Error(`Native extension "${manifest.name}" declares duplicate runtime capabilities`)
   }
+  validateRuntimeShellManifest(manifest.name, manifest.runtimeShell, runtimeCapabilities)
 
   const supportedPlatforms = manifest.supportedPlatforms ?? []
   if (new Set(supportedPlatforms).size !== supportedPlatforms.length) {

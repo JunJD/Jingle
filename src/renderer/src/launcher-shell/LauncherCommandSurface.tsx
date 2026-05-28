@@ -108,8 +108,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
     viewportHeight
   } = commandState
   const ActivePluginComponent = activeViewCommand?.Component ?? null
-  const nativeExtensionInputRef =
-    pluginInputRef as React.RefObject<LauncherInputElement | null>
+  const nativeExtensionInputRef = pluginInputRef as React.RefObject<LauncherInputElement | null>
   const builtInSurfaceShellConfig =
     activeBuiltInCommand && route.commandName === AI_CHAT_COMMAND_NAME
       ? getAiShellConfig(searchShellConfig)
@@ -165,6 +164,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
           commandPreferences: activeCommandPreferences ?? {},
           extensionName: route.extensionName,
           initialAction: route.initialAction,
+          launchProps: route.launchProps,
           locale,
           navigation: activeCommandNavigationEnabled
             ? {
@@ -195,7 +195,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
       >
         <Suspense fallback={<div aria-busy="true" className="h-full w-full" />}>
           <ActivePluginComponent
-            key={`${route.kind}:${route.extensionName}:${route.commandName}:${route.initialAction}:${route.seedQuery}`}
+            key={`${route.kind}:${route.extensionName}:${route.commandName}:${route.initialAction}:${route.seedQuery}:${JSON.stringify(route.launchProps ?? {})}`}
           />
         </Suspense>
       </NativeExtensionHostProvider>

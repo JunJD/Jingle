@@ -7,12 +7,16 @@ export const ExtensionHostElement = {
   DetailMetadata: "ow-detail-metadata",
   DetailMetadataLabel: "ow-detail-metadata-label",
   DetailMetadataTagList: "ow-detail-metadata-tag-list",
+  DetailMetadataTagListItem: "ow-detail-metadata-tag-list-item",
   Form: "ow-form",
   FormCheckbox: "ow-form-checkbox",
+  FormDatePicker: "ow-form-date-picker",
   FormDropdown: "ow-form-dropdown",
   FormDropdownItem: "ow-form-dropdown-item",
   FormMessage: "ow-form-message",
   FormSeparator: "ow-form-separator",
+  FormTagPicker: "ow-form-tag-picker",
+  FormTagPickerItem: "ow-form-tag-picker-item",
   FormTextArea: "ow-form-text-area",
   FormTextField: "ow-form-text-field",
   List: "ow-list",
@@ -25,6 +29,7 @@ export const ExtensionHostElement = {
   MenuBarExtra: "ow-menu-bar-extra",
   MenuBarExtraItem: "ow-menu-bar-extra-item",
   MenuBarExtraSection: "ow-menu-bar-extra-section",
+  Image: "ow-image",
   Visual: "ow-visual"
 } as const
 
@@ -34,7 +39,10 @@ export type ExtensionHostElementType =
 
 export const ExtensionHostActionKind = {
   CopyToClipboard: "copy-to-clipboard",
-  OpenInBrowser: "open-in-browser"
+  CreateQuicklink: "create-quicklink",
+  OpenInBrowser: "open-in-browser",
+  Paste: "paste",
+  SubmitForm: "submit-form"
 } as const
 
 export type ExtensionHostActionKindType =

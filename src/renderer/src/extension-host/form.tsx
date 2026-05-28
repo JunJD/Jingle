@@ -5,7 +5,7 @@ import { NativeSurfaceChrome } from "./chrome"
 import { useNativeSurfaceController } from "./surface-action-controller"
 import { NativeExtensionSelect } from "./select"
 
-type FormDropdownMarkerRole = "form-dropdown-item"
+type FormDropdownMarkerRole = "form-dropdown-item" | "form-tag-picker-item"
 
 interface FormDropdownMarkerComponent<P = object> extends React.FC<P> {
   __formDropdownRole: FormDropdownMarkerRole
@@ -24,12 +24,18 @@ const FormDropdownItemMarker = createFormDropdownMarkerComponent<{
   value: string
 }>("form-dropdown-item")
 
+const FormTagPickerItemMarker = createFormDropdownMarkerComponent<{
+  title: string
+  value: string
+}>("form-tag-picker-item")
+
 function FormField(props: {
   children: ReactNode
   description?: string
+  error?: string
   title: string
 }): React.JSX.Element {
-  const { children, description, title } = props
+  const { children, description, error, title } = props
 
   return (
     <label className="block space-y-[var(--ow-space-1-5)]">
@@ -42,6 +48,11 @@ function FormField(props: {
         </div>
       ) : null}
       {children}
+      {error ? (
+        <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-red-600">
+          {error}
+        </div>
+      ) : null}
     </label>
   )
 }
@@ -92,15 +103,16 @@ function FormRoot(props: {
 
 function FormTextField(props: {
   description?: string
+  error?: string
   onChange: (value: string) => void
   placeholder?: string
   title: string
   value: string
 }): React.JSX.Element {
-  const { description, onChange, placeholder, title, value } = props
+  const { description, error, onChange, placeholder, title, value } = props
 
   return (
-    <FormField description={description} title={title}>
+    <FormField description={description} error={error} title={title}>
       <input
         className="flex h-[var(--ow-control-h-sm)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
         value={value}
@@ -113,15 +125,16 @@ function FormTextField(props: {
 
 function FormTextArea(props: {
   description?: string
+  error?: string
   onChange: (value: string) => void
   placeholder?: string
   title: string
   value: string
 }): React.JSX.Element {
-  const { description, onChange, placeholder, title, value } = props
+  const { description, error, onChange, placeholder, title, value } = props
 
   return (
-    <FormField description={description} title={title}>
+    <FormField description={description} error={error} title={title}>
       <textarea
         className="min-h-[var(--ow-textarea-min-h)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
         value={value}
@@ -134,15 +147,16 @@ function FormTextArea(props: {
 
 function FormCheckbox(props: {
   description?: string
+  error?: string
   label?: string
   onChange: (value: boolean) => void
   title: string
   value: boolean
 }): React.JSX.Element {
-  const { description, label, onChange, title, value } = props
+  const { description, error, label, onChange, title, value } = props
 
   return (
-    <FormField description={description} title={title}>
+    <FormField description={description} error={error} title={title}>
       <label className="inline-flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] text-foreground">
         <input
           type="checkbox"
@@ -155,14 +169,38 @@ function FormCheckbox(props: {
   )
 }
 
+function FormDatePicker(props: {
+  description?: string
+  error?: string
+  onChange: (value: string) => void
+  placeholder?: string
+  title: string
+  value: string
+}): React.JSX.Element {
+  const { description, error, onChange, placeholder, title, value } = props
+
+  return (
+    <FormField description={description} error={error} title={title}>
+      <input
+        className="flex h-[var(--ow-control-h-sm)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+        type="date"
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </FormField>
+  )
+}
+
 function FormDropdown(props: {
   children?: ReactNode
   description?: string
+  error?: string
   onChange: (value: string) => void
   title: string
   value: string
 }): React.JSX.Element {
-  const { children, description, onChange, title, value } = props
+  const { children, description, error, onChange, title, value } = props
   const items = Children.toArray(children)
     .map((child) => {
       if (!isValidElement(child)) {
@@ -179,7 +217,7 @@ function FormDropdown(props: {
     .filter((item): item is { title: string; value: string } => item !== null)
 
   return (
-    <FormField description={description} title={title}>
+    <FormField description={description} error={error} title={title}>
       <NativeExtensionSelect
         className="flex h-[var(--ow-control-h-sm)] w-full appearance-none rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated pl-[var(--ow-space-2-5)] pr-[var(--ow-space-6)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
         value={value}
@@ -195,16 +233,85 @@ function FormDropdown(props: {
   )
 }
 
+function FormTagPicker(props: {
+  children?: ReactNode
+  description?: string
+  error?: string
+  onChange: (value: string[]) => void
+  title: string
+  value: string[]
+}): React.JSX.Element {
+  const { children, description, error, onChange, title, value } = props
+  const items = Children.toArray(children)
+    .map((child) => {
+      if (!isValidElement(child)) {
+        return null
+      }
+
+      const marker = child.type as FormDropdownMarkerComponent
+      if (marker.__formDropdownRole !== "form-tag-picker-item") {
+        return null
+      }
+
+      return child.props as { title: string; value: string }
+    })
+    .filter((item): item is { title: string; value: string } => item !== null)
+
+  return (
+    <FormField description={description} error={error} title={title}>
+      <select
+        className="min-h-[calc(var(--ow-control-h-sm)*2)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+        multiple
+        value={value}
+        onChange={(event) =>
+          onChange(Array.from(event.currentTarget.selectedOptions, (option) => option.value))
+        }
+      >
+        {items.map((item) => (
+          <option key={item.value} value={item.value}>
+            {item.title}
+          </option>
+        ))}
+      </select>
+    </FormField>
+  )
+}
+
 function FormSeparator(): React.JSX.Element {
   return <div className="h-px w-full bg-border/80" />
 }
 
+function FormMessage(props: {
+  id?: string
+  text: string
+  tone?: "critical" | "info"
+}): React.JSX.Element {
+  const toneClass =
+    props.tone === "critical"
+      ? "border-red-500/20 bg-red-500/8 text-red-600"
+      : "border-border bg-background-elevated text-muted-foreground"
+
+  return (
+    <div
+      data-native-form-message={props.id}
+      className={`rounded-[var(--ow-radius-sm)] border px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] ${toneClass}`}
+    >
+      {props.text}
+    </div>
+  )
+}
+
 export const Form = Object.assign(FormRoot, {
   Checkbox: FormCheckbox,
+  DatePicker: FormDatePicker,
   Dropdown: Object.assign(FormDropdown, {
     Item: FormDropdownItemMarker
   }),
+  Message: FormMessage,
   Separator: FormSeparator,
+  TagPicker: Object.assign(FormTagPicker, {
+    Item: FormTagPickerItemMarker
+  }),
   TextArea: FormTextArea,
   TextField: FormTextField
 })

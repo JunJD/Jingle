@@ -85,6 +85,14 @@ function installElectronSafeStorageMock(): void {
   }
 }
 
+function createRuntimeHostQuicklinkServiceMock(): ConstructorParameters<
+  typeof DefaultExtensionRuntimeHostCapabilities
+>[2] {
+  return { registerQuicklink: () => undefined } as unknown as ConstructorParameters<
+    typeof DefaultExtensionRuntimeHostCapabilities
+  >[2]
+}
+
 test.after(async () => {
   if (originalOpenworkHome === undefined) {
     delete process.env.OPENWORK_HOME
@@ -227,12 +235,13 @@ test("extension runtime host resolves preferences with secrets through main-side
     { openExternal: async () => undefined } as ConstructorParameters<
       typeof DefaultExtensionRuntimeHostCapabilities
     >[1],
+    createRuntimeHostQuicklinkServiceMock(),
     { openWindow: () => undefined } as ConstructorParameters<
       typeof DefaultExtensionRuntimeHostCapabilities
-    >[2],
+    >[3],
     { handleNavigationRequest: async () => undefined } as unknown as ConstructorParameters<
       typeof DefaultExtensionRuntimeHostCapabilities
-    >[3]
+    >[4]
   )
 
   assert.deepEqual(

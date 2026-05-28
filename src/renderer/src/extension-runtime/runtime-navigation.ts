@@ -60,19 +60,29 @@ export async function handleRuntimeNavigationRequest(
 
         if (options.completeOpenCommandBeforeNavigation ?? true) {
           await completeRuntimeNavigationRequest(okResponse)
-          navigation.openCommand({
-            commandName: request.payload.commandName,
-            extensionName: request.payload.extensionName,
-            kind: "extension-command"
-          })
+          navigation.openCommand(
+            {
+              commandName: request.payload.commandName,
+              extensionName: request.payload.extensionName,
+              kind: "extension-command"
+            },
+            {
+              launchProps: request.payload.launchProps
+            }
+          )
           return
         }
 
-        navigation.openCommand({
-          commandName: request.payload.commandName,
-          extensionName: request.payload.extensionName,
-          kind: "extension-command"
-        })
+        navigation.openCommand(
+          {
+            commandName: request.payload.commandName,
+            extensionName: request.payload.extensionName,
+            kind: "extension-command"
+          },
+          {
+            launchProps: request.payload.launchProps
+          }
+        )
         await completeRuntimeNavigationRequest(okResponse)
         return
     }

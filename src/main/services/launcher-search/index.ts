@@ -2,11 +2,13 @@ import type { LauncherSearchRequest, LauncherSearchResponse } from "@shared/laun
 import { applicationsLauncherSearchProvider } from "./providers/applications"
 import { browserHistoryLauncherSearchProvider } from "./providers/browser-history"
 import { filesLauncherSearchProvider } from "./providers/files"
+import { quicklinksLauncherSearchProvider } from "./providers/quicklinks"
 import { threadsLauncherSearchProvider } from "./providers/threads"
 import type { LauncherSearchProvider } from "./types"
 
 const providers: LauncherSearchProvider[] = [
   applicationsLauncherSearchProvider,
+  quicklinksLauncherSearchProvider,
   threadsLauncherSearchProvider,
   filesLauncherSearchProvider,
   browserHistoryLauncherSearchProvider

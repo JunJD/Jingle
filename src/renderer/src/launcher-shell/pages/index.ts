@@ -138,6 +138,17 @@ export function listLauncherCommands(): LauncherIndexedCommand[] {
   ]
 }
 
+export function getLauncherIndexedCommand(
+  address: LauncherCommandAddress
+): LauncherIndexedCommand | null {
+  const commandKey = getLauncherCommandKey(address)
+  return (
+    listLauncherCommands().find(
+      (command) => getLauncherCommandKey(command.address) === commandKey
+    ) ?? null
+  )
+}
+
 /**
  * 根据命令地址拿到运行时定义和所属 owner。
  */

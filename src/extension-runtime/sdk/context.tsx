@@ -17,7 +17,8 @@ import {
 import type {
   ExtensionHostRequest,
   ExtensionHostResponse,
-  ExtensionRuntimeLaunchContext
+  ExtensionRuntimeLaunchContext,
+  ExtensionRuntimeLaunchProps
 } from "../../shared/extension-runtime-protocol"
 
 export type ExtensionRuntimeHostRequestInput = ExtensionHostRequest extends infer TRequest
@@ -38,7 +39,49 @@ export interface ExtensionRuntimeCommandAddress {
 }
 
 export interface ExtensionRuntimeCommandOpenOptions {
+  launchProps?: ExtensionRuntimeLaunchProps
   showLauncher?: boolean
+}
+
+export interface LaunchProps<
+  TArguments extends { arguments?: Record<string, unknown> } | Record<string, unknown> = Record<
+    string,
+    unknown
+  >
+> {
+  arguments: TArguments extends { arguments?: infer TLaunchArguments }
+    ? TLaunchArguments
+    : TArguments
+  draftValues?: Record<string, unknown>
+  fallbackText?: string
+  [key: string]: unknown
+  launchContext?: Record<string, unknown>
+}
+
+export enum PopToRootType {
+  Default = "default",
+  Immediate = "immediate",
+  Suspended = "suspended"
+}
+
+export function createExtensionRuntimeLaunchProps(
+  context: Pick<ExtensionRuntimeLaunchContext, "launchProps">
+): LaunchProps {
+  return {
+    arguments: context.launchProps?.arguments ?? {},
+    ...(context.launchProps?.draftValues ? { draftValues: context.launchProps.draftValues } : {}),
+    ...(context.launchProps?.fallbackText !== undefined
+      ? { fallbackText: context.launchProps.fallbackText }
+      : {}),
+    ...(context.launchProps?.launchContext
+      ? { launchContext: context.launchProps.launchContext }
+      : {})
+  }
+}
+
+export interface CloseMainWindowOptions {
+  clearRootSearch?: boolean
+  popToRootType?: PopToRootType
 }
 
 export interface ExtensionRuntimeNavigation {
@@ -88,6 +131,7 @@ export function createExtensionRuntimeNavigation(params: {
         payload: {
           commandName: address.commandName,
           extensionName: address.extensionName,
+          launchProps: options?.launchProps,
           showLauncher: options?.showLauncher
         }
       })
@@ -104,6 +148,8 @@ export function ExtensionRuntimeSdkProvider(props: {
   children?: ReactNode
   value: ExtensionRuntimeSdkContextValue
 }): React.JSX.Element {
+  activeRuntimeSdkContextValue = props.value
+
   useInsertionEffect(() => {
     activeRuntimeSdkContextValue = props.value
     return () => {
@@ -165,12 +211,28 @@ export function useNativeCommandPreferences<TPreferences extends object>(): TPre
   return useExtensionRuntimeSdk().commandPreferences as TPreferences
 }
 
+export function getPreferenceValues<TPreferences extends object>(): TPreferences {
+  const context = getActiveExtensionRuntimeSdk()
+  return {
+    ...context.extensionPreferences,
+    ...context.commandPreferences
+  } as TPreferences
+}
+
 export function useRuntimeNavigationCanPop(): boolean {
   return useExtensionRuntimeSdk().navigation.canPop
 }
 
 export function useNativeExtensionNavigation(): ExtensionRuntimeNavigation {
   return useExtensionRuntimeSdk().navigation
+}
+
+export function useNavigation(): ExtensionRuntimeNavigation {
+  return useNativeExtensionNavigation()
+}
+
+export async function closeMainWindow(_options?: CloseMainWindowOptions): Promise<void> {
+  await getActiveExtensionRuntimeSdk().navigation.hideLauncher()
 }
 
 export function useRuntimeSurfaceNavigationProps(): {
@@ -238,7 +300,8 @@ export function useExtensionStorageState<TValue>(
       capability: "storage",
       method: "get",
       payload: {
-        key
+        key,
+        scope: "command"
       }
     }).then((response) => {
       if (
@@ -271,6 +334,7 @@ export function useExtensionStorageState<TValue>(
         method: "set",
         payload: {
           key,
+          scope: "command",
           value: resolvedValue
         }
       })

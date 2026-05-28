@@ -6,6 +6,7 @@
     "extensions/*/main.ts",
     "extensions/*/manifest.ts",
     "extensions/*/src/contracts.ts",
+    "extensions/*/src/*.meta.ts",
     "extensions/*/types.d.ts",
     "src/extensions/index.ts",
     "src/extensions/main.ts",
@@ -13,6 +14,7 @@
     "src/extensions/*/main.ts",
     "src/extensions/*/manifest.ts",
     "src/extensions/*/src/contracts.ts",
+    "src/extensions/*/src/*.meta.ts",
     "src/extension-runtime/**/*",
     "src/main/**/*",
     "packages/*/src/**/*",
@@ -46,6 +48,9 @@
       ],
       "@openwork/extension-api": [
         "packages/extension-api/src/index.ts"
+      ],
+      "@openwork/extension-utils": [
+        "packages/extension-utils/src/index.ts"
       ],
       "@plugins/*": [
         "src/plugins/*"

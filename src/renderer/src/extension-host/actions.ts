@@ -37,6 +37,7 @@ export const ActionPanelSubmenuMarker = createActionMarkerComponent<{
 }>("action-panel-submenu")
 
 export const ActionMarker = createActionMarkerComponent<{
+  disabled?: boolean
   icon?: ReactNode
   onAction?: () => void | Promise<void>
   style?: NativeActionStyle
@@ -44,6 +45,7 @@ export const ActionMarker = createActionMarkerComponent<{
 }>("action")
 
 export const OpenInBrowserActionMarker = createActionMarkerComponent<{
+  disabled?: boolean
   icon?: ReactNode
   style?: NativeActionStyle
   title?: string
@@ -78,6 +80,7 @@ export function collectActions(
 
   if (role === "action" || role === "action-open-in-browser") {
     const props = node.props as {
+      disabled?: boolean
       icon?: ReactNode
       onAction?: () => void | Promise<void>
       style?: NativeActionStyle
@@ -105,6 +108,7 @@ export function collectActions(
 
     return [
       {
+        disabled: props.disabled,
         icon: props.icon,
         id: params.nextId(),
         onAction,

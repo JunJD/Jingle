@@ -102,6 +102,7 @@ export default defineConfig({
         "@launcher-components": resolve("src/renderer/src/launcher-components"),
         "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
         "@openwork/extension-api": resolve("packages/extension-api/src/index.ts"),
+        "@openwork/extension-utils": resolve("packages/extension-utils/src/index.ts"),
         "@plugins": resolve("src/plugins"),
         "@shared": resolve("src/shared")
       }
@@ -131,6 +132,7 @@ export default defineConfig({
         "@launcher-components": resolve("src/renderer/src/launcher-components"),
         "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
         "@openwork/extension-api": resolve("packages/extension-api/src/index.ts"),
+        "@openwork/extension-utils": resolve("packages/extension-utils/src/index.ts"),
         "@plugins": resolve("src/plugins"),
         "@shared": resolve("src/shared")
       }
@@ -149,6 +151,7 @@ export default defineConfig({
         "@launcher-components": resolve("src/renderer/src/launcher-components"),
         "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
         "@openwork/extension-api": resolve("packages/extension-api/src/index.ts"),
+        "@openwork/extension-utils": resolve("packages/extension-utils/src/index.ts"),
         "@plugins": resolve("src/plugins"),
         "@renderer": resolve("src/renderer/src"),
         "@shared": resolve("src/shared")

@@ -131,6 +131,7 @@ async function buildLauncherHistoryRecord(
       }
     case "open-url":
     case "open-history-thread":
+    case "open-extension-command":
     case "none":
       return null
     default: {
@@ -155,6 +156,8 @@ const internalLauncherActionExecutor: InternalLauncherActionExecutorHandler = as
       return
     case "open-history-thread":
       runtime.openMainWindow({ targetThreadId: action.target.threadId })
+      return
+    case "open-extension-command":
       return
     default: {
       throw new Error(`Unsupported internal launcher action: ${JSON.stringify(action)}`)
@@ -199,6 +202,7 @@ async function applyLauncherActionSideEffects(
     }
     case "open-url":
     case "open-history-thread":
+    case "open-extension-command":
     case "none":
       return
     default: {

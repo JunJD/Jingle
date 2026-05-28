@@ -1,6 +1,7 @@
 import { createElement, type ReactElement, type ReactNode } from "react"
 import { ExtensionHostElement } from "./host-elements"
 import { useRuntimeSurfaceNavigationProps } from "./context"
+import { createVisualElement, type ColorLike, type IconLike } from "./visual"
 
 export interface RuntimeDetailProps {
   actions?: ReactNode
@@ -15,19 +16,36 @@ export interface RuntimeDetailMetadataProps {
 }
 
 export interface RuntimeDetailMetadataLabelProps {
+  icon?: IconLike
   text: string
   title: string
 }
 
 export interface RuntimeDetailMetadataTagListProps {
-  tags: string[]
+  children?: ReactNode
+  tags?: string[]
+  title: string
+}
+
+export interface RuntimeDetailMetadataTagListItemProps {
+  color?: ColorLike
+  icon?: IconLike
+  text: string
+}
+
+export interface RuntimeDetailMetadataLinkProps {
+  target: string
+  text: string
   title: string
 }
 
 type RuntimeDetailComponent = ((props: RuntimeDetailProps) => ReactElement) & {
   Metadata: ((props: RuntimeDetailMetadataProps) => ReactElement) & {
     Label: (props: RuntimeDetailMetadataLabelProps) => ReactElement
-    TagList: (props: RuntimeDetailMetadataTagListProps) => ReactElement
+    Link: (props: RuntimeDetailMetadataLinkProps) => ReactElement
+    TagList: ((props: RuntimeDetailMetadataTagListProps) => ReactElement) & {
+      Item: (props: RuntimeDetailMetadataTagListItemProps) => ReactElement
+    }
   }
 }
 
@@ -51,16 +69,48 @@ function DetailMetadata(props: RuntimeDetailMetadataProps): ReactElement {
 }
 
 function DetailMetadataLabel(props: RuntimeDetailMetadataLabelProps): ReactElement {
-  return createElement(ExtensionHostElement.DetailMetadataLabel, props)
+  const { icon, ...hostProps } = props
+  return createElement(
+    ExtensionHostElement.DetailMetadataLabel,
+    hostProps,
+    createVisualElement("icon", icon)
+  )
 }
 
 function DetailMetadataTagList(props: RuntimeDetailMetadataTagListProps): ReactElement {
-  return createElement(ExtensionHostElement.DetailMetadataTagList, props)
+  const { children, tags, ...hostProps } = props
+  return createElement(
+    ExtensionHostElement.DetailMetadataTagList,
+    {
+      ...hostProps,
+      tags: tags ?? []
+    },
+    children
+  )
+}
+
+function DetailMetadataTagListItem(props: RuntimeDetailMetadataTagListItemProps): ReactElement {
+  const { icon, ...hostProps } = props
+  return createElement(
+    ExtensionHostElement.DetailMetadataTagListItem,
+    hostProps,
+    createVisualElement("icon", icon)
+  )
+}
+
+function DetailMetadataLink(props: RuntimeDetailMetadataLinkProps): ReactElement {
+  return createElement(DetailMetadataLabel, {
+    text: props.text,
+    title: props.title
+  })
 }
 
 export const Detail: RuntimeDetailComponent = Object.assign(DetailRoot, {
   Metadata: Object.assign(DetailMetadata, {
     Label: DetailMetadataLabel,
-    TagList: DetailMetadataTagList
+    Link: DetailMetadataLink,
+    TagList: Object.assign(DetailMetadataTagList, {
+      Item: DetailMetadataTagListItem
+    })
   })
 })

@@ -34,7 +34,11 @@ function resolveRouteKey(route: LauncherRoute): string {
     return route.id
   }
 
-  return `${route.kind}:${getLauncherCommandOwnerId(route)}:${route.commandName}:${route.initialAction}:${route.seedQuery}`
+  return `${route.kind}:${getLauncherCommandOwnerId(route)}:${route.commandName}:${route.initialAction}:${route.seedQuery}:${stringifyRouteLaunchProps(route.launchProps)}`
+}
+
+function stringifyRouteLaunchProps(launchProps: LauncherCommandOpenOptions["launchProps"]): string {
+  return launchProps ? JSON.stringify(launchProps) : ""
 }
 
 export function createLauncherRouterStore(): LauncherRouterStore {
@@ -84,11 +88,14 @@ export function createLauncherRouterStore(): LauncherRouterStore {
     openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions): void => {
       setData({
         navigationDirection: "forward",
-        route: {
-          ...address,
-          initialAction: options?.initialAction ?? "focus",
-          seedQuery: options?.seedQuery ?? ""
-        }
+        route: withOptionalLaunchProps(
+          {
+            ...address,
+            initialAction: options?.initialAction ?? "focus",
+            seedQuery: options?.seedQuery ?? ""
+          },
+          options?.launchProps
+        )
       })
     },
     closeActivePlugin: (): void => {
@@ -114,4 +121,11 @@ export function createLauncherRouterStore(): LauncherRouterStore {
       }
     }
   }
+}
+
+function withOptionalLaunchProps<T extends LauncherRoute>(
+  route: T,
+  launchProps: LauncherCommandOpenOptions["launchProps"]
+): T {
+  return launchProps ? { ...route, launchProps } : route
 }

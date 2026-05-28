@@ -16,11 +16,13 @@ import type {
   ExtensionMenuBarItemNode,
   ExtensionMenuBarSectionNode,
   ExtensionMenuBarSurfaceSnapshot,
+  ExtensionImageVisualNode,
   ExtensionSurfaceSnapshot,
   ExtensionSvgVisualNode,
   ExtensionVisualNode
 } from "../../shared/extension-runtime-protocol"
 import { ExtensionHostActionKind, ExtensionHostElement } from "../sdk/host-elements"
+import { resolveColorLike, type ColorLike } from "../sdk/visual"
 import type {
   RuntimeActionHandler,
   RuntimeHostChild,
@@ -110,9 +112,7 @@ function collectMenuBarSections(
 ): ExtensionMenuBarSectionNode[] {
   let implicitItemIndex = 0
   const implicitItems = directChildrenOfType(menuBar, ExtensionHostElement.MenuBarExtraItem)
-    .map((item) =>
-      createMenuBarItem(container, item, () => `menu-bar-item-${implicitItemIndex++}`)
-    )
+    .map((item) => createMenuBarItem(container, item, () => `menu-bar-item-${implicitItemIndex++}`))
     .filter((item): item is ExtensionMenuBarItemNode => item !== null)
 
   const sections = directChildrenOfType(menuBar, ExtensionHostElement.MenuBarExtraSection)
@@ -120,7 +120,11 @@ function collectMenuBarSections(
       id: `menu-bar-section-${sectionIndex}`,
       items: directChildrenOfType(section, ExtensionHostElement.MenuBarExtraItem)
         .map((item, itemIndex) =>
-          createMenuBarItem(container, item, () => `menu-bar-section-${sectionIndex}-item-${itemIndex}`)
+          createMenuBarItem(
+            container,
+            item,
+            () => `menu-bar-section-${sectionIndex}-item-${itemIndex}`
+          )
         )
         .filter((item): item is ExtensionMenuBarItemNode => item !== null),
       title: readStringProp(section.props, "title")
@@ -152,6 +156,7 @@ function createMenuBarItem(
   const onAction = item.props.onAction
   if (typeof onAction === "function") {
     container.menuBarActionHandlers.set(id, {
+      disabled: readBooleanProp(item.props, "disabled", false),
       handler: onAction as RuntimeActionHandler["handler"]
     })
   }
@@ -184,11 +189,33 @@ function createListSnapshot(
     isLoading: readBooleanProp(list.props, "isLoading", false),
     kind: "list",
     navigationTitle: readStringProp(list.props, "navigationTitle"),
+    pagination: collectListPagination(container, list),
     revision: container.revision,
     searchBarAccessory: collectDropdown(list),
     searchBarPlaceholder: readStringProp(list.props, "searchBarPlaceholder"),
     searchText: readStringProp(list.props, "searchText") ?? "",
     sections: collectSections(container, state, list)
+  }
+}
+
+function collectListPagination(
+  container: RuntimeHostContainer,
+  list: RuntimeHostElementNode
+): ExtensionListSurfaceSnapshot["pagination"] {
+  const pagination = list.props.pagination
+  if (!isListPaginationProp(pagination)) {
+    return undefined
+  }
+
+  const handlerId = "list-pagination.load-more"
+  container.actionHandlers.set(handlerId, {
+    disabled: !pagination.hasMore || pagination.isLoading === true,
+    handler: pagination.onLoadMore
+  })
+
+  return {
+    hasMore: pagination.hasMore,
+    isLoading: pagination.isLoading === true
   }
 }
 
@@ -230,6 +257,7 @@ function createFormSnapshot(
     commandName: container.context.commandName,
     extensionName: container.context.extensionName,
     fields: collectFormFields(form),
+    isLoading: readBooleanProp(form.props, "isLoading", false),
     kind: "form",
     navigationTitle: readStringProp(form.props, "navigationTitle"),
     revision: container.revision
@@ -349,6 +377,7 @@ function collectDropdown(list: RuntimeHostElementNode): ExtensionListDropdownNod
 
 function createDropdownItem(item: RuntimeHostElementNode): ExtensionListDropdownItemNode {
   return {
+    icon: collectVisual(item, "icon"),
     title: readStringProp(item.props, "title") ?? "",
     value: readStringProp(item.props, "value") ?? ""
   }
@@ -365,6 +394,7 @@ function collectDetailMetadataEntries(node: RuntimeHostElementNode): ExtensionDe
     if (child.type === ExtensionHostElement.DetailMetadataLabel) {
       return [
         {
+          icon: collectVisual(child, "icon"),
           text: readStringProp(child.props, "text") ?? "",
           title: readStringProp(child.props, "title") ?? ""
         }
@@ -374,7 +404,7 @@ function collectDetailMetadataEntries(node: RuntimeHostElementNode): ExtensionDe
     if (child.type === ExtensionHostElement.DetailMetadataTagList) {
       return [
         {
-          text: readStringArrayProp(child.props, "tags").join(", "),
+          text: collectDetailMetadataTagTexts(child).join(", "),
           title: readStringProp(child.props, "title") ?? ""
         }
       ]
@@ -386,6 +416,18 @@ function collectDetailMetadataEntries(node: RuntimeHostElementNode): ExtensionDe
 
     return []
   })
+}
+
+function collectDetailMetadataTagTexts(tagList: RuntimeHostElementNode): string[] {
+  const propTags = readStringArrayProp(tagList.props, "tags")
+  const childTags = directChildrenOfType(
+    tagList,
+    ExtensionHostElement.DetailMetadataTagListItem
+  )
+    .map((item) => readStringProp(item.props, "text"))
+    .filter((text): text is string => Boolean(text))
+
+  return [...propTags, ...childTags]
 }
 
 function collectFormFields(form: RuntimeHostElementNode): ExtensionFormFieldNode[] {
@@ -408,12 +450,16 @@ function createFormFieldNode(
   const id = readStringProp(node.props, "id") ?? fallbackId
   const title = readStringProp(node.props, "title") ?? ""
   const description = readStringProp(node.props, "description")
+  const error = readStringProp(node.props, "error")
+  const info = readStringProp(node.props, "info")
 
   if (node.type === ExtensionHostElement.FormTextField) {
     return [
       {
         description,
+        error,
         id,
+        info,
         kind: "text-field",
         placeholder: readStringProp(node.props, "placeholder"),
         title,
@@ -426,7 +472,9 @@ function createFormFieldNode(
     return [
       {
         description,
+        error,
         id,
+        info,
         kind: "text-area",
         placeholder: readStringProp(node.props, "placeholder"),
         title,
@@ -439,7 +487,9 @@ function createFormFieldNode(
     return [
       {
         description,
+        error,
         id,
+        info,
         kind: "checkbox",
         label: readStringProp(node.props, "label"),
         title,
@@ -448,18 +498,55 @@ function createFormFieldNode(
     ]
   }
 
+  if (node.type === ExtensionHostElement.FormDatePicker) {
+    return [
+      {
+        description,
+        error,
+        id,
+        info,
+        kind: "date-picker",
+        placeholder: readStringProp(node.props, "placeholder"),
+        title,
+        value: readDatePickerValueProp(node.props)
+      }
+    ]
+  }
+
   if (node.type === ExtensionHostElement.FormDropdown) {
     return [
       {
         description,
+        error,
         id,
+        info,
         items: directChildrenOfType(node, ExtensionHostElement.FormDropdownItem).map((item) => ({
+          icon: collectVisual(item, "icon"),
           title: readStringProp(item.props, "title") ?? "",
           value: readStringProp(item.props, "value") ?? ""
         })),
         kind: "dropdown",
         title,
         value: readStringProp(node.props, "value") ?? ""
+      }
+    ]
+  }
+
+  if (node.type === ExtensionHostElement.FormTagPicker) {
+    return [
+      {
+        description,
+        error,
+        id,
+        info,
+        items: directChildrenOfType(node, ExtensionHostElement.FormTagPickerItem).map((item) => ({
+          icon: collectVisual(item, "icon"),
+          title: readStringProp(item.props, "title") ?? "",
+          value: readStringProp(item.props, "value") ?? ""
+        })),
+        kind: "tag-picker",
+        title,
+        value: readStringArrayProp(node.props, "value")
       }
     ]
   }
@@ -490,9 +577,54 @@ function createFormFieldNode(
 function isFormFieldElement(node: RuntimeHostElementNode): boolean {
   return (
     node.type === ExtensionHostElement.FormCheckbox ||
+    node.type === ExtensionHostElement.FormDatePicker ||
     node.type === ExtensionHostElement.FormDropdown ||
     node.type === ExtensionHostElement.FormMessage ||
     node.type === ExtensionHostElement.FormSeparator ||
+    node.type === ExtensionHostElement.FormTagPicker ||
+    node.type === ExtensionHostElement.FormTextArea ||
+    node.type === ExtensionHostElement.FormTextField
+  )
+}
+
+function collectFormValues(
+  container: RuntimeHostContainer
+): Record<string, boolean | Date | null | string | string[]> {
+  const form = findFirstElement(container.children, ExtensionHostElement.Form)
+  if (!form) {
+    return {}
+  }
+
+  let fieldIndex = 0
+  const values: Record<string, boolean | Date | null | string | string[]> = {}
+  for (const field of directElementChildren(form)) {
+    if (!isSubmittableFormFieldElement(field)) {
+      continue
+    }
+
+    const id = readStringProp(field.props, "id") ?? `form-field-${fieldIndex}`
+    fieldIndex += 1
+
+    if (field.type === ExtensionHostElement.FormCheckbox) {
+      values[id] = readBooleanProp(field.props, "value", false)
+    } else if (field.type === ExtensionHostElement.FormDatePicker) {
+      values[id] = readDatePickerRawValueProp(field.props)
+    } else if (field.type === ExtensionHostElement.FormTagPicker) {
+      values[id] = readStringArrayProp(field.props, "value")
+    } else {
+      values[id] = readStringProp(field.props, "value") ?? ""
+    }
+  }
+
+  return values
+}
+
+function isSubmittableFormFieldElement(node: RuntimeHostElementNode): boolean {
+  return (
+    node.type === ExtensionHostElement.FormCheckbox ||
+    node.type === ExtensionHostElement.FormDatePicker ||
+    node.type === ExtensionHostElement.FormDropdown ||
+    node.type === ExtensionHostElement.FormTagPicker ||
     node.type === ExtensionHostElement.FormTextArea ||
     node.type === ExtensionHostElement.FormTextField
   )
@@ -527,12 +659,31 @@ function collectActionNodes(
     const actionKind = readStringProp(node.props, "actionKind")
     let handler: RuntimeActionHandler["handler"]
     if (actionKind === ExtensionHostActionKind.CopyToClipboard) {
-      const content = readStringProp(node.props, "content")
+      const content = readClipboardContentProp(node.props, "content")
       if (content === undefined) {
         return []
       }
 
       handler = () => requestWriteClipboardText(container, content)
+    } else if (actionKind === ExtensionHostActionKind.CreateQuicklink) {
+      const quicklink = readQuicklinkProp(node.props, "quicklink")
+      if (!quicklink) {
+        return []
+      }
+
+      handler = () =>
+        requestRegisterQuicklink(container, {
+          link: quicklink.link,
+          name: quicklink.name,
+          shortcut: readQuicklinkShortcutProp(node.props)
+        })
+    } else if (actionKind === ExtensionHostActionKind.Paste) {
+      const content = readClipboardContentProp(node.props, "content")
+      if (content === undefined) {
+        return []
+      }
+
+      handler = () => requestPasteClipboardText(container, content)
     } else if (actionKind === ExtensionHostActionKind.OpenInBrowser) {
       const url = readStringProp(node.props, "url")
       if (!url) {
@@ -540,6 +691,18 @@ function collectActionNodes(
       }
 
       handler = () => requestOpenExternal(container, url)
+    } else if (actionKind === ExtensionHostActionKind.SubmitForm) {
+      const onSubmit = node.props.onSubmit
+      if (typeof onSubmit === "function") {
+        handler = () => onSubmit(collectFormValues(container))
+      } else {
+        const onAction = node.props.onAction
+        if (typeof onAction !== "function") {
+          return []
+        }
+
+        handler = onAction as RuntimeActionHandler["handler"]
+      }
     } else {
       const onAction = node.props.onAction
       if (typeof onAction !== "function") {
@@ -550,14 +713,16 @@ function collectActionNodes(
     }
 
     const id = params.nextActionId()
-    container.actionHandlers.set(id, { handler })
+    const disabled = readBooleanProp(node.props, "disabled", false)
+    container.actionHandlers.set(id, { disabled, handler })
 
     return [
       {
-        disabled: readBooleanProp(node.props, "disabled", false),
+        disabled,
         icon: collectVisual(node, "icon"),
         id,
         sectionTitle: params.sectionTitle,
+        shortcut: readActionShortcutProp(node.props),
         style: readActionStyleProp(node.props),
         title
       }
@@ -578,6 +743,57 @@ function collectActionNodes(
   )
 }
 
+function readQuicklinkProp(
+  props: RuntimeHostProps,
+  name: string
+): { link: string; name?: string } | null {
+  const value = props[name]
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const record = value as { link?: unknown; name?: unknown }
+  if (typeof record.link !== "string" || record.link.length === 0) {
+    return null
+  }
+
+  return {
+    link: record.link,
+    ...(typeof record.name === "string" ? { name: record.name } : {})
+  }
+}
+
+function readQuicklinkShortcutProp(
+  props: RuntimeHostProps
+): { key: string; modifiers: string[]; platform: "macOS" | "Windows" } | undefined {
+  const shortcut = props.shortcut
+  if (!shortcut || typeof shortcut !== "object") {
+    return undefined
+  }
+
+  const shortcutRecord = shortcut as {
+    macOS?: { key?: unknown; modifiers?: unknown }
+    Windows?: { key?: unknown; modifiers?: unknown }
+  }
+  const platformShortcut = shortcutRecord.macOS ?? shortcutRecord.Windows
+  const platform = shortcutRecord.macOS ? "macOS" : "Windows"
+  if (
+    !platformShortcut ||
+    typeof platformShortcut.key !== "string" ||
+    !Array.isArray(platformShortcut.modifiers)
+  ) {
+    return undefined
+  }
+
+  return {
+    key: platformShortcut.key,
+    modifiers: platformShortcut.modifiers.filter(
+      (modifier): modifier is string => typeof modifier === "string"
+    ),
+    platform
+  }
+}
+
 async function requestWriteClipboardText(
   container: RuntimeHostContainer,
   text: string
@@ -590,6 +806,57 @@ async function requestWriteClipboardText(
     capability: "clipboard",
     id: container.nextHostRequestId(),
     method: "write-text",
+    payload: {
+      text
+    }
+  })
+  if (!response.ok) {
+    throw new Error(response.error.message)
+  }
+}
+
+async function requestRegisterQuicklink(
+  container: RuntimeHostContainer,
+  quicklink: {
+    link: string
+    name?: string
+    shortcut?: { key: string; modifiers: string[]; platform: "macOS" | "Windows" }
+  }
+): Promise<unknown> {
+  if (!container.requestHost) {
+    throw new Error("Extension runtime host request handler is not configured.")
+  }
+
+  const response: ExtensionHostResponse = await container.requestHost({
+    capability: "quicklinks",
+    id: container.nextHostRequestId(),
+    method: "register",
+    payload: {
+      extensionName: container.context.extensionName,
+      link: quicklink.link,
+      name: quicklink.name,
+      shortcut: quicklink.shortcut
+    }
+  })
+  if (!response.ok) {
+    throw new Error(response.error.message)
+  }
+
+  return response.result
+}
+
+async function requestPasteClipboardText(
+  container: RuntimeHostContainer,
+  text: string
+): Promise<void> {
+  if (!container.requestHost) {
+    throw new Error("Extension runtime host request handler is not configured.")
+  }
+
+  const response: ExtensionHostResponse = await container.requestHost({
+    capability: "clipboard",
+    id: container.nextHostRequestId(),
+    method: "paste-text",
     payload: {
       text
     }
@@ -661,12 +928,96 @@ function readActionStyleProp(props: RuntimeHostProps): ExtensionActionStyle {
   return props.style === "destructive" ? "destructive" : "regular"
 }
 
+function readActionShortcutProp(props: RuntimeHostProps): ExtensionActionNode["shortcut"] {
+  const shortcut = props.shortcut
+  if (!shortcut || typeof shortcut !== "object") {
+    return undefined
+  }
+
+  const shortcutRecord = shortcut as Record<string, unknown>
+  const platformShortcut =
+    readShortcutPlatform(shortcutRecord.macOS) ?? readShortcutPlatform(shortcutRecord.Windows)
+  if (!platformShortcut) {
+    return undefined
+  }
+
+  return {
+    key: platformShortcut.key,
+    modifiers: platformShortcut.modifiers.filter(
+      (modifier): modifier is string => typeof modifier === "string"
+    )
+  }
+}
+
+function readShortcutPlatform(value: unknown): { key: string; modifiers: unknown[] } | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined
+  }
+
+  const record = value as Record<string, unknown>
+  if (typeof record.key !== "string" || !Array.isArray(record.modifiers)) {
+    return undefined
+  }
+
+  return {
+    key: record.key,
+    modifiers: record.modifiers
+  }
+}
+
 function readBooleanProp(props: RuntimeHostProps, name: string, fallback: boolean): boolean {
   return typeof props[name] === "boolean" ? props[name] : fallback
 }
 
+function isListPaginationProp(value: unknown): value is {
+  hasMore: boolean
+  isLoading?: boolean
+  onLoadMore: () => Promise<void> | void
+} {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "hasMore" in value &&
+    typeof value.hasMore === "boolean" &&
+    "onLoadMore" in value &&
+    typeof value.onLoadMore === "function"
+  )
+}
+
 function readStringProp(props: RuntimeHostProps, name: string): string | undefined {
   return typeof props[name] === "string" ? props[name] : undefined
+}
+
+function readClipboardContentProp(props: RuntimeHostProps, name: string): string | undefined {
+  const value = props[name]
+  if (typeof value === "string") {
+    return value
+  }
+
+  if (!value || typeof value !== "object") {
+    return undefined
+  }
+
+  const content = value as { html?: unknown; text?: unknown }
+  return typeof content.text === "string"
+    ? content.text
+    : typeof content.html === "string"
+      ? content.html
+      : undefined
+}
+
+function readDatePickerValueProp(props: RuntimeHostProps): string {
+  const value = props.value
+  if (value instanceof Date) {
+    return value.toISOString().split("T")[0] ?? ""
+  }
+
+  return typeof value === "string" ? value : ""
+}
+
+function readDatePickerRawValueProp(props: RuntimeHostProps): Date | null | string {
+  const value = props.value
+  return value instanceof Date || value === null || typeof value === "string" ? value : ""
 }
 
 function readMenuBarIconNameProp(
@@ -678,6 +1029,14 @@ function readMenuBarIconNameProp(
 
 function readStringArrayProp(props: RuntimeHostProps, name: string): string[] {
   return Array.isArray(props[name]) ? props[name].filter((item) => typeof item === "string") : []
+}
+
+function readImageMask(value: object): ExtensionImageVisualNode["mask"] {
+  return "mask" in value && value.mask === "circle" ? "circle" : undefined
+}
+
+function readImageTintColor(value: object): string | undefined {
+  return "tintColor" in value ? resolveColorLike(value.tintColor as ColorLike) : undefined
 }
 
 function collectVisual(
@@ -726,6 +1085,10 @@ function serializeVisualChild(child: RuntimeHostChild): ExtensionVisualNode | un
     return inlineVisual(serializeVisualChildren(child.children))
   }
 
+  if (child.type === ExtensionHostElement.Image) {
+    return serializeImageVisual(child)
+  }
+
   if (isSvgHostElement(child)) {
     return {
       children: directElementChildren(child)
@@ -749,6 +1112,25 @@ function serializeSvgVisual(node: RuntimeHostElementNode): ExtensionSvgVisualNod
     props: createSvgProps(node.props),
     tagName: node.type
   }
+}
+
+function serializeImageVisual(node: RuntimeHostElementNode): ExtensionVisualNode | undefined {
+  const value = node.props.value
+  if (!value || typeof value !== "object" || !("source" in value)) {
+    return undefined
+  }
+
+  const source = (value as { source?: unknown }).source
+  if (typeof source === "string") {
+    return {
+      kind: "image",
+      mask: readImageMask(value),
+      source,
+      tintColor: readImageTintColor(value)
+    }
+  }
+
+  return inlineVisual(serializeVisualChildren(node.children))
 }
 
 function inlineVisual(children: ExtensionVisualNode[]): ExtensionVisualNode | undefined {

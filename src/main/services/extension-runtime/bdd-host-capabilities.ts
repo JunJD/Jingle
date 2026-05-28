@@ -1,7 +1,9 @@
 import type {
   ExtensionAiAskPayload,
+  ExtensionConfirmAlertPayload,
   ExtensionNavigationHostRequest,
-  ExtensionRuntimeHostCapability
+  ExtensionRuntimeHostCapability,
+  ExtensionToastPayload
 } from "@shared/extension-runtime-protocol"
 import type {
   NativeExtensionInvokeContext,
@@ -55,6 +57,13 @@ class BddExtensionRuntimeHostCapabilities implements ExtensionRuntimeHostCapabil
     return this.host.askAI(input)
   }
 
+  confirmAlert(
+    alert: ExtensionConfirmAlertPayload
+  ): ReturnType<ExtensionRuntimeHostCapabilities["confirmAlert"]> {
+    this.record("dialog", alert)
+    return this.host.confirmAlert(alert)
+  }
+
   getRuntimeCapabilities(
     params: Parameters<ExtensionRuntimeHostCapabilities["getRuntimeCapabilities"]>[0]
   ): ReturnType<ExtensionRuntimeHostCapabilities["getRuntimeCapabilities"]> {
@@ -67,9 +76,9 @@ class BddExtensionRuntimeHostCapabilities implements ExtensionRuntimeHostCapabil
     return this.host.getCommandPreferences(params)
   }
 
-  getExtensionPreferences(extensionName: string): ReturnType<
-    ExtensionRuntimeHostCapabilities["getExtensionPreferences"]
-  > {
+  getExtensionPreferences(
+    extensionName: string
+  ): ReturnType<ExtensionRuntimeHostCapabilities["getExtensionPreferences"]> {
     return this.host.getExtensionPreferences(extensionName)
   }
 
@@ -77,6 +86,24 @@ class BddExtensionRuntimeHostCapabilities implements ExtensionRuntimeHostCapabil
     params: ExtensionRuntimeStorageParams
   ): ReturnType<ExtensionRuntimeHostCapabilities["getStorageValue"]> {
     return this.host.getStorageValue(params)
+  }
+
+  listStorageValues(
+    params: Parameters<ExtensionRuntimeHostCapabilities["listStorageValues"]>[0]
+  ): ReturnType<ExtensionRuntimeHostCapabilities["listStorageValues"]> {
+    return this.host.listStorageValues(params)
+  }
+
+  removeStorageValue(
+    params: ExtensionRuntimeStorageParams
+  ): ReturnType<ExtensionRuntimeHostCapabilities["removeStorageValue"]> {
+    return this.host.removeStorageValue(params)
+  }
+
+  clearStorageValues(
+    params: Parameters<ExtensionRuntimeHostCapabilities["clearStorageValues"]>[0]
+  ): ReturnType<ExtensionRuntimeHostCapabilities["clearStorageValues"]> {
+    return this.host.clearStorageValues(params)
   }
 
   handleNavigationRequest(params: {
@@ -106,9 +133,29 @@ class BddExtensionRuntimeHostCapabilities implements ExtensionRuntimeHostCapabil
     return this.host.openExtensionSettings(params)
   }
 
-  openExternal(url: string): Promise<void> {
-    this.record("shell", { url })
-    return this.host.openExternal(url)
+  registerQuicklink(
+    params: Parameters<ExtensionRuntimeHostCapabilities["registerQuicklink"]>[0]
+  ): ReturnType<ExtensionRuntimeHostCapabilities["registerQuicklink"]> {
+    this.record("quicklinks", params.request)
+    return this.host.registerQuicklink(params)
+  }
+
+  openExternal(
+    params: Parameters<ExtensionRuntimeHostCapabilities["openExternal"]>[0]
+  ): Promise<void> {
+    this.record("shell", {
+      allowedUrlSchemes: params.allowedUrlSchemes,
+      application: params.application,
+      url: params.url
+    })
+    return this.host.openExternal(params)
+  }
+
+  showToast(
+    toast: ExtensionToastPayload
+  ): ReturnType<ExtensionRuntimeHostCapabilities["showToast"]> {
+    this.record("toast", toast)
+    return this.host.showToast(toast)
   }
 
   setStorageValue(
@@ -117,10 +164,27 @@ class BddExtensionRuntimeHostCapabilities implements ExtensionRuntimeHostCapabil
     return this.host.setStorageValue(params)
   }
 
-  writeClipboardText(text: string): ReturnType<
-    ExtensionRuntimeHostCapabilities["writeClipboardText"]
-  > {
-    this.record("clipboard", { text })
+  readClipboardText(): ReturnType<ExtensionRuntimeHostCapabilities["readClipboardText"]> {
+    this.record("clipboard", { method: "read-text" })
+    return this.host.readClipboardText()
+  }
+
+  readSelectedText(): ReturnType<ExtensionRuntimeHostCapabilities["readSelectedText"]> {
+    this.record("clipboard", { method: "read-selected-text" })
+    return this.host.readSelectedText()
+  }
+
+  pasteClipboardText(
+    text: string
+  ): ReturnType<ExtensionRuntimeHostCapabilities["pasteClipboardText"]> {
+    this.record("clipboard", { method: "paste-text", text })
+    return this.host.pasteClipboardText(text)
+  }
+
+  writeClipboardText(
+    text: string
+  ): ReturnType<ExtensionRuntimeHostCapabilities["writeClipboardText"]> {
+    this.record("clipboard", { method: "write-text", text })
     return this.host.writeClipboardText(text)
   }
 

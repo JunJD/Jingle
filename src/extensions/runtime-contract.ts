@@ -7,12 +7,12 @@ export interface NativeExtensionRuntimeNoViewRunContext extends ExtensionRuntime
 }
 
 export interface NativeExtensionRuntimeViewCommandEntry {
-  Component: ComponentType
+  Component: ComponentType<Record<string, unknown>>
   mode: "view"
 }
 
 export interface NativeExtensionRuntimeMenuBarCommandEntry {
-  Component: ComponentType
+  Component: ComponentType<Record<string, unknown>>
   mode: "menu-bar"
 }
 
@@ -31,20 +31,17 @@ export interface NativeExtensionRuntimePackage {
   extensionName: string
 }
 
-export interface NativeExtensionRuntimeViewCommandDefinition
-  extends NativeExtensionRuntimeViewCommandEntry {
+export interface NativeExtensionRuntimeViewCommandDefinition extends NativeExtensionRuntimeViewCommandEntry {
   commandName: string
   extensionName: string
 }
 
-export interface NativeExtensionRuntimeMenuBarCommandDefinition
-  extends NativeExtensionRuntimeMenuBarCommandEntry {
+export interface NativeExtensionRuntimeMenuBarCommandDefinition extends NativeExtensionRuntimeMenuBarCommandEntry {
   commandName: string
   extensionName: string
 }
 
-export interface NativeExtensionRuntimeNoViewCommandDefinition
-  extends NativeExtensionRuntimeNoViewCommandEntry {
+export interface NativeExtensionRuntimeNoViewCommandDefinition extends NativeExtensionRuntimeNoViewCommandEntry {
   commandName: string
   extensionName: string
 }

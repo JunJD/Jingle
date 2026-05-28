@@ -14,8 +14,12 @@ import type {
   ExtensionRuntimeSessionKind,
   ExtensionRuntimeToHostMessage,
   ExtensionSurfaceSnapshot,
+  ExtensionConfirmAlertPayload,
   ExtensionNavigationHostRequest,
-  ExtensionRuntimeHostCapability
+  ExtensionQuicklinksHostRequest,
+  ExtensionRuntimeHostCapability,
+  ExtensionRuntimeStorageScope,
+  ExtensionToastPayload
 } from "@shared/extension-runtime-protocol"
 import type { NativeExtensionInvokeRequest } from "@shared/native-extensions"
 import type { ExtensionRuntimeProcess, ExtensionRuntimeProcessLauncher } from "./runtime-process"
@@ -32,10 +36,17 @@ type MaybePromise<T> = T | Promise<T>
 export interface ExtensionRuntimeStorageParams {
   context: ExtensionRuntimeLaunchContext
   key: string
+  scope: ExtensionRuntimeStorageScope
+}
+
+export interface ExtensionRuntimeStorageScopeParams {
+  context: ExtensionRuntimeLaunchContext
+  scope: ExtensionRuntimeStorageScope
 }
 
 export interface ExtensionRuntimeHostCapabilities {
   askAI: (input: ExtensionAiAskPayload) => Promise<string>
+  confirmAlert: (alert: ExtensionConfirmAlertPayload) => MaybePromise<boolean>
   getRuntimeCapabilities: (params: {
     commandName: string
     extensionName: string
@@ -46,6 +57,15 @@ export interface ExtensionRuntimeHostCapabilities {
   }) => MaybePromise<Record<string, unknown>>
   getExtensionPreferences: (extensionName: string) => MaybePromise<Record<string, unknown>>
   getStorageValue: (params: ExtensionRuntimeStorageParams) => MaybePromise<unknown>
+  listStorageValues: (
+    params: ExtensionRuntimeStorageScopeParams
+  ) => MaybePromise<Record<string, unknown>>
+  removeStorageValue: (params: ExtensionRuntimeStorageParams) => MaybePromise<void>
+  clearStorageValues: (params: ExtensionRuntimeStorageScopeParams) => MaybePromise<void>
+  pasteClipboardText: (text: string) => MaybePromise<void>
+  readClipboardText: () => MaybePromise<string>
+  readSelectedText: () => MaybePromise<string>
+  showToast: (toast: ExtensionToastPayload) => MaybePromise<void>
   handleNavigationRequest: (params: {
     request: ExtensionNavigationHostRequest
     sessionId: string
@@ -55,11 +75,28 @@ export interface ExtensionRuntimeHostCapabilities {
     commandName?: string
     extensionName: string
   }) => MaybePromise<void>
-  openExternal: (url: string) => Promise<void>
+  openExternal: (params: ExtensionRuntimeOpenExternalParams) => Promise<void>
+  registerQuicklink: (params: ExtensionRuntimeRegisterQuicklinkParams) => MaybePromise<unknown>
   setStorageValue: (
     params: ExtensionRuntimeStorageParams & { value: unknown }
   ) => MaybePromise<void>
   writeClipboardText: (text: string) => MaybePromise<void>
+}
+
+export interface ExtensionRuntimeOpenExternalParams {
+  allowedUrlSchemes: readonly string[]
+  application?: {
+    bundleId?: string
+    name?: string
+    path?: string
+  }
+  context: ExtensionRuntimeLaunchContext
+  url: string
+}
+
+export interface ExtensionRuntimeRegisterQuicklinkParams {
+  context: ExtensionRuntimeLaunchContext
+  request: ExtensionQuicklinksHostRequest["payload"]
 }
 
 export type ExtensionRuntimeSurfaceListener = (
@@ -179,7 +216,9 @@ export class ExtensionRuntimeManager {
     return toSessionInfo(session)
   }
 
-  async startForeground(context: ExtensionRuntimeLaunchContext): Promise<ExtensionRuntimeSessionInfo> {
+  async startForeground(
+    context: ExtensionRuntimeLaunchContext
+  ): Promise<ExtensionRuntimeSessionInfo> {
     const session = await this.startSession("foreground", context)
     if (this.foregroundSession) {
       this.stopSession(this.foregroundSession)
@@ -326,23 +365,59 @@ export class ExtensionRuntimeManager {
         if (request.method === "get") {
           return this.options.host.getStorageValue({
             context: session.context,
-            key: request.payload.key
+            key: request.payload.key,
+            scope: request.payload.scope ?? "command"
           })
+        }
+
+        if (request.method === "remove") {
+          await this.options.host.removeStorageValue({
+            context: session.context,
+            key: request.payload.key,
+            scope: request.payload.scope ?? "command"
+          })
+          return null
+        }
+
+        if (request.method === "all-items") {
+          return this.options.host.listStorageValues({
+            context: session.context,
+            scope: request.payload.scope ?? "command"
+          })
+        }
+
+        if (request.method === "clear") {
+          await this.options.host.clearStorageValues({
+            context: session.context,
+            scope: request.payload.scope ?? "command"
+          })
+          return null
         }
 
         await this.options.host.setStorageValue({
           context: session.context,
           key: request.payload.key,
+          scope: request.payload.scope ?? "command",
           value: request.payload.value
         })
         return null
       case "shell":
-        await this.options.host.openExternal(request.payload.url)
+        await this.options.host.openExternal({
+          allowedUrlSchemes: request.payload.allowedUrlSchemes ?? [],
+          application: request.payload.application,
+          context: session.context,
+          url: request.payload.url
+        })
         return null
       case "settings":
         assertOwnExtension(session, request.payload.extensionName)
         await this.options.host.openExtensionSettings(request.payload)
         return null
+      case "quicklinks":
+        return this.options.host.registerQuicklink({
+          context: session.context,
+          request: request.payload
+        })
       case "rpc":
         assertOwnExtension(session, request.payload.extensionName)
         return this.options.host.invokeNativeExtension(request.payload)
@@ -352,7 +427,25 @@ export class ExtensionRuntimeManager {
           sessionId: session.sessionId
         })
       case "clipboard":
+        if (request.method === "read-text") {
+          return this.options.host.readClipboardText()
+        }
+
+        if (request.method === "read-selected-text") {
+          return this.options.host.readSelectedText()
+        }
+
+        if (request.method === "paste-text") {
+          await this.options.host.pasteClipboardText(request.payload.text)
+          return null
+        }
+
         await this.options.host.writeClipboardText(request.payload.text)
+        return null
+      case "dialog":
+        return this.options.host.confirmAlert(request.payload)
+      case "toast":
+        await this.options.host.showToast(request.payload)
         return null
       case "ai":
         return this.options.host.askAI(request.payload)

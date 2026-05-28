@@ -313,6 +313,15 @@ importers:
         specifier: ^4.0.0
         version: 4.3.6
 
+  packages/extension-utils:
+    dependencies:
+      '@openwork/extension-api':
+        specifier: workspace:*
+        version: link:../extension-api
+      react:
+        specifier: ^19.2.1
+        version: 19.2.4
+
 packages:
 
   7zip-bin@5.2.0:

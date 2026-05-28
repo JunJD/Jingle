@@ -222,6 +222,7 @@ export function useActiveLauncherCommand(
       activeNoViewCommand.run({
         commandPreferences: activeCommandPreferences ?? {},
         initialAction: route.initialAction,
+        launchProps: route.launchProps,
         navigation,
         seedQuery: route.seedQuery
       })

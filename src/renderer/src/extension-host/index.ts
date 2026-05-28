@@ -148,6 +148,7 @@ export const nativeLauncherCommandOwners = getSupportedNativeExtensionManifests(
               extensionName: extension.name,
               extensionPreferences: {},
               initialAction: context.initialAction,
+              launchProps: context.launchProps,
               locale: agentConfig.locale,
               mode: "no-view",
               seedQuery: context.seedQuery
