@@ -6,6 +6,10 @@ import type {
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionPreferenceSchema
 } from "@shared/native-extensions"
+import {
+  getNativeExtensionApplicationPreferenceLabel,
+  normalizeNativeExtensionApplicationPreferenceValue
+} from "@shared/native-extensions"
 import type { SettingsWindowTarget } from "@shared/settings-window"
 import { ExtensionIcon } from "@/extensions/ExtensionIcon"
 import { getSettingsCopy } from "./copy"
@@ -96,6 +100,16 @@ function PreferenceField(props: {
             </option>
           ))}
         </SettingsSelect>
+      ) : preference.type === "appPicker" ? (
+        <SettingsTextInput
+          type="text"
+          value={getNativeExtensionApplicationPreferenceLabel(value)}
+          placeholder={preference.placeholder ?? "Application name"}
+          onChange={(event) => {
+            onChange(normalizeNativeExtensionApplicationPreferenceValue(event.target.value))
+          }}
+          spellCheck={false}
+        />
       ) : preference.type === "password" ? (
         <SettingsPasswordInput
           value={String(value ?? "")}

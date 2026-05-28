@@ -18,6 +18,42 @@ export interface NativeExtensionApplicationPreferenceValue {
   path?: string
 }
 
+export function normalizeNativeExtensionApplicationPreferenceValue(
+  value: unknown
+): NativeExtensionApplicationPreferenceValue | null {
+  if (typeof value === "string") {
+    const name = value.trim()
+    return name ? { name } : null
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null
+  }
+
+  const raw = value as Record<string, unknown>
+  const application: NativeExtensionApplicationPreferenceValue = {}
+  if (typeof raw.name === "string" && raw.name.trim()) {
+    application.name = raw.name.trim()
+  }
+  if (typeof raw.bundleId === "string" && raw.bundleId.trim()) {
+    application.bundleId = raw.bundleId.trim()
+  }
+  if (typeof raw.path === "string" && raw.path.trim()) {
+    application.path = raw.path.trim()
+  }
+
+  return Object.keys(application).length > 0 ? application : null
+}
+
+export function getNativeExtensionApplicationPreferenceLabel(value: unknown): string {
+  if (typeof value === "string") {
+    return value
+  }
+
+  const application = normalizeNativeExtensionApplicationPreferenceValue(value)
+  return application?.name ?? application?.bundleId ?? application?.path ?? ""
+}
+
 export interface NativeExtensionPreferenceSchema {
   data?: Array<{ title?: string; value?: string }>
   default?: unknown

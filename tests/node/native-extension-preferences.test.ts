@@ -163,6 +163,32 @@ test("saving non-secret extension preferences preserves stored password secrets"
   assert.equal(resolvedRecord.apiBaseUrl, "https://github.changed.test/api/v3")
 })
 
+test("native extension appPicker preferences normalize to application records", () => {
+  const defaultRecord = preferences.getNativeExtensionPreferenceRecord("notion")
+  assert.deepEqual(defaultRecord.open_in, { name: "Notion" })
+
+  const stringRecord = preferences.setNativeExtensionPreferenceRecord("notion", {
+    open_in: " Notion "
+  })
+  assert.deepEqual(stringRecord.open_in, { name: "Notion" })
+  assert.deepEqual(preferences.getResolvedNativeExtensionPreferenceRecord("notion").open_in, {
+    name: "Notion"
+  })
+
+  const objectRecord = preferences.setNativeExtensionPreferenceRecord("notion", {
+    open_in: {
+      bundleId: " notion.id ",
+      name: " Notion ",
+      path: " /Applications/Notion.app "
+    }
+  })
+  assert.deepEqual(objectRecord.open_in, {
+    bundleId: "notion.id",
+    name: "Notion",
+    path: "/Applications/Notion.app"
+  })
+})
+
 test("resolved extension preferences do not read legacy command-scoped shared secrets", () => {
   seedLegacyGitHubCommandToken("ghp_legacy_secret")
 

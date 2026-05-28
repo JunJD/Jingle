@@ -16,6 +16,7 @@ import type {
   NativeExtensionPreferenceSchema,
   NativeExtensionPreferencesState
 } from "@shared/native-extensions"
+import { normalizeNativeExtensionApplicationPreferenceValue } from "@shared/native-extensions"
 import {
   DEFAULT_LAUNCHER_SETTINGS,
   normalizeLauncherSettings,
@@ -283,7 +284,7 @@ function getCommandPreferenceSchema(
 
 function getDefaultPreferenceValue(preference: NativeExtensionPreferenceSchema): unknown {
   if (preference.default !== undefined) {
-    return preference.default
+    return normalizePreferenceValue(preference, preference.default)
   }
 
   if (preference.type === "checkbox") {
@@ -295,6 +296,17 @@ function getDefaultPreferenceValue(preference: NativeExtensionPreferenceSchema):
   }
 
   return ""
+}
+
+function normalizePreferenceValue(
+  preference: NativeExtensionPreferenceSchema,
+  value: unknown
+): unknown {
+  if (preference.type === "appPicker") {
+    return normalizeNativeExtensionApplicationPreferenceValue(value)
+  }
+
+  return value
 }
 
 function assertSecretStorageAvailable(): void {
@@ -361,7 +373,10 @@ function resolveCommandPreferenceRecord(params: {
   return Object.fromEntries(
     schema.map((preference) => [
       preference.name,
-      params.nextRecord[preference.name] ?? getDefaultPreferenceValue(preference)
+      normalizePreferenceValue(
+        preference,
+        params.nextRecord[preference.name] ?? getDefaultPreferenceValue(preference)
+      )
     ])
   )
 }
@@ -375,7 +390,10 @@ function resolveExtensionPreferenceRecord(params: {
   return Object.fromEntries(
     schema.map((preference) => [
       preference.name,
-      params.nextRecord[preference.name] ?? getDefaultPreferenceValue(preference)
+      normalizePreferenceValue(
+        preference,
+        params.nextRecord[preference.name] ?? getDefaultPreferenceValue(preference)
+      )
     ])
   )
 }
@@ -539,7 +557,10 @@ function stripPasswordPreferenceValues(
       preference.name,
       isPasswordPreference(preference)
         ? getDefaultPreferenceValue(preference)
-        : (record[preference.name] ?? getDefaultPreferenceValue(preference))
+        : normalizePreferenceValue(
+            preference,
+            record[preference.name] ?? getDefaultPreferenceValue(preference)
+          )
     ])
   )
 }
