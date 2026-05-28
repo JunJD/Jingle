@@ -11,6 +11,7 @@ import {
   listSourceFiles,
   loadNativeExtensionManifest,
   parseSourceFile,
+  repoRoot,
   resolveExtensionCommandFile,
   resolveImportPath,
   srcRoot,
@@ -27,7 +28,9 @@ function isRendererImportOwner(repoFilePath) {
     isExact(repoFilePath, "src/extensions/runtime-metadata.ts") ||
     isExact(repoFilePath, "src/extensions/runtime-metadata-packages.ts") ||
     /^src\/extensions\/[^/]+\/manifest\.ts$/.test(repoFilePath) ||
-    /^src\/extensions\/[^/]+\/runtime-metadata\.ts$/.test(repoFilePath)
+    /^src\/extensions\/[^/]+\/runtime-metadata\.ts$/.test(repoFilePath) ||
+    /^extensions\/[^/]+\/manifest\.ts$/.test(repoFilePath) ||
+    /^extensions\/[^/]+\/runtime-metadata\.ts$/.test(repoFilePath)
   )
 }
 
@@ -79,9 +82,10 @@ console.error(formatViolations("runtime command renderer import check", violatio
 process.exit(1)
 
 function listRendererReachableRootFiles() {
-  return listSourceFiles(srcRoot).filter((absoluteFilePath) =>
-    isRendererImportOwner(toRepoPath(absoluteFilePath))
-  )
+  return [
+    ...listSourceFiles(srcRoot),
+    ...listSourceFiles(path.join(repoRoot, "extensions"))
+  ].filter((absoluteFilePath) => isRendererImportOwner(toRepoPath(absoluteFilePath)))
 }
 
 function walkRendererImportGraph(rootFilePath, currentFilePath, importStack, visited = new Set()) {
@@ -189,7 +193,8 @@ function collectImportedFilesByBinding(fromFilePath, sourceFile) {
     }
 
     const resolvedPath = path.resolve(resolved)
-    if (!isUnder(toRepoPath(resolvedPath), "src/extensions/")) {
+    const repoResolvedPath = toRepoPath(resolvedPath)
+    if (!isUnder(repoResolvedPath, "src/extensions/") && !isUnder(repoResolvedPath, "extensions/")) {
       continue
     }
 

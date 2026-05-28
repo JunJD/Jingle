@@ -10,9 +10,14 @@ import {
 } from "./lib/architecture-guardrails.mjs"
 
 const runtimeApiCapabilityByExport = new Map([
+  ["Clipboard", "clipboard"],
+  ["confirmAlert", "dialog"],
   ["createNativeExtensionClient", "rpc"],
+  ["closeMainWindow", "navigation"],
+  ["LocalStorage", "storage"],
   ["openExternal", "shell"],
   ["openNativeExtensionSettings", "settings"],
+  ["showToast", "toast"],
   ["useExtensionStorageState", "storage"],
   ["useNativeCommandPreferences", "preferences"],
   ["useNativeExtensionNavigation", "navigation"],
@@ -22,13 +27,15 @@ const runtimeApiCapabilityByExport = new Map([
 const hostCapabilities = new Set([
   "ai",
   "clipboard",
+  "dialog",
   "navigation",
   "preferences",
   "rpc",
   "scheduler",
   "settings",
   "shell",
-  "storage"
+  "storage",
+  "toast"
 ])
 
 const violations = []
@@ -117,6 +124,15 @@ function collectRuntimeCapabilityUsages(absoluteFilePath) {
     }
 
     if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
+      const importedExportName = runtimeApiLocals.get(node.expression.text)
+      const importedExportCapability = importedExportName
+        ? runtimeApiCapabilityByExport.get(importedExportName)
+        : null
+
+      if (importedExportCapability) {
+        usages.push(toUsage(sourceFile, absoluteFilePath, node, importedExportCapability))
+      }
+
       const actionCapability = getActionCapability(
         runtimeApiLocals,
         node.expression.text,
@@ -149,7 +165,10 @@ function collectRuntimeApiLocals(sourceFile) {
       continue
     }
 
-    if (!statement.moduleSpecifier.text.endsWith("runtime-api")) {
+    if (
+      !statement.moduleSpecifier.text.endsWith("runtime-api") &&
+      statement.moduleSpecifier.text !== "@openwork/extension-api"
+    ) {
       continue
     }
 
@@ -194,6 +213,10 @@ function getActionCapability(runtimeApiLocals, localName, propertyName) {
 
   if (propertyName === "CopyToClipboard") {
     return "clipboard"
+  }
+
+  if (propertyName === "Push") {
+    return "navigation"
   }
 
   return null

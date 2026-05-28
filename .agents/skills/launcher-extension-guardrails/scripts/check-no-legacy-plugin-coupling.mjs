@@ -19,7 +19,10 @@ const legacyMatchers = [
 
 const violations = []
 
-for (const absoluteFilePath of listSourceFiles(path.join(srcRoot, "extensions"))) {
+for (const absoluteFilePath of [
+  ...listSourceFiles(path.join(srcRoot, "extensions")),
+  ...listSourceFiles(path.join(repoRoot, "extensions"))
+]) {
   const repoFilePath = toRepoPath(absoluteFilePath)
   const imports = collectImports(absoluteFilePath)
 
@@ -55,7 +58,7 @@ console.error(formatViolations("no legacy plugin coupling check", violations))
 process.exit(1)
 
 function shouldCheck(file, target) {
-  if (!isUnder(file, "src/extensions/")) {
+  if (!isUnder(file, "src/extensions/") && !isUnder(file, "extensions/")) {
     return false
   }
 

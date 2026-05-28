@@ -105,7 +105,7 @@ function compareRegistryCoverage(file, registryExtensionIds) {
     if (!registryExtensionIds.has(extensionId)) {
       violations.push({
         file,
-        reason: `extension "${extensionId}" 存在于 src/extensions/${extensionId}，但没有被顶层 registry 收录`
+        reason: `extension "${extensionId}" 存在于 extension package root，但没有被顶层 registry 收录`
       })
     }
   }
@@ -114,7 +114,7 @@ function compareRegistryCoverage(file, registryExtensionIds) {
     if (!directoryExtensionIds.has(extensionId)) {
       violations.push({
         file,
-        reason: `顶层 registry 收录了 extension "${extensionId}"，但 src/extensions/${extensionId} 不存在`
+        reason: `顶层 registry 收录了 extension "${extensionId}"，但 extension package root 不存在`
       })
     }
   }
