@@ -1,8 +1,13 @@
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useLauncherCommandShortcut } from "@/shortcuts/format-shortcut"
 import { useShortcutCommandHandler } from "@/shortcuts/shortcut-context"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
-import { resolveActionPanelShortcutOpenState } from "./controller-core"
+import {
+  findFirstExecutableLauncherAction,
+  hasLauncherActionPanelEntries,
+  resolveActionPanelShortcutOpenState,
+  resolveLauncherActionShortcutMatch
+} from "./controller-core"
 import type { LauncherActionController, LauncherActionDescriptor } from "./model"
 
 function isRichTextInputTarget(target: EventTarget | null): boolean {
@@ -13,6 +18,23 @@ function isRichTextInputTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLTextAreaElement || target.isContentEditable
 }
 
+function isTextInputTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    target.isContentEditable
+  )
+}
+
+function hasModifierKey(event: KeyboardEvent): boolean {
+  return event.metaKey || event.ctrlKey || event.altKey || event.shiftKey
+}
+
 export function useLauncherActionController(params: {
   actions: LauncherActionDescriptor[]
   primaryAction?: LauncherActionDescriptor | null
@@ -20,9 +42,17 @@ export function useLauncherActionController(params: {
 }): LauncherActionController {
   const { actions, primaryAction: explicitPrimaryAction, primaryActionFallbackTitle } = params
   const [showActions, setShowActions] = useState(false)
-  const primaryAction = explicitPrimaryAction ?? actions[0] ?? null
+  const enabledActions = actions.filter((action) => !action.disabled)
+  const primaryAction =
+    explicitPrimaryAction && !explicitPrimaryAction.disabled
+      ? explicitPrimaryAction
+      : explicitPrimaryAction === undefined
+        ? findFirstExecutableLauncherAction(enabledActions)
+        : null
   const canOpenActions =
-    explicitPrimaryAction !== undefined && explicitPrimaryAction !== null ? actions.length > 0 : actions.length > 1
+    explicitPrimaryAction !== undefined && explicitPrimaryAction !== null
+      ? enabledActions.length > 0
+      : hasLauncherActionPanelEntries(enabledActions)
   const actionPanelShortcut = useLauncherCommandShortcut(LAUNCHER_COMMAND_IDS.actionsOpen)
   const primaryActionShortcut = useLauncherCommandShortcut(
     LAUNCHER_COMMAND_IDS.actionsExecutePrimary
@@ -70,12 +100,40 @@ export function useLauncherActionController(params: {
     },
     [executePrimaryAction, primaryAction]
   )
+  const handleActionShortcut = useCallback(
+    (event: KeyboardEvent): void => {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        (isTextInputTarget(event.target) && !hasModifierKey(event))
+      ) {
+        return
+      }
+
+      const action = resolveLauncherActionShortcutMatch(enabledActions, event)
+      if (!action) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      void Promise.resolve(action.onAction()).finally(closeActions)
+    },
+    [closeActions, enabledActions]
+  )
 
   useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.actionsOpen, handleOpenActionsShortcut)
   useShortcutCommandHandler(
     LAUNCHER_COMMAND_IDS.actionsExecutePrimary,
     handleExecutePrimaryShortcut
   )
+  useEffect(() => {
+    window.addEventListener("keydown", handleActionShortcut, { capture: true })
+
+    return () => {
+      window.removeEventListener("keydown", handleActionShortcut, { capture: true })
+    }
+  }, [handleActionShortcut])
 
   return {
     actionPanelShortcut,

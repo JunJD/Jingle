@@ -1,4 +1,5 @@
-import { Fragment, useState } from "react"
+import { Fragment, useMemo, useState } from "react"
+import { ChevronRight } from "lucide-react"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { cn } from "@/lib/utils"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
@@ -34,14 +35,36 @@ export function LauncherActionOverlay(props: {
   surfaceId?: string
 }): React.JSX.Element {
   const { actions, onClose, surfaceId = "launcher-action-panel" } = props
-  const groupedActions = groupActionsBySection(actions)
+  const [submenuStack, setSubmenuStack] = useState<
+    Array<{ actions: LauncherActionDescriptor[]; title: string }>
+  >([])
+  const activeMenu = submenuStack[submenuStack.length - 1] ?? null
+  const visibleActions = activeMenu?.actions ?? actions
+  const groupedActions = useMemo(() => groupActionsBySection(visibleActions), [visibleActions])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const flatActions = groupedActions.flatMap((group) => group.actions)
   const maxSelectedIndex = Math.max(flatActions.length - 1, 0)
   const activeSelectedIndex = Math.min(selectedIndex, maxSelectedIndex)
+  const enterSubmenu = (action: LauncherActionDescriptor): void => {
+    if (!action.children || action.children.length === 0) {
+      return
+    }
+
+    setSubmenuStack((current) => [...current, { actions: action.children ?? [], title: action.title }])
+    setSelectedIndex(0)
+  }
+  const popSubmenu = (): void => {
+    setSubmenuStack((current) => current.slice(0, -1))
+    setSelectedIndex(0)
+  }
   const executeSelectedAction = (): void => {
     const selectedAction = flatActions[activeSelectedIndex]
-    if (!selectedAction) {
+    if (!selectedAction || selectedAction.disabled) {
+      return
+    }
+
+    if (selectedAction.children && selectedAction.children.length > 0) {
+      enterSubmenu(selectedAction)
       return
     }
 
@@ -49,7 +72,14 @@ export function LauncherActionOverlay(props: {
   }
 
   useShortcutScopeLayer(ACTION_PANEL_SHORTCUT_SCOPES)
-  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.actionPanelClose, onClose)
+  useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.actionPanelClose, () => {
+    if (submenuStack.length > 0) {
+      popSubmenu()
+      return
+    }
+
+    onClose()
+  })
   useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.actionPanelMoveSelectionDown, () => {
     setSelectedIndex((current) => {
       const boundedCurrent = Math.min(current, maxSelectedIndex)
@@ -68,6 +98,18 @@ export function LauncherActionOverlay(props: {
         onClick={(event) => event.stopPropagation()}
       >
         <div className="max-h-[var(--launcher-action-panel-max-h)] overflow-y-auto py-[var(--ow-space-2)]">
+          {activeMenu ? (
+            <div className="border-b border-border/70 px-[var(--ow-space-2)] pb-[var(--ow-space-2)]">
+              <button
+                type="button"
+                onClick={popSubmenu}
+                className="flex h-[var(--ow-control-h-lg)] w-full items-center gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-3)] text-left [font-size:var(--ow-font-body)] text-muted-foreground transition hover:bg-background-secondary/70"
+              >
+                <span className="rotate-180 [font-size:var(--ow-font-title)] leading-none">›</span>
+                <span className="truncate">{activeMenu.title}</span>
+              </button>
+            </div>
+          ) : null}
           {groupedActions.map((group, groupIndex) => (
             <Fragment key={`launcher-action-group-${groupIndex}`}>
               {group.title ? (
@@ -84,12 +126,22 @@ export function LauncherActionOverlay(props: {
                     key={action.id}
                     type="button"
                     onClick={() => {
-                      void Promise.resolve(action.onAction()).finally(onClose)
+                      if (action.disabled) {
+                        return
+                      }
+
+                      if (action.children && action.children.length > 0) {
+                        enterSubmenu(action)
+                      } else {
+                        void Promise.resolve(action.onAction()).finally(onClose)
+                      }
                     }}
+                    disabled={action.disabled}
                     className={cn(
                       "mx-[var(--ow-space-2)] flex h-[var(--ow-control-h-lg)] w-[calc(100%-(var(--ow-space-2)*2))] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-3)] text-left [font-size:var(--ow-font-body)] transition",
                       isSelected ? "bg-background-secondary" : "hover:bg-background-secondary/70",
-                      action.style === "destructive" ? "text-red-500" : "text-foreground"
+                      action.style === "destructive" ? "text-red-500" : "text-foreground",
+                      action.disabled ? "cursor-default opacity-45" : null
                     )}
                   >
                     <div className="flex min-w-0 items-center gap-[var(--ow-gap-md)]">
@@ -105,6 +157,8 @@ export function LauncherActionOverlay(props: {
                       <span className="launcher-shortcut shrink-0 [font-size:var(--ow-font-meta)] text-muted-foreground">
                         {action.shortcut}
                       </span>
+                    ) : action.children && action.children.length > 0 ? (
+                      <ChevronRight className="size-[var(--ow-icon-sm)] shrink-0 text-muted-foreground" />
                     ) : null}
                   </button>
                 )

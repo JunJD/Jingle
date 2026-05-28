@@ -17,6 +17,7 @@ import type {
 
 test("showToast sends toast payloads through the runtime toast host request", async () => {
   const requests: ExtensionRuntimeHostRequestInput[] = []
+  const toastActions: Array<() => Promise<void> | void> = []
   const navigation = createExtensionRuntimeNavigation({
     requestHost: async (request) => resolveRuntimeRequest(request, requests)
   })
@@ -25,6 +26,11 @@ test("showToast sends toast payloads through the runtime toast host request", as
     {
       ...createLaunchContext(),
       navigation,
+      registerToastAction: (handler) => {
+        const id = `toast-action-${toastActions.length}`
+        toastActions.push(handler)
+        return { id }
+      },
       requestHost: async (request) => resolveRuntimeRequest(request, requests)
     },
     async () => {
@@ -32,6 +38,18 @@ test("showToast sends toast payloads through the runtime toast host request", as
         message: "Page title",
         primaryAction: {
           onAction: () => undefined,
+          shortcut: {
+            macOS: { key: "o", modifiers: ["cmd"] },
+            Windows: { key: "o", modifiers: ["ctrl"] }
+          },
+          title: "Open Page"
+        },
+        secondaryAction: {
+          onAction: () => undefined,
+          shortcut: {
+            macOS: { key: "c", modifiers: ["cmd", "shift"] },
+            Windows: { key: "c", modifiers: ["ctrl", "shift"] }
+          },
           title: "Copy URL"
         },
         style: Toast.Style.Success,
@@ -47,14 +65,27 @@ test("showToast sends toast payloads through the runtime toast host request", as
       payload: {
         message: "Page title",
         primaryAction: {
+          id: "toast-action-0",
+          shortcut: {
+            key: "o",
+            modifiers: ["cmd"]
+          },
+          title: "Open Page"
+        },
+        secondaryAction: {
+          id: "toast-action-1",
+          shortcut: {
+            key: "c",
+            modifiers: ["cmd", "shift"]
+          },
           title: "Copy URL"
         },
-        secondaryAction: undefined,
         style: "success",
         title: "Page created"
       }
     }
   ])
+  assert.equal(toastActions.length, 2)
 })
 
 test("showFailureToast maps errors to failure toast host requests", async () => {

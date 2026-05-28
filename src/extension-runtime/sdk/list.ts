@@ -1,7 +1,17 @@
-import { createElement, type ReactElement, type ReactNode } from "react"
+import {
+  createElement,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode
+} from "react"
 import { ExtensionHostElement } from "./host-elements"
-import { useRuntimeSurfaceNavigationProps } from "./context"
+import { useExtensionRuntimeSdkOptional, useRuntimeSurfaceNavigationProps } from "./context"
 import { createVisualElement, normalizeVisual, type ColorLike, type IconLike } from "./visual"
+
+const LIST_DROPDOWN_STORE_VALUE_KEY = "list-dropdown"
 
 export interface RuntimeListProps {
   actions?: ReactNode
@@ -129,8 +139,87 @@ function ListEmptyView(props: RuntimeListEmptyViewProps): ReactElement {
 }
 
 function ListDropdown(props: RuntimeListDropdownProps): ReactElement {
-  const { children, ...hostProps } = props
-  return createElement(ExtensionHostElement.ListDropdown, hostProps, children)
+  const { children, onChange, storeValue, value, ...hostProps } = props
+  const sdk = useExtensionRuntimeSdkOptional()
+  const [storedValue, setStoredValue] = useState<string | undefined>(undefined)
+  const hasLoadedRef = useRef(false)
+  const onChangeRef = useRef(onChange)
+  const valueRef = useRef(value)
+  const resolvedValue = storeValue ? value ?? storedValue : value
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+    valueRef.current = value
+  }, [onChange, value])
+
+  useEffect(() => {
+    if (!storeValue || !sdk) {
+      hasLoadedRef.current = false
+      return
+    }
+
+    let cancelled = false
+
+    void Promise.resolve(
+      sdk.requestHost({
+        capability: "storage",
+        method: "get",
+        payload: {
+          key: LIST_DROPDOWN_STORE_VALUE_KEY,
+          scope: "command"
+        }
+      })
+    ).then((response) => {
+      if (cancelled || !response.ok) {
+        return
+      }
+
+      hasLoadedRef.current = true
+      if (typeof response.result !== "string") {
+        return
+      }
+
+      if (valueRef.current === undefined) {
+        setStoredValue(response.result)
+        void onChangeRef.current?.(response.result)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [sdk, storeValue])
+
+  const handleChange = useCallback(
+    (nextValue: string) => {
+      setStoredValue(nextValue)
+      if (storeValue && sdk && hasLoadedRef.current) {
+        void sdk.requestHost({
+          capability: "storage",
+          method: "set",
+          payload: {
+            key: LIST_DROPDOWN_STORE_VALUE_KEY,
+            scope: "command",
+            value: nextValue
+          }
+        })
+      }
+
+      return onChange?.(nextValue)
+    },
+    [onChange, sdk, storeValue]
+  )
+
+  return createElement(
+    ExtensionHostElement.ListDropdown,
+    {
+      ...hostProps,
+      onChange: handleChange,
+      storeValue,
+      value: resolvedValue
+    },
+    children
+  )
 }
 
 function ListDropdownSection(props: RuntimeListDropdownSectionProps): ReactElement {

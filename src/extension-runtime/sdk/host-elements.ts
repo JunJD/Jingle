@@ -6,6 +6,7 @@ export const ExtensionHostElement = {
   Detail: "ow-detail",
   DetailMetadata: "ow-detail-metadata",
   DetailMetadataLabel: "ow-detail-metadata-label",
+  DetailMetadataLink: "ow-detail-metadata-link",
   DetailMetadataTagList: "ow-detail-metadata-tag-list",
   DetailMetadataTagListItem: "ow-detail-metadata-tag-list-item",
   Form: "ow-form",

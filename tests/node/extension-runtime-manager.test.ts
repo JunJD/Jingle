@@ -376,10 +376,10 @@ test("runtime manager forwards navigation requests to the host capability", asyn
 })
 
 test("runtime manager forwards clipboard write requests to the host capability", async () => {
-  const clipboardWrites: string[] = []
+  const clipboardWrites: Array<{ html?: string; text: string }> = []
   const host = createHost({
-    writeClipboardText: (text) => {
-      clipboardWrites.push(text)
+    writeClipboardText: (content) => {
+      clipboardWrites.push(content)
     }
   })
   const { launcher, manager } = createManager({ host })
@@ -390,6 +390,7 @@ test("runtime manager forwards clipboard write requests to the host capability",
     id: "clipboard-1",
     method: "write-text",
     payload: {
+      html: "<strong>Copied from runtime</strong>",
       text: "Copied from runtime"
     }
   }
@@ -401,7 +402,12 @@ test("runtime manager forwards clipboard write requests to the host capability",
   })
   await flushPromises()
 
-  assert.deepEqual(clipboardWrites, ["Copied from runtime"])
+  assert.deepEqual(clipboardWrites, [
+    {
+      html: "<strong>Copied from runtime</strong>",
+      text: "Copied from runtime"
+    }
+  ])
   assert.deepEqual(
     launcher.processes[0]?.messages.find((message) => message.type === "host-response"),
     {
@@ -417,10 +423,10 @@ test("runtime manager forwards clipboard write requests to the host capability",
 })
 
 test("runtime manager forwards clipboard paste requests to the host capability", async () => {
-  const clipboardPastes: string[] = []
+  const clipboardPastes: Array<{ html?: string; text: string }> = []
   const host = createHost({
-    pasteClipboardText: (text) => {
-      clipboardPastes.push(text)
+    pasteClipboardText: (content) => {
+      clipboardPastes.push(content)
     }
   })
   const { launcher, manager } = createManager({ host })
@@ -431,6 +437,7 @@ test("runtime manager forwards clipboard paste requests to the host capability",
     id: "clipboard-paste-1",
     method: "paste-text",
     payload: {
+      html: "<strong>Pasted from runtime</strong>",
       text: "Pasted from runtime"
     }
   }
@@ -442,7 +449,12 @@ test("runtime manager forwards clipboard paste requests to the host capability",
   })
   await flushPromises()
 
-  assert.deepEqual(clipboardPastes, ["Pasted from runtime"])
+  assert.deepEqual(clipboardPastes, [
+    {
+      html: "<strong>Pasted from runtime</strong>",
+      text: "Pasted from runtime"
+    }
+  ])
   assert.deepEqual(
     launcher.processes[0]?.messages.find((message) => message.type === "host-response"),
     {
@@ -542,6 +554,11 @@ test("runtime manager forwards toast requests to the host capability", async () 
     payload: {
       message: "Page title",
       primaryAction: {
+        id: "toast-action-0",
+        shortcut: {
+          key: "c",
+          modifiers: ["cmd"]
+        },
         title: "Copy URL"
       },
       style: "success",
@@ -560,6 +577,11 @@ test("runtime manager forwards toast requests to the host capability", async () 
     {
       message: "Page title",
       primaryAction: {
+        id: "toast-action-0",
+        shortcut: {
+          key: "c",
+          modifiers: ["cmd"]
+        },
         title: "Copy URL"
       },
       style: "success",

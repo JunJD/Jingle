@@ -170,6 +170,23 @@ export function readClipboardText(): string {
   return clipboard.readText()
 }
 
+export interface WriteClipboardTextInput {
+  html?: string
+  text: string
+}
+
 export function writeClipboardText(text: string): void {
   clipboard.writeText(text)
+}
+
+export function writeClipboardTextContent(content: WriteClipboardTextInput): void {
+  if (content.html !== undefined) {
+    clipboard.write({
+      html: content.html,
+      text: content.text
+    })
+    return
+  }
+
+  clipboard.writeText(content.text)
 }

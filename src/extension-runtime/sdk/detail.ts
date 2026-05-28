@@ -99,10 +99,7 @@ function DetailMetadataTagListItem(props: RuntimeDetailMetadataTagListItemProps)
 }
 
 function DetailMetadataLink(props: RuntimeDetailMetadataLinkProps): ReactElement {
-  return createElement(DetailMetadataLabel, {
-    text: props.text,
-    title: props.title
-  })
+  return createElement(ExtensionHostElement.DetailMetadataLink, props)
 }
 
 export const Detail: RuntimeDetailComponent = Object.assign(DetailRoot, {

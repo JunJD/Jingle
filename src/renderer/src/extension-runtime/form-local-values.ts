@@ -109,3 +109,22 @@ export function acknowledgeRuntimeFormLocalValue(params: {
     pendingValues
   }
 }
+
+export function createRuntimeFormValues(params: {
+  fields: readonly ExtensionFormFieldNode[]
+  localValues: RuntimeFormLocalValues
+}): Record<string, RuntimeFormValue> {
+  const values: Record<string, RuntimeFormValue> = {}
+
+  for (const field of params.fields) {
+    if (field.kind === "message" || field.kind === "separator") {
+      continue
+    }
+
+    values[field.id] = Object.prototype.hasOwnProperty.call(params.localValues, field.id)
+      ? params.localValues[field.id]
+      : field.value
+  }
+
+  return values
+}

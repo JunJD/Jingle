@@ -12,7 +12,7 @@ import type { ExternalLinksService } from "../../external-links/service"
 import type { ExtensionQuicklinkService } from "../../extension-quicklinks/service"
 import type { NativeExtensionsService } from "../../native-extensions/service"
 import { getOpenworkDir } from "../../storage"
-import { readClipboardText, writeClipboardText } from "../clipboard"
+import { readClipboardText, writeClipboardTextContent } from "../clipboard"
 import type {
   ExtensionRuntimeHostCapabilities,
   ExtensionRuntimeOpenExternalParams,
@@ -226,12 +226,12 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
     return ""
   }
 
-  pasteClipboardText(text: string): void {
-    writeClipboardText(text)
+  pasteClipboardText(content: { html?: string; text: string }): void {
+    writeClipboardTextContent(content)
   }
 
-  writeClipboardText(text: string): void {
-    writeClipboardText(text)
+  writeClipboardText(content: { html?: string; text: string }): void {
+    writeClipboardTextContent(content)
   }
 }
 

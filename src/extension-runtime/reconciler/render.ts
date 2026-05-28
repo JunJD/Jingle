@@ -2,6 +2,10 @@ import { createContext, type ReactNode } from "react"
 import Reconciler from "react-reconciler"
 import { DefaultEventPriority, LegacyRoot } from "react-reconciler/constants"
 import type { ExtensionRuntimeEvent } from "../../shared/extension-runtime-protocol"
+import type {
+  RuntimeToastActionHandler,
+  RuntimeToastActionRegistration
+} from "../sdk/context"
 import { ExtensionHostElement, type ExtensionHostElementType } from "../sdk/host-elements"
 import {
   appendHostChild,
@@ -192,6 +196,7 @@ export interface ExtensionRuntimeRenderer {
   flushSnapshots: () => Promise<void>
   getSnapshot: () => ReturnType<typeof createSurfaceSnapshot> | null
   getSnapshots: () => ReturnType<typeof createSurfaceSnapshot>[]
+  registerToastAction: (handler: RuntimeToastActionHandler) => RuntimeToastActionRegistration
   render: (element: ReactNode) => void
 }
 
@@ -249,6 +254,10 @@ export function createExtensionRuntimeRenderer(
         return dispatchListDropdownChange(container, event.value)
       }
 
+      if (event.type === "form.dropdown.search") {
+        return dispatchFormDropdownSearch(container, event.fieldId, event.query)
+      }
+
       if (event.type === "list.pagination.load-more") {
         return dispatchListPaginationLoadMore(container)
       }
@@ -259,6 +268,18 @@ export function createExtensionRuntimeRenderer(
 
       if (event.type === "menu-bar.item.execute") {
         return dispatchMenuBarItem(container, event.itemId)
+      }
+
+      if (event.type === "toast.action.execute") {
+        const action = container.toastActionHandlers.get(event.actionId)
+        if (!action || action.disabled) {
+          return false
+        }
+
+        await runtimeReconciler.flushSyncFromReconciler(() => action.handler())
+        runtimeReconciler.flushSyncWork()
+        await flushSnapshotQueue()
+        return true
       }
 
       if (event.type !== "action.execute") {
@@ -274,7 +295,9 @@ export function createExtensionRuntimeRenderer(
         return false
       }
 
-      await runtimeReconciler.flushSyncFromReconciler(() => action.handler())
+      await runtimeReconciler.flushSyncFromReconciler(() =>
+        action.handler({ formValues: event.formValues })
+      )
       runtimeReconciler.flushSyncWork()
       await flushSnapshotQueue()
       return true
@@ -288,6 +311,14 @@ export function createExtensionRuntimeRenderer(
     },
     getSnapshots() {
       return container.snapshots
+    },
+    registerToastAction(handler) {
+      const id = container.nextToastActionId()
+      container.toastActionHandlers.set(id, {
+        disabled: false,
+        handler
+      })
+      return { id }
     },
     render(element) {
       runtimeReconciler.updateContainerSync(element, root, null, null)
@@ -379,6 +410,28 @@ async function dispatchListDropdownChange(
   }
 
   await runtimeReconciler.flushSyncFromReconciler(() => handler(value))
+  runtimeReconciler.flushSyncWork()
+  await flushSnapshotQueue()
+  return true
+}
+
+async function dispatchFormDropdownSearch(
+  container: RuntimeHostContainer,
+  fieldId: string,
+  query: string
+): Promise<boolean> {
+  const form = findFirstHostElement(container.children, ExtensionHostElement.Form)
+  const field = form ? findFormFieldById(form, fieldId) : null
+  if (field?.type !== ExtensionHostElement.FormDropdown) {
+    return false
+  }
+
+  const handler = field.props.onSearchTextChange
+  if (typeof handler !== "function") {
+    return false
+  }
+
+  await runtimeReconciler.flushSyncFromReconciler(() => handler(query))
   runtimeReconciler.flushSyncWork()
   await flushSnapshotQueue()
   return true

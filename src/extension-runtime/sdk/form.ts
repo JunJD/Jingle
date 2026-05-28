@@ -1,11 +1,104 @@
-import { createElement, type ReactElement, type ReactNode } from "react"
+import { createElement, useEffect, useRef, type ReactElement, type ReactNode } from "react"
 import { ExtensionHostElement } from "./host-elements"
-import { useRuntimeSurfaceNavigationProps } from "./context"
+import { useExtensionRuntimeSdkOptional, useRuntimeSurfaceNavigationProps } from "./context"
 import { createVisualElement, type IconLike } from "./visual"
 
 type RuntimeFormFieldChangeHandler<TValue> = {
   bivarianceHack(value: TValue): Promise<void> | void
 }["bivarianceHack"]
+
+type RuntimeStoredFormValue = boolean | Date | null | string | string[] | undefined
+export type RuntimeFormDatePickerType = "date" | "datetime"
+
+function getStoredFormValueKey(id: string): string {
+  return `form-field:${id}`
+}
+
+function isEmptyFormValue(value: RuntimeStoredFormValue): boolean {
+  return (
+    value === undefined ||
+    value === null ||
+    value === "" ||
+    (Array.isArray(value) && value.length === 0)
+  )
+}
+
+function useStoredFormValue<TValue extends RuntimeStoredFormValue>(params: {
+  id?: string
+  onChange: RuntimeFormFieldChangeHandler<TValue>
+  storeValue?: boolean
+  value: TValue
+}): void {
+  const { id, onChange, storeValue, value } = params
+  const sdk = useExtensionRuntimeSdkOptional()
+  const onChangeRef = useRef(onChange)
+  const valueRef = useRef(value)
+  const hasLoadedRef = useRef(false)
+  const hasHydratedRef = useRef(false)
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+    valueRef.current = value
+  }, [onChange, value])
+
+  useEffect(() => {
+    if (!storeValue || !id || !sdk) {
+      hasLoadedRef.current = false
+      hasHydratedRef.current = false
+      return
+    }
+
+    let cancelled = false
+
+    void Promise.resolve(
+      sdk.requestHost({
+        capability: "storage",
+        method: "get",
+        payload: {
+          key: getStoredFormValueKey(id),
+          scope: "command"
+        }
+      })
+    ).then((response) => {
+      if (cancelled || !response.ok) {
+        return
+      }
+
+      hasLoadedRef.current = true
+      if (response.result === undefined || !isEmptyFormValue(valueRef.current)) {
+        return
+      }
+
+      hasHydratedRef.current = true
+      void onChangeRef.current(response.result as TValue)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [id, sdk, storeValue])
+
+  useEffect(() => {
+    if (!storeValue || !id || !sdk || !hasLoadedRef.current) {
+      return
+    }
+
+    if (hasHydratedRef.current) {
+      hasHydratedRef.current = false
+      return
+    }
+
+    void sdk.requestHost({
+      capability: "storage",
+      method: "set",
+      payload: {
+        key: getStoredFormValueKey(id),
+        scope: "command",
+        value
+      }
+    })
+  }, [id, sdk, storeValue, value])
+}
 
 export interface RuntimeFormProps {
   actions?: ReactNode
@@ -51,6 +144,7 @@ export interface RuntimeFormDatePickerProps extends RuntimeFormFieldProps {
   onChange: RuntimeFormFieldChangeHandler<unknown>
   placeholder?: string
   storeValue?: boolean
+  type?: RuntimeFormDatePickerType
   value: Date | null | string
 }
 
@@ -99,6 +193,10 @@ export interface RuntimeFormDescriptionProps {
 type RuntimeFormComponent = ((props: RuntimeFormProps) => ReactElement) & {
   Checkbox: (props: RuntimeFormCheckboxProps) => ReactElement
   DatePicker: ((props: RuntimeFormDatePickerProps) => ReactElement) & {
+    Type: {
+      Date: RuntimeFormDatePickerType
+      DateTime: RuntimeFormDatePickerType
+    }
     isFullDay: (date: Date | null | string | undefined) => boolean
   }
   Dropdown: ((props: RuntimeFormDropdownProps) => ReactElement) & {
@@ -130,18 +228,46 @@ function FormRoot(props: RuntimeFormProps): ReactElement {
 }
 
 function FormTextField(props: RuntimeFormTextFieldProps): ReactElement {
+  useStoredFormValue({
+    id: props.id,
+    onChange: props.onChange,
+    storeValue: props.storeValue,
+    value: props.value
+  })
+
   return createElement(ExtensionHostElement.FormTextField, props)
 }
 
 function FormTextArea(props: RuntimeFormTextAreaProps): ReactElement {
+  useStoredFormValue({
+    id: props.id,
+    onChange: props.onChange,
+    storeValue: props.storeValue,
+    value: props.value
+  })
+
   return createElement(ExtensionHostElement.FormTextArea, props)
 }
 
 function FormCheckbox(props: RuntimeFormCheckboxProps): ReactElement {
+  useStoredFormValue({
+    id: props.id,
+    onChange: props.onChange,
+    storeValue: props.storeValue,
+    value: props.value
+  })
+
   return createElement(ExtensionHostElement.FormCheckbox, props)
 }
 
 function FormDatePickerRoot(props: RuntimeFormDatePickerProps): ReactElement {
+  useStoredFormValue({
+    id: props.id,
+    onChange: props.onChange,
+    storeValue: props.storeValue,
+    value: props.value
+  })
+
   return createElement(ExtensionHostElement.FormDatePicker, props)
 }
 
@@ -160,6 +286,13 @@ function isFullDayDatePickerValue(date: Date | null | string | undefined): boole
 
 function FormDropdown(props: RuntimeFormDropdownProps): ReactElement {
   const { children, ...hostProps } = props
+  useStoredFormValue({
+    id: props.id,
+    onChange: props.onChange,
+    storeValue: props.storeValue,
+    value: props.value
+  })
+
   return createElement(ExtensionHostElement.FormDropdown, hostProps, children)
 }
 
@@ -174,6 +307,13 @@ function FormDropdownItem(props: RuntimeFormDropdownItemProps): ReactElement {
 
 function FormTagPicker(props: RuntimeFormTagPickerProps): ReactElement {
   const { children, ...hostProps } = props
+  useStoredFormValue({
+    id: props.id,
+    onChange: props.onChange,
+    storeValue: props.storeValue,
+    value: props.value
+  })
+
   return createElement(ExtensionHostElement.FormTagPicker, hostProps, children)
 }
 
@@ -204,6 +344,10 @@ function FormSeparator(): ReactElement {
 export const Form: RuntimeFormComponent = Object.assign(FormRoot, {
   Checkbox: FormCheckbox,
   DatePicker: Object.assign(FormDatePickerRoot, {
+    Type: {
+      Date: "date",
+      DateTime: "datetime"
+    } satisfies RuntimeFormComponent["DatePicker"]["Type"],
     isFullDay: isFullDayDatePickerValue
   }),
   Dropdown: Object.assign(FormDropdown, {
@@ -220,6 +364,7 @@ export const Form: RuntimeFormComponent = Object.assign(FormRoot, {
 })
 
 export namespace Form {
+  export type DatePickerType = RuntimeFormDatePickerType
   export type Value = boolean | Date | null | string | string[] | undefined
   export type Values<TValue = Value> = Record<string, TValue>
   export type ItemProps<TValue = Value> = {

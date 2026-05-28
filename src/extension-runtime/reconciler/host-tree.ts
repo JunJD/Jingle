@@ -23,7 +23,11 @@ export type RuntimeHostChild = RuntimeHostElementNode | RuntimeHostTextNode
 
 export interface RuntimeActionHandler {
   disabled: boolean
-  handler: (...args: never[]) => Promise<unknown> | unknown
+  handler: (params?: RuntimeActionHandlerParams) => Promise<unknown> | unknown
+}
+
+export interface RuntimeActionHandlerParams {
+  formValues?: Record<string, unknown>
 }
 
 export type RuntimeHostRequestHandler = (
@@ -42,10 +46,12 @@ export interface RuntimeHostContainer {
   latestSnapshot: ExtensionSurfaceSnapshot | null
   menuBarActionHandlers: Map<string, RuntimeActionHandler>
   nextHostRequestId: () => string
+  nextToastActionId: () => string
   onCommit: () => void
   requestHost: RuntimeHostRequestHandler | null
   revision: number
   snapshots: ExtensionSurfaceSnapshot[]
+  toastActionHandlers: Map<string, RuntimeActionHandler>
 }
 
 export function createHostContainer(params: {
@@ -54,6 +60,7 @@ export function createHostContainer(params: {
   requestHost?: RuntimeHostRequestHandler
 }): RuntimeHostContainer {
   let hostRequestIndex = 0
+  let toastActionIndex = 0
   return {
     actionHandlers: new Map(),
     children: [],
@@ -61,10 +68,12 @@ export function createHostContainer(params: {
     latestSnapshot: null,
     menuBarActionHandlers: new Map(),
     nextHostRequestId: () => `host-request-${hostRequestIndex++}`,
+    nextToastActionId: () => `toast-action-${toastActionIndex++}`,
     onCommit: params.onCommit,
     requestHost: params.requestHost ?? null,
     revision: 0,
-    snapshots: []
+    snapshots: [],
+    toastActionHandlers: new Map()
   }
 }
 

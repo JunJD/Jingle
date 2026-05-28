@@ -21,12 +21,11 @@ export const Clipboard = {
 }
 
 export async function writeClipboardText(content: RuntimeClipboardContent): Promise<void> {
+  const normalizedContent = normalizeClipboardContent(content)
   const response = await getActiveExtensionRuntimeSdk().requestHost({
     capability: "clipboard",
     method: "write-text",
-    payload: {
-      text: normalizeClipboardContent(content)
-    }
+    payload: normalizedContent
   })
 
   if (!response.ok) {
@@ -52,6 +51,13 @@ export async function getSelectedText(): Promise<string> {
   return response.result as string
 }
 
-function normalizeClipboardContent(content: RuntimeClipboardContent): string {
-  return typeof content === "string" ? content : (content.text ?? content.html ?? "")
+function normalizeClipboardContent(content: RuntimeClipboardContent): { html?: string; text: string } {
+  if (typeof content === "string") {
+    return { text: content }
+  }
+
+  return {
+    ...(content.html !== undefined ? { html: content.html } : {}),
+    text: content.text ?? content.html ?? ""
+  }
 }

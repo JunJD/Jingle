@@ -142,6 +142,7 @@ export interface ExtensionDetailSurfaceSnapshot extends ExtensionSurfaceBase {
 
 export interface ExtensionDetailMetadataNode {
   icon?: ExtensionVisualNode
+  target?: string
   text: string
   title: string
 }
@@ -172,32 +173,41 @@ export interface ExtensionFormFieldBase {
 }
 
 export interface ExtensionFormTextFieldNode extends ExtensionFormFieldBase {
+  autoFocus?: boolean
   kind: "text-field"
   placeholder?: string
   value: string
 }
 
 export interface ExtensionFormTextAreaFieldNode extends ExtensionFormFieldBase {
+  autoFocus?: boolean
+  enableMarkdown?: boolean
   kind: "text-area"
   placeholder?: string
   value: string
 }
 
 export interface ExtensionFormCheckboxFieldNode extends ExtensionFormFieldBase {
+  autoFocus?: boolean
   kind: "checkbox"
   label?: string
   value: boolean
 }
 
 export interface ExtensionFormDatePickerFieldNode extends ExtensionFormFieldBase {
+  autoFocus?: boolean
   kind: "date-picker"
   placeholder?: string
+  type?: "date" | "datetime"
   value: string
 }
 
 export interface ExtensionFormDropdownFieldNode extends ExtensionFormFieldBase {
+  autoFocus?: boolean
+  isLoading?: boolean
   items: ExtensionFormDropdownItemNode[]
   kind: "dropdown"
+  searchable?: boolean
   value: string
 }
 
@@ -208,6 +218,7 @@ export interface ExtensionFormDropdownItemNode {
 }
 
 export interface ExtensionFormTagPickerFieldNode extends ExtensionFormFieldBase {
+  autoFocus?: boolean
   items: ExtensionFormTagPickerItemNode[]
   kind: "tag-picker"
   value: string[]
@@ -261,6 +272,7 @@ export interface ExtensionErrorSurfaceSnapshot extends ExtensionSurfaceBase {
 }
 
 export interface ExtensionActionNode {
+  children?: ExtensionActionNode[]
   disabled: boolean
   icon?: ExtensionVisualNode
   id: string
@@ -335,7 +347,13 @@ export interface ExtensionSvgProps {
 }
 
 export type ExtensionRuntimeEvent =
-  | { actionId: string; revision: number; type: "action.execute" }
+  | {
+      actionId: string
+      formValues?: Record<string, unknown>
+      revision: number
+      type: "action.execute"
+    }
+  | { actionId: string; type: "toast.action.execute" }
   | {
       changeId: string
       fieldId: string
@@ -345,6 +363,7 @@ export type ExtensionRuntimeEvent =
   | { query: string; type: "list.query.change" }
   | { type: "list.pagination.load-more" }
   | { type: "list.dropdown.change"; value: string }
+  | { fieldId: string; query: string; type: "form.dropdown.search" }
   | { itemId: string; type: "menu-bar.item.execute" }
   | { type: "navigation.pop" }
 
@@ -477,6 +496,8 @@ export interface ExtensionQuicklinksHostRequest extends ExtensionHostRequestBase
 export type ExtensionToastStyle = "animated" | "failure" | "success"
 
 export interface ExtensionToastActionPayload {
+  id?: string
+  shortcut?: ExtensionActionShortcutNode
   title: string
 }
 
@@ -573,6 +594,7 @@ export interface ExtensionClipboardWriteTextHostRequest extends ExtensionHostReq
   capability: "clipboard"
   method: "write-text"
   payload: {
+    html?: string
     text: string
   }
 }
@@ -581,6 +603,7 @@ export interface ExtensionClipboardPasteTextHostRequest extends ExtensionHostReq
   capability: "clipboard"
   method: "paste-text"
   payload: {
+    html?: string
     text: string
   }
 }

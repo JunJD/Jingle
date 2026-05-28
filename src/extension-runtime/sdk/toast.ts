@@ -1,6 +1,7 @@
-import { getActiveExtensionRuntimeSdk } from "./context"
+import { getActiveExtensionRuntimeSdk, type ExtensionRuntimeSdkContextValue } from "./context"
 import type { RuntimeKeyboardShortcut } from "./keyboard"
 import type {
+  ExtensionActionShortcutNode,
   ExtensionToastActionPayload,
   ExtensionToastPayload,
   ExtensionToastStyle
@@ -31,10 +32,11 @@ export const Toast = {
 }
 
 export async function showToast(options: RuntimeToastOptions): Promise<void> {
-  const response = await getActiveExtensionRuntimeSdk().requestHost({
+  const context = getActiveExtensionRuntimeSdk()
+  const response = await context.requestHost({
     capability: "toast",
     method: "show",
-    payload: toToastPayload(options)
+    payload: toToastPayload(context, options)
   })
 
   if (!response.ok) {
@@ -42,18 +44,46 @@ export async function showToast(options: RuntimeToastOptions): Promise<void> {
   }
 }
 
-function toToastPayload(options: RuntimeToastOptions): ExtensionToastPayload {
+function toToastPayload(
+  context: ExtensionRuntimeSdkContextValue,
+  options: RuntimeToastOptions
+): ExtensionToastPayload {
   return {
     message: options.message,
-    primaryAction: toToastActionPayload(options.primaryAction),
-    secondaryAction: toToastActionPayload(options.secondaryAction),
+    primaryAction: toToastActionPayload(context, options.primaryAction),
+    secondaryAction: toToastActionPayload(context, options.secondaryAction),
     style: options.style,
     title: options.title
   }
 }
 
 function toToastActionPayload(
+  context: ExtensionRuntimeSdkContextValue,
   action: RuntimeToastAction | undefined
 ): ExtensionToastActionPayload | undefined {
-  return action ? { title: action.title } : undefined
+  if (!action) {
+    return undefined
+  }
+
+  return {
+    ...(action.onAction && context.registerToastAction
+      ? { id: context.registerToastAction(action.onAction).id }
+      : {}),
+    shortcut: toToastShortcutPayload(action.shortcut),
+    title: action.title
+  }
+}
+
+function toToastShortcutPayload(
+  shortcut: RuntimeKeyboardShortcut | undefined
+): ExtensionActionShortcutNode | undefined {
+  const platformShortcut = shortcut?.macOS ?? shortcut?.Windows
+  if (!platformShortcut) {
+    return undefined
+  }
+
+  return {
+    key: platformShortcut.key,
+    modifiers: platformShortcut.modifiers
+  }
 }

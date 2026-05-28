@@ -21,6 +21,7 @@ import {
   getPreferenceValues,
   open,
   openNativeExtensionSettings,
+  showToast,
   type ExtensionRuntimeHostRequestInput,
   type ExtensionRuntimeSdkContextValue,
   type RuntimeFormFieldProps,
@@ -50,10 +51,12 @@ type _RuntimeFixtureQuicklink = Action.CreateQuicklink.Props["quicklink"]
 type _RuntimeFixtureLaunchProps = LaunchProps<{ text?: string }>
 type _RuntimeFixtureFormValue = Form.Value
 type _RuntimeFixtureFormValues = Form.Values
+type _RuntimeFixtureFormDatePickerType = Form.DatePickerType
 type _RuntimeFixtureFormItemProps = Form.ItemProps<string>
 
 const runtimeFixtureTypeContract: {
   accessory: _RuntimeFixtureListAccessory
+  datePickerType: _RuntimeFixtureFormDatePickerType
   formFieldProps: Pick<RuntimeFormFieldProps, "description" | "error" | "info" | "title">
   formItemProps: _RuntimeFixtureFormItemProps
   formValue: _RuntimeFixtureFormValue
@@ -67,6 +70,7 @@ const runtimeFixtureTypeContract: {
       value: "Done"
     }
   },
+  datePickerType: Form.DatePicker.Type.DateTime,
   formFieldProps: {
     title: "Title"
   },
@@ -197,6 +201,103 @@ test("runtime reconciler snapshots a list and applies action state updates", asy
   const nextSnapshot = renderer.getSnapshot()
   assertListSnapshot(nextSnapshot)
   assert.equal(nextSnapshot.sections[0]?.items[0]?.title, "Count 1")
+})
+
+test("runtime reconciler executes registered toast actions", async () => {
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const renderer = createTestRenderer()
+
+  function ToastActionList() {
+    const [opened, setOpened] = useState(false)
+
+    return createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: () =>
+              showToast({
+                primaryAction: {
+                  onAction: () => setOpened(true),
+                  shortcut: Keyboard.Shortcut.Common.New,
+                  title: "Open Page"
+                },
+                style: "success",
+                title: "Page created"
+              }),
+            title: "Create Page"
+          })
+        ),
+        id: "page",
+        title: opened ? "Opened" : "Ready"
+      })
+    )
+  }
+
+  renderer.render(
+    createElement(
+      ExtensionRuntimeNavigationProvider,
+      {
+        value: {
+          commandName: "counter",
+          commandPreferences: {},
+          extensionName: "runtime-fixture",
+          extensionPreferences: {},
+          initialAction: "open",
+          locale: "zh-CN",
+          mode: "view",
+          registerToastAction: renderer.registerToastAction,
+          requestHost: async (request) => {
+            requests.push(request)
+            return {
+              id: "host-response",
+              ok: true,
+              result: null
+            }
+          },
+          seedQuery: ""
+        }
+      },
+      createElement(ToastActionList)
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const firstSnapshot = renderer.getSnapshot()
+  assertListSnapshot(firstSnapshot)
+  const createActionId = firstSnapshot.sections[0]?.items[0]?.actions[0]?.id
+  assert.ok(createActionId)
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: createActionId,
+      revision: firstSnapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  const toastRequest = requests.find((request) => request.capability === "toast")
+  assert.ok(toastRequest)
+  assert.equal(toastRequest.capability, "toast")
+  assert.equal(toastRequest.payload.primaryAction?.id, "toast-action-0")
+  assert.deepEqual(toastRequest.payload.primaryAction?.shortcut, {
+    key: "n",
+    modifiers: ["cmd"]
+  })
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: "toast-action-0",
+      type: "toast.action.execute"
+    }),
+    true
+  )
+
+  const nextSnapshot = renderer.getSnapshot()
+  assertListSnapshot(nextSnapshot)
+  assert.equal(nextSnapshot.sections[0]?.items[0]?.title, "Opened")
 })
 
 test("runtime SDK client is available to first passive effects", async () => {
@@ -484,9 +585,83 @@ test("runtime actions preserve keyboard shortcuts", async () => {
   const snapshot = renderer.getSnapshot()
   assertListSnapshot(snapshot)
   assert.deepEqual(snapshot.sections[0]?.items[0]?.actions[0]?.shortcut, {
+    key: "p",
+    modifiers: ["cmd", "shift"]
+  })
+  assert.deepEqual(snapshot.sections[0]?.items[0]?.actions[0]?.children?.[0]?.shortcut, {
     key: "n",
     modifiers: ["cmd"]
   })
+})
+
+test("runtime reconciler preserves action panel submenu hierarchy", async () => {
+  let selected = ""
+
+  function SubmenuList() {
+    return createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: () => {
+              selected = "open"
+            },
+            title: "Open"
+          }),
+          createElement(
+            ActionPanel.Section,
+            {
+              title: "Properties"
+            },
+            createElement(
+              ActionPanel.Submenu,
+              {
+                title: "Set Status"
+              },
+              createElement(Action, {
+                onAction: () => {
+                  selected = "done"
+                },
+                title: "Done"
+              })
+            )
+          )
+        ),
+        id: "page",
+        title: "Page"
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(createElement(SubmenuList))
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const actions = snapshot.sections[0]?.items[0]?.actions ?? []
+  assert.equal(actions[0]?.title, "Open")
+  assert.equal(actions[1]?.title, "Set Status")
+  assert.equal(actions[1]?.sectionTitle, "Properties")
+  assert.deepEqual(
+    actions[1]?.children?.map((action) => action.title),
+    ["Done"]
+  )
+
+  const doneAction = actions[1]?.children?.[0]
+  assert.ok(doneAction)
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: doneAction.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+  assert.equal(selected, "done")
 })
 
 test("runtime reconciler batches multiple state updates into one snapshot", async () => {
@@ -886,6 +1061,69 @@ test("runtime reconciler dispatches CopyToClipboard actions through host request
   ])
 })
 
+test("runtime reconciler preserves formatted CopyToClipboard content", async () => {
+  const hostRequests: ExtensionHostRequest[] = []
+  const renderer = createTestRenderer({
+    onHostRequest: (request) => {
+      hostRequests.push(request)
+      return {
+        id: request.id,
+        ok: true,
+        result: null
+      }
+    }
+  })
+
+  renderer.render(
+    createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.CopyToClipboard, {
+            content: {
+              html: '<a href="https://www.notion.so/page">Runtime Notes</a>',
+              text: "Runtime Notes"
+            },
+            title: "Copy Formatted URL"
+          })
+        ),
+        id: "item",
+        title: "Item"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const action = snapshot.sections[0]?.items[0]?.actions[0]
+  assert.ok(action)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId: action.id,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  assert.deepEqual(hostRequests, [
+    {
+      capability: "clipboard",
+      id: "host-request-0",
+      method: "write-text",
+      payload: {
+        html: '<a href="https://www.notion.so/page">Runtime Notes</a>',
+        text: "Runtime Notes"
+      }
+    }
+  ])
+})
+
 test("runtime Action.CreateQuicklink registers a launcher quicklink", async () => {
   const hostRequests: ExtensionHostRequest[] = []
   const renderer = createTestRenderer({
@@ -1150,6 +1388,73 @@ test("runtime reconciler dispatches list query changes to List handlers", async 
   assert.equal(snapshot.sections[0]?.items[0]?.title, "Query: ship runtime")
 })
 
+test("runtime reconciler dispatches form dropdown search changes", async () => {
+  function SearchableForm() {
+    const [query, setQuery] = useState("")
+
+    return createElement(
+      Form,
+      null,
+      createElement(
+        Form.Dropdown,
+        {
+          isLoading: query === "runtime",
+          onChange: () => {},
+          onSearchTextChange: setQuery,
+          title: "Page",
+          value: ""
+        },
+        query
+          ? createElement(Form.Dropdown.Item, {
+              title: `Query: ${query}`,
+              value: query
+            })
+          : createElement(Form.Dropdown.Item, {
+              title: "Initial Page",
+              value: "initial"
+            })
+      )
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(createElement(SearchableForm))
+  await renderer.flushSnapshots()
+
+  const firstSnapshot = renderer.getSnapshot()
+  assertFormSnapshot(firstSnapshot)
+  const firstField = firstSnapshot.fields[0]
+  assert.equal(firstField?.kind, "dropdown")
+  assert.equal(firstField?.kind === "dropdown" ? firstField.searchable : undefined, true)
+  assert.equal(firstField?.kind === "dropdown" ? firstField.isLoading : undefined, false)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      fieldId: firstField?.id ?? "",
+      query: "runtime",
+      type: "form.dropdown.search"
+    }),
+    true
+  )
+
+  const nextSnapshot = renderer.getSnapshot()
+  assertFormSnapshot(nextSnapshot)
+  const nextField = nextSnapshot.fields[0]
+  assert.equal(nextField?.kind, "dropdown")
+  assert.equal(nextField?.kind === "dropdown" ? nextField.isLoading : undefined, true)
+  assert.deepEqual(
+    nextField?.kind === "dropdown"
+      ? nextField.items.map((item) => ({ title: item.title, value: item.value }))
+      : [],
+    [
+      {
+        title: "Query: runtime",
+        value: "runtime"
+      }
+    ]
+  )
+})
+
 test("runtime reconciler snapshots detail surfaces and navigates back", async () => {
   function DetailFlow() {
     const navigation = useNavigation()
@@ -1258,6 +1563,55 @@ test("runtime reconciler serializes Detail metadata tag list items", async () =>
     {
       text: "Migration, Alex Chen",
       title: "Tags"
+    }
+  ])
+})
+
+test("runtime reconciler preserves Detail metadata link targets", async () => {
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(Detail, {
+      markdown: "# Metadata",
+      metadata: createElement(
+        Detail.Metadata,
+        null,
+        createElement(Detail.Metadata.Link, {
+          target: "https://www.notion.so/page-1",
+          text: "Project Page",
+          title: "URL"
+        }),
+        createElement(Detail.Metadata.Link, {
+          target: "mailto:user@example.com",
+          text: "user@example.com",
+          title: "Email"
+        }),
+        createElement(Detail.Metadata.Link, {
+          target: "tel:+15551234567",
+          text: "+15551234567",
+          title: "Phone"
+        })
+      )
+    })
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertDetailSnapshot(snapshot)
+  assert.deepEqual(snapshot.metadata, [
+    {
+      target: "https://www.notion.so/page-1",
+      text: "Project Page",
+      title: "URL"
+    },
+    {
+      target: "mailto:user@example.com",
+      text: "user@example.com",
+      title: "Email"
+    },
+    {
+      target: "tel:+15551234567",
+      text: "+15551234567",
+      title: "Phone"
     }
   ])
 })
@@ -1381,6 +1735,7 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
       field.kind === "text-field"
   )
   assert.ok(textField)
+  assert.equal(textField.autoFocus, true)
   assert.equal(textField.value, "Buy milk")
   assert.equal(textField.info, "Supports inline Markdown")
 
@@ -1433,6 +1788,7 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
       field.kind === "date-picker"
   )
   assert.ok(dateField)
+  assert.equal(dateField.autoFocus, false)
   assert.equal(dateField.value, "2026-05-26")
 
   assert.equal(
@@ -1459,6 +1815,7 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
       field.kind === "tag-picker"
   )
   assert.ok(tagField)
+  assert.equal(tagField.autoFocus, false)
   assert.deepEqual(tagField.value, ["Work"])
   assert.ok(tagField.items[0]?.icon)
   assert.notEqual(tagField.items[0]?.icon?.kind, "text")
@@ -1492,6 +1849,216 @@ test("runtime reconciler snapshots form fields and syncs local input", async () 
     "Work",
     "Personal"
   ])
+})
+
+test("runtime Form storeValue hydrates empty values and persists changes", async () => {
+  const storage = new Map<string, unknown>([
+    ["form-field:title", "Stored title"],
+    ["form-field:completed", true]
+  ])
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+
+  function StoredForm() {
+    const [title, setTitle] = useState("")
+    const [completed, setCompleted] = useState<boolean | undefined>(undefined)
+    const [explicitTitle, setExplicitTitle] = useState("Explicit title")
+
+    return createElement(
+      Form,
+      null,
+      createElement(Form.TextField, {
+        id: "title",
+        onChange: setTitle,
+        storeValue: true,
+        title: "Title",
+        value: title
+      }),
+      createElement(Form.Checkbox, {
+        id: "completed",
+        label: "Completed",
+        onChange: setCompleted,
+        storeValue: true,
+        title: "Completed",
+        value: completed as boolean
+      }),
+      createElement(Form.TextField, {
+        id: "explicitTitle",
+        onChange: setExplicitTitle,
+        storeValue: true,
+        title: "Explicit Title",
+        value: explicitTitle
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    withRuntimeProvider(createElement(StoredForm), async (request) =>
+      resolveStorageRequest(request, requests, storage)
+    )
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  const hydratedSnapshot = renderer.getSnapshot()
+  assertFormSnapshot(hydratedSnapshot)
+  const hydratedTitleField = hydratedSnapshot.fields.find(
+    (
+      field
+    ): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "text-field" }> =>
+      field.kind === "text-field" && field.id === "title"
+  )
+  assert.ok(hydratedTitleField)
+  assert.equal(hydratedTitleField.value, "Stored title")
+  const hydratedCompletedField = hydratedSnapshot.fields.find(
+    (
+      field
+    ): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "checkbox" }> =>
+      field.kind === "checkbox" && field.id === "completed"
+  )
+  assert.ok(hydratedCompletedField)
+  assert.equal(hydratedCompletedField.value, true)
+  const hydratedExplicitTitleField = hydratedSnapshot.fields.find(
+    (
+      field
+    ): field is Extract<ExtensionFormSurfaceSnapshot["fields"][number], { kind: "text-field" }> =>
+      field.kind === "text-field" && field.id === "explicitTitle"
+  )
+  assert.ok(hydratedExplicitTitleField)
+  assert.equal(hydratedExplicitTitleField.value, "Explicit title")
+  assert.equal(storage.get("form-field:explicitTitle"), undefined)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      changeId: "stored-title-change",
+      fieldId: "title",
+      type: "form.field.change",
+      value: "Updated title"
+    }),
+    true
+  )
+  await renderer.flushSnapshots()
+
+  assert.equal(storage.get("form-field:title"), "Updated title")
+})
+
+test("runtime List.Dropdown storeValue hydrates and persists command scoped values", async () => {
+  const storage = new Map<string, unknown>([["list-dropdown", "created_time"]])
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+
+  function StoredDropdownList() {
+    const [sort, setSort] = useState("last_edited_time")
+
+    return createElement(
+      List,
+      {
+        searchBarAccessory: createElement(
+          List.Dropdown,
+          {
+            onChange: setSort,
+            storeValue: true,
+            tooltip: "Sort by"
+          },
+          createElement(List.Dropdown.Item, {
+            title: "Last Edited",
+            value: "last_edited_time"
+          }),
+          createElement(List.Dropdown.Item, {
+            title: "Created",
+            value: "created_time"
+          })
+        )
+      },
+      createElement(List.Item, {
+        id: "sort",
+        title: `Sort ${sort}`
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    withRuntimeProvider(createElement(StoredDropdownList), async (request) =>
+      resolveStorageRequest(request, requests, storage)
+    )
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  const hydratedSnapshot = renderer.getSnapshot()
+  assertListSnapshot(hydratedSnapshot)
+  assert.equal(hydratedSnapshot.searchBarAccessory?.value, "created_time")
+  assert.equal(hydratedSnapshot.sections[0]?.items[0]?.title, "Sort created_time")
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      type: "list.dropdown.change",
+      value: "last_edited_time"
+    }),
+    true
+  )
+  await renderer.flushSnapshots()
+
+  const updatedSnapshot = renderer.getSnapshot()
+  assertListSnapshot(updatedSnapshot)
+  assert.equal(updatedSnapshot.searchBarAccessory?.value, "last_edited_time")
+  assert.equal(updatedSnapshot.sections[0]?.items[0]?.title, "Sort last_edited_time")
+  assert.equal(storage.get("list-dropdown"), "last_edited_time")
+})
+
+test("runtime List.Dropdown storeValue persists the first change without an existing value", async () => {
+  const storage = new Map<string, unknown>()
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+
+  function StoredDropdownList() {
+    const [sort, setSort] = useState("last_edited_time")
+
+    return createElement(
+      List,
+      {
+        searchBarAccessory: createElement(
+          List.Dropdown,
+          {
+            onChange: setSort,
+            storeValue: true,
+            tooltip: "Sort by"
+          },
+          createElement(List.Dropdown.Item, {
+            title: "Last Edited",
+            value: "last_edited_time"
+          }),
+          createElement(List.Dropdown.Item, {
+            title: "Created",
+            value: "created_time"
+          })
+        )
+      },
+      createElement(List.Item, {
+        id: "sort",
+        title: `Sort ${sort}`
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    withRuntimeProvider(createElement(StoredDropdownList), async (request) =>
+      resolveStorageRequest(request, requests, storage)
+    )
+  )
+  await renderer.flushSnapshots()
+  await renderer.flushSnapshots()
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      type: "list.dropdown.change",
+      value: "created_time"
+    }),
+    true
+  )
+  await renderer.flushSnapshots()
+
+  assert.equal(storage.get("list-dropdown"), "created_time")
 })
 
 test("runtime Action.SubmitForm passes current form values to onSubmit", async () => {
@@ -1590,6 +2157,89 @@ test("runtime Action.SubmitForm passes current form values to onSubmit", async (
   assert.equal(Form.DatePicker.isFullDay(dueDate), true)
 })
 
+test("runtime Action.SubmitForm prefers event form values from the renderer", async () => {
+  let submittedValues: RuntimeSubmitFormValues | null = null
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      Form,
+      {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.SubmitForm, {
+            onSubmit: (values) => {
+              submittedValues = values
+            },
+            title: "Submit"
+          })
+        )
+      },
+      createElement(Form.TextField, {
+        id: "title",
+        onChange: () => {},
+        title: "Title",
+        value: "Stale title"
+      })
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertFormSnapshot(snapshot)
+  const actionId = snapshot.actions[0]?.id
+  assert.ok(actionId)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId,
+      formValues: {
+        title: "Current renderer title"
+      },
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  assert.deepEqual(submittedValues, {
+    title: "Current renderer title"
+  })
+})
+
+test("runtime Form.DatePicker preserves date-time values", async () => {
+  function FormFlow() {
+    const [dueDate, setDueDate] = useState(new Date(2026, 5, 1, 9, 30))
+
+    return createElement(
+      Form,
+      null,
+      createElement(Form.DatePicker, {
+        id: "due",
+        onChange: (value) => {
+          setDueDate(value instanceof Date ? value : new Date(String(value)))
+        },
+        title: "Due",
+        type: Form.DatePicker.Type.DateTime,
+        value: dueDate
+      })
+    )
+  }
+
+  const renderer = createTestRenderer()
+  renderer.render(createElement(FormFlow))
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertFormSnapshot(snapshot)
+  const dateField = snapshot.fields.find((field) => field.kind === "date-picker")
+  assert.equal(dateField?.kind, "date-picker")
+  assert.equal(dateField?.kind === "date-picker" ? dateField.type : undefined, "datetime")
+  assert.equal(dateField?.kind === "date-picker" ? dateField.value : undefined, "2026-06-01T09:30")
+  assert.equal(Form.DatePicker.isFullDay(new Date(2026, 5, 1, 9, 30)), false)
+})
+
 test("runtime reconciler snapshots form messages", async () => {
   const renderer = createTestRenderer()
   renderer.render(
@@ -1633,6 +2283,8 @@ test("runtime SDK Form.Description renders as an informational form message", as
         text: "Add to Runtime Notes"
       }),
       createElement(Form.TextArea, {
+        autoFocus: true,
+        enableMarkdown: true,
         id: "content",
         onChange: () => {},
         title: "Content",
@@ -1650,6 +2302,10 @@ test("runtime SDK Form.Description renders as an informational form message", as
     text: "Add to Runtime Notes",
     tone: "info"
   })
+  const contentField = snapshot.fields[1]
+  assert.equal(contentField?.kind, "text-area")
+  assert.equal(contentField?.kind === "text-area" ? contentField.autoFocus : undefined, true)
+  assert.equal(contentField?.kind === "text-area" ? contentField.enableMarkdown : undefined, true)
 })
 
 test("useForm exposes itemProps object, reset, and focus compatibility", async () => {
@@ -1724,10 +2380,9 @@ test("useForm exposes itemProps object, reset, and focus compatibility", async (
 
   const resetSnapshot = renderer.getSnapshot()
   assertFormSnapshot(resetSnapshot)
-  assert.equal(
-    resetSnapshot.fields.find((field) => field.kind === "text-field")?.value,
-    "Reset title"
-  )
+  const resetTitleField = resetSnapshot.fields.find((field) => field.kind === "text-field")
+  assert.equal(resetTitleField?.value, "Reset title")
+  assert.equal(resetTitleField?.autoFocus, true)
 })
 
 test("runtime SDK opens extension settings through host requests", async () => {

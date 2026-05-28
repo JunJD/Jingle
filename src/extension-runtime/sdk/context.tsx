@@ -30,6 +30,13 @@ export type ExtensionRuntimeHostRequestInput = ExtensionHostRequest extends infe
 export interface ExtensionRuntimeSdkContextValue extends ExtensionRuntimeLaunchContext {
   navigation: ExtensionRuntimeNavigation
   requestHost: (request: ExtensionRuntimeHostRequestInput) => Promise<ExtensionHostResponse>
+  registerToastAction?: (handler: RuntimeToastActionHandler) => RuntimeToastActionRegistration
+}
+
+export type RuntimeToastActionHandler = () => Promise<void> | void
+
+export interface RuntimeToastActionRegistration {
+  id: string
 }
 
 export interface ExtensionRuntimeCommandAddress {

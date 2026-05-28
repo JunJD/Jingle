@@ -22,9 +22,11 @@ import type {
   ExtensionVisualNode
 } from "../../shared/extension-runtime-protocol"
 import { ExtensionHostActionKind, ExtensionHostElement } from "../sdk/host-elements"
+import type { RuntimeSubmitFormValues } from "../sdk/actions"
 import { resolveColorLike, type ColorLike } from "../sdk/visual"
 import type {
   RuntimeActionHandler,
+  RuntimeActionHandlerParams,
   RuntimeHostChild,
   RuntimeHostContainer,
   RuntimeHostElementNode,
@@ -401,6 +403,16 @@ function collectDetailMetadataEntries(node: RuntimeHostElementNode): ExtensionDe
       ]
     }
 
+    if (child.type === ExtensionHostElement.DetailMetadataLink) {
+      return [
+        {
+          target: readStringProp(child.props, "target"),
+          text: readStringProp(child.props, "text") ?? "",
+          title: readStringProp(child.props, "title") ?? ""
+        }
+      ]
+    }
+
     if (child.type === ExtensionHostElement.DetailMetadataTagList) {
       return [
         {
@@ -456,6 +468,7 @@ function createFormFieldNode(
   if (node.type === ExtensionHostElement.FormTextField) {
     return [
       {
+        autoFocus: readBooleanProp(node.props, "autoFocus", false),
         description,
         error,
         id,
@@ -471,7 +484,9 @@ function createFormFieldNode(
   if (node.type === ExtensionHostElement.FormTextArea) {
     return [
       {
+        autoFocus: readBooleanProp(node.props, "autoFocus", false),
         description,
+        enableMarkdown: readBooleanProp(node.props, "enableMarkdown", false),
         error,
         id,
         info,
@@ -486,6 +501,7 @@ function createFormFieldNode(
   if (node.type === ExtensionHostElement.FormCheckbox) {
     return [
       {
+        autoFocus: readBooleanProp(node.props, "autoFocus", false),
         description,
         error,
         id,
@@ -501,6 +517,7 @@ function createFormFieldNode(
   if (node.type === ExtensionHostElement.FormDatePicker) {
     return [
       {
+        autoFocus: readBooleanProp(node.props, "autoFocus", false),
         description,
         error,
         id,
@@ -508,6 +525,7 @@ function createFormFieldNode(
         kind: "date-picker",
         placeholder: readStringProp(node.props, "placeholder"),
         title,
+        type: readDatePickerTypeProp(node.props),
         value: readDatePickerValueProp(node.props)
       }
     ]
@@ -516,16 +534,19 @@ function createFormFieldNode(
   if (node.type === ExtensionHostElement.FormDropdown) {
     return [
       {
+        autoFocus: readBooleanProp(node.props, "autoFocus", false),
         description,
         error,
         id,
         info,
+        isLoading: readBooleanProp(node.props, "isLoading", false),
         items: directChildrenOfType(node, ExtensionHostElement.FormDropdownItem).map((item) => ({
           icon: collectVisual(item, "icon"),
           title: readStringProp(item.props, "title") ?? "",
           value: readStringProp(item.props, "value") ?? ""
         })),
         kind: "dropdown",
+        searchable: typeof node.props.onSearchTextChange === "function",
         title,
         value: readStringProp(node.props, "value") ?? ""
       }
@@ -535,6 +556,7 @@ function createFormFieldNode(
   if (node.type === ExtensionHostElement.FormTagPicker) {
     return [
       {
+        autoFocus: readBooleanProp(node.props, "autoFocus", false),
         description,
         error,
         id,
@@ -650,6 +672,36 @@ function collectActionNodes(
     sectionTitle?: string
   }
 ): ExtensionActionNode[] {
+  if (node.type === ExtensionHostElement.ActionPanelSubmenu) {
+    const title = readStringProp(node.props, "title")
+    if (!title) {
+      return []
+    }
+
+    const id = params.nextActionId()
+    const children = directElementChildren(node).flatMap((child) =>
+      collectActionNodes(container, child, {
+        nextActionId: params.nextActionId
+      })
+    )
+    if (children.length === 0) {
+      return []
+    }
+
+    return [
+      {
+        children,
+        disabled: readBooleanProp(node.props, "disabled", false),
+        icon: collectVisual(node, "icon"),
+        id,
+        sectionTitle: params.sectionTitle,
+        shortcut: readActionShortcutProp(node.props),
+        style: readActionStyleProp(node.props),
+        title
+      }
+    ]
+  }
+
   if (node.type === ExtensionHostElement.Action) {
     const title = readStringProp(node.props, "title")
     if (!title) {
@@ -694,7 +746,7 @@ function collectActionNodes(
     } else if (actionKind === ExtensionHostActionKind.SubmitForm) {
       const onSubmit = node.props.onSubmit
       if (typeof onSubmit === "function") {
-        handler = () => onSubmit(collectFormValues(container))
+        handler = (params) => onSubmit(readSubmitFormValues(params, container))
       } else {
         const onAction = node.props.onAction
         if (typeof onAction !== "function") {
@@ -730,8 +782,7 @@ function collectActionNodes(
   }
 
   const nextSectionTitle =
-    node.type === ExtensionHostElement.ActionPanelSection ||
-    node.type === ExtensionHostElement.ActionPanelSubmenu
+    node.type === ExtensionHostElement.ActionPanelSection
       ? (readStringProp(node.props, "title") ?? params.sectionTitle)
       : params.sectionTitle
 
@@ -741,6 +792,21 @@ function collectActionNodes(
       sectionTitle: nextSectionTitle
     })
   )
+}
+
+function readSubmitFormValues(
+  params: RuntimeActionHandlerParams | undefined,
+  container: RuntimeHostContainer
+): RuntimeSubmitFormValues {
+  return isRuntimeSubmitFormValues(params?.formValues)
+    ? params.formValues
+    : collectFormValues(container)
+}
+
+function isRuntimeSubmitFormValues(
+  value: Record<string, unknown> | undefined
+): value is RuntimeSubmitFormValues {
+  return value !== undefined
 }
 
 function readQuicklinkProp(
@@ -796,7 +862,7 @@ function readQuicklinkShortcutProp(
 
 async function requestWriteClipboardText(
   container: RuntimeHostContainer,
-  text: string
+  content: { html?: string; text: string }
 ): Promise<void> {
   if (!container.requestHost) {
     throw new Error("Extension runtime host request handler is not configured.")
@@ -806,9 +872,7 @@ async function requestWriteClipboardText(
     capability: "clipboard",
     id: container.nextHostRequestId(),
     method: "write-text",
-    payload: {
-      text
-    }
+    payload: content
   })
   if (!response.ok) {
     throw new Error(response.error.message)
@@ -847,7 +911,7 @@ async function requestRegisterQuicklink(
 
 async function requestPasteClipboardText(
   container: RuntimeHostContainer,
-  text: string
+  content: { html?: string; text: string }
 ): Promise<void> {
   if (!container.requestHost) {
     throw new Error("Extension runtime host request handler is not configured.")
@@ -857,9 +921,7 @@ async function requestPasteClipboardText(
     capability: "clipboard",
     id: container.nextHostRequestId(),
     method: "paste-text",
-    payload: {
-      text
-    }
+    payload: content
   })
   if (!response.ok) {
     throw new Error(response.error.message)
@@ -988,10 +1050,13 @@ function readStringProp(props: RuntimeHostProps, name: string): string | undefin
   return typeof props[name] === "string" ? props[name] : undefined
 }
 
-function readClipboardContentProp(props: RuntimeHostProps, name: string): string | undefined {
+function readClipboardContentProp(
+  props: RuntimeHostProps,
+  name: string
+): { html?: string; text: string } | undefined {
   const value = props[name]
   if (typeof value === "string") {
-    return value
+    return { text: value }
   }
 
   if (!value || typeof value !== "object") {
@@ -999,17 +1064,18 @@ function readClipboardContentProp(props: RuntimeHostProps, name: string): string
   }
 
   const content = value as { html?: unknown; text?: unknown }
-  return typeof content.text === "string"
-    ? content.text
-    : typeof content.html === "string"
-      ? content.html
-      : undefined
+  const html = typeof content.html === "string" ? content.html : undefined
+  const text = typeof content.text === "string" ? content.text : html
+  return text ? { ...(html !== undefined ? { html } : {}), text } : undefined
 }
 
 function readDatePickerValueProp(props: RuntimeHostProps): string {
   const value = props.value
+  const type = readDatePickerTypeProp(props)
   if (value instanceof Date) {
-    return value.toISOString().split("T")[0] ?? ""
+    return type === "datetime"
+      ? toDateTimeLocalInputValue(value)
+      : (value.toISOString().split("T")[0] ?? "")
   }
 
   return typeof value === "string" ? value : ""
@@ -1018,6 +1084,15 @@ function readDatePickerValueProp(props: RuntimeHostProps): string {
 function readDatePickerRawValueProp(props: RuntimeHostProps): Date | null | string {
   const value = props.value
   return value instanceof Date || value === null || typeof value === "string" ? value : ""
+}
+
+function readDatePickerTypeProp(props: RuntimeHostProps): "date" | "datetime" {
+  return props.type === "datetime" ? "datetime" : "date"
+}
+
+function toDateTimeLocalInputValue(value: Date): string {
+  const timezoneOffset = value.getTimezoneOffset() * 60_000
+  return new Date(value.getTime() - timezoneOffset).toISOString().slice(0, 16)
 }
 
 function readMenuBarIconNameProp(

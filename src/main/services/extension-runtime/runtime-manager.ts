@@ -62,7 +62,7 @@ export interface ExtensionRuntimeHostCapabilities {
   ) => MaybePromise<Record<string, unknown>>
   removeStorageValue: (params: ExtensionRuntimeStorageParams) => MaybePromise<void>
   clearStorageValues: (params: ExtensionRuntimeStorageScopeParams) => MaybePromise<void>
-  pasteClipboardText: (text: string) => MaybePromise<void>
+  pasteClipboardText: (content: { html?: string; text: string }) => MaybePromise<void>
   readClipboardText: () => MaybePromise<string>
   readSelectedText: () => MaybePromise<string>
   showToast: (toast: ExtensionToastPayload) => MaybePromise<void>
@@ -80,7 +80,7 @@ export interface ExtensionRuntimeHostCapabilities {
   setStorageValue: (
     params: ExtensionRuntimeStorageParams & { value: unknown }
   ) => MaybePromise<void>
-  writeClipboardText: (text: string) => MaybePromise<void>
+  writeClipboardText: (content: { html?: string; text: string }) => MaybePromise<void>
 }
 
 export interface ExtensionRuntimeOpenExternalParams {
@@ -436,11 +436,11 @@ export class ExtensionRuntimeManager {
         }
 
         if (request.method === "paste-text") {
-          await this.options.host.pasteClipboardText(request.payload.text)
+          await this.options.host.pasteClipboardText(request.payload)
           return null
         }
 
-        await this.options.host.writeClipboardText(request.payload.text)
+        await this.options.host.writeClipboardText(request.payload)
         return null
       case "dialog":
         return this.options.host.confirmAlert(request.payload)

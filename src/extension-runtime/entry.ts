@@ -135,7 +135,7 @@ async function startRuntime(
       return
     }
 
-    activeRenderer = createExtensionRuntimeRenderer(
+    const renderer = createExtensionRuntimeRenderer(
       {
         commandName: context.commandName,
         extensionName: context.extensionName
@@ -151,19 +151,21 @@ async function startRuntime(
         }
       }
     )
-    activeRenderer.render(
+    activeRenderer = renderer
+    renderer.render(
       createElement(
         ExtensionRuntimeNavigationProvider,
         {
           value: {
             ...resolvedContext,
-            requestHost: requestHostWithId
+            requestHost: requestHostWithId,
+            registerToastAction: renderer.registerToastAction
           }
         },
         createElement(command.Component, createExtensionRuntimeLaunchProps(resolvedContext))
       )
     )
-    void activeRenderer
+    void renderer
       .flushSnapshots()
       .then(() => {
         postToHost({

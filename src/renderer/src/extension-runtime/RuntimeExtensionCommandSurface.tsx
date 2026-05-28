@@ -6,6 +6,7 @@ import {
   useReducer,
   useRef,
   useState,
+  type Ref,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode
 } from "react"
@@ -23,6 +24,7 @@ import { LauncherChrome } from "@launcher-components/LauncherChrome"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
 import type {
   ExtensionActionNode,
+  ExtensionDetailMetadataNode,
   ExtensionDetailSurfaceSnapshot,
   ExtensionFormFieldNode,
   ExtensionFormSurfaceSnapshot,
@@ -51,42 +53,31 @@ import {
 } from "../extension-host/list-presentation"
 import {
   acknowledgeRuntimeFormLocalValue,
+  createRuntimeFormValues,
   reconcileRuntimeFormLocalValues,
   type RuntimeFormLocalValues,
   type RuntimeFormPendingValue,
   type RuntimeFormValue
 } from "./form-local-values"
+import { formatRuntimeActionShortcut, toLauncherActionShortcut } from "./runtime-action-shortcuts"
 import { handleRuntimeNavigationRequest } from "./runtime-navigation"
 import { resolveRuntimeVisualImageSource } from "./runtime-visual-assets"
 
 const RUNTIME_LIST_SHORTCUT_SCOPES = ["launcher.list"] as const
 const streamdownPlugins = { cjk, code, math, mermaid }
 
-function formatRuntimeActionShortcut(
-  actionShortcut: ExtensionActionNode["shortcut"]
-): string | null {
-  if (!actionShortcut) {
-    return null
+function isOpenableMetadataTarget(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return (
+      url.protocol === "http:" ||
+      url.protocol === "https:" ||
+      url.protocol === "mailto:" ||
+      url.protocol === "tel:"
+    )
+  } catch {
+    return false
   }
-
-  const modifiers = actionShortcut.modifiers.map((modifier) => {
-    if (modifier === "cmd") {
-      return "⌘"
-    }
-    if (modifier === "ctrl") {
-      return "⌃"
-    }
-    if (modifier === "opt") {
-      return "⌥"
-    }
-    if (modifier === "shift") {
-      return "⇧"
-    }
-
-    return modifier
-  })
-
-  return [...modifiers, actionShortcut.key.toUpperCase()].join("")
 }
 
 function isPlainDeletionKey(event: ReactKeyboardEvent<LauncherInputElement>): boolean {
@@ -442,24 +433,11 @@ function RuntimeDetailSurface(props: {
                   </div>
                   <div className="space-y-[var(--ow-space-3)]">
                     {snapshot.metadata.map((entry) => (
-                      <div
-                        key={`${entry.title}:${entry.text}`}
-                        className="space-y-[var(--ow-space-1)]"
-                      >
-                        <div className="flex items-center gap-[var(--ow-gap-xs)] [font-size:var(--ow-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
-                          {entry.icon ? (
-                            <span className="flex size-[var(--ow-icon-sm)] items-center justify-center">
-                              {renderVisual(entry.icon, {
-                                extensionName: snapshot.extensionName
-                              })}
-                            </span>
-                          ) : null}
-                          {entry.title}
-                        </div>
-                        <div className="break-words [font-size:var(--ow-font-body)] text-foreground">
-                          {entry.text}
-                        </div>
-                      </div>
+                      <RuntimeDetailMetadataEntry
+                        key={`${entry.title}:${entry.text}:${entry.target ?? ""}`}
+                        entry={entry}
+                        extensionName={snapshot.extensionName}
+                      />
                     ))}
                   </div>
                 </div>
@@ -474,14 +452,63 @@ function RuntimeDetailSurface(props: {
   )
 }
 
+function RuntimeDetailMetadataEntry(props: {
+  entry: ExtensionDetailMetadataNode
+  extensionName: string
+}): React.JSX.Element {
+  const { entry, extensionName } = props
+  const canOpenTarget = entry.target ? isOpenableMetadataTarget(entry.target) : false
+  const textClassName = canOpenTarget
+    ? "break-words [font-size:var(--ow-font-body)] text-primary underline-offset-2 hover:underline"
+    : "break-words [font-size:var(--ow-font-body)] text-foreground"
+
+  const handleOpen = (): void => {
+    if (!entry.target || !canOpenTarget) {
+      return
+    }
+
+    void window.electron.openExternal(entry.target)
+  }
+
+  return (
+    <div className="space-y-[var(--ow-space-1)]">
+      <div className="flex items-center gap-[var(--ow-gap-xs)] [font-size:var(--ow-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
+        {entry.icon ? (
+          <span className="flex size-[var(--ow-icon-sm)] items-center justify-center">
+            {renderVisual(entry.icon, {
+              extensionName
+            })}
+          </span>
+        ) : null}
+        {entry.title}
+      </div>
+      {canOpenTarget ? (
+        <button className={`${textClassName} text-left`} type="button" onClick={handleOpen}>
+          {entry.text}
+        </button>
+      ) : (
+        <div className={textClassName}>{entry.text}</div>
+      )}
+    </div>
+  )
+}
+
 function RuntimeFormSurface(props: {
   createActionDescriptor: (action: ExtensionActionNode) => LauncherActionDescriptor
   localValues: RuntimeFormLocalValues
   onFieldChange: (fieldId: string, value: RuntimeFormValue) => void
+  onFormDropdownSearch: (fieldId: string, query: string) => void
   onNavigateBack: () => void
   snapshot: ExtensionFormSurfaceSnapshot
 }): React.JSX.Element {
-  const { createActionDescriptor, localValues, onFieldChange, onNavigateBack, snapshot } = props
+  const {
+    createActionDescriptor,
+    localValues,
+    onFieldChange,
+    onFormDropdownSearch,
+    onNavigateBack,
+    snapshot
+  } = props
   const actionItems = useMemo(
     () => snapshot.actions.map(createActionDescriptor),
     [createActionDescriptor, snapshot.actions]
@@ -520,6 +547,7 @@ function RuntimeFormSurface(props: {
                 field={field}
                 localValue={localValues[field.id]}
                 onChange={(value) => handleFieldChange(field.id, value)}
+                onSearch={(query) => onFormDropdownSearch(field.id, query)}
               />
             ))}
           </div>
@@ -535,8 +563,17 @@ function RuntimeFormField(props: {
   field: ExtensionFormFieldNode
   localValue: RuntimeFormValue | undefined
   onChange: (value: RuntimeFormValue) => void
+  onSearch: (query: string) => void
 }): React.JSX.Element {
-  const { field, localValue, onChange } = props
+  const { field, localValue, onChange, onSearch } = props
+  const inputRef = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>(null)
+  const autoFocus = getRuntimeFormFieldAutoFocus(field)
+
+  useEffect(() => {
+    if (autoFocus) {
+      inputRef.current?.focus()
+    }
+  }, [autoFocus])
 
   if (field.kind === "separator") {
     return <div className="h-px w-full bg-border/80" data-runtime-form-field={field.id} />
@@ -590,7 +627,9 @@ function RuntimeFormField(props: {
         <span className="inline-flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-control)] text-foreground">
           <input
             type="checkbox"
+            autoFocus={autoFocus}
             checked={value}
+            ref={inputRef as Ref<HTMLInputElement>}
             onChange={(event) => onChange(event.target.checked)}
           />
           <span>{field.label ?? field.title}</span>
@@ -603,10 +642,26 @@ function RuntimeFormField(props: {
     const value = typeof localValue === "string" ? localValue : field.value
 
     return (
-      <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
+      <div className="space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
+        {field.searchable === true ? (
+          <div className="relative">
+            <input
+              className="flex h-[var(--ow-control-h-sm)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] pr-[var(--ow-space-7)] [font-size:var(--ow-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+              autoFocus={autoFocus}
+              ref={inputRef as Ref<HTMLInputElement>}
+              placeholder="Search"
+              onChange={(event) => onSearch(event.target.value)}
+            />
+            {field.isLoading === true ? (
+              <Loader2 className="pointer-events-none absolute right-[var(--ow-space-2)] top-1/2 size-[var(--ow-icon-sm)] -translate-y-1/2 animate-spin text-muted-foreground" />
+            ) : null}
+          </div>
+        ) : null}
         <NativeExtensionSelect
           className="flex h-[var(--ow-control-h-sm)] w-full appearance-none rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated pl-[var(--ow-space-2-5)] pr-[var(--ow-space-6)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+          autoFocus={autoFocus && field.searchable !== true}
+          ref={field.searchable === true ? undefined : (inputRef as Ref<HTMLSelectElement>)}
           value={value}
           onChange={(nextValue) => onChange(nextValue)}
         >
@@ -616,7 +671,7 @@ function RuntimeFormField(props: {
             </option>
           ))}
         </NativeExtensionSelect>
-      </label>
+      </div>
     )
   }
 
@@ -628,7 +683,9 @@ function RuntimeFormField(props: {
         {label}
         <select
           className="min-h-[calc(var(--ow-control-h-sm)*2)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+          autoFocus={autoFocus}
           multiple
+          ref={inputRef as Ref<HTMLSelectElement>}
           value={value}
           onChange={(event) =>
             onChange(Array.from(event.currentTarget.selectedOptions, (option) => option.value))
@@ -652,6 +709,9 @@ function RuntimeFormField(props: {
         {label}
         <textarea
           className="min-h-[var(--ow-textarea-min-h)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+          autoFocus={autoFocus}
+          data-markdown={field.enableMarkdown === true ? "true" : undefined}
+          ref={inputRef as Ref<HTMLTextAreaElement>}
           value={value}
           placeholder={field.placeholder}
           onChange={(event) => onChange(event.target.value)}
@@ -661,20 +721,31 @@ function RuntimeFormField(props: {
   }
 
   const value = typeof localValue === "string" ? localValue : field.value
-  const inputType = field.kind === "date-picker" ? "date" : "text"
+  const inputType =
+    field.kind === "date-picker" ? (field.type === "datetime" ? "datetime-local" : "date") : "text"
 
   return (
     <label className="block space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
       {label}
       <input
         className="flex h-[var(--ow-control-h-sm)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
+        autoFocus={autoFocus}
         type={inputType}
+        ref={inputRef as Ref<HTMLInputElement>}
         value={value}
         placeholder={field.placeholder}
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
   )
+}
+
+function getRuntimeFormFieldAutoFocus(field: ExtensionFormFieldNode): boolean {
+  if (field.kind === "message" || field.kind === "separator") {
+    return false
+  }
+
+  return field.autoFocus === true
 }
 
 export function RuntimeExtensionCommandSurface(): React.JSX.Element {
@@ -764,28 +835,41 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
 
       sendRuntimeEvent({
         actionId: action.id,
+        formValues:
+          snapshot.kind === "form"
+            ? createRuntimeFormValues({
+                fields: snapshot.fields,
+                localValues: formState.localValues
+              })
+            : undefined,
         revision: snapshot.revision,
         type: "action.execute"
       })
     },
-    [sendRuntimeEvent, snapshot]
+    [formState.localValues, sendRuntimeEvent, snapshot]
   )
 
   const createActionDescriptor = useCallback(
-    (action: ExtensionActionNode): LauncherActionDescriptor => ({
-      icon: renderVisual(action.icon, visualRenderContext),
-      disabled: action.disabled,
-      id: action.id,
-      onAction: () => {
-        if (!action.disabled) {
-          executeActionNode(action)
-        }
-      },
-      sectionTitle: action.sectionTitle,
-      shortcut: formatRuntimeActionShortcut(action.shortcut),
-      style: action.style,
-      title: action.title
-    }),
+    (action: ExtensionActionNode): LauncherActionDescriptor => {
+      const children = action.children?.map((child) => createActionDescriptor(child))
+
+      return {
+        children,
+        icon: renderVisual(action.icon, visualRenderContext),
+        disabled: action.disabled,
+        id: action.id,
+        onAction: () => {
+          if (!action.disabled) {
+            executeActionNode(action)
+          }
+        },
+        sectionTitle: action.sectionTitle,
+        shortcut: formatRuntimeActionShortcut(action.shortcut),
+        shortcutChord: toLauncherActionShortcut(action.shortcut),
+        style: action.style,
+        title: action.title
+      }
+    },
     [executeActionNode, visualRenderContext]
   )
   const listActions = useMemo(
@@ -1018,6 +1102,14 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     })
   }
 
+  const handleFormDropdownSearch = (fieldId: string, query: string): void => {
+    sendRuntimeEvent({
+      fieldId,
+      query,
+      type: "form.dropdown.search"
+    })
+  }
+
   const handleNavigateBack = (): void => {
     sendRuntimeEvent({
       type: "navigation.pop"
@@ -1040,6 +1132,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         createActionDescriptor={createActionDescriptor}
         localValues={formState.localValues}
         onFieldChange={handleFieldChange}
+        onFormDropdownSearch={handleFormDropdownSearch}
         onNavigateBack={handleNavigateBack}
         snapshot={formSnapshot}
       />

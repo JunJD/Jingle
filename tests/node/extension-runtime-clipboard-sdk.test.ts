@@ -46,6 +46,38 @@ test("Clipboard reads and writes text through runtime clipboard host requests", 
   ])
 })
 
+test("Clipboard preserves formatted html content when writing", async () => {
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const navigation = createExtensionRuntimeNavigation({
+    requestHost: async (request) => resolveRuntimeRequest(request, requests, [null])
+  })
+
+  await runWithExtensionRuntimeSdk(
+    {
+      ...createLaunchContext(),
+      navigation,
+      requestHost: async (request) => resolveRuntimeRequest(request, requests, [null])
+    },
+    async () => {
+      await Clipboard.copy({
+        html: '<a href="https://www.notion.so/page">Runtime Notes</a>',
+        text: "Runtime Notes"
+      })
+    }
+  )
+
+  assert.deepEqual(requests, [
+    {
+      capability: "clipboard",
+      method: "write-text",
+      payload: {
+        html: '<a href="https://www.notion.so/page">Runtime Notes</a>',
+        text: "Runtime Notes"
+      }
+    }
+  ])
+})
+
 test("getSelectedText reads launch fallback text before host requests", async () => {
   const requests: ExtensionRuntimeHostRequestInput[] = []
   const navigation = createExtensionRuntimeNavigation({

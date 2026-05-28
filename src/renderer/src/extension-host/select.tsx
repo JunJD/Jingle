@@ -1,17 +1,21 @@
 import { ChevronDown } from "lucide-react"
 
 export function NativeExtensionSelect(props: {
+  autoFocus?: boolean
   children: React.ReactNode
   className: string
   onChange: (value: string) => void
+  ref?: React.Ref<HTMLSelectElement>
   value: string
 }): React.JSX.Element {
-  const { children, className, onChange, value } = props
+  const { autoFocus, children, className, onChange, ref, value } = props
 
   return (
     <div className="relative">
       <select
+        autoFocus={autoFocus}
         className={className}
+        ref={ref}
         value={value}
         onChange={(event) => {
           onChange(event.target.value)

@@ -1,14 +1,17 @@
 import type { ReactNode } from "react"
+import type { ShortcutChord } from "@shared/shortcuts/model"
 
 export type LauncherActionStyle = "regular" | "destructive"
 
 export interface LauncherActionDescriptor {
+  children?: LauncherActionDescriptor[]
   disabled?: boolean
   icon?: ReactNode
   id: string
   onAction: () => void | Promise<void>
   sectionTitle?: string
   shortcut?: string | null
+  shortcutChord?: ShortcutChord
   style?: LauncherActionStyle
   title: string
 }

@@ -175,17 +175,17 @@ class BddExtensionRuntimeHostCapabilities implements ExtensionRuntimeHostCapabil
   }
 
   pasteClipboardText(
-    text: string
+    content: { html?: string; text: string }
   ): ReturnType<ExtensionRuntimeHostCapabilities["pasteClipboardText"]> {
-    this.record("clipboard", { method: "paste-text", text })
-    return this.host.pasteClipboardText(text)
+    this.record("clipboard", { method: "paste-text", ...content })
+    return this.host.pasteClipboardText(content)
   }
 
   writeClipboardText(
-    text: string
+    content: { html?: string; text: string }
   ): ReturnType<ExtensionRuntimeHostCapabilities["writeClipboardText"]> {
-    this.record("clipboard", { method: "write-text", text })
-    return this.host.writeClipboardText(text)
+    this.record("clipboard", { method: "write-text", ...content })
+    return this.host.writeClipboardText(content)
   }
 
   private record(capability: ExtensionRuntimeHostCapability, payload: unknown): void {
