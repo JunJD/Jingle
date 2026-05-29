@@ -62,7 +62,11 @@ export type {
 } from "./keyboard"
 export { OAuth } from "./oauth"
 export type { RuntimeOAuthPKCEClientOptions } from "./oauth"
-export { openNativeExtensionSettings } from "./settings"
+export {
+  openCommandPreferences,
+  openExtensionPreferences,
+  openNativeExtensionSettings
+} from "./settings"
 export { open, openExternal } from "./shell"
 export type { RuntimeOpenApplication } from "./shell"
 export {

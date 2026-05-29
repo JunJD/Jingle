@@ -21,6 +21,8 @@ import {
   defineNativeExtensionClientMethod,
   getPreferenceValues,
   open,
+  openCommandPreferences,
+  openExtensionPreferences,
   openNativeExtensionSettings,
   runWithExtensionRuntimeSdk,
   showToast,
@@ -2632,6 +2634,96 @@ test("runtime SDK opens extension settings through host requests", async () => {
       payload: {
         commandName: "my-issues",
         extensionName: "github"
+      }
+    }
+  ])
+})
+
+test("runtime SDK opens extension and command preferences through compatibility aliases", async () => {
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const renderer = createTestRenderer()
+
+  function PreferencesList() {
+    return createElement(
+      List,
+      null,
+      createElement(List.Item, {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action, {
+            onAction: openExtensionPreferences,
+            title: "Open Extension Preferences"
+          }),
+          createElement(Action, {
+            onAction: openCommandPreferences,
+            title: "Open Command Preferences"
+          })
+        ),
+        id: "preferences",
+        title: "Preferences"
+      })
+    )
+  }
+
+  renderer.render(
+    createElement(
+      ExtensionRuntimeNavigationProvider,
+      {
+        value: {
+          commandName: "search-page",
+          commandPreferences: {},
+          extensionName: "notion",
+          extensionPreferences: {},
+          initialAction: "open",
+          locale: "zh-CN",
+          mode: "view",
+          requestHost: async (request) => {
+            requests.push(request)
+            return {
+              id: "settings-response",
+              ok: true,
+              result: null
+            }
+          },
+          seedQuery: ""
+        }
+      },
+      createElement(PreferencesList)
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertListSnapshot(snapshot)
+  const actions = snapshot.sections[0]?.items[0]?.actions ?? []
+  assert.equal(actions.length, 2)
+
+  for (const action of actions) {
+    assert.equal(
+      await renderer.dispatchEvent({
+        actionId: action.id,
+        revision: snapshot.revision,
+        type: "action.execute"
+      }),
+      true
+    )
+  }
+
+  assert.deepEqual(requests, [
+    {
+      capability: "settings",
+      method: "open-extension",
+      payload: {
+        extensionName: "notion"
+      }
+    },
+    {
+      capability: "settings",
+      method: "open-extension",
+      payload: {
+        commandName: "search-page",
+        extensionName: "notion"
       }
     }
   ])
