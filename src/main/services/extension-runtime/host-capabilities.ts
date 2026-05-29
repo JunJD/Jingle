@@ -201,8 +201,8 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
     await shell.openExternal(params.url)
   }
 
-  showToast(_toast: ExtensionToastPayload): void {
-    // Toast rendering is a renderer concern; the host capability boundary is kept explicit.
+  showToast(params: { sessionId: string; toast: ExtensionToastPayload }): void {
+    this.rendererBridge.showToast(params)
   }
 
   handleNavigationRequest(

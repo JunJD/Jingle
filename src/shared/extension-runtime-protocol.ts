@@ -522,6 +522,11 @@ export interface ExtensionToastHostRequest extends ExtensionHostRequestBase {
   payload: ExtensionToastPayload
 }
 
+export interface ExtensionRuntimeToastRequestEvent {
+  sessionId: string
+  toast: ExtensionToastPayload
+}
+
 export type ExtensionAlertActionStyle = "cancel" | "default" | "destructive"
 
 export interface ExtensionAlertActionPayload {

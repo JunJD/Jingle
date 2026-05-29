@@ -71,6 +71,22 @@ export enum PopToRootType {
   Suspended = "suspended"
 }
 
+export enum LaunchType {
+  Background = "background",
+  UserInitiated = "userInitiated"
+}
+
+export interface LaunchCommandOptions {
+  arguments?: Record<string, unknown>
+  commandName?: string
+  context?: Record<string, unknown>
+  extensionName?: string
+  fallbackText?: string
+  name?: string
+  ownerOrAuthorName?: string
+  type: LaunchType
+}
+
 export function createExtensionRuntimeLaunchProps(
   context: Pick<ExtensionRuntimeLaunchContext, "launchProps">
 ): LaunchProps {
@@ -287,6 +303,29 @@ export function useNavigation(): ExtensionRuntimeNavigation {
 
 export async function closeMainWindow(_options?: CloseMainWindowOptions): Promise<void> {
   await getActiveExtensionRuntimeSdk().navigation.hideLauncher()
+}
+
+export async function launchCommand(options: LaunchCommandOptions): Promise<void> {
+  const context = getActiveExtensionRuntimeSdk()
+  const commandName = options.commandName ?? options.name
+  if (!commandName) {
+    throw new Error("launchCommand requires a command name.")
+  }
+
+  await context.navigation.openCommand(
+    {
+      commandName,
+      extensionName: options.extensionName ?? context.extensionName
+    },
+    {
+      launchProps: {
+        ...(options.arguments ? { arguments: options.arguments } : {}),
+        ...(options.context ? { launchContext: options.context } : {}),
+        ...(options.fallbackText !== undefined ? { fallbackText: options.fallbackText } : {})
+      },
+      showLauncher: options.type === LaunchType.UserInitiated
+    }
+  )
 }
 
 export function useRuntimeSurfaceNavigationProps(): {

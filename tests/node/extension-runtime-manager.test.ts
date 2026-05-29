@@ -540,8 +540,8 @@ test("runtime manager forwards selected text read requests to the host capabilit
 test("runtime manager forwards toast requests to the host capability", async () => {
   const toasts: unknown[] = []
   const host = createHost({
-    showToast: (toast) => {
-      toasts.push(toast)
+    showToast: (params) => {
+      toasts.push(params)
     }
   })
   const { launcher, manager } = createManager({ host })
@@ -575,17 +575,20 @@ test("runtime manager forwards toast requests to the host capability", async () 
 
   assert.deepEqual(toasts, [
     {
-      message: "Page title",
-      primaryAction: {
-        id: "toast-action-0",
-        shortcut: {
-          key: "c",
-          modifiers: ["cmd"]
+      sessionId: "session-1",
+      toast: {
+        message: "Page title",
+        primaryAction: {
+          id: "toast-action-0",
+          shortcut: {
+            key: "c",
+            modifiers: ["cmd"]
+          },
+          title: "Copy URL"
         },
-        title: "Copy URL"
-      },
-      style: "success",
-      title: "Page created"
+        style: "success",
+        title: "Page created"
+      }
     }
   ])
   assert.deepEqual(

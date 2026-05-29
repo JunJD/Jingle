@@ -65,7 +65,7 @@ export interface ExtensionRuntimeHostCapabilities {
   pasteClipboardText: (content: { html?: string; text: string }) => MaybePromise<void>
   readClipboardText: () => MaybePromise<string>
   readSelectedText: () => MaybePromise<string>
-  showToast: (toast: ExtensionToastPayload) => MaybePromise<void>
+  showToast: (params: { sessionId: string; toast: ExtensionToastPayload }) => MaybePromise<void>
   handleNavigationRequest: (params: {
     request: ExtensionNavigationHostRequest
     sessionId: string
@@ -445,7 +445,10 @@ export class ExtensionRuntimeManager {
       case "dialog":
         return this.options.host.confirmAlert(request.payload)
       case "toast":
-        await this.options.host.showToast(request.payload)
+        await this.options.host.showToast({
+          sessionId: session.sessionId,
+          toast: request.payload
+        })
         return null
       case "ai":
         return this.options.host.askAI(request.payload)

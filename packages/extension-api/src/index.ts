@@ -34,6 +34,7 @@ export const Image = extensionRuntimeSdk.Image
 export const Keyboard = extensionRuntimeSdk.Keyboard
 export const List = extensionRuntimeSdk.List
 export const LocalStorage = extensionRuntimeSdk.LocalStorage
+export const LaunchType = extensionRuntimeSdk.LaunchType
 export const MenuBarExtra = extensionRuntimeSdk.MenuBarExtra
 export const OAuth = extensionRuntimeSdk.OAuth
 export const PopToRootType = extensionRuntimeSdk.PopToRootType
@@ -50,10 +51,12 @@ export const defineExtensionClientMethod = extensionRuntimeSdk.defineNativeExten
 export const getConnectionSecret = extensionRuntimeSdk.getConnectionSecret
 export const getSelectedText = extensionRuntimeSdk.getSelectedText
 export const getPreferenceValues = extensionRuntimeSdk.getPreferenceValues
+export const launchCommand = extensionRuntimeSdk.launchCommand
 export const open = extensionRuntimeSdk.open
 export const openExternal = extensionRuntimeSdk.openExternal
 export const openNativeExtensionSettings = extensionRuntimeSdk.openNativeExtensionSettings
 export const runWithExtensionRuntimeSdk = extensionRuntimeSdk.runWithExtensionRuntimeSdk
+export const showHUD = extensionRuntimeSdk.showHUD
 export const showToast = extensionRuntimeSdk.showToast
 export const useCommandSeedQuery = extensionRuntimeSdk.useCommandSeedQuery
 export const useExtensionStorageState = extensionRuntimeSdk.useExtensionStorageState
@@ -109,6 +112,7 @@ export type {
   RuntimeAlertActionStyle,
   RuntimeConfirmAlertOptions,
   CloseMainWindowOptions,
+  LaunchCommandOptions,
   LaunchProps,
   RuntimeKeyboardModifier,
   RuntimeKeyboardShortcut,

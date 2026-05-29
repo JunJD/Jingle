@@ -2,10 +2,13 @@ import type { WebContents } from "electron"
 import type {
   ExtensionNavigationHostRequest,
   ExtensionRuntimeNavigationRequestEvent,
-  ExtensionRuntimeNavigationResponse
+  ExtensionRuntimeNavigationResponse,
+  ExtensionRuntimeToastRequestEvent,
+  ExtensionToastPayload
 } from "@shared/extension-runtime-protocol"
 
 export const EXTENSION_RUNTIME_NAVIGATION_REQUEST_CHANNEL = "extensionRuntime:navigationRequest"
+export const EXTENSION_RUNTIME_TOAST_REQUEST_CHANNEL = "extensionRuntime:toastRequest"
 
 interface PendingNavigationRequest {
   reject: (error: Error) => void
@@ -86,6 +89,20 @@ export class ExtensionRuntimeRendererBridge {
     }
 
     pending.reject(new Error(response.error.message))
+    return true
+  }
+
+  showToast(params: { sessionId: string; toast: ExtensionToastPayload }): boolean {
+    const { sessionId, toast } = params
+    const owner = this.sessionOwners.get(sessionId)
+    if (!owner || owner.isDestroyed()) {
+      return false
+    }
+
+    owner.send(EXTENSION_RUNTIME_TOAST_REQUEST_CHANNEL, {
+      sessionId,
+      toast
+    } satisfies ExtensionRuntimeToastRequestEvent)
     return true
   }
 }

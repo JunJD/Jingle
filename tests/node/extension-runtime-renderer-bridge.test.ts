@@ -3,18 +3,20 @@ import test from "node:test"
 import type { WebContents } from "electron"
 import {
   EXTENSION_RUNTIME_NAVIGATION_REQUEST_CHANNEL,
+  EXTENSION_RUNTIME_TOAST_REQUEST_CHANNEL,
   ExtensionRuntimeRendererBridge
 } from "../../src/main/services/extension-runtime/renderer-bridge"
 import type {
   ExtensionNavigationHostRequest,
-  ExtensionRuntimeNavigationRequestEvent
+  ExtensionRuntimeNavigationRequestEvent,
+  ExtensionRuntimeToastRequestEvent
 } from "../../src/shared/extension-runtime-protocol"
 
 class FakeWebContents {
   destroyed = false
   sentMessages: Array<{
     channel: string
-    payload: ExtensionRuntimeNavigationRequestEvent
+    payload: ExtensionRuntimeNavigationRequestEvent | ExtensionRuntimeToastRequestEvent
   }> = []
   private readonly destroyedListeners = new Set<() => void>()
 
@@ -38,7 +40,10 @@ class FakeWebContents {
     return this
   }
 
-  send(channel: string, payload: ExtensionRuntimeNavigationRequestEvent): void {
+  send(
+    channel: string,
+    payload: ExtensionRuntimeNavigationRequestEvent | ExtensionRuntimeToastRequestEvent
+  ): void {
     this.sentMessages.push({ channel, payload })
   }
 }
@@ -129,6 +134,69 @@ test("runtime renderer bridge rejects pending navigation when the owner detaches
   webContents.destroy()
 
   await rejection
+})
+
+test("runtime renderer bridge sends toast requests to the owning renderer", () => {
+  const bridge = new ExtensionRuntimeRendererBridge()
+  const webContents = new FakeWebContents()
+
+  bridge.bindSession("session-1", webContents as unknown as WebContents)
+
+  assert.equal(
+    bridge.showToast({
+      sessionId: "session-1",
+      toast: {
+        message: "Page title",
+        primaryAction: {
+          id: "toast-action-0",
+          shortcut: {
+            key: "c",
+            modifiers: ["cmd"]
+          },
+          title: "Copy URL"
+        },
+        style: "success",
+        title: "Page created"
+      }
+    }),
+    true
+  )
+
+  assert.deepEqual(webContents.sentMessages, [
+    {
+      channel: EXTENSION_RUNTIME_TOAST_REQUEST_CHANNEL,
+      payload: {
+        sessionId: "session-1",
+        toast: {
+          message: "Page title",
+          primaryAction: {
+            id: "toast-action-0",
+            shortcut: {
+              key: "c",
+              modifiers: ["cmd"]
+            },
+            title: "Copy URL"
+          },
+          style: "success",
+          title: "Page created"
+        }
+      }
+    }
+  ])
+})
+
+test("runtime renderer bridge ignores toast requests without an owning renderer", () => {
+  const bridge = new ExtensionRuntimeRendererBridge()
+
+  assert.equal(
+    bridge.showToast({
+      sessionId: "missing-session",
+      toast: {
+        title: "Page created"
+      }
+    }),
+    false
+  )
 })
 
 test("runtime renderer bridge requires an owner for navigation requests", () => {

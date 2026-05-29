@@ -44,6 +44,13 @@ export async function showToast(options: RuntimeToastOptions): Promise<void> {
   }
 }
 
+export async function showHUD(title: string): Promise<void> {
+  await showToast({
+    style: Toast.Style.Success,
+    title
+  })
+}
+
 function toToastPayload(
   context: ExtensionRuntimeSdkContextValue,
   options: RuntimeToastOptions

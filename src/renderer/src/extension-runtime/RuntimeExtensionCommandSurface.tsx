@@ -14,7 +14,7 @@ import { cjk } from "@streamdown/cjk"
 import { code } from "@streamdown/code"
 import { math } from "@streamdown/math"
 import { mermaid } from "@streamdown/mermaid"
-import { ArrowLeft, Loader2, LoaderCircle } from "lucide-react"
+import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, LoaderCircle, X } from "lucide-react"
 import { Streamdown } from "streamdown"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { LauncherActionDescriptor } from "@/features/launcher-actions/model"
@@ -34,6 +34,7 @@ import type {
   ExtensionListSurfaceSnapshot,
   ExtensionSurfaceSnapshot,
   ExtensionSvgVisualNode,
+  ExtensionToastPayload,
   ExtensionVisualNode
 } from "@shared/extension-runtime-protocol"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
@@ -65,6 +66,7 @@ import { resolveRuntimeVisualImageSource } from "./runtime-visual-assets"
 
 const RUNTIME_LIST_SHORTCUT_SCOPES = ["launcher.list"] as const
 const RUNTIME_LIST_QUERY_THROTTLE_MS = 250
+const RUNTIME_TOAST_DISMISS_MS = 3200
 const streamdownPlugins = { cjk, code, math, mermaid }
 
 function isOpenableMetadataTarget(value: string): boolean {
@@ -108,6 +110,11 @@ interface RuntimeSurfaceState {
 interface RuntimeFormState {
   localValues: RuntimeFormLocalValues
   pendingValues: ReadonlyMap<string, RuntimeFormPendingValue>
+}
+
+interface RuntimeToastState {
+  id: number
+  toast: ExtensionToastPayload
 }
 
 interface RuntimeVisualRenderContext {
@@ -337,6 +344,76 @@ function RuntimeListDropdown(props: {
         )
       )}
     </NativeExtensionSelect>
+  )
+}
+
+function RuntimeToastOverlay(props: {
+  onAction: (actionId: string) => void
+  onDismiss: () => void
+  toast: RuntimeToastState | null
+}): React.JSX.Element | null {
+  const { onAction, onDismiss, toast } = props
+  if (!toast) {
+    return null
+  }
+
+  const tone =
+    toast.toast.style === "failure"
+      ? "border-red-500/25 bg-red-500/8 text-red-700"
+      : "border-border bg-background-elevated/95 text-foreground"
+  const Icon = toast.toast.style === "failure" ? AlertCircle : CheckCircle2
+  const actions = [toast.toast.primaryAction, toast.toast.secondaryAction].filter(
+    (action): action is NonNullable<typeof action> => Boolean(action)
+  )
+
+  return (
+    <div className="pointer-events-none absolute right-[var(--ow-space-4)] top-[var(--ow-space-4)] z-30 flex w-[min(360px,calc(100%-var(--ow-space-8)))] justify-end">
+      <div
+        className={cn(
+          "pointer-events-auto flex min-w-0 gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-panel)] border px-[var(--ow-space-3)] py-[var(--ow-space-2)] shadow-lg backdrop-blur",
+          tone
+        )}
+      >
+        <Icon className="mt-[2px] size-[var(--ow-icon-sm)] shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate [font-size:var(--ow-font-body)] font-medium">
+            {toast.toast.title}
+          </div>
+          {toast.toast.message ? (
+            <div className="mt-[var(--ow-space-0-5)] line-clamp-2 [font-size:var(--ow-font-caption)] leading-[var(--ow-line-body)] text-muted-foreground">
+              {toast.toast.message}
+            </div>
+          ) : null}
+          {actions.length > 0 ? (
+            <div className="mt-[var(--ow-space-1-5)] flex flex-wrap gap-[var(--ow-gap-xs)]">
+              {actions.map((action) => (
+                <button
+                  key={`${toast.id}:${action.title}:${action.id ?? ""}`}
+                  type="button"
+                  className="rounded-[var(--ow-radius-sm)] border border-border/80 bg-background px-[var(--ow-space-2)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)] font-medium text-foreground transition hover:bg-muted"
+                  onClick={() => {
+                    if (action.id) {
+                      onAction(action.id)
+                    }
+                    onDismiss()
+                  }}
+                >
+                  {action.title}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          aria-label="Dismiss toast"
+          className="flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          onClick={onDismiss}
+        >
+          <X className="size-[var(--ow-icon-xs)]" />
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -769,6 +846,8 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   const listQueryThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const nextFormChangeIdRef = useRef(0)
   const syncInputAfterActionRef = useRef(false)
+  const toastDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const nextToastIdRef = useRef(0)
   const [formState, dispatchFormState] = useReducer(
     runtimeFormStateReducer,
     undefined,
@@ -776,6 +855,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   )
   const [inputText, setInputText] = useState(host.seedQuery)
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [runtimeToast, setRuntimeToast] = useState<RuntimeToastState | null>(null)
   const [runtimeState, setRuntimeState] = useState<RuntimeSurfaceState>({
     error: null,
     sessionId: null,
@@ -850,6 +930,30 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     clearTimeout(listQueryThrottleTimerRef.current)
     listQueryThrottleTimerRef.current = null
   }, [])
+  const clearToastDismissTimer = useCallback((): void => {
+    if (!toastDismissTimerRef.current) {
+      return
+    }
+
+    clearTimeout(toastDismissTimerRef.current)
+    toastDismissTimerRef.current = null
+  }, [])
+  const dismissRuntimeToast = useCallback((): void => {
+    clearToastDismissTimer()
+    setRuntimeToast(null)
+  }, [clearToastDismissTimer])
+  const showRuntimeToast = useCallback(
+    (toast: ExtensionToastPayload): void => {
+      clearToastDismissTimer()
+      const id = nextToastIdRef.current++
+      setRuntimeToast({ id, toast })
+      toastDismissTimerRef.current = setTimeout(() => {
+        setRuntimeToast((current) => (current?.id === id ? null : current))
+        toastDismissTimerRef.current = null
+      }, RUNTIME_TOAST_DISMISS_MS)
+    },
+    [clearToastDismissTimer]
+  )
   const scheduleListQueryChange = useCallback(
     (query: string, throttle: boolean): void => {
       clearListQueryThrottleTimer()
@@ -1035,6 +1139,16 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   }, [hostNavigation])
 
   useEffect(() => {
+    return window.api.extensionRuntime.subscribeToastRequests((event) => {
+      if (event.sessionId !== activeSessionIdRef.current) {
+        return
+      }
+
+      showRuntimeToast(event.toast)
+    })
+  }, [showRuntimeToast])
+
+  useEffect(() => {
     return window.api.extensionRuntime.subscribeEventAcks((event) => {
       if (event.session.sessionId !== activeSessionIdRef.current) {
         return
@@ -1101,6 +1215,8 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     return () => {
       cancelled = true
       clearListQueryThrottleTimer()
+      clearToastDismissTimer()
+      setRuntimeToast(null)
       if (sessionId) {
         void window.api.extensionRuntime.stopForeground(sessionId)
       }
@@ -1114,7 +1230,8 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     host.launchProps,
     host.locale,
     host.seedQuery,
-    clearListQueryThrottleTimer
+    clearListQueryThrottleTimer,
+    clearToastDismissTimer
   ])
 
   const handleInputChange = (value: string): void => {
@@ -1159,26 +1276,47 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     })
   }
 
+  const handleToastAction = (actionId: string): void => {
+    sendRuntimeEvent({
+      actionId,
+      type: "toast.action.execute"
+    })
+  }
+
   if (!runtimeState.error && detailSnapshot) {
     return (
-      <RuntimeDetailSurface
-        createActionDescriptor={createActionDescriptor}
-        onNavigateBack={handleNavigateBack}
-        snapshot={detailSnapshot}
-      />
+      <div className="relative h-full">
+        <RuntimeDetailSurface
+          createActionDescriptor={createActionDescriptor}
+          onNavigateBack={handleNavigateBack}
+          snapshot={detailSnapshot}
+        />
+        <RuntimeToastOverlay
+          onAction={handleToastAction}
+          onDismiss={dismissRuntimeToast}
+          toast={runtimeToast}
+        />
+      </div>
     )
   }
 
   if (!runtimeState.error && formSnapshot) {
     return (
-      <RuntimeFormSurface
-        createActionDescriptor={createActionDescriptor}
-        localValues={formState.localValues}
-        onFieldChange={handleFieldChange}
-        onFormDropdownSearch={handleFormDropdownSearch}
-        onNavigateBack={handleNavigateBack}
-        snapshot={formSnapshot}
-      />
+      <div className="relative h-full">
+        <RuntimeFormSurface
+          createActionDescriptor={createActionDescriptor}
+          localValues={formState.localValues}
+          onFieldChange={handleFieldChange}
+          onFormDropdownSearch={handleFormDropdownSearch}
+          onNavigateBack={handleNavigateBack}
+          snapshot={formSnapshot}
+        />
+        <RuntimeToastOverlay
+          onAction={handleToastAction}
+          onDismiss={dismissRuntimeToast}
+          toast={runtimeToast}
+        />
+      </div>
     )
   }
 
@@ -1260,6 +1398,11 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
       </LauncherChrome>
 
       {surfaceController.actionLayer}
+      <RuntimeToastOverlay
+        onAction={handleToastAction}
+        onDismiss={dismissRuntimeToast}
+        toast={runtimeToast}
+      />
     </div>
   )
 }

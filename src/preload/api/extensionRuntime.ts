@@ -7,6 +7,7 @@ import type {
   ExtensionRuntimeRunResult,
   ExtensionRuntimeSessionError,
   ExtensionRuntimeSessionInfo,
+  ExtensionRuntimeToastRequestEvent,
   ExtensionSurfaceSnapshot
 } from "@shared/extension-runtime-protocol"
 import { invokeIpc, ipcRenderer } from "../ipc"
@@ -98,6 +99,27 @@ export const extensionRuntimeApi = {
 
       disposed = true
       ipcRenderer.removeListener("extensionRuntime:navigationRequest", listener)
+    }
+  },
+  subscribeToastRequests: (
+    callback: (event: ExtensionRuntimeToastRequestEvent) => void
+  ): (() => void) => {
+    let disposed = false
+    const listener = (_event: unknown, payload: ExtensionRuntimeToastRequestEvent): void => {
+      if (!disposed) {
+        callback(payload)
+      }
+    }
+
+    ipcRenderer.on("extensionRuntime:toastRequest", listener)
+
+    return () => {
+      if (disposed) {
+        return
+      }
+
+      disposed = true
+      ipcRenderer.removeListener("extensionRuntime:toastRequest", listener)
     }
   },
   subscribeSurfaces: (

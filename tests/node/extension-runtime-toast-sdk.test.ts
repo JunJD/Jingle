@@ -1,11 +1,14 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import {
+  LaunchType,
   PopToRootType,
   Toast,
   closeMainWindow,
   createExtensionRuntimeNavigation,
+  launchCommand,
   runWithExtensionRuntimeSdk,
+  showHUD,
   showToast,
   type ExtensionRuntimeHostRequestInput
 } from "../../src/extension-runtime/sdk"
@@ -136,6 +139,38 @@ test("showFailureToast maps errors to failure toast host requests", async () => 
   ])
 })
 
+test("showHUD maps to a success toast host request", async () => {
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const navigation = createExtensionRuntimeNavigation({
+    requestHost: async (request) => resolveRuntimeRequest(request, requests)
+  })
+
+  await runWithExtensionRuntimeSdk(
+    {
+      ...createLaunchContext(),
+      navigation,
+      requestHost: async (request) => resolveRuntimeRequest(request, requests)
+    },
+    async () => {
+      await showHUD("Done")
+    }
+  )
+
+  assert.deepEqual(requests, [
+    {
+      capability: "toast",
+      method: "show",
+      payload: {
+        message: undefined,
+        primaryAction: undefined,
+        secondaryAction: undefined,
+        style: "success",
+        title: "Done"
+      }
+    }
+  ])
+})
+
 test("closeMainWindow maps to the runtime hide-launcher navigation request", async () => {
   const requests: ExtensionRuntimeHostRequestInput[] = []
   const navigation = createExtensionRuntimeNavigation({
@@ -159,6 +194,61 @@ test("closeMainWindow maps to the runtime hide-launcher navigation request", asy
     {
       capability: "navigation",
       method: "hide-launcher"
+    }
+  ])
+})
+
+test("launchCommand maps command launch options to runtime navigation", async () => {
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const navigation = createExtensionRuntimeNavigation({
+    requestHost: async (request) => resolveRuntimeRequest(request, requests)
+  })
+
+  await runWithExtensionRuntimeSdk(
+    {
+      ...createLaunchContext(),
+      navigation,
+      requestHost: async (request) => resolveRuntimeRequest(request, requests)
+    },
+    async () => {
+      await launchCommand({
+        arguments: {
+          text: "Captured"
+        },
+        context: {
+          defaults: {
+            pageId: "page-1"
+          }
+        },
+        extensionName: "notion",
+        fallbackText: "https://example.com/article",
+        name: "quick-capture",
+        ownerOrAuthorName: "openwork",
+        type: LaunchType.UserInitiated
+      })
+    }
+  )
+
+  assert.deepEqual(requests, [
+    {
+      capability: "navigation",
+      method: "open-command",
+      payload: {
+        commandName: "quick-capture",
+        extensionName: "notion",
+        launchProps: {
+          arguments: {
+            text: "Captured"
+          },
+          fallbackText: "https://example.com/article",
+          launchContext: {
+            defaults: {
+              pageId: "page-1"
+            }
+          }
+        },
+        showLauncher: true
+      }
     }
   ])
 })

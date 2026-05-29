@@ -9,9 +9,11 @@ export {
   closeMainWindow,
   ExtensionRuntimeNavigationProvider,
   ExtensionRuntimeSdkProvider,
+  LaunchType,
   PopToRootType,
   getConnectionSecret,
   getPreferenceValues,
+  launchCommand,
   runWithExtensionRuntimeSdk,
   useCommandSeedQuery,
   useExtensionRuntimeSdk,
@@ -23,6 +25,7 @@ export {
   useRuntimeAppLocale,
   type ExtensionRuntimeHostRequestInput,
   type LaunchProps,
+  type LaunchCommandOptions,
   type CloseMainWindowOptions,
   type ExtensionRuntimeNavigation,
   type ExtensionRuntimeSdkContextValue
@@ -63,7 +66,7 @@ export { openNativeExtensionSettings } from "./settings"
 export { open, openExternal } from "./shell"
 export type { RuntimeOpenApplication } from "./shell"
 export { LocalStorage, type LocalStorageValue } from "./storage"
-export { showToast, Toast } from "./toast"
+export { showHUD, showToast, Toast } from "./toast"
 export type { RuntimeToastAction, RuntimeToastOptions, RuntimeToastStyle } from "./toast"
 export type {
   RuntimeAlertAction,
