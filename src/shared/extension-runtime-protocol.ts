@@ -175,6 +175,7 @@ export interface ExtensionFormFieldBase {
 
 export interface ExtensionFormTextFieldNode extends ExtensionFormFieldBase {
   autoFocus?: boolean
+  focusRequestId?: number
   kind: "text-field"
   placeholder?: string
   value: string
@@ -183,6 +184,7 @@ export interface ExtensionFormTextFieldNode extends ExtensionFormFieldBase {
 export interface ExtensionFormTextAreaFieldNode extends ExtensionFormFieldBase {
   autoFocus?: boolean
   enableMarkdown?: boolean
+  focusRequestId?: number
   kind: "text-area"
   placeholder?: string
   value: string
@@ -190,6 +192,7 @@ export interface ExtensionFormTextAreaFieldNode extends ExtensionFormFieldBase {
 
 export interface ExtensionFormCheckboxFieldNode extends ExtensionFormFieldBase {
   autoFocus?: boolean
+  focusRequestId?: number
   kind: "checkbox"
   label?: string
   value: boolean
@@ -197,6 +200,7 @@ export interface ExtensionFormCheckboxFieldNode extends ExtensionFormFieldBase {
 
 export interface ExtensionFormDatePickerFieldNode extends ExtensionFormFieldBase {
   autoFocus?: boolean
+  focusRequestId?: number
   kind: "date-picker"
   placeholder?: string
   type?: "date" | "datetime"
@@ -205,6 +209,7 @@ export interface ExtensionFormDatePickerFieldNode extends ExtensionFormFieldBase
 
 export interface ExtensionFormDropdownFieldNode extends ExtensionFormFieldBase {
   autoFocus?: boolean
+  focusRequestId?: number
   isLoading?: boolean
   items: ExtensionFormDropdownItemNode[]
   kind: "dropdown"
@@ -220,6 +225,7 @@ export interface ExtensionFormDropdownItemNode {
 
 export interface ExtensionFormTagPickerFieldNode extends ExtensionFormFieldBase {
   autoFocus?: boolean
+  focusRequestId?: number
   items: ExtensionFormTagPickerItemNode[]
   kind: "tag-picker"
   value: string[]

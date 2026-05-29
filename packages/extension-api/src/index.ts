@@ -47,6 +47,7 @@ export const createExtensionClient = extensionRuntimeSdk.createNativeExtensionCl
 export const defineNativeExtensionClientMethod =
   extensionRuntimeSdk.defineNativeExtensionClientMethod
 export const defineExtensionClientMethod = extensionRuntimeSdk.defineNativeExtensionClientMethod
+export const getConnectionSecret = extensionRuntimeSdk.getConnectionSecret
 export const getSelectedText = extensionRuntimeSdk.getSelectedText
 export const getPreferenceValues = extensionRuntimeSdk.getPreferenceValues
 export const open = extensionRuntimeSdk.open
@@ -73,6 +74,7 @@ export namespace Action {
 }
 
 export namespace Form {
+  export type DatePickerType = extensionRuntimeSdkModule.Form.DatePickerType
   export type ItemProps<TValue = Value> = extensionRuntimeSdkModule.Form.ItemProps<TValue>
   export type Value = extensionRuntimeSdkModule.Form.Value
   export type Values<TValue = Value> = extensionRuntimeSdkModule.Form.Values<TValue>
@@ -200,7 +202,13 @@ export type {
 export type { IpcErrorCode, IpcErrorPayload } from "../../../src/shared/ipc-error"
 
 export type {
+  ExtensionToolApprovalDefinition,
   ExtensionToolAccess,
+  ExtensionToolConfirmation,
+  ExtensionToolConfirmationBuilder,
+  ExtensionToolConfirmationContext,
+  ExtensionToolConfirmationFact,
+  ExtensionToolConfirmationInfoFact,
   ExtensionToolContext,
   ExtensionToolDefinition
 } from "../../../src/shared/extension-sources"

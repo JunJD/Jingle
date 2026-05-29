@@ -15,12 +15,14 @@ import {
   Keyboard,
   List,
   confirmAlert,
+  createExtensionRuntimeNavigation,
   createExtensionRuntimeLaunchProps,
   createNativeExtensionClient,
   defineNativeExtensionClientMethod,
   getPreferenceValues,
   open,
   openNativeExtensionSettings,
+  runWithExtensionRuntimeSdk,
   showToast,
   type ExtensionRuntimeHostRequestInput,
   type ExtensionRuntimeSdkContextValue,
@@ -125,6 +127,38 @@ function assertFormSnapshot(
 ): asserts snapshot is ExtensionFormSurfaceSnapshot {
   assert.ok(snapshot)
   assert.equal(snapshot.kind, "form")
+}
+
+function runWithTestRuntimePreferences<T>(
+  extensionPreferences: Record<string, unknown>,
+  commandPreferences: Record<string, unknown>,
+  callback: () => T
+): Promise<T> {
+  return runWithExtensionRuntimeSdk(
+    {
+      commandName: "counter",
+      commandPreferences,
+      extensionName: "runtime-fixture",
+      extensionPreferences,
+      initialAction: "open",
+      locale: "zh-CN",
+      mode: "view",
+      navigation: createExtensionRuntimeNavigation({
+        requestHost: async () => ({
+          id: "host-response",
+          ok: true as const,
+          result: null
+        })
+      }),
+      requestHost: async () => ({
+        id: "host-response",
+        ok: true as const,
+        result: null
+      }),
+      seedQuery: ""
+    },
+    callback
+  )
 }
 
 function withRuntimeProvider(
@@ -459,6 +493,42 @@ test("runtime SDK exposes merged command preference values", async () => {
     open_in: "browser",
     primaryAction: "open"
   })
+})
+
+test("runtime SDK preference object reads the active context lazily", async () => {
+  const preferences = getPreferenceValues<Record<string, unknown>>()
+
+  const firstValue = await runWithTestRuntimePreferences(
+    {
+      open_in: "notion"
+    },
+    {
+      primaryAction: "open"
+    },
+    () => preferences.open_in
+  )
+  const secondValue = await runWithTestRuntimePreferences(
+    {
+      open_in: "browser"
+    },
+    {
+      primaryAction: "preview"
+    },
+    () => preferences.open_in
+  )
+  const secondKeys = await runWithTestRuntimePreferences(
+    {
+      open_in: "browser"
+    },
+    {
+      primaryAction: "preview"
+    },
+    () => Object.keys(preferences)
+  )
+
+  assert.equal(firstValue, "notion")
+  assert.equal(secondValue, "browser")
+  assert.deepEqual(secondKeys, ["open_in", "primaryAction"])
 })
 
 test("runtime SDK creates launch props", () => {
@@ -2480,7 +2550,26 @@ test("useForm exposes itemProps object, reset, and focus compatibility", async (
   assertFormSnapshot(resetSnapshot)
   const resetTitleField = resetSnapshot.fields.find((field) => field.kind === "text-field")
   assert.equal(resetTitleField?.value, "Reset title")
-  assert.equal(resetTitleField?.autoFocus, true)
+  assert.equal(resetTitleField?.autoFocus, false)
+  assert.equal(resetTitleField?.focusRequestId, 1)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId,
+      revision: resetSnapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  const repeatedFocusSnapshot = renderer.getSnapshot()
+  assertFormSnapshot(repeatedFocusSnapshot)
+  assert.notEqual(repeatedFocusSnapshot.revision, resetSnapshot.revision)
+  const repeatedFocusTitleField = repeatedFocusSnapshot.fields.find(
+    (field) => field.kind === "text-field"
+  )
+  assert.equal(repeatedFocusTitleField?.autoFocus, false)
+  assert.equal(repeatedFocusTitleField?.focusRequestId, 2)
 })
 
 test("runtime SDK opens extension settings through host requests", async () => {

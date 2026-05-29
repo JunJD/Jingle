@@ -472,6 +472,7 @@ function createFormFieldNode(
         autoFocus: readBooleanProp(node.props, "autoFocus", false),
         description,
         error,
+        focusRequestId: readNumberProp(node.props, "focusRequestId"),
         id,
         info,
         kind: "text-field",
@@ -489,6 +490,7 @@ function createFormFieldNode(
         description,
         enableMarkdown: readBooleanProp(node.props, "enableMarkdown", false),
         error,
+        focusRequestId: readNumberProp(node.props, "focusRequestId"),
         id,
         info,
         kind: "text-area",
@@ -505,6 +507,7 @@ function createFormFieldNode(
         autoFocus: readBooleanProp(node.props, "autoFocus", false),
         description,
         error,
+        focusRequestId: readNumberProp(node.props, "focusRequestId"),
         id,
         info,
         kind: "checkbox",
@@ -521,6 +524,7 @@ function createFormFieldNode(
         autoFocus: readBooleanProp(node.props, "autoFocus", false),
         description,
         error,
+        focusRequestId: readNumberProp(node.props, "focusRequestId"),
         id,
         info,
         kind: "date-picker",
@@ -538,6 +542,7 @@ function createFormFieldNode(
         autoFocus: readBooleanProp(node.props, "autoFocus", false),
         description,
         error,
+        focusRequestId: readNumberProp(node.props, "focusRequestId"),
         id,
         info,
         isLoading: readBooleanProp(node.props, "isLoading", false),
@@ -560,6 +565,7 @@ function createFormFieldNode(
         autoFocus: readBooleanProp(node.props, "autoFocus", false),
         description,
         error,
+        focusRequestId: readNumberProp(node.props, "focusRequestId"),
         id,
         info,
         items: directChildrenOfType(node, ExtensionHostElement.FormTagPickerItem).map((item) => ({
@@ -1034,6 +1040,10 @@ function readShortcutPlatform(value: unknown): { key: string; modifiers: unknown
 
 function readBooleanProp(props: RuntimeHostProps, name: string, fallback: boolean): boolean {
   return typeof props[name] === "boolean" ? props[name] : fallback
+}
+
+function readNumberProp(props: RuntimeHostProps, name: string): number | undefined {
+  return typeof props[name] === "number" ? props[name] : undefined
 }
 
 function readListFilteringProp(props: RuntimeHostProps): boolean {

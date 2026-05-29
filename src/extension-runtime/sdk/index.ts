@@ -10,6 +10,7 @@ export {
   ExtensionRuntimeNavigationProvider,
   ExtensionRuntimeSdkProvider,
   PopToRootType,
+  getConnectionSecret,
   getPreferenceValues,
   runWithExtensionRuntimeSdk,
   useCommandSeedQuery,

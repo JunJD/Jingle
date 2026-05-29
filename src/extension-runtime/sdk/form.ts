@@ -136,7 +136,7 @@ export interface RuntimeFormCheckboxProps extends RuntimeFormFieldProps {
   label?: string
   onChange: RuntimeFormFieldChangeHandler<boolean>
   storeValue?: boolean
-  value: boolean
+  value?: boolean
 }
 
 export interface RuntimeFormDatePickerProps extends RuntimeFormFieldProps {

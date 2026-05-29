@@ -219,11 +219,58 @@ export function useNativeCommandPreferences<TPreferences extends object>(): TPre
 }
 
 export function getPreferenceValues<TPreferences extends object>(): TPreferences {
+  return createDeferredPreferenceValues() as TPreferences
+}
+
+function readActivePreferenceValues(): Record<string, unknown> {
   const context = getActiveExtensionRuntimeSdk()
   return {
     ...context.extensionPreferences,
     ...context.commandPreferences
-  } as TPreferences
+  }
+}
+
+function createDeferredPreferenceValues(): object {
+  // 扩展模块可能在 import 阶段调用 getPreferenceValues，此时 runtime context
+  // 还没建立。始终返回 lazy proxy，避免模块缓存保存某一次运行的 preference 快照。
+  return new Proxy(
+    {},
+    {
+      get(_target, property) {
+        return readActivePreferenceValues()[property as string]
+      },
+      getOwnPropertyDescriptor(_target, property) {
+        const values = readActivePreferenceValues()
+        return property in values
+          ? {
+              configurable: true,
+              enumerable: true,
+              value: values[property as string]
+            }
+          : undefined
+      },
+      has(_target, property) {
+        return property in readActivePreferenceValues()
+      },
+      ownKeys() {
+        return Reflect.ownKeys(readActivePreferenceValues())
+      }
+    }
+  )
+}
+
+export function getConnectionSecret(name: string): string {
+  const context = getActiveExtensionRuntimeSdk()
+  const extensionValue = normalizeConnectionSecretValue(context.extensionPreferences[name])
+  if (extensionValue) {
+    return extensionValue
+  }
+
+  return normalizeConnectionSecretValue(context.commandPreferences[name])
+}
+
+function normalizeConnectionSecretValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : ""
 }
 
 export function useRuntimeNavigationCanPop(): boolean {

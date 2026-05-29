@@ -569,12 +569,13 @@ function RuntimeFormField(props: {
   const { field, localValue, onChange, onSearch } = props
   const inputRef = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>(null)
   const autoFocus = getRuntimeFormFieldAutoFocus(field)
+  const focusRequestId = getRuntimeFormFieldFocusRequestId(field)
 
   useEffect(() => {
-    if (autoFocus) {
+    if (autoFocus || focusRequestId !== undefined) {
       inputRef.current?.focus()
     }
-  }, [autoFocus])
+  }, [autoFocus, focusRequestId])
 
   if (field.kind === "separator") {
     return <div className="h-px w-full bg-border/80" data-runtime-form-field={field.id} />
@@ -747,6 +748,14 @@ function getRuntimeFormFieldAutoFocus(field: ExtensionFormFieldNode): boolean {
   }
 
   return field.autoFocus === true
+}
+
+function getRuntimeFormFieldFocusRequestId(field: ExtensionFormFieldNode): number | undefined {
+  if (field.kind === "message" || field.kind === "separator") {
+    return undefined
+  }
+
+  return field.focusRequestId
 }
 
 export function RuntimeExtensionCommandSurface(): React.JSX.Element {

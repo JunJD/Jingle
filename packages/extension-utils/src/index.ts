@@ -17,7 +17,7 @@ import {
   List,
   LocalStorage,
   Toast,
-  getPreferenceValues,
+  getConnectionSecret,
   openNativeExtensionSettings,
   showToast,
   type RuntimeToastOptions,
@@ -732,6 +732,12 @@ export type UseFormItemProp<TValue = unknown> = {
   value: TValue
 }
 
+// focus() 是一次性命令，不应该改写作者声明的 autoFocus props。
+// 这个字段只给 runtime snapshot 识别重复 focus 请求，不作为公开 itemProps 契约。
+type InternalUseFormItemProp<TValue = unknown> = UseFormItemProp<TValue> & {
+  focusRequestId?: number
+}
+
 export type UseFormItemProps<TValues extends FormValues> = (<TKey extends keyof TValues>(
   key: TKey
 ) => UseFormItemProp<NoInfer<TValues[TKey]>>) & {
@@ -746,6 +752,10 @@ export function useForm<TValues extends FormValues = Record<string, unknown>>(
   const initialValues = (options.initialValues ?? {}) as TValues
   const [values, setValues] = useState<TValues>(initialValues)
   const [errors, setErrors] = useState<Partial<Record<keyof TValues, string>>>({})
+  const [focusState, setFocusState] = useState<{
+    key: keyof TValues
+    requestId: number
+  } | null>(null)
 
   const validate = useCallback(
     (nextValues: TValues): Partial<Record<keyof TValues, string>> => {
@@ -772,8 +782,9 @@ export function useForm<TValues extends FormValues = Record<string, unknown>>(
   }, [])
 
   const createItemProp = useCallback(
-    <TKey extends keyof TValues>(key: TKey): UseFormItemProp<TValues[TKey]> => ({
+    <TKey extends keyof TValues>(key: TKey): InternalUseFormItemProp<TValues[TKey]> => ({
       error: errors[key],
+      focusRequestId: focusState?.key === key ? focusState.requestId : undefined,
       id: String(key),
       onChange: (value: SetStateAction<TValues[TKey]>) => {
         setValues((currentValues) => {
@@ -790,16 +801,19 @@ export function useForm<TValues extends FormValues = Record<string, unknown>>(
       },
       value: values[key]
     }),
-    [errors, values]
+    [errors, focusState, values]
   )
 
   const itemProps = useMemo(() => {
     const itemPropsForKey = (<TKey extends keyof TValues>(key: TKey) =>
       createItemProp(key)) as UseFormItemProps<TValues>
-    const itemPropsRecord = itemPropsForKey as unknown as Record<keyof TValues, UseFormItemProp>
+    const itemPropsRecord = itemPropsForKey as unknown as Record<
+      keyof TValues,
+      InternalUseFormItemProp
+    >
 
     for (const key of Object.keys(values) as Array<keyof TValues>) {
-      itemPropsRecord[key] = createItemProp(key) as UseFormItemProp
+      itemPropsRecord[key] = createItemProp(key) as InternalUseFormItemProp
     }
 
     return new Proxy(itemPropsForKey, {
@@ -824,7 +838,12 @@ export function useForm<TValues extends FormValues = Record<string, unknown>>(
     [initialValues]
   )
 
-  const focus = useCallback((_key: keyof TValues) => {}, [])
+  const focus = useCallback((key: keyof TValues) => {
+    setFocusState((currentState) => ({
+      key,
+      requestId: (currentState?.requestId ?? 0) + 1
+    }))
+  }, [])
 
   const handleSubmit = useCallback(
     async (nextValues?: Partial<TValues>) => {
@@ -966,8 +985,7 @@ function resolveOpenworkAccessToken(
   service: WithAccessTokenService,
   options: { includeServiceToken?: boolean } = {}
 ): string {
-  const preferences = getPreferenceValues<Record<string, unknown>>()
-  const accessToken = String(preferences.accessToken ?? "").trim()
+  const accessToken = getConnectionSecret("accessToken")
   if (accessToken) {
     return accessToken
   }
