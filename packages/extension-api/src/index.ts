@@ -27,6 +27,7 @@ export const Action = extensionRuntimeSdk.Action
 export const ActionPanel = extensionRuntimeSdk.ActionPanel
 export const Clipboard = extensionRuntimeSdk.Clipboard
 export const Color = extensionRuntimeSdk.Color
+export const Cache = extensionRuntimeSdk.Cache
 export const Detail = extensionRuntimeSdk.Detail
 export const Form = extensionRuntimeSdk.Form
 export const Icon = extensionRuntimeSdk.Icon
@@ -110,6 +111,9 @@ export type {
   RuntimeAiAskInput,
   RuntimeAlertAction,
   RuntimeAlertActionStyle,
+  RuntimeCacheOptions,
+  RuntimeCacheSubscriber,
+  RuntimeCacheSubscription,
   RuntimeConfirmAlertOptions,
   CloseMainWindowOptions,
   LaunchCommandOptions,

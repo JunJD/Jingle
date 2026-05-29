@@ -65,7 +65,20 @@ export type { RuntimeOAuthPKCEClientOptions } from "./oauth"
 export { openNativeExtensionSettings } from "./settings"
 export { open, openExternal } from "./shell"
 export type { RuntimeOpenApplication } from "./shell"
-export { LocalStorage, type LocalStorageValue } from "./storage"
+export {
+  Cache,
+  installExtensionRuntimeCacheBackend,
+  LocalStorage,
+  type LocalStorageValue
+} from "./storage"
+export type {
+  RuntimeCacheBackend,
+  RuntimeCacheBackendScope,
+  RuntimeCacheEntry,
+  RuntimeCacheOptions,
+  RuntimeCacheSubscriber,
+  RuntimeCacheSubscription
+} from "./storage"
 export { showHUD, showToast, Toast } from "./toast"
 export type { RuntimeToastAction, RuntimeToastOptions, RuntimeToastStyle } from "./toast"
 export type {

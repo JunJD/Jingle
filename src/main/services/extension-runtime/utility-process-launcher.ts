@@ -4,6 +4,8 @@ import type {
   ExtensionHostToRuntimeMessage,
   ExtensionRuntimeToHostMessage
 } from "@shared/extension-runtime-protocol"
+import { EXTENSION_RUNTIME_CACHE_DIR_ENV } from "../../../extension-runtime/cache-backend"
+import { getOpenworkDir } from "../../storage"
 import type { ExtensionRuntimeProcess, ExtensionRuntimeProcessLauncher } from "./runtime-process"
 
 export function resolveExtensionRuntimeEntryPath(): string {
@@ -15,6 +17,10 @@ export class UtilityProcessExtensionRuntimeProcessLauncher implements ExtensionR
 
   launch(): ExtensionRuntimeProcess {
     const child = utilityProcess.fork(this.modulePath, [], {
+      env: {
+        ...process.env,
+        [EXTENSION_RUNTIME_CACHE_DIR_ENV]: join(getOpenworkDir(), "extension-runtime-cache")
+      },
       serviceName: "Openwork Extension Runtime"
     })
 

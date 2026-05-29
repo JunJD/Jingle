@@ -9,11 +9,16 @@ import type {
   ExtensionRuntimeLaunchContext,
   ExtensionRuntimeToHostMessage
 } from "@shared/extension-runtime-protocol"
+import {
+  createFileExtensionRuntimeCacheBackend,
+  EXTENSION_RUNTIME_CACHE_DIR_ENV
+} from "./cache-backend"
 import { createExtensionRuntimeRenderer, type ExtensionRuntimeRenderer } from "./reconciler/render"
 import {
   createExtensionRuntimeLaunchProps,
   createExtensionRuntimeNavigation,
   ExtensionRuntimeNavigationProvider,
+  installExtensionRuntimeCacheBackend,
   runWithExtensionRuntimeSdk,
   type ExtensionRuntimeHostRequestInput
 } from "./sdk"
@@ -23,6 +28,7 @@ const pendingHostResponses = new Map<string, (response: ExtensionHostResponse) =
 let hostRequestIndex = 0
 
 const parentPort = getParentPort()
+installRuntimeCacheBackend()
 
 parentPort.on("message", (event) => {
   const message = event.data as ExtensionHostToRuntimeMessage
@@ -258,4 +264,13 @@ function getParentPort(): NonNullable<typeof process.parentPort> {
   }
 
   return port
+}
+
+function installRuntimeCacheBackend(): void {
+  const cacheDir = process.env[EXTENSION_RUNTIME_CACHE_DIR_ENV]
+  if (!cacheDir) {
+    return
+  }
+
+  installExtensionRuntimeCacheBackend(createFileExtensionRuntimeCacheBackend(cacheDir))
 }
