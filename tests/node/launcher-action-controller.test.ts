@@ -190,3 +190,21 @@ test("runtime action shortcuts convert to launcher shortcut chords", () => {
     }
   )
 })
+
+test("runtime toast shortcuts reuse launcher shortcut matching", () => {
+  const shortcut = toLauncherActionShortcut({
+    key: "c",
+    modifiers: ["cmd", "shift"]
+  })
+  assert.ok(shortcut)
+  assert.equal(
+    matchesLauncherActionShortcut(shortcut, {
+      altKey: false,
+      ctrlKey: false,
+      key: "C",
+      metaKey: true,
+      shiftKey: true
+    }),
+    true
+  )
+})

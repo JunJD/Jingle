@@ -68,14 +68,13 @@ function toToastActionPayload(
   context: ExtensionRuntimeSdkContextValue,
   action: RuntimeToastAction | undefined
 ): ExtensionToastActionPayload | undefined {
-  if (!action) {
+  if (!action?.onAction || !context.registerToastAction) {
     return undefined
   }
 
+  const registration = context.registerToastAction(action.onAction)
   return {
-    ...(action.onAction && context.registerToastAction
-      ? { id: context.registerToastAction(action.onAction).id }
-      : {}),
+    id: registration.id,
     shortcut: toToastShortcutPayload(action.shortcut),
     title: action.title
   }

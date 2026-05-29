@@ -17,6 +17,7 @@ import { mermaid } from "@streamdown/mermaid"
 import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, LoaderCircle, X } from "lucide-react"
 import { Streamdown } from "streamdown"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { matchesLauncherActionShortcut } from "@/features/launcher-actions/controller-core"
 import type { LauncherActionDescriptor } from "@/features/launcher-actions/model"
 import { cn } from "@/lib/utils"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
@@ -34,6 +35,7 @@ import type {
   ExtensionListSurfaceSnapshot,
   ExtensionSurfaceSnapshot,
   ExtensionSvgVisualNode,
+  ExtensionToastActionPayload,
   ExtensionToastPayload,
   ExtensionVisualNode
 } from "@shared/extension-runtime-protocol"
@@ -116,6 +118,8 @@ interface RuntimeToastState {
   id: number
   toast: ExtensionToastPayload
 }
+
+type RuntimeExecutableToastAction = ExtensionToastActionPayload & { id: string }
 
 interface RuntimeVisualRenderContext {
   extensionName: string
@@ -353,6 +357,43 @@ function RuntimeToastOverlay(props: {
   toast: RuntimeToastState | null
 }): React.JSX.Element | null {
   const { onAction, onDismiss, toast } = props
+  const actions = useMemo(
+    () =>
+      [toast?.toast.primaryAction, toast?.toast.secondaryAction].filter(
+        (action): action is RuntimeExecutableToastAction => Boolean(action?.id)
+      ),
+    [toast]
+  )
+
+  useEffect(() => {
+    if (actions.length === 0) {
+      return
+    }
+
+    const handleToastShortcut = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.isComposing) {
+        return
+      }
+
+      const action = actions.find((candidate) => {
+        const shortcut = toLauncherActionShortcut(candidate.shortcut)
+        return shortcut ? matchesLauncherActionShortcut(shortcut, event) : false
+      })
+      if (!action) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      onAction(action.id)
+    }
+
+    window.addEventListener("keydown", handleToastShortcut, { capture: true })
+    return () => {
+      window.removeEventListener("keydown", handleToastShortcut, { capture: true })
+    }
+  }, [actions, onAction])
+
   if (!toast) {
     return null
   }
@@ -362,9 +403,6 @@ function RuntimeToastOverlay(props: {
       ? "border-red-500/25 bg-red-500/8 text-red-700"
       : "border-border bg-background-elevated/95 text-foreground"
   const Icon = toast.toast.style === "failure" ? AlertCircle : CheckCircle2
-  const actions = [toast.toast.primaryAction, toast.toast.secondaryAction].filter(
-    (action): action is NonNullable<typeof action> => Boolean(action)
-  )
 
   return (
     <div className="pointer-events-none absolute right-[var(--ow-space-4)] top-[var(--ow-space-4)] z-30 flex w-[min(360px,calc(100%-var(--ow-space-8)))] justify-end">
@@ -392,13 +430,15 @@ function RuntimeToastOverlay(props: {
                   type="button"
                   className="rounded-[var(--ow-radius-sm)] border border-border/80 bg-background px-[var(--ow-space-2)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)] font-medium text-foreground transition hover:bg-muted"
                   onClick={() => {
-                    if (action.id) {
-                      onAction(action.id)
-                    }
-                    onDismiss()
+                    onAction(action.id)
                   }}
                 >
                   {action.title}
+                  {action.shortcut ? (
+                    <span className="ml-[var(--ow-space-1-5)] text-muted-foreground">
+                      {formatRuntimeActionShortcut(action.shortcut)}
+                    </span>
+                  ) : null}
                 </button>
               ))}
             </div>
@@ -954,6 +994,16 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     },
     [clearToastDismissTimer]
   )
+  const executeRuntimeToastAction = useCallback(
+    (actionId: string): void => {
+      sendRuntimeEvent({
+        actionId,
+        type: "toast.action.execute"
+      })
+      dismissRuntimeToast()
+    },
+    [dismissRuntimeToast, sendRuntimeEvent]
+  )
   const scheduleListQueryChange = useCallback(
     (query: string, throttle: boolean): void => {
       clearListQueryThrottleTimer()
@@ -1276,13 +1326,6 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     })
   }
 
-  const handleToastAction = (actionId: string): void => {
-    sendRuntimeEvent({
-      actionId,
-      type: "toast.action.execute"
-    })
-  }
-
   if (!runtimeState.error && detailSnapshot) {
     return (
       <div className="relative h-full">
@@ -1292,7 +1335,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
           snapshot={detailSnapshot}
         />
         <RuntimeToastOverlay
-          onAction={handleToastAction}
+          onAction={executeRuntimeToastAction}
           onDismiss={dismissRuntimeToast}
           toast={runtimeToast}
         />
@@ -1312,7 +1355,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
           snapshot={formSnapshot}
         />
         <RuntimeToastOverlay
-          onAction={handleToastAction}
+          onAction={executeRuntimeToastAction}
           onDismiss={dismissRuntimeToast}
           toast={runtimeToast}
         />
@@ -1399,7 +1442,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
 
       {surfaceController.actionLayer}
       <RuntimeToastOverlay
-        onAction={handleToastAction}
+        onAction={executeRuntimeToastAction}
         onDismiss={dismissRuntimeToast}
         toast={runtimeToast}
       />

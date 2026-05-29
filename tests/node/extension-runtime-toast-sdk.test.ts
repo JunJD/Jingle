@@ -91,6 +91,51 @@ test("showToast sends toast payloads through the runtime toast host request", as
   assert.equal(toastActions.length, 2)
 })
 
+test("showToast drops toast actions without executable handlers", async () => {
+  const requests: ExtensionRuntimeHostRequestInput[] = []
+  const navigation = createExtensionRuntimeNavigation({
+    requestHost: async (request) => resolveRuntimeRequest(request, requests)
+  })
+
+  await runWithExtensionRuntimeSdk(
+    {
+      ...createLaunchContext(),
+      navigation,
+      requestHost: async (request) => resolveRuntimeRequest(request, requests)
+    },
+    async () => {
+      await showToast({
+        primaryAction: {
+          shortcut: {
+            macOS: { key: "o", modifiers: ["cmd"] },
+            Windows: { key: "o", modifiers: ["ctrl"] }
+          },
+          title: "Open Page"
+        },
+        secondaryAction: {
+          onAction: () => undefined,
+          title: "Copy URL"
+        },
+        title: "Page created"
+      })
+    }
+  )
+
+  assert.deepEqual(requests, [
+    {
+      capability: "toast",
+      method: "show",
+      payload: {
+        message: undefined,
+        primaryAction: undefined,
+        secondaryAction: undefined,
+        style: undefined,
+        title: "Page created"
+      }
+    }
+  ])
+})
+
 test("showFailureToast maps errors to failure toast host requests", async () => {
   const requests: ExtensionRuntimeHostRequestInput[] = []
   const navigation = createExtensionRuntimeNavigation({
