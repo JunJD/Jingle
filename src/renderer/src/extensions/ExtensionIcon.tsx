@@ -1,6 +1,8 @@
+import React, { useState } from "react"
 import {
   Bell,
   CheckCircle2,
+  ExternalLink,
   FileText,
   Folder,
   Github,
@@ -58,6 +60,8 @@ function renderGlyphIcon(
       return <CheckCircle2 className={className} aria-hidden="true" />
     case "file-text":
       return <FileText className={className} aria-hidden="true" />
+    case "external-link":
+      return <ExternalLink className={className} aria-hidden="true" />
     case "folder":
       return <Folder className={className} aria-hidden="true" />
     case "github":
@@ -93,16 +97,53 @@ export function ExtensionIcon(props: {
   const src = getExtensionIconAssetSrc({ extensionName, icon })
 
   if (src) {
-    return (
-      <img
-        alt=""
-        aria-hidden="true"
-        className={className}
-        src={src}
-        style={{ display: "inline-block", objectFit: "contain" }}
-      />
-    )
+    return <ExtensionAssetIcon className={className} fallbackIconName={iconName} src={src} />
   }
 
   return renderGlyphIcon(iconName, className)
+}
+
+function ExtensionAssetIcon(props: {
+  className: string
+  fallbackIconName: ExtensionIconName | undefined
+  src: string
+}): React.JSX.Element {
+  const { className, fallbackIconName, src } = props
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null)
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+
+  const isLoaded = loadedSrc === src
+  const hasFailed = failedSrc === src
+
+  return (
+    <span className={`${className} relative inline-flex shrink-0 items-center justify-center`}>
+      {isLoaded && !hasFailed ? null : renderGlyphIcon(fallbackIconName, className)}
+      {hasFailed ? null : (
+        <img
+          alt=""
+          aria-hidden="true"
+          onError={() => setFailedSrc(src)}
+          onLoad={(event) => {
+            const image = event.currentTarget
+            if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+              setLoadedSrc(src)
+              return
+            }
+
+            setFailedSrc(src)
+          }}
+          src={src}
+          style={{
+            display: "block",
+            height: "100%",
+            inset: 0,
+            objectFit: "contain",
+            opacity: isLoaded ? 1 : 0,
+            position: "absolute",
+            width: "100%"
+          }}
+        />
+      )}
+    </span>
+  )
 }

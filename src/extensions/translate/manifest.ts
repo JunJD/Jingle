@@ -5,6 +5,7 @@ import { TRANSLATE_EXTENSION_ID } from "./src/contracts"
 export const translateManifest = defineNativeExtensionManifest({
   capabilities: ["clipboard", "navigation", "surface"],
   icon: "assets/icon.svg",
+  iconName: "languages",
   runtimeCapabilities: ["ai", "clipboard", "navigation", "preferences"],
   commands: [
     {

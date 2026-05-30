@@ -1,6 +1,7 @@
 import {
   Bell,
   CheckCircle2,
+  ExternalLink,
   FileText,
   Folder,
   Globe,
@@ -179,6 +180,8 @@ export function renderLauncherResultIcon(icon: LauncherResultPresentationIcon): 
       return <CheckCircle2 className="size-4" />
     case "file-text":
       return <FileText className="size-4" />
+    case "external-link":
+      return <ExternalLink className="size-4" />
     case "folder":
       return <Folder className="size-4" />
     case "globe":
