@@ -13,6 +13,16 @@ function getTodoListInput(page: import("@playwright/test").Page) {
   )
 }
 
+async function waitForTodoListReady(page: import("@playwright/test").Page): Promise<void> {
+  const todoListRoot = getTodoListRoot(page)
+  const runtimeList = todoListRoot.locator(
+    '.launcher-chrome[data-surface="runtime-list"][data-input-status="idle"]'
+  )
+
+  await expect(runtimeList).toBeVisible()
+  await expect(todoListRoot.getByText("Create Todo", { exact: true }).first()).toBeVisible()
+}
+
 When("我在 Todo List 中创建一条新的测试待办", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("launcher")
   const todoListRoot = getTodoListRoot(page)
@@ -21,6 +31,7 @@ When("我在 Todo List 中创建一条新的测试待办", async function (this:
 
   this.setScenarioValue("todoList.createdTitle", title)
 
+  await waitForTodoListReady(page)
   await expect(todoListRoot).toBeVisible()
   await input.fill(title)
 
@@ -30,6 +41,7 @@ When("我在 Todo List 中创建一条新的测试待办", async function (this:
     .first()
 
   await expect(createRow).toBeVisible()
+  await expect(createRow.getByText(title, { exact: true })).toBeVisible()
   await createRow.click()
 })
 
@@ -40,6 +52,7 @@ When("我在 Todo List 输入框中输入新的测试待办标题", async functi
 
   this.setScenarioValue("todoList.createdTitle", title)
 
+  await waitForTodoListReady(page)
   await input.fill(title)
 })
 
@@ -54,6 +67,10 @@ When("我在 Todo List 输入框按下 Enter", async function (this: OpenworkWor
 When("我在当前 Launcher surface 打开动作面板", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("launcher")
   const shell = page.locator(".launcher-window-shell")
+  const runtimeSurface = shell.locator('.launcher-chrome[data-surface^="runtime"]').first()
+  const actionsButton = runtimeSurface.locator("button").filter({
+    has: page.getByText("Actions", { exact: true })
+  })
   const focusTarget = shell
     .locator(
       '.launcher-chrome[data-surface^="runtime"] input, .launcher-chrome[data-surface^="runtime"] textarea'
@@ -67,6 +84,8 @@ When("我在当前 Launcher surface 打开动作面板", async function (this: O
     ).electron.process.platform
   })
 
+  await expect(runtimeSurface).toBeVisible()
+  await expect(actionsButton).toBeVisible()
   await expect(focusTarget).toBeVisible()
   await focusTarget.focus()
   await page.keyboard.press(platform === "darwin" ? "Meta+K" : "Control+K")

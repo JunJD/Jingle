@@ -72,10 +72,25 @@ function formatTodoTimestamp(value: string): string {
   }).format(new Date(value))
 }
 
-function renderCreateTodoActions(props: { onSubmit: () => void }): React.JSX.Element {
+function renderCreateTodoActions(props: {
+  onClearCompleted: () => void
+  onEnterSearchMode: () => void
+  onSubmit: () => void
+}): React.JSX.Element {
   return (
     <ActionPanel>
       <Action icon={<Plus className="h-4 w-4" />} onAction={props.onSubmit} title="Create Todo" />
+      <Action
+        icon={<Search className="h-4 w-4" />}
+        onAction={props.onEnterSearchMode}
+        title="Search Todos"
+      />
+      <Action
+        icon={<Trash2 className="h-4 w-4" />}
+        onAction={props.onClearCompleted}
+        style={Action.Style.Destructive}
+        title="Clear Completed"
+      />
     </ActionPanel>
   )
 }
@@ -230,6 +245,8 @@ export default function TodoList(): React.JSX.Element {
     setInputText(todo.title)
   }
   const createTodoActions = renderCreateTodoActions({
+    onClearCompleted: clearCompleted,
+    onEnterSearchMode: enterSearchMode,
     onSubmit: submit
   })
 
