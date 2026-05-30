@@ -24,6 +24,10 @@ export interface RegisterExtensionQuicklinkInput {
   shortcut?: ExtensionQuicklinkShortcut
 }
 
+export interface UpdateExtensionQuicklinkInput {
+  name: string
+}
+
 export interface ParsedExtensionQuicklinkCommand {
   commandName: string
   extensionName: string

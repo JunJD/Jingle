@@ -8,6 +8,7 @@ interface SettingsCopy {
     general: string
     memory: string
     provider: string
+    quicklinks: string
     shortcuts: string
   }
   common: {
@@ -152,6 +153,17 @@ interface SettingsCopy {
     workspaceContext: string
     aboutMe: string
   }
+  quicklinks: {
+    commandLink: string
+    description: string
+    empty: string
+    link: string
+    name: string
+    remove: string
+    save: string
+    shortcut: string
+    title: string
+  }
   shortcuts: {
     title: string
     description: string
@@ -182,6 +194,7 @@ const zhCN: SettingsCopy = {
     general: "通用",
     memory: "记忆",
     provider: "模型",
+    quicklinks: "Quicklinks",
     shortcuts: "快捷键"
   },
   common: {
@@ -327,6 +340,17 @@ const zhCN: SettingsCopy = {
     workspaceContext: "当前工作区上下文",
     aboutMe: "关于我"
   },
+  quicklinks: {
+    commandLink: "Command Quicklink",
+    description: "管理 extension 创建的 quicklink。它们会出现在 Launcher 搜索里，并可带 launch context 打开 command。",
+    empty: "还没有 extension quicklink。",
+    link: "链接",
+    name: "名称",
+    remove: "删除",
+    save: "保存",
+    shortcut: "快捷键",
+    title: "Quicklinks"
+  },
   shortcuts: {
     title: "快捷键",
     description: "配置 Launcher 唤起、主页入口等少数稳定快捷键。",
@@ -357,6 +381,7 @@ const enUS: SettingsCopy = {
     general: "General",
     memory: "Memory",
     provider: "Models",
+    quicklinks: "Quicklinks",
     shortcuts: "Shortcuts"
   },
   common: {
@@ -507,6 +532,18 @@ const enUS: SettingsCopy = {
     workspace: "Current Workspace",
     workspaceContext: "Current workspace context",
     aboutMe: "About me"
+  },
+  quicklinks: {
+    commandLink: "Command Quicklink",
+    description:
+      "Manage quicklinks created by extensions. They appear in Launcher search and can open commands with launch context.",
+    empty: "No extension quicklinks yet.",
+    link: "Link",
+    name: "Name",
+    remove: "Remove",
+    save: "Save",
+    shortcut: "Shortcut",
+    title: "Quicklinks"
   },
   shortcuts: {
     title: "Shortcuts",

@@ -11,7 +11,10 @@ import {
   registerExternalLinksIpcHandlers,
   registerExternalLinksModule
 } from "./external-links/module"
-import { registerExtensionQuicklinkModule } from "./extension-quicklinks/module"
+import {
+  registerExtensionQuicklinkIpcHandlers,
+  registerExtensionQuicklinkModule
+} from "./extension-quicklinks/module"
 import { ExtensionQuicklinkService } from "./extension-quicklinks/service"
 import {
   registerExtensionRuntimeIpcHandlers,
@@ -96,6 +99,7 @@ export class MainCompositionRoot {
     registerAppInfoIpcHandlers(this.dependencyContainer, ipcMain)
     registerArtifactsIpcHandlers(this.dependencyContainer, ipcMain)
     registerExternalLinksIpcHandlers(this.dependencyContainer, ipcMain)
+    registerExtensionQuicklinkIpcHandlers(this.dependencyContainer, ipcMain)
     registerLauncherIpcHandlers(this.dependencyContainer, ipcMain)
     registerLauncherHistoryIpcHandlers(this.dependencyContainer, ipcMain)
     registerLocalStartIpcHandlers(this.dependencyContainer, ipcMain)

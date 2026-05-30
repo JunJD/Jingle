@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto"
 import Store from "electron-store"
 import type {
   ExtensionQuicklinkRecord,
-  RegisterExtensionQuicklinkInput
+  RegisterExtensionQuicklinkInput,
+  UpdateExtensionQuicklinkInput
 } from "@shared/extension-quicklinks"
 import { getOpenworkDir } from "../storage"
 
@@ -68,6 +69,31 @@ export class ExtensionQuicklinkRepository {
       updatedAt: now
     }
     this.writeQuicklinks([...quicklinks, nextQuicklink])
+    return nextQuicklink
+  }
+
+  remove(quicklinkId: string): void {
+    this.writeQuicklinks(this.readQuicklinks().filter((quicklink) => quicklink.id !== quicklinkId))
+  }
+
+  update(
+    quicklinkId: string,
+    input: UpdateExtensionQuicklinkInput
+  ): ExtensionQuicklinkRecord {
+    const quicklinks = this.readQuicklinks()
+    const quicklinkIndex = quicklinks.findIndex((quicklink) => quicklink.id === quicklinkId)
+    if (quicklinkIndex < 0) {
+      throw new Error(`Extension quicklink not found: ${quicklinkId}`)
+    }
+
+    const nextQuicklink: ExtensionQuicklinkRecord = {
+      ...quicklinks[quicklinkIndex],
+      name: input.name.trim() || "Quicklink",
+      updatedAt: new Date().toISOString()
+    }
+    const nextQuicklinks = [...quicklinks]
+    nextQuicklinks[quicklinkIndex] = nextQuicklink
+    this.writeQuicklinks(nextQuicklinks)
     return nextQuicklink
   }
 

@@ -1,5 +1,6 @@
 import { agentApi } from "./agent"
 import { artifactsApi } from "./artifacts"
+import { extensionQuicklinksApi } from "./extensionQuicklinks"
 import { extensionRuntimeApi } from "./extensionRuntime"
 import { launcherApi } from "./launcher"
 import { launcherHistoryApi } from "./launcherHistory"
@@ -18,6 +19,7 @@ export const api = {
   agent: agentApi,
   threads: threadsApi,
   artifacts: artifactsApi,
+  extensionQuicklinks: extensionQuicklinksApi,
   extensionRuntime: extensionRuntimeApi,
   memory: memoryApi,
   models: modelsApi,

@@ -5,6 +5,7 @@ export type SettingsWindowTab =
   | "general"
   | "memory"
   | "provider"
+  | "quicklinks"
   | "extensions"
   | "shortcuts"
 

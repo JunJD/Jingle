@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { Brain, Keyboard, KeyRound, Palette, Puzzle, Settings2 } from "lucide-react"
+import { Brain, Keyboard, KeyRound, Link2, Palette, Puzzle, Settings2 } from "lucide-react"
 import type { SettingsWindowTab, SettingsWindowTarget } from "@shared/settings-window"
 import { useI18n } from "../lib/i18n"
 import { AppearanceTab } from "./AppearanceTab"
@@ -8,6 +8,7 @@ import { ExtensionsTab } from "./ExtensionsTab"
 import { GeneralTab } from "./GeneralTab"
 import { MemoryTab } from "./MemoryTab"
 import { ProviderTab, preloadProviderTabData } from "./ProviderTab"
+import { QuicklinksTab } from "./QuicklinksTab"
 import { ShortcutsTab } from "./ShortcutsTab"
 
 const settingsScrollPaneClassName =
@@ -112,6 +113,15 @@ export default function SettingsApp(): React.JSX.Element {
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab("quicklinks")}
+            data-settings-tab="quicklinks"
+            className={getSettingsTabClassName(activeTab === "quicklinks")}
+          >
+            <Link2 className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+            {copy.tabs.quicklinks}
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab("shortcuts")}
             data-settings-tab="shortcuts"
             className={getSettingsTabClassName(activeTab === "shortcuts")}
@@ -145,6 +155,10 @@ export default function SettingsApp(): React.JSX.Element {
         ) : activeTab === "memory" ? (
           <div className={settingsScrollPaneClassName}>
             <MemoryTab locale={locale} />
+          </div>
+        ) : activeTab === "quicklinks" ? (
+          <div className={settingsScrollPaneClassName}>
+            <QuicklinksTab locale={locale} />
           </div>
         ) : activeTab === "shortcuts" ? (
           <div className={settingsScrollPaneClassName}>

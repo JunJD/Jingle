@@ -1,6 +1,7 @@
 import type {
   ExtensionQuicklinkRecord,
-  RegisterExtensionQuicklinkInput
+  RegisterExtensionQuicklinkInput,
+  UpdateExtensionQuicklinkInput
 } from "@shared/extension-quicklinks"
 import { ExtensionQuicklinkRepository } from "./repository"
 
@@ -13,5 +14,16 @@ export class ExtensionQuicklinkService {
 
   registerQuicklink(input: RegisterExtensionQuicklinkInput): ExtensionQuicklinkRecord {
     return this.repository.register(input)
+  }
+
+  removeQuicklink(quicklinkId: string): void {
+    this.repository.remove(quicklinkId)
+  }
+
+  updateQuicklink(
+    quicklinkId: string,
+    input: UpdateExtensionQuicklinkInput
+  ): ExtensionQuicklinkRecord {
+    return this.repository.update(quicklinkId, input)
   }
 }
