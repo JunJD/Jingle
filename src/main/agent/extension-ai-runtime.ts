@@ -90,6 +90,8 @@ export function createExtensionAiRuntime(options: CreateExtensionAiRuntimeOption
     registry: options.registry
   })
   const approvalPolicyProvider = createDynamicExtensionToolApprovalPolicyProvider({
+    getExtensionExecutionContext: options.getExtensionExecutionContext,
+    getExtensionPreferences: options.getExtensionPreferences,
     getBindings: session.getAllToolBindings,
     permissionMode: options.permissionMode
   })
