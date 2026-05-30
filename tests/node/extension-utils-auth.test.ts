@@ -6,7 +6,7 @@ import {
   runWithExtensionRuntimeSdk,
   type ExtensionRuntimeSdkContextValue
 } from "../../src/extension-runtime/sdk"
-import { OAuthService, withAccessToken } from "../../packages/extension-utils/src"
+import { OAuthService, getAccessToken, withAccessToken } from "../../packages/extension-utils/src"
 import type { ExtensionHostResponse } from "../../src/shared/extension-runtime-protocol"
 
 test("withAccessToken initializes OAuth-style services from Openwork preferences", async () => {
@@ -86,6 +86,44 @@ test("withAccessToken fails when no Openwork token is configured", async () => {
       runWithExtensionRuntimeSdk(createLaunchContext({}), () => withAccessToken({})(() => {})()),
     /Missing accessToken preference/
   )
+})
+
+test("OAuthService exposes authorize and getAccessToken methods", async () => {
+  const authorizedTokens: string[] = []
+  const service = new OAuthService({
+    onAuthorize: ({ token }) => {
+      authorizedTokens.push(token)
+    },
+    personalAccessToken: "fallback_token"
+  })
+
+  const [accessToken, authorizedToken] = await runWithExtensionRuntimeSdk(
+    createLaunchContext({
+      accessToken: "secret_token"
+    }),
+    async () => Promise.all([service.getAccessToken(), service.authorize()])
+  )
+
+  assert.equal(accessToken, "secret_token")
+  assert.equal(authorizedToken, "secret_token")
+  assert.deepEqual(authorizedTokens, ["secret_token", "secret_token"])
+})
+
+test("getAccessToken utility resolves generic withAccessToken services", async () => {
+  const authorizedTokens: string[] = []
+  const token = await runWithExtensionRuntimeSdk(
+    createLaunchContext({}),
+    () =>
+      getAccessToken({
+        onAuthorize: ({ token }) => {
+          authorizedTokens.push(token)
+        },
+        personalAccessToken: "fallback_token"
+      })
+  )
+
+  assert.equal(token, "fallback_token")
+  assert.deepEqual(authorizedTokens, ["fallback_token"])
 })
 
 function createLaunchContext(

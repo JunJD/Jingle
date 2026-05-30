@@ -876,6 +876,8 @@ export function useForm<TValues extends FormValues = Record<string, unknown>>(
 }
 
 export interface WithAccessTokenService {
+  authorize?: () => Promise<string>
+  getAccessToken?: () => Promise<string>
   onAuthorize?: (tokenSet: { token: string }) => Promise<void> | void
   personalAccessToken?: string
 }
@@ -908,6 +910,20 @@ export class OAuthService implements WithAccessTokenService {
     this.personalAccessToken = options.personalAccessToken
     this.scope = options.scope
     this.tokenUrl = options.tokenUrl
+  }
+
+  async authorize(): Promise<string> {
+    return this.getAccessToken()
+  }
+
+  async getAccessToken(): Promise<string> {
+    const token = resolveOpenworkAccessToken(this)
+    if (!token) {
+      throw new Error("Missing accessToken preference for this extension.")
+    }
+
+    await this.onAuthorize?.({ token })
+    return token
   }
 }
 
@@ -948,6 +964,20 @@ export function withAccessToken(service: WithAccessTokenService) {
       return fn(...args) as ReturnType<TFunction>
     }) as WithAccessTokenWrapped<TFunction>
   }
+}
+
+export async function getAccessToken(service: WithAccessTokenService): Promise<string> {
+  if (service.getAccessToken) {
+    return service.getAccessToken()
+  }
+
+  const token = resolveOpenworkAccessToken(service)
+  if (!token) {
+    throw new Error("Missing accessToken preference for this extension.")
+  }
+
+  await service.onAuthorize?.({ token })
+  return token
 }
 
 function ConnectExtensionEmptyView(): ReactElement {
