@@ -5,6 +5,7 @@ import type { LocalStartItem } from "@shared/local-start"
 
 export const LAUNCHER_SEARCH_SOURCES: readonly LauncherSearchSource[] = [
   "applications",
+  "quicklinks",
   "files",
   "threads",
   "browser-history"
