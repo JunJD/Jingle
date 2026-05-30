@@ -2,8 +2,6 @@ name: Desktop Release
 
 on:
   push:
-    branches:
-      - "**"
     tags:
       - "**"
   workflow_dispatch:
@@ -14,6 +12,9 @@ concurrency:
 
 permissions:
   contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   package:
@@ -65,9 +66,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload workflow artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: openwork-${{ matrix.name }}-${{ github.run_id }}
+          retention-days: 7
           path: |
             dist/*.dmg
             dist/*.exe
