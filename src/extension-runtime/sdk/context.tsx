@@ -120,13 +120,19 @@ export interface ExtensionRuntimeNavigation {
 }
 
 const extensionRuntimeSdkContext = createContext<ExtensionRuntimeSdkContextValue | null>(null)
-let activeRuntimeSdkContextValue: ExtensionRuntimeSdkContextValue | null = null
-let activeRuntimeSdkAsyncContextStorage: RuntimeSdkAsyncContextStorage | null | undefined
+// extension-api facade 和 runtime source 可能被不同模块图各加载一份；
+// active context 放到 globalThis，避免顶层 SDK 读取落到另一份模块局部状态。
+const RUNTIME_SDK_GLOBAL_STATE_KEY = Symbol.for("openwork.extensionRuntimeSdk.context")
 
 type RuntimeSdkGlobal = typeof globalThis & {
   process?: {
     getBuiltinModule?: (id: string) => unknown
   }
+}
+
+interface RuntimeSdkGlobalState {
+  activeContextValue: ExtensionRuntimeSdkContextValue | null
+  asyncContextStorage: RuntimeSdkAsyncContextStorage | null | undefined
 }
 
 interface RuntimeSdkAsyncContextStorage {
@@ -135,25 +141,41 @@ interface RuntimeSdkAsyncContextStorage {
 }
 
 function getActiveRuntimeSdkContextValue(): ExtensionRuntimeSdkContextValue | null {
-  const asyncContextValue = activeRuntimeSdkAsyncContextStorage?.getStore()
+  const globalState = getRuntimeSdkGlobalState()
+  const asyncContextValue = globalState.asyncContextStorage?.getStore()
   if (asyncContextValue) {
     return asyncContextValue
   }
 
-  return activeRuntimeSdkContextValue
+  return globalState.activeContextValue
 }
 
 function setActiveRuntimeSdkContextValue(value: ExtensionRuntimeSdkContextValue | null): void {
-  activeRuntimeSdkContextValue = value
+  getRuntimeSdkGlobalState().activeContextValue = value
 }
 
 function getRuntimeSdkAsyncContextStorage(): RuntimeSdkAsyncContextStorage | null {
-  if (activeRuntimeSdkAsyncContextStorage !== undefined) {
-    return activeRuntimeSdkAsyncContextStorage
+  const globalState = getRuntimeSdkGlobalState()
+  if (globalState.asyncContextStorage !== undefined) {
+    return globalState.asyncContextStorage
   }
 
-  activeRuntimeSdkAsyncContextStorage = createRuntimeSdkAsyncContextStorage()
-  return activeRuntimeSdkAsyncContextStorage
+  globalState.asyncContextStorage = createRuntimeSdkAsyncContextStorage()
+  return globalState.asyncContextStorage
+}
+
+function getRuntimeSdkGlobalState(): RuntimeSdkGlobalState {
+  const runtimeGlobal = globalThis as RuntimeSdkGlobal & Record<symbol, RuntimeSdkGlobalState>
+  let globalState = runtimeGlobal[RUNTIME_SDK_GLOBAL_STATE_KEY]
+  if (!globalState) {
+    globalState = {
+      activeContextValue: null,
+      asyncContextStorage: undefined
+    }
+    runtimeGlobal[RUNTIME_SDK_GLOBAL_STATE_KEY] = globalState
+  }
+
+  return globalState
 }
 
 function createRuntimeSdkAsyncContextStorage(): RuntimeSdkAsyncContextStorage | null {
@@ -269,7 +291,7 @@ export function ExtensionRuntimeSdkProvider(props: {
   useInsertionEffect(() => {
     setActiveRuntimeSdkContextValue(props.value)
     return () => {
-      if (activeRuntimeSdkContextValue === props.value) {
+      if (getRuntimeSdkGlobalState().activeContextValue === props.value) {
         setActiveRuntimeSdkContextValue(null)
       }
     }
@@ -296,13 +318,13 @@ export async function runWithExtensionRuntimeSdk<T>(
     return await asyncContextStorage.run(value, callback)
   }
 
-  const previousValue = activeRuntimeSdkContextValue
+  const previousValue = getRuntimeSdkGlobalState().activeContextValue
   setActiveRuntimeSdkContextValue(value)
 
   try {
     return await callback()
   } finally {
-    if (activeRuntimeSdkContextValue === value) {
+    if (getRuntimeSdkGlobalState().activeContextValue === value) {
       setActiveRuntimeSdkContextValue(previousValue)
     }
   }
