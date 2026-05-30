@@ -81,14 +81,14 @@ export function LauncherSearchPage(props: {
     (event: KeyboardEvent): void => {
       const isTabShortcut =
         event.key === "Tab" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
-      if (isTabShortcut && !isInputShortcutTarget(event.target)) {
+      if (isTabShortcut && inputValue.trim() && !isInputShortcutTarget(event.target)) {
         return
       }
 
       event.preventDefault()
       executeHomeCommand(LAUNCHER_COMMAND_IDS.searchOpenAi)
     },
-    [executeHomeCommand, isInputShortcutTarget]
+    [executeHomeCommand, inputValue, isInputShortcutTarget]
   )
   const handleOpenSettingsShortcut = useCallback(
     (event: KeyboardEvent): void => {
