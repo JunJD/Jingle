@@ -121,6 +121,99 @@ export interface ExtensionRuntimeNavigation {
 
 const extensionRuntimeSdkContext = createContext<ExtensionRuntimeSdkContextValue | null>(null)
 let activeRuntimeSdkContextValue: ExtensionRuntimeSdkContextValue | null = null
+let activeRuntimeSdkAsyncContextStorage: RuntimeSdkAsyncContextStorage | null | undefined
+
+type RuntimeSdkGlobal = typeof globalThis & {
+  process?: {
+    getBuiltinModule?: (id: string) => unknown
+  }
+}
+
+interface RuntimeSdkAsyncContextStorage {
+  getStore: () => ExtensionRuntimeSdkContextValue | undefined
+  run: <TResult>(value: ExtensionRuntimeSdkContextValue, callback: () => TResult) => TResult
+}
+
+function getActiveRuntimeSdkContextValue(): ExtensionRuntimeSdkContextValue | null {
+  const asyncContextValue = activeRuntimeSdkAsyncContextStorage?.getStore()
+  if (asyncContextValue) {
+    return asyncContextValue
+  }
+
+  return activeRuntimeSdkContextValue
+}
+
+function setActiveRuntimeSdkContextValue(value: ExtensionRuntimeSdkContextValue | null): void {
+  activeRuntimeSdkContextValue = value
+}
+
+function getRuntimeSdkAsyncContextStorage(): RuntimeSdkAsyncContextStorage | null {
+  if (activeRuntimeSdkAsyncContextStorage !== undefined) {
+    return activeRuntimeSdkAsyncContextStorage
+  }
+
+  activeRuntimeSdkAsyncContextStorage = createRuntimeSdkAsyncContextStorage()
+  return activeRuntimeSdkAsyncContextStorage
+}
+
+function createRuntimeSdkAsyncContextStorage(): RuntimeSdkAsyncContextStorage | null {
+  const AsyncLocalStorage = resolveAsyncLocalStorageConstructor()
+  if (!AsyncLocalStorage) {
+    return null
+  }
+
+  return new AsyncLocalStorage<ExtensionRuntimeSdkContextValue>()
+}
+
+function resolveAsyncLocalStorageConstructor():
+  | (new <TValue>() => {
+      getStore: () => TValue | undefined
+      run: <TResult>(value: TValue, callback: () => TResult) => TResult
+    })
+  | null {
+  const runtimeGlobal = globalThis as RuntimeSdkGlobal
+  const getBuiltinModule = runtimeGlobal.process?.getBuiltinModule
+  const builtinAsyncHooks =
+    getBuiltinModule?.("node:async_hooks") ?? getBuiltinModule?.("async_hooks")
+  const builtinAsyncLocalStorage = readAsyncLocalStorageConstructor(builtinAsyncHooks)
+  if (builtinAsyncLocalStorage) {
+    return builtinAsyncLocalStorage
+  }
+
+  const commonJsRequire = getCommonJsRequire()
+  const requiredAsyncHooks =
+    commonJsRequire?.("node:async_hooks") ?? commonJsRequire?.("async_hooks")
+  return readAsyncLocalStorageConstructor(requiredAsyncHooks)
+}
+
+function readAsyncLocalStorageConstructor(
+  value: unknown
+): (new <TValue>() => RuntimeSdkAsyncContextStorageFor<TValue>) | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const constructor = (value as { AsyncLocalStorage?: unknown }).AsyncLocalStorage
+  return typeof constructor === "function"
+    ? (constructor as new <TValue>() => RuntimeSdkAsyncContextStorageFor<TValue>)
+    : null
+}
+
+type RuntimeSdkAsyncContextStorageFor<TValue> = {
+  getStore: () => TValue | undefined
+  run: <TResult>(value: TValue, callback: () => TResult) => TResult
+}
+
+function getCommonJsRequire(): ((id: string) => unknown) | null {
+  try {
+    const commonJsRequire = (0, eval)("require") as unknown
+    return typeof commonJsRequire === "function"
+      ? (commonJsRequire as (id: string) => unknown)
+      : null
+  } catch {
+    return null
+  }
+}
 
 export function createExtensionRuntimeNavigation(params: {
   canPop?: boolean
@@ -171,13 +264,13 @@ export function ExtensionRuntimeSdkProvider(props: {
   children?: ReactNode
   value: ExtensionRuntimeSdkContextValue
 }): React.JSX.Element {
-  activeRuntimeSdkContextValue = props.value
+  setActiveRuntimeSdkContextValue(props.value)
 
   useInsertionEffect(() => {
-    activeRuntimeSdkContextValue = props.value
+    setActiveRuntimeSdkContextValue(props.value)
     return () => {
       if (activeRuntimeSdkContextValue === props.value) {
-        activeRuntimeSdkContextValue = null
+        setActiveRuntimeSdkContextValue(null)
       }
     }
   }, [props.value])
@@ -186,6 +279,7 @@ export function ExtensionRuntimeSdkProvider(props: {
 }
 
 export function getActiveExtensionRuntimeSdk(): ExtensionRuntimeSdkContextValue {
+  const activeRuntimeSdkContextValue = getActiveRuntimeSdkContextValue()
   if (!activeRuntimeSdkContextValue) {
     throw new Error("Extension runtime SDK is not initialized.")
   }
@@ -197,14 +291,19 @@ export async function runWithExtensionRuntimeSdk<T>(
   value: ExtensionRuntimeSdkContextValue,
   callback: () => Promise<T> | T
 ): Promise<T> {
+  const asyncContextStorage = getRuntimeSdkAsyncContextStorage()
+  if (asyncContextStorage) {
+    return await asyncContextStorage.run(value, callback)
+  }
+
   const previousValue = activeRuntimeSdkContextValue
-  activeRuntimeSdkContextValue = value
+  setActiveRuntimeSdkContextValue(value)
 
   try {
     return await callback()
   } finally {
     if (activeRuntimeSdkContextValue === value) {
-      activeRuntimeSdkContextValue = previousValue
+      setActiveRuntimeSdkContextValue(previousValue)
     }
   }
 }
@@ -302,6 +401,7 @@ export function useNavigation(): ExtensionRuntimeNavigation {
 }
 
 export async function closeMainWindow(_options?: CloseMainWindowOptions): Promise<void> {
+  void _options
   await getActiveExtensionRuntimeSdk().navigation.hideLauncher()
 }
 
