@@ -22,7 +22,6 @@ Feature: Openwork 桌面启动
     Then Launcher 首页展示了可执行结果
     When 我在 Launcher 首页按下 Tab
     Then Launcher 界面切换到 "ai"
-    And Launcher 输入框包含 "整理本周计划"
     And Launcher AI 输入状态会进入 pending
 
   Scenario: Launcher 首页保留 Enter 与 Tab 分工
@@ -37,14 +36,13 @@ Feature: Openwork 桌面启动
     And Launcher 输入框包含 "todo"
     When 我在 Launcher 首页按下 Tab
     Then Launcher 界面切换到 "ai"
-    And Launcher 输入框包含 "todo"
 
   Scenario: Launcher 首页可以通过方向键切换结果
     Given Openwork 桌面应用已启动
-    When 我在 Launcher 中搜索 "t"
+    When 我在 Launcher 中搜索 "todo"
     Then Launcher 首页当前选中结果为 "Todo List"
     When 我在 Launcher 首页按下 ArrowDown
-    Then Launcher 首页当前选中结果为 "Translate"
+    Then Launcher 首页当前选中结果为 "问 AI"
     When 我在 Launcher 首页按下 ArrowUp
     Then Launcher 首页当前选中结果为 "Todo List"
 

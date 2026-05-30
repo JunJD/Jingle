@@ -3,9 +3,36 @@ import { expect } from "@playwright/test"
 import { OpenworkWorld } from "../support/world"
 import { seedHistoryThreadFixture } from "../support/history-fixtures"
 import { getPrismaClient } from "../../../src/main/db/client"
+import type { Page } from "@playwright/test"
 
 function getLauncherAiSurface(page: import("@playwright/test").Page) {
   return page.locator('.launcher-chrome[data-surface="ai"]').first()
+}
+
+function getLauncherInput(page: Page, surface?: string) {
+  const surfaceSelector = surface
+    ? `.launcher-chrome[data-surface="${surface}"]`
+    : ".launcher-chrome"
+
+  return page.locator(`${surfaceSelector} .launcher-input input, ${surfaceSelector} .launcher-input textarea`).first()
+}
+
+function getLauncherAiComposer(page: Page) {
+  return page.locator('.ow-prompt-input [contenteditable="true"]').first()
+}
+
+async function readLauncherVisibleInputValue(page: Page): Promise<string> {
+  const standardInput = getLauncherInput(page)
+  if ((await standardInput.count()) > 0) {
+    return standardInput.inputValue()
+  }
+
+  const aiComposer = getLauncherAiComposer(page)
+  if ((await aiComposer.count()) > 0) {
+    return (await aiComposer.innerText()).replace(/\n$/, "")
+  }
+
+  throw new Error("Launcher input control is not available.")
 }
 
 async function countIndexedUserMessagesContaining(fragment: string): Promise<number> {
@@ -82,7 +109,7 @@ Then("Launcher 窗口当前可见", async function (this: OpenworkWorld) {
 
 When("我在 Launcher 中搜索 {string}", async function (this: OpenworkWorld, query: string) {
   const page = await this.getPageByKind("launcher")
-  const input = page.locator('.launcher-chrome[data-surface="home"] .launcher-input input')
+  const input = getLauncherInput(page, "home")
 
   await input.fill(query)
 })
@@ -126,7 +153,7 @@ Then(
 
 When("我执行当前选中的 Launcher 结果", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("launcher")
-  const input = page.locator('.launcher-chrome[data-surface="home"] .launcher-input input')
+  const input = getLauncherInput(page, "home")
 
   await input.press("Enter")
 })
@@ -173,8 +200,12 @@ When("我在 Launcher 首页按下 Escape", async function (this: OpenworkWorld)
 
 When("我在 Launcher 首页按下 Tab", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("launcher")
+  const input = getLauncherInput(page, "home")
 
-  await page.keyboard.press("Tab")
+  await page.bringToFront()
+  await expect(input).toBeVisible()
+  await input.focus()
+  await input.press("Tab")
 })
 
 When("我在 Launcher 首页按下 ArrowDown", async function (this: OpenworkWorld) {
@@ -191,7 +222,7 @@ When("我在 Launcher 首页按下 ArrowUp", async function (this: OpenworkWorld
 
 When("我在 Launcher AI 输入框按下 Backspace", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("launcher")
-  const input = page.locator('.launcher-chrome[data-surface="ai"] .launcher-input input')
+  const input = getLauncherAiComposer(page)
 
   await input.focus()
   await input.press("Backspace")
@@ -199,9 +230,15 @@ When("我在 Launcher AI 输入框按下 Backspace", async function (this: Openw
 
 When("我从 Launcher 打开设置窗口", async function (this: OpenworkWorld) {
   const page = await this.getPageByKind("launcher")
-  const settingsButton = page.locator("[data-launcher-open-settings]").first()
+  const platform = await page.evaluate(() => {
+    return (
+      window as unknown as Window & {
+        electron: { process: { platform: string } }
+      }
+    ).electron.process.platform
+  })
 
-  await settingsButton.click()
+  await page.keyboard.press(platform === "darwin" ? "Meta+Comma" : "Control+Comma")
 })
 
 When("我通过 API 打开 Settings 窗口", async function (this: OpenworkWorld) {
@@ -229,9 +266,8 @@ Then("Launcher 界面切换到 {string}", async function (this: OpenworkWorld, s
 
 Then("Launcher 输入框包含 {string}", async function (this: OpenworkWorld, query: string) {
   const page = await this.getPageByKind("launcher")
-  const input = page.locator(".launcher-chrome .launcher-input input")
 
-  await expect(input).toHaveValue(query)
+  await expect.poll(() => readLauncherVisibleInputValue(page)).toBe(query)
 })
 
 Then("Launcher AI 输入状态会进入 pending", async function (this: OpenworkWorld) {
@@ -276,7 +312,7 @@ Then("Launcher 翻译输入框包含 {string}", async function (this: OpenworkWo
   const translateSurface = page.locator(
     '.launcher-window-shell[data-active-command-owner="translate"]'
   )
-  const input = page.locator("textarea.launcher-translate-textarea")
+  const input = translateSurface.locator('[data-runtime-form-field="source-text"] textarea')
 
   await expect(translateSurface).toBeVisible()
   await expect(input).toHaveValue(query)

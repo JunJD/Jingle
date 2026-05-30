@@ -7,15 +7,15 @@ import {
 import { execFile } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { dirname, join, resolve } from "node:path"
+import { dirname, join } from "node:path"
 import { promisify } from "node:util"
 import { _electron as electron, type ElectronApplication, type Page } from "playwright"
 
 const execFileAsync = promisify(execFile)
 const DEFAULT_TIMEOUT_MS = 90_000
+const ELECTRON_CLOSE_TIMEOUT_MS = 10_000
 const REPO_ROOT = process.cwd()
-const PRISMA_SCHEMA_PATH = resolve(REPO_ROOT, "prisma/schema.prisma")
-const PRISMA_CLI_PATH = require.resolve("prisma/build/index.js")
+const PRISMA_OPENWORK_DB_SCRIPT_PATH = join(REPO_ROOT, "scripts/run-prisma-openwork-db.mjs")
 const ELECTRON_MODULE_ID = require.resolve("electron")
 const ELECTRON_PATH_FILE = require.resolve("electron/path.txt")
 const electronExecutablePath = join(
@@ -28,8 +28,7 @@ setDefaultTimeout(DEFAULT_TIMEOUT_MS)
 
 async function readWindowKind(page: Page): Promise<string | null> {
   try {
-    await page.waitForLoadState("domcontentloaded", { timeout: 10_000 })
-    return await page.evaluate(() => document.body.dataset.window ?? null)
+    return await page.evaluate(() => document.body?.dataset.window ?? null)
   } catch {
     return null
   }
@@ -53,7 +52,9 @@ async function resolveWindowByKind(
       break
     }
 
-    await electronApp.waitForEvent("window", { timeout: remaining }).catch(() => null)
+    await electronApp
+      .waitForEvent("window", { timeout: Math.min(remaining, 250) })
+      .catch(() => null)
   }
 
   throw new Error(`Window "${windowKind}" did not finish bootstrapping within 30 seconds.`)
@@ -65,26 +66,22 @@ async function listWindowKinds(electronApp: ElectronApplication): Promise<string
 }
 
 async function prepareDatabase(openworkHome: string): Promise<void> {
-  const databaseUrl = `file:${join(openworkHome, "openwork.sqlite")}`
+  const databasePath = join(openworkHome, "openwork.sqlite")
 
   try {
-    await execFileAsync(
-      process.execPath,
-      [PRISMA_CLI_PATH, "migrate", "deploy", "--schema", PRISMA_SCHEMA_PATH],
-      {
-        cwd: REPO_ROOT,
-        env: {
-          ...process.env,
-          DATABASE_URL: databaseUrl
-        }
+    await execFileAsync(process.execPath, [PRISMA_OPENWORK_DB_SCRIPT_PATH, "migrate", "deploy"], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        OPENWORK_HOME: openworkHome
       }
-    )
+    })
   } catch (error) {
     const message =
       error && typeof error === "object" && "stderr" in error && typeof error.stderr === "string"
         ? error.stderr
         : String(error)
-    throw new Error(`Failed to prepare BDD database for ${databaseUrl}.\n${message}`)
+    throw new Error(`Failed to prepare BDD database for file:${databasePath}.\n${message}`)
   }
 }
 
@@ -102,6 +99,30 @@ async function launchElectronApp(options: Parameters<typeof electron.launch>[0])
     return await electron.launch(options)
   } finally {
     cachedElectronModule.exports = previousExports
+  }
+}
+
+async function closeElectronApp(electronApp: ElectronApplication): Promise<void> {
+  const process = electronApp.process()
+  let timeout: ReturnType<typeof setTimeout> | null = null
+
+  try {
+    await Promise.race([
+      electronApp.close(),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("Timed out closing Electron app.")),
+          ELECTRON_CLOSE_TIMEOUT_MS
+        )
+      })
+    ])
+  } catch {
+    process.kill()
+    await electronApp.waitForEvent("close", { timeout: ELECTRON_CLOSE_TIMEOUT_MS }).catch(() => {})
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout)
+    }
   }
 }
 
@@ -272,7 +293,7 @@ export class OpenworkWorld extends World {
 
   async closeApp(): Promise<void> {
     if (this.electronApp) {
-      await this.electronApp.close()
+      await closeElectronApp(this.electronApp)
       this.electronApp = null
     }
 
@@ -301,7 +322,7 @@ export class OpenworkWorld extends World {
     }
 
     if (this.electronApp) {
-      await this.electronApp.close()
+      await closeElectronApp(this.electronApp)
       this.electronApp = null
     }
 
