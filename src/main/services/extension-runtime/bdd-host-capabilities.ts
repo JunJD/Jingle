@@ -152,10 +152,10 @@ class BddExtensionRuntimeHostCapabilities implements ExtensionRuntimeHostCapabil
   }
 
   showToast(
-    toast: ExtensionToastPayload
+    params: { sessionId: string; toast: ExtensionToastPayload }
   ): ReturnType<ExtensionRuntimeHostCapabilities["showToast"]> {
-    this.record("toast", toast)
-    return this.host.showToast(toast)
+    this.record("toast", params.toast)
+    return this.host.showToast(params)
   }
 
   setStorageValue(
