@@ -9,13 +9,16 @@ import { sortLauncherHistoryItems, type LauncherHistoryItem } from "@shared/laun
 import type { LauncherSearchResult } from "@shared/launcher-search"
 import type { LocalStartItem } from "@shared/local-start"
 import { shouldShowLauncherIdleItems } from "@shared/launcher-settings"
+import { AI_INTENT_ID } from "@shared/launcher-ai"
 import { launcherSearchSourceOrder } from "./hooks/launcher-search-page-store-core"
 import { getLauncherCommandIntents, listLauncherCommands } from "./pages"
+import { getLauncherCommandAddressKey, splitLauncherUseWithCommands } from "./use-with-preferences"
 import {
   buildLauncherBrowserSearchSuggestionItem,
   buildLauncherCommandIntentShellItems,
   buildLauncherCompletionSuggestionItem,
   buildLauncherHistoryShellItems,
+  buildHighConfidenceUseWithCommandShellItems,
   buildLauncherInternalCommandShellItems,
   buildLauncherLocalStartShellItems,
   buildLauncherSearchShellItems,
@@ -222,6 +225,13 @@ export function buildLauncherHomeSurfaceModel(params: {
   const extensionCommands = launcherCommands.filter(
     (command) => command.address.kind === "extension-command"
   )
+  const { enabledCommands: enabledExtensionCommands } = splitLauncherUseWithCommands(
+    extensionCommands,
+    useWithDisabledCommandKeys
+  )
+  const enabledExtensionCommandKeys = new Set(
+    enabledExtensionCommands.map((command) => getLauncherCommandAddressKey(command.address))
+  )
   const builtInCommands = launcherCommands.filter(
     (command) => command.address.kind === "built-in-command"
   )
@@ -231,13 +241,41 @@ export function buildLauncherHomeSurfaceModel(params: {
     locale,
     query
   })
+  const highConfidenceExtensionIntentItems = commandIntentItems.filter(
+    (item) =>
+      item.address.kind === "extension-command" &&
+      item.id !== AI_INTENT_ID &&
+      enabledExtensionCommandKeys.has(getLauncherCommandAddressKey(item.address))
+  )
+  const highConfidenceExtensionCommandKeys = new Set(
+    highConfidenceExtensionIntentItems.map((item) => getLauncherCommandAddressKey(item.address))
+  )
+  const highConfidenceUseWithItems = buildHighConfidenceUseWithCommandShellItems({
+    commands: extensionCommands,
+    copy,
+    disabledCommandKeys: useWithDisabledCommandKeys,
+    query: trimmedQuery
+  })
+  for (const item of highConfidenceUseWithItems) {
+    if (item.commandRef) {
+      highConfidenceExtensionCommandKeys.add(getLauncherCommandAddressKey(item.commandRef))
+    }
+  }
   const builtInCommandIntentItems = buildLauncherCommandIntentShellItems(
-    commandIntentItems.filter((item) => item.address.kind === "built-in-command")
+    commandIntentItems.filter(
+      (item) =>
+        item.address.kind === "built-in-command" &&
+        (highConfidenceExtensionIntentItems.length === 0 || item.id !== AI_INTENT_ID)
+    )
+  )
+  const extensionIntentItems = buildLauncherCommandIntentShellItems(
+    highConfidenceExtensionIntentItems
   )
   const useWithItems = buildLauncherUseWithShellItems({
     commands: extensionCommands,
     copy,
     disabledCommandKeys: useWithDisabledCommandKeys,
+    excludeCommandKeys: [...highConfidenceExtensionCommandKeys],
     intentItems: commandIntentItems,
     query: trimmedQuery
   })
@@ -247,7 +285,12 @@ export function buildLauncherHomeSurfaceModel(params: {
     preview: searchResultsPreview
   })
 
-  const primaryResultItems = [...builtInCommandIntentItems, ...searchResultItems]
+  const primaryResultItems = [
+    ...extensionIntentItems,
+    ...highConfidenceUseWithItems,
+    ...builtInCommandIntentItems,
+    ...searchResultItems
+  ]
   if (primaryResultItems.length > 0) {
     sections.push({
       items: primaryResultItems,

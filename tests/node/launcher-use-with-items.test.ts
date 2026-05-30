@@ -19,7 +19,7 @@ const copy = {
   }
 } as Parameters<typeof buildLauncherUseWithCommandShellItems>[0]
 
-test("use-with command items seed the current query into extension commands", () => {
+test("use-with command items pass the current query as seed and fallback text", () => {
   const command: LauncherIndexedCommand = {
     address: {
       commandName: "search-files",
@@ -37,7 +37,12 @@ test("use-with command items seed the current query into extension commands", ()
 
   assert.equal(item?.id, "use-with:files:search-files:wechat")
   assert.deepEqual(item?.commandRef, command.address)
-  assert.deepEqual(item?.commandOpenOptions, { seedQuery: "wechat" })
+  assert.deepEqual(item?.commandOpenOptions, {
+    launchProps: {
+      fallbackText: "wechat"
+    },
+    seedQuery: "wechat"
+  })
   assert.equal(item?.title, "Search Files")
   assert.equal(item?.subtitle, "File Search · Find a file")
   assert.equal(item?.presentation.categoryLabel, "Extension")
@@ -112,7 +117,12 @@ test("use-with shell keeps extension intent items and de-duplicates generic fall
     seedQuery: "translate hello"
   })
   assert.equal(items[0]?.presentation.tone, "accent")
-  assert.deepEqual(items[1]?.commandOpenOptions, { seedQuery: "translate hello" })
+  assert.deepEqual(items[1]?.commandOpenOptions, {
+    launchProps: {
+      fallbackText: "translate hello"
+    },
+    seedQuery: "translate hello"
+  })
 })
 
 test("use-with shell hides disabled extension intent and fallback rows", () => {

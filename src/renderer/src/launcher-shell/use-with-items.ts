@@ -5,6 +5,26 @@ import type { LauncherResultPresentation } from "./result-types"
 import type { LauncherShellItem } from "./types"
 import { getLauncherCommandAddressKey, splitLauncherUseWithCommands } from "./use-with-preferences"
 
+function normalizeLauncherCommandSearchText(value: string): string {
+  return value.trim().toLowerCase()
+}
+
+function isHighConfidenceCommandMatch(command: LauncherIndexedCommand, query: string): boolean {
+  const normalizedQuery = normalizeLauncherCommandSearchText(query)
+  if (!normalizedQuery) {
+    return false
+  }
+  const normalizedTitle = normalizeLauncherCommandSearchText(command.title)
+  const normalizedOwnerTitle = normalizeLauncherCommandSearchText(command.ownerTitle)
+
+  return (
+    normalizedTitle === normalizedQuery ||
+    normalizedTitle.startsWith(`${normalizedQuery} `) ||
+    normalizedOwnerTitle === normalizedQuery ||
+    normalizedOwnerTitle.startsWith(`${normalizedQuery} `)
+  )
+}
+
 export function buildLauncherCommandIntentShellItems(
   items: LauncherResolvedCommandIntent[]
 ): LauncherShellItem[] {
@@ -28,12 +48,18 @@ export function getLauncherIndexedCommandIcon(
   command: LauncherIndexedCommand
 ): LauncherResultPresentation["icon"] {
   if (command.address.kind === "extension-command") {
-    return {
+    const icon: LauncherResultPresentation["icon"] = {
       extensionName: command.address.extensionName,
-      icon: command.icon,
-      iconName: command.iconName,
       type: "extension"
     }
+    if (command.icon) {
+      icon.icon = command.icon
+    }
+    if (command.iconName) {
+      icon.iconName = command.iconName
+    }
+
+    return icon
   }
 
   return {
@@ -59,6 +85,9 @@ export function buildLauncherUseWithCommandShellItems(
       type: "none" as const
     },
     commandOpenOptions: {
+      launchProps: {
+        fallbackText: trimmedQuery
+      },
       seedQuery: trimmedQuery
     },
     commandRef: command.address,
@@ -83,6 +112,7 @@ export function buildLauncherUseWithShellItems(params: {
   commands: LauncherIndexedCommand[]
   copy: AppCopy
   disabledCommandKeys?: readonly string[]
+  excludeCommandKeys?: readonly string[]
   intentItems: LauncherResolvedCommandIntent[]
   query: string
 }): LauncherShellItem[] {
@@ -90,8 +120,12 @@ export function buildLauncherUseWithShellItems(params: {
     params.commands,
     params.disabledCommandKeys ?? []
   )
+  const excludedCommandKeys = new Set(params.excludeCommandKeys ?? [])
+  const visibleCommands = enabledCommands.filter(
+    (command) => !excludedCommandKeys.has(getLauncherCommandAddressKey(command.address))
+  )
   const enabledCommandKeys = new Set(
-    enabledCommands.map((command) => getLauncherCommandAddressKey(command.address))
+    visibleCommands.map((command) => getLauncherCommandAddressKey(command.address))
   )
   const extensionIntentItems = params.intentItems.filter(
     (item) =>
@@ -101,7 +135,7 @@ export function buildLauncherUseWithShellItems(params: {
   const intentCommandKeys = new Set(
     extensionIntentItems.map((item) => getLauncherCommandAddressKey(item.address))
   )
-  const fallbackCommands = enabledCommands.filter(
+  const fallbackCommands = visibleCommands.filter(
     (command) => !intentCommandKeys.has(getLauncherCommandAddressKey(command.address))
   )
 
@@ -109,4 +143,21 @@ export function buildLauncherUseWithShellItems(params: {
     ...buildLauncherCommandIntentShellItems(extensionIntentItems),
     ...buildLauncherUseWithCommandShellItems(params.copy, fallbackCommands, params.query)
   ]
+}
+
+export function buildHighConfidenceUseWithCommandShellItems(params: {
+  commands: LauncherIndexedCommand[]
+  copy: AppCopy
+  disabledCommandKeys?: readonly string[]
+  query: string
+}): LauncherShellItem[] {
+  const { enabledCommands } = splitLauncherUseWithCommands(
+    params.commands,
+    params.disabledCommandKeys ?? []
+  )
+  const matchedCommands = enabledCommands.filter((command) =>
+    isHighConfidenceCommandMatch(command, params.query)
+  )
+
+  return buildLauncherUseWithCommandShellItems(params.copy, matchedCommands, params.query)
 }

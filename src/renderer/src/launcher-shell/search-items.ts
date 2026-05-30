@@ -12,6 +12,7 @@ import { getLauncherIndexedCommandIcon } from "./use-with-items"
 export {
   buildLauncherCommandIntentShellItems,
   getLauncherIndexedCommandIcon,
+  buildHighConfidenceUseWithCommandShellItems,
   buildLauncherUseWithCommandShellItems,
   buildLauncherUseWithShellItems
 } from "./use-with-items"
