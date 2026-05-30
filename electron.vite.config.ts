@@ -103,6 +103,7 @@ export default defineConfig({
         "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
         "@openwork/extension-api": resolve("packages/extension-api/src/index.ts"),
         "@openwork/extension-utils": resolve("packages/extension-utils/src/index.ts"),
+        canvas: resolve("src/main/runtime-shims/canvas.ts"),
         "@plugins": resolve("src/plugins"),
         "@shared": resolve("src/shared")
       }
