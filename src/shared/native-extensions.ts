@@ -76,7 +76,16 @@ export interface NativeExtensionRuntimeShellManifest {
   allowedUrlSchemes?: string[]
 }
 
+export interface NativeExtensionCommandArgumentSchema {
+  name: string
+  placeholder?: string
+  required?: boolean
+  title?: string
+  type?: string
+}
+
 export interface NativeExtensionCommandManifest<TCommandName extends string = string> {
+  arguments?: NativeExtensionCommandArgumentSchema[]
   description?: string
   /** Extension-package-relative asset path, for example "assets/icon.svg". */
   icon?: NativeExtensionIcon

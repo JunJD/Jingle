@@ -35,6 +35,7 @@ import {
   Sparkles,
   Trash2,
   Type,
+  Upload,
   User,
   type LucideIcon
 } from "lucide-react"
@@ -144,7 +145,8 @@ export const Icon = {
   Sidebar: createIcon(PanelLeft, "Sidebar"),
   Stars: createIcon(Sparkles, "AI"),
   Text: createIcon(Type, "Text"),
-  Trash: createIcon(Trash2, "Trash")
+  Trash: createIcon(Trash2, "Trash"),
+  Upload: createIcon(Upload, "Upload")
 } as const
 
 export function normalizeVisual(
