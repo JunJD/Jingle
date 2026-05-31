@@ -17,6 +17,8 @@
 | [personal-agent-memory-technical-overview.md](./personal-agent-memory-technical-overview.md) | 个人 Agent 记忆 V1 技术概要：边界、middleware、数据模型、UI 状态和验证 |
 | [ag-ui-thread-projection-architecture.md](./ag-ui-thread-projection-architecture.md) | AG UI thread projection 架构调研与方案说明 |
 | [renderer-external-store-architecture.md](./renderer-external-store-architecture.md) | renderer external store 架构方案说明 |
+| [extension-hitl-experience-architecture.md](./extension-hitl-experience-architecture.md) | Extension HITL 体验优化架构方案：schema form、confirmation、editable approval 和 CopilotKit 借鉴 |
+| [extension-hitl-experience-detailed-design-cn.md](./extension-hitl-experience-detailed-design-cn.md) | Extension HITL 体验优化中文详设：协议、状态机、UI、main 侧校验、分期和验收 |
 
 ## 约束类
 
