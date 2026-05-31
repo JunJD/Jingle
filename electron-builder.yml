@@ -3,6 +3,12 @@ productName: Openwork
 directories:
   output: dist
 npmRebuild: false
+afterPack: scripts/after-pack-audit.cjs
+electronLanguages:
+  - en
+  - en_GB
+  - zh_CN
+  - zh_TW
 files:
   - out/**
   - package.json
