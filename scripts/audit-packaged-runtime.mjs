@@ -6,7 +6,34 @@ import { basename, join, resolve, sep } from "node:path"
 const root = resolve(process.argv[2] ?? "dist")
 const forbiddenMacLinkPrefixes = ["/opt/homebrew/", "/usr/local/opt/"]
 const requiredExternalPackages = ["@prisma/client", "just-bash"]
-const forbiddenExternalPackages = ["@mongodb-js/zstd", "node-liblzma"]
+const forbiddenRuntimePackages = [
+  {
+    name: "electron",
+    reason: "Electron is already the app runtime and must not be copied into packaged node_modules."
+  },
+  {
+    name: "prisma",
+    reason: "The Prisma CLI package is build/codegen tooling; packaged runtime should use @prisma/client plus .prisma/client."
+  },
+  {
+    name: "@prisma/engines",
+    reason: "Prisma engine tooling should not be packaged as a runtime dependency."
+  },
+  {
+    name: "@mongodb-js/zstd",
+    reason: "just-bash native codecs are not enabled in the packaged runtime."
+  },
+  {
+    name: "node-liblzma",
+    reason: "just-bash native codecs are not enabled in the packaged runtime."
+  }
+]
+const forbiddenRuntimeFilePatterns = [
+  {
+    pattern: /(^|[/\\])schema-engine(?:-|$)/,
+    reason: "Prisma schema-engine is CLI/codegen tooling and should not be packaged."
+  }
+]
 
 function collectMatching(start, predicate, matches = []) {
   if (!existsSync(start)) {
@@ -111,10 +138,10 @@ function findNativeFiles(resourcesPath) {
 
     const name = basename(path)
     if (name.endsWith(".node")) {
-      return true
+      return statSync(path).isFile()
     }
 
-    return path.split(sep).includes("app.asar.unpacked") && Boolean(entry.mode & 0o111)
+    return path.split(sep).includes("app.asar.unpacked") && Boolean(entry.mode & 0o111) && statSync(path).isFile()
   }).sort()
 }
 
@@ -167,7 +194,7 @@ function findAsarCli() {
   return asarCliPath
 }
 
-function assertForbiddenPackagesNotPackaged({ appAsarPath, resourcesPath }) {
+function assertForbiddenRuntimeNotPackaged({ appAsarPath, resourcesPath }) {
   const asarCliPath = findAsarCli()
 
   const asarEntries = execFileSync(process.execPath, [asarCliPath, "list", appAsarPath], {
@@ -175,17 +202,30 @@ function assertForbiddenPackagesNotPackaged({ appAsarPath, resourcesPath }) {
     maxBuffer: 128 * 1024 * 1024
   }).split("\n")
 
-  for (const packageName of forbiddenExternalPackages) {
+  for (const { name: packageName, reason } of forbiddenRuntimePackages) {
     const packageParts = packagePathFragments(packageName)
     const packageAsarPrefix = `/node_modules/${packageParts.join("/")}`
     const packagedInAsar = asarEntries.some((entry) => entry === packageAsarPrefix || entry.startsWith(`${packageAsarPrefix}/`))
     if (packagedInAsar) {
-      throw new Error(`${packageName} should not be packaged unless just-bash native codecs are enabled.`)
+      throw new Error(`${packageName} should not be packaged in app.asar. ${reason}`)
     }
 
     const unpackedPath = join(resourcesPath, "app.asar.unpacked", "node_modules", ...packageParts)
     if (existsSync(unpackedPath)) {
-      throw new Error(`${packageName} should not be unpacked unless just-bash native codecs are enabled: ${unpackedPath}`)
+      throw new Error(`${packageName} should not be unpacked: ${unpackedPath}\n${reason}`)
+    }
+  }
+
+  const unpackedEntries = collectMatching(join(resourcesPath, "app.asar.unpacked"), () => true)
+  for (const { pattern, reason } of forbiddenRuntimeFilePatterns) {
+    const asarMatch = asarEntries.find((entry) => pattern.test(entry))
+    if (asarMatch) {
+      throw new Error(`Forbidden packaged runtime file in app.asar: ${asarMatch}\n${reason}`)
+    }
+
+    const unpackedMatch = unpackedEntries.find((entry) => pattern.test(entry))
+    if (unpackedMatch) {
+      throw new Error(`Forbidden unpacked runtime file: ${unpackedMatch}\n${reason}`)
     }
   }
 }
@@ -295,8 +335,8 @@ if (packagedApps.length === 0) {
 }
 
 for (const packagedApp of packagedApps) {
+  assertForbiddenRuntimeNotPackaged(packagedApp)
   assertMacNativeLinks(packagedApp)
-  assertForbiddenPackagesNotPackaged(packagedApp)
   runPackagedRuntimeSmoke(packagedApp)
   console.log(`packaged runtime audit passed: ${packagedApp.appPath}`)
 }
