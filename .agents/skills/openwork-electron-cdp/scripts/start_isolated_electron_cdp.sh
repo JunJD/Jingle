@@ -5,7 +5,7 @@ PORT="${1:-9333}"
 OPENWORK_HOME_DIR="${OPENWORK_HOME_OVERRIDE:-$(mktemp -d /tmp/openwork-d3k-XXXXXX)}"
 
 echo "OPENWORK_HOME=${OPENWORK_HOME_DIR}"
-DATABASE_URL="file:${OPENWORK_HOME_DIR}/openwork.sqlite" npx prisma migrate deploy --schema prisma/schema.prisma
+OPENWORK_HOME="${OPENWORK_HOME_DIR}" node scripts/run-prisma-openwork-db.mjs migrate deploy
 
 export OPENWORK_BDD=1
 export OPENWORK_HOME="${OPENWORK_HOME_DIR}"
