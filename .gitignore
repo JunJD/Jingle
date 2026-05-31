@@ -12,3 +12,4 @@ test-results
 electron.vite.config.*.mjs
 prisma/dev.sqlite*
 /dev.sqlite
+.ignored-extensions/
