@@ -1,5 +1,6 @@
 import { resolve } from "node:path"
 import { pathToFileURL } from "node:url"
+import { validateNativeExtensionPackageBoundaries } from "./native-extension-package-boundaries.mjs"
 
 async function main() {
   const [
@@ -24,9 +25,12 @@ async function main() {
     runtimePackages: nativeExtensionRuntimePackages
   })
 
-  if (result.errors.length > 0) {
+  const packageBoundaryResult = validateNativeExtensionPackageBoundaries()
+  const errors = [...result.errors, ...packageBoundaryResult.errors]
+
+  if (errors.length > 0) {
     console.error("Native extension validation failed:")
-    for (const error of result.errors) {
+    for (const error of errors) {
       console.error(`- ${error}`)
     }
     process.exitCode = 1
