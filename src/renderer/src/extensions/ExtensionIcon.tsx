@@ -1,6 +1,7 @@
 import React, { useState } from "react"
 import {
   Bell,
+  Bookmark,
   CheckCircle2,
   ExternalLink,
   FileText,
@@ -56,6 +57,8 @@ function renderGlyphIcon(
   switch (iconName) {
     case "bell":
       return <Bell className={className} aria-hidden="true" />
+    case "bookmark":
+      return <Bookmark className={className} aria-hidden="true" />
     case "check-circle":
       return <CheckCircle2 className={className} aria-hidden="true" />
     case "file-text":

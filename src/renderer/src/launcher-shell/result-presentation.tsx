@@ -1,5 +1,6 @@
 import {
   Bell,
+  Bookmark,
   CheckCircle2,
   ExternalLink,
   FileText,
@@ -176,6 +177,8 @@ export function renderLauncherResultIcon(icon: LauncherResultPresentationIcon): 
   switch (icon.name) {
     case "bell":
       return <Bell className="size-4" />
+    case "bookmark":
+      return <Bookmark className="size-4" />
     case "check-circle":
       return <CheckCircle2 className="size-4" />
     case "file-text":

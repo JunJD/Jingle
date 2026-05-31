@@ -54,6 +54,10 @@ function getResultTrailingLabel(
   item: LauncherShellItem,
   copy: ReturnType<typeof useI18n>["copy"]
 ): string {
+  if (item.trailingLabel) {
+    return item.trailingLabel
+  }
+
   if (item.kind === "ai") {
     return copy.launcher.resultKindAgent
   }

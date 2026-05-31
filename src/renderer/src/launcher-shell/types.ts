@@ -23,4 +23,5 @@ export interface LauncherShellItem {
   presentation: LauncherResultPresentation
   subtitle: string
   title: string
+  trailingLabel?: string
 }

@@ -17,6 +17,35 @@ export {
   buildLauncherUseWithShellItems
 } from "./use-with-items"
 
+function formatQuicklinkSubtitle(copy: AppCopy, result: LauncherSearchResult): string {
+  const subtitle = result.subtitle.trim()
+  const [extensionName, link] = subtitle.includes(" · ")
+    ? subtitle.split(" · ", 2)
+    : ["", subtitle]
+
+  return [copy.launcher.resultKindQuicklink, extensionName, link].filter(Boolean).join(" · ")
+}
+
+function createLauncherQuicklinkPresentation(params: {
+  copy: AppCopy
+  indexedCommand: LauncherIndexedCommand | null
+}): LauncherResultPresentation {
+  const { copy, indexedCommand } = params
+
+  return {
+    categoryLabel: copy.launcher.resultKindQuicklink,
+    icon: indexedCommand
+      ? getLauncherIndexedCommandIcon(indexedCommand)
+      : {
+          name: "bookmark",
+          type: "glyph"
+        },
+    listActionLabel: copy.launcher.openGeneric,
+    primaryActionLabel: copy.launcher.openGeneric,
+    tone: "neutral"
+  }
+}
+
 export function buildLauncherSearchShellItems(
   copy: AppCopy,
   searchResults: LauncherSearchResult[],
@@ -24,6 +53,7 @@ export function buildLauncherSearchShellItems(
 ): LauncherShellItem[] {
   return searchResults.map((result) => {
     const availability = options.preview ? "planned" : result.availability
+    const isQuicklink = result.source === "quicklinks"
     const extensionCommand =
       result.action.type === "open-extension-command" ? result.action.target : null
     const commandRef: LauncherExtensionCommandAddress | undefined = extensionCommand
@@ -48,7 +78,12 @@ export function buildLauncherSearchShellItems(
       iconDataUrl: result.iconDataUrl,
       kind: result.kind,
       match: result.match,
-      presentation: extensionCommand
+      presentation: isQuicklink
+        ? createLauncherQuicklinkPresentation({
+            copy,
+            indexedCommand
+          })
+        : extensionCommand
         ? {
             categoryLabel: copy.launcher.resultKindExtension,
             icon: indexedCommand
@@ -67,8 +102,9 @@ export function buildLauncherSearchShellItems(
             iconDataUrl: result.iconDataUrl,
             kind: result.kind
           }),
-      subtitle: result.subtitle,
-      title: result.title
+      subtitle: isQuicklink ? formatQuicklinkSubtitle(copy, result) : result.subtitle,
+      title: result.title,
+      trailingLabel: isQuicklink ? copy.launcher.resultKindQuicklink : undefined
     }
   })
 }

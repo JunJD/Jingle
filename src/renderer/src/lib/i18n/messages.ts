@@ -134,6 +134,7 @@ export interface AppCopy {
     resultKindExtension: string
     resultKindDirectory: string
     resultKindFile: string
+    resultKindQuicklink: string
     resultKindUrl: string
     resultKindSuggestion: string
     resultKindThread: string
@@ -362,6 +363,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       resultKindExtension: "扩展",
       resultKindDirectory: "文件夹",
       resultKindFile: "文件",
+      resultKindQuicklink: "快捷链接",
       resultKindUrl: "网页",
       resultKindSuggestion: "建议",
       resultKindThread: "对话",
@@ -609,6 +611,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       resultKindExtension: "Extension",
       resultKindDirectory: "Folder",
       resultKindFile: "File",
+      resultKindQuicklink: "Quicklink",
       resultKindUrl: "Webpage",
       resultKindSuggestion: "Suggestion",
       resultKindThread: "Thread",

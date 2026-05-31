@@ -27,6 +27,7 @@ export type LauncherShellItemKind = LauncherResultKind | "plugin" | "suggestion"
 
 export type LauncherResultPresentationIconName =
   | "bell"
+  | "bookmark"
   | "check-circle"
   | "external-link"
   | "file-text"

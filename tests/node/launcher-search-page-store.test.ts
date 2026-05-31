@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { parseExtensionQuicklinkCommandUrl } from "../../src/shared/extension-quicklinks"
 import { appCopy } from "../../src/renderer/src/lib/i18n/messages"
 import {
   buildLauncherHomeSurfaceModel,
@@ -286,6 +287,101 @@ test("home idle and search surfaces both keep a footer", () => {
   assert.equal(historySurface.body.kind, "history-grid")
   assert.equal(historySurface.chrome.footerVisible, true)
   assert.equal(searchSurface.chrome.footerVisible, true)
+})
+
+test("quicklink search results can open extension commands with launch context", () => {
+  const command = parseExtensionQuicklinkCommandUrl(
+    "openwork://extensions/todo-list/index?launchContext=%7B%22defaults%22%3A%7B%22title%22%3A%22Spec%22%7D%7D"
+  )
+  assert.deepEqual(command, {
+    commandName: "index",
+    extensionName: "todo-list",
+    launchProps: {
+      launchContext: {
+        defaults: {
+          title: "Spec"
+        }
+      }
+    }
+  })
+
+  const items = buildLauncherSearchShellItems(appCopy["zh-CN"], [
+    createSearchResult({
+      action: {
+        executor: "internal",
+        target: command!,
+        type: "open-extension-command"
+      },
+      id: "quicklink-1",
+      kind: "url",
+      source: "quicklinks",
+      subtitle: "todo-list",
+      title: "Open Todo List"
+    })
+  ])
+
+  assert.deepEqual(items[0]?.commandRef, {
+    commandName: "index",
+    extensionName: "todo-list",
+    kind: "extension-command"
+  })
+  assert.deepEqual(items[0]?.commandOpenOptions, {
+    launchProps: {
+      launchContext: {
+        defaults: {
+          title: "Spec"
+        }
+      }
+    }
+  })
+  assert.deepEqual(items[0]?.presentation.icon, {
+    extensionName: "todo-list",
+    icon: "assets/icon.svg",
+    iconName: "todo",
+    type: "extension"
+  })
+  assert.equal(items[0]?.presentation.categoryLabel, "快捷链接")
+  assert.equal(items[0]?.presentation.listActionLabel, "打开")
+  assert.equal(items[0]?.presentation.primaryActionLabel, "打开")
+  assert.equal(items[0]?.subtitle, "快捷链接 · todo-list")
+  assert.equal(items[0]?.trailingLabel, "快捷链接")
+})
+
+test("generic quicklink search results use quicklink icon and locale type labels", () => {
+  const createGenericQuicklinkResult = (): LauncherSearchResult =>
+    createSearchResult({
+      action: {
+        executor: "shell",
+        target: {
+          url: "https://example.com/spec"
+        },
+        type: "open-url"
+      },
+      id: "quicklink-generic",
+      kind: "url",
+      source: "quicklinks",
+      subtitle: "https://example.com/spec",
+      title: "Spec page"
+    })
+
+  const zhItems = buildLauncherSearchShellItems(appCopy["zh-CN"], [createGenericQuicklinkResult()])
+  const enItems = buildLauncherSearchShellItems(appCopy["en-US"], [createGenericQuicklinkResult()])
+
+  assert.deepEqual(zhItems[0]?.presentation.icon, {
+    name: "bookmark",
+    type: "glyph"
+  })
+  assert.equal(zhItems[0]?.presentation.categoryLabel, "快捷链接")
+  assert.equal(zhItems[0]?.presentation.listActionLabel, "打开")
+  assert.equal(zhItems[0]?.presentation.primaryActionLabel, "打开")
+  assert.equal(zhItems[0]?.subtitle, "快捷链接 · https://example.com/spec")
+  assert.equal(zhItems[0]?.trailingLabel, "快捷链接")
+
+  assert.equal(enItems[0]?.presentation.categoryLabel, "Quicklink")
+  assert.equal(enItems[0]?.presentation.listActionLabel, "Open")
+  assert.equal(enItems[0]?.presentation.primaryActionLabel, "Open")
+  assert.equal(enItems[0]?.subtitle, "Quicklink · https://example.com/spec")
+  assert.equal(enItems[0]?.trailingLabel, "Quicklink")
 })
 
 test("moveSelection wraps around the visible item ids", () => {
