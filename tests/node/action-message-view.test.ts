@@ -12,7 +12,7 @@ const copy = {
   }
 } as AppCopy
 
-test("createActionMessageView falls back for extension approval tool calls without UI presentation", async () => {
+test("createActionMessageView marks extension approval tool calls without inline approval UI", async () => {
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: {
@@ -60,5 +60,5 @@ test("createActionMessageView falls back for extension approval tool calls witho
 
   assert.equal(view.summary, "ext__appleReminders__createReminder")
   assert.equal(view.status, "approval")
-  assert.ok(view.hitlDefinition)
+  assert.equal(view.statusLabel, "Approval")
 })

@@ -9,6 +9,12 @@ import {
   type OpenFile
 } from "@shared/thread-tabs"
 import type { HITLRequest, Message, Subagent, ThreadForkState, Todo } from "../types"
+import {
+  createDefaultMessagesProjection,
+  projectMessages,
+  type MessagesProjection
+} from "./message-projection"
+import { stabilizeThreadMessages } from "./thread-message-stability"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
 
@@ -24,6 +30,7 @@ export interface TokenUsage {
 export interface ThreadState {
   artifacts: ArtifactRecord[]
   forkState: ThreadForkState
+  messageProjection: MessagesProjection
   messages: Message[]
   todos: Todo[]
   workspacePath: string | null
@@ -98,6 +105,7 @@ export function createDefaultThreadState(): ThreadState {
     forkState: {
       canFork: true
     },
+    messageProjection: createDefaultMessagesProjection(),
     messages: [],
     todos: [],
     workspacePath: null,
@@ -182,20 +190,30 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
         updateThreadState(threadId, (state) => {
           const existingIndex = state.messages.findIndex((entry) => entry.id === message.id)
           if (existingIndex < 0) {
+            const messages = [...state.messages, message]
             return {
-              messages: [...state.messages, message]
+              messageProjection: projectMessages(messages, state.messageProjection),
+              messages
             }
           }
 
           const nextMessages = [...state.messages]
           nextMessages[existingIndex] = message
+          const messages = stabilizeThreadMessages(state.messages, nextMessages)
           return {
-            messages: nextMessages
+            messageProjection: projectMessages(messages, state.messageProjection),
+            messages
           }
         })
       },
       setMessages: (messages: Message[]) => {
-        updateThreadState(threadId, () => ({ messages }))
+        updateThreadState(threadId, (state) => {
+          const stableMessages = stabilizeThreadMessages(state.messages, messages)
+          return {
+            messageProjection: projectMessages(stableMessages, state.messageProjection),
+            messages: stableMessages
+          }
+        })
       },
       setArtifacts: (artifacts: ArtifactRecord[]) => {
         updateThreadState(threadId, (state) => ({

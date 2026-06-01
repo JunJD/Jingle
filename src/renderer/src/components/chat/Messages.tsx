@@ -1,13 +1,21 @@
 import { FileText, GitForkIcon, RefreshCcwIcon } from "lucide-react"
-import { useMemo, useState } from "react"
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+  type RefObject
+} from "react"
+import { VList, type VListHandle } from "virtua"
 import { resolveImageBlockUrl } from "@shared/message-content"
-import type {
-  ContentBlock,
-  HITLDecision,
-  HITLRequest,
-  Message as ThreadMessage,
-  ToolCall
-} from "@/types"
+import type { ContentBlock, HITLRequest, Message as ThreadMessage, ToolCall } from "@/types"
 import { ActionMessage, ToolStatusIndicator } from "./ActionMessage"
 import {
   AgentSteps,
@@ -24,12 +32,13 @@ import { cn } from "@/lib/utils"
 import {
   buildTurnAssistantEntries,
   countToolCalls,
+  getTurnToolDisplayPolicy,
+  getTurnPendingApproval,
   getTurnCopyText,
-  projectMessages,
-  shouldDefaultExpandToolEntries,
+  type MessagesProjection,
   type MessageTurn,
   type ToolResultInfo
-} from "./message-projection"
+} from "@/lib/message-projection"
 import {
   Attachment,
   Attachments,
@@ -61,12 +70,21 @@ function ThinkingIcon(props: React.SVGProps<SVGSVGElement>): React.JSX.Element {
 }
 
 interface MessagesProps {
-  approvalPlacement?: "inline" | "composer"
+  bottomInset?: number
+  contentClassName?: string
+  contentInsetY?: string
   density?: "default" | "compact"
-  messages: ThreadMessage[]
+  footerSlot?: ReactNode
+  projection: MessagesProjection
+  virtualizerRef?: RefObject<VListHandle | null>
+  isAtBottom?: boolean
   isLoading?: boolean
+  isScrolling?: boolean
+  onUserScrollIntent?: () => void
+  onScroll?: () => void
+  onScrollEnd?: () => void
+  onScrollToLatest?: () => void
   pendingApproval?: HITLRequest | null
-  onApprovalDecision?: (decision: HITLDecision) => void
   onBranch?: (messageId: string) => Promise<void> | void
   onRetry?: () => Promise<void> | void
 }
@@ -76,6 +94,17 @@ interface StructuredMessageContent {
   reasoningContent: React.ReactNode
   textContent: React.ReactNode
 }
+
+const EMPTY_TOOL_EXPANSION_OVERRIDES = new Map<string, boolean>()
+const SCROLL_INTENT_KEYS = new Set([
+  "ArrowDown",
+  "ArrowUp",
+  "End",
+  "Home",
+  "PageDown",
+  "PageUp",
+  " "
+])
 
 function isRenderableImageUrl(url: string | null): url is string {
   return Boolean(
@@ -228,6 +257,52 @@ function getReasoningBlockText(block: ContentBlock): string {
   return block.reasoning ?? block.text ?? block.content ?? ""
 }
 
+function getStreamingContentSignature(content: ThreadMessage["content"]): string {
+  if (typeof content === "string") {
+    return `${content.length}:0:0`
+  }
+
+  let textLength = 0
+  let reasoningLength = 0
+  for (const block of content) {
+    if (block.type === "reasoning") {
+      reasoningLength += getReasoningBlockText(block).length
+      continue
+    }
+
+    textLength += (block.text ?? block.content ?? "").length
+  }
+
+  return `${textLength}:${reasoningLength}:${content.length}`
+}
+
+function getToolResultsSignature(toolResults: Map<string, ToolResultInfo>): string {
+  if (toolResults.size === 0) {
+    return "0"
+  }
+
+  return Array.from(toolResults, ([toolCallId, result]) => {
+    return `${toolCallId}:${getStreamingContentSignature(result.content)}`
+  }).join("|")
+}
+
+function getStreamingTurnSignature(
+  turn: MessageTurn | null | undefined,
+  message: ThreadMessage | null | undefined
+): string | null {
+  if (!turn || !message) {
+    return null
+  }
+
+  const toolCallCount = message.tool_calls?.length ?? 0
+  return [
+    message.id,
+    getStreamingContentSignature(message.content),
+    toolCallCount,
+    getToolResultsSignature(turn.toolResults)
+  ].join(":")
+}
+
 function ReasoningBlock(props: {
   density?: "default" | "compact"
   isStreaming?: boolean
@@ -354,11 +429,9 @@ function renderStructuredContent(
 }
 
 function ToolActivityGroup(props: {
-  approvalPlacement?: "inline" | "composer"
   defaultOpen?: boolean
   density?: "default" | "compact"
   preferLatestToolSummary?: boolean
-  onApprovalDecision?: (decision: HITLDecision) => void
   onOpenChange?: (open: boolean) => void
   open?: boolean
   pendingApproval?: HITLRequest | null
@@ -368,9 +441,7 @@ function ToolActivityGroup(props: {
   const { copy } = useI18n()
   const {
     defaultOpen = false,
-    approvalPlacement = "inline",
     density = "default",
-    onApprovalDecision,
     onOpenChange,
     open,
     pendingApproval,
@@ -466,10 +537,7 @@ function ToolActivityGroup(props: {
             <AgentToolGroupItem icon={<Icon className="size-[var(--ow-icon-sm)]" />} key={item.key}>
               <ActionMessage
                 approvalRequest={item.needsApproval ? pendingApproval : null}
-                density={density}
-                onApprovalDecision={item.needsApproval ? onApprovalDecision : undefined}
                 presentation="grouped"
-                renderApprovalDetail={approvalPlacement === "inline"}
                 result={item.result?.content}
                 toolCall={item.toolCall}
               />
@@ -482,21 +550,21 @@ function ToolActivityGroup(props: {
 }
 
 function AssistantToolCluster(props: {
-  approvalPlacement?: "inline" | "composer"
   defaultExpanded?: boolean
   density?: "default" | "compact"
+  expanded?: boolean
   preferLatestToolSummary?: boolean
   messages: ThreadMessage[]
-  onApprovalDecision?: (decision: HITLDecision) => void
+  onExpandedChange?: (expanded: boolean) => void
   pendingApproval?: HITLRequest | null
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
   const {
     defaultExpanded = false,
-    approvalPlacement = "inline",
     density = "default",
+    expanded,
     messages,
-    onApprovalDecision,
+    onExpandedChange,
     pendingApproval,
     preferLatestToolSummary,
     toolResults
@@ -504,7 +572,8 @@ function AssistantToolCluster(props: {
   const toolCalls = messages.flatMap((message) => message.tool_calls ?? [])
   const toolCallCount = countToolCalls(messages)
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null)
-  const isExpanded = expandedOverride ?? defaultExpanded
+  const handleExpandedChange = onExpandedChange ?? setExpandedOverride
+  const isExpanded = expanded ?? expandedOverride ?? defaultExpanded
 
   if (toolCalls.length === 0) {
     return null
@@ -530,12 +599,9 @@ function AssistantToolCluster(props: {
         >
           <ActionMessage
             approvalRequest={needsApproval ? pendingApproval : null}
-            density={density}
             expanded={isExpanded}
-            onApprovalDecision={needsApproval ? onApprovalDecision : undefined}
-            onExpandedChange={setExpandedOverride}
+            onExpandedChange={handleExpandedChange}
             result={toolResults.get(toolCall.id)?.content}
-            renderApprovalDetail={approvalPlacement === "inline"}
             toolCall={toolCall}
           />
         </MessageContent>
@@ -549,9 +615,7 @@ function AssistantToolCluster(props: {
         <ToolActivityGroup
           defaultOpen={defaultExpanded}
           density={density}
-          approvalPlacement={approvalPlacement}
-          onApprovalDecision={onApprovalDecision}
-          onOpenChange={setExpandedOverride}
+          onOpenChange={handleExpandedChange}
           open={isExpanded}
           pendingApproval={pendingApproval}
           preferLatestToolSummary={preferLatestToolSummary}
@@ -624,41 +688,40 @@ function UserMessage(props: {
   )
 }
 
-function MessageTurnView(props: {
-  approvalPlacement?: "inline" | "composer"
+const MessageTurnView = memo(function MessageTurnView(props: {
   density?: "default" | "compact"
   isActiveTurn: boolean
-  isLoading?: boolean
-  lastAssistantId: string | null
-  onApprovalDecision?: (decision: HITLDecision) => void
   onBranch?: (messageId: string) => Promise<void> | void
   onRetry?: () => Promise<void> | void
   pendingApproval?: HITLRequest | null
+  isStreaming: boolean
+  streamingAssistantId: string | null
+  toolExpansionOverrides: ReadonlyMap<string, boolean>
   toolResults: Map<string, ToolResultInfo>
   turn: MessageTurn
+  onToolExpansionChange: (turnKey: string, key: string, expanded: boolean) => void
 }): React.JSX.Element {
   const { copy } = useI18n()
   const {
     density = "default",
-    approvalPlacement = "inline",
     isActiveTurn,
-    isLoading,
-    lastAssistantId,
-    onApprovalDecision,
+    isStreaming,
     onBranch,
     onRetry,
     pendingApproval,
+    streamingAssistantId,
+    toolExpansionOverrides,
     toolResults,
-    turn
+    turn,
+    onToolExpansionChange
   } = props
   const copyText = getTurnCopyText(turn)
   const hasAssistantMessages = turn.assistants.length > 0
-  const shouldHideToolbar = Boolean(isLoading) && isActiveTurn
+  const shouldHideToolbar = isStreaming
   const assistantEntries = useMemo(() => buildTurnAssistantEntries(turn), [turn])
-  const isStreamingTurn = Boolean(isLoading) && isActiveTurn
-  const defaultExpandToolEntries = useMemo(
-    () => shouldDefaultExpandToolEntries(turn, { isStreaming: isStreamingTurn }),
-    [isStreamingTurn, turn]
+  const toolDisplayPolicy = useMemo(
+    () => getTurnToolDisplayPolicy(turn, { isStreaming }),
+    [isStreaming, turn]
   )
 
   return (
@@ -673,8 +736,8 @@ function MessageTurnView(props: {
           return (
             <AssistantBlock
               density={density}
-              isLastAssistant={entry.message.id === lastAssistantId}
-              isLoading={isLoading}
+              isLastAssistant={entry.message.id === streamingAssistantId}
+              isLoading={isStreaming}
               key={entry.key}
               message={entry.message}
             />
@@ -683,14 +746,14 @@ function MessageTurnView(props: {
 
         return (
           <AssistantToolCluster
-            defaultExpanded={defaultExpandToolEntries}
+            defaultExpanded={toolDisplayPolicy.defaultExpanded}
             density={density}
+            expanded={toolExpansionOverrides.get(entry.key)}
             key={entry.key}
             messages={entry.messages}
-            approvalPlacement={approvalPlacement}
-            onApprovalDecision={onApprovalDecision}
+            onExpandedChange={(expanded) => onToolExpansionChange(turn.key, entry.key, expanded)}
             pendingApproval={pendingApproval}
-            preferLatestToolSummary={isActiveTurn && Boolean(isLoading)}
+            preferLatestToolSummary={toolDisplayPolicy.preferLatestSummary}
             toolResults={toolResults}
           />
         )
@@ -699,7 +762,7 @@ function MessageTurnView(props: {
       {hasAssistantMessages && !shouldHideToolbar ? (
         <MessageToolbar className="mt-0 justify-start">
           <MessageActions>
-            {isActiveTurn && onRetry && !isLoading ? (
+            {isActiveTurn && onRetry && !isStreaming ? (
               <MessageAction
                 label={copy.chat.retryMessage}
                 onClick={() => void onRetry()}
@@ -708,7 +771,7 @@ function MessageTurnView(props: {
                 <RefreshCcwIcon className="size-[var(--ow-icon-action)]" />
               </MessageAction>
             ) : null}
-            {turn.branchMessageId && onBranch && !isLoading ? (
+            {turn.branchMessageId && onBranch && !isStreaming ? (
               <MessageAction
                 label={copy.launcher.branchChat}
                 onClick={() => {
@@ -737,42 +800,255 @@ function MessageTurnView(props: {
       ) : null}
     </div>
   )
-}
+})
+
+const MessageAutoScroll = memo(function MessageAutoScroll(props: {
+  activeContentSignature: string | number | null
+  hasFollowTarget: boolean
+  isAtBottom: boolean
+  isScrolling: boolean
+  observeKey: string
+  onScrollToLatest: () => void
+  rowRef: RefObject<HTMLDivElement | null>
+  signatureRef: RefObject<HTMLDivElement | null>
+}): null {
+  const {
+    activeContentSignature,
+    hasFollowTarget,
+    isAtBottom,
+    isScrolling,
+    observeKey,
+    onScrollToLatest,
+    rowRef,
+    signatureRef
+  } = props
+  const frameRef = useRef<number | null>(null)
+
+  const scheduleScrollToLatest = useEffectEvent(() => {
+    const shouldAutoScroll = hasFollowTarget && isAtBottom && !isScrolling
+    if (!shouldAutoScroll || frameRef.current !== null) {
+      return
+    }
+
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null
+      onScrollToLatest()
+    })
+  })
+
+  useEffect(() => {
+    scheduleScrollToLatest()
+  }, [activeContentSignature, hasFollowTarget, observeKey])
+
+  useEffect(() => {
+    const nodes = [rowRef.current, signatureRef.current].filter(
+      (node): node is HTMLDivElement => node !== null
+    )
+    if (nodes.length === 0 || typeof ResizeObserver === "undefined") {
+      return undefined
+    }
+
+    let frameId: number | null = null
+    const observer = new ResizeObserver(() => {
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId)
+      }
+
+      frameId = requestAnimationFrame(() => {
+        frameId = null
+        scheduleScrollToLatest()
+      })
+    })
+
+    for (const node of nodes) {
+      observer.observe(node)
+    }
+
+    return () => {
+      observer.disconnect()
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId)
+      }
+    }
+  }, [observeKey, rowRef, signatureRef])
+
+  useEffect(() => {
+    return () => {
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current)
+      }
+    }
+  }, [])
+
+  return null
+})
 
 export function Messages(props: MessagesProps): React.JSX.Element {
   const {
-    approvalPlacement = "inline",
+    bottomInset = 0,
+    contentClassName,
+    contentInsetY = "var(--ow-chat-thread-y)",
     density = "default",
+    footerSlot,
+    isAtBottom = true,
     isLoading,
-    messages,
-    onApprovalDecision,
+    isScrolling = false,
     onBranch,
     onRetry,
-    pendingApproval
+    onScroll,
+    onScrollEnd,
+    onScrollToLatest,
+    onUserScrollIntent,
+    pendingApproval,
+    projection,
+    virtualizerRef
   } = props
-  const { activeTurnKey, lastAssistantId, toolResults, turns } = useMemo(
-    () => projectMessages(messages),
-    [messages]
+  const { activeTurnKey, displayRows, lastAssistantId, turns } = projection
+  const activeTurnIndex = turns.findIndex((turn) => turn.key === activeTurnKey)
+  const keepMounted = useMemo(
+    () => (isLoading && activeTurnIndex >= 0 ? [activeTurnIndex] : []),
+    [activeTurnIndex, isLoading]
+  )
+  const latestVirtualRowRef = useRef<HTMLDivElement | null>(null)
+  const lastTurnRowRef = useRef<HTMLDivElement | null>(null)
+  const virtualRowPadding =
+    density === "compact" ? "pb-[var(--launcher-ai-turn-gap)]" : "pb-[var(--ow-chat-thread-gap)]"
+  const activeTurn = activeTurnKey ? turns.find((turn) => turn.key === activeTurnKey) : null
+  const activeAssistant = activeTurn?.assistants.find((message) => message.id === lastAssistantId)
+  const activeContentSignature = getStreamingTurnSignature(activeTurn, activeAssistant)
+  const lastTurnKey = turns[turns.length - 1]?.key ?? "__empty__"
+  const bottomSpacerHeight = `calc(${bottomInset}px + ${contentInsetY})`
+  const [toolExpansionOverridesByTurn, setToolExpansionOverridesByTurn] = useState<
+    Map<string, ReadonlyMap<string, boolean>>
+  >(() => new Map())
+  const handleToolExpansionChange = useCallback(
+    (turnKey: string, key: string, expanded: boolean) => {
+      setToolExpansionOverridesByTurn((current) => {
+        const currentTurnOverrides = current.get(turnKey) ?? EMPTY_TOOL_EXPANSION_OVERRIDES
+        if (currentTurnOverrides.get(key) === expanded) {
+          return current
+        }
+
+        const nextTurnOverrides = new Map(currentTurnOverrides)
+        nextTurnOverrides.set(key, expanded)
+        const next = new Map(current)
+        next.set(turnKey, nextTurnOverrides)
+        return next
+      })
+    },
+    []
+  )
+  const getTurnToolExpansionOverrides = useCallback(
+    (turn: MessageTurn): ReadonlyMap<string, boolean> =>
+      toolExpansionOverridesByTurn.get(turn.key) ?? EMPTY_TOOL_EXPANSION_OVERRIDES,
+    [toolExpansionOverridesByTurn]
+  )
+  const handlePointerMove = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (event.buttons > 0) {
+        onUserScrollIntent?.()
+      }
+    },
+    [onUserScrollIntent]
+  )
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (SCROLL_INTENT_KEYS.has(event.key)) {
+        onUserScrollIntent?.()
+      }
+    },
+    [onUserScrollIntent]
   )
 
+  const renderTurn = (turn: MessageTurn): ReactElement => {
+    const isActiveTurn = turn.key === activeTurnKey
+    const isStreaming = isActiveTurn && Boolean(isLoading)
+    const turnPendingApproval = getTurnPendingApproval(turn, pendingApproval)
+    const streamingAssistantId = isStreaming ? lastAssistantId : null
+
+    return (
+      <MessageTurnView
+        density={density}
+        isActiveTurn={isActiveTurn}
+        isStreaming={isStreaming}
+        key={turn.key}
+        onBranch={isLoading ? undefined : onBranch}
+        onRetry={isActiveTurn && !isLoading ? onRetry : undefined}
+        pendingApproval={turnPendingApproval}
+        streamingAssistantId={streamingAssistantId}
+        toolExpansionOverrides={getTurnToolExpansionOverrides(turn)}
+        toolResults={turn.toolResults}
+        turn={turn}
+        onToolExpansionChange={handleToolExpansionChange}
+      />
+    )
+  }
+
   return (
-    <>
-      {turns.map((turn) => (
-        <MessageTurnView
-          density={density}
-          approvalPlacement={approvalPlacement}
-          isActiveTurn={turn.key === activeTurnKey}
-          isLoading={isLoading}
-          key={turn.key}
-          lastAssistantId={lastAssistantId}
-          onApprovalDecision={onApprovalDecision}
-          onBranch={onBranch}
-          onRetry={onRetry}
-          pendingApproval={pendingApproval}
-          toolResults={toolResults}
-          turn={turn}
-        />
-      ))}
-    </>
+    <div
+      className="h-full min-h-0"
+      onKeyDownCapture={handleKeyDown}
+      onPointerDownCapture={onUserScrollIntent}
+      onPointerMoveCapture={handlePointerMove}
+      onTouchMoveCapture={onUserScrollIntent}
+      onWheelCapture={onUserScrollIntent}
+    >
+      <VList
+        data={displayRows}
+        keepMounted={keepMounted}
+        ref={virtualizerRef}
+        className="h-full overflow-x-hidden overflow-y-auto overscroll-contain scrollbar-hide"
+        style={{
+          overflowAnchor: "none",
+          paddingTop: contentInsetY
+        }}
+        onScroll={onScroll}
+        onScrollEnd={onScrollEnd}
+        bufferSize={typeof window === "undefined" ? 400 : window.innerHeight}
+      >
+        {(row, index): ReactElement => {
+          const isTurnRow = row.kind === "turn"
+          const isLastTurnRow = isTurnRow && index === turns.length - 1
+          const isLatestVirtualRow = row.kind === "footer"
+
+          return (
+            <div
+              key={row.key}
+              ref={(node) => {
+                if (isLastTurnRow) {
+                  lastTurnRowRef.current = node
+                }
+
+                if (isLatestVirtualRow) {
+                  latestVirtualRowRef.current = node
+                }
+              }}
+              className={cn(contentClassName, index < turns.length - 1 && virtualRowPadding)}
+            >
+              {row.kind === "turn" ? (
+                renderTurn(row.turn)
+              ) : (
+                <>
+                  {footerSlot}
+                  <div aria-hidden="true" style={{ height: bottomSpacerHeight }} />
+                </>
+              )}
+              {isLatestVirtualRow && onScrollToLatest ? (
+                <MessageAutoScroll
+                  activeContentSignature={activeContentSignature}
+                  hasFollowTarget={turns.length > 0}
+                  isAtBottom={isAtBottom}
+                  isScrolling={isScrolling}
+                  observeKey={`${row.key}:${lastTurnKey}`}
+                  onScrollToLatest={onScrollToLatest}
+                  rowRef={latestVirtualRowRef}
+                  signatureRef={lastTurnRowRef}
+                />
+              ) : null}
+            </div>
+          )
+        }}
+      </VList>
+    </div>
   )
 }

@@ -1,11 +1,13 @@
-import { AlertCircle, ArrowDown, Loader2, X } from "lucide-react"
+import { AlertCircle, X } from "lucide-react"
 import { Messages } from "@/components/chat/Messages"
 import { ChatTodos } from "@/components/chat/ChatTodos"
 import { IncludedMemoriesPanel } from "@/components/chat/IncludedMemoriesPanel"
 import { MemoryReviewPanel } from "@/components/chat/MemoryReviewPanel"
-import type { HITLDecision, HITLRequest, Message, ThreadForkState, Todo } from "@/types"
+import type { HITLRequest, ThreadForkState, Todo } from "@/types"
 import { useI18n } from "@/lib/i18n"
-import { useStickToBottom } from "use-stick-to-bottom"
+import type { MessagesProjection } from "@/lib/message-projection"
+import type { RefObject } from "react"
+import type { VListHandle } from "virtua"
 
 export function LauncherAiEmptyState(props: {
   bottomInset?: number
@@ -53,101 +55,65 @@ export function LauncherAiEmptyState(props: {
   )
 }
 
-function LauncherJumpToLatestButton(props: {
-  bottomInset: number
-  isLoading: boolean
-  label: string
-  onClick: () => void
-}): React.JSX.Element {
-  const { bottomInset, isLoading, label, onClick } = props
-
-  return (
-    <button
-      type="button"
-      className="launcher-jump-to-latest absolute bottom-[var(--launcher-jump-bottom)] left-1/2 flex -translate-x-1/2 items-center gap-[var(--ow-gap-sm)] bg-background/88 px-[var(--ow-space-3)] py-[var(--ow-space-1-5)] [font-size:var(--ow-font-meta)] font-medium text-foreground backdrop-blur-md transition"
-      style={{
-        bottom: `calc(var(--launcher-jump-bottom) + ${bottomInset}px)`
-      }}
-      onClick={onClick}
-    >
-      <span className="relative z-10 flex items-center gap-[var(--ow-gap-sm)]">
-        {isLoading ? (
-          <Loader2 className="size-[var(--ow-icon-sm)] animate-spin" />
-        ) : (
-          <ArrowDown className="size-[var(--ow-icon-sm)]" />
-        )}
-        {label}
-      </span>
-    </button>
-  )
-}
-
 export function LauncherAiConversation(props: {
   bottomInset: number
   clearError: () => void
-  displayMessages: Message[]
   error: string | null
   forkState: ThreadForkState
+  isAtBottom: boolean
   isLoading: boolean
-  onApprovalDecision: (decision: HITLDecision) => Promise<void>
+  isScrolling: boolean
+  messageProjection: MessagesProjection
   onBranch?: (messageId?: string) => Promise<void>
   onRetry: () => Promise<void>
+  onScroll: () => void
+  onScrollEnd: () => void
+  onScrollToLatest: () => void
+  onUserScrollIntent: () => void
   pendingApproval: HITLRequest | null
   runId: string | null
   threadId: string
   todos: Todo[]
+  virtualizerRef: RefObject<VListHandle | null>
 }): React.JSX.Element {
   const { copy } = useI18n()
-  const { contentRef, isAtBottom, scrollRef, scrollToBottom } = useStickToBottom({
-    initial: "instant",
-    resize: "smooth"
-  })
   const {
     bottomInset,
     clearError,
-    displayMessages,
     error,
     forkState,
+    isAtBottom,
     isLoading,
-    onApprovalDecision,
+    isScrolling,
+    messageProjection,
     onBranch,
     onRetry,
+    onScroll,
+    onScrollEnd,
+    onScrollToLatest,
+    onUserScrollIntent,
     pendingApproval,
     runId,
     threadId,
-    todos
+    todos,
+    virtualizerRef
   } = props
+  const hasVisibleTurns = messageProjection.turns.length > 0
 
-  if (!displayMessages.length && !isLoading && !error) {
+  if (!hasVisibleTurns && !isLoading && !error) {
     return <LauncherAiEmptyState bottomInset={bottomInset} />
   }
 
   return (
     <div className="relative min-h-0 flex-1">
-      <div
-        ref={scrollRef}
-        className="h-full overflow-x-hidden overflow-y-scroll overscroll-contain scrollbar-hide"
-      >
-        <div
-          ref={contentRef}
-          className="overflow-x-hidden px-[var(--launcher-ai-content-x)] py-[var(--launcher-ai-content-y)]"
-          style={{
-            paddingBottom: `calc(var(--launcher-ai-content-y) + ${bottomInset}px)`
-          }}
-        >
-          <div className="mx-auto flex w-full min-w-0 max-w-[var(--launcher-ai-content-max-width)] flex-col gap-[var(--launcher-ai-turn-gap)]">
-            <Messages
-              approvalPlacement="composer"
-              density="compact"
-              isLoading={isLoading}
-              messages={displayMessages}
-              onApprovalDecision={onApprovalDecision}
-              onBranch={forkState.canFork ? onBranch : undefined}
-              onRetry={onRetry}
-              pendingApproval={pendingApproval}
-            />
-
-            {!isLoading && todos.length > 0 && (pendingApproval || displayMessages.length > 0) && (
+      <Messages
+        bottomInset={bottomInset}
+        contentClassName="mx-auto w-full min-w-0 max-w-[var(--launcher-ai-content-max-width)] px-[var(--launcher-ai-content-x)]"
+        contentInsetY="var(--launcher-ai-content-y)"
+        density="compact"
+        footerSlot={
+          <div className="flex w-full min-w-0 flex-col gap-[var(--launcher-ai-turn-gap)]">
+            {!isLoading && todos.length > 0 && (pendingApproval || hasVisibleTurns) && (
               <ChatTodos todos={todos} />
             )}
 
@@ -179,17 +145,20 @@ export function LauncherAiConversation(props: {
               </div>
             )}
           </div>
-        </div>
-      </div>
-
-      {!isAtBottom && (
-        <LauncherJumpToLatestButton
-          bottomInset={bottomInset}
-          isLoading={isLoading}
-          label={copy.launcher.jumpToLatest}
-          onClick={() => void scrollToBottom({ animation: "smooth" })}
-        />
-      )}
+        }
+        isAtBottom={isAtBottom}
+        isLoading={isLoading}
+        isScrolling={isScrolling}
+        onBranch={forkState.canFork ? onBranch : undefined}
+        onRetry={onRetry}
+        onScroll={onScroll}
+        onScrollEnd={onScrollEnd}
+        onScrollToLatest={onScrollToLatest}
+        onUserScrollIntent={onUserScrollIntent}
+        pendingApproval={pendingApproval}
+        projection={messageProjection}
+        virtualizerRef={virtualizerRef}
+      />
     </div>
   )
 }

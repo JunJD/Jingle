@@ -1,10 +1,9 @@
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useState } from "react"
 import type { HITLDecision } from "@/types"
 import {
   hasComposerMessageInputContent,
   hasMessageContent,
   toAgentMessageContent,
-  toComposerMessageInput,
   toMessageContent,
   type ComposerMessageInput
 } from "@shared/message-content"
@@ -251,31 +250,18 @@ export function useAiInvocation(options: UseAiInvocationOptions): {
     [conversation]
   )
 
-  const lastUserMessageInput = useMemo(() => {
-    for (let index = conversation.displayMessages.length - 1; index >= 0; index -= 1) {
-      const message = conversation.displayMessages[index]
-      if (message.role !== "user" || !hasMessageContent(message.content)) {
-        continue
-      }
-
-      return toComposerMessageInput(message.content, message.metadata)
-    }
-
-    return null
-  }, [conversation.displayMessages])
-
   const retry = useCallback(async (): Promise<void> => {
-    if (!lastUserMessageInput) {
+    if (!conversation.lastUserMessageInput) {
       return
     }
 
-    await invoke(lastUserMessageInput)
-  }, [invoke, lastUserMessageInput])
+    await invoke(conversation.lastUserMessageInput)
+  }, [conversation.lastUserMessageInput, invoke])
 
   return {
     canInvoke: Boolean(draftInput.trim()) && !isBusy && !hasPendingApproval,
     canResume: Boolean(conversation.pendingApproval) && !isPreparing,
-    canRetry: Boolean(lastUserMessageInput) && !isBusy && !hasPendingApproval,
+    canRetry: Boolean(conversation.lastUserMessageInput) && !isBusy && !hasPendingApproval,
     canStop: Boolean(threadId) && conversation.isLoading,
     clearVisibleError,
     conversation,

@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
   type ReactNode
 } from "react"
@@ -21,6 +22,9 @@ import {
   type ThreadRecord,
   type ThreadState
 } from "./thread-store-core"
+import { projectMessages } from "./message-projection"
+import { stabilizeReferences } from "./stabilize-references"
+import { stabilizeThreadMessages } from "./thread-message-stability"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
 export type { ThreadActions, ThreadRecord, ThreadState, TokenUsage } from "./thread-store-core"
@@ -87,7 +91,7 @@ function parseErrorMessage(error: Error | string | AgentThreadProjection["error"
 export function ThreadProvider({ children }: { children: ReactNode }) {
   const initializedThreadsRef = useRef<Set<string>>(new Set())
   const projectionCleanupRef = useRef<Record<string, () => void>>({})
-  const threadStoreRef = useRef(
+  const [threadStore] = useState(() =>
     createThreadStore({
       persistCurrentModel: async (threadId: string, modelId: string) => {
         const thread = await window.api.threads.get(threadId)
@@ -113,7 +117,6 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       }
     })
   )
-  const threadStore = threadStoreRef.current
   const streamDataRef = useRef<Record<string, StreamData>>({})
   const streamSubscribersRef = useRef<Record<string, Set<() => void>>>({})
 
@@ -140,20 +143,30 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       const shouldRefreshForkState =
         wasLoading !== projection.isLoading ||
         previousState.pendingApproval?.id !== projection.pendingApproval?.id
+      const messages = stabilizeThreadMessages(previousState.messages, projection.messages)
+      const pendingApproval = stabilizeReferences(
+        previousState.pendingApproval,
+        projection.pendingApproval
+      )
+      const subagents = stabilizeReferences(previousState.subagents, projection.subagents)
+      const todos = stabilizeReferences(previousState.todos, projection.todos)
+      const tokenUsage = stabilizeReferences(previousState.tokenUsage, projection.tokenUsage)
+      const messageProjection = projectMessages(messages, previousState.messageProjection)
 
       threadStore.updateThreadState(threadId, () => ({
         error: projection.error ? parseErrorMessage(projection.error) : null,
-        messages: projection.messages,
-        pendingApproval: projection.pendingApproval,
+        messageProjection,
+        messages,
+        pendingApproval,
         runId: projection.runId,
-        subagents: projection.subagents,
-        todos: projection.todos,
-        tokenUsage: projection.tokenUsage
+        subagents,
+        todos,
+        tokenUsage
       }))
 
       streamDataRef.current[threadId] = {
         isLoading: projection.isLoading,
-        messages: projection.messages,
+        messages,
         stream: null
       }
       threadStore.setStreamLoadingState(threadId, projection.isLoading)
@@ -217,7 +230,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     return streamDataRef.current[threadId] || defaultStreamData
   }, [])
 
-  const subscribeToAllStreams = useCallback((_callback: () => void) => {
+  const subscribeToAllStreams = useCallback(() => {
     return () => {}
   }, [])
 
