@@ -65,7 +65,7 @@ private let spriteTiles: [[Bool]] = [
 private func compactTitle(for state: IslandState) -> String {
     switch state {
     case .idle:
-        return "Openwork"
+        return "Jingle"
     case .working:
         return "Working"
     case .approval:
@@ -76,7 +76,7 @@ private func compactTitle(for state: IslandState) -> String {
 private func expandedTitle(for state: IslandState) -> String {
     switch state {
     case .idle:
-        return "Openwork is ready"
+        return "Jingle is ready"
     case .working:
         return "Agent is working"
     case .approval:
@@ -89,7 +89,7 @@ private func expandedSubtitle(for state: IslandState) -> String {
     case .idle:
         return "Start from the launcher or keep working in the current thread."
     case .working:
-        return "The current task is running. Openwork will keep the status here."
+        return "The current task is running. Jingle will keep the status here."
     case .approval:
         return "A tool action needs your decision before the run can continue."
     }

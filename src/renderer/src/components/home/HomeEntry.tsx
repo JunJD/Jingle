@@ -119,7 +119,7 @@ export function HomeEntry(): React.JSX.Element {
             </div>
           </div>
           <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight">Welcome to Openwork</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Welcome to Jingle</h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Your tactical agent interface for intelligent conversations and task management.
             </p>

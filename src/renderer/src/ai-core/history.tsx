@@ -202,7 +202,7 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
             style={{ paddingLeft: "calc(var(--window-controls-offset-inline) + 6px)" }}
           >
             <div className="[font-size:var(--ow-font-meta)] font-semibold uppercase tracking-[0.14em] text-[var(--window-chrome-muted)]">
-              Openwork
+              Jingle
             </div>
             <div className="truncate [font-size:var(--ow-font-control)] text-[var(--window-chrome-foreground)]">
               {copy.app.workspaceSubtitle}

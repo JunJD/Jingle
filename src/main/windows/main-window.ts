@@ -17,7 +17,7 @@ export function createMainWindow(): BrowserWindow {
     show: false,
     autoHideMenuBar: !isMac,
     backgroundColor: "#F3F4F1",
-    title: "Openwork",
+    title: "Jingle",
     titleBarStyle: "hidden",
     ...(isMac
       ? {
