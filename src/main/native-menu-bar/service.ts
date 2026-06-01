@@ -55,7 +55,7 @@ export class NativeMenuBarService {
         : this.createMenuBarImage(state.extensionIcon, MENU_BAR_STATUS_ICON_SIZE)
     )
     tray.setContextMenu(Menu.buildFromTemplate(this.buildMenuTemplate(state)))
-    tray.setToolTip(state.tooltip ?? state.title ?? "Openwork")
+    tray.setToolTip(state.tooltip ?? state.title ?? "Jingle")
 
     if (process.platform === "darwin") {
       tray.setTitle(state.title ?? "")
@@ -139,7 +139,7 @@ export class NativeMenuBarService {
   }
 
   private createMenuBarImage(
-    icon: NativeMenuBarState["extensionIcon"] | NativeMenuBarState["iconName"] = "openwork",
+    icon: NativeMenuBarState["extensionIcon"] | NativeMenuBarState["iconName"] = "jingle",
     size: number
   ): Electron.NativeImage {
     const cacheKey =
@@ -257,7 +257,7 @@ export class NativeMenuBarService {
       return existingTray
     }
 
-    const tray = new Tray(this.createMenuBarImage("openwork", MENU_BAR_STATUS_ICON_SIZE))
+    const tray = new Tray(this.createMenuBarImage("jingle", MENU_BAR_STATUS_ICON_SIZE))
     tray.setIgnoreDoubleClickEvents(true)
     this.trayByCommandKey.set(commandKey, tray)
     return tray

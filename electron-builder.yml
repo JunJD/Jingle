@@ -1,5 +1,5 @@
-appId: com.langchain.openwork
-productName: Openwork
+appId: com.jingle.desktop
+productName: Jingle
 directories:
   output: dist
 npmRebuild: false
@@ -90,8 +90,8 @@ mac:
   category: public.app-category.productivity
   icon: resources/icon.icns
   extendInfo:
-    NSRemindersFullAccessUsageDescription: Openwork needs access to Reminders to list, create, complete, and delete reminders you request.
-    NSRemindersUsageDescription: Openwork needs access to Reminders to list, create, complete, and delete reminders you request.
+    NSRemindersFullAccessUsageDescription: Jingle needs access to Reminders to list, create, complete, and delete reminders you request.
+    NSRemindersUsageDescription: Jingle needs access to Reminders to list, create, complete, and delete reminders you request.
   target:
     - dmg
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}

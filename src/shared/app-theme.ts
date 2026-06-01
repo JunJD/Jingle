@@ -22,7 +22,7 @@ export interface AppThemeTokens {
 }
 
 export interface CodexThemeV1 {
-  // Kept for codex-theme-v1 compatibility. In Openwork this identifies the
+  // Kept for codex-theme-v1 compatibility. In Jingle this identifies the
   // overall visual style family, not only a syntax-highlighting theme.
   codeThemeId: string
   theme: AppThemeTokens

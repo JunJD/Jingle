@@ -116,7 +116,7 @@ function buildDeferredToolMessage(input: { toolCallId: string; toolName: string 
 
   return new ToolMessage({
     content:
-      "Openwork skipped this concurrent approval-required tool call because only one approval-required action can be evaluated per assistant step.",
+      "Jingle skipped this concurrent approval-required tool call because only one approval-required action can be evaluated per assistant step.",
     name: toolName,
     tool_call_id: toolCallId,
     status: "error"
@@ -124,7 +124,7 @@ function buildDeferredToolMessage(input: { toolCallId: string; toolName: string 
 }
 
 function buildApprovalDescription(toolName: string): string {
-  return `Openwork approval required for ${toolName}.`
+  return `Jingle approval required for ${toolName}.`
 }
 
 async function requestToolApproval(input: {
@@ -223,7 +223,7 @@ export function createToolApprovalMiddleware(options: CreateToolApprovalMiddlewa
 
       if (decision.disposition === "deny") {
         return buildErroredToolMessage({
-          content: decision.reason ?? `Openwork denied ${toolName}.`,
+          content: decision.reason ?? `Jingle denied ${toolName}.`,
           toolCallId,
           toolName
         })

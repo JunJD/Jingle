@@ -132,7 +132,7 @@ export default function SettingsApp(): React.JSX.Element {
         </div>
 
         <div className="flex min-w-0 flex-1 justify-end [font-size:var(--ow-settings-tab-font)] text-[var(--window-chrome-muted)]">
-          Openwork
+          Jingle
         </div>
       </div>
 

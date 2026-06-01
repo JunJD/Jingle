@@ -21,7 +21,7 @@ export class UtilityProcessExtensionRuntimeProcessLauncher implements ExtensionR
         ...process.env,
         [EXTENSION_RUNTIME_CACHE_DIR_ENV]: join(getOpenworkDir(), "extension-runtime-cache")
       },
-      serviceName: "Openwork Extension Runtime"
+      serviceName: "Jingle Extension Runtime"
     })
 
     return new UtilityProcessExtensionRuntimeProcess(child)
