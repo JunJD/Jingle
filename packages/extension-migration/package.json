@@ -1,0 +1,13 @@
+{
+  "name": "@openwork/extension-migration",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/preview-raycast-ai-migration.mjs",
+  "exports": {
+    ".": "./src/preview-raycast-ai-migration.mjs"
+  },
+  "dependencies": {
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,1197 @@
+{
+  "dependencyReport": [
+    {
+      "category": "direct-third-party",
+      "decision": "keep-direct-dependency",
+      "declaredAs": "dependency",
+      "importedBy": [
+        "src/quick-capture.tsx"
+      ],
+      "name": "@mozilla/readability",
+      "openworkTarget": "@mozilla/readability",
+      "reason": "Webpage body extraction for quick-capture should reuse the upstream Readability parser.",
+      "version": "^0.6.0"
+    },
+    {
+      "category": "direct-third-party",
+      "decision": "keep-direct-dependency",
+      "declaredAs": "dependency",
+      "importedBy": [
+        "src/add-text-to-page.tsx",
+        "src/utils/notion/block.ts",
+        "src/utils/notion/database/index.ts",
+        "src/utils/notion/database/property.ts",
+        "src/utils/notion/global.ts",
+        "src/utils/notion/index.ts",
+        "src/utils/notion/oauth.ts",
+        "src/utils/notion/page/index.ts",
+        "src/utils/notion/page/property.ts",
+        "src/utils/notion/user.ts"
+      ],
+      "name": "@notionhq/client",
+      "openworkTarget": "@notionhq/client",
+      "reason": "Official Notion client should be reused instead of hand-written HTTP adapters.",
+      "version": "^5.9.0"
+    },
+    {
+      "category": "runtime-facade",
+      "decision": "rewrite-import",
+      "declaredAs": "dependency",
+      "importedBy": [
+        "src/add-text-to-page.tsx",
+        "src/components/DatabaseList.tsx",
+        "src/components/DatabaseView.tsx",
+        "src/components/PageDetail.tsx",
+        "src/components/PageListItem.tsx",
+        "src/components/actions/ActionCreateQuicklink.tsx",
+        "src/components/actions/ActionEditPageProperty.tsx",
+        "src/components/actions/ActionSetOrderProperties.tsx",
+        "src/components/actions/ActionSetVisibleProperties.tsx",
+        "src/components/forms/AppendToPageForm.tsx",
+        "src/components/forms/CreatePageForm.tsx",
+        "src/components/forms/DatabaseViewForm.tsx",
+        "src/components/forms/PagePropertyField.tsx",
+        "src/hooks/index.ts",
+        "src/quick-capture.tsx",
+        "src/search-page.tsx",
+        "src/utils/notion/database/index.ts",
+        "src/utils/notion/global.ts",
+        "src/utils/notion/index.ts",
+        "src/utils/notion/oauth.ts",
+        "src/utils/notion/page/index.ts",
+        "src/utils/notion/page/property.ts",
+        "src/utils/openPage.ts",
+        "src/utils/types.ts"
+      ],
+      "name": "@raycast/api",
+      "openworkTarget": "@openwork/extension-api",
+      "reason": "Raycast runtime-bound UI and host APIs must map to the Openwork extension author API.",
+      "version": "^1.104.5"
+    },
+    {
+      "category": "runtime-facade",
+      "decision": "rewrite-import-with-adapters",
+      "declaredAs": "dependency",
+      "importedBy": [
+        "src/add-text-to-page.tsx",
+        "src/components/DatabaseList.tsx",
+        "src/components/PageDetail.tsx",
+        "src/components/forms/AppendToPageForm.tsx",
+        "src/components/forms/CreatePageForm.tsx",
+        "src/components/forms/PagePropertyField.tsx",
+        "src/create-database-page.tsx",
+        "src/hooks/index.ts",
+        "src/quick-capture.tsx",
+        "src/search-page.tsx",
+        "src/tools/add-to-page.ts",
+        "src/tools/create-page.ts",
+        "src/tools/get-databases.ts",
+        "src/tools/get-page.ts",
+        "src/tools/search-database.ts",
+        "src/tools/search-pages.ts",
+        "src/utils/notion/oauth.ts"
+      ],
+      "name": "@raycast/utils",
+      "openworkTarget": "@openwork/extension-utils",
+      "reason": "Hooks can map to Openwork utilities, but auth helpers such as withAccessToken need connection handling.",
+      "version": "^2.2.2"
+    },
+    {
+      "category": "direct-third-party",
+      "decision": "keep-direct-dependency",
+      "declaredAs": "dependency",
+      "importedBy": [
+        "src/add-text-to-page.tsx",
+        "src/utils/notion/database/index.ts",
+        "src/utils/notion/page/index.ts",
+        "src/utils/notion/page/property.ts"
+      ],
+      "name": "@tryfabric/martian",
+      "openworkTarget": "@tryfabric/martian",
+      "reason": "Markdown-to-Notion block conversion should be reused for migration fidelity.",
+      "version": "^1.2.4"
+    },
+    {
+      "category": "direct-third-party",
+      "decision": "keep-direct-dependency",
+      "declaredAs": "dependency",
+      "importedBy": [
+        "src/components/PageDetail.tsx",
+        "src/components/PageListItem.tsx",
+        "src/components/actions/ActionEditPageProperty.tsx",
+        "src/utils/notion/block.ts",
+        "src/utils/notion/page/property.ts"
+      ],
+      "name": "date-fns",
+      "openworkTarget": "date-fns",
+      "reason": "Date formatting behavior can be preserved during migration.",
+      "version": "^4.1.0"
+    },
+    {
+      "category": "direct-third-party",
+      "decision": "keep-direct-dependency",
+      "declaredAs": "dependency",
+      "importedBy": [
+        "src/quick-capture.tsx"
+      ],
+      "name": "linkedom",
+      "openworkTarget": "linkedom",
+      "reason": "Readability needs an HTML parser for quick-capture webpage extraction.",
+      "version": "^0.18.12"
+    },
+    {
+      "category": "direct-third-party",
+      "decision": "keep-direct-dependency",
+      "declaredAs": "dependency",
+      "importedBy": [
+        "src/utils/notion/page/index.ts"
+      ],
+      "name": "notion-to-md",
+      "openworkTarget": "notion-to-md",
+      "reason": "Notion block-to-Markdown conversion should be reused for page previews and AI tools.",
+      "version": "^3.1.9"
+    },
+    {
+      "category": "unclassified",
+      "decision": "review",
+      "declaredAs": "import",
+      "importedBy": [
+        "src/add-text-to-page.tsx",
+        "src/components/DatabaseList.tsx",
+        "src/components/DatabaseView.tsx",
+        "src/components/PageDetail.tsx",
+        "src/components/PageListItem.tsx",
+        "src/components/forms/CreatePageForm.tsx",
+        "src/components/forms/DatabaseViewForm.tsx",
+        "src/components/forms/PagePropertyField.tsx",
+        "src/hooks/index.ts",
+        "src/quick-capture.tsx",
+        "src/search-page.tsx"
+      ],
+      "name": "react",
+      "openworkTarget": "react",
+      "reason": "No migration decision is encoded for this dependency yet."
+    }
+  ],
+  "feasibility": {
+    "automatic": [
+      "package metadata -> Openwork extension manifest draft",
+      "tools[] metadata -> aiCapability.toolNames and toolDisplays",
+      "ai.instructions -> aiCapability.instructions",
+      "simple TypeScript Input types -> zod schema drafts",
+      "withAccessToken -> Openwork connection secret resolver",
+      "src/tools handlers -> generated Openwork tool definitions through the migrated runtime SDK context"
+    ],
+    "manualOrAdapterRequired": [
+      "Raycast OAuth interactive authorization -> Openwork interactive connection flow",
+      "Raycast UI commands/components -> Openwork runtime SDK components",
+      "Raycast toast/navigation/storage hooks -> Openwork host capabilities"
+    ],
+    "score": {
+      "manifest": "high",
+      "migrationReport": "medium",
+      "toolMetadata": "high",
+      "toolInputSchemas": "high",
+      "toolHandlers": "high",
+      "uiCommands": "medium"
+    }
+  },
+  "manifestPreview": {
+    "aiCapability": {
+      "connectionId": "default",
+      "description": "The fastest way to search, create and update Notion pages.",
+      "guide": "Use Notion Generated only for Notion Generated workspace content. Notion Generated tools require a connected account before reading or writing workspace data. Search before retrieving or modifying a page unless the user provided an exact id. If auth status is missing, explain that the extension must be connected in Settings first.",
+      "id": "notion-generated",
+      "instructions": [
+        "If asked to summarize or view a document, look for pages with the title of the document.",
+        "When referring to a page or database, always include a link to the page or database.",
+        "When creating a page, always include the database name. Ask for the database name if it's not provided."
+      ],
+      "mention": {
+        "label": "Notion Generated",
+        "value": "notion-generated"
+      },
+      "requiredPreferenceNames": [
+        "accessToken"
+      ],
+      "supportedPlatforms": [
+        "win32",
+        "darwin"
+      ],
+      "title": "Notion Generated",
+      "toolDisplays": {
+        "searchPages": {
+          "description": "Search for pages in Notion.",
+          "title": "Search Pages"
+        },
+        "getPage": {
+          "description": "Get the content of a Notion page.",
+          "title": "Get Page"
+        },
+        "addToPage": {
+          "description": "Append markdown to a Notion page.",
+          "title": "Add to Page"
+        },
+        "createPage": {
+          "description": "Create a Notion page in a specific database.",
+          "title": "Create Page"
+        },
+        "getDatabases": {
+          "description": "Get Notion databases.",
+          "title": "Get Databases"
+        },
+        "searchDatabase": {
+          "description": "Search for pages and/or databases contained in the given Notion database.",
+          "title": "Search Database"
+        }
+      },
+      "toolNames": [
+        "searchPages",
+        "getPage",
+        "addToPage",
+        "createPage",
+        "getDatabases",
+        "searchDatabase"
+      ]
+    },
+    "capabilities": [
+      "navigation",
+      "surface"
+    ],
+    "commands": [
+      {
+        "arguments": [],
+        "description": "Create a page in a Notion database.",
+        "mode": "view",
+        "name": "create-database-page",
+        "preferences": [
+          {
+            "name": "closeAfterCreate",
+            "type": "checkbox",
+            "label": "Close Openwork after creating the page",
+            "required": false,
+            "default": false,
+            "description": "This action will be set as the primary action (⌘ + ⏎)."
+          },
+          {
+            "name": "useClipboard",
+            "type": "dropdown",
+            "title": "Use Clipboard to autofill",
+            "required": false,
+            "data": [
+              {
+                "title": "Don't use Clipboard",
+                "value": ""
+              },
+              {
+                "title": "Name (Title)",
+                "value": "title"
+              },
+              {
+                "title": "Content",
+                "value": "content"
+              }
+            ],
+            "default": "",
+            "description": "Specify if Clipboard is used to autofill Title or Content"
+          }
+        ],
+        "runtime": {
+          "viewport": {
+            "bodyHeight": 520
+          }
+        },
+        "title": "Create Database Page"
+      },
+      {
+        "arguments": [],
+        "description": "Search for Notion databases and pages.",
+        "mode": "view",
+        "name": "search-page",
+        "preferences": [
+          {
+            "name": "primaryAction",
+            "type": "dropdown",
+            "title": "Primary Action",
+            "required": false,
+            "default": "notion",
+            "data": [
+              {
+                "title": "Open in Notion",
+                "value": "notion"
+              },
+              {
+                "title": "Preview in Openwork",
+                "value": "openwork"
+              }
+            ],
+            "description": "Choose the primary action for the Notion Pages list."
+          }
+        ],
+        "runtime": {
+          "viewport": {
+            "bodyHeight": 520
+          }
+        },
+        "title": "Search Notion"
+      },
+      {
+        "arguments": [],
+        "description": "Capture something and put it out in a Notion page.",
+        "mode": "view",
+        "name": "quick-capture",
+        "preferences": [],
+        "runtime": {
+          "viewport": {
+            "bodyHeight": 520
+          }
+        },
+        "title": "Quick Capture"
+      },
+      {
+        "arguments": [
+          {
+            "name": "text",
+            "type": "text",
+            "title": "Text",
+            "placeholder": "Text",
+            "required": false
+          }
+        ],
+        "description": "Append or prepend text, along with date, to a Notion page.",
+        "mode": "view",
+        "name": "add-text-to-page",
+        "preferences": [],
+        "runtime": {
+          "viewport": {
+            "bodyHeight": 520
+          }
+        },
+        "title": "Add Text to Page"
+      }
+    ],
+    "connection": {
+      "auth": {
+        "secretNames": [
+          "accessToken"
+        ],
+        "type": "apiKey"
+      },
+      "id": "default",
+      "provider": "notion",
+      "title": "Notion Generated"
+    },
+    "description": "The fastest way to search, create and update Notion pages.",
+    "icon": "assets/notion-logo.png",
+    "name": "notion-generated",
+    "preferences": [
+      {
+        "name": "accessToken",
+        "type": "password",
+        "title": "Internal Integration Secret",
+        "required": false,
+        "description": "In Notion, go to Settings & members > My connections > Develop or manage integrations > New integration",
+        "placeholder": "ntn_FGDeSrZNodQuaJEqWzvxcTyrPlpBHYvdLpTZykrWEu"
+      },
+      {
+        "name": "open_in",
+        "type": "appPicker",
+        "title": "Open Page in",
+        "required": false,
+        "default": {
+          "name": "Notion"
+        },
+        "description": "Choose where to open Notion page."
+      },
+      {
+        "name": "properties_in_page_previews",
+        "type": "checkbox",
+        "title": "Properties in Previews",
+        "required": false,
+        "default": false,
+        "description": "Show properties in page previews.",
+        "label": "Show properties in page previews."
+      }
+    ],
+    "runtimeCapabilities": [
+      "ai",
+      "clipboard",
+      "dialog",
+      "navigation",
+      "preferences",
+      "quicklinks",
+      "settings",
+      "shell",
+      "storage",
+      "toast"
+    ],
+    "runtimeShell": {
+      "allowedUrlSchemes": [
+        "notion"
+      ]
+    },
+    "supportedPlatforms": [
+      "win32",
+      "darwin"
+    ],
+    "title": "Notion Generated"
+  },
+  "runtimeCompatibility": {
+    "counts": {
+      "adapterNotes": 0,
+      "blockingAdapters": 0,
+      "blockingIssues": 0,
+      "compatibilityNotes": 2,
+      "degradationNotes": 0,
+      "files": 1,
+      "migrationNotes": 2,
+      "unsupportedImports": 0,
+      "unsupportedMembers": 0
+    },
+    "entries": [
+      {
+        "adapterNotes": [],
+        "blockingAdapters": [],
+        "degradationNotes": [],
+        "file": "src/utils/notion/oauth.ts",
+        "migrationNotes": [
+          {
+            "import": "OAuth",
+            "localName": "OAuth",
+            "source": "@raycast/api",
+            "note": "Openwork preserves the Raycast OAuth shape for migrated code; Notion V1 resolves tokens from connection secrets instead of running an interactive OAuth flow.",
+            "status": "supported-with-migration-note",
+            "target": "OAuth"
+          },
+          {
+            "import": "OAuthService",
+            "localName": "OAuthService",
+            "source": "@raycast/utils",
+            "note": "Openwork supports OAuthService token initialization through withAccessToken; Notion V1 resolves tokens from connection secrets instead of running an interactive OAuth flow.",
+            "status": "supported-with-migration-note",
+            "target": "OAuthService"
+          }
+        ],
+        "unsupportedImports": [],
+        "unsupportedMembers": []
+      }
+    ]
+  },
+  "source": {
+    "extensionPath": "extensions/notion",
+    "label": "/Users/junjieding/dingjunjie_dev/2026_03/raycast-extensions-notion:HEAD:extensions/notion",
+    "packageName": "notion",
+    "targetExtensionId": "notion-generated",
+    "targetTitle": "Notion Generated",
+    "title": "Notion"
+  },
+  "sourceMigration": {
+    "assetFiles": [
+      {
+        "outputPath": "openwork-package/assets/icon/date_end.png",
+        "path": "assets/icon/date_end.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/date_start.png",
+        "path": "assets/icon/date_start.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/formula.png",
+        "path": "assets/icon/formula.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/kanban_status_0.png",
+        "path": "assets/icon/kanban_status_0.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/kanban_status_25.png",
+        "path": "assets/icon/kanban_status_25.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/kanban_status_33.png",
+        "path": "assets/icon/kanban_status_33.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/kanban_status_50.png",
+        "path": "assets/icon/kanban_status_50.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/kanban_status_66.png",
+        "path": "assets/icon/kanban_status_66.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/kanban_status_75.png",
+        "path": "assets/icon/kanban_status_75.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/kanban_status_backlog.png",
+        "path": "assets/icon/kanban_status_backlog.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/kanban_status_canceled.png",
+        "path": "assets/icon/kanban_status_canceled.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/kanban_status_completed.png",
+        "path": "assets/icon/kanban_status_completed.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/kanban_status_not_started.png",
+        "path": "assets/icon/kanban_status_not_started.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/kanban_status_started.png",
+        "path": "assets/icon/kanban_status_started.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/view_kanban.png",
+        "path": "assets/icon/view_kanban.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/icon/view_list.png",
+        "path": "assets/icon/view_list.png"
+      },
+      {
+        "outputPath": "openwork-package/assets/notion-logo.png",
+        "path": "assets/notion-logo.png"
+      }
+    ],
+    "sourceFiles": [
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/add-text-to-page.tsx",
+        "path": "src/add-text-to-page.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/DatabaseList.tsx",
+        "path": "src/components/DatabaseList.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/DatabaseView.tsx",
+        "path": "src/components/DatabaseView.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/PageDetail.tsx",
+        "path": "src/components/PageDetail.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/PageListItem.tsx",
+        "path": "src/components/PageListItem.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/actions/ActionCreateQuicklink.tsx",
+        "path": "src/components/actions/ActionCreateQuicklink.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/actions/ActionEditPageProperty.tsx",
+        "path": "src/components/actions/ActionEditPageProperty.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/actions/ActionSetOrderProperties.tsx",
+        "path": "src/components/actions/ActionSetOrderProperties.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/actions/ActionSetVisibleProperties.tsx",
+        "path": "src/components/actions/ActionSetVisibleProperties.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/actions/index.ts",
+        "path": "src/components/actions/index.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/forms/AppendToPageForm.tsx",
+        "path": "src/components/forms/AppendToPageForm.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/forms/CreatePageForm.tsx",
+        "path": "src/components/forms/CreatePageForm.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/forms/DatabaseViewForm.tsx",
+        "path": "src/components/forms/DatabaseViewForm.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/forms/PagePropertyField.tsx",
+        "path": "src/components/forms/PagePropertyField.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/forms/index.ts",
+        "path": "src/components/forms/index.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/components/index.tsx",
+        "path": "src/components/index.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/create-database-page.tsx",
+        "path": "src/create-database-page.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/hooks/index.ts",
+        "path": "src/hooks/index.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/quick-capture.tsx",
+        "path": "src/quick-capture.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/search-page.tsx",
+        "path": "src/search-page.tsx"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/tools/add-to-page.ts",
+        "path": "src/tools/add-to-page.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/tools/add-to-page.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/tools/add-to-page.ts",
+        "path": "src/tools/add-to-page.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/tools/create-page.ts",
+        "path": "src/tools/create-page.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/tools/create-page.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/tools/create-page.ts",
+        "path": "src/tools/create-page.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/tools/get-databases.ts",
+        "path": "src/tools/get-databases.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/tools/get-databases.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/tools/get-databases.ts",
+        "path": "src/tools/get-databases.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/tools/get-page.ts",
+        "path": "src/tools/get-page.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/tools/get-page.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/tools/get-page.ts",
+        "path": "src/tools/get-page.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/tools/search-database.ts",
+        "path": "src/tools/search-database.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/tools/search-database.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/tools/search-database.ts",
+        "path": "src/tools/search-database.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/tools/search-pages.ts",
+        "path": "src/tools/search-pages.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/tools/search-pages.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/tools/search-pages.ts",
+        "path": "src/tools/search-pages.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/utils/notion/block.ts",
+        "path": "src/utils/notion/block.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/utils/notion/block.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/utils/notion/block.ts",
+        "path": "src/utils/notion/block.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/utils/notion/database/index.ts",
+        "path": "src/utils/notion/database/index.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/utils/notion/database/index.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/utils/notion/database/index.ts",
+        "path": "src/utils/notion/database/index.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/utils/notion/database/property.ts",
+        "path": "src/utils/notion/database/property.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/utils/notion/database/property.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/utils/notion/database/property.ts",
+        "path": "src/utils/notion/database/property.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/utils/notion/global.ts",
+        "path": "src/utils/notion/global.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/utils/notion/global.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/utils/notion/global.ts",
+        "path": "src/utils/notion/global.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/utils/notion/index.ts",
+        "path": "src/utils/notion/index.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/utils/notion/index.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/utils/notion/index.ts",
+        "path": "src/utils/notion/index.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/utils/notion/oauth.ts",
+        "path": "src/utils/notion/oauth.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/utils/notion/oauth.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/utils/notion/oauth.ts",
+        "path": "src/utils/notion/oauth.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/utils/notion/page/index.ts",
+        "path": "src/utils/notion/page/index.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/utils/notion/page/index.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/utils/notion/page/index.ts",
+        "path": "src/utils/notion/page/index.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/utils/notion/page/property.ts",
+        "path": "src/utils/notion/page/property.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/utils/notion/page/property.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/utils/notion/page/property.ts",
+        "path": "src/utils/notion/page/property.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/utils/notion/standardize.ts",
+        "path": "src/utils/notion/standardize.ts"
+      },
+      {
+        "mainOutputPath": "main/migrated-src/utils/notion/standardize.ts",
+        "notes": [],
+        "outputPath": "openwork-package/main/migrated-src/utils/notion/standardize.ts",
+        "path": "src/utils/notion/standardize.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/utils/notion/user.ts",
+        "path": "src/utils/notion/user.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/utils/openPage.ts",
+        "path": "src/utils/openPage.ts"
+      },
+      {
+        "notes": [],
+        "outputPath": "openwork-package/src/utils/types.ts",
+        "path": "src/utils/types.ts"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "blockingAdapters": [],
+      "confirmation": {
+        "exportName": "confirmation",
+        "sourceFile": "src/tools/add-to-page.ts"
+      },
+      "dependencies": [
+        "@raycast/utils",
+        "../utils/notion",
+        "../utils/notion/oauth"
+      ],
+      "description": "Append markdown to a Notion page.",
+      "input": {
+        "fields": [
+          {
+            "description": "The ID of the page to append the content to.",
+            "name": "pageId",
+            "optional": false,
+            "tsType": "string",
+            "zod": "z.string().trim().min(1)"
+          },
+          {
+            "description": "The content in markdown format to append to the page.",
+            "name": "content",
+            "optional": false,
+            "tsType": "string",
+            "zod": "z.string().trim().min(1)"
+          }
+        ],
+        "kind": "type"
+      },
+      "openworkName": "addToPage",
+      "raycastName": "add-to-page",
+      "recommendedAccess": "write",
+      "sourceFile": "src/tools/add-to-page.ts",
+      "title": "Add to Page",
+      "zodSchemaDraft": "const addToPageInputSchema = z.object({\n  \"pageId\": z.string().trim().min(1),\n  \"content\": z.string().trim().min(1)\n})"
+    },
+    {
+      "blockingAdapters": [],
+      "confirmation": {
+        "exportName": "confirmation",
+        "sourceFile": "src/tools/create-page.ts"
+      },
+      "dependencies": [
+        "@raycast/utils",
+        "../utils/notion",
+        "../utils/notion/oauth"
+      ],
+      "description": "Create a Notion page in a specific database.",
+      "input": {
+        "fields": [
+          {
+            "description": "The database id to create the page in.",
+            "name": "databaseId",
+            "optional": false,
+            "tsType": "string",
+            "zod": "z.string().trim().min(1)"
+          },
+          {
+            "description": "The title of the page to create.",
+            "name": "title",
+            "optional": false,
+            "tsType": "string",
+            "zod": "z.string().trim().min(1)"
+          },
+          {
+            "description": "Parses Markdown to Notion Blocks.\n\nIt supports:\n- Headings (levels 4 to 6 are treated as 3 on Notion)\n- Numbered, bulleted, and to-do lists\n- Code blocks, block quotes, and tables\n- Text formatting; italics, bold, strikethrough, inline code, hyperlinks\n\nPlease note that HTML tags and thematic breaks are not supported in Notion due to its limitations.",
+            "name": "content",
+            "optional": false,
+            "tsType": "string",
+            "zod": "z.string().trim().min(1)"
+          }
+        ],
+        "kind": "type"
+      },
+      "openworkName": "createPage",
+      "raycastName": "create-page",
+      "recommendedAccess": "write",
+      "sourceFile": "src/tools/create-page.ts",
+      "title": "Create Page",
+      "zodSchemaDraft": "const createPageInputSchema = z.object({\n  \"databaseId\": z.string().trim().min(1),\n  \"title\": z.string().trim().min(1),\n  \"content\": z.string().trim().min(1)\n})"
+    },
+    {
+      "blockingAdapters": [],
+      "dependencies": [
+        "@raycast/utils",
+        "../utils/notion/database",
+        "../utils/notion/oauth"
+      ],
+      "description": "Get Notion databases.",
+      "input": {
+        "fields": [],
+        "kind": "none"
+      },
+      "openworkName": "getDatabases",
+      "raycastName": "get-databases",
+      "recommendedAccess": "read",
+      "sourceFile": "src/tools/get-databases.ts",
+      "title": "Get Databases",
+      "zodSchemaDraft": "const getDatabasesInputSchema = z.object({})"
+    },
+    {
+      "blockingAdapters": [],
+      "dependencies": [
+        "@raycast/utils",
+        "../utils/notion/oauth"
+      ],
+      "description": "Get the content of a Notion page.",
+      "input": {
+        "fields": [
+          {
+            "description": "The ID of the Notion page to fetch",
+            "name": "pageId",
+            "optional": false,
+            "tsType": "string",
+            "zod": "z.string().trim().min(1)"
+          }
+        ],
+        "kind": "type"
+      },
+      "openworkName": "getPage",
+      "raycastName": "get-page",
+      "recommendedAccess": "read",
+      "sourceFile": "src/tools/get-page.ts",
+      "title": "Get Page",
+      "zodSchemaDraft": "const getPageInputSchema = z.object({\n  \"pageId\": z.string().trim().min(1)\n})"
+    },
+    {
+      "blockingAdapters": [],
+      "dependencies": [
+        "@raycast/utils",
+        "../utils/notion/database",
+        "../utils/notion/oauth"
+      ],
+      "description": "Search for pages and/or databases contained in the given Notion database.",
+      "input": {
+        "fields": [
+          {
+            "description": "The ID of the database to search.",
+            "name": "databaseId",
+            "optional": false,
+            "tsType": "string",
+            "zod": "z.string().trim().min(1)"
+          },
+          {
+            "description": "The query to search for. Only use plain text: it doesn't support any operators",
+            "name": "query",
+            "optional": false,
+            "tsType": "string",
+            "zod": "z.string().trim().min(1)"
+          }
+        ],
+        "kind": "type"
+      },
+      "openworkName": "searchDatabase",
+      "raycastName": "search-database",
+      "recommendedAccess": "read",
+      "sourceFile": "src/tools/search-database.ts",
+      "title": "Search Database",
+      "zodSchemaDraft": "const searchDatabaseInputSchema = z.object({\n  \"databaseId\": z.string().trim().min(1),\n  \"query\": z.string().trim().min(1)\n})"
+    },
+    {
+      "blockingAdapters": [],
+      "dependencies": [
+        "@raycast/utils",
+        "../utils/notion",
+        "../utils/notion/oauth"
+      ],
+      "description": "Search for pages in Notion.",
+      "input": {
+        "fields": [
+          {
+            "description": "The title of the page to search for. Only use plain text: it doesn't support any operators",
+            "name": "searchText",
+            "optional": false,
+            "tsType": "string",
+            "zod": "z.string().trim().min(1)"
+          }
+        ],
+        "kind": "type"
+      },
+      "openworkName": "searchPages",
+      "raycastName": "search-pages",
+      "recommendedAccess": "read",
+      "sourceFile": "src/tools/search-pages.ts",
+      "title": "Search Pages",
+      "zodSchemaDraft": "const searchPagesInputSchema = z.object({\n  \"searchText\": z.string().trim().min(1)\n})"
+    }
+  ],
+  "utilsBoundaryReport": {
+    "counts": {
+      "pureHelpers": 4,
+      "runtimeBound": 8,
+      "toolReachableRuntimeBound": 6,
+      "utilsFiles": 12
+    },
+    "entries": [
+      {
+        "classification": "pure-helper",
+        "file": "src/utils/notion/block.ts",
+        "recommendation": "Safe as package-local pure helper; promote to shared package only after cross-extension reuse is proven.",
+        "runtimeImports": [],
+        "runtimeMembers": [],
+        "toolReachable": true
+      },
+      {
+        "classification": "runtime-bound",
+        "file": "src/utils/notion/database/index.ts",
+        "recommendation": "AI tool migration reaches a runtime-bound utils module; split pure helpers before promoting this path to main/domain tools.",
+        "runtimeImports": [
+          "@raycast/api"
+        ],
+        "runtimeMembers": [],
+        "toolReachable": true
+      },
+      {
+        "classification": "pure-helper",
+        "file": "src/utils/notion/database/property.ts",
+        "recommendation": "Safe as package-local pure helper; promote to shared package only after cross-extension reuse is proven.",
+        "runtimeImports": [],
+        "runtimeMembers": [],
+        "toolReachable": true
+      },
+      {
+        "classification": "runtime-bound",
+        "file": "src/utils/notion/global.ts",
+        "recommendation": "AI tool migration reaches a runtime-bound utils module; split pure helpers before promoting this path to main/domain tools.",
+        "runtimeImports": [
+          "@raycast/api"
+        ],
+        "runtimeMembers": [],
+        "toolReachable": true
+      },
+      {
+        "classification": "runtime-bound",
+        "file": "src/utils/notion/index.ts",
+        "recommendation": "AI tool migration reaches a runtime-bound utils module; split pure helpers before promoting this path to main/domain tools.",
+        "runtimeImports": [
+          "@raycast/api"
+        ],
+        "runtimeMembers": [],
+        "toolReachable": true
+      },
+      {
+        "classification": "runtime-bound",
+        "file": "src/utils/notion/oauth.ts",
+        "recommendation": "AI tool migration reaches a runtime-bound utils module; split pure helpers before promoting this path to main/domain tools.",
+        "runtimeImports": [
+          "@raycast/api",
+          "@raycast/utils"
+        ],
+        "runtimeMembers": [],
+        "toolReachable": true
+      },
+      {
+        "classification": "runtime-bound",
+        "file": "src/utils/notion/page/index.ts",
+        "recommendation": "AI tool migration reaches a runtime-bound utils module; split pure helpers before promoting this path to main/domain tools.",
+        "runtimeImports": [
+          "@raycast/api"
+        ],
+        "runtimeMembers": [],
+        "toolReachable": true
+      },
+      {
+        "classification": "runtime-bound",
+        "file": "src/utils/notion/page/property.ts",
+        "recommendation": "AI tool migration reaches a runtime-bound utils module; split pure helpers before promoting this path to main/domain tools.",
+        "runtimeImports": [
+          "@raycast/api"
+        ],
+        "runtimeMembers": [],
+        "toolReachable": true
+      },
+      {
+        "classification": "pure-helper",
+        "file": "src/utils/notion/standardize.ts",
+        "recommendation": "Safe as package-local pure helper; promote to shared package only after cross-extension reuse is proven.",
+        "runtimeImports": [],
+        "runtimeMembers": [],
+        "toolReachable": true
+      },
+      {
+        "classification": "pure-helper",
+        "file": "src/utils/notion/user.ts",
+        "recommendation": "Safe as package-local pure helper; promote to shared package only after cross-extension reuse is proven.",
+        "runtimeImports": [],
+        "runtimeMembers": [],
+        "toolReachable": false
+      },
+      {
+        "classification": "runtime-bound",
+        "file": "src/utils/openPage.ts",
+        "recommendation": "Keep this helper on the UI/runtime side unless pure exports are split out.",
+        "runtimeImports": [
+          "@raycast/api"
+        ],
+        "runtimeMembers": [],
+        "toolReachable": false
+      },
+      {
+        "classification": "runtime-bound",
+        "file": "src/utils/types.ts",
+        "recommendation": "Keep this helper on the UI/runtime side unless pure exports are split out.",
+        "runtimeImports": [
+          "@raycast/api"
+        ],
+        "runtimeMembers": [],
+        "toolReachable": false
+      }
+    ]
+  },
+  "unsupportedApis": {
+    "counts": {
+      "adapterNotes": 0,
+      "blockingAdapters": 0,
+      "blockingIssues": 0,
+      "compatibilityNotes": 2,
+      "degradationNotes": 0,
+      "files": 1,
+      "migrationNotes": 2,
+      "unsupportedImports": 0,
+      "unsupportedMembers": 0
+    },
+    "entries": [
+      {
+        "adapterNotes": [],
+        "blockingAdapters": [],
+        "degradationNotes": [],
+        "file": "src/utils/notion/oauth.ts",
+        "migrationNotes": [
+          {
+            "import": "OAuth",
+            "localName": "OAuth",
+            "source": "@raycast/api",
+            "note": "Openwork preserves the Raycast OAuth shape for migrated code; Notion V1 resolves tokens from connection secrets instead of running an interactive OAuth flow.",
+            "status": "supported-with-migration-note",
+            "target": "OAuth"
+          },
+          {
+            "import": "OAuthService",
+            "localName": "OAuthService",
+            "source": "@raycast/utils",
+            "note": "Openwork supports OAuthService token initialization through withAccessToken; Notion V1 resolves tokens from connection secrets instead of running an interactive OAuth flow.",
+            "status": "supported-with-migration-note",
+            "target": "OAuthService"
+          }
+        ],
+        "unsupportedImports": [],
+        "unsupportedMembers": []
+      }
+    ]
+  }
+}
