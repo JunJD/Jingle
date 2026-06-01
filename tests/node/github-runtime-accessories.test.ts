@@ -14,7 +14,7 @@ import type {
   GitHubIssueLike,
   GitHubRepository,
   GitHubWorkflowRun
-} from "../../extensions/github/src/client-core"
+} from "../../extensions/github/domain/client-core"
 
 const GITHUB_RUNTIME_VIEW_COMMANDS = [
   "create-issue",

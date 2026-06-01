@@ -131,7 +131,9 @@ export class OpenworkWorld extends World {
   private page: Page | null = null
   private openworkHome: string | null = null
   private extensionRuntimeFixtures: Record<string, unknown> = {}
+  private scenarioObjects = new Map<string, unknown>()
   private scenarioValues = new Map<string, string>()
+  private cleanupCallbacks: Array<() => Promise<void> | void> = []
   private agentRuntimeMode: "default" | "scripted" = "default"
 
   constructor(options: IWorldOptions) {
@@ -306,6 +308,7 @@ export class OpenworkWorld extends World {
 
     this.page = null
     this.extensionRuntimeFixtures = {}
+    this.scenarioObjects.clear()
     this.scenarioValues.clear()
 
     if (this.openworkHome) {
@@ -348,6 +351,29 @@ export class OpenworkWorld extends World {
 
   setScenarioValue(key: string, value: string): void {
     this.scenarioValues.set(key, value)
+  }
+
+  getScenarioObject<T>(key: string): T {
+    if (!this.scenarioObjects.has(key)) {
+      throw new Error(`Scenario object "${key}" is not available.`)
+    }
+
+    return this.scenarioObjects.get(key) as T
+  }
+
+  setScenarioObject(key: string, value: unknown): void {
+    this.scenarioObjects.set(key, value)
+  }
+
+  addCleanup(callback: () => Promise<void> | void): void {
+    this.cleanupCallbacks.push(callback)
+  }
+
+  async runCleanups(): Promise<void> {
+    const callbacks = this.cleanupCallbacks.splice(0).reverse()
+    for (const callback of callbacks) {
+      await callback()
+    }
   }
 }
 

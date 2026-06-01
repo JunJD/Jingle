@@ -32,7 +32,9 @@ function serializeExtensionToolOutput(value: unknown, maxChars: number): string 
 
 export class ExtensionToolExecutor {
   private readonly bindingsByAgentToolName: Map<string, ExtensionAgentToolBinding>
-  private readonly getExtensionExecutionContext?: (extensionName: string) => NativeExtensionExecutionContext
+  private readonly getExtensionExecutionContext?: (
+    extensionName: string
+  ) => NativeExtensionExecutionContext
   private readonly getExtensionPreferences?: (extensionName: string) => Record<string, unknown>
   private readonly maxAgentOutputChars: number
 

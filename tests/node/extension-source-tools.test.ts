@@ -648,6 +648,55 @@ test("extension AI middleware keeps model tools stable after all catalog extensi
   assert.match(observedSystemPrompt, /### Extension AI Capability Guides/)
 })
 
+test("extension AI middleware persists loaded capabilities using runtime run id fallback", async () => {
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  registry.registerExtensionTools("mockExtension", [createSearchTool()])
+
+  const session = createExtensionAiSession({
+    aiCapabilities: [],
+    registry
+  })
+  const changes: Array<{
+    aiCapabilities: ResolvedExtensionAiCapability[]
+    runId: string
+  }> = []
+  const middleware = createExtensionAiMiddleware({
+    aiCapabilityCatalog: [
+      {
+        description: "Mock source for tests.",
+        extensionName: "mockExtension",
+        sourceId: "mockSource",
+        title: "Mock Source"
+      }
+    ],
+    getAiCapabilityByExtensionName: (extensionName) =>
+      extensionName === "mockExtension" ? createAiCapability() : null,
+    onLoadedAiCapabilitiesChanged: (change) => {
+      changes.push({
+        aiCapabilities: change.aiCapabilities,
+        runId: change.runId
+      })
+    },
+    runId: "run-from-runtime",
+    session,
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+
+  const loadExtensionTool = middleware.tools?.find((candidate) => candidate.name === "loadExtension")
+  assert.ok(loadExtensionTool)
+
+  await loadExtensionTool.invoke({
+    extensionName: "mockExtension"
+  })
+
+  assert.equal(changes.length, 1)
+  assert.equal(changes[0]?.runId, "run-from-runtime")
+  assert.equal(changes[0]?.aiCapabilities[0]?.extensionName, "mockExtension")
+})
+
 test("extension instructions are separate from source guides", () => {
   const aiCapability = createAiCapability()
   const instructions = buildExtensionInstructions([aiCapability])

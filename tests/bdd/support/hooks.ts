@@ -13,5 +13,9 @@ After(async function (this: OpenworkWorld) {
     await new Promise((resolve) => setTimeout(resolve, debugPauseMs))
   }
 
-  await this.closeApp()
+  try {
+    await this.closeApp()
+  } finally {
+    await this.runCleanups()
+  }
 })

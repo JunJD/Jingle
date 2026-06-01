@@ -265,7 +265,19 @@ function resolvePublicConfig(input: {
 }
 
 function toAgentToolName(input: { capability: ExtensionAiCapability; toolName: string }): string {
-  return `ext__${input.capability.id}__${input.toolName}`
+  return `ext__${toAgentToolNameSegment(input.capability.id)}__${input.toolName}`
+}
+
+function toAgentToolNameSegment(value: string): string {
+  return value
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((segment, index) =>
+      index === 0
+        ? segment.charAt(0).toLowerCase() + segment.slice(1)
+        : segment.charAt(0).toUpperCase() + segment.slice(1)
+    )
+    .join("")
 }
 
 function toToolExposure(input: {
@@ -393,6 +405,29 @@ export function resolveNativeExtensionAiCapabilityForExtensionName(
   return resolveEntryCapability(entry, input)
 }
 
+export function buildNativeExtensionAiCapabilityCatalogItem(input: {
+  capability: ExtensionAiCapability
+  manifest: NativeExtensionPackageManifest
+}): ExtensionAiCapabilityCatalogItem {
+  const supportedPlatforms = getCapabilitySupportedPlatforms(input.manifest, input.capability)
+  const catalogItem: ExtensionAiCapabilityCatalogItem = {
+    description: input.capability.description ?? input.manifest.description ?? input.capability.title,
+    extensionName: input.manifest.name,
+    sourceId: input.capability.id,
+    supportedPlatforms: supportedPlatforms ? [...supportedPlatforms] : undefined,
+    title: input.capability.title
+  }
+
+  if (input.capability.mention) {
+    catalogItem.mention = {
+      label: input.capability.mention.label ?? input.capability.title,
+      value: input.capability.mention.value ?? input.manifest.name
+    }
+  }
+
+  return catalogItem
+}
+
 export function listNativeExtensionAiCapabilityCatalog(
   platform?: string
 ): ExtensionAiCapabilityCatalogItem[] {
@@ -406,19 +441,7 @@ export function listNativeExtensionAiCapabilityCatalog(
     }
 
     return [
-      {
-        description: entry.capability.description ?? entry.manifest.description ?? entry.capability.title,
-        extensionName: entry.manifest.name,
-        mention: entry.capability.mention
-          ? {
-              label: entry.capability.mention.label ?? entry.capability.title,
-              value: entry.capability.mention.value ?? entry.manifest.name
-            }
-          : undefined,
-        sourceId: entry.capability.id,
-        supportedPlatforms: supportedPlatforms ? [...supportedPlatforms] : undefined,
-        title: entry.capability.title
-      }
+      buildNativeExtensionAiCapabilityCatalogItem(entry)
     ]
   })
 }

@@ -8,6 +8,7 @@ module.exports = {
       snippetInterface: "async-await"
     },
     parallel: 1,
+    paths: ["tests/bdd/features/**/*.feature"],
     publishQuiet: true,
     require: ["tests/bdd/steps/**/*.ts", "tests/bdd/support/**/*.ts"],
     requireModule: ["tsx/cjs"],

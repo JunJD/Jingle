@@ -4,7 +4,7 @@ import {
   toLauncherCommandOwnerManifest
 } from "@shared/native-extensions"
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
-import { listNativeExtensionManifests } from "@extensions/index"
+import { listUserVisibleNativeExtensionManifests } from "@extensions/index"
 import { nativeExtensionRuntimeMetadata } from "@extensions/runtime-metadata"
 import { handleRuntimeNavigationRequest } from "@renderer/extension-runtime/runtime-navigation"
 import type { LauncherCommandOwnerDefinition } from "@launcher-shell/pages/types"
@@ -40,7 +40,7 @@ function getNativeExtensionPlatform(): string {
 }
 
 function getSupportedNativeExtensionManifests() {
-  return listNativeExtensionManifests(getNativeExtensionPlatform())
+  return listUserVisibleNativeExtensionManifests(getNativeExtensionPlatform())
 }
 
 function getViewportHeight(

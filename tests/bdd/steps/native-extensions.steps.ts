@@ -270,6 +270,17 @@ Then(
 )
 
 Then(
+  "native extensions schema 不包含 extension {string}",
+  function (this: OpenworkWorld, extensionName: string) {
+    const schemas = JSON.parse(
+      this.getScenarioValue("nativeExtensions.schemas")
+    ) as InstalledNativeExtensionSettingsSchema[]
+
+    expect(schemas.some((schema) => schema.extName === extensionName)).toBe(false)
+  }
+)
+
+Then(
   "native extensions schema 中 extension {string} 包含 command {string} 标题为 {string}",
   function (this: OpenworkWorld, extensionName: string, commandName: string, title: string) {
     const schemas = JSON.parse(
@@ -279,6 +290,18 @@ Then(
     const command = schema.commands.find((candidate) => candidate.name === commandName)
 
     expect(command?.title).toBe(title)
+  }
+)
+
+Then(
+  "native extensions schema 中 extension {string} 包含 preference {string}",
+  function (this: OpenworkWorld, extensionName: string, preferenceName: string) {
+    const schemas = JSON.parse(
+      this.getScenarioValue("nativeExtensions.schemas")
+    ) as InstalledNativeExtensionSettingsSchema[]
+    const schema = findSchema(schemas, extensionName)
+
+    expect(schema.preferences.some((preference) => preference.name === preferenceName)).toBe(true)
   }
 )
 

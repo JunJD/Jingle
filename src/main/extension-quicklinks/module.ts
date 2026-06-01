@@ -3,10 +3,16 @@ import type { IpcMain } from "electron"
 import { ExtensionQuicklinkController } from "./controller"
 import { ExtensionQuicklinkRepository } from "./repository"
 import { ExtensionQuicklinkService } from "./service"
+import type { ExtensionQuicklinkAlias } from "@shared/extension-quicklinks"
 
-export function registerExtensionQuicklinkModule(container: DependencyContainer): void {
+export function registerExtensionQuicklinkModule(
+  container: DependencyContainer,
+  options: { aliases?: readonly ExtensionQuicklinkAlias[] } = {}
+): void {
   container.register(ExtensionQuicklinkRepository, {
-    useFactory: instanceCachingFactory(() => new ExtensionQuicklinkRepository())
+    useFactory: instanceCachingFactory(
+      () => new ExtensionQuicklinkRepository(options.aliases ?? [])
+    )
   })
   container.register(ExtensionQuicklinkService, {
     useFactory: instanceCachingFactory((dependencyContainer) => {

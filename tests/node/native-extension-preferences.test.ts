@@ -10,6 +10,7 @@ const requireFromTest = createRequire(import.meta.url)
 const originalOpenworkHome = process.env.OPENWORK_HOME
 let openworkHome = ""
 let connectionResolver!: typeof import("../../src/main/native-extensions/connection-resolver")
+let extensionSources!: typeof import("../../src/extensions/sources")
 let preferences!: typeof import("../../src/main/preferences")
 let DefaultExtensionRuntimeHostCapabilities!: typeof import("../../src/main/services/extension-runtime/host-capabilities").DefaultExtensionRuntimeHostCapabilities
 
@@ -123,6 +124,7 @@ test.before(async () => {
   installElectronSafeStorageMock()
   preferences = await import("../../src/main/preferences")
   connectionResolver = await import("../../src/main/native-extensions/connection-resolver")
+  extensionSources = await import("../../src/extensions/sources")
   ;({ DefaultExtensionRuntimeHostCapabilities } =
     await import("../../src/main/services/extension-runtime/host-capabilities"))
 })
@@ -243,6 +245,152 @@ test("extension-scoped shared secrets override resolver legacy command-scoped se
   assert.deepEqual(context.connection.publicConfig, {
     apiBaseUrl: "https://github.example.test/api/v3"
   })
+})
+
+test("connection resolver resolves formal Notion secrets and rejects retired generated package", () => {
+  preferences.setNativeExtensionPreferenceRecord("notion", {
+    accessToken: "notion_provider_secret",
+    apiBaseUrl: "https://api.notion.com/v1"
+  })
+
+  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+    commandName: "search-page",
+    extensionName: "notion"
+  })
+
+  assert.equal(context.connection.status, "connected")
+  assert.equal(context.connection.provider, "notion")
+  assert.equal(context.extensionPreferences.accessToken, "notion_provider_secret")
+  assert.equal(context.extensionPreferences.apiBaseUrl, "https://api.notion.com/v1")
+  assert.equal(context.commandPreferences?.accessToken, "notion_provider_secret")
+  assert.equal(context.commandPreferences?.apiBaseUrl, "https://api.notion.com/v1")
+  assert.deepEqual(context.connection.publicConfig, {
+    apiBaseUrl: "https://api.notion.com/v1"
+  })
+
+  assert.throws(
+    () =>
+      connectionResolver.resolveNativeExtensionExecutionContext({
+        commandName: "search-page",
+        extensionName: "notion-generated"
+      }),
+    /Unknown native extension "notion-generated"/
+  )
+})
+
+test("formal Notion secrets connect AI capabilities and generated capability is retired", () => {
+  preferences.setNativeExtensionPreferenceRecord("notion", {
+    accessToken: "notion_provider_secret",
+    apiBaseUrl: "https://api.notion.com/v1"
+  })
+
+  const connection = connectionResolver.resolveNativeExtensionConnection({
+    extensionName: "notion"
+  })
+
+  assert.equal(connection.status, "connected")
+  assert.equal(connection.provider, "notion")
+  assert.deepEqual(connection.missingSecretNames, [])
+
+  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionName(
+    "notion",
+    {
+      getConnection: (extensionName) =>
+        connectionResolver.resolveNativeExtensionConnection({ extensionName })
+    }
+  )
+
+  assert.equal(capability?.authStatus, "connected")
+  assert.deepEqual(capability?.enabledToolNames, [
+    "searchPages",
+    "getPage",
+    "retrievePage",
+    "getPageMarkdown",
+    "listBlockChildren",
+    "getDatabases",
+    "retrieveDataSource",
+    "searchDatabase",
+    "queryDataSource",
+    "addToPage",
+    "createPage",
+    "createDatabasePage"
+  ])
+  assert.equal(
+    extensionSources.resolveNativeExtensionAiCapabilityForExtensionName("notion-generated"),
+    null
+  )
+})
+
+test("formal Notion settings token feeds runtime host and AI capability through the same connection", async () => {
+  preferences.setNativeExtensionPreferenceRecord("notion", {
+    accessToken: "notion_settings_token",
+    apiBaseUrl: "https://api.notion.com/v1"
+  })
+
+  const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
+  const nativeExtensionsService = new NativeExtensionsService()
+
+  assert.deepEqual(nativeExtensionsService.getPreferences("notion"), {
+    accessToken: "",
+    apiBaseUrl: "https://api.notion.com/v1",
+    open_in: {
+      name: "Notion"
+    },
+    properties_in_page_previews: false
+  })
+  assert.deepEqual(nativeExtensionsService.getResolvedPreferences("notion"), {
+    accessToken: "notion_settings_token",
+    apiBaseUrl: "https://api.notion.com/v1",
+    open_in: {
+      name: "Notion"
+    },
+    properties_in_page_previews: false
+  })
+  assert.deepEqual(nativeExtensionsService.getResolvedCommandPreferences("notion", "search-page"), {
+    accessToken: "notion_settings_token",
+    apiBaseUrl: "https://api.notion.com/v1",
+    open_in: {
+      name: "Notion"
+    },
+    primaryAction: "notion",
+    properties_in_page_previews: false
+  })
+
+  const host = new DefaultExtensionRuntimeHostCapabilities(
+    nativeExtensionsService,
+    { openExternal: async () => undefined } as ConstructorParameters<
+      typeof DefaultExtensionRuntimeHostCapabilities
+    >[1],
+    createRuntimeHostQuicklinkServiceMock(),
+    { openWindow: () => undefined } as ConstructorParameters<
+      typeof DefaultExtensionRuntimeHostCapabilities
+    >[3],
+    { handleNavigationRequest: async () => undefined } as unknown as ConstructorParameters<
+      typeof DefaultExtensionRuntimeHostCapabilities
+    >[4]
+  )
+
+  assert.equal(host.getExtensionPreferences("notion").accessToken, "notion_settings_token")
+  assert.equal(
+    host.getCommandPreferences({
+      commandName: "search-page",
+      extensionName: "notion"
+    }).accessToken,
+    "notion_settings_token"
+  )
+
+  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionName(
+    "notion",
+    {
+      getConnection: (extensionName) =>
+        connectionResolver.resolveNativeExtensionConnection({ extensionName })
+    }
+  )
+  assert.equal(capability?.authStatus, "connected")
+  assert.deepEqual(capability?.publicConfig, {
+    apiBaseUrl: "https://api.notion.com/v1"
+  })
+  assert.deepEqual(capability?.enabledToolNames, capability?.capability.toolNames)
 })
 
 test("extension runtime host resolves preferences with secrets through main-side service methods", () => {

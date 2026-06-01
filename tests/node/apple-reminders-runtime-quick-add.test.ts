@@ -9,7 +9,7 @@ import AppleRemindersQuickAddReminder from "../../extensions/apple-reminders/src
 import type {
   AppleReminder,
   AppleRemindersData
-} from "../../extensions/apple-reminders/src/contracts"
+} from "../../extensions/apple-reminders/contracts"
 import type {
   ExtensionHostResponse,
   ExtensionRuntimeLaunchContext

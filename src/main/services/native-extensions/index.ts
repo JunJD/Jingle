@@ -6,11 +6,11 @@ import {
   toLauncherCommandOwnerManifest
 } from "@shared/native-extensions"
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
-import { listNativeExtensionManifests } from "@extensions/index"
+import { listUserVisibleNativeExtensionManifests } from "@extensions/index"
 import { nativeExtensionMainDefinitions } from "@extensions/main"
 import { resolveNativeExtensionExecutionContext } from "../../native-extensions/connection-resolver"
 
-const supportedNativeExtensionManifests = listNativeExtensionManifests(process.platform)
+const supportedNativeExtensionManifests = listUserVisibleNativeExtensionManifests(process.platform)
 
 interface NativeExtensionRuntimeDefinition {
   manifest: (typeof supportedNativeExtensionManifests)[number]

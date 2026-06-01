@@ -49,3 +49,70 @@
     那么 BDD runtime host 最近请求 capability 应为 "settings"
     那么 Settings 窗口可用
     而且 Settings 当前选中 extension 应为 "github"
+
+  场景: Notion 正式 runtime command 未连接时可进入正式设置页
+    假如 Openwork 桌面应用已启动
+    当 我在 Launcher 中搜索 "notion"
+    那么 Launcher 首页展示了名为 "Search Pages" 的结果
+    当 我打开名为 "Search Pages" 的 Launcher 结果
+    那么 Launcher 当前命令归属为 "notion"
+    而且 runtime list 空状态标题为 "Connection Required"
+    当 我点击 runtime list 空状态动作 "Open Extension Settings"
+    那么 BDD runtime host 最近请求 capability 应为 "settings"
+    那么 Settings 窗口可用
+    而且 Settings 当前选中 extension 应为 "notion"
+
+  场景: Notion 正式 runtime command 连接后可通过真实 runtime 链路搜索页面
+    假如 BDD Notion API 使用连接后的测试数据
+    当 Openwork 桌面应用已启动
+    假如 Notion extension 已连接到 BDD Notion API
+    当 我在 Launcher 中搜索 "notion"
+    那么 Launcher 首页展示了名为 "Search Pages" 的结果
+    当 我打开名为 "Search Pages" 的 Launcher 结果
+    那么 Launcher 当前命令归属为 "notion"
+    而且 runtime list 展示条目 "BDD Connected Notion Page"
+    而且 BDD Notion API 收到 search 请求
+
+  场景: Notion 正式 runtime command 连接后可通过真实 runtime 链路追加页面内容
+    假如 BDD Notion API 使用连接后的测试数据
+    当 Openwork 桌面应用已启动
+    假如 Notion extension 已连接到 BDD Notion API
+    当 我在 Launcher 中搜索 "notion add text"
+    那么 Launcher 首页展示了名为 "Add Text to Page" 的结果
+    当 我打开名为 "Add Text to Page" 的 Launcher 结果
+    那么 Launcher 当前命令归属为 "notion"
+    而且 runtime form 当前标题为 "Add Text to Page"
+    当 我在 runtime 表单下拉框 "Notion Page" 选择 "bdd-notion-page-1"
+    并且 我在 runtime 表单文本框 "Content" 输入 "BDD appended Notion content"
+    并且 我执行当前 runtime primary action
+    那么 BDD Notion API 收到向页面 "bdd-notion-page-1" 追加文本 "BDD appended Notion content" 的请求
+
+  场景: Notion 正式 runtime command 连接后可通过真实 runtime 链路创建页面
+    假如 BDD Notion API 使用连接后的测试数据
+    当 Openwork 桌面应用已启动
+    假如 Notion extension 已连接到 BDD Notion API
+    当 我在 Launcher 中搜索 "notion create page"
+    那么 Launcher 首页展示了名为 "Create Page" 的结果
+    当 我打开名为 "Create Page" 的 Launcher 结果
+    那么 Launcher 当前命令归属为 "notion"
+    而且 runtime form 当前标题为 "Create Database Page"
+    当 我在 runtime 表单下拉框 "Database" 选择 "bdd-notion-data-source-1"
+    并且 我在 runtime 表单文本框 "Name" 输入 "BDD Created Notion Page"
+    并且 我在 runtime 表单文本框 "Page Content" 输入 "BDD created Notion body"
+    并且 我执行当前 runtime primary action
+    那么 BDD Notion API 收到创建页面 "BDD Created Notion Page" 且正文包含 "BDD created Notion body" 的请求
+
+  场景: Notion 正式 runtime command 连接后可通过真实 runtime 链路快速剪藏 URL
+    假如 BDD Notion API 使用连接后的测试数据
+    当 Openwork 桌面应用已启动
+    假如 Notion extension 已连接到 BDD Notion API
+    当 我在 Launcher 中搜索 BDD Notion 快速剪藏 URL
+    那么 Launcher 首页展示了名为 "Quick Capture" 的结果
+    当 我打开名为 "Quick Capture" 的 Launcher 结果
+    那么 Launcher 当前命令归属为 "notion"
+    而且 runtime 表单文本框 "URL" 当前值应为 BDD Notion 快速剪藏 URL
+    当 我在 runtime 表单下拉框 "Capture As" 选择 "full"
+    并且 我在 runtime 表单下拉框 "Notion Page" 选择 "bdd-notion-page-1"
+    并且 我执行当前 runtime primary action
+    那么 BDD Notion API 收到快速剪藏页面读取请求
+    而且 BDD Notion API 收到向页面 "bdd-notion-page-1" 追加文本 "BDD quick capture article body for Electron runtime." 的请求

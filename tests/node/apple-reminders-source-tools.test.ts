@@ -8,7 +8,9 @@ import {
   normalizeAppleRemindersError
 } from "../../extensions/apple-reminders/main/service"
 import { createAppleRemindersTools } from "../../extensions/apple-reminders/main/tools"
+import { notionManifest } from "../../extensions/notion/manifest"
 import {
+  buildNativeExtensionAiCapabilityCatalogItem,
   listNativeExtensionAiCapabilityCatalog,
   resolveNativeExtensionAiCapabilityForExtensionName,
   resolveNativeExtensionAiCapabilitiesForRefs
@@ -120,6 +122,7 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
     {
       extensionName: "apple-reminders",
       icon: "assets/icon.png",
+      iconName: "reminders",
       label: "Apple Reminders",
       sourceId: "appleReminders",
       supportedPlatforms: ["darwin"],
@@ -128,6 +131,7 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
     {
       extensionName: "github",
       icon: "assets/icon.svg",
+      iconName: "github",
       label: "GitHub",
       sourceId: "github",
       supportedPlatforms: undefined,
@@ -135,6 +139,7 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
     },
     {
       extensionName: "notion",
+      icon: "assets/notion-logo.png",
       iconName: "notion",
       label: "Notion",
       sourceId: "notion",
@@ -254,6 +259,30 @@ test("extension AI capability catalog does not read preferences", () => {
     listNativeExtensionAiCapabilityCatalog("darwin").map((item) => item.extensionName),
     ["apple-reminders", "github", "notion"]
   )
+})
+
+test("extension AI capability catalog items are still built without mention metadata", () => {
+  const item = buildNativeExtensionAiCapabilityCatalogItem({
+    capability: {
+      description: "Mock source without mention.",
+      id: "mockSource",
+      title: "Mock Source",
+      toolNames: []
+    } as never,
+    manifest: {
+      description: "Mock manifest.",
+      name: "mock-extension",
+      title: "Mock Extension"
+    } as never
+  })
+
+  assert.deepEqual(item, {
+    description: "Mock source without mention.",
+    extensionName: "mock-extension",
+    sourceId: "mockSource",
+    supportedPlatforms: undefined,
+    title: "Mock Source"
+  })
 })
 
 test("loadExtension resolution reads only the requested extension connection state", () => {
@@ -419,13 +448,9 @@ test("Notion AI capability becomes connected from persisted auth and exposes rea
   )
 
   assert.equal(capability?.authStatus, "connected")
-  assert.deepEqual(capability?.capability.toolNames, [
-    "searchPages",
-    "retrievePage",
-    "listBlockChildren",
-    "retrieveDataSource",
-    "queryDataSource"
-  ])
+  const expectedToolNames = notionManifest.aiCapability?.toolNames
+  assert.ok(expectedToolNames)
+  assert.deepEqual(capability?.capability.toolNames, expectedToolNames)
   assert.deepEqual(capability?.enabledToolNames, capability?.capability.toolNames)
   assert.deepEqual(
     capability?.toolExposures.map((tool) => tool.toolName),

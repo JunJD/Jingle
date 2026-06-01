@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto"
 import Store from "electron-store"
 import type {
+  ExtensionQuicklinkAlias,
   ExtensionQuicklinkRecord,
   RegisterExtensionQuicklinkInput,
   UpdateExtensionQuicklinkInput
+} from "@shared/extension-quicklinks"
+import {
+  normalizeExtensionQuicklinkCommandUrl,
+  normalizeExtensionQuicklinkRecord,
+  parseExtensionQuicklinkCommandUrl
 } from "@shared/extension-quicklinks"
 import { getOpenworkDir } from "../storage"
 
@@ -25,6 +31,8 @@ function isExtensionQuicklinkRecord(value: unknown): value is ExtensionQuicklink
 }
 
 export class ExtensionQuicklinkRepository {
+  constructor(private readonly extensionQuicklinkAliases: readonly ExtensionQuicklinkAlias[] = []) {}
+
   private readonly store = new Store<ExtensionQuicklinksStoreShape>({
     cwd: getOpenworkDir(),
     defaults: {
@@ -43,12 +51,18 @@ export class ExtensionQuicklinkRepository {
     const now = new Date().toISOString()
     const quicklinks = this.readQuicklinks()
     const name = input.name?.trim() || "Quicklink"
-    const existingIndex = quicklinks.findIndex((quicklink) => quicklink.link === input.link)
+    const link = normalizeExtensionQuicklinkCommandUrl(input.link, {
+      aliases: this.extensionQuicklinkAliases
+    })
+    const extensionName =
+      parseExtensionQuicklinkCommandUrl(link, { aliases: this.extensionQuicklinkAliases })
+        ?.extensionName ?? input.extensionName
+    const existingIndex = quicklinks.findIndex((quicklink) => quicklink.link === link)
 
     if (existingIndex >= 0) {
       const nextQuicklink: ExtensionQuicklinkRecord = {
         ...quicklinks[existingIndex],
-        extensionName: input.extensionName,
+        extensionName,
         name,
         shortcut: input.shortcut,
         updatedAt: now
@@ -61,9 +75,9 @@ export class ExtensionQuicklinkRepository {
 
     const nextQuicklink: ExtensionQuicklinkRecord = {
       createdAt: now,
-      extensionName: input.extensionName,
+      extensionName,
       id: randomUUID(),
-      link: input.link,
+      link,
       name,
       shortcut: input.shortcut,
       updatedAt: now
@@ -98,10 +112,43 @@ export class ExtensionQuicklinkRepository {
   }
 
   private readQuicklinks(): ExtensionQuicklinkRecord[] {
-    return (this.store.get("quicklinks", []) as unknown[]).filter(isExtensionQuicklinkRecord)
+    const quicklinks = (this.store.get("quicklinks", []) as unknown[]).filter(
+      isExtensionQuicklinkRecord
+    )
+    const normalizedQuicklinks = dedupeQuicklinksByLink(
+      quicklinks.map((quicklink) =>
+        normalizeExtensionQuicklinkRecord(quicklink, {
+          aliases: this.extensionQuicklinkAliases
+        })
+      )
+    )
+    if (
+      normalizedQuicklinks.length !== quicklinks.length ||
+      normalizedQuicklinks.some(
+        (quicklink, index) =>
+          quicklink.link !== quicklinks[index]?.link ||
+          quicklink.extensionName !== quicklinks[index]?.extensionName
+      )
+    ) {
+      this.writeQuicklinks(normalizedQuicklinks)
+    }
+    return normalizedQuicklinks
   }
 
   private writeQuicklinks(quicklinks: ExtensionQuicklinkRecord[]): void {
     this.store.set("quicklinks", quicklinks)
   }
+}
+
+function dedupeQuicklinksByLink(quicklinks: ExtensionQuicklinkRecord[]): ExtensionQuicklinkRecord[] {
+  const quicklinksByLink = new Map<string, ExtensionQuicklinkRecord>()
+
+  for (const quicklink of quicklinks) {
+    const existing = quicklinksByLink.get(quicklink.link)
+    if (!existing || quicklink.updatedAt.localeCompare(existing.updatedAt) > 0) {
+      quicklinksByLink.set(quicklink.link, quicklink)
+    }
+  }
+
+  return [...quicklinksByLink.values()]
 }

@@ -1,4 +1,4 @@
-import { defineNativeExtensionMain } from "@shared/native-extensions"
+import { defineNativeExtensionMain } from "@openwork/extension-api"
 import { createNotionTools } from "./main/tools"
 
 export const notionMain = defineNativeExtensionMain({

@@ -12,6 +12,25 @@
     而且 native extensions schema 中 extension "todo-list" 包含 command "index" 标题为 "Todo List"
     而且 native extensions schema 中 command "todo-list:index" 包含 preference "showCompleted"
 
+  场景: Notion 设置只暴露正式 extension 并保存连接 token
+    假如 Openwork 桌面应用已启动
+    当 我读取 native extensions 设置 schema
+    那么 native extensions schema 包含 extension "notion" 标题为 "Notion"
+    而且 native extensions schema 不包含 extension "notion-generated"
+    而且 native extensions schema 中 extension "notion" 包含 command "search-page" 标题为 "Search Pages"
+    而且 native extensions schema 中 extension "notion" 包含 preference "accessToken"
+    当 我把 native extension "notion" preferences 设置为:
+      | key        | value                     |
+      | accessToken | secret_bdd_notion_token   |
+      | apiBaseUrl | https://api.notion.com/v1 |
+    并且 我读取 native extension "notion" preferences
+    那么 native extension preferences 中 "accessToken" 应为 ""
+    而且 native extension preferences 中 "apiBaseUrl" 应为 "https://api.notion.com/v1"
+    当 我重新启动 Openwork 桌面应用
+    并且 我读取 native extension "notion" preferences
+    那么 native extension preferences 中 "accessToken" 应为 ""
+    而且 native extension preferences 中 "apiBaseUrl" 应为 "https://api.notion.com/v1"
+
   场景: extension preferences 可以保存后再次读取
     假如 Openwork 桌面应用已启动
     当 我把 native extension "github" preferences 设置为:

@@ -1,13 +1,16 @@
 import type { AppLocale } from "@shared/i18n"
 import type { NativeMenuBarState } from "@shared/native-menu-bar"
-import { listNativeExtensionManifests } from "@extensions/index"
+import { listUserVisibleNativeExtensionManifests } from "@extensions/index"
 import type { NativeMenuBarService } from "../../native-menu-bar/service"
 import type { ExtensionRuntimeManager } from "./runtime-manager"
 
 export class ExtensionRuntimeMenuBarService {
   private readonly sessionIdsByCommandKey = new Map<string, string>()
   private readonly manifestByName = new Map(
-    listNativeExtensionManifests(process.platform).map((manifest) => [manifest.name, manifest])
+    listUserVisibleNativeExtensionManifests(process.platform).map((manifest) => [
+      manifest.name,
+      manifest
+    ])
   )
   private readonly stopListening: Array<() => void> = []
 

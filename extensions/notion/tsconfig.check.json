@@ -1,0 +1,91 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "paths": {
+      "@mozilla/readability": [
+        "../../node_modules/@mozilla/readability"
+      ],
+      "@mozilla/readability/*": [
+        "../../node_modules/@mozilla/readability/*"
+      ],
+      "@notionhq/client": [
+        "../../node_modules/@notionhq/client"
+      ],
+      "@notionhq/client/*": [
+        "../../node_modules/@notionhq/client/*"
+      ],
+      "@tryfabric/martian": [
+        "../../node_modules/@tryfabric/martian"
+      ],
+      "@tryfabric/martian/*": [
+        "../../node_modules/@tryfabric/martian/*"
+      ],
+      "date-fns": [
+        "../../node_modules/date-fns"
+      ],
+      "date-fns/*": [
+        "../../node_modules/date-fns/*"
+      ],
+      "linkedom": [
+        "../../node_modules/linkedom"
+      ],
+      "linkedom/*": [
+        "../../node_modules/linkedom/*"
+      ],
+      "notion-to-md": [
+        "../../node_modules/notion-to-md"
+      ],
+      "notion-to-md/*": [
+        "../../node_modules/notion-to-md/*"
+      ],
+      "zod": [
+        "../../node_modules/zod"
+      ],
+      "zod/*": [
+        "../../node_modules/zod/*"
+      ],
+      "@openwork/extension-api": [
+        "../../packages/extension-api/src/index.ts"
+      ],
+      "@openwork/extension-utils": [
+        "../../packages/extension-utils/src/index.ts"
+      ],
+      "@shared/*": [
+        "../../src/shared/*"
+      ]
+    },
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ESNext",
+    "typeRoots": [
+      "./node_modules/@types",
+      "../../node_modules/@types"
+    ]
+  },
+  "include": [
+    "main.ts",
+    "main/**/*.ts",
+    "identity.ts",
+    "manifest.ts",
+    "runtime-metadata.ts",
+    "runtime.ts",
+    "domain/**/*.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "types.d.ts"
+  ]
+}

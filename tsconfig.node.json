@@ -2,9 +2,11 @@
   "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
   "include": [
     "electron.vite.config.*",
+    "extensions/*/domain/**/*.ts",
     "extensions/*/main/**/*.ts",
     "extensions/*/main.ts",
     "extensions/*/manifest.ts",
+    "extensions/*/identity.ts",
     "extensions/*/src/contracts.ts",
     "extensions/*/src/*.meta.ts",
     "extensions/*/types.d.ts",

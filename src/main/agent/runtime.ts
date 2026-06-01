@@ -211,6 +211,7 @@ export async function createAgentRuntime(
       definitions: nativeExtensionMainDefinitions,
       manifests: nativeExtensionManifests
     }),
+    runId,
     threadId,
     workspacePath
   })

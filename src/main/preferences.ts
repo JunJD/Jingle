@@ -655,10 +655,9 @@ export function setAppThemeSettings(updates: Partial<AppThemeSettings>): AppThem
 }
 
 export function getOpenworkMemorySettings(): OpenworkMemorySettings {
-  const stored = settingsStore.get(
-    "openworkMemorySettings",
-    DEFAULT_OPENWORK_MEMORY_SETTINGS
-  ) as Partial<OpenworkMemorySettings> | undefined
+  const stored = settingsStore.get("openworkMemorySettings", DEFAULT_OPENWORK_MEMORY_SETTINGS) as
+    | Partial<OpenworkMemorySettings>
+    | undefined
 
   return normalizeOpenworkMemorySettings(stored)
 }
