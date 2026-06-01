@@ -1,12 +1,12 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react"
-import { Send, Square, AlertCircle, Brain, Folder, Shield, X } from "lucide-react"
+import { AlertCircle, Brain, Folder, Send, Shield, Square, X } from "lucide-react"
+import type { VListHandle } from "virtua"
 import {
   PromptInput,
   PromptInputAction,
   PromptInputTextarea,
   ThinkingBar
 } from "@/components/agent-ui"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { Messages } from "./Messages"
@@ -16,8 +16,10 @@ import { IncludedMemoriesPanel } from "./IncludedMemoriesPanel"
 import { WorkspacePicker } from "./WorkspacePicker"
 import { selectWorkspaceFolder } from "@/lib/workspace-utils"
 import { ChatTodos } from "./ChatTodos"
+import { ChatJumpToLatestButton } from "./ChatJumpToLatestButton"
 import { ComposerApprovalPrompt } from "./ComposerApprovalPrompt"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
+import { useVirtualChatScrollIntent } from "./useVirtualChatScrollIntent"
 import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
@@ -36,8 +38,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     []
   )
   const inputRef = useRef<ComposerAreaHandle>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const isAtBottomRef = useRef(true)
+  const virtualizerRef = useRef<VListHandle>(null)
   const [temporaryMode, setTemporaryMode] = useState(false)
   const [workspaceChangeError, setWorkspaceChangeError] = useState<string | null>(null)
   useDisableTabNavigation(inputRef)
@@ -56,7 +57,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   })
   const {
     clearVisibleError,
-    conversation: { displayMessages, isLoading, pendingApproval, todos },
+    conversation: { isLoading, messageProjection, pendingApproval, todos },
     input,
     invoke,
     isBusy,
@@ -66,44 +67,25 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     stop,
     visibleError
   } = invocation
+  const hasVisibleTurns = messageProjection.turns.length > 0
+  const showEmptyChat = !hasVisibleTurns && !isLoading && !visibleError
+  const chatVirtualItemCount = showEmptyChat ? 0 : messageProjection.displayRows.length
 
-  const getViewport = useCallback((): HTMLDivElement | null => {
-    return scrollRef.current?.querySelector(
-      "[data-radix-scroll-area-viewport]"
-    ) as HTMLDivElement | null
-  }, [])
-
-  const handleScroll = useCallback((): void => {
-    const viewport = getViewport()
-    if (!viewport) return
-
-    const { scrollTop, scrollHeight, clientHeight } = viewport
-    const threshold = 50
-    isAtBottomRef.current = scrollHeight - scrollTop - clientHeight < threshold
-  }, [getViewport])
-
-  useEffect(() => {
-    const viewport = getViewport()
-    if (!viewport) return
-
-    viewport.addEventListener("scroll", handleScroll)
-    return () => viewport.removeEventListener("scroll", handleScroll)
-  }, [getViewport, handleScroll])
-
-  useEffect(() => {
-    const viewport = getViewport()
-    if (viewport && isAtBottomRef.current) {
-      viewport.scrollTop = viewport.scrollHeight
-    }
-  }, [displayMessages, isBusy, getViewport])
-
-  useEffect(() => {
-    const viewport = getViewport()
-    if (viewport) {
-      viewport.scrollTop = viewport.scrollHeight
-      isAtBottomRef.current = true
-    }
-  }, [threadId, getViewport])
+  const {
+    forceScrollToLatest,
+    handleScroll: handleChatScroll,
+    handleScrollEnd: handleChatScrollEnd,
+    isAtBottom,
+    isScrolling,
+    jumpToLatestBottomPx,
+    markUserScrollIntent,
+    scrollToLatest,
+    showJumpToLatest
+  } = useVirtualChatScrollIntent({
+    resetKey: threadId,
+    totalCount: chatVirtualItemCount,
+    virtualizerRef
+  })
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -155,10 +137,10 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
 
   return (
     <div className="chat-thread-surface flex min-h-0 flex-1 flex-col overflow-hidden">
-      <ScrollArea className="flex-1 min-h-0" ref={scrollRef}>
-        <div className="px-[var(--ow-chat-thread-x)] py-[var(--ow-chat-thread-y)]">
-          <div className="mx-auto max-w-[var(--ow-chat-thread-max-width)] space-y-[var(--ow-chat-thread-gap)]">
-            {displayMessages.length === 0 && !isLoading && (
+      <div className="relative min-h-0 flex-1">
+        {showEmptyChat ? (
+          <div className="h-full overflow-y-auto px-[var(--ow-chat-thread-x)] py-[var(--ow-chat-thread-y)]">
+            <div className="mx-auto max-w-[var(--ow-chat-thread-max-width)]">
               <div className="flex flex-col items-center justify-center py-[var(--ow-chat-empty-y)] text-muted-foreground">
                 <div className="mb-3 text-section-header">{copy.chat.newThreadEyebrow}</div>
                 {workspacePath ? (
@@ -196,54 +178,77 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                   </div>
                 )}
               </div>
-            )}
-
-            <Messages
-              approvalPlacement="composer"
-              isLoading={isLoading}
-              messages={displayMessages}
-              onApprovalDecision={resume}
-              onRetry={retry}
-              pendingApproval={pendingApproval}
-            />
-
-            {!isLoading && todos.length > 0 && (pendingApproval || displayMessages.length > 0) && (
-              <ChatTodos todos={todos} />
-            )}
-
-            {isBusy && todos.length > 0 && <ChatTodos todos={todos} />}
-
-            {!isBusy && <IncludedMemoriesPanel runId={runId} />}
-
-            {!isBusy && <MemoryReviewPanel threadId={threadId} />}
-
-            {/* Error state */}
-            {visibleError && !isBusy && (
-              <div className="flex items-start gap-[var(--ow-gap-md)] border-l-[3px] border-destructive bg-destructive/8 px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
-                <AlertCircle className="size-[var(--ow-icon-md)] text-destructive shrink-0 mt-[var(--ow-leading-nudge)]" />
-                <div className="flex-1 min-w-0">
-                  <div className="[font-size:var(--ow-font-body)] font-medium text-destructive">
-                    {copy.chat.agentError}
-                  </div>
-                  <div className="mt-[var(--ow-space-1)] break-words [font-size:var(--ow-font-body)] text-muted-foreground">
-                    {visibleError}
-                  </div>
-                  <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-muted-foreground">
-                    {copy.chat.agentErrorRecovery}
-                  </div>
-                </div>
-                <button
-                  onClick={handleDismissError}
-                  className="shrink-0 rounded p-[var(--ow-space-1)] hover:bg-destructive/20 transition-colors"
-                  aria-label={copy.chat.dismissError}
-                >
-                  <X className="size-[var(--ow-icon-action)] text-muted-foreground" />
-                </button>
-              </div>
-            )}
+            </div>
           </div>
-        </div>
-      </ScrollArea>
+        ) : (
+          <Messages
+            bottomInset={0}
+            contentClassName="mx-auto w-full max-w-[var(--ow-chat-thread-max-width)] px-[var(--ow-chat-thread-x)]"
+            contentInsetY="var(--ow-chat-thread-y)"
+            footerSlot={
+              <div className="flex flex-col gap-[var(--ow-chat-thread-gap)]">
+                {!isLoading && todos.length > 0 && (pendingApproval || hasVisibleTurns) && (
+                  <ChatTodos todos={todos} />
+                )}
+
+                {isBusy && todos.length > 0 && <ChatTodos todos={todos} />}
+
+                {!isBusy && <IncludedMemoriesPanel runId={runId} />}
+
+                {!isBusy && <MemoryReviewPanel threadId={threadId} />}
+
+                {visibleError && !isBusy && (
+                  <div className="flex items-start gap-[var(--ow-gap-md)] border-l-[3px] border-destructive bg-destructive/8 px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
+                    <AlertCircle className="mt-[var(--ow-leading-nudge)] size-[var(--ow-icon-md)] shrink-0 text-destructive" />
+                    <div className="min-w-0 flex-1">
+                      <div className="[font-size:var(--ow-font-body)] font-medium text-destructive">
+                        {copy.chat.agentError}
+                      </div>
+                      <div className="mt-[var(--ow-space-1)] break-words [font-size:var(--ow-font-body)] text-muted-foreground">
+                        {visibleError}
+                      </div>
+                      <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-muted-foreground">
+                        {copy.chat.agentErrorRecovery}
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleDismissError}
+                      className="shrink-0 rounded p-[var(--ow-space-1)] transition-colors hover:bg-destructive/20"
+                      aria-label={copy.chat.dismissError}
+                    >
+                      <X className="size-[var(--ow-icon-action)] text-muted-foreground" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            }
+            isAtBottom={isAtBottom}
+            isLoading={isLoading}
+            isScrolling={isScrolling}
+            onRetry={retry}
+            onScroll={handleChatScroll}
+            onScrollEnd={handleChatScrollEnd}
+            onScrollToLatest={scrollToLatest}
+            onUserScrollIntent={markUserScrollIntent}
+            pendingApproval={pendingApproval}
+            projection={messageProjection}
+            virtualizerRef={virtualizerRef}
+          />
+        )}
+
+        {showJumpToLatest && (
+          <div
+            className="absolute left-1/2 z-10 -translate-x-1/2"
+            style={{ bottom: jumpToLatestBottomPx }}
+          >
+            <ChatJumpToLatestButton
+              isLoading={isBusy}
+              label={copy.launcher.jumpToLatest}
+              onClick={forceScrollToLatest}
+            />
+          </div>
+        )}
+      </div>
 
       <div className="border-t border-border bg-background-elevated/60 px-[var(--ow-chat-thread-x)] py-[var(--ow-chat-footer-y)]">
         <form onSubmit={handleSubmit} className="mx-auto max-w-[var(--ow-chat-thread-max-width)]">

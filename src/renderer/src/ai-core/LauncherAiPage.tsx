@@ -7,7 +7,9 @@ import {
   ThinkingBar
 } from "@/components/agent-ui"
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
+import { ChatJumpToLatestButton } from "@/components/chat/ChatJumpToLatestButton"
 import { ComposerApprovalPrompt } from "@/components/chat/ComposerApprovalPrompt"
+import { useVirtualChatScrollIntent } from "@/components/chat/useVirtualChatScrollIntent"
 import { useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { formatShortcutChord } from "@/shortcuts/format-shortcut"
 import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
@@ -31,6 +33,7 @@ import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
 import type { ComposerAreaHandle } from "@/composer-area"
 import type { ComposerMessageInput } from "@shared/message-content"
 import { shouldGoHomeFromComposerKeyDown } from "./composer-keyboard"
+import type { VListHandle } from "virtua"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 const AI_COMPOSER_CHROME_HEIGHT = 30
@@ -39,6 +42,7 @@ const AI_COMPOSER_VISIBLE_LINES = 5
 const AI_ATTACHMENT_STRIP_HEIGHT = 48
 const AI_THINKING_STATUS_HEIGHT = 28
 const AI_COMPOSER_BOTTOM_GAP = 8
+const LAUNCHER_AI_AT_BOTTOM_THRESHOLD_PX = 60
 
 function getVisibleLineCount(value: string): number {
   return Math.min(AI_COMPOSER_VISIBLE_LINES, value.split("\n").length)
@@ -81,7 +85,12 @@ export function LauncherAiPage(): React.JSX.Element {
     onDidInvoke: attachmentDraft.clearAllAttachments
   })
   const { inputRef, setInputStatus } = surface
+  const chatVirtualizerRef = useRef<VListHandle>(null)
+  const composerOverlayRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [measuredComposerOverlayHeight, setMeasuredComposerOverlayHeight] = useState<number | null>(
+    null
+  )
   const [showModelPicker, setShowModelPicker] = useState(false)
   const runId = useThreadSelector(threadId, (state) => state?.runId ?? null)
   const currentThreadTitle = useHistoryShellStore((state) => {
@@ -93,10 +102,11 @@ export function LauncherAiPage(): React.JSX.Element {
   })
   const pendingApproval = conversation.pendingApproval
   const canForkThread = conversation.forkState.canFork
+  const hasVisibleTurns = conversation.messageProjection.turns.length > 0
   const hasAttachmentDraft = attachmentDraft.attachments.length > 0
   const isComposerExpanded = !pendingApproval && (query.includes("\n") || hasAttachmentDraft)
   const composerTextHeight = 14 + getVisibleLineCount(query) * AI_COMPOSER_LINE_HEIGHT
-  const composerOverlayHeight = pendingApproval
+  const estimatedComposerOverlayHeight = pendingApproval
     ? 0
     : Math.min(
         AI_MAX_FOOTER_HEIGHT,
@@ -107,11 +117,35 @@ export function LauncherAiPage(): React.JSX.Element {
             (hasAttachmentDraft ? AI_ATTACHMENT_STRIP_HEIGHT : 0)
         )
       )
+  const composerOverlayHeight = pendingApproval
+    ? 0
+    : (measuredComposerOverlayHeight ?? estimatedComposerOverlayHeight)
   const shellConfig = getAiShellConfig(surface.shellConfig)
   const conversationBottomInset =
     pendingApproval || composerOverlayHeight === 0
       ? 0
       : composerOverlayHeight + AI_COMPOSER_BOTTOM_GAP
+  const chatVirtualItemCount =
+    threadId && (hasVisibleTurns || conversation.isLoading || conversation.visibleError)
+      ? conversation.messageProjection.displayRows.length
+      : 0
+  const {
+    forceScrollToLatest,
+    handleScroll: handleChatScroll,
+    handleScrollEnd: handleChatScrollEnd,
+    isAtBottom,
+    isScrolling,
+    jumpToLatestBottomPx,
+    markUserScrollIntent,
+    scrollToLatest,
+    showJumpToLatest
+  } = useVirtualChatScrollIntent({
+    atBottomThresholdPx: LAUNCHER_AI_AT_BOTTOM_THRESHOLD_PX,
+    bottomInsetPx: conversationBottomInset,
+    resetKey: threadId ?? "launcher-ai-empty",
+    totalCount: chatVirtualItemCount,
+    virtualizerRef: chatVirtualizerRef
+  })
   const isApprovalPending = Boolean(pendingApproval)
   const openAttachmentPicker = useCallback((): void => {
     fileInputRef.current?.click()
@@ -163,8 +197,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const handleComposerKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>): void => {
       const input = inputRef.current
-      const composerText =
-        input && "getModelText" in input ? input.getModelText() : query
+      const composerText = input && "getModelText" in input ? input.getModelText() : query
 
       if (
         shouldGoHomeFromComposerKeyDown({
@@ -214,14 +247,10 @@ export function LauncherAiPage(): React.JSX.Element {
     [attachmentDraft.attachments.length, inputRef, navigation, query, submitCurrentInput]
   )
   const canStartNewQuestion =
-    query.trim().length > 0 ||
-    attachmentDraft.attachments.length > 0 ||
-    conversation.displayMessages.length > 0
+    query.trim().length > 0 || attachmentDraft.attachments.length > 0 || hasVisibleTurns
   const { actionController, addAttachmentShortcut, submitShortcut } = useLauncherAiActions({
     branchThread: handleBranchChat,
-    canBranchThread: Boolean(
-      threadId && conversation.displayMessages.length > 0 && canForkThread
-    ),
+    canBranchThread: Boolean(threadId && hasVisibleTurns && canForkThread),
     canGoToNextChat,
     canGoToPreviousChat,
     canStartNewQuestion,
@@ -276,6 +305,20 @@ export function LauncherAiPage(): React.JSX.Element {
       setInputStatus("idle")
     }
   }, [inputStatus, setInputStatus])
+
+  useEffect(() => {
+    const element = composerOverlayRef.current
+    if (!element || typeof ResizeObserver === "undefined") {
+      return
+    }
+
+    const observer = new ResizeObserver(([entry]) => {
+      const nextHeight = Math.min(AI_MAX_FOOTER_HEIGHT, Math.ceil(entry.contentRect.height))
+      setMeasuredComposerOverlayHeight((current) => (current === nextHeight ? current : nextHeight))
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [pendingApproval])
 
   return (
     <div className="relative h-full">
@@ -334,17 +377,23 @@ export function LauncherAiPage(): React.JSX.Element {
           <LauncherAiConversation
             bottomInset={conversationBottomInset}
             clearError={conversation.clearVisibleError}
-            displayMessages={conversation.displayMessages}
             error={conversation.visibleError}
             forkState={conversation.forkState}
+            isAtBottom={isAtBottom}
             isLoading={conversation.isLoading}
-            onApprovalDecision={handleApprovalDecision}
+            isScrolling={isScrolling}
+            messageProjection={conversation.messageProjection}
             onBranch={handleBranchChat}
             onRetry={retry}
+            onScroll={handleChatScroll}
+            onScrollEnd={handleChatScrollEnd}
+            onScrollToLatest={scrollToLatest}
+            onUserScrollIntent={markUserScrollIntent}
             pendingApproval={pendingApproval}
             runId={runId}
             threadId={threadId}
             todos={conversation.todos}
+            virtualizerRef={chatVirtualizerRef}
           />
         ) : (
           <LauncherAiEmptyState
@@ -354,8 +403,25 @@ export function LauncherAiPage(): React.JSX.Element {
         )}
       </LauncherChrome>
 
+      {showJumpToLatest ? (
+        <div
+          className="pointer-events-none absolute inset-x-0 z-30 flex justify-center px-[var(--launcher-ai-composer-page-x)]"
+          style={{
+            bottom: jumpToLatestBottomPx
+          }}
+        >
+          <ChatJumpToLatestButton
+            className="pointer-events-auto"
+            isLoading={conversation.isLoading}
+            label={copy.launcher.jumpToLatest}
+            onClick={forceScrollToLatest}
+          />
+        </div>
+      ) : null}
+
       {!pendingApproval ? (
         <form
+          ref={composerOverlayRef}
           className="pointer-events-none absolute inset-x-0 z-20 flex w-full flex-col justify-end px-[var(--launcher-ai-composer-page-x)]"
           onSubmit={(event) => {
             event.preventDefault()

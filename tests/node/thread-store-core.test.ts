@@ -3,6 +3,7 @@ import test from "node:test"
 import { DEFAULT_PERMISSION_MODE } from "../../src/shared/permission-mode"
 import type { ArtifactRecord } from "../../src/shared/artifacts"
 import { createThreadStore } from "../../src/renderer/src/lib/thread-store-core"
+import type { Message } from "../../src/renderer/src/types"
 
 function createLinkArtifact(props: {
   id: string
@@ -31,6 +32,24 @@ function createLinkArtifact(props: {
     title: props.title,
     toolCallId: props.toolCallId,
     updatedAt: new Date("2026-01-01T00:00:00.000Z")
+  }
+}
+
+function createUserMessage(id: string, content = "User message"): Message {
+  return {
+    content,
+    created_at: new Date("2026-01-01T00:00:00.000Z"),
+    id,
+    role: "user"
+  }
+}
+
+function createAssistantMessage(id: string, content = "Assistant message"): Message {
+  return {
+    content,
+    created_at: new Date("2026-01-01T00:00:00.000Z"),
+    id,
+    role: "assistant"
   }
 }
 
@@ -131,4 +150,29 @@ test("stream loading subscriptions only fire when the value actually changes", (
 
   assert.equal(callCount, 2)
   assert.equal(store.getStreamLoadingState("thread-a"), true)
+})
+
+test("message actions update projection without emitting for equivalent snapshots", () => {
+  const store = createThreadStore()
+  const actions = store.getThreadActions("thread-a")
+  let calls = 0
+
+  const unsubscribe = store.subscribeThread("thread-a", () => {
+    calls += 1
+  })
+  const messages = [createUserMessage("user-1"), createAssistantMessage("assistant-1", "Hello")]
+
+  actions.setMessages(messages)
+  const firstProjection = store.getThreadState("thread-a").messageProjection
+  actions.setMessages(structuredClone(messages))
+  const equivalentProjection = store.getThreadState("thread-a").messageProjection
+  actions.appendMessage(createAssistantMessage("assistant-1", "Hello again"))
+  const updatedProjection = store.getThreadState("thread-a").messageProjection
+  unsubscribe()
+
+  assert.equal(calls, 2)
+  assert.equal(equivalentProjection, firstProjection)
+  assert.notEqual(updatedProjection, firstProjection)
+  assert.equal(updatedProjection.turns[0]?.user, firstProjection.turns[0]?.user)
+  assert.equal(updatedProjection.turns[0]?.assistants[0]?.content, "Hello again")
 })
