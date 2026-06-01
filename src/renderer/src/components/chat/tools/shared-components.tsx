@@ -1,7 +1,5 @@
 import { Children, useState } from "react"
 import { CheckCircle2, ChevronDown, Circle, Clock3, File, Folder, XCircle } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import type { AppCopy } from "@/lib/i18n/messages"
 import { cn } from "@/lib/utils"
@@ -105,95 +103,6 @@ export function ToolDetailSection(props: {
         {label}
       </div>
       <div className="min-w-0">{children}</div>
-    </div>
-  )
-}
-
-export function ToolApprovalCard(props: {
-  actions: React.ReactNode
-  badgeLabel: string
-  children: React.ReactNode
-  subtitle?: string | null
-  title: string
-}): React.JSX.Element {
-  const { actions, badgeLabel, children, subtitle, title } = props
-
-  return (
-    <div className="rounded-[var(--ow-radius-dialog)] border border-border/70 bg-background-elevated shadow-[0_14px_34px_rgba(32,38,45,0.05)]">
-      <div className="grid gap-[var(--ow-gap-lg)] px-[var(--ow-space-4)] py-[var(--ow-space-4)]">
-        <div className="grid min-w-0 gap-[var(--ow-gap-xs)]">
-          <Badge
-            className="w-fit rounded-full border-status-warning/25 bg-status-warning/10 px-[var(--ow-space-2-5)] py-[var(--ow-space-1)] [font-size:var(--ow-font-caption)] tracking-[0.12em] text-status-warning"
-            variant="warning"
-          >
-            {badgeLabel}
-          </Badge>
-          <div className="min-w-0 [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-chat)] text-foreground">
-            {title}
-          </div>
-          {subtitle ? (
-            <div className="min-w-0 font-mono [font-size:var(--ow-font-meta)] leading-[var(--ow-line-chat)] text-muted-foreground [overflow-wrap:anywhere]">
-              {subtitle}
-            </div>
-          ) : null}
-        </div>
-        {children ? <div>{children}</div> : null}
-        <div>{actions}</div>
-      </div>
-    </div>
-  )
-}
-
-export function ToolApprovalActions(props: {
-  approveLabel: string
-  canEdit?: boolean
-  editLabel?: string
-  onApprove: () => void
-  onEdit?: () => void
-  onReject: () => void
-  rejectLabel: string
-}): React.JSX.Element {
-  const {
-    approveLabel,
-    canEdit = false,
-    editLabel,
-    onApprove,
-    onEdit,
-    onReject,
-    rejectLabel
-  } = props
-
-  return (
-    <div className="flex flex-wrap items-center justify-end gap-[var(--ow-gap-sm)]">
-      {canEdit && onEdit && editLabel ? (
-        <Button
-          className="rounded-[var(--ow-radius-lg)] border-border/70 bg-background text-foreground hover:bg-background-secondary"
-          onClick={onEdit}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          {editLabel}
-        </Button>
-      ) : null}
-      <Button
-        className="rounded-[var(--ow-radius-lg)] border-border/70 bg-background text-foreground hover:bg-background-secondary"
-        onClick={onReject}
-        size="sm"
-        type="button"
-        variant="outline"
-      >
-        {rejectLabel}
-      </Button>
-      <Button
-        className="rounded-[var(--ow-radius-lg)]"
-        onClick={onApprove}
-        size="sm"
-        type="button"
-        variant="default"
-      >
-        {approveLabel}
-      </Button>
     </div>
   )
 }

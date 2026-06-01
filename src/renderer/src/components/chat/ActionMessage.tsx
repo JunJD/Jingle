@@ -9,7 +9,7 @@ import {
 } from "@/components/agent-ui"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
-import type { HITLDecision, HITLRequest, ToolCall } from "@/types"
+import type { HITLRequest, ToolCall } from "@/types"
 import { createActionMessageView } from "./action-message-view"
 import { type ToolPresentation, type ToolComponentStatus } from "./tools"
 
@@ -17,13 +17,10 @@ interface ActionMessageProps {
   toolCall: ToolCall
   result?: unknown
   approvalRequest?: HITLRequest | null
-  onApprovalDecision?: (decision: HITLDecision) => void
   onExpandedChange?: (expanded: boolean) => void
-  density?: "default" | "compact"
   defaultExpanded?: boolean
   expanded?: boolean
   presentation?: ToolPresentation
-  renderApprovalDetail?: boolean
   showSummary?: boolean
 }
 
@@ -64,12 +61,9 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
   const {
     approvalRequest,
     defaultExpanded = false,
-    density: _density,
     expanded,
-    onApprovalDecision,
     onExpandedChange,
     presentation = "standalone",
-    renderApprovalDetail = true,
     result,
     showSummary = true,
     toolCall
@@ -87,23 +81,11 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       }),
     [approvalRequest, copy, presentation, result, toolCall]
   )
-  const { definition, hitlDefinition, model, status, statusLabel, summary } = view
+  const { definition, model, status, statusLabel, summary } = view
   const autoExpanded = Boolean(approvalRequest) || defaultExpanded
   const isExpanded = approvalRequest ? true : (expanded ?? manualExpanded ?? autoExpanded)
   const detail = useMemo<React.ReactNode>(() => {
     if (approvalRequest) {
-      if (onApprovalDecision && hitlDefinition && renderApprovalDetail) {
-        return hitlDefinition.render({
-          copy,
-          isExpanded,
-          presentation,
-          request: approvalRequest,
-          respond: onApprovalDecision,
-          toolCall,
-          ...model
-        })
-      }
-
       return null
     }
 
@@ -115,18 +97,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       ...model
     })
     return contentDetail
-  }, [
-    approvalRequest,
-    copy,
-    definition,
-    hitlDefinition,
-    isExpanded,
-    model,
-    onApprovalDecision,
-    presentation,
-    renderApprovalDetail,
-    toolCall
-  ])
+  }, [approvalRequest, copy, definition, isExpanded, model, presentation, toolCall])
 
   const hasDetail = Boolean(detail)
   const toolState = toAgentToolState(status)

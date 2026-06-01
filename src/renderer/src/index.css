@@ -958,17 +958,6 @@ body[data-platform="darwin"] .launcher-window-shell {
   color: var(--launcher-text-muted);
 }
 
-.launcher-jump-to-latest {
-  border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--launcher-shell-fill) 78%, transparent);
-  box-shadow: none;
-}
-
-.launcher-jump-to-latest:hover {
-  background: color-mix(in srgb, var(--launcher-surface-strong) 36%, transparent);
-}
-
 .launcher-ai-composer-wrap {
   position: relative;
   z-index: 2;

@@ -1,19 +1,10 @@
 export type {
-  HumanInTheLoopDefinition,
-  HumanInTheLoopProps,
-  HumanInTheLoopRespond,
   ToolComponentDefinition,
   ToolComponentProps,
   ToolPresentation,
   ToolComponentStatus
 } from "./types"
-export {
-  defineHumanInTheLoop,
-  defineToolComponent,
-  getHumanInTheLoop,
-  getToolComponent
-} from "./registry-core"
-export { defaultHumanInTheLoop } from "./DefaultHumanInTheLoop"
+export { defineToolComponent, getToolComponent } from "./registry-core"
 export { extensionToolComponent } from "./ExtensionTool"
 
 import "./ReadFileTool"
@@ -25,6 +16,4 @@ import "./TodosTool"
 import "./TaskTool"
 import "./PresentArtifactsTool"
 import "./DesktopAutomationTool"
-import "./ExecuteHumanInTheLoop"
-import "./FileMutationHumanInTheLoop"
 import "./WebSearchTool"

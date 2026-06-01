@@ -2,9 +2,7 @@ import type { AppCopy } from "@/lib/i18n/messages"
 import type { HITLRequest, ToolCall } from "@/types"
 import { isExtensionToolCallPresentation } from "@shared/tool-presentation"
 import {
-  defaultHumanInTheLoop,
   extensionToolComponent,
-  getHumanInTheLoop,
   getToolComponent,
   type ToolComponentDefinition,
   type ToolComponentStatus,
@@ -51,9 +49,6 @@ export function createActionMessageView(input: CreateActionMessageViewInput) {
     (isExtensionToolCallPresentation(toolCall.presentation)
       ? extensionToolComponent
       : fallbackToolComponent)
-  const hitlDefinition = approvalRequest
-    ? getHumanInTheLoop(toolCall.name) || defaultHumanInTheLoop
-    : null
   const summary = definition.renderSummary({
     copy,
     isExpanded: Boolean(approvalRequest),
@@ -64,8 +59,7 @@ export function createActionMessageView(input: CreateActionMessageViewInput) {
 
   return {
     definition,
-    hitlDefinition,
-    icon: hitlDefinition?.icon ?? definition.icon,
+    icon: definition.icon,
     model,
     status: model.status,
     statusLabel: getToolStatusLabel(copy, model.status),

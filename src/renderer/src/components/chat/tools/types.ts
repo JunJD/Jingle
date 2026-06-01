@@ -1,5 +1,5 @@
 import type { AppCopy } from "@/lib/i18n/messages"
-import type { HITLDecision, HITLRequest, ToolCall } from "@/types"
+import type { ToolCall } from "@/types"
 import type { LucideIcon } from "lucide-react"
 import type { ReactNode } from "react"
 
@@ -27,17 +27,4 @@ export interface ToolComponentDefinition {
   icon: LucideIcon
   renderSummary: (props: ToolComponentProps) => ReactNode
   renderDetail?: (props: ToolComponentProps) => ReactNode
-}
-
-export type HumanInTheLoopRespond = (decision: HITLDecision) => void
-
-export interface HumanInTheLoopProps extends ToolComponentProps {
-  request: HITLRequest
-  respond: HumanInTheLoopRespond
-}
-
-export interface HumanInTheLoopDefinition {
-  icon: LucideIcon
-  name: string
-  render: (props: HumanInTheLoopProps) => ReactNode
 }
