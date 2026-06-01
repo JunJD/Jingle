@@ -5,13 +5,15 @@ import {
   PopToRootType,
   Toast,
   closeMainWindow,
-  createExtensionRuntimeNavigation,
   launchCommand,
-  runWithExtensionRuntimeSdk,
   showHUD,
-  showToast,
+  showToast
+} from "@openwork/extension-api"
+import {
+  createExtensionRuntimeNavigation,
+  runWithExtensionRuntimeSdk,
   type ExtensionRuntimeHostRequestInput
-} from "../../src/extension-runtime/sdk"
+} from "@openwork/extension-api/host-runtime"
 import { showFailureToast } from "../../packages/extension-utils/src"
 import type {
   ExtensionHostResponse,

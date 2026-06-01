@@ -4,7 +4,7 @@ import {
   useNativeCommandPreferences,
   useRuntimeAppLocale,
   writeClipboardText
-} from "../../runtime-api"
+} from "@openwork/extension-api"
 import {
   TRANSLATE_LANGUAGE_OPTIONS,
   detectTranslateLanguageId,

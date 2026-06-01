@@ -2,7 +2,12 @@ export { AI, type RuntimeAiAskInput } from "./ai"
 export { Alert, confirmAlert } from "./alert"
 export { Action, ActionPanel } from "./actions"
 export { Clipboard, getSelectedText, writeClipboardText } from "./clipboard"
-export { createNativeExtensionClient, defineNativeExtensionClientMethod } from "./client"
+export {
+  createExtensionClient,
+  createNativeExtensionClient,
+  defineExtensionClientMethod,
+  defineNativeExtensionClientMethod
+} from "./client"
 export {
   createExtensionRuntimeNavigation,
   createExtensionRuntimeLaunchProps,

@@ -4,7 +4,7 @@ import {
   createExtensionRuntimeNavigation,
   runWithExtensionRuntimeSdk,
   type ExtensionRuntimeHostRequestInput
-} from "../../src/extension-runtime/sdk"
+} from "@openwork/extension-api/host-runtime"
 import AppleRemindersQuickAddReminder from "../../extensions/apple-reminders/src/quick-add-reminder"
 import type {
   AppleReminder,
@@ -40,8 +40,7 @@ test("Apple Reminders runtime quick-add opens create reminder when the seed quer
     method: "open-command",
     payload: {
       commandName: "create-reminder",
-      extensionName: "apple-reminders",
-      showLauncher: undefined
+      extensionName: "apple-reminders"
     }
   })
   assert.equal(quickAddResolved, false)

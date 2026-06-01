@@ -8,8 +8,10 @@ import {
   validateNativeExtensionMainDefinition,
   validateNativeExtensionPackageManifest
 } from "@shared/native-extensions"
-import type { NativeExtensionRuntimePackage } from "@extensions/runtime-contract"
-import type { NativeExtensionRuntimePackageMetadata } from "@extensions/runtime-metadata-contract"
+import type {
+  NativeExtensionRuntimePackage,
+  NativeExtensionRuntimePackageMetadata
+} from "@openwork/extension-api"
 
 export interface NativeExtensionValidationInput {
   assetRoot?: string

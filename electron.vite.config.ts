@@ -101,6 +101,9 @@ export default defineConfig({
         "@extensions": resolve("src/extensions"),
         "@launcher-components": resolve("src/renderer/src/launcher-components"),
         "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
+        "@openwork/extension-api/host-runtime": resolve(
+          "packages/extension-api/src/host-runtime.ts"
+        ),
         "@openwork/extension-api": resolve("packages/extension-api/src/index.ts"),
         "@openwork/extension-utils": resolve("packages/extension-utils/src/index.ts"),
         canvas: resolve("src/main/runtime-shims/canvas.ts"),
@@ -132,6 +135,9 @@ export default defineConfig({
         "@extensions": resolve("src/extensions"),
         "@launcher-components": resolve("src/renderer/src/launcher-components"),
         "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
+        "@openwork/extension-api/host-runtime": resolve(
+          "packages/extension-api/src/host-runtime.ts"
+        ),
         "@openwork/extension-api": resolve("packages/extension-api/src/index.ts"),
         "@openwork/extension-utils": resolve("packages/extension-utils/src/index.ts"),
         "@plugins": resolve("src/plugins"),
@@ -151,6 +157,9 @@ export default defineConfig({
         "@extensions": resolve("src/extensions"),
         "@launcher-components": resolve("src/renderer/src/launcher-components"),
         "@launcher-shell": resolve("src/renderer/src/launcher-shell"),
+        "@openwork/extension-api/host-runtime": resolve(
+          "packages/extension-api/src/host-runtime.ts"
+        ),
         "@openwork/extension-api": resolve("packages/extension-api/src/index.ts"),
         "@openwork/extension-utils": resolve("packages/extension-utils/src/index.ts"),
         "@plugins": resolve("src/plugins"),

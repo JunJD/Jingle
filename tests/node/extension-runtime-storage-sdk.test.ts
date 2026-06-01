@@ -1,16 +1,15 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { Cache, LocalStorage } from "@openwork/extension-api"
 import {
-  Cache,
-  LocalStorage,
   createExtensionRuntimeNavigation,
   installExtensionRuntimeCacheBackend,
   runWithExtensionRuntimeSdk,
+  type ExtensionRuntimeHostRequestInput,
   type RuntimeCacheBackend,
   type RuntimeCacheBackendScope,
-  type RuntimeCacheEntry,
-  type ExtensionRuntimeHostRequestInput
-} from "../../src/extension-runtime/sdk"
+  type RuntimeCacheEntry
+} from "@openwork/extension-api/host-runtime"
 import type {
   ExtensionHostResponse,
   ExtensionRuntimeLaunchContext

@@ -21,9 +21,13 @@ import type {
   ExtensionSvgVisualNode,
   ExtensionVisualNode
 } from "../../shared/extension-runtime-protocol"
-import { ExtensionHostActionKind, ExtensionHostElement } from "../sdk/host-elements"
-import type { RuntimeSubmitFormValues } from "../sdk/actions"
-import { resolveColorLike, type ColorLike } from "../sdk/visual"
+import {
+  ExtensionHostActionKind,
+  ExtensionHostElement,
+  resolveColorLike,
+  type ColorLike,
+  type RuntimeSubmitFormValues
+} from "@openwork/extension-api/host-runtime"
 import type {
   RuntimeActionHandler,
   RuntimeActionHandlerParams,
@@ -537,6 +541,13 @@ function createFormFieldNode(
   }
 
   if (node.type === ExtensionHostElement.FormDropdown) {
+    const items = directChildrenOfType(node, ExtensionHostElement.FormDropdownItem).map((item) => ({
+      icon: collectVisual(item, "icon"),
+      title: readStringProp(item.props, "title") ?? "",
+      value: readStringProp(item.props, "value") ?? ""
+    }))
+    const searchable = typeof node.props.onSearchTextChange === "function"
+
     return [
       {
         autoFocus: readBooleanProp(node.props, "autoFocus", false),
@@ -546,15 +557,15 @@ function createFormFieldNode(
         id,
         info,
         isLoading: readBooleanProp(node.props, "isLoading", false),
-        items: directChildrenOfType(node, ExtensionHostElement.FormDropdownItem).map((item) => ({
-          icon: collectVisual(item, "icon"),
-          title: readStringProp(item.props, "title") ?? "",
-          value: readStringProp(item.props, "value") ?? ""
-        })),
+        items,
         kind: "dropdown",
-        searchable: typeof node.props.onSearchTextChange === "function",
+        searchable,
         title,
-        value: readStringProp(node.props, "value") ?? ""
+        value:
+          readStringProp(node.props, "value") ??
+          readStringProp(node.props, "defaultValue") ??
+          (searchable ? undefined : items[0]?.value) ??
+          ""
       }
     ]
   }
@@ -640,6 +651,14 @@ function collectFormValues(
       values[id] = readDatePickerRawValueProp(field.props)
     } else if (field.type === ExtensionHostElement.FormTagPicker) {
       values[id] = readStringArrayProp(field.props, "value")
+    } else if (field.type === ExtensionHostElement.FormDropdown) {
+      const firstItem = directChildrenOfType(field, ExtensionHostElement.FormDropdownItem)[0]
+      const searchable = typeof field.props.onSearchTextChange === "function"
+      values[id] =
+        readStringProp(field.props, "value") ??
+        readStringProp(field.props, "defaultValue") ??
+        (!searchable && firstItem ? readStringProp(firstItem.props, "value") : undefined) ??
+        ""
     } else {
       values[id] = readStringProp(field.props, "value") ?? ""
     }

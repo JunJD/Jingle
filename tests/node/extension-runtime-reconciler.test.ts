@@ -1,38 +1,42 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { createElement, useEffect, useRef, useState, type ReactElement } from "react"
-import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
 import {
   Action,
   ActionPanel,
   Alert,
   Color,
   Detail,
-  ExtensionRuntimeNavigationProvider,
   Form,
   Icon,
   Image,
   Keyboard,
   List,
   confirmAlert,
-  createExtensionRuntimeNavigation,
-  createExtensionRuntimeLaunchProps,
+  createExtensionClient,
   createNativeExtensionClient,
+  defineExtensionClientMethod,
   defineNativeExtensionClientMethod,
   getPreferenceValues,
   open,
   openCommandPreferences,
   openExtensionPreferences,
   openNativeExtensionSettings,
-  runWithExtensionRuntimeSdk,
   showToast,
+  useNavigation,
+  type LaunchProps,
+  type RuntimeFormFieldProps
+} from "@openwork/extension-api"
+import {
+  ExtensionRuntimeNavigationProvider,
+  createExtensionRuntimeLaunchProps,
+  createExtensionRuntimeNavigation,
+  runWithExtensionRuntimeSdk,
   type ExtensionRuntimeHostRequestInput,
   type ExtensionRuntimeSdkContextValue,
-  type RuntimeFormFieldProps,
-  type RuntimeSubmitFormValues,
-  useNavigation,
-  type LaunchProps
-} from "../../src/extension-runtime/sdk"
+  type RuntimeSubmitFormValues
+} from "@openwork/extension-api/host-runtime"
+import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
 import {
   useCachedPromise,
   useFetch,
@@ -99,6 +103,11 @@ const runtimeFixtureTypeContract: {
 }
 
 void runtimeFixtureTypeContract
+
+test("extension runtime root API keeps legacy client aliases", () => {
+  assert.equal(createExtensionClient, createNativeExtensionClient)
+  assert.equal(defineExtensionClientMethod, defineNativeExtensionClientMethod)
+})
 
 function createTestRenderer(params?: TestRendererParams) {
   return createExtensionRuntimeRenderer(
@@ -1551,20 +1560,35 @@ test("runtime reconciler preserves List throttle in snapshots", async () => {
 })
 
 test("runtime reconciler dispatches form dropdown search changes", async () => {
+  let submittedValues: RuntimeSubmitFormValues | null = null
+
   function SearchableForm() {
     const [query, setQuery] = useState("")
+    const [selectedValue, setSelectedValue] = useState("initial")
 
     return createElement(
       Form,
-      null,
+      {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.SubmitForm, {
+            onSubmit: (values) => {
+              submittedValues = values
+            },
+            title: "Submit"
+          })
+        )
+      },
       createElement(
         Form.Dropdown,
         {
+          id: "page",
           isLoading: query === "runtime",
-          onChange: () => {},
+          onChange: setSelectedValue,
           onSearchTextChange: setQuery,
           title: "Page",
-          value: ""
+          value: selectedValue
         },
         query
           ? createElement(Form.Dropdown.Item, {
@@ -1589,6 +1613,18 @@ test("runtime reconciler dispatches form dropdown search changes", async () => {
   assert.equal(firstField?.kind, "dropdown")
   assert.equal(firstField?.kind === "dropdown" ? firstField.searchable : undefined, true)
   assert.equal(firstField?.kind === "dropdown" ? firstField.isLoading : undefined, false)
+  assert.equal(firstField?.kind === "dropdown" ? firstField.value : undefined, "initial")
+  assert.deepEqual(
+    firstField?.kind === "dropdown"
+      ? firstField.items.map((item) => ({ title: item.title, value: item.value }))
+      : [],
+    [
+      {
+        title: "Initial Page",
+        value: "initial"
+      }
+    ]
+  )
 
   assert.equal(
     await renderer.dispatchEvent({
@@ -1604,6 +1640,7 @@ test("runtime reconciler dispatches form dropdown search changes", async () => {
   const nextField = nextSnapshot.fields[0]
   assert.equal(nextField?.kind, "dropdown")
   assert.equal(nextField?.kind === "dropdown" ? nextField.isLoading : undefined, true)
+  assert.equal(nextField?.kind === "dropdown" ? nextField.value : undefined, "initial")
   assert.deepEqual(
     nextField?.kind === "dropdown"
       ? nextField.items.map((item) => ({ title: item.title, value: item.value }))
@@ -1615,6 +1652,35 @@ test("runtime reconciler dispatches form dropdown search changes", async () => {
       }
     ]
   )
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      changeId: "select-runtime",
+      fieldId: "page",
+      type: "form.field.change",
+      value: "runtime"
+    }),
+    true
+  )
+
+  const selectedSnapshot = renderer.getSnapshot()
+  assertFormSnapshot(selectedSnapshot)
+  const selectedField = selectedSnapshot.fields[0]
+  assert.equal(selectedField?.kind === "dropdown" ? selectedField.value : undefined, "runtime")
+
+  const actionId = selectedSnapshot.actions[0]?.id
+  assert.ok(actionId)
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId,
+      revision: selectedSnapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+  assert.deepEqual(submittedValues, {
+    page: "runtime"
+  })
 })
 
 test("runtime reconciler snapshots detail surfaces and navigates back", async () => {
@@ -2319,6 +2385,127 @@ test("runtime Action.SubmitForm passes current form values to onSubmit", async (
   assert.equal(Form.DatePicker.isFullDay(dueDate), true)
 })
 
+test("runtime Form.Dropdown submits the first item when uncontrolled", async () => {
+  let selectedDatabaseId = ""
+  let submittedValues: RuntimeSubmitFormValues | null = null
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      Form,
+      {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.SubmitForm, {
+            onSubmit: (values) => {
+              submittedValues = values
+            },
+            title: "Submit"
+          })
+        )
+      },
+      createElement(
+        Form.Dropdown,
+        {
+          id: "database",
+          onChange: (value) => {
+            selectedDatabaseId = value
+          },
+          title: "Database"
+        },
+        createElement(Form.Dropdown.Item, {
+          title: "Roadmap",
+          value: "database-1"
+        }),
+        createElement(Form.Dropdown.Item, {
+          title: "Archive",
+          value: "database-2"
+        })
+      )
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertFormSnapshot(snapshot)
+  const databaseField = snapshot.fields.find((field) => field.id === "database")
+  assert.equal(databaseField?.kind === "dropdown" ? databaseField.value : undefined, "database-1")
+  assert.equal(selectedDatabaseId, "")
+
+  const actionId = snapshot.actions[0]?.id
+  assert.ok(actionId)
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  assert.deepEqual(submittedValues, {
+    database: "database-1"
+  })
+})
+
+test("runtime searchable Form.Dropdown does not treat search results as selected values", async () => {
+  let submittedValues: RuntimeSubmitFormValues | null = null
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      Form,
+      {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.SubmitForm, {
+            onSubmit: (values) => {
+              submittedValues = values
+            },
+            title: "Submit"
+          })
+        )
+      },
+      createElement(
+        Form.Dropdown,
+        {
+          id: "page",
+          onChange: () => {},
+          onSearchTextChange: () => {},
+          title: "Page"
+        },
+        createElement(Form.Dropdown.Item, {
+          title: "Runtime Notes",
+          value: "page-1"
+        })
+      )
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertFormSnapshot(snapshot)
+  const pageField = snapshot.fields.find((field) => field.id === "page")
+  assert.equal(pageField?.kind === "dropdown" ? pageField.searchable : undefined, true)
+  assert.equal(pageField?.kind === "dropdown" ? pageField.value : undefined, "")
+
+  const actionId = snapshot.actions[0]?.id
+  assert.ok(actionId)
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId,
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+  assert.deepEqual(submittedValues, {
+    page: ""
+  })
+})
+
 test("runtime Action.SubmitForm prefers event form values from the renderer", async () => {
   let submittedValues: RuntimeSubmitFormValues | null = null
   const dueDate = new Date(2026, 5, 1)
@@ -2375,6 +2562,73 @@ test("runtime Action.SubmitForm prefers event form values from the renderer", as
   assert.deepEqual(submittedValues, {
     due: dueDate,
     title: "Current renderer title"
+  })
+})
+
+test("runtime Action.SubmitForm keeps raw form values when renderer only overrides changed fields", async () => {
+  const dueDate = new Date(2026, 5, 1)
+  let submittedValues: RuntimeSubmitFormValues | null = null
+
+  const renderer = createTestRenderer()
+  renderer.render(
+    createElement(
+      Form,
+      {
+        actions: createElement(
+          ActionPanel,
+          null,
+          createElement(Action.SubmitForm, {
+            onSubmit: (values) => {
+              submittedValues = values
+            },
+            title: "Submit"
+          })
+        )
+      },
+      createElement(Form.DatePicker, {
+        id: "due",
+        onChange: () => {},
+        title: "Due",
+        value: dueDate
+      }),
+      createElement(
+        Form.Dropdown,
+        {
+          id: "page",
+          onChange: () => {},
+          onSearchTextChange: () => {},
+          title: "Page",
+          value: ""
+        },
+        createElement(Form.Dropdown.Item, {
+          title: "Runtime Notes",
+          value: "page-1"
+        })
+      )
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assertFormSnapshot(snapshot)
+  const actionId = snapshot.actions[0]?.id
+  assert.ok(actionId)
+
+  assert.equal(
+    await renderer.dispatchEvent({
+      actionId,
+      formValues: {
+        page: "page-1"
+      },
+      revision: snapshot.revision,
+      type: "action.execute"
+    }),
+    true
+  )
+
+  assert.deepEqual(submittedValues, {
+    due: dueDate,
+    page: "page-1"
   })
 })
 

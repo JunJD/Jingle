@@ -1,4 +1,4 @@
-import type { ExtensionAiAskPayload } from "@shared/extension-runtime-protocol"
+import type { ExtensionAiAskPayload } from "../../shared/extension-runtime-protocol"
 import { getActiveExtensionRuntimeSdk } from "./context"
 
 export type RuntimeAiAskInput = ExtensionAiAskPayload

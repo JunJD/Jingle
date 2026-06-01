@@ -1,4 +1,4 @@
-import type { LauncherCommandSearchDefinition } from "@shared/launcher"
+import type { LauncherCommandSearchDefinition } from "../shared/launcher"
 
 export interface NativeExtensionRuntimeCommandMetadata {
   name: string

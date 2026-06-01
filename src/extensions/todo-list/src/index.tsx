@@ -7,7 +7,7 @@ import {
   useCommandSeedQuery,
   useExtensionStorageState,
   useNativeCommandPreferences
-} from "../../runtime-api"
+} from "@openwork/extension-api"
 
 type SortOrder =
   | "creation_date_descending"

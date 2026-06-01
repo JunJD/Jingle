@@ -1,11 +1,11 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { getConnectionSecret } from "@openwork/extension-api"
 import {
   createExtensionRuntimeNavigation,
-  getConnectionSecret,
   runWithExtensionRuntimeSdk,
   type ExtensionRuntimeSdkContextValue
-} from "../../src/extension-runtime/sdk"
+} from "@openwork/extension-api/host-runtime"
 import { OAuthService, getAccessToken, withAccessToken } from "../../packages/extension-utils/src"
 import type { ExtensionHostResponse } from "../../src/shared/extension-runtime-protocol"
 

@@ -1,4 +1,4 @@
-import { defineNativeExtensionRuntimeMetadata } from "../runtime-metadata-contract"
+import { defineNativeExtensionRuntimeMetadata } from "@openwork/extension-api"
 
 export const notionRuntimeMetadata = defineNativeExtensionRuntimeMetadata({
   commands: [],

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { createElement } from "react"
+import { List } from "@openwork/extension-api"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
-import { List } from "../../src/extension-runtime/sdk"
 import { getReminderAccessories } from "../../extensions/apple-reminders/src/helpers"
 import type { AppleReminder } from "../../extensions/apple-reminders/src/contracts"
 

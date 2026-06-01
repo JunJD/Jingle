@@ -1,7 +1,7 @@
 import type {
   NativeExtensionRuntimeCommandDefinition,
   NativeExtensionRuntimePackage
-} from "./runtime-contract"
+} from "@openwork/extension-api"
 import { nativeExtensionRuntimePackages } from "./runtime-packages"
 
 const nativeExtensionRuntimeCommandDefinitionMap = new Map<

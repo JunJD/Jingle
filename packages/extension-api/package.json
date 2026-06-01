@@ -6,7 +6,11 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./host-runtime": "./src/host-runtime.ts"
+  },
+  "dependencies": {
+    "lucide-react": "^0.469.0"
   },
   "peerDependencies": {
     "react": "^19.2.1",

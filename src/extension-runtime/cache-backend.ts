@@ -4,7 +4,7 @@ import type {
   RuntimeCacheBackend,
   RuntimeCacheBackendScope,
   RuntimeCacheEntry
-} from "./sdk/storage"
+} from "@openwork/extension-api/host-runtime"
 
 interface RuntimeCacheFileShape {
   stores: Record<string, RuntimeCacheEntry[]>

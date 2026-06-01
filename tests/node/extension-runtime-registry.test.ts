@@ -12,7 +12,7 @@ import {
   createNativeExtensionAssetUrl,
   resolveNativeExtensionAssetPath
 } from "../../src/main/native-extensions/assets"
-import { defineNativeExtensionRuntime } from "../../src/extensions/runtime-contract"
+import { defineNativeExtensionRuntime } from "@openwork/extension-api"
 import { toInstalledNativeExtensionSettingsSchema } from "../../src/shared/native-extensions"
 
 test("native extension registry is internally consistent", () => {

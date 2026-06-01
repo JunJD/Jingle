@@ -3,7 +3,7 @@ import type {
   ExtensionHostResponse,
   ExtensionSurfaceSnapshot
 } from "../../shared/extension-runtime-protocol"
-import type { ExtensionHostElementType } from "../sdk/host-elements"
+import type { ExtensionHostElementType } from "@openwork/extension-api/host-runtime"
 
 export type RuntimeHostProps = Record<string, unknown>
 

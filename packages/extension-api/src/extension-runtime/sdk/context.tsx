@@ -269,8 +269,8 @@ export function createExtensionRuntimeNavigation(params: {
         payload: {
           commandName: address.commandName,
           extensionName: address.extensionName,
-          launchProps: options?.launchProps,
-          showLauncher: options?.showLauncher
+          ...(options?.launchProps ? { launchProps: options.launchProps } : {}),
+          ...(options?.showLauncher !== undefined ? { showLauncher: options.showLauncher } : {})
         }
       })
       if (!response.ok) {

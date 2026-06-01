@@ -1,4 +1,4 @@
-import { defineNativeExtensionRuntime } from "../runtime-api"
+import { defineNativeExtensionRuntime } from "@openwork/extension-api"
 import Translate from "./src/translate"
 
 export const translateRuntime = defineNativeExtensionRuntime({

@@ -1,4 +1,4 @@
-import { defineNativeExtensionRuntime } from "../runtime-api"
+import { defineNativeExtensionRuntime } from "@openwork/extension-api"
 
 export const notionRuntime = defineNativeExtensionRuntime({
   commands: {},

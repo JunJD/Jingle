@@ -151,6 +151,7 @@ export interface RuntimeFormDatePickerProps extends RuntimeFormFieldProps {
 export interface RuntimeFormDropdownProps extends RuntimeFormFieldProps {
   autoFocus?: boolean
   children?: ReactNode
+  defaultValue?: string
   isLoading?: boolean
   onChange: RuntimeFormFieldChangeHandler<string>
   onSearchTextChange?: (value: string) => Promise<void> | void

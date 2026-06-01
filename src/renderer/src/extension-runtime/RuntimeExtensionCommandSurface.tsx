@@ -14,7 +14,14 @@ import { cjk } from "@streamdown/cjk"
 import { code } from "@streamdown/code"
 import { math } from "@streamdown/math"
 import { mermaid } from "@streamdown/mermaid"
-import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, LoaderCircle, X } from "lucide-react"
+import {
+  AlertCircle,
+  ArrowLeft,
+  CheckCircle2,
+  Loader2,
+  LoaderCircle,
+  X
+} from "lucide-react"
 import { Streamdown } from "streamdown"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { matchesLauncherActionShortcut } from "@/features/launcher-actions/controller-core"
@@ -28,6 +35,7 @@ import type {
   ExtensionDetailMetadataNode,
   ExtensionDetailSurfaceSnapshot,
   ExtensionFormFieldNode,
+  ExtensionFormDropdownFieldNode,
   ExtensionFormSurfaceSnapshot,
   ExtensionRuntimeEventAck,
   ExtensionListItemNode,
@@ -46,7 +54,7 @@ import {
   useNativeExtensionSurface
 } from "../extension-host/sdk"
 import { NativeSurfaceChrome } from "../extension-host/chrome"
-import { NativeExtensionSelect } from "../extension-host/select"
+import { NativeExtensionSearchableSelect, NativeExtensionSelect } from "../extension-host/select"
 import { useNativeSurfaceController } from "../extension-host/surface-action-controller"
 import {
   NativeSurfaceListEmptyState,
@@ -684,7 +692,9 @@ function RuntimeFormField(props: {
   onSearch: (query: string) => void
 }): React.JSX.Element {
   const { field, localValue, onChange, onSearch } = props
-  const inputRef = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>(null)
+  const inputRef = useRef<
+    HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null
+  >(null)
   const autoFocus = getRuntimeFormFieldAutoFocus(field)
   const focusRequestId = getRuntimeFormFieldFocusRequestId(field)
 
@@ -763,33 +773,14 @@ function RuntimeFormField(props: {
     return (
       <div className="space-y-[var(--ow-space-1-5)]" data-runtime-form-field={field.id}>
         {label}
-        {field.searchable === true ? (
-          <div className="relative">
-            <input
-              className="flex h-[var(--ow-control-h-sm)] w-full rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] pr-[var(--ow-space-7)] [font-size:var(--ow-font-control)] text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-ring"
-              autoFocus={autoFocus}
-              ref={inputRef as Ref<HTMLInputElement>}
-              placeholder="Search"
-              onChange={(event) => onSearch(event.target.value)}
-            />
-            {field.isLoading === true ? (
-              <Loader2 className="pointer-events-none absolute right-[var(--ow-space-2)] top-1/2 size-[var(--ow-icon-sm)] -translate-y-1/2 animate-spin text-muted-foreground" />
-            ) : null}
-          </div>
-        ) : null}
-        <NativeExtensionSelect
-          className="flex h-[var(--ow-control-h-sm)] w-full appearance-none rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated pl-[var(--ow-space-2-5)] pr-[var(--ow-space-6)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
-          autoFocus={autoFocus && field.searchable !== true}
-          ref={field.searchable === true ? undefined : (inputRef as Ref<HTMLSelectElement>)}
+        <RuntimeFormDropdownControl
+          autoFocus={autoFocus}
+          field={field}
+          controlRef={inputRef as Ref<HTMLButtonElement | HTMLSelectElement>}
+          onChange={onChange}
+          onSearch={onSearch}
           value={value}
-          onChange={(nextValue) => onChange(nextValue)}
-        >
-          {field.items.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.title}
-            </option>
-          ))}
-        </NativeExtensionSelect>
+        />
       </div>
     )
   }
@@ -856,6 +847,48 @@ function RuntimeFormField(props: {
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
+  )
+}
+
+function RuntimeFormDropdownControl(props: {
+  autoFocus: boolean
+  controlRef: Ref<HTMLButtonElement | HTMLSelectElement>
+  field: ExtensionFormDropdownFieldNode
+  onChange: (value: string) => void
+  onSearch: (query: string) => void
+  value: string
+}): React.JSX.Element {
+  const { autoFocus, controlRef, field, onChange, onSearch, value } = props
+
+  if (field.searchable !== true) {
+    return (
+      <NativeExtensionSelect
+        className="flex h-[var(--ow-control-h-sm)] w-full appearance-none rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated pl-[var(--ow-space-2-5)] pr-[var(--ow-space-6)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+        autoFocus={autoFocus}
+        ref={controlRef as Ref<HTMLSelectElement>}
+        value={value}
+        onChange={onChange}
+      >
+        {field.items.map((item) => (
+          <option key={item.value} value={item.value}>
+            {item.title}
+          </option>
+        ))}
+      </NativeExtensionSelect>
+    )
+  }
+
+  return (
+    <NativeExtensionSearchableSelect
+      className="flex h-[var(--ow-control-h-sm)] w-full items-center justify-between rounded-[var(--ow-radius-sm)] border border-input bg-background-elevated px-[var(--ow-space-2-5)] [font-size:var(--ow-font-control)] text-foreground outline-none transition focus-visible:ring-1 focus-visible:ring-ring"
+      autoFocus={autoFocus}
+      isLoading={field.isLoading === true}
+      items={field.items}
+      ref={controlRef as Ref<HTMLButtonElement>}
+      value={value}
+      onChange={onChange}
+      onSearch={onSearch}
+    />
   )
 }
 

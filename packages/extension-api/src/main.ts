@@ -1,7 +1,7 @@
 import type {
   NativeExtensionInvokeContext,
   NativeExtensionService
-} from "../../../src/shared/native-extensions"
+} from "./shared/native-extensions"
 
 type ExtensionMethodHandler<TPayload = unknown, TResult = unknown> = (
   payload: TPayload,

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { createElement } from "react"
+import { List } from "@openwork/extension-api"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
-import { List } from "../../src/extension-runtime/sdk"
 import { githubManifest } from "../../extensions/github/manifest"
 import { getNativeExtensionRuntimeCommand } from "../../src/extensions/runtime"
 import {

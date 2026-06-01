@@ -1,5 +1,5 @@
 import type { ComponentType } from "react"
-import type { ExtensionRuntimeLaunchContext } from "@shared/extension-runtime-protocol"
+import type { ExtensionRuntimeLaunchContext } from "../shared/extension-runtime-protocol"
 import type { ExtensionRuntimeNavigation } from "../extension-runtime/sdk"
 
 export interface NativeExtensionRuntimeNoViewRunContext extends ExtensionRuntimeLaunchContext {

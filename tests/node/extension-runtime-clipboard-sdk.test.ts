@@ -1,12 +1,11 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { Clipboard, getSelectedText } from "@openwork/extension-api"
 import {
-  Clipboard,
   createExtensionRuntimeNavigation,
-  getSelectedText,
   runWithExtensionRuntimeSdk,
   type ExtensionRuntimeHostRequestInput
-} from "../../src/extension-runtime/sdk"
+} from "@openwork/extension-api/host-runtime"
 import type {
   ExtensionHostResponse,
   ExtensionRuntimeLaunchContext

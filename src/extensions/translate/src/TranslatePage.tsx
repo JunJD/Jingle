@@ -6,7 +6,7 @@ import {
   Form,
   useNativeExtensionNavigation,
   useRuntimeAppLocale
-} from "../../runtime-api"
+} from "@openwork/extension-api"
 import { getTranslatePluginCopy } from "./copy"
 import { useTranslate } from "./use-translate"
 

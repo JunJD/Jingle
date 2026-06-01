@@ -21,7 +21,7 @@ import {
   installExtensionRuntimeCacheBackend,
   runWithExtensionRuntimeSdk,
   type ExtensionRuntimeHostRequestInput
-} from "./sdk"
+} from "@openwork/extension-api/host-runtime"
 
 let activeRenderer: ExtensionRuntimeRenderer | null = null
 const pendingHostResponses = new Map<string, (response: ExtensionHostResponse) => void>()

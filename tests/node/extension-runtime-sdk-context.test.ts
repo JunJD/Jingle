@@ -1,16 +1,16 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { getPreferenceValues, runWithExtensionRuntimeSdk } from "@openwork/extension-api"
+import {
+  createExtensionRuntimeNavigation,
+  getActiveExtensionRuntimeSdk,
+  type ExtensionRuntimeSdkContextValue
+} from "@openwork/extension-api/host-runtime"
 import { z } from "../../src/main/agent/tool-input-schema"
 import { ExtensionToolExecutor } from "../../src/main/extension-tools/executor"
 import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
 import type { ExtensionToolDefinition } from "../../src/shared/extension-sources"
 import type { ExtensionHostResponse } from "../../src/shared/extension-runtime-protocol"
-import {
-  createExtensionRuntimeNavigation,
-  getActiveExtensionRuntimeSdk,
-  type ExtensionRuntimeSdkContextValue
-} from "../../src/extension-runtime/sdk/context"
 
 interface TestPreferenceValues {
   accessToken?: string

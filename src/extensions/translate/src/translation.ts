@@ -1,4 +1,4 @@
-import { AI } from "../../runtime-api"
+import { AI } from "@openwork/extension-api"
 
 export interface TranslateTextInput {
   modelId?: string

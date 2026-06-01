@@ -2,11 +2,12 @@ import { createContext, type ReactNode } from "react"
 import Reconciler from "react-reconciler"
 import { DefaultEventPriority, LegacyRoot } from "react-reconciler/constants"
 import type { ExtensionRuntimeEvent } from "../../shared/extension-runtime-protocol"
-import type {
-  RuntimeToastActionHandler,
-  RuntimeToastActionRegistration
-} from "../sdk/context"
-import { ExtensionHostElement, type ExtensionHostElementType } from "../sdk/host-elements"
+import {
+  ExtensionHostElement,
+  type ExtensionHostElementType,
+  type RuntimeToastActionHandler,
+  type RuntimeToastActionRegistration
+} from "@openwork/extension-api/host-runtime"
 import {
   appendHostChild,
   createHostContainer,
@@ -328,9 +329,15 @@ export function createExtensionRuntimeRenderer(
 async function flushSnapshotQueue(): Promise<void> {
   await Promise.resolve()
   runtimeReconciler.flushPassiveEffects()
+  runtimeReconciler.flushSyncWork()
   await Promise.resolve()
   await new Promise((resolve) => setTimeout(resolve, 0))
   runtimeReconciler.flushPassiveEffects()
+  runtimeReconciler.flushSyncWork()
+  await Promise.resolve()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  runtimeReconciler.flushPassiveEffects()
+  runtimeReconciler.flushSyncWork()
   await Promise.resolve()
 }
 
