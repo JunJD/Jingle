@@ -1,7 +1,7 @@
 import { defineNativeExtensionManifest } from "@openwork/extension-api"
 import { viewport as createReminderViewport } from "./src/create-reminder.meta"
 import { viewport as myRemindersViewport } from "./src/my-reminders.meta"
-import { APPLE_REMINDERS_EXTENSION_ID, APPLE_REMINDERS_SOURCE_ID } from "./src/contracts"
+import { APPLE_REMINDERS_EXTENSION_ID, APPLE_REMINDERS_SOURCE_ID } from "./contracts"
 
 export const appleRemindersManifest = defineNativeExtensionManifest({
   aiCapability: {

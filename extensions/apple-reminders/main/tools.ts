@@ -8,7 +8,7 @@ import type {
   GetAppleRemindersDataRequest,
   SetAppleReminderCompletedRequest,
   ShowAppleReminderRequest
-} from "../src/contracts"
+} from "../contracts"
 import {
   createAppleReminder,
   deleteAppleReminder,

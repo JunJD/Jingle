@@ -4,15 +4,15 @@ import {
   openNativeExtensionSettings,
   useNativeCommandPreferences
 } from "@openwork/extension-api"
-import type { GitHubExtensionPreferences } from "./client-core"
+import type { GitHubExtensionPreferences } from "../domain/client-core"
 import {
   GITHUB_EXTENSION_ID,
   GITHUB_RPC_METHODS,
   type GitHubUnreadNotificationsResponse,
   type MarkGitHubNotificationAsReadRequest
-} from "./contracts"
+} from "../contracts"
 
-export * from "./client-core"
+export * from "../domain/client-core"
 
 export const githubRuntimeClient = createNativeExtensionClient(
   GITHUB_EXTENSION_ID,

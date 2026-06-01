@@ -14,7 +14,7 @@ import {
   showAppleReminder,
   useAppleRemindersCommandPreferences
 } from "./runtime-client"
-import type { AppleReminder, AppleReminderList } from "./contracts"
+import type { AppleReminder, AppleReminderList } from "../contracts"
 
 interface CreateReminderCommandPreferences {
   selectDefaultList: boolean

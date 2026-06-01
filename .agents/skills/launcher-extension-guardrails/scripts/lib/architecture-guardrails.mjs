@@ -131,6 +131,17 @@ export function resolveImportPath(fromFile, specifier) {
     return resolveResolvedBase(path.join(repoRoot, "packages/extension-api/src"), "index")
   }
 
+  if (specifier.startsWith("@openwork/extension-api/")) {
+    return resolveResolvedBase(
+      path.join(repoRoot, "packages/extension-api/src"),
+      specifier.slice("@openwork/extension-api/".length)
+    )
+  }
+
+  if (specifier === "@openwork/extension-utils") {
+    return resolveResolvedBase(path.join(repoRoot, "packages/extension-utils/src"), "index")
+  }
+
   if (specifier.startsWith("@plugins/")) {
     return resolveResolvedBase(path.join(repoRoot, "src/plugins"), specifier.slice("@plugins/".length))
   }

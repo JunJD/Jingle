@@ -1,6 +1,6 @@
 import { CheckCircle2, Circle, ListTodo, Trash2 } from "lucide-react"
 import { Action, ActionPanel } from "@openwork/extension-api"
-import type { AppleReminder } from "./contracts"
+import type { AppleReminder } from "../contracts"
 
 export function getReminderRowActions(props: {
   onDelete: () => void

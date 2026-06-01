@@ -8,7 +8,7 @@ import {
   markGitHubNotificationAsRead,
   normalizeGitHubPreferences,
   type GitHubExtensionPreferences
-} from "../src/client-core"
+} from "../domain/client-core"
 import {
   GITHUB_EXTENSION_ID,
   GITHUB_RPC_METHOD_LIST_UNREAD_NOTIFICATIONS,
@@ -16,7 +16,7 @@ import {
   GITHUB_RPC_METHOD_MARK_NOTIFICATION_AS_READ,
   type GitHubUnreadNotificationsResponse,
   type MarkGitHubNotificationAsReadRequest
-} from "../src/contracts"
+} from "../contracts"
 
 function resolveGitHubPreferences(
   context: NativeExtensionInvokeContext

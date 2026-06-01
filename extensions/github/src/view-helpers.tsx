@@ -7,7 +7,7 @@ import {
   GitPullRequest
 } from "lucide-react"
 import type { ReactNode } from "react"
-import type { GitHubIssueLike, GitHubRepository, GitHubWorkflowRun } from "./client-core"
+import type { GitHubIssueLike, GitHubRepository, GitHubWorkflowRun } from "../domain/client-core"
 
 export function formatUpdatedAt(isoTimestamp: string): string {
   const parsed = new Date(isoTimestamp)

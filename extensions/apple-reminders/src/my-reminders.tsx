@@ -14,7 +14,7 @@ import {
   useAppleRemindersCommandPreferences
 } from "./runtime-client"
 import { CreateReminderForm } from "./create-reminder"
-import type { AppleReminder } from "./contracts"
+import type { AppleReminder } from "../contracts"
 import {
   buildReminderSections,
   filterRemindersByView,

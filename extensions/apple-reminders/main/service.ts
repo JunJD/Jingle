@@ -4,23 +4,21 @@ import { join } from "node:path"
 import { promisify } from "node:util"
 import { app } from "electron"
 import { defineNativeExtensionService, type IpcErrorCode } from "@openwork/extension-api"
-import type {
-  AppleReminder,
-  AppleRemindersData,
-  CreateAppleReminderRequest,
-  DeleteAppleReminderRequest,
-  GetAppleRemindersDataRequest,
-  SetAppleReminderCompletedRequest,
-  ShowAppleReminderRequest
-} from "../src/contracts"
 import {
   APPLE_REMINDERS_EXTENSION_ID,
   APPLE_REMINDERS_RPC_METHOD_CREATE_REMINDER,
   APPLE_REMINDERS_RPC_METHOD_DELETE_REMINDER,
   APPLE_REMINDERS_RPC_METHOD_GET_DATA,
   APPLE_REMINDERS_RPC_METHOD_SET_REMINDER_COMPLETED,
-  APPLE_REMINDERS_RPC_METHOD_SHOW_REMINDER
-} from "../src/contracts"
+  APPLE_REMINDERS_RPC_METHOD_SHOW_REMINDER,
+  type AppleReminder,
+  type AppleRemindersData,
+  type CreateAppleReminderRequest,
+  type DeleteAppleReminderRequest,
+  type GetAppleRemindersDataRequest,
+  type SetAppleReminderCompletedRequest,
+  type ShowAppleReminderRequest
+} from "../contracts"
 
 const execFileAsync = promisify(execFile)
 const APPLE_REMINDERS_COMMAND_TIMEOUT_MS = 10_000
@@ -117,7 +115,16 @@ function compileAppleRemindersBinary(sourcePath: string): string {
     "-o",
     binaryPath,
     ...(infoPlistPath
-      ? ["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", infoPlistPath]
+      ? [
+          "-Xlinker",
+          "-sectcreate",
+          "-Xlinker",
+          "__TEXT",
+          "-Xlinker",
+          "__info_plist",
+          "-Xlinker",
+          infoPlistPath
+        ]
       : []),
     "-framework",
     "EventKit",
@@ -173,7 +180,11 @@ export function normalizeAppleRemindersError(error: unknown): AppleRemindersRequ
   const execError = error as AppleRemindersExecError
   const message = getAppleRemindersDiagnostic(error)
 
-  if (execError.code === "ETIMEDOUT" || execError.killed === true || message.includes("timed out")) {
+  if (
+    execError.code === "ETIMEDOUT" ||
+    execError.killed === true ||
+    message.includes("timed out")
+  ) {
     return new AppleRemindersRequestError(
       "Timed out while talking to Reminders. Grant Reminders access if macOS is showing a permission prompt, then try again."
     )
@@ -192,7 +203,10 @@ export function normalizeAppleRemindersError(error: unknown): AppleRemindersRequ
   }
 
   if (message.includes("OpenworkReminderNotFound")) {
-    return new AppleRemindersRequestError("Apple Reminders could not find that reminder.", "NOT_FOUND")
+    return new AppleRemindersRequestError(
+      "Apple Reminders could not find that reminder.",
+      "NOT_FOUND"
+    )
   }
 
   if (message.includes("OpenworkReminderListNotFound")) {

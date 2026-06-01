@@ -1,4 +1,4 @@
-import type { GitHubNotification } from "./client-core"
+import type { GitHubNotification } from "./domain/client-core"
 
 export const GITHUB_EXTENSION_ID = "github" as const
 

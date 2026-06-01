@@ -11,8 +11,8 @@ import type {
   GetAppleRemindersDataRequest,
   SetAppleReminderCompletedRequest,
   ShowAppleReminderRequest
-} from "./contracts"
-import { APPLE_REMINDERS_EXTENSION_ID, APPLE_REMINDERS_RPC_METHODS } from "./contracts"
+} from "../contracts"
+import { APPLE_REMINDERS_EXTENSION_ID, APPLE_REMINDERS_RPC_METHODS } from "../contracts"
 
 export function useAppleRemindersCommandPreferences<T extends object>() {
   return useNativeCommandPreferences<T>()

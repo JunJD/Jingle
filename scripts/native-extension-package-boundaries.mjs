@@ -444,6 +444,15 @@ function validateMainEntryImportEdge({
     }
   }
 
+  if (targetPath.startsWith("src/")) {
+    return {
+      file: toRepoPath(repoRoot, file),
+      import: importEntry.specifier,
+      line: importEntry.line,
+      reason: "main entry cannot import command source modules"
+    }
+  }
+
   if (path.extname(targetFile) === ".tsx" || path.extname(targetFile) === ".jsx") {
     return {
       file: toRepoPath(repoRoot, file),

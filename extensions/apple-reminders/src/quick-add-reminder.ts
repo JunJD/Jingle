@@ -1,5 +1,5 @@
 import { createAppleReminder, getAppleRemindersData } from "./runtime-client"
-import type { AppleReminderList } from "./contracts"
+import type { AppleReminderList } from "../contracts"
 
 function normalizeListName(value: string): string {
   return value.toLowerCase().replace(/[\s_-]+/g, "")

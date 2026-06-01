@@ -12,7 +12,7 @@ import {
   searchGitHubRepositories,
   type GitHubExtensionPreferences,
   type GitHubResolvedPreferences
-} from "../src/client-core"
+} from "../domain/client-core"
 
 const repositoryFullNameSchema = z
   .string()

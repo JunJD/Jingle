@@ -10,7 +10,7 @@ import { viewport as searchIssuesViewport } from "./src/search-issues.meta"
 import { viewport as searchPullRequestsViewport } from "./src/search-pull-requests.meta"
 import { viewport as searchRepositoriesViewport } from "./src/search-repositories.meta"
 import { viewport as workflowRunsViewport } from "./src/workflow-runs.meta"
-import { GITHUB_EXTENSION_ID, GITHUB_RPC_METHODS } from "./src/contracts"
+import { GITHUB_EXTENSION_ID, GITHUB_RPC_METHODS } from "./contracts"
 
 export const githubManifest = defineNativeExtensionManifest({
   aiCapability: {

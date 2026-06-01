@@ -9,7 +9,7 @@ import {
   showAppleReminder,
   useAppleRemindersCommandPreferences
 } from "./runtime-client"
-import type { AppleReminder } from "./contracts"
+import type { AppleReminder } from "../contracts"
 import {
   buildReminderMenuBarTitle,
   compareRemindersByDueDate,

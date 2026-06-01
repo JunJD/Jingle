@@ -11,17 +11,16 @@ test("native extension package boundary check accepts declared package-local imp
     files: {
       "extensions/fixture/main.ts": [
         'import { defineNativeExtensionMain } from "@openwork/extension-api"',
-        'import { helper } from "./src/helper"',
+        'import { helper } from "./domain/helper"',
         "void helper",
         "export const main = defineNativeExtensionMain({})"
       ].join("\n"),
-      "extensions/fixture/src/helper.ts": [
+      "extensions/fixture/domain/helper.ts": [
         'import { z } from "zod"',
-        'import { List } from "@openwork/extension-api"',
         "void z",
-        "void List",
         "export const helper = true"
-      ].join("\n")
+      ].join("\n"),
+      "extensions/fixture/src/.gitkeep": ""
     },
     packageJson: {
       dependencies: {
@@ -33,6 +32,36 @@ test("native extension package boundary check accepts declared package-local imp
 
   try {
     assert.deepEqual(validateNativeExtensionPackageBoundaries({ repoRoot }).errors, [])
+  } finally {
+    await rm(repoRoot, { force: true, recursive: true })
+  }
+})
+
+test("native extension package boundary check keeps main out of command source modules", async () => {
+  const repoRoot = await createFixtureRepo({
+    files: {
+      "extensions/fixture/main.ts": [
+        'import { helper } from "./main/tools"',
+        "void helper",
+        "export {}"
+      ].join("\n"),
+      "extensions/fixture/main/tools.ts": [
+        'import { commandHelper } from "../src/helper"',
+        "void commandHelper",
+        "export const helper = true"
+      ].join("\n"),
+      "extensions/fixture/src/helper.ts": "export const commandHelper = true\n"
+    },
+    packageJson: {
+      dependencies: {
+        "@openwork/extension-api": "workspace:*"
+      }
+    }
+  })
+
+  try {
+    const errors = validateNativeExtensionPackageBoundaries({ repoRoot }).errors.join("\n")
+    assert.match(errors, /main entry cannot import command source modules/)
   } finally {
     await rm(repoRoot, { force: true, recursive: true })
   }
@@ -121,7 +150,7 @@ test("native extension package boundary check resolves local identity constants"
     files: {
       "extensions/fixture/manifest.ts": [
         'import { defineNativeExtensionManifest } from "@openwork/extension-api"',
-        'import { EXTENSION_ID } from "./src/identity"',
+        'import { EXTENSION_ID } from "./identity"',
         "export const manifest = defineNativeExtensionManifest({",
         "  commands: [],",
         "  name: EXTENSION_ID,",
@@ -130,7 +159,7 @@ test("native extension package boundary check resolves local identity constants"
       ].join("\n"),
       "extensions/fixture/runtime-metadata.ts": [
         'import { defineNativeExtensionRuntimeMetadata } from "@openwork/extension-api"',
-        'import { EXTENSION_IDENTITY } from "./src/identity"',
+        'import { EXTENSION_IDENTITY } from "./identity"',
         "export const runtimeMetadata = defineNativeExtensionRuntimeMetadata({",
         "  commands: [],",
         "  extensionName: EXTENSION_IDENTITY.extensionId",
@@ -143,12 +172,13 @@ test("native extension package boundary check resolves local identity constants"
         '  extensionName: "fixture"',
         "})"
       ].join("\n"),
-      "extensions/fixture/src/identity.ts": [
+      "extensions/fixture/identity.ts": [
         "export const EXTENSION_IDENTITY = {",
         '  extensionId: "fixture"',
         "}",
         "export const EXTENSION_ID = EXTENSION_IDENTITY.extensionId"
-      ].join("\n")
+      ].join("\n"),
+      "extensions/fixture/src/.gitkeep": ""
     },
     packageJson: {
       dependencies: {
@@ -396,14 +426,15 @@ test("native extension package boundary check keeps main entry out of runtime an
       ].join("\n"),
       "extensions/fixture/main/tools.ts": [
         'import { runtime } from "../runtime"',
-        'import View from "../src/view"',
+        'import View from "../ui/view"',
         "void runtime",
         "void View",
         "export function createTools() {",
         "  return []",
         "}"
       ].join("\n"),
-      "extensions/fixture/src/view.tsx": "export default function View() { return null }\n"
+      "extensions/fixture/src/.gitkeep": "",
+      "extensions/fixture/ui/view.tsx": "export default function View() { return null }\n"
     },
     packageJson: {
       dependencies: {

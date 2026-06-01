@@ -1,6 +1,6 @@
 import { Calendar, CheckCircle2, Circle, Clock3 } from "lucide-react"
 import type { ReactNode } from "react"
-import type { AppleReminder, AppleReminderList } from "./contracts"
+import type { AppleReminder, AppleReminderList } from "../contracts"
 
 export type ReminderFilterValue = "all" | "overdue" | "scheduled" | "today" | string
 

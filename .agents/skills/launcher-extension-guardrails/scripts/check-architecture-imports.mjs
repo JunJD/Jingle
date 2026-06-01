@@ -34,6 +34,17 @@ const rules = [
       isUnder(target, "src/preload/") ||
       isUnder(target, "src/plugins/"),
     message: "extension 运行时代码只能通过 @openwork/extension-api 和 shared/* 接宿主能力"
+  },
+  {
+    name: "public-extension-package-boundary",
+    appliesTo: (file) =>
+      isUnder(file, "packages/extension-api/src/") ||
+      isUnder(file, "packages/extension-utils/src/"),
+    isViolation: (_, target) =>
+      isUnder(target, "src/") ||
+      isUnder(target, "extensions/") ||
+      isUnder(target, "packages/extension-migration/"),
+    message: "public extension packages 必须拥有自己的实现/contract，不能反向 import 宿主 src、extension 包或 migration 包"
   }
 ]
 
@@ -41,9 +52,25 @@ const violations = []
 
 for (const absoluteFilePath of [
   ...listSourceFiles(srcRoot),
-  ...listSourceFiles(path.join(process.cwd(), "extensions"))
+  ...listSourceFiles(path.join(process.cwd(), "extensions")),
+  ...listSourceFiles(path.join(process.cwd(), "packages", "extension-api", "src")),
+  ...listSourceFiles(path.join(process.cwd(), "packages", "extension-utils", "src"))
 ]) {
   const repoFilePath = toRepoPath(absoluteFilePath)
+  if (
+    isUnder(repoFilePath, "src/extension-runtime/sdk/") ||
+    isExact(repoFilePath, "src/extensions/runtime-api.ts") ||
+    isExact(repoFilePath, "src/extensions/runtime-contract.ts") ||
+    isExact(repoFilePath, "src/extensions/runtime-metadata-contract.ts")
+  ) {
+    violations.push({
+      file: repoFilePath,
+      reason:
+        "旧 extension SDK/runtime contract 入口已删除；请使用 @openwork/extension-api 或 @openwork/extension-api/host-runtime",
+      rule: "no-legacy-extension-sdk-entry"
+    })
+  }
+
   const imports = collectImports(absoluteFilePath)
 
   for (const entry of imports) {
