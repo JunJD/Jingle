@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key>
-  <string>com.langchain.openwork.apple-reminders-helper</string>
+  <string>com.jingle.desktop.apple-reminders-helper</string>
   <key>CFBundleName</key>
-  <string>Openwork Apple Reminders</string>
+  <string>Jingle Apple Reminders</string>
   <key>NSRemindersFullAccessUsageDescription</key>
-  <string>Openwork needs access to Reminders to list, create, complete, and delete reminders you request.</string>
+  <string>Jingle needs access to Reminders to list, create, complete, and delete reminders you request.</string>
   <key>NSRemindersUsageDescription</key>
-  <string>Openwork needs access to Reminders to list, create, complete, and delete reminders you request.</string>
+  <string>Jingle needs access to Reminders to list, create, complete, and delete reminders you request.</string>
 </dict>
 </plist>

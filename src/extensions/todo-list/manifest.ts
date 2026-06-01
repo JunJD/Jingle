@@ -40,7 +40,7 @@ export const todoListManifest = defineNativeExtensionManifest({
       title: "Todo List"
     }
   ],
-  description: "Manage todos with a native Openwork list extension.",
+  description: "Manage todos with a native Jingle list extension.",
   name: "todo-list",
   title: "Todo List"
 })

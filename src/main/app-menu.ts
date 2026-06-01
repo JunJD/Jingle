@@ -52,7 +52,7 @@ function createHelpMenu(): MenuItemConstructorOptions {
     role: "help",
     submenu: [
       {
-        label: "Openwork on GitHub",
+        label: "Jingle on GitHub",
         click: () => {
           void shell.openExternal("https://github.com/langchain-ai/openwork")
         }

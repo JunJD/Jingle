@@ -59,13 +59,13 @@ export const notionManifest = defineNativeExtensionManifest({
       type: "apiKey"
     },
     connectGuide:
-      "Create a Notion internal integration token, share pages or data sources with that integration, and save the token in Openwork Settings.",
+      "Create a Notion internal integration token, share pages or data sources with that integration, and save the token in Jingle Settings.",
     id: "default",
     provider: "notion",
     publicPreferenceNames: ["apiBaseUrl"],
     title: "Notion"
   },
-  description: "Use Notion with Openwork AI after connecting your workspace.",
+  description: "Use Notion with Jingle AI after connecting your workspace.",
   iconName: "notion",
   preferences: [
     {

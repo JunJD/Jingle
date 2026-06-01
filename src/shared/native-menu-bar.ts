@@ -3,6 +3,7 @@ export type NativeMenuBarIconName =
   | "check"
   | "gear"
   | "github"
+  | "jingle"
   | "openwork"
   | "plus"
   | "refresh"

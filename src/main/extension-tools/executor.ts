@@ -27,7 +27,7 @@ function serializeExtensionToolOutput(value: unknown, maxChars: number): string 
     return serialized
   }
 
-  return `${serialized.slice(0, maxChars)}\n\n[Openwork truncated extension tool output.]`
+  return `${serialized.slice(0, maxChars)}\n\n[Jingle truncated extension tool output.]`
 }
 
 export class ExtensionToolExecutor {
