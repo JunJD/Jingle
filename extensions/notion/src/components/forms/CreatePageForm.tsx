@@ -1,5 +1,6 @@
 import React from "react"
 void React
+import type { RuntimeOpenApplication } from "@openwork/extension-api"
 import {
   ActionPanel,
   Clipboard,
@@ -52,6 +53,16 @@ type CreatePageFormProps = {
   defaults?: Partial<CreatePageFormValues>
 }
 
+type CreateDatabasePagePreferences = {
+  accessToken?: string
+  apiBaseUrl?: string
+  closeAfterCreate?: boolean
+  notion_token?: string
+  open_in?: RuntimeOpenApplication
+  properties_in_page_previews?: boolean
+  useClipboard?: string
+}
+
 const createPropertyId = (property: DatabaseProperty) =>
   "property::" + property.type + "::" + property.id
 
@@ -60,7 +71,7 @@ const filterNoEditableProperties = (dp: DatabaseProperty) =>
   !NON_EDITABLE_PROPETY_TYPES.includes(dp.type)
 
 export function CreatePageForm({ mutate, launchContext, defaults }: CreatePageFormProps) {
-  const preferences = getPreferenceValues<Preferences.CreateDatabasePage>()
+  const preferences = getPreferenceValues<CreateDatabasePagePreferences>()
   const { pop } = useNavigation()
   const defaultValues = launchContext?.defaults ?? defaults
   const initialDatabaseId = defaultValues?.database

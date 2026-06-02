@@ -1,5 +1,6 @@
 import React from "react"
 void React
+import type { RuntimeOpenApplication } from "@openwork/extension-api"
 import {
   Action,
   ActionPanel,
@@ -50,6 +51,11 @@ type PageListItemProps = {
   isPinned?: boolean
   setPinnedPage?: (page: Page) => Promise<void>
   removePinnedPage?: (id: string) => Promise<void>
+}
+
+type SearchPagePreferences = {
+  open_in?: RuntimeOpenApplication
+  primaryAction?: string
 }
 
 export function PageListItem({
@@ -142,7 +148,7 @@ export function PageListItem({
       onAction={() => handleOnOpenPage(page, setRecentPage)}
     />
   )
-  const { primaryAction, open_in } = getPreferenceValues<Preferences.SearchPage>()
+  const { primaryAction, open_in } = getPreferenceValues<SearchPagePreferences>()
 
   const OpenInBrowserAction = (
     <Action
