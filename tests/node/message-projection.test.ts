@@ -239,6 +239,35 @@ test("unchanged snapshots reuse the previous projection object", () => {
   assert.equal(nextProjection, firstProjection)
 })
 
+test("runtime active turn overrides the historical last assistant turn", () => {
+  const projection = projectMessages(
+    [
+      createUserMessage("user-1", "First question"),
+      createAssistantMessage({ content: "First answer", id: "assistant-1" }),
+      createUserMessage("user-2", "Second question")
+    ],
+    null,
+    { activeTurnKey: "user-2" }
+  )
+
+  assert.equal(projection.lastAssistantId, "assistant-1")
+  assert.equal(projection.activeTurnKey, "user-2")
+})
+
+test("runtime active turn is ignored when the referenced turn is not visible", () => {
+  const projection = projectMessages(
+    [
+      createUserMessage("user-1", "First question"),
+      createAssistantMessage({ content: "First answer", id: "assistant-1" })
+    ],
+    null,
+    { activeTurnKey: "missing-user" }
+  )
+
+  assert.equal(projection.lastAssistantId, "assistant-1")
+  assert.equal(projection.activeTurnKey, null)
+})
+
 test("display rows are projected with a stable footer row for virtual rendering", () => {
   const projection = projectMessages([
     createUserMessage("user-1", "Question"),

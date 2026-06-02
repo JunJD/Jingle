@@ -1,22 +1,21 @@
-import { EventType } from "@ag-ui/core"
 import { After, Given, Then, When } from "@cucumber/cucumber"
 import { expect } from "@playwright/test"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import type { Page } from "playwright"
-import type { AgentProjectionEnvelope } from "../../../src/shared/agent-projection"
+import type { AgentThreadEventBatch, AgentThreadSnapshot } from "../../../src/shared/agent-thread-runtime"
 import type { HITLDecision, ThreadRuntimeState } from "../../../src/shared/app-types"
 import type { AgentInvokeMessage } from "../../../src/shared/message-content"
 import { OpenworkWorld } from "../support/world"
 
-interface AgentThreadSnapshot {
+interface AgentThreadSummary {
   status: string
   thread_id: string
 }
 
 interface AgentBddStream {
   cleanup: (() => void) | null
-  events: AgentProjectionEnvelope[]
+  events: AgentThreadEventBatch[]
 }
 
 interface AgentBddStore {
@@ -28,17 +27,18 @@ interface AgentBddWindow extends Window {
   api: {
     agent: {
       cancel: (threadId: string) => Promise<void>
-      getProjection: (threadId: string) => Promise<AgentProjectionEnvelope>
+      getThreadSnapshot: (threadId: string) => Promise<AgentThreadSnapshot>
       invoke: (threadId: string, message: AgentInvokeMessage, modelId?: string) => void
       resume: (threadId: string, decision: HITLDecision, modelId?: string) => void
-      subscribeProjection: (
+      subscribeThreadEvents: (
         threadId: string,
-        onEnvelope: (event: AgentProjectionEnvelope) => void
+        onBatch: (batch: AgentThreadEventBatch) => void,
+        onSnapshot?: (snapshot: AgentThreadSnapshot) => void
       ) => () => void
     }
     threads: {
-      create: (metadata?: Record<string, unknown>) => Promise<AgentThreadSnapshot>
-      get: (threadId: string) => Promise<AgentThreadSnapshot | null>
+      create: (metadata?: Record<string, unknown>) => Promise<AgentThreadSummary>
+      get: (threadId: string) => Promise<AgentThreadSummary | null>
       getRuntimeState: (threadId: string) => Promise<ThreadRuntimeState>
     }
   }
@@ -75,17 +75,16 @@ async function getRuntimeState(world: OpenworkWorld): Promise<ThreadRuntimeState
   }, threadId)
 }
 
-async function getProjection(world: OpenworkWorld): Promise<AgentProjectionEnvelope["projection"]> {
+async function getThreadSnapshot(world: OpenworkWorld): Promise<AgentThreadSnapshot> {
   const page = await getLauncherPage(world)
   const threadId = getLatestThreadId(world)
 
   return page.evaluate(async (inputThreadId) => {
-    const envelope = await (window as unknown as AgentBddWindow).api.agent.getProjection(inputThreadId)
-    return envelope.projection
+    return (window as unknown as AgentBddWindow).api.agent.getThreadSnapshot(inputThreadId)
   }, threadId)
 }
 
-async function getStreamEvents(world: OpenworkWorld): Promise<AgentProjectionEnvelope[]> {
+async function getStreamEvents(world: OpenworkWorld): Promise<AgentThreadEventBatch[]> {
   const page = await getLauncherPage(world)
   const streamKey = getLatestStreamKey(world)
 
@@ -95,10 +94,11 @@ async function getStreamEvents(world: OpenworkWorld): Promise<AgentProjectionEnv
   }, streamKey)
 }
 
-function getLatestStreamPendingApprovalId(events: AgentProjectionEnvelope[]): string | null {
+function getLatestStreamPendingApprovalId(events: AgentThreadEventBatch[]): string | null {
   return (
     events
-      .map((event) => event.projection.pendingApproval?.id)
+      .flatMap((batch) => batch.events)
+      .map((event) => (event.type === "approval.requested" ? event.approval.id : null))
       .filter((requestId): requestId is string => typeof requestId === "string")
       .at(-1) ?? null
   )
@@ -112,7 +112,7 @@ async function waitForStreamEventType(world: OpenworkWorld, type: string): Promi
     ({ inputStreamKey, expectedType }) => {
       const store = (window as unknown as AgentBddWindow).__openworkAgentBdd
       const events = store?.streams[inputStreamKey]?.events ?? []
-      return events.some((event) => event.event?.type === expectedType)
+      return events.some((batch) => batch.events.some((event) => event.type === expectedType))
     },
     { expectedType: type, inputStreamKey: streamKey },
     { timeout: 10_000 }
@@ -135,9 +135,9 @@ async function startStreamAgent(
       const targetWindow = window as unknown as AgentBddWindow
       targetWindow.__openworkAgentBdd ??= { streams: {} }
 
-      const events: AgentProjectionEnvelope[] = []
-      const cleanup = targetWindow.api.agent.subscribeProjection(inputThreadId, (event) => {
-        events.push(event)
+      const events: AgentThreadEventBatch[] = []
+      const cleanup = targetWindow.api.agent.subscribeThreadEvents(inputThreadId, (batch) => {
+        events.push(batch)
       })
 
       targetWindow.__openworkAgentBdd.streams[inputStreamKey] = {
@@ -275,7 +275,7 @@ When("我通过 agent resume 拒绝最新待审批请求", async function (this:
 })
 
 Then("最新 agent stream 应收到 done", async function (this: OpenworkWorld) {
-  await waitForStreamEventType(this, EventType.RUN_FINISHED)
+  await waitForStreamEventType(this, "run.finished")
 })
 
 Then("最新 agent stream 不应收到 done", async function (this: OpenworkWorld) {
@@ -283,21 +283,24 @@ Then("最新 agent stream 不应收到 done", async function (this: OpenworkWorl
 
   await page.waitForTimeout(250)
   expect(
-    (await getStreamEvents(this)).some((event) => event.event?.type === EventType.RUN_FINISHED)
+    (await getStreamEvents(this)).some((batch) =>
+      batch.events.some((event) => event.type === "run.finished")
+    )
   ).toBe(false)
 })
 
 Then("最新 agent stream 应收到取消完成事件", async function (this: OpenworkWorld) {
   await expect
     .poll(async () =>
-      (await getStreamEvents(this)).some((envelope) => {
-        if (envelope.event?.type !== EventType.RUN_FINISHED) {
-          return false
-        }
+      (await getStreamEvents(this)).some((batch) =>
+        batch.events.some((event) => {
+          if (event.type !== "run.finished") {
+            return false
+          }
 
-        const result = (envelope.event as { result?: { cancelled?: boolean } }).result
-        return result?.cancelled === true
-      })
+          return event.status === "cancelled"
+        })
+      )
     )
     .toBe(true)
 })
@@ -320,7 +323,9 @@ Then("最新 agent stream 应进入长任务", async function (this: OpenworkWor
 Then("最新 agent stream 应收到 HITL 中断", async function (this: OpenworkWorld) {
   await expect
     .poll(async () =>
-      (await getStreamEvents(this)).some((event) => Boolean(event.projection.pendingApproval))
+      (await getStreamEvents(this)).some((batch) =>
+        batch.events.some((event) => event.type === "approval.requested")
+      )
     )
     .toBe(true)
 })
@@ -364,16 +369,16 @@ Then("最新 agent runtime state 待审批请求应为空", async function (this
   await expect.poll(async () => (await getRuntimeState(this)).pendingApproval).toBeNull()
 })
 
-Then("最新 agent projection 消息数应为 {int}", async function (this: OpenworkWorld, expectedCount: number) {
-  await expect.poll(async () => (await getProjection(this)).messages.length).toBe(expectedCount)
+Then("最新 agent runtime snapshot 消息数应为 {int}", async function (this: OpenworkWorld, expectedCount: number) {
+  await expect.poll(async () => (await getThreadSnapshot(this)).messagesPage.length).toBe(expectedCount)
 })
 
 Then(
-  "最新 agent projection 应包含 {int} 条用户消息和 {int} 条助手消息",
+  "最新 agent runtime snapshot 应包含 {int} 条用户消息和 {int} 条助手消息",
   async function (this: OpenworkWorld, expectedUserCount: number, expectedAssistantCount: number) {
     await expect
       .poll(async () => {
-        const messages = (await getProjection(this)).messages
+        const messages = (await getThreadSnapshot(this)).messagesPage
         return {
           assistant: messages.filter((message) => message.role === "assistant").length,
           user: messages.filter((message) => message.role === "user").length
