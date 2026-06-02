@@ -11,20 +11,21 @@ import {
 } from "react"
 
 /* eslint-disable react-refresh/only-export-components */
-import type { AgentThreadProjection } from "@shared/agent-projection"
+import type {
+  AgentThreadEvent,
+  AgentThreadEventBatch,
+  AgentThreadSnapshot
+} from "@shared/agent-thread-runtime"
 import type { ArtifactRecord } from "@shared/artifacts"
 import { isPermissionModeName, THREAD_PERMISSION_MODE_METADATA_KEY } from "@shared/permission-mode"
-import { getIpcErrorDisplayMessage, getIpcErrorPayload } from "./ipc-errors"
 import { historyShellStore } from "./history-shell-store"
+import { selectRuntimeEventsAfterRevision } from "./thread-runtime-batch"
 import {
   createThreadStore,
   type ThreadActions,
   type ThreadRecord,
   type ThreadState
 } from "./thread-store-core"
-import { projectMessages } from "./message-projection"
-import { stabilizeReferences } from "./stabilize-references"
-import { stabilizeThreadMessages } from "./thread-message-stability"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
 export type { ThreadActions, ThreadRecord, ThreadState, TokenUsage } from "./thread-store-core"
@@ -61,10 +62,7 @@ const defaultStreamData: StreamData = {
 
 const ThreadContext = createContext<ThreadContextValue | null>(null)
 
-function parseErrorMessage(error: Error | string | AgentThreadProjection["error"]): string {
-  const ipcError = getIpcErrorPayload(error)
-  const errorMessage = ipcError?.message ?? getIpcErrorDisplayMessage(error, "Unknown error")
-
+function getDisplayErrorMessage(errorMessage: string): string {
   const contextWindowMatch = errorMessage.match(/prompt is too long: (\d+) tokens > (\d+) maximum/i)
   if (contextWindowMatch) {
     const [, usedTokens, maxTokens] = contextWindowMatch
@@ -88,9 +86,26 @@ function parseErrorMessage(error: Error | string | AgentThreadProjection["error"
   return errorMessage
 }
 
+function hasHistoryRefreshEvent(events: AgentThreadEvent[]): boolean {
+  return events.some(
+    (event) => event.type === "run.finished" || event.type === "approval.requested"
+  )
+}
+
+function hasForkStateRelevantEvent(events: AgentThreadEvent[]): boolean {
+  return events.some(
+    (event) =>
+      event.type === "run.started" ||
+      event.type === "run.resumed" ||
+      event.type === "run.finished" ||
+      event.type === "approval.requested" ||
+      event.type === "approval.cleared"
+  )
+}
+
 export function ThreadProvider({ children }: { children: ReactNode }) {
   const initializedThreadsRef = useRef<Set<string>>(new Set())
-  const projectionCleanupRef = useRef<Record<string, () => void>>({})
+  const runtimeCleanupRef = useRef<Record<string, () => void>>({})
   const [threadStore] = useState(() =>
     createThreadStore({
       persistCurrentModel: async (threadId: string, modelId: string) => {
@@ -119,6 +134,9 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
   )
   const streamDataRef = useRef<Record<string, StreamData>>({})
   const streamSubscribersRef = useRef<Record<string, Set<() => void>>>({})
+  const pendingRuntimeBatchesRef = useRef<Record<string, AgentThreadEventBatch[]>>({})
+  const runtimeResyncRef = useRef<Record<string, Promise<void> | null>>({})
+  const resyncRuntimeSnapshotRef = useRef<(threadId: string) => Promise<void>>(async () => {})
 
   const notifyStreamSubscribers = useCallback((threadId: string): void => {
     streamSubscribersRef.current[threadId]?.forEach((callback) => callback())
@@ -136,51 +154,164 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     [threadStore]
   )
 
-  const applyProjectionUpdate = useCallback(
-    (threadId: string, projection: AgentThreadProjection): void => {
-      const previousState = threadStore.getThreadState(threadId)
-      const wasLoading = streamDataRef.current[threadId]?.isLoading ?? false
-      const shouldRefreshForkState =
-        wasLoading !== projection.isLoading ||
-        previousState.pendingApproval?.id !== projection.pendingApproval?.id
-      const messages = stabilizeThreadMessages(previousState.messages, projection.messages)
-      const pendingApproval = stabilizeReferences(
-        previousState.pendingApproval,
-        projection.pendingApproval
-      )
-      const subagents = stabilizeReferences(previousState.subagents, projection.subagents)
-      const todos = stabilizeReferences(previousState.todos, projection.todos)
-      const tokenUsage = stabilizeReferences(previousState.tokenUsage, projection.tokenUsage)
-      const messageProjection = projectMessages(messages, previousState.messageProjection)
-
-      threadStore.updateThreadState(threadId, () => ({
-        error: projection.error ? parseErrorMessage(projection.error) : null,
-        messageProjection,
-        messages,
-        pendingApproval,
-        runId: projection.runId,
-        subagents,
-        todos,
-        tokenUsage
-      }))
-
+  const syncStreamData = useCallback(
+    (threadId: string, isLoading: boolean): void => {
+      const messages = threadStore.getThreadState(threadId).messages
       streamDataRef.current[threadId] = {
-        isLoading: projection.isLoading,
+        isLoading,
         messages,
         stream: null
       }
-      threadStore.setStreamLoadingState(threadId, projection.isLoading)
+      threadStore.setStreamLoadingState(threadId, isLoading)
       notifyStreamSubscribers(threadId)
+    },
+    [notifyStreamSubscribers, threadStore]
+  )
 
-      if (wasLoading && !projection.isLoading) {
+  const applyRuntimeSnapshot = useCallback(
+    (threadId: string, snapshot: AgentThreadSnapshot): void => {
+      const wasLoading = streamDataRef.current[threadId]?.isLoading ?? false
+      threadStore.getThreadActions(threadId).applyRuntimeSnapshot({
+        ...snapshot,
+        error: snapshot.error
+          ? {
+              ...snapshot.error,
+              message: getDisplayErrorMessage(snapshot.error.message)
+            }
+          : null
+      })
+      const state = threadStore.getThreadState(threadId)
+      const isLoading = Boolean(state.activeRun && state.activeRun.status === "running")
+      syncStreamData(threadId, isLoading)
+
+      if (wasLoading && !isLoading) {
+        void historyShellStore.getState().loadThreads()
+      }
+    },
+    [syncStreamData, threadStore]
+  )
+
+  const applyRuntimeEvents = useCallback(
+    (threadId: string, events: AgentThreadEvent[]): void => {
+      if (events.length === 0) {
+        return
+      }
+
+      const wasLoading = streamDataRef.current[threadId]?.isLoading ?? false
+      threadStore.getThreadActions(threadId).applyRuntimeEvents(
+        events.map((event) =>
+          event.type === "thread.statusChanged" && event.error
+            ? {
+                ...event,
+                error: {
+                  ...event.error,
+                  message: getDisplayErrorMessage(event.error.message)
+                }
+              }
+            : event
+        )
+      )
+      const state = threadStore.getThreadState(threadId)
+      const isLoading = Boolean(state.activeRun && state.activeRun.status === "running")
+      syncStreamData(threadId, isLoading)
+
+      if (wasLoading && !isLoading && hasHistoryRefreshEvent(events)) {
         void historyShellStore.getState().loadThreads()
       }
 
-      if (shouldRefreshForkState) {
+      if (wasLoading !== isLoading || hasForkStateRelevantEvent(events)) {
         void refreshThreadForkState(threadId)
       }
     },
-    [notifyStreamSubscribers, refreshThreadForkState, threadStore]
+    [refreshThreadForkState, syncStreamData, threadStore]
+  )
+
+  const drainPendingRuntimeBatches = useCallback(
+    (threadId: string): void => {
+      const batches = pendingRuntimeBatchesRef.current[threadId]
+      if (!batches || batches.length === 0 || runtimeResyncRef.current[threadId]) {
+        return
+      }
+
+      delete pendingRuntimeBatchesRef.current[threadId]
+      for (const batch of batches) {
+        const currentRevision = threadStore.getThreadState(batch.threadId).revision
+        const selection = selectRuntimeEventsAfterRevision(currentRevision, batch)
+        if (selection.type === "events") {
+          applyRuntimeEvents(batch.threadId, selection.events)
+          continue
+        }
+
+        if (selection.type === "gap") {
+          console.warn("[ThreadContext] Runtime event gap detected; resyncing thread snapshot.", {
+            actualRevision: selection.actualRevision,
+            expectedRevision: selection.expectedRevision,
+            threadId: batch.threadId
+          })
+          void resyncRuntimeSnapshotRef.current(batch.threadId)
+          return
+        }
+      }
+    },
+    [applyRuntimeEvents, threadStore]
+  )
+
+  const resyncRuntimeSnapshot = useCallback(
+    async (threadId: string): Promise<void> => {
+      if (runtimeResyncRef.current[threadId]) {
+        await runtimeResyncRef.current[threadId]
+        return
+      }
+
+      const resync = window.api.agent
+        .getThreadSnapshot(threadId)
+        .then((snapshot) => {
+          applyRuntimeSnapshot(threadId, snapshot)
+        })
+        .catch((error) => {
+          console.error("[ThreadContext] Failed to resync thread runtime:", error)
+        })
+        .finally(() => {
+          runtimeResyncRef.current[threadId] = null
+          drainPendingRuntimeBatches(threadId)
+        })
+
+      runtimeResyncRef.current[threadId] = resync
+      await resync
+    },
+    [applyRuntimeSnapshot, drainPendingRuntimeBatches]
+  )
+
+  useEffect(() => {
+    resyncRuntimeSnapshotRef.current = resyncRuntimeSnapshot
+  }, [resyncRuntimeSnapshot])
+
+  const applyRuntimeBatch = useCallback(
+    (batch: AgentThreadEventBatch): void => {
+      if (runtimeResyncRef.current[batch.threadId]) {
+        const batches = pendingRuntimeBatchesRef.current[batch.threadId] ?? []
+        batches.push(batch)
+        pendingRuntimeBatchesRef.current[batch.threadId] = batches
+        return
+      }
+
+      const currentRevision = threadStore.getThreadState(batch.threadId).revision
+      const selection = selectRuntimeEventsAfterRevision(currentRevision, batch)
+      if (selection.type === "events") {
+        applyRuntimeEvents(batch.threadId, selection.events)
+        return
+      }
+
+      if (selection.type === "gap") {
+        console.warn("[ThreadContext] Runtime event gap detected; resyncing thread snapshot.", {
+          actualRevision: selection.actualRevision,
+          expectedRevision: selection.expectedRevision,
+          threadId: batch.threadId
+        })
+        void resyncRuntimeSnapshot(batch.threadId)
+      }
+    },
+    [applyRuntimeEvents, resyncRuntimeSnapshot, threadStore]
   )
 
   const getThreadRecord = useCallback(
@@ -242,21 +373,26 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
 
       initializedThreadsRef.current.add(threadId)
       threadStore.ensureThreadState(threadId)
-      projectionCleanupRef.current[threadId] = window.api.agent.subscribeProjection(
+      runtimeCleanupRef.current[threadId] = window.api.agent.subscribeThreadEvents(
         threadId,
-        (envelope) => {
-          applyProjectionUpdate(threadId, envelope.projection)
+        (batch) => {
+          applyRuntimeBatch(batch)
+        },
+        (snapshot) => {
+          applyRuntimeSnapshot(threadId, snapshot)
         }
       )
     },
-    [applyProjectionUpdate, threadStore]
+    [applyRuntimeBatch, applyRuntimeSnapshot, threadStore]
   )
 
   const cleanupThread = useCallback(
     (threadId: string): void => {
       initializedThreadsRef.current.delete(threadId)
-      projectionCleanupRef.current[threadId]?.()
-      delete projectionCleanupRef.current[threadId]
+      runtimeCleanupRef.current[threadId]?.()
+      delete runtimeCleanupRef.current[threadId]
+      delete pendingRuntimeBatchesRef.current[threadId]
+      delete runtimeResyncRef.current[threadId]
       delete streamDataRef.current[threadId]
       delete streamSubscribersRef.current[threadId]
       threadStore.deleteThreadState(threadId)
@@ -300,15 +436,15 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const envelope = await window.api.agent.getProjection(threadId)
-        applyProjectionUpdate(threadId, envelope.projection)
+        const snapshot = await window.api.agent.getThreadSnapshot(threadId)
+        applyRuntimeSnapshot(threadId, snapshot)
         const runtimeState = await window.api.threads.getRuntimeState(threadId)
         actions.setForkState(runtimeState.forkState)
       } catch (error) {
-        console.error("[ThreadContext] Failed to load thread projection:", error)
+        console.error("[ThreadContext] Failed to load thread runtime:", error)
       }
     },
-    [applyProjectionUpdate, getThreadActions, threadStore]
+    [applyRuntimeSnapshot, getThreadActions, threadStore]
   )
 
   const reloadThread = useCallback(

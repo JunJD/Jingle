@@ -41,26 +41,24 @@ When("我在 Main 窗口展开 present_artifacts 工具消息", async function (
 
   await expect
     .poll(async () => {
-      const envelope = await page.evaluate(async (targetThreadId) => {
+      const snapshot = await page.evaluate(async (targetThreadId) => {
         return (
           window as typeof window & {
             api: {
               agent: {
-                getProjection: (threadId: string) => Promise<{
-                  projection: {
-                    messages: Array<{
-                      role: string
-                      tool_calls?: Array<{ name?: string }>
-                    }>
-                  }
+                getThreadSnapshot: (threadId: string) => Promise<{
+                  messagesPage: Array<{
+                    role: string
+                    tool_calls?: Array<{ name?: string }>
+                  }>
                 }>
               }
             }
           }
-        ).api.agent.getProjection(targetThreadId)
+        ).api.agent.getThreadSnapshot(targetThreadId)
       }, threadId)
 
-      return envelope.projection.messages.some(
+      return snapshot.messagesPage.some(
         (message) =>
           message.role === "assistant" &&
           (message.tool_calls ?? []).some((toolCall) => toolCall.name === "present_artifacts")

@@ -421,9 +421,78 @@ export function getTurnPendingApproval(
   return belongsToTurn ? pendingApproval : null
 }
 
+export function updateProjectedMessage(
+  previousProjection: MessagesProjection,
+  message: ThreadMessage,
+  options: { activeTurnKey?: string | null } = {}
+): MessagesProjection | null {
+  if (message.role === "tool") {
+    return null
+  }
+
+  const turnIndex = previousProjection.turns.findIndex((turn) =>
+    turn.assistants.some((assistant) => assistant.id === message.id)
+  )
+  if (turnIndex < 0) {
+    return null
+  }
+
+  const previousTurn = previousProjection.turns[turnIndex]
+  if (!previousTurn) {
+    return null
+  }
+
+  const assistantIndex = previousTurn.assistants.findIndex(
+    (assistant) => assistant.id === message.id
+  )
+  if (assistantIndex < 0) {
+    return null
+  }
+
+  const nextAssistants = [...previousTurn.assistants]
+  nextAssistants[assistantIndex] = message
+  const nextTurn: MessageTurn = {
+    ...previousTurn,
+    assistants: nextAssistants,
+    branchMessageId:
+      previousTurn.branchMessageId === previousTurn.assistants[assistantIndex]?.id
+        ? message.id
+        : previousTurn.branchMessageId
+  }
+  const turns = [...previousProjection.turns]
+  turns[turnIndex] = nextTurn
+
+  const displayRows = previousProjection.displayRows.map((row) => {
+    if (row.kind !== "turn" || row.key !== nextTurn.key) {
+      return row
+    }
+
+    return {
+      ...row,
+      turn: nextTurn
+    }
+  })
+  const hasRuntimeActiveTurn = options.activeTurnKey !== undefined && options.activeTurnKey !== null
+  const activeTurnKey = hasRuntimeActiveTurn
+    ? (options.activeTurnKey ?? null)
+    : previousProjection.activeTurnKey
+  const lastAssistantId =
+    previousProjection.lastAssistantId === message.id
+      ? message.id
+      : previousProjection.lastAssistantId
+
+  return {
+    activeTurnKey,
+    displayRows,
+    lastAssistantId,
+    turns
+  }
+}
+
 export function projectMessages(
   messages: ThreadMessage[],
-  previousProjection?: MessagesProjection | null
+  previousProjection?: MessagesProjection | null,
+  options: { activeTurnKey?: string | null } = {}
 ): MessagesProjection {
   const toolResults = stabilizeToolResults(
     getPreviousToolResults(previousProjection),
@@ -443,9 +512,16 @@ export function projectMessages(
       break
     }
   }
+  const hasRuntimeActiveTurn = options.activeTurnKey !== undefined && options.activeTurnKey !== null
+  const runtimeActiveTurnKey =
+    hasRuntimeActiveTurn && turns.some((turn) => turn.key === options.activeTurnKey)
+      ? (options.activeTurnKey ?? null)
+      : null
   const activeTurnKey =
-    turns.find((turn) => turn.assistants.some((message) => message.id === lastAssistantId))?.key ??
-    null
+    hasRuntimeActiveTurn
+      ? runtimeActiveTurnKey
+      : (turns.find((turn) => turn.assistants.some((message) => message.id === lastAssistantId))
+          ?.key ?? null)
 
   if (
     previousProjection &&

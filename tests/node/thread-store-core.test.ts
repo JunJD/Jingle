@@ -1,6 +1,11 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { DEFAULT_PERMISSION_MODE } from "../../src/shared/permission-mode"
+import type {
+  ActiveAgentRun,
+  AgentThreadSnapshot
+} from "../../src/shared/agent-thread-runtime"
+import type { HITLRequest } from "../../src/shared/hitl"
 import type { ArtifactRecord } from "../../src/shared/artifacts"
 import { createThreadStore } from "../../src/renderer/src/lib/thread-store-core"
 import type { Message } from "../../src/renderer/src/types"
@@ -50,6 +55,50 @@ function createAssistantMessage(id: string, content = "Assistant message"): Mess
     created_at: new Date("2026-01-01T00:00:00.000Z"),
     id,
     role: "assistant"
+  }
+}
+
+function createActiveRun(): ActiveAgentRun {
+  return {
+    assistantMessageId: null,
+    phase: "thinking",
+    runId: null,
+    status: "running",
+    threadId: "thread-a",
+    turnId: "user-1",
+    userMessageId: "user-1"
+  }
+}
+
+function createSnapshot(input: Partial<AgentThreadSnapshot>): AgentThreadSnapshot {
+  return {
+    activeRun: null,
+    error: null,
+    hasMoreBefore: false,
+    latestRunId: null,
+    messagesPage: [],
+    pendingApproval: null,
+    revision: 1,
+    status: "idle",
+    subagents: [],
+    threadId: "thread-a",
+    todos: [],
+    tokenUsage: null,
+    ...input
+  }
+}
+
+function createPendingApproval(): HITLRequest {
+  return {
+    allowed_decisions: ["approve", "reject"],
+    id: "hitl:thread-a:run-1:tool-1",
+    review: null,
+    tool_call: {
+      args: {},
+      id: "tool-1",
+      name: "bash",
+      type: "tool_call"
+    }
   }
 }
 
@@ -175,4 +224,239 @@ test("message actions update projection without emitting for equivalent snapshot
   assert.notEqual(updatedProjection, firstProjection)
   assert.equal(updatedProjection.turns[0]?.user, firstProjection.turns[0]?.user)
   assert.equal(updatedProjection.turns[0]?.assistants[0]?.content, "Hello again")
+})
+
+test("message projection uses runtime-owned active turn from thread state", () => {
+  const store = createThreadStore()
+
+  store.updateThreadState("thread-a", () => ({
+    activeRun: {
+      assistantMessageId: null,
+      phase: "thinking",
+      runId: "run-1",
+      status: "running",
+      threadId: "thread-a",
+      turnId: "user-2",
+      userMessageId: "user-2"
+    }
+  }))
+  store.getThreadActions("thread-a").setMessages([
+    createUserMessage("user-1", "First question"),
+    createAssistantMessage("assistant-1", "First answer"),
+    createUserMessage("user-2", "Second question")
+  ])
+
+  const state = store.getThreadState("thread-a")
+  assert.equal(state.messageProjection.lastAssistantId, "assistant-1")
+  assert.equal(state.messageProjection.activeTurnKey, "user-2")
+})
+
+test("runtime snapshot and events update thread state through store reducer", () => {
+  const store = createThreadStore()
+  const actions = store.getThreadActions("thread-a")
+  const activeRun = createActiveRun()
+
+  actions.applyRuntimeSnapshot(createSnapshot({
+    activeRun,
+    latestRunId: activeRun.runId,
+    messagesPage: [createUserMessage("user-1", "Question")],
+    revision: 1,
+    status: "running"
+  }))
+  actions.applyRuntimeEvents([
+    {
+      message: createAssistantMessage("assistant-1", "Hello"),
+      revision: 2,
+      type: "message.upserted"
+    },
+    {
+      revision: 3,
+      runId: "run-1",
+      type: "run.idAssigned"
+    }
+  ])
+
+  const state = store.getThreadState("thread-a")
+  assert.equal(state.revision, 3)
+  assert.equal(state.runId, "run-1")
+  assert.equal(state.activeRun?.assistantMessageId, "assistant-1")
+  assert.equal(state.messageProjection.activeTurnKey, "user-1")
+  assert.deepEqual(
+    state.messages.map((message) => message.id),
+    ["user-1", "assistant-1"]
+  )
+})
+
+test("run started immediately moves projection active turn before assistant first token", () => {
+  const store = createThreadStore()
+  const actions = store.getThreadActions("thread-a")
+
+  actions.applyRuntimeSnapshot(createSnapshot({
+    messagesPage: [
+      createUserMessage("user-1", "First question"),
+      createAssistantMessage("assistant-1", "First answer")
+    ],
+    revision: 1,
+    status: "idle"
+  }))
+  const firstProjection = store.getThreadState("thread-a").messageProjection
+  assert.equal(firstProjection.activeTurnKey, "user-1")
+
+  actions.applyRuntimeEvents([
+    {
+      message: createUserMessage("user-2", "Second question"),
+      revision: 2,
+      type: "message.upserted"
+    },
+    {
+      revision: 3,
+      run: {
+        assistantMessageId: null,
+        phase: "thinking",
+        runId: null,
+        status: "running",
+        threadId: "thread-a",
+        turnId: "user-2",
+        userMessageId: "user-2"
+      },
+      type: "run.started"
+    }
+  ])
+
+  const state = store.getThreadState("thread-a")
+  assert.equal(state.activeRun?.turnId, "user-2")
+  assert.equal(state.messageProjection.activeTurnKey, "user-2")
+  assert.equal(state.messageProjection.lastAssistantId, "assistant-1")
+})
+
+test("runtime delta for an unknown message does not advance revision before snapshot", () => {
+  const store = createThreadStore()
+  const actions = store.getThreadActions("thread-a")
+
+  actions.applyRuntimeEvents([
+    {
+      delta: "late",
+      field: "text",
+      messageId: "assistant-1",
+      partId: "content",
+      revision: 2,
+      type: "message.part.delta"
+    }
+  ])
+  assert.equal(store.getThreadState("thread-a").revision, 0)
+
+  actions.applyRuntimeSnapshot(createSnapshot({
+    messagesPage: [
+      createUserMessage("user-1", "Question"),
+      createAssistantMessage("assistant-1", "Hello")
+    ],
+    revision: 1,
+    status: "running"
+  }))
+
+  const state = store.getThreadState("thread-a")
+  assert.equal(state.revision, 1)
+  assert.equal(state.messages[1]?.content, "Hello")
+})
+
+test("runtime token delta keeps historical turn references stable", () => {
+  const store = createThreadStore()
+  const actions = store.getThreadActions("thread-a")
+
+  actions.applyRuntimeSnapshot(createSnapshot({
+    activeRun: createActiveRun(),
+    messagesPage: [
+      createUserMessage("user-1", "Question"),
+      createAssistantMessage("assistant-1", "Hello")
+    ],
+    revision: 1,
+    status: "running"
+  }))
+  const firstProjection = store.getThreadState("thread-a").messageProjection
+  const firstTurn = firstProjection.turns[0]
+  const firstRow = firstProjection.displayRows[0]
+
+  actions.applyRuntimeEvents([
+    {
+      delta: " world",
+      field: "text",
+      messageId: "assistant-1",
+      partId: "content",
+      revision: 2,
+      type: "message.part.delta"
+    }
+  ])
+
+  const state = store.getThreadState("thread-a")
+  assert.equal(state.revision, 2)
+  assert.equal(state.messages[1]?.content, "Hello world")
+  assert.notEqual(state.messageProjection, firstProjection)
+  assert.notEqual(state.messageProjection.turns[0], firstTurn)
+  assert.equal(state.messageProjection.turns[0]?.user, firstTurn?.user)
+  assert.notEqual(state.messageProjection.displayRows[0], firstRow)
+  assert.equal(state.messageProjection.displayRows.at(-1), firstProjection.displayRows.at(-1))
+})
+
+test("runtime snapshot restores thread facts and stale events do not roll back state", () => {
+  const store = createThreadStore()
+  const actions = store.getThreadActions("thread-a")
+  const pendingApproval = createPendingApproval()
+
+  actions.applyRuntimeSnapshot(createSnapshot({
+    activeRun: {
+      ...createActiveRun(),
+      phase: "waiting_tool_result",
+      runId: "run-1",
+      status: "waiting_approval"
+    },
+    error: {
+      code: "FAILED_PRECONDITION",
+      message: "Needs approval",
+      status: 412
+    },
+    latestRunId: "run-1",
+    messagesPage: [createUserMessage("user-1", "Question")],
+    pendingApproval,
+    revision: 7,
+    status: "interrupted",
+    subagents: [
+      {
+        description: "Review code",
+        id: "subagent-1",
+        name: "Reviewer",
+        status: "running"
+      }
+    ],
+    todos: [
+      {
+        content: "Review command",
+        id: "todo-1",
+        status: "pending"
+      }
+    ],
+    tokenUsage: {
+      inputTokens: 10,
+      lastUpdated: new Date("2026-01-01T00:00:00.000Z"),
+      outputTokens: 5,
+      totalTokens: 15
+    }
+  }))
+  actions.applyRuntimeEvents([
+    {
+      revision: 6,
+      runId: "run-1",
+      status: "completed",
+      type: "run.finished"
+    }
+  ])
+
+  const state = store.getThreadState("thread-a")
+  assert.equal(state.revision, 7)
+  assert.equal(state.runId, "run-1")
+  assert.equal(state.error, "Needs approval")
+  assert.equal(state.pendingApproval, pendingApproval)
+  assert.equal(state.subagents[0]?.id, "subagent-1")
+  assert.equal(state.todos[0]?.id, "todo-1")
+  assert.equal(state.tokenUsage?.totalTokens, 15)
+  assert.equal(state.activeRun?.status, "waiting_approval")
 })

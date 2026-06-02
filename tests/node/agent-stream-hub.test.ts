@@ -1,6 +1,5 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { EventType } from "@ag-ui/core"
 import type { Message, ThreadHistoryState } from "../../src/shared/app-types"
 import { AgentStreamHub } from "../../src/main/agent/stream-hub"
 import type { ThreadsService } from "../../src/main/threads/service"
@@ -40,6 +39,22 @@ function createSerializedAiMessage(id: string, content: string) {
   }
 }
 
+function createPendingApproval(id: string, toolCallId: string): ThreadHistoryState["pendingApproval"] {
+  return {
+    allowed_decisions: ["approve", "reject"],
+    id,
+    review: null,
+    tool_call: {
+      args: {
+        command: "echo hello"
+      },
+      id: toolCallId,
+      name: "bash",
+      type: "tool_call"
+    }
+  }
+}
+
 function createHistory(overrides: Partial<ThreadHistoryState> = {}): ThreadHistoryState {
   return {
     artifacts: [],
@@ -53,55 +68,119 @@ function createHistory(overrides: Partial<ThreadHistoryState> = {}): ThreadHisto
   }
 }
 
-test("AgentStreamHub hydrates history and fans out projection updates", async () => {
+test("AgentStreamHub hydrates history and fans out runtime event batches", async () => {
   const history = createHistory({
     messages: [createUserMessage("history-user", "hello")],
     todos: []
   })
   const hub = new AgentStreamHub(createThreadsService(history))
-  const seenByFirst: string[] = []
-  const seenBySecond: string[] = []
+  const seenByFirst: string[][] = []
+  const seenBySecond: string[][] = []
 
-  await hub.subscribe("thread-1", "first", (envelope) => {
-    seenByFirst.push(envelope.projection.status)
+  await hub.subscribeThreadEvents("thread-1", "first", (batch) => {
+    seenByFirst.push(batch.events.map((event) => event.type))
   })
-  await hub.subscribe("thread-1", "second", (envelope) => {
-    seenBySecond.push(envelope.projection.status)
+  await hub.subscribeThreadEvents("thread-1", "second", (batch) => {
+    seenBySecond.push(batch.events.map((event) => event.type))
   })
 
-  const initial = await hub.getProjectionEnvelope("thread-1")
-  assert.deepEqual(initial.projection.messages, history.messages)
-  assert.equal(initial.projection.status, "idle")
+  const initial = await hub.getThreadSnapshot("thread-1")
+  assert.deepEqual(initial.messagesPage, history.messages)
+  assert.equal(initial.status, "idle")
+  assert.equal(initial.revision, 1)
 
   await hub.prepareInvoke("thread-1", {
     content: "Ship it",
     id: "user-2"
   })
 
-  const afterInvoke = await hub.getProjectionEnvelope("thread-1")
-  assert.equal(afterInvoke.event, null)
-  assert.equal(afterInvoke.projection.isLoading, true)
-  assert.equal(afterInvoke.projection.messages.at(-1)?.id, "user-2")
-  assert.equal(seenByFirst.at(-1), "running")
-  assert.equal(seenBySecond.at(-1), "running")
+  const afterInvoke = await hub.getThreadSnapshot("thread-1")
+  assert.equal(afterInvoke.status, "running")
+  assert.equal(afterInvoke.messagesPage.at(-1)?.id, "user-2")
+  assert.equal(afterInvoke.revision, 3)
+  assert.deepEqual(afterInvoke.activeRun, {
+    assistantMessageId: null,
+    phase: "thinking",
+    runId: null,
+    status: "running",
+    threadId: "thread-1",
+    turnId: "user-2",
+    userMessageId: "user-2"
+  })
+  assert.deepEqual(seenByFirst.at(-1), ["message.upserted", "run.started"])
+  assert.deepEqual(seenBySecond.at(-1), ["message.upserted", "run.started"])
 
   await hub.handlePayload("thread-1", { type: "run_started", runId: "run-1" })
+  const afterRunStarted = await hub.getThreadSnapshot("thread-1")
+  assert.equal(afterRunStarted.revision, 4)
+  assert.equal(afterRunStarted.activeRun?.runId, "run-1")
+  assert.equal(afterRunStarted.activeRun?.turnId, "user-2")
+
   await hub.handlePayload("thread-1", { type: "cancelled" })
 
-  const afterCancel = await hub.getProjectionEnvelope("thread-1")
-  assert.equal(afterCancel.projection.runId, "run-1")
-  assert.equal(afterCancel.projection.isLoading, false)
-  assert.equal(afterCancel.projection.status, "cancelled")
+  const afterCancel = await hub.getThreadSnapshot("thread-1")
+  assert.equal(afterCancel.revision, 5)
+  assert.equal(afterCancel.latestRunId, "run-1")
+  assert.equal(afterCancel.status, "cancelled")
+  assert.equal(afterCancel.activeRun, null)
 })
 
-test("AgentStreamHub global subscribers receive every thread projection update", async () => {
-  const hub = new AgentStreamHub(createThreadsService(createHistory()))
+test("AgentStreamHub restores active run ownership for hydrated pending approvals", async () => {
+  const history = createHistory({
+    messages: [
+      createUserMessage("user-1", "First question"),
+      createAssistantMessage("assistant-1", "First answer"),
+      createUserMessage("user-2", "Needs approval"),
+      {
+        content: "",
+        created_at: new Date("2025-01-01T00:00:00.000Z"),
+        id: "assistant-2",
+        role: "assistant",
+        tool_calls: [
+          {
+            args: {
+              command: "echo hello"
+            },
+            id: "tool-1",
+            name: "bash",
+            type: "tool_call"
+          }
+        ]
+      }
+    ],
+    pendingApproval: createPendingApproval("hitl:thread-1:run-1:tool-1", "tool-1")
+  })
+  const hub = new AgentStreamHub(createThreadsService(history))
+
+  const snapshot = await hub.getThreadSnapshot("thread-1")
+
+  assert.equal(snapshot.status, "interrupted")
+  assert.equal(snapshot.revision, 1)
+  assert.equal(snapshot.activeRun?.turnId, "user-2")
+  assert.equal(snapshot.activeRun?.assistantMessageId, "assistant-2")
+  assert.equal(snapshot.activeRun?.status, "waiting_approval")
+  assert.equal(snapshot.activeRun?.phase, "waiting_tool_result")
+})
+
+test("AgentStreamHub global runtime subscribers receive every thread event batch", async () => {
+  const hub = new AgentStreamHub(
+    createThreadsService(
+      createHistory({
+        messages: [createUserMessage("history-user", "resume me")]
+      })
+    )
+  )
   const seen: Array<{ status: string; threadId: string }> = []
-  const unsubscribe = hub.subscribeAll("global", (envelope) => {
-    seen.push({
-      status: envelope.projection.status,
-      threadId: envelope.projection.threadId
-    })
+  const unsubscribe = hub.subscribeAllThreadEvents("global", (batch) => {
+    const hasRunStarted = batch.events.some(
+      (event) => event.type === "run.started" || event.type === "run.resumed"
+    )
+    if (hasRunStarted) {
+      seen.push({
+        status: "running",
+        threadId: batch.threadId
+      })
+    }
   })
 
   await hub.prepareInvoke("thread-1", {
@@ -118,18 +197,168 @@ test("AgentStreamHub global subscribers receive every thread projection update",
   ])
 })
 
+test("AgentStreamHub preserves pending approval while resume is waiting for service validation", async () => {
+  const history = createHistory({
+    messages: [
+      createUserMessage("user-1", "Needs approval"),
+      {
+        content: "",
+        created_at: new Date("2025-01-01T00:00:00.000Z"),
+        id: "assistant-1",
+        role: "assistant",
+        tool_calls: [
+          {
+            args: {
+              command: "echo hello"
+            },
+            id: "tool-1",
+            name: "bash",
+            type: "tool_call"
+          }
+        ]
+      }
+    ],
+    pendingApproval: createPendingApproval("hitl:thread-1:run-1:tool-1", "tool-1")
+  })
+  const hub = new AgentStreamHub(createThreadsService(history))
+  const eventTypes: string[] = []
+
+  await hub.subscribeThreadEvents("thread-1", "events", (batch) => {
+    eventTypes.push(...batch.events.map((event) => event.type))
+  })
+  await hub.prepareResume("thread-1")
+
+  const afterPrepareResume = await hub.getThreadSnapshot("thread-1")
+  assert.equal(afterPrepareResume.status, "running")
+  assert.equal(afterPrepareResume.pendingApproval?.id, "hitl:thread-1:run-1:tool-1")
+  assert.equal(afterPrepareResume.activeRun?.status, "running")
+  assert.ok(eventTypes.includes("run.resumed"))
+
+  await hub.handlePayload("thread-1", {
+    code: "BAD_REQUEST",
+    error: "Resume failed",
+    message: "Resume failed",
+    type: "error"
+  })
+
+  const afterFailedResume = await hub.getThreadSnapshot("thread-1")
+  assert.equal(afterFailedResume.status, "error")
+  assert.equal(afterFailedResume.pendingApproval?.id, "hitl:thread-1:run-1:tool-1")
+})
+
+test("AgentStreamHub clears pending approval only after resumed run starts", async () => {
+  const history = createHistory({
+    messages: [
+      createUserMessage("user-1", "Needs approval"),
+      createAssistantMessage("assistant-1", "")
+    ],
+    pendingApproval: createPendingApproval("hitl:thread-1:run-1:tool-1", "tool-1")
+  })
+  const hub = new AgentStreamHub(createThreadsService(history))
+  const eventTypes: string[] = []
+
+  await hub.subscribeThreadEvents("thread-1", "events", (batch) => {
+    eventTypes.push(...batch.events.map((event) => event.type))
+  })
+  await hub.prepareResume("thread-1")
+
+  const beforeRunStarted = await hub.getThreadSnapshot("thread-1")
+  assert.equal(beforeRunStarted.pendingApproval?.id, "hitl:thread-1:run-1:tool-1")
+
+  await hub.handlePayload("thread-1", { runId: "run-2", type: "run_started" })
+
+  const afterRunStarted = await hub.getThreadSnapshot("thread-1")
+  assert.equal(afterRunStarted.pendingApproval, null)
+  assert.equal(afterRunStarted.activeRun?.runId, "run-2")
+  assert.deepEqual(eventTypes, ["run.resumed", "message.upserted", "approval.cleared", "run.idAssigned"])
+})
+
+test("AgentStreamHub exposes runtime snapshots and event batches", async () => {
+  const hub = new AgentStreamHub(createThreadsService(createHistory()))
+  const eventTypes: string[] = []
+
+  await hub.prepareInvoke("thread-events", {
+    content: "Ship it",
+    id: "user-1"
+  })
+
+  const snapshot = await hub.getThreadSnapshot("thread-events")
+  assert.equal(snapshot.revision, 3)
+  assert.equal(snapshot.activeRun?.turnId, "user-1")
+  assert.deepEqual(
+    snapshot.messagesPage.map((message) => message.id),
+    ["user-1"]
+  )
+
+  await hub.subscribeThreadEvents("thread-events", "events", (batch) => {
+    eventTypes.push(...batch.events.map((event) => event.type))
+  })
+
+  await hub.handlePayload("thread-events", { type: "run_started", runId: "run-1" })
+  await hub.handlePayload("thread-events", {
+    type: "stream",
+    mode: "messages",
+    data: [createSerializedAiMessage("assistant-1", "hello")]
+  })
+
+  assert.deepEqual(eventTypes, ["run.idAssigned", "message.upserted"])
+})
+
+test("AgentStreamHub does not replay hydration snapshots as runtime deltas", async () => {
+  const hub = new AgentStreamHub(
+    createThreadsService(
+      createHistory({
+        messages: [createUserMessage("history-user", "hello")]
+      })
+    )
+  )
+  const eventTypes: string[] = []
+
+  const snapshot = await hub.getThreadSnapshot("hydrated-thread")
+  assert.deepEqual(
+    snapshot.messagesPage.map((message) => message.id),
+    ["history-user"]
+  )
+
+  await hub.subscribeThreadEvents("hydrated-thread", "events", (batch) => {
+    eventTypes.push(...batch.events.map((event) => event.type))
+  })
+  await hub.prepareInvoke("hydrated-thread", {
+    content: "next",
+    id: "user-2"
+  })
+
+  assert.deepEqual(eventTypes, ["message.upserted", "run.started"])
+})
+
+test("AgentStreamHub hydrates an empty thread only once", async () => {
+  let loadCount = 0
+  const hub = new AgentStreamHub({
+    getHistory: async () => {
+      loadCount += 1
+      return createHistory()
+    }
+  } as unknown as ThreadsService)
+
+  const firstSnapshot = await hub.getThreadSnapshot("empty-thread")
+  const secondSnapshot = await hub.getThreadSnapshot("empty-thread")
+  await hub.subscribeThreadEvents("empty-thread", "events", () => {})
+
+  assert.equal(loadCount, 1)
+  assert.equal(firstSnapshot.revision, 1)
+  assert.equal(secondSnapshot.revision, 1)
+})
+
 test("AgentStreamHub derives persisted HITL request ids from run and tool call ids", async () => {
   const history = createHistory({
     messages: [createUserMessage("history-user", "hello")],
     todos: []
   })
   const hub = new AgentStreamHub(createThreadsService(history))
-  const events: string[] = []
+  const eventTypes: string[] = []
 
-  await hub.subscribe("thread-2", "subscriber", (envelope) => {
-    if (envelope.event) {
-      events.push(envelope.event.type)
-    }
+  await hub.subscribeThreadEvents("thread-2", "subscriber", (batch) => {
+    eventTypes.push(...batch.events.map((event) => event.type))
   })
 
   await hub.prepareResume("thread-2")
@@ -168,19 +397,27 @@ test("AgentStreamHub derives persisted HITL request ids from run and tool call i
     }
   })
 
-  const envelope = await hub.getProjectionEnvelope("thread-2")
-  assert.equal(envelope.projection.isLoading, false)
-  assert.equal(envelope.projection.status, "interrupted")
-  assert.equal(envelope.projection.pendingApproval?.id, "hitl:thread-2:run-2:tool-1")
-  assert.equal(envelope.projection.pendingApproval?.tool_call.id, "tool-1")
-  assert.deepEqual(envelope.projection.todos, [
+  const snapshot = await hub.getThreadSnapshot("thread-2")
+  assert.equal(snapshot.status, "interrupted")
+  assert.equal(snapshot.revision, 5)
+  assert.equal(snapshot.activeRun?.status, "waiting_approval")
+  assert.equal(snapshot.activeRun?.phase, "waiting_tool_result")
+  assert.equal(snapshot.pendingApproval?.id, "hitl:thread-2:run-2:tool-1")
+  assert.equal(snapshot.pendingApproval?.tool_call.id, "tool-1")
+  assert.deepEqual(snapshot.todos, [
     {
       id: "todo-1",
       content: "Review command",
       status: "pending"
     }
   ])
-  assert.ok(events.includes(EventType.STATE_SNAPSHOT))
+  assert.ok(eventTypes.includes("approval.requested"))
+
+  await hub.handlePayload("thread-2", { type: "done" })
+  const afterDone = await hub.getThreadSnapshot("thread-2")
+  assert.equal(afterDone.revision, 5)
+  assert.equal(afterDone.status, "interrupted")
+  assert.equal(afterDone.activeRun?.status, "waiting_approval")
 })
 
 test("AgentStreamHub merges partial values message snapshots without dropping prior turns", async () => {
@@ -205,9 +442,10 @@ test("AgentStreamHub merges partial values message snapshots without dropping pr
     }
   })
 
-  const envelope = await hub.getProjectionEnvelope("thread-3")
+  const snapshot = await hub.getThreadSnapshot("thread-3")
+  assert.equal(snapshot.revision, 5)
   assert.deepEqual(
-    envelope.projection.messages.map((message) => ({ id: message.id, role: message.role })),
+    snapshot.messagesPage.map((message) => ({ id: message.id, role: message.role })),
     [
       { id: "user-1", role: "user" },
       { id: "assistant-1", role: "assistant" },
@@ -215,6 +453,79 @@ test("AgentStreamHub merges partial values message snapshots without dropping pr
       { id: "assistant-2", role: "assistant" }
     ]
   )
+  assert.equal(snapshot.activeRun?.turnId, "user-2")
+  assert.equal(snapshot.activeRun?.assistantMessageId, "assistant-2")
+  assert.equal(snapshot.activeRun?.phase, "streaming")
+})
+
+test("AgentStreamHub emits only scoped runtime events during token streaming", async () => {
+  const hub = new AgentStreamHub(createThreadsService(createHistory()))
+  const runtimeEventTypes: string[] = []
+
+  await hub.subscribeThreadEvents("thread-4", "runtime-subscriber", (batch) => {
+    runtimeEventTypes.push(...batch.events.map((event) => event.type))
+  })
+
+  await hub.prepareInvoke("thread-4", {
+    content: "stream please",
+    id: "user-1"
+  })
+
+  await hub.handlePayload("thread-4", {
+    type: "stream",
+    mode: "messages",
+    data: [createSerializedAiMessage("assistant-1", "hello")]
+  })
+  await hub.handlePayload("thread-4", {
+    type: "stream",
+    mode: "messages",
+    data: [createSerializedAiMessage("assistant-1", " again")]
+  })
+
+  const snapshot = await hub.getThreadSnapshot("thread-4")
+  assert.equal(snapshot.revision, 5)
+  assert.equal(snapshot.messagesPage.at(-1)?.content, "hello again")
+  assert.deepEqual(runtimeEventTypes, [
+    "message.upserted",
+    "run.started",
+    "message.upserted",
+    "message.part.delta"
+  ])
+})
+
+test("AgentStreamHub ignores empty assistant token chunks without advancing runtime revision", async () => {
+  const hub = new AgentStreamHub(createThreadsService(createHistory()))
+  const runtimeEventTypes: string[] = []
+
+  await hub.subscribeThreadEvents("thread-empty-token", "runtime-subscriber", (batch) => {
+    runtimeEventTypes.push(...batch.events.map((event) => event.type))
+  })
+
+  await hub.prepareInvoke("thread-empty-token", {
+    content: "stream please",
+    id: "user-1"
+  })
+  await hub.handlePayload("thread-empty-token", {
+    data: [createSerializedAiMessage("assistant-1", "hello")],
+    mode: "messages",
+    type: "stream"
+  })
+  const beforeEmptyChunk = await hub.getThreadSnapshot("thread-empty-token")
+
+  await hub.handlePayload("thread-empty-token", {
+    data: [createSerializedAiMessage("assistant-1", "")],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const afterEmptyChunk = await hub.getThreadSnapshot("thread-empty-token")
+  assert.equal(afterEmptyChunk.revision, beforeEmptyChunk.revision)
+  assert.equal(afterEmptyChunk.messagesPage.at(-1)?.content, "hello")
+  assert.deepEqual(runtimeEventTypes, [
+    "message.upserted",
+    "run.started",
+    "message.upserted"
+  ])
 })
 
 test("AgentStreamHub hides provider-emitted tool call markup from assistant text", async () => {
@@ -252,8 +563,8 @@ test("AgentStreamHub hides provider-emitted tool call markup from assistant text
     ]
   })
 
-  const envelope = await hub.getProjectionEnvelope("thread-4")
-  const message = envelope.projection.messages.at(-1)
+  const snapshot = await hub.getThreadSnapshot("thread-4")
+  const message = snapshot.messagesPage.at(-1)
   assert.equal(message?.id, "assistant-tool-call")
   assert.equal(message?.content, "")
   assert.equal(message?.tool_calls?.[0]?.name, "ext__appleReminders__createReminder")
@@ -284,10 +595,10 @@ test("AgentStreamHub hides provider-emitted tool call markup when hydrating hist
   })
   const hub = new AgentStreamHub(createThreadsService(history))
 
-  const envelope = await hub.getProjectionEnvelope("thread-5")
-  assert.equal(envelope.projection.messages[0]?.content, "")
+  const snapshot = await hub.getThreadSnapshot("thread-5")
+  assert.equal(snapshot.messagesPage[0]?.content, "")
   assert.equal(
-    envelope.projection.messages[0]?.tool_calls?.[0]?.name,
+    snapshot.messagesPage[0]?.tool_calls?.[0]?.name,
     "ext__appleReminders__createReminder"
   )
 })
@@ -357,8 +668,8 @@ test("AgentStreamHub appends streamed reasoning and text content blocks", async 
     ]
   })
 
-  const envelope = await hub.getProjectionEnvelope("thread-6")
-  assert.deepEqual(envelope.projection.messages.at(-1)?.content, [
+  const snapshot = await hub.getThreadSnapshot("thread-6")
+  assert.deepEqual(snapshot.messagesPage.at(-1)?.content, [
     {
       reasoning: "First, inspect context.",
       type: "reasoning"
