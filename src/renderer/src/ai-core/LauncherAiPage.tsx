@@ -488,7 +488,7 @@ export function LauncherAiPage(): React.JSX.Element {
                   placeholder={copy.launcher.aiInputPlaceholder}
                   sourceMentions={sourceMentions}
                   submitOnEnter={false}
-                  className="w-full py-[7px] [font-size:var(--ow-font-control)] font-medium"
+                  className="w-full py-[7px] [font-size:var(--ow-font-control)] font-normal"
                 />
 
                 <LauncherAttachmentStrip
@@ -537,7 +537,7 @@ export function LauncherAiPage(): React.JSX.Element {
                     label={copy.launcher.aiPrimaryLabel}
                     title={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
                     tooltip={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
-                    className="bg-background-secondary/72 text-foreground hover:bg-background-secondary"
+                    className="text-foreground enabled:bg-background-secondary/72 enabled:hover:bg-background-secondary disabled:bg-transparent"
                   />
                 )}
               </div>

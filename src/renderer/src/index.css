@@ -1206,6 +1206,84 @@ body[data-platform="darwin"] .launcher-window-shell {
   }
 }
 
+.launcher-ai-presence {
+  position: relative;
+  display: inline-flex;
+  width: 82px;
+  height: 58px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--ow-space-3);
+  color: var(--foreground);
+}
+
+.launcher-ai-presence__halo {
+  position: absolute;
+  inset: 8px 6px 2px;
+  border-radius: 999px;
+  background:
+    radial-gradient(
+      circle at 66% 42%,
+      color-mix(in srgb, var(--primary) 12%, transparent),
+      transparent 46%
+    ),
+    radial-gradient(
+      circle at 34% 58%,
+      color-mix(in srgb, var(--foreground) 5%, transparent),
+      transparent 58%
+    );
+  filter: blur(10px);
+  opacity: 0.48;
+}
+
+.launcher-ai-presence__mark {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  overflow: visible;
+}
+
+.launcher-ai-presence__capsule,
+.launcher-ai-presence__lens,
+.launcher-ai-presence__lens-handle,
+.launcher-ai-presence__mouth,
+.launcher-ai-presence__signal {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.launcher-ai-presence__capsule {
+  stroke: color-mix(in srgb, var(--foreground) 82%, var(--muted-foreground));
+  stroke-width: 7.6;
+}
+
+.launcher-ai-presence__lens {
+  stroke: color-mix(in srgb, var(--foreground) 64%, var(--muted-foreground));
+  stroke-width: 6.2;
+}
+
+.launcher-ai-presence__lens-handle {
+  stroke: color-mix(in srgb, var(--foreground) 64%, var(--muted-foreground));
+  stroke-width: 6.2;
+}
+
+.launcher-ai-presence__mouth {
+  stroke: color-mix(in srgb, var(--foreground) 72%, var(--muted-foreground));
+  stroke-width: 6.8;
+}
+
+.launcher-ai-presence__eye {
+  fill: color-mix(in srgb, var(--primary) 82%, var(--status-nominal));
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--primary) 22%, transparent));
+}
+
+.launcher-ai-presence__signal {
+  stroke: color-mix(in srgb, var(--primary) 78%, var(--status-nominal));
+  stroke-width: 7.6;
+  opacity: 0.96;
+}
+
 .launcher-jump-orbit-primary {
   animation: launcher-jump-orbit 2.2s linear infinite;
 }
@@ -1387,6 +1465,11 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 .launcher-translate-textarea::placeholder {
   color: color-mix(in srgb, var(--launcher-text-muted) 50%, transparent);
+}
+
+.ow-composer-placeholder {
+  color: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
+  font-weight: 400;
 }
 
 .launcher-translate-output {

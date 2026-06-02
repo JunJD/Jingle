@@ -9,6 +9,30 @@ import type { MessagesProjection } from "@/lib/message-projection"
 import type { RefObject } from "react"
 import type { VListHandle } from "virtua"
 
+function LauncherAiPresenceMark(): React.JSX.Element {
+  return (
+    <div className="launcher-ai-presence" aria-hidden="true">
+      <div className="launcher-ai-presence__halo" />
+      <svg
+        className="launcher-ai-presence__mark"
+        viewBox="0 0 100 100"
+        role="img"
+        focusable="false"
+      >
+        <path
+          className="launcher-ai-presence__capsule"
+          d="M24 50c0-10 8-18 18-18h20c10 0 18 8 18 18s-8 18-18 18H42c-10 0-18-8-18-18Z"
+        />
+        <circle className="launcher-ai-presence__lens" cx="35" cy="50" r="7" />
+        <path className="launcher-ai-presence__lens-handle" d="M42 57l8 8" />
+        <path className="launcher-ai-presence__mouth" d="M52 50h12" />
+        <circle className="launcher-ai-presence__eye" cx="71" cy="50" r="7" />
+        <path className="launcher-ai-presence__signal" d="M61 25c8-5 18-3 25 5" />
+      </svg>
+    </div>
+  )
+}
+
 export function LauncherAiEmptyState(props: {
   bottomInset?: number
   error?: string | null
@@ -28,6 +52,7 @@ export function LauncherAiEmptyState(props: {
       }
     >
       <div className="relative flex w-full max-w-[var(--launcher-ai-empty-max-width)] flex-col items-center text-center">
+        <LauncherAiPresenceMark />
         <div className="text-section-header mb-[var(--ow-space-2-5)]">
           {copy.launcher.aiEmptyEyebrow}
         </div>

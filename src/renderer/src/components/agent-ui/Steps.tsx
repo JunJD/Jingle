@@ -71,7 +71,8 @@ export interface AgentStepsContentProps extends React.ComponentProps<typeof Coll
 
 export function AgentStepsContent(props: AgentStepsContentProps): React.JSX.Element {
   const { bar, children, className, ...rest } = props
-  const showBar = Boolean(bar)
+  const showCustomBar = Boolean(bar)
+  const showDefaultRail = bar === undefined
 
   return (
     <CollapsibleContent
@@ -84,14 +85,14 @@ export function AgentStepsContent(props: AgentStepsContentProps): React.JSX.Elem
       <div
         className={cn(
           "relative mt-[var(--ow-space-2)] min-w-0 max-w-full",
-          showBar
+          showCustomBar
             ? "grid grid-cols-[min-content_minmax(0,1fr)] items-start gap-x-[var(--ow-gap-md)]"
             : "space-y-[var(--ow-space-2)]",
-          !showBar &&
+          showDefaultRail &&
             "before:absolute before:bottom-[var(--ow-space-1)] before:left-[calc(var(--ow-icon-action)/2)] before:top-[var(--ow-space-1)] before:w-px before:-translate-x-1/2 before:bg-border/64"
         )}
       >
-        {showBar ? (
+        {showCustomBar ? (
           <>
             {bar}
             <div className="min-w-0 space-y-[var(--ow-space-2)]">{children}</div>

@@ -308,9 +308,9 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
                 placeholder={
                   <div
                     className={cn(
-                      "pointer-events-none absolute left-0 top-0 select-none text-muted-foreground/58",
+                      "ow-composer-placeholder pointer-events-none absolute left-0 top-0 select-none",
                       className,
-                      "leading-[20px]"
+                      "font-normal leading-[20px]"
                     )}
                   >
                     {placeholder}

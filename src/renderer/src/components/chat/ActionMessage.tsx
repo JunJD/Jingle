@@ -81,7 +81,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       }),
     [approvalRequest, copy, presentation, result, toolCall]
   )
-  const { definition, model, status, statusLabel, summary } = view
+  const { definition, icon: Icon, model, status, statusLabel, summary } = view
   const autoExpanded = Boolean(approvalRequest) || defaultExpanded
   const isExpanded = approvalRequest ? true : (expanded ?? manualExpanded ?? autoExpanded)
   const detail = useMemo<React.ReactNode>(() => {
@@ -101,7 +101,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
 
   const hasDetail = Boolean(detail)
   const toolState = toAgentToolState(status)
-  const meta = statusLabel ? (
+  const meta = statusLabel && toolState !== "complete" ? (
     <AgentToolStatusBadge state={toolState}>{statusLabel}</AgentToolStatusBadge>
   ) : null
   const detailContent = hasDetail ? (
@@ -151,11 +151,36 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     )
   }
 
+  if (toolState === "complete" && !isExpanded) {
+    return (
+      <AgentToolInline
+        data-tool-call-toggle={toolCall.name}
+        icon={<Icon className="size-[var(--ow-icon-sm)]" />}
+        meta={
+          hasDetail ? (
+            <ChevronRight className="size-[var(--ow-icon-sm)] text-muted-foreground/70" />
+          ) : null
+        }
+        onClick={() => {
+          if (hasDetail && !approvalRequest) {
+            onExpandedChange?.(true)
+
+            if (expanded === undefined) {
+              setManualExpanded(true)
+            }
+          }
+        }}
+        title={summary}
+      />
+    )
+  }
+
   return (
     <AgentTool
       data-tool-call-toggle={toolCall.name}
       defaultOpen={autoExpanded}
       detail={detailContent}
+      icon={<Icon className="size-[var(--ow-icon-sm)]" />}
       meta={meta}
       onOpenChange={(nextExpanded) => {
         if (approvalRequest) {

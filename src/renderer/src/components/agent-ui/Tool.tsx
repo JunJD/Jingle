@@ -104,8 +104,14 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
     >
       <div
         className={cn(
-          "ow-agent-tool overflow-hidden rounded-[var(--ow-radius-lg)] border border-border/64 bg-background-elevated/38",
+          "ow-agent-tool overflow-hidden",
+          state === "complete" &&
+            "rounded-[var(--ow-radius-sm)] bg-transparent",
+          state !== "complete" &&
+            "rounded-[var(--ow-radius-lg)] border border-border/64 bg-background-elevated/38",
+          state === "running" && "border-status-info/18 bg-status-info/4",
           state === "approval" && "border-status-warning/28 bg-status-warning/6",
+          state === "error" && "border-status-critical/24 bg-status-critical/6",
           className
         )}
         data-state={state}
@@ -115,6 +121,8 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
           <Button
             className={cn(
               "h-auto w-full justify-between rounded-none bg-transparent px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left font-normal hover:bg-background-secondary/46",
+              state === "complete" &&
+                "justify-start gap-[var(--ow-gap-xs)] px-0 py-[var(--ow-space-0-5)] hover:bg-transparent",
               !hasDetail && "cursor-default hover:bg-transparent"
             )}
             data-tool-trigger
@@ -129,7 +137,12 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
                 {title}
               </span>
             </span>
-            <span className="ml-[var(--ow-space-2)] flex shrink-0 items-center gap-[var(--ow-gap-sm)]">
+            <span
+              className={cn(
+                "ml-[var(--ow-space-2)] flex shrink-0 items-center gap-[var(--ow-gap-sm)]",
+                state === "complete" && "ml-0 gap-[var(--ow-gap-xs)]"
+              )}
+            >
               {meta}
               {hasDetail ? (
                 <ChevronDown
@@ -143,8 +156,21 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
           </Button>
         </CollapsibleTrigger>
         {hasDetail ? (
-          <CollapsibleContent className="overflow-hidden border-t border-border/48 data-[state=closed]:animate-out data-[state=open]:animate-in">
-            <div className="px-[var(--ow-space-3)] py-[var(--ow-space-3)]">{detail}</div>
+          <CollapsibleContent
+            className={cn(
+              "overflow-hidden data-[state=closed]:animate-out data-[state=open]:animate-in",
+              state !== "complete" && "border-t border-border/48"
+            )}
+          >
+            <div
+              className={cn(
+                "px-[var(--ow-space-3)] py-[var(--ow-space-3)]",
+                state === "complete" &&
+                  "px-0 pb-[var(--ow-space-2)] pt-[var(--ow-space-1)] pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))]"
+              )}
+            >
+              {detail}
+            </div>
           </CollapsibleContent>
         ) : null}
       </div>

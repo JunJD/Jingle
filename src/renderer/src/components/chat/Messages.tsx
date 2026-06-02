@@ -320,8 +320,9 @@ function ReasoningBlock(props: {
       <AgentStepsTrigger
         className={cn(
           "ow-reasoning-trigger",
+          !isStreaming && "opacity-55",
           density === "compact"
-            ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
+            ? "[font-size:var(--ow-font-meta)] leading-[var(--ow-line-chat)]"
             : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)]"
         )}
         icon={
@@ -343,7 +344,7 @@ function ReasoningBlock(props: {
             : "space-y-[var(--ow-reasoning-content-gap)]"
         )}
       >
-        <div className="pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
+        <div className="pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground/72">
           {text}
         </div>
       </AgentStepsContent>
