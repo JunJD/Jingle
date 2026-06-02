@@ -41,6 +41,7 @@
     "doctor": "node .agents/skills/launcher-extension-guardrails/scripts/doctor-architecture.mjs",
     "check:guardrails": "node .agents/skills/launcher-extension-guardrails/scripts/check-guardrails.mjs",
     "check:extensions": "tsx --tsconfig tsconfig.node.json scripts/check-native-extensions.mjs",
+    "migrate:extension": "node scripts/migrate-extension.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "node scripts/run-prisma-openwork-db.mjs migrate dev",
     "prisma:migrate:deploy": "node scripts/run-prisma-openwork-db.mjs migrate deploy",
