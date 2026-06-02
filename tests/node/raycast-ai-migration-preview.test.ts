@@ -1,10 +1,27 @@
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises"
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+  writeFile
+} from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import test from "node:test"
 
+import { rewriteRaycastRuntimeImports } from "../../packages/extension-migration/src/transforms/import-rewrite.mjs"
+import {
+  detectKnownExtensionBlockingAdapters,
+  extendKnownExtensionGuide,
+  extendKnownExtensionPreferenceTypeLiteral,
+  suppressKnownExtensionBlockingAdapters
+} from "../../packages/extension-migration/src/transforms/known-extensions/index.mjs"
+import { rewriteSourceForOpenwork } from "../../packages/extension-migration/src/transforms/source-rewrite.mjs"
 import {
   buildRaycastAiMigrationArtifacts,
   buildRaycastAiMigrationPreview
@@ -12,6 +29,337 @@ import {
 import { validateNativeExtensionPackageBoundaries } from "../../scripts/native-extension-package-boundaries.mjs"
 
 const repoRoot = process.cwd()
+const realRaycastExtensionsRepo =
+  process.env.OPENWORK_RAYCAST_EXTENSIONS_REPO ??
+  join(dirname(repoRoot), "raycast-extensions-notion")
+
+test("Raycast migration rewrites runtime imports through static module specifiers", () => {
+  const source = [
+    'import type { LaunchProps } from "@raycast/api"',
+    'import { showToast } from "@raycast/api"',
+    'export { Action } from "@raycast/api"',
+    'const runtimeApi = import("@raycast/api")',
+    'const runtimeUtils = import(`@raycast/utils`)',
+    'const dynamic = import(runtimePackage)',
+    'const untouched = "@raycast/api"'
+  ].join("\n")
+
+  const rewritten = rewriteRaycastRuntimeImports(source, "src/command.tsx")
+
+  assert.match(rewritten, /import type \{ LaunchProps \} from "@openwork\/extension-api"/)
+  assert.match(rewritten, /import \{ showToast \} from "@openwork\/extension-api"/)
+  assert.match(rewritten, /export \{ Action \} from "@openwork\/extension-api"/)
+  assert.match(rewritten, /import\("@openwork\/extension-api"\)/)
+  assert.match(rewritten, /import\(`@openwork\/extension-utils`\)/)
+  assert.match(rewritten, /import\(runtimePackage\)/)
+  assert.match(rewritten, /const untouched = "@raycast\/api"/)
+})
+
+test("Raycast migration gates known extension transforms by target context", () => {
+  const source = [
+    'import { OAuth, getPreferenceValues } from "@openwork/extension-api"',
+    'import { OAuthService } from "@openwork/extension-utils"',
+    "const { accessToken } = getPreferenceValues<Preferences>()",
+    "let notion: { token: string } | null = null",
+    "export const service = new OAuthService({",
+    "  personalAccessToken: accessToken,",
+    "  onAuthorize({ token }) {",
+    "    notion = { token }",
+    "  }",
+    "})",
+    "export function getNotionClient() {",
+    "  if (!notion) {",
+    "    throw new Error('No client')",
+    "  }",
+    "  return notion",
+    "}"
+  ].join("\n")
+  const transforms = [
+    {
+      appliesTo: ({ target }: { target: { sourceExtensionId: string } }) =>
+        target.sourceExtensionId === "notion",
+      name: "known-extensions/notion-test",
+      run: ({ sourceText }: { sourceText: string }) => ({
+        diagnostics: [],
+        sourceText: sourceText.replace("personalAccessToken: accessToken,", "")
+      })
+    }
+  ]
+
+  const githubResult = rewriteSourceForOpenwork(
+    source,
+    "src/oauth.ts",
+    { extensionId: "github", sourceExtensionId: "github" },
+    { knownTransforms: transforms }
+  )
+  const notionResult = rewriteSourceForOpenwork(
+    source,
+    "src/oauth.ts",
+    { extensionId: "notion", sourceExtensionId: "notion" },
+    { knownTransforms: transforms }
+  )
+
+  assert.match(githubResult.sourceText, /personalAccessToken: accessToken/)
+  assert.doesNotMatch(notionResult.sourceText, /personalAccessToken: accessToken/)
+})
+
+test("Raycast migration registry gates every known extension entrypoint", () => {
+  const githubTarget = { extensionId: "github", sourceExtensionId: "github" }
+  const notionTarget = { extensionId: "notion", sourceExtensionId: "notion" }
+  const sourceText = [
+    "let notion: { token: string } | null = null",
+    "export function getNotionClient() {",
+    "  return notion",
+    "}"
+  ].join("\n")
+
+  assert.deepEqual(
+    detectKnownExtensionBlockingAdapters({
+      filePath: "src/oauth.ts",
+      sourceText,
+      target: githubTarget
+    }),
+    []
+  )
+  assert.deepEqual(
+    detectKnownExtensionBlockingAdapters({
+      filePath: "src/oauth.ts",
+      sourceText,
+      target: notionTarget
+    }),
+    ["Uses module-level Notion client; replace with request-scoped Openwork client."]
+  )
+  assert.equal(
+    extendKnownExtensionGuide("Use GitHub.", {
+      pkg: { name: "github" },
+      target: githubTarget
+    }),
+    "Use GitHub."
+  )
+  assert.match(
+    extendKnownExtensionGuide("Use Notion.", {
+      pkg: { name: "notion" },
+      target: notionTarget
+    }),
+    /modifying a page/
+  )
+  assert.equal(
+    extendKnownExtensionPreferenceTypeLiteral("type Extension = {\n      accessToken: string\n    }", {
+      items: [{ name: "accessToken" }],
+      preview: { source: { packageName: "github" } },
+      target: githubTarget
+    }),
+    "type Extension = {\n      accessToken: string\n    }"
+  )
+  assert.match(
+    extendKnownExtensionPreferenceTypeLiteral("type Extension = {\n      accessToken: string\n    }", {
+      items: [{ name: "accessToken" }],
+      preview: { source: { packageName: "notion" } },
+      target: notionTarget
+    }),
+    /notion_token/
+  )
+  assert.deepEqual(
+    suppressKnownExtensionBlockingAdapters(
+      [{ blockingAdapters: ["keep"], path: "src/oauth.ts", sourceText }],
+      githubTarget
+    ),
+    [{ blockingAdapters: ["keep"], path: "src/oauth.ts", sourceText }]
+  )
+})
+
+test("Raycast migration source transform modules keep generic layer free of known-extension names", async () => {
+  const genericSources = await Promise.all(
+    [
+      "packages/extension-migration/src/transforms/source-rewrite.mjs",
+      "packages/extension-migration/src/transforms/import-rewrite.mjs"
+    ].map((file) => readFile(join(repoRoot, file), "utf8"))
+  )
+
+  assert.equal(genericSources.some((source) => /notion/i.test(source)), false)
+})
+
+test("Raycast migration generates GitHub-like and Apple Reminders-like package contracts", async () => {
+  const extensionRoots = await Promise.all([
+    createGithubLikeExtensionFixture(),
+    createAppleRemindersLikeExtensionFixture()
+  ])
+
+  try {
+    const githubPreview = buildRaycastAiMigrationPreview({
+      extensionPath: extensionRoots[0],
+      gitRef: "HEAD",
+      gitRepo: null,
+      out: null,
+      targetExtensionId: "github-generated",
+      targetExtensionTitle: "GitHub Generated"
+    })
+    const applePreview = buildRaycastAiMigrationPreview({
+      extensionPath: extensionRoots[1],
+      gitRef: "HEAD",
+      gitRepo: null,
+      out: null,
+      targetExtensionId: "apple-reminders-generated",
+      targetExtensionTitle: "Apple Reminders Generated"
+    })
+
+    assertRaycastMigrationContract(githubPreview, {
+      commandCount: 2,
+      dependencyNames: ["@octokit/rest", "graphql-request"],
+      extensionId: "github-generated",
+      packageName: "github",
+      platformNames: ["darwin", "win32"],
+      toolNames: ["createIssue", "getMyIssues"]
+    })
+    assertRaycastMigrationContract(applePreview, {
+      commandCount: 2,
+      dependencyNames: ["chrono-node", "date-fns"],
+      extensionId: "apple-reminders-generated",
+      packageName: "apple-reminders",
+      platformNames: ["darwin"],
+      toolNames: ["createReminder", "deleteReminder"]
+    })
+    assert.equal(applePreview.sourceMigration.assetFiles.length, 1)
+    assert.deepEqual(applePreview.manifestPreview.aiCapability.supportedPlatforms, ["darwin"])
+    assert.deepEqual(applePreview.manifestPreview.connection.auth, { type: "none" })
+    assert.deepEqual(githubPreview.manifestPreview.connection.auth, {
+      secretNames: ["accessToken"],
+      type: "apiKey"
+    })
+    for (const preview of [githubPreview, applePreview]) {
+      assert.doesNotMatch(preview.manifestPreview.aiCapability.guide, /\bworkspace\b/i)
+      assert.doesNotMatch(preview.manifestPreview.aiCapability.guide, /\bpage\b/i)
+    }
+  } finally {
+    await Promise.all(extensionRoots.map((root) => rm(root, { force: true, recursive: true })))
+  }
+})
+
+test("Raycast migration shell host entry keeps migrated source out of compiled host entrypoints", async () => {
+  const extensionRoot = await createGithubLikeExtensionFixture()
+
+  try {
+    const preview = buildRaycastAiMigrationPreview({
+      extensionPath: extensionRoot,
+      gitRef: "HEAD",
+      gitRepo: null,
+      hostEntryMode: "shell",
+      out: null,
+      targetExtensionId: "github-generated",
+      targetExtensionTitle: "GitHub Generated"
+    })
+    const artifacts = buildRaycastAiMigrationArtifacts(preview)
+    const manifestSource = String(artifacts["openwork-package/manifest.ts"])
+    const runtimeSource = String(artifacts["openwork-package/runtime.ts"])
+    const toolsSource = String(artifacts["openwork-package/main/tools.ts"])
+    const typecheckConfig = JSON.parse(String(artifacts["openwork-package/tsconfig.check.json"]))
+
+    assert.match(manifestSource, /toolNames": \[\]/)
+    assert.match(manifestSource, /toolDisplays": \{\}/)
+    assert.doesNotMatch(runtimeSource, /from "\.\/src\//)
+    assert.match(runtimeSource, /running in shell mode/)
+    assert.doesNotMatch(toolsSource, /migrated-src/)
+    assert.match(toolsSource, /return \[\s*\]/)
+    assert.deepEqual(typecheckConfig.include, [
+      "main.ts",
+      "main/**/*.ts",
+      "identity.ts",
+      "manifest.ts",
+      "runtime-metadata.ts",
+      "runtime.ts",
+      "src/*.meta.ts",
+      "types.d.ts"
+    ])
+    assert.deepEqual(typecheckConfig.exclude, [
+      "main/migrated-src/**/*.ts",
+      "main/migrated-src/**/*.tsx"
+    ])
+    assert.equal(artifacts["openwork-package/src/tools/create-issue.ts"], undefined)
+    assert.match(
+      String(artifacts["openwork-package/src/create-issue.tsx"]),
+      /not wired into the Openwork runtime/
+    )
+    assert.equal(artifacts["openwork-package/src/my-issues.meta.ts"] !== undefined, true)
+    assert.equal(Buffer.isBuffer(artifacts["openwork-package/assets/github.png"]), true)
+  } finally {
+    await rm(extensionRoot, { force: true, recursive: true })
+  }
+})
+
+test("Raycast migration shell host entry keeps no-view commands in runtime metadata", async () => {
+  const extensionRoot = await createAppleRemindersLikeExtensionFixture()
+
+  try {
+    const preview = buildRaycastAiMigrationPreview({
+      extensionPath: extensionRoot,
+      gitRef: "HEAD",
+      gitRepo: null,
+      hostEntryMode: "shell",
+      out: null,
+      targetExtensionId: "apple-reminders-generated",
+      targetExtensionTitle: "Apple Reminders Generated"
+    })
+    const artifacts = buildRaycastAiMigrationArtifacts(preview)
+    const manifestSource = String(artifacts["openwork-package/manifest.ts"])
+    const runtimeMetadataSource = String(artifacts["openwork-package/runtime-metadata.ts"])
+    const runtimeSource = String(artifacts["openwork-package/runtime.ts"])
+
+    assert.match(manifestSource, /"name": "quick-add-reminder"/)
+    assert.match(runtimeMetadataSource, /name: "quick-add-reminder"/)
+    assert.match(runtimeSource, /"quick-add-reminder": \{\n\s+mode: "no-view"/)
+    assert.match(String(artifacts["openwork-package/src/quick-add-reminder.tsx"]), /not wired/)
+  } finally {
+    await rm(extensionRoot, { force: true, recursive: true })
+  }
+})
+
+test("Raycast migration can smoke-test real GitHub and Apple Reminders sources when repo is available", async (t) => {
+  if (!(await pathExists(realRaycastExtensionsRepo))) {
+    t.skip(`Raycast extensions repo not found at ${realRaycastExtensionsRepo}`)
+    return
+  }
+
+  const cases = [
+    {
+      commandCount: 20,
+      extensionPath: "extensions/github",
+      packageName: "github",
+      targetExtensionId: "github-generated",
+      targetExtensionTitle: "GitHub Generated",
+      toolCount: 15
+    },
+    {
+      commandCount: 7,
+      extensionPath: "extensions/apple-reminders",
+      packageName: "apple-reminders",
+      targetExtensionId: "apple-reminders-generated",
+      targetExtensionTitle: "Apple Reminders Generated",
+      toolCount: 8
+    }
+  ]
+
+  for (const fixture of cases) {
+    const preview = buildRaycastAiMigrationPreview({
+      extensionPath: fixture.extensionPath,
+      gitRef: "HEAD",
+      gitRepo: realRaycastExtensionsRepo,
+      out: null,
+      targetExtensionId: fixture.targetExtensionId,
+      targetExtensionTitle: fixture.targetExtensionTitle
+    })
+    const artifacts = buildRaycastAiMigrationArtifacts(preview)
+
+    assert.equal(preview.source.packageName, fixture.packageName)
+    assert.equal(preview.source.targetExtensionId, fixture.targetExtensionId)
+    assert.equal(preview.manifestPreview.commands.length, fixture.commandCount)
+    assert.equal(preview.manifestPreview.aiCapability.toolNames.length, fixture.toolCount)
+    assert.ok(preview.sourceMigration.sourceFiles.length > 0)
+    assert.ok(preview.runtimeCompatibility.counts.files >= 0)
+    assert.ok(preview.utilsBoundaryReport.counts.utilsFiles >= 0)
+    assertGeneratedPackageContract(artifacts, fixture.targetExtensionId)
+    assertGeneratedSourcesDoNotImportRaycastRuntime(artifacts)
+  }
+})
 
 test("Raycast migration preview reports dependency decisions and unsupported APIs", async () => {
   const extensionRoot = await mkdtemp(join(tmpdir(), "openwork-raycast-migration-preview-"))
@@ -330,6 +678,7 @@ test("Raycast migration preview reports dependency decisions and unsupported API
       "runtime-compatibility.json",
       "tools.preview.json",
       "tools.preview.ts",
+      "transform-diagnostics.json",
       "unsupported-apis.json",
       "utils-boundary-report.json"
     ])
@@ -442,6 +791,7 @@ test("Raycast migration preview reports dependency decisions and unsupported API
       "runtime-compatibility.json",
       "tools.preview.json",
       "tools.preview.ts",
+      "transform-diagnostics.json",
       "unsupported-apis.json",
       "utils-boundary-report.json"
     ])
@@ -484,6 +834,7 @@ test("Raycast migration preview reports dependency decisions and unsupported API
       }
     ])
     assert.deepEqual(manifestPatch.aiCapability.instructions, ["Search before retrieving pages."])
+    assert.match(manifestPatch.aiCapability.guide, /modifying a page/)
     assert.deepEqual(
       manifestPatch.preferences.map((preference: { name: string }) => preference.name),
       ["accessToken", "open_in"]
@@ -806,6 +1157,20 @@ test("Raycast migration preview reports dependency decisions and unsupported API
       ),
       false
     )
+    assert.deepEqual(
+      migrationPreview.sourceMigration.diagnostics,
+      migrationPreview.transformDiagnostics
+    )
+    assert.equal(
+      migrationPreview.sourceMigration.sourceFiles.some(
+        (file: { diagnostics: unknown[] }) => file.diagnostics.length > 0
+      ),
+      migrationPreview.transformDiagnostics.length > 0
+    )
+    const transformDiagnostics = JSON.parse(
+      await readFile(join(artifactDir, "transform-diagnostics.json"), "utf8")
+    )
+    assert.deepEqual(transformDiagnostics, migrationPreview.transformDiagnostics)
 
     const dependencyReport = await readFile(join(artifactDir, "dependency-report.md"), "utf8")
     assert.match(dependencyReport, /@raycast\/api/)
@@ -1403,6 +1768,7 @@ test("Raycast migration generated Notion-style tools initialize module Notion cl
       JSON.stringify(
         {
           dependencies: {
+            "@notionhq/client": "^5.9.0",
             "@raycast/api": "^1.104.5",
             "@raycast/utils": "^2.2.2",
             zod: "^4.0.0"
@@ -1487,6 +1853,25 @@ test("Raycast migration generated Notion-style tools initialize module Notion cl
     assert.doesNotMatch(migratedOauthSource, /let notion/)
     assert.doesNotMatch(migratedOauthSource, /onAuthorize/)
     assert.match(migratedOauthSource, /return \{ token: accessToken \}/)
+    assert.match(
+      preview.transformDiagnostics[0]?.message ?? "",
+      /Applied Notion-specific compatibility rewrites/
+    )
+    assert.deepEqual(preview.sourceMigration.diagnostics, preview.transformDiagnostics)
+    assert.equal(
+      preview.sourceMigration.sourceFiles.some(
+        (file: { diagnostics: unknown[] }) => file.diagnostics.length > 0
+      ),
+      true
+    )
+    assert.match(
+      String(artifacts["transform-diagnostics.json"]),
+      /known-extensions\/notion/
+    )
+    assert.match(
+      String(artifacts["dependency-report.md"]),
+      /Applied Notion-specific compatibility rewrites/
+    )
 
     await writeArtifacts(artifactDir, artifacts)
     await writeFile(
@@ -2558,6 +2943,314 @@ async function writeArtifacts(root: string, artifacts: Record<string, Buffer | s
       await writeFile(target, content)
     })
   )
+}
+
+async function createGithubLikeExtensionFixture() {
+  const extensionRoot = await mkdtemp(join(tmpdir(), "openwork-raycast-migration-github-like-"))
+  await mkdir(join(extensionRoot, "assets"), { recursive: true })
+  await mkdir(join(extensionRoot, "src", "tools"), { recursive: true })
+  await writeFile(join(extensionRoot, "assets", "github.png"), "github icon")
+  await writeFile(
+    join(extensionRoot, "package.json"),
+    JSON.stringify(
+      {
+        ai: {
+          instructions: "- Use GitHub for repository issues and pull requests."
+        },
+        commands: [
+          {
+            description: "Show assigned issues.",
+            mode: "view",
+            name: "my-issues",
+            title: "My Issues"
+          },
+          {
+            description: "Create an issue.",
+            mode: "view",
+            name: "create-issue",
+            title: "Create Issue"
+          }
+        ],
+        dependencies: {
+          "@octokit/rest": "^22.0.0",
+          "@raycast/api": "^1.104.5",
+          "@raycast/utils": "^2.2.2",
+          "graphql-request": "^7.0.1",
+          react: "^19.2.1"
+        },
+        icon: "github.png",
+        name: "github",
+        platforms: ["macOS", "Windows"],
+        preferences: [
+          {
+            name: "accessToken",
+            type: "password"
+          }
+        ],
+        title: "GitHub",
+        tools: [
+          {
+            description: "Create an issue.",
+            name: "create-issue",
+            title: "Create Issue"
+          },
+          {
+            description: "Get assigned issues.",
+            name: "get-my-issues",
+            title: "Get My Issues"
+          }
+        ]
+      },
+      null,
+      2
+    )
+  )
+  await writeFile(
+    join(extensionRoot, "src", "my-issues.tsx"),
+    [
+      'import { Action, ActionPanel, List, showToast } from "@raycast/api"',
+      'import { useCachedPromise } from "@raycast/utils"',
+      "",
+      "export default function MyIssues() {",
+      "  const issues = useCachedPromise(async () => [{ title: 'Issue #1' }])",
+      "  return (",
+      "    <List>",
+      "      <List.Item",
+      "        title={issues.data?.[0]?.title ?? 'Loading'}",
+      "        actions={<ActionPanel><Action title=\"Refresh\" onAction={() => showToast({ title: 'Done' })} /></ActionPanel>}",
+      "      />",
+      "    </List>",
+      "  )",
+      "}"
+    ].join("\n")
+  )
+  await writeFile(
+    join(extensionRoot, "src", "create-issue.tsx"),
+    [
+      'import { Form } from "@raycast/api"',
+      "",
+      "export default function CreateIssue() {",
+      "  return <Form><Form.TextField id=\"title\" title=\"Title\" /></Form>",
+      "}"
+    ].join("\n")
+  )
+  await writeFile(
+    join(extensionRoot, "src", "tools", "create-issue.ts"),
+    [
+      'import { getPreferenceValues } from "@raycast/api"',
+      'import { Octokit } from "@octokit/rest"',
+      "",
+      "type Input = {",
+      "  title: string",
+      "}",
+      "",
+      "export default async function createIssue(input: Input) {",
+      "  const preferences = getPreferenceValues<{ accessToken: string }>()",
+      "  const octokit = new Octokit({ auth: preferences.accessToken })",
+      "  return { title: input.title, octokit: Boolean(octokit) }",
+      "}"
+    ].join("\n")
+  )
+  await writeFile(
+    join(extensionRoot, "src", "tools", "get-my-issues.ts"),
+    [
+      'import { request } from "graphql-request"',
+      "",
+      "export default async function getMyIssues() {",
+      "  void request",
+      "  return []",
+      "}"
+    ].join("\n")
+  )
+  return extensionRoot
+}
+
+async function createAppleRemindersLikeExtensionFixture() {
+  const extensionRoot = await mkdtemp(join(tmpdir(), "openwork-raycast-migration-apple-like-"))
+  await mkdir(join(extensionRoot, "assets"), { recursive: true })
+  await mkdir(join(extensionRoot, "src", "tools"), { recursive: true })
+  await writeFile(join(extensionRoot, "assets", "reminders.png"), "reminders icon")
+  await writeFile(
+    join(extensionRoot, "package.json"),
+    JSON.stringify(
+      {
+        ai: {
+          instructions: "- Use Apple Reminders for local reminders only."
+        },
+        commands: [
+          {
+            description: "Show reminders.",
+            mode: "view",
+            name: "my-reminders",
+            title: "My Reminders"
+          },
+          {
+            description: "Create a reminder.",
+            mode: "no-view",
+            name: "quick-add-reminder",
+            title: "Quick Add Reminder"
+          }
+        ],
+        dependencies: {
+          "@raycast/api": "^1.104.5",
+          "@raycast/utils": "^2.2.2",
+          "chrono-node": "^2.9.0",
+          "date-fns": "^4.1.0",
+          react: "^19.2.1"
+        },
+        icon: "reminders.png",
+        name: "apple-reminders",
+        platforms: ["macOS"],
+        title: "Apple Reminders",
+        tools: [
+          {
+            description: "Create a reminder.",
+            name: "create-reminder",
+            title: "Create Reminder"
+          },
+          {
+            description: "Delete a reminder.",
+            name: "delete-reminder",
+            title: "Delete Reminder"
+          }
+        ]
+      },
+      null,
+      2
+    )
+  )
+  await writeFile(
+    join(extensionRoot, "src", "my-reminders.tsx"),
+    [
+      'import { Action, ActionPanel, Clipboard, List, showToast } from "@raycast/api"',
+      "",
+      "export default function MyReminders() {",
+      "  return (",
+      "    <List>",
+      "      <List.Item",
+      "        title=\"Buy milk\"",
+      "        actions={<ActionPanel><Action title=\"Copy\" onAction={() => { void Clipboard.copy('Buy milk'); void showToast({ title: 'Copied' }) }} /></ActionPanel>}",
+      "      />",
+      "    </List>",
+      "  )",
+      "}"
+    ].join("\n")
+  )
+  await writeFile(
+    join(extensionRoot, "src", "quick-add-reminder.tsx"),
+    [
+      'import { showHUD } from "@raycast/api"',
+      "",
+      "export default async function QuickAddReminder() {",
+      "  await showHUD('Reminder created')",
+      "}"
+    ].join("\n")
+  )
+  await writeFile(
+    join(extensionRoot, "src", "tools", "create-reminder.ts"),
+    [
+      'import { parseDate } from "chrono-node"',
+      "",
+      "type Input = {",
+      "  title: string",
+      "  due?: string",
+      "}",
+      "",
+      "export default async function createReminder(input: Input) {",
+      "  return { title: input.title, due: input.due ? parseDate(input.due) : null }",
+      "}"
+    ].join("\n")
+  )
+  await writeFile(
+    join(extensionRoot, "src", "tools", "delete-reminder.ts"),
+    [
+      'import { formatISO } from "date-fns"',
+      "",
+      "type Input = {",
+      "  id: string",
+      "}",
+      "",
+      "export default async function deleteReminder(input: Input) {",
+      "  return { deleted: input.id, at: formatISO(new Date()) }",
+      "}"
+    ].join("\n")
+  )
+  return extensionRoot
+}
+
+function assertRaycastMigrationContract(
+  preview: ReturnType<typeof buildRaycastAiMigrationPreview>,
+  expected: {
+    commandCount: number
+    dependencyNames: string[]
+    extensionId: string
+    packageName: string
+    platformNames: string[]
+    toolNames: string[]
+  }
+) {
+  const artifacts = buildRaycastAiMigrationArtifacts(preview)
+  const packageJson = JSON.parse(String(artifacts["openwork-package/package.json"]))
+
+  assert.equal(preview.source.packageName, expected.packageName)
+  assert.equal(preview.source.targetExtensionId, expected.extensionId)
+  assert.equal(preview.manifestPreview.name, expected.extensionId)
+  assert.equal(preview.manifestPreview.commands.length, expected.commandCount)
+  assert.deepEqual(preview.manifestPreview.aiCapability.toolNames, expected.toolNames)
+  assert.deepEqual(preview.manifestPreview.aiCapability.supportedPlatforms, expected.platformNames)
+  assertGeneratedPackageContract(artifacts, expected.extensionId)
+  assertGeneratedSourcesDoNotImportRaycastRuntime(artifacts)
+  for (const name of expected.dependencyNames) {
+    assert.equal(Object.hasOwn(packageJson.dependencies, name), true)
+  }
+  for (const name of ["fs", "path", "os", "node:fs", "swift:.."]) {
+    assert.equal(Object.hasOwn(packageJson.dependencies, name), false)
+  }
+}
+
+function assertGeneratedPackageContract(
+  artifacts: Record<string, Buffer | string>,
+  extensionId: string
+) {
+  for (const file of [
+    "openwork-package/package.json",
+    "openwork-package/identity.ts",
+    "openwork-package/main.ts",
+    "openwork-package/main/tools.ts",
+    "openwork-package/manifest.ts",
+    "openwork-package/runtime.ts",
+    "openwork-package/runtime-metadata.ts",
+    "openwork-package/types.d.ts"
+  ]) {
+    assert.equal(Object.hasOwn(artifacts, file), true, `missing generated artifact ${file}`)
+  }
+
+  const packageJson = JSON.parse(String(artifacts["openwork-package/package.json"]))
+  assert.equal(packageJson.name, `@openwork/extension-${extensionId}`)
+  assert.equal(packageJson.dependencies["@openwork/extension-api"], "workspace:*")
+  assert.equal(packageJson.dependencies["@openwork/extension-utils"], "workspace:*")
+}
+
+function assertGeneratedSourcesDoNotImportRaycastRuntime(
+  artifacts: Record<string, Buffer | string>
+) {
+  for (const [file, content] of Object.entries(artifacts)) {
+    if (!file.startsWith("openwork-package/") || !/\.[cm]?tsx?$/.test(file)) {
+      continue
+    }
+
+    assert.doesNotMatch(String(content), /from ["']@raycast\/(?:api|utils)["']/)
+    assert.doesNotMatch(String(content), /import\(["'`]@raycast\/(?:api|utils)["'`]\)/)
+  }
+}
+
+async function pathExists(path: string) {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
 }
 
 async function listArtifactFiles(root: string, prefix = ""): Promise<string[]> {

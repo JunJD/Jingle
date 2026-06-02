@@ -1,13 +1,24 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process"
-import { createRequire } from "node:module"
+import { builtinModules, createRequire } from "node:module"
 import { basename, dirname, join, posix, resolve } from "node:path"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
+import {
+  detectKnownExtensionBlockingAdapters,
+  extendKnownExtensionGuide,
+  extendKnownExtensionPreferenceTypeLiteral,
+  suppressKnownExtensionBlockingAdapters
+} from "./transforms/known-extensions/index.mjs"
+import { rewritePublicOpenworkCopy } from "./transforms/openwork-copy.mjs"
+import { rewriteSourceForOpenwork } from "./transforms/source-rewrite.mjs"
 
 const require = createRequire(import.meta.url)
 const ts = require("typescript")
 const OPENWORK_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..")
+const NODE_BUILTIN_MODULES = new Set(
+  builtinModules.flatMap((name) => [name, name.replace(/^node:/, ""), `node:${name}`])
+)
 
 const SUPPORTED_PLATFORM_MAP = {
   macOS: "darwin",
@@ -380,6 +391,7 @@ export function parseRaycastAiMigrationPreviewArgs(argv) {
     extensionPath: null,
     gitRef: "HEAD",
     gitRepo: null,
+    hostEntryMode: "migrated-source",
     out: null,
     outDir: null,
     targetExtensionId: null,
@@ -394,6 +406,8 @@ export function parseRaycastAiMigrationPreviewArgs(argv) {
       args.extensionPath = argv[++index]
     } else if (arg === "--git-ref") {
       args.gitRef = argv[++index]
+    } else if (arg === "--host-entry-mode") {
+      args.hostEntryMode = argv[++index]
     } else if (arg === "--out") {
       args.out = argv[++index]
     } else if (arg === "--out-dir") {
@@ -411,8 +425,13 @@ export function parseRaycastAiMigrationPreviewArgs(argv) {
 
   if (!args.extensionPath) {
     throw new Error(
-      "Usage: node scripts/preview-raycast-ai-migration.mjs <extension-path> [--out file] [--out-dir dir] [--target-extension-id id] [--target-extension-title title]\n" +
-        "   or: node scripts/preview-raycast-ai-migration.mjs --git-repo ../raycast-extensions --extension-path extensions/notion [--git-ref HEAD] [--out-dir dir] [--target-extension-id id] [--target-extension-title title]"
+      "Usage: node scripts/preview-raycast-ai-migration.mjs <extension-path> [--out file] [--out-dir dir] [--host-entry-mode migrated-source|shell] [--target-extension-id id] [--target-extension-title title]\n" +
+        "   or: node scripts/preview-raycast-ai-migration.mjs --git-repo ../raycast-extensions --extension-path extensions/notion [--git-ref HEAD] [--out-dir dir] [--host-entry-mode migrated-source|shell] [--target-extension-id id] [--target-extension-title title]"
+    )
+  }
+  if (!["migrated-source", "shell"].includes(args.hostEntryMode)) {
+    throw new Error(
+      `Unknown --host-entry-mode "${args.hostEntryMode}". Expected "migrated-source" or "shell".`
     )
   }
 
@@ -431,18 +450,18 @@ function createReader(args) {
       relativePath.startsWith(`${extensionPath}/`)
         ? relativePath
         : posix.join(extensionPath, relativePath)
+    const readGit = (gitArgs, options = {}) =>
+      execFileSync("git", ["-c", "gc.auto=0", "-C", repo, ...gitArgs], {
+        maxBuffer: 16 * 1024 * 1024,
+        ...options
+      })
 
     return {
       listFiles(relativePath) {
         const repoRelativePath = toRepoRelativePath(relativePath)
-        return execFileSync(
-          "git",
-          ["-C", repo, "ls-tree", "-r", "--name-only", args.gitRef, repoRelativePath],
-          {
-            encoding: "utf8",
-            maxBuffer: 16 * 1024 * 1024
-          }
-        )
+        return readGit(["ls-tree", "-r", "--name-only", args.gitRef, repoRelativePath], {
+          encoding: "utf8"
+        })
           .split("\n")
           .map((entry) => entry.trim())
           .filter(Boolean)
@@ -450,9 +469,7 @@ function createReader(args) {
       },
       readBuffer(relativePath) {
         const repoRelativePath = toRepoRelativePath(relativePath)
-        return execFileSync("git", ["-C", repo, "show", `${args.gitRef}:${repoRelativePath}`], {
-          maxBuffer: 16 * 1024 * 1024
-        })
+        return readGit(["show", `${args.gitRef}:${repoRelativePath}`])
       },
       readText(relativePath) {
         return this.readBuffer(relativePath).toString("utf8")
@@ -462,9 +479,24 @@ function createReader(args) {
   }
 
   const root = resolve(args.extensionPath)
+  const extensionPath = stripTrailingSlash(args.extensionPath)
+  const toLocalPath = (relativePath) => {
+    const path = String(relativePath)
+    if (path === extensionPath || path === root) {
+      return ""
+    }
+    if (path.startsWith(`${extensionPath}/`)) {
+      return path.slice(extensionPath.length + 1)
+    }
+    if (path.startsWith(`${root}/`)) {
+      return path.slice(root.length + 1)
+    }
+    return path
+  }
+
   return {
     listFiles(relativePath) {
-      const absoluteRoot = resolve(relativePath)
+      const absoluteRoot = join(root, toLocalPath(relativePath))
       if (!existsSync(absoluteRoot)) {
         return []
       }
@@ -479,16 +511,10 @@ function createReader(args) {
         .map((entry) => entry.slice(root.length + 1))
     },
     readBuffer(relativePath) {
-      const localPath = relativePath.startsWith(args.extensionPath)
-        ? relativePath.slice(args.extensionPath.length + 1)
-        : relativePath
-      return readFileSync(join(root, localPath))
+      return readFileSync(join(root, toLocalPath(relativePath)))
     },
     readText(relativePath) {
-      const localPath = relativePath.startsWith(args.extensionPath)
-        ? relativePath.slice(args.extensionPath.length + 1)
-        : relativePath
-      return readFileSync(join(root, localPath), "utf8")
+      return readFileSync(join(root, toLocalPath(relativePath)), "utf8")
     },
     sourceLabel: root
   }
@@ -557,7 +583,7 @@ function buildManifestPreview(pkg, sourceFiles, target) {
     aiCapability: {
       connectionId: "default",
       description: pkg.description,
-      guide: buildGuide(pkg, target),
+      guide: buildGuide(pkg, target, requiredPreferenceNames),
       id: target.extensionId,
       instructions: normalizeInstructions(pkg.ai?.instructions),
       mention: {
@@ -588,10 +614,7 @@ function buildManifestPreview(pkg, sourceFiles, target) {
       title: command.title
     })),
     connection: {
-      auth: {
-        secretNames: requiredPreferenceNames,
-        type: "apiKey"
-      },
+      auth: buildConnectionAuthPreview(requiredPreferenceNames),
       id: "default",
       provider: pkg.name,
       title: target.title
@@ -605,6 +628,17 @@ function buildManifestPreview(pkg, sourceFiles, target) {
     supportedPlatforms: mapPlatforms(pkg.platforms),
     title: target.title
   })
+}
+
+function buildConnectionAuthPreview(requiredPreferenceNames) {
+  return requiredPreferenceNames.length > 0
+    ? {
+        secretNames: requiredPreferenceNames,
+        type: "apiKey"
+      }
+    : {
+        type: "none"
+      }
 }
 
 function inferLauncherCapabilities(pkg, sourceFiles) {
@@ -895,7 +929,7 @@ function collectSupportNotes(status, entries) {
   return entries.filter((entry) => entry.status === status)
 }
 
-function collectSourceFiles(reader, extensionPath) {
+function collectSourceFiles(reader, extensionPath, target) {
   const sourceFiles = reader
     .listFiles(posix.join(extensionPath, "src"))
     .filter((file) => file.endsWith(".ts") || file.endsWith(".tsx"))
@@ -904,7 +938,7 @@ function collectSourceFiles(reader, extensionPath) {
       const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true)
       const imports = extractImportDetails(sourceFile)
       return {
-        blockingAdapters: detectBlockingAdapters(sourceText, file),
+        blockingAdapters: detectBlockingAdapters(sourceText, file, target),
         implicitRuntimeCapabilities: extractImplicitRuntimeCapabilities(sourceFile, imports),
         imports,
         memberUsages: extractMemberUsages(sourceFile, imports),
@@ -912,40 +946,21 @@ function collectSourceFiles(reader, extensionPath) {
         sourceText
       }
     })
-  const hasMigratableNotionClientInitializer = sourceFiles.some(
-    (file) =>
-      file.sourceText.includes("new OAuthService") &&
-      file.sourceText.includes("getPreferenceValues") &&
-      file.sourceText.includes("onAuthorize") &&
-      file.sourceText.includes("getNotionClient")
-  )
-  const hasWrappedNotionEntrypoints = sourceFiles.some(
-    (file) =>
-      file.sourceText.includes("withAccessToken(notionService)") ||
-      file.sourceText.includes("withAccessToken(service)")
-  )
-
-  if (hasMigratableNotionClientInitializer && hasWrappedNotionEntrypoints) {
-    for (const file of sourceFiles) {
-      file.blockingAdapters = file.blockingAdapters.filter(
-        (blocker) =>
-          blocker !==
-          "Uses module-level Notion client; replace with request-scoped Openwork client."
-      )
-    }
-  }
-
-  return sourceFiles
+  return suppressKnownExtensionBlockingAdapters(sourceFiles, target)
 }
 
-function buildGuide(pkg, target) {
+function buildGuide(pkg, target, requiredPreferenceNames = []) {
   const title = target.title
-  return [
-    `Use ${title} only for ${title} workspace content.`,
-    `${title} tools require a connected account before reading or writing workspace data.`,
-    "Search before retrieving or modifying a page unless the user provided an exact id.",
+  const guide = [
+    `Use ${title} only when the user asks for ${title} data or actions.`,
+    requiredPreferenceNames.length > 0
+      ? `${title} tools require a connected account before reading or changing extension data.`
+      : null,
     "If auth status is missing, explain that the extension must be connected in Settings first."
-  ].join(" ")
+  ]
+    .filter(Boolean)
+    .join(" ")
+  return extendKnownExtensionGuide(guide, { pkg, target })
 }
 
 function suggestRequiredPreferenceNames(preferences) {
@@ -961,7 +976,7 @@ function suggestRequiredPreferenceNames(preferences) {
   return ["accessToken"]
 }
 
-function extractToolPreview(reader, extensionPath, pkg) {
+function extractToolPreview(reader, extensionPath, pkg, target) {
   const toolFiles = reader
     .listFiles(posix.join(extensionPath, "src/tools"))
     .filter((file) => file.endsWith(".ts") || file.endsWith(".tsx"))
@@ -974,7 +989,7 @@ function extractToolPreview(reader, extensionPath, pkg) {
     const raycastName = basename(file).replace(/\.[cm]?tsx?$/, "")
     const manifestTool = manifestToolsByName.get(raycastName)
     return {
-      blockingAdapters: detectBlockingAdapters(sourceText, file),
+      blockingAdapters: detectBlockingAdapters(sourceText, file, target),
       confirmation: extractToolConfirmation(sourceFile, file),
       dependencies: extractImports(sourceFile),
       description: manifestTool?.description,
@@ -1274,12 +1289,10 @@ function resolveMemberSupport(importedName, memberName) {
   }
 }
 
-function detectBlockingAdapters(sourceText, filePath) {
+function detectBlockingAdapters(sourceText, filePath, target) {
   const blockers = []
   const isToolFile = filePath.includes("/src/tools/") || filePath.startsWith("src/tools/")
-  if (hasModuleLevelNotionClient(sourceText)) {
-    blockers.push("Uses module-level Notion client; replace with request-scoped Openwork client.")
-  }
+  blockers.push(...detectKnownExtensionBlockingAdapters({ filePath, isToolFile, sourceText, target }))
   return blockers
 }
 
@@ -1374,13 +1387,6 @@ function resolveSourceFilePath(importTarget, sourceFilesByPath) {
   ]
 
   return candidates.find((candidate) => sourceFilesByPath.has(candidate)) ?? null
-}
-
-function hasModuleLevelNotionClient(sourceText) {
-  return (
-    /\blet\s+notion\b[^\n]*=\s*null;?/m.test(sourceText) &&
-    /export function getNotionClient\(\)/.test(sourceText)
-  )
 }
 
 function inferAccess(raycastName, sourceText) {
@@ -1544,13 +1550,15 @@ function getRuntimeCompatibility(preview) {
 export function buildRaycastAiMigrationPreview(args) {
   const reader = createReader(args)
   const pkg = readPackageJson(reader, args.extensionPath)
-  const sourceFiles = collectSourceFiles(reader, args.extensionPath)
   const target = resolveMigrationTarget(pkg, args)
+  const sourceFiles = collectSourceFiles(reader, args.extensionPath, target)
   const runtimeCompatibility = buildRuntimeCompatibilityReport(sourceFiles)
   const utilsBoundaryReport = buildUtilsBoundaryReport(sourceFiles)
+  const sourceMigration = buildSourceMigration(reader, args.extensionPath, sourceFiles, target)
   const preview = {
     dependencyReport: buildDependencyReport(pkg, sourceFiles),
     feasibility: null,
+    hostEntryMode: args.hostEntryMode ?? "migrated-source",
     manifestPreview: buildManifestPreview(pkg, sourceFiles, target),
     runtimeCompatibility,
     source: {
@@ -1561,8 +1569,9 @@ export function buildRaycastAiMigrationPreview(args) {
       targetTitle: target.title,
       title: pkg.title
     },
-    sourceMigration: buildSourceMigration(reader, args.extensionPath, sourceFiles, target),
-    tools: extractToolPreview(reader, args.extensionPath, pkg),
+    sourceMigration,
+    tools: extractToolPreview(reader, args.extensionPath, pkg, target),
+    transformDiagnostics: sourceMigration.diagnostics,
     utilsBoundaryReport,
     unsupportedApis: runtimeCompatibility
   }
@@ -1612,6 +1621,9 @@ function assertOpenworkExtensionId(value) {
 
 export function buildRaycastAiMigrationArtifacts(preview) {
   const runtimeCompatibility = getRuntimeCompatibility(preview)
+  const packagePreview = buildPackagePreview(preview)
+  const hostPreview =
+    preview.hostEntryMode === "shell" ? buildHostShellPreview(preview) : preview
 
   return {
     "dependency-report.md": buildDependencyReportMarkdown(preview),
@@ -1619,30 +1631,93 @@ export function buildRaycastAiMigrationArtifacts(preview) {
     "manifest.patch.json": `${JSON.stringify(preview.manifestPreview, null, 2)}\n`,
     "manifest.preview.ts": buildManifestPreviewSource(preview),
     "migration-preview.json": `${JSON.stringify(serializeMigrationPreview(preview), null, 2)}\n`,
-    "openwork-package/main.ts": buildMainPreviewSource(preview, "./main/tools"),
+    "openwork-package/main.ts": buildMainPreviewSource(hostPreview, "./main/tools"),
     "openwork-package/identity.ts": buildIdentityPreviewSource(preview),
-    "openwork-package/main/tools.ts": buildToolsPreviewSource(preview, "../"),
-    "openwork-package/manifest.ts": buildManifestPreviewSource(preview, {
+    "openwork-package/main/tools.ts": buildToolsPreviewSource(hostPreview, "../"),
+    "openwork-package/manifest.ts": buildManifestPreviewSource(hostPreview, {
       useCommandMetaImports: true
     }),
-    "openwork-package/package.json": `${JSON.stringify(buildPackagePreview(preview), null, 2)}\n`,
-    "openwork-package/runtime-metadata.ts": buildRuntimeMetadataPreviewSource(preview),
-    "openwork-package/runtime.ts": buildRuntimePreviewSource(preview),
-    "openwork-package/tsconfig.check.json": `${JSON.stringify(buildPackageTypecheckConfig(preview), null, 2)}\n`,
-    "openwork-package/types.d.ts": buildTypesPreviewSource(preview),
-    ...buildSourceMigrationArtifacts(preview),
-    ...buildCommandContractArtifacts(preview),
+    "openwork-package/package.json": `${JSON.stringify(packagePreview, null, 2)}\n`,
+    "openwork-package/runtime-metadata.ts": buildRuntimeMetadataPreviewSource(hostPreview),
+    "openwork-package/runtime.ts": buildRuntimePreviewSource(hostPreview),
+    "openwork-package/tsconfig.check.json": `${JSON.stringify(buildPackageTypecheckConfig(hostPreview), null, 2)}\n`,
+    "openwork-package/types.d.ts": buildTypesPreviewSource(hostPreview),
+    ...buildSourceMigrationArtifacts(preview, {
+      includeSources: preview.hostEntryMode !== "shell"
+    }),
+    ...buildCommandContractArtifacts(hostPreview),
     "package.preview.json": `${JSON.stringify(buildPackagePreview(preview), null, 2)}\n`,
     "tools.preview.json": `${JSON.stringify(preview.tools, null, 2)}\n`,
     "tools.preview.ts": buildToolsPreviewSource(preview, "./openwork-package/"),
+    "transform-diagnostics.json": `${JSON.stringify(preview.transformDiagnostics, null, 2)}\n`,
     "utils-boundary-report.json": `${JSON.stringify(preview.utilsBoundaryReport, null, 2)}\n`,
     "runtime-compatibility.json": `${JSON.stringify(runtimeCompatibility, null, 2)}\n`,
     "unsupported-apis.json": `${JSON.stringify(runtimeCompatibility, null, 2)}\n`
   }
 }
 
-function buildPackageTypecheckConfig(preview) {
+function buildHostShellPreview(preview) {
   return {
+    ...preview,
+    manifestPreview: {
+      ...preview.manifestPreview,
+      aiCapability: preview.manifestPreview.aiCapability
+        ? {
+            ...preview.manifestPreview.aiCapability,
+            toolDisplays: {},
+            toolNames: []
+          }
+        : preview.manifestPreview.aiCapability,
+      commands: preview.manifestPreview.commands
+        .filter(
+          (command) =>
+            command.mode === "view" || command.mode === "menu-bar" || command.mode === "no-view"
+        )
+        .map((command) => ({
+          ...command,
+          runtime: command.runtime ?? {
+            viewport: {
+              bodyHeight: 520
+            }
+          }
+        })),
+      runtimeCapabilities: ["preferences"],
+      runtimeShell: undefined
+    },
+    sourceMigration: {
+      ...preview.sourceMigration,
+      sourceFiles: []
+    },
+    tools: []
+  }
+}
+
+function buildPackageTypecheckConfig(preview) {
+  const include =
+    preview.hostEntryMode === "shell"
+      ? [
+          "main.ts",
+          "main/**/*.ts",
+          "identity.ts",
+          "manifest.ts",
+          "runtime-metadata.ts",
+          "runtime.ts",
+          "src/*.meta.ts",
+          "types.d.ts"
+        ]
+      : [
+          "main.ts",
+          "main/**/*.ts",
+          "identity.ts",
+          "manifest.ts",
+          "runtime-metadata.ts",
+          "runtime.ts",
+          "src/**/*.ts",
+          "src/**/*.tsx",
+          "types.d.ts"
+        ]
+
+  const config = {
     compilerOptions: {
       allowSyntheticDefaultImports: true,
       baseUrl: ".",
@@ -1670,18 +1745,14 @@ function buildPackageTypecheckConfig(preview) {
       target: "ESNext",
       typeRoots: ["./node_modules/@types", join(OPENWORK_REPO_ROOT, "node_modules/@types")]
     },
-    include: [
-      "main.ts",
-      "main/**/*.ts",
-      "identity.ts",
-      "manifest.ts",
-      "runtime-metadata.ts",
-      "runtime.ts",
-      "src/**/*.ts",
-      "src/**/*.tsx",
-      "types.d.ts"
-    ]
+    include
   }
+
+  if (preview.hostEntryMode === "shell") {
+    config.exclude = ["main/migrated-src/**/*.ts", "main/migrated-src/**/*.tsx"]
+  }
+
+  return config
 }
 
 function buildDependencyTypecheckPaths(preview) {
@@ -1735,8 +1806,10 @@ function serializeMigrationPreview(preview) {
         outputPath,
         path
       })),
+      diagnostics: preview.sourceMigration.diagnostics,
       sourceFiles: preview.sourceMigration.sourceFiles.map(
-        ({ mainOutputPath, notes, outputPath, path }) => ({
+        ({ diagnostics, mainOutputPath, notes, outputPath, path }) => ({
+          diagnostics,
           ...(mainOutputPath ? { mainOutputPath } : {}),
           notes,
           outputPath,
@@ -1792,6 +1865,14 @@ function buildDependencyReportMarkdown(preview) {
     `Runtime-bound utils: ${preview.utilsBoundaryReport.counts.runtimeBound}`,
     `AI tool reachable runtime-bound utils: ${preview.utilsBoundaryReport.counts.toolReachableRuntimeBound}`,
     "",
+    "## Transform Diagnostics Summary",
+    "",
+    `Diagnostics: ${preview.transformDiagnostics.length}`,
+    ...preview.transformDiagnostics.map(
+      (diagnostic) =>
+        `- ${diagnostic.severity}: ${diagnostic.transform} (${diagnostic.file}) - ${diagnostic.message}`
+    ),
+    "",
     "## Feasibility",
     "",
     `Manifest: ${preview.feasibility.score.manifest}`,
@@ -1801,6 +1882,29 @@ function buildDependencyReportMarkdown(preview) {
     `Tool handlers: ${preview.feasibility.score.toolHandlers}`,
     `UI commands: ${preview.feasibility.score.uiCommands}`
   ].join("\n")}\n`
+}
+
+function collectTransformDiagnostics(sourceFiles) {
+  const seen = new Set()
+  const diagnostics = []
+
+  for (const file of sourceFiles) {
+    for (const diagnostic of file.diagnostics ?? []) {
+      const key = [file.path, diagnostic.transform, diagnostic.severity, diagnostic.message].join("\0")
+      if (seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      diagnostics.push({
+        file: file.path,
+        message: diagnostic.message,
+        severity: diagnostic.severity,
+        transform: diagnostic.transform
+      })
+    }
+  }
+
+  return diagnostics
 }
 
 function formatMarkdownCell(value) {
@@ -1947,22 +2051,17 @@ function buildMainPreviewSource(preview, toolsImportPath = "./tools.preview") {
 function buildRuntimePreviewSource(preview) {
   const runtimeName = getRuntimeExportName(preview)
   const commandEntries = preview.manifestPreview.commands.filter(
-    (command) => command.mode === "view"
+    (command) => command.runtime
   )
-  const commandSourceEntries = commandEntries.map((command) => ({
+  const componentCommands = commandEntries.filter((command) => command.mode !== "no-view")
+  const commandSourceEntries = componentCommands.map((command) => ({
     command,
     componentName: getCommandComponentName(preview, command.name),
     importPath: resolveCommandRuntimeImportPath(preview, command)
   }))
   const placeholderComponents = commandSourceEntries
     .filter((entry) => !entry.importPath)
-    .map((entry) =>
-      [
-        `function ${entry.componentName}(): never {`,
-        `  throw new Error(${JSON.stringify(`Migrate command source for ${entry.command.name}.`)})`,
-        "}"
-      ].join("\n")
-    )
+    .map((entry) => buildRuntimePlaceholderComponentSource(entry))
   const importedComponents = commandSourceEntries
     .filter((entry) => entry.importPath)
     .map(
@@ -1977,18 +2076,25 @@ function buildRuntimePreviewSource(preview) {
     )
   const commandDefinitions = commandEntries
     .map((command) =>
-      [
-        `${JSON.stringify(command.name)}: {`,
-        `  Component: ${getCommandComponentName(preview, command.name)},`,
-        '  mode: "view"',
-        "}"
-      ].join("\n")
+      buildRuntimeCommandDefinitionSource(preview, command)
     )
     .join(",\n")
+  const reactImport =
+    placeholderComponents.length > 0 && componentAliases.length > 0
+      ? 'import { createElement, type ComponentType } from "react"'
+      : placeholderComponents.length > 0
+        ? 'import { createElement } from "react"'
+        : componentAliases.length > 0
+          ? 'import type { ComponentType } from "react"'
+          : null
+  const runtimeImport =
+    placeholderComponents.length > 0
+      ? `import { ${buildRuntimePlaceholderImportNames(commandSourceEntries)}, defineNativeExtensionRuntime } from "@openwork/extension-api"`
+      : 'import { defineNativeExtensionRuntime } from "@openwork/extension-api"'
 
   return `${[
-    'import type { ComponentType } from "react"',
-    'import { defineNativeExtensionRuntime } from "@openwork/extension-api"',
+    reactImport,
+    runtimeImport,
     ...importedComponents,
     "",
     ...componentAliases,
@@ -2006,6 +2112,76 @@ function buildRuntimePreviewSource(preview) {
   ]
     .filter((line) => line !== null)
     .join("\n")}`
+}
+
+function buildRuntimePlaceholderComponentSource(entry) {
+  return entry.command.mode === "menu-bar"
+    ? buildMenuBarRuntimePlaceholderComponentSource(entry)
+    : buildDetailRuntimePlaceholderComponentSource(entry)
+}
+
+function buildDetailRuntimePlaceholderComponentSource(entry) {
+  return [
+    `function ${entry.componentName}() {`,
+    "  return createElement(Detail, {",
+    `    markdown: ${JSON.stringify(
+      [
+        `# ${entry.command.title}`,
+        "",
+        `Migrated command source for \`${entry.command.name}\` is present in this extension package, but this host entry is still running in shell mode.`,
+        "",
+        "Adapt the migrated Raycast command source to the Openwork extension runtime before promoting this command to a live UI command."
+      ].join("\n")
+    )},`,
+    `    navigationTitle: ${JSON.stringify(entry.command.title)}`,
+    "  })",
+    "}"
+  ].join("\n")
+}
+
+function buildMenuBarRuntimePlaceholderComponentSource(entry) {
+  return [
+    `function ${entry.componentName}() {`,
+    "  return createElement(MenuBarExtra, {",
+    `    title: ${JSON.stringify(entry.command.title)},`,
+    `    tooltip: ${JSON.stringify(`${entry.command.title} is running in shell mode.`)}`,
+    "  })",
+    "}"
+  ].join("\n")
+}
+
+function buildRuntimePlaceholderImportNames(commandSourceEntries) {
+  const placeholderModes = new Set(
+    commandSourceEntries
+      .filter((entry) => !entry.importPath)
+      .map((entry) => entry.command.mode)
+  )
+  const importNames = []
+  if (placeholderModes.has("view")) {
+    importNames.push("Detail")
+  }
+  if (placeholderModes.has("menu-bar")) {
+    importNames.push("MenuBarExtra")
+  }
+  return importNames.join(", ")
+}
+
+function buildRuntimeCommandDefinitionSource(preview, command) {
+  if (command.mode === "no-view") {
+    return [
+      `${JSON.stringify(command.name)}: {`,
+      '  mode: "no-view",',
+      "  run: async () => {}",
+      "}"
+    ].join("\n")
+  }
+
+  return [
+    `${JSON.stringify(command.name)}: {`,
+    `  Component: ${getCommandComponentName(preview, command.name)},`,
+    `  mode: ${JSON.stringify(command.mode)}`,
+    "}"
+  ].join("\n")
 }
 
 function buildTypesPreviewSource(preview) {
@@ -2033,7 +2209,7 @@ function buildTypesPreviewSource(preview) {
 function buildPreferenceTypeAliases(preview) {
   const extensionPreferences = preview.manifestPreview.preferences ?? []
   const lines = [
-    `type Extension = ${formatPreferenceTypeLiteral(extensionPreferences, (preference) =>
+    `type Extension = ${formatPreferenceTypeLiteral(preview, extensionPreferences, (preference) =>
       preferenceToType(preference)
     )}`
   ]
@@ -2045,6 +2221,7 @@ function buildPreferenceTypeAliases(preview) {
 
     lines.push(
       `type ${toPascalCase(command.name)} = Extension & ${formatPreferenceTypeLiteral(
+        preview,
         command.preferences,
         (preference) => preferenceToType(preference)
       )}`
@@ -2082,13 +2259,9 @@ function formatTypeLiteral(items, getType) {
     .join("\n")}\n    }`
 }
 
-function formatPreferenceTypeLiteral(items, getType) {
+function formatPreferenceTypeLiteral(preview, items, getType) {
   const literal = formatTypeLiteral(items, getType)
-  if (items.some((item) => item.name === "accessToken")) {
-    return literal.replace(/\n {4}}$/, "\n      notion_token?: string\n    }")
-  }
-
-  return literal
+  return extendKnownExtensionPreferenceTypeLiteral(literal, { items, preview })
 }
 
 function preferenceToType(preference) {
@@ -2116,8 +2289,7 @@ function argumentToType(argument) {
 
 function buildRuntimeMetadataPreviewSource(preview) {
   const runtimeMetadataName = getRuntimeMetadataExportName(preview)
-  const commands = preview.manifestPreview.commands
-    .filter((command) => command.mode === "view" || command.mode === "no-view")
+  const commands = preview.manifestPreview.commands.filter((command) => command.runtime)
   const commandConfigs = commands.map((command, index) =>
     buildRuntimeMetadataSearchConfig(command, index)
   )
@@ -2416,14 +2588,18 @@ function normalizeSearchTerms(values) {
 
 function buildCommandContractArtifacts(preview) {
   const artifacts = {}
-  const viewCommands = preview.manifestPreview.commands.filter((command) => command.mode === "view")
+  const runtimeCommands = preview.manifestPreview.commands.filter((command) => command.runtime)
 
-  for (const command of viewCommands) {
-    artifacts[`openwork-package/src/${command.name}.meta.ts`] = buildCommandMetaSource(command)
+  for (const command of runtimeCommands) {
+    if (command.mode === "view") {
+      artifacts[`openwork-package/src/${command.name}.meta.ts`] = buildCommandMetaSource(command)
+    }
 
     const wrapperSource = buildCommandWrapperSource(preview, command)
     if (wrapperSource) {
       artifacts[`openwork-package/src/${command.name}.tsx`] = wrapperSource
+    } else if (preview.hostEntryMode === "shell") {
+      artifacts[`openwork-package/src/${command.name}.tsx`] = buildCommandShellSource(command)
     }
   }
 
@@ -2440,6 +2616,10 @@ function buildCommandMetaSource(command) {
 }
 
 function buildCommandWrapperSource(preview, command) {
+  if (preview.hostEntryMode === "shell") {
+    return buildCommandShellSource(command)
+  }
+
   if (resolveCanonicalCommandSourcePath(preview, command)) {
     return null
   }
@@ -2452,11 +2632,67 @@ function buildCommandWrapperSource(preview, command) {
   return `export { default } from ${JSON.stringify(toCommandWrapperImportPath(importPath))}\n`
 }
 
+function buildCommandShellSource(command) {
+  if (command.mode === "menu-bar") {
+    return `${[
+      'import { createElement } from "react"',
+      'import { MenuBarExtra } from "@openwork/extension-api"',
+      "",
+      `export default function ${toPascalCase(command.name)}ShellCommand() {`,
+      "  return createElement(MenuBarExtra, {",
+      `    title: ${JSON.stringify(command.title ?? command.name)},`,
+      `    tooltip: ${JSON.stringify(`${command.title ?? command.name} is running in shell mode.`)}`,
+      "  })",
+      "}",
+      ""
+    ].join("\n")}`
+  }
+
+  return `${[
+    'import { createElement } from "react"',
+    'import { Detail } from "@openwork/extension-api"',
+    "",
+    `export default function ${toPascalCase(command.name)}ShellCommand() {`,
+    "  return createElement(Detail, {",
+    `    markdown: ${JSON.stringify(
+      [
+        `# ${command.title ?? command.name}`,
+        "",
+        `Migrated command source for \`${command.name}\` is not wired into the Openwork runtime yet.`,
+        "",
+        "This shell keeps the extension package loadable while the Raycast command source is adapted."
+      ].join("\n")
+    )},`,
+    `    navigationTitle: ${JSON.stringify(command.title ?? command.name)}`,
+    "  })",
+    "}",
+    ""
+  ].join("\n")}`
+}
+
 function toCommandWrapperImportPath(importPath) {
   return importPath.replace(/^\.\//, "./").replace(/^\.\.?\/*src\//, "./")
 }
 
 function buildPackagePreview(preview) {
+  if (preview.hostEntryMode === "shell") {
+    return {
+      name: toOpenworkPackageName(preview.source.targetExtensionId ?? preview.source.packageName),
+      version: "0.0.0",
+      private: true,
+      type: "module",
+      main: "./main.ts",
+      types: "./manifest.ts",
+      dependencies: sortRecord({
+        "@openwork/extension-api": "workspace:*",
+        react:
+          OPENWORK_DEFAULT_DEPENDENCY_VERSIONS.react ??
+          preview.dependencyReport.find((dependency) => dependency.name === "react")?.version ??
+          "latest"
+      })
+    }
+  }
+
   const dependencies = Object.fromEntries(
     preview.dependencyReport
       .filter(
@@ -2488,10 +2724,12 @@ function buildPackagePreview(preview) {
 }
 
 function isPackageDependencyName(value) {
+  const name = String(value)
   return (
-    !String(value).startsWith(".") &&
-    !String(value).startsWith("/") &&
-    !String(value).startsWith("node:")
+    !name.startsWith(".") &&
+    !name.startsWith("/") &&
+    !NODE_BUILTIN_MODULES.has(name) &&
+    !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(name)
   )
 }
 
@@ -2788,12 +3026,15 @@ function buildSourceMigration(reader, extensionPath, sourceFiles, target) {
   )
   const toolReachableFiles = findFilesReachableFromTools(sourceFiles, resolvedRelativeImportsByPath)
   const rewrittenSourceFiles = sourceFiles.flatMap((file) => {
-    const rewrittenSource = rewriteSourceForOpenwork(file.sourceText, file.path, target)
+    const rewrittenSource = rewriteSourceForOpenwork(file.sourceText, file.path, target, {
+      sourceFiles
+    })
     const output = {
+      diagnostics: rewrittenSource.diagnostics,
       notes: file.blockingAdapters,
       outputPath: `openwork-package/${file.path}`,
       path: file.path,
-      sourceText: rewrittenSource
+      sourceText: rewrittenSource.sourceText
     }
 
     if (!toolReachableFiles.has(file.path)) {
@@ -2804,11 +3045,12 @@ function buildSourceMigration(reader, extensionPath, sourceFiles, target) {
     return [
       output,
       {
+        diagnostics: rewrittenSource.diagnostics,
         mainOutputPath,
         notes: file.blockingAdapters,
         outputPath: `openwork-package/${mainOutputPath}`,
         path: file.path,
-        sourceText: rewrittenSource
+        sourceText: rewrittenSource.sourceText
       }
     ]
   })
@@ -2820,15 +3062,19 @@ function buildSourceMigration(reader, extensionPath, sourceFiles, target) {
 
   return {
     assetFiles,
+    diagnostics: collectTransformDiagnostics(rewrittenSourceFiles),
     sourceFiles: rewrittenSourceFiles
   }
 }
 
-function buildSourceMigrationArtifacts(preview) {
+function buildSourceMigrationArtifacts(preview, options = {}) {
+  const includeSources = options.includeSources ?? true
   const artifacts = {}
 
-  for (const file of preview.sourceMigration.sourceFiles) {
-    artifacts[file.outputPath] = file.sourceText
+  if (includeSources) {
+    for (const file of preview.sourceMigration.sourceFiles) {
+      artifacts[file.outputPath] = file.sourceText
+    }
   }
 
   if (preview.sourceMigration.assetFiles.length === 0) {
@@ -2840,260 +3086,6 @@ function buildSourceMigrationArtifacts(preview) {
   }
 
   return artifacts
-}
-
-function rewriteSourceForOpenwork(sourceText, filePath, target) {
-  const rewrittenSource = sourceText
-    .replaceAll(/from\s+["']@raycast\/api["']/g, 'from "@openwork/extension-api"')
-    .replaceAll(/from\s+["']@raycast\/utils["']/g, 'from "@openwork/extension-utils"')
-    .replaceAll(/^\s*(authorizeUrl|tokenUrl):\s*["'][^"']*\.raycast\.com[^"']*["'],?\n/gm, "")
-    .replaceAll(
-      /import\s+\{\s*useCachedPromise,\s*withAccessToken\s*\}\s+from\s+["']@openwork\/extension-utils["']/g,
-      'import { useCachedPromise, withAccessToken, type PaginationRequest } from "@openwork/extension-utils"'
-    )
-    .replaceAll(/import\s*\(\s*["']@raycast\/api["']\s*\)/g, 'import("@openwork/extension-api")')
-    .replaceAll(
-      /import\s*\(\s*["']@raycast\/utils["']\s*\)/g,
-      'import("@openwork/extension-utils")'
-    )
-    .replaceAll(
-      /import\s+\{\s*iteratePaginatedAPI\s*\}\s+from\s+["']@notionhq\/client["']/g,
-      'import { iteratePaginatedAPI, type UserObjectResponse } from "@notionhq/client"'
-    )
-    .replaceAll(/\bForm\.Values\b/g, "Form.Values<any>")
-    .replaceAll(/\bgetPreferenceValues\(\)/g, "getPreferenceValues<Preferences>()")
-    .replaceAll(/\bconst blocks = \[\]/g, "const blocks: string[] = []")
-    .replaceAll(/\bconst users = \[\]/g, "const users: UserObjectResponse[] = []")
-    .replaceAll(/return \{ name, link:/g, 'return { name: name ?? "Quicklink", link:')
-    .replaceAll(
-      /\biteratePaginatedAPI\(notion\.users\.list,\s*\{\}\)/g,
-      "iteratePaginatedAPI(notion.users.list, {}) as AsyncIterable<UserObjectResponse>"
-    )
-    .replaceAll(/\(\{ cursor \}\) =>/g, "({ cursor }: PaginationRequest) =>")
-    .replaceAll(
-      /if \(newIndex < 0 \|\| newIndex >= propertiesOrder\.length\) return propertiesOrder;/g,
-      "if (newIndex < 0 || newIndex >= propertiesOrder.length) return;"
-    )
-    .replaceAll(
-      /if \(!value \|\| !opt\.id\) \{\n(\s*)return null;\n(\s*)\}/g,
-      "if (!value || !opt.id) {\n$1return;\n$2}"
-    )
-    .replaceAll(
-      /(catch \(error\) \{\n(\s*)console\.error\(error\);\n)(\s*)\}/g,
-      "$1$2return undefined;\n$3}"
-    )
-    .replaceAll(
-      /(\s*)if \(!silent\) return handleError\(([^;\n]+)\);\n(\s*)\}/g,
-      "$1if (!silent) return handleError($2);\n$1return undefined;\n$3}"
-    )
-    .replaceAll(
-      /(if \(!validateUrl\(input\)\) return "The URL is not valid";\n)(\s*)\}/g,
-      "$1$2return undefined;\n$2}"
-    )
-    .replaceAll(
-      /(\n\s*case "status":\n\s*return \{\n\s*tag: \{ value: property\.value\.name, color: notionColorToTintColor\(property\.value\.color\) \},\n\s*tooltip: `\$\{title\}: \$\{property\.value\.name\}`,\n\s*\};\n)(\s*)\}/g,
-      "$1$2default:\n$2  return undefined;\n$2}"
-    )
-    .replaceAll(/\bnotion_token\b/g, "accessToken")
-    .replaceAll(/raycast:\/\//g, "openwork://")
-    .replaceAll(/(["'])raycast\1/g, "$1openwork$1")
-    .replaceAll(/Raycast/g, "Openwork")
-
-  return ensureReactRuntimeImport(
-    rewriteKnownNotionSourceForOpenwork(
-      rewriteExtensionQuicklinkUrls(rewrittenSource, target),
-      filePath
-    ),
-    filePath
-  )
-}
-
-function rewriteExtensionQuicklinkUrls(sourceText, target) {
-  return sourceText.replace(/openwork:\/\/extensions\/([^"'`\s)]+)/g, (match, rawPathAndSearch) => {
-    const [rawPath, rawSearch] = String(rawPathAndSearch).split("?", 2)
-    const pathSegments = rawPath.split("/").filter(Boolean)
-    const commandName =
-      pathSegments.length >= 3 && pathSegments[pathSegments.length - 2] === target.sourceExtensionId
-        ? pathSegments[pathSegments.length - 1]
-        : pathSegments.length >= 2 &&
-            pathSegments[pathSegments.length - 2] === target.sourceExtensionId
-          ? pathSegments[pathSegments.length - 1]
-          : null
-
-    if (!commandName) {
-      return match
-    }
-
-    return `openwork://extensions/${target.extensionId}/${commandName}${
-      rawSearch ? `?${rawSearch}` : ""
-    }`
-  })
-}
-
-function rewriteKnownNotionSourceForOpenwork(sourceText, filePath) {
-  const rewrittenSource = rewriteKnownNotionOauthSourceForOpenwork(sourceText, filePath)
-
-  if (!filePath.endsWith("src/utils/notion/page/property.ts")) {
-    return rewrittenSource
-  }
-
-  return rewrittenSource
-    .replaceAll(
-      /case "title":\n\s*case "rich_text":\n\s*return markdownToRichText\(value\);?/g,
-      [
-        'case "title":',
-        "      return { title: markdownToRichText(value) };",
-        '    case "rich_text":',
-        "      return { rich_text: markdownToRichText(value) };"
-      ].join("\n")
-    )
-    .replaceAll(/return parseFloat\(value\);?/g, "return { number: parseFloat(value) };")
-    .replaceAll(
-      /return \{ start: time\.split\("T"\)\[0\] \};?/g,
-      'return { date: { start: time.split("T")[0] } };'
-    )
-    .replaceAll(
-      /return \{ start: time, time_zone: getLocalTimezone\(\) \};?/g,
-      "return { date: { start: time, time_zone: getLocalTimezone() } };"
-    )
-    .replaceAll(
-      /case "select":\n\s*case "status":\n\s*return \{ id: value \};?/g,
-      [
-        'case "select":',
-        "      return { select: { id: value } };",
-        '    case "status":',
-        "      return { status: { id: value } };"
-      ].join("\n")
-    )
-    .replaceAll(
-      /case "multi_select":\n\s*case "relation":\n\s*case "people":\n\s*return value\.map\(\(id(?::\s*string)?\) => \(\{ id \}\)\);?/g,
-      [
-        'case "multi_select":',
-        "      return { multi_select: value.map((id: string) => ({ id })) };",
-        '    case "relation":',
-        "      return { relation: value.map((id: string) => ({ id })) };",
-        '    case "people":',
-        "      return { people: value.map((id: string) => ({ id })) };"
-      ].join("\n")
-    )
-    .replaceAll(/return value;?/g, "return { [type]: value };")
-}
-
-function rewriteKnownNotionOauthSourceForOpenwork(sourceText, filePath) {
-  if (!filePath.endsWith("oauth.ts") || !sourceText.includes("getNotionClient")) {
-    return sourceText
-  }
-
-  const assignedClient = extractNotionClientAssignment(sourceText)
-  if (!assignedClient) {
-    return sourceText
-  }
-
-  const clientExpression = rewriteNotionClientExpression(assignedClient)
-  return sourceText
-    .replace(
-      /import\s+\{\s*OAuth,\s*getPreferenceValues\s*\}\s+from\s+["']@openwork\/extension-api["']/,
-      'import { OAuth, getConnectionSecret } from "@openwork/extension-api"'
-    )
-    .replace(
-      /import\s+\{\s*getPreferenceValues,\s*OAuth\s*\}\s+from\s+["']@openwork\/extension-api["']/,
-      'import { OAuth, getConnectionSecret } from "@openwork/extension-api"'
-    )
-    .replace(/^\s*const\s+\{\s*accessToken\s*\}\s*=\s*getPreferenceValues<Preferences>\(\)\s*\n/m, "")
-    .replace(/^\s*let\s+notion:[^\n]+=\s*null;?\s*\n/m, "")
-    .replace(/^\s*personalAccessToken:\s*accessToken,?\s*\n/m, "")
-    .replace(
-      /^\s*onAuthorize\(\{\s*token\s*\}\)\s*\{\s*\n\s*notion\s*=\s*[^;\n]+;?\s*\n\s*\},?\s*\n/m,
-      ""
-    )
-    .replace(
-      /export function getNotionClient\(\)\s*\{\s*\n\s*if \(!notion\) \{\s*\n\s*throw new Error\([^\n]+\)\s*\n\s*\}\s*\n\s*return notion;?\s*\n\}/m,
-      [
-        "export function getNotionClient() {",
-        '  const accessToken = getConnectionSecret("accessToken")',
-        "  if (!accessToken) {",
-        '    throw new Error("Missing accessToken preference for this extension.")',
-        "  }",
-        "",
-        `  return ${clientExpression}`,
-        "}"
-      ].join("\n")
-    )
-}
-
-function extractNotionClientAssignment(sourceText) {
-  const match = sourceText.match(
-    /onAuthorize\(\{\s*token\s*\}\)\s*\{\s*\n\s*notion\s*=\s*([^;\n]+);?\s*\n\s*\}/m
-  )
-  return match?.[1]?.trim() ?? null
-}
-
-function rewriteNotionClientExpression(expression) {
-  const trimmedExpression = expression.trim()
-  if (trimmedExpression === "{ token }") {
-    return "{ token: accessToken }"
-  }
-
-  return trimmedExpression.replace(/\btoken\b/g, "accessToken")
-}
-
-function ensureReactRuntimeImport(sourceText, filePath) {
-  if (!filePath.endsWith(".tsx") || !containsJsxSyntax(sourceText)) {
-    return sourceText
-  }
-
-  if (hasReactRuntimeImport(sourceText)) {
-    return ensureReactRuntimeMarker(sourceText)
-  }
-
-  return `import React from "react"\nvoid React\n${sourceText}`
-}
-
-function containsJsxSyntax(sourceText) {
-  return /<[A-Z][A-Za-z0-9.]*[\s>/]/.test(sourceText)
-}
-
-function hasReactRuntimeImport(sourceText) {
-  return /import\s+(?:React\b|\*\s+as\s+React\b|\{\s*[^}]*\bReact\b[^}]*\})[^;\n]*\s+from\s+["']react["']/.test(
-    sourceText
-  )
-}
-
-function ensureReactRuntimeMarker(sourceText) {
-  if (usesReactIdentifierOutsideImports(sourceText)) {
-    return sourceText
-  }
-
-  return sourceText.replace(
-    /(import\s+(?:React\b|\*\s+as\s+React\b|\{\s*[^}]*\bReact\b[^}]*\})[^;\n]*\s+from\s+["']react["'];?\n)/,
-    "$1void React\n"
-  )
-}
-
-function usesReactIdentifierOutsideImports(sourceText) {
-  const body = sourceText.replaceAll(/^import\s+[\s\S]*?\s+from\s+["'][^"']+["'];?\n/gm, "")
-  return /\bReact\b/.test(body)
-}
-
-function rewritePublicOpenworkCopy(value) {
-  if (typeof value === "string") {
-    return value
-      .replaceAll(/raycast:\/\//g, "openwork://")
-      .replaceAll(/\bRaycast\b/g, "Openwork")
-      .replaceAll(/\braycast\b/g, "openwork")
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((entry) => rewritePublicOpenworkCopy(entry))
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [key, rewritePublicOpenworkCopy(entry)])
-    )
-  }
-
-  return value
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
