@@ -157,35 +157,44 @@ test("extension migration harness refuses to clear repository source directories
   }
 })
 
-test("extension migration harness allows build and external output directories", async () => {
+test("extension migration harness only allows build output directories", async () => {
   const root = await mkdtemp(join(tmpdir(), "openwork-extension-harness-safe-outdir-"))
   const externalRoot = await mkdtemp(join(tmpdir(), "openwork-extension-harness-external-outdir-"))
   try {
-    for (const outDir of [
-      join(root, ".ow-build", "extension-migration", "github", "shell"),
-      join(externalRoot, "github-shell")
-    ]) {
-      const plan = {
-        apply: false,
-        cwd: root,
-        destinationDir: join(root, "extensions", "github"),
-        extensionId: "github",
-        extensionPath: "extensions/github",
-        generatedPackageDir: join(outDir, "openwork-package"),
-        ignoredRoot: join(root, ".ignored-extensions"),
-        mode: "shell",
-        outDir,
-        previewArgs: ["scripts/preview-raycast-ai-migration.mjs"],
-        verifyCommands: []
-      }
-
-      runMigrateExtensionPlan(plan as any, {
-        execFileSync: () => {
-          mkdirSync(plan.generatedPackageDir, { recursive: true })
-        }
-      })
-      assert.equal(existsSync(plan.generatedPackageDir), true)
+    const outDir = join(root, ".ow-build", "extension-migration", "github", "shell")
+    const plan = {
+      apply: false,
+      cwd: root,
+      destinationDir: join(root, "extensions", "github"),
+      extensionId: "github",
+      extensionPath: "extensions/github",
+      generatedPackageDir: join(outDir, "openwork-package"),
+      ignoredRoot: join(root, ".ignored-extensions"),
+      mode: "shell",
+      outDir,
+      previewArgs: ["scripts/preview-raycast-ai-migration.mjs"],
+      verifyCommands: []
     }
+
+    runMigrateExtensionPlan(plan as any, {
+      execFileSync: () => {
+        mkdirSync(plan.generatedPackageDir, { recursive: true })
+      }
+    })
+    assert.equal(existsSync(plan.generatedPackageDir), true)
+
+    assert.throws(
+      () =>
+        runMigrateExtensionPlan(
+          {
+            ...plan,
+            generatedPackageDir: join(externalRoot, "github-shell", "openwork-package"),
+            outDir: join(externalRoot, "github-shell")
+          } as any,
+          { execFileSync: () => undefined }
+        ),
+      /Refusing to clear unsafe output directory/
+    )
   } finally {
     await rm(root, { force: true, recursive: true })
     await rm(externalRoot, { force: true, recursive: true })

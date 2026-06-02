@@ -267,13 +267,11 @@ function assertSafeOutputDir(cwd, outDir) {
   const normalizedCwd = resolve(cwd)
   const normalizedOutDir = resolve(outDir)
   const allowedBuildRoot = resolve(cwd, ".ow-build", "extension-migration")
-  const isInsideRepo = normalizedOutDir === normalizedCwd ||
-    normalizedOutDir.startsWith(`${normalizedCwd}/`)
   const isInsideAllowedBuildRoot =
     normalizedOutDir === allowedBuildRoot ||
     normalizedOutDir.startsWith(`${allowedBuildRoot}/`)
 
-  if (isInsideRepo && !isInsideAllowedBuildRoot) {
+  if (!isInsideAllowedBuildRoot) {
     throw new Error(`Refusing to clear unsafe output directory: ${normalizedOutDir}`)
   }
 }
