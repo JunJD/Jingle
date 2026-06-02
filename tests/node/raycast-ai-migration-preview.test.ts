@@ -212,7 +212,7 @@ test("Raycast migration generates GitHub-like and Apple Reminders-like package c
       toolNames: ["createIssue", "getMyIssues"]
     })
     assertRaycastMigrationContract(applePreview, {
-      commandCount: 2,
+      commandCount: 3,
       dependencyNames: ["chrono-node", "date-fns"],
       extensionId: "apple-reminders-generated",
       packageName: "apple-reminders",
@@ -307,7 +307,109 @@ test("Raycast migration shell host entry keeps no-view commands in runtime metad
     assert.match(manifestSource, /"name": "quick-add-reminder"/)
     assert.match(runtimeMetadataSource, /name: "quick-add-reminder"/)
     assert.match(runtimeSource, /"quick-add-reminder": \{\n\s+mode: "no-view"/)
+    assert.match(runtimeSource, /not wired into the Openwork runtime/)
+    assert.doesNotMatch(runtimeSource, /run: async \(\) => \{\}/)
     assert.match(String(artifacts["openwork-package/src/quick-add-reminder.tsx"]), /not wired/)
+  } finally {
+    await rm(extensionRoot, { force: true, recursive: true })
+  }
+})
+
+test("Raycast migration migrated-source host entry wires no-view command source into runtime", async () => {
+  const extensionRoot = await createAppleRemindersLikeExtensionFixture()
+
+  try {
+    const preview = buildRaycastAiMigrationPreview({
+      extensionPath: extensionRoot,
+      gitRef: "HEAD",
+      gitRepo: null,
+      out: null,
+      targetExtensionId: "apple-reminders-generated",
+      targetExtensionTitle: "Apple Reminders Generated"
+    })
+    const artifacts = buildRaycastAiMigrationArtifacts(preview)
+    const manifestSource = String(artifacts["openwork-package/manifest.ts"])
+    const runtimeMetadataSource = String(artifacts["openwork-package/runtime-metadata.ts"])
+    const runtimeSource = String(artifacts["openwork-package/runtime.ts"])
+    const quickAddSource = String(artifacts["openwork-package/src/quick-add-reminder.tsx"])
+
+    assert.match(manifestSource, /"name": "quick-add-reminder"/)
+    assert.match(runtimeMetadataSource, /name: "quick-add-reminder"/)
+    assert.match(
+      runtimeSource,
+      /import AppleRemindersGeneratedQuickAddReminderCommand from "\.\/src\/quick-add-reminder"/
+    )
+    assert.match(
+      runtimeSource,
+      /"quick-add-reminder": \{\n\s+mode: "no-view",\n\s+run: AppleRemindersGeneratedQuickAddReminderCommand/
+    )
+    assert.doesNotMatch(runtimeSource, /run: async \(\) => \{\}/)
+    assert.match(quickAddSource, /from "@openwork\/extension-api"/)
+    assert.match(quickAddSource, /showHUD/)
+  } finally {
+    await rm(extensionRoot, { force: true, recursive: true })
+  }
+})
+
+test("Raycast migration generated host entries satisfy command mode contracts", async () => {
+  const extensionRoot = await createAppleRemindersLikeExtensionFixture()
+
+  try {
+    const cases = [
+      {
+        expectRuntimeSourceImport: true,
+        expectTools: true,
+        hostEntryMode: "migrated-source" as const
+      },
+      {
+        expectRuntimeSourceImport: false,
+        expectTools: false,
+        hostEntryMode: "shell" as const
+      }
+    ]
+
+    for (const testCase of cases) {
+      const preview = buildRaycastAiMigrationPreview({
+        extensionPath: extensionRoot,
+        gitRef: "HEAD",
+        gitRepo: null,
+        hostEntryMode: testCase.hostEntryMode,
+        out: null,
+        targetExtensionId: "apple-reminders-generated",
+        targetExtensionTitle: "Apple Reminders Generated"
+      })
+      const artifacts = buildRaycastAiMigrationArtifacts(preview)
+      const manifestSource = String(artifacts["openwork-package/manifest.ts"])
+      const runtimeSource = String(artifacts["openwork-package/runtime.ts"])
+      const toolsSource = String(artifacts["openwork-package/main/tools.ts"])
+      const runtimeMetadataSource = String(artifacts["openwork-package/runtime-metadata.ts"])
+
+      for (const commandName of ["my-reminders", "menu-bar-reminders", "quick-add-reminder"]) {
+        assert.match(manifestSource, new RegExp(`"name": "${commandName}"`))
+        assert.match(runtimeMetadataSource, new RegExp(`name: "${commandName}"`))
+        assert.match(runtimeSource, new RegExp(`"${commandName}": \\{`))
+      }
+
+      assert.match(runtimeSource, /"my-reminders": \{\n\s+Component: AppleRemindersGeneratedMyRemindersCommand,\n\s+mode: "view"/)
+      assert.match(runtimeSource, /"menu-bar-reminders": \{\n\s+Component: AppleRemindersGeneratedMenuBarRemindersCommand,\n\s+mode: "menu-bar"/)
+      assert.match(runtimeSource, /"quick-add-reminder": \{\n\s+mode: "no-view"/)
+      assert.doesNotMatch(runtimeSource, /run: async \(\) => \{\}/)
+
+      if (testCase.expectRuntimeSourceImport) {
+        assert.match(runtimeSource, /from "\.\/src\/my-reminders"/)
+        assert.match(runtimeSource, /from "\.\/src\/menu-bar-reminders"/)
+        assert.match(runtimeSource, /from "\.\/src\/quick-add-reminder"/)
+        assert.match(toolsSource, /main\/migrated-src\/tools\/create-reminder/)
+        assert.match(manifestSource, /toolNames": \[\n\s+"createReminder",\n\s+"deleteReminder"\n\s+\]/)
+      } else {
+        assert.doesNotMatch(runtimeSource, /from "\.\/src\//)
+        assert.match(runtimeSource, /not wired into the Openwork runtime/)
+        assert.match(toolsSource, /return \[\s*\]/)
+        assert.match(manifestSource, /toolNames": \[\]/)
+      }
+
+      assert.equal(testCase.expectTools, !/return \[\s*\]/.test(toolsSource))
+    }
   } finally {
     await rm(extensionRoot, { force: true, recursive: true })
   }
@@ -3085,6 +3187,12 @@ async function createAppleRemindersLikeExtensionFixture() {
             title: "My Reminders"
           },
           {
+            description: "Show a menu bar reminder count.",
+            mode: "menu-bar",
+            name: "menu-bar-reminders",
+            title: "Menu Bar Reminders"
+          },
+          {
             description: "Create a reminder.",
             mode: "no-view",
             name: "quick-add-reminder",
@@ -3143,6 +3251,16 @@ async function createAppleRemindersLikeExtensionFixture() {
       "",
       "export default async function QuickAddReminder() {",
       "  await showHUD('Reminder created')",
+      "}"
+    ].join("\n")
+  )
+  await writeFile(
+    join(extensionRoot, "src", "menu-bar-reminders.tsx"),
+    [
+      'import { MenuBarExtra } from "@raycast/api"',
+      "",
+      "export default function MenuBarReminders() {",
+      "  return <MenuBarExtra title=\"1\" tooltip=\"Pending reminders\" />",
       "}"
     ].join("\n")
   )

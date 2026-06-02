@@ -41,6 +41,7 @@
     "doctor": "node .agents/skills/launcher-extension-guardrails/scripts/doctor-architecture.mjs",
     "check:guardrails": "node .agents/skills/launcher-extension-guardrails/scripts/check-guardrails.mjs",
     "check:extensions": "tsx --tsconfig tsconfig.node.json scripts/check-native-extensions.mjs",
+    "check:extension-migration": "tsx --tsconfig tsconfig.node.json --test tests/node/extension-migration-harness.test.ts tests/node/native-extension-shell-packages.test.ts tests/node/raycast-ai-migration-preview.test.ts",
     "migrate:extension": "node scripts/migrate-extension.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "node scripts/run-prisma-openwork-db.mjs migrate dev",

@@ -603,14 +603,7 @@ function buildManifestPreview(pkg, sourceFiles, target) {
       mode: command.mode,
       name: command.name,
       preferences: migratePreferences(command.preferences),
-      runtime:
-        command.mode === "view"
-          ? {
-              viewport: {
-                bodyHeight: 520
-              }
-            }
-          : undefined,
+      runtime: buildCommandRuntimeManifestPreview(command),
       title: command.title
     })),
     connection: {
@@ -628,6 +621,22 @@ function buildManifestPreview(pkg, sourceFiles, target) {
     supportedPlatforms: mapPlatforms(pkg.platforms),
     title: target.title
   })
+}
+
+function buildCommandRuntimeManifestPreview(command) {
+  if (command.mode === "view") {
+    return {
+      viewport: {
+        bodyHeight: 520
+      }
+    }
+  }
+
+  if (command.mode === "menu-bar" || command.mode === "no-view") {
+    return {}
+  }
+
+  return undefined
 }
 
 function buildConnectionAuthPreview(requiredPreferenceNames) {
@@ -2053,10 +2062,16 @@ function buildRuntimePreviewSource(preview) {
   const commandEntries = preview.manifestPreview.commands.filter(
     (command) => command.runtime
   )
+  const noViewCommands = commandEntries.filter((command) => command.mode === "no-view")
   const componentCommands = commandEntries.filter((command) => command.mode !== "no-view")
   const commandSourceEntries = componentCommands.map((command) => ({
     command,
     componentName: getCommandComponentName(preview, command.name),
+    importPath: resolveCommandRuntimeImportPath(preview, command)
+  }))
+  const noViewSourceEntries = noViewCommands.map((command) => ({
+    command,
+    functionName: getCommandComponentName(preview, command.name),
     importPath: resolveCommandRuntimeImportPath(preview, command)
   }))
   const placeholderComponents = commandSourceEntries
@@ -2073,6 +2088,12 @@ function buildRuntimePreviewSource(preview) {
     .map(
       (entry) =>
         `const ${entry.componentName} = ${entry.componentName}Source as ComponentType<Record<string, unknown>>`
+    )
+  const importedNoViewFunctions = noViewSourceEntries
+    .filter((entry) => entry.importPath)
+    .map(
+      (entry) =>
+        `import ${entry.functionName} from ${JSON.stringify(entry.importPath)}`
     )
   const commandDefinitions = commandEntries
     .map((command) =>
@@ -2096,6 +2117,7 @@ function buildRuntimePreviewSource(preview) {
     reactImport,
     runtimeImport,
     ...importedComponents,
+    ...importedNoViewFunctions,
     "",
     ...componentAliases,
     componentAliases.length > 0 ? "" : null,
@@ -2168,10 +2190,23 @@ function buildRuntimePlaceholderImportNames(commandSourceEntries) {
 
 function buildRuntimeCommandDefinitionSource(preview, command) {
   if (command.mode === "no-view") {
+    if (resolveCommandRuntimeImportPath(preview, command)) {
+      return [
+        `${JSON.stringify(command.name)}: {`,
+        '  mode: "no-view",',
+        `  run: ${getCommandComponentName(preview, command.name)}`,
+        "}"
+      ].join("\n")
+    }
+
     return [
       `${JSON.stringify(command.name)}: {`,
       '  mode: "no-view",',
-      "  run: async () => {}",
+      "  run: async () => {",
+      `    throw new Error(${JSON.stringify(
+        `Migrated no-view command source for "${command.name}" is not wired into the Openwork runtime.`
+      )})`,
+      "  }",
       "}"
     ].join("\n")
   }
