@@ -16,7 +16,7 @@ Fixes #(issue number)
 
 ## Checklist
 
-- [ ] I have read the [Contributing Guide](CONTRIBUTING.md)
+- [ ] I have read the [Contributing Guide](../CONTRIBUTING.md)
 - [ ] I have tested my changes locally
 - [ ] My changes generate no new warnings
 - [ ] Any dependent changes have been merged and published

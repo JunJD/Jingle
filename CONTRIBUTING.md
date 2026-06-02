@@ -6,8 +6,8 @@ Thank you for your interest in contributing to openwork! This document provides 
 
 ### Prerequisites
 
-- Node.js 20+
-- npm 10+
+- Node.js 18+
+- pnpm 10+
 - Git
 
 ### Getting Started
@@ -22,12 +22,12 @@ Thank you for your interest in contributing to openwork! This document provides 
 2. Install dependencies:
 
    ```bash
-   npm install
+   pnpm install
    ```
 
 3. Start the development server:
    ```bash
-   npm run dev
+   pnpm run dev
    ```
 
 ## Project Structure
@@ -114,20 +114,20 @@ openwork uses a tactical/SCADA-inspired design system:
 
 ```bash
 # Run linting
-npm run lint
+pnpm run lint
 
 # Run type checking
-npm run typecheck
+pnpm run typecheck
 
 # Build for all platforms
-npm run build
+pnpm run build
 ```
 
 ## Pull Request Process
 
 1. Create a feature branch from `main`
 2. Make your changes with clear commit messages
-3. Ensure all checks pass (`npm run lint && npm run typecheck`)
+3. Ensure all checks pass (`pnpm run lint && pnpm run typecheck`)
 4. Submit a PR with a description of changes
 5. Address any review feedback
 
@@ -156,13 +156,6 @@ We use labels to organize issues:
 | `documentation`    | Documentation improvements    |
 | `question`         | Further information requested |
 | `wontfix`          | This will not be worked on    |
-
-## Questions?
-
-Open an issue or start a discussion on GitHub.
-changes
-
-- `chore:` Build/tooling changes
 
 ## Questions?
 
