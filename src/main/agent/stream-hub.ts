@@ -1,11 +1,8 @@
-import { EventType, type BaseEvent, type Message as AGUIMessage } from "@ag-ui/core"
 import type { ToolCall as LangChainToolCall, ToolCallChunk } from "@langchain/core/messages"
 import {
   extractComposerMessageRefsMetadata,
-  extractMessageText,
   normalizeComposerMessageRefs,
   toDisplayAssistantMessageContent,
-  summarizeMessageContent,
   toComposerMessageMetadata,
   toDisplayMessageContent,
   toDisplayUserMessageContent,
@@ -14,17 +11,25 @@ import {
 } from "@shared/message-content"
 import type {
   ContentBlock,
+  HITLRequest,
   Message,
   Subagent,
   ThreadHistoryState,
+  Todo,
   ToolCall
 } from "@shared/app-types"
 import {
-  createDefaultAgentThreadProjection,
-  type AgentProjectionEnvelope,
-  type AgentThreadProjection,
+  createDefaultAgentThreadRuntimeState,
+  reduceAgentThreadRuntimeEvent,
+  type ActiveAgentRun,
+  type AgentRunPhase,
+  type AgentThreadEvent,
+  type AgentThreadEventBatch,
+  type AgentThreadEventDraft,
+  type AgentThreadSnapshot,
+  type AgentThreadRuntimeState,
   type AgentTokenUsage
-} from "@shared/agent-projection"
+} from "@shared/agent-thread-runtime"
 import { getIpcErrorStatus, isIpcErrorCode, type IpcErrorPayload } from "@shared/ipc-error"
 import { extractHitlRequestFromValuesState } from "./runtime-state"
 import type { ThreadsService } from "../threads/service"
@@ -94,23 +99,24 @@ interface AccumulatedToolCall {
   name: string
 }
 
+type TerminalRuntimeStatus = "idle" | "interrupted" | "error" | "cancelled"
+
 interface AgentHubEntry {
+  eventSubscribers: Map<string, (batch: AgentThreadEventBatch) => void>
+  hydrated: boolean
   hydratePromise: Promise<void> | null
-  projector: ThreadProjectionProjector
-  subscribers: Map<string, (envelope: AgentProjectionEnvelope) => void>
+  projector: ThreadRuntimeProjector
 }
 
-type ProjectionListener = (envelope: AgentProjectionEnvelope) => void
-
-function getRequiredProjectionRunId(runId: string | null): string {
+function getRequiredRuntimeRunId(runId: string | null): string {
   if (runId) {
     return runId
   }
 
-  throw new Error("[AgentStreamHub] Missing run id for interrupt projection.")
+  throw new Error("[AgentStreamHub] Missing run id for interrupt state.")
 }
 
-function toProjectionError(
+function toRuntimeError(
   payload: Extract<AgentStreamPayload, { type: "error" }>
 ): IpcErrorPayload {
   const code = isIpcErrorCode(payload.code) ? payload.code : "INTERNAL"
@@ -120,23 +126,6 @@ function toProjectionError(
     ...(payload.details ? { details: payload.details } : {}),
     message: payload.message ?? payload.error,
     status: typeof payload.status === "number" ? payload.status : getIpcErrorStatus(code)
-  }
-}
-
-function toAGUIStringContent(content: Message["content"]): string {
-  const text = extractMessageText(content).trim()
-  if (text.length > 0) {
-    return text
-  }
-
-  return summarizeMessageContent(content)
-}
-
-function stringifyToolArgs(args: unknown): string {
-  try {
-    return JSON.stringify(args ?? {})
-  } catch {
-    return "{}"
   }
 }
 
@@ -221,143 +210,116 @@ function appendAssistantMessageContent(
   return appendContentBlocks(toContentBlocks(existing), toContentBlocks(incoming))
 }
 
-function toAGUIMessage(message: Message): AGUIMessage {
-  switch (message.role) {
-    case "assistant":
-      return {
-        ...(message.content ? { content: toAGUIStringContent(message.content) || undefined } : {}),
-        id: message.id,
-        ...(message.name ? { name: message.name } : {}),
-        role: "assistant",
-        ...(message.tool_calls?.length
-          ? {
-              toolCalls: message.tool_calls.map((toolCall) => ({
-                function: {
-                  arguments: stringifyToolArgs(toolCall.args),
-                  name: toolCall.name
-                },
-                id: toolCall.id,
-                type: "function"
-              }))
-            }
-          : {})
-      }
-
-    case "tool":
-      return {
-        content: toAGUIStringContent(message.content),
-        id: message.id,
-        role: "tool",
-        toolCallId: message.tool_call_id ?? message.id,
-        ...(message.name ? { name: message.name } : {})
-      }
-
-    case "system":
-      return {
-        content: toAGUIStringContent(message.content),
-        id: message.id,
-        ...(message.name ? { name: message.name } : {}),
-        role: "system"
-      }
-
-    case "user":
-      return {
-        content: toAGUIStringContent(message.content),
-        id: message.id,
-        ...(message.name ? { name: message.name } : {}),
-        role: "user"
-      }
-  }
-}
-
-class ThreadProjectionProjector {
+class ThreadRuntimeProjector {
   private readonly accumulatedToolCalls = new Map<string, AccumulatedToolCall>()
   private readonly activeSubagents = new Map<string, Subagent>()
+  private readonly pendingRuntimeEvents: AgentThreadEvent[] = []
   private currentMessageId: string | null = null
-  private projection: AgentThreadProjection
+  private runtimeState: AgentThreadRuntimeState
 
   constructor(threadId: string) {
-    this.projection = createDefaultAgentThreadProjection(threadId)
+    this.runtimeState = createDefaultAgentThreadRuntimeState(threadId)
   }
 
-  getEnvelope(event: BaseEvent | null): AgentProjectionEnvelope {
-    return {
-      event,
-      projection: structuredClone(this.projection)
-    }
+  consumeRuntimeEvents(): AgentThreadEvent[] {
+    return this.pendingRuntimeEvents.splice(0)
+  }
+
+  getSnapshot(): AgentThreadSnapshot {
+    return structuredClone(this.runtimeState)
   }
 
   hydrateFromHistory(history: ThreadHistoryState): void {
     this.resetStreamingState()
-    this.projection = {
-      ...createDefaultAgentThreadProjection(this.projection.threadId),
-      messages: this.sanitizeHistoryMessages(history.messages),
-      pendingApproval: history.pendingApproval,
-      status: history.pendingApproval ? "interrupted" : "idle",
-      todos: history.todos
+    const messages = this.sanitizeHistoryMessages(history.messages)
+    let activeRun: ActiveAgentRun | null = null
+    if (history.pendingApproval) {
+      activeRun = this.createActiveRunFromLatestUserMessage(messages)
+      const activeTurnMessages = activeRun ? this.getVisibleMessagesForTurn(activeRun.turnId, messages) : []
+      const lastAssistant = activeTurnMessages.findLast((message) => message.role === "assistant")
+      activeRun = activeRun
+        ? {
+            ...activeRun,
+            assistantMessageId: lastAssistant?.id ?? activeRun.assistantMessageId,
+            phase: "waiting_tool_result",
+            status: "waiting_approval"
+          }
+        : null
     }
+    this.commitRuntimeEvent({
+      snapshot: {
+        activeRun,
+        error: null,
+        hasMoreBefore: false,
+        latestRunId: null,
+        messagesPage: messages,
+        pendingApproval: history.pendingApproval,
+        status: history.pendingApproval ? "interrupted" : "idle",
+        subagents: [],
+        threadId: this.runtimeState.threadId,
+        todos: history.todos,
+        tokenUsage: null
+      },
+      type: "thread.snapshot"
+    })
   }
 
-  prepareInvoke(message: AgentInvokeMessage): BaseEvent {
+  prepareInvoke(message: AgentInvokeMessage): void {
     this.resetStreamingState()
-    this.projection.error = null
-    this.projection.isLoading = true
-    this.projection.pendingApproval = null
-    this.projection.runId = null
-    this.projection.status = "running"
-    this.projection.subagents = []
-    this.projection.tokenUsage = null
-    this.upsertMessage(this.createUserMessage(message), { appendAssistantText: false })
-    return this.buildMessagesSnapshotEvent()
+    const userMessage = this.createUserMessage(message)
+    this.upsertMessage(userMessage, { appendAssistantText: false })
+    this.commitRuntimeEvent({
+      run: this.createActiveRun(message.id, null),
+      type: "run.started"
+    })
   }
 
-  prepareResume(): BaseEvent {
+  prepareResume(): void {
     this.resetStreamingState()
-    this.projection.error = null
-    this.projection.isLoading = true
-    this.projection.pendingApproval = null
-    this.projection.runId = null
-    this.projection.status = "running"
-    this.projection.subagents = []
-    this.projection.tokenUsage = null
-    return this.buildStateSnapshotEvent()
+    const activeRun = this.createActiveRunFromLatestUserMessage()
+    if (activeRun) {
+      this.commitRuntimeEvent({
+        run: activeRun,
+        type: "run.resumed"
+      })
+    }
+    this.syncActiveRunFromMessages()
   }
 
-  applyPayload(payload: AgentStreamPayload): BaseEvent[] {
+  applyPayload(payload: AgentStreamPayload): void {
     switch (payload.type) {
       case "run_started":
-        this.projection.error = null
-        this.projection.isLoading = true
-        this.projection.runId = payload.runId
-        this.projection.status = "running"
-        return [this.buildRunStartedEvent(payload.runId)]
+        if (this.runtimeState.pendingApproval) {
+          this.commitRuntimeEvent({ type: "approval.cleared" })
+        }
+        this.commitRuntimeEvent({ runId: payload.runId, type: "run.idAssigned" })
+        return
 
       case "stream":
-        return this.applyStreamPayload(payload.mode, payload.data)
+        this.applyStreamPayload(payload.mode, payload.data)
+        return
 
       case "done":
-        this.projection.isLoading = false
-        this.projection.status = this.projection.pendingApproval ? "interrupted" : "idle"
-        return [this.buildRunFinishedEvent()]
+        this.finishActiveRun(this.runtimeState.pendingApproval ? "interrupted" : "idle")
+        return
 
       case "cancelled":
-        this.projection.isLoading = false
-        this.projection.pendingApproval = null
-        this.projection.status = "cancelled"
-        return [this.buildRunFinishedEvent({ cancelled: true })]
+        this.finishActiveRun("cancelled")
+        return
 
       case "error":
-        this.projection.error = toProjectionError(payload)
-        this.projection.isLoading = false
-        this.projection.status = "error"
-        return [this.buildRunErrorEvent(this.projection.error.message, this.projection.error.code)]
+        const error = toRuntimeError(payload)
+        this.commitRuntimeEvent({
+          error,
+          status: "error",
+          type: "thread.statusChanged"
+        })
+        this.finishActiveRun("error")
+        return
     }
   }
 
-  private applyStreamPayload(mode: string, data: unknown): BaseEvent[] {
-    let messagesChanged = false
-    let stateChanged = false
-
+  private applyStreamPayload(mode: string, data: unknown): void {
     if (mode === "messages") {
       const [msgChunk] = data as [SerializedMessageChunk, MessageMetadata]
       const kwargs = msgChunk?.kwargs || {}
@@ -375,28 +337,25 @@ class ThreadProjectionProjector {
           const messageMetadata = toComposerMessageMetadata({
             refs: extractComposerMessageRefsMetadata(kwargs.additional_kwargs)
           })
-          messagesChanged =
-            this.upsertMessage(
-              {
-                content: content || "",
-                created_at: this.getCreatedAt(messageId),
-                id: messageId,
-                ...(messageMetadata ? { metadata: messageMetadata } : {}),
-                role: "assistant",
-                ...(kwargs.tool_calls?.length
-                  ? { tool_calls: kwargs.tool_calls as ToolCall[] }
-                  : {})
-              },
-              { appendAssistantText: true }
-            ) || messagesChanged
+          this.upsertMessage(
+            this.createAssistantRuntimeMessage({
+              content: content || "",
+              ...(messageMetadata ? { metadata: messageMetadata } : {}),
+              id: messageId,
+              ...(kwargs.tool_calls?.length ? { tool_calls: kwargs.tool_calls as ToolCall[] } : {})
+            }),
+            { appendAssistantText: true }
+          )
         }
 
         if (kwargs.tool_call_chunks?.length) {
-          stateChanged = this.processToolCallChunks(kwargs.tool_call_chunks) || stateChanged
+          this.commitToolStartedEvents(messageId, kwargs.tool_call_chunks)
+          this.processToolCallChunks(kwargs.tool_call_chunks)
         }
 
         if (kwargs.tool_calls?.length) {
-          stateChanged = this.processCompletedToolCalls(kwargs.tool_calls) || stateChanged
+          this.commitToolStartedEvents(messageId, kwargs.tool_calls)
+          this.processCompletedToolCalls(kwargs.tool_calls)
         }
 
         const usageMetadata = kwargs.usage_metadata || kwargs.response_metadata?.usage
@@ -405,33 +364,40 @@ class ThreadProjectionProjector {
           usageMetadata.input_tokens !== undefined &&
           usageMetadata.input_tokens > 0
         ) {
-          this.projection.tokenUsage = this.toTokenUsage(usageMetadata)
-          stateChanged = true
+          this.commitRuntimeEvent({
+            tokenUsage: this.toTokenUsage(usageMetadata),
+            type: "run.tokenUsageUpdated"
+          })
         }
       }
 
       if (isToolMessage && kwargs.tool_call_id) {
+        this.commitRuntimeEvent({
+          messageId: this.runtimeState.activeRun?.assistantMessageId ?? this.currentMessageId,
+          runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
+          toolCallId: kwargs.tool_call_id,
+          type: "tool.updated"
+        })
         const content = this.extractContent(kwargs.content)
         const messageMetadata = toComposerMessageMetadata({
           refs: extractComposerMessageRefsMetadata(kwargs.additional_kwargs)
         })
         const messageId = kwargs.id || crypto.randomUUID()
-        messagesChanged =
-          this.upsertMessage(
-            {
-              content,
-              created_at: this.getCreatedAt(messageId),
-              id: messageId,
-              ...(messageMetadata ? { metadata: messageMetadata } : {}),
-              name: kwargs.name,
-              role: "tool",
-              tool_call_id: kwargs.tool_call_id
-            },
-            { appendAssistantText: false }
-          ) || messagesChanged
+        this.upsertMessage(
+          {
+            content,
+            created_at: this.getCreatedAt(messageId),
+            id: messageId,
+            ...(messageMetadata ? { metadata: messageMetadata } : {}),
+            name: kwargs.name,
+            role: "tool",
+            tool_call_id: kwargs.tool_call_id
+          },
+          { appendAssistantText: false }
+        )
 
         if (kwargs.name === "task") {
-          stateChanged = this.processToolMessage(kwargs.tool_call_id) || stateChanged
+          this.processToolMessage(kwargs.tool_call_id)
         }
       }
     }
@@ -440,88 +406,90 @@ class ThreadProjectionProjector {
       const state = data as ValuesInterruptState
 
       if (state.messages) {
-        stateChanged = this.syncSubagentsFromValues(state.messages) || stateChanged
-        messagesChanged = this.applyValuesMessages(state.messages) || messagesChanged
+        this.syncSubagentsFromValues(state.messages)
+        this.applyValuesMessages(state.messages)
+        this.syncActiveRunFromMessages()
       }
 
       if (state.todos !== undefined) {
-        this.projection.todos = state.todos.map((todo) => ({
-          content: todo.content || "",
-          id: todo.id || crypto.randomUUID(),
-          status: (todo.status || "pending") as AgentThreadProjection["todos"][number]["status"]
-        }))
-        stateChanged = true
+        this.commitRuntimeEvent({
+          todos: state.todos.map((todo) => ({
+            content: todo.content || "",
+            id: todo.id || crypto.randomUUID(),
+            status: (todo.status || "pending") as Todo["status"]
+          })),
+          type: "todos.replaced"
+        })
       }
 
       const pendingApproval = this.extractPendingApproval(state)
       if (pendingApproval) {
-        this.projection.isLoading = false
-        this.projection.pendingApproval = pendingApproval
-        this.projection.status = "interrupted"
-        stateChanged = true
+        this.commitRuntimeEvent({
+          approval: pendingApproval,
+          runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
+          type: "approval.requested"
+        })
       }
     }
-
-    const events: BaseEvent[] = []
-    if (messagesChanged) {
-      events.push(this.buildMessagesSnapshotEvent())
-    }
-    if (stateChanged) {
-      events.push(this.buildStateSnapshotEvent())
-    }
-    return events
   }
 
-  private buildMessagesSnapshotEvent(): BaseEvent {
-    return {
-      messages: this.projection.messages.map((message) => toAGUIMessage(message)),
-      timestamp: Date.now(),
-      type: EventType.MESSAGES_SNAPSHOT
+  private commitRuntimeEvent(draft: AgentThreadEventDraft): AgentThreadEvent | null {
+    const revision = this.runtimeState.revision + 1
+    const event =
+      draft.type === "thread.snapshot"
+        ? ({
+            ...draft,
+            revision,
+            snapshot: {
+              ...draft.snapshot,
+              revision
+            }
+          } as AgentThreadEvent)
+        : ({
+            ...draft,
+            revision
+          } as AgentThreadEvent)
+    const nextRuntimeState = reduceAgentThreadRuntimeEvent(this.runtimeState, event)
+    if (nextRuntimeState === this.runtimeState) {
+      return null
+    }
+
+    this.runtimeState = nextRuntimeState
+    this.pendingRuntimeEvents.push(structuredClone(event))
+    return event
+  }
+
+  private commitToolStartedEvents(
+    messageId: string,
+    toolCalls: readonly { id?: string }[]
+  ): void {
+    for (const toolCall of toolCalls) {
+      if (!toolCall.id) {
+        continue
+      }
+
+      this.commitRuntimeEvent({
+        messageId,
+        runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
+        toolCallId: toolCall.id,
+        type: "tool.started"
+      })
     }
   }
 
-  private buildRunErrorEvent(message: string, code?: string): BaseEvent {
+  private createAssistantRuntimeMessage(input: {
+    content: Message["content"]
+    id: string
+    metadata?: Message["metadata"]
+    tool_calls?: ToolCall[]
+  }): Message {
     return {
-      ...(code ? { code } : {}),
-      message,
-      timestamp: Date.now(),
-      type: EventType.RUN_ERROR
-    }
-  }
-
-  private buildRunFinishedEvent(result?: unknown): BaseEvent {
-    return {
-      ...(result !== undefined ? { result } : {}),
-      runId: this.projection.runId ?? "unknown",
-      threadId: this.projection.threadId,
-      timestamp: Date.now(),
-      type: EventType.RUN_FINISHED
-    }
-  }
-
-  private buildRunStartedEvent(runId: string): BaseEvent {
-    return {
-      runId,
-      threadId: this.projection.threadId,
-      timestamp: Date.now(),
-      type: EventType.RUN_STARTED
-    }
-  }
-
-  private buildStateSnapshotEvent(): BaseEvent {
-    return {
-      snapshot: {
-        error: this.projection.error,
-        isLoading: this.projection.isLoading,
-        pendingApproval: this.projection.pendingApproval,
-        runId: this.projection.runId,
-        status: this.projection.status,
-        subagents: this.projection.subagents,
-        todos: this.projection.todos,
-        tokenUsage: this.projection.tokenUsage
-      },
-      timestamp: Date.now(),
-      type: EventType.STATE_SNAPSHOT
+      content: input.content,
+      created_at: this.getCreatedAt(input.id),
+      id: input.id,
+      ...(input.metadata ? { metadata: input.metadata } : {}),
+      role: "assistant",
+      ...(input.tool_calls ? { tool_calls: input.tool_calls } : {})
     }
   }
 
@@ -560,6 +528,89 @@ class ThreadProjectionProjector {
     }
   }
 
+  private createActiveRun(userMessageId: string, runId: string | null): ActiveAgentRun {
+    return {
+      assistantMessageId: null,
+      phase: "thinking",
+      runId,
+      status: "running",
+      threadId: this.runtimeState.threadId,
+      turnId: userMessageId,
+      userMessageId
+    }
+  }
+
+  private createActiveRunFromLatestUserMessage(
+    messages = this.runtimeState.messagesPage
+  ): ActiveAgentRun | null {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]
+      if (message?.role === "user") {
+        return this.createActiveRun(message.id, this.runtimeState.latestRunId)
+      }
+    }
+
+    return null
+  }
+
+  private finishActiveRun(status: TerminalRuntimeStatus): void {
+    if (status === "interrupted" && this.runtimeState.activeRun?.status === "waiting_approval") {
+      return
+    }
+
+    const terminalStatus =
+      status === "cancelled" ? "cancelled" : status === "error" ? "failed" : "completed"
+    this.commitRuntimeEvent({
+      runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
+      status: terminalStatus,
+      type: "run.finished"
+    })
+  }
+
+  private syncActiveRunFromMessages(): boolean {
+    const activeRun = this.runtimeState.activeRun
+    if (!activeRun) {
+      return false
+    }
+
+    const activeTurnMessages = this.getVisibleMessagesForTurn(activeRun.turnId)
+    const lastAssistant = activeTurnMessages.findLast((message) => message.role === "assistant")
+    if (!lastAssistant) {
+      return false
+    }
+
+    const phase: AgentRunPhase =
+      (lastAssistant.tool_calls?.length ?? 0) > 0 ? "tool_running" : "streaming"
+    if (activeRun.assistantMessageId === lastAssistant.id && activeRun.phase === phase) {
+      return false
+    }
+
+    this.commitRuntimeEvent({
+      message: lastAssistant,
+      type: "message.upserted"
+    })
+    return true
+  }
+
+  private getVisibleMessagesForTurn(
+    turnId: string,
+    messages = this.runtimeState.messagesPage
+  ): Message[] {
+    const visibleMessages = messages.filter((message) => message.role !== "tool")
+    const turnStartIndex = visibleMessages.findIndex(
+      (message) => message.role === "user" && message.id === turnId
+    )
+    if (turnStartIndex < 0) {
+      return []
+    }
+
+    const nextTurnStartIndex = visibleMessages.findIndex(
+      (message, index) => index > turnStartIndex && message.role === "user"
+    )
+    const turnEndIndex = nextTurnStartIndex < 0 ? visibleMessages.length : nextTurnStartIndex
+    return visibleMessages.slice(turnStartIndex, turnEndIndex)
+  }
+
   private extractContent(
     content: string | unknown[] | AgentMessageContent | undefined
   ): string | ContentBlock[] {
@@ -577,16 +628,14 @@ class ThreadProjectionProjector {
     })
   }
 
-  private extractPendingApproval(
-    state: ValuesInterruptState
-  ): AgentThreadProjection["pendingApproval"] {
+  private extractPendingApproval(state: ValuesInterruptState): HITLRequest | null {
     if (!state.__interrupt__?.length) {
       return null
     }
 
     return extractHitlRequestFromValuesState(
-      this.projection.threadId,
-      getRequiredProjectionRunId(this.projection.runId),
+      this.runtimeState.threadId,
+      getRequiredRuntimeRunId(this.runtimeState.latestRunId),
       state
     )
   }
@@ -599,7 +648,7 @@ class ThreadProjectionProjector {
   }
 
   private getCreatedAt(messageId: string): Date {
-    const existingMessage = this.projection.messages.find((message) => message.id === messageId)
+    const existingMessage = this.runtimeState.messagesPage.find((message) => message.id === messageId)
     return existingMessage?.created_at ?? new Date()
   }
 
@@ -663,7 +712,10 @@ class ThreadProjectionProjector {
     }
 
     if (changed) {
-      this.projection.subagents = Array.from(this.activeSubagents.values())
+      this.commitRuntimeEvent({
+        subagents: Array.from(this.activeSubagents.values()),
+        type: "subagents.replaced"
+      })
     }
 
     return changed
@@ -711,7 +763,10 @@ class ThreadProjectionProjector {
     }
 
     if (changed) {
-      this.projection.subagents = Array.from(this.activeSubagents.values())
+      this.commitRuntimeEvent({
+        subagents: Array.from(this.activeSubagents.values()),
+        type: "subagents.replaced"
+      })
     }
 
     return changed
@@ -725,7 +780,10 @@ class ThreadProjectionProjector {
 
     subagent.completedAt = new Date()
     subagent.status = "completed"
-    this.projection.subagents = Array.from(this.activeSubagents.values())
+    this.commitRuntimeEvent({
+      subagents: Array.from(this.activeSubagents.values()),
+      type: "subagents.replaced"
+    })
     return true
   }
 
@@ -787,12 +845,15 @@ class ThreadProjectionProjector {
       return false
     }
 
-    const existingMessages = this.projection.messages
+    const existingMessages = this.runtimeState.messagesPage
     const incomingIds = new Set(incomingMessages.map((message) => message.id))
     const isFullSnapshot = existingMessages.every((message) => incomingIds.has(message.id))
 
     if (isFullSnapshot) {
-      this.projection.messages = incomingMessages
+      this.commitRuntimeEvent({
+        messages: incomingMessages,
+        type: "messages.replaced"
+      })
       return true
     }
 
@@ -810,18 +871,43 @@ class ThreadProjectionProjector {
       nextMessages[existingIndex] = incomingMessage
     }
 
-    this.projection.messages = nextMessages
+    this.commitRuntimeEvent({
+      messages: nextMessages,
+      type: "messages.replaced"
+    })
     return true
   }
 
   private upsertMessage(message: Message, options: { appendAssistantText: boolean }): boolean {
-    const existingIndex = this.projection.messages.findIndex((entry) => entry.id === message.id)
+    const existingIndex = this.runtimeState.messagesPage.findIndex((entry) => entry.id === message.id)
     if (existingIndex < 0) {
-      this.projection.messages = [...this.projection.messages, message]
+      this.commitRuntimeEvent({
+        message,
+        type: "message.upserted"
+      })
       return true
     }
 
-    const existingMessage = this.projection.messages[existingIndex]
+    const existingMessage = this.runtimeState.messagesPage[existingIndex]
+    if (
+      options.appendAssistantText &&
+      existingMessage.role === "assistant" &&
+      message.role === "assistant" &&
+      typeof existingMessage.content === "string" &&
+      typeof message.content === "string" &&
+      !message.metadata &&
+      !message.tool_calls?.length
+    ) {
+      this.commitRuntimeEvent({
+        delta: message.content,
+        field: "text",
+        messageId: message.id,
+        partId: "content",
+        type: "message.part.delta"
+      })
+      return true
+    }
+
     let nextMessage = message
     if (
       options.appendAssistantText &&
@@ -835,80 +921,85 @@ class ThreadProjectionProjector {
       }
     }
 
-    this.projection.messages = this.projection.messages.map((entry, index) =>
-      index === existingIndex ? nextMessage : entry
-    )
+    this.commitRuntimeEvent({
+      message: nextMessage,
+      type: "message.upserted"
+    })
     return true
   }
 }
 
 export class AgentStreamHub {
   private readonly entries = new Map<string, AgentHubEntry>()
-  private readonly projectionListeners = new Map<string, ProjectionListener>()
+  private readonly eventListeners = new Map<string, (batch: AgentThreadEventBatch) => void>()
 
   constructor(private readonly threadsService: ThreadsService) {}
 
-  async getProjectionEnvelope(threadId: string): Promise<AgentProjectionEnvelope> {
+  async getThreadSnapshot(threadId: string): Promise<AgentThreadSnapshot> {
     const entry = await this.ensureEntry(threadId)
-    return entry.projector.getEnvelope(null)
+    return entry.projector.getSnapshot()
   }
 
   async prepareInvoke(threadId: string, message: AgentInvokeMessage): Promise<void> {
     const entry = await this.ensureEntry(threadId)
-    this.notify(threadId, [entry.projector.prepareInvoke(message)])
+    entry.projector.prepareInvoke(message)
+    this.notify(threadId)
   }
 
   async prepareResume(threadId: string): Promise<void> {
     const entry = await this.ensureEntry(threadId)
-    this.notify(threadId, [entry.projector.prepareResume()])
+    entry.projector.prepareResume()
+    this.notify(threadId)
   }
 
-  async subscribe(
+  async subscribeThreadEvents(
     threadId: string,
     subscriberId: string,
-    listener: (envelope: AgentProjectionEnvelope) => void
+    listener: (batch: AgentThreadEventBatch) => void
   ): Promise<void> {
     const entry = await this.ensureEntry(threadId)
-    entry.subscribers.set(subscriberId, listener)
+    entry.eventSubscribers.set(subscriberId, listener)
   }
 
-  unsubscribe(threadId: string, subscriberId: string): void {
+  unsubscribeThreadEvents(threadId: string, subscriberId: string): void {
     const entry = this.entries.get(threadId)
     if (!entry) {
       return
     }
 
-    entry.subscribers.delete(subscriberId)
+    entry.eventSubscribers.delete(subscriberId)
   }
 
-  subscribeAll(subscriberId: string, listener: ProjectionListener): () => void {
-    this.projectionListeners.set(subscriberId, listener)
+  subscribeAllThreadEvents(
+    subscriberId: string,
+    listener: (batch: AgentThreadEventBatch) => void
+  ): () => void {
+    this.eventListeners.set(subscriberId, listener)
 
     return () => {
-      this.projectionListeners.delete(subscriberId)
+      this.eventListeners.delete(subscriberId)
     }
   }
 
   async handlePayload(threadId: string, payload: AgentStreamPayload): Promise<void> {
     const entry = await this.ensureEntry(threadId)
-    this.notify(threadId, entry.projector.applyPayload(payload))
+    entry.projector.applyPayload(payload)
+    this.notify(threadId)
   }
 
   private async ensureEntry(threadId: string): Promise<AgentHubEntry> {
     let entry = this.entries.get(threadId)
     if (!entry) {
       entry = {
+        eventSubscribers: new Map(),
+        hydrated: false,
         hydratePromise: null,
-        projector: new ThreadProjectionProjector(threadId),
-        subscribers: new Map()
+        projector: new ThreadRuntimeProjector(threadId)
       }
       this.entries.set(threadId, entry)
     }
 
-    if (
-      !entry.hydratePromise &&
-      entry.projector.getEnvelope(null).projection.messages.length === 0
-    ) {
+    if (!entry.hydrated && !entry.hydratePromise) {
       entry.hydratePromise = this.hydrateEntry(threadId, entry)
     }
 
@@ -923,6 +1014,9 @@ export class AgentStreamHub {
     try {
       const history = await this.threadsService.getHistory(threadId)
       entry.projector.hydrateFromHistory(history)
+      // Hydration seeds state for getSnapshot/subscribe returns; it is not a future delta.
+      entry.projector.consumeRuntimeEvents()
+      entry.hydrated = true
     } catch (error) {
       console.error("[AgentStreamHub] Failed to hydrate thread history:", { error, threadId })
     } finally {
@@ -930,19 +1024,24 @@ export class AgentStreamHub {
     }
   }
 
-  private notify(threadId: string, events: BaseEvent[]): void {
+  private notify(threadId: string): void {
     const entry = this.entries.get(threadId)
     if (!entry) {
       return
     }
 
-    for (const event of events) {
-      const envelope = entry.projector.getEnvelope(event)
-      for (const listener of this.projectionListeners.values()) {
-        listener(envelope)
+    const runtimeEvents = entry.projector.consumeRuntimeEvents()
+    if (runtimeEvents.length > 0) {
+      const batch: AgentThreadEventBatch = {
+        events: runtimeEvents,
+        latestRevision: runtimeEvents[runtimeEvents.length - 1]?.revision ?? 0,
+        threadId
       }
-      for (const listener of entry.subscribers.values()) {
-        listener(envelope)
+      for (const listener of this.eventListeners.values()) {
+        listener(batch)
+      }
+      for (const listener of entry.eventSubscribers.values()) {
+        listener(batch)
       }
     }
   }

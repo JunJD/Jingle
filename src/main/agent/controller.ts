@@ -12,7 +12,7 @@ import { registerIpcHandle } from "../ipc/handle"
 import { IpcSchemaValidationError } from "../ipc/schema"
 
 export class AgentController {
-  private readonly projectionSubscriptionCleanups = new Map<string, () => void>()
+  private readonly eventSubscriptionCleanups = new Map<string, () => void>()
 
   constructor(
     private readonly agentService: AgentService,
@@ -38,20 +38,20 @@ export class AgentController {
       }
     })
 
-    registerIpcHandle(ipcMain, "agent:getProjection", async (_event, rawParams: unknown) => {
+    registerIpcHandle(ipcMain, "agent:getThreadSnapshot", async (_event, rawParams: unknown) => {
       const params = parseAgentCancelParams(rawParams)
-      return this.agentStreamHub.getProjectionEnvelope(params.threadId)
+      return this.agentStreamHub.getThreadSnapshot(params.threadId)
     })
 
-    registerIpcHandle(ipcMain, "agent:subscribeProjection", async (event, rawParams: unknown) => {
+    registerIpcHandle(ipcMain, "agent:subscribeThreadEvents", async (event, rawParams: unknown) => {
       const params = parseAgentCancelParams(rawParams)
-      await this.ensureProjectionSubscription(event.sender, params.threadId)
-      return this.agentStreamHub.getProjectionEnvelope(params.threadId)
+      await this.ensureEventSubscription(event.sender, params.threadId)
+      return this.agentStreamHub.getThreadSnapshot(params.threadId)
     })
 
-    registerIpcHandle(ipcMain, "agent:unsubscribeProjection", async (event, rawParams: unknown) => {
+    registerIpcHandle(ipcMain, "agent:unsubscribeThreadEvents", async (event, rawParams: unknown) => {
       const params = parseAgentCancelParams(rawParams)
-      this.removeProjectionSubscription(event.sender.id, params.threadId)
+      this.removeEventSubscription(event.sender.id, params.threadId)
     })
   }
 
@@ -83,8 +83,8 @@ export class AgentController {
     void this.agentService.resume(params, this.createStreamSink(params.threadId))
   }
 
-  private createProjectionChannel(threadId: string): string {
-    return `agent:projection:${threadId}`
+  private createThreadEventsChannel(threadId: string): string {
+    return `agent:thread-events:${threadId}`
   }
 
   private createStreamSink(threadId: string): AgentStreamSink {
@@ -95,31 +95,31 @@ export class AgentController {
     }
   }
 
-  private async ensureProjectionSubscription(sender: WebContents, threadId: string): Promise<void> {
-    const subscriptionKey = this.getProjectionSubscriptionKey(sender.id, threadId)
-    if (this.projectionSubscriptionCleanups.has(subscriptionKey)) {
+  private async ensureEventSubscription(sender: WebContents, threadId: string): Promise<void> {
+    const subscriptionKey = this.getSubscriptionKey(sender.id, threadId)
+    if (this.eventSubscriptionCleanups.has(subscriptionKey)) {
       return
     }
 
-    await this.agentStreamHub.subscribe(threadId, subscriptionKey, (envelope) => {
+    await this.agentStreamHub.subscribeThreadEvents(threadId, subscriptionKey, (batch) => {
       if (!sender.isDestroyed()) {
-        sender.send(this.createProjectionChannel(threadId), envelope)
+        sender.send(this.createThreadEventsChannel(threadId), batch)
       }
     })
 
     const cleanup = () => {
-      this.agentStreamHub.unsubscribe(threadId, subscriptionKey)
-      this.projectionSubscriptionCleanups.delete(subscriptionKey)
+      this.agentStreamHub.unsubscribeThreadEvents(threadId, subscriptionKey)
+      this.eventSubscriptionCleanups.delete(subscriptionKey)
     }
 
-    this.projectionSubscriptionCleanups.set(subscriptionKey, cleanup)
+    this.eventSubscriptionCleanups.set(subscriptionKey, cleanup)
 
     sender.once("destroyed", () => {
-      this.removeAllProjectionSubscriptionsForSender(sender.id)
+      this.removeAllSubscriptionsForSender(sender.id)
     })
   }
 
-  private getProjectionSubscriptionKey(senderId: number, threadId: string): string {
+  private getSubscriptionKey(senderId: number, threadId: string): string {
     return `${senderId}:${threadId}`
   }
 
@@ -149,9 +149,9 @@ export class AgentController {
     return typeof threadId === "string" && threadId.trim().length > 0 ? threadId.trim() : null
   }
 
-  private removeAllProjectionSubscriptionsForSender(senderId: number): void {
+  private removeAllSubscriptionsForSender(senderId: number): void {
     const prefix = `${senderId}:`
-    for (const [subscriptionKey, cleanup] of this.projectionSubscriptionCleanups.entries()) {
+    for (const [subscriptionKey, cleanup] of this.eventSubscriptionCleanups.entries()) {
       if (!subscriptionKey.startsWith(prefix)) {
         continue
       }
@@ -160,9 +160,9 @@ export class AgentController {
     }
   }
 
-  private removeProjectionSubscription(senderId: number, threadId: string): void {
-    const subscriptionKey = this.getProjectionSubscriptionKey(senderId, threadId)
-    const cleanup = this.projectionSubscriptionCleanups.get(subscriptionKey)
+  private removeEventSubscription(senderId: number, threadId: string): void {
+    const subscriptionKey = this.getSubscriptionKey(senderId, threadId)
+    const cleanup = this.eventSubscriptionCleanups.get(subscriptionKey)
     cleanup?.()
   }
 }
