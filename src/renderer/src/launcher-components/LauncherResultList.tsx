@@ -138,7 +138,7 @@ export function LauncherResultList(props: {
       ...section.items.map((item, itemIndex) => ({
         index: precedingItemsCount + itemIndex,
         item,
-        key: item.id,
+        key: getLauncherResultScrollKey(item) ?? item.id,
         kind: "item" as const
       }))
     ]

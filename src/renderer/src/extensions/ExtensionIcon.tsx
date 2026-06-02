@@ -21,6 +21,9 @@ import { getExtensionIconAssetSrc } from "./extension-icon-assets"
 
 type ExtensionIconName = LauncherResultPresentationIconName | "gear" | "plus" | "refresh"
 
+const loadedExtensionAssetIconSrcs = new Set<string>()
+const failedExtensionAssetIconSrcs = new Set<string>()
+
 function TodoGlyph(props: { className?: string }): React.JSX.Element {
   return (
     <svg
@@ -112,8 +115,12 @@ function ExtensionAssetIcon(props: {
   src: string
 }): React.JSX.Element {
   const { className, fallbackIconName, src } = props
-  const [loadedSrc, setLoadedSrc] = useState<string | null>(null)
-  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(
+    loadedExtensionAssetIconSrcs.has(src) ? src : null
+  )
+  const [failedSrc, setFailedSrc] = useState<string | null>(
+    failedExtensionAssetIconSrcs.has(src) ? src : null
+  )
 
   const isLoaded = loadedSrc === src
   const hasFailed = failedSrc === src
@@ -125,14 +132,19 @@ function ExtensionAssetIcon(props: {
         <img
           alt=""
           aria-hidden="true"
-          onError={() => setFailedSrc(src)}
+          onError={() => {
+            failedExtensionAssetIconSrcs.add(src)
+            setFailedSrc(src)
+          }}
           onLoad={(event) => {
             const image = event.currentTarget
             if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+              loadedExtensionAssetIconSrcs.add(src)
               setLoadedSrc(src)
               return
             }
 
+            failedExtensionAssetIconSrcs.add(src)
             setFailedSrc(src)
           }}
           src={src}
