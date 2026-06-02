@@ -67,7 +67,8 @@ Shell execution approval is enforced before tool execution, not after.
 
 Current anchor:
 
-- [execute-approval-middleware.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/agent/execute-approval-middleware.ts)
+- [tool-approval-middleware.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/agent/tool-approval-middleware.ts)
+- [tool-permission-runtime.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/main/agent/tool-permission-runtime.ts)
 
 Important invariant:
 

@@ -2,7 +2,9 @@
 
 日期：2026-06-01
 
-## 结论
+本文面向维护 `packages/extension-migration` 的开发者，说明迁移器当前边界、transform pipeline 目标、真实扩展验收结果和后续拆分方向。它不是任务记录；判断迁移器是否可用，应看生成 package 是否满足 contract、是否暴露结构化缺口、是否能在真实扩展上重复运行。
+
+## 核心结论
 
 当前 `packages/extension-migration/src/preview-raycast-ai-migration.mjs` 能支撑 Notion 第一轮迁移，但它还不是一个通用迁移引擎。主要原因不是“正则一定不能用”，而是当前脚本把三类事情混在一起了：
 
@@ -17,7 +19,7 @@
 - **Babel parser/traverse/generator**：可以作为 source transform 的实现选项，尤其适合 JS/TS/TSX 语法 visitor 和 Babel 生态插件，但不应成为整个迁移器架构本身。
 - **正则**：只保留在低风险文本层，例如 public copy、URL scheme、文档字符串、报告内容。不要继续用正则修改 TypeScript 语义结构。
 
-因此，下一步不是立刻做“完整 Babel 迁移器”，而是先把现有脚本拆层，让 Notion 特例从通用逻辑里分出去，再逐步把高风险正则替换成可测试的 AST / codemod transform。
+因此，当前重构方向不是做“完整 Babel 迁移器”，而是先把现有脚本拆层，让 Notion 特例从通用逻辑里分出去，再逐步把高风险正则替换成可测试的 AST / codemod transform。
 
 ## 方案对比
 
@@ -162,9 +164,9 @@ interface MigrationTransform {
 
 第一阶段完成后，迁移器仍然可以生成当前 Notion package，但主脚本会变成编排层，而不是 3000 行混合实现。
 
-## 2026-06-02 第一阶段落地记录
+## 2026-06-02 第一阶段状态
 
-本轮已经完成第一阶段的核心拆分，但还没有把所有 generator 都拆出主脚本。当前边界是：
+第一阶段已经完成核心拆分，但还没有把所有 generator 都拆出主脚本。当前边界是：
 
 ```txt
 packages/extension-migration/src/
@@ -178,7 +180,7 @@ packages/extension-migration/src/
       notion.mjs                       # Notion 专属 source/analyzer/type alias 补丁
 ```
 
-这次故意没有把 GitHub 或 Apple Reminders 加成 known extension transform。它们这轮只作为验收样本：如果通用 transform 架构成立，迁移器应该能生成 package 预览、工具映射、manifest/runtime/main/tools/assets/report，并把当前不支持的能力留在 compatibility report 里，而不是把它们写成专属补丁。
+GitHub 和 Apple Reminders 不应被加成 known extension transform。它们在这一阶段只作为验收样本：如果通用 transform 架构成立，迁移器应该能生成 package 预览、工具映射、manifest/runtime/main/tools/assets/report，并把当前不支持的能力留在 compatibility report 里，而不是把它们写成专属补丁。
 
 已经处理的关键边界：
 
@@ -188,19 +190,21 @@ packages/extension-migration/src/
 - `@raycast/api` / `@raycast/utils` 的静态 `import`、`export ... from`、静态动态 import 由 TypeScript AST 定位 module specifier 后改写。
 - Git reader 显式关闭 `gc.auto`，避免大扩展真实迁移时被 auto-gc 拖慢。
 - package dependency 生成会过滤 Node builtin 和协议型 specifier，例如 `fs`、`path`、`node:fs`、`swift:..`，避免生成不可安装依赖。
+- manifest/runtime 生成已经把 `view`、`menu-bar`、`no-view` 都纳入 runtime command contract：`view` 带 viewport，`menu-bar` / `no-view` 用空 runtime manifest 表示可运行入口，具体执行形态由 `runtime.ts` 决定。
+- `migrated-source` host entry 会静态 import 已迁移 command source；`no-view` 会把 source function 接到 `run`。`shell` host entry 不编译迁移源码，也不暴露 AI tools；不可执行 command 显式提示 `not wired`，不会生成 `run: async () => {}` 这类静默成功占位。
 
-本轮仍保留在主脚本里的内容：
+当前仍保留在主脚本里的内容：
 
 - dependency decision 表。
 - package/manifest/runtime/tools/types 生成器。
 - runtime compatibility analyzer。
 - source file reader 和 artifact writer。
 
-这些不是这轮的失败点，但下一阶段应该继续从主脚本拆出去。当前优先级更高的是让 transform 边界先变清楚，并让真实扩展迁移能稳定暴露 facade 缺口。
+这些内容不是当前阶段的失败点，但下一阶段应该继续从主脚本拆出去。当前优先级更高的是让 transform 边界先变清楚，并让真实扩展迁移能稳定暴露 facade 缺口。
 
 ## GitHub / Apple Reminders 过程验收
 
-本轮用隔壁 Raycast extensions repo 重新跑了两个真实扩展：
+第一阶段用隔壁 Raycast extensions repo 重新跑了两个真实扩展：
 
 ```bash
 node scripts/preview-raycast-ai-migration.mjs \
@@ -241,10 +245,20 @@ node scripts/preview-raycast-ai-migration.mjs \
 - `utils-boundary-report.json`
 - `dependency-report.md`
 
-真实验收发现并修掉了一个重要问题：迁移器原来会把 `fs`、`path`、`os`、`stream`、`util`、`swift:..` 这类非 npm 依赖写进 generated package 的 dependencies。修复后：
+真实验收发现并修掉了两个重要问题。
+
+第一，迁移器原来会把 `fs`、`path`、`os`、`stream`、`util`、`swift:..` 这类非 npm 依赖写进 generated package 的 dependencies。修复后：
 
 - GitHub generated dependencies 只保留 `@octokit/rest`、`graphql-request`、`graphql-tag`、`node-fetch`、`yauzl`、`date-fns`、`lodash`、`react`、`zod` 和 `@openwork/*`。
 - Apple Reminders generated dependencies 只保留 `@date-fns/utc`、`chrono-node`、`date-fns`、`lodash`、`react`、`zod` 和 `@openwork/*`。
+
+第二，迁移器原来只稳定覆盖 view command，`no-view` 在 shell/runtime 生成里可能退化成空 run，占位成功会掩盖真实接线失败。修复后：
+
+- `view`、`menu-bar`、`no-view` 都进入 generated manifest/runtime/runtime-metadata contract。
+- `migrated-source` 下 `no-view` command 会 import `./src/<command>` 并接到 `run`。
+- `shell` 下只生成可加载占位，不编译迁移源码，不暴露 tools，并显式 `not wired`。
+- `tests/node/raycast-ai-migration-preview.test.ts` 已用 Apple Reminders fixture 覆盖 `migrated-source` / `shell` 与 `view` / `menu-bar` / `no-view` 的矩阵。
+- 新增 `npm run check:extension-migration` 聚合 migration harness、live extension package contract、Raycast preview / real source smoke。
 
 需要注意：GitHub / Apple Reminders 当前仍有大量 `runtimeCompatibility.blockingIssues`，这说明 Openwork facade / runtime 还没完整覆盖这些 Raycast API，不是 transform 架构失败。当前验收只要求迁移器能稳定生成 package、结构化报告缺口、清理 Raycast runtime import、保留平台/tool/command/asset 信息。
 
@@ -268,6 +282,8 @@ node scripts/preview-raycast-ai-migration.mjs \
 
 - CLI 行为不变。
 - 当前 `raycast-ai-migration-preview` node tests 继续通过。
+- `npm run check:extension-migration` 继续通过，尤其要覆盖 `migrated-source` / `shell` 两种 host entry，以及 `view` / `menu-bar` / `no-view` 三种 command mode。
+- `no-view` 迁移产物不能生成静默空函数；已迁移 source 要接到 `run`，未接源码只能显式 `not wired`。
 - Notion 迁移生成物仍不包含 `@raycast/api` / `@raycast/utils` runtime import。
 - Notion 专属 transform 可以被单独定位和关闭。
 - 通用 transform 不包含 `notion` 字符串特例。

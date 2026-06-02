@@ -72,7 +72,7 @@ Openwork host 拥有：
 Extension package 拥有：
 
 - `manifest`：identity、commands、AI capability、connection、preferences、capabilities。
-- `runtime entry`：launcher command 的 React component 或 no-view runner。
+- `runtime entry`：launcher command 的 React component 或 no-view runner；`view`、`menu-bar`、`no-view` 都必须有显式 runtime command entry。
 - `main entry`：AI tools / RPC service / main-side helper。
 - `runtime metadata`：搜索增强等 renderer 可读静态信息。
 - `assets`：package-relative 静态资源。
@@ -277,12 +277,13 @@ openwork-extension-asset://notion/assets/icon.png
 - 定义 `openwork.extension.json` schema。
 - 让 build script 从 `extensions/apple-reminders`、`extensions/github` 产出 `.owext`。
 - 产物包含 `manifest.json`、`runtime-metadata.json`、`dist/runtime.mjs`、`dist/main.mjs`、`assets/`。
-- 更新 `check:extensions` 或新增 `check:extension-artifacts` 校验产物。
+- 更新 `check:extensions` 或新增 `check:extension-artifacts` 校验产物；迁移生成物在进入 installable artifact 前，先用 `check:extension-migration` 锁住 `migrated-source` / `shell` 与 `view` / `menu-bar` / `no-view` 的 package contract。
 
 验收：
 
 ```bash
 npm run check:extensions
+npm run check:extension-migration
 pnpm exec tsx --tsconfig tsconfig.node.json --test tests/node/native-extension-shell-packages.test.ts
 ```
 
@@ -359,9 +360,9 @@ pnpm exec tsx --tsconfig tsconfig.node.json --test tests/node/extension-source-t
 
 迁移脚本负责把 Raycast/旧 package 变成 Openwork source package；安装系统负责装载已经构建好的 Openwork artifact。二者可以共用 schema 和校验器，但不应该互相依赖运行时实现。
 
-## 下一步建议
+## 最小落地切片
 
-下一步不要先做 marketplace，也不要先上 `pkg`。
+外部安装的第一步不做 marketplace，也不把普通 extension 打成 `pkg`。
 
 最小有效动作是：
 
@@ -370,7 +371,7 @@ pnpm exec tsx --tsconfig tsconfig.node.json --test tests/node/extension-source-t
 3. 写 node test 从 artifact root 读取 `openwork.extension.json`、manifest、runtime metadata，并 dynamic import runtime/main。
 4. 再把 main/renderer 的静态 registry 抽成 `BundledExtensionProvider`，为 external provider 留入口。
 
-这个顺序能验证真正关键的问题：我们当前 package contract 是否足够让 extension 离开 app bundle 后继续工作。
+这个顺序能验证真正关键的问题：当前 package contract 是否足够让 extension 离开 app bundle 后继续工作。
 
 ## 参考资料
 

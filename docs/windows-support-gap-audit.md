@@ -81,7 +81,7 @@ Impact:
 
 Evidence:
 
-- [`src/extensions/apple-reminders/manifest.ts`](../src/extensions/apple-reminders/manifest.ts) declares `supportedPlatforms: ["darwin"]`
+- [`extensions/apple-reminders/manifest.ts`](../extensions/apple-reminders/manifest.ts) declares `supportedPlatforms: ["darwin"]`
 
 Impact:
 
