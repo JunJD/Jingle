@@ -73,6 +73,31 @@ function getResultTrailingLabel(
   return copy.launcher.openGeneric
 }
 
+function getLauncherResultScrollKey(item: LauncherShellItem | undefined): string | null {
+  if (!item) {
+    return null
+  }
+
+  if (item.commandRef) {
+    switch (item.commandRef.kind) {
+      case "built-in-command":
+        return `command:${item.commandRef.builtInId}:${item.commandRef.commandName}`
+      case "extension-command":
+        return `command:${item.commandRef.extensionName}:${item.commandRef.commandName}`
+    }
+  }
+
+  if (item.command?.type === "replace-query") {
+    return "suggestion:complete-query"
+  }
+
+  if (item.kind === "suggestion" && item.action.type === "open-url") {
+    return "suggestion:browser-search"
+  }
+
+  return item.id
+}
+
 export function LauncherResultList(props: {
   height: number
   onExecute: (index: number) => void
@@ -85,12 +110,12 @@ export function LauncherResultList(props: {
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
   const items = sections.flatMap((section) => section.items)
-  const itemsKey = items.map((item) => item.id).join("|")
+  const selectedItemKey = getLauncherResultScrollKey(items[selectedIndex])
 
   useSelectedRowScrollIntoView({
     itemRefs,
-    itemsKey,
     scrollAreaRef,
+    selectedItemKey,
     selectedIndex
   })
 
@@ -137,10 +162,7 @@ export function LauncherResultList(props: {
               className="flex h-[var(--ow-section-h)] items-center px-[var(--launcher-result-section-x)] [font-size:var(--ow-font-meta)] font-semibold text-muted-foreground"
             >
               <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
-                <span
-                  className="block max-w-[420px] truncate"
-                  title={row.label}
-                >
+                <span className="block max-w-[420px] truncate" title={row.label}>
                   {truncateMiddle(
                     row.label,
                     SECTION_HEADER_LABEL_START_LENGTH,

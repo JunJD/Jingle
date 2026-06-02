@@ -4,12 +4,20 @@ const RADIX_SCROLL_VIEWPORT_SELECTOR = "[data-radix-scroll-area-viewport]"
 
 export function useSelectedRowScrollIntoView<TElement extends HTMLElement>(params: {
   itemRefs: RefObject<Array<TElement | null>>
-  itemsKey: string
+  itemsKey?: string
   scrollAreaRef: RefObject<HTMLDivElement | null>
+  selectedItemKey?: string | null
   selectedIndex: number
   tolerance?: number
 }): void {
-  const { itemRefs, itemsKey, scrollAreaRef, selectedIndex, tolerance = 2 } = params
+  const {
+    itemRefs,
+    itemsKey,
+    scrollAreaRef,
+    selectedIndex,
+    selectedItemKey = itemsKey,
+    tolerance = 2
+  } = params
 
   useLayoutEffect(() => {
     if (selectedIndex < 0) {
@@ -45,5 +53,5 @@ export function useSelectedRowScrollIntoView<TElement extends HTMLElement>(param
     if (deltaBottom > tolerance) {
       viewport.scrollTop += deltaBottom
     }
-  }, [itemRefs, itemsKey, scrollAreaRef, selectedIndex, tolerance])
+  }, [itemRefs, scrollAreaRef, selectedIndex, selectedItemKey, tolerance])
 }

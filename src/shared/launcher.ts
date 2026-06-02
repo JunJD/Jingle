@@ -138,6 +138,7 @@ export interface LauncherChromeMeasurement {
 export const LAUNCHER_LAYOUT_TOLERANCE_PX = 2
 
 export const MAX_LAUNCHER_SEARCH_RESULTS = 20
+export const LAUNCHER_SEARCH_TRANSACTION_TIMEOUT_MS = 700
 
 export const LAUNCHER_HEADER_HEIGHT = 50
 export const LAUNCHER_FOOTER_HEIGHT = 36

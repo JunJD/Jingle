@@ -19,7 +19,9 @@ import { buildLauncherSearchShellItems } from "../../src/renderer/src/launcher-s
 import { resolveLauncherCommand } from "../../src/renderer/src/launcher-shell/pages"
 import { FALLBACK_SHELL_CONFIG } from "../../src/shared/launcher"
 import {
+  createEmptyLauncherSearchResultsBySource,
   createLauncherSearchPageStore,
+  groupLauncherSearchResultsBySource,
   mergeLauncherSearchResults,
   resolveVisibleLauncherSearchResultsBySource,
   shouldPreviewLauncherSearchResults
@@ -104,6 +106,86 @@ test("search responses ignore stale request ids", () => {
     query: "doc",
     resultsBySource: {
       files: [createSearchResult({ id: "active", source: "files", title: "active" })]
+    }
+  })
+})
+
+test("batched search commits all source buckets once a launcher search transaction settles", () => {
+  const store = createLauncherSearchPageStore()
+  const requestId = store.getState().beginSearchRequest()
+  const fileResult = createSearchResult({ id: "doc", source: "files", title: "Project Doc" })
+  const appResult = createSearchResult({ id: "code", source: "applications", title: "Code" })
+
+  store
+    .getState()
+    .applySearchResultsBySource(
+      requestId,
+      "project",
+      groupLauncherSearchResultsBySource([fileResult, appResult])
+    )
+
+  assert.deepEqual(store.getState().searchState, {
+    query: "project",
+    resultsBySource: {
+      applications: [appResult],
+      quicklinks: [],
+      files: [fileResult],
+      threads: [],
+      "browser-history": []
+    }
+  })
+})
+
+test("batched search commits empty source buckets so loading can finish with no results", () => {
+  const store = createLauncherSearchPageStore()
+  const requestId = store.getState().beginSearchRequest()
+
+  store
+    .getState()
+    .applySearchResultsBySource(requestId, "missing", createEmptyLauncherSearchResultsBySource())
+
+  assert.deepEqual(store.getState().searchState, {
+    query: "missing",
+    resultsBySource: {
+      applications: [],
+      quicklinks: [],
+      files: [],
+      threads: [],
+      "browser-history": []
+    }
+  })
+})
+
+test("batched search responses ignore stale request ids", () => {
+  const store = createLauncherSearchPageStore()
+  const staleRequestId = store.getState().beginSearchRequest()
+  const activeRequestId = store.getState().beginSearchRequest()
+  const staleResult = createSearchResult({ id: "stale", source: "files", title: "Stale" })
+  const activeResult = createSearchResult({ id: "active", source: "files", title: "Active" })
+
+  store
+    .getState()
+    .applySearchResultsBySource(
+      staleRequestId,
+      "doc",
+      groupLauncherSearchResultsBySource([staleResult])
+    )
+  store
+    .getState()
+    .applySearchResultsBySource(
+      activeRequestId,
+      "doc",
+      groupLauncherSearchResultsBySource([activeResult])
+    )
+
+  assert.deepEqual(store.getState().searchState, {
+    query: "doc",
+    resultsBySource: {
+      applications: [],
+      quicklinks: [],
+      files: [activeResult],
+      threads: [],
+      "browser-history": []
     }
   })
 })
@@ -570,8 +652,9 @@ test("retired generated Notion subject stays out of launcher command resolution"
 
 test("Notion launcher intent metadata is owned by the formal Notion package", () => {
   const copy = appCopy["zh-CN"]
-  const notionSearch = notionRuntimeMetadata.commands.find((command) => command.name === "search-page")
-    ?.search
+  const notionSearch = notionRuntimeMetadata.commands.find(
+    (command) => command.name === "search-page"
+  )?.search
   const buildNotionIntentItems = notionSearch?.buildIntentItems
   assert.ok(buildNotionIntentItems)
 

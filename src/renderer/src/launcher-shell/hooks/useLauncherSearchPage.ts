@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from "react"
 import {
   FALLBACK_SHELL_CONFIG,
+  LAUNCHER_SEARCH_TRANSACTION_TIMEOUT_MS,
   MAX_LAUNCHER_SEARCH_RESULTS,
   getLauncherIdleHeight,
   getLauncherViewportHeightForBody,
@@ -21,6 +22,7 @@ import type { LauncherCommandAddress, LauncherCommandOpenOptions } from "../page
 import type { LauncherIndexedCommand } from "../pages"
 import {
   LAUNCHER_SEARCH_SOURCES,
+  groupLauncherSearchResultsBySource,
   mergeLauncherSearchResults,
   resolveVisibleLauncherSearchResultsBySource,
   shouldPreviewLauncherSearchResults
@@ -40,6 +42,61 @@ type LauncherHomeCommandId =
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionDown
   | typeof LAUNCHER_COMMAND_IDS.searchMoveSelectionUp
   | typeof LAUNCHER_COMMAND_IDS.searchExecuteSelection
+
+function settleLauncherSearchResponses<T>(
+  promises: Promise<T>[],
+  timeoutMs: number
+): Promise<PromiseSettledResult<T>[]> {
+  return new Promise((resolve) => {
+    const results: PromiseSettledResult<T>[] = []
+    let isSettled = false
+    let settledCount = 0
+    const finish = (): void => {
+      if (isSettled) {
+        return
+      }
+
+      isSettled = true
+      window.clearTimeout(timeout)
+      resolve(results)
+    }
+    const timeout = window.setTimeout(finish, timeoutMs)
+
+    promises.forEach((promise) => {
+      void promise
+        .then((value) => {
+          if (isSettled) {
+            return
+          }
+
+          results.push({
+            status: "fulfilled",
+            value
+          })
+        })
+        .catch((reason: unknown) => {
+          if (isSettled) {
+            return
+          }
+
+          results.push({
+            reason,
+            status: "rejected"
+          })
+        })
+        .finally(() => {
+          if (isSettled) {
+            return
+          }
+
+          settledCount += 1
+          if (settledCount === promises.length) {
+            finish()
+          }
+        })
+    })
+  })
+}
 
 export function useLauncherSearchPage(props: {
   openMainHistory: () => void
@@ -90,7 +147,9 @@ export function useLauncherSearchPage(props: {
   const invalidateSearchRequests = useLauncherSearchPageStore(
     (state) => state.invalidateSearchRequests
   )
-  const applySearchResults = useLauncherSearchPageStore((state) => state.applySearchResults)
+  const applySearchResultsBySource = useLauncherSearchPageStore(
+    (state) => state.applySearchResultsBySource
+  )
   const moveSelection = useLauncherSearchPageStore((state) => state.moveSelection)
   const requestHomeInputSelection = useLauncherSearchPageStore(
     (state) => state.requestHomeInputSelection
@@ -224,26 +283,31 @@ export function useLauncherSearchPage(props: {
     const debounceTimer = window.setTimeout(() => {
       const requestId = beginSearchRequest()
 
-      for (const source of LAUNCHER_SEARCH_SOURCES) {
-        void window.api.launcher
-          .search({
+      void settleLauncherSearchResponses(
+        LAUNCHER_SEARCH_SOURCES.map(async (source) => {
+          const response = await window.api.launcher.search({
             limit: MAX_LAUNCHER_SEARCH_RESULTS,
             query: trimmedQuery,
             sources: [source]
           })
-          .then((response) => {
-            applySearchResults(requestId, trimmedQuery, source, response.results)
-          })
-          .catch(() => {
-            applySearchResults(requestId, trimmedQuery, source, [])
-          })
-      }
+          return response.results
+        }),
+        LAUNCHER_SEARCH_TRANSACTION_TIMEOUT_MS
+      ).then((responses) => {
+        applySearchResultsBySource(
+          requestId,
+          trimmedQuery,
+          groupLauncherSearchResultsBySource(
+            responses.flatMap((response) => (response.status === "fulfilled" ? response.value : []))
+          )
+        )
+      })
     }, 100)
 
     return () => {
       window.clearTimeout(debounceTimer)
     }
-  }, [applySearchResults, beginSearchRequest, invalidateSearchRequests, trimmedQuery])
+  }, [applySearchResultsBySource, beginSearchRequest, invalidateSearchRequests, trimmedQuery])
 
   const executeItem = useCallback(
     (index: number): void => {

@@ -10,6 +10,7 @@ export const LAUNCHER_SEARCH_SOURCES: readonly LauncherSearchSource[] = [
   "threads",
   "browser-history"
 ]
+const launcherSearchSourceSet = new Set<LauncherSearchSource>(LAUNCHER_SEARCH_SOURCES)
 
 export const launcherSearchSourceOrder = new Map(
   LAUNCHER_SEARCH_SOURCES.map((source, index) => [source, index])
@@ -33,6 +34,11 @@ export interface LauncherSearchPageStoreState {
     query: string,
     source: LauncherSearchSource,
     results: LauncherSearchResult[]
+  ) => void
+  applySearchResultsBySource: (
+    requestId: number,
+    query: string,
+    resultsBySource: Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>
   ) => void
   beginSearchRequest: () => number
   historyItems: LauncherHistoryItem[]
@@ -99,15 +105,17 @@ export function filterCachedLauncherSearchResults(
   }
 
   return Object.fromEntries(
-    Object.entries(resultsBySource).map(([source, results]) => [
-      source,
-      (results ?? []).filter((result) => {
-        const haystack = normalizeLauncherSearchFilterValue(
-          `${result.title} ${result.subtitle ?? ""} ${result.id}`
-        )
-        return haystack.includes(normalizedQuery)
-      })
-    ])
+    LAUNCHER_SEARCH_SOURCES.filter((source) => resultsBySource[source] !== undefined).map(
+      (source) => [
+        source,
+        (resultsBySource[source] ?? []).filter((result) => {
+          const haystack = normalizeLauncherSearchFilterValue(
+            `${result.title} ${result.subtitle ?? ""} ${result.id}`
+          )
+          return haystack.includes(normalizedQuery)
+        })
+      ]
+    )
   ) as Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>
 }
 
@@ -155,8 +163,7 @@ export function mergeLauncherSearchResults(
   const seen = new Set<string>()
   let visibleThreadResults = 0
 
-  return Object.values(resultsBySource)
-    .flat()
+  return LAUNCHER_SEARCH_SOURCES.flatMap((source) => resultsBySource[source] ?? [])
     .sort((left, right) => {
       const leftOrder = launcherSearchSourceOrder.get(left.source) ?? Number.MAX_SAFE_INTEGER
       const rightOrder = launcherSearchSourceOrder.get(right.source) ?? Number.MAX_SAFE_INTEGER
@@ -188,6 +195,31 @@ export function mergeLauncherSearchResults(
       return true
     })
     .slice(0, limit)
+}
+
+export function createEmptyLauncherSearchResultsBySource(
+  sources: readonly LauncherSearchSource[] = LAUNCHER_SEARCH_SOURCES
+): Partial<Record<LauncherSearchSource, LauncherSearchResult[]>> {
+  return Object.fromEntries(
+    sources.filter((source) => launcherSearchSourceSet.has(source)).map((source) => [source, []])
+  ) as Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>
+}
+
+export function groupLauncherSearchResultsBySource(
+  results: readonly LauncherSearchResult[],
+  sources: readonly LauncherSearchSource[] = LAUNCHER_SEARCH_SOURCES
+): Partial<Record<LauncherSearchSource, LauncherSearchResult[]>> {
+  const resultsBySource = createEmptyLauncherSearchResultsBySource(sources)
+
+  for (const result of results) {
+    if (!launcherSearchSourceSet.has(result.source)) {
+      continue
+    }
+
+    resultsBySource[result.source] = [...(resultsBySource[result.source] ?? []), result]
+  }
+
+  return resultsBySource
 }
 
 export function createLauncherSearchPageStore(): LauncherSearchPageStore {
@@ -281,6 +313,22 @@ export function createLauncherSearchPageStore(): LauncherSearchPageStore {
           }
         }
       }))
+    },
+    applySearchResultsBySource: (
+      requestId: number,
+      query: string,
+      resultsBySource: Partial<Record<LauncherSearchSource, LauncherSearchResult[]>>
+    ): void => {
+      if (latestSearchRequestId !== requestId) {
+        return
+      }
+
+      setData({
+        searchState: {
+          query,
+          resultsBySource
+        }
+      })
     },
     moveSelection: (
       itemIds: readonly string[],
