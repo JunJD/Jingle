@@ -62,6 +62,7 @@
     "dist:mac:dir": "npm run build && node scripts/run-with-env.mjs CSC_IDENTITY_AUTO_DISCOVERY=false -- node scripts/run-electron-builder.mjs --mac --dir --publish never",
     "dist:win": "npm run build:win-icon && npm run build && node scripts/run-electron-builder.mjs --win --publish never",
     "dist:linux": "npm run build && node scripts/run-electron-builder.mjs --linux --publish never",
+    "ui-audit:launcher": "node scripts/ui-audit-launcher.mjs",
     "audit:package-size": "node scripts/audit-package-size.mjs",
     "audit:packaged-runtime": "node scripts/audit-packaged-runtime.mjs",
     "test:bdd:run": "cucumber-js --config tests/bdd/cucumber.config.cjs",

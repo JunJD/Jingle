@@ -1,0 +1,4 @@
+interface:
+  display_name: "Innei LobeHub Electron Optimization"
+  short_description: "Optimize Electron size and renderer performance"
+  default_prompt: "Use $innei-lobehub-electron-optimization to audit this Electron app's package size and performance."
