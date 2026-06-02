@@ -55,7 +55,7 @@ Launcher 搜索和 extension surface 要保持同一套信息架构。
 
 当前 runtime 基础层已经存在，主要锚点如下：
 
-- SDK：`src/extension-runtime/sdk/**`
+- SDK：`packages/extension-api/src/extension-runtime/sdk/**`，extension 作者从 `@openwork/extension-api` 导入；宿主 runtime 内部从 `@openwork/extension-api/host-runtime` 导入必要 host-only 原语。
 - reconciler：`src/extension-runtime/reconciler/**`
 - runtime entry：`src/extension-runtime/entry.ts`
 - main runtime service：`src/main/services/extension-runtime/**`

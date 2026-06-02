@@ -189,8 +189,8 @@ Practical rule:
 
 Current anchor:
 
-- [runtime-api.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/extensions/runtime-api.ts)
-- [runtime-contract.ts](/Users/junjieding/dingjunjie_dev/2026_03/openwork/src/extensions/runtime-contract.ts)
+- [extension-api](/Users/junjieding/dingjunjie_dev/2026_03/openwork/packages/extension-api/src/index.ts)
+- [host-runtime](/Users/junjieding/dingjunjie_dev/2026_03/openwork/packages/extension-api/src/host-runtime.ts)
 
 ## Acceptance Standard For Structural Changes
 

@@ -19,6 +19,7 @@
 | [renderer-external-store-architecture.md](./renderer-external-store-architecture.md) | renderer external store 架构方案说明 |
 | [extension-hitl-experience-architecture.md](./extension-hitl-experience-architecture.md) | Extension HITL 体验优化架构方案：schema form、confirmation、editable approval 和 CopilotKit 借鉴 |
 | [extension-hitl-experience-detailed-design-cn.md](./extension-hitl-experience-detailed-design-cn.md) | Extension HITL 体验优化中文详设：协议、状态机、UI、main 侧校验、分期和验收 |
+| [extension-external-install-packaging-research-cn.md](./extension-external-install-packaging-research-cn.md) | Extension 外部安装、外部打包、pkg/Node SEA 取舍和 Openwork 推荐落地方案 |
 
 ## 约束类
 
