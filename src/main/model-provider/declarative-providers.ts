@@ -21,8 +21,7 @@ export function listDeclarativeProviderDefinitions(): ProviderDefinition[] {
       provider.models.length > 0 && provider.dynamic_models !== true
         ? ["customizable-model"]
         : ["fetch-from-remote"],
-    credentialFormSchemas:
-      provider.requires_auth === false ? [] : [declarativeProviderApiKeyCredential(provider)],
+    credentialFormSchemas: declarativeProviderCredentials(provider),
     description: toLocalizedText(provider.description ?? `${provider.display_name} provider.`),
     id: provider.name,
     label: toLocalizedText(provider.display_name),
@@ -47,6 +46,27 @@ export function listDeclarativeProviderModels(): ModelConfig[] {
       status: "active" as const
     }))
   )
+}
+
+function declarativeProviderCredentials(
+  provider: CustomProviderConfig
+): ProviderDefinition["credentialFormSchemas"] {
+  const credentials: ProviderDefinition["credentialFormSchemas"] =
+    provider.requires_auth === false ? [] : [declarativeProviderApiKeyCredential(provider)]
+
+  for (const envVar of provider.env_vars ?? []) {
+    credentials.push({
+      label: toLocalizedText(envVar.name),
+      name: envVar.name,
+      placeholder: toLocalizedText(envVar.default ?? envVar.name),
+      required: envVar.required === true && envVar.default === undefined,
+      tooltip: envVar.description ? toLocalizedText(envVar.description) : undefined,
+      type: envVar.secret === true ? "secret-input" : "text-input",
+      variable: envVar.name
+    })
+  }
+
+  return credentials
 }
 
 function declarativeProviderApiKeyCredential(

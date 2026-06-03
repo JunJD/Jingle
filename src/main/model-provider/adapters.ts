@@ -275,7 +275,7 @@ function createProviderConfigAdapter(
       }))
     }
 
-    const baseURL = resolveCustomProviderBaseUrl(providerConfig)
+    const baseURL = resolveCustomProviderBaseUrl(providerConfig, credentials)
     if (!baseURL) {
       throw new Error(`Custom provider ${providerId} needs a base URL or predefined models.`)
     }
@@ -295,7 +295,7 @@ function createProviderConfigAdapter(
     createChatModel: (runtimeConfig, options) =>
       createCustomProviderChatModel(
         providerConfig,
-        resolveCustomProviderBaseUrl(providerConfig),
+        resolveCustomProviderBaseUrl(providerConfig, runtimeConfig.credentials),
         runtimeConfig,
         options
       ),
@@ -377,25 +377,37 @@ function createCatalogOnlyProviderAdapter(providerId: ProviderId): ProviderAdapt
   }
 }
 
-function resolveCustomProviderBaseUrl(providerConfig: CustomProviderConfig): string | null {
+function resolveCustomProviderBaseUrl(
+  providerConfig: CustomProviderConfig,
+  credentials: ProviderCredentials
+): string | null {
   if (providerConfig.engine === "ollama") {
-    return normalizeProviderBaseUrl(providerConfig.base_url ?? "http://localhost:11434/v1", {
-      ...providerConfig,
-      base_path: providerConfig.base_path ?? null
-    })
+    return normalizeProviderBaseUrl(
+      providerConfig.base_url ?? "http://localhost:11434/v1",
+      {
+        ...providerConfig,
+        base_path: providerConfig.base_path ?? null
+      },
+      credentials
+    )
   }
 
   if (!providerConfig.base_url) {
     return null
   }
 
-  return normalizeProviderBaseUrl(providerConfig.base_url, providerConfig)
+  return normalizeProviderBaseUrl(providerConfig.base_url, providerConfig, credentials)
 }
 
-function normalizeProviderBaseUrl(baseUrl: string, providerConfig: CustomProviderConfig): string {
+function normalizeProviderBaseUrl(
+  baseUrl: string,
+  providerConfig: CustomProviderConfig,
+  credentials: ProviderCredentials
+): string {
   const resolvedBaseUrl = baseUrl.replace(
     /\$\{([^}]+)\}/g,
     (_match, name: string) =>
+      credentials[name] ??
       process.env[name] ??
       providerConfig.env_vars?.find((envVar) => envVar.name === name)?.default ??
       ""

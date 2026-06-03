@@ -56,7 +56,10 @@ export function listCustomProviderConfigs(): CustomProviderConfig[] {
 
 export function listCustomProviderDefinitions(): ProviderDefinition[] {
   return listCustomProviderConfigs().map((provider) => ({
-    configurateMethods: provider.models.length > 0 ? ["customizable-model"] : ["fetch-from-remote"],
+    configurateMethods:
+      provider.models.length > 0 && provider.dynamic_models !== true
+        ? ["customizable-model"]
+        : ["fetch-from-remote"],
     credentialFormSchemas:
       provider.requires_auth === false ? [] : [customProviderApiKeyCredential(provider)],
     description: toLocalizedText(
@@ -173,7 +176,10 @@ function normalizeCustomProviderConfig(value: unknown): CustomProviderConfig {
     base_url: getNullableString(value, "base_url"),
     description: getString(value, "description"),
     display_name: displayName,
+    dynamic_models:
+      typeof value["dynamic_models"] === "boolean" ? value["dynamic_models"] : undefined,
     engine,
+    env_vars: normalizeCustomProviderEnvVars(value["env_vars"]),
     headers: normalizeStringRecord(value["headers"]),
     model_doc_link: getNullableString(value, "model_doc_link"),
     models: rawModels.map(normalizeCustomProviderModel),
@@ -184,6 +190,36 @@ function normalizeCustomProviderConfig(value: unknown): CustomProviderConfig {
       typeof value["supports_streaming"] === "boolean" ? value["supports_streaming"] : true,
     timeout_seconds: typeof value["timeout_seconds"] === "number" ? value["timeout_seconds"] : null
   }
+}
+
+function normalizeCustomProviderEnvVars(value: unknown): CustomProviderConfig["env_vars"] {
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+
+  const envVars = value.flatMap((item) => {
+    if (!isRecord(item)) {
+      return []
+    }
+
+    const name = getString(item, "name")
+    if (!name) {
+      return []
+    }
+
+    return [
+      {
+        default: getString(item, "default"),
+        description: getString(item, "description"),
+        name,
+        primary: typeof item["primary"] === "boolean" ? item["primary"] : undefined,
+        required: typeof item["required"] === "boolean" ? item["required"] : undefined,
+        secret: typeof item["secret"] === "boolean" ? item["secret"] : undefined
+      }
+    ]
+  })
+
+  return envVars.length > 0 ? envVars : undefined
 }
 
 function normalizeCustomProviderModel(value: unknown): CustomProviderConfig["models"][number] {
