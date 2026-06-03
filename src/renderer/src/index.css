@@ -283,6 +283,7 @@ body[data-window="launcher"],
   --ow-message-gap: var(--ow-space-2);
   --ow-message-bubble-x: var(--ow-space-3);
   --ow-message-bubble-y: var(--ow-space-2);
+  --ow-chat-turn-gap: var(--ow-space-3);
   --ow-chat-prose-gap: var(--ow-space-2-5);
   --ow-chat-prose-block-gap: var(--ow-space-4);
   --ow-chat-prose-list-gap: var(--ow-space-1);
@@ -430,6 +431,7 @@ body[data-window="launcher"],
   --ow-message-gap: var(--ow-space-2);
   --ow-message-bubble-x: var(--ow-space-3);
   --ow-message-bubble-y: var(--ow-space-2);
+  --ow-chat-turn-gap: var(--ow-chat-thread-gap);
   --ow-chat-prose-gap: var(--ow-space-2-5);
   --ow-chat-prose-block-gap: var(--ow-space-4);
   --ow-chat-prose-list-gap: var(--ow-space-1);
