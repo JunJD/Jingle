@@ -138,7 +138,6 @@ export function LauncherAiConversation(props: {
         bottomInset={bottomInset}
         contentClassName="mx-auto w-full min-w-0 max-w-[var(--launcher-ai-content-max-width)] px-[var(--launcher-ai-content-x)]"
         contentInsetY="var(--launcher-ai-content-y)"
-        density="compact"
         footerSlot={
           <div className="flex w-full min-w-0 flex-col gap-[var(--launcher-ai-turn-gap)]">
             {!isLoading && todos.length > 0 && (pendingApproval || hasVisibleTurns) && (

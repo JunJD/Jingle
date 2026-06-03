@@ -74,7 +74,6 @@ interface MessagesProps {
   bottomInset?: number
   contentClassName?: string
   contentInsetY?: string
-  density?: "default" | "compact"
   footerSlot?: ReactNode
   projection: MessagesProjection
   virtualizerRef?: RefObject<VListHandle | null>
@@ -210,13 +209,12 @@ function MessageAttachments(props: {
 function renderTextBlock(
   text: string,
   options: {
-    density?: "default" | "compact"
     isStreaming?: boolean
     isUser: boolean
     key: string
   }
 ): React.JSX.Element | null {
-  const { density = "default", isStreaming, isUser, key } = options
+  const { isStreaming, isUser, key } = options
 
   if (!text.trim()) {
     return null
@@ -226,12 +224,7 @@ function renderTextBlock(
     return (
       <div
         key={key}
-        className={cn(
-          "whitespace-pre-wrap [overflow-wrap:anywhere]",
-          density === "compact"
-            ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
-            : "[font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)]"
-        )}
+        className="whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
       >
         <ExtensionSourceTextViewer text={text} />
       </div>
@@ -241,12 +234,7 @@ function renderTextBlock(
   return (
     <MessageResponse
       key={key}
-      className={cn(
-        "min-w-0",
-        density === "compact"
-          ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
-          : "[font-size:var(--ow-font-display)] leading-[var(--ow-line-reading)]"
-      )}
+      className="min-w-0 [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
       isAnimating={isStreaming}
     >
       {text}
@@ -305,12 +293,11 @@ function getStreamingTurnSignature(
 }
 
 function ReasoningBlock(props: {
-  density?: "default" | "compact"
   isStreaming?: boolean
   text: string
 }): React.JSX.Element | null {
   const { copy } = useI18n()
-  const { density = "default", isStreaming, text } = props
+  const { isStreaming, text } = props
 
   if (!text.trim()) {
     return null
@@ -319,12 +306,7 @@ function ReasoningBlock(props: {
   return (
     <AgentSteps active={isStreaming} className="ow-reasoning-message" defaultOpen={isStreaming}>
       <AgentStepsTrigger
-        className={cn(
-          "ow-reasoning-trigger",
-          density === "compact"
-            ? "[font-size:var(--ow-font-meta)] leading-[var(--ow-line-chat)]"
-            : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)]"
-        )}
+        className="ow-reasoning-trigger [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
         icon={
           isStreaming ? (
             <LoaderOne className="size-[var(--ow-icon-action)] justify-center text-[var(--ow-agent-timeline-muted)] transition-opacity group-hover:opacity-100" />
@@ -337,12 +319,7 @@ function ReasoningBlock(props: {
       </AgentStepsTrigger>
       <AgentStepsContent
         bar={false}
-        className={cn(
-          "ow-reasoning-content",
-          density === "compact"
-            ? "space-y-[var(--ow-space-2)]"
-            : "space-y-[var(--ow-reasoning-content-gap)]"
-        )}
+        className="ow-reasoning-content space-y-[var(--ow-space-2)]"
       >
         <div className="pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
           {text}
@@ -355,20 +332,18 @@ function ReasoningBlock(props: {
 function renderStructuredContent(
   content: ThreadMessage["content"],
   options: {
-    density?: "default" | "compact"
     includeReasoning?: boolean
     isStreaming?: boolean
     isUser: boolean
   }
 ): StructuredMessageContent {
-  const { density = "default", includeReasoning = true, isStreaming, isUser } = options
+  const { includeReasoning = true, isStreaming, isUser } = options
 
   if (typeof content === "string") {
     return {
       attachments: null,
       reasoningContent: null,
       textContent: renderTextBlock(content, {
-        density,
         isStreaming,
         isUser,
         key: "message-content"
@@ -413,7 +388,6 @@ function renderStructuredContent(
 
       const text = block.text ?? block.content ?? ""
       return renderTextBlock(text, {
-        density,
         isStreaming: isStreaming && index === resolvedLastTextBlockIndex,
         isUser,
         key: `${block.type}-${index}`
@@ -424,7 +398,7 @@ function renderStructuredContent(
   return {
     attachments: <MessageAttachments blocks={attachmentBlocks} isUser={isUser} />,
     reasoningContent: reasoningText.trim() ? (
-      <ReasoningBlock density={density} isStreaming={isStreaming} text={reasoningText} />
+      <ReasoningBlock isStreaming={isStreaming} text={reasoningText} />
     ) : null,
     textContent: textBlocks.length > 0 ? textBlocks : null
   }
@@ -491,7 +465,6 @@ type ActivityView = ThinkingActivityView | ToolActivityView
 
 function AgentActivityGroup(props: {
   defaultOpen?: boolean
-  density?: "default" | "compact"
   isStreaming: boolean
   items: AgentActivityItem[]
   preferLatestToolSummary?: boolean
@@ -504,7 +477,6 @@ function AgentActivityGroup(props: {
   const { copy } = useI18n()
   const {
     defaultOpen = false,
-    density = "default",
     isStreaming,
     items,
     onOpenChange,
@@ -589,11 +561,7 @@ function AgentActivityGroup(props: {
       open={isOpen}
     >
       <AgentToolGroupTrigger
-        className={
-          density === "compact"
-            ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
-            : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)]"
-        }
+        className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
         {...(headerToolAction
           ? { "data-tool-call-toggle": headerToolAction.item.toolCall.name }
           : {})}
@@ -602,10 +570,7 @@ function AgentActivityGroup(props: {
         {headerTitle}
       </AgentToolGroupTrigger>
       <AgentToolGroupContent
-        className={cn(
-          "ow-agent-activity-group-content",
-          density === "compact" ? "space-y-[var(--ow-space-2)]" : "space-y-[var(--ow-space-2-5)]"
-        )}
+        className="ow-agent-activity-group-content space-y-[var(--ow-space-2)]"
       >
         {actionViews.map((action) => {
           if (action.kind === "thinking") {
@@ -647,7 +612,6 @@ function AgentActivityGroup(props: {
 
 function AssistantActivityCluster(props: {
   defaultExpanded?: boolean
-  density?: "default" | "compact"
   expanded?: boolean
   isStreaming: boolean
   items: AgentActivityItem[]
@@ -659,7 +623,6 @@ function AssistantActivityCluster(props: {
 }): React.JSX.Element | null {
   const {
     defaultExpanded = false,
-    density = "default",
     expanded,
     isStreaming,
     items,
@@ -682,13 +645,7 @@ function AssistantActivityCluster(props: {
 
     return (
       <Message className="max-w-full" from="assistant">
-        <MessageContent
-          className={
-            density === "compact"
-              ? "w-full gap-[var(--ow-space-2-5)]"
-              : "w-full gap-[var(--ow-gap-md)]"
-          }
-        >
+        <MessageContent className="w-full gap-[var(--ow-space-2-5)]">
           {item.kind === "tool" ? (
             <ActionMessage
               approvalRequest={
@@ -701,7 +658,6 @@ function AssistantActivityCluster(props: {
             />
           ) : (
             <ReasoningBlock
-              density={density}
               isStreaming={isThinkingItemStreaming(item, { isStreaming, streamingAssistantId })}
               text={item.text}
             />
@@ -716,7 +672,6 @@ function AssistantActivityCluster(props: {
       <MessageContent className="w-full gap-[var(--ow-gap-md)]">
         <AgentActivityGroup
           defaultOpen={defaultExpanded}
-          density={density}
           isStreaming={isStreaming}
           items={items}
           onOpenChange={handleExpandedChange}
@@ -732,14 +687,12 @@ function AssistantActivityCluster(props: {
 }
 
 function AssistantBlock(props: {
-  density?: "default" | "compact"
   isLastAssistant: boolean
   isLoading?: boolean
   message: ThreadMessage
 }): React.JSX.Element | null {
-  const { density = "default", isLastAssistant, isLoading, message } = props
+  const { isLastAssistant, isLoading, message } = props
   const content = renderStructuredContent(message.content, {
-    density,
     includeReasoning: false,
     isStreaming: Boolean(isLoading) && isLastAssistant,
     isUser: false
@@ -755,11 +708,7 @@ function AssistantBlock(props: {
         {content.attachments}
         {content.reasoningContent}
         {content.textContent ? (
-          <div
-            className={
-              density === "compact" ? "space-y-[var(--ow-space-3)]" : "space-y-[var(--ow-space-4)]"
-            }
-          >
+          <div className="space-y-[var(--ow-space-3)]">
             {content.textContent}
           </div>
         ) : null}
@@ -769,11 +718,10 @@ function AssistantBlock(props: {
 }
 
 function UserMessage(props: {
-  density?: "default" | "compact"
   message: ThreadMessage
 }): React.JSX.Element | null {
-  const { density = "default", message } = props
-  const content = renderStructuredContent(message.content, { density, isUser: true })
+  const { message } = props
+  const content = renderStructuredContent(message.content, { isUser: true })
 
   if (!content.attachments && !content.textContent) {
     return null
@@ -783,9 +731,7 @@ function UserMessage(props: {
     <Message from="user">
       {content.attachments}
       {content.textContent ? (
-        <MessageContent
-          className={density === "compact" ? "gap-[var(--ow-space-2-5)]" : "gap-[var(--ow-gap-md)]"}
-        >
+        <MessageContent className="gap-[var(--ow-space-2-5)]">
           {content.textContent}
         </MessageContent>
       ) : null}
@@ -794,7 +740,6 @@ function UserMessage(props: {
 }
 
 const MessageTurnView = memo(function MessageTurnView(props: {
-  density?: "default" | "compact"
   isActiveTurn: boolean
   onBranch?: (messageId: string) => Promise<void> | void
   onRetry?: () => Promise<void> | void
@@ -808,7 +753,6 @@ const MessageTurnView = memo(function MessageTurnView(props: {
 }): React.JSX.Element {
   const { copy } = useI18n()
   const {
-    density = "default",
     isActiveTurn,
     isStreaming,
     onBranch,
@@ -830,17 +774,12 @@ const MessageTurnView = memo(function MessageTurnView(props: {
   )
 
   return (
-    <div
-      className={
-        density === "compact" ? "space-y-[var(--ow-space-2-5)]" : "space-y-[var(--ow-space-3)]"
-      }
-    >
-      {turn.user ? <UserMessage density={density} message={turn.user} /> : null}
+    <div className="space-y-[var(--ow-space-2-5)]">
+      {turn.user ? <UserMessage message={turn.user} /> : null}
       {assistantEntries.map((entry) => {
         if (entry.kind === "assistant-content") {
           return (
             <AssistantBlock
-              density={density}
               isLastAssistant={entry.message.id === streamingAssistantId}
               isLoading={isStreaming}
               key={entry.key}
@@ -852,7 +791,6 @@ const MessageTurnView = memo(function MessageTurnView(props: {
         return (
           <AssistantActivityCluster
             defaultExpanded={toolDisplayPolicy.defaultExpanded}
-            density={density}
             expanded={activityExpansionOverrides.get(entry.key)}
             isStreaming={isStreaming}
             items={entry.items}
@@ -995,7 +933,6 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     bottomInset = 0,
     contentClassName,
     contentInsetY = "var(--ow-chat-thread-y)",
-    density = "default",
     footerSlot,
     isAtBottom = true,
     isLoading,
@@ -1018,8 +955,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
   )
   const latestVirtualRowRef = useRef<HTMLDivElement | null>(null)
   const lastTurnRowRef = useRef<HTMLDivElement | null>(null)
-  const virtualRowPadding =
-    density === "compact" ? "pb-[var(--launcher-ai-turn-gap)]" : "pb-[var(--ow-chat-thread-gap)]"
+  const virtualRowPadding = "pb-[var(--ow-chat-turn-gap)]"
   const activeTurn = activeTurnKey ? turns.find((turn) => turn.key === activeTurnKey) : null
   const activeAssistant = activeTurn?.assistants.find((message) => message.id === lastAssistantId)
   const activeContentSignature = getStreamingTurnSignature(activeTurn, activeAssistant)
@@ -1075,7 +1011,6 @@ export function Messages(props: MessagesProps): React.JSX.Element {
 
     return (
       <MessageTurnView
-        density={density}
         isActiveTurn={isActiveTurn}
         isStreaming={isStreaming}
         key={turn.key}

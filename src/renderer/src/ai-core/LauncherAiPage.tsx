@@ -357,7 +357,6 @@ export function LauncherAiPage(): React.JSX.Element {
               <div className="mx-auto w-full max-w-[var(--launcher-ai-content-max-width)]">
                 <ComposerApprovalPrompt
                   key={pendingApproval.id}
-                  density="compact"
                   onDecision={(decision) => {
                     void handleApprovalDecision(decision)
                   }}
