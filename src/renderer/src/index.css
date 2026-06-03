@@ -103,6 +103,8 @@
   --muted: #f0f1ed;
   --muted-foreground: #5f6873;
   --tertiary-foreground: #8a929b;
+  --ow-agent-timeline-muted: #989fad;
+  --ow-reasoning-content-fg: #909399;
 
   /* Density */
   --ow-font-caption: 10px;
@@ -149,6 +151,10 @@
   --ow-gap-sm: var(--ow-space-2);
   --ow-gap-md: var(--ow-space-3);
   --ow-gap-lg: var(--ow-space-4);
+
+  --ow-motion-duration-panel: 220ms;
+  --ow-motion-duration-panel-out: 180ms;
+  --ow-motion-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 
   --ow-icon-xs: 10px;
   --ow-icon-sm: 14px;
@@ -2212,7 +2218,7 @@ body[data-window="launcher"] .ow-markdown,
 
 .ow-reasoning-trigger {
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--ow-agent-timeline-muted);
 }
 
 .ow-reasoning-trigger:hover {
@@ -2221,8 +2227,60 @@ body[data-window="launcher"] .ow-markdown,
 
 .ow-reasoning-content {
   border-left: 0;
+  color: var(--ow-reasoning-content-fg);
   margin-left: 0;
   padding-left: var(--ow-space-1);
+}
+
+.ow-agent-activity-tool-item > span:first-child {
+  visibility: hidden;
+}
+
+.ow-agent-tool-chevron {
+  transform-origin: center;
+  transition: transform var(--ow-motion-duration-panel) var(--ow-motion-ease-standard);
+}
+
+.ow-agent-tool-chevron[data-open="true"] {
+  transform: rotate(90deg);
+}
+
+.ow-agent-tool-content[data-state="open"] {
+  animation: ow-agent-tool-expand var(--ow-motion-duration-panel) var(--ow-motion-ease-standard);
+}
+
+.ow-agent-tool-content[data-state="closed"] {
+  animation: ow-agent-tool-collapse var(--ow-motion-duration-panel-out)
+    var(--ow-motion-ease-standard);
+}
+
+@keyframes ow-agent-tool-expand {
+  from {
+    height: 0;
+  }
+
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+
+@keyframes ow-agent-tool-collapse {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+
+  to {
+    height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ow-agent-tool-content[data-state="open"],
+  .ow-agent-tool-content[data-state="closed"],
+  .ow-agent-tool-chevron {
+    animation: none;
+    transition: none;
+  }
 }
 
 /* Hide scrollbar but allow scrolling */

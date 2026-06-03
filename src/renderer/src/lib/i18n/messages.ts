@@ -41,6 +41,7 @@ export interface AppCopy {
     pendingMemoryReject: string
     pendingMemoryTitle: string
     includedMemoriesTitle: (count: number) => string
+    subagentReferencesTitle: (count: number) => string
     messagePlaceholder: string
     newThreadEyebrow: string
     selectWorkspace: string
@@ -269,7 +270,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       pendingMemoryAccept: "保存",
       pendingMemoryReject: "忽略",
       pendingMemoryTitle: "待确认记忆",
-      includedMemoriesTitle: (count) => `本轮纳入了 ${count} 条记忆`,
+      includedMemoriesTitle: (count) => `${count} 条记忆引用`,
+      subagentReferencesTitle: (count) => `${count} 个子代理任务`,
       messagePlaceholder: "给 Agent 发送消息...",
       newThreadEyebrow: "新对话",
       selectWorkspace: "选择 workspace",
@@ -516,7 +518,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       pendingMemoryReject: "Ignore",
       pendingMemoryTitle: "Pending Memory",
       includedMemoriesTitle: (count) =>
-        `${count} memory${count === 1 ? "" : "ies"} included`,
+        `${count} memory reference${count === 1 ? "" : "s"}`,
+      subagentReferencesTitle: (count) =>
+        `${count} subagent task${count === 1 ? "" : "s"}`,
       messagePlaceholder: "Message the agent...",
       newThreadEyebrow: "New Thread",
       selectWorkspace: "Select workspace",

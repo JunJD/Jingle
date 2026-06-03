@@ -17,7 +17,7 @@ export function TextShimmer(props: TextShimmerProps): React.JSX.Element {
     <Component
       className={cn("ow-text-shimmer font-medium", className)}
       style={{
-        backgroundImage: `linear-gradient(to right, var(--muted-foreground) ${50 - dynamicSpread}%, var(--foreground) 50%, var(--muted-foreground) ${50 + dynamicSpread}%)`,
+        backgroundImage: `linear-gradient(to right, var(--ow-text-shimmer-base, var(--muted-foreground)) ${50 - dynamicSpread}%, var(--ow-text-shimmer-highlight, var(--foreground)) 50%, var(--ow-text-shimmer-base, var(--muted-foreground)) ${50 + dynamicSpread}%)`,
         ...style,
         animationDuration: `${duration}s`
       }}

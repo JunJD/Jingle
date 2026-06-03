@@ -2,7 +2,6 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import {
   buildTurnAssistantEntries,
-  countToolCalls,
   getTurnPendingApproval,
   getTurnToolDisplayPolicy,
   projectMessages,
@@ -72,7 +71,52 @@ function cloneMessages(messages: Message[]): Message[] {
   return structuredClone(messages)
 }
 
-test("distinct assistant tool responses stay in separate clusters", () => {
+test("single tool call projects to one agent activity item for standalone rendering", () => {
+  const entries = buildTurnAssistantEntries(
+    createTurn([
+      createAssistantMessage({
+        id: "assistant-1",
+        toolCalls: [createToolCall("tool-call-1")]
+      })
+    ])
+  )
+
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0]?.kind, "agent-activity")
+  assert.equal(entries[0]?.key, "activity:tool:tool-call-1")
+  assert.equal(entries[0]?.items.length, 1)
+  assert.equal(entries[0]?.items[0]?.kind, "tool")
+})
+
+test("thinking followed by a tool call projects to one grouped agent activity", () => {
+  const entries = buildTurnAssistantEntries(
+    createTurn([
+      createAssistantMessage({
+        id: "assistant-1",
+        content: [
+          {
+            reasoning: "I should inspect the files first.",
+            type: "reasoning"
+          }
+        ]
+      }),
+      createAssistantMessage({
+        id: "assistant-2",
+        toolCalls: [createToolCall("tool-call-1")]
+      })
+    ])
+  )
+
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0]?.kind, "agent-activity")
+  assert.equal(entries[0]?.key, "activity:thinking:assistant-1")
+  assert.deepEqual(
+    entries[0]?.items.map((item) => item.kind),
+    ["thinking", "tool"]
+  )
+})
+
+test("consecutive tool calls project to one grouped agent activity", () => {
   const firstToolMessage = createAssistantMessage({
     id: "assistant-1",
     toolCalls: [createToolCall("tool-call-1")]
@@ -86,35 +130,80 @@ test("distinct assistant tool responses stay in separate clusters", () => {
   const afterGrowth = buildTurnAssistantEntries(createTurn([firstToolMessage, secondToolMessage]))
 
   assert.equal(beforeGrowth.length, 1)
-  assert.equal(beforeGrowth[0]?.kind, "tool-cluster")
-  assert.equal(afterGrowth.length, 2)
-  assert.equal(afterGrowth[0]?.kind, "tool-cluster")
-  assert.equal(afterGrowth[1]?.kind, "tool-cluster")
-  assert.notEqual(afterGrowth[0]?.key, afterGrowth[1]?.key)
+  assert.equal(beforeGrowth[0]?.kind, "agent-activity")
+  assert.equal(beforeGrowth[0]?.items.length, 1)
+  assert.equal(afterGrowth.length, 1)
+  assert.equal(afterGrowth[0]?.kind, "agent-activity")
+  assert.equal(afterGrowth[0]?.key, "activity:tool:tool-call-1")
+  assert.deepEqual(
+    afterGrowth[0]?.items.map((item) => item.kind),
+    ["tool", "tool"]
+  )
 })
 
-test("tool cluster key remains stable when first tool message later gains renderable content", () => {
-  const toolOnlyMessage = createAssistantMessage({
-    id: "assistant-1",
-    toolCalls: [createToolCall("tool-call-1")]
-  })
-  const toolAndContentMessage = createAssistantMessage({
-    id: "assistant-1",
-    content: "Running plan...",
-    toolCalls: [createToolCall("tool-call-1")]
-  })
+test("assistant content breaks agent activity grouping between tools", () => {
+  const entries = buildTurnAssistantEntries(
+    createTurn([
+      createAssistantMessage({
+        id: "assistant-1",
+        toolCalls: [createToolCall("tool-call-1")]
+      }),
+      createAssistantMessage({
+        content: "I found the first result.",
+        id: "assistant-2"
+      }),
+      createAssistantMessage({
+        id: "assistant-3",
+        toolCalls: [createToolCall("tool-call-2")]
+      })
+    ])
+  )
 
-  const initialEntries = buildTurnAssistantEntries(createTurn([toolOnlyMessage]))
-  const updatedEntries = buildTurnAssistantEntries(createTurn([toolAndContentMessage]))
-  const initialCluster = initialEntries.find((entry) => entry.kind === "tool-cluster")
-  const updatedCluster = updatedEntries.find((entry) => entry.kind === "tool-cluster")
-
-  assert.ok(initialCluster)
-  assert.ok(updatedCluster)
-  assert.equal(updatedCluster.key, initialCluster.key)
+  assert.equal(entries.length, 3)
+  assert.equal(entries[0]?.kind, "agent-activity")
+  assert.equal(entries[0]?.key, "activity:tool:tool-call-1")
+  assert.equal(entries[1]?.kind, "assistant-content")
+  assert.equal(entries[2]?.kind, "agent-activity")
+  assert.equal(entries[2]?.key, "activity:tool:tool-call-2")
 })
 
-test("reasoning-only assistant messages render as assistant content", () => {
+test("activity can merge across adjacent assistant messages in the same turn", () => {
+  const entries = buildTurnAssistantEntries(
+    createTurn([
+      createAssistantMessage({
+        id: "assistant-1",
+        content: [
+          {
+            reasoning: "Need a directory listing first.",
+            type: "reasoning"
+          }
+        ]
+      }),
+      createAssistantMessage({
+        id: "assistant-2",
+        content: [
+          {
+            reasoning: "Then read the target file.",
+            type: "reasoning"
+          }
+        ]
+      }),
+      createAssistantMessage({
+        id: "assistant-3",
+        toolCalls: [createToolCall("tool-call-1")]
+      })
+    ])
+  )
+
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0]?.kind, "agent-activity")
+  assert.deepEqual(
+    entries[0]?.items.map((item) => item.kind),
+    ["thinking", "thinking", "tool"]
+  )
+})
+
+test("reasoning-only assistant messages project as thinking activity", () => {
   const reasoningMessage = createAssistantMessage({
     id: "assistant-1",
     content: [
@@ -128,29 +217,38 @@ test("reasoning-only assistant messages render as assistant content", () => {
   const entries = buildTurnAssistantEntries(createTurn([reasoningMessage]))
 
   assert.equal(entries.length, 1)
-  assert.equal(entries[0]?.kind, "assistant-content")
+  assert.equal(entries[0]?.kind, "agent-activity")
+  assert.equal(entries[0]?.items[0]?.kind, "thinking")
 })
 
-test("single tool call stays standalone while multiple tool calls switch to grouped presentation", () => {
-  const singleToolMessages = [
+test("late tool result updates do not change the activity group key", () => {
+  const toolCall = createToolCall("tool-call-1")
+  const messages = [
+    createUserMessage("user-1", "Run a command"),
     createAssistantMessage({
       id: "assistant-1",
-      toolCalls: [createToolCall("tool-call-1")]
-    })
-  ]
-  const multiToolMessages = [
-    createAssistantMessage({
-      id: "assistant-1",
-      toolCalls: [createToolCall("tool-call-1")]
+      toolCalls: [toolCall]
     }),
-    createAssistantMessage({
-      id: "assistant-2",
-      toolCalls: [createToolCall("tool-call-2")]
+    createToolMessage({
+      content: "initial result",
+      id: "tool-1",
+      toolCallId: toolCall.id
     })
   ]
+  const firstProjection = projectMessages(messages)
+  const firstEntries = buildTurnAssistantEntries(firstProjection.turns[0]!)
+  const nextMessages = cloneMessages(messages)
+  nextMessages[2] = {
+    ...nextMessages[2]!,
+    content: "updated result"
+  }
+  const nextProjection = projectMessages(nextMessages, firstProjection)
+  const nextEntries = buildTurnAssistantEntries(nextProjection.turns[0]!)
 
-  assert.equal(countToolCalls(singleToolMessages), 1)
-  assert.equal(countToolCalls(multiToolMessages), 2)
+  assert.equal(firstEntries[0]?.kind, "agent-activity")
+  assert.equal(nextEntries[0]?.kind, "agent-activity")
+  assert.equal(nextEntries[0]?.key, firstEntries[0]?.key)
+  assert.equal(nextEntries[0]?.key, "activity:tool:tool-call-1")
 })
 
 test("tool entries collapse by default only after a non-streaming turn ends with assistant content", () => {

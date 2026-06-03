@@ -1,5 +1,6 @@
 import React from "react"
 import ReactDOM from "react-dom/client"
+import { useEffect, useState } from "react"
 import LauncherApp from "@launcher-shell/LauncherApp"
 import { LauncherClipboardProvider } from "@launcher-shell/LauncherClipboardContext"
 import { DEFAULT_APP_THEME_SETTINGS, type AppThemeSettings } from "@shared/app-theme"
@@ -38,11 +39,8 @@ async function resolveInitialAppThemeSettings(): Promise<AppThemeSettings> {
   }
 }
 
-async function bootstrap(): Promise<void> {
-  const [initialLocale, initialAppThemeSettings] = await Promise.all([
-    resolveInitialLocale(),
-    resolveInitialAppThemeSettings()
-  ])
+function RendererRoot(): React.JSX.Element {
+  const [locale, setLocale] = useState<AppLocale>(DEFAULT_APP_LOCALE)
   const shortcutWindowKind =
     resolvedWindowKind === "launcher"
       ? "launcher"
@@ -50,13 +48,16 @@ async function bootstrap(): Promise<void> {
         ? "settings"
         : "main"
 
-  applyAppThemeSettings(initialAppThemeSettings)
-  window.api.settings.onAppThemeSettingsChanged(applyAppThemeSettings)
+  useEffect(() => {
+    void resolveInitialLocale().then(setLocale)
+    void resolveInitialAppThemeSettings().then(applyAppThemeSettings)
+    return window.api.settings.onAppThemeSettingsChanged(applyAppThemeSettings)
+  }, [])
 
-  ReactDOM.createRoot(document.getElementById("root")!).render(
+  return (
     <React.StrictMode>
       <ShortcutProvider windowKind={shortcutWindowKind}>
-        <I18nProvider initialLocale={initialLocale}>
+        <I18nProvider key={locale} initialLocale={locale}>
           {windowKind === "launcher" ? (
             <ThreadProvider>
               <LauncherClipboardProvider>
@@ -74,4 +75,6 @@ async function bootstrap(): Promise<void> {
   )
 }
 
-void bootstrap()
+applyAppThemeSettings(DEFAULT_APP_THEME_SETTINGS)
+
+ReactDOM.createRoot(document.getElementById("root")!).render(<RendererRoot />)
