@@ -20,6 +20,10 @@ import {
 
 const EMPTY_COMMAND_PREFERENCES: Record<string, unknown> = {}
 
+function getNoViewCommandExecutionKey(route: LauncherRoute, routeKey: string): string {
+  return isLauncherCommandRoute(route) ? JSON.stringify([routeKey, route.seedQuery]) : routeKey
+}
+
 interface UseActiveLauncherCommandProps {
   closeActivePlugin: () => void
   fallbackViewportHeight: number
@@ -76,7 +80,7 @@ export function useActiveLauncherCommand(
       routeKey: "",
       value: null
     })
-  const lastExecutedNoViewRouteKeyRef = useRef<string | null>(null)
+  const lastExecutedNoViewCommandKeyRef = useRef<string | null>(null)
   const latestRouteKeyRef = useRef(routeKey)
   const activeCommandRecord = useMemo(() => {
     if (!isLauncherCommandRoute(route)) {
@@ -194,18 +198,23 @@ export function useActiveLauncherCommand(
 
   useEffect(() => {
     latestRouteKeyRef.current = routeKey
-  }, [routeKey])
+    if (!isLauncherCommandRoute(route) || !activeNoViewCommand) {
+      lastExecutedNoViewCommandKeyRef.current = null
+    }
+  }, [activeNoViewCommand, route, routeKey])
 
   useEffect(() => {
     if (!activeNoViewCommand || !activeCommandHostReady || !isLauncherCommandRoute(route)) {
       return
     }
 
-    if (lastExecutedNoViewRouteKeyRef.current === routeKey) {
+    const noViewCommandExecutionKey = getNoViewCommandExecutionKey(route, routeKey)
+
+    if (lastExecutedNoViewCommandKeyRef.current === noViewCommandExecutionKey) {
       return
     }
 
-    lastExecutedNoViewRouteKeyRef.current = routeKey
+    lastExecutedNoViewCommandKeyRef.current = noViewCommandExecutionKey
 
     let didNavigate = false
     const navigation = activeCommandNavigationEnabled
@@ -238,7 +247,11 @@ export function useActiveLauncherCommand(
         )
       })
       .finally(() => {
-        if (!didNavigate && latestRouteKeyRef.current === routeKey) {
+        if (
+          !didNavigate &&
+          latestRouteKeyRef.current === routeKey &&
+          lastExecutedNoViewCommandKeyRef.current === noViewCommandExecutionKey
+        ) {
           closeActivePlugin()
         }
       })

@@ -1260,7 +1260,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         launchProps: host.launchProps,
         locale: host.locale,
         mode: "view",
-        seedQuery: host.seedQuery
+        seedQuery: initialSeedQueryRef.current
       })
       .then((session) => {
         sessionId = session.sessionId
@@ -1312,7 +1312,6 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     host.initialAction,
     host.launchProps,
     host.locale,
-    host.seedQuery,
     clearListQueryThrottleTimer,
     clearToastDismissTimer
   ])

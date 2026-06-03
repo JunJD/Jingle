@@ -34,7 +34,7 @@ function resolveRouteKey(route: LauncherRoute): string {
     return route.id
   }
 
-  return `${route.kind}:${getLauncherCommandOwnerId(route)}:${route.commandName}:${route.initialAction}:${route.seedQuery}:${stringifyRouteLaunchProps(route.launchProps)}`
+  return `${route.kind}:${getLauncherCommandOwnerId(route)}:${route.commandName}:${route.initialAction}:${stringifyRouteLaunchProps(route.launchProps)}`
 }
 
 function stringifyRouteLaunchProps(launchProps: LauncherCommandOpenOptions["launchProps"]): string {
