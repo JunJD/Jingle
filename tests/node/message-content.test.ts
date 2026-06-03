@@ -7,6 +7,7 @@ import {
   stripSerializedToolCallMarkup,
   toMessageContent,
   toComposerMessageInput,
+  toAgentMessageContent,
   toDisplayAssistantMessageContent,
   toDisplayUserMessageContent
 } from "../../src/shared/message-content"
@@ -57,6 +58,36 @@ test("extension source refs round-trip through metadata without becoming visible
     {
       text: "@apple-reminders remind me",
       type: "text"
+    }
+  ])
+})
+
+test("image refs become base64 image_url blocks for model invocation", () => {
+  const dataUrl = "data:image/png;base64,aW1hZ2U="
+  const displayContent = toMessageContent({
+    refs: [
+      {
+        name: "clipboard.png",
+        type: "image",
+        url: dataUrl
+      }
+    ],
+    text: "describe it"
+  })
+
+  const agentContent = toAgentMessageContent(displayContent)
+
+  assert.deepEqual(agentContent, [
+    {
+      text: "describe it",
+      type: "text"
+    },
+    {
+      image_url: {
+        url: dataUrl
+      },
+      name: "clipboard.png",
+      type: "image_url"
     }
   ])
 })

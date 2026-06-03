@@ -1,11 +1,16 @@
-import { deleteProviderSecret, getProviderSecret, setProviderSecret } from "../preferences"
+import {
+  deleteProviderCredential as deleteStoredProviderCredential,
+  deleteProviderCredentials as deleteStoredProviderCredentials,
+  getProviderCredential as getStoredProviderCredential,
+  setProviderCredential as setStoredProviderCredential
+} from "./auth-store"
 import type { ProviderId } from "./types"
 
 export function getProviderCredential(
   providerId: ProviderId,
   variable: string
 ): string | undefined {
-  return getProviderSecret(providerId, variable) ?? undefined
+  return getStoredProviderCredential(providerId, variable) ?? undefined
 }
 
 export function setProviderCredential(
@@ -13,13 +18,13 @@ export function setProviderCredential(
   variable: string,
   value: string
 ): void {
-  setProviderSecret(providerId, variable, value.trim())
+  setStoredProviderCredential(providerId, variable, value.trim())
 }
 
 export function deleteProviderCredential(providerId: ProviderId, variable: string): void {
-  deleteProviderSecret(providerId, variable)
+  deleteStoredProviderCredential(providerId, variable)
 }
 
 export function deleteProviderCredentials(providerId: ProviderId, variables: string[]): void {
-  variables.forEach((variable) => deleteProviderCredential(providerId, variable))
+  deleteStoredProviderCredentials(providerId, variables)
 }

@@ -1,5 +1,6 @@
 import type { ModelConfig, ProviderId } from "./types"
 import { getModelConfig, listModelCatalog, toProviderModelId } from "./catalog"
+import { modelSupportsReasoning } from "./model-metadata"
 
 export type RemoteModel = {
   description?: string
@@ -142,6 +143,7 @@ function toModelConfig(providerId: ProviderId, remoteModel: RemoteModel): ModelC
     modelType: "llm",
     name: localModel?.name ?? remoteModel.displayName ?? remoteModel.id,
     provider: providerId,
+    reasoning: localModel?.reasoning ?? modelSupportsReasoning(remoteModel.id),
     status: "active"
   }
 }

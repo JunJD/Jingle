@@ -1,13 +1,21 @@
 import type {
   ConfigurationMethod,
   CredentialFormSchema,
+  CustomProviderConfig,
+  CustomProviderEngine,
+  CustomProviderInput,
+  DefaultModelOptions,
   DefaultModels,
   ModelConfig,
   ModelProviderState,
+  ModelProviderPaths,
   ModelType,
   Provider,
   ProviderModelsResponse,
-  ProviderId
+  ProviderId,
+  SetDefaultModelOptions,
+  SupportedDefaultModelType,
+  ThinkingEffort
 } from "@shared/app-types"
 
 export interface ProviderDefinition {
@@ -17,6 +25,7 @@ export interface ProviderDefinition {
   id: ProviderId
   label: Provider["label"]
   name: string
+  source?: Provider["source"]
   supportedModelTypes: ModelType[]
 }
 
@@ -28,14 +37,23 @@ export interface ResolvedModelRuntimeConfig {
   modelName: string
   modelType: ModelType
   providerId: ProviderId
+  thinkingEffort?: ThinkingEffort | null
 }
 
 export type {
+  DefaultModelOptions,
   DefaultModels,
+  CustomProviderConfig,
+  CustomProviderEngine,
+  CustomProviderInput,
   ModelConfig,
   ModelProviderState,
+  ModelProviderPaths,
   ModelType,
   Provider,
   ProviderModelsResponse,
-  ProviderId
+  ProviderId,
+  SetDefaultModelOptions,
+  ThinkingEffort,
+  SupportedDefaultModelType
 }

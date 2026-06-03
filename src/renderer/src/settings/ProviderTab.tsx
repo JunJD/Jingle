@@ -1,11 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
-import ModelProviderPage from "@/features/model-provider/model-provider-page"
-import type { ModelConfig, Provider, ProviderId } from "@shared/app-types"
+import { useCallback, useEffect, useState } from "react"
+import { ModelSetupSurface } from "@/features/model-provider/model-setup/ModelSetupSurface"
+import type {
+  CustomProviderInput,
+  DefaultModelOptions,
+  ModelConfig,
+  ModelProviderPaths,
+  Provider,
+  ProviderId
+} from "@shared/app-types"
 import type { SettingsWindowTarget } from "@shared/settings-window"
-import { ApiKeyDialog } from "../components/chat/ApiKeyDialog"
 
 type ProviderTabData = {
+  activeProviderId: ProviderId | null
   defaultModelId: string
+  defaultModelOptions: DefaultModelOptions["llm"]
+  modelProviderPaths: ModelProviderPaths | null
   models: ModelConfig[]
   providers: Provider[]
 }
@@ -24,13 +33,17 @@ function cacheProviderTabData(data: ProviderTabData): ProviderTabData {
 }
 
 async function fetchProviderTabData(): Promise<ProviderTabData> {
-  const [providerState, models] = await Promise.all([
+  const [providerState, models, modelProviderPaths] = await Promise.all([
     window.api.models.getState(),
-    window.api.models.list("llm")
+    window.api.models.list("llm"),
+    window.api.models.getPaths()
   ])
 
   return cacheProviderTabData({
+    activeProviderId: providerState.activeProviderId,
     defaultModelId: providerState.defaultModels.llm,
+    defaultModelOptions: providerState.defaultModelOptions.llm,
+    modelProviderPaths,
     models,
     providers: providerState.providers
   })
@@ -73,12 +86,19 @@ export function ProviderTab(props: ProviderTabProps): React.JSX.Element {
   const [providers, setProviders] = useState<Provider[]>(
     () => providerTabDataCache?.providers ?? []
   )
+  const [activeProviderId, setActiveProviderId] = useState<ProviderId | null>(
+    () => providerTabDataCache?.activeProviderId ?? null
+  )
   const [models, setModels] = useState<ModelConfig[]>(() => providerTabDataCache?.models ?? [])
   const [defaultModelId, setDefaultModelId] = useState(
     () => providerTabDataCache?.defaultModelId ?? ""
   )
-  const [dialogProviderId, setDialogProviderId] = useState<ProviderId | null>(null)
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [defaultModelOptions, setDefaultModelOptions] = useState<DefaultModelOptions["llm"]>(
+    () => providerTabDataCache?.defaultModelOptions ?? {}
+  )
+  const [modelProviderPaths, setModelProviderPaths] = useState<ModelProviderPaths | null>(
+    () => providerTabDataCache?.modelProviderPaths ?? null
+  )
   const [loading, setLoading] = useState(() => providerTabDataCache === null)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -90,9 +110,12 @@ export function ProviderTab(props: ProviderTabProps): React.JSX.Element {
     try {
       const data = await loadProviderTabData(force)
 
+      setActiveProviderId(data.activeProviderId)
       setProviders(data.providers)
       setModels(data.models)
       setDefaultModelId(data.defaultModelId)
+      setDefaultModelOptions(data.defaultModelOptions)
+      setModelProviderPaths(data.modelProviderPaths)
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -104,102 +127,64 @@ export function ProviderTab(props: ProviderTabProps): React.JSX.Element {
     void loadData(true)
   }, [loadData])
 
-  useEffect(() => {
-    if (!focusTarget?.providerId) {
-      return
-    }
-
-    const targetProvider = providers.find((provider) => provider.id === focusTarget.providerId)
-    if (!targetProvider) {
-      return
-    }
-
-    setDialogProviderId(targetProvider.id)
-    setDialogOpen(true)
-    onFocusTargetConsumed()
-  }, [focusTarget?.providerId, onFocusTargetConsumed, providers])
-
-  const providerMap = useMemo(() => {
-    return new Map(providers.map((provider) => [provider.id, provider]))
-  }, [providers])
-
-  const dialogProvider = dialogProviderId ? (providerMap.get(dialogProviderId) ?? null) : null
-
-  const handleDefaultModelChange = async (nextModelId: string): Promise<void> => {
-    await window.api.models.setDefault("llm", nextModelId)
+  const handleDefaultModelChange = async (
+    nextModelId: string,
+    options?: Parameters<typeof window.api.models.setDefault>[2]
+  ): Promise<void> => {
+    await window.api.models.setDefault("llm", nextModelId, options)
     if (providerTabDataCache) {
       providerTabDataCache = {
         ...providerTabDataCache,
-        defaultModelId: nextModelId
-      }
-    }
-    setDefaultModelId(nextModelId)
-  }
-
-  const handleOpenProviderDialog = (providerId: ProviderId): void => {
-    setDialogProviderId(providerId)
-    setDialogOpen(true)
-  }
-
-  const handleLoadProviderModels = (providerId: ProviderId): Promise<ModelConfig[]> => {
-    return window.api.models.listByProvider(providerId, "llm").then((response) => {
-      const nextModels = response.models
-      setModels((currentModels) => [
-        ...currentModels.filter((model) => model.provider !== providerId),
-        ...nextModels
-      ])
-      setProviders((currentProviders) =>
-        currentProviders.map((provider) =>
-          provider.id === providerId ? response.provider : provider
-        )
-      )
-      if (providerTabDataCache) {
-        providerTabDataCache = {
-          ...providerTabDataCache,
-          models: [
-            ...providerTabDataCache.models.filter((model) => model.provider !== providerId),
-            ...nextModels
-          ],
-          providers: providerTabDataCache.providers.map((provider) =>
-            provider.id === providerId ? response.provider : provider
-          )
+        activeProviderId: nextModelId.slice(0, nextModelId.indexOf(":")),
+        defaultModelId: nextModelId,
+        defaultModelOptions: {
+          thinkingEffort: options?.thinkingEffort ?? null
         }
       }
-      return nextModels
+    }
+    setActiveProviderId(nextModelId.slice(0, nextModelId.indexOf(":")))
+    setDefaultModelId(nextModelId)
+    setDefaultModelOptions({
+      thinkingEffort: options?.thinkingEffort ?? null
     })
   }
 
-  const handleDialogOpenChange = (nextOpen: boolean): void => {
-    setDialogOpen(nextOpen)
-    if (!nextOpen) {
-      setDialogProviderId(null)
-      void loadData(true)
-    }
+  const handleCreateCustomProvider = async (provider: CustomProviderInput): Promise<ProviderId> => {
+    const providerId = await window.api.models.upsertCustomProvider(provider)
+    await loadData(true)
+    return providerId
   }
 
   if (loading) {
     return <ProviderTabSkeleton />
   }
 
-  return (
-    <>
-      <div className="mx-auto w-full max-w-[var(--ow-settings-content-max-width)]">
-        <ModelProviderPage
-          providers={providers}
-          models={models}
-          defaultModelId={defaultModelId}
-          loadError={loadError}
-          onDefaultModelChange={handleDefaultModelChange}
-          onLoadProviderModels={handleLoadProviderModels}
-          onOpenProviderDialog={handleOpenProviderDialog}
-        />
-      </div>
+  const focusProviderId =
+    focusTarget?.providerId && providers.some((provider) => provider.id === focusTarget.providerId)
+      ? focusTarget.providerId
+      : null
 
-      <ApiKeyDialog
-        open={dialogOpen}
-        onOpenChange={handleDialogOpenChange}
-        provider={dialogProvider}
+  return (
+    <div className="mx-auto w-full max-w-[var(--ow-settings-content-max-width)]">
+      <ModelSetupSurface
+        activeProviderId={activeProviderId}
+        providers={providers}
+        models={models}
+        defaultModelId={defaultModelId}
+        defaultModelOptions={defaultModelOptions}
+        focusProviderId={focusProviderId}
+        modelProviderPaths={modelProviderPaths}
+        onCreateCustomProvider={handleCreateCustomProvider}
+        onFocusProviderConsumed={onFocusTargetConsumed}
+        onRefresh={() => loadData(true)}
+        onSelectModel={handleDefaultModelChange}
+        variant="settings"
       />
-    </>
+      {loadError && (
+        <div className="mt-[var(--ow-space-3)] rounded-[var(--ow-settings-card-radius)] border border-destructive/25 bg-destructive/10 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-destructive">
+          {loadError}
+        </div>
+      )}
+    </div>
   )
 }

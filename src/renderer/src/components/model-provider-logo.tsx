@@ -56,17 +56,18 @@ function DashScopeLogo(props: ProviderLogoProps): React.JSX.Element {
 
 const PROVIDER_LOGOS = {
   anthropic: AnthropicLogo,
+  codex: OpenAILogo,
   dashscope: DashScopeLogo,
   deepseek: DeepSeekLogo,
   google: GoogleLogo,
   openai: OpenAILogo
-} satisfies Record<ProviderId, (props: ProviderLogoProps) => React.JSX.Element>
+} satisfies Record<string, (props: ProviderLogoProps) => React.JSX.Element>
 
 export function ProviderLogo(
   props: ProviderLogoProps & { providerId: ProviderId }
 ): React.JSX.Element {
   const { className, providerId } = props
-  const Logo = PROVIDER_LOGOS[providerId]
+  const Logo = PROVIDER_LOGOS[providerId] ?? DashScopeLogo
 
   return <Logo className={className} />
 }

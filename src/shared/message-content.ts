@@ -9,7 +9,9 @@ export type AgentMessageContent =
           type: "text"
         }
       | {
+          name?: string
           image_url: string | { detail?: "auto" | "high" | "low"; url: string }
+          mimeType?: string
           type: "image_url"
         }
     >
@@ -662,7 +664,8 @@ export function toAgentMessageContent(content: string | ContentBlock[]): AgentMe
   }
 
   const agentBlocks: Array<
-    { text: string; type: "text" } | { image_url: { url: string }; type: "image_url" }
+    | { text: string; type: "text" }
+    | { image_url: { url: string }; mimeType?: string; name?: string; type: "image_url" }
   > = []
   const fileNames: string[] = []
 
@@ -684,6 +687,8 @@ export function toAgentMessageContent(content: string | ContentBlock[]): AgentMe
         if (url) {
           agentBlocks.push({
             image_url: { url },
+            ...(block.mimeType ? { mimeType: block.mimeType } : {}),
+            ...(block.name ? { name: block.name } : {}),
             type: "image_url"
           })
         }

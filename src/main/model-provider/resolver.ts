@@ -1,6 +1,6 @@
 import { getProviderAdapter } from "./adapters"
 import { getModelConfig, listModelCatalog, parseProviderModelId } from "./catalog"
-import { getModelProviderDefaultModel } from "./settings"
+import { getModelProviderDefaultModel, getModelProviderDefaultModelOptions } from "./settings"
 import type { ResolvedModelRuntimeConfig } from "./types"
 
 export interface ResolveModelRuntimeConfigOptions {
@@ -39,7 +39,8 @@ export function resolveModelRuntimeConfig(
     modelId: resolvedModelId,
     modelName: configuredModel?.model ?? parsedModelId.modelName,
     modelType,
-    providerId
+    providerId,
+    thinkingEffort: getModelProviderDefaultModelOptions().llm.thinkingEffort ?? null
   }
 }
 

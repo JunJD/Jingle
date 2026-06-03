@@ -6,6 +6,7 @@ export interface ClipboardFile {
 }
 
 export interface ClipboardImage {
+  dataUrl: string
   height: number
   previewDataUrl: string
   width: number

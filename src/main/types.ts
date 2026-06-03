@@ -4,16 +4,22 @@ import type { AppLocale } from "@shared/i18n"
 import type { HITLDecision, HITLRequest } from "@shared/hitl"
 import type { PermissionModeName } from "@shared/permission-mode"
 import type { ArtifactRecord } from "@shared/artifacts"
-import type { ProviderId } from "@shared/app-types"
+import type { CustomProviderInput, ProviderId, SetDefaultModelOptions } from "@shared/app-types"
 import type { ExtensionToolCallPresentation, ToolCallDisplay } from "@shared/tool-presentation"
 export type { HITLDecision, HITLRequest } from "@shared/hitl"
 export type {
+  CustomProviderConfig,
+  CustomProviderInput,
+  DefaultModelOptions,
+  ModelProviderPaths,
   ModelConfig,
   ModelProviderState,
   ModelType,
   Provider,
   ProviderModelsResponse,
-  ProviderId
+  ProviderId,
+  SetDefaultModelOptions,
+  ThinkingEffort
 } from "@shared/app-types"
 
 // Thread types matching langgraph-api
@@ -70,6 +76,11 @@ export interface SetProviderCredentialsParams {
 export interface SetDefaultModelParams {
   modelId: string
   modelType: "llm"
+  options?: SetDefaultModelOptions
+}
+
+export interface UpsertCustomProviderParams {
+  provider: CustomProviderInput
 }
 
 // =============================================================================

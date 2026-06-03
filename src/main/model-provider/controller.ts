@@ -1,5 +1,9 @@
 import type { IpcMain } from "electron"
-import type { SetDefaultModelParams, SetProviderCredentialsParams } from "../types"
+import type {
+  SetDefaultModelParams,
+  SetProviderCredentialsParams,
+  UpsertCustomProviderParams
+} from "../types"
 import { registerIpcHandle } from "../ipc/handle"
 import { ModelProviderService } from "./service"
 
@@ -11,12 +15,24 @@ export class ModelProviderController {
       return this.modelProviderService.listModels(modelType)
     })
 
-    registerIpcHandle(ipcMain, "models:listByProvider", async (_event, provider: string, modelType: string = "llm") => {
-      return this.modelProviderService.listModelsByProvider(provider, modelType)
-    })
+    registerIpcHandle(
+      ipcMain,
+      "models:listByProvider",
+      async (_event, provider: string, modelType: string = "llm") => {
+        return this.modelProviderService.listModelsByProvider(provider, modelType)
+      }
+    )
 
     registerIpcHandle(ipcMain, "models:getState", async () => {
       return this.modelProviderService.getState()
+    })
+
+    registerIpcHandle(ipcMain, "models:getPaths", async () => {
+      return this.modelProviderService.getPaths()
+    })
+
+    registerIpcHandle(ipcMain, "models:getCustomProvider", async (_event, provider: string) => {
+      return this.modelProviderService.getCustomProvider(provider)
     })
 
     registerIpcHandle(ipcMain, "models:getDefault", async (_event, modelType: string) => {
@@ -26,8 +42,8 @@ export class ModelProviderController {
     registerIpcHandle(
       ipcMain,
       "models:setDefault",
-      async (_event, { modelType, modelId }: SetDefaultModelParams) => {
-        await this.modelProviderService.setDefaultModel(modelType, modelId)
+      async (_event, { modelType, modelId, options }: SetDefaultModelParams) => {
+        await this.modelProviderService.setDefaultModel(modelType, modelId, options)
       }
     )
 
@@ -46,5 +62,13 @@ export class ModelProviderController {
     registerIpcHandle(ipcMain, "models:deleteCredentials", async (_event, provider: string) => {
       this.modelProviderService.deleteCredentials(provider)
     })
+
+    registerIpcHandle(
+      ipcMain,
+      "models:upsertCustomProvider",
+      async (_event, { provider }: UpsertCustomProviderParams) => {
+        return this.modelProviderService.upsertCustomProvider(provider)
+      }
+    )
   }
 }

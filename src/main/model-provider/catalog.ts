@@ -1,4 +1,11 @@
 import type { ModelConfig, ProviderDefinition, ProviderId } from "./types"
+import { listCustomProviderDefinitions, listCustomProviderModels } from "./custom-providers"
+import {
+  listDeclarativeProviderDefinitions,
+  listDeclarativeProviderModels
+} from "./declarative-providers"
+import { modelSupportsReasoning } from "./model-metadata"
+import { listRegistryModels, listRegistryProviderDefinitions } from "./registry"
 
 const MODEL_ID_SEPARATOR = ":"
 const LLM_MODEL_TYPE = "llm"
@@ -107,6 +114,22 @@ const PROVIDERS: ProviderDefinition[] = [
       zh_Hans: "DeepSeek"
     },
     name: "DeepSeek",
+    supportedModelTypes: [LLM_MODEL_TYPE]
+  },
+  {
+    configurateMethods: ["customizable-model"],
+    credentialFormSchemas: [],
+    description: {
+      en_US: "Use an authenticated Codex CLI as an external agent provider.",
+      zh_Hans: "使用已登录的 Codex CLI 作为外部 Agent provider。"
+    },
+    id: "codex",
+    label: {
+      en_US: "Codex CLI",
+      zh_Hans: "Codex CLI"
+    },
+    name: "Codex CLI",
+    source: "builtin",
     supportedModelTypes: [LLM_MODEL_TYPE]
   }
 ]
@@ -401,23 +424,46 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
+  },
+  {
+    id: toProviderModelId("codex", "current"),
+    name: "Current Codex model",
+    provider: "codex",
+    model: "current",
+    description: "The model currently configured in the local Codex CLI.",
+    fetchFrom: "customizable-model",
+    modelType: "llm",
+    status: "active"
   }
 ]
 
 export function listProviderDefinitions(): ProviderDefinition[] {
-  return [...PROVIDERS]
+  return [
+    ...PROVIDERS,
+    ...listDeclarativeProviderDefinitions(),
+    ...listCustomProviderDefinitions(),
+    ...listRegistryProviderDefinitions()
+  ]
 }
 
 export function getProviderDefinition(providerId: string): ProviderDefinition | undefined {
-  return PROVIDERS.find((provider) => provider.id === providerId)
+  return listProviderDefinitions().find((provider) => provider.id === providerId)
 }
 
 export function listModelCatalog(): ModelConfig[] {
-  return [...AVAILABLE_MODELS]
+  return [
+    ...AVAILABLE_MODELS,
+    ...listDeclarativeProviderModels(),
+    ...listCustomProviderModels(),
+    ...listRegistryModels()
+  ].map((model) => ({
+    ...model,
+    reasoning: model.reasoning ?? modelSupportsReasoning(model.model)
+  }))
 }
 
 export function getModelConfig(modelId: string): ModelConfig | undefined {
-  return AVAILABLE_MODELS.find((model) => model.id === modelId)
+  return listModelCatalog().find((model) => model.id === modelId)
 }
 
 export function parseProviderModelId(modelId: string): ProviderModelId {
@@ -427,7 +473,7 @@ export function parseProviderModelId(modelId: string): ProviderModelId {
   }
 
   const provider = modelId.slice(0, separatorIndex)
-  const providerDefinition = PROVIDERS.find((entry) => entry.id === provider)
+  const providerDefinition = getProviderDefinition(provider)
   if (!providerDefinition) {
     throw new Error(`Model provider is not configured: ${provider}`)
   }

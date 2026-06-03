@@ -29,7 +29,7 @@ export interface Run {
   metadata?: Record<string, unknown>
 }
 
-export type ProviderId = "anthropic" | "openai" | "google" | "dashscope" | "deepseek"
+export type ProviderId = string
 
 export type ModelType = "llm" | "text-embedding" | "rerank" | "speech2text" | "moderation" | "tts"
 
@@ -81,6 +81,7 @@ export interface ModelProviderCredentialSchema {
 
 export interface ModelProviderCustomConfiguration {
   currentCredentialName?: string
+  message?: string
   status: CustomConfigurationStatus
 }
 
@@ -90,6 +91,20 @@ export interface ModelProviderSystemConfiguration {
 
 export interface DefaultModels {
   llm: string
+}
+
+export type ThinkingEffort = "off" | "low" | "medium" | "high" | "max"
+
+export interface ModelSelectionOptions {
+  thinkingEffort?: ThinkingEffort | null
+}
+
+export interface DefaultModelOptions {
+  llm: ModelSelectionOptions
+}
+
+export interface SetDefaultModelOptions extends ModelSelectionOptions {
+  allowUnlisted?: boolean
 }
 
 export interface Provider {
@@ -104,9 +119,11 @@ export interface Provider {
   providerCredentialSchema: ModelProviderCredentialSchema
   supportedModelTypes: ModelType[]
   systemConfiguration: ModelProviderSystemConfiguration
+  source?: "builtin" | "custom" | "declarative" | "registry"
 }
 
 export interface ModelConfig {
+  contextLimit?: number
   description?: string
   fetchFrom: ConfigurationMethod
   features?: ModelFeature[]
@@ -115,6 +132,7 @@ export interface ModelConfig {
   modelType: ModelType
   name: string
   provider: ProviderId
+  reasoning?: boolean
   status: ModelStatus
 }
 
@@ -124,8 +142,65 @@ export interface ProviderModelsResponse {
 }
 
 export interface ModelProviderState {
+  activeProviderId: ProviderId | null
+  defaultModelOptions: DefaultModelOptions
   defaultModels: DefaultModels
   providers: Provider[]
+}
+
+export type CustomProviderEngine = "openai" | "anthropic" | "ollama"
+
+export interface CustomProviderModel {
+  context_limit?: number
+  name: string
+  reasoning?: boolean
+}
+
+export interface CustomProviderConfig {
+  api_key_env?: string
+  base_path?: string | null
+  base_url?: string | null
+  description?: string
+  display_name: string
+  dynamic_models?: boolean
+  engine: CustomProviderEngine
+  env_vars?: Array<{
+    default?: string
+    description?: string
+    name: string
+    primary?: boolean
+    required?: boolean
+    secret?: boolean
+  }>
+  headers?: Record<string, string>
+  model_doc_link?: string | null
+  models: CustomProviderModel[]
+  name: string
+  requires_auth?: boolean
+  setup_steps?: string[]
+  supports_streaming?: boolean
+  timeout_seconds?: number | null
+}
+
+export interface CustomProviderInput {
+  apiKey?: string
+  basePath?: string
+  baseUrl?: string
+  description?: string
+  displayName: string
+  engine: CustomProviderEngine
+  headers?: Record<string, string>
+  models: string[]
+  providerId?: ProviderId
+  requiresAuth: boolean
+  supportsStreaming: boolean
+}
+
+export interface ModelProviderPaths {
+  authPath: string
+  configPath: string
+  customProvidersDir: string
+  modelRegistryPath: string
 }
 
 export interface AgentConfig {

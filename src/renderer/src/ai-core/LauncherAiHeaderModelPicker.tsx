@@ -6,6 +6,7 @@ import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import type { ModelConfig, Provider } from "@/types"
+import { isLauncherHeaderUsableModel } from "./launcher-model-filter"
 
 interface LauncherAiHeaderModelPickerProps {
   currentModelId: string | null
@@ -58,9 +59,13 @@ export function LauncherAiHeaderModelPicker(
   const normalizedSearchQuery = searchQuery.trim().toLowerCase()
   const visibleModels = models
     .map((model, index) => ({ index, model }))
-    .filter(({ model }) =>
-      matchesSearch(model, providerById.get(model.provider), normalizedSearchQuery)
-    )
+    .filter(({ model }) => {
+      const provider = providerById.get(model.provider)
+      return (
+        isLauncherHeaderUsableModel(model, provider) &&
+        matchesSearch(model, provider, normalizedSearchQuery)
+      )
+    })
     .sort((left, right) => {
       const selectedProviderId = selectedModel?.provider
       const leftProviderRank = left.model.provider === selectedProviderId ? 0 : 1
@@ -125,20 +130,17 @@ export function LauncherAiHeaderModelPicker(
             visibleModels.map((model) => {
               const provider = providerById.get(model.provider)
               const isSelected = model.id === effectiveModelId
-              const canSelect = model.status === "active"
 
               return (
                 <button
                   key={model.id}
                   type="button"
-                  disabled={!canSelect}
                   onClick={() => handleSelectModel(model.id)}
                   className={cn(
                     "flex h-[34px] w-full items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-2)] text-left transition-colors",
                     isSelected
                       ? "bg-background-secondary text-foreground"
-                      : "text-muted-foreground hover:bg-background-secondary/72 hover:text-foreground",
-                    !canSelect && "cursor-default opacity-45 hover:bg-transparent"
+                      : "text-muted-foreground hover:bg-background-secondary/72 hover:text-foreground"
                   )}
                 >
                   <ProviderIcon

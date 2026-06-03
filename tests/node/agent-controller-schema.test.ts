@@ -21,8 +21,10 @@ test("parseAgentInvokeParams trims routing identifiers and preserves message con
           type: "image_url",
           image_url: {
             detail: "high",
-            url: "  https://example.com/image.png  "
-          }
+            url: "  data:image/png;base64,aW1hZ2U=  "
+          },
+          mimeType: "  image/png  ",
+          name: "  clipboard.png  "
         }
       ],
       additional_kwargs: {
@@ -63,8 +65,10 @@ test("parseAgentInvokeParams trims routing identifiers and preserves message con
           type: "image_url",
           image_url: {
             detail: "high",
-            url: "https://example.com/image.png"
-          }
+            url: "data:image/png;base64,aW1hZ2U="
+          },
+          mimeType: "image/png",
+          name: "clipboard.png"
         }
       ],
       additional_kwargs: {

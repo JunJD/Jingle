@@ -1,8 +1,10 @@
-import type { ModelConfig, ModelType, Provider, ProviderModelsResponse } from "../types"
-import type { SupportedDefaultModelType } from "@shared/app-types"
+import type { SetDefaultModelOptions, SupportedDefaultModelType } from "@shared/app-types"
 import { getProviderAdapter, listProviderAdapters } from "./adapters"
 import { getModelConfig, getProviderDefinition, parseProviderModelId } from "./catalog"
+import { getCustomProviderConfig, upsertCustomProvider } from "./custom-providers"
+import { modelSupportsReasoning } from "./model-metadata"
 import { listCatalogModelsByProvider } from "./model-list"
+import { getModelProviderPaths } from "./paths"
 import {
   clearProviderModelListState,
   getProviderModelListState,
@@ -10,11 +12,27 @@ import {
   setProviderModelListSuccess
 } from "./model-list-state"
 import {
+  getActiveProviderId,
+  getJingleModelProviderConfig,
   getModelProviderDefaultModel,
+  getModelProviderDefaultModelOptions,
   getModelProviderDefaultModels,
+  markProviderConfigured,
+  markProviderUnconfigured,
   setModelProviderDefaultModel
 } from "./settings"
-import type { ModelProviderState, ProviderDefinition } from "./types"
+import type {
+  CustomProviderInput,
+  CustomProviderConfig,
+  ModelConfig,
+  ModelProviderPaths,
+  ModelProviderState,
+  ModelType,
+  Provider,
+  ProviderDefinition,
+  ProviderId,
+  ProviderModelsResponse
+} from "./types"
 
 export class ModelProviderService {
   getState(): ModelProviderState {
@@ -36,8 +54,12 @@ export class ModelProviderService {
     return getDefaultModelForUI(modelType)
   }
 
-  setDefaultModel(modelType: string, modelId: string): Promise<void> {
-    return setDefaultModelForUI(modelType, modelId)
+  setDefaultModel(
+    modelType: string,
+    modelId: string,
+    options: SetDefaultModelOptions = {}
+  ): Promise<void> {
+    return setDefaultModelForUI(modelType, modelId, options)
   }
 
   setCredentials(provider: string, credentials: Record<string, string>): Promise<void> {
@@ -51,10 +73,24 @@ export class ModelProviderService {
   deleteCredentials(provider: string): void {
     deleteProviderCredentialsForUI(provider)
   }
+
+  getPaths(): ModelProviderPaths {
+    return getModelProviderPaths()
+  }
+
+  getCustomProvider(provider: string): CustomProviderConfig | null {
+    return getCustomProviderForUI(provider)
+  }
+
+  upsertCustomProvider(provider: CustomProviderInput): ProviderId {
+    return upsertCustomProviderForUI(provider)
+  }
 }
 
 export function getModelProviderStateForUI(): ModelProviderState {
   return {
+    activeProviderId: getActiveProviderId(),
+    defaultModelOptions: getModelProviderDefaultModelOptions(),
     defaultModels: getModelProviderDefaultModels(),
     providers: listProviderAdapters().map((adapter) => getProviderStateForUI(adapter))
   }
@@ -127,7 +163,11 @@ export function getDefaultModelForUI(modelType: string): string {
   return getModelProviderDefaultModel(requireSupportedDefaultModelType(modelType))
 }
 
-export async function setDefaultModelForUI(modelType: string, modelId: string): Promise<void> {
+export async function setDefaultModelForUI(
+  modelType: string,
+  modelId: string,
+  options: SetDefaultModelOptions = {}
+): Promise<void> {
   const supportedModelType = requireSupportedDefaultModelType(modelType)
   const parsedModelId = parseProviderModelId(modelId)
   const adapter = getProviderAdapter(parsedModelId.providerId)
@@ -142,13 +182,26 @@ export async function setDefaultModelForUI(modelType: string, modelId: string): 
   const targetModel = providerModels.find(
     (model) => model.id === modelId && model.modelType === supportedModelType
   )
-  if (!targetModel) {
-    throw new Error(
-      `Model is not available for provider ${parsedModelId.providerId}: ${parsedModelId.modelName}`
-    )
+  if (targetModel) {
+    setModelProviderDefaultModel(supportedModelType, modelId, options)
+    return
   }
 
-  setModelProviderDefaultModel(supportedModelType, modelId)
+  if (
+    options.allowUnlisted &&
+    adapter.definition.configurateMethods.includes("customizable-model")
+  ) {
+    setModelProviderDefaultModel(supportedModelType, modelId, {
+      ...options,
+      thinkingEffort:
+        options.thinkingEffort ?? (modelSupportsReasoning(parsedModelId.modelName) ? "high" : null)
+    })
+    return
+  }
+
+  throw new Error(
+    `Model is not available for provider ${parsedModelId.providerId}: ${parsedModelId.modelName}`
+  )
 }
 
 export async function setProviderCredentialsForUI(
@@ -161,6 +214,7 @@ export async function setProviderCredentialsForUI(
 
   adapter.saveCredentials(normalizedCredentials)
   setProviderModelListSuccess(adapter.definition.id, models)
+  markProviderConfigured(adapter.definition.id, models[0]?.model)
 }
 
 export function getProviderCredentialsForUI(provider: string): Record<string, string> | null {
@@ -170,13 +224,30 @@ export function getProviderCredentialsForUI(provider: string): Record<string, st
 export function deleteProviderCredentialsForUI(provider: string): void {
   const adapter = requireProviderAdapter(provider)
   adapter.deleteCredentials()
+  markProviderUnconfigured(adapter.definition.id)
   clearProviderModelListState(adapter.definition.id)
 }
 
 export { getModelConfig }
 
+export function getModelProviderPathsForUI(): ModelProviderPaths {
+  return getModelProviderPaths()
+}
+
+export function getCustomProviderForUI(provider: string): CustomProviderConfig | null {
+  return getCustomProviderConfig(provider)
+}
+
+export function upsertCustomProviderForUI(provider: CustomProviderInput): ProviderId {
+  const customProvider = upsertCustomProvider(provider)
+  if (customProvider.requires_auth === false || provider.apiKey?.trim()) {
+    markProviderConfigured(customProvider.name, customProvider.models[0]?.name)
+  }
+  return customProvider.name
+}
+
 function getProviderStateForUI(adapter: ReturnType<typeof getProviderAdapter>): Provider {
-  if (!adapter.hasCredentials()) {
+  if (!isProviderConfiguredForUI(adapter)) {
     return toProviderState(adapter.definition, "no-configure", "no-configure")
   }
 
@@ -186,6 +257,14 @@ function getProviderStateForUI(adapter: ReturnType<typeof getProviderAdapter>): 
   }
 
   return toProviderState(adapter.definition, "active", "active")
+}
+
+function isProviderConfiguredForUI(adapter: ReturnType<typeof getProviderAdapter>): boolean {
+  if (adapter.definition.credentialFormSchemas.length > 0) {
+    return adapter.hasCredentials()
+  }
+
+  return getJingleModelProviderConfig().providers[adapter.definition.id]?.configured === true
 }
 
 function requireProviderAdapter(provider: string) {
@@ -225,11 +304,17 @@ function toProviderState(
   modelListStatus: Provider["modelListStatus"],
   modelListError?: string
 ): Provider {
+  const catalogOnlyMessage =
+    provider.source === "registry"
+      ? "Jingle can read this model registry, but local inference runtime is not wired yet."
+      : undefined
+
   return {
     configurateMethods: provider.configurateMethods,
     customConfiguration: {
       currentCredentialName:
         customConfigurationStatus === "active" ? `${provider.name} API Key` : undefined,
+      message: catalogOnlyMessage,
       status: customConfigurationStatus
     },
     description: provider.description,
@@ -241,6 +326,7 @@ function toProviderState(
     providerCredentialSchema: {
       credentialFormSchemas: provider.credentialFormSchemas
     },
+    source: provider.source,
     supportedModelTypes: provider.supportedModelTypes,
     systemConfiguration: {
       enabled: false

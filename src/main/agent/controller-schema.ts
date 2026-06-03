@@ -48,7 +48,9 @@ const agentMessageContentBlockSchema = z.discriminatedUnion("type", [
             url: nonEmptyTrimmedStringSchema
           })
           .strict()
-      ])
+      ]),
+      mimeType: optionalNormalizedTrimmedStringSchema,
+      name: optionalNormalizedTrimmedStringSchema
     })
     .strict()
 ])

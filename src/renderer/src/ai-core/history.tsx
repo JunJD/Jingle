@@ -4,6 +4,7 @@ import { TabbedPanel, TabBar } from "@/components/tabs"
 import { RightPanel } from "@/components/panels/RightPanel"
 import { KanbanView, KanbanHeader } from "@/components/kanban"
 import { HomeEntry } from "@/components/home/HomeEntry"
+import { ModelOnboardingGuard } from "@/features/model-provider/model-setup/ModelOnboardingGuard"
 import { ResizeHandle } from "@/components/ui/resizable"
 import {
   getCurrentHistoryThreadId,
@@ -283,12 +284,14 @@ function HistoryApp(props: HistoryAppProps): React.JSX.Element {
   const { onTargetThreadHandled, targetThreadId } = props
 
   return (
-    <ThreadProvider>
-      <MainAppContent
-        onTargetThreadHandled={onTargetThreadHandled}
-        targetThreadId={targetThreadId}
-      />
-    </ThreadProvider>
+    <ModelOnboardingGuard>
+      <ThreadProvider>
+        <MainAppContent
+          onTargetThreadHandled={onTargetThreadHandled}
+          targetThreadId={targetThreadId}
+        />
+      </ThreadProvider>
+    </ModelOnboardingGuard>
   )
 }
 

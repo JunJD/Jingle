@@ -132,6 +132,7 @@ function buildClipboardImage(image: Electron.NativeImage): ClipboardImage {
       : image
 
   return {
+    dataUrl: image.toDataURL(),
     height: size.height,
     previewDataUrl: preview.toDataURL(),
     width: size.width

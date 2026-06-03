@@ -6,6 +6,7 @@ import { useAiCoreClipboard } from "./AiCoreHost"
 
 export type LauncherAiAttachmentDraft =
   | {
+      dataUrl: string
       height: number
       id: string
       kind: "image"
@@ -29,6 +30,7 @@ function deriveLauncherAiAttachmentDrafts(context: ClipboardContext): LauncherAi
     case "image":
       return [
         {
+          dataUrl: context.image.dataUrl,
           height: context.image.height,
           id: `clipboard:image:${context.image.width}x${context.image.height}:${context.image.previewDataUrl.slice(0, 48)}`,
           kind: "image",
@@ -101,6 +103,7 @@ async function toPickedAttachment(file: PickerFile): Promise<LauncherAiAttachmen
     const size = await readImageSize(previewDataUrl)
 
     return {
+      dataUrl: previewDataUrl,
       height: size.height,
       id: `picker:image:${path}:${file.lastModified}`,
       kind: "image",
@@ -153,7 +156,7 @@ export function useAiAttachments(): {
         return {
           name: attachment.name,
           type: "image",
-          url: attachment.previewDataUrl
+          url: attachment.dataUrl
         }
       }
 

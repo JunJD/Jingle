@@ -55,6 +55,12 @@ function createModel(overrides: Partial<ModelConfig> = {}): ModelConfig {
 
 function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
   const providerState: ModelProviderState = {
+    activeProviderId: "openai",
+    defaultModelOptions: {
+      llm: {
+        thinkingEffort: null
+      }
+    },
     defaultModels: {
       llm: "openai:gpt-4o"
     },
@@ -81,6 +87,12 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
     },
     models: {
       getState: async () => providerState,
+      getPaths: async () => ({
+        authPath: "/tmp/jingle/auth.json",
+        configPath: "/tmp/jingle/config.yaml",
+        customProvidersDir: "/tmp/jingle/custom_providers",
+        modelRegistryPath: "/tmp/jingle/models/registry.json"
+      }),
       list: async () => models,
       listByProvider: async () => {
         throw new Error("Not implemented in test stub")
@@ -89,7 +101,9 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
       setDefault: async () => undefined,
       setCredentials: async () => undefined,
       getCredentials: async () => null,
-      deleteCredentials: async () => undefined
+      getCustomProvider: async () => null,
+      deleteCredentials: async () => undefined,
+      upsertCustomProvider: async () => "custom_test"
     },
     ...overrides
   }
@@ -190,6 +204,12 @@ test("setProviderCredentials refreshes provider and model state after persisting
         getState: async () => {
           loadCount += 1
           return {
+            activeProviderId: "openai",
+            defaultModelOptions: {
+              llm: {
+                thinkingEffort: null
+              }
+            },
             defaultModels: {
               llm: "openai:gpt-5"
             },
