@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { LauncherShellConfig } from "@shared/launcher"
 import type { LauncherCommandOwnerCapability } from "@shared/launcher-command-owner"
+import { resolveLocalizedText, type AppLocale } from "@shared/i18n"
 import { getLauncherCommandDefinition, getLauncherCommandOwnerId } from "../pages"
 import type {
   LauncherCommandAddress,
@@ -24,6 +25,7 @@ interface UseActiveLauncherCommandProps {
   fallbackViewportHeight: number
   hideLauncher: () => Promise<void>
   openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
+  locale: AppLocale
   route: LauncherRoute
   routeKey: string
   shellConfig: LauncherShellConfig
@@ -62,6 +64,7 @@ export function useActiveLauncherCommand(
     closeActivePlugin,
     fallbackViewportHeight,
     hideLauncher,
+    locale,
     openCommand,
     route,
     routeKey,
@@ -105,7 +108,7 @@ export function useActiveLauncherCommand(
       : null
   const activeCommandValidationError =
     activeCommandPreferences && activeCommand?.validateCommandPreferences
-      ? activeCommand.validateCommandPreferences(activeCommandPreferences)
+      ? activeCommand.validateCommandPreferences(activeCommandPreferences, locale)
       : null
   const activeCommandError = activeCommandPreferencesLoadError ?? activeCommandValidationError
   const activeManifestCommand =
@@ -130,8 +133,9 @@ export function useActiveLauncherCommand(
   const activeCommandClipboardEnabled = activeCommandCapabilities?.includes("clipboard") ?? false
   const activeCommandSurfaceEnabled = activeCommandCapabilities?.includes("surface") ?? false
   const activeCommandThreadsEnabled = activeCommandCapabilities?.includes("threads") ?? false
-  const activeCommandErrorTitle =
-    activeManifestCommand?.title ?? (isLauncherCommandRoute(route) ? route.commandName : "Command")
+  const activeCommandErrorTitle = isLauncherCommandRoute(route)
+    ? resolveLocalizedText(activeManifestCommand?.title, locale, route.commandName)
+    : "Command"
   const viewportHeight = !isLauncherCommandRoute(route)
     ? fallbackViewportHeight
     : (activeViewCommand?.getViewportHeight(shellConfig) ?? fallbackViewportHeight)

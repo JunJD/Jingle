@@ -8,6 +8,24 @@ import type {
 } from "./native-extensions"
 import { toolCallDisplaySchema, type ToolCallDisplay } from "./tool-presentation"
 
+const localizedTextSchema = z.union([
+  z.string().trim().min(1),
+  z
+    .object({
+      en_US: z.string(),
+      zh_Hans: z.string()
+    })
+    .strict()
+    .refine((value) => `${value.en_US}${value.zh_Hans}`.trim().length > 0)
+])
+
+const toolCallDisplayManifestSchema = z
+  .object({
+    description: localizedTextSchema,
+    title: localizedTextSchema
+  })
+  .strict()
+
 export {
   DEFAULT_PERMISSION_MODE,
   isPermissionModeName,
@@ -116,6 +134,7 @@ export interface ExtensionAiCapabilityCatalogItem {
 export interface ResolvedExtensionAiCapability {
   authStatus: ExtensionAiAuthStatus
   capability: ExtensionAiCapability
+  capabilityTitle?: string
   displayName: string
   enabled: boolean
   enabledToolNames: string[]
@@ -229,13 +248,13 @@ export const extensionAiCapabilityToolsSchema = z.array(extensionAiCapabilityToo
 export const extensionAiCapabilitySchema = z
   .object({
     connectionId: z.string().trim().min(1).optional(),
-    description: z.string().trim().min(1).optional(),
+    description: localizedTextSchema.optional(),
     guide: z.string().trim().min(1),
     id: z.string().trim().min(1),
     instructions: z.array(z.string().trim().min(1)).optional(),
     mention: z
       .object({
-        label: z.string().trim().min(1).optional(),
+        label: localizedTextSchema.optional(),
         value: z.string().trim().min(1).optional()
       })
       .strict()
@@ -243,8 +262,8 @@ export const extensionAiCapabilitySchema = z
     publicPreferenceNames: z.array(z.string().trim().min(1)).optional(),
     requiredPreferenceNames: z.array(z.string().trim().min(1)).optional(),
     supportedPlatforms: z.array(z.enum(["darwin", "linux", "win32"])).optional(),
-    title: z.string().trim().min(1),
-    toolDisplays: z.record(z.string(), toolCallDisplaySchema).optional(),
+    title: localizedTextSchema,
+    toolDisplays: z.record(z.string(), toolCallDisplayManifestSchema).optional(),
     toolNames: z.array(z.string().trim().min(1))
   })
   .strict()
@@ -253,6 +272,7 @@ export const resolvedExtensionAiCapabilitySchema = z
   .object({
     authStatus: z.enum(["connected", "missing", "failed"]),
     capability: extensionAiCapabilitySchema,
+    capabilityTitle: z.string().trim().min(1).optional(),
     displayName: z.string().trim().min(1),
     enabled: z.boolean(),
     enabledToolNames: z.array(z.string().trim().min(1)),

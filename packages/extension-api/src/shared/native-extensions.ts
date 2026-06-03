@@ -1,5 +1,10 @@
 import type { ExtensionRuntimeHostCapability } from "./extension-runtime-protocol"
-import type { ToolCallDisplay } from "./tool-presentation"
+import {
+  DEFAULT_APP_LOCALE,
+  resolveLocalizedText,
+  type AppLocale,
+  type LocalizedTextValue
+} from "./i18n"
 import type {
   LauncherCommandMode,
   LauncherCommandOwnerCapability,
@@ -55,14 +60,14 @@ export function getNativeExtensionApplicationPreferenceLabel(value: unknown): st
 }
 
 export interface NativeExtensionPreferenceSchema {
-  data?: Array<{ title?: string; value?: string }>
+  data?: Array<{ title?: LocalizedTextValue; value?: string }>
   default?: unknown
-  description?: string
-  label?: string
+  description?: LocalizedTextValue
+  label?: LocalizedTextValue
   name: string
-  placeholder?: string
+  placeholder?: LocalizedTextValue
   required?: boolean
-  title?: string
+  title?: LocalizedTextValue
   type?: string
 }
 
@@ -78,15 +83,15 @@ export interface NativeExtensionRuntimeShellManifest {
 
 export interface NativeExtensionCommandArgumentSchema {
   name: string
-  placeholder?: string
+  placeholder?: LocalizedTextValue
   required?: boolean
-  title?: string
+  title?: LocalizedTextValue
   type?: string
 }
 
 export interface NativeExtensionCommandManifest<TCommandName extends string = string> {
   arguments?: NativeExtensionCommandArgumentSchema[]
-  description?: string
+  description?: LocalizedTextValue
   /** Extension-package-relative asset path, for example "assets/icon.svg". */
   icon?: NativeExtensionIcon
   iconName?: string
@@ -95,12 +100,17 @@ export interface NativeExtensionCommandManifest<TCommandName extends string = st
   name: TCommandName
   preferences?: NativeExtensionPreferenceSchema[]
   runtime?: NativeExtensionRuntimeCommandManifest
-  title?: string
+  title?: LocalizedTextValue
 }
 
 export interface NativeExtensionAiCapabilityMentionManifest {
-  label?: string
+  label?: LocalizedTextValue
   value?: string
+}
+
+export interface NativeExtensionToolDisplayManifest {
+  description: LocalizedTextValue
+  title: LocalizedTextValue
 }
 
 export type NativeExtensionOAuthRedirectManifest =
@@ -144,7 +154,7 @@ export interface NativeExtensionConnectionManifest {
   id: string
   provider: string
   publicPreferenceNames?: string[]
-  title: string
+  title: LocalizedTextValue
 }
 
 export type NativeExtensionConnectionStatus = "connected" | "failed" | "missing" | "unsupported"
@@ -168,7 +178,7 @@ export interface NativeExtensionExecutionContext {
 
 export interface NativeExtensionAiCapability {
   connectionId?: string
-  description?: string
+  description?: LocalizedTextValue
   guide: string
   id: string
   instructions?: string[]
@@ -176,8 +186,8 @@ export interface NativeExtensionAiCapability {
   publicPreferenceNames?: string[]
   requiredPreferenceNames?: string[]
   supportedPlatforms?: NativeExtensionSupportedPlatform[]
-  title: string
-  toolDisplays?: Record<string, ToolCallDisplay>
+  title: LocalizedTextValue
+  toolDisplays?: Record<string, NativeExtensionToolDisplayManifest>
   toolNames: string[]
 }
 
@@ -190,7 +200,7 @@ export interface NativeExtensionPackageManifest<
   commands: Array<NativeExtensionCommandManifest<TCommandName>>
   connection?: NativeExtensionConnectionManifest
   defaultCommandName?: TCommandName
-  description?: string
+  description?: LocalizedTextValue
   /** Extension-package-relative asset path, for example "assets/icon.svg". */
   icon?: NativeExtensionIcon
   iconName?: string
@@ -200,7 +210,7 @@ export interface NativeExtensionPackageManifest<
   runtimeCapabilities?: ExtensionRuntimeHostCapability[]
   runtimeShell?: NativeExtensionRuntimeShellManifest
   supportedPlatforms?: NativeExtensionSupportedPlatform[]
-  title: string
+  title: LocalizedTextValue
 }
 
 export interface NativeExtensionService {
@@ -223,24 +233,24 @@ export interface NativeExtensionMainDefinition {
 }
 
 export interface NativeExtensionCommandSettingsSchema {
-  description: string
+  description: LocalizedTextValue
   icon?: NativeExtensionIcon
   iconName?: string
   keywords?: string[]
   mode: NativeExtensionCommandMode
   name: string
   preferences: NativeExtensionPreferenceSchema[]
-  title: string
+  title: LocalizedTextValue
 }
 
 export interface InstalledNativeExtensionSettingsSchema {
   commands: NativeExtensionCommandSettingsSchema[]
-  description: string
+  description: LocalizedTextValue
   extName: string
   icon?: NativeExtensionIcon
   iconName?: string
   preferences: NativeExtensionPreferenceSchema[]
-  title: string
+  title: LocalizedTextValue
 }
 
 export interface NativeExtensionPreferencesState {
@@ -277,9 +287,10 @@ function hasOwnRecordKey(value: object, key: string): boolean {
 }
 
 function getNativeExtensionPreferenceDisplayName(
-  preference: NativeExtensionPreferenceSchema
+  preference: NativeExtensionPreferenceSchema,
+  locale: AppLocale
 ): string {
-  return preference.title ?? preference.label ?? preference.name
+  return resolveLocalizedText(preference.title ?? preference.label, locale, preference.name)
 }
 
 function validateNativeExtensionIcon(
@@ -304,6 +315,29 @@ function validateNativeExtensionIcon(
 
 function assertNonEmptyString(value: unknown, message: string): asserts value is string {
   if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(message)
+  }
+}
+
+function assertNonEmptyLocalizedText(
+  value: unknown,
+  message: string
+): asserts value is LocalizedTextValue {
+  if (typeof value === "string") {
+    assertNonEmptyString(value, message)
+    return
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(message)
+  }
+
+  const candidate = value as Record<string, unknown>
+  if (
+    typeof candidate.en_US !== "string" ||
+    typeof candidate.zh_Hans !== "string" ||
+    `${candidate.en_US}${candidate.zh_Hans}`.trim().length === 0
+  ) {
     throw new Error(message)
   }
 }
@@ -427,7 +461,7 @@ function validateConnectionManifest(
     connection.provider,
     `Native extension "${manifestName}" connection.provider must be non-empty`
   )
-  assertNonEmptyString(
+  assertNonEmptyLocalizedText(
     connection.title,
     `Native extension "${manifestName}" connection.title must be non-empty`
   )
@@ -491,14 +525,15 @@ function validateRuntimeShellManifest(
 
 export function listMissingRequiredNativeExtensionPreferences(
   schema: NativeExtensionPreferenceSchema[],
-  values: Record<string, unknown>
+  values: Record<string, unknown>,
+  locale: AppLocale = DEFAULT_APP_LOCALE
 ): string[] {
   return schema
     .filter((preference) => preference.required)
     .filter((preference) =>
       isMissingRequiredNativeExtensionPreferenceValue(values[preference.name])
     )
-    .map((preference) => getNativeExtensionPreferenceDisplayName(preference))
+    .map((preference) => getNativeExtensionPreferenceDisplayName(preference, locale))
 }
 
 export function defineNativeExtensionMain(
@@ -532,9 +567,10 @@ export function validateNativeExtensionPackageManifest(
     throw new Error("Native extension manifest must declare a non-empty name")
   }
 
-  if (!manifest.title.trim()) {
-    throw new Error(`Native extension "${manifest.name}" must declare a non-empty title`)
-  }
+  assertNonEmptyLocalizedText(
+    manifest.title,
+    `Native extension "${manifest.name}" must declare a non-empty title`
+  )
 
   if (hasOwnRecordKey(manifest, "ai")) {
     throw new Error(
@@ -548,7 +584,7 @@ export function validateNativeExtensionPackageManifest(
       capability.id,
       `Native extension "${manifest.name}" aiCapability.id must be non-empty`
     )
-    assertNonEmptyString(
+    assertNonEmptyLocalizedText(
       capability.title,
       `Native extension "${manifest.name}" aiCapability.title must be non-empty`
     )
@@ -613,8 +649,9 @@ export function validateNativeExtensionPackageManifest(
         )
       }
 
-      if (capability.mention.label !== undefined && !capability.mention.label.trim()) {
-        throw new Error(
+      if (capability.mention.label !== undefined) {
+        assertNonEmptyLocalizedText(
+          capability.mention.label,
           `Native extension "${manifest.name}" aiCapability.mention label must be non-empty when declared`
         )
       }
@@ -628,11 +665,11 @@ export function validateNativeExtensionPackageManifest(
         )
       }
 
-      assertNonEmptyString(
+      assertNonEmptyLocalizedText(
         display.title,
         `Native extension "${manifest.name}" aiCapability.toolDisplays.${toolName}.title must be non-empty`
       )
-      assertNonEmptyString(
+      assertNonEmptyLocalizedText(
         display.description,
         `Native extension "${manifest.name}" aiCapability.toolDisplays.${toolName}.description must be non-empty`
       )

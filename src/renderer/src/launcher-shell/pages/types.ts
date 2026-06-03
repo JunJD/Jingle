@@ -112,7 +112,10 @@ interface LauncherCommandSearchDefinition {
   }) => LauncherCommandIntent[]
   commandName: LauncherCommandName
   loadCommandPreferences?: () => Promise<Record<string, unknown>>
-  validateCommandPreferences?: (preferences: Record<string, unknown>) => string | null
+  validateCommandPreferences?: (
+    preferences: Record<string, unknown>,
+    locale: AppLocale
+  ) => string | null
   resolveCommand?: (params: LauncherCommandParams) => LauncherCommandMatch | null
 }
 

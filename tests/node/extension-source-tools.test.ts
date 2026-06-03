@@ -238,7 +238,7 @@ test("extension AI capability binding skips stale enabled tool names", () => {
       ["ext__mockSource__profile_1__searchItems"]
     )
     const guide = buildExtensionAiCapabilityGuide([aiCapability], undefined, bindings)
-    assert.match(guide, /Callable tools: searchItems \(Mock Profile\)/)
+    assert.match(guide, /Callable tools: searchItems/)
     assert.doesNotMatch(guide, /removedTool/)
   } finally {
     consoleWarn.mock.restore()

@@ -221,7 +221,7 @@ export function buildLauncherHomeSurfaceModel(params: {
   }
 
   const sections: LauncherHomeSurfaceSection[] = []
-  const launcherCommands = listLauncherCommands()
+  const launcherCommands = listLauncherCommands(locale)
   const extensionCommands = launcherCommands.filter(
     (command) => command.address.kind === "extension-command"
   )
@@ -254,6 +254,7 @@ export function buildLauncherHomeSurfaceModel(params: {
     commands: extensionCommands,
     copy,
     disabledCommandKeys: useWithDisabledCommandKeys,
+    excludeCommandKeys: [...highConfidenceExtensionCommandKeys],
     query: trimmedQuery
   })
   for (const item of highConfidenceUseWithItems) {
@@ -281,7 +282,7 @@ export function buildLauncherHomeSurfaceModel(params: {
   })
   const rankedSearchResults = rankSearchResultSectionItems(searchResults, historyItems)
   const suggestionItems = createSuggestionSectionItems(copy, trimmedQuery, rankedSearchResults)
-  const searchResultItems = buildLauncherSearchShellItems(copy, rankedSearchResults, {
+  const searchResultItems = buildLauncherSearchShellItems(copy, locale, rankedSearchResults, {
     preview: searchResultsPreview
   })
 

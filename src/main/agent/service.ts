@@ -36,6 +36,7 @@ import { buildIpcErrorEvent, OpenworkIpcError } from "../ipc/error"
 import { OpenworkMemoryService } from "../openwork-memory/service"
 import { readRunPermissionModeSnapshot, readThreadPermissionMode } from "./permission-mode"
 import { resolveOpenworkWorkspaceIdentity } from "../workspace/identity"
+import { getAgentConfig } from "../preferences"
 import type {
   OpenworkMemoryContextSnapshot,
   OpenworkWorkspaceIdentity
@@ -490,16 +491,18 @@ export class AgentService {
 
       const normalizedRefs = normalizeComposerMessageRefs(message.additional_kwargs?.refs)
       const permissionMode = requestedPermissionMode ?? readThreadPermissionMode(thread)
+      const locale = getAgentConfig().locale
       const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefs(normalizedRefs, {
         getConnection: (extensionName) =>
           resolveNativeExtensionConnection({
             extensionName,
             platform: process.platform
           }),
+        locale,
         permissionMode,
         platform: process.platform
       })
-      const aiCapabilityCatalog = listNativeExtensionAiCapabilityCatalog(process.platform)
+      const aiCapabilityCatalog = listNativeExtensionAiCapabilityCatalog(process.platform, "en-US")
       const getAiCapabilityByExtensionName = (extensionName: string) =>
         resolveNativeExtensionAiCapabilityForExtensionName(extensionName, {
           getConnection: (extensionName) =>
@@ -507,6 +510,7 @@ export class AgentService {
               extensionName,
               platform: process.platform
             }),
+          locale,
           permissionMode,
           platform: process.platform
         })
@@ -699,19 +703,19 @@ export class AgentService {
     try {
       const resumedRun = await getRun(runId)
       const permissionMode = readRunPermissionModeSnapshot(resumedRun)
-      const openworkMemoryContextSnapshot = readOpenworkMemoryContextSnapshot(
-        resumedRun?.metadata
+      const openworkMemoryContextSnapshot = readOpenworkMemoryContextSnapshot(resumedRun?.metadata)
+      const openworkMemoryContextPack = this.openworkMemoryService.rebuildContextPackFromSnapshot(
+        openworkMemoryContextSnapshot
       )
-      const openworkMemoryContextPack =
-        this.openworkMemoryService.rebuildContextPackFromSnapshot(openworkMemoryContextSnapshot)
       const workspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
+      const locale = getAgentConfig().locale
       const aiCapabilitySnapshots = readRunExtensionAiCapabilitiesSnapshotFromMetadata(
         resumedRun?.metadata
       )
       const runtimeAiCapabilities =
         aiCapabilitySnapshots === null
           ? []
-          : hydrateNativeExtensionAiCapabilities(aiCapabilitySnapshots)
+          : hydrateNativeExtensionAiCapabilities(aiCapabilitySnapshots, locale)
       const runtime = await createAgentRuntime({
         threadId,
         runId,
@@ -723,7 +727,7 @@ export class AgentService {
         openworkMemoryWorkspaceIdentity: workspaceIdentity,
         permissionMode,
         aiCapabilities: runtimeAiCapabilities,
-        aiCapabilityCatalog: listNativeExtensionAiCapabilityCatalog(process.platform),
+        aiCapabilityCatalog: listNativeExtensionAiCapabilityCatalog(process.platform, "en-US"),
         getAiCapabilityByExtensionName: (extensionName: string) =>
           resolveNativeExtensionAiCapabilityForExtensionName(extensionName, {
             getConnection: (extensionName) =>
@@ -731,6 +735,7 @@ export class AgentService {
                 extensionName,
                 platform: process.platform
               }),
+            locale,
             permissionMode,
             platform: process.platform
           }),

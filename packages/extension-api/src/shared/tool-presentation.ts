@@ -1,5 +1,10 @@
 import { z } from "zod/v4"
 
+export interface ToolCallDisplay {
+  description: string
+  title: string
+}
+
 export const toolCallDisplaySchema = z
   .object({
     description: z.string().trim().min(1),
@@ -52,7 +57,6 @@ export const extensionToolCallUiSchema = z
   })
   .strict()
 
-export type ToolCallDisplay = z.infer<typeof toolCallDisplaySchema>
 export type ExtensionToolCallPresentation = z.infer<typeof extensionToolCallPresentationSchema>
 export type ExtensionToolCallUi = z.infer<typeof extensionToolCallUiSchema>
 

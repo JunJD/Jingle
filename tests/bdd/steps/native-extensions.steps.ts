@@ -5,6 +5,7 @@ import type {
   NativeExtensionInvokeRequest,
   NativeExtensionPreferencesChangedEvent
 } from "../../../src/shared/native-extensions"
+import { resolveLocalizedText } from "../../../src/shared/i18n"
 import { OpenworkWorld } from "../support/world"
 
 type NativeExtensionPageApi = {
@@ -88,7 +89,9 @@ function findSchema(
   return schema
 }
 
-async function readSchemas(world: OpenworkWorld): Promise<InstalledNativeExtensionSettingsSchema[]> {
+async function readSchemas(
+  world: OpenworkWorld
+): Promise<InstalledNativeExtensionSettingsSchema[]> {
   const page = await world.getPageByKind("launcher")
 
   return page.evaluate(async () => {
@@ -265,7 +268,7 @@ Then(
     ) as InstalledNativeExtensionSettingsSchema[]
     const schema = findSchema(schemas, extensionName)
 
-    expect(schema.title).toBe(title)
+    expect(resolveLocalizedText(schema.title, "en-US")).toBe(title)
   }
 )
 
@@ -289,7 +292,7 @@ Then(
     const schema = findSchema(schemas, extensionName)
     const command = schema.commands.find((candidate) => candidate.name === commandName)
 
-    expect(command?.title).toBe(title)
+    expect(command ? resolveLocalizedText(command.title, "en-US") : undefined).toBe(title)
   }
 )
 
