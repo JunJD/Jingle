@@ -332,8 +332,8 @@ body[data-window="launcher"],
   --launcher-history-chip-bg: transparent;
   --launcher-history-chip-fg: var(--muted-foreground);
   --launcher-model-dialog-w: 560px;
-  --launcher-ai-model-popover-w: 356px;
-  --launcher-ai-model-popover-max-h: 320px;
+  --ow-model-quick-popover-w: 356px;
+  --ow-model-quick-popover-max-h: 320px;
   --launcher-jump-bottom: var(--ow-space-4);
   --launcher-ai-content-x: var(--ow-space-3);
   --launcher-ai-content-y: var(--ow-space-2);
@@ -466,8 +466,13 @@ body[data-window="launcher"],
   --ow-context-popover-w: 288px;
 }
 
-.model-switcher-popover {
-  --ow-model-popover-w: 420px;
+.model-switcher-popover,
+.launcher-ai-model-popover {
+  width: var(--ow-model-quick-popover-w, 356px);
+  height: min(
+    var(--ow-model-quick-popover-max-h, 320px),
+    var(--radix-popover-content-available-height, 320px)
+  );
 }
 
 .dark {
@@ -2203,14 +2208,6 @@ body[data-window="launcher"] .ow-markdown,
   max-height: var(--ow-markdown-image-max-h);
   border-radius: var(--ow-radius-md);
   object-fit: contain;
-}
-
-.launcher-ai-model-popover {
-  width: var(--launcher-ai-model-popover-w, 356px);
-  height: min(
-    var(--launcher-ai-model-popover-max-h, 320px),
-    var(--radix-popover-content-available-height, 320px)
-  );
 }
 
 .ow-reasoning-message {

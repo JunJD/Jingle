@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { ChevronDown } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
-import { ModelSelectionContent } from "@/features/model-selection/ModelSelectionContent"
+import { ModelQuickPickerContent } from "@/features/model-selection/ModelQuickPickerContent"
 import { ProviderIcon } from "@/features/model-selection/provider-icon"
 import { useI18n } from "@/lib/i18n"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
@@ -17,6 +17,7 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
   const [open, setOpen] = useState(false)
   const loadModelProviderState = useHistoryShellStore((state) => state.loadModelProviderState)
   const models = useHistoryShellStore((state) => state.models)
+  const providers = useHistoryShellStore((state) => state.providers)
   const currentModel = useThreadSelector(threadId, (state) => state?.currentModel ?? null)
   const threadActions = useThreadActions(threadId)
   const selectedModel = useMemo(
@@ -51,14 +52,18 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="model-switcher-popover w-[var(--ow-model-popover-w)] border-border bg-popover p-0"
+        className="model-switcher-popover flex flex-col overflow-hidden border-border/72 bg-popover/96 p-0"
         align="start"
         sideOffset={8}
       >
-        <ModelSelectionContent
+        <ModelQuickPickerContent
           currentModelId={currentModel}
-          onDone={() => setOpen(false)}
-          onSelectModel={(modelId) => threadActions?.setCurrentModel(modelId)}
+          models={models}
+          onSelectModel={(modelId) => {
+            threadActions?.setCurrentModel(modelId)
+            setOpen(false)
+          }}
+          providers={providers}
         />
       </PopoverContent>
     </Popover>
