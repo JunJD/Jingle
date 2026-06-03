@@ -47,7 +47,7 @@ function buildIndexedMessageSearchText(message: IndexedCheckpointMessage): strin
       case "file":
         return ref.name
       case "image":
-        return ref.name || ref.url
+        return ref.name ?? "Attached image"
       default:
         return ""
     }
