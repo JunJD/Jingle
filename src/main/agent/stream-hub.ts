@@ -116,9 +116,7 @@ function getRequiredRuntimeRunId(runId: string | null): string {
   throw new Error("[AgentStreamHub] Missing run id for interrupt state.")
 }
 
-function toRuntimeError(
-  payload: Extract<AgentStreamPayload, { type: "error" }>
-): IpcErrorPayload {
+function toRuntimeError(payload: Extract<AgentStreamPayload, { type: "error" }>): IpcErrorPayload {
   const code = isIpcErrorCode(payload.code) ? payload.code : "INTERNAL"
 
   return {
@@ -235,7 +233,9 @@ class ThreadRuntimeProjector {
     let activeRun: ActiveAgentRun | null = null
     if (history.pendingApproval) {
       activeRun = this.createActiveRunFromLatestUserMessage(messages)
-      const activeTurnMessages = activeRun ? this.getVisibleMessagesForTurn(activeRun.turnId, messages) : []
+      const activeTurnMessages = activeRun
+        ? this.getVisibleMessagesForTurn(activeRun.turnId, messages)
+        : []
       const lastAssistant = activeTurnMessages.findLast((message) => message.role === "assistant")
       activeRun = activeRun
         ? {
@@ -308,9 +308,8 @@ class ThreadRuntimeProjector {
         return
 
       case "error":
-        const error = toRuntimeError(payload)
         this.commitRuntimeEvent({
-          error,
+          error: toRuntimeError(payload),
           status: "error",
           type: "thread.statusChanged"
         })
@@ -459,10 +458,7 @@ class ThreadRuntimeProjector {
     return event
   }
 
-  private commitToolStartedEvents(
-    messageId: string,
-    toolCalls: readonly { id?: string }[]
-  ): void {
+  private commitToolStartedEvents(messageId: string, toolCalls: readonly { id?: string }[]): void {
     for (const toolCall of toolCalls) {
       if (!toolCall.id) {
         continue
@@ -648,7 +644,9 @@ class ThreadRuntimeProjector {
   }
 
   private getCreatedAt(messageId: string): Date {
-    const existingMessage = this.runtimeState.messagesPage.find((message) => message.id === messageId)
+    const existingMessage = this.runtimeState.messagesPage.find(
+      (message) => message.id === messageId
+    )
     return existingMessage?.created_at ?? new Date()
   }
 
@@ -879,7 +877,9 @@ class ThreadRuntimeProjector {
   }
 
   private upsertMessage(message: Message, options: { appendAssistantText: boolean }): boolean {
-    const existingIndex = this.runtimeState.messagesPage.findIndex((entry) => entry.id === message.id)
+    const existingIndex = this.runtimeState.messagesPage.findIndex(
+      (entry) => entry.id === message.id
+    )
     if (existingIndex < 0) {
       this.commitRuntimeEvent({
         message,

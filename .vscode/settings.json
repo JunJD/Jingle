@@ -24,7 +24,8 @@
     "Tavily",
     "tryfabric",
     "tsyringe",
-    "unins"
+    "unins",
+    "upserted"
   ],
   "editor.formatOnSave": true,
   "editor.codeActionsOnSave": {

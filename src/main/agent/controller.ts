@@ -49,10 +49,14 @@ export class AgentController {
       return this.agentStreamHub.getThreadSnapshot(params.threadId)
     })
 
-    registerIpcHandle(ipcMain, "agent:unsubscribeThreadEvents", async (event, rawParams: unknown) => {
-      const params = parseAgentCancelParams(rawParams)
-      this.removeEventSubscription(event.sender.id, params.threadId)
-    })
+    registerIpcHandle(
+      ipcMain,
+      "agent:unsubscribeThreadEvents",
+      async (event, rawParams: unknown) => {
+        const params = parseAgentCancelParams(rawParams)
+        this.removeEventSubscription(event.sender.id, params.threadId)
+      }
+    )
   }
 
   private async handleInvoke(rawParams: unknown): Promise<void> {
