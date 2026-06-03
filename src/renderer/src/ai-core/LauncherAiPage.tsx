@@ -32,6 +32,7 @@ import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
 import type { ComposerAreaHandle } from "@/composer-area"
 import type { ComposerMessageInput } from "@shared/message-content"
+import type { Subagent } from "@/types"
 import { shouldGoHomeFromComposerKeyDown } from "./composer-keyboard"
 import type { VListHandle } from "virtua"
 
@@ -43,6 +44,7 @@ const AI_ATTACHMENT_STRIP_HEIGHT = 48
 const AI_THINKING_STATUS_HEIGHT = 28
 const AI_COMPOSER_BOTTOM_GAP = 8
 const LAUNCHER_AI_AT_BOTTOM_THRESHOLD_PX = 60
+const EMPTY_SUBAGENTS: readonly Subagent[] = []
 
 function getVisibleLineCount(value: string): number {
   return Math.min(AI_COMPOSER_VISIBLE_LINES, value.split("\n").length)
@@ -93,6 +95,7 @@ export function LauncherAiPage(): React.JSX.Element {
   )
   const [showModelPicker, setShowModelPicker] = useState(false)
   const runId = useThreadSelector(threadId, (state) => state?.runId ?? null)
+  const subagents = useThreadSelector(threadId, (state) => state?.subagents ?? EMPTY_SUBAGENTS)
   const currentThreadTitle = useHistoryShellStore((state) => {
     if (!threadId) {
       return null
@@ -391,6 +394,7 @@ export function LauncherAiPage(): React.JSX.Element {
             onUserScrollIntent={markUserScrollIntent}
             pendingApproval={pendingApproval}
             runId={runId}
+            subagents={subagents}
             threadId={threadId}
             todos={conversation.todos}
             virtualizerRef={chatVirtualizerRef}

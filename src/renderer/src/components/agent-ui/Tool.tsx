@@ -1,6 +1,6 @@
 "use client"
 
-import { CheckCircle2, ChevronDown, ListTodo, Loader2, TriangleAlert, XCircle } from "lucide-react"
+import { CheckCircle2, ChevronRight, ListTodo, Loader2, TriangleAlert, XCircle } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -105,8 +105,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
       <div
         className={cn(
           "ow-agent-tool overflow-hidden",
-          state === "complete" &&
-            "rounded-[var(--ow-radius-sm)] bg-transparent",
+          state === "complete" && "rounded-[var(--ow-radius-sm)] bg-transparent",
           state !== "complete" &&
             "rounded-[var(--ow-radius-lg)] border border-border/64 bg-background-elevated/38",
           state === "running" && "border-status-info/18 bg-status-info/4",
@@ -133,7 +132,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
               <span className="inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
                 {icon ?? <AgentToolStatusIcon className="size-[var(--ow-icon-sm)]" state={state} />}
               </span>
-              <span className="min-w-0 [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
+              <span className="min-w-0 [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-[var(--ow-agent-timeline-muted)]">
                 {title}
               </span>
             </span>
@@ -145,11 +144,9 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
             >
               {meta}
               {hasDetail ? (
-                <ChevronDown
-                  className={cn(
-                    "size-[var(--ow-icon-sm)] text-muted-foreground transition-transform",
-                    isOpen && "rotate-180"
-                  )}
+                <ChevronRight
+                  className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
+                  data-open={isOpen ? "true" : "false"}
                 />
               ) : null}
             </span>
@@ -158,7 +155,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
         {hasDetail ? (
           <CollapsibleContent
             className={cn(
-              "overflow-hidden data-[state=closed]:animate-out data-[state=open]:animate-in",
+              "ow-agent-tool-content overflow-hidden",
               state !== "complete" && "border-t border-border/48"
             )}
           >
@@ -190,7 +187,7 @@ export function AgentToolInline(props: AgentToolInlineProps): React.JSX.Element 
   return (
     <button
       className={cn(
-        "inline-flex max-w-full min-w-0 items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-sm)] px-0 py-[var(--ow-space-0-5)] text-left text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "inline-flex max-w-full min-w-0 items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-sm)] px-0 py-[var(--ow-space-0-5)] text-left text-[var(--ow-agent-timeline-muted)] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className
       )}
       type={type}
@@ -252,15 +249,17 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
   return (
     <CollapsibleTrigger
       className={cn(
-        "group w-full cursor-pointer items-center text-left text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group w-full cursor-pointer items-center text-left text-[var(--ow-agent-timeline-muted)] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         agentToolGroupGridClassName,
         className
       )}
       {...rest}
     >
       <span className="relative inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
-        <span className="transition-opacity group-hover:opacity-0">{icon}</span>
-        <ChevronDown className="absolute size-[var(--ow-icon-action)] opacity-0 transition group-hover:opacity-100 group-data-[state=open]:rotate-180" />
+        <span className="transition-opacity group-hover:opacity-0 group-data-[state=open]:opacity-0">
+          {icon}
+        </span>
+        <ChevronRight className="ow-agent-tool-chevron absolute size-[var(--ow-icon-action)] opacity-0 group-hover:opacity-100 group-data-[state=open]:rotate-90 group-data-[state=open]:opacity-100" />
       </span>
       <span className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
         <span className="min-w-0 flex-1 [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
@@ -281,10 +280,7 @@ export function AgentToolGroupContent(props: AgentToolGroupContentProps): React.
 
   return (
     <CollapsibleContent
-      className={cn(
-        "overflow-hidden text-popover-foreground data-[state=closed]:animate-out data-[state=open]:animate-in",
-        className
-      )}
+      className={cn("ow-agent-tool-content overflow-hidden text-popover-foreground", className)}
       {...rest}
     >
       <div className="relative mt-[var(--ow-space-2)] min-w-0 max-w-full space-y-[var(--ow-space-2)] before:absolute before:bottom-[var(--ow-space-1)] before:left-[calc(var(--ow-icon-action)/2)] before:top-[var(--ow-space-1)] before:w-px before:-translate-x-1/2 before:bg-border/64">
@@ -304,7 +300,7 @@ export function AgentToolGroupItem(props: AgentToolGroupItemProps): React.JSX.El
   return (
     <div
       className={cn(
-        "relative min-w-0 text-muted-foreground [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]",
+        "relative min-w-0 text-[var(--ow-agent-timeline-muted)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]",
         agentToolGroupGridClassName,
         className
       )}

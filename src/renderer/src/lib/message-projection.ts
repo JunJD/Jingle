@@ -1,6 +1,6 @@
 import { extractMessageText, resolveImageBlockUrl } from "@shared/message-content"
 import { stabilizeReferences } from "@/lib/stabilize-references"
-import type { HITLRequest, Message as ThreadMessage } from "@/types"
+import type { HITLRequest, Message as ThreadMessage, ToolCall } from "@/types"
 
 export interface ToolResultInfo {
   content: ThreadMessage["content"]
@@ -21,14 +21,24 @@ export type TurnAssistantEntry =
       message: ThreadMessage
     }
   | {
-      kind: "tool-cluster"
+      kind: "agent-activity"
+      items: AgentActivityItem[]
       key: string
-      messages: ThreadMessage[]
     }
 
-export function countToolCalls(messages: ThreadMessage[]): number {
-  return messages.reduce((count, message) => count + (message.tool_calls?.length ?? 0), 0)
-}
+export type AgentActivityItem =
+  | {
+      kind: "thinking"
+      key: string
+      messageId: string
+      text: string
+    }
+  | {
+      kind: "tool"
+      key: string
+      messageId: string
+      toolCall: ToolCall
+    }
 
 export function shouldDefaultExpandToolEntries(
   turn: MessageTurn,
@@ -39,7 +49,7 @@ export function shouldDefaultExpandToolEntries(
   }
 
   const lastAssistantMessage = turn.assistants[turn.assistants.length - 1]
-  return !lastAssistantMessage || !hasRenderableAssistantContent(lastAssistantMessage.content)
+  return !lastAssistantMessage || !hasNarrativeAssistantContent(lastAssistantMessage.content)
 }
 
 export interface TurnToolDisplayPolicy {
@@ -310,7 +320,18 @@ function stabilizeDisplayRows(
   return isEqual ? previous : stableRows
 }
 
-function hasRenderableAssistantContent(content: ThreadMessage["content"]): boolean {
+function getReasoningText(content: ThreadMessage["content"]): string {
+  if (typeof content === "string" || !Array.isArray(content)) {
+    return ""
+  }
+
+  return content
+    .filter((block) => block.type === "reasoning")
+    .map((block) => block.reasoning ?? block.text ?? block.content ?? "")
+    .join("")
+}
+
+function hasNarrativeAssistantContent(content: ThreadMessage["content"]): boolean {
   if (typeof content === "string") {
     return content.trim().length > 0
   }
@@ -321,7 +342,7 @@ function hasRenderableAssistantContent(content: ThreadMessage["content"]): boole
 
   return content.some((block) => {
     if (block.type === "reasoning") {
-      return Boolean((block.reasoning ?? block.text ?? block.content ?? "").trim())
+      return false
     }
 
     if (block.type === "image" || block.type === "image_url") {
@@ -334,6 +355,36 @@ function hasRenderableAssistantContent(content: ThreadMessage["content"]): boole
 
     return Boolean((block.text ?? block.content ?? "").trim())
   })
+}
+
+function createToolActivityItem(
+  message: ThreadMessage,
+  toolCall: ToolCall,
+  index: number
+): AgentActivityItem {
+  return {
+    key: `tool:${toolCall.id || `${message.id}:${index}`}`,
+    kind: "tool",
+    messageId: message.id,
+    toolCall
+  }
+}
+
+function flushAgentActivities(
+  entries: TurnAssistantEntry[],
+  pendingActivities: AgentActivityItem[]
+): AgentActivityItem[] {
+  if (pendingActivities.length === 0) {
+    return pendingActivities
+  }
+
+  entries.push({
+    items: pendingActivities,
+    key: `activity:${pendingActivities[0].key}`,
+    kind: "agent-activity"
+  })
+
+  return []
 }
 
 export function buildMessageTurns(messages: ThreadMessage[]): MessageTurn[] {
@@ -373,12 +424,22 @@ export function buildMessageTurns(messages: ThreadMessage[]): MessageTurn[] {
 
 export function buildTurnAssistantEntries(turn: MessageTurn): TurnAssistantEntry[] {
   const entries: TurnAssistantEntry[] = []
+  let pendingActivities: AgentActivityItem[] = []
 
   for (const message of turn.assistants) {
-    const hasContent = hasRenderableAssistantContent(message.content)
-    const hasTools = (message.tool_calls?.length ?? 0) > 0
+    const reasoningText = getReasoningText(message.content)
 
-    if (hasContent) {
+    if (reasoningText.trim()) {
+      pendingActivities.push({
+        key: `thinking:${message.id}`,
+        kind: "thinking",
+        messageId: message.id,
+        text: reasoningText
+      })
+    }
+
+    if (hasNarrativeAssistantContent(message.content)) {
+      pendingActivities = flushAgentActivities(entries, pendingActivities)
       entries.push({
         key: `assistant:${message.id}`,
         kind: "assistant-content",
@@ -386,14 +447,12 @@ export function buildTurnAssistantEntries(turn: MessageTurn): TurnAssistantEntry
       })
     }
 
-    if (hasTools) {
-      entries.push({
-        key: `tools:${message.id}`,
-        kind: "tool-cluster",
-        messages: [message]
-      })
+    for (const [index, toolCall] of (message.tool_calls ?? []).entries()) {
+      pendingActivities.push(createToolActivityItem(message, toolCall, index))
     }
   }
+
+  flushAgentActivities(entries, pendingActivities)
 
   return entries
 }

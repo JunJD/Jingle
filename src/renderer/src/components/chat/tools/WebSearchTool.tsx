@@ -116,7 +116,9 @@ defineToolComponent({
 
     return (
       <ToolDetailStack>
-        {query ? <ToolCodeBlock>{query}</ToolCodeBlock> : null}
+        {query ? (
+          <ToolCodeBlock className="text-[var(--ow-agent-timeline-muted)]">{query}</ToolCodeBlock>
+        ) : null}
         {results.length > 0 ? (
           renderSearchResultsList(results)
         ) : !payload && rawResult ? (

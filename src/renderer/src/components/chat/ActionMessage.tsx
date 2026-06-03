@@ -8,7 +8,6 @@ import {
   type AgentToolState
 } from "@/components/agent-ui"
 import { useI18n } from "@/lib/i18n"
-import { cn } from "@/lib/utils"
 import type { HITLRequest, ToolCall } from "@/types"
 import { createActionMessageView } from "./action-message-view"
 import { type ToolPresentation, type ToolComponentStatus } from "./tools"
@@ -101,9 +100,10 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
 
   const hasDetail = Boolean(detail)
   const toolState = toAgentToolState(status)
-  const meta = statusLabel && toolState !== "complete" ? (
-    <AgentToolStatusBadge state={toolState}>{statusLabel}</AgentToolStatusBadge>
-  ) : null
+  const meta =
+    statusLabel && toolState !== "complete" ? (
+      <AgentToolStatusBadge state={toolState}>{statusLabel}</AgentToolStatusBadge>
+    ) : null
   const detailContent = hasDetail ? (
     <div className="min-w-0 max-w-full overflow-hidden">{detail}</div>
   ) : null
@@ -122,10 +122,8 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
               {meta}
               {hasDetail ? (
                 <ChevronRight
-                  className={cn(
-                    "size-[var(--ow-icon-sm)] text-muted-foreground transition-transform",
-                    isExpanded && "rotate-90"
-                  )}
+                  className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
+                  data-open={isExpanded ? "true" : "false"}
                 />
               ) : null}
             </>
@@ -158,7 +156,10 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
         icon={<Icon className="size-[var(--ow-icon-sm)]" />}
         meta={
           hasDetail ? (
-            <ChevronRight className="size-[var(--ow-icon-sm)] text-muted-foreground/70" />
+            <ChevronRight
+              className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
+              data-open="false"
+            />
           ) : null
         }
         onClick={() => {

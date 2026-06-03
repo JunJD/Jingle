@@ -3,7 +3,8 @@ import { Messages } from "@/components/chat/Messages"
 import { ChatTodos } from "@/components/chat/ChatTodos"
 import { IncludedMemoriesPanel } from "@/components/chat/IncludedMemoriesPanel"
 import { MemoryReviewPanel } from "@/components/chat/MemoryReviewPanel"
-import type { HITLRequest, ThreadForkState, Todo } from "@/types"
+import { SubagentReferencesPanel } from "@/components/chat/SubagentReferencesPanel"
+import type { HITLRequest, Subagent, ThreadForkState, Todo } from "@/types"
 import { useI18n } from "@/lib/i18n"
 import type { MessagesProjection } from "@/lib/message-projection"
 import type { RefObject } from "react"
@@ -97,6 +98,7 @@ export function LauncherAiConversation(props: {
   onUserScrollIntent: () => void
   pendingApproval: HITLRequest | null
   runId: string | null
+  subagents: readonly Subagent[]
   threadId: string
   todos: Todo[]
   virtualizerRef: RefObject<VListHandle | null>
@@ -119,6 +121,7 @@ export function LauncherAiConversation(props: {
     onUserScrollIntent,
     pendingApproval,
     runId,
+    subagents,
     threadId,
     todos,
     virtualizerRef
@@ -145,6 +148,8 @@ export function LauncherAiConversation(props: {
             {isLoading && todos.length > 0 && <ChatTodos todos={todos} />}
 
             {!isLoading && <IncludedMemoriesPanel runId={runId} />}
+
+            {!isLoading && <SubagentReferencesPanel subagents={subagents} />}
 
             {!isLoading && <MemoryReviewPanel threadId={threadId} />}
 

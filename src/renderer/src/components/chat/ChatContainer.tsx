@@ -185,6 +185,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
             bottomInset={0}
             contentClassName="mx-auto w-full max-w-[var(--ow-chat-thread-max-width)] px-[var(--ow-chat-thread-x)]"
             contentInsetY="var(--ow-chat-thread-y)"
+            density="compact"
             footerSlot={
               <div className="flex flex-col gap-[var(--ow-chat-thread-gap)]">
                 {!isLoading && todos.length > 0 && (pendingApproval || hasVisibleTurns) && (

@@ -1,4 +1,4 @@
-import { FileText, GitForkIcon, RefreshCcwIcon } from "lucide-react"
+import { ChevronRight, FileText, GitForkIcon, RefreshCcwIcon } from "lucide-react"
 import {
   memo,
   useCallback,
@@ -15,7 +15,7 @@ import {
 } from "react"
 import { VList, type VListHandle } from "virtua"
 import { resolveImageBlockUrl } from "@shared/message-content"
-import type { ContentBlock, HITLRequest, Message as ThreadMessage, ToolCall } from "@/types"
+import type { ContentBlock, HITLRequest, Message as ThreadMessage } from "@/types"
 import { ActionMessage, ToolStatusIndicator } from "./ActionMessage"
 import {
   AgentSteps,
@@ -26,15 +26,16 @@ import {
   AgentToolGroupItem,
   AgentToolGroupTrigger
 } from "@/components/agent-ui"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { createActionMessageView } from "./action-message-view"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import {
   buildTurnAssistantEntries,
-  countToolCalls,
   getTurnToolDisplayPolicy,
   getTurnPendingApproval,
   getTurnCopyText,
+  type AgentActivityItem,
   type MessagesProjection,
   type MessageTurn,
   type ToolResultInfo
@@ -95,7 +96,7 @@ interface StructuredMessageContent {
   textContent: React.ReactNode
 }
 
-const EMPTY_TOOL_EXPANSION_OVERRIDES = new Map<string, boolean>()
+const EMPTY_ACTIVITY_EXPANSION_OVERRIDES = new Map<string, boolean>()
 const SCROLL_INTENT_KEYS = new Set([
   "ArrowDown",
   "ArrowUp",
@@ -320,16 +321,15 @@ function ReasoningBlock(props: {
       <AgentStepsTrigger
         className={cn(
           "ow-reasoning-trigger",
-          !isStreaming && "opacity-55",
           density === "compact"
             ? "[font-size:var(--ow-font-meta)] leading-[var(--ow-line-chat)]"
             : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)]"
         )}
         icon={
           isStreaming ? (
-            <LoaderOne className="size-[var(--ow-icon-action)] justify-center text-muted-foreground/90 transition-opacity group-hover:opacity-100" />
+            <LoaderOne className="size-[var(--ow-icon-action)] justify-center text-[var(--ow-agent-timeline-muted)] transition-opacity group-hover:opacity-100" />
           ) : (
-            <ThinkingIcon className="size-[var(--ow-icon-action)] opacity-90 transition-opacity group-hover:opacity-100" />
+            <ThinkingIcon className="size-[var(--ow-icon-action)] transition-opacity group-hover:opacity-100" />
           )
         }
       >
@@ -344,7 +344,7 @@ function ReasoningBlock(props: {
             : "space-y-[var(--ow-reasoning-content-gap)]"
         )}
       >
-        <div className="pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground/72">
+        <div className="pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
           {text}
         </div>
       </AgentStepsContent>
@@ -356,11 +356,12 @@ function renderStructuredContent(
   content: ThreadMessage["content"],
   options: {
     density?: "default" | "compact"
+    includeReasoning?: boolean
     isStreaming?: boolean
     isUser: boolean
   }
 ): StructuredMessageContent {
-  const { density = "default", isStreaming, isUser } = options
+  const { density = "default", includeReasoning = true, isStreaming, isUser } = options
 
   if (typeof content === "string") {
     return {
@@ -380,7 +381,7 @@ function renderStructuredContent(
     .filter(
       ({ block }) => block.type === "image" || block.type === "image_url" || block.type === "file"
     )
-  const reasoningText = isUser
+  const reasoningText = isUser || !includeReasoning
     ? ""
     : content
         .filter((block) => block.type === "reasoning")
@@ -429,83 +430,155 @@ function renderStructuredContent(
   }
 }
 
-function ToolActivityGroup(props: {
+function isThinkingItemStreaming(
+  item: AgentActivityItem,
+  options: { isStreaming: boolean; streamingAssistantId: string | null }
+): boolean {
+  return item.kind === "thinking" && options.isStreaming && item.messageId === options.streamingAssistantId
+}
+
+function ThinkingActivityContent(props: {
+  item: Extract<AgentActivityItem, { kind: "thinking" }>
+  streaming: boolean
+}): React.JSX.Element | null {
+  const { copy } = useI18n()
+  const { item, streaming } = props
+
+  if (!item.text.trim()) {
+    return null
+  }
+
+  return (
+    <Collapsible
+      className="ow-agent-activity-thinking"
+      data-active={streaming ? "true" : "false"}
+      defaultOpen={streaming}
+    >
+      <CollapsibleTrigger
+        className="group flex w-full min-w-0 cursor-pointer items-center gap-[var(--ow-gap-sm)] text-left text-[var(--ow-agent-timeline-muted)] transition-colors [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+          {streaming ? copy.chat.agentThinking : copy.chat.agentThought}
+        </span>
+        <ChevronRight className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] shrink-0 text-[var(--ow-agent-timeline-muted)] group-data-[state=open]:rotate-90" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="ow-reasoning-content ow-agent-tool-content overflow-hidden">
+        <div className="mt-[var(--ow-space-1)] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-[var(--ow-reasoning-content-fg)]">
+          {item.text}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+type ThinkingActivityView = {
+  item: Extract<AgentActivityItem, { kind: "thinking" }>
+  key: string
+  kind: "thinking"
+  streaming: boolean
+}
+
+type ToolActivityView = {
+  item: Extract<AgentActivityItem, { kind: "tool" }>
+  key: string
+  kind: "tool"
+  needsApproval: boolean
+  result: ToolResultInfo | undefined
+  view: ReturnType<typeof createActionMessageView>
+}
+
+type ActivityView = ThinkingActivityView | ToolActivityView
+
+function AgentActivityGroup(props: {
   defaultOpen?: boolean
   density?: "default" | "compact"
+  isStreaming: boolean
+  items: AgentActivityItem[]
   preferLatestToolSummary?: boolean
   onOpenChange?: (open: boolean) => void
   open?: boolean
   pendingApproval?: HITLRequest | null
-  toolCalls: ToolCall[]
+  streamingAssistantId: string | null
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
   const { copy } = useI18n()
   const {
     defaultOpen = false,
     density = "default",
+    isStreaming,
+    items,
     onOpenChange,
     open,
     pendingApproval,
     preferLatestToolSummary,
-    toolCalls,
+    streamingAssistantId,
     toolResults
   } = props
   const pendingId = pendingApproval?.tool_call?.id
   const [openOverride, setOpenOverride] = useState<boolean | null>(null)
 
-  if (toolCalls.length === 0) {
+  if (items.length === 0) {
     return null
   }
 
-  const actionItems = toolCalls.map((toolCall, index) => {
-    const result = toolResults.get(toolCall.id)
-    const needsApproval = Boolean(pendingId) && pendingId === toolCall.id
-
-    return {
-      key: toolCall.id || `tc-${index}`,
-      needsApproval,
-      result,
-      toolCall
+  const actionViews: ActivityView[] = items.map((item): ActivityView => {
+    if (item.kind === "thinking") {
+      return {
+        item,
+        key: item.key,
+        kind: "thinking",
+        streaming: isThinkingItemStreaming(item, { isStreaming, streamingAssistantId })
+      }
     }
-  })
-  const actionViews = actionItems.map((item) => {
+
+    const result = toolResults.get(item.toolCall.id)
+    const needsApproval = Boolean(pendingId) && pendingId === item.toolCall.id
     const view = createActionMessageView({
-      approvalRequest: item.needsApproval ? pendingApproval : null,
+      approvalRequest: needsApproval ? pendingApproval : null,
       copy,
       presentation: "grouped",
-      result: item.result?.content,
+      result: result?.content,
       toolCall: item.toolCall
     })
 
     return {
-      ...item,
+      item,
+      key: item.key,
+      kind: "tool",
+      needsApproval,
+      result,
       view
     }
   })
-
-  const hasActiveActions = actionItems.some(
-    (item) => item.needsApproval || item.result === undefined
+  const hasActiveActions = actionViews.some((item) =>
+    item.kind === "thinking" ? item.streaming : item.needsApproval || item.result === undefined
   )
   const isOpen = open ?? openOverride ?? defaultOpen
   const latestActiveAction = [...actionViews]
     .reverse()
-    .find((item) => item.needsApproval || item.result === undefined)
-  const latestToolAction = actionViews[actionViews.length - 1]
+    .find((item) =>
+      item.kind === "thinking" ? item.streaming : item.needsApproval || item.result === undefined
+    )
+  const latestToolAction = [...actionViews].reverse().find((item) => item.kind === "tool")
+  const latestActivity = actionViews[actionViews.length - 1]
   const headerAction = hasActiveActions ? latestActiveAction : latestToolAction
+  const headerToolAction = headerAction?.kind === "tool" ? headerAction : null
+  const latestThinkingActivity = latestActivity?.kind === "thinking" ? latestActivity : null
   const headerTitle =
-    (preferLatestToolSummary && hasActiveActions
+    (headerToolAction && preferLatestToolSummary && hasActiveActions
       ? isOpen
         ? copy.chat.agentWorking
-        : headerAction?.view.summary
+        : headerToolAction.view.summary
       : null) ??
-    headerAction?.view.summary ??
-    copy.chat.executedSteps(toolCalls.length)
+    headerToolAction?.view.summary ??
+    (latestThinkingActivity?.streaming ? copy.chat.agentThinking : null) ??
+    copy.chat.executedSteps(items.length)
   const headerStatusMeta =
-    !isOpen && hasActiveActions && headerAction ? (
+    !isOpen && hasActiveActions && headerToolAction ? (
       <ToolStatusIndicator
         runningLabel={copy.common.running}
-        status={headerAction.view.status}
-        statusLabel={headerAction.view.statusLabel}
+        status={headerToolAction.view.status}
+        statusLabel={headerToolAction.view.statusLabel}
       />
     ) : null
 
@@ -521,26 +594,48 @@ function ToolActivityGroup(props: {
             ? "[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
             : "[font-size:var(--ow-font-control)] leading-[var(--ow-line-chat)]"
         }
-        {...(headerAction ? { "data-tool-call-toggle": headerAction.toolCall.name } : {})}
+        {...(headerToolAction
+          ? { "data-tool-call-toggle": headerToolAction.item.toolCall.name }
+          : {})}
         meta={headerStatusMeta}
       >
         {headerTitle}
       </AgentToolGroupTrigger>
       <AgentToolGroupContent
-        className={
+        className={cn(
+          "ow-agent-activity-group-content",
           density === "compact" ? "space-y-[var(--ow-space-2)]" : "space-y-[var(--ow-space-2-5)]"
-        }
+        )}
       >
-        {actionViews.map((item) => {
-          const Icon = item.view.icon
+        {actionViews.map((action) => {
+          if (action.kind === "thinking") {
+            return (
+              <AgentToolGroupItem
+                className="ow-agent-activity-thinking-item"
+                icon={<span aria-hidden="true" className="size-[var(--ow-icon-sm)]" />}
+                key={action.key}
+              >
+                <ThinkingActivityContent
+                  item={action.item}
+                  streaming={action.streaming}
+                />
+              </AgentToolGroupItem>
+            )
+          }
+
+          const Icon = action.view.icon
 
           return (
-            <AgentToolGroupItem icon={<Icon className="size-[var(--ow-icon-sm)]" />} key={item.key}>
+            <AgentToolGroupItem
+              className="ow-agent-activity-tool-item"
+              icon={<Icon className="size-[var(--ow-icon-sm)]" />}
+              key={action.key}
+            >
               <ActionMessage
-                approvalRequest={item.needsApproval ? pendingApproval : null}
+                approvalRequest={action.needsApproval ? pendingApproval : null}
                 presentation="grouped"
-                result={item.result?.content}
-                toolCall={item.toolCall}
+                result={action.result?.content}
+                toolCall={action.item.toolCall}
               />
             </AgentToolGroupItem>
           )
@@ -550,44 +645,40 @@ function ToolActivityGroup(props: {
   )
 }
 
-function AssistantToolCluster(props: {
+function AssistantActivityCluster(props: {
   defaultExpanded?: boolean
   density?: "default" | "compact"
   expanded?: boolean
+  isStreaming: boolean
+  items: AgentActivityItem[]
   preferLatestToolSummary?: boolean
-  messages: ThreadMessage[]
   onExpandedChange?: (expanded: boolean) => void
   pendingApproval?: HITLRequest | null
+  streamingAssistantId: string | null
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
   const {
     defaultExpanded = false,
     density = "default",
     expanded,
-    messages,
+    isStreaming,
+    items,
     onExpandedChange,
     pendingApproval,
     preferLatestToolSummary,
+    streamingAssistantId,
     toolResults
   } = props
-  const toolCalls = messages.flatMap((message) => message.tool_calls ?? [])
-  const toolCallCount = countToolCalls(messages)
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null)
   const handleExpandedChange = onExpandedChange ?? setExpandedOverride
   const isExpanded = expanded ?? expandedOverride ?? defaultExpanded
 
-  if (toolCalls.length === 0) {
+  if (items.length === 0) {
     return null
   }
 
-  if (toolCallCount === 1) {
-    const toolCall = toolCalls[0]
-
-    if (!toolCall) {
-      return null
-    }
-
-    const needsApproval = pendingApproval?.tool_call?.id === toolCall.id
+  if (items.length === 1) {
+    const item = items[0]
 
     return (
       <Message className="max-w-full" from="assistant">
@@ -598,13 +689,23 @@ function AssistantToolCluster(props: {
               : "w-full gap-[var(--ow-gap-md)]"
           }
         >
-          <ActionMessage
-            approvalRequest={needsApproval ? pendingApproval : null}
-            expanded={isExpanded}
-            onExpandedChange={handleExpandedChange}
-            result={toolResults.get(toolCall.id)?.content}
-            toolCall={toolCall}
-          />
+          {item.kind === "tool" ? (
+            <ActionMessage
+              approvalRequest={
+                pendingApproval?.tool_call?.id === item.toolCall.id ? pendingApproval : null
+              }
+              expanded={isExpanded}
+              onExpandedChange={handleExpandedChange}
+              result={toolResults.get(item.toolCall.id)?.content}
+              toolCall={item.toolCall}
+            />
+          ) : (
+            <ReasoningBlock
+              density={density}
+              isStreaming={isThinkingItemStreaming(item, { isStreaming, streamingAssistantId })}
+              text={item.text}
+            />
+          )}
         </MessageContent>
       </Message>
     )
@@ -613,14 +714,16 @@ function AssistantToolCluster(props: {
   return (
     <Message className="max-w-full" from="assistant">
       <MessageContent className="w-full gap-[var(--ow-gap-md)]">
-        <ToolActivityGroup
+        <AgentActivityGroup
           defaultOpen={defaultExpanded}
           density={density}
+          isStreaming={isStreaming}
+          items={items}
           onOpenChange={handleExpandedChange}
           open={isExpanded}
           pendingApproval={pendingApproval}
           preferLatestToolSummary={preferLatestToolSummary}
-          toolCalls={toolCalls}
+          streamingAssistantId={streamingAssistantId}
           toolResults={toolResults}
         />
       </MessageContent>
@@ -637,6 +740,7 @@ function AssistantBlock(props: {
   const { density = "default", isLastAssistant, isLoading, message } = props
   const content = renderStructuredContent(message.content, {
     density,
+    includeReasoning: false,
     isStreaming: Boolean(isLoading) && isLastAssistant,
     isUser: false
   })
@@ -697,10 +801,10 @@ const MessageTurnView = memo(function MessageTurnView(props: {
   pendingApproval?: HITLRequest | null
   isStreaming: boolean
   streamingAssistantId: string | null
-  toolExpansionOverrides: ReadonlyMap<string, boolean>
+  activityExpansionOverrides: ReadonlyMap<string, boolean>
   toolResults: Map<string, ToolResultInfo>
   turn: MessageTurn
-  onToolExpansionChange: (turnKey: string, key: string, expanded: boolean) => void
+  onActivityExpansionChange: (turnKey: string, key: string, expanded: boolean) => void
 }): React.JSX.Element {
   const { copy } = useI18n()
   const {
@@ -711,10 +815,10 @@ const MessageTurnView = memo(function MessageTurnView(props: {
     onRetry,
     pendingApproval,
     streamingAssistantId,
-    toolExpansionOverrides,
+    activityExpansionOverrides,
     toolResults,
     turn,
-    onToolExpansionChange
+    onActivityExpansionChange
   } = props
   const copyText = getTurnCopyText(turn)
   const hasAssistantMessages = turn.assistants.length > 0
@@ -746,15 +850,17 @@ const MessageTurnView = memo(function MessageTurnView(props: {
         }
 
         return (
-          <AssistantToolCluster
+          <AssistantActivityCluster
             defaultExpanded={toolDisplayPolicy.defaultExpanded}
             density={density}
-            expanded={toolExpansionOverrides.get(entry.key)}
+            expanded={activityExpansionOverrides.get(entry.key)}
+            isStreaming={isStreaming}
+            items={entry.items}
             key={entry.key}
-            messages={entry.messages}
-            onExpandedChange={(expanded) => onToolExpansionChange(turn.key, entry.key, expanded)}
+            onExpandedChange={(expanded) => onActivityExpansionChange(turn.key, entry.key, expanded)}
             pendingApproval={pendingApproval}
             preferLatestToolSummary={toolDisplayPolicy.preferLatestSummary}
+            streamingAssistantId={streamingAssistantId}
             toolResults={toolResults}
           />
         )
@@ -919,13 +1025,13 @@ export function Messages(props: MessagesProps): React.JSX.Element {
   const activeContentSignature = getStreamingTurnSignature(activeTurn, activeAssistant)
   const lastTurnKey = turns[turns.length - 1]?.key ?? "__empty__"
   const bottomSpacerHeight = `calc(${bottomInset}px + ${contentInsetY})`
-  const [toolExpansionOverridesByTurn, setToolExpansionOverridesByTurn] = useState<
+  const [activityExpansionOverridesByTurn, setActivityExpansionOverridesByTurn] = useState<
     Map<string, ReadonlyMap<string, boolean>>
   >(() => new Map())
-  const handleToolExpansionChange = useCallback(
+  const handleActivityExpansionChange = useCallback(
     (turnKey: string, key: string, expanded: boolean) => {
-      setToolExpansionOverridesByTurn((current) => {
-        const currentTurnOverrides = current.get(turnKey) ?? EMPTY_TOOL_EXPANSION_OVERRIDES
+      setActivityExpansionOverridesByTurn((current) => {
+        const currentTurnOverrides = current.get(turnKey) ?? EMPTY_ACTIVITY_EXPANSION_OVERRIDES
         if (currentTurnOverrides.get(key) === expanded) {
           return current
         }
@@ -939,10 +1045,10 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     },
     []
   )
-  const getTurnToolExpansionOverrides = useCallback(
+  const getTurnActivityExpansionOverrides = useCallback(
     (turn: MessageTurn): ReadonlyMap<string, boolean> =>
-      toolExpansionOverridesByTurn.get(turn.key) ?? EMPTY_TOOL_EXPANSION_OVERRIDES,
-    [toolExpansionOverridesByTurn]
+      activityExpansionOverridesByTurn.get(turn.key) ?? EMPTY_ACTIVITY_EXPANSION_OVERRIDES,
+    [activityExpansionOverridesByTurn]
   )
   const handlePointerMove = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
@@ -977,10 +1083,10 @@ export function Messages(props: MessagesProps): React.JSX.Element {
         onRetry={isActiveTurn && !isLoading ? onRetry : undefined}
         pendingApproval={turnPendingApproval}
         streamingAssistantId={streamingAssistantId}
-        toolExpansionOverrides={getTurnToolExpansionOverrides(turn)}
+        activityExpansionOverrides={getTurnActivityExpansionOverrides(turn)}
         toolResults={turn.toolResults}
         turn={turn}
-        onToolExpansionChange={handleToolExpansionChange}
+        onActivityExpansionChange={handleActivityExpansionChange}
       />
     )
   }
