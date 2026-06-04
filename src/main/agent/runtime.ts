@@ -9,7 +9,7 @@ import {
 import { join } from "path"
 import { getAgentConfig } from "../preferences"
 import { getOpenworkDir } from "../storage"
-import { PrismaCheckpointSaver } from "../checkpointer/prisma-saver"
+import { RuntimeCheckpointSaver } from "../checkpointer/runtime-checkpointer"
 import { LocalSandbox } from "./local-sandbox"
 import { createGuardrailMiddleware } from "./guardrail-middleware"
 import { JustBashExecuteCommandClassifier } from "./execute-command-classifier"
@@ -75,12 +75,12 @@ function getSystemPrompt(workspacePath: string): string {
 }
 
 // Per-thread checkpointer cache
-const checkpointers = new Map<string, PrismaCheckpointSaver>()
+const checkpointers = new Map<string, RuntimeCheckpointSaver>()
 
-export async function getCheckpointer(threadId: string): Promise<PrismaCheckpointSaver> {
+export async function getCheckpointer(threadId: string): Promise<RuntimeCheckpointSaver> {
   let checkpointer = checkpointers.get(threadId)
   if (!checkpointer) {
-    checkpointer = new PrismaCheckpointSaver()
+    checkpointer = new RuntimeCheckpointSaver()
     await checkpointer.initialize()
     checkpointers.set(threadId, checkpointer)
   }
