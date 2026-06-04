@@ -1,12 +1,15 @@
-import { existsSync, readFileSync, writeFileSync } from "fs"
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "fs"
 import { mkdirSync } from "fs"
 import { dirname } from "path"
-import { safeStorage } from "electron"
 import { getJingleAuthPath } from "./paths"
 import type { ProviderId } from "./types"
 
+interface StoredProviderCredential {
+  value: string
+}
+
 interface ProviderAuthState {
-  providers: Record<string, Record<string, string>>
+  providers: Record<string, Record<string, StoredProviderCredential>>
 }
 
 const EMPTY_AUTH_STATE: ProviderAuthState = {
@@ -17,8 +20,12 @@ export function getProviderCredential(
   providerId: ProviderId,
   variable: string
 ): string | undefined {
-  const encryptedValue = readAuthState().providers[providerId]?.[variable]
-  return encryptedValue ? decryptValue(encryptedValue) : undefined
+  return readAuthState().providers[providerId]?.[variable]?.value
+}
+
+export function hasProviderCredentials(providerId: ProviderId, variables: string[]): boolean {
+  const providerAuth = readAuthState().providers[providerId] ?? {}
+  return variables.every((variable) => Boolean(providerAuth[variable]?.value))
 }
 
 export function setProviderCredential(
@@ -34,20 +41,22 @@ export function setProviderCredential(
       ...state.providers,
       [providerId]: {
         ...providerAuth,
-        [variable]: encryptValue(value.trim())
+        [variable]: { value: value.trim() }
       }
     }
   })
 }
 
 export function deleteProviderCredential(providerId: ProviderId, variable: string): void {
+  deleteProviderCredentials(providerId, [variable])
+}
+
+export function deleteProviderCredentials(providerId: ProviderId, variables: string[]): void {
   const state = readAuthState()
   const providerAuth = { ...(state.providers[providerId] ?? {}) }
-  if (!providerAuth[variable]) {
-    return
-  }
-
-  delete providerAuth[variable]
+  variables.forEach((variable) => {
+    delete providerAuth[variable]
+  })
 
   const providers = { ...state.providers }
   if (Object.keys(providerAuth).length > 0) {
@@ -57,10 +66,6 @@ export function deleteProviderCredential(providerId: ProviderId, variable: strin
   }
 
   writeAuthState({ providers })
-}
-
-export function deleteProviderCredentials(providerId: ProviderId, variables: string[]): void {
-  variables.forEach((variable) => deleteProviderCredential(providerId, variable))
 }
 
 function readAuthState(): ProviderAuthState {
@@ -78,45 +83,41 @@ function readAuthState(): ProviderAuthState {
 function writeAuthState(state: ProviderAuthState): void {
   const path = getJingleAuthPath()
   mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8")
+  writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600
+  })
+  chmodSync(path, 0o600)
 }
 
-function normalizeProviderAuth(value: unknown): Record<string, Record<string, string>> {
+function normalizeProviderAuth(
+  value: unknown
+): Record<string, Record<string, StoredProviderCredential>> {
   if (!isRecord(value)) {
     return {}
   }
 
-  const providers: Record<string, Record<string, string>> = {}
+  const providers: Record<string, Record<string, StoredProviderCredential>> = {}
   for (const [providerId, providerAuth] of Object.entries(value)) {
     if (!isRecord(providerAuth)) {
       continue
     }
 
-    providers[providerId] = Object.fromEntries(
-      Object.entries(providerAuth).filter((entry): entry is [string, string] => {
-        const [key, encryptedValue] = entry
-        return typeof key === "string" && typeof encryptedValue === "string"
+    const credentialRecord = Object.fromEntries(
+      Object.entries(providerAuth).flatMap(([variable, credential]) => {
+        if (!isRecord(credential) || typeof credential.value !== "string") {
+          return []
+        }
+
+        return [[variable, { value: credential.value }]]
       })
     )
+    if (Object.keys(credentialRecord).length > 0) {
+      providers[providerId] = credentialRecord
+    }
   }
 
   return providers
-}
-
-function encryptValue(value: string): string {
-  requireSafeStorage()
-  return safeStorage.encryptString(value).toString("base64")
-}
-
-function decryptValue(value: string): string {
-  requireSafeStorage()
-  return safeStorage.decryptString(Buffer.from(value, "base64"))
-}
-
-function requireSafeStorage(): void {
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error("Jingle secure storage is not available on this system.")
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

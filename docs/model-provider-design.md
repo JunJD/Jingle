@@ -4,7 +4,7 @@
 
 - `main` 层负责 provider catalog、settings、secrets、runtime resolver、SDK adapter。
 - `renderer` 层负责复用 Dify `model-provider-page` 的页面结构和交互组织。
-- provider secret 只走 `secretsStore + safeStorage`，不再读写 `.env` 做兼容。
+- provider credential 只走 Jingle 本地 `auth.json`，不再接 Electron `safeStorage` / macOS Keychain，也不再读写 `.env` 做兼容。
 - 模型 ID 使用 `provider:model` 格式保存，例如 `dashscope:glm-4.6`；未识别的 model/provider 直接报错，不按模型名前缀猜 provider。
 - 默认模型从单字符串改为 `defaultModels.llm`，当前只支持 `llm`。如果调用方传入 `text-embedding`、`rerank` 等类型，会直接报错，不做假实现。
 
@@ -34,7 +34,7 @@ Main 层：
 
 - `src/main/model-provider/catalog.ts`：provider/model catalog。
 - `src/main/model-provider/settings.ts`：默认模型等非敏感配置。
-- `src/main/model-provider/secrets.ts`：通用 provider credential 安全存储代理，不表达 API key 业务语义。
+- `src/main/model-provider/secrets.ts`：provider credential 存储代理，底层写 Jingle `auth.json`，不表达 API key 业务语义。
 - `src/main/model-provider/resolver.ts`：把 modelId 解析成 provider/model/credential runtime config。
 - `src/main/model-provider/adapters.ts`：provider adapter，收口 credential 读写、真实 models list、credential 校验和具体 SDK client 创建。
 - `src/main/model-provider/model-list-state.ts`：main 进程内保存 provider 最近一次远程 models list 结果和错误状态，供 `getState`、`models:list`、`models:listByProvider` 共用。
@@ -43,7 +43,11 @@ Main 层：
 
 模型身份边界在 `catalog.ts` 收口：`toProviderModelId()` 生成持久化 ID，`parseProviderModelId()` 解析运行时 provider 和真实模型名。这样远程 models list 返回的新模型也能保留 provider 归属，不需要通过 `gpt`、`claude`、`gemini` 这类前缀做兼容推断。
 
-保存 provider credential 时会先调用真实 provider models list 做校验，校验成功后才写入 `safeStorage`。这对应 Dify 保存 provider credential 前先走 provider runtime 校验的语义；校验失败直接把 provider 级错误返回给设置页，不落本地 secret。
+保存 provider credential 时会先调用真实 provider models list 做校验，校验成功后才写入 Jingle `auth.json`。这对应 Dify 保存 provider credential 前先走 provider runtime 校验的语义；校验失败直接把 provider 级错误返回给设置页，不落本地 credential。`auth.json` 写入时使用用户可读写的本地文件权限，当前结构为 `providers.<providerId>.<variable>.value`。
+
+旧版本曾把 provider credential 写成 Electron `safeStorage` 加密后的字符串。读取这类旧字符串本身会触发 macOS Keychain 的 `openwork Safe Storage` 授权弹窗，因此当前实现不做自动解密迁移：旧字符串会被视为已退休格式并忽略，用户重新保存 credential 后由新的 `auth.json` 结构覆盖。
+
+保留边界：native extension 的 `password` preference 仍属于 `src/main/preferences.ts` 的 Openwork main-side secret store，继续使用 Electron `safeStorage`。这条路径服务 extension connection/runtime，不是 Jingle model provider credential 主路径。
 
 Renderer 层：
 

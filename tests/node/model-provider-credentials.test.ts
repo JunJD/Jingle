@@ -1,34 +1,16 @@
 import assert from "node:assert/strict"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
-import { createRequire } from "node:module"
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 
-const requireFromTest = createRequire(import.meta.url)
 const originalOpenworkHome = process.env.OPENWORK_HOME
 const originalFetch = globalThis.fetch
 let openworkHome = ""
 
-function installElectronSafeStorageMock(): void {
-  const electronModuleId = requireFromTest.resolve("electron")
-  requireFromTest("electron")
-  const electronModule = requireFromTest.cache[electronModuleId]
-  assert.ok(electronModule, "Expected electron module to be loaded before mocking safeStorage.")
-
-  electronModule.exports = {
-    safeStorage: {
-      decryptString: (value: Buffer) => value.toString("utf8").replace(/^encrypted:/, ""),
-      encryptString: (value: string) => Buffer.from(`encrypted:${value}`, "utf8"),
-      isEncryptionAvailable: () => true
-    }
-  }
-}
-
 test.before(async () => {
   openworkHome = await mkdtemp(join(tmpdir(), "openwork-model-provider-credentials-"))
   process.env.OPENWORK_HOME = openworkHome
-  installElectronSafeStorageMock()
 })
 
 test.after(async () => {
@@ -63,13 +45,63 @@ test("model provider credentials can be read back for settings edits", async () 
   })
 
   const paths = getModelProviderPaths()
+  const authJson = JSON.parse(await readFile(paths.authPath, "utf8")) as {
+    providers?: Record<string, Record<string, { value: string }>>
+  }
+
+  assert.deepEqual(authJson.providers?.deepseek?.apiKey, {
+    value: "sk-local-user-key"
+  })
+  assert.equal((await stat(paths.authPath)).mode & 0o777, 0o600)
   assert.equal(paths.configPath, join(openworkHome, "jingle-config", "config.yaml"))
+  assert.equal(paths.authPath, join(openworkHome, "jingle-config", "auth.json"))
   assert.equal(paths.customProvidersDir, join(openworkHome, "jingle-config", "custom_providers"))
   assert.equal(
     paths.modelRegistryPath,
     join(openworkHome, "jingle-data", "models", "registry.json")
   )
   assert.match(await readFile(paths.configPath, "utf8"), /active_provider: deepseek/)
+})
+
+test("retired safeStorage credential entries are ignored without Electron decryption", async () => {
+  const {
+    deleteProviderCredentialsForUI,
+    getProviderCredentialsForUI,
+    getModelProviderStateForUI
+  } =
+    await import("../../src/main/model-provider/service")
+  const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
+
+  const paths = getModelProviderPaths()
+  await writeFile(
+    paths.authPath,
+    JSON.stringify(
+      {
+        providers: {
+          anthropic: {
+            apiKey: Buffer.from("encrypted:sk-legacy-key", "utf8").toString("base64")
+          }
+        }
+      },
+      null,
+      2
+    ),
+    "utf8"
+  )
+
+  assert.equal(getProviderCredentialsForUI("anthropic"), null)
+  assert.equal(
+    getModelProviderStateForUI().providers.find((provider) => provider.id === "anthropic")
+      ?.customConfiguration.status,
+    "no-configure"
+  )
+
+  deleteProviderCredentialsForUI("anthropic")
+
+  const authJson = JSON.parse(await readFile(paths.authPath, "utf8")) as {
+    providers?: Record<string, unknown>
+  }
+  assert.equal(authJson.providers?.anthropic, undefined)
 })
 
 test("fast model preference resolves to a configured low-latency model", async () => {

@@ -31,7 +31,6 @@ const originalFetch = globalThis.fetch
 const requireFromStep = createRequire(__filename)
 
 process.env.OPENWORK_HOME = MODEL_PROVIDER_BDD_HOME
-installElectronSafeStorageMock()
 
 const modelProviderService = requireFromStep(
   "../../../src/main/model-provider/service"
@@ -39,21 +38,6 @@ const modelProviderService = requireFromStep(
 const modelListState = requireFromStep(
   "../../../src/main/model-provider/model-list-state"
 ) as ModelListStateModule
-
-function installElectronSafeStorageMock(): void {
-  const electronModuleId = requireFromStep.resolve("electron")
-  requireFromStep("electron")
-  const electronModule = requireFromStep.cache[electronModuleId]
-  assert.ok(electronModule, "Expected electron module to be loaded before mocking safeStorage.")
-
-  electronModule.exports = {
-    safeStorage: {
-      decryptString: (value: Buffer) => value.toString("utf8"),
-      encryptString: (value: string) => Buffer.from(value, "utf8"),
-      isEncryptionAvailable: () => true
-    }
-  }
-}
 
 function getState(world: ModelProviderWorld): ModelProviderScenarioState {
   if (!world.modelProviderState) {
