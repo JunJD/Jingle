@@ -2,12 +2,10 @@ import { useCallback, useEffect, useState } from "react"
 import { AI_THREAD_SOURCE } from "@shared/launcher-ai"
 import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
 import type { Thread } from "@/types"
-import { useThreadContext } from "@/lib/thread-context"
 import type { AiCoreThreadCreateInput, AiCoreThreadHandle } from "./AiCoreHost"
 import { useAiCoreThreads } from "./AiCoreHost"
 import {
   resolveLauncherAiAdjacentThreadIds,
-  shouldReloadLauncherAiThreadOnFocus,
   shouldStartFreshLauncherAiThread
 } from "./launcher-ai-thread-navigation-core"
 
@@ -82,7 +80,6 @@ export function useLauncherAiThreadNavigation(
 ): LauncherAiThreadNavigation {
   const { seedQuery } = options
   const threadHost = useAiCoreThreads()
-  const threadContext = useThreadContext()
   const shouldStartFreshThread = shouldStartFreshLauncherAiThread({ seedQuery })
   const [target, setTarget] = useState<LauncherAiActiveTarget | null>(
     shouldStartFreshThread
@@ -267,43 +264,6 @@ export function useLauncherAiThreadNavigation(
     target,
     shouldStartFreshThread,
   ])
-
-  useEffect(() => {
-    const handleWindowFocus = (): void => {
-      void (async () => {
-        if (target?.kind === "draft") {
-          await refreshAdjacentThreadIds(null, { freshDraftActive: true })
-          return
-        }
-
-        const activeThreadId = resolveActiveThreadId()
-        const currentThreadId = target?.kind === "thread" ? target.threadId : null
-        if (activeThreadId && activeThreadId !== currentThreadId) {
-          setTarget({
-            kind: "thread",
-            threadId: activeThreadId
-          })
-        }
-
-        await refreshAdjacentThreadIds(activeThreadId)
-        if (!activeThreadId) {
-          return
-        }
-
-        const isStreaming = threadContext.getStreamData(activeThreadId).isLoading
-        if (!shouldReloadLauncherAiThreadOnFocus({ activeThreadId, isStreaming })) {
-          return
-        }
-
-        await threadHost.reload(activeThreadId)
-      })()
-    }
-
-    window.addEventListener("focus", handleWindowFocus)
-    return () => {
-      window.removeEventListener("focus", handleWindowFocus)
-    }
-  }, [refreshAdjacentThreadIds, resolveActiveThreadId, target, threadContext, threadHost])
 
   return {
     branchThread,
