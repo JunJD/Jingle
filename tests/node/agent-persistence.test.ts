@@ -1037,6 +1037,123 @@ test("checkpoint writes are serialized on one saver instance", async () => {
   assert.equal(maxActiveWrites, 1)
 })
 
+test("prisma checkpoint saver stores checkpoints without syncing derived thread state", async () => {
+  const { createThread, createRun, getLatestHitlRequest, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-pure-checkpoint-store"
+  const runId = "run-pure-checkpoint-store"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-pure-store"
+  checkpoint.channel_values = {
+    __interrupt__: [
+      {
+        value: {
+          actionRequests: [
+            {
+              args: { path: `${repoRoot}/pending.txt` },
+              name: "write_file",
+              toolCallId: "tool-call-pure-store"
+            }
+          ]
+        }
+      }
+    ],
+    messages: [{ kwargs: { content: "needs approval", id: "message-user-pure" }, type: "human" }]
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+
+  const prisma = getPrismaClient()
+  const searchRows = await prisma.$queryRawUnsafe<Array<{ search_text: string }>>(
+    `SELECT search_text FROM "messages_fts" WHERE thread_id = ?`,
+    threadId
+  )
+
+  assert.equal(searchRows.length, 0)
+  assert.equal(await getLatestHitlRequest(threadId), null)
+})
+
+test("runtime checkpointer syncs derived thread state after checkpoint writes", async () => {
+  const { createThread, createRun, getLatestHitlRequest, getPrismaClient } = await loadDbModules()
+  const { closeCheckpointer, getCheckpointer } = await import("../../src/main/agent/runtime")
+
+  const threadId = "thread-runtime-checkpoint-store"
+  const runId = "run-runtime-checkpoint-store"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-runtime-store"
+  checkpoint.channel_values = {
+    __interrupt__: [
+      {
+        value: {
+          actionRequests: [
+            {
+              args: { path: `${repoRoot}/pending.txt` },
+              name: "write_file",
+              toolCallId: "tool-call-runtime-store"
+            }
+          ]
+        }
+      }
+    ],
+    messages: [{ kwargs: { content: "needs approval", id: "message-user-runtime" }, type: "human" }]
+  }
+
+  const saver = await getCheckpointer(threadId)
+  try {
+    await saver.put(
+      {
+        configurable: {
+          thread_id: threadId
+        },
+        metadata: {
+          run_id: runId
+        }
+      },
+      checkpoint,
+      {
+        parents: {},
+        source: "update",
+        step: 0
+      }
+    )
+
+    const prisma = getPrismaClient()
+    const searchRows = await prisma.$queryRawUnsafe<Array<{ search_text: string }>>(
+      `SELECT search_text FROM "messages_fts" WHERE thread_id = ?`,
+      threadId
+    )
+
+    assert.equal(searchRows.length, 1)
+    assert.match(searchRows[0]!.search_text, /needs approval/)
+    assert.equal((await getLatestHitlRequest(threadId))?.tool_call_id, "tool-call-runtime-store")
+  } finally {
+    await closeCheckpointer(threadId)
+  }
+})
+
 test("syncRunFromLatestCheckpoint copies a generated checkpoint title onto auto-titled threads", async () => {
   const { createRun, createThread, getThread } = await loadDbModules()
   const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
