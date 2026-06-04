@@ -5,11 +5,20 @@ import { ThreadsService } from "../threads/service"
 import { AgentController } from "./controller"
 import { AgentService } from "./service"
 import { AgentStreamHub } from "./stream-hub"
+import { ThreadLifecycleGate } from "./thread-lifecycle-gate"
 
 export function registerAgentModule(container: DependencyContainer): void {
+  container.register(ThreadLifecycleGate, {
+    useFactory: instanceCachingFactory(() => {
+      return new ThreadLifecycleGate()
+    })
+  })
   container.register(AgentService, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
-      return new AgentService(dependencyContainer.resolve(OpenworkMemoryService))
+      return new AgentService(
+        dependencyContainer.resolve(OpenworkMemoryService),
+        dependencyContainer.resolve(ThreadLifecycleGate)
+      )
     })
   })
   container.register(AgentStreamHub, {
