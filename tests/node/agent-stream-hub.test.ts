@@ -458,6 +458,61 @@ test("AgentStreamHub merges partial values message snapshots without dropping pr
   assert.equal(snapshot.activeRun?.phase, "streaming")
 })
 
+test("AgentStreamHub values snapshots do not reorder an appended user turn", async () => {
+  const history = createHistory({
+    messages: [
+      createUserMessage("user-1", "First question"),
+      createAssistantMessage("assistant-1", "First answer")
+    ],
+    todos: []
+  })
+  const hub = new AgentStreamHub(createThreadsService(history))
+
+  await hub.prepareInvoke("thread-values-order", {
+    content: "Second question",
+    id: "user-2"
+  })
+  await hub.handlePayload("thread-values-order", {
+    data: {
+      messages: [
+        {
+          id: ["HumanMessage"],
+          kwargs: {
+            content: "First question",
+            id: "user-1"
+          },
+          type: "human" as const
+        },
+        {
+          id: ["HumanMessage"],
+          kwargs: {
+            content: "Second question",
+            id: "user-2"
+          },
+          type: "human" as const
+        },
+        createSerializedAiMessage("assistant-1", "First answer"),
+        createSerializedAiMessage("assistant-2", "Second answer")
+      ]
+    },
+    mode: "values",
+    type: "stream"
+  })
+
+  const snapshot = await hub.getThreadSnapshot("thread-values-order")
+  assert.deepEqual(
+    snapshot.messagesPage.map((message) => ({ id: message.id, role: message.role })),
+    [
+      { id: "user-1", role: "user" },
+      { id: "assistant-1", role: "assistant" },
+      { id: "user-2", role: "user" },
+      { id: "assistant-2", role: "assistant" }
+    ]
+  )
+  assert.equal(snapshot.activeRun?.turnId, "user-2")
+  assert.equal(snapshot.activeRun?.assistantMessageId, "assistant-2")
+})
+
 test("AgentStreamHub emits only scoped runtime events during token streaming", async () => {
   const hub = new AgentStreamHub(createThreadsService(createHistory()))
   const runtimeEventTypes: string[] = []

@@ -844,17 +844,6 @@ class ThreadRuntimeProjector {
     }
 
     const existingMessages = this.runtimeState.messagesPage
-    const incomingIds = new Set(incomingMessages.map((message) => message.id))
-    const isFullSnapshot = existingMessages.every((message) => incomingIds.has(message.id))
-
-    if (isFullSnapshot) {
-      this.commitRuntimeEvent({
-        messages: incomingMessages,
-        type: "messages.replaced"
-      })
-      return true
-    }
-
     const nextMessages = [...existingMessages]
     const existingIndices = new Map(existingMessages.map((message, index) => [message.id, index]))
 
