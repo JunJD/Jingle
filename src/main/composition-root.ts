@@ -62,7 +62,10 @@ import {
 } from "./settings-window-routing/module"
 import { registerShortcutsIpcHandlers, registerShortcutsModule } from "./shortcuts/module"
 import { registerThreadsIpcHandlers, registerThreadsModule } from "./threads/module"
-import { warmLauncherSearchProviders } from "./services/launcher-search"
+import {
+  startLauncherSearchIndexRefresh,
+  warmLauncherSearchProviders
+} from "./services/launcher-search"
 import { configureQuicklinksLauncherSearchProvider } from "./services/launcher-search/providers/quicklinks"
 import { registerWorkspaceIpcHandlers, registerWorkspaceModule } from "./workspace/module"
 import { listNativeExtensionQuicklinkAliases } from "@extensions/index"
@@ -87,6 +90,7 @@ const MAIN_COMPOSITION_CONTEXT_TOKEN = Symbol("MainCompositionContext")
 
 export class MainCompositionRoot {
   private stopNativeIslandAgentStatus: (() => void) | null = null
+  private stopLauncherSearchIndexRefresh: (() => void) | null = null
 
   constructor(
     private readonly context: MainCompositionContext,
@@ -131,12 +135,20 @@ export class MainCompositionRoot {
       this.dependencyContainer.resolve(AgentStreamHub)
     )
     this.applyShortcutSettings()
+    this.stopLauncherSearchIndexRefresh?.()
+    this.stopLauncherSearchIndexRefresh = startLauncherSearchIndexRefresh({
+      onRefresh: () => {
+        this.context.getLauncherWindow()?.webContents.send("launcher:search-index-updated")
+      }
+    })
     void warmLauncherSearchProviders()
   }
 
   dispose(): void {
     this.stopNativeIslandAgentStatus?.()
     this.stopNativeIslandAgentStatus = null
+    this.stopLauncherSearchIndexRefresh?.()
+    this.stopLauncherSearchIndexRefresh = null
     resolveExtensionRuntimeMenuBarService(this.dependencyContainer).dispose()
     resolveExtensionRuntimeManager(this.dependencyContainer).dispose()
     resolveNativeMenuBarService(this.dependencyContainer).dispose()

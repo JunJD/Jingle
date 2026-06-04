@@ -10,12 +10,7 @@ import {
   type SerializerProtocol
 } from "@langchain/langgraph-checkpoint"
 import type { Prisma } from "@prisma/client"
-import { syncMessageSearchIndexFromSnapshot, upsertHitlRequest } from "../db"
 import { getPrismaClient } from "../db/client"
-import {
-  extractHitlRequestFromCheckpoint,
-  extractMessagesFromCheckpoint
-} from "../agent/runtime-state"
 import { decodeSerializedPayload, encodeSerializedPayload } from "./storage-codec"
 
 function readStringField(value: unknown, key: string): string | null {
@@ -256,29 +251,12 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
           metadata: storedMetadata
         }
       })
-
-      const tuple = {
+      await this.afterPut({
         checkpoint: preparedCheckpoint,
-        metadata
-      } as CheckpointTuple
-      const messages = extractMessagesFromCheckpoint(threadId, tuple)
-      await syncMessageSearchIndexFromSnapshot(threadId, messages)
-
-      const hitlRequest = extractHitlRequestFromCheckpoint(threadId, tuple, { runId })
-      if (hitlRequest) {
-        await upsertHitlRequest({
-          request_id: hitlRequest.id,
-          thread_id: threadId,
-          run_id: runId,
-          tool_call_id: hitlRequest.tool_call.id,
-          tool_name: hitlRequest.tool_call.name,
-          tool_args: hitlRequest.tool_call.args,
-          review_kind: hitlRequest.review?.kind ?? null,
-          review_payload: hitlRequest.review,
-          allowed_decisions: hitlRequest.allowed_decisions,
-          status: "pending"
-        })
-      }
+        metadata,
+        runId,
+        threadId
+      })
 
       return {
         configurable: {
@@ -289,6 +267,15 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
         }
       }
     })
+  }
+
+  protected async afterPut(_input: {
+    checkpoint: Checkpoint
+    metadata: CheckpointMetadata
+    runId: string | null
+    threadId: string
+  }): Promise<void> {
+    return
   }
 
   async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {

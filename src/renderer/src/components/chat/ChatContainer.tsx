@@ -32,10 +32,10 @@ interface ChatContainerProps {
 const EMPTY_TOKEN_USAGE = null
 
 export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Element {
-  const { copy } = useI18n()
+  const { copy, locale } = useI18n()
   const sourceMentions = useMemo(
-    () => listNativeExtensionSourceMentions(window.electron.process.platform),
-    []
+    () => listNativeExtensionSourceMentions(window.electron.process.platform, locale),
+    [locale]
   )
   const inputRef = useRef<ComposerAreaHandle>(null)
   const virtualizerRef = useRef<VListHandle>(null)

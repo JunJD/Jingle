@@ -1,7 +1,7 @@
 import { app, nativeImage, shell } from "electron"
 import PinyinMatch from "pinyin-match"
 import { execFile } from "node:child_process"
-import { Dirent, promises as fs } from "node:fs"
+import { promises as fs, watch, type Dirent, type FSWatcher } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
@@ -13,7 +13,7 @@ import {
   resolveWindowsApplicationIconPathCandidates
 } from "./windows-shortcut-icon"
 
-interface LauncherApplicationRecord {
+export interface LauncherApplicationRecord {
   id: string
   bundleName: string
   displayName: string
@@ -44,6 +44,11 @@ interface WindowsApplicationRecord extends LauncherApplicationRecord {
   targetPath?: string
 }
 
+interface ApplicationsLauncherSearchProviderOptions {
+  loadApplicationCatalog?: () => Promise<LauncherApplicationRecord[]>
+  resolveApplicationIconDataUrl?: (applicationPath: string) => Promise<string | undefined>
+}
+
 const MAX_SCAN_DEPTH = 3
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
 const execFileAsync = promisify(execFile)
@@ -57,6 +62,7 @@ const MAC_APPLICATION_DIRECTORIES = [
   "/System/Library/CoreServices/Applications"
 ]
 const WINDOWS_START_MENU_FALLBACK_SUBTITLE = "开始菜单"
+const APPLICATION_INDEX_REFRESH_DEBOUNCE_MS = 750
 
 function normalizeSearchValue(value: string): string {
   return value
@@ -305,10 +311,14 @@ async function loadMacApplicationsFromSystemProfiler(): Promise<LauncherApplicat
 }
 
 async function loadMacApplications(): Promise<LauncherApplicationRecord[]> {
+  const applicationsByPath = new Map<string, LauncherApplicationRecord>()
+
   try {
-    return await loadMacApplicationsFromSystemProfiler()
+    for (const application of await loadMacApplicationsFromSystemProfiler()) {
+      applicationsByPath.set(application.path, application)
+    }
   } catch {
-    // Fall back to directory scanning if system_profiler is unavailable.
+    // Directory scanning below still gives the launcher a usable catalog.
   }
 
   const applicationPaths = new Set<string>()
@@ -318,21 +328,32 @@ async function loadMacApplications(): Promise<LauncherApplicationRecord[]> {
     )
   )
 
-  return [...applicationPaths]
-    .map((applicationPath) => {
-      const extension = path.extname(applicationPath)
-      const bundleName = path.basename(applicationPath, extension)
+  for (const applicationPath of applicationPaths) {
+    if (applicationsByPath.has(applicationPath)) {
+      continue
+    }
 
-      return {
-        bundleName,
-        displayName: bundleName,
-        id: applicationPath,
-        keywords: buildSearchKeywords(bundleName),
-        path: applicationPath,
-        subtitle: getMacApplicationSubtitle(applicationPath)
-      }
+    const extension = path.extname(applicationPath)
+    const bundleName = path.basename(applicationPath, extension)
+
+    applicationsByPath.set(applicationPath, {
+      bundleName,
+      displayName: bundleName,
+      id: applicationPath,
+      keywords: buildSearchKeywords(bundleName),
+      path: applicationPath,
+      subtitle: getMacApplicationSubtitle(applicationPath)
     })
-    .sort((left, right) => collator.compare(left.displayName, right.displayName))
+  }
+
+  return [...applicationsByPath.values()].sort((left, right) => {
+    const displayOrder = collator.compare(left.displayName, right.displayName)
+    if (displayOrder !== 0) {
+      return displayOrder
+    }
+
+    return collator.compare(left.bundleName, right.bundleName)
+  })
 }
 
 async function collectWindowsShortcutPaths(
@@ -687,6 +708,29 @@ async function createWindowsApplicationIconDataUrl(
   return undefined
 }
 
+async function resolveApplicationIconDataUrl(applicationPath: string): Promise<string | undefined> {
+  if (process.platform === "darwin") {
+    const iconPath = await resolveMacApplicationIconPath(applicationPath)
+    if (iconPath) {
+      const iconDataUrl = await createIconDataUrlFromPath(iconPath)
+      if (iconDataUrl) {
+        return iconDataUrl
+      }
+    }
+  }
+
+  if (process.platform === "win32") {
+    return createWindowsApplicationIconDataUrl(applicationPath)
+  }
+
+  try {
+    const icon = await app.getFileIcon(applicationPath, { size: "small" })
+    return createIconDataUrlFromNativeImage(icon)
+  } catch {
+    return undefined
+  }
+}
+
 function scoreKeywordMatch(keyword: string, query: string): number {
   if (!query) {
     return -1
@@ -810,14 +854,22 @@ function getApplicationMatch(
   }
 }
 
-class ApplicationsLauncherSearchProvider implements LauncherSearchProvider {
+export class ApplicationsLauncherSearchProvider implements LauncherSearchProvider {
   readonly source = "applications" as const
   private applicationCatalogPromise: Promise<LauncherApplicationRecord[]> | null = null
   private applicationDisplayNamePromiseCache = new Map<string, Promise<string | undefined>>()
   private applicationIconPromiseCache = new Map<string, Promise<string | undefined>>()
 
+  constructor(private readonly options: ApplicationsLauncherSearchProviderOptions = {}) {}
+
   async warmup(): Promise<void> {
     await this.getApplicationCatalog()
+  }
+
+  invalidate(): void {
+    this.applicationCatalogPromise = null
+    this.applicationDisplayNamePromiseCache.clear()
+    this.applicationIconPromiseCache.clear()
   }
 
   async search(request: LauncherSearchRequest): Promise<LauncherSearchProviderResponse> {
@@ -881,28 +933,9 @@ class ApplicationsLauncherSearchProvider implements LauncherSearchProvider {
     let iconPromise = this.applicationIconPromiseCache.get(applicationPath)
 
     if (!iconPromise) {
-      iconPromise = (async () => {
-        if (process.platform === "darwin") {
-          const iconPath = await resolveMacApplicationIconPath(applicationPath)
-          if (iconPath) {
-            const iconDataUrl = await createIconDataUrlFromPath(iconPath)
-            if (iconDataUrl) {
-              return iconDataUrl
-            }
-          }
-        }
-
-        if (process.platform === "win32") {
-          return createWindowsApplicationIconDataUrl(applicationPath)
-        }
-
-        try {
-          const icon = await app.getFileIcon(applicationPath, { size: "small" })
-          return createIconDataUrlFromNativeImage(icon)
-        } catch {
-          return undefined
-        }
-      })()
+      iconPromise =
+        this.options.resolveApplicationIconDataUrl?.(applicationPath) ??
+        resolveApplicationIconDataUrl(applicationPath)
 
       this.applicationIconPromiseCache.set(applicationPath, iconPromise)
     }
@@ -939,7 +972,9 @@ class ApplicationsLauncherSearchProvider implements LauncherSearchProvider {
 
   private async getApplicationCatalog(): Promise<LauncherApplicationRecord[]> {
     if (!this.applicationCatalogPromise) {
-      this.applicationCatalogPromise = loadApplicationCatalog()
+      this.applicationCatalogPromise = (
+        this.options.loadApplicationCatalog ?? loadApplicationCatalog
+      )()
     }
 
     return this.applicationCatalogPromise
@@ -988,4 +1023,82 @@ export async function getApplicationDisplayName(
   applicationPath: string
 ): Promise<string | undefined> {
   return applicationsLauncherSearchProvider.getApplicationDisplayName(applicationPath)
+}
+
+function getApplicationIndexWatchDirectories(): string[] {
+  switch (process.platform) {
+    case "darwin":
+      return MAC_APPLICATION_DIRECTORIES
+    case "win32":
+      try {
+        return getWindowsStartMenuRoots().map((root) => root.path)
+      } catch {
+        return []
+      }
+    default:
+      return []
+  }
+}
+
+function shouldRefreshApplicationIndexForPath(filePath: string | Buffer | null): boolean {
+  if (!filePath) {
+    return true
+  }
+
+  const normalizedPath = filePath.toString().toLowerCase()
+
+  if (process.platform === "darwin") {
+    return normalizedPath.includes(".app") || normalizedPath.includes(".prefpane")
+  }
+
+  if (process.platform === "win32") {
+    return normalizedPath.endsWith(".lnk")
+  }
+
+  return true
+}
+
+export function startApplicationIndexRefreshWatcher(onRefresh: () => void): () => void {
+  const watchers: FSWatcher[] = []
+  let refreshTimer: NodeJS.Timeout | null = null
+
+  const scheduleRefresh = (): void => {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer)
+    }
+
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null
+      onRefresh()
+    }, APPLICATION_INDEX_REFRESH_DEBOUNCE_MS)
+  }
+
+  for (const directoryPath of getApplicationIndexWatchDirectories()) {
+    try {
+      watchers.push(
+        watch(
+          directoryPath,
+          { recursive: process.platform === "darwin" || process.platform === "win32" },
+          (_eventType, filePath) => {
+            if (shouldRefreshApplicationIndexForPath(filePath)) {
+              scheduleRefresh()
+            }
+          }
+        )
+      )
+    } catch {
+      // Some system application directories may be absent or unavailable.
+    }
+  }
+
+  return () => {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer)
+      refreshTimer = null
+    }
+
+    for (const watcher of watchers) {
+      watcher.close()
+    }
+  }
 }

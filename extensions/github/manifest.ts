@@ -1,4 +1,4 @@
-import { defineNativeExtensionManifest } from "@openwork/extension-api"
+import { defineLocalizedText as l, defineNativeExtensionManifest } from "@openwork/extension-api"
 import { viewport as createIssueViewport } from "./src/create-issue.meta"
 import { viewport as createPullRequestViewport } from "./src/create-pull-request.meta"
 import { viewport as myIssuesViewport } from "./src/my-issues.meta"
@@ -27,49 +27,72 @@ export const githubManifest = defineNativeExtensionManifest({
       "Do not claim to have searched GitHub unless a GitHub tool was available and called."
     ],
     mention: {
-      label: "GitHub",
+      label: l("GitHub", "GitHub"),
       value: "github"
     },
     publicPreferenceNames: ["apiBaseUrl"],
     requiredPreferenceNames: ["accessToken"],
-    title: "GitHub",
+    title: l("GitHub", "GitHub"),
     toolDisplays: {
       createIssue: {
-        description: "Create a GitHub issue in a repository.",
-        title: "Create Issue"
+        description: l("Create a GitHub issue in a repository.", "在仓库中创建 GitHub Issue。"),
+        title: l("Create Issue", "创建 Issue")
       },
       listMyIssues: {
-        description: "List issues created by, assigned to, or mentioning the current user.",
-        title: "List My Issues"
+        description: l(
+          "List issues created by, assigned to, or mentioning the current user.",
+          "列出由当前用户创建、分配给当前用户或提到当前用户的 Issues。"
+        ),
+        title: l("List My Issues", "列出我的 Issues")
       },
       listMyPullRequests: {
-        description:
+        description: l(
           "List pull requests authored by, assigned to, mentioning, reviewed by, or requesting review from the current user.",
-        title: "List My Pull Requests"
+          "列出当前用户创建、分配、被提及、已评审或待评审的 Pull Requests。"
+        ),
+        title: l("List My Pull Requests", "列出我的 Pull Requests")
       },
       listNotifications: {
-        description: "List GitHub notifications for the current user.",
-        title: "List Notifications"
+        description: l(
+          "List GitHub notifications for the current user.",
+          "列出当前用户的 GitHub 通知。"
+        ),
+        title: l("List Notifications", "列出通知")
       },
       listRepositories: {
-        description: "List recently updated or starred repositories for the current user.",
-        title: "List Repositories"
+        description: l(
+          "List recently updated or starred repositories for the current user.",
+          "列出当前用户最近更新或加星的仓库。"
+        ),
+        title: l("List Repositories", "列出仓库")
       },
       listWorkflowRuns: {
-        description: "List recent GitHub Actions workflow runs for a repository.",
-        title: "List Workflow Runs"
+        description: l(
+          "List recent GitHub Actions workflow runs for a repository.",
+          "列出仓库最近的 GitHub Actions workflow runs。"
+        ),
+        title: l("List Workflow Runs", "列出 Workflow Runs")
       },
       searchIssues: {
-        description: "Search GitHub issues with GitHub search qualifiers.",
-        title: "Search Issues"
+        description: l(
+          "Search GitHub issues with GitHub search qualifiers.",
+          "使用 GitHub 搜索限定符搜索 Issues。"
+        ),
+        title: l("Search Issues", "搜索 Issues")
       },
       searchPullRequests: {
-        description: "Search GitHub pull requests with GitHub search qualifiers.",
-        title: "Search Pull Requests"
+        description: l(
+          "Search GitHub pull requests with GitHub search qualifiers.",
+          "使用 GitHub 搜索限定符搜索 Pull Requests。"
+        ),
+        title: l("Search Pull Requests", "搜索 Pull Requests")
       },
       searchRepositories: {
-        description: "Search GitHub repositories with GitHub search qualifiers.",
-        title: "Search Repositories"
+        description: l(
+          "Search GitHub repositories with GitHub search qualifiers.",
+          "使用 GitHub 搜索限定符搜索仓库。"
+        ),
+        title: l("Search Repositories", "搜索仓库")
       }
     },
     toolNames: [
@@ -95,224 +118,268 @@ export const githubManifest = defineNativeExtensionManifest({
     id: "default",
     provider: "github",
     publicPreferenceNames: ["apiBaseUrl"],
-    title: "GitHub"
+    title: l("GitHub", "GitHub")
   },
   icon: "assets/icon.svg",
   iconName: "github",
   runtimeCapabilities: ["navigation", "preferences", "rpc", "settings", "shell"],
   preferences: [
     {
-      description:
+      description: l(
         "Personal access token used to read your GitHub data. A classic token with repo access is enough.",
+        "用于读取 GitHub 数据的个人访问令牌。带 repo 权限的 classic token 即可。"
+      ),
       name: "accessToken",
       placeholder: "ghp_...",
-      title: "GitHub Personal Access Token",
+      title: l("GitHub Personal Access Token", "GitHub 个人访问令牌"),
       type: "password"
     },
     {
       default: "https://api.github.com",
-      description: "Override this only if you use GitHub Enterprise.",
+      description: l(
+        "Override this only if you use GitHub Enterprise.",
+        "仅在使用 GitHub Enterprise 时覆盖此项。"
+      ),
       name: "apiBaseUrl",
       placeholder: "https://api.github.com",
-      title: "GitHub API Base URL",
+      title: l("GitHub API Base URL", "GitHub API 基础 URL"),
       type: "text"
     },
     {
       default: "",
-      description: "Default query used when opening global search commands.",
+      description: l(
+        "Default query used when opening global search commands.",
+        "打开全局搜索命令时使用的默认查询。"
+      ),
       name: "defaultSearchTerms",
       placeholder: "author:@me state:open",
-      title: "Default Search Terms",
+      title: l("Default Search Terms", "默认搜索条件"),
       type: "text"
     },
     {
       default: "25",
-      description: "How many results each command should request per load.",
+      description: l(
+        "How many results each command should request per load.",
+        "每次加载时每个命令请求的结果数量。"
+      ),
       name: "numberOfResults",
-      title: "Number of Results",
+      title: l("Number of Results", "结果数量"),
       type: "text"
     }
   ],
   commands: [
     {
-      description: "List GitHub issues created by you, assigned to you, or mentioning you.",
+      description: l(
+        "List GitHub issues created by you, assigned to you, or mentioning you.",
+        "列出由你创建、分配给你或提到你的 GitHub Issues。"
+      ),
       keywords: ["github", "issue", "issues", "pull request", "pr", "代码审查"],
       mode: "view",
       name: "my-issues",
       preferences: [
         {
           default: true,
-          description: "Show issues you created.",
+          description: l("Show issues you created.", "显示你创建的 Issues。"),
           name: "showCreated",
-          title: "Show Created",
+          title: l("Show Created", "显示已创建"),
           type: "checkbox"
         },
         {
           default: true,
-          description: "Show issues assigned to you.",
+          description: l("Show issues assigned to you.", "显示分配给你的 Issues。"),
           name: "showAssigned",
-          title: "Show Assigned",
+          title: l("Show Assigned", "显示已分配"),
           type: "checkbox"
         },
         {
           default: true,
-          description: "Show issues where you were mentioned.",
+          description: l("Show issues where you were mentioned.", "显示提到你的 Issues。"),
           name: "showMentioned",
-          title: "Show Mentioned",
+          title: l("Show Mentioned", "显示被提及"),
           type: "checkbox"
         },
         {
           default: false,
-          description: "Include recently closed issues.",
+          description: l("Include recently closed issues.", "包含最近关闭的 Issues。"),
           name: "showRecentlyClosed",
-          title: "Show Recently Closed",
+          title: l("Show Recently Closed", "显示最近关闭"),
           type: "checkbox"
         }
       ],
       runtime: {
         viewport: myIssuesViewport
       },
-      title: "My Issues"
+      title: l("My Issues", "我的 Issues")
     },
     {
-      description: "List your GitHub pull requests for review and tracking.",
+      description: l(
+        "List your GitHub pull requests for review and tracking.",
+        "列出需要你评审和跟踪的 GitHub Pull Requests。"
+      ),
       keywords: ["github", "pull requests", "pr", "merge", "review"],
       mode: "view",
       name: "my-pull-requests",
       preferences: [
         {
           default: true,
-          description: "Show pull requests assigned to you.",
+          description: l("Show pull requests assigned to you.", "显示分配给你的 Pull Requests。"),
           name: "includeAssigned",
-          title: "Show Assigned",
+          title: l("Show Assigned", "显示已分配"),
           type: "checkbox"
         },
         {
           default: true,
-          description: "Show pull requests where you were mentioned.",
+          description: l(
+            "Show pull requests where you were mentioned.",
+            "显示提到你的 Pull Requests。"
+          ),
           name: "includeMentioned",
-          title: "Show Mentioned",
+          title: l("Show Mentioned", "显示被提及"),
           type: "checkbox"
         },
         {
           default: true,
-          description: "Show pull requests requesting your review.",
+          description: l(
+            "Show pull requests requesting your review.",
+            "显示请求你评审的 Pull Requests。"
+          ),
           name: "includeReviewRequests",
-          title: "Show Review Requests",
+          title: l("Show Review Requests", "显示评审请求"),
           type: "checkbox"
         },
         {
           default: false,
-          description: "Show pull requests you already reviewed.",
+          description: l(
+            "Show pull requests you already reviewed.",
+            "显示你已评审的 Pull Requests。"
+          ),
           name: "includeReviewed",
-          title: "Show Reviewed",
+          title: l("Show Reviewed", "显示已评审"),
           type: "checkbox"
         },
         {
           default: false,
-          description: "Include recently closed pull requests.",
+          description: l(
+            "Include recently closed pull requests.",
+            "包含最近关闭的 Pull Requests。"
+          ),
           name: "includeRecentlyClosed",
-          title: "Show Recently Closed",
+          title: l("Show Recently Closed", "显示最近关闭"),
           type: "checkbox"
         },
         {
           default: false,
-          description: "Include draft pull requests.",
+          description: l("Include draft pull requests.", "包含草稿 Pull Requests。"),
           name: "includeDrafts",
-          title: "Include Drafts",
+          title: l("Include Drafts", "包含草稿"),
           type: "checkbox"
         }
       ],
       runtime: {
         viewport: myPullRequestsViewport
       },
-      title: "My Pull Requests"
+      title: l("My Pull Requests", "我的 Pull Requests")
     },
     {
-      description: "Search GitHub issues across repositories.",
+      description: l("Search GitHub issues across repositories.", "跨仓库搜索 GitHub Issues。"),
       keywords: ["github", "search", "issue", "issues"],
       mode: "view",
       name: "search-issues",
       runtime: {
         viewport: searchIssuesViewport
       },
-      title: "Search Issues"
+      title: l("Search Issues", "搜索 Issues")
     },
     {
-      description: "Search GitHub pull requests across repositories.",
+      description: l(
+        "Search GitHub pull requests across repositories.",
+        "跨仓库搜索 GitHub Pull Requests。"
+      ),
       keywords: ["github", "search", "pull request", "pr"],
       mode: "view",
       name: "search-pull-requests",
       runtime: {
         viewport: searchPullRequestsViewport
       },
-      title: "Search Pull Requests"
+      title: l("Search Pull Requests", "搜索 Pull Requests")
     },
     {
-      description: "Search GitHub repositories.",
+      description: l("Search GitHub repositories.", "搜索 GitHub 仓库。"),
       keywords: ["github", "repository", "repo", "search"],
       mode: "view",
       name: "search-repositories",
       preferences: [
         {
           default: false,
-          description: "Include forked repositories in the results.",
+          description: l("Include forked repositories in the results.", "在结果中包含 fork 仓库。"),
           name: "includeForks",
-          title: "Include Forks",
+          title: l("Include Forks", "包含 Fork"),
           type: "checkbox"
         },
         {
           default: false,
-          description: "Include archived repositories in the results.",
+          description: l("Include archived repositories in the results.", "在结果中包含归档仓库。"),
           name: "includeArchived",
-          title: "Include Archived",
+          title: l("Include Archived", "包含归档"),
           type: "checkbox"
         },
         {
           default: true,
-          description: "Show the owner name in repository rows.",
+          description: l("Show the owner name in repository rows.", "在仓库行中显示所有者名称。"),
           name: "displayOwnerName",
-          title: "Display Owner Name",
+          title: l("Display Owner Name", "显示所有者名称"),
           type: "checkbox"
         }
       ],
       runtime: {
         viewport: searchRepositoriesViewport
       },
-      title: "Search Repositories"
+      title: l("Search Repositories", "搜索仓库")
     },
     {
-      description: "Inspect recent GitHub Actions workflow runs for one of your repositories.",
+      description: l(
+        "Inspect recent GitHub Actions workflow runs for one of your repositories.",
+        "查看某个仓库最近的 GitHub Actions workflow runs。"
+      ),
       keywords: ["github", "actions", "workflow", "workflow runs", "ci", "build"],
       mode: "view",
       name: "workflow-runs",
       runtime: {
         viewport: workflowRunsViewport
       },
-      title: "Workflow Runs"
+      title: l("Workflow Runs", "Workflow Runs")
     },
     {
-      description: "Create a new issue in one of your GitHub repositories.",
+      description: l(
+        "Create a new issue in one of your GitHub repositories.",
+        "在你的某个 GitHub 仓库中新建 Issue。"
+      ),
       keywords: ["github", "create", "issue", "new issue"],
       mode: "view",
       name: "create-issue",
       runtime: {
         viewport: createIssueViewport
       },
-      title: "Create Issue"
+      title: l("Create Issue", "创建 Issue")
     },
     {
-      description: "Create a pull request in one of your GitHub repositories.",
+      description: l(
+        "Create a pull request in one of your GitHub repositories.",
+        "在你的某个 GitHub 仓库中创建 Pull Request。"
+      ),
       keywords: ["github", "create", "pull request", "pr", "merge request"],
       mode: "view",
       name: "create-pull-request",
       runtime: {
         viewport: createPullRequestViewport
       },
-      title: "Create Pull Request"
+      title: l("Create Pull Request", "创建 Pull Request")
     },
     {
-      description: "List inbox notifications from all repositories or a selected repository.",
+      description: l(
+        "List inbox notifications from all repositories or a selected repository.",
+        "列出全部仓库或所选仓库的收件箱通知。"
+      ),
       icon: "assets/notifications.svg",
       keywords: ["github", "notifications", "inbox", "mentions"],
       mode: "view",
@@ -320,30 +387,33 @@ export const githubManifest = defineNativeExtensionManifest({
       runtime: {
         viewport: notificationsViewport
       },
-      title: "Notifications"
+      title: l("Notifications", "通知")
     },
     {
-      description: "Show repositories you worked on most recently.",
+      description: l("Show repositories you worked on most recently.", "显示你最近处理过的仓库。"),
       keywords: ["github", "repositories", "recent", "repo"],
       mode: "view",
       name: "my-latest-repositories",
       runtime: {
         viewport: myLatestRepositoriesViewport
       },
-      title: "My Latest Repositories"
+      title: l("My Latest Repositories", "我最近的仓库")
     },
     {
-      description: "Show repositories you starred on GitHub.",
+      description: l("Show repositories you starred on GitHub.", "显示你在 GitHub 上加星的仓库。"),
       keywords: ["github", "repositories", "starred", "repo"],
       mode: "view",
       name: "my-starred-repositories",
       runtime: {
         viewport: myStarredRepositoriesViewport
       },
-      title: "My Starred Repositories"
+      title: l("My Starred Repositories", "我加星的仓库")
     },
     {
-      description: "Show unread GitHub notifications in the menu bar.",
+      description: l(
+        "Show unread GitHub notifications in the menu bar.",
+        "在菜单栏显示未读 GitHub 通知。"
+      ),
       icon: "assets/notifications.svg",
       keywords: ["github", "notifications", "menu bar", "tray"],
       mode: "menu-bar",
@@ -351,25 +421,34 @@ export const githubManifest = defineNativeExtensionManifest({
       preferences: [
         {
           default: "60",
-          description: "How often the menu bar should refresh unread notifications.",
+          description: l(
+            "How often the menu bar should refresh unread notifications.",
+            "菜单栏刷新未读通知的间隔。"
+          ),
           name: "refreshIntervalSeconds",
-          title: "Refresh Interval Seconds",
+          title: l("Refresh Interval Seconds", "刷新间隔秒数"),
           type: "text"
         },
         {
           default: true,
-          description: "Show the unread count in the menu bar title.",
+          description: l(
+            "Show the unread count in the menu bar title.",
+            "在菜单栏标题中显示未读数量。"
+          ),
           name: "showUnreadCount",
-          title: "Show Unread Count",
+          title: l("Show Unread Count", "显示未读数量"),
           type: "checkbox"
         }
       ],
       runtime: {},
-      title: "Unread Notifications"
+      title: l("Unread Notifications", "未读通知")
     }
   ],
-  description: "Work with your GitHub issues inside the launcher.",
+  description: l(
+    "Work with your GitHub issues inside the launcher.",
+    "在启动器里处理 GitHub Issues。"
+  ),
   name: GITHUB_EXTENSION_ID,
   rpcMethods: [...GITHUB_RPC_METHODS],
-  title: "GitHub"
+  title: l("GitHub", "GitHub")
 })

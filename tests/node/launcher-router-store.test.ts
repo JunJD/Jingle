@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { AI_CHAT_COMMAND_NAME, AI_LAUNCHER_PLUGIN_ID } from "../../src/shared/launcher-ai"
 import { createLauncherRouterStore } from "../../src/renderer/src/launcher-shell/hooks/launcher-router-store-core"
+import { isLauncherCommandRoute } from "../../src/renderer/src/launcher-shell/pages/types"
 import type {
   LauncherBuiltInCommandAddress,
   LauncherExtensionCommandAddress
@@ -33,11 +34,11 @@ test("openCommand enters the command route and fills default options", () => {
   })
   assert.equal(
     state.routeKey,
-    `built-in-command:${AI_LAUNCHER_PLUGIN_ID}:${AI_CHAT_COMMAND_NAME}:focus::`
+    `built-in-command:${AI_LAUNCHER_PLUGIN_ID}:${AI_CHAT_COMMAND_NAME}:focus:`
   )
 })
 
-test("openCommand preserves explicit options in the route key", () => {
+test("openCommand preserves launch identity in the route key without seed query", () => {
   const store = createLauncherRouterStore()
 
   store.getState().openCommand(EXTENSION_ADDRESS, {
@@ -73,8 +74,26 @@ test("openCommand preserves explicit options in the route key", () => {
   })
   assert.equal(
     state.routeKey,
-    'extension-command:test-extension:open-panel:submit:docs:{"arguments":{"text":"Captured text"},"launchContext":{"defaults":{"pageId":"page-1"}}}'
+    'extension-command:test-extension:open-panel:submit:{"arguments":{"text":"Captured text"},"launchContext":{"defaults":{"pageId":"page-1"}}}'
   )
+})
+
+test("seed query stays out of command route identity", () => {
+  const store = createLauncherRouterStore()
+
+  store.getState().openCommand(EXTENSION_ADDRESS, {
+    seedQuery: "first query"
+  })
+  const firstRouteKey = store.getState().routeKey
+
+  store.getState().openCommand(EXTENSION_ADDRESS, {
+    seedQuery: "second query"
+  })
+  const state = store.getState()
+
+  assert.ok(isLauncherCommandRoute(state.route))
+  assert.equal(state.route.seedQuery, "second query")
+  assert.equal(state.routeKey, firstRouteKey)
 })
 
 test("closeActivePlugin returns to home and flips navigation direction backward", () => {

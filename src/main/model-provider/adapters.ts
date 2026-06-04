@@ -7,6 +7,7 @@ import {
 import {
   deleteProviderCredentials as deleteStoredProviderCredentials,
   getProviderCredential,
+  hasProviderCredentials,
   setProviderCredential
 } from "./secrets"
 import {
@@ -187,6 +188,7 @@ export function createProviderChatModelFromAdapter(
 
 function createApiKeyProviderAdapter(config: ProviderAdapterConfig): ProviderAdapter {
   const definition = requireProviderDefinition(config.providerId)
+  const requiredCredentialVariables = listRequiredCredentialVariables(definition)
   const listModels = async (credentials: ProviderCredentials): Promise<ModelConfig[]> => {
     const apiKey = requireApiKey(credentials, config.providerId)
     const remoteModels = await config.fetchModels(apiKey)
@@ -204,7 +206,7 @@ function createApiKeyProviderAdapter(config: ProviderAdapterConfig): ProviderAda
       )
     },
     getCredentials: () => readProviderCredentials(definition),
-    hasCredentials: () => readProviderCredentials(definition) !== null,
+    hasCredentials: () => hasProviderCredentials(definition.id, requiredCredentialVariables),
     listModels,
     normalizeCredentials: (credentials) => normalizeProviderCredentials(definition, credentials),
     saveCredentials: (credentials) => {
@@ -259,6 +261,7 @@ function createProviderConfigAdapter(
   providerConfig: CustomProviderConfig
 ): ProviderAdapter {
   const definition = requireProviderDefinition(providerId)
+  const requiredCredentialVariables = listRequiredCredentialVariables(definition)
   const listModels = async (credentials: ProviderCredentials): Promise<ModelConfig[]> => {
     if (providerConfig.models.length > 0 && providerConfig.dynamic_models !== true) {
       return providerConfig.models.map((model) => ({
@@ -308,7 +311,8 @@ function createProviderConfigAdapter(
     },
     getCredentials: () => readProviderCredentials(definition),
     hasCredentials: () =>
-      definition.credentialFormSchemas.length === 0 || readProviderCredentials(definition) !== null,
+      requiredCredentialVariables.length === 0 ||
+      hasProviderCredentials(definition.id, requiredCredentialVariables),
     listModels,
     normalizeCredentials: (credentials) => normalizeProviderCredentials(definition, credentials),
     saveCredentials: (credentials) => {
@@ -471,6 +475,12 @@ function readProviderCredentials(definition: ProviderDefinition): ProviderCreden
   }
 
   return credentials
+}
+
+function listRequiredCredentialVariables(definition: ProviderDefinition): string[] {
+  return definition.credentialFormSchemas
+    .filter((schema) => schema.required)
+    .map((schema) => schema.variable)
 }
 
 function normalizeProviderCredentials(

@@ -1,5 +1,7 @@
 import { ExtensionIcon } from "@/extensions/ExtensionIcon"
-import { nativeExtensionSourceMentions } from "@extensions/source-mentions"
+import { useI18n } from "@/lib/i18n"
+import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
+import type { ExtensionSourceMention } from "@shared/extension-sources"
 
 const EXTENSION_SOURCE_MARKDOWN_PATTERN =
   /\[(@[^\]\n]+)\]\(openwork-extension-source:\/\/([^/\s)]+)\/([^)\s]+)\)/g
@@ -73,17 +75,22 @@ export function parseExtensionSourceTextForViewer(text: string): ViewerToken[] |
   return tokens
 }
 
-function ExtensionSourceChip(props: { token: ExtensionSourceToken }): React.JSX.Element {
-  const { token } = props
-  const sourceMention = nativeExtensionSourceMentions.find(
+function ExtensionSourceChip(props: {
+  sourceMentions: ExtensionSourceMention[]
+  token: ExtensionSourceToken
+}): React.JSX.Element {
+  const { sourceMentions, token } = props
+  const sourceMention = sourceMentions.find(
     (mention) =>
       mention.extensionName === token.extensionName && mention.sourceId === token.sourceId
   )
+  const label = sourceMention ? `@${sourceMention.value}` : token.label
+  const title = sourceMention?.label ?? `${token.extensionName}/${token.sourceId}`
 
   return (
     <span
       className="inline-flex h-[20px] max-w-full items-center gap-[4px] whitespace-nowrap rounded-[4px] px-[4px] align-top text-foreground"
-      title={`${token.extensionName}/${token.sourceId}`}
+      title={title}
     >
       <ExtensionIcon
         className="size-[14px] shrink-0 text-muted-foreground"
@@ -92,7 +99,7 @@ function ExtensionSourceChip(props: { token: ExtensionSourceToken }): React.JSX.
         iconName={sourceMention?.iconName}
       />
       <span className="box-border block h-[20px] min-w-0 max-w-full truncate border-b border-border-emphasis [border-bottom-width:0.5px] [font-size:14px] font-semibold leading-[20px] tracking-normal">
-        {token.label}
+        {label}
       </span>
     </span>
   )
@@ -100,6 +107,11 @@ function ExtensionSourceChip(props: { token: ExtensionSourceToken }): React.JSX.
 
 export function ExtensionSourceTextViewer(props: { text: string }): React.JSX.Element {
   const { text } = props
+  const { locale } = useI18n()
+  const sourceMentions = listNativeExtensionSourceMentions(
+    window.electron.process.platform,
+    locale
+  )
   const tokens = parseExtensionSourceTextForViewer(text)
 
   if (!tokens) {
@@ -110,7 +122,11 @@ export function ExtensionSourceTextViewer(props: { text: string }): React.JSX.El
     <>
       {tokens.map((token, index) =>
         token.type === "extension-source" ? (
-          <ExtensionSourceChip key={`${token.extensionName}:${token.sourceId}:${index}`} token={token} />
+          <ExtensionSourceChip
+            key={`${token.extensionName}:${token.sourceId}:${index}`}
+            sourceMentions={sourceMentions}
+            token={token}
+          />
         ) : (
           <span key={`text:${index}`}>{token.text}</span>
         )

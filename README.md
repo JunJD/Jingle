@@ -60,6 +60,8 @@ pnpm run dist:mac
 pnpm run dist:win
 ```
 
+macOS dev preview builds may be unsigned or not notarized. See [docs/macos-dev-preview-install.md](docs/macos-dev-preview-install.md) for the tester install guide.
+
 ## BDD Testing
 
 The repository now includes a minimal Electron BDD harness built on Cucumber and Playwright.

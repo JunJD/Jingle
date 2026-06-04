@@ -516,8 +516,22 @@ function isNativeExtensionManifest(value) {
     !!value &&
     typeof value === "object" &&
     typeof value.name === "string" &&
-    typeof value.title === "string" &&
+    isLocalizedTextValue(value.title) &&
     Array.isArray(value.commands)
+  )
+}
+
+function isLocalizedTextValue(value) {
+  if (typeof value === "string") {
+    return true
+  }
+
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof value.en_US === "string" &&
+    typeof value.zh_Hans === "string"
   )
 }
 

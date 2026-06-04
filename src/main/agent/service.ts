@@ -31,11 +31,13 @@ import {
 } from "./runtime"
 import { buildAgentResumeConfig, buildAgentRunConfig } from "./run-config"
 import { extractHitlRequestFromValuesState } from "./runtime-state"
+import { ThreadLifecycleGate, type ThreadRunLease } from "./thread-lifecycle-gate"
 import { getHitlRequest, getRun, getThread, resolveHitlRequest, upsertHitlRequest } from "../db"
 import { buildIpcErrorEvent, OpenworkIpcError } from "../ipc/error"
 import { OpenworkMemoryService } from "../openwork-memory/service"
 import { readRunPermissionModeSnapshot, readThreadPermissionMode } from "./permission-mode"
 import { resolveOpenworkWorkspaceIdentity } from "../workspace/identity"
+import { getAgentConfig } from "../preferences"
 import type {
   OpenworkMemoryContextSnapshot,
   OpenworkWorkspaceIdentity
@@ -67,7 +69,11 @@ export interface AgentStreamSink {
 
 interface ActiveAgentRun {
   controller: AbortController
-  runId: string
+  runId: string | null
+}
+
+interface AgentRunOptions {
+  onRunAccepted?: () => Promise<void> | void
 }
 
 function mapDecisionToHitlStatus(decision: HITLDecision["type"]): "approved" | "rejected" {
@@ -419,7 +425,41 @@ export function serializeStreamChunkForIpc(
 export class AgentService {
   private readonly activeRuns = new Map<string, ActiveAgentRun>()
 
-  constructor(private readonly openworkMemoryService = new OpenworkMemoryService()) {}
+  constructor(
+    private readonly openworkMemoryService = new OpenworkMemoryService(),
+    private readonly threadLifecycleGate = new ThreadLifecycleGate()
+  ) {}
+
+  private sendThreadDeletingError(
+    channel: "agent:invoke" | "agent:resume",
+    sink: AgentStreamSink
+  ): void {
+    sink.send({
+      type: "error",
+      ...buildIpcErrorEvent(
+        channel,
+        new OpenworkIpcError({
+          channel,
+          code: "CONFLICT",
+          message: "This thread is being deleted."
+        })
+      )
+    })
+  }
+
+  private async claimThreadRun(
+    threadId: string,
+    channel: "agent:invoke" | "agent:resume",
+    sink: AgentStreamSink
+  ): Promise<ThreadRunLease | null> {
+    const claim = await this.threadLifecycleGate.claimRun(threadId)
+    if (claim.status === "deleting") {
+      this.sendThreadDeletingError(channel, sink)
+      return null
+    }
+
+    return claim.lease
+  }
 
   private async recordOpenworkMemoryInclusions(input: {
     runtime: AgentRuntimeHandle
@@ -445,7 +485,8 @@ export class AgentService {
       permissionMode: requestedPermissionMode,
       temporaryMode = false
     }: AgentInvokeParams,
-    sink: AgentStreamSink
+    sink: AgentStreamSink,
+    options?: AgentRunOptions
   ): Promise<void> {
     const messagePreview = summarizeMessageContent(message.content)
 
@@ -456,15 +497,16 @@ export class AgentService {
       permissionMode: requestedPermissionMode
     })
 
-    const existingRun = this.activeRuns.get(threadId)
-    if (existingRun) {
-      console.log("[Agent] Aborting existing stream for thread:", threadId)
-      existingRun.controller.abort()
-      this.activeRuns.delete(threadId)
-      await markRunAborted(threadId, existingRun.runId)
+    const lease = await this.claimThreadRun(threadId, "agent:invoke", sink)
+    if (!lease) {
+      return
     }
-
-    const abortController = new AbortController()
+    const abortController = lease.abortController
+    const activeRun: ActiveAgentRun = {
+      controller: abortController,
+      runId: null
+    }
+    this.activeRuns.set(threadId, activeRun)
 
     try {
       const thread = await getThread(threadId)
@@ -488,18 +530,22 @@ export class AgentService {
         return
       }
 
+      await options?.onRunAccepted?.()
+
       const normalizedRefs = normalizeComposerMessageRefs(message.additional_kwargs?.refs)
       const permissionMode = requestedPermissionMode ?? readThreadPermissionMode(thread)
+      const locale = getAgentConfig().locale
       const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefs(normalizedRefs, {
         getConnection: (extensionName) =>
           resolveNativeExtensionConnection({
             extensionName,
             platform: process.platform
           }),
+        locale,
         permissionMode,
         platform: process.platform
       })
-      const aiCapabilityCatalog = listNativeExtensionAiCapabilityCatalog(process.platform)
+      const aiCapabilityCatalog = listNativeExtensionAiCapabilityCatalog(process.platform, "en-US")
       const getAiCapabilityByExtensionName = (extensionName: string) =>
         resolveNativeExtensionAiCapabilityForExtensionName(extensionName, {
           getConnection: (extensionName) =>
@@ -507,6 +553,7 @@ export class AgentService {
               extensionName,
               platform: process.platform
             }),
+          locale,
           permissionMode,
           platform: process.platform
         })
@@ -516,6 +563,10 @@ export class AgentService {
         workspaceIdentity
       })
 
+      if (abortController.signal.aborted) {
+        return
+      }
+
       const { runId } = await beginAgentRun(threadId, modelId, {
         openworkMemoryContextSnapshot:
           this.openworkMemoryService.createContextSnapshot(openworkMemoryContextPack),
@@ -523,8 +574,12 @@ export class AgentService {
         aiCapabilities,
         permissionMode
       })
-      this.activeRuns.set(threadId, { controller: abortController, runId })
+      activeRun.runId = runId
       sink.send({ type: "run_started", runId })
+
+      if (abortController.signal.aborted) {
+        return
+      }
 
       const runtime = await createAgentRuntime({
         threadId,
@@ -601,8 +656,7 @@ export class AgentService {
     } catch (error) {
       if (!isAbortLikeError(error, abortController.signal)) {
         const normalizedError = normalizeAgentRuntimeError("agent:invoke", error)
-        const activeRun = this.activeRuns.get(threadId)
-        if (activeRun) {
+        if (activeRun.runId) {
           await markRunFailed(threadId, activeRun.runId, normalizedError)
         }
         if (!isModelAuthenticationError(error)) {
@@ -614,104 +668,118 @@ export class AgentService {
         })
       }
     } finally {
-      const activeRun = this.activeRuns.get(threadId)
-      if (activeRun?.controller === abortController && abortController.signal.aborted) {
+      const currentRun = this.activeRuns.get(threadId)
+      if (currentRun === activeRun && abortController.signal.aborted && activeRun.runId) {
         await markRunAborted(threadId, activeRun.runId)
       }
-      this.activeRuns.delete(threadId)
+      if (this.activeRuns.get(threadId) === activeRun) {
+        this.activeRuns.delete(threadId)
+      }
+      lease.complete()
     }
   }
 
   async resume(
     { threadId, command, modelId }: AgentResumeParams,
-    sink: AgentStreamSink
+    sink: AgentStreamSink,
+    options?: AgentRunOptions
   ): Promise<void> {
     console.log("[Agent] Received resume request:", { threadId, command, modelId })
 
-    const thread = await getThread(threadId)
-    const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
-    const workspacePath = metadata.workspacePath as string | undefined
-
-    if (!workspacePath) {
-      sink.send({
-        type: "error",
-        ...buildIpcErrorEvent(
-          "agent:resume",
-          new OpenworkIpcError({
-            channel: "agent:resume",
-            code: "FAILED_PRECONDITION",
-            message: "Workspace path is required"
-          })
-        )
-      })
+    const lease = await this.claimThreadRun(threadId, "agent:resume", sink)
+    if (!lease) {
       return
     }
-
-    const existingRun = this.activeRuns.get(threadId)
-    if (existingRun) {
-      existingRun.controller.abort()
-      this.activeRuns.delete(threadId)
-      await markRunAborted(threadId, existingRun.runId)
+    const abortController = lease.abortController
+    const activeRun: ActiveAgentRun = {
+      controller: abortController,
+      runId: null
     }
-
-    const abortController = new AbortController()
+    this.activeRuns.set(threadId, activeRun)
     const decision = command?.resume
     if (!decision) {
+      if (this.activeRuns.get(threadId) === activeRun) {
+        this.activeRuns.delete(threadId)
+      }
+      lease.complete()
       throw new Error("[Agent] Resume command is missing HITL decision.")
     }
 
     const decisionType = decision.type
-    let resumeTarget: ResumeTarget
-    let runId: string
+    let runId: string | null = null
 
     try {
-      resumeTarget = await resolveResumeTarget(threadId, decision)
+      const thread = await getThread(threadId)
+      const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
+      const workspacePath = metadata.workspacePath as string | undefined
+
+      if (!workspacePath) {
+        sink.send({
+          type: "error",
+          ...buildIpcErrorEvent(
+            "agent:resume",
+            new OpenworkIpcError({
+              channel: "agent:resume",
+              code: "FAILED_PRECONDITION",
+              message: "Workspace path is required"
+            })
+          )
+        })
+        return
+      }
+
+      const resumeTarget = await resolveResumeTarget(threadId, decision)
       const targetRun = await getRun(resumeTarget.runId)
-      const openworkMemoryContextSnapshot = readOpenworkMemoryContextSnapshot(targetRun?.metadata)
-      const workspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
+      const targetOpenworkMemoryContextSnapshot = readOpenworkMemoryContextSnapshot(
+        targetRun?.metadata
+      )
+      const currentWorkspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
       if (
-        openworkMemoryContextSnapshot &&
-        openworkMemoryContextSnapshot.workspaceKey !== workspaceIdentity.workspaceKey
+        targetOpenworkMemoryContextSnapshot &&
+        targetOpenworkMemoryContextSnapshot.workspaceKey !== currentWorkspaceIdentity.workspaceKey
       ) {
         throw createWorkspaceMismatchError({
-          currentWorkspace: workspaceIdentity,
-          snapshot: openworkMemoryContextSnapshot
+          currentWorkspace: currentWorkspaceIdentity,
+          snapshot: targetOpenworkMemoryContextSnapshot
         })
       }
+
+      if (abortController.signal.aborted) {
+        return
+      }
+
+      await options?.onRunAccepted?.()
 
       runId = await resumeAgentRun(threadId, resumeTarget.runId, {
         source: "resume",
         modelId: modelId ?? null,
         requestId: resumeTarget.requestId
       })
-    } catch (error) {
-      console.error("[Agent] Resume error:", error)
-      sink.send({
-        type: "error",
-        ...buildIpcErrorEvent("agent:resume", error)
-      })
-      return
-    }
 
-    this.activeRuns.set(threadId, { controller: abortController, runId })
-    sink.send({ type: "run_started", runId })
+      activeRun.runId = runId
+      sink.send({ type: "run_started", runId })
 
-    try {
+      if (abortController.signal.aborted) {
+        return
+      }
+
       const resumedRun = await getRun(runId)
       const permissionMode = readRunPermissionModeSnapshot(resumedRun)
-      const openworkMemoryContextSnapshot = readOpenworkMemoryContextSnapshot(
+      const resumedOpenworkMemoryContextSnapshot = readOpenworkMemoryContextSnapshot(
         resumedRun?.metadata
       )
-      const openworkMemoryContextPack =
-        this.openworkMemoryService.rebuildContextPackFromSnapshot(openworkMemoryContextSnapshot)
-      const workspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
+      const openworkMemoryContextPack = this.openworkMemoryService.rebuildContextPackFromSnapshot(
+        resumedOpenworkMemoryContextSnapshot
+      )
+      const resumedWorkspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
+      const locale = getAgentConfig().locale
       const aiCapabilitySnapshots = readRunExtensionAiCapabilitiesSnapshotFromMetadata(
         resumedRun?.metadata
       )
       const runtimeAiCapabilities =
         aiCapabilitySnapshots === null
           ? []
-          : hydrateNativeExtensionAiCapabilities(aiCapabilitySnapshots)
+          : hydrateNativeExtensionAiCapabilities(aiCapabilitySnapshots, locale)
       const runtime = await createAgentRuntime({
         threadId,
         runId,
@@ -720,10 +788,10 @@ export class AgentService {
         openworkMemoryContextPack,
         openworkMemoryService: this.openworkMemoryService,
         openworkMemoryTemporaryMode: openworkMemoryContextPack?.temporaryMode === true,
-        openworkMemoryWorkspaceIdentity: workspaceIdentity,
+        openworkMemoryWorkspaceIdentity: resumedWorkspaceIdentity,
         permissionMode,
         aiCapabilities: runtimeAiCapabilities,
-        aiCapabilityCatalog: listNativeExtensionAiCapabilityCatalog(process.platform),
+        aiCapabilityCatalog: listNativeExtensionAiCapabilityCatalog(process.platform, "en-US"),
         getAiCapabilityByExtensionName: (extensionName: string) =>
           resolveNativeExtensionAiCapabilityForExtensionName(extensionName, {
             getConnection: (extensionName) =>
@@ -731,6 +799,7 @@ export class AgentService {
                 extensionName,
                 platform: process.platform
               }),
+            locale,
             permissionMode,
             platform: process.platform
           }),
@@ -799,21 +868,35 @@ export class AgentService {
       }
     } catch (error) {
       if (!isAbortLikeError(error, abortController.signal)) {
-        const normalizedError = normalizeAgentRuntimeError("agent:resume", error)
-        await markRunFailed(threadId, runId, normalizedError)
+        if (runId) {
+          const normalizedError = normalizeAgentRuntimeError("agent:resume", error)
+          await markRunFailed(threadId, runId, normalizedError)
+          if (!isModelAuthenticationError(error)) {
+            console.error("[Agent] Resume error:", error)
+          }
+          sink.send({
+            type: "error",
+            ...buildIpcErrorEvent("agent:resume", normalizedError)
+          })
+          return
+        }
+
         if (!isModelAuthenticationError(error)) {
           console.error("[Agent] Resume error:", error)
         }
         sink.send({
           type: "error",
-          ...buildIpcErrorEvent("agent:resume", normalizedError)
+          ...buildIpcErrorEvent("agent:resume", error)
         })
       }
     } finally {
-      if (abortController.signal.aborted) {
+      if (abortController.signal.aborted && runId) {
         await markRunAborted(threadId, runId)
       }
-      this.activeRuns.delete(threadId)
+      if (this.activeRuns.get(threadId) === activeRun) {
+        this.activeRuns.delete(threadId)
+      }
+      lease.complete()
     }
   }
 
@@ -825,7 +908,9 @@ export class AgentService {
 
     activeRun.controller.abort()
     this.activeRuns.delete(threadId)
-    await markRunAborted(threadId, activeRun.runId)
+    if (activeRun.runId) {
+      await markRunAborted(threadId, activeRun.runId)
+    }
     return true
   }
 }

@@ -16,12 +16,16 @@ function isHighConfidenceCommandMatch(command: LauncherIndexedCommand, query: st
   }
   const normalizedTitle = normalizeLauncherCommandSearchText(command.title)
   const normalizedOwnerTitle = normalizeLauncherCommandSearchText(command.ownerTitle)
+  const normalizedKeywords = command.keywords.map(normalizeLauncherCommandSearchText)
 
   return (
     normalizedTitle === normalizedQuery ||
     normalizedTitle.startsWith(`${normalizedQuery} `) ||
     normalizedOwnerTitle === normalizedQuery ||
-    normalizedOwnerTitle.startsWith(`${normalizedQuery} `)
+    normalizedOwnerTitle.startsWith(`${normalizedQuery} `) ||
+    normalizedKeywords.some(
+      (keyword) => keyword === normalizedQuery || normalizedQuery.startsWith(`${keyword} `)
+    )
   )
 }
 
@@ -149,14 +153,18 @@ export function buildHighConfidenceUseWithCommandShellItems(params: {
   commands: LauncherIndexedCommand[]
   copy: AppCopy
   disabledCommandKeys?: readonly string[]
+  excludeCommandKeys?: readonly string[]
   query: string
 }): LauncherShellItem[] {
   const { enabledCommands } = splitLauncherUseWithCommands(
     params.commands,
     params.disabledCommandKeys ?? []
   )
-  const matchedCommands = enabledCommands.filter((command) =>
-    isHighConfidenceCommandMatch(command, params.query)
+  const excludedCommandKeys = new Set(params.excludeCommandKeys ?? [])
+  const matchedCommands = enabledCommands.filter(
+    (command) =>
+      !excludedCommandKeys.has(getLauncherCommandAddressKey(command.address)) &&
+      isHighConfidenceCommandMatch(command, params.query)
   )
 
   return buildLauncherUseWithCommandShellItems(params.copy, matchedCommands, params.query)

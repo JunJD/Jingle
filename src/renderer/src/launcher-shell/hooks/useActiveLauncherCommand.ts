@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { LauncherShellConfig } from "@shared/launcher"
 import type { LauncherCommandOwnerCapability } from "@shared/launcher-command-owner"
+import { resolveLocalizedText, type AppLocale } from "@shared/i18n"
 import { getLauncherCommandDefinition, getLauncherCommandOwnerId } from "../pages"
 import type {
   LauncherCommandAddress,
@@ -19,11 +20,16 @@ import {
 
 const EMPTY_COMMAND_PREFERENCES: Record<string, unknown> = {}
 
+function getNoViewCommandExecutionKey(route: LauncherRoute, routeKey: string): string {
+  return isLauncherCommandRoute(route) ? JSON.stringify([routeKey, route.seedQuery]) : routeKey
+}
+
 interface UseActiveLauncherCommandProps {
   closeActivePlugin: () => void
   fallbackViewportHeight: number
   hideLauncher: () => Promise<void>
   openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
+  locale: AppLocale
   route: LauncherRoute
   routeKey: string
   shellConfig: LauncherShellConfig
@@ -62,6 +68,7 @@ export function useActiveLauncherCommand(
     closeActivePlugin,
     fallbackViewportHeight,
     hideLauncher,
+    locale,
     openCommand,
     route,
     routeKey,
@@ -73,7 +80,7 @@ export function useActiveLauncherCommand(
       routeKey: "",
       value: null
     })
-  const lastExecutedNoViewRouteKeyRef = useRef<string | null>(null)
+  const lastExecutedNoViewCommandKeyRef = useRef<string | null>(null)
   const latestRouteKeyRef = useRef(routeKey)
   const activeCommandRecord = useMemo(() => {
     if (!isLauncherCommandRoute(route)) {
@@ -105,7 +112,7 @@ export function useActiveLauncherCommand(
       : null
   const activeCommandValidationError =
     activeCommandPreferences && activeCommand?.validateCommandPreferences
-      ? activeCommand.validateCommandPreferences(activeCommandPreferences)
+      ? activeCommand.validateCommandPreferences(activeCommandPreferences, locale)
       : null
   const activeCommandError = activeCommandPreferencesLoadError ?? activeCommandValidationError
   const activeManifestCommand =
@@ -130,8 +137,9 @@ export function useActiveLauncherCommand(
   const activeCommandClipboardEnabled = activeCommandCapabilities?.includes("clipboard") ?? false
   const activeCommandSurfaceEnabled = activeCommandCapabilities?.includes("surface") ?? false
   const activeCommandThreadsEnabled = activeCommandCapabilities?.includes("threads") ?? false
-  const activeCommandErrorTitle =
-    activeManifestCommand?.title ?? (isLauncherCommandRoute(route) ? route.commandName : "Command")
+  const activeCommandErrorTitle = isLauncherCommandRoute(route)
+    ? resolveLocalizedText(activeManifestCommand?.title, locale, route.commandName)
+    : "Command"
   const viewportHeight = !isLauncherCommandRoute(route)
     ? fallbackViewportHeight
     : (activeViewCommand?.getViewportHeight(shellConfig) ?? fallbackViewportHeight)
@@ -190,18 +198,23 @@ export function useActiveLauncherCommand(
 
   useEffect(() => {
     latestRouteKeyRef.current = routeKey
-  }, [routeKey])
+    if (!isLauncherCommandRoute(route) || !activeNoViewCommand) {
+      lastExecutedNoViewCommandKeyRef.current = null
+    }
+  }, [activeNoViewCommand, route, routeKey])
 
   useEffect(() => {
     if (!activeNoViewCommand || !activeCommandHostReady || !isLauncherCommandRoute(route)) {
       return
     }
 
-    if (lastExecutedNoViewRouteKeyRef.current === routeKey) {
+    const noViewCommandExecutionKey = getNoViewCommandExecutionKey(route, routeKey)
+
+    if (lastExecutedNoViewCommandKeyRef.current === noViewCommandExecutionKey) {
       return
     }
 
-    lastExecutedNoViewRouteKeyRef.current = routeKey
+    lastExecutedNoViewCommandKeyRef.current = noViewCommandExecutionKey
 
     let didNavigate = false
     const navigation = activeCommandNavigationEnabled
@@ -234,7 +247,11 @@ export function useActiveLauncherCommand(
         )
       })
       .finally(() => {
-        if (!didNavigate && latestRouteKeyRef.current === routeKey) {
+        if (
+          !didNavigate &&
+          latestRouteKeyRef.current === routeKey &&
+          lastExecutedNoViewCommandKeyRef.current === noViewCommandExecutionKey
+        ) {
           closeActivePlugin()
         }
       })

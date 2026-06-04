@@ -7,6 +7,7 @@ import type {
 } from "@shared/extension-sources"
 import type { NativeExtensionExecutionContext } from "@shared/native-extensions"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
+import { resolveLocalizedText } from "@shared/i18n"
 import { extensionToolCallUiSchema } from "@shared/tool-presentation"
 import { z } from "./tool-input-schema"
 import { ExtensionToolExecutor } from "../extension-tools/executor"
@@ -83,12 +84,20 @@ function buildLoadedExtensionToolsSection(bindings: ExtensionAgentToolBinding[])
     "Callable tools:",
     ...bindings.map((binding) =>
       [
-        `- ${binding.definition.name}: ${binding.display.description}`,
+        `- ${binding.definition.name}: ${binding.definition.description}`,
         `  Access: ${binding.definition.access}`,
         `  Input schema: ${formatToolSchema(binding)}`
       ].join("\n")
     )
   ].join("\n")
+}
+
+function getModelCapabilityTitle(resolvedCapability: ResolvedExtensionAiCapability): string {
+  return resolveLocalizedText(
+    resolvedCapability.capability.title,
+    "en-US",
+    resolvedCapability.extensionName
+  )
 }
 
 function buildLoadedCapabilityGuide(input: {
@@ -98,8 +107,8 @@ function buildLoadedCapabilityGuide(input: {
 }): string {
   const resolvedCapability = input.resolvedCapability
   const callableToolNames =
-    input.aiToolBindings?.map((binding) => binding.display.title) ??
-    resolvedCapability.toolExposures.map((toolExposure) => toolExposure.display.title)
+    input.aiToolBindings?.map((binding) => binding.definition.name) ??
+    resolvedCapability.toolExposures.map((toolExposure) => toolExposure.toolName)
   const callableStatus =
     resolvedCapability.authStatus === "connected" && callableToolNames.length > 0
       ? `Callable tools: ${callableToolNames.join(", ")}`
@@ -108,7 +117,7 @@ function buildLoadedCapabilityGuide(input: {
         : `Callable tools: none; auth status is ${resolvedCapability.authStatus}`
 
   return [
-    `Extension AI capability: ${resolvedCapability.capability.title}`,
+    `Extension AI capability: ${getModelCapabilityTitle(resolvedCapability)}`,
     `Extension name: ${resolvedCapability.extensionName}`,
     `Permission Mode: ${input.permissionMode ?? resolvedCapability.permissionMode}`,
     callableStatus,
@@ -169,7 +178,7 @@ export function buildExtensionInstructions(
     seenKeys.add(key)
     sections.push(
       [
-        `Extension AI capability: ${resolvedCapability.capability.title}`,
+        `Extension AI capability: ${getModelCapabilityTitle(resolvedCapability)}`,
         ...instructions.map((instruction) => `- ${instruction}`)
       ].join("\n")
     )
@@ -257,7 +266,7 @@ export function createExtensionAiMiddleware(options: CreateExtensionAiMiddleware
           .filter((binding) => binding.resolvedCapability.extensionName === input.extensionName)
 
         return [
-          `Extension already loaded: ${existingCapability.capability.title}`,
+          `Extension already loaded: ${getModelCapabilityTitle(existingCapability)}`,
           `Extension name: ${existingCapability.extensionName}`,
           buildLoadedCapabilityGuide({
             aiToolBindings: bindings,
@@ -292,7 +301,7 @@ export function createExtensionAiMiddleware(options: CreateExtensionAiMiddleware
         )
 
       return [
-        `Loaded extension: ${resolvedCapability.capability.title}`,
+        `Loaded extension: ${getModelCapabilityTitle(resolvedCapability)}`,
         `Extension name: ${resolvedCapability.extensionName}`,
         `Auth status: ${resolvedCapability.authStatus}`,
         `Enabled: ${resolvedCapability.enabled ? "yes" : "no"}`,

@@ -1,4 +1,5 @@
 import type { AppCopy } from "@/lib/i18n/messages"
+import type { AppLocale } from "@shared/i18n"
 import type { LauncherHistoryItem } from "@shared/launcher-history"
 import type { LocalStartItem } from "@shared/local-start"
 import type { LauncherSearchResult } from "@shared/launcher-search"
@@ -19,9 +20,7 @@ export {
 
 function formatQuicklinkSubtitle(copy: AppCopy, result: LauncherSearchResult): string {
   const subtitle = result.subtitle.trim()
-  const [extensionName, link] = subtitle.includes(" · ")
-    ? subtitle.split(" · ", 2)
-    : ["", subtitle]
+  const [extensionName, link] = subtitle.includes(" · ") ? subtitle.split(" · ", 2) : ["", subtitle]
 
   return [copy.launcher.resultKindQuicklink, extensionName, link].filter(Boolean).join(" · ")
 }
@@ -48,6 +47,7 @@ function createLauncherQuicklinkPresentation(params: {
 
 export function buildLauncherSearchShellItems(
   copy: AppCopy,
+  locale: AppLocale,
   searchResults: LauncherSearchResult[],
   options: { preview?: boolean } = {}
 ): LauncherShellItem[] {
@@ -63,7 +63,7 @@ export function buildLauncherSearchShellItems(
           kind: "extension-command"
         }
       : undefined
-    const indexedCommand = commandRef ? getLauncherIndexedCommand(commandRef) : null
+    const indexedCommand = commandRef ? getLauncherIndexedCommand(commandRef, locale) : null
 
     return {
       action: result.action,
@@ -84,24 +84,24 @@ export function buildLauncherSearchShellItems(
             indexedCommand
           })
         : extensionCommand
-        ? {
-            categoryLabel: copy.launcher.resultKindExtension,
-            icon: indexedCommand
-              ? getLauncherIndexedCommandIcon(indexedCommand)
-              : {
-                  extensionName: extensionCommand.extensionName,
-                  type: "extension"
-                },
-            listActionLabel: copy.launcher.openGeneric,
-            primaryActionLabel: copy.launcher.openGeneric,
-            tone: "neutral"
-          }
-        : createLauncherBuiltinResultPresentation({
-            availability,
-            copy,
-            iconDataUrl: result.iconDataUrl,
-            kind: result.kind
-          }),
+          ? {
+              categoryLabel: copy.launcher.resultKindExtension,
+              icon: indexedCommand
+                ? getLauncherIndexedCommandIcon(indexedCommand)
+                : {
+                    extensionName: extensionCommand.extensionName,
+                    type: "extension"
+                  },
+              listActionLabel: copy.launcher.openGeneric,
+              primaryActionLabel: copy.launcher.openGeneric,
+              tone: "neutral"
+            }
+          : createLauncherBuiltinResultPresentation({
+              availability,
+              copy,
+              iconDataUrl: result.iconDataUrl,
+              kind: result.kind
+            }),
       subtitle: isQuicklink ? formatQuicklinkSubtitle(copy, result) : result.subtitle,
       title: result.title,
       trailingLabel: isQuicklink ? copy.launcher.resultKindQuicklink : undefined

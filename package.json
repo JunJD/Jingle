@@ -41,7 +41,7 @@
     "doctor": "node .agents/skills/launcher-extension-guardrails/scripts/doctor-architecture.mjs",
     "check:guardrails": "node .agents/skills/launcher-extension-guardrails/scripts/check-guardrails.mjs",
     "check:extensions": "tsx --tsconfig tsconfig.node.json scripts/check-native-extensions.mjs",
-    "check:extension-migration": "tsx --tsconfig tsconfig.node.json --test tests/node/extension-migration-harness.test.ts tests/node/native-extension-shell-packages.test.ts tests/node/raycast-ai-migration-preview.test.ts",
+    "check:extension-migration": "tsx --tsconfig tests/node/tsconfig.json --test tests/node/extension-migration-harness.test.ts tests/node/native-extension-shell-packages.test.ts tests/node/raycast-ai-migration-preview.test.ts",
     "migrate:extension": "node scripts/migrate-extension.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "node scripts/run-prisma-openwork-db.mjs migrate dev",
@@ -49,10 +49,11 @@
     "prisma:migrate:reset": "node scripts/run-prisma-openwork-db.mjs migrate reset --force",
     "prisma:migrate:status": "node scripts/run-prisma-openwork-db.mjs migrate status",
     "prisma:studio": "node scripts/run-prisma-openwork-db.mjs studio",
-    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:node-tests": "tsc -p tests/node/tsconfig.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck:bdd": "tsc --noEmit -p tests/bdd/tsconfig.json",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run typecheck:bdd",
+    "typecheck": "npm run typecheck:node && npm run typecheck:node-tests && npm run typecheck:web && npm run typecheck:bdd",
     "start": "node scripts/run-with-dotenv.mjs production -- electron-vite preview",
     "dev": "node scripts/run-with-dotenv.mjs development -- electron-vite dev",
     "build:electron": "electron-vite build && npm run build:native-island",
@@ -71,8 +72,8 @@
     "test:bdd:smoke": "npm run build && cucumber-js --config tests/bdd/cucumber.config.cjs --tags @smoke",
     "test:bdd": "npm run build && npm run test:bdd:run",
     "build:native-island": "node scripts/build-native-island.mjs",
-    "test:node": "tsx --tsconfig tsconfig.node.json --test tests/node/*.test.ts",
-    "test:node:target": "tsx --tsconfig tsconfig.node.json --test"
+    "test:node": "tsx --tsconfig tests/node/tsconfig.json --test tests/node/*.test.ts",
+    "test:node:target": "tsx --tsconfig tests/node/tsconfig.json --test"
   },
   "dependencies": {
     "@ag-ui/core": "0.0.52",
