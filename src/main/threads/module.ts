@@ -1,5 +1,6 @@
 import type { IpcMain } from "electron"
 import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
+import { ThreadLifecycleGate } from "../agent/thread-lifecycle-gate"
 import { ArtifactsService } from "../artifacts/service"
 import { ModelProviderService } from "../model-provider/service"
 import { SettingsService } from "../settings/service"
@@ -14,7 +15,8 @@ export function registerThreadsModule(container: DependencyContainer): void {
         dependencyContainer.resolve(ArtifactsService),
         dependencyContainer.resolve(ModelProviderService),
         dependencyContainer.resolve(SettingsService),
-        dependencyContainer.resolve(WorkspaceService)
+        dependencyContainer.resolve(WorkspaceService),
+        dependencyContainer.resolve(ThreadLifecycleGate)
       )
     })
   })

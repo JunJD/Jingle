@@ -274,6 +274,125 @@ test("agent resume rejects workspace mismatch before mutating the run", async ()
   assert.equal(events[0].details?.some((detail) => detail.includes("fork_current_workspace")), true)
 })
 
+test("agent cancel covers invoke setup before a run id exists", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { AgentService } = await import("../../src/main/agent/service")
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+  const consoleLog = mock.method(console, "log", () => {})
+
+  const threadId = "thread-cancel-before-run"
+  await createThread(threadId, { metadata: { workspacePath: repoRoot } })
+
+  let releaseContextPack: () => void = () => {
+    throw new Error("Context pack build was not reached.")
+  }
+  const contextPackGate = new Promise<void>((resolve) => {
+    releaseContextPack = resolve
+  })
+  let contextPackStarted = false
+  const memoryService = {
+    buildContextPack: async () => {
+      contextPackStarted = true
+      await contextPackGate
+      return null
+    },
+    createContextSnapshot: () => null,
+    recordInclusions: async () => undefined
+  }
+  const lifecycleGate = new ThreadLifecycleGate()
+  const agentService = new AgentService(
+    memoryService as unknown as ConstructorParameters<typeof AgentService>[0],
+    lifecycleGate
+  )
+  const invoke = agentService.invoke(
+    {
+      message: {
+        content: "cancel before run id",
+        id: "message-cancel-before-run"
+      },
+      modelId: "bdd",
+      threadId
+    },
+    {
+      send: () => undefined
+    }
+  )
+
+  try {
+    while (!contextPackStarted) {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+
+    assert.equal(await agentService.cancel({ threadId }), true)
+    releaseContextPack()
+    await invoke
+
+    const runs = await getPrismaClient().run.findMany({ where: { threadId } })
+    assert.equal(runs.length, 0)
+  } finally {
+    consoleLog.mock.restore()
+  }
+})
+
+test("agent deletion gate rejects invoke while thread deletion is active", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { AgentService } = await import("../../src/main/agent/service")
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+  const consoleLog = mock.method(console, "log", () => {})
+
+  const threadId = "thread-deleting-rejects-invoke"
+  await createThread(threadId, { metadata: { workspacePath: repoRoot } })
+
+  let releaseDeletion: () => void = () => {
+    throw new Error("Deletion gate was not entered.")
+  }
+  const deletionGate = new Promise<void>((resolve) => {
+    releaseDeletion = resolve
+  })
+  const lifecycleGate = new ThreadLifecycleGate()
+  const agentService = new AgentService(undefined, lifecycleGate)
+  const events: Array<{ code?: string; type: string }> = []
+  let runAccepted = false
+
+  const deletion = lifecycleGate.withDeletion(threadId, async () => {
+    await deletionGate
+  })
+
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    await agentService.invoke(
+      {
+        message: {
+          content: "invoke while deleting",
+          id: "message-deleting-rejects-invoke"
+        },
+        modelId: "bdd",
+        threadId
+      },
+      {
+        send: (event) => {
+          events.push({ code: "code" in event ? event.code : undefined, type: event.type })
+        }
+      },
+      {
+        onRunAccepted: () => {
+          runAccepted = true
+        }
+      }
+    )
+
+    assert.deepEqual(events, [{ code: "CONFLICT", type: "error" }])
+    assert.equal(runAccepted, false)
+    const runs = await getPrismaClient().run.findMany({ where: { threadId } })
+    assert.equal(runs.length, 0)
+  } finally {
+    releaseDeletion()
+    await deletion
+    consoleLog.mock.restore()
+  }
+})
+
 test("run failure preserves interrupted status when pending HITL remains", async () => {
   const { createRun, createThread, getRun, getThread, upsertHitlRequest } = await loadDbModules()
   const { markRunFailed } = await import("../../src/main/agent/persistence")
@@ -1092,6 +1211,83 @@ test("thread-scoped checkpoint reads keep run ids out of conversation resume con
   assert.equal(latestForThread?.config.configurable?.run_id, undefined)
   assert.equal(firstRunScoped?.checkpoint.id, firstCheckpoint.id)
   assert.equal(firstRunScoped?.config.configurable?.run_id, firstRunId)
+})
+
+test("thread delete waits for active runtime setup before removing metadata", async () => {
+  const { createThread, getThread } = await loadDbModules()
+  const { AgentService } = await import("../../src/main/agent/service")
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+  const { ThreadsService } = await import("../../src/main/threads/service")
+  const { ArtifactsService } = await import("../../src/main/artifacts/service")
+  const consoleLog = mock.method(console, "log", () => {})
+
+  const threadId = "thread-delete-waits-for-runtime"
+  await createThread(threadId, { metadata: { workspacePath: repoRoot } })
+
+  let releaseContextPack: () => void = () => {
+    throw new Error("Context pack build was not reached.")
+  }
+  const contextPackGate = new Promise<void>((resolve) => {
+    releaseContextPack = resolve
+  })
+  let contextPackStarted = false
+  const memoryService = {
+    buildContextPack: async () => {
+      contextPackStarted = true
+      await contextPackGate
+      return null
+    },
+    createContextSnapshot: () => null,
+    recordInclusions: async () => undefined
+  }
+  const lifecycleGate = new ThreadLifecycleGate()
+  const agentService = new AgentService(
+    memoryService as unknown as ConstructorParameters<typeof AgentService>[0],
+    lifecycleGate
+  )
+  const service = new ThreadsService(
+    new ArtifactsService(),
+    { getDefaultModel: () => "openai:gpt-test" } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[1],
+    { getAgentConfig: () => ({ locale: "en_US" }) } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[2],
+    { resolveGlobalWorkspacePath: async () => repoRoot } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[3],
+    lifecycleGate
+  )
+
+  const invoke = agentService.invoke(
+    {
+      message: {
+        content: "delete while starting",
+        id: "message-delete-while-starting"
+      },
+      modelId: "bdd",
+      threadId
+    },
+    {
+      send: () => undefined
+    }
+  )
+
+  try {
+    while (!contextPackStarted) {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+
+    const deletion = service.delete(threadId)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    assert.notEqual(await getThread(threadId), null)
+
+    releaseContextPack()
+    await Promise.all([invoke, deletion])
+    assert.equal(await getThread(threadId), null)
+  } finally {
+    consoleLog.mock.restore()
+  }
 })
 
 test("cloneUntilMessage branches from the checkpoint that first contains the target message", async () => {
