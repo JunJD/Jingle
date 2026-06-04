@@ -116,6 +116,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     return (
       <div className="min-w-0">
         <AgentToolInline
+          active={toolState === "running"}
           data-tool-call-toggle={toolCall.name}
           meta={
             <>

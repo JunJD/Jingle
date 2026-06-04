@@ -28,7 +28,6 @@ export interface AppCopy {
     copyMessage: string
     agentTasks: string
     agentThought: string
-    agentThinking: string
     agentWorking: string
     executedSteps: (count: number) => string
     describeOutcome: string
@@ -257,7 +256,6 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       copyMessage: "复制消息",
       agentTasks: "Agent 任务",
       agentThought: "已思考",
-      agentThinking: "Agent 正在思考...",
       agentWorking: "正在工作",
       executedSteps: (count) => `已执行 ${count} 个步骤`,
       describeOutcome: "描述你想达成的结果。workspace 和 tools 会随后接上。",
@@ -504,7 +502,6 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       copyMessage: "Copy message",
       agentTasks: "Agent Tasks",
       agentThought: "Thought",
-      agentThinking: "Agent is thinking...",
       agentWorking: "Working",
       executedSteps: (count) => `${count} steps completed`,
       describeOutcome: "Describe the outcome you want. The workspace and tools will follow.",
@@ -517,10 +514,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       pendingMemoryAccept: "Save",
       pendingMemoryReject: "Ignore",
       pendingMemoryTitle: "Pending Memory",
-      includedMemoriesTitle: (count) =>
-        `${count} memory reference${count === 1 ? "" : "s"}`,
-      subagentReferencesTitle: (count) =>
-        `${count} subagent task${count === 1 ? "" : "s"}`,
+      includedMemoriesTitle: (count) => `${count} memory reference${count === 1 ? "" : "s"}`,
+      subagentReferencesTitle: (count) => `${count} subagent task${count === 1 ? "" : "s"}`,
       messagePlaceholder: "Message the agent...",
       newThreadEyebrow: "New Thread",
       selectWorkspace: "Select workspace",

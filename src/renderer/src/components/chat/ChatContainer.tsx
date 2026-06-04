@@ -1,12 +1,7 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react"
 import { AlertCircle, Brain, Folder, Send, Shield, Square, X } from "lucide-react"
 import type { VListHandle } from "virtua"
-import {
-  PromptInput,
-  PromptInputAction,
-  PromptInputTextarea,
-  ThinkingBar
-} from "@/components/agent-ui"
+import { PromptInput, PromptInputAction, PromptInputTextarea } from "@/components/agent-ui"
 import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { useAiInvocation } from "@/lib/ai-invocation"
 import { Messages } from "./Messages"
@@ -253,8 +248,6 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
       <div className="border-t border-border bg-background-elevated/60 px-[var(--ow-chat-thread-x)] py-[var(--ow-chat-footer-y)]">
         <form onSubmit={handleSubmit} className="mx-auto max-w-[var(--ow-chat-thread-max-width)]">
           <div className="flex flex-col gap-[var(--ow-gap-md)]">
-            {isBusy ? <ThinkingBar text={copy.chat.agentThinking} /> : null}
-
             {pendingApproval ? (
               <ComposerApprovalPrompt
                 key={pendingApproval.id}
