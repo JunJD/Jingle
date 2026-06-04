@@ -169,17 +169,6 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
     })
   }, [currentThreadId, reloadThread])
 
-  useEffect(() => {
-    const handleWindowFocus = (): void => {
-      void refreshHistoryThreadsAndReloadActive(reloadThread)
-    }
-
-    window.addEventListener("focus", handleWindowFocus)
-    return () => {
-      window.removeEventListener("focus", handleWindowFocus)
-    }
-  }, [reloadThread])
-
   if (isLoading) {
     return (
       <div
