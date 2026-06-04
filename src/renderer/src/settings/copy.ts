@@ -290,7 +290,7 @@ const zhCN: SettingsCopy = {
     editKey: "编辑密钥",
     modelsAvailable: (count) => `可用模型 ${count} 个`,
     sectionTitle: "模型",
-    secureStorageHint: "Provider secret 只写入系统安全存储，不再写入 ~/.openwork/.env。",
+    secureStorageHint: "Provider secret 写入 Jingle auth.json，不再写入 ~/.openwork/.env。",
     showModels: "查看模型",
     retryModels: "重试模型列表",
     modelsColumn: "模型",
@@ -482,7 +482,7 @@ const enUS: SettingsCopy = {
     modelsAvailable: (count) => `${count} models available`,
     sectionTitle: "Models",
     secureStorageHint:
-      "Provider secrets are stored in secure system storage and are no longer written to ~/.openwork/.env.",
+      "Provider secrets are stored in Jingle auth.json and are no longer written to ~/.openwork/.env.",
     showModels: "Show Models",
     retryModels: "Retry Models",
     modelsColumn: "Models",

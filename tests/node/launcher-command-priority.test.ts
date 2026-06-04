@@ -41,7 +41,7 @@ test("high confidence extension intents become the primary launcher result", () 
 test("exact extension command matches become the primary launcher result", () => {
   const surface = buildSurface("todo")
 
-  assert.equal(surface.items[0]?.title, "Todo List")
+  assert.equal(surface.items[0]?.title, "待办列表")
   assert.deepEqual(surface.items[0]?.commandRef, {
     commandName: "index",
     extensionName: "todo-list",

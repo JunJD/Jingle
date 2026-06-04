@@ -1,4 +1,5 @@
 import type { ClipboardPayloadKind } from "./clipboard"
+import type { LocalizedTextValue } from "./i18n"
 
 export type LauncherCommandOwnerCapability =
   | "clipboard"
@@ -14,13 +15,13 @@ export interface LauncherCommandOwnerClipboardManifest {
 }
 
 export interface LauncherCommandManifest<TCommandName extends string = string> {
-  description?: string
+  description?: LocalizedTextValue
   icon?: string
   iconName?: string
   keywords?: string[]
   mode: LauncherCommandMode
   name: TCommandName
-  title?: string
+  title?: LocalizedTextValue
 }
 
 export interface LauncherCommandOwnerManifest<
@@ -31,7 +32,7 @@ export interface LauncherCommandOwnerManifest<
   clipboard?: LauncherCommandOwnerClipboardManifest
   commands: Array<LauncherCommandManifest<TCommandName>>
   defaultCommandName: TCommandName
-  displayName: string
+  displayName: LocalizedTextValue
   icon?: string
   id: TOwnerId
   rpcMethods?: string[]

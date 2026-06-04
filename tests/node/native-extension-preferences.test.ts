@@ -60,9 +60,6 @@ function seedLegacyGitHubCommandToken(accessToken: string): void {
             }
           },
           extensionSecrets: {}
-        },
-        providerSecrets: {
-          providers: {}
         }
       },
       null,

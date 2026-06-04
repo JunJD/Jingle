@@ -1,5 +1,5 @@
 import type { AppCopy } from "@/lib/i18n/messages"
-import type { AppLocale } from "@shared/i18n"
+import { resolveLocalizedText, type AppLocale } from "@shared/i18n"
 import { AI_CHAT_COMMAND_NAME, AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { aiBuiltInCommandOwner } from "@ai-core/command"
 import { nativeLauncherCommandOwners } from "@extension-host/index"
@@ -105,7 +105,7 @@ export function getLauncherCommandOwnerId(address: LauncherCommandAddress): stri
 /**
  * 列出可供搜索和展示的全部 launcher 命令元数据。
  */
-export function listLauncherCommands(): LauncherIndexedCommand[] {
+export function listLauncherCommands(locale: AppLocale): LauncherIndexedCommand[] {
   return [
     ...builtInLauncherCommandOwners.flatMap((owner) =>
       owner.manifest.commands.map((command) => ({
@@ -113,12 +113,12 @@ export function listLauncherCommands(): LauncherIndexedCommand[] {
           builtInId: owner.manifest.id as LauncherBuiltInId,
           commandName: command.name
         }),
-        description: command.description ?? "",
+        description: resolveLocalizedText(command.description, locale),
         icon: command.icon,
         iconName: command.iconName,
         keywords: command.keywords ?? [],
-        ownerTitle: owner.manifest.displayName,
-        title: command.title ?? command.name
+        ownerTitle: resolveLocalizedText(owner.manifest.displayName, locale, owner.manifest.id),
+        title: resolveLocalizedText(command.title, locale, command.name)
       }))
     ),
     ...extensionLauncherCommandOwners.flatMap((owner) =>
@@ -127,23 +127,24 @@ export function listLauncherCommands(): LauncherIndexedCommand[] {
           commandName: command.name,
           extensionName: owner.manifest.id as LauncherExtensionName
         }),
-        description: command.description ?? "",
+        description: resolveLocalizedText(command.description, locale),
         icon: command.icon,
         iconName: command.iconName,
         keywords: command.keywords ?? [],
-        ownerTitle: owner.manifest.displayName,
-        title: command.title ?? command.name
+        ownerTitle: resolveLocalizedText(owner.manifest.displayName, locale, owner.manifest.id),
+        title: resolveLocalizedText(command.title, locale, command.name)
       }))
     )
   ]
 }
 
 export function getLauncherIndexedCommand(
-  address: LauncherCommandAddress
+  address: LauncherCommandAddress,
+  locale: AppLocale
 ): LauncherIndexedCommand | null {
   const commandKey = getLauncherCommandKey(address)
   return (
-    listLauncherCommands().find(
+    listLauncherCommands(locale).find(
       (command) => getLauncherCommandKey(command.address) === commandKey
     ) ?? null
   )

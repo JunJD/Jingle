@@ -164,8 +164,11 @@ export function useLauncherSearchPage(props: {
   const shellConfig: LauncherShellConfig = FALLBACK_SHELL_CONFIG
   const trimmedQuery = query.trim()
   const useWithCommands = useMemo(
-    () => listLauncherCommands().filter((command) => command.address.kind === "extension-command"),
-    []
+    () =>
+      listLauncherCommands(locale).filter(
+        (command) => command.address.kind === "extension-command"
+      ),
+    [locale]
   )
   const useWithCommandGroups = useMemo(
     () => splitLauncherUseWithCommands(useWithCommands, useWithDisabledCommandKeys),

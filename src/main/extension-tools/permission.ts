@@ -110,9 +110,10 @@ export function createDynamicExtensionToolApprovalPolicyProvider(input: {
       executionContext?.extensionPreferences ??
       input.getExtensionPreferences?.(binding.definition.extensionName) ??
       binding.resolvedCapability.publicConfig
+    const toolTitle = binding.display.title
     const confirmation = binding.definition.approval?.confirmation
       ? mapConfirmation({
-          fallbackTitle: binding.display.title,
+          fallbackTitle: toolTitle,
           value: await binding.definition.approval.confirmation(args, {
             access: binding.definition.access,
             agentToolName: binding.agentToolName,
@@ -125,7 +126,7 @@ export function createDynamicExtensionToolApprovalPolicyProvider(input: {
             runId: null,
             threadId: "",
             toolName: binding.definition.name,
-            toolTitle: binding.display.title,
+            toolTitle,
             workspacePath: ""
           })
         })
@@ -141,7 +142,7 @@ export function createDynamicExtensionToolApprovalPolicyProvider(input: {
         permissionMode: mode,
         reason: decision.reason,
         toolName: binding.agentToolName,
-        toolTitle: binding.display.title
+        toolTitle
       },
       args
     )

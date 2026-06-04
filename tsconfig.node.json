@@ -2,32 +2,19 @@
   "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
   "include": [
     "electron.vite.config.*",
-    "extensions/*/domain/**/*.ts",
-    "extensions/*/main/**/*.ts",
-    "extensions/*/main.ts",
-    "extensions/*/manifest.ts",
-    "extensions/*/identity.ts",
-    "extensions/*/src/contracts.ts",
-    "extensions/*/src/*.meta.ts",
-    "extensions/*/types.d.ts",
-    "src/extensions/index.ts",
-    "src/extensions/main.ts",
-    "src/extensions/*/main/**/*.ts",
-    "src/extensions/*/main.ts",
-    "src/extensions/*/manifest.ts",
-    "src/extensions/*/src/contracts.ts",
-    "src/extensions/*/src/*.meta.ts",
+    "extensions/**/*",
+    "src/extensions/**/*",
     "src/extension-runtime/**/*",
     "src/main/**/*",
     "packages/*/src/**/*",
     "src/plugins/**/*",
     "src/preload/**/*",
-    "src/shared/**/*",
-    "tests/node/**/*"
+    "src/shared/**/*"
   ],
   "compilerOptions": {
     "composite": true,
     "jsx": "react-jsx",
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig.node.tsbuildinfo",
     "baseUrl": ".",
     "paths": {
       "@/*": [
