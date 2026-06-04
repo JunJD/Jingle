@@ -188,6 +188,7 @@ export interface AppCopy {
     approve: string
     approveAndApply: string
     approveAndRun: string
+    appliedChanges: string
     changeCreate: string
     changeDelete: string
     changeModify: string
@@ -418,6 +419,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       approve: "批准",
       approveAndApply: "批准并修改",
       approveAndRun: "批准并执行",
+      appliedChanges: "已变更",
       changeCreate: "新增",
       changeDelete: "删除",
       changeModify: "修改",
@@ -667,6 +669,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       approve: "Approve",
       approveAndApply: "Approve & Apply",
       approveAndRun: "Approve & Run",
+      appliedChanges: "Changes applied",
       changeCreate: "Create",
       changeDelete: "Delete",
       changeModify: "Modify",
