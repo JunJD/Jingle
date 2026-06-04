@@ -1,7 +1,7 @@
 import { safeStorage } from "electron"
 import Store from "electron-store"
 import { homedir } from "os"
-import type { AgentConfig, ProviderId } from "./types"
+import type { AgentConfig } from "./types"
 import { getOpenworkDir } from "./storage"
 import { listNativeExtensionManifests } from "@extensions/index"
 import { DEFAULT_MODELS } from "@shared/models"
@@ -56,7 +56,6 @@ interface SettingsStoreShape {
 
 interface SecretsStoreShape {
   nativeExtensionSecrets: NativeExtensionSecretsState
-  providerSecrets: ProviderSecretsState
 }
 
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
@@ -75,18 +74,11 @@ interface NativeExtensionSecretsState {
   commandSecrets: Record<string, Record<string, string>>
 }
 
-interface ProviderSecretsState {
-  providers: Record<string, Record<string, string>>
-}
-
 const DEFAULT_NATIVE_EXTENSION_SECRETS: NativeExtensionSecretsState = {
   extensionSecrets: {},
   commandSecrets: {}
 }
 
-const DEFAULT_PROVIDER_SECRETS: ProviderSecretsState = {
-  providers: {}
-}
 const DEFAULT_WORKSPACE_PATH = homedir()
 
 const settingsStore = new Store<SettingsStoreShape>({
@@ -110,8 +102,7 @@ const secretsStore = new Store<SecretsStoreShape>({
   name: "secrets",
   cwd: getOpenworkDir(),
   defaults: {
-    nativeExtensionSecrets: DEFAULT_NATIVE_EXTENSION_SECRETS,
-    providerSecrets: DEFAULT_PROVIDER_SECRETS
+    nativeExtensionSecrets: DEFAULT_NATIVE_EXTENSION_SECRETS
   }
 })
 
@@ -218,18 +209,6 @@ function normalizeNativeExtensionSecretsState(value: unknown): NativeExtensionSe
   return {
     extensionSecrets: normalizeSecretRecordMap(raw.extensionSecrets),
     commandSecrets: normalizeSecretRecordMap(raw.commandSecrets)
-  }
-}
-
-function normalizeProviderSecretsState(value: unknown): ProviderSecretsState {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return DEFAULT_PROVIDER_SECRETS
-  }
-
-  const raw = value as Partial<ProviderSecretsState>
-
-  return {
-    providers: normalizeSecretRecordMap(raw.providers)
   }
 }
 
@@ -416,18 +395,6 @@ function getNativeExtensionSecretsState(): NativeExtensionSecretsState {
 
 function setNativeExtensionSecretsState(nextState: NativeExtensionSecretsState): void {
   secretsStore.set("nativeExtensionSecrets", nextState)
-}
-
-function getProviderSecretsState(): ProviderSecretsState {
-  const stored = secretsStore.get("providerSecrets", DEFAULT_PROVIDER_SECRETS) as
-    | ProviderSecretsState
-    | undefined
-
-  return normalizeProviderSecretsState(stored)
-}
-
-function setProviderSecretsState(nextState: ProviderSecretsState): void {
-  secretsStore.set("providerSecrets", nextState)
 }
 
 function getNativeExtensionSecretRecord(params: {
@@ -672,64 +639,6 @@ export function setOpenworkMemorySettings(
 
   settingsStore.set("openworkMemorySettings", nextSettings)
   return nextSettings
-}
-
-export function getProviderSecret(providerId: ProviderId, secretName: string): string | null {
-  const encryptedValue = getProviderSecretsState().providers[providerId]?.[secretName]
-  if (!encryptedValue) {
-    return null
-  }
-
-  return decryptSecretValue(encryptedValue)
-}
-
-export function setProviderSecret(
-  providerId: ProviderId,
-  secretName: string,
-  secretValue: string
-): void {
-  const state = getProviderSecretsState()
-  const providerSecrets = state.providers[providerId] ?? {}
-
-  setProviderSecretsState({
-    ...state,
-    providers: {
-      ...state.providers,
-      [providerId]: {
-        ...providerSecrets,
-        [secretName]: encryptSecretValue(secretValue)
-      }
-    }
-  })
-}
-
-export function deleteProviderSecret(providerId: ProviderId, secretName: string): void {
-  const state = getProviderSecretsState()
-  const providerSecrets = { ...(state.providers[providerId] ?? {}) }
-
-  if (!providerSecrets[secretName]) {
-    return
-  }
-
-  delete providerSecrets[secretName]
-
-  if (Object.keys(providerSecrets).length === 0) {
-    const nextProviders = { ...state.providers }
-    delete nextProviders[providerId]
-    setProviderSecretsState({
-      ...state,
-      providers: nextProviders
-    })
-    return
-  }
-
-  setProviderSecretsState({
-    ...state,
-    providers: {
-      ...state.providers,
-      [providerId]: providerSecrets
-    }
-  })
 }
 
 function getNativeExtensionPreferencesState(): NativeExtensionPreferencesState {
