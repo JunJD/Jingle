@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="560" viewBox="0 0 760 560">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#eef2f7"/>
+    </linearGradient>
+    <filter id="panelShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#64748b" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <rect width="760" height="560" fill="url(#page)"/>
+  <rect x="26" y="24" width="708" height="512" rx="28" fill="#ffffff" stroke="#dbe3ee"/>
+
+  <text x="56" y="68" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#0f172a">Install Jingle Dev Preview</text>
+  <text x="56" y="96" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="13" fill="#64748b">Drag Jingle to Applications. If macOS blocks the first launch, approve this trusted test build in Privacy &amp; Security.</text>
+
+  <circle cx="180" cy="128" r="14" fill="#0f172a"/>
+  <text x="180" y="133" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#ffffff">1</text>
+  <path d="M306 190H454" stroke="#0f172a" stroke-width="3" stroke-linecap="round"/>
+  <path d="M442 178L454 190L442 202" fill="none" stroke="#0f172a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="380" y="168" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#0f172a">drag to install</text>
+
+  <circle cx="580" cy="128" r="14" fill="#0f172a"/>
+  <text x="580" y="133" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#ffffff">2</text>
+  <rect x="56" y="322" width="648" height="170" rx="20" fill="#f8fafc" stroke="#d7e0ea"/>
+  <text x="82" y="358" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0f172a">If macOS says Apple cannot verify Jingle</text>
+
+  <circle cx="94" cy="392" r="13" fill="#0f172a"/>
+  <text x="94" y="397" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#ffffff">1</text>
+  <text x="120" y="397" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="13" fill="#334155">Click Done in the warning.</text>
+
+  <circle cx="94" cy="432" r="13" fill="#0f172a"/>
+  <text x="94" y="437" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#ffffff">2</text>
+  <text x="120" y="437" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="13" fill="#334155">Open System Settings &gt; Privacy &amp; Security.</text>
+
+  <circle cx="94" cy="472" r="13" fill="#0f172a"/>
+  <text x="94" y="477" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#ffffff">3</text>
+  <text x="120" y="477" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="13" fill="#334155">Click Open Anyway for Jingle, then confirm Open.</text>
+
+  <g filter="url(#panelShadow)">
+    <rect x="460" y="358" width="196" height="98" rx="18" fill="#ffffff" stroke="#dbe3ee"/>
+    <circle cx="488" cy="386" r="7" fill="#ff5f57"/>
+    <circle cx="510" cy="386" r="7" fill="#ffbd2e"/>
+    <circle cx="532" cy="386" r="7" fill="#28c840"/>
+    <text x="488" y="418" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#111827">Privacy &amp; Security</text>
+    <rect x="488" y="430" width="132" height="24" rx="12" fill="#0a84ff"/>
+    <text x="554" y="446" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff">Open Anyway</text>
+  </g>
+
+  <text x="380" y="522" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Helvetica, Arial, sans-serif" font-size="11" fill="#94a3b8">Unsigned development builds are for invited testers only.</text>
+</svg>
