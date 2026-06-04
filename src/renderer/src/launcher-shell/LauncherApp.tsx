@@ -48,7 +48,7 @@ interface LauncherThreadSubmitInput {
 }
 
 export default function LauncherApp(): React.JSX.Element {
-  const { copy } = useI18n()
+  const { copy, locale } = useI18n()
   const inputNeedsWorkspaceMessage = copy.chat.inputNeedsWorkspace
   const clipboard = useLauncherClipboard()
   const threadContext = useThreadContext()
@@ -127,6 +127,7 @@ export default function LauncherApp(): React.JSX.Element {
     closeActivePlugin,
     fallbackViewportHeight: searchPage.viewportHeight,
     hideLauncher,
+    locale,
     openCommand,
     route,
     routeKey,

@@ -14,11 +14,13 @@ import type {
   NativeExtensionPackageManifest,
   NativeExtensionResolvedConnection
 } from "@shared/native-extensions"
+import { DEFAULT_APP_LOCALE, resolveLocalizedText, type AppLocale } from "@shared/i18n"
 import { nativeExtensionManifests } from "./index"
 
 type ResolveNativeExtensionAiCapabilityInput = {
   getConnection?: (extensionName: string) => NativeExtensionResolvedConnection
   getPreferences?: (extensionName: string) => Record<string, unknown>
+  locale?: AppLocale
   permissionMode?: PermissionModeName
   platform?: string
   preferencesByExtension?: Record<string, Record<string, unknown>>
@@ -282,15 +284,17 @@ function toAgentToolNameSegment(value: string): string {
 
 function toToolExposure(input: {
   capability: ExtensionAiCapability
+  locale: AppLocale
   toolName: string
 }): ExtensionAiCapabilityTool {
   const display = input.capability.toolDisplays?.[input.toolName]
+  const title = resolveLocalizedText(display?.title, input.locale, input.toolName)
 
   return {
     agentToolName: toAgentToolName(input),
     display: {
-      description: display?.description ?? input.toolName,
-      title: display?.title ?? input.toolName
+      description: resolveLocalizedText(display?.description, input.locale, title),
+      title
     },
     toolName: input.toolName
   }
@@ -316,11 +320,13 @@ function resolveEntryCapability(
   const enabled = platformSupported
   const enabledToolNames =
     enabled && authStatus === "connected" ? [...entry.capability.toolNames] : []
+  const locale = input.locale ?? DEFAULT_APP_LOCALE
 
   return {
     authStatus,
     capability: entry.capability,
-    displayName: entry.capability.title,
+    capabilityTitle: resolveLocalizedText(entry.capability.title, locale),
+    displayName: resolveLocalizedText(entry.capability.title, locale),
     enabled,
     enabledToolNames,
     extensionName: entry.manifest.name,
@@ -332,6 +338,7 @@ function resolveEntryCapability(
     toolExposures: enabledToolNames.map((toolName) =>
       toToolExposure({
         capability: entry.capability,
+        locale,
         toolName
       })
     )
@@ -340,7 +347,8 @@ function resolveEntryCapability(
 
 function resolveEntryCapabilityFromSnapshot(
   entry: NativeExtensionAiCapabilityRegistryEntry,
-  snapshot: RunExtensionAiCapabilitySnapshot
+  snapshot: RunExtensionAiCapabilitySnapshot,
+  locale: AppLocale = DEFAULT_APP_LOCALE
 ): ResolvedExtensionAiCapability {
   const enabledToolNames = snapshot.enabledToolNamesSnapshot.filter((toolName) =>
     entry.capability.toolNames.includes(toolName)
@@ -349,6 +357,7 @@ function resolveEntryCapabilityFromSnapshot(
   return {
     authStatus: snapshot.authStateSnapshot,
     capability: entry.capability,
+    capabilityTitle: resolveLocalizedText(entry.capability.title, locale),
     displayName: snapshot.displayNameSnapshot,
     enabled: snapshot.enabledSnapshot,
     enabledToolNames,
@@ -361,6 +370,7 @@ function resolveEntryCapabilityFromSnapshot(
         ? enabledToolNames.map((toolName) =>
             toToolExposure({
               capability: entry.capability,
+              locale,
               toolName
             })
           )
@@ -407,20 +417,27 @@ export function resolveNativeExtensionAiCapabilityForExtensionName(
 
 export function buildNativeExtensionAiCapabilityCatalogItem(input: {
   capability: ExtensionAiCapability
+  locale?: AppLocale
   manifest: NativeExtensionPackageManifest
 }): ExtensionAiCapabilityCatalogItem {
   const supportedPlatforms = getCapabilitySupportedPlatforms(input.manifest, input.capability)
+  const locale = input.locale ?? DEFAULT_APP_LOCALE
+  const title = resolveLocalizedText(input.capability.title, locale)
   const catalogItem: ExtensionAiCapabilityCatalogItem = {
-    description: input.capability.description ?? input.manifest.description ?? input.capability.title,
+    description: resolveLocalizedText(
+      input.capability.description ?? input.manifest.description,
+      locale,
+      title
+    ),
     extensionName: input.manifest.name,
     sourceId: input.capability.id,
     supportedPlatforms: supportedPlatforms ? [...supportedPlatforms] : undefined,
-    title: input.capability.title
+    title
   }
 
   if (input.capability.mention) {
     catalogItem.mention = {
-      label: input.capability.mention.label ?? input.capability.title,
+      label: resolveLocalizedText(input.capability.mention.label, locale, title),
       value: input.capability.mention.value ?? input.manifest.name
     }
   }
@@ -429,25 +446,22 @@ export function buildNativeExtensionAiCapabilityCatalogItem(input: {
 }
 
 export function listNativeExtensionAiCapabilityCatalog(
-  platform?: string
+  platform?: string,
+  locale: AppLocale = DEFAULT_APP_LOCALE
 ): ExtensionAiCapabilityCatalogItem[] {
   return nativeExtensionAiCapabilityRegistry.flatMap((entry) => {
     const supportedPlatforms = getCapabilitySupportedPlatforms(entry.manifest, entry.capability)
-    if (
-      platform &&
-      !supportsNativeExtensionPlatformList(supportedPlatforms, platform)
-    ) {
+    if (platform && !supportsNativeExtensionPlatformList(supportedPlatforms, platform)) {
       return []
     }
 
-    return [
-      buildNativeExtensionAiCapabilityCatalogItem(entry)
-    ]
+    return [buildNativeExtensionAiCapabilityCatalogItem({ ...entry, locale })]
   })
 }
 
 export function hydrateNativeExtensionAiCapabilities(
-  snapshots: RunExtensionAiCapabilitySnapshot[]
+  snapshots: RunExtensionAiCapabilitySnapshot[],
+  locale: AppLocale = DEFAULT_APP_LOCALE
 ): ResolvedExtensionAiCapability[] {
   return snapshots.flatMap((snapshot) => {
     const entry = aiCapabilityRegistryByKey.get(
@@ -464,6 +478,6 @@ export function hydrateNativeExtensionAiCapabilities(
       return []
     }
 
-    return [resolveEntryCapabilityFromSnapshot(entry, snapshot)]
+    return [resolveEntryCapabilityFromSnapshot(entry, snapshot, locale)]
   })
 }

@@ -20,6 +20,7 @@ import {
   toInstalledNativeExtensionSettingsSchema,
   toLauncherCommandOwnerManifest
 } from "../../src/shared/native-extensions"
+import { resolveLocalizedText } from "../../src/shared/i18n"
 
 async function readExtensionPackageJson(extensionName: string): Promise<{
   dependencies?: Record<string, string>
@@ -43,7 +44,10 @@ test("native extension registry is internally consistent", () => {
 })
 
 test("Notion is the only production Notion extension entrypoint", () => {
-  assert.equal(nativeExtensionManifests.some((manifest) => manifest.name === "notion"), true)
+  assert.equal(
+    nativeExtensionManifests.some((manifest) => manifest.name === "notion"),
+    true
+  )
   assert.equal(
     nativeExtensionManifests.some((manifest) => manifest.name === "notion-generated"),
     false
@@ -326,18 +330,24 @@ test("launcher command owner lets commands inherit package icons unless they dec
   )
 
   assert.equal(githubOwner.icon, "assets/icon.svg")
-  assert.deepEqual(
-    githubOwner.commands.find((command) => command.name === "my-issues"),
-    {
-      description: "List GitHub issues created by you, assigned to you, or mentioning you.",
-      icon: "assets/icon.svg",
-      iconName: "github",
-      keywords: ["github", "issue", "issues", "pull request", "pr", "代码审查"],
-      mode: "view",
-      name: "my-issues",
-      title: "My Issues"
-    }
+  const myIssuesCommand = githubOwner.commands.find((command) => command.name === "my-issues")
+  assert.equal(
+    resolveLocalizedText(myIssuesCommand?.description, "en-US"),
+    "List GitHub issues created by you, assigned to you, or mentioning you."
   )
+  assert.equal(resolveLocalizedText(myIssuesCommand?.title, "en-US"), "My Issues")
+  assert.equal(resolveLocalizedText(myIssuesCommand?.title, "zh-CN"), "我的 Issues")
+  assert.equal(myIssuesCommand?.icon, "assets/icon.svg")
+  assert.equal(myIssuesCommand?.iconName, "github")
+  assert.deepEqual(myIssuesCommand?.keywords, [
+    "github",
+    "issue",
+    "issues",
+    "pull request",
+    "pr",
+    "代码审查"
+  ])
+  assert.equal(myIssuesCommand?.mode, "view")
   assert.equal(
     githubOwner.commands.find((command) => command.name === "notifications")?.icon,
     "assets/notifications.svg"

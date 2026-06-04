@@ -30,7 +30,8 @@ export type {
   NativeExtensionRuntimeCommandManifest,
   NativeExtensionRuntimeShellManifest,
   NativeExtensionService,
-  NativeExtensionSupportedPlatform
+  NativeExtensionSupportedPlatform,
+  NativeExtensionToolDisplayManifest
 } from "./shared/native-extensions"
 
 export type { IpcErrorCode, IpcErrorPayload } from "./shared/ipc-error"
@@ -67,3 +68,6 @@ export type {
   NativeExtensionRuntimeCommandMetadata,
   NativeExtensionRuntimePackageMetadata
 } from "./extensions/runtime-metadata-contract"
+
+export { defineLocalizedText, resolveLocalizedText } from "./shared/i18n"
+export type { AppLocale, LocalizedText, LocalizedTextValue } from "./shared/i18n"

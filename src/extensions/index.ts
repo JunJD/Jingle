@@ -1,5 +1,6 @@
 import { supportsNativeExtensionPlatform } from "@shared/native-extensions"
 import type { ExtensionQuicklinkAlias } from "@shared/extension-quicklinks"
+import { DEFAULT_APP_LOCALE, resolveLocalizedText } from "@shared/i18n"
 import { appleRemindersManifest } from "../../extensions/apple-reminders/manifest"
 import { githubManifest } from "../../extensions/github/manifest"
 import { notionManifest } from "../../extensions/notion/manifest"
@@ -12,7 +13,11 @@ export const nativeExtensionManifests = [
   notionManifest,
   todoListManifest,
   translateManifest
-].sort((left, right) => left.title.localeCompare(right.title))
+].sort((left, right) =>
+  resolveLocalizedText(left.title, DEFAULT_APP_LOCALE).localeCompare(
+    resolveLocalizedText(right.title, DEFAULT_APP_LOCALE)
+  )
+)
 
 export function listNativeExtensionManifests(platform: string) {
   return nativeExtensionManifests.filter((manifest) =>

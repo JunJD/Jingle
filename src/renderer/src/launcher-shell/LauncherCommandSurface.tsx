@@ -195,7 +195,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
       >
         <Suspense fallback={<div aria-busy="true" className="h-full w-full" />}>
           <ActivePluginComponent
-            key={`${route.kind}:${route.extensionName}:${route.commandName}:${route.initialAction}:${route.seedQuery}:${JSON.stringify(route.launchProps ?? {})}`}
+            key={`${route.kind}:${route.extensionName}:${route.commandName}:${route.initialAction}:${JSON.stringify(route.launchProps ?? {})}`}
           />
         </Suspense>
       </NativeExtensionHostProvider>
@@ -250,7 +250,7 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
       >
         <Suspense fallback={<div aria-busy="true" className="h-full w-full" />}>
           <ActivePluginComponent
-            key={`${route.kind}:${route.commandName}:${route.initialAction}:${route.seedQuery}`}
+            key={`${route.kind}:${route.commandName}:${route.initialAction}`}
           />
         </Suspense>
       </AiCoreHostProvider>

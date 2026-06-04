@@ -3,6 +3,7 @@ import {
   listMissingRequiredNativeExtensionPreferences,
   toLauncherCommandOwnerManifest
 } from "@shared/native-extensions"
+import { resolveLocalizedText } from "@shared/i18n"
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { listUserVisibleNativeExtensionManifests } from "@extensions/index"
 import { nativeExtensionRuntimeMetadata } from "@extensions/runtime-metadata"
@@ -82,17 +83,21 @@ export const nativeLauncherCommandOwners = getSupportedNativeExtensionManifests(
         ?.commands.find((candidate) => candidate.name === command.name)?.search
       const loadCommandPreferences = () =>
         window.api.nativeExtensions.getCommandPreferences(extension.name, command.name)
-      const validateCommandPreferences = (preferences: Record<string, unknown>) => {
+      const validateCommandPreferences = (
+        preferences: Record<string, unknown>,
+        locale: Parameters<typeof resolveLocalizedText>[1]
+      ) => {
         const missingPreferences = listMissingRequiredNativeExtensionPreferences(
           command.preferences ?? [],
-          preferences
+          preferences,
+          locale
         )
 
         if (missingPreferences.length === 0) {
           return null
         }
 
-        return `Open Settings and configure ${missingPreferences.join(", ")} to run ${command.title ?? command.name}.`
+        return `Open Settings and configure ${missingPreferences.join(", ")} to run ${resolveLocalizedText(command.title, locale, command.name)}.`
       }
 
       if (command.mode === "view") {

@@ -18,6 +18,7 @@ import {
   nativeExtensionSourceMentions
 } from "../../src/extensions/source-mentions"
 import type { ComposerMessageRef } from "../../src/shared/message-content"
+import { resolveLocalizedText } from "../../src/shared/i18n"
 
 const appleRemindersRef: ComposerMessageRef = {
   extensionName: "apple-reminders",
@@ -164,7 +165,7 @@ test("Apple Reminders live AI capability is mentionable on macOS and exposes too
     appleRemindersManifest.aiCapability?.toolNames
   )
   assert.equal(darwinCapability?.capability.id, "appleReminders")
-  assert.equal(darwinCapability?.capability.title, "Apple Reminders")
+  assert.equal(resolveLocalizedText(darwinCapability?.capability.title, "en-US"), "Apple Reminders")
   assert.match(darwinCapability?.capability.guide ?? "", /local Reminders database/)
 
   const [linuxCapability] = resolveNativeExtensionAiCapabilitiesForRefs([appleRemindersRef], {
@@ -188,14 +189,6 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
     })),
     [
       {
-        extensionName: "apple-reminders",
-        icon: "assets/icon.png",
-        label: "Apple Reminders",
-        sourceId: "appleReminders",
-        supportedPlatforms: ["darwin"],
-        value: "apple-reminders"
-      },
-      {
         extensionName: "github",
         icon: "assets/icon.svg",
         label: "GitHub",
@@ -210,16 +203,35 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
         sourceId: "notion",
         supportedPlatforms: undefined,
         value: "notion"
+      },
+      {
+        extensionName: "apple-reminders",
+        icon: "assets/icon.png",
+        label: "提醒事项",
+        sourceId: "appleReminders",
+        supportedPlatforms: ["darwin"],
+        value: "apple-reminders"
       }
     ]
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("darwin").map((mention) => mention.sourceId),
-    ["appleReminders", "github", "notion"]
+    ["github", "notion", "appleReminders"]
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("linux").map((mention) => mention.sourceId),
     ["github", "notion"]
+  )
+  assert.deepEqual(
+    listNativeExtensionSourceMentions("darwin", "zh-CN").map((mention) => ({
+      label: mention.label,
+      sourceId: mention.sourceId
+    })),
+    [
+      { label: "GitHub", sourceId: "github" },
+      { label: "Notion", sourceId: "notion" },
+      { label: "提醒事项", sourceId: "appleReminders" }
+    ]
   )
 })
 
@@ -308,15 +320,57 @@ test("GitHub connected connection state exposes the current manifest tool names"
     capability?.toolExposures.map((tool) => tool.toolName),
     capability?.capability.toolNames
   )
+  const createIssueExposure = capability?.toolExposures.find(
+    (tool) => tool.toolName === "createIssue"
+  )
+  assert.deepEqual(createIssueExposure?.display, {
+    description: "在仓库中创建 GitHub Issue。",
+    title: "创建 Issue"
+  })
   assert.deepEqual(capability?.publicConfig, {
     apiBaseUrl: "https://github.example.test/api/v3"
+  })
+})
+
+test("extension AI capability display resolves in the requested locale", () => {
+  const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
+    [
+      {
+        extensionName: "github",
+        name: "GitHub",
+        sourceId: "github",
+        type: "extension-source"
+      }
+    ],
+    {
+      getConnection: (extensionName) => ({
+        connectionId: "default",
+        extensionName,
+        missingSecretNames: [],
+        provider: "github",
+        publicConfig: {
+          apiBaseUrl: "https://github.example.test/api/v3"
+        },
+        status: "connected"
+      }),
+      locale: "zh-CN"
+    }
+  )
+
+  assert.equal(capability?.displayName, "GitHub")
+  const createIssueExposure = capability?.toolExposures.find(
+    (tool) => tool.toolName === "createIssue"
+  )
+  assert.deepEqual(createIssueExposure?.display, {
+    description: "在仓库中创建 GitHub Issue。",
+    title: "创建 Issue"
   })
 })
 
 test("extension AI capability catalog does not read preferences", () => {
   assert.deepEqual(
     listNativeExtensionAiCapabilityCatalog("darwin").map((item) => item.extensionName),
-    ["apple-reminders", "github", "notion"]
+    ["github", "notion", "apple-reminders"]
   )
 })
 

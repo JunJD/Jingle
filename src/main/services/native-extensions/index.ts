@@ -5,6 +5,7 @@ import {
   toInstalledNativeExtensionSettingsSchema,
   toLauncherCommandOwnerManifest
 } from "@shared/native-extensions"
+import { DEFAULT_APP_LOCALE, resolveLocalizedText } from "@shared/i18n"
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { listUserVisibleNativeExtensionManifests } from "@extensions/index"
 import { nativeExtensionMainDefinitions } from "@extensions/main"
@@ -23,7 +24,11 @@ const nativeExtensionDefinitions: NativeExtensionRuntimeDefinition[] =
       manifest,
       service: nativeExtensionMainDefinitions.get(manifest.name)?.service
     }))
-    .sort((left, right) => left.manifest.title.localeCompare(right.manifest.title))
+    .sort((left, right) =>
+      resolveLocalizedText(left.manifest.title, DEFAULT_APP_LOCALE).localeCompare(
+        resolveLocalizedText(right.manifest.title, DEFAULT_APP_LOCALE)
+      )
+    )
 
 const nativeExtensionDefinitionMap = new Map(
   nativeExtensionDefinitions.map((definition) => [definition.manifest.name, definition] as const)

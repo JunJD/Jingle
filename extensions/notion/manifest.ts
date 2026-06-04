@@ -1,4 +1,4 @@
-import { defineNativeExtensionManifest } from "@openwork/extension-api"
+import { defineLocalizedText as l, defineNativeExtensionManifest } from "@openwork/extension-api"
 import { viewport as createDatabasePageViewport } from "./src/create-database-page.meta"
 import { viewport as searchPageViewport } from "./src/search-page.meta"
 import { viewport as quickCaptureViewport } from "./src/quick-capture.meta"
@@ -28,58 +28,76 @@ export const notionManifest = defineNativeExtensionManifest({
     publicPreferenceNames: ["apiBaseUrl"],
     requiredPreferenceNames: ["accessToken"],
     mention: {
-      label: NOTION_EXTENSION_TITLE,
+      label: l(NOTION_EXTENSION_TITLE, "Notion"),
       value: NOTION_EXTENSION_ID
     },
-    title: NOTION_EXTENSION_TITLE,
+    title: l(NOTION_EXTENSION_TITLE, "Notion"),
     toolDisplays: {
       searchPages: {
-        description: "Search Notion pages or data sources shared with the connected integration.",
-        title: "Search Pages"
+        description: l(
+          "Search Notion pages or data sources shared with the connected integration.",
+          "搜索已授权集成共享的 Notion 页面或数据源。"
+        ),
+        title: l("Search Pages", "搜索页面")
       },
       getPage: {
-        description: "Get the Markdown content of a Notion page.",
-        title: "Get Page"
+        description: l("Get the Markdown content of a Notion page.", "获取 Notion 页面的 Markdown 内容。"),
+        title: l("Get Page", "获取页面")
       },
       retrievePage: {
-        description: "Retrieve a Notion page's metadata and properties.",
-        title: "Retrieve Page"
+        description: l("Retrieve a Notion page's metadata and properties.", "获取 Notion 页面的元数据和属性。"),
+        title: l("Retrieve Page", "获取页面详情")
       },
       getPageMarkdown: {
-        description: "Retrieve a Notion page's child blocks as Markdown.",
-        title: "Get Page Markdown"
+        description: l(
+          "Retrieve a Notion page's child blocks as Markdown.",
+          "将 Notion 页面的子块获取为 Markdown。"
+        ),
+        title: l("Get Page Markdown", "获取页面 Markdown")
       },
       listBlockChildren: {
-        description: "Retrieve child blocks for a Notion page or block.",
-        title: "List Block Children"
+        description: l("Retrieve child blocks for a Notion page or block.", "获取 Notion 页面或块的子块。"),
+        title: l("List Block Children", "列出子块")
       },
       addToPage: {
-        description: "Append Markdown content to a Notion page.",
-        title: "Add to Page"
+        description: l("Append Markdown content to a Notion page.", "向 Notion 页面追加 Markdown 内容。"),
+        title: l("Add to Page", "追加到页面")
       },
       createPage: {
-        description: "Create a Notion page in a data source.",
-        title: "Create Page"
+        description: l("Create a Notion page in a data source.", "在数据源中创建 Notion 页面。"),
+        title: l("Create Page", "创建页面")
       },
       getDatabases: {
-        description: "List Notion data sources shared with the connected integration.",
-        title: "Get Databases"
+        description: l(
+          "List Notion data sources shared with the connected integration.",
+          "列出已授权集成共享的 Notion 数据源。"
+        ),
+        title: l("Get Databases", "获取数据源")
       },
       retrieveDataSource: {
-        description: "Retrieve a Notion data source schema shared with the connected integration.",
-        title: "Retrieve Data Source"
+        description: l(
+          "Retrieve a Notion data source schema shared with the connected integration.",
+          "获取已授权集成共享的 Notion 数据源结构。"
+        ),
+        title: l("Retrieve Data Source", "获取数据源详情")
       },
       searchDatabase: {
-        description: "Search pages in a Notion data source shared with the connected integration.",
-        title: "Search Database"
+        description: l(
+          "Search pages in a Notion data source shared with the connected integration.",
+          "搜索已授权集成共享的数据源中的页面。"
+        ),
+        title: l("Search Database", "搜索数据库")
       },
       queryDataSource: {
-        description: "Query a Notion data source shared with the connected integration.",
-        title: "Query Data Source"
+        description: l(
+          "Query a Notion data source shared with the connected integration.",
+          "查询已授权集成共享的 Notion 数据源。"
+        ),
+        title: l("Query Data Source", "查询数据源")
       },
       createDatabasePage: {
-        description: "Create a Notion page in a data source.",
-        title: "Create Database Page"
+        description: l("Create a Notion page in a data source.", "在数据源中创建 Notion 页面。"),
+        title: l("Create Database Page", "创建数据库页面")
       }
     },
     toolNames: [
@@ -104,13 +122,15 @@ export const notionManifest = defineNativeExtensionManifest({
         {
           name: "text",
           type: "text",
-          title: "Text",
-          placeholder: "Markdown content",
+          title: l("Text", "文本"),
+          placeholder: l("Markdown content", "Markdown 内容"),
           required: false
         }
       ],
-      description:
+      description: l(
         "Append Markdown content to a Notion page shared with the connected integration.",
+        "向已授权集成共享的 Notion 页面追加 Markdown 内容。"
+      ),
       keywords: ["notion", "append", "add", "markdown", "page"],
       mode: "view",
       name: NOTION_COMMAND_NAMES.addTextToPage,
@@ -118,11 +138,14 @@ export const notionManifest = defineNativeExtensionManifest({
       runtime: {
         viewport: addTextToPageViewport
       },
-      title: "Add Text to Page"
+      title: l("Add Text to Page", "向页面添加文本")
     },
     {
       arguments: [],
-      description: "Create a Notion page in a data source shared with the connected integration.",
+      description: l(
+        "Create a Notion page in a data source shared with the connected integration.",
+        "在已授权集成共享的数据源中创建 Notion 页面。"
+      ),
       keywords: ["notion", "create", "database", "data source", "page", "markdown"],
       mode: "view",
       name: NOTION_COMMAND_NAMES.createDatabasePage,
@@ -130,43 +153,49 @@ export const notionManifest = defineNativeExtensionManifest({
         {
           name: "closeAfterCreate",
           type: "checkbox",
-          label: "Close Openwork after creating the page",
+          label: l("Close Openwork after creating the page", "创建页面后关闭 Openwork"),
           required: false,
           default: false,
-          title: "Close After Create",
-          description: "Hide Openwork after creating the page."
+          title: l("Close After Create", "创建后关闭"),
+          description: l("Hide Openwork after creating the page.", "创建页面后隐藏 Openwork。")
         },
         {
           name: "useClipboard",
           type: "dropdown",
-          title: "Use Clipboard to Autofill",
+          title: l("Use Clipboard to Autofill", "使用剪贴板自动填充"),
           required: false,
           data: [
             {
-              title: "Don't use Clipboard",
+              title: l("Don't use Clipboard", "不使用剪贴板"),
               value: ""
             },
             {
-              title: "Title",
+              title: l("Title", "标题"),
               value: "title"
             },
             {
-              title: "Content",
+              title: l("Content", "内容"),
               value: "content"
             }
           ],
           default: "",
-          description: "Use the current clipboard text to prefill title or content."
+          description: l(
+            "Use the current clipboard text to prefill title or content.",
+            "使用当前剪贴板文本预填标题或内容。"
+          )
         }
       ],
       runtime: {
         viewport: createDatabasePageViewport
       },
-      title: "Create Page"
+      title: l("Create Page", "创建页面")
     },
     {
       arguments: [],
-      description: "Capture a web URL into a Notion page or data source.",
+      description: l(
+        "Capture a web URL into a Notion page or data source.",
+        "把网页 URL 捕捉到 Notion 页面或数据源。"
+      ),
       keywords: ["notion", "quick", "capture", "url", "web", "summary"],
       mode: "view",
       name: NOTION_COMMAND_NAMES.quickCapture,
@@ -174,11 +203,14 @@ export const notionManifest = defineNativeExtensionManifest({
       runtime: {
         viewport: quickCaptureViewport
       },
-      title: "Quick Capture"
+      title: l("Quick Capture", "快速捕捉")
     },
     {
       arguments: [],
-      description: "Search Notion pages and data sources shared with the connected integration.",
+      description: l(
+        "Search Notion pages and data sources shared with the connected integration.",
+        "搜索已授权集成共享的 Notion 页面和数据源。"
+      ),
       keywords: ["notion", "page", "search", "docs", "database"],
       mode: "view",
       name: NOTION_COMMAND_NAMES.searchPage,
@@ -186,26 +218,29 @@ export const notionManifest = defineNativeExtensionManifest({
         {
           name: "primaryAction",
           type: "dropdown",
-          title: "Primary Action",
+          title: l("Primary Action", "主要操作"),
           required: false,
           default: "notion",
           data: [
             {
-              title: "Open in Notion",
+              title: l("Open in Notion", "在 Notion 中打开"),
               value: "notion"
             },
             {
-              title: "Preview in Openwork",
+              title: l("Preview in Openwork", "在 Openwork 中预览"),
               value: "openwork"
             }
           ],
-          description: "Choose the primary action for Notion page results."
+          description: l(
+            "Choose the primary action for Notion page results.",
+            "选择 Notion 页面结果的主要操作。"
+          )
         }
       ],
       runtime: {
         viewport: searchPageViewport
       },
-      title: "Search Pages"
+      title: l("Search Pages", "搜索页面")
     }
   ],
   connection: {
@@ -218,9 +253,12 @@ export const notionManifest = defineNativeExtensionManifest({
     connectGuide:
       "Create a Notion internal integration token, share pages or data sources with that integration, and save the token in Openwork Settings.",
     publicPreferenceNames: ["apiBaseUrl"],
-    title: NOTION_EXTENSION_TITLE
+    title: l(NOTION_EXTENSION_TITLE, "Notion")
   },
-  description: "The fastest way to search, create and update Notion pages.",
+  description: l(
+    "The fastest way to search, create and update Notion pages.",
+    "快速搜索、创建和更新 Notion 页面。"
+  ),
   icon: "assets/notion-logo.png",
   iconName: "notion",
   name: NOTION_EXTENSION_ID,
@@ -228,40 +266,51 @@ export const notionManifest = defineNativeExtensionManifest({
     {
       name: "accessToken",
       type: "password",
-      title: "Notion Integration Token",
+      title: l("Notion Integration Token", "Notion 集成 Token"),
       required: false,
-      description:
+      description: l(
         "Internal integration token used to read Notion content shared with the integration.",
+        "用于读取共享给集成的 Notion 内容的内部集成 token。"
+      ),
       placeholder: "secret_..."
     },
     {
       name: "apiBaseUrl",
       type: "text",
-      title: "Notion API Base URL",
+      title: l("Notion API Base URL", "Notion API 基础 URL"),
       required: false,
       default: "https://api.notion.com/v1",
-      description: "Override this only if you proxy the Notion API.",
+      description: l(
+        "Override this only if you proxy the Notion API.",
+        "仅在代理 Notion API 时覆盖此项。"
+      ),
       placeholder: "https://api.notion.com/v1"
     },
     {
       name: "open_in",
       type: "appPicker",
-      title: "Open Page In",
+      title: l("Open Page In", "页面打开位置"),
       required: false,
       default: {
         name: "Notion"
       },
-      description: "Choose where Notion pages open from runtime commands.",
-      placeholder: "Notion"
+      description: l(
+        "Choose where Notion pages open from runtime commands.",
+        "选择 runtime 命令打开 Notion 页面的应用。"
+      ),
+      placeholder: l("Notion", "Notion")
     },
     {
       name: "properties_in_page_previews",
       type: "checkbox",
-      title: "Properties in Page Previews",
+      title: l("Properties in Page Previews", "页面预览显示属性"),
       required: false,
       default: false,
-      description: "Show known Notion page properties above page previews.",
-      label: "Show properties in page previews."
+      description: l(
+        "Show known Notion page properties above page previews.",
+        "在页面预览上方显示已知 Notion 页面属性。"
+      ),
+      label: l("Show properties in page previews.", "在页面预览中显示属性。")
     }
   ],
   runtimeCapabilities: [
@@ -279,5 +328,5 @@ export const notionManifest = defineNativeExtensionManifest({
   runtimeShell: {
     allowedUrlSchemes: ["notion"]
   },
-  title: NOTION_EXTENSION_TITLE
+  title: l(NOTION_EXTENSION_TITLE, "Notion")
 })

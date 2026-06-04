@@ -244,6 +244,7 @@ test("broadened cached search results stay visible as non-executable preview row
 
   const [searchItem] = buildLauncherSearchShellItems(
     appCopy["zh-CN"],
+    "zh-CN",
     searchState.resultsBySource.files,
     { preview: true }
   )
@@ -425,7 +426,7 @@ test("exact extension command matches become the primary launcher result", () =>
     windowMode: "default"
   })
 
-  assert.equal(surface.items[0]?.title, "Todo List")
+  assert.equal(surface.items[0]?.title, "待办列表")
   assert.deepEqual(surface.items[0]?.commandRef, {
     commandName: "index",
     extensionName: "todo-list",
@@ -722,7 +723,7 @@ test("quicklink search results can open extension commands with launch context",
     }
   })
 
-  const items = buildLauncherSearchShellItems(appCopy["zh-CN"], [
+  const items = buildLauncherSearchShellItems(appCopy["zh-CN"], "zh-CN", [
     createSearchResult({
       action: {
         executor: "internal",
@@ -781,8 +782,12 @@ test("generic quicklink search results use quicklink icon and locale type labels
       title: "Spec page"
     })
 
-  const zhItems = buildLauncherSearchShellItems(appCopy["zh-CN"], [createGenericQuicklinkResult()])
-  const enItems = buildLauncherSearchShellItems(appCopy["en-US"], [createGenericQuicklinkResult()])
+  const zhItems = buildLauncherSearchShellItems(appCopy["zh-CN"], "zh-CN", [
+    createGenericQuicklinkResult()
+  ])
+  const enItems = buildLauncherSearchShellItems(appCopy["en-US"], "en-US", [
+    createGenericQuicklinkResult()
+  ])
 
   assert.deepEqual(zhItems[0]?.presentation.icon, {
     name: "bookmark",
@@ -829,7 +834,7 @@ test("legacy generated Notion quicklink URLs open the formal Notion command", ()
     }
   })
 
-  const items = buildLauncherSearchShellItems(appCopy["zh-CN"], [
+  const items = buildLauncherSearchShellItems(appCopy["zh-CN"], "zh-CN", [
     createSearchResult({
       action: {
         executor: "internal",
@@ -862,7 +867,7 @@ test("legacy generated Notion quicklink URLs open the formal Notion command", ()
 })
 
 test("retired generated Notion command search results do not resolve formal package icons", () => {
-  const items = buildLauncherSearchShellItems(appCopy["zh-CN"], [
+  const items = buildLauncherSearchShellItems(appCopy["zh-CN"], "zh-CN", [
     createSearchResult({
       action: {
         executor: "internal",

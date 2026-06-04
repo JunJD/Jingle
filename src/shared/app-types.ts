@@ -1,8 +1,9 @@
 import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
-import type { AppLocale } from "./i18n"
+import type { AppLocale, LocalizedText } from "./i18n"
 import type { HITLRequest } from "./hitl"
 import type { ArtifactRecord } from "./artifacts"
 import type { ExtensionToolCallPresentation, ToolCallDisplay } from "./tool-presentation"
+export type { LocalizedText } from "./i18n"
 export type { HITLDecision, HITLRequest } from "./hitl"
 
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
@@ -59,11 +60,6 @@ export type ProviderModelListStatus = "active" | "error" | "no-configure"
 export type CustomConfigurationStatus = "active" | "no-configure"
 
 export type CredentialFormType = "secret-input" | "text-input"
-
-export interface LocalizedText {
-  en_US: string
-  zh_Hans: string
-}
 
 export interface CredentialFormSchema {
   label: LocalizedText

@@ -51,10 +51,10 @@ function getVisibleLineCount(value: string): number {
 }
 
 export function LauncherAiPage(): React.JSX.Element {
-  const { copy } = useI18n()
+  const { copy, locale } = useI18n()
   const sourceMentions = useMemo(
-    () => listNativeExtensionSourceMentions(window.electron.process.platform),
-    []
+    () => listNativeExtensionSourceMentions(window.electron.process.platform, locale),
+    [locale]
   )
   const attachmentDraft = useAiAttachments()
   const navigation = useAiCoreNavigation()

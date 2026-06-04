@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react"
 import { Search, Settings2 } from "lucide-react"
 import type { ModelConfig } from "@shared/app-types"
-import type { AppLocale } from "@shared/i18n"
+import { resolveLocalizedText, type AppLocale, type LocalizedTextValue } from "@shared/i18n"
 import type {
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionPreferenceSchema
@@ -24,7 +24,25 @@ import {
   SettingsTextInput
 } from "./settings-ui"
 
-function formatCommandMode(mode: string): string {
+function formatCommandMode(mode: string, locale: AppLocale): string {
+  if (locale === "zh-CN") {
+    if (mode === "no-view") {
+      return "无界面"
+    }
+
+    if (mode === "menu-bar") {
+      return "菜单栏"
+    }
+
+    if (mode === "background") {
+      return "后台"
+    }
+
+    if (mode === "view") {
+      return "视图"
+    }
+  }
+
   if (mode === "no-view") {
     return "No View"
   }
@@ -36,12 +54,28 @@ function formatCommandMode(mode: string): string {
   return mode.charAt(0).toUpperCase() + mode.slice(1)
 }
 
+function resolveExtensionText(
+  text: LocalizedTextValue | null | undefined,
+  locale: AppLocale,
+  fallback = ""
+): string {
+  return resolveLocalizedText(text, locale, fallback)
+}
+
+function resolvePreferenceLabel(
+  preference: NativeExtensionPreferenceSchema,
+  locale: AppLocale
+): string {
+  return resolveExtensionText(preference.title ?? preference.label, locale, preference.name)
+}
+
 function PreferenceField(props: {
   disabledLabel: string
   enabledLabel: string
   modelOptions: Array<{ id: string; label: string }>
   onChange: (nextValue: unknown) => void
   preference: NativeExtensionPreferenceSchema
+  locale: AppLocale
   hideSecretLabel: string
   showSecretLabel: string
   useEnvironmentFallbackLabel: string
@@ -51,6 +85,7 @@ function PreferenceField(props: {
     disabledLabel,
     enabledLabel,
     hideSecretLabel,
+    locale,
     modelOptions,
     onChange,
     preference,
@@ -58,14 +93,12 @@ function PreferenceField(props: {
     useEnvironmentFallbackLabel,
     value
   } = props
-  const fieldLabel = preference.title || preference.label || preference.name
+  const fieldLabel = resolvePreferenceLabel(preference, locale)
+  const description = resolveExtensionText(preference.description, locale)
+  const placeholder = resolveExtensionText(preference.placeholder, locale)
 
   return (
-    <SettingsField
-      label={fieldLabel}
-      description={preference.description}
-      required={preference.required}
-    >
+    <SettingsField label={fieldLabel} description={description} required={preference.required}>
       {preference.type === "checkbox" ? (
         <div className="flex min-h-[var(--ow-settings-control-h)] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)] [font-size:var(--ow-settings-control-font)] text-foreground">
           <span className="min-w-0 truncate text-muted-foreground">
@@ -81,8 +114,11 @@ function PreferenceField(props: {
           }}
         >
           {(preference.data ?? []).map((entry) => (
-            <option key={entry.value ?? entry.title ?? ""} value={entry.value ?? ""}>
-              {entry.title ?? entry.value ?? ""}
+            <option
+              key={entry.value ?? resolveExtensionText(entry.title, locale)}
+              value={entry.value ?? ""}
+            >
+              {resolveExtensionText(entry.title, locale, entry.value ?? "")}
             </option>
           ))}
         </SettingsSelect>
@@ -104,7 +140,7 @@ function PreferenceField(props: {
         <SettingsTextInput
           type="text"
           value={getNativeExtensionApplicationPreferenceLabel(value)}
-          placeholder={preference.placeholder ?? "Application name"}
+          placeholder={placeholder || (locale === "zh-CN" ? "应用名称" : "Application name")}
           onChange={(event) => {
             onChange(normalizeNativeExtensionApplicationPreferenceValue(event.target.value))
           }}
@@ -113,7 +149,7 @@ function PreferenceField(props: {
       ) : preference.type === "password" ? (
         <SettingsPasswordInput
           value={String(value ?? "")}
-          placeholder={preference.placeholder}
+          placeholder={placeholder}
           showLabel={showSecretLabel}
           hideLabel={hideSecretLabel}
           onChange={(event) => {
@@ -125,7 +161,7 @@ function PreferenceField(props: {
         <SettingsTextInput
           type="text"
           value={String(value ?? "")}
-          placeholder={preference.placeholder}
+          placeholder={placeholder}
           onChange={(event) => {
             onChange(event.target.value)
           }}
@@ -143,6 +179,7 @@ function PreferenceSection(props: {
   modelOptions: Array<{ id: string; label: string }>
   onChange: (preferenceName: string, nextValue: unknown) => void
   preferences: NativeExtensionPreferenceSchema[]
+  locale: AppLocale
   hideSecretLabel: string
   showSecretLabel: string
   title?: string
@@ -154,6 +191,7 @@ function PreferenceSection(props: {
     emptyLabel,
     enabledLabel,
     hideSecretLabel,
+    locale,
     modelOptions,
     onChange,
     preferences,
@@ -185,6 +223,7 @@ function PreferenceSection(props: {
               enabledLabel={enabledLabel}
               hideSecretLabel={hideSecretLabel}
               modelOptions={modelOptions}
+              locale={locale}
               onChange={(nextValue) => {
                 onChange(preference.name, nextValue)
               }}
@@ -255,6 +294,7 @@ function CommandCard(props: {
   enabledLabel: string
   hideSecretLabel: string
   labelMode: string
+  locale: AppLocale
   modelOptions: Array<{ id: string; label: string }>
   onChange: (preferenceName: string, nextValue: unknown) => void
   preferences: NativeExtensionPreferenceSchema[]
@@ -280,6 +320,7 @@ function CommandCard(props: {
     icon,
     iconName,
     labelMode,
+    locale,
     modelOptions,
     mode,
     onChange,
@@ -314,7 +355,7 @@ function CommandCard(props: {
           <div className="[font-size:var(--ow-font-body)] text-muted-foreground">{description}</div>
         </div>
         <div className="rounded-full border border-border bg-background px-[var(--ow-space-2-5)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] uppercase tracking-[0.08em] text-muted-foreground">
-          {labelMode}: {formatCommandMode(mode)}
+          {labelMode}: {formatCommandMode(mode, locale)}
         </div>
       </div>
       <div className="mt-[var(--ow-space-3)]">
@@ -324,6 +365,7 @@ function CommandCard(props: {
           enabledLabel={enabledLabel}
           hideSecretLabel={hideSecretLabel}
           modelOptions={modelOptions}
+          locale={locale}
           onChange={onChange}
           preferences={preferences}
           showSecretLabel={showSecretLabel}
@@ -368,7 +410,9 @@ export function ExtensionsTab(props: {
         return
       }
       const sortedSchemas = [...nextSchemas].sort((left, right) =>
-        left.title.localeCompare(right.title)
+        resolveExtensionText(left.title, locale, left.extName).localeCompare(
+          resolveExtensionText(right.title, locale, right.extName)
+        )
       )
       setSchemas(sortedSchemas)
       setSelectedExtName((current) => {
@@ -419,7 +463,7 @@ export function ExtensionsTab(props: {
       controller.abort()
       window.removeEventListener("focus", handleFocus)
     }
-  }, [focusedExtensionName])
+  }, [focusedExtensionName, locale])
 
   const modelOptions = useMemo(
     () =>
@@ -441,32 +485,33 @@ export function ExtensionsTab(props: {
     return schemas.filter((schema) => {
       const extensionPreferenceHaystack = schema.preferences
         .flatMap((preference) => [
-          preference.title,
+          resolvePreferenceLabel(preference, locale),
           preference.name,
-          preference.description,
-          preference.label
+          resolveExtensionText(preference.description, locale)
         ])
         .join(" ")
         .toLowerCase()
       const commandHaystack = schema.commands
         .flatMap((command) => [
-          command.title,
+          resolveExtensionText(command.title, locale, command.name),
           command.name,
-          command.description,
+          resolveExtensionText(command.description, locale),
           ...(command.keywords ?? [])
         ])
         .join(" ")
         .toLowerCase()
+      const title = resolveExtensionText(schema.title, locale, schema.extName)
+      const description = resolveExtensionText(schema.description, locale)
 
       return (
-        schema.title.toLowerCase().includes(normalizedQuery) ||
+        title.toLowerCase().includes(normalizedQuery) ||
         schema.extName.toLowerCase().includes(normalizedQuery) ||
-        schema.description.toLowerCase().includes(normalizedQuery) ||
+        description.toLowerCase().includes(normalizedQuery) ||
         extensionPreferenceHaystack.includes(normalizedQuery) ||
         commandHaystack.includes(normalizedQuery)
       )
     })
-  }, [schemas, search])
+  }, [locale, schemas, search])
 
   const selectedSchema =
     filteredSchemas.find((schema) => schema.extName === selectedExtName) ??
@@ -569,6 +614,8 @@ export function ExtensionsTab(props: {
           ) : (
             filteredSchemas.map((schema) => {
               const isSelected = selectedSchema?.extName === schema.extName
+              const title = resolveExtensionText(schema.title, locale, schema.extName)
+              const description = resolveExtensionText(schema.description, locale, schema.extName)
 
               return (
                 <button
@@ -592,11 +639,11 @@ export function ExtensionsTab(props: {
                           iconName={schema.iconName}
                         />
                         <span className="truncate [font-size:var(--ow-font-label)] font-semibold text-foreground">
-                          {schema.title}
+                          {title}
                         </span>
                       </div>
                       <div className="line-clamp-2 [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
-                        {schema.description || schema.extName}
+                        {description}
                       </div>
                     </div>
                     <div className="shrink-0 rounded-full border border-border bg-background px-[var(--ow-space-2)] py-0.5 [font-size:var(--ow-font-caption)] uppercase tracking-[0.08em] text-muted-foreground">
@@ -620,11 +667,11 @@ export function ExtensionsTab(props: {
                 <div className="flex items-center gap-[var(--ow-gap-sm)]">
                   <Settings2 className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
                   <h2 className="[font-size:var(--ow-settings-title-size)] font-semibold text-foreground">
-                    {selectedSchema.title}
+                    {resolveExtensionText(selectedSchema.title, locale, selectedSchema.extName)}
                   </h2>
                 </div>
                 <div className="[font-size:var(--ow-settings-description-size)] leading-[var(--ow-line-body)] text-muted-foreground">
-                  {selectedSchema.description || selectedSchema.extName}
+                  {resolveExtensionText(selectedSchema.description, locale, selectedSchema.extName)}
                 </div>
               </div>
             </div>
@@ -639,6 +686,7 @@ export function ExtensionsTab(props: {
                     emptyLabel={copy.extensions.noPreferences}
                     enabledLabel={copy.extensions.enabled}
                     hideSecretLabel={copy.common.hideSecret}
+                    locale={locale}
                     modelOptions={modelOptions}
                     onChange={(preferenceName, nextValue) => {
                       void updateExtensionPreference(
@@ -661,7 +709,7 @@ export function ExtensionsTab(props: {
                   commandName={command.name}
                   key={`${selectedSchema.extName}:${command.name}`}
                   commandNameFocus={focusedCommandName}
-                  description={command.description || command.name}
+                  description={resolveExtensionText(command.description, locale, command.name)}
                   disabledLabel={copy.extensions.disabled}
                   emptyLabel={copy.extensions.noPreferences}
                   enabledLabel={copy.extensions.enabled}
@@ -670,6 +718,7 @@ export function ExtensionsTab(props: {
                   icon={command.icon}
                   iconName={command.iconName}
                   labelMode={copy.extensions.mode}
+                  locale={locale}
                   mode={command.mode}
                   modelOptions={modelOptions}
                   onChange={(preferenceName, nextValue) => {
@@ -683,7 +732,7 @@ export function ExtensionsTab(props: {
                   }}
                   preferences={command.preferences}
                   showSecretLabel={copy.common.showSecret}
-                  title={command.title}
+                  title={resolveExtensionText(command.title, locale, command.name)}
                   useEnvironmentFallbackLabel={copy.general.useEnvironmentFallback}
                   values={commandRecords[`${selectedSchema.extName}:${command.name}`] ?? {}}
                 />

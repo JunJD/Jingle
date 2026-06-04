@@ -5,6 +5,7 @@ import type {
   ResolvedExtensionAiCapability
 } from "@shared/extension-sources"
 import { assertExtensionAgentToolName } from "@shared/extension-sources"
+import { resolveLocalizedText } from "@shared/i18n"
 import {
   extensionToolCallPresentationSchema,
   extensionToolCallUiSchema,
@@ -116,7 +117,9 @@ export class ExtensionToolRegistry {
         const presentation = extensionToolCallPresentationSchema.parse({
           access: definition.access,
           capabilityDisplayName: resolvedCapability.displayName,
-          capabilityTitle: capability.title,
+          capabilityTitle:
+            resolvedCapability.capabilityTitle ??
+            resolveLocalizedText(capability.title, "en-US", resolvedCapability.displayName),
           kind: "extension"
         })
         extensionToolCallUiSchema.parse({

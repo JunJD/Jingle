@@ -49,12 +49,13 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const { messageRefs = [], onDidInvoke } = options
   const { copy } = useI18n()
   const host = useAiCoreHost()
+  const [initialSeedQuery] = useState(host.seedQuery)
   const hasRunInitialActionRef = useRef(false)
   const [inputStatus, setInputStatus] = useState<LauncherInputStatus>("idle")
   const [threadActionError, setThreadActionError] = useState<string | null>(null)
   const threadNavigation = useLauncherAiThreadNavigation({
     initialAction: host.initialAction,
-    seedQuery: host.seedQuery
+    seedQuery: initialSeedQuery
   })
   const threadId = threadNavigation.threadId
   const draftTarget = threadNavigation.target?.kind === "draft" ? threadNavigation.target : null
@@ -79,7 +80,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
         threadId: createdThread.threadId
       }
     },
-    initialInput: host.seedQuery,
+    initialInput: initialSeedQuery,
     threadId
   })
   const query = invocation.input
@@ -95,9 +96,9 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const initialMessageInput = useMemo(
     () => ({
       refs: [...messageRefs],
-      text: host.seedQuery
+      text: initialSeedQuery
     }),
-    [host.seedQuery, messageRefs]
+    [initialSeedQuery, messageRefs]
   )
 
   const runPrimaryAction = useCallback(
