@@ -277,20 +277,15 @@ export function useLauncherSearchPage(props: {
     }
   }, [refreshIdleState])
 
-  useEffect(() => {
-    if (!trimmedQuery) {
-      invalidateSearchRequests()
-      return
-    }
-
-    const debounceTimer = window.setTimeout(() => {
+  const refreshSearchResults = useCallback(
+    (searchQuery: string): void => {
       const requestId = beginSearchRequest()
 
       void settleLauncherSearchResponses(
         LAUNCHER_SEARCH_SOURCES.map(async (source) => {
           const response = await window.api.launcher.search({
             limit: MAX_LAUNCHER_SEARCH_RESULTS,
-            query: trimmedQuery,
+            query: searchQuery,
             sources: [source]
           })
           return response.results
@@ -299,18 +294,42 @@ export function useLauncherSearchPage(props: {
       ).then((responses) => {
         applySearchResultsBySource(
           requestId,
-          trimmedQuery,
+          searchQuery,
           groupLauncherSearchResultsBySource(
             responses.flatMap((response) => (response.status === "fulfilled" ? response.value : []))
           )
         )
       })
+    },
+    [applySearchResultsBySource, beginSearchRequest]
+  )
+
+  useEffect(() => {
+    if (!trimmedQuery) {
+      invalidateSearchRequests()
+      return
+    }
+
+    const debounceTimer = window.setTimeout(() => {
+      refreshSearchResults(trimmedQuery)
     }, 100)
 
     return () => {
       window.clearTimeout(debounceTimer)
     }
-  }, [applySearchResultsBySource, beginSearchRequest, invalidateSearchRequests, trimmedQuery])
+  }, [invalidateSearchRequests, refreshSearchResults, trimmedQuery])
+
+  useEffect(() => {
+    const cleanupIndexUpdated = window.api.launcher.onSearchIndexUpdated(() => {
+      if (trimmedQuery) {
+        refreshSearchResults(trimmedQuery)
+      }
+    })
+
+    return () => {
+      cleanupIndexUpdated()
+    }
+  }, [refreshSearchResults, trimmedQuery])
 
   const executeItem = useCallback(
     (index: number): void => {

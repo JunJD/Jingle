@@ -35,5 +35,15 @@ export const launcherApi = {
     return () => {
       ipcRenderer.removeListener("launcher:shown", handler)
     }
+  },
+  onSearchIndexUpdated: (callback: () => void): (() => void) => {
+    const handler = (): void => {
+      callback()
+    }
+
+    ipcRenderer.on("launcher:search-index-updated", handler)
+    return () => {
+      ipcRenderer.removeListener("launcher:search-index-updated", handler)
+    }
   }
 }

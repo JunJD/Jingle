@@ -1,5 +1,8 @@
 import type { LauncherSearchRequest, LauncherSearchResponse } from "@shared/launcher-search"
-import { applicationsLauncherSearchProvider } from "./providers/applications"
+import {
+  applicationsLauncherSearchProvider,
+  startApplicationIndexRefreshWatcher
+} from "./providers/applications"
 import { browserHistoryLauncherSearchProvider } from "./providers/browser-history"
 import { filesLauncherSearchProvider } from "./providers/files"
 import { quicklinksLauncherSearchProvider } from "./providers/quicklinks"
@@ -20,6 +23,7 @@ const searchResponseCache = new Map<
   { expiresAt: number; response: LauncherSearchResponse }
 >()
 const inflightSearches = new Map<string, Promise<LauncherSearchResponse>>()
+let searchCacheGeneration = 0
 
 function dedupeSearchResults<T extends { result: { id: string; source: string } }>(
   entries: T[]
@@ -75,6 +79,25 @@ export async function warmLauncherSearchProviders(): Promise<void> {
   )
 }
 
+export function invalidateLauncherSearch(): void {
+  searchCacheGeneration += 1
+  searchResponseCache.clear()
+  inflightSearches.clear()
+
+  for (const provider of providers) {
+    provider.invalidate?.()
+  }
+}
+
+export function startLauncherSearchIndexRefresh(
+  params: { onRefresh?: () => void } = {}
+): () => void {
+  return startApplicationIndexRefreshWatcher(() => {
+    invalidateLauncherSearch()
+    params.onRefresh?.()
+  })
+}
+
 export async function searchLauncher(
   request: LauncherSearchRequest
 ): Promise<LauncherSearchResponse> {
@@ -92,6 +115,7 @@ export async function searchLauncher(
   if (inflightSearch) {
     return inflightSearch
   }
+  const cacheGeneration = searchCacheGeneration
 
   const searchPromise = (async (): Promise<LauncherSearchResponse> => {
     const selectedProviders = getSelectedProviders(normalizedRequest)
@@ -157,12 +181,16 @@ export async function searchLauncher(
 
   try {
     const response = await searchPromise
-    searchResponseCache.set(cacheKey, {
-      expiresAt: Date.now() + LAUNCHER_SEARCH_CACHE_TTL_MS,
-      response
-    })
+    if (searchCacheGeneration === cacheGeneration) {
+      searchResponseCache.set(cacheKey, {
+        expiresAt: Date.now() + LAUNCHER_SEARCH_CACHE_TTL_MS,
+        response
+      })
+    }
     return response
   } finally {
-    inflightSearches.delete(cacheKey)
+    if (inflightSearches.get(cacheKey) === searchPromise) {
+      inflightSearches.delete(cacheKey)
+    }
   }
 }

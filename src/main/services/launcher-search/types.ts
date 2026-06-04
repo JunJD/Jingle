@@ -11,5 +11,6 @@ export interface LauncherSearchProviderResponse {
 export interface LauncherSearchProvider {
   source: LauncherSearchSource
   search: (request: LauncherSearchRequest) => Promise<LauncherSearchProviderResponse>
+  invalidate?: () => void
   warmup?: () => Promise<void>
 }
