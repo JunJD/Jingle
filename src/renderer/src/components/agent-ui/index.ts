@@ -37,5 +37,3 @@ export {
   type AgentStepsProps,
   type AgentStepsTriggerProps
 } from "./Steps"
-export { TextShimmer, type TextShimmerProps } from "./TextShimmer"
-export { ThinkingBar, type ThinkingBarProps } from "./ThinkingBar"

@@ -306,7 +306,9 @@ body[data-window="launcher"],
   );
   --launcher-result-section-x: var(--launcher-result-content-x);
   --launcher-result-row-padding-x: var(--ow-space-3);
-  --launcher-result-row-x: calc(var(--launcher-result-content-x) - var(--launcher-result-row-padding-x));
+  --launcher-result-row-x: calc(
+    var(--launcher-result-content-x) - var(--launcher-result-row-padding-x)
+  );
   --launcher-result-icon-column: 26px;
   --launcher-result-trailing-column: 88px;
   --launcher-list-section-x: var(--ow-space-6);
@@ -1018,7 +1020,17 @@ body[data-platform="darwin"] .launcher-window-shell {
   background: color-mix(in srgb, var(--launcher-surface-interactive) 92%, white 8%);
 }
 
-.ow-text-shimmer {
+.ow-agent-steps[data-active="true"] .ow-agent-steps-title,
+.ow-agent-activity-thinking[data-active="true"] .ow-agent-activity-thinking-title,
+.ow-agent-tool[data-state="running"] .ow-agent-tool-title,
+.ow-agent-tool-inline[data-active="true"] .ow-agent-tool-inline-title,
+.ow-agent-tool-group[data-active="true"] .ow-agent-tool-group-title {
+  background-image: linear-gradient(
+    to right,
+    var(--ow-agent-timeline-muted) 30%,
+    color-mix(in srgb, var(--ow-agent-timeline-muted) 58%, var(--foreground) 42%) 50%,
+    var(--ow-agent-timeline-muted) 70%
+  );
   background-size: 200% auto;
   background-clip: text;
   color: transparent;
@@ -2270,6 +2282,17 @@ body[data-window="launcher"] .ow-markdown,
 
   to {
     height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ow-agent-steps[data-active="true"] .ow-agent-steps-title,
+  .ow-agent-activity-thinking[data-active="true"] .ow-agent-activity-thinking-title,
+  .ow-agent-tool[data-state="running"] .ow-agent-tool-title,
+  .ow-agent-tool-inline[data-active="true"] .ow-agent-tool-inline-title,
+  .ow-agent-tool-group[data-active="true"] .ow-agent-tool-group-title {
+    animation: none;
+    color: var(--ow-agent-timeline-muted);
   }
 }
 

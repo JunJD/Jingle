@@ -1,11 +1,6 @@
 import { ArrowLeft, ArrowUp, Command, Plus, Square } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import {
-  PromptInput,
-  PromptInputAction,
-  PromptInputTextarea,
-  ThinkingBar
-} from "@/components/agent-ui"
+import { PromptInput, PromptInputAction, PromptInputTextarea } from "@/components/agent-ui"
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
 import { ChatJumpToLatestButton } from "@/components/chat/ChatJumpToLatestButton"
 import { ComposerApprovalPrompt } from "@/components/chat/ComposerApprovalPrompt"
@@ -41,7 +36,6 @@ const AI_COMPOSER_CHROME_HEIGHT = 30
 const AI_COMPOSER_LINE_HEIGHT = 20
 const AI_COMPOSER_VISIBLE_LINES = 5
 const AI_ATTACHMENT_STRIP_HEIGHT = 48
-const AI_THINKING_STATUS_HEIGHT = 28
 const AI_COMPOSER_BOTTOM_GAP = 8
 const LAUNCHER_AI_AT_BOTTOM_THRESHOLD_PX = 60
 const EMPTY_SUBAGENTS: readonly Subagent[] = []
@@ -116,7 +110,6 @@ export function LauncherAiPage(): React.JSX.Element {
         Math.ceil(
           composerTextHeight +
             AI_COMPOSER_CHROME_HEIGHT +
-            (conversation.isLoading ? AI_THINKING_STATUS_HEIGHT : 0) +
             (hasAttachmentDraft ? AI_ATTACHMENT_STRIP_HEIGHT : 0)
         )
       )
@@ -435,12 +428,6 @@ export function LauncherAiPage(): React.JSX.Element {
             maxHeight: AI_MAX_FOOTER_HEIGHT
           }}
         >
-          {conversation.isLoading ? (
-            <div className="pointer-events-auto mx-auto mb-[var(--ow-space-1)] w-full max-w-[var(--launcher-ai-content-max-width)] px-[var(--ow-space-2)]">
-              <ThinkingBar text={copy.chat.agentThinking} />
-            </div>
-          ) : null}
-
           <PromptInput
             className="pointer-events-auto mx-auto w-full max-w-[var(--launcher-ai-content-max-width)] px-[var(--ow-space-2)] py-[var(--ow-space-1)]"
             style={{ backgroundColor: "var(--background-elevated)" }}
