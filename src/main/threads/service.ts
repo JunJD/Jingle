@@ -20,7 +20,6 @@ import {
   extractTodosFromCheckpoint,
   mapHitlRowToRequest
 } from "../agent/runtime-state"
-import { ThreadLifecycleGate } from "../agent/thread-lifecycle-gate"
 import { ArtifactsService } from "../artifacts/service"
 import { OpenworkIpcError } from "../ipc/error"
 import { ModelProviderService } from "../model-provider/service"
@@ -184,8 +183,7 @@ export class ThreadsService {
     private readonly artifactsService: ArtifactsService,
     private readonly modelProviderService: ModelProviderService,
     private readonly settingsService: SettingsService,
-    private readonly workspaceService: WorkspaceService,
-    private readonly threadLifecycleGate = new ThreadLifecycleGate()
+    private readonly workspaceService: WorkspaceService
   ) {}
 
   async list(): Promise<Thread[]> {
@@ -367,19 +365,21 @@ export class ThreadsService {
   async delete(threadId: string): Promise<void> {
     console.log("[Threads] Deleting thread:", threadId)
 
-    await this.threadLifecycleGate.withDeletion(threadId, async () => {
-      await closeCheckpointer(threadId)
-      console.log("[Threads] Closed checkpointer")
-
-      await dbDeleteThread(threadId)
-      console.log("[Threads] Deleted from metadata store")
-    })
+    await dbDeleteThread(threadId)
+    console.log("[Threads] Deleted from metadata store")
 
     try {
       await this.artifactsService.deleteManagedFilesForThread(threadId)
       console.log("[Threads] Deleted managed artifacts")
     } catch (e) {
       console.warn("[Threads] Failed to delete managed artifacts:", e)
+    }
+
+    try {
+      await closeCheckpointer(threadId)
+      console.log("[Threads] Closed checkpointer")
+    } catch (e) {
+      console.warn("[Threads] Failed to close checkpointer:", e)
     }
   }
 

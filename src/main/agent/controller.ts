@@ -65,9 +65,8 @@ export class AgentController {
       return
     }
 
-    void this.agentService.invoke(params, this.createStreamSink(params.threadId), {
-      onRunAccepted: () => this.agentStreamHub.prepareInvoke(params.threadId, params.message)
-    })
+    await this.agentStreamHub.prepareInvoke(params.threadId, params.message)
+    void this.agentService.invoke(params, this.createStreamSink(params.threadId))
   }
 
   private async handleResume(rawParams: unknown): Promise<void> {
@@ -80,9 +79,8 @@ export class AgentController {
       return
     }
 
-    void this.agentService.resume(params, this.createStreamSink(params.threadId), {
-      onRunAccepted: () => this.agentStreamHub.prepareResume(params.threadId)
-    })
+    await this.agentStreamHub.prepareResume(params.threadId)
+    void this.agentService.resume(params, this.createStreamSink(params.threadId))
   }
 
   private createThreadEventsChannel(threadId: string): string {
