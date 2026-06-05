@@ -43,7 +43,8 @@ test("buildToolApprovalItem maps execute predictions to upcoming file changes", 
       { changeType: "delete", path: "/workspace/old.txt" }
     ],
     profile: "predictable_mutation",
-    predictionStatus: "predicted"
+    predictionStatus: "predicted",
+    reason: "Command writes and deletes local files."
   })
 })
 
@@ -68,7 +69,8 @@ test("buildToolApprovalItem represents managed process approvals without file ch
     command: "python3 -m http.server",
     changes: [],
     profile: "managed_process",
-    predictionStatus: null
+    predictionStatus: null,
+    reason: "python3 -m http.server starts a managed process and requires approval."
   })
 })
 

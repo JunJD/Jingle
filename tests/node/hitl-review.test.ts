@@ -112,7 +112,8 @@ test("mapHitlRowToRequest restores review payload from dedicated columns", () =>
         }
       ],
       profile: "predictable_mutation",
-      predictionStatus: "predicted"
+      predictionStatus: "predicted",
+      reason: "Command writes to local files through shell redirection."
     }),
     allowed_decisions: JSON.stringify(["approve", "reject"]),
     status: "pending",
@@ -143,7 +144,8 @@ test("mapHitlRowToRequest restores review payload from dedicated columns", () =>
         }
       ],
       profile: "predictable_mutation",
-      predictionStatus: "predicted"
+      predictionStatus: "predicted",
+      reason: "Command writes to local files through shell redirection."
     }
   })
 })

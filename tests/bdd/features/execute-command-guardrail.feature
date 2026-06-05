@@ -20,14 +20,14 @@
     而且守卫记录的预测状态应为 "predicted"
     而且预测器调用次数应为 1
 
-  场景: 预测器不支持时系统拒绝这个编辑命令
+  场景: 预测器不支持时系统把编辑命令交给用户确认
     假如预测器会返回 "unsupported_command" 状态
     当系统使用受控 shell 守卫评估命令 "python3 -c 'open(\"notes.txt\", \"w\").write(\"hello\")'"
-    那么守卫结果应为 "deny"
-    而且守卫记录的分类应为 "predictable_mutation"
+    那么守卫结果应为 "allow"
+    而且守卫记录的分类应为 "unknown_command"
     而且守卫记录的处置应为 "require_approval"
     而且守卫记录的预测状态应为 "unsupported_command"
-    而且守卫拒绝原因应包含 "target files could not be predicted"
+    而且守卫记录原因应包含 "requires user approval"
     而且预测器调用次数应为 1
 
   场景: 可管理进程不触发文件预测但会进入后续审批流程

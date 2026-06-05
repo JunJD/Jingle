@@ -147,6 +147,14 @@ Then(
 )
 
 Then(
+  "守卫记录原因应包含 {string}",
+  function (this: ExecuteCommandGuardrailWorld, fragment: string) {
+    const reason = getDecision(this).metadata?.executeCommandPolicy?.reason ?? ""
+    assert.match(reason, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"))
+  }
+)
+
+Then(
   "预测器调用次数应为 {int}",
   function (this: ExecuteCommandGuardrailWorld, expectedCalls: number) {
     assert.equal(getState(this).predictorCalls, expectedCalls)

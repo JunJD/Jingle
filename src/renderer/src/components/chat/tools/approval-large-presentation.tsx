@@ -134,7 +134,16 @@ function buildExecuteLargeApprovalViewModel(
           presentation: "text",
           title: getActionTitle(copy, approvalItem)
         },
-    impact: buildChangeImpact(copy, approvalItem),
+    impact: [
+      ...buildChangeImpact(copy, approvalItem),
+      approvalItem.reason
+        ? {
+            detail: approvalItem.reason,
+            label: copy.toolCall.approvalReason,
+            tone: approvalItem.profile === "unknown_command" ? ("warning" as const) : ("neutral" as const)
+          }
+        : null
+    ].filter((entry) => entry !== null),
     parameters,
     target: buildPathTargets(copy, approvalItem)
   }

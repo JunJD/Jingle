@@ -48,6 +48,7 @@ test("large execute approval adapts command, impact, and prediction metadata", (
     kind: "execute_command",
     predictionStatus: "predicted",
     profile: "predictable_mutation",
+    reason: "Command writes and deletes local files.",
     toolName: "execute"
   }
 
@@ -64,11 +65,37 @@ test("large execute approval adapts command, impact, and prediction metadata", (
   ])
   assert.deepEqual(viewModel.impact, [
     { detail: "/workspace/new.txt", label: "Create", tone: "success" },
-    { detail: "/workspace/old.txt", label: "Delete", tone: "destructive" }
+    { detail: "/workspace/old.txt", label: "Delete", tone: "destructive" },
+    { detail: "Command writes and deletes local files.", label: "Reason", tone: "neutral" }
   ])
   assert.deepEqual(viewModel.parameters, [
     { label: "Profile", presentation: "mono", value: "predictable_mutation" },
     { label: "Prediction", presentation: "mono", value: "predicted" }
+  ])
+})
+
+test("large execute approval explains unknown commands before approval", () => {
+  const review: ExecuteToolApprovalItem = {
+    changes: [],
+    command: "npm run build",
+    kind: "execute_command",
+    predictionStatus: null,
+    profile: "unknown_command",
+    reason: "Unknown command 'npm' requires user approval before it can run.",
+    toolName: "execute"
+  }
+
+  const viewModel = buildLargeApprovalViewModel(copy, review, "{}")
+
+  assert.deepEqual(viewModel.impact, [
+    {
+      detail: "Unknown command 'npm' requires user approval before it can run.",
+      label: "Reason",
+      tone: "warning"
+    }
+  ])
+  assert.deepEqual(viewModel.parameters, [
+    { label: "Profile", presentation: "mono", value: "unknown_command" }
   ])
 })
 

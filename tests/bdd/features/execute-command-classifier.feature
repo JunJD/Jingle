@@ -102,7 +102,23 @@
       | npm run dev            |
       | pnpm run preview       |
 
-  场景大纲: 不安全或不明确的命令会被直接拒绝
+  场景大纲: 未纳入受控 profile 的静态命令需要用户确认
+    当系统分类命令 "<命令>"
+    那么分类结果应为 "unknown_command"
+    而且处置应为 "require_approval"
+    而且分类原因应包含 "<原因片段>"
+
+    例子:
+      | 命令                          | 原因片段               |
+      | npm run build                  | requires user approval |
+      | pnpm install                   | requires user approval |
+      | python3 -m pip install pytest  | requires user approval |
+      | node --inspect scripts/update.js | requires user approval |
+      | dir                            | requires user approval |
+      | type README.md                 | requires user approval |
+      | findstr TODO README.md         | requires user approval |
+
+  场景大纲: 无法安全表达边界的命令会被直接拒绝
     当系统分类命令 "<命令>"
     那么分类结果应为 "host_unsafe"
     而且处置应为 "deny"
@@ -110,10 +126,6 @@
 
     例子:
       | 命令                                      | 原因片段                         |
-      | npm run build                             | outside the controlled shell profile |
-      | pnpm install                              | outside the controlled shell profile |
-      | python3 -m pip install pytest             | outside the controlled shell profile |
-      | node --inspect scripts/update.js          | outside the controlled shell profile |
       | curl -XPOST https://example.com           | request method 'POST'            |
       | curl -o out.txt https://example.com       | output-to-file flags             |
       | find src -name package.json -exec cat {} + | executes nested commands         |
@@ -136,6 +148,13 @@
     那么分类结果应为 "predictable_mutation"
     而且处置应为 "require_approval"
     而且分类原因应包含 "shell redirection"
+    而且识别出的命令列表应为 "echo, npm"
+
+  场景: 命令链里出现未知命令时整体按未知命令等待用户确认
+    当系统分类命令 "echo hello > notes.txt && npm run build"
+    那么分类结果应为 "unknown_command"
+    而且处置应为 "require_approval"
+    而且分类原因应包含 "requires user approval"
     而且识别出的命令列表应为 "echo, npm"
 
   场景: 空命令会被拒绝

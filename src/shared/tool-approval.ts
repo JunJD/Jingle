@@ -25,6 +25,7 @@ export interface ExecuteToolApprovalItem {
   changes: ToolApprovalChange[]
   profile: ExecuteCommandProfile | null
   predictionStatus: MutationPredictionStatus | null
+  reason: string | null
 }
 
 export interface FileMutationToolApprovalItem {
@@ -176,6 +177,7 @@ function isExecuteCommandProfile(value: unknown): value is ExecuteCommandProfile
     value === "network_read" ||
     value === "predictable_mutation" ||
     value === "managed_process" ||
+    value === "unknown_command" ||
     value === "host_unsafe"
   )
 }
@@ -202,7 +204,8 @@ export function parseToolApprovalItem(value: unknown): ToolApprovalItem | null {
       profile: isExecuteCommandProfile(value.profile) ? value.profile : null,
       predictionStatus: isMutationPredictionStatus(value.predictionStatus)
         ? value.predictionStatus
-        : null
+        : null,
+      reason: readOptionalString(value.reason)
     }
   }
 
@@ -272,7 +275,8 @@ export function buildToolApprovalItem(
       command: typeof args.command === "string" ? args.command : null,
       changes: prediction?.changes ?? [],
       profile: policy?.profile ?? null,
-      predictionStatus: prediction?.status ?? null
+      predictionStatus: prediction?.status ?? null,
+      reason: policy?.reason ?? null
     }
   }
 

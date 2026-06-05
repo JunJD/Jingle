@@ -46,6 +46,19 @@ function buildAllowedDecision(
   }
 }
 
+function buildUnknownCommandPolicy(
+  classification: ExecuteCommandPolicy,
+  reason: string
+): ExecuteCommandPolicy {
+  return {
+    ...classification,
+    profile: "unknown_command",
+    disposition: "require_approval",
+    summary: `Unknown command requires approval (${classification.commands.slice(0, 4).join(", ") || "shell command"}).`,
+    reason
+  }
+}
+
 export function createExecuteCommandGuardrailProvider(
   options: ExecuteCommandGuardrailProviderOptions
 ): GuardrailProvider {
@@ -100,6 +113,18 @@ export function createExecuteCommandGuardrailProvider(
 
       const prediction = await options.predictor.predictExecute(command)
       if (prediction.status !== "predicted") {
+        if (prediction.status === "unsupported_command") {
+          return buildAllowedDecision(
+            buildUnknownCommandPolicy(
+              classification,
+              "Command could not be simulated in just-bash, so it is treated as an unknown command and requires user approval."
+            ),
+            {
+              mutationPrediction: prediction
+            }
+          )
+        }
+
         return buildDeniedDecision(
           `Command may modify files, but target files could not be predicted (${prediction.status}). Use explicit file tools or simplify the shell command.`,
           {

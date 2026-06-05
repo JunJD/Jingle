@@ -69,11 +69,11 @@ test("classifies python3 http.server module execution as a managed process", () 
   assert.equal(policy.disposition, "require_approval")
 })
 
-test("blocks unclassified python3 module execution outside the controlled shell profile", () => {
+test("classifies unrecognized python3 module execution as an unknown command", () => {
   const policy = classifier.classify("python3 -m pip install pytest")
 
-  assert.equal(policy.profile, "host_unsafe")
-  assert.equal(policy.disposition, "deny")
+  assert.equal(policy.profile, "unknown_command")
+  assert.equal(policy.disposition, "require_approval")
 })
 
 test("classifies package dev scripts as managed processes", () => {
@@ -118,12 +118,12 @@ test("classifies safe curl GET requests as network reads", () => {
   assert.equal(policy.disposition, "allow")
 })
 
-test("blocks unclassified npm scripts outside the controlled shell profile", () => {
+test("classifies unrecognized npm scripts as unknown commands requiring approval", () => {
   const policy = classifier.classify("npm run build")
 
-  assert.equal(policy.profile, "host_unsafe")
-  assert.equal(policy.disposition, "deny")
-  assert.match(policy.reason, /outside the controlled shell profile/i)
+  assert.equal(policy.profile, "unknown_command")
+  assert.equal(policy.disposition, "require_approval")
+  assert.match(policy.reason, /requires user approval/i)
 })
 
 test("blocks background shell execution", () => {

@@ -20,7 +20,19 @@
       | find /Users/demo/repo -name package.json |
       | find C:\Users\demo\repo -name package.json |
 
-  场景大纲: 平台原生命令和直接可执行路径仍然会被拒绝
+  场景大纲: 平台原生命令需要用户确认
+    当系统分类命令 "<命令>"
+    那么分类结果应为 "unknown_command"
+    而且处置应为 "require_approval"
+    而且分类原因应包含 "requires user approval"
+
+    例子:
+      | 命令                  |
+      | dir                   |
+      | type README.md        |
+      | findstr TODO README.md |
+
+  场景大纲: 直接可执行路径仍然会被拒绝
     当系统分类命令 "<命令>"
     那么分类结果应为 "host_unsafe"
     而且处置应为 "deny"
@@ -28,9 +40,6 @@
 
     例子:
       | 命令                                 | 原因片段                         |
-      | dir                                  | controlled shell allowlist       |
-      | type README.md                       | controlled shell allowlist       |
-      | findstr TODO README.md               | controlled shell allowlist       |
       | C:/Windows/System32/cmd.exe /c dir   | outside the controlled shell profile |
-      | C:\Windows\System32\cmd.exe /c dir   | controlled shell allowlist       |
+      | C:\Windows\System32\cmd.exe /c dir   | outside the controlled shell profile |
       | /bin/ls                              | outside the controlled shell profile |
