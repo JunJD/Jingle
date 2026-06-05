@@ -277,6 +277,7 @@ test("extension migration harness refuses to apply shell output over live extens
 test("extension migration harness usage lists known targets", () => {
   const usage = formatUsage()
   assert.match(usage, /github -> extensions\/github/)
+  assert.match(usage, /figma-files -> extensions\/figma-files/)
   assert.match(usage, /apple-reminders -> extensions\/apple-reminders/)
   assert.match(usage, /--target-extension-id apple-reminders-generated/)
   assert.doesNotMatch(usage, /apple-reminders --mode shell --apply/)

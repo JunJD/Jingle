@@ -16,6 +16,11 @@ export const KNOWN_EXTENSION_MIGRATION_TARGETS = {
     extensionPath: "extensions/apple-reminders",
     title: "Apple Reminders"
   },
+  "figma-files": {
+    extensionId: "figma-files",
+    extensionPath: "extensions/figma-files",
+    title: "Figma File Search"
+  },
   github: {
     extensionId: "github",
     extensionPath: "extensions/github",
