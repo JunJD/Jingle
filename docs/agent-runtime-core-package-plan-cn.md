@@ -896,9 +896,9 @@ export interface AgentCoreController {
 
 ## 周期与复杂度
 
-单人节奏：6.5-9 周。
+单人节奏：7-9.5 周。
 
-双人并行：4.5-6 周。并行方式应该是 backend runtime 一人、frontend core 一人；协议状态机必须由一人最终拍板，避免双源真相。
+双人并行：5-6.5 周。并行方式应该是 backend runtime/tracing 一人、frontend core 一人；协议状态机必须由一人最终拍板，避免双源真相。
 
 复杂度判断：L。
 
@@ -913,6 +913,7 @@ export interface AgentCoreController {
 | 工作项 | 复杂度 | 单人周期 | 主要风险 |
 | --- | --- | --- | --- |
 | package skeleton + boundary docs | S | 2-3 天 | 路径配了但无人使用，变成摆设 |
+| current runtime run trace | M | 3-5 天 | trace 成为独立玩具，没有服务 runtime/core 拆边界 |
 | runtime event/protocol 收口 | M | 1 周 | shared/runtime/core 三边同时改，产生兼容 shim |
 | backend runtime facade | L | 1.5-2 周 | resume/checkpoint/HITL 失败语义被稀释 |
 | DeepAgents adapter 包装 | M | 3-5 天 | LangChain 类型继续漏到 public API |
@@ -922,9 +923,9 @@ export interface AgentCoreController {
 
 ### 双人并行方式
 
-- Backend owner：Phase 1/2，负责 `agent-runtime`、run context、checkpoint/HITL、DeepAgents adapter、event projector。
-- Frontend owner：Phase 3/4，负责 `agent-core`、transport/controller/projection、renderer registry、Chat 接入。
-- Shared owner：一个人最终负责 `AgentThreadEvent` contract，不建议两个人同时改 event schema。
+- Backend owner：Phase 1/2/3，负责 `agent-runtime`、run trace、run context、checkpoint/HITL、DeepAgents adapter、event projector。
+- Frontend owner：Phase 4/5，负责 `agent-core`、transport/controller/projection、renderer registry、Chat 接入。
+- Shared owner：一个人最终负责 `AgentThreadEvent` API，不建议两个人同时改 event schema。
 
 ### 退出条件
 
@@ -944,6 +945,8 @@ export interface AgentCoreController {
 | HITL 被做成前端 promise | 刷新/切 thread 后丢失审批 | request 持久化和 resume target 永远在后端 |
 | 过早拆第三个 protocol 包 | 迁移面变大，类型引用更乱 | Phase 1 先稳定 shared contract，再决定迁出 |
 | 引入 CopilotKit 运行时依赖 | 打包体积、Web transport 假设、license/cloud 语义混入 | 只借鉴设计，不依赖其 runtime/core |
+| trace 先独立成包但不接现有 runtime | 变成第三个空概念包，不能帮助迁移 | Phase 1 必须接 current runtime，先服务 debug 和拆边界 |
+| 照搬 LobeHub agent-tracing 类型 | operation/topic/agent 语义污染 Openwork | 只借鉴 snapshot/step/partial/reconstruct 结构，字段改成 run/thread/workspace/checkpoint/HITL |
 | input fallback 链继续存在 | 用户和开发者都分不清 submit 来源 | composer draft、pending submit、thread draft 明确命名 |
 | tool renderer 硬编码在 chat | extension/native tool UI 难扩展 | registry 接管 tool/HITL renderer |
 
@@ -953,6 +956,7 @@ export interface AgentCoreController {
 
 - 类型：`npm run typecheck:node`、`npm run typecheck:web`、最终 `npm run typecheck`。
 - 单测：优先覆盖 `agent-thread-runtime`、`agent-thread-runner`、`agent-service-stream`、`thread-runtime-batch`、`thread-store-core`、`ai-core-composer-keyboard`。
+- Trace：Phase 1 起每次 invoke/resume/HITL/cancel 都要能生成或更新本地 trace；至少支持 inspect latest 和 inspect partial。
 - BDD：涉及用户可见 invoke/resume/approval/thread lifecycle 时，跑 `tests/bdd/features/agent.feature` 和 `tests/bdd/features/threads.feature`。
 - Guardrail：触及 `ai-core`、extension runtime、launcher shell 边界后跑 `npm run check:guardrails`。
 - 文档：迁移完成后更新 docs index 和 runtime/core 包 README。
