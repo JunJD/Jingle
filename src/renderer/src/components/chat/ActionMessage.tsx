@@ -21,6 +21,7 @@ interface ActionMessageProps {
   expanded?: boolean
   presentation?: ToolPresentation
   showSummary?: boolean
+  status?: ToolComponentStatus
 }
 
 export function ToolStatusIndicator(props: {
@@ -65,6 +66,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     presentation = "standalone",
     result,
     showSummary = true,
+    status: explicitStatus,
     toolCall
   } = props
   const { copy } = useI18n()
@@ -76,9 +78,10 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
         copy,
         presentation,
         result,
+        status: explicitStatus,
         toolCall
       }),
-    [approvalRequest, copy, presentation, result, toolCall]
+    [approvalRequest, copy, explicitStatus, presentation, result, toolCall]
   )
   const { definition, icon: Icon, model, status, statusLabel, summary } = view
   const autoExpanded = Boolean(approvalRequest) || defaultExpanded

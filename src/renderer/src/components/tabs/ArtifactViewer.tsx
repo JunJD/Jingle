@@ -32,7 +32,7 @@ const EMPTY_ARTIFACTS: readonly ArtifactRecord[] = []
 
 export function ArtifactViewer(props: ArtifactViewerProps): React.JSX.Element {
   const { artifactId, threadId } = props
-  const artifacts = useThreadSelector(threadId, (state) => state?.artifacts ?? EMPTY_ARTIFACTS)
+  const artifacts = useThreadSelector(threadId, (state) => state?.agent.artifacts ?? EMPTY_ARTIFACTS)
   const artifact = artifacts.find((entry) => entry.id === artifactId) ?? null
 
   const handleArtifactAction = useCallback(

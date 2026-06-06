@@ -1,7 +1,6 @@
 import { useMemo } from "react"
 import { ArrowUpRight, PackageOpen } from "lucide-react"
 import type { ArtifactRecord } from "@shared/artifacts"
-import { getToolCallArtifactKey } from "@shared/artifacts"
 import { CodeBlock } from "@/components/ui/code-block"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
@@ -9,7 +8,7 @@ import { cn } from "@/lib/utils"
 import { defineToolComponent } from "./registry-core"
 import type { ToolComponentProps } from "./types"
 import { ToolDetailSection, ToolDetailStack } from "./shared-components"
-import { getBasename, joinSummaryParts } from "./shared"
+import { joinSummaryParts } from "./shared"
 
 function getArtifactItems(args: Record<string, unknown>): Array<Record<string, unknown>> {
   return Array.isArray(args.artifacts)
@@ -18,6 +17,10 @@ function getArtifactItems(args: Record<string, unknown>): Array<Record<string, u
           Boolean(item) && typeof item === "object" && !Array.isArray(item)
       )
     : []
+}
+
+function compareArtifactByKey(a: ArtifactRecord, b: ArtifactRecord): number {
+  return a.artifactKey.localeCompare(b.artifactKey)
 }
 
 function isJsonText(value: string): boolean {
@@ -35,61 +38,32 @@ function isJsonText(value: string): boolean {
   }
 }
 
-function getArtifactItemKind(item: Record<string, unknown>): string {
-  return typeof item.kind === "string" ? item.kind : "artifact"
-}
-
-function getArtifactItemTitle(item: Record<string, unknown>, index: number): string {
-  if (typeof item.title === "string" && item.title.trim().length > 0) {
-    return item.title
-  }
-
-  if (typeof item.path === "string") {
-    return getBasename(item.path)
-  }
-
-  if (typeof item.url === "string") {
-    return item.url
-  }
-
-  return `Artifact ${index + 1}`
-}
-
 const EMPTY_THREAD_ARTIFACTS: readonly ArtifactRecord[] = []
 
 export function PresentArtifactsDetail(
-  props: Pick<ToolComponentProps, "args" | "copy" | "rawResult" | "toolCall">
+  props: Pick<ToolComponentProps, "copy" | "rawResult" | "toolCall">
 ): React.JSX.Element {
-  const { args, copy, rawResult, toolCall } = props
+  const { copy, rawResult, toolCall } = props
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const threadActions = useThreadActions(currentThreadId)
   const threadArtifacts = useThreadSelector(
     currentThreadId,
-    (state) => state?.artifacts ?? EMPTY_THREAD_ARTIFACTS
+    (state) => state?.agent.artifacts ?? EMPTY_THREAD_ARTIFACTS
   )
-  const items = getArtifactItems(args)
   const hasJsonResult = isJsonText(rawResult)
   const resolvedArtifacts = useMemo(() => {
-    const artifactsByKey = new Map(
-      threadArtifacts
-        .filter((artifact) => artifact.toolCallId === toolCall.id)
-        .map((artifact) => [artifact.artifactKey, artifact] satisfies [string, ArtifactRecord])
-    )
-
-    return items.map((item, index) => ({
-      artifact: artifactsByKey.get(getToolCallArtifactKey(toolCall.id, index)) ?? null,
-      kind: getArtifactItemKind(item),
-      title: getArtifactItemTitle(item, index)
-    }))
-  }, [items, threadArtifacts, toolCall.id])
+    return threadArtifacts
+      .filter((artifact) => artifact.toolCallId === toolCall.id)
+      .toSorted(compareArtifactByKey)
+  }, [threadArtifacts, toolCall.id])
 
   return (
     <ToolDetailStack>
       {resolvedArtifacts.length > 0 ? (
         <ToolDetailSection label={copy.toolCall.labels.present_artifacts}>
           <div className="grid gap-[var(--ow-space-1-5)]">
-            {resolvedArtifacts.map(({ artifact, kind, title }, index) => {
-              const canOpen = Boolean(artifact && threadActions)
+            {resolvedArtifacts.map((artifact) => {
+              const canOpen = Boolean(threadActions)
 
               return (
                 <button
@@ -100,12 +74,12 @@ export function PresentArtifactsDetail(
                       : "border-border/50 bg-background-secondary/40 text-foreground/75"
                   )}
                   data-artifact-openable={canOpen ? "true" : "false"}
-                  data-artifact-title={title}
+                  data-artifact-title={artifact.title}
                   data-presented-artifact-item=""
                   disabled={!canOpen}
-                  key={`${kind}-${title}-${index}`}
+                  key={artifact.id}
                   onClick={() => {
-                    if (!artifact || !threadActions) {
+                    if (!threadActions) {
                       return
                     }
 
@@ -119,18 +93,13 @@ export function PresentArtifactsDetail(
                 >
                   <div className="flex items-start justify-between gap-[var(--ow-gap-md)]">
                     <div className="min-w-0">
-                      <div className="font-medium text-foreground">{title}</div>
-                      <div className="text-muted-foreground">{kind}</div>
+                      <div className="font-medium text-foreground">{artifact.title}</div>
+                      <div className="text-muted-foreground">{artifact.kind}</div>
                     </div>
                     {canOpen ? (
                       <ArrowUpRight className="mt-[var(--ow-leading-nudge)] size-[var(--ow-icon-sm)] shrink-0 text-muted-foreground" />
                     ) : null}
                   </div>
-                  {!canOpen ? (
-                    <div className="[font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
-                      Artifact not available yet
-                    </div>
-                  ) : null}
                 </button>
               )
             })}
@@ -162,9 +131,7 @@ defineToolComponent({
       items.length > 0 ? `${items.length}` : null
     )
   },
-  renderDetail({ copy, args, rawResult, toolCall }) {
-    return (
-      <PresentArtifactsDetail args={args} copy={copy} rawResult={rawResult} toolCall={toolCall} />
-    )
+  renderDetail({ copy, rawResult, toolCall }) {
+    return <PresentArtifactsDetail copy={copy} rawResult={rawResult} toolCall={toolCall} />
   }
 })

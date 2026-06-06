@@ -16,6 +16,7 @@ import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { getArtifactTabId, useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { Badge } from "@/components/ui/badge"
 import { getArtifactDescriptor } from "@/components/chat/artifact-preview/shared"
+import { getSubagentStatusPresentation } from "@/lib/subagent-view"
 import type { Subagent, Todo } from "@/types"
 import type { ArtifactRecord } from "@shared/artifacts"
 
@@ -111,11 +112,11 @@ function ResizeHandle({ onDrag }: ResizeHandleProps): React.JSX.Element {
 
 export function RightPanel(): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
-  const todos = useThreadSelector(currentThreadId, (state) => state?.todos ?? EMPTY_TODOS)
-  const artifactCount = useThreadSelector(currentThreadId, (state) => state?.artifacts.length ?? 0)
+  const todos = useThreadSelector(currentThreadId, (state) => state?.agent.todos ?? EMPTY_TODOS)
+  const artifactCount = useThreadSelector(currentThreadId, (state) => state?.agent.artifacts.length ?? 0)
   const subagents = useThreadSelector(
     currentThreadId,
-    (state) => state?.subagents ?? EMPTY_SUBAGENTS
+    (state) => state?.agent.subagents ?? EMPTY_SUBAGENTS
   )
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerHeight, setContainerHeight] = useState(0)
@@ -420,7 +421,7 @@ const STATUS_CONFIG = {
 
 function TasksContent(): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
-  const todos = useThreadSelector(currentThreadId, (state) => state?.todos ?? EMPTY_TODOS)
+  const todos = useThreadSelector(currentThreadId, (state) => state?.agent.todos ?? EMPTY_TODOS)
   const [completedExpanded, setCompletedExpanded] = useState(false)
 
   if (todos.length === 0) {
@@ -540,9 +541,9 @@ function ArtifactsContent(): React.JSX.Element {
   const threadActions = useThreadActions(currentThreadId)
   const artifacts = useThreadSelector(
     currentThreadId,
-    (state) => state?.artifacts ?? EMPTY_ARTIFACTS
+    (state) => state?.agent.artifacts ?? EMPTY_ARTIFACTS
   )
-  const activeTab = useThreadSelector(currentThreadId, (state) => state?.activeTab ?? "agent")
+  const activeTab = useThreadSelector(currentThreadId, (state) => state?.ui.activeTab ?? "agent")
 
   const handleArtifactOpen = useCallback(
     (artifact: ArtifactRecord) => {
@@ -661,7 +662,7 @@ function AgentsContent(): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const subagents = useThreadSelector(
     currentThreadId,
-    (state) => state?.subagents ?? EMPTY_SUBAGENTS
+    (state) => state?.agent.subagents ?? EMPTY_SUBAGENTS
   )
 
   if (subagents.length === 0) {
@@ -678,30 +679,30 @@ function AgentsContent(): React.JSX.Element {
 
   return (
     <div className="p-3 space-y-[var(--ow-space-2)]">
-      {subagents.map((agent) => (
-        <div key={agent.id} className="p-3 rounded-sm border border-border">
-          <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] font-medium">
-            <GitBranch className="size-[var(--ow-icon-sm)] text-status-info" />
-            <span className="flex-1">{agent.name}</span>
-            <span
-              className={cn(
-                "rounded px-[var(--ow-space-1-5)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)]",
-                agent.status === "pending" && "bg-muted text-muted-foreground",
-                agent.status === "running" && "bg-status-info/20 text-status-info",
-                agent.status === "completed" && "bg-status-nominal/20 text-status-nominal",
-                agent.status === "failed" && "bg-status-critical/20 text-status-critical"
-              )}
-            >
-              {agent.status.toUpperCase()}
-            </span>
+      {subagents.map((agent) => {
+        const status = getSubagentStatusPresentation(agent.status)
+        return (
+          <div key={agent.id} className="p-3 rounded-sm border border-border">
+            <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] font-medium">
+              <GitBranch className="size-[var(--ow-icon-sm)] text-status-info" />
+              <span className="flex-1">{agent.name}</span>
+              <span
+                className={cn(
+                  "rounded px-[var(--ow-space-1-5)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)]",
+                  status.className
+                )}
+              >
+                {status.label}
+              </span>
+            </div>
+            {agent.description && (
+              <p className="mt-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] text-muted-foreground">
+                {agent.description}
+              </p>
+            )}
           </div>
-          {agent.description && (
-            <p className="mt-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] text-muted-foreground">
-              {agent.description}
-            </p>
-          )}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

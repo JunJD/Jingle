@@ -15,6 +15,7 @@ interface CreateActionMessageViewInput {
   copy: AppCopy
   presentation: ToolPresentation
   result?: unknown
+  status?: ToolComponentStatus
   toolCall: ToolCall
 }
 
@@ -38,10 +39,11 @@ export function getToolStatusLabel(copy: AppCopy, status: ToolComponentStatus): 
 }
 
 export function createActionMessageView(input: CreateActionMessageViewInput) {
-  const { approvalRequest, copy, presentation, result, toolCall } = input
+  const { approvalRequest, copy, presentation, result, status, toolCall } = input
   const model = normalizeToolRenderModel({
     approvalRequest,
     result,
+    status,
     toolCall
   })
   const definition =

@@ -9,8 +9,8 @@ import type { PermissionModeName } from "@shared/permission-mode"
 import { LauncherIntelligenceGlow } from "@launcher-components/LauncherIntelligenceGlow"
 import { LauncherPageTransition } from "@launcher-components/LauncherPageTransition"
 import { LauncherSearchPage } from "@launcher-components/LauncherSearchPage"
+import { invokeAgentThread } from "@/lib/agent-control"
 import { useI18n } from "@/lib/i18n"
-import { useAgent } from "@/lib/use-agent"
 import { useShortcutCommandHandler } from "@/shortcuts/shortcut-context"
 import { useThreadContext } from "@/lib/thread-context"
 import { useLauncherClipboard } from "./LauncherClipboardContext"
@@ -46,7 +46,7 @@ export default function LauncherApp(): React.JSX.Element {
   const inputNeedsWorkspaceMessage = copy.chat.inputNeedsWorkspace
   const clipboard = useLauncherClipboard()
   const threadContext = useThreadContext()
-  const { ensureThreadRuntime, getThreadActions, loadThreadData } = threadContext
+  const { getThreadActions, loadThreadData } = threadContext
   const searchInputRef = useRef<LauncherInputElement>(null)
   const pluginInputRef = useRef<LauncherInputElement | ComposerAreaHandle>(null)
   const shellRef = useRef<HTMLDivElement>(null)
@@ -62,7 +62,6 @@ export default function LauncherApp(): React.JSX.Element {
   })
   const pluginInputStatus =
     pluginInputSurface.routeKey === routeKey ? pluginInputSurface.status : "idle"
-  const pluginAgent = useAgent({ threadId: activePluginThreadId })
   const setPluginInputStatus = useCallback(
     (status: LauncherInputStatus): void => {
       setPluginInputSurface({
@@ -170,7 +169,6 @@ export default function LauncherApp(): React.JSX.Element {
         workspacePath
       })
 
-      ensureThreadRuntime(thread.thread_id)
       const actions = getThreadActions(thread.thread_id)
       actions.setCurrentModel(resolvedModelId)
       actions.setPermissionMode(input.permissionMode ?? DEFAULT_PERMISSION_MODE)
@@ -183,7 +181,7 @@ export default function LauncherApp(): React.JSX.Element {
         workspacePath
       }
     },
-    [ensureThreadRuntime, getThreadActions, inputNeedsWorkspaceMessage]
+    [getThreadActions, inputNeedsWorkspaceMessage]
   )
   const activatePluginThread = useCallback(
     async (threadId: string): Promise<void> => {
@@ -209,7 +207,6 @@ export default function LauncherApp(): React.JSX.Element {
         throw new Error(inputNeedsWorkspaceMessage)
       }
 
-      ensureThreadRuntime(branchedThread.thread_id)
       setActivePluginThreadId(branchedThread.thread_id)
       await loadThreadData(branchedThread.thread_id)
 
@@ -219,7 +216,7 @@ export default function LauncherApp(): React.JSX.Element {
         workspacePath
       }
     },
-    [ensureThreadRuntime, inputNeedsWorkspaceMessage, loadThreadData]
+    [inputNeedsWorkspaceMessage, loadThreadData]
   )
   const listPluginThreads = useCallback(async () => {
     return window.api.threads.list()
@@ -229,15 +226,16 @@ export default function LauncherApp(): React.JSX.Element {
   }, [activePluginThreadId])
   const submitPluginThread = useCallback(
     async (input: LauncherThreadSubmitInput): Promise<void> => {
-      await pluginAgent.control.invoke(
-        {
+      await invokeAgentThread({
+        messageInput: {
           refs: [],
           text: input.message
         },
-        { threadId: input.threadId }
-      )
+        threadContext,
+        threadId: input.threadId
+      })
     },
-    [pluginAgent.control]
+    [threadContext]
   )
 
   return (

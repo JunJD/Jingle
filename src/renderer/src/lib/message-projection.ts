@@ -74,11 +74,20 @@ export interface MessagesProjection {
   turns: MessageTurn[]
 }
 
+export type AgentToolExecutionViewStatus = "approval" | "complete" | "running"
+
+export interface AgentToolExecutionView {
+  status: AgentToolExecutionViewStatus
+  toolCallId: string
+}
+
+export type AgentToolExecutionsView = Record<string, AgentToolExecutionView>
+
 export type MessageDisplayRow =
   | {
       kind: "turn"
       key: string
-      turn: MessageTurn
+      turnKey: string
     }
   | {
       kind: "footer"
@@ -90,6 +99,23 @@ const FOOTER_DISPLAY_ROW: MessageDisplayRow = {
   key: "__chat_footer__"
 }
 const IMPLICIT_DISPLAY_TOOL_RESULT: ToolResultInfo = { content: "" }
+
+export interface MessageProjectionOptions {
+  activeAssistantId?: string | null
+  activeTurnKey?: string | null
+}
+
+export type ProjectedMessageFastPathMissReason = "message_role_not_assistant" | "turn_not_found"
+
+export type ProjectedMessageFastPathResult =
+  | {
+      projection: MessagesProjection
+      type: "hit"
+    }
+  | {
+      reason: ProjectedMessageFastPathMissReason
+      type: "miss"
+    }
 
 export function createDefaultMessagesProjection(): MessagesProjection {
   return {
@@ -283,7 +309,7 @@ function buildDisplayRows(turns: MessageTurn[]): MessageDisplayRow[] {
       (turn): MessageDisplayRow => ({
         kind: "turn",
         key: turn.key,
-        turn
+        turnKey: turn.key
       })
     ),
     FOOTER_DISPLAY_ROW
@@ -301,7 +327,7 @@ function stabilizeDisplayRows(
 
   const previousByKey = new Map(previous.map((row) => [row.key, row]))
   let isEqual = previous.length === next.length
-  const stableRows = next.map((nextRow, index) => {
+  const stableRows = next.map((nextRow) => {
     const previousRow = previousByKey.get(nextRow.key)
     if (!previousRow || previousRow.kind !== nextRow.kind || previousRow.key !== nextRow.key) {
       isEqual = false
@@ -312,16 +338,7 @@ function stabilizeDisplayRows(
       return previousRow
     }
 
-    if (previousRow.kind === "turn" && previousRow.turn === nextRow.turn) {
-      if (!Object.is(previousRow, previous[index])) {
-        isEqual = false
-      }
-
-      return previousRow
-    }
-
-    isEqual = false
-    return nextRow
+    return previousRow
   })
 
   return isEqual ? previous : stableRows
@@ -487,32 +504,98 @@ export function getTurnPendingApproval(
   return belongsToTurn ? pendingApproval : null
 }
 
+export function projectToolExecutionsView(input: {
+  activeRun: { status: string; turnId: string } | null
+  messageProjection: MessagesProjection
+  pendingApproval: HITLRequest | null
+  previous?: AgentToolExecutionsView
+}): AgentToolExecutionsView {
+  const nextToolExecutions = new Map<string, AgentToolExecutionView>()
+  const activeTurnKey = input.activeRun?.status === "running" ? input.activeRun.turnId : null
+
+  for (const turn of input.messageProjection.turns) {
+    const isActiveTurn = activeTurnKey === turn.key
+
+    for (const assistant of turn.assistants) {
+      for (const toolCall of assistant.tool_calls ?? []) {
+        if (turn.toolResults.has(toolCall.id)) {
+          nextToolExecutions.set(toolCall.id, {
+            status: "complete",
+            toolCallId: toolCall.id
+          })
+          continue
+        }
+
+        if (isActiveTurn) {
+          nextToolExecutions.set(toolCall.id, {
+            status: "running",
+            toolCallId: toolCall.id
+          })
+        }
+      }
+    }
+  }
+
+  const pendingApprovalToolCallId = input.pendingApproval?.tool_call.id ?? null
+  if (pendingApprovalToolCallId) {
+    nextToolExecutions.set(pendingApprovalToolCallId, {
+      status: "approval",
+      toolCallId: pendingApprovalToolCallId
+    })
+  }
+
+  if (!input.previous || nextToolExecutions.size !== Object.keys(input.previous).length) {
+    return Object.fromEntries(nextToolExecutions)
+  }
+
+  for (const [toolCallId, next] of nextToolExecutions) {
+    const previousEntry = input.previous[toolCallId]
+    if (!previousEntry || previousEntry.status !== next.status) {
+      return Object.fromEntries(nextToolExecutions)
+    }
+  }
+
+  return input.previous
+}
+
 export function updateProjectedMessage(
   previousProjection: MessagesProjection,
   message: ThreadMessage,
-  options: { activeAssistantId?: string | null; activeTurnKey?: string | null } = {}
-): MessagesProjection | null {
-  if (message.role === "tool") {
-    return null
+  options: MessageProjectionOptions = {}
+): ProjectedMessageFastPathResult {
+  if (message.role !== "assistant") {
+    return {
+      reason: "message_role_not_assistant",
+      type: "miss"
+    }
   }
 
   const turnIndex = previousProjection.turns.findIndex((turn) =>
     turn.assistants.some((assistant) => assistant.id === message.id)
   )
   if (turnIndex < 0) {
-    return null
+    return {
+      reason: "turn_not_found",
+      type: "miss"
+    }
   }
 
   const previousTurn = previousProjection.turns[turnIndex]
   if (!previousTurn) {
-    return null
+    return {
+      reason: "turn_not_found",
+      type: "miss"
+    }
   }
 
   const assistantIndex = previousTurn.assistants.findIndex(
     (assistant) => assistant.id === message.id
   )
   if (assistantIndex < 0) {
-    return null
+    return {
+      reason: "turn_not_found",
+      type: "miss"
+    }
   }
 
   const nextAssistants = [...previousTurn.assistants]
@@ -528,16 +611,7 @@ export function updateProjectedMessage(
   const turns = [...previousProjection.turns]
   turns[turnIndex] = nextTurn
 
-  const displayRows = previousProjection.displayRows.map((row) => {
-    if (row.kind !== "turn" || row.key !== nextTurn.key) {
-      return row
-    }
-
-    return {
-      ...row,
-      turn: nextTurn
-    }
-  })
+  const displayRows = previousProjection.displayRows
   const hasRuntimeActiveTurn = options.activeTurnKey !== undefined
   const activeTurnKey = hasRuntimeActiveTurn
     ? (options.activeTurnKey ?? null)
@@ -548,17 +622,20 @@ export function updateProjectedMessage(
     : previousProjection.activeAssistantId
 
   return {
-    activeAssistantId,
-    activeTurnKey,
-    displayRows,
-    turns
+    projection: {
+      activeAssistantId,
+      activeTurnKey,
+      displayRows,
+      turns
+    },
+    type: "hit"
   }
 }
 
 export function projectMessages(
   messages: ThreadMessage[],
   previousProjection?: MessagesProjection | null,
-  options: { activeAssistantId?: string | null; activeTurnKey?: string | null } = {}
+  options: MessageProjectionOptions = {}
 ): MessagesProjection {
   const toolResults = stabilizeToolResults(
     getPreviousToolResults(previousProjection),
@@ -585,16 +662,17 @@ export function projectMessages(
     turns.some((turn) => turn.key === options.activeTurnKey)
       ? (options.activeTurnKey ?? null)
       : null
-  const activeTurnKey =
-    hasRuntimeActiveTurn
-      ? runtimeActiveTurnKey
-      : (turns.find((turn) => turn.assistants.some((message) => message.id === latestAssistantId))
-          ?.key ?? null)
+  const activeTurnKey = hasRuntimeActiveTurn
+    ? runtimeActiveTurnKey
+    : (turns.find((turn) => turn.assistants.some((message) => message.id === latestAssistantId))
+        ?.key ?? null)
   const hasRuntimeActiveAssistant = options.activeAssistantId !== undefined
   const runtimeActiveAssistantId =
     hasRuntimeActiveAssistant &&
     options.activeAssistantId !== null &&
-    turns.some((turn) => turn.assistants.some((message) => message.id === options.activeAssistantId))
+    turns.some((turn) =>
+      turn.assistants.some((message) => message.id === options.activeAssistantId)
+    )
       ? (options.activeAssistantId ?? null)
       : null
   const activeAssistantId = hasRuntimeActiveAssistant

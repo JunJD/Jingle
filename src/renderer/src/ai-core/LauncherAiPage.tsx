@@ -2,9 +2,7 @@ import { ArrowLeft, ArrowUp, Command, Plus, Square } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { PromptInput, PromptInputAction, PromptInputTextarea } from "@/components/agent-ui"
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
-import { ChatJumpToLatestButton } from "@/components/chat/ChatJumpToLatestButton"
 import { ComposerApprovalPrompt } from "@/components/chat/ComposerApprovalPrompt"
-import { useVirtualChatScrollIntent } from "@/components/chat/useVirtualChatScrollIntent"
 import { useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { formatShortcutChord } from "@/shortcuts/format-shortcut"
 import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
@@ -15,21 +13,21 @@ import { AI_MAX_FOOTER_HEIGHT, getAiShellConfig } from "./ai-config"
 import { LauncherAiConversation, LauncherAiEmptyState } from "./LauncherAiConversation"
 import { LauncherAiHeaderModelPicker } from "./LauncherAiHeaderModelPicker"
 import { LauncherAiModelPicker } from "./LauncherAiModelPicker"
-import { useAiCoreNavigation, useAiCoreSurface } from "./AiCoreHost"
+import { useAiCoreHost } from "./AiCoreHost"
 import { LauncherAttachmentStrip } from "./LauncherAttachmentStrip"
+import { createLauncherAiController } from "./launcher-ai-controller"
 import { useAiAttachments } from "./useAiAttachments"
-import { useAiThread } from "./useAiThread"
 import { useLauncherAiActions } from "./useLauncherAiActions"
+import { useLauncherAiThreadNavigation } from "./useLauncherAiThreadNavigation"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
-import { useThreadSelector } from "@/lib/thread-context"
+import { useAgent } from "@/lib/use-agent"
+import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
 import type { ComposerAreaHandle } from "@/composer-area"
-import type { ComposerMessageInput } from "@shared/message-content"
-import type { Subagent } from "@/types"
+import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import { shouldGoHomeFromComposerKeyDown } from "./composer-keyboard"
-import type { VListHandle } from "virtua"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 const AI_COMPOSER_CHROME_HEIGHT = 30
@@ -37,8 +35,7 @@ const AI_COMPOSER_LINE_HEIGHT = 20
 const AI_COMPOSER_VISIBLE_LINES = 5
 const AI_ATTACHMENT_STRIP_HEIGHT = 48
 const AI_COMPOSER_BOTTOM_GAP = 8
-const LAUNCHER_AI_AT_BOTTOM_THRESHOLD_PX = 60
-const EMPTY_SUBAGENTS: readonly Subagent[] = []
+const DEFAULT_AGENT_CAN_FORK = true
 
 function getVisibleLineCount(value: string): number {
   return Math.min(AI_COMPOSER_VISIBLE_LINES, value.split("\n").length)
@@ -51,45 +48,80 @@ export function LauncherAiPage(): React.JSX.Element {
     [locale]
   )
   const attachmentDraft = useAiAttachments()
-  const navigation = useAiCoreNavigation()
-  const surface = useAiCoreSurface()
-  const {
-    conversation,
-    handleApprovalDecision,
-    inputStatus,
-    isBusy,
-    canStop,
-    canGoToNextChat,
-    canGoToPreviousChat,
-    currentModelId,
-    currentPermissionMode,
-    goToNextChat,
-    goToPreviousChat,
-    primaryActionDisabled,
-    query,
-    retry,
-    runPrimaryAction,
-    selectModel,
-    selectPermissionMode,
-    setQuery,
-    startFreshDraft,
-    stop,
-    branchThread,
-    threadId
-  } = useAiThread({
-    messageRefs: attachmentDraft.messageRefs,
-    onDidInvoke: attachmentDraft.clearAllAttachments
+  const host = useAiCoreHost()
+  const navigation = host.navigation
+  const surface = host.surface
+  const [initialSeedQuery] = useState(host.seedQuery)
+  const hasRunInitialActionRef = useRef(false)
+  const [navigationError, setNavigationError] = useState<string | null>(null)
+  const [pendingInput, setPendingInput] = useState(() => initialSeedQuery)
+  const threadNavigation = useLauncherAiThreadNavigation({
+    initialAction: host.initialAction,
+    seedQuery: initialSeedQuery
   })
-  const { inputRef, setInputStatus } = surface
-  const chatVirtualizerRef = useRef<VListHandle>(null)
+  const threadId = threadNavigation.threadId
+  const draftTarget = threadNavigation.target?.kind === "draft" ? threadNavigation.target : null
+  const {
+    branchThread: createBranchThread,
+    branchThreadUntilMessage,
+    canGoToNextThread,
+    canGoToPreviousThread,
+    createThread,
+    defaultDraftPermissionMode,
+    goToNextThread,
+    goToPreviousThread,
+    startFreshDraft: startFreshDraftTarget,
+    updateFreshDraft
+  } = threadNavigation
+  const agent = useAgent({
+    threadId
+  })
+  const {
+    control: agentControl,
+    state: { pendingApproval },
+    view: { canStop, error: agentError, isBusy, isLoading }
+  } = agent
+  const { stop } = agentControl
+  const threadActions = useThreadActions(threadId)
+  const draftInputFromThread = useThreadSelector(threadId, (state) => state?.ui.draftInput ?? null)
+  const currentModelId =
+    useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null) ??
+    draftTarget?.modelId ??
+    null
+  const currentPermissionMode =
+    useThreadSelector(threadId, (state) => state?.agent.permissionMode ?? null) ??
+    draftTarget?.permissionMode ??
+    defaultDraftPermissionMode
+  const query = draftInputFromThread ?? pendingInput
+  const messageInput = useMemo(
+    () => ({
+      refs: [...attachmentDraft.messageRefs],
+      text: query
+    }),
+    [attachmentDraft.messageRefs, query]
+  )
+  const initialMessageInput = useMemo(
+    () => ({
+      refs: [...attachmentDraft.messageRefs],
+      text: initialSeedQuery
+    }),
+    [attachmentDraft.messageRefs, initialSeedQuery]
+  )
+  const hasPendingApproval = Boolean(pendingApproval)
+  const threadError = agentError ?? navigationError
+  const primaryActionDisabled =
+    isBusy || hasPendingApproval || !hasComposerMessageInputContent(messageInput)
+  const { inputRef } = surface
   const composerOverlayRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [measuredComposerOverlayHeight, setMeasuredComposerOverlayHeight] = useState<number | null>(
     null
   )
   const [showModelPicker, setShowModelPicker] = useState(false)
-  const runId = useThreadSelector(threadId, (state) => state?.runId ?? null)
-  const subagents = useThreadSelector(threadId, (state) => state?.subagents ?? EMPTY_SUBAGENTS)
+  const hasThreadMessages = useThreadSelector(
+    threadId,
+    (state) => (state?.agent.messages.length ?? 0) > 0
+  )
   const currentThreadTitle = useHistoryShellStore((state) => {
     if (!threadId) {
       return null
@@ -97,9 +129,10 @@ export function LauncherAiPage(): React.JSX.Element {
 
     return state.threads.find((thread) => thread.thread_id === threadId)?.title ?? null
   })
-  const pendingApproval = conversation.pendingApproval
-  const canForkThread = conversation.forkState.canFork
-  const hasVisibleTurns = conversation.messageProjection.turns.length > 0
+  const canForkThread = useThreadSelector(
+    threadId,
+    (state) => state?.agent.forkState.canFork ?? DEFAULT_AGENT_CAN_FORK
+  )
   const hasAttachmentDraft = attachmentDraft.attachments.length > 0
   const isComposerExpanded = !pendingApproval && (query.includes("\n") || hasAttachmentDraft)
   const composerTextHeight = 14 + getVisibleLineCount(query) * AI_COMPOSER_LINE_HEIGHT
@@ -121,28 +154,66 @@ export function LauncherAiPage(): React.JSX.Element {
     pendingApproval || composerOverlayHeight === 0
       ? 0
       : composerOverlayHeight + AI_COMPOSER_BOTTOM_GAP
-  const chatVirtualItemCount =
-    threadId && (hasVisibleTurns || conversation.isLoading || conversation.visibleError)
-      ? conversation.messageProjection.displayRows.length
-      : 0
-  const {
-    forceScrollToLatest,
-    handleScroll: handleChatScroll,
-    handleScrollEnd: handleChatScrollEnd,
-    isAtBottom,
-    isScrolling,
-    jumpToLatestBottomPx,
-    markUserScrollIntent,
-    scrollToLatest,
-    showJumpToLatest
-  } = useVirtualChatScrollIntent({
-    atBottomThresholdPx: LAUNCHER_AI_AT_BOTTOM_THRESHOLD_PX,
-    bottomInsetPx: conversationBottomInset,
-    resetKey: threadId ?? "launcher-ai-empty",
-    totalCount: chatVirtualItemCount,
-    virtualizerRef: chatVirtualizerRef
-  })
   const isApprovalPending = Boolean(pendingApproval)
+  const controller = useMemo(
+    () =>
+      createLauncherAiController({
+        agentControl,
+        branchThreadUntilMessage,
+        createBranchThread,
+        createThread,
+        currentModelId,
+        currentPermissionMode,
+        defaultDraftPermissionMode,
+        draftTarget,
+        goToNextThread,
+        goToPreviousThread,
+        hasPendingApproval,
+        isBusy,
+        onDidInvoke: attachmentDraft.clearAllAttachments,
+        setNavigationError,
+        setPendingInput,
+        startFreshDraftTarget,
+        threadActions,
+        threadId,
+        title: copy.launcher.aiThreadTitle,
+        updateFreshDraft
+      }),
+    [
+      agentControl,
+      attachmentDraft.clearAllAttachments,
+      branchThreadUntilMessage,
+      copy.launcher.aiThreadTitle,
+      createBranchThread,
+      createThread,
+      currentModelId,
+      currentPermissionMode,
+      defaultDraftPermissionMode,
+      draftTarget,
+      goToNextThread,
+      goToPreviousThread,
+      hasPendingApproval,
+      isBusy,
+      startFreshDraftTarget,
+      threadActions,
+      threadId,
+      updateFreshDraft
+    ]
+  )
+  const {
+    branchThread,
+    clearVisibleError,
+    goToNextChat,
+    goToPreviousChat,
+    handleApprovalDecision,
+    runPrimaryAction,
+    selectModel,
+    selectPermissionMode,
+    setQuery,
+    startFreshDraft
+  } = controller
+  const canGoToNextChat = canGoToNextThread
+  const canGoToPreviousChat = canGoToPreviousThread
   const openAttachmentPicker = useCallback((): void => {
     fileInputRef.current?.click()
   }, [])
@@ -210,10 +281,10 @@ export function LauncherAiPage(): React.JSX.Element {
     [attachmentDraft.attachments.length, inputRef, navigation, query]
   )
   const canStartNewQuestion =
-    query.trim().length > 0 || attachmentDraft.attachments.length > 0 || hasVisibleTurns
+    query.trim().length > 0 || attachmentDraft.attachments.length > 0 || hasThreadMessages
   const { actionController, addAttachmentShortcut, submitShortcut } = useLauncherAiActions({
     branchThread: handleBranchChat,
-    canBranchThread: Boolean(threadId && hasVisibleTurns && canForkThread),
+    canBranchThread: Boolean(threadId && hasThreadMessages && canForkThread),
     canGoToNextChat,
     canGoToPreviousChat,
     canStartNewQuestion,
@@ -262,12 +333,24 @@ export function LauncherAiPage(): React.JSX.Element {
   useDisableTabNavigation(inputRef)
 
   useEffect(() => {
-    setInputStatus(inputStatus)
+    if (hasRunInitialActionRef.current || host.initialAction !== "submit") {
+      return
+    }
+
+    if (!hasComposerMessageInputContent(initialMessageInput)) {
+      hasRunInitialActionRef.current = true
+      return
+    }
+
+    const submitFrameId = window.requestAnimationFrame(() => {
+      hasRunInitialActionRef.current = true
+      runPrimaryAction(initialMessageInput)
+    })
 
     return () => {
-      setInputStatus("idle")
+      window.cancelAnimationFrame(submitFrameId)
     }
-  }, [inputStatus, setInputStatus])
+  }, [host.initialAction, initialMessageInput, runPrimaryAction])
 
   useEffect(() => {
     const element = composerOverlayRef.current
@@ -326,8 +409,6 @@ export function LauncherAiPage(): React.JSX.Element {
             </div>
           ) : undefined
         }
-        inputStatus={inputStatus}
-        showInputStatusIndicator={false}
         hideInputChrome
         inputValue={query}
         onInputValueChange={setQuery}
@@ -338,49 +419,18 @@ export function LauncherAiPage(): React.JSX.Element {
         {threadId ? (
           <LauncherAiConversation
             bottomInset={conversationBottomInset}
-            clearError={conversation.clearVisibleError}
-            error={conversation.visibleError}
-            forkState={conversation.forkState}
-            isAtBottom={isAtBottom}
-            isLoading={conversation.isLoading}
-            isScrolling={isScrolling}
-            messageProjection={conversation.messageProjection}
+            clearError={clearVisibleError}
+            error={threadError}
+            isLoading={isLoading}
             onBranch={handleBranchChat}
-            onRetry={retry}
-            onScroll={handleChatScroll}
-            onScrollEnd={handleChatScrollEnd}
-            onScrollToLatest={scrollToLatest}
-            onUserScrollIntent={markUserScrollIntent}
+            onRetry={runPrimaryAction}
             pendingApproval={pendingApproval}
-            runId={runId}
-            subagents={subagents}
             threadId={threadId}
-            todos={conversation.todos}
-            virtualizerRef={chatVirtualizerRef}
           />
         ) : (
-          <LauncherAiEmptyState
-            bottomInset={conversationBottomInset}
-            error={conversation.visibleError}
-          />
+          <LauncherAiEmptyState bottomInset={conversationBottomInset} error={threadError} />
         )}
       </LauncherChrome>
-
-      {showJumpToLatest ? (
-        <div
-          className="pointer-events-none absolute inset-x-0 z-30 flex justify-center px-[var(--launcher-ai-composer-page-x)]"
-          style={{
-            bottom: jumpToLatestBottomPx
-          }}
-        >
-          <ChatJumpToLatestButton
-            className="pointer-events-auto"
-            isLoading={conversation.isLoading}
-            label={copy.launcher.jumpToLatest}
-            onClick={forceScrollToLatest}
-          />
-        </div>
-      ) : null}
 
       {!pendingApproval ? (
         <form

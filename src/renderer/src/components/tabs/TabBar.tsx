@@ -24,11 +24,11 @@ export function TabBar({
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const threadId = propThreadId ?? currentThreadId
   const threadActions = useThreadActions(threadId)
-  const activeTab = useThreadSelector(threadId, (state) => state?.activeTab ?? "agent")
-  const openFiles = useThreadSelector(threadId, (state) => state?.openFiles ?? EMPTY_OPEN_FILES)
+  const activeTab = useThreadSelector(threadId, (state) => state?.ui.activeTab ?? "agent")
+  const openFiles = useThreadSelector(threadId, (state) => state?.ui.openFiles ?? EMPTY_OPEN_FILES)
   const openArtifacts = useThreadSelector(
     threadId,
-    (state) => state?.openArtifacts ?? EMPTY_OPEN_ARTIFACTS
+    (state) => state?.ui.openArtifacts ?? EMPTY_OPEN_ARTIFACTS
   )
 
   if (!threadActions) {

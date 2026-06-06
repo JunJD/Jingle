@@ -2,7 +2,8 @@ import { MessageSquare, Loader2, Clock, Bot } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn, formatRelativeTime, truncate } from "@/lib/utils"
-import { useThreadStream } from "@/lib/thread-context"
+import { getSubagentStatusPresentation } from "@/lib/subagent-view"
+import { useThreadSelector } from "@/lib/thread-context"
 import type { Thread, Subagent } from "@/types"
 
 type KanbanStatus = "pending" | "in_progress" | "interrupted" | "done"
@@ -20,7 +21,7 @@ interface SubagentCardProps {
 }
 
 function ThreadStatusIcon({ threadId }: { threadId: string }): React.JSX.Element {
-  const { isLoading } = useThreadStream(threadId)
+  const isLoading = useThreadSelector(threadId, (state) => state?.agent.activeRun?.status === "running")
 
   if (isLoading) {
     return (
@@ -75,6 +76,7 @@ export function SubagentKanbanCard({
   onClick
 }: SubagentCardProps): React.JSX.Element {
   const isDone = subagent.status === "completed" || subagent.status === "failed"
+  const statusPresentation = getSubagentStatusPresentation(subagent.status)
 
   return (
     <Card
@@ -99,10 +101,10 @@ export function SubagentKanbanCard({
               </span>
               {isDone && (
                 <Badge
-                  variant={subagent.status === "failed" ? "critical" : "nominal"}
+                  variant={statusPresentation.badge}
                   className="shrink-0 [font-size:var(--ow-font-micro)]"
                 >
-                  {subagent.status === "failed" ? "FAILED" : "DONE"}
+                  {statusPresentation.label}
                 </Badge>
               )}
             </div>

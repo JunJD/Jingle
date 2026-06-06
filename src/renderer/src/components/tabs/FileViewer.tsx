@@ -47,7 +47,7 @@ export function FileViewer(props: FileViewerProps): React.JSX.Element | null {
   const isBinary = useMemo(() => isBinaryFile(fileName), [fileName])
   const isMarkdownDocument = ext === "md" || ext === "mdx" || ext === "markdown"
 
-  const content = source === "workspace" ? threadState?.fileContents[filePath] : textContent
+  const content = source === "workspace" ? threadState?.ui.fileContents[filePath] : textContent
 
   // Reset state when filePath changes
   useEffect(() => {

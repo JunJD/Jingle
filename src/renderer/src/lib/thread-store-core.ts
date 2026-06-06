@@ -13,17 +13,22 @@ import {
 import type { HITLRequest, Message, Subagent, ThreadForkState, Todo } from "../types"
 import {
   createDefaultMessagesProjection,
-  projectMessages,
+  projectToolExecutionsView,
+  type AgentToolExecutionsView,
   type MessagesProjection
 } from "./message-projection"
 import {
   applyRuntimeEventsToThreadState,
   createRuntimeThreadStateUpdate
-} from "./thread-runtime-adapter"
-import { applyThreadDataSnapshotToThreadState } from "./thread-data-adapter"
-import { stabilizeThreadMessages } from "./thread-message-stability"
+} from "./agent-runtime-reducer"
+import { applyRuntimeSnapshotToThreadState } from "./agent-runtime-snapshot-reducer"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
+export type {
+  AgentToolExecutionView,
+  AgentToolExecutionViewStatus,
+  AgentToolExecutionsView
+} from "./message-projection"
 
 export interface TokenUsage {
   inputTokens: number
@@ -34,11 +39,10 @@ export interface TokenUsage {
   lastUpdated: Date
 }
 
-export interface ThreadState {
+export interface AgentSourceState {
   activeRun: ActiveAgentRun | null
   artifacts: ArtifactRecord[]
   forkState: ThreadForkState
-  messageProjection: MessagesProjection
   messages: Message[]
   title: string | null
   todos: Todo[]
@@ -48,27 +52,51 @@ export interface ThreadState {
   error: string | null
   currentModel: string
   permissionMode: PermissionModeName
+  revision: number
+  runId: string | null
+  tokenUsage: TokenUsage | null
+}
+
+export interface AgentViewState {
+  messageProjection: MessagesProjection
+  toolExecutions: AgentToolExecutionsView
+}
+
+export interface ThreadLocalUiState {
   openFiles: OpenFile[]
   openArtifacts: OpenArtifactTab[]
   activeTab: "agent" | string
   fileContents: Record<string, string>
-  revision: number
-  runId: string | null
-  tokenUsage: TokenUsage | null
   draftInput: string
 }
 
+export interface ThreadState {
+  agent: AgentSourceState
+  view: AgentViewState
+  ui: ThreadLocalUiState
+}
+
+export type ThreadStateUpdate = {
+  agent?: Partial<AgentSourceState>
+  view?: Partial<AgentViewState>
+  ui?: Partial<ThreadLocalUiState>
+}
+
+function projectAgentToolExecutionsView(
+  agent: AgentSourceState,
+  messageProjection: MessagesProjection,
+  previous: AgentToolExecutionsView
+): AgentToolExecutionsView {
+  return projectToolExecutionsView({
+    activeRun: agent.activeRun,
+    messageProjection,
+    pendingApproval: agent.pendingApproval,
+    previous
+  })
+}
+
 export interface ThreadActions {
-  applyThreadDataSnapshot: (snapshot: AgentThreadDataSnapshot) => void
-  applyRuntimeEvents: (events: AgentThreadEvent[]) => void
-  setArtifacts: (artifacts: ArtifactRecord[]) => void
-  setForkState: (forkState: ThreadForkState) => void
-  appendMessage: (message: Message) => void
-  setMessages: (messages: Message[]) => void
-  setTodos: (todos: Todo[]) => void
   setWorkspacePath: (path: string | null) => void
-  setSubagents: (subagents: Subagent[]) => void
-  setPendingApproval: (request: HITLRequest | null) => void
   setError: (error: string | null) => void
   clearError: () => void
   setCurrentModel: (modelId: string) => void
@@ -82,8 +110,6 @@ export interface ThreadActions {
   setDraftInput: (input: string) => void
 }
 
-export type ThreadRecord = ThreadState & ThreadActions
-
 export interface ThreadStoreEffects {
   persistCurrentModel?: (threadId: string, modelId: string) => void | Promise<void>
   persistPermissionMode?: (
@@ -93,95 +119,125 @@ export interface ThreadStoreEffects {
 }
 
 export interface ThreadStore {
+  applyArtifactsChanged: (threadId: string, artifacts: ArtifactRecord[]) => void
+  applyRuntimeEvents: (threadId: string, events: AgentThreadEvent[]) => void
+  applyThreadDataSnapshot: (threadId: string, snapshot: AgentThreadDataSnapshot) => void
   deleteThreadState: (threadId: string) => void
   ensureThreadState: (threadId: string) => boolean
-  getAllStreamLoadingStates: () => Record<string, boolean>
   getAllThreadStates: () => Record<string, ThreadState>
-  getStreamLoadingState: (threadId: string) => boolean
   getThreadActions: (threadId: string) => ThreadActions
-  getThreadRecord: (threadId: string) => ThreadRecord
   getThreadState: (threadId: string) => ThreadState
-  setStreamLoadingState: (threadId: string, isLoading: boolean) => void
-  subscribeAllStreamLoadingStates: (listener: () => void) => () => void
   subscribeAllThreadStates: (listener: () => void) => () => void
   subscribeThread: (threadId: string, listener: () => void) => () => void
-  updateThreadState: (
-    threadId: string,
-    updater: (prev: ThreadState) => Partial<ThreadState>
-  ) => void
 }
 
 export function createDefaultThreadState(): ThreadState {
   return {
-    activeRun: null,
-    artifacts: [],
-    forkState: {
-      canFork: true
+    agent: {
+      activeRun: null,
+      artifacts: [],
+      forkState: {
+        canFork: true
+      },
+      messages: [],
+      title: null,
+      todos: [],
+      workspacePath: null,
+      subagents: [],
+      pendingApproval: null,
+      error: null,
+      currentModel: DEFAULT_MODELS.llm,
+      permissionMode: DEFAULT_PERMISSION_MODE,
+      revision: 0,
+      runId: null,
+      tokenUsage: null
     },
-    messageProjection: createDefaultMessagesProjection(),
-    messages: [],
-    title: null,
-    todos: [],
-    workspacePath: null,
-    subagents: [],
-    pendingApproval: null,
-    error: null,
-    currentModel: DEFAULT_MODELS.llm,
-    permissionMode: DEFAULT_PERMISSION_MODE,
-    openFiles: [],
-    openArtifacts: [],
-    activeTab: "agent",
-    fileContents: {},
-    revision: 0,
-    runId: null,
-    tokenUsage: null,
-    draftInput: ""
+    view: {
+      messageProjection: createDefaultMessagesProjection(),
+      toolExecutions: {}
+    },
+    ui: {
+      openFiles: [],
+      openArtifacts: [],
+      activeTab: "agent",
+      fileContents: {},
+      draftInput: ""
+    }
   }
 }
 
 export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore {
   const threadListeners = new Map<string, Set<() => void>>()
   const allThreadStateListeners = new Set<() => void>()
-  const allStreamLoadingListeners = new Set<() => void>()
   const actionsCache: Record<string, ThreadActions> = {}
-  const recordCache: Record<string, ThreadRecord> = {}
   let threadStates: Record<string, ThreadState> = {}
-  let streamLoadingStates: Record<string, boolean> = {}
 
   const getThreadState = (threadId: string): ThreadState => {
     return threadStates[threadId] ?? createDefaultThreadState()
   }
 
   const emitThread = (threadId: string): void => {
-    recordCache[threadId] = {
-      ...getThreadState(threadId),
-      ...getThreadActions(threadId)
-    }
     threadListeners.get(threadId)?.forEach((listener) => listener())
     allThreadStateListeners.forEach((listener) => listener())
   }
 
-  const hasThreadStateChanges = (
-    current: ThreadState,
-    nextPartial: Partial<ThreadState>
-  ): boolean => {
-    for (const key of Object.keys(nextPartial) as (keyof ThreadState)[]) {
-      if (!Object.is(current[key], nextPartial[key])) {
-        return true
-      }
+  const hasThreadStateChanges = (nextPartial: ThreadStateUpdate): boolean =>
+    Boolean(
+      (nextPartial.agent && Object.keys(nextPartial.agent).length > 0) ||
+      (nextPartial.view && Object.keys(nextPartial.view).length > 0) ||
+      (nextPartial.ui && Object.keys(nextPartial.ui).length > 0)
+    )
+
+  const filterLayerChanges = <T extends object>(
+    current: T,
+    nextPartial: Partial<T> | undefined
+  ): Partial<T> | undefined => {
+    if (!nextPartial) {
+      return undefined
     }
 
-    return false
+    const changedEntries = Object.entries(nextPartial).filter(([key, value]) => {
+      return !Object.is(current[key as keyof T], value)
+    })
+
+    return changedEntries.length > 0
+      ? (Object.fromEntries(changedEntries) as Partial<T>)
+      : undefined
   }
+
+  const filterThreadStateChanges = (
+    current: ThreadState,
+    nextPartial: ThreadStateUpdate
+  ): ThreadStateUpdate => ({
+    agent: filterLayerChanges(current.agent, nextPartial.agent),
+    view: filterLayerChanges(current.view, nextPartial.view),
+    ui: filterLayerChanges(current.ui, nextPartial.ui)
+  })
 
   const updateThreadState = (
     threadId: string,
-    updater: (prev: ThreadState) => Partial<ThreadState>
+    updater: (prev: ThreadState) => ThreadStateUpdate
   ): void => {
     const current = getThreadState(threadId)
-    const nextPartial = updater(current)
+    const requestedPartial = updater(current)
+    const requestedView = requestedPartial.view
+    const nextAgent = requestedPartial.agent
+      ? { ...current.agent, ...requestedPartial.agent }
+      : current.agent
+    const projectedToolExecutions = projectAgentToolExecutionsView(
+      nextAgent,
+      requestedView?.messageProjection ?? current.view.messageProjection,
+      current.view.toolExecutions
+    )
+    const nextPartial = filterThreadStateChanges(current, {
+      ...requestedPartial,
+      view: {
+        ...requestedView,
+        toolExecutions: projectedToolExecutions
+      }
+    })
 
-    if (!hasThreadStateChanges(current, nextPartial)) {
+    if (!hasThreadStateChanges(nextPartial)) {
       return
     }
 
@@ -189,10 +245,40 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
       ...threadStates,
       [threadId]: {
         ...current,
-        ...nextPartial
+        agent: nextPartial.agent ? { ...current.agent, ...nextPartial.agent } : current.agent,
+        view: nextPartial.view ? { ...current.view, ...nextPartial.view } : current.view,
+        ui: nextPartial.ui ? { ...current.ui, ...nextPartial.ui } : current.ui
       }
     }
     emitThread(threadId)
+  }
+
+  const applyThreadDataSnapshot = (threadId: string, snapshot: AgentThreadDataSnapshot): void => {
+    updateThreadState(threadId, (state) => {
+      const nextState = applyRuntimeSnapshotToThreadState(state, snapshot)
+      return {
+        agent: nextState.agent,
+        view: nextState.view
+      }
+    })
+  }
+
+  const applyRuntimeEvents = (threadId: string, events: AgentThreadEvent[]): void => {
+    if (events.length === 0) {
+      return
+    }
+
+    updateThreadState(threadId, (state) => {
+      const nextState = applyRuntimeEventsToThreadState(state, events, { threadId })
+      return createRuntimeThreadStateUpdate(nextState)
+    })
+  }
+
+  const applyArtifactsChanged = (threadId: string, artifacts: ArtifactRecord[]): void => {
+    updateThreadState(threadId, (state) => ({
+      agent: { artifacts },
+      ui: { openArtifacts: syncOpenArtifactTabs(state.ui.openArtifacts, artifacts) }
+    }))
   }
 
   const getThreadActions = (threadId: string): ThreadActions => {
@@ -201,191 +287,114 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
     }
 
     const actions: ThreadActions = {
-      applyThreadDataSnapshot: (snapshot: AgentThreadDataSnapshot) => {
-        updateThreadState(threadId, (state) => {
-          return applyThreadDataSnapshotToThreadState(state, snapshot)
-        })
-      },
-      applyRuntimeEvents: (events: AgentThreadEvent[]) => {
-        if (events.length === 0) {
-          return
-        }
-
-        updateThreadState(threadId, (state) => {
-          const nextState = applyRuntimeEventsToThreadState(state, events)
-          return createRuntimeThreadStateUpdate(nextState)
-        })
-      },
-      appendMessage: (message: Message) => {
-        updateThreadState(threadId, (state) => {
-          const existingIndex = state.messages.findIndex((entry) => entry.id === message.id)
-          if (existingIndex < 0) {
-            const messages = [...state.messages, message]
-            return {
-              messageProjection: projectMessages(
-                messages,
-                state.messageProjection,
-                state.activeRun
-                  ? {
-                      activeAssistantId: state.activeRun.assistantMessageId,
-                      activeTurnKey: state.activeRun.turnId
-                    }
-                  : {}
-              ),
-              messages
-            }
-          }
-
-          const nextMessages = [...state.messages]
-          nextMessages[existingIndex] = message
-          const messages = stabilizeThreadMessages(state.messages, nextMessages)
-          return {
-            messageProjection: projectMessages(
-              messages,
-              state.messageProjection,
-              state.activeRun
-                ? {
-                    activeAssistantId: state.activeRun.assistantMessageId,
-                    activeTurnKey: state.activeRun.turnId
-                  }
-                : {}
-            ),
-            messages
-          }
-        })
-      },
-      setMessages: (messages: Message[]) => {
-        updateThreadState(threadId, (state) => {
-          const stableMessages = stabilizeThreadMessages(state.messages, messages)
-          return {
-            messageProjection: projectMessages(
-              stableMessages,
-              state.messageProjection,
-              state.activeRun
-                ? {
-                    activeAssistantId: state.activeRun.assistantMessageId,
-                    activeTurnKey: state.activeRun.turnId
-                  }
-                : {}
-            ),
-            messages: stableMessages
-          }
-        })
-      },
-      setArtifacts: (artifacts: ArtifactRecord[]) => {
-        updateThreadState(threadId, (state) => ({
-          artifacts,
-          openArtifacts: syncOpenArtifactTabs(state.openArtifacts, artifacts)
-        }))
-      },
-      setForkState: (forkState: ThreadForkState) => {
-        updateThreadState(threadId, () => ({ forkState }))
-      },
-      setTodos: (todos: Todo[]) => {
-        updateThreadState(threadId, () => ({ todos }))
-      },
       setWorkspacePath: (path: string | null) => {
-        updateThreadState(threadId, () => ({ workspacePath: path }))
-      },
-      setSubagents: (subagents: Subagent[]) => {
-        updateThreadState(threadId, () => ({ subagents }))
-      },
-      setPendingApproval: (request: HITLRequest | null) => {
-        updateThreadState(threadId, () => ({ pendingApproval: request }))
+        updateThreadState(threadId, () => ({ agent: { workspacePath: path } }))
       },
       setError: (error: string | null) => {
-        updateThreadState(threadId, () => ({ error }))
+        updateThreadState(threadId, () => ({ agent: { error } }))
       },
       clearError: () => {
-        updateThreadState(threadId, () => ({ error: null }))
+        updateThreadState(threadId, () => ({ agent: { error: null } }))
       },
       setCurrentModel: (modelId: string) => {
-        updateThreadState(threadId, () => ({ currentModel: modelId }))
+        updateThreadState(threadId, () => ({ agent: { currentModel: modelId } }))
         void effects.persistCurrentModel?.(threadId, modelId)
       },
       setPermissionMode: (permissionMode: PermissionModeName) => {
-        updateThreadState(threadId, () => ({ permissionMode }))
+        updateThreadState(threadId, () => ({ agent: { permissionMode } }))
         void effects.persistPermissionMode?.(threadId, permissionMode)
       },
       openFile: (path: string, name: string) => {
         updateThreadState(threadId, (state) => {
-          if (state.openFiles.some((file) => file.path === path)) {
+          if (state.ui.openFiles.some((file) => file.path === path)) {
             return {
-              activeTab: path
+              ui: { activeTab: path }
             }
           }
 
           return {
-            openFiles: [...state.openFiles, { path, name }],
-            activeTab: path
+            ui: {
+              openFiles: [...state.ui.openFiles, { path, name }],
+              activeTab: path
+            }
           }
         })
       },
       closeFile: (path: string) => {
         updateThreadState(threadId, (state) => {
-          const nextOpenFiles = state.openFiles.filter((file) => file.path !== path)
-          const nextFileContents = { ...state.fileContents }
+          const nextOpenFiles = state.ui.openFiles.filter((file) => file.path !== path)
+          const nextFileContents = { ...state.ui.fileContents }
           delete nextFileContents[path]
 
           return {
-            activeTab: getNextActiveTabAfterClose({
-              activeTab: state.activeTab,
-              closedTabId: path,
-              openArtifacts: state.openArtifacts,
-              openFiles: state.openFiles
-            }),
-            fileContents: nextFileContents,
-            openFiles: nextOpenFiles
+            ui: {
+              activeTab: getNextActiveTabAfterClose({
+                activeTab: state.ui.activeTab,
+                closedTabId: path,
+                openArtifacts: state.ui.openArtifacts,
+                openFiles: state.ui.openFiles
+              }),
+              fileContents: nextFileContents,
+              openFiles: nextOpenFiles
+            }
           }
         })
       },
       openArtifactTab: (tab: OpenArtifactTab) => {
         updateThreadState(threadId, (state) => {
           const nextTabId = getArtifactTabId(tab.artifactId)
-          const existingTabIndex = state.openArtifacts.findIndex(
+          const existingTabIndex = state.ui.openArtifacts.findIndex(
             (entry) => entry.artifactId === tab.artifactId
           )
 
           if (existingTabIndex >= 0) {
-            const nextOpenArtifacts = [...state.openArtifacts]
+            const nextOpenArtifacts = [...state.ui.openArtifacts]
             nextOpenArtifacts[existingTabIndex] = tab
 
             return {
-              activeTab: nextTabId,
-              openArtifacts: nextOpenArtifacts
+              ui: {
+                activeTab: nextTabId,
+                openArtifacts: nextOpenArtifacts
+              }
             }
           }
 
           return {
-            activeTab: nextTabId,
-            openArtifacts: [...state.openArtifacts, tab]
+            ui: {
+              activeTab: nextTabId,
+              openArtifacts: [...state.ui.openArtifacts, tab]
+            }
           }
         })
       },
       closeArtifactTab: (artifactId: string) => {
         updateThreadState(threadId, (state) => ({
-          activeTab: getNextActiveTabAfterClose({
-            activeTab: state.activeTab,
-            closedTabId: getArtifactTabId(artifactId),
-            openArtifacts: state.openArtifacts,
-            openFiles: state.openFiles
-          }),
-          openArtifacts: state.openArtifacts.filter((entry) => entry.artifactId !== artifactId)
+          ui: {
+            activeTab: getNextActiveTabAfterClose({
+              activeTab: state.ui.activeTab,
+              closedTabId: getArtifactTabId(artifactId),
+              openArtifacts: state.ui.openArtifacts,
+              openFiles: state.ui.openFiles
+            }),
+            openArtifacts: state.ui.openArtifacts.filter((entry) => entry.artifactId !== artifactId)
+          }
         }))
       },
       setActiveTab: (tab: "agent" | string) => {
-        updateThreadState(threadId, () => ({ activeTab: tab }))
+        updateThreadState(threadId, () => ({ ui: { activeTab: tab } }))
       },
       setFileContents: (path: string, content: string) => {
         updateThreadState(threadId, (state) => ({
-          fileContents: {
-            ...state.fileContents,
-            [path]: content
+          ui: {
+            fileContents: {
+              ...state.ui.fileContents,
+              [path]: content
+            }
           }
         }))
       },
       setDraftInput: (input: string) => {
-        updateThreadState(threadId, () => ({ draftInput: input }))
+        updateThreadState(threadId, () => ({ ui: { draftInput: input } }))
       }
     }
 
@@ -408,11 +417,9 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
 
   const deleteThreadState = (threadId: string): void => {
     const hadThreadState = Object.hasOwn(threadStates, threadId)
-    const hadStreamLoadingState = Object.hasOwn(streamLoadingStates, threadId)
 
-    if (!hadThreadState && !hadStreamLoadingState) {
+    if (!hadThreadState) {
       delete actionsCache[threadId]
-      delete recordCache[threadId]
       return
     }
 
@@ -420,60 +427,21 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
       const { [threadId]: _deletedThreadState, ...restThreadStates } = threadStates
       void _deletedThreadState
       threadStates = restThreadStates
-      delete recordCache[threadId]
       delete actionsCache[threadId]
       threadListeners.get(threadId)?.forEach((listener) => listener())
       allThreadStateListeners.forEach((listener) => listener())
     }
-
-    if (hadStreamLoadingState) {
-      const { [threadId]: _deletedLoadingState, ...restLoadingStates } = streamLoadingStates
-      void _deletedLoadingState
-      streamLoadingStates = restLoadingStates
-      allStreamLoadingListeners.forEach((listener) => listener())
-    }
-  }
-
-  const setStreamLoadingState = (threadId: string, isLoading: boolean): void => {
-    const current = streamLoadingStates[threadId] ?? false
-    if (Object.is(current, isLoading)) {
-      return
-    }
-
-    streamLoadingStates = {
-      ...streamLoadingStates,
-      [threadId]: isLoading
-    }
-    allStreamLoadingListeners.forEach((listener) => listener())
-  }
-
-  const getThreadRecord = (threadId: string): ThreadRecord => {
-    if (!recordCache[threadId]) {
-      recordCache[threadId] = {
-        ...getThreadState(threadId),
-        ...getThreadActions(threadId)
-      }
-    }
-
-    return recordCache[threadId]
   }
 
   return {
+    applyArtifactsChanged,
+    applyRuntimeEvents,
+    applyThreadDataSnapshot,
     deleteThreadState,
     ensureThreadState,
-    getAllStreamLoadingStates: () => streamLoadingStates,
     getAllThreadStates: () => threadStates,
-    getStreamLoadingState: (threadId: string) => streamLoadingStates[threadId] ?? false,
     getThreadActions,
-    getThreadRecord,
     getThreadState,
-    setStreamLoadingState,
-    subscribeAllStreamLoadingStates: (listener: () => void): (() => void) => {
-      allStreamLoadingListeners.add(listener)
-      return () => {
-        allStreamLoadingListeners.delete(listener)
-      }
-    },
     subscribeAllThreadStates: (listener: () => void): (() => void) => {
       allThreadStateListeners.add(listener)
       return () => {
@@ -495,7 +463,6 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
           threadListeners.delete(threadId)
         }
       }
-    },
-    updateThreadState
+    }
   }
 }

@@ -5,7 +5,7 @@ import type { Todo } from "@/types"
 import { useI18n } from "@/lib/i18n"
 
 interface ChatTodosProps {
-  todos: Todo[]
+  todos: readonly Todo[]
 }
 
 const STATUS_CONFIG = {

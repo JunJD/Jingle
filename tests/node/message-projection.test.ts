@@ -5,7 +5,9 @@ import {
   getTurnPendingApproval,
   getTurnToolDisplayPolicy,
   projectMessages,
+  projectToolExecutionsView,
   shouldDefaultExpandToolEntries,
+  updateProjectedMessage,
   type MessageTurn
 } from "../../src/renderer/src/lib/message-projection"
 import { stabilizeThreadMessages } from "../../src/renderer/src/lib/thread-message-stability"
@@ -69,6 +71,21 @@ function createTurn(assistants: Message[]): MessageTurn {
 
 function cloneMessages(messages: Message[]): Message[] {
   return structuredClone(messages)
+}
+
+function createLongConversationMessages(turnCount: number): Message[] {
+  const messages: Message[] = []
+  for (let index = 0; index < turnCount; index += 1) {
+    messages.push(
+      createUserMessage(`user-${index}`, `Question ${index}`),
+      createAssistantMessage({
+        content: `Answer ${index}`,
+        id: `assistant-${index}`
+      })
+    )
+  }
+
+  return messages
 }
 
 test("single tool call projects to one agent activity item for standalone rendering", () => {
@@ -267,6 +284,104 @@ test("write_todos projects as complete after the todo state update is visible", 
   assert.equal(turn.toolResults.has(executeToolCall.id), false)
 })
 
+test("tool execution view derives from messages and runtime facts", () => {
+  const runningToolCall = createToolCall("tool-call-1")
+  const completedToolCall = createToolCall("tool-call-2")
+  const projection = projectMessages([
+    createUserMessage("user-1", "Run tools"),
+    createAssistantMessage({
+      id: "assistant-1",
+      toolCalls: [runningToolCall, completedToolCall]
+    }),
+    createToolMessage({
+      content: "done",
+      id: "tool-result-2",
+      toolCallId: completedToolCall.id
+    })
+  ])
+
+  const runningView = projectToolExecutionsView({
+    activeRun: {
+      status: "running",
+      turnId: "user-1"
+    },
+    messageProjection: projection,
+    pendingApproval: null
+  })
+
+  assert.deepEqual(runningView[runningToolCall.id], {
+    status: "running",
+    toolCallId: runningToolCall.id
+  })
+  assert.deepEqual(runningView[completedToolCall.id], {
+    status: "complete",
+    toolCallId: completedToolCall.id
+  })
+
+  const approval: HITLRequest = {
+    allowed_decisions: ["approve", "reject"],
+    id: "approval-1",
+    review: null,
+    tool_call: runningToolCall
+  }
+  const approvalView = projectToolExecutionsView({
+    activeRun: {
+      status: "waiting_approval",
+      turnId: "user-1"
+    },
+    messageProjection: projection,
+    pendingApproval: approval,
+    previous: runningView
+  })
+
+  assert.deepEqual(approvalView[runningToolCall.id], {
+    status: "approval",
+    toolCallId: runningToolCall.id
+  })
+  assert.deepEqual(approvalView[completedToolCall.id], runningView[completedToolCall.id])
+
+  const finishedView = projectToolExecutionsView({
+    activeRun: null,
+    messageProjection: projection,
+    pendingApproval: null
+  })
+  assert.equal(finishedView[runningToolCall.id], undefined)
+  assert.deepEqual(finishedView[completedToolCall.id], {
+    status: "complete",
+    toolCallId: completedToolCall.id
+  })
+})
+
+test("unchanged tool execution view reuses the previous object", () => {
+  const toolCall = createToolCall("tool-call-1")
+  const projection = projectMessages([
+    createUserMessage("user-1", "Run a tool"),
+    createAssistantMessage({
+      id: "assistant-1",
+      toolCalls: [toolCall]
+    })
+  ])
+  const firstView = projectToolExecutionsView({
+    activeRun: {
+      status: "running",
+      turnId: "user-1"
+    },
+    messageProjection: projection,
+    pendingApproval: null
+  })
+  const nextView = projectToolExecutionsView({
+    activeRun: {
+      status: "running",
+      turnId: "user-1"
+    },
+    messageProjection: projection,
+    pendingApproval: null,
+    previous: firstView
+  })
+
+  assert.equal(nextView, firstView)
+})
+
 test("tool entries collapse by default only after a non-streaming turn ends with assistant content", () => {
   const toolOnlyTurn = createTurn([
     createAssistantMessage({
@@ -335,9 +450,105 @@ test("streaming assistant content updates keep historical message and turn refer
   assert.equal(nextProjection.turns[1]?.user, firstProjection.turns[1]?.user)
   assert.equal(nextProjection.turns[1]?.assistants[0], stableMessages[3])
   assert.equal(nextProjection.displayRows[0], firstProjection.displayRows[0])
-  assert.notEqual(nextProjection.displayRows[1], firstProjection.displayRows[1])
+  assert.equal(nextProjection.displayRows[1], firstProjection.displayRows[1])
   assert.equal(nextProjection.displayRows.at(-1), firstProjection.displayRows.at(-1))
   assert.equal(nextProjection.activeAssistantId, "assistant-2")
+})
+
+test("streaming assistant fast path updates one turn without rebuilding display rows", () => {
+  const messages = [
+    createUserMessage("user-1", "First question"),
+    createAssistantMessage({ content: "First answer", id: "assistant-1" }),
+    createUserMessage("user-2", "Second question"),
+    createAssistantMessage({ content: "Streaming", id: "assistant-2" })
+  ]
+  const firstProjection = projectMessages(messages)
+  const result = updateProjectedMessage(
+    firstProjection,
+    createAssistantMessage({ content: "Streaming update", id: "assistant-2" }),
+    {
+      activeAssistantId: "assistant-2",
+      activeTurnKey: "user-2"
+    }
+  )
+
+  assert.equal(result.type, "hit")
+  if (result.type !== "hit") {
+    return
+  }
+
+  assert.equal(result.projection.displayRows, firstProjection.displayRows)
+  assert.equal(result.projection.turns[0], firstProjection.turns[0])
+  assert.notEqual(result.projection.turns[1], firstProjection.turns[1])
+  assert.equal(result.projection.turns[1]?.user, firstProjection.turns[1]?.user)
+  assert.equal(result.projection.turns[1]?.assistants[0]?.content, "Streaming update")
+  assert.equal(result.projection.activeAssistantId, "assistant-2")
+  assert.equal(result.projection.activeTurnKey, "user-2")
+})
+
+test("streaming assistant fast path keeps long history rows and inactive turns stable", () => {
+  const messages = createLongConversationMessages(200)
+  const firstProjection = projectMessages(messages)
+  const activeTurnIndex = 199
+  const activeAssistantId = `assistant-${activeTurnIndex}`
+  const activeTurnKey = `user-${activeTurnIndex}`
+  const result = updateProjectedMessage(
+    firstProjection,
+    createAssistantMessage({
+      content: "Answer 199 plus streamed token",
+      id: activeAssistantId
+    }),
+    {
+      activeAssistantId,
+      activeTurnKey
+    }
+  )
+
+  assert.equal(result.type, "hit")
+  if (result.type !== "hit") {
+    return
+  }
+
+  assert.equal(result.projection.displayRows, firstProjection.displayRows)
+  for (let index = 0; index < activeTurnIndex; index += 1) {
+    assert.equal(result.projection.turns[index], firstProjection.turns[index])
+    assert.equal(result.projection.displayRows[index], firstProjection.displayRows[index])
+  }
+  assert.notEqual(result.projection.turns[activeTurnIndex], firstProjection.turns[activeTurnIndex])
+  assert.equal(
+    result.projection.turns[activeTurnIndex]?.user,
+    firstProjection.turns[activeTurnIndex]?.user
+  )
+  assert.equal(result.projection.activeAssistantId, activeAssistantId)
+  assert.equal(result.projection.activeTurnKey, activeTurnKey)
+})
+
+test("streaming assistant fast path returns explicit miss reasons", () => {
+  const projection = projectMessages([
+    createUserMessage("user-1", "Question"),
+    createAssistantMessage({ content: "Answer", id: "assistant-1" })
+  ])
+  const toolMiss = updateProjectedMessage(
+    projection,
+    createToolMessage({
+      content: "tool result",
+      id: "tool-1",
+      toolCallId: "tool-call-1"
+    })
+  )
+  const missingTurnMiss = updateProjectedMessage(
+    projection,
+    createAssistantMessage({ content: "Missing answer", id: "assistant-missing" })
+  )
+
+  assert.deepEqual(toolMiss, {
+    reason: "message_role_not_assistant",
+    type: "miss"
+  })
+  assert.deepEqual(missingTurnMiss, {
+    reason: "turn_not_found",
+    type: "miss"
+  })
 })
 
 test("unchanged snapshots reuse the previous projection object", () => {

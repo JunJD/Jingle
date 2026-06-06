@@ -1,31 +1,30 @@
 import { useMemo } from "react"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
-import { useAllThreadStates, useAllStreamLoadingStates } from "@/lib/thread-context"
+import { useAllThreadStates } from "@/lib/thread-context"
+import {
+  createEmptySubagentKanbanBuckets,
+  projectSubagentKanbanBuckets,
+  type WorkBoardStatus
+} from "@/lib/subagent-view"
 import { KanbanColumn } from "./KanbanColumn"
 import { ThreadKanbanCard, SubagentKanbanCard } from "./KanbanCard"
-import type { Thread, Subagent } from "@/types"
+import type { Thread } from "@/types"
 
-type KanbanStatus = "pending" | "in_progress" | "interrupted" | "done"
+type KanbanStatus = WorkBoardStatus
 
 interface ThreadWithStatus {
   thread: Thread
   status: KanbanStatus
 }
 
-interface SubagentWithParent {
-  subagent: Subagent
-  parentThread: Thread
-  status: KanbanStatus
-}
-
 function getThreadKanbanStatus(
   thread: Thread,
-  isLoading: boolean,
+  hasActiveRun: boolean,
   hasDraft: boolean,
   hasPendingApproval: boolean
 ): KanbanStatus {
   if (hasPendingApproval || thread.status === "interrupted") return "interrupted"
-  if (thread.status === "busy" || isLoading) return "in_progress"
+  if (thread.status === "busy" || hasActiveRun) return "in_progress"
   if (hasDraft) return "pending"
   return "done"
 }
@@ -35,7 +34,6 @@ export function KanbanView(): React.JSX.Element {
   const selectThread = useHistoryShellStore((state) => state.selectThread)
   const showSubagentsInKanban = useHistoryShellStore((state) => state.showSubagentsInKanban)
   const allThreadStates = useAllThreadStates()
-  const loadingStates = useAllStreamLoadingStates()
 
   const handleCardClick = (threadId: string): void => {
     selectThread(threadId)
@@ -50,59 +48,27 @@ export function KanbanView(): React.JSX.Element {
     }
 
     for (const thread of threads) {
-      const isLoading = loadingStates[thread.thread_id] ?? false
       const threadState = allThreadStates[thread.thread_id]
-      const hasDraft = Boolean(threadState?.draftInput?.trim())
-      const hasPendingApproval = Boolean(threadState?.pendingApproval)
-      const status = getThreadKanbanStatus(thread, isLoading, hasDraft, hasPendingApproval)
+      const hasActiveRun = threadState?.agent.activeRun?.status === "running"
+      const hasDraft = Boolean(threadState?.ui.draftInput.trim())
+      const hasPendingApproval = Boolean(threadState?.agent.pendingApproval)
+      const status = getThreadKanbanStatus(thread, hasActiveRun, hasDraft, hasPendingApproval)
       result[status].push({ thread, status })
     }
 
     return result
-  }, [threads, loadingStates, allThreadStates])
+  }, [threads, allThreadStates])
 
   const categorizedSubagents = useMemo(() => {
     if (!showSubagentsInKanban) {
-      return { pending: [], in_progress: [], interrupted: [], done: [] }
+      return createEmptySubagentKanbanBuckets()
     }
 
-    const result: Record<KanbanStatus, SubagentWithParent[]> = {
-      pending: [],
-      in_progress: [],
-      interrupted: [],
-      done: []
-    }
-
-    const threadMap = new Map(threads.map((t) => [t.thread_id, t]))
-
-    for (const [threadId, state] of Object.entries(allThreadStates)) {
-      const parentThread = threadMap.get(threadId)
-      if (!parentThread || !state.subagents) continue
-
-      for (const subagent of state.subagents) {
-        let status: KanbanStatus
-        switch (subagent.status) {
-          case "pending":
-            status = "pending"
-            break
-          case "running":
-            status = "in_progress"
-            break
-          case "completed":
-            status = "done"
-            break
-          case "failed":
-            status = "done"
-            break
-          default:
-            status = "pending"
-        }
-
-        result[status].push({ subagent, parentThread, status })
-      }
-    }
-
-    return result
+    return projectSubagentKanbanBuckets({
+      enabled: true,
+      statesByThreadId: allThreadStates,
+      threads
+    })
   }, [threads, allThreadStates, showSubagentsInKanban])
 
   const columnData: { status: KanbanStatus; title: string }[] = [

@@ -38,7 +38,7 @@ const EMPTY_TODOS: readonly Todo[] = []
 
 export function TodoPanel(): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
-  const todos = useThreadSelector(currentThreadId, (state) => state?.todos ?? EMPTY_TODOS)
+  const todos = useThreadSelector(currentThreadId, (state) => state?.agent.todos ?? EMPTY_TODOS)
   const [completedExpanded, setCompletedExpanded] = useState(false)
 
   // Group todos by status

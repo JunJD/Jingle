@@ -13,6 +13,12 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
+import {
+  countSubagents,
+  getSubagentDurationLabel,
+  getSubagentStatusPresentation,
+  getSubagentTypeBadge
+} from "@/lib/subagent-view"
 import { useThreadSelector } from "@/lib/thread-context"
 import type { Subagent } from "@/types"
 
@@ -36,34 +42,16 @@ function SubagentTypeIcon({
   }
 }
 
-// Get badge variant for subagent type
-function getSubagentTypeBadge(subagentType?: string): string {
-  switch (subagentType) {
-    case "correctness-checker":
-      return "CHECKER"
-    case "final-reviewer":
-      return "REVIEWER"
-    case "research":
-      return "RESEARCH"
-    case "general-purpose":
-      return "GENERAL"
-    default:
-      return subagentType?.toUpperCase() || "TASK"
-  }
-}
-
 const EMPTY_SUBAGENTS: readonly Subagent[] = []
 
 export function SubagentPanel(): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const subagents = useThreadSelector(
     currentThreadId,
-    (state) => state?.subagents ?? EMPTY_SUBAGENTS
+    (state) => state?.agent.subagents ?? EMPTY_SUBAGENTS
   )
 
-  // Count by status
-  const runningCount = subagents.filter((s) => s.status === "running").length
-  const completedCount = subagents.filter((s) => s.status === "completed").length
+  const counts = countSubagents(subagents)
 
   return (
     <div className="flex h-full flex-col">
@@ -71,13 +59,13 @@ export function SubagentPanel(): React.JSX.Element {
         <div className="flex items-center justify-between">
           <span className="text-section-header">SUBAGENTS</span>
           <div className="flex items-center gap-[var(--ow-gap-sm)]">
-            {runningCount > 0 && (
+            {counts.running > 0 && (
               <Badge variant="info">
                 <Loader2 className="mr-[var(--ow-space-1)] size-[var(--ow-icon-compact)] animate-spin" />
-                {runningCount} ACTIVE
+                {counts.running} ACTIVE
               </Badge>
             )}
-            <Badge variant="outline">{subagents.length} TOTAL</Badge>
+            <Badge variant="outline">{counts.total} TOTAL</Badge>
           </div>
         </div>
       </div>
@@ -99,12 +87,12 @@ export function SubagentPanel(): React.JSX.Element {
       </ScrollArea>
 
       {/* Summary footer when there are completed subagents */}
-      {completedCount > 0 && (
+      {counts.completed > 0 && (
         <div className="border-t border-border bg-muted/30 p-[var(--ow-space-3)]">
           <div className="flex items-center justify-between [font-size:var(--ow-font-meta)] text-muted-foreground">
             <span className="flex items-center gap-[var(--ow-gap-xs)]">
               <CheckCircle2 className="size-[var(--ow-icon-compact)] text-status-nominal" />
-              {completedCount} completed
+              {counts.completed} completed
             </span>
           </div>
         </div>
@@ -114,38 +102,22 @@ export function SubagentPanel(): React.JSX.Element {
 }
 
 function SubagentCard({ subagent }: { subagent: Subagent }): React.JSX.Element {
-  const getStatusConfig = (): {
-    icon: React.ElementType
-    badge: "outline" | "info" | "nominal" | "critical"
-    label: string
-  } => {
+  const getStatusIcon = (): React.ElementType => {
     switch (subagent.status) {
       case "pending":
-        return { icon: Clock, badge: "outline" as const, label: "PENDING" }
+        return Clock
       case "running":
-        return { icon: Loader2, badge: "info" as const, label: "RUNNING" }
+        return Loader2
       case "completed":
-        return { icon: CheckCircle2, badge: "nominal" as const, label: "DONE" }
+        return CheckCircle2
       case "failed":
-        return { icon: XCircle, badge: "critical" as const, label: "FAILED" }
+        return XCircle
     }
   }
 
-  const config = getStatusConfig()
-  const StatusIcon = config.icon
-
-  // Calculate duration only for completed subagents (to avoid impure Date.now() during render)
-  const getDuration = (): string | null => {
-    if (!subagent.startedAt || !subagent.completedAt) return null
-    const start = new Date(subagent.startedAt).getTime()
-    const end = new Date(subagent.completedAt).getTime()
-    const durationMs = end - start
-    if (durationMs < 1000) return `${durationMs}ms`
-    if (durationMs < 60000) return `${(durationMs / 1000).toFixed(1)}s`
-    return `${(durationMs / 60000).toFixed(1)}m`
-  }
-
-  const duration = getDuration()
+  const statusPresentation = getSubagentStatusPresentation(subagent.status)
+  const StatusIcon = getStatusIcon()
+  const duration = getSubagentDurationLabel(subagent)
 
   return (
     <Card className={cn(subagent.status === "running" && "border-status-info/50")}>
@@ -161,14 +133,14 @@ function SubagentCard({ subagent }: { subagent: Subagent }): React.JSX.Element {
             />
             <span className="truncate">{subagent.name}</span>
           </CardTitle>
-          <Badge variant={config.badge} className="shrink-0">
+          <Badge variant={statusPresentation.badge} className="shrink-0">
             <StatusIcon
               className={cn(
                 "mr-[var(--ow-space-1)] size-[var(--ow-icon-compact)]",
                 subagent.status === "running" && "animate-spin"
               )}
             />
-            {config.label}
+            {statusPresentation.label}
           </Badge>
         </div>
         {subagent.subagentType && (

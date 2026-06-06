@@ -13,7 +13,7 @@ interface WorkspacePickerProps {
 
 export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.Element {
   const { copy } = useI18n()
-  const workspacePath = useThreadSelector(threadId, (state) => state?.workspacePath ?? null)
+  const workspacePath = useThreadSelector(threadId, (state) => state?.agent.workspacePath ?? null)
   const threadActions = useThreadActions(threadId)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)

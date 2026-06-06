@@ -18,7 +18,7 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
   const loadModelProviderState = useHistoryShellStore((state) => state.loadModelProviderState)
   const models = useHistoryShellStore((state) => state.models)
   const providers = useHistoryShellStore((state) => state.providers)
-  const currentModel = useThreadSelector(threadId, (state) => state?.currentModel ?? null)
+  const currentModel = useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null)
   const threadActions = useThreadActions(threadId)
   const selectedModel = useMemo(
     () => models.find((model) => model.id === currentModel) ?? null,
