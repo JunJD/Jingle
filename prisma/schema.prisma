@@ -22,6 +22,7 @@ model Thread {
   checkpoints           Checkpoint[]
   checkpointWrites      CheckpointWrite[]
   hitlRequests          HitlRequest[]
+  messages              Message[]
   agentMemorySuggestions AgentMemorySuggestion[]
   agentMemoryInclusions AgentMemoryInclusion[]
 
@@ -238,4 +239,24 @@ model CheckpointWrite {
   @@id([threadId, checkpointNs, checkpointId, taskId, idx])
   @@index([threadId, checkpointNs, checkpointId], map: "idx_writes_thread_checkpoint")
   @@map("writes")
+}
+
+model Message {
+  threadId   String  @map("thread_id")
+  messageId  String  @map("message_id")
+  role       String
+  kind       String
+  content    String
+  toolCalls  String? @map("tool_calls")
+  toolCallId String? @map("tool_call_id")
+  name       String?
+  metadata   String?
+  createdAt  BigInt  @map("created_at")
+  updatedAt  BigInt  @map("updated_at")
+  searchText String  @map("search_text")
+  thread     Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@id([threadId, messageId])
+  @@index([threadId, createdAt], map: "idx_messages_thread_created_at")
+  @@map("messages")
 }

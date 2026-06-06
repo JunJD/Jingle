@@ -93,3 +93,79 @@ test("message search indexes image names without storing image data URLs", async
   assert.doesNotMatch(rows[0]!.search_text, /data:image\/png;base64/)
   assert.ok(rows[0]!.search_text.length < 200)
 })
+
+test("message projection stores content separately from FTS and rebuilds search index", async () => {
+  const {
+    createThread,
+    getPrismaClient,
+    rebuildMessageSearchIndexFromMessages,
+    syncMessageProjectionFromSnapshot
+  } = await loadDbModules()
+  const threadId = "thread-message-projection"
+
+  await createThread(threadId)
+  await syncMessageProjectionFromSnapshot(threadId, [
+    {
+      content: JSON.stringify("alpha searchable text"),
+      created_at: 10,
+      kind: "message",
+      message_id: "message-alpha",
+      role: "user"
+    }
+  ])
+
+  const prisma = getPrismaClient()
+  const messageRows = await prisma.message.findMany({ where: { threadId } })
+  const ftsBefore = await prisma.$queryRawUnsafe<Array<{ search_text: string }>>(
+    `SELECT search_text FROM "messages_fts" WHERE thread_id = ?`,
+    threadId
+  )
+
+  assert.equal(messageRows.length, 1)
+  assert.equal(messageRows[0]!.searchText, "alpha searchable text")
+  assert.equal(ftsBefore.length, 0)
+
+  await rebuildMessageSearchIndexFromMessages(threadId)
+
+  const ftsAfter = await prisma.$queryRawUnsafe<Array<{ search_text: string }>>(
+    `SELECT search_text FROM "messages_fts" WHERE thread_id = ?`,
+    threadId
+  )
+  assert.deepEqual(
+    ftsAfter.map((row) => row.search_text),
+    ["alpha searchable text"]
+  )
+})
+
+test("message search projection removes stale checkpoint messages", async () => {
+  const { createThread, getPrismaClient, syncMessageSearchIndexFromSnapshot } = await loadDbModules()
+  const threadId = "thread-stale-message-projection"
+
+  await createThread(threadId)
+  await syncMessageSearchIndexFromSnapshot(threadId, [
+    { content: JSON.stringify("first"), message_id: "message-first", role: "user" },
+    { content: JSON.stringify("second"), message_id: "message-second", role: "assistant" }
+  ])
+  await syncMessageSearchIndexFromSnapshot(threadId, [
+    { content: JSON.stringify("second updated"), message_id: "message-second", role: "assistant" }
+  ])
+
+  const prisma = getPrismaClient()
+  const messageRows = await prisma.message.findMany({
+    orderBy: { messageId: "asc" },
+    where: { threadId }
+  })
+  const ftsRows = await prisma.$queryRawUnsafe<Array<{ message_id: string; search_text: string }>>(
+    `SELECT message_id, search_text FROM "messages_fts" WHERE thread_id = ? ORDER BY message_id`,
+    threadId
+  )
+
+  assert.deepEqual(
+    messageRows.map((row) => row.messageId),
+    ["message-second"]
+  )
+  assert.deepEqual(
+    ftsRows.map((row) => [row.message_id, row.search_text]),
+    [["message-second", "second updated"]]
+  )
+})

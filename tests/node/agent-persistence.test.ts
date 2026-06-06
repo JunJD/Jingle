@@ -1096,6 +1096,7 @@ test("prisma checkpoint saver stores checkpoints without syncing derived thread 
 test("runtime checkpointer syncs derived thread state after checkpoint writes", async () => {
   const { createThread, createRun, getLatestHitlRequest, getPrismaClient } = await loadDbModules()
   const { closeCheckpointer, getCheckpointer } = await import("../../src/main/agent/runtime")
+  const { flushMessageSearchProjection } = await import("../../src/main/checkpointer/runtime-checkpointer")
 
   const threadId = "thread-runtime-checkpoint-store"
   const runId = "run-runtime-checkpoint-store"
@@ -1140,18 +1141,119 @@ test("runtime checkpointer syncs derived thread state after checkpoint writes", 
       }
     )
 
+    assert.equal((await getLatestHitlRequest(threadId))?.tool_call_id, "tool-call-runtime-store")
+
+    await flushMessageSearchProjection()
+
     const prisma = getPrismaClient()
+    const messageRows = await prisma.message.findMany({ where: { threadId } })
     const searchRows = await prisma.$queryRawUnsafe<Array<{ search_text: string }>>(
       `SELECT search_text FROM "messages_fts" WHERE thread_id = ?`,
       threadId
     )
 
+    assert.equal(messageRows.length, 1)
     assert.equal(searchRows.length, 1)
     assert.match(searchRows[0]!.search_text, /needs approval/)
-    assert.equal((await getLatestHitlRequest(threadId))?.tool_call_id, "tool-call-runtime-store")
   } finally {
     await closeCheckpointer(threadId)
   }
+})
+
+test("runtime checkpointer keeps checkpoint and HITL writes when message search projection fails", async () => {
+  const { createThread, createRun, getLatestHitlRequest, getPrismaClient } = await loadDbModules()
+  const { RuntimeCheckpointSaver, flushMessageSearchProjection } = await import(
+    "../../src/main/checkpointer/runtime-checkpointer"
+  )
+  const consoleWarn = mock.method(console, "warn", () => {})
+  const threadId = "thread-runtime-search-failure"
+  const runId = "run-runtime-search-failure"
+
+  try {
+    await createThread(threadId)
+    await createRun(runId, threadId, { status: "running" })
+
+    const checkpoint = emptyCheckpoint()
+    checkpoint.id = "checkpoint-runtime-search-failure"
+    checkpoint.channel_values = {
+      __interrupt__: [
+        {
+          value: {
+            actionRequests: [
+              {
+                args: { path: `${repoRoot}/pending.txt` },
+                name: "write_file",
+                toolCallId: "tool-call-search-failure"
+              }
+            ]
+          }
+        }
+      ],
+      messages: [{ kwargs: { content: "still saved", id: "message-search-failure" }, type: "human" }]
+    }
+
+    let syncAttempts = 0
+    const saver = new RuntimeCheckpointSaver({
+      syncMessageSearchProjection: async () => {
+        syncAttempts += 1
+        throw new Error("search projection failed")
+      }
+    })
+    await saver.put(
+      {
+        configurable: {
+          thread_id: threadId
+        },
+        metadata: {
+          run_id: runId
+        }
+      },
+      checkpoint,
+      {
+        parents: {},
+        source: "update",
+        step: 0
+      }
+    )
+    await flushMessageSearchProjection()
+
+    const prisma = getPrismaClient()
+    const checkpointRows = await prisma.checkpoint.findMany({ where: { threadId } })
+    const searchRows = await prisma.$queryRawUnsafe<Array<{ search_text: string }>>(
+      `SELECT search_text FROM "messages_fts" WHERE thread_id = ?`,
+      threadId
+    )
+
+    assert.equal(checkpointRows.length, 1)
+    assert.equal((await getLatestHitlRequest(threadId))?.tool_call_id, "tool-call-search-failure")
+    assert.equal(searchRows.length, 0)
+    assert.equal(syncAttempts, 1)
+    assert.equal(consoleWarn.mock.callCount(), 1)
+  } finally {
+    consoleWarn.mock.restore()
+  }
+})
+
+test("closeRuntime flushes projections queued while checkpointers close", async () => {
+  const { closeRuntime, getCheckpointer } = await import("../../src/main/agent/runtime")
+  const { enqueueMessageSearchProjection } = await import(
+    "../../src/main/checkpointer/runtime-checkpointer"
+  )
+  const threadId = "thread-close-runtime-search-projection"
+  const saver = await getCheckpointer(threadId)
+  let projectionFlushed = false
+  const originalClose = saver.close.bind(saver)
+
+  saver.close = async () => {
+    await originalClose()
+    enqueueMessageSearchProjection(threadId, [], async () => {
+      projectionFlushed = true
+    })
+  }
+
+  await closeRuntime()
+
+  assert.equal(projectionFlushed, true)
 })
 
 test("syncRunFromLatestCheckpoint copies a generated checkpoint title onto auto-titled threads", async () => {

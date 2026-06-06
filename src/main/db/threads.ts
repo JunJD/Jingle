@@ -501,6 +501,9 @@ export async function deleteThread(threadId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`DELETE FROM "messages_fts" WHERE thread_id = ?`, threadId)
     await tx.$executeRawUnsafe(`DELETE FROM "messages_fts_trigram" WHERE thread_id = ?`, threadId)
+    await tx.message.deleteMany({
+      where: { threadId }
+    })
     await tx.hitlRequest.deleteMany({
       where: { threadId }
     })
