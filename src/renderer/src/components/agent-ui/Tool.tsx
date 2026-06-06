@@ -120,7 +120,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
         <CollapsibleTrigger asChild disabled={!hasDetail}>
           <Button
             className={cn(
-              "h-auto w-full justify-between rounded-none bg-transparent px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left font-normal hover:bg-background-secondary/46",
+              "h-auto w-full justify-between rounded-none bg-transparent px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left font-normal text-[var(--ow-agent-timeline-muted)] hover:bg-background-secondary/46 hover:text-foreground",
               (state === "complete" || state === "running") &&
                 "justify-start gap-[var(--ow-gap-xs)] px-0 py-[var(--ow-space-0-5)] hover:bg-transparent",
               !hasDetail && "cursor-default hover:bg-transparent"
@@ -133,7 +133,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
               <span className="inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
                 {icon ?? <AgentToolStatusIcon className="size-[var(--ow-icon-sm)]" state={state} />}
               </span>
-              <span className="ow-agent-tool-title min-w-0 [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-[var(--ow-agent-timeline-muted)]">
+              <span className="ow-agent-tool-title min-w-0 [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
                 {title}
               </span>
             </span>
