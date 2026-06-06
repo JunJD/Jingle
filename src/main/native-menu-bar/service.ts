@@ -2,6 +2,7 @@ import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { BrowserWindow, Menu, Tray, nativeImage } from "electron"
 import type { NativeMenuBarActionEvent, NativeMenuBarState } from "@shared/native-menu-bar"
+import { resolveNativeExtensionAssetPath } from "../native-extensions/assets"
 
 interface NativeMenuBarBddProbe {
   clearState: (commandKey: string) => void
@@ -152,7 +153,10 @@ export class NativeMenuBarService {
     const iconPath =
       typeof icon === "string"
         ? join(__dirname, "../../resources/assets/menu-bar", `${icon}.png`)
-        : join(__dirname, "../../resources/extensions", icon.extensionName, icon.path)
+        : resolveNativeExtensionAssetPath({
+            extensionName: icon.extensionName,
+            path: icon.path
+          })
     if (!existsSync(iconPath)) {
       throw new Error(`Native menu bar icon not found: ${iconPath}`)
     }

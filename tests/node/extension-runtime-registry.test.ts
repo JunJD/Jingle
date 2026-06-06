@@ -265,6 +265,7 @@ test("extension package icons are owned by extension manifests and flow into set
 
   assert.deepEqual(manifestIcons, {
     "apple-reminders": "assets/icon.png",
+    "figma-files": "assets/command-icon.png",
     github: "assets/icon.svg",
     notion: "assets/notion-logo.png",
     "todo-list": "assets/icon.svg",
