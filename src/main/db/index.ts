@@ -29,4 +29,4 @@ export {
   upsertHitlRequest
 } from "./hitl"
 export type { HitlRequestRow, UpsertHitlRequestInput } from "./hitl"
-export { syncMessageSearchIndexFromSnapshot } from "./message-search"
+export { rebuildMessageSearchIndexFromMessages, syncMessageProjectionFromSnapshot, syncMessageSearchIndexFromSnapshot } from "./message-search"

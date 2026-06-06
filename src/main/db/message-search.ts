@@ -10,9 +10,27 @@ import { getPrismaClient } from "./client"
 
 type IndexedCheckpointMessage = {
   content: string
+  created_at?: number
+  kind?: string
   message_id: string
   metadata?: string | null
+  name?: string | null
   role: string
+  tool_call_id?: string | null
+  tool_calls?: string | null
+}
+
+type IndexedProjectedMessage = {
+  content: string
+  createdAt: number
+  kind: string
+  messageId: string
+  metadata: string | null
+  name: string | null
+  role: string
+  searchText: string
+  toolCallId: string | null
+  toolCalls: string | null
 }
 
 function parseIndexedMessageContent(
@@ -64,38 +82,128 @@ function buildIndexedMessageSearchText(message: IndexedCheckpointMessage): strin
   return Array.from(new Set(candidateParts.filter(Boolean))).join("\n")
 }
 
-export async function syncMessageSearchIndexFromSnapshot(
+function buildProjectedMessages(messages: IndexedCheckpointMessage[]): IndexedProjectedMessage[] {
+  const now = Date.now()
+  return messages.map((message, index) => ({
+    content: message.content,
+    createdAt: message.created_at ?? now + index,
+    kind: message.kind ?? "message",
+    messageId: message.message_id,
+    metadata: message.metadata ?? null,
+    name: message.name ?? null,
+    role: message.role,
+    searchText: buildIndexedMessageSearchText(message),
+    toolCallId: message.tool_call_id ?? null,
+    toolCalls: message.tool_calls ?? null
+  }))
+}
+
+export async function syncMessageProjectionFromSnapshot(
   threadId: string,
   messages: IndexedCheckpointMessage[]
 ): Promise<void> {
   const prisma = getPrismaClient()
-  const indexedMessages = messages
-    .map((message) => ({
-      messageId: message.message_id,
-      role: message.role,
-      searchText: buildIndexedMessageSearchText(message)
-    }))
-    .filter((message) => message.searchText.length > 0)
+  const projectedMessages = buildProjectedMessages(messages)
+  const projectedIds = new Set(projectedMessages.map((message) => message.messageId))
+  const now = BigInt(Date.now())
 
-  await prisma.$transaction(async (tx) => {
-    await tx.$executeRawUnsafe(`DELETE FROM "messages_fts" WHERE thread_id = ?`, threadId)
-    await tx.$executeRawUnsafe(`DELETE FROM "messages_fts_trigram" WHERE thread_id = ?`, threadId)
-
-    for (const message of indexedMessages) {
-      await tx.$executeRawUnsafe(
-        `INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text") VALUES (?, ?, ?, ?)`,
-        threadId,
-        message.messageId,
-        message.role,
-        message.searchText
-      )
-      await tx.$executeRawUnsafe(
-        `INSERT INTO "messages_fts_trigram" ("thread_id", "message_id", "role", "search_text") VALUES (?, ?, ?, ?)`,
-        threadId,
-        message.messageId,
-        message.role,
-        message.searchText
-      )
-    }
+  const existingRows = await prisma.message.findMany({
+    select: { messageId: true },
+    where: { threadId }
   })
+  const staleIds = existingRows
+    .map((row) => row.messageId)
+    .filter((messageId) => !projectedIds.has(messageId))
+
+  if (staleIds.length > 0) {
+    await prisma.message.deleteMany({
+      where: {
+        messageId: { in: staleIds },
+        threadId
+      }
+    })
+  }
+
+  for (const message of projectedMessages) {
+    await prisma.message.upsert({
+      where: {
+        threadId_messageId: {
+          messageId: message.messageId,
+          threadId
+        }
+      },
+      create: {
+        content: message.content,
+        createdAt: BigInt(message.createdAt),
+        kind: message.kind,
+        messageId: message.messageId,
+        metadata: message.metadata,
+        name: message.name,
+        role: message.role,
+        searchText: message.searchText,
+        threadId,
+        toolCallId: message.toolCallId,
+        toolCalls: message.toolCalls,
+        updatedAt: now
+      },
+      update: {
+        content: message.content,
+        kind: message.kind,
+        metadata: message.metadata,
+        name: message.name,
+        role: message.role,
+        searchText: message.searchText,
+        toolCallId: message.toolCallId,
+        toolCalls: message.toolCalls,
+        updatedAt: now
+      }
+    })
+  }
+}
+
+export async function syncMessageSearchIndexFromSnapshot(
+  threadId: string,
+  messages: IndexedCheckpointMessage[]
+): Promise<void> {
+  await syncMessageProjectionFromSnapshot(threadId, messages)
+  await rebuildMessageSearchIndexFromMessages(threadId)
+}
+
+export async function rebuildMessageSearchIndexFromMessages(threadId?: string): Promise<void> {
+  const prisma = getPrismaClient()
+
+  if (threadId) {
+    await prisma.$executeRawUnsafe(`DELETE FROM "messages_fts" WHERE thread_id = ?`, threadId)
+    await prisma.$executeRawUnsafe(`DELETE FROM "messages_fts_trigram" WHERE thread_id = ?`, threadId)
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text")
+       SELECT "thread_id", "message_id", "role", "search_text"
+       FROM "messages"
+       WHERE "thread_id" = ? AND length("search_text") > 0`,
+      threadId
+    )
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "messages_fts_trigram" ("thread_id", "message_id", "role", "search_text")
+       SELECT "thread_id", "message_id", "role", "search_text"
+       FROM "messages"
+       WHERE "thread_id" = ? AND length("search_text") > 0`,
+      threadId
+    )
+    return
+  }
+
+  await prisma.$executeRawUnsafe(`DELETE FROM "messages_fts"`)
+  await prisma.$executeRawUnsafe(`DELETE FROM "messages_fts_trigram"`)
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text")
+     SELECT "thread_id", "message_id", "role", "search_text"
+     FROM "messages"
+     WHERE length("search_text") > 0`
+  )
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "messages_fts_trigram" ("thread_id", "message_id", "role", "search_text")
+     SELECT "thread_id", "message_id", "role", "search_text"
+     FROM "messages"
+     WHERE length("search_text") > 0`
+  )
 }

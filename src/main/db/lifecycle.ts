@@ -7,6 +7,7 @@ const REQUIRED_TABLES = [
   "_prisma_migrations",
   "threads",
   "runs",
+  "messages",
   "messages_fts",
   "messages_fts_trigram",
   "artifacts",
