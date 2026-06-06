@@ -121,7 +121,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
           <Button
             className={cn(
               "h-auto w-full justify-between rounded-none bg-transparent px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left font-normal hover:bg-background-secondary/46",
-              state === "complete" &&
+              (state === "complete" || state === "running") &&
                 "justify-start gap-[var(--ow-gap-xs)] px-0 py-[var(--ow-space-0-5)] hover:bg-transparent",
               !hasDetail && "cursor-default hover:bg-transparent"
             )}
@@ -129,7 +129,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
             type="button"
             variant="ghost"
           >
-            <span className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
+            <span className="ow-agent-tool-label flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
               <span className="inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
                 {icon ?? <AgentToolStatusIcon className="size-[var(--ow-icon-sm)]" state={state} />}
               </span>
@@ -140,7 +140,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
             <span
               className={cn(
                 "ml-[var(--ow-space-2)] flex shrink-0 items-center gap-[var(--ow-gap-sm)]",
-                state === "complete" && "ml-0 gap-[var(--ow-gap-xs)]"
+                (state === "complete" || state === "running") && "ml-0 gap-[var(--ow-gap-xs)]"
               )}
             >
               {meta}
@@ -163,7 +163,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
             <div
               className={cn(
                 "px-[var(--ow-space-3)] py-[var(--ow-space-3)]",
-                state === "complete" &&
+                (state === "complete" || state === "running") &&
                   "px-0 pb-[var(--ow-space-2)] pt-[var(--ow-space-1)] pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))]"
               )}
             >

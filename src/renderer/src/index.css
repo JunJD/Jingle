@@ -1022,7 +1022,6 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 .ow-agent-steps[data-active="true"] .ow-agent-steps-title,
 .ow-agent-activity-thinking[data-active="true"] .ow-agent-activity-thinking-title,
-.ow-agent-tool[data-state="running"] .ow-agent-tool-title,
 .ow-agent-tool-inline[data-active="true"] .ow-agent-tool-inline-title,
 .ow-agent-tool-group[data-active="true"] .ow-agent-tool-group-title {
   background-image: linear-gradient(
@@ -1037,6 +1036,10 @@ body[data-platform="darwin"] .launcher-window-shell {
   animation: ow-text-shimmer 4s linear infinite;
 }
 
+.ow-agent-tool[data-state="running"] .ow-agent-tool-label {
+  animation: ow-agent-tool-breathe 1.8s ease-in-out infinite;
+}
+
 @keyframes ow-text-shimmer {
   0% {
     background-position: 200% 50%;
@@ -1044,6 +1047,17 @@ body[data-platform="darwin"] .launcher-window-shell {
 
   100% {
     background-position: -200% 50%;
+  }
+}
+
+@keyframes ow-agent-tool-breathe {
+  0%,
+  100% {
+    opacity: 0.54;
+  }
+
+  50% {
+    opacity: 1;
   }
 }
 
@@ -2288,11 +2302,15 @@ body[data-window="launcher"] .ow-markdown,
 @media (prefers-reduced-motion: reduce) {
   .ow-agent-steps[data-active="true"] .ow-agent-steps-title,
   .ow-agent-activity-thinking[data-active="true"] .ow-agent-activity-thinking-title,
-  .ow-agent-tool[data-state="running"] .ow-agent-tool-title,
   .ow-agent-tool-inline[data-active="true"] .ow-agent-tool-inline-title,
   .ow-agent-tool-group[data-active="true"] .ow-agent-tool-group-title {
     animation: none;
     color: var(--ow-agent-timeline-muted);
+  }
+
+  .ow-agent-tool[data-state="running"] .ow-agent-tool-label {
+    animation: none;
+    opacity: 1;
   }
 }
 
