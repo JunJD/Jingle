@@ -11,11 +11,11 @@ import {
 import { stabilizeThreadMessages } from "../../src/renderer/src/lib/thread-message-stability"
 import type { HITLRequest, Message, ToolCall } from "../../src/renderer/src/types"
 
-function createToolCall(id: string): ToolCall {
+function createToolCall(id: string, name = "execute"): ToolCall {
   return {
     args: {},
     id,
-    name: "execute",
+    name,
     type: "tool_call"
   }
 }
@@ -249,6 +249,22 @@ test("late tool result updates do not change the activity group key", () => {
   assert.equal(nextEntries[0]?.kind, "agent-activity")
   assert.equal(nextEntries[0]?.key, firstEntries[0]?.key)
   assert.equal(nextEntries[0]?.key, "activity:tool:tool-call-1")
+})
+
+test("write_todos projects as complete after the todo state update is visible", () => {
+  const todosToolCall = createToolCall("todo-call-1", "write_todos")
+  const executeToolCall = createToolCall("execute-call-1")
+  const projection = projectMessages([
+    createUserMessage("user-1", "Plan the work"),
+    createAssistantMessage({
+      id: "assistant-1",
+      toolCalls: [todosToolCall, executeToolCall]
+    })
+  ])
+  const turn = projection.turns[0]!
+
+  assert.equal(turn.toolResults.get(todosToolCall.id)?.content, "")
+  assert.equal(turn.toolResults.has(executeToolCall.id), false)
 })
 
 test("tool entries collapse by default only after a non-streaming turn ends with assistant content", () => {

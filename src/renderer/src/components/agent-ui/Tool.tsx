@@ -106,9 +106,10 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
         className={cn(
           "ow-agent-tool overflow-hidden",
           state === "complete" && "rounded-[var(--ow-radius-sm)] bg-transparent",
+          state === "running" && "rounded-[var(--ow-radius-sm)] bg-transparent",
           state !== "complete" &&
+            state !== "running" &&
             "rounded-[var(--ow-radius-lg)] border border-border/64 bg-background-elevated/38",
-          state === "running" && "border-status-info/18 bg-status-info/4",
           state === "approval" && "border-status-warning/28 bg-status-warning/6",
           state === "error" && "border-status-critical/24 bg-status-critical/6",
           className
@@ -156,7 +157,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
           <CollapsibleContent
             className={cn(
               "ow-agent-tool-content overflow-hidden",
-              state !== "complete" && "border-t border-border/48"
+              state !== "complete" && state !== "running" && "border-t border-border/48"
             )}
           >
             <div

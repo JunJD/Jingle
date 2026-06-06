@@ -89,6 +89,7 @@ const FOOTER_DISPLAY_ROW: MessageDisplayRow = {
   kind: "footer",
   key: "__chat_footer__"
 }
+const IMPLICIT_DISPLAY_TOOL_RESULT: ToolResultInfo = { content: "" }
 
 export function createDefaultMessagesProjection(): MessagesProjection {
   return {
@@ -113,6 +114,10 @@ export function buildToolResults(messages: ThreadMessage[]): Map<string, ToolRes
   }
 
   return results
+}
+
+function hasImplicitDisplayResult(toolCall: ToolCall): boolean {
+  return toolCall.name === "write_todos"
 }
 
 function stabilizeToolResultInfo(
@@ -182,6 +187,8 @@ function buildTurnToolResults(
 
       if (result) {
         turnToolResults.set(toolCall.id, result)
+      } else if (hasImplicitDisplayResult(toolCall)) {
+        turnToolResults.set(toolCall.id, IMPLICIT_DISPLAY_TOOL_RESULT)
       }
     }
   }
