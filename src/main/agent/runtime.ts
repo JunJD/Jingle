@@ -9,7 +9,7 @@ import {
 import { join } from "path"
 import { getAgentConfig } from "../preferences"
 import { getOpenworkDir } from "../storage"
-import { RuntimeCheckpointSaver } from "../checkpointer/runtime-checkpointer"
+import { flushMessageSearchProjection, RuntimeCheckpointSaver } from "../checkpointer/runtime-checkpointer"
 import { LocalSandbox } from "./local-sandbox"
 import { createGuardrailMiddleware } from "./guardrail-middleware"
 import { JustBashExecuteCommandClassifier } from "./execute-command-classifier"
@@ -393,5 +393,6 @@ export type DeepAgent = ReturnType<typeof createAgent>
 export async function closeRuntime(): Promise<void> {
   const closePromises = Array.from(checkpointers.values()).map((cp) => cp.close())
   await Promise.all(closePromises)
+  await flushMessageSearchProjection()
   checkpointers.clear()
 }
