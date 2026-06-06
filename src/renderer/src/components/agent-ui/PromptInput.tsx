@@ -158,7 +158,6 @@ export interface PromptInputTextareaProps extends Omit<
   mode?: "textarea" | "composer"
   onValueChange?: (value: string) => void
   sourceMentions?: ExtensionSourceMention[]
-  submitOnEnter?: boolean
 }
 
 function resolveCssSize(value: number | string): string {
@@ -178,7 +177,6 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
       onValueChange,
       placeholder,
       sourceMentions,
-      submitOnEnter = true,
       ...props
     },
     ref
@@ -270,7 +268,6 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
           }}
           placeholder={placeholder}
           sourceMentions={sourceMentions}
-          submitOnEnter={submitOnEnter}
           value={value}
         />
       )
@@ -304,7 +301,7 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
         onKeyDown={(event) => {
           const nativeEvent = event.nativeEvent as KeyboardEvent & { isComposing?: boolean }
 
-          if (event.key === "Enter" && submitOnEnter) {
+          if (event.key === "Enter") {
             if (
               event.shiftKey ||
               event.ctrlKey ||

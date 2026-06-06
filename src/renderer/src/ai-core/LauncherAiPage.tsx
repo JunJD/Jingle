@@ -207,40 +207,8 @@ export function LauncherAiPage(): React.JSX.Element {
         return
       }
 
-      if (event.key !== "Enter") {
-        return
-      }
-
-      const nativeEvent = event.nativeEvent as KeyboardEvent & { isComposing?: boolean }
-
-      if (nativeEvent.isComposing === true || nativeEvent.keyCode === 229) {
-        return
-      }
-
-      if (event.shiftKey) {
-        return
-      }
-
-      if (event.ctrlKey) {
-        const input = inputRef.current
-
-        if (!input || !("getElement" in input)) {
-          return
-        }
-
-        event.preventDefault()
-        input.insertText("\n")
-        return
-      }
-
-      if (event.metaKey || event.altKey) {
-        return
-      }
-
-      event.preventDefault()
-      submitCurrentInput()
     },
-    [attachmentDraft.attachments.length, inputRef, navigation, query, submitCurrentInput]
+    [attachmentDraft.attachments.length, inputRef, navigation, query]
   )
   const canStartNewQuestion =
     query.trim().length > 0 || attachmentDraft.attachments.length > 0 || hasVisibleTurns
@@ -477,7 +445,6 @@ export function LauncherAiPage(): React.JSX.Element {
                   onKeyDown={handleComposerKeyDown}
                   placeholder={copy.launcher.aiInputPlaceholder}
                   sourceMentions={sourceMentions}
-                  submitOnEnter={false}
                   className="w-full py-[7px] [font-size:var(--ow-font-control)] font-normal"
                 />
 

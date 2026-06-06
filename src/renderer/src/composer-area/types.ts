@@ -21,6 +21,5 @@ export interface ComposerAreaProps {
   onSubmit?: () => void
   onValueChange?: (value: string) => void
   placeholder?: string
-  submitOnEnter?: boolean
   value: string
 }
