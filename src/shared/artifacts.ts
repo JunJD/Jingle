@@ -249,6 +249,42 @@ export interface ArtifactPresentationReceipt {
   outcome: ArtifactWriteOutcome
 }
 
+export interface AgentStateArtifactManifest {
+  artifactId: string
+  artifactKey: string
+  kind: ArtifactKind
+  mimeType: string | null
+  runId: string | null
+  sizeBytes: number | null
+  sourceType: ArtifactSourceType
+  status: ArtifactStatus
+  threadId: string
+  title: string
+  toolCallId: string | null
+  updatedAt: string
+}
+
+export interface AgentStateArtifactPresentation {
+  idempotencyKey: string
+  presentedAt: string
+  receipts: ArtifactPresentationReceipt[]
+  resultType: "stored" | "replayed"
+  threadId: string
+  toolCallId: string | null
+}
+
+export interface AgentStateArtifacts {
+  manifestsById: Record<string, AgentStateArtifactManifest>
+  presentationsByIdempotencyKey: Record<string, AgentStateArtifactPresentation>
+}
+
+export interface AgentStateArtifactsUpdate {
+  manifests?: AgentStateArtifactManifest[]
+  presentations?: AgentStateArtifactPresentation[]
+}
+
+export type AgentStateArtifactsReducerInput = AgentStateArtifacts | AgentStateArtifactsUpdate
+
 export interface PresentArtifactsStoredResult {
   artifacts: ArtifactRecord[]
   receipts: ArtifactPresentationReceipt[]
@@ -263,6 +299,87 @@ export interface PresentArtifactsConflictResult {
 }
 
 export type PresentArtifactsResult = PresentArtifactsStoredResult | PresentArtifactsConflictResult
+
+export function createEmptyAgentStateArtifacts(): AgentStateArtifacts {
+  return {
+    manifestsById: {},
+    presentationsByIdempotencyKey: {}
+  }
+}
+
+export function toAgentStateArtifactManifest(artifact: ArtifactRecord): AgentStateArtifactManifest {
+  return {
+    artifactId: artifact.id,
+    artifactKey: artifact.artifactKey,
+    kind: artifact.kind,
+    mimeType: artifact.mimeType,
+    runId: artifact.runId,
+    sizeBytes: artifact.sizeBytes,
+    sourceType: artifact.source.type,
+    status: artifact.status,
+    threadId: artifact.threadId,
+    title: artifact.title,
+    toolCallId: artifact.toolCallId,
+    updatedAt: artifact.updatedAt.toISOString()
+  }
+}
+
+export function toAgentStateArtifactsUpdate(
+  result: PresentArtifactsStoredResult,
+  presentedAt = new Date()
+): AgentStateArtifactsUpdate {
+  return {
+    manifests: result.artifacts.map(toAgentStateArtifactManifest),
+    presentations: [
+      {
+        idempotencyKey: result.requestIdentity.idempotencyKey,
+        presentedAt: presentedAt.toISOString(),
+        receipts: result.receipts,
+        resultType: result.type,
+        threadId: result.requestIdentity.threadId,
+        toolCallId: result.artifacts[0]?.toolCallId ?? null
+      }
+    ]
+  }
+}
+
+export function reduceAgentStateArtifacts(
+  current: AgentStateArtifacts = createEmptyAgentStateArtifacts(),
+  update?: AgentStateArtifactsReducerInput
+): AgentStateArtifacts {
+  if (!update) {
+    return current
+  }
+
+  const next: AgentStateArtifacts = {
+    manifestsById: { ...current.manifestsById },
+    presentationsByIdempotencyKey: { ...current.presentationsByIdempotencyKey }
+  }
+
+  if ("manifestsById" in update) {
+    for (const [artifactId, manifest] of Object.entries(update.manifestsById)) {
+      next.manifestsById[artifactId] = manifest
+    }
+  } else {
+    for (const manifest of update.manifests ?? []) {
+      next.manifestsById[manifest.artifactId] = manifest
+    }
+  }
+
+  if ("presentationsByIdempotencyKey" in update) {
+    for (const [idempotencyKey, presentation] of Object.entries(
+      update.presentationsByIdempotencyKey
+    )) {
+      next.presentationsByIdempotencyKey[idempotencyKey] = presentation
+    }
+  } else {
+    for (const presentation of update.presentations ?? []) {
+      next.presentationsByIdempotencyKey[presentation.idempotencyKey] = presentation
+    }
+  }
+
+  return next
+}
 
 export interface ArtifactActionRequest {
   action: ArtifactActionId
