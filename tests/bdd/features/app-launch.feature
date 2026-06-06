@@ -24,6 +24,17 @@ Feature: Openwork 桌面启动
     Then Launcher 界面切换到 "ai"
     And Launcher AI 输入状态会进入 pending
 
+  Scenario: Launcher 首页通过 Tab 进入 AI 后首条助手回复只展示一次
+    Given Openwork 桌面应用已使用脚本化 agent runtime 启动
+    And 我把全局 workspace 设置为测试目录 "launcher-ai-first-send-workspace"
+    When 我在 Launcher 中搜索 "bdd:success"
+    Then Launcher 首页展示了可执行结果
+    When 我在 Launcher 首页按下 Tab
+    Then Launcher 界面切换到 "ai"
+    And Launcher AI 输入状态会进入 pending
+    And Launcher AI 最终只展示 1 条包含 "scripted agent completed" 的助手回复
+    And Launcher AI 新线程的 agent thread data 最终包含 1 条用户消息、1 条包含 "scripted agent completed" 的助手消息，且线程状态为 "idle"
+
   Scenario: Launcher 首页保留 Enter 与 Tab 分工
     Given Openwork 桌面应用已启动
     When 我在 Launcher 中搜索 "todo"

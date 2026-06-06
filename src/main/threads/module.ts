@@ -1,5 +1,6 @@
 import type { IpcMain } from "electron"
 import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
+import { AgentThreadRunner } from "../agent/agent-thread-runner"
 import { ThreadLifecycleGate } from "../agent/thread-lifecycle-gate"
 import { ArtifactsService } from "../artifacts/service"
 import { ModelProviderService } from "../model-provider/service"
@@ -22,14 +23,14 @@ export function registerThreadsModule(container: DependencyContainer): void {
   })
   container.register(ThreadsController, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
-      return new ThreadsController(dependencyContainer.resolve(ThreadsService))
+      return new ThreadsController(
+        dependencyContainer.resolve(ThreadsService),
+        dependencyContainer.resolve(AgentThreadRunner)
+      )
     })
   })
 }
 
-export function registerThreadsIpcHandlers(
-  container: DependencyContainer,
-  ipcMain: IpcMain
-): void {
+export function registerThreadsIpcHandlers(container: DependencyContainer, ipcMain: IpcMain): void {
   container.resolve(ThreadsController).register(ipcMain)
 }

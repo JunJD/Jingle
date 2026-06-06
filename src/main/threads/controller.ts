@@ -1,10 +1,14 @@
 import type { IpcMain } from "electron"
-import type { ThreadHistoryState, ThreadRuntimeState, ThreadUpdateParams } from "../types"
+import type { AgentThreadDataSnapshot, ThreadUpdateParams } from "../types"
+import { AgentThreadRunner } from "../agent/agent-thread-runner"
 import { registerIpcHandle } from "../ipc/handle"
 import { ThreadsService } from "./service"
 
 export class ThreadsController {
-  constructor(private readonly threadsService: ThreadsService) {}
+  constructor(
+    private readonly threadsService: ThreadsService,
+    private readonly agentThreadRunner: AgentThreadRunner
+  ) {}
 
   register(ipcMain: IpcMain): void {
     registerIpcHandle(ipcMain, "threads:list", async () => {
@@ -15,9 +19,13 @@ export class ThreadsController {
       return this.threadsService.get(threadId)
     })
 
-    registerIpcHandle(ipcMain, "threads:create", async (_event, metadata?: Record<string, unknown>) => {
-      return this.threadsService.create(metadata)
-    })
+    registerIpcHandle(
+      ipcMain,
+      "threads:create",
+      async (_event, metadata?: Record<string, unknown>) => {
+        return this.threadsService.create(metadata)
+      }
+    )
 
     registerIpcHandle(ipcMain, "threads:update", async (_event, params: ThreadUpdateParams) => {
       return this.threadsService.update(params)
@@ -41,17 +49,13 @@ export class ThreadsController {
 
     registerIpcHandle(
       ipcMain,
-      "threads:history",
-      async (_event, threadId: string): Promise<ThreadHistoryState> => {
-        return this.threadsService.getHistory(threadId)
-      }
-    )
-
-    registerIpcHandle(
-      ipcMain,
-      "threads:runtimeState",
-      async (_event, threadId: string): Promise<ThreadRuntimeState> => {
-        return this.threadsService.getRuntimeState(threadId)
+      "threads:agentThreadData",
+      async (_event, threadId: string): Promise<AgentThreadDataSnapshot> => {
+        const persistedThreadData = await this.threadsService.getPersistedAgentThreadData(threadId)
+        return (
+          this.agentThreadRunner.readThreadDataOverlay(threadId, persistedThreadData) ??
+          persistedThreadData
+        )
       }
     )
   }

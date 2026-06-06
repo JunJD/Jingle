@@ -13,6 +13,7 @@ export interface HistoryShellState {
   showKanbanView: boolean
   showSubagentsInKanban: boolean
   loadThreads: () => Promise<void>
+  refreshThread: (threadId: string) => Promise<void>
   createThread: (metadata?: Record<string, unknown>) => Promise<Thread>
   selectThread: (threadId: string) => Promise<void>
   deleteThread: (threadId: string) => Promise<void>
@@ -95,16 +96,48 @@ export function createHistoryShellStore(api: HistoryShellApi): HistoryShellStore
     emit()
   }
 
+  const sortThreadsByRecency = (threads: Thread[]): Thread[] => {
+    return [...threads].sort(
+      (left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
+    )
+  }
+
+  const upsertThreadByRecency = (threads: Thread[], nextThread: Thread): Thread[] => {
+    const nextThreads = threads.filter((thread) => thread.thread_id !== nextThread.thread_id)
+    nextThreads.push(nextThread)
+    return sortThreadsByRecency(nextThreads)
+  }
+
   const actions = {
     loadThreads: async (): Promise<void> => {
       const threads = await api.threads.list()
       setData({ threads })
     },
 
+    refreshThread: async (threadId: string): Promise<void> => {
+      const thread = await api.threads.get(threadId)
+      setData((current) => {
+        if (!thread) {
+          const nextThreads = current.threads.filter((entry) => entry.thread_id !== threadId)
+          return {
+            currentThreadId:
+              current.currentThreadId === threadId
+                ? (nextThreads[0]?.thread_id ?? null)
+                : current.currentThreadId,
+            threads: nextThreads
+          }
+        }
+
+        return {
+          threads: upsertThreadByRecency(current.threads, thread)
+        }
+      })
+    },
+
     createThread: async (metadata?: Record<string, unknown>): Promise<Thread> => {
       const thread = await api.threads.create(metadata)
       setData((current) => ({
-        threads: [thread, ...current.threads],
+        threads: upsertThreadByRecency(current.threads, thread),
         currentThreadId: thread.thread_id,
         showKanbanView: false
       }))
@@ -134,7 +167,7 @@ export function createHistoryShellStore(api: HistoryShellApi): HistoryShellStore
     updateThread: async (threadId: string, updates: Partial<Thread>): Promise<void> => {
       const updated = await api.threads.update(threadId, updates)
       setData((current) => ({
-        threads: current.threads.map((thread) => (thread.thread_id === threadId ? updated : thread))
+        threads: upsertThreadByRecency(current.threads, updated)
       }))
     },
 

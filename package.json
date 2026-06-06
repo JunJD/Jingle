@@ -76,7 +76,6 @@
     "test:node:target": "tsx --tsconfig tests/node/tsconfig.json --test"
   },
   "dependencies": {
-    "@ag-ui/core": "0.0.52",
     "@langchain/anthropic": "^1.3.11",
     "@langchain/core": "^1.1.34",
     "@langchain/google-genai": "^2.1.12",

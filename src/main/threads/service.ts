@@ -7,6 +7,7 @@ import {
   deleteThread as dbDeleteThread,
   getAllThreads,
   getLatestHitlRequest,
+  getLatestRun,
   getThread,
   hasPendingHitlRequest,
   updateThread as dbUpdateThread,
@@ -22,6 +23,7 @@ import {
 } from "../agent/runtime-state"
 import { ThreadLifecycleGate } from "../agent/thread-lifecycle-gate"
 import { ArtifactsService } from "../artifacts/service"
+import type { ArtifactRecord } from "@shared/artifacts"
 import { OpenworkIpcError } from "../ipc/error"
 import { ModelProviderService } from "../model-provider/service"
 import { SettingsService } from "../settings/service"
@@ -33,12 +35,12 @@ import {
   toDisplayUserMessageContent
 } from "@shared/message-content"
 import type {
+  AgentThreadDataSnapshot,
   HITLRequest,
   Message,
   Thread,
   ThreadForkState,
-  ThreadHistoryState,
-  ThreadRuntimeState,
+  Todo,
   ThreadUpdateParams
 } from "../types"
 
@@ -179,6 +181,16 @@ async function assertThreadCanFork(input: {
   }
 }
 
+interface LoadedThreadRuntimeFacts {
+  artifacts: ArtifactRecord[]
+  checkpoint: CheckpointTuple | undefined
+  forkState: ThreadForkState
+  messages: Message[]
+  pendingApproval: HITLRequest | null
+  thread: Thread
+  todos: Todo[]
+}
+
 export class ThreadsService {
   constructor(
     private readonly artifactsService: ArtifactsService,
@@ -187,6 +199,75 @@ export class ThreadsService {
     private readonly workspaceService: WorkspaceService,
     private readonly threadLifecycleGate = new ThreadLifecycleGate()
   ) {}
+
+  async getLatestRunSummary(threadId: string): Promise<{
+    error: string | null
+    runId: string | null
+  }> {
+    const latestRun = await getLatestRun(threadId)
+    if (!latestRun) {
+      return {
+        error: null,
+        runId: null
+      }
+    }
+
+    let error: string | null = null
+    if (latestRun.metadata) {
+      try {
+        const metadata = JSON.parse(latestRun.metadata) as { error?: unknown }
+        error = typeof metadata.error === "string" ? metadata.error : null
+      } catch {
+        error = null
+      }
+    }
+
+    return {
+      error,
+      runId: latestRun.run_id
+    }
+  }
+
+  private async loadThreadRuntimeFacts(threadId: string): Promise<LoadedThreadRuntimeFacts> {
+    const [checkpointer, latestHitl, artifacts, row, thread] = await Promise.all([
+      getCheckpointer(threadId),
+      getLatestHitlRequest(threadId),
+      this.artifactsService.list(threadId),
+      getThread(threadId),
+      this.get(threadId)
+    ])
+    if (!row || !thread) {
+      throw new Error("Thread not found")
+    }
+
+    const checkpoint = await checkpointer.getTuple({
+      configurable: {
+        thread_id: threadId
+      }
+    })
+
+    const messages = mapCheckpointMessagesToThreadMessages(
+      extractMessagesFromCheckpoint(threadId, checkpoint)
+    )
+    const todos = extractTodosFromCheckpoint(checkpoint)
+    const checkpointRequest = extractHitlRequestFromCheckpoint(threadId, checkpoint)
+    const pendingApproval = await resolvePendingHitlRequest(latestHitl)
+    const forkState = await computeThreadForkState({
+      checkpoint,
+      thread: row,
+      threadId
+    })
+
+    return {
+      artifacts,
+      checkpoint,
+      forkState,
+      messages,
+      pendingApproval: latestHitl ? pendingApproval : checkpointRequest,
+      thread,
+      todos
+    }
+  }
 
   async list(): Promise<Thread[]> {
     const threads = await getAllThreads()
@@ -383,97 +464,29 @@ export class ThreadsService {
     }
   }
 
-  async getHistory(threadId: string): Promise<ThreadHistoryState> {
-    const [checkpointer, latestHitl, artifacts, row] = await Promise.all([
-      getCheckpointer(threadId),
-      getLatestHitlRequest(threadId),
-      this.artifactsService.list(threadId),
-      getThread(threadId)
+  async getPersistedAgentThreadData(threadId: string): Promise<AgentThreadDataSnapshot> {
+    const [facts, latestRun] = await Promise.all([
+      this.loadThreadRuntimeFacts(threadId),
+      this.getLatestRunSummary(threadId)
     ])
-    if (!row) {
-      throw new Error("Thread not found")
-    }
-
-    const latest = await checkpointer.getTuple({
-      configurable: {
-        thread_id: threadId
-      }
-    })
-
-    const messages = mapCheckpointMessagesToThreadMessages(
-      extractMessagesFromCheckpoint(threadId, latest)
-    )
-    const todos = extractTodosFromCheckpoint(latest)
-    const checkpointRequest = extractHitlRequestFromCheckpoint(threadId, latest)
-    const pendingApproval = await resolvePendingHitlRequest(latestHitl)
-    const forkState = await computeThreadForkState({
-      checkpoint: latest,
-      thread: row,
-      threadId
-    })
-
-    if (latestHitl) {
-      if (pendingApproval) {
-        return { artifacts, forkState, messages, todos, pendingApproval }
-      }
-      return {
-        artifacts,
-        forkState,
-        messages,
-        todos,
-        pendingApproval: null
-      }
-    }
 
     return {
-      artifacts,
-      forkState,
-      messages,
-      todos,
-      pendingApproval: checkpointRequest
+      thread: facts.thread,
+      messages: {
+        artifacts: facts.artifacts,
+        messages: facts.messages
+      },
+      runState: {
+        forkState: facts.forkState,
+        pendingApproval: facts.pendingApproval,
+        todos: facts.todos,
+        error: latestRun.error,
+        runId: latestRun.runId
+      }
     }
   }
 
-  async getRuntimeState(threadId: string): Promise<ThreadRuntimeState> {
-    const [checkpointer, latestHitl, row] = await Promise.all([
-      getCheckpointer(threadId),
-      getLatestHitlRequest(threadId),
-      getThread(threadId)
-    ])
-    if (!row) {
-      throw new Error("Thread not found")
-    }
-
-    const latest = await checkpointer.getTuple({
-      configurable: {
-        thread_id: threadId
-      }
-    })
-
-    const todos = extractTodosFromCheckpoint(latest)
-    const checkpointRequest = extractHitlRequestFromCheckpoint(threadId, latest)
-    const pendingApproval = await resolvePendingHitlRequest(latestHitl)
-    const forkState = await computeThreadForkState({
-      checkpoint: latest,
-      thread: row,
-      threadId
-    })
-
-    if (latestHitl) {
-      if (pendingApproval) {
-        return { forkState, todos, pendingApproval }
-      }
-      return {
-        forkState,
-        todos,
-        pendingApproval: null
-      }
-    }
-
-    return {
-      forkState,
-      todos,
-      pendingApproval: checkpointRequest
-    }
+  async getAgentThreadData(threadId: string): Promise<AgentThreadDataSnapshot> {
+    return this.getPersistedAgentThreadData(threadId)
   }
 }

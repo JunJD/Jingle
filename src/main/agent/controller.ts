@@ -1,6 +1,7 @@
 import { type IpcMain, type WebContents } from "electron"
+import type { AgentThreadEventBatch } from "@shared/agent-thread-runtime"
 import { AgentService, type AgentStreamSink } from "./service"
-import { AgentStreamHub } from "./stream-hub"
+import { AgentThreadRunner } from "./agent-thread-runner"
 import {
   parseAgentCancelParams,
   parseAgentInvokeParams,
@@ -16,7 +17,7 @@ export class AgentController {
 
   constructor(
     private readonly agentService: AgentService,
-    private readonly agentStreamHub: AgentStreamHub
+    private readonly agentThreadRunner: AgentThreadRunner
   ) {}
 
   register(ipcMain: IpcMain): void {
@@ -34,24 +35,18 @@ export class AgentController {
       const params = parseAgentCancelParams(rawParams)
       const didCancel = await this.agentService.cancel(params)
       if (didCancel) {
-        await this.agentStreamHub.handlePayload(params.threadId, { type: "cancelled" })
+        await this.agentThreadRunner.handlePayload(params.threadId, { type: "cancelled" })
       }
     })
 
-    registerIpcHandle(ipcMain, "agent:getThreadSnapshot", async (_event, rawParams: unknown) => {
-      const params = parseAgentCancelParams(rawParams)
-      return this.agentStreamHub.getThreadSnapshot(params.threadId)
-    })
-
-    registerIpcHandle(ipcMain, "agent:subscribeThreadEvents", async (event, rawParams: unknown) => {
+    registerIpcHandle(ipcMain, "agent:connectThreadEvents", async (event, rawParams: unknown) => {
       const params = parseAgentCancelParams(rawParams)
       await this.ensureEventSubscription(event.sender, params.threadId)
-      return this.agentStreamHub.getThreadSnapshot(params.threadId)
     })
 
     registerIpcHandle(
       ipcMain,
-      "agent:unsubscribeThreadEvents",
+      "agent:disconnectThreadEvents",
       async (event, rawParams: unknown) => {
         const params = parseAgentCancelParams(rawParams)
         this.removeEventSubscription(event.sender.id, params.threadId)
@@ -70,7 +65,7 @@ export class AgentController {
     }
 
     void this.agentService.invoke(params, this.createStreamSink(params.threadId), {
-      onRunAccepted: () => this.agentStreamHub.prepareInvoke(params.threadId, params.message)
+      onRunAccepted: () => this.agentThreadRunner.prepareInvoke(params.threadId, params.message)
     })
   }
 
@@ -85,7 +80,7 @@ export class AgentController {
     }
 
     void this.agentService.resume(params, this.createStreamSink(params.threadId), {
-      onRunAccepted: () => this.agentStreamHub.prepareResume(params.threadId)
+      onRunAccepted: () => this.agentThreadRunner.prepareResume(params.threadId)
     })
   }
 
@@ -96,25 +91,27 @@ export class AgentController {
   private createStreamSink(threadId: string): AgentStreamSink {
     return {
       send: (payload) => {
-        void this.agentStreamHub.handlePayload(threadId, payload)
+        void this.agentThreadRunner.handlePayload(threadId, payload)
       }
     }
   }
 
   private async ensureEventSubscription(sender: WebContents, threadId: string): Promise<void> {
     const subscriptionKey = this.getSubscriptionKey(sender.id, threadId)
+    const listener = (batch: AgentThreadEventBatch): void => {
+      if (!sender.isDestroyed()) {
+        sender.send(this.createThreadEventsChannel(threadId), batch)
+      }
+    }
+
+    await this.agentThreadRunner.connectThreadEvents(threadId, subscriptionKey, listener)
+
     if (this.eventSubscriptionCleanups.has(subscriptionKey)) {
       return
     }
 
-    await this.agentStreamHub.subscribeThreadEvents(threadId, subscriptionKey, (batch) => {
-      if (!sender.isDestroyed()) {
-        sender.send(this.createThreadEventsChannel(threadId), batch)
-      }
-    })
-
     const cleanup = () => {
-      this.agentStreamHub.unsubscribeThreadEvents(threadId, subscriptionKey)
+      this.agentThreadRunner.disconnectThreadEvents(threadId, subscriptionKey)
       this.eventSubscriptionCleanups.delete(subscriptionKey)
     }
 
@@ -136,7 +133,7 @@ export class AgentController {
   ): void {
     const rawThreadId = this.getRawThreadId(rawParams)
     if (error instanceof IpcSchemaValidationError && rawThreadId) {
-      void this.agentStreamHub.handlePayload(rawThreadId, {
+      void this.agentThreadRunner.handlePayload(rawThreadId, {
         type: "error",
         ...buildIpcErrorEvent(`agent:${operation}`, error)
       })

@@ -1578,13 +1578,12 @@ test("thread fork rejects threads with pending HITL requests", async () => {
     /Cannot fork a thread while human approval is pending/
   )
 
-  const runtimeState = await service.getRuntimeState(sourceThreadId)
-  const history = await service.getHistory(sourceThreadId)
-  assert.deepEqual(runtimeState.forkState, {
+  const threadData = await service.getAgentThreadData(sourceThreadId)
+  assert.deepEqual(threadData.runState.forkState, {
     canFork: false,
     reason: "pending_hitl"
   })
-  assert.deepEqual(history.forkState, runtimeState.forkState)
+  assert.equal(threadData.runState.pendingApproval?.id, "request-pending-hitl")
 })
 
 test("thread fork state blocks busy threads", async () => {
@@ -1617,8 +1616,8 @@ test("thread fork state blocks busy threads", async () => {
     >[3]
   )
 
-  const runtimeState = await service.getRuntimeState(sourceThreadId)
-  assert.deepEqual(runtimeState.forkState, {
+  const threadData = await service.getAgentThreadData(sourceThreadId)
+  assert.deepEqual(threadData.runState.forkState, {
     canFork: false,
     reason: "busy"
   })
@@ -1708,11 +1707,12 @@ test("thread fork rejects checkpoints that contain HITL interrupts", async () =>
     /Cannot fork from a message that is waiting for human approval/
   )
 
-  const runtimeState = await service.getRuntimeState(sourceThreadId)
-  const history = await service.getHistory(sourceThreadId)
-  assert.deepEqual(runtimeState.forkState, {
+  const threadData = await service.getAgentThreadData(sourceThreadId)
+  assert.deepEqual(threadData.runState.forkState, {
     canFork: false,
     reason: "checkpoint_interrupt"
   })
-  assert.deepEqual(history.forkState, runtimeState.forkState)
+  assert.deepEqual(threadData.messages.messages.map((message) => message.id), [
+    "message-user-interrupt"
+  ])
 })

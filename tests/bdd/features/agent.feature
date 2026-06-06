@@ -18,11 +18,11 @@
     当 我通过 agent API 创建可运行测试线程 "BDD Agent Multi Turn"
     并且 我对最新 agent 线程发送脚本消息 "bdd:success:first"
     那么 最新 agent stream 应收到 done
-    而且 最新 agent runtime snapshot 消息数应为 2
+    而且 最新 agent thread data 消息数应为 2
     当 我对最新 agent 线程发送脚本消息 "bdd:success:second"
     那么 最新 agent stream 应收到 done
-    而且 最新 agent runtime snapshot 消息数应为 4
-    而且 最新 agent runtime snapshot 应包含 2 条用户消息和 2 条助手消息
+    而且 最新 agent thread data 消息数应为 4
+    而且 最新 agent thread data 应包含 2 条用户消息和 2 条助手消息
     而且 最新 agent 线程状态应为 "idle"
 
   场景: cancel 会中断长时间运行的 agent stream

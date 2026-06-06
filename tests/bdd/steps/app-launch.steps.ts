@@ -4,6 +4,8 @@ import { OpenworkWorld } from "../support/world"
 import { seedHistoryThreadFixture } from "../support/history-fixtures"
 import { getPrismaClient } from "../../../src/main/db/client"
 import type { Page } from "@playwright/test"
+import type { AgentThreadDataSnapshot, Thread } from "../../../src/shared/app-types"
+import { AI_THREAD_SOURCE } from "../../../src/shared/launcher-ai"
 
 function getLauncherAiSurface(page: import("@playwright/test").Page) {
   return page.locator('.launcher-chrome[data-surface="ai"]').first()
@@ -43,6 +45,57 @@ async function countIndexedUserMessagesContaining(fragment: string): Promise<num
   )
 
   return Number(row?.count ?? 0)
+}
+
+async function countLauncherAssistantMessagesContaining(page: Page, fragment: string): Promise<number> {
+  const aiSurface = getLauncherAiSurface(page)
+  const responses = aiSurface.locator(".is-assistant")
+  const count = await responses.count()
+  let matches = 0
+
+  for (let index = 0; index < count; index += 1) {
+    const text = (await responses.nth(index).innerText()).trim()
+    if (text.includes(fragment)) {
+      matches += 1
+    }
+  }
+
+  return matches
+}
+
+async function getLatestLauncherAiThreadData(
+  world: OpenworkWorld
+): Promise<AgentThreadDataSnapshot> {
+  const page = await world.getPageByKind("launcher")
+  const expectedWorkspacePath = world.getScenarioValue("threads.currentWorkspacePath")
+
+  return page.evaluate(async ({ source, workspacePath }) => {
+    const api = (window as typeof window & {
+      api: {
+        threads: {
+          getAgentThreadData: (threadId: string) => Promise<AgentThreadDataSnapshot>
+          list: () => Promise<Thread[]>
+        }
+      }
+    }).api
+
+    const threads = await api.threads.list()
+    const launcherThread = threads
+      .filter((thread) => thread.metadata?.source === source)
+      .filter((thread) => thread.metadata?.workspacePath === workspacePath)
+      .sort((left, right) => {
+        return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
+      })[0]
+
+    if (!launcherThread) {
+      throw new Error(`No launcher AI thread found for workspace: ${workspacePath}`)
+    }
+
+    return api.threads.getAgentThreadData(launcherThread.thread_id)
+  }, {
+    source: AI_THREAD_SOURCE,
+    workspacePath: expectedWorkspacePath
+  })
 }
 
 Given("Openwork 桌面应用已启动", async function (this: OpenworkWorld) {
@@ -294,6 +347,59 @@ Then(
     }
 
     expect(await countIndexedUserMessagesContaining(message)).toBe(0)
+  }
+)
+
+Then(
+  "Launcher AI 最终只展示 {int} 条包含 {string} 的助手回复",
+  async function (this: OpenworkWorld, expectedCount: number, text: string) {
+    const page = await this.getPageByKind("launcher")
+
+    await expect
+      .poll(async () => countLauncherAssistantMessagesContaining(page, text))
+      .toBe(expectedCount)
+  }
+)
+
+Then(
+  "Launcher AI 新线程的 agent thread data 最终包含 {int} 条用户消息、{int} 条包含 {string} 的助手消息，且线程状态为 {string}",
+  async function (
+    this: OpenworkWorld,
+    expectedUserCount: number,
+    expectedAssistantCount: number,
+    assistantText: string,
+    expectedStatus: AgentThreadDataSnapshot["thread"]["status"]
+  ) {
+    await expect
+      .poll(async () => {
+        const threadData = await getLatestLauncherAiThreadData(this)
+        const userCount = threadData.messages.messages.filter((message) => message.role === "user").length
+        const matchingAssistantCount = threadData.messages.messages.filter((message) => {
+          if (message.role !== "assistant") {
+            return false
+          }
+
+          const content = message.content
+          if (typeof content === "string") {
+            return content.includes(assistantText)
+          }
+
+          return content.some((block) => {
+            return typeof block.text === "string" && block.text.includes(assistantText)
+          })
+        }).length
+
+        return {
+          assistantCount: matchingAssistantCount,
+          status: threadData.thread.status,
+          userCount
+        }
+      })
+      .toEqual({
+        assistantCount: expectedAssistantCount,
+        status: expectedStatus,
+        userCount: expectedUserCount
+      })
   }
 )
 

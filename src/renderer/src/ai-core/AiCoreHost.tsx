@@ -63,7 +63,6 @@ export interface AiCoreHostValue {
     create: (input: AiCoreThreadCreateInput) => Promise<AiCoreThreadHandle>
     getActiveThreadId: () => string | null
     list: () => Promise<Thread[]>
-    reload: (threadId: string) => Promise<void>
     submit: (input: AiCoreThreadSubmitInput) => Promise<void>
   }
 }

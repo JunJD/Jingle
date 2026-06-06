@@ -1,7 +1,3 @@
-export function shouldReloadLauncherAiThreadOnActivate(input: { isStreaming: boolean }): boolean {
-  return !input.isStreaming
-}
-
 export function shouldStartFreshLauncherAiThread(input: { seedQuery: string }): boolean {
   return input.seedQuery.trim().length > 0
 }

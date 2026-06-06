@@ -1,5 +1,5 @@
 import type { AgentThreadRuntimeStatus } from "@shared/agent-thread-runtime"
-import type { AgentStreamHub } from "../agent/stream-hub"
+import type { AgentThreadRunner } from "../agent/agent-thread-runner"
 import { setNativeMinimalIslandState, type NativeMinimalIslandState } from "./native-minimal-island"
 
 function resolveNativeMinimalIslandAgentState(
@@ -19,15 +19,15 @@ function resolveNativeMinimalIslandAgentState(
   return hasRunning ? "working" : "idle"
 }
 
-export function startNativeMinimalIslandAgentStatus(agentStreamHub: AgentStreamHub): () => void {
+export function startNativeMinimalIslandAgentStatus(agentThreadRunner: AgentThreadRunner): () => void {
   const activeStatusesByThread = new Map<string, AgentThreadRuntimeStatus>()
-  const stopListening = agentStreamHub.subscribeAllThreadEvents(
+  const stopListening = agentThreadRunner.connectAllThreadEvents(
     "native-minimal-island-agent-status",
     (batch) => {
       let status: AgentThreadRuntimeStatus | null = null
       for (const event of batch.events) {
-        if (event.type === "thread.snapshot" || event.type === "thread.statusChanged") {
-          status = event.type === "thread.snapshot" ? event.snapshot.status : event.status
+        if (event.type === "thread.statusChanged") {
+          status = event.status
         }
         if (event.type === "run.started" || event.type === "run.resumed") {
           status = "running"

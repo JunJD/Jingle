@@ -30,6 +30,7 @@
     而且 最后创建历史线程的 history 中待审批请求应为空
     而且 最后创建历史线程的 runtime state 中 todos 应为空
     而且 最后创建历史线程的 runtime state 中待审批请求应为空
+    而且 最后创建历史线程的 agent thread data 应包含消息 "BDD History Message" 且 run state 为空
 
   场景: 删除线程后 get 和 list 都不会再返回它
     假如 Openwork 桌面应用已启动

@@ -321,7 +321,7 @@ test("streaming assistant content updates keep historical message and turn refer
   assert.equal(nextProjection.displayRows[0], firstProjection.displayRows[0])
   assert.notEqual(nextProjection.displayRows[1], firstProjection.displayRows[1])
   assert.equal(nextProjection.displayRows.at(-1), firstProjection.displayRows.at(-1))
-  assert.equal(nextProjection.lastAssistantId, "assistant-2")
+  assert.equal(nextProjection.activeAssistantId, "assistant-2")
 })
 
 test("unchanged snapshots reuse the previous projection object", () => {
@@ -348,8 +348,8 @@ test("runtime active turn overrides the historical last assistant turn", () => {
     { activeTurnKey: "user-2" }
   )
 
-  assert.equal(projection.lastAssistantId, "assistant-1")
   assert.equal(projection.activeTurnKey, "user-2")
+  assert.equal(projection.activeAssistantId, null)
 })
 
 test("runtime active turn is ignored when the referenced turn is not visible", () => {
@@ -362,8 +362,8 @@ test("runtime active turn is ignored when the referenced turn is not visible", (
     { activeTurnKey: "missing-user" }
   )
 
-  assert.equal(projection.lastAssistantId, "assistant-1")
   assert.equal(projection.activeTurnKey, null)
+  assert.equal(projection.activeAssistantId, null)
 })
 
 test("display rows are projected with a stable footer row for virtual rendering", () => {

@@ -169,15 +169,30 @@ export interface ToolResult {
   content: string | unknown
 }
 
-export interface ThreadRuntimeState {
-  forkState: ThreadForkState
-  todos: Todo[]
-  pendingApproval: HITLRequest | null
-}
-
-export interface ThreadHistoryState extends ThreadRuntimeState {
+export interface AgentThreadMessagesSnapshot {
   artifacts: ArtifactRecord[]
   messages: Message[]
+}
+
+export interface AgentThreadInfoSnapshot {
+  metadata?: Record<string, unknown>
+  status: ThreadStatus
+  thread_id: string
+  title?: string
+}
+
+export interface AgentThreadRunStateSnapshot {
+  error: string | null
+  forkState: ThreadForkState
+  pendingApproval: HITLRequest | null
+  runId: string | null
+  todos: Todo[]
+}
+
+export interface AgentThreadDataSnapshot {
+  thread: AgentThreadInfoSnapshot
+  messages: AgentThreadMessagesSnapshot
+  runState: AgentThreadRunStateSnapshot
 }
 
 export type ThreadForkBlockReason = "busy" | "checkpoint_interrupt" | "pending_hitl"

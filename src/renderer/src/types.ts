@@ -1,7 +1,6 @@
 import type { ToolCall as LangChainToolCall } from "@langchain/core/messages"
 import type { AppLocale } from "@shared/i18n"
 import type { HITLRequest } from "@shared/hitl"
-import type { ArtifactRecord } from "@shared/artifacts"
 import type { ExtensionToolCallPresentation, ToolCallDisplay } from "@shared/tool-presentation"
 export type { HITLDecision, HITLRequest } from "@shared/hitl"
 export type {
@@ -103,17 +102,6 @@ export interface ToolCall extends LangChainToolCall<string, Record<string, unkno
 export interface ToolResult {
   tool_call_id: string
   content: string | unknown
-}
-
-export interface ThreadRuntimeState {
-  forkState: ThreadForkState
-  todos: Todo[]
-  pendingApproval: HITLRequest | null
-}
-
-export interface ThreadHistoryState extends ThreadRuntimeState {
-  artifacts: ArtifactRecord[]
-  messages: Message[]
 }
 
 export type ThreadForkBlockReason = "busy" | "checkpoint_interrupt" | "pending_hitl"

@@ -68,9 +68,9 @@ export function getTurnToolDisplayPolicy(
 }
 
 export interface MessagesProjection {
+  activeAssistantId: string | null
   activeTurnKey: string | null
   displayRows: MessageDisplayRow[]
-  lastAssistantId: string | null
   turns: MessageTurn[]
 }
 
@@ -92,9 +92,9 @@ const FOOTER_DISPLAY_ROW: MessageDisplayRow = {
 
 export function createDefaultMessagesProjection(): MessagesProjection {
   return {
+    activeAssistantId: null,
     activeTurnKey: null,
     displayRows: [FOOTER_DISPLAY_ROW],
-    lastAssistantId: null,
     turns: []
   }
 }
@@ -483,7 +483,7 @@ export function getTurnPendingApproval(
 export function updateProjectedMessage(
   previousProjection: MessagesProjection,
   message: ThreadMessage,
-  options: { activeTurnKey?: string | null } = {}
+  options: { activeAssistantId?: string | null; activeTurnKey?: string | null } = {}
 ): MessagesProjection | null {
   if (message.role === "tool") {
     return null
@@ -531,19 +531,19 @@ export function updateProjectedMessage(
       turn: nextTurn
     }
   })
-  const hasRuntimeActiveTurn = options.activeTurnKey !== undefined && options.activeTurnKey !== null
+  const hasRuntimeActiveTurn = options.activeTurnKey !== undefined
   const activeTurnKey = hasRuntimeActiveTurn
     ? (options.activeTurnKey ?? null)
     : previousProjection.activeTurnKey
-  const lastAssistantId =
-    previousProjection.lastAssistantId === message.id
-      ? message.id
-      : previousProjection.lastAssistantId
+  const hasRuntimeActiveAssistant = options.activeAssistantId !== undefined
+  const activeAssistantId = hasRuntimeActiveAssistant
+    ? (options.activeAssistantId ?? null)
+    : previousProjection.activeAssistantId
 
   return {
+    activeAssistantId,
     activeTurnKey,
     displayRows,
-    lastAssistantId,
     turns
   }
 }
@@ -551,7 +551,7 @@ export function updateProjectedMessage(
 export function projectMessages(
   messages: ThreadMessage[],
   previousProjection?: MessagesProjection | null,
-  options: { activeTurnKey?: string | null } = {}
+  options: { activeAssistantId?: string | null; activeTurnKey?: string | null } = {}
 ): MessagesProjection {
   const toolResults = stabilizeToolResults(
     getPreviousToolResults(previousProjection),
@@ -563,39 +563,55 @@ export function projectMessages(
     attachTurnToolResults(buildMessageTurns(visibleMessages), toolResults)
   )
   const displayRows = stabilizeDisplayRows(previousProjection?.displayRows, turns)
-  let lastAssistantId: string | null = null
+  let latestAssistantId: string | null = null
   for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
     const message = visibleMessages[index]
     if (message?.role === "assistant") {
-      lastAssistantId = message.id
+      latestAssistantId = message.id
       break
     }
   }
-  const hasRuntimeActiveTurn = options.activeTurnKey !== undefined && options.activeTurnKey !== null
+  const hasRuntimeActiveTurn = options.activeTurnKey !== undefined
   const runtimeActiveTurnKey =
-    hasRuntimeActiveTurn && turns.some((turn) => turn.key === options.activeTurnKey)
+    hasRuntimeActiveTurn &&
+    options.activeTurnKey !== null &&
+    turns.some((turn) => turn.key === options.activeTurnKey)
       ? (options.activeTurnKey ?? null)
       : null
   const activeTurnKey =
     hasRuntimeActiveTurn
       ? runtimeActiveTurnKey
-      : (turns.find((turn) => turn.assistants.some((message) => message.id === lastAssistantId))
+      : (turns.find((turn) => turn.assistants.some((message) => message.id === latestAssistantId))
           ?.key ?? null)
+  const hasRuntimeActiveAssistant = options.activeAssistantId !== undefined
+  const runtimeActiveAssistantId =
+    hasRuntimeActiveAssistant &&
+    options.activeAssistantId !== null &&
+    turns.some((turn) => turn.assistants.some((message) => message.id === options.activeAssistantId))
+      ? (options.activeAssistantId ?? null)
+      : null
+  const activeAssistantId = hasRuntimeActiveAssistant
+    ? runtimeActiveAssistantId
+    : activeTurnKey
+      ? (turns
+          .find((turn) => turn.key === activeTurnKey)
+          ?.assistants.findLast((message) => message.id === latestAssistantId)?.id ?? null)
+      : null
 
   if (
     previousProjection &&
+    previousProjection.activeAssistantId === activeAssistantId &&
     previousProjection.activeTurnKey === activeTurnKey &&
     previousProjection.displayRows === displayRows &&
-    previousProjection.lastAssistantId === lastAssistantId &&
     previousProjection.turns === turns
   ) {
     return previousProjection
   }
 
   return {
+    activeAssistantId,
     activeTurnKey,
     displayRows,
-    lastAssistantId,
     turns
   }
 }

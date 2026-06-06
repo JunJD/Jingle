@@ -1,7 +1,6 @@
 import type {
   AgentThreadEvent,
-  AgentThreadRuntimeState,
-  AgentThreadSnapshot
+  AgentThreadRuntimeState
 } from "@shared/agent-thread-runtime"
 import { reduceAgentThreadRuntimeEvent } from "@shared/agent-thread-runtime"
 import type { IpcErrorPayload } from "@shared/ipc-error"
@@ -23,17 +22,6 @@ export function applyRuntimeEventsToThreadState(
   return nextState
 }
 
-export function applyRuntimeSnapshotToThreadState(
-  state: ThreadState,
-  snapshot: AgentThreadSnapshot
-): ThreadState {
-  if (snapshot.revision <= state.revision) {
-    return state
-  }
-
-  return applyRuntimeStateToThreadState(state, snapshot)
-}
-
 export function createRuntimeThreadStateUpdate(nextState: ThreadState): Partial<ThreadState> {
   return {
     activeRun: nextState.activeRun,
@@ -52,10 +40,6 @@ export function createRuntimeThreadStateUpdate(nextState: ThreadState): Partial<
 function applyRuntimeEventToThreadState(state: ThreadState, event: AgentThreadEvent): ThreadState {
   if (event.revision <= state.revision) {
     return state
-  }
-
-  if (event.type === "thread.snapshot") {
-    return applyRuntimeSnapshotToThreadState(state, event.snapshot)
   }
 
   const runtimeState = createRuntimeStateFromThreadState(state)
@@ -79,20 +63,23 @@ function applyRuntimeStateToThreadState(
   options: { changedMessageId?: string | null } = {}
 ): ThreadState {
   const messages = stabilizeThreadMessages(state.messages, runtimeState.messagesPage)
+  const activeProjectionInput = runtimeState.activeRun
+    ? {
+        activeAssistantId: runtimeState.activeRun.assistantMessageId,
+        activeTurnKey: runtimeState.activeRun.turnId
+      }
+    : {}
   const changedMessage = options.changedMessageId
     ? messages.find((message) => message.id === options.changedMessageId)
     : null
   const messageProjection =
     changedMessage?.role === "assistant"
-      ? updateProjectedMessage(state.messageProjection, changedMessage, {
-          activeTurnKey: runtimeState.activeRun?.turnId ?? null
-        }) ??
-        projectMessages(messages, state.messageProjection, {
-          activeTurnKey: runtimeState.activeRun?.turnId ?? null
-        })
-      : projectMessages(messages, state.messageProjection, {
-          activeTurnKey: runtimeState.activeRun?.turnId ?? null
-        })
+      ? updateProjectedMessage(
+          state.messageProjection,
+          changedMessage,
+          activeProjectionInput
+        ) ?? projectMessages(messages, state.messageProjection, activeProjectionInput)
+      : projectMessages(messages, state.messageProjection, activeProjectionInput)
 
   return {
     ...state,

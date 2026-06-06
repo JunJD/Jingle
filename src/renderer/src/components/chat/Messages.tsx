@@ -939,7 +939,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     projection,
     virtualizerRef
   } = props
-  const { activeTurnKey, displayRows, lastAssistantId, turns } = projection
+  const { activeAssistantId, activeTurnKey, displayRows, turns } = projection
   const activeTurnIndex = turns.findIndex((turn) => turn.key === activeTurnKey)
   const keepMounted = useMemo(
     () => (isLoading && activeTurnIndex >= 0 ? [activeTurnIndex] : []),
@@ -949,7 +949,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
   const lastTurnRowRef = useRef<HTMLDivElement | null>(null)
   const virtualRowPadding = "pb-[var(--ow-chat-turn-gap)]"
   const activeTurn = activeTurnKey ? turns.find((turn) => turn.key === activeTurnKey) : null
-  const activeAssistant = activeTurn?.assistants.find((message) => message.id === lastAssistantId)
+  const activeAssistant = activeTurn?.assistants.find((message) => message.id === activeAssistantId)
   const activeContentSignature = getStreamingTurnSignature(activeTurn, activeAssistant)
   const lastTurnKey = turns[turns.length - 1]?.key ?? "__empty__"
   const bottomSpacerHeight = `calc(${bottomInset}px + ${contentInsetY})`
@@ -999,7 +999,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     const isActiveTurn = turn.key === activeTurnKey
     const isStreaming = isActiveTurn && Boolean(isLoading)
     const turnPendingApproval = getTurnPendingApproval(turn, pendingApproval)
-    const streamingAssistantId = isStreaming ? lastAssistantId : null
+    const streamingAssistantId = isStreaming ? activeAssistantId : null
 
     return (
       <MessageTurnView

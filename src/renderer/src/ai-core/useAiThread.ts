@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
 import { type PermissionModeName } from "@shared/permission-mode"
-import { useAiInvocation } from "@/lib/ai-invocation"
+import { useAgent, type AgentState } from "@/lib/use-agent"
 import { useI18n } from "@/lib/i18n"
 import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import {
@@ -20,7 +20,7 @@ interface UseAiThreadOptions {
 }
 
 export function useAiThread(options: UseAiThreadOptions = {}): {
-  conversation: ReturnType<typeof useAiInvocation>["conversation"] & {
+  conversation: AgentState & {
     clearVisibleError: () => void
     visibleError: string | null
   }
@@ -66,7 +66,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     useThreadSelector(threadId, (state) => state?.permissionMode ?? null) ??
     draftTarget?.permissionMode ??
     threadNavigation.defaultDraftPermissionMode
-  const invocation = useAiInvocation({
+  const agent = useAgent({
     ensureThread: async ({ draftInput }) => {
       const createdThread = await threadNavigation.createThread({
         draftInput,
@@ -83,9 +83,9 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     initialInput: initialSeedQuery,
     threadId
   })
-  const query = invocation.input
-  const isBusy = invocation.isBusy
-  const hasPendingApproval = Boolean(invocation.conversation.pendingApproval)
+  const query = agent.state.input
+  const isBusy = agent.state.isBusy
+  const hasPendingApproval = Boolean(agent.state.pendingApproval)
   const messageInput = useMemo(
     () => ({
       refs: [...messageRefs],
@@ -109,13 +109,13 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
       }
 
       setInputStatus("pending")
-      void invocation.invoke(input).then((didInvoke) => {
+      void agent.control.invoke(input).then((didInvoke) => {
         if (didInvoke) {
           onDidInvoke?.()
         }
       })
     },
-    [hasPendingApproval, invocation, isBusy, messageInput, onDidInvoke]
+    [agent.control, hasPendingApproval, isBusy, messageInput, onDidInvoke]
   )
 
   useEffect(() => {
@@ -131,7 +131,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     const submitFrameId = window.requestAnimationFrame(() => {
       hasRunInitialActionRef.current = true
       setInputStatus("pending")
-      void invocation.invoke(initialMessageInput).then((didInvoke) => {
+      void agent.control.invoke(initialMessageInput).then((didInvoke) => {
         if (didInvoke) {
           onDidInvoke?.()
         }
@@ -141,19 +141,19 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     return () => {
       window.cancelAnimationFrame(submitFrameId)
     }
-  }, [host.initialAction, initialMessageInput, invocation, onDidInvoke])
+  }, [agent.control, host.initialAction, initialMessageInput, onDidInvoke])
 
   const handleApprovalDecision = useCallback(
     async (decision: HITLDecision): Promise<void> => {
       setInputStatus("pending")
-      await invocation.resume(decision)
+      await agent.control.resume(decision)
     },
-    [invocation]
+    [agent.control]
   )
   const clearVisibleError = useCallback((): void => {
     setThreadActionError(null)
-    invocation.clearVisibleError()
-  }, [invocation])
+    agent.control.clearError()
+  }, [agent.control])
   const startFreshDraft = useCallback(async (): Promise<boolean> => {
     try {
       setThreadActionError(null)
@@ -161,13 +161,13 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
         modelId: currentModelId,
         permissionMode: currentPermissionMode
       })
-      invocation.resetPendingInput()
+      agent.control.resetInput()
       return true
     } catch (error) {
       setThreadActionError(error instanceof Error ? error.message : String(error))
       return false
     }
-  }, [currentModelId, currentPermissionMode, invocation, threadNavigation])
+  }, [agent.control, currentModelId, currentPermissionMode, threadNavigation])
   const branchThread = useCallback(
     async (messageId?: string): Promise<string | null> => {
       if (!threadId) {
@@ -247,12 +247,12 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
 
   return {
     conversation: {
-      ...invocation.conversation,
+      ...agent.state,
       clearVisibleError,
-      visibleError: invocation.visibleError ?? threadActionError
+      visibleError: agent.state.error ?? threadActionError
     },
     branchThread,
-    canStop: invocation.canStop,
+    canStop: agent.state.canStop,
     canGoToNextChat: threadNavigation.canGoToNextThread,
     canGoToPreviousChat: threadNavigation.canGoToPreviousThread,
     currentModelId,
@@ -264,13 +264,13 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     isBusy,
     primaryActionDisabled,
     query,
-    retry: invocation.retry,
+    retry: agent.control.retry,
     runPrimaryAction,
     selectModel,
     selectPermissionMode,
-    setQuery: invocation.setInput,
+    setQuery: agent.control.setInput,
     startFreshDraft,
-    stop: invocation.stop,
+    stop: agent.control.stop,
     threadId
   }
 }

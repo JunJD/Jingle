@@ -59,7 +59,6 @@ interface LauncherCommandSurfaceProps {
   openCommand: (address: LauncherCommandAddress, options?: LauncherCommandOpenOptions) => void
   pluginInputRef: React.RefObject<LauncherInputElement | ComposerAreaHandle | null>
   pluginInputStatus: LauncherInputStatus
-  reloadThread: (threadId: string) => Promise<void>
   route: LauncherCommandRoute
   searchShellConfig: LauncherShellConfig
   setPluginInputStatus: (status: LauncherInputStatus) => void
@@ -84,7 +83,6 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
     openCommand,
     pluginInputRef,
     pluginInputStatus,
-    reloadThread,
     route,
     searchShellConfig,
     setPluginInputStatus,
@@ -187,7 +185,6 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
           threads: activeCommandThreadsEnabled
             ? {
                 create: createPluginThread,
-                reload: reloadThread,
                 submit: submitPluginThread
               }
             : undefined
@@ -243,7 +240,6 @@ export function LauncherCommandSurface(props: LauncherCommandSurfaceProps): Reac
             create: createPluginThread,
             getActiveThreadId: getCurrentPluginThreadId,
             list: listPluginThreads,
-            reload: reloadThread,
             submit: submitPluginThread
           }
         }}

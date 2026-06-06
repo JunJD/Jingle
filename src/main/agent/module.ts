@@ -2,9 +2,9 @@ import type { IpcMain } from "electron"
 import { instanceCachingFactory, type DependencyContainer } from "tsyringe"
 import { OpenworkMemoryService } from "../openwork-memory/service"
 import { ThreadsService } from "../threads/service"
+import { AgentThreadRunner } from "./agent-thread-runner"
 import { AgentController } from "./controller"
 import { AgentService } from "./service"
-import { AgentStreamHub } from "./stream-hub"
 import { ThreadLifecycleGate } from "./thread-lifecycle-gate"
 
 export function registerAgentModule(container: DependencyContainer): void {
@@ -21,16 +21,16 @@ export function registerAgentModule(container: DependencyContainer): void {
       )
     })
   })
-  container.register(AgentStreamHub, {
+  container.register(AgentThreadRunner, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
-      return new AgentStreamHub(dependencyContainer.resolve(ThreadsService))
+      return new AgentThreadRunner(dependencyContainer.resolve(ThreadsService))
     })
   })
   container.register(AgentController, {
     useFactory: instanceCachingFactory((dependencyContainer) => {
       return new AgentController(
         dependencyContainer.resolve(AgentService),
-        dependencyContainer.resolve(AgentStreamHub)
+        dependencyContainer.resolve(AgentThreadRunner)
       )
     })
   })

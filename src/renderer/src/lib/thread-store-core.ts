@@ -1,11 +1,8 @@
 import { DEFAULT_MODELS } from "@shared/models"
 import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
 import type { ArtifactRecord } from "@shared/artifacts"
-import type {
-  ActiveAgentRun,
-  AgentThreadEvent,
-  AgentThreadSnapshot
-} from "@shared/agent-thread-runtime"
+import type { AgentThreadDataSnapshot } from "@shared/app-types"
+import type { ActiveAgentRun, AgentThreadEvent } from "@shared/agent-thread-runtime"
 import {
   getArtifactTabId,
   getNextActiveTabAfterClose,
@@ -21,9 +18,9 @@ import {
 } from "./message-projection"
 import {
   applyRuntimeEventsToThreadState,
-  applyRuntimeSnapshotToThreadState,
   createRuntimeThreadStateUpdate
 } from "./thread-runtime-adapter"
+import { applyThreadDataSnapshotToThreadState } from "./thread-data-adapter"
 import { stabilizeThreadMessages } from "./thread-message-stability"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
@@ -43,6 +40,7 @@ export interface ThreadState {
   forkState: ThreadForkState
   messageProjection: MessagesProjection
   messages: Message[]
+  title: string | null
   todos: Todo[]
   workspacePath: string | null
   subagents: Subagent[]
@@ -61,8 +59,8 @@ export interface ThreadState {
 }
 
 export interface ThreadActions {
+  applyThreadDataSnapshot: (snapshot: AgentThreadDataSnapshot) => void
   applyRuntimeEvents: (events: AgentThreadEvent[]) => void
-  applyRuntimeSnapshot: (snapshot: AgentThreadSnapshot) => void
   setArtifacts: (artifacts: ArtifactRecord[]) => void
   setForkState: (forkState: ThreadForkState) => void
   appendMessage: (message: Message) => void
@@ -122,6 +120,7 @@ export function createDefaultThreadState(): ThreadState {
     },
     messageProjection: createDefaultMessagesProjection(),
     messages: [],
+    title: null,
     todos: [],
     workspacePath: null,
     subagents: [],
@@ -202,6 +201,11 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
     }
 
     const actions: ThreadActions = {
+      applyThreadDataSnapshot: (snapshot: AgentThreadDataSnapshot) => {
+        updateThreadState(threadId, (state) => {
+          return applyThreadDataSnapshotToThreadState(state, snapshot)
+        })
+      },
       applyRuntimeEvents: (events: AgentThreadEvent[]) => {
         if (events.length === 0) {
           return
@@ -212,21 +216,22 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
           return createRuntimeThreadStateUpdate(nextState)
         })
       },
-      applyRuntimeSnapshot: (snapshot: AgentThreadSnapshot) => {
-        updateThreadState(threadId, (state) => {
-          const nextState = applyRuntimeSnapshotToThreadState(state, snapshot)
-          return createRuntimeThreadStateUpdate(nextState)
-        })
-      },
       appendMessage: (message: Message) => {
         updateThreadState(threadId, (state) => {
           const existingIndex = state.messages.findIndex((entry) => entry.id === message.id)
           if (existingIndex < 0) {
             const messages = [...state.messages, message]
             return {
-              messageProjection: projectMessages(messages, state.messageProjection, {
-                activeTurnKey: state.activeRun?.turnId ?? null
-              }),
+              messageProjection: projectMessages(
+                messages,
+                state.messageProjection,
+                state.activeRun
+                  ? {
+                      activeAssistantId: state.activeRun.assistantMessageId,
+                      activeTurnKey: state.activeRun.turnId
+                    }
+                  : {}
+              ),
               messages
             }
           }
@@ -235,9 +240,16 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
           nextMessages[existingIndex] = message
           const messages = stabilizeThreadMessages(state.messages, nextMessages)
           return {
-            messageProjection: projectMessages(messages, state.messageProjection, {
-              activeTurnKey: state.activeRun?.turnId ?? null
-            }),
+            messageProjection: projectMessages(
+              messages,
+              state.messageProjection,
+              state.activeRun
+                ? {
+                    activeAssistantId: state.activeRun.assistantMessageId,
+                    activeTurnKey: state.activeRun.turnId
+                  }
+                : {}
+            ),
             messages
           }
         })
@@ -246,9 +258,16 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
         updateThreadState(threadId, (state) => {
           const stableMessages = stabilizeThreadMessages(state.messages, messages)
           return {
-            messageProjection: projectMessages(stableMessages, state.messageProjection, {
-              activeTurnKey: state.activeRun?.turnId ?? null
-            }),
+            messageProjection: projectMessages(
+              stableMessages,
+              state.messageProjection,
+              state.activeRun
+                ? {
+                    activeAssistantId: state.activeRun.assistantMessageId,
+                    activeTurnKey: state.activeRun.turnId
+                  }
+                : {}
+            ),
             messages: stableMessages
           }
         })

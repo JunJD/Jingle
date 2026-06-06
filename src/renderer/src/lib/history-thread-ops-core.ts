@@ -34,7 +34,7 @@ export function createHistoryThreadOps(store: HistoryThreadOpsStore) {
 
   const activateHistoryThread = async (
     threadId: string,
-    reloadThread: (threadId: string) => Promise<void>
+    loadThreadData: (threadId: string) => Promise<void>
   ): Promise<boolean> => {
     const matched = await ensureHistoryThread(store, threadId)
     if (!matched) {
@@ -42,24 +42,24 @@ export function createHistoryThreadOps(store: HistoryThreadOpsStore) {
     }
 
     await store.getState().selectThread(threadId)
-    await reloadThread(threadId)
+    await loadThreadData(threadId)
     return true
   }
 
   const openHistoryThread = async (
     threadId: string,
-    reloadThread: (threadId: string) => Promise<void>
+    loadThreadData: (threadId: string) => Promise<void>
   ): Promise<boolean> => {
-    return activateHistoryThread(threadId, reloadThread)
+    return activateHistoryThread(threadId, loadThreadData)
   }
 
-  const refreshHistoryThreadsAndReloadActive = async (
-    reloadThread: (threadId: string) => Promise<void>
+  const refreshHistoryThreadsAndLoadActive = async (
+    loadThreadData: (threadId: string) => Promise<void>
   ): Promise<Thread[]> => {
     const threads = await loadHistoryThreads()
     const activeThreadId = getCurrentHistoryThreadId()
     if (activeThreadId) {
-      await reloadThread(activeThreadId)
+      await loadThreadData(activeThreadId)
     }
 
     return threads
@@ -70,6 +70,6 @@ export function createHistoryThreadOps(store: HistoryThreadOpsStore) {
     getCurrentHistoryThreadId,
     loadHistoryThreads,
     openHistoryThread,
-    refreshHistoryThreadsAndReloadActive
+    refreshHistoryThreadsAndLoadActive
   }
 }

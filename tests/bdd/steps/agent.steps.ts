@@ -3,8 +3,8 @@ import { expect } from "@playwright/test"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import type { Page } from "playwright"
-import type { AgentThreadEventBatch, AgentThreadSnapshot } from "../../../src/shared/agent-thread-runtime"
-import type { HITLDecision, ThreadRuntimeState } from "../../../src/shared/app-types"
+import type { AgentThreadEventBatch } from "../../../src/shared/agent-thread-runtime"
+import type { AgentThreadDataSnapshot, HITLDecision } from "../../../src/shared/app-types"
 import type { AgentInvokeMessage } from "../../../src/shared/message-content"
 import { OpenworkWorld } from "../support/world"
 
@@ -27,19 +27,14 @@ interface AgentBddWindow extends Window {
   api: {
     agent: {
       cancel: (threadId: string) => Promise<void>
-      getThreadSnapshot: (threadId: string) => Promise<AgentThreadSnapshot>
       invoke: (threadId: string, message: AgentInvokeMessage, modelId?: string) => void
       resume: (threadId: string, decision: HITLDecision, modelId?: string) => void
-      subscribeThreadEvents: (
-        threadId: string,
-        onBatch: (batch: AgentThreadEventBatch) => void,
-        onSnapshot?: (snapshot: AgentThreadSnapshot) => void
-      ) => () => void
+      connectThreadEvents: (threadId: string, onBatch: (batch: AgentThreadEventBatch) => void) => () => void
     }
     threads: {
       create: (metadata?: Record<string, unknown>) => Promise<AgentThreadSummary>
       get: (threadId: string) => Promise<AgentThreadSummary | null>
-      getRuntimeState: (threadId: string) => Promise<ThreadRuntimeState>
+      getAgentThreadData: (threadId: string) => Promise<AgentThreadDataSnapshot>
     }
   }
 }
@@ -66,21 +61,19 @@ async function getThreadStatus(world: OpenworkWorld): Promise<string | null> {
   }, threadId)
 }
 
-async function getRuntimeState(world: OpenworkWorld): Promise<ThreadRuntimeState> {
-  const page = await getLauncherPage(world)
-  const threadId = getLatestThreadId(world)
-
-  return page.evaluate(async (inputThreadId) => {
-    return (window as unknown as AgentBddWindow).api.threads.getRuntimeState(inputThreadId)
-  }, threadId)
+async function getRuntimeState(
+  world: OpenworkWorld
+): Promise<AgentThreadDataSnapshot["runState"]> {
+  const threadData = await getAgentThreadData(world)
+  return threadData.runState
 }
 
-async function getThreadSnapshot(world: OpenworkWorld): Promise<AgentThreadSnapshot> {
+async function getAgentThreadData(world: OpenworkWorld): Promise<AgentThreadDataSnapshot> {
   const page = await getLauncherPage(world)
   const threadId = getLatestThreadId(world)
 
   return page.evaluate(async (inputThreadId) => {
-    return (window as unknown as AgentBddWindow).api.agent.getThreadSnapshot(inputThreadId)
+    return (window as unknown as AgentBddWindow).api.threads.getAgentThreadData(inputThreadId)
   }, threadId)
 }
 
@@ -136,7 +129,7 @@ async function startStreamAgent(
       targetWindow.__openworkAgentBdd ??= { streams: {} }
 
       const events: AgentThreadEventBatch[] = []
-      const cleanup = targetWindow.api.agent.subscribeThreadEvents(inputThreadId, (batch) => {
+      const cleanup = targetWindow.api.agent.connectThreadEvents(inputThreadId, (batch) => {
         events.push(batch)
       })
 
@@ -369,16 +362,16 @@ Then("最新 agent runtime state 待审批请求应为空", async function (this
   await expect.poll(async () => (await getRuntimeState(this)).pendingApproval).toBeNull()
 })
 
-Then("最新 agent runtime snapshot 消息数应为 {int}", async function (this: OpenworkWorld, expectedCount: number) {
-  await expect.poll(async () => (await getThreadSnapshot(this)).messagesPage.length).toBe(expectedCount)
+Then("最新 agent thread data 消息数应为 {int}", async function (this: OpenworkWorld, expectedCount: number) {
+  await expect.poll(async () => (await getAgentThreadData(this)).messages.messages.length).toBe(expectedCount)
 })
 
 Then(
-  "最新 agent runtime snapshot 应包含 {int} 条用户消息和 {int} 条助手消息",
+  "最新 agent thread data 应包含 {int} 条用户消息和 {int} 条助手消息",
   async function (this: OpenworkWorld, expectedUserCount: number, expectedAssistantCount: number) {
     await expect
       .poll(async () => {
-        const messages = (await getThreadSnapshot(this)).messagesPage
+        const messages = (await getAgentThreadData(this)).messages.messages
         return {
           assistant: messages.filter((message) => message.role === "assistant").length,
           user: messages.filter((message) => message.role === "user").length
