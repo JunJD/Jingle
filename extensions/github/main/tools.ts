@@ -7,6 +7,7 @@ import {
   listGitHubNotifications,
   listGitHubStarredRepositories,
   listGitHubWorkflowRuns,
+  loadGitHubViewer,
   normalizeGitHubPreferences,
   searchGitHubIssueLikes,
   searchGitHubRepositories,
@@ -106,27 +107,34 @@ function withLimit(
   }
 }
 
-function buildIssueQuery(scope: ListMyIssuesInput["scope"], state: "open" | "closed"): string[] {
+function buildIssueQueryForViewer(input: {
+  login: string
+  scope: ListMyIssuesInput["scope"]
+  state: "open" | "closed"
+}): string[] {
   const qualifiers: Record<ListMyIssuesInput["scope"][number], string> = {
-    assigned: "assignee:@me",
-    created: "author:@me",
-    mentioned: "mentions:@me"
+    assigned: `assignee:${input.login}`,
+    created: `author:${input.login}`,
+    mentioned: `mentions:${input.login}`
   }
 
-  return scope.map((entry) => `is:issue ${qualifiers[entry]} archived:false is:${state}`)
+  return input.scope.map(
+    (entry) => `is:issue ${qualifiers[entry]} archived:false is:${input.state}`
+  )
 }
 
-function buildPullRequestQuery(input: {
+function buildPullRequestQueryForViewer(input: {
   includeDrafts: boolean
+  login: string
   scope: ListMyPullRequestsInput["scope"]
   state: "open" | "closed"
 }): string[] {
   const qualifiers: Record<ListMyPullRequestsInput["scope"][number], string> = {
-    assigned: "assignee:@me",
-    authored: "author:@me",
-    mentioned: "mentions:@me",
-    reviewed: "reviewed-by:@me",
-    reviewRequested: "review-requested:@me"
+    assigned: `assignee:${input.login}`,
+    authored: `author:${input.login}`,
+    mentioned: `mentions:${input.login}`,
+    reviewed: `reviewed-by:${input.login}`,
+    reviewRequested: `review-requested:${input.login}`
   }
 
   return input.scope.map((entry) =>
@@ -166,11 +174,22 @@ export function createGitHubTools(): ExtensionToolDefinition[] {
   const listMyIssuesTool: ExtensionToolDefinition<ListMyIssuesInput> = {
     access: "read",
     description: "List GitHub issues created by, assigned to, or mentioning the current user.",
-    handler: (ctx, input) => {
+    handler: async (ctx, input) => {
       const preferences = withLimit(resolveGitHubPreferences(ctx), input.limit)
-      const queries = buildIssueQuery(input.scope, "open")
+      const viewer = await loadGitHubViewer({ preferences })
+      const queries = buildIssueQueryForViewer({
+        login: viewer.login,
+        scope: input.scope,
+        state: "open"
+      })
       if (input.includeRecentlyClosed) {
-        queries.push(...buildIssueQuery(input.scope, "closed"))
+        queries.push(
+          ...buildIssueQueryForViewer({
+            login: viewer.login,
+            scope: input.scope,
+            state: "closed"
+          })
+        )
       }
 
       return searchIssueQueries({
@@ -187,17 +206,20 @@ export function createGitHubTools(): ExtensionToolDefinition[] {
     access: "read",
     description:
       "List GitHub pull requests authored by, assigned to, mentioning, reviewed by, or requesting review from the current user.",
-    handler: (ctx, input) => {
+    handler: async (ctx, input) => {
       const preferences = withLimit(resolveGitHubPreferences(ctx), input.limit)
-      const queries = buildPullRequestQuery({
+      const viewer = await loadGitHubViewer({ preferences })
+      const queries = buildPullRequestQueryForViewer({
         includeDrafts: input.includeDrafts,
+        login: viewer.login,
         scope: input.scope,
         state: "open"
       })
       if (input.includeRecentlyClosed) {
         queries.push(
-          ...buildPullRequestQuery({
+          ...buildPullRequestQueryForViewer({
             includeDrafts: input.includeDrafts,
+            login: viewer.login,
             scope: input.scope,
             state: "closed"
           })

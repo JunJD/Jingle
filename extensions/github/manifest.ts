@@ -23,6 +23,8 @@ export const githubManifest = defineNativeExtensionManifest({
       "Use GitHub for issues, pull requests, repositories, notifications, and workflow runs.",
       "If GitHub is not connected, explain that GitHub needs to be connected in Settings before you can inspect or modify GitHub data.",
       "Use search qualifiers directly when the user gives repository, author, assignee, state, label, or text filters.",
+      "When using repo: search qualifiers, use the full owner/repository name. If only a repository short name is known, search repositories first or ask for the owner before searching issues or pull requests inside it.",
+      "For the current connected GitHub user, prefer the dedicated listMyIssues/listMyPullRequests/listRepositories tools over writing author:@me, assignee:@me, or user:@me search queries.",
       "Create issues only when the user explicitly asks to create or file an issue.",
       "Do not claim to have searched GitHub unless a GitHub tool was available and called."
     ],
@@ -152,7 +154,7 @@ export const githubManifest = defineNativeExtensionManifest({
         "打开全局搜索命令时使用的默认查询。"
       ),
       name: "defaultSearchTerms",
-      placeholder: "author:@me state:open",
+      placeholder: "author:octocat state:open",
       title: l("Default Search Terms", "默认搜索条件"),
       type: "text"
     },

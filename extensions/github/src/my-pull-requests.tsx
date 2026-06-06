@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Action, ActionPanel, List } from "@openwork/extension-api"
 import {
   dedupeIssueLikes,
+  loadGitHubViewer,
   openGitHubSettings,
   normalizeGitHubPreferences,
   searchGitHubIssueLikes,
@@ -44,24 +45,37 @@ async function loadMyPullRequestSections(params: {
   commandPreferences: GitHubPullRequestListPreferences
   preferences: ReturnType<typeof normalizeGitHubPreferences>
 }): Promise<GitHubPullRequestSection[]> {
+  const viewer = await loadGitHubViewer({ preferences: params.preferences })
   const queryEntries: Array<{ key: keyof typeof SECTION_LABELS; query: string }> = [
     {
       key: "authored",
-      query: buildPullRequestQuery("author:@me", params.commandPreferences.includeDrafts, "open")
+      query: buildPullRequestQuery(
+        `author:${viewer.login}`,
+        params.commandPreferences.includeDrafts,
+        "open"
+      )
     }
   ]
 
   if (params.commandPreferences.includeAssigned) {
     queryEntries.push({
       key: "assigned",
-      query: buildPullRequestQuery("assignee:@me", params.commandPreferences.includeDrafts, "open")
+      query: buildPullRequestQuery(
+        `assignee:${viewer.login}`,
+        params.commandPreferences.includeDrafts,
+        "open"
+      )
     })
   }
 
   if (params.commandPreferences.includeMentioned) {
     queryEntries.push({
       key: "mentioned",
-      query: buildPullRequestQuery("mentions:@me", params.commandPreferences.includeDrafts, "open")
+      query: buildPullRequestQuery(
+        `mentions:${viewer.login}`,
+        params.commandPreferences.includeDrafts,
+        "open"
+      )
     })
   }
 
@@ -69,7 +83,7 @@ async function loadMyPullRequestSections(params: {
     queryEntries.push({
       key: "reviewRequested",
       query: buildPullRequestQuery(
-        "review-requested:@me",
+        `review-requested:${viewer.login}`,
         params.commandPreferences.includeDrafts,
         "open"
       )
@@ -80,7 +94,7 @@ async function loadMyPullRequestSections(params: {
     queryEntries.push({
       key: "reviewed",
       query: buildPullRequestQuery(
-        "reviewed-by:@me",
+        `reviewed-by:${viewer.login}`,
         params.commandPreferences.includeDrafts,
         "open"
       )
@@ -106,7 +120,11 @@ async function loadMyPullRequestSections(params: {
 
   const recentlyClosedGroups: GitHubIssueLike[][] = []
 
-  for (const qualifier of ["author:@me", "assignee:@me", "review-requested:@me"]) {
+  for (const qualifier of [
+    `author:${viewer.login}`,
+    `assignee:${viewer.login}`,
+    `review-requested:${viewer.login}`
+  ]) {
     recentlyClosedGroups.push(
       await searchGitHubIssueLikes({
         preferences: params.preferences,

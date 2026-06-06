@@ -51,6 +51,47 @@ test("GitHub connected AI capability registers callable tools", () => {
   )
 })
 
+test("GitHub current-user issue tool searches with viewer login", async () => {
+  const originalFetch = globalThis.fetch
+  const requests: string[] = []
+
+  globalThis.fetch = async (input) => {
+    const url = String(input)
+    requests.push(url)
+
+    if (url.endsWith("/user")) {
+      return jsonResponse({
+        avatar_url: "",
+        login: "JunJD"
+      })
+    }
+
+    return jsonResponse({
+      items: []
+    })
+  }
+
+  try {
+    await executeGitHubTool("listMyIssues", {
+      includeRecentlyClosed: true,
+      limit: 5,
+      scope: ["created", "assigned"]
+    })
+
+    const searchQueries = requests
+      .filter((request) => request.includes("/search/issues"))
+      .map((request) => new URL(request).searchParams.get("q"))
+    assert.deepEqual(searchQueries, [
+      "is:issue author:JunJD archived:false is:open",
+      "is:issue assignee:JunJD archived:false is:open",
+      "is:issue author:JunJD archived:false is:closed",
+      "is:issue assignee:JunJD archived:false is:closed"
+    ])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test("Notion connected AI capability registers callable tools", () => {
   const capability = resolveNativeExtensionAiCapabilityForExtensionName("notion", {
     preferencesByExtension: {
@@ -1081,6 +1122,46 @@ async function executeNotionTool(toolName: string, args: Record<string, unknown>
     getExtensionPreferences: () => ({
       accessToken: "secret_token",
       apiBaseUrl: "https://api.notion.com/v1"
+    })
+  })
+
+  return executor.executeAgentTool({
+    agentToolName: binding.agentToolName,
+    args,
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+}
+
+async function executeGitHubTool(toolName: string, args: Record<string, unknown>): Promise<string> {
+  const capability = resolveNativeExtensionAiCapabilityForExtensionName("github", {
+    preferencesByExtension: {
+      github: {
+        accessToken: "ghp_secret",
+        apiBaseUrl: "https://github-api.example.test",
+        defaultSearchTerms: "",
+        numberOfResults: "25"
+      }
+    }
+  })
+  assert.ok(capability)
+
+  const registry = createNativeExtensionToolRegistry({
+    definitions: nativeExtensionMainDefinitions,
+    manifests: nativeExtensionManifests
+  })
+  const [binding] = registry
+    .createAiCapabilityToolBindings([capability])
+    .filter((candidate) => candidate.definition.name === toolName)
+  assert.ok(binding)
+
+  const executor = new ExtensionToolExecutor({
+    bindings: [binding],
+    getExtensionPreferences: () => ({
+      accessToken: "ghp_secret",
+      apiBaseUrl: "https://github-api.example.test",
+      defaultSearchTerms: "",
+      numberOfResults: "25"
     })
   })
 

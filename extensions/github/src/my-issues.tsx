@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Action, ActionPanel, List } from "@openwork/extension-api"
 import {
   dedupeIssueLikes,
+  loadGitHubViewer,
   openGitHubSettings,
   normalizeGitHubPreferences,
   searchGitHubIssueLikes,
@@ -34,26 +35,27 @@ async function loadMyIssueSections(params: {
   preferences: ReturnType<typeof normalizeGitHubPreferences>
   commandPreferences: GitHubIssueListPreferences
 }): Promise<GitHubIssueSection[]> {
+  const viewer = await loadGitHubViewer({ preferences: params.preferences })
   const queryEntries: Array<{ key: keyof typeof SECTION_LABELS; query: string }> = []
 
   if (params.commandPreferences.showCreated) {
     queryEntries.push({
       key: "created",
-      query: "is:issue author:@me archived:false is:open"
+      query: `is:issue author:${viewer.login} archived:false is:open`
     })
   }
 
   if (params.commandPreferences.showAssigned) {
     queryEntries.push({
       key: "assigned",
-      query: "is:issue assignee:@me archived:false is:open"
+      query: `is:issue assignee:${viewer.login} archived:false is:open`
     })
   }
 
   if (params.commandPreferences.showMentioned) {
     queryEntries.push({
       key: "mentioned",
-      query: "is:issue mentions:@me archived:false is:open"
+      query: `is:issue mentions:${viewer.login} archived:false is:open`
     })
   }
 
@@ -76,7 +78,11 @@ async function loadMyIssueSections(params: {
 
   const recentlyClosedGroups: GitHubIssueLike[][] = []
 
-  for (const qualifier of ["author:@me", "assignee:@me", "mentions:@me"]) {
+  for (const qualifier of [
+    `author:${viewer.login}`,
+    `assignee:${viewer.login}`,
+    `mentions:${viewer.login}`
+  ]) {
     recentlyClosedGroups.push(
       await searchGitHubIssueLikes({
         preferences: params.preferences,
