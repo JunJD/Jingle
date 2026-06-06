@@ -206,7 +206,6 @@ export function LauncherAiPage(): React.JSX.Element {
         navigation.goHome()
         return
       }
-
     },
     [attachmentDraft.attachments.length, inputRef, navigation, query]
   )

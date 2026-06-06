@@ -105,6 +105,7 @@ const SCROLL_INTENT_KEYS = new Set([
   "PageUp",
   " "
 ])
+const CHAT_BLANK_USER_SCROLL_INTENT_TTL_MS = 500
 
 function isRenderableImageUrl(url: string | null): url is string {
   return Boolean(
@@ -945,17 +946,154 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     () => (isLoading && activeTurnIndex >= 0 ? [activeTurnIndex] : []),
     [activeTurnIndex, isLoading]
   )
-  const latestVirtualRowRef = useRef<HTMLDivElement | null>(null)
   const lastTurnRowRef = useRef<HTMLDivElement | null>(null)
+  const activeTurnBlankFrameRef = useRef<number | null>(null)
+  const activeTurnBlankScrollOffsetRef = useRef<number | null>(null)
+  const activeTurnBlankUserScrollIntentAtRef = useRef(0)
   const virtualRowPadding = "pb-[var(--ow-chat-turn-gap)]"
   const activeTurn = activeTurnKey ? turns.find((turn) => turn.key === activeTurnKey) : null
   const activeAssistant = activeTurn?.assistants.find((message) => message.id === activeAssistantId)
   const activeContentSignature = getStreamingTurnSignature(activeTurn, activeAssistant)
-  const lastTurnKey = turns[turns.length - 1]?.key ?? "__empty__"
-  const bottomSpacerHeight = `calc(${bottomInset}px + ${contentInsetY})`
+  const latestTurnKey = turns[turns.length - 1]?.key ?? null
+  const shouldStartActiveTurnBlank = Boolean(
+    isLoading && activeTurnKey && activeTurnIndex >= 0 && activeTurnIndex === turns.length - 1
+  )
+  const [activeTurnBlank, setActiveTurnBlank] = useState<{
+    spacerHeight: number
+    turnKey: string | null
+  }>(() => ({
+    spacerHeight: 0,
+    turnKey: null
+  }))
+  const isActiveTurnBlankActive =
+    activeTurnBlank.spacerHeight > 0 &&
+    activeTurnBlank.turnKey !== null &&
+    activeTurnBlank.turnKey === latestTurnKey
+  const bottomSpacerHeight = `calc(${
+    bottomInset + (isActiveTurnBlankActive ? activeTurnBlank.spacerHeight : 0)
+  }px + ${contentInsetY})`
   const [activityExpansionOverridesByTurn, setActivityExpansionOverridesByTurn] = useState<
     Map<string, ReadonlyMap<string, boolean>>
   >(() => new Map())
+
+  const measureActiveTurnBlank = useEffectEvent((scrollToPinnedTurn: boolean) => {
+    if (activeTurnBlankFrameRef.current !== null) {
+      cancelAnimationFrame(activeTurnBlankFrameRef.current)
+    }
+
+    activeTurnBlankFrameRef.current = requestAnimationFrame(() => {
+      activeTurnBlankFrameRef.current = null
+      const blankTurnKey = shouldStartActiveTurnBlank ? activeTurnKey : activeTurnBlank.turnKey
+      if (!blankTurnKey || blankTurnKey !== latestTurnKey || turns.length === 0) {
+        return
+      }
+
+      const virtualizer = virtualizerRef?.current
+      const row = lastTurnRowRef.current
+      if (!virtualizer || !row || virtualizer.viewportSize <= 0) {
+        return
+      }
+
+      const rowHeight = row.getBoundingClientRect().height
+      const spacerHeight = Math.max(
+        Math.round(virtualizer.viewportSize - rowHeight - bottomInset),
+        0
+      )
+
+      setActiveTurnBlank((current) => {
+        const next = {
+          spacerHeight,
+          turnKey: spacerHeight > 0 ? blankTurnKey : null
+        }
+        return current.spacerHeight === next.spacerHeight && current.turnKey === next.turnKey
+          ? current
+          : next
+      })
+
+      if (scrollToPinnedTurn && activeTurnIndex >= 0) {
+        requestAnimationFrame(() => {
+          virtualizerRef?.current?.scrollToIndex(activeTurnIndex, { align: "start" })
+        })
+      }
+    })
+  })
+
+  const markUserScrollIntent = useCallback(() => {
+    activeTurnBlankUserScrollIntentAtRef.current = Date.now()
+    onUserScrollIntent?.()
+  }, [onUserScrollIntent])
+
+  const handleScroll = useCallback(() => {
+    const virtualizer = virtualizerRef?.current
+    if (virtualizer) {
+      const currentOffset = virtualizer.scrollOffset
+      const previousOffset = activeTurnBlankScrollOffsetRef.current
+      activeTurnBlankScrollOffsetRef.current = currentOffset
+
+      const hasUserScrollIntent =
+        Date.now() - activeTurnBlankUserScrollIntentAtRef.current <=
+        CHAT_BLANK_USER_SCROLL_INTENT_TTL_MS
+
+      if (
+        isActiveTurnBlankActive &&
+        !isLoading &&
+        hasUserScrollIntent &&
+        previousOffset !== null &&
+        currentOffset < previousOffset
+      ) {
+        const scrollReduction = Math.round(previousOffset - currentOffset)
+        setActiveTurnBlank((current) => {
+          if (!current.turnKey || current.spacerHeight <= 0) {
+            return current
+          }
+
+          const spacerHeight = Math.max(current.spacerHeight - scrollReduction, 0)
+          return {
+            spacerHeight,
+            turnKey: spacerHeight > 0 ? current.turnKey : null
+          }
+        })
+      }
+    }
+
+    onScroll?.()
+  }, [isActiveTurnBlankActive, isLoading, onScroll, virtualizerRef])
+
+  useEffect(() => {
+    if (!shouldStartActiveTurnBlank || !activeTurnKey) {
+      return
+    }
+
+    activeTurnBlankScrollOffsetRef.current = virtualizerRef?.current?.scrollOffset ?? null
+    measureActiveTurnBlank(true)
+  }, [activeTurnKey, shouldStartActiveTurnBlank, virtualizerRef])
+
+  useEffect(() => {
+    if (!isActiveTurnBlankActive) {
+      return undefined
+    }
+
+    const node = lastTurnRowRef.current
+    if (!node || typeof ResizeObserver === "undefined") {
+      return undefined
+    }
+
+    const observer = new ResizeObserver(() => {
+      measureActiveTurnBlank(false)
+    })
+    observer.observe(node)
+
+    return () => observer.disconnect()
+  }, [activeTurnBlank.turnKey, isActiveTurnBlankActive])
+
+  useEffect(() => {
+    return () => {
+      if (activeTurnBlankFrameRef.current !== null) {
+        cancelAnimationFrame(activeTurnBlankFrameRef.current)
+      }
+    }
+  }, [])
+
   const handleActivityExpansionChange = useCallback(
     (turnKey: string, key: string, expanded: boolean) => {
       setActivityExpansionOverridesByTurn((current) => {
@@ -981,18 +1119,18 @@ export function Messages(props: MessagesProps): React.JSX.Element {
   const handlePointerMove = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
       if (event.buttons > 0) {
-        onUserScrollIntent?.()
+        markUserScrollIntent()
       }
     },
-    [onUserScrollIntent]
+    [markUserScrollIntent]
   )
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
       if (SCROLL_INTENT_KEYS.has(event.key)) {
-        onUserScrollIntent?.()
+        markUserScrollIntent()
       }
     },
-    [onUserScrollIntent]
+    [markUserScrollIntent]
   )
 
   const renderTurn = (turn: MessageTurn): ReactElement => {
@@ -1022,10 +1160,10 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     <div
       className="h-full min-h-0"
       onKeyDownCapture={handleKeyDown}
-      onPointerDownCapture={onUserScrollIntent}
+      onPointerDownCapture={markUserScrollIntent}
       onPointerMoveCapture={handlePointerMove}
-      onTouchMoveCapture={onUserScrollIntent}
-      onWheelCapture={onUserScrollIntent}
+      onTouchMoveCapture={markUserScrollIntent}
+      onWheelCapture={markUserScrollIntent}
     >
       <VList
         data={displayRows}
@@ -1036,14 +1174,13 @@ export function Messages(props: MessagesProps): React.JSX.Element {
           overflowAnchor: "none",
           paddingTop: contentInsetY
         }}
-        onScroll={onScroll}
+        onScroll={handleScroll}
         onScrollEnd={onScrollEnd}
         bufferSize={typeof window === "undefined" ? 400 : window.innerHeight}
       >
         {(row, index): ReactElement => {
           const isTurnRow = row.kind === "turn"
           const isLastTurnRow = isTurnRow && index === turns.length - 1
-          const isLatestVirtualRow = row.kind === "footer"
 
           return (
             <div
@@ -1052,33 +1189,31 @@ export function Messages(props: MessagesProps): React.JSX.Element {
                 if (isLastTurnRow) {
                   lastTurnRowRef.current = node
                 }
-
-                if (isLatestVirtualRow) {
-                  latestVirtualRowRef.current = node
-                }
               }}
               className={cn(contentClassName, index < turns.length - 1 && virtualRowPadding)}
             >
               {row.kind === "turn" ? (
-                renderTurn(row.turn)
+                <>
+                  {renderTurn(row.turn)}
+                  {isLastTurnRow && onScrollToLatest && !isActiveTurnBlankActive ? (
+                    <MessageAutoScroll
+                      activeContentSignature={activeContentSignature}
+                      hasFollowTarget={turns.length > 0}
+                      isAtBottom={isAtBottom}
+                      isScrolling={isScrolling}
+                      observeKey={row.key}
+                      onScrollToLatest={onScrollToLatest}
+                      rowRef={lastTurnRowRef}
+                      signatureRef={lastTurnRowRef}
+                    />
+                  ) : null}
+                </>
               ) : (
                 <>
                   {footerSlot}
                   <div aria-hidden="true" style={{ height: bottomSpacerHeight }} />
                 </>
               )}
-              {isLatestVirtualRow && onScrollToLatest ? (
-                <MessageAutoScroll
-                  activeContentSignature={activeContentSignature}
-                  hasFollowTarget={turns.length > 0}
-                  isAtBottom={isAtBottom}
-                  isScrolling={isScrolling}
-                  observeKey={`${row.key}:${lastTurnKey}`}
-                  onScrollToLatest={onScrollToLatest}
-                  rowRef={latestVirtualRowRef}
-                  signatureRef={lastTurnRowRef}
-                />
-              ) : null}
             </div>
           )
         }}

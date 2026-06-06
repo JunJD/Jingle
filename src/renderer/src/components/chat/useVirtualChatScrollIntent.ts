@@ -29,9 +29,7 @@ interface UseVirtualChatScrollIntentResult {
 }
 
 function getIsAtBottom(virtualizer: VListHandle, thresholdPx: number): boolean {
-  return (
-    virtualizer.scrollSize - virtualizer.scrollOffset - virtualizer.viewportSize <= thresholdPx
-  )
+  return virtualizer.scrollSize - virtualizer.scrollOffset - virtualizer.viewportSize <= thresholdPx
 }
 
 function canMeasureVirtualizer(virtualizer: VListHandle): boolean {
@@ -148,7 +146,10 @@ export function useVirtualChatScrollIntent(
       setIsScrolling(false)
     }
 
-    setAtBottomState(getIsAtBottom(virtualizer, atBottomThresholdPx))
+    const measuredAtBottom = getIsAtBottom(virtualizer, atBottomThresholdPx)
+    if (hasUserScrollIntent || measuredAtBottom) {
+      setAtBottomState(measuredAtBottom)
+    }
 
     if (scrollEndTimerRef.current) {
       clearTimeout(scrollEndTimerRef.current)
