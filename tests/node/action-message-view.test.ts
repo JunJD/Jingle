@@ -96,3 +96,80 @@ test("createActionMessageView does not repeat the list directory label when no p
 
   assert.equal(nestedDirectoryView.summary, "List Directory · src")
 })
+
+test("createActionMessageView does not repeat the read file label when no path is shown", async () => {
+  setRendererWindowStub()
+
+  const { createActionMessageView } =
+    await import("../../src/renderer/src/components/chat/action-message-view")
+
+  const baseToolCall: ToolCall = {
+    args: {},
+    id: "call_read",
+    name: "read_file",
+    type: "tool_call"
+  }
+
+  const currentFileView = createActionMessageView({
+    copy,
+    presentation: "grouped",
+    result: "hello",
+    toolCall: baseToolCall
+  })
+
+  assert.equal(currentFileView.summary, "Read File")
+
+  const nestedFileView = createActionMessageView({
+    copy,
+    presentation: "grouped",
+    result: "hello",
+    toolCall: {
+      ...baseToolCall,
+      args: {
+        path: "/Users/example/project/src/index.ts"
+      }
+    }
+  })
+
+  assert.equal(nestedFileView.summary, "Read File · index.ts")
+})
+
+test("createActionMessageView does not repeat file mutation labels when no path is shown", async () => {
+  setRendererWindowStub()
+
+  const { createActionMessageView } =
+    await import("../../src/renderer/src/components/chat/action-message-view")
+
+  const baseToolCall: ToolCall = {
+    args: {
+      content: "first\nsecond"
+    },
+    id: "call_write",
+    name: "write_file",
+    type: "tool_call"
+  }
+
+  const fileWithoutPathView = createActionMessageView({
+    copy,
+    presentation: "grouped",
+    result: "done",
+    toolCall: baseToolCall
+  })
+
+  assert.equal(fileWithoutPathView.summary, "Write File")
+
+  const fileWithPathView = createActionMessageView({
+    copy,
+    presentation: "grouped",
+    result: "done",
+    toolCall: {
+      ...baseToolCall,
+      args: {
+        content: "first\nsecond",
+        path: "/Users/example/project/notes.md"
+      }
+    }
+  })
+
+  assert.equal(fileWithPathView.summary, "Write File · notes.md · Writing 2 lines to notes.md")
+})

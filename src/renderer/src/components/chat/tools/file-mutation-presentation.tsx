@@ -23,12 +23,12 @@ export function buildFileMutationSummary(
   const review = getFileMutationReview(mode, args)
   const path = review?.path
   const content = review ? review.content : null
-  const target = path ? getBasename(path) : copy.toolCall.labels[mode]
+  const target = path ? getBasename(path) : null
 
   return joinSummaryParts(
     copy.toolCall.labels[mode],
     target,
-    mode === "write_file" && content !== null
+    mode === "write_file" && content !== null && target
       ? copy.toolCall.writeLinesToFile(countLines(content), target)
       : null
   )

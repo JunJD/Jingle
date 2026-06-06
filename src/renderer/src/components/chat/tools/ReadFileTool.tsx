@@ -9,7 +9,7 @@ defineToolComponent({
   icon: FileText,
   renderSummary({ copy, args }) {
     const path = getPathArg(args)
-    const target = path ? getBasename(path) : copy.toolCall.labels.read_file
+    const target = path ? getBasename(path) : null
 
     return joinSummaryParts(copy.toolCall.labels.read_file, target)
   },
