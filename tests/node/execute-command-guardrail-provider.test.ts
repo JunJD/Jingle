@@ -162,7 +162,7 @@ test("predictable mutations are denied when target files cannot be predicted", a
   assert.match(decision.reasons?.[0]?.message ?? "", /target files could not be predicted/i)
 })
 
-test("predictable mutations are denied when the predictor marks them unsupported", async () => {
+test("predictable mutations become unknown commands when the predictor marks them unsupported", async () => {
   const provider = createExecuteCommandGuardrailProvider({
     classifier: {
       classify() {
@@ -195,10 +195,11 @@ test("predictable mutations are denied when the predictor marks them unsupported
     buildRequest(`python3 -c "open('notes.txt', 'w').write('hello')"`)
   )
 
-  assert.equal(decision.allow, false)
-  assert.equal(decision.metadata?.executeCommandPolicy?.profile, "predictable_mutation")
+  assert.equal(decision.allow, true)
+  assert.equal(decision.metadata?.executeCommandPolicy?.profile, "unknown_command")
+  assert.equal(decision.metadata?.executeCommandPolicy?.disposition, "require_approval")
   assert.equal(decision.metadata?.mutationPrediction?.status, "unsupported_command")
-  assert.match(decision.reasons?.[0]?.message ?? "", /unsupported_command/i)
+  assert.match(decision.metadata?.executeCommandPolicy?.reason ?? "", /requires user approval/i)
 })
 
 test("host-unsafe commands are denied before prediction runs", async () => {

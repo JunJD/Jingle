@@ -8,8 +8,11 @@ defineToolComponent({
   renderSummary(props) {
     return buildFileMutationSummary(props, "edit_file")
   },
-  renderDetail({ copy, args, rawResult }) {
-    return renderFileMutationDetail(copy, args, "edit_file", { rawResult })
+  renderDetail({ copy, args, rawResult, status }) {
+    return renderFileMutationDetail(copy, args, "edit_file", {
+      changesLabel: status === "complete" ? copy.toolCall.appliedChanges : undefined,
+      rawResult
+    })
   }
 })
 
@@ -19,7 +22,10 @@ defineToolComponent({
   renderSummary(props) {
     return buildFileMutationSummary(props, "write_file")
   },
-  renderDetail({ copy, args, rawResult }) {
-    return renderFileMutationDetail(copy, args, "write_file", { rawResult })
+  renderDetail({ copy, args, rawResult, status }) {
+    return renderFileMutationDetail(copy, args, "write_file", {
+      changesLabel: status === "complete" ? copy.toolCall.appliedChanges : undefined,
+      rawResult
+    })
   }
 })

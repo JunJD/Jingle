@@ -11,13 +11,9 @@ import {
 } from "react"
 
 /* eslint-disable react-refresh/only-export-components */
-import type {
-  AgentThreadEvent,
-  AgentThreadEventBatch,
-  AgentThreadSnapshot
-} from "@shared/agent-thread-runtime"
+import type { AgentThreadEvent, AgentThreadEventBatch } from "@shared/agent-thread-runtime"
 import type { ArtifactRecord } from "@shared/artifacts"
-import { isPermissionModeName, THREAD_PERMISSION_MODE_METADATA_KEY } from "@shared/permission-mode"
+import { THREAD_PERMISSION_MODE_METADATA_KEY } from "@shared/permission-mode"
 import { historyShellStore } from "./history-shell-store"
 import { selectRuntimeEventsAfterRevision } from "./thread-runtime-batch"
 import {
@@ -42,8 +38,9 @@ export interface ThreadContextValue {
   getThreadState: (threadId: string) => ThreadState
   getThreadActions: (threadId: string) => ThreadActions
   ensureThreadRuntime: (threadId: string) => void
+  awaitThreadRuntime: (threadId: string) => Promise<void>
+  loadThreadData: (threadId: string) => Promise<void>
   cleanupThread: (threadId: string) => void
-  reloadThread: (threadId: string) => Promise<void>
   subscribeThread: (threadId: string, callback: () => void) => () => void
   subscribeToStream: (threadId: string, callback: () => void) => () => void
   getStreamData: (threadId: string) => StreamData
@@ -92,17 +89,6 @@ function hasHistoryRefreshEvent(events: AgentThreadEvent[]): boolean {
   )
 }
 
-function hasForkStateRelevantEvent(events: AgentThreadEvent[]): boolean {
-  return events.some(
-    (event) =>
-      event.type === "run.started" ||
-      event.type === "run.resumed" ||
-      event.type === "run.finished" ||
-      event.type === "approval.requested" ||
-      event.type === "approval.cleared"
-  )
-}
-
 export function ThreadProvider({ children }: { children: ReactNode }) {
   const initializedThreadsRef = useRef<Set<string>>(new Set())
   const runtimeCleanupRef = useRef<Record<string, () => void>>({})
@@ -136,23 +122,22 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
   const streamSubscribersRef = useRef<Record<string, Set<() => void>>>({})
   const pendingRuntimeBatchesRef = useRef<Record<string, AgentThreadEventBatch[]>>({})
   const runtimeResyncRef = useRef<Record<string, Promise<void> | null>>({})
-  const resyncRuntimeSnapshotRef = useRef<(threadId: string) => Promise<void>>(async () => {})
+  const runtimeReadyRef = useRef<Record<string, Promise<void>>>({})
+  const loadThreadDataRef = useRef<(threadId: string) => Promise<void>>(async () => {})
+  const replayThreadRuntimeEventsRef = useRef<(threadId: string) => Promise<void>>(async () => {})
+  const resyncThreadRuntimeRef = useRef<(threadId: string) => Promise<void>>(async () => {})
+
+  const isThreadStreaming = useCallback(
+    (threadId: string): boolean => {
+      const activeRun = threadStore.getThreadState(threadId).activeRun
+      return Boolean(activeRun && activeRun.status === "running")
+    },
+    [threadStore]
+  )
 
   const notifyStreamSubscribers = useCallback((threadId: string): void => {
     streamSubscribersRef.current[threadId]?.forEach((callback) => callback())
   }, [])
-
-  const refreshThreadForkState = useCallback(
-    async (threadId: string): Promise<void> => {
-      try {
-        const runtimeState = await window.api.threads.getRuntimeState(threadId)
-        threadStore.getThreadActions(threadId).setForkState(runtimeState.forkState)
-      } catch (error) {
-        console.error("[ThreadContext] Failed to refresh thread fork state:", error)
-      }
-    },
-    [threadStore]
-  )
 
   const syncStreamData = useCallback(
     (threadId: string, isLoading: boolean): void => {
@@ -166,29 +151,6 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       notifyStreamSubscribers(threadId)
     },
     [notifyStreamSubscribers, threadStore]
-  )
-
-  const applyRuntimeSnapshot = useCallback(
-    (threadId: string, snapshot: AgentThreadSnapshot): void => {
-      const wasLoading = streamDataRef.current[threadId]?.isLoading ?? false
-      threadStore.getThreadActions(threadId).applyRuntimeSnapshot({
-        ...snapshot,
-        error: snapshot.error
-          ? {
-              ...snapshot.error,
-              message: getDisplayErrorMessage(snapshot.error.message)
-            }
-          : null
-      })
-      const state = threadStore.getThreadState(threadId)
-      const isLoading = Boolean(state.activeRun && state.activeRun.status === "running")
-      syncStreamData(threadId, isLoading)
-
-      if (wasLoading && !isLoading) {
-        void historyShellStore.getState().loadThreads()
-      }
-    },
-    [syncStreamData, threadStore]
   )
 
   const applyRuntimeEvents = useCallback(
@@ -216,14 +178,10 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       syncStreamData(threadId, isLoading)
 
       if (wasLoading && !isLoading && hasHistoryRefreshEvent(events)) {
-        void historyShellStore.getState().loadThreads()
-      }
-
-      if (wasLoading !== isLoading || hasForkStateRelevantEvent(events)) {
-        void refreshThreadForkState(threadId)
+        void historyShellStore.getState().refreshThread(threadId)
       }
     },
-    [refreshThreadForkState, syncStreamData, threadStore]
+    [syncStreamData, threadStore]
   )
 
   const drainPendingRuntimeBatches = useCallback(
@@ -243,48 +201,18 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
         }
 
         if (selection.type === "gap") {
-          console.warn("[ThreadContext] Runtime event gap detected; resyncing thread snapshot.", {
+          console.warn("[ThreadContext] Runtime event gap detected; resyncing event stream.", {
             actualRevision: selection.actualRevision,
             expectedRevision: selection.expectedRevision,
             threadId: batch.threadId
           })
-          void resyncRuntimeSnapshotRef.current(batch.threadId)
+          void resyncThreadRuntimeRef.current(batch.threadId)
           return
         }
       }
     },
     [applyRuntimeEvents, threadStore]
   )
-
-  const resyncRuntimeSnapshot = useCallback(
-    async (threadId: string): Promise<void> => {
-      if (runtimeResyncRef.current[threadId]) {
-        await runtimeResyncRef.current[threadId]
-        return
-      }
-
-      const resync = window.api.agent
-        .getThreadSnapshot(threadId)
-        .then((snapshot) => {
-          applyRuntimeSnapshot(threadId, snapshot)
-        })
-        .catch((error) => {
-          console.error("[ThreadContext] Failed to resync thread runtime:", error)
-        })
-        .finally(() => {
-          runtimeResyncRef.current[threadId] = null
-          drainPendingRuntimeBatches(threadId)
-        })
-
-      runtimeResyncRef.current[threadId] = resync
-      await resync
-    },
-    [applyRuntimeSnapshot, drainPendingRuntimeBatches]
-  )
-
-  useEffect(() => {
-    resyncRuntimeSnapshotRef.current = resyncRuntimeSnapshot
-  }, [resyncRuntimeSnapshot])
 
   const applyRuntimeBatch = useCallback(
     (batch: AgentThreadEventBatch): void => {
@@ -303,15 +231,15 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       }
 
       if (selection.type === "gap") {
-        console.warn("[ThreadContext] Runtime event gap detected; resyncing thread snapshot.", {
+        console.warn("[ThreadContext] Runtime event gap detected; resyncing event stream.", {
           actualRevision: selection.actualRevision,
           expectedRevision: selection.expectedRevision,
           threadId: batch.threadId
         })
-        void resyncRuntimeSnapshot(batch.threadId)
+        void resyncThreadRuntimeRef.current(batch.threadId)
       }
     },
-    [applyRuntimeEvents, resyncRuntimeSnapshot, threadStore]
+    [applyRuntimeEvents, threadStore]
   )
 
   const getThreadRecord = useCallback(
@@ -373,18 +301,67 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
 
       initializedThreadsRef.current.add(threadId)
       threadStore.ensureThreadState(threadId)
-      runtimeCleanupRef.current[threadId] = window.api.agent.subscribeThreadEvents(
-        threadId,
-        (batch) => {
-          applyRuntimeBatch(batch)
-        },
-        (snapshot) => {
-          applyRuntimeSnapshot(threadId, snapshot)
-        }
-      )
+      const subscription = window.api.agent.connectThreadEvents(threadId, (batch) => {
+        applyRuntimeBatch(batch)
+      })
+      runtimeCleanupRef.current[threadId] = subscription
+      runtimeReadyRef.current[threadId] = subscription.ready
     },
-    [applyRuntimeBatch, applyRuntimeSnapshot, threadStore]
+    [applyRuntimeBatch, threadStore]
   )
+
+  const awaitThreadRuntime = useCallback(
+    async (threadId: string): Promise<void> => {
+      ensureThreadRuntime(threadId)
+      await (runtimeReadyRef.current[threadId] ?? Promise.resolve())
+    },
+    [ensureThreadRuntime]
+  )
+
+  const replayThreadRuntimeEvents = useCallback(
+    async (threadId: string): Promise<void> => {
+      ensureThreadRuntime(threadId)
+      await (runtimeReadyRef.current[threadId] ?? Promise.resolve())
+      await window.api.agent.replayThreadEvents(threadId)
+    },
+    [ensureThreadRuntime]
+  )
+
+  const resyncThreadRuntime = useCallback(
+    async (threadId: string): Promise<void> => {
+      if (isThreadStreaming(threadId)) {
+        await replayThreadRuntimeEventsRef.current(threadId)
+        return
+      }
+
+      if (runtimeResyncRef.current[threadId]) {
+        await runtimeResyncRef.current[threadId]
+        return
+      }
+
+      const resync = loadThreadDataRef
+        .current(threadId)
+        .catch((error) => {
+          console.error("[ThreadContext] Failed to resync thread runtime:", error)
+        })
+        .finally(() => {
+          runtimeResyncRef.current[threadId] = null
+          drainPendingRuntimeBatches(threadId)
+        })
+
+      runtimeResyncRef.current[threadId] = resync
+      await resync
+    },
+    [drainPendingRuntimeBatches, isThreadStreaming]
+  )
+
+  useEffect(() => {
+    replayThreadRuntimeEventsRef.current = replayThreadRuntimeEvents
+  }, [replayThreadRuntimeEvents])
+
+  useEffect(() => {
+    resyncThreadRuntimeRef.current = resyncThreadRuntime
+  }, [resyncThreadRuntime])
 
   const cleanupThread = useCallback(
     (threadId: string): void => {
@@ -393,6 +370,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       delete runtimeCleanupRef.current[threadId]
       delete pendingRuntimeBatchesRef.current[threadId]
       delete runtimeResyncRef.current[threadId]
+      delete runtimeReadyRef.current[threadId]
       delete streamDataRef.current[threadId]
       delete streamSubscribersRef.current[threadId]
       threadStore.deleteThreadState(threadId)
@@ -400,60 +378,32 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     [threadStore]
   )
 
-  const loadThreadHistory = useCallback(
+  const loadThreadData = useCallback(
     async (threadId: string): Promise<void> => {
-      const actions = getThreadActions(threadId)
+      await awaitThreadRuntime(threadId)
+      if (isThreadStreaming(threadId)) {
+        await replayThreadRuntimeEvents(threadId)
+        return
+      }
 
       try {
-        const thread = await window.api.threads.get(threadId)
-        if (thread) {
-          const metadata = thread.metadata || {}
-          if (metadata.workspacePath) {
-            actions.setWorkspacePath(metadata.workspacePath as string)
-          }
-          if (metadata.model) {
-            threadStore.updateThreadState(threadId, () => ({
-              currentModel: metadata.model as string
-            }))
-          }
-          const permissionMode = metadata[THREAD_PERMISSION_MODE_METADATA_KEY]
-          if (isPermissionModeName(permissionMode)) {
-            threadStore.updateThreadState(threadId, () => ({
-              permissionMode
-            }))
-          }
+        const threadData = await window.api.threads.getAgentThreadData(threadId)
+        if (isThreadStreaming(threadId)) {
+          return
         }
-      } catch (error) {
-        console.error("[ThreadContext] Failed to load thread details:", error)
-      }
 
-      try {
-        const history = await window.api.threads.getHistory(threadId)
-        actions.setArtifacts(history.artifacts)
-        actions.setForkState(history.forkState)
+        threadStore.getThreadActions(threadId).applyThreadDataSnapshot(threadData)
+        syncStreamData(threadId, threadData.thread.status === "busy")
       } catch (error) {
-        console.error("[ThreadContext] Failed to load thread artifacts:", error)
-      }
-
-      try {
-        const snapshot = await window.api.agent.getThreadSnapshot(threadId)
-        applyRuntimeSnapshot(threadId, snapshot)
-        const runtimeState = await window.api.threads.getRuntimeState(threadId)
-        actions.setForkState(runtimeState.forkState)
-      } catch (error) {
-        console.error("[ThreadContext] Failed to load thread runtime:", error)
+        console.error("[ThreadContext] Failed to load thread data:", error)
       }
     },
-    [applyRuntimeSnapshot, getThreadActions, threadStore]
+    [awaitThreadRuntime, isThreadStreaming, replayThreadRuntimeEvents, syncStreamData, threadStore]
   )
 
-  const reloadThread = useCallback(
-    async (threadId: string): Promise<void> => {
-      ensureThreadRuntime(threadId)
-      await loadThreadHistory(threadId)
-    },
-    [ensureThreadRuntime, loadThreadHistory]
-  )
+  useEffect(() => {
+    loadThreadDataRef.current = loadThreadData
+  }, [loadThreadData])
 
   useEffect(() => {
     return window.api.artifacts.onChanged(({ artifacts, threadId }) => {
@@ -467,8 +417,9 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       getThreadState,
       getThreadActions,
       ensureThreadRuntime,
+      awaitThreadRuntime,
+      loadThreadData,
       cleanupThread,
-      reloadThread,
       subscribeThread,
       subscribeToStream,
       getStreamData,
@@ -480,6 +431,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     }),
     [
       cleanupThread,
+      awaitThreadRuntime,
       ensureThreadRuntime,
       getAllStreamLoadingStates,
       getAllThreadStates,
@@ -487,7 +439,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       getThreadActions,
       getThreadRecord,
       getThreadState,
-      reloadThread,
+      loadThreadData,
       subscribeAllStreamLoadingStates,
       subscribeAllThreadStates,
       subscribeThread,
@@ -509,12 +461,6 @@ export function useThreadContext(): ThreadContextValue {
 
 function useThreadRecordSnapshot(threadId: string | null): ThreadRecord | null {
   const context = useThreadContext()
-
-  useEffect(() => {
-    if (threadId) {
-      context.ensureThreadRuntime(threadId)
-    }
-  }, [context, threadId])
 
   const subscribe = useCallback(
     (callback: () => void) => {
@@ -578,12 +524,6 @@ export function useThreadState(threadId: string | null): ThreadRecord | null {
 export function useThreadActions(threadId: string | null): ThreadActions | null {
   const context = useThreadContext()
 
-  useEffect(() => {
-    if (threadId) {
-      context.ensureThreadRuntime(threadId)
-    }
-  }, [context, threadId])
-
   if (!threadId) {
     return null
   }
@@ -596,12 +536,6 @@ export function useThreadSelector<T>(
   selector: (record: ThreadRecord | null) => T
 ): T {
   const context = useThreadContext()
-
-  useEffect(() => {
-    if (threadId) {
-      context.ensureThreadRuntime(threadId)
-    }
-  }, [context, threadId])
 
   const subscribe = useCallback(
     (callback: () => void) => {

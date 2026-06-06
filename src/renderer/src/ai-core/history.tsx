@@ -9,7 +9,7 @@ import { ResizeHandle } from "@/components/ui/resizable"
 import {
   getCurrentHistoryThreadId,
   openHistoryThread,
-  refreshHistoryThreadsAndReloadActive
+  refreshHistoryThreadsAndLoadActive
 } from "@/lib/history-thread-ops"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { ThreadProvider, useThreadContext } from "@/lib/thread-context"
@@ -33,7 +33,7 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const createThread = useHistoryShellStore((state) => state.createThread)
   const showKanbanView = useHistoryShellStore((state) => state.showKanbanView)
-  const { reloadThread } = useThreadContext()
+  const { loadThreadData } = useThreadContext()
   const { copy } = useI18n()
   const [isLoading, setIsLoading] = useState(true)
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT)
@@ -80,9 +80,9 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
   const openThread = useCallback(
     async (threadId: string): Promise<boolean> => {
       hydratedThreadIdRef.current = threadId
-      return openHistoryThread(threadId, reloadThread)
+      return openHistoryThread(threadId, loadThreadData)
     },
-    [reloadThread]
+    [loadThreadData]
   )
 
   const handleTargetThread = useCallback(
@@ -100,7 +100,7 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
 
     async function init(): Promise<void> {
       try {
-        const threads = await refreshHistoryThreadsAndReloadActive(reloadThread)
+        const threads = await refreshHistoryThreadsAndLoadActive(loadThreadData)
         if (cancelled) {
           return
         }
@@ -128,7 +128,7 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
             return
           }
           hydratedThreadIdRef.current = thread.thread_id
-          await reloadThread(thread.thread_id)
+          await loadThreadData(thread.thread_id)
         }
       } catch (error) {
         console.error("Failed to initialize:", error)
@@ -143,7 +143,7 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [createThread, handleTargetThread, openThread, reloadThread])
+  }, [createThread, handleTargetThread, loadThreadData, openThread])
 
   useEffect(() => {
     if (!normalizedTargetThreadId) {
@@ -164,10 +164,10 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
     }
 
     hydratedThreadIdRef.current = currentThreadId
-    void reloadThread(currentThreadId).then(() => {
+    void loadThreadData(currentThreadId).then(() => {
       hydratedThreadIdRef.current = currentThreadId
     })
-  }, [currentThreadId, reloadThread])
+  }, [currentThreadId, loadThreadData])
 
   if (isLoading) {
     return (

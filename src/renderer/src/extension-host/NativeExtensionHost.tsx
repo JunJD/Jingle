@@ -64,7 +64,6 @@ export interface NativeExtensionHostValue {
   surface?: NativeExtensionSurface
   threads?: {
     create: (input: NativeExtensionThreadCreateInput) => Promise<NativeExtensionThreadHandle>
-    reload: (threadId: string) => Promise<void>
     submit: (input: NativeExtensionThreadSubmitInput) => Promise<void>
   }
 }

@@ -153,6 +153,10 @@ async function evaluateExecuteTool(
     return deny(args, "Explore mode allows read-only shell commands only.")
   }
 
+  if (policy.profile === "unknown_command" && permissionMode === "explore") {
+    return deny(args, "Explore mode allows read-only shell commands only.")
+  }
+
   return requireApproval(args, await buildApprovalReview(toolName, args), policy.reason)
 }
 

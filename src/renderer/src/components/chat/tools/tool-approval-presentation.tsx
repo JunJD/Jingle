@@ -65,9 +65,11 @@ export function renderToolApprovalOverview(
   copy: AppCopy,
   approvalItem: ToolApprovalItem | null,
   options?: {
+    changesLabel?: string
     rawArgs?: string
   }
 ): React.JSX.Element | null {
+  const changesLabel = options?.changesLabel ?? copy.toolCall.upcomingChanges
   const rawArgs = options?.rawArgs ?? ""
 
   if (!approvalItem && !rawArgs) {
@@ -82,7 +84,7 @@ export function renderToolApprovalOverview(
         </ToolDetailSection>
       ) : null}
       {approvalItem && approvalItem.kind !== "extension_tool" && approvalItem.changes.length > 0 ? (
-        <ToolDetailSection label={copy.toolCall.upcomingChanges}>
+        <ToolDetailSection label={changesLabel}>
           <ToolChangeList copy={copy} items={approvalItem.changes} />
         </ToolDetailSection>
       ) : null}

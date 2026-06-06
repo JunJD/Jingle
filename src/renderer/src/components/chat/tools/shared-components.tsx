@@ -188,17 +188,19 @@ export function ToolChangeList(props: {
       {preview.map((item, index) => (
         <div
           key={`${item.changeType}:${item.path}:${index}`}
-          className="flex min-w-0 items-start gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-panel)] bg-background-secondary/55 px-[var(--ow-space-3)] py-[var(--ow-space-2)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
+          className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-panel)] bg-background-secondary/55 px-[var(--ow-space-3)] py-[var(--ow-space-2)]"
         >
           <span
             className={cn(
-              "mt-[var(--ow-leading-nudge)] inline-flex shrink-0 rounded-full px-[var(--ow-space-2)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)] font-medium",
+              "inline-flex shrink-0 items-center rounded-full px-[var(--ow-space-2)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)] font-medium leading-none",
               getChangeClassName(item.changeType)
             )}
           >
             {getChangeLabel(item.changeType)}
           </span>
-          <span className="min-w-0 break-all text-foreground/80">{item.path}</span>
+          <span className="min-w-0 break-all font-mono [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-foreground/78">
+            {item.path}
+          </span>
         </div>
       ))}
       {items.length > maxItems ? (

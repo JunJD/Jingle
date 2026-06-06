@@ -17,6 +17,7 @@ import { createExecuteCommandGuardrailProvider } from "./execute-command-guardra
 import { JustBashMutationPredictor } from "./mutation-predictor"
 import { createSubagentReadOnlyGuardrailMiddleware } from "./subagent-read-only-guardrail"
 import { createSerializedToolCallMiddleware } from "./serialized-tool-call-middleware"
+import { createToolCallConsistencyMiddleware } from "./tool-call-consistency-middleware"
 import { createToolApprovalMiddleware } from "./tool-approval-middleware"
 import { anthropicPromptCachingMiddleware, createAgent, todoListMiddleware } from "langchain"
 import { getChatModelInstance } from "../llm/get-chat-model"
@@ -270,6 +271,7 @@ The workspace root is: ${workspacePath}`
 
   function createSharedAgentLoopMiddleware() {
     return [
+      createToolCallConsistencyMiddleware(),
       todoListMiddleware(),
       createFilesystemMiddleware({
         backend,

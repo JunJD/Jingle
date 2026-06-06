@@ -41,6 +41,9 @@
       "@openwork/extension-api/host-runtime": [
         "packages/extension-api/src/host-runtime.ts"
       ],
+      "@openwork/agent-runtime": [
+        "packages/agent-runtime/src/index.ts"
+      ],
       "@openwork/extension-utils": [
         "packages/extension-utils/src/index.ts"
       ],

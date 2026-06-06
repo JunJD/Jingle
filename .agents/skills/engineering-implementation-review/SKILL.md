@@ -11,6 +11,27 @@ user-invocable: true
 
 这个 skill 的优先级是工程架构 review，不是普通 code review。先判断模块边界、依赖方向、状态归属、策略归属、失败语义和演进成本；只有在这些问题清楚之后，才讨论局部 bug、命名、样式或小型清理。
 
+## 图优先原则
+
+复杂实现 review 默认先做“实体对齐”，再进入 prose 结论。
+
+这里的“实体”指代码里真实存在、能在文件和符号里落地的对象，例如：
+
+- service / controller / repository / store / reducer / middleware
+- main / preload / renderer / extension host
+- runtime snapshot / event batch / persisted record / projection
+- 请求、缓存、审批、状态机、消息流、数据表、IPC channel
+
+审查时优先回答：
+
+1. 系统里到底有哪些实体在参与这条路径？
+2. 谁生产数据？谁消费数据？谁拥有状态？谁负责恢复/重放？
+3. 当前问题到底落在哪条边、哪个 owner、哪个重复 truth 上？
+
+如果问题跨越两个及以上模块、进程、状态层、异步阶段，或容易把“历史事实 / 运行态 / UI 投影”混在一起，必须先画图。优先使用 Mermaid。图不需要大，但必须让 AI 和人先共享同一个对象模型，再讨论结论。
+
+如果问题只在单函数 / 单文件、实体边界非常清楚，可以退化为“轻量实体列表”，不强行画图。
+
 ## 核心审查目标
 
 1. 保持架构边界清晰
@@ -18,18 +39,20 @@ user-invocable: true
 3. 防止临时兼容性 hack 固化为长期设计
 4. 抓出“局部现在能跑”但会持续制造债务的实现
 5. 审查哪些问题属于业界通用问题；对这些问题优先复用成熟实现，禁止无理由造轮子
+6. 先对齐实体和数据流，再表达 findings，避免 AI 和人讨论的不是同一个系统图
 
 ## 架构优先审查顺序
 
 审查时必须按这个顺序看问题：
 
-1. 模块职责：这个改动到底属于 domain、runtime、middleware、shell、UI component、parser/schema 还是 presentation？
-2. 依赖方向：是否出现 renderer 反向依赖 runtime 细节、业务层依赖 UI shape、middleware 内联 UI/presentation 策略等跨层泄漏？
-3. 状态归属：状态是否放在真实 owner 处？是否通过跨多层 prop drilling、隐式全局状态或重复派生状态制造耦合？
-4. 策略归属：权限、审批、工具分类、显示尺寸、失败处理这类 policy 是否收口在共享边界，而不是散落在组件里？
-5. 输入输出边界：原始 payload decoding、schema/coercion、domain behavior 是否分层清楚？
-6. 失败语义：失败会在哪里暴露？用户、日志、测试或类型系统能否发现？
-7. 演进成本：下一个类似工具、审批类型、UI 状态或扩展入口进来时，是复用现有边界，还是继续复制逻辑？
+1. 实体对齐：先列出真实参与实体；必要时先画 Mermaid 图，标出 owner、依赖方向、数据流和状态流。
+2. 模块职责：这个改动到底属于 domain、runtime、middleware、shell、UI component、parser/schema 还是 presentation？
+3. 依赖方向：是否出现 renderer 反向依赖 runtime 细节、业务层依赖 UI shape、middleware 内联 UI/presentation 策略等跨层泄漏？
+4. 状态归属：状态是否放在真实 owner 处？是否通过跨多层 prop drilling、隐式全局状态或重复派生状态制造耦合？
+5. 策略归属：权限、审批、工具分类、显示尺寸、失败处理这类 policy 是否收口在共享边界，而不是散落在组件里？
+6. 输入输出边界：原始 payload decoding、schema/coercion、domain behavior 是否分层清楚？
+7. 失败语义：失败会在哪里暴露？用户、日志、测试或类型系统能否发现？
+8. 演进成本：下一个类似工具、审批类型、UI 状态或扩展入口进来时，是复用现有边界，还是继续复制逻辑？
 
 只有这些架构问题没有更高优先级风险时，才进入普通实现 review。
 
@@ -178,9 +201,11 @@ user-invocable: true
 ## 输出要求
 
 - 审查结论一律使用中文
-- 先给 findings，按严重程度排序；架构问题必须排在普通代码问题之前
+- 对于跨模块 / 跨进程 / 跨状态层问题，先给一个很短的“实体/数据流图”或“实体列表”；图中节点必须使用代码里的真实实体名，避免发明抽象代称
+- 图后再给 findings，按严重程度排序；架构问题必须排在普通代码问题之前
 - 每条 finding 都要写清：
   - 具体文件
+  - 对应图中的哪个实体、哪条边、或哪个 state owner
   - 该逻辑当前落在哪一层组件（primitive / composed / feature / page）
   - 正确 owner 应该是哪一层
   - 失败模式或实现风险
@@ -190,3 +215,4 @@ user-invocable: true
 - 如果实现的架构边界是可接受的，必须明确说“架构上可接受”，再列剩余风险
 - 不要用样式、命名、局部写法问题掩盖真正的边界、状态、依赖或策略问题
 - 只有在影响结论时，才补 open questions / assumptions
+- 如果画不出清楚的实体图，先继续读代码，不要急着给 prose 结论

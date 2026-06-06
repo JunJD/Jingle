@@ -39,10 +39,12 @@ export function renderFileMutationDetail(
   args: Record<string, unknown>,
   mode: FileMutationToolName,
   options?: {
+    changesLabel?: string
     rawResult?: string
   }
 ): React.JSX.Element | null {
   const review = getFileMutationReview(mode, args)
+  const changesLabel = options?.changesLabel
   const rawResult = options?.rawResult ?? ""
 
   if (!review && !rawResult) {
@@ -68,7 +70,8 @@ export function renderFileMutationDetail(
                 }
               ]
             }
-          : null
+          : null,
+        { changesLabel }
       )}
       {review && (review.oldText !== null || review.newText !== null || review.content !== null) ? (
         <ToolCollapsibleSection

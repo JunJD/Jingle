@@ -106,9 +106,10 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
         className={cn(
           "ow-agent-tool overflow-hidden",
           state === "complete" && "rounded-[var(--ow-radius-sm)] bg-transparent",
+          state === "running" && "rounded-[var(--ow-radius-sm)] bg-transparent",
           state !== "complete" &&
+            state !== "running" &&
             "rounded-[var(--ow-radius-lg)] border border-border/64 bg-background-elevated/38",
-          state === "running" && "border-status-info/18 bg-status-info/4",
           state === "approval" && "border-status-warning/28 bg-status-warning/6",
           state === "error" && "border-status-critical/24 bg-status-critical/6",
           className
@@ -132,7 +133,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
               <span className="inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
                 {icon ?? <AgentToolStatusIcon className="size-[var(--ow-icon-sm)]" state={state} />}
               </span>
-              <span className="min-w-0 [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-[var(--ow-agent-timeline-muted)]">
+              <span className="ow-agent-tool-title min-w-0 [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-[var(--ow-agent-timeline-muted)]">
                 {title}
               </span>
             </span>
@@ -156,7 +157,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
           <CollapsibleContent
             className={cn(
               "ow-agent-tool-content overflow-hidden",
-              state !== "complete" && "border-t border-border/48"
+              state !== "complete" && state !== "running" && "border-t border-border/48"
             )}
           >
             <div
@@ -176,20 +177,22 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
 }
 
 export interface AgentToolInlineProps extends Omit<React.ComponentProps<"button">, "title"> {
+  active?: boolean
   icon?: React.ReactNode
   meta?: React.ReactNode
   title: React.ReactNode
 }
 
 export function AgentToolInline(props: AgentToolInlineProps): React.JSX.Element {
-  const { className, icon, meta, title, type = "button", ...rest } = props
+  const { active = false, className, icon, meta, title, type = "button", ...rest } = props
 
   return (
     <button
       className={cn(
-        "inline-flex max-w-full min-w-0 items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-sm)] px-0 py-[var(--ow-space-0-5)] text-left text-[var(--ow-agent-timeline-muted)] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "ow-agent-tool-inline inline-flex max-w-full min-w-0 items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-sm)] px-0 py-[var(--ow-space-0-5)] text-left text-[var(--ow-agent-timeline-muted)] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className
       )}
+      data-active={active ? "true" : undefined}
       type={type}
       {...rest}
     >
@@ -198,7 +201,7 @@ export function AgentToolInline(props: AgentToolInlineProps): React.JSX.Element 
           {icon}
         </span>
       ) : null}
-      <span className="min-w-0 [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
+      <span className="ow-agent-tool-inline-title min-w-0 [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
         {title}
       </span>
       {meta ? (
@@ -262,7 +265,7 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
         <ChevronRight className="ow-agent-tool-chevron absolute size-[var(--ow-icon-action)] opacity-0 group-hover:opacity-100 group-data-[state=open]:rotate-90 group-data-[state=open]:opacity-100" />
       </span>
       <span className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
-        <span className="min-w-0 flex-1 [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
+        <span className="ow-agent-tool-group-title min-w-0 flex-1 [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
           {children}
         </span>
         {meta ? (

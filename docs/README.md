@@ -48,7 +48,6 @@
 | [ai-launcher-intent-recognition-research.md](./ai-launcher-intent-recognition-research.md) | Electron 端侧 AI 启动器意图识别模型选型、推理栈、微调和落地调研 |
 | [model-provider-design.md](./model-provider-design.md) | 模型 provider 设计调研与方案说明 |
 | [openwork-ui-upgrade-research.md](./openwork-ui-upgrade-research.md) | Openwork UI 升级方向调研 |
-| [opencode-architecture-migration-report.html](./opencode-architecture-migration-report.html) | OpenCode 架构迁移 HTML 报告 |
 | [launch/openwork-launch-thread-cn.md](./launch/openwork-launch-thread-cn.md) | Openwork launch thread 中文稿 |
 | [launch/raycast-experience-independent-thought-cn.md](./launch/raycast-experience-independent-thought-cn.md) | Raycast 体验、Openwork harness 定位和独立产品判断 |
 | [launch/raycast-v2-windows-rewrite-research-cn.md](./launch/raycast-v2-windows-rewrite-research-cn.md) | Raycast V2 Windows rewrite 调研 |
@@ -67,11 +66,7 @@
 
 | 文档 | 用途 |
 |---|---|
-| [ag-ui-thread-projection-architecture.md](./ag-ui-thread-projection-architecture.md) | AG UI thread projection 架构调研与方案说明 |
-| [agent-thread-runtime-v2-goal.md](./agent-thread-runtime-v2-goal.md) | Agent thread runtime v2 目标、边界和验收 |
 | [renderer-external-store-architecture.md](./renderer-external-store-architecture.md) | renderer external store 架构方案说明 |
-| [history-shell-store-roadmap.md](./history-shell-store-roadmap.md) | history shell store 后续演进路线 |
-| [history-shell-store-cleanups.md](./history-shell-store-cleanups.md) | history shell store 清理任务和执行顺序 |
 
 ## 记忆、路线图与执行约束
 

@@ -31,7 +31,7 @@ export interface ActiveAgentRun {
   userMessageId: string
 }
 
-export interface AgentThreadSnapshot {
+export interface AgentThreadRuntimeState {
   activeRun: ActiveAgentRun | null
   error: IpcErrorPayload | null
   hasMoreBefore: boolean
@@ -52,16 +52,9 @@ export interface AgentThreadEventBatch {
   threadId: string
 }
 
-export interface AgentThreadRuntimeState extends AgentThreadSnapshot {}
-
 export type AgentThreadRunFinishStatus = "completed" | "failed" | "cancelled"
 
 export type AgentThreadEvent =
-  | {
-      revision: number
-      snapshot: AgentThreadSnapshot
-      type: "thread.snapshot"
-    }
   | {
       error: IpcErrorPayload | null
       revision: number
@@ -98,11 +91,6 @@ export type AgentThreadEvent =
       message: Message
       revision: number
       type: "message.upserted"
-    }
-  | {
-      messages: Message[]
-      revision: number
-      type: "messages.replaced"
     }
   | {
       delta: string
@@ -154,10 +142,6 @@ export type AgentThreadEvent =
     }
 
 export type AgentThreadEventDraft =
-  | {
-      snapshot: Omit<AgentThreadSnapshot, "revision">
-      type: "thread.snapshot"
-    }
   | Omit<Extract<AgentThreadEvent, { type: "thread.statusChanged" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "run.started" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "run.resumed" }>, "revision">
@@ -165,7 +149,6 @@ export type AgentThreadEventDraft =
   | Omit<Extract<AgentThreadEvent, { type: "run.phaseChanged" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "run.tokenUsageUpdated" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "message.upserted" }>, "revision">
-  | Omit<Extract<AgentThreadEvent, { type: "messages.replaced" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "message.part.delta" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "tool.started" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "tool.updated" }>, "revision">
@@ -201,9 +184,6 @@ export function reduceAgentThreadRuntimeEvent(
   }
 
   switch (event.type) {
-    case "thread.snapshot":
-      return event.snapshot.revision > state.revision ? event.snapshot : state
-
     case "thread.statusChanged":
       return {
         ...state,
@@ -269,13 +249,6 @@ export function reduceAgentThreadRuntimeEvent(
         assistantMessageId: event.message.id,
         phase: (event.message.tool_calls?.length ?? 0) > 0 ? "tool_running" : "streaming"
       })
-
-    case "messages.replaced":
-      return {
-        ...state,
-        messagesPage: event.messages,
-        revision: event.revision
-      }
 
     case "message.part.delta":
       {

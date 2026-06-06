@@ -133,6 +133,7 @@ type InvocationClassification =
         | "network_read"
         | "predictable_mutation"
         | "managed_process"
+        | "unknown_command"
       reason: string
       networkTargets?: string[]
     }
@@ -381,6 +382,10 @@ function hasTeeTarget(args: Array<string | null>): boolean {
   return args.some((token) => token !== null && token.length > 0 && !token.startsWith("-"))
 }
 
+function isExecutablePathName(name: string): boolean {
+  return name.includes("/") || /^[A-Za-z]:/.test(name)
+}
+
 function classifyFind(args: Array<string | null>): InvocationClassification {
   for (const token of args) {
     if (!token) {
@@ -563,15 +568,15 @@ function classifyPythonCommand(
     }
 
     return {
-      profile: "host_unsafe",
-      reason: `${name} module '${secondArg}' is outside the controlled shell profile.`
+      profile: "unknown_command",
+      reason: `${name} module '${secondArg}' is not recognized by the controlled shell profile and requires user approval.`
     }
   }
 
   if (firstArg.startsWith("-")) {
     return {
-      profile: "host_unsafe",
-      reason: `${name} option '${firstArg}' is outside the controlled shell profile.`
+      profile: "unknown_command",
+      reason: `${name} option '${firstArg}' is not recognized by the controlled shell profile and requires user approval.`
     }
   }
 
@@ -613,8 +618,8 @@ function classifyNodeCommand(args: Array<string | null>): InvocationClassificati
 
   if (firstArg.startsWith("-")) {
     return {
-      profile: "host_unsafe",
-      reason: `node option '${firstArg}' is outside the controlled shell profile.`
+      profile: "unknown_command",
+      reason: `node option '${firstArg}' is not recognized by the controlled shell profile and requires user approval.`
     }
   }
 
@@ -635,7 +640,7 @@ function classifyInvocation(invocation: CollectedCommand): InvocationClassificat
   const name = invocation.name
   const hasWriteTarget = hasWriteRedirection(invocation)
 
-  if (name.includes("/")) {
+  if (isExecutablePathName(name)) {
     return {
       profile: "host_unsafe",
       reason: `Executable path '${name}' is outside the controlled shell profile.`
@@ -678,11 +683,11 @@ function classifyInvocation(invocation: CollectedCommand): InvocationClassificat
     }
 
     return {
-      profile: "host_unsafe",
+      profile: "unknown_command",
       reason:
         subcommand === null
-          ? "git command could not be classified safely."
-          : `git ${subcommand} is outside the controlled shell profile.`
+          ? "git command is not recognized by the controlled shell profile and requires user approval."
+          : `git ${subcommand} is not recognized by the controlled shell profile and requires user approval.`
     }
   }
 
@@ -713,8 +718,8 @@ function classifyInvocation(invocation: CollectedCommand): InvocationClassificat
     }
 
     return {
-      profile: "host_unsafe",
-      reason: "npm commands are outside the controlled shell profile."
+      profile: "unknown_command",
+      reason: "npm command is not recognized by the controlled shell profile and requires user approval."
     }
   }
 
@@ -745,8 +750,8 @@ function classifyInvocation(invocation: CollectedCommand): InvocationClassificat
     }
 
     return {
-      profile: "host_unsafe",
-      reason: "pnpm commands are outside the controlled shell profile."
+      profile: "unknown_command",
+      reason: "pnpm command is not recognized by the controlled shell profile and requires user approval."
     }
   }
 
@@ -811,8 +816,8 @@ function classifyInvocation(invocation: CollectedCommand): InvocationClassificat
   }
 
   return {
-    profile: "host_unsafe",
-    reason: `Command '${name}' is not in the controlled shell allowlist.`
+    profile: "unknown_command",
+    reason: `Unknown command '${name}' requires user approval before it can run.`
   }
 }
 
@@ -828,6 +833,8 @@ function summarizePolicy(profile: ExecuteCommandProfile, commands: string[]): st
       return `Command may modify workspace files and requires approval (${preview}).`
     case "managed_process":
       return `Managed process command requires approval (${preview}).`
+    case "unknown_command":
+      return `Unknown command requires approval (${preview}).`
     case "host_unsafe":
       return `Command blocked by the controlled shell policy (${preview}).`
   }
@@ -917,19 +924,34 @@ export class JustBashExecuteCommandClassifier implements ExecuteCommandClassifie
         networkTargets.add(target)
       }
 
-      if (classification.profile === "predictable_mutation") {
+      if (classification.profile === "predictable_mutation" && finalProfile !== "unknown_command") {
         finalProfile = "predictable_mutation"
         reason = classification.reason
         continue
       }
 
-      if (classification.profile === "managed_process" && finalProfile !== "predictable_mutation") {
+      if (
+        classification.profile === "managed_process" &&
+        finalProfile !== "predictable_mutation" &&
+        finalProfile !== "unknown_command"
+      ) {
         finalProfile = "managed_process"
         reason = classification.reason
         continue
       }
 
-      if (classification.profile === "network_read" && finalProfile === "read_only") {
+      if (classification.profile === "unknown_command") {
+        finalProfile = "unknown_command"
+        reason = classification.reason
+        continue
+      }
+
+      if (
+        classification.profile === "network_read" &&
+        finalProfile !== "predictable_mutation" &&
+        finalProfile !== "managed_process" &&
+        finalProfile !== "unknown_command"
+      ) {
         finalProfile = "network_read"
         reason = classification.reason
         continue
@@ -937,6 +959,7 @@ export class JustBashExecuteCommandClassifier implements ExecuteCommandClassifie
 
       if (
         classification.profile === "read_only" &&
+        finalProfile === "read_only" &&
         !isGenericAllowlistedReadOnlyReason(classification.reason)
       ) {
         reason = classification.reason
@@ -944,7 +967,9 @@ export class JustBashExecuteCommandClassifier implements ExecuteCommandClassifie
     }
 
     const disposition =
-      finalProfile === "predictable_mutation" || finalProfile === "managed_process"
+      finalProfile === "predictable_mutation" ||
+      finalProfile === "managed_process" ||
+      finalProfile === "unknown_command"
         ? "require_approval"
         : finalProfile === "host_unsafe"
           ? "deny"

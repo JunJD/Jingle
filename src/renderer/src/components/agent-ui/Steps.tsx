@@ -54,7 +54,7 @@ export function AgentStepsTrigger(props: AgentStepsTriggerProps): React.JSX.Elem
         <ChevronDown className="absolute size-[var(--ow-icon-action)] opacity-0 transition group-hover:opacity-100 group-data-[state=open]:rotate-180" />
       </span>
       <span className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
-        <span className="min-w-0 flex-1 [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
+        <span className="ow-agent-steps-title min-w-0 flex-1 [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
           {children}
         </span>
         {meta ? (

@@ -1,4 +1,4 @@
-import type { AgentThreadEventBatch, AgentThreadSnapshot } from "@shared/agent-thread-runtime"
+import type { AgentThreadEventBatch } from "@shared/agent-thread-runtime"
 import type { HITLDecision } from "@shared/hitl"
 import type { AgentInvokeMessage } from "@shared/message-content"
 import type { PermissionModeName } from "@shared/permission-mode"
@@ -6,6 +6,11 @@ import { invokeIpc, ipcRenderer } from "../ipc"
 
 function getThreadEventsChannel(threadId: string): string {
   return `agent:thread-events:${threadId}`
+}
+
+export interface AgentThreadEventSubscription {
+  (): void
+  ready: Promise<void>
 }
 
 export const agentApi = {
@@ -30,26 +35,15 @@ export const agentApi = {
   cancel: (threadId: string): Promise<void> => {
     return invokeIpc("agent:cancel", { threadId })
   },
-  getThreadSnapshot: (threadId: string): Promise<AgentThreadSnapshot> => {
-    return invokeIpc("agent:getThreadSnapshot", { threadId })
-  },
-  subscribeThreadEvents: (
+  connectThreadEvents: (
     threadId: string,
-    onBatch: (batch: AgentThreadEventBatch) => void,
-    onSnapshot?: (snapshot: AgentThreadSnapshot) => void
-  ): (() => void) => {
+    onBatch: (batch: AgentThreadEventBatch) => void
+  ): AgentThreadEventSubscription => {
     const channel = getThreadEventsChannel(threadId)
     let disposed = false
-    let didReceiveSnapshot = false
-    const pendingBatches: AgentThreadEventBatch[] = []
 
     const listener = (_event: unknown, batch: AgentThreadEventBatch): void => {
       if (disposed) {
-        return
-      }
-
-      if (!didReceiveSnapshot) {
-        pendingBatches.push(batch)
         return
       }
 
@@ -58,35 +52,32 @@ export const agentApi = {
 
     ipcRenderer.on(channel, listener)
 
-    void invokeIpc<AgentThreadSnapshot>("agent:subscribeThreadEvents", { threadId })
-      .then((snapshot) => {
-        if (disposed) {
-          return
-        }
-
-        didReceiveSnapshot = true
-        onSnapshot?.(snapshot)
-        for (const batch of pendingBatches) {
-          onBatch(batch)
-        }
-        pendingBatches.length = 0
-      })
+    const ready: Promise<void> = invokeIpc("agent:connectThreadEvents", { threadId })
+      .then(() => undefined)
       .catch((error) => {
         if (!disposed) {
           console.error("[Agent] Failed to subscribe thread events:", error)
         }
+        throw error
       })
+    ready.catch(() => {})
 
-    return () => {
+    const cleanup = (() => {
       if (disposed) {
         return
       }
 
       disposed = true
       ipcRenderer.removeListener(channel, listener)
-      void invokeIpc("agent:unsubscribeThreadEvents", { threadId }).catch((error) => {
+      void invokeIpc("agent:disconnectThreadEvents", { threadId }).catch((error) => {
         console.error("[Agent] Failed to unsubscribe thread events:", error)
       })
-    }
+    }) as AgentThreadEventSubscription
+
+    cleanup.ready = ready
+    return cleanup
+  },
+  replayThreadEvents: (threadId: string): Promise<void> => {
+    return invokeIpc("agent:connectThreadEvents", { threadId }).then(() => undefined)
   }
 }

@@ -2,8 +2,8 @@ import "reflect-metadata"
 import type { BrowserWindow, IpcMain } from "electron"
 import { container, type DependencyContainer } from "tsyringe"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
+import { AgentThreadRunner } from "./agent/agent-thread-runner"
 import { registerAgentIpcHandlers, registerAgentModule } from "./agent/module"
-import { AgentStreamHub } from "./agent/stream-hub"
 import { installApplicationMenu } from "./app-menu"
 import { registerAppInfoIpcHandlers, registerAppInfoModule } from "./app-info/module"
 import { registerArtifactsIpcHandlers, registerArtifactsModule } from "./artifacts/module"
@@ -132,7 +132,7 @@ export class MainCompositionRoot {
     resolveExtensionRuntimeMenuBarService(this.dependencyContainer).start()
     this.stopNativeIslandAgentStatus?.()
     this.stopNativeIslandAgentStatus = startNativeMinimalIslandAgentStatus(
-      this.dependencyContainer.resolve(AgentStreamHub)
+      this.dependencyContainer.resolve(AgentThreadRunner)
     )
     this.applyShortcutSettings()
     this.stopLauncherSearchIndexRefresh?.()

@@ -6,5 +6,5 @@ export const {
   getCurrentHistoryThreadId,
   loadHistoryThreads,
   openHistoryThread,
-  refreshHistoryThreadsAndReloadActive
+  refreshHistoryThreadsAndLoadActive
 } = createHistoryThreadOps(historyShellStore)

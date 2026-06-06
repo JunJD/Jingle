@@ -1,14 +1,9 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react"
 import { AlertCircle, Brain, Folder, Send, Shield, Square, X } from "lucide-react"
 import type { VListHandle } from "virtua"
-import {
-  PromptInput,
-  PromptInputAction,
-  PromptInputTextarea,
-  ThinkingBar
-} from "@/components/agent-ui"
+import { PromptInput, PromptInputAction, PromptInputTextarea } from "@/components/agent-ui"
 import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
-import { useAiInvocation } from "@/lib/ai-invocation"
+import { useAgent } from "@/lib/use-agent"
 import { Messages } from "./Messages"
 import { MemoryReviewPanel } from "./MemoryReviewPanel"
 import { ModelSwitcher } from "./ModelSwitcher"
@@ -48,25 +43,26 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const tokenUsage = useThreadSelector(threadId, (state) => state?.tokenUsage ?? EMPTY_TOKEN_USAGE)
   const runId = useThreadSelector(threadId, (state) => state?.runId ?? null)
   const currentModel = useThreadSelector(threadId, (state) => state?.currentModel ?? null)
-  const invocation = useAiInvocation({
+  const agent = useAgent({
     threadId,
     temporaryMode,
-    validateInvocation: ({ threadState }) => {
+    validateRun: ({ threadState }) => {
       return threadState.workspacePath ? null : copy.chat.inputNeedsWorkspace
     }
   })
   const {
-    clearVisibleError,
-    conversation: { isLoading, messageProjection, pendingApproval, todos },
-    input,
-    invoke,
-    isBusy,
-    retry,
-    resume,
-    setInput,
-    stop,
-    visibleError
-  } = invocation
+    state: {
+      canInvoke,
+      error: visibleError,
+      input,
+      isBusy,
+      isLoading,
+      messageProjection,
+      pendingApproval,
+      todos
+    },
+    control: { clearError, invoke, retry, resume, setInput, stop }
+  } = agent
   const hasVisibleTurns = messageProjection.turns.length > 0
   const showEmptyChat = !hasVisibleTurns && !isLoading && !visibleError
   const chatVirtualItemCount = showEmptyChat ? 0 : messageProjection.displayRows.length
@@ -92,7 +88,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   }, [threadId])
 
   const handleDismissError = (): void => {
-    clearVisibleError()
+    clearError()
   }
 
   const invokeWithComposerRefs = useCallback(async (): Promise<boolean> => {
@@ -253,8 +249,6 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
       <div className="border-t border-border bg-background-elevated/60 px-[var(--ow-chat-thread-x)] py-[var(--ow-chat-footer-y)]">
         <form onSubmit={handleSubmit} className="mx-auto max-w-[var(--ow-chat-thread-max-width)]">
           <div className="flex flex-col gap-[var(--ow-gap-md)]">
-            {isBusy ? <ThinkingBar text={copy.chat.agentThinking} /> : null}
-
             {pendingApproval ? (
               <ComposerApprovalPrompt
                 key={pendingApproval.id}
@@ -296,7 +290,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                     ) : (
                       <PromptInputAction
                         type="submit"
-                        disabled={!invocation.canInvoke}
+                        disabled={!canInvoke}
                         icon={<Send className="size-[var(--ow-icon-action)]" />}
                         label={copy.launcher.aiPrimaryLabel}
                         className="size-[var(--ow-control-h-md)] bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"

@@ -2,27 +2,8 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import {
   resolveLauncherAiAdjacentThreadIds,
-  shouldReloadLauncherAiThreadOnActivate,
   shouldStartFreshLauncherAiThread
 } from "../../src/renderer/src/ai-core/launcher-ai-thread-navigation-core"
-
-test("shouldReloadLauncherAiThreadOnActivate skips reload while the target thread is streaming", () => {
-  assert.equal(
-    shouldReloadLauncherAiThreadOnActivate({
-      isStreaming: true
-    }),
-    false
-  )
-})
-
-test("shouldReloadLauncherAiThreadOnActivate reloads when the target thread is idle", () => {
-  assert.equal(
-    shouldReloadLauncherAiThreadOnActivate({
-      isStreaming: false
-    }),
-    true
-  )
-})
 
 test("shouldStartFreshLauncherAiThread starts fresh when launcher opens AI with a seed query", () => {
   assert.equal(shouldStartFreshLauncherAiThread({ seedQuery: "整理本周计划" }), true)

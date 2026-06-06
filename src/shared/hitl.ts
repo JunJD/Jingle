@@ -39,7 +39,7 @@ export function getToolApprovalDisplaySize(review: ToolApprovalItem | null): HIT
   }
 
   if (review.kind === "execute_command") {
-    return review.changes.length > 0 ? "large" : "small"
+    return review.changes.length > 0 || review.profile === "unknown_command" ? "large" : "small"
   }
 
   if (review.kind === "extension_tool") {

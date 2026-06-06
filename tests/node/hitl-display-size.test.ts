@@ -13,9 +13,23 @@ test("classifies simple approvals as small", () => {
       kind: "execute_command",
       predictionStatus: null,
       profile: "managed_process",
+      reason: "python3 -m http.server starts a managed process and requires approval.",
       toolName: "execute"
     }),
     "small"
+  )
+
+  assert.equal(
+    getToolApprovalDisplaySize({
+      changes: [],
+      command: "npm run build",
+      kind: "execute_command",
+      predictionStatus: null,
+      profile: "unknown_command",
+      reason: "Unknown command 'npm' requires user approval before it can run.",
+      toolName: "execute"
+    }),
+    "large"
   )
 })
 
@@ -27,6 +41,7 @@ test("classifies file-impacting approvals as large", () => {
       kind: "execute_command",
       predictionStatus: "predicted",
       profile: "predictable_mutation",
+      reason: "Command writes to local files through shell redirection.",
       toolName: "execute"
     }),
     "large"

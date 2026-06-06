@@ -1,6 +1,12 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import type { ModelConfig, ModelProviderState, Provider, Thread } from "../../src/shared/app-types"
+import type {
+  AgentThreadDataSnapshot,
+  ModelConfig,
+  ModelProviderState,
+  Provider,
+  Thread
+} from "../../src/shared/app-types"
 import {
   createHistoryShellStore,
   type HistoryShellApi
@@ -78,12 +84,9 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
       cloneUntilMessage: async () => createThread("thread-clone"),
       update: async (threadId: string, updates: Partial<Thread>) => createThread(threadId, updates),
       delete: async () => undefined,
-      getHistory: async () => {
+      getAgentThreadData: async (): Promise<AgentThreadDataSnapshot> => {
         throw new Error("Not implemented in test stub")
       },
-      getRuntimeState: async () => {
-        throw new Error("Not implemented in test stub")
-      }
     },
     models: {
       getState: async () => providerState,
@@ -183,6 +186,53 @@ test("deleteThread rethrows failures and preserves current selection", async () 
     ["thread-1", "thread-2", "thread-3"]
   )
   assert.equal(state.currentThreadId, "thread-2")
+})
+
+test("refreshThread updates only the requested thread and re-sorts by recency", async () => {
+  const initialThreads = [
+    createThread("thread-old", { title: "Old" }),
+    createThread("thread-current", { title: "Current" })
+  ]
+  const refreshedThread = createThread("thread-current", {
+    title: "Current (Updated)",
+    updated_at: new Date("2026-01-02T00:00:00.000Z")
+  })
+  const store = createHistoryShellStore(
+    createApi({
+      threads: {
+        ...createApi().threads,
+        get: async (threadId: string) => {
+          if (threadId === "thread-current") {
+            return refreshedThread
+          }
+
+          return initialThreads.find((thread) => thread.thread_id === threadId) ?? null
+        },
+        list: async () => initialThreads
+      }
+    })
+  )
+
+  await store.getState().loadThreads()
+  await store.getState().refreshThread("thread-current")
+
+  const state = store.getState()
+  assert.deepEqual(
+    state.threads.map((thread) => ({
+      thread_id: thread.thread_id,
+      title: thread.title
+    })),
+    [
+      {
+        thread_id: "thread-current",
+        title: "Current (Updated)"
+      },
+      {
+        thread_id: "thread-old",
+        title: "Old"
+      }
+    ]
+  )
 })
 
 test("setProviderCredentials refreshes provider and model state after persisting credentials", async () => {

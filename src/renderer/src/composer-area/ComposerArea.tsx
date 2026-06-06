@@ -143,9 +143,8 @@ function ComposerAreaKeyboardPlugin(props: {
   mentionMenuOpenRef: React.RefObject<boolean>
   onSubmit?: () => void
   onUserKeyDown?: (event: React.KeyboardEvent<HTMLElement>) => void
-  submitOnEnter: boolean
 }): null {
-  const { mentionMenuOpenRef, onSubmit, onUserKeyDown, submitOnEnter } = props
+  const { mentionMenuOpenRef, onSubmit, onUserKeyDown } = props
   const [editor] = useLexicalComposerContext()
   const composingRef = useRef(false)
 
@@ -209,15 +208,10 @@ function ComposerAreaKeyboardPlugin(props: {
               event.keyCode === 229
             ) {
               onUserKeyDown?.(event as unknown as React.KeyboardEvent<HTMLElement>)
-              return false
+              return event.defaultPrevented
             }
 
             if (mentionMenuOpenRef.current) {
-              return false
-            }
-
-            if (!submitOnEnter) {
-              onUserKeyDown?.(event as unknown as React.KeyboardEvent<HTMLElement>)
               return false
             }
 
@@ -228,7 +222,7 @@ function ComposerAreaKeyboardPlugin(props: {
           COMMAND_PRIORITY_LOW
         )
       ),
-    [editor, handleDeleteKey, mentionMenuOpenRef, onSubmit, onUserKeyDown, submitOnEnter]
+    [editor, handleDeleteKey, mentionMenuOpenRef, onSubmit, onUserKeyDown]
   )
 
   return null
@@ -245,7 +239,6 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
     onValueChange,
     placeholder,
     sourceMentions = [],
-    submitOnEnter = true,
     value
   },
   ref
@@ -352,7 +345,6 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
           mentionMenuOpenRef={mentionMenuOpenRef}
           onSubmit={onSubmit}
           onUserKeyDown={onKeyDown}
-          submitOnEnter={submitOnEnter}
         />
         <ComposerAreaHandlePlugin
           disabled={disabled}

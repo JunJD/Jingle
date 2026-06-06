@@ -292,10 +292,7 @@ function getStreamingTurnSignature(
   ].join(":")
 }
 
-function ReasoningBlock(props: {
-  isStreaming?: boolean
-  text: string
-}): React.JSX.Element | null {
+function ReasoningBlock(props: { isStreaming?: boolean; text: string }): React.JSX.Element | null {
   const { copy } = useI18n()
   const { isStreaming, text } = props
 
@@ -304,7 +301,7 @@ function ReasoningBlock(props: {
   }
 
   return (
-    <AgentSteps active={isStreaming} className="ow-reasoning-message" defaultOpen={isStreaming}>
+    <AgentSteps active={isStreaming} className="ow-reasoning-message" defaultOpen={false}>
       <AgentStepsTrigger
         className="ow-reasoning-trigger [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
         icon={
@@ -315,12 +312,9 @@ function ReasoningBlock(props: {
           )
         }
       >
-        {isStreaming ? copy.chat.agentThinking : copy.chat.agentThought}
+        {copy.chat.agentThought}
       </AgentStepsTrigger>
-      <AgentStepsContent
-        bar={false}
-        className="ow-reasoning-content space-y-[var(--ow-space-2)]"
-      >
+      <AgentStepsContent bar={false} className="ow-reasoning-content space-y-[var(--ow-space-2)]">
         <div className="pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
           {text}
         </div>
@@ -356,12 +350,13 @@ function renderStructuredContent(
     .filter(
       ({ block }) => block.type === "image" || block.type === "image_url" || block.type === "file"
     )
-  const reasoningText = isUser || !includeReasoning
-    ? ""
-    : content
-        .filter((block) => block.type === "reasoning")
-        .map(getReasoningBlockText)
-        .join("")
+  const reasoningText =
+    isUser || !includeReasoning
+      ? ""
+      : content
+          .filter((block) => block.type === "reasoning")
+          .map(getReasoningBlockText)
+          .join("")
 
   const lastTextBlockIndex = [...content]
     .reverse()
@@ -408,7 +403,11 @@ function isThinkingItemStreaming(
   item: AgentActivityItem,
   options: { isStreaming: boolean; streamingAssistantId: string | null }
 ): boolean {
-  return item.kind === "thinking" && options.isStreaming && item.messageId === options.streamingAssistantId
+  return (
+    item.kind === "thinking" &&
+    options.isStreaming &&
+    item.messageId === options.streamingAssistantId
+  )
 }
 
 function ThinkingActivityContent(props: {
@@ -426,13 +425,11 @@ function ThinkingActivityContent(props: {
     <Collapsible
       className="ow-agent-activity-thinking"
       data-active={streaming ? "true" : "false"}
-      defaultOpen={streaming}
+      defaultOpen={false}
     >
-      <CollapsibleTrigger
-        className="group flex w-full min-w-0 cursor-pointer items-center gap-[var(--ow-gap-sm)] text-left text-[var(--ow-agent-timeline-muted)] transition-colors [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-          {streaming ? copy.chat.agentThinking : copy.chat.agentThought}
+      <CollapsibleTrigger className="group flex w-full min-w-0 cursor-pointer items-center gap-[var(--ow-gap-sm)] text-left text-[var(--ow-agent-timeline-muted)] transition-colors [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <span className="ow-agent-activity-thinking-title min-w-0 flex-1 [overflow-wrap:anywhere]">
+          {copy.chat.agentThought}
         </span>
         <ChevronRight className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] shrink-0 text-[var(--ow-agent-timeline-muted)] group-data-[state=open]:rotate-90" />
       </CollapsibleTrigger>
@@ -462,6 +459,18 @@ type ToolActivityView = {
 }
 
 type ActivityView = ThinkingActivityView | ToolActivityView
+
+function isActivityViewPending(action: ActivityView): boolean {
+  return action.kind === "thinking"
+    ? action.streaming
+    : action.needsApproval || action.result === undefined
+}
+
+function isActivityViewLoading(action: ActivityView): boolean {
+  return action.kind === "thinking"
+    ? action.streaming
+    : !action.needsApproval && action.result === undefined
+}
 
 function AgentActivityGroup(props: {
   defaultOpen?: boolean
@@ -522,15 +531,10 @@ function AgentActivityGroup(props: {
       view
     }
   })
-  const hasActiveActions = actionViews.some((item) =>
-    item.kind === "thinking" ? item.streaming : item.needsApproval || item.result === undefined
-  )
+  const hasActiveActions = actionViews.some(isActivityViewPending)
+  const hasLoadingActions = actionViews.some(isActivityViewLoading)
   const isOpen = open ?? openOverride ?? defaultOpen
-  const latestActiveAction = [...actionViews]
-    .reverse()
-    .find((item) =>
-      item.kind === "thinking" ? item.streaming : item.needsApproval || item.result === undefined
-    )
+  const latestActiveAction = [...actionViews].reverse().find(isActivityViewPending)
   const latestToolAction = [...actionViews].reverse().find((item) => item.kind === "tool")
   const latestActivity = actionViews[actionViews.length - 1]
   const headerAction = hasActiveActions ? latestActiveAction : latestToolAction
@@ -543,7 +547,7 @@ function AgentActivityGroup(props: {
         : headerToolAction.view.summary
       : null) ??
     headerToolAction?.view.summary ??
-    (latestThinkingActivity?.streaming ? copy.chat.agentThinking : null) ??
+    (latestThinkingActivity?.streaming ? copy.chat.agentThought : null) ??
     copy.chat.executedSteps(items.length)
   const headerStatusMeta =
     !isOpen && hasActiveActions && headerToolAction ? (
@@ -556,7 +560,7 @@ function AgentActivityGroup(props: {
 
   return (
     <AgentToolGroup
-      active={hasActiveActions}
+      active={hasLoadingActions}
       onOpenChange={onOpenChange ?? setOpenOverride}
       open={isOpen}
     >
@@ -569,9 +573,7 @@ function AgentActivityGroup(props: {
       >
         {headerTitle}
       </AgentToolGroupTrigger>
-      <AgentToolGroupContent
-        className="ow-agent-activity-group-content space-y-[var(--ow-space-2)]"
-      >
+      <AgentToolGroupContent className="ow-agent-activity-group-content space-y-[var(--ow-space-2)]">
         {actionViews.map((action) => {
           if (action.kind === "thinking") {
             return (
@@ -580,10 +582,7 @@ function AgentActivityGroup(props: {
                 icon={<span aria-hidden="true" className="size-[var(--ow-icon-sm)]" />}
                 key={action.key}
               >
-                <ThinkingActivityContent
-                  item={action.item}
-                  streaming={action.streaming}
-                />
+                <ThinkingActivityContent item={action.item} streaming={action.streaming} />
               </AgentToolGroupItem>
             )
           }
@@ -611,7 +610,6 @@ function AgentActivityGroup(props: {
 }
 
 function AssistantActivityCluster(props: {
-  defaultExpanded?: boolean
   expanded?: boolean
   isStreaming: boolean
   items: AgentActivityItem[]
@@ -622,7 +620,6 @@ function AssistantActivityCluster(props: {
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
   const {
-    defaultExpanded = false,
     expanded,
     isStreaming,
     items,
@@ -634,7 +631,7 @@ function AssistantActivityCluster(props: {
   } = props
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null)
   const handleExpandedChange = onExpandedChange ?? setExpandedOverride
-  const isExpanded = expanded ?? expandedOverride ?? defaultExpanded
+  const isExpanded = expanded ?? expandedOverride ?? false
 
   if (items.length === 0) {
     return null
@@ -671,7 +668,7 @@ function AssistantActivityCluster(props: {
     <Message className="max-w-full" from="assistant">
       <MessageContent className="w-full gap-[var(--ow-gap-md)]">
         <AgentActivityGroup
-          defaultOpen={defaultExpanded}
+          defaultOpen={false}
           isStreaming={isStreaming}
           items={items}
           onOpenChange={handleExpandedChange}
@@ -708,18 +705,14 @@ function AssistantBlock(props: {
         {content.attachments}
         {content.reasoningContent}
         {content.textContent ? (
-          <div className="space-y-[var(--ow-space-3)]">
-            {content.textContent}
-          </div>
+          <div className="space-y-[var(--ow-space-3)]">{content.textContent}</div>
         ) : null}
       </MessageContent>
     </Message>
   )
 }
 
-function UserMessage(props: {
-  message: ThreadMessage
-}): React.JSX.Element | null {
+function UserMessage(props: { message: ThreadMessage }): React.JSX.Element | null {
   const { message } = props
   const content = renderStructuredContent(message.content, { isUser: true })
 
@@ -731,9 +724,7 @@ function UserMessage(props: {
     <Message from="user">
       {content.attachments}
       {content.textContent ? (
-        <MessageContent className="gap-[var(--ow-space-2-5)]">
-          {content.textContent}
-        </MessageContent>
+        <MessageContent className="gap-[var(--ow-space-2-5)]">{content.textContent}</MessageContent>
       ) : null}
     </Message>
   )
@@ -790,12 +781,13 @@ const MessageTurnView = memo(function MessageTurnView(props: {
 
         return (
           <AssistantActivityCluster
-            defaultExpanded={toolDisplayPolicy.defaultExpanded}
             expanded={activityExpansionOverrides.get(entry.key)}
             isStreaming={isStreaming}
             items={entry.items}
             key={entry.key}
-            onExpandedChange={(expanded) => onActivityExpansionChange(turn.key, entry.key, expanded)}
+            onExpandedChange={(expanded) =>
+              onActivityExpansionChange(turn.key, entry.key, expanded)
+            }
             pendingApproval={pendingApproval}
             preferLatestToolSummary={toolDisplayPolicy.preferLatestSummary}
             streamingAssistantId={streamingAssistantId}
@@ -947,7 +939,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     projection,
     virtualizerRef
   } = props
-  const { activeTurnKey, displayRows, lastAssistantId, turns } = projection
+  const { activeAssistantId, activeTurnKey, displayRows, turns } = projection
   const activeTurnIndex = turns.findIndex((turn) => turn.key === activeTurnKey)
   const keepMounted = useMemo(
     () => (isLoading && activeTurnIndex >= 0 ? [activeTurnIndex] : []),
@@ -957,7 +949,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
   const lastTurnRowRef = useRef<HTMLDivElement | null>(null)
   const virtualRowPadding = "pb-[var(--ow-chat-turn-gap)]"
   const activeTurn = activeTurnKey ? turns.find((turn) => turn.key === activeTurnKey) : null
-  const activeAssistant = activeTurn?.assistants.find((message) => message.id === lastAssistantId)
+  const activeAssistant = activeTurn?.assistants.find((message) => message.id === activeAssistantId)
   const activeContentSignature = getStreamingTurnSignature(activeTurn, activeAssistant)
   const lastTurnKey = turns[turns.length - 1]?.key ?? "__empty__"
   const bottomSpacerHeight = `calc(${bottomInset}px + ${contentInsetY})`
@@ -1007,7 +999,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     const isActiveTurn = turn.key === activeTurnKey
     const isStreaming = isActiveTurn && Boolean(isLoading)
     const turnPendingApproval = getTurnPendingApproval(turn, pendingApproval)
-    const streamingAssistantId = isStreaming ? lastAssistantId : null
+    const streamingAssistantId = isStreaming ? activeAssistantId : null
 
     return (
       <MessageTurnView

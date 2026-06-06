@@ -1,4 +1,4 @@
-import type { Thread, ThreadHistoryState, ThreadRuntimeState } from "@shared/app-types"
+import type { AgentThreadDataSnapshot, Thread } from "@shared/app-types"
 import { invokeIpc } from "../ipc"
 
 export const threadsApi = {
@@ -23,10 +23,7 @@ export const threadsApi = {
   delete: (threadId: string): Promise<void> => {
     return invokeIpc("threads:delete", threadId)
   },
-  getHistory: (threadId: string): Promise<ThreadHistoryState> => {
-    return invokeIpc("threads:history", threadId)
-  },
-  getRuntimeState: (threadId: string): Promise<ThreadRuntimeState> => {
-    return invokeIpc("threads:runtimeState", threadId)
+  getAgentThreadData: (threadId: string): Promise<AgentThreadDataSnapshot> => {
+    return invokeIpc("threads:agentThreadData", threadId)
   }
 }

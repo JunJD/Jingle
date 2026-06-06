@@ -1,10 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import type {
-  ActiveAgentRun,
-  AgentThreadEvent,
-  AgentThreadSnapshot
-} from "../../src/shared/agent-thread-runtime"
+import type { ActiveAgentRun, AgentThreadEvent } from "../../src/shared/agent-thread-runtime"
 import {
   createDefaultAgentThreadRuntimeState,
   reduceAgentThreadRuntimeEvent
@@ -21,27 +17,6 @@ function createActiveRun(): ActiveAgentRun {
     threadId: "thread-1",
     turnId: "user-1",
     userMessageId: "user-1"
-  }
-}
-
-function createSnapshot(
-  input: Partial<AgentThreadSnapshot> & {
-    threadId: string
-  }
-): AgentThreadSnapshot {
-  return {
-    activeRun: null,
-    error: null,
-    hasMoreBefore: false,
-    latestRunId: null,
-    messagesPage: [],
-    pendingApproval: null,
-    revision: 0,
-    status: "idle",
-    subagents: [],
-    todos: [],
-    tokenUsage: null,
-    ...input
   }
 }
 
@@ -171,28 +146,24 @@ test("agent thread runtime ignores token deltas until the assistant message exis
 
 test("agent thread runtime preserves pending approval while a paused run resumes", () => {
   const pendingApproval = createPendingApproval()
-  const interruptedState = reduceAgentThreadRuntimeEvent(
-    createDefaultAgentThreadRuntimeState("thread-1"),
-    {
-      revision: 1,
-      snapshot: createSnapshot({
-        activeRun: {
-          ...createActiveRun(),
-          phase: "waiting_tool_result",
-          runId: "run-1",
-          status: "waiting_approval"
-        },
-        latestRunId: "run-1",
-        pendingApproval,
-        revision: 1,
-        status: "interrupted",
-        threadId: "thread-1"
-      }),
-      type: "thread.snapshot"
-    }
-  )
-  const resumedState = reduceAgentThreadRuntimeEvent(interruptedState, {
+  const startedState = reduceAgentThreadRuntimeEvent(createDefaultAgentThreadRuntimeState("thread-1"), {
+    revision: 1,
+    run: createActiveRun(),
+    type: "run.started"
+  })
+  const assignedState = reduceAgentThreadRuntimeEvent(startedState, {
     revision: 2,
+    runId: "run-1",
+    type: "run.idAssigned"
+  })
+  const interruptedState = reduceAgentThreadRuntimeEvent(assignedState, {
+    approval: pendingApproval,
+    revision: 3,
+    runId: "run-1",
+    type: "approval.requested"
+  })
+  const resumedState = reduceAgentThreadRuntimeEvent(interruptedState, {
+    revision: 4,
     run: {
       ...createActiveRun(),
       runId: "run-1"
@@ -200,7 +171,7 @@ test("agent thread runtime preserves pending approval while a paused run resumes
     type: "run.resumed"
   })
   const clearedState = reduceAgentThreadRuntimeEvent(resumedState, {
-    revision: 3,
+    revision: 5,
     type: "approval.cleared"
   })
 
@@ -209,53 +180,11 @@ test("agent thread runtime preserves pending approval while a paused run resumes
   assert.equal(clearedState.pendingApproval, null)
 })
 
-test("agent thread runtime snapshot restores active run and revision for late subscribers", () => {
-  const activeRun = createActiveRun()
+test("agent thread runtime ignores stale event revisions", () => {
   const state = reduceAgentThreadRuntimeEvent(createDefaultAgentThreadRuntimeState("thread-1"), {
     revision: 7,
-    snapshot: createSnapshot({
-      activeRun,
-      revision: 7,
-      threadId: "thread-1"
-    }),
-    type: "thread.snapshot"
-  })
-
-  assert.equal(state.revision, 7)
-  assert.deepEqual(state.activeRun, activeRun)
-})
-
-test("agent thread runtime snapshot restores thread facts and ignores stale revisions", () => {
-  const pendingApproval = createPendingApproval()
-  const state = reduceAgentThreadRuntimeEvent(createDefaultAgentThreadRuntimeState("thread-1"), {
-    revision: 7,
-    snapshot: createSnapshot({
-      activeRun: {
-        ...createActiveRun(),
-        phase: "waiting_tool_result",
-        runId: "run-1",
-        status: "waiting_approval"
-      },
-      latestRunId: "run-1",
-      pendingApproval,
-      revision: 7,
-      status: "interrupted",
-      threadId: "thread-1",
-      todos: [
-        {
-          content: "Review command",
-          id: "todo-1",
-          status: "pending"
-        }
-      ],
-      tokenUsage: {
-        inputTokens: 10,
-        lastUpdated: new Date("2026-01-01T00:00:00.000Z"),
-        outputTokens: 5,
-        totalTokens: 15
-      }
-    }),
-    type: "thread.snapshot"
+    run: createActiveRun(),
+    type: "run.started"
   })
   const staleState = reduceAgentThreadRuntimeEvent(state, {
     revision: 6,
@@ -265,9 +194,6 @@ test("agent thread runtime snapshot restores thread facts and ignores stale revi
   })
 
   assert.equal(staleState, state)
-  assert.equal(state.latestRunId, "run-1")
-  assert.equal(state.pendingApproval, pendingApproval)
-  assert.equal(state.status, "interrupted")
-  assert.equal(state.todos[0]?.id, "todo-1")
-  assert.equal(state.tokenUsage?.totalTokens, 15)
+  assert.equal(state.revision, 7)
+  assert.equal(state.status, "running")
 })

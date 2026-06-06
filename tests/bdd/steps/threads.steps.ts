@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { Then, When } from "@cucumber/cucumber"
 import { expect } from "@playwright/test"
-import type { ThreadHistoryState, ThreadRuntimeState } from "../../../src/shared/app-types"
+import type { AgentThreadDataSnapshot } from "../../../src/shared/app-types"
 import { OpenworkWorld } from "../support/world"
 
 type ThreadSnapshot = {
@@ -18,7 +18,13 @@ async function createThread(
   const page = await world.getPageByKind("launcher")
 
   return page.evaluate(async (input) => {
-    return (window as typeof window & { api: { threads: { create: (metadata?: Record<string, unknown>) => Promise<ThreadSnapshot> } } }).api.threads.create(input)
+    return (
+      window as typeof window & {
+        api: {
+          threads: { create: (metadata?: Record<string, unknown>) => Promise<ThreadSnapshot> }
+        }
+      }
+    ).api.threads.create(input)
   }, metadata)
 }
 
@@ -26,7 +32,11 @@ async function cloneThread(world: OpenworkWorld, threadId: string): Promise<Thre
   const page = await world.getPageByKind("launcher")
 
   return page.evaluate(async (inputThreadId) => {
-    return (window as typeof window & { api: { threads: { clone: (threadId: string) => Promise<ThreadSnapshot> } } }).api.threads.clone(inputThreadId)
+    return (
+      window as typeof window & {
+        api: { threads: { clone: (threadId: string) => Promise<ThreadSnapshot> } }
+      }
+    ).api.threads.clone(inputThreadId)
   }, threadId)
 }
 
@@ -34,7 +44,11 @@ async function getThread(world: OpenworkWorld, threadId: string): Promise<Thread
   const page = await world.getPageByKind("launcher")
 
   return page.evaluate(async (inputThreadId) => {
-    return (window as typeof window & { api: { threads: { get: (threadId: string) => Promise<ThreadSnapshot | null> } } }).api.threads.get(inputThreadId)
+    return (
+      window as typeof window & {
+        api: { threads: { get: (threadId: string) => Promise<ThreadSnapshot | null> } }
+      }
+    ).api.threads.get(inputThreadId)
   }, threadId)
 }
 
@@ -42,7 +56,9 @@ async function listThreads(world: OpenworkWorld): Promise<ThreadSnapshot[]> {
   const page = await world.getPageByKind("launcher")
 
   return page.evaluate(async () => {
-    return (window as typeof window & { api: { threads: { list: () => Promise<ThreadSnapshot[]> } } }).api.threads.list()
+    return (
+      window as typeof window & { api: { threads: { list: () => Promise<ThreadSnapshot[]> } } }
+    ).api.threads.list()
   })
 }
 
@@ -50,34 +66,49 @@ async function deleteThread(world: OpenworkWorld, threadId: string): Promise<voi
   const page = await world.getPageByKind("launcher")
 
   await page.evaluate(async (inputThreadId) => {
-    await (window as typeof window & { api: { threads: { delete: (threadId: string) => Promise<void> } } }).api.threads.delete(inputThreadId)
+    await (
+      window as typeof window & {
+        api: { threads: { delete: (threadId: string) => Promise<void> } }
+      }
+    ).api.threads.delete(inputThreadId)
   }, threadId)
 }
 
-async function getThreadHistory(world: OpenworkWorld, threadId: string): Promise<ThreadHistoryState> {
-  const page = await world.getPageByKind("launcher")
-
-  return page.evaluate(async (inputThreadId) => {
-    return (window as typeof window & { api: { threads: { getHistory: (threadId: string) => Promise<ThreadHistoryState> } } }).api.threads.getHistory(inputThreadId)
-  }, threadId)
-}
-
-async function getThreadRuntimeState(
+async function getAgentThreadData(
   world: OpenworkWorld,
   threadId: string
-): Promise<ThreadRuntimeState> {
+): Promise<AgentThreadDataSnapshot> {
   const page = await world.getPageByKind("launcher")
 
   return page.evaluate(async (inputThreadId) => {
-    return (window as typeof window & { api: { threads: { getRuntimeState: (threadId: string) => Promise<ThreadRuntimeState> } } }).api.threads.getRuntimeState(inputThreadId)
+    return (
+      window as typeof window & {
+        electron: {
+          ipcRenderer: {
+            invoke: (channel: string, ...args: unknown[]) => Promise<AgentThreadDataSnapshot>
+          }
+        }
+      }
+    ).electron.ipcRenderer.invoke("threads:agentThreadData", inputThreadId)
   }, threadId)
 }
 
-async function setGlobalWorkspace(world: OpenworkWorld, workspacePath: string): Promise<string | null> {
+async function setGlobalWorkspace(
+  world: OpenworkWorld,
+  workspacePath: string
+): Promise<string | null> {
   const page = await world.getPageByKind("launcher")
 
   return page.evaluate(async (inputPath) => {
-    return (window as typeof window & { api: { workspace: { set: (threadId: string | undefined, path: string | null) => Promise<string | null> } } }).api.workspace.set(undefined, inputPath)
+    return (
+      window as typeof window & {
+        api: {
+          workspace: {
+            set: (threadId: string | undefined, path: string | null) => Promise<string | null>
+          }
+        }
+      }
+    ).api.workspace.set(undefined, inputPath)
   }, workspacePath)
 }
 
@@ -183,12 +214,14 @@ Then(
   "新克隆线程的 history 应包含消息 {string}",
   async function (this: OpenworkWorld, message: string) {
     const clonedThreadId = this.getScenarioValue("threads.latestClonedThreadId")
-    const history = await getThreadHistory(this, clonedThreadId)
+    const threadData = await getAgentThreadData(this, clonedThreadId)
 
-    expect(history.messages.some((entry) => {
-      const content = entry.content
-      return typeof content === "string" && content.includes(message)
-    })).toBe(true)
+    expect(
+      threadData.messages.messages.some((entry) => {
+        const content = entry.content
+        return typeof content === "string" && content.includes(message)
+      })
+    ).toBe(true)
   }
 )
 
@@ -196,42 +229,52 @@ Then(
   "最后创建历史线程的 history 应包含消息 {string}",
   async function (this: OpenworkWorld, message: string) {
     const threadId = this.getScenarioValue("threads.lastCreatedThreadId")
-    const history = await getThreadHistory(this, threadId)
+    const threadData = await getAgentThreadData(this, threadId)
 
-    expect(history.messages.some((entry) => {
-      const content = entry.content
-      return typeof content === "string" && content.includes(message)
-    })).toBe(true)
+    expect(
+      threadData.messages.messages.some((entry) => {
+        const content = entry.content
+        return typeof content === "string" && content.includes(message)
+      })
+    ).toBe(true)
   }
 )
 
+Then("最后创建历史线程的 history 中待审批请求应为空", async function (this: OpenworkWorld) {
+  const threadId = this.getScenarioValue("threads.lastCreatedThreadId")
+  const threadData = await getAgentThreadData(this, threadId)
+
+  expect(threadData.runState.pendingApproval).toBeNull()
+})
+
+Then("最后创建历史线程的 runtime state 中 todos 应为空", async function (this: OpenworkWorld) {
+  const threadId = this.getScenarioValue("threads.lastCreatedThreadId")
+  const threadData = await getAgentThreadData(this, threadId)
+
+  expect(threadData.runState.todos).toEqual([])
+})
+
+Then("最后创建历史线程的 runtime state 中待审批请求应为空", async function (this: OpenworkWorld) {
+  const threadId = this.getScenarioValue("threads.lastCreatedThreadId")
+  const threadData = await getAgentThreadData(this, threadId)
+
+  expect(threadData.runState.pendingApproval).toBeNull()
+})
+
 Then(
-  "最后创建历史线程的 history 中待审批请求应为空",
-  async function (this: OpenworkWorld) {
+  "最后创建历史线程的 agent thread data 应包含消息 {string} 且 run state 为空",
+  async function (this: OpenworkWorld, message: string) {
     const threadId = this.getScenarioValue("threads.lastCreatedThreadId")
-    const history = await getThreadHistory(this, threadId)
+    const threadData = await getAgentThreadData(this, threadId)
 
-    expect(history.pendingApproval).toBeNull()
-  }
-)
-
-Then(
-  "最后创建历史线程的 runtime state 中 todos 应为空",
-  async function (this: OpenworkWorld) {
-    const threadId = this.getScenarioValue("threads.lastCreatedThreadId")
-    const runtimeState = await getThreadRuntimeState(this, threadId)
-
-    expect(runtimeState.todos).toEqual([])
-  }
-)
-
-Then(
-  "最后创建历史线程的 runtime state 中待审批请求应为空",
-  async function (this: OpenworkWorld) {
-    const threadId = this.getScenarioValue("threads.lastCreatedThreadId")
-    const runtimeState = await getThreadRuntimeState(this, threadId)
-
-    expect(runtimeState.pendingApproval).toBeNull()
+    expect(
+      threadData.messages.messages.some((entry) => {
+        const content = entry.content
+        return typeof content === "string" && content.includes(message)
+      })
+    ).toBe(true)
+    expect(threadData.runState.todos).toEqual([])
+    expect(threadData.runState.pendingApproval).toBeNull()
   }
 )
 

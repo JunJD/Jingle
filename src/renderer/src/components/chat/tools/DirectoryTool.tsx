@@ -21,7 +21,7 @@ defineToolComponent({
   icon: FolderOpen,
   renderSummary({ copy, args, result }) {
     const path = getPathArg(args)
-    const target = path ? getBasename(path) : copy.toolCall.labels.ls
+    const target = path ? getBasename(path) : null
     const entries = asFileEntries(result)
     const counts = countDirectoryEntries(entries)
 

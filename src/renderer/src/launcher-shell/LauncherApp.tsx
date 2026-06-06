@@ -9,16 +9,10 @@ import type { PermissionModeName } from "@shared/permission-mode"
 import { LauncherIntelligenceGlow } from "@launcher-components/LauncherIntelligenceGlow"
 import { LauncherPageTransition } from "@launcher-components/LauncherPageTransition"
 import { LauncherSearchPage } from "@launcher-components/LauncherSearchPage"
-import { invokeThreadMessage } from "@/lib/ai-invocation"
-import {
-  activateHistoryThread,
-  getCurrentHistoryThreadId,
-  loadHistoryThreads
-} from "@/lib/history-thread-ops"
 import { useI18n } from "@/lib/i18n"
+import { useAgent } from "@/lib/use-agent"
 import { useShortcutCommandHandler } from "@/shortcuts/shortcut-context"
 import { useThreadContext } from "@/lib/thread-context"
-import { shouldReloadLauncherAiThreadOnActivate } from "@/ai-core/launcher-ai-thread-navigation-core"
 import { useLauncherClipboard } from "./LauncherClipboardContext"
 import { LauncherCommandSurface } from "./LauncherCommandSurface"
 import { useActiveLauncherCommand } from "./hooks/useActiveLauncherCommand"
@@ -52,11 +46,13 @@ export default function LauncherApp(): React.JSX.Element {
   const inputNeedsWorkspaceMessage = copy.chat.inputNeedsWorkspace
   const clipboard = useLauncherClipboard()
   const threadContext = useThreadContext()
+  const { ensureThreadRuntime, getThreadActions, loadThreadData } = threadContext
   const searchInputRef = useRef<LauncherInputElement>(null)
   const pluginInputRef = useRef<LauncherInputElement | ComposerAreaHandle>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const { closeActivePlugin, navigationDirection, openCommand, route, routeKey } =
     useLauncherRouter()
+  const [activePluginThreadId, setActivePluginThreadId] = useState<string | null>(null)
   const [pluginInputSurface, setPluginInputSurface] = useState<{
     routeKey: string
     status: LauncherInputStatus
@@ -66,6 +62,7 @@ export default function LauncherApp(): React.JSX.Element {
   })
   const pluginInputStatus =
     pluginInputSurface.routeKey === routeKey ? pluginInputSurface.status : "idle"
+  const pluginAgent = useAgent({ threadId: activePluginThreadId })
   const setPluginInputStatus = useCallback(
     (status: LauncherInputStatus): void => {
       setPluginInputSurface({
@@ -173,8 +170,8 @@ export default function LauncherApp(): React.JSX.Element {
         workspacePath
       })
 
-      threadContext.ensureThreadRuntime(thread.thread_id)
-      const actions = threadContext.getThreadActions(thread.thread_id)
+      ensureThreadRuntime(thread.thread_id)
+      const actions = getThreadActions(thread.thread_id)
       actions.setCurrentModel(resolvedModelId)
       actions.setPermissionMode(input.permissionMode ?? DEFAULT_PERMISSION_MODE)
       actions.setWorkspacePath(workspacePath)
@@ -186,24 +183,14 @@ export default function LauncherApp(): React.JSX.Element {
         workspacePath
       }
     },
-    [inputNeedsWorkspaceMessage, threadContext]
+    [ensureThreadRuntime, getThreadActions, inputNeedsWorkspaceMessage]
   )
   const activatePluginThread = useCallback(
     async (threadId: string): Promise<void> => {
-      await activateHistoryThread(threadId, async (nextThreadId) => {
-        if (
-          !shouldReloadLauncherAiThreadOnActivate({
-            isStreaming: threadContext.getStreamData(nextThreadId).isLoading
-          })
-        ) {
-          threadContext.ensureThreadRuntime(nextThreadId)
-          return
-        }
-
-        await threadContext.reloadThread(nextThreadId)
-      })
+      setActivePluginThreadId(threadId)
+      await loadThreadData(threadId)
     },
-    [threadContext]
+    [loadThreadData]
   )
   const branchPluginThread = useCallback(
     async (threadId: string, messageId?: string) => {
@@ -222,10 +209,9 @@ export default function LauncherApp(): React.JSX.Element {
         throw new Error(inputNeedsWorkspaceMessage)
       }
 
-      threadContext.ensureThreadRuntime(branchedThread.thread_id)
-      await activateHistoryThread(branchedThread.thread_id, (nextThreadId) =>
-        threadContext.reloadThread(nextThreadId)
-      )
+      ensureThreadRuntime(branchedThread.thread_id)
+      setActivePluginThreadId(branchedThread.thread_id)
+      await loadThreadData(branchedThread.thread_id)
 
       return {
         modelId,
@@ -233,26 +219,25 @@ export default function LauncherApp(): React.JSX.Element {
         workspacePath
       }
     },
-    [inputNeedsWorkspaceMessage, threadContext]
+    [ensureThreadRuntime, inputNeedsWorkspaceMessage, loadThreadData]
   )
   const listPluginThreads = useCallback(async () => {
-    return loadHistoryThreads()
+    return window.api.threads.list()
   }, [])
   const getCurrentPluginThreadId = useCallback(() => {
-    return getCurrentHistoryThreadId()
-  }, [])
+    return activePluginThreadId
+  }, [activePluginThreadId])
   const submitPluginThread = useCallback(
     async (input: LauncherThreadSubmitInput): Promise<void> => {
-      await invokeThreadMessage({
-        input: {
+      await pluginAgent.control.invoke(
+        {
           refs: [],
           text: input.message
         },
-        threadContext,
-        threadId: input.threadId
-      })
+        { threadId: input.threadId }
+      )
     },
-    [threadContext]
+    [pluginAgent.control]
   )
 
   return (
@@ -279,7 +264,6 @@ export default function LauncherApp(): React.JSX.Element {
                 openCommand={openCommand}
                 pluginInputRef={pluginInputRef}
                 pluginInputStatus={pluginInputStatus}
-                reloadThread={(threadId: string) => threadContext.reloadThread(threadId)}
                 route={route}
                 searchShellConfig={searchPage.shellConfig}
                 setPluginInputStatus={setPluginInputStatus}

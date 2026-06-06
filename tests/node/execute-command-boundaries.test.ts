@@ -72,15 +72,15 @@ const boundaryCases: BoundaryCase[] = [
   },
   {
     command: "python3 -m pip install pytest",
-    disposition: "deny",
-    label: "unclassified python module execution",
-    profile: "host_unsafe"
+    disposition: "require_approval",
+    label: "unrecognized python module execution",
+    profile: "unknown_command"
   },
   {
     command: "node --inspect scripts/update.js",
-    disposition: "deny",
-    label: "node debugging flags",
-    profile: "host_unsafe"
+    disposition: "require_approval",
+    label: "unrecognized node debugging flags",
+    profile: "unknown_command"
   },
   {
     command: `js-exec -c "console.log('hello')"`,
