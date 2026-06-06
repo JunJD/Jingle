@@ -21,44 +21,24 @@ interface GeneratedCommandSearchConfig {
 
 const commandSearchConfigs: GeneratedCommandSearchConfig[] = [
   {
-    "aliases": [
-      "index",
-      "search files"
-    ],
-    "commandName": "index",
-    "primaryActionLabel": "Search Files",
-    "priority": 120,
-    "subtitle": "Lists Figma files allowing you to search and navigate to them.",
-    "terms": [
-      "index",
-      "search files",
-      "search",
-      "find",
-      "look up",
-      "搜索",
-      "查找",
-      "查询"
-    ],
-    "title": "Search Files",
-    "urlFallback": false
+    aliases: ["index", "search files"],
+    commandName: "index",
+    primaryActionLabel: "Search Files",
+    priority: 120,
+    subtitle: "Lists Figma files allowing you to search and navigate to them.",
+    terms: ["index", "search files", "search", "find", "look up", "搜索", "查找", "查询"],
+    title: "Search Files",
+    urlFallback: false
   },
   {
-    "aliases": [
-      "menu-bar",
-      "menu bar",
-      "quicklook"
-    ],
-    "commandName": "menu-bar",
-    "primaryActionLabel": "Quicklook",
-    "priority": 115,
-    "subtitle": "See your Figma most recent files at a glance",
-    "terms": [
-      "menu-bar",
-      "menu bar",
-      "quicklook"
-    ],
-    "title": "Quicklook",
-    "urlFallback": false
+    aliases: ["menu-bar", "menu bar", "quicklook"],
+    commandName: "menu-bar",
+    primaryActionLabel: "Quicklook",
+    priority: 115,
+    subtitle: "See your Figma most recent files at a glance",
+    terms: ["menu-bar", "menu bar", "quicklook"],
+    title: "Quicklook",
+    urlFallback: false
   }
 ]
 
@@ -80,7 +60,9 @@ function hasExtensionSubject(query: string): boolean {
 
 function matchesCommandAlias(query: string, config: GeneratedCommandSearchConfig): boolean {
   return EXTENSION_SUBJECT_TERMS.some((subject) =>
-    config.aliases.some((alias) => query === `${subject} ${alias}` || query === `${alias} ${subject}`)
+    config.aliases.some(
+      (alias) => query === `${subject} ${alias}` || query === `${alias} ${subject}`
+    )
   )
 }
 

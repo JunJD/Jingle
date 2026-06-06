@@ -1,6 +1,7 @@
 import { Action, ActionPanel, getPreferenceValues, Icon, List, openNativeExtensionSettings } from "@openwork/extension-api"
 import { useCachedPromise } from "@openwork/extension-utils"
 import { fetchPages } from "../api"
+import { useFigmaRuntimeCopy } from "../copy"
 import { openFigmaPage, pageBrowserUrl } from "../open"
 import type { FigmaFile, FigmaFilesPreferences, FigmaNode } from "../types"
 
@@ -12,6 +13,7 @@ export default function FilePagesList(props: {
   file: FigmaFile
   onVisit: (file: FigmaFile) => Promise<void>
 }): React.JSX.Element {
+  const copy = useFigmaRuntimeCopy()
   const preferences = getPreferenceValues<FigmaFilesPreferences>()
   const { data, error, isLoading, revalidate } = useCachedPromise(
     fetchPages,
@@ -33,22 +35,22 @@ export default function FilePagesList(props: {
                 onAction={() => {
                   void revalidate()
                 }}
-                title="Retry"
+                title={copy.retry}
               />
               <Action
                 icon={Icon.BlankDocument}
                 onAction={() => {
                   void openNativeExtensionSettings({})
                 }}
-                title="Open Extension Settings"
+                title={copy.openExtensionSettings}
               />
             </ActionPanel>
           }
           description={error.message}
-          title="Failed to Load Pages"
+          title={copy.failedToLoadPages}
         />
       ) : pages.length === 0 && !isLoading ? (
-        <List.EmptyView title="No Pages Found" />
+        <List.EmptyView title={copy.noPagesFound} />
       ) : null}
 
       {pages.map((node) => (
@@ -66,9 +68,9 @@ export default function FilePagesList(props: {
                   await props.onVisit(props.file)
                   await openFigmaPage(props.file, node, preferences.open_in)
                 }}
-                title="Open Page"
+                title={copy.openPage}
               />
-              <Action.CopyToClipboard content={pageBrowserUrl(props.file.key, node.id)} title="Copy Page Link" />
+              <Action.CopyToClipboard content={pageBrowserUrl(props.file.key, node.id)} title={copy.copyPageLink} />
             </ActionPanel>
           }
         />

@@ -1,6 +1,7 @@
 import { Action, ActionPanel, getConnectionSecret, getPreferenceValues, Icon, List, openNativeExtensionSettings, useCommandSeedQuery } from "@openwork/extension-api"
 import { useMemo, useState } from "react"
 import FileListItem from "./components/FileListItem"
+import { useFigmaRuntimeCopy } from "./copy"
 import { useFigmaData } from "./data"
 import {
   createProjectFilter,
@@ -46,6 +47,7 @@ function renderOpenSettingsAction(title: string): React.JSX.Element {
 }
 
 export default function FigmaFilesIndex(): React.JSX.Element {
+  const copy = useFigmaRuntimeCopy()
   const preferences = getPreferenceValues<FigmaFilesPreferences>()
   const hasAccessToken = Boolean(getConnectionSecret("accessToken"))
   const hasTeamIds = hasConfiguredTeamIds(preferences)
@@ -75,7 +77,7 @@ export default function FigmaFilesIndex(): React.JSX.Element {
       onSearchTextChange={setSearchText}
       searchBarAccessory={
         <List.Dropdown onChange={(value) => setSelectedFilter(value)} value={selectedFilter}>
-          <List.Dropdown.Item title="All Files" value={FILTER_TYPES.ALL} />
+          <List.Dropdown.Item title={copy.allFiles} value={FILTER_TYPES.ALL} />
           {allFiles.length > 1 ? (
             <List.Dropdown.Section title="Teams">
               {allFiles.map((team) => (
@@ -96,20 +98,20 @@ export default function FigmaFilesIndex(): React.JSX.Element {
           ))}
         </List.Dropdown>
       }
-      searchBarPlaceholder="Search Figma files"
+      searchBarPlaceholder={copy.searchFigmaFiles}
       searchText={searchText}
     >
       {!hasAccessToken ? (
         <List.EmptyView
-          actions={<ActionPanel>{renderOpenSettingsAction("Add Figma Access Token")}</ActionPanel>}
-          description="Figma File Search needs a personal access token before it can load files."
-          title="Connect Figma"
+          actions={<ActionPanel>{renderOpenSettingsAction(copy.addFigmaAccessToken)}</ActionPanel>}
+          description={copy.fileSearchNeedsToken}
+          title={copy.connectFigma}
         />
       ) : !hasTeamIds ? (
         <List.EmptyView
-          actions={<ActionPanel>{renderOpenSettingsAction("Add Team IDs")}</ActionPanel>}
-          description="Add one or more Figma team IDs in Settings to load team files."
-          title="Configure Team IDs"
+          actions={<ActionPanel>{renderOpenSettingsAction(copy.addTeamIds)}</ActionPanel>}
+          description={copy.addTeamIdsDescription}
+          title={copy.configureTeamIds}
         />
       ) : error ? (
         <List.EmptyView
@@ -120,20 +122,20 @@ export default function FigmaFilesIndex(): React.JSX.Element {
                 onAction={() => {
                   void revalidateAllFiles()
                 }}
-                title="Retry"
+                title={copy.retry}
               />
-              {renderOpenSettingsAction("Open Extension Settings")}
+              {renderOpenSettingsAction(copy.openExtensionSettings)}
             </ActionPanel>
           }
           description={error.message}
-          title="Failed to Load Figma Files"
+          title={copy.failedToLoadFigmaFiles}
         />
       ) : !isLoading && allFiles.length === 0 ? (
-        <List.EmptyView title="No Figma Files Found" />
+        <List.EmptyView title={copy.noFigmaFilesFound} />
       ) : null}
 
       {showPersonalSections && starredFiles.length > 0 ? (
-        <List.Section title="Starred Files">
+        <List.Section title={copy.starredFiles}>
           {starredFiles.map((file) => (
             <FileListItem
               clearRecentFiles={clearVisitedFiles}
@@ -153,7 +155,7 @@ export default function FigmaFilesIndex(): React.JSX.Element {
       ) : null}
 
       {showPersonalSections && visitedFiles.length > 0 ? (
-        <List.Section title="Recent Files">
+        <List.Section title={copy.recentFiles}>
           {visitedFiles.map((file) => (
             <FileListItem
               clearRecentFiles={clearVisitedFiles}
@@ -199,7 +201,7 @@ export default function FigmaFilesIndex(): React.JSX.Element {
               <List.Item
                 icon="assets/emptyProject.svg"
                 subtitle={team.name}
-                title="Empty Project"
+                title={copy.emptyProject}
               />
             )}
           </List.Section>

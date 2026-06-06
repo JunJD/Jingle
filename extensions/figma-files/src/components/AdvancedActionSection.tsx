@@ -1,5 +1,6 @@
 import { Action, ActionPanel, Icon, Toast, showToast } from "@openwork/extension-api"
 import { clearFiles } from "../cache"
+import { useFigmaRuntimeCopy } from "../copy"
 import { clearVisitedFiles } from "../lib/fileStorage"
 
 function getErrorMessage(error: unknown): string | undefined {
@@ -10,19 +11,20 @@ export default function AdvancedActionSection(props: {
   clearRecentFiles: () => Promise<void>
   reloadFiles: () => Promise<unknown>
 }) {
+  const copy = useFigmaRuntimeCopy()
   async function handleReloadFiles(): Promise<void> {
     try {
       await clearFiles()
       await props.reloadFiles()
       await showToast({
         style: Toast.Style.Success,
-        title: "Reloaded Figma Files"
+        title: copy.reloadedFigmaFiles
       })
     } catch (error) {
       await showToast({
         message: getErrorMessage(error),
         style: Toast.Style.Failure,
-        title: "Failed to Reload Files"
+        title: copy.failedToReloadFiles
       })
     }
   }
@@ -33,32 +35,32 @@ export default function AdvancedActionSection(props: {
       await props.clearRecentFiles()
       await showToast({
         style: Toast.Style.Success,
-        title: "Cleared Recent Files"
+        title: copy.clearedRecentFiles
       })
     } catch (error) {
       await showToast({
         message: getErrorMessage(error),
         style: Toast.Style.Failure,
-        title: "Failed to Clear Recent Files"
+        title: copy.failedToClearRecentFiles
       })
     }
   }
 
   return (
-    <ActionPanel.Section title="Maintenance">
+    <ActionPanel.Section title={copy.maintenance}>
       <Action
         icon={Icon.ArrowDownCircle}
         onAction={() => {
           void handleReloadFiles()
         }}
-        title="Reload Files"
+        title={copy.reloadFiles}
       />
       <Action
         icon={Icon.Trash}
         onAction={() => {
           void handleClearVisited()
         }}
-        title="Clear Recent Files"
+        title={copy.clearRecentFiles}
       />
     </ActionPanel.Section>
   )

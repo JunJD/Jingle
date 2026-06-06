@@ -1,4 +1,4 @@
-import { defineNativeExtensionManifest } from "@openwork/extension-api"
+import { defineLocalizedText as l, defineNativeExtensionManifest } from "@openwork/extension-api"
 import { viewport as indexViewport } from "./src/index.meta"
 import { EXTENSION_ID, EXTENSION_PROVIDER_ID, EXTENSION_TITLE } from "./identity"
 
@@ -7,7 +7,7 @@ export const figmaFilesManifest = defineNativeExtensionManifest({
   commands: [
     {
       arguments: [],
-      description: "Browse and search Figma team files.",
+      description: l("Browse and search Figma team files.", "浏览并搜索 Figma 团队文件。"),
       keywords: ["figma", "files", "search", "team", "design"],
       mode: "view",
       name: "index",
@@ -15,16 +15,19 @@ export const figmaFilesManifest = defineNativeExtensionManifest({
       runtime: {
         viewport: indexViewport
       },
-      title: "Search Files"
+      title: l("Search Files", "搜索文件")
     },
     {
       arguments: [],
-      description: "Quick access to starred, recent, and team files from the menu bar.",
+      description: l(
+        "Quick access to starred, recent, and team files from the menu bar.",
+        "从菜单栏快速访问加星、最近和团队文件。"
+      ),
       mode: "menu-bar",
       name: "menu-bar",
       preferences: [],
       runtime: {},
-      title: "Quicklook"
+      title: l("Quicklook", "快速查看")
     }
   ],
   connection: {
@@ -35,27 +38,35 @@ export const figmaFilesManifest = defineNativeExtensionManifest({
     id: "default",
     provider: EXTENSION_PROVIDER_ID,
     publicPreferenceNames: ["TEAM_ID", "open_in"],
-    title: EXTENSION_TITLE
+    title: l(EXTENSION_TITLE, "Figma 文件搜索")
   },
-  description: "Search Figma team files and open pages or branches from Openwork.",
+  description: l(
+    "Search Figma team files and open pages or branches from Openwork.",
+    "在 Openwork 中搜索 Figma 团队文件并打开页面或分支。"
+  ),
   icon: "assets/command-icon.png",
   name: EXTENSION_ID,
   preferences: [
     {
-      description: "Personal access token used to read your Figma teams and files.",
+      description: l(
+        "Personal access token used to read your Figma teams and files.",
+        "用于读取你的 Figma 团队和文件的个人访问令牌。"
+      ),
       name: "accessToken",
       placeholder: "figd_...",
       required: false,
-      title: "Figma Personal Access Token",
+      title: l("Figma Personal Access Token", "Figma 个人访问令牌"),
       type: "password"
     },
     {
-      description:
+      description: l(
         "One or more Figma team IDs separated by commas. Find a team ID in the Figma team URL.",
+        "填写一个或多个 Figma 团队 ID，用英文逗号分隔。团队 ID 可在 Figma 团队页面 URL 中找到。"
+      ),
       name: "TEAM_ID",
       placeholder: "1234567890, 0987654321",
       required: true,
-      title: "Team IDs",
+      title: l("Team IDs", "团队 ID"),
       type: "text"
     },
     {
@@ -63,11 +74,14 @@ export const figmaFilesManifest = defineNativeExtensionManifest({
         bundleId: "com.figma.Desktop",
         name: "Figma"
       },
-      description: "Choose where files open from runtime commands.",
+      description: l(
+        "Choose where files open from runtime commands.",
+        "选择 runtime 命令打开文件时使用的应用。"
+      ),
       name: "open_in",
-      placeholder: "Figma",
+      placeholder: l("Figma", "Figma"),
       required: false,
-      title: "Open File In",
+      title: l("Open File In", "文件打开位置"),
       type: "appPicker"
     }
   ],
@@ -76,5 +90,5 @@ export const figmaFilesManifest = defineNativeExtensionManifest({
     allowedUrlSchemes: ["figma"]
   },
   supportedPlatforms: ["darwin", "win32"],
-  title: EXTENSION_TITLE
+  title: l(EXTENSION_TITLE, "Figma 文件搜索")
 })

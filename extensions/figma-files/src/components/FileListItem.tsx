@@ -1,4 +1,5 @@
 import { Action, ActionPanel, getPreferenceValues, Icon, Keyboard, List } from "@openwork/extension-api"
+import { useFigmaRuntimeCopy } from "../copy"
 import { openFigmaBranch, openFigmaFile, fileBrowserUrl } from "../open"
 import type { FigmaBranch, FigmaFile, FigmaFilesPreferences } from "../types"
 import AdvancedActionSection from "./AdvancedActionSection"
@@ -70,6 +71,7 @@ export default function FileListItem(props: {
   teamName: string
   toggleStar: (file: FigmaFile) => Promise<void>
 }): React.JSX.Element {
+  const copy = useFigmaRuntimeCopy()
   const preferences = getPreferenceValues<FigmaFilesPreferences>()
   const accessories: List.Item.Accessory[] = [
     {
@@ -85,7 +87,7 @@ export default function FileListItem(props: {
     })
   }
 
-  const starActionTitle = props.isStarred ? "Remove from Starred Files" : "Add to Starred Files"
+  const starActionTitle = props.isStarred ? copy.removeFromStarredFiles : copy.addToStarredFiles
   const starredLimitReached = !props.isStarred && props.starredCount >= props.starredLimit
 
   return (
@@ -104,22 +106,22 @@ export default function FileListItem(props: {
                 await props.onVisit(props.file)
                 await openFigmaFile(props.file, preferences.open_in)
               }}
-              title="Open File"
+              title={copy.openFile}
             />
             <Action.CopyToClipboard
               content={fileBrowserUrl(props.file.key)}
               shortcut={Keyboard.Shortcut.Common.Copy}
-              title="Copy File Link"
+              title={copy.copyFileLink}
             />
             <Action
               disabled={starredLimitReached}
               icon={props.isStarred ? Icon.PinDisabled : Icon.Pin}
               onAction={() => props.toggleStar(props.file)}
-              title={starredLimitReached ? "Starred Files Limit Reached" : starActionTitle}
+              title={starredLimitReached ? copy.starredFilesLimitReached : starActionTitle}
             />
             <Action.Push
               icon={Icon.BlankDocument}
-              title="Browse Pages"
+              title={copy.browsePages}
               target={<FilePagesList file={props.file} onVisit={props.onVisit} />}
             />
             {createBranchActions({

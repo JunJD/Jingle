@@ -1,4 +1,5 @@
 import { getConnectionSecret, getPreferenceValues, MenuBarExtra, openNativeExtensionSettings } from "@openwork/extension-api"
+import { useFigmaRuntimeCopy } from "./copy"
 import { useFigmaData } from "./data"
 import { openFigmaFile } from "./open"
 import type { FigmaFile, FigmaFilesPreferences } from "./types"
@@ -24,6 +25,7 @@ function renderFileItems(params: {
 }
 
 export default function FigmaFilesMenuBar(): React.JSX.Element {
+  const copy = useFigmaRuntimeCopy()
   const preferences = getPreferenceValues<FigmaFilesPreferences>()
   const hasAccessToken = Boolean(getConnectionSecret("accessToken"))
   const hasTeamIds = hasConfiguredTeamIds(preferences)
@@ -37,38 +39,38 @@ export default function FigmaFilesMenuBar(): React.JSX.Element {
   }
 
   return (
-    <MenuBarExtra isLoading={isLoading} title="Figma" tooltip="Figma Files">
+    <MenuBarExtra isLoading={isLoading} title="Figma" tooltip={copy.searchFigmaFiles}>
       {!hasAccessToken ? (
-        <MenuBarExtra.Section title="Setup">
+        <MenuBarExtra.Section title={copy.connectFigma}>
           <MenuBarExtra.Item
             onAction={() => {
               void openNativeExtensionSettings({})
             }}
-            title="Add Figma Access Token"
+            title={copy.addFigmaAccessToken}
           />
         </MenuBarExtra.Section>
       ) : !hasTeamIds ? (
-        <MenuBarExtra.Section title="Setup">
+        <MenuBarExtra.Section title={copy.configureTeamIds}>
           <MenuBarExtra.Item
             onAction={() => {
               void openNativeExtensionSettings({})
             }}
-            title="Add Team IDs"
+            title={copy.addTeamIds}
           />
         </MenuBarExtra.Section>
       ) : error ? (
-        <MenuBarExtra.Section title="Error">
+        <MenuBarExtra.Section title={copy.failedToLoadFigmaFiles}>
           <MenuBarExtra.Item
             onAction={() => {
               void openNativeExtensionSettings({})
             }}
-            title="Open Extension Settings"
+            title={copy.openExtensionSettings}
           />
         </MenuBarExtra.Section>
       ) : null}
 
       {starredFiles.length > 0 ? (
-        <MenuBarExtra.Section title="Starred">
+        <MenuBarExtra.Section title={copy.starredFiles}>
           {renderFileItems({
             files: starredFiles,
             onOpenFile: handleOpenFile
@@ -77,7 +79,7 @@ export default function FigmaFilesMenuBar(): React.JSX.Element {
       ) : null}
 
       {visitedFiles.length > 0 ? (
-        <MenuBarExtra.Section title="Recent">
+        <MenuBarExtra.Section title={copy.recentFiles}>
           {renderFileItems({
             files: visitedFiles,
             onOpenFile: handleOpenFile
@@ -94,7 +96,7 @@ export default function FigmaFilesMenuBar(): React.JSX.Element {
                 onOpenFile: handleOpenFile
               })
             ) : (
-              <MenuBarExtra.Item disabled title="Empty Project" />
+              <MenuBarExtra.Item disabled title={copy.emptyProject} />
             )}
           </MenuBarExtra.Section>
         ))
