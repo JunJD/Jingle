@@ -10,12 +10,7 @@ import {
   type OpenFile
 } from "@shared/thread-tabs"
 import type { HITLRequest, Message, Subagent, ThreadForkState, Todo } from "../types"
-import {
-  createDefaultMessagesProjection,
-  projectToolExecutionsView,
-  type AgentToolExecutionsView,
-  type MessagesProjection
-} from "./message-projection"
+import { createDefaultMessagesProjection, type MessagesProjection } from "./message-projection"
 import {
   applyRuntimeEventsToThreadState,
   createRuntimeThreadStateUpdate
@@ -23,12 +18,6 @@ import {
 import { applyRuntimeSnapshotToThreadState } from "./agent-runtime-snapshot-reducer"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
-export type {
-  AgentToolExecutionView,
-  AgentToolExecutionViewStatus,
-  AgentToolExecutionsView
-} from "./message-projection"
-
 export interface TokenUsage {
   inputTokens: number
   outputTokens: number
@@ -58,7 +47,6 @@ export interface AgentSourceState {
 
 export interface AgentViewState {
   messageProjection: MessagesProjection
-  toolExecutions: AgentToolExecutionsView
 }
 
 export interface ThreadLocalUiState {
@@ -78,19 +66,6 @@ export type ThreadStateUpdate = {
   agent?: Partial<AgentSourceState>
   view?: Partial<AgentViewState>
   ui?: Partial<ThreadLocalUiState>
-}
-
-function projectAgentToolExecutionsView(
-  agent: AgentSourceState,
-  messageProjection: MessagesProjection,
-  previous: AgentToolExecutionsView
-): AgentToolExecutionsView {
-  return projectToolExecutionsView({
-    activeRun: agent.activeRun,
-    messageProjection,
-    pendingApproval: agent.pendingApproval,
-    previous
-  })
 }
 
 export interface ThreadActions {
@@ -150,8 +125,7 @@ export function createDefaultThreadState(): ThreadState {
       tokenUsage: null
     },
     view: {
-      messageProjection: createDefaultMessagesProjection(),
-      toolExecutions: {}
+      messageProjection: createDefaultMessagesProjection()
     },
     ui: {
       openFiles: [],
@@ -216,22 +190,7 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
   ): void => {
     const current = threadStates[threadId] ?? createDefaultThreadState()
     const requestedPartial = updater(current)
-    const requestedView = requestedPartial.view
-    const nextAgent = requestedPartial.agent
-      ? { ...current.agent, ...requestedPartial.agent }
-      : current.agent
-    const projectedToolExecutions = projectAgentToolExecutionsView(
-      nextAgent,
-      requestedView?.messageProjection ?? current.view.messageProjection,
-      current.view.toolExecutions
-    )
-    const nextPartial = filterThreadStateChanges(current, {
-      ...requestedPartial,
-      view: {
-        ...requestedView,
-        toolExecutions: projectedToolExecutions
-      }
-    })
+    const nextPartial = filterThreadStateChanges(current, requestedPartial)
 
     if (!hasThreadStateChanges(nextPartial)) {
       return

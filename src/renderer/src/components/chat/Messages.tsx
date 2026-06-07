@@ -19,15 +19,13 @@ import { cn } from "@/lib/utils"
 import {
   createDefaultMessagesProjection,
   getTurnPendingApproval,
+  projectTurnToolExecutionsView,
+  type AgentToolExecutionsView,
   type MessageDisplayRow,
   type MessageTurn,
   type ToolResultInfo
 } from "@/lib/message-projection"
-import {
-  useThreadSelector,
-  type AgentToolExecutionView,
-  type AgentToolExecutionsView
-} from "@/lib/thread-context"
+import { useThreadSelector } from "@/lib/thread-context"
 import { MessageTurnView } from "./MessageTurnView"
 import { AssistantSelectionOverlay } from "./AssistantSelectionOverlay"
 
@@ -64,7 +62,6 @@ const SCROLL_INTENT_KEYS = new Set([
 const CHAT_BLANK_USER_SCROLL_INTENT_TTL_MS = 500
 const DEFAULT_MESSAGE_PROJECTION = createDefaultMessagesProjection()
 const DEFAULT_DISPLAY_ROWS: readonly MessageDisplayRow[] = DEFAULT_MESSAGE_PROJECTION.displayRows
-const DEFAULT_TOOL_EXECUTIONS_VIEW: AgentToolExecutionsView = {}
 
 function findTurnByKey(turns: MessageTurn[], turnKey: string): MessageTurn | null {
   return turns.find((turn) => turn.key === turnKey) ?? null
@@ -118,70 +115,6 @@ function getStreamingTurnScrollKey(
     toolCallCount,
     getToolResultsScrollKey(turn.toolResults)
   ].join(":")
-}
-
-function getTurnToolCallIds(turn: MessageTurn | null): string[] {
-  if (!turn) {
-    return []
-  }
-
-  return turn.assistants.flatMap((assistant) =>
-    (assistant.tool_calls ?? []).map((toolCall) => toolCall.id)
-  )
-}
-
-function projectTurnToolExecutionSignature(
-  turn: MessageTurn | null,
-  allToolExecutions: AgentToolExecutionsView
-): string {
-  if (!turn) {
-    return ""
-  }
-
-  const parts: string[] = []
-
-  for (const assistant of turn.assistants) {
-    for (const toolCall of assistant.tool_calls ?? []) {
-      const execution = allToolExecutions[toolCall.id]
-      if (execution) {
-        parts.push(`${toolCall.id}:${execution.status}`)
-      }
-    }
-  }
-
-  return parts.join("|")
-}
-
-function createTurnToolExecutionsView(
-  toolCallIds: string[],
-  signature: string
-): AgentToolExecutionsView {
-  if (!signature) {
-    return DEFAULT_TOOL_EXECUTIONS_VIEW
-  }
-
-  const statusByToolCallId = new Map(
-    signature.split("|").map((part) => {
-      const [toolCallId, status] = part.split(":") as [string, AgentToolExecutionView["status"]]
-      return [toolCallId, status]
-    })
-  )
-  const entries: Array<[string, AgentToolExecutionView]> = []
-
-  for (const toolCallId of toolCallIds) {
-    const status = statusByToolCallId.get(toolCallId)
-    if (status) {
-      entries.push([
-        toolCallId,
-        {
-          status,
-          toolCallId
-        }
-      ])
-    }
-  }
-
-  return entries.length === 0 ? DEFAULT_TOOL_EXECUTIONS_VIEW : Object.fromEntries(entries)
 }
 
 const MessageAutoScroll = memo(function MessageAutoScroll(props: {
@@ -310,16 +243,14 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
   const turnPendingApproval = useThreadSelector(threadId, (state) =>
     turn ? getTurnPendingApproval(turn, state?.agent.pendingApproval ?? null) : null
   )
-  const toolExecutionSignature = useThreadSelector(threadId, (state) =>
-    projectTurnToolExecutionSignature(
-      turn,
-      state?.view.toolExecutions ?? DEFAULT_TOOL_EXECUTIONS_VIEW
-    )
-  )
-  const toolCallIds = useMemo(() => getTurnToolCallIds(turn), [turn])
-  const toolExecutions = useMemo(
-    () => createTurnToolExecutionsView(toolCallIds, toolExecutionSignature),
-    [toolCallIds, toolExecutionSignature]
+  const toolExecutions = useMemo<AgentToolExecutionsView>(
+    () =>
+      projectTurnToolExecutionsView({
+        isActiveTurnRunning: isActiveTurn && Boolean(isLoading),
+        pendingApproval: turnPendingApproval,
+        turn
+      }),
+    [isActiveTurn, isLoading, turn, turnPendingApproval]
   )
 
   if (!turn) {

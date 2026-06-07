@@ -30,7 +30,7 @@ import {
   type MessageTurn,
   type ToolResultInfo
 } from "@/lib/message-projection"
-import type { AgentToolExecutionView, AgentToolExecutionsView } from "@/lib/thread-context"
+import type { AgentToolExecutionView, AgentToolExecutionsView } from "@/lib/message-projection"
 import {
   Attachment,
   Attachments,

@@ -5,7 +5,7 @@ import {
   getTurnPendingApproval,
   getTurnToolDisplayPolicy,
   projectMessages,
-  projectToolExecutionsView,
+  projectTurnToolExecutionsView,
   shouldDefaultExpandToolEntries,
   updateProjectedMessage,
   type MessageTurn
@@ -299,14 +299,12 @@ test("tool execution view derives from messages and runtime facts", () => {
       toolCallId: completedToolCall.id
     })
   ])
+  const turn = projection.turns[0]!
 
-  const runningView = projectToolExecutionsView({
-    activeRun: {
-      status: "running",
-      turnId: "user-1"
-    },
-    messageProjection: projection,
-    pendingApproval: null
+  const runningView = projectTurnToolExecutionsView({
+    isActiveTurnRunning: true,
+    pendingApproval: null,
+    turn
   })
 
   assert.deepEqual(runningView[runningToolCall.id], {
@@ -324,14 +322,10 @@ test("tool execution view derives from messages and runtime facts", () => {
     review: null,
     tool_call: runningToolCall
   }
-  const approvalView = projectToolExecutionsView({
-    activeRun: {
-      status: "waiting_approval",
-      turnId: "user-1"
-    },
-    messageProjection: projection,
+  const approvalView = projectTurnToolExecutionsView({
+    isActiveTurnRunning: false,
     pendingApproval: approval,
-    previous: runningView
+    turn
   })
 
   assert.deepEqual(approvalView[runningToolCall.id], {
@@ -340,10 +334,10 @@ test("tool execution view derives from messages and runtime facts", () => {
   })
   assert.deepEqual(approvalView[completedToolCall.id], runningView[completedToolCall.id])
 
-  const finishedView = projectToolExecutionsView({
-    activeRun: null,
-    messageProjection: projection,
-    pendingApproval: null
+  const finishedView = projectTurnToolExecutionsView({
+    isActiveTurnRunning: false,
+    pendingApproval: null,
+    turn
   })
   assert.equal(finishedView[runningToolCall.id], undefined)
   assert.deepEqual(finishedView[completedToolCall.id], {
@@ -352,34 +346,44 @@ test("tool execution view derives from messages and runtime facts", () => {
   })
 })
 
-test("unchanged tool execution view reuses the previous object", () => {
-  const toolCall = createToolCall("tool-call-1")
+test("turn tool execution view only applies approval to the owning turn", () => {
+  const firstToolCall = createToolCall("tool-call-1")
+  const secondToolCall = createToolCall("tool-call-2")
   const projection = projectMessages([
-    createUserMessage("user-1", "Run a tool"),
+    createUserMessage("user-1", "First tool"),
     createAssistantMessage({
       id: "assistant-1",
-      toolCalls: [toolCall]
+      toolCalls: [firstToolCall]
+    }),
+    createUserMessage("user-2", "Second tool"),
+    createAssistantMessage({
+      id: "assistant-2",
+      toolCalls: [secondToolCall]
     })
   ])
-  const firstView = projectToolExecutionsView({
-    activeRun: {
-      status: "running",
-      turnId: "user-1"
-    },
-    messageProjection: projection,
-    pendingApproval: null
+  const approval: HITLRequest = {
+    allowed_decisions: ["approve", "reject"],
+    id: "approval-2",
+    review: null,
+    tool_call: secondToolCall
+  }
+
+  const firstTurnView = projectTurnToolExecutionsView({
+    isActiveTurnRunning: false,
+    pendingApproval: approval,
+    turn: projection.turns[0]!
   })
-  const nextView = projectToolExecutionsView({
-    activeRun: {
-      status: "running",
-      turnId: "user-1"
-    },
-    messageProjection: projection,
-    pendingApproval: null,
-    previous: firstView
+  const secondTurnView = projectTurnToolExecutionsView({
+    isActiveTurnRunning: true,
+    pendingApproval: approval,
+    turn: projection.turns[1]!
   })
 
-  assert.equal(nextView, firstView)
+  assert.equal(firstTurnView[firstToolCall.id], undefined)
+  assert.deepEqual(secondTurnView[secondToolCall.id], {
+    status: "approval",
+    toolCallId: secondToolCall.id
+  })
 })
 
 test("tool entries collapse by default only after a non-streaming turn ends with assistant content", () => {

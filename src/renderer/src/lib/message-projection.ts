@@ -99,6 +99,7 @@ const FOOTER_DISPLAY_ROW: MessageDisplayRow = {
   key: "__chat_footer__"
 }
 const IMPLICIT_DISPLAY_TOOL_RESULT: ToolResultInfo = { content: "" }
+const EMPTY_AGENT_TOOL_EXECUTIONS_VIEW: AgentToolExecutionsView = {}
 
 export interface MessageProjectionOptions {
   activeAssistantId?: string | null
@@ -504,39 +505,38 @@ export function getTurnPendingApproval(
   return belongsToTurn ? pendingApproval : null
 }
 
-export function projectToolExecutionsView(input: {
-  activeRun: { status: string; turnId: string } | null
-  messageProjection: MessagesProjection
+export function projectTurnToolExecutionsView(input: {
+  isActiveTurnRunning: boolean
   pendingApproval: HITLRequest | null
-  previous?: AgentToolExecutionsView
+  turn: MessageTurn | null
 }): AgentToolExecutionsView {
+  if (!input.turn) {
+    return EMPTY_AGENT_TOOL_EXECUTIONS_VIEW
+  }
+
   const nextToolExecutions = new Map<string, AgentToolExecutionView>()
-  const activeTurnKey = input.activeRun?.status === "running" ? input.activeRun.turnId : null
 
-  for (const turn of input.messageProjection.turns) {
-    const isActiveTurn = activeTurnKey === turn.key
+  for (const assistant of input.turn.assistants) {
+    for (const toolCall of assistant.tool_calls ?? []) {
+      if (input.turn.toolResults.has(toolCall.id)) {
+        nextToolExecutions.set(toolCall.id, {
+          status: "complete",
+          toolCallId: toolCall.id
+        })
+        continue
+      }
 
-    for (const assistant of turn.assistants) {
-      for (const toolCall of assistant.tool_calls ?? []) {
-        if (turn.toolResults.has(toolCall.id)) {
-          nextToolExecutions.set(toolCall.id, {
-            status: "complete",
-            toolCallId: toolCall.id
-          })
-          continue
-        }
-
-        if (isActiveTurn) {
-          nextToolExecutions.set(toolCall.id, {
-            status: "running",
-            toolCallId: toolCall.id
-          })
-        }
+      if (input.isActiveTurnRunning) {
+        nextToolExecutions.set(toolCall.id, {
+          status: "running",
+          toolCallId: toolCall.id
+        })
       }
     }
   }
 
-  const pendingApprovalToolCallId = input.pendingApproval?.tool_call.id ?? null
+  const pendingApprovalToolCallId = getTurnPendingApproval(input.turn, input.pendingApproval)
+    ?.tool_call.id
   if (pendingApprovalToolCallId) {
     nextToolExecutions.set(pendingApprovalToolCallId, {
       status: "approval",
@@ -544,18 +544,9 @@ export function projectToolExecutionsView(input: {
     })
   }
 
-  if (!input.previous || nextToolExecutions.size !== Object.keys(input.previous).length) {
-    return Object.fromEntries(nextToolExecutions)
-  }
-
-  for (const [toolCallId, next] of nextToolExecutions) {
-    const previousEntry = input.previous[toolCallId]
-    if (!previousEntry || previousEntry.status !== next.status) {
-      return Object.fromEntries(nextToolExecutions)
-    }
-  }
-
-  return input.previous
+  return nextToolExecutions.size === 0
+    ? EMPTY_AGENT_TOOL_EXECUTIONS_VIEW
+    : Object.fromEntries(nextToolExecutions)
 }
 
 export function updateProjectedMessage(

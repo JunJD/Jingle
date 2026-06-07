@@ -16,13 +16,7 @@ import { historyShellStore } from "./history-shell-store"
 import { createThreadStore, type ThreadActions, type ThreadState } from "./thread-store-core"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
-export type {
-  AgentToolExecutionView,
-  AgentToolExecutionsView,
-  ThreadActions,
-  ThreadState,
-  TokenUsage
-} from "./thread-store-core"
+export type { ThreadActions, ThreadState, TokenUsage } from "./thread-store-core"
 export { getArtifactTabId } from "@shared/thread-tabs"
 
 export interface ThreadContextValue {
