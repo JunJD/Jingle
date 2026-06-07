@@ -45,7 +45,7 @@ export default function LauncherApp(): React.JSX.Element {
   const inputNeedsWorkspaceMessage = copy.chat.inputNeedsWorkspace
   const clipboard = useLauncherClipboard()
   const threadContext = useThreadContext()
-  const { getThreadActions, loadThreadData } = threadContext
+  const { loadThreadData } = threadContext
   const searchInputRef = useRef<LauncherInputElement>(null)
   const pluginInputRef = useRef<LauncherInputElement | ComposerAreaHandle>(null)
   const shellRef = useRef<HTMLDivElement>(null)
@@ -168,10 +168,7 @@ export default function LauncherApp(): React.JSX.Element {
         workspacePath
       })
 
-      const actions = getThreadActions(thread.thread_id)
-      actions.setCurrentModel(resolvedModelId)
-      actions.setPermissionMode(input.permissionMode ?? DEFAULT_PERMISSION_MODE)
-      actions.setWorkspacePath(workspacePath)
+      await loadThreadData(thread.thread_id)
 
       return {
         modelId: resolvedModelId,
@@ -179,7 +176,7 @@ export default function LauncherApp(): React.JSX.Element {
         workspacePath
       }
     },
-    [getThreadActions, inputNeedsWorkspaceMessage]
+    [inputNeedsWorkspaceMessage, loadThreadData]
   )
   const activatePluginThread = useCallback(
     async (threadId: string): Promise<void> => {
