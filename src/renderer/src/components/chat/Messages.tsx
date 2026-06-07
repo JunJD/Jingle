@@ -14,19 +14,21 @@ import {
 } from "react"
 import { VList, type VListHandle } from "virtua"
 import type { ComposerMessageInput } from "@shared/message-content"
+import type { ContentBlock, Message as ThreadMessage } from "@/types"
 import { cn } from "@/lib/utils"
 import {
   createDefaultMessagesProjection,
   getTurnPendingApproval,
   type MessageDisplayRow,
-  type MessageTurn
+  type MessageTurn,
+  type ToolResultInfo
 } from "@/lib/message-projection"
 import {
   useThreadSelector,
   type AgentToolExecutionView,
   type AgentToolExecutionsView
 } from "@/lib/thread-context"
-import { getStreamingTurnSignature, MessageTurnView } from "./MessageTurnView"
+import { MessageTurnView } from "./MessageTurnView"
 
 interface MessagesProps {
   bottomInset?: number
@@ -62,6 +64,56 @@ const DEFAULT_TOOL_EXECUTIONS_VIEW: AgentToolExecutionsView = {}
 
 function findTurnByKey(turns: MessageTurn[], turnKey: string): MessageTurn | null {
   return turns.find((turn) => turn.key === turnKey) ?? null
+}
+
+function getReasoningBlockText(block: ContentBlock): string {
+  return block.reasoning ?? block.text ?? block.content ?? ""
+}
+
+function getStreamingContentScrollKey(content: ThreadMessage["content"]): string {
+  if (typeof content === "string") {
+    return `${content.length}:0:0`
+  }
+
+  let textLength = 0
+  let reasoningLength = 0
+  for (const block of content) {
+    if (block.type === "reasoning") {
+      reasoningLength += getReasoningBlockText(block).length
+      continue
+    }
+
+    textLength += (block.text ?? block.content ?? "").length
+  }
+
+  return `${textLength}:${reasoningLength}:${content.length}`
+}
+
+function getToolResultsScrollKey(toolResults: Map<string, ToolResultInfo>): string {
+  if (toolResults.size === 0) {
+    return "0"
+  }
+
+  return Array.from(toolResults, ([toolCallId, result]) => {
+    return `${toolCallId}:${getStreamingContentScrollKey(result.content)}`
+  }).join("|")
+}
+
+function getStreamingTurnScrollKey(
+  turn: MessageTurn | null | undefined,
+  message: ThreadMessage | null | undefined
+): string | null {
+  if (!turn || !message) {
+    return null
+  }
+
+  const toolCallCount = message.tool_calls?.length ?? 0
+  return [
+    message.id,
+    getStreamingContentScrollKey(message.content),
+    toolCallCount,
+    getToolResultsScrollKey(turn.toolResults)
+  ].join(":")
 }
 
 function getTurnToolCallIds(turn: MessageTurn | null): string[] {
@@ -129,7 +181,7 @@ function createTurnToolExecutionsView(
 }
 
 const MessageAutoScroll = memo(function MessageAutoScroll(props: {
-  activeContentSignature: string | number | null
+  activeTurnScrollKey: string | number | null
   hasFollowTarget: boolean
   isAtBottom: boolean
   isScrolling: boolean
@@ -139,7 +191,7 @@ const MessageAutoScroll = memo(function MessageAutoScroll(props: {
   signatureRef: RefObject<HTMLDivElement | null>
 }): null {
   const {
-    activeContentSignature,
+    activeTurnScrollKey,
     hasFollowTarget,
     isAtBottom,
     isScrolling,
@@ -164,7 +216,7 @@ const MessageAutoScroll = memo(function MessageAutoScroll(props: {
 
   useEffect(() => {
     scheduleScrollToLatest()
-  }, [activeContentSignature, hasFollowTarget, observeKey])
+  }, [activeTurnScrollKey, hasFollowTarget, observeKey])
 
   useEffect(() => {
     const nodes = [rowRef.current, signatureRef.current].filter(
@@ -275,7 +327,7 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
   const activeAssistant = streamingAssistantId
     ? turn.assistants.find((message) => message.id === streamingAssistantId)
     : null
-  const activeContentSignature = getStreamingTurnSignature(turn, activeAssistant)
+  const activeTurnScrollKey = getStreamingTurnScrollKey(turn, activeAssistant)
 
   return (
     <>
@@ -292,7 +344,7 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
       />
       {isLastTurnRow && onScrollToLatest && !isActiveTurnBlankActive ? (
         <MessageAutoScroll
-          activeContentSignature={activeContentSignature}
+          activeTurnScrollKey={activeTurnScrollKey}
           hasFollowTarget={hasVisibleTurns}
           isAtBottom={isAtBottom}
           isScrolling={isScrolling}
