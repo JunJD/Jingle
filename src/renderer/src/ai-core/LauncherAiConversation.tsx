@@ -10,13 +10,14 @@ import type { HITLRequest, Subagent, Todo } from "@/types"
 import { useI18n } from "@/lib/i18n"
 import { projectSubagentReferences } from "@/lib/subagent-view"
 import { useThreadSelector } from "@/lib/thread-context"
-import type { ComposerMessageInput } from "@shared/message-content"
+import type { ComposerMessageInput, ComposerMessageRef } from "@shared/message-content"
 import { memo, useCallback, useMemo, useRef } from "react"
 import type { VListHandle } from "virtua"
 
 const EMPTY_SUBAGENTS: readonly Subagent[] = []
 const EMPTY_TODOS: readonly Todo[] = []
 const LAUNCHER_AI_AT_BOTTOM_THRESHOLD_PX = 60
+type AssistantSelectionRef = Extract<ComposerMessageRef, { type: "assistant-message-selection" }>
 
 function LauncherAiPresenceMark(): React.JSX.Element {
   return (
@@ -152,6 +153,7 @@ export function LauncherAiConversation(props: {
   error: string | null
   isLoading: boolean
   onBranch?: (messageId?: string) => Promise<void>
+  onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
   onRetry: (input: ComposerMessageInput) => Promise<void> | void
   pendingApproval: HITLRequest | null
   threadId: string
@@ -162,6 +164,7 @@ export function LauncherAiConversation(props: {
     error,
     isLoading,
     onBranch,
+    onAddAssistantSelectionRef,
     onRetry,
     pendingApproval,
     threadId
@@ -174,6 +177,7 @@ export function LauncherAiConversation(props: {
       error={error}
       isLoading={isLoading}
       onBranch={onBranch}
+      onAddAssistantSelectionRef={onAddAssistantSelectionRef}
       onRetry={onRetry}
       pendingApproval={pendingApproval}
       threadId={threadId}
@@ -187,6 +191,7 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
   error: string | null
   isLoading: boolean
   onBranch?: (messageId?: string) => Promise<void>
+  onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
   onRetry: (input: ComposerMessageInput) => Promise<void> | void
   pendingApproval: HITLRequest | null
   threadId: string
@@ -198,6 +203,7 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
     error,
     isLoading,
     onBranch,
+    onAddAssistantSelectionRef,
     onRetry,
     pendingApproval,
     threadId
@@ -260,6 +266,7 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
         isLoading={isLoading}
         isScrolling={isScrolling}
         onBranch={canFork ? onBranch : undefined}
+        onAddAssistantSelectionRef={onAddAssistantSelectionRef}
         onRetry={onRetry}
         renderFooter={renderFooter}
         onScroll={handleScroll}

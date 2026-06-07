@@ -6,6 +6,7 @@ import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
 import type { AgentRunValidator } from "@/lib/agent-control"
 import { useAgent } from "@/lib/use-agent"
 import { Messages } from "./Messages"
+import { AssistantSelectionReferencePill } from "./AssistantSelectionReferences"
 import { MemoryReviewPanel } from "./MemoryReviewPanel"
 import { ModelSwitcher } from "./ModelSwitcher"
 import { IncludedMemoriesPanel } from "./IncludedMemoriesPanel"
@@ -16,11 +17,16 @@ import { ChatJumpToLatestButton } from "./ChatJumpToLatestButton"
 import { ComposerApprovalPrompt } from "./ComposerApprovalPrompt"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
 import { useVirtualChatScrollIntent } from "./useVirtualChatScrollIntent"
+import { useAssistantSelectionRefs } from "./useAssistantSelectionRefs"
 import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
 import type { ComposerAreaHandle } from "@/composer-area"
-import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
+import {
+  hasComposerMessageInputContent,
+  type ComposerMessageInput,
+  type ComposerMessageRef
+} from "@shared/message-content"
 import type { HITLRequest, Todo } from "@/types"
 
 interface ChatContainerProps {
@@ -29,6 +35,7 @@ interface ChatContainerProps {
 
 const EMPTY_TOKEN_USAGE = null
 const EMPTY_TODOS: readonly Todo[] = []
+type AssistantSelectionRef = Extract<ComposerMessageRef, { type: "assistant-message-selection" }>
 
 const ChatFooter = memo(function ChatFooter(props: {
   clearError: () => void
@@ -96,6 +103,7 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
   clearError: () => void
   isBusy: boolean
   isLoading: boolean
+  onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
   onRetry: (input: ComposerMessageInput) => Promise<void> | void
   onSelectWorkspace: () => Promise<void> | void
   pendingApproval: HITLRequest | null
@@ -107,6 +115,7 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
     clearError,
     isBusy,
     isLoading,
+    onAddAssistantSelectionRef,
     onRetry,
     onSelectWorkspace,
     pendingApproval,
@@ -225,6 +234,7 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
           isAtBottom={isAtBottom}
           isLoading={isLoading}
           isScrolling={isScrolling}
+          onAddAssistantSelectionRef={onAddAssistantSelectionRef}
           onRetry={onRetry}
           onScroll={handleChatScroll}
           onScrollEnd={handleChatScrollEnd}
@@ -261,6 +271,12 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const inputRef = useRef<ComposerAreaHandle>(null)
   const [temporaryMode, setTemporaryMode] = useState(false)
   const [workspaceChangeError, setWorkspaceChangeError] = useState<string | null>(null)
+  const {
+    addSelectionRef,
+    clearSelectionRefs,
+    refs: assistantSelectionRefs,
+    removeSelectionRef
+  } = useAssistantSelectionRefs(threadId)
   useDisableTabNavigation(inputRef)
 
   const threadActions = useThreadActions(threadId)!
@@ -287,7 +303,9 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     control: { clearError, invoke, resume, stop }
   } = agent
   const canInvoke =
-    hasComposerMessageInputContent({ refs: [], text: input }) && !isBusy && !pendingApproval
+    hasComposerMessageInputContent({ refs: [], text: input }) &&
+    !isBusy &&
+    !pendingApproval
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -296,11 +314,15 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const invokeWithComposerRefs = useCallback(async (): Promise<boolean> => {
     const composer = inputRef.current
     const didInvoke = await invoke({
-      refs: composer?.getRefs() ?? [],
+      refs: [...(composer?.getRefs() ?? []), ...assistantSelectionRefs],
       text: composer?.getModelText() ?? input
     })
+    if (didInvoke) {
+      clearSelectionRefs()
+    }
+
     return didInvoke
-  }, [input, invoke])
+  }, [assistantSelectionRefs, clearSelectionRefs, input, invoke])
   const retry = useCallback(
     async (retryInput: ComposerMessageInput): Promise<void> => {
       await invoke(retryInput)
@@ -351,6 +373,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
         clearError={clearError}
         isBusy={isBusy}
         isLoading={isLoading}
+        onAddAssistantSelectionRef={addSelectionRef}
         onRetry={retry}
         onSelectWorkspace={handleSelectWorkspaceFromEmptyState}
         pendingApproval={pendingApproval}
@@ -411,6 +434,12 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                     )}
                   </div>
                 </div>
+                <AssistantSelectionReferencePill
+                  refs={assistantSelectionRefs}
+                  removable
+                  onClear={clearSelectionRefs}
+                  onRemove={removeSelectionRef}
+                />
               </PromptInput>
             )}
 
