@@ -27,6 +27,14 @@ const composerMessageRefSchema = z.discriminatedUnion("type", [
       name: nonEmptyTrimmedStringSchema,
       sourceId: nonEmptyTrimmedStringSchema
     })
+    .strict(),
+  z
+    .object({
+      type: z.literal("assistant-message-selection"),
+      selectedText: nonEmptyTrimmedStringSchema,
+      sourceMessageId: nonEmptyTrimmedStringSchema,
+      sourceThreadId: nonEmptyTrimmedStringSchema
+    })
     .strict()
 ])
 

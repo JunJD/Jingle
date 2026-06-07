@@ -8,6 +8,7 @@ import {
   toMessageContent,
   toComposerMessageInput,
   toAgentMessageContent,
+  toAgentMessageContentWithRefs,
   toDisplayAssistantMessageContent,
   toDisplayUserMessageContent
 } from "../../src/shared/message-content"
@@ -88,6 +89,53 @@ test("image refs become base64 image_url blocks for model invocation", () => {
       },
       name: "clipboard.png",
       type: "image_url"
+    }
+  ])
+})
+
+test("assistant message selection refs are metadata refs and model-only context", () => {
+  const refs = normalizeComposerMessageRefs([
+    {
+      type: "assistant-message-selection",
+      selectedText: "  snapshot should not own runtime facts  ",
+      sourceMessageId: "  assistant-message-1  ",
+      sourceThreadId: "  thread-1  "
+    }
+  ])
+  const displayContent = toMessageContent({
+    refs,
+    text: "Is this still true?"
+  })
+  const agentContent = toAgentMessageContentWithRefs(displayContent, refs)
+
+  assert.deepEqual(refs, [
+    {
+      selectedText: "snapshot should not own runtime facts",
+      sourceMessageId: "assistant-message-1",
+      sourceThreadId: "thread-1",
+      type: "assistant-message-selection"
+    }
+  ])
+  assert.equal(hasComposerMessageInputContent({ refs, text: "" }), false)
+  assert.deepEqual(displayContent, [
+    {
+      text: "Is this still true?",
+      type: "text"
+    }
+  ])
+  assert.equal(
+    agentContent,
+    [
+      "Is this still true?",
+      "",
+      "Referenced assistant selections:",
+      "1. snapshot should not own runtime facts"
+    ].join("\n")
+  )
+  assert.deepEqual(toDisplayUserMessageContent(agentContent, { refs }), [
+    {
+      text: "Is this still true?",
+      type: "text"
     }
   ])
 })

@@ -66,6 +66,8 @@ function buildIndexedMessageSearchText(message: IndexedCheckpointMessage): strin
         return ref.name
       case "image":
         return ref.name ?? "Attached image"
+      case "assistant-message-selection":
+        return ref.selectedText
       default:
         return ""
     }

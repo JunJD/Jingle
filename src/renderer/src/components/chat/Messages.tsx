@@ -13,7 +13,7 @@ import {
   type RefObject
 } from "react"
 import { VList, type VListHandle } from "virtua"
-import type { ComposerMessageInput } from "@shared/message-content"
+import type { ComposerMessageInput, ComposerMessageRef } from "@shared/message-content"
 import type { ContentBlock, Message as ThreadMessage } from "@/types"
 import { cn } from "@/lib/utils"
 import {
@@ -29,6 +29,9 @@ import {
   type AgentToolExecutionsView
 } from "@/lib/thread-context"
 import { MessageTurnView } from "./MessageTurnView"
+import { AssistantSelectionOverlay } from "./AssistantSelectionOverlay"
+
+type AssistantSelectionRef = Extract<ComposerMessageRef, { type: "assistant-message-selection" }>
 
 interface MessagesProps {
   bottomInset?: number
@@ -46,6 +49,7 @@ interface MessagesProps {
   onScrollToLatest?: () => void
   onBranch?: (messageId: string) => Promise<void> | void
   onRetry?: (input: ComposerMessageInput) => Promise<void> | void
+  onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
 }
 
 const SCROLL_INTENT_KEYS = new Set([
@@ -366,6 +370,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     isAtBottom = true,
     isLoading,
     isScrolling = false,
+    onAddAssistantSelectionRef,
     onBranch,
     onRetry,
     onScroll,
@@ -626,6 +631,10 @@ export function Messages(props: MessagesProps): React.JSX.Element {
           )
         }}
       </VList>
+      <AssistantSelectionOverlay
+        onAddRef={onAddAssistantSelectionRef}
+        threadId={threadId}
+      />
     </div>
   )
 }
