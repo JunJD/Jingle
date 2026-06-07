@@ -75,23 +75,19 @@ const SAFE_READ_ONLY_COMMANDS = new Set([
 ])
 
 const FILE_MUTATION_COMMANDS = new Set(["chmod", "cp", "ln", "mkdir", "mv", "rm", "rmdir", "touch"])
-const HOST_UNSAFE_COMMANDS = new Set([
+const UNKNOWN_SIDE_EFFECT_COMMANDS = new Set([
   "bash",
   "gzip",
   "gunzip",
-  "node",
-  "npm",
   "npx",
-  "pnpm",
-  "python",
-  "python3",
   "sh",
-  "sleep",
   "sqlite3",
   "tar",
   "timeout",
-  "xargs"
+  "xargs",
+  "zsh"
 ])
+const HOST_UNSAFE_COMMANDS = new Set(["sleep"])
 const GIT_READ_ONLY_SUBCOMMANDS = new Set([
   "diff",
   "log",
@@ -719,7 +715,8 @@ function classifyInvocation(invocation: CollectedCommand): InvocationClassificat
 
     return {
       profile: "unknown_command",
-      reason: "npm command is not recognized by the controlled shell profile and requires user approval."
+      reason:
+        "npm command is not recognized by the controlled shell profile and requires user approval."
     }
   }
 
@@ -751,7 +748,8 @@ function classifyInvocation(invocation: CollectedCommand): InvocationClassificat
 
     return {
       profile: "unknown_command",
-      reason: "pnpm command is not recognized by the controlled shell profile and requires user approval."
+      reason:
+        "pnpm command is not recognized by the controlled shell profile and requires user approval."
     }
   }
 
@@ -790,6 +788,13 @@ function classifyInvocation(invocation: CollectedCommand): InvocationClassificat
 
   if (name === "curl") {
     return classifyCurl(invocation.args, hasWriteTarget)
+  }
+
+  if (UNKNOWN_SIDE_EFFECT_COMMANDS.has(name)) {
+    return {
+      profile: "unknown_command",
+      reason: `${name} 是未知副作用操作，需要用户确认后才能执行。`
+    }
   }
 
   if (FILE_MUTATION_COMMANDS.has(name) || hasWriteTarget) {

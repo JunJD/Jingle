@@ -126,6 +126,22 @@ test("classifies unrecognized npm scripts as unknown commands requiring approval
   assert.match(policy.reason, /requires user approval/i)
 })
 
+test("classifies shell wrapper commands as unknown side-effect operations requiring approval", () => {
+  const policy = classifier.classify(`sh -c "echo hello"`)
+
+  assert.equal(policy.profile, "unknown_command")
+  assert.equal(policy.disposition, "require_approval")
+  assert.match(policy.reason, /未知副作用操作/)
+})
+
+test("classifies shell wrapper commands with redirection as unknown side-effect operations", () => {
+  const policy = classifier.classify(`sh -c "echo hello" > out.txt`)
+
+  assert.equal(policy.profile, "unknown_command")
+  assert.equal(policy.disposition, "require_approval")
+  assert.match(policy.reason, /未知副作用操作/)
+})
+
 test("blocks background shell execution", () => {
   const policy = classifier.classify("sleep 1 &")
 

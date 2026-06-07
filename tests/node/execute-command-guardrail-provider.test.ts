@@ -3,6 +3,7 @@ import test from "node:test"
 import type { ExecuteCommandPolicy } from "../../src/shared/execute-command-policy"
 import type { MutationPrediction } from "../../src/shared/mutation-prediction"
 import { createExecuteCommandGuardrailProvider } from "../../src/main/agent/execute-command-guardrail-provider"
+import { JustBashExecuteCommandClassifier } from "../../src/main/agent/execute-command-classifier"
 
 function buildPolicy(overrides: Partial<ExecuteCommandPolicy> = {}): ExecuteCommandPolicy {
   return {
@@ -202,18 +203,18 @@ test("predictable mutations become unknown commands when the predictor marks the
   assert.match(decision.metadata?.executeCommandPolicy?.reason ?? "", /requires user approval/i)
 })
 
-test("host-unsafe commands are denied before prediction runs", async () => {
+test("unknown side-effect shell commands require approval without mutation prediction", async () => {
   let predictorCalls = 0
   const provider = createExecuteCommandGuardrailProvider({
     classifier: {
       classify() {
         return buildPolicy({
-          command: "npm run dev",
-          commands: ["npm"],
-          disposition: "deny",
-          profile: "host_unsafe",
-          reason: "npm commands are outside the controlled shell profile.",
-          summary: "Command blocked by the controlled shell policy (npm)."
+          command: `sh -c "npm run build"`,
+          commands: ["sh"],
+          disposition: "require_approval",
+          profile: "unknown_command",
+          reason: "sh 是未知副作用操作，需要用户确认后才能执行。",
+          summary: "Unknown command requires approval (sh)."
         })
       }
     },
@@ -225,11 +226,34 @@ test("host-unsafe commands are denied before prediction runs", async () => {
     }
   })
 
-  const decision = await provider.evaluate(buildRequest("npm run dev"))
+  const decision = await provider.evaluate(buildRequest(`sh -c "npm run build"`))
 
-  assert.equal(decision.allow, false)
+  assert.equal(decision.allow, true)
   assert.equal(predictorCalls, 0)
-  assert.equal(decision.metadata?.executeCommandPolicy?.profile, "host_unsafe")
+  assert.equal(decision.metadata?.executeCommandPolicy?.profile, "unknown_command")
+  assert.equal(decision.metadata?.executeCommandPolicy?.disposition, "require_approval")
+  assert.match(decision.metadata?.executeCommandPolicy?.reason ?? "", /未知副作用操作/)
+})
+
+test("shell wrapper redirections require approval without mutation prediction", async () => {
+  let predictorCalls = 0
+  const provider = createExecuteCommandGuardrailProvider({
+    classifier: new JustBashExecuteCommandClassifier(),
+    predictor: {
+      async predictExecute() {
+        predictorCalls += 1
+        return buildPrediction()
+      }
+    }
+  })
+
+  const decision = await provider.evaluate(buildRequest(`sh -c "echo hello" > out.txt`))
+
+  assert.equal(decision.allow, true)
+  assert.equal(predictorCalls, 0)
+  assert.equal(decision.metadata?.executeCommandPolicy?.profile, "unknown_command")
+  assert.equal(decision.metadata?.executeCommandPolicy?.disposition, "require_approval")
+  assert.match(decision.metadata?.executeCommandPolicy?.reason ?? "", /未知副作用操作/)
 })
 
 test("network read commands are denied when they target localhost", async () => {

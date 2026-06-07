@@ -117,6 +117,10 @@
       | dir                            | requires user approval |
       | type README.md                 | requires user approval |
       | findstr TODO README.md         | requires user approval |
+      | sh scripts/dev.sh             | 未知副作用操作         |
+      | sh -c "echo hello" > out.txt  | 未知副作用操作         |
+      | bash scripts/dev.sh            | 未知副作用操作         |
+      | zsh scripts/dev.sh             | 未知副作用操作         |
 
   场景大纲: 无法安全表达边界的命令会被直接拒绝
     当系统分类命令 "<命令>"
@@ -131,7 +135,6 @@
       | find src -name package.json -exec cat {} + | executes nested commands         |
       | $CMD README.md                            | cannot be classified safely      |
       | /bin/ls                                   | outside the controlled shell profile |
-      | bash scripts/dev.sh                       | outside the controlled shell profile |
       | sleep 1 &                                 | Background shell execution       |
 
   场景: js-exec 不是宿主命令所以会被拒绝
