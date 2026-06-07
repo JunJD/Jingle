@@ -2,10 +2,8 @@ import { ChevronDown } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ProviderIcon } from "@/features/model-selection/provider-icon"
-import {
-  getModelQuickDisplayName,
-  ModelQuickPickerContent
-} from "@/features/model-selection/ModelQuickPickerContent"
+import { getModelQuickDisplayName } from "@/features/model-selection/model-quick-display"
+import { ModelQuickPickerContent } from "@/features/model-selection/ModelQuickPickerContent"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
 

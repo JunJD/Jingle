@@ -5,22 +5,6 @@ import { cn } from "@/lib/utils"
 import type { ModelConfig, Provider } from "@/types"
 import { ProviderIcon } from "./provider-icon"
 
-export function getModelQuickDisplayName(
-  modelId: string | null,
-  model: ModelConfig | null
-): string | null {
-  if (model) {
-    return model.name
-  }
-
-  if (!modelId) {
-    return null
-  }
-
-  const separatorIndex = modelId.indexOf(":")
-  return separatorIndex >= 0 ? modelId.slice(separatorIndex + 1) : modelId
-}
-
 function isUsableQuickModel(model: ModelConfig, provider: Provider | undefined): boolean {
   return (
     model.status === "active" &&
