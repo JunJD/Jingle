@@ -2,7 +2,7 @@ import type { HITLDecision } from "@/types"
 import {
   hasComposerMessageInputContent,
   hasMessageContent,
-  toAgentMessageContent,
+  toAgentMessageContentWithRefs,
   toMessageContent,
   type ComposerMessageInput
 } from "@shared/message-content"
@@ -46,12 +46,11 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
   const { messageInput, threadContext } = input
   const message = messageInput.text.trim()
   const displayContent = toMessageContent(messageInput)
-  const submitContent = toAgentMessageContent(displayContent)
+  const submitContent = toAgentMessageContentWithRefs(displayContent, messageInput.refs)
 
   if (
     input.getIsPreparing?.() ||
     !hasComposerMessageInputContent(messageInput) ||
-    !hasMessageContent(displayContent) ||
     !hasMessageContent(submitContent)
   ) {
     return false

@@ -16,6 +16,7 @@ function getThreadState(store: ThreadStore, threadId: string): ThreadState {
 
 function installWindowApiStub(): {
   invoked: Array<{
+    message: unknown
     modelId: string
     permissionMode: string
     temporaryMode: boolean
@@ -29,6 +30,7 @@ function installWindowApiStub(): {
   }>
 } {
   const invoked: Array<{
+    message: unknown
     modelId: string
     permissionMode: string
     temporaryMode: boolean
@@ -48,12 +50,13 @@ function installWindowApiStub(): {
         agent: {
           invoke: (
             threadId: string,
-            _message: unknown,
+            message: unknown,
             modelId: string,
             permissionMode: string,
             temporaryMode: boolean
           ) => {
             invoked.push({
+              message,
               modelId,
               permissionMode,
               temporaryMode,
@@ -126,6 +129,10 @@ test("invokeAgentThread invokes runtime through command layer without view proje
   assert.equal(didInvoke, true)
   assert.deepEqual(invoked, [
     {
+      message: {
+        content: "hello",
+        id: "message-id"
+      },
       modelId: "model-a",
       permissionMode: "explore",
       temporaryMode: true,
@@ -133,6 +140,90 @@ test("invokeAgentThread invokes runtime through command layer without view proje
     }
   ])
   assert.equal(getThreadState(store, "thread-a").ui.draftInput, "")
+})
+
+test("invokeAgentThread sends assistant selection refs as model context and metadata refs", async () => {
+  const { invoked } = installWindowApiStub()
+  const store = createThreadStore()
+  const actions = store.getThreadActions("thread-a")
+  actions.setCurrentModel("model-a")
+  actions.setPermissionMode("explore")
+
+  const didInvoke = await invokeAgentThread({
+    messageInput: {
+      refs: [
+        {
+          selectedText: "snapshot should not own runtime facts",
+          sourceMessageId: "assistant-message-1",
+          sourceThreadId: "thread-a",
+          type: "assistant-message-selection"
+        }
+      ],
+      text: "Is this still true?"
+    },
+    threadContext: {
+      awaitThreadRuntime: async () => {},
+      getThreadActions: store.getThreadActions,
+      getThreadState: store.getThreadState
+    },
+    threadId: "thread-a"
+  })
+
+  assert.equal(didInvoke, true)
+  assert.deepEqual(invoked, [
+    {
+      message: {
+        additional_kwargs: {
+          refs: [
+            {
+              selectedText: "snapshot should not own runtime facts",
+              sourceMessageId: "assistant-message-1",
+              sourceThreadId: "thread-a",
+              type: "assistant-message-selection"
+            }
+          ]
+        },
+        content:
+          "Is this still true?\n\nReferenced assistant selections:\n1. snapshot should not own runtime facts",
+        id: "message-id"
+      },
+      modelId: "model-a",
+      permissionMode: "explore",
+      temporaryMode: false,
+      threadId: "thread-a"
+    }
+  ])
+})
+
+test("invokeAgentThread rejects assistant selection refs without visible user text", async () => {
+  const { invoked } = installWindowApiStub()
+  const store = createThreadStore()
+  const actions = store.getThreadActions("thread-a")
+  actions.setCurrentModel("model-a")
+  actions.setPermissionMode("explore")
+
+  const didInvoke = await invokeAgentThread({
+    messageInput: {
+      refs: [
+        {
+          selectedText: "selected assistant text",
+          sourceMessageId: "assistant-message-1",
+          sourceThreadId: "thread-a",
+          type: "assistant-message-selection"
+        }
+      ],
+      text: ""
+    },
+    threadContext: {
+      awaitThreadRuntime: async () => {},
+      getThreadActions: store.getThreadActions,
+      getThreadState: store.getThreadState
+    },
+    threadId: "thread-a"
+  })
+
+  assert.equal(didInvoke, false)
+  assert.deepEqual(invoked, [])
 })
 
 test("invokeAgentThread rejects busy threads before calling runtime", async () => {

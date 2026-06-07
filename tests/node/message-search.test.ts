@@ -94,6 +94,40 @@ test("message search indexes image names without storing image data URLs", async
   assert.ok(rows[0]!.search_text.length < 200)
 })
 
+test("message search indexes assistant selection reference text from metadata", async () => {
+  const { createThread, getPrismaClient, syncMessageSearchIndexFromSnapshot } =
+    await loadDbModules()
+  const threadId = "thread-assistant-selection-search"
+
+  await createThread(threadId)
+  await syncMessageSearchIndexFromSnapshot(threadId, [
+    {
+      content: JSON.stringify("Is this still true?"),
+      message_id: "message-with-selection-ref",
+      metadata: JSON.stringify({
+        refs: [
+          {
+            selectedText: "snapshot should not own runtime facts",
+            sourceMessageId: "assistant-message-1",
+            sourceThreadId: threadId,
+            type: "assistant-message-selection"
+          }
+        ]
+      }),
+      role: "user"
+    }
+  ])
+
+  const prisma = getPrismaClient()
+  const rows = await prisma.$queryRawUnsafe<Array<{ search_text: string }>>(
+    `SELECT search_text FROM "messages_fts" WHERE thread_id = ?`,
+    threadId
+  )
+
+  assert.equal(rows.length, 1)
+  assert.match(rows[0]!.search_text, /snapshot should not own runtime facts/)
+})
+
 test("message projection stores content separately from FTS and rebuilds search index", async () => {
   const {
     createThread,
