@@ -74,6 +74,9 @@ export interface ThreadActions {
   clearError: () => void
   setCurrentModel: (modelId: string) => void
   setPermissionMode: (permissionMode: PermissionModeName) => void
+}
+
+export interface ThreadLocalUiControl {
   openFile: (path: string, name: string) => void
   closeFile: (path: string) => void
   openArtifactTab: (tab: OpenArtifactTab) => void
@@ -82,6 +85,9 @@ export interface ThreadActions {
   setFileContents: (path: string, content: string) => void
 }
 
+export interface ThreadControl {
+  local: ThreadLocalUiControl
+}
 export interface ThreadStoreEffects {
   persistCurrentModel?: (threadId: string, modelId: string) => void | Promise<void>
   persistPermissionMode?: (
@@ -98,6 +104,7 @@ export interface ThreadStore {
   ensureThreadState: (threadId: string) => boolean
   getAllThreadStates: () => Record<string, ThreadState>
   getThreadActions: (threadId: string) => ThreadActions
+  getThreadControl: (threadId: string) => ThreadControl
   getThreadState: (threadId: string) => ThreadState | null
   subscribeAllThreadStates: (listener: () => void) => () => void
   subscribeThread: (threadId: string, listener: () => void) => () => void
@@ -140,6 +147,7 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
   const threadListeners = new Map<string, Set<() => void>>()
   const allThreadStateListeners = new Set<() => void>()
   const actionsCache: Record<string, ThreadActions> = {}
+  const controlCache: Record<string, ThreadControl> = {}
   let threadStates: Record<string, ThreadState> = {}
 
   const getThreadState = (threadId: string): ThreadState | null => {
@@ -257,7 +265,19 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
       setPermissionMode: (permissionMode: PermissionModeName) => {
         updateThreadState(threadId, () => ({ agent: { permissionMode } }))
         void effects.persistPermissionMode?.(threadId, permissionMode)
-      },
+      }
+    }
+
+    actionsCache[threadId] = actions
+    return actions
+  }
+
+  const getThreadControl = (threadId: string): ThreadControl => {
+    if (controlCache[threadId]) {
+      return controlCache[threadId]
+    }
+
+    const local: ThreadLocalUiControl = {
       openFile: (path: string, name: string) => {
         updateThreadState(threadId, (state) => {
           if (state.ui.openFiles.some((file) => file.path === path)) {
@@ -349,8 +369,9 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
       }
     }
 
-    actionsCache[threadId] = actions
-    return actions
+    const control: ThreadControl = { local }
+    controlCache[threadId] = control
+    return control
   }
 
   const ensureThreadState = (threadId: string): boolean => {
@@ -371,6 +392,7 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
 
     if (!hadThreadState) {
       delete actionsCache[threadId]
+      delete controlCache[threadId]
       return
     }
 
@@ -379,6 +401,7 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
       void _deletedThreadState
       threadStates = restThreadStates
       delete actionsCache[threadId]
+      delete controlCache[threadId]
       threadListeners.get(threadId)?.forEach((listener) => listener())
       allThreadStateListeners.forEach((listener) => listener())
     }
@@ -392,6 +415,7 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
     ensureThreadState,
     getAllThreadStates: () => threadStates,
     getThreadActions,
+    getThreadControl,
     getThreadState,
     subscribeAllThreadStates: (listener: () => void): (() => void) => {
       allThreadStateListeners.add(listener)

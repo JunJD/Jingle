@@ -150,7 +150,7 @@ test("thread subscriptions stay scoped to the matching thread id", () => {
 
   store.ensureThreadState("thread-a")
   store.ensureThreadState("thread-b")
-  store.getThreadActions("thread-a").openFile("/tmp/a.txt", "a.txt")
+  store.getThreadControl("thread-a").local.openFile("/tmp/a.txt", "a.txt")
 
   unsubscribeThread()
   unsubscribeAll()
@@ -197,9 +197,9 @@ test("setPermissionMode updates state and runs the injected persistence effect",
 
 test("artifact changed events update source artifacts without rewriting open tab facts", () => {
   const store = createThreadStore()
-  const actions = store.getThreadActions("thread-a")
+  const localControl = store.getThreadControl("thread-a").local
 
-  actions.openArtifactTab({
+  localControl.openArtifactTab({
     artifactId: "artifact-1"
   })
   const artifact = createLinkArtifact({

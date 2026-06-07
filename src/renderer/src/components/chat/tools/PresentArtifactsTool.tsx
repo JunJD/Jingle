@@ -3,7 +3,7 @@ import { ArrowUpRight, PackageOpen } from "lucide-react"
 import type { ArtifactRecord } from "@shared/artifacts"
 import { CodeBlock } from "@/components/ui/code-block"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
-import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
+import { useThreadControl, useThreadSelector } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
 import { defineToolComponent } from "./registry-core"
 import type { ToolComponentProps } from "./types"
@@ -45,7 +45,7 @@ export function PresentArtifactsDetail(
 ): React.JSX.Element {
   const { copy, rawResult, toolCall } = props
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
-  const threadActions = useThreadActions(currentThreadId)
+  const threadControl = useThreadControl(currentThreadId)
   const threadArtifacts = useThreadSelector(
     currentThreadId,
     (state) => state?.agent.artifacts ?? EMPTY_THREAD_ARTIFACTS
@@ -63,7 +63,7 @@ export function PresentArtifactsDetail(
         <ToolDetailSection label={copy.toolCall.labels.present_artifacts}>
           <div className="grid gap-[var(--ow-space-1-5)]">
             {resolvedArtifacts.map((artifact) => {
-              const canOpen = Boolean(threadActions)
+              const canOpen = Boolean(threadControl)
 
               return (
                 <button
@@ -79,11 +79,11 @@ export function PresentArtifactsDetail(
                   disabled={!canOpen}
                   key={artifact.id}
                   onClick={() => {
-                    if (!threadActions) {
+                    if (!threadControl) {
                       return
                     }
 
-                    threadActions.openArtifactTab({
+                    threadControl.local.openArtifactTab({
                       artifactId: artifact.id
                     })
                   }}

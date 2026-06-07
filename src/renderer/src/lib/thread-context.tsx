@@ -13,15 +13,21 @@ import {
 import { THREAD_PERMISSION_MODE_METADATA_KEY } from "@shared/permission-mode"
 import { createAgentRuntimeManager } from "./agent-runtime-manager"
 import { historyShellStore } from "./history-shell-store"
-import { createThreadStore, type ThreadActions, type ThreadState } from "./thread-store-core"
+import {
+  createThreadStore,
+  type ThreadActions,
+  type ThreadControl,
+  type ThreadState
+} from "./thread-store-core"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
-export type { ThreadActions, ThreadState, TokenUsage } from "./thread-store-core"
+export type { ThreadActions, ThreadControl, ThreadState, TokenUsage } from "./thread-store-core"
 export { getArtifactTabId } from "@shared/thread-tabs"
 
 export interface ThreadContextValue {
   getThreadState: (threadId: string) => ThreadState | null
   getThreadActions: (threadId: string) => ThreadActions
+  getThreadControl: (threadId: string) => ThreadControl
   ensureThreadRuntime: (threadId: string) => void
   awaitThreadRuntime: (threadId: string) => Promise<void>
   loadThreadData: (threadId: string) => Promise<void>
@@ -75,6 +81,10 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     (threadId: string): ThreadActions => threadStore.getThreadActions(threadId),
     [threadStore]
   )
+  const getThreadControl = useCallback(
+    (threadId: string): ThreadControl => threadStore.getThreadControl(threadId),
+    [threadStore]
+  )
   const subscribeThread = useCallback(
     (threadId: string, callback: () => void): (() => void) =>
       threadStore.subscribeThread(threadId, callback),
@@ -120,6 +130,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     () => ({
       getThreadState,
       getThreadActions,
+      getThreadControl,
       ensureThreadRuntime,
       awaitThreadRuntime,
       loadThreadData,
@@ -134,6 +145,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       ensureThreadRuntime,
       getAllThreadStates,
       getThreadActions,
+      getThreadControl,
       getThreadState,
       loadThreadData,
       subscribeAllThreadStates,
@@ -160,6 +172,16 @@ export function useThreadActions(threadId: string | null): ThreadActions | null 
   }
 
   return context.getThreadActions(threadId)
+}
+
+export function useThreadControl(threadId: string | null): ThreadControl | null {
+  const context = useThreadContext()
+
+  if (!threadId) {
+    return null
+  }
+
+  return context.getThreadControl(threadId)
 }
 
 export function useThreadSelector<T>(
