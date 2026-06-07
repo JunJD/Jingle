@@ -24,8 +24,16 @@ export function createAgentRuntimeManager({
   const runtimeResync: Record<string, Promise<void> | null> = {}
   const runtimeReady: Record<string, Promise<void>> = {}
 
+  function getInitializedThreadState(threadId: string) {
+    const state = threadStore.getThreadState(threadId)
+    if (!state) {
+      throw new Error(`Agent runtime thread state is not initialized: ${threadId}`)
+    }
+    return state
+  }
+
   function isThreadStreaming(threadId: string): boolean {
-    const activeRun = threadStore.getThreadState(threadId).agent.activeRun
+    const activeRun = getInitializedThreadState(threadId).agent.activeRun
     return Boolean(activeRun && activeRun.status === "running")
   }
 
@@ -49,7 +57,7 @@ export function createAgentRuntimeManager({
           : event
       )
     )
-    const state = threadStore.getThreadState(threadId)
+    const state = getInitializedThreadState(threadId)
     const isLoading = Boolean(state.agent.activeRun && state.agent.activeRun.status === "running")
 
     if (wasLoading && !isLoading && hasHistoryRefreshEvent(events) && refreshThread) {
@@ -65,7 +73,7 @@ export function createAgentRuntimeManager({
 
     delete pendingRuntimeBatches[threadId]
     for (const batch of batches) {
-      const currentRevision = threadStore.getThreadState(batch.threadId).agent.revision
+      const currentRevision = getInitializedThreadState(batch.threadId).agent.revision
       const selection = selectRuntimeEventsAfterRevision(currentRevision, batch)
       if (selection.type === "events") {
         applyRuntimeEvents(batch.threadId, selection.events)
@@ -92,7 +100,7 @@ export function createAgentRuntimeManager({
       return
     }
 
-    const currentRevision = threadStore.getThreadState(batch.threadId).agent.revision
+    const currentRevision = getInitializedThreadState(batch.threadId).agent.revision
     const selection = selectRuntimeEventsAfterRevision(currentRevision, batch)
     if (selection.type === "events") {
       applyRuntimeEvents(batch.threadId, selection.events)

@@ -68,6 +68,10 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
     await threadContext.awaitThreadRuntime(input.threadId)
 
     const threadState = threadContext.getThreadState(input.threadId)
+    if (!threadState) {
+      throw new Error(`Agent thread state is not initialized: ${input.threadId}`)
+    }
+
     if (threadState.agent.activeRun?.status === "running" || threadState.agent.pendingApproval) {
       return false
     }
@@ -138,6 +142,11 @@ export async function resumeAgentThread(input: {
   }
 
   const threadState = input.threadContext.getThreadState(input.threadId)
+  if (!threadState) {
+    input.onLocalError?.(`Agent thread state is not initialized: ${input.threadId}`)
+    return false
+  }
+
   if (!threadState.agent.pendingApproval) {
     return false
   }

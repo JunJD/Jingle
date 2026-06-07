@@ -126,7 +126,7 @@ export interface ThreadStore {
   ensureThreadState: (threadId: string) => boolean
   getAllThreadStates: () => Record<string, ThreadState>
   getThreadActions: (threadId: string) => ThreadActions
-  getThreadState: (threadId: string) => ThreadState
+  getThreadState: (threadId: string) => ThreadState | null
   subscribeAllThreadStates: (listener: () => void) => () => void
   subscribeThread: (threadId: string, listener: () => void) => () => void
 }
@@ -172,8 +172,8 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
   const actionsCache: Record<string, ThreadActions> = {}
   let threadStates: Record<string, ThreadState> = {}
 
-  const getThreadState = (threadId: string): ThreadState => {
-    return threadStates[threadId] ?? createDefaultThreadState()
+  const getThreadState = (threadId: string): ThreadState | null => {
+    return threadStates[threadId] ?? null
   }
 
   const emitThread = (threadId: string): void => {
@@ -218,7 +218,7 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
     threadId: string,
     updater: (prev: ThreadState) => ThreadStateUpdate
   ): void => {
-    const current = getThreadState(threadId)
+    const current = threadStates[threadId] ?? createDefaultThreadState()
     const requestedPartial = updater(current)
     const requestedView = requestedPartial.view
     const nextAgent = requestedPartial.agent

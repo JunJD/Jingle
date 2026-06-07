@@ -26,7 +26,7 @@ export type {
 export { getArtifactTabId } from "@shared/thread-tabs"
 
 export interface ThreadContextValue {
-  getThreadState: (threadId: string) => ThreadState
+  getThreadState: (threadId: string) => ThreadState | null
   getThreadActions: (threadId: string) => ThreadActions
   ensureThreadRuntime: (threadId: string) => void
   awaitThreadRuntime: (threadId: string) => Promise<void>
@@ -74,7 +74,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
   )
 
   const getThreadState = useCallback(
-    (threadId: string): ThreadState => threadStore.getThreadState(threadId),
+    (threadId: string): ThreadState | null => threadStore.getThreadState(threadId),
     [threadStore]
   )
   const getThreadActions = useCallback(

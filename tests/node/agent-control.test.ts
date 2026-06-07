@@ -1,8 +1,18 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { invokeAgentThread, resumeAgentThread } from "../../src/renderer/src/lib/agent-control"
-import { createThreadStore } from "../../src/renderer/src/lib/thread-store-core"
+import {
+  createThreadStore,
+  type ThreadState,
+  type ThreadStore
+} from "../../src/renderer/src/lib/thread-store-core"
 import type { HITLRequest } from "../../src/renderer/src/types"
+
+function getThreadState(store: ThreadStore, threadId: string): ThreadState {
+  const state = store.getThreadState(threadId)
+  assert.ok(state, `Expected thread state for ${threadId}`)
+  return state
+}
 
 function installWindowApiStub(): {
   invoked: Array<{
@@ -122,7 +132,7 @@ test("invokeAgentThread invokes runtime through command layer without view proje
       threadId: "thread-a"
     }
   ])
-  assert.equal(store.getThreadState("thread-a").ui.draftInput, "")
+  assert.equal(getThreadState(store, "thread-a").ui.draftInput, "")
 })
 
 test("invokeAgentThread rejects busy threads before calling runtime", async () => {

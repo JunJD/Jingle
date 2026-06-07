@@ -3,8 +3,18 @@ import test from "node:test"
 import type { AgentThreadEventBatch } from "../../src/shared/agent-thread-runtime"
 import type { AgentThreadDataSnapshot } from "../../src/shared/app-types"
 import { createAgentRuntimeManager } from "../../src/renderer/src/lib/agent-runtime-manager"
-import { createThreadStore } from "../../src/renderer/src/lib/thread-store-core"
+import {
+  createThreadStore,
+  type ThreadState,
+  type ThreadStore
+} from "../../src/renderer/src/lib/thread-store-core"
 import type { Message } from "../../src/renderer/src/types"
+
+function getThreadState(store: ThreadStore, threadId: string): ThreadState {
+  const state = store.getThreadState(threadId)
+  assert.ok(state, `Expected thread state for ${threadId}`)
+  return state
+}
 
 function createUserMessage(id: string, content = "User message"): Message {
   return {
@@ -125,7 +135,7 @@ test("agent runtime manager applies connected runtime batches into thread state"
     threadId: "thread-a"
   })
 
-  const state = store.getThreadState("thread-a")
+  const state = getThreadState(store, "thread-a")
   assert.equal(state.agent.activeRun?.status, "running")
   assert.equal(state.view.messageProjection.activeTurnKey, "user-1")
   assert.deepEqual(
@@ -149,7 +159,7 @@ test("agent runtime manager loads thread snapshot through its runtime boundary",
 
   await manager.loadThreadData("thread-a")
 
-  const state = store.getThreadState("thread-a")
+  const state = getThreadState(store, "thread-a")
   assert.deepEqual(
     state.agent.messages.map((message) => message.id),
     ["user-1", "assistant-1"]
