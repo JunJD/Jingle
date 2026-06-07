@@ -36,7 +36,6 @@ export interface AiCoreThreadHandle {
 }
 
 export interface AiCoreThreadCreateInput {
-  draftInput?: string
   modelId?: string
   permissionMode?: PermissionModeName
   source: string

@@ -6,7 +6,6 @@ import type { ActiveAgentRun, AgentThreadEvent } from "@shared/agent-thread-runt
 import {
   getArtifactTabId,
   getNextActiveTabAfterClose,
-  syncOpenArtifactTabs,
   type OpenArtifactTab,
   type OpenFile
 } from "@shared/thread-tabs"
@@ -67,7 +66,6 @@ export interface ThreadLocalUiState {
   openArtifacts: OpenArtifactTab[]
   activeTab: "agent" | string
   fileContents: Record<string, string>
-  draftInput: string
 }
 
 export interface ThreadState {
@@ -107,7 +105,6 @@ export interface ThreadActions {
   closeArtifactTab: (artifactId: string) => void
   setActiveTab: (tab: "agent" | string) => void
   setFileContents: (path: string, content: string) => void
-  setDraftInput: (input: string) => void
 }
 
 export interface ThreadStoreEffects {
@@ -160,8 +157,7 @@ export function createDefaultThreadState(): ThreadState {
       openFiles: [],
       openArtifacts: [],
       activeTab: "agent",
-      fileContents: {},
-      draftInput: ""
+      fileContents: {}
     }
   }
 }
@@ -275,9 +271,8 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
   }
 
   const applyArtifactsChanged = (threadId: string, artifacts: ArtifactRecord[]): void => {
-    updateThreadState(threadId, (state) => ({
-      agent: { artifacts },
-      ui: { openArtifacts: syncOpenArtifactTabs(state.ui.openArtifacts, artifacts) }
+    updateThreadState(threadId, () => ({
+      agent: { artifacts }
     }))
   }
 
@@ -392,9 +387,6 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
             }
           }
         }))
-      },
-      setDraftInput: (input: string) => {
-        updateThreadState(threadId, () => ({ ui: { draftInput: input } }))
       }
     }
 

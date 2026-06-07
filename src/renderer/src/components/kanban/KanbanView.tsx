@@ -20,12 +20,10 @@ interface ThreadWithStatus {
 function getThreadKanbanStatus(
   thread: Thread,
   hasActiveRun: boolean,
-  hasDraft: boolean,
   hasPendingApproval: boolean
 ): KanbanStatus {
   if (hasPendingApproval || thread.status === "interrupted") return "interrupted"
   if (thread.status === "busy" || hasActiveRun) return "in_progress"
-  if (hasDraft) return "pending"
   return "done"
 }
 
@@ -50,9 +48,8 @@ export function KanbanView(): React.JSX.Element {
     for (const thread of threads) {
       const threadState = allThreadStates[thread.thread_id]
       const hasActiveRun = threadState?.agent.activeRun?.status === "running"
-      const hasDraft = Boolean(threadState?.ui.draftInput.trim())
       const hasPendingApproval = Boolean(threadState?.agent.pendingApproval)
-      const status = getThreadKanbanStatus(thread, hasActiveRun, hasDraft, hasPendingApproval)
+      const status = getThreadKanbanStatus(thread, hasActiveRun, hasPendingApproval)
       result[status].push({ thread, status })
     }
 

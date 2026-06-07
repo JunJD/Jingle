@@ -89,8 +89,6 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
     }
 
     input.onLocalError?.(null)
-    actions.setDraftInput("")
-
     window.api.agent.invoke(
       input.threadId,
       {

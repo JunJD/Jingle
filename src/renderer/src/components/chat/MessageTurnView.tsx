@@ -209,52 +209,6 @@ function getReasoningBlockText(block: ContentBlock): string {
   return block.reasoning ?? block.text ?? block.content ?? ""
 }
 
-function getStreamingContentSignature(content: ThreadMessage["content"]): string {
-  if (typeof content === "string") {
-    return `${content.length}:0:0`
-  }
-
-  let textLength = 0
-  let reasoningLength = 0
-  for (const block of content) {
-    if (block.type === "reasoning") {
-      reasoningLength += getReasoningBlockText(block).length
-      continue
-    }
-
-    textLength += (block.text ?? block.content ?? "").length
-  }
-
-  return `${textLength}:${reasoningLength}:${content.length}`
-}
-
-function getToolResultsSignature(toolResults: Map<string, ToolResultInfo>): string {
-  if (toolResults.size === 0) {
-    return "0"
-  }
-
-  return Array.from(toolResults, ([toolCallId, result]) => {
-    return `${toolCallId}:${getStreamingContentSignature(result.content)}`
-  }).join("|")
-}
-
-export function getStreamingTurnSignature(
-  turn: MessageTurn | null | undefined,
-  message: ThreadMessage | null | undefined
-): string | null {
-  if (!turn || !message) {
-    return null
-  }
-
-  const toolCallCount = message.tool_calls?.length ?? 0
-  return [
-    message.id,
-    getStreamingContentSignature(message.content),
-    toolCallCount,
-    getToolResultsSignature(turn.toolResults)
-  ].join(":")
-}
-
 function ReasoningBlock(props: { isStreaming?: boolean; text: string }): React.JSX.Element | null {
   const { copy } = useI18n()
   const { isStreaming, text } = props

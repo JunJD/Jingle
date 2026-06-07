@@ -150,15 +150,20 @@ test("thread subscriptions stay scoped to the matching thread id", () => {
 
   store.ensureThreadState("thread-a")
   store.ensureThreadState("thread-b")
-  store.getThreadActions("thread-a").setDraftInput("hello")
+  store.getThreadActions("thread-a").openFile("/tmp/a.txt", "a.txt")
 
   unsubscribeThread()
   unsubscribeAll()
 
   assert.equal(threadACalls, 2)
   assert.equal(allThreadCalls, 3)
-  assert.equal(getThreadState(store, "thread-a").ui.draftInput, "hello")
-  assert.equal(getThreadState(store, "thread-b").ui.draftInput, "")
+  assert.deepEqual(getThreadState(store, "thread-a").ui.openFiles, [
+    {
+      name: "a.txt",
+      path: "/tmp/a.txt"
+    }
+  ])
+  assert.deepEqual(getThreadState(store, "thread-b").ui.openFiles, [])
   assert.equal(getThreadState(store, "thread-b").agent.permissionMode, DEFAULT_PERMISSION_MODE)
 })
 
@@ -190,33 +195,28 @@ test("setPermissionMode updates state and runs the injected persistence effect",
   assert.deepEqual(persisted, [{ permissionMode: "auto", threadId: "thread-a" }])
 })
 
-test("artifact changed events refresh metadata for already open artifact tabs", () => {
+test("artifact changed events update source artifacts without rewriting open tab facts", () => {
   const store = createThreadStore()
   const actions = store.getThreadActions("thread-a")
 
   actions.openArtifactTab({
-    artifactId: "artifact-1",
-    kind: "summary",
-    title: "Old summary"
+    artifactId: "artifact-1"
   })
-  store.applyArtifactsChanged("thread-a", [
-    createLinkArtifact({
-      id: "artifact-1",
-      threadId: "thread-a",
-      title: "Published link",
-      toolCallId: "tool-call-1"
-    })
-  ])
+  const artifact = createLinkArtifact({
+    id: "artifact-1",
+    threadId: "thread-a",
+    title: "Published link",
+    toolCallId: "tool-call-1"
+  })
+  store.applyArtifactsChanged("thread-a", [artifact])
 
   assert.deepEqual(getThreadState(store, "thread-a").ui.openArtifacts, [
     {
-      artifactId: "artifact-1",
-      kind: "link",
-      title: "Published link"
+      artifactId: "artifact-1"
     }
   ])
+  assert.deepEqual(getThreadState(store, "thread-a").agent.artifacts, [artifact])
 })
-
 test("thread data snapshots update message projection without emitting for equivalent snapshots", () => {
   const store = createThreadStore()
   let calls = 0

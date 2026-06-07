@@ -89,7 +89,7 @@ export function AssistantSelectionOverlay(props: {
     }
   }, [refreshSelection])
 
-  if (!draft || !onAddRef) {
+  if (!draft || !onAddRef || draft.ref.sourceThreadId !== threadId) {
     return null
   }
 

@@ -91,7 +91,6 @@ export function LauncherAiPage(): React.JSX.Element {
   } = agent
   const { stop } = agentControl
   const threadActions = useThreadActions(threadId)
-  const draftInputFromThread = useThreadSelector(threadId, (state) => state?.ui.draftInput ?? null)
   const currentModelId =
     useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null) ??
     draftTarget?.modelId ??
@@ -100,7 +99,7 @@ export function LauncherAiPage(): React.JSX.Element {
     useThreadSelector(threadId, (state) => state?.agent.permissionMode ?? null) ??
     draftTarget?.permissionMode ??
     defaultDraftPermissionMode
-  const query = draftInputFromThread ?? pendingInput
+  const query = pendingInput
   const messageInput = useMemo(
     () => ({
       refs: [...attachmentDraft.messageRefs, ...assistantSelectionRefs],
