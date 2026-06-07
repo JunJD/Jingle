@@ -1,10 +1,11 @@
 export async function selectWorkspaceFolder(
   currentThreadId: string | null,
-  setWorkspacePath: (path: string | null) => void,
+  refreshThreadData: (threadId: string) => Promise<void>,
   setLoading: (loading: boolean) => void,
   setOpen?: (open: boolean) => void,
   options?: {
     onBlockedByPendingWorkspaceMemory?: () => void
+    onError?: (error: string) => void
   }
 ): Promise<void> {
   if (!currentThreadId) return
@@ -18,11 +19,12 @@ export async function selectWorkspaceFolder(
 
     const path = await window.api.workspace.select(currentThreadId)
     if (path) {
-      setWorkspacePath(path)
+      await refreshThreadData(currentThreadId)
     }
     if (setOpen) setOpen(false)
   } catch (e) {
     console.error("[WorkspacePicker] Select folder error:", e)
+    options?.onError?.(e instanceof Error ? e.message : String(e))
   } finally {
     setLoading(false)
   }

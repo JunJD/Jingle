@@ -3,7 +3,7 @@ import { Check, ChevronDown, Folder } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
+import { useThreadContext, useThreadSelector } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n"
 
@@ -13,25 +13,22 @@ interface WorkspacePickerProps {
 
 export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.Element {
   const { copy } = useI18n()
+  const threadContext = useThreadContext()
   const workspacePath = useThreadSelector(threadId, (state) => state?.agent.workspacePath ?? null)
-  const threadActions = useThreadActions(threadId)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null)
 
   async function handleSelectFolder(): Promise<void> {
     setBlockedMessage(null)
-    await selectWorkspaceFolder(
-      threadId,
-      (path) => threadActions?.setWorkspacePath(path),
-      setLoading,
-      setOpen,
-      {
-        onBlockedByPendingWorkspaceMemory: () => {
-          setBlockedMessage(copy.chat.pendingWorkspaceMemoryBlocksWorkspaceChange)
-        }
+    await selectWorkspaceFolder(threadId, threadContext.loadThreadData, setLoading, setOpen, {
+      onError: (error) => {
+        setBlockedMessage(error)
+      },
+      onBlockedByPendingWorkspaceMemory: () => {
+        setBlockedMessage(copy.chat.pendingWorkspaceMemoryBlocksWorkspaceChange)
       }
-    )
+    })
   }
 
   const folderName = workspacePath?.split("/").pop()
