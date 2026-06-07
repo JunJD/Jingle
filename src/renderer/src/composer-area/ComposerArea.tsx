@@ -36,6 +36,7 @@ import {
 } from "./extension-source-serialization"
 import { ExtensionSourceReferenceNode } from "./extension-source-node"
 import { ExtensionSourceTypeaheadPlugin } from "./extension-source-typeahead"
+import { FileReferenceNode } from "./file-reference-node"
 import type { ComposerAreaHandle, ComposerAreaProps } from "./types"
 
 const COMPOSER_AREA_SYNC_TAG = "composer-area-sync"
@@ -235,10 +236,12 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
     maxHeight,
     minHeight,
     onKeyDown,
+    onMentionQueryChange,
     onSubmit,
     onValueChange,
     placeholder,
     sourceMentions = [],
+    workspaceFileMentions = [],
     value
   },
   ref
@@ -249,14 +252,21 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
   }, [])
   const handleMentionMenuClose = useCallback(() => {
     mentionMenuOpenRef.current = false
-  }, [])
+    onMentionQueryChange?.(null)
+  }, [onMentionQueryChange])
+  const handleMentionQueryChange = useCallback(
+    (nextQuery: string | null): void => {
+      onMentionQueryChange?.(nextQuery)
+    },
+    [onMentionQueryChange]
+  )
   const initialConfig = useMemo(
     () => ({
       editorState: (editor: LexicalEditor) => {
         writePlainTextToEditor(editor, value)
       },
       namespace: "OpenworkComposerArea",
-      nodes: [ParagraphNode, ExtensionSourceReferenceNode],
+      nodes: [ParagraphNode, ExtensionSourceReferenceNode, FileReferenceNode],
       onError: (error: Error) => {
         throw error
       },
@@ -339,7 +349,9 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
         <ExtensionSourceTypeaheadPlugin
           onMenuClose={handleMentionMenuClose}
           onMenuOpen={handleMentionMenuOpen}
+          onQueryChange={handleMentionQueryChange}
           sourceMentions={sourceMentions}
+          workspaceFileMentions={workspaceFileMentions}
         />
         <ComposerAreaKeyboardPlugin
           mentionMenuOpenRef={mentionMenuOpenRef}

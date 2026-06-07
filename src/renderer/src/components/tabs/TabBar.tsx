@@ -1,6 +1,7 @@
-import { Bot, X, FileCode, FileText, FileJson, File, Link2, PackageOpen } from "lucide-react"
+import { Bot, X, File, FileCode, FileText, Link2, PackageOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
+import { WorkspaceFileIcon } from "@/components/workspace-file-icon"
 import type { ArtifactRecord } from "@shared/artifacts"
 import {
   getArtifactTabId,
@@ -124,7 +125,7 @@ function FileTab({ file, isActive, onSelect, onClose }: FileTabProps): React.JSX
       )}
       title={file.path}
     >
-      <FileIcon name={file.name} />
+      <WorkspaceFileIcon className="size-3.5" name={file.name} />
       <span className="truncate">{file.name}</span>
       <button
         data-thread-tab-close="file"
@@ -197,30 +198,6 @@ function ArtifactTab(props: ArtifactTabProps): React.JSX.Element {
       </button>
     </button>
   )
-}
-
-function FileIcon({ name }: { name: string }): React.JSX.Element {
-  const ext = name.includes(".") ? name.split(".").pop()?.toLowerCase() : ""
-
-  switch (ext) {
-    case "ts":
-    case "tsx":
-    case "js":
-    case "jsx":
-    case "py":
-    case "css":
-    case "scss":
-    case "html":
-      return <FileCode className="size-3.5 text-blue-400 shrink-0" />
-    case "json":
-      return <FileJson className="size-3.5 text-yellow-500 shrink-0" />
-    case "md":
-    case "mdx":
-    case "txt":
-      return <FileText className="size-3.5 text-muted-foreground shrink-0" />
-    default:
-      return <File className="size-3.5 text-muted-foreground shrink-0" />
-  }
 }
 
 function ArtifactIcon(props: { kind: ArtifactRecord["kind"] | null }): React.JSX.Element {

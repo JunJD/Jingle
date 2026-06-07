@@ -21,7 +21,7 @@ import { useAssistantSelectionRefs } from "./useAssistantSelectionRefs"
 import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
-import type { ComposerAreaHandle } from "@/composer-area"
+import { useWorkspaceFileMentions, type ComposerAreaHandle } from "@/composer-area"
 import {
   hasComposerMessageInputContent,
   type ComposerMessageInput,
@@ -272,6 +272,8 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const [temporaryMode, setTemporaryMode] = useState(false)
   const [workspaceChangeError, setWorkspaceChangeError] = useState<string | null>(null)
   const [input, setInput] = useState("")
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const workspaceFileMentions = useWorkspaceFileMentions(threadId, mentionQuery)
   const {
     addSelectionRef,
     clearSelectionRefs,
@@ -320,6 +322,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     if (didInvoke) {
       setInput("")
       clearSelectionRefs()
+      setMentionQuery(null)
     }
 
     return didInvoke
@@ -404,9 +407,11 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                   <PromptInputTextarea
                     composerRef={inputRef}
                     mode="composer"
+                    onMentionQueryChange={setMentionQuery}
                     onKeyDown={handleKeyDown}
                     placeholder={copy.chat.messagePlaceholder}
                     sourceMentions={sourceMentions}
+                    workspaceFileMentions={workspaceFileMentions}
                     className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
                   />
                   <div className="flex h-[var(--ow-chat-composer-action-h)] shrink-0 items-center justify-center">

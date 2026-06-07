@@ -160,6 +160,28 @@ test("toDisplayUserMessageContent reconstructs file blocks from metadata refs", 
   ])
 })
 
+test("toDisplayUserMessageContent keeps inline workspace file refs in text only", () => {
+  const content = toDisplayUserMessageContent(
+    "Review [@src/main/agent/service.ts](openwork-workspace-file://src%2Fmain%2Fagent%2Fservice.ts)",
+    {
+      refs: [
+        {
+          name: "service.ts",
+          path: "src/main/agent/service.ts",
+          type: "file"
+        }
+      ]
+    }
+  )
+
+  assert.deepEqual(content, [
+    {
+      text: "Review [@src/main/agent/service.ts](openwork-workspace-file://src%2Fmain%2Fagent%2Fservice.ts)",
+      type: "text"
+    }
+  ])
+})
+
 test("toDisplayUserMessageContent preserves extension source markdown for renderer viewer", () => {
   const content = toDisplayUserMessageContent(
     "Use [@apple-reminders](openwork-extension-source://apple-reminders/appleReminders) today",

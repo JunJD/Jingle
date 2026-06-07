@@ -2,6 +2,11 @@ import type { ExtensionSourceMention } from "@shared/extension-sources"
 import type { ComposerMessageRef } from "@shared/message-content"
 import type { KeyboardEvent } from "react"
 
+export interface ComposerWorkspaceFileMention {
+  name: string
+  path: string
+}
+
 export interface ComposerAreaHandle {
   blur: () => void
   focus: () => void
@@ -17,7 +22,9 @@ export interface ComposerAreaProps {
   maxHeight: number | string
   minHeight: number | string
   sourceMentions?: ExtensionSourceMention[]
+  workspaceFileMentions?: ComposerWorkspaceFileMention[]
   onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void
+  onMentionQueryChange?: (query: string | null) => void
   onSubmit?: () => void
   onValueChange?: (value: string) => void
   placeholder?: string

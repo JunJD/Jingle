@@ -6,6 +6,7 @@ import {
 } from "lexical"
 import type { ComposerMessageRef } from "@shared/message-content"
 import { $isExtensionSourceReferenceNode } from "./extension-source-node"
+import { $isFileReferenceNode } from "./file-reference-node"
 
 function escapeMarkdownLabel(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/\]/g, "\\]")
@@ -17,6 +18,10 @@ function escapeMarkdownUri(value: string): string {
 
 function serializeNodeForModel(node: LexicalNode): string {
   if ($isExtensionSourceReferenceNode(node)) {
+    return `[${escapeMarkdownLabel(node.getLabel())}](${escapeMarkdownUri(node.getUri())})`
+  }
+
+  if ($isFileReferenceNode(node)) {
     return `[${escapeMarkdownLabel(node.getLabel())}](${escapeMarkdownUri(node.getUri())})`
   }
 
@@ -34,6 +39,15 @@ function collectComposerRefs(node: LexicalNode, refs: ComposerMessageRef[]): voi
       name: node.getDisplayName(),
       sourceId: node.getSourceId(),
       type: "extension-source"
+    })
+    return
+  }
+
+  if ($isFileReferenceNode(node)) {
+    refs.push({
+      name: node.getName(),
+      path: node.getPath(),
+      type: "file"
     })
     return
   }
