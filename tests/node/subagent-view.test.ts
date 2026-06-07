@@ -5,34 +5,16 @@ import {
   getSubagentDurationLabel,
   getSubagentKanbanStatus,
   getSubagentStatusPresentation,
-  projectSubagentKanbanBuckets,
+  getThreadKanbanStatus,
   projectSubagentReferences
 } from "../../src/renderer/src/lib/subagent-view"
-import type { Subagent, Thread } from "../../src/renderer/src/types"
+import type { Subagent } from "../../src/renderer/src/types"
 
 function createSubagent(input: Partial<Subagent> & Pick<Subagent, "id" | "status">): Subagent {
   return {
     description: `${input.id} description`,
     name: `${input.id} name`,
     ...input
-  }
-}
-
-function createThread(threadId: string): Thread {
-  return {
-    created_at: new Date("2026-06-06T00:00:00.000Z"),
-    status: "busy",
-    thread_id: threadId,
-    title: threadId,
-    updated_at: new Date("2026-06-06T00:00:00.000Z")
-  }
-}
-
-function createKanbanSourceState(subagents: readonly Subagent[]) {
-  return {
-    agent: {
-      subagents
-    }
   }
 }
 
@@ -85,29 +67,31 @@ test("subagent view maps runtime statuses to presentation and board statuses", (
   assert.equal(getSubagentKanbanStatus("failed"), "done")
 })
 
-test("subagent view builds kanban buckets from parent threads", () => {
-  const threadAState = createKanbanSourceState([
-    createSubagent({ id: "a", status: "running" }),
-    createSubagent({ id: "b", status: "failed" })
-  ])
-  const missingThreadState = createKanbanSourceState([
-    createSubagent({ id: "ignored", status: "pending" })
-  ])
-
-  const buckets = projectSubagentKanbanBuckets({
-    enabled: true,
-    statesByThreadId: {
-      "thread-a": threadAState,
-      missing: missingThreadState
-    },
-    threads: [createThread("thread-a")]
-  })
-
-  assert.equal(buckets.in_progress[0]?.subagent.id, "a")
-  assert.equal(buckets.in_progress[0]?.parentThread.thread_id, "thread-a")
-  assert.equal(buckets.done[0]?.subagent.id, "b")
-  assert.deepEqual(buckets.pending, [])
-  assert.deepEqual(buckets.interrupted, [])
+test("subagent view projects thread runtime facts to board status", () => {
+  assert.equal(
+    getThreadKanbanStatus({
+      hasActiveRun: false,
+      hasPendingApproval: true,
+      threadStatus: "idle"
+    }),
+    "interrupted"
+  )
+  assert.equal(
+    getThreadKanbanStatus({
+      hasActiveRun: true,
+      hasPendingApproval: false,
+      threadStatus: "idle"
+    }),
+    "in_progress"
+  )
+  assert.equal(
+    getThreadKanbanStatus({
+      hasActiveRun: false,
+      hasPendingApproval: false,
+      threadStatus: "idle"
+    }),
+    "done"
+  )
 })
 
 test("subagent view keeps duration formatting pure and bounded", () => {

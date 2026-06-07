@@ -18,20 +18,6 @@ export interface SubagentReferenceView {
   title: string
 }
 
-export interface SubagentKanbanItem {
-  parentThread: Thread
-  status: WorkBoardStatus
-  subagent: Subagent
-}
-
-export type SubagentKanbanBuckets = Record<WorkBoardStatus, SubagentKanbanItem[]>
-
-export interface SubagentKanbanSourceState {
-  agent: {
-    subagents: readonly Subagent[]
-  }
-}
-
 export interface SubagentStatusLabels {
   completed: string
   failed: string
@@ -93,6 +79,22 @@ export function getSubagentKanbanStatus(status: Subagent["status"]): WorkBoardSt
   }
 }
 
+export function getThreadKanbanStatus(input: {
+  hasActiveRun: boolean
+  hasPendingApproval: boolean
+  threadStatus: Thread["status"]
+}): WorkBoardStatus {
+  if (input.hasPendingApproval || input.threadStatus === "interrupted") {
+    return "interrupted"
+  }
+
+  if (input.threadStatus === "busy" || input.hasActiveRun) {
+    return "in_progress"
+  }
+
+  return "done"
+}
+
 export function getSubagentStatusLabel(
   status: Subagent["status"],
   labels: SubagentStatusLabels
@@ -146,9 +148,7 @@ export function getSubagentTypeBadge(subagentType?: string): string {
   }
 }
 
-export function projectSubagentReferences(
-  subagents: readonly Subagent[]
-): SubagentReferenceView[] {
+export function projectSubagentReferences(subagents: readonly Subagent[]): SubagentReferenceView[] {
   return subagents.map((subagent) => ({
     detail: subagent.description,
     key: subagent.id,
@@ -156,43 +156,4 @@ export function projectSubagentReferences(
     subagentType: subagent.subagentType ?? null,
     title: subagent.name
   }))
-}
-
-export function createEmptySubagentKanbanBuckets(): SubagentKanbanBuckets {
-  return {
-    done: [],
-    in_progress: [],
-    interrupted: [],
-    pending: []
-  }
-}
-
-export function projectSubagentKanbanBuckets(input: {
-  enabled: boolean
-  statesByThreadId: Record<string, SubagentKanbanSourceState | undefined>
-  threads: readonly Thread[]
-}): SubagentKanbanBuckets {
-  const buckets = createEmptySubagentKanbanBuckets()
-  if (!input.enabled) {
-    return buckets
-  }
-
-  const threadsById = new Map(input.threads.map((thread) => [thread.thread_id, thread]))
-  for (const [threadId, state] of Object.entries(input.statesByThreadId)) {
-    const parentThread = threadsById.get(threadId)
-    if (!parentThread || !state) {
-      continue
-    }
-
-    for (const subagent of state.agent.subagents) {
-      const status = getSubagentKanbanStatus(subagent.status)
-      buckets[status].push({
-        parentThread,
-        status,
-        subagent
-      })
-    }
-  }
-
-  return buckets
 }
