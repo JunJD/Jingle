@@ -1,6 +1,6 @@
 import { selectWorkspaceFolder } from "@/lib/workspace-utils"
 import { Check, ChevronDown, Folder } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
@@ -18,17 +18,6 @@ export function WorkspacePicker({ threadId }: WorkspacePickerProps): React.JSX.E
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null)
-
-  // Load workspace path for current thread. File discovery is no longer implicit.
-  useEffect(() => {
-    async function loadWorkspace(): Promise<void> {
-      if (threadId) {
-        const path = await window.api.workspace.get(threadId)
-        threadActions?.setWorkspacePath(path)
-      }
-    }
-    loadWorkspace()
-  }, [threadActions, threadId])
 
   async function handleSelectFolder(): Promise<void> {
     setBlockedMessage(null)
