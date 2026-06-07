@@ -24,6 +24,18 @@ export interface AgentControl {
   stop: () => Promise<void>
 }
 
+export type UpdateAgentThreadRecord = (
+  threadId: string,
+  updates: { metadata: Record<string, unknown> }
+) => Promise<void>
+
+export interface UpdateAgentThreadModelInput {
+  modelId: string
+  threadContext: Pick<ThreadContextValue, "loadThreadData">
+  threadId: string
+  updateThread: UpdateAgentThreadRecord
+}
+
 export interface InvokeAgentThreadInput {
   getIsPreparing?: () => boolean
   onLocalError?: (error: string | null) => void
@@ -40,6 +52,23 @@ export interface InvokeAgentThreadInput {
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+export async function updateAgentThreadModel(
+  input: UpdateAgentThreadModelInput
+): Promise<void> {
+  const thread = await window.api.threads.get(input.threadId)
+  if (!thread) {
+    throw new Error(`Agent thread is not found: ${input.threadId}`)
+  }
+
+  await input.updateThread(input.threadId, {
+    metadata: {
+      ...(thread.metadata ?? {}),
+      model: input.modelId
+    }
+  })
+  await input.threadContext.loadThreadData(input.threadId)
 }
 
 export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<boolean> {

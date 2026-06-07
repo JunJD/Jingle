@@ -1,6 +1,10 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { invokeAgentThread, resumeAgentThread } from "../../src/renderer/src/lib/agent-control"
+import {
+  invokeAgentThread,
+  resumeAgentThread,
+  updateAgentThreadModel
+} from "../../src/renderer/src/lib/agent-control"
 import { createThreadStore } from "../../src/renderer/src/lib/thread-store-core"
 import type { HITLRequest } from "../../src/renderer/src/types"
 
@@ -281,4 +285,58 @@ test("resumeAgentThread reads approval and model from command-time thread state"
       toolCallId: "tool-a"
     }
   ])
+})
+
+
+test("updateAgentThreadModel persists metadata and reloads source snapshot", async () => {
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      api: {
+        threads: {
+          get: async (threadId: string) => ({
+            created_at: new Date("2026-01-01T00:00:00.000Z"),
+            metadata: {
+              permissionMode: "explore",
+              source: "launcher-ai"
+            },
+            status: "idle",
+            thread_id: threadId,
+            updated_at: new Date("2026-01-01T00:00:00.000Z")
+          })
+        }
+      }
+    }
+  })
+
+  const loadCalls: string[] = []
+  const updates: Array<{
+    metadata: Record<string, unknown>
+    threadId: string
+  }> = []
+
+  await updateAgentThreadModel({
+    modelId: "model-b",
+    threadContext: {
+      loadThreadData: async (threadId) => {
+        loadCalls.push(threadId)
+      }
+    },
+    threadId: "thread-a",
+    updateThread: async (threadId, update) => {
+      updates.push({ metadata: update.metadata, threadId })
+    }
+  })
+
+  assert.deepEqual(updates, [
+    {
+      metadata: {
+        model: "model-b",
+        permissionMode: "explore",
+        source: "launcher-ai"
+      },
+      threadId: "thread-a"
+    }
+  ])
+  assert.deepEqual(loadCalls, ["thread-a"])
 })
