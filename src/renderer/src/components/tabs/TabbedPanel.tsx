@@ -1,4 +1,4 @@
-import { getArtifactTabId, useThreadSelector } from "@/lib/thread-context"
+import { getArtifactTabId, getFileTabId, useThreadSelector } from "@/lib/thread-context"
 import { TabBar } from "./TabBar"
 import { ArtifactViewer } from "./ArtifactViewer"
 import { FileViewer } from "./FileViewer"
@@ -22,7 +22,7 @@ export function TabbedPanel({ threadId, showTabBar = true }: TabbedPanelProps): 
 
   // Determine what to render based on active tab
   const isAgentTab = activeTab === "agent"
-  const activeFile = openFiles.find((f) => f.path === activeTab)
+  const activeFile = openFiles.find((file) => getFileTabId(file.path) === activeTab)
   const activeArtifact = openArtifacts.find(
     (artifact) => getArtifactTabId(artifact.artifactId) === activeTab
   )

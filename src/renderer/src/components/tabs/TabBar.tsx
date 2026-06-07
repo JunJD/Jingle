@@ -5,6 +5,7 @@ import { WorkspaceFileIcon } from "@/components/workspace-file-icon"
 import type { ArtifactRecord } from "@shared/artifacts"
 import {
   getArtifactTabId,
+  getFileTabId,
   useThreadActions,
   useThreadSelector,
   type OpenArtifactTab,
@@ -67,8 +68,8 @@ export function TabBar({
         <FileTab
           key={file.path}
           file={file}
-          isActive={activeTab === file.path}
-          onSelect={() => setActiveTab(file.path)}
+          isActive={activeTab === getFileTabId(file.path)}
+          onSelect={() => setActiveTab(getFileTabId(file.path))}
           onClose={() => closeFile(file.path)}
         />
       ))}

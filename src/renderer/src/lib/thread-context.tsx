@@ -23,7 +23,7 @@ export type {
   ThreadState,
   TokenUsage
 } from "./thread-store-core"
-export { getArtifactTabId } from "@shared/thread-tabs"
+export { getArtifactTabId, getFileTabId } from "@shared/thread-tabs"
 
 export interface ThreadContextValue {
   getThreadState: (threadId: string) => ThreadState | null

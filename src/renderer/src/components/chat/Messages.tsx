@@ -342,6 +342,7 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
         onRetry={isActiveTurn && !isLoading ? onRetry : undefined}
         pendingApproval={turnPendingApproval}
         streamingAssistantId={streamingAssistantId}
+        threadId={threadId}
         toolExecutions={toolExecutions}
         toolResults={turn.toolResults}
         turn={turn}
