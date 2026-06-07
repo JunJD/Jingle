@@ -22,7 +22,6 @@ import type {
 import { isLauncherExtensionCommandRoute } from "./pages/types"
 
 interface LauncherThreadCreateInput {
-  draftInput?: string
   modelId?: string
   permissionMode?: PermissionModeName
   source: string

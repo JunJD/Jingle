@@ -25,10 +25,7 @@ export interface LauncherAiControllerInput {
   onDidInvoke?: () => void
   setNavigationError: (error: string | null) => void
   setPendingInput: (input: string) => void
-  threadActions: Pick<
-    ThreadActions,
-    "setCurrentModel" | "setDraftInput" | "setPermissionMode"
-  > | null
+  threadActions: Pick<ThreadActions, "setCurrentModel" | "setPermissionMode"> | null
   threadId: string | null
   title: string
   updateFreshDraft: (
@@ -61,13 +58,12 @@ function toErrorMessage(error: unknown): string {
 }
 
 export function createLauncherAiController(input: LauncherAiControllerInput): LauncherAiController {
-  const ensureThreadForInvoke = async (messageInput: ComposerMessageInput): Promise<string> => {
+  const ensureThreadForInvoke = async (): Promise<string> => {
     if (input.threadId) {
       return input.threadId
     }
 
     const createdThread = await input.createThread({
-      draftInput: messageInput.text,
       modelId: input.draftTarget?.modelId ?? undefined,
       permissionMode: input.draftTarget?.permissionMode ?? input.defaultDraftPermissionMode,
       source: AI_THREAD_SOURCE,
@@ -85,7 +81,7 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
 
     try {
       input.setNavigationError(null)
-      const targetThreadId = await ensureThreadForInvoke(messageInput)
+      const targetThreadId = await ensureThreadForInvoke()
       return await input.agentControl.invoke(messageInput, { threadId: targetThreadId })
     } catch (error) {
       input.setNavigationError(toErrorMessage(error))
@@ -146,6 +142,7 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
 
       void invokeLauncherInput(messageInput).then((didInvoke) => {
         if (didInvoke) {
+          input.setPendingInput("")
           input.onDidInvoke?.()
         }
       })
@@ -168,11 +165,6 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
     },
     setQuery(value) {
       input.setNavigationError(null)
-      if (input.threadActions) {
-        input.threadActions.setDraftInput(value)
-        return
-      }
-
       input.setPendingInput(value)
     },
     async startFreshDraft() {

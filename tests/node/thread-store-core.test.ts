@@ -150,15 +150,20 @@ test("thread subscriptions stay scoped to the matching thread id", () => {
 
   store.ensureThreadState("thread-a")
   store.ensureThreadState("thread-b")
-  store.getThreadActions("thread-a").setDraftInput("hello")
+  store.getThreadActions("thread-a").openFile("/tmp/a.txt", "a.txt")
 
   unsubscribeThread()
   unsubscribeAll()
 
   assert.equal(threadACalls, 2)
   assert.equal(allThreadCalls, 3)
-  assert.equal(getThreadState(store, "thread-a").ui.draftInput, "hello")
-  assert.equal(getThreadState(store, "thread-b").ui.draftInput, "")
+  assert.deepEqual(getThreadState(store, "thread-a").ui.openFiles, [
+    {
+      name: "a.txt",
+      path: "/tmp/a.txt"
+    }
+  ])
+  assert.deepEqual(getThreadState(store, "thread-b").ui.openFiles, [])
   assert.equal(getThreadState(store, "thread-b").agent.permissionMode, DEFAULT_PERMISSION_MODE)
 })
 

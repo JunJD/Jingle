@@ -28,7 +28,6 @@ type HomeInputFocusBehavior = "preserve" | "select-all"
 type PluginInputFocusBehavior = "preserve" | "move-to-end"
 
 interface LauncherThreadCreateInput {
-  draftInput?: string
   modelId?: string
   permissionMode?: PermissionModeName
   source: string
@@ -173,7 +172,6 @@ export default function LauncherApp(): React.JSX.Element {
       actions.setCurrentModel(resolvedModelId)
       actions.setPermissionMode(input.permissionMode ?? DEFAULT_PERMISSION_MODE)
       actions.setWorkspacePath(workspacePath)
-      actions.setDraftInput(input.draftInput ?? "")
 
       return {
         modelId: resolvedModelId,

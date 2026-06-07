@@ -39,7 +39,6 @@ export interface NativeExtensionThreadHandle {
 }
 
 export interface NativeExtensionThreadCreateInput {
-  draftInput?: string
   source: string
   title: string
   visibility: string

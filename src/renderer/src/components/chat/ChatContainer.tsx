@@ -261,6 +261,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const inputRef = useRef<ComposerAreaHandle>(null)
   const [temporaryMode, setTemporaryMode] = useState(false)
   const [workspaceChangeError, setWorkspaceChangeError] = useState<string | null>(null)
+  const [input, setInput] = useState("")
   useDisableTabNavigation(inputRef)
 
   const threadActions = useThreadActions(threadId)!
@@ -269,7 +270,6 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     (state) => state?.agent.tokenUsage ?? EMPTY_TOKEN_USAGE
   )
   const currentModel = useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null)
-  const input = useThreadSelector(threadId, (state) => state?.ui.draftInput ?? "")
   const validateRun = useCallback<AgentRunValidator>(
     ({ threadState }) => {
       return threadState.agent.workspacePath ? null : copy.chat.inputNeedsWorkspace
@@ -299,6 +299,9 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
       refs: composer?.getRefs() ?? [],
       text: composer?.getModelText() ?? input
     })
+    if (didInvoke) {
+      setInput("")
+    }
     return didInvoke
   }, [input, invoke])
   const retry = useCallback(
@@ -307,13 +310,6 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     },
     [invoke]
   )
-  const setInput = useCallback(
-    (value: string): void => {
-      threadActions.setDraftInput(value)
-    },
-    [threadActions]
-  )
-
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
     await invokeWithComposerRefs()
