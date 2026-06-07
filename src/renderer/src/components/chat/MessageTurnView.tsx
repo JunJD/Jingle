@@ -1,6 +1,7 @@
 import { ChevronRight, FileText, GitForkIcon, RefreshCcwIcon } from "lucide-react"
 import { memo, useCallback, useMemo, useState } from "react"
 import {
+  extractComposerMessageRefsMetadata,
   hasMessageContent,
   resolveImageBlockUrl,
   toComposerMessageInput,
@@ -51,6 +52,8 @@ import {
 import { ExtensionSourceTextViewer } from "./ExtensionSourceTextViewer"
 import { LoaderOne } from "../ui/loader"
 import { CopyButton } from "../ui/button"
+import { AssistantSelectionReferencesFromMetadata } from "./AssistantSelectionReferences"
+import { getAssistantSelectionRefs } from "./useAssistantSelectionRefs"
 
 interface StructuredMessageContent {
   attachments: React.ReactNode
@@ -714,7 +717,12 @@ function AssistantBlock(props: {
   }
 
   return (
-    <Message className="max-w-full" from="assistant">
+    <Message
+      className="max-w-full"
+      data-assistant-message-id={message.id}
+      data-assistant-selection-source="true"
+      from="assistant"
+    >
       <MessageContent className="w-full gap-[var(--ow-gap-md)]">
         {content.attachments}
         {content.reasoningContent}
@@ -747,13 +755,21 @@ function AssistantWaitingRow(): React.JSX.Element {
 function UserMessage(props: { message: ThreadMessage }): React.JSX.Element | null {
   const { message } = props
   const content = renderStructuredContent(message.content, { isUser: true })
+  const hasReferences =
+    getAssistantSelectionRefs(extractComposerMessageRefsMetadata(message.metadata)).length > 0
 
-  if (!content.attachments && !content.textContent) {
+  if (!content.attachments && !content.textContent && !hasReferences) {
     return null
   }
 
   return (
     <Message from="user">
+      {hasReferences ? (
+        <AssistantSelectionReferencesFromMetadata
+          className="ml-auto justify-end"
+          metadata={message.metadata}
+        />
+      ) : null}
       {content.attachments}
       {content.textContent ? (
         <MessageContent className="gap-[var(--ow-space-2-5)]">{content.textContent}</MessageContent>

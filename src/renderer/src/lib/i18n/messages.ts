@@ -29,6 +29,7 @@ export interface AppCopy {
     agentTasks: string
     agentThought: string
     agentWorking: string
+    addSelectionToChat: string
     executedSteps: (count: number) => string
     describeOutcome: string
     dismissError: string
@@ -43,11 +44,13 @@ export interface AppCopy {
     subagentReferencesTitle: (count: number) => string
     messagePlaceholder: string
     newThreadEyebrow: string
+    removeSelectionReference: string
     selectWorkspace: string
     selectWorkspaceHint: string
     selectWorkspaceTitle: string
     startConversation: string
     retryMessage: string
+    selectedTextReferences: (count: number) => string
     tasksCompleted: (count: number) => string
     userLabel: string
   }
@@ -258,6 +261,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentTasks: "Agent 任务",
       agentThought: "已思考",
       agentWorking: "正在工作",
+      addSelectionToChat: "添加到对话",
       executedSteps: (count) => `已执行 ${count} 个步骤`,
       describeOutcome: "描述你想达成的结果。workspace 和 tools 会随后接上。",
       dismissError: "关闭错误",
@@ -273,11 +277,13 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       subagentReferencesTitle: (count) => `${count} 个子代理任务`,
       messagePlaceholder: "给 Agent 发送消息...",
       newThreadEyebrow: "新对话",
+      removeSelectionReference: "移除引用",
       selectWorkspace: "选择 workspace",
       selectWorkspaceHint: "Agent 需要一个 workspace 来创建和修改文件",
       selectWorkspaceTitle: "先选择一个 workspace 文件夹",
       startConversation: "开始和 Agent 对话",
       retryMessage: "重试回答",
+      selectedTextReferences: (count) => `${count} 个已选文本片段`,
       tasksCompleted: (count) => `${count} 个任务已完成`,
       userLabel: "你"
     },
@@ -505,6 +511,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentTasks: "Agent Tasks",
       agentThought: "Thought",
       agentWorking: "Working",
+      addSelectionToChat: "Add to chat",
       executedSteps: (count) => `${count} steps completed`,
       describeOutcome: "Describe the outcome you want. The workspace and tools will follow.",
       dismissError: "Dismiss error",
@@ -520,11 +527,14 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       subagentReferencesTitle: (count) => `${count} subagent task${count === 1 ? "" : "s"}`,
       messagePlaceholder: "Message the agent...",
       newThreadEyebrow: "New Thread",
+      removeSelectionReference: "Remove reference",
       selectWorkspace: "Select workspace",
       selectWorkspaceHint: "The agent needs a workspace to create and modify files",
       selectWorkspaceTitle: "Select a workspace folder first",
       startConversation: "Start a conversation with the agent",
       retryMessage: "Retry response",
+      selectedTextReferences: (count) =>
+        `${count} selected text reference${count === 1 ? "" : "s"}`,
       tasksCompleted: (count) => `${count} task${count === 1 ? "" : "s"} completed`,
       userLabel: "YOU"
     },
