@@ -96,7 +96,7 @@ export function AssistantSelectionOverlay(props: {
   return (
     <button
       type="button"
-      className="fixed z-50 inline-flex h-[32px] -translate-x-1/2 items-center gap-[var(--ow-space-1-5)] rounded-full border border-border/70 bg-background-elevated px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)] text-foreground shadow-lg transition hover:bg-background-interactive"
+      className="fixed z-50 inline-flex h-[30px] -translate-x-1/2 items-center gap-[var(--ow-space-1-5)] rounded-full border border-border/65 bg-background-elevated/94 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)] text-foreground/90 shadow-[0_8px_22px_rgba(0,0,0,0.16)] backdrop-blur-sm transition-colors duration-100 hover:bg-background-secondary/72 hover:text-foreground"
       style={{
         left: draft.rect.left,
         top: draft.rect.top

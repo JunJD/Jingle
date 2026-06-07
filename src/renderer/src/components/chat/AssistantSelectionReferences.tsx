@@ -6,10 +6,10 @@ import {
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n"
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger
-} from "@/components/ui/popover"
+  AttachmentHoverCard,
+  AttachmentHoverCardContent,
+  AttachmentHoverCardTrigger
+} from "@/components/ui/attachments"
 import { getAssistantSelectionRefs } from "./useAssistantSelectionRefs"
 
 type AssistantSelectionRef = Extract<ComposerMessageRef, { type: "assistant-message-selection" }>
@@ -22,22 +22,22 @@ function AssistantSelectionPreviewList(props: {
   const { onRemove, refs } = props
 
   return (
-    <div className="flex max-h-[260px] w-[min(360px,calc(100vw-var(--ow-space-8)))] flex-col gap-[var(--ow-space-2)] overflow-y-auto">
+    <div className="flex max-h-[260px] w-[min(360px,calc(100vw-var(--ow-space-8)))] flex-col gap-[var(--ow-space-1-5)] overflow-y-auto">
       {refs.map((ref, index) => (
         <div
           key={`${ref.sourceThreadId}:${ref.sourceMessageId}:${index}`}
-          className="group/reference flex min-w-0 items-start gap-[var(--ow-space-2)] rounded-[var(--ow-radius-md)] bg-background-secondary px-[var(--ow-space-2-5)] py-[var(--ow-space-2)]"
+          className="group/reference flex min-w-0 items-start gap-[var(--ow-space-2)] rounded-[var(--ow-radius-md)] bg-background-secondary/45 px-[var(--ow-space-2-5)] py-[var(--ow-space-2)]"
         >
-          <div className="mt-[var(--ow-leading-nudge)] flex size-[var(--ow-icon-sm)] shrink-0 items-center justify-center rounded-full bg-background-elevated text-muted-foreground [font-size:var(--ow-font-caption)]">
+          <div className="mt-[var(--ow-leading-nudge)] flex size-[var(--ow-icon-sm)] shrink-0 items-center justify-center rounded-full bg-background-elevated/60 text-muted-foreground [font-size:var(--ow-font-caption)]">
             {index + 1}
           </div>
-          <div className="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-foreground">
+          <div className="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-foreground/88">
             {ref.selectedText}
           </div>
           {onRemove ? (
             <button
               type="button"
-              className="mt-[var(--ow-leading-nudge)] inline-flex size-[var(--ow-icon-sm)] shrink-0 items-center justify-center rounded-full text-muted-foreground opacity-70 transition hover:bg-background-interactive hover:text-foreground group-hover/reference:opacity-100"
+              className="mt-[var(--ow-leading-nudge)] inline-flex size-[var(--ow-icon-sm)] shrink-0 items-center justify-center rounded-full text-muted-foreground opacity-60 transition-colors hover:bg-background-secondary/70 hover:text-foreground group-hover/reference:opacity-100"
               aria-label={copy.chat.removeSelectionReference}
               title={copy.chat.removeSelectionReference}
               onClick={() => onRemove(ref)}
@@ -68,27 +68,27 @@ export function AssistantSelectionReferencePill(props: {
   const label = copy.chat.selectedTextReferences(refs.length)
 
   return (
-    <Popover>
+    <AttachmentHoverCard closeDelay={180}>
       <div
         className={cn(
           "flex min-w-0 max-w-full items-center gap-[var(--ow-space-1)]",
           className
         )}
       >
-        <PopoverTrigger asChild>
+        <AttachmentHoverCardTrigger asChild>
           <button
             type="button"
-            className="inline-flex h-[30px] max-w-full min-w-0 items-center gap-[var(--ow-space-1-5)] rounded-full border border-border bg-background-secondary px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)] text-foreground shadow-sm transition hover:bg-background-interactive"
+            className="inline-flex h-[28px] max-w-full min-w-0 items-center gap-[var(--ow-space-1-5)] rounded-full border border-border/60 bg-background-secondary/42 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)] text-muted-foreground transition-colors duration-100 hover:border-border/75 hover:bg-background-secondary/62 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title={label}
           >
             <MessageSquareQuote className="size-[var(--ow-icon-sm)] shrink-0 text-muted-foreground" />
             <span className="min-w-0 truncate">{label}</span>
           </button>
-        </PopoverTrigger>
+        </AttachmentHoverCardTrigger>
         {removable && onClear ? (
           <button
             type="button"
-            className="inline-flex size-[24px] shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-background-secondary hover:text-foreground"
+            className="inline-flex size-[24px] shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-100 hover:bg-background-secondary/62 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={copy.chat.removeSelectionReference}
             title={copy.chat.removeSelectionReference}
             onClick={onClear}
@@ -97,14 +97,14 @@ export function AssistantSelectionReferencePill(props: {
           </button>
         ) : null}
       </div>
-      <PopoverContent
+      <AttachmentHoverCardContent
         align="start"
         side="top"
-        className="p-[var(--ow-space-2)]"
+        className="border-border/70 bg-popover/96 p-[var(--ow-space-2)] shadow-[0_10px_28px_rgba(0,0,0,0.14)]"
       >
         <AssistantSelectionPreviewList refs={refs} onRemove={onRemove} />
-      </PopoverContent>
-    </Popover>
+      </AttachmentHoverCardContent>
+    </AttachmentHoverCard>
   )
 }
 
