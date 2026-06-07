@@ -6,7 +6,6 @@ import type { ActiveAgentRun, AgentThreadEvent } from "@shared/agent-thread-runt
 import {
   getArtifactTabId,
   getNextActiveTabAfterClose,
-  syncOpenArtifactTabs,
   type OpenArtifactTab,
   type OpenFile
 } from "@shared/thread-tabs"
@@ -272,9 +271,8 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
   }
 
   const applyArtifactsChanged = (threadId: string, artifacts: ArtifactRecord[]): void => {
-    updateThreadState(threadId, (state) => ({
-      agent: { artifacts },
-      ui: { openArtifacts: syncOpenArtifactTabs(state.ui.openArtifacts, artifacts) }
+    updateThreadState(threadId, () => ({
+      agent: { artifacts }
     }))
   }
 

@@ -548,9 +548,7 @@ function ArtifactsContent(): React.JSX.Element {
   const handleArtifactOpen = useCallback(
     (artifact: ArtifactRecord) => {
       threadActions?.openArtifactTab({
-        artifactId: artifact.id,
-        kind: artifact.kind,
-        title: artifact.title
+        artifactId: artifact.id
       })
     },
     [threadActions]

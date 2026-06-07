@@ -84,9 +84,7 @@ export function PresentArtifactsDetail(
                     }
 
                     threadActions.openArtifactTab({
-                      artifactId: artifact.id,
-                      kind: artifact.kind,
-                      title: artifact.title
+                      artifactId: artifact.id
                     })
                   }}
                   type="button"

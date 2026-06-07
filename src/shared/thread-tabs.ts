@@ -1,5 +1,3 @@
-import type { ArtifactRecord } from "./artifacts"
-
 export interface OpenFile {
   path: string
   name: string
@@ -7,8 +5,6 @@ export interface OpenFile {
 
 export interface OpenArtifactTab {
   artifactId: string
-  kind: ArtifactRecord["kind"]
-  title: string
 }
 
 export function getArtifactTabId(artifactId: string): string {
@@ -42,34 +38,4 @@ export function getNextActiveTabAfterClose(props: {
   const nextVisibleTabIds = visibleTabIds.filter((tabId) => tabId !== closedTabId)
 
   return nextVisibleTabIds[Math.max(0, closedIndex - 1)] ?? nextVisibleTabIds[0] ?? "agent"
-}
-
-export function syncOpenArtifactTabs(
-  openArtifacts: OpenArtifactTab[],
-  artifacts: ArtifactRecord[]
-): OpenArtifactTab[] {
-  const artifactsById = new Map(artifacts.map((artifact) => [artifact.id, artifact]))
-  let hasChanges = false
-
-  const nextOpenArtifacts = openArtifacts.map((tab) => {
-    const artifact = artifactsById.get(tab.artifactId)
-
-    if (!artifact) {
-      return tab
-    }
-
-    if (artifact.kind === tab.kind && artifact.title === tab.title) {
-      return tab
-    }
-
-    hasChanges = true
-
-    return {
-      artifactId: tab.artifactId,
-      kind: artifact.kind,
-      title: artifact.title
-    }
-  })
-
-  return hasChanges ? nextOpenArtifacts : openArtifacts
 }

@@ -1,6 +1,7 @@
 import { Bot, X, FileCode, FileText, FileJson, File, Link2, PackageOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
+import type { ArtifactRecord } from "@shared/artifacts"
 import {
   getArtifactTabId,
   useThreadActions,
@@ -16,6 +17,7 @@ interface TabBarProps {
 
 const EMPTY_OPEN_FILES: readonly OpenFile[] = []
 const EMPTY_OPEN_ARTIFACTS: readonly OpenArtifactTab[] = []
+const EMPTY_ARTIFACTS: readonly ArtifactRecord[] = []
 
 export function TabBar({
   className,
@@ -29,6 +31,10 @@ export function TabBar({
   const openArtifacts = useThreadSelector(
     threadId,
     (state) => state?.ui.openArtifacts ?? EMPTY_OPEN_ARTIFACTS
+  )
+  const artifacts = useThreadSelector(
+    threadId,
+    (state) => state?.agent.artifacts ?? EMPTY_ARTIFACTS
   )
 
   if (!threadActions) {
@@ -66,13 +72,14 @@ export function TabBar({
         />
       ))}
 
-      {openArtifacts.map((artifact) => (
+      {openArtifacts.map((openArtifact) => (
         <ArtifactTab
-          artifact={artifact}
-          isActive={activeTab === getArtifactTabId(artifact.artifactId)}
-          key={artifact.artifactId}
-          onClose={() => closeArtifactTab(artifact.artifactId)}
-          onSelect={() => setActiveTab(getArtifactTabId(artifact.artifactId))}
+          artifact={artifacts.find((artifact) => artifact.id === openArtifact.artifactId) ?? null}
+          artifactId={openArtifact.artifactId}
+          isActive={activeTab === getArtifactTabId(openArtifact.artifactId)}
+          key={openArtifact.artifactId}
+          onClose={() => closeArtifactTab(openArtifact.artifactId)}
+          onSelect={() => setActiveTab(getArtifactTabId(openArtifact.artifactId))}
         />
       ))}
 
@@ -135,14 +142,16 @@ function FileTab({ file, isActive, onSelect, onClose }: FileTabProps): React.JSX
 }
 
 interface ArtifactTabProps {
-  artifact: OpenArtifactTab
+  artifact: ArtifactRecord | null
+  artifactId: string
   isActive: boolean
   onSelect: () => void
   onClose: () => void
 }
 
 function ArtifactTab(props: ArtifactTabProps): React.JSX.Element {
-  const { artifact, isActive, onClose, onSelect } = props
+  const { artifact, artifactId, isActive, onClose, onSelect } = props
+  const title = artifact?.title ?? artifactId
 
   const handleClose = (e: React.MouseEvent): void => {
     e.stopPropagation()
@@ -160,8 +169,8 @@ function ArtifactTab(props: ArtifactTabProps): React.JSX.Element {
     <button
       data-thread-tab="artifact"
       data-thread-tab-active={isActive ? "true" : "false"}
-      data-thread-tab-id={artifact.artifactId}
-      data-thread-tab-title={artifact.title}
+      data-thread-tab-id={artifactId}
+      data-thread-tab-title={title}
       onClick={onSelect}
       onMouseDown={handleMouseDown}
       className={cn(
@@ -170,14 +179,14 @@ function ArtifactTab(props: ArtifactTabProps): React.JSX.Element {
           ? "text-foreground after:absolute after:bottom-0 after:left-3 after:right-3 after:h-[2px] after:rounded-full after:bg-primary"
           : "text-muted-foreground hover:text-foreground"
       )}
-      title={artifact.title}
+      title={title}
     >
-      <ArtifactIcon kind={artifact.kind} />
-      <span className="truncate">{artifact.title}</span>
+      <ArtifactIcon kind={artifact?.kind ?? null} />
+      <span className="truncate">{title}</span>
       <button
         data-thread-tab-close="artifact"
-        data-thread-tab-id={artifact.artifactId}
-        data-thread-tab-title={artifact.title}
+        data-thread-tab-id={artifactId}
+        data-thread-tab-title={title}
         onClick={handleClose}
         className={cn(
           "flex size-4 items-center justify-center rounded-full transition-colors hover:bg-background-secondary",
@@ -214,7 +223,7 @@ function FileIcon({ name }: { name: string }): React.JSX.Element {
   }
 }
 
-function ArtifactIcon(props: { kind: OpenArtifactTab["kind"] }): React.JSX.Element {
+function ArtifactIcon(props: { kind: ArtifactRecord["kind"] | null }): React.JSX.Element {
   switch (props.kind) {
     case "file":
       return <PackageOpen className="size-3.5 shrink-0 text-blue-400" />
@@ -224,5 +233,7 @@ function ArtifactIcon(props: { kind: OpenArtifactTab["kind"] }): React.JSX.Eleme
       return <FileText className="size-3.5 shrink-0 text-muted-foreground" />
     case "link":
       return <Link2 className="size-3.5 shrink-0 text-emerald-400" />
+    default:
+      return <File className="size-3.5 shrink-0 text-muted-foreground" />
   }
 }
