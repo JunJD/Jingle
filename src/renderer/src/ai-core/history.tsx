@@ -155,7 +155,13 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
       return
     }
 
-    void handleTargetThread(normalizedTargetThreadId)
+    void handleTargetThread(normalizedTargetThreadId).catch((error) => {
+      console.error("[History] Failed to open target thread.", {
+        error,
+        entry: "targetThreadEffect",
+        threadId: normalizedTargetThreadId
+      })
+    })
   }, [handleTargetThread, isLoading, normalizedTargetThreadId])
 
   useEffect(() => {
@@ -164,9 +170,17 @@ function MainAppContent(props: MainAppContentProps): React.JSX.Element {
     }
 
     hydratedThreadIdRef.current = currentThreadId
-    void loadThreadData(currentThreadId).then(() => {
-      hydratedThreadIdRef.current = currentThreadId
-    })
+    void loadThreadData(currentThreadId)
+      .then(() => {
+        hydratedThreadIdRef.current = currentThreadId
+      })
+      .catch((error) => {
+        console.error("[History] Failed to hydrate current thread.", {
+          error,
+          entry: "currentThreadEffect",
+          threadId: currentThreadId
+        })
+      })
   }, [currentThreadId, loadThreadData])
 
   if (isLoading) {

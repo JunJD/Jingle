@@ -14,7 +14,7 @@ function createMessage(input: { content: string; id: string; role: Message["role
   }
 }
 
-test("agent runtime snapshot reducer applies messages, metadata, and run state in one state update", () => {
+test("agent runtime snapshot reducer applies messages, metadata, and non-runtime snapshot facts", () => {
   const state = createDefaultThreadState()
   const next = applyRuntimeSnapshotToThreadState(state, {
     thread: {
@@ -48,43 +48,110 @@ test("agent runtime snapshot reducer applies messages, metadata, and run state i
   assert.equal(next.agent.currentModel, "openai:gpt-4o")
   assert.equal(next.agent.workspacePath, "/tmp/demo")
   assert.equal(next.agent.permissionMode, DEFAULT_PERMISSION_MODE)
-  assert.equal(next.agent.runId, "run-1")
+  assert.equal(next.agent.runId, null)
   assert.equal(next.agent.activeRun, null)
 })
 
-test("agent runtime snapshot reducer preserves live runtime fields while thread is busy", () => {
+test("agent runtime snapshot reducer does not produce runtime facts from snapshot run state", () => {
   const defaultState = createDefaultThreadState()
   const state = {
     ...defaultState,
     agent: {
       ...defaultState.agent,
-      activeRun: {
-        assistantMessageId: "assistant-1",
-        phase: "streaming" as const,
-        runId: "run-1",
-        status: "running" as const,
-        threadId: "thread-1",
-        turnId: "user-1",
-        userMessageId: "user-1"
-      },
-      messages: [
-        createMessage({ content: "hello", id: "user-1", role: "user" }),
-        createMessage({ content: "streaming", id: "assistant-1", role: "assistant" })
-      ],
-      subagents: [
+      runId: "runtime-run",
+      todos: [
         {
-          description: "Running task",
-          id: "subagent-1",
-          name: "Worker",
-          status: "running" as const
+          content: "Runtime todo",
+          id: "runtime-todo",
+          status: "pending" as const
         }
-      ]
+      ],
+      tokenUsage: {
+        inputTokens: 10,
+        lastUpdated: new Date("2026-01-01T00:00:00.000Z"),
+        outputTokens: 5,
+        totalTokens: 15
+      }
     }
   }
 
   const next = applyRuntimeSnapshotToThreadState(state, {
     thread: {
       metadata: {},
+      status: "idle",
+      thread_id: "thread-1",
+      title: undefined
+    },
+    messages: {
+      artifacts: [],
+      messages: []
+    },
+    runState: {
+      error: null,
+      forkState: { canFork: true },
+      pendingApproval: null,
+      runId: "snapshot-run",
+      todos: [
+        {
+          content: "Snapshot todo",
+          id: "snapshot-todo",
+          status: "pending"
+        }
+      ]
+    }
+  } satisfies AgentThreadDataSnapshot)
+
+  assert.equal(next.agent.runId, "runtime-run")
+  assert.equal(next.agent.todos[0]?.id, "runtime-todo")
+  assert.equal(next.agent.tokenUsage?.totalTokens, 15)
+})
+
+test("agent runtime snapshot reducer clears missing metadata instead of keeping stale source facts", () => {
+  const defaultState = createDefaultThreadState()
+  const state = {
+    ...defaultState,
+    agent: {
+      ...defaultState.agent,
+      currentModel: "stale:model",
+      permissionMode: "auto" as const,
+      title: "Stale title",
+      workspacePath: "/tmp/stale"
+    }
+  }
+
+  const next = applyRuntimeSnapshotToThreadState(state, {
+    thread: {
+      metadata: {},
+      status: "idle",
+      thread_id: "thread-1",
+      title: undefined
+    },
+    messages: {
+      artifacts: [],
+      messages: []
+    },
+    runState: {
+      error: null,
+      forkState: { canFork: true },
+      pendingApproval: null,
+      runId: null,
+      todos: []
+    }
+  } satisfies AgentThreadDataSnapshot)
+
+  assert.notEqual(next.agent.currentModel, "stale:model")
+  assert.equal(next.agent.permissionMode, DEFAULT_PERMISSION_MODE)
+  assert.equal(next.agent.workspacePath, null)
+})
+
+test("agent runtime snapshot reducer applies only metadata from busy snapshots", () => {
+  const state = createDefaultThreadState()
+  const next = applyRuntimeSnapshotToThreadState(state, {
+    thread: {
+      metadata: {
+        model: "openai:gpt-4o",
+        workspacePath: "/tmp/busy"
+      },
       status: "busy",
       thread_id: "thread-1",
       title: "Busy Thread"
@@ -105,43 +172,21 @@ test("agent runtime snapshot reducer preserves live runtime fields while thread 
     }
   } satisfies AgentThreadDataSnapshot)
 
-  assert.deepEqual(next.agent.activeRun, state.agent.activeRun)
-  assert.deepEqual(next.agent.messages, state.agent.messages)
-  assert.deepEqual(next.agent.subagents, state.agent.subagents)
+  assert.equal(next.agent.currentModel, "openai:gpt-4o")
+  assert.equal(next.agent.workspacePath, "/tmp/busy")
+  assert.equal(next.agent.activeRun, null)
+  assert.deepEqual(next.agent.messages, [])
+  assert.equal(next.agent.runId, null)
 })
 
-test("agent runtime snapshot reducer derives a busy active run when no live runtime state exists yet", () => {
+test("agent runtime snapshot reducer does not produce interrupted runtime facts", () => {
   const state = createDefaultThreadState()
   const next = applyRuntimeSnapshotToThreadState(state, {
     thread: {
-      metadata: {},
-      status: "busy",
-      thread_id: "thread-1",
-      title: "Busy Thread"
-    },
-    messages: {
-      artifacts: [],
-      messages: [createMessage({ content: "hello", id: "user-1", role: "user" })]
-    },
-    runState: {
-      error: null,
-      forkState: { canFork: false, reason: "busy" },
-      pendingApproval: null,
-      runId: "run-1",
-      todos: []
-    }
-  } satisfies AgentThreadDataSnapshot)
-
-  assert.equal(next.agent.activeRun?.status, "running")
-  assert.equal(next.agent.activeRun?.turnId, "user-1")
-  assert.equal(next.agent.activeRun?.runId, "run-1")
-})
-
-test("agent runtime snapshot reducer derives waiting approval active run for interrupted threads", () => {
-  const state = createDefaultThreadState()
-  const next = applyRuntimeSnapshotToThreadState(state, {
-    thread: {
-      metadata: {},
+      metadata: {
+        model: "openai:gpt-4o",
+        workspacePath: "/tmp/interrupted"
+      },
       status: "interrupted",
       thread_id: "thread-1",
       title: "Interrupted Thread"
@@ -182,8 +227,11 @@ test("agent runtime snapshot reducer derives waiting approval active run for int
     }
   } satisfies AgentThreadDataSnapshot)
 
-  assert.equal(next.agent.activeRun?.status, "waiting_approval")
-  assert.equal(next.agent.activeRun?.assistantMessageId, "assistant-1")
-  assert.equal(next.agent.activeRun?.turnId, "user-1")
-  assert.equal(next.agent.pendingApproval?.id, "hitl:thread-1:run-1:tool-1")
+  assert.equal(next.agent.currentModel, "openai:gpt-4o")
+  assert.equal(next.agent.workspacePath, "/tmp/interrupted")
+  assert.equal(next.agent.activeRun, null)
+  assert.equal(next.agent.pendingApproval, null)
+  assert.equal(next.agent.runId, null)
+  assert.deepEqual(next.agent.todos, [])
+  assert.equal(next.agent.tokenUsage, null)
 })

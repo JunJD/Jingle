@@ -43,25 +43,12 @@ export function createAgentRuntimeManager({
     }
 
     const wasLoading = isThreadStreaming(threadId)
-    threadStore.applyRuntimeEvents(
-      threadId,
-      events.map((event) =>
-        event.type === "thread.statusChanged" && event.error
-          ? {
-              ...event,
-              error: {
-                ...event.error,
-                message: getDisplayErrorMessage(event.error.message)
-              }
-            }
-          : event
-      )
-    )
+    threadStore.applyRuntimeEvents(threadId, events)
     const state = getInitializedThreadState(threadId)
     const isLoading = Boolean(state.agent.activeRun && state.agent.activeRun.status === "running")
 
     if (wasLoading && !isLoading && hasHistoryRefreshEvent(events) && refreshThread) {
-      void refreshThread(threadId)
+      startHistoryRefresh(threadId)
     }
   }
 
@@ -86,7 +73,7 @@ export function createAgentRuntimeManager({
           expectedRevision: selection.expectedRevision,
           threadId: batch.threadId
         })
-        void resyncThreadRuntime(batch.threadId)
+        startRuntimeResync(batch.threadId)
         return
       }
     }
@@ -113,7 +100,7 @@ export function createAgentRuntimeManager({
         expectedRevision: selection.expectedRevision,
         threadId: batch.threadId
       })
-      void resyncThreadRuntime(batch.threadId)
+      startRuntimeResync(batch.threadId)
     }
   }
 
@@ -142,6 +129,34 @@ export function createAgentRuntimeManager({
     await window.api.agent.replayThreadEvents(threadId)
   }
 
+  function startRuntimeResync(threadId: string): void {
+    void resyncThreadRuntime(threadId).catch((error) => {
+      console.error("[AgentRuntimeManager] Runtime resync failed.", {
+        entry: "runtimeResync",
+        error,
+        threadId
+      })
+    })
+  }
+
+  function startHistoryRefresh(threadId: string): void {
+    if (!refreshThread) {
+      return
+    }
+
+    void (async () => {
+      try {
+        await refreshThread(threadId)
+      } catch (error) {
+        console.error("[AgentRuntimeManager] History refresh failed.", {
+          entry: "historyRefresh",
+          error,
+          threadId
+        })
+      }
+    })()
+  }
+
   async function resyncThreadRuntime(threadId: string): Promise<void> {
     if (isThreadStreaming(threadId)) {
       await replayThreadRuntimeEvents(threadId)
@@ -153,14 +168,14 @@ export function createAgentRuntimeManager({
       return
     }
 
-    const resync = loadThreadData(threadId)
-      .catch((error) => {
-        console.error("[AgentRuntimeManager] Failed to resync thread runtime:", error)
-      })
-      .finally(() => {
+    const resync = (async () => {
+      try {
+        await loadThreadData(threadId)
+      } finally {
         runtimeResync[threadId] = null
         drainPendingRuntimeBatches(threadId)
-      })
+      }
+    })()
 
     runtimeResync[threadId] = resync
     await resync
@@ -168,21 +183,21 @@ export function createAgentRuntimeManager({
 
   async function loadThreadData(threadId: string): Promise<void> {
     await awaitThreadRuntime(threadId)
-    if (isThreadStreaming(threadId)) {
+    const wasStreaming = isThreadStreaming(threadId)
+
+    const threadData = await window.api.threads.getAgentThreadData(threadId)
+    if (
+      wasStreaming ||
+      isThreadStreaming(threadId) ||
+      threadData.thread.status === "busy" ||
+      threadData.thread.status === "interrupted"
+    ) {
+      threadStore.applyThreadDataSnapshot(threadId, threadData)
       await replayThreadRuntimeEvents(threadId)
       return
     }
 
-    try {
-      const threadData = await window.api.threads.getAgentThreadData(threadId)
-      if (isThreadStreaming(threadId)) {
-        return
-      }
-
-      threadStore.applyThreadDataSnapshot(threadId, threadData)
-    } catch (error) {
-      console.error("[AgentRuntimeManager] Failed to load thread data:", error)
-    }
+    threadStore.applyThreadDataSnapshot(threadId, threadData)
   }
 
   function cleanupThreadRuntime(threadId: string): void {
@@ -200,30 +215,6 @@ export function createAgentRuntimeManager({
     ensureThreadRuntime,
     loadThreadData
   }
-}
-
-function getDisplayErrorMessage(errorMessage: string): string {
-  const contextWindowMatch = errorMessage.match(/prompt is too long: (\d+) tokens > (\d+) maximum/i)
-  if (contextWindowMatch) {
-    const [, usedTokens, maxTokens] = contextWindowMatch
-    const usedK = Math.round(parseInt(usedTokens, 10) / 1000)
-    const maxK = Math.round(parseInt(maxTokens, 10) / 1000)
-    return `Context window exceeded (${usedK}K / ${maxK}K tokens). The conversation history is too long. Please start a new thread to continue.`
-  }
-
-  if (errorMessage.includes("rate_limit") || errorMessage.includes("429")) {
-    return "Rate limit exceeded. Please wait a moment before sending another message."
-  }
-
-  if (
-    errorMessage.includes("401") ||
-    errorMessage.includes("invalid_api_key") ||
-    errorMessage.includes("authentication")
-  ) {
-    return "Authentication failed. Please check your API key in settings."
-  }
-
-  return errorMessage
 }
 
 function hasHistoryRefreshEvent(events: AgentThreadEvent[]): boolean {
