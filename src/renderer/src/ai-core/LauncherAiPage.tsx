@@ -15,8 +15,10 @@ import { LauncherAiHeaderModelPicker } from "./LauncherAiHeaderModelPicker"
 import { LauncherAiModelPicker } from "./LauncherAiModelPicker"
 import { useAiCoreHost } from "./AiCoreHost"
 import { LauncherAttachmentStrip } from "./LauncherAttachmentStrip"
+import { AssistantSelectionReferencePill } from "@/components/chat/AssistantSelectionReferences"
 import { createLauncherAiController } from "./launcher-ai-controller"
 import { useAiAttachments } from "./useAiAttachments"
+import { useAssistantSelectionRefs } from "@/components/chat/useAssistantSelectionRefs"
 import { useLauncherAiActions } from "./useLauncherAiActions"
 import { useLauncherAiThreadNavigation } from "./useLauncherAiThreadNavigation"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
@@ -60,6 +62,12 @@ export function LauncherAiPage(): React.JSX.Element {
     seedQuery: initialSeedQuery
   })
   const threadId = threadNavigation.threadId
+  const {
+    addSelectionRef,
+    clearSelectionRefs,
+    refs: assistantSelectionRefs,
+    removeSelectionRef
+  } = useAssistantSelectionRefs(threadId)
   const draftTarget = threadNavigation.target?.kind === "draft" ? threadNavigation.target : null
   const {
     branchThread: createBranchThread,
@@ -94,10 +102,10 @@ export function LauncherAiPage(): React.JSX.Element {
   const query = pendingInput
   const messageInput = useMemo(
     () => ({
-      refs: [...attachmentDraft.messageRefs],
+      refs: [...attachmentDraft.messageRefs, ...assistantSelectionRefs],
       text: query
     }),
-    [attachmentDraft.messageRefs, query]
+    [assistantSelectionRefs, attachmentDraft.messageRefs, query]
   )
   const initialMessageInput = useMemo(
     () => ({
@@ -133,7 +141,9 @@ export function LauncherAiPage(): React.JSX.Element {
     (state) => state?.agent.forkState.canFork ?? DEFAULT_AGENT_CAN_FORK
   )
   const hasAttachmentDraft = attachmentDraft.attachments.length > 0
-  const isComposerExpanded = !pendingApproval && (query.includes("\n") || hasAttachmentDraft)
+  const hasAssistantSelectionRefs = assistantSelectionRefs.length > 0
+  const isComposerExpanded =
+    !pendingApproval && (query.includes("\n") || hasAttachmentDraft || hasAssistantSelectionRefs)
   const composerTextHeight = 14 + getVisibleLineCount(query) * AI_COMPOSER_LINE_HEIGHT
   const estimatedComposerOverlayHeight = pendingApproval
     ? 0
@@ -142,7 +152,8 @@ export function LauncherAiPage(): React.JSX.Element {
         Math.ceil(
           composerTextHeight +
             AI_COMPOSER_CHROME_HEIGHT +
-            (hasAttachmentDraft ? AI_ATTACHMENT_STRIP_HEIGHT : 0)
+            (hasAttachmentDraft ? AI_ATTACHMENT_STRIP_HEIGHT : 0) +
+            (hasAssistantSelectionRefs ? AI_ATTACHMENT_STRIP_HEIGHT : 0)
         )
       )
   const composerOverlayHeight = pendingApproval
@@ -169,7 +180,10 @@ export function LauncherAiPage(): React.JSX.Element {
         goToPreviousThread,
         hasPendingApproval,
         isBusy,
-        onDidInvoke: attachmentDraft.clearAllAttachments,
+        onDidInvoke: () => {
+          attachmentDraft.clearAllAttachments()
+          clearSelectionRefs()
+        },
         setNavigationError,
         setPendingInput,
         startFreshDraftTarget,
@@ -180,8 +194,8 @@ export function LauncherAiPage(): React.JSX.Element {
       }),
     [
       agentControl,
-      attachmentDraft.clearAllAttachments,
       branchThreadUntilMessage,
+      clearSelectionRefs,
       copy.launcher.aiThreadTitle,
       createBranchThread,
       createThread,
@@ -193,6 +207,7 @@ export function LauncherAiPage(): React.JSX.Element {
       goToPreviousThread,
       hasPendingApproval,
       isBusy,
+      attachmentDraft.clearAllAttachments,
       startFreshDraftTarget,
       threadActions,
       threadId,
@@ -223,8 +238,9 @@ export function LauncherAiPage(): React.JSX.Element {
     }
 
     attachmentDraft.clearAllAttachments()
+    clearSelectionRefs()
     setShowModelPicker(false)
-  }, [attachmentDraft, startFreshDraft])
+  }, [attachmentDraft.clearAllAttachments, clearSelectionRefs, startFreshDraft])
   const handleBranchChat = useCallback(
     async (messageId?: string): Promise<void> => {
       const nextThreadId = await branchThread(messageId)
@@ -233,9 +249,10 @@ export function LauncherAiPage(): React.JSX.Element {
       }
 
       attachmentDraft.clearAllAttachments()
+      clearSelectionRefs()
       setShowModelPicker(false)
     },
-    [attachmentDraft, branchThread]
+    [attachmentDraft.clearAllAttachments, branchThread, clearSelectionRefs]
   )
   const handleStop = useCallback(async (): Promise<void> => {
     await stop()
@@ -247,16 +264,20 @@ export function LauncherAiPage(): React.JSX.Element {
     const input = inputRef.current
     if (input && "getModelText" in input) {
       return {
-        refs: [...input.getRefs(), ...attachmentDraft.messageRefs],
+        refs: [
+          ...input.getRefs(),
+          ...attachmentDraft.messageRefs,
+          ...assistantSelectionRefs
+        ],
         text: input.getModelText()
       }
     }
 
     return {
-      refs: attachmentDraft.messageRefs,
+      refs: [...attachmentDraft.messageRefs, ...assistantSelectionRefs],
       text: query
     }
-  }, [attachmentDraft.messageRefs, inputRef, query])
+  }, [assistantSelectionRefs, attachmentDraft.messageRefs, inputRef, query])
   const submitCurrentInput = useCallback((): void => {
     runPrimaryAction(getCurrentMessageInput())
   }, [getCurrentMessageInput, runPrimaryAction])
@@ -280,7 +301,10 @@ export function LauncherAiPage(): React.JSX.Element {
     [attachmentDraft.attachments.length, inputRef, navigation, query]
   )
   const canStartNewQuestion =
-    query.trim().length > 0 || attachmentDraft.attachments.length > 0 || hasThreadMessages
+    query.trim().length > 0 ||
+    attachmentDraft.attachments.length > 0 ||
+    assistantSelectionRefs.length > 0 ||
+    hasThreadMessages
   const { actionController, addAttachmentShortcut, submitShortcut } = useLauncherAiActions({
     branchThread: handleBranchChat,
     canBranchThread: Boolean(threadId && hasThreadMessages && canForkThread),
@@ -296,6 +320,7 @@ export function LauncherAiPage(): React.JSX.Element {
       }
 
       attachmentDraft.clearAllAttachments()
+      clearSelectionRefs()
       setShowModelPicker(false)
     },
     goToPreviousChat: async () => {
@@ -305,6 +330,7 @@ export function LauncherAiPage(): React.JSX.Element {
       }
 
       attachmentDraft.clearAllAttachments()
+      clearSelectionRefs()
       setShowModelPicker(false)
     },
     inputRef,
@@ -421,6 +447,7 @@ export function LauncherAiPage(): React.JSX.Element {
             clearError={clearVisibleError}
             error={threadError}
             isLoading={isLoading}
+            onAddAssistantSelectionRef={addSelectionRef}
             onBranch={handleBranchChat}
             onRetry={runPrimaryAction}
             pendingApproval={pendingApproval}
@@ -499,6 +526,13 @@ export function LauncherAiPage(): React.JSX.Element {
                 <LauncherAttachmentStrip
                   attachments={attachmentDraft.attachments}
                   onRemove={attachmentDraft.removeAttachment}
+                />
+                <AssistantSelectionReferencePill
+                  className="px-[var(--ow-space-1)]"
+                  refs={assistantSelectionRefs}
+                  removable
+                  onClear={clearSelectionRefs}
+                  onRemove={removeSelectionRef}
                 />
               </div>
 

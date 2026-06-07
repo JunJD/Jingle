@@ -33,6 +33,12 @@ export type ComposerMessageRef =
       name: string
       sourceId: string
     }
+  | {
+      type: "assistant-message-selection"
+      selectedText: string
+      sourceMessageId: string
+      sourceThreadId: string
+    }
 
 export interface ComposerMessageInput {
   refs: ComposerMessageRef[]
@@ -61,7 +67,10 @@ function normalizeComposerMessageRef(value: unknown): ComposerMessageRef | null 
     extensionName?: unknown
     name?: unknown
     path?: unknown
+    selectedText?: unknown
     sourceId?: unknown
+    sourceMessageId?: unknown
+    sourceThreadId?: unknown
     type?: unknown
     url?: unknown
   }
@@ -126,6 +135,30 @@ function normalizeComposerMessageRef(value: unknown): ComposerMessageRef | null 
     }
   }
 
+  if (ref.type === "assistant-message-selection") {
+    if (
+      typeof ref.selectedText !== "string" ||
+      typeof ref.sourceMessageId !== "string" ||
+      typeof ref.sourceThreadId !== "string"
+    ) {
+      return null
+    }
+
+    const selectedText = ref.selectedText.trim()
+    const sourceMessageId = ref.sourceMessageId.trim()
+    const sourceThreadId = ref.sourceThreadId.trim()
+    if (!selectedText || !sourceMessageId || !sourceThreadId) {
+      return null
+    }
+
+    return {
+      selectedText,
+      sourceMessageId,
+      sourceThreadId,
+      type: "assistant-message-selection"
+    }
+  }
+
   return null
 }
 
@@ -177,6 +210,25 @@ function stripSyntheticRefsText(text: string, refs: ComposerMessageRef[]): strin
   const syntheticFileRefsText = getSyntheticFileRefsText(refs)
   if (syntheticFileRefsText && text.trim() === syntheticFileRefsText.trim()) {
     return ""
+  }
+
+  return stripSyntheticAssistantSelectionRefsText(text, refs)
+}
+
+function stripSyntheticAssistantSelectionRefsText(text: string, refs: ComposerMessageRef[]): string {
+  const syntheticAssistantSelectionRefsText = getAssistantSelectionRefsText(refs)
+  if (!syntheticAssistantSelectionRefsText) {
+    return text
+  }
+
+  const trimmedText = text.trim()
+  const trimmedSyntheticText = syntheticAssistantSelectionRefsText.trim()
+  if (trimmedText === trimmedSyntheticText) {
+    return ""
+  }
+
+  if (trimmedText.endsWith(trimmedSyntheticText)) {
+    return trimmedText.slice(0, -trimmedSyntheticText.length).trimEnd()
   }
 
   return text
@@ -494,6 +546,8 @@ export function hasComposerMessageInputContent(input: ComposerMessageInput | und
         return ref.url.trim().length > 0
       case "extension-source":
         return false
+      case "assistant-message-selection":
+        return false
       default:
         return false
     }
@@ -566,6 +620,8 @@ export function toMessageContent(input: ComposerMessageInput): string | ContentB
         })
         break
       case "extension-source":
+        break
+      case "assistant-message-selection":
         break
     }
   }
@@ -725,6 +781,50 @@ export function toAgentMessageContent(content: string | ContentBlock[]): AgentMe
   }
 
   return agentBlocks
+}
+
+function getAssistantSelectionRefsText(refs: ComposerMessageRef[]): string | null {
+  const selections = refs
+    .filter(
+      (ref): ref is Extract<ComposerMessageRef, { type: "assistant-message-selection" }> =>
+        ref.type === "assistant-message-selection"
+    )
+    .map((ref) => ref.selectedText.trim())
+    .filter(Boolean)
+
+  if (selections.length === 0) {
+    return null
+  }
+
+  return `Referenced assistant selections:\n${selections
+    .map((selection, index) => `${index + 1}. ${selection}`)
+    .join("\n")}`
+}
+
+export function toAgentMessageContentWithRefs(
+  content: string | ContentBlock[],
+  refs: ComposerMessageRef[]
+): AgentMessageContent {
+  const agentContent = toAgentMessageContent(content)
+  const assistantSelectionText = getAssistantSelectionRefsText(refs)
+
+  if (!assistantSelectionText) {
+    return agentContent
+  }
+
+  if (typeof agentContent === "string") {
+    return agentContent.trim().length > 0
+      ? `${agentContent}\n\n${assistantSelectionText}`
+      : assistantSelectionText
+  }
+
+  return [
+    ...agentContent,
+    {
+      text: assistantSelectionText,
+      type: "text"
+    }
+  ]
 }
 
 export function toDisplayUserMessageContent(

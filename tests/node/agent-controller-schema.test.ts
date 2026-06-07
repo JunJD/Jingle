@@ -44,6 +44,12 @@ test("parseAgentInvokeParams trims routing identifiers and preserves message con
             extensionName: "  apple-reminders  ",
             name: "  Apple Reminders  ",
             sourceId: "  appleReminders  "
+          },
+          {
+            type: "assistant-message-selection",
+            selectedText: "  selected assistant text  ",
+            sourceMessageId: "  assistant-message-1  ",
+            sourceThreadId: "  thread-1  "
           }
         ]
       }
@@ -88,6 +94,12 @@ test("parseAgentInvokeParams trims routing identifiers and preserves message con
             extensionName: "apple-reminders",
             name: "Apple Reminders",
             sourceId: "appleReminders"
+          },
+          {
+            type: "assistant-message-selection",
+            selectedText: "selected assistant text",
+            sourceMessageId: "assistant-message-1",
+            sourceThreadId: "thread-1"
           }
         ]
       }
