@@ -15,10 +15,22 @@ function createControllerHarness(input?: {
   createdThreads: AiCoreThreadCreateInput[]
   invoked: Array<{ input: ComposerMessageInput; threadId: string | undefined }>
   pendingInputs: string[]
+  selectedModels: string[]
+  selectedPermissionModes: PermissionModeName[]
+  threadUpdates: Array<{
+    metadata: Record<string, unknown>
+    threadId: string
+  }>
 } {
   const createdThreads: AiCoreThreadCreateInput[] = []
   const invoked: Array<{ input: ComposerMessageInput; threadId: string | undefined }> = []
   const pendingInputs: string[] = []
+  const selectedModels: string[] = []
+  const selectedPermissionModes: PermissionModeName[] = []
+  const threadUpdates: Array<{
+    metadata: Record<string, unknown>
+    threadId: string
+  }> = []
   const agentControl: Pick<AgentControl, "clearError" | "invoke" | "resume"> = {
     clearError: () => {},
     invoke: async (messageInput, options) => {
@@ -67,19 +79,35 @@ function createControllerHarness(input?: {
         pendingInputs.push(value)
       },
       startFreshDraftTarget: async () => {},
-      threadActions: input?.threadId
-        ? {
-            setCurrentModel: () => {},
-            setPermissionMode: () => {}
-          }
-        : null,
       threadId: input?.threadId ?? null,
       title: "AI Thread",
+      updateThread: async (threadId, update) => {
+        threadUpdates.push({ metadata: update.metadata, threadId })
+      },
+      updateAgentThreadModel: async (commandInput) => {
+        selectedModels.push(commandInput.modelId)
+        await commandInput.updateThread(commandInput.threadId, {
+          metadata: {
+            model: commandInput.modelId
+          }
+        })
+      },
+      updateAgentThreadPermissionMode: async (commandInput) => {
+        selectedPermissionModes.push(commandInput.permissionMode)
+        await commandInput.updateThread(commandInput.threadId, {
+          metadata: {
+            permissionMode: commandInput.permissionMode
+          }
+        })
+      },
       updateFreshDraft: () => {}
     }),
     createdThreads,
     invoked,
-    pendingInputs
+    pendingInputs,
+    selectedModels,
+    selectedPermissionModes,
+    threadUpdates
   }
 }
 
@@ -145,4 +173,31 @@ test("launcher AI controller routes query writes to local composer state", () =>
   harness.controller.setQuery("下一句")
 
   assert.deepEqual(harness.pendingInputs, ["下一句"])
+})
+
+
+test("launcher AI controller routes selected thread settings through command layer", async () => {
+  const harness = createControllerHarness({ threadId: "existing-thread" })
+
+  const didSelectModel = await harness.controller.selectModel("model-b")
+  const didSelectPermissionMode = await harness.controller.selectPermissionMode("auto")
+
+  assert.equal(didSelectModel, true)
+  assert.equal(didSelectPermissionMode, true)
+  assert.deepEqual(harness.selectedModels, ["model-b"])
+  assert.deepEqual(harness.selectedPermissionModes, ["auto"])
+  assert.deepEqual(harness.threadUpdates, [
+    {
+      metadata: {
+        model: "model-b"
+      },
+      threadId: "existing-thread"
+    },
+    {
+      metadata: {
+        permissionMode: "auto"
+      },
+      threadId: "existing-thread"
+    }
+  ])
 })

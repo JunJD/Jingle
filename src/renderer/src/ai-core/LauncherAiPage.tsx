@@ -24,7 +24,8 @@ import { useLauncherAiThreadNavigation } from "./useLauncherAiThreadNavigation"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
 import { useAgent } from "@/lib/use-agent"
-import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
+import { useThreadContext, useThreadSelector } from "@/lib/thread-context"
+import { updateAgentThreadModel, updateAgentThreadPermissionMode } from "@/lib/agent-control"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
 import type { ComposerAreaHandle } from "@/composer-area"
@@ -68,6 +69,7 @@ export function LauncherAiPage(): React.JSX.Element {
     refs: assistantSelectionRefs,
     removeSelectionRef
   } = useAssistantSelectionRefs(threadId)
+  const threadContext = useThreadContext()
   const draftTarget = threadNavigation.target?.kind === "draft" ? threadNavigation.target : null
   const {
     branchThread: createBranchThread,
@@ -90,7 +92,7 @@ export function LauncherAiPage(): React.JSX.Element {
     view: { canStop, error: agentError, isBusy, isLoading }
   } = agent
   const { stop } = agentControl
-  const threadActions = useThreadActions(threadId)
+  const updateThread = useHistoryShellStore((state) => state.updateThread)
   const currentModelId =
     useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null) ??
     draftTarget?.modelId ??
@@ -187,9 +189,23 @@ export function LauncherAiPage(): React.JSX.Element {
         setNavigationError,
         setPendingInput,
         startFreshDraftTarget,
-        threadActions,
         threadId,
         title: copy.launcher.aiThreadTitle,
+        updateThread,
+        updateAgentThreadModel: (commandInput) =>
+          updateAgentThreadModel({
+            modelId: commandInput.modelId,
+            threadContext,
+            threadId: commandInput.threadId,
+            updateThread: commandInput.updateThread
+          }),
+        updateAgentThreadPermissionMode: (commandInput) =>
+          updateAgentThreadPermissionMode({
+            permissionMode: commandInput.permissionMode,
+            threadContext,
+            threadId: commandInput.threadId,
+            updateThread: commandInput.updateThread
+          }),
         updateFreshDraft
       }),
     [
@@ -209,9 +225,10 @@ export function LauncherAiPage(): React.JSX.Element {
       isBusy,
       attachmentDraft.clearAllAttachments,
       startFreshDraftTarget,
-      threadActions,
       threadId,
-      updateFreshDraft
+      threadContext,
+      updateFreshDraft,
+      updateThread
     ]
   )
   const {

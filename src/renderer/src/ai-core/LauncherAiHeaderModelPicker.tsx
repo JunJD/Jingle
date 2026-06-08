@@ -10,7 +10,7 @@ import { useI18n } from "@/lib/i18n"
 interface LauncherAiHeaderModelPickerProps {
   currentModelId: string | null
   fallbackLabel: string
-  onSelectModel: (modelId: string) => void
+  onSelectModel: (modelId: string) => Promise<boolean>
 }
 
 export function LauncherAiHeaderModelPicker(
@@ -36,8 +36,11 @@ export function LauncherAiHeaderModelPicker(
   }, [loadModelProviderState])
 
   function handleSelectModel(modelId: string): void {
-    onSelectModel(modelId)
-    setOpen(false)
+    void onSelectModel(modelId).then((didSelect) => {
+      if (didSelect) {
+        setOpen(false)
+      }
+    })
   }
 
   return (
