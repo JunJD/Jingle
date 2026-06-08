@@ -1,6 +1,12 @@
 import { AlertCircle, RefreshCw, Workflow } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
-import { Action, ActionPanel, Detail, List, useNativeExtensionNavigation } from "@openwork/extension-api"
+import {
+  Action,
+  ActionPanel,
+  Detail,
+  List,
+  useNativeExtensionNavigation
+} from "@openwork/extension-api"
 import {
   listGitHubViewerRepositories,
   listGitHubWorkflowRuns,
@@ -190,11 +196,11 @@ export default function GitHubWorkflowRuns(): React.JSX.Element {
               <Action
                 icon={<AlertCircle className="h-4 w-4" />}
                 onAction={() => void openGitHubSettings("workflow-runs")}
-                title="Add GitHub Token"
+                title="Connect GitHub"
               />
             </ActionPanel>
           }
-          description="GitHub needs a personal access token before it can load workflow runs."
+          description="GitHub needs to be connected before it can load workflow runs."
           title="Connect GitHub"
         />
       ) : error ? (

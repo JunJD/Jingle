@@ -1,6 +1,12 @@
 import { AlertCircle, Github, Plus } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
-import { Action, ActionPanel, Detail, Form, useNativeExtensionNavigation } from "@openwork/extension-api"
+import {
+  Action,
+  ActionPanel,
+  Detail,
+  Form,
+  useNativeExtensionNavigation
+} from "@openwork/extension-api"
 import {
   createGitHubIssue,
   listGitHubViewerRepositories,
@@ -101,11 +107,11 @@ export default function GitHubCreateIssue(): React.JSX.Element {
             <Action
               icon={<AlertCircle className="h-4 w-4" />}
               onAction={() => void openGitHubSettings("create-issue")}
-              title="Add GitHub Token"
+              title="Connect GitHub"
             />
           </ActionPanel>
         }
-        markdown="# Connect GitHub\n\nGitHub needs a personal access token before it can create issues."
+        markdown="# Connect GitHub\n\nGitHub needs to be connected before it can create issues."
         navigationTitle="Create Issue"
       />
     )
