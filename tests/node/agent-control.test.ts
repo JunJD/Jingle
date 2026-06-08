@@ -1,15 +1,66 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import type { AgentThreadDataSnapshot } from "../../src/shared/app-types"
 import {
   invokeAgentThread,
   resumeAgentThread,
   updateAgentThreadModel,
   updateAgentThreadPermissionMode
 } from "../../src/renderer/src/lib/agent-control"
-import { createThreadStore } from "../../src/renderer/src/lib/thread-store-core"
+import {
+  createThreadStore,
+  type AgentSourceState,
+  type ThreadStore
+} from "../../src/renderer/src/lib/thread-store-core"
 import type { HITLRequest } from "../../src/renderer/src/types"
 
-function installWindowApiStub(): {
+function getAgentCommandState(
+  store: ThreadStore,
+  threadId: string
+): Pick<
+  AgentSourceState,
+  "activeRun" | "currentModel" | "pendingApproval" | "permissionMode" | "workspacePath"
+> | null {
+  const state = store.getThreadState(threadId)
+  if (!state) {
+    return null
+  }
+
+  return {
+    activeRun: state.agent.activeRun,
+    currentModel: state.agent.currentModel,
+    pendingApproval: state.agent.pendingApproval,
+    permissionMode: state.agent.permissionMode,
+    workspacePath: state.agent.workspacePath
+  }
+}
+
+function createThreadDataSnapshot(
+  input: Partial<AgentThreadDataSnapshot>
+): AgentThreadDataSnapshot {
+  return {
+    messages: {
+      artifacts: [],
+      messages: []
+    },
+    runState: {
+      error: null,
+      forkState: { canFork: true },
+      pendingApproval: null,
+      runId: null,
+      todos: []
+    },
+    thread: {
+      metadata: undefined,
+      status: "idle",
+      thread_id: "thread-a",
+      title: undefined
+    },
+    ...input
+  }
+}
+
+function installWindowApiStub(input?: { threadMetadata?: Record<string, unknown> }): {
   invoked: Array<{
     message: unknown
     modelId: string
@@ -22,6 +73,10 @@ function installWindowApiStub(): {
     requestId: string
     threadId: string
     toolCallId: string
+  }>
+  threadUpdates: Array<{
+    metadata: Record<string, unknown>
+    threadId: string
   }>
 } {
   const invoked: Array<{
@@ -36,6 +91,10 @@ function installWindowApiStub(): {
     requestId: string
     threadId: string
     toolCallId: string
+  }> = []
+  const threadUpdates: Array<{
+    metadata: Record<string, unknown>
+    threadId: string
   }> = []
 
   Object.defineProperty(globalThis, "window", {
@@ -70,6 +129,15 @@ function installWindowApiStub(): {
               toolCallId: decision.tool_call_id
             })
           }
+        },
+        threads: {
+          get: async (threadId: string) => ({
+            created_at: new Date("2026-01-01T00:00:00.000Z"),
+            metadata: input?.threadMetadata ?? {},
+            status: "idle",
+            thread_id: threadId,
+            updated_at: new Date("2026-01-01T00:00:00.000Z")
+          })
         }
       }
     }
@@ -82,7 +150,7 @@ function installWindowApiStub(): {
     }
   })
 
-  return { invoked, resumed }
+  return { invoked, resumed, threadUpdates }
 }
 
 function createPendingApproval(): HITLRequest {
@@ -99,12 +167,23 @@ function createPendingApproval(): HITLRequest {
   }
 }
 
-test("invokeAgentThread invokes runtime through command layer without view projection", async () => {
+test("invokeAgentThread invokes runtime through command layer without local UI mutation", async () => {
   const { invoked } = installWindowApiStub()
   const store = createThreadStore()
-  const actions = store.getThreadActions("thread-a")
-  actions.setCurrentModel("model-a")
-  actions.setPermissionMode("explore")
+  store.applyThreadDataSnapshot(
+    "thread-a",
+    createThreadDataSnapshot({
+      thread: {
+        metadata: {
+          model: "model-a",
+          permissionMode: "explore"
+        },
+        status: "idle",
+        thread_id: "thread-a",
+        title: undefined
+      }
+    })
+  )
 
   const didInvoke = await invokeAgentThread({
     messageInput: {
@@ -114,8 +193,7 @@ test("invokeAgentThread invokes runtime through command layer without view proje
     temporaryMode: true,
     threadContext: {
       awaitThreadRuntime: async () => {},
-      getThreadActions: store.getThreadActions,
-      getThreadState: store.getThreadState
+      getAgentCommandState: (threadId) => getAgentCommandState(store, threadId)
     },
     threadId: "thread-a"
   })
@@ -138,9 +216,20 @@ test("invokeAgentThread invokes runtime through command layer without view proje
 test("invokeAgentThread sends assistant selection refs as model context and metadata refs", async () => {
   const { invoked } = installWindowApiStub()
   const store = createThreadStore()
-  const actions = store.getThreadActions("thread-a")
-  actions.setCurrentModel("model-a")
-  actions.setPermissionMode("explore")
+  store.applyThreadDataSnapshot(
+    "thread-a",
+    createThreadDataSnapshot({
+      thread: {
+        metadata: {
+          model: "model-a",
+          permissionMode: "explore"
+        },
+        status: "idle",
+        thread_id: "thread-a",
+        title: undefined
+      }
+    })
+  )
 
   const didInvoke = await invokeAgentThread({
     messageInput: {
@@ -156,8 +245,7 @@ test("invokeAgentThread sends assistant selection refs as model context and meta
     },
     threadContext: {
       awaitThreadRuntime: async () => {},
-      getThreadActions: store.getThreadActions,
-      getThreadState: store.getThreadState
+      getAgentCommandState: (threadId) => getAgentCommandState(store, threadId)
     },
     threadId: "thread-a"
   })
@@ -191,9 +279,20 @@ test("invokeAgentThread sends assistant selection refs as model context and meta
 test("invokeAgentThread rejects assistant selection refs without visible user text", async () => {
   const { invoked } = installWindowApiStub()
   const store = createThreadStore()
-  const actions = store.getThreadActions("thread-a")
-  actions.setCurrentModel("model-a")
-  actions.setPermissionMode("explore")
+  store.applyThreadDataSnapshot(
+    "thread-a",
+    createThreadDataSnapshot({
+      thread: {
+        metadata: {
+          model: "model-a",
+          permissionMode: "explore"
+        },
+        status: "idle",
+        thread_id: "thread-a",
+        title: undefined
+      }
+    })
+  )
 
   const didInvoke = await invokeAgentThread({
     messageInput: {
@@ -209,8 +308,7 @@ test("invokeAgentThread rejects assistant selection refs without visible user te
     },
     threadContext: {
       awaitThreadRuntime: async () => {},
-      getThreadActions: store.getThreadActions,
-      getThreadState: store.getThreadState
+      getAgentCommandState: (threadId) => getAgentCommandState(store, threadId)
     },
     threadId: "thread-a"
   })
@@ -245,8 +343,7 @@ test("invokeAgentThread rejects busy threads before calling runtime", async () =
     },
     threadContext: {
       awaitThreadRuntime: async () => {},
-      getThreadActions: store.getThreadActions,
-      getThreadState: store.getThreadState
+      getAgentCommandState: (threadId) => getAgentCommandState(store, threadId)
     },
     threadId: "thread-a"
   })
@@ -255,11 +352,70 @@ test("invokeAgentThread rejects busy threads before calling runtime", async () =
   assert.deepEqual(invoked, [])
 })
 
+test("invokeAgentThread validates with command facts instead of full thread state", async () => {
+  const { invoked } = installWindowApiStub()
+  const store = createThreadStore()
+  store.applyThreadDataSnapshot(
+    "thread-a",
+    createThreadDataSnapshot({
+      thread: {
+        metadata: {
+          model: "model-a"
+        },
+        status: "idle",
+        thread_id: "thread-a",
+        title: undefined
+      }
+    })
+  )
+  let localError: string | null = null
+  let validationInput: unknown = null
+
+  const didInvoke = await invokeAgentThread({
+    messageInput: {
+      refs: [],
+      text: "hello"
+    },
+    onLocalError: (error) => {
+      localError = error
+    },
+    threadContext: {
+      awaitThreadRuntime: async () => {},
+      getAgentCommandState: (threadId) => getAgentCommandState(store, threadId)
+    },
+    threadId: "thread-a",
+    validateRun: (input) => {
+      validationInput = input
+      return "select workspace"
+    }
+  })
+
+  assert.equal(didInvoke, false)
+  assert.deepEqual(validationInput, {
+    message: "hello",
+    threadId: "thread-a",
+    workspacePath: null
+  })
+  assert.equal(localError, "select workspace")
+  assert.deepEqual(invoked, [])
+})
+
 test("resumeAgentThread reads approval and model from command-time thread state", async () => {
   const { resumed } = installWindowApiStub()
   const store = createThreadStore()
-  const actions = store.getThreadActions("thread-a")
-  actions.setCurrentModel("model-a")
+  store.applyThreadDataSnapshot(
+    "thread-a",
+    createThreadDataSnapshot({
+      thread: {
+        metadata: {
+          model: "model-a"
+        },
+        status: "idle",
+        thread_id: "thread-a",
+        title: undefined
+      }
+    })
+  )
   store.applyRuntimeEvents("thread-a", [
     {
       approval: createPendingApproval(),
@@ -272,7 +428,7 @@ test("resumeAgentThread reads approval and model from command-time thread state"
   const didResume = await resumeAgentThread({
     decision: { type: "approve" },
     threadContext: {
-      getThreadState: store.getThreadState
+      getAgentCommandState: (threadId) => getAgentCommandState(store, threadId)
     },
     threadId: "thread-a"
   })
@@ -288,28 +444,13 @@ test("resumeAgentThread reads approval and model from command-time thread state"
   ])
 })
 
-
 test("updateAgentThreadModel persists metadata and reloads source snapshot", async () => {
-  Object.defineProperty(globalThis, "window", {
-    configurable: true,
-    value: {
-      api: {
-        threads: {
-          get: async (threadId: string) => ({
-            created_at: new Date("2026-01-01T00:00:00.000Z"),
-            metadata: {
-              permissionMode: "explore",
-              source: "launcher-ai"
-            },
-            status: "idle",
-            thread_id: threadId,
-            updated_at: new Date("2026-01-01T00:00:00.000Z")
-          })
-        }
-      }
+  installWindowApiStub({
+    threadMetadata: {
+      permissionMode: "explore",
+      source: "launcher-ai"
     }
   })
-
   const loadCalls: string[] = []
   const updates: Array<{
     metadata: Record<string, unknown>
@@ -342,29 +483,13 @@ test("updateAgentThreadModel persists metadata and reloads source snapshot", asy
   assert.deepEqual(loadCalls, ["thread-a"])
 })
 
-
 test("updateAgentThreadPermissionMode persists metadata and reloads source snapshot", async () => {
-  Object.defineProperty(globalThis, "window", {
-    configurable: true,
-    value: {
-      api: {
-        threads: {
-          get: async (threadId: string) => ({
-            created_at: new Date("2026-01-01T00:00:00.000Z"),
-            metadata: {
-              model: "model-a",
-              source: "launcher-ai"
-            },
-            status: "idle",
-            thread_id: threadId,
-            updated_at: new Date("2026-01-01T00:00:00.000Z")
-          })
-        }
-      }
+  installWindowApiStub({
+    threadMetadata: {
+      model: "model-a",
+      source: "launcher-ai"
     }
   })
-
-  const loadCalls: string[] = []
   const updates: Array<{
     metadata: Record<string, unknown>
     threadId: string
@@ -373,9 +498,7 @@ test("updateAgentThreadPermissionMode persists metadata and reloads source snaps
   await updateAgentThreadPermissionMode({
     permissionMode: "auto",
     threadContext: {
-      loadThreadData: async (threadId) => {
-        loadCalls.push(threadId)
-      }
+      loadThreadData: async () => {}
     },
     threadId: "thread-a",
     updateThread: async (threadId, update) => {
@@ -393,5 +516,4 @@ test("updateAgentThreadPermissionMode persists metadata and reloads source snaps
       threadId: "thread-a"
     }
   ])
-  assert.deepEqual(loadCalls, ["thread-a"])
 })

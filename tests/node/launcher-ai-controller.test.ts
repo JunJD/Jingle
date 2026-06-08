@@ -9,12 +9,14 @@ import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "../../src/shared/launche
 
 function createControllerHarness(input?: {
   invokeResult?: boolean
+  resumeResult?: boolean
   threadId?: string | null
 }): {
   controller: ReturnType<typeof createLauncherAiController>
   createdThreads: AiCoreThreadCreateInput[]
   invoked: Array<{ input: ComposerMessageInput; threadId: string | undefined }>
   pendingInputs: string[]
+  resumedDecisions: unknown[]
   selectedModels: string[]
   selectedPermissionModes: PermissionModeName[]
   threadUpdates: Array<{
@@ -25,6 +27,7 @@ function createControllerHarness(input?: {
   const createdThreads: AiCoreThreadCreateInput[] = []
   const invoked: Array<{ input: ComposerMessageInput; threadId: string | undefined }> = []
   const pendingInputs: string[] = []
+  const resumedDecisions: unknown[] = []
   const selectedModels: string[] = []
   const selectedPermissionModes: PermissionModeName[] = []
   const threadUpdates: Array<{
@@ -37,7 +40,10 @@ function createControllerHarness(input?: {
       invoked.push({ input: messageInput, threadId: options?.threadId })
       return input?.invokeResult ?? true
     },
-    resume: async () => {}
+    resume: async (decision) => {
+      resumedDecisions.push(decision)
+      return input?.resumeResult ?? true
+    }
   }
   return {
     controller: createLauncherAiController({
@@ -105,6 +111,7 @@ function createControllerHarness(input?: {
     createdThreads,
     invoked,
     pendingInputs,
+    resumedDecisions,
     selectedModels,
     selectedPermissionModes,
     threadUpdates
@@ -200,4 +207,17 @@ test("launcher AI controller routes selected thread settings through command lay
       threadId: "existing-thread"
     }
   ])
+})
+
+
+test("launcher AI controller returns approval resume command result", async () => {
+  const harness = createControllerHarness({
+    resumeResult: false,
+    threadId: "existing-thread"
+  })
+
+  const didResume = await harness.controller.handleApprovalDecision({ type: "approve" })
+
+  assert.equal(didResume, false)
+  assert.deepEqual(harness.resumedDecisions, [{ type: "approve" }])
 })

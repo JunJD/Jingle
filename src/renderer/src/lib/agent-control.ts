@@ -10,13 +10,12 @@ import {
   THREAD_PERMISSION_MODE_METADATA_KEY,
   type PermissionModeName
 } from "@shared/permission-mode"
-import type { ThreadActions, ThreadContextValue, ThreadState } from "./thread-context"
+import type { ThreadContextValue } from "./thread-context"
 
 export interface AgentRunValidationInput {
-  actions: ThreadActions
   message: string
   threadId: string
-  threadState: ThreadState
+  workspacePath: string | null
 }
 
 export type AgentRunValidator = (input: AgentRunValidationInput) => string | null
@@ -24,7 +23,7 @@ export type AgentRunValidator = (input: AgentRunValidationInput) => string | nul
 export interface AgentControl {
   clearError: () => void
   invoke: (input: ComposerMessageInput, options?: { threadId?: string }) => Promise<boolean>
-  resume: (decision: HITLDecision) => Promise<void>
+  resume: (decision: HITLDecision) => Promise<boolean>
   stop: () => Promise<void>
 }
 
@@ -48,14 +47,9 @@ export interface UpdateAgentThreadPermissionModeInput {
 }
 
 export interface InvokeAgentThreadInput {
-  getIsPreparing?: () => boolean
   onLocalError?: (error: string | null) => void
-  onPreparingChange?: (isPreparing: boolean) => void
   temporaryMode?: boolean
-  threadContext: Pick<
-    ThreadContextValue,
-    "awaitThreadRuntime" | "getThreadActions" | "getThreadState"
-  >
+  threadContext: Pick<ThreadContextValue, "awaitThreadRuntime" | "getAgentCommandState">
   threadId: string | null
   validateRun?: AgentRunValidator
   messageInput: ComposerMessageInput
@@ -114,7 +108,6 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
   const submitContent = toAgentMessageContentWithRefs(displayContent, messageInput.refs)
 
   if (
-    input.getIsPreparing?.() ||
     !hasComposerMessageInputContent(messageInput) ||
     !hasMessageContent(submitContent)
   ) {
@@ -126,34 +119,31 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
     return false
   }
 
-  input.onPreparingChange?.(true)
-
   try {
     await threadContext.awaitThreadRuntime(input.threadId)
 
-    const threadState = threadContext.getThreadState(input.threadId)
-    if (!threadState) {
+    const agentState = threadContext.getAgentCommandState(input.threadId)
+    if (!agentState) {
       throw new Error(`Agent thread state is not initialized: ${input.threadId}`)
     }
 
-    if (threadState.agent.activeRun?.status === "running" || threadState.agent.pendingApproval) {
+    if (agentState.activeRun?.status === "running" || agentState.pendingApproval) {
       return false
     }
 
-    const actions = threadContext.getThreadActions(input.threadId)
     const validationError = input.validateRun?.({
-      actions,
       message,
       threadId: input.threadId,
-      threadState
+      workspacePath: agentState.workspacePath
     })
 
     if (validationError) {
-      actions.setError(validationError)
+      input.onLocalError?.(validationError)
       return false
     }
 
     input.onLocalError?.(null)
+
     window.api.agent.invoke(
       input.threadId,
       {
@@ -161,8 +151,8 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
         id: crypto.randomUUID(),
         ...(messageInput.refs.length > 0 ? { additional_kwargs: { refs: messageInput.refs } } : {})
       },
-      threadState.agent.currentModel,
-      threadState.agent.permissionMode,
+      agentState.currentModel,
+      agentState.permissionMode,
       input.temporaryMode ?? false
     )
 
@@ -170,19 +160,6 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
   } catch (error) {
     input.onLocalError?.(toErrorMessage(error))
     return false
-  } finally {
-    input.onPreparingChange?.(false)
-  }
-}
-
-export function clearAgentThreadError(input: {
-  onLocalError?: (error: string | null) => void
-  threadContext: Pick<ThreadContextValue, "getThreadActions">
-  threadId: string | null
-}): void {
-  input.onLocalError?.(null)
-  if (input.threadId) {
-    input.threadContext.getThreadActions(input.threadId).clearError()
   }
 }
 
@@ -195,7 +172,7 @@ export async function stopAgentThread(threadId: string | null): Promise<void> {
 export async function resumeAgentThread(input: {
   decision: HITLDecision
   onLocalError?: (error: string | null) => void
-  threadContext: Pick<ThreadContextValue, "getThreadState">
+  threadContext: Pick<ThreadContextValue, "getAgentCommandState">
   threadId: string | null
 }): Promise<boolean> {
   if (!input.threadId) {
@@ -203,17 +180,17 @@ export async function resumeAgentThread(input: {
     return false
   }
 
-  const threadState = input.threadContext.getThreadState(input.threadId)
-  if (!threadState) {
+  const agentState = input.threadContext.getAgentCommandState(input.threadId)
+  if (!agentState) {
     input.onLocalError?.(`Agent thread state is not initialized: ${input.threadId}`)
     return false
   }
 
-  if (!threadState.agent.pendingApproval) {
+  if (!agentState.pendingApproval) {
     return false
   }
 
-  if (!threadState.agent.currentModel) {
+  if (!agentState.currentModel) {
     return false
   }
 
@@ -223,10 +200,10 @@ export async function resumeAgentThread(input: {
       input.threadId,
       {
         ...input.decision,
-        request_id: threadState.agent.pendingApproval.id,
-        tool_call_id: threadState.agent.pendingApproval.tool_call.id
+        request_id: agentState.pendingApproval.id,
+        tool_call_id: agentState.pendingApproval.tool_call.id
       },
-      threadState.agent.currentModel
+      agentState.currentModel
     )
     return true
   } catch (error) {

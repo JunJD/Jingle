@@ -24,7 +24,13 @@ export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
 export type { ThreadActions, ThreadControl, ThreadState, TokenUsage } from "./thread-store-core"
 export { getArtifactTabId } from "@shared/thread-tabs"
 
+export type AgentCommandState = Pick<
+  ThreadState["agent"],
+  "activeRun" | "currentModel" | "pendingApproval" | "permissionMode" | "workspacePath"
+>
+
 export interface ThreadContextValue {
+  getAgentCommandState: (threadId: string) => AgentCommandState | null
   getThreadState: (threadId: string) => ThreadState | null
   getThreadActions: (threadId: string) => ThreadActions
   getThreadControl: (threadId: string) => ThreadControl
@@ -81,6 +87,23 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     (threadId: string): ThreadActions => threadStore.getThreadActions(threadId),
     [threadStore]
   )
+  const getAgentCommandState = useCallback(
+    (threadId: string): AgentCommandState | null => {
+      const state = threadStore.getThreadState(threadId)
+      if (!state) {
+        return null
+      }
+
+      return {
+        activeRun: state.agent.activeRun,
+        currentModel: state.agent.currentModel,
+        pendingApproval: state.agent.pendingApproval,
+        permissionMode: state.agent.permissionMode,
+        workspacePath: state.agent.workspacePath
+      }
+    },
+    [threadStore]
+  )
   const getThreadControl = useCallback(
     (threadId: string): ThreadControl => threadStore.getThreadControl(threadId),
     [threadStore]
@@ -128,6 +151,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
 
   const contextValue = useMemo<ThreadContextValue>(
     () => ({
+      getAgentCommandState,
       getThreadState,
       getThreadActions,
       getThreadControl,
@@ -144,6 +168,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       awaitThreadRuntime,
       ensureThreadRuntime,
       getAllThreadStates,
+      getAgentCommandState,
       getThreadActions,
       getThreadControl,
       getThreadState,

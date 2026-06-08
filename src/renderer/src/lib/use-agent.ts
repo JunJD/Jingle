@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { HITLRequest } from "@/types"
 import { useThreadContext, useThreadSelector } from "./thread-context"
 import {
-  clearAgentThreadError,
   invokeAgentThread,
   resumeAgentThread,
   stopAgentThread,
@@ -20,15 +18,14 @@ export interface AgentView {
   canStop: boolean
   error: string | null
   isBusy: boolean
-  isLoading: boolean
-  isPreparing: boolean
-}
-
-export interface AgentState {
-  pendingApproval: HITLRequest | null
 }
 
 export type { AgentControl } from "./agent-control"
+
+interface DismissedThreadError {
+  error: string | null
+  threadId: string | null
+}
 
 function formatAgentErrorForView(errorMessage: string | null): string | null {
   if (!errorMessage) {
@@ -47,7 +44,11 @@ function formatAgentErrorForView(errorMessage: string | null): string | null {
     return "Rate limit exceeded. Please wait a moment before sending another message."
   }
 
-  if (errorMessage.includes("401") || errorMessage.includes("invalid_api_key") || errorMessage.includes("authentication")) {
+  if (
+    errorMessage.includes("401") ||
+    errorMessage.includes("invalid_api_key") ||
+    errorMessage.includes("authentication")
+  ) {
     return "Authentication failed. Please check your API key in settings."
   }
 
@@ -56,7 +57,6 @@ function formatAgentErrorForView(errorMessage: string | null): string | null {
 
 export function useAgent(options: UseAgentOptions): {
   control: AgentControl
-  state: AgentState
   view: AgentView
 } {
   const { temporaryMode = false, threadId, validateRun } = options
@@ -73,40 +73,35 @@ export function useAgent(options: UseAgentOptions): {
     threadId,
     (state) => state?.agent.activeRun?.status ?? null
   )
-  const pendingApproval = useThreadSelector(
-    threadId,
-    (state) => state?.agent.pendingApproval ?? null
-  )
   const threadError = useThreadSelector(threadId, (state) => state?.agent.error ?? null)
+  const [dismissedThreadError, setDismissedThreadError] =
+    useState<DismissedThreadError | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
-  const [isPreparing, setIsPreparing] = useState(false)
 
-  const isLoading = activeRunStatus === "running"
-  const isBusy = isLoading || isPreparing
-  const error = formatAgentErrorForView(threadError) ?? localError
+  const isBusy = activeRunStatus === "running"
+  const visibleThreadError =
+    dismissedThreadError?.threadId === threadId && dismissedThreadError.error === threadError
+      ? null
+      : threadError
+  const error = formatAgentErrorForView(visibleThreadError) ?? localError
 
   const clearError = useCallback((): void => {
-    clearAgentThreadError({
-      onLocalError: setLocalError,
-      threadContext,
-      threadId
-    })
-  }, [threadContext, threadId])
+    setDismissedThreadError({ error: threadError, threadId })
+    setLocalError(null)
+  }, [threadError, threadId])
 
   const invoke = useCallback(
     async (messageInput, invokeOptions): Promise<boolean> => {
       return invokeAgentThread({
-        getIsPreparing: () => isPreparing,
         messageInput,
         onLocalError: setLocalError,
-        onPreparingChange: setIsPreparing,
         temporaryMode,
         threadContext,
         threadId: invokeOptions?.threadId ?? threadId,
         validateRun
       })
     },
-    [isPreparing, temporaryMode, threadContext, threadId, validateRun]
+    [temporaryMode, threadContext, threadId, validateRun]
   )
 
   const stop = useCallback(async (): Promise<void> => {
@@ -114,8 +109,8 @@ export function useAgent(options: UseAgentOptions): {
   }, [threadId])
 
   const resume = useCallback(
-    async (decision): Promise<void> => {
-      await resumeAgentThread({
+    async (decision): Promise<boolean> => {
+      return resumeAgentThread({
         decision,
         onLocalError: setLocalError,
         threadContext,
@@ -127,20 +122,11 @@ export function useAgent(options: UseAgentOptions): {
 
   const view = useMemo<AgentView>(
     () => ({
-      canStop: Boolean(threadId) && isLoading,
+      canStop: Boolean(threadId) && isBusy,
       error,
-      isBusy,
-      isLoading,
-      isPreparing
+      isBusy
     }),
-    [error, isBusy, isLoading, isPreparing, threadId]
-  )
-
-  const state = useMemo<AgentState>(
-    () => ({
-      pendingApproval
-    }),
-    [pendingApproval]
+    [error, isBusy, threadId]
   )
 
   const control = useMemo<AgentControl>(
@@ -155,7 +141,6 @@ export function useAgent(options: UseAgentOptions): {
 
   return {
     control,
-    state,
     view
   }
 }

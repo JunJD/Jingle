@@ -88,11 +88,14 @@ export function LauncherAiPage(): React.JSX.Element {
   })
   const {
     control: agentControl,
-    state: { pendingApproval },
-    view: { canStop, error: agentError, isBusy, isLoading }
+    view: { canStop, error: agentError, isBusy }
   } = agent
   const { stop } = agentControl
   const updateThread = useHistoryShellStore((state) => state.updateThread)
+  const pendingApproval = useThreadSelector(
+    threadId,
+    (state) => state?.agent.pendingApproval ?? null
+  )
   const currentModelId =
     useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null) ??
     draftTarget?.modelId ??
@@ -463,7 +466,7 @@ export function LauncherAiPage(): React.JSX.Element {
             bottomInset={conversationBottomInset}
             clearError={clearVisibleError}
             error={threadError}
-            isLoading={isLoading}
+            isLoading={isBusy}
             onAddAssistantSelectionRef={addSelectionRef}
             onBranch={handleBranchChat}
             onRetry={runPrimaryAction}

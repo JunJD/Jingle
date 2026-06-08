@@ -41,28 +41,19 @@ const ChatFooter = memo(function ChatFooter(props: {
   clearError: () => void
   hasVisibleTurns: boolean
   isBusy: boolean
-  isLoading: boolean
   pendingApproval: HITLRequest | null
   threadId: string
   todos: readonly Todo[]
   visibleError: string | null
 }): React.JSX.Element {
-  const {
-    clearError,
-    hasVisibleTurns,
-    isBusy,
-    isLoading,
-    pendingApproval,
-    threadId,
-    todos,
-    visibleError
-  } = props
+  const { clearError, hasVisibleTurns, isBusy, pendingApproval, threadId, todos, visibleError } =
+    props
   const { copy } = useI18n()
   const runId = useThreadSelector(threadId, (state) => state?.agent.runId ?? null)
 
   return (
     <div className="flex flex-col gap-[var(--ow-chat-thread-gap)]">
-      {!isLoading && todos.length > 0 && (pendingApproval || hasVisibleTurns) && (
+      {!isBusy && todos.length > 0 && (pendingApproval || hasVisibleTurns) && (
         <ChatTodos todos={todos} />
       )}
 
@@ -102,7 +93,6 @@ const ChatFooter = memo(function ChatFooter(props: {
 const ChatThreadViewport = memo(function ChatThreadViewport(props: {
   clearError: () => void
   isBusy: boolean
-  isLoading: boolean
   onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
   onRetry: (input: ComposerMessageInput) => Promise<void> | void
   onSelectWorkspace: () => Promise<void> | void
@@ -114,7 +104,6 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
   const {
     clearError,
     isBusy,
-    isLoading,
     onAddAssistantSelectionRef,
     onRetry,
     onSelectWorkspace,
@@ -135,7 +124,7 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
     (state) => state?.view.messageProjection.displayRows.length ?? 0
   )
   const todos = useThreadSelector(threadId, (state) => state?.agent.todos ?? EMPTY_TODOS)
-  const showEmptyChat = !hasVisibleTurns && !isLoading && !visibleError
+  const showEmptyChat = !hasVisibleTurns && !isBusy && !visibleError
   const chatVirtualItemCount = showEmptyChat ? 0 : displayRowCount
 
   const {
@@ -163,23 +152,13 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
         clearError={handleDismissError}
         hasVisibleTurns={hasVisibleTurns}
         isBusy={isBusy}
-        isLoading={isLoading}
         pendingApproval={pendingApproval}
         threadId={threadId}
         todos={todos}
         visibleError={visibleError}
       />
     ),
-    [
-      handleDismissError,
-      hasVisibleTurns,
-      isBusy,
-      isLoading,
-      pendingApproval,
-      threadId,
-      todos,
-      visibleError
-    ]
+    [handleDismissError, hasVisibleTurns, isBusy, pendingApproval, threadId, todos, visibleError]
   )
 
   return (
@@ -232,7 +211,7 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
           contentClassName="mx-auto w-full max-w-[var(--ow-chat-thread-max-width)] px-[var(--ow-chat-thread-x)]"
           contentInsetY="var(--ow-chat-thread-y)"
           isAtBottom={isAtBottom}
-          isLoading={isLoading}
+          isLoading={isBusy}
           isScrolling={isScrolling}
           onAddAssistantSelectionRef={onAddAssistantSelectionRef}
           onRetry={onRetry}
@@ -287,8 +266,8 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   )
   const currentModel = useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null)
   const validateRun = useCallback<AgentRunValidator>(
-    ({ threadState }) => {
-      return threadState.agent.workspacePath ? null : copy.chat.inputNeedsWorkspace
+    ({ workspacePath }) => {
+      return workspacePath ? null : copy.chat.inputNeedsWorkspace
     },
     [copy.chat.inputNeedsWorkspace]
   )
@@ -298,10 +277,13 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     validateRun
   })
   const {
-    state: { pendingApproval },
-    view: { canStop, error: visibleError, isBusy, isLoading },
+    view: { canStop, error: visibleError, isBusy },
     control: { clearError, invoke, resume, stop }
   } = agent
+  const pendingApproval = useThreadSelector(
+    threadId,
+    (state) => state?.agent.pendingApproval ?? null
+  )
   const canInvoke =
     hasComposerMessageInputContent({ refs: [], text: input }) &&
     !isBusy &&
@@ -363,7 +345,6 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
       <ChatThreadViewport
         clearError={clearError}
         isBusy={isBusy}
-        isLoading={isLoading}
         onAddAssistantSelectionRef={addSelectionRef}
         onRetry={retry}
         onSelectWorkspace={handleSelectWorkspaceFromEmptyState}

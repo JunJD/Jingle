@@ -54,7 +54,7 @@ export interface LauncherAiController {
   clearVisibleError: () => void
   goToNextChat: () => Promise<string | null>
   goToPreviousChat: () => Promise<string | null>
-  handleApprovalDecision: (decision: HITLDecision) => Promise<void>
+  handleApprovalDecision: (decision: HITLDecision) => Promise<boolean>
   runPrimaryAction: (input: ComposerMessageInput) => void
   selectModel: (modelId: string) => Promise<boolean>
   selectPermissionMode: (permissionMode: PermissionModeName) => Promise<boolean>
@@ -138,7 +138,7 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
       }
     },
     async handleApprovalDecision(decision) {
-      await input.agentControl.resume(decision)
+      return input.agentControl.resume(decision)
     },
     runPrimaryAction(messageInput) {
       if (
