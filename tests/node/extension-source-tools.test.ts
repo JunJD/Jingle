@@ -94,6 +94,15 @@ function createSearchTool(
   }
 }
 
+function findMiddlewareTool(
+  tools: readonly { invoke(input: unknown): Promise<unknown>; name: string }[],
+  name: string
+): { invoke(input: unknown): Promise<unknown>; name: string } {
+  const found = tools.find((tool) => tool.name === name)
+  assert.ok(found)
+  return found as unknown as { invoke(input: unknown): Promise<unknown>; name: string }
+}
+
 test("extension source agent tool names are externally provided and validated", () => {
   assert.doesNotThrow(() => assertExtensionAgentToolName("ext__mockSource__profile_1__searchItems"))
   assert.throws(() => assertExtensionAgentToolName("web_search"), /must start/)
@@ -432,12 +441,12 @@ test("extension AI middleware injects loaded guides and executes through stable 
     workspacePath: "/workspace"
   })
 
-  const tools = middleware.tools ?? []
-  const callExtensionTool = tools[1]
-  assert.ok(callExtensionTool)
+  assert.ok(middleware.tools)
+  const tools = middleware.tools
+  const callExtensionTool = findMiddlewareTool(tools, "callExtensionTool")
   assert.deepEqual(
     tools.map((tool) => tool.name),
-    ["loadExtension", "callExtensionTool"]
+    ["loadExtension", "loadExtensionToolDetails", "callExtensionTool"]
   )
 
   const toolOutput = await callExtensionTool.invoke({
@@ -466,7 +475,8 @@ test("extension AI middleware injects loaded guides and executes through stable 
   assert.match(observedSystemPrompt, /### Extension Instructions/)
   assert.match(observedSystemPrompt, /Use the Mock extension for tests/)
   assert.match(observedSystemPrompt, /Mock Source/)
-  assert.match(observedSystemPrompt, /Use this source for mock work items/)
+  assert.match(observedSystemPrompt, /Mock source for tests/)
+  assert.doesNotMatch(observedSystemPrompt, /Use this source for mock work items/)
 
   const response = await middleware.wrapModelCall!(
     {
@@ -543,27 +553,45 @@ test("loaded extension stays callable while catalog only lists unloaded extensio
 
   assert.deepEqual(
     middleware.tools?.map((tool) => tool.name),
-    ["loadExtension", "callExtensionTool"]
+    ["loadExtension", "loadExtensionToolDetails", "callExtensionTool"]
   )
-  const loadExtensionTool = middleware.tools?.find((candidate) => candidate.name === "loadExtension")
+  assert.ok(middleware.tools)
+  const tools = middleware.tools
+  const loadExtensionTool = findMiddlewareTool(tools, "loadExtension")
   const loadExtensionSchema = (
-    loadExtensionTool?.schema as { toJSONSchema?: () => { properties?: Record<string, unknown> } }
+    (tools.find((candidate) => candidate.name === "loadExtension")?.schema as
+      | { toJSONSchema?: () => { properties?: Record<string, unknown> } }
+      | undefined)
   )?.toJSONSchema?.()
   assert.deepEqual(loadExtensionSchema?.properties?.extensionName, {
     minLength: 1,
     type: "string"
   })
-  assert.match(
-    await loadExtensionTool!.invoke({
+  const loadExtensionOutput = String(
+    await loadExtensionTool.invoke({
       extensionName: "mockExtension"
-    }),
-    /Extension already loaded: Mock Source/
+    })
   )
+  assert.match(loadExtensionOutput, /Extension already loaded: Mock Source/)
+  assert.match(loadExtensionOutput, /Callable tools: searchItems/)
+  assert.doesNotMatch(loadExtensionOutput, /Input schema/)
 
-  const callExtensionTool = middleware.tools?.find(
-    (candidate) => candidate.name === "callExtensionTool"
+  const loadExtensionToolDetails = findMiddlewareTool(
+    tools,
+    "loadExtensionToolDetails"
   )
-  assert.ok(callExtensionTool)
+  const toolDetailsOutput = String(
+    await loadExtensionToolDetails.invoke({
+      extensionName: "mockExtension",
+      toolName: "searchItems"
+    })
+  )
+  assert.match(toolDetailsOutput, /Extension tool: mockExtension\.searchItems/)
+  assert.match(toolDetailsOutput, /Capability guide: Use this source for mock work items/)
+  assert.match(toolDetailsOutput, /Input schema:/)
+  assert.match(toolDetailsOutput, /"query"/)
+
+  const callExtensionTool = findMiddlewareTool(tools, "callExtensionTool")
   const toolOutput = await callExtensionTool.invoke({
     args: {
       query: "loaded"
@@ -641,9 +669,10 @@ test("extension AI middleware keeps model tools stable after all catalog extensi
     }
   )
 
-  assert.deepEqual(observedTools, ["loadExtension", "callExtensionTool"])
+  assert.deepEqual(observedTools, ["loadExtension", "loadExtensionToolDetails", "callExtensionTool"])
   assert.equal(observedToolRefs[0], registeredTools[0])
   assert.equal(observedToolRefs[1], registeredTools[1])
+  assert.equal(observedToolRefs[2], registeredTools[2])
   assert.doesNotMatch(observedSystemPrompt, /### Available Extensions/)
   assert.match(observedSystemPrompt, /### Extension AI Capability Guides/)
 })
@@ -706,7 +735,8 @@ test("extension instructions are separate from source guides", () => {
   assert.match(instructions, /Use the Mock extension for tests/)
   assert.doesNotMatch(instructions, /Use this source for mock work items/)
   assert.match(guide, /### Extension AI Capability Guides/)
-  assert.match(guide, /Use this source for mock work items/)
+  assert.match(guide, /Mock source for tests/)
+  assert.doesNotMatch(guide, /Use this source for mock work items/)
   assert.doesNotMatch(guide, /Use the Mock extension for tests/)
 })
 
@@ -720,7 +750,7 @@ test("extension AI capability guide keeps missing auth non-callable", () => {
   assert.match(guide, /Callable tools: none; auth status is missing/)
 })
 
-test("missing auth still injects extension instructions and source guide", () => {
+test("missing auth still injects extension instructions and source summary", () => {
   const missingCapability = createAiCapability({
     authStatus: "missing",
     enabled: true,
@@ -730,6 +760,10 @@ test("missing auth still injects extension instructions and source guide", () =>
 
   assert.match(buildExtensionInstructions([missingCapability]), /Use the Mock extension for tests/)
   assert.match(
+    buildExtensionAiCapabilityGuide([missingCapability]),
+    /Mock source for tests/
+  )
+  assert.doesNotMatch(
     buildExtensionAiCapabilityGuide([missingCapability]),
     /Use this source for mock work items/
   )
@@ -765,6 +799,6 @@ test("extension AI runtime exposes only read bindings in explore mode", async ()
   assert.deepEqual(runtime.visibleAiToolBindings, [])
   assert.deepEqual(
     runtime.middleware.tools?.map((tool) => tool.name),
-    ["loadExtension", "callExtensionTool"]
+    ["loadExtension", "loadExtensionToolDetails", "callExtensionTool"]
   )
 })

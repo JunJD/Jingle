@@ -43,6 +43,11 @@ const loadExtensionInputSchema = z.object({
   extensionName: z.string().trim().min(1)
 })
 
+const loadExtensionToolDetailsInputSchema = z.object({
+  extensionName: z.string().trim().min(1),
+  toolName: z.string().trim().min(1)
+})
+
 function buildExtensionBindingKey(capability: ResolvedExtensionAiCapability): string {
   return `${capability.extensionName}:${capability.capability.id}`
 }
@@ -75,20 +80,22 @@ function formatToolSchema(binding: ExtensionAgentToolBinding): string {
   return JSON.stringify(jsonSchema ?? { type: "object" }, null, 2)
 }
 
-function buildLoadedExtensionToolsSection(bindings: ExtensionAgentToolBinding[]): string {
+function buildLoadedExtensionToolListSection(bindings: ExtensionAgentToolBinding[]): string {
   if (bindings.length === 0) {
     return "Callable tools: none."
   }
 
+  return `Callable tools: ${bindings.map((binding) => binding.definition.name).join(", ")}`
+}
+
+function buildLoadedExtensionToolDetails(binding: ExtensionAgentToolBinding): string {
   return [
-    "Callable tools:",
-    ...bindings.map((binding) =>
-      [
-        `- ${binding.definition.name}: ${binding.definition.description}`,
-        `  Access: ${binding.definition.access}`,
-        `  Input schema: ${formatToolSchema(binding)}`
-      ].join("\n")
-    )
+    `Extension tool: ${binding.resolvedCapability.extensionName}.${binding.definition.name}`,
+    `Capability guide: ${binding.resolvedCapability.capability.guide}`,
+    `Description: ${binding.definition.description}`,
+    `Access: ${binding.definition.access}`,
+    `Input schema: ${formatToolSchema(binding)}`,
+    "Use callExtensionTool with args matching this schema."
   ].join("\n")
 }
 
@@ -114,15 +121,19 @@ function buildLoadedCapabilityGuide(input: {
       ? `Callable tools: ${callableToolNames.join(", ")}`
       : resolvedCapability.authStatus === "connected"
         ? "Callable tools: none"
-        : `Callable tools: none; auth status is ${resolvedCapability.authStatus}`
+      : `Callable tools: none; auth status is ${resolvedCapability.authStatus}`
+  const description = resolveLocalizedText(resolvedCapability.capability.description, "en-US", "")
 
   return [
     `Extension AI capability: ${getModelCapabilityTitle(resolvedCapability)}`,
     `Extension name: ${resolvedCapability.extensionName}`,
     `Permission Mode: ${input.permissionMode ?? resolvedCapability.permissionMode}`,
     callableStatus,
-    resolvedCapability.capability.guide
-  ].join("\n")
+    description ? `Description: ${description}` : null,
+    "Use loadExtensionToolDetails before calling a specific extension tool."
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n")
 }
 
 function buildExtensionCatalogSection(input: {
@@ -273,8 +284,8 @@ export function createExtensionAiMiddleware(options: CreateExtensionAiMiddleware
             permissionMode: options.permissionMode,
             resolvedCapability: existingCapability
           }),
-          buildLoadedExtensionToolsSection(bindings),
-          "Use callExtensionTool directly."
+          buildLoadedExtensionToolListSection(bindings),
+          "Use loadExtensionToolDetails for one tool before calling callExtensionTool."
         ].join("\n\n")
       }
 
@@ -310,14 +321,35 @@ export function createExtensionAiMiddleware(options: CreateExtensionAiMiddleware
           permissionMode: options.permissionMode,
           resolvedCapability
         }),
-        buildLoadedExtensionToolsSection(bindings)
+        buildLoadedExtensionToolListSection(bindings),
+        "Use loadExtensionToolDetails for one tool before calling callExtensionTool."
       ].join("\n\n")
     },
     {
       description:
-        "Load one extension when the user's request belongs to an available extension. Loading reveals its full instructions, guide, auth status, and callable tool documentation.",
+        "Load one extension when the user's request belongs to an available extension. Loading reveals its instructions, guide, auth status, and callable tool names. Use loadExtensionToolDetails for one tool's args before calling it.",
       name: "loadExtension",
       schema: loadExtensionInputSchema
+    }
+  )
+  const loadExtensionToolDetails = tool(
+    async (input) => {
+      const binding = findBinding({
+        extensionName: input.extensionName,
+        session: options.session,
+        toolName: input.toolName
+      })
+      if (!binding) {
+        return `Extension tool unavailable: ${input.extensionName}.${input.toolName}. Call loadExtension first, then request details for a callable tool listed in the loaded extension guide.`
+      }
+
+      return buildLoadedExtensionToolDetails(binding)
+    },
+    {
+      description:
+        "Load the detailed documentation for one tool from an already loaded extension, including its input schema. Use this immediately before callExtensionTool when you need that tool's args.",
+      name: "loadExtensionToolDetails",
+      schema: loadExtensionToolDetailsInputSchema
     }
   )
   const callExtensionTool = tool(
@@ -345,7 +377,7 @@ export function createExtensionAiMiddleware(options: CreateExtensionAiMiddleware
     },
     {
       description:
-        "Execute a tool from a loaded extension. Use only tools listed after loadExtension or an explicit @ mention. Pass extensionName, toolName, and args matching the loaded tool documentation.",
+        "Execute a tool from a loaded extension. Use only tools listed after loadExtension or an explicit @ mention. Pass extensionName, toolName, and args matching the details from loadExtensionToolDetails.",
       name: "callExtensionTool",
       schema: callExtensionToolInputSchema
     }
@@ -353,7 +385,7 @@ export function createExtensionAiMiddleware(options: CreateExtensionAiMiddleware
 
   return createMiddleware({
     name: "openworkExtensionAiCapabilities",
-    tools: [loadExtensionTool, callExtensionTool],
+    tools: [loadExtensionTool, loadExtensionToolDetails, callExtensionTool],
     wrapModelCall: async (request, handler) => {
       const promptSections = buildSessionPromptSections(options)
       const nextRequest =
