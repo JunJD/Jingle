@@ -528,6 +528,19 @@ export function ExtensionsTab(props: {
     }
   )
 
+  const refreshExtensionConnection = useEffectEvent(async (extensionName: string): Promise<void> => {
+    const schema = schemas.find((candidate) => candidate.extName === extensionName)
+    if (!schema?.connection) {
+      return
+    }
+
+    const connection = await window.api.nativeExtensions.getConnection(extensionName)
+    setConnectionRecords((current) => ({
+      ...current,
+      [extensionName]: connection
+    }))
+  })
+
   useEffect(() => {
     const controller = new AbortController()
     const handleFocus = (): void => {
@@ -542,6 +555,16 @@ export function ExtensionsTab(props: {
       window.removeEventListener("focus", handleFocus)
     }
   }, [focusedExtensionName, locale])
+
+  useEffect(() => {
+    return window.api.nativeExtensions.onPreferencesChanged((event) => {
+      if (event.scope !== "extension") {
+        return
+      }
+
+      void refreshExtensionConnection(event.extensionName)
+    })
+  }, [])
 
   const modelOptions = useMemo(
     () =>

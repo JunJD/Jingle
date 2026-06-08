@@ -15,13 +15,13 @@ export const notionManifest = defineNativeExtensionManifest({
     connectionId: "default",
     description: "Notion workspace pages, data sources, tasks, and docs.",
     guide:
-      "Use this capability for Notion work only after the user connects Notion. Notion only returns pages and data sources shared with the connected integration. If auth status is missing, explain that Notion needs an integration token in Settings before you can inspect pages, data sources, tasks, docs, or workspace knowledge.",
+      "Use this capability for Notion work only after the user connects Notion. Notion only returns pages and data sources shared with the connected connection. If auth status is missing, explain that Notion needs to be connected in Settings before you can inspect pages, data sources, tasks, docs, or workspace knowledge.",
     id: NOTION_EXTENSION_ID,
     instructions: [
       "Use Notion only when the user's request is about Notion pages, data sources, tasks, docs, or workspace knowledge.",
-      "If Notion is not connected, explain that Notion needs an integration token in Settings before you can inspect Notion content.",
+      "If Notion is not connected, explain that Notion needs to be connected in Settings before you can inspect Notion content.",
       "Search Notion before retrieving a page or data source unless the user provided an exact page, block, or data source id.",
-      "Notion API access is limited to pages and data sources shared with the connected integration.",
+      "Notion API access is limited to pages and data sources shared with the connected connection.",
       "Adding content to a Notion page writes to Notion and must follow the current Permission Mode.",
       "Do not claim to have searched Notion unless a Notion tool was available and called."
     ],
@@ -245,13 +245,22 @@ export const notionManifest = defineNativeExtensionManifest({
   ],
   connection: {
     auth: {
+      authorizationUrl: "https://jingle.cool/oauth/notion/start",
+      clientId: "jingle-desktop",
+      redirect: {
+        callbackPath: "/oauth/callback",
+        method: "app-scheme",
+        scheme: "jingle"
+      },
+      scopes: [],
       secretNames: ["accessToken"],
-      type: "apiKey"
+      tokenUrl: "https://jingle.cool/oauth/notion/token",
+      type: "oauth"
     },
     id: "default",
     provider: NOTION_PROVIDER_ID,
     connectGuide:
-      "Create a Notion internal integration token, share pages or data sources with that integration, and save the token in Openwork Settings.",
+      "Connect Notion from Jingle Settings. Jingle opens jingle.cool for authorization and stores the returned Notion access token locally.",
     publicPreferenceNames: ["apiBaseUrl"],
     title: l(NOTION_EXTENSION_TITLE, "Notion")
   },
@@ -263,17 +272,6 @@ export const notionManifest = defineNativeExtensionManifest({
   iconName: "notion",
   name: NOTION_EXTENSION_ID,
   preferences: [
-    {
-      name: "accessToken",
-      type: "password",
-      title: l("Notion Integration Token", "Notion 集成 Token"),
-      required: false,
-      description: l(
-        "Internal integration token used to read Notion content shared with the integration.",
-        "用于读取共享给集成的 Notion 内容的内部集成 token。"
-      ),
-      placeholder: "secret_..."
-    },
     {
       name: "apiBaseUrl",
       type: "text",

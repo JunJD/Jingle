@@ -6,7 +6,7 @@ import {
 } from "@openwork/extension-api"
 
 export interface FigmaRuntimeCopy {
-  addFigmaAccessToken: string
+  connectFigmaInSettings: string
   addTeamIds: string
   addTeamIdsDescription: string
   addToStarredFiles: string
@@ -51,9 +51,9 @@ function resolveCopy(locale: AppLocale, value: LocalizedTextValue): string {
 
 export function getFigmaRuntimeCopy(locale: AppLocale): FigmaRuntimeCopy {
   return {
-    addFigmaAccessToken: resolveCopy(
+    connectFigmaInSettings: resolveCopy(
       locale,
-      localized("Add Figma Access Token", "添加 Figma 访问令牌")
+      localized("Connect Figma in Settings", "在设置中连接 Figma")
     ),
     addTeamIds: resolveCopy(locale, localized("Add Team IDs", "添加团队 ID")),
     addTeamIdsDescription: resolveCopy(
@@ -104,8 +104,8 @@ export function getFigmaRuntimeCopy(locale: AppLocale): FigmaRuntimeCopy {
     fileSearchNeedsToken: resolveCopy(
       locale,
       localized(
-        "Figma File Search needs a personal access token before it can load files.",
-        "Figma 文件搜索需要先配置个人访问令牌后才能加载文件。"
+        "Connect Figma in Settings before loading files.",
+        "加载文件前请先在设置中连接 Figma。"
       )
     ),
     maintenance: resolveCopy(locale, localized("Maintenance", "维护")),

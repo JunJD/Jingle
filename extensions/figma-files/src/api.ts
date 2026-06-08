@@ -33,8 +33,8 @@ async function request<T>(
     const response = await fetch(`https://api.figma.com/v1${path}`, {
       ...options,
       headers: {
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
-        "X-Figma-Token": token,
         ...options.headers
       }
     })
@@ -52,7 +52,7 @@ async function request<T>(
 
     const error: RequestError = new Error(
       response.status === 403
-        ? "Figma rejected the access token. Update the token in Settings and try again."
+        ? "Figma rejected the connection. Reconnect Figma in Settings and try again."
         : `Figma request failed with ${response.status} ${response.statusText}.`
     )
     error.response = response
