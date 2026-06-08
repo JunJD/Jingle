@@ -2,16 +2,38 @@ import type { RunnableConfig } from "@langchain/core/runnables"
 import {
   BaseCheckpointSaver,
   copyCheckpoint,
+  type ChannelVersions,
   type Checkpoint,
   type CheckpointListOptions,
   type CheckpointMetadata,
   type CheckpointTuple,
   type PendingWrite,
-  type SerializerProtocol
+  type SerializerProtocol,
+  WRITES_IDX_MAP
 } from "@langchain/langgraph-checkpoint"
 import type { Prisma } from "@prisma/client"
 import { getPrismaClient } from "../db/client"
 import { decodeSerializedPayload, encodeSerializedPayload } from "./storage-codec"
+
+type CheckpointRow = {
+  checkpoint: string | null
+  checkpointId: string
+  checkpointNs: string
+  metadata: string | null
+  parentCheckpointId: string | null
+  runId: string | null
+  threadId: string
+  type: string | null
+}
+
+type CheckpointBlobRow = {
+  channel: string
+  checkpointNs: string
+  threadId: string
+  type: string | null
+  value: string | null
+  version: string
+}
 
 function readStringField(value: unknown, key: string): string | null {
   if (!value || typeof value !== "object") {
@@ -22,15 +44,60 @@ function readStringField(value: unknown, key: string): string | null {
   return typeof field === "string" && field.length > 0 ? field : null
 }
 
-function getRunIdForStorage(
-  config: RunnableConfig,
-  metadata?: CheckpointMetadata
-): string | null {
+function getRunIdForStorage(config: RunnableConfig, metadata?: CheckpointMetadata): string | null {
   return (
     readStringField(config.configurable, "run_id") ??
     readStringField(config.metadata, "run_id") ??
     readStringField(metadata, "run_id")
   )
+}
+
+function copyCheckpointManifest(checkpoint: Checkpoint): Omit<Checkpoint, "channel_values"> {
+  const manifest = {
+    ...checkpoint
+  } as Partial<Checkpoint>
+  delete manifest.channel_values
+  return manifest as Omit<Checkpoint, "channel_values">
+}
+
+function ensureCheckpointChannelVersions(
+  checkpoint: Checkpoint,
+  newVersions: ChannelVersions
+): ChannelVersions {
+  const normalizedNewVersions = {
+    ...newVersions
+  }
+
+  for (const channel of Object.keys(checkpoint.channel_values)) {
+    if (checkpoint.channel_versions[channel] !== undefined) {
+      continue
+    }
+
+    const version = normalizedNewVersions[channel] ?? checkpoint.id
+    checkpoint.channel_versions[channel] = version
+    normalizedNewVersions[channel] = version
+  }
+
+  return normalizedNewVersions
+}
+
+export function readStoredCheckpointChannelVersions(
+  storedType: string | null,
+  storedCheckpoint: string | null
+): Record<string, string | number> | null {
+  if (!storedCheckpoint) {
+    return null
+  }
+
+  const payload = decodeSerializedPayload(storedType, storedCheckpoint)
+  const decoded =
+    typeof payload.value === "string" ? payload.value : Buffer.from(payload.value).toString("utf8")
+  const checkpoint = JSON.parse(decoded) as {
+    channel_values?: unknown
+    channel_versions?: Record<string, string | number>
+  }
+
+  return checkpoint.channel_values ? null : (checkpoint.channel_versions ?? {})
 }
 
 export class PrismaCheckpointSaver extends BaseCheckpointSaver {
@@ -83,12 +150,8 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       row.checkpointNs,
       row.checkpointId
     )
-    const checkpointPayload = decodeSerializedPayload(row.type, row.checkpoint)
     const metadataPayload = decodeSerializedPayload(row.type, row.metadata)
-    const checkpoint = (await this.serde.loadsTyped(
-      checkpointPayload.type,
-      checkpointPayload.value
-    )) as Checkpoint
+    const checkpoint = await this.loadCheckpoint(row)
 
     return {
       checkpoint,
@@ -159,12 +222,8 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
         row.checkpointNs,
         row.checkpointId
       )
-      const checkpointPayload = decodeSerializedPayload(row.type, row.checkpoint)
       const metadataPayload = decodeSerializedPayload(row.type, row.metadata)
-      const checkpoint = (await this.serde.loadsTyped(
-        checkpointPayload.type,
-        checkpointPayload.value
-      )) as Checkpoint
+      const checkpoint = await this.loadCheckpoint(row)
 
       yield {
         config: {
@@ -197,7 +256,8 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
   async put(
     config: RunnableConfig,
     checkpoint: Checkpoint,
-    metadata: CheckpointMetadata
+    metadata: CheckpointMetadata,
+    newVersions: ChannelVersions = checkpoint.channel_versions
   ): Promise<RunnableConfig> {
     return this.enqueueWrite(async () => {
       const prisma = getPrismaClient()
@@ -211,11 +271,19 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       const checkpointNs = config.configurable.checkpoint_ns ?? ""
       const parentCheckpointId = config.configurable.checkpoint_id
       const preparedCheckpoint = copyCheckpoint(checkpoint)
+      const storedNewVersions = ensureCheckpointChannelVersions(preparedCheckpoint, newVersions)
+      const checkpointManifest = copyCheckpointManifest(preparedCheckpoint)
 
-      const [[type, serializedCheckpoint], [metadataType, serializedMetadata]] =
+      const [[type, serializedCheckpoint], [metadataType, serializedMetadata], serializedBlobs] =
         await Promise.all([
-          this.serde.dumpsTyped(preparedCheckpoint),
-          this.serde.dumpsTyped(metadata)
+          this.serde.dumpsTyped(checkpointManifest),
+          this.serde.dumpsTyped(metadata),
+          this.dumpChannelBlobs(
+            threadId,
+            checkpointNs,
+            preparedCheckpoint.channel_values,
+            storedNewVersions
+          )
         ])
 
       if (type !== metadataType) {
@@ -225,32 +293,54 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       const [storedType, storedCheckpoint] = encodeSerializedPayload(type, serializedCheckpoint)
       const [, storedMetadata] = encodeSerializedPayload(metadataType, serializedMetadata)
 
-      await prisma.checkpoint.upsert({
-        where: {
-          threadId_checkpointNs_checkpointId: {
-            threadId,
-            checkpointNs,
-            checkpointId: checkpoint.id
+      const operations: Prisma.PrismaPromise<unknown>[] = serializedBlobs.map((blob) =>
+        prisma.checkpointBlob.upsert({
+          where: {
+            threadId_checkpointNs_channel_version: {
+              channel: blob.channel,
+              checkpointNs,
+              threadId,
+              version: blob.version
+            }
+          },
+          create: blob,
+          update: {
+            type: blob.type,
+            value: blob.value
           }
-        },
-        create: {
-          threadId,
-          runId,
-          checkpointNs,
-          checkpointId: checkpoint.id,
-          parentCheckpointId: parentCheckpointId ?? null,
-          type: storedType,
-          checkpoint: storedCheckpoint,
-          metadata: storedMetadata
-        },
-        update: {
-          runId,
-          parentCheckpointId: parentCheckpointId ?? null,
-          type: storedType,
-          checkpoint: storedCheckpoint,
-          metadata: storedMetadata
-        }
-      })
+        })
+      )
+
+      operations.push(
+        prisma.checkpoint.upsert({
+          where: {
+            threadId_checkpointNs_checkpointId: {
+              threadId,
+              checkpointNs,
+              checkpointId: checkpoint.id
+            }
+          },
+          create: {
+            threadId,
+            runId,
+            checkpointNs,
+            checkpointId: checkpoint.id,
+            parentCheckpointId: parentCheckpointId ?? null,
+            type: storedType,
+            checkpoint: storedCheckpoint,
+            metadata: storedMetadata
+          },
+          update: {
+            runId,
+            parentCheckpointId: parentCheckpointId ?? null,
+            type: storedType,
+            checkpoint: storedCheckpoint,
+            metadata: storedMetadata
+          }
+        })
+      )
+
+      await prisma.$transaction(operations)
       await this.afterPut({
         checkpoint: preparedCheckpoint,
         metadata,
@@ -297,6 +387,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       const operations: Prisma.PrismaPromise<unknown>[] = []
       for (let idx = 0; idx < writes.length; idx += 1) {
         const write = writes[idx]
+        const writeIndex = WRITES_IDX_MAP[write[0]] ?? idx
         const [type, serializedValue] = await this.serde.dumpsTyped(write[1])
         const [storedType, storedValue] = encodeSerializedPayload(type, serializedValue)
 
@@ -308,7 +399,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
                 checkpointNs,
                 checkpointId,
                 taskId,
-                idx
+                idx: writeIndex
               }
             },
             create: {
@@ -316,7 +407,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
               checkpointNs,
               checkpointId,
               taskId,
-              idx,
+              idx: writeIndex,
               channel: write[0],
               type: storedType,
               value: storedValue
@@ -341,6 +432,9 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       const prisma = getPrismaClient()
 
       await prisma.$transaction([
+        prisma.checkpointBlob.deleteMany({
+          where: { threadId }
+        }),
         prisma.checkpointWrite.deleteMany({
           where: { threadId }
         }),
@@ -362,6 +456,106 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       () => undefined
     )
     return next
+  }
+
+  private async dumpChannelBlobs(
+    threadId: string,
+    checkpointNs: string,
+    values: Record<string, unknown>,
+    versions: ChannelVersions
+  ): Promise<CheckpointBlobRow[]> {
+    const blobs: CheckpointBlobRow[] = []
+    for (const [channel, version] of Object.entries(versions)) {
+      if (channel in values) {
+        const [type, serializedValue] = await this.serde.dumpsTyped(values[channel])
+        const [storedType, storedValue] = encodeSerializedPayload(type, serializedValue)
+        blobs.push({
+          channel,
+          checkpointNs,
+          threadId,
+          type: storedType,
+          value: storedValue,
+          version: String(version)
+        })
+        continue
+      }
+
+      blobs.push({
+        channel,
+        checkpointNs,
+        threadId,
+        type: "empty",
+        value: null,
+        version: String(version)
+      })
+    }
+
+    return blobs
+  }
+
+  private async loadCheckpoint(row: CheckpointRow): Promise<Checkpoint> {
+    const checkpointPayload = decodeSerializedPayload(row.type, row.checkpoint)
+    const checkpoint = (await this.serde.loadsTyped(
+      checkpointPayload.type,
+      checkpointPayload.value
+    )) as Checkpoint
+
+    if (checkpoint.channel_values && typeof checkpoint.channel_values === "object") {
+      return checkpoint
+    }
+
+    return {
+      ...checkpoint,
+      channel_values: await this.loadChannelValues(
+        row.threadId,
+        row.checkpointNs,
+        checkpoint.channel_versions
+      )
+    }
+  }
+
+  private async loadChannelValues(
+    threadId: string,
+    checkpointNs: string,
+    channelVersions: ChannelVersions
+  ): Promise<Record<string, unknown>> {
+    const entries = Object.entries(channelVersions)
+    if (entries.length === 0) {
+      return {}
+    }
+
+    const prisma = getPrismaClient()
+    const rows = await prisma.checkpointBlob.findMany({
+      where: {
+        OR: entries.map(([channel, version]) => ({
+          channel,
+          version: String(version)
+        })),
+        checkpointNs,
+        threadId
+      }
+    })
+    const rowByKey = new Map(rows.map((row) => [`${row.channel}\0${row.version}`, row]))
+    const values: Record<string, unknown> = {}
+
+    for (const [channel, version] of entries) {
+      const normalizedVersion = String(version)
+      const row = rowByKey.get(`${channel}\0${normalizedVersion}`)
+      if (!row) {
+        throw new Error(
+          `[PrismaCheckpointSaver] Missing checkpoint blob for thread "${threadId}", namespace "${checkpointNs}", channel "${channel}", version "${normalizedVersion}".`
+        )
+      }
+
+      if (row.type === "empty") {
+        continue
+      }
+
+      const payload = decodeSerializedPayload(row.type, row.value)
+      values[channel] = await this.serde.loadsTyped(payload.type, payload.value)
+    }
+
+    return values
   }
 
   private async loadPendingWrites(
