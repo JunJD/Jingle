@@ -8,6 +8,15 @@ type WorkspaceFileReadResult = {
   error?: string
 }
 
+type WorkspaceFileSearchResult = {
+  success: boolean
+  files?: Array<{
+    name: string
+    path: string
+  }>
+  error?: string
+}
+
 export const workspaceApi = {
   get: (threadId?: string): Promise<string | null> => {
     return invokeIpc("workspace:get", threadId)
@@ -23,5 +32,12 @@ export const workspaceApi = {
   },
   readBinaryFile: (threadId: string, filePath: string): Promise<WorkspaceFileReadResult> => {
     return invokeIpc("workspace:readBinaryFile", { threadId, filePath })
+  },
+  searchFiles: (
+    threadId: string,
+    query: string,
+    limit?: number
+  ): Promise<WorkspaceFileSearchResult> => {
+    return invokeIpc("workspace:searchFiles", { threadId, query, limit })
   }
 }

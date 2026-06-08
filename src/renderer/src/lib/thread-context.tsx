@@ -21,8 +21,13 @@ import {
 } from "./thread-store-core"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
-export type { ThreadActions, ThreadControl, ThreadState, TokenUsage } from "./thread-store-core"
-export { getArtifactTabId } from "@shared/thread-tabs"
+export type {
+  ThreadActions,
+  ThreadControl,
+  ThreadState,
+  TokenUsage
+} from "./thread-store-core"
+export { getArtifactTabId, getFileTabId } from "@shared/thread-tabs"
 
 export interface ThreadContextValue {
   getThreadState: (threadId: string) => ThreadState | null

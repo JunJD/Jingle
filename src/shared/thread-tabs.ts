@@ -11,12 +11,16 @@ export function getArtifactTabId(artifactId: string): string {
   return `artifact:${artifactId}`
 }
 
+export function getFileTabId(filePath: string): string {
+  return `file:${encodeURIComponent(filePath)}`
+}
+
 export function getVisibleContentTabIds(
   openFiles: OpenFile[],
   openArtifacts: OpenArtifactTab[]
 ): string[] {
   return [
-    ...openFiles.map((file) => file.path),
+    ...openFiles.map((file) => getFileTabId(file.path)),
     ...openArtifacts.map((artifact) => getArtifactTabId(artifact.artifactId))
   ]
 }

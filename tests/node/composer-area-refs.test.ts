@@ -11,18 +11,29 @@ import {
   type SerializedParagraphNode,
   type SerializedTextNode
 } from "lexical"
-import { getExtensionSourceTriggerMatch } from "../../src/renderer/src/composer-area/extension-source-typeahead"
+import {
+  getComposerMentionTriggerMatch,
+  getExtensionSourceTriggerMatch
+} from "../../src/renderer/src/composer-area/extension-source-typeahead"
 import {
   $createExtensionSourceReferenceNode,
   ExtensionSourceReferenceNode,
   type SerializedExtensionSourceReferenceNode
 } from "../../src/renderer/src/composer-area/extension-source-node"
 import {
+  $createFileReferenceNode,
+  FileReferenceNode,
+  type SerializedFileReferenceNode
+} from "../../src/renderer/src/composer-area/file-reference-node"
+import {
   getComposerRefsFromEditorState,
   serializeComposerEditorStateForModel
 } from "../../src/renderer/src/composer-area/extension-source-serialization"
 
-type SerializedComposerNode = SerializedExtensionSourceReferenceNode | SerializedTextNode
+type SerializedComposerNode =
+  | SerializedExtensionSourceReferenceNode
+  | SerializedFileReferenceNode
+  | SerializedTextNode
 type SerializedComposerParagraphNode = SerializedParagraphNode & {
   children: SerializedComposerNode[]
 }
@@ -99,7 +110,7 @@ const plainEditorState = {
 function createComposerEditor(): ReturnType<typeof createEditor> {
   return createEditor({
     namespace: "composer-area-refs-test",
-    nodes: [ParagraphNode, ExtensionSourceReferenceNode],
+    nodes: [ParagraphNode, ExtensionSourceReferenceNode, FileReferenceNode],
     onError: (error) => {
       throw error
     }
@@ -140,6 +151,66 @@ test("extension source reference node serializes refs and model markdown from ed
   assert.equal(
     serializeComposerEditorStateForModel(editor.getEditorState()),
     "Use [@apple-reminders](openwork-extension-source://apple-reminders/appleReminders) today"
+  )
+})
+
+test("workspace file reference node serializes refs and model markdown from editor state", () => {
+  const editor = createComposerEditor()
+
+  editor.update(
+    () => {
+      const root = $getRoot()
+      root.clear()
+      const paragraph = $createParagraphNode()
+      paragraph.append(
+        $createTextNode("Review "),
+        $createFileReferenceNode({
+          label: "@src/main/agent/service.ts",
+          name: "service.ts",
+          path: "src/main/agent/service.ts"
+        })
+      )
+      root.append(paragraph)
+    },
+    { discrete: true }
+  )
+
+  assert.deepEqual(getComposerRefsFromEditorState(editor.getEditorState()), [
+    {
+      name: "service.ts",
+      path: "src/main/agent/service.ts",
+      type: "file"
+    }
+  ])
+  assert.equal(
+    serializeComposerEditorStateForModel(editor.getEditorState()),
+    "Review [@src/main/agent/service.ts](openwork-workspace-file://src%2Fmain%2Fagent%2Fservice.ts)"
+  )
+})
+
+test("workspace file reference node percent-encodes markdown delimiters in file paths", () => {
+  const editor = createComposerEditor()
+
+  editor.update(
+    () => {
+      const root = $getRoot()
+      root.clear()
+      const paragraph = $createParagraphNode()
+      paragraph.append(
+        $createFileReferenceNode({
+          label: "@src/(main)/service).ts",
+          name: "service).ts",
+          path: "src/(main)/service).ts"
+        })
+      )
+      root.append(paragraph)
+    },
+    { discrete: true }
+  )
+
+  assert.equal(
+    serializeComposerEditorStateForModel(editor.getEditorState()),
+    "[@src/(main)/service).ts](openwork-workspace-file://src%2F%28main%29%2Fservice%29.ts)"
   )
 })
 
@@ -211,4 +282,12 @@ test("extension source typeahead opens only for standalone @ queries", () => {
     replaceableString: "@apple"
   })
   assert.equal(getExtensionSourceTriggerMatch("hello@example.com"), null)
+})
+
+test("composer mention typeahead accepts workspace path queries", () => {
+  assert.deepEqual(getComposerMentionTriggerMatch("review @src/main"), {
+    leadOffset: 7,
+    matchingString: "src/main",
+    replaceableString: "@src/main"
+  })
 })

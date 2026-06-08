@@ -54,11 +54,16 @@ import { LoaderOne } from "../ui/loader"
 import { CopyButton } from "../ui/button"
 import { AssistantSelectionReferencesFromMetadata } from "./AssistantSelectionReferences"
 import { getAssistantSelectionRefs } from "./useAssistantSelectionRefs"
+import { useThreadControl } from "@/lib/thread-context"
 
 interface StructuredMessageContent {
   attachments: React.ReactNode
   reasoningContent: React.ReactNode
   textContent: React.ReactNode
+}
+
+function getWorkspaceFileName(path: string): string {
+  return path.split("/").pop() || path
 }
 
 function ThinkingIcon(props: React.SVGProps<SVGSVGElement>): React.JSX.Element {
@@ -175,9 +180,10 @@ function renderTextBlock(
     isStreaming?: boolean
     isUser: boolean
     key: string
+    onOpenWorkspaceFile?: (path: string) => void
   }
 ): React.JSX.Element | null {
-  const { isStreaming, isUser, key } = options
+  const { isStreaming, isUser, key, onOpenWorkspaceFile } = options
 
   if (!text.trim()) {
     return null
@@ -189,7 +195,7 @@ function renderTextBlock(
         key={key}
         className="whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
       >
-        <ExtensionSourceTextViewer text={text} />
+        <ExtensionSourceTextViewer onOpenWorkspaceFile={onOpenWorkspaceFile} text={text} />
       </div>
     )
   }
@@ -246,9 +252,10 @@ function renderStructuredContent(
     includeReasoning?: boolean
     isStreaming?: boolean
     isUser: boolean
+    onOpenWorkspaceFile?: (path: string) => void
   }
 ): StructuredMessageContent {
-  const { includeReasoning = true, isStreaming, isUser } = options
+  const { includeReasoning = true, isStreaming, isUser, onOpenWorkspaceFile } = options
 
   if (typeof content === "string") {
     return {
@@ -257,7 +264,8 @@ function renderStructuredContent(
       textContent: renderTextBlock(content, {
         isStreaming,
         isUser,
-        key: "message-content"
+        key: "message-content",
+        onOpenWorkspaceFile
       })
     }
   }
@@ -302,7 +310,8 @@ function renderStructuredContent(
       return renderTextBlock(text, {
         isStreaming: isStreaming && index === resolvedLastTextBlockIndex,
         isUser,
-        key: `${block.type}-${index}`
+        key: `${block.type}-${index}`,
+        onOpenWorkspaceFile
       })
     })
     .filter(Boolean)
@@ -706,9 +715,19 @@ function AssistantWaitingRow(): React.JSX.Element {
   )
 }
 
-function UserMessage(props: { message: ThreadMessage }): React.JSX.Element | null {
-  const { message } = props
-  const content = renderStructuredContent(message.content, { isUser: true })
+function UserMessage(props: { message: ThreadMessage; threadId: string }): React.JSX.Element | null {
+  const { message, threadId } = props
+  const threadControl = useThreadControl(threadId)
+  const handleOpenWorkspaceFile = useCallback(
+    (path: string): void => {
+      threadControl?.local.openFile(path, getWorkspaceFileName(path))
+    },
+    [threadControl]
+  )
+  const content = renderStructuredContent(message.content, {
+    isUser: true,
+    onOpenWorkspaceFile: handleOpenWorkspaceFile
+  })
   const hasReferences =
     getAssistantSelectionRefs(extractComposerMessageRefsMetadata(message.metadata)).length > 0
 
@@ -742,6 +761,7 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
   toolExecutions: AgentToolExecutionsView
   toolResults: Map<string, ToolResultInfo>
   turn: MessageTurn
+  threadId: string
 }): React.JSX.Element {
   const { copy } = useI18n()
   const {
@@ -751,6 +771,7 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
     onRetry,
     pendingApproval,
     streamingAssistantId,
+    threadId,
     toolExecutions,
     toolResults,
     turn
@@ -771,7 +792,7 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
 
   return (
     <div className="space-y-[var(--ow-space-2-5)]">
-      {turn.user ? <UserMessage message={turn.user} /> : null}
+      {turn.user ? <UserMessage message={turn.user} threadId={threadId} /> : null}
       {shouldShowAssistantWaitingRow ? <AssistantWaitingRow /> : null}
       {assistantEntries.map((entry) => {
         if (entry.kind === "assistant-content") {

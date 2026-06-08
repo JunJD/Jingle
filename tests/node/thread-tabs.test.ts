@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import {
   getArtifactTabId,
+  getFileTabId,
   getNextActiveTabAfterClose,
   type OpenArtifactTab,
   type OpenFile
@@ -21,11 +22,15 @@ test("getNextActiveTabAfterClose falls through to open artifact tabs when closin
   ]
 
   const nextActiveTab = getNextActiveTabAfterClose({
-    activeTab: "/workspace/notes.md",
-    closedTabId: "/workspace/notes.md",
+    activeTab: getFileTabId("/workspace/notes.md"),
+    closedTabId: getFileTabId("/workspace/notes.md"),
     openArtifacts,
     openFiles
   })
 
   assert.equal(nextActiveTab, getArtifactTabId("artifact-1"))
+})
+
+test("file tab ids are namespaced away from reserved agent tab id", () => {
+  assert.equal(getFileTabId("agent"), "file:agent")
 })

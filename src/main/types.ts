@@ -67,6 +67,12 @@ export interface WorkspaceFileParams {
   filePath: string
 }
 
+export interface WorkspaceFileSearchParams {
+  limit?: number
+  query: string
+  threadId: string
+}
+
 // Model IPC
 export interface SetProviderCredentialsParams {
   credentials: Record<string, string>

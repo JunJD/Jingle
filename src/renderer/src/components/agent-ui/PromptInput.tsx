@@ -13,7 +13,11 @@ import {
 } from "react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip"
 import { cn } from "@/lib/utils"
-import { ComposerArea, type ComposerAreaHandle } from "@/composer-area"
+import {
+  ComposerArea,
+  type ComposerAreaHandle,
+  type ComposerWorkspaceFileMention
+} from "@/composer-area"
 import type { ExtensionSourceMention } from "@shared/extension-sources"
 
 interface PromptInputFocusTarget {
@@ -156,8 +160,10 @@ export interface PromptInputTextareaProps extends Omit<
   composerRef?: React.RefObject<ComposerAreaHandle | null>
   disableAutosize?: boolean
   mode?: "textarea" | "composer"
+  onMentionQueryChange?: (query: string | null) => void
   onValueChange?: (value: string) => void
   sourceMentions?: ExtensionSourceMention[]
+  workspaceFileMentions?: ComposerWorkspaceFileMention[]
 }
 
 function resolveCssSize(value: number | string): string {
@@ -174,9 +180,11 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
       onCompositionEnd,
       onCompositionStart,
       onKeyDown,
+      onMentionQueryChange,
       onValueChange,
       placeholder,
       sourceMentions,
+      workspaceFileMentions,
       ...props
     },
     ref
@@ -262,6 +270,7 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
             onKeyDown?.(keyboardEvent as unknown as React.KeyboardEvent<HTMLTextAreaElement>)
           }}
           onSubmit={onSubmit}
+          onMentionQueryChange={onMentionQueryChange}
           onValueChange={(nextValue) => {
             setValue(nextValue)
             onValueChange?.(nextValue)
@@ -269,6 +278,7 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
           placeholder={placeholder}
           sourceMentions={sourceMentions}
           value={value}
+          workspaceFileMentions={workspaceFileMentions}
         />
       )
     }

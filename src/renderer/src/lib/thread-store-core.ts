@@ -5,6 +5,7 @@ import type { AgentThreadDataSnapshot } from "@shared/app-types"
 import type { ActiveAgentRun, AgentThreadEvent } from "@shared/agent-thread-runtime"
 import {
   getArtifactTabId,
+  getFileTabId,
   getNextActiveTabAfterClose,
   type OpenArtifactTab,
   type OpenFile
@@ -280,16 +281,17 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
     const local: ThreadLocalUiControl = {
       openFile: (path: string, name: string) => {
         updateThreadState(threadId, (state) => {
+          const nextTabId = getFileTabId(path)
           if (state.ui.openFiles.some((file) => file.path === path)) {
             return {
-              ui: { activeTab: path }
+              ui: { activeTab: nextTabId }
             }
           }
 
           return {
             ui: {
               openFiles: [...state.ui.openFiles, { path, name }],
-              activeTab: path
+              activeTab: nextTabId
             }
           }
         })
@@ -304,7 +306,7 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
             ui: {
               activeTab: getNextActiveTabAfterClose({
                 activeTab: state.ui.activeTab,
-                closedTabId: path,
+                closedTabId: getFileTabId(path),
                 openArtifacts: state.ui.openArtifacts,
                 openFiles: state.ui.openFiles
               }),
