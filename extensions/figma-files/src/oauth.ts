@@ -13,7 +13,7 @@ export const figmaConnection: WithAccessTokenService = {
 export function getFigmaAccessToken(): string {
   const token = getConnectionSecret("accessToken")
   if (!token) {
-    throw new Error("Missing accessToken preference for this extension.")
+    throw new Error("Connect Figma in Settings before using this extension.")
   }
 
   return token

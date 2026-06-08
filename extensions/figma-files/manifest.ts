@@ -32,9 +32,20 @@ export const figmaFilesManifest = defineNativeExtensionManifest({
   ],
   connection: {
     auth: {
+      authorizationUrl: "https://jingle.cool/oauth/figma/start",
+      clientId: "jingle-desktop",
+      redirect: {
+        callbackPath: "/oauth/callback",
+        method: "app-scheme",
+        scheme: "jingle"
+      },
+      scopes: ["current_user:read", "projects:read", "file_metadata:read", "file_content:read"],
       secretNames: ["accessToken"],
-      type: "personalAccessToken"
+      tokenUrl: "https://jingle.cool/oauth/figma/token",
+      type: "oauth"
     },
+    connectGuide:
+      "Connect Figma from Jingle Settings. Jingle opens jingle.cool for authorization and stores the returned Figma access token locally.",
     id: "default",
     provider: EXTENSION_PROVIDER_ID,
     publicPreferenceNames: ["TEAM_ID", "open_in"],
@@ -47,17 +58,6 @@ export const figmaFilesManifest = defineNativeExtensionManifest({
   icon: "assets/command-icon.png",
   name: EXTENSION_ID,
   preferences: [
-    {
-      description: l(
-        "Personal access token used to read your Figma teams and files.",
-        "用于读取你的 Figma 团队和文件的个人访问令牌。"
-      ),
-      name: "accessToken",
-      placeholder: "figd_...",
-      required: false,
-      title: l("Figma Personal Access Token", "Figma 个人访问令牌"),
-      type: "password"
-    },
     {
       description: l(
         "One or more Figma team IDs separated by commas. Find a team ID in the Figma team URL.",

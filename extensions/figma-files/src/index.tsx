@@ -103,7 +103,7 @@ export default function FigmaFilesIndex(): React.JSX.Element {
     >
       {!hasAccessToken ? (
         <List.EmptyView
-          actions={<ActionPanel>{renderOpenSettingsAction(copy.addFigmaAccessToken)}</ActionPanel>}
+          actions={<ActionPanel>{renderOpenSettingsAction(copy.connectFigmaInSettings)}</ActionPanel>}
           description={copy.fileSearchNeedsToken}
           title={copy.connectFigma}
         />

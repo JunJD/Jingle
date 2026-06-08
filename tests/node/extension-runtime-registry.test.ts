@@ -102,8 +102,17 @@ test("Notion keeps the migrated manifest and package contract", async () => {
     "createDatabasePage"
   ])
   assert.deepEqual(notion.connection?.auth, {
+    authorizationUrl: "https://jingle.cool/oauth/notion/start",
+    clientId: "jingle-desktop",
+    redirect: {
+      callbackPath: "/oauth/callback",
+      method: "app-scheme",
+      scheme: "jingle"
+    },
+    scopes: [],
     secretNames: ["accessToken"],
-    type: "apiKey"
+    tokenUrl: "https://jingle.cool/oauth/notion/token",
+    type: "oauth"
   })
   assert.deepEqual(notion.connection?.publicPreferenceNames, ["apiBaseUrl"])
   assert.deepEqual(notion.runtimeShell, {
