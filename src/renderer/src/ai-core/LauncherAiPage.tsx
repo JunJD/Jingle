@@ -132,7 +132,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const [showModelPicker, setShowModelPicker] = useState(false)
   const hasThreadMessages = useThreadSelector(
     threadId,
-    (state) => (state?.agent.messages.length ?? 0) > 0
+    (state) => (state?.view.messageProjection.turns.length ?? 0) > 0
   )
   const currentThreadTitle = useHistoryShellStore((state) => {
     if (!threadId) {
