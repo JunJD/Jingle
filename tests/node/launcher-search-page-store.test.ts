@@ -9,6 +9,8 @@ import {
   parseExtensionQuicklinkCommandUrl
 } from "../../src/shared/extension-quicklinks"
 import { ExtensionIcon } from "../../src/renderer/src/extensions/ExtensionIcon"
+import { LauncherResultList } from "../../src/renderer/src/launcher-components/LauncherResultList"
+import { I18nProvider } from "../../src/renderer/src/lib/i18n"
 import { appCopy } from "../../src/renderer/src/lib/i18n/messages"
 import {
   buildLauncherHomeSurfaceModel,
@@ -252,6 +254,41 @@ test("broadened cached search results stay visible as non-executable preview row
   assert.equal(searchItem?.availability, "planned")
   assert.equal(searchItem?.presentation.listActionLabel, appCopy["zh-CN"].launcher.planned)
   assert.equal(searchItem?.presentation.primaryActionLabel, appCopy["zh-CN"].launcher.planned)
+})
+
+test("launcher result trailing labels use localized presentation categories", () => {
+  const [searchItem] = buildLauncherSearchShellItems(appCopy["zh-CN"], "zh-CN", [
+    createSearchResult({
+      id: "/Applications/WeChat.app",
+      kind: "application",
+      source: "applications",
+      title: "微信"
+    })
+  ])
+  assert.ok(searchItem)
+
+  const markup = renderToStaticMarkup(
+    createElement(
+      I18nProvider,
+      {
+        children: createElement(LauncherResultList, {
+          height: 80,
+          onExecute: () => undefined,
+          sections: [
+            {
+              items: [searchItem],
+              kind: "search-results"
+            }
+          ],
+          selectedIndex: 0
+        }),
+        initialLocale: "zh-CN"
+      }
+    )
+  )
+
+  assert.match(markup, /应用/)
+  assert.doesNotMatch(markup, /Application/)
 })
 
 test("mergeLauncherSearchResults orders by source priority, score, and de-duplicates per source key", () => {

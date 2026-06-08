@@ -18,6 +18,7 @@ export interface LauncherApplicationRecord {
   bundleName: string
   displayName: string
   keywords: string[]
+  localizedNames: string[]
   path: string
   subtitle: string
 }
@@ -60,6 +61,12 @@ const MAC_APPLICATION_DIRECTORIES = [
   "/System/Applications",
   "/System/Applications/Utilities",
   "/System/Library/CoreServices/Applications"
+]
+const MAC_CHINESE_LOCALIZATION_DIRECTORIES = [
+  "zh-Hans.lproj",
+  "zh_CN.lproj",
+  "zh.lproj",
+  "Chinese.lproj"
 ]
 const WINDOWS_START_MENU_FALLBACK_SUBTITLE = "开始菜单"
 const APPLICATION_INDEX_REFRESH_DEBOUNCE_MS = 750
@@ -213,6 +220,59 @@ async function resolveMacApplicationDisplayName(
   }
 }
 
+async function readPlistJsonObject(plistPath: string): Promise<Record<string, unknown> | null> {
+  try {
+    const { stdout } = await execFileAsync("/usr/bin/plutil", [
+      "-convert",
+      "json",
+      "-o",
+      "-",
+      plistPath
+    ])
+    const parsed = JSON.parse(stdout.toString()) as unknown
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null
+    }
+
+    return parsed as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function readStringProperty(record: Record<string, unknown>, key: string): string {
+  const value = record[key]
+  return typeof value === "string" ? value.trim() : ""
+}
+
+async function readMacLocalizedApplicationNames(applicationPath: string): Promise<string[]> {
+  const resourcesPath = path.join(applicationPath, "Contents", "Resources")
+  const localizedNames: string[] = []
+
+  for (const directoryName of MAC_CHINESE_LOCALIZATION_DIRECTORIES) {
+    const infoPlistStringsPath = path.join(resourcesPath, directoryName, "InfoPlist.strings")
+
+    try {
+      await fs.access(infoPlistStringsPath)
+    } catch {
+      continue
+    }
+
+    const localizedPlist = await readPlistJsonObject(infoPlistStringsPath)
+    if (!localizedPlist) {
+      continue
+    }
+
+    localizedNames.push(
+      readStringProperty(localizedPlist, "CFBundleDisplayName"),
+      readStringProperty(localizedPlist, "CFBundleName")
+    )
+  }
+
+  return uniqueStrings(localizedNames)
+}
+
 function getWindowsApplicationSubtitle(shortcutPath: string, rootPath: string): string {
   const relativePath = path.win32.relative(rootPath, shortcutPath)
   const relativeDirectory = path.win32.dirname(relativePath)
@@ -265,6 +325,25 @@ async function collectMacApplicationPaths(
   )
 }
 
+async function createMacApplicationRecord(
+  applicationPath: string,
+  displayName: string
+): Promise<LauncherApplicationRecord> {
+  const extension = path.extname(applicationPath)
+  const bundleName = path.basename(applicationPath, extension)
+  const localizedNames = await readMacLocalizedApplicationNames(applicationPath)
+
+  return {
+    bundleName,
+    displayName,
+    id: applicationPath,
+    keywords: buildSearchKeywords(displayName, bundleName, ...localizedNames),
+    localizedNames,
+    path: applicationPath,
+    subtitle: getMacApplicationSubtitle(applicationPath)
+  }
+}
+
 async function loadMacApplicationsFromSystemProfiler(): Promise<LauncherApplicationRecord[]> {
   const { stdout } = await execFileAsync(
     "/usr/sbin/system_profiler",
@@ -288,16 +367,10 @@ async function loadMacApplicationsFromSystemProfiler(): Promise<LauncherApplicat
     }
 
     const bundleName = path.basename(applicationPath, extension)
-    const displayName = entry._name?.trim() || bundleName
-
-    applicationsByPath.set(applicationPath, {
-      bundleName,
-      displayName,
-      id: applicationPath,
-      keywords: buildSearchKeywords(displayName, bundleName),
-      path: applicationPath,
-      subtitle: getMacApplicationSubtitle(applicationPath)
-    })
+    applicationsByPath.set(
+      applicationPath,
+      await createMacApplicationRecord(applicationPath, entry._name?.trim() || bundleName)
+    )
   }
 
   return [...applicationsByPath.values()].sort((left, right) => {
@@ -336,14 +409,10 @@ async function loadMacApplications(): Promise<LauncherApplicationRecord[]> {
     const extension = path.extname(applicationPath)
     const bundleName = path.basename(applicationPath, extension)
 
-    applicationsByPath.set(applicationPath, {
-      bundleName,
-      displayName: bundleName,
-      id: applicationPath,
-      keywords: buildSearchKeywords(bundleName),
-      path: applicationPath,
-      subtitle: getMacApplicationSubtitle(applicationPath)
-    })
+    applicationsByPath.set(
+      applicationPath,
+      await createMacApplicationRecord(applicationPath, bundleName)
+    )
   }
 
   return [...applicationsByPath.values()].sort((left, right) => {
@@ -419,6 +488,7 @@ function toLauncherApplicationRecord(
     displayName: application.displayName,
     id: application.id,
     keywords: application.keywords,
+    localizedNames: application.localizedNames,
     path: application.path,
     subtitle: application.subtitle
   }
@@ -450,6 +520,7 @@ function parseWindowsApplicationRecord(
     displayName: bundleName,
     id: shortcutPath,
     keywords: buildSearchKeywords(bundleName, targetName),
+    localizedNames: [],
     path: shortcutPath,
     sourcePriority: root.priority,
     subtitle: getWindowsApplicationSubtitle(shortcutPath, root.path),
@@ -797,7 +868,12 @@ function getApplicationMatch(
       normalizedValue: normalizeSearchValue(application.bundleName),
       title: application.bundleName,
       value: application.bundleName
-    }
+    },
+    ...application.localizedNames.map((localizedName) => ({
+      normalizedValue: normalizeSearchValue(localizedName),
+      title: localizedName,
+      value: localizedName
+    }))
   ]
   let bestMatch: { match?: [number, number]; score: number; title: string } | null = null
 
@@ -961,7 +1037,7 @@ export class ApplicationsLauncherSearchProvider implements LauncherSearchProvide
           (entry) => getApplicationPathLookupKey(entry.path) === lookupKey
         )
 
-        return application?.displayName
+        return application?.localizedNames[0] ?? application?.displayName
       })()
 
       this.applicationDisplayNamePromiseCache.set(lookupKey, displayNamePromise)

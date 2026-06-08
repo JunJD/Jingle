@@ -58,19 +58,7 @@ function getResultTrailingLabel(
     return item.trailingLabel
   }
 
-  if (item.kind === "ai") {
-    return copy.launcher.resultKindAgent
-  }
-
-  if (item.kind === "application") {
-    return "Application"
-  }
-
-  if (item.kind === "plugin") {
-    return "Command"
-  }
-
-  return copy.launcher.openGeneric
+  return item.presentation.categoryLabel || copy.launcher.openGeneric
 }
 
 function getLauncherResultScrollKey(item: LauncherShellItem | undefined): string | null {
