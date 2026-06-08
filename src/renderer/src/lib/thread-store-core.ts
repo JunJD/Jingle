@@ -1,5 +1,5 @@
 import { DEFAULT_MODELS } from "@shared/models"
-import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
+import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
 import type { ArtifactRecord } from "@shared/artifacts"
 import type { AgentThreadDataSnapshot } from "@shared/app-types"
 import type { ActiveAgentRun, AgentThreadEvent } from "@shared/agent-thread-runtime"
@@ -12,9 +12,9 @@ import {
 import type { HITLRequest, Message, Subagent, ThreadForkState, Todo } from "../types"
 import { createDefaultMessagesProjection, type MessagesProjection } from "./message-projection"
 import {
-  applyRuntimeEventsToThreadState,
-  createRuntimeThreadStateUpdate
-} from "./agent-runtime-reducer"
+  createRuntimeEventProjectionUpdate,
+  applyRuntimeEventsToThreadState
+} from "./agent-runtime-event-projector"
 import { applyRuntimeSnapshotToThreadState } from "./agent-runtime-snapshot-reducer"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
@@ -32,7 +32,6 @@ export interface AgentSourceState {
   artifacts: ArtifactRecord[]
   forkState: ThreadForkState
   messages: Message[]
-  title: string | null
   todos: Todo[]
   workspacePath: string | null
   subagents: Subagent[]
@@ -45,11 +44,11 @@ export interface AgentSourceState {
   tokenUsage: TokenUsage | null
 }
 
-export interface AgentViewState {
+interface AgentViewState {
   messageProjection: MessagesProjection
 }
 
-export interface ThreadLocalUiState {
+interface ThreadLocalUiState {
   openFiles: OpenFile[]
   openArtifacts: OpenArtifactTab[]
   activeTab: "agent" | string
@@ -62,7 +61,7 @@ export interface ThreadState {
   ui: ThreadLocalUiState
 }
 
-export type ThreadStateUpdate = {
+type ThreadStateUpdate = {
   agent?: Partial<AgentSourceState>
   view?: Partial<AgentViewState>
   ui?: Partial<ThreadLocalUiState>
@@ -80,6 +79,7 @@ export interface ThreadLocalUiControl {
 export interface ThreadControl {
   local: ThreadLocalUiControl
 }
+
 export interface ThreadStore {
   applyArtifactsChanged: (threadId: string, artifacts: ArtifactRecord[]) => void
   applyRuntimeEvents: (threadId: string, events: AgentThreadEvent[]) => void
@@ -100,7 +100,6 @@ export function createDefaultThreadState(): ThreadState {
         canFork: true
       },
       messages: [],
-      title: null,
       todos: [],
       workspacePath: null,
       subagents: [],
@@ -211,7 +210,7 @@ export function createThreadStore(): ThreadStore {
 
     updateThreadState(threadId, (state) => {
       const nextState = applyRuntimeEventsToThreadState(state, events, { threadId })
-      return createRuntimeThreadStateUpdate(nextState)
+      return createRuntimeEventProjectionUpdate(nextState)
     })
   }
 

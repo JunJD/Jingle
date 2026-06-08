@@ -1,7 +1,11 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { DEFAULT_PERMISSION_MODE } from "../../src/shared/permission-mode"
-import type { ActiveAgentRun } from "../../src/shared/agent-thread-runtime"
+import type { ActiveAgentRun, AgentThreadEvent } from "../../src/shared/agent-thread-runtime"
+import {
+  createDefaultAgentThreadRuntimeState,
+  reduceAgentThreadRuntimeEvent
+} from "../../src/shared/agent-thread-runtime"
 import type { AgentThreadDataSnapshot } from "../../src/shared/app-types"
 import type { HITLRequest } from "../../src/shared/hitl"
 import type { ArtifactRecord } from "../../src/shared/artifacts"
@@ -281,7 +285,7 @@ test("thread data snapshot and events update thread state through store reducer"
       },
       runState: {
         error: null,
-        forkState: { canFork: false, reason: "busy" },
+        forkState: { canFork: true },
         pendingApproval: null,
         runId: activeRun.runId,
         todos: []
@@ -292,13 +296,18 @@ test("thread data snapshot and events update thread state through store reducer"
           permissionMode: "auto",
           workspacePath: "/tmp/launcher-ai-first-send"
         },
-        status: "busy",
+        status: "idle",
         thread_id: "thread-a",
         title: undefined
       }
     })
   )
   store.applyRuntimeEvents("thread-a", [
+    {
+      revision: 1,
+      run: activeRun,
+      type: "run.started"
+    },
     {
       message: createAssistantMessage("assistant-1", "Hello"),
       revision: 2,
@@ -316,7 +325,7 @@ test("thread data snapshot and events update thread state through store reducer"
   assert.equal(state.agent.runId, "run-1")
   assert.equal(state.agent.activeRun?.assistantMessageId, "assistant-1")
   assert.deepEqual(state.agent.artifacts, [artifact])
-  assert.deepEqual(state.agent.forkState, { canFork: false, reason: "busy" })
+  assert.deepEqual(state.agent.forkState, { canFork: true })
   assert.equal(state.agent.workspacePath, "/tmp/launcher-ai-first-send")
   assert.equal(state.agent.currentModel, "openai:gpt-4o")
   assert.equal(state.agent.permissionMode, "auto")
@@ -325,6 +334,64 @@ test("thread data snapshot and events update thread state through store reducer"
     state.agent.messages.map((message) => message.id),
     ["user-1", "assistant-1"]
   )
+})
+
+test("runtime event path maps shared reducer state into renderer source facts", () => {
+  const store = createThreadStore()
+  const events: AgentThreadEvent[] = [
+    {
+      message: createUserMessage("user-1", "Question"),
+      revision: 1,
+      type: "message.upserted"
+    },
+    {
+      revision: 2,
+      run: {
+        assistantMessageId: null,
+        phase: "thinking",
+        runId: null,
+        status: "running",
+        threadId: "thread-a",
+        turnId: "user-1",
+        userMessageId: "user-1"
+      },
+      type: "run.started"
+    },
+    {
+      message: createAssistantMessage("assistant-1", "Hello"),
+      revision: 3,
+      type: "message.upserted"
+    },
+    {
+      delta: " world",
+      field: "text",
+      messageId: "assistant-1",
+      partId: "content",
+      revision: 4,
+      type: "message.part.delta"
+    },
+    {
+      approval: createPendingApproval(),
+      revision: 5,
+      runId: null,
+      type: "approval.requested"
+    }
+  ]
+
+  store.applyRuntimeEvents("thread-a", events)
+
+  const sharedRuntimeState = events.reduce(
+    reduceAgentThreadRuntimeEvent,
+    createDefaultAgentThreadRuntimeState("thread-a")
+  )
+  const state = getThreadState(store, "thread-a")
+  assert.deepEqual(state.agent.activeRun, sharedRuntimeState.activeRun)
+  assert.deepEqual(state.agent.messages, sharedRuntimeState.messagesPage)
+  assert.deepEqual(state.agent.pendingApproval, sharedRuntimeState.pendingApproval)
+  assert.equal(state.agent.revision, sharedRuntimeState.revision)
+  assert.equal(state.agent.runId, sharedRuntimeState.latestRunId)
+  assert.equal(state.view.messageProjection.activeAssistantId, "assistant-1")
+  assert.equal(state.view.messageProjection.activeTurnKey, "user-1")
 })
 
 test("run started immediately moves projection active turn before assistant first token", () => {
@@ -725,14 +792,14 @@ test("runtime delta for an unknown message does not advance revision before thre
       },
       runState: {
         error: null,
-        forkState: { canFork: false, reason: "busy" },
+        forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
         todos: []
       },
       thread: {
         metadata: undefined,
-        status: "busy",
+        status: "idle",
         thread_id: "thread-a",
         title: undefined
       }
@@ -759,14 +826,14 @@ test("runtime token delta keeps historical turn references stable after thread d
       },
       runState: {
         error: null,
-        forkState: { canFork: false, reason: "busy" },
+        forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
         todos: []
       },
       thread: {
         metadata: undefined,
-        status: "busy",
+        status: "idle",
         thread_id: "thread-a",
         title: undefined
       }
@@ -811,14 +878,14 @@ test("runtime token delta in long history keeps inactive turns and rows stable",
       },
       runState: {
         error: null,
-        forkState: { canFork: false, reason: "busy" },
+        forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
         todos: []
       },
       thread: {
         metadata: undefined,
-        status: "busy",
+        status: "idle",
         thread_id: "thread-a",
         title: undefined
       }
@@ -860,7 +927,7 @@ test("runtime token delta in long history keeps inactive turns and rows stable",
   assert.equal(nextState.view.messageProjection.activeAssistantId, `assistant-${activeTurnIndex}`)
 })
 
-test("thread data snapshot restores thread facts and stale events do not roll back state", () => {
+test("thread data snapshot restores non-runtime facts and stale events do not roll back runtime facts", () => {
   const store = createThreadStore()
   const pendingApproval = createPendingApproval()
 
@@ -878,8 +945,8 @@ test("thread data snapshot restores thread facts and stale events do not roll ba
         runId: "run-1",
         todos: [
           {
-            content: "Review command",
-            id: "todo-1",
+            content: "Snapshot todo",
+            id: "snapshot-todo",
             status: "pending"
           }
         ]
@@ -894,7 +961,42 @@ test("thread data snapshot restores thread facts and stale events do not roll ba
   )
   store.applyRuntimeEvents("thread-a", [
     {
+      message: createUserMessage("user-1", "Question"),
       revision: 1,
+      type: "message.upserted"
+    },
+    {
+      revision: 2,
+      run: {
+        assistantMessageId: null,
+        phase: "thinking",
+        runId: "run-1",
+        status: "running",
+        threadId: "thread-a",
+        turnId: "user-1",
+        userMessageId: "user-1"
+      },
+      type: "run.resumed"
+    },
+    {
+      approval: pendingApproval,
+      revision: 3,
+      runId: "run-1",
+      type: "approval.requested"
+    },
+    {
+      revision: 4,
+      todos: [
+        {
+          content: "Review command",
+          id: "todo-1",
+          status: "pending"
+        }
+      ],
+      type: "todos.replaced"
+    },
+    {
+      revision: 5,
       subagents: [
         {
           description: "Review code",
@@ -906,7 +1008,7 @@ test("thread data snapshot restores thread facts and stale events do not roll ba
       type: "subagents.replaced"
     },
     {
-      revision: 2,
+      revision: 6,
       tokenUsage: {
         inputTokens: 10,
         lastUpdated: new Date("2026-01-01T00:00:00.000Z"),
@@ -924,9 +1026,9 @@ test("thread data snapshot restores thread facts and stale events do not roll ba
   ])
 
   const state = getThreadState(store, "thread-a")
-  assert.equal(state.agent.revision, 2)
+  assert.equal(state.agent.revision, 6)
   assert.equal(state.agent.runId, "run-1")
-  assert.equal(state.agent.error, "Needs approval")
+  assert.equal(state.agent.error, null)
   assert.equal(state.agent.pendingApproval, pendingApproval)
   assert.equal(state.agent.subagents[0]?.id, "subagent-1")
   assert.equal(state.agent.todos[0]?.id, "todo-1")
