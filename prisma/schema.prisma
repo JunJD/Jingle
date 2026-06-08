@@ -20,6 +20,7 @@ model Thread {
   artifactPresentations ArtifactPresentation[]
   sessionBindings       SessionBinding[]       @relation("SessionBindingCurrentThread")
   checkpoints           Checkpoint[]
+  checkpointBlobs       CheckpointBlob[]
   checkpointWrites      CheckpointWrite[]
   hitlRequests          HitlRequest[]
   messages              Message[]
@@ -239,6 +240,20 @@ model CheckpointWrite {
   @@id([threadId, checkpointNs, checkpointId, taskId, idx])
   @@index([threadId, checkpointNs, checkpointId], map: "idx_writes_thread_checkpoint")
   @@map("writes")
+}
+
+model CheckpointBlob {
+  threadId     String  @map("thread_id")
+  checkpointNs String  @default("") @map("checkpoint_ns")
+  channel      String
+  version      String
+  type         String?
+  value        String?
+  thread       Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@id([threadId, checkpointNs, channel, version])
+  @@index([threadId, checkpointNs], map: "idx_checkpoint_blobs_thread_ns")
+  @@map("checkpoint_blobs")
 }
 
 model Message {

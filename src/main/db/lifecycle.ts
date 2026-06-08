@@ -16,6 +16,7 @@ const REQUIRED_TABLES = [
   "session_bindings",
   "hitl_requests",
   "checkpoints",
+  "checkpoint_blobs",
   "writes",
   "agent_memories",
   "agent_memory_suggestions",
