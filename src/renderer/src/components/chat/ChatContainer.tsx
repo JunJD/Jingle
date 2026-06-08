@@ -49,7 +49,7 @@ const ChatFooter = memo(function ChatFooter(props: {
   const { clearError, hasVisibleTurns, isBusy, pendingApproval, threadId, todos, visibleError } =
     props
   const { copy } = useI18n()
-  const runId = useThreadSelector(threadId, (state) => state?.agent.runId ?? null)
+  const runId = useThreadSelector(threadId, (state) => state?.agent.latestRunId ?? null)
 
   return (
     <div className="flex flex-col gap-[var(--ow-chat-thread-gap)]">

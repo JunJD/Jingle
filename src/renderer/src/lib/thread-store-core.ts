@@ -2,7 +2,12 @@ import { DEFAULT_MODELS } from "@shared/models"
 import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
 import type { ArtifactRecord } from "@shared/artifacts"
 import type { AgentThreadDataSnapshot } from "@shared/app-types"
-import type { ActiveAgentRun, AgentThreadEvent } from "@shared/agent-thread-runtime"
+import {
+  createDefaultAgentThreadRuntimeState,
+  type AgentThreadEvent,
+  type AgentThreadRuntimeState,
+  type AgentTokenUsage
+} from "@shared/agent-thread-runtime"
 import {
   getArtifactTabId,
   getFileTabId,
@@ -10,7 +15,7 @@ import {
   type OpenArtifactTab,
   type OpenFile
 } from "@shared/thread-tabs"
-import type { HITLRequest, Message, Subagent, ThreadForkState, Todo } from "../types"
+import type { ThreadForkState } from "../types"
 import { createDefaultMessagesProjection, type MessagesProjection } from "./message-projection"
 import {
   createRuntimeEventProjectionUpdate,
@@ -19,30 +24,14 @@ import {
 import { applyRuntimeSnapshotToThreadState } from "./agent-runtime-snapshot-reducer"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
-export interface TokenUsage {
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-  cacheReadTokens?: number
-  cacheCreationTokens?: number
-  lastUpdated: Date
-}
+export type TokenUsage = AgentTokenUsage
 
-export interface AgentSourceState {
-  activeRun: ActiveAgentRun | null
+export interface AgentSourceState extends AgentThreadRuntimeState {
   artifacts: ArtifactRecord[]
   forkState: ThreadForkState
-  messages: Message[]
-  todos: Todo[]
   workspacePath: string | null
-  subagents: Subagent[]
-  pendingApproval: HITLRequest | null
-  error: string | null
   currentModel: string
   permissionMode: PermissionModeName
-  revision: number
-  runId: string | null
-  tokenUsage: TokenUsage | null
 }
 
 interface AgentViewState {
@@ -92,25 +81,17 @@ export interface ThreadStore {
   subscribeThread: (threadId: string, listener: () => void) => () => void
 }
 
-export function createDefaultThreadState(): ThreadState {
+export function createDefaultThreadState(threadId = ""): ThreadState {
   return {
     agent: {
-      activeRun: null,
+      ...createDefaultAgentThreadRuntimeState(threadId),
       artifacts: [],
       forkState: {
         canFork: true
       },
-      messages: [],
-      todos: [],
       workspacePath: null,
-      subagents: [],
-      pendingApproval: null,
-      error: null,
       currentModel: DEFAULT_MODELS.llm,
-      permissionMode: DEFAULT_PERMISSION_MODE,
-      revision: 0,
-      runId: null,
-      tokenUsage: null
+      permissionMode: DEFAULT_PERMISSION_MODE
     },
     view: {
       messageProjection: createDefaultMessagesProjection()
@@ -174,7 +155,7 @@ export function createThreadStore(): ThreadStore {
     threadId: string,
     updater: (prev: ThreadState) => ThreadStateUpdate
   ): void => {
-    const current = threadStates[threadId] ?? createDefaultThreadState()
+    const current = threadStates[threadId] ?? createDefaultThreadState(threadId)
     const requestedPartial = updater(current)
     const nextPartial = filterThreadStateChanges(current, requestedPartial)
 
@@ -331,7 +312,7 @@ export function createThreadStore(): ThreadStore {
 
     threadStates = {
       ...threadStates,
-      [threadId]: createDefaultThreadState()
+      [threadId]: createDefaultThreadState(threadId)
     }
     emitThread(threadId)
     return true

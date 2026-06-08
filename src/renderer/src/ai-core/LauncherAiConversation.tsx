@@ -54,7 +54,7 @@ const LauncherAiFooter = memo(function LauncherAiFooter(props: {
 }): React.JSX.Element {
   const { clearError, error, hasVisibleTurns, isLoading, pendingApproval, threadId, todos } = props
   const { copy } = useI18n()
-  const runId = useThreadSelector(threadId, (state) => state?.agent.runId ?? null)
+  const runId = useThreadSelector(threadId, (state) => state?.agent.latestRunId ?? null)
   const subagents = useThreadSelector(
     threadId,
     (state) => state?.agent.subagents ?? EMPTY_SUBAGENTS

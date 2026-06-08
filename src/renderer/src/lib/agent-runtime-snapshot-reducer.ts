@@ -2,10 +2,33 @@ import { isPermissionModeName, THREAD_PERMISSION_MODE_METADATA_KEY } from "@shar
 import { DEFAULT_MODELS } from "@shared/models"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
 import type { AgentThreadDataSnapshot } from "@shared/app-types"
+import type { IpcErrorPayload } from "@shared/ipc-error"
 import { projectMessages } from "./message-projection"
 import { stabilizeReferences } from "./stabilize-references"
 import { stabilizeThreadMessages } from "./thread-message-stability"
 import type { ThreadState } from "./thread-store-core"
+
+function toRuntimeSnapshotStatus(
+  status: AgentThreadDataSnapshot["thread"]["status"]
+): ThreadState["agent"]["status"] {
+  if (status === "error") {
+    return "error"
+  }
+
+  return "idle"
+}
+
+function toSnapshotErrorPayload(error: string | null): IpcErrorPayload | null {
+  if (!error) {
+    return null
+  }
+
+  return {
+    code: "INTERNAL",
+    message: error,
+    status: 500
+  }
+}
 
 export function applyRuntimeSnapshotToThreadState(
   state: ThreadState,
@@ -15,9 +38,9 @@ export function applyRuntimeSnapshotToThreadState(
   const hasRuntimeRun = state.agent.activeRun !== null
   const canApplySnapshotContent =
     !hasRuntimeRun && snapshot.thread.status !== "busy" && snapshot.thread.status !== "interrupted"
-  const messages = canApplySnapshotContent
-    ? stabilizeThreadMessages(state.agent.messages, snapshot.messages.messages)
-    : state.agent.messages
+  const messagesPage = canApplySnapshotContent
+    ? stabilizeThreadMessages(state.agent.messagesPage, snapshot.messages.messages)
+    : state.agent.messagesPage
   const permissionMode = metadata[THREAD_PERMISSION_MODE_METADATA_KEY]
 
   const artifacts = canApplySnapshotContent
@@ -34,15 +57,22 @@ export function applyRuntimeSnapshotToThreadState(
       activeRun: state.agent.activeRun,
       artifacts,
       currentModel: typeof metadata.model === "string" ? metadata.model : DEFAULT_MODELS.llm,
-      error: canApplySnapshotContent ? snapshot.runState.error : state.agent.error,
+      error: canApplySnapshotContent
+        ? toSnapshotErrorPayload(snapshot.runState.error)
+        : state.agent.error,
       forkState,
-      messages,
+      hasMoreBefore: false,
+      messagesPage,
       pendingApproval: state.agent.pendingApproval,
       permissionMode: isPermissionModeName(permissionMode)
         ? permissionMode
         : DEFAULT_PERMISSION_MODE,
-      runId: state.agent.runId,
+      latestRunId: state.agent.latestRunId,
       subagents: state.agent.subagents,
+      status: canApplySnapshotContent
+        ? toRuntimeSnapshotStatus(snapshot.thread.status)
+        : state.agent.status,
+      threadId: snapshot.thread.thread_id,
       todos: state.agent.todos,
       tokenUsage: state.agent.tokenUsage,
       workspacePath: typeof metadata.workspacePath === "string" ? metadata.workspacePath : null
@@ -50,7 +80,7 @@ export function applyRuntimeSnapshotToThreadState(
     view: {
       ...state.view,
       messageProjection: projectMessages(
-        messages,
+        messagesPage,
         state.view.messageProjection,
         state.agent.activeRun
           ? {

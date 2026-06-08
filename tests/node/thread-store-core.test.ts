@@ -322,7 +322,7 @@ test("thread data snapshot and events update thread state through store reducer"
 
   const state = getThreadState(store, "thread-a")
   assert.equal(state.agent.revision, 3)
-  assert.equal(state.agent.runId, "run-1")
+  assert.equal(state.agent.latestRunId, "run-1")
   assert.equal(state.agent.activeRun?.assistantMessageId, "assistant-1")
   assert.deepEqual(state.agent.artifacts, [artifact])
   assert.deepEqual(state.agent.forkState, { canFork: true })
@@ -331,7 +331,7 @@ test("thread data snapshot and events update thread state through store reducer"
   assert.equal(state.agent.permissionMode, "auto")
   assert.equal(state.view.messageProjection.activeTurnKey, "user-1")
   assert.deepEqual(
-    state.agent.messages.map((message) => message.id),
+    state.agent.messagesPage.map((message) => message.id),
     ["user-1", "assistant-1"]
   )
 })
@@ -386,10 +386,10 @@ test("runtime event path maps shared reducer state into renderer source facts", 
   )
   const state = getThreadState(store, "thread-a")
   assert.deepEqual(state.agent.activeRun, sharedRuntimeState.activeRun)
-  assert.deepEqual(state.agent.messages, sharedRuntimeState.messagesPage)
+  assert.deepEqual(state.agent.messagesPage, sharedRuntimeState.messagesPage)
   assert.deepEqual(state.agent.pendingApproval, sharedRuntimeState.pendingApproval)
   assert.equal(state.agent.revision, sharedRuntimeState.revision)
-  assert.equal(state.agent.runId, sharedRuntimeState.latestRunId)
+  assert.equal(state.agent.latestRunId, sharedRuntimeState.latestRunId)
   assert.equal(state.view.messageProjection.activeAssistantId, "assistant-1")
   assert.equal(state.view.messageProjection.activeTurnKey, "user-1")
 })
@@ -808,7 +808,7 @@ test("runtime delta for an unknown message does not advance revision before thre
 
   const state = getThreadState(store, "thread-a")
   assert.equal(state.agent.revision, 0)
-  assert.equal(state.agent.messages[1]?.content, "Hello")
+  assert.equal(state.agent.messagesPage[1]?.content, "Hello")
 })
 
 test("runtime token delta keeps historical turn references stable after thread data bootstrap", () => {
@@ -856,7 +856,7 @@ test("runtime token delta keeps historical turn references stable after thread d
 
   const state = getThreadState(store, "thread-a")
   assert.equal(state.agent.revision, 2)
-  assert.equal(state.agent.messages[1]?.content, "Hello world")
+  assert.equal(state.agent.messagesPage[1]?.content, "Hello world")
   assert.notEqual(state.view.messageProjection, firstProjection)
   assert.notEqual(state.view.messageProjection.turns[0], firstTurn)
   assert.equal(state.view.messageProjection.turns[0]?.user, firstTurn?.user)
@@ -906,10 +906,10 @@ test("runtime token delta in long history keeps inactive turns and rows stable",
   ])
 
   const nextState = getThreadState(store, "thread-a")
-  assert.equal(nextState.agent.messages[activeTurnIndex * 2], firstState.agent.messages[activeTurnIndex * 2])
+  assert.equal(nextState.agent.messagesPage[activeTurnIndex * 2], firstState.agent.messagesPage[activeTurnIndex * 2])
   assert.notEqual(
-    nextState.agent.messages[activeTurnIndex * 2 + 1],
-    firstState.agent.messages[activeTurnIndex * 2 + 1]
+    nextState.agent.messagesPage[activeTurnIndex * 2 + 1],
+    firstState.agent.messagesPage[activeTurnIndex * 2 + 1]
   )
   assert.equal(nextState.view.messageProjection.displayRows, firstProjection.displayRows)
   for (let index = 0; index < activeTurnIndex; index += 1) {
@@ -1027,7 +1027,7 @@ test("thread data snapshot restores non-runtime facts and stale events do not ro
 
   const state = getThreadState(store, "thread-a")
   assert.equal(state.agent.revision, 6)
-  assert.equal(state.agent.runId, "run-1")
+  assert.equal(state.agent.latestRunId, "run-1")
   assert.equal(state.agent.error, null)
   assert.equal(state.agent.pendingApproval, pendingApproval)
   assert.equal(state.agent.subagents[0]?.id, "subagent-1")

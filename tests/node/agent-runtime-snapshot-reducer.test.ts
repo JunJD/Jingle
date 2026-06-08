@@ -43,12 +43,12 @@ test("agent runtime snapshot reducer applies messages, metadata, and non-runtime
     }
   } satisfies AgentThreadDataSnapshot)
 
-  assert.equal(next.agent.messages.length, 2)
+  assert.equal(next.agent.messagesPage.length, 2)
   assert.equal(next.view.messageProjection.turns.length, 1)
   assert.equal(next.agent.currentModel, "openai:gpt-4o")
   assert.equal(next.agent.workspacePath, "/tmp/demo")
   assert.equal(next.agent.permissionMode, DEFAULT_PERMISSION_MODE)
-  assert.equal(next.agent.runId, null)
+  assert.equal(next.agent.latestRunId, null)
   assert.equal(next.agent.activeRun, null)
 })
 
@@ -58,7 +58,7 @@ test("agent runtime snapshot reducer does not produce runtime facts from snapsho
     ...defaultState,
     agent: {
       ...defaultState.agent,
-      runId: "runtime-run",
+      latestRunId: "runtime-run",
       todos: [
         {
           content: "Runtime todo",
@@ -101,7 +101,7 @@ test("agent runtime snapshot reducer does not produce runtime facts from snapsho
     }
   } satisfies AgentThreadDataSnapshot)
 
-  assert.equal(next.agent.runId, "runtime-run")
+  assert.equal(next.agent.latestRunId, "runtime-run")
   assert.equal(next.agent.todos[0]?.id, "runtime-todo")
   assert.equal(next.agent.tokenUsage?.totalTokens, 15)
 })
@@ -175,8 +175,8 @@ test("agent runtime snapshot reducer applies only metadata from busy snapshots",
   assert.equal(next.agent.currentModel, "openai:gpt-4o")
   assert.equal(next.agent.workspacePath, "/tmp/busy")
   assert.equal(next.agent.activeRun, null)
-  assert.deepEqual(next.agent.messages, [])
-  assert.equal(next.agent.runId, null)
+  assert.deepEqual(next.agent.messagesPage, [])
+  assert.equal(next.agent.latestRunId, null)
 })
 
 test("agent runtime snapshot reducer does not produce interrupted runtime facts", () => {
@@ -231,7 +231,7 @@ test("agent runtime snapshot reducer does not produce interrupted runtime facts"
   assert.equal(next.agent.workspacePath, "/tmp/interrupted")
   assert.equal(next.agent.activeRun, null)
   assert.equal(next.agent.pendingApproval, null)
-  assert.equal(next.agent.runId, null)
+  assert.equal(next.agent.latestRunId, null)
   assert.deepEqual(next.agent.todos, [])
   assert.equal(next.agent.tokenUsage, null)
 })

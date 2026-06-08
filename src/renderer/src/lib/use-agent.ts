@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import type { IpcErrorPayload } from "@shared/ipc-error"
 import { useThreadContext, useThreadSelector } from "./thread-context"
 import {
   invokeAgentThread,
@@ -23,15 +24,16 @@ export interface AgentView {
 export type { AgentControl } from "./agent-control"
 
 interface DismissedThreadError {
-  error: string | null
+  error: IpcErrorPayload | null
   threadId: string | null
 }
 
-function formatAgentErrorForView(errorMessage: string | null): string | null {
-  if (!errorMessage) {
+function formatAgentErrorForView(errorPayload: IpcErrorPayload | null): string | null {
+  if (!errorPayload) {
     return null
   }
 
+  const errorMessage = errorPayload.message
   const contextWindowMatch = errorMessage.match(/prompt is too long: (\d+) tokens > (\d+) maximum/i)
   if (contextWindowMatch) {
     const [, usedTokens, maxTokens] = contextWindowMatch
@@ -69,16 +71,16 @@ export function useAgent(options: UseAgentOptions): {
     threadContext.ensureThreadRuntime(threadId)
   }, [threadContext, threadId])
 
-  const activeRunStatus = useThreadSelector(
+  const runtimeStatus = useThreadSelector(
     threadId,
-    (state) => state?.agent.activeRun?.status ?? null
+    (state) => state?.agent.status ?? null
   )
   const threadError = useThreadSelector(threadId, (state) => state?.agent.error ?? null)
   const [dismissedThreadError, setDismissedThreadError] =
     useState<DismissedThreadError | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
 
-  const isBusy = activeRunStatus === "running"
+  const isBusy = runtimeStatus === "running"
   const visibleThreadError =
     dismissedThreadError?.threadId === threadId && dismissedThreadError.error === threadError
       ? null

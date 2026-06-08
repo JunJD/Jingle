@@ -159,7 +159,7 @@ test("agent runtime manager applies connected runtime batches into thread state"
   assert.equal(state.agent.activeRun?.status, "running")
   assert.equal(state.view.messageProjection.activeTurnKey, "user-1")
   assert.deepEqual(
-    state.agent.messages.map((message) => message.id),
+    state.agent.messagesPage.map((message) => message.id),
     ["user-1"]
   )
 })
@@ -200,7 +200,7 @@ test("agent runtime manager keeps runtime error facts unformatted", async () => 
   })
 
   const state = getThreadState(store, "thread-a")
-  assert.equal(state.agent.error, "prompt is too long: 120000 tokens > 64000 maximum")
+  assert.equal(state.agent.error?.message, "prompt is too long: 120000 tokens > 64000 maximum")
 })
 
 test("agent runtime manager loads thread snapshot through its runtime boundary", async () => {
@@ -220,7 +220,7 @@ test("agent runtime manager loads thread snapshot through its runtime boundary",
 
   const state = getThreadState(store, "thread-a")
   assert.deepEqual(
-    state.agent.messages.map((message) => message.id),
+    state.agent.messagesPage.map((message) => message.id),
     ["user-1", "assistant-1"]
   )
   assert.equal(state.view.messageProjection.turns.length, 1)
@@ -272,7 +272,7 @@ test("agent runtime manager replays runtime events instead of applying snapshot 
   assert.deepEqual(replayedThreadIds, ["thread-a"])
   assert.equal(snapshotLoadCount, 1)
   assert.deepEqual(
-    state.agent.messages.map((message) => message.content),
+    state.agent.messagesPage.map((message) => message.content),
     ["Question from runtime"]
   )
 })
@@ -332,7 +332,7 @@ test("agent runtime manager applies metadata snapshots while streaming before re
   assert.equal(state.agent.workspacePath, "/tmp/streaming")
   assert.equal(state.agent.activeRun?.status, "running")
   assert.deepEqual(
-    state.agent.messages.map((message) => message.content),
+    state.agent.messagesPage.map((message) => message.content),
     ["Question from runtime"]
   )
 })
@@ -400,7 +400,7 @@ test("agent runtime manager replays events instead of applying busy snapshots", 
   assert.equal(state.agent.currentModel, "openai:gpt-4o")
   assert.equal(state.agent.activeRun?.status, "running")
   assert.deepEqual(
-    state.agent.messages.map((message) => message.content),
+    state.agent.messagesPage.map((message) => message.content),
     ["Question from event replay"]
   )
 })
@@ -497,7 +497,7 @@ test("agent runtime manager replays interrupted runtime facts instead of applyin
   assert.equal(state.agent.activeRun?.assistantMessageId, "assistant-1")
   assert.equal(state.agent.activeRun?.turnId, "user-1")
   assert.deepEqual(
-    state.agent.messages.map((message) => message.content),
+    state.agent.messagesPage.map((message) => message.content),
     ["Needs approval", ""]
   )
 })

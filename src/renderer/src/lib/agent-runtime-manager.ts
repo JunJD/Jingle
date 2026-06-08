@@ -33,8 +33,7 @@ export function createAgentRuntimeManager({
   }
 
   function isThreadStreaming(threadId: string): boolean {
-    const activeRun = getInitializedThreadState(threadId).agent.activeRun
-    return Boolean(activeRun && activeRun.status === "running")
+    return getInitializedThreadState(threadId).agent.status === "running"
   }
 
   function applyRuntimeEvents(threadId: string, events: AgentThreadEvent[]): void {
@@ -45,7 +44,7 @@ export function createAgentRuntimeManager({
     const wasLoading = isThreadStreaming(threadId)
     threadStore.applyRuntimeEvents(threadId, events)
     const state = getInitializedThreadState(threadId)
-    const isLoading = Boolean(state.agent.activeRun && state.agent.activeRun.status === "running")
+    const isLoading = state.agent.status === "running"
 
     if (wasLoading && !isLoading && hasHistoryRefreshEvent(events) && refreshThread) {
       startHistoryRefresh(threadId)

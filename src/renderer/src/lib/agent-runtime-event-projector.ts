@@ -3,7 +3,6 @@ import {
   type AgentThreadEvent,
   type AgentThreadRuntimeState
 } from "@shared/agent-thread-runtime"
-import type { IpcErrorPayload } from "@shared/ipc-error"
 import {
   projectMessages,
   updateProjectedMessage,
@@ -12,16 +11,17 @@ import {
 import { stabilizeThreadMessages } from "./thread-message-stability"
 import type { AgentSourceState, ThreadState } from "./thread-store-core"
 
-type RuntimeMessage = ThreadState["agent"]["messages"][number]
+type RuntimeMessage = ThreadState["agent"]["messagesPage"][number]
 type RuntimeEventProjectionUpdate = {
   agent: Pick<
     AgentSourceState,
     | "activeRun"
     | "error"
-    | "messages"
+    | "latestRunId"
+    | "messagesPage"
     | "pendingApproval"
     | "revision"
-    | "runId"
+    | "status"
     | "subagents"
     | "todos"
     | "tokenUsage"
@@ -36,7 +36,13 @@ export function applyRuntimeEventsToThreadState(
   events: AgentThreadEvent[],
   options: { threadId: string }
 ): ThreadState {
-  let runtimeState = toRuntimeState(state.agent, options.threadId)
+  let runtimeState: AgentThreadRuntimeState =
+    state.agent.threadId === options.threadId
+      ? state.agent
+      : {
+          ...state.agent,
+          threadId: options.threadId
+        }
   const initialRuntimeState = runtimeState
   let changedMessageId: string | null = null
 
@@ -57,7 +63,10 @@ export function applyRuntimeEventsToThreadState(
 
   return applyAgentSourceStateToThreadState(
     state,
-    toAgentSourceState(state.agent, runtimeState),
+    {
+      ...state.agent,
+      ...runtimeState
+    },
     { changedMessageId }
   )
 }
@@ -69,10 +78,11 @@ export function createRuntimeEventProjectionUpdate(
     agent: {
       activeRun: nextState.agent.activeRun,
       error: nextState.agent.error,
-      messages: nextState.agent.messages,
+      latestRunId: nextState.agent.latestRunId,
+      messagesPage: nextState.agent.messagesPage,
       pendingApproval: nextState.agent.pendingApproval,
       revision: nextState.agent.revision,
-      runId: nextState.agent.runId,
+      status: nextState.agent.status,
       subagents: nextState.agent.subagents,
       todos: nextState.agent.todos,
       tokenUsage: nextState.agent.tokenUsage
@@ -99,7 +109,7 @@ function createActiveProjectionInput(
 }
 
 function findChangedAssistantMessage(
-  messages: ThreadState["agent"]["messages"],
+  messages: ThreadState["agent"]["messagesPage"],
   changedMessageId: string | null | undefined
 ): RuntimeMessage | null {
   if (!changedMessageId) {
@@ -117,7 +127,7 @@ function findChangedAssistantMessage(
 function projectRuntimeMessages(input: {
   activeProjectionInput: MessageProjectionOptions
   changedMessageId: string | null | undefined
-  messages: ThreadState["agent"]["messages"]
+  messages: ThreadState["agent"]["messagesPage"]
   previousProjection: ThreadState["view"]["messageProjection"]
 }): ThreadState["view"]["messageProjection"] {
   const changedAssistantMessage = findChangedAssistantMessage(
@@ -147,12 +157,12 @@ function applyAgentSourceStateToThreadState(
     changedMessageId?: string | null
   } = {}
 ): ThreadState {
-  const messages = stabilizeThreadMessages(state.agent.messages, agent.messages)
+  const messagesPage = stabilizeThreadMessages(state.agent.messagesPage, agent.messagesPage)
   const activeProjectionInput = createActiveProjectionInput(agent)
   const messageProjection = projectRuntimeMessages({
     activeProjectionInput,
     changedMessageId: options.changedMessageId,
-    messages,
+    messages: messagesPage,
     previousProjection: state.view.messageProjection
   })
 
@@ -160,58 +170,11 @@ function applyAgentSourceStateToThreadState(
     ...state,
     agent: {
       ...agent,
-      messages
+      messagesPage
     },
     view: {
       ...state.view,
       messageProjection
     }
-  }
-}
-
-function toRuntimeError(error: string | null): IpcErrorPayload | null {
-  if (!error) {
-    return null
-  }
-
-  return {
-    code: "INTERNAL",
-    message: error,
-    status: 500
-  }
-}
-
-function toRuntimeState(agent: AgentSourceState, threadId: string): AgentThreadRuntimeState {
-  return {
-    activeRun: agent.activeRun,
-    error: toRuntimeError(agent.error),
-    hasMoreBefore: false,
-    latestRunId: agent.runId,
-    messagesPage: agent.messages,
-    pendingApproval: agent.pendingApproval,
-    revision: agent.revision,
-    status: "idle",
-    subagents: agent.subagents,
-    threadId,
-    todos: agent.todos,
-    tokenUsage: agent.tokenUsage
-  }
-}
-
-function toAgentSourceState(
-  previousAgent: AgentSourceState,
-  runtimeState: AgentThreadRuntimeState
-): AgentSourceState {
-  return {
-    ...previousAgent,
-    activeRun: runtimeState.activeRun,
-    error: runtimeState.error?.message ?? null,
-    messages: runtimeState.messagesPage,
-    pendingApproval: runtimeState.pendingApproval,
-    revision: runtimeState.revision,
-    runId: runtimeState.latestRunId,
-    subagents: runtimeState.subagents,
-    todos: runtimeState.todos,
-    tokenUsage: runtimeState.tokenUsage
   }
 }
