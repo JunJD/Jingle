@@ -6,6 +6,10 @@ import {
   toMessageContent,
   type ComposerMessageInput
 } from "@shared/message-content"
+import {
+  THREAD_PERMISSION_MODE_METADATA_KEY,
+  type PermissionModeName
+} from "@shared/permission-mode"
 import type { ThreadActions, ThreadContextValue, ThreadState } from "./thread-context"
 
 export interface AgentRunValidationInput {
@@ -24,6 +28,25 @@ export interface AgentControl {
   stop: () => Promise<void>
 }
 
+export type UpdateAgentThreadRecord = (
+  threadId: string,
+  updates: { metadata: Record<string, unknown> }
+) => Promise<void>
+
+export interface UpdateAgentThreadModelInput {
+  modelId: string
+  threadContext: Pick<ThreadContextValue, "loadThreadData">
+  threadId: string
+  updateThread: UpdateAgentThreadRecord
+}
+
+export interface UpdateAgentThreadPermissionModeInput {
+  permissionMode: PermissionModeName
+  threadContext: Pick<ThreadContextValue, "loadThreadData">
+  threadId: string
+  updateThread: UpdateAgentThreadRecord
+}
+
 export interface InvokeAgentThreadInput {
   getIsPreparing?: () => boolean
   onLocalError?: (error: string | null) => void
@@ -40,6 +63,48 @@ export interface InvokeAgentThreadInput {
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+async function updateAgentThreadMetadata(input: {
+  metadata: Record<string, unknown>
+  threadContext: Pick<ThreadContextValue, "loadThreadData">
+  threadId: string
+  updateThread: UpdateAgentThreadRecord
+}): Promise<void> {
+  const thread = await window.api.threads.get(input.threadId)
+  if (!thread) {
+    throw new Error(`Agent thread is not found: ${input.threadId}`)
+  }
+
+  await input.updateThread(input.threadId, {
+    metadata: {
+      ...(thread.metadata ?? {}),
+      ...input.metadata
+    }
+  })
+  await input.threadContext.loadThreadData(input.threadId)
+}
+
+export async function updateAgentThreadModel(
+  input: UpdateAgentThreadModelInput
+): Promise<void> {
+  await updateAgentThreadMetadata({
+    metadata: { model: input.modelId },
+    threadContext: input.threadContext,
+    threadId: input.threadId,
+    updateThread: input.updateThread
+  })
+}
+
+export async function updateAgentThreadPermissionMode(
+  input: UpdateAgentThreadPermissionModeInput
+): Promise<void> {
+  await updateAgentThreadMetadata({
+    metadata: { [THREAD_PERMISSION_MODE_METADATA_KEY]: input.permissionMode },
+    threadContext: input.threadContext,
+    threadId: input.threadId,
+    updateThread: input.updateThread
+  })
 }
 
 export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<boolean> {

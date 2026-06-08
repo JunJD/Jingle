@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Loader2, AlertCircle, FileCode } from "lucide-react"
-import { useThreadContext } from "@/lib/thread-context"
+import { useThreadControl, useThreadSelector } from "@/lib/thread-context"
 import { getFileType, isBinaryFile } from "@/lib/file-types"
 import { CodeViewer } from "./CodeViewer"
 import { ImageViewer } from "./ImageViewer"
@@ -27,7 +27,6 @@ type FileViewerProps = WorkspaceFileViewerProps | ArtifactFileViewerProps
 
 export function FileViewer(props: FileViewerProps): React.JSX.Element | null {
   const { filePath } = props
-  const threadContext = useThreadContext()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [textContent, setTextContent] = useState<string | undefined>(undefined)
@@ -37,8 +36,10 @@ export function FileViewer(props: FileViewerProps): React.JSX.Element | null {
   const versionToken = props.versionToken ?? null
   const workspaceThreadId = "threadId" in props ? props.threadId : null
   const artifactId = "artifactId" in props ? props.artifactId : null
-  const threadState = workspaceThreadId ? threadContext.getThreadState(workspaceThreadId) : null
-  const threadActions = workspaceThreadId ? threadContext.getThreadActions(workspaceThreadId) : null
+  const threadControl = useThreadControl(workspaceThreadId)
+  const workspaceContent = useThreadSelector(workspaceThreadId, (state) =>
+    workspaceThreadId ? state?.ui.fileContents[filePath] : undefined
+  )
 
   // Get file type info
   const fileName = filePath.split("/").pop() || filePath
@@ -47,7 +48,7 @@ export function FileViewer(props: FileViewerProps): React.JSX.Element | null {
   const isBinary = useMemo(() => isBinaryFile(fileName), [fileName])
   const isMarkdownDocument = ext === "md" || ext === "mdx" || ext === "markdown"
 
-  const content = source === "workspace" ? threadState?.ui.fileContents[filePath] : textContent
+  const content = source === "workspace" ? workspaceContent : textContent
 
   // Reset state when filePath changes
   useEffect(() => {
@@ -89,7 +90,7 @@ export function FileViewer(props: FileViewerProps): React.JSX.Element | null {
             if (source === "artifact") {
               setTextContent(result.content)
             } else {
-              threadActions?.setFileContents(filePath, result.content)
+              threadControl?.local.setFileContents(filePath, result.content)
             }
             setFileSize(result.size)
           } else {
@@ -111,7 +112,7 @@ export function FileViewer(props: FileViewerProps): React.JSX.Element | null {
     filePath,
     isBinary,
     source,
-    threadActions,
+    threadControl,
     workspaceThreadId
   ])
 

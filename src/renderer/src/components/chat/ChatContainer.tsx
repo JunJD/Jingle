@@ -2,7 +2,7 @@ import { memo, useRef, useEffect, useCallback, useMemo, useState } from "react"
 import { AlertCircle, Brain, Folder, Send, Shield, Square, X } from "lucide-react"
 import type { VListHandle } from "virtua"
 import { PromptInput, PromptInputAction, PromptInputTextarea } from "@/components/agent-ui"
-import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
+import { useThreadContext, useThreadSelector } from "@/lib/thread-context"
 import type { AgentRunValidator } from "@/lib/agent-control"
 import { useAgent } from "@/lib/use-agent"
 import { Messages } from "./Messages"
@@ -282,7 +282,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   } = useAssistantSelectionRefs(threadId)
   useDisableTabNavigation(inputRef)
 
-  const threadActions = useThreadActions(threadId)!
+  const threadContext = useThreadContext()
   const tokenUsage = useThreadSelector(
     threadId,
     (state) => state?.agent.tokenUsage ?? EMPTY_TOKEN_USAGE
@@ -351,18 +351,15 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
 
   const handleSelectWorkspaceFromEmptyState = useCallback(async (): Promise<void> => {
     setWorkspaceChangeError(null)
-    await selectWorkspaceFolder(
-      threadId,
-      (path) => threadActions?.setWorkspacePath(path),
-      () => {},
-      undefined,
-      {
-        onBlockedByPendingWorkspaceMemory: () => {
-          setWorkspaceChangeError(copy.chat.pendingWorkspaceMemoryBlocksWorkspaceChange)
-        }
+    await selectWorkspaceFolder(threadId, threadContext.loadThreadData, () => {}, undefined, {
+      onError: (error) => {
+        setWorkspaceChangeError(error)
+      },
+      onBlockedByPendingWorkspaceMemory: () => {
+        setWorkspaceChangeError(copy.chat.pendingWorkspaceMemoryBlocksWorkspaceChange)
       }
-    )
-  }, [copy.chat.pendingWorkspaceMemoryBlocksWorkspaceChange, threadActions, threadId])
+    })
+  }, [copy.chat.pendingWorkspaceMemoryBlocksWorkspaceChange, threadContext, threadId])
 
   return (
     <div className="chat-thread-surface flex min-h-0 flex-1 flex-col overflow-hidden">

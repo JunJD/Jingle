@@ -150,7 +150,7 @@ test("thread subscriptions stay scoped to the matching thread id", () => {
 
   store.ensureThreadState("thread-a")
   store.ensureThreadState("thread-b")
-  store.getThreadActions("thread-a").openFile("/tmp/a.txt", "a.txt")
+  store.getThreadControl("thread-a").local.openFile("/tmp/a.txt", "a.txt")
 
   unsubscribeThread()
   unsubscribeAll()
@@ -197,9 +197,9 @@ test("setPermissionMode updates state and runs the injected persistence effect",
 
 test("artifact changed events update source artifacts without rewriting open tab facts", () => {
   const store = createThreadStore()
-  const actions = store.getThreadActions("thread-a")
+  const localControl = store.getThreadControl("thread-a").local
 
-  actions.openArtifactTab({
+  localControl.openArtifactTab({
     artifactId: "artifact-1"
   })
   const artifact = createLinkArtifact({
@@ -436,7 +436,7 @@ test("run started immediately moves projection active turn before assistant firs
   assert.equal(streamingState.view.messageProjection.activeAssistantId, "assistant-2")
 })
 
-test("runtime messages derive tool execution view facts", () => {
+test("runtime tool events update source run facts and message projection facts", () => {
   const store = createThreadStore()
   const toolCall = {
     args: {},
@@ -460,33 +460,48 @@ test("runtime messages derive tool execution view facts", () => {
       },
       runState: {
         error: null,
-        forkState: { canFork: false, reason: "busy" },
+        forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
         todos: []
       },
       thread: {
         metadata: undefined,
-        status: "busy",
+        status: "idle",
         thread_id: "thread-a",
         title: undefined
       }
     })
   )
+  store.applyRuntimeEvents("thread-a", [
+    {
+      revision: 1,
+      run: {
+        assistantMessageId: "assistant-1",
+        phase: "tool_running",
+        runId: "run-1",
+        status: "running",
+        threadId: "thread-a",
+        turnId: "user-1",
+        userMessageId: "user-1"
+      },
+      type: "run.started"
+    }
+  ])
 
+  const initialState = getThreadState(store, "thread-a")
+  assert.equal(initialState.agent.activeRun?.status, "running")
+  assert.equal(initialState.agent.activeRun?.phase, "tool_running")
+  assert.equal(initialState.agent.activeRun?.assistantMessageId, "assistant-1")
   assert.equal(
-    getThreadState(store, "thread-a").view.messageProjection.turns[0]?.toolResults.get(toolCall.id),
+    initialState.view.messageProjection.turns[0]?.toolResults.get(toolCall.id),
     undefined
   )
-  assert.deepEqual(getThreadState(store, "thread-a").view.toolExecutions[toolCall.id], {
-    status: "running",
-    toolCallId: toolCall.id
-  })
 
   store.applyRuntimeEvents("thread-a", [
     {
       messageId: "assistant-1",
-      revision: 1,
+      revision: 2,
       runId: "run-1",
       toolCallId: toolCall.id,
       type: "tool.started"
@@ -494,10 +509,8 @@ test("runtime messages derive tool execution view facts", () => {
   ])
 
   const runningState = getThreadState(store, "thread-a")
-  assert.deepEqual(runningState.view.toolExecutions[toolCall.id], {
-    status: "running",
-    toolCallId: toolCall.id
-  })
+  assert.equal(runningState.agent.activeRun?.phase, "tool_running")
+  assert.equal(runningState.agent.activeRun?.assistantMessageId, "assistant-1")
   assert.equal(
     runningState.view.messageProjection.turns[0]?.toolResults.get(toolCall.id),
     undefined
@@ -512,12 +525,12 @@ test("runtime messages derive tool execution view facts", () => {
         role: "tool",
         tool_call_id: toolCall.id
       },
-      revision: 2,
+      revision: 3,
       type: "message.upserted"
     },
     {
       messageId: "assistant-1",
-      revision: 3,
+      revision: 4,
       runId: "run-1",
       toolCallId: toolCall.id,
       type: "tool.updated"
@@ -525,15 +538,12 @@ test("runtime messages derive tool execution view facts", () => {
   ])
 
   const completedState = getThreadState(store, "thread-a")
-  assert.deepEqual(completedState.view.toolExecutions[toolCall.id], {
-    status: "complete",
-    toolCallId: toolCall.id
-  })
+  assert.equal(completedState.agent.activeRun?.phase, "waiting_tool_result")
   const completedTool = completedState.view.messageProjection.turns[0]?.toolResults.get(toolCall.id)
   assert.equal(completedTool?.content, "done")
 })
 
-test("run finished clears running tool execution view when no tool result exists", () => {
+test("run finished clears active run when no tool result exists", () => {
   const store = createThreadStore()
   const toolCall = {
     args: {},
@@ -557,28 +567,46 @@ test("run finished clears running tool execution view when no tool result exists
       },
       runState: {
         error: null,
-        forkState: { canFork: false, reason: "busy" },
+        forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
         todos: []
       },
       thread: {
         metadata: undefined,
-        status: "busy",
+        status: "idle",
         thread_id: "thread-a",
         title: undefined
       }
     })
   )
-
-  assert.deepEqual(getThreadState(store, "thread-a").view.toolExecutions[toolCall.id], {
-    status: "running",
-    toolCallId: toolCall.id
-  })
-
   store.applyRuntimeEvents("thread-a", [
     {
       revision: 1,
+      run: {
+        assistantMessageId: "assistant-1",
+        phase: "tool_running",
+        runId: "run-1",
+        status: "running",
+        threadId: "thread-a",
+        turnId: "user-1",
+        userMessageId: "user-1"
+      },
+      type: "run.started"
+    }
+  ])
+
+  const runningState = getThreadState(store, "thread-a")
+  assert.equal(runningState.agent.activeRun?.status, "running")
+  assert.equal(runningState.agent.activeRun?.phase, "tool_running")
+  assert.equal(
+    runningState.view.messageProjection.turns[0]?.toolResults.get(toolCall.id),
+    undefined
+  )
+
+  store.applyRuntimeEvents("thread-a", [
+    {
+      revision: 2,
       runId: "run-1",
       status: "cancelled",
       type: "run.finished"
@@ -587,10 +615,13 @@ test("run finished clears running tool execution view when no tool result exists
 
   const finishedState = getThreadState(store, "thread-a")
   assert.equal(finishedState.agent.activeRun, null)
-  assert.equal(finishedState.view.toolExecutions[toolCall.id], undefined)
+  assert.equal(
+    finishedState.view.messageProjection.turns[0]?.toolResults.get(toolCall.id),
+    undefined
+  )
 })
 
-test("pending approval overrides existing tool execution view without duplicate entries", () => {
+test("pending approval updates source approval facts", () => {
   const store = createThreadStore()
   const toolCall = {
     args: {},
@@ -599,6 +630,14 @@ test("pending approval overrides existing tool execution view without duplicate 
     type: "tool_call" as const
   }
   const pendingApproval = createPendingApproval()
+  const snapshotApproval: HITLRequest = {
+    ...pendingApproval,
+    id: "hitl:thread-a:snapshot:tool-snapshot",
+    tool_call: {
+      ...pendingApproval.tool_call,
+      id: "tool-snapshot"
+    }
+  }
 
   store.applyThreadDataSnapshot(
     "thread-a",
@@ -615,40 +654,52 @@ test("pending approval overrides existing tool execution view without duplicate 
       },
       runState: {
         error: null,
-        forkState: { canFork: false, reason: "busy" },
+        forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
         todos: []
       },
       thread: {
         metadata: undefined,
-        status: "busy",
+        status: "idle",
         thread_id: "thread-a",
         title: undefined
       }
     })
   )
-  const runningToolExecutions = getThreadState(store, "thread-a").view.toolExecutions
-  assert.deepEqual(runningToolExecutions[toolCall.id], {
-    status: "running",
-    toolCallId: toolCall.id
-  })
+  store.applyRuntimeEvents("thread-a", [
+    {
+      revision: 1,
+      run: {
+        assistantMessageId: "assistant-1",
+        phase: "tool_running",
+        runId: "run-1",
+        status: "running",
+        threadId: "thread-a",
+        turnId: "user-1",
+        userMessageId: "user-1"
+      },
+      type: "run.started"
+    }
+  ])
+  const runningState = getThreadState(store, "thread-a")
+  assert.equal(runningState.agent.activeRun?.status, "running")
+  assert.equal(runningState.agent.activeRun?.phase, "tool_running")
+  assert.equal(runningState.agent.pendingApproval, null)
 
   store.applyRuntimeEvents("thread-a", [
     {
       approval: pendingApproval,
-      revision: 1,
+      revision: 2,
       runId: "run-1",
       type: "approval.requested"
     }
   ])
 
-  const approvalToolExecutions = getThreadState(store, "thread-a").view.toolExecutions
-  assert.deepEqual(Object.keys(approvalToolExecutions), [toolCall.id])
-  assert.deepEqual(approvalToolExecutions[toolCall.id], {
-    status: "approval",
-    toolCallId: toolCall.id
-  })
+  const approvalState = getThreadState(store, "thread-a")
+  assert.equal(approvalState.agent.pendingApproval, pendingApproval)
+  assert.equal(approvalState.agent.activeRun?.status, "waiting_approval")
+  assert.equal(approvalState.agent.activeRun?.phase, "waiting_tool_result")
 
   store.applyThreadDataSnapshot(
     "thread-a",
@@ -666,7 +717,7 @@ test("pending approval overrides existing tool execution view without duplicate 
       runState: {
         error: null,
         forkState: { canFork: false, reason: "pending_hitl" },
-        pendingApproval,
+        pendingApproval: snapshotApproval,
         runId: "run-1",
         todos: []
       },
@@ -679,7 +730,10 @@ test("pending approval overrides existing tool execution view without duplicate 
     })
   )
 
-  assert.equal(getThreadState(store, "thread-a").view.toolExecutions, approvalToolExecutions)
+  const snapshotApprovalState = getThreadState(store, "thread-a")
+  assert.equal(snapshotApprovalState.agent.pendingApproval, pendingApproval)
+  assert.equal(snapshotApprovalState.agent.activeRun?.status, "waiting_approval")
+  assert.equal(snapshotApprovalState.agent.activeRun?.phase, "waiting_tool_result")
 })
 
 test("runtime delta for an unknown message does not advance revision before thread data bootstrap", () => {
@@ -810,7 +864,6 @@ test("runtime token delta in long history keeps inactive turns and rows stable",
   )
   const firstState = getThreadState(store, "thread-a")
   const firstProjection = firstState.view.messageProjection
-  const firstToolExecutionsView = firstState.view.toolExecutions
 
   store.applyRuntimeEvents("thread-a", [
     {
@@ -830,7 +883,6 @@ test("runtime token delta in long history keeps inactive turns and rows stable",
     firstState.agent.messages[activeTurnIndex * 2 + 1]
   )
   assert.equal(nextState.view.messageProjection.displayRows, firstProjection.displayRows)
-  assert.equal(nextState.view.toolExecutions, firstToolExecutionsView)
   for (let index = 0; index < activeTurnIndex; index += 1) {
     assert.equal(nextState.view.messageProjection.turns[index], firstProjection.turns[index])
     assert.equal(

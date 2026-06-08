@@ -13,7 +13,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
-import { getArtifactTabId, useThreadActions, useThreadSelector } from "@/lib/thread-context"
+import { getArtifactTabId, useThreadControl, useThreadSelector } from "@/lib/thread-context"
 import { Badge } from "@/components/ui/badge"
 import { getArtifactDescriptor } from "@/components/chat/artifact-preview/shared"
 import { getSubagentStatusPresentation } from "@/lib/subagent-view"
@@ -113,7 +113,10 @@ function ResizeHandle({ onDrag }: ResizeHandleProps): React.JSX.Element {
 export function RightPanel(): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const todos = useThreadSelector(currentThreadId, (state) => state?.agent.todos ?? EMPTY_TODOS)
-  const artifactCount = useThreadSelector(currentThreadId, (state) => state?.agent.artifacts.length ?? 0)
+  const artifactCount = useThreadSelector(
+    currentThreadId,
+    (state) => state?.agent.artifacts.length ?? 0
+  )
   const subagents = useThreadSelector(
     currentThreadId,
     (state) => state?.agent.subagents ?? EMPTY_SUBAGENTS
@@ -538,7 +541,7 @@ function TaskItem({ todo }: { todo: Todo }): React.JSX.Element {
 
 function ArtifactsContent(): React.JSX.Element {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
-  const threadActions = useThreadActions(currentThreadId)
+  const threadControl = useThreadControl(currentThreadId)
   const artifacts = useThreadSelector(
     currentThreadId,
     (state) => state?.agent.artifacts ?? EMPTY_ARTIFACTS
@@ -547,11 +550,11 @@ function ArtifactsContent(): React.JSX.Element {
 
   const handleArtifactOpen = useCallback(
     (artifact: ArtifactRecord) => {
-      threadActions?.openArtifactTab({
+      threadControl?.local.openArtifactTab({
         artifactId: artifact.id
       })
     },
-    [threadActions]
+    [threadControl]
   )
 
   if (artifacts.length === 0) {

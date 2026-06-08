@@ -5,7 +5,7 @@ import { useI18n } from "@/lib/i18n"
 export function LauncherAiModelPicker(props: {
   currentModelId: string | null
   onClose: () => void
-  onSelectModel: (modelId: string) => void
+  onSelectModel: (modelId: string) => Promise<boolean>
 }): React.JSX.Element {
   const { currentModelId, onClose, onSelectModel } = props
   const { copy } = useI18n()

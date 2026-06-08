@@ -3,12 +3,12 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn, formatRelativeTime, truncate } from "@/lib/utils"
 import { getSubagentStatusPresentation } from "@/lib/subagent-view"
-import { useThreadSelector } from "@/lib/thread-context"
 import type { Thread, Subagent } from "@/types"
 
 type KanbanStatus = "pending" | "in_progress" | "interrupted" | "done"
 
 interface ThreadCardProps {
+  isLoading: boolean
   thread: Thread
   status: KanbanStatus
   onClick: () => void
@@ -20,9 +20,7 @@ interface SubagentCardProps {
   onClick: () => void
 }
 
-function ThreadStatusIcon({ threadId }: { threadId: string }): React.JSX.Element {
-  const isLoading = useThreadSelector(threadId, (state) => state?.agent.activeRun?.status === "running")
-
+function ThreadStatusIcon({ isLoading }: { isLoading: boolean }): React.JSX.Element {
   if (isLoading) {
     return (
       <Loader2 className="size-[var(--ow-icon-action)] shrink-0 text-status-info animate-spin" />
@@ -31,7 +29,12 @@ function ThreadStatusIcon({ threadId }: { threadId: string }): React.JSX.Element
   return <MessageSquare className="size-[var(--ow-icon-action)] shrink-0 text-muted-foreground" />
 }
 
-export function ThreadKanbanCard({ thread, status, onClick }: ThreadCardProps): React.JSX.Element {
+export function ThreadKanbanCard({
+  isLoading,
+  thread,
+  status,
+  onClick
+}: ThreadCardProps): React.JSX.Element {
   return (
     <Card
       className={cn(
@@ -46,7 +49,7 @@ export function ThreadKanbanCard({ thread, status, onClick }: ThreadCardProps): 
           {status === "interrupted" ? (
             <MessageSquare className="size-[var(--ow-icon-action)] shrink-0 text-amber-500" />
           ) : (
-            <ThreadStatusIcon threadId={thread.thread_id} />
+            <ThreadStatusIcon isLoading={isLoading} />
           )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-[var(--ow-gap-sm)]">

@@ -6,7 +6,8 @@ import { ModelQuickPickerContent } from "@/features/model-selection/ModelQuickPi
 import { ProviderIcon } from "@/features/model-selection/provider-icon"
 import { useI18n } from "@/lib/i18n"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
-import { useThreadActions, useThreadSelector } from "@/lib/thread-context"
+import { updateAgentThreadModel } from "@/lib/agent-control"
+import { useThreadContext, useThreadSelector } from "@/lib/thread-context"
 
 interface ModelSwitcherProps {
   threadId: string
@@ -15,11 +16,13 @@ interface ModelSwitcherProps {
 export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Element {
   const { copy } = useI18n()
   const [open, setOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const loadModelProviderState = useHistoryShellStore((state) => state.loadModelProviderState)
   const models = useHistoryShellStore((state) => state.models)
   const providers = useHistoryShellStore((state) => state.providers)
+  const updateThread = useHistoryShellStore((state) => state.updateThread)
   const currentModel = useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null)
-  const threadActions = useThreadActions(threadId)
+  const threadContext = useThreadContext()
   const selectedModel = useMemo(
     () => models.find((model) => model.id === currentModel) ?? null,
     [currentModel, models]
@@ -56,12 +59,28 @@ export function ModelSwitcher({ threadId }: ModelSwitcherProps): React.JSX.Eleme
         align="start"
         sideOffset={8}
       >
+        {error ? (
+          <div className="border-b border-border/72 px-[var(--ow-space-3)] py-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-destructive">
+            {error}
+          </div>
+        ) : null}
         <ModelQuickPickerContent
           currentModelId={currentModel}
           models={models}
           onSelectModel={(modelId) => {
-            threadActions?.setCurrentModel(modelId)
-            setOpen(false)
+            setError(null)
+            void updateAgentThreadModel({
+              modelId,
+              threadContext,
+              threadId,
+              updateThread
+            })
+              .then(() => {
+                setOpen(false)
+              })
+              .catch((caughtError: unknown) => {
+                setError(caughtError instanceof Error ? caughtError.message : String(caughtError))
+              })
           }}
           providers={providers}
         />

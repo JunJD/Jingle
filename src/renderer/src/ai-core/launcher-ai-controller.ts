@@ -1,8 +1,7 @@
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import type { PermissionModeName } from "@shared/permission-mode"
-import type { ThreadActions } from "@/lib/thread-context"
-import type { AgentControl } from "@/lib/use-agent"
+import type { AgentControl, UpdateAgentThreadRecord } from "@/lib/agent-control"
 import type { HITLDecision } from "@/types"
 import type { AiCoreThreadCreateInput, AiCoreThreadHandle } from "./AiCoreHost"
 import type { LauncherAiActiveTarget } from "./useLauncherAiThreadNavigation"
@@ -25,9 +24,19 @@ export interface LauncherAiControllerInput {
   onDidInvoke?: () => void
   setNavigationError: (error: string | null) => void
   setPendingInput: (input: string) => void
-  threadActions: Pick<ThreadActions, "setCurrentModel" | "setPermissionMode"> | null
   threadId: string | null
   title: string
+  updateThread: UpdateAgentThreadRecord
+  updateAgentThreadModel: (input: {
+    modelId: string
+    threadId: string
+    updateThread: UpdateAgentThreadRecord
+  }) => Promise<void>
+  updateAgentThreadPermissionMode: (input: {
+    permissionMode: PermissionModeName
+    threadId: string
+    updateThread: UpdateAgentThreadRecord
+  }) => Promise<void>
   updateFreshDraft: (
     input: Partial<{
       modelId: string | null
@@ -47,8 +56,8 @@ export interface LauncherAiController {
   goToPreviousChat: () => Promise<string | null>
   handleApprovalDecision: (decision: HITLDecision) => Promise<void>
   runPrimaryAction: (input: ComposerMessageInput) => void
-  selectModel: (modelId: string) => void
-  selectPermissionMode: (permissionMode: PermissionModeName) => void
+  selectModel: (modelId: string) => Promise<boolean>
+  selectPermissionMode: (permissionMode: PermissionModeName) => Promise<boolean>
   setQuery: (value: string) => void
   startFreshDraft: () => Promise<boolean>
 }
@@ -147,21 +156,43 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
         }
       })
     },
-    selectModel(modelId) {
-      if (input.threadActions) {
-        input.threadActions.setCurrentModel(modelId)
-        return
+    async selectModel(modelId) {
+      if (input.threadId) {
+        try {
+          input.setNavigationError(null)
+          await input.updateAgentThreadModel({
+            modelId,
+            threadId: input.threadId,
+            updateThread: input.updateThread
+          })
+          return true
+        } catch (error) {
+          input.setNavigationError(toErrorMessage(error))
+          return false
+        }
       }
 
       input.updateFreshDraft({ modelId })
+      return true
     },
-    selectPermissionMode(permissionMode) {
-      if (input.threadActions) {
-        input.threadActions.setPermissionMode(permissionMode)
-        return
+    async selectPermissionMode(permissionMode) {
+      if (input.threadId) {
+        try {
+          input.setNavigationError(null)
+          await input.updateAgentThreadPermissionMode({
+            permissionMode,
+            threadId: input.threadId,
+            updateThread: input.updateThread
+          })
+          return true
+        } catch (error) {
+          input.setNavigationError(toErrorMessage(error))
+          return false
+        }
       }
 
       input.updateFreshDraft({ permissionMode })
+      return true
     },
     setQuery(value) {
       input.setNavigationError(null)

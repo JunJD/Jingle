@@ -6,7 +6,7 @@ import type { ArtifactRecord } from "@shared/artifacts"
 import {
   getArtifactTabId,
   getFileTabId,
-  useThreadActions,
+  useThreadControl,
   useThreadSelector,
   type OpenArtifactTab,
   type OpenFile
@@ -27,7 +27,7 @@ export function TabBar({
 }: TabBarProps): React.JSX.Element | null {
   const currentThreadId = useHistoryShellStore((state) => state.currentThreadId)
   const threadId = propThreadId ?? currentThreadId
-  const threadActions = useThreadActions(threadId)
+  const threadControl = useThreadControl(threadId)
   const activeTab = useThreadSelector(threadId, (state) => state?.ui.activeTab ?? "agent")
   const openFiles = useThreadSelector(threadId, (state) => state?.ui.openFiles ?? EMPTY_OPEN_FILES)
   const openArtifacts = useThreadSelector(
@@ -39,11 +39,11 @@ export function TabBar({
     (state) => state?.agent.artifacts ?? EMPTY_ARTIFACTS
   )
 
-  if (!threadActions) {
+  if (!threadControl) {
     return null
   }
 
-  const { closeArtifactTab, closeFile, setActiveTab } = threadActions
+  const { closeArtifactTab, closeFile, setActiveTab } = threadControl.local
 
   return (
     <div className={cn("flex h-full items-center overflow-x-auto scrollbar-hide px-4", className)}>

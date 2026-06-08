@@ -32,7 +32,7 @@ interface UseLauncherAiActionsOptions {
   openModelPicker: () => Promise<void>
   query: string
   runPrimaryAction: () => void
-  selectPermissionMode: (permissionMode: PermissionModeName) => void
+  selectPermissionMode: (permissionMode: PermissionModeName) => Promise<boolean>
 }
 
 const LAUNCHER_PERMISSION_MODE_ORDER: PermissionModeName[] = ["ask-to-edit", "explore", "auto"]
@@ -251,7 +251,9 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
                 ? createElement(Check, { className: "size-[var(--ow-icon-sm)]" })
                 : undefined,
             id: `launcher-ai-permission-mode-${permissionMode}`,
-            onAction: () => selectPermissionMode(permissionMode),
+            onAction: async () => {
+              await selectPermissionMode(permissionMode)
+            },
             sectionTitle: copy.permissionModeSection,
             title: getPermissionModeLabel(copy, permissionMode)
           }) satisfies LauncherActionDescriptor

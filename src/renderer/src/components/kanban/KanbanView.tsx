@@ -1,72 +1,91 @@
-import { useMemo } from "react"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
-import { useAllThreadStates } from "@/lib/thread-context"
+import { useThreadSelector } from "@/lib/thread-context"
 import {
-  createEmptySubagentKanbanBuckets,
-  projectSubagentKanbanBuckets,
+  getSubagentKanbanStatus,
+  getThreadKanbanStatus,
   type WorkBoardStatus
 } from "@/lib/subagent-view"
 import { KanbanColumn } from "./KanbanColumn"
 import { ThreadKanbanCard, SubagentKanbanCard } from "./KanbanCard"
-import type { Thread } from "@/types"
+import type { Subagent, Thread } from "@/types"
 
 type KanbanStatus = WorkBoardStatus
 
-interface ThreadWithStatus {
-  thread: Thread
+const EMPTY_SUBAGENTS: readonly Subagent[] = []
+
+function ThreadKanbanEntry(props: {
+  onClick: (threadId: string) => void
   status: KanbanStatus
+  thread: Thread
+}): React.JSX.Element | null {
+  const { onClick, status, thread } = props
+  const hasActiveRun = useThreadSelector(
+    thread.thread_id,
+    (state) => state?.agent.activeRun?.status === "running"
+  )
+  const hasPendingApproval = useThreadSelector(thread.thread_id, (state) =>
+    Boolean(state?.agent.pendingApproval)
+  )
+  const threadStatus = getThreadKanbanStatus({
+    hasActiveRun,
+    hasPendingApproval,
+    threadStatus: thread.status
+  })
+
+  if (threadStatus !== status) {
+    return null
+  }
+
+  return (
+    <ThreadKanbanCard
+      isLoading={hasActiveRun}
+      thread={thread}
+      status={threadStatus}
+      onClick={() => onClick(thread.thread_id)}
+    />
+  )
 }
 
-function getThreadKanbanStatus(
-  thread: Thread,
-  hasActiveRun: boolean,
-  hasPendingApproval: boolean
-): KanbanStatus {
-  if (hasPendingApproval || thread.status === "interrupted") return "interrupted"
-  if (thread.status === "busy" || hasActiveRun) return "in_progress"
-  return "done"
+function SubagentKanbanEntries(props: {
+  enabled: boolean
+  onClick: (threadId: string) => void
+  status: KanbanStatus
+  thread: Thread
+}): React.JSX.Element | null {
+  const { enabled, onClick, status, thread } = props
+  const subagents = useThreadSelector(
+    thread.thread_id,
+    (state) => state?.agent.subagents ?? EMPTY_SUBAGENTS
+  )
+
+  if (!enabled) {
+    return null
+  }
+
+  return (
+    <>
+      {subagents.map((subagent) =>
+        getSubagentKanbanStatus(subagent.status) === status ? (
+          <SubagentKanbanCard
+            key={subagent.id}
+            subagent={subagent}
+            parentThread={thread}
+            onClick={() => onClick(thread.thread_id)}
+          />
+        ) : null
+      )}
+    </>
+  )
 }
 
 export function KanbanView(): React.JSX.Element {
   const threads = useHistoryShellStore((state) => state.threads)
   const selectThread = useHistoryShellStore((state) => state.selectThread)
   const showSubagentsInKanban = useHistoryShellStore((state) => state.showSubagentsInKanban)
-  const allThreadStates = useAllThreadStates()
 
   const handleCardClick = (threadId: string): void => {
     selectThread(threadId)
   }
-
-  const categorizedThreads = useMemo(() => {
-    const result: Record<KanbanStatus, ThreadWithStatus[]> = {
-      pending: [],
-      in_progress: [],
-      interrupted: [],
-      done: []
-    }
-
-    for (const thread of threads) {
-      const threadState = allThreadStates[thread.thread_id]
-      const hasActiveRun = threadState?.agent.activeRun?.status === "running"
-      const hasPendingApproval = Boolean(threadState?.agent.pendingApproval)
-      const status = getThreadKanbanStatus(thread, hasActiveRun, hasPendingApproval)
-      result[status].push({ thread, status })
-    }
-
-    return result
-  }, [threads, allThreadStates])
-
-  const categorizedSubagents = useMemo(() => {
-    if (!showSubagentsInKanban) {
-      return createEmptySubagentKanbanBuckets()
-    }
-
-    return projectSubagentKanbanBuckets({
-      enabled: true,
-      statesByThreadId: allThreadStates,
-      threads
-    })
-  }, [threads, allThreadStates, showSubagentsInKanban])
 
   const columnData: { status: KanbanStatus; title: string }[] = [
     { status: "pending", title: "PENDING" },
@@ -80,31 +99,25 @@ export function KanbanView(): React.JSX.Element {
       <div className="flex-1 overflow-x-auto p-2">
         <div className="flex h-full min-w-max gap-2">
           {columnData.map(({ status, title }) => {
-            const threadItems = categorizedThreads[status]
-            const subagentItems = categorizedSubagents[status]
-            const totalCount = threadItems.length + subagentItems.length
-
             return (
-              <KanbanColumn key={status} title={title} status={status} count={totalCount}>
-                {threadItems.map(({ thread, status: threadStatus }) => (
-                  <ThreadKanbanCard
-                    key={thread.thread_id}
+              <KanbanColumn key={status} title={title} status={status}>
+                {threads.map((thread) => (
+                  <ThreadKanbanEntry
+                    key={`thread:${thread.thread_id}`}
                     thread={thread}
-                    status={threadStatus}
-                    onClick={() => handleCardClick(thread.thread_id)}
+                    status={status}
+                    onClick={handleCardClick}
                   />
                 ))}
-                {subagentItems.map(({ subagent, parentThread }) => (
-                  <SubagentKanbanCard
-                    key={subagent.id}
-                    subagent={subagent}
-                    parentThread={parentThread}
-                    onClick={() => handleCardClick(parentThread.thread_id)}
+                {threads.map((thread) => (
+                  <SubagentKanbanEntries
+                    key={`subagents:${thread.thread_id}`}
+                    enabled={showSubagentsInKanban}
+                    thread={thread}
+                    status={status}
+                    onClick={handleCardClick}
                   />
                 ))}
-                {totalCount === 0 && (
-                  <div className="text-center text-sm text-muted-foreground py-8">No items</div>
-                )}
               </KanbanColumn>
             )
           })}

@@ -6,7 +6,7 @@ import { createThreadStore } from "../../src/renderer/src/lib/thread-store-core"
 test("opening a workspace file uses a namespaced tab id", () => {
   const store = createThreadStore()
 
-  store.getThreadActions("thread-a").openFile("agent", "agent")
+  store.getThreadControl("thread-a").local.openFile("agent", "agent")
   const state = store.getThreadState("thread-a")
 
   assert.ok(state)

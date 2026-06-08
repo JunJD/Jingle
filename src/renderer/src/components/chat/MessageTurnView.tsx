@@ -30,7 +30,7 @@ import {
   type MessageTurn,
   type ToolResultInfo
 } from "@/lib/message-projection"
-import type { AgentToolExecutionView, AgentToolExecutionsView } from "@/lib/thread-context"
+import type { AgentToolExecutionView, AgentToolExecutionsView } from "@/lib/message-projection"
 import {
   Attachment,
   Attachments,
@@ -54,7 +54,7 @@ import { LoaderOne } from "../ui/loader"
 import { CopyButton } from "../ui/button"
 import { AssistantSelectionReferencesFromMetadata } from "./AssistantSelectionReferences"
 import { getAssistantSelectionRefs } from "./useAssistantSelectionRefs"
-import { useThreadActions } from "@/lib/thread-context"
+import { useThreadControl } from "@/lib/thread-context"
 
 interface StructuredMessageContent {
   attachments: React.ReactNode
@@ -717,12 +717,12 @@ function AssistantWaitingRow(): React.JSX.Element {
 
 function UserMessage(props: { message: ThreadMessage; threadId: string }): React.JSX.Element | null {
   const { message, threadId } = props
-  const threadActions = useThreadActions(threadId)
+  const threadControl = useThreadControl(threadId)
   const handleOpenWorkspaceFile = useCallback(
     (path: string): void => {
-      threadActions?.openFile(path, getWorkspaceFileName(path))
+      threadControl?.local.openFile(path, getWorkspaceFileName(path))
     },
-    [threadActions]
+    [threadControl]
   )
   const content = renderStructuredContent(message.content, {
     isUser: true,

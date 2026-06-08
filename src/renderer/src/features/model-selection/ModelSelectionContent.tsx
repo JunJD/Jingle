@@ -10,7 +10,7 @@ import { ProviderIcon } from "./provider-icon"
 export function ModelSelectionContent(props: {
   currentModelId: string | null
   onDone?: () => void
-  onSelectModel: (modelId: string) => void
+  onSelectModel: (modelId: string) => boolean | void | Promise<boolean | void>
 }): React.JSX.Element {
   const { currentModelId, onDone, onSelectModel } = props
   const { copy } = useI18n()
@@ -40,8 +40,11 @@ export function ModelSelectionContent(props: {
   }
 
   function handleModelSelect(modelId: string): void {
-    onSelectModel(modelId)
-    onDone?.()
+    void Promise.resolve(onSelectModel(modelId)).then((didSelect) => {
+      if (didSelect !== false) {
+        onDone?.()
+      }
+    })
   }
 
   function handleOpenProviderSettings(provider: Provider): void {
