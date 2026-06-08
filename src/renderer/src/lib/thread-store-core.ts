@@ -1,5 +1,5 @@
 import { DEFAULT_MODELS } from "@shared/models"
-import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
+import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
 import type { ArtifactRecord } from "@shared/artifacts"
 import type { AgentThreadDataSnapshot } from "@shared/app-types"
 import type { ActiveAgentRun, AgentThreadEvent } from "@shared/agent-thread-runtime"
@@ -68,14 +68,6 @@ export type ThreadStateUpdate = {
   ui?: Partial<ThreadLocalUiState>
 }
 
-export interface ThreadActions {
-  setWorkspacePath: (path: string | null) => void
-  setError: (error: string | null) => void
-  clearError: () => void
-  setCurrentModel: (modelId: string) => void
-  setPermissionMode: (permissionMode: PermissionModeName) => void
-}
-
 export interface ThreadLocalUiControl {
   openFile: (path: string, name: string) => void
   closeFile: (path: string) => void
@@ -88,25 +80,14 @@ export interface ThreadLocalUiControl {
 export interface ThreadControl {
   local: ThreadLocalUiControl
 }
-export interface ThreadStoreEffects {
-  persistCurrentModel?: (threadId: string, modelId: string) => void | Promise<void>
-  persistPermissionMode?: (
-    threadId: string,
-    permissionMode: PermissionModeName
-  ) => void | Promise<void>
-}
-
 export interface ThreadStore {
   applyArtifactsChanged: (threadId: string, artifacts: ArtifactRecord[]) => void
   applyRuntimeEvents: (threadId: string, events: AgentThreadEvent[]) => void
   applyThreadDataSnapshot: (threadId: string, snapshot: AgentThreadDataSnapshot) => void
   deleteThreadState: (threadId: string) => void
   ensureThreadState: (threadId: string) => boolean
-  getAllThreadStates: () => Record<string, ThreadState>
-  getThreadActions: (threadId: string) => ThreadActions
   getThreadControl: (threadId: string) => ThreadControl
   getThreadState: (threadId: string) => ThreadState | null
-  subscribeAllThreadStates: (listener: () => void) => () => void
   subscribeThread: (threadId: string, listener: () => void) => () => void
 }
 
@@ -143,10 +124,8 @@ export function createDefaultThreadState(): ThreadState {
   }
 }
 
-export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore {
+export function createThreadStore(): ThreadStore {
   const threadListeners = new Map<string, Set<() => void>>()
-  const allThreadStateListeners = new Set<() => void>()
-  const actionsCache: Record<string, ThreadActions> = {}
   const controlCache: Record<string, ThreadControl> = {}
   let threadStates: Record<string, ThreadState> = {}
 
@@ -156,7 +135,6 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
 
   const emitThread = (threadId: string): void => {
     threadListeners.get(threadId)?.forEach((listener) => listener())
-    allThreadStateListeners.forEach((listener) => listener())
   }
 
   const hasThreadStateChanges = (nextPartial: ThreadStateUpdate): boolean =>
@@ -241,35 +219,6 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
     updateThreadState(threadId, () => ({
       agent: { artifacts }
     }))
-  }
-
-  const getThreadActions = (threadId: string): ThreadActions => {
-    if (actionsCache[threadId]) {
-      return actionsCache[threadId]
-    }
-
-    const actions: ThreadActions = {
-      setWorkspacePath: (path: string | null) => {
-        updateThreadState(threadId, () => ({ agent: { workspacePath: path } }))
-      },
-      setError: (error: string | null) => {
-        updateThreadState(threadId, () => ({ agent: { error } }))
-      },
-      clearError: () => {
-        updateThreadState(threadId, () => ({ agent: { error: null } }))
-      },
-      setCurrentModel: (modelId: string) => {
-        updateThreadState(threadId, () => ({ agent: { currentModel: modelId } }))
-        void effects.persistCurrentModel?.(threadId, modelId)
-      },
-      setPermissionMode: (permissionMode: PermissionModeName) => {
-        updateThreadState(threadId, () => ({ agent: { permissionMode } }))
-        void effects.persistPermissionMode?.(threadId, permissionMode)
-      }
-    }
-
-    actionsCache[threadId] = actions
-    return actions
   }
 
   const getThreadControl = (threadId: string): ThreadControl => {
@@ -391,7 +340,6 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
     const hadThreadState = Object.hasOwn(threadStates, threadId)
 
     if (!hadThreadState) {
-      delete actionsCache[threadId]
       delete controlCache[threadId]
       return
     }
@@ -400,10 +348,8 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
       const { [threadId]: _deletedThreadState, ...restThreadStates } = threadStates
       void _deletedThreadState
       threadStates = restThreadStates
-      delete actionsCache[threadId]
       delete controlCache[threadId]
       threadListeners.get(threadId)?.forEach((listener) => listener())
-      allThreadStateListeners.forEach((listener) => listener())
     }
   }
 
@@ -413,16 +359,8 @@ export function createThreadStore(effects: ThreadStoreEffects = {}): ThreadStore
     applyThreadDataSnapshot,
     deleteThreadState,
     ensureThreadState,
-    getAllThreadStates: () => threadStates,
-    getThreadActions,
     getThreadControl,
     getThreadState,
-    subscribeAllThreadStates: (listener: () => void): (() => void) => {
-      allThreadStateListeners.add(listener)
-      return () => {
-        allThreadStateListeners.delete(listener)
-      }
-    },
     subscribeThread: (threadId: string, listener: () => void): (() => void) => {
       let listeners = threadListeners.get(threadId)
       if (!listeners) {

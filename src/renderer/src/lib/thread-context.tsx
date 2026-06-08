@@ -10,18 +10,12 @@ import {
 } from "react"
 
 /* eslint-disable react-refresh/only-export-components */
-import { THREAD_PERMISSION_MODE_METADATA_KEY } from "@shared/permission-mode"
 import { createAgentRuntimeManager } from "./agent-runtime-manager"
 import { historyShellStore } from "./history-shell-store"
-import {
-  createThreadStore,
-  type ThreadActions,
-  type ThreadControl,
-  type ThreadState
-} from "./thread-store-core"
+import { createThreadStore, type ThreadControl, type ThreadState } from "./thread-store-core"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
-export type { ThreadActions, ThreadControl, ThreadState, TokenUsage } from "./thread-store-core"
+export type { ThreadControl, ThreadState, TokenUsage } from "./thread-store-core"
 export { getArtifactTabId } from "@shared/thread-tabs"
 
 export type AgentCommandState = Pick<
@@ -32,46 +26,18 @@ export type AgentCommandState = Pick<
 export interface ThreadContextValue {
   getAgentCommandState: (threadId: string) => AgentCommandState | null
   getThreadState: (threadId: string) => ThreadState | null
-  getThreadActions: (threadId: string) => ThreadActions
   getThreadControl: (threadId: string) => ThreadControl
   ensureThreadRuntime: (threadId: string) => void
   awaitThreadRuntime: (threadId: string) => Promise<void>
   loadThreadData: (threadId: string) => Promise<void>
   cleanupThread: (threadId: string) => void
   subscribeThread: (threadId: string, callback: () => void) => () => void
-  getAllThreadStates: () => Record<string, ThreadState>
-  subscribeAllThreadStates: (callback: () => void) => () => void
 }
 
 const ThreadContext = createContext<ThreadContextValue | null>(null)
 
 export function ThreadProvider({ children }: { children: ReactNode }) {
-  const [threadStore] = useState(() =>
-    createThreadStore({
-      persistCurrentModel: async (threadId: string, modelId: string) => {
-        const thread = await window.api.threads.get(threadId)
-        if (!thread) {
-          return
-        }
-
-        const metadata = thread.metadata || {}
-        await window.api.threads.update(threadId, {
-          metadata: { ...metadata, model: modelId }
-        })
-      },
-      persistPermissionMode: async (threadId, permissionMode) => {
-        const thread = await window.api.threads.get(threadId)
-        if (!thread) {
-          return
-        }
-
-        const metadata = thread.metadata || {}
-        await window.api.threads.update(threadId, {
-          metadata: { ...metadata, [THREAD_PERMISSION_MODE_METADATA_KEY]: permissionMode }
-        })
-      }
-    })
-  )
+  const [threadStore] = useState(() => createThreadStore())
   const [runtimeManager] = useState(() =>
     createAgentRuntimeManager({
       refreshThread: (threadId) => historyShellStore.getState().refreshThread(threadId),
@@ -81,10 +47,6 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
 
   const getThreadState = useCallback(
     (threadId: string): ThreadState | null => threadStore.getThreadState(threadId),
-    [threadStore]
-  )
-  const getThreadActions = useCallback(
-    (threadId: string): ThreadActions => threadStore.getThreadActions(threadId),
     [threadStore]
   )
   const getAgentCommandState = useCallback(
@@ -111,13 +73,6 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
   const subscribeThread = useCallback(
     (threadId: string, callback: () => void): (() => void) =>
       threadStore.subscribeThread(threadId, callback),
-    [threadStore]
-  )
-  const getAllThreadStates = useCallback((): Record<string, ThreadState> => {
-    return threadStore.getAllThreadStates()
-  }, [threadStore])
-  const subscribeAllThreadStates = useCallback(
-    (callback: () => void): (() => void) => threadStore.subscribeAllThreadStates(callback),
     [threadStore]
   )
   const ensureThreadRuntime = useCallback(
@@ -153,27 +108,21 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     () => ({
       getAgentCommandState,
       getThreadState,
-      getThreadActions,
       getThreadControl,
       ensureThreadRuntime,
       awaitThreadRuntime,
       loadThreadData,
       cleanupThread,
       subscribeThread,
-      getAllThreadStates,
-      subscribeAllThreadStates
     }),
     [
       cleanupThread,
       awaitThreadRuntime,
       ensureThreadRuntime,
-      getAllThreadStates,
       getAgentCommandState,
-      getThreadActions,
       getThreadControl,
       getThreadState,
       loadThreadData,
-      subscribeAllThreadStates,
       subscribeThread
     ]
   )
@@ -187,16 +136,6 @@ export function useThreadContext(): ThreadContextValue {
     throw new Error("useThreadContext must be used within a ThreadProvider")
   }
   return context
-}
-
-export function useThreadActions(threadId: string | null): ThreadActions | null {
-  const context = useThreadContext()
-
-  if (!threadId) {
-    return null
-  }
-
-  return context.getThreadActions(threadId)
 }
 
 export function useThreadControl(threadId: string | null): ThreadControl | null {
@@ -230,13 +169,4 @@ export function useThreadSelector<T>(
   }, [context, selector, threadId])
 
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
-}
-
-export function useAllThreadStates(): Record<string, ThreadState> {
-  const context = useThreadContext()
-  return useSyncExternalStore(
-    context.subscribeAllThreadStates,
-    context.getAllThreadStates,
-    context.getAllThreadStates
-  )
 }

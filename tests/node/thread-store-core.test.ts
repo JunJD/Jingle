@@ -133,30 +133,20 @@ test("uninitialized thread reads do not create default state", () => {
   const store = createThreadStore()
 
   assert.equal(store.getThreadState("thread-a"), null)
-  assert.deepEqual(store.getAllThreadStates(), {})
 })
 
 test("thread subscriptions stay scoped to the matching thread id", () => {
   const store = createThreadStore()
   let threadACalls = 0
-  let allThreadCalls = 0
-
   const unsubscribeThread = store.subscribeThread("thread-a", () => {
     threadACalls += 1
   })
-  const unsubscribeAll = store.subscribeAllThreadStates(() => {
-    allThreadCalls += 1
-  })
-
   store.ensureThreadState("thread-a")
   store.ensureThreadState("thread-b")
   store.getThreadControl("thread-a").local.openFile("/tmp/a.txt", "a.txt")
 
   unsubscribeThread()
-  unsubscribeAll()
-
   assert.equal(threadACalls, 2)
-  assert.equal(allThreadCalls, 3)
   assert.deepEqual(getThreadState(store, "thread-a").ui.openFiles, [
     {
       name: "a.txt",
@@ -165,34 +155,6 @@ test("thread subscriptions stay scoped to the matching thread id", () => {
   ])
   assert.deepEqual(getThreadState(store, "thread-b").ui.openFiles, [])
   assert.equal(getThreadState(store, "thread-b").agent.permissionMode, DEFAULT_PERMISSION_MODE)
-})
-
-test("setCurrentModel updates state and runs the injected persistence effect", () => {
-  const persisted: Array<{ modelId: string; threadId: string }> = []
-  const store = createThreadStore({
-    persistCurrentModel: (threadId, modelId) => {
-      persisted.push({ modelId, threadId })
-    }
-  })
-
-  store.getThreadActions("thread-a").setCurrentModel("gpt-test")
-
-  assert.equal(getThreadState(store, "thread-a").agent.currentModel, "gpt-test")
-  assert.deepEqual(persisted, [{ modelId: "gpt-test", threadId: "thread-a" }])
-})
-
-test("setPermissionMode updates state and runs the injected persistence effect", () => {
-  const persisted: Array<{ permissionMode: string; threadId: string }> = []
-  const store = createThreadStore({
-    persistPermissionMode: (threadId, permissionMode) => {
-      persisted.push({ permissionMode, threadId })
-    }
-  })
-
-  store.getThreadActions("thread-a").setPermissionMode("auto")
-
-  assert.equal(getThreadState(store, "thread-a").agent.permissionMode, "auto")
-  assert.deepEqual(persisted, [{ permissionMode: "auto", threadId: "thread-a" }])
 })
 
 test("artifact changed events update source artifacts without rewriting open tab facts", () => {
