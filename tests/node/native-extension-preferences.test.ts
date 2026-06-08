@@ -14,11 +14,15 @@ let extensionSources!: typeof import("../../src/extensions/sources")
 let preferences!: typeof import("../../src/main/preferences")
 let DefaultExtensionRuntimeHostCapabilities!: typeof import("../../src/main/services/extension-runtime/host-capabilities").DefaultExtensionRuntimeHostCapabilities
 
+const desktopOAuthContract = {
+  clientId: "jingle-desktop",
+  codeChallengeMethod: "S256",
+  redirectUri: "jingle://oauth/callback",
+  responseType: "code"
+} as const
+
 function saveNotionSecret(): void {
-  preferences.setNativeExtensionPreferenceRecord("notion", {
-    accessToken: "notion_secret",
-    apiBaseUrl: "https://api.notion.example.test/v1"
-  })
+  seedLegacyNotionExtensionToken("notion_secret", "https://api.notion.example.test/v1")
 }
 
 function saveGitHubConnectionSecret(accessToken: string): void {
@@ -30,8 +34,50 @@ function saveGitHubConnectionSecret(accessToken: string): void {
   })
 }
 
+function saveNotionConnectionSecret(accessToken: string): void {
+  preferences.setNativeExtensionConnectionSecretRecord({
+    connectionId: "default",
+    nextRecord: { accessToken },
+    provider: "notion",
+    secretNames: ["accessToken"]
+  })
+}
+
+function saveFigmaConnectionSecret(accessToken: string): void {
+  preferences.setNativeExtensionConnectionSecretRecord({
+    connectionId: "default",
+    nextRecord: { accessToken },
+    provider: "figma",
+    secretNames: ["accessToken"]
+  })
+}
+
 function encodeMockSecret(value: string): string {
   return Buffer.from(`encrypted:${value}`, "utf8").toString("base64")
+}
+
+function assertDesktopOAuthAuthorizationContract(authorizationUrl: URL): void {
+  assert.equal(authorizationUrl.searchParams.get("client_id"), desktopOAuthContract.clientId)
+  assert.equal(authorizationUrl.searchParams.get("redirect_uri"), desktopOAuthContract.redirectUri)
+  assert.equal(authorizationUrl.searchParams.get("response_type"), desktopOAuthContract.responseType)
+  assert.equal(
+    authorizationUrl.searchParams.get("code_challenge_method"),
+    desktopOAuthContract.codeChallengeMethod
+  )
+  assert.equal(typeof authorizationUrl.searchParams.get("code_challenge"), "string")
+  assert.ok(authorizationUrl.searchParams.get("code_challenge"))
+  assert.ok(authorizationUrl.searchParams.get("state"))
+}
+
+function assertDesktopOAuthTokenRequestContract(
+  body: Record<string, unknown>,
+  state: string
+): void {
+  assert.equal(body.client_id, desktopOAuthContract.clientId)
+  assert.equal(body.redirect_uri, desktopOAuthContract.redirectUri)
+  assert.equal(typeof body.code_verifier, "string")
+  assert.ok(body.code_verifier)
+  assert.equal(body.state, state)
 }
 
 function seedLegacyGitHubTokens(params: {
@@ -107,6 +153,47 @@ function seedLegacyGitHubCommandToken(accessToken: string): void {
   seedLegacyGitHubTokens({ commandAccessToken: accessToken })
 }
 
+function seedLegacyNotionExtensionToken(
+  accessToken: string,
+  apiBaseUrl = "https://api.notion.com/v1"
+): void {
+  writeFileSync(
+    join(openworkHome, "settings.json"),
+    JSON.stringify(
+      {
+        nativeExtensionPreferences: {
+          commandPreferences: {},
+          extensionPreferences: {
+            notion: {
+              accessToken,
+              apiBaseUrl
+            }
+          }
+        }
+      },
+      null,
+      2
+    )
+  )
+  writeFileSync(
+    join(openworkHome, "secrets.json"),
+    JSON.stringify(
+      {
+        nativeExtensionSecrets: {
+          commandSecrets: {},
+          extensionSecrets: {
+            notion: {
+              accessToken: encodeMockSecret(accessToken)
+            }
+          }
+        }
+      },
+      null,
+      2
+    )
+  )
+}
+
 function installElectronSafeStorageMock(): void {
   const electronModuleId = requireFromTest.resolve("electron")
   requireFromTest("electron")
@@ -176,42 +263,55 @@ test.before(async () => {
     await import("../../src/main/services/extension-runtime/host-capabilities"))
 })
 
-test("native extension password preferences are redacted from public reads", () => {
-  const savedRecord = preferences.setNativeExtensionPreferenceRecord("notion", {
-    accessToken: "notion_secret",
+test("native extension connection secrets are not exposed through public preference reads", () => {
+  preferences.setNativeExtensionPreferenceRecord("notion", {
     apiBaseUrl: "https://api.notion.example.test/v1"
   })
-
-  assert.equal(savedRecord.accessToken, "")
+  saveNotionConnectionSecret("notion_secret")
 
   const publicRecord = preferences.getNativeExtensionPreferenceRecord("notion")
-  assert.equal(publicRecord.accessToken, "")
+  assert.equal(Object.hasOwn(publicRecord, "accessToken"), false)
   assert.equal(publicRecord.apiBaseUrl, "https://api.notion.example.test/v1")
 
   const resolvedRecord = preferences.getResolvedNativeExtensionPreferenceRecord("notion")
-  assert.equal(resolvedRecord.accessToken, "notion_secret")
+  assert.equal(Object.hasOwn(resolvedRecord, "accessToken"), false)
   assert.equal(resolvedRecord.apiBaseUrl, "https://api.notion.example.test/v1")
+
+  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+    commandName: "search-page",
+    extensionName: "notion"
+  })
+  assert.equal(context.extensionPreferences.accessToken, "notion_secret")
+  assert.equal(context.commandPreferences?.accessToken, "notion_secret")
 })
 
-test("resolved command preferences include extension secrets for main-side runtime use", () => {
+test("OAuth command preferences ignore legacy extension secrets without a connection token", () => {
   saveNotionSecret()
 
   const publicRecord = preferences.getNativeExtensionCommandPreferenceRecord(
     "notion",
     "search-page"
   )
-  assert.equal(publicRecord.accessToken, "")
+  assert.equal(Object.hasOwn(publicRecord, "accessToken"), false)
   assert.equal(publicRecord.apiBaseUrl, "https://api.notion.example.test/v1")
 
   const resolvedRecord = preferences.getResolvedNativeExtensionCommandPreferenceRecord(
     "notion",
     "search-page"
   )
-  assert.equal(resolvedRecord.accessToken, "notion_secret")
+  assert.equal(Object.hasOwn(resolvedRecord, "accessToken"), false)
   assert.equal(resolvedRecord.apiBaseUrl, "https://api.notion.example.test/v1")
+
+  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+    commandName: "search-page",
+    extensionName: "notion"
+  })
+  assert.equal(context.connection.status, "missing")
+  assert.equal(Object.hasOwn(context.extensionPreferences, "accessToken"), false)
+  assert.equal(Object.hasOwn(context.commandPreferences ?? {}, "accessToken"), false)
 })
 
-test("saving non-secret extension preferences preserves stored password secrets", () => {
+test("saving OAuth extension preferences removes retired legacy extension secrets", () => {
   saveNotionSecret()
 
   preferences.setNativeExtensionPreferenceRecord("notion", {
@@ -219,8 +319,24 @@ test("saving non-secret extension preferences preserves stored password secrets"
   })
 
   const resolvedRecord = preferences.getResolvedNativeExtensionPreferenceRecord("notion")
-  assert.equal(resolvedRecord.accessToken, "notion_secret")
+  assert.equal(Object.hasOwn(resolvedRecord, "accessToken"), false)
   assert.equal(resolvedRecord.apiBaseUrl, "https://api.notion.changed.test/v1")
+
+  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+    commandName: "search-page",
+    extensionName: "notion"
+  })
+  assert.equal(context.connection.status, "missing")
+  assert.deepEqual(
+    preferences.getNativeExtensionConnectionSecretRecord({
+      connectionId: "default",
+      provider: "notion",
+      secretNames: ["accessToken"]
+    }),
+    {}
+  )
+  assert.equal(Object.hasOwn(context.extensionPreferences, "accessToken"), false)
+  assert.equal(Object.hasOwn(context.commandPreferences ?? {}, "accessToken"), false)
 })
 
 test("native extension appPicker preferences normalize to application records", () => {
@@ -257,7 +373,7 @@ test("resolved extension preferences do not read legacy command-scoped shared se
   assert.equal(resolvedExtensionRecord.apiBaseUrl, "https://api.github.com")
 })
 
-test("connection resolver reads legacy command-scoped shared secrets during migration", () => {
+test("OAuth connection resolver ignores legacy command-scoped shared secrets", () => {
   seedLegacyGitHubCommandToken("ghp_legacy_secret")
 
   const context = connectionResolver.resolveNativeExtensionExecutionContext({
@@ -265,15 +381,16 @@ test("connection resolver reads legacy command-scoped shared secrets during migr
     extensionName: "github"
   })
 
-  assert.equal(context.connection.status, "connected")
-  assert.equal(context.extensionPreferences.accessToken, "ghp_legacy_secret")
-  assert.equal(context.commandPreferences?.accessToken, "ghp_legacy_secret")
+  assert.equal(context.connection.status, "missing")
+  assert.deepEqual(context.connection.missingSecretNames, ["accessToken"])
+  assert.equal(Object.hasOwn(context.extensionPreferences, "accessToken"), false)
+  assert.equal(Object.hasOwn(context.commandPreferences ?? {}, "accessToken"), false)
   assert.deepEqual(context.connection.publicConfig, {
     apiBaseUrl: "https://api.github.com"
   })
 })
 
-test("extension-scoped shared secrets override resolver legacy command-scoped secrets", () => {
+test("OAuth connection resolver ignores legacy extension-scoped shared secrets", () => {
   seedLegacyGitHubTokens({
     apiBaseUrl: "https://github.example.test/api/v3",
     commandAccessToken: "ghp_legacy_secret",
@@ -285,9 +402,10 @@ test("extension-scoped shared secrets override resolver legacy command-scoped se
     extensionName: "github"
   })
 
-  assert.equal(context.connection.status, "connected")
-  assert.equal(context.extensionPreferences.accessToken, "ghp_extension_secret")
-  assert.equal(context.commandPreferences?.accessToken, "ghp_extension_secret")
+  assert.equal(context.connection.status, "missing")
+  assert.deepEqual(context.connection.missingSecretNames, ["accessToken"])
+  assert.equal(Object.hasOwn(context.extensionPreferences, "accessToken"), false)
+  assert.equal(Object.hasOwn(context.commandPreferences ?? {}, "accessToken"), false)
   assert.deepEqual(context.connection.publicConfig, {
     apiBaseUrl: "https://github.example.test/api/v3"
   })
@@ -382,7 +500,7 @@ test("platform OAuth callback exchanges handoff code and stores GitHub connectio
     assert.equal(authorizationUrl.searchParams.get("provider"), "github")
     assert.equal(authorizationUrl.searchParams.get("extension_name"), "github")
     assert.equal(authorizationUrl.searchParams.get("connection_id"), "default")
-    assert.equal(authorizationUrl.searchParams.get("redirect_uri"), "jingle://oauth/callback")
+    assertDesktopOAuthAuthorizationContract(authorizationUrl)
     assert.equal(authorizationUrl.searchParams.get("scope"), "repo read:user notifications")
     assert.ok(state)
 
@@ -393,14 +511,11 @@ test("platform OAuth callback exchanges handoff code and stores GitHub connectio
     assert.equal(result.status, "connected")
     assert.equal(tokenRequests.length, 1)
     assert.equal(tokenRequests[0]?.url, "https://jingle.cool/oauth/github/token")
-    assert.equal(tokenRequests[0]?.body.client_id, "jingle-desktop")
+    assertDesktopOAuthTokenRequestContract(tokenRequests[0]?.body ?? {}, state)
     assert.equal(tokenRequests[0]?.body.code, "handoff-code")
-    assert.equal(typeof tokenRequests[0]?.body.code_verifier, "string")
     assert.equal(tokenRequests[0]?.body.connection_id, "default")
     assert.equal(tokenRequests[0]?.body.extension_name, "github")
     assert.equal(tokenRequests[0]?.body.provider, "github")
-    assert.equal(tokenRequests[0]?.body.redirect_uri, "jingle://oauth/callback")
-    assert.equal(tokenRequests[0]?.body.state, state)
     assert.deepEqual(
       preferences.getNativeExtensionConnectionSecretRecord({
         connectionId: "default",
@@ -416,6 +531,161 @@ test("platform OAuth callback exchanges handoff code and stores GitHub connectio
       connectionId: "default",
       nextRecord: {},
       provider: "github",
+      secretNames: ["accessToken"]
+    })
+    globalThis.fetch = originalFetch
+    ;(
+      globalThis as typeof globalThis & {
+        __OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__?: string[]
+      }
+    ).__OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__ = []
+  }
+})
+
+test("platform OAuth callback exchanges handoff code and stores Notion connection secret", async () => {
+  const shellOpenedUrls: string[] = []
+  ;(
+    globalThis as typeof globalThis & {
+      __OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__?: string[]
+    }
+  ).__OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__ = shellOpenedUrls
+  const originalFetch = globalThis.fetch
+  const tokenRequests: Array<{ body: Record<string, unknown>; url: string }> = []
+  globalThis.fetch = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>
+    tokenRequests.push({
+      body,
+      url: String(input)
+    })
+    return new Response(JSON.stringify({ access_token: "notion_callback_secret" }), {
+      headers: {
+        "content-type": "application/json"
+      },
+      status: 200
+    })
+  }) as typeof fetch
+
+  try {
+    const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
+    const nativeExtensionsService = new NativeExtensionsService()
+    const start = await nativeExtensionsService.startOAuthConnection({ extensionName: "notion" })
+    const authorizationUrl = new URL(start.authorizationUrl)
+    const state = authorizationUrl.searchParams.get("state")
+
+    assert.equal(shellOpenedUrls.length, 1)
+    assert.equal(authorizationUrl.pathname, "/oauth/notion/start")
+    assert.equal(authorizationUrl.searchParams.get("provider"), "notion")
+    assert.equal(authorizationUrl.searchParams.get("extension_name"), "notion")
+    assert.equal(authorizationUrl.searchParams.get("connection_id"), "default")
+    assertDesktopOAuthAuthorizationContract(authorizationUrl)
+    assert.equal(authorizationUrl.searchParams.has("scope"), false)
+    assert.ok(state)
+
+    const result = await nativeExtensionsService.finishOAuthCallback(
+      `jingle://oauth/callback?state=${encodeURIComponent(state)}&provider=notion&code=handoff-code`
+    )
+
+    assert.equal(result.status, "connected")
+    assert.equal(tokenRequests.length, 1)
+    assert.equal(tokenRequests[0]?.url, "https://jingle.cool/oauth/notion/token")
+    assertDesktopOAuthTokenRequestContract(tokenRequests[0]?.body ?? {}, state)
+    assert.equal(tokenRequests[0]?.body.code, "handoff-code")
+    assert.equal(tokenRequests[0]?.body.extension_name, "notion")
+    assert.equal(tokenRequests[0]?.body.provider, "notion")
+    assert.deepEqual(
+      preferences.getNativeExtensionConnectionSecretRecord({
+        connectionId: "default",
+        provider: "notion",
+        secretNames: ["accessToken"]
+      }),
+      {
+        accessToken: "notion_callback_secret"
+      }
+    )
+  } finally {
+    preferences.setNativeExtensionConnectionSecretRecord({
+      connectionId: "default",
+      nextRecord: {},
+      provider: "notion",
+      secretNames: ["accessToken"]
+    })
+    globalThis.fetch = originalFetch
+    ;(
+      globalThis as typeof globalThis & {
+        __OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__?: string[]
+      }
+    ).__OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__ = []
+  }
+})
+
+test("platform OAuth callback exchanges handoff code and stores Figma connection secret", async () => {
+  const shellOpenedUrls: string[] = []
+  ;(
+    globalThis as typeof globalThis & {
+      __OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__?: string[]
+    }
+  ).__OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__ = shellOpenedUrls
+  const originalFetch = globalThis.fetch
+  const tokenRequests: Array<{ body: Record<string, unknown>; url: string }> = []
+  globalThis.fetch = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>
+    tokenRequests.push({
+      body,
+      url: String(input)
+    })
+    return new Response(JSON.stringify({ access_token: "figma_callback_secret" }), {
+      headers: {
+        "content-type": "application/json"
+      },
+      status: 200
+    })
+  }) as typeof fetch
+
+  try {
+    const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
+    const nativeExtensionsService = new NativeExtensionsService()
+    const start = await nativeExtensionsService.startOAuthConnection({ extensionName: "figma-files" })
+    const authorizationUrl = new URL(start.authorizationUrl)
+    const state = authorizationUrl.searchParams.get("state")
+
+    assert.equal(shellOpenedUrls.length, 1)
+    assert.equal(authorizationUrl.pathname, "/oauth/figma/start")
+    assert.equal(authorizationUrl.searchParams.get("provider"), "figma")
+    assert.equal(authorizationUrl.searchParams.get("extension_name"), "figma-files")
+    assert.equal(authorizationUrl.searchParams.get("connection_id"), "default")
+    assertDesktopOAuthAuthorizationContract(authorizationUrl)
+    assert.equal(
+      authorizationUrl.searchParams.get("scope"),
+      "current_user:read projects:read file_metadata:read file_content:read"
+    )
+    assert.ok(state)
+
+    const result = await nativeExtensionsService.finishOAuthCallback(
+      `jingle://oauth/callback?state=${encodeURIComponent(state)}&provider=figma&code=handoff-code`
+    )
+
+    assert.equal(result.status, "connected")
+    assert.equal(tokenRequests.length, 1)
+    assert.equal(tokenRequests[0]?.url, "https://jingle.cool/oauth/figma/token")
+    assertDesktopOAuthTokenRequestContract(tokenRequests[0]?.body ?? {}, state)
+    assert.equal(tokenRequests[0]?.body.code, "handoff-code")
+    assert.equal(tokenRequests[0]?.body.extension_name, "figma-files")
+    assert.equal(tokenRequests[0]?.body.provider, "figma")
+    assert.deepEqual(
+      preferences.getNativeExtensionConnectionSecretRecord({
+        connectionId: "default",
+        provider: "figma",
+        secretNames: ["accessToken"]
+      }),
+      {
+        accessToken: "figma_callback_secret"
+      }
+    )
+  } finally {
+    preferences.setNativeExtensionConnectionSecretRecord({
+      connectionId: "default",
+      nextRecord: {},
+      provider: "figma",
       secretNames: ["accessToken"]
     })
     globalThis.fetch = originalFetch
@@ -464,22 +734,20 @@ test("platform OAuth start clears pending state when browser launch fails", asyn
   }
 })
 
-test("connection resolver resolves formal Notion secrets and rejects retired generated package", () => {
-  preferences.setNativeExtensionPreferenceRecord("notion", {
-    accessToken: "notion_provider_secret",
-    apiBaseUrl: "https://api.notion.com/v1"
-  })
+test("connection resolver ignores legacy Notion secrets and rejects retired generated package", () => {
+  seedLegacyNotionExtensionToken("notion_provider_secret")
 
   const context = connectionResolver.resolveNativeExtensionExecutionContext({
     commandName: "search-page",
     extensionName: "notion"
   })
 
-  assert.equal(context.connection.status, "connected")
+  assert.equal(context.connection.status, "missing")
   assert.equal(context.connection.provider, "notion")
-  assert.equal(context.extensionPreferences.accessToken, "notion_provider_secret")
+  assert.deepEqual(context.connection.missingSecretNames, ["accessToken"])
+  assert.equal(Object.hasOwn(context.extensionPreferences, "accessToken"), false)
   assert.equal(context.extensionPreferences.apiBaseUrl, "https://api.notion.com/v1")
-  assert.equal(context.commandPreferences?.accessToken, "notion_provider_secret")
+  assert.equal(Object.hasOwn(context.commandPreferences ?? {}, "accessToken"), false)
   assert.equal(context.commandPreferences?.apiBaseUrl, "https://api.notion.com/v1")
   assert.deepEqual(context.connection.publicConfig, {
     apiBaseUrl: "https://api.notion.com/v1"
@@ -495,11 +763,11 @@ test("connection resolver resolves formal Notion secrets and rejects retired gen
   )
 })
 
-test("formal Notion secrets connect AI capabilities and generated capability is retired", () => {
+test("connection-scoped Notion secrets connect AI capabilities and generated capability is retired", () => {
   preferences.setNativeExtensionPreferenceRecord("notion", {
-    accessToken: "notion_provider_secret",
     apiBaseUrl: "https://api.notion.com/v1"
   })
+  saveNotionConnectionSecret("notion_provider_secret")
 
   const connection = connectionResolver.resolveNativeExtensionConnection({
     extensionName: "notion"
@@ -535,17 +803,16 @@ test("formal Notion secrets connect AI capabilities and generated capability is 
   )
 })
 
-test("formal Notion settings token feeds runtime host and AI capability through the same connection", async () => {
+test("connection-scoped Notion token feeds runtime host and AI capability through the same connection", async () => {
   preferences.setNativeExtensionPreferenceRecord("notion", {
-    accessToken: "notion_settings_token",
     apiBaseUrl: "https://api.notion.com/v1"
   })
+  saveNotionConnectionSecret("notion_settings_token")
 
   const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
   const nativeExtensionsService = new NativeExtensionsService()
 
   assert.deepEqual(nativeExtensionsService.getPreferences("notion"), {
-    accessToken: "",
     apiBaseUrl: "https://api.notion.com/v1",
     open_in: {
       name: "Notion"
@@ -602,6 +869,35 @@ test("formal Notion settings token feeds runtime host and AI capability through 
     apiBaseUrl: "https://api.notion.com/v1"
   })
   assert.deepEqual(capability?.enabledToolNames, capability?.capability.toolNames)
+})
+
+test("connection-scoped Figma token feeds execution context without manual token preferences", () => {
+  preferences.setNativeExtensionPreferenceRecord("figma-files", {
+    TEAM_ID: "123",
+    open_in: {
+      name: "Figma"
+    }
+  })
+  saveFigmaConnectionSecret("figma_oauth_secret")
+
+  const publicRecord = preferences.getNativeExtensionPreferenceRecord("figma-files")
+  assert.equal(Object.hasOwn(publicRecord, "accessToken"), false)
+
+  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+    commandName: "index",
+    extensionName: "figma-files"
+  })
+
+  assert.equal(context.connection.status, "connected")
+  assert.equal(context.connection.provider, "figma")
+  assert.deepEqual(context.connection.publicConfig, {
+    TEAM_ID: "123",
+    open_in: {
+      name: "Figma"
+    }
+  })
+  assert.equal(context.extensionPreferences.accessToken, "figma_oauth_secret")
+  assert.equal(context.commandPreferences?.accessToken, "figma_oauth_secret")
 })
 
 test("extension runtime host resolves preferences with secrets through main-side service methods", () => {

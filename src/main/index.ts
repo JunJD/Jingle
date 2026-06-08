@@ -145,6 +145,24 @@ function handleOpenUrl(rawUrl: string): void {
   })
 }
 
+function findJingleProtocolUrl(entries: readonly string[]): string | null {
+  return entries.find((entry) => entry.startsWith(`${JINGLE_PROTOCOL}://`)) ?? null
+}
+
+function registerJingleProtocolClient(): void {
+  if (bypassSingleInstanceLock) {
+    return
+  }
+
+  const registered = isDev
+    ? app.setAsDefaultProtocolClient(JINGLE_PROTOCOL, process.execPath, [app.getAppPath()])
+    : app.setAsDefaultProtocolClient(JINGLE_PROTOCOL)
+
+  if (!registered) {
+    console.warn(`[Main] Failed to register ${JINGLE_PROTOCOL}:// protocol handler`)
+  }
+}
+
 function setMacDockIcon(): void {
   if (process.platform !== "darwin" || !app.dock) {
     return
@@ -179,11 +197,10 @@ if (!hasSingleInstanceLock) {
 
 if (hasSingleInstanceLock) {
   app.on("second-instance", (_event, commandLine) => {
-    for (const entry of commandLine) {
-      if (entry.startsWith(`${JINGLE_PROTOCOL}://`)) {
-        handleOpenUrl(entry)
-        return
-      }
+    const protocolUrl = findJingleProtocolUrl(commandLine)
+    if (protocolUrl) {
+      handleOpenUrl(protocolUrl)
+      return
     }
 
     openMainWindow()
@@ -201,9 +218,7 @@ if (hasSingleInstanceLock) {
     }
 
     setMacDockIcon()
-    if (!bypassSingleInstanceLock) {
-      app.setAsDefaultProtocolClient(JINGLE_PROTOCOL)
-    }
+    registerJingleProtocolClient()
     registerNativeExtensionAssetProtocol()
 
     // Default open or close DevTools by F12 in development
@@ -241,6 +256,10 @@ if (hasSingleInstanceLock) {
     })
     mainCompositionRoot.registerIpcHandlers()
     mainCompositionRoot.startServices()
+    const launchProtocolUrl = findJingleProtocolUrl(process.argv)
+    if (launchProtocolUrl) {
+      handleOpenUrl(launchProtocolUrl)
+    }
     if (pendingOAuthCallbackUrl) {
       const callbackUrl = pendingOAuthCallbackUrl
       pendingOAuthCallbackUrl = null

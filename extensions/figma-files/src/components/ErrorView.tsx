@@ -5,10 +5,10 @@ import { Detail } from "@openwork/extension-api";
 export function ErrorView() {
   const markdown = `
   # Error
-  Please check your access token and team ID.  
+  Please check your Figma connection and team ID.
 
-  ## Access Token
-  You can find the Figma access token in your Account Settings > Personal Access Token section
+  ## Figma Connection
+  Connect Figma from Openwork Settings > Extensions.
 
   ## Team ID
   You can extract the team ID by navigating to your team page in Figma and then looking at the URL in the browser, for example:

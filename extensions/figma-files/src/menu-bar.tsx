@@ -46,7 +46,7 @@ export default function FigmaFilesMenuBar(): React.JSX.Element {
             onAction={() => {
               void openNativeExtensionSettings({})
             }}
-            title={copy.addFigmaAccessToken}
+            title={copy.connectFigmaInSettings}
           />
         </MenuBarExtra.Section>
       ) : !hasTeamIds ? (

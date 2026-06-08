@@ -6,6 +6,7 @@ import { createAppleRemindersTools } from "../../extensions/apple-reminders/main
 import { githubManifest } from "../../extensions/github/manifest"
 import { githubRuntime } from "../../extensions/github/runtime"
 import { createGitHubTools } from "../../extensions/github/main/tools"
+import { figmaFilesManifest } from "../../extensions/figma-files/manifest"
 import { notionManifest } from "../../extensions/notion/manifest"
 import {
   buildNativeExtensionAiCapabilityCatalogItem,
@@ -99,6 +100,47 @@ test("Apple Reminders live package keeps runtime and AI tool contracts", () => {
   )
   assert.equal(menuBarCommand?.mode, "menu-bar")
   assert.equal(appleRemindersRuntime.commands["menu-bar-reminders"].mode, "menu-bar")
+})
+
+test("Notion live package uses platform OAuth instead of manual token preferences", () => {
+  assert.deepEqual(notionManifest.connection?.auth, {
+    authorizationUrl: "https://jingle.cool/oauth/notion/start",
+    clientId: "jingle-desktop",
+    redirect: {
+      callbackPath: "/oauth/callback",
+      method: "app-scheme",
+      scheme: "jingle"
+    },
+    scopes: [],
+    secretNames: ["accessToken"],
+    tokenUrl: "https://jingle.cool/oauth/notion/token",
+    type: "oauth"
+  })
+  assert.equal(
+    (notionManifest.preferences ?? []).some((preference) => preference.name === "accessToken"),
+    false
+  )
+})
+
+test("Figma Files live package uses platform OAuth instead of manual token preferences", () => {
+  assert.deepEqual(figmaFilesManifest.connection?.auth, {
+    authorizationUrl: "https://jingle.cool/oauth/figma/start",
+    clientId: "jingle-desktop",
+    redirect: {
+      callbackPath: "/oauth/callback",
+      method: "app-scheme",
+      scheme: "jingle"
+    },
+    scopes: ["current_user:read", "projects:read", "file_metadata:read", "file_content:read"],
+    secretNames: ["accessToken"],
+    tokenUrl: "https://jingle.cool/oauth/figma/token",
+    type: "oauth"
+  })
+  assert.equal(
+    (figmaFilesManifest.preferences ?? []).some((preference) => preference.name === "accessToken"),
+    false
+  )
+  assert.deepEqual(figmaFilesManifest.connection?.publicPreferenceNames, ["TEAM_ID", "open_in"])
 })
 
 test("GitHub live package keeps runtime, connection, and AI tool contracts", () => {

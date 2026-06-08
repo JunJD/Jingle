@@ -10,7 +10,7 @@ export const EXTENSION_IDENTITY = {
   aiToolHostRequestId: "figma-files-ai-tool-host-request",
   extensionId: "figma-files",
   extensionTitle: "Figma File Search",
-  providerId: "figma-files-openwork-extension",
+  providerId: "figma",
   subjectTerms: [
     "figma-files",
     "figma files",

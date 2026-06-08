@@ -17,7 +17,7 @@ export const notionConnection: WithAccessTokenService = {
 export function getNotionAccessToken(): string {
   const accessToken = getConnectionSecret("accessToken");
   if (!accessToken) {
-    throw new Error("Missing accessToken preference for this extension.");
+    throw new Error("Connect Notion in Settings before using this extension.");
   }
 
   return accessToken;

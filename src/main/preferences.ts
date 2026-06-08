@@ -857,11 +857,19 @@ export function setNativeExtensionPreferenceRecord(
   }
 
   settingsStore.set("nativeExtensionPreferences", nextState)
-  setNativeExtensionSecretRecord({
-    key,
-    nextRecord: secretRecord,
-    scope: "extension"
-  })
+  if (listPasswordPreferenceNames(schema).size > 0) {
+    setNativeExtensionSecretRecord({
+      key,
+      nextRecord: secretRecord,
+      scope: "extension"
+    })
+  } else {
+    setNativeExtensionSecretRecord({
+      key,
+      nextRecord: {},
+      scope: "extension"
+    })
+  }
   return getNativeExtensionPreferenceRecord(extensionName)
 }
 
@@ -898,11 +906,19 @@ export function setNativeExtensionCommandPreferenceRecord(
   }
 
   settingsStore.set("nativeExtensionPreferences", nextState)
-  setNativeExtensionSecretRecord({
-    key,
-    nextRecord: secretRecord,
-    scope: "command"
-  })
+  if (listPasswordPreferenceNames(schema).size > 0) {
+    setNativeExtensionSecretRecord({
+      key,
+      nextRecord: secretRecord,
+      scope: "command"
+    })
+  } else {
+    setNativeExtensionSecretRecord({
+      key,
+      nextRecord: {},
+      scope: "command"
+    })
+  }
   return getNativeExtensionCommandPreferenceRecord(extensionName, commandName)
 }
 
