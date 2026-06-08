@@ -1,4 +1,5 @@
 import type { Checkpoint as PrismaCheckpoint } from "@prisma/client"
+import { readStoredCheckpointChannelVersions } from "../checkpointer/prisma-saver"
 import { getPrismaClient } from "./client"
 import { toNumber } from "./utils"
 
@@ -87,6 +88,24 @@ function getRequiredPendingHitlToolCallId(request: {
   throw new Error(
     `[cloneThread] Pending HITL request "${request.requestId}" is missing toolCallId.`
   )
+}
+
+function buildCheckpointBlobVersionFilters(
+  channelVersions: Record<string, string | number>[]
+): Array<{ channel: string; version: string }> {
+  const filters = new Map<string, { channel: string; version: string }>()
+
+  for (const versions of channelVersions) {
+    for (const [channel, version] of Object.entries(versions)) {
+      const normalizedVersion = String(version)
+      filters.set(`${channel}\0${normalizedVersion}`, {
+        channel,
+        version: normalizedVersion
+      })
+    }
+  }
+
+  return Array.from(filters.values())
 }
 
 export async function getAllThreads(): Promise<ThreadRow[]> {
@@ -254,6 +273,12 @@ export async function cloneThread(
         threadId: sourceThreadId
       }
     })
+    const checkpointBlobs = await tx.checkpointBlob.findMany({
+      orderBy: [{ checkpointNs: "asc" }, { channel: "asc" }, { version: "asc" }],
+      where: {
+        threadId: sourceThreadId
+      }
+    })
     const pendingHitlRequests = await tx.hitlRequest.findMany({
       orderBy: [{ updatedAt: "desc" }, { requestId: "asc" }],
       where: {
@@ -307,6 +332,19 @@ export async function cloneThread(
           threadId: targetThreadId,
           type: write.type,
           value: write.value
+        }))
+      })
+    }
+
+    if (checkpointBlobs.length > 0) {
+      await tx.checkpointBlob.createMany({
+        data: checkpointBlobs.map((blob) => ({
+          channel: blob.channel,
+          checkpointNs: blob.checkpointNs,
+          threadId: targetThreadId,
+          type: blob.type,
+          value: blob.value,
+          version: blob.version
         }))
       })
     }
@@ -394,6 +432,12 @@ export async function cloneThreadUntilCheckpoint(
     checkpointChain.reverse()
 
     const checkpointIds = checkpointChain.map((checkpoint) => checkpoint.checkpointId)
+    const checkpointChannelVersions = checkpointChain
+      .map((checkpoint) =>
+        readStoredCheckpointChannelVersions(checkpoint.type, checkpoint.checkpoint)
+      )
+      .filter((versions): versions is Record<string, string | number> => versions !== null)
+    const checkpointBlobFilters = buildCheckpointBlobVersionFilters(checkpointChannelVersions)
     const checkpointWrites =
       checkpointIds.length > 0
         ? await tx.checkpointWrite.findMany({
@@ -402,6 +446,17 @@ export async function cloneThreadUntilCheckpoint(
               checkpointId: {
                 in: checkpointIds
               },
+              checkpointNs,
+              threadId: sourceThreadId
+            }
+          })
+        : []
+    const checkpointBlobs =
+      checkpointBlobFilters.length > 0
+        ? await tx.checkpointBlob.findMany({
+            orderBy: [{ checkpointNs: "asc" }, { channel: "asc" }, { version: "asc" }],
+            where: {
+              OR: checkpointBlobFilters,
               checkpointNs,
               threadId: sourceThreadId
             }
@@ -451,6 +506,19 @@ export async function cloneThreadUntilCheckpoint(
           threadId: targetThreadId,
           type: write.type,
           value: write.value
+        }))
+      })
+    }
+
+    if (checkpointBlobs.length > 0) {
+      await tx.checkpointBlob.createMany({
+        data: checkpointBlobs.map((blob) => ({
+          channel: blob.channel,
+          checkpointNs: blob.checkpointNs,
+          threadId: targetThreadId,
+          type: blob.type,
+          value: blob.value,
+          version: blob.version
         }))
       })
     }
@@ -508,6 +576,9 @@ export async function deleteThread(threadId: string): Promise<void> {
       where: { threadId }
     })
     await tx.checkpointWrite.deleteMany({
+      where: { threadId }
+    })
+    await tx.checkpointBlob.deleteMany({
       where: { threadId }
     })
     await tx.checkpoint.deleteMany({

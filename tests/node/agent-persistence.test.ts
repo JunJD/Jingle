@@ -271,7 +271,10 @@ test("agent resume rejects workspace mismatch before mutating the run", async ()
     events.map((event) => event.type),
     ["error"]
   )
-  assert.equal(events[0].details?.some((detail) => detail.includes("fork_current_workspace")), true)
+  assert.equal(
+    events[0].details?.some((detail) => detail.includes("fork_current_workspace")),
+    true
+  )
 })
 
 test("agent cancel covers invoke setup before a run id exists", async () => {
@@ -605,9 +608,8 @@ test("personal memory persistence normalizes scope workspace ownership", async (
 })
 
 test("accepting workspace memory suggestions preserves suggestion workspace ownership by default", async () => {
-  const { acceptAgentMemorySuggestion, createAgentMemorySuggestion } = await import(
-    "../../src/main/db/agent-memory"
-  )
+  const { acceptAgentMemorySuggestion, createAgentMemorySuggestion } =
+    await import("../../src/main/db/agent-memory")
 
   const suggestion = await createAgentMemorySuggestion({
     content: "Workspace A uses pnpm.",
@@ -681,9 +683,8 @@ test("agent run memory snapshot stores frozen context content", async () => {
   const { createRun, createThread, getRun } = await loadDbModules()
   const { beginAgentRun } = await import("../../src/main/agent/persistence")
   const { OpenworkMemoryService } = await import("../../src/main/openwork-memory/service")
-  const { OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } = await import(
-    "../../src/shared/openwork-memory"
-  )
+  const { OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } =
+    await import("../../src/shared/openwork-memory")
 
   const service = new OpenworkMemoryService()
   const threadId = "thread-memory-snapshot"
@@ -1093,10 +1094,100 @@ test("prisma checkpoint saver stores checkpoints without syncing derived thread 
   assert.equal(await getLatestHitlRequest(threadId), null)
 })
 
+test("prisma checkpoint saver stores channel values as reusable checkpoint blobs", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-checkpoint-blobs"
+  await createThread(threadId)
+
+  const firstCheckpoint = emptyCheckpoint()
+  firstCheckpoint.id = "checkpoint-blob-0001"
+  firstCheckpoint.channel_values = {
+    messages: [{ kwargs: { content: "first", id: "message-first" }, type: "human" }],
+    todos: [{ content: "keep me", id: "todo-1", status: "pending" }]
+  }
+  firstCheckpoint.channel_versions = {
+    messages: 1,
+    todos: 1
+  }
+
+  const secondCheckpoint = emptyCheckpoint()
+  secondCheckpoint.id = "checkpoint-blob-0002"
+  secondCheckpoint.channel_values = {
+    messages: [
+      { kwargs: { content: "first", id: "message-first" }, type: "human" },
+      { kwargs: { content: "second", id: "message-second" }, type: "ai" }
+    ],
+    todos: [{ content: "keep me", id: "todo-1", status: "pending" }]
+  }
+  secondCheckpoint.channel_versions = {
+    messages: 2,
+    todos: 1
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  const firstConfig = await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      }
+    },
+    firstCheckpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    },
+    {
+      messages: 1,
+      todos: 1
+    }
+  )
+  await saver.put(
+    firstConfig,
+    secondCheckpoint,
+    {
+      parents: { "": firstCheckpoint.id },
+      source: "update",
+      step: 1
+    },
+    {
+      messages: 2
+    }
+  )
+
+  const prisma = getPrismaClient()
+  const checkpointRows = await prisma.checkpoint.findMany({
+    orderBy: { checkpointId: "asc" },
+    where: { threadId }
+  })
+  const blobRows = await prisma.checkpointBlob.findMany({
+    orderBy: [{ channel: "asc" }, { version: "asc" }],
+    where: { threadId }
+  })
+  const latest = await saver.getTuple({
+    configurable: {
+      thread_id: threadId
+    }
+  })
+
+  assert.equal(checkpointRows.length, 2)
+  assert.equal(
+    checkpointRows.every((row) => !row.checkpoint?.includes("channel_values")),
+    true
+  )
+  assert.deepEqual(
+    blobRows.map((row) => `${row.channel}:${row.version}`),
+    ["messages:1", "messages:2", "todos:1"]
+  )
+  assert.deepEqual(latest?.checkpoint.channel_values, secondCheckpoint.channel_values)
+})
+
 test("runtime checkpointer syncs derived thread state after checkpoint writes", async () => {
   const { createThread, createRun, getLatestHitlRequest, getPrismaClient } = await loadDbModules()
-  const { closeCheckpointer, getCheckpointer } = await import("../../src/main/agent/runtime")
-  const { flushMessageSearchProjection } = await import("../../src/main/checkpointer/runtime-checkpointer")
+  const { RuntimeCheckpointSaver, flushMessageSearchProjection } =
+    await import("../../src/main/checkpointer/runtime-checkpointer")
 
   const threadId = "thread-runtime-checkpoint-store"
   const runId = "run-runtime-checkpoint-store"
@@ -1122,7 +1213,7 @@ test("runtime checkpointer syncs derived thread state after checkpoint writes", 
     messages: [{ kwargs: { content: "needs approval", id: "message-user-runtime" }, type: "human" }]
   }
 
-  const saver = await getCheckpointer(threadId)
+  const saver = new RuntimeCheckpointSaver()
   try {
     await saver.put(
       {
@@ -1156,15 +1247,14 @@ test("runtime checkpointer syncs derived thread state after checkpoint writes", 
     assert.equal(searchRows.length, 1)
     assert.match(searchRows[0]!.search_text, /needs approval/)
   } finally {
-    await closeCheckpointer(threadId)
+    await saver.close()
   }
 })
 
 test("runtime checkpointer keeps checkpoint and HITL writes when message search projection fails", async () => {
   const { createThread, createRun, getLatestHitlRequest, getPrismaClient } = await loadDbModules()
-  const { RuntimeCheckpointSaver, flushMessageSearchProjection } = await import(
-    "../../src/main/checkpointer/runtime-checkpointer"
-  )
+  const { RuntimeCheckpointSaver, flushMessageSearchProjection } =
+    await import("../../src/main/checkpointer/runtime-checkpointer")
   const consoleWarn = mock.method(console, "warn", () => {})
   const threadId = "thread-runtime-search-failure"
   const runId = "run-runtime-search-failure"
@@ -1189,7 +1279,9 @@ test("runtime checkpointer keeps checkpoint and HITL writes when message search 
           }
         }
       ],
-      messages: [{ kwargs: { content: "still saved", id: "message-search-failure" }, type: "human" }]
+      messages: [
+        { kwargs: { content: "still saved", id: "message-search-failure" }, type: "human" }
+      ]
     }
 
     let syncAttempts = 0
@@ -1236,9 +1328,8 @@ test("runtime checkpointer keeps checkpoint and HITL writes when message search 
 
 test("closeRuntime flushes projections queued while checkpointers close", async () => {
   const { closeRuntime, getCheckpointer } = await import("../../src/main/agent/runtime")
-  const { enqueueMessageSearchProjection } = await import(
-    "../../src/main/checkpointer/runtime-checkpointer"
-  )
+  const { enqueueMessageSearchProjection } =
+    await import("../../src/main/checkpointer/runtime-checkpointer")
   const threadId = "thread-close-runtime-search-projection"
   const saver = await getCheckpointer(threadId)
   let projectionFlushed = false
@@ -1616,10 +1707,20 @@ test("cloneUntilMessage branches from the checkpoint that first contains the tar
     `SELECT message_id FROM "messages_fts" WHERE thread_id = ? ORDER BY message_id`,
     clonedThread.thread_id
   )
+  const clonedSaver = new PrismaCheckpointSaver()
+  const clonedCheckpoint = await clonedSaver.getTuple({
+    configurable: {
+      thread_id: clonedThread.thread_id
+    }
+  })
 
   assert.deepEqual(
     clonedCheckpointRows.map((checkpoint) => checkpoint.checkpointId),
     [firstCheckpoint.id]
+  )
+  assert.deepEqual(
+    clonedCheckpointRows.map((checkpoint) => checkpoint.runId),
+    [null]
   )
   assert.deepEqual(
     clonedWriteRows.map((write) => write.checkpointId),
@@ -1629,6 +1730,10 @@ test("cloneUntilMessage branches from the checkpoint that first contains the tar
   assert.deepEqual(
     clonedSearchRows.map((row) => row.message_id),
     ["message-ai-1", "message-user-1"]
+  )
+  assert.deepEqual(
+    clonedCheckpoint?.checkpoint.channel_values.messages,
+    firstCheckpoint.channel_values.messages
   )
 })
 
@@ -1814,7 +1919,8 @@ test("thread fork rejects checkpoints that contain HITL interrupts", async () =>
     canFork: false,
     reason: "checkpoint_interrupt"
   })
-  assert.deepEqual(threadData.messages.messages.map((message) => message.id), [
-    "message-user-interrupt"
-  ])
+  assert.deepEqual(
+    threadData.messages.messages.map((message) => message.id),
+    ["message-user-interrupt"]
+  )
 })
