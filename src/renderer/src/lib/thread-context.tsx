@@ -15,7 +15,10 @@ import { historyShellStore } from "./history-shell-store"
 import { createThreadStore, type ThreadControl, type ThreadState } from "./thread-store-core"
 
 export type { OpenArtifactTab, OpenFile } from "@shared/thread-tabs"
-export type { ThreadControl, ThreadState, TokenUsage } from "./thread-store-core"
+export type {
+  ThreadControl,
+  TokenUsage
+} from "./thread-store-core"
 export { getArtifactTabId } from "@shared/thread-tabs"
 
 export type AgentCommandState = Pick<
@@ -25,16 +28,19 @@ export type AgentCommandState = Pick<
 
 export interface ThreadContextValue {
   getAgentCommandState: (threadId: string) => AgentCommandState | null
-  getThreadState: (threadId: string) => ThreadState | null
   getThreadControl: (threadId: string) => ThreadControl
   ensureThreadRuntime: (threadId: string) => void
   awaitThreadRuntime: (threadId: string) => Promise<void>
   loadThreadData: (threadId: string) => Promise<void>
   cleanupThread: (threadId: string) => void
+}
+
+interface ThreadContextInternalValue extends ThreadContextValue {
+  getThreadState: (threadId: string) => ThreadState | null
   subscribeThread: (threadId: string, callback: () => void) => () => void
 }
 
-const ThreadContext = createContext<ThreadContextValue | null>(null)
+const ThreadContext = createContext<ThreadContextInternalValue | null>(null)
 
 export function ThreadProvider({ children }: { children: ReactNode }) {
   const [threadStore] = useState(() => createThreadStore())
@@ -104,7 +110,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     })
   }, [threadStore])
 
-  const contextValue = useMemo<ThreadContextValue>(
+  const contextValue = useMemo<ThreadContextInternalValue>(
     () => ({
       getAgentCommandState,
       getThreadState,
@@ -113,7 +119,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       awaitThreadRuntime,
       loadThreadData,
       cleanupThread,
-      subscribeThread,
+      subscribeThread
     }),
     [
       cleanupThread,
@@ -131,6 +137,10 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
 }
 
 export function useThreadContext(): ThreadContextValue {
+  return useThreadContextInternal()
+}
+
+function useThreadContextInternal(): ThreadContextInternalValue {
   const context = useContext(ThreadContext)
   if (!context) {
     throw new Error("useThreadContext must be used within a ThreadProvider")
@@ -139,7 +149,7 @@ export function useThreadContext(): ThreadContextValue {
 }
 
 export function useThreadControl(threadId: string | null): ThreadControl | null {
-  const context = useThreadContext()
+  const context = useThreadContextInternal()
 
   if (!threadId) {
     return null
@@ -152,7 +162,7 @@ export function useThreadSelector<T>(
   threadId: string | null,
   selector: (state: ThreadState | null) => T
 ): T {
-  const context = useThreadContext()
+  const context = useThreadContextInternal()
 
   const subscribe = useCallback(
     (callback: () => void) => {
