@@ -93,7 +93,7 @@ function resolveLegacyCommandScopedSecrets(input: {
   extensionName: string
   extensionPreferences: Record<string, unknown>
 }): Record<string, string> {
-  if (input.connection.auth.type === "none") {
+  if (input.connection.auth.type === "none" || input.connection.auth.type === "oauth") {
     return {}
   }
 
@@ -115,7 +115,7 @@ function resolveLegacyExtensionScopedSecrets(input: {
   extensionName: string
   extensionPreferences: Record<string, unknown>
 }): Record<string, string> {
-  if (input.connection.auth.type === "none") {
+  if (input.connection.auth.type === "none" || input.connection.auth.type === "oauth") {
     return {}
   }
 
