@@ -7,8 +7,10 @@ import type {
   NativeExtensionResolvedConnection
 } from "@shared/native-extensions"
 import {
+  getNativeExtensionConnectionSecretRecord,
   getResolvedNativeExtensionCommandPreferenceRecord,
   getResolvedNativeExtensionLegacyCommandScopedPasswordRecord,
+  getResolvedNativeExtensionLegacyExtensionScopedPasswordRecord,
   getResolvedNativeExtensionPreferenceRecord
 } from "../preferences"
 
@@ -108,6 +110,28 @@ function resolveLegacyCommandScopedSecrets(input: {
   })
 }
 
+function resolveLegacyExtensionScopedSecrets(input: {
+  connection: NativeExtensionConnectionManifest
+  extensionName: string
+  extensionPreferences: Record<string, unknown>
+}): Record<string, string> {
+  if (input.connection.auth.type === "none") {
+    return {}
+  }
+
+  const missingSecretNames = input.connection.auth.secretNames.filter((secretName) =>
+    isMissingConnectionSecret(input.extensionPreferences[secretName])
+  )
+  if (missingSecretNames.length === 0) {
+    return {}
+  }
+
+  return getResolvedNativeExtensionLegacyExtensionScopedPasswordRecord({
+    extensionName: input.extensionName,
+    passwordPreferenceNames: missingSecretNames
+  })
+}
+
 function resolveProviderExtensionPreferences(input: {
   connection: NativeExtensionConnectionManifest
   extensionName: string
@@ -146,11 +170,13 @@ function resolveProviderExtensionPreferences(input: {
 }
 
 function mergeProviderConnectionPreferences(input: {
+  connectionSecrets: Record<string, string>
   connection: NativeExtensionConnectionManifest
   extensionPreferences: Record<string, unknown>
   providerPreferences: Record<string, unknown>
 }): Record<string, unknown> {
   const mergedPreferences = {
+    ...input.connectionSecrets,
     ...input.providerPreferences,
     ...input.extensionPreferences
   }
@@ -160,7 +186,9 @@ function mergeProviderConnectionPreferences(input: {
   }
 
   for (const secretName of input.connection.auth.secretNames) {
-    if (
+    if (!isMissingConnectionSecret(input.connectionSecrets[secretName])) {
+      mergedPreferences[secretName] = input.connectionSecrets[secretName]
+    } else if (
       isMissingConnectionSecret(input.extensionPreferences[secretName]) &&
       !isMissingConnectionSecret(input.providerPreferences[secretName])
     ) {
@@ -184,17 +212,37 @@ export function resolveNativeExtensionExecutionContext(input: {
     extensionName: input.extensionName,
     platform: input.platform
   })
+  const connectionSecrets =
+    connection.auth.type === "none"
+      ? {}
+      : getNativeExtensionConnectionSecretRecord({
+          connectionId: connection.id,
+          provider: connection.provider,
+          secretNames: connection.auth.secretNames
+        })
+  const connectionPreferences = mergeProviderConnectionPreferences({
+    connection,
+    connectionSecrets,
+    extensionPreferences: baseExtensionPreferences,
+    providerPreferences
+  })
+  const legacyExtensionScopedSecrets = resolveLegacyExtensionScopedSecrets({
+    connection,
+    extensionName: input.extensionName,
+    extensionPreferences: connectionPreferences
+  })
+  const extensionPreferencesWithLegacyExtension = {
+    ...connectionPreferences,
+    ...legacyExtensionScopedSecrets
+  }
   const extensionPreferences = {
-    ...mergeProviderConnectionPreferences({
-      connection,
-      extensionPreferences: baseExtensionPreferences,
-      providerPreferences
-    }),
+    ...extensionPreferencesWithLegacyExtension,
     ...resolveLegacyCommandScopedSecrets({
       connection,
       extensionName: input.extensionName,
-      extensionPreferences: baseExtensionPreferences
-    })
+      extensionPreferences: extensionPreferencesWithLegacyExtension
+    }),
+    ...connectionSecrets
   }
   const status = resolveConnectionStatus({
     connection,

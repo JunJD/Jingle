@@ -2,7 +2,10 @@ import type {
   NativeExtensionInvokeIpcResponse,
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionInvokeRequest,
-  NativeExtensionPreferencesChangedEvent
+  NativeExtensionOAuthStartRequest,
+  NativeExtensionOAuthStartResponse,
+  NativeExtensionPreferencesChangedEvent,
+  NativeExtensionResolvedConnection
 } from "@shared/native-extensions"
 import { invokeIpc, ipcRenderer } from "../ipc"
 import { OpenworkIpcClientError } from "../ipc-errors"
@@ -13,6 +16,9 @@ export const nativeExtensionsApi = {
   },
   getPreferences: (extensionName: string): Promise<Record<string, unknown>> => {
     return invokeIpc("nativeExtensions:getPreferences", extensionName)
+  },
+  getConnection: (extensionName: string): Promise<NativeExtensionResolvedConnection> => {
+    return invokeIpc("nativeExtensions:getConnection", extensionName)
   },
   setPreferences: (
     extensionName: string,
@@ -37,6 +43,11 @@ export const nativeExtensionsApi = {
       commandName,
       nextRecord
     )
+  },
+  startOAuthConnection: (
+    request: NativeExtensionOAuthStartRequest
+  ): Promise<NativeExtensionOAuthStartResponse> => {
+    return invokeIpc("nativeExtensions:startOAuthConnection", request)
   },
   invoke: <TPayload, TResult>(
     request: NativeExtensionInvokeRequest<TPayload>

@@ -83,15 +83,27 @@ files:
     filter:
       - package.json
       - lib/**
+  - from: node_modules/@vscode
+    to: node_modules/@vscode
+    filter:
+      - ripgrep/package.json
+      - ripgrep/lib/**
+      - ripgrep-*/package.json
+      - ripgrep-*/bin/**
 asarUnpack:
   - out/native/**
   - node_modules/.prisma/client/*.node
+  - node_modules/@vscode/ripgrep-*/bin/*
 mac:
   category: public.app-category.productivity
   icon: resources/icon.icns
   extendInfo:
     NSRemindersFullAccessUsageDescription: Jingle needs access to Reminders to list, create, complete, and delete reminders you request.
     NSRemindersUsageDescription: Jingle needs access to Reminders to list, create, complete, and delete reminders you request.
+    CFBundleURLTypes:
+      - CFBundleURLName: Jingle OAuth Callback
+        CFBundleURLSchemes:
+          - jingle
   target:
     - dmg
 dmg:

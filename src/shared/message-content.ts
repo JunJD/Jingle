@@ -1,4 +1,5 @@
 import type { ContentBlock } from "./app-types"
+import { extractWorkspaceFileReferencePaths } from "./composer-reference-uri"
 import { parseToolCallMarkup, stripToolCallMarkup } from "./tool-call-markup"
 
 export type AgentMessageContent =
@@ -595,6 +596,7 @@ export function toMessageContent(input: ComposerMessageInput): string | ContentB
   }
 
   const blocks: ContentBlock[] = []
+  const inlineWorkspaceFilePaths = extractWorkspaceFileReferencePaths(input.text)
 
   if (input.text.trim().length > 0) {
     blocks.push({
@@ -606,6 +608,10 @@ export function toMessageContent(input: ComposerMessageInput): string | ContentB
   for (const ref of input.refs) {
     switch (ref.type) {
       case "file":
+        if (inlineWorkspaceFilePaths.has(ref.path)) {
+          break
+        }
+
         blocks.push({
           content: ref.path,
           name: ref.name,

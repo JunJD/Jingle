@@ -39,7 +39,8 @@ import {
 } from "./native-menu-bar/module"
 import {
   registerNativeExtensionsIpcHandlers,
-  registerNativeExtensionsModule
+  registerNativeExtensionsModule,
+  resolveNativeExtensionsService
 } from "./native-extensions/module"
 import {
   registerModelProviderIpcHandlers,
@@ -153,6 +154,18 @@ export class MainCompositionRoot {
     resolveExtensionRuntimeManager(this.dependencyContainer).dispose()
     resolveNativeMenuBarService(this.dependencyContainer).dispose()
     unregisterGlobalShortcutService()
+  }
+
+  async handleOAuthCallback(rawUrl: string): Promise<void> {
+    const result = await resolveNativeExtensionsService(
+      this.dependencyContainer
+    ).finishOAuthCallback(rawUrl)
+    this.context.openSettingsWindow({
+      tab: "extensions",
+      target: {
+        extensionName: result.extensionName
+      }
+    })
   }
 
   private applyShortcutSettings(): void {

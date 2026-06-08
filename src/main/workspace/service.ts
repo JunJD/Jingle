@@ -1,9 +1,14 @@
 import { dialog } from "electron"
+import { spawn } from "node:child_process"
 import * as fs from "fs/promises"
 import * as path from "path"
-import type { WorkspaceFileParams, WorkspaceSetParams } from "../types"
+import fuzzysort from "fuzzysort"
+import { rgPath } from "@vscode/ripgrep"
+import type { WorkspaceFileParams, WorkspaceFileSearchParams, WorkspaceSetParams } from "../types"
 import { OpenworkMemoryService } from "../openwork-memory/service"
 import { WorkspaceRepository } from "./repository"
+
+const WORKSPACE_FILE_SEARCH_MAX_RESULTS = 20
 
 export type WorkspaceFileReadResult =
   | {
@@ -18,6 +23,21 @@ export type WorkspaceFileReadResult =
     }
 
 type WorkspaceFileReadFailure = Extract<WorkspaceFileReadResult, { success: false }>
+
+export interface WorkspaceFileSearchResult {
+  files: Array<{
+    name: string
+    path: string
+  }>
+  success: true
+}
+
+export type WorkspaceFileSearchResponse =
+  | WorkspaceFileSearchResult
+  | {
+      error: string
+      success: false
+    }
 
 export class WorkspaceService {
   constructor(
@@ -137,6 +157,32 @@ export class WorkspaceService {
     }
   }
 
+  async searchFiles(params: WorkspaceFileSearchParams): Promise<WorkspaceFileSearchResponse> {
+    const workspacePath = await this.workspaceRepository.getThreadWorkspacePath(params.threadId)
+    if (!workspacePath) {
+      return {
+        success: false,
+        error: "No workspace folder linked"
+      }
+    }
+
+    const query = normalizeFileSearchQuery(params.query)
+    const limit = resolveFileSearchLimit(params.limit)
+
+    try {
+      const paths = await collectWorkspaceFilePaths(workspacePath)
+      return {
+        success: true,
+        files: rankWorkspaceFileMatches(paths, query, limit).map((filePath) => ({
+          name: path.basename(filePath),
+          path: filePath
+        }))
+      }
+    } catch (error) {
+      return this.toReadError(error)
+    }
+  }
+
   private async resolveReadableWorkspaceFile(
     params: WorkspaceFileParams
   ): Promise<
@@ -153,25 +199,19 @@ export class WorkspaceService {
     }
 
     try {
-      const relativePath = params.filePath.startsWith("/")
-        ? params.filePath.slice(1)
-        : params.filePath
-      const fullPath = path.join(workspacePath, relativePath)
-      const resolvedPath = path.resolve(fullPath)
-      const resolvedWorkspace = path.resolve(workspacePath)
-
-      if (!resolvedPath.startsWith(resolvedWorkspace)) {
+      const resolved = resolveWorkspaceRelativePath(workspacePath, params.filePath)
+      if (!resolved.success) {
         return { success: false, error: "Access denied: path outside workspace" }
       }
 
-      const stat = await fs.stat(fullPath)
+      const stat = await fs.stat(resolved.fullPath)
       if (stat.isDirectory()) {
         return { success: false, error: "Cannot read directory as file" }
       }
 
       return {
         success: true,
-        fullPath,
+        fullPath: resolved.fullPath,
         size: stat.size,
         modifiedAt: stat.mtime.toISOString()
       }
@@ -186,4 +226,106 @@ export class WorkspaceService {
       error: e instanceof Error ? e.message : "Unknown error"
     }
   }
+}
+
+function normalizeFileSearchQuery(value: string): string {
+  return value.replace(/\s+/g, " ").trim().slice(0, 120)
+}
+
+function resolveFileSearchLimit(value: number | undefined): number {
+  if (!value || !Number.isFinite(value)) {
+    return WORKSPACE_FILE_SEARCH_MAX_RESULTS
+  }
+
+  return Math.max(1, Math.min(Math.floor(value), WORKSPACE_FILE_SEARCH_MAX_RESULTS))
+}
+
+function resolveWorkspaceRelativePath(
+  workspacePath: string,
+  filePath: string
+): { fullPath: string; relativePath: string; success: true } | { success: false } {
+  const relativePath = filePath.startsWith("/") ? filePath.slice(1) : filePath
+  const fullPath = path.resolve(workspacePath, relativePath)
+  const resolvedWorkspace = path.resolve(workspacePath)
+  const relativeFromWorkspace = path.relative(resolvedWorkspace, fullPath)
+
+  if (
+    relativeFromWorkspace === "" ||
+    relativeFromWorkspace.startsWith("..") ||
+    path.isAbsolute(relativeFromWorkspace)
+  ) {
+    return { success: false }
+  }
+
+  return {
+    fullPath,
+    relativePath: relativeFromWorkspace,
+    success: true
+  }
+}
+
+async function collectWorkspaceFilePaths(workspacePath: string): Promise<string[]> {
+  const env = { ...process.env }
+  delete env.RIPGREP_CONFIG_PATH
+
+  return new Promise((resolve, reject) => {
+    const files: string[] = []
+    let pending = ""
+    let stderr = ""
+    const child = spawn(rgPath, ["--no-config", "--files", "--hidden", "--glob=!.git/*", "."], {
+      cwd: workspacePath,
+      env,
+      stdio: ["ignore", "pipe", "pipe"]
+    })
+
+    child.stdout.setEncoding("utf8")
+    child.stdout.on("data", (chunk: string) => {
+      const text = pending + chunk
+      const lines = text.split(/\r?\n/)
+      pending = lines.pop() ?? ""
+
+      for (const line of lines) {
+        const normalized = normalizeRipgrepPath(line)
+        if (normalized) {
+          files.push(normalized)
+        }
+      }
+    })
+
+    child.stderr.setEncoding("utf8")
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk
+    })
+
+    child.on("error", reject)
+    child.on("close", (code) => {
+      const normalizedPending = normalizeRipgrepPath(pending)
+      if (normalizedPending) {
+        files.push(normalizedPending)
+      }
+
+      if (code === 0 || code === 1) {
+        resolve(files)
+        return
+      }
+
+      reject(new Error(stderr.trim() || `ripgrep failed with code ${code ?? "unknown"}`))
+    })
+  })
+}
+
+function normalizeRipgrepPath(filePath: string): string {
+  return path
+    .normalize(filePath.replace(/^\.[\\/]/, ""))
+    .split(path.sep)
+    .join("/")
+    .trim()
+}
+
+function rankWorkspaceFileMatches(paths: string[], query: string, limit: number): string[] {
+  if (!query) {
+    return paths.slice(0, limit)
+  }
+
+  return fuzzysort.go(query, paths, { limit }).map((result) => result.target)
 }

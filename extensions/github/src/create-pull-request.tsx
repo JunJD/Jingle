@@ -1,6 +1,12 @@
 import { AlertCircle, GitPullRequest, Github, RefreshCw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
-import { Action, ActionPanel, Detail, Form, useNativeExtensionNavigation } from "@openwork/extension-api"
+import {
+  Action,
+  ActionPanel,
+  Detail,
+  Form,
+  useNativeExtensionNavigation
+} from "@openwork/extension-api"
 import {
   createGitHubPullRequest,
   listGitHubRepositoryBranches,
@@ -221,11 +227,11 @@ export default function GitHubCreatePullRequest(): React.JSX.Element {
             <Action
               icon={<AlertCircle className="h-4 w-4" />}
               onAction={() => void openGitHubSettings("create-pull-request")}
-              title="Add GitHub Token"
+              title="Connect GitHub"
             />
           </ActionPanel>
         }
-        markdown="# Connect GitHub\n\nGitHub needs a personal access token before it can create pull requests."
+        markdown="# Connect GitHub\n\nGitHub needs to be connected before it can create pull requests."
         navigationTitle="Create Pull Request"
       />
     )

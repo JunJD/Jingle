@@ -9,10 +9,14 @@ import {
   type SerializedTextNode,
   type Spread
 } from "lexical"
+import {
+  createExtensionSourceReferenceUri,
+  EXTENSION_SOURCE_REFERENCE_SCHEME
+} from "@shared/composer-reference-uri"
 import { getExtensionIconAssetSrc } from "@/extensions/extension-icon-assets"
 
 export const EXTENSION_SOURCE_REFERENCE_NODE_TYPE = "extension-source-reference"
-export const EXTENSION_SOURCE_REFERENCE_SCHEME = "openwork-extension-source"
+export { EXTENSION_SOURCE_REFERENCE_SCHEME }
 
 export type ExtensionSourceReferencePayload = {
   displayName: string
@@ -35,16 +39,7 @@ function normalizeReferenceLabel(label: string): string {
   return trimmed.startsWith("@") ? trimmed : `@${trimmed}`
 }
 
-function encodeUriSegment(value: string): string {
-  return encodeURIComponent(value)
-}
-
-export function createExtensionSourceReferenceUri(
-  extensionName: string,
-  sourceId: string
-): string {
-  return `${EXTENSION_SOURCE_REFERENCE_SCHEME}://${encodeUriSegment(extensionName)}/${encodeUriSegment(sourceId)}`
-}
+export { createExtensionSourceReferenceUri }
 
 export class ExtensionSourceReferenceNode extends TextNode {
   __displayName: string

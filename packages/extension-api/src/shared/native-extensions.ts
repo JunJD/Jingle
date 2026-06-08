@@ -169,6 +169,25 @@ export interface NativeExtensionResolvedConnection {
   status: NativeExtensionConnectionStatus
 }
 
+export interface NativeExtensionOAuthStartRequest {
+  connectionId?: string
+  extensionName: string
+}
+
+export interface NativeExtensionOAuthStartResponse {
+  authorizationUrl: string
+  connectionId: string
+  extensionName: string
+  provider: string
+}
+
+export interface NativeExtensionOAuthCallbackResult {
+  connectionId: string
+  extensionName: string
+  provider: string
+  status: NativeExtensionConnectionStatus
+}
+
 export interface NativeExtensionExecutionContext {
   commandPreferences?: Record<string, unknown>
   connection: NativeExtensionResolvedConnection
@@ -245,6 +264,7 @@ export interface NativeExtensionCommandSettingsSchema {
 
 export interface InstalledNativeExtensionSettingsSchema {
   commands: NativeExtensionCommandSettingsSchema[]
+  connection?: NativeExtensionConnectionManifest
   description: LocalizedTextValue
   extName: string
   icon?: NativeExtensionIcon
@@ -799,6 +819,7 @@ export function toInstalledNativeExtensionSettingsSchema(
       preferences: command.preferences ?? [],
       title: command.title ?? command.name
     })),
+    connection: manifest.connection,
     description: manifest.description ?? "",
     extName: manifest.name,
     icon: manifest.icon,

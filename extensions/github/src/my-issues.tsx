@@ -210,11 +210,11 @@ export default function GitHubMyIssues(): React.JSX.Element {
               <Action
                 icon={<AlertCircle className="h-4 w-4" />}
                 onAction={() => void openGitHubSettings("my-issues")}
-                title="Add GitHub Token"
+                title="Connect GitHub"
               />
             </ActionPanel>
           }
-          description="GitHub needs a personal access token before it can load this command."
+          description="GitHub needs to be connected before it can load this command."
           title="Connect GitHub"
         />
       ) : error ? (

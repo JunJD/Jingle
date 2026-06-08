@@ -220,6 +220,10 @@ function getCommandPreferenceStoreKey(extensionName: string, commandName: string
   return `${extensionName}:${commandName}`
 }
 
+function getConnectionSecretStoreKey(provider: string, connectionId: string): string {
+  return `connection:${provider}:${connectionId}`
+}
+
 function isPasswordPreference(preference: NativeExtensionPreferenceSchema): boolean {
   return preference.type === "password"
 }
@@ -422,8 +426,80 @@ function getNativeExtensionSecretRecord(params: {
   )
 }
 
+export function getNativeExtensionConnectionSecretRecord(params: {
+  connectionId: string
+  provider: string
+  secretNames: string[]
+}): Record<string, string> {
+  const schema = params.secretNames.map((secretName) => ({
+    name: secretName,
+    type: "password"
+  }))
+
+  return getNativeExtensionSecretRecord({
+    key: getConnectionSecretStoreKey(params.provider, params.connectionId),
+    schema,
+    scope: "extension"
+  })
+}
+
+export function setNativeExtensionConnectionSecretRecord(params: {
+  connectionId: string
+  nextRecord: Record<string, string>
+  provider: string
+  secretNames: string[]
+}): Record<string, string> {
+  const nextRecord = Object.fromEntries(
+    params.secretNames.flatMap((secretName) => {
+      const value = params.nextRecord[secretName]
+      return value && value.length > 0 ? [[secretName, value]] : []
+    })
+  )
+
+  setNativeExtensionSecretRecord({
+    key: getConnectionSecretStoreKey(params.provider, params.connectionId),
+    nextRecord,
+    scope: "extension"
+  })
+
+  return getNativeExtensionConnectionSecretRecord(params)
+}
+
 function hasStoredPasswordPreferenceValue(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0
+}
+
+export function getResolvedNativeExtensionLegacyExtensionScopedPasswordRecord(params: {
+  extensionName: string
+  passwordPreferenceNames: string[]
+}): Record<string, string> {
+  const key = getExtensionPreferenceStoreKey(params.extensionName)
+  const passwordPreferenceNames = params.passwordPreferenceNames.filter((entry) => entry.trim())
+  const secretsState = getNativeExtensionSecretsState()
+  const settingsState = getNativeExtensionPreferencesState()
+  const legacyRecord: Record<string, string> = {}
+  const encryptedRecord = normalizeSecretRecord(secretsState.extensionSecrets[key])
+
+  for (const preferenceName of passwordPreferenceNames) {
+    const encryptedValue = encryptedRecord[preferenceName]
+    if (encryptedValue) {
+      legacyRecord[preferenceName] = decryptSecretValue(encryptedValue)
+    }
+  }
+
+  const settingsRecord = normalizePreferenceRecord(settingsState.extensionPreferences[key])
+  for (const preferenceName of passwordPreferenceNames) {
+    if (legacyRecord[preferenceName]) {
+      continue
+    }
+
+    const value = settingsRecord[preferenceName]
+    if (hasStoredPasswordPreferenceValue(value)) {
+      legacyRecord[preferenceName] = value
+    }
+  }
+
+  return legacyRecord
 }
 
 export function getResolvedNativeExtensionLegacyCommandScopedPasswordRecord(params: {

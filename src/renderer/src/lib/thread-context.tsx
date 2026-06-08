@@ -19,7 +19,7 @@ export type {
   ThreadControl,
   TokenUsage
 } from "./thread-store-core"
-export { getArtifactTabId } from "@shared/thread-tabs"
+export { getArtifactTabId, getFileTabId } from "@shared/thread-tabs"
 
 export type AgentCommandState = Pick<
   ThreadState["agent"],

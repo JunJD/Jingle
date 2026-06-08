@@ -114,6 +114,13 @@ interface SettingsCopy {
     toBeConfigured: string
   }
   extensions: {
+    connectAccount: string
+    connectFailed: string
+    connectingAccount: string
+    connectionConnected: string
+    connectionDescription: string
+    connectionMissing: string
+    connectionTitle: string
     disabled: string
     enabled: string
     title: string
@@ -301,6 +308,13 @@ const zhCN: SettingsCopy = {
     toBeConfigured: "待配置"
   },
   extensions: {
+    connectAccount: "连接账号",
+    connectFailed: "无法启动授权，请稍后重试。",
+    connectingAccount: "正在打开授权",
+    connectionConnected: "已连接",
+    connectionDescription: "账号授权由 Jingle 管理；extension 只会收到运行所需的连接状态和 token。",
+    connectionMissing: "未连接",
+    connectionTitle: "账号连接",
     disabled: "关闭",
     enabled: "开启",
     title: "Extensions",
@@ -342,7 +356,8 @@ const zhCN: SettingsCopy = {
   },
   quicklinks: {
     commandLink: "Command Quicklink",
-    description: "管理 extension 创建的 quicklink。它们会出现在 Launcher 搜索里，并可带 launch context 打开 command。",
+    description:
+      "管理 extension 创建的 quicklink。它们会出现在 Launcher 搜索里，并可带 launch context 打开 command。",
     empty: "还没有 extension quicklink。",
     link: "链接",
     name: "名称",
@@ -493,6 +508,14 @@ const enUS: SettingsCopy = {
     toBeConfigured: "To Be Configured"
   },
   extensions: {
+    connectAccount: "Connect Account",
+    connectFailed: "Failed to start authorization. Try again.",
+    connectingAccount: "Opening Authorization",
+    connectionConnected: "Connected",
+    connectionDescription:
+      "Jingle manages account authorization; extensions only receive the connection state and token needed at runtime.",
+    connectionMissing: "Not Connected",
+    connectionTitle: "Account Connection",
     disabled: "Off",
     enabled: "On",
     title: "Extensions",
@@ -528,7 +551,8 @@ const enUS: SettingsCopy = {
       "Allow the UI to show which memories were included after a run.",
     title: "Memory",
     useMemory: "Use memory",
-    useMemoryDescription: "When enabled, the agent reads local memory and context files before a run.",
+    useMemoryDescription:
+      "When enabled, the agent reads local memory and context files before a run.",
     workspace: "Current Workspace",
     workspaceContext: "Current workspace context",
     aboutMe: "About me"

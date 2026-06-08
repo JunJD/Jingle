@@ -28,7 +28,7 @@ import { useThreadContext, useThreadSelector } from "@/lib/thread-context"
 import { updateAgentThreadModel, updateAgentThreadPermissionMode } from "@/lib/agent-control"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
-import type { ComposerAreaHandle } from "@/composer-area"
+import { useWorkspaceFileMentions, type ComposerAreaHandle } from "@/composer-area"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import { shouldGoHomeFromComposerKeyDown } from "./composer-keyboard"
 
@@ -58,11 +58,13 @@ export function LauncherAiPage(): React.JSX.Element {
   const hasRunInitialActionRef = useRef(false)
   const [navigationError, setNavigationError] = useState<string | null>(null)
   const [localComposerText, setLocalComposerText] = useState(() => initialSeedQuery)
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const threadNavigation = useLauncherAiThreadNavigation({
     initialAction: host.initialAction,
     seedQuery: initialSeedQuery
   })
   const threadId = threadNavigation.threadId
+  const workspaceFileMentions = useWorkspaceFileMentions(threadId, mentionQuery)
   const {
     addSelectionRef,
     clearSelectionRefs,
@@ -188,6 +190,7 @@ export function LauncherAiPage(): React.JSX.Element {
         onDidInvoke: () => {
           attachmentDraft.clearAllAttachments()
           clearSelectionRefs()
+          setMentionQuery(null)
         },
         setNavigationError,
         setLocalComposerText,
@@ -537,9 +540,11 @@ export function LauncherAiPage(): React.JSX.Element {
                 <PromptInputTextarea
                   composerRef={inputRef as React.RefObject<ComposerAreaHandle | null>}
                   mode="composer"
+                  onMentionQueryChange={setMentionQuery}
                   onKeyDown={handleComposerKeyDown}
                   placeholder={copy.launcher.aiInputPlaceholder}
                   sourceMentions={sourceMentions}
+                  workspaceFileMentions={workspaceFileMentions}
                   className="w-full py-[7px] [font-size:var(--ow-font-control)] font-normal"
                 />
 

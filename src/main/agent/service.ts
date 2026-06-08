@@ -35,6 +35,7 @@ import { ThreadLifecycleGate, type ThreadRunLease } from "./thread-lifecycle-gat
 import { getHitlRequest, getRun, getThread, resolveHitlRequest, upsertHitlRequest } from "../db"
 import { buildIpcErrorEvent, OpenworkIpcError } from "../ipc/error"
 import { OpenworkMemoryService } from "../openwork-memory/service"
+import { WorkspaceService } from "../workspace/service"
 import { readRunPermissionModeSnapshot, readThreadPermissionMode } from "./permission-mode"
 import { resolveOpenworkWorkspaceIdentity } from "../workspace/identity"
 import { getAgentConfig } from "../preferences"
@@ -427,7 +428,8 @@ export class AgentService {
 
   constructor(
     private readonly openworkMemoryService = new OpenworkMemoryService(),
-    private readonly threadLifecycleGate = new ThreadLifecycleGate()
+    private readonly threadLifecycleGate = new ThreadLifecycleGate(),
+    private readonly workspaceService?: WorkspaceService
   ) {}
 
   private sendThreadDeletingError(
@@ -590,6 +592,7 @@ export class AgentService {
         openworkMemoryService: this.openworkMemoryService,
         openworkMemoryTemporaryMode: temporaryMode,
         openworkMemoryWorkspaceIdentity: workspaceIdentity,
+        workspaceService: this.workspaceService,
         permissionMode,
         aiCapabilities,
         aiCapabilityCatalog,

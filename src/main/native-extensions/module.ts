@@ -22,3 +22,9 @@ export function registerNativeExtensionsIpcHandlers(
 ): void {
   container.resolve(NativeExtensionsController).register(ipcMain)
 }
+
+export function resolveNativeExtensionsService(
+  container: DependencyContainer
+): NativeExtensionsService {
+  return container.resolve(NativeExtensionsService)
+}

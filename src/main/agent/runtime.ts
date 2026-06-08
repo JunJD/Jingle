@@ -19,6 +19,7 @@ import { createSubagentReadOnlyGuardrailMiddleware } from "./subagent-read-only-
 import { createSerializedToolCallMiddleware } from "./serialized-tool-call-middleware"
 import { createToolCallConsistencyMiddleware } from "./tool-call-consistency-middleware"
 import { createToolApprovalMiddleware } from "./tool-approval-middleware"
+import { createWorkspaceFileContextMiddleware } from "./workspace-file-context-middleware"
 import { anthropicPromptCachingMiddleware, createAgent, todoListMiddleware } from "langchain"
 import { getChatModelInstance } from "../llm/get-chat-model"
 
@@ -47,6 +48,7 @@ import {
   type OpenworkMemoryInclusionCollector
 } from "../openwork-memory/middleware"
 import type { OpenworkMemoryService } from "../openwork-memory/service"
+import type { WorkspaceService } from "../workspace/service"
 import type {
   ExtensionAiCapabilityCatalogItem,
   ResolvedExtensionAiCapability
@@ -119,6 +121,8 @@ export interface CreateAgentRuntimeOptions {
   openworkMemoryTemporaryMode?: boolean
   /** Main-owned workspace identity used for workspace-scoped memory suggestions. */
   openworkMemoryWorkspaceIdentity?: OpenworkWorkspaceIdentity
+  /** Main-owned workspace service used to resolve explicit workspace file refs. */
+  workspaceService?: WorkspaceService
   /** Permission mode snapshot for this run. */
   permissionMode?: PermissionModeName
   /** Resolved extension AI capabilities snapshot for this run. */
@@ -303,6 +307,14 @@ The workspace root is: ${workspacePath}`
     return [
       ...createSharedAgentLoopMiddleware(),
       ...(rootOpenworkMemoryRuntime ? [rootOpenworkMemoryRuntime.middleware] : []),
+      ...(options.workspaceService
+        ? [
+            createWorkspaceFileContextMiddleware({
+              threadId,
+              workspaceService: options.workspaceService
+            })
+          ]
+        : []),
       createTitleMiddleware(),
       createDesktopAutomationToolsMiddleware(),
       extensionAiRuntime.middleware,
