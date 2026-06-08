@@ -14,12 +14,19 @@ let extensionSources!: typeof import("../../src/extensions/sources")
 let preferences!: typeof import("../../src/main/preferences")
 let DefaultExtensionRuntimeHostCapabilities!: typeof import("../../src/main/services/extension-runtime/host-capabilities").DefaultExtensionRuntimeHostCapabilities
 
-function saveGitHubSecret(): void {
-  preferences.setNativeExtensionPreferenceRecord("github", {
-    accessToken: "ghp_secret",
-    apiBaseUrl: "https://github.example.test/api/v3",
-    defaultSearchTerms: "author:@me",
-    numberOfResults: "13"
+function saveNotionSecret(): void {
+  preferences.setNativeExtensionPreferenceRecord("notion", {
+    accessToken: "notion_secret",
+    apiBaseUrl: "https://api.notion.example.test/v1"
+  })
+}
+
+function saveGitHubConnectionSecret(accessToken: string): void {
+  preferences.setNativeExtensionConnectionSecretRecord({
+    connectionId: "default",
+    nextRecord: { accessToken },
+    provider: "github",
+    secretNames: ["accessToken"]
   })
 }
 
@@ -27,22 +34,54 @@ function encodeMockSecret(value: string): string {
   return Buffer.from(`encrypted:${value}`, "utf8").toString("base64")
 }
 
-function seedLegacyGitHubCommandToken(accessToken: string): void {
+function seedLegacyGitHubTokens(params: {
+  commandAccessToken?: string
+  extensionAccessToken?: string
+  apiBaseUrl?: string
+}): void {
+  const commandPreferences = params.commandAccessToken
+    ? {
+        "github:my-issues": {
+          accessToken: params.commandAccessToken,
+          showAssigned: true,
+          showCreated: true,
+          showMentioned: true,
+          showRecentlyClosed: false
+        }
+      }
+    : {}
+  const extensionPreferences = params.extensionAccessToken
+    ? {
+        github: {
+          accessToken: params.extensionAccessToken,
+          apiBaseUrl: params.apiBaseUrl ?? "https://api.github.com",
+          defaultSearchTerms: "",
+          numberOfResults: "25"
+        }
+      }
+    : {}
+  const commandSecrets = params.commandAccessToken
+    ? {
+        "github:my-issues": {
+          accessToken: encodeMockSecret(params.commandAccessToken)
+        }
+      }
+    : {}
+  const extensionSecrets = params.extensionAccessToken
+    ? {
+        github: {
+          accessToken: encodeMockSecret(params.extensionAccessToken)
+        }
+      }
+    : {}
+
   writeFileSync(
     join(openworkHome, "settings.json"),
     JSON.stringify(
       {
         nativeExtensionPreferences: {
-          commandPreferences: {
-            "github:my-issues": {
-              accessToken,
-              showAssigned: true,
-              showCreated: true,
-              showMentioned: true,
-              showRecentlyClosed: false
-            }
-          },
-          extensionPreferences: {}
+          commandPreferences,
+          extensionPreferences
         }
       },
       null,
@@ -54,18 +93,18 @@ function seedLegacyGitHubCommandToken(accessToken: string): void {
     JSON.stringify(
       {
         nativeExtensionSecrets: {
-          commandSecrets: {
-            "github:my-issues": {
-              accessToken: encodeMockSecret(accessToken)
-            }
-          },
-          extensionSecrets: {}
+          commandSecrets,
+          extensionSecrets
         }
       },
       null,
       2
     )
   )
+}
+
+function seedLegacyGitHubCommandToken(accessToken: string): void {
+  seedLegacyGitHubTokens({ commandAccessToken: accessToken })
 }
 
 function installElectronSafeStorageMock(): void {
@@ -75,6 +114,9 @@ function installElectronSafeStorageMock(): void {
   assert.ok(electronModule, "Expected electron module to be loaded before mocking safeStorage.")
 
   electronModule.exports = {
+    BrowserWindow: {
+      getAllWindows: () => []
+    },
     dialog: {
       showMessageBox: async () => ({ response: 0 })
     },
@@ -85,6 +127,14 @@ function installElectronSafeStorageMock(): void {
     },
     shell: {
       openExternal: async (url: string) => {
+        const shellError = (
+          globalThis as typeof globalThis & {
+            __OPENWORK_TEST_SHELL_OPEN_EXTERNAL_ERROR__?: Error
+          }
+        ).__OPENWORK_TEST_SHELL_OPEN_EXTERNAL_ERROR__
+        if (shellError) {
+          throw shellError
+        }
         ;(
           globalThis as typeof globalThis & {
             __OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__?: string[]
@@ -127,51 +177,50 @@ test.before(async () => {
 })
 
 test("native extension password preferences are redacted from public reads", () => {
-  const savedRecord = preferences.setNativeExtensionPreferenceRecord("github", {
-    accessToken: "ghp_secret",
-    apiBaseUrl: "https://github.example.test/api/v3",
-    defaultSearchTerms: "author:@me",
-    numberOfResults: "13"
+  const savedRecord = preferences.setNativeExtensionPreferenceRecord("notion", {
+    accessToken: "notion_secret",
+    apiBaseUrl: "https://api.notion.example.test/v1"
   })
 
   assert.equal(savedRecord.accessToken, "")
 
-  const publicRecord = preferences.getNativeExtensionPreferenceRecord("github")
+  const publicRecord = preferences.getNativeExtensionPreferenceRecord("notion")
   assert.equal(publicRecord.accessToken, "")
-  assert.equal(publicRecord.apiBaseUrl, "https://github.example.test/api/v3")
+  assert.equal(publicRecord.apiBaseUrl, "https://api.notion.example.test/v1")
 
-  const resolvedRecord = preferences.getResolvedNativeExtensionPreferenceRecord("github")
-  assert.equal(resolvedRecord.accessToken, "ghp_secret")
-  assert.equal(resolvedRecord.apiBaseUrl, "https://github.example.test/api/v3")
+  const resolvedRecord = preferences.getResolvedNativeExtensionPreferenceRecord("notion")
+  assert.equal(resolvedRecord.accessToken, "notion_secret")
+  assert.equal(resolvedRecord.apiBaseUrl, "https://api.notion.example.test/v1")
 })
 
 test("resolved command preferences include extension secrets for main-side runtime use", () => {
-  saveGitHubSecret()
+  saveNotionSecret()
 
-  const publicRecord = preferences.getNativeExtensionCommandPreferenceRecord("github", "my-issues")
+  const publicRecord = preferences.getNativeExtensionCommandPreferenceRecord(
+    "notion",
+    "search-page"
+  )
   assert.equal(publicRecord.accessToken, "")
-  assert.equal(publicRecord.showCreated, true)
+  assert.equal(publicRecord.apiBaseUrl, "https://api.notion.example.test/v1")
 
   const resolvedRecord = preferences.getResolvedNativeExtensionCommandPreferenceRecord(
-    "github",
-    "my-issues"
+    "notion",
+    "search-page"
   )
-  assert.equal(resolvedRecord.accessToken, "ghp_secret")
-  assert.equal(resolvedRecord.showCreated, true)
+  assert.equal(resolvedRecord.accessToken, "notion_secret")
+  assert.equal(resolvedRecord.apiBaseUrl, "https://api.notion.example.test/v1")
 })
 
 test("saving non-secret extension preferences preserves stored password secrets", () => {
-  saveGitHubSecret()
+  saveNotionSecret()
 
-  preferences.setNativeExtensionPreferenceRecord("github", {
-    apiBaseUrl: "https://github.changed.test/api/v3",
-    defaultSearchTerms: "assignee:@me",
-    numberOfResults: "21"
+  preferences.setNativeExtensionPreferenceRecord("notion", {
+    apiBaseUrl: "https://api.notion.changed.test/v1"
   })
 
-  const resolvedRecord = preferences.getResolvedNativeExtensionPreferenceRecord("github")
-  assert.equal(resolvedRecord.accessToken, "ghp_secret")
-  assert.equal(resolvedRecord.apiBaseUrl, "https://github.changed.test/api/v3")
+  const resolvedRecord = preferences.getResolvedNativeExtensionPreferenceRecord("notion")
+  assert.equal(resolvedRecord.accessToken, "notion_secret")
+  assert.equal(resolvedRecord.apiBaseUrl, "https://api.notion.changed.test/v1")
 })
 
 test("native extension appPicker preferences normalize to application records", () => {
@@ -204,7 +253,7 @@ test("resolved extension preferences do not read legacy command-scoped shared se
   seedLegacyGitHubCommandToken("ghp_legacy_secret")
 
   const resolvedExtensionRecord = preferences.getResolvedNativeExtensionPreferenceRecord("github")
-  assert.equal(resolvedExtensionRecord.accessToken, "")
+  assert.equal(Object.hasOwn(resolvedExtensionRecord, "accessToken"), false)
   assert.equal(resolvedExtensionRecord.apiBaseUrl, "https://api.github.com")
 })
 
@@ -225,10 +274,10 @@ test("connection resolver reads legacy command-scoped shared secrets during migr
 })
 
 test("extension-scoped shared secrets override resolver legacy command-scoped secrets", () => {
-  seedLegacyGitHubCommandToken("ghp_legacy_secret")
-  preferences.setNativeExtensionPreferenceRecord("github", {
-    accessToken: "ghp_extension_secret",
-    apiBaseUrl: "https://github.example.test/api/v3"
+  seedLegacyGitHubTokens({
+    apiBaseUrl: "https://github.example.test/api/v3",
+    commandAccessToken: "ghp_legacy_secret",
+    extensionAccessToken: "ghp_extension_secret"
   })
 
   const context = connectionResolver.resolveNativeExtensionExecutionContext({
@@ -242,6 +291,177 @@ test("extension-scoped shared secrets override resolver legacy command-scoped se
   assert.deepEqual(context.connection.publicConfig, {
     apiBaseUrl: "https://github.example.test/api/v3"
   })
+})
+
+test("connection-scoped secrets connect GitHub without manual token preferences", () => {
+  preferences.setNativeExtensionPreferenceRecord("github", {
+    apiBaseUrl: "https://github.oauth.test/api/v3",
+    defaultSearchTerms: "assignee:@me",
+    numberOfResults: "21"
+  })
+  saveGitHubConnectionSecret("ghp_oauth_secret")
+
+  const publicRecord = preferences.getNativeExtensionPreferenceRecord("github")
+  assert.equal(Object.hasOwn(publicRecord, "accessToken"), false)
+  assert.deepEqual(
+    preferences.getNativeExtensionConnectionSecretRecord({
+      connectionId: "default",
+      provider: "github",
+      secretNames: ["accessToken"]
+    }),
+    {
+      accessToken: "ghp_oauth_secret"
+    }
+  )
+
+  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+    commandName: "my-issues",
+    extensionName: "github"
+  })
+
+  assert.equal(context.connection.status, "connected")
+  assert.deepEqual(context.connection.missingSecretNames, [])
+  assert.equal(context.extensionPreferences.accessToken, "ghp_oauth_secret")
+  assert.equal(context.commandPreferences?.accessToken, "ghp_oauth_secret")
+  assert.deepEqual(context.connection.publicConfig, {
+    apiBaseUrl: "https://github.oauth.test/api/v3"
+  })
+})
+
+test("connection-scoped GitHub secret overrides legacy extension token during OAuth migration", () => {
+  seedLegacyGitHubTokens({
+    apiBaseUrl: "https://github.example.test/api/v3",
+    commandAccessToken: "ghp_legacy_secret",
+    extensionAccessToken: "ghp_extension_secret"
+  })
+  saveGitHubConnectionSecret("ghp_oauth_secret")
+
+  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+    commandName: "my-issues",
+    extensionName: "github"
+  })
+
+  assert.equal(context.connection.status, "connected")
+  assert.equal(context.extensionPreferences.accessToken, "ghp_oauth_secret")
+  assert.equal(context.commandPreferences?.accessToken, "ghp_oauth_secret")
+})
+
+test("platform OAuth callback exchanges handoff code and stores GitHub connection secret", async () => {
+  const shellOpenedUrls: string[] = []
+  ;(
+    globalThis as typeof globalThis & {
+      __OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__?: string[]
+    }
+  ).__OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__ = shellOpenedUrls
+  const originalFetch = globalThis.fetch
+  const tokenRequests: Array<{ body: Record<string, unknown>; url: string }> = []
+  globalThis.fetch = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>
+    tokenRequests.push({
+      body,
+      url: String(input)
+    })
+    return new Response(JSON.stringify({ access_token: "ghp_callback_secret" }), {
+      headers: {
+        "content-type": "application/json"
+      },
+      status: 200
+    })
+  }) as typeof fetch
+
+  try {
+    const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
+    const nativeExtensionsService = new NativeExtensionsService()
+    const start = await nativeExtensionsService.startOAuthConnection({ extensionName: "github" })
+    const authorizationUrl = new URL(start.authorizationUrl)
+    const state = authorizationUrl.searchParams.get("state")
+
+    assert.equal(shellOpenedUrls.length, 1)
+    assert.equal(new URL(shellOpenedUrls[0] ?? "").origin, "https://jingle.cool")
+    assert.equal(authorizationUrl.pathname, "/oauth/github/start")
+    assert.equal(authorizationUrl.searchParams.get("provider"), "github")
+    assert.equal(authorizationUrl.searchParams.get("extension_name"), "github")
+    assert.equal(authorizationUrl.searchParams.get("connection_id"), "default")
+    assert.equal(authorizationUrl.searchParams.get("redirect_uri"), "jingle://oauth/callback")
+    assert.equal(authorizationUrl.searchParams.get("scope"), "repo read:user notifications")
+    assert.ok(state)
+
+    const result = await nativeExtensionsService.finishOAuthCallback(
+      `jingle://oauth/callback?state=${encodeURIComponent(state)}&provider=github&code=handoff-code`
+    )
+
+    assert.equal(result.status, "connected")
+    assert.equal(tokenRequests.length, 1)
+    assert.equal(tokenRequests[0]?.url, "https://jingle.cool/oauth/github/token")
+    assert.equal(tokenRequests[0]?.body.client_id, "jingle-desktop")
+    assert.equal(tokenRequests[0]?.body.code, "handoff-code")
+    assert.equal(typeof tokenRequests[0]?.body.code_verifier, "string")
+    assert.equal(tokenRequests[0]?.body.connection_id, "default")
+    assert.equal(tokenRequests[0]?.body.extension_name, "github")
+    assert.equal(tokenRequests[0]?.body.provider, "github")
+    assert.equal(tokenRequests[0]?.body.redirect_uri, "jingle://oauth/callback")
+    assert.equal(tokenRequests[0]?.body.state, state)
+    assert.deepEqual(
+      preferences.getNativeExtensionConnectionSecretRecord({
+        connectionId: "default",
+        provider: "github",
+        secretNames: ["accessToken"]
+      }),
+      {
+        accessToken: "ghp_callback_secret"
+      }
+    )
+  } finally {
+    preferences.setNativeExtensionConnectionSecretRecord({
+      connectionId: "default",
+      nextRecord: {},
+      provider: "github",
+      secretNames: ["accessToken"]
+    })
+    globalThis.fetch = originalFetch
+    ;(
+      globalThis as typeof globalThis & {
+        __OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__?: string[]
+      }
+    ).__OPENWORK_TEST_SHELL_OPEN_EXTERNAL_URLS__ = []
+  }
+})
+
+test("platform OAuth start clears pending state when browser launch fails", async () => {
+  const originalFetch = globalThis.fetch
+  const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
+  const nativeExtensionsService = new NativeExtensionsService()
+  ;(
+    globalThis as typeof globalThis & {
+      __OPENWORK_TEST_SHELL_OPEN_EXTERNAL_ERROR__?: Error
+    }
+  ).__OPENWORK_TEST_SHELL_OPEN_EXTERNAL_ERROR__ = new Error("browser unavailable")
+
+  try {
+    await assert.rejects(
+      () => nativeExtensionsService.startOAuthConnection({ extensionName: "github" }),
+      /browser unavailable/
+    )
+
+    globalThis.fetch = (async () => {
+      throw new Error("Token exchange should not run for a failed OAuth start.")
+    }) as typeof fetch
+
+    await assert.rejects(
+      () =>
+        nativeExtensionsService.finishOAuthCallback(
+          "jingle://oauth/callback?state=unused-state&provider=github&code=handoff-code"
+        ),
+      /OAuth callback state is not pending/
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+    delete (
+      globalThis as typeof globalThis & {
+        __OPENWORK_TEST_SHELL_OPEN_EXTERNAL_ERROR__?: Error
+      }
+    ).__OPENWORK_TEST_SHELL_OPEN_EXTERNAL_ERROR__
+  }
 })
 
 test("connection resolver resolves formal Notion secrets and rejects retired generated package", () => {
@@ -289,13 +509,10 @@ test("formal Notion secrets connect AI capabilities and generated capability is 
   assert.equal(connection.provider, "notion")
   assert.deepEqual(connection.missingSecretNames, [])
 
-  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionName(
-    "notion",
-    {
-      getConnection: (extensionName) =>
-        connectionResolver.resolveNativeExtensionConnection({ extensionName })
-    }
-  )
+  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionName("notion", {
+    getConnection: (extensionName) =>
+      connectionResolver.resolveNativeExtensionConnection({ extensionName })
+  })
 
   assert.equal(capability?.authStatus, "connected")
   assert.deepEqual(capability?.enabledToolNames, [
@@ -376,13 +593,10 @@ test("formal Notion settings token feeds runtime host and AI capability through 
     "notion_settings_token"
   )
 
-  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionName(
-    "notion",
-    {
-      getConnection: (extensionName) =>
-        connectionResolver.resolveNativeExtensionConnection({ extensionName })
-    }
-  )
+  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionName("notion", {
+    getConnection: (extensionName) =>
+      connectionResolver.resolveNativeExtensionConnection({ extensionName })
+  })
   assert.equal(capability?.authStatus, "connected")
   assert.deepEqual(capability?.publicConfig, {
     apiBaseUrl: "https://api.notion.com/v1"

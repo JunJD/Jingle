@@ -1,10 +1,11 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react"
-import { Search, Settings2 } from "lucide-react"
+import { Link, Search, Settings2 } from "lucide-react"
 import type { ModelConfig } from "@shared/app-types"
 import { resolveLocalizedText, type AppLocale, type LocalizedTextValue } from "@shared/i18n"
 import type {
   InstalledNativeExtensionSettingsSchema,
-  NativeExtensionPreferenceSchema
+  NativeExtensionPreferenceSchema,
+  NativeExtensionResolvedConnection
 } from "@shared/native-extensions"
 import {
   getNativeExtensionApplicationPreferenceLabel,
@@ -377,6 +378,66 @@ function CommandCard(props: {
   )
 }
 
+function ConnectionCard(props: {
+  connection: NativeExtensionResolvedConnection | null
+  error: string | null
+  isConnecting: boolean
+  onConnect: () => void
+  statusLabels: {
+    connected: string
+    connect: string
+    connecting: string
+    description: string
+    missing: string
+    title: string
+  }
+}): React.JSX.Element {
+  const { connection, error, isConnecting, onConnect, statusLabels } = props
+  const connected = connection?.status === "connected"
+
+  return (
+    <div
+      className={`${settingsCardClassName} px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-[var(--ow-gap-md)]">
+        <div className="min-w-0 space-y-[var(--ow-space-1)]">
+          <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-label)] font-semibold text-foreground">
+            <Link className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
+            <span>{statusLabels.title}</span>
+          </div>
+          <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-muted-foreground">
+            {statusLabels.description}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">
+          <span
+            className={`rounded-full border px-[var(--ow-space-2-5)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] ${
+              connected
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500"
+                : "border-border bg-background text-muted-foreground"
+            }`}
+          >
+            {connected ? statusLabels.connected : statusLabels.missing}
+          </span>
+          <button
+            type="button"
+            disabled={isConnecting}
+            onClick={onConnect}
+            className="rounded-[var(--ow-radius-md)] border border-border bg-background px-[var(--ow-space-3)] py-[var(--ow-space-2)] [font-size:var(--ow-font-label)] font-medium text-foreground transition hover:bg-background-elevated disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isConnecting ? statusLabels.connecting : statusLabels.connect}
+          </button>
+        </div>
+      </div>
+      {error ? (
+        <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-destructive">
+          {error}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function ExtensionsTab(props: {
   focusTarget?: SettingsWindowTarget | null
   locale: AppLocale
@@ -391,6 +452,11 @@ export function ExtensionsTab(props: {
     {}
   )
   const [commandRecords, setCommandRecords] = useState<Record<string, Record<string, unknown>>>({})
+  const [connectionRecords, setConnectionRecords] = useState<
+    Record<string, NativeExtensionResolvedConnection>
+  >({})
+  const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({})
+  const [connectingExtensions, setConnectingExtensions] = useState<Record<string, boolean>>({})
   const [selectedExtName, setSelectedExtName] = useState<string | null>(focusedExtensionName)
   const [search, setSearch] = useState("")
 
@@ -433,6 +499,17 @@ export function ExtensionsTab(props: {
           await window.api.nativeExtensions.getPreferences(schema.extName)
         ])
       )
+      const connectionEntries = await Promise.all(
+        sortedSchemas
+          .filter((schema) => schema.connection)
+          .map(
+            async (schema) =>
+              [
+                schema.extName,
+                await window.api.nativeExtensions.getConnection(schema.extName)
+              ] as const
+          )
+      )
       const commandEntries = await Promise.all(
         sortedSchemas.flatMap((schema) =>
           schema.commands.map(async (command) => [
@@ -446,6 +523,7 @@ export function ExtensionsTab(props: {
       }
 
       setExtensionRecords(Object.fromEntries(extensionEntries))
+      setConnectionRecords(Object.fromEntries(connectionEntries))
       setCommandRecords(Object.fromEntries(commandEntries))
     }
   )
@@ -578,6 +656,38 @@ export function ExtensionsTab(props: {
     }))
   }
 
+  const startOAuthConnection = async (extensionName: string): Promise<void> => {
+    try {
+      setConnectionErrors((current) => {
+        const next = { ...current }
+        delete next[extensionName]
+        return next
+      })
+      setConnectingExtensions((current) => ({
+        ...current,
+        [extensionName]: true
+      }))
+      await window.api.nativeExtensions.startOAuthConnection({ extensionName })
+      const connection = await window.api.nativeExtensions.getConnection(extensionName)
+      setConnectionRecords((current) => ({
+        ...current,
+        [extensionName]: connection
+      }))
+    } catch (error) {
+      console.error("[ExtensionsTab] Failed to start OAuth connection:", error)
+      setConnectionErrors((current) => ({
+        ...current,
+        [extensionName]: copy.extensions.connectFailed
+      }))
+    } finally {
+      setConnectingExtensions((current) => {
+        const next = { ...current }
+        delete next[extensionName]
+        return next
+      })
+    }
+  }
+
   return (
     <div className="grid h-full min-h-0 grid-cols-[var(--ow-settings-sidebar-w)_minmax(0,1fr)] gap-[var(--ow-gap-lg)]">
       <aside
@@ -677,6 +787,25 @@ export function ExtensionsTab(props: {
             </div>
 
             <div className="space-y-[var(--ow-space-3)]">
+              {selectedSchema.connection?.auth.type === "oauth" ? (
+                <ConnectionCard
+                  connection={connectionRecords[selectedSchema.extName] ?? null}
+                  error={connectionErrors[selectedSchema.extName] ?? null}
+                  isConnecting={connectingExtensions[selectedSchema.extName] ?? false}
+                  onConnect={() => {
+                    void startOAuthConnection(selectedSchema.extName)
+                  }}
+                  statusLabels={{
+                    connected: copy.extensions.connectionConnected,
+                    connect: copy.extensions.connectAccount,
+                    connecting: copy.extensions.connectingAccount,
+                    description: copy.extensions.connectionDescription,
+                    missing: copy.extensions.connectionMissing,
+                    title: copy.extensions.connectionTitle
+                  }}
+                />
+              ) : null}
+
               {selectedSchema.preferences.length > 0 ? (
                 <div
                   className={`${settingsCardClassName} px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]`}

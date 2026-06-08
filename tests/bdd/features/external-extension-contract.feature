@@ -45,7 +45,7 @@
     当 我打开名为 "My Issues" 的 Launcher 结果
     那么 Launcher 当前命令归属为 "github"
     而且 runtime list 空状态标题为 "Connect GitHub"
-    当 我点击 runtime list 空状态动作 "Add GitHub Token"
+    当 我点击 runtime list 空状态动作 "Connect GitHub"
     那么 BDD runtime host 最近请求 capability 应为 "settings"
     那么 Settings 窗口可用
     而且 Settings 当前选中 extension 应为 "github"

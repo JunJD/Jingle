@@ -92,6 +92,10 @@ mac:
   extendInfo:
     NSRemindersFullAccessUsageDescription: Jingle needs access to Reminders to list, create, complete, and delete reminders you request.
     NSRemindersUsageDescription: Jingle needs access to Reminders to list, create, complete, and delete reminders you request.
+    CFBundleURLTypes:
+      - CFBundleURLName: Jingle OAuth Callback
+        CFBundleURLSchemes:
+          - jingle
   target:
     - dmg
 dmg:

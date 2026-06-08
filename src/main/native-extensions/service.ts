@@ -1,6 +1,10 @@
 import { BrowserWindow } from "electron"
 import type {
+  NativeExtensionOAuthCallbackResult,
+  NativeExtensionOAuthStartRequest,
+  NativeExtensionOAuthStartResponse,
   NativeExtensionPackageManifest,
+  NativeExtensionResolvedConnection,
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionInvokeRequest,
   NativeExtensionPreferencesChangedEvent
@@ -12,13 +16,19 @@ import {
   setNativeExtensionCommandPreferenceRecord,
   setNativeExtensionPreferenceRecord
 } from "../preferences"
-import { resolveNativeExtensionExecutionContext } from "./connection-resolver"
+import {
+  resolveNativeExtensionConnection,
+  resolveNativeExtensionExecutionContext
+} from "./connection-resolver"
 import {
   invokeNativeExtension,
   listNativeExtensionSettingsSchemas
 } from "../services/native-extensions"
+import { NativeExtensionOAuthService } from "./oauth-service"
 
 export class NativeExtensionsService {
+  private readonly oauthService = new NativeExtensionOAuthService()
+
   getManifest(extensionName: string): NativeExtensionPackageManifest {
     const manifest = listNativeExtensionManifests(process.platform).find(
       (candidate) => candidate.name === extensionName
@@ -43,6 +53,13 @@ export class NativeExtensionsService {
       extensionName,
       platform: process.platform
     }).extensionPreferences
+  }
+
+  getConnection(extensionName: string): NativeExtensionResolvedConnection {
+    return resolveNativeExtensionConnection({
+      extensionName,
+      platform: process.platform
+    })
   }
 
   setPreferences(
@@ -91,6 +108,21 @@ export class NativeExtensionsService {
 
   invoke(request: NativeExtensionInvokeRequest): Promise<unknown> {
     return invokeNativeExtension(request)
+  }
+
+  async startOAuthConnection(
+    request: NativeExtensionOAuthStartRequest
+  ): Promise<NativeExtensionOAuthStartResponse> {
+    return this.oauthService.startConnection(request)
+  }
+
+  async finishOAuthCallback(rawUrl: string): Promise<NativeExtensionOAuthCallbackResult> {
+    const result = await this.oauthService.finishCallback(rawUrl)
+    this.emitPreferencesChanged({
+      extensionName: result.extensionName,
+      scope: "extension"
+    })
+    return result
   }
 
   private emitPreferencesChanged(event: NativeExtensionPreferencesChangedEvent): void {

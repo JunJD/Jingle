@@ -112,11 +112,20 @@ export const githubManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "rpc", "surface"],
   connection: {
     auth: {
+      authorizationUrl: "https://jingle.cool/oauth/github/start",
+      clientId: "jingle-desktop",
+      redirect: {
+        callbackPath: "/oauth/callback",
+        method: "app-scheme",
+        scheme: "jingle"
+      },
+      scopes: ["repo", "read:user", "notifications"],
       secretNames: ["accessToken"],
-      type: "personalAccessToken"
+      tokenUrl: "https://jingle.cool/oauth/github/token",
+      type: "oauth"
     },
     connectGuide:
-      "Create a GitHub personal access token and save it in Openwork Settings before using GitHub commands or AI tools.",
+      "Connect GitHub from Jingle Settings. Jingle opens jingle.cool for authorization and stores the returned GitHub access token locally.",
     id: "default",
     provider: "github",
     publicPreferenceNames: ["apiBaseUrl"],
@@ -126,16 +135,6 @@ export const githubManifest = defineNativeExtensionManifest({
   iconName: "github",
   runtimeCapabilities: ["navigation", "preferences", "rpc", "settings", "shell"],
   preferences: [
-    {
-      description: l(
-        "Personal access token used to read your GitHub data. A classic token with repo access is enough.",
-        "用于读取 GitHub 数据的个人访问令牌。带 repo 权限的 classic token 即可。"
-      ),
-      name: "accessToken",
-      placeholder: "ghp_...",
-      title: l("GitHub Personal Access Token", "GitHub 个人访问令牌"),
-      type: "password"
-    },
     {
       default: "https://api.github.com",
       description: l(
