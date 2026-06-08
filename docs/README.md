@@ -67,6 +67,7 @@
 | 文档 | 用途 |
 |---|---|
 | [renderer-external-store-architecture.md](./renderer-external-store-architecture.md) | renderer external store 架构方案说明 |
+| [ai-launcher-streaming-performance-boundaries-cn.md](./ai-launcher-streaming-performance-boundaries-cn.md) | AI launcher 流式渲染性能边界、单向数据流、projection/viewport/tool selector owner 和后续改造验收口径 |
 
 ## 记忆、路线图与执行约束
 
