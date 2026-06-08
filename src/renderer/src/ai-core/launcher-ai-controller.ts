@@ -23,7 +23,7 @@ export interface LauncherAiControllerInput {
   isBusy: boolean
   onDidInvoke?: () => void
   setNavigationError: (error: string | null) => void
-  setPendingInput: (input: string) => void
+  setLocalComposerText: (input: string) => void
   threadId: string | null
   title: string
   updateThread: UpdateAgentThreadRecord
@@ -151,7 +151,7 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
 
       void invokeLauncherInput(messageInput).then((didInvoke) => {
         if (didInvoke) {
-          input.setPendingInput("")
+          input.setLocalComposerText("")
           input.onDidInvoke?.()
         }
       })
@@ -196,7 +196,7 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
     },
     setQuery(value) {
       input.setNavigationError(null)
-      input.setPendingInput(value)
+      input.setLocalComposerText(value)
     },
     async startFreshDraft() {
       try {
@@ -205,7 +205,7 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
           modelId: input.currentModelId,
           permissionMode: input.currentPermissionMode
         })
-        input.setPendingInput("")
+        input.setLocalComposerText("")
         return true
       } catch (error) {
         input.setNavigationError(toErrorMessage(error))

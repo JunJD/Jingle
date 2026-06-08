@@ -57,7 +57,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const [initialSeedQuery] = useState(host.seedQuery)
   const hasRunInitialActionRef = useRef(false)
   const [navigationError, setNavigationError] = useState<string | null>(null)
-  const [pendingInput, setPendingInput] = useState(() => initialSeedQuery)
+  const [localComposerText, setLocalComposerText] = useState(() => initialSeedQuery)
   const threadNavigation = useLauncherAiThreadNavigation({
     initialAction: host.initialAction,
     seedQuery: initialSeedQuery
@@ -104,7 +104,7 @@ export function LauncherAiPage(): React.JSX.Element {
     useThreadSelector(threadId, (state) => state?.agent.permissionMode ?? null) ??
     draftTarget?.permissionMode ??
     defaultDraftPermissionMode
-  const query = pendingInput
+  const query = localComposerText
   const messageInput = useMemo(
     () => ({
       refs: [...attachmentDraft.messageRefs, ...assistantSelectionRefs],
@@ -190,7 +190,7 @@ export function LauncherAiPage(): React.JSX.Element {
           clearSelectionRefs()
         },
         setNavigationError,
-        setPendingInput,
+        setLocalComposerText,
         startFreshDraftTarget,
         threadId,
         title: copy.launcher.aiThreadTitle,

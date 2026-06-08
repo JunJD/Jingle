@@ -15,7 +15,7 @@ function createControllerHarness(input?: {
   controller: ReturnType<typeof createLauncherAiController>
   createdThreads: AiCoreThreadCreateInput[]
   invoked: Array<{ input: ComposerMessageInput; threadId: string | undefined }>
-  pendingInputs: string[]
+  localComposerTexts: string[]
   resumedDecisions: unknown[]
   selectedModels: string[]
   selectedPermissionModes: PermissionModeName[]
@@ -26,7 +26,7 @@ function createControllerHarness(input?: {
 } {
   const createdThreads: AiCoreThreadCreateInput[] = []
   const invoked: Array<{ input: ComposerMessageInput; threadId: string | undefined }> = []
-  const pendingInputs: string[] = []
+  const localComposerTexts: string[] = []
   const resumedDecisions: unknown[] = []
   const selectedModels: string[] = []
   const selectedPermissionModes: PermissionModeName[] = []
@@ -81,8 +81,8 @@ function createControllerHarness(input?: {
       hasPendingApproval: false,
       isBusy: false,
       setNavigationError: () => {},
-      setPendingInput: (value) => {
-        pendingInputs.push(value)
+      setLocalComposerText: (value) => {
+        localComposerTexts.push(value)
       },
       startFreshDraftTarget: async () => {},
       threadId: input?.threadId ?? null,
@@ -110,7 +110,7 @@ function createControllerHarness(input?: {
     }),
     createdThreads,
     invoked,
-    pendingInputs,
+    localComposerTexts,
     resumedDecisions,
     selectedModels,
     selectedPermissionModes,
@@ -138,7 +138,7 @@ test("launcher AI controller creates a draft thread before invoking agent comman
     }
   ])
   assert.deepEqual(harness.invoked, [{ input: messageInput, threadId: "created-thread" }])
-  assert.deepEqual(harness.pendingInputs, [""])
+  assert.deepEqual(harness.localComposerTexts, [""])
 })
 
 test("launcher AI controller clears local composer after selected thread invoke succeeds", async () => {
@@ -153,7 +153,7 @@ test("launcher AI controller clears local composer after selected thread invoke 
 
   assert.deepEqual(harness.createdThreads, [])
   assert.deepEqual(harness.invoked, [{ input: messageInput, threadId: "existing-thread" }])
-  assert.deepEqual(harness.pendingInputs, [""])
+  assert.deepEqual(harness.localComposerTexts, [""])
 })
 
 test("launcher AI controller keeps local composer when invoke fails", async () => {
@@ -171,7 +171,7 @@ test("launcher AI controller keeps local composer when invoke fails", async () =
 
   assert.deepEqual(harness.createdThreads, [])
   assert.deepEqual(harness.invoked, [{ input: messageInput, threadId: "existing-thread" }])
-  assert.deepEqual(harness.pendingInputs, [])
+  assert.deepEqual(harness.localComposerTexts, [])
 })
 
 test("launcher AI controller routes query writes to local composer state", () => {
@@ -179,7 +179,7 @@ test("launcher AI controller routes query writes to local composer state", () =>
 
   harness.controller.setQuery("下一句")
 
-  assert.deepEqual(harness.pendingInputs, ["下一句"])
+  assert.deepEqual(harness.localComposerTexts, ["下一句"])
 })
 
 
