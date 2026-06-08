@@ -13,6 +13,8 @@ import { startNativeMinimalIsland, stopNativeMinimalIsland } from "./services/na
 import type { MainWindowNavigationPayload } from "@shared/main-window"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
+const JINGLE_PROTOCOL = "jingle"
+
 const remoteDebuggingPort = process.env.OPENWORK_REMOTE_DEBUGGING_PORT
 if (remoteDebuggingPort) {
   // Expose Electron's Chromium target for external CDP clients like agent-browser.
@@ -26,6 +28,7 @@ let settingsWindow: BrowserWindow | null = null
 let mainCompositionRoot: MainCompositionRoot | null = null
 let pendingMainNavigation: MainWindowNavigationPayload | null = null
 let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
+let pendingOAuthCallbackUrl: string | null = null
 let shutdownComplete = false
 const bypassSingleInstanceLock = process.env.OPENWORK_BDD === "1"
 const hasSingleInstanceLock = bypassSingleInstanceLock ? true : app.requestSingleInstanceLock()
@@ -119,6 +122,29 @@ function openSettingsWindow(payload?: SettingsWindowNavigationPayload): void {
   showSettingsWindow(settingsWindow, payload)
 }
 
+function handleOpenUrl(rawUrl: string): void {
+  const parsedUrl = new URL(rawUrl)
+  if (parsedUrl.protocol !== `${JINGLE_PROTOCOL}:`) {
+    return
+  }
+
+  const isOAuthCallback =
+    (parsedUrl.hostname === "oauth" && parsedUrl.pathname === "/callback") ||
+    parsedUrl.pathname === "/oauth/callback"
+  if (!isOAuthCallback) {
+    return
+  }
+
+  if (!mainCompositionRoot) {
+    pendingOAuthCallbackUrl = rawUrl
+    return
+  }
+
+  void mainCompositionRoot.handleOAuthCallback(rawUrl).catch((error) => {
+    console.error("[Main] Failed to handle OAuth callback:", error)
+  })
+}
+
 function setMacDockIcon(): void {
   if (process.platform !== "darwin" || !app.dock) {
     return
@@ -152,6 +178,22 @@ if (!hasSingleInstanceLock) {
 }
 
 if (hasSingleInstanceLock) {
+  app.on("second-instance", (_event, commandLine) => {
+    for (const entry of commandLine) {
+      if (entry.startsWith(`${JINGLE_PROTOCOL}://`)) {
+        handleOpenUrl(entry)
+        return
+      }
+    }
+
+    openMainWindow()
+  })
+
+  app.on("open-url", (event, rawUrl) => {
+    event.preventDefault()
+    handleOpenUrl(rawUrl)
+  })
+
   app.whenReady().then(async () => {
     // Set app user model id for windows
     if (process.platform === "win32") {
@@ -159,6 +201,9 @@ if (hasSingleInstanceLock) {
     }
 
     setMacDockIcon()
+    if (!bypassSingleInstanceLock) {
+      app.setAsDefaultProtocolClient(JINGLE_PROTOCOL)
+    }
     registerNativeExtensionAssetProtocol()
 
     // Default open or close DevTools by F12 in development
@@ -196,6 +241,11 @@ if (hasSingleInstanceLock) {
     })
     mainCompositionRoot.registerIpcHandlers()
     mainCompositionRoot.startServices()
+    if (pendingOAuthCallbackUrl) {
+      const callbackUrl = pendingOAuthCallbackUrl
+      pendingOAuthCallbackUrl = null
+      handleOpenUrl(callbackUrl)
+    }
     startNativeMinimalIsland({
       openLauncher: showLauncher,
       openMainWindow: () => openMainWindow(),

@@ -109,8 +109,17 @@ test("GitHub live package keeps runtime, connection, and AI tool contracts", () 
   assert.deepEqual(sorted(githubRuntimeCommands), sorted(GITHUB_RUNTIME_COMMANDS))
   assert.deepEqual(sorted(Object.keys(githubRuntime.commands)), sorted(GITHUB_RUNTIME_COMMANDS))
   assert.deepEqual(githubManifest.connection?.auth, {
+    authorizationUrl: "https://jingle.cool/oauth/github/start",
+    clientId: "jingle-desktop",
+    redirect: {
+      callbackPath: "/oauth/callback",
+      method: "app-scheme",
+      scheme: "jingle"
+    },
+    scopes: ["repo", "read:user", "notifications"],
     secretNames: ["accessToken"],
-    type: "personalAccessToken"
+    tokenUrl: "https://jingle.cool/oauth/github/token",
+    type: "oauth"
   })
   assert.deepEqual(githubManifest.aiCapability?.toolNames, [
     "listMyIssues",
@@ -159,7 +168,10 @@ test("Apple Reminders live AI capability is mentionable on macOS and exposes too
   })
   assert.equal(darwinCapability?.enabled, true)
   assert.equal(darwinCapability?.authStatus, "connected")
-  assert.deepEqual(darwinCapability?.enabledToolNames, appleRemindersManifest.aiCapability?.toolNames)
+  assert.deepEqual(
+    darwinCapability?.enabledToolNames,
+    appleRemindersManifest.aiCapability?.toolNames
+  )
   assert.deepEqual(
     darwinCapability?.toolExposures.map((tool) => tool.toolName),
     appleRemindersManifest.aiCapability?.toolNames

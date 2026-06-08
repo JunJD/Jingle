@@ -1,7 +1,8 @@
 import type { IpcMain } from "electron"
 import type {
   NativeExtensionInvokeIpcResponse,
-  NativeExtensionInvokeRequest
+  NativeExtensionInvokeRequest,
+  NativeExtensionOAuthStartRequest
 } from "@shared/native-extensions"
 import { buildIpcErrorPayload } from "../ipc/error"
 import { registerIpcHandle } from "../ipc/handle"
@@ -20,6 +21,14 @@ export class NativeExtensionsController {
       "nativeExtensions:getPreferences",
       (_event, extensionName: string) => {
         return this.nativeExtensionsService.getPreferences(extensionName)
+      }
+    )
+
+    registerIpcHandle(
+      ipcMain,
+      "nativeExtensions:getConnection",
+      (_event, extensionName: string) => {
+        return this.nativeExtensionsService.getConnection(extensionName)
       }
     )
 
@@ -48,6 +57,14 @@ export class NativeExtensionsController {
           extensionName,
           nextRecord
         })
+      }
+    )
+
+    registerIpcHandle(
+      ipcMain,
+      "nativeExtensions:startOAuthConnection",
+      (_event, request: NativeExtensionOAuthStartRequest) => {
+        return this.nativeExtensionsService.startOAuthConnection(request)
       }
     )
 
