@@ -20,7 +20,7 @@ import { createSerializedToolCallMiddleware } from "./serialized-tool-call-middl
 import { createToolCallConsistencyMiddleware } from "./tool-call-consistency-middleware"
 import { createToolApprovalMiddleware } from "./tool-approval-middleware"
 import { createWorkspaceFileContextMiddleware } from "./workspace-file-context-middleware"
-import { anthropicPromptCachingMiddleware, createAgent, todoListMiddleware } from "langchain"
+import { anthropicPromptCachingMiddleware, createAgent } from "langchain"
 import { getChatModelInstance } from "../llm/get-chat-model"
 
 import type * as _lcTypes from "langchain"
@@ -38,6 +38,7 @@ import { nativeExtensionMainDefinitions } from "@extensions/main"
 import { nativeExtensionManifests } from "@extensions/index"
 import { createNativeExtensionToolRegistry } from "../extension-tools/native-extension-tools"
 import { createExtensionAiRuntime } from "./extension-ai-runtime"
+import { createJingleTodoMiddleware } from "./jingle-todo-middleware"
 import { buildAgentRuntimeTraceConfig } from "../observability"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
@@ -276,7 +277,7 @@ The workspace root is: ${workspacePath}`
   function createSharedAgentLoopMiddleware() {
     return [
       createToolCallConsistencyMiddleware(),
-      todoListMiddleware(),
+      createJingleTodoMiddleware(),
       createFilesystemMiddleware({
         backend,
         systemPrompt: filesystemSystemPrompt
@@ -359,8 +360,12 @@ The workspace root is: ${workspacePath}`
     ] as const
   }
 
-  const [rootTodoMiddleware, rootFilesystemMiddleware, ...rootAgentLoopTailMiddleware] =
-    createRootAgentLoopMiddleware()
+  const [
+    rootToolCallConsistencyMiddleware,
+    rootTodoMiddleware,
+    rootFilesystemMiddleware,
+    ...rootAgentLoopTailMiddleware
+  ] = createRootAgentLoopMiddleware()
 
   function createSubagentMiddlewareStack(): SubagentMiddlewareStack {
     // createSubAgentMiddleware accepts the same runtime middleware stack, but its
@@ -374,6 +379,7 @@ The workspace root is: ${workspacePath}`
     checkpointer,
     systemPrompt,
     middleware: [
+      rootToolCallConsistencyMiddleware,
       rootTodoMiddleware,
       rootFilesystemMiddleware,
       createSubAgentMiddleware({
