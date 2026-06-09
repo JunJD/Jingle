@@ -34,12 +34,32 @@ import {
   getPlainTextFromEditorState,
   serializeComposerEditorStateForModel
 } from "./extension-source-serialization"
-import { ExtensionSourceReferenceNode } from "./extension-source-node"
+import { parseComposerReferenceText } from "@shared/composer-reference-uri"
+import {
+  $createExtensionSourceReferenceNode,
+  ExtensionSourceReferenceNode
+} from "./extension-source-node"
 import { ExtensionSourceTypeaheadPlugin } from "./extension-source-typeahead"
-import { FileReferenceNode } from "./file-reference-node"
+import { $createFileReferenceNode, FileReferenceNode } from "./file-reference-node"
+import type { ExtensionSourceMention } from "@shared/extension-sources"
 import type { ComposerAreaHandle, ComposerAreaProps } from "./types"
 
 const COMPOSER_AREA_SYNC_TAG = "composer-area-sync"
+
+function getSourceMentionsKey(sourceMentions: readonly ExtensionSourceMention[]): string {
+  return sourceMentions
+    .map(
+      (mention) =>
+        `${mention.extensionName}:${mention.sourceId}:${mention.label}:${mention.icon ?? ""}`
+    )
+    .join("|")
+}
+
+function hasExtensionSourceReferenceText(value: string): boolean {
+  return parseComposerReferenceText(value)?.references.some(
+    (reference) => reference.type === "extension-source"
+  ) ?? false
+}
 
 function resolveCssSize(value: number | string): string {
   return typeof value === "number" ? `${value}px` : value
@@ -49,19 +69,70 @@ function splitPlainTextLines(value: string): string[] {
   return value.split(/\r\n|\r|\n/)
 }
 
-function writePlainTextToEditor(editor: LexicalEditor, value: string): void {
+function appendComposerTextToParagraph(
+  paragraph: ReturnType<typeof $createParagraphNode>,
+  text: string,
+  sourceMentions: readonly ExtensionSourceMention[]
+): void {
+  const parsed = parseComposerReferenceText(text)
+  if (!parsed) {
+    if (text.length > 0) {
+      paragraph.append($createTextNode(text))
+    }
+    return
+  }
+
+  for (const token of parsed.tokens) {
+    if (token.type === "text") {
+      if (token.text.length > 0) {
+        paragraph.append($createTextNode(token.text))
+      }
+      continue
+    }
+
+    if (token.type === "extension-source") {
+      const sourceMention = sourceMentions.find(
+        (mention) =>
+          mention.extensionName === token.extensionName && mention.sourceId === token.sourceId
+      )
+      paragraph.append(
+        $createExtensionSourceReferenceNode({
+          displayName: sourceMention?.label ?? token.label,
+          extensionName: token.extensionName,
+          icon: sourceMention?.icon,
+          label: token.label,
+          sourceId: token.sourceId
+        })
+      )
+      continue
+    }
+
+    paragraph.append(
+      $createFileReferenceNode({
+        label: token.label,
+        name: token.label.startsWith("@") ? token.label.slice(1) : token.label,
+        path: token.path
+      })
+    )
+  }
+}
+
+function writePlainTextToEditor(
+  editor: LexicalEditor,
+  value: string,
+  sourceMentions: readonly ExtensionSourceMention[]
+): void {
   editor.update(
     () => {
       const root = $getRoot()
       root.clear()
+      const lines = splitPlainTextLines(value)
 
-      for (const line of splitPlainTextLines(value)) {
+      lines.forEach((line) => {
         const paragraph = $createParagraphNode()
-        if (line.length > 0) {
-          paragraph.append($createTextNode(line))
-        }
+        appendComposerTextToParagraph(paragraph, line, sourceMentions)
         root.append(paragraph)
-      }
+      })
 
       root.selectEnd()
     },
@@ -72,12 +143,17 @@ function writePlainTextToEditor(editor: LexicalEditor, value: string): void {
 function ComposerAreaHandlePlugin(props: {
   disabled: boolean
   handleRef: React.Ref<ComposerAreaHandle>
+  sourceMentions: readonly ExtensionSourceMention[]
   value: string
 }): null {
-  const { disabled, handleRef, value } = props
+  const { disabled, handleRef, sourceMentions, value } = props
   const [editor] = useLexicalComposerContext()
   const lastEditorValueRef = useRef(value)
-  const getRefs = useCallback(() => getComposerRefsFromEditorState(editor.getEditorState()), [editor])
+  const lastSourceMentionsKeyRef = useRef(getSourceMentionsKey(sourceMentions))
+  const getRefs = useCallback(
+    () => getComposerRefsFromEditorState(editor.getEditorState()),
+    [editor]
+  )
   const getModelText = useCallback(
     () => serializeComposerEditorStateForModel(editor.getEditorState()),
     [editor]
@@ -98,13 +174,20 @@ function ComposerAreaHandlePlugin(props: {
   )
 
   useLayoutEffect(() => {
-    if (value === lastEditorValueRef.current) {
+    const sourceMentionsKey = getSourceMentionsKey(sourceMentions)
+    const valueChanged = value !== lastEditorValueRef.current
+    const sourceMentionsChanged = sourceMentionsKey !== lastSourceMentionsKeyRef.current
+    if (
+      !valueChanged &&
+      (!sourceMentionsChanged || !hasExtensionSourceReferenceText(value))
+    ) {
       return
     }
 
     lastEditorValueRef.current = value
-    writePlainTextToEditor(editor, value)
-  }, [editor, value])
+    lastSourceMentionsKeyRef.current = sourceMentionsKey
+    writePlainTextToEditor(editor, value, sourceMentions)
+  }, [editor, sourceMentions, value])
 
   useImperativeHandle(
     handleRef,
@@ -263,7 +346,7 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
   const initialConfig = useMemo(
     () => ({
       editorState: (editor: LexicalEditor) => {
-        writePlainTextToEditor(editor, value)
+        writePlainTextToEditor(editor, value, sourceMentions)
       },
       namespace: "OpenworkComposerArea",
       nodes: [ParagraphNode, ExtensionSourceReferenceNode, FileReferenceNode],
@@ -361,6 +444,7 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
         <ComposerAreaHandlePlugin
           disabled={disabled}
           handleRef={ref}
+          sourceMentions={sourceMentions}
           value={value}
         />
       </div>

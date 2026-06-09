@@ -2,12 +2,16 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { appCopy } from "../../src/renderer/src/lib/i18n/messages"
 import { buildLauncherHomeSurfaceModel } from "../../src/renderer/src/launcher-shell/home-surface"
+import type { ExtensionSourceMention } from "../../src/shared/extension-sources"
+import type { LauncherSearchResult } from "../../src/shared/launcher-search"
 
 const copy = appCopy["zh-CN"]
 
 function buildSurface(
   query: string,
   options: {
+    searchResults?: LauncherSearchResult[]
+    sourceMentions?: readonly ExtensionSourceMention[]
     useWithDisabledCommandKeys?: readonly string[]
   } = {}
 ) {
@@ -17,10 +21,19 @@ function buildSurface(
     idleItems: [],
     locale: "zh-CN",
     query,
-    searchResults: [],
+    searchResults: options.searchResults ?? [],
+    sourceMentions: options.sourceMentions,
     useWithDisabledCommandKeys: options.useWithDisabledCommandKeys,
     windowMode: "default"
   })
+}
+
+const notionSourceMention: ExtensionSourceMention = {
+  extensionName: "notion",
+  iconName: "notion",
+  label: "Notion",
+  sourceId: "notion",
+  value: "notion"
 }
 
 test("high confidence extension intents become the primary launcher result", () => {
@@ -60,6 +73,67 @@ test("generic AI intent stays primary when no extension intent matches", () => {
   const surface = buildSurface("整理本周计划")
 
   assert.equal(surface.items[0]?.kind, "ai")
+})
+
+test("@ query opens AI with an extension source ref", () => {
+  const surface = buildSurface("@", {
+    sourceMentions: [notionSourceMention]
+  })
+  const item = surface.items[0]
+
+  assert.equal(item?.title, "问 Notion")
+  assert.deepEqual(item?.commandRef, {
+    builtInId: "ai",
+    commandName: "chat",
+    kind: "built-in-command"
+  })
+  assert.equal(item?.commandOpenOptions?.initialAction, "focus")
+  assert.equal(
+    item?.commandOpenOptions?.seedQuery,
+    "[@notion](openwork-extension-source://notion/notion)"
+  )
+})
+
+test("@ query pins extension source refs above regular launcher results", () => {
+  const surface = buildSurface("@notion summarize roadmap", {
+    searchResults: [
+      {
+        action: {
+          executor: "shell",
+          target: {
+            url: "https://example.com/notion-roadmap"
+          },
+          type: "open-url"
+        },
+        id: "quicklink:notion-roadmap",
+        kind: "url",
+        score: 900,
+        source: "quicklinks",
+        subtitle: "example.com",
+        title: "Notion roadmap"
+      }
+    ],
+    sourceMentions: [
+      notionSourceMention,
+      {
+        extensionName: "apple-reminders",
+        iconName: "reminders",
+        label: "Apple Reminders",
+        sourceId: "apple-reminders",
+        value: "apple-reminders"
+      }
+    ]
+  })
+
+  assert.equal(surface.items[0]?.title, "问 Notion")
+  assert.equal(
+    surface.items[0]?.commandOpenOptions?.seedQuery,
+    "[@notion](openwork-extension-source://notion/notion) summarize roadmap"
+  )
+  assert.equal(
+    surface.items.some((item) => item.id === "quicklink:notion-roadmap"),
+    true
+  )
 })
 
 test("disabled use-with extension commands do not get promoted as primary results", () => {

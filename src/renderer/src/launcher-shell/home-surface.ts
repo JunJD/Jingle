@@ -5,6 +5,7 @@ import {
   getLauncherSectionedResultsHeight,
   type LauncherShellConfig
 } from "@shared/launcher"
+import type { ExtensionSourceMention } from "@shared/extension-sources"
 import { sortLauncherHistoryItems, type LauncherHistoryItem } from "@shared/launcher-history"
 import type { LauncherSearchResult } from "@shared/launcher-search"
 import type { LocalStartItem } from "@shared/local-start"
@@ -14,6 +15,7 @@ import { launcherSearchSourceOrder } from "./hooks/launcher-search-page-store-co
 import { getLauncherCommandIntents, listLauncherCommands } from "./pages"
 import { getLauncherCommandAddressKey, splitLauncherUseWithCommands } from "./use-with-preferences"
 import {
+  buildLauncherAiExtensionSourceShellItems,
   buildLauncherBrowserSearchSuggestionItem,
   buildLauncherCommandIntentShellItems,
   buildLauncherCompletionSuggestionItem,
@@ -172,6 +174,7 @@ export function buildLauncherHomeSurfaceModel(params: {
   query: string
   searchResults: LauncherSearchResult[]
   searchResultsPreview?: boolean
+  sourceMentions?: readonly ExtensionSourceMention[]
   useWithDisabledCommandKeys?: readonly string[]
   windowMode: "default" | "compact"
 }): LauncherHomeSurfaceModel {
@@ -183,6 +186,7 @@ export function buildLauncherHomeSurfaceModel(params: {
     query,
     searchResults,
     searchResultsPreview = false,
+    sourceMentions = [],
     useWithDisabledCommandKeys = [],
     windowMode
   } = params
@@ -219,6 +223,12 @@ export function buildLauncherHomeSurfaceModel(params: {
       { footerVisible: localStartItems.length > 0 }
     )
   }
+
+  const aiExtensionSourceItems = buildLauncherAiExtensionSourceShellItems({
+    copy,
+    query: trimmedQuery,
+    sourceMentions
+  })
 
   const sections: LauncherHomeSurfaceSection[] = []
   const launcherCommands = listLauncherCommands(locale)
@@ -287,6 +297,7 @@ export function buildLauncherHomeSurfaceModel(params: {
   })
 
   const primaryResultItems = [
+    ...aiExtensionSourceItems,
     ...extensionIntentItems,
     ...highConfidenceUseWithItems,
     ...builtInCommandIntentItems,
