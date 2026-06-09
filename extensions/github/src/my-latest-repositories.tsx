@@ -6,15 +6,15 @@ import {
   normalizeGitHubPreferences,
   openGitHubSettings,
   type GitHubRepository,
-  useGitHubCommandPreferences
+  useGitHubPreferences
 } from "./runtime-client"
 import { formatResultCount, formatUpdatedAt, getRepositoryAccessories } from "./view-helpers"
 
 export default function GitHubMyLatestRepositories(): React.JSX.Element {
-  const commandPreferences = useGitHubCommandPreferences<Record<string, never>>()
+  const githubPreferences = useGitHubPreferences<Record<string, never>>()
   const resolvedPreferences = useMemo(
-    () => normalizeGitHubPreferences(commandPreferences),
-    [commandPreferences]
+    () => normalizeGitHubPreferences(githubPreferences),
+    [githubPreferences]
   )
   const [items, setItems] = useState<GitHubRepository[]>([])
   const [error, setError] = useState<string | null>(null)

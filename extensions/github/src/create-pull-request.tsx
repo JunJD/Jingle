@@ -15,7 +15,7 @@ import {
   openGitHubSettings,
   type GitHubBranch,
   type GitHubViewerRepository,
-  useGitHubCommandPreferences
+  useGitHubPreferences
 } from "./runtime-client"
 
 function getDefaultHeadBranch(params: { branches: GitHubBranch[]; defaultBranch: string }): string {
@@ -72,10 +72,10 @@ function CreatePullRequestSuccessDetail(props: {
 
 export default function GitHubCreatePullRequest(): React.JSX.Element {
   const navigation = useNativeExtensionNavigation()
-  const commandPreferences = useGitHubCommandPreferences<Record<string, never>>()
+  const githubPreferences = useGitHubPreferences<Record<string, never>>()
   const resolvedPreferences = useMemo(
-    () => normalizeGitHubPreferences(commandPreferences),
-    [commandPreferences]
+    () => normalizeGitHubPreferences(githubPreferences),
+    [githubPreferences]
   )
   const [repositories, setRepositories] = useState<GitHubViewerRepository[]>([])
   const [branches, setBranches] = useState<GitHubBranch[]>([])

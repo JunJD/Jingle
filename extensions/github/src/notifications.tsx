@@ -14,7 +14,7 @@ import {
   normalizeGitHubPreferences,
   openGitHubSettings,
   type GitHubNotification,
-  useGitHubCommandPreferences
+  useGitHubPreferences
 } from "./runtime-client"
 
 function NotificationDetail(props: {
@@ -53,10 +53,10 @@ function NotificationDetail(props: {
 
 export default function GitHubNotifications(): React.JSX.Element {
   const navigation = useNativeExtensionNavigation()
-  const commandPreferences = useGitHubCommandPreferences<Record<string, never>>()
+  const githubPreferences = useGitHubPreferences<Record<string, never>>()
   const resolvedPreferences = useMemo(
-    () => normalizeGitHubPreferences(commandPreferences),
-    [commandPreferences]
+    () => normalizeGitHubPreferences(githubPreferences),
+    [githubPreferences]
   )
   const [items, setItems] = useState<GitHubNotification[]>([])
   const [error, setError] = useState<string | null>(null)

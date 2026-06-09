@@ -6,7 +6,7 @@ import {
   openGitHubSettings,
   searchGitHubIssueLikes,
   type GitHubIssueLike,
-  useGitHubCommandPreferences
+  useGitHubPreferences
 } from "./runtime-client"
 import {
   formatResultCount,
@@ -25,16 +25,16 @@ function buildIssueSearchQuery(searchText: string): string {
 }
 
 export default function GitHubSearchIssues(): React.JSX.Element {
-  const commandPreferences = useGitHubCommandPreferences<Record<string, never>>()
+  const githubPreferences = useGitHubPreferences<Record<string, never>>()
   const resolvedPreferences = useMemo(
-    () => normalizeGitHubPreferences(commandPreferences),
-    [commandPreferences]
+    () => normalizeGitHubPreferences(githubPreferences),
+    [githubPreferences]
   )
   const [items, setItems] = useState<GitHubIssueLike[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [reloadVersion, setReloadVersion] = useState(0)
-  const [searchText, setSearchText] = useState(commandPreferences.defaultSearchTerms)
+  const [searchText, setSearchText] = useState(resolvedPreferences.defaultSearchTerms)
   const deferredSearchText = useDeferredValue(searchText)
 
   useEffect(() => {

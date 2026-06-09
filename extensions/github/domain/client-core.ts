@@ -252,18 +252,22 @@ type ThrottledOctokitInstance = InstanceType<typeof ThrottledOctokit>
 const octokitByAuthKey = new Map<string, ThrottledOctokitInstance>()
 
 export function normalizeGitHubPreferences(
-  preferences: GitHubExtensionPreferences
+  preferences: Partial<Record<keyof GitHubExtensionPreferences, unknown>>
 ): GitHubResolvedPreferences {
   return {
-    accessToken: preferences.accessToken.trim(),
+    accessToken: normalizeTextPreference(preferences.accessToken),
     apiBaseUrl: normalizeGitHubApiBaseUrl(preferences.apiBaseUrl),
-    defaultSearchTerms: preferences.defaultSearchTerms.trim(),
+    defaultSearchTerms: normalizeTextPreference(preferences.defaultSearchTerms),
     numberOfResults: normalizeNumberOfResults(preferences.numberOfResults)
   }
 }
 
-function normalizeGitHubApiBaseUrl(value?: string): string {
-  const trimmed = value?.trim()
+function normalizeTextPreference(value: unknown): string {
+  return typeof value === "string" ? value.trim() : ""
+}
+
+function normalizeGitHubApiBaseUrl(value: unknown): string {
+  const trimmed = normalizeTextPreference(value)
   if (!trimmed) {
     return "https://api.github.com"
   }
@@ -271,8 +275,13 @@ function normalizeGitHubApiBaseUrl(value?: string): string {
   return trimmed.replace(/\/+$/, "")
 }
 
-function normalizeNumberOfResults(value: number | string): number {
-  const numericValue = typeof value === "number" ? value : Number.parseInt(value, 10)
+function normalizeNumberOfResults(value: unknown): number {
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number.parseInt(value, 10)
+        : Number.NaN
   if (!Number.isFinite(numericValue)) {
     return 25
   }

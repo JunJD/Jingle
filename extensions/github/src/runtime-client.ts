@@ -2,8 +2,9 @@ import {
   createNativeExtensionClient,
   defineNativeExtensionClientMethod,
   openNativeExtensionSettings,
-  useNativeCommandPreferences
+  useExtensionRuntimeSdk
 } from "@openwork/extension-api"
+import { useMemo } from "react"
 import type { GitHubExtensionPreferences } from "../domain/client-core"
 import {
   GITHUB_EXTENSION_ID,
@@ -34,7 +35,19 @@ export const githubRuntimeClient = createNativeExtensionClient(
 )
 
 export function useGitHubCommandPreferences<T extends object>() {
-  return useNativeCommandPreferences<GitHubExtensionPreferences & T>()
+  return useExtensionRuntimeSdk().commandPreferences as T
+}
+
+export function useGitHubPreferences<T extends object>() {
+  const context = useExtensionRuntimeSdk()
+  return useMemo(
+    () =>
+      ({
+        ...context.extensionPreferences,
+        ...context.commandPreferences
+      }) as Partial<GitHubExtensionPreferences> & T,
+    [context.commandPreferences, context.extensionPreferences]
+  )
 }
 
 export function openGitHubSettings(commandName: string): Promise<void> {

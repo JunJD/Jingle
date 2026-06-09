@@ -14,7 +14,7 @@ import {
   openGitHubSettings,
   type GitHubViewerRepository,
   type GitHubWorkflowRun,
-  useGitHubCommandPreferences
+  useGitHubPreferences
 } from "./runtime-client"
 import {
   formatResultCount,
@@ -53,10 +53,10 @@ function WorkflowRunDetail(props: { run: GitHubWorkflowRun }): React.JSX.Element
 
 export default function GitHubWorkflowRuns(): React.JSX.Element {
   const navigation = useNativeExtensionNavigation()
-  const commandPreferences = useGitHubCommandPreferences<Record<string, never>>()
+  const githubPreferences = useGitHubPreferences<Record<string, never>>()
   const resolvedPreferences = useMemo(
-    () => normalizeGitHubPreferences(commandPreferences),
-    [commandPreferences]
+    () => normalizeGitHubPreferences(githubPreferences),
+    [githubPreferences]
   )
   const [repositories, setRepositories] = useState<GitHubViewerRepository[]>([])
   const [selectedRepository, setSelectedRepository] = useState("")

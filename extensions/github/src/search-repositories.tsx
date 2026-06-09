@@ -9,7 +9,7 @@ import {
   type GitHubRepository,
   type GitHubSearchRepositoriesPreferences,
   type GitHubViewer,
-  useGitHubCommandPreferences
+  useGitHubPreferences
 } from "./runtime-client"
 import { formatResultCount, formatUpdatedAt, getRepositoryAccessories } from "./view-helpers"
 
@@ -45,7 +45,7 @@ function getScopeOptions(viewer: GitHubViewer | null): Array<{ title: string; va
 }
 
 export default function GitHubSearchRepositories(): React.JSX.Element {
-  const commandPreferences = useGitHubCommandPreferences<GitHubSearchRepositoriesPreferences>()
+  const commandPreferences = useGitHubPreferences<GitHubSearchRepositoriesPreferences>()
   const resolvedPreferences = useMemo(
     () => normalizeGitHubPreferences(commandPreferences),
     [commandPreferences]
@@ -55,7 +55,7 @@ export default function GitHubSearchRepositories(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [reloadVersion, setReloadVersion] = useState(0)
-  const [searchText, setSearchText] = useState(commandPreferences.defaultSearchTerms)
+  const [searchText, setSearchText] = useState(resolvedPreferences.defaultSearchTerms)
   const [scope, setScope] = useState("")
   const deferredSearchText = useDeferredValue(searchText)
 

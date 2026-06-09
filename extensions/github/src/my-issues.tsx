@@ -9,7 +9,7 @@ import {
   searchGitHubIssueLikes,
   type GitHubIssueListPreferences,
   type GitHubIssueLike,
-  useGitHubCommandPreferences
+  useGitHubPreferences
 } from "./runtime-client"
 import {
   formatResultCount,
@@ -102,7 +102,7 @@ async function loadMyIssueSections(params: {
 }
 
 export default function GitHubMyIssues(): React.JSX.Element {
-  const commandPreferences = useGitHubCommandPreferences<GitHubIssueListPreferences>()
+  const commandPreferences = useGitHubPreferences<GitHubIssueListPreferences>()
   const resolvedPreferences = useMemo(
     () => normalizeGitHubPreferences(commandPreferences),
     [commandPreferences]

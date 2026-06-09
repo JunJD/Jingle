@@ -9,7 +9,7 @@ import {
   searchGitHubIssueLikes,
   type GitHubIssueLike,
   type GitHubPullRequestListPreferences,
-  useGitHubCommandPreferences
+  useGitHubPreferences
 } from "./runtime-client"
 import {
   formatResultCount,
@@ -144,7 +144,7 @@ async function loadMyPullRequestSections(params: {
 }
 
 export default function GitHubMyPullRequests(): React.JSX.Element {
-  const commandPreferences = useGitHubCommandPreferences<GitHubPullRequestListPreferences>()
+  const commandPreferences = useGitHubPreferences<GitHubPullRequestListPreferences>()
   const resolvedPreferences = useMemo(
     () => normalizeGitHubPreferences(commandPreferences),
     [commandPreferences]

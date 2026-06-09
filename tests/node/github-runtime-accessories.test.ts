@@ -2,9 +2,15 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { createElement } from "react"
 import { List } from "@openwork/extension-api"
+import {
+  ExtensionRuntimeNavigationProvider,
+  type ExtensionRuntimeSdkContextValue
+} from "@openwork/extension-api/host-runtime"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
+import GitHubSearchRepositories from "../../extensions/github/src/search-repositories"
 import { githubManifest } from "../../extensions/github/manifest"
 import { getNativeExtensionRuntimeCommand } from "../../src/extensions/runtime"
+import type { ExtensionHostResponse } from "../../src/shared/extension-runtime-protocol"
 import {
   getIssueLikeAccessories,
   getRepositoryAccessories,
@@ -87,6 +93,71 @@ test("GitHub runtime accessories serialize as stable text visuals", async () => 
     }
   ])
 })
+
+test("GitHub runtime shows connect view when OAuth is not connected", async () => {
+  const renderer = createExtensionRuntimeRenderer({
+    commandName: "search-repositories",
+    extensionName: "github"
+  })
+  renderer.render(
+    createElement(
+      ExtensionRuntimeNavigationProvider,
+      {
+        value: createGitHubRuntimeContext({
+          commandName: "search-repositories",
+          commandPreferences: {
+            displayOwnerName: true,
+            includeArchived: false,
+            includeForks: false
+          },
+          extensionPreferences: {}
+        })
+      },
+      createElement(GitHubSearchRepositories)
+    )
+  )
+  await renderer.flushSnapshots()
+
+  const snapshot = renderer.getSnapshot()
+  assert.equal(snapshot?.kind, "list")
+  if (snapshot?.kind !== "list") {
+    return
+  }
+
+  assert.equal(snapshot.emptyView?.title, "Connect GitHub")
+  assert.equal(
+    snapshot.emptyView?.description,
+    "GitHub needs to be connected before it can load this command."
+  )
+  assert.deepEqual(
+    snapshot.emptyView?.actions.map((action) => action.title),
+    ["Connect GitHub"]
+  )
+})
+
+function createGitHubRuntimeContext(options: {
+  commandName: string
+  commandPreferences: Record<string, unknown>
+  extensionPreferences: Record<string, unknown>
+}): Omit<ExtensionRuntimeSdkContextValue, "navigation"> {
+  const requestHost = async (): Promise<ExtensionHostResponse> => ({
+    id: "github-test-host-response",
+    ok: true,
+    result: null
+  })
+
+  return {
+    commandName: options.commandName,
+    commandPreferences: options.commandPreferences,
+    extensionName: "github",
+    extensionPreferences: options.extensionPreferences,
+    initialAction: "open",
+    locale: "zh-CN",
+    mode: "view",
+    requestHost,
+    seedQuery: ""
+  }
+}
 
 function createIssueLike(): GitHubIssueLike {
   return {

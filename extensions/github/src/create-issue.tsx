@@ -13,7 +13,7 @@ import {
   normalizeGitHubPreferences,
   openGitHubSettings,
   type GitHubViewerRepository,
-  useGitHubCommandPreferences
+  useGitHubPreferences
 } from "./runtime-client"
 
 function CreateIssueSuccessDetail(props: {
@@ -46,10 +46,10 @@ function CreateIssueSuccessDetail(props: {
 
 export default function GitHubCreateIssue(): React.JSX.Element {
   const navigation = useNativeExtensionNavigation()
-  const commandPreferences = useGitHubCommandPreferences<Record<string, never>>()
+  const githubPreferences = useGitHubPreferences<Record<string, never>>()
   const resolvedPreferences = useMemo(
-    () => normalizeGitHubPreferences(commandPreferences),
-    [commandPreferences]
+    () => normalizeGitHubPreferences(githubPreferences),
+    [githubPreferences]
   )
   const [repositories, setRepositories] = useState<GitHubViewerRepository[]>([])
   const [isLoading, setIsLoading] = useState(false)
