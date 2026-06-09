@@ -277,6 +277,7 @@ test("extension AI capability catalog items are still built without mention meta
   const item = buildNativeExtensionAiCapabilityCatalogItem({
     capability: {
       description: "Mock source without mention.",
+      guide: "Use the mock source.",
       id: "mockSource",
       title: "Mock Source",
       toolNames: []
@@ -291,9 +292,12 @@ test("extension AI capability catalog items are still built without mention meta
   assert.deepEqual(item, {
     description: "Mock source without mention.",
     extensionName: "mock-extension",
+    guide: "Use the mock source.",
     sourceId: "mockSource",
     supportedPlatforms: undefined,
-    title: "Mock Source"
+    title: "Mock Source",
+    toolNames: [],
+    tools: []
   })
 })
 

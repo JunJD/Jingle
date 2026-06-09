@@ -9,7 +9,10 @@ import {
 import { join } from "path"
 import { getAgentConfig } from "../preferences"
 import { getOpenworkDir } from "../storage"
-import { flushMessageSearchProjection, RuntimeCheckpointSaver } from "../checkpointer/runtime-checkpointer"
+import {
+  flushMessageSearchProjection,
+  RuntimeCheckpointSaver
+} from "../checkpointer/runtime-checkpointer"
 import { LocalSandbox } from "./local-sandbox"
 import { createGuardrailMiddleware } from "./guardrail-middleware"
 import { JustBashExecuteCommandClassifier } from "./execute-command-classifier"
@@ -205,18 +208,21 @@ export async function createAgentRuntime(
     classifier: commandClassifier,
     predictor: mutationPredictor
   })
+  const extensionToolRegistry = createNativeExtensionToolRegistry({
+    definitions: nativeExtensionMainDefinitions,
+    manifests: nativeExtensionManifests
+  })
   const extensionAiRuntime = createExtensionAiRuntime({
     aiCapabilities,
-    aiCapabilityCatalog: options.aiCapabilityCatalog,
+    aiCapabilityCatalog: options.aiCapabilityCatalog
+      ? extensionToolRegistry.withCatalogToolAccess(options.aiCapabilityCatalog)
+      : undefined,
     getAiCapabilityByExtensionName: options.getAiCapabilityByExtensionName,
     getExtensionExecutionContext: options.getExtensionExecutionContext,
     getExtensionPreferences: options.getExtensionPreferences,
     onLoadedAiCapabilitiesChanged: options.onLoadedAiCapabilitiesChanged,
     permissionMode,
-    registry: createNativeExtensionToolRegistry({
-      definitions: nativeExtensionMainDefinitions,
-      manifests: nativeExtensionManifests
-    }),
+    registry: extensionToolRegistry,
     runId,
     threadId,
     workspacePath

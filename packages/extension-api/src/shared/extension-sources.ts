@@ -119,9 +119,17 @@ export interface ExtensionAiCapabilityTool {
   toolName: string
 }
 
+export interface ExtensionAiCapabilityCatalogToolSummary {
+  access?: ExtensionToolAccess
+  description: string
+  title: string
+  toolName: string
+}
+
 export interface ExtensionAiCapabilityCatalogItem {
   description: string
   extensionName: string
+  guide: string
   mention?: {
     label: string
     value: string
@@ -129,6 +137,8 @@ export interface ExtensionAiCapabilityCatalogItem {
   sourceId: string
   supportedPlatforms?: NativeExtensionSupportedPlatform[]
   title: string
+  toolNames: string[]
+  tools: ExtensionAiCapabilityCatalogToolSummary[]
 }
 
 export interface ResolvedExtensionAiCapability {

@@ -1,5 +1,6 @@
 import type {
   ExtensionAiCapability,
+  ExtensionAiCapabilityCatalogItem,
   ExtensionAiCapabilityTool,
   ExtensionToolDefinition,
   ResolvedExtensionAiCapability
@@ -71,6 +72,23 @@ export class ExtensionToolRegistry {
     toolName: string
   }): RegisteredExtensionToolDefinition | null {
     return this.toolsByExtension.get(input.extensionName)?.get(input.toolName) ?? null
+  }
+
+  withCatalogToolAccess(
+    catalog: ExtensionAiCapabilityCatalogItem[]
+  ): ExtensionAiCapabilityCatalogItem[] {
+    return catalog.map((item) => ({
+      ...item,
+      toolNames: [...item.toolNames],
+      tools: item.tools.map((toolSummary) => ({
+        ...toolSummary,
+        access:
+          this.getExtensionTool({
+            extensionName: item.extensionName,
+            toolName: toolSummary.toolName
+          })?.access ?? toolSummary.access
+      }))
+    }))
   }
 
   createAiCapabilityToolBindings(

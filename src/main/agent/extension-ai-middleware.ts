@@ -43,11 +43,6 @@ const loadExtensionInputSchema = z.object({
   extensionName: z.string().trim().min(1)
 })
 
-const loadExtensionToolDetailsInputSchema = z.object({
-  extensionName: z.string().trim().min(1),
-  toolName: z.string().trim().min(1)
-})
-
 function buildExtensionBindingKey(capability: ResolvedExtensionAiCapability): string {
   return `${capability.extensionName}:${capability.capability.id}`
 }
@@ -90,12 +85,25 @@ function buildLoadedExtensionToolListSection(bindings: ExtensionAgentToolBinding
 
 function buildLoadedExtensionToolDetails(binding: ExtensionAgentToolBinding): string {
   return [
-    `Extension tool: ${binding.resolvedCapability.extensionName}.${binding.definition.name}`,
-    `Capability guide: ${binding.resolvedCapability.capability.guide}`,
+    `Tool name: ${binding.definition.name}`,
+    `Agent tool name: ${binding.agentToolName}`,
+    `Title: ${binding.definition.title}`,
     `Description: ${binding.definition.description}`,
     `Access: ${binding.definition.access}`,
-    `Input schema: ${formatToolSchema(binding)}`,
-    "Use callExtensionTool with args matching this schema."
+    `Display: ${JSON.stringify(binding.display, null, 2)}`,
+    `Presentation: ${JSON.stringify(binding.presentation, null, 2)}`,
+    `Input schema JSON: ${formatToolSchema(binding)}`
+  ].join("\n")
+}
+
+function buildLoadedExtensionToolDetailsSection(bindings: ExtensionAgentToolBinding[]): string {
+  if (bindings.length === 0) {
+    return "Tool details: none."
+  }
+
+  return [
+    "Tool details:",
+    ...bindings.map((binding) => `\n${buildLoadedExtensionToolDetails(binding)}`)
   ].join("\n")
 }
 
@@ -130,35 +138,38 @@ function buildLoadedCapabilityGuide(input: {
     `Permission Mode: ${input.permissionMode ?? resolvedCapability.permissionMode}`,
     callableStatus,
     description ? `Description: ${description}` : null,
-    "Use loadExtensionToolDetails before calling a specific extension tool."
+    "Call loadExtension to load full tool details and input schemas before callExtensionTool."
   ]
     .filter((line): line is string => line !== null)
     .join("\n")
 }
 
-function buildExtensionCatalogSection(input: {
-  catalog: ExtensionAiCapabilityCatalogItem[]
-  loadedCapabilities: ResolvedExtensionAiCapability[]
-}): string {
-  const loadedExtensionNames = new Set(
-    input.loadedCapabilities.map((capability) => capability.extensionName)
-  )
-  const catalog = input.catalog.filter((item) => !loadedExtensionNames.has(item.extensionName))
+function buildExtensionCatalogSection(catalog: ExtensionAiCapabilityCatalogItem[]): string {
   if (catalog.length === 0) {
     return ""
   }
 
   return [
-    "### Available Extensions",
-    "Use loadExtension only for one of the extensions listed below. Extensions already shown in Extension AI Capability Guides are intentionally omitted here because they are loaded; do not treat absence from this list as disconnected or unavailable.",
+    "### Extension Capability Catalog",
+    "This is a lightweight catalog. It intentionally omits full input schemas. Use loadExtension(extensionName) to load one extension's full tool details and schemas, then use callExtensionTool to execute a loaded tool.",
     ...catalog.map((item) =>
       [
-        `- ${item.title} (${item.extensionName})`,
-        `  Source id: ${item.sourceId}`,
-        `  Description: ${item.description}`,
-        item.mention ? `  Mention: @${item.mention.value}` : null
+        `- ${item.title}`,
+        `  extensionName: ${item.extensionName}`,
+        item.mention ? `  @mention: @${item.mention.value}` : "  @mention: none",
+        `  capability title: ${item.title}`,
+        `  capability description: ${item.description}`,
+        `  capability guide: ${item.guide}`,
+        `  toolNames: ${item.toolNames.length > 0 ? item.toolNames.join(", ") : "none"}`,
+        ...item.tools.map((toolSummary) =>
+          [
+            `  - tool: ${toolSummary.toolName}`,
+            `    title: ${toolSummary.title}`,
+            `    description: ${toolSummary.description}`,
+            `    access: ${toolSummary.access ?? "unknown"}`
+          ].join("\n")
+        )
       ]
-        .filter((line): line is string => line !== null)
         .join("\n")
     )
   ].join("\n")
@@ -237,13 +248,36 @@ function buildSessionPromptSections(options: CreateExtensionAiMiddlewareOptions)
   const loadedCapabilities = options.session.getAiCapabilities()
   const loadedBindings = options.session.getVisibleToolBindings()
   return [
-    buildExtensionCatalogSection({
-      catalog: options.aiCapabilityCatalog,
-      loadedCapabilities
-    }),
+    buildExtensionCatalogSection(options.aiCapabilityCatalog),
     buildExtensionInstructions(loadedCapabilities),
     buildExtensionAiCapabilityGuide(loadedCapabilities, options.permissionMode, loadedBindings)
   ].filter((section) => section.trim().length > 0)
+}
+
+function buildLoadExtensionOutput(input: {
+  bindings: ExtensionAgentToolBinding[]
+  loaded: boolean
+  permissionMode?: PermissionModeName
+  resolvedCapability: ResolvedExtensionAiCapability
+}): string {
+  const { bindings, loaded, resolvedCapability } = input
+  const description = resolveLocalizedText(resolvedCapability.capability.description, "en-US", "")
+
+  return [
+    `${loaded ? "Loaded extension" : "Extension already loaded"}: ${getModelCapabilityTitle(resolvedCapability)}`,
+    `Extension name: ${resolvedCapability.extensionName}`,
+    `Capability title: ${getModelCapabilityTitle(resolvedCapability)}`,
+    description ? `Capability description: ${description}` : null,
+    `Capability guide: ${resolvedCapability.capability.guide}`,
+    `Auth status: ${resolvedCapability.authStatus}`,
+    `Enabled: ${resolvedCapability.enabled ? "yes" : "no"}`,
+    `Permission mode: ${input.permissionMode ?? resolvedCapability.permissionMode}`,
+    buildLoadedExtensionToolListSection(bindings),
+    buildLoadedExtensionToolDetailsSection(bindings),
+    "Use callExtensionTool with extensionName, toolName, and args matching the loaded input schema JSON."
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n\n")
 }
 
 async function persistLoadedCapabilities(input: {
@@ -276,17 +310,12 @@ export function createExtensionAiMiddleware(options: CreateExtensionAiMiddleware
           .getVisibleToolBindings()
           .filter((binding) => binding.resolvedCapability.extensionName === input.extensionName)
 
-        return [
-          `Extension already loaded: ${getModelCapabilityTitle(existingCapability)}`,
-          `Extension name: ${existingCapability.extensionName}`,
-          buildLoadedCapabilityGuide({
-            aiToolBindings: bindings,
-            permissionMode: options.permissionMode,
-            resolvedCapability: existingCapability
-          }),
-          buildLoadedExtensionToolListSection(bindings),
-          "Use loadExtensionToolDetails for one tool before calling callExtensionTool."
-        ].join("\n\n")
+        return buildLoadExtensionOutput({
+          bindings,
+          loaded: false,
+          permissionMode: options.permissionMode,
+          resolvedCapability: existingCapability
+        })
       }
 
       const resolvedCapability = options.getAiCapabilityByExtensionName?.(input.extensionName)
@@ -311,45 +340,18 @@ export function createExtensionAiMiddleware(options: CreateExtensionAiMiddleware
           (binding) => binding.resolvedCapability.extensionName === resolvedCapability.extensionName
         )
 
-      return [
-        `Loaded extension: ${getModelCapabilityTitle(resolvedCapability)}`,
-        `Extension name: ${resolvedCapability.extensionName}`,
-        `Auth status: ${resolvedCapability.authStatus}`,
-        `Enabled: ${resolvedCapability.enabled ? "yes" : "no"}`,
-        buildLoadedCapabilityGuide({
-          aiToolBindings: bindings,
-          permissionMode: options.permissionMode,
-          resolvedCapability
-        }),
-        buildLoadedExtensionToolListSection(bindings),
-        "Use loadExtensionToolDetails for one tool before calling callExtensionTool."
-      ].join("\n\n")
+      return buildLoadExtensionOutput({
+        bindings,
+        loaded: true,
+        permissionMode: options.permissionMode,
+        resolvedCapability
+      })
     },
     {
       description:
-        "Load one extension when the user's request belongs to an available extension. Loading reveals its instructions, guide, auth status, and callable tool names. Use loadExtensionToolDetails for one tool's args before calling it.",
+        "Load one extension by extensionName. Returns that extension's full callable tool details, input schemas, display metadata, auth status, and permission state, and makes those tools available to callExtensionTool in the current session.",
       name: "loadExtension",
       schema: loadExtensionInputSchema
-    }
-  )
-  const loadExtensionToolDetails = tool(
-    async (input) => {
-      const binding = findBinding({
-        extensionName: input.extensionName,
-        session: options.session,
-        toolName: input.toolName
-      })
-      if (!binding) {
-        return `Extension tool unavailable: ${input.extensionName}.${input.toolName}. Call loadExtension first, then request details for a callable tool listed in the loaded extension guide.`
-      }
-
-      return buildLoadedExtensionToolDetails(binding)
-    },
-    {
-      description:
-        "Load the detailed documentation for one tool from an already loaded extension, including its input schema. Use this immediately before callExtensionTool when you need that tool's args.",
-      name: "loadExtensionToolDetails",
-      schema: loadExtensionToolDetailsInputSchema
     }
   )
   const callExtensionTool = tool(
@@ -377,7 +379,7 @@ export function createExtensionAiMiddleware(options: CreateExtensionAiMiddleware
     },
     {
       description:
-        "Execute a tool from a loaded extension. Use only tools listed after loadExtension or an explicit @ mention. Pass extensionName, toolName, and args matching the details from loadExtensionToolDetails.",
+        "Execute a tool from a loaded extension. Call loadExtension first to load the extension's full tool details and input schemas, then pass extensionName, toolName, and args.",
       name: "callExtensionTool",
       schema: callExtensionToolInputSchema
     }
@@ -385,7 +387,7 @@ export function createExtensionAiMiddleware(options: CreateExtensionAiMiddleware
 
   return createMiddleware({
     name: "openworkExtensionAiCapabilities",
-    tools: [loadExtensionTool, loadExtensionToolDetails, callExtensionTool],
+    tools: [loadExtensionTool, callExtensionTool],
     wrapModelCall: async (request, handler) => {
       const promptSections = buildSessionPromptSections(options)
       const nextRequest =

@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test, { mock } from "node:test"
 import { AIMessage } from "@langchain/core/messages"
 import type {
+  ExtensionAiCapabilityCatalogItem,
   ExtensionAiCapabilityTool,
   ExtensionToolContext,
   ExtensionToolDefinition,
@@ -91,6 +92,31 @@ function createSearchTool(
     }),
     name: "searchItems",
     title: "Search Items"
+  }
+}
+
+function createCatalogItem(
+  overrides: Partial<ExtensionAiCapabilityCatalogItem> = {}
+): ExtensionAiCapabilityCatalogItem {
+  const toolNames = overrides.toolNames ?? ["searchItems"]
+  const tools =
+    overrides.tools ??
+    toolNames.map((toolName) => ({
+      access: "read" as const,
+      description: `${toolName} for catalog.`,
+      title: `${toolName} catalog title`,
+      toolName
+    }))
+
+  return {
+    description: "Mock source for tests.",
+    extensionName: "mockExtension",
+    guide: "Use this source for mock work items.",
+    sourceId: "mockSource",
+    title: "Mock Source",
+    toolNames,
+    tools,
+    ...overrides
   }
 }
 
@@ -446,7 +472,7 @@ test("extension AI middleware injects loaded guides and executes through stable 
   const callExtensionTool = findMiddlewareTool(tools, "callExtensionTool")
   assert.deepEqual(
     tools.map((tool) => tool.name),
-    ["loadExtension", "loadExtensionToolDetails", "callExtensionTool"]
+    ["loadExtension", "callExtensionTool"]
   )
 
   const toolOutput = await callExtensionTool.invoke({
@@ -521,7 +547,7 @@ test("extension AI middleware injects loaded guides and executes through stable 
   })
 })
 
-test("loaded extension stays callable while catalog only lists unloaded extensions", async () => {
+test("loaded extension stays callable while catalog lists all lightweight tool summaries", async () => {
   const registry = new ExtensionToolRegistry({
     knownExtensionNames: ["mockExtension"]
   })
@@ -533,18 +559,23 @@ test("loaded extension stays callable while catalog only lists unloaded extensio
   })
   const middleware = createExtensionAiMiddleware({
     aiCapabilityCatalog: [
-      {
-        description: "Mock source for tests.",
-        extensionName: "mockExtension",
-        sourceId: "mockSource",
-        title: "Mock Source"
-      },
-      {
+      createCatalogItem(),
+      createCatalogItem({
         description: "Another source for tests.",
         extensionName: "otherExtension",
+        guide: "Use the other source for other work.",
         sourceId: "otherSource",
-        title: "Other Source"
-      }
+        title: "Other Source",
+        toolNames: ["searchOther"],
+        tools: [
+          {
+            access: "external",
+            description: "Search other things.",
+            title: "Search Other",
+            toolName: "searchOther"
+          }
+        ]
+      })
     ],
     session,
     threadId: "thread-1",
@@ -553,7 +584,7 @@ test("loaded extension stays callable while catalog only lists unloaded extensio
 
   assert.deepEqual(
     middleware.tools?.map((tool) => tool.name),
-    ["loadExtension", "loadExtensionToolDetails", "callExtensionTool"]
+    ["loadExtension", "callExtensionTool"]
   )
   assert.ok(middleware.tools)
   const tools = middleware.tools
@@ -574,22 +605,20 @@ test("loaded extension stays callable while catalog only lists unloaded extensio
   )
   assert.match(loadExtensionOutput, /Extension already loaded: Mock Source/)
   assert.match(loadExtensionOutput, /Callable tools: searchItems/)
-  assert.doesNotMatch(loadExtensionOutput, /Input schema/)
-
-  const loadExtensionToolDetails = findMiddlewareTool(
-    tools,
-    "loadExtensionToolDetails"
+  assert.match(loadExtensionOutput, /Tool details:/)
+  assert.match(loadExtensionOutput, /Tool name: searchItems/)
+  assert.match(loadExtensionOutput, /Agent tool name: ext__mockSource__profile_1__searchItems/)
+  assert.match(loadExtensionOutput, /Title: Search Items/)
+  assert.match(loadExtensionOutput, /Description: Search mock work items/)
+  assert.match(loadExtensionOutput, /Access: read/)
+  assert.match(loadExtensionOutput, /Display:/)
+  assert.match(loadExtensionOutput, /Presentation:/)
+  assert.match(loadExtensionOutput, /Input schema JSON:/)
+  assert.match(loadExtensionOutput, /"query"/)
+  assert.equal(
+    tools.some((candidate) => String(candidate.name) === "loadExtensionToolDetails"),
+    false
   )
-  const toolDetailsOutput = String(
-    await loadExtensionToolDetails.invoke({
-      extensionName: "mockExtension",
-      toolName: "searchItems"
-    })
-  )
-  assert.match(toolDetailsOutput, /Extension tool: mockExtension\.searchItems/)
-  assert.match(toolDetailsOutput, /Capability guide: Use this source for mock work items/)
-  assert.match(toolDetailsOutput, /Input schema:/)
-  assert.match(toolDetailsOutput, /"query"/)
 
   const callExtensionTool = findMiddlewareTool(tools, "callExtensionTool")
   const toolOutput = await callExtensionTool.invoke({
@@ -620,9 +649,16 @@ test("loaded extension stays callable while catalog only lists unloaded extensio
 
   assert.match(observedSystemPrompt, /### Extension AI Capability Guides/)
   assert.match(observedSystemPrompt, /### Extension Instructions/)
-  assert.match(observedSystemPrompt, /### Available Extensions/)
-  assert.doesNotMatch(observedSystemPrompt, /Mock Source \(mockExtension\)/)
-  assert.match(observedSystemPrompt, /Other Source \(otherExtension\)/)
+  assert.match(observedSystemPrompt, /### Extension Capability Catalog/)
+  assert.match(observedSystemPrompt, /extensionName: mockExtension/)
+  assert.match(observedSystemPrompt, /extensionName: otherExtension/)
+  assert.match(observedSystemPrompt, /capability guide: Use this source for mock work items/)
+  assert.match(observedSystemPrompt, /toolNames: searchItems/)
+  assert.match(observedSystemPrompt, /access: read/)
+  assert.match(observedSystemPrompt, /toolNames: searchOther/)
+  assert.match(observedSystemPrompt, /access: external/)
+  assert.doesNotMatch(observedSystemPrompt, /Input schema JSON/)
+  assert.doesNotMatch(observedSystemPrompt, /"query"/)
 })
 
 test("extension AI middleware keeps model tools stable after all catalog extensions are loaded", async () => {
@@ -636,14 +672,7 @@ test("extension AI middleware keeps model tools stable after all catalog extensi
     registry
   })
   const middleware = createExtensionAiMiddleware({
-    aiCapabilityCatalog: [
-      {
-        description: "Mock source for tests.",
-        extensionName: "mockExtension",
-        sourceId: "mockSource",
-        title: "Mock Source"
-      }
-    ],
+    aiCapabilityCatalog: [createCatalogItem()],
     session,
     threadId: "thread-1",
     workspacePath: "/workspace"
@@ -669,12 +698,13 @@ test("extension AI middleware keeps model tools stable after all catalog extensi
     }
   )
 
-  assert.deepEqual(observedTools, ["loadExtension", "loadExtensionToolDetails", "callExtensionTool"])
+  assert.deepEqual(observedTools, ["loadExtension", "callExtensionTool"])
   assert.equal(observedToolRefs[0], registeredTools[0])
   assert.equal(observedToolRefs[1], registeredTools[1])
-  assert.equal(observedToolRefs[2], registeredTools[2])
-  assert.doesNotMatch(observedSystemPrompt, /### Available Extensions/)
+  assert.match(observedSystemPrompt, /### Extension Capability Catalog/)
+  assert.match(observedSystemPrompt, /extensionName: mockExtension/)
   assert.match(observedSystemPrompt, /### Extension AI Capability Guides/)
+  assert.doesNotMatch(observedSystemPrompt, /loadExtensionToolDetails/)
 })
 
 test("extension AI middleware persists loaded capabilities using runtime run id fallback", async () => {
@@ -692,14 +722,7 @@ test("extension AI middleware persists loaded capabilities using runtime run id 
     runId: string
   }> = []
   const middleware = createExtensionAiMiddleware({
-    aiCapabilityCatalog: [
-      {
-        description: "Mock source for tests.",
-        extensionName: "mockExtension",
-        sourceId: "mockSource",
-        title: "Mock Source"
-      }
-    ],
+    aiCapabilityCatalog: [createCatalogItem()],
     getAiCapabilityByExtensionName: (extensionName) =>
       extensionName === "mockExtension" ? createAiCapability() : null,
     onLoadedAiCapabilitiesChanged: (change) => {
@@ -799,6 +822,6 @@ test("extension AI runtime exposes only read bindings in explore mode", async ()
   assert.deepEqual(runtime.visibleAiToolBindings, [])
   assert.deepEqual(
     runtime.middleware.tools?.map((tool) => tool.name),
-    ["loadExtension", "loadExtensionToolDetails", "callExtensionTool"]
+    ["loadExtension", "callExtensionTool"]
   )
 })

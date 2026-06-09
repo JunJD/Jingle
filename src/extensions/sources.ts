@@ -300,6 +300,21 @@ function toToolExposure(input: {
   }
 }
 
+function toCatalogToolSummary(input: {
+  capability: ExtensionAiCapability
+  locale: AppLocale
+  toolName: string
+}) {
+  const display = input.capability.toolDisplays?.[input.toolName]
+  const title = resolveLocalizedText(display?.title, input.locale, input.toolName)
+
+  return {
+    description: resolveLocalizedText(display?.description, input.locale, title),
+    title,
+    toolName: input.toolName
+  }
+}
+
 function resolveEntryCapability(
   entry: NativeExtensionAiCapabilityRegistryEntry,
   input: ResolveNativeExtensionAiCapabilityInput = {}
@@ -430,9 +445,18 @@ export function buildNativeExtensionAiCapabilityCatalogItem(input: {
       title
     ),
     extensionName: input.manifest.name,
+    guide: input.capability.guide,
     sourceId: input.capability.id,
     supportedPlatforms: supportedPlatforms ? [...supportedPlatforms] : undefined,
-    title
+    title,
+    toolNames: [...input.capability.toolNames],
+    tools: input.capability.toolNames.map((toolName) =>
+      toCatalogToolSummary({
+        capability: input.capability,
+        locale,
+        toolName
+      })
+    )
   }
 
   if (input.capability.mention) {
