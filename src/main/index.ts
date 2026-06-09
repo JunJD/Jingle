@@ -10,6 +10,10 @@ import { createSettingsWindow, showSettingsWindow } from "./windows/settings-win
 import { registerNativeExtensionAssetProtocol } from "./native-extensions/asset-protocol"
 import { NATIVE_EXTENSION_ASSET_PROTOCOL } from "./native-extensions/assets"
 import { startNativeMinimalIsland, stopNativeMinimalIsland } from "./services/native-minimal-island"
+import {
+  REGISTER_DEV_PROTOCOL_CLIENT_ENV,
+  resolveJingleProtocolRegistrationMode
+} from "./protocol-client-registration"
 import type { MainWindowNavigationPayload } from "@shared/main-window"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
@@ -150,13 +154,25 @@ function findJingleProtocolUrl(entries: readonly string[]): string | null {
 }
 
 function registerJingleProtocolClient(): void {
-  if (bypassSingleInstanceLock) {
+  const mode = resolveJingleProtocolRegistrationMode({
+    bypassSingleInstanceLock,
+    isDev,
+    registerDevProtocolClient: process.env[REGISTER_DEV_PROTOCOL_CLIENT_ENV]
+  })
+
+  if (!mode) {
     return
   }
 
-  const registered = isDev
-    ? app.setAsDefaultProtocolClient(JINGLE_PROTOCOL, process.execPath, [app.getAppPath()])
-    : app.setAsDefaultProtocolClient(JINGLE_PROTOCOL)
+  if (mode === "unregister-dev") {
+    app.removeAsDefaultProtocolClient(JINGLE_PROTOCOL, process.execPath, [app.getAppPath()])
+    return
+  }
+
+  const registered =
+    mode === "register-dev"
+      ? app.setAsDefaultProtocolClient(JINGLE_PROTOCOL, process.execPath, [app.getAppPath()])
+      : app.setAsDefaultProtocolClient(JINGLE_PROTOCOL)
 
   if (!registered) {
     console.warn(`[Main] Failed to register ${JINGLE_PROTOCOL}:// protocol handler`)
