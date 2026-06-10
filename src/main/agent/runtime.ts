@@ -221,7 +221,6 @@ export async function createAgentRuntime(
     getExtensionExecutionContext: options.getExtensionExecutionContext,
     getExtensionPreferences: options.getExtensionPreferences,
     onLoadedAiCapabilitiesChanged: options.onLoadedAiCapabilitiesChanged,
-    permissionMode,
     registry: extensionToolRegistry,
     runId,
     threadId,

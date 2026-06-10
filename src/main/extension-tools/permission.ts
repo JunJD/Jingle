@@ -2,8 +2,7 @@ import type {
   ExtensionPermissionDecision,
   ExtensionToolConfirmation,
   ExtensionToolConfirmationFact,
-  ExtensionToolConfirmationInfoFact,
-  PermissionModeName
+  ExtensionToolConfirmationInfoFact
 } from "@shared/extension-sources"
 import { resolveExtensionToolPermission } from "@shared/extension-sources"
 import type { NativeExtensionExecutionContext } from "@shared/native-extensions"
@@ -52,7 +51,6 @@ export function createDynamicExtensionToolApprovalPolicyProvider(input: {
   getExtensionExecutionContext?: (extensionName: string) => NativeExtensionExecutionContext
   getExtensionPreferences?: (extensionName: string) => Record<string, unknown>
   getBindings: () => ExtensionAgentToolBinding[]
-  permissionMode?: PermissionModeName
 }): ExtensionToolApprovalPolicyProvider {
   function getBindingForExtensionToolCall(
     args: Record<string, unknown>
@@ -86,7 +84,7 @@ export function createDynamicExtensionToolApprovalPolicyProvider(input: {
   }
 
   function buildPolicy(binding: ExtensionAgentToolBinding): ExtensionToolApprovalPolicy {
-    const mode = input.permissionMode ?? binding.resolvedCapability.permissionMode
+    const mode = binding.resolvedCapability.permissionMode
     return {
       binding,
       decision: resolveExtensionToolPermission({
@@ -100,7 +98,7 @@ export function createDynamicExtensionToolApprovalPolicyProvider(input: {
     binding: ExtensionAgentToolBinding,
     args: Record<string, unknown>
   ): Promise<ToolApprovalItem> {
-    const mode = input.permissionMode ?? binding.resolvedCapability.permissionMode
+    const mode = binding.resolvedCapability.permissionMode
     const decision = resolveExtensionToolPermission({
       access: binding.definition.access,
       mode

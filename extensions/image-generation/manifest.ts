@@ -17,6 +17,7 @@ export const imageGenerationManifest = defineNativeExtensionManifest({
       label: l("Image Generation", "生图"),
       value: "image"
     },
+    permissionMode: "auto",
     publicPreferenceNames: ["baseUrl"],
     requiredPreferenceNames: ["apiKey"],
     title: l("Image Generation", "生图"),

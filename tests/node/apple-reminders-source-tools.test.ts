@@ -146,15 +146,24 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
       sourceId: "appleReminders",
       supportedPlatforms: ["darwin"],
       value: "apple-reminders"
+    },
+    {
+      extensionName: "image-generation",
+      icon: "assets/icon.svg",
+      iconName: "image",
+      label: "生图",
+      sourceId: "image",
+      supportedPlatforms: undefined,
+      value: "image"
     }
   ])
   assert.deepEqual(
     listNativeExtensionSourceMentions("darwin").map((mention) => mention.sourceId),
-    ["github", "notion", "appleReminders"]
+    ["github", "notion", "appleReminders", "image"]
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("linux").map((mention) => mention.sourceId),
-    ["github", "notion"]
+    ["github", "notion", "image"]
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("darwin", "zh-CN").map((mention) => ({
@@ -164,7 +173,8 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
     [
       { label: "GitHub", sourceId: "github" },
       { label: "Notion", sourceId: "notion" },
-      { label: "提醒事项", sourceId: "appleReminders" }
+      { label: "提醒事项", sourceId: "appleReminders" },
+      { label: "生图", sourceId: "image" }
     ]
   )
 
@@ -269,7 +279,7 @@ test("GitHub connected connection state exposes the current manifest tool names"
 test("extension AI capability catalog does not read preferences", () => {
   assert.deepEqual(
     listNativeExtensionAiCapabilityCatalog("darwin").map((item) => item.extensionName),
-    ["github", "notion", "apple-reminders"]
+    ["github", "notion", "apple-reminders", "image-generation"]
   )
 })
 

@@ -61,7 +61,6 @@ export async function beginAgentRun(
       [RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]:
         createRunExtensionAiCapabilitiesSnapshot({
           aiCapabilities,
-          permissionMode,
           runId
         })
     }
@@ -80,14 +79,12 @@ export async function updateRunExtensionAiCapabilitiesSnapshot(
   runId: string,
   input: {
     aiCapabilities: ResolvedExtensionAiCapability[]
-    permissionMode: PermissionModeName
   }
 ): Promise<void> {
   await updateRunMetadata(runId, {
     merge: (run) =>
       mergeRunExtensionAiCapabilitiesSnapshotMetadata(run, {
         aiCapabilities: input.aiCapabilities,
-        permissionMode: input.permissionMode,
         runId
       })
   })
@@ -136,7 +133,6 @@ function mergeRunExtensionAiCapabilitiesSnapshotMetadata(
   run: ExistingRun,
   input: {
     aiCapabilities: ResolvedExtensionAiCapability[]
-    permissionMode: PermissionModeName
     runId: string
   }
 ): Record<string, unknown> {
@@ -144,7 +140,6 @@ function mergeRunExtensionAiCapabilitiesSnapshotMetadata(
     [RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]: createRunExtensionAiCapabilitiesSnapshot(
       {
         aiCapabilities: input.aiCapabilities,
-        permissionMode: input.permissionMode,
         runId: input.runId
       }
     )

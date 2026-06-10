@@ -206,12 +206,12 @@ export function createToolPermissionRuntime(
         return executeDecision
       }
 
-      if (request.toolName === "callExtensionTool") {
+      if (request.toolName === "callExtension") {
         const extensionToolPolicyProvider = options.extensionToolPolicyProvider
         if (!extensionToolPolicyProvider) {
           return deny(
             toolArgs,
-            "Extension tool unavailable. Extension tools must be loaded before callExtensionTool can run."
+            "Extension tool unavailable. Extension tools must be loaded before callExtension can run."
           )
         }
 
@@ -243,7 +243,7 @@ export function createToolPermissionRuntime(
       if (isExtensionAgentToolName(request.toolName)) {
         return deny(
           toolArgs,
-          "Extension tools must be called through callExtensionTool after the extension is loaded."
+          "Extension tools must be called through callExtension after the extension is loaded."
         )
       }
 

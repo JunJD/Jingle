@@ -344,6 +344,7 @@ export const extensionAiCapabilitySchema = z
       })
       .strict()
       .optional(),
+    permissionMode: z.custom<PermissionModeName>(isPermissionModeName).optional(),
     publicPreferenceNames: z.array(z.string().trim().min(1)).optional(),
     requiredPreferenceNames: z.array(z.string().trim().min(1)).optional(),
     supportedPlatforms: z.array(z.enum(["darwin", "linux", "win32"])).optional(),
@@ -426,7 +427,6 @@ export function resolveExtensionToolPermission(input: {
 export function createRunExtensionAiCapabilitiesSnapshot(input: {
   aiCapabilities: ResolvedExtensionAiCapability[]
   now?: string
-  permissionMode: PermissionModeName
   runId: string
 }): RunExtensionAiCapabilitySnapshot[] {
   const createdAt = input.now ?? new Date().toISOString()
@@ -441,7 +441,7 @@ export function createRunExtensionAiCapabilitiesSnapshot(input: {
     enabledToolNamesSnapshot: [...resolvedCapability.enabledToolNames],
     extensionName: resolvedCapability.extensionName,
     id: `${input.runId}:${resolvedCapability.extensionName}:${resolvedCapability.capability.id}`,
-    permissionModeSnapshot: input.permissionMode,
+    permissionModeSnapshot: resolvedCapability.permissionMode,
     publicConfigSnapshot: structuredClone(resolvedCapability.publicConfig),
     runId: input.runId
   }))

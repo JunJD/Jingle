@@ -1,4 +1,5 @@
 import { parseToolInputWithSchema } from "../agent/tool-input-schema"
+import type { ExtensionToolOutput, ExtensionToolContext } from "@shared/extension-sources"
 import type { NativeExtensionExecutionContext } from "@shared/native-extensions"
 import type { ExtensionAgentToolBinding } from "./registry"
 
@@ -10,6 +11,12 @@ export interface ExecuteExtensionAgentToolInput {
   runId?: string | null
   threadId: string
   workspacePath: string
+}
+
+export interface ExtensionToolExecutionResult {
+  outputs: ExtensionToolOutput[]
+  output: unknown
+  serializedOutput: string
 }
 
 export interface ExtensionToolExecutorOptions {
@@ -51,7 +58,9 @@ export class ExtensionToolExecutor {
     return this.bindingsByAgentToolName.get(agentToolName) ?? null
   }
 
-  async executeAgentTool(input: ExecuteExtensionAgentToolInput): Promise<string> {
+  async executeAgentToolWithResult(
+    input: ExecuteExtensionAgentToolInput
+  ): Promise<ExtensionToolExecutionResult> {
     const binding = this.getBinding(input.agentToolName)
     if (!binding) {
       throw new Error(`Unknown extension agent tool "${input.agentToolName}".`)
@@ -67,22 +76,35 @@ export class ExtensionToolExecutor {
       executionContext?.extensionPreferences ??
       this.getExtensionPreferences?.(binding.definition.extensionName) ??
       binding.resolvedCapability.publicConfig
+    const context: ExtensionToolContext = {
+      agentToolName: input.agentToolName,
+      capabilityId: binding.capability.id,
+      connection: executionContext?.connection,
+      extensionName: binding.definition.extensionName,
+      extensionPreferences,
+      runId: input.runId,
+      threadId: input.threadId,
+      toolName: binding.definition.name,
+      workspacePath: input.workspacePath
+    }
 
-    const result = await binding.definition.handler(
-      {
-        agentToolName: input.agentToolName,
-        capabilityId: binding.capability.id,
-        connection: executionContext?.connection,
-        extensionName: binding.definition.extensionName,
-        extensionPreferences,
-        runId: input.runId,
-        threadId: input.threadId,
-        toolName: binding.definition.name,
-        workspacePath: input.workspacePath
-      },
-      parsedInput
-    )
+    const output = await binding.definition.handler(context, parsedInput)
+    const outputs = binding.definition.outputs
+      ? await binding.definition.outputs(output, {
+          ...context,
+          input: parsedInput
+        })
+      : []
 
-    return serializeExtensionToolOutput(result, this.maxAgentOutputChars)
+    return {
+      outputs,
+      output,
+      serializedOutput: serializeExtensionToolOutput(output, this.maxAgentOutputChars)
+    }
+  }
+
+  async executeAgentTool(input: ExecuteExtensionAgentToolInput): Promise<string> {
+    const result = await this.executeAgentToolWithResult(input)
+    return result.serializedOutput
   }
 }

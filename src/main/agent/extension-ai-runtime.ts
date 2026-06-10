@@ -1,6 +1,5 @@
 import type {
   ExtensionAiCapabilityCatalogItem,
-  PermissionModeName,
   ResolvedExtensionAiCapability
 } from "@shared/extension-sources"
 import type { NativeExtensionExecutionContext } from "@shared/native-extensions"
@@ -21,7 +20,6 @@ export interface CreateExtensionAiRuntimeOptions {
   onLoadedAiCapabilitiesChanged?: (
     change: LoadedExtensionAiCapabilitiesChange
   ) => Promise<void> | void
-  permissionMode?: PermissionModeName
   registry: ExtensionToolRegistry
   runId?: string | null
   threadId: string
@@ -29,10 +27,9 @@ export interface CreateExtensionAiRuntimeOptions {
 }
 
 function isBindingVisibleInPermissionMode(
-  binding: ExtensionAgentToolBinding,
-  permissionMode?: PermissionModeName
+  binding: ExtensionAgentToolBinding
 ): boolean {
-  const mode = permissionMode ?? binding.resolvedCapability.permissionMode
+  const mode = binding.resolvedCapability.permissionMode
   return mode !== "explore" || binding.definition.access === "read"
 }
 
@@ -42,7 +39,6 @@ function buildCapabilityKey(capability: ResolvedExtensionAiCapability): string {
 
 export function createExtensionAiSession(input: {
   aiCapabilities: ResolvedExtensionAiCapability[]
-  permissionMode?: PermissionModeName
   registry: ExtensionToolRegistry
 }): ExtensionAiSession {
   const loadedCapabilitiesByKey = new Map<string, ResolvedExtensionAiCapability>()
@@ -72,12 +68,11 @@ export function createExtensionAiSession(input: {
   }
 
   return {
-    permissionMode: input.permissionMode,
     getAiCapabilities: () => Array.from(loadedCapabilitiesByKey.values()),
     getAllToolBindings: () => Array.from(allToolBindingsByName.values()),
     getVisibleToolBindings: () =>
       Array.from(allToolBindingsByName.values()).filter((binding) =>
-        isBindingVisibleInPermissionMode(binding, input.permissionMode)
+        isBindingVisibleInPermissionMode(binding)
       ),
     loadAiCapability
   }
@@ -86,14 +81,12 @@ export function createExtensionAiSession(input: {
 export function createExtensionAiRuntime(options: CreateExtensionAiRuntimeOptions) {
   const session = createExtensionAiSession({
     aiCapabilities: options.aiCapabilities,
-    permissionMode: options.permissionMode,
     registry: options.registry
   })
   const approvalPolicyProvider = createDynamicExtensionToolApprovalPolicyProvider({
     getExtensionExecutionContext: options.getExtensionExecutionContext,
     getExtensionPreferences: options.getExtensionPreferences,
-    getBindings: session.getAllToolBindings,
-    permissionMode: options.permissionMode
+    getBindings: session.getAllToolBindings
   })
   const middleware = createExtensionAiMiddleware({
     aiCapabilityCatalog: options.aiCapabilityCatalog ?? [],
@@ -101,7 +94,6 @@ export function createExtensionAiRuntime(options: CreateExtensionAiRuntimeOption
     getExtensionExecutionContext: options.getExtensionExecutionContext,
     getExtensionPreferences: options.getExtensionPreferences,
     onLoadedAiCapabilitiesChanged: options.onLoadedAiCapabilitiesChanged,
-    permissionMode: options.permissionMode,
     runId: options.runId,
     session,
     threadId: options.threadId,

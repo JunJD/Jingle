@@ -409,7 +409,7 @@ test("run failure preserves interrupted status when pending HITL remains", async
     thread_id: threadId,
     run_id: runId,
     tool_call_id: "tool-call-still-pending",
-    tool_name: "callExtensionTool",
+    tool_name: "callExtension",
     tool_args: {
       args: {
         reminderId: "reminder-2"
@@ -475,7 +475,6 @@ test("agent run metadata snapshots permission mode and preserves it through resu
   assert.deepEqual(firstSnapshot?.publicConfigSnapshot, {})
   const expectedAiCapabilitiesSnapshot = createRunExtensionAiCapabilitiesSnapshot({
     aiCapabilities,
-    permissionMode: "auto",
     runId
   }).map((snapshot) => ({
     ...snapshot,
@@ -854,8 +853,7 @@ test("run metadata updates preserve loaded extension snapshots and resume metada
 
   await Promise.all([
     updateRunExtensionAiCapabilitiesSnapshot(runId, {
-      aiCapabilities,
-      permissionMode: "ask-to-edit"
+      aiCapabilities
     }),
     resumeAgentRun(threadId, runId, {
       requestId: "request-loaded-extension",

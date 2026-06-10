@@ -336,6 +336,8 @@ function resolveEntryCapability(
   const enabledToolNames =
     enabled && authStatus === "connected" ? [...entry.capability.toolNames] : []
   const locale = input.locale ?? DEFAULT_APP_LOCALE
+  const permissionMode =
+    entry.capability.permissionMode ?? input.permissionMode ?? DEFAULT_PERMISSION_MODE
 
   return {
     authStatus,
@@ -346,7 +348,7 @@ function resolveEntryCapability(
     enabledToolNames,
     extensionName: entry.manifest.name,
     iconName: entry.manifest.iconName,
-    permissionMode: input.permissionMode ?? DEFAULT_PERMISSION_MODE,
+    permissionMode,
     publicConfig: resolvePublicConfig({
       connectionState
     }),

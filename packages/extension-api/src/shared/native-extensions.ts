@@ -12,6 +12,7 @@ import type {
 } from "./launcher-command-owner"
 import type { ExtensionToolDefinition } from "./extension-sources"
 import type { IpcErrorPayload } from "./ipc-error"
+import type { PermissionModeName } from "./permission-mode"
 
 export type NativeExtensionCommandMode = "background" | "menu-bar" | "no-view" | "view"
 export type NativeExtensionIcon = string
@@ -202,6 +203,7 @@ export interface NativeExtensionAiCapability {
   id: string
   instructions?: string[]
   mention?: NativeExtensionAiCapabilityMentionManifest
+  permissionMode?: PermissionModeName
   publicPreferenceNames?: string[]
   requiredPreferenceNames?: string[]
   supportedPlatforms?: NativeExtensionSupportedPlatform[]

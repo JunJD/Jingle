@@ -2,7 +2,11 @@ import { createHash, randomUUID } from "node:crypto"
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { basename, join, relative, resolve } from "node:path"
 import { z } from "zod/v4"
-import type { ExtensionToolContext, ExtensionToolDefinition } from "@openwork/extension-api"
+import type {
+  ExtensionToolContext,
+  ExtensionToolDefinition,
+  ExtensionToolOutput
+} from "@openwork/extension-api"
 
 const DEFAULT_BASE_URL = "https://www.xiongxiongai.online"
 const DEFAULT_MODEL = "gpt-image-2"
@@ -383,23 +387,34 @@ async function editImage(
   })
 }
 
+function generatedImageOutputs(output: GeneratedImageOutput): ExtensionToolOutput[] {
+  return output.files.map((file) => ({
+    kind: "file",
+    mimeType: file.mimeType,
+    path: file.path,
+    title: file.title
+  }))
+}
+
 export function createImageGenerationTools(): ExtensionToolDefinition[] {
-  return [
-    {
-      access: "external",
-      description: "Generate one or more PNG images from a natural language prompt.",
-      inputSchema: generateImageInputSchema,
-      name: "generateImage",
-      title: "Generate Image",
-      handler: generateImage
-    },
-    {
-      access: "external",
-      description: "Edit one or more workspace image files with a natural language instruction.",
-      inputSchema: editImageInputSchema,
-      name: "editImage",
-      title: "Edit Image",
-      handler: editImage
-    }
-  ]
+  const generateImageTool: ExtensionToolDefinition<GenerateImageInput, GeneratedImageOutput> = {
+    access: "external",
+    outputs: generatedImageOutputs,
+    description: "Generate one or more PNG images from a natural language prompt.",
+    inputSchema: generateImageInputSchema,
+    name: "generateImage",
+    title: "Generate Image",
+    handler: generateImage
+  }
+  const editImageTool: ExtensionToolDefinition<EditImageInput, GeneratedImageOutput> = {
+    access: "external",
+    outputs: generatedImageOutputs,
+    description: "Edit one or more workspace image files with a natural language instruction.",
+    inputSchema: editImageInputSchema,
+    name: "editImage",
+    title: "Edit Image",
+    handler: editImage
+  }
+
+  return [generateImageTool, editImageTool]
 }

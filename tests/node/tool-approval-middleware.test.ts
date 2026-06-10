@@ -298,7 +298,7 @@ test("direct extension agent tool calls are denied before reaching the handler",
   assert.equal(result.status, "error")
   assert.match(
     typeof result.content === "string" ? result.content : "",
-    /called through callExtensionTool/i
+    /called through callExtension/i
   )
 })
 
@@ -315,10 +315,10 @@ test("direct extension agent tool permission checks are denied", async () => {
   })
 
   assert.equal(decision.disposition, "deny")
-  assert.match(decision.reason ?? "", /called through callExtensionTool/i)
+  assert.match(decision.reason ?? "", /called through callExtension/i)
 })
 
-test("ask-to-edit callExtensionTool resolves approval from the underlying extension tool", async () => {
+test("ask-to-edit callExtension resolves approval from the underlying extension tool", async () => {
   const permissionRuntime = createToolPermissionRuntime({
     extensionToolPolicyProvider: createExtensionApprovalPolicyProvider("ask-to-edit")
   })
@@ -331,7 +331,7 @@ test("ask-to-edit callExtensionTool resolves approval from the underlying extens
       extensionName: "mockExtension",
       toolName: "createItem"
     },
-    toolName: "callExtensionTool"
+    toolName: "callExtension"
   })
 
   assert.equal(decision.disposition, "require_approval")
@@ -356,7 +356,7 @@ test("ask-to-edit callExtensionTool resolves approval from the underlying extens
   })
 })
 
-test("callExtensionTool is denied when the extension binding is not loaded during approval", async () => {
+test("callExtension is denied when the extension binding is not loaded during approval", async () => {
   const { aiCapability, registry } = createExtensionApprovalFixture("ask-to-edit")
   let loaded = false
   const middleware = createToolApprovalMiddleware({
@@ -376,7 +376,7 @@ test("callExtensionTool is denied when the extension binding is not loaded durin
         toolName: "createItem"
       },
       id: "tool-call-extension-race",
-      name: "callExtensionTool",
+      name: "callExtension",
       type: "tool_call"
     }
   }
@@ -386,7 +386,7 @@ test("callExtensionTool is denied when the extension binding is not loaded durin
     handlerCalls += 1
     return new ToolMessage({
       content: "created",
-      name: "callExtensionTool",
+      name: "callExtension",
       tool_call_id: "tool-call-extension-race"
     })
   })) as ToolMessage
@@ -396,7 +396,7 @@ test("callExtensionTool is denied when the extension binding is not loaded durin
   assert.match(typeof result.content === "string" ? result.content : "", /loadExtension first/i)
 })
 
-test("explore-mode callExtensionTool write calls return an error without reaching the handler", async () => {
+test("explore-mode callExtension write calls return an error without reaching the handler", async () => {
   const middleware = createToolApprovalMiddleware({
     extensionToolPolicyProvider: createExtensionApprovalPolicyProvider("explore")
   })
@@ -412,7 +412,7 @@ test("explore-mode callExtensionTool write calls return an error without reachin
         toolName: "createItem"
       },
       id: "tool-call-extension-deny",
-      name: "callExtensionTool",
+      name: "callExtension",
       type: "tool_call"
     }
   }
@@ -421,7 +421,7 @@ test("explore-mode callExtensionTool write calls return an error without reachin
     handlerCalls += 1
     return new ToolMessage({
       content: "should not run",
-      name: "callExtensionTool",
+      name: "callExtension",
       tool_call_id: "tool-call-extension-deny"
     })
   })) as ToolMessage

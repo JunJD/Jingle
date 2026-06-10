@@ -159,7 +159,7 @@ test("extension permission mode resolves read, write, and external tools", () =>
   )
   assert.equal(
     resolveExtensionToolPermission({
-      access: "write",
+      access: "external",
       mode: "ask-to-edit"
     }).disposition,
     "require_approval"
@@ -272,7 +272,7 @@ test("extension AI capability binding skips stale enabled tool names", () => {
       bindings.map((binding) => binding.agentToolName),
       ["ext__mockSource__profile_1__searchItems"]
     )
-    const guide = buildExtensionAiCapabilityGuide([aiCapability], undefined, bindings)
+    const guide = buildExtensionAiCapabilityGuide([aiCapability], bindings)
     assert.match(guide, /Callable tools: searchItems/)
     assert.doesNotMatch(guide, /removedTool/)
   } finally {
@@ -394,6 +394,44 @@ test("extension tool executor injects resolved extension preferences", async () 
   })
 })
 
+test("extension tool executor returns outputs declared by the tool definition", async () => {
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  const searchToolWithOutputs: ExtensionToolDefinition<{ query: string }, { result: string }> = {
+    ...createSearchTool(),
+    outputs: (output, context) => [
+      {
+        kind: "summary",
+        text: `${context.input.query}: ${output.result}`,
+        title: "Search summary"
+      }
+    ]
+  }
+  registry.registerExtensionTools("mockExtension", [searchToolWithOutputs])
+
+  const [binding] = registry.createAiCapabilityToolBindings([createAiCapability()])
+  const executor = new ExtensionToolExecutor({ bindings: [binding] })
+
+  const result = await executor.executeAgentToolWithResult({
+    agentToolName: "ext__mockSource__profile_1__searchItems",
+    args: {
+      query: "alpha"
+    },
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+
+  assert.deepEqual(result.outputs, [
+    {
+      kind: "summary",
+      text: "alpha: alpha",
+      title: "Search summary"
+    }
+  ])
+  assert.equal(result.serializedOutput, '{\n  "result": "alpha"\n}')
+})
+
 test("extension tool executor prefers execution context over preference fallback", async () => {
   let observedContext: ExtensionToolContext | null = null
   const registry = new ExtensionToolRegistry({
@@ -469,13 +507,13 @@ test("extension AI middleware injects loaded guides and executes through stable 
 
   assert.ok(middleware.tools)
   const tools = middleware.tools
-  const callExtensionTool = findMiddlewareTool(tools, "callExtensionTool")
+  const callExtension = findMiddlewareTool(tools, "callExtension")
   assert.deepEqual(
     tools.map((tool) => tool.name),
-    ["loadExtension", "callExtensionTool"]
+    ["loadExtension", "callExtension"]
   )
 
-  const toolOutput = await callExtensionTool.invoke({
+  const toolOutput = await callExtension.invoke({
     args: {
       query: "beta"
     },
@@ -523,7 +561,7 @@ test("extension AI middleware injects loaded guides and executes through stable 
               toolName: "searchItems"
             },
             id: "tool-call-1",
-            name: "callExtensionTool",
+            name: "callExtension",
             type: "tool_call"
           }
         ]
@@ -545,6 +583,47 @@ test("extension AI middleware injects loaded guides and executes through stable 
     capabilityTitle: "Mock Source",
     kind: "extension"
   })
+})
+
+test("extension AI middleware requires tool call ids for declared outputs", async () => {
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  const searchToolWithOutputs: ExtensionToolDefinition<{ query: string }, { result: string }> = {
+    ...createSearchTool(),
+    outputs: (output) => [
+      {
+        kind: "summary",
+        text: output.result,
+        title: "Search summary"
+      }
+    ]
+  }
+  registry.registerExtensionTools("mockExtension", [searchToolWithOutputs])
+
+  const session = createExtensionAiSession({
+    aiCapabilities: [createAiCapability()],
+    registry
+  })
+  const middleware = createExtensionAiMiddleware({
+    aiCapabilityCatalog: [],
+    session,
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.ok(middleware.tools)
+  const callExtension = findMiddlewareTool(middleware.tools, "callExtension")
+
+  await assert.rejects(
+    callExtension.invoke({
+      args: {
+        query: "beta"
+      },
+      extensionName: "mockExtension",
+      toolName: "searchItems"
+    }),
+    /Extension tool outputs require a tool call id/
+  )
 })
 
 test("loaded extension stays callable while catalog lists all lightweight tool summaries", async () => {
@@ -584,15 +663,15 @@ test("loaded extension stays callable while catalog lists all lightweight tool s
 
   assert.deepEqual(
     middleware.tools?.map((tool) => tool.name),
-    ["loadExtension", "callExtensionTool"]
+    ["loadExtension", "callExtension"]
   )
   assert.ok(middleware.tools)
   const tools = middleware.tools
   const loadExtensionTool = findMiddlewareTool(tools, "loadExtension")
   const loadExtensionSchema = (
-    (tools.find((candidate) => candidate.name === "loadExtension")?.schema as
+    tools.find((candidate) => candidate.name === "loadExtension")?.schema as
       | { toJSONSchema?: () => { properties?: Record<string, unknown> } }
-      | undefined)
+      | undefined
   )?.toJSONSchema?.()
   assert.deepEqual(loadExtensionSchema?.properties?.extensionName, {
     minLength: 1,
@@ -620,8 +699,8 @@ test("loaded extension stays callable while catalog lists all lightweight tool s
     false
   )
 
-  const callExtensionTool = findMiddlewareTool(tools, "callExtensionTool")
-  const toolOutput = await callExtensionTool.invoke({
+  const callExtension = findMiddlewareTool(tools, "callExtension")
+  const toolOutput = await callExtension.invoke({
     args: {
       query: "loaded"
     },
@@ -698,7 +777,7 @@ test("extension AI middleware keeps model tools stable after all catalog extensi
     }
   )
 
-  assert.deepEqual(observedTools, ["loadExtension", "callExtensionTool"])
+  assert.deepEqual(observedTools, ["loadExtension", "callExtension"])
   assert.equal(observedToolRefs[0], registeredTools[0])
   assert.equal(observedToolRefs[1], registeredTools[1])
   assert.match(observedSystemPrompt, /### Extension Capability Catalog/)
@@ -737,7 +816,9 @@ test("extension AI middleware persists loaded capabilities using runtime run id 
     workspacePath: "/workspace"
   })
 
-  const loadExtensionTool = middleware.tools?.find((candidate) => candidate.name === "loadExtension")
+  const loadExtensionTool = middleware.tools?.find(
+    (candidate) => candidate.name === "loadExtension"
+  )
   assert.ok(loadExtensionTool)
 
   await loadExtensionTool.invoke({
@@ -782,10 +863,7 @@ test("missing auth still injects extension instructions and source summary", () 
   })
 
   assert.match(buildExtensionInstructions([missingCapability]), /Use the Mock extension for tests/)
-  assert.match(
-    buildExtensionAiCapabilityGuide([missingCapability]),
-    /Mock source for tests/
-  )
+  assert.match(buildExtensionAiCapabilityGuide([missingCapability]), /Mock source for tests/)
   assert.doesNotMatch(
     buildExtensionAiCapabilityGuide([missingCapability]),
     /Use this source for mock work items/
@@ -811,8 +889,12 @@ test("extension AI runtime exposes only read bindings in explore mode", async ()
   registry.registerExtensionTools("mockExtension", [writeTool])
 
   const runtime = createExtensionAiRuntime({
-    aiCapabilities: [createAiCapability({ enabledToolNames: ["createItem"] })],
-    permissionMode: "explore",
+    aiCapabilities: [
+      createAiCapability({
+        enabledToolNames: ["createItem"],
+        permissionMode: "explore"
+      })
+    ],
     registry,
     threadId: "thread-1",
     workspacePath: "/workspace"
@@ -822,6 +904,6 @@ test("extension AI runtime exposes only read bindings in explore mode", async ()
   assert.deepEqual(runtime.visibleAiToolBindings, [])
   assert.deepEqual(
     runtime.middleware.tools?.map((tool) => tool.name),
-    ["loadExtension", "callExtensionTool"]
+    ["loadExtension", "callExtension"]
   )
 })

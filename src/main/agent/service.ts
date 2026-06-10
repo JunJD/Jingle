@@ -602,10 +602,9 @@ export class AgentService {
             extensionName,
             platform: process.platform
           }),
-        onLoadedAiCapabilitiesChanged: ({ aiCapabilities, permissionMode, runId }) =>
+        onLoadedAiCapabilitiesChanged: ({ aiCapabilities, runId }) =>
           updateRunExtensionAiCapabilitiesSnapshot(runId, {
-            aiCapabilities,
-            permissionMode
+            aiCapabilities
           })
       })
       const humanMessage = new HumanMessage({
@@ -811,10 +810,9 @@ export class AgentService {
             extensionName,
             platform: process.platform
           }),
-        onLoadedAiCapabilitiesChanged: ({ aiCapabilities, permissionMode, runId }) =>
+        onLoadedAiCapabilitiesChanged: ({ aiCapabilities, runId }) =>
           updateRunExtensionAiCapabilitiesSnapshot(runId, {
-            aiCapabilities,
-            permissionMode
+            aiCapabilities
           })
       })
       const config = buildAgentResumeConfig(threadId, runId, abortController, {
