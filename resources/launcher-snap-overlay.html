@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';"
+    />
+    <style>
+      :root {
+        --guide-line-color: rgba(92, 99, 112, 0.34);
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      .guide-line {
+        position: absolute;
+      }
+
+      .guide-line--vertical {
+        top: 0;
+        height: var(--guide-height, 100vh);
+        border-left: 1px dashed var(--guide-line-color);
+      }
+
+      .guide-line--horizontal {
+        left: 0;
+        width: var(--guide-width, 100vw);
+        border-top: 1px dashed var(--guide-line-color);
+      }
+
+      #guide-left {
+        transform: translateX(var(--guide-left, -100px));
+      }
+
+      #guide-right {
+        transform: translateX(var(--guide-right, -100px));
+      }
+
+      #guide-top {
+        transform: translateY(var(--guide-top, -100px));
+      }
+    </style>
+  </head>
+  <body>
+    <div id="guide-left" class="guide-line guide-line--vertical"></div>
+    <div id="guide-right" class="guide-line guide-line--vertical"></div>
+    <div id="guide-top" class="guide-line guide-line--horizontal"></div>
+    <script>
+      window.setLauncherSnapGuide = (guide) => {
+        document.documentElement.style.setProperty(
+          "--guide-left",
+          `${Math.round(guide.verticalLeft)}px`
+        )
+        document.documentElement.style.setProperty(
+          "--guide-right",
+          `${Math.round(guide.verticalRight)}px`
+        )
+        document.documentElement.style.setProperty(
+          "--guide-top",
+          `${Math.round(guide.horizontalTop)}px`
+        )
+        document.documentElement.style.setProperty("--guide-width", `${Math.round(guide.width)}px`)
+        document.documentElement.style.setProperty(
+          "--guide-height",
+          `${Math.round(guide.height)}px`
+        )
+      }
+    </script>
+  </body>
+</html>
