@@ -1,33 +1,38 @@
-import {
-  AppWindow,
-  ArrowLeftToLine,
-  ArrowRightToLine,
-  Command,
-  GitBranchPlus,
-  MessageCirclePlus
-} from "lucide-react"
+import { ArrowLeftToLine, ArrowRightToLine, MessageCirclePlus } from "lucide-react"
 import type { ReactNode } from "react"
+import { LauncherAiThreadMenu } from "./LauncherAiThreadMenu"
 
 interface LauncherAiHeaderActionsProps {
   canBranchThread: boolean
   canGoToNextChat: boolean
   canGoToPreviousChat: boolean
-  canOpenActions: boolean
+  canOpenThreadMenu: boolean
   canStartNewQuestion: boolean
   labels: {
+    addAutomation: string
     actions: string
-    branchThread: string
-    goToNextChat: string
+    branchIntoLocal: string
+    branchIntoNewWorktree: string
+    branchIntoSameWorktree: string
+    branchMenu: string
+    copyAsMarkdown: string
+    copyChat: string
+    copyDeeplink: string
+    copySessionId: string
+    copyWorkingDirectory: string
     goToPreviousChat: string
+    goToNextChat: string
     newQuestion: string
-    openMainChat: string
+    openSideChat: string
+    pinChat: string
+    renameChat: string
   }
-  onBranchThread: () => void
+  onBranchIntoLocal: () => void
+  onCopySessionId: () => void
+  onCopyWorkingDirectory: () => void
   onGoToNextChat: () => void
   onGoToPreviousChat: () => void
   onNewQuestion: () => void
-  onOpenActions: () => void
-  onOpenMainChat: () => void
 }
 
 interface LauncherAiHeaderActionProps {
@@ -60,15 +65,15 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
     canBranchThread,
     canGoToNextChat,
     canGoToPreviousChat,
-    canOpenActions,
+    canOpenThreadMenu,
     canStartNewQuestion,
     labels,
-    onBranchThread,
+    onBranchIntoLocal,
+    onCopySessionId,
+    onCopyWorkingDirectory,
     onGoToNextChat,
     onGoToPreviousChat,
-    onNewQuestion,
-    onOpenActions,
-    onOpenMainChat
+    onNewQuestion
   } = props
 
   return (
@@ -91,22 +96,28 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
         label={labels.newQuestion}
         onClick={onNewQuestion}
       />
-      <LauncherAiHeaderAction
-        disabled={!canBranchThread}
-        icon={<GitBranchPlus className="size-[var(--ow-icon-sm)]" />}
-        label={labels.branchThread}
-        onClick={onBranchThread}
-      />
-      <LauncherAiHeaderAction
-        icon={<AppWindow className="size-[var(--ow-icon-sm)]" />}
-        label={labels.openMainChat}
-        onClick={onOpenMainChat}
-      />
-      {canOpenActions ? (
-        <LauncherAiHeaderAction
-          icon={<Command className="size-[var(--ow-icon-sm)]" />}
-          label={labels.actions}
-          onClick={onOpenActions}
+      {canOpenThreadMenu ? (
+        <LauncherAiThreadMenu
+          canBranchThread={canBranchThread}
+          labels={{
+            addAutomation: labels.addAutomation,
+            branchIntoLocal: labels.branchIntoLocal,
+            branchIntoNewWorktree: labels.branchIntoNewWorktree,
+            branchIntoSameWorktree: labels.branchIntoSameWorktree,
+            branchMenu: labels.branchMenu,
+            copyAsMarkdown: labels.copyAsMarkdown,
+            copyChat: labels.copyChat,
+            copyDeeplink: labels.copyDeeplink,
+            copySessionId: labels.copySessionId,
+            copyWorkingDirectory: labels.copyWorkingDirectory,
+            moreActions: labels.actions,
+            openSideChat: labels.openSideChat,
+            pinChat: labels.pinChat,
+            renameChat: labels.renameChat
+          }}
+          onBranchIntoLocal={onBranchIntoLocal}
+          onCopySessionId={onCopySessionId}
+          onCopyWorkingDirectory={onCopyWorkingDirectory}
         />
       ) : null}
     </div>

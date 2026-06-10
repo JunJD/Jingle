@@ -110,8 +110,13 @@ export interface AppCopy {
   }
   launcher: {
     actionsLabel: string
+    addAutomation: string
     aiAddAttachment: string
+    branchIntoLocal: string
+    branchIntoNewWorktree: string
+    branchIntoSameWorktree: string
     branchChat: string
+    branchMenu: string
     branchChatSwitched: string
     changeModel: string
     aiEmptyEyebrow: string
@@ -130,6 +135,11 @@ export interface AppCopy {
     clearClipboardContext: string
     clipboardFiles: (count: number) => string
     clipboardImage: string
+    copyAsMarkdown: string
+    copyChat: string
+    copyDeeplink: string
+    copySessionId: string
+    copyWorkingDirectory: string
     enter: string
     goHome: string
     goToNextChat: string
@@ -139,11 +149,14 @@ export interface AppCopy {
     openSettings: string
     openAiHistory: string
     openMainChat: string
+    openSideChat: string
     openApp: string
     permissionModeAskToEdit: string
     permissionModeAuto: string
     permissionModeExplore: string
     permissionModeSection: string
+    pinChat: string
+    renameChat: string
     commandMatches: string
     manageUseWithCommands: string
     useWithAvailable: string
@@ -370,8 +383,13 @@ export const appCopy: Record<AppLocale, AppCopy> = {
     },
     launcher: {
       actionsLabel: "操作",
+      addAutomation: "添加自动化...",
       aiAddAttachment: "添加附件",
+      branchIntoLocal: "分叉到本地",
+      branchIntoNewWorktree: "分叉到新 worktree",
+      branchIntoSameWorktree: "分叉到同一 worktree",
       branchChat: "分叉对话",
+      branchMenu: "分支",
       branchChatSwitched: "已切换到分叉对话",
       changeModel: "切换模型...",
       aiEmptyEyebrow: "Jingle",
@@ -390,6 +408,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       clearClipboardContext: "清除剪贴板上下文",
       clipboardFiles: (count) => `${count} 个文件`,
       clipboardImage: "剪贴板图片",
+      copyAsMarkdown: "复制为 Markdown",
+      copyChat: "复制",
+      copyDeeplink: "复制深层链接",
+      copySessionId: "复制会话 ID",
+      copyWorkingDirectory: "复制工作目录",
       enter: "回车",
       goHome: "回到主页",
       goToNextChat: "前往下一个对话",
@@ -399,11 +422,14 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openSettings: "打开设置",
       openAiHistory: "打开 AI 页面",
       openMainChat: "在主窗口打开",
+      openSideChat: "打开侧边聊天",
       openApp: "打开应用",
       permissionModeAskToEdit: "默认权限",
       permissionModeAuto: "完全访问权限",
       permissionModeExplore: "自动审查",
       permissionModeSection: "权限模式",
+      pinChat: "置顶对话",
+      renameChat: "重命名对话",
       commandMatches: "命令",
       manageUseWithCommands: "管理 Use With 命令",
       useWithAvailable: "可用",
@@ -648,8 +674,13 @@ export const appCopy: Record<AppLocale, AppCopy> = {
     },
     launcher: {
       actionsLabel: "Actions",
+      addAutomation: "Add Automation...",
       aiAddAttachment: "Add attachment",
+      branchIntoLocal: "Fork into Local",
+      branchIntoNewWorktree: "Fork into New Worktree",
+      branchIntoSameWorktree: "Fork into Same Worktree",
       branchChat: "Branch Chat",
+      branchMenu: "Branch",
       branchChatSwitched: "Switched to branched chat",
       changeModel: "Change Model...",
       aiEmptyEyebrow: "Jingle",
@@ -668,6 +699,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       clearClipboardContext: "Clear clipboard context",
       clipboardFiles: (count) => `${count} file${count === 1 ? "" : "s"}`,
       clipboardImage: "Clipboard image",
+      copyAsMarkdown: "Copy as Markdown",
+      copyChat: "Copy",
+      copyDeeplink: "Copy Deeplink",
+      copySessionId: "Copy Session ID",
+      copyWorkingDirectory: "Copy Working Directory",
       enter: "Enter",
       goHome: "Go Home",
       goToNextChat: "Go to Next Chat",
@@ -677,11 +713,14 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openSettings: "Open Settings",
       openAiHistory: "Open AI",
       openMainChat: "Open in Main Window",
+      openSideChat: "Open Side Chat",
       openApp: "Open App",
       permissionModeAskToEdit: "Default Permission",
       permissionModeAuto: "Full Access",
       permissionModeExplore: "Auto Review",
       permissionModeSection: "Permission Mode",
+      pinChat: "Pin Chat",
+      renameChat: "Rename Chat",
       commandMatches: "Commands",
       manageUseWithCommands: "Manage Fallback Commands",
       useWithAvailable: "Available",

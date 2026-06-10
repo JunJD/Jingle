@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from "react"
-import { ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import { useShortcutCommandHandler, useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { cn } from "@/lib/utils"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
@@ -100,15 +100,18 @@ export function LauncherActionOverlay(props: {
         className="absolute bottom-[var(--launcher-action-panel-bottom)] right-[var(--launcher-action-panel-right)] w-[var(--launcher-action-panel-width)] overflow-hidden rounded-[var(--ow-radius-dialog)] border border-border/80 bg-background shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="max-h-[var(--launcher-action-panel-max-h)] overflow-y-auto py-[var(--ow-space-2)]">
+        <div className="max-h-[var(--launcher-action-panel-max-h)] overflow-y-auto p-[var(--ow-space-2)]">
           {activeMenu ? (
-            <div className="border-b border-border/70 px-[var(--ow-space-2)] pb-[var(--ow-space-2)]">
+            <div className="-mx-[var(--ow-space-2)] mb-[var(--ow-space-2)] border-b border-border/70 px-[var(--ow-space-2)] pb-[var(--ow-space-2)]">
               <button
                 type="button"
                 onClick={popSubmenu}
-                className="flex h-[var(--ow-control-h-lg)] w-full items-center gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-3)] text-left [font-size:var(--ow-font-body)] text-muted-foreground transition hover:bg-background-secondary/70"
+                className="flex h-[var(--ow-control-h-lg)] w-full items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-3)] text-left [font-size:var(--ow-font-body)] text-muted-foreground transition-colors duration-100 hover:bg-background-secondary"
               >
-                <span className="rotate-180 [font-size:var(--ow-font-title)] leading-none">›</span>
+                <ChevronLeft
+                  className="size-[var(--ow-icon-action)] shrink-0"
+                  strokeWidth={2.2}
+                />
                 <span className="truncate">{activeMenu.title}</span>
               </button>
             </div>
@@ -116,7 +119,7 @@ export function LauncherActionOverlay(props: {
           {groupedActions.map((group, groupIndex) => (
             <Fragment key={`launcher-action-group-${groupIndex}`}>
               {group.title ? (
-                <div className="px-[var(--ow-space-4)] pb-[var(--ow-space-1)] pt-[var(--ow-space-2)] [font-size:var(--ow-font-caption)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                <div className="px-[var(--ow-space-2)] pb-[var(--ow-space-1)] pt-[var(--ow-space-2)] [font-size:var(--ow-font-caption)] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                   {group.title}
                 </div>
               ) : null}
@@ -141,8 +144,8 @@ export function LauncherActionOverlay(props: {
                     }}
                     disabled={action.disabled}
                     className={cn(
-                      "mx-[var(--ow-space-2)] flex h-[var(--ow-control-h-lg)] w-[calc(100%-(var(--ow-space-2)*2))] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-3)] text-left [font-size:var(--ow-font-body)] transition",
-                      isSelected ? "bg-background-secondary" : "hover:bg-background-secondary/70",
+                      "flex h-[var(--ow-control-h-lg)] w-full items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-3)] text-left [font-size:var(--ow-font-body)] transition-colors duration-100 focus-visible:outline-none",
+                      isSelected ? "bg-background-secondary" : "hover:bg-background-secondary",
                       action.style === "destructive" ? "text-red-500" : "text-foreground",
                       action.disabled ? "cursor-default opacity-45" : null
                     )}
@@ -161,9 +164,11 @@ export function LauncherActionOverlay(props: {
                         {action.shortcut}
                       </span>
                     ) : action.children && action.children.length > 0 ? (
-                      <ChevronRight className="size-[var(--ow-icon-sm)] shrink-0 text-muted-foreground" />
+                      <span className="flex size-[var(--ow-icon-md)] shrink-0 items-center justify-center text-muted-foreground">
+                        <ChevronRight className="size-[var(--ow-icon-action)]" strokeWidth={2.2} />
+                      </span>
                     ) : action.accessory ? (
-                      <span className="flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center text-muted-foreground [&>svg]:size-[var(--ow-icon-action)]">
+                      <span className="flex size-[var(--ow-icon-md)] shrink-0 items-center justify-center text-muted-foreground [&>svg]:size-[var(--ow-icon-action)]">
                         {action.accessory}
                       </span>
                     ) : null}

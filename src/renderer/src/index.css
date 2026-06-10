@@ -322,6 +322,7 @@ body[data-window="launcher"],
   --launcher-action-panel-right: var(--ow-space-3);
   --launcher-action-panel-width: 320px;
   --launcher-action-panel-max-h: 60vh;
+  --launcher-thread-menu-width: 230px;
   --launcher-icon-button-size: 28px;
   --launcher-inline-icon-button-size: 22px;
   --launcher-chip-max-width: 220px;
@@ -475,6 +476,98 @@ body[data-window="launcher"],
     var(--ow-model-quick-popover-max-h, 320px),
     var(--radix-popover-content-available-height, 320px)
   );
+}
+
+.launcher-thread-menu {
+  z-index: 70;
+  width: var(--launcher-thread-menu-width);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border-emphasis) 54%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--popover) 95%, white 5%);
+  padding: 5px;
+  color: var(--popover-foreground);
+  box-shadow:
+    0 18px 42px color-mix(in srgb, var(--foreground) 14%, transparent),
+    0 4px 12px color-mix(in srgb, var(--foreground) 7%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 52%, transparent);
+  outline: none;
+}
+
+.launcher-thread-menu__subcontent {
+  width: var(--launcher-thread-menu-width);
+}
+
+.launcher-thread-menu__trigger,
+.launcher-thread-menu__trigger:hover,
+.launcher-thread-menu__trigger:active,
+.launcher-thread-menu__trigger:focus,
+.launcher-thread-menu__trigger:focus-visible,
+.launcher-thread-menu__trigger[data-state="open"] {
+  border: 0;
+  box-shadow: none;
+  outline: none;
+}
+
+.launcher-thread-menu__item {
+  display: flex;
+  width: 100%;
+  height: 30px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  color: color-mix(in srgb, var(--foreground) 84%, var(--muted-foreground));
+  font-size: 13px;
+  line-height: 18px;
+  outline: none;
+  padding-inline: 8px;
+  user-select: none;
+}
+
+.launcher-thread-menu__item[data-highlighted],
+.launcher-thread-menu__item[data-state="open"] {
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+}
+
+.launcher-thread-menu__item[data-disabled] {
+  color: color-mix(in srgb, var(--muted-foreground) 52%, transparent);
+}
+
+.launcher-thread-menu__icon {
+  display: flex;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--muted-foreground) 84%, var(--foreground));
+}
+
+.launcher-thread-menu__icon > svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.9;
+}
+
+.launcher-thread-menu__label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launcher-thread-menu__shortcut,
+.launcher-thread-menu__chevron {
+  margin-left: auto;
+  color: color-mix(in srgb, var(--muted-foreground) 62%, transparent);
+  font-size: 12px;
+}
+
+.launcher-thread-menu__chevron {
+  font-size: 18px;
+  line-height: 1;
 }
 
 .dark {

@@ -113,6 +113,7 @@ export function LauncherAiPage(): React.JSX.Element {
     useThreadSelector(threadId, (state) => state?.agent.permissionMode ?? null) ??
     draftTarget?.permissionMode ??
     defaultDraftPermissionMode
+  const workspacePath = useThreadSelector(threadId, (state) => state?.agent.workspacePath ?? null)
   const query = localComposerText
   const messageInput = useMemo(
     () => ({
@@ -362,6 +363,20 @@ export function LauncherAiPage(): React.JSX.Element {
     }
     await window.api.launcher.hide()
   }, [threadId])
+  const copyWorkingDirectory = useCallback(async (): Promise<void> => {
+    if (!workspacePath) {
+      return
+    }
+
+    await navigator.clipboard.writeText(workspacePath)
+  }, [workspacePath])
+  const copySessionId = useCallback(async (): Promise<void> => {
+    if (!threadId) {
+      return
+    }
+
+    await navigator.clipboard.writeText(threadId)
+  }, [threadId])
   const { actionController, addAttachmentShortcut, submitShortcut } = useLauncherAiActions({
     branchThread: handleBranchChat,
     canBranchThread,
@@ -464,18 +479,35 @@ export function LauncherAiPage(): React.JSX.Element {
             canBranchThread={canUseHeaderThreadActions && canBranchThread}
             canGoToNextChat={canUseHeaderThreadActions && canGoToNextChat}
             canGoToPreviousChat={canUseHeaderThreadActions && canGoToPreviousChat}
-            canOpenActions={actionController.canOpenActions}
+            canOpenThreadMenu={canUseHeaderThreadActions}
             canStartNewQuestion={canUseHeaderThreadActions && canStartNewQuestion}
             labels={{
+              addAutomation: copy.launcher.addAutomation,
               actions: copy.launcher.actionsLabel,
-              branchThread: copy.launcher.branchChat,
+              branchIntoLocal: copy.launcher.branchIntoLocal,
+              branchIntoNewWorktree: copy.launcher.branchIntoNewWorktree,
+              branchIntoSameWorktree: copy.launcher.branchIntoSameWorktree,
+              branchMenu: copy.launcher.branchMenu,
+              copyAsMarkdown: copy.launcher.copyAsMarkdown,
+              copyChat: copy.launcher.copyChat,
+              copyDeeplink: copy.launcher.copyDeeplink,
+              copySessionId: copy.launcher.copySessionId,
+              copyWorkingDirectory: copy.launcher.copyWorkingDirectory,
               goToNextChat: copy.launcher.goToNextChat,
               goToPreviousChat: copy.launcher.goToPreviousChat,
               newQuestion: copy.launcher.newQuestion,
-              openMainChat: copy.launcher.openMainChat
+              openSideChat: copy.launcher.openSideChat,
+              pinChat: copy.launcher.pinChat,
+              renameChat: copy.launcher.renameChat
             }}
-            onBranchThread={() => {
+            onBranchIntoLocal={() => {
               void handleBranchChat()
+            }}
+            onCopySessionId={() => {
+              void copySessionId()
+            }}
+            onCopyWorkingDirectory={() => {
+              void copyWorkingDirectory()
             }}
             onGoToNextChat={() => {
               void handleGoToNextChat()
@@ -485,10 +517,6 @@ export function LauncherAiPage(): React.JSX.Element {
             }}
             onNewQuestion={() => {
               void handleNewQuestion()
-            }}
-            onOpenActions={actionController.openActions}
-            onOpenMainChat={() => {
-              void openMainChat()
             }}
           />
         }
