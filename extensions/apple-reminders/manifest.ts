@@ -69,7 +69,7 @@ export const appleRemindersManifest = defineNativeExtensionManifest({
     provider: APPLE_REMINDERS_EXTENSION_ID,
     title: l("Apple Reminders", "提醒事项")
   },
-  icon: "assets/icon.png",
+  icon: "assets/icon.svg",
   iconName: "reminders",
   runtimeCapabilities: ["navigation", "preferences", "rpc"],
   commands: [
