@@ -121,6 +121,10 @@ export function LauncherAiPage(): React.JSX.Element {
     }),
     [attachmentDraft.messageRefs, initialSeedQuery]
   )
+  const clearTransientInputState = useCallback((): void => {
+    attachmentDraft.clearAllAttachments()
+    clearSelectionRefs()
+  }, [attachmentDraft.clearAllAttachments, clearSelectionRefs])
   const hasPendingApproval = Boolean(pendingApproval)
   const threadError = agentError ?? navigationError
   const primaryActionDisabled =
@@ -188,8 +192,7 @@ export function LauncherAiPage(): React.JSX.Element {
         hasPendingApproval,
         isBusy,
         onDidInvoke: () => {
-          attachmentDraft.clearAllAttachments()
-          clearSelectionRefs()
+          clearTransientInputState()
           setMentionQuery(null)
         },
         setNavigationError,
@@ -217,7 +220,7 @@ export function LauncherAiPage(): React.JSX.Element {
     [
       agentControl,
       branchThreadUntilMessage,
-      clearSelectionRefs,
+      clearTransientInputState,
       copy.launcher.aiThreadTitle,
       createBranchThread,
       createThread,
@@ -229,7 +232,6 @@ export function LauncherAiPage(): React.JSX.Element {
       goToPreviousThread,
       hasPendingApproval,
       isBusy,
-      attachmentDraft.clearAllAttachments,
       startFreshDraftTarget,
       threadId,
       threadContext,
@@ -260,10 +262,9 @@ export function LauncherAiPage(): React.JSX.Element {
       return
     }
 
-    attachmentDraft.clearAllAttachments()
-    clearSelectionRefs()
+    clearTransientInputState()
     setShowModelPicker(false)
-  }, [attachmentDraft.clearAllAttachments, clearSelectionRefs, startFreshDraft])
+  }, [clearTransientInputState, startFreshDraft])
   const handleBranchChat = useCallback(
     async (messageId?: string): Promise<void> => {
       const nextThreadId = await branchThread(messageId)
@@ -271,11 +272,10 @@ export function LauncherAiPage(): React.JSX.Element {
         return
       }
 
-      attachmentDraft.clearAllAttachments()
-      clearSelectionRefs()
+      clearTransientInputState()
       setShowModelPicker(false)
     },
-    [attachmentDraft.clearAllAttachments, branchThread, clearSelectionRefs]
+    [branchThread, clearTransientInputState]
   )
   const handleStop = useCallback(async (): Promise<void> => {
     await stop()
@@ -287,11 +287,7 @@ export function LauncherAiPage(): React.JSX.Element {
     const input = inputRef.current
     if (input && "getModelText" in input) {
       return {
-        refs: [
-          ...input.getRefs(),
-          ...attachmentDraft.messageRefs,
-          ...assistantSelectionRefs
-        ],
+        refs: [...input.getRefs(), ...attachmentDraft.messageRefs, ...assistantSelectionRefs],
         text: input.getModelText()
       }
     }
@@ -342,8 +338,7 @@ export function LauncherAiPage(): React.JSX.Element {
         return
       }
 
-      attachmentDraft.clearAllAttachments()
-      clearSelectionRefs()
+      clearTransientInputState()
       setShowModelPicker(false)
     },
     goToPreviousChat: async () => {
@@ -352,8 +347,7 @@ export function LauncherAiPage(): React.JSX.Element {
         return
       }
 
-      attachmentDraft.clearAllAttachments()
-      clearSelectionRefs()
+      clearTransientInputState()
       setShowModelPicker(false)
     },
     inputRef,
