@@ -1,7 +1,6 @@
 import { Plug } from "lucide-react"
 import { extensionToolCallUiSchema } from "@shared/tool-presentation"
 import { ToolCodeBlock, ToolDetailStack, ToolDetailSection } from "./shared-components"
-import { joinSummaryParts } from "./shared"
 import type { ToolComponentDefinition, ToolComponentProps } from "./types"
 
 function parseExtensionToolCallUi(toolCall: ToolComponentProps["toolCall"]) {
@@ -14,9 +13,12 @@ function parseExtensionToolCallUi(toolCall: ToolComponentProps["toolCall"]) {
 export const extensionToolComponent: ToolComponentDefinition = {
   name: "extension",
   icon: Plug,
-  renderSummary(props) {
+  renderDisplay(props) {
     const ui = parseExtensionToolCallUi(props.toolCall)
-    return joinSummaryParts(ui.display.title, ui.presentation.capabilityDisplayName)
+    return {
+      detail: ui.presentation.capabilityDisplayName,
+      title: ui.display.title
+    }
   },
   renderDetail(props) {
     const ui = parseExtensionToolCallUi(props.toolCall)

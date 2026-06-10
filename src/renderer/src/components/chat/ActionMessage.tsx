@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import type { ActiveAgentToolCall } from "@shared/agent-thread-runtime"
 import { LoaderOne } from "@/components/ui/loader"
 import {
   AgentTool,
@@ -14,7 +15,9 @@ import { type ToolPresentation, type ToolComponentStatus } from "./tools"
 
 interface ActionMessageProps {
   toolCall: ToolCall
+  activeToolCall?: ActiveAgentToolCall
   result?: unknown
+  durationMs?: number | null
   approvalRequest?: HITLRequest | null
   onExpandedChange?: (expanded: boolean) => void
   defaultExpanded?: boolean
@@ -31,7 +34,7 @@ export function ToolStatusIndicator(props: {
 }): React.JSX.Element | null {
   const { runningLabel, status, statusLabel } = props
 
-  if (status === "running") {
+  if (status === "arguments_streaming" || status === "running") {
     return (
       <span
         aria-label={runningLabel}
@@ -52,15 +55,100 @@ function toAgentToolState(status: ToolComponentStatus): AgentToolState {
       return "approval"
     case "complete":
       return "complete"
+    case "failed":
+      return "error"
+    case "arguments_streaming":
     case "running":
+    case "waiting_result":
       return "running"
   }
 }
 
+function isToolActive(status: ToolComponentStatus): boolean {
+  return status === "arguments_streaming" || status === "running"
+}
+
+function getActionMessageStatus(
+  status: ToolComponentStatus,
+  activeToolCall: ActiveAgentToolCall | undefined
+): ToolComponentStatus {
+  if (activeToolCall?.status === "arguments_streaming") {
+    return "arguments_streaming"
+  }
+
+  if (activeToolCall?.status === "waiting_result") {
+    return "waiting_result"
+  }
+
+  return status
+}
+
+function formatElapsedTime(ms: number): string {
+  if (ms < 1000) {
+    return `${Math.max(0, Math.round(ms))}ms`
+  }
+
+  const seconds = ms / 1000
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)}s`
+  }
+
+  const totalSeconds = Math.floor(seconds)
+  const minutes = Math.floor(totalSeconds / 60)
+  const remainingSeconds = totalSeconds % 60
+  return `${minutes}m ${remainingSeconds}s`
+}
+
+function ToolExecutionTime(props: { active: boolean; startedAt?: Date }): React.JSX.Element | null {
+  const { active, startedAt } = props
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (!active || !startedAt) {
+      return undefined
+    }
+
+    const timer = window.setInterval(() => {
+      setNow(Date.now())
+    }, 200)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [active, startedAt])
+
+  if (!active || !startedAt) {
+    return null
+  }
+
+  const startedAtMs = new Date(startedAt).getTime()
+  const elapsed = Math.max(0, now - startedAtMs)
+
+  return (
+    <span className="shrink-0 text-[var(--ow-agent-timeline-muted)] [font-size:var(--ow-font-caption)] tabular-nums">
+      {formatElapsedTime(elapsed)}
+    </span>
+  )
+}
+
+function ToolDurationTime(props: { durationMs?: number | null }): React.JSX.Element | null {
+  const { durationMs } = props
+  if (durationMs === null || durationMs === undefined) {
+    return null
+  }
+
+  return (
+    <span className="shrink-0 text-[var(--ow-agent-timeline-muted)] [font-size:var(--ow-font-caption)] tabular-nums">
+      {formatElapsedTime(durationMs)}
+    </span>
+  )
+}
+
 export function ActionMessage(props: ActionMessageProps): React.JSX.Element | null {
   const {
+    activeToolCall,
     approvalRequest,
     defaultExpanded = false,
+    durationMs,
     expanded,
     onExpandedChange,
     presentation = "standalone",
@@ -83,7 +171,15 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       }),
     [approvalRequest, copy, explicitStatus, presentation, result, toolCall]
   )
-  const { definition, icon: Icon, model, status, statusLabel, summary } = view
+  const {
+    definition,
+    display,
+    icon: Icon,
+    model,
+    status,
+    statusLabel
+  } = view
+  const activityStatus = getActionMessageStatus(status, activeToolCall)
   const autoExpanded = Boolean(approvalRequest) || defaultExpanded
   const isExpanded = approvalRequest ? true : (expanded ?? manualExpanded ?? autoExpanded)
   const detail = useMemo<React.ReactNode>(() => {
@@ -102,14 +198,33 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
   }, [approvalRequest, copy, definition, isExpanded, model, presentation, toolCall])
 
   const hasDetail = Boolean(detail)
-  const toolState = toAgentToolState(status)
-  const meta =
+  const toolState = toAgentToolState(activityStatus)
+  const statusMeta =
     statusLabel && toolState !== "complete" ? (
       <AgentToolStatusBadge state={toolState}>{statusLabel}</AgentToolStatusBadge>
     ) : null
   const detailContent = hasDetail ? (
     <div className="min-w-0 max-w-full overflow-hidden">{detail}</div>
   ) : null
+  const executionTime =
+    activeToolCall?.status === "running" ? (
+      <ToolExecutionTime active startedAt={activeToolCall.startedAt} />
+    ) : activityStatus === "complete" || activityStatus === "failed" ? (
+      <ToolDurationTime durationMs={durationMs} />
+    ) : null
+  const resultMeta = display.resultMeta ? (
+    <span className="shrink-0 text-[var(--ow-agent-timeline-muted)] [font-size:var(--ow-font-caption)]">
+      {display.resultMeta}
+    </span>
+  ) : null
+  const meta =
+    resultMeta || statusMeta || executionTime ? (
+      <>
+        {resultMeta}
+        {statusMeta}
+        {executionTime}
+      </>
+    ) : null
 
   if (!showSummary) {
     return hasDetail && isExpanded ? detailContent : null
@@ -119,18 +234,21 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     return (
       <div className="min-w-0">
         <AgentToolInline
-          active={toolState === "running"}
+          active={isToolActive(activityStatus)}
           data-tool-call-toggle={toolCall.name}
+          detail={display.detail}
           meta={
-            <>
-              {meta}
-              {hasDetail ? (
-                <ChevronRight
-                  className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
-                  data-open={isExpanded ? "true" : "false"}
-                />
-              ) : null}
-            </>
+            meta || hasDetail ? (
+              <>
+                {meta}
+                {hasDetail ? (
+                  <ChevronRight
+                    className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
+                    data-open={isExpanded ? "true" : "false"}
+                  />
+                ) : null}
+              </>
+            ) : null
           }
           onClick={() => {
             if (hasDetail && !approvalRequest) {
@@ -142,7 +260,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
               }
             }
           }}
-          title={summary}
+          title={display.title}
         />
         {hasDetail && isExpanded ? (
           <div className="mt-[var(--ow-space-2)] pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))]">
@@ -157,13 +275,19 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     return (
       <AgentToolInline
         data-tool-call-toggle={toolCall.name}
+        detail={display.detail}
         icon={<Icon className="size-[var(--ow-icon-sm)]" />}
         meta={
-          hasDetail ? (
-            <ChevronRight
-              className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
-              data-open="false"
-            />
+          meta || hasDetail ? (
+            <>
+              {meta}
+              {hasDetail ? (
+                <ChevronRight
+                  className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
+                  data-open="false"
+                />
+              ) : null}
+            </>
           ) : null
         }
         onClick={() => {
@@ -175,7 +299,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
             }
           }
         }}
-        title={summary}
+        title={display.title}
       />
     )
   }
@@ -200,7 +324,8 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       }}
       open={isExpanded}
       state={toolState}
-      title={summary}
+      subtitle={display.detail}
+      title={display.title}
     />
   )
 }

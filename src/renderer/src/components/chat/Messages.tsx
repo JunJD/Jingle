@@ -14,6 +14,7 @@ import {
 } from "react"
 import { VList, type VListHandle } from "virtua"
 import type { ComposerMessageInput, ComposerMessageRef } from "@shared/message-content"
+import type { ActiveAgentToolCall } from "@shared/agent-thread-runtime"
 import type { ContentBlock, Message as ThreadMessage } from "@/types"
 import { cn } from "@/lib/utils"
 import {
@@ -62,6 +63,7 @@ const SCROLL_INTENT_KEYS = new Set([
 const CHAT_BLANK_USER_SCROLL_INTENT_TTL_MS = 500
 const DEFAULT_MESSAGE_PROJECTION = createDefaultMessagesProjection()
 const DEFAULT_DISPLAY_ROWS: readonly MessageDisplayRow[] = DEFAULT_MESSAGE_PROJECTION.displayRows
+const EMPTY_ACTIVE_TOOL_CALLS: readonly ActiveAgentToolCall[] = []
 
 function findTurnByKey(turns: MessageTurn[], turnKey: string): MessageTurn | null {
   return turns.find((turn) => turn.key === turnKey) ?? null
@@ -98,6 +100,16 @@ function getToolResultsScrollKey(toolResults: Map<string, ToolResultInfo>): stri
   return Array.from(toolResults, ([toolCallId, result]) => {
     return `${toolCallId}:${getStreamingContentScrollKey(result.content)}`
   }).join("|")
+}
+
+function getActiveToolCallsScrollKey(activeToolCalls: readonly ActiveAgentToolCall[]): string {
+  if (activeToolCalls.length === 0) {
+    return "0"
+  }
+
+  return activeToolCalls
+    .map((toolCall) => `${toolCall.id}:${toolCall.status}:${toolCall.argsText.length}`)
+    .join("|")
 }
 
 function getStreamingTurnScrollKey(
@@ -240,17 +252,48 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
       ? state.view.messageProjection.activeAssistantId
       : null
   )
+  const activeToolCallId = useThreadSelector(threadId, (state) =>
+    state?.view.messageProjection.activeTurnKey === turnKey
+      ? (state.agent.activeRun?.currentToolCallId ?? null)
+      : null
+  )
+  const activeToolCalls = useThreadSelector(threadId, (state) =>
+    state?.view.messageProjection.activeTurnKey === turnKey
+      ? (state.agent.activeRun?.toolCalls ?? EMPTY_ACTIVE_TOOL_CALLS)
+      : EMPTY_ACTIVE_TOOL_CALLS
+  )
+  const activePhaseStartedAt = useThreadSelector(threadId, (state) =>
+    state?.view.messageProjection.activeTurnKey === turnKey
+      ? (state.agent.activeRun?.phaseStartedAt ?? null)
+      : null
+  )
+  const activeRunStartedAt = useThreadSelector(threadId, (state) =>
+    state?.view.messageProjection.activeTurnKey === turnKey
+      ? (state.agent.activeRun?.startedAt ?? null)
+      : null
+  )
   const turnPendingApproval = useThreadSelector(threadId, (state) =>
-    turn ? getTurnPendingApproval(turn, state?.agent.pendingApproval ?? null) : null
+    turn
+      ? (getTurnPendingApproval(turn, state?.agent.pendingApproval ?? null) ??
+        (state?.view.messageProjection.activeTurnKey === turnKey &&
+        state.agent.pendingApproval &&
+        state.agent.activeRun?.toolCalls.some(
+          (toolCall) => toolCall.id === state.agent.pendingApproval?.tool_call.id
+        )
+          ? state.agent.pendingApproval
+          : null))
+      : null
   )
   const toolExecutions = useMemo<AgentToolExecutionsView>(
     () =>
       projectTurnToolExecutionsView({
+        activeToolCallId,
+        activeToolCalls,
         isActiveTurnRunning: isActiveTurn && Boolean(isLoading),
         pendingApproval: turnPendingApproval,
         turn
       }),
-    [isActiveTurn, isLoading, turn, turnPendingApproval]
+    [activeToolCallId, activeToolCalls, isActiveTurn, isLoading, turn, turnPendingApproval]
   )
 
   if (!turn) {
@@ -262,11 +305,17 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
   const activeAssistant = streamingAssistantId
     ? turn.assistants.find((message) => message.id === streamingAssistantId)
     : null
-  const activeTurnScrollKey = getStreamingTurnScrollKey(turn, activeAssistant)
+  const activeTurnScrollKey = [
+    getStreamingTurnScrollKey(turn, activeAssistant),
+    getActiveToolCallsScrollKey(activeToolCalls)
+  ].join(":")
 
   return (
     <>
       <MessageTurnView
+        activePhaseStartedAt={activePhaseStartedAt}
+        activeRunStartedAt={activeRunStartedAt}
+        activeToolCalls={activeToolCalls}
         isActiveTurn={isActiveTurn}
         isStreaming={isStreaming}
         onBranch={isLoading ? undefined : onBranch}
@@ -563,10 +612,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
           )
         }}
       </VList>
-      <AssistantSelectionOverlay
-        onAddRef={onAddAssistantSelectionRef}
-        threadId={threadId}
-      />
+      <AssistantSelectionOverlay onAddRef={onAddAssistantSelectionRef} threadId={threadId} />
     </div>
   )
 }

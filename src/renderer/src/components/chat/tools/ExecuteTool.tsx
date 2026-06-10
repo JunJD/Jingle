@@ -1,18 +1,18 @@
 import { Terminal } from "lucide-react"
 import { defineToolComponent } from "./registry-core"
 import { ToolCodeBlock, ToolDetailStack } from "./shared-components"
-import { getCommandArg, joinSummaryParts, truncateMiddle } from "./shared"
+import { getCommandArg, truncateMiddle } from "./shared"
 
 defineToolComponent({
   name: "execute",
   icon: Terminal,
-  renderSummary({ copy, args }) {
+  renderDisplay({ copy, args }) {
     const command = getCommandArg(args)
 
-    return joinSummaryParts(
-      copy.toolCall.labels.execute,
-      command ? truncateMiddle(command, 60) : null
-    )
+    return {
+      detail: command ? truncateMiddle(command, 60) : null,
+      title: copy.toolCall.labels.execute
+    }
   },
   renderDetail({ args, rawResult }) {
     const command = getCommandArg(args)

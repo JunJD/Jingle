@@ -1,21 +1,21 @@
 import { Search } from "lucide-react"
 import { defineToolComponent } from "./registry-core"
 import { ToolDetailStack } from "./shared-components"
-import { asGrepMatches, getPatternArg, joinSummaryParts } from "./shared"
+import { asGrepMatches, getPatternArg } from "./shared"
 
 defineToolComponent({
   name: "grep",
   icon: Search,
-  renderSummary({ copy, args, result }) {
+  renderDisplay({ copy, args, result }) {
     const pattern = getPatternArg(args)
     const matches = asGrepMatches(result)
     const fileCount = new Set(matches.map((match) => match.path)).size
 
-    return joinSummaryParts(
-      copy.toolCall.labels.grep,
-      pattern,
-      matches.length > 0 ? copy.toolCall.matchesInFiles(matches.length, fileCount) : null
-    )
+    return {
+      detail: pattern,
+      resultMeta: matches.length > 0 ? copy.toolCall.matchesInFiles(matches.length, fileCount) : null,
+      title: copy.toolCall.labels.grep
+    }
   },
   renderDetail({ result }) {
     const matches = asGrepMatches(result)

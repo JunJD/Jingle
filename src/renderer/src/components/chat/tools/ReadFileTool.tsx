@@ -2,16 +2,20 @@ import { FileText } from "lucide-react"
 import { CodeBlock } from "@/components/ui/code-block"
 import { defineToolComponent } from "./registry-core"
 import { ToolCodeBlock, ToolDetailStack } from "./shared-components"
-import { getBasename, getPathArg, joinSummaryParts } from "./shared"
+import { countLines, getBasename, getPathArg } from "./shared"
 
 defineToolComponent({
   name: "read_file",
   icon: FileText,
-  renderSummary({ copy, args }) {
+  renderDisplay({ copy, args, rawResult }) {
     const path = getPathArg(args)
     const target = path ? getBasename(path) : null
+    const lineCount = rawResult.trim() ? copy.toolCall.readLines(countLines(rawResult)) : null
 
-    return joinSummaryParts(copy.toolCall.labels.read_file, target)
+    return {
+      detail: target ?? lineCount,
+      title: copy.toolCall.labels.read_file
+    }
   },
   renderDetail({ args, rawResult }) {
     const path = getPathArg(args)

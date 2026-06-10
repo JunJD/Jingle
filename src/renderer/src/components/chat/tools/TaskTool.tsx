@@ -1,15 +1,18 @@
 import { GitBranch } from "lucide-react"
 import { defineToolComponent } from "./registry-core"
 import { ToolCodeBlock, ToolDetailStack } from "./shared-components"
-import { isNonEmptyString, joinSummaryParts } from "./shared"
+import { isNonEmptyString } from "./shared"
 
 defineToolComponent({
   name: "task",
   icon: GitBranch,
-  renderSummary({ copy, args }) {
+  renderDisplay({ copy, args }) {
     const name = isNonEmptyString(args.name) ? args.name : null
 
-    return joinSummaryParts(copy.toolCall.labels.task, name)
+    return {
+      detail: name,
+      title: copy.toolCall.labels.task
+    }
   },
   renderDetail({ args, rawResult }) {
     const name = isNonEmptyString(args.name) ? args.name : ""

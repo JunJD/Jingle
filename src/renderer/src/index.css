@@ -1020,10 +1020,131 @@ body[data-platform="darwin"] .launcher-window-shell {
   background: color-mix(in srgb, var(--launcher-surface-interactive) 92%, white 8%);
 }
 
-.ow-agent-steps[data-active="true"] .ow-agent-steps-title,
-.ow-agent-activity-thinking[data-active="true"] .ow-agent-activity-thinking-title,
-.ow-agent-tool-inline[data-active="true"] .ow-agent-tool-inline-title,
-.ow-agent-tool-group[data-active="true"] .ow-agent-tool-group-title {
+[data-component="ow-text-shimmer"] {
+  --ow-text-shimmer-step: 45ms;
+  --ow-text-shimmer-duration: 4s;
+  --ow-text-shimmer-index: 0;
+  --ow-text-shimmer-swap: 220ms;
+  --ow-text-shimmer-core-spread: 1.8ch;
+  --ow-text-shimmer-spread: 6.2ch;
+  --ow-text-shimmer-size: 300%;
+  --ow-text-shimmer-base-color: color-mix(
+    in srgb,
+    var(--ow-agent-timeline-muted) 74%,
+    var(--foreground) 26%
+  );
+  --ow-text-shimmer-shoulder-color: color-mix(
+    in srgb,
+    var(--foreground) 74%,
+    var(--ow-agent-timeline-muted) 26%
+  );
+  --ow-text-shimmer-peak-color: color-mix(
+    in srgb,
+    var(--foreground) 100%,
+    white 0%
+  );
+  --ow-text-shimmer-sweep: linear-gradient(
+    90deg,
+    transparent calc(50% - var(--ow-text-shimmer-spread)),
+    var(--ow-text-shimmer-shoulder-color) calc(50% - var(--ow-text-shimmer-core-spread)),
+    var(--ow-text-shimmer-peak-color) 50%,
+    var(--ow-text-shimmer-shoulder-color) calc(50% + var(--ow-text-shimmer-core-spread)),
+    transparent calc(50% + var(--ow-text-shimmer-spread))
+  );
+  --ow-text-shimmer-base: linear-gradient(
+    var(--ow-text-shimmer-base-color),
+    var(--ow-text-shimmer-base-color)
+  );
+
+  align-items: baseline;
+  display: inline-flex;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  min-width: 0;
+}
+
+[data-component="ow-text-shimmer"] [data-slot="ow-text-shimmer-char"] {
+  display: inline-grid;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  min-width: 0;
+}
+
+[data-component="ow-text-shimmer"] [data-slot="ow-text-shimmer-base"],
+[data-component="ow-text-shimmer"] [data-slot="ow-text-shimmer-highlight"] {
+  grid-area: 1 / 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity var(--ow-text-shimmer-swap) ease-out;
+  white-space: nowrap;
+}
+
+[data-component="ow-text-shimmer"] [data-slot="ow-text-shimmer-base"] {
+  color: inherit;
+  opacity: 1;
+}
+
+[data-component="ow-text-shimmer"] [data-slot="ow-text-shimmer-highlight"] {
+  color: var(--ow-text-shimmer-base-color);
+  opacity: 0;
+}
+
+[data-component="ow-text-shimmer"][data-active="true"]
+  [data-slot="ow-text-shimmer-highlight"] {
+  opacity: 1;
+}
+
+[data-component="ow-text-shimmer"] [data-slot="ow-text-shimmer-highlight"][data-run="true"] {
+  animation-delay: calc(var(--ow-text-shimmer-step) * var(--ow-text-shimmer-index) * -1);
+  animation-duration: var(--ow-text-shimmer-duration);
+  animation-fill-mode: both;
+  animation-iteration-count: infinite;
+  animation-name: ow-text-shimmer-cadence;
+  animation-timing-function: steps(48, end);
+  will-change: background-position;
+}
+
+@keyframes ow-text-shimmer-cadence {
+  0%,
+  74% {
+    background-position:
+      100% 0,
+      0 0;
+  }
+
+  100% {
+    background-position:
+      0% 0,
+      0 0;
+  }
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  [data-component="ow-text-shimmer"] [data-slot="ow-text-shimmer-highlight"] {
+    -webkit-background-clip: text;
+    background-clip: text;
+    background-image: var(--ow-text-shimmer-sweep), var(--ow-text-shimmer-base);
+    background-position:
+      100% 0,
+      0 0;
+    background-repeat: no-repeat;
+    background-size:
+      var(--ow-text-shimmer-size) 100%,
+      100% 100%;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+
+  [data-component="ow-text-shimmer"][data-active="true"]
+    [data-slot="ow-text-shimmer-base"] {
+    opacity: 0;
+  }
+}
+
+.ow-agent-steps[data-active="true"] .ow-agent-steps-title {
   background-image: linear-gradient(
     to right,
     var(--ow-agent-timeline-muted) 30%,
@@ -1032,12 +1153,10 @@ body[data-platform="darwin"] .launcher-window-shell {
   );
   background-size: 200% auto;
   background-clip: text;
+  -webkit-background-clip: text;
   color: transparent;
+  -webkit-text-fill-color: transparent;
   animation: ow-text-shimmer 4s linear infinite;
-}
-
-.ow-agent-tool[data-state="running"] .ow-agent-tool-label {
-  animation: ow-agent-tool-breathe 1.8s ease-in-out infinite;
 }
 
 @keyframes ow-text-shimmer {
@@ -1050,14 +1169,21 @@ body[data-platform="darwin"] .launcher-window-shell {
   }
 }
 
-@keyframes ow-agent-tool-breathe {
-  0%,
-  100% {
-    opacity: 0.54;
+@media (prefers-reduced-motion: reduce) {
+  [data-component="ow-text-shimmer"] [data-slot="ow-text-shimmer-base"],
+  [data-component="ow-text-shimmer"] [data-slot="ow-text-shimmer-highlight"] {
+    transition-duration: 0ms;
   }
 
-  50% {
-    opacity: 1;
+  [data-component="ow-text-shimmer"] [data-slot="ow-text-shimmer-highlight"] {
+    animation: none !important;
+    background-image: none;
+    color: inherit;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  [data-component="ow-text-shimmer"] [data-slot="ow-text-shimmer-base"] {
+    opacity: 1 !important;
   }
 }
 
@@ -2257,10 +2383,6 @@ body[data-window="launcher"] .ow-markdown,
   padding-left: var(--ow-space-1);
 }
 
-.ow-agent-activity-tool-item > span:first-child {
-  visibility: hidden;
-}
-
 .ow-agent-tool-chevron {
   transform-origin: center;
   transition: transform var(--ow-motion-duration-panel) var(--ow-motion-ease-standard);
@@ -2300,17 +2422,10 @@ body[data-window="launcher"] .ow-markdown,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ow-agent-steps[data-active="true"] .ow-agent-steps-title,
-  .ow-agent-activity-thinking[data-active="true"] .ow-agent-activity-thinking-title,
-  .ow-agent-tool-inline[data-active="true"] .ow-agent-tool-inline-title,
-  .ow-agent-tool-group[data-active="true"] .ow-agent-tool-group-title {
+  .ow-agent-steps[data-active="true"] .ow-agent-steps-title {
     animation: none;
     color: var(--ow-agent-timeline-muted);
-  }
-
-  .ow-agent-tool[data-state="running"] .ow-agent-tool-label {
-    animation: none;
-    opacity: 1;
+    -webkit-text-fill-color: var(--ow-agent-timeline-muted);
   }
 }
 

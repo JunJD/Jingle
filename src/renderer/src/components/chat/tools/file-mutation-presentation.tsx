@@ -13,25 +13,26 @@ import {
   ToolPreviewLines
 } from "./shared-components"
 import { renderToolApprovalOverview } from "./tool-approval-presentation"
-import type { ToolComponentProps } from "./types"
+import type { ToolComponentProps, ToolDisplay } from "./types"
 
 export function buildFileMutationSummary(
   props: ToolComponentProps,
   mode: FileMutationToolName
-): string {
+): ToolDisplay {
   const { copy, args } = props
   const review = getFileMutationReview(mode, args)
   const path = review?.path
   const content = review ? review.content : null
   const target = path ? getBasename(path) : null
 
-  return joinSummaryParts(
-    copy.toolCall.labels[mode],
-    target,
-    mode === "write_file" && content !== null && target
-      ? copy.toolCall.writeLinesToFile(countLines(content), target)
-      : null
-  )
+  return {
+    detail: target,
+    resultMeta:
+      mode === "write_file" && content !== null && target
+        ? copy.toolCall.writeLinesToFile(countLines(content), target)
+        : null,
+    title: copy.toolCall.labels[mode]
+  }
 }
 
 export function renderFileMutationDetail(

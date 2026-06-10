@@ -3,7 +3,13 @@ import type { ToolCall } from "@/types"
 import type { LucideIcon } from "lucide-react"
 import type { ReactNode } from "react"
 
-export type ToolComponentStatus = "running" | "complete" | "approval"
+export type ToolComponentStatus =
+  | "arguments_streaming"
+  | "running"
+  | "waiting_result"
+  | "complete"
+  | "failed"
+  | "approval"
 export type ToolPresentation = "standalone" | "grouped"
 
 export interface ToolRenderModel {
@@ -22,9 +28,15 @@ export interface ToolComponentProps extends ToolRenderModel {
   isExpanded: boolean
 }
 
+export interface ToolDisplay {
+  detail?: ReactNode | null
+  resultMeta?: ReactNode | null
+  title: ReactNode
+}
+
 export interface ToolComponentDefinition {
   name: string
   icon: LucideIcon
-  renderSummary: (props: ToolComponentProps) => ReactNode
+  renderDisplay: (props: ToolComponentProps) => ToolDisplay
   renderDetail?: (props: ToolComponentProps) => ReactNode
 }

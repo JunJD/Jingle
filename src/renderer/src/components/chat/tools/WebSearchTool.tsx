@@ -1,7 +1,7 @@
 import { ChevronDown, ExternalLink, Search } from "lucide-react"
 import { defineToolComponent } from "./registry-core"
 import { ToolCodeBlock, ToolDetailStack } from "./shared-components"
-import { getPatternArg, joinSummaryParts, truncateMiddle } from "./shared"
+import { getPatternArg, truncateMiddle } from "./shared"
 
 interface SearchResultItem {
   snippet?: string
@@ -92,13 +92,13 @@ function renderSearchResultsList(
 defineToolComponent({
   name: "web_search",
   icon: Search,
-  renderSummary({ copy, args }) {
+  renderDisplay({ copy, args }) {
     const query = getPatternArg(args)
 
-    return joinSummaryParts(
-      copy.toolCall.labels.web_search,
-      query ? truncateMiddle(query, 60) : null
-    )
+    return {
+      detail: query ? truncateMiddle(query, 60) : null,
+      title: copy.toolCall.labels.web_search
+    }
   },
   renderDetail({ args, rawResult, result }) {
     const query = getPatternArg(args)

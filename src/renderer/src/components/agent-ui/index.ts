@@ -8,6 +8,7 @@ export {
   type PromptInputProps,
   type PromptInputTextareaProps
 } from "./PromptInput"
+export { TextShimmer, type TextShimmerProps } from "./TextShimmer"
 export {
   AgentTool,
   AgentToolGroup,

@@ -28,7 +28,30 @@ export interface AppCopy {
     copyMessage: string
     agentTasks: string
     agentThought: string
-    agentWorking: string
+    agentStatusComposingAnswer: string
+    agentStatusPreparingTool: string
+    agentStatusRunningTool: string
+    agentStatusThinking: string
+    agentStatusUnderstandingRequest: string
+    agentStatusWaitingApproval: string
+    agentStatusWaitingToolResult: string
+    toolActivityCompleted: string
+    toolActivityCommands: (count: number) => string
+    toolActivityExplored: string
+    toolActivityFiles: (count: number) => string
+    toolActivityLists: (count: number) => string
+    toolActivityRanCommands: string
+    toolActivityRunningCommand: string
+    toolActivityRunningList: string
+    toolActivityRunningRead: string
+    toolActivityRunningSearch: string
+    toolActivityRunningWebSearch: string
+    toolActivitySearches: (count: number) => string
+    toolActivitySearchedWeb: string
+    toolActivityWebSearches: (count: number) => string
+    turnWorkedFor: (time: string) => string
+    turnWorking: string
+    turnWorkingFor: (time: string) => string
     addSelectionToChat: string
     executedSteps: (count: number) => string
     describeOutcome: string
@@ -93,6 +116,8 @@ export interface AppCopy {
     changeModel: string
     aiEmptyEyebrow: string
     aiEntryLabel: string
+    aiExtensionIntentSubtitle: (handle: string) => string
+    aiExtensionIntentTitle: (name: string) => string
     aiIntentSubtitle: (query: string) => string
     aiFooterLeading: string
     aiHeroDescription: string
@@ -217,6 +242,7 @@ export interface AppCopy {
     rejectAndAdjust: string
     rejectFeedbackPlaceholder: string
     taskCompleted: string
+    todoProgress: (completed: number, total: number) => string
     upcomingChanges: string
     writeLinesToFile: (count: number, fileName: string) => string
     matchesInFiles: (matchCount: number, fileCount: number) => string
@@ -260,7 +286,30 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       copyMessage: "复制消息",
       agentTasks: "Agent 任务",
       agentThought: "已思考",
-      agentWorking: "正在工作",
+      agentStatusComposingAnswer: "正在整理答案",
+      agentStatusPreparingTool: "正在准备工具",
+      agentStatusRunningTool: "正在运行工具",
+      agentStatusThinking: "正在思考",
+      agentStatusUnderstandingRequest: "正在理解请求",
+      agentStatusWaitingApproval: "等待你确认",
+      agentStatusWaitingToolResult: "正在等待工具结果",
+      toolActivityCompleted: "已处理工具",
+      toolActivityCommands: (count) => `${count} 条命令`,
+      toolActivityExplored: "已探索",
+      toolActivityFiles: (count) => `${count} 个文件`,
+      toolActivityLists: (count) => `${count} 个列表`,
+      toolActivityRanCommands: "已运行",
+      toolActivityRunningCommand: "正在运行命令",
+      toolActivityRunningList: "正在列目录",
+      toolActivityRunningRead: "正在读取文件",
+      toolActivityRunningSearch: "正在搜索",
+      toolActivityRunningWebSearch: "正在搜索网页",
+      toolActivitySearches: (count) => `${count} 次搜索`,
+      toolActivitySearchedWeb: "已搜索网页",
+      toolActivityWebSearches: (count) => `${count} 次`,
+      turnWorkedFor: (time) => `已处理 ${time}`,
+      turnWorking: "处理中",
+      turnWorkingFor: (time) => `处理中 ${time}`,
       addSelectionToChat: "添加到对话",
       executedSteps: (count) => `已执行 ${count} 个步骤`,
       describeOutcome: "描述你想达成的结果。workspace 和 tools 会随后接上。",
@@ -326,6 +375,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       changeModel: "切换模型...",
       aiEmptyEyebrow: "Jingle",
       aiEntryLabel: "问 AI",
+      aiExtensionIntentSubtitle: (handle) => `${handle} · AI 扩展`,
+      aiExtensionIntentTitle: (name) => `问 ${name}`,
       aiIntentSubtitle: (query) => `带着“${query}”进入 AI`,
       aiFooterLeading: "快速 AI",
       aiHeroDescription: "把目标说清楚，剩下的交给我推进。",
@@ -469,6 +520,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       rejectAndAdjust: "拒绝，请告知 Agent 如何调整",
       rejectFeedbackPlaceholder: "告诉 Agent 需要怎么调整（可选）",
       taskCompleted: "任务已完成",
+      todoProgress: (completed, total) => `${completed}/${total} 已完成`,
       upcomingChanges: "即将变更",
       writeLinesToFile: (count, fileName) => `向 ${fileName} 写入 ${count} 行`
     },
@@ -510,7 +562,30 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       copyMessage: "Copy message",
       agentTasks: "Agent Tasks",
       agentThought: "Thought",
-      agentWorking: "Working",
+      agentStatusComposingAnswer: "Preparing answer",
+      agentStatusPreparingTool: "Preparing tool",
+      agentStatusRunningTool: "Running tool",
+      agentStatusThinking: "Thinking",
+      agentStatusUnderstandingRequest: "Understanding request",
+      agentStatusWaitingApproval: "Waiting for your confirmation",
+      agentStatusWaitingToolResult: "Waiting for tool result",
+      toolActivityCompleted: "Handled tools",
+      toolActivityCommands: (count) => `${count} command${count === 1 ? "" : "s"}`,
+      toolActivityExplored: "Explored",
+      toolActivityFiles: (count) => `${count} file${count === 1 ? "" : "s"}`,
+      toolActivityLists: (count) => `${count} list${count === 1 ? "" : "s"}`,
+      toolActivityRanCommands: "Ran",
+      toolActivityRunningCommand: "Running command",
+      toolActivityRunningList: "Listing directory",
+      toolActivityRunningRead: "Reading file",
+      toolActivityRunningSearch: "Searching",
+      toolActivityRunningWebSearch: "Searching web",
+      toolActivitySearches: (count) => `${count} search${count === 1 ? "" : "es"}`,
+      toolActivitySearchedWeb: "Searched web",
+      toolActivityWebSearches: (count) => `${count} time${count === 1 ? "" : "s"}`,
+      turnWorkedFor: (time) => `Worked for ${time}`,
+      turnWorking: "Working",
+      turnWorkingFor: (time) => `Working for ${time}`,
       addSelectionToChat: "Add to chat",
       executedSteps: (count) => `${count} steps completed`,
       describeOutcome: "Describe the outcome you want. The workspace and tools will follow.",
@@ -577,6 +652,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       changeModel: "Change Model...",
       aiEmptyEyebrow: "Jingle",
       aiEntryLabel: "Ask AI",
+      aiExtensionIntentSubtitle: (handle) => `${handle} · AI Extension`,
+      aiExtensionIntentTitle: (name) => `Ask ${name}`,
       aiIntentSubtitle: (query) => `Open AI with “${query}”`,
       aiFooterLeading: "Quick AI",
       aiHeroDescription: "Tell me the outcome. I will move the work forward.",
@@ -720,11 +797,12 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       moreItems: (count) => `... and ${count} more`,
       moreLines: (count) => `... ${count} more lines`,
       moreMatches: (count) => `+${count} more matches`,
-      readLines: (count) => `Read ${count} lines`,
+      readLines: (count) => `Read ${count} line${count === 1 ? "" : "s"}`,
       reject: "Reject",
       rejectAndAdjust: "Reject and tell the agent what to adjust",
       rejectFeedbackPlaceholder: "Tell the agent what to adjust (optional)",
       taskCompleted: "Task completed",
+      todoProgress: (completed, total) => `${completed}/${total} done`,
       upcomingChanges: "Upcoming changes",
       writeLinesToFile: (count, fileName) => `Writing ${count} lines to ${fileName}`
     },

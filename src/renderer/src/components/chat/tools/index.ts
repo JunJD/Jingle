@@ -1,6 +1,7 @@
 export type {
   ToolComponentDefinition,
   ToolComponentProps,
+  ToolDisplay,
   ToolPresentation,
   ToolComponentStatus
 } from "./types"

@@ -5,7 +5,7 @@ import { buildFileMutationSummary, renderFileMutationDetail } from "./file-mutat
 defineToolComponent({
   name: "edit_file",
   icon: Edit,
-  renderSummary(props) {
+  renderDisplay(props) {
     return buildFileMutationSummary(props, "edit_file")
   },
   renderDetail({ copy, args, rawResult, status }) {
@@ -19,7 +19,7 @@ defineToolComponent({
 defineToolComponent({
   name: "write_file",
   icon: Edit,
-  renderSummary(props) {
+  renderDisplay(props) {
     return buildFileMutationSummary(props, "write_file")
   },
   renderDetail({ copy, args, rawResult, status }) {

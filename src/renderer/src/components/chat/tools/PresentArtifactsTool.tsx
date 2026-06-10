@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils"
 import { defineToolComponent } from "./registry-core"
 import type { ToolComponentProps } from "./types"
 import { ToolDetailSection, ToolDetailStack } from "./shared-components"
-import { joinSummaryParts } from "./shared"
 
 function getArtifactItems(args: Record<string, unknown>): Array<Record<string, unknown>> {
   return Array.isArray(args.artifacts)
@@ -121,13 +120,13 @@ export function PresentArtifactsDetail(
 defineToolComponent({
   icon: PackageOpen,
   name: "present_artifacts",
-  renderSummary({ copy, args }) {
+  renderDisplay({ copy, args }) {
     const items = getArtifactItems(args)
 
-    return joinSummaryParts(
-      copy.toolCall.labels.present_artifacts,
-      items.length > 0 ? `${items.length}` : null
-    )
+    return {
+      detail: items.length > 0 ? `${items.length}` : null,
+      title: copy.toolCall.labels.present_artifacts
+    }
   },
   renderDetail({ copy, rawResult, toolCall }) {
     return <PresentArtifactsDetail copy={copy} rawResult={rawResult} toolCall={toolCall} />
