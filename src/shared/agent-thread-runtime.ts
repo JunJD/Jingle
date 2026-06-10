@@ -1,16 +1,47 @@
-import type { HITLRequest, Message, Subagent, Todo } from "./app-types"
+import type { HITLDecision, HITLRequest, Message, Subagent, Todo } from "./app-types"
 import type { IpcErrorPayload } from "./ipc-error"
 
-export type AgentThreadRuntimeStatus =
-  | "idle"
-  | "running"
-  | "interrupted"
-  | "error"
-  | "cancelled"
+export type AgentThreadRuntimeStatus = "idle" | "running" | "interrupted" | "error" | "cancelled"
 
 export type AgentRunStatus = "running" | "waiting_approval"
 
 export type AgentRunPhase = "thinking" | "streaming" | "tool_running" | "waiting_tool_result"
+
+export type ActiveAgentToolCallStatus = "arguments_streaming" | "running" | "waiting_result"
+
+export const AGENT_TOOL_EXECUTION_METADATA_KEY = "openworkToolExecution"
+
+// Live runtime ownership: active tool calls keep only executable/control facts.
+// Tool registry display metadata stays on assistant message tool_calls and is read by renderer projection.
+export interface ActiveAgentToolCall {
+  argsText: string
+  id: string
+  index: number | null
+  messageId: string | null
+  name: string
+  runId: string | null
+  startedAt: Date
+  status: ActiveAgentToolCallStatus
+}
+
+export type AgentToolExecutionStatus = "running" | "completed" | "failed"
+
+export interface AgentToolExecutionError {
+  message: string
+  type?: string
+}
+
+export interface AgentToolExecutionTiming {
+  completedAt?: Date
+  durationMs?: number
+  error?: AgentToolExecutionError
+  messageId: string | null
+  runId: string | null
+  startedAt?: Date
+  status: AgentToolExecutionStatus
+  toolCallId: string
+  toolName: string | null
+}
 
 export interface AgentTokenUsage {
   inputTokens: number
@@ -23,10 +54,14 @@ export interface AgentTokenUsage {
 
 export interface ActiveAgentRun {
   assistantMessageId: string | null
+  currentToolCallId: string | null
   phase: AgentRunPhase | null
+  phaseStartedAt: Date
   runId: string | null
+  startedAt: Date
   status: AgentRunStatus
   threadId: string
+  toolCalls: ActiveAgentToolCall[]
   turnId: string
   userMessageId: string
 }
@@ -80,6 +115,7 @@ export type AgentThreadEvent =
       phase: AgentRunPhase
       revision: number
       runId: string | null
+      startedAt: Date
       type: "run.phaseChanged"
     }
   | {
@@ -94,6 +130,7 @@ export type AgentThreadEvent =
     }
   | {
       delta: string
+      deltaAt: Date
       field: "text"
       messageId: string
       partId: string
@@ -101,27 +138,42 @@ export type AgentThreadEvent =
       type: "message.part.delta"
     }
   | {
-      messageId: string | null
       revision: number
-      runId: string | null
-      toolCallId: string
-      type: "tool.started"
+      toolCall: ActiveAgentToolCall
+      type: "tool.callUpdated"
     }
   | {
       messageId: string | null
       revision: number
       runId: string | null
+      startedAt: Date
       toolCallId: string
+      type: "tool.started"
+    }
+  | {
+      completedAt: Date
+      durationMs: number | null
+      error: AgentToolExecutionError | null
+      messageId: string | null
+      revision: number
+      runId: string | null
+      startedAt: Date | null
+      status: "completed" | "failed"
+      toolCallId: string
+      toolName: string | null
       type: "tool.updated"
     }
   | {
       approval: HITLRequest
       revision: number
+      requestedAt: Date
       runId: string | null
       type: "approval.requested"
     }
   | {
+      decision: HITLDecision
       revision: number
+      resolvedAt: Date
       type: "approval.cleared"
     }
   | {
@@ -135,6 +187,9 @@ export type AgentThreadEvent =
       type: "todos.replaced"
     }
   | {
+      completedAt: Date
+      durationMs: number | null
+      error: IpcErrorPayload | null
       revision: number
       runId: string | null
       status: AgentThreadRunFinishStatus
@@ -150,6 +205,7 @@ export type AgentThreadEventDraft =
   | Omit<Extract<AgentThreadEvent, { type: "run.tokenUsageUpdated" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "message.upserted" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "message.part.delta" }>, "revision">
+  | Omit<Extract<AgentThreadEvent, { type: "tool.callUpdated" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "tool.started" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "tool.updated" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "approval.requested" }>, "revision">
@@ -226,11 +282,14 @@ export function reduceAgentThreadRuntimeEvent(
           latestRunId: event.runId
         },
         event.revision,
-        { runId: event.runId }
+        { runId: event.runId, toolCalls: updateActiveToolCallRunId(state.activeRun, event.runId) }
       )
 
     case "run.phaseChanged":
-      return updateActiveRun(state, event.revision, { phase: event.phase })
+      return updateActiveRun(state, event.revision, {
+        phase: event.phase,
+        phaseStartedAt: event.startedAt
+      })
 
     case "run.tokenUsageUpdated":
       return {
@@ -245,35 +304,57 @@ export function reduceAgentThreadRuntimeEvent(
         return updateRevision(state, event.revision)
       }
 
-      return updateActiveRun(state, event.revision, {
+      return updateActiveRunWithPhaseStart(state, event.revision, event.message.created_at, {
         assistantMessageId: event.message.id,
-        phase: (event.message.tool_calls?.length ?? 0) > 0 ? "tool_running" : "streaming"
+        currentToolCallId: event.message.tool_calls?.at(-1)?.id ?? null,
+        phase: (event.message.tool_calls?.length ?? 0) > 0 ? "tool_running" : "streaming",
+        toolCalls: mergeMessageToolCalls(state.activeRun, event.message)
       })
 
-    case "message.part.delta":
-      {
-        const nextState = appendRuntimeMessageTextDelta(state, event.messageId, event.delta)
-        if (nextState === state) {
-          return state
-        }
-
-        return updateActiveRun(nextState, event.revision, {
-          assistantMessageId: event.messageId,
-          phase: "streaming"
-        })
+    case "message.part.delta": {
+      const nextState = appendRuntimeMessageTextDelta(state, event.messageId, event.delta)
+      if (nextState === state) {
+        return state
       }
 
-    case "tool.started":
-      return updateActiveRun(state, event.revision, {
-        ...(event.messageId ? { assistantMessageId: event.messageId } : {}),
-        phase: "tool_running"
+      return updateActiveRunWithPhaseStart(nextState, event.revision, event.deltaAt, {
+        assistantMessageId: event.messageId,
+        currentToolCallId: null,
+        phase: "streaming"
+      })
+    }
+
+    case "tool.callUpdated":
+      return updateActiveRunWithPhaseStart(state, event.revision, event.toolCall.startedAt, {
+        ...(event.toolCall.messageId ? { assistantMessageId: event.toolCall.messageId } : {}),
+        currentToolCallId: event.toolCall.id,
+        phase: "tool_running",
+        toolCalls: upsertActiveToolCall(state.activeRun, event.toolCall)
       })
 
-    case "tool.updated":
-      return updateActiveRun(state, event.revision, {
+    case "tool.started":
+      return updateActiveRunWithPhaseStart(state, event.revision, event.startedAt, {
         ...(event.messageId ? { assistantMessageId: event.messageId } : {}),
-        phase: "waiting_tool_result"
+        currentToolCallId: event.toolCallId,
+        phase: "tool_running",
+        toolCalls: updateActiveToolCallStatus(
+          state.activeRun,
+          event.toolCallId,
+          "running",
+          event.startedAt
+        )
       })
+
+    case "tool.updated": {
+      const remainingToolCalls = removeActiveToolCall(state.activeRun, event.toolCallId)
+      const currentToolCall = remainingToolCalls.at(-1)
+      return updateActiveRunWithPhaseStart(state, event.revision, event.completedAt, {
+        ...(event.messageId ? { assistantMessageId: event.messageId } : {}),
+        currentToolCallId: currentToolCall?.id ?? null,
+        phase: currentToolCall ? "tool_running" : "thinking",
+        toolCalls: remainingToolCalls
+      })
+    }
 
     case "approval.requested":
       return updateActiveRun(
@@ -284,12 +365,55 @@ export function reduceAgentThreadRuntimeEvent(
         },
         event.revision,
         {
+          currentToolCallId: event.approval.tool_call.id,
           phase: "waiting_tool_result",
-          status: "waiting_approval"
+          phaseStartedAt: event.requestedAt,
+          status: "waiting_approval",
+          toolCalls: upsertActiveToolCall(state.activeRun, {
+            argsText: JSON.stringify(event.approval.tool_call.args ?? {}),
+            id: event.approval.tool_call.id,
+            index: null,
+            messageId: state.activeRun?.assistantMessageId ?? null,
+            name: event.approval.tool_call.name,
+            runId: event.runId,
+            startedAt:
+              state.activeRun?.toolCalls.find(
+                (toolCall) => toolCall.id === event.approval.tool_call.id
+              )?.startedAt ?? event.requestedAt,
+            status: "waiting_result"
+          })
         }
       )
 
     case "approval.cleared":
+      if (state.pendingApproval && state.activeRun) {
+        const approved = event.decision.type === "approve"
+        const toolCallId = state.pendingApproval.tool_call.id
+        return updateActiveRun(
+          {
+            ...state,
+            pendingApproval: null
+          },
+          event.revision,
+          {
+            currentToolCallId: toolCallId,
+            phase: approved ? "tool_running" : "waiting_tool_result",
+            phaseStartedAt: event.resolvedAt,
+            status: "running",
+            toolCalls: upsertActiveToolCall(state.activeRun, {
+              argsText: JSON.stringify(state.pendingApproval.tool_call.args ?? {}),
+              id: toolCallId,
+              index: null,
+              messageId: state.activeRun.assistantMessageId,
+              name: state.pendingApproval.tool_call.name,
+              runId: state.activeRun.runId,
+              startedAt: event.resolvedAt,
+              status: approved ? "running" : "waiting_result"
+            })
+          }
+        )
+      }
+
       return {
         ...state,
         pendingApproval: null,
@@ -378,6 +502,101 @@ function upsertRuntimeMessage(
   }
 }
 
+function upsertActiveToolCall(
+  activeRun: ActiveAgentRun | null,
+  toolCall: ActiveAgentToolCall
+): ActiveAgentToolCall[] {
+  return upsertActiveToolCallInList(activeRun?.toolCalls ?? [], toolCall)
+}
+
+function upsertActiveToolCallInList(
+  existingToolCalls: ActiveAgentToolCall[],
+  toolCall: ActiveAgentToolCall
+): ActiveAgentToolCall[] {
+  const existingIndex = existingToolCalls.findIndex(
+    (entry) =>
+      entry.id === toolCall.id ||
+      (entry.messageId === toolCall.messageId &&
+        entry.index !== null &&
+        toolCall.index !== null &&
+        entry.index === toolCall.index)
+  )
+  if (existingIndex < 0) {
+    return [...existingToolCalls, toolCall]
+  }
+
+  const existingToolCall = existingToolCalls[existingIndex]!
+  const nextToolCall: ActiveAgentToolCall = {
+    ...existingToolCall,
+    ...toolCall,
+    argsText: toolCall.argsText || existingToolCall.argsText,
+    messageId: toolCall.messageId ?? existingToolCall.messageId,
+    name: toolCall.name || existingToolCall.name,
+    runId: toolCall.runId ?? existingToolCall.runId,
+    startedAt: existingToolCall.startedAt
+  }
+  const nextToolCalls = [...existingToolCalls]
+  nextToolCalls[existingIndex] = nextToolCall
+  return nextToolCalls
+}
+
+function removeActiveToolCall(
+  activeRun: ActiveAgentRun | null,
+  toolCallId: string
+): ActiveAgentToolCall[] {
+  return (activeRun?.toolCalls ?? []).filter((toolCall) => toolCall.id !== toolCallId)
+}
+
+function updateActiveToolCallRunId(
+  activeRun: ActiveAgentRun | null,
+  runId: string
+): ActiveAgentToolCall[] {
+  return (activeRun?.toolCalls ?? []).map((toolCall) => ({
+    ...toolCall,
+    runId
+  }))
+}
+
+function updateActiveToolCallStatus(
+  activeRun: ActiveAgentRun | null,
+  toolCallId: string,
+  status: ActiveAgentToolCallStatus,
+  startedAt?: Date
+): ActiveAgentToolCall[] {
+  return (activeRun?.toolCalls ?? []).map((toolCall) =>
+    toolCall.id === toolCallId
+      ? { ...toolCall, ...(startedAt ? { startedAt } : {}), status }
+      : toolCall
+  )
+}
+
+function mergeMessageToolCalls(
+  activeRun: ActiveAgentRun | null,
+  message: Message
+): ActiveAgentToolCall[] {
+  let toolCalls = activeRun?.toolCalls ?? []
+
+  for (const [index, toolCall] of (message.tool_calls ?? []).entries()) {
+    const existingToolCall = toolCalls.find(
+      (entry) =>
+        entry.id === toolCall.id ||
+        (entry.messageId === message.id && entry.index !== null && entry.index === index)
+    )
+    toolCalls = upsertActiveToolCallInList(toolCalls, {
+      argsText: JSON.stringify(toolCall.args ?? {}),
+      id: toolCall.id,
+      index,
+      messageId: message.id,
+      name: toolCall.name,
+      runId: activeRun?.runId ?? null,
+      startedAt: existingToolCall?.startedAt ?? message.created_at ?? new Date(),
+      status: "running"
+    })
+  }
+
+  return toolCalls
+}
+
 function updateActiveRun(
   state: AgentThreadRuntimeState,
   revision: number,
@@ -397,9 +616,104 @@ function updateActiveRun(
   }
 }
 
+function updateActiveRunWithPhaseStart(
+  state: AgentThreadRuntimeState,
+  revision: number,
+  phaseStartedAt: Date,
+  patch: Partial<ActiveAgentRun>
+): AgentThreadRuntimeState {
+  if (!state.activeRun) {
+    return updateRevision(state, revision)
+  }
+
+  const nextPatch =
+    patch.phase && patch.phase !== state.activeRun.phase
+      ? {
+          ...patch,
+          phaseStartedAt
+        }
+      : patch
+
+  return updateActiveRun(state, revision, nextPatch)
+}
+
 function updateRevision(state: AgentThreadRuntimeState, revision: number): AgentThreadRuntimeState {
   return {
     ...state,
     revision
+  }
+}
+
+function toDate(value: unknown): Date | null {
+  if (value instanceof Date) {
+    return value
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  return null
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined
+}
+
+function toToolExecutionStatus(value: unknown): AgentToolExecutionStatus | null {
+  return value === "running" || value === "completed" || value === "failed" ? value : null
+}
+
+function toToolExecutionError(value: unknown): AgentToolExecutionError | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined
+  }
+
+  const message = (value as { message?: unknown }).message
+  if (typeof message !== "string" || !message.trim()) {
+    return undefined
+  }
+
+  const type = (value as { type?: unknown }).type
+  return {
+    message,
+    ...(typeof type === "string" && type.trim() ? { type } : {})
+  }
+}
+
+export function readAgentToolExecutionTiming(
+  message: Pick<Message, "metadata">
+): AgentToolExecutionTiming | null {
+  const metadataValue = message.metadata?.[AGENT_TOOL_EXECUTION_METADATA_KEY]
+  if (!metadataValue || typeof metadataValue !== "object") {
+    return null
+  }
+
+  const value = metadataValue as Record<string, unknown>
+  const toolCallId = typeof value.toolCallId === "string" ? value.toolCallId : null
+  const status = toToolExecutionStatus(value.status)
+  const startedAt = toDate(value.startedAt)
+  if (!toolCallId || !status) {
+    return null
+  }
+
+  const completedAt = toDate(value.completedAt)
+  const durationMs = toFiniteNumber(value.durationMs)
+  const messageId = typeof value.messageId === "string" ? value.messageId : null
+  const runId = typeof value.runId === "string" ? value.runId : null
+  const toolName = typeof value.toolName === "string" ? value.toolName : null
+  const error = toToolExecutionError(value.error)
+
+  return {
+    ...(completedAt ? { completedAt } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {}),
+    ...(error ? { error } : {}),
+    messageId,
+    runId,
+    ...(startedAt ? { startedAt } : {}),
+    status,
+    toolCallId,
+    toolName
   }
 }

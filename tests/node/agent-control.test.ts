@@ -325,10 +325,14 @@ test("invokeAgentThread rejects busy threads before calling runtime", async () =
       revision: 1,
       run: {
         assistantMessageId: null,
+        currentToolCallId: null,
         phase: "thinking",
+        phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
         runId: "run-a",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
         status: "running",
         threadId: "thread-a",
+        toolCalls: [],
         turnId: "turn-a",
         userMessageId: "user-a"
       },
@@ -419,6 +423,7 @@ test("resumeAgentThread reads approval and model from command-time thread state"
   store.applyRuntimeEvents("thread-a", [
     {
       approval: createPendingApproval(),
+      requestedAt: new Date("2026-01-01T00:00:02.000Z"),
       revision: 1,
       runId: "run-a",
       type: "approval.requested"

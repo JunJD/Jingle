@@ -80,7 +80,7 @@ export class AgentController {
     }
 
     void this.agentService.resume(params, this.createStreamSink(params.threadId), {
-      onRunAccepted: () => this.agentThreadRunner.prepareResume(params.threadId)
+      onRunAccepted: () => this.agentThreadRunner.prepareResume(params.threadId, params.command?.resume)
     })
   }
 

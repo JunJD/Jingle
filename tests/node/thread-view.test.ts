@@ -7,10 +7,14 @@ import { projectThreadActivityStatus } from "../../src/renderer/src/lib/thread-v
 function createActiveRun(status: ActiveAgentRun["status"]): ActiveAgentRun {
   return {
     assistantMessageId: null,
+    currentToolCallId: null,
     phase: "thinking",
+    phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
     runId: "run-1",
+    startedAt: new Date("2026-01-01T00:00:00.000Z"),
     status,
     threadId: "thread-1",
+    toolCalls: [],
     turnId: "user-1",
     userMessageId: "user-1"
   }

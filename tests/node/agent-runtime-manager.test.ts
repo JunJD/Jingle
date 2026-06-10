@@ -141,10 +141,14 @@ test("agent runtime manager applies connected runtime batches into thread state"
         revision: 2,
         run: {
           assistantMessageId: null,
+          currentToolCallId: null,
           phase: "thinking",
+          phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
           runId: null,
+          startedAt: new Date("2026-01-01T00:00:00.000Z"),
           status: "running",
           threadId: "thread-a",
+          toolCalls: [],
           turnId: "user-1",
           userMessageId: "user-1"
         },
@@ -254,10 +258,14 @@ test("agent runtime manager replays runtime events instead of applying snapshot 
       revision: 2,
       run: {
         assistantMessageId: null,
+        currentToolCallId: null,
         phase: "thinking",
+        phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
         runId: "run-a",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
         status: "running",
         threadId: "thread-a",
+        toolCalls: [],
         turnId: "turn-a",
         userMessageId: "user-1"
       },
@@ -312,10 +320,14 @@ test("agent runtime manager applies metadata snapshots while streaming before re
       revision: 2,
       run: {
         assistantMessageId: null,
+        currentToolCallId: null,
         phase: "thinking",
+        phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
         runId: "run-a",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
         status: "running",
         threadId: "thread-a",
+        toolCalls: [],
         turnId: "turn-a",
         userMessageId: "user-1"
       },
@@ -352,9 +364,7 @@ test("agent runtime manager replays events instead of applying busy snapshots", 
         metadata: {
           model: "openai:gpt-4o"
         },
-        messages: [
-          createUserMessage("user-history", "History copy")
-        ],
+        messages: [createUserMessage("user-history", "History copy")],
         status: "busy"
       })
     },
@@ -374,10 +384,14 @@ test("agent runtime manager replays events instead of applying busy snapshots", 
             revision: 2,
             run: {
               assistantMessageId: null,
+              currentToolCallId: null,
               phase: "thinking",
+              phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
               runId: "run-a",
+              startedAt: new Date("2026-01-01T00:00:00.000Z"),
               status: "running",
               threadId,
+              toolCalls: [],
               turnId: "user-1",
               userMessageId: "user-1"
             },
@@ -462,10 +476,14 @@ test("agent runtime manager replays interrupted runtime facts instead of applyin
             revision: 3,
             run: {
               assistantMessageId: "assistant-1",
+              currentToolCallId: null,
               phase: "waiting_tool_result",
+              phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
               runId: "run-a",
+              startedAt: new Date("2026-01-01T00:00:00.000Z"),
               status: "waiting_approval",
               threadId,
+              toolCalls: [],
               turnId: "user-1",
               userMessageId: "user-1"
             },
@@ -473,6 +491,7 @@ test("agent runtime manager replays interrupted runtime facts instead of applyin
           },
           {
             approval: pendingApproval,
+            requestedAt: new Date("2026-01-01T00:00:02.000Z"),
             revision: 4,
             runId: "run-a",
             type: "approval.requested"
@@ -608,10 +627,14 @@ test("agent runtime manager reports background history refresh failures", async 
           revision: 2,
           run: {
             assistantMessageId: null,
+            currentToolCallId: null,
             phase: "thinking",
+            phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
             runId: "run-a",
+            startedAt: new Date("2026-01-01T00:00:00.000Z"),
             status: "running",
             threadId: "thread-a",
+            toolCalls: [],
             turnId: "user-1",
             userMessageId: "user-1"
           },
@@ -624,6 +647,9 @@ test("agent runtime manager reports background history refresh failures", async 
     connectedListener({
       events: [
         {
+          completedAt: new Date("2026-01-01T00:00:02.000Z"),
+          durationMs: 2_000,
+          error: null,
           revision: 3,
           runId: "run-a",
           status: "completed",
@@ -684,10 +710,14 @@ test("agent runtime manager reports synchronous background history refresh failu
           revision: 1,
           run: {
             assistantMessageId: null,
+            currentToolCallId: null,
             phase: "thinking",
+            phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
             runId: "run-a",
+            startedAt: new Date("2026-01-01T00:00:00.000Z"),
             status: "running",
             threadId: "thread-a",
+            toolCalls: [],
             turnId: "user-1",
             userMessageId: "user-1"
           },
@@ -700,6 +730,9 @@ test("agent runtime manager reports synchronous background history refresh failu
     connectedListener({
       events: [
         {
+          completedAt: new Date("2026-01-01T00:00:02.000Z"),
+          durationMs: 2_000,
+          error: null,
           revision: 2,
           runId: "run-a",
           status: "completed",

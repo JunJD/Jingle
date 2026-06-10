@@ -1,13 +1,18 @@
-import type { AgentInvokeMessage } from "@shared/message-content"
+import { extractMessageText, type AgentInvokeMessage } from "@shared/message-content"
+import type { ToolCallChunk } from "@langchain/core/messages"
 import type {
   AgentThreadDataSnapshot,
+  HITLDecision,
   Message,
   Subagent,
   ToolCall
 } from "@shared/app-types"
 import {
+  AGENT_TOOL_EXECUTION_METADATA_KEY,
   createDefaultAgentThreadRuntimeState,
   reduceAgentThreadRuntimeEvent,
+  type AgentToolExecutionError,
+  type ActiveAgentToolCall,
   type ActiveAgentRun,
   type AgentRunPhase,
   type AgentThreadEvent,
@@ -93,10 +98,86 @@ function toRuntimeForkState(
   return persistedForkState
 }
 
+function mergeToolCallName(existingName: string, incomingName: string | undefined): string {
+  if (!incomingName) {
+    return existingName
+  }
+
+  if (!existingName || incomingName.startsWith(existingName)) {
+    return incomingName
+  }
+
+  if (existingName === incomingName || existingName.endsWith(incomingName)) {
+    return existingName
+  }
+
+  return `${existingName}${incomingName}`
+}
+
+class StreamingToolCallAccumulator {
+  private toolCalls: ActiveAgentToolCall[] = []
+
+  reset(): void {
+    this.toolCalls = []
+  }
+
+  update(input: {
+    chunks: readonly ToolCallChunk[]
+    messageId: string
+    runId: string | null
+  }): ActiveAgentToolCall[] {
+    const updatedToolCalls: ActiveAgentToolCall[] = []
+
+    for (const chunk of input.chunks) {
+      const index = chunk.index ?? null
+      if (!chunk.id && index === null) {
+        continue
+      }
+
+      const existingIndex = this.toolCalls.findIndex((toolCall) => {
+        if (chunk.id && toolCall.id === chunk.id) {
+          return true
+        }
+
+        return (
+          toolCall.messageId === input.messageId &&
+          toolCall.index !== null &&
+          index !== null &&
+          toolCall.index === index
+        )
+      })
+      const existingToolCall = existingIndex >= 0 ? this.toolCalls[existingIndex] : null
+      const id = chunk.id ?? existingToolCall?.id ?? `${input.messageId}:tool:${index}`
+      const toolCall: ActiveAgentToolCall = {
+        argsText: `${existingToolCall?.argsText ?? ""}${chunk.args ?? ""}`,
+        id,
+        index,
+        messageId: input.messageId,
+        name: mergeToolCallName(existingToolCall?.name ?? "", chunk.name),
+        runId: input.runId,
+        startedAt: existingToolCall?.startedAt ?? new Date(),
+        status: "arguments_streaming"
+      }
+
+      if (existingIndex >= 0) {
+        this.toolCalls[existingIndex] = toolCall
+      } else {
+        this.toolCalls.push(toolCall)
+      }
+
+      updatedToolCalls.push(toolCall)
+    }
+
+    return updatedToolCalls
+  }
+}
+
 class ThreadRuntimeProjector {
   private readonly pendingRuntimeEvents: AgentThreadEvent[] = []
   private readonly taskToolCallTracker = new TaskToolCallTracker()
+  private readonly toolCallAccumulator = new StreamingToolCallAccumulator()
   private currentMessageId: string | null = null
+  private pendingResumeDecision: HITLDecision | null = null
   private runtimeState: AgentThreadRuntimeState
 
   constructor(threadId: string) {
@@ -139,6 +220,7 @@ class ThreadRuntimeProjector {
 
   prepareInvoke(message: AgentInvokeMessage): void {
     this.resetStreamingState()
+    this.pendingResumeDecision = null
     const userMessage = createUserRuntimeMessage(message)
     this.upsertMessage(userMessage, { appendAssistantText: false })
     this.commitRuntimeEvent({
@@ -147,8 +229,9 @@ class ThreadRuntimeProjector {
     })
   }
 
-  prepareResume(): void {
+  prepareResume(decision?: HITLDecision): void {
     this.resetStreamingState()
+    this.pendingResumeDecision = decision ?? null
     const activeRun = this.createActiveRunFromLatestUserMessage()
     if (activeRun) {
       this.commitRuntimeEvent({
@@ -163,7 +246,14 @@ class ThreadRuntimeProjector {
     switch (payload.type) {
       case "run_started":
         if (this.runtimeState.pendingApproval) {
-          this.commitRuntimeEvent({ type: "approval.cleared" })
+          if (this.pendingResumeDecision) {
+            this.commitRuntimeEvent({
+              decision: this.pendingResumeDecision,
+              resolvedAt: new Date(),
+              type: "approval.cleared"
+            })
+            this.pendingResumeDecision = null
+          }
         }
         this.commitRuntimeEvent({ runId: payload.runId, type: "run.idAssigned" })
         return
@@ -181,12 +271,13 @@ class ThreadRuntimeProjector {
         return
 
       case "error":
+        const error = toRuntimeError(payload)
         this.commitRuntimeEvent({
-          error: toRuntimeError(payload),
+          error,
           status: "error",
           type: "thread.statusChanged"
         })
-        this.finishActiveRun("error")
+        this.finishActiveRun("error", error)
         return
     }
   }
@@ -212,7 +303,7 @@ class ThreadRuntimeProjector {
         }
 
         if (decoded.assistant.toolCallChunks.length > 0) {
-          this.commitToolStartedEvents(decoded.assistant.id, decoded.assistant.toolCallChunks)
+          this.commitToolCallChunkEvents(decoded.assistant.id, decoded.assistant.toolCallChunks)
           const subagents = this.taskToolCallTracker.readSubagentsFromToolCallChunks(
             decoded.assistant.toolCallChunks
           )
@@ -244,24 +335,43 @@ class ThreadRuntimeProjector {
       }
 
       if (decoded.tool) {
-        this.commitRuntimeEvent({
-          messageId: this.runtimeState.activeRun?.assistantMessageId ?? this.currentMessageId,
-          runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
+        const completedAt = new Date()
+        const toolExecution = this.createToolExecutionUpdate({
+          completedAt,
+          messageId: decoded.tool.id,
+          status: decoded.tool.status === "error" ? "failed" : "completed",
           toolCallId: decoded.tool.toolCallId,
-          type: "tool.updated"
+          toolName: decoded.tool.name ?? null,
+          ...(decoded.tool.status === "error"
+            ? {
+                error: {
+                  message: extractMessageText(decoded.tool.content).trim() || "Tool execution failed"
+                }
+              }
+            : {})
         })
         this.upsertMessage(
           {
             content: decoded.tool.content,
-            created_at: this.getCreatedAt(decoded.tool.id),
+            created_at: completedAt,
             id: decoded.tool.id,
-            ...(decoded.tool.metadata ? { metadata: decoded.tool.metadata } : {}),
+            metadata: {
+              ...(decoded.tool.metadata ?? {}),
+              [AGENT_TOOL_EXECUTION_METADATA_KEY]: toolExecution.metadata
+            },
             name: decoded.tool.name,
             role: "tool",
             tool_call_id: decoded.tool.toolCallId
           },
           { appendAssistantText: false }
         )
+        this.commitRuntimeEvent({
+          messageId: this.runtimeState.activeRun?.assistantMessageId ?? this.currentMessageId,
+          runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
+          ...toolExecution.event,
+          toolCallId: decoded.tool.toolCallId,
+          type: "tool.updated"
+        })
 
         if (decoded.tool.name === "task") {
           const subagents = this.taskToolCallTracker.completeSubagent(decoded.tool.toolCallId)
@@ -287,6 +397,7 @@ class ThreadRuntimeProjector {
       if (decoded.pendingApproval) {
         this.commitRuntimeEvent({
           approval: decoded.pendingApproval,
+          requestedAt: new Date(),
           runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
           type: "approval.requested"
         })
@@ -310,15 +421,32 @@ class ThreadRuntimeProjector {
     return event
   }
 
+  private commitToolCallChunkEvents(messageId: string, chunks: readonly ToolCallChunk[]): void {
+    const toolCalls = this.toolCallAccumulator.update({
+      chunks,
+      messageId,
+      runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId
+    })
+
+    for (const toolCall of toolCalls) {
+      this.commitRuntimeEvent({
+        toolCall,
+        type: "tool.callUpdated"
+      })
+    }
+  }
+
   private commitToolStartedEvents(messageId: string, toolCalls: readonly { id?: string }[]): void {
     for (const toolCall of toolCalls) {
       if (!toolCall.id) {
         continue
       }
 
+      const startedAt = new Date()
       this.commitRuntimeEvent({
         messageId,
         runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
+        startedAt,
         toolCallId: toolCall.id,
         type: "tool.started"
       })
@@ -349,12 +477,17 @@ class ThreadRuntimeProjector {
   }
 
   private createActiveRun(userMessageId: string, runId: string | null): ActiveAgentRun {
+    const startedAt = this.getCreatedAt(userMessageId)
     return {
       assistantMessageId: null,
+      currentToolCallId: null,
       phase: "thinking",
+      phaseStartedAt: startedAt,
       runId,
+      startedAt,
       status: "running",
       threadId: this.runtimeState.threadId,
+      toolCalls: [],
       turnId: userMessageId,
       userMessageId
     }
@@ -373,14 +506,19 @@ class ThreadRuntimeProjector {
     return null
   }
 
-  private finishActiveRun(status: TerminalRuntimeStatus): void {
+  private finishActiveRun(status: TerminalRuntimeStatus, error: IpcErrorPayload | null = null): void {
     if (status === "interrupted" && this.runtimeState.activeRun?.status === "waiting_approval") {
       return
     }
 
+    const completedAt = new Date()
+    const startedAt = this.runtimeState.activeRun?.startedAt ?? null
     const terminalStatus =
       status === "cancelled" ? "cancelled" : status === "error" ? "failed" : "completed"
     this.commitRuntimeEvent({
+      completedAt,
+      durationMs: startedAt ? Math.max(0, completedAt.getTime() - startedAt.getTime()) : null,
+      error,
       runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
       status: terminalStatus,
       type: "run.finished"
@@ -401,7 +539,13 @@ class ThreadRuntimeProjector {
 
     const phase: AgentRunPhase =
       (lastAssistant.tool_calls?.length ?? 0) > 0 ? "tool_running" : "streaming"
-    if (activeRun.assistantMessageId === lastAssistant.id && activeRun.phase === phase) {
+    const currentToolCallId = lastAssistant.tool_calls?.at(-1)?.id ?? null
+    if (
+      activeRun.assistantMessageId === lastAssistant.id &&
+      activeRun.currentToolCallId === currentToolCallId &&
+      activeRun.phase === phase &&
+      activeRun.toolCalls.length === 0
+    ) {
       return false
     }
 
@@ -438,8 +582,75 @@ class ThreadRuntimeProjector {
     return existingMessage?.created_at ?? new Date()
   }
 
+  private findActiveToolCall(toolCallId: string): ActiveAgentToolCall | null {
+    return (
+      this.runtimeState.activeRun?.toolCalls.find((toolCall) => toolCall.id === toolCallId) ?? null
+    )
+  }
+
+  private createToolExecutionUpdate(input: {
+    completedAt: Date
+    error?: AgentToolExecutionError
+    messageId: string
+    status: "completed" | "failed"
+    toolCallId: string
+    toolName: string | null
+  }): {
+    event: {
+      completedAt: Date
+      durationMs: number | null
+      error: AgentToolExecutionError | null
+      startedAt: Date | null
+      status: "completed" | "failed"
+      toolName: string | null
+    }
+    metadata: {
+      completedAt: Date
+      durationMs?: number
+      error?: AgentToolExecutionError
+      messageId: string
+      runId: string | null
+      startedAt?: Date
+      status: "completed" | "failed"
+      toolCallId: string
+      toolName: string | null
+    }
+  } {
+    const activeToolCall = this.findActiveToolCall(input.toolCallId)
+    const startedAt = activeToolCall?.startedAt ?? null
+    const durationMs = startedAt
+      ? Math.max(0, input.completedAt.getTime() - startedAt.getTime())
+      : null
+    const toolName = input.toolName ?? activeToolCall?.name ?? null
+    const runId =
+      activeToolCall?.runId ?? this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId
+
+    return {
+      event: {
+        completedAt: input.completedAt,
+        durationMs,
+        error: input.error ?? null,
+        startedAt,
+        status: input.status,
+        toolName
+      },
+      metadata: {
+        completedAt: input.completedAt,
+        ...(durationMs !== null ? { durationMs } : {}),
+        ...(input.error ? { error: input.error } : {}),
+        messageId: input.messageId,
+        runId,
+        ...(startedAt ? { startedAt } : {}),
+        status: input.status,
+        toolCallId: input.toolCallId,
+        toolName
+      }
+    }
+  }
+
   private resetStreamingState(): void {
     this.taskToolCallTracker.reset()
+    this.toolCallAccumulator.reset()
     this.currentMessageId = null
   }
 
@@ -467,6 +678,7 @@ class ThreadRuntimeProjector {
     ) {
       this.commitRuntimeEvent({
         delta: message.content,
+        deltaAt: new Date(),
         field: "text",
         messageId: message.id,
         partId: "content",
@@ -514,10 +726,10 @@ export class AgentThreadRunner {
     this.notify(threadId)
   }
 
-  async prepareResume(threadId: string): Promise<void> {
+  async prepareResume(threadId: string, decision?: HITLDecision): Promise<void> {
     const entry = await this.ensureEntry(threadId)
     entry.replayEvents = []
-    entry.projector.prepareResume()
+    entry.projector.prepareResume(decision)
     this.notify(threadId)
   }
 

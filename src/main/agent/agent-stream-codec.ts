@@ -60,9 +60,11 @@ interface SerializedMessageChunk {
     tool_call_chunks?: ToolCallChunk[]
     tool_call_id?: string
     tool_calls?: LangChainToolCall[]
+    status?: string
     usage_metadata?: UsageMetadata
   }
   lc?: number
+  status?: string
   type?: string
 }
 
@@ -85,6 +87,7 @@ export interface DecodedToolMessageChunk {
   id: string
   metadata?: Message["metadata"]
   name?: string
+  status: "success" | "error" | null
   toolCallId: string
 }
 
@@ -254,6 +257,7 @@ export function decodeMessagesStreamPayload(
       id: kwargs.id || crypto.randomUUID(),
       ...(messageMetadata ? { metadata: messageMetadata } : {}),
       name: kwargs.name,
+      status: kwargs.status === "error" || msgChunk.status === "error" ? "error" : null,
       toolCallId: kwargs.tool_call_id
     }
   }

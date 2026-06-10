@@ -4,6 +4,10 @@ import type { AgentThreadDataSnapshot, Message } from "../../src/shared/app-type
 import type { HITLRequest } from "../../src/shared/hitl"
 import { AgentThreadRunner } from "../../src/main/agent/agent-thread-runner"
 import type { ThreadsService } from "../../src/main/threads/service"
+import {
+  AGENT_TOOL_EXECUTION_METADATA_KEY,
+  readAgentToolExecutionTiming
+} from "../../src/shared/agent-thread-runtime"
 
 function createThreadsService(threadData: AgentThreadDataSnapshot): ThreadsService {
   return {
@@ -41,10 +45,7 @@ function createSerializedAiMessage(id: string, content: string) {
   }
 }
 
-function createPendingApproval(
-  id: string,
-  toolCallId: string
-): HITLRequest {
+function createPendingApproval(id: string, toolCallId: string): HITLRequest {
   return {
     allowed_decisions: ["approve", "reject"],
     id,
@@ -121,12 +122,18 @@ test("AgentThreadRunner hydrates history and fans out runtime event batches", as
   assert.equal(afterInvoke.status, "running")
   assert.equal(afterInvoke.messagesPage.at(-1)?.id, "user-2")
   assert.equal(afterInvoke.revision, 2)
+  assert.equal(afterInvoke.activeRun?.startedAt instanceof Date, true)
+  assert.equal(afterInvoke.activeRun?.phaseStartedAt, afterInvoke.activeRun?.startedAt)
   assert.deepEqual(afterInvoke.activeRun, {
     assistantMessageId: null,
+    currentToolCallId: null,
     phase: "thinking",
+    phaseStartedAt: afterInvoke.activeRun?.phaseStartedAt,
     runId: null,
+    startedAt: afterInvoke.activeRun?.startedAt,
     status: "running",
     threadId: "thread-1",
+    toolCalls: [],
     turnId: "user-2",
     userMessageId: "user-2"
   })
@@ -249,7 +256,11 @@ test("AgentThreadRunner preserves pending approval while resume is waiting for s
   await hub.connectThreadEvents("thread-1", "events", (batch) => {
     eventTypes.push(...batch.events.map((event) => event.type))
   })
-  await hub.prepareResume("thread-1")
+  await hub.prepareResume("thread-1", {
+    request_id: "hitl:thread-1:run-1:tool-1",
+    tool_call_id: "tool-1",
+    type: "approve"
+  })
 
   const afterPrepareResume = await hub.readThreadState("thread-1")
   assert.equal(afterPrepareResume.status, "running")
@@ -283,7 +294,11 @@ test("AgentThreadRunner clears pending approval only after resumed run starts", 
   await hub.connectThreadEvents("thread-1", "events", (batch) => {
     eventTypes.push(...batch.events.map((event) => event.type))
   })
-  await hub.prepareResume("thread-1")
+  await hub.prepareResume("thread-1", {
+    request_id: "hitl:thread-1:run-1:tool-1",
+    tool_call_id: "tool-1",
+    type: "approve"
+  })
 
   const beforeRunStarted = await hub.readThreadState("thread-1")
   assert.equal(beforeRunStarted.pendingApproval?.id, "hitl:thread-1:run-1:tool-1")
@@ -717,6 +732,199 @@ test("AgentThreadRunner ignores empty assistant token chunks without advancing r
   assert.equal(afterEmptyChunk.revision, beforeEmptyChunk.revision)
   assert.equal(afterEmptyChunk.messagesPage.at(-1)?.content, "hello")
   assert.deepEqual(runtimeEventTypes, ["message.upserted", "run.started", "message.upserted"])
+})
+
+test("AgentThreadRunner surfaces streaming tool call chunks before completed tool calls arrive", async () => {
+  const hub = new AgentThreadRunner(
+    createThreadsService(
+      createThreadData({
+        messages: [createUserMessage("user-1", "Edit a file")]
+      })
+    )
+  )
+  const runtimeEventTypes: string[] = []
+
+  await hub.connectThreadEvents("thread-tool-chunks", "runtime-subscriber", (batch) => {
+    runtimeEventTypes.push(...batch.events.map((event) => event.type))
+  })
+  await hub.prepareResume("thread-tool-chunks")
+  await hub.handlePayload("thread-tool-chunks", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "",
+          id: "assistant-1",
+          tool_call_chunks: [
+            {
+              args: '{"path":"src/',
+              id: "tool-call-1",
+              index: 0,
+              name: "edit_file",
+              type: "tool_call_chunk"
+            }
+          ]
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+  await hub.handlePayload("thread-tool-chunks", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "",
+          id: "assistant-1",
+          tool_call_chunks: [
+            {
+              args: 'renderer.tsx"}',
+              id: "tool-call-1",
+              index: 0,
+              type: "tool_call_chunk"
+            }
+          ]
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState("thread-tool-chunks")
+  const activeToolCall = snapshot.activeRun?.toolCalls[0]
+
+  assert.deepEqual(runtimeEventTypes, ["run.resumed", "tool.callUpdated", "tool.callUpdated"])
+  assert.equal(
+    snapshot.messagesPage.some((message) => message.role === "assistant"),
+    false
+  )
+  assert.equal(snapshot.activeRun?.assistantMessageId, "assistant-1")
+  assert.equal(snapshot.activeRun?.currentToolCallId, "tool-call-1")
+  assert.equal(activeToolCall?.name, "edit_file")
+  assert.equal(activeToolCall?.argsText, '{"path":"src/renderer.tsx"}')
+  assert.equal(activeToolCall?.status, "arguments_streaming")
+})
+
+test("AgentThreadRunner stores failed tool execution facts on tool result messages", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+  const runtimeEventTypes: string[] = []
+
+  await hub.connectThreadEvents("thread-tool-failed", "runtime-subscriber", (batch) => {
+    runtimeEventTypes.push(...batch.events.map((event) => event.type))
+  })
+  await hub.prepareInvoke("thread-tool-failed", {
+    content: "Run command",
+    id: "user-1"
+  })
+  await hub.handlePayload("thread-tool-failed", { runId: "run-1", type: "run_started" })
+  await hub.handlePayload("thread-tool-failed", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "",
+          id: "assistant-1",
+          tool_calls: [
+            {
+              args: { command: "exit 1" },
+              id: "tool-call-1",
+              name: "bash",
+              type: "tool_call"
+            }
+          ]
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const afterToolStarted = await hub.readThreadState("thread-tool-failed")
+  const startedAt = afterToolStarted.activeRun?.toolCalls[0]?.startedAt
+  assert.equal(afterToolStarted.activeRun?.toolCalls[0]?.status, "running")
+  assert.equal(startedAt instanceof Date, true)
+
+  await hub.handlePayload("thread-tool-failed", {
+    data: [
+      {
+        id: ["ToolMessage"],
+        kwargs: {
+          content: "command failed",
+          id: "tool-result-1",
+          name: "bash",
+          status: "error",
+          tool_call_id: "tool-call-1"
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState("thread-tool-failed")
+  const toolMessage = snapshot.messagesPage.find((message) => message.id === "tool-result-1")
+  assert.ok(toolMessage)
+  assert.equal(typeof toolMessage.metadata?.[AGENT_TOOL_EXECUTION_METADATA_KEY], "object")
+
+  const timing = readAgentToolExecutionTiming(toolMessage)
+  assert.equal(timing?.status, "failed")
+  assert.equal(timing?.toolCallId, "tool-call-1")
+  assert.equal(timing?.messageId, "tool-result-1")
+  assert.equal(timing?.runId, "run-1")
+  assert.equal(timing?.toolName, "bash")
+  assert.equal(timing?.error?.message, "command failed")
+  assert.equal(timing?.startedAt?.getTime(), startedAt?.getTime())
+  assert.equal(timing?.completedAt instanceof Date, true)
+  assert.equal(typeof timing?.durationMs, "number")
+  assert.ok((timing?.durationMs ?? -1) >= 0)
+  assert.equal(snapshot.activeRun?.phase, "thinking")
+  assert.equal(snapshot.activeRun?.currentToolCallId, null)
+  assert.deepEqual(snapshot.activeRun?.toolCalls, [])
+  assert.ok(runtimeEventTypes.includes("tool.started"))
+  assert.ok(runtimeEventTypes.includes("tool.updated"))
+})
+
+test("AgentThreadRunner does not fabricate tool start timing when only a tool result arrives", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+
+  await hub.prepareInvoke("thread-tool-result-only", {
+    content: "Run command",
+    id: "user-1"
+  })
+  await hub.handlePayload("thread-tool-result-only", { runId: "run-1", type: "run_started" })
+  await hub.handlePayload("thread-tool-result-only", {
+    data: [
+      {
+        id: ["ToolMessage"],
+        kwargs: {
+          content: "done",
+          id: "tool-result-1",
+          name: "bash",
+          tool_call_id: "tool-call-1"
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState("thread-tool-result-only")
+  const toolMessage = snapshot.messagesPage.find((message) => message.id === "tool-result-1")
+  assert.ok(toolMessage)
+
+  const timing = readAgentToolExecutionTiming(toolMessage)
+  assert.equal(timing?.status, "completed")
+  assert.equal(timing?.toolCallId, "tool-call-1")
+  assert.equal(timing?.startedAt, undefined)
+  assert.equal(timing?.durationMs, undefined)
+  assert.equal(timing?.completedAt instanceof Date, true)
 })
 
 test("AgentThreadRunner hides provider-emitted tool call markup from assistant text", async () => {

@@ -73,10 +73,14 @@ function createAssistantMessage(id: string, content = "Assistant message"): Mess
 function createActiveRun(): ActiveAgentRun {
   return {
     assistantMessageId: null,
+    currentToolCallId: null,
     phase: "thinking",
+    phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
     runId: null,
+    startedAt: new Date("2026-01-01T00:00:00.000Z"),
     status: "running",
     threadId: "thread-a",
+    toolCalls: [],
     turnId: "user-1",
     userMessageId: "user-1"
   }
@@ -250,10 +254,14 @@ test("message projection uses runtime-owned active turn from thread state", () =
       revision: 1,
       run: {
         assistantMessageId: null,
+        currentToolCallId: null,
         phase: "thinking",
+        phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
         runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
         status: "running",
         threadId: "thread-a",
+        toolCalls: [],
         turnId: "user-2",
         userMessageId: "user-2"
       },
@@ -348,10 +356,14 @@ test("runtime event path maps shared reducer state into renderer source facts", 
       revision: 2,
       run: {
         assistantMessageId: null,
+        currentToolCallId: null,
         phase: "thinking",
+        phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
         runId: null,
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
         status: "running",
         threadId: "thread-a",
+        toolCalls: [],
         turnId: "user-1",
         userMessageId: "user-1"
       },
@@ -364,6 +376,7 @@ test("runtime event path maps shared reducer state into renderer source facts", 
     },
     {
       delta: " world",
+      deltaAt: new Date("2026-01-01T00:00:01.000Z"),
       field: "text",
       messageId: "assistant-1",
       partId: "content",
@@ -372,6 +385,7 @@ test("runtime event path maps shared reducer state into renderer source facts", 
     },
     {
       approval: createPendingApproval(),
+      requestedAt: new Date("2026-01-01T00:00:02.000Z"),
       revision: 5,
       runId: null,
       type: "approval.requested"
@@ -435,10 +449,14 @@ test("run started immediately moves projection active turn before assistant firs
       revision: 2,
       run: {
         assistantMessageId: null,
+        currentToolCallId: null,
         phase: "thinking",
+        phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
         runId: null,
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
         status: "running",
         threadId: "thread-a",
+        toolCalls: [],
         turnId: "user-2",
         userMessageId: "user-2"
       },
@@ -507,10 +525,14 @@ test("runtime tool events update source run facts and message projection facts",
       revision: 1,
       run: {
         assistantMessageId: "assistant-1",
+        currentToolCallId: null,
         phase: "tool_running",
+        phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
         runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
         status: "running",
         threadId: "thread-a",
+        toolCalls: [],
         turnId: "user-1",
         userMessageId: "user-1"
       },
@@ -532,6 +554,7 @@ test("runtime tool events update source run facts and message projection facts",
       messageId: "assistant-1",
       revision: 2,
       runId: "run-1",
+      startedAt: new Date("2026-01-01T00:00:01.000Z"),
       toolCallId: toolCall.id,
       type: "tool.started"
     }
@@ -559,17 +582,24 @@ test("runtime tool events update source run facts and message projection facts",
     },
     {
       messageId: "assistant-1",
+      completedAt: new Date("2026-01-01T00:00:02.000Z"),
+      durationMs: 1_000,
+      error: null,
       revision: 4,
       runId: "run-1",
+      startedAt: new Date("2026-01-01T00:00:01.000Z"),
+      status: "completed",
       toolCallId: toolCall.id,
+      toolName: "execute",
       type: "tool.updated"
     }
   ])
 
   const completedState = getThreadState(store, "thread-a")
-  assert.equal(completedState.agent.activeRun?.phase, "waiting_tool_result")
+  assert.equal(completedState.agent.activeRun?.phase, "thinking")
   const completedTool = completedState.view.messageProjection.turns[0]?.toolResults.get(toolCall.id)
   assert.equal(completedTool?.content, "done")
+  assert.equal(completedTool?.execution, null)
 })
 
 test("run finished clears active run when no tool result exists", () => {
@@ -614,10 +644,14 @@ test("run finished clears active run when no tool result exists", () => {
       revision: 1,
       run: {
         assistantMessageId: "assistant-1",
+        currentToolCallId: null,
         phase: "tool_running",
+        phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
         runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
         status: "running",
         threadId: "thread-a",
+        toolCalls: [],
         turnId: "user-1",
         userMessageId: "user-1"
       },
@@ -635,6 +669,9 @@ test("run finished clears active run when no tool result exists", () => {
 
   store.applyRuntimeEvents("thread-a", [
     {
+      completedAt: new Date("2026-01-01T00:00:02.000Z"),
+      durationMs: 2_000,
+      error: null,
       revision: 2,
       runId: "run-1",
       status: "cancelled",
@@ -701,10 +738,14 @@ test("pending approval updates source approval facts", () => {
       revision: 1,
       run: {
         assistantMessageId: "assistant-1",
+        currentToolCallId: null,
         phase: "tool_running",
+        phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
         runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
         status: "running",
         threadId: "thread-a",
+        toolCalls: [],
         turnId: "user-1",
         userMessageId: "user-1"
       },
@@ -719,6 +760,7 @@ test("pending approval updates source approval facts", () => {
   store.applyRuntimeEvents("thread-a", [
     {
       approval: pendingApproval,
+      requestedAt: new Date("2026-01-01T00:00:02.000Z"),
       revision: 2,
       runId: "run-1",
       type: "approval.requested"
@@ -771,6 +813,7 @@ test("runtime delta for an unknown message does not advance revision before thre
   store.applyRuntimeEvents("thread-a", [
     {
       delta: "late",
+      deltaAt: new Date("2026-01-01T00:00:01.000Z"),
       field: "text",
       messageId: "assistant-1",
       partId: "content",
@@ -846,6 +889,7 @@ test("runtime token delta keeps historical turn references stable after thread d
   store.applyRuntimeEvents("thread-a", [
     {
       delta: " world",
+      deltaAt: new Date("2026-01-01T00:00:01.000Z"),
       field: "text",
       messageId: "assistant-1",
       partId: "content",
@@ -897,6 +941,7 @@ test("runtime token delta in long history keeps inactive turns and rows stable",
   store.applyRuntimeEvents("thread-a", [
     {
       delta: " plus streamed token",
+      deltaAt: new Date("2026-01-01T00:00:01.000Z"),
       field: "text",
       messageId: `assistant-${activeTurnIndex}`,
       partId: "content",
@@ -906,7 +951,10 @@ test("runtime token delta in long history keeps inactive turns and rows stable",
   ])
 
   const nextState = getThreadState(store, "thread-a")
-  assert.equal(nextState.agent.messagesPage[activeTurnIndex * 2], firstState.agent.messagesPage[activeTurnIndex * 2])
+  assert.equal(
+    nextState.agent.messagesPage[activeTurnIndex * 2],
+    firstState.agent.messagesPage[activeTurnIndex * 2]
+  )
   assert.notEqual(
     nextState.agent.messagesPage[activeTurnIndex * 2 + 1],
     firstState.agent.messagesPage[activeTurnIndex * 2 + 1]
@@ -969,10 +1017,14 @@ test("thread data snapshot restores non-runtime facts and stale events do not ro
       revision: 2,
       run: {
         assistantMessageId: null,
+        currentToolCallId: null,
         phase: "thinking",
+        phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
         runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
         status: "running",
         threadId: "thread-a",
+        toolCalls: [],
         turnId: "user-1",
         userMessageId: "user-1"
       },
@@ -980,6 +1032,7 @@ test("thread data snapshot restores non-runtime facts and stale events do not ro
     },
     {
       approval: pendingApproval,
+      requestedAt: new Date("2026-01-01T00:00:02.000Z"),
       revision: 3,
       runId: "run-1",
       type: "approval.requested"
@@ -1018,6 +1071,9 @@ test("thread data snapshot restores non-runtime facts and stale events do not ro
       type: "run.tokenUsageUpdated"
     },
     {
+      completedAt: new Date("2026-01-01T00:00:02.000Z"),
+      durationMs: 2_000,
+      error: null,
       revision: 1,
       runId: "run-1",
       status: "completed",

@@ -41,10 +41,14 @@ test("deriveActiveRunFromMessages derives a running turn from the latest user me
 
   assert.deepEqual(activeRun, {
     assistantMessageId: null,
+    currentToolCallId: null,
     phase: "thinking",
+    phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
     runId: "run-1",
+    startedAt: new Date("2026-01-01T00:00:00.000Z"),
     status: "running",
     threadId: "thread-1",
+    toolCalls: [],
     turnId: "user-2",
     userMessageId: "user-2"
   })
@@ -66,10 +70,25 @@ test("deriveActiveRunFromMessages derives waiting approval from the latest inter
 
   assert.deepEqual(activeRun, {
     assistantMessageId: "assistant-2",
+    currentToolCallId: "tool-1",
     phase: "waiting_tool_result",
+    phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
     runId: "run-1",
+    startedAt: new Date("2026-01-01T00:00:00.000Z"),
     status: "waiting_approval",
     threadId: "thread-1",
+    toolCalls: [
+      {
+        argsText: "{}",
+        id: "tool-1",
+        index: null,
+        messageId: "assistant-2",
+        name: "bash",
+        runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        status: "waiting_result"
+      }
+    ],
     turnId: "user-2",
     userMessageId: "user-2"
   })
@@ -89,10 +108,14 @@ test("deriveActiveRunFromMessages derives a resumable interrupted run without ap
 
   assert.deepEqual(activeRun, {
     assistantMessageId: "assistant-1",
+    currentToolCallId: null,
     phase: "waiting_tool_result",
+    phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
     runId: "run-1",
+    startedAt: new Date("2026-01-01T00:00:00.000Z"),
     status: "running",
     threadId: "thread-1",
+    toolCalls: [],
     turnId: "user-1",
     userMessageId: "user-1"
   })
