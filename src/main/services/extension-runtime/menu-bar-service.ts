@@ -31,11 +31,20 @@ export class ExtensionRuntimeMenuBarService {
         this.nativeMenuBarService.setState(
           {
             commandKey,
-            extensionIcon: this.getPackageMenuBarIcon(surface.extensionName),
+            extensionIcon: this.getPackageMenuBarIcon(
+              surface.extensionName,
+              surface.icon ?? this.manifestByName.get(surface.extensionName)?.icon
+            ),
             iconName: surface.iconName,
             isLoading: surface.isLoading,
             sections: surface.sections.map((section) => ({
-              items: section.items,
+              items: section.items.map((item) => {
+                const { icon, ...nativeItem } = item
+                return {
+                  ...nativeItem,
+                  extensionIcon: this.getPackageMenuBarIcon(surface.extensionName, icon)
+                }
+              }),
               title: section.title
             })),
             title: surface.title,
@@ -108,9 +117,9 @@ export class ExtensionRuntimeMenuBarService {
   }
 
   private getPackageMenuBarIcon(
-    extensionName: string
+    extensionName: string,
+    icon: string | undefined
   ): NativeMenuBarState["extensionIcon"] | undefined {
-    const icon = this.manifestByName.get(extensionName)?.icon
     if (!icon) {
       return undefined
     }

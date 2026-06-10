@@ -2,13 +2,9 @@ export type NativeMenuBarIconName =
   | "bell"
   | "check"
   | "gear"
-  | "github"
   | "openwork"
   | "plus"
   | "refresh"
-  | "reminder-item"
-  | "reminders"
-  | "todo"
 
 export interface NativeMenuBarExtensionIconState {
   extensionName: string
@@ -17,6 +13,7 @@ export interface NativeMenuBarExtensionIconState {
 
 export interface NativeMenuBarItemState {
   disabled?: boolean
+  extensionIcon?: NativeMenuBarExtensionIconState
   iconName?: NativeMenuBarIconName
   id: string
   subtitle?: string

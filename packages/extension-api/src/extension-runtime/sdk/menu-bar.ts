@@ -4,6 +4,7 @@ import { ExtensionHostElement } from "./host-elements"
 
 export interface RuntimeMenuBarExtraProps {
   children?: ReactNode
+  icon?: string
   iconName?: NativeMenuBarIconName
   isLoading?: boolean
   title?: string
@@ -17,6 +18,7 @@ export interface RuntimeMenuBarExtraSectionProps {
 
 export interface RuntimeMenuBarExtraItemProps {
   disabled?: boolean
+  icon?: string
   iconName?: NativeMenuBarIconName
   onAction?: () => Promise<void> | void
   subtitle?: string

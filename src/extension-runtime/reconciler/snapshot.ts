@@ -102,6 +102,7 @@ function createMenuBarSnapshot(
   return {
     commandName: container.context.commandName,
     extensionName: container.context.extensionName,
+    icon: readStringProp(menuBar.props, "icon"),
     iconName: readMenuBarIconNameProp(menuBar.props, "iconName"),
     isLoading: readBooleanProp(menuBar.props, "isLoading", false),
     kind: "menu-bar",
@@ -169,6 +170,7 @@ function createMenuBarItem(
 
   return {
     disabled: readBooleanProp(item.props, "disabled", false),
+    icon: readStringProp(item.props, "icon"),
     iconName: readMenuBarIconNameProp(item.props, "iconName"),
     id,
     subtitle: readStringProp(item.props, "subtitle"),

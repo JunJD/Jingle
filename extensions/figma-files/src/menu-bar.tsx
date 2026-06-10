@@ -39,7 +39,12 @@ export default function FigmaFilesMenuBar(): React.JSX.Element {
   }
 
   return (
-    <MenuBarExtra isLoading={isLoading} title="Figma" tooltip={copy.searchFigmaFiles}>
+    <MenuBarExtra
+      icon="assets/figma-menubar-icon-light.png"
+      isLoading={isLoading}
+      title="Figma"
+      tooltip={copy.searchFigmaFiles}
+    >
       {!hasAccessToken ? (
         <MenuBarExtra.Section title={copy.connectFigma}>
           <MenuBarExtra.Item

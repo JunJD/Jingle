@@ -81,7 +81,7 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
   if (!isConfigured) {
     return (
       <MenuBarExtra
-        iconName="github"
+        icon="assets/notifications.png"
         title="GitHub"
         tooltip="Configure GitHub to enable menu bar notifications"
       >
@@ -98,7 +98,7 @@ export default function GitHubUnreadNotifications(): React.JSX.Element {
 
   return (
     <MenuBarExtra
-      iconName="github"
+      icon="assets/notifications.png"
       isLoading={isLoading}
       title={
         commandPreferences.showUnreadCount === false

@@ -222,6 +222,7 @@ export class NativeMenuBarService {
       }
 
       for (const item of section.items) {
+        const icon = item.iconName ?? item.extensionIcon
         template.push({
           click: () => {
             this.selectItem({
@@ -230,9 +231,7 @@ export class NativeMenuBarService {
             })
           },
           enabled: item.disabled !== true,
-          icon: item.iconName
-            ? this.createMenuBarImage(item.iconName, MENU_BAR_ITEM_ICON_SIZE)
-            : undefined,
+          icon: icon ? this.createMenuBarImage(icon, MENU_BAR_ITEM_ICON_SIZE) : undefined,
           label: item.title,
           sublabel: item.subtitle
         })

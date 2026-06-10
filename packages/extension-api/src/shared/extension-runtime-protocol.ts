@@ -250,6 +250,7 @@ export interface ExtensionFormSeparatorNode {
 }
 
 export interface ExtensionMenuBarSurfaceSnapshot extends ExtensionSurfaceBase {
+  icon?: string
   iconName?: NativeMenuBarIconName
   isLoading: boolean
   kind: "menu-bar"
@@ -266,6 +267,7 @@ export interface ExtensionMenuBarSectionNode {
 
 export interface ExtensionMenuBarItemNode {
   disabled: boolean
+  icon?: string
   iconName?: NativeMenuBarIconName
   id: string
   subtitle?: string
