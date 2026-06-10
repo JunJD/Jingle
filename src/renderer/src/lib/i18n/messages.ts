@@ -138,6 +138,7 @@ export interface AppCopy {
     newQuestion: string
     openSettings: string
     openAiHistory: string
+    openMainChat: string
     openApp: string
     permissionModeAskToEdit: string
     permissionModeAuto: string
@@ -397,6 +398,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       newQuestion: "新问题",
       openSettings: "打开设置",
       openAiHistory: "打开 AI 页面",
+      openMainChat: "在主窗口打开",
       openApp: "打开应用",
       permissionModeAskToEdit: "默认权限",
       permissionModeAuto: "完全访问权限",
@@ -674,6 +676,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       newQuestion: "New Question",
       openSettings: "Open Settings",
       openAiHistory: "Open AI",
+      openMainChat: "Open in Main Window",
       openApp: "Open App",
       permissionModeAskToEdit: "Default Permission",
       permissionModeAuto: "Full Access",

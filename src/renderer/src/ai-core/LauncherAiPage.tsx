@@ -11,6 +11,7 @@ import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
 import { AI_MAX_FOOTER_HEIGHT, getAiShellConfig } from "./ai-config"
 import { LauncherAiConversation, LauncherAiEmptyState } from "./LauncherAiConversation"
+import { LauncherAiHeaderActions } from "./LauncherAiHeaderActions"
 import { LauncherAiHeaderModelPicker } from "./LauncherAiHeaderModelPicker"
 import { LauncherAiModelPicker } from "./LauncherAiModelPicker"
 import { useAiCoreHost } from "./AiCoreHost"
@@ -331,40 +332,53 @@ export function LauncherAiPage(): React.JSX.Element {
     attachmentDraft.attachments.length > 0 ||
     assistantSelectionRefs.length > 0 ||
     hasThreadMessages
+  const canBranchThread = Boolean(threadId && hasThreadMessages && canForkThread)
+  const canUseHeaderThreadActions = !isApprovalPending
+  const handleGoToNextChat = useCallback(async (): Promise<void> => {
+    const nextThreadId = await goToNextChat()
+    if (!nextThreadId) {
+      return
+    }
+
+    clearTransientInputState()
+    setShowModelPicker(false)
+    focusComposerOnNextFrame()
+  }, [clearTransientInputState, focusComposerOnNextFrame, goToNextChat])
+  const handleGoToPreviousChat = useCallback(async (): Promise<void> => {
+    const previousThreadId = await goToPreviousChat()
+    if (!previousThreadId) {
+      return
+    }
+
+    clearTransientInputState()
+    setShowModelPicker(false)
+    focusComposerOnNextFrame()
+  }, [clearTransientInputState, focusComposerOnNextFrame, goToPreviousChat])
+  const openMainChat = useCallback(async (): Promise<void> => {
+    if (threadId) {
+      await window.api.mainWindow.openThread(threadId)
+    } else {
+      await window.api.mainWindow.openWindow()
+    }
+    await window.api.launcher.hide()
+  }, [threadId])
   const { actionController, addAttachmentShortcut, submitShortcut } = useLauncherAiActions({
     branchThread: handleBranchChat,
-    canBranchThread: Boolean(threadId && hasThreadMessages && canForkThread),
+    canBranchThread,
     canGoToNextChat,
     canGoToPreviousChat,
     canStartNewQuestion,
     copy: copy.launcher,
     currentPermissionMode,
-    goToNextChat: async () => {
-      const nextThreadId = await goToNextChat()
-      if (!nextThreadId) {
-        return
-      }
-
-      clearTransientInputState()
-      setShowModelPicker(false)
-      focusComposerOnNextFrame()
-    },
-    goToPreviousChat: async () => {
-      const previousThreadId = await goToPreviousChat()
-      if (!previousThreadId) {
-        return
-      }
-
-      clearTransientInputState()
-      setShowModelPicker(false)
-      focusComposerOnNextFrame()
-    },
+    goToNextChat: handleGoToNextChat,
+    goToPreviousChat: handleGoToPreviousChat,
     inputRef,
     isApprovalPending,
     isBusy,
     navigateHome: navigation.goHome,
     newQuestion: handleNewQuestion,
     openAttachmentPicker,
+    openMainChat,
     openModelPicker: handleOpenModelPicker,
     query,
     runPrimaryAction: submitCurrentInput,
@@ -444,6 +458,39 @@ export function LauncherAiPage(): React.JSX.Element {
               />
             </div>
           </div>
+        }
+        headerTrailing={
+          <LauncherAiHeaderActions
+            canBranchThread={canUseHeaderThreadActions && canBranchThread}
+            canGoToNextChat={canUseHeaderThreadActions && canGoToNextChat}
+            canGoToPreviousChat={canUseHeaderThreadActions && canGoToPreviousChat}
+            canOpenActions={actionController.canOpenActions}
+            canStartNewQuestion={canUseHeaderThreadActions && canStartNewQuestion}
+            labels={{
+              actions: copy.launcher.actionsLabel,
+              branchThread: copy.launcher.branchChat,
+              goToNextChat: copy.launcher.goToNextChat,
+              goToPreviousChat: copy.launcher.goToPreviousChat,
+              newQuestion: copy.launcher.newQuestion,
+              openMainChat: copy.launcher.openMainChat
+            }}
+            onBranchThread={() => {
+              void handleBranchChat()
+            }}
+            onGoToNextChat={() => {
+              void handleGoToNextChat()
+            }}
+            onGoToPreviousChat={() => {
+              void handleGoToPreviousChat()
+            }}
+            onNewQuestion={() => {
+              void handleNewQuestion()
+            }}
+            onOpenActions={actionController.openActions}
+            onOpenMainChat={() => {
+              void openMainChat()
+            }}
+          />
         }
         inputAccessory={
           pendingApproval ? (

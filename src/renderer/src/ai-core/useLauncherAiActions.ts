@@ -29,6 +29,7 @@ interface UseLauncherAiActionsOptions {
   navigateHome: () => void
   newQuestion: () => Promise<void>
   openAttachmentPicker: () => void
+  openMainChat: () => Promise<void>
   openModelPicker: () => Promise<void>
   query: string
   runPrimaryAction: () => void
@@ -93,6 +94,7 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
     navigateHome,
     newQuestion,
     openAttachmentPicker,
+    openMainChat,
     openModelPicker,
     query,
     runPrimaryAction,
@@ -279,12 +281,9 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
       },
       {
         id: "launcher-ai-open-main-history",
-        onAction: async () => {
-          await window.api.mainWindow.openWindow()
-          await window.api.launcher.hide()
-        },
+        onAction: openMainChat,
         shortcut: openMainHistoryShortcut,
-        title: copy.openAiHistory
+        title: copy.openMainChat
       },
       {
         id: "launcher-ai-change-model",
@@ -315,7 +314,7 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
     copy.changeModel,
     copy.goToNextChat,
     copy.goToPreviousChat,
-    copy.openAiHistory,
+    copy.openMainChat,
     copy.permissionModeAskToEdit,
     copy.permissionModeAuto,
     copy.permissionModeExplore,
@@ -328,6 +327,7 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
     newQuestion,
     newQuestionShortcut,
     nextChatShortcut,
+    openMainChat,
     openModelPicker,
     openMainHistoryShortcut,
     previousChatShortcut,

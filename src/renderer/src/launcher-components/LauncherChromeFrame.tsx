@@ -33,6 +33,7 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
   } = props
   const headerRef = useRef<HTMLDivElement>(null)
   const footerRef = useRef<HTMLDivElement>(null)
+  const hasHeaderMain = headerMain !== undefined && headerMain !== null && headerMain !== false
 
   useLauncherChromeAudit({
     footerRef,
@@ -56,9 +57,21 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
           height: shellConfig.headerHeight
         }}
       >
-        {headerLeading ? <div className="flex shrink-0 items-center">{headerLeading}</div> : null}
+        {headerLeading ? (
+          <div
+            className={
+              hasHeaderMain ? "flex shrink-0 items-center" : "flex min-w-0 flex-1 items-center"
+            }
+          >
+            {headerLeading}
+          </div>
+        ) : null}
 
-        <div className="min-w-0 flex-1">{headerMain}</div>
+        {hasHeaderMain ? (
+          <div className="min-w-0 flex-1">{headerMain}</div>
+        ) : headerLeading ? null : (
+          <div className="min-w-0 flex-1" />
+        )}
 
         {headerTrailing ? (
           <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">
