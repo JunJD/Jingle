@@ -276,6 +276,7 @@ test("extension package icons are owned by extension manifests and flow into set
     "apple-reminders": "assets/icon.png",
     "figma-files": "assets/command-icon.png",
     github: "assets/icon.svg",
+    "image-generation": "assets/icon.svg",
     notion: "assets/notion-logo.png",
     "todo-list": "assets/icon.svg",
     translate: "assets/icon.svg"
@@ -287,6 +288,14 @@ test("extension package icons are owned by extension manifests and flow into set
   assert.equal(
     nativeExtensionManifests.find((manifest) => manifest.name === "github")?.iconName,
     "github"
+  )
+  assert.equal(
+    nativeExtensionManifests.find((manifest) => manifest.name === "figma-files")?.iconName,
+    "figma"
+  )
+  assert.equal(
+    nativeExtensionManifests.find((manifest) => manifest.name === "image-generation")?.iconName,
+    "image"
   )
 
   const appleRemindersSchema = toInstalledNativeExtensionSettingsSchema(
@@ -332,6 +341,13 @@ test("extension package icons are owned by extension manifests and flow into set
     notionSchema.commands.find((command) => command.name === "create-database-page")?.keywords,
     ["notion", "create", "database", "data source", "page", "markdown"]
   )
+
+  const imageGenerationSchema = toInstalledNativeExtensionSettingsSchema(
+    nativeExtensionManifests.find((manifest) => manifest.name === "image-generation")!
+  )
+  assert.equal(imageGenerationSchema.icon, "assets/icon.svg")
+  assert.equal(imageGenerationSchema.iconName, "image")
+  assert.deepEqual(imageGenerationSchema.commands, [])
 })
 
 test("launcher command owner lets commands inherit package icons unless they declare a dedicated asset", () => {

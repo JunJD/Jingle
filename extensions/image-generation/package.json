@@ -1,0 +1,12 @@
+{
+  "name": "@openwork/extension-image-generation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./main.ts",
+  "types": "./manifest.ts",
+  "dependencies": {
+    "@openwork/extension-api": "workspace:*",
+    "zod": "^4.0.0"
+  }
+}
