@@ -333,6 +333,18 @@ Then("Launcher AI 输入状态会进入 pending", async function (this: Openwork
 })
 
 Then(
+  "Launcher AI 当前 turn 显示状态 {string}",
+  async function (this: OpenworkWorld, status: string) {
+    const page = await this.getPageByKind("launcher")
+    const aiSurface = getLauncherAiSurface(page)
+    const statusRow = aiSurface.locator(`[data-active-turn-status="${status}"]`).first()
+
+    await expect(statusRow).toBeVisible()
+    await expect(statusRow).toHaveAttribute("role", "status")
+  }
+)
+
+Then(
   "在接下来 {int} 毫秒内不会提交 Launcher AI 消息 {string}",
   async function (this: OpenworkWorld, durationMs: number, message: string) {
     const page = await this.getPageByKind("launcher")

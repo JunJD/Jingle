@@ -73,6 +73,24 @@ async function waitForAbort(signal: AbortSignal | undefined): Promise<void> {
   })
 }
 
+async function waitForDelay(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  if (signal?.aborted) {
+    return
+  }
+
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(resolve, ms)
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timeout)
+        resolve()
+      },
+      { once: true }
+    )
+  })
+}
+
 function createCompletionState(
   options: CreateBddAgentRuntimeOptions,
   content: string,
@@ -148,6 +166,28 @@ export function createBddAgentRuntime(options: CreateBddAgentRuntimeOptions): Bd
 
       if (resumeFeedback.includes("bdd:fail-before-first-chunk")) {
         throw new Error("scripted agent failed before first chunk")
+      }
+
+      if (promptText.includes("bdd:delay-first-chunk")) {
+        await waitForDelay(2_000, config.signal)
+        if (config.signal?.aborted) {
+          return
+        }
+
+        const content = "scripted agent delayed first chunk completed"
+        yield [
+          "messages",
+          [
+            createSerializedMessage({
+              content,
+              id: assistantMessageId,
+              role: "ai"
+            }),
+            { langgraph_node: "agent" }
+          ]
+        ]
+        yield ["values", createCompletionState(options, content, todoId)]
+        return
       }
 
       if (promptText.includes("bdd:long")) {
