@@ -1,9 +1,15 @@
 import { extractMessageText, resolveImageBlockUrl } from "@shared/message-content"
 import { stabilizeReferences } from "@/lib/stabilize-references"
+import {
+  readAgentToolExecutionTiming,
+  type ActiveAgentToolCall,
+  type AgentToolExecutionTiming
+} from "@shared/agent-thread-runtime"
 import type { HITLRequest, Message as ThreadMessage, ToolCall } from "@/types"
 
 export interface ToolResultInfo {
   content: ThreadMessage["content"]
+  execution: AgentToolExecutionTiming | null
 }
 
 export interface MessageTurn {
@@ -52,21 +58,6 @@ export function shouldDefaultExpandToolEntries(
   return !lastAssistantMessage || !hasNarrativeAssistantContent(lastAssistantMessage.content)
 }
 
-export interface TurnToolDisplayPolicy {
-  defaultExpanded: boolean
-  preferLatestSummary: boolean
-}
-
-export function getTurnToolDisplayPolicy(
-  turn: MessageTurn,
-  options: { isStreaming: boolean }
-): TurnToolDisplayPolicy {
-  return {
-    defaultExpanded: shouldDefaultExpandToolEntries(turn, options),
-    preferLatestSummary: options.isStreaming
-  }
-}
-
 export interface MessagesProjection {
   activeAssistantId: string | null
   activeTurnKey: string | null
@@ -74,14 +65,64 @@ export interface MessagesProjection {
   turns: MessageTurn[]
 }
 
-export type AgentToolExecutionViewStatus = "approval" | "complete" | "running"
+export type AgentToolExecutionViewStatus =
+  | "approval"
+  | "arguments_streaming"
+  | "complete"
+  | "failed"
+  | "running"
+  | "waiting_result"
 
 export interface AgentToolExecutionView {
+  activeToolCall?: ActiveAgentToolCall
+  execution?: AgentToolExecutionTiming | null
   status: AgentToolExecutionViewStatus
   toolCallId: string
 }
 
 export type AgentToolExecutionsView = Record<string, AgentToolExecutionView>
+
+export type ActiveTurnStatusProjectionKind =
+  | "composing_answer"
+  | "preparing_tool"
+  | "running_tool"
+  | "thinking"
+  | "understanding_request"
+  | "waiting_approval"
+  | "waiting_tool_result"
+
+export interface ActiveTurnStatusProjection {
+  kind: ActiveTurnStatusProjectionKind
+  placement: "after_entries" | "before_entries"
+  toolCallId: string | null
+}
+
+export type TurnElapsedProjection =
+  | {
+      completedAt: null
+      durationMs: null
+      startedAt: Date
+      status: "working"
+    }
+  | {
+      completedAt: Date
+      durationMs: number
+      startedAt: Date
+      status: "worked"
+    }
+
+export type AgentActivitySummaryCategory = "command" | "file" | "list" | "search" | "web_search"
+
+export interface AgentActivitySummaryToolInput {
+  status: AgentToolExecutionViewStatus
+  toolCall: ToolCall
+}
+
+export interface AgentActivitySummaryProjection {
+  activeCategory: AgentActivitySummaryCategory | null
+  counts: Partial<Record<AgentActivitySummaryCategory, number>>
+  status: "complete" | "running"
+}
 
 export type MessageDisplayRow =
   | {
@@ -98,8 +139,14 @@ const FOOTER_DISPLAY_ROW: MessageDisplayRow = {
   kind: "footer",
   key: "__chat_footer__"
 }
-const IMPLICIT_DISPLAY_TOOL_RESULT: ToolResultInfo = { content: "" }
 const EMPTY_AGENT_TOOL_EXECUTIONS_VIEW: AgentToolExecutionsView = {}
+const AGENT_ACTIVITY_SUMMARY_CATEGORIES: readonly AgentActivitySummaryCategory[] = [
+  "file",
+  "list",
+  "search",
+  "web_search",
+  "command"
+]
 
 export interface MessageProjectionOptions {
   activeAssistantId?: string | null
@@ -136,15 +183,200 @@ export function buildToolResults(messages: ThreadMessage[]): Map<string, ToolRes
     }
 
     results.set(message.tool_call_id, {
-      content: message.content
+      content: message.content,
+      execution: readAgentToolExecutionTiming(message)
     })
   }
 
   return results
 }
 
-function hasImplicitDisplayResult(toolCall: ToolCall): boolean {
-  return toolCall.name === "write_todos"
+function toFiniteTimestamp(value: Date | null | undefined): number | null {
+  if (!value) {
+    return null
+  }
+
+  const timestamp = new Date(value).getTime()
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function getCompletedExecutionRange(
+  execution: AgentToolExecutionTiming | null
+): { completedAtMs: number; startedAtMs: number } | null {
+  if (!execution || (execution.status !== "completed" && execution.status !== "failed")) {
+    return null
+  }
+
+  const startedAtMs = toFiniteTimestamp(execution.startedAt)
+  if (startedAtMs === null) {
+    return null
+  }
+
+  const completedAtMs =
+    toFiniteTimestamp(execution.completedAt) ??
+    (typeof execution.durationMs === "number" && Number.isFinite(execution.durationMs)
+      ? startedAtMs + execution.durationMs
+      : null)
+
+  if (completedAtMs === null) {
+    return null
+  }
+
+  return {
+    completedAtMs,
+    startedAtMs
+  }
+}
+
+export function projectTurnElapsedDivider(input: {
+  activeRunStartedAt?: Date | null
+  isStreaming: boolean
+  turn: MessageTurn
+}): TurnElapsedProjection | null {
+  if (input.isStreaming) {
+    return input.activeRunStartedAt
+      ? {
+          completedAt: null,
+          durationMs: null,
+          startedAt: input.activeRunStartedAt,
+          status: "working"
+        }
+      : null
+  }
+
+  let startedAtMs: number | null = null
+  let completedAtMs: number | null = null
+
+  for (const result of input.turn.toolResults.values()) {
+    const range = getCompletedExecutionRange(result.execution)
+    if (!range) {
+      continue
+    }
+
+    startedAtMs = startedAtMs === null ? range.startedAtMs : Math.min(startedAtMs, range.startedAtMs)
+    completedAtMs =
+      completedAtMs === null ? range.completedAtMs : Math.max(completedAtMs, range.completedAtMs)
+  }
+
+  if (startedAtMs === null || completedAtMs === null) {
+    return null
+  }
+
+  return {
+    completedAt: new Date(completedAtMs),
+    durationMs: Math.max(0, completedAtMs - startedAtMs),
+    startedAt: new Date(startedAtMs),
+    status: "worked"
+  }
+}
+
+function getStringArg(args: Record<string, unknown>, names: readonly string[]): string | null {
+  for (const name of names) {
+    const value = args[name]
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value
+    }
+  }
+
+  return null
+}
+
+function getToolCallSummaryCategory(toolCall: ToolCall): AgentActivitySummaryCategory | null {
+  switch (toolCall.name) {
+    case "execute":
+      return "command"
+    case "read_file":
+      return "file"
+    case "ls":
+      return "list"
+    case "glob":
+    case "grep":
+      return "search"
+    case "web_search":
+      return "web_search"
+    default:
+      return null
+  }
+}
+
+function getToolCallSummaryFactKey(
+  category: AgentActivitySummaryCategory,
+  toolCall: ToolCall
+): string | null {
+  const args = toolCall.args ?? {}
+
+  switch (category) {
+    case "command":
+      return getStringArg(args, ["command"])
+    case "file":
+      return getStringArg(args, ["path", "file_path"])
+    case "list":
+      return getStringArg(args, ["path"])
+    case "search":
+      return getStringArg(args, ["pattern", "query", "glob"])
+    case "web_search":
+      return getStringArg(args, ["query", "pattern"])
+  }
+}
+
+function isPendingToolExecutionStatus(status: AgentToolExecutionViewStatus): boolean {
+  return status !== "complete" && status !== "failed"
+}
+
+export function projectAgentActivitySummary(
+  tools: readonly AgentActivitySummaryToolInput[]
+): AgentActivitySummaryProjection | null {
+  if (
+    tools.length === 0 ||
+    tools.some((tool) => tool.status === "approval" || tool.status === "failed")
+  ) {
+    return null
+  }
+
+  const categorizedTools = tools.map((tool) => ({
+    ...tool,
+    category: getToolCallSummaryCategory(tool.toolCall)
+  }))
+  if (categorizedTools.some((tool) => tool.category === null)) {
+    return null
+  }
+
+  const factKeysByCategory = new Map<AgentActivitySummaryCategory, Set<string>>()
+  for (const category of AGENT_ACTIVITY_SUMMARY_CATEGORIES) {
+    factKeysByCategory.set(category, new Set())
+  }
+
+  for (const tool of categorizedTools) {
+    const category = tool.category!
+    const factKey = getToolCallSummaryFactKey(category, tool.toolCall)
+    if (!factKey) {
+      return null
+    }
+
+    factKeysByCategory.get(category)!.add(factKey)
+  }
+
+  const counts: Partial<Record<AgentActivitySummaryCategory, number>> = {}
+  for (const category of AGENT_ACTIVITY_SUMMARY_CATEGORIES) {
+    const count = factKeysByCategory.get(category)?.size ?? 0
+    if (count > 0) {
+      counts[category] = count
+    }
+  }
+
+  const latestPendingTool = [...categorizedTools]
+    .reverse()
+    .find((tool) => isPendingToolExecutionStatus(tool.status))
+
+  return {
+    activeCategory: latestPendingTool?.category ?? null,
+    counts,
+    status: latestPendingTool ? "running" : "complete"
+  }
+}
+
+function shouldDisplayToolCall(toolCall: { name: string }): boolean {
+  return toolCall.name !== "loadExtension" && toolCall.name !== "write_todos"
 }
 
 function stabilizeToolResultInfo(
@@ -156,7 +388,39 @@ function stabilizeToolResultInfo(
   }
 
   const content = stabilizeReferences(previous.content, next.content)
-  return Object.is(content, previous.content) ? previous : { content }
+  const execution = isSameToolExecutionTiming(previous.execution, next.execution)
+    ? previous.execution
+    : next.execution
+
+  return Object.is(content, previous.content) && Object.is(execution, previous.execution)
+    ? previous
+    : { content, execution }
+}
+
+function isSameToolExecutionTiming(
+  previous: AgentToolExecutionTiming | null,
+  next: AgentToolExecutionTiming | null
+): boolean {
+  if (previous === next) {
+    return true
+  }
+
+  if (!previous || !next) {
+    return false
+  }
+
+  return (
+    previous.completedAt?.getTime() === next.completedAt?.getTime() &&
+    previous.durationMs === next.durationMs &&
+    previous.error?.message === next.error?.message &&
+    previous.error?.type === next.error?.type &&
+    previous.messageId === next.messageId &&
+    previous.runId === next.runId &&
+    previous.startedAt?.getTime() === next.startedAt?.getTime() &&
+    previous.status === next.status &&
+    previous.toolCallId === next.toolCallId &&
+    previous.toolName === next.toolName
+  )
 }
 
 function stabilizeToolResults(
@@ -210,12 +474,14 @@ function buildTurnToolResults(
 
   for (const message of turn.assistants) {
     for (const toolCall of message.tool_calls ?? []) {
+      if (!shouldDisplayToolCall(toolCall)) {
+        continue
+      }
+
       const result = toolResults.get(toolCall.id)
 
       if (result) {
         turnToolResults.set(toolCall.id, result)
-      } else if (hasImplicitDisplayResult(toolCall)) {
-        turnToolResults.set(toolCall.id, IMPLICIT_DISPLAY_TOOL_RESULT)
       }
     }
   }
@@ -473,6 +739,10 @@ export function buildTurnAssistantEntries(turn: MessageTurn): TurnAssistantEntry
     }
 
     for (const [index, toolCall] of (message.tool_calls ?? []).entries()) {
+      if (!shouldDisplayToolCall(toolCall)) {
+        continue
+      }
+
       pendingActivities.push(createToolActivityItem(message, toolCall, index))
     }
   }
@@ -480,6 +750,212 @@ export function buildTurnAssistantEntries(turn: MessageTurn): TurnAssistantEntry
   flushAgentActivities(entries, pendingActivities)
 
   return entries
+}
+
+function getToolActivityStatus(
+  item: Extract<AgentActivityItem, { kind: "tool" }>,
+  input: {
+    pendingApproval: HITLRequest | null | undefined
+    toolExecutions: AgentToolExecutionsView
+  }
+): AgentToolExecutionViewStatus | null {
+  if (input.pendingApproval?.tool_call.id === item.toolCall.id) {
+    return "approval"
+  }
+
+  return input.toolExecutions[item.toolCall.id]?.status ?? null
+}
+
+function hasStreamingAnswer(input: {
+  assistantEntries: readonly TurnAssistantEntry[]
+  streamingAssistantId: string | null | undefined
+}): boolean {
+  for (const entry of input.assistantEntries) {
+    if (entry.kind === "assistant-content" && entry.message.id === input.streamingAssistantId) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function hasStreamingThinking(input: {
+  assistantEntries: readonly TurnAssistantEntry[]
+  isStreaming: boolean
+  streamingAssistantId: string | null | undefined
+}): boolean {
+  for (const entry of input.assistantEntries) {
+    if (entry.kind !== "agent-activity") {
+      continue
+    }
+
+    for (const item of entry.items) {
+      if (
+        item.kind === "thinking" &&
+        input.isStreaming &&
+        item.messageId === input.streamingAssistantId
+      ) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
+function findLatestPendingToolActivity(input: {
+  assistantEntries: readonly TurnAssistantEntry[]
+  pendingApproval: HITLRequest | null | undefined
+  toolExecutions: AgentToolExecutionsView
+}): { status: AgentToolExecutionViewStatus; toolCallId: string } | null {
+  for (let entryIndex = input.assistantEntries.length - 1; entryIndex >= 0; entryIndex -= 1) {
+    const entry = input.assistantEntries[entryIndex]!
+    if (entry.kind !== "agent-activity") {
+      continue
+    }
+
+    for (let itemIndex = entry.items.length - 1; itemIndex >= 0; itemIndex -= 1) {
+      const item = entry.items[itemIndex]!
+      if (item.kind === "thinking") {
+        continue
+      }
+
+      const status = getToolActivityStatus(item, input)
+      if (status && status !== "complete" && status !== "failed") {
+        return {
+          status,
+          toolCallId: item.toolCall.id
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+function projectToolStatusActiveTurnKind(
+  status: AgentToolExecutionViewStatus
+): ActiveTurnStatusProjectionKind | null {
+  switch (status) {
+    case "approval":
+      return "waiting_approval"
+    case "arguments_streaming":
+      return "preparing_tool"
+    case "running":
+      return "running_tool"
+    case "waiting_result":
+      return "waiting_tool_result"
+    case "complete":
+    case "failed":
+      return null
+  }
+}
+
+export function projectActiveTurnStatus(input: {
+  activeToolCalls?: readonly ActiveAgentToolCall[]
+  assistantEntries: readonly TurnAssistantEntry[]
+  isStreaming: boolean
+  pendingApproval?: HITLRequest | null
+  streamingAssistantId?: string | null
+  toolExecutions?: AgentToolExecutionsView
+}): ActiveTurnStatusProjection | null {
+  if (!input.isStreaming) {
+    return null
+  }
+
+  const toolExecutions = input.toolExecutions ?? EMPTY_AGENT_TOOL_EXECUTIONS_VIEW
+  const activeToolCalls = input.activeToolCalls ?? []
+  if (
+    hasStreamingAnswer({
+      assistantEntries: input.assistantEntries,
+      streamingAssistantId: input.streamingAssistantId
+    })
+  ) {
+    return null
+  }
+
+  const placement = input.assistantEntries.length > 0 ? "after_entries" : "before_entries"
+  const pendingApprovalToolCallId = input.pendingApproval?.tool_call.id ?? null
+  if (pendingApprovalToolCallId) {
+    return {
+      kind: "waiting_approval",
+      placement,
+      toolCallId: pendingApprovalToolCallId
+    }
+  }
+
+  const latestActiveToolCall = activeToolCalls.filter(shouldDisplayToolCall).at(-1)
+  if (latestActiveToolCall) {
+    if (latestActiveToolCall.status === "arguments_streaming") {
+      return {
+        kind: "preparing_tool",
+        placement,
+        toolCallId: latestActiveToolCall.id
+      }
+    }
+
+    if (latestActiveToolCall.status === "running") {
+      return {
+        kind: "running_tool",
+        placement,
+        toolCallId: latestActiveToolCall.id
+      }
+    }
+
+    return {
+      kind: "waiting_tool_result",
+      placement,
+      toolCallId: latestActiveToolCall.id
+    }
+  }
+
+  const latestPendingTool = findLatestPendingToolActivity({
+    assistantEntries: input.assistantEntries,
+    pendingApproval: input.pendingApproval,
+    toolExecutions
+  })
+  if (latestPendingTool) {
+    const kind = projectToolStatusActiveTurnKind(latestPendingTool.status)
+    if (kind) {
+      return {
+        kind,
+        placement,
+        toolCallId: latestPendingTool.toolCallId
+      }
+    }
+  }
+
+  if (
+    hasStreamingThinking({
+      assistantEntries: input.assistantEntries,
+      isStreaming: input.isStreaming,
+      streamingAssistantId: input.streamingAssistantId
+    })
+  ) {
+    return {
+      kind: "thinking",
+      placement,
+      toolCallId: null
+    }
+  }
+
+  if (input.assistantEntries.length === 0) {
+    return {
+      kind: "understanding_request",
+      placement: "before_entries",
+      toolCallId: null
+    }
+  }
+
+  if (input.assistantEntries.at(-1)?.kind === "agent-activity") {
+    return {
+      kind: "composing_answer",
+      placement: "after_entries",
+      toolCallId: null
+    }
+  }
+
+  return null
 }
 
 export function getTurnCopyText(turn: MessageTurn): string {
@@ -506,6 +982,8 @@ export function getTurnPendingApproval(
 }
 
 export function projectTurnToolExecutionsView(input: {
+  activeToolCallId: string | null
+  activeToolCalls?: readonly ActiveAgentToolCall[]
   isActiveTurnRunning: boolean
   pendingApproval: HITLRequest | null
   turn: MessageTurn | null
@@ -516,17 +994,35 @@ export function projectTurnToolExecutionsView(input: {
 
   const nextToolExecutions = new Map<string, AgentToolExecutionView>()
 
+  for (const activeToolCall of input.activeToolCalls ?? []) {
+    nextToolExecutions.set(activeToolCall.id, {
+      activeToolCall,
+      status: activeToolCall.status,
+      toolCallId: activeToolCall.id
+    })
+  }
+
   for (const assistant of input.turn.assistants) {
     for (const toolCall of assistant.tool_calls ?? []) {
       if (input.turn.toolResults.has(toolCall.id)) {
+        const result = input.turn.toolResults.get(toolCall.id)!
         nextToolExecutions.set(toolCall.id, {
-          status: "complete",
+          ...(result.execution ? { execution: result.execution } : {}),
+          status: result.execution?.status === "failed" ? "failed" : "complete",
           toolCallId: toolCall.id
         })
         continue
       }
 
-      if (input.isActiveTurnRunning) {
+      const activeExecution = nextToolExecutions.get(toolCall.id)
+      if (activeExecution) {
+        nextToolExecutions.set(toolCall.id, activeExecution)
+        continue
+      }
+
+      if (
+        input.activeToolCallId ? toolCall.id === input.activeToolCallId : input.isActiveTurnRunning
+      ) {
         nextToolExecutions.set(toolCall.id, {
           status: "running",
           toolCallId: toolCall.id

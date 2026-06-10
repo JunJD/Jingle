@@ -1,10 +1,13 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { AGENT_TOOL_EXECUTION_METADATA_KEY } from "../../src/shared/agent-thread-runtime"
 import {
   buildTurnAssistantEntries,
   getTurnPendingApproval,
-  getTurnToolDisplayPolicy,
+  projectAgentActivitySummary,
+  projectActiveTurnStatus,
   projectMessages,
+  projectTurnElapsedDivider,
   projectTurnToolExecutionsView,
   shouldDefaultExpandToolEntries,
   updateProjectedMessage,
@@ -13,9 +16,13 @@ import {
 import { stabilizeThreadMessages } from "../../src/renderer/src/lib/thread-message-stability"
 import type { HITLRequest, Message, ToolCall } from "../../src/renderer/src/types"
 
-function createToolCall(id: string, name = "execute"): ToolCall {
+function createToolCall(
+  id: string,
+  name = "execute",
+  args: Record<string, unknown> = {}
+): ToolCall {
   return {
-    args: {},
+    args,
     id,
     name,
     type: "tool_call"
@@ -48,12 +55,14 @@ function createUserMessage(id: string, content = "User message"): Message {
 function createToolMessage(props: {
   content: Message["content"]
   id: string
+  metadata?: Message["metadata"]
   toolCallId: string
 }): Message {
   return {
     content: props.content,
     created_at: new Date("2026-01-01T00:00:00.000Z"),
     id: props.id,
+    ...(props.metadata ? { metadata: props.metadata } : {}),
     role: "tool",
     tool_call_id: props.toolCallId
   }
@@ -103,6 +112,56 @@ test("single tool call projects to one agent activity item for standalone render
   assert.equal(entries[0]?.key, "activity:tool:tool-call-1")
   assert.equal(entries[0]?.items.length, 1)
   assert.equal(entries[0]?.items[0]?.kind, "tool")
+})
+
+test("extension orchestration tool calls do not expose wrapper names in activity display", () => {
+  const entries = buildTurnAssistantEntries(
+    createTurn([
+      createAssistantMessage({
+        id: "assistant-1",
+        toolCalls: [
+          {
+            args: {
+              extensionName: "image-generation"
+            },
+            id: "tool-call-load-extension",
+            name: "loadExtension",
+            type: "tool_call"
+          },
+          {
+            args: {
+              args: {
+                prompt: "cat"
+              },
+              extensionName: "image-generation",
+              toolName: "generateImage"
+            },
+            display: {
+              description: "Create an image from a prompt.",
+              title: "Generate Image"
+            },
+            id: "tool-call-call-extension",
+            name: "callExtension",
+            presentation: {
+              access: "external" as const,
+              capabilityDisplayName: "Image Generation",
+              capabilityTitle: "Image Generation",
+              kind: "extension" as const
+            },
+            type: "tool_call"
+          }
+        ]
+      })
+    ])
+  )
+
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0]?.kind, "agent-activity")
+  assert.equal(entries[0]?.items.length, 1)
+  const item = entries[0]?.items[0]
+  assert.equal(item?.kind, "tool")
+  assert.equal(item?.toolCall.name, "callExtension")
+  assert.equal(item?.toolCall.display?.title, "Generate Image")
 })
 
 test("thinking followed by a tool call projects to one grouped agent activity", () => {
@@ -155,6 +214,214 @@ test("consecutive tool calls project to one grouped agent activity", () => {
   assert.deepEqual(
     afterGrowth[0]?.items.map((item) => item.kind),
     ["tool", "tool"]
+  )
+})
+
+test("active tool calls drive status without creating tool activity entries", () => {
+  const activeToolCall = {
+    argsText: '{"path":"src/renderer.tsx"}',
+    id: "tool-call-1",
+    index: 0,
+    messageId: "assistant-1",
+    name: "edit_file",
+    runId: "run-1",
+    startedAt: new Date("2026-01-01T00:00:00.000Z"),
+    status: "arguments_streaming" as const
+  }
+  const turnWithoutToolCall = createTurn([createAssistantMessage({ id: "assistant-1" })])
+  const entries = buildTurnAssistantEntries(turnWithoutToolCall)
+
+  assert.equal(entries.length, 0)
+  assert.deepEqual(
+    projectActiveTurnStatus({
+      activeToolCalls: [activeToolCall],
+      assistantEntries: entries,
+      isStreaming: true
+    }),
+    {
+      kind: "preparing_tool",
+      placement: "before_entries",
+      toolCallId: activeToolCall.id
+    }
+  )
+})
+
+test("active turn status is derived from current runtime facts", () => {
+  const blankStatus = projectActiveTurnStatus({
+    assistantEntries: [],
+    isStreaming: true
+  })
+  assert.deepEqual(blankStatus, {
+    kind: "understanding_request",
+    placement: "before_entries",
+    toolCallId: null
+  })
+
+  const reasoningTurn = createTurn([
+    createAssistantMessage({
+      content: [
+        {
+          reasoning: "I need to inspect the workspace first.",
+          type: "reasoning"
+        }
+      ],
+      id: "assistant-thinking"
+    })
+  ])
+  assert.deepEqual(
+    projectActiveTurnStatus({
+      assistantEntries: buildTurnAssistantEntries(reasoningTurn),
+      isStreaming: true,
+      streamingAssistantId: "assistant-thinking"
+    }),
+    {
+      kind: "thinking",
+      placement: "after_entries",
+      toolCallId: null
+    }
+  )
+
+  const activeToolCall = {
+    argsText: '{"path":"src/renderer.tsx"}',
+    id: "tool-call-active",
+    index: 0,
+    messageId: "assistant-tool",
+    name: "edit_file",
+    runId: "run-1",
+    startedAt: new Date("2026-01-01T00:00:00.000Z"),
+    status: "arguments_streaming" as const
+  }
+  assert.deepEqual(
+    projectActiveTurnStatus({
+      activeToolCalls: [activeToolCall],
+      assistantEntries: [],
+      isStreaming: true
+    }),
+    {
+      kind: "preparing_tool",
+      placement: "before_entries",
+      toolCallId: activeToolCall.id
+    }
+  )
+
+  assert.deepEqual(
+    projectActiveTurnStatus({
+      activeToolCalls: [
+        {
+          argsText: '{"extensionName":"image-generation"}',
+          id: "tool-call-load-extension",
+          index: 0,
+          messageId: "assistant-tool",
+          name: "loadExtension",
+          runId: "run-1",
+          startedAt: new Date("2026-01-01T00:00:00.000Z"),
+          status: "running" as const
+        }
+      ],
+      assistantEntries: [],
+      isStreaming: true
+    }),
+    {
+      kind: "understanding_request",
+      placement: "before_entries",
+      toolCallId: null
+    }
+  )
+
+  const runningToolCall = createToolCall("tool-call-running", "read_file")
+  const toolTurn = createTurn([
+    createAssistantMessage({
+      id: "assistant-tool",
+      toolCalls: [runningToolCall]
+    })
+  ])
+  const toolEntries = buildTurnAssistantEntries(toolTurn)
+  assert.deepEqual(
+    projectActiveTurnStatus({
+      assistantEntries: toolEntries,
+      isStreaming: true,
+      toolExecutions: {
+        [runningToolCall.id]: {
+          status: "running",
+          toolCallId: runningToolCall.id
+        }
+      }
+    }),
+    {
+      kind: "running_tool",
+      placement: "after_entries",
+      toolCallId: runningToolCall.id
+    }
+  )
+
+  assert.deepEqual(
+    projectActiveTurnStatus({
+      assistantEntries: toolEntries,
+      isStreaming: true,
+      toolExecutions: {
+        [runningToolCall.id]: {
+          status: "waiting_result",
+          toolCallId: runningToolCall.id
+        }
+      }
+    }),
+    {
+      kind: "waiting_tool_result",
+      placement: "after_entries",
+      toolCallId: runningToolCall.id
+    }
+  )
+
+  const approval: HITLRequest = {
+    allowed_decisions: ["approve", "reject"],
+    id: "approval-running",
+    review: null,
+    tool_call: runningToolCall
+  }
+  assert.deepEqual(
+    projectActiveTurnStatus({
+      assistantEntries: toolEntries,
+      isStreaming: true,
+      pendingApproval: approval,
+      toolExecutions: {
+        [runningToolCall.id]: {
+          status: "running",
+          toolCallId: runningToolCall.id
+        }
+      }
+    }),
+    {
+      kind: "waiting_approval",
+      placement: "after_entries",
+      toolCallId: runningToolCall.id
+    }
+  )
+
+  assert.deepEqual(
+    projectActiveTurnStatus({
+      assistantEntries: toolEntries,
+      isStreaming: true
+    }),
+    {
+      kind: "composing_answer",
+      placement: "after_entries",
+      toolCallId: null
+    }
+  )
+
+  const answerTurn = createTurn([
+    createAssistantMessage({
+      content: "Here is the answer.",
+      id: "assistant-answer"
+    })
+  ])
+  assert.equal(
+    projectActiveTurnStatus({
+      assistantEntries: buildTurnAssistantEntries(answerTurn),
+      isStreaming: true,
+      streamingAssistantId: "assistant-answer"
+    }),
+    null
   )
 })
 
@@ -268,40 +535,70 @@ test("late tool result updates do not change the activity group key", () => {
   assert.equal(nextEntries[0]?.key, "activity:tool:tool-call-1")
 })
 
-test("write_todos projects as complete after the todo state update is visible", () => {
+test("write_todos stays out of message tool activity after the todo state update is visible", () => {
   const todosToolCall = createToolCall("todo-call-1", "write_todos")
-  const executeToolCall = createToolCall("execute-call-1")
+  const readToolCall = createToolCall("read-call-1", "read_file")
   const projection = projectMessages([
     createUserMessage("user-1", "Plan the work"),
     createAssistantMessage({
       id: "assistant-1",
-      toolCalls: [todosToolCall, executeToolCall]
+      toolCalls: [todosToolCall, readToolCall]
     })
   ])
   const turn = projection.turns[0]!
+  const entries = buildTurnAssistantEntries(turn)
 
-  assert.equal(turn.toolResults.get(todosToolCall.id)?.content, "")
-  assert.equal(turn.toolResults.has(executeToolCall.id), false)
+  assert.equal(turn.toolResults.has(todosToolCall.id), false)
+  assert.equal(turn.toolResults.has(readToolCall.id), false)
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0]?.kind, "agent-activity")
+  assert.deepEqual(
+    entries[0]?.kind === "agent-activity"
+      ? entries[0].items.map((item) => (item.kind === "tool" ? item.toolCall.id : item.kind))
+      : [],
+    [readToolCall.id]
+  )
 })
 
 test("tool execution view derives from messages and runtime facts", () => {
   const runningToolCall = createToolCall("tool-call-1")
   const completedToolCall = createToolCall("tool-call-2")
+  const failedToolCall = createToolCall("tool-call-3")
   const projection = projectMessages([
     createUserMessage("user-1", "Run tools"),
     createAssistantMessage({
       id: "assistant-1",
-      toolCalls: [runningToolCall, completedToolCall]
+      toolCalls: [runningToolCall, completedToolCall, failedToolCall]
     }),
     createToolMessage({
       content: "done",
       id: "tool-result-2",
       toolCallId: completedToolCall.id
+    }),
+    createToolMessage({
+      content: "failed",
+      id: "tool-result-3",
+      metadata: {
+        [AGENT_TOOL_EXECUTION_METADATA_KEY]: {
+          completedAt: "2026-01-01T00:00:02.500Z",
+          durationMs: 1_500,
+          error: { message: "Tool failed" },
+          messageId: "tool-result-3",
+          runId: "run-1",
+          startedAt: "2026-01-01T00:00:01.000Z",
+          status: "failed",
+          toolCallId: failedToolCall.id,
+          toolName: failedToolCall.name
+        }
+      },
+      toolCallId: failedToolCall.id
     })
   ])
   const turn = projection.turns[0]!
 
   const runningView = projectTurnToolExecutionsView({
+    activeToolCallId: null,
+    activeToolCalls: [],
     isActiveTurnRunning: true,
     pendingApproval: null,
     turn
@@ -315,6 +612,48 @@ test("tool execution view derives from messages and runtime facts", () => {
     status: "complete",
     toolCallId: completedToolCall.id
   })
+  assert.equal(runningView[failedToolCall.id]?.status, "failed")
+  assert.equal(runningView[failedToolCall.id]?.execution?.durationMs, 1_500)
+  assert.equal(runningView[failedToolCall.id]?.execution?.error?.message, "Tool failed")
+
+  const activeToolView = projectTurnToolExecutionsView({
+    activeToolCallId: runningToolCall.id,
+    activeToolCalls: [
+      {
+        argsText: "{}",
+        id: runningToolCall.id,
+        index: 0,
+        messageId: "assistant-1",
+        name: runningToolCall.name,
+        runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        status: "arguments_streaming"
+      }
+    ],
+    isActiveTurnRunning: true,
+    pendingApproval: null,
+    turn
+  })
+
+  assert.deepEqual(activeToolView[runningToolCall.id], {
+    activeToolCall: {
+      argsText: "{}",
+      id: runningToolCall.id,
+      index: 0,
+      messageId: "assistant-1",
+      name: runningToolCall.name,
+      runId: "run-1",
+      startedAt: new Date("2026-01-01T00:00:00.000Z"),
+      status: "arguments_streaming"
+    },
+    status: "arguments_streaming",
+    toolCallId: runningToolCall.id
+  })
+  assert.deepEqual(activeToolView[completedToolCall.id], {
+    status: "complete",
+    toolCallId: completedToolCall.id
+  })
+  assert.equal(activeToolView[failedToolCall.id]?.status, "failed")
 
   const approval: HITLRequest = {
     allowed_decisions: ["approve", "reject"],
@@ -323,6 +662,8 @@ test("tool execution view derives from messages and runtime facts", () => {
     tool_call: runningToolCall
   }
   const approvalView = projectTurnToolExecutionsView({
+    activeToolCallId: runningToolCall.id,
+    activeToolCalls: [],
     isActiveTurnRunning: false,
     pendingApproval: approval,
     turn
@@ -335,6 +676,8 @@ test("tool execution view derives from messages and runtime facts", () => {
   assert.deepEqual(approvalView[completedToolCall.id], runningView[completedToolCall.id])
 
   const finishedView = projectTurnToolExecutionsView({
+    activeToolCallId: null,
+    activeToolCalls: [],
     isActiveTurnRunning: false,
     pendingApproval: null,
     turn
@@ -344,6 +687,210 @@ test("tool execution view derives from messages and runtime facts", () => {
     status: "complete",
     toolCallId: completedToolCall.id
   })
+  assert.equal(finishedView[failedToolCall.id]?.status, "failed")
+})
+
+test("completed tool execution projection reads durable metadata only from tool result messages", () => {
+  const toolCall = createToolCall("tool-call-1")
+  const projection = projectMessages([
+    createUserMessage("user-1", "Run tool"),
+    createAssistantMessage({
+      id: "assistant-1",
+      toolCalls: [toolCall]
+    }),
+    createToolMessage({
+      content: "done",
+      id: "tool-result-1",
+      toolCallId: toolCall.id
+    })
+  ])
+  const turn = projection.turns[0]!
+
+  const view = projectTurnToolExecutionsView({
+    activeToolCallId: null,
+    activeToolCalls: [],
+    isActiveTurnRunning: false,
+    pendingApproval: null,
+    turn
+  })
+
+  assert.deepEqual(view[toolCall.id], {
+    status: "complete",
+    toolCallId: toolCall.id
+  })
+})
+
+test("turn elapsed divider derives running and completed timing from runtime facts", () => {
+  const runningTurn = createTurn([createAssistantMessage({ id: "assistant-running" })])
+  const runningProjection = projectTurnElapsedDivider({
+    activeRunStartedAt: new Date("2026-01-01T00:00:01.000Z"),
+    isStreaming: true,
+    turn: runningTurn
+  })
+
+  assert.deepEqual(runningProjection, {
+    completedAt: null,
+    durationMs: null,
+    startedAt: new Date("2026-01-01T00:00:01.000Z"),
+    status: "working"
+  })
+  assert.equal(
+    projectTurnElapsedDivider({
+      activeRunStartedAt: null,
+      isStreaming: true,
+      turn: runningTurn
+    }),
+    null
+  )
+
+  const firstToolCall = createToolCall("tool-call-1", "read_file", {
+    file_path: "/repo/src/index.ts"
+  })
+  const secondToolCall = createToolCall("tool-call-2", "grep", { pattern: "runtime" })
+  const projection = projectMessages([
+    createUserMessage("user-1", "Inspect files"),
+    createAssistantMessage({
+      id: "assistant-1",
+      toolCalls: [firstToolCall, secondToolCall]
+    }),
+    createToolMessage({
+      content: "done",
+      id: "tool-result-1",
+      metadata: {
+        [AGENT_TOOL_EXECUTION_METADATA_KEY]: {
+          completedAt: "2026-01-01T00:00:03.000Z",
+          durationMs: 2_000,
+          messageId: "tool-result-1",
+          runId: "run-1",
+          startedAt: "2026-01-01T00:00:01.000Z",
+          status: "completed",
+          toolCallId: firstToolCall.id,
+          toolName: firstToolCall.name
+        }
+      },
+      toolCallId: firstToolCall.id
+    }),
+    createToolMessage({
+      content: "done",
+      id: "tool-result-2",
+      metadata: {
+        [AGENT_TOOL_EXECUTION_METADATA_KEY]: {
+          completedAt: "2026-01-01T00:00:06.000Z",
+          durationMs: 2_000,
+          messageId: "tool-result-2",
+          runId: "run-1",
+          startedAt: "2026-01-01T00:00:04.000Z",
+          status: "completed",
+          toolCallId: secondToolCall.id,
+          toolName: secondToolCall.name
+        }
+      },
+      toolCallId: secondToolCall.id
+    })
+  ])
+
+  assert.deepEqual(
+    projectTurnElapsedDivider({
+      isStreaming: false,
+      turn: projection.turns[0]!
+    }),
+    {
+      completedAt: new Date("2026-01-01T00:00:06.000Z"),
+      durationMs: 5_000,
+      startedAt: new Date("2026-01-01T00:00:01.000Z"),
+      status: "worked"
+    }
+  )
+  assert.equal(
+    projectTurnElapsedDivider({
+      isStreaming: false,
+      turn: runningTurn
+    }),
+    null
+  )
+})
+
+test("agent activity summary groups known tool categories without using tool names", () => {
+  assert.deepEqual(
+    projectAgentActivitySummary([
+      {
+        status: "complete",
+        toolCall: createToolCall("tool-read-1", "read_file", {
+          file_path: "/repo/src/index.ts"
+        })
+      },
+      {
+        status: "complete",
+        toolCall: createToolCall("tool-read-2", "read_file", {
+          file_path: "/repo/src/main.tsx"
+        })
+      },
+      {
+        status: "complete",
+        toolCall: createToolCall("tool-list", "ls", { path: "/repo/src" })
+      },
+      {
+        status: "complete",
+        toolCall: createToolCall("tool-search", "grep", { pattern: "runtime" })
+      },
+      {
+        status: "complete",
+        toolCall: createToolCall("tool-command", "execute", { command: "npm test" })
+      }
+    ]),
+    {
+      activeCategory: null,
+      counts: {
+        command: 1,
+        file: 2,
+        list: 1,
+        search: 1
+      },
+      status: "complete"
+    }
+  )
+
+  assert.deepEqual(
+    projectAgentActivitySummary([
+      {
+        status: "complete",
+        toolCall: createToolCall("tool-search", "grep", { pattern: "runtime" })
+      },
+      {
+        status: "running",
+        toolCall: createToolCall("tool-web", "web_search", { query: "Openwork runtime" })
+      }
+    ]),
+    {
+      activeCategory: "web_search",
+      counts: {
+        search: 1,
+        web_search: 1
+      },
+      status: "running"
+    }
+  )
+
+  assert.equal(
+    projectAgentActivitySummary([
+      {
+        status: "complete",
+        toolCall: createToolCall("tool-read-missing-path", "read_file")
+      }
+    ]),
+    null
+  )
+  assert.equal(
+    projectAgentActivitySummary([
+      {
+        status: "failed",
+        toolCall: createToolCall("tool-read-failed", "read_file", {
+          file_path: "/repo/src/index.ts"
+        })
+      }
+    ]),
+    null
+  )
 })
 
 test("turn tool execution view only applies approval to the owning turn", () => {
@@ -369,11 +916,15 @@ test("turn tool execution view only applies approval to the owning turn", () => 
   }
 
   const firstTurnView = projectTurnToolExecutionsView({
+    activeToolCallId: secondToolCall.id,
+    activeToolCalls: [],
     isActiveTurnRunning: false,
     pendingApproval: approval,
     turn: projection.turns[0]!
   })
   const secondTurnView = projectTurnToolExecutionsView({
+    activeToolCallId: secondToolCall.id,
+    activeToolCalls: [],
     isActiveTurnRunning: true,
     pendingApproval: approval,
     turn: projection.turns[1]!
@@ -418,14 +969,6 @@ test("tool entries collapse by default only after a non-streaming turn ends with
     false
   )
   assert.equal(shouldDefaultExpandToolEntries(toolThenAnswerTurn, { isStreaming: true }), true)
-  assert.deepEqual(getTurnToolDisplayPolicy(toolThenAnswerTurn, { isStreaming: true }), {
-    defaultExpanded: true,
-    preferLatestSummary: true
-  })
-  assert.deepEqual(getTurnToolDisplayPolicy(toolThenAnswerTurn, { isStreaming: false }), {
-    defaultExpanded: false,
-    preferLatestSummary: false
-  })
 })
 
 test("streaming assistant content updates keep historical message and turn references stable", () => {
