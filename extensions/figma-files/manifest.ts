@@ -85,7 +85,15 @@ export const figmaFilesManifest = defineNativeExtensionManifest({
       type: "appPicker"
     }
   ],
-  runtimeCapabilities: ["clipboard", "navigation", "preferences", "settings", "shell", "storage", "toast"],
+  runtimeCapabilities: [
+    "clipboard",
+    "navigation",
+    "preferences",
+    "settings",
+    "shell",
+    "storage",
+    "toast"
+  ],
   runtimeShell: {
     allowedUrlSchemes: ["figma"]
   },
