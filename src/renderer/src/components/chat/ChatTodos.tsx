@@ -54,7 +54,7 @@ export function ChatTodos({ todos }: ChatTodosProps): React.JSX.Element | null {
   return (
     <AgentSteps
       active={activeTodos.length > 0}
-      className="border-t border-border pt-[var(--ow-space-4)]"
+      className="mt-[var(--ow-space-3)] border-t border-border pt-[var(--ow-space-4)]"
     >
       <AgentStepsTrigger meta={progressMeta}>{copy.chat.agentTasks}</AgentStepsTrigger>
       <AgentStepsContent>
