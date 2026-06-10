@@ -9,7 +9,8 @@ import {
   type CheckpointTuple,
   type PendingWrite,
   type SerializerProtocol,
-  WRITES_IDX_MAP
+  WRITES_IDX_MAP,
+  uuid6
 } from "@langchain/langgraph-checkpoint"
 import type { Prisma } from "@prisma/client"
 import { getPrismaClient } from "../db/client"
@@ -109,6 +110,20 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
 
   async initialize(): Promise<void> {
     return
+  }
+
+  override getNextVersion(current: number | undefined): number
+  getNextVersion(current: string): string
+  getNextVersion(current: string | number | undefined): string | number {
+    if (typeof current === "number") {
+      return current + 1
+    }
+
+    if (typeof current === "string") {
+      return uuid6(-2)
+    }
+
+    return 1
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
@@ -271,7 +286,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       const checkpointNs = config.configurable.checkpoint_ns ?? ""
       const parentCheckpointId = config.configurable.checkpoint_id
       const preparedCheckpoint = copyCheckpoint(checkpoint)
-      const storedNewVersions = ensureCheckpointChannelVersions(preparedCheckpoint, newVersions)
+      ensureCheckpointChannelVersions(preparedCheckpoint, newVersions)
       const checkpointManifest = copyCheckpointManifest(preparedCheckpoint)
 
       const [[type, serializedCheckpoint], [metadataType, serializedMetadata], serializedBlobs] =
@@ -282,7 +297,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
             threadId,
             checkpointNs,
             preparedCheckpoint.channel_values,
-            storedNewVersions
+            preparedCheckpoint.channel_versions
           )
         ])
 
@@ -293,7 +308,10 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
       const [storedType, storedCheckpoint] = encodeSerializedPayload(type, serializedCheckpoint)
       const [, storedMetadata] = encodeSerializedPayload(metadataType, serializedMetadata)
 
-      const operations: Prisma.PrismaPromise<unknown>[] = serializedBlobs.map((blob) =>
+      const valueBlobs = serializedBlobs.filter((blob) => blob.type !== "empty")
+      const emptyBlobs = serializedBlobs.filter((blob) => blob.type === "empty")
+
+      const operations: Prisma.PrismaPromise<unknown>[] = valueBlobs.map((blob) =>
         prisma.checkpointBlob.upsert({
           where: {
             threadId_checkpointNs_channel_version: {
@@ -309,6 +327,23 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
             value: blob.value
           }
         })
+      )
+
+      operations.push(
+        ...emptyBlobs.map((blob) =>
+          prisma.checkpointBlob.upsert({
+            where: {
+              threadId_checkpointNs_channel_version: {
+                channel: blob.channel,
+                checkpointNs,
+                threadId,
+                version: blob.version
+              }
+            },
+            create: blob,
+            update: {}
+          })
+        )
       )
 
       operations.push(

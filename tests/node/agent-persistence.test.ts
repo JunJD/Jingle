@@ -1184,6 +1184,110 @@ test("prisma checkpoint saver stores channel values as reusable checkpoint blobs
   assert.deepEqual(latest?.checkpoint.channel_values, secondCheckpoint.channel_values)
 })
 
+test("prisma checkpoint saver stores empty blobs for versioned channels without values", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-checkpoint-empty-versioned-channels"
+  await createThread(threadId)
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-empty-versioned-channels"
+  checkpoint.channel_values = {
+    messages: [{ kwargs: { content: "retry", id: "message-retry" }, type: "human" }]
+  }
+  checkpoint.channel_versions = {
+    __pregel_tasks: "checkpoint-empty-pregel-tasks",
+    __start__: "checkpoint-empty-start",
+    messages: 1
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "input",
+      step: 0
+    },
+    {
+      messages: 1
+    }
+  )
+
+  const prisma = getPrismaClient()
+  const blobRows = await prisma.checkpointBlob.findMany({
+    orderBy: [{ channel: "asc" }, { version: "asc" }],
+    where: { threadId }
+  })
+  const latest = await saver.getTuple({
+    configurable: {
+      thread_id: threadId
+    }
+  })
+
+  assert.deepEqual(
+    blobRows.map((row) => `${row.channel}:${row.version}:${row.type}`),
+    [
+      "__pregel_tasks:checkpoint-empty-pregel-tasks:empty",
+      "__start__:checkpoint-empty-start:empty",
+      "messages:1:base64:json"
+    ]
+  )
+  assert.deepEqual(latest?.checkpoint.channel_values, checkpoint.channel_values)
+})
+
+test("prisma checkpoint saver advances restored string channel versions", async () => {
+  const { createThread } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-checkpoint-string-version"
+  await createThread(threadId)
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-string-version-0001"
+  checkpoint.channel_values = {
+    artifacts: {
+      manifestsById: {},
+      presentationsByIdempotencyKey: {}
+    }
+  }
+  checkpoint.channel_versions = {}
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    },
+    {}
+  )
+
+  const latest = await saver.getTuple({
+    configurable: {
+      thread_id: threadId
+    }
+  })
+  const restoredVersion = latest?.checkpoint.channel_versions.artifacts
+
+  assert.equal(restoredVersion, checkpoint.id)
+  assert.equal(typeof saver.getNextVersion(restoredVersion), "string")
+  assert.notEqual(saver.getNextVersion(restoredVersion), restoredVersion)
+  assert.equal(saver.getNextVersion(3), 4)
+})
+
 test("runtime checkpointer syncs derived thread state after checkpoint writes", async () => {
   const { createThread, createRun, getLatestHitlRequest, getPrismaClient } = await loadDbModules()
   const { RuntimeCheckpointSaver, flushMessageSearchProjection } =
