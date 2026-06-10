@@ -188,6 +188,40 @@ test("workspace file reference node serializes refs and model markdown from edit
   )
 })
 
+test("workspace file reference can show basename while preserving path context", () => {
+  const editor = createComposerEditor()
+
+  editor.update(
+    () => {
+      const root = $getRoot()
+      root.clear()
+      const paragraph = $createParagraphNode()
+      paragraph.append(
+        $createTextNode("Review "),
+        $createFileReferenceNode({
+          label: "@service.ts",
+          name: "service.ts",
+          path: "src/main/agent/service.ts"
+        })
+      )
+      root.append(paragraph)
+    },
+    { discrete: true }
+  )
+
+  assert.deepEqual(getComposerRefsFromEditorState(editor.getEditorState()), [
+    {
+      name: "service.ts",
+      path: "src/main/agent/service.ts",
+      type: "file"
+    }
+  ])
+  assert.equal(
+    serializeComposerEditorStateForModel(editor.getEditorState()),
+    "Review [@service.ts](openwork-workspace-file://src%2Fmain%2Fagent%2Fservice.ts)"
+  )
+})
+
 test("workspace file reference node percent-encodes markdown delimiters in file paths", () => {
   const editor = createComposerEditor()
 

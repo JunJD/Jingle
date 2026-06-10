@@ -45,7 +45,7 @@ type IndexedComposerMentionOption = {
 }
 
 const SECTION_LABEL_CLASS =
-  "px-[var(--ow-space-1-5)] pb-[var(--ow-space-0-5)] pt-[var(--ow-space-1)] [font-size:var(--ow-font-caption)] font-semibold text-muted-foreground"
+  "px-[var(--ow-space-2)] pb-[var(--ow-space-0-5)] pt-[var(--ow-space-1-5)] [font-size:var(--ow-font-meta)] font-medium text-muted-foreground"
 
 export function getExtensionSourceTriggerMatch(text: string): MenuTextMatch | null {
   const match = COMPOSER_MENTION_TRIGGER_PATTERN.exec(text)
@@ -97,92 +97,99 @@ function filterWorkspaceFileOptions(
   return files.slice(0, 8).map((file) => new WorkspaceFileOption(file))
 }
 
+function getWorkspaceFileDirectory(file: ComposerWorkspaceFileMention): string {
+  const slashIndex = file.path.lastIndexOf("/")
+  return slashIndex > 0 ? file.path.slice(0, slashIndex) : ""
+}
+
+function getWorkspaceFileReferenceLabel(file: ComposerWorkspaceFileMention): string {
+  return `@${file.name}`
+}
+
 function useMenuRenderFn(query: string | null): MenuRenderFn<ComposerMentionOption> {
-  return useCallback((anchorElementRef, itemProps) => {
-    const anchor = anchorElementRef.current
-    if (!anchor || itemProps.options.length === 0) {
-      return null
-    }
+  return useCallback(
+    (anchorElementRef, itemProps) => {
+      const anchor = anchorElementRef.current
+      if (!anchor || itemProps.options.length === 0) {
+        return null
+      }
 
-    const normalizedQuery = query?.trim() ?? ""
-    const indexedOptions: IndexedComposerMentionOption[] = itemProps.options.map(
-      (option, index) => ({ index, option })
-    )
-    const pluginOptions = indexedOptions.filter(({ option }) => option.kind === "extension-source")
-    const workspaceFileOptions = indexedOptions.filter(
-      ({ option }) => option.kind === "workspace-file"
-    )
-    const showWorkspaceFileSearchHint =
-      normalizedQuery.length === 0 && workspaceFileOptions.length === 0
-    const showWorkspaceFileSection = workspaceFileOptions.length > 0 || showWorkspaceFileSearchHint
-
-    const renderOption = ({ index, option }: IndexedComposerMentionOption): JSX.Element => {
-      const selected = itemProps.selectedIndex === index
-      return (
-        <li
-          key={option.key}
-          ref={option.setRefElement}
-          className={cn(
-            "flex h-[36px] cursor-default select-none items-center gap-[var(--ow-space-1-5)] rounded-[var(--ow-radius-xs)] px-[var(--ow-space-1-5)] [font-size:var(--ow-font-body)] text-foreground outline-none transition-colors duration-100",
-            selected ? "bg-background-secondary" : "hover:bg-background-secondary/72"
-          )}
-          onClick={() => {
-            itemProps.setHighlightedIndex(index)
-            itemProps.selectOptionAndCleanUp(option)
-          }}
-          onMouseEnter={() => itemProps.setHighlightedIndex(index)}
-          role="option"
-          aria-selected={selected}
-        >
-          {option.kind === "extension-source" ? (
-            <>
-              <span className="flex size-[20px] shrink-0 items-center justify-center rounded-[var(--ow-radius-xs)] bg-background-tertiary text-muted-foreground">
-                <ExtensionIcon
-                  className="size-[16px]"
-                  extensionName={option.mention.extensionName}
-                  icon={option.mention.icon}
-                  iconName={option.mention.iconName}
-                />
-              </span>
-              <span className="min-w-0 flex-1 truncate font-medium">@{option.mention.value}</span>
-            </>
-          ) : (
-            <>
-              <span className="flex size-[20px] shrink-0 items-center justify-center rounded-[var(--ow-radius-xs)] bg-background-tertiary text-muted-foreground">
-                <WorkspaceFileIcon className="size-[16px]" name={option.file.name} />
-              </span>
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate font-medium">{option.file.name}</span>
-                <span className="truncate [font-size:var(--ow-font-caption)] text-muted-foreground">
-                  {option.file.path}
-                </span>
-              </span>
-            </>
-          )}
-        </li>
+      const normalizedQuery = query?.trim() ?? ""
+      const indexedOptions: IndexedComposerMentionOption[] = itemProps.options.map(
+        (option, index) => ({ index, option })
       )
-    }
+      const pluginOptions = indexedOptions.filter(
+        ({ option }) => option.kind === "extension-source"
+      )
+      const workspaceFileOptions = indexedOptions.filter(
+        ({ option }) => option.kind === "workspace-file"
+      )
+      const showWorkspaceFileSearchHint =
+        normalizedQuery.length === 0 && workspaceFileOptions.length === 0
+      const showWorkspaceFileSection =
+        workspaceFileOptions.length > 0 || showWorkspaceFileSearchHint
 
-    return createPortal(
-      <div style={{ transform: "translateY(calc(-100% - 18px))" }}>
-        <ul className="relative z-[9999] m-0 max-h-[320px] min-w-[320px] max-w-[520px] list-none overflow-y-auto rounded-[var(--ow-radius-sm)] border border-border bg-popover p-[var(--ow-space-0-5)] text-popover-foreground shadow-[0_10px_28px_rgba(15,23,42,0.14)] outline-none">
-          {pluginOptions.length > 0 ? <li className={SECTION_LABEL_CLASS}>插件</li> : null}
-          {pluginOptions.map(renderOption)}
-          {showWorkspaceFileSection ? <li className={SECTION_LABEL_CLASS}>文件</li> : null}
-          {workspaceFileOptions.map(renderOption)}
-          {showWorkspaceFileSearchHint ? (
-            <li
-              className="flex h-[32px] cursor-default select-none items-center px-[var(--ow-space-1-5)] [font-size:var(--ow-font-body)] text-muted-foreground"
-              role="presentation"
-            >
-              输入内容搜索文件
-            </li>
-          ) : null}
-        </ul>
-      </div>,
-      anchor
-    )
-  }, [query])
+      const renderOption = ({ index, option }: IndexedComposerMentionOption): JSX.Element => {
+        const selected = itemProps.selectedIndex === index
+        const isWorkspaceFile = option.kind === "workspace-file"
+        return (
+          <li
+            key={option.key}
+            ref={option.setRefElement}
+            className={cn(
+              "flex cursor-default select-none items-center gap-[var(--ow-space-1-5)] rounded-[var(--ow-radius-xs)] px-[var(--ow-space-2)] [font-size:var(--ow-font-label)] text-foreground outline-none transition-colors duration-100",
+              isWorkspaceFile ? "min-h-[44px] py-[var(--ow-space-1)]" : "h-[34px]",
+              selected ? "bg-background-secondary" : "hover:bg-background-secondary/72"
+            )}
+            onClick={() => {
+              itemProps.setHighlightedIndex(index)
+              itemProps.selectOptionAndCleanUp(option)
+            }}
+            onMouseEnter={() => itemProps.setHighlightedIndex(index)}
+            role="option"
+            aria-selected={selected}
+          >
+            {option.kind === "extension-source" ? (
+              <>
+                <span className="flex size-[20px] shrink-0 items-center justify-center rounded-[var(--ow-radius-xs)] bg-background-tertiary text-muted-foreground">
+                  <ExtensionIcon
+                    className="size-[16px]"
+                    extensionName={option.mention.extensionName}
+                    icon={option.mention.icon}
+                    iconName={option.mention.iconName}
+                  />
+                </span>
+                <span className="min-w-0 flex-1 truncate font-medium">@{option.mention.value}</span>
+              </>
+            ) : (
+              <WorkspaceFileOptionContent file={option.file} />
+            )}
+          </li>
+        )
+      }
+
+      return createPortal(
+        <div style={{ transform: "translateY(calc(-100% - 18px))" }}>
+          <ul className="relative z-[9999] m-0 max-h-[320px] min-w-[320px] max-w-[520px] list-none overflow-y-auto rounded-[var(--ow-radius-sm)] border border-border bg-popover p-[var(--ow-space-0-5)] text-popover-foreground shadow-[0_10px_28px_rgba(15,23,42,0.14)] outline-none">
+            {pluginOptions.length > 0 ? <li className={SECTION_LABEL_CLASS}>插件</li> : null}
+            {pluginOptions.map(renderOption)}
+            {showWorkspaceFileSection ? <li className={SECTION_LABEL_CLASS}>文件</li> : null}
+            {workspaceFileOptions.map(renderOption)}
+            {showWorkspaceFileSearchHint ? (
+              <li
+                className="flex h-[32px] cursor-default select-none items-center px-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-muted-foreground"
+                role="presentation"
+              >
+                输入文件名或路径搜索
+              </li>
+            ) : null}
+          </ul>
+        </div>,
+        anchor
+      )
+    },
+    [query]
+  )
 }
 
 export function ExtensionSourceTypeaheadPlugin(props: {
@@ -192,8 +199,13 @@ export function ExtensionSourceTypeaheadPlugin(props: {
   sourceMentions: ExtensionSourceMention[]
   workspaceFileMentions?: ComposerWorkspaceFileMention[]
 }): JSX.Element | null {
-  const { onMenuClose, onMenuOpen, onQueryChange, sourceMentions, workspaceFileMentions = [] } =
-    props
+  const {
+    onMenuClose,
+    onMenuOpen,
+    onQueryChange,
+    sourceMentions,
+    workspaceFileMentions = []
+  } = props
   const [query, setQuery] = useState<string | null>(null)
   const options = useMemo<ComposerMentionOption[]>(() => {
     return [
@@ -230,7 +242,7 @@ export function ExtensionSourceTypeaheadPlugin(props: {
               sourceId: option.mention.sourceId
             })
           : $createFileReferenceNode({
-              label: `@${option.file.path}`,
+              label: getWorkspaceFileReferenceLabel(option.file),
               name: option.file.name,
               path: option.file.path
             })
@@ -258,5 +270,26 @@ export function ExtensionSourceTypeaheadPlugin(props: {
       preselectFirstItem={true}
       triggerFn={getExtensionSourceTriggerMatch}
     />
+  )
+}
+
+function WorkspaceFileOptionContent(props: { file: ComposerWorkspaceFileMention }): JSX.Element {
+  const { file } = props
+  const directory = getWorkspaceFileDirectory(file)
+
+  return (
+    <>
+      <span className="flex size-[20px] shrink-0 items-center justify-center rounded-[var(--ow-radius-xs)] bg-background-tertiary text-muted-foreground">
+        <WorkspaceFileIcon className="size-[16px]" name={file.name} />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-[1px]">
+        <span className="truncate font-medium leading-[16px]">{file.name}</span>
+        {directory ? (
+          <span className="truncate [font-size:var(--ow-font-meta)] leading-[14px] text-muted-foreground">
+            {directory}
+          </span>
+        ) : null}
+      </span>
+    </>
   )
 }
