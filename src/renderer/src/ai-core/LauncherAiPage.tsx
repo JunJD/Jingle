@@ -94,6 +94,12 @@ export function LauncherAiPage(): React.JSX.Element {
   } = agent
   const { stop } = agentControl
   const updateThread = useHistoryShellStore((state) => state.updateThread)
+  const { inputRef } = surface
+  const focusComposerOnNextFrame = useCallback((): void => {
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus()
+    })
+  }, [inputRef])
   const pendingApproval = useThreadSelector(
     threadId,
     (state) => state?.agent.pendingApproval ?? null
@@ -129,7 +135,6 @@ export function LauncherAiPage(): React.JSX.Element {
   const threadError = agentError ?? navigationError
   const primaryActionDisabled =
     isBusy || hasPendingApproval || !hasComposerMessageInputContent(messageInput)
-  const { inputRef } = surface
   const composerOverlayRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [measuredComposerOverlayHeight, setMeasuredComposerOverlayHeight] = useState<number | null>(
@@ -264,7 +269,8 @@ export function LauncherAiPage(): React.JSX.Element {
 
     clearTransientInputState()
     setShowModelPicker(false)
-  }, [clearTransientInputState, startFreshDraft])
+    focusComposerOnNextFrame()
+  }, [clearTransientInputState, focusComposerOnNextFrame, startFreshDraft])
   const handleBranchChat = useCallback(
     async (messageId?: string): Promise<void> => {
       const nextThreadId = await branchThread(messageId)
@@ -274,8 +280,9 @@ export function LauncherAiPage(): React.JSX.Element {
 
       clearTransientInputState()
       setShowModelPicker(false)
+      focusComposerOnNextFrame()
     },
-    [branchThread, clearTransientInputState]
+    [branchThread, clearTransientInputState, focusComposerOnNextFrame]
   )
   const handleStop = useCallback(async (): Promise<void> => {
     await stop()
@@ -340,6 +347,7 @@ export function LauncherAiPage(): React.JSX.Element {
 
       clearTransientInputState()
       setShowModelPicker(false)
+      focusComposerOnNextFrame()
     },
     goToPreviousChat: async () => {
       const previousThreadId = await goToPreviousChat()
@@ -349,6 +357,7 @@ export function LauncherAiPage(): React.JSX.Element {
 
       clearTransientInputState()
       setShowModelPicker(false)
+      focusComposerOnNextFrame()
     },
     inputRef,
     isApprovalPending,

@@ -4,6 +4,7 @@ import type { ShortcutChord } from "@shared/shortcuts/model"
 export type LauncherActionStyle = "regular" | "destructive"
 
 export interface LauncherActionDescriptor {
+  accessory?: ReactNode
   children?: LauncherActionDescriptor[]
   disabled?: boolean
   icon?: ReactNode

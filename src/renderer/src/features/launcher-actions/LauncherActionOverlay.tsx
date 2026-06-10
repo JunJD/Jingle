@@ -50,7 +50,10 @@ export function LauncherActionOverlay(props: {
       return
     }
 
-    setSubmenuStack((current) => [...current, { actions: action.children ?? [], title: action.title }])
+    setSubmenuStack((current) => [
+      ...current,
+      { actions: action.children ?? [], title: action.title }
+    ])
     setSelectedIndex(0)
   }
   const popSubmenu = (): void => {
@@ -159,6 +162,10 @@ export function LauncherActionOverlay(props: {
                       </span>
                     ) : action.children && action.children.length > 0 ? (
                       <ChevronRight className="size-[var(--ow-icon-sm)] shrink-0 text-muted-foreground" />
+                    ) : action.accessory ? (
+                      <span className="flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center text-muted-foreground [&>svg]:size-[var(--ow-icon-action)]">
+                        {action.accessory}
+                      </span>
                     ) : null}
                   </button>
                 )

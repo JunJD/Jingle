@@ -1,4 +1,4 @@
-import { Check } from "lucide-react"
+import { Check, Eye, ShieldCheck, ShieldQuestion } from "lucide-react"
 import { createElement, useCallback, useMemo, type RefObject } from "react"
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { PermissionModeName } from "@shared/permission-mode"
@@ -55,6 +55,19 @@ function getPermissionModeLabel(copy: AppCopy["launcher"], mode: PermissionModeN
       return copy.permissionModeAskToEdit
     case "auto":
       return copy.permissionModeAuto
+  }
+}
+
+function getPermissionModeIcon(mode: PermissionModeName): React.ReactNode {
+  const className = "size-[var(--ow-icon-action)]"
+
+  switch (mode) {
+    case "explore":
+      return createElement(Eye, { className })
+    case "ask-to-edit":
+      return createElement(ShieldQuestion, { className })
+    case "auto":
+      return createElement(ShieldCheck, { className })
   }
 }
 
@@ -243,21 +256,27 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
             } satisfies LauncherActionDescriptor
           ]
         : []),
-      ...LAUNCHER_PERMISSION_MODE_ORDER.map(
-        (permissionMode) =>
-          ({
-            icon:
-              permissionMode === currentPermissionMode
-                ? createElement(Check, { className: "size-[var(--ow-icon-sm)]" })
-                : undefined,
-            id: `launcher-ai-permission-mode-${permissionMode}`,
-            onAction: async () => {
-              await selectPermissionMode(permissionMode)
-            },
-            sectionTitle: copy.permissionModeSection,
-            title: getPermissionModeLabel(copy, permissionMode)
-          }) satisfies LauncherActionDescriptor
-      ),
+      {
+        children: LAUNCHER_PERMISSION_MODE_ORDER.map(
+          (permissionMode) =>
+            ({
+              accessory:
+                permissionMode === currentPermissionMode
+                  ? createElement(Check, { className: "size-[var(--ow-icon-sm)]" })
+                  : undefined,
+              icon: getPermissionModeIcon(permissionMode),
+              id: `launcher-ai-permission-mode-${permissionMode}`,
+              onAction: async () => {
+                await selectPermissionMode(permissionMode)
+              },
+              title: getPermissionModeLabel(copy, permissionMode)
+            }) satisfies LauncherActionDescriptor
+        ),
+        icon: getPermissionModeIcon(currentPermissionMode),
+        id: "launcher-ai-permission-mode",
+        onAction: () => {},
+        title: copy.permissionModeSection
+      },
       {
         id: "launcher-ai-open-main-history",
         onAction: async () => {

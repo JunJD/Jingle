@@ -640,6 +640,23 @@ body[data-platform="linux"] .launcher-chrome {
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--ow-font-ui-family);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  input,
+  textarea,
+  [contenteditable="true"],
+  .is-user,
+  .ow-agent-tool-content,
+  .ow-markdown,
+  .ow-reasoning-content,
+  .shiki-wrapper,
+  pre,
+  code,
+  .select-text {
+    user-select: text;
+    -webkit-user-select: text;
   }
 }
 
