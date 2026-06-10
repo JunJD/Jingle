@@ -4,7 +4,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 import { ToolSchemaValidationError } from "../../src/main/agent/tool-input-schema"
-import { parsePresentArtifactToolInput } from "../../src/main/artifacts/present-artifact-tool-parser"
+import {
+  parsePresentArtifactToolInput,
+  resolveExtensionToolOutputs
+} from "../../src/main/artifacts/present-artifact-tool-parser"
 
 test("parsePresentArtifactToolInput parses summary artifacts through the shared zod layer", async () => {
   const artifacts = await parsePresentArtifactToolInput(
@@ -55,6 +58,31 @@ test("parsePresentArtifactToolInput resolves workspace file artifacts", async ()
   assert.equal(artifacts[0]?.sourceType, "managed-file-path")
   assert.equal(artifacts[0]?.path, filePath)
   assert.equal(artifacts[0]?.title, "Notes")
+})
+
+test("resolveExtensionToolOutputs resolves declared extension outputs", async () => {
+  const artifacts = await resolveExtensionToolOutputs(
+    [
+      {
+        kind: "summary",
+        text: "  generated result  ",
+        title: "  Extension result  "
+      }
+    ],
+    tmpdir()
+  )
+
+  assert.deepEqual(artifacts, [
+    {
+      artifactKey: "",
+      dedupeKey: undefined,
+      format: undefined,
+      kind: "summary",
+      subtitle: null,
+      text: "generated result",
+      title: "Extension result"
+    }
+  ])
 })
 
 test("parsePresentArtifactToolInput rejects malformed tool input with tool-scoped errors", async () => {

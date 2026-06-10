@@ -46,7 +46,26 @@ export type {
   ExtensionToolConfirmationInfoFact,
   ExtensionToolContext,
   ExtensionToolDefinition,
-  ExtensionToolSchema
+  ExtensionToolFileOutput,
+  ExtensionToolLinkOutput,
+  ExtensionToolOutput,
+  ExtensionToolOutputBase,
+  ExtensionToolOutputContext,
+  ExtensionToolOutputEnvelope,
+  ExtensionToolOutputsBuilder,
+  ExtensionToolPatchOutput,
+  ExtensionToolSchema,
+  ExtensionToolSummaryOutput
+} from "./shared/extension-sources"
+export {
+  extensionToolFileOutputSchema,
+  extensionToolLinkOutputSchema,
+  extensionToolOutputBaseSchema,
+  extensionToolOutputEnvelopeSchema,
+  extensionToolOutputListSchema,
+  extensionToolOutputSchema,
+  extensionToolPatchOutputSchema,
+  extensionToolSummaryOutputSchema
 } from "./shared/extension-sources"
 
 export { defineNativeExtensionRuntime } from "./extensions/runtime-contract"

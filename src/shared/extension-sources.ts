@@ -99,9 +99,84 @@ export interface ExtensionToolApprovalDefinition {
   riskLabel?: "write" | "external" | "destructive"
 }
 
+const nonEmptyTrimmedStringSchema = z.string().trim().min(1)
+const optionalTrimmedStringSchema = nonEmptyTrimmedStringSchema.optional()
+const optionalNullableTrimmedStringSchema = z
+  .union([z.null(), nonEmptyTrimmedStringSchema])
+  .optional()
+
+export const extensionToolOutputBaseSchema = z.object({
+  dedupeKey: optionalTrimmedStringSchema,
+  subtitle: optionalNullableTrimmedStringSchema
+})
+
+export const extensionToolFileOutputSchema = extensionToolOutputBaseSchema.extend({
+  kind: z.literal("file"),
+  mimeType: optionalNullableTrimmedStringSchema,
+  path: nonEmptyTrimmedStringSchema,
+  previewText: optionalNullableTrimmedStringSchema,
+  title: optionalTrimmedStringSchema
+})
+
+export const extensionToolPatchOutputSchema = extensionToolOutputBaseSchema.extend({
+  kind: z.literal("patch"),
+  mimeType: optionalNullableTrimmedStringSchema,
+  patchText: nonEmptyTrimmedStringSchema,
+  previewText: optionalNullableTrimmedStringSchema,
+  title: optionalTrimmedStringSchema
+})
+
+export const extensionToolLinkOutputSchema = extensionToolOutputBaseSchema.extend({
+  kind: z.literal("link"),
+  previewText: optionalNullableTrimmedStringSchema,
+  title: nonEmptyTrimmedStringSchema,
+  url: nonEmptyTrimmedStringSchema
+})
+
+export const extensionToolSummaryOutputSchema = extensionToolOutputBaseSchema.extend({
+  format: z.enum(["markdown", "plain"]).optional(),
+  kind: z.literal("summary"),
+  text: nonEmptyTrimmedStringSchema,
+  title: nonEmptyTrimmedStringSchema
+})
+
+export const extensionToolOutputSchema = z.discriminatedUnion("kind", [
+  extensionToolFileOutputSchema,
+  extensionToolPatchOutputSchema,
+  extensionToolLinkOutputSchema,
+  extensionToolSummaryOutputSchema
+])
+
+export const extensionToolOutputListSchema = z.array(extensionToolOutputSchema).min(1)
+
+export const extensionToolOutputEnvelopeSchema = z.object({
+  artifacts: extensionToolOutputListSchema
+})
+
+export type ExtensionToolOutputBase = z.infer<typeof extensionToolOutputBaseSchema>
+export type ExtensionToolFileOutput = z.infer<typeof extensionToolFileOutputSchema>
+export type ExtensionToolPatchOutput = z.infer<typeof extensionToolPatchOutputSchema>
+export type ExtensionToolLinkOutput = z.infer<typeof extensionToolLinkOutputSchema>
+export type ExtensionToolSummaryOutput = z.infer<typeof extensionToolSummaryOutputSchema>
+export type ExtensionToolOutput = z.infer<typeof extensionToolOutputSchema>
+export type ExtensionToolOutputEnvelope = z.infer<typeof extensionToolOutputEnvelopeSchema>
+
+export interface ExtensionToolOutputContext<TInput = unknown> extends ExtensionToolContext {
+  input: TInput
+}
+
+export type ExtensionToolOutputsBuilder<TInput = unknown, TOutput = unknown> = (
+  output: TOutput,
+  context: ExtensionToolOutputContext<TInput>
+) => Promise<ExtensionToolOutput[]> | ExtensionToolOutput[]
+
 export interface ExtensionToolDefinition<TInput = unknown, TOutput = unknown> {
   access: ExtensionToolAccess
   approval?: ExtensionToolApprovalDefinition
+  outputs?(
+    output: TOutput,
+    context: ExtensionToolOutputContext<TInput>
+  ): Promise<ExtensionToolOutput[]> | ExtensionToolOutput[]
   description: string
   inputSchema: ExtensionToolSchema<TInput>
   name: string

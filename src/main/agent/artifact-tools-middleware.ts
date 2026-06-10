@@ -10,9 +10,9 @@ import {
   reduceAgentStateArtifacts,
   toAgentStateArtifactsUpdate
 } from "@shared/artifacts"
+import { extensionToolOutputEnvelopeSchema } from "@shared/extension-sources"
 import { getRunIdFromToolRuntime } from "./run-config"
 import { parsePresentArtifactToolInput } from "../artifacts/present-artifact-tool-parser"
-import { presentArtifactToolInputSchema } from "../artifacts/present-artifact-tool-schema"
 import { presentArtifacts } from "../artifacts/service"
 
 const artifactPresentationReceiptSchema = z.object({
@@ -134,7 +134,7 @@ export function createArtifactToolsMiddleware(props: { threadId: string; workspa
       description:
         "Present user-visible results to the Artifacts panel. Use this for deliverables like workspace files, patches, links, and summaries after they are ready for the user. Do not use this for every intermediate edit or log.",
       name: "present_artifacts",
-      schema: presentArtifactToolInputSchema
+      schema: extensionToolOutputEnvelopeSchema
     }
   )
 

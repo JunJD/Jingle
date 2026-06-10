@@ -1,13 +1,14 @@
 import { stat } from "node:fs/promises"
 import { isAbsolute, relative, resolve } from "node:path"
 import type { PresentArtifactInput } from "@shared/artifacts"
+import {
+  extensionToolOutputEnvelopeSchema,
+  extensionToolOutputListSchema,
+  type ExtensionToolOutput,
+  type ExtensionToolOutputEnvelope
+} from "@shared/extension-sources"
 import { parseToolInputWithSchema } from "../agent/tool-input-schema"
 import { assertSafePublicHttpUrl } from "../services/web-tools/url-guard"
-import type {
-  PresentArtifactToolInput,
-  PresentArtifactToolItem
-} from "./present-artifact-tool-schema"
-import { presentArtifactToolInputSchema } from "./present-artifact-tool-schema"
 
 function ensurePathWithinWorkspace(filePath: string, workspacePath: string): string {
   const resolvedPath = isAbsolute(filePath) ? resolve(filePath) : resolve(workspacePath, filePath)
@@ -24,7 +25,7 @@ function ensurePathWithinWorkspace(filePath: string, workspacePath: string): str
 }
 
 async function buildFileArtifactInput(
-  artifact: Extract<PresentArtifactToolItem, { kind: "file" }>,
+  artifact: Extract<ExtensionToolOutput, { kind: "file" }>,
   workspacePath: string
 ): Promise<PresentArtifactInput> {
   const normalizedPath = ensurePathWithinWorkspace(artifact.path, workspacePath)
@@ -49,7 +50,7 @@ async function buildFileArtifactInput(
 }
 
 function buildPatchArtifactInput(
-  artifact: Extract<PresentArtifactToolItem, { kind: "patch" }>
+  artifact: Extract<ExtensionToolOutput, { kind: "patch" }>
 ): PresentArtifactInput {
   return {
     artifactKey: "",
@@ -65,7 +66,7 @@ function buildPatchArtifactInput(
 }
 
 async function buildLinkArtifactInput(
-  artifact: Extract<PresentArtifactToolItem, { kind: "link" }>
+  artifact: Extract<ExtensionToolOutput, { kind: "link" }>
 ): Promise<PresentArtifactInput> {
   const safeUrl = await assertSafePublicHttpUrl(artifact.url)
 
@@ -81,7 +82,7 @@ async function buildLinkArtifactInput(
 }
 
 function buildSummaryArtifactInput(
-  artifact: Extract<PresentArtifactToolItem, { kind: "summary" }>
+  artifact: Extract<ExtensionToolOutput, { kind: "summary" }>
 ): PresentArtifactInput {
   return {
     artifactKey: "",
@@ -94,8 +95,8 @@ function buildSummaryArtifactInput(
   }
 }
 
-async function resolvePresentArtifactToolItem(
-  artifact: PresentArtifactToolItem,
+async function resolveExtensionToolOutput(
+  artifact: ExtensionToolOutput,
   workspacePath: string
 ): Promise<PresentArtifactInput> {
   switch (artifact.kind) {
@@ -116,7 +117,7 @@ export async function parsePresentArtifactToolInput(
 ): Promise<PresentArtifactInput[]> {
   const parsed = await parseToolInputWithSchema(
     "present_artifacts",
-    presentArtifactToolInputSchema,
+    extensionToolOutputEnvelopeSchema,
     input
   )
 
@@ -124,10 +125,30 @@ export async function parsePresentArtifactToolInput(
 }
 
 export async function resolvePresentArtifactToolInput(
-  input: PresentArtifactToolInput,
+  input: ExtensionToolOutputEnvelope,
+  workspacePath: string
+): Promise<PresentArtifactInput[]> {
+  return resolveParsedExtensionToolOutputs(input.artifacts, workspacePath)
+}
+
+export async function resolveExtensionToolOutputs(
+  outputs: ExtensionToolOutput[],
+  workspacePath: string
+): Promise<PresentArtifactInput[]> {
+  const parsedOutputs = await parseToolInputWithSchema(
+    "extension_tool_outputs",
+    extensionToolOutputListSchema,
+    outputs
+  )
+
+  return resolveParsedExtensionToolOutputs(parsedOutputs, workspacePath)
+}
+
+function resolveParsedExtensionToolOutputs(
+  outputs: ExtensionToolOutput[],
   workspacePath: string
 ): Promise<PresentArtifactInput[]> {
   return Promise.all(
-    input.artifacts.map((artifact) => resolvePresentArtifactToolItem(artifact, workspacePath))
+    outputs.map((artifact) => resolveExtensionToolOutput(artifact, workspacePath))
   )
 }
