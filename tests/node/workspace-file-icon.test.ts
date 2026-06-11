@@ -1,17 +1,24 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { getWorkspaceFileIconKind } from "../../src/renderer/src/components/workspace-file-icon"
+import {
+  getWorkspaceFileIconBadge,
+  getWorkspaceFileIconKind
+} from "../../src/renderer/src/components/workspace-file-icon"
 
 test("workspace file icon kind covers common engineering file groups", () => {
   const cases: Array<[string, ReturnType<typeof getWorkspaceFileIconKind>]> = [
     ["src/App.tsx", "react"],
     ["src/main.ts", "typescript"],
     ["scripts/build.mjs", "javascript"],
-    ["src/main.py", "code"],
-    ["styles/index.css", "code"],
+    ["src/main.py", "python"],
+    ["src/lib.rs", "rust"],
+    ["src/main.java", "java"],
+    ["src/Main.hs", "code"],
+    ["styles/index.css", "css"],
     ["public/index.html", "html"],
     ["package.json", "json"],
-    ["config/settings.yaml", "config"],
+    ["config/settings.yaml", "yaml"],
+    ["config/settings.toml", "toml"],
     [".env.local", "config"],
     ["docs/notes.md", "document"],
     ["assets/logo.svg", "image"],
@@ -30,4 +37,17 @@ test("workspace file icon kind covers common engineering file groups", () => {
   for (const [name, kind] of cases) {
     assert.equal(getWorkspaceFileIconKind(name), kind, name)
   }
+})
+
+test("workspace file icon badge uses the same file kind map", () => {
+  assert.deepEqual(getWorkspaceFileIconBadge("src/main.ts"), {
+    className: "bg-[#4d4b69] text-white/82",
+    kind: "typescript",
+    label: "TS"
+  })
+  assert.deepEqual(getWorkspaceFileIconBadge("AGENTS.md"), {
+    className: "bg-slate-200 text-slate-600",
+    kind: "document",
+    label: "TXT"
+  })
 })
