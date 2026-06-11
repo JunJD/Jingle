@@ -123,10 +123,6 @@ export function getWorkspaceFileSearchMenuStatus(props: {
   searchInProgress: boolean
 }): WorkspaceFileSearchMenuStatus | null {
   const normalizedQuery = props.query?.trim() ?? ""
-  if (props.resultCount > 0) {
-    return null
-  }
-
   if (normalizedQuery.length === 0) {
     return "empty-query"
   }
@@ -137,6 +133,10 @@ export function getWorkspaceFileSearchMenuStatus(props: {
 
   if (!props.searchInProgress && props.searchIncomplete) {
     return "search-incomplete"
+  }
+
+  if (props.resultCount > 0) {
+    return null
   }
 
   return props.searchInProgress ? "searching" : "no-results"

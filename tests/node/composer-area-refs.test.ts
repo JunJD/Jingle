@@ -387,7 +387,7 @@ test("composer file mention menu exposes search status rows without selectable r
       searchIncomplete: true,
       searchInProgress: false
     }),
-    null
+    "search-incomplete"
   )
 })
 
