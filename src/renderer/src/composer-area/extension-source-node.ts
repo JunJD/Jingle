@@ -98,14 +98,11 @@ export class ExtensionSourceReferenceNode extends TextNode {
       "ow-extension-source-reference",
       "whitespace-nowrap",
       "rounded-[4px]",
-      "px-[4px]",
+      "px-[2px]",
       "align-top",
       "font-semibold",
       "leading-[20px]",
-      "text-foreground",
-      "border-b",
-      "border-border-emphasis",
-      "[border-bottom-width:0.5px]"
+      "text-foreground"
     )
     element.dataset.extensionName = this.__extensionName
     element.dataset.sourceId = this.__sourceId

@@ -3,25 +3,35 @@ import type { ComposerWorkspaceFileMention } from "./types"
 
 const EMPTY_WORKSPACE_FILE_MENTIONS: ComposerWorkspaceFileMention[] = []
 
+export interface WorkspaceFileMentionSearchState {
+  files: ComposerWorkspaceFileMention[]
+  isIncomplete: boolean
+  isSearching: boolean
+  searchEnabled: boolean
+}
+
 export function useWorkspaceFileMentions(
   threadId: string | null,
   query: string | null
-): ComposerWorkspaceFileMention[] {
+): WorkspaceFileMentionSearchState {
   const [searchResult, setSearchResult] = useState<{
     files: ComposerWorkspaceFileMention[]
+    isIncomplete: boolean
     key: string
+    searchEnabled: boolean
   } | null>(null)
   const normalizedQuery = query?.trim() ?? ""
-  const searchKey = threadId && normalizedQuery.length > 0 ? `${threadId}\0${normalizedQuery}` : null
+  const searchKey =
+    normalizedQuery.length > 0 ? `${threadId ?? "__global__"}\0${normalizedQuery}` : null
 
   useEffect(() => {
-    if (!threadId || !searchKey) {
+    if (!searchKey) {
       return
     }
 
     let cancelled = false
     window.api.workspace
-      .searchFiles(threadId, normalizedQuery, 8)
+      .searchFiles(threadId ?? undefined, normalizedQuery, 8)
       .then((result) => {
         if (cancelled) {
           return
@@ -29,7 +39,9 @@ export function useWorkspaceFileMentions(
 
         setSearchResult({
           files: result.success ? (result.files ?? []) : [],
-          key: searchKey
+          isIncomplete: result.success ? result.incomplete === true : false,
+          key: searchKey,
+          searchEnabled: result.success || result.error !== "No workspace folder linked"
         })
       })
       .catch((error: unknown) => {
@@ -40,7 +52,9 @@ export function useWorkspaceFileMentions(
         console.warn("[ComposerArea] Workspace file search failed", error)
         setSearchResult({
           files: [],
-          key: searchKey
+          isIncomplete: false,
+          key: searchKey,
+          searchEnabled: true
         })
       })
 
@@ -49,9 +63,28 @@ export function useWorkspaceFileMentions(
     }
   }, [normalizedQuery, searchKey, threadId])
 
-  if (!searchKey || searchResult?.key !== searchKey) {
-    return EMPTY_WORKSPACE_FILE_MENTIONS
+  if (!searchKey) {
+    return {
+      files: EMPTY_WORKSPACE_FILE_MENTIONS,
+      isIncomplete: false,
+      isSearching: false,
+      searchEnabled: true
+    }
   }
 
-  return searchResult.files
+  if (searchResult?.key !== searchKey) {
+    return {
+      files: EMPTY_WORKSPACE_FILE_MENTIONS,
+      isIncomplete: false,
+      isSearching: true,
+      searchEnabled: true
+    }
+  }
+
+  return {
+    files: searchResult.files,
+    isIncomplete: searchResult.isIncomplete,
+    isSearching: false,
+    searchEnabled: searchResult.searchEnabled
+  }
 }

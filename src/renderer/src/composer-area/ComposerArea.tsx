@@ -224,11 +224,11 @@ function ComposerAreaHandlePlugin(props: {
 }
 
 function ComposerAreaKeyboardPlugin(props: {
-  mentionMenuOpenRef: React.RefObject<boolean>
+  mentionMenuHasSelectableOptionsRef: React.RefObject<boolean>
   onSubmit?: () => void
   onUserKeyDown?: (event: React.KeyboardEvent<HTMLElement>) => void
 }): null {
-  const { mentionMenuOpenRef, onSubmit, onUserKeyDown } = props
+  const { mentionMenuHasSelectableOptionsRef, onSubmit, onUserKeyDown } = props
   const [editor] = useLexicalComposerContext()
   const composingRef = useRef(false)
 
@@ -295,7 +295,7 @@ function ComposerAreaKeyboardPlugin(props: {
               return event.defaultPrevented
             }
 
-            if (mentionMenuOpenRef.current) {
+            if (mentionMenuHasSelectableOptionsRef.current) {
               return false
             }
 
@@ -306,7 +306,7 @@ function ComposerAreaKeyboardPlugin(props: {
           COMMAND_PRIORITY_LOW
         )
       ),
-    [editor, handleDeleteKey, mentionMenuOpenRef, onSubmit, onUserKeyDown]
+    [editor, handleDeleteKey, mentionMenuHasSelectableOptionsRef, onSubmit, onUserKeyDown]
   )
 
   return null
@@ -325,18 +325,22 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
     placeholder,
     sourceMentions = [],
     workspaceFileMentions = [],
+    workspaceFileSearchEnabled = false,
+    workspaceFileSearchIncomplete = false,
+    workspaceFileSearchInProgress = false,
     value
   },
   ref
 ) {
-  const mentionMenuOpenRef = useRef(false)
-  const handleMentionMenuOpen = useCallback(() => {
-    mentionMenuOpenRef.current = true
-  }, [])
+  const mentionMenuHasSelectableOptionsRef = useRef(false)
+  const menuBoundaryRef = useRef<HTMLDivElement | null>(null)
   const handleMentionMenuClose = useCallback(() => {
-    mentionMenuOpenRef.current = false
+    mentionMenuHasSelectableOptionsRef.current = false
     onMentionQueryChange?.(null)
   }, [onMentionQueryChange])
+  const handleMentionSelectableOptionsChange = useCallback((hasSelectableOptions: boolean) => {
+    mentionMenuHasSelectableOptionsRef.current = hasSelectableOptions
+  }, [])
   const handleMentionQueryChange = useCallback(
     (nextQuery: string | null): void => {
       onMentionQueryChange?.(nextQuery)
@@ -385,7 +389,7 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <div className="relative min-w-0 flex-1">
+      <div ref={menuBoundaryRef} className="relative min-w-0 flex-1">
         <PlainTextPlugin
           contentEditable={
             placeholder ? (
@@ -430,14 +434,18 @@ export const ComposerArea = forwardRef<ComposerAreaHandle, ComposerAreaProps>(fu
           }}
         />
         <ExtensionSourceTypeaheadPlugin
+          menuBoundaryRef={menuBoundaryRef}
           onMenuClose={handleMentionMenuClose}
-          onMenuOpen={handleMentionMenuOpen}
+          onSelectableOptionsChange={handleMentionSelectableOptionsChange}
           onQueryChange={handleMentionQueryChange}
           sourceMentions={sourceMentions}
           workspaceFileMentions={workspaceFileMentions}
+          workspaceFileSearchEnabled={workspaceFileSearchEnabled}
+          workspaceFileSearchIncomplete={workspaceFileSearchIncomplete}
+          workspaceFileSearchInProgress={workspaceFileSearchInProgress}
         />
         <ComposerAreaKeyboardPlugin
-          mentionMenuOpenRef={mentionMenuOpenRef}
+          mentionMenuHasSelectableOptionsRef={mentionMenuHasSelectableOptionsRef}
           onSubmit={onSubmit}
           onUserKeyDown={onKeyDown}
         />

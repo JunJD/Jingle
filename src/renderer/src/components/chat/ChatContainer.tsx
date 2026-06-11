@@ -252,7 +252,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   const [workspaceChangeError, setWorkspaceChangeError] = useState<string | null>(null)
   const [input, setInput] = useState("")
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
-  const workspaceFileMentions = useWorkspaceFileMentions(threadId, mentionQuery)
+  const workspaceFileMentionState = useWorkspaceFileMentions(threadId, mentionQuery)
   const {
     addSelectionRef,
     clearSelectionRefs,
@@ -389,7 +389,10 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                     onKeyDown={handleKeyDown}
                     placeholder={copy.chat.messagePlaceholder}
                     sourceMentions={sourceMentions}
-                    workspaceFileMentions={workspaceFileMentions}
+                    workspaceFileMentions={workspaceFileMentionState.files}
+                    workspaceFileSearchEnabled={workspaceFileMentionState.searchEnabled}
+                    workspaceFileSearchIncomplete={workspaceFileMentionState.isIncomplete}
+                    workspaceFileSearchInProgress={workspaceFileMentionState.isSearching}
                     className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
                   />
                   <div className="flex h-[var(--ow-chat-composer-action-h)] shrink-0 items-center justify-center">

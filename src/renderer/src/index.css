@@ -8,8 +8,26 @@
 
 @custom-variant dark (&:is(.dark *));
 
-.ow-extension-source-reference {
-  gap: 4px;
+.ow-extension-source-reference,
+.ow-file-reference {
+  gap: 3px;
+  color: color-mix(in srgb, var(--foreground) 72%, var(--muted-foreground));
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+  text-underline-offset: 2px;
+  transition:
+    background-color 100ms ease,
+    color 100ms ease,
+    text-decoration-color 100ms ease;
+}
+
+.ow-extension-source-reference:hover,
+.ow-file-reference:hover {
+  background-color: color-mix(in srgb, var(--foreground) 5%, transparent);
+  color: var(--foreground);
+  text-decoration-color: currentColor;
 }
 
 .ow-extension-source-reference--with-icon::before {
@@ -22,6 +40,95 @@
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
+}
+
+.ow-file-reference--with-icon::before {
+  content: attr(data-file-icon-label);
+  display: inline-flex;
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  background-color: #e2e8f0;
+  color: #475569;
+  font-size: 6px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.ow-file-reference[data-file-icon-kind="archive"]::before {
+  background-color: #fef3c7;
+  color: #b45309;
+}
+
+.ow-file-reference[data-file-icon-kind="code"]::before,
+.ow-file-reference[data-file-icon-kind="css"]::before,
+.ow-file-reference[data-file-icon-kind="python"]::before {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
+.ow-file-reference[data-file-icon-kind="cplusplus"]::before {
+  background-color: #e0e7ff;
+  color: #4338ca;
+}
+
+.ow-file-reference[data-file-icon-kind="html"]::before,
+.ow-file-reference[data-file-icon-kind="notebook"]::before,
+.ow-file-reference[data-file-icon-kind="rust"]::before {
+  background-color: #ffedd5;
+  color: #c2410c;
+}
+
+.ow-file-reference[data-file-icon-kind="image"]::before {
+  background-color: #ede9fe;
+  color: #6d28d9;
+}
+
+.ow-file-reference[data-file-icon-kind="java"]::before,
+.ow-file-reference[data-file-icon-kind="pdf"]::before {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.ow-file-reference[data-file-icon-kind="javascript"]::before {
+  background-color: #fef3c7;
+  color: #b45309;
+}
+
+.ow-file-reference[data-file-icon-kind="json"]::before {
+  background-color: #fef9c3;
+  color: #a16207;
+}
+
+.ow-file-reference[data-file-icon-kind="presentation"]::before {
+  background-color: #ffe4e6;
+  color: #be123c;
+}
+
+.ow-file-reference[data-file-icon-kind="php"]::before {
+  background-color: #ede9fe;
+  color: #6d28d9;
+}
+
+.ow-file-reference[data-file-icon-kind="react"]::before {
+  background-color: #cffafe;
+  color: #0e7490;
+}
+
+.ow-file-reference[data-file-icon-kind="shell"]::before,
+.ow-file-reference[data-file-icon-kind="terminal"]::before,
+.ow-file-reference[data-file-icon-kind="spreadsheet"]::before {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.ow-file-reference[data-file-icon-kind="typescript"]::before {
+  background-color: #4d4b69;
+  color: rgb(255 255 255 / 82%);
 }
 
 @theme inline {
@@ -1148,11 +1255,7 @@ body[data-platform="darwin"] .launcher-window-shell {
     var(--foreground) 74%,
     var(--ow-agent-timeline-muted) 26%
   );
-  --ow-text-shimmer-peak-color: color-mix(
-    in srgb,
-    var(--foreground) 100%,
-    white 0%
-  );
+  --ow-text-shimmer-peak-color: color-mix(in srgb, var(--foreground) 100%, white 0%);
   --ow-text-shimmer-sweep: linear-gradient(
     90deg,
     transparent calc(50% - var(--ow-text-shimmer-spread)),
@@ -1202,8 +1305,7 @@ body[data-platform="darwin"] .launcher-window-shell {
   opacity: 0;
 }
 
-[data-component="ow-text-shimmer"][data-active="true"]
-  [data-slot="ow-text-shimmer-highlight"] {
+[data-component="ow-text-shimmer"][data-active="true"] [data-slot="ow-text-shimmer-highlight"] {
   opacity: 1;
 }
 
@@ -1248,8 +1350,7 @@ body[data-platform="darwin"] .launcher-window-shell {
     -webkit-text-fill-color: transparent;
   }
 
-  [data-component="ow-text-shimmer"][data-active="true"]
-    [data-slot="ow-text-shimmer-base"] {
+  [data-component="ow-text-shimmer"][data-active="true"] [data-slot="ow-text-shimmer-base"] {
     opacity: 0;
   }
 }

@@ -164,6 +164,9 @@ export interface PromptInputTextareaProps extends Omit<
   onValueChange?: (value: string) => void
   sourceMentions?: ExtensionSourceMention[]
   workspaceFileMentions?: ComposerWorkspaceFileMention[]
+  workspaceFileSearchEnabled?: boolean
+  workspaceFileSearchIncomplete?: boolean
+  workspaceFileSearchInProgress?: boolean
 }
 
 function resolveCssSize(value: number | string): string {
@@ -185,6 +188,9 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
       placeholder,
       sourceMentions,
       workspaceFileMentions,
+      workspaceFileSearchEnabled,
+      workspaceFileSearchIncomplete,
+      workspaceFileSearchInProgress,
       ...props
     },
     ref
@@ -279,6 +285,9 @@ export const PromptInputTextarea = forwardRef<HTMLTextAreaElement, PromptInputTe
           sourceMentions={sourceMentions}
           value={value}
           workspaceFileMentions={workspaceFileMentions}
+          workspaceFileSearchEnabled={workspaceFileSearchEnabled}
+          workspaceFileSearchIncomplete={workspaceFileSearchIncomplete}
+          workspaceFileSearchInProgress={workspaceFileSearchInProgress}
         />
       )
     }

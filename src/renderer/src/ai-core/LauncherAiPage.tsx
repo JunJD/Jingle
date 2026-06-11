@@ -65,7 +65,7 @@ export function LauncherAiPage(): React.JSX.Element {
     seedQuery: initialSeedQuery
   })
   const threadId = threadNavigation.threadId
-  const workspaceFileMentions = useWorkspaceFileMentions(threadId, mentionQuery)
+  const workspaceFileMentionState = useWorkspaceFileMentions(threadId, mentionQuery)
   const {
     addSelectionRef,
     clearSelectionRefs,
@@ -622,7 +622,10 @@ export function LauncherAiPage(): React.JSX.Element {
                   onKeyDown={handleComposerKeyDown}
                   placeholder={copy.launcher.aiInputPlaceholder}
                   sourceMentions={sourceMentions}
-                  workspaceFileMentions={workspaceFileMentions}
+                  workspaceFileMentions={workspaceFileMentionState.files}
+                  workspaceFileSearchEnabled={workspaceFileMentionState.searchEnabled}
+                  workspaceFileSearchIncomplete={workspaceFileMentionState.isIncomplete}
+                  workspaceFileSearchInProgress={workspaceFileMentionState.isSearching}
                   className="w-full py-[7px] [font-size:var(--ow-font-control)] font-normal"
                 />
 

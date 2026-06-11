@@ -12,8 +12,10 @@ import {
   type SerializedTextNode
 } from "lexical"
 import {
+  getComposerMentionMenuLayout,
   getComposerMentionTriggerMatch,
-  getExtensionSourceTriggerMatch
+  getExtensionSourceTriggerMatch,
+  getWorkspaceFileSearchMenuStatus
 } from "../../src/renderer/src/composer-area/extension-source-typeahead"
 import {
   $createExtensionSourceReferenceNode,
@@ -324,4 +326,118 @@ test("composer mention typeahead accepts workspace path queries", () => {
     matchingString: "src/main",
     replaceableString: "@src/main"
   })
+})
+
+test("composer file mention menu exposes search status rows without selectable results", () => {
+  assert.equal(
+    getWorkspaceFileSearchMenuStatus({
+      query: "",
+      resultCount: 0,
+      searchEnabled: true,
+      searchIncomplete: false,
+      searchInProgress: false
+    }),
+    "empty-query"
+  )
+  assert.equal(
+    getWorkspaceFileSearchMenuStatus({
+      query: "middle",
+      resultCount: 0,
+      searchEnabled: false,
+      searchIncomplete: false,
+      searchInProgress: false
+    }),
+    "search-disabled"
+  )
+  assert.equal(
+    getWorkspaceFileSearchMenuStatus({
+      query: "middle",
+      resultCount: 0,
+      searchEnabled: true,
+      searchIncomplete: false,
+      searchInProgress: true
+    }),
+    "searching"
+  )
+  assert.equal(
+    getWorkspaceFileSearchMenuStatus({
+      query: "middle",
+      resultCount: 0,
+      searchEnabled: true,
+      searchIncomplete: true,
+      searchInProgress: false
+    }),
+    "search-incomplete"
+  )
+  assert.equal(
+    getWorkspaceFileSearchMenuStatus({
+      query: "middle",
+      resultCount: 0,
+      searchEnabled: true,
+      searchIncomplete: false,
+      searchInProgress: false
+    }),
+    "no-results"
+  )
+  assert.equal(
+    getWorkspaceFileSearchMenuStatus({
+      query: "middle",
+      resultCount: 1,
+      searchEnabled: true,
+      searchIncomplete: true,
+      searchInProgress: false
+    }),
+    null
+  )
+})
+
+test("composer mention menu layout is fixed to the composer boundary", () => {
+  assert.deepEqual(
+    getComposerMentionMenuLayout({
+      anchorLeft: 620,
+      anchorTop: 360,
+      boundaryLeft: 70,
+      boundaryTop: 533,
+      boundaryWidth: 588,
+      viewportHeight: 580,
+      viewportWidth: 755
+    }),
+    {
+      bottom: 55,
+      left: 70,
+      width: 560
+    }
+  )
+  assert.deepEqual(
+    getComposerMentionMenuLayout({
+      anchorLeft: 620,
+      anchorTop: 360,
+      boundaryLeft: 300,
+      boundaryTop: 533,
+      boundaryWidth: 588,
+      viewportHeight: 580,
+      viewportWidth: 755
+    }),
+    {
+      bottom: 55,
+      left: 175,
+      width: 560
+    }
+  )
+  assert.deepEqual(
+    getComposerMentionMenuLayout({
+      anchorLeft: 160,
+      anchorTop: 420,
+      boundaryLeft: 40,
+      boundaryTop: 500,
+      boundaryWidth: 588,
+      viewportHeight: 560,
+      viewportWidth: 320
+    }),
+    {
+      bottom: 68,
+      left: 20,
+      width: 280
+    }
+  )
 })

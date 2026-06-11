@@ -13,6 +13,7 @@ import {
   createWorkspaceFileReferenceUri,
   WORKSPACE_FILE_REFERENCE_SCHEME
 } from "@shared/composer-reference-uri"
+import { getWorkspaceFileIconBadge } from "@/components/workspace-file-icon"
 
 export const FILE_REFERENCE_NODE_TYPE = "file-reference"
 export const FILE_REFERENCE_SCHEME = WORKSPACE_FILE_REFERENCE_SCHEME
@@ -87,16 +88,14 @@ export class FileReferenceNode extends TextNode {
       "ow-file-reference",
       "whitespace-nowrap",
       "rounded-[4px]",
-      "px-[4px]",
+      "px-[2px]",
       "align-top",
       "font-semibold",
       "leading-[20px]",
-      "text-foreground",
-      "border-b",
-      "border-border-emphasis",
-      "[border-bottom-width:0.5px]"
+      "text-foreground"
     )
     element.dataset.filePath = this.__path
+    syncFileIconDom(element, this.__name)
     element.title = this.__path
     return element
   }
@@ -107,6 +106,10 @@ export class FileReferenceNode extends TextNode {
     if (prevNode.__path !== this.__path) {
       dom.dataset.filePath = this.__path
       dom.title = this.__path
+    }
+
+    if (prevNode.__name !== this.__name) {
+      syncFileIconDom(dom, this.__name)
     }
 
     return false
@@ -165,10 +168,19 @@ export class FileReferenceNode extends TextNode {
   }
 }
 
+function syncFileIconDom(element: HTMLElement, name: string): void {
+  const badge = getWorkspaceFileIconBadge(name)
+  element.classList.add("ow-file-reference--with-icon")
+  element.dataset.fileIconKind = badge.kind
+  element.dataset.fileIconLabel = badge.label
+}
+
 export function $createFileReferenceNode(payload: FileReferencePayload): FileReferenceNode {
   return $applyNodeReplacement(new FileReferenceNode(payload)).setMode("token").toggleUnmergeable()
 }
 
-export function $isFileReferenceNode(node: LexicalNode | null | undefined): node is FileReferenceNode {
+export function $isFileReferenceNode(
+  node: LexicalNode | null | undefined
+): node is FileReferenceNode {
   return node instanceof FileReferenceNode
 }

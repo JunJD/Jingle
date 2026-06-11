@@ -23,6 +23,9 @@ export interface ComposerAreaProps {
   minHeight: number | string
   sourceMentions?: ExtensionSourceMention[]
   workspaceFileMentions?: ComposerWorkspaceFileMention[]
+  workspaceFileSearchEnabled?: boolean
+  workspaceFileSearchIncomplete?: boolean
+  workspaceFileSearchInProgress?: boolean
   onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void
   onMentionQueryChange?: (query: string | null) => void
   onSubmit?: () => void

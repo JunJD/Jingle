@@ -6,7 +6,7 @@ import {
 } from "@lexical/react/LexicalTypeaheadMenuPlugin"
 import { $createTextNode, type TextNode } from "lexical"
 import type { JSX } from "react"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type RefObject } from "react"
 import { createPortal } from "react-dom"
 import { ExtensionIcon } from "@/extensions/ExtensionIcon"
 import { cn } from "@/lib/utils"
@@ -43,9 +43,18 @@ type IndexedComposerMentionOption = {
   index: number
   option: ComposerMentionOption
 }
+export type WorkspaceFileSearchMenuStatus =
+  | "empty-query"
+  | "no-results"
+  | "search-disabled"
+  | "search-incomplete"
+  | "searching"
 
 const SECTION_LABEL_CLASS =
   "px-[var(--ow-space-2)] pb-[var(--ow-space-0-5)] pt-[var(--ow-space-1-5)] [font-size:var(--ow-font-meta)] font-medium text-muted-foreground"
+const MENTION_MENU_INPUT_GAP = 8
+const MENTION_MENU_MAX_WIDTH = 560
+const MENTION_MENU_VIEWPORT_MARGIN = 20
 
 export function getExtensionSourceTriggerMatch(text: string): MenuTextMatch | null {
   const match = COMPOSER_MENTION_TRIGGER_PATTERN.exec(text)
@@ -106,15 +115,107 @@ function getWorkspaceFileReferenceLabel(file: ComposerWorkspaceFileMention): str
   return `@${file.name}`
 }
 
-function useMenuRenderFn(query: string | null): MenuRenderFn<ComposerMentionOption> {
+export function getWorkspaceFileSearchMenuStatus(props: {
+  query: string | null
+  resultCount: number
+  searchEnabled: boolean
+  searchIncomplete: boolean
+  searchInProgress: boolean
+}): WorkspaceFileSearchMenuStatus | null {
+  const normalizedQuery = props.query?.trim() ?? ""
+  if (props.resultCount > 0) {
+    return null
+  }
+
+  if (normalizedQuery.length === 0) {
+    return "empty-query"
+  }
+
+  if (!props.searchEnabled) {
+    return "search-disabled"
+  }
+
+  if (!props.searchInProgress && props.searchIncomplete) {
+    return "search-incomplete"
+  }
+
+  return props.searchInProgress ? "searching" : "no-results"
+}
+
+function getWorkspaceFileSearchStatusLabel(status: WorkspaceFileSearchMenuStatus): string {
+  switch (status) {
+    case "empty-query":
+      return "输入文件名或路径搜索"
+    case "no-results":
+      return "没有匹配的文件"
+    case "search-disabled":
+      return "当前没有工作区，无法搜索文件"
+    case "search-incomplete":
+      return "搜索范围较大，继续输入缩小结果"
+    case "searching":
+      return "正在搜索文件..."
+  }
+}
+
+export function getComposerMentionMenuLayout(props: {
+  anchorLeft: number
+  anchorTop: number
+  boundaryLeft: number | null
+  boundaryTop: number | null
+  boundaryWidth: number | null
+  viewportHeight: number
+  viewportWidth: number
+}): { bottom: number; left: number; width: number } {
+  const availableViewportWidth = Math.max(0, props.viewportWidth - MENTION_MENU_VIEWPORT_MARGIN * 2)
+  const boundedWidth =
+    props.boundaryWidth && props.boundaryWidth > 0
+      ? Math.min(MENTION_MENU_MAX_WIDTH, props.boundaryWidth, availableViewportWidth)
+      : Math.min(MENTION_MENU_MAX_WIDTH, availableViewportWidth)
+  const preferredLeft = props.boundaryLeft ?? props.anchorLeft
+  const preferredTop = props.boundaryTop ?? props.anchorTop
+  const maxLeft = Math.max(
+    MENTION_MENU_VIEWPORT_MARGIN,
+    props.viewportWidth - MENTION_MENU_VIEWPORT_MARGIN - boundedWidth
+  )
+  const maxBottom = Math.max(MENTION_MENU_VIEWPORT_MARGIN, props.viewportHeight - MENTION_MENU_VIEWPORT_MARGIN)
+  const left = Math.min(Math.max(preferredLeft, MENTION_MENU_VIEWPORT_MARGIN), maxLeft)
+  const bottom = Math.min(
+    Math.max(props.viewportHeight - preferredTop + MENTION_MENU_INPUT_GAP, MENTION_MENU_VIEWPORT_MARGIN),
+    maxBottom
+  )
+
+  return {
+    bottom: Math.round(bottom),
+    left: Math.round(left),
+    width: Math.round(boundedWidth)
+  }
+}
+
+function useMenuRenderFn(
+  menuBoundaryRef: RefObject<HTMLElement | null> | undefined,
+  query: string | null,
+  workspaceFileSearchEnabled: boolean,
+  workspaceFileSearchIncomplete: boolean,
+  workspaceFileSearchInProgress: boolean
+): MenuRenderFn<ComposerMentionOption> {
   return useCallback(
     (anchorElementRef, itemProps) => {
       const anchor = anchorElementRef.current
-      if (!anchor || itemProps.options.length === 0) {
+      if (!anchor) {
         return null
       }
 
-      const normalizedQuery = query?.trim() ?? ""
+      const anchorRect = anchor.getBoundingClientRect()
+      const boundaryRect = menuBoundaryRef?.current?.getBoundingClientRect() ?? null
+      const menuLayout = getComposerMentionMenuLayout({
+        anchorLeft: anchorRect.left,
+        anchorTop: anchorRect.top,
+        boundaryLeft: boundaryRect?.left ?? null,
+        boundaryTop: boundaryRect?.top ?? null,
+        boundaryWidth: boundaryRect?.width ?? null,
+        viewportHeight: window.innerHeight,
+        viewportWidth: window.innerWidth
+      })
       const indexedOptions: IndexedComposerMentionOption[] = itemProps.options.map(
         (option, index) => ({ index, option })
       )
@@ -124,10 +225,16 @@ function useMenuRenderFn(query: string | null): MenuRenderFn<ComposerMentionOpti
       const workspaceFileOptions = indexedOptions.filter(
         ({ option }) => option.kind === "workspace-file"
       )
-      const showWorkspaceFileSearchHint =
-        normalizedQuery.length === 0 && workspaceFileOptions.length === 0
+      const workspaceFileSearchStatus = getWorkspaceFileSearchMenuStatus({
+        query,
+        resultCount: workspaceFileOptions.length,
+        searchEnabled: workspaceFileSearchEnabled,
+        searchIncomplete: workspaceFileSearchIncomplete,
+        searchInProgress: workspaceFileSearchInProgress
+      })
       const showWorkspaceFileSection =
-        workspaceFileOptions.length > 0 || showWorkspaceFileSearchHint
+        workspaceFileOptions.length > 0 || workspaceFileSearchStatus !== null
+      const showSectionLabels = pluginOptions.length > 0 && showWorkspaceFileSection
 
       const renderOption = ({ index, option }: IndexedComposerMentionOption): JSX.Element => {
         const selected = itemProps.selectedIndex === index
@@ -137,8 +244,10 @@ function useMenuRenderFn(query: string | null): MenuRenderFn<ComposerMentionOpti
             key={option.key}
             ref={option.setRefElement}
             className={cn(
-              "flex cursor-default select-none items-center gap-[var(--ow-space-1-5)] rounded-[var(--ow-radius-xs)] px-[var(--ow-space-2)] [font-size:var(--ow-font-label)] text-foreground outline-none transition-colors duration-100",
-              isWorkspaceFile ? "min-h-[44px] py-[var(--ow-space-1)]" : "h-[34px]",
+              "flex cursor-default select-none items-center gap-[var(--ow-space-1-5)] rounded-[var(--ow-radius-xs)] px-[var(--ow-space-2)] text-foreground outline-none transition-colors duration-100",
+              isWorkspaceFile
+                ? "h-[26px] [font-size:var(--ow-font-meta)]"
+                : "h-[34px] [font-size:var(--ow-font-label)]",
               selected ? "bg-background-secondary" : "hover:bg-background-secondary/72"
             )}
             onClick={() => {
@@ -169,42 +278,69 @@ function useMenuRenderFn(query: string | null): MenuRenderFn<ComposerMentionOpti
       }
 
       return createPortal(
-        <div style={{ transform: "translateY(calc(-100% - 18px))" }}>
-          <ul className="relative z-[9999] m-0 max-h-[320px] min-w-[320px] max-w-[520px] list-none overflow-y-auto rounded-[var(--ow-radius-sm)] border border-border bg-popover p-[var(--ow-space-0-5)] text-popover-foreground shadow-[0_10px_28px_rgba(15,23,42,0.14)] outline-none">
-            {pluginOptions.length > 0 ? <li className={SECTION_LABEL_CLASS}>插件</li> : null}
+        <div
+          style={{
+            bottom: `${menuLayout.bottom}px`,
+            left: `${menuLayout.left}px`,
+            position: "fixed",
+            width: `${menuLayout.width}px`
+          }}
+        >
+          <ul className="relative z-[9999] m-0 max-h-[320px] w-full list-none overflow-y-auto rounded-[var(--ow-radius-sm)] border border-border bg-popover p-[var(--ow-space-0-5)] text-popover-foreground shadow-[0_10px_28px_rgba(15,23,42,0.14)] outline-none">
+            {pluginOptions.length > 0 && showSectionLabels ? (
+              <li className={SECTION_LABEL_CLASS}>插件</li>
+            ) : null}
             {pluginOptions.map(renderOption)}
-            {showWorkspaceFileSection ? <li className={SECTION_LABEL_CLASS}>文件</li> : null}
+            {showWorkspaceFileSection && showSectionLabels ? (
+              <li className={SECTION_LABEL_CLASS}>文件</li>
+            ) : null}
             {workspaceFileOptions.map(renderOption)}
-            {showWorkspaceFileSearchHint ? (
+            {workspaceFileSearchStatus ? (
               <li
                 className="flex h-[32px] cursor-default select-none items-center px-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-muted-foreground"
                 role="presentation"
               >
-                输入文件名或路径搜索
+                {getWorkspaceFileSearchStatusLabel(workspaceFileSearchStatus)}
               </li>
             ) : null}
           </ul>
         </div>,
-        anchor
+        document.body
       )
     },
-    [query]
+    [
+      menuBoundaryRef,
+      query,
+      workspaceFileSearchEnabled,
+      workspaceFileSearchIncomplete,
+      workspaceFileSearchInProgress
+    ]
   )
 }
 
 export function ExtensionSourceTypeaheadPlugin(props: {
+  menuBoundaryRef?: RefObject<HTMLElement | null>
   onMenuClose?: () => void
   onMenuOpen?: () => void
   onQueryChange?: (query: string | null) => void
+  onSelectableOptionsChange?: (hasSelectableOptions: boolean) => void
   sourceMentions: ExtensionSourceMention[]
   workspaceFileMentions?: ComposerWorkspaceFileMention[]
+  workspaceFileSearchEnabled?: boolean
+  workspaceFileSearchIncomplete?: boolean
+  workspaceFileSearchInProgress?: boolean
 }): JSX.Element | null {
   const {
+    menuBoundaryRef,
     onMenuClose,
     onMenuOpen,
     onQueryChange,
+    onSelectableOptionsChange,
     sourceMentions,
-    workspaceFileMentions = []
+    workspaceFileMentions = [],
+    workspaceFileSearchEnabled = false,
+    workspaceFileSearchIncomplete = false,
+    workspaceFileSearchInProgress = false
   } = props
   const [query, setQuery] = useState<string | null>(null)
   const options = useMemo<ComposerMentionOption[]>(() => {
@@ -213,7 +349,16 @@ export function ExtensionSourceTypeaheadPlugin(props: {
       ...filterWorkspaceFileOptions(workspaceFileMentions, query)
     ]
   }, [query, sourceMentions, workspaceFileMentions])
-  const menuRenderFn = useMenuRenderFn(query)
+  useEffect(() => {
+    onSelectableOptionsChange?.(options.length > 0)
+  }, [onSelectableOptionsChange, options.length])
+  const menuRenderFn = useMenuRenderFn(
+    menuBoundaryRef,
+    query,
+    workspaceFileSearchEnabled,
+    workspaceFileSearchIncomplete,
+    workspaceFileSearchInProgress
+  )
   const handleQueryChange = useCallback(
     (nextQuery: string | null): void => {
       setQuery(nextQuery)
@@ -279,13 +424,18 @@ function WorkspaceFileOptionContent(props: { file: ComposerWorkspaceFileMention 
 
   return (
     <>
-      <span className="flex size-[20px] shrink-0 items-center justify-center rounded-[var(--ow-radius-xs)] bg-background-tertiary text-muted-foreground">
-        <WorkspaceFileIcon className="size-[16px]" name={file.name} />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-[1px]">
-        <span className="truncate font-medium leading-[16px]">{file.name}</span>
+      <WorkspaceFileIcon className="mt-px" name={file.name} variant="badge" />
+      <span className="flex w-full min-w-0 items-center gap-[var(--ow-space-1)]">
+        <span
+          className={cn(
+            "truncate font-medium leading-[18px] text-foreground/82",
+            directory ? "max-w-[62%] shrink truncate" : "min-w-0 flex-1"
+          )}
+        >
+          {file.name}
+        </span>
         {directory ? (
-          <span className="truncate [font-size:var(--ow-font-meta)] leading-[14px] text-muted-foreground">
+          <span className="min-w-0 flex-1 truncate leading-[18px] text-muted-foreground/72">
             {directory}
           </span>
         ) : null}
