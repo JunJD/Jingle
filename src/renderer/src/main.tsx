@@ -4,9 +4,11 @@ import { useEffect, useState } from "react"
 import LauncherApp from "@launcher-shell/LauncherApp"
 import { LauncherClipboardProvider } from "@launcher-shell/LauncherClipboardContext"
 import { DEFAULT_APP_THEME_SETTINGS, type AppThemeSettings } from "@shared/app-theme"
+import { PINNED_AI_SESSION_WINDOW_KIND } from "@shared/ai-session-window"
 import { ThreadProvider } from "./lib/thread-context"
 import { applyAppThemeSettings } from "./lib/app-theme"
 import { I18nProvider } from "./lib/i18n"
+import { PinnedAiSessionWindowApp } from "./ai-core/PinnedAiSessionWindowApp"
 import MainWindowApp from "./main-window/MainWindowApp"
 import SettingsApp from "./settings/SettingsApp"
 import { ShortcutProvider } from "./shortcuts/shortcut-provider"
@@ -39,10 +41,10 @@ async function resolveInitialAppThemeSettings(): Promise<AppThemeSettings> {
   }
 }
 
-function RendererRoot(): React.JSX.Element {
+export function RendererRoot(): React.JSX.Element {
   const [locale, setLocale] = useState<AppLocale>(DEFAULT_APP_LOCALE)
   const shortcutWindowKind =
-    resolvedWindowKind === "launcher"
+    resolvedWindowKind === "launcher" || resolvedWindowKind === PINNED_AI_SESSION_WINDOW_KIND
       ? "launcher"
       : resolvedWindowKind === "settings"
         ? "settings"
@@ -63,6 +65,10 @@ function RendererRoot(): React.JSX.Element {
               <LauncherClipboardProvider>
                 <LauncherApp />
               </LauncherClipboardProvider>
+            </ThreadProvider>
+          ) : windowKind === PINNED_AI_SESSION_WINDOW_KIND ? (
+            <ThreadProvider>
+              <PinnedAiSessionWindowApp />
             </ThreadProvider>
           ) : windowKind === "settings" ? (
             <SettingsApp />

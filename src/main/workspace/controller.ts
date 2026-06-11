@@ -1,5 +1,10 @@
 import type { IpcMain } from "electron"
-import type { WorkspaceFileParams, WorkspaceFileSearchParams, WorkspaceSetParams } from "../types"
+import type {
+  WorkspaceCreateDefaultParams,
+  WorkspaceFileParams,
+  WorkspaceFileSearchParams,
+  WorkspaceSetParams
+} from "../types"
 import { registerIpcHandle } from "../ipc/handle"
 import { WorkspaceService } from "./service"
 
@@ -19,13 +24,29 @@ export class WorkspaceController {
       return this.workspaceService.selectWorkspace(threadId)
     })
 
-    registerIpcHandle(ipcMain, "workspace:readFile", async (_event, params: WorkspaceFileParams) => {
-      return this.workspaceService.readFile(params)
-    })
+    registerIpcHandle(
+      ipcMain,
+      "workspace:createDefault",
+      async (_event, params?: WorkspaceCreateDefaultParams) => {
+        return this.workspaceService.createDefaultWorkspace(params)
+      }
+    )
 
-    registerIpcHandle(ipcMain, "workspace:readBinaryFile", async (_event, params: WorkspaceFileParams) => {
-      return this.workspaceService.readBinaryFile(params)
-    })
+    registerIpcHandle(
+      ipcMain,
+      "workspace:readFile",
+      async (_event, params: WorkspaceFileParams) => {
+        return this.workspaceService.readFile(params)
+      }
+    )
+
+    registerIpcHandle(
+      ipcMain,
+      "workspace:readBinaryFile",
+      async (_event, params: WorkspaceFileParams) => {
+        return this.workspaceService.readBinaryFile(params)
+      }
+    )
 
     registerIpcHandle(
       ipcMain,

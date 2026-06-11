@@ -135,12 +135,22 @@ export interface AppCopy {
     clearClipboardContext: string
     clipboardFiles: (count: number) => string
     clipboardImage: string
+    collapseSidebar: string
     copyAsMarkdown: string
     copyChat: string
     copyDeeplink: string
     copySessionId: string
     copyWorkingDirectory: string
     enter: string
+    environmentInfo: string
+    environmentModel: string
+    environmentNoModel: string
+    environmentNoThread: string
+    environmentNoWorkspace: string
+    environmentPermission: string
+    environmentThread: string
+    environmentWorkspace: string
+    expandSidebar: string
     goHome: string
     goToNextChat: string
     goToPreviousChat: string
@@ -149,6 +159,9 @@ export interface AppCopy {
     openSettings: string
     openAiHistory: string
     openMainChat: string
+    openFolder: string
+    openPinnedWindow: string
+    openTarget: string
     openSideChat: string
     openApp: string
     permissionModeAskToEdit: string
@@ -157,6 +170,10 @@ export interface AppCopy {
     permissionModeSection: string
     pinChat: string
     renameChat: string
+    sidebarPinned: string
+    sidebarRecent: string
+    sidebarSources: string
+    sidebarUnavailable: string
     commandMatches: string
     manageUseWithCommands: string
     useWithAvailable: string
@@ -408,12 +425,22 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       clearClipboardContext: "清除剪贴板上下文",
       clipboardFiles: (count) => `${count} 个文件`,
       clipboardImage: "剪贴板图片",
+      collapseSidebar: "收起侧边栏",
       copyAsMarkdown: "复制为 Markdown",
       copyChat: "复制",
       copyDeeplink: "复制深层链接",
       copySessionId: "复制会话 ID",
       copyWorkingDirectory: "复制工作目录",
       enter: "回车",
+      environmentInfo: "环境信息",
+      environmentModel: "模型",
+      environmentNoModel: "暂无模型",
+      environmentNoThread: "暂无会话",
+      environmentNoWorkspace: "暂无 workspace",
+      environmentPermission: "权限",
+      environmentThread: "会话",
+      environmentWorkspace: "Workspace",
+      expandSidebar: "展开侧边栏",
       goHome: "回到主页",
       goToNextChat: "前往下一个对话",
       goToPreviousChat: "前往上一个对话",
@@ -422,6 +449,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openSettings: "打开设置",
       openAiHistory: "打开 AI 页面",
       openMainChat: "在主窗口打开",
+      openFolder: "打开当前文件夹",
+      openPinnedWindow: "钉出窗口",
+      openTarget: "打开方式",
       openSideChat: "打开侧边聊天",
       openApp: "打开应用",
       permissionModeAskToEdit: "默认权限",
@@ -430,6 +460,10 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       permissionModeSection: "权限模式",
       pinChat: "置顶对话",
       renameChat: "重命名对话",
+      sidebarPinned: "Pinned",
+      sidebarRecent: "Recent",
+      sidebarSources: "Sources",
+      sidebarUnavailable: "即将支持",
       commandMatches: "命令",
       manageUseWithCommands: "管理 Use With 命令",
       useWithAvailable: "可用",
@@ -699,12 +733,22 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       clearClipboardContext: "Clear clipboard context",
       clipboardFiles: (count) => `${count} file${count === 1 ? "" : "s"}`,
       clipboardImage: "Clipboard image",
+      collapseSidebar: "Collapse Sidebar",
       copyAsMarkdown: "Copy as Markdown",
       copyChat: "Copy",
       copyDeeplink: "Copy Deeplink",
       copySessionId: "Copy Session ID",
       copyWorkingDirectory: "Copy Working Directory",
       enter: "Enter",
+      environmentInfo: "Environment Info",
+      environmentModel: "Model",
+      environmentNoModel: "No model",
+      environmentNoThread: "No session",
+      environmentNoWorkspace: "No workspace",
+      environmentPermission: "Permission",
+      environmentThread: "Session",
+      environmentWorkspace: "Workspace",
+      expandSidebar: "Expand Sidebar",
       goHome: "Go Home",
       goToNextChat: "Go to Next Chat",
       goToPreviousChat: "Go to Previous Chat",
@@ -713,6 +757,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       openSettings: "Open Settings",
       openAiHistory: "Open AI",
       openMainChat: "Open in Main Window",
+      openFolder: "Open Current Folder",
+      openPinnedWindow: "Open in Separate Window",
+      openTarget: "Open With",
       openSideChat: "Open Side Chat",
       openApp: "Open App",
       permissionModeAskToEdit: "Default Permission",
@@ -721,6 +768,10 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       permissionModeSection: "Permission Mode",
       pinChat: "Pin Chat",
       renameChat: "Rename Chat",
+      sidebarPinned: "Pinned",
+      sidebarRecent: "Recent",
+      sidebarSources: "Sources",
+      sidebarUnavailable: "Coming soon",
       commandMatches: "Commands",
       manageUseWithCommands: "Manage Fallback Commands",
       useWithAvailable: "Available",

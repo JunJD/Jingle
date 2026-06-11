@@ -62,6 +62,10 @@ export interface WorkspaceSetParams {
   path: string | null
 }
 
+export interface WorkspaceCreateDefaultParams {
+  title?: string
+}
+
 export interface WorkspaceFileParams {
   threadId: string
   filePath: string

@@ -1,4 +1,5 @@
 import { agentApi } from "./agent"
+import { aiSessionWindowsApi } from "./aiSessionWindows"
 import { artifactsApi } from "./artifacts"
 import { extensionQuicklinksApi } from "./extensionQuicklinks"
 import { extensionRuntimeApi } from "./extensionRuntime"
@@ -10,6 +11,7 @@ import { modelsApi } from "./models"
 import { memoryApi } from "./memory"
 import { nativeExtensionsApi } from "./nativeExtensions"
 import { nativeMenuBarApi } from "./nativeMenuBar"
+import { openTargetsApi } from "./openTargets"
 import { settingsApi } from "./settings"
 import { shortcutsApi } from "./shortcuts"
 import { threadsApi } from "./threads"
@@ -17,6 +19,7 @@ import { workspaceApi } from "./workspace"
 
 export const api = {
   agent: agentApi,
+  aiSessionWindows: aiSessionWindowsApi,
   threads: threadsApi,
   artifacts: artifactsApi,
   extensionQuicklinks: extensionQuicklinksApi,
@@ -31,6 +34,7 @@ export const api = {
   localStart: localStartApi,
   nativeExtensions: nativeExtensionsApi,
   nativeMenuBar: nativeMenuBarApi,
+  openTargets: openTargetsApi,
   workspace: workspaceApi
 }
 

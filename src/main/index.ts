@@ -6,6 +6,7 @@ import { closeRuntime } from "./agent/runtime"
 import { createMainCompositionRoot, type MainCompositionRoot } from "./composition-root"
 import { createLauncherWindow, showLauncherWindow } from "./windows/launcher-window"
 import { createMainWindow, showMainWindow } from "./windows/main-window"
+import { createPinnedAiSessionWindow } from "./windows/pinned-ai-session-window"
 import { createSettingsWindow, showSettingsWindow } from "./windows/settings-window"
 import { registerNativeExtensionAssetProtocol } from "./native-extensions/asset-protocol"
 import { NATIVE_EXTENSION_ASSET_PROTOCOL } from "./native-extensions/assets"
@@ -260,6 +261,7 @@ if (hasSingleInstanceLock) {
         pendingSettingsNavigation = null
         return pending
       },
+      createPinnedAiSessionWindow,
       getLauncherWindow,
       getPendingMainNavigation: () => pendingMainNavigation,
       ipcMain,

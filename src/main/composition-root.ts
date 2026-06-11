@@ -4,6 +4,11 @@ import { container, type DependencyContainer } from "tsyringe"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { AgentThreadRunner } from "./agent/agent-thread-runner"
 import { registerAgentIpcHandlers, registerAgentModule } from "./agent/module"
+import {
+  registerAiSessionWindowsIpcHandlers,
+  registerAiSessionWindowsModule
+} from "./ai-session-windows/module"
+import type { AiSessionWindowsRuntime } from "./ai-session-windows/service"
 import { installApplicationMenu } from "./app-menu"
 import { registerAppInfoIpcHandlers, registerAppInfoModule } from "./app-info/module"
 import { registerArtifactsIpcHandlers, registerArtifactsModule } from "./artifacts/module"
@@ -50,6 +55,7 @@ import {
   registerOpenworkMemoryIpcHandlers,
   registerOpenworkMemoryModule
 } from "./openwork-memory/module"
+import { registerOpenTargetsIpcHandlers, registerOpenTargetsModule } from "./open-targets/module"
 import {
   getGlobalShortcutAccelerator,
   registerGlobalShortcutService,
@@ -76,6 +82,7 @@ import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 export interface MainCompositionContext {
   acknowledgePendingMainNavigation: (payload: MainWindowNavigationPayload) => void
   consumePendingSettingsNavigation: () => SettingsWindowNavigationPayload | null
+  createPinnedAiSessionWindow: AiSessionWindowsRuntime["createPinnedAiSessionWindow"]
   getLauncherWindow: () => BrowserWindow | null
   getPendingMainNavigation: () => MainWindowNavigationPayload | null
   ipcMain: IpcMain
@@ -102,6 +109,7 @@ export class MainCompositionRoot {
     const { ipcMain } = this.context
 
     registerAgentIpcHandlers(this.dependencyContainer, ipcMain)
+    registerAiSessionWindowsIpcHandlers(this.dependencyContainer, ipcMain)
     registerAppInfoIpcHandlers(this.dependencyContainer, ipcMain)
     registerArtifactsIpcHandlers(this.dependencyContainer, ipcMain)
     registerExternalLinksIpcHandlers(this.dependencyContainer, ipcMain)
@@ -111,6 +119,7 @@ export class MainCompositionRoot {
     registerLocalStartIpcHandlers(this.dependencyContainer, ipcMain)
     registerModelProviderIpcHandlers(this.dependencyContainer, ipcMain)
     registerOpenworkMemoryIpcHandlers(this.dependencyContainer, ipcMain)
+    registerOpenTargetsIpcHandlers(this.dependencyContainer, ipcMain)
     registerSettingsIpcHandlers(this.dependencyContainer, ipcMain)
     registerThreadsIpcHandlers(this.dependencyContainer, ipcMain)
     registerWorkspaceIpcHandlers(this.dependencyContainer, ipcMain)
@@ -196,6 +205,9 @@ export function createMainCompositionRoot(
 
   childContainer.registerInstance<MainCompositionContext>(MAIN_COMPOSITION_CONTEXT_TOKEN, context)
   registerAgentModule(childContainer)
+  registerAiSessionWindowsModule(childContainer, {
+    createPinnedAiSessionWindow: context.createPinnedAiSessionWindow
+  })
   registerAppInfoModule(childContainer)
   registerArtifactsModule(childContainer)
   registerExternalLinksModule(childContainer)
@@ -214,6 +226,7 @@ export function createMainCompositionRoot(
   })
   registerModelProviderModule(childContainer)
   registerOpenworkMemoryModule(childContainer)
+  registerOpenTargetsModule(childContainer)
   registerNativeExtensionsModule(childContainer)
   registerNativeMenuBarModule(childContainer)
   registerSettingsModule(childContainer)

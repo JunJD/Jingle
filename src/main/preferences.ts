@@ -1,6 +1,8 @@
 import { safeStorage } from "electron"
 import Store from "electron-store"
+import { mkdirSync } from "fs"
 import { homedir } from "os"
+import { join } from "path"
 import type { AgentConfig } from "./types"
 import { getOpenworkDir } from "./storage"
 import { listNativeExtensionManifests } from "@extensions/index"
@@ -85,7 +87,12 @@ const DEFAULT_NATIVE_EXTENSION_SECRETS: NativeExtensionSecretsState = {
   commandSecrets: {}
 }
 
-const DEFAULT_WORKSPACE_PATH = homedir()
+const DEFAULT_WORKSPACE_PATH = join(homedir(), "Documents", "Jingle")
+
+function ensureDefaultWorkspacePath(): string {
+  mkdirSync(DEFAULT_WORKSPACE_PATH, { recursive: true })
+  return DEFAULT_WORKSPACE_PATH
+}
 
 const settingsStore = new Store<SettingsStoreShape>({
   name: "settings",
@@ -639,7 +646,9 @@ export function setDefaultModelId(modelType: SupportedDefaultModelType, modelId:
 }
 
 export function getGlobalWorkspacePath(): string | null {
-  return settingsStore.get("workspacePath", DEFAULT_WORKSPACE_PATH) ?? DEFAULT_WORKSPACE_PATH
+  const workspacePath =
+    settingsStore.get("workspacePath", DEFAULT_WORKSPACE_PATH) ?? DEFAULT_WORKSPACE_PATH
+  return workspacePath === DEFAULT_WORKSPACE_PATH ? ensureDefaultWorkspacePath() : workspacePath
 }
 
 export function setGlobalWorkspacePath(workspacePath: string | null): void {
