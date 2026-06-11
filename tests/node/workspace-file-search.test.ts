@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import { randomUUID } from "node:crypto"
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, mkdir, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import test, { after, before } from "node:test"
 import { createThread, initializeDatabase, closeDatabase } from "../../src/main/db"
 import { WorkspaceRepository } from "../../src/main/workspace/repository"
@@ -129,6 +129,36 @@ test("workspace file search uses global workspace when thread id is omitted", as
         }
       ]
     })
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test("global workspace path creates the configured workspace root", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "openwork-workspace-root-"))
+  const root = join(parent, "Documents", "Jingle")
+  try {
+    const service = createWorkspaceServiceFromRepository(new StaticGlobalWorkspaceRepository(root))
+    const resolvedRoot = await service.resolveGlobalWorkspacePath()
+
+    assert.equal(resolvedRoot, root)
+    assert.equal((await stat(root)).isDirectory(), true)
+  } finally {
+    await rm(parent, { force: true, recursive: true })
+  }
+})
+
+test("default AI workspace is created below the global workspace root", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openwork-ai-workspace-root-"))
+  try {
+    const service = createWorkspaceServiceFromRepository(new StaticGlobalWorkspaceRepository(root))
+    const workspacePath = await service.createDefaultWorkspace({
+      title: 'Design: / invalid "title"'
+    })
+
+    assert.equal(dirname(workspacePath), root)
+    assert.match(basename(workspacePath), /Design invalid title/)
+    assert.equal((await stat(workspacePath)).isDirectory(), true)
   } finally {
     await rm(root, { force: true, recursive: true })
   }

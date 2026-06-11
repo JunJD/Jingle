@@ -18,6 +18,10 @@ type WorkspaceFileSearchResult = {
   error?: string
 }
 
+type WorkspaceCreateDefaultParams = {
+  title?: string
+}
+
 export const workspaceApi = {
   get: (threadId?: string): Promise<string | null> => {
     return invokeIpc("workspace:get", threadId)
@@ -27,6 +31,9 @@ export const workspaceApi = {
   },
   select: (threadId?: string): Promise<string | null> => {
     return invokeIpc("workspace:select", threadId)
+  },
+  createDefault: (params: WorkspaceCreateDefaultParams = {}): Promise<string> => {
+    return invokeIpc("workspace:createDefault", params)
   },
   readFile: (threadId: string, filePath: string): Promise<WorkspaceFileReadResult> => {
     return invokeIpc("workspace:readFile", { threadId, filePath })

@@ -151,7 +151,7 @@ export default function LauncherApp(): React.JSX.Element {
     async (input: LauncherThreadCreateInput) => {
       const [resolvedModelId, workspacePathResult] = await Promise.all([
         input.modelId ? Promise.resolve(input.modelId) : window.api.models.getDefault("llm"),
-        window.api.workspace.get()
+        window.api.workspace.createDefault({ title: input.title })
       ])
 
       if (!workspacePathResult) {
