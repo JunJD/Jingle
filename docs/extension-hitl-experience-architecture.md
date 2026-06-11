@@ -24,7 +24,7 @@ Openwork already has a solid platform-level HITL foundation:
 - Extension tools declare `access`, `inputSchema`, `title`, `description`, and `handler` through `ExtensionToolDefinition` in `src/shared/extension-sources.ts`.
 - `ToolApprovalMiddleware` wraps every tool call and blocks before the real handler runs.
 - `ToolPermissionRuntime` decides `allow`, `deny`, or `require_approval`.
-- `callExtensionTool` approval is resolved through `ExtensionToolApprovalPolicyProvider`, which maps the generic call to the underlying extension tool binding.
+- `callExtension` approval is resolved through `ExtensionToolApprovalPolicyProvider`, which maps the generic call to the underlying extension tool binding.
 - `ToolApprovalItem.kind === "extension_tool"` stores access, args, capability display name, reason, tool name, and title.
 - Renderer HITL components currently render approval cards with approve/reject actions.
 
@@ -83,7 +83,7 @@ ExtensionToolDefinition
        |
        v
 ExtensionApprovalPlanner
-  parse callExtensionTool args
+  parse callExtension args
   resolve binding
   validate draft args when possible
   derive confirmation
@@ -237,7 +237,7 @@ export interface HITLDecision {
 }
 ```
 
-For extension approvals, `edited_args` means the underlying extension tool args, not the wrapper `callExtensionTool` envelope.
+For extension approvals, `edited_args` means the underlying extension tool args, not the wrapper `callExtension` envelope.
 
 Example:
 
@@ -488,7 +488,7 @@ Do not add this in P0 unless compliance/audit needs force it.
 - Renderer-sent `edited_args` is untrusted input.
 - Handler execution must only receive schema-parsed args.
 - Approval cannot change `extensionName` or `toolName`.
-- Direct extension agent tool calls remain denied; execution still goes through `callExtensionTool`.
+- Direct extension agent tool calls remain denied; execution still goes through `callExtension`.
 - Edited args must re-run permission policy.
 - If revalidation fails, no tool handler runs.
 - If approval-sensitive target changes after normalization, the user must see the regenerated review.

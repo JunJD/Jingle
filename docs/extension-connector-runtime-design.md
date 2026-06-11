@@ -16,7 +16,7 @@ Connection resolver
   owns account/auth status, secrets, public config, connection errors
 
 Runtime surfaces
-  launcher command, @ mention, loadExtension, callExtensionTool
+  launcher command, @ mention, loadExtension, callExtension
   all consume the same resolved connection
 ```
 
@@ -535,7 +535,7 @@ catalog 可以告诉模型有哪些 extension 可加载，但不能把所有 too
 ### AI tool call
 
 ```txt
-callExtensionTool(ext__github__listMyIssues)
+callExtension(ext__github__listMyIssues)
   -> binding lookup
   -> resolveExtensionExecutionContext("github")
   -> if connected, handler receives connection-backed context
@@ -613,4 +613,4 @@ supportedPlatforms = ["darwin"]
 
 1. OAuth / Connected Account：补主进程 OAuth flow、callback、token exchange、refresh/revoke 和状态语义。
 2. 外部安装包：让 install artifact 也能声明 connection，并由同一个 resolver 解析。
-3. 回归验证：同时覆盖 Settings 保存 token、launcher command、`@extension` preload、`loadExtension`、`callExtensionTool` 五条路径。
+3. 回归验证：同时覆盖 Settings 保存 token、launcher command、`@extension` preload、`loadExtension`、`callExtension` 五条路径。

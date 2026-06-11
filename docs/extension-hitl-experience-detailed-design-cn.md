@@ -30,7 +30,7 @@ Openwork 当前已经有这些基础：
 | Extension tool contract | `ExtensionToolDefinition` 声明 `access / inputSchema / title / description / handler` |
 | Tool approval middleware | `ToolApprovalMiddleware.wrapToolCall` 在 handler 前拦截 |
 | 权限判定 | `ToolPermissionRuntime` 判断 `allow / deny / require_approval` |
-| Extension approval policy | `ExtensionToolApprovalPolicyProvider` 把 `callExtensionTool` 映射到真实 extension tool binding |
+| Extension approval policy | `ExtensionToolApprovalPolicyProvider` 把 `callExtension` 映射到真实 extension tool binding |
 | HITL request | `HITLRequest` 保存 `tool_call / allowed_decisions / review` |
 | 审批展示 payload | `ToolApprovalItem` 支持 `execute_command / file_mutation / extension_tool` |
 | Renderer approval | `DefaultHumanInTheLoop`、`FileMutationHumanInTheLoop`、`ExecuteHumanInTheLoop` 展示审批卡 |
@@ -169,7 +169,7 @@ P0 不做：
 
 ```text
 LLM tool call
-  name: callExtensionTool
+  name: callExtension
   args: { extensionName, toolName, args }
         |
         v
@@ -427,7 +427,7 @@ export interface HITLDecision {
 
 解释：
 
-- 对 extension approval，`edited_args` 指真实 extension tool 的 args，不是 `callExtensionTool` wrapper args。
+- 对 extension approval，`edited_args` 指真实 extension tool 的 args，不是 `callExtension` wrapper args。
 - 对 execute/file mutation，P0 忽略 `edited_args`。
 - 如果 `type === "reject"`，忽略 `edited_args`。
 - 如果 approve 但没有 `edited_args`，保持当前行为。
@@ -545,7 +545,7 @@ pending approval
 pending extension approval
   -> decision approve with edited_args
   -> find original HITL request by request_id/tool_call_id
-  -> assert original tool is callExtensionTool
+  -> assert original tool is callExtension
   -> resolve original extensionName/toolName
   -> resolve extension binding
   -> parse edited_args with binding.inputSchema
@@ -606,7 +606,7 @@ ExtensionHumanInTheLoop
 
 ```ts
 defineHumanInTheLoop({
-  name: "callExtensionTool",
+  name: "callExtension",
   render: renderExtensionApproval
 })
 ```
@@ -726,7 +726,7 @@ return handler(approvedRequest)
 因为 edited args 不应允许修改 `extensionName/toolName`，binding 查找使用 original request：
 
 ```ts
-const envelope = callExtensionToolInputSchema.parse(originalRequest.toolCall.args)
+const envelope = callExtensionInputSchema.parse(originalRequest.toolCall.args)
 const binding = extensionToolPolicyProvider.getCallToolPolicy(originalRequest.toolCall.args)?.binding
 ```
 
@@ -739,7 +739,7 @@ handler 期望的是 `request`：
 ```ts
 {
   toolCall: {
-    name: "callExtensionTool",
+    name: "callExtension",
     args: {
       extensionName,
       toolName,
@@ -836,7 +836,7 @@ P0 不建议做，避免范围膨胀。
 8. middleware approve 后识别 edited args。
 9. 对 edited args 执行 schema parse。
 10. 对 edited args 重跑 permission。
-11. 用替换后的 `callExtensionTool` args 执行 handler。
+11. 用替换后的 `callExtension` args 执行 handler。
 12. renderer 增加 `ExtensionHumanInTheLoop`。
 13. 增加单测和组件测试。
 
@@ -909,7 +909,7 @@ P2 验收：
 
 覆盖：
 
-- `callExtensionTool` ask-to-edit write approval 生成 form。
+- `callExtension` ask-to-edit write approval 生成 form。
 - approve with edited args 执行 extension handler。
 - reject 不执行 handler。
 - stale/missing binding 返回 error。

@@ -13,6 +13,13 @@
 - 不要把派生投影同步绑死在 checkpoint / HITL / runtime 主写入路径里。保存工作现场是产品地基，搜索目录是历史检索投影；投影失败不应导致核心 agent 工作无法保存、恢复或继续。
 - 当必须在同一入口触发核心写入和投影更新时，先定义状态归属、依赖方向和失败语义：核心写入成功后再调度投影；投影可以落后，但不能反向决定核心状态是否成立。
 
+## 数据到渲染的职责边界
+
+- Openwork 的 agent runtime、schema、projection 和 renderer 是同一个系统内的链路；默认假设我们能修正上游数据和契约，不要在下游用大量 fallback 把契约问题包装成“看起来能用”的 UI。
+- runtime 只写真实工作事实；runtime state 只保存可恢复、可控制、可检查的事实；renderer projection 负责把事实派生为视图结构；React component 只保存展开/收起、hover、输入草稿等纯 UI local state。每层只做本层该做的事，不跨层补状态。
+- schema/registry 层缺字段、缺 renderer、缺 presentation 时，应优先暴露为清晰错误或不可渲染状态，并补齐真实 owner 的契约；不要悄悄退回 raw tool name、空文案、猜测文案或重复 source of truth。
+- review 涉及 event/state/view/ui 时，必须检查是否存在不必要兜底、字符串反推结构、重复事实源、UI-only core state、跨层 prop drilling 和 renderer/schema 职责混杂。发现后优先收敛边界，而不是继续加兼容层。
+
 ## BDD 测试约定
 
 - 仓库里涉及用户可见工作流、跨进程协作、窗口生命周期、IPC 契约时，优先考虑使用 `bdd-test-engineer` 思路补行为测试；测试目标是验证用户行为和系统边界，不是重复实现细节。
