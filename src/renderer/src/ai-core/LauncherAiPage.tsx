@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowUp, Command, Plus, Square } from "lucide-react"
+import { ArrowUp, Command, Plus, Square } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { PromptInput, PromptInputAction, PromptInputTextarea } from "@/components/agent-ui"
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
@@ -12,8 +12,10 @@ import { LauncherChrome } from "@launcher-components/LauncherChrome"
 import { AI_MAX_FOOTER_HEIGHT, getAiShellConfig } from "./ai-config"
 import { LauncherAiConversation, LauncherAiEmptyState } from "./LauncherAiConversation"
 import { LauncherAiHeaderActions } from "./LauncherAiHeaderActions"
+import { LauncherAiHeaderLeadingActions } from "./LauncherAiHeaderLeadingActions"
 import { LauncherAiHeaderModelPicker } from "./LauncherAiHeaderModelPicker"
 import { LauncherAiModelPicker } from "./LauncherAiModelPicker"
+import { LauncherAiSidebarPanel } from "./LauncherAiSidebarPanel"
 import { useAiCoreHost } from "./AiCoreHost"
 import { LauncherAttachmentStrip } from "./LauncherAttachmentStrip"
 import { AssistantSelectionReferencePill } from "@/components/chat/AssistantSelectionReferences"
@@ -60,6 +62,9 @@ export function LauncherAiPage(): React.JSX.Element {
   const [navigationError, setNavigationError] = useState<string | null>(null)
   const [localComposerText, setLocalComposerText] = useState(() => initialSeedQuery)
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [isSidebarPreviewOpen, setIsSidebarPreviewOpen] = useState(false)
+  const sidebarPreviewCloseTimerRef = useRef<number | null>(null)
   const threadNavigation = useLauncherAiThreadNavigation({
     initialAction: host.initialAction,
     seedQuery: initialSeedQuery
@@ -94,6 +99,13 @@ export function LauncherAiPage(): React.JSX.Element {
     view: { canStop, error: agentError, isBusy }
   } = agent
   const { stop } = agentControl
+  const {
+    addSelectedFiles,
+    attachments,
+    clearAllAttachments,
+    messageRefs: attachmentMessageRefs,
+    removeAttachment
+  } = attachmentDraft
   const updateThread = useHistoryShellStore((state) => state.updateThread)
   const { inputRef } = surface
   const focusComposerOnNextFrame = useCallback((): void => {
@@ -117,22 +129,22 @@ export function LauncherAiPage(): React.JSX.Element {
   const query = localComposerText
   const messageInput = useMemo(
     () => ({
-      refs: [...attachmentDraft.messageRefs, ...assistantSelectionRefs],
+      refs: [...attachmentMessageRefs, ...assistantSelectionRefs],
       text: query
     }),
-    [assistantSelectionRefs, attachmentDraft.messageRefs, query]
+    [assistantSelectionRefs, attachmentMessageRefs, query]
   )
   const initialMessageInput = useMemo(
     () => ({
-      refs: [...attachmentDraft.messageRefs],
+      refs: [...attachmentMessageRefs],
       text: initialSeedQuery
     }),
-    [attachmentDraft.messageRefs, initialSeedQuery]
+    [attachmentMessageRefs, initialSeedQuery]
   )
   const clearTransientInputState = useCallback((): void => {
-    attachmentDraft.clearAllAttachments()
+    clearAllAttachments()
     clearSelectionRefs()
-  }, [attachmentDraft.clearAllAttachments, clearSelectionRefs])
+  }, [clearAllAttachments, clearSelectionRefs])
   const hasPendingApproval = Boolean(pendingApproval)
   const threadError = agentError ?? navigationError
   const primaryActionDisabled =
@@ -154,11 +166,26 @@ export function LauncherAiPage(): React.JSX.Element {
 
     return state.threads.find((thread) => thread.thread_id === threadId)?.title ?? null
   })
+  const currentModelLabel = useHistoryShellStore((state) => {
+    if (!currentModelId) {
+      return null
+    }
+
+    const model = state.models.find((model) => model.id === currentModelId)
+    return model?.name ?? model?.model ?? currentModelId
+  })
+  const currentPermissionLabel =
+    currentPermissionMode === "auto"
+      ? copy.launcher.permissionModeAuto
+      : currentPermissionMode === "explore"
+        ? copy.launcher.permissionModeExplore
+        : copy.launcher.permissionModeAskToEdit
   const canForkThread = useThreadSelector(
     threadId,
     (state) => state?.agent.forkState.canFork ?? DEFAULT_AGENT_CAN_FORK
   )
-  const hasAttachmentDraft = attachmentDraft.attachments.length > 0
+  const attachmentCount = attachments.length
+  const hasAttachmentDraft = attachmentCount > 0
   const hasAssistantSelectionRefs = assistantSelectionRefs.length > 0
   const isComposerExpanded =
     !pendingApproval && (query.includes("\n") || hasAttachmentDraft || hasAssistantSelectionRefs)
@@ -296,16 +323,16 @@ export function LauncherAiPage(): React.JSX.Element {
     const input = inputRef.current
     if (input && "getModelText" in input) {
       return {
-        refs: [...input.getRefs(), ...attachmentDraft.messageRefs, ...assistantSelectionRefs],
+        refs: [...input.getRefs(), ...attachmentMessageRefs, ...assistantSelectionRefs],
         text: input.getModelText()
       }
     }
 
     return {
-      refs: [...attachmentDraft.messageRefs, ...assistantSelectionRefs],
+      refs: [...attachmentMessageRefs, ...assistantSelectionRefs],
       text: query
     }
-  }, [assistantSelectionRefs, attachmentDraft.messageRefs, inputRef, query])
+  }, [assistantSelectionRefs, attachmentMessageRefs, inputRef, query])
   const submitCurrentInput = useCallback((): void => {
     runPrimaryAction(getCurrentMessageInput())
   }, [getCurrentMessageInput, runPrimaryAction])
@@ -316,7 +343,7 @@ export function LauncherAiPage(): React.JSX.Element {
 
       if (
         shouldGoHomeFromComposerKeyDown({
-          attachmentCount: attachmentDraft.attachments.length,
+          attachmentCount,
           composerText,
           event
         })
@@ -326,15 +353,77 @@ export function LauncherAiPage(): React.JSX.Element {
         return
       }
     },
-    [attachmentDraft.attachments.length, inputRef, navigation, query]
+    [attachmentCount, inputRef, navigation, query]
   )
   const canStartNewQuestion =
     query.trim().length > 0 ||
-    attachmentDraft.attachments.length > 0 ||
+    attachmentCount > 0 ||
     assistantSelectionRefs.length > 0 ||
     hasThreadMessages
   const canBranchThread = Boolean(threadId && hasThreadMessages && canForkThread)
   const canUseHeaderThreadActions = !isApprovalPending
+  const sidebarTitle = currentThreadTitle?.trim() || copy.launcher.newQuestion
+  const clearSidebarPreviewCloseTimer = useCallback((): void => {
+    if (sidebarPreviewCloseTimerRef.current === null) {
+      return
+    }
+
+    window.clearTimeout(sidebarPreviewCloseTimerRef.current)
+    sidebarPreviewCloseTimerRef.current = null
+  }, [])
+  const openSidebarPreview = useCallback((): void => {
+    clearSidebarPreviewCloseTimer()
+    setIsSidebarPreviewOpen(true)
+  }, [clearSidebarPreviewCloseTimer])
+  const closeSidebarPreview = useCallback((): void => {
+    clearSidebarPreviewCloseTimer()
+    sidebarPreviewCloseTimerRef.current = window.setTimeout(() => {
+      setIsSidebarPreviewOpen(false)
+      sidebarPreviewCloseTimerRef.current = null
+    }, 120)
+  }, [clearSidebarPreviewCloseTimer])
+  const toggleSidebar = useCallback((): void => {
+    clearSidebarPreviewCloseTimer()
+    setIsSidebarPreviewOpen(false)
+    setIsSidebarOpen((isOpen) => !isOpen)
+  }, [clearSidebarPreviewCloseTimer])
+  const handleSidebarPreviewChange = useCallback(
+    (isPreviewOpen: boolean): void => {
+      if (isSidebarOpen) {
+        return
+      }
+
+      if (isPreviewOpen) {
+        openSidebarPreview()
+        return
+      }
+
+      closeSidebarPreview()
+    },
+    [closeSidebarPreview, isSidebarOpen, openSidebarPreview]
+  )
+  const isSidebarPreviewVisible = isSidebarPreviewOpen && !isSidebarOpen
+  const sidebarInfo = {
+    modelLabel: currentModelLabel,
+    permissionLabel: currentPermissionLabel,
+    threadId,
+    title: sidebarTitle,
+    workspacePath
+  }
+  const sidebarLabels = {
+    environmentModel: copy.launcher.environmentModel,
+    environmentNoModel: copy.launcher.environmentNoModel,
+    environmentNoThread: copy.launcher.environmentNoThread,
+    environmentNoWorkspace: copy.launcher.environmentNoWorkspace,
+    environmentPermission: copy.launcher.environmentPermission,
+    environmentThread: copy.launcher.environmentThread,
+    environmentWorkspace: copy.launcher.environmentWorkspace,
+    expandSidebar: copy.launcher.expandSidebar,
+    sidebarPinned: copy.launcher.sidebarPinned,
+    sidebarRecent: copy.launcher.sidebarRecent,
+    sidebarSources: copy.launcher.sidebarSources,
+    sidebarUnavailable: copy.launcher.sidebarUnavailable
+  }
   const handleGoToNextChat = useCallback(async (): Promise<void> => {
     const nextThreadId = await goToNextChat()
     if (!nextThreadId) {
@@ -361,7 +450,19 @@ export function LauncherAiPage(): React.JSX.Element {
     } else {
       await window.api.mainWindow.openWindow()
     }
-    await window.api.launcher.hide()
+    await navigation.hideLauncher()
+  }, [navigation, threadId])
+  const openPinnedWindow = useCallback(async (): Promise<void> => {
+    if (!threadId) {
+      return
+    }
+
+    const result = await window.api.aiSessionWindows.openPinned({ threadId })
+    if (!result.ok) {
+      console.warn("[LauncherAiPage] Pinned AI session window limit reached.", {
+        limit: result.limit
+      })
+    }
   }, [threadId])
   const copyWorkingDirectory = useCallback(async (): Promise<void> => {
     if (!workspacePath) {
@@ -413,6 +514,10 @@ export function LauncherAiPage(): React.JSX.Element {
   useDisableTabNavigation(inputRef)
 
   useEffect(() => {
+    return () => clearSidebarPreviewCloseTimer()
+  }, [clearSidebarPreviewCloseTimer])
+
+  useEffect(() => {
     if (hasRunInitialActionRef.current || host.initialAction !== "submit") {
       return
     }
@@ -450,37 +555,52 @@ export function LauncherAiPage(): React.JSX.Element {
     <div className="relative h-full">
       <LauncherChrome
         headerLeading={
-          <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
-            <button
-              type="button"
-              onClick={navigation.goHome}
-              onMouseDown={(event) => event.preventDefault()}
-              aria-label={copy.launcher.goHome}
-              title={copy.launcher.goHome}
-              className="launcher-icon-button flex h-[var(--launcher-icon-button-size)] w-[var(--launcher-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
-            >
-              <ArrowLeft className="size-[var(--ow-icon-sm)]" />
-            </button>
-
-            <div className="flex min-w-0 flex-col items-start">
-              <div className="truncate [font-size:var(--ow-font-control)] font-medium leading-[var(--ow-line-control-sm)] text-foreground">
-                {currentThreadTitle?.trim() || copy.launcher.newQuestion}
-              </div>
+          <LauncherAiHeaderLeadingActions
+            canGoToNextChat={canUseHeaderThreadActions && canGoToNextChat}
+            canGoToPreviousChat={canUseHeaderThreadActions && canGoToPreviousChat}
+            canStartNewQuestion={canUseHeaderThreadActions && canStartNewQuestion}
+            isSidebarOpen={isSidebarOpen}
+            labels={{
+              collapseSidebar: copy.launcher.collapseSidebar,
+              expandSidebar: copy.launcher.expandSidebar,
+              goHome: copy.launcher.goHome,
+              goToNextChat: copy.launcher.goToNextChat,
+              goToPreviousChat: copy.launcher.goToPreviousChat,
+              newQuestion: copy.launcher.newQuestion
+            }}
+            title={sidebarTitle}
+            titleAccessory={
               <LauncherAiHeaderModelPicker
                 currentModelId={currentModelId}
                 fallbackLabel={copy.launcher.aiThreadTitle}
                 onSelectModel={selectModel}
               />
-            </div>
-          </div>
+            }
+            onGoToNextChat={() => {
+              void handleGoToNextChat()
+            }}
+            onGoToPreviousChat={() => {
+              void handleGoToPreviousChat()
+            }}
+            onGoHome={navigation.goHome}
+            onNewQuestion={() => {
+              void handleNewQuestion()
+            }}
+            onSidebarPreviewChange={handleSidebarPreviewChange}
+            onToggleSidebar={toggleSidebar}
+          />
         }
         headerTrailing={
           <LauncherAiHeaderActions
             canBranchThread={canUseHeaderThreadActions && canBranchThread}
-            canGoToNextChat={canUseHeaderThreadActions && canGoToNextChat}
-            canGoToPreviousChat={canUseHeaderThreadActions && canGoToPreviousChat}
             canOpenThreadMenu={canUseHeaderThreadActions}
-            canStartNewQuestion={canUseHeaderThreadActions && canStartNewQuestion}
+            canOpenPinnedWindow={canUseHeaderThreadActions && Boolean(threadId)}
+            environment={{
+              modelLabel: currentModelLabel,
+              permissionLabel: currentPermissionLabel,
+              threadId,
+              workspacePath
+            }}
             labels={{
               addAutomation: copy.launcher.addAutomation,
               actions: copy.launcher.actionsLabel,
@@ -493,10 +613,18 @@ export function LauncherAiPage(): React.JSX.Element {
               copyDeeplink: copy.launcher.copyDeeplink,
               copySessionId: copy.launcher.copySessionId,
               copyWorkingDirectory: copy.launcher.copyWorkingDirectory,
-              goToNextChat: copy.launcher.goToNextChat,
-              goToPreviousChat: copy.launcher.goToPreviousChat,
-              newQuestion: copy.launcher.newQuestion,
+              environmentInfo: copy.launcher.environmentInfo,
+              environmentModel: copy.launcher.environmentModel,
+              environmentNoModel: copy.launcher.environmentNoModel,
+              environmentNoThread: copy.launcher.environmentNoThread,
+              environmentNoWorkspace: copy.launcher.environmentNoWorkspace,
+              environmentPermission: copy.launcher.environmentPermission,
+              environmentThread: copy.launcher.environmentThread,
+              environmentWorkspace: copy.launcher.environmentWorkspace,
+              openFolder: copy.launcher.openFolder,
+              openPinnedWindow: copy.launcher.openPinnedWindow,
               openSideChat: copy.launcher.openSideChat,
+              openTarget: copy.launcher.openTarget,
               pinChat: copy.launcher.pinChat,
               renameChat: copy.launcher.renameChat
             }}
@@ -509,14 +637,8 @@ export function LauncherAiPage(): React.JSX.Element {
             onCopyWorkingDirectory={() => {
               void copyWorkingDirectory()
             }}
-            onGoToNextChat={() => {
-              void handleGoToNextChat()
-            }}
-            onGoToPreviousChat={() => {
-              void handleGoToPreviousChat()
-            }}
-            onNewQuestion={() => {
-              void handleNewQuestion()
+            onOpenPinnedWindow={() => {
+              void openPinnedWindow()
             }}
           />
         }
@@ -542,27 +664,44 @@ export function LauncherAiPage(): React.JSX.Element {
         shellConfig={shellConfig}
         surface={AI_LAUNCHER_PLUGIN_ID}
       >
-        {threadId ? (
-          <LauncherAiConversation
-            bottomInset={conversationBottomInset}
-            clearError={clearVisibleError}
-            error={threadError}
-            isLoading={isBusy}
-            onAddAssistantSelectionRef={addSelectionRef}
-            onBranch={handleBranchChat}
-            onRetry={runPrimaryAction}
-            pendingApproval={pendingApproval}
-            threadId={threadId}
-          />
-        ) : (
-          <LauncherAiEmptyState bottomInset={conversationBottomInset} error={threadError} />
-        )}
+        <div className="launcher-ai-body" data-sidebar-open={isSidebarOpen ? "" : undefined}>
+          {isSidebarOpen ? (
+            <LauncherAiSidebarPanel info={sidebarInfo} labels={sidebarLabels} mode="expanded" />
+          ) : null}
+          {isSidebarPreviewVisible ? (
+            <LauncherAiSidebarPanel
+              info={sidebarInfo}
+              labels={sidebarLabels}
+              mode="preview"
+              onPointerEnter={openSidebarPreview}
+              onPointerLeave={closeSidebarPreview}
+            />
+          ) : null}
+          <div className="launcher-ai-main min-w-0 flex-1">
+            {threadId ? (
+              <LauncherAiConversation
+                bottomInset={conversationBottomInset}
+                clearError={clearVisibleError}
+                error={threadError}
+                isLoading={isBusy}
+                onAddAssistantSelectionRef={addSelectionRef}
+                onBranch={handleBranchChat}
+                onRetry={runPrimaryAction}
+                pendingApproval={pendingApproval}
+                threadId={threadId}
+              />
+            ) : (
+              <LauncherAiEmptyState bottomInset={conversationBottomInset} error={threadError} />
+            )}
+          </div>
+        </div>
       </LauncherChrome>
 
       {!pendingApproval ? (
         <form
           ref={composerOverlayRef}
-          className="pointer-events-none absolute inset-x-0 z-20 flex w-full flex-col justify-end px-[var(--launcher-ai-composer-page-x)]"
+          className="launcher-ai-composer-overlay pointer-events-none absolute inset-x-0 z-20 flex w-full flex-col justify-end px-[var(--launcher-ai-composer-page-x)]"
+          data-sidebar-open={isSidebarOpen ? "" : undefined}
           onSubmit={(event) => {
             event.preventDefault()
             submitCurrentInput()
@@ -590,7 +729,7 @@ export function LauncherAiPage(): React.JSX.Element {
               accept={AI_ATTACHMENT_FILE_EXTENSIONS.map((extension) => `.${extension}`).join(",")}
               onChange={(event) => {
                 if (event.target.files) {
-                  void attachmentDraft.addSelectedFiles(event.target.files)
+                  void addSelectedFiles(event.target.files)
                 }
                 event.target.value = ""
               }}
@@ -629,10 +768,7 @@ export function LauncherAiPage(): React.JSX.Element {
                   className="w-full py-[7px] [font-size:var(--ow-font-control)] font-normal"
                 />
 
-                <LauncherAttachmentStrip
-                  attachments={attachmentDraft.attachments}
-                  onRemove={attachmentDraft.removeAttachment}
-                />
+                <LauncherAttachmentStrip attachments={attachments} onRemove={removeAttachment} />
                 <AssistantSelectionReferencePill
                   className="px-[var(--ow-space-1)]"
                   refs={assistantSelectionRefs}

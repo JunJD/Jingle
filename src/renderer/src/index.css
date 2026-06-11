@@ -430,6 +430,7 @@ body[data-window="pinned-ai-session"],
   --launcher-action-panel-right: var(--ow-space-3);
   --launcher-action-panel-width: 320px;
   --launcher-action-panel-max-h: 60vh;
+  --launcher-ai-menu-width: 230px;
   --launcher-thread-menu-width: 230px;
   --launcher-icon-button-size: 28px;
   --launcher-inline-icon-button-size: 22px;
@@ -449,6 +450,7 @@ body[data-window="pinned-ai-session"],
   --launcher-ai-content-x: var(--ow-space-3);
   --launcher-ai-content-y: var(--ow-space-2);
   --launcher-ai-content-max-width: 720px;
+  --launcher-ai-sidebar-w: clamp(240px, 34vw, 300px);
   --launcher-ai-composer-page-x: var(--ow-space-3);
   --launcher-ai-composer-x: var(--ow-space-3);
   --launcher-ai-composer-y: var(--ow-space-2);
@@ -676,6 +678,356 @@ body[data-window="pinned-ai-session"],
 .launcher-thread-menu__chevron {
   font-size: 18px;
   line-height: 1;
+}
+
+.launcher-ai-menu {
+  z-index: 70;
+  width: var(--launcher-ai-menu-width);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border-emphasis) 54%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--popover) 95%, white 5%);
+  padding: 5px;
+  color: var(--popover-foreground);
+  box-shadow:
+    0 18px 42px color-mix(in srgb, var(--foreground) 14%, transparent),
+    0 4px 12px color-mix(in srgb, var(--foreground) 7%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 52%, transparent);
+  outline: none;
+}
+
+.launcher-ai-menu__item {
+  display: flex;
+  width: 100%;
+  height: 30px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  color: color-mix(in srgb, var(--foreground) 84%, var(--muted-foreground));
+  font-size: 13px;
+  line-height: 18px;
+  outline: none;
+  padding-inline: 8px;
+  user-select: none;
+}
+
+.launcher-ai-menu__item[data-highlighted],
+.launcher-ai-menu__item[data-state="open"] {
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+}
+
+.launcher-ai-menu__item[data-disabled] {
+  color: color-mix(in srgb, var(--muted-foreground) 52%, transparent);
+}
+
+.launcher-ai-menu__icon {
+  display: flex;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--muted-foreground) 84%, var(--foreground));
+}
+
+.launcher-ai-menu__icon > svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.9;
+}
+
+.launcher-ai-menu__app-icon {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.launcher-ai-menu__label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launcher-ai-menu__shortcut {
+  margin-left: auto;
+  color: color-mix(in srgb, var(--muted-foreground) 62%, transparent);
+  font-size: 12px;
+}
+
+.launcher-ai-open-target-control {
+  display: flex;
+  height: var(--launcher-icon-button-size);
+  min-width: 0;
+  align-items: center;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background-secondary) 72%, transparent);
+  color: var(--foreground);
+}
+
+.launcher-ai-open-target-control__main,
+.launcher-ai-open-target-control__chevron {
+  display: flex;
+  height: var(--launcher-icon-button-size);
+  appearance: none;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  color: inherit;
+  outline: none;
+}
+
+.launcher-ai-open-target-control__main {
+  width: 30px;
+  border-radius: 999px 0 0 999px;
+}
+
+.launcher-ai-open-target-control__main:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.launcher-ai-open-target-control__main:disabled:hover {
+  background: transparent;
+}
+
+.launcher-ai-open-target-control__main .launcher-ai-menu__app-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.launcher-ai-open-target-control__chevron {
+  width: 24px;
+  border-radius: 0 999px 999px 0;
+  color: color-mix(in srgb, var(--muted-foreground) 86%, var(--foreground));
+}
+
+.launcher-ai-open-target-control__main,
+.launcher-ai-open-target-control__main:hover,
+.launcher-ai-open-target-control__main:active,
+.launcher-ai-open-target-control__main:focus,
+.launcher-ai-open-target-control__main:focus-visible,
+.launcher-ai-open-target-control__chevron,
+.launcher-ai-open-target-control__chevron:hover,
+.launcher-ai-open-target-control__chevron:active,
+.launcher-ai-open-target-control__chevron:focus,
+.launcher-ai-open-target-control__chevron:focus-visible,
+.launcher-ai-open-target-control__chevron[data-state="open"] {
+  border: 0;
+  box-shadow: none;
+  outline: none;
+}
+
+.launcher-ai-open-target-menu__context {
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px 8px 8px;
+  color: color-mix(in srgb, var(--muted-foreground) 78%, var(--foreground));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.launcher-ai-open-target-menu {
+  width: 216px;
+}
+
+.launcher-ai-environment-menu {
+  width: 286px;
+  padding: 8px;
+}
+
+.launcher-ai-environment-menu__trigger,
+.launcher-ai-environment-menu__trigger:hover,
+.launcher-ai-environment-menu__trigger:active,
+.launcher-ai-environment-menu__trigger:focus,
+.launcher-ai-environment-menu__trigger:focus-visible,
+.launcher-ai-environment-menu__trigger[data-state="open"] {
+  border: 0;
+  box-shadow: none;
+  outline: none;
+}
+
+.launcher-ai-environment-menu__heading {
+  padding: 2px 4px 8px;
+  color: color-mix(in srgb, var(--muted-foreground) 82%, var(--foreground));
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.launcher-ai-environment-menu__row {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 10px;
+  padding: 6px 4px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.launcher-ai-environment-menu__label {
+  color: color-mix(in srgb, var(--muted-foreground) 80%, transparent);
+}
+
+.launcher-ai-environment-menu__value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launcher-ai-body {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.launcher-ai-main {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.launcher-ai-sidebar-panel {
+  display: flex;
+  width: var(--launcher-ai-sidebar-w);
+  min-width: var(--launcher-ai-sidebar-w);
+  max-width: var(--launcher-ai-sidebar-w);
+  flex-direction: column;
+  gap: var(--ow-space-3);
+  overflow: hidden;
+  color: var(--foreground);
+  backdrop-filter: blur(18px);
+}
+
+.launcher-ai-sidebar-panel[data-mode="expanded"] {
+  position: relative;
+  z-index: 4;
+  flex: 0 0 var(--launcher-ai-sidebar-w);
+  border-right: 1px solid color-mix(in srgb, var(--launcher-border) 78%, transparent);
+  background: color-mix(in srgb, var(--launcher-surface-strong) 30%, transparent);
+  padding: var(--ow-space-3) var(--ow-space-2);
+}
+
+.launcher-ai-sidebar-panel[data-mode="preview"] {
+  position: absolute;
+  top: var(--ow-space-2);
+  bottom: var(--ow-space-2);
+  left: var(--ow-space-2);
+  z-index: 30;
+  border: 1px solid color-mix(in srgb, var(--launcher-border) 74%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--launcher-surface-strong) 72%, transparent);
+  box-shadow:
+    1px 0 0 color-mix(in srgb, var(--launcher-border) 54%, transparent),
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  padding: var(--ow-space-3) var(--ow-space-2);
+}
+
+.launcher-ai-sidebar-panel__current {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--ow-space-1);
+}
+
+.launcher-ai-sidebar-panel__title {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 var(--ow-space-1) var(--ow-space-1);
+  color: var(--foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ow-font-control);
+  font-weight: 600;
+  line-height: var(--ow-line-control-sm);
+}
+
+.launcher-ai-sidebar-panel__fact {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: var(--ow-space-2);
+  min-width: 0;
+  padding: 4px var(--ow-space-1);
+  font-size: var(--ow-font-meta);
+  line-height: var(--ow-line-control-sm);
+}
+
+.launcher-ai-sidebar-panel__fact-label {
+  color: color-mix(in srgb, var(--muted-foreground) 78%, transparent);
+}
+
+.launcher-ai-sidebar-panel__fact-value {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--foreground) 86%, var(--muted-foreground));
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launcher-ai-sidebar-panel__section {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid color-mix(in srgb, var(--launcher-border) 72%, transparent);
+  padding-top: var(--ow-space-2);
+}
+
+.launcher-ai-sidebar-panel__placeholder {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--ow-space-2);
+  min-height: 30px;
+  border-radius: 6px;
+  padding: 0 var(--ow-space-1);
+  color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  font-size: var(--ow-font-control);
+  line-height: var(--ow-line-control-sm);
+  user-select: none;
+}
+
+.launcher-ai-sidebar-panel__placeholder-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.launcher-ai-sidebar-panel__placeholder-icon > svg {
+  width: var(--ow-icon-sm);
+  height: var(--ow-icon-sm);
+  stroke-width: 1.8;
+}
+
+.launcher-ai-sidebar-panel__placeholder-label {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--foreground) 72%, var(--muted-foreground));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launcher-ai-sidebar-panel__placeholder-status {
+  color: color-mix(in srgb, var(--muted-foreground) 58%, transparent);
+  font-size: var(--ow-font-meta);
+}
+
+.launcher-ai-composer-overlay[data-sidebar-open] {
+  left: var(--launcher-ai-sidebar-w);
+  right: 0;
+  width: auto;
 }
 
 .dark {
@@ -1194,6 +1546,11 @@ body[data-platform="darwin"] .launcher-window-shell {
 
 .launcher-icon-button {
   border-radius: 999px;
+}
+
+.launcher-icon-button[data-active] {
+  background: color-mix(in srgb, var(--launcher-surface-strong) 56%, transparent);
+  color: var(--launcher-text);
 }
 
 .launcher-action-button--primary {

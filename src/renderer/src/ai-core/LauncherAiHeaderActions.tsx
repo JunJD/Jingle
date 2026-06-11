@@ -1,13 +1,17 @@
-import { ArrowLeftToLine, ArrowRightToLine, MessageCirclePlus } from "lucide-react"
+import { PictureInPicture2 } from "lucide-react"
 import type { ReactNode } from "react"
+import {
+  LauncherAiEnvironmentMenu,
+  type LauncherAiEnvironmentInfo
+} from "./LauncherAiEnvironmentMenu"
+import { LauncherAiOpenTargetMenu } from "./LauncherAiOpenTargetMenu"
 import { LauncherAiThreadMenu } from "./LauncherAiThreadMenu"
 
 interface LauncherAiHeaderActionsProps {
   canBranchThread: boolean
-  canGoToNextChat: boolean
-  canGoToPreviousChat: boolean
   canOpenThreadMenu: boolean
-  canStartNewQuestion: boolean
+  canOpenPinnedWindow: boolean
+  environment: LauncherAiEnvironmentInfo
   labels: {
     addAutomation: string
     actions: string
@@ -20,40 +24,44 @@ interface LauncherAiHeaderActionsProps {
     copyDeeplink: string
     copySessionId: string
     copyWorkingDirectory: string
-    goToPreviousChat: string
-    goToNextChat: string
-    newQuestion: string
+    environmentInfo: string
+    environmentModel: string
+    environmentNoModel: string
+    environmentNoThread: string
+    environmentNoWorkspace: string
+    environmentPermission: string
+    environmentThread: string
+    environmentWorkspace: string
     openSideChat: string
+    openFolder: string
+    openPinnedWindow: string
+    openTarget: string
     pinChat: string
     renameChat: string
   }
   onBranchIntoLocal: () => void
   onCopySessionId: () => void
   onCopyWorkingDirectory: () => void
-  onGoToNextChat: () => void
-  onGoToPreviousChat: () => void
-  onNewQuestion: () => void
+  onOpenPinnedWindow: () => void
 }
 
-interface LauncherAiHeaderActionProps {
+function LauncherAiHeaderIconButton(props: {
   disabled?: boolean
   icon: ReactNode
   label: string
   onClick: () => void
-}
-
-function LauncherAiHeaderAction(props: LauncherAiHeaderActionProps): React.JSX.Element {
+}): React.JSX.Element {
   const { disabled = false, icon, label, onClick } = props
 
   return (
     <button
       type="button"
+      aria-label={label}
+      className="launcher-icon-button flex h-[var(--launcher-icon-button-size)] w-[var(--launcher-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground disabled:opacity-35"
+      disabled={disabled}
+      title={label}
       onClick={onClick}
       onMouseDown={(event) => event.preventDefault()}
-      disabled={disabled}
-      aria-label={label}
-      title={label}
-      className="launcher-icon-button flex h-[var(--launcher-icon-button-size)] w-[var(--launcher-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground disabled:opacity-35"
     >
       {icon}
     </button>
@@ -63,38 +71,43 @@ function LauncherAiHeaderAction(props: LauncherAiHeaderActionProps): React.JSX.E
 export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): React.JSX.Element {
   const {
     canBranchThread,
-    canGoToNextChat,
-    canGoToPreviousChat,
     canOpenThreadMenu,
-    canStartNewQuestion,
+    canOpenPinnedWindow,
+    environment,
     labels,
     onBranchIntoLocal,
     onCopySessionId,
     onCopyWorkingDirectory,
-    onGoToNextChat,
-    onGoToPreviousChat,
-    onNewQuestion
+    onOpenPinnedWindow
   } = props
 
   return (
     <div className="flex shrink-0 items-center gap-[var(--ow-gap-xs)]">
-      <LauncherAiHeaderAction
-        disabled={!canGoToPreviousChat}
-        icon={<ArrowLeftToLine className="size-[var(--ow-icon-sm)]" />}
-        label={labels.goToPreviousChat}
-        onClick={onGoToPreviousChat}
+      <LauncherAiOpenTargetMenu
+        folderPath={environment.workspacePath}
+        labels={{
+          openFolder: labels.openFolder,
+          openTarget: labels.openTarget
+        }}
       />
-      <LauncherAiHeaderAction
-        disabled={!canGoToNextChat}
-        icon={<ArrowRightToLine className="size-[var(--ow-icon-sm)]" />}
-        label={labels.goToNextChat}
-        onClick={onGoToNextChat}
+      <LauncherAiEnvironmentMenu
+        environment={environment}
+        labels={{
+          environmentInfo: labels.environmentInfo,
+          environmentModel: labels.environmentModel,
+          environmentNoModel: labels.environmentNoModel,
+          environmentNoThread: labels.environmentNoThread,
+          environmentNoWorkspace: labels.environmentNoWorkspace,
+          environmentPermission: labels.environmentPermission,
+          environmentThread: labels.environmentThread,
+          environmentWorkspace: labels.environmentWorkspace
+        }}
       />
-      <LauncherAiHeaderAction
-        disabled={!canStartNewQuestion}
-        icon={<MessageCirclePlus className="size-[var(--ow-icon-sm)]" />}
-        label={labels.newQuestion}
-        onClick={onNewQuestion}
+      <LauncherAiHeaderIconButton
+        disabled={!canOpenPinnedWindow}
+        icon={<PictureInPicture2 className="size-[var(--ow-icon-sm)]" />}
+        label={labels.openPinnedWindow}
+        onClick={onOpenPinnedWindow}
       />
       {canOpenThreadMenu ? (
         <LauncherAiThreadMenu
