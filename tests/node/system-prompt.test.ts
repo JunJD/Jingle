@@ -3,6 +3,7 @@ import test from "node:test"
 import { BASE_SYSTEM_PROMPT } from "../../src/main/agent/system-prompt"
 
 test("base system prompt keeps root agent execution-oriented", () => {
+  assert.match(BASE_SYSTEM_PROMPT, /^You are jingle/)
   assert.match(BASE_SYSTEM_PROMPT, /Default to doing the work without asking permission/)
   assert.match(BASE_SYSTEM_PROMPT, /continue until the user's request is completed/)
   assert.match(BASE_SYSTEM_PROMPT, /do not let brevity stop the work early/)
