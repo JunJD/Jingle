@@ -50,6 +50,7 @@ import {
   registerOpenworkMemoryIpcHandlers,
   registerOpenworkMemoryModule
 } from "./openwork-memory/module"
+import { registerOpenTargetsIpcHandlers, registerOpenTargetsModule } from "./open-targets/module"
 import {
   getGlobalShortcutAccelerator,
   registerGlobalShortcutService,
@@ -111,6 +112,7 @@ export class MainCompositionRoot {
     registerLocalStartIpcHandlers(this.dependencyContainer, ipcMain)
     registerModelProviderIpcHandlers(this.dependencyContainer, ipcMain)
     registerOpenworkMemoryIpcHandlers(this.dependencyContainer, ipcMain)
+    registerOpenTargetsIpcHandlers(this.dependencyContainer, ipcMain)
     registerSettingsIpcHandlers(this.dependencyContainer, ipcMain)
     registerThreadsIpcHandlers(this.dependencyContainer, ipcMain)
     registerWorkspaceIpcHandlers(this.dependencyContainer, ipcMain)
@@ -214,6 +216,7 @@ export function createMainCompositionRoot(
   })
   registerModelProviderModule(childContainer)
   registerOpenworkMemoryModule(childContainer)
+  registerOpenTargetsModule(childContainer)
   registerNativeExtensionsModule(childContainer)
   registerNativeMenuBarModule(childContainer)
   registerSettingsModule(childContainer)

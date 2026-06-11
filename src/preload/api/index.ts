@@ -10,6 +10,7 @@ import { modelsApi } from "./models"
 import { memoryApi } from "./memory"
 import { nativeExtensionsApi } from "./nativeExtensions"
 import { nativeMenuBarApi } from "./nativeMenuBar"
+import { openTargetsApi } from "./openTargets"
 import { settingsApi } from "./settings"
 import { shortcutsApi } from "./shortcuts"
 import { threadsApi } from "./threads"
@@ -31,6 +32,7 @@ export const api = {
   localStart: localStartApi,
   nativeExtensions: nativeExtensionsApi,
   nativeMenuBar: nativeMenuBarApi,
+  openTargets: openTargetsApi,
   workspace: workspaceApi
 }
 
