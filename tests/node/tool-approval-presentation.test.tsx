@@ -41,7 +41,7 @@ test("extension approval presentation falls back to extension tool titles", () =
 })
 
 test("extension tool presentation renders from schema display metadata", () => {
-  const summary = extensionToolComponent.renderSummary({
+  const display = extensionToolComponent.renderDisplay({
     args: {
       title: "Ship it"
     },
@@ -75,11 +75,12 @@ test("extension tool presentation renders from schema display metadata", () => {
     }
   })
 
-  assert.equal(summary, "Create Reminder · Personal")
+  assert.equal(display.title, "Create Reminder")
+  assert.equal(display.detail, "Personal")
 })
 
 test("extension tool presentation still reads legacy presentation metadata", () => {
-  const summary = extensionToolComponent.renderSummary({
+  const display = extensionToolComponent.renderDisplay({
     args: {
       title: "Ship it"
     },
@@ -111,5 +112,6 @@ test("extension tool presentation still reads legacy presentation metadata", () 
     }
   })
 
-  assert.equal(summary, "Create Reminder · Personal")
+  assert.equal(display.title, "Create Reminder")
+  assert.equal(display.detail, "Personal")
 })
