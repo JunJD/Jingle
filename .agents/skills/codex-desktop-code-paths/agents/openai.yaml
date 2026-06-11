@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Desktop Code Paths"
+  short_description: "Maps installed Codex Desktop Electron bundle chunks to implementation responsibilities."
+  default_prompt: "Use $codex-desktop-code-paths to extract the local Codex Desktop app.asar, locate the relevant webview/app-server chunks, explain each file's responsibility, and compare the behavior to Openwork boundaries."
