@@ -342,6 +342,7 @@
 }
 
 body[data-window="launcher"],
+body[data-window="pinned-ai-session"],
 .launcher-chrome {
   /* Launcher surfaces derive from the app theme */
   --launcher-surface: var(--background-elevated);
@@ -726,7 +727,9 @@ body[data-window="launcher"],
 }
 
 body.dark[data-window="launcher"],
+body.dark[data-window="pinned-ai-session"],
 html.dark body[data-window="launcher"],
+html.dark body[data-window="pinned-ai-session"],
 .dark .launcher-chrome {
   --launcher-surface: var(--background-elevated);
   --launcher-surface-strong: var(--background-secondary);
@@ -765,7 +768,9 @@ body[data-platform="darwin"] {
 }
 
 html[data-platform="darwin"] body[data-window="launcher"],
+html[data-platform="darwin"] body[data-window="pinned-ai-session"],
 body[data-platform="darwin"][data-window="launcher"],
+body[data-platform="darwin"][data-window="pinned-ai-session"],
 html[data-platform="darwin"] .launcher-chrome,
 body[data-platform="darwin"] .launcher-chrome {
   --launcher-panel-radius: 18px;
@@ -791,7 +796,9 @@ body[data-platform="darwin"] .launcher-chrome {
 }
 
 html[data-opaque-windows="true"][data-platform="darwin"] body[data-window="launcher"],
+html[data-opaque-windows="true"][data-platform="darwin"] body[data-window="pinned-ai-session"],
 body[data-opaque-windows="true"][data-platform="darwin"][data-window="launcher"],
+body[data-opaque-windows="true"][data-platform="darwin"][data-window="pinned-ai-session"],
 html[data-opaque-windows="true"][data-platform="darwin"] .launcher-chrome,
 body[data-opaque-windows="true"][data-platform="darwin"] .launcher-chrome {
   --launcher-shell-fill: color-mix(in srgb, var(--launcher-surface) 92%, white 8%);
@@ -807,7 +814,9 @@ body[data-platform="win32"] {
 }
 
 html[data-platform="win32"] body[data-window="launcher"],
+html[data-platform="win32"] body[data-window="pinned-ai-session"],
 body[data-platform="win32"][data-window="launcher"],
+body[data-platform="win32"][data-window="pinned-ai-session"],
 html[data-platform="win32"] .launcher-chrome,
 body[data-platform="win32"] .launcher-chrome {
   --launcher-panel-radius: var(--ow-radius-panel);
@@ -823,7 +832,9 @@ body[data-platform="linux"] {
 }
 
 html[data-platform="linux"] body[data-window="launcher"],
+html[data-platform="linux"] body[data-window="pinned-ai-session"],
 body[data-platform="linux"][data-window="launcher"],
+body[data-platform="linux"][data-window="pinned-ai-session"],
 html[data-platform="linux"] .launcher-chrome,
 body[data-platform="linux"] .launcher-chrome {
   --launcher-panel-radius: var(--ow-radius-panel);
@@ -886,8 +897,11 @@ body[data-window="main"] #root {
 }
 
 html[data-window="launcher"],
+html[data-window="pinned-ai-session"],
 body[data-window="launcher"],
-body[data-window="launcher"] #root {
+body[data-window="pinned-ai-session"],
+body[data-window="launcher"] #root,
+body[data-window="pinned-ai-session"] #root {
   width: 100%;
   height: 100%;
   min-height: 100%;
@@ -895,9 +909,31 @@ body[data-window="launcher"] #root {
   background-color: transparent;
 }
 
-body[data-window="launcher"] {
+body[data-window="launcher"],
+body[data-window="pinned-ai-session"] {
   margin: 0;
   background: transparent;
+}
+
+body[data-window="pinned-ai-session"] .launcher-window-drag-region {
+  -webkit-app-region: drag;
+}
+
+body[data-window="pinned-ai-session"] .launcher-window-drag-region button,
+body[data-window="pinned-ai-session"] .launcher-window-drag-region input,
+body[data-window="pinned-ai-session"] .launcher-window-drag-region select,
+body[data-window="pinned-ai-session"] .launcher-window-drag-region textarea,
+body[data-window="pinned-ai-session"] .launcher-window-drag-region a,
+body[data-window="pinned-ai-session"] .launcher-window-drag-region [role="button"],
+body[data-window="pinned-ai-session"]
+  .launcher-window-drag-region
+  [tabindex]:not([tabindex="-1"]) {
+  -webkit-app-region: no-drag;
+}
+
+html[data-platform="darwin"] body[data-window="pinned-ai-session"] .launcher-chrome-header,
+body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-header {
+  padding-left: calc(var(--window-controls-offset-inline) + 6px);
 }
 
 .launcher-window-frame {
@@ -2150,6 +2186,7 @@ body[data-platform="darwin"] .launcher-window-shell {
 }
 
 body[data-window="launcher"] .ow-markdown,
+body[data-window="pinned-ai-session"] .ow-markdown,
 .launcher-window-shell .ow-markdown,
 .launcher-chrome .ow-markdown,
 .ow-native-detail-markdown {

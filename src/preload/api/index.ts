@@ -1,4 +1,5 @@
 import { agentApi } from "./agent"
+import { aiSessionWindowsApi } from "./aiSessionWindows"
 import { artifactsApi } from "./artifacts"
 import { extensionQuicklinksApi } from "./extensionQuicklinks"
 import { extensionRuntimeApi } from "./extensionRuntime"
@@ -18,6 +19,7 @@ import { workspaceApi } from "./workspace"
 
 export const api = {
   agent: agentApi,
+  aiSessionWindows: aiSessionWindowsApi,
   threads: threadsApi,
   artifacts: artifactsApi,
   extensionQuicklinks: extensionQuicklinksApi,
