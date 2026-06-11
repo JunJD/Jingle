@@ -125,7 +125,8 @@ export function LauncherActionOverlay(props: {
               ) : null}
               {group.actions.map((action) => {
                 const index = flatActions.findIndex((entry) => entry.id === action.id)
-                const isSelected = index === activeSelectedIndex
+                const isFocused = index === activeSelectedIndex
+                const isChecked = action.checked === true
 
                 return (
                   <button
@@ -145,7 +146,10 @@ export function LauncherActionOverlay(props: {
                     disabled={action.disabled}
                     className={cn(
                       "flex h-[var(--ow-control-h-lg)] w-full items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-3)] text-left [font-size:var(--ow-font-body)] transition-colors duration-100 focus-visible:outline-none",
-                      isSelected ? "bg-background-secondary" : "hover:bg-background-secondary",
+                      isChecked
+                        ? "bg-background-secondary font-medium text-foreground"
+                        : "hover:bg-background-secondary/70",
+                      isFocused && !isChecked ? "bg-background-secondary/45" : null,
                       action.style === "destructive" ? "text-red-500" : "text-foreground",
                       action.disabled ? "cursor-default opacity-45" : null
                     )}
@@ -168,7 +172,7 @@ export function LauncherActionOverlay(props: {
                         <ChevronRight className="size-[var(--ow-icon-action)]" strokeWidth={2.2} />
                       </span>
                     ) : action.accessory ? (
-                      <span className="flex size-[var(--ow-icon-md)] shrink-0 items-center justify-center text-muted-foreground [&>svg]:size-[var(--ow-icon-action)]">
+                      <span className="flex size-[var(--ow-icon-md)] shrink-0 items-center justify-center text-primary [&>svg]:size-[var(--ow-icon-action)]">
                         {action.accessory}
                       </span>
                     ) : null}

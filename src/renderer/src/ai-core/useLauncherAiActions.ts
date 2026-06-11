@@ -266,6 +266,7 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
                 permissionMode === currentPermissionMode
                   ? createElement(Check, { className: "size-[var(--ow-icon-sm)]" })
                   : undefined,
+              checked: permissionMode === currentPermissionMode,
               icon: getPermissionModeIcon(permissionMode),
               id: `launcher-ai-permission-mode-${permissionMode}`,
               onAction: async () => {

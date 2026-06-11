@@ -5,6 +5,7 @@ export type LauncherActionStyle = "regular" | "destructive"
 
 export interface LauncherActionDescriptor {
   accessory?: ReactNode
+  checked?: boolean
   children?: LauncherActionDescriptor[]
   disabled?: boolean
   icon?: ReactNode
