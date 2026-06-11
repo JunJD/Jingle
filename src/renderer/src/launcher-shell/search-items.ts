@@ -321,6 +321,51 @@ export function buildLauncherHistoryShellItems(
   }))
 }
 
+export function buildLauncherAiExtensionSourceShellItems(params: {
+  copy: AppCopy
+  query: string
+  sourceMentions: readonly ExtensionSourceMention[]
+}): LauncherShellItem[] {
+  const query = params.query.trim().toLowerCase()
+  if (!query.startsWith("@")) {
+    return []
+  }
+
+  return params.sourceMentions
+    .filter((mention) => mention.value.toLowerCase().startsWith(query))
+    .map((mention) => ({
+      action: {
+        executor: "internal" as const,
+        target: null,
+        type: "none" as const
+      },
+      commandOpenOptions: {
+        seedQuery: `${mention.value} `
+      },
+      commandRef: {
+        builtInId: AI_LAUNCHER_PLUGIN_ID,
+        commandName: AI_CHAT_COMMAND_NAME,
+        kind: "built-in-command" as const
+      },
+      id: `ai-source:${mention.extensionName}:${mention.sourceId}`,
+      kind: "ai" as const,
+      presentation: {
+        categoryLabel: params.copy.launcher.resultKindAgent,
+        icon: {
+          extensionName: mention.extensionName,
+          icon: mention.icon,
+          iconName: mention.iconName,
+          type: "extension" as const
+        },
+        listActionLabel: params.copy.launcher.openGeneric,
+        primaryActionLabel: params.copy.launcher.aiPrimaryLabel,
+        tone: "accent" as const
+      },
+      subtitle: mention.extensionName,
+      title: mention.label
+    }))
+}
+
 function getInternalCommandQueryScore(
   command: LauncherIndexedCommand,
   normalizedQuery: string

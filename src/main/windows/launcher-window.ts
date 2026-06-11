@@ -6,6 +6,8 @@ import {
   getLauncherIdleHeight,
   getLauncherMaxViewportHeight
 } from "@shared/launcher"
+import { getLauncherWindowState, setLauncherWindowState } from "../preferences"
+import { attachLauncherWindowDragController } from "./launcher-window-drag-controller"
 
 const LAUNCHER_CONTENT_WIDTH = 760
 const LAUNCHER_HORIZONTAL_MARGIN = 24
@@ -42,22 +44,32 @@ function getLauncherContentHeight(windowHeight: number): number {
   return Math.max(LAUNCHER_BASE_HEIGHT, Math.round(windowHeight) - LAUNCHER_WINDOW_GUTTER * 2)
 }
 
-function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): Rectangle {
-  const cursorPoint = screen.getCursorScreenPoint()
-  const display = screen.getDisplayNearestPoint(cursorPoint)
+function getLauncherBoundsForDisplay(
+  display: Electron.Display,
+  height = LAUNCHER_BASE_HEIGHT,
+  origin?: { x: number; y: number }
+): Rectangle {
   const boundedHeight = getLauncherWindowHeight(display, height)
   const positionReferenceHeight = getLauncherWindowHeight(
     display,
     LAUNCHER_POSITION_REFERENCE_HEIGHT
   )
   const width = getLauncherWindowWidthForDisplay(display)
-  const x = Math.round(display.workArea.x + display.workArea.width / 2 - width / 2)
+  const minX = display.workArea.x + LAUNCHER_HORIZONTAL_MARGIN
+  const maxX = display.workArea.x + display.workArea.width - width - LAUNCHER_HORIZONTAL_MARGIN
+  const x =
+    origin === undefined
+      ? Math.round(display.workArea.x + display.workArea.width / 2 - width / 2)
+      : clamp(origin.x, minX, Math.max(minX, maxX))
   const minY = display.workArea.y + LAUNCHER_TOP_MARGIN
   const maxY = display.workArea.y + display.workArea.height - boundedHeight - LAUNCHER_TOP_MARGIN
   const referenceMaxY =
     display.workArea.y + display.workArea.height - positionReferenceHeight - LAUNCHER_TOP_MARGIN
   const targetY = Math.round(minY + (referenceMaxY - minY) * LAUNCHER_VERTICAL_POSITION_RATIO)
-  const y = clamp(targetY, minY, Math.max(minY, maxY))
+  const y =
+    origin === undefined
+      ? clamp(targetY, minY, Math.max(minY, maxY))
+      : clamp(origin.y, minY, Math.max(minY, maxY))
 
   return {
     x,
@@ -65,6 +77,24 @@ function getLauncherBounds(height = LAUNCHER_BASE_HEIGHT): Rectangle {
     width,
     height: boundedHeight
   }
+}
+
+function getLauncherBounds(
+  height = LAUNCHER_BASE_HEIGHT,
+  origin?: { x: number; y: number }
+): Rectangle {
+  const display = origin
+    ? screen.getDisplayNearestPoint(origin)
+    : screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+
+  return getLauncherBoundsForDisplay(display, height, origin)
+}
+
+function getLauncherViewportGuideBounds(launcherWindow: BrowserWindow): Rectangle {
+  const currentBounds = launcherWindow.getContentBounds()
+  const display = screen.getDisplayMatching(currentBounds)
+
+  return getLauncherBoundsForDisplay(display, getLauncherContentHeight(currentBounds.height))
 }
 
 function getLauncherHeightForDisplay(display: Electron.Display, requestedHeight: number): number {
@@ -176,8 +206,11 @@ function syncLauncherWindowShape(launcherWindow: BrowserWindow): void {
 }
 
 function setLauncherWindowContentBounds(launcherWindow: BrowserWindow, bounds: Rectangle): void {
+  const currentBounds = launcherWindow.getContentBounds()
   launcherWindow.setContentBounds(bounds, false)
-  syncLauncherWindowShape(launcherWindow)
+  if (currentBounds.width !== bounds.width || currentBounds.height !== bounds.height) {
+    syncLauncherWindowShape(launcherWindow)
+  }
 }
 
 function emitLauncherShown(launcherWindow: BrowserWindow): void {
@@ -197,7 +230,7 @@ export function showLauncherWindow(launcherWindow: BrowserWindow): void {
   const nextHeight = getLauncherContentHeight(
     launcherWindow.getContentBounds().height || LAUNCHER_BASE_HEIGHT
   )
-  const nextBounds = getLauncherBounds(nextHeight)
+  const nextBounds = getLauncherBounds(nextHeight, getLauncherWindowState() ?? undefined)
   setLauncherWindowContentBounds(launcherWindow, nextBounds)
 
   if (process.platform === "darwin") {
@@ -215,6 +248,16 @@ export function showLauncherWindow(launcherWindow: BrowserWindow): void {
 
 function hideLauncherWindow(launcherWindow: BrowserWindow): void {
   launcherWindow.hide()
+}
+
+function persistLauncherWindowOrigin(launcherWindow: BrowserWindow): void {
+  if (launcherWindow.isDestroyed()) {
+    return
+  }
+
+  const { x, y } = launcherWindow.getContentBounds()
+  launcherVisibleOrigins.set(launcherWindow, { x, y })
+  setLauncherWindowState({ x, y })
 }
 
 export function setLauncherBlurHideSuppressed(active: boolean): void {
@@ -241,7 +284,7 @@ export function setLauncherWindowViewportHeight(
           height,
           launcherWindow
         })
-      : getLauncherBounds(height)
+      : getLauncherBounds(height, getLauncherWindowState() ?? undefined)
   )
 }
 
@@ -284,7 +327,18 @@ export function createLauncherWindow(): BrowserWindow {
       sandbox: false
     }
   })
+  const launcherDragController = attachLauncherWindowDragController({
+    getGuideBounds: () => getLauncherViewportGuideBounds(launcherWindow),
+    launcherWindow,
+    persistOrigin: () => persistLauncherWindowOrigin(launcherWindow),
+    setContentBounds: (bounds) => setLauncherWindowContentBounds(launcherWindow, bounds)
+  })
+
   launcherWindow.on("blur", () => {
+    if (launcherDragController.isDragging()) {
+      return
+    }
+
     if (launcherBlurHideSuppressionDepth > 0) {
       return
     }
@@ -304,6 +358,7 @@ export function createLauncherWindow(): BrowserWindow {
   })
 
   launcherWindow.on("hide", () => {
+    launcherDragController.cancel()
     launcherVisibleOrigins.delete(launcherWindow)
     if (process.platform === "darwin") {
       launcherWindow.setAlwaysOnTop(false)
@@ -320,8 +375,10 @@ export function createLauncherWindow(): BrowserWindow {
 
   const repositionIfVisible = (): void => {
     if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
+      const visibleOrigin = launcherVisibleOrigins.get(launcherWindow)
       const nextBounds = getLauncherBounds(
-        getLauncherContentHeight(launcherWindow.getContentBounds().height)
+        getLauncherContentHeight(launcherWindow.getContentBounds().height),
+        visibleOrigin ?? getLauncherWindowState() ?? undefined
       )
       launcherVisibleOrigins.set(launcherWindow, {
         x: nextBounds.x,
@@ -336,6 +393,7 @@ export function createLauncherWindow(): BrowserWindow {
   screen.on("display-removed", repositionIfVisible)
 
   launcherWindow.on("closed", () => {
+    launcherDragController.dispose()
     screen.removeListener("display-metrics-changed", repositionIfVisible)
     screen.removeListener("display-added", repositionIfVisible)
     screen.removeListener("display-removed", repositionIfVisible)

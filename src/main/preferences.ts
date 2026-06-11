@@ -41,11 +41,17 @@ export interface PersistedWindowState {
   isMaximized: boolean
 }
 
+export interface PersistedLauncherWindowState {
+  x: number
+  y: number
+}
+
 interface SettingsStoreShape {
   agentConfig: AgentConfig
   appThemeSettings: AppThemeSettings
   defaultModels: DefaultModels
   launcherSettings: LauncherSettings
+  launcherWindowState: PersistedLauncherWindowState | null
   mainWindowState: PersistedWindowState | null
   nativeExtensionPreferences: NativeExtensionPreferencesState
   openworkMemorySettings: OpenworkMemorySettings
@@ -89,6 +95,7 @@ const settingsStore = new Store<SettingsStoreShape>({
     appThemeSettings: DEFAULT_APP_THEME_SETTINGS,
     defaultModels: DEFAULT_MODELS,
     launcherSettings: DEFAULT_LAUNCHER_SETTINGS,
+    launcherWindowState: null,
     mainWindowState: null,
     nativeExtensionPreferences: DEFAULT_NATIVE_EXTENSION_PREFERENCES,
     openworkMemorySettings: DEFAULT_OPENWORK_MEMORY_SETTINGS,
@@ -938,6 +945,36 @@ export function setLauncherSettings(updates: Partial<LauncherSettings>): Launche
 
   settingsStore.set("launcherSettings", nextSettings)
   return nextSettings
+}
+
+export function getLauncherWindowState(): PersistedLauncherWindowState | null {
+  const stored = settingsStore.get("launcherWindowState", null)
+
+  if (!stored || typeof stored !== "object") {
+    return null
+  }
+
+  const partial = stored as Partial<PersistedLauncherWindowState>
+  const x = normalizeWindowCoordinate(partial.x)
+  const y = normalizeWindowCoordinate(partial.y)
+
+  if (x === undefined || y === undefined) {
+    return null
+  }
+
+  return { x, y }
+}
+
+export function setLauncherWindowState(
+  windowState: PersistedLauncherWindowState
+): PersistedLauncherWindowState {
+  const nextState: PersistedLauncherWindowState = {
+    x: Math.round(windowState.x),
+    y: Math.round(windowState.y)
+  }
+
+  settingsStore.set("launcherWindowState", nextState)
+  return nextState
 }
 
 export function getShortcutSettings(): ShortcutSettings {

@@ -51,7 +51,7 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
     >
       <div
         ref={headerRef}
-        className="launcher-chrome-header flex shrink-0 items-center gap-[var(--ow-gap-sm)] px-[var(--launcher-chrome-x-compact)]"
+        className="launcher-chrome-header launcher-window-drag-region flex shrink-0 items-center gap-[var(--ow-gap-sm)] px-[var(--launcher-chrome-x-compact)]"
         style={{
           borderBottom: showHeaderDivider ? "1px solid var(--launcher-border)" : "none",
           height: shellConfig.headerHeight
@@ -74,9 +74,7 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
         )}
 
         {headerTrailing ? (
-          <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">
-            {headerTrailing}
-          </div>
+          <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">{headerTrailing}</div>
         ) : null}
       </div>
 
@@ -87,7 +85,7 @@ export function LauncherChromeFrame(props: LauncherChromeFrameProps): React.JSX.
       {footer ? (
         <div
           ref={footerRef}
-          className="launcher-chrome-footer flex shrink-0 items-center justify-between px-[var(--launcher-footer-x)]"
+          className="launcher-chrome-footer launcher-window-drag-region flex shrink-0 items-center justify-between px-[var(--launcher-footer-x)]"
           data-variant={footerVariant}
           style={{
             borderTop: footerVariant === "strip" ? "1px solid var(--launcher-border)" : "none",
