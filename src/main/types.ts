@@ -70,7 +70,7 @@ export interface WorkspaceFileParams {
 export interface WorkspaceFileSearchParams {
   limit?: number
   query: string
-  threadId: string
+  threadId?: string
 }
 
 // Model IPC

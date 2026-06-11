@@ -14,6 +14,7 @@ type WorkspaceFileSearchResult = {
     name: string
     path: string
   }>
+  incomplete?: true
   error?: string
 }
 
@@ -34,7 +35,7 @@ export const workspaceApi = {
     return invokeIpc("workspace:readBinaryFile", { threadId, filePath })
   },
   searchFiles: (
-    threadId: string,
+    threadId: string | undefined,
     query: string,
     limit?: number
   ): Promise<WorkspaceFileSearchResult> => {

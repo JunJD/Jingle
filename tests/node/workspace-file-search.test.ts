@@ -14,6 +14,25 @@ class MemorySafeOpenworkMemoryService {
   }
 }
 
+class StaticGlobalWorkspaceRepository extends WorkspaceRepository {
+  constructor(private readonly workspacePath: string) {
+    super()
+  }
+
+  override getGlobalWorkspacePath(): string | null {
+    return this.workspacePath
+  }
+}
+
+function createWorkspaceServiceFromRepository(repository: WorkspaceRepository): WorkspaceService {
+  return new WorkspaceService(
+    repository,
+    new MemorySafeOpenworkMemoryService() as unknown as ConstructorParameters<
+      typeof WorkspaceService
+    >[1]
+  )
+}
+
 async function createWorkspaceService(
   threadId: string,
   workspacePath: string
@@ -24,12 +43,7 @@ async function createWorkspaceService(
       workspacePath
     }
   })
-  return new WorkspaceService(
-    repository,
-    new MemorySafeOpenworkMemoryService() as unknown as ConstructorParameters<
-      typeof WorkspaceService
-    >[1]
-  )
+  return createWorkspaceServiceFromRepository(repository)
 }
 
 before(async () => {
@@ -95,6 +109,31 @@ test("workspace file search includes hidden workspace files like opencode", asyn
   }
 })
 
+test("workspace file search uses global workspace when thread id is omitted", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openwork-workspace-global-search-"))
+  try {
+    await mkdir(join(root, "src"), { recursive: true })
+    await writeFile(join(root, "src", "global-search-target.ts"), "export const found = true\n")
+
+    const service = createWorkspaceServiceFromRepository(new StaticGlobalWorkspaceRepository(root))
+    const result = await service.searchFiles({
+      query: "global search target"
+    })
+
+    assert.deepEqual(result, {
+      success: true,
+      files: [
+        {
+          name: "global-search-target.ts",
+          path: "src/global-search-target.ts"
+        }
+      ]
+    })
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
 test("workspace file search ranks across the full ripgrep file list", async () => {
   const root = await mkdtemp(join(tmpdir(), "openwork-workspace-large-search-"))
   try {
@@ -120,6 +159,37 @@ test("workspace file search ranks across the full ripgrep file list", async () =
         {
           name: "needle-workspace-file.ts",
           path: "deep/needle-workspace-file.ts"
+        }
+      ]
+    })
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test("workspace file search skips dependency and build output directories", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openwork-workspace-ignore-search-"))
+  try {
+    await mkdir(join(root, "node_modules", "pkg"), { recursive: true })
+    await mkdir(join(root, "dist"), { recursive: true })
+    await mkdir(join(root, "src"), { recursive: true })
+    await writeFile(join(root, "node_modules", "pkg", "middleware.ts"), "export const dep = true\n")
+    await writeFile(join(root, "dist", "middleware.ts"), "export const built = true\n")
+    await writeFile(join(root, "src", "middleware.ts"), "export const source = true\n")
+
+    const threadId = `thread-ignore-search-${randomUUID()}`
+    const service = await createWorkspaceService(threadId, root)
+    const result = await service.searchFiles({
+      query: "middleware",
+      threadId
+    })
+
+    assert.deepEqual(result, {
+      success: true,
+      files: [
+        {
+          name: "middleware.ts",
+          path: "src/middleware.ts"
         }
       ]
     })

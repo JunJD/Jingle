@@ -9,6 +9,22 @@ import { OpenworkMemoryService } from "../openwork-memory/service"
 import { WorkspaceRepository } from "./repository"
 
 const WORKSPACE_FILE_SEARCH_MAX_RESULTS = 20
+const WORKSPACE_FILE_SEARCH_CACHE_TTL_MS = 30_000
+const WORKSPACE_FILE_SEARCH_PARTIAL_CACHE_TTL_MS = 5_000
+const WORKSPACE_FILE_SEARCH_TIMEOUT_MS = 2_500
+const WORKSPACE_FILE_SEARCH_IGNORED_DIRS = [
+  ".git",
+  ".hg",
+  ".next",
+  ".pnpm-store",
+  ".svn",
+  ".turbo",
+  ".yarn",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules"
+]
 
 export type WorkspaceFileReadResult =
   | {
@@ -29,6 +45,7 @@ export interface WorkspaceFileSearchResult {
     name: string
     path: string
   }>
+  incomplete?: true
   success: true
 }
 
@@ -39,7 +56,20 @@ export type WorkspaceFileSearchResponse =
       success: false
     }
 
+type WorkspaceFilePathCollection = {
+  completed: boolean
+  paths: string[]
+}
+
+type WorkspaceFileSearchCacheEntry = {
+  expiresAt: number
+  promise?: Promise<WorkspaceFilePathCollection>
+  value?: WorkspaceFilePathCollection
+}
+
 export class WorkspaceService {
+  private readonly fileSearchCache = new Map<string, WorkspaceFileSearchCacheEntry>()
+
   constructor(
     private readonly workspaceRepository: WorkspaceRepository,
     private readonly openworkMemoryService: OpenworkMemoryService
@@ -158,7 +188,7 @@ export class WorkspaceService {
   }
 
   async searchFiles(params: WorkspaceFileSearchParams): Promise<WorkspaceFileSearchResponse> {
-    const workspacePath = await this.workspaceRepository.getThreadWorkspacePath(params.threadId)
+    const workspacePath = await this.getWorkspacePath(params.threadId)
     if (!workspacePath) {
       return {
         success: false,
@@ -170,16 +200,52 @@ export class WorkspaceService {
     const limit = resolveFileSearchLimit(params.limit)
 
     try {
-      const paths = await collectWorkspaceFilePaths(workspacePath)
+      const collection = await this.getWorkspaceFilePathCollection(workspacePath)
       return {
         success: true,
-        files: rankWorkspaceFileMatches(paths, query, limit).map((filePath) => ({
+        ...(collection.completed ? {} : { incomplete: true as const }),
+        files: rankWorkspaceFileMatches(collection.paths, query, limit).map((filePath) => ({
           name: path.basename(filePath),
           path: filePath
         }))
       }
     } catch (error) {
       return this.toReadError(error)
+    }
+  }
+
+  private async getWorkspaceFilePathCollection(
+    workspacePath: string
+  ): Promise<WorkspaceFilePathCollection> {
+    const cacheKey = path.resolve(workspacePath)
+    const now = Date.now()
+    const cached = this.fileSearchCache.get(cacheKey)
+
+    if (cached?.value && cached.expiresAt > now) {
+      return cached.value
+    }
+
+    if (cached?.promise) {
+      return cached.promise
+    }
+
+    const promise = collectWorkspaceFilePaths(cacheKey, WORKSPACE_FILE_SEARCH_TIMEOUT_MS)
+    this.fileSearchCache.set(cacheKey, { expiresAt: 0, promise })
+
+    try {
+      const value = await promise
+      this.fileSearchCache.set(cacheKey, {
+        expiresAt:
+          Date.now() +
+          (value.completed
+            ? WORKSPACE_FILE_SEARCH_CACHE_TTL_MS
+            : WORKSPACE_FILE_SEARCH_PARTIAL_CACHE_TTL_MS),
+        value
+      })
+      return value
+    } catch (error) {
+      this.fileSearchCache.delete(cacheKey)
+      throw error
     }
   }
 
@@ -264,7 +330,10 @@ function resolveWorkspaceRelativePath(
   }
 }
 
-async function collectWorkspaceFilePaths(workspacePath: string): Promise<string[]> {
+async function collectWorkspaceFilePaths(
+  workspacePath: string,
+  timeoutMs: number
+): Promise<WorkspaceFilePathCollection> {
   const env = { ...process.env }
   delete env.RIPGREP_CONFIG_PATH
 
@@ -272,11 +341,31 @@ async function collectWorkspaceFilePaths(workspacePath: string): Promise<string[
     const files: string[] = []
     let pending = ""
     let stderr = ""
-    const child = spawn(rgPath, ["--no-config", "--files", "--hidden", "--glob=!.git/*", "."], {
-      cwd: workspacePath,
-      env,
-      stdio: ["ignore", "pipe", "pipe"]
-    })
+    let timedOut = false
+    const child = spawn(
+      rgPath,
+      [
+        "--no-config",
+        "--files",
+        "--hidden",
+        ...WORKSPACE_FILE_SEARCH_IGNORED_DIRS.flatMap((dir) => [
+          "--glob",
+          `!${dir}/**`,
+          "--glob",
+          `!**/${dir}/**`
+        ]),
+        "."
+      ],
+      {
+        cwd: workspacePath,
+        env,
+        stdio: ["ignore", "pipe", "pipe"]
+      }
+    )
+    const timeout = setTimeout(() => {
+      timedOut = true
+      child.kill()
+    }, timeoutMs)
 
     child.stdout.setEncoding("utf8")
     child.stdout.on("data", (chunk: string) => {
@@ -297,15 +386,24 @@ async function collectWorkspaceFilePaths(workspacePath: string): Promise<string[
       stderr += chunk
     })
 
-    child.on("error", reject)
+    child.on("error", (error) => {
+      clearTimeout(timeout)
+      reject(error)
+    })
     child.on("close", (code) => {
+      clearTimeout(timeout)
       const normalizedPending = normalizeRipgrepPath(pending)
       if (normalizedPending) {
         files.push(normalizedPending)
       }
 
+      if (timedOut) {
+        resolve({ completed: false, paths: files })
+        return
+      }
+
       if (code === 0 || code === 1) {
-        resolve(files)
+        resolve({ completed: true, paths: files })
         return
       }
 
