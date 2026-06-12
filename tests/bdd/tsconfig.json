@@ -1,6 +1,6 @@
 {
   "extends": "../../tsconfig.node.json",
-  "include": ["./**/*.ts"],
+  "include": ["../../installable-extensions/**/*", "./**/*.ts"],
   "compilerOptions": {
     "composite": false,
     "noEmit": true,

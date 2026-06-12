@@ -2,6 +2,7 @@ import path from "node:path"
 import {
   fileExists,
   formatViolations,
+  isInstallableExtensionDirectory,
   listNativeExtensionDirectories,
   listTopLevelMainRegistryExtensionNames,
   listTopLevelManifestRegistryExtensionNames,
@@ -12,8 +13,20 @@ import {
 const violations = []
 const extensionNames = new Map()
 const extensionTitles = new Map()
+const extensionDirectories = listNativeExtensionDirectories()
+const builtInExtensionDirectories = extensionDirectories.filter(
+  (directory) => !isInstallableExtensionDirectory(directory)
+)
+const builtInDirectoryExtensionIds = new Set(
+  builtInExtensionDirectories.map((directory) => directory.name)
+)
+const installableDirectoryExtensionIds = new Set(
+  extensionDirectories
+    .filter((directory) => isInstallableExtensionDirectory(directory))
+    .map((directory) => directory.name)
+)
 
-for (const extensionDirectory of listNativeExtensionDirectories()) {
+for (const extensionDirectory of extensionDirectories) {
   const manifest = loadNativeExtensionManifest(extensionDirectory)
 
   if (extensionNames.has(manifest.name)) {
@@ -62,8 +75,6 @@ if (!fileExists(extensionsMainPath)) {
   })
 }
 
-const directoryExtensionIds = new Set(listNativeExtensionDirectories().map((directory) => directory.name))
-
 if (fileExists(extensionsIndexPath)) {
   try {
     compareRegistryCoverage(
@@ -101,17 +112,25 @@ console.error(formatViolations("extension registry check", violations))
 process.exit(1)
 
 function compareRegistryCoverage(file, registryExtensionIds) {
-  for (const extensionId of directoryExtensionIds) {
+  for (const extensionId of builtInDirectoryExtensionIds) {
     if (!registryExtensionIds.has(extensionId)) {
       violations.push({
         file,
-        reason: `extension "${extensionId}" 存在于 extension package root，但没有被顶层 registry 收录`
+        reason: `built-in extension "${extensionId}" 存在于 extension package root，但没有被顶层 registry 收录`
       })
     }
   }
 
   for (const extensionId of registryExtensionIds) {
-    if (!directoryExtensionIds.has(extensionId)) {
+    if (installableDirectoryExtensionIds.has(extensionId)) {
+      violations.push({
+        file,
+        reason: `installable extension "${extensionId}" 不应被 built-in 顶层 registry 收录`
+      })
+      continue
+    }
+
+    if (!builtInDirectoryExtensionIds.has(extensionId)) {
       violations.push({
         file,
         reason: `顶层 registry 收录了 extension "${extensionId}"，但 extension package root 不存在`

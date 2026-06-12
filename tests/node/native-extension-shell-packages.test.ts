@@ -1,18 +1,19 @@
 import assert from "node:assert/strict"
 import test, { mock } from "node:test"
-import { appleRemindersManifest } from "../../extensions/apple-reminders/manifest"
-import { appleRemindersRuntime } from "../../extensions/apple-reminders/runtime"
-import { createAppleRemindersTools } from "../../extensions/apple-reminders/main/tools"
-import { githubManifest } from "../../extensions/github/manifest"
-import { githubRuntime } from "../../extensions/github/runtime"
-import { createGitHubTools } from "../../extensions/github/main/tools"
-import { figmaFilesManifest } from "../../extensions/figma-files/manifest"
-import { notionManifest } from "../../extensions/notion/manifest"
+import { appleRemindersManifest } from "../../installable-extensions/apple-reminders/manifest"
+import { appleRemindersRuntime } from "../../installable-extensions/apple-reminders/runtime"
+import { createAppleRemindersTools } from "../../installable-extensions/apple-reminders/main/tools"
+import { githubManifest } from "../../installable-extensions/github/manifest"
+import { githubRuntime } from "../../installable-extensions/github/runtime"
+import { createGitHubTools } from "../../installable-extensions/github/main/tools"
+import { figmaFilesManifest } from "../../installable-extensions/figma-files/manifest"
+import { notionManifest } from "../../installable-extensions/notion/manifest"
 import {
   buildNativeExtensionAiCapabilityCatalogItem,
   listNativeExtensionAiCapabilityCatalog,
-  resolveNativeExtensionAiCapabilityForExtensionName,
-  resolveNativeExtensionAiCapabilitiesForRefs
+  listNativeExtensionAiCapabilityCatalogFromManifests,
+  resolveNativeExtensionAiCapabilityForExtensionNameFromManifests,
+  resolveNativeExtensionAiCapabilitiesForRefsFromManifests
 } from "../../src/extensions/sources"
 import {
   listNativeExtensionSourceMentions,
@@ -26,6 +27,35 @@ const appleRemindersRef: ComposerMessageRef = {
   name: "Apple Reminders",
   sourceId: "appleReminders",
   type: "extension-source"
+}
+
+const livePackageManifests = [
+  githubManifest,
+  notionManifest,
+  appleRemindersManifest,
+  figmaFilesManifest
+]
+
+function resolveNativeExtensionAiCapabilitiesForRefs(
+  refs: ComposerMessageRef[],
+  input?: Parameters<typeof resolveNativeExtensionAiCapabilitiesForRefsFromManifests>[2]
+) {
+  return resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
+    refs,
+    livePackageManifests,
+    input
+  )
+}
+
+function resolveNativeExtensionAiCapabilityForExtensionName(
+  extensionName: string,
+  input?: Parameters<typeof resolveNativeExtensionAiCapabilityForExtensionNameFromManifests>[2]
+) {
+  return resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+    extensionName,
+    livePackageManifests,
+    input
+  )
 }
 
 const APPLE_REMINDERS_RUNTIME_COMMANDS = [
@@ -205,9 +235,13 @@ test("GitHub live package keeps runtime, connection, and AI tool contracts", () 
 })
 
 test("Apple Reminders live AI capability is mentionable on macOS and exposes tools", () => {
-  const [darwinCapability] = resolveNativeExtensionAiCapabilitiesForRefs([appleRemindersRef], {
-    platform: "darwin"
-  })
+  const [darwinCapability] = resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
+    [appleRemindersRef],
+    livePackageManifests,
+    {
+      platform: "darwin"
+    }
+  )
   assert.equal(darwinCapability?.enabled, true)
   assert.equal(darwinCapability?.authStatus, "connected")
   assert.deepEqual(
@@ -222,9 +256,13 @@ test("Apple Reminders live AI capability is mentionable on macOS and exposes too
   assert.equal(resolveLocalizedText(darwinCapability?.capability.title, "en-US"), "Apple Reminders")
   assert.match(darwinCapability?.capability.guide ?? "", /local Reminders database/)
 
-  const [linuxCapability] = resolveNativeExtensionAiCapabilitiesForRefs([appleRemindersRef], {
-    platform: "linux"
-  })
+  const [linuxCapability] = resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
+    [appleRemindersRef],
+    livePackageManifests,
+    {
+      platform: "linux"
+    }
+  )
   assert.equal(linuxCapability?.enabled, false)
   assert.equal(linuxCapability?.authStatus, "missing")
   assert.deepEqual(linuxCapability?.enabledToolNames, [])
@@ -243,30 +281,6 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
     })),
     [
       {
-        extensionName: "github",
-        icon: "assets/icon.svg",
-        label: "GitHub",
-        sourceId: "github",
-        supportedPlatforms: undefined,
-        value: "github"
-      },
-      {
-        extensionName: "notion",
-        icon: "assets/notion-logo.png",
-        label: "Notion",
-        sourceId: "notion",
-        supportedPlatforms: undefined,
-        value: "notion"
-      },
-      {
-        extensionName: "apple-reminders",
-        icon: "assets/icon.png",
-        label: "提醒事项",
-        sourceId: "appleReminders",
-        supportedPlatforms: ["darwin"],
-        value: "apple-reminders"
-      },
-      {
         extensionName: "image-generation",
         icon: "assets/icon.svg",
         label: "生图",
@@ -278,23 +292,18 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("darwin").map((mention) => mention.sourceId),
-    ["github", "notion", "appleReminders", "image"]
+    ["image"]
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("linux").map((mention) => mention.sourceId),
-    ["github", "notion", "image"]
+    ["image"]
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("darwin", "zh-CN").map((mention) => ({
       label: mention.label,
       sourceId: mention.sourceId
     })),
-    [
-      { label: "GitHub", sourceId: "github" },
-      { label: "Notion", sourceId: "notion" },
-      { label: "提醒事项", sourceId: "appleReminders" },
-      { label: "生图", sourceId: "image" }
-    ]
+    [{ label: "生图", sourceId: "image" }]
   )
 })
 
@@ -433,7 +442,13 @@ test("extension AI capability display resolves in the requested locale", () => {
 test("extension AI capability catalog does not read preferences", () => {
   assert.deepEqual(
     listNativeExtensionAiCapabilityCatalog("darwin").map((item) => item.extensionName),
-    ["github", "notion", "apple-reminders", "image-generation"]
+    ["image-generation"]
+  )
+  assert.deepEqual(
+    listNativeExtensionAiCapabilityCatalogFromManifests(livePackageManifests, "darwin").map(
+      (item) => item.extensionName
+    ),
+    ["github", "notion", "apple-reminders"]
   )
 })
 

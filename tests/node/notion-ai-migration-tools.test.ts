@@ -2,14 +2,14 @@ import assert from "node:assert/strict"
 import { readFile, readdir } from "node:fs/promises"
 import { join } from "node:path"
 import test from "node:test"
-import { createNotionTools } from "../../extensions/notion/main/tools"
-import { NOTION_IDENTITY } from "../../extensions/notion/identity"
+import { notionMain } from "../../installable-extensions/notion/main"
+import { createNotionTools } from "../../installable-extensions/notion/main/tools"
+import { NOTION_IDENTITY } from "../../installable-extensions/notion/identity"
+import { notionManifest } from "../../installable-extensions/notion/manifest"
 import { createExtensionAiRuntime } from "../../src/main/agent/extension-ai-runtime"
 import { parseToolInputWithSchema } from "../../src/main/agent/tool-input-schema"
 import { createNativeExtensionToolRegistry } from "../../src/main/extension-tools/native-extension-tools"
-import { nativeExtensionManifests } from "../../src/extensions"
-import { nativeExtensionMainDefinitions } from "../../src/extensions/main"
-import { resolveNativeExtensionAiCapabilityForExtensionName } from "../../src/extensions/sources"
+import { resolveNativeExtensionAiCapabilityForExtensionNameFromManifests } from "../../src/extensions/sources"
 import type { ExtensionToolContext, ExtensionToolDefinition } from "../../src/shared/extension-sources"
 
 const toolContext: ExtensionToolContext = {
@@ -39,13 +39,13 @@ async function listSourceFiles(root: string): Promise<string[]> {
 }
 
 test("Notion client module reads connection secrets lazily", async () => {
-  const module = await import("../../extensions/notion/domain/client")
+  const module = await import("../../installable-extensions/notion/domain/client")
 
   assert.equal(typeof module.getNotionClient, "function")
 })
 
 test("Notion source uses api-key connection semantics instead of OAuth remnants", async () => {
-  const root = join(process.cwd(), "extensions/notion")
+  const root = join(process.cwd(), "installable-extensions/notion")
   const files = await listSourceFiles(root)
   const offenders: string[] = []
 
@@ -61,7 +61,7 @@ test("Notion source uses api-key connection semantics instead of OAuth remnants"
 
 test("Notion AI tools do not execute migrated source tool modules", async () => {
   const toolsSource = await readFile(
-    join(process.cwd(), "extensions/notion/main/tools.ts"),
+    join(process.cwd(), "installable-extensions/notion/main/tools.ts"),
     "utf8"
   )
 
@@ -71,7 +71,7 @@ test("Notion AI tools do not execute migrated source tool modules", async () => 
 })
 
 test("Notion package does not expose the retired generated identity", async () => {
-  const root = join(process.cwd(), "extensions/notion")
+  const root = join(process.cwd(), "installable-extensions/notion")
   const files = await listSourceFiles(root)
   const offenders: string[] = []
 
@@ -118,20 +118,24 @@ test("Notion AI tools expose page markdown reader", () => {
 })
 
 test("Notion connected AI capability exposes the full Notion-compatible tool surface", () => {
-  const capability = resolveNativeExtensionAiCapabilityForExtensionName("notion", {
-    preferencesByExtension: {
-      "notion": {
-        accessToken: "secret-token"
+  const capability = resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+    "notion",
+    [notionManifest],
+    {
+      preferencesByExtension: {
+        "notion": {
+          accessToken: "secret-token"
+        }
       }
     }
-  })
+  )
   assert.ok(capability)
 
   const runtime = createExtensionAiRuntime({
     aiCapabilities: [capability],
     registry: createNativeExtensionToolRegistry({
-      definitions: nativeExtensionMainDefinitions,
-      manifests: nativeExtensionManifests
+      definitions: new Map([[notionManifest.name, notionMain]]),
+      manifests: [notionManifest]
     }),
     threadId: "thread-1",
     workspacePath: "/workspace"

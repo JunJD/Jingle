@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.node.json",
   "include": [
     "../../extensions/**/*",
+    "../../installable-extensions/**/*",
     "../../src/extensions/**/*",
     "../../src/preload/index.d.ts",
     "../../src/renderer/src/**/*",

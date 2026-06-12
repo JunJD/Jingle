@@ -7,7 +7,7 @@ import {
   type ExtensionRuntimeHostRequestInput,
   type ExtensionRuntimeSdkContextValue
 } from "@openwork/extension-api/host-runtime"
-import { notionRuntime } from "../../extensions/notion/runtime"
+import { notionRuntime } from "../../installable-extensions/notion/runtime"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
 import type {
   ExtensionHostResponse,

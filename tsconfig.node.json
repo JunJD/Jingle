@@ -3,6 +3,7 @@
   "include": [
     "electron.vite.config.*",
     "extensions/**/*",
+    "installable-extensions/**/*",
     "src/extensions/**/*",
     "src/extension-runtime/**/*",
     "src/main/**/*",

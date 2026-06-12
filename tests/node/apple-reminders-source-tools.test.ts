@@ -6,14 +6,17 @@ import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
 import {
   AppleRemindersRequestError,
   normalizeAppleRemindersError
-} from "../../extensions/apple-reminders/main/service"
-import { createAppleRemindersTools } from "../../extensions/apple-reminders/main/tools"
-import { notionManifest } from "../../extensions/notion/manifest"
+} from "../../installable-extensions/apple-reminders/main/service"
+import { createAppleRemindersTools } from "../../installable-extensions/apple-reminders/main/tools"
+import { appleRemindersManifest } from "../../installable-extensions/apple-reminders/manifest"
+import { githubManifest } from "../../installable-extensions/github/manifest"
+import { imageGenerationManifest } from "../../extensions/image-generation/manifest"
+import { notionManifest } from "../../installable-extensions/notion/manifest"
 import {
   buildNativeExtensionAiCapabilityCatalogItem,
-  listNativeExtensionAiCapabilityCatalog,
-  resolveNativeExtensionAiCapabilityForExtensionName,
-  resolveNativeExtensionAiCapabilitiesForRefs
+  listNativeExtensionAiCapabilityCatalogFromManifests,
+  resolveNativeExtensionAiCapabilityForExtensionNameFromManifests,
+  resolveNativeExtensionAiCapabilitiesForRefsFromManifests
 } from "../../src/extensions/sources"
 import {
   listNativeExtensionSourceMentions,
@@ -93,10 +96,43 @@ const appleRemindersRef: ComposerMessageRef = {
   type: "extension-source"
 }
 
+const sourceTestManifests = [
+  githubManifest,
+  notionManifest,
+  appleRemindersManifest,
+  imageGenerationManifest
+]
+
+function resolveNativeExtensionAiCapabilitiesForRefs(
+  refs: ComposerMessageRef[],
+  input?: Parameters<typeof resolveNativeExtensionAiCapabilitiesForRefsFromManifests>[2]
+) {
+  return resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
+    refs,
+    sourceTestManifests,
+    input
+  )
+}
+
+function resolveNativeExtensionAiCapabilityForExtensionName(
+  extensionName: string,
+  input?: Parameters<typeof resolveNativeExtensionAiCapabilityForExtensionNameFromManifests>[2]
+) {
+  return resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+    extensionName,
+    sourceTestManifests,
+    input
+  )
+}
+
 function resolveAppleRemindersCapabilities(platform = "darwin") {
-  return resolveNativeExtensionAiCapabilitiesForRefs([appleRemindersRef], {
-    platform
-  })
+  return resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
+    [appleRemindersRef],
+    sourceTestManifests,
+    {
+      platform
+    }
+  )
 }
 
 test("Apple Reminders AI capability is enabled only on macOS", () => {
@@ -119,68 +155,85 @@ test("Apple Reminders AI capability is enabled only on macOS", () => {
 
 test("AI capability is loaded only from an explicit extension source ref", () => {
   assert.deepEqual(resolveNativeExtensionAiCapabilitiesForRefs([]), [])
-  assert.deepEqual(nativeExtensionSourceMentions, [
-    {
-      extensionName: "github",
-      icon: "assets/icon.svg",
-      iconName: "github",
-      label: "GitHub",
-      sourceId: "github",
-      supportedPlatforms: undefined,
-      value: "github"
-    },
-    {
-      extensionName: "notion",
-      icon: "assets/notion-logo.png",
-      iconName: "notion",
-      label: "Notion",
-      sourceId: "notion",
-      supportedPlatforms: undefined,
-      value: "notion"
-    },
-    {
-      extensionName: "apple-reminders",
-      icon: "assets/icon.png",
-      iconName: "reminders",
-      label: "提醒事项",
-      sourceId: "appleReminders",
-      supportedPlatforms: ["darwin"],
-      value: "apple-reminders"
-    },
-    {
-      extensionName: "image-generation",
-      icon: "assets/icon.svg",
-      iconName: "image",
-      label: "生图",
-      sourceId: "image",
-      supportedPlatforms: undefined,
-      value: "image"
-    }
-  ])
+  assert.deepEqual(
+    nativeExtensionSourceMentions.map((mention) => mention.sourceId),
+    ["image"]
+  )
+  assert.deepEqual(
+    sourceTestManifests
+      .flatMap((manifest) => {
+        const capability = manifest.aiCapability
+        if (!capability?.mention) {
+          return []
+        }
+        return [
+          {
+            extensionName: manifest.name,
+            icon: manifest.icon,
+            iconName: manifest.iconName,
+            label: resolveLocalizedText(capability.mention.label ?? capability.title, "zh-CN"),
+            sourceId: capability.id,
+            supportedPlatforms: capability.supportedPlatforms ?? manifest.supportedPlatforms,
+            value: capability.mention.value ?? manifest.name
+          }
+        ]
+      }),
+    [
+      {
+        extensionName: "github",
+        icon: "assets/icon.svg",
+        iconName: "github",
+        label: "GitHub",
+        sourceId: "github",
+        supportedPlatforms: undefined,
+        value: "github"
+      },
+      {
+        extensionName: "notion",
+        icon: "assets/notion-logo.png",
+        iconName: "notion",
+        label: "Notion",
+        sourceId: "notion",
+        supportedPlatforms: undefined,
+        value: "notion"
+      },
+      {
+        extensionName: "apple-reminders",
+        icon: "assets/icon.svg",
+        iconName: "reminders",
+        label: "提醒事项",
+        sourceId: "appleReminders",
+        supportedPlatforms: ["darwin"],
+        value: "apple-reminders"
+      },
+      {
+        extensionName: "image-generation",
+        icon: "assets/icon.svg",
+        iconName: "image",
+        label: "生图",
+        sourceId: "image",
+        supportedPlatforms: undefined,
+        value: "image"
+      }
+    ]
+  )
   assert.deepEqual(
     listNativeExtensionSourceMentions("darwin").map((mention) => mention.sourceId),
-    ["github", "notion", "appleReminders", "image"]
+    ["image"]
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("linux").map((mention) => mention.sourceId),
-    ["github", "notion", "image"]
+    ["image"]
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("darwin", "zh-CN").map((mention) => ({
       label: mention.label,
       sourceId: mention.sourceId
     })),
-    [
-      { label: "GitHub", sourceId: "github" },
-      { label: "Notion", sourceId: "notion" },
-      { label: "提醒事项", sourceId: "appleReminders" },
-      { label: "生图", sourceId: "image" }
-    ]
+    [{ label: "生图", sourceId: "image" }]
   )
 
-  const [capability] = resolveNativeExtensionAiCapabilitiesForRefs([appleRemindersRef], {
-    platform: "darwin"
-  })
+  const [capability] = resolveAppleRemindersCapabilities("darwin")
 
   assert.equal(capability?.capability.id, "appleReminders")
   assert.equal(resolveLocalizedText(capability?.capability.title, "en-US"), "Apple Reminders")
@@ -278,7 +331,9 @@ test("GitHub connected connection state exposes the current manifest tool names"
 
 test("extension AI capability catalog does not read preferences", () => {
   assert.deepEqual(
-    listNativeExtensionAiCapabilityCatalog("darwin").map((item) => item.extensionName),
+    listNativeExtensionAiCapabilityCatalogFromManifests(sourceTestManifests, "darwin").map(
+      (item) => item.extensionName
+    ),
     ["github", "notion", "apple-reminders", "image-generation"]
   )
 })

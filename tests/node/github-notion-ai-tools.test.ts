@@ -3,15 +3,55 @@ import test from "node:test"
 import { createExtensionAiRuntime } from "../../src/main/agent/extension-ai-runtime"
 import { ExtensionToolExecutor } from "../../src/main/extension-tools/executor"
 import { createNativeExtensionToolRegistry } from "../../src/main/extension-tools/native-extension-tools"
-import { nativeExtensionMainDefinitions } from "../../src/extensions/main"
-import { nativeExtensionManifests } from "../../src/extensions"
+import { githubMain } from "../../installable-extensions/github/main"
+import { githubManifest } from "../../installable-extensions/github/manifest"
+import { notionMain } from "../../installable-extensions/notion/main"
+import { notionManifest } from "../../installable-extensions/notion/manifest"
 import {
-  resolveNativeExtensionAiCapabilityForExtensionName,
-  resolveNativeExtensionAiCapabilitiesForRefs
+  resolveNativeExtensionAiCapabilityForExtensionNameFromManifests,
+  resolveNativeExtensionAiCapabilitiesForRefsFromManifests
 } from "../../src/extensions/sources"
+import type { ComposerMessageRef } from "../../src/shared/message-content"
+import type { NativeExtensionMainDefinition } from "../../src/shared/native-extensions"
+import type { ResolvedExtensionAiCapability } from "../../src/shared/extension-sources"
+
+const installedManifests = [githubManifest, notionManifest]
+const installedMainDefinitions = new Map<string, NativeExtensionMainDefinition>([
+  [githubManifest.name, githubMain],
+  [notionManifest.name, notionMain]
+])
+
+function resolveInstalledAiCapabilityForExtensionName(
+  extensionName: string,
+  input?: Parameters<typeof resolveNativeExtensionAiCapabilityForExtensionNameFromManifests>[2]
+): ResolvedExtensionAiCapability | null {
+  return resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+    extensionName,
+    installedManifests,
+    input
+  )
+}
+
+function resolveInstalledAiCapabilitiesForRefs(
+  refs: ComposerMessageRef[],
+  input?: Parameters<typeof resolveNativeExtensionAiCapabilitiesForRefsFromManifests>[2]
+): ResolvedExtensionAiCapability[] {
+  return resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
+    refs,
+    installedManifests,
+    input
+  )
+}
+
+function createInstalledToolRegistry() {
+  return createNativeExtensionToolRegistry({
+    definitions: installedMainDefinitions,
+    manifests: installedManifests
+  })
+}
 
 test("GitHub connected AI capability registers callable tools", () => {
-  const capability = resolveNativeExtensionAiCapabilityForExtensionName("github", {
+  const capability = resolveInstalledAiCapabilityForExtensionName("github", {
     preferencesByExtension: {
       github: {
         accessToken: "ghp_secret",
@@ -25,10 +65,7 @@ test("GitHub connected AI capability registers callable tools", () => {
 
   const runtime = createExtensionAiRuntime({
     aiCapabilities: [capability],
-    registry: createNativeExtensionToolRegistry({
-      definitions: nativeExtensionMainDefinitions,
-      manifests: nativeExtensionManifests
-    }),
+    registry: createInstalledToolRegistry(),
     threadId: "thread-1",
     workspacePath: "/workspace"
   })
@@ -93,7 +130,7 @@ test("GitHub current-user issue tool searches with viewer login", async () => {
 })
 
 test("Notion connected AI capability registers callable tools", () => {
-  const capability = resolveNativeExtensionAiCapabilityForExtensionName("notion", {
+  const capability = resolveInstalledAiCapabilityForExtensionName("notion", {
     preferencesByExtension: {
       notion: {
         accessToken: "secret_token",
@@ -105,10 +142,7 @@ test("Notion connected AI capability registers callable tools", () => {
 
   const runtime = createExtensionAiRuntime({
     aiCapabilities: [capability],
-    registry: createNativeExtensionToolRegistry({
-      definitions: nativeExtensionMainDefinitions,
-      manifests: nativeExtensionManifests
-    }),
+    registry: createInstalledToolRegistry(),
     threadId: "thread-1",
     workspacePath: "/workspace"
   })
@@ -138,7 +172,7 @@ test("Notion connected AI capability registers callable tools", () => {
 })
 
 test("missing GitHub auth still loads instructions without callable tools", () => {
-  const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
+  const [capability] = resolveInstalledAiCapabilitiesForRefs(
     [
       {
         extensionName: "github",
@@ -203,7 +237,7 @@ test("Notion search tool sends token, version header, and shared-content search 
   }
 
   try {
-    const capability = resolveNativeExtensionAiCapabilityForExtensionName("notion", {
+    const capability = resolveInstalledAiCapabilityForExtensionName("notion", {
       preferencesByExtension: {
         notion: {
           accessToken: "secret_token",
@@ -212,10 +246,7 @@ test("Notion search tool sends token, version header, and shared-content search 
       }
     })
     assert.ok(capability)
-    const registry = createNativeExtensionToolRegistry({
-      definitions: nativeExtensionMainDefinitions,
-      manifests: nativeExtensionManifests
-    })
+    const registry = createInstalledToolRegistry()
     const [binding] = registry
       .createAiCapabilityToolBindings([capability])
       .filter((candidate) => candidate.definition.name === "searchPages")
@@ -1098,7 +1129,7 @@ test("Notion createDatabasePage tool writes database properties", async () => {
 })
 
 async function executeNotionTool(toolName: string, args: Record<string, unknown>): Promise<string> {
-  const capability = resolveNativeExtensionAiCapabilityForExtensionName("notion", {
+  const capability = resolveInstalledAiCapabilityForExtensionName("notion", {
     preferencesByExtension: {
       notion: {
         accessToken: "secret_token",
@@ -1108,10 +1139,7 @@ async function executeNotionTool(toolName: string, args: Record<string, unknown>
   })
   assert.ok(capability)
 
-  const registry = createNativeExtensionToolRegistry({
-    definitions: nativeExtensionMainDefinitions,
-    manifests: nativeExtensionManifests
-  })
+  const registry = createInstalledToolRegistry()
   const [binding] = registry
     .createAiCapabilityToolBindings([capability])
     .filter((candidate) => candidate.definition.name === toolName)
@@ -1134,7 +1162,7 @@ async function executeNotionTool(toolName: string, args: Record<string, unknown>
 }
 
 async function executeGitHubTool(toolName: string, args: Record<string, unknown>): Promise<string> {
-  const capability = resolveNativeExtensionAiCapabilityForExtensionName("github", {
+  const capability = resolveInstalledAiCapabilityForExtensionName("github", {
     preferencesByExtension: {
       github: {
         accessToken: "ghp_secret",
@@ -1146,10 +1174,7 @@ async function executeGitHubTool(toolName: string, args: Record<string, unknown>
   })
   assert.ok(capability)
 
-  const registry = createNativeExtensionToolRegistry({
-    definitions: nativeExtensionMainDefinitions,
-    manifests: nativeExtensionManifests
-  })
+  const registry = createInstalledToolRegistry()
   const [binding] = registry
     .createAiCapabilityToolBindings([capability])
     .filter((candidate) => candidate.definition.name === toolName)
