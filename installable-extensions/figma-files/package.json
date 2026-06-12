@@ -1,0 +1,18 @@
+{
+  "name": "@openwork/extension-figma-files",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./main.ts",
+  "types": "./manifest.ts",
+  "openwork": {
+    "distribution": "installable",
+    "trust": "trusted"
+  },
+  "dependencies": {
+    "@openwork/extension-api": "workspace:*",
+    "@openwork/extension-utils": "workspace:*",
+    "react": "^19.2.1",
+    "zod": "^4.0.0"
+  }
+}
