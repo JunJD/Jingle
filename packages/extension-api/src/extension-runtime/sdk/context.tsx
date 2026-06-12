@@ -398,12 +398,7 @@ function createDeferredPreferenceValues(): object {
 
 export function getConnectionSecret(name: string): string {
   const context = getActiveExtensionRuntimeSdk()
-  const extensionValue = normalizeConnectionSecretValue(context.extensionPreferences[name])
-  if (extensionValue) {
-    return extensionValue
-  }
-
-  return normalizeConnectionSecretValue(context.commandPreferences[name])
+  return normalizeConnectionSecretValue(context.extensionPreferences[name])
 }
 
 function normalizeConnectionSecretValue(value: unknown): string {

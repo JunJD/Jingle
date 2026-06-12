@@ -5,12 +5,8 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { figmaFilesManifest } from "../../installable-extensions/figma-files/manifest"
 import { githubManifest } from "../../installable-extensions/github/manifest"
 import { notionManifest } from "../../installable-extensions/notion/manifest"
-import { listNativeExtensionQuicklinkAliases } from "../../src/extensions"
 import { nativeExtensionManifests } from "../../src/extensions"
-import {
-  normalizeExtensionQuicklinkRecord,
-  parseExtensionQuicklinkCommandUrl
-} from "../../src/shared/extension-quicklinks"
+import { parseExtensionQuicklinkCommandUrl } from "../../src/shared/extension-quicklinks"
 import {
   buildNativeLauncherCommandOwners,
   setNativeLauncherCatalogProjection
@@ -39,8 +35,6 @@ import {
 import type { LauncherHistoryItem } from "../../src/shared/launcher-history"
 import type { LauncherSearchResult } from "../../src/shared/launcher-search"
 import type { LocalStartItem } from "../../src/shared/local-start"
-
-const extensionQuicklinkAliases = listNativeExtensionQuicklinkAliases()
 
 setNativeLauncherCatalogProjection(
   [...nativeExtensionManifests, figmaFilesManifest, githubManifest, notionManifest].map(
@@ -791,25 +785,13 @@ test("generic quicklink search results use quicklink icon and locale type labels
   assert.equal(enItems[0]?.trailingLabel, "Quicklink")
 })
 
-test("legacy generated Notion quicklink URLs open the formal Notion command", () => {
-  const legacyQuicklink = normalizeExtensionQuicklinkRecord(
-    {
-      createdAt: "2026-05-27T00:00:00.000Z",
-      extensionName: "notion-generated",
-      id: "quicklink-legacy-notion-generated-create",
-      link: "openwork://extensions/notion-generated/create-database-page?launchContext=%7B%22defaults%22%3A%7B%22title%22%3A%22Spec%22%7D%7D",
-      name: "Create generated Notion page",
-      updatedAt: "2026-05-27T00:00:00.000Z"
-    },
-    { aliases: extensionQuicklinkAliases }
-  )
+test("retired generated Notion quicklink URLs stay retired", () => {
   const command = parseExtensionQuicklinkCommandUrl(
-    "openwork://extensions/notion-generated/create-database-page?launchContext=%7B%22defaults%22%3A%7B%22title%22%3A%22Spec%22%7D%7D",
-    { aliases: extensionQuicklinkAliases }
+    "openwork://extensions/notion-generated/create-database-page?launchContext=%7B%22defaults%22%3A%7B%22title%22%3A%22Spec%22%7D%7D"
   )
   assert.deepEqual(command, {
     commandName: "create-database-page",
-    extensionName: "notion",
+    extensionName: "notion-generated",
     launchProps: {
       launchContext: {
         defaults: {
@@ -826,29 +808,22 @@ test("legacy generated Notion quicklink URLs open the formal Notion command", ()
         target: command!,
         type: "open-extension-command"
       },
-      id: legacyQuicklink.id,
+      id: "quicklink-legacy-notion-generated-create",
       kind: "url",
       source: "quicklinks",
-      subtitle: legacyQuicklink.extensionName ?? "",
-      title: legacyQuicklink.name
+      subtitle: "notion-generated",
+      title: "Create generated Notion page"
     })
   ])
 
-  assert.deepEqual(items[0]?.commandRef, {
-    commandName: "create-database-page",
-    extensionName: "notion",
-    kind: "extension-command"
-  })
   assert.deepEqual(items[0]?.presentation.icon, {
-    extensionName: "notion",
-    icon: "assets/notion-logo.png",
-    iconName: "notion",
-    type: "extension"
+    name: "bookmark",
+    type: "glyph"
   })
   assert.equal(items[0]?.presentation.categoryLabel, "快捷链接")
-  assert.equal(items[0]?.subtitle, "快捷链接 · notion")
+  assert.equal(items[0]?.subtitle, "快捷链接 · notion-generated")
   assert.equal(items[0]?.trailingLabel, "快捷链接")
-  assert.equal(items[0]?.title, "Create Notion page")
+  assert.equal(items[0]?.title, "Create generated Notion page")
 })
 
 test("retired generated Notion command search results do not resolve formal package icons", () => {

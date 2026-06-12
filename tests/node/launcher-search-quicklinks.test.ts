@@ -11,22 +11,6 @@ import {
 } from "../../src/main/services/launcher-search/providers/quicklinks"
 
 const requireFromTest = createRequire(import.meta.url)
-const notionGeneratedQuicklinkAliases = [
-  {
-    fromExtensionName: "notion-generated",
-    nameReplacements: [
-      {
-        from: "generated Notion",
-        to: "Notion"
-      },
-      {
-        from: "Notion Generated",
-        to: "Notion"
-      }
-    ],
-    toExtensionName: "notion"
-  }
-] as const
 
 function installElectronStoreMock(): void {
   const electronModuleId = requireFromTest.resolve("electron")
@@ -59,9 +43,8 @@ function createIpcMainMock(): {
   }
 }
 
-test("quicklink launcher search opens legacy generated Notion command quicklinks through formal Notion", async () => {
+test("quicklink launcher search keeps retired generated Notion command quicklinks retired", async () => {
   configureQuicklinksLauncherSearchProvider({
-    aliases: notionGeneratedQuicklinkAliases,
     listQuicklinks: () => [
       {
         createdAt: "2026-05-27T00:00:00.000Z",
@@ -86,7 +69,7 @@ test("quicklink launcher search opens legacy generated Notion command quicklinks
       executor: "internal",
       target: {
         commandName: "create-database-page",
-        extensionName: "notion",
+        extensionName: "notion-generated",
         launchProps: {
           launchContext: {
             defaults: {
@@ -102,8 +85,8 @@ test("quicklink launcher search opens legacy generated Notion command quicklinks
     score: 650,
     source: "quicklinks",
     subtitle:
-      "notion · openwork://extensions/notion/create-database-page?launchContext=%7B%22defaults%22%3A%7B%22title%22%3A%22Spec%22%7D%7D",
-    title: "Create Notion page"
+      "notion-generated · openwork://extensions/notion-generated/create-database-page?launchContext=%7B%22defaults%22%3A%7B%22title%22%3A%22Spec%22%7D%7D",
+    title: "Create generated Notion page"
   })
 })
 
@@ -115,12 +98,10 @@ test("extension quicklink service can rename and remove registered command quick
     process.env.OPENWORK_HOME = openworkHome
     installElectronStoreMock()
 
-    const { ExtensionQuicklinkRepository } = await import(
-      "../../src/main/extension-quicklinks/repository"
-    )
-    const { ExtensionQuicklinkService } = await import(
-      "../../src/main/extension-quicklinks/service"
-    )
+    const { ExtensionQuicklinkRepository } =
+      await import("../../src/main/extension-quicklinks/repository")
+    const { ExtensionQuicklinkService } =
+      await import("../../src/main/extension-quicklinks/service")
 
     const service = new ExtensionQuicklinkService(new ExtensionQuicklinkRepository())
     const quicklink = service.registerQuicklink({
@@ -165,7 +146,7 @@ test("extension quicklink service can rename and remove registered command quick
   }
 })
 
-test("extension quicklink repository migrates generated Notion command links to formal Notion", async () => {
+test("extension quicklink repository clears generated Notion command links", async () => {
   const originalOpenworkHome = process.env.OPENWORK_HOME
   const openworkHome = await mkdtemp(join(tmpdir(), "openwork-extension-quicklinks-migrate-"))
   const storePath = join(openworkHome, "extension-quicklinks.json")
@@ -203,17 +184,16 @@ test("extension quicklink repository migrates generated Notion command links to 
       "utf8"
     )
 
-    const { ExtensionQuicklinkRepository } = await import(
-      "../../src/main/extension-quicklinks/repository"
-    )
-    const repository = new ExtensionQuicklinkRepository(notionGeneratedQuicklinkAliases)
+    const { ExtensionQuicklinkRepository } =
+      await import("../../src/main/extension-quicklinks/repository")
+    const repository = new ExtensionQuicklinkRepository(["notion"])
 
-    const migratedQuicklinks = repository.list()
-    assert.equal(migratedQuicklinks.length, 1)
-    assert.equal(migratedQuicklinks[0]?.id, "formal-existing")
-    assert.equal(migratedQuicklinks[0]?.extensionName, "notion")
-    assert.equal(migratedQuicklinks[0]?.link, formalLink)
-    assert.equal(migratedQuicklinks[0]?.name, "Create Notion page")
+    const quicklinks = repository.list()
+    assert.equal(quicklinks.length, 1)
+    assert.equal(quicklinks[0]?.id, "formal-existing")
+    assert.equal(quicklinks[0]?.extensionName, "notion")
+    assert.equal(quicklinks[0]?.link, formalLink)
+    assert.equal(quicklinks[0]?.name, "Create Notion page")
 
     const persisted = JSON.parse(await readFile(storePath, "utf8")) as {
       quicklinks: Array<{ extensionName?: string; link: string }>
@@ -229,14 +209,15 @@ test("extension quicklink repository migrates generated Notion command links to 
       }
     ])
 
-    const registered = repository.register({
-      extensionName: "notion-generated",
-      link: legacyLink,
-      name: "Create Notion page again"
-    })
-    assert.equal(registered.id, "formal-existing")
-    assert.equal(registered.extensionName, "notion")
-    assert.equal(registered.link, formalLink)
+    assert.throws(
+      () =>
+        repository.register({
+          extensionName: "notion-generated",
+          link: legacyLink,
+          name: "Create Notion page again"
+        }),
+      /Unknown native extension "notion-generated"/
+    )
     assert.equal(repository.list().length, 1)
   } finally {
     if (originalOpenworkHome === undefined) {
@@ -274,9 +255,8 @@ test("extension quicklink controller exposes list update and remove IPC handlers
       }
     }
   }
-  const { ExtensionQuicklinkController } = await import(
-    "../../src/main/extension-quicklinks/controller"
-  )
+  const { ExtensionQuicklinkController } =
+    await import("../../src/main/extension-quicklinks/controller")
   const { handlers, ipcMain } = createIpcMainMock()
   const controller = new ExtensionQuicklinkController(
     service as unknown as ConstructorParameters<typeof ExtensionQuicklinkController>[0]
@@ -289,9 +269,9 @@ test("extension quicklink controller exposes list update and remove IPC handlers
   ])
   assert.equal(
     (
-      (await handlers
-        .get("extensionQuicklinks:update")
-        ?.({} as IpcMainInvokeEvent, "quicklink-1", { name: "Search docs" })) as {
+      (await handlers.get("extensionQuicklinks:update")?.({} as IpcMainInvokeEvent, "quicklink-1", {
+        name: "Search docs"
+      })) as {
         name: string
       }
     ).name,

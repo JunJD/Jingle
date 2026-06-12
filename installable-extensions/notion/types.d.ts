@@ -1,6 +1,5 @@
 import type { RuntimeOpenApplication } from "@openwork/extension-api"
 
-// Compatibility ambient types that Openwork injects for migrated extensions.
 declare global {
   type Preferences = Preferences.Extension
 
@@ -10,7 +9,6 @@ declare global {
       apiBaseUrl?: string
       open_in?: RuntimeOpenApplication
       properties_in_page_previews?: boolean
-      notion_token?: string
     }
     type CreateDatabasePage = Extension & {
       closeAfterCreate?: boolean

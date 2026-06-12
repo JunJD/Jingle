@@ -138,8 +138,6 @@ export const githubManifest = defineNativeExtensionManifest({
   aiCapability: {
     connectionId: "default",
     id: "github",
-    requiredPreferenceNames: ["accessToken"],
-    publicPreferenceNames: ["apiBaseUrl"],
     instructions: [...],
     guide: "...",
     toolNames: [...]
@@ -160,16 +158,16 @@ export const githubManifest = defineNativeExtensionManifest({
 代码落点：
 
 - `src/shared/native-extensions.ts` 定义 `NativeExtensionConnectionManifest`、`NativeExtensionResolvedConnection` 和 `NativeExtensionExecutionContext`。
-- `src/main/native-extensions/connection-resolver.ts` 是 connection 主通路，负责读取 extension preferences/secrets、provider extension preferences、legacy command-scoped password fallback，并返回 execution context。
-- `src/extensions/sources.ts` 在传入 `getConnection` 时用 resolved connection 计算 AI auth status；`requiredPreferenceNames` 只保留为没有 resolver 输入时的兼容推导。
+- `src/main/native-extensions/connection-resolver.ts` 是 connection 主通路，负责读取 extension preferences/secrets 和 provider extension preferences，并返回 execution context。
+- `src/extensions/sources.ts` 必须通过 `getConnection` 读取 resolved connection 来计算 AI auth status。
 - `src/main/native-extensions/service.ts` 和 `src/main/services/native-extensions/index.ts` 运行 command/service 时走 `resolveNativeExtensionExecutionContext`。
 - `src/main/extension-tools/executor.ts` 和 `src/main/extension-tools/permission.ts` 运行 AI tools / 审批时接收同一份 execution context。
 
-因此，GitHub “command 能用但 AI 说未连接”不应该再通过两套 auth 判断复现；如果复现，应优先查 connection resolver 的输入、legacy fallback 或调用点是否没有传 `getConnection` / `getExtensionExecutionContext`。
+因此，GitHub “command 能用但 AI 说未连接”不应该再通过两套 auth 判断复现；如果复现，应优先查 connection resolver 的输入或调用点是否没有传 `getConnection` / `getExtensionExecutionContext`。
 
 仍然存在的缺口：
 
-- `aiCapability.requiredPreferenceNames` 还存在兼容意义，不能再作为新主通路设计依据。
+- AI capability 不再从 preference 字段推导 auth；连接语义只在 `connection` manifest 中表达。
 - OAuth manifest 类型已经存在，但主进程 OAuth flow、token exchange、refresh/revoke、state/PKCE 存储还没有完整落地。
 - runtime command/service 仍通过 resolver-backed `extensionPreferences` 消费 secret，后续接第三方包时需要继续收紧 secret 暴露面。
 - `connection.status` 的 richer states 还没有完全展开，当前主要覆盖 connected/missing，OAuth 上线后再补 expired/revoked/scope-missing 等状态。
@@ -386,20 +384,7 @@ export const notionManifest = defineNativeExtensionManifest({
 })
 ```
 
-兼容期仍保留：
-
-```ts
-aiCapability.requiredPreferenceNames
-```
-
-但它只是 adapter：
-
-```txt
-old requiredPreferenceNames
-  -> synthesized connection.auth.secretNames
-```
-
-主通路不能再依赖它。
+AI capability 不再保留 `requiredPreferenceNames` adapter；迁移工具应直接生成 `connection.auth.secretNames`。
 
 ## Connection Context
 
@@ -578,12 +563,12 @@ supportedPlatforms = ["darwin"]
 3. `src/main/native-extensions/connection-resolver.ts` 已作为 shared resolver，返回 `NativeExtensionExecutionContext`。
 4. `src/extensions/sources.ts` 在 agent runtime 传入 `getConnection` 时走 resolved connection，missing auth 仍注入 instructions/guide，connected 才暴露 tools。
 5. native command/service 和 extension AI tool executor 已消费 execution context，command 与 AI tool 不再各自判断连接状态。
-6. legacy command-scoped password fallback 已下沉到 connection resolver。
+6. command-scoped password fallback 已删除；connection 只读取 extension/provider 级偏好。
 
 剩余缺口：
 
 1. OAuth / Connected Account 仍是长期能力，尚未实现完整主流程。
-2. `requiredPreferenceNames` 仍作为兼容字段存在，后续新增 extension 不应依赖它表达主 connection。
+2. 第三方外部安装包接入后，需要继续校验所有 AI capability 都声明显式 connection。
 3. 第三方外部安装包接入后，需要继续收紧 secret 到 extension runtime 的传递方式。
 4. `loadExtension` 和 `@extension` 已经是同一能力的两条入口，但后续回归仍要同时覆盖显式 mention 与模型主动加载，避免只修一边。
 
@@ -592,7 +577,7 @@ supportedPlatforms = ["darwin"]
 必须覆盖这些行为：
 
 1. GitHub token 只在 extension connection 设置一次，`My Issues` command 和 AI `listMyIssues` 都显示 connected。
-2. 只有 legacy `github:my-issues` token 时，resolver 能读到并返回 connected，同时给出可迁移路径。
+2. 只有旧 `github:my-issues` command-scoped token 时，resolver 返回 missing auth，不把旧 token 当作 connected。
 3. GitHub missing auth 时，AI capability 有 instructions/guide，但没有 tools。
 4. GitHub connected auth 时，只暴露 manifest 当前 `toolNames` 中存在的 tools。
 5. `@github` preload 和 `loadExtension("github")` 进入同一个 loaded extension session。

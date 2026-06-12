@@ -3,10 +3,10 @@ import { Check, Code2, Copy, Eye, Paintbrush, Palette, SlidersHorizontal, Type }
 import {
   APP_THEME_PRESETS,
   createAppThemeSettingsFromPreset,
-  parseCodexThemeV1Token,
-  serializeCodexThemeV1,
+  parseJingleThemeV1Token,
+  serializeJingleThemeV1,
   type AppThemeSettings,
-  type CodexThemeV1
+  type JingleThemeV1
 } from "@shared/app-theme"
 import type { AppLocale } from "@shared/i18n"
 import { applyAppThemeSettings } from "../lib/app-theme"
@@ -68,7 +68,7 @@ function ColorControl(props: {
   )
 }
 
-function ThemePreview(props: { config: CodexThemeV1 }): React.JSX.Element {
+function ThemePreview(props: { config: JingleThemeV1 }): React.JSX.Element {
   const { config } = props
   const { theme } = config
   const secondarySurface = `color-mix(in srgb, ${theme.ink} ${Math.round(
@@ -169,7 +169,7 @@ export function AppearanceTab(props: { locale: AppLocale }): React.JSX.Element {
   }, [])
 
   const serializedTheme = useMemo(() => {
-    return themeSettings ? serializeCodexThemeV1(themeSettings.config) : ""
+    return themeSettings ? serializeJingleThemeV1(themeSettings.config) : ""
   }, [themeSettings])
 
   const commitThemeSettings = async (nextSettings: AppThemeSettings): Promise<void> => {
@@ -180,7 +180,7 @@ export function AppearanceTab(props: { locale: AppLocale }): React.JSX.Element {
     applyAppThemeSettings(saved)
   }
 
-  const updateConfig = (updater: (config: CodexThemeV1) => CodexThemeV1): void => {
+  const updateConfig = (updater: (config: JingleThemeV1) => JingleThemeV1): void => {
     if (!themeSettings) {
       return
     }
@@ -196,7 +196,7 @@ export function AppearanceTab(props: { locale: AppLocale }): React.JSX.Element {
   }
 
   const handleImport = (): void => {
-    const parsed = parseCodexThemeV1Token(importDraft)
+    const parsed = parseJingleThemeV1Token(importDraft)
     if (!parsed) {
       setStatus(copy.appearance.importFailed)
       window.setTimeout(() => setStatus(""), 1600)

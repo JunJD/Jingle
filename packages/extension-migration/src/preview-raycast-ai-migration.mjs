@@ -179,11 +179,11 @@ const RAYCAST_API_IMPORT_SUPPORT = {
   },
   openCommandPreferences: {
     status: "supported",
-    target: "openCommandPreferences"
+    target: "openNativeCommandSettings"
   },
   openExtensionPreferences: {
     status: "supported",
-    target: "openExtensionPreferences"
+    target: "openNativeExtensionSettings"
   },
   showHUD: {
     status: "supported",
@@ -343,6 +343,7 @@ const RUNTIME_CAPABILITY_IMPORTS = {
   openCommandPreferences: "settings",
   openExtensionPreferences: "settings",
   openExternal: "shell",
+  openNativeCommandSettings: "settings",
   openNativeExtensionSettings: "settings",
   showHUD: "toast",
   showToast: "toast",
@@ -566,7 +567,7 @@ function buildManifestPreview(pkg, sourceFiles, target) {
   const tools = Array.isArray(pkg.tools) ? pkg.tools : []
   const toolNames = tools.map((tool) => toOpenworkToolName(tool.name)).filter(Boolean)
   const migratedPreferences = migratePreferences(pkg.preferences)
-  const requiredPreferenceNames = suggestRequiredPreferenceNames(migratedPreferences)
+  const connectionSecretNames = suggestConnectionSecretNames(migratedPreferences)
   const toolDisplays = Object.fromEntries(
     tools
       .filter((tool) => typeof tool.name === "string")
@@ -583,14 +584,13 @@ function buildManifestPreview(pkg, sourceFiles, target) {
     aiCapability: {
       connectionId: "default",
       description: pkg.description,
-      guide: buildGuide(pkg, target, requiredPreferenceNames),
+      guide: buildGuide(pkg, target, connectionSecretNames),
       id: target.extensionId,
       instructions: normalizeInstructions(pkg.ai?.instructions),
       mention: {
         label: target.title,
         value: target.extensionId
       },
-      requiredPreferenceNames,
       supportedPlatforms: mapPlatforms(pkg.platforms),
       title: target.title,
       toolDisplays,
@@ -607,7 +607,7 @@ function buildManifestPreview(pkg, sourceFiles, target) {
       title: command.title
     })),
     connection: {
-      auth: buildConnectionAuthPreview(requiredPreferenceNames),
+      auth: buildConnectionAuthPreview(connectionSecretNames),
       id: "default",
       provider: pkg.name,
       title: target.title
@@ -639,10 +639,10 @@ function buildCommandRuntimeManifestPreview(command) {
   return undefined
 }
 
-function buildConnectionAuthPreview(requiredPreferenceNames) {
-  return requiredPreferenceNames.length > 0
+function buildConnectionAuthPreview(connectionSecretNames) {
+  return connectionSecretNames.length > 0
     ? {
-        secretNames: requiredPreferenceNames,
+        secretNames: connectionSecretNames,
         type: "apiKey"
       }
     : {
@@ -958,11 +958,11 @@ function collectSourceFiles(reader, extensionPath, target) {
   return suppressKnownExtensionBlockingAdapters(sourceFiles, target)
 }
 
-function buildGuide(pkg, target, requiredPreferenceNames = []) {
+function buildGuide(pkg, target, connectionSecretNames = []) {
   const title = target.title
   const guide = [
     `Use ${title} only when the user asks for ${title} data or actions.`,
-    requiredPreferenceNames.length > 0
+    connectionSecretNames.length > 0
       ? `${title} tools require a connected account before reading or changing extension data.`
       : null,
     "If auth status is missing, explain that the extension must be connected in Settings first."
@@ -972,7 +972,7 @@ function buildGuide(pkg, target, requiredPreferenceNames = []) {
   return extendKnownExtensionGuide(guide, { pkg, target })
 }
 
-function suggestRequiredPreferenceNames(preferences) {
+function suggestConnectionSecretNames(preferences) {
   if (!Array.isArray(preferences)) {
     return []
   }

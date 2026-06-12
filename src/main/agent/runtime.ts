@@ -386,8 +386,8 @@ The workspace root is: ${workspacePath}`
   const agent = createAgent({
     model,
     name: "openwork",
-    // LangGraph's TypeScript overload defaults checkpoint versions to number,
-    // while PrismaCheckpointSaver now stores comparable string versions.
+    // createAgent's public type still fixes checkpointer versions to number.
+    // RuntimeCheckpointSaver owns the runtime contract and overrides string versioning.
     checkpointer: checkpointer as unknown as BaseCheckpointSaver<number>,
     systemPrompt,
     middleware: [

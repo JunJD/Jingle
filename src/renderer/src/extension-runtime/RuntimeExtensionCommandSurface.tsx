@@ -14,14 +14,7 @@ import { cjk } from "@streamdown/cjk"
 import { code } from "@streamdown/code"
 import { math } from "@streamdown/math"
 import { mermaid } from "@streamdown/mermaid"
-import {
-  AlertCircle,
-  ArrowLeft,
-  CheckCircle2,
-  Loader2,
-  LoaderCircle,
-  X
-} from "lucide-react"
+import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, LoaderCircle, X } from "lucide-react"
 import { Streamdown } from "streamdown"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { matchesLauncherActionShortcut } from "@/features/launcher-actions/controller-core"
@@ -78,6 +71,14 @@ const RUNTIME_LIST_SHORTCUT_SCOPES = ["launcher.list"] as const
 const RUNTIME_LIST_QUERY_THROTTLE_MS = 250
 const RUNTIME_TOAST_DISMISS_MS = 3200
 const streamdownPlugins = { cjk, code, math, mermaid }
+
+function createRuntimeSessionId(): string {
+  if (typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+
+  return `runtime-session-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
 
 function isOpenableMetadataTarget(value: string): boolean {
   try {
@@ -908,6 +909,38 @@ function getRuntimeFormFieldFocusRequestId(field: ExtensionFormFieldNode): numbe
   return field.focusRequestId
 }
 
+function createRuntimeActionDescriptor(params: {
+  action: ExtensionActionNode
+  executeActionNode: (action: ExtensionActionNode) => void
+  visualRenderContext: RuntimeVisualRenderContext
+}): LauncherActionDescriptor {
+  const { action, executeActionNode, visualRenderContext } = params
+  const children = action.children?.map((child) =>
+    createRuntimeActionDescriptor({
+      action: child,
+      executeActionNode,
+      visualRenderContext
+    })
+  )
+
+  return {
+    children,
+    icon: renderVisual(action.icon, visualRenderContext),
+    disabled: action.disabled,
+    id: action.id,
+    onAction: () => {
+      if (!action.disabled) {
+        executeActionNode(action)
+      }
+    },
+    sectionTitle: action.sectionTitle,
+    shortcut: formatRuntimeActionShortcut(action.shortcut),
+    shortcutChord: toLauncherActionShortcut(action.shortcut),
+    style: action.style,
+    title: action.title
+  }
+}
+
 export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   const host = useNativeExtensionHost()
   const hostNavigation = useNativeExtensionNavigation()
@@ -1080,28 +1113,16 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   )
 
   const createActionDescriptor = useCallback(
-    (action: ExtensionActionNode): LauncherActionDescriptor => {
-      const children = action.children?.map((child) => createActionDescriptor(child))
-
-      return {
-        children,
-        icon: renderVisual(action.icon, visualRenderContext),
-        disabled: action.disabled,
-        id: action.id,
-        onAction: () => {
-          if (!action.disabled) {
-            executeActionNode(action)
-          }
-        },
-        sectionTitle: action.sectionTitle,
-        shortcut: formatRuntimeActionShortcut(action.shortcut),
-        shortcutChord: toLauncherActionShortcut(action.shortcut),
-        style: action.style,
-        title: action.title
-      }
-    },
+    (action: ExtensionActionNode): LauncherActionDescriptor =>
+      createRuntimeActionDescriptor({
+        action,
+        executeActionNode,
+        visualRenderContext
+      }),
     [executeActionNode, visualRenderContext]
   )
+
+  /* eslint-disable react-hooks/refs -- LauncherActionDescriptor callbacks run from user events, not while descriptors are mapped. */
   const listActions = useMemo(
     () => (listSnapshot?.actions ?? []).map(createActionDescriptor),
     [createActionDescriptor, listSnapshot?.actions]
@@ -1114,6 +1135,8 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     () => (selectedItem?.actions ?? []).map(createActionDescriptor),
     [createActionDescriptor, selectedItem?.actions]
   )
+  /* eslint-enable react-hooks/refs */
+
   const activeActions =
     selectedActions.length > 0
       ? selectedActions
@@ -1246,30 +1269,32 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
 
   useEffect(() => {
     let cancelled = false
-    let sessionId: string | null = null
+    const sessionId = createRuntimeSessionId()
 
     hasReceivedListSurfaceRef.current = false
+    activeSessionIdRef.current = sessionId
 
     void window.api.extensionRuntime
       .startForeground({
-        commandName: host.commandName,
-        commandPreferences: host.commandPreferences,
-        extensionName: host.extensionName,
-        extensionPreferences: {},
-        initialAction: host.initialAction,
-        launchProps: host.launchProps,
-        locale: host.locale,
-        mode: "view",
-        seedQuery: initialSeedQueryRef.current
+        context: {
+          commandName: host.commandName,
+          commandPreferences: host.commandPreferences,
+          extensionName: host.extensionName,
+          extensionPreferences: {},
+          initialAction: host.initialAction,
+          launchProps: host.launchProps,
+          locale: host.locale,
+          mode: "view",
+          seedQuery: initialSeedQueryRef.current
+        },
+        sessionId
       })
       .then((session) => {
-        sessionId = session.sessionId
         if (cancelled) {
           void window.api.extensionRuntime.stopForeground(session.sessionId)
           return
         }
 
-        activeSessionIdRef.current = session.sessionId
         nextFormChangeIdRef.current = 0
         dispatchFormState({ type: "reset" })
         clearListQueryThrottleTimer()
@@ -1300,9 +1325,7 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
       clearListQueryThrottleTimer()
       clearToastDismissTimer()
       setRuntimeToast(null)
-      if (sessionId) {
-        void window.api.extensionRuntime.stopForeground(sessionId)
-      }
+      void window.api.extensionRuntime.stopForeground(sessionId)
       activeSessionIdRef.current = null
     }
   }, [

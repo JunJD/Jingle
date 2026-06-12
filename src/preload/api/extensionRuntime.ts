@@ -1,6 +1,7 @@
 import type {
   ExtensionRuntimeEventAck,
   ExtensionRuntimeEvent,
+  ExtensionRuntimeForegroundStartRequest,
   ExtensionRuntimeLaunchContext,
   ExtensionRuntimeNavigationRequestEvent,
   ExtensionRuntimeNavigationResponse,
@@ -24,9 +25,9 @@ export interface ExtensionRuntimeEventAckEvent {
 
 export const extensionRuntimeApi = {
   startForeground: (
-    context: ExtensionRuntimeLaunchContext
+    request: ExtensionRuntimeForegroundStartRequest
   ): Promise<ExtensionRuntimeSessionInfo> => {
-    return invokeIpc("extensionRuntime:startForeground", context)
+    return invokeIpc("extensionRuntime:startForeground", request)
   },
   runOnce: (context: ExtensionRuntimeLaunchContext): Promise<ExtensionRuntimeRunResult> => {
     return invokeIpc("extensionRuntime:runOnce", context)

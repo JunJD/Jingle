@@ -22,11 +22,7 @@ export function openNativeExtensionSettings(params: {
     })
 }
 
-export function openExtensionPreferences(): Promise<void> {
-  return openNativeExtensionSettings({})
-}
-
-export function openCommandPreferences(): Promise<void> {
+export function openNativeCommandSettings(): Promise<void> {
   const context = getActiveExtensionRuntimeSdk()
   return openNativeExtensionSettings({
     commandName: context.commandName,

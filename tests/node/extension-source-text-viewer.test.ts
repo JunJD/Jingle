@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { parseComposerReferenceTextForViewer } from "../../src/renderer/src/components/chat/ExtensionSourceTextViewer"
+import { parseExtensionSourceTextForViewer as parseComposerReferenceTextForViewer } from "../../src/renderer/src/components/chat/extension-source-text-viewer-model"
 
 test("extension source viewer parses schema markdown into inline tokens", () => {
   assert.deepEqual(

@@ -13,14 +13,11 @@ import {
   Keyboard,
   List,
   confirmAlert,
-  createExtensionClient,
   createNativeExtensionClient,
-  defineExtensionClientMethod,
   defineNativeExtensionClientMethod,
   getPreferenceValues,
   open,
-  openCommandPreferences,
-  openExtensionPreferences,
+  openNativeCommandSettings,
   openNativeExtensionSettings,
   showToast,
   useNavigation,
@@ -103,11 +100,6 @@ const runtimeFixtureTypeContract: {
 }
 
 void runtimeFixtureTypeContract
-
-test("extension runtime root API keeps legacy client aliases", () => {
-  assert.equal(createExtensionClient, createNativeExtensionClient)
-  assert.equal(defineExtensionClientMethod, defineNativeExtensionClientMethod)
-})
 
 function createTestRenderer(params?: TestRendererParams) {
   return createExtensionRuntimeRenderer(
@@ -480,7 +472,7 @@ test("runtime SDK exposes merged command preference values", async () => {
           },
           extensionName: "runtime-fixture",
           extensionPreferences: {
-            notion_token: "secret",
+            workspace_id: "workspace-1",
             open_in: "notion"
           },
           initialAction: "open",
@@ -500,9 +492,9 @@ test("runtime SDK exposes merged command preference values", async () => {
   await renderer.flushSnapshots()
 
   assert.deepEqual(observedPreferences[0], {
-    notion_token: "secret",
     open_in: "browser",
-    primaryAction: "open"
+    primaryAction: "open",
+    workspace_id: "workspace-1"
   })
 })
 
@@ -2732,7 +2724,7 @@ test("runtime SDK Form.Description renders as an informational form message", as
   assert.equal(contentField?.kind === "text-area" ? contentField.enableMarkdown : undefined, true)
 })
 
-test("useForm exposes itemProps object, reset, and focus compatibility", async () => {
+test("useForm exposes itemProps object, reset, and focus controls", async () => {
   function FormFlow() {
     const { focus, itemProps, reset } = useForm({
       initialValues: {
@@ -2893,7 +2885,7 @@ test("runtime SDK opens extension settings through host requests", async () => {
   ])
 })
 
-test("runtime SDK opens extension and command preferences through compatibility aliases", async () => {
+test("runtime SDK opens native extension and command settings", async () => {
   const requests: ExtensionRuntimeHostRequestInput[] = []
   const renderer = createTestRenderer()
 
@@ -2906,11 +2898,11 @@ test("runtime SDK opens extension and command preferences through compatibility 
           ActionPanel,
           null,
           createElement(Action, {
-            onAction: openExtensionPreferences,
+            onAction: () => openNativeExtensionSettings({}),
             title: "Open Extension Preferences"
           }),
           createElement(Action, {
-            onAction: openCommandPreferences,
+            onAction: openNativeCommandSettings,
             title: "Open Command Preferences"
           })
         ),

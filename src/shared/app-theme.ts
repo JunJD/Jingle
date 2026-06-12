@@ -21,21 +21,19 @@ export interface AppThemeTokens {
   surface: string
 }
 
-export interface CodexThemeV1 {
-  // Kept for codex-theme-v1 compatibility. In Jingle this identifies the
-  // overall visual style family, not only a syntax-highlighting theme.
+export interface JingleThemeV1 {
   codeThemeId: string
   theme: AppThemeTokens
   variant: AppThemeVariant
 }
 
 export interface AppThemeSettings {
-  config: CodexThemeV1
+  config: JingleThemeV1
   presetId: AppThemePresetId | "custom"
 }
 
 export interface AppThemePreset {
-  config: CodexThemeV1
+  config: JingleThemeV1
   id: string
   name: string
 }
@@ -46,7 +44,7 @@ export const DEFAULT_UI_FONT_FAMILY =
 export const DEFAULT_CODE_FONT_FAMILY =
   '"JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace'
 
-const PROOF_THEME: CodexThemeV1 = {
+const PROOF_THEME: JingleThemeV1 = {
   codeThemeId: "proof",
   theme: {
     accent: "#3d755d",
@@ -338,15 +336,15 @@ export function createAppThemeSettingsFromPreset(id: string): AppThemeSettings {
   }
 }
 
-export function normalizeCodexThemeV1(
+export function normalizeJingleThemeV1(
   value: unknown,
-  fallback: CodexThemeV1 = PROOF_THEME
-): CodexThemeV1 {
+  fallback: JingleThemeV1 = PROOF_THEME
+): JingleThemeV1 {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return fallback
   }
 
-  const raw = value as Partial<CodexThemeV1>
+  const raw = value as Partial<JingleThemeV1>
   const rawTheme =
     raw.theme && typeof raw.theme === "object" && !Array.isArray(raw.theme)
       ? (raw.theme as Partial<AppThemeTokens>)
@@ -403,25 +401,25 @@ export function normalizeAppThemeSettings(value: unknown): AppThemeSettings {
   const fallbackConfig = preset?.config ?? DEFAULT_APP_THEME_SETTINGS.config
 
   return {
-    config: normalizeCodexThemeV1(raw.config, fallbackConfig),
+    config: normalizeJingleThemeV1(raw.config, fallbackConfig),
     presetId: preset ? (preset.id as AppThemePresetId) : "custom"
   }
 }
 
-export function serializeCodexThemeV1(config: CodexThemeV1): string {
-  return `codex-theme-v1:${JSON.stringify(config)}`
+export function serializeJingleThemeV1(config: JingleThemeV1): string {
+  return `jingle-theme-v1:${JSON.stringify(config)}`
 }
 
-export function parseCodexThemeV1Token(value: string): CodexThemeV1 | null {
+export function parseJingleThemeV1Token(value: string): JingleThemeV1 | null {
   const trimmed = value.trim()
-  const prefix = "codex-theme-v1:"
+  const prefix = "jingle-theme-v1:"
 
   if (!trimmed.startsWith(prefix)) {
     return null
   }
 
   try {
-    return normalizeCodexThemeV1(JSON.parse(trimmed.slice(prefix.length)))
+    return normalizeJingleThemeV1(JSON.parse(trimmed.slice(prefix.length)))
   } catch {
     return null
   }

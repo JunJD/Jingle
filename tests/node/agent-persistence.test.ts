@@ -5,9 +5,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test, { mock } from "node:test"
 import { emptyCheckpoint } from "@langchain/langgraph-checkpoint"
-import type { BaseCheckpointSaver, SerializerProtocol } from "@langchain/langgraph-checkpoint"
-import { HumanMessage, AIMessage } from "@langchain/core/messages"
-import { END, MessagesAnnotation, START, StateGraph } from "@langchain/langgraph"
+import type { SerializerProtocol } from "@langchain/langgraph-checkpoint"
+import { appleRemindersManifest } from "../../installable-extensions/apple-reminders/manifest"
 
 const repoRoot = process.cwd()
 let openworkHome = ""
@@ -442,12 +441,12 @@ test("agent run metadata snapshots permission mode and preserves it through resu
     readRunExtensionAiCapabilitiesSnapshotFromMetadata,
     RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY
   } = await import("../../src/shared/extension-sources")
-  const { resolveNativeExtensionAiCapabilitiesForRefs } =
+  const { resolveNativeExtensionAiCapabilitiesForRefsFromManifests } =
     await import("../../src/extensions/sources")
 
   const threadId = "thread-permission"
   await createThread(threadId)
-  const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefs(
+  const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
     [
       {
         extensionName: "apple-reminders",
@@ -456,6 +455,7 @@ test("agent run metadata snapshots permission mode and preserves it through resu
         type: "extension-source"
       }
     ],
+    [appleRemindersManifest],
     {
       permissionMode: "auto",
       platform: "darwin"
@@ -828,7 +828,7 @@ test("run metadata updates preserve loaded extension snapshots and resume metada
     await import("../../src/main/agent/persistence")
   const { readRunExtensionAiCapabilitiesSnapshotFromMetadata } =
     await import("../../src/shared/extension-sources")
-  const { resolveNativeExtensionAiCapabilitiesForRefs } =
+  const { resolveNativeExtensionAiCapabilitiesForRefsFromManifests } =
     await import("../../src/extensions/sources")
 
   const threadId = "thread-extension-metadata-merge"
@@ -838,7 +838,7 @@ test("run metadata updates preserve loaded extension snapshots and resume metada
     aiCapabilities: [],
     permissionMode: "ask-to-edit"
   })
-  const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefs(
+  const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
     [
       {
         extensionName: "apple-reminders",
@@ -847,6 +847,7 @@ test("run metadata updates preserve loaded extension snapshots and resume metada
         type: "extension-source"
       }
     ],
+    [appleRemindersManifest],
     {
       permissionMode: "ask-to-edit",
       platform: "darwin"
@@ -1108,8 +1109,8 @@ test("prisma checkpoint saver stores channel values as reusable checkpoint blobs
     todos: [{ content: "keep me", id: "todo-1", status: "pending" }]
   }
   firstCheckpoint.channel_versions = {
-    messages: 1,
-    todos: 1
+    messages: "checkpoint-blob-messages-0001",
+    todos: "checkpoint-blob-todos-0001"
   }
 
   const secondCheckpoint = emptyCheckpoint()
@@ -1122,8 +1123,8 @@ test("prisma checkpoint saver stores channel values as reusable checkpoint blobs
     todos: [{ content: "keep me", id: "todo-1", status: "pending" }]
   }
   secondCheckpoint.channel_versions = {
-    messages: 2,
-    todos: 1
+    messages: "checkpoint-blob-messages-0002",
+    todos: "checkpoint-blob-todos-0001"
   }
 
   const saver = new PrismaCheckpointSaver()
@@ -1140,8 +1141,8 @@ test("prisma checkpoint saver stores channel values as reusable checkpoint blobs
       step: 0
     },
     {
-      messages: 1,
-      todos: 1
+      messages: "checkpoint-blob-messages-0001",
+      todos: "checkpoint-blob-todos-0001"
     }
   )
   await saver.put(
@@ -1153,7 +1154,7 @@ test("prisma checkpoint saver stores channel values as reusable checkpoint blobs
       step: 1
     },
     {
-      messages: 2
+      messages: "checkpoint-blob-messages-0002"
     }
   )
 
@@ -1179,7 +1180,11 @@ test("prisma checkpoint saver stores channel values as reusable checkpoint blobs
   )
   assert.deepEqual(
     blobRows.map((row) => `${row.channel}:${row.version}`),
-    ["messages:1", "messages:2", "todos:1"]
+    [
+      "messages:checkpoint-blob-messages-0001",
+      "messages:checkpoint-blob-messages-0002",
+      "todos:checkpoint-blob-todos-0001"
+    ]
   )
   assert.deepEqual(latest?.checkpoint.channel_values, secondCheckpoint.channel_values)
 })
@@ -1199,7 +1204,7 @@ test("prisma checkpoint saver stores empty blobs for versioned channels without 
   checkpoint.channel_versions = {
     __pregel_tasks: "checkpoint-empty-pregel-tasks",
     __start__: "checkpoint-empty-start",
-    messages: 1
+    messages: "checkpoint-empty-messages"
   }
 
   const saver = new PrismaCheckpointSaver()
@@ -1216,7 +1221,7 @@ test("prisma checkpoint saver stores empty blobs for versioned channels without 
       step: 0
     },
     {
-      messages: 1
+      messages: "checkpoint-empty-messages"
     }
   )
 
@@ -1236,7 +1241,7 @@ test("prisma checkpoint saver stores empty blobs for versioned channels without 
     [
       "__pregel_tasks:checkpoint-empty-pregel-tasks:empty",
       "__start__:checkpoint-empty-start:empty",
-      "messages:1:base64:json"
+      "messages:checkpoint-empty-messages:base64:json"
     ]
   )
   assert.deepEqual(latest?.checkpoint.channel_values, checkpoint.channel_values)
@@ -1285,143 +1290,41 @@ test("prisma checkpoint saver advances restored string channel versions", async 
   assert.equal(restoredVersion, checkpoint.id)
   assert.equal(typeof saver.getNextVersion(restoredVersion), "string")
   assert.notEqual(saver.getNextVersion(restoredVersion), restoredVersion)
-  assert.equal(typeof saver.getNextVersion(3), "string")
-  assert.notEqual(saver.getNextVersion(3), "0000000000000003")
 })
 
-test("prisma checkpoint saver normalizes legacy mixed channel versions on restore", async () => {
+test("prisma checkpoint saver rejects non-string channel versions", async () => {
   const { createThread } = await loadDbModules()
   const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
 
-  const threadId = "thread-checkpoint-mixed-version"
+  const threadId = "thread-checkpoint-numeric-version"
   await createThread(threadId)
 
   const checkpoint = emptyCheckpoint()
-  checkpoint.id = "checkpoint-mixed-version-0001"
+  checkpoint.id = "checkpoint-numeric-version-0001"
   checkpoint.channel_values = {
-    __start__: {
-      messages: [{ kwargs: { content: "second", id: "message-second" }, type: "human" }]
-    },
     messages: [{ kwargs: { content: "first", id: "message-first" }, type: "human" }]
   }
   checkpoint.channel_versions = {
-    __start__: "checkpoint-mixed-start",
     messages: 10
-  }
-  checkpoint.versions_seen = {
-    __start__: {
-      __start__: 10
-    }
   }
 
   const saver = new PrismaCheckpointSaver()
-  await saver.put(
-    {
-      configurable: {
-        thread_id: threadId
-      }
-    },
-    checkpoint,
-    {
-      parents: {},
-      source: "input",
-      step: 0
-    },
-    {
-      __start__: "checkpoint-mixed-start"
-    }
-  )
-
-  const latest = await saver.getTuple({
-    configurable: {
-      thread_id: threadId
-    }
-  })
-
-  assert.equal(latest?.checkpoint.channel_versions.__start__, "checkpoint-mixed-start")
-  assert.equal(latest?.checkpoint.channel_versions.messages, "0000000000000010")
-  assert.equal(latest?.checkpoint.versions_seen.__start__.__start__, "0000000000000010")
-  assert.equal(
-    latest!.checkpoint.channel_versions.__start__ >
-      latest!.checkpoint.versions_seen.__start__.__start__,
-    true
-  )
-})
-
-test("langgraph resumes legacy mixed channel versions and schedules new start input", async () => {
-  const { createThread } = await loadDbModules()
-  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
-
-  const threadId = "thread-langgraph-mixed-version"
-  await createThread(threadId)
-
-  const checkpoint = emptyCheckpoint()
-  checkpoint.id = "00000000-0000-0000-0000-000000000001"
-  checkpoint.channel_values = {
-    messages: [new HumanMessage({ content: "first", id: "message-first" })]
-  }
-  checkpoint.channel_versions = {
-    __start__: 10,
-    messages: 10
-  }
-  checkpoint.versions_seen = {
-    __start__: {
-      __start__: 10
-    }
-  }
-
-  const saver = new PrismaCheckpointSaver()
-  await saver.put(
-    {
-      configurable: {
-        thread_id: threadId
-      }
-    },
-    checkpoint,
-    {
-      parents: {},
-      source: "loop",
-      step: 0
-    },
-    checkpoint.channel_versions
-  )
-
-  const graph = new StateGraph(MessagesAnnotation)
-    .addNode("echo", async () => ({
-      messages: [new AIMessage({ content: "ok", id: "assistant-second" })]
-    }))
-    .addEdge(START, "echo")
-    .addEdge("echo", END)
-    .compile({ checkpointer: saver as unknown as BaseCheckpointSaver<number> })
-
-  const stream = await graph.stream(
-    {
-      messages: [new HumanMessage({ content: "second", id: "message-second" })]
-    },
-    {
-      configurable: {
-        thread_id: threadId
+  await assert.rejects(
+    saver.put(
+      {
+        configurable: {
+          thread_id: threadId
+        }
       },
-      streamMode: ["values"]
-    }
-  )
-  for await (const _chunk of stream) {
-    // Drain the run so the final checkpoint is written.
-  }
-
-  const latest = await saver.getTuple({
-    configurable: {
-      thread_id: threadId
-    }
-  })
-  const messages = latest?.checkpoint.channel_values.messages as Array<{
-    id?: string
-    kwargs?: { id?: string }
-  }>
-
-  assert.deepEqual(
-    messages.map((message) => message.kwargs?.id ?? message.id),
-    ["message-first", "message-second", "assistant-second"]
+      checkpoint,
+      {
+        parents: {},
+        source: "input",
+        step: 0
+      },
+      checkpoint.channel_versions
+    ),
+    /non-string version/
   )
 })
 

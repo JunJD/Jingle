@@ -681,7 +681,6 @@ test("Raycast migration preview reports dependency decisions and unsupported API
     const serializedPackagePreview = JSON.parse(JSON.stringify(packagePreview))
 
     assert.deepEqual(preview.manifestPreview.aiCapability.toolNames, ["searchPages"])
-    assert.deepEqual(preview.manifestPreview.aiCapability.requiredPreferenceNames, ["accessToken"])
     assert.deepEqual(preview.manifestPreview.connection.auth.secretNames, ["accessToken"])
     assert.deepEqual(preview.manifestPreview.capabilities, ["navigation", "surface"])
     assert.deepEqual(preview.manifestPreview.runtimeCapabilities, [
@@ -1573,8 +1572,12 @@ test("Raycast migration preview supports Raycast preferences settings helpers", 
       String(artifacts["openwork-package/src/command.tsx"]),
       /from "@openwork\/extension-api"/
     )
-    assert.match(String(artifacts["openwork-package/src/command.tsx"]), /openCommandPreferences/)
-    assert.match(String(artifacts["openwork-package/src/command.tsx"]), /openExtensionPreferences/)
+    assert.match(String(artifacts["openwork-package/src/command.tsx"]), /openNativeCommandSettings/)
+    assert.match(String(artifacts["openwork-package/src/command.tsx"]), /openNativeExtensionSettings/)
+    assert.doesNotMatch(
+      String(artifacts["openwork-package/src/command.tsx"]),
+      /openCommandPreferences|openExtensionPreferences/
+    )
   } finally {
     await rm(extensionRoot, { force: true, recursive: true })
   }

@@ -25,8 +25,6 @@ export const notionManifest = defineNativeExtensionManifest({
       "Adding content to a Notion page writes to Notion and must follow the current Permission Mode.",
       "Do not claim to have searched Notion unless a Notion tool was available and called."
     ],
-    publicPreferenceNames: ["apiBaseUrl"],
-    requiredPreferenceNames: ["accessToken"],
     mention: {
       label: l(NOTION_EXTENSION_TITLE, "Notion"),
       value: NOTION_EXTENSION_ID
@@ -41,11 +39,17 @@ export const notionManifest = defineNativeExtensionManifest({
         title: l("Search Pages", "搜索页面")
       },
       getPage: {
-        description: l("Get the Markdown content of a Notion page.", "获取 Notion 页面的 Markdown 内容。"),
+        description: l(
+          "Get the Markdown content of a Notion page.",
+          "获取 Notion 页面的 Markdown 内容。"
+        ),
         title: l("Get Page", "获取页面")
       },
       retrievePage: {
-        description: l("Retrieve a Notion page's metadata and properties.", "获取 Notion 页面的元数据和属性。"),
+        description: l(
+          "Retrieve a Notion page's metadata and properties.",
+          "获取 Notion 页面的元数据和属性。"
+        ),
         title: l("Retrieve Page", "获取页面详情")
       },
       getPageMarkdown: {
@@ -56,16 +60,18 @@ export const notionManifest = defineNativeExtensionManifest({
         title: l("Get Page Markdown", "获取页面 Markdown")
       },
       listBlockChildren: {
-        description: l("Retrieve child blocks for a Notion page or block.", "获取 Notion 页面或块的子块。"),
+        description: l(
+          "Retrieve child blocks for a Notion page or block.",
+          "获取 Notion 页面或块的子块。"
+        ),
         title: l("List Block Children", "列出子块")
       },
       addToPage: {
-        description: l("Append Markdown content to a Notion page.", "向 Notion 页面追加 Markdown 内容。"),
+        description: l(
+          "Append Markdown content to a Notion page.",
+          "向 Notion 页面追加 Markdown 内容。"
+        ),
         title: l("Add to Page", "追加到页面")
-      },
-      createPage: {
-        description: l("Create a Notion page in a data source.", "在数据源中创建 Notion 页面。"),
-        title: l("Create Page", "创建页面")
       },
       getDatabases: {
         description: l(
@@ -80,13 +86,6 @@ export const notionManifest = defineNativeExtensionManifest({
           "获取已授权集成共享的 Notion 数据源结构。"
         ),
         title: l("Retrieve Data Source", "获取数据源详情")
-      },
-      searchDatabase: {
-        description: l(
-          "Search pages in a Notion data source shared with the connected integration.",
-          "搜索已授权集成共享的数据源中的页面。"
-        ),
-        title: l("Search Database", "搜索数据库")
       },
       queryDataSource: {
         description: l(
@@ -108,10 +107,8 @@ export const notionManifest = defineNativeExtensionManifest({
       "listBlockChildren",
       "getDatabases",
       "retrieveDataSource",
-      "searchDatabase",
       "queryDataSource",
       "addToPage",
-      "createPage",
       "createDatabasePage"
     ]
   },

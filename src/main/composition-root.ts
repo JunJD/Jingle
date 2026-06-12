@@ -75,7 +75,7 @@ import {
 } from "./services/launcher-search"
 import { configureQuicklinksLauncherSearchProvider } from "./services/launcher-search/providers/quicklinks"
 import { registerWorkspaceIpcHandlers, registerWorkspaceModule } from "./workspace/module"
-import { listNativeExtensionQuicklinkAliases } from "@extensions/index"
+import { nativeExtensionManifests } from "@extensions/index"
 import type { MainWindowNavigationPayload } from "@shared/main-window"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
@@ -201,7 +201,7 @@ export function createMainCompositionRoot(
   parentContainer: DependencyContainer = container
 ): MainCompositionRoot {
   const childContainer = parentContainer.createChildContainer()
-  const extensionQuicklinkAliases = listNativeExtensionQuicklinkAliases()
+  const nativeExtensionNames = nativeExtensionManifests.map((manifest) => manifest.name)
 
   childContainer.registerInstance<MainCompositionContext>(MAIN_COMPOSITION_CONTEXT_TOKEN, context)
   registerAgentModule(childContainer)
@@ -212,7 +212,7 @@ export function createMainCompositionRoot(
   registerArtifactsModule(childContainer)
   registerExternalLinksModule(childContainer)
   registerExtensionQuicklinkModule(childContainer, {
-    aliases: extensionQuicklinkAliases
+    extensionNames: nativeExtensionNames
   })
   registerLauncherHistoryModule(childContainer)
   registerLocalStartModule(childContainer)
@@ -239,7 +239,6 @@ export function createMainCompositionRoot(
   registerThreadsModule(childContainer)
   registerWorkspaceModule(childContainer)
   configureQuicklinksLauncherSearchProvider({
-    aliases: extensionQuicklinkAliases,
     listQuicklinks: () => childContainer.resolve(ExtensionQuicklinkService).listQuicklinks()
   })
 

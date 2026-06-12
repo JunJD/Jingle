@@ -91,16 +91,15 @@ function getRequiredPendingHitlToolCallId(request: {
 }
 
 function buildCheckpointBlobVersionFilters(
-  channelVersions: Record<string, string | number>[]
+  channelVersions: Record<string, string>[]
 ): Array<{ channel: string; version: string }> {
   const filters = new Map<string, { channel: string; version: string }>()
 
   for (const versions of channelVersions) {
     for (const [channel, version] of Object.entries(versions)) {
-      const normalizedVersion = String(version)
-      filters.set(`${channel}\0${normalizedVersion}`, {
+      filters.set(`${channel}\0${version}`, {
         channel,
-        version: normalizedVersion
+        version
       })
     }
   }
@@ -436,7 +435,7 @@ export async function cloneThreadUntilCheckpoint(
       .map((checkpoint) =>
         readStoredCheckpointChannelVersions(checkpoint.type, checkpoint.checkpoint)
       )
-      .filter((versions): versions is Record<string, string | number> => versions !== null)
+      .filter((versions): versions is Record<string, string> => versions !== null)
     const checkpointBlobFilters = buildCheckpointBlobVersionFilters(checkpointChannelVersions)
     const checkpointWrites =
       checkpointIds.length > 0

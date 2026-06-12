@@ -303,7 +303,7 @@
   --ow-font-code-family: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace;
   --ow-semantic-skill: #5f6ac2;
 
-  /* Semantic mapping for shadcn compatibility */
+  /* Semantic mapping for shared UI tokens */
   --card: #fbfbf8;
   --card-foreground: #20262d;
   --popover: #fbfbf8;

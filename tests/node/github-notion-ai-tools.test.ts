@@ -12,7 +12,10 @@ import {
   resolveNativeExtensionAiCapabilitiesForRefsFromManifests
 } from "../../src/extensions/sources"
 import type { ComposerMessageRef } from "../../src/shared/message-content"
-import type { NativeExtensionMainDefinition } from "../../src/shared/native-extensions"
+import type {
+  NativeExtensionMainDefinition,
+  NativeExtensionResolvedConnection
+} from "../../src/shared/native-extensions"
 import type { ResolvedExtensionAiCapability } from "../../src/shared/extension-sources"
 
 const installedManifests = [githubManifest, notionManifest]
@@ -50,16 +53,39 @@ function createInstalledToolRegistry() {
   })
 }
 
+function connectedExtensionConnection(
+  extensionName: string,
+  publicConfig: Record<string, unknown> = {}
+): NativeExtensionResolvedConnection {
+  return {
+    connectionId: "default",
+    extensionName,
+    missingSecretNames: [],
+    provider: extensionName,
+    publicConfig,
+    status: "connected"
+  }
+}
+
+function missingExtensionConnection(extensionName: string): NativeExtensionResolvedConnection {
+  return {
+    connectionId: "default",
+    extensionName,
+    missingSecretNames: ["accessToken"],
+    provider: extensionName,
+    publicConfig: {
+      apiBaseUrl: "https://api.github.com"
+    },
+    status: "missing"
+  }
+}
+
 test("GitHub connected AI capability registers callable tools", () => {
   const capability = resolveInstalledAiCapabilityForExtensionName("github", {
-    preferencesByExtension: {
-      github: {
-        accessToken: "ghp_secret",
-        apiBaseUrl: "https://api.github.com",
-        defaultSearchTerms: "",
-        numberOfResults: "25"
-      }
-    }
+    getConnection: (extensionName) =>
+      connectedExtensionConnection(extensionName, {
+        apiBaseUrl: "https://api.github.com"
+      })
   })
   assert.ok(capability)
 
@@ -131,12 +157,10 @@ test("GitHub current-user issue tool searches with viewer login", async () => {
 
 test("Notion connected AI capability registers callable tools", () => {
   const capability = resolveInstalledAiCapabilityForExtensionName("notion", {
-    preferencesByExtension: {
-      notion: {
-        accessToken: "secret_token",
+    getConnection: (extensionName) =>
+      connectedExtensionConnection(extensionName, {
         apiBaseUrl: "https://api.notion.com/v1"
-      }
-    }
+      })
   })
   assert.ok(capability)
 
@@ -162,10 +186,8 @@ test("Notion connected AI capability registers callable tools", () => {
       { access: "read", name: "listBlockChildren" },
       { access: "read", name: "getDatabases" },
       { access: "read", name: "retrieveDataSource" },
-      { access: "read", name: "searchDatabase" },
       { access: "read", name: "queryDataSource" },
       { access: "write", name: "addToPage" },
-      { access: "write", name: "createPage" },
       { access: "write", name: "createDatabasePage" }
     ]
   )
@@ -182,12 +204,7 @@ test("missing GitHub auth still loads instructions without callable tools", () =
       }
     ],
     {
-      preferencesByExtension: {
-        github: {
-          accessToken: "",
-          apiBaseUrl: "https://api.github.com"
-        }
-      }
+      getConnection: missingExtensionConnection
     }
   )
 
@@ -238,12 +255,10 @@ test("Notion search tool sends token, version header, and shared-content search 
 
   try {
     const capability = resolveInstalledAiCapabilityForExtensionName("notion", {
-      preferencesByExtension: {
-        notion: {
-          accessToken: "secret_token",
+      getConnection: (extensionName) =>
+        connectedExtensionConnection(extensionName, {
           apiBaseUrl: "https://api.notion.com/v1"
-        }
-      }
+        })
     })
     assert.ok(capability)
     const registry = createInstalledToolRegistry()
@@ -284,129 +299,6 @@ test("Notion search tool sends token, version header, and shared-content search 
       query: "roadmap"
     })
     assert.match(output, /Roadmap/)
-  } finally {
-    globalThis.fetch = originalFetch
-  }
-})
-
-test("Notion searchPages tool accepts legacy searchText input", async () => {
-  const originalFetch = globalThis.fetch
-  const requests: Array<{ body: unknown; method: string; url: string }> = []
-
-  globalThis.fetch = async (input, init) => {
-    requests.push({
-      body: init?.body ? JSON.parse(String(init.body)) : null,
-      method: init?.method ?? "GET",
-      url: String(input)
-    })
-
-    return jsonResponse({
-      has_more: false,
-      next_cursor: null,
-      object: "list",
-      results: []
-    })
-  }
-
-  try {
-    await executeNotionTool("searchPages", {
-      filter: "page",
-      limit: 5,
-      searchText: "roadmap"
-    })
-
-    assert.deepEqual(requests, [
-      {
-        body: {
-          filter: {
-            property: "object",
-            value: "page"
-          },
-          page_size: 5,
-          query: "roadmap"
-        },
-        method: "POST",
-        url: "https://api.notion.com/v1/search"
-      }
-    ])
-  } finally {
-    globalThis.fetch = originalFetch
-  }
-})
-
-test("Notion searchPages tool follows legacy searchText pagination", async () => {
-  const originalFetch = globalThis.fetch
-  const requests: Array<{ body: unknown; method: string; url: string }> = []
-
-  globalThis.fetch = async (input, init) => {
-    const body = init?.body ? JSON.parse(String(init.body)) : null
-    requests.push({
-      body,
-      method: init?.method ?? "GET",
-      url: String(input)
-    })
-
-    if ((body as { start_cursor?: string } | null)?.start_cursor === "cursor-2") {
-      return jsonResponse({
-        has_more: false,
-        next_cursor: null,
-        object: "list",
-        results: [
-          notionPage("page-2", "Second Roadmap", {
-            parent_database_id: "database-1"
-          })
-        ]
-      })
-    }
-
-    return jsonResponse({
-      has_more: true,
-      next_cursor: "cursor-2",
-      object: "list",
-      results: [
-        notionPage("page-1", "First Roadmap", {
-          parent_page_id: "parent-page-1"
-        })
-      ]
-    })
-  }
-
-  try {
-    const output = await executeNotionTool("searchPages", {
-      searchText: "roadmap"
-    })
-
-    assert.deepEqual(requests, [
-      {
-        body: {
-          page_size: 100,
-          query: "roadmap",
-          sort: {
-            direction: "descending",
-            timestamp: "last_edited_time"
-          }
-        },
-        method: "POST",
-        url: "https://api.notion.com/v1/search"
-      },
-      {
-        body: {
-          page_size: 100,
-          query: "roadmap",
-          sort: {
-            direction: "descending",
-            timestamp: "last_edited_time"
-          },
-          start_cursor: "cursor-2"
-        },
-        method: "POST",
-        url: "https://api.notion.com/v1/search"
-      }
-    ])
-    assert.match(output, /First Roadmap/)
-    assert.match(output, /Second Roadmap/)
-    assert.match(output, /parent-page-1/)
-    assert.match(output, /database-1/)
   } finally {
     globalThis.fetch = originalFetch
   }
@@ -543,7 +435,7 @@ test("Notion read tools use Notion client endpoints", async () => {
   }
 })
 
-test("Notion compatible read aliases use Notion client endpoints", async () => {
+test("Notion read helpers use Notion client endpoints", async () => {
   const originalFetch = globalThis.fetch
   const requests: Array<{ body: unknown; headers: Headers; method: string; url: string }> = []
 
@@ -614,8 +506,8 @@ test("Notion compatible read aliases use Notion client endpoints", async () => {
       query: "tasks",
       startCursor: "cursor-1"
     })
-    const databaseSearchOutput = await executeNotionTool("searchDatabase", {
-      databaseId: "data-source-1",
+    const dataSourceQueryOutput = await executeNotionTool("queryDataSource", {
+      dataSourceId: "data-source-1",
       limit: 7,
       query: "Hit",
       startCursor: "cursor-2"
@@ -624,7 +516,7 @@ test("Notion compatible read aliases use Notion client endpoints", async () => {
     assert.match(pageOutput, /Alias content/)
     assert.match(pageOutput, /"content":/)
     assert.match(databasesOutput, /Tasks/)
-    assert.match(databaseSearchOutput, /Database Hit/)
+    assert.match(dataSourceQueryOutput, /Database Hit/)
     assert.deepEqual(
       requests.map((request) => ({
         body: request.body,
@@ -943,68 +835,6 @@ test("Notion createDatabasePage tool creates a page with markdown blocks", async
   }
 })
 
-test("Notion createPage tool maps legacy databaseId input to page creation", async () => {
-  const originalFetch = globalThis.fetch
-  const requests: Array<{ body: unknown; headers: Headers; method: string; url: string }> = []
-
-  globalThis.fetch = async (input, init) => {
-    requests.push({
-      body: init?.body ? JSON.parse(String(init.body)) : null,
-      headers: new Headers(init?.headers),
-      method: init?.method ?? "GET",
-      url: String(input)
-    })
-
-    return jsonResponse({
-      id: "page-created",
-      object: "page",
-      parent: {
-        data_source_id: "data-source-1",
-        type: "data_source_id"
-      },
-      properties: {
-        title: {
-          title: [{ plain_text: "Legacy Alias" }],
-          type: "title"
-        }
-      },
-      url: "https://www.notion.so/page-created"
-    })
-  }
-
-  try {
-    const output = await executeNotionTool("createPage", {
-      content: "Alias **content**",
-      databaseId: "data-source-1",
-      title: "Legacy Alias"
-    })
-
-    assert.equal(requests.length, 1)
-    assert.equal(requests[0]?.url, "https://api.notion.com/v1/pages")
-    assert.equal(requests[0]?.method, "POST")
-    assert.equal(requests[0]?.headers.get("Authorization"), "Bearer secret_token")
-
-    const body = requests[0]?.body as {
-      children: Array<Record<string, unknown>>
-      parent: Record<string, unknown>
-      properties: Record<string, { title: Array<Record<string, unknown>> }>
-    }
-    assert.deepEqual(body.parent, {
-      data_source_id: "data-source-1"
-    })
-    assert.deepEqual(body.properties.title.title[0], {
-      text: {
-        content: "Legacy Alias"
-      },
-      type: "text"
-    })
-    assert.equal(body.children[0]?.type, "paragraph")
-    assert.match(output, /Legacy Alias|page-created/)
-  } finally {
-    globalThis.fetch = originalFetch
-  }
-})
-
 test("Notion createDatabasePage tool writes database properties", async () => {
   const originalFetch = globalThis.fetch
   const requests: Array<{ body: unknown; headers: Headers; method: string; url: string }> = []
@@ -1130,12 +960,10 @@ test("Notion createDatabasePage tool writes database properties", async () => {
 
 async function executeNotionTool(toolName: string, args: Record<string, unknown>): Promise<string> {
   const capability = resolveInstalledAiCapabilityForExtensionName("notion", {
-    preferencesByExtension: {
-      notion: {
-        accessToken: "secret_token",
+    getConnection: (extensionName) =>
+      connectedExtensionConnection(extensionName, {
         apiBaseUrl: "https://api.notion.com/v1"
-      }
-    }
+      })
   })
   assert.ok(capability)
 
@@ -1163,14 +991,12 @@ async function executeNotionTool(toolName: string, args: Record<string, unknown>
 
 async function executeGitHubTool(toolName: string, args: Record<string, unknown>): Promise<string> {
   const capability = resolveInstalledAiCapabilityForExtensionName("github", {
-    preferencesByExtension: {
-      github: {
-        accessToken: "ghp_secret",
+    getConnection: (extensionName) =>
+      connectedExtensionConnection(extensionName, {
         apiBaseUrl: "https://github-api.example.test",
         defaultSearchTerms: "",
         numberOfResults: "25"
-      }
-    }
+      })
   })
   assert.ok(capability)
 
@@ -1205,35 +1031,6 @@ function jsonResponse(payload: unknown, status = 200): Response {
     },
     status
   })
-}
-
-function notionPage(
-  id: string,
-  title: string,
-  parent: { parent_database_id?: string; parent_page_id?: string } = {}
-): Record<string, unknown> {
-  return {
-    id,
-    object: "page",
-    parent: parent.parent_database_id
-      ? {
-          database_id: parent.parent_database_id,
-          type: "database_id"
-        }
-      : parent.parent_page_id
-        ? {
-            page_id: parent.parent_page_id,
-            type: "page_id"
-          }
-        : undefined,
-    properties: {
-      Name: {
-        title: [{ plain_text: title }],
-        type: "title"
-      }
-    },
-    url: `https://www.notion.so/${id}`
-  }
 }
 
 function notionParagraphBlock(id: string, text: string): Record<string, unknown> {

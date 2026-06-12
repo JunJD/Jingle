@@ -1,14 +1,12 @@
 import { randomUUID } from "node:crypto"
 import Store from "electron-store"
 import type {
-  ExtensionQuicklinkAlias,
   ExtensionQuicklinkRecord,
   RegisterExtensionQuicklinkInput,
   UpdateExtensionQuicklinkInput
 } from "@shared/extension-quicklinks"
 import {
   normalizeExtensionQuicklinkCommandUrl,
-  normalizeExtensionQuicklinkRecord,
   parseExtensionQuicklinkCommandUrl
 } from "@shared/extension-quicklinks"
 import { getOpenworkDir } from "../storage"
@@ -31,7 +29,11 @@ function isExtensionQuicklinkRecord(value: unknown): value is ExtensionQuicklink
 }
 
 export class ExtensionQuicklinkRepository {
-  constructor(private readonly extensionQuicklinkAliases: readonly ExtensionQuicklinkAlias[] = []) {}
+  private readonly knownExtensionNames: ReadonlySet<string>
+
+  constructor(extensionNames: readonly string[] = []) {
+    this.knownExtensionNames = new Set(extensionNames)
+  }
 
   private readonly store = new Store<ExtensionQuicklinksStoreShape>({
     cwd: getOpenworkDir(),
@@ -51,12 +53,10 @@ export class ExtensionQuicklinkRepository {
     const now = new Date().toISOString()
     const quicklinks = this.readQuicklinks()
     const name = input.name?.trim() || "Quicklink"
-    const link = normalizeExtensionQuicklinkCommandUrl(input.link, {
-      aliases: this.extensionQuicklinkAliases
-    })
+    const link = normalizeExtensionQuicklinkCommandUrl(input.link)
     const extensionName =
-      parseExtensionQuicklinkCommandUrl(link, { aliases: this.extensionQuicklinkAliases })
-        ?.extensionName ?? input.extensionName
+      parseExtensionQuicklinkCommandUrl(link)?.extensionName ?? input.extensionName
+    this.assertKnownExtensionName(extensionName)
     const existingIndex = quicklinks.findIndex((quicklink) => quicklink.link === link)
 
     if (existingIndex >= 0) {
@@ -90,10 +90,7 @@ export class ExtensionQuicklinkRepository {
     this.writeQuicklinks(this.readQuicklinks().filter((quicklink) => quicklink.id !== quicklinkId))
   }
 
-  update(
-    quicklinkId: string,
-    input: UpdateExtensionQuicklinkInput
-  ): ExtensionQuicklinkRecord {
+  update(quicklinkId: string, input: UpdateExtensionQuicklinkInput): ExtensionQuicklinkRecord {
     const quicklinks = this.readQuicklinks()
     const quicklinkIndex = quicklinks.findIndex((quicklink) => quicklink.id === quicklinkId)
     if (quicklinkIndex < 0) {
@@ -115,12 +112,8 @@ export class ExtensionQuicklinkRepository {
     const quicklinks = (this.store.get("quicklinks", []) as unknown[]).filter(
       isExtensionQuicklinkRecord
     )
-    const normalizedQuicklinks = dedupeQuicklinksByLink(
-      quicklinks.map((quicklink) =>
-        normalizeExtensionQuicklinkRecord(quicklink, {
-          aliases: this.extensionQuicklinkAliases
-        })
-      )
+    const normalizedQuicklinks = dedupeQuicklinksByLink(quicklinks).filter((quicklink) =>
+      this.isCurrentExtensionQuicklink(quicklink)
     )
     if (
       normalizedQuicklinks.length !== quicklinks.length ||
@@ -138,9 +131,30 @@ export class ExtensionQuicklinkRepository {
   private writeQuicklinks(quicklinks: ExtensionQuicklinkRecord[]): void {
     this.store.set("quicklinks", quicklinks)
   }
+
+  private assertKnownExtensionName(extensionName: string): void {
+    if (this.knownExtensionNames.size > 0 && !this.knownExtensionNames.has(extensionName)) {
+      throw new Error(`Unknown native extension "${extensionName}".`)
+    }
+  }
+
+  private isCurrentExtensionQuicklink(quicklink: ExtensionQuicklinkRecord): boolean {
+    if (this.knownExtensionNames.size === 0) {
+      return true
+    }
+
+    const command = parseExtensionQuicklinkCommandUrl(quicklink.link)
+    if (!command) {
+      return true
+    }
+
+    return this.knownExtensionNames.has(command.extensionName)
+  }
 }
 
-function dedupeQuicklinksByLink(quicklinks: ExtensionQuicklinkRecord[]): ExtensionQuicklinkRecord[] {
+function dedupeQuicklinksByLink(
+  quicklinks: ExtensionQuicklinkRecord[]
+): ExtensionQuicklinkRecord[] {
   const quicklinksByLink = new Map<string, ExtensionQuicklinkRecord>()
 
   for (const quicklink of quicklinks) {

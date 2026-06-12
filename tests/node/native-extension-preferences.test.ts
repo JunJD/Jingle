@@ -396,7 +396,7 @@ test("resolved extension preferences do not read legacy command-scoped shared se
   assert.equal(resolvedExtensionRecord.apiBaseUrl, "https://api.github.com")
 })
 
-test("OAuth connection resolver ignores legacy command-scoped shared secrets", () => {
+test("connection resolver ignores command-scoped shared secrets", () => {
   seedLegacyGitHubCommandToken("ghp_legacy_secret")
 
   const context = connectionResolver.resolveNativeExtensionExecutionContext({
@@ -413,7 +413,7 @@ test("OAuth connection resolver ignores legacy command-scoped shared secrets", (
   })
 })
 
-test("OAuth connection resolver ignores legacy extension-scoped shared secrets", () => {
+test("connection resolver ignores legacy extension-scoped shared secrets", () => {
   seedLegacyGitHubTokens({
     apiBaseUrl: "https://github.example.test/api/v3",
     commandAccessToken: "ghp_legacy_secret",
@@ -818,10 +818,8 @@ test("connection-scoped Notion secrets connect AI capabilities and generated cap
     "listBlockChildren",
     "getDatabases",
     "retrieveDataSource",
-    "searchDatabase",
     "queryDataSource",
     "addToPage",
-    "createPage",
     "createDatabasePage"
   ])
   assert.equal(

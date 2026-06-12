@@ -32,8 +32,6 @@ export const githubManifest = defineNativeExtensionManifest({
       label: l("GitHub", "GitHub"),
       value: "github"
     },
-    publicPreferenceNames: ["apiBaseUrl"],
-    requiredPreferenceNames: ["accessToken"],
     title: l("GitHub", "GitHub"),
     toolDisplays: {
       createIssue: {

@@ -34,6 +34,8 @@ export function rewriteGenericSourceForOpenwork(sourceText, filePath, target) {
     .replaceAll(/^\s*(authorizeUrl|tokenUrl):\s*["'][^"']*\.raycast\.com[^"']*["'],?\n/gm, "")
     .replaceAll(/\bForm\.Values\b/g, "Form.Values<any>")
     .replaceAll(/\bgetPreferenceValues\(\)/g, "getPreferenceValues<Preferences>()")
+    .replaceAll(/\bopenCommandPreferences\b/g, "openNativeCommandSettings")
+    .replaceAll(/\bopenExtensionPreferences\b/g, "openNativeExtensionSettings")
     .replaceAll(/return \{ name, link:/g, 'return { name: name ?? "Quicklink", link:')
     .replaceAll(/raycast:\/\//g, "openwork://")
     .replaceAll(/(["'])raycast\1/g, "$1openwork$1")

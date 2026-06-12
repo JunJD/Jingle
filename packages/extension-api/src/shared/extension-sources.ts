@@ -345,8 +345,6 @@ export const extensionAiCapabilitySchema = z
       .strict()
       .optional(),
     permissionMode: z.custom<PermissionModeName>(isPermissionModeName).optional(),
-    publicPreferenceNames: z.array(z.string().trim().min(1)).optional(),
-    requiredPreferenceNames: z.array(z.string().trim().min(1)).optional(),
     supportedPlatforms: z.array(z.enum(["darwin", "linux", "win32"])).optional(),
     title: localizedTextSchema,
     toolDisplays: z.record(z.string(), toolCallDisplayManifestSchema).optional(),

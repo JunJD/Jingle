@@ -2,7 +2,7 @@ import {
   DEFAULT_CODE_FONT_FAMILY,
   DEFAULT_UI_FONT_FAMILY,
   type AppThemeSettings,
-  type CodexThemeV1
+  type JingleThemeV1
 } from "@shared/app-theme"
 
 function mix(color: string, amount: number, base: string): string {
@@ -15,7 +15,7 @@ function setThemeVariable(targets: Array<HTMLElement | null>, name: string, valu
   }
 }
 
-export function applyCodexTheme(config: CodexThemeV1): void {
+export function applyJingleTheme(config: JingleThemeV1): void {
   const root = document.documentElement
   const body = document.body
   const { theme, variant } = config
@@ -89,5 +89,5 @@ export function applyCodexTheme(config: CodexThemeV1): void {
 }
 
 export function applyAppThemeSettings(settings: AppThemeSettings): void {
-  applyCodexTheme(settings.config)
+  applyJingleTheme(settings.config)
 }

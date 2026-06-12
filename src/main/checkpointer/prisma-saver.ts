@@ -36,6 +36,11 @@ type CheckpointBlobRow = {
   version: string
 }
 
+type StringVersionCheckpoint = Checkpoint & {
+  channel_versions: Record<string, string>
+  versions_seen: Record<string, Record<string, string>>
+}
+
 function readStringField(value: unknown, key: string): string | null {
   if (!value || typeof value !== "object") {
     return null
@@ -82,36 +87,33 @@ function ensureCheckpointChannelVersions(
   return normalizedNewVersions
 }
 
-function normalizeLegacyChannelVersion(version: string | number): string {
-  return typeof version === "number" ? version.toString().padStart(16, "0") : version
+function assertStringChannelVersions(
+  owner: string,
+  versions: Record<string, string | number>
+): asserts versions is Record<string, string> {
+  for (const [channel, version] of Object.entries(versions)) {
+    if (typeof version !== "string") {
+      throw new Error(
+        `[PrismaCheckpointSaver] ${owner} channel "${channel}" has non-string version "${String(version)}". Clear the stale checkpoint state and rerun.`
+      )
+    }
+  }
 }
 
-function normalizeChannelVersions(versions: ChannelVersions): ChannelVersions {
-  return Object.fromEntries(
-    Object.entries(versions).map(([channel, version]) => [
-      channel,
-      normalizeLegacyChannelVersion(version)
-    ])
-  )
-}
+function assertStringCheckpointVersions(
+  checkpoint: Checkpoint
+): asserts checkpoint is StringVersionCheckpoint {
+  assertStringChannelVersions("checkpoint", checkpoint.channel_versions)
 
-function normalizeCheckpointVersionTypes(checkpoint: Checkpoint): Checkpoint {
-  return {
-    ...checkpoint,
-    channel_versions: normalizeChannelVersions(checkpoint.channel_versions),
-    versions_seen: Object.fromEntries(
-      Object.entries(checkpoint.versions_seen).map(([node, versions]) => [
-        node,
-        normalizeChannelVersions(versions as ChannelVersions)
-      ])
-    )
+  for (const [node, versions] of Object.entries(checkpoint.versions_seen)) {
+    assertStringChannelVersions(`versions_seen.${node}`, versions)
   }
 }
 
 export function readStoredCheckpointChannelVersions(
   storedType: string | null,
   storedCheckpoint: string | null
-): Record<string, string | number> | null {
+): Record<string, string> | null {
   if (!storedCheckpoint) {
     return null
   }
@@ -124,10 +126,16 @@ export function readStoredCheckpointChannelVersions(
     channel_versions?: Record<string, string | number>
   }
 
-  return checkpoint.channel_values ? null : (checkpoint.channel_versions ?? {})
+  if (checkpoint.channel_values) {
+    return null
+  }
+
+  const channelVersions = checkpoint.channel_versions ?? {}
+  assertStringChannelVersions("stored checkpoint", channelVersions)
+  return channelVersions
 }
 
-export class PrismaCheckpointSaver extends BaseCheckpointSaver<string | number> {
+export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
   private writeQueue: Promise<void> = Promise.resolve()
 
   constructor(serde?: SerializerProtocol) {
@@ -138,7 +146,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string | number> 
     return
   }
 
-  override getNextVersion(_current: string | number | undefined): string {
+  override getNextVersion(_current: string | undefined): string {
     return uuid6(-2)
   }
 
@@ -303,6 +311,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string | number> 
       const parentCheckpointId = config.configurable.checkpoint_id
       const preparedCheckpoint = copyCheckpoint(checkpoint)
       ensureCheckpointChannelVersions(preparedCheckpoint, newVersions)
+      assertStringCheckpointVersions(preparedCheckpoint)
       const checkpointManifest = copyCheckpointManifest(preparedCheckpoint)
 
       const [[type, serializedCheckpoint], [metadataType, serializedMetadata], serializedBlobs] =
@@ -410,12 +419,13 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string | number> 
     })
   }
 
-  protected async afterPut(_input: {
+  protected async afterPut(input: {
     checkpoint: Checkpoint
     metadata: CheckpointMetadata
     runId: string | null
     threadId: string
   }): Promise<void> {
+    void input
     return
   }
 
@@ -513,7 +523,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string | number> 
     threadId: string,
     checkpointNs: string,
     values: Record<string, unknown>,
-    versions: ChannelVersions
+    versions: Record<string, string>
   ): Promise<CheckpointBlobRow[]> {
     const blobs: CheckpointBlobRow[] = []
     for (const [channel, version] of Object.entries(versions)) {
@@ -526,7 +536,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string | number> 
           threadId,
           type: storedType,
           value: storedValue,
-          version: String(version)
+          version
         })
         continue
       }
@@ -537,7 +547,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string | number> 
         threadId,
         type: "empty",
         value: null,
-        version: String(version)
+        version
       })
     }
 
@@ -552,23 +562,26 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string | number> 
     )) as Checkpoint
 
     if (checkpoint.channel_values && typeof checkpoint.channel_values === "object") {
-      return normalizeCheckpointVersionTypes(checkpoint)
+      assertStringCheckpointVersions(checkpoint)
+      return checkpoint
     }
 
-    return normalizeCheckpointVersionTypes({
+    assertStringCheckpointVersions(checkpoint)
+
+    return {
       ...checkpoint,
       channel_values: await this.loadChannelValues(
         row.threadId,
         row.checkpointNs,
         checkpoint.channel_versions
       )
-    })
+    }
   }
 
   private async loadChannelValues(
     threadId: string,
     checkpointNs: string,
-    channelVersions: ChannelVersions
+    channelVersions: Record<string, string>
   ): Promise<Record<string, unknown>> {
     const entries = Object.entries(channelVersions)
     if (entries.length === 0) {
@@ -580,7 +593,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string | number> 
       where: {
         OR: entries.map(([channel, version]) => ({
           channel,
-          version: String(version)
+          version
         })),
         checkpointNs,
         threadId
@@ -590,11 +603,10 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string | number> 
     const values: Record<string, unknown> = {}
 
     for (const [channel, version] of entries) {
-      const normalizedVersion = String(version)
-      const row = rowByKey.get(`${channel}\0${normalizedVersion}`)
+      const row = rowByKey.get(`${channel}\0${version}`)
       if (!row) {
         throw new Error(
-          `[PrismaCheckpointSaver] Missing checkpoint blob for thread "${threadId}", namespace "${checkpointNs}", channel "${channel}", version "${normalizedVersion}".`
+          `[PrismaCheckpointSaver] Missing checkpoint blob for thread "${threadId}", namespace "${checkpointNs}", channel "${channel}", version "${version}".`
         )
       }
 

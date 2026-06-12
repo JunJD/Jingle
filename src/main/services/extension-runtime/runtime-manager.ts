@@ -221,9 +221,12 @@ export class ExtensionRuntimeManager {
   }
 
   async startForeground(
-    context: ExtensionRuntimeLaunchContext
+    context: ExtensionRuntimeLaunchContext,
+    options?: { sessionId?: string }
   ): Promise<ExtensionRuntimeSessionInfo> {
-    const session = await this.startSession("foreground", context)
+    const session = await this.startSession("foreground", context, {
+      sessionId: options?.sessionId
+    })
     if (this.foregroundSession) {
       this.stopSession(this.foregroundSession)
     }
@@ -464,7 +467,7 @@ export class ExtensionRuntimeManager {
   private async startSession(
     kind: ExtensionRuntimeSessionKind,
     context: ExtensionRuntimeLaunchContext,
-    options?: { beforeStart?: (session: RuntimeSession) => void }
+    options?: { beforeStart?: (session: RuntimeSession) => void; sessionId?: string }
   ): Promise<RuntimeSession> {
     const runtimeCapabilities = new Set(
       await this.options.host.getRuntimeCapabilities({
@@ -473,7 +476,7 @@ export class ExtensionRuntimeManager {
       })
     )
     const runtimePackage = this.options.resolveRuntimePackage(context)
-    const sessionId = this.options.createSessionId?.() ?? randomUUID()
+    const sessionId = options?.sessionId ?? this.options.createSessionId?.() ?? randomUUID()
     const process = this.options.processLauncher.launch()
     const session: RuntimeSession = {
       context,

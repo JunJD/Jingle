@@ -53,6 +53,11 @@ export type ExtensionRuntimeLaunchPackageRef =
       version: string
     }
 
+export interface ExtensionRuntimeForegroundStartRequest {
+  context: ExtensionRuntimeLaunchContext
+  sessionId: string
+}
+
 export type ExtensionRuntimeSessionKind = "ambient" | "foreground" | "run-once"
 
 export interface ExtensionRuntimeSessionInfo {

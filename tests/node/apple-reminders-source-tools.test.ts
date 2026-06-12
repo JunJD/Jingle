@@ -23,6 +23,7 @@ import {
   nativeExtensionSourceMentions
 } from "../../src/extensions/source-mentions"
 import type { ComposerMessageRef } from "../../src/shared/message-content"
+import type { NativeExtensionResolvedConnection } from "../../src/shared/native-extensions"
 import { resolveLocalizedText } from "../../src/shared/i18n"
 
 const fakeReminder = {
@@ -42,6 +43,31 @@ const fakeReminder = {
   priority: null,
   title: "Ship source tools"
 } as const
+
+function connectedExtensionConnection(
+  extensionName: string,
+  publicConfig: Record<string, unknown> = {}
+): NativeExtensionResolvedConnection {
+  return {
+    connectionId: "default",
+    extensionName,
+    missingSecretNames: [],
+    provider: extensionName,
+    publicConfig,
+    status: "connected"
+  }
+}
+
+function missingTokenConnection(extensionName: string): NativeExtensionResolvedConnection {
+  return {
+    connectionId: "default",
+    extensionName,
+    missingSecretNames: ["accessToken"],
+    provider: extensionName,
+    publicConfig: {},
+    status: "missing"
+  }
+}
 
 function createRegistry(): { getDataCalls: unknown[]; registry: ExtensionToolRegistry } {
   const getDataCalls: unknown[] = []
@@ -126,13 +152,10 @@ function resolveNativeExtensionAiCapabilityForExtensionName(
 }
 
 function resolveAppleRemindersCapabilities(platform = "darwin") {
-  return resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
-    [appleRemindersRef],
-    sourceTestManifests,
-    {
-      platform
-    }
-  )
+  return resolveNativeExtensionAiCapabilitiesForRefs([appleRemindersRef], {
+    getConnection: (extensionName) => connectedExtensionConnection(extensionName),
+    platform
+  })
 }
 
 test("Apple Reminders AI capability is enabled only on macOS", () => {
@@ -248,10 +271,6 @@ test("empty AI capability refs do not read extension connection state", () => {
       getConnection: (extensionName) => {
         calls.push(`connection:${extensionName}`)
         throw new Error("connection should not be read")
-      },
-      getPreferences: (extensionName) => {
-        calls.push(`preferences:${extensionName}`)
-        return {}
       }
     }),
     []
@@ -439,6 +458,7 @@ test("GitHub and Notion mentions load missing AI capabilities without tools", ()
       }
     ],
     {
+      getConnection: missingTokenConnection,
       platform: "darwin"
     }
   )
@@ -464,7 +484,7 @@ test("GitHub and Notion mentions load missing AI capabilities without tools", ()
   )
 })
 
-test("GitHub AI capability becomes connected from persisted auth and exposes AI tools", () => {
+test("GitHub AI capability becomes connected from resolved connection and exposes AI tools", () => {
   const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
     [
       {
@@ -475,14 +495,10 @@ test("GitHub AI capability becomes connected from persisted auth and exposes AI 
       }
     ],
     {
-      preferencesByExtension: {
-        github: {
-          accessToken: "ghp_secret",
-          apiBaseUrl: "https://github.example.test/api/v3",
-          defaultSearchTerms: "",
-          numberOfResults: "25"
-        }
-      }
+      getConnection: (extensionName) =>
+        connectedExtensionConnection(extensionName, {
+          apiBaseUrl: "https://github.example.test/api/v3"
+        })
     }
   )
 
@@ -508,7 +524,7 @@ test("GitHub AI capability becomes connected from persisted auth and exposes AI 
   })
 })
 
-test("Notion AI capability becomes connected from persisted auth and exposes read tools", () => {
+test("Notion AI capability becomes connected from resolved connection and exposes read tools", () => {
   const [capability] = resolveNativeExtensionAiCapabilitiesForRefs(
     [
       {
@@ -519,12 +535,10 @@ test("Notion AI capability becomes connected from persisted auth and exposes rea
       }
     ],
     {
-      preferencesByExtension: {
-        notion: {
-          accessToken: "secret_token",
+      getConnection: (extensionName) =>
+        connectedExtensionConnection(extensionName, {
           apiBaseUrl: "https://api.notion.com/v1"
-        }
-      }
+        })
     }
   )
 

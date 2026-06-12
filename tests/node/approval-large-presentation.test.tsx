@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { AppCopy } from "../../src/renderer/src/lib/i18n/messages"
-import { buildLargeApprovalViewModel } from "../../src/renderer/src/components/chat/tools/approval-large-presentation"
+import { buildLargeApprovalViewModel } from "../../src/renderer/src/components/chat/tools/approval-large-view-model"
 import type {
   ExecuteToolApprovalItem,
   FileMutationToolApprovalItem,

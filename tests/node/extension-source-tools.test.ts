@@ -521,6 +521,14 @@ test("extension AI middleware injects loaded guides and executes through stable 
     toolName: "searchItems"
   })
   assert.equal(toolOutput, '{\n  "result": "beta"\n}')
+  const unavailableOutput = await callExtension.invoke({
+    args: {
+      query: "beta"
+    },
+    extensionName: "mockExtension",
+    toolName: "ext__mockSource__profile_1__searchItems"
+  })
+  assert.match(String(unavailableOutput), /Extension tool unavailable/)
 
   let observedSystemPrompt = ""
   await middleware.wrapModelCall!(

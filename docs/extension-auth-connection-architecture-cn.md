@@ -19,10 +19,10 @@ Openwork 的 extension 需要稳定支持三类鉴权：
 Openwork 已经有一部分 connection 基础设施：
 
 - `src/shared/native-extensions.ts` 定义了 `NativeExtensionConnectionManifest`，并已经包含 `auth.type: "none" | "apiKey" | "personalAccessToken" | "oauth"`。
-- `src/main/native-extensions/connection-resolver.ts` 会把 extension preference、provider extension preference、legacy command-scoped secret 合并成 runtime 执行上下文。
+- `src/main/native-extensions/connection-resolver.ts` 会把 extension preference 和 provider extension preference 合并成 runtime 执行上下文。
 - `@openwork/extension-api` 提供 `getConnectionSecret(name)`，extension-utils 可以用它读取 `accessToken`。
 - `packages/extension-utils/src/index.ts` 已经有 `withAccessToken`，并补了 `OAuthService.getAccessToken()`、`OAuthService.authorize()` 和 `getAccessToken(service)` 的兼容入口。
-- `openExtensionPreferences()` / `openCommandPreferences()` 已经能把用户带到设置页。
+- `openNativeExtensionSettings()` / `openNativeCommandSettings()` 已经能把用户带到设置页。
 
 当前已经真正落地的是前两类：
 
@@ -72,7 +72,7 @@ Notion V1
 Raycast 不是只提供一种鉴权方式，而是让 extension 按场景选择：
 
 - manifest preferences：`password` / `textfield` / `dropdown` 等，由 `getPreferenceValues()` 读取。
-- settings helpers：`openExtensionPreferences()` / `openCommandPreferences()`，用于缺配置时跳转设置。
+- settings helpers：Openwork 使用 `openNativeExtensionSettings()` / `openNativeCommandSettings()`；Raycast 源里的 settings helper 由迁移器重写到这两个入口。
 - OAuth PKCE：`OAuth.PKCEClient` 负责 authorization request、authorize、set/get/remove tokens。
 - `@raycast/utils`：`OAuthService`、`withAccessToken`、`getAccessToken` 提供更高层的 token gating 和 UI。
 
@@ -371,7 +371,7 @@ https://jingle.example.com/callback
 
 - 保持 Notion 使用 internal integration token。
 - 提交 extension-utils auth 兼容层。
-- 保持 `openExtensionPreferences()` 作为缺 token 的恢复入口。
+- 保持 `openNativeExtensionSettings()` 作为缺 token 的恢复入口。
 
 验收：
 

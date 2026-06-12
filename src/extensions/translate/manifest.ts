@@ -5,6 +5,14 @@ import { TRANSLATE_EXTENSION_ID } from "./src/contracts"
 
 export const translateManifest = defineNativeExtensionManifest({
   capabilities: ["clipboard", "navigation", "surface"],
+  connection: {
+    auth: {
+      type: "none"
+    },
+    id: "default",
+    provider: TRANSLATE_EXTENSION_ID,
+    title: l("Translate", "翻译")
+  },
   icon: "assets/icon.svg",
   iconName: "languages",
   runtimeCapabilities: ["ai", "clipboard", "navigation", "preferences"],

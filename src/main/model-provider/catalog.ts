@@ -356,26 +356,6 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     status: "active"
   },
   {
-    id: toProviderModelId("deepseek", "deepseek-chat"),
-    name: "DeepSeek Chat",
-    provider: "deepseek",
-    model: "deepseek-chat",
-    description: "Legacy non-thinking alias retained by DeepSeek for compatibility",
-    fetchFrom: "predefined-model",
-    modelType: "llm",
-    status: "active"
-  },
-  {
-    id: toProviderModelId("deepseek", "deepseek-reasoner"),
-    name: "DeepSeek Reasoner",
-    provider: "deepseek",
-    model: "deepseek-reasoner",
-    description: "Legacy thinking alias retained by DeepSeek for compatibility",
-    fetchFrom: "predefined-model",
-    modelType: "llm",
-    status: "active"
-  },
-  {
     id: toProviderModelId("google", "gemini-3-pro-preview"),
     name: "Gemini 3 Pro Preview",
     provider: "google",

@@ -7,11 +7,10 @@ import {
   createSearchRequest,
   toListToolOutput,
   type CreateDatabasePageToolInput,
-  type QueryDataSourceToolInput,
-  type SearchDatabaseToolInput
+  type QueryDataSourceToolInput
 } from "../domain/ai-tools"
 import { getNotionClient } from "../domain/client"
-import { getPageContent, getPageMarkdown, searchPages, serializeNotionError } from "../domain/page-content"
+import { getPageContent, getPageMarkdown, serializeNotionError } from "../domain/page-content"
 import type {
   ExtensionRuntimeSdkContextValue,
   ExtensionToolConfirmation,
@@ -24,116 +23,122 @@ import { NOTION_AI_TOOL_HOST_REQUEST_ID } from "../identity"
 const notionObjectIdSchema = z.string().trim().min(1)
 const notionObjectFilterSchema = z.enum(["page", "data_source"])
 
-const addToPageInputSchema = z.object({
-  addDateDivider: z.boolean().optional().default(false),
-  content: z.string().trim().min(1),
-  pageId: notionObjectIdSchema,
-  prepend: z.boolean().optional().default(false)
-})
+const addToPageInputSchema = z
+  .object({
+    addDateDivider: z.boolean().optional().default(false),
+    content: z.string().trim().min(1),
+    pageId: notionObjectIdSchema,
+    prepend: z.boolean().optional().default(false)
+  })
+  .strict()
 
-const createPageInputSchema = z.object({
-  content: z.string().trim().optional().default(""),
-  databaseId: notionObjectIdSchema,
-  title: z.string().trim().min(1)
-})
-
-const createDatabasePageInputSchema = z.object({
-  addDateDivider: z.boolean().optional().default(false),
-  content: z.string().trim().optional().default(""),
-  contentBlocks: z
-    .array(
-      z.object({
-        type: z.literal("bookmark"),
-        url: z.string().trim().min(1)
-      })
-    )
-    .optional(),
-  dataSourceId: notionObjectIdSchema,
-  properties: z
-    .record(
-      z.string(),
-      z.union([
+const createDatabasePageInputSchema = z
+  .object({
+    addDateDivider: z.boolean().optional().default(false),
+    content: z.string().trim().optional().default(""),
+    contentBlocks: z
+      .array(
         z.object({
-          type: z.literal("checkbox"),
-          value: z.boolean()
-        }),
-        z.object({
-          type: z.literal("multi_select"),
-          value: z.array(z.string().trim().min(1))
-        }),
-        z.object({
-          type: z.literal("people"),
-          value: z.array(z.string().trim().min(1))
-        }),
-        z.object({
-          type: z.literal("relation"),
-          value: z.array(z.string().trim().min(1))
-        }),
-        z.object({
-          type: z.literal("number"),
-          value: z.number()
-        }),
-        z.object({
-          type: z.enum(["date", "email", "phone_number", "rich_text", "select", "status", "url"]),
-          value: z.string().trim().min(1)
+          type: z.literal("bookmark"),
+          url: z.string().trim().min(1)
         })
-      ])
-    )
-    .optional(),
-  title: z.string().trim().min(1),
-  titlePropertyName: z.string().trim().optional()
-})
+      )
+      .optional(),
+    dataSourceId: notionObjectIdSchema,
+    properties: z
+      .record(
+        z.string(),
+        z.union([
+          z.object({
+            type: z.literal("checkbox"),
+            value: z.boolean()
+          }),
+          z.object({
+            type: z.literal("multi_select"),
+            value: z.array(z.string().trim().min(1))
+          }),
+          z.object({
+            type: z.literal("people"),
+            value: z.array(z.string().trim().min(1))
+          }),
+          z.object({
+            type: z.literal("relation"),
+            value: z.array(z.string().trim().min(1))
+          }),
+          z.object({
+            type: z.literal("number"),
+            value: z.number()
+          }),
+          z.object({
+            type: z.enum(["date", "email", "phone_number", "rich_text", "select", "status", "url"]),
+            value: z.string().trim().min(1)
+          })
+        ])
+      )
+      .optional(),
+    title: z.string().trim().min(1),
+    titlePropertyName: z.string().trim().optional()
+  })
+  .strict()
 
-const getDatabasesInputSchema = z.object({
-  limit: z.number().int().min(1).max(100).optional().default(100),
-  query: z.string().trim().optional().default(""),
-  startCursor: z.string().trim().min(1).optional()
-})
+const getDatabasesInputSchema = z
+  .object({
+    limit: z.number().int().min(1).max(100).optional().default(100),
+    query: z.string().trim().optional().default(""),
+    startCursor: z.string().trim().min(1).optional()
+  })
+  .strict()
 
-const getPageInputSchema = z.object({
-  pageId: notionObjectIdSchema
-})
+const getPageInputSchema = z
+  .object({
+    pageId: notionObjectIdSchema
+  })
+  .strict()
 
-const getPageMarkdownInputSchema = z.object({
-  pageId: notionObjectIdSchema
-})
+const getPageMarkdownInputSchema = z
+  .object({
+    pageId: notionObjectIdSchema
+  })
+  .strict()
 
-const retrievePageInputSchema = z.object({
-  pageId: notionObjectIdSchema
-})
+const retrievePageInputSchema = z
+  .object({
+    pageId: notionObjectIdSchema
+  })
+  .strict()
 
-const listBlockChildrenInputSchema = z.object({
-  blockId: notionObjectIdSchema,
-  limit: z.number().int().min(1).max(100).optional().default(25)
-})
+const listBlockChildrenInputSchema = z
+  .object({
+    blockId: notionObjectIdSchema,
+    limit: z.number().int().min(1).max(100).optional().default(25)
+  })
+  .strict()
 
-const retrieveDataSourceInputSchema = z.object({
-  dataSourceId: notionObjectIdSchema
-})
+const retrieveDataSourceInputSchema = z
+  .object({
+    dataSourceId: notionObjectIdSchema
+  })
+  .strict()
 
-const queryDataSourceInputSchema = z.object({
-  dataSourceId: notionObjectIdSchema,
-  filter: z.record(z.string(), z.unknown()).optional(),
-  limit: z.number().int().min(1).max(100).optional().default(25),
-  query: z.string().trim().optional().default(""),
-  sorts: z.array(z.record(z.string(), z.unknown())).optional(),
-  startCursor: z.string().trim().min(1).optional()
-})
+const queryDataSourceInputSchema = z
+  .object({
+    dataSourceId: notionObjectIdSchema,
+    filter: z.record(z.string(), z.unknown()).optional(),
+    limit: z.number().int().min(1).max(100).optional().default(25),
+    query: z.string().trim().optional().default(""),
+    sorts: z.array(z.record(z.string(), z.unknown())).optional(),
+    startCursor: z.string().trim().min(1).optional()
+  })
+  .strict()
 
-const searchDatabaseInputSchema = z.object({
-  databaseId: notionObjectIdSchema,
-  limit: z.number().int().min(1).max(100).optional().default(25),
-  query: z.string().trim().optional().default(""),
-  startCursor: z.string().trim().min(1).optional()
-})
-
-const searchPagesInputSchema = z.object({
-  filter: notionObjectFilterSchema.optional(),
-  limit: z.number().int().min(1).max(100).optional(),
-  query: z.string().trim().optional(),
-  searchText: z.string().trim().optional(),
-  startCursor: z.string().trim().min(1).optional()
-})
+const searchPagesInputSchema = z
+  .object({
+    filter: notionObjectFilterSchema.optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+    query: z.string().trim().optional(),
+    startCursor: z.string().trim().min(1).optional()
+  })
+  .strict()
 
 type AddToPageInput = z.infer<typeof addToPageInputSchema>
 type CreateDatabasePageInput = z.infer<typeof createDatabasePageInputSchema>
@@ -144,7 +149,6 @@ type ListBlockChildrenInput = z.infer<typeof listBlockChildrenInputSchema>
 type QueryDataSourceInput = QueryDataSourceToolInput & z.infer<typeof queryDataSourceInputSchema>
 type RetrieveDataSourceInput = z.infer<typeof retrieveDataSourceInputSchema>
 type RetrievePageInput = z.infer<typeof retrievePageInputSchema>
-type SearchDatabaseInput = SearchDatabaseToolInput & z.infer<typeof searchDatabaseInputSchema>
 type SearchPagesInput = z.infer<typeof searchPagesInputSchema>
 
 interface NotionClient {
@@ -221,27 +225,17 @@ function addToPageConfirmation(input: unknown): ExtensionToolConfirmation {
   }
 }
 
-async function createPageTool(ctx: ExtensionToolContext, input: unknown): Promise<unknown> {
-  const parsedInput = input as z.infer<typeof createPageInputSchema>
-  return createDatabasePageTool(ctx, {
-    addDateDivider: false,
-    content: parsedInput.content,
-    dataSourceId: parsedInput.databaseId,
-    title: parsedInput.title
-  } satisfies CreateDatabasePageInput)
-}
-
-async function createPageConfirmation(
+async function createDatabasePageConfirmation(
   ctx: ExtensionToolContext,
   input: unknown
 ): Promise<ExtensionToolConfirmation> {
-  const parsedInput = input as z.infer<typeof createPageInputSchema>
-  let databaseName = parsedInput.databaseId
+  const parsedInput = input as CreateDatabasePageInput
+  let dataSourceName = parsedInput.dataSourceId
 
   await runWithNotionClient(ctx, async (notion) => {
     try {
       const dataSource = await notion.dataSources.retrieve({
-        data_source_id: parsedInput.databaseId
+        data_source_id: parsedInput.dataSourceId
       })
       if (
         dataSource &&
@@ -249,7 +243,7 @@ async function createPageConfirmation(
         "title" in dataSource &&
         Array.isArray(dataSource.title)
       ) {
-        databaseName = dataSource.title[0]?.plain_text ?? databaseName
+        dataSourceName = dataSource.title[0]?.plain_text ?? dataSourceName
       }
     } catch {
       // Keep the raw id when metadata lookup fails.
@@ -260,7 +254,7 @@ async function createPageConfirmation(
     info: [
       { name: "Title", value: parsedInput.title },
       { name: "Content", value: parsedInput.content },
-      { name: "In database", value: databaseName }
+      { name: "In data source", value: dataSourceName }
     ],
     message: "Are you sure you want to create the page?"
   }
@@ -335,15 +329,6 @@ async function retrieveDataSourceTool(ctx: ExtensionToolContext, input: unknown)
   )
 }
 
-async function searchDatabaseTool(ctx: ExtensionToolContext, input: unknown): Promise<unknown> {
-  return runWithNotionClient(ctx, async (notion) => {
-    const response = await notion.dataSources.query(
-      createQueryDataSourceRequest(input as SearchDatabaseInput)
-    )
-    return toListToolOutput(response)
-  })
-}
-
 async function queryDataSourceTool(ctx: ExtensionToolContext, input: unknown): Promise<unknown> {
   return runWithNotionClient(ctx, async (notion) => {
     const response = await notion.dataSources.query(
@@ -355,44 +340,6 @@ async function queryDataSourceTool(ctx: ExtensionToolContext, input: unknown): P
 
 async function searchPagesTool(ctx: ExtensionToolContext, input: unknown): Promise<unknown> {
   const parsedInput = input as SearchPagesInput
-
-  if (
-    parsedInput.searchText !== undefined &&
-    parsedInput.query === undefined &&
-    parsedInput.filter === undefined &&
-    parsedInput.limit === undefined &&
-    parsedInput.startCursor === undefined
-  ) {
-    return runWithExtensionRuntimeSdk(createMigratedToolSdkContext(ctx), async () => {
-      const allPages: Array<{
-        id: string
-        parent_database_id?: string
-        parent_page_id?: string
-        title: string
-        url?: string
-      }> = []
-      let cursor: string | undefined
-      let hasNextPage = true
-      const pageSize = 100
-
-      while (hasNextPage && allPages.length < 250) {
-        const result = await searchPages(parsedInput.searchText, cursor, pageSize)
-        allPages.push(
-          ...result.pages.map((page) => ({
-            id: page.id,
-            parent_database_id: page.parent_database_id,
-            parent_page_id: page.parent_page_id,
-            title: page.title ?? "Untitled",
-            url: page.url
-          }))
-        )
-        hasNextPage = result.hasMore
-        cursor = result.nextCursor ?? undefined
-      }
-
-      return allPages
-    })
-  }
 
   return runWithNotionClient(ctx, async (notion) => {
     const response = await notion.search(createSearchRequest(parsedInput))
@@ -491,17 +438,6 @@ export function createNotionTools(): ExtensionToolDefinition[] {
 
     {
       access: "read",
-      description: "Search for pages and/or databases contained in the given Notion database.",
-      handler: async (ctx, input) => {
-        return searchDatabaseTool(ctx, input)
-      },
-      inputSchema: searchDatabaseInputSchema,
-      name: "searchDatabase",
-      title: "Search Database"
-    },
-
-    {
-      access: "read",
       description: "Query a Notion data source shared with the connected integration.",
       handler: async (ctx, input) => {
         return queryDataSourceTool(ctx, input)
@@ -531,23 +467,7 @@ export function createNotionTools(): ExtensionToolDefinition[] {
       access: "write",
       approval: {
         confirmation: async (input, ctx) => {
-          return createPageConfirmation(ctx, input)
-        }
-      },
-      description: "Create a Notion page in a specific database.",
-      handler: async (ctx, input) => {
-        return createPageTool(ctx, input)
-      },
-      inputSchema: createPageInputSchema,
-      name: "createPage",
-      title: "Create Page"
-    },
-
-    {
-      access: "write",
-      approval: {
-        confirmation: async (input, ctx) => {
-          return createPageConfirmation(ctx, input)
+          return createDatabasePageConfirmation(ctx, input)
         }
       },
       description:

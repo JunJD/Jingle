@@ -57,7 +57,6 @@ type CreateDatabasePagePreferences = {
   accessToken?: string
   apiBaseUrl?: string
   closeAfterCreate?: boolean
-  notion_token?: string
   open_in?: RuntimeOpenApplication
   properties_in_page_previews?: boolean
   useClipboard?: string

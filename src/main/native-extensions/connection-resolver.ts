@@ -2,15 +2,12 @@ import type {
   NativeExtensionConnectionManifest,
   NativeExtensionConnectionStatus,
   NativeExtensionExecutionContext,
-  NativeExtensionPackageManifest,
   NativeExtensionResolvedConnection
 } from "@shared/native-extensions"
 import { getDefaultExtensionRegistryService } from "../extensions/registry/default-registry"
 import {
   getNativeExtensionConnectionSecretRecord,
   getResolvedNativeExtensionCommandPreferenceRecord,
-  getResolvedNativeExtensionLegacyCommandScopedPasswordRecord,
-  getResolvedNativeExtensionLegacyExtensionScopedPasswordRecord,
   getResolvedNativeExtensionPreferenceRecord
 } from "../preferences"
 
@@ -30,28 +27,6 @@ function getNativeExtensionManifest(extensionName: string, platform?: string) {
   }
 
   return manifest
-}
-
-function synthesizeConnectionManifest(
-  manifest: NativeExtensionPackageManifest
-): NativeExtensionConnectionManifest {
-  const secretNames = manifest.aiCapability?.requiredPreferenceNames ?? []
-
-  return {
-    auth:
-      secretNames.length > 0
-        ? {
-            secretNames,
-            type: "apiKey"
-          }
-        : {
-            type: "none"
-          },
-    id: "default",
-    provider: manifest.name,
-    publicPreferenceNames: manifest.aiCapability?.publicPreferenceNames,
-    title: manifest.title
-  }
 }
 
 function resolveConnectionStatus(input: {
@@ -88,50 +63,6 @@ function resolvePublicConfig(input: {
   )
 }
 
-function resolveLegacyCommandScopedSecrets(input: {
-  connection: NativeExtensionConnectionManifest
-  extensionName: string
-  extensionPreferences: Record<string, unknown>
-}): Record<string, string> {
-  if (input.connection.auth.type === "none" || input.connection.auth.type === "oauth") {
-    return {}
-  }
-
-  const missingSecretNames = input.connection.auth.secretNames.filter((secretName) =>
-    isMissingConnectionSecret(input.extensionPreferences[secretName])
-  )
-  if (missingSecretNames.length === 0) {
-    return {}
-  }
-
-  return getResolvedNativeExtensionLegacyCommandScopedPasswordRecord({
-    extensionName: input.extensionName,
-    passwordPreferenceNames: missingSecretNames
-  })
-}
-
-function resolveLegacyExtensionScopedSecrets(input: {
-  connection: NativeExtensionConnectionManifest
-  extensionName: string
-  extensionPreferences: Record<string, unknown>
-}): Record<string, string> {
-  if (input.connection.auth.type === "none" || input.connection.auth.type === "oauth") {
-    return {}
-  }
-
-  const missingSecretNames = input.connection.auth.secretNames.filter((secretName) =>
-    isMissingConnectionSecret(input.extensionPreferences[secretName])
-  )
-  if (missingSecretNames.length === 0) {
-    return {}
-  }
-
-  return getResolvedNativeExtensionLegacyExtensionScopedPasswordRecord({
-    extensionName: input.extensionName,
-    passwordPreferenceNames: missingSecretNames
-  })
-}
-
 function resolveProviderExtensionPreferences(input: {
   connection: NativeExtensionConnectionManifest
   extensionName: string
@@ -148,8 +79,10 @@ function resolveProviderExtensionPreferences(input: {
     return {}
   }
 
-  const providerConnection =
-    providerManifest.connection ?? synthesizeConnectionManifest(providerManifest)
+  const providerConnection = providerManifest.connection
+  if (!providerConnection) {
+    throw new Error(`Native extension "${providerManifest.name}" is missing connection manifest`)
+  }
   if (providerConnection.provider !== input.connection.provider) {
     return {}
   }
@@ -205,7 +138,10 @@ export function resolveNativeExtensionExecutionContext(input: {
   platform?: string
 }): NativeExtensionExecutionContext {
   const manifest = getNativeExtensionManifest(input.extensionName, input.platform)
-  const connection = manifest.connection ?? synthesizeConnectionManifest(manifest)
+  const connection = manifest.connection
+  if (!connection) {
+    throw new Error(`Native extension "${input.extensionName}" is missing connection manifest`)
+  }
   const baseExtensionPreferences = getResolvedNativeExtensionPreferenceRecord(input.extensionName)
   const providerPreferences = resolveProviderExtensionPreferences({
     connection,
@@ -220,30 +156,12 @@ export function resolveNativeExtensionExecutionContext(input: {
           provider: connection.provider,
           secretNames: connection.auth.secretNames
         })
-  const connectionPreferences = mergeProviderConnectionPreferences({
+  const extensionPreferences = mergeProviderConnectionPreferences({
     connection,
     connectionSecrets,
     extensionPreferences: baseExtensionPreferences,
     providerPreferences
   })
-  const legacyExtensionScopedSecrets = resolveLegacyExtensionScopedSecrets({
-    connection,
-    extensionName: input.extensionName,
-    extensionPreferences: connectionPreferences
-  })
-  const extensionPreferencesWithLegacyExtension = {
-    ...connectionPreferences,
-    ...legacyExtensionScopedSecrets
-  }
-  const extensionPreferences = {
-    ...extensionPreferencesWithLegacyExtension,
-    ...resolveLegacyCommandScopedSecrets({
-      connection,
-      extensionName: input.extensionName,
-      extensionPreferences: extensionPreferencesWithLegacyExtension
-    }),
-    ...connectionSecrets
-  }
   const status = resolveConnectionStatus({
     connection,
     extensionPreferences

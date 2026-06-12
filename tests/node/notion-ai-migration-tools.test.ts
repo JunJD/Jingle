@@ -11,6 +11,7 @@ import { parseToolInputWithSchema } from "../../src/main/agent/tool-input-schema
 import { createNativeExtensionToolRegistry } from "../../src/main/extension-tools/native-extension-tools"
 import { resolveNativeExtensionAiCapabilityForExtensionNameFromManifests } from "../../src/extensions/sources"
 import type { ExtensionToolContext, ExtensionToolDefinition } from "../../src/shared/extension-sources"
+import type { NativeExtensionResolvedConnection } from "../../src/shared/native-extensions"
 
 const toolContext: ExtensionToolContext = {
   extensionName: "notion",
@@ -20,6 +21,17 @@ const toolContext: ExtensionToolContext = {
   threadId: "thread-1",
   toolName: "getPage",
   workspacePath: "/workspace"
+}
+
+function connectedExtensionConnection(extensionName: string): NativeExtensionResolvedConnection {
+  return {
+    connectionId: "default",
+    extensionName,
+    missingSecretNames: [],
+    provider: extensionName,
+    publicConfig: {},
+    status: "connected"
+  }
 }
 
 async function listSourceFiles(root: string): Promise<string[]> {
@@ -78,7 +90,9 @@ test("Notion package does not expose the retired generated identity", async () =
   for (const file of files) {
     const relativePath = file.replace(`${root}/`, "")
     const contents = await readFile(file, "utf8")
-    if (/(notion-generated|Notion Generated|NOTION_GENERATED|createNotionGenerated)/.test(contents)) {
+    if (
+      /(notion-generated|Notion Generated|NOTION_GENERATED|createNotionGenerated)/.test(contents)
+    ) {
       offenders.push(relativePath)
     }
   }
@@ -117,16 +131,12 @@ test("Notion AI tools expose page markdown reader", () => {
   )
 })
 
-test("Notion connected AI capability exposes the full Notion-compatible tool surface", () => {
+test("Notion connected AI capability exposes the Notion tool surface", () => {
   const capability = resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
     "notion",
     [notionManifest],
     {
-      preferencesByExtension: {
-        "notion": {
-          accessToken: "secret-token"
-        }
-      }
+      getConnection: connectedExtensionConnection
     }
   )
   assert.ok(capability)
@@ -156,10 +166,8 @@ test("Notion connected AI capability exposes the full Notion-compatible tool sur
       { access: "read", name: "listBlockChildren" },
       { access: "read", name: "getDatabases" },
       { access: "read", name: "retrieveDataSource" },
-      { access: "read", name: "searchDatabase" },
       { access: "read", name: "queryDataSource" },
       { access: "write", name: "addToPage" },
-      { access: "write", name: "createPage" },
       { access: "write", name: "createDatabasePage" }
     ]
   )
@@ -170,6 +178,38 @@ test("Notion connected AI capability exposes the full Notion-compatible tool sur
         binding.definition.name === "searchPages"
     )?.agentToolName,
     "ext__notion__searchPages"
+  )
+})
+
+test("Notion AI tool schemas reject retired tool and input aliases", async () => {
+  const tools = createNotionTools()
+
+  assert.equal(
+    tools.some((tool) => tool.name === "searchDatabase"),
+    false
+  )
+  assert.equal(
+    tools.some((tool) => tool.name === "createPage"),
+    false
+  )
+  await assert.rejects(
+    executeParsedNotionTool("searchPages", {
+      searchText: "roadmap"
+    }),
+    /Unrecognized key/
+  )
+  await assert.rejects(
+    executeParsedNotionTool("queryDataSource", {
+      databaseId: "database-1"
+    }),
+    /Unrecognized key|dataSourceId/
+  )
+  await assert.rejects(
+    executeParsedNotionTool("createDatabasePage", {
+      databaseId: "database-1",
+      title: "Migration Plan"
+    }),
+    /Unrecognized key|dataSourceId/
   )
 })
 
@@ -192,7 +232,7 @@ test("Notion AI tools honor custom API base URL preferences", async () => {
   assert.equal(requests[0]?.url, "https://notion-proxy.example.test/v1/search")
 })
 
-test("Notion compatible read aliases use Notion client endpoints", async () => {
+test("Notion read tools use Notion client endpoints", async () => {
   const requests: Array<{ body: unknown; method: string; url: string }> = []
 
   await withMockedFetch(requests, async () => {
@@ -278,7 +318,7 @@ test("Notion compatible read aliases use Notion client endpoints", async () => {
   })
 })
 
-test("Notion compatible write aliases support add date divider and page properties", async () => {
+test("Notion write tools support add date divider and page properties", async () => {
   const requests: Array<{ body: unknown; method: string; url: string }> = []
 
   await withMockedFetch(requests, async () => {
@@ -395,9 +435,9 @@ test("Notion write tool confirmations are built from main tool inputs", async ()
   const requests: Array<{ method: string; url: string }> = []
   const tools = createNotionTools()
   const addToPage = tools.find((candidate) => candidate.name === "addToPage")
-  const createPage = tools.find((candidate) => candidate.name === "createPage")
+  const createDatabasePage = tools.find((candidate) => candidate.name === "createDatabasePage")
   assert.ok(addToPage?.approval?.confirmation)
-  assert.ok(createPage?.approval?.confirmation)
+  assert.ok(createDatabasePage?.approval?.confirmation)
 
   await withMockedFetch(requests, async () => {
     const addConfirmation = await addToPage.approval!.confirmation!(
@@ -414,10 +454,10 @@ test("Notion write tool confirmations are built from main tool inputs", async ()
       }
     )
 
-    const createConfirmation = await createPage.approval!.confirmation!(
+    const createConfirmation = await createDatabasePage.approval!.confirmation!(
       {
         content: "Create **this**",
-        databaseId: "data-source-1",
+        dataSourceId: "data-source-1",
         title: "Generated Page"
       },
       {
@@ -425,7 +465,7 @@ test("Notion write tool confirmations are built from main tool inputs", async ()
         access: "write",
         capabilityDisplayName: "Notion",
         permissionMode: "ask-to-edit",
-        toolTitle: "Create Page"
+        toolTitle: "Create Database Page"
       }
     )
 
@@ -437,7 +477,7 @@ test("Notion write tool confirmations are built from main tool inputs", async ()
       info: [
         { name: "Title", value: "Generated Page" },
         { name: "Content", value: "Create **this**" },
-        { name: "In database", value: "Generated Data Source" }
+        { name: "In data source", value: "Generated Data Source" }
       ],
       message: "Are you sure you want to create the page?"
     })
@@ -506,7 +546,9 @@ test("Notion createDatabasePage supports migrated property wrappers", async () =
 
     assert.match(JSON.stringify(output), /page-created/)
 
-    const createPageRequest = requests.find((request) => request.url === "https://api.notion.com/v1/pages")
+    const createPageRequest = requests.find(
+      (request) => request.url === "https://api.notion.com/v1/pages"
+    )
     assert.ok(createPageRequest)
     const body = createPageRequest.body as { children: Array<Record<string, unknown>> }
     assert.equal(body.children[0]?.type, "divider")
@@ -683,11 +725,7 @@ async function executeParsedNotionTool(
 ): Promise<unknown> {
   const tool = createNotionTools().find((candidate) => candidate.name === toolName)
   assert.ok(tool)
-  const parsedInput = await parseToolInputWithSchema(
-    `notion:${toolName}`,
-    tool.inputSchema,
-    input
-  )
+  const parsedInput = await parseToolInputWithSchema(`notion:${toolName}`, tool.inputSchema, input)
 
   return (tool as ExtensionToolDefinition).handler(
     {

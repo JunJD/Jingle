@@ -205,8 +205,6 @@ export interface NativeExtensionAiCapability {
   instructions?: string[]
   mention?: NativeExtensionAiCapabilityMentionManifest
   permissionMode?: PermissionModeName
-  publicPreferenceNames?: string[]
-  requiredPreferenceNames?: string[]
   supportedPlatforms?: NativeExtensionSupportedPlatform[]
   title: LocalizedTextValue
   toolDisplays?: Record<string, NativeExtensionToolDisplayManifest>
@@ -660,16 +658,6 @@ export function validateNativeExtensionPackageManifest(
       extensionName: manifest.name,
       fieldName: "aiCapability.toolNames",
       values: capability.toolNames
-    })
-    validateOptionalStringArray({
-      extensionName: manifest.name,
-      fieldName: "aiCapability.requiredPreferenceNames",
-      values: capability.requiredPreferenceNames
-    })
-    validateOptionalStringArray({
-      extensionName: manifest.name,
-      fieldName: "aiCapability.publicPreferenceNames",
-      values: capability.publicPreferenceNames
     })
     if (capability.connectionId !== undefined) {
       assertNonEmptyString(

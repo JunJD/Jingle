@@ -3,9 +3,7 @@ export { Alert, confirmAlert } from "./alert"
 export { Action, ActionPanel } from "./actions"
 export { Clipboard, getSelectedText, writeClipboardText } from "./clipboard"
 export {
-  createExtensionClient,
   createNativeExtensionClient,
-  defineExtensionClientMethod,
   defineNativeExtensionClientMethod
 } from "./client"
 export {
@@ -68,8 +66,7 @@ export type {
 export { OAuth } from "./oauth"
 export type { RuntimeOAuthPKCEClientOptions } from "./oauth"
 export {
-  openCommandPreferences,
-  openExtensionPreferences,
+  openNativeCommandSettings,
   openNativeExtensionSettings
 } from "./settings"
 export { open, openExternal } from "./shell"

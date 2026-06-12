@@ -32,7 +32,7 @@ test("withAccessToken initializes OAuth-style services from Openwork preferences
   assert.deepEqual(authorizedTokens, ["secret_token"])
 })
 
-test("withAccessToken uses legacy command-scoped access token fallback", async () => {
+test("withAccessToken ignores command-scoped access token values", async () => {
   const authorizedTokens: string[] = []
   const service = new OAuthService({
     onAuthorize: ({ token }) => {
@@ -40,12 +40,15 @@ test("withAccessToken uses legacy command-scoped access token fallback", async (
     }
   })
 
-  await runWithExtensionRuntimeSdk(
-    createLaunchContext({}, { accessToken: "legacy_command_token" }),
-    () => withAccessToken(service)(() => {})()
+  await assert.rejects(
+    () =>
+      runWithExtensionRuntimeSdk(createLaunchContext({}, { accessToken: "command_token" }), () =>
+        withAccessToken(service)(() => {})()
+      ),
+    /Missing accessToken preference/
   )
 
-  assert.deepEqual(authorizedTokens, ["legacy_command_token"])
+  assert.deepEqual(authorizedTokens, [])
 })
 
 test("getConnectionSecret prefers extension connection secrets", async () => {
@@ -62,6 +65,20 @@ test("getConnectionSecret prefers extension connection secrets", async () => {
   )
 
   assert.equal(token, "extension_token")
+})
+
+test("getConnectionSecret ignores command-scoped secret values", async () => {
+  const token = await runWithExtensionRuntimeSdk(
+    createLaunchContext(
+      {},
+      {
+        accessToken: "command_token"
+      }
+    ),
+    () => getConnectionSecret("accessToken")
+  )
+
+  assert.equal(token, "")
 })
 
 test("withAccessToken falls back to service personal access token", async () => {
@@ -111,15 +128,13 @@ test("OAuthService exposes authorize and getAccessToken methods", async () => {
 
 test("getAccessToken utility resolves generic withAccessToken services", async () => {
   const authorizedTokens: string[] = []
-  const token = await runWithExtensionRuntimeSdk(
-    createLaunchContext({}),
-    () =>
-      getAccessToken({
-        onAuthorize: ({ token }) => {
-          authorizedTokens.push(token)
-        },
-        personalAccessToken: "fallback_token"
-      })
+  const token = await runWithExtensionRuntimeSdk(createLaunchContext({}), () =>
+    getAccessToken({
+      onAuthorize: ({ token }) => {
+        authorizedTokens.push(token)
+      },
+      personalAccessToken: "fallback_token"
+    })
   )
 
   assert.equal(token, "fallback_token")

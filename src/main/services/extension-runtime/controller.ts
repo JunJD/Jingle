@@ -1,6 +1,7 @@
 import type { IpcMain, WebContents } from "electron"
 import type {
   ExtensionRuntimeEvent,
+  ExtensionRuntimeForegroundStartRequest,
   ExtensionRuntimeLaunchContext,
   ExtensionRuntimeNavigationResponse,
   ExtensionRuntimeRunResult
@@ -60,14 +61,21 @@ export class ExtensionRuntimeController {
     registerIpcHandle(
       ipcMain,
       "extensionRuntime:startForeground",
-      async (event, context: ExtensionRuntimeLaunchContext) => {
+      async (event, request: ExtensionRuntimeForegroundStartRequest) => {
         const previousSessionId = this.runtimeManager.getForegroundSession()?.sessionId
-        const session = await this.runtimeManager.startForeground(context)
-        if (previousSessionId) {
-          this.rendererBridge.releaseSession(previousSessionId)
+        this.rendererBridge.bindSession(request.sessionId, event.sender)
+        try {
+          const session = await this.runtimeManager.startForeground(request.context, {
+            sessionId: request.sessionId
+          })
+          if (previousSessionId) {
+            this.rendererBridge.releaseSession(previousSessionId)
+          }
+          return session
+        } catch (error) {
+          this.rendererBridge.releaseSession(request.sessionId)
+          throw error
         }
-        this.rendererBridge.bindSession(session.sessionId, event.sender)
-        return session
       }
     )
 

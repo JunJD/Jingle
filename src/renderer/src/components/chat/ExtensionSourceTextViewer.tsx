@@ -3,19 +3,17 @@ import { WorkspaceFileIcon } from "@/components/workspace-file-icon"
 import { useI18n } from "@/lib/i18n"
 import { listNativeLauncherSourceMentions } from "@extension-host/index"
 import {
-  parseComposerReferenceText,
-  type ParsedComposerReferenceText,
   type ParsedExtensionSourceReference,
   type ParsedWorkspaceFileReference
 } from "@shared/composer-reference-uri"
 import type { ExtensionSourceMention } from "@shared/extension-sources"
+import {
+  parseExtensionSourceTextForViewer as parseExtensionSourceTextForViewerModel
+} from "./extension-source-text-viewer-model"
 
-type ViewerToken = NonNullable<ParsedComposerReferenceText>["tokens"][number]
 type WorkspaceFileOpenHandler = (path: string) => void
 
-export function parseComposerReferenceTextForViewer(text: string): ViewerToken[] | null {
-  return parseComposerReferenceText(text)?.tokens ?? null
-}
+export const parseComposerReferenceTextForViewer = parseExtensionSourceTextForViewerModel
 
 function getWorkspaceFileName(path: string): string {
   return path.split("/").pop() || path
@@ -101,7 +99,7 @@ export function ComposerReferenceTextViewer(props: {
     window.electron.process.platform,
     locale
   )
-  const tokens = parseComposerReferenceTextForViewer(text)
+  const tokens = parseExtensionSourceTextForViewerModel(text)
 
   if (!tokens) {
     return <>{text}</>

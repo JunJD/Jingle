@@ -62,6 +62,3 @@ export function defineNativeExtensionClientMethod<
 >(): RuntimeNativeExtensionClientMethod<TPayload, TResult> {
   return {}
 }
-
-export const createExtensionClient = createNativeExtensionClient
-export const defineExtensionClientMethod = defineNativeExtensionClientMethod

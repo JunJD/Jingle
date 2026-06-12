@@ -20,7 +20,6 @@ type SearchPagesInput = {
   filter?: "page" | "data_source"
   limit?: number
   query?: string
-  searchText?: string
   startCursor?: string
 }
 
@@ -36,13 +35,6 @@ export type QueryDataSourceToolInput = {
   limit: number
   query?: string
   sorts?: QueryDataSourceParameters["sorts"]
-  startCursor?: string
-}
-
-export type SearchDatabaseToolInput = {
-  databaseId: string
-  limit: number
-  query?: string
   startCursor?: string
 }
 
@@ -82,10 +74,12 @@ export type CreateDatabasePagePropertyInput =
       value: string
     }
 
-export function createSearchRequest(input: SearchPagesInput | SearchDataSourcesInput): SearchParameters {
+export function createSearchRequest(
+  input: SearchPagesInput | SearchDataSourcesInput
+): SearchParameters {
   const request: SearchParameters = {
     page_size: input.limit ?? 10,
-    query: "searchText" in input ? (input.query ?? input.searchText ?? "") : input.query
+    query: input.query
   }
 
   if ("filter" in input && input.filter) {
@@ -103,11 +97,11 @@ export function createSearchRequest(input: SearchPagesInput | SearchDataSourcesI
 }
 
 export function createQueryDataSourceRequest(
-  input: QueryDataSourceToolInput | SearchDatabaseToolInput
+  input: QueryDataSourceToolInput
 ): QueryDataSourceParameters {
   const query = input.query?.trim() ?? ""
   const request: QueryDataSourceParameters = {
-    data_source_id: "dataSourceId" in input ? input.dataSourceId : input.databaseId,
+    data_source_id: input.dataSourceId,
     page_size: input.limit
   }
 
@@ -161,7 +155,9 @@ export function createAppendMarkdownRequest(input: {
   }
 }
 
-export function createDatabasePageRequest(input: CreateDatabasePageToolInput): CreatePageParameters {
+export function createDatabasePageRequest(
+  input: CreateDatabasePageToolInput
+): CreatePageParameters {
   const request: CreatePageParameters = {
     parent: {
       data_source_id: input.dataSourceId

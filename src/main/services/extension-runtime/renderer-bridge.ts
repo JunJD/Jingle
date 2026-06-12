@@ -16,20 +16,41 @@ interface PendingNavigationRequest {
   sessionId: string
 }
 
+interface RendererOwnerCleanup {
+  listener: () => void
+  webContents: WebContents
+}
+
 export class ExtensionRuntimeRendererBridge {
+  private readonly ownerCleanupByWebContentsId = new Map<number, RendererOwnerCleanup>()
   private readonly pendingNavigationRequests = new Map<string, PendingNavigationRequest>()
   private readonly sessionOwners = new Map<string, WebContents>()
 
   bindSession(sessionId: string, webContents: WebContents): void {
     this.sessionOwners.set(sessionId, webContents)
-    webContents.once("destroyed", () => {
-      if (this.sessionOwners.get(sessionId) === webContents) {
-        this.releaseSession(sessionId)
+
+    if (this.ownerCleanupByWebContentsId.has(webContents.id)) {
+      return
+    }
+
+    const listener = (): void => {
+      this.ownerCleanupByWebContentsId.delete(webContents.id)
+      for (const [ownerSessionId, owner] of Array.from(this.sessionOwners.entries())) {
+        if (owner.id === webContents.id) {
+          this.releaseSession(ownerSessionId)
+        }
       }
+    }
+
+    this.ownerCleanupByWebContentsId.set(webContents.id, {
+      listener,
+      webContents
     })
+    webContents.once("destroyed", listener)
   }
 
   releaseSession(sessionId: string): void {
+    const owner = this.sessionOwners.get(sessionId)
     this.sessionOwners.delete(sessionId)
     for (const [requestId, pending] of this.pendingNavigationRequests) {
       if (pending.sessionId !== sessionId) {
@@ -39,6 +60,24 @@ export class ExtensionRuntimeRendererBridge {
       this.pendingNavigationRequests.delete(requestId)
       pending.reject(new Error(`Extension runtime session "${sessionId}" renderer detached.`))
     }
+
+    if (!owner || owner.isDestroyed()) {
+      return
+    }
+
+    for (const candidate of this.sessionOwners.values()) {
+      if (candidate.id === owner.id) {
+        return
+      }
+    }
+
+    const cleanup = this.ownerCleanupByWebContentsId.get(owner.id)
+    if (cleanup?.webContents !== owner) {
+      return
+    }
+
+    owner.removeListener("destroyed", cleanup.listener)
+    this.ownerCleanupByWebContentsId.delete(owner.id)
   }
 
   handleNavigationRequest(params: {

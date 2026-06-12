@@ -9,7 +9,7 @@ import {
   getCompactToolApprovalPresentation,
   getToolApprovalPresentationMeta
 } from "./tools/tool-approval-presentation"
-import { renderLargeApprovalBody } from "./tools/approval-large-presentation"
+import { LargeApprovalBody } from "./tools/approval-large-presentation"
 import { stringifyToolValue } from "./tools/shared"
 
 function getApprovalTitle(metaTitle: string): string {
@@ -46,13 +46,9 @@ export function ComposerApprovalPrompt(props: {
   const displaySize = getHitlRequestDisplaySize(request)
   const isLarge = displaySize === "large"
   const rawArgs = stringifyToolValue(request.tool_call.args)
-  const largeBody = isLarge
-    ? renderLargeApprovalBody({
-        approvalItem,
-        copy,
-        rawArgs
-      })
-    : null
+  const largeBody = isLarge ? (
+    <LargeApprovalBody approvalItem={approvalItem} copy={copy} rawArgs={rawArgs} />
+  ) : null
 
   return (
     <ComposerInterruptShell

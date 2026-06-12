@@ -1,20 +1,15 @@
 import {
   createExtensionQuicklinkAction,
-  normalizeExtensionQuicklinkRecord,
-  type ExtensionQuicklinkAlias,
   type ExtensionQuicklinkRecord
 } from "@shared/extension-quicklinks"
 import type { LauncherSearchRequest } from "@shared/launcher-search"
 import type { LauncherSearchProvider, LauncherSearchProviderResponse } from "../types"
 
 let listQuicklinks: (() => ExtensionQuicklinkRecord[]) | null = null
-let extensionQuicklinkAliases: readonly ExtensionQuicklinkAlias[] = []
 
 export function configureQuicklinksLauncherSearchProvider(params: {
-  aliases?: readonly ExtensionQuicklinkAlias[]
   listQuicklinks: () => ExtensionQuicklinkRecord[]
 }): void {
-  extensionQuicklinkAliases = params.aliases ?? []
   listQuicklinks = params.listQuicklinks
 }
 
@@ -62,12 +57,9 @@ class QuicklinksLauncherSearchProvider implements LauncherSearchProvider {
     return {
       results: listQuicklinks()
         .map((quicklink) => {
-          const normalizedQuicklink = normalizeExtensionQuicklinkRecord(quicklink, {
-            aliases: extensionQuicklinkAliases
-          })
           return {
-            quicklink: normalizedQuicklink,
-            score: scoreQuicklink(normalizedQuicklink, query)
+            quicklink,
+            score: scoreQuicklink(quicklink, query)
           }
         })
         .filter(
@@ -77,9 +69,7 @@ class QuicklinksLauncherSearchProvider implements LauncherSearchProvider {
         .sort((left, right) => right.score - left.score)
         .slice(0, Math.max(request.limit, 1))
         .map(({ quicklink, score }) => ({
-          action: createExtensionQuicklinkAction(quicklink, {
-            aliases: extensionQuicklinkAliases
-          }),
+          action: createExtensionQuicklinkAction(quicklink),
           id: quicklink.id,
           kind: "url" as const,
           score,

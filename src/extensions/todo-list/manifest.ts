@@ -4,6 +4,14 @@ import { viewport as todoListViewport } from "./src/index.meta"
 
 export const todoListManifest = defineNativeExtensionManifest({
   capabilities: ["navigation", "surface"],
+  connection: {
+    auth: {
+      type: "none"
+    },
+    id: "default",
+    provider: "todo-list",
+    title: l("Todo List", "待办列表")
+  },
   icon: "assets/icon.svg",
   iconName: "todo",
   runtimeCapabilities: ["preferences", "shell", "storage"],

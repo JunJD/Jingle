@@ -64,8 +64,7 @@ function findBinding(input: {
       .find(
         (binding) =>
           binding.resolvedCapability.extensionName === input.extensionName &&
-          (binding.definition.name === requestedToolName ||
-            binding.agentToolName === requestedToolName)
+          binding.definition.name === requestedToolName
       ) ?? null
   )
 }

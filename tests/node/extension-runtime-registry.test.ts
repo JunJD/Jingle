@@ -185,10 +185,8 @@ test("Notion keeps the migrated manifest and package contract", async () => {
     "listBlockChildren",
     "getDatabases",
     "retrieveDataSource",
-    "searchDatabase",
     "queryDataSource",
     "addToPage",
-    "createPage",
     "createDatabasePage"
   ])
   assert.deepEqual(notionManifest.connection?.auth, {
