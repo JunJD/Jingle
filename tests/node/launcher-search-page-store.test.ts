@@ -602,8 +602,7 @@ test("installed Figma Files commands are available through renderer catalog proj
   const initialIconMarkup = renderToStaticMarkup(
     createElement(ExtensionIcon, {
       extensionName: searchFilesItem.presentation.icon.extensionName,
-      icon: searchFilesItem.presentation.icon.icon,
-      iconName: searchFilesItem.presentation.icon.iconName
+      icon: searchFilesItem.presentation.icon.icon
     })
   )
   assert.match(initialIconMarkup, /<img/)

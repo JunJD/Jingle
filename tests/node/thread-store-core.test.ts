@@ -483,6 +483,138 @@ test("run started immediately moves projection active turn before assistant firs
   assert.equal(streamingState.view.messageProjection.activeAssistantId, "assistant-2")
 })
 
+test("stale idle snapshots do not remove runtime messages after a finished run", () => {
+  const store = createThreadStore()
+  const firstTurnMessages = [
+    createUserMessage("user-1", "First question"),
+    createAssistantMessage("assistant-1", "First answer")
+  ]
+
+  store.applyThreadDataSnapshot(
+    "thread-a",
+    createThreadDataSnapshot({
+      messages: {
+        artifacts: [],
+        messages: firstTurnMessages
+      },
+      runState: {
+        error: null,
+        forkState: { canFork: true },
+        pendingApproval: null,
+        runId: "run-1",
+        todos: []
+      },
+      thread: {
+        metadata: undefined,
+        status: "idle",
+        thread_id: "thread-a",
+        title: undefined
+      }
+    })
+  )
+  store.applyRuntimeEvents("thread-a", [
+    {
+      message: createUserMessage("user-2", "Second question"),
+      revision: 1,
+      type: "message.upserted"
+    },
+    {
+      revision: 2,
+      run: {
+        assistantMessageId: null,
+        currentToolCallId: null,
+        phase: "thinking",
+        phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
+        runId: "run-2",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        status: "running",
+        threadId: "thread-a",
+        toolCalls: [],
+        turnId: "user-2",
+        userMessageId: "user-2"
+      },
+      type: "run.started"
+    },
+    {
+      completedAt: new Date("2026-01-01T00:00:01.000Z"),
+      durationMs: 1_000,
+      error: null,
+      revision: 3,
+      runId: "run-2",
+      status: "completed",
+      type: "run.finished"
+    }
+  ])
+
+  store.applyThreadDataSnapshot(
+    "thread-a",
+    createThreadDataSnapshot({
+      messages: {
+        artifacts: [],
+        messages: firstTurnMessages
+      },
+      runState: {
+        error: null,
+        forkState: { canFork: true },
+        pendingApproval: null,
+        runId: "run-1",
+        todos: []
+      },
+      thread: {
+        metadata: undefined,
+        status: "idle",
+        thread_id: "thread-a",
+        title: undefined
+      }
+    })
+  )
+
+  const state = getThreadState(store, "thread-a")
+  assert.equal(state.agent.activeRun, null)
+  assert.deepEqual(
+    state.view.messageProjection.turns.map((turn) => turn.key),
+    ["user-1", "user-2"]
+  )
+  assert.deepEqual(
+    state.agent.messagesPage.map((message) => message.id),
+    ["user-1", "assistant-1", "user-2"]
+  )
+
+  store.applyThreadDataSnapshot(
+    "thread-a",
+    createThreadDataSnapshot({
+      messages: {
+        artifacts: [],
+        messages: [
+          ...firstTurnMessages,
+          createUserMessage("user-2", "Second question"),
+          createAssistantMessage("assistant-2", "Second answer")
+        ]
+      },
+      runState: {
+        error: null,
+        forkState: { canFork: true },
+        pendingApproval: null,
+        runId: "run-2",
+        todos: []
+      },
+      thread: {
+        metadata: undefined,
+        status: "idle",
+        thread_id: "thread-a",
+        title: undefined
+      }
+    })
+  )
+
+  const caughtUpState = getThreadState(store, "thread-a")
+  assert.deepEqual(
+    caughtUpState.agent.messagesPage.map((message) => message.id),
+    ["user-1", "assistant-1", "user-2", "assistant-2"]
+  )
+  assert.equal(caughtUpState.view.messageProjection.activeTurnKey, "user-2")
+})
+
 test("runtime tool events update source run facts and message projection facts", () => {
   const store = createThreadStore()
   const toolCall = {

@@ -30,14 +30,31 @@ function toSnapshotErrorPayload(error: string | null): IpcErrorPayload | null {
   }
 }
 
+function isSnapshotMessageRollback(
+  currentMessages: ThreadState["agent"]["messagesPage"],
+  snapshotMessages: AgentThreadDataSnapshot["messages"]["messages"]
+): boolean {
+  if (currentMessages.length === 0 || snapshotMessages.length >= currentMessages.length) {
+    return false
+  }
+
+  return snapshotMessages.every((message, index) => message.id === currentMessages[index]?.id)
+}
+
 export function applyRuntimeSnapshotToThreadState(
   state: ThreadState,
   snapshot: AgentThreadDataSnapshot
 ): ThreadState {
   const metadata = snapshot.thread.metadata || {}
   const hasRuntimeRun = state.agent.activeRun !== null
+  const wouldRollbackRuntimeMessages =
+    state.agent.revision > 0 &&
+    isSnapshotMessageRollback(state.agent.messagesPage, snapshot.messages.messages)
   const canApplySnapshotContent =
-    !hasRuntimeRun && snapshot.thread.status !== "busy" && snapshot.thread.status !== "interrupted"
+    !hasRuntimeRun &&
+    !wouldRollbackRuntimeMessages &&
+    snapshot.thread.status !== "busy" &&
+    snapshot.thread.status !== "interrupted"
   const messagesPage = canApplySnapshotContent
     ? stabilizeThreadMessages(state.agent.messagesPage, snapshot.messages.messages)
     : state.agent.messagesPage
