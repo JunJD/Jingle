@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { shouldGoHomeFromComposerKeyDown } from "../../src/renderer/src/ai-core/composer-keyboard"
+import { isLauncherAiInputEventTarget } from "../../src/renderer/src/ai-core/useLauncherAiActions"
 
 const plainEvent = {
   altKey: false,
@@ -55,4 +56,24 @@ test("composer delete shortcut does not go home when visible content remains", (
     }),
     false
   )
+})
+
+test("launcher AI input target includes composer descendants", () => {
+  const child = {} as EventTarget
+  const outside = {} as EventTarget
+  const root = {
+    contains: (target: EventTarget) => target === child
+  } as unknown as HTMLElement
+  const input = {
+    blur: () => {},
+    focus: () => {},
+    getElement: () => root,
+    getModelText: () => "",
+    getRefs: () => [],
+    insertText: () => {}
+  }
+
+  assert.equal(isLauncherAiInputEventTarget(root, input), true)
+  assert.equal(isLauncherAiInputEventTarget(child, input), true)
+  assert.equal(isLauncherAiInputEventTarget(outside, input), false)
 })

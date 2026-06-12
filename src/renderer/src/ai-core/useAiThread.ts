@@ -51,6 +51,7 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const host = useAiCoreHost()
   const [initialSeedQuery] = useState(host.seedQuery)
   const hasRunInitialActionRef = useRef(false)
+  const invokeInFlightRef = useRef(false)
   const [inputStatus, setInputStatus] = useState<LauncherInputStatus>("idle")
   const [threadActionError, setThreadActionError] = useState<string | null>(null)
   const threadNavigation = useLauncherAiThreadNavigation({
@@ -104,16 +105,27 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
   const runPrimaryAction = useCallback(
     (inputOverride?: ComposerMessageInput): void => {
       const input = inputOverride ?? messageInput
-      if (isBusy || hasPendingApproval || !hasComposerMessageInputContent(input)) {
+      if (
+        invokeInFlightRef.current ||
+        isBusy ||
+        hasPendingApproval ||
+        !hasComposerMessageInputContent(input)
+      ) {
         return
       }
 
+      invokeInFlightRef.current = true
       setInputStatus("pending")
-      void agent.control.invoke(input).then((didInvoke) => {
-        if (didInvoke) {
-          onDidInvoke?.()
-        }
-      })
+      void agent.control
+        .invoke(input)
+        .then((didInvoke) => {
+          if (didInvoke) {
+            onDidInvoke?.()
+          }
+        })
+        .finally(() => {
+          invokeInFlightRef.current = false
+        })
     },
     [agent.control, hasPendingApproval, isBusy, messageInput, onDidInvoke]
   )
@@ -129,13 +141,23 @@ export function useAiThread(options: UseAiThreadOptions = {}): {
     }
 
     const submitFrameId = window.requestAnimationFrame(() => {
+      if (invokeInFlightRef.current) {
+        return
+      }
+
       hasRunInitialActionRef.current = true
+      invokeInFlightRef.current = true
       setInputStatus("pending")
-      void agent.control.invoke(initialMessageInput).then((didInvoke) => {
-        if (didInvoke) {
-          onDidInvoke?.()
-        }
-      })
+      void agent.control
+        .invoke(initialMessageInput)
+        .then((didInvoke) => {
+          if (didInvoke) {
+            onDidInvoke?.()
+          }
+        })
+        .finally(() => {
+          invokeInFlightRef.current = false
+        })
     })
 
     return () => {

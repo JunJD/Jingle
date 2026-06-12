@@ -14,7 +14,7 @@ import {
   updateThread
 } from "../db"
 import { getCheckpointer } from "./runtime"
-import { extractTitleFromCheckpoint } from "./runtime-state"
+import { checkpointIncludesMessageId, extractTitleFromCheckpoint } from "./runtime-state"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
@@ -193,6 +193,7 @@ export async function syncRunFromLatestCheckpoint(
   threadId: string,
   runId: string,
   options?: {
+    expectedMessageId?: string
     interrupted?: boolean
   }
 ): Promise<PersistedRunStatus> {
@@ -206,6 +207,16 @@ export async function syncRunFromLatestCheckpoint(
 
   if (!latest && !options?.interrupted) {
     throw new Error(`[Agent] Missing checkpoint for run "${runId}" in thread "${threadId}".`)
+  }
+
+  if (
+    latest &&
+    options?.expectedMessageId &&
+    !checkpointIncludesMessageId(threadId, latest, options.expectedMessageId)
+  ) {
+    throw new Error(
+      `[Agent] Latest checkpoint for run "${runId}" does not include submitted message "${options.expectedMessageId}".`
+    )
   }
 
   const status = options?.interrupted ? "interrupted" : resolveCheckpointRunStatus(latest)
