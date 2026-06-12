@@ -45,6 +45,13 @@ const rules = [
       isUnder(target, "extensions/") ||
       isUnder(target, "packages/extension-migration/"),
     message: "public extension packages 必须拥有自己的实现/contract，不能反向 import 宿主 src、extension 包或 migration 包"
+  },
+  {
+    name: "renderer-extension-catalog-projection-boundary",
+    appliesTo: (file) => isUnder(file, "src/renderer/"),
+    isViolation: (_, _target, specifier) => specifier.startsWith("@extensions/"),
+    message:
+      "renderer launcher 只能通过 main/preload 暴露的 catalog projection 读取 extension registry，不能 import @extensions/* 静态表"
   }
 ]
 
@@ -86,7 +93,7 @@ for (const absoluteFilePath of [
         continue
       }
 
-      if (!rule.isViolation(repoFilePath, repoTargetPath)) {
+      if (!rule.isViolation(repoFilePath, repoTargetPath, entry.specifier)) {
         continue
       }
 

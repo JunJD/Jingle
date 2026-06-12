@@ -2,12 +2,19 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { notionRuntimeMetadata } from "../../extensions/notion/runtime-metadata"
+import { figmaFilesManifest } from "../../installable-extensions/figma-files/manifest"
+import { githubManifest } from "../../installable-extensions/github/manifest"
+import { notionManifest } from "../../installable-extensions/notion/manifest"
 import { listNativeExtensionQuicklinkAliases } from "../../src/extensions"
+import { nativeExtensionManifests } from "../../src/extensions"
 import {
   normalizeExtensionQuicklinkRecord,
   parseExtensionQuicklinkCommandUrl
 } from "../../src/shared/extension-quicklinks"
+import {
+  buildNativeLauncherCommandOwners,
+  setNativeLauncherCatalogProjection
+} from "../../src/renderer/src/extension-host"
 import { ExtensionIcon } from "../../src/renderer/src/extensions/ExtensionIcon"
 import { LauncherResultList } from "../../src/renderer/src/launcher-components/LauncherResultList"
 import { I18nProvider } from "../../src/renderer/src/lib/i18n"
@@ -20,6 +27,7 @@ import {
 import { buildLauncherSearchShellItems } from "../../src/renderer/src/launcher-shell/search-items"
 import { resolveLauncherCommand } from "../../src/renderer/src/launcher-shell/pages"
 import { FALLBACK_SHELL_CONFIG } from "../../src/shared/launcher"
+import { toNativeExtensionLauncherCatalogProjection } from "../../src/shared/native-extensions"
 import {
   createEmptyLauncherSearchResultsBySource,
   createLauncherSearchPageStore,
@@ -33,6 +41,12 @@ import type { LauncherSearchResult } from "../../src/shared/launcher-search"
 import type { LocalStartItem } from "../../src/shared/local-start"
 
 const extensionQuicklinkAliases = listNativeExtensionQuicklinkAliases()
+
+setNativeLauncherCatalogProjection(
+  [...nativeExtensionManifests, figmaFilesManifest, githubManifest, notionManifest].map(
+    (manifest) => toNativeExtensionLauncherCatalogProjection(manifest)
+  )
+)
 
 function createSearchResult(
   input: Partial<LauncherSearchResult> & Pick<LauncherSearchResult, "id" | "source" | "title">
@@ -427,7 +441,7 @@ test("home idle and search surfaces both keep a footer", () => {
   assert.equal(searchSurface.chrome.footerVisible, true)
 })
 
-test("high confidence extension intents become the primary launcher result", () => {
+test("extension command matches no longer hide generic use-with suggestions through function intents", () => {
   const copy = appCopy["zh-CN"]
   const surface = buildLauncherHomeSurfaceModel({
     copy,
@@ -447,7 +461,7 @@ test("high confidence extension intents become the primary launcher result", () 
   })
   assert.equal(
     surface.items.some((item) => item.id.startsWith("use-with:translate:")),
-    false
+    true
   )
 })
 
@@ -521,141 +535,82 @@ test("packaged extension commands keep asset icons with glyph fallbacks in launc
   assert.match(initialIconMarkup, /openwork-extension-asset:\/\/github\/assets\/icon\.svg/)
 })
 
-test("Notion search intent becomes the primary launcher result", () => {
+test("installed Notion commands are available through renderer catalog projection", () => {
   const copy = appCopy["zh-CN"]
   const surface = buildLauncherHomeSurfaceModel({
     copy,
     historyItems: [],
     idleItems: [],
     locale: "zh-CN",
-    query: "搜索 notion 页面",
+    query: "notion search page",
     searchResults: [],
     windowMode: "default"
   })
 
-  assert.equal(surface.items[0]?.title, "Search Notion")
-  assert.deepEqual(surface.items[0]?.commandRef, {
-    commandName: "search-page",
-    extensionName: "notion",
-    kind: "extension-command"
-  })
-  assert.deepEqual(surface.items[0]?.commandOpenOptions, {
-    seedQuery: "搜索 notion 页面"
-  })
-  assert.deepEqual(surface.items[0]?.presentation.icon, {
+  const searchPageItem = surface.items.find(
+    (item) =>
+      item.commandRef?.kind === "extension-command" &&
+      item.commandRef.extensionName === "notion" &&
+      item.commandRef.commandName === "search-page"
+  )
+
+  assert.ok(searchPageItem)
+  assert.deepEqual(searchPageItem.presentation.icon, {
     extensionName: "notion",
     icon: "assets/notion-logo.png",
     iconName: "notion",
     type: "extension"
   })
 
-  assert.equal(surface.items[0]?.presentation.icon.type, "extension")
   const initialIconMarkup = renderToStaticMarkup(
     createElement(ExtensionIcon, {
-      extensionName: surface.items[0].presentation.icon.extensionName,
-      icon: surface.items[0].presentation.icon.icon,
-      iconName: surface.items[0].presentation.icon.iconName
+      extensionName: searchPageItem.presentation.icon.extensionName,
+      icon: searchPageItem.presentation.icon.icon,
+      iconName: searchPageItem.presentation.icon.iconName
     })
   )
   assert.match(initialIconMarkup, /<img/)
   assert.match(initialIconMarkup, /openwork-extension-asset:\/\/notion\/assets\/notion-logo\.png/)
 })
 
-test("Notion natural language intents route to the matching commands", () => {
-  const copy = appCopy["zh-CN"]
-  const createSurface = buildLauncherHomeSurfaceModel({
-    copy,
-    historyItems: [],
-    idleItems: [],
-    locale: "zh-CN",
-    query: "新建 notion 页面",
-    searchResults: [],
-    windowMode: "default"
-  })
-  const addTextSurface = buildLauncherHomeSurfaceModel({
-    copy,
-    historyItems: [],
-    idleItems: [],
-    locale: "zh-CN",
-    query: "追加内容到 notion 页面",
-    searchResults: [],
-    windowMode: "default"
-  })
-
-  assert.equal(createSurface.items[0]?.title, "Create Page")
-  assert.deepEqual(createSurface.items[0]?.commandRef, {
-    commandName: "create-database-page",
-    extensionName: "notion",
-    kind: "extension-command"
-  })
-  assert.equal(addTextSurface.items[0]?.title, "Add Text to Page")
-  assert.deepEqual(addTextSurface.items[0]?.commandRef, {
-    commandName: "add-text-to-page",
-    extensionName: "notion",
-    kind: "extension-command"
-  })
-})
-
-test("Notion key command aliases resolve matching commands", () => {
-  const match = resolveLauncherCommand({
-    altKey: false,
-    ctrlKey: false,
-    key: " ",
-    metaKey: false,
-    query: "notion quick capture",
-    shiftKey: false
-  })
-
-  assert.deepEqual(match, {
-    address: {
-      commandName: "quick-capture",
-      extensionName: "notion",
-      kind: "extension-command"
-    },
-    match: {
-      commandName: "quick-capture",
-      openOptions: {
-        seedQuery: ""
-      }
-    }
-  })
-  assert.equal(
-    resolveLauncherCommand({
-      altKey: false,
-      ctrlKey: false,
-      key: "Enter",
-      metaKey: false,
-      query: "notion quick capture",
-      shiftKey: false
-    }),
-    null
-  )
-})
-
-test("Notion quick capture intent forwards URL as fallback text", () => {
+test("installed Figma Files commands are available through renderer catalog projection", () => {
   const copy = appCopy["zh-CN"]
   const surface = buildLauncherHomeSurfaceModel({
     copy,
     historyItems: [],
     idleItems: [],
     locale: "zh-CN",
-    query: "保存 https://example.com/article 到 notion",
+    query: "figma search files",
     searchResults: [],
     windowMode: "default"
   })
 
-  assert.equal(surface.items[0]?.title, "Quick Capture")
-  assert.deepEqual(surface.items[0]?.commandRef, {
-    commandName: "quick-capture",
-    extensionName: "notion",
-    kind: "extension-command"
+  const searchFilesItem = surface.items.find(
+    (item) =>
+      item.commandRef?.kind === "extension-command" &&
+      item.commandRef.extensionName === "figma-files" &&
+      item.commandRef.commandName === "index"
+  )
+
+  assert.ok(searchFilesItem)
+  assert.deepEqual(searchFilesItem.presentation.icon, {
+    extensionName: "figma-files",
+    icon: "assets/command-icon.png",
+    type: "extension"
   })
-  assert.deepEqual(surface.items[0]?.commandOpenOptions, {
-    launchProps: {
-      fallbackText: "https://example.com/article"
-    },
-    seedQuery: "保存 https://example.com/article 到 notion"
-  })
+
+  const initialIconMarkup = renderToStaticMarkup(
+    createElement(ExtensionIcon, {
+      extensionName: searchFilesItem.presentation.icon.extensionName,
+      icon: searchFilesItem.presentation.icon.icon,
+      iconName: searchFilesItem.presentation.icon.iconName
+    })
+  )
+  assert.match(initialIconMarkup, /<img/)
+  assert.match(
+    initialIconMarkup,
+    /openwork-extension-asset:\/\/figma-files\/assets\/command-icon\.png/
+  )
 })
 
 test("retired generated Notion subject stays out of launcher intent resolution", () => {
@@ -688,34 +643,28 @@ test("retired generated Notion subject stays out of launcher command resolution"
   assert.notEqual(surface.items[0]?.commandRef?.kind, "extension-command")
 })
 
-test("Notion launcher intent metadata is owned by the formal Notion package", () => {
-  const copy = appCopy["zh-CN"]
-  const notionSearch = notionRuntimeMetadata.commands.find(
-    (command) => command.name === "search-page"
-  )?.search
-  const buildNotionIntentItems = notionSearch?.buildIntentItems
-  assert.ok(buildNotionIntentItems)
-
-  for (const [query, commandName] of [
-    ["notion search page", "search-page"],
-    ["notion create page", "create-database-page"],
-    ["notion quick capture https://example.com/spec", "quick-capture"],
-    ["notion add text", "add-text-to-page"]
-  ] as const) {
-    const notionIntents = buildNotionIntentItems({
-      copy,
-      locale: "zh-CN",
-      query
-    })
-
-    assert.equal(notionIntents[0]?.commandName, commandName)
-    assert.deepEqual(notionIntents[0]?.presentation.icon, {
-      extensionName: "notion",
-      icon: "assets/notion-logo.png",
-      iconName: "notion",
-      type: "extension"
-    })
+test("Notion launcher command owner does not attach function search metadata", () => {
+  const owners = buildNativeLauncherCommandOwners(
+    [notionManifest].map((manifest) => toNativeExtensionLauncherCatalogProjection(manifest))
+  )
+  const notionOwner = owners.find((owner) => owner.manifest.id === "notion")
+  assert.ok(notionOwner)
+  for (const command of notionOwner.commands) {
+    assert.equal(command.buildIntentItems, undefined)
+    assert.equal(command.resolveCommand, undefined)
   }
+
+  assert.equal(
+    resolveLauncherCommand({
+      altKey: false,
+      ctrlKey: false,
+      key: " ",
+      metaKey: false,
+      query: "notion quick capture",
+      shiftKey: false
+    }),
+    null
+  )
 })
 
 test("retired generated Notion key aliases do not resolve", () => {

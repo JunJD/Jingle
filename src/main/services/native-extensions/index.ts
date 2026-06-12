@@ -100,14 +100,16 @@ export function listNativeExtensionLauncherCatalog(
 ): NativeExtensionLauncherCatalogProjection[] {
   return nativeExtensionRegistry
     .listEnabledPackages(platform)
-    .map((extensionPackage) => extensionPackage.manifest)
     .sort((left, right) =>
-      resolveLocalizedText(left.title, DEFAULT_APP_LOCALE).localeCompare(
-        resolveLocalizedText(right.title, DEFAULT_APP_LOCALE)
+      resolveLocalizedText(left.manifest.title, DEFAULT_APP_LOCALE).localeCompare(
+        resolveLocalizedText(right.manifest.title, DEFAULT_APP_LOCALE)
       )
     )
-    .flatMap((manifest) => {
-      const projection = toNativeExtensionLauncherCatalogProjection(manifest)
+    .flatMap((extensionPackage) => {
+      const projection = toNativeExtensionLauncherCatalogProjection(
+        extensionPackage.manifest,
+        extensionPackage.runtimeMetadata
+      )
       return projection.commands.length > 0 ? [projection] : []
     })
 }

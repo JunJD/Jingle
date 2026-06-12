@@ -10,6 +10,7 @@ import type {
   LauncherCommandOwnerCapability,
   LauncherCommandOwnerManifest
 } from "./launcher-command-owner"
+import type { NativeExtensionRuntimePackageMetadata } from "@openwork/extension-api"
 import type { ExtensionToolDefinition } from "./extension-sources"
 import type { IpcErrorPayload } from "./ipc-error"
 import type { PermissionModeName } from "./permission-mode"
@@ -273,6 +274,7 @@ export interface NativeExtensionLauncherCommandProjection {
   name: string
   preferences: NativeExtensionPreferenceSchema[]
   runtime: NativeExtensionRuntimeCommandManifest
+  search?: NativeExtensionRuntimePackageMetadata["commands"][number]["search"]
   title: LocalizedTextValue
 }
 
@@ -842,8 +844,18 @@ export function toLauncherCommandOwnerManifest(
 }
 
 export function toNativeExtensionLauncherCatalogProjection(
-  manifest: NativeExtensionPackageManifest
+  manifest: NativeExtensionPackageManifest,
+  runtimeMetadata?: NativeExtensionRuntimePackageMetadata | null
 ): NativeExtensionLauncherCatalogProjection {
+  if (runtimeMetadata && runtimeMetadata.extensionName !== manifest.name) {
+    throw new Error(
+      `Native extension "${manifest.name}" launcher projection received runtime metadata for "${runtimeMetadata.extensionName}"`
+    )
+  }
+
+  const runtimeMetadataCommandsByName = new Map(
+    (runtimeMetadata?.commands ?? []).map((command) => [command.name, command])
+  )
   const commands: NativeExtensionLauncherCommandProjection[] = manifest.commands.flatMap(
     (command) => {
       if (command.mode !== "view" && command.mode !== "no-view") {
@@ -866,6 +878,7 @@ export function toNativeExtensionLauncherCatalogProjection(
           name: command.name,
           preferences: command.preferences ?? [],
           runtime: command.runtime,
+          search: runtimeMetadataCommandsByName.get(command.name)?.search,
           title: command.title ?? command.name
         }
       ]

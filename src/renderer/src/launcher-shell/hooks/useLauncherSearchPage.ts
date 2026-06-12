@@ -9,7 +9,7 @@ import {
   type LauncherShellConfig
 } from "@shared/launcher"
 import { useI18n } from "@/lib/i18n"
-import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
+import { listNativeLauncherSourceMentions } from "@extension-host/index"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import { DEFAULT_HOME_COMMAND, listLauncherCommands, resolveLauncherCommand } from "../pages"
 import {
@@ -176,7 +176,7 @@ export function useLauncherSearchPage(props: {
     [useWithCommands, useWithDisabledCommandKeys]
   )
   const sourceMentions = useMemo(
-    () => listNativeExtensionSourceMentions(window.electron.process.platform, locale),
+    () => listNativeLauncherSourceMentions(window.electron.process.platform, locale),
     [locale]
   )
 

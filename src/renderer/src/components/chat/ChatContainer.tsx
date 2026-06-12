@@ -20,7 +20,7 @@ import { useVirtualChatScrollIntent } from "./useVirtualChatScrollIntent"
 import { useAssistantSelectionRefs } from "./useAssistantSelectionRefs"
 import { useI18n } from "@/lib/i18n"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
-import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
+import { listNativeLauncherSourceMentions } from "@extension-host/index"
 import { useWorkspaceFileMentions, type ComposerAreaHandle } from "@/composer-area"
 import {
   hasComposerMessageInputContent,
@@ -244,7 +244,7 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
 export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Element {
   const { copy, locale } = useI18n()
   const sourceMentions = useMemo(
-    () => listNativeExtensionSourceMentions(window.electron.process.platform, locale),
+    () => listNativeLauncherSourceMentions(window.electron.process.platform, locale),
     [locale]
   )
   const inputRef = useRef<ComposerAreaHandle>(null)
@@ -287,9 +287,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     (state) => state?.agent.pendingApproval ?? null
   )
   const canInvoke =
-    hasComposerMessageInputContent({ refs: [], text: input }) &&
-    !isBusy &&
-    !pendingApproval
+    hasComposerMessageInputContent({ refs: [], text: input }) && !isBusy && !pendingApproval
 
   useEffect(() => {
     inputRef.current?.focus()

@@ -1,53 +1,25 @@
 import { getLauncherViewportHeightForBody, type LauncherShellConfig } from "@shared/launcher"
 import {
   listMissingRequiredNativeExtensionPreferences,
-  toLauncherCommandOwnerManifest
+  supportsNativeExtensionPlatformList,
+  toLauncherCommandOwnerManifestFromProjection,
+  type NativeExtensionLauncherCatalogProjection,
+  type NativeExtensionLauncherCommandProjection
 } from "@shared/native-extensions"
-import { resolveLocalizedText } from "@shared/i18n"
+import { resolveLocalizedText, type AppLocale } from "@shared/i18n"
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
-import { listUserVisibleNativeExtensionManifests } from "@extensions/index"
-import { nativeExtensionRuntimeMetadata } from "@extensions/runtime-metadata"
 import { handleRuntimeNavigationRequest } from "@renderer/extension-runtime/runtime-navigation"
 import type { LauncherCommandOwnerDefinition } from "@launcher-shell/pages/types"
+import type { ExtensionSourceMention } from "@shared/extension-sources"
 import { lazy, type ComponentType } from "react"
-
-type NativeExtensionPlatformHost = typeof globalThis & {
-  process?: {
-    platform?: string
-  }
-  window?: {
-    electron?: {
-      process?: {
-        platform?: string
-      }
-    }
-  }
-}
 
 const RuntimeExtensionCommandSurface = lazy(async () => {
   const module = await import("@renderer/extension-runtime/RuntimeExtensionCommandSurface")
   return { default: module.RuntimeExtensionCommandSurface }
 }) as ComponentType
 
-function getNativeExtensionPlatform(): string {
-  const host = globalThis as NativeExtensionPlatformHost
-  const platform = host.window?.electron?.process?.platform ?? host.process?.platform
-
-  if (!platform) {
-    throw new Error("Native extension platform is unavailable.")
-  }
-
-  return platform
-}
-
-function getSupportedNativeExtensionManifests() {
-  return listUserVisibleNativeExtensionManifests(getNativeExtensionPlatform())
-}
-
 function getViewportHeight(
-  viewport: NonNullable<
-    ReturnType<typeof getSupportedNativeExtensionManifests>[number]["commands"][number]["runtime"]
-  >["viewport"]
+  viewport: NativeExtensionLauncherCommandProjection["runtime"]["viewport"]
 ): (shellConfig: LauncherShellConfig) => number {
   if (!viewport) {
     throw new Error("Runtime view command is missing viewport metadata.")
@@ -56,121 +28,149 @@ function getViewportHeight(
   return (shellConfig) => getLauncherViewportHeightForBody(viewport.bodyHeight, shellConfig)
 }
 
-export const nativeLauncherCommandOwners = getSupportedNativeExtensionManifests().reduce<
-  LauncherCommandOwnerDefinition[]
->((owners, extension) => {
-  const routeableCommands = extension.commands.filter(
-    (command) => command.mode === "view" || command.mode === "no-view"
-  )
+let nativeLauncherCommandOwners: LauncherCommandOwnerDefinition[] = []
+let nativeLauncherCatalogProjection: readonly NativeExtensionLauncherCatalogProjection[] = []
 
-  if (routeableCommands.length === 0) {
-    return owners
-  }
+export function setNativeLauncherCatalogProjection(
+  catalog: readonly NativeExtensionLauncherCatalogProjection[]
+): void {
+  nativeLauncherCatalogProjection = catalog
+  nativeLauncherCommandOwners = buildNativeLauncherCommandOwners(catalog)
+}
 
-  const commandOwnerManifest = toLauncherCommandOwnerManifest(extension)
-  validateLauncherCommandOwnerManifest(commandOwnerManifest)
+export function getNativeLauncherCommandOwners(): readonly LauncherCommandOwnerDefinition[] {
+  return nativeLauncherCommandOwners
+}
 
-  owners.push({
-    commands: routeableCommands.map((command) => {
-      if (!command.runtime) {
-        throw new Error(
-          `Native extension "${extension.name}" command "${command.name}" must declare runtime metadata`
-        )
+export function listNativeLauncherSourceMentions(
+  platform: string,
+  locale: AppLocale
+): ExtensionSourceMention[] {
+  return nativeLauncherCatalogProjection.flatMap((extension) => {
+    const sourceMention = extension.sourceMention
+    if (
+      !sourceMention ||
+      !supportsNativeExtensionPlatformList(sourceMention.supportedPlatforms, platform)
+    ) {
+      return []
+    }
+
+    return [
+      {
+        extensionName: sourceMention.extensionName,
+        icon: sourceMention.icon,
+        iconName: sourceMention.iconName,
+        label: resolveLocalizedText(sourceMention.label, locale, sourceMention.value),
+        sourceId: sourceMention.sourceId,
+        supportedPlatforms: sourceMention.supportedPlatforms
+          ? [...sourceMention.supportedPlatforms]
+          : undefined,
+        value: sourceMention.value
       }
+    ]
+  })
+}
 
-      const runtimeSearch = nativeExtensionRuntimeMetadata
-        .get(extension.name)
-        ?.commands.find((candidate) => candidate.name === command.name)?.search
-      const loadCommandPreferences = () =>
-        window.api.nativeExtensions.getCommandPreferences(extension.name, command.name)
-      const validateCommandPreferences = (
-        preferences: Record<string, unknown>,
-        locale: Parameters<typeof resolveLocalizedText>[1]
-      ) => {
-        const missingPreferences = listMissingRequiredNativeExtensionPreferences(
-          command.preferences ?? [],
-          preferences,
-          locale
-        )
+export function buildNativeLauncherCommandOwners(
+  catalog: readonly NativeExtensionLauncherCatalogProjection[]
+): LauncherCommandOwnerDefinition[] {
+  return catalog.reduce<LauncherCommandOwnerDefinition[]>((owners, extension) => {
+    if (extension.commands.length === 0) {
+      return owners
+    }
 
-        if (missingPreferences.length === 0) {
-          return null
-        }
+    const commandOwnerManifest = toLauncherCommandOwnerManifestFromProjection(extension)
+    validateLauncherCommandOwnerManifest(commandOwnerManifest)
 
-        return `Open Settings and configure ${missingPreferences.join(", ")} to run ${resolveLocalizedText(command.title, locale, command.name)}.`
-      }
-
-      if (command.mode === "view") {
-        return {
-          Component: RuntimeExtensionCommandSurface,
-          buildIntentItems: runtimeSearch?.buildIntentItems,
-          commandName: command.name,
-          getViewportHeight: getViewportHeight(command.runtime.viewport),
-          loadCommandPreferences,
-          mode: "view" as const,
-          resolveCommand: runtimeSearch?.resolveCommand,
-          validateCommandPreferences
-        }
-      }
-
-      return {
-        buildIntentItems: runtimeSearch?.buildIntentItems,
-        commandName: command.name,
-        loadCommandPreferences,
-        mode: "no-view" as const,
-        resolveCommand: runtimeSearch?.resolveCommand,
-        validateCommandPreferences,
-        run: async (context) => {
-          let runOnceSessionId: string | null = null
-          const unsubscribeRunOnceSessions = window.api.extensionRuntime.subscribeRunOnceSessions(
-            (session) => {
-              if (
-                session.context.extensionName === extension.name &&
-                session.context.commandName === command.name &&
-                session.context.mode === "no-view"
-              ) {
-                runOnceSessionId = session.sessionId
-              }
-            }
+    owners.push({
+      commands: extension.commands.map((command) => {
+        const loadCommandPreferences = () =>
+          window.api.nativeExtensions.getCommandPreferences(extension.extName, command.name)
+        const validateCommandPreferences = (
+          preferences: Record<string, unknown>,
+          locale: Parameters<typeof resolveLocalizedText>[1]
+        ) => {
+          const missingPreferences = listMissingRequiredNativeExtensionPreferences(
+            command.preferences,
+            preferences,
+            locale
           )
-          const unsubscribeNavigationRequests = context.navigation
-            ? window.api.extensionRuntime.subscribeNavigationRequests((event) => {
-                if (event.sessionId !== runOnceSessionId || !context.navigation) {
-                  return
-                }
 
-                void handleRuntimeNavigationRequest(event, context.navigation, {
-                  completeOpenCommandBeforeNavigation: false
-                })
-              })
-            : undefined
+          if (missingPreferences.length === 0) {
+            return null
+          }
 
-          try {
-            const agentConfig = await window.api.settings.getAgentConfig()
-            const result = await window.api.extensionRuntime.runOnce({
-              commandName: command.name,
-              commandPreferences: context.commandPreferences,
-              extensionName: extension.name,
-              extensionPreferences: {},
-              initialAction: context.initialAction,
-              launchProps: context.launchProps,
-              locale: agentConfig.locale,
-              mode: "no-view",
-              seedQuery: context.seedQuery
-            })
+          return `Open Settings and configure ${missingPreferences.join(", ")} to run ${resolveLocalizedText(command.title, locale, command.name)}.`
+        }
 
-            if (result.status === "error") {
-              throw new Error(result.error.message)
-            }
-          } finally {
-            unsubscribeNavigationRequests?.()
-            unsubscribeRunOnceSessions()
+        if (command.mode === "view") {
+          return {
+            Component: RuntimeExtensionCommandSurface,
+            commandName: command.name,
+            getViewportHeight: getViewportHeight(command.runtime.viewport),
+            loadCommandPreferences,
+            mode: "view" as const,
+            validateCommandPreferences
           }
         }
-      }
-    }),
-    manifest: commandOwnerManifest
-  } satisfies LauncherCommandOwnerDefinition)
 
-  return owners
-}, [])
+        return {
+          commandName: command.name,
+          loadCommandPreferences,
+          mode: "no-view" as const,
+          validateCommandPreferences,
+          run: async (context) => {
+            let runOnceSessionId: string | null = null
+            const unsubscribeRunOnceSessions = window.api.extensionRuntime.subscribeRunOnceSessions(
+              (session) => {
+                if (
+                  session.context.extensionName === extension.extName &&
+                  session.context.commandName === command.name &&
+                  session.context.mode === "no-view"
+                ) {
+                  runOnceSessionId = session.sessionId
+                }
+              }
+            )
+            const unsubscribeNavigationRequests = context.navigation
+              ? window.api.extensionRuntime.subscribeNavigationRequests((event) => {
+                  if (event.sessionId !== runOnceSessionId || !context.navigation) {
+                    return
+                  }
+
+                  void handleRuntimeNavigationRequest(event, context.navigation, {
+                    completeOpenCommandBeforeNavigation: false
+                  })
+                })
+              : undefined
+
+            try {
+              const agentConfig = await window.api.settings.getAgentConfig()
+              const result = await window.api.extensionRuntime.runOnce({
+                commandName: command.name,
+                commandPreferences: context.commandPreferences,
+                extensionName: extension.extName,
+                extensionPreferences: {},
+                initialAction: context.initialAction,
+                launchProps: context.launchProps,
+                locale: agentConfig.locale,
+                mode: "no-view",
+                seedQuery: context.seedQuery
+              })
+
+              if (result.status === "error") {
+                throw new Error(result.error.message)
+              }
+            } finally {
+              unsubscribeNavigationRequests?.()
+              unsubscribeRunOnceSessions()
+            }
+          }
+        }
+      }),
+      manifest: commandOwnerManifest
+    } satisfies LauncherCommandOwnerDefinition)
+
+    return owners
+  }, [])
+}
