@@ -91,7 +91,7 @@ validators/
   runtime-contract.ts
 ```
 
-这一层负责说明生成物能不能进入 `extensions/<id>`，不要把校验逻辑埋在 transform 里。
+这一层负责说明生成物能不能进入 `installable-extensions/<id>`，不要把校验逻辑埋在 transform 里。
 
 ## Transform 输入输出
 
@@ -209,7 +209,7 @@ GitHub 和 Apple Reminders 不应被加成 known extension transform。它们在
 ```bash
 node scripts/preview-raycast-ai-migration.mjs \
   --git-repo /Users/junjieding/dingjunjie_dev/2026_03/raycast-extensions-notion \
-  --extension-path extensions/github \
+  --extension-path installable-extensions/github \
   --git-ref HEAD \
   --out-dir /tmp/openwork-migration-github \
   --target-extension-id github-generated \
@@ -217,7 +217,7 @@ node scripts/preview-raycast-ai-migration.mjs \
 
 node scripts/preview-raycast-ai-migration.mjs \
   --git-repo /Users/junjieding/dingjunjie_dev/2026_03/raycast-extensions-notion \
-  --extension-path extensions/apple-reminders \
+  --extension-path installable-extensions/apple-reminders \
   --git-ref HEAD \
   --out-dir /tmp/openwork-migration-apple-reminders \
   --target-extension-id apple-reminders-generated \

@@ -10,6 +10,7 @@ import type {
   LauncherCommandOwnerCapability,
   LauncherCommandOwnerManifest
 } from "./launcher-command-owner"
+import type { NativeExtensionRuntimePackageMetadata } from "@openwork/extension-api"
 import type { ExtensionToolDefinition } from "./extension-sources"
 import type { IpcErrorPayload } from "./ipc-error"
 import type { PermissionModeName } from "./permission-mode"
@@ -262,6 +263,41 @@ export interface NativeExtensionCommandSettingsSchema {
   name: string
   preferences: NativeExtensionPreferenceSchema[]
   title: LocalizedTextValue
+}
+
+export interface NativeExtensionLauncherCommandProjection {
+  description: LocalizedTextValue
+  icon?: NativeExtensionIcon
+  iconName?: string
+  keywords?: string[]
+  mode: Extract<NativeExtensionCommandMode, "no-view" | "view">
+  name: string
+  preferences: NativeExtensionPreferenceSchema[]
+  runtime: NativeExtensionRuntimeCommandManifest
+  search?: NativeExtensionRuntimePackageMetadata["commands"][number]["search"]
+  title: LocalizedTextValue
+}
+
+export interface NativeExtensionLauncherCatalogProjection {
+  capabilities: LauncherCommandOwnerCapability[]
+  commands: NativeExtensionLauncherCommandProjection[]
+  defaultCommandName?: string
+  displayName: LocalizedTextValue
+  extName: string
+  icon?: NativeExtensionIcon
+  iconName?: string
+  rpcMethods?: string[]
+  sourceMention?: NativeExtensionSourceMentionProjection
+}
+
+export interface NativeExtensionSourceMentionProjection {
+  extensionName: string
+  icon?: NativeExtensionIcon
+  iconName?: string
+  label: LocalizedTextValue
+  sourceId: string
+  supportedPlatforms?: NativeExtensionSupportedPlatform[]
+  value: string
 }
 
 export interface InstalledNativeExtensionSettingsSchema {
@@ -804,6 +840,112 @@ export function toLauncherCommandOwnerManifest(
     icon: manifest.icon,
     id: manifest.name,
     rpcMethods: manifest.rpcMethods
+  }
+}
+
+export function toNativeExtensionLauncherCatalogProjection(
+  manifest: NativeExtensionPackageManifest,
+  runtimeMetadata?: NativeExtensionRuntimePackageMetadata | null
+): NativeExtensionLauncherCatalogProjection {
+  if (runtimeMetadata && runtimeMetadata.extensionName !== manifest.name) {
+    throw new Error(
+      `Native extension "${manifest.name}" launcher projection received runtime metadata for "${runtimeMetadata.extensionName}"`
+    )
+  }
+
+  const runtimeMetadataCommandsByName = new Map(
+    (runtimeMetadata?.commands ?? []).map((command) => [command.name, command])
+  )
+  const commands: NativeExtensionLauncherCommandProjection[] = manifest.commands.flatMap(
+    (command) => {
+      if (command.mode !== "view" && command.mode !== "no-view") {
+        return []
+      }
+
+      if (!command.runtime) {
+        throw new Error(
+          `Native extension "${manifest.name}" command "${command.name}" must declare runtime metadata`
+        )
+      }
+
+      return [
+        {
+          description: command.description ?? "",
+          icon: command.icon ?? manifest.icon,
+          iconName: command.iconName ?? manifest.iconName,
+          keywords: command.keywords,
+          mode: command.mode,
+          name: command.name,
+          preferences: command.preferences ?? [],
+          runtime: command.runtime,
+          search: runtimeMetadataCommandsByName.get(command.name)?.search,
+          title: command.title ?? command.name
+        }
+      ]
+    }
+  )
+  const defaultCommandName =
+    commands.find((command) => command.name === manifest.defaultCommandName)?.name ??
+    commands[0]?.name
+
+  return {
+    capabilities: manifest.capabilities,
+    commands,
+    defaultCommandName,
+    displayName: manifest.title,
+    extName: manifest.name,
+    icon: manifest.icon,
+    iconName: manifest.iconName,
+    rpcMethods: manifest.rpcMethods,
+    sourceMention: toNativeExtensionSourceMentionProjection(manifest)
+  }
+}
+
+export function toNativeExtensionSourceMentionProjection(
+  manifest: NativeExtensionPackageManifest
+): NativeExtensionSourceMentionProjection | undefined {
+  const capability = manifest.aiCapability
+  const mention = capability?.mention
+  if (!mention) {
+    return undefined
+  }
+
+  return {
+    extensionName: manifest.name,
+    icon: manifest.icon,
+    iconName: manifest.iconName,
+    label: mention.label ?? capability.title,
+    sourceId: capability.id,
+    supportedPlatforms: capability.supportedPlatforms ?? manifest.supportedPlatforms,
+    value: mention.value ?? manifest.name
+  }
+}
+
+export function toLauncherCommandOwnerManifestFromProjection(
+  projection: NativeExtensionLauncherCatalogProjection
+): LauncherCommandOwnerManifest {
+  if (projection.commands.length === 0) {
+    throw new Error(
+      `Native extension "${projection.extName}" does not declare any launcher commands for root search`
+    )
+  }
+
+  return {
+    capabilities: projection.capabilities,
+    commands: projection.commands.map((command) => ({
+      description: command.description,
+      icon: command.icon,
+      iconName: command.iconName,
+      keywords: command.keywords,
+      mode: command.mode,
+      name: command.name,
+      title: command.title
+    })),
+    defaultCommandName: projection.defaultCommandName ?? projection.commands[0]!.name,
+    displayName: projection.displayName,
+    icon: projection.icon,
+    id: projection.extName,
+    rpcMethods: projection.rpcMethods
   }
 }
 

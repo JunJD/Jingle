@@ -7,6 +7,7 @@ import type {
   ExtensionRuntimeError,
   ExtensionRuntimeEvent,
   ExtensionRuntimeLaunchContext,
+  ExtensionRuntimeLaunchPackageRef,
   ExtensionRuntimeMetrics,
   ExtensionRuntimeRunResult,
   ExtensionRuntimeSessionError,
@@ -119,6 +120,9 @@ export interface ExtensionRuntimeManagerOptions {
   onMetrics?: (metrics: ExtensionRuntimeMetrics, session: ExtensionRuntimeSessionInfo) => void
   onSurface?: (surface: ExtensionSurfaceSnapshot, session: ExtensionRuntimeSessionInfo) => void
   processLauncher: ExtensionRuntimeProcessLauncher
+  resolveRuntimePackage: (
+    context: ExtensionRuntimeLaunchContext
+  ) => ExtensionRuntimeLaunchPackageRef
 }
 
 interface RuntimeSession {
@@ -468,6 +472,7 @@ export class ExtensionRuntimeManager {
         extensionName: context.extensionName
       })
     )
+    const runtimePackage = this.options.resolveRuntimePackage(context)
     const sessionId = this.options.createSessionId?.() ?? randomUUID()
     const process = this.options.processLauncher.launch()
     const session: RuntimeSession = {
@@ -488,6 +493,7 @@ export class ExtensionRuntimeManager {
     options?.beforeStart?.(session)
     process.postMessage({
       context,
+      runtime: runtimePackage,
       sessionId,
       type: "start"
     })

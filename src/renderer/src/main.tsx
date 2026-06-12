@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client"
 import { useEffect, useState } from "react"
 import LauncherApp from "@launcher-shell/LauncherApp"
 import { LauncherClipboardProvider } from "@launcher-shell/LauncherClipboardContext"
+import { setNativeLauncherCatalogProjection } from "@extension-host/index"
 import { DEFAULT_APP_THEME_SETTINGS, type AppThemeSettings } from "@shared/app-theme"
 import { PINNED_AI_SESSION_WINDOW_KIND } from "@shared/ai-session-window"
 import { ThreadProvider } from "./lib/thread-context"
@@ -83,4 +84,12 @@ export function RendererRoot(): React.JSX.Element {
 
 applyAppThemeSettings(DEFAULT_APP_THEME_SETTINGS)
 
-ReactDOM.createRoot(document.getElementById("root")!).render(<RendererRoot />)
+async function bootstrapRenderer(): Promise<void> {
+  setNativeLauncherCatalogProjection(await window.api.nativeExtensions.listLauncherCatalog())
+  ReactDOM.createRoot(document.getElementById("root")!).render(<RendererRoot />)
+}
+
+void bootstrapRenderer().catch((error) => {
+  console.error("[native-extensions] Failed to bootstrap renderer launcher catalog.", error)
+  throw error
+})

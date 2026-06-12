@@ -331,7 +331,7 @@ export async function runWithExtensionRuntimeSdk<T>(
 }
 
 export function useExtensionRuntimeSdk(): ExtensionRuntimeSdkContextValue {
-  const context = useContext(extensionRuntimeSdkContext)
+  const context = useContext(extensionRuntimeSdkContext) ?? getActiveRuntimeSdkContextValue()
   if (!context) {
     throw new Error("useExtensionRuntimeSdk must be used within ExtensionRuntimeSdkProvider")
   }
@@ -340,7 +340,7 @@ export function useExtensionRuntimeSdk(): ExtensionRuntimeSdkContextValue {
 }
 
 export function useExtensionRuntimeSdkOptional(): ExtensionRuntimeSdkContextValue | null {
-  return useContext(extensionRuntimeSdkContext)
+  return useContext(extensionRuntimeSdkContext) ?? getActiveRuntimeSdkContextValue()
 }
 
 export function useCommandSeedQuery(): string {

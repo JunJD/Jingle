@@ -6,7 +6,7 @@ import {
   runWithExtensionRuntimeSdk,
   type ExtensionRuntimeHostRequestInput
 } from "@openwork/extension-api/host-runtime"
-import { loadPages, storePages } from "../../extensions/figma-files/src/cache"
+import { loadPages, storePages } from "../../installable-extensions/figma-files/src/cache"
 import type {
   ExtensionHostResponse,
   ExtensionRuntimeLaunchContext

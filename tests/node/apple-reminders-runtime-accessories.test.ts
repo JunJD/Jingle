@@ -3,8 +3,8 @@ import test from "node:test"
 import { createElement } from "react"
 import { List } from "@openwork/extension-api"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
-import { getReminderAccessories } from "../../extensions/apple-reminders/src/helpers"
-import type { AppleReminder } from "../../extensions/apple-reminders/contracts"
+import { getReminderAccessories } from "../../installable-extensions/apple-reminders/src/helpers"
+import type { AppleReminder } from "../../installable-extensions/apple-reminders/contracts"
 
 function createReminder(overrides: Partial<AppleReminder> = {}): AppleReminder {
   return {

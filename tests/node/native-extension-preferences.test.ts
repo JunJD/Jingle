@@ -1,13 +1,18 @@
 import assert from "node:assert/strict"
+import { execFile } from "node:child_process"
 import { writeFileSync } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
+import { promisify } from "node:util"
+import { notionManifest } from "../../installable-extensions/notion/manifest"
 
 const requireFromTest = createRequire(import.meta.url)
+const execFileAsync = promisify(execFile)
 const originalOpenworkHome = process.env.OPENWORK_HOME
+const originalElectronRendererUrl = process.env.ELECTRON_RENDERER_URL
 let openworkHome = ""
 let connectionResolver!: typeof import("../../src/main/native-extensions/connection-resolver")
 let extensionSources!: typeof import("../../src/extensions/sources")
@@ -246,6 +251,11 @@ test.after(async () => {
   } else {
     process.env.OPENWORK_HOME = originalOpenworkHome
   }
+  if (originalElectronRendererUrl === undefined) {
+    delete process.env.ELECTRON_RENDERER_URL
+  } else {
+    process.env.ELECTRON_RENDERER_URL = originalElectronRendererUrl
+  }
 
   if (openworkHome) {
     await rm(openworkHome, { force: true, recursive: true })
@@ -253,6 +263,19 @@ test.after(async () => {
 })
 
 test.before(async () => {
+  process.env.ELECTRON_RENDERER_URL = originalElectronRendererUrl ?? "http://localhost"
+  await execFileAsync(
+    process.execPath,
+    [
+      "packages/extension-cli/src/cli.mjs",
+      "build",
+      "apple-reminders",
+      "figma-files",
+      "github",
+      "notion"
+    ],
+    { cwd: process.cwd() }
+  )
   openworkHome = await mkdtemp(join(tmpdir(), "openwork-native-extension-preferences-"))
   process.env.OPENWORK_HOME = openworkHome
   installElectronSafeStorageMock()
@@ -777,10 +800,14 @@ test("connection-scoped Notion secrets connect AI capabilities and generated cap
   assert.equal(connection.provider, "notion")
   assert.deepEqual(connection.missingSecretNames, [])
 
-  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionName("notion", {
-    getConnection: (extensionName) =>
-      connectionResolver.resolveNativeExtensionConnection({ extensionName })
-  })
+  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+    "notion",
+    [notionManifest],
+    {
+      getConnection: (extensionName) =>
+        connectionResolver.resolveNativeExtensionConnection({ extensionName })
+    }
+  )
 
   assert.equal(capability?.authStatus, "connected")
   assert.deepEqual(capability?.enabledToolNames, [
@@ -860,10 +887,14 @@ test("connection-scoped Notion token feeds runtime host and AI capability throug
     "notion_settings_token"
   )
 
-  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionName("notion", {
-    getConnection: (extensionName) =>
-      connectionResolver.resolveNativeExtensionConnection({ extensionName })
-  })
+  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+    "notion",
+    [notionManifest],
+    {
+      getConnection: (extensionName) =>
+        connectionResolver.resolveNativeExtensionConnection({ extensionName })
+    }
+  )
   assert.equal(capability?.authStatus, "connected")
   assert.deepEqual(capability?.publicConfig, {
     apiBaseUrl: "https://api.notion.com/v1"

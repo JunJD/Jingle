@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "main": "./main.ts",
+  "openwork": {
+    "distribution": "installable",
+    "trust": "trusted"
+  },
   "types": "./manifest.ts",
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

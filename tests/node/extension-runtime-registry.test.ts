@@ -6,10 +6,8 @@ import test from "node:test"
 import { listNativeExtensionManifests, nativeExtensionManifests } from "../../src/extensions"
 import { nativeExtensionMainDefinitions } from "../../src/extensions/main"
 import { getNativeExtensionRuntimeCommand } from "../../src/extensions/runtime"
-import { nativeExtensionRuntimeMetadata } from "../../src/extensions/runtime-metadata"
 import { nativeExtensionRuntimePackages } from "../../src/extensions/runtime-packages"
 import { nativeExtensionRuntimeMetadataPackages } from "../../src/extensions/runtime-metadata-packages"
-import { listNativeExtensionSettingsSchemas } from "../../src/main/services/native-extensions"
 import { validateNativeExtensionRegistry } from "../../src/main/native-extensions/validation"
 import {
   createNativeExtensionAssetUrl,
@@ -21,15 +19,54 @@ import {
   toLauncherCommandOwnerManifest
 } from "../../src/shared/native-extensions"
 import { resolveLocalizedText } from "../../src/shared/i18n"
+import { githubMain } from "../../installable-extensions/github/main"
+import { githubManifest } from "../../installable-extensions/github/manifest"
+import { githubRuntime } from "../../installable-extensions/github/runtime"
+import { githubRuntimeMetadata } from "../../installable-extensions/github/runtime-metadata"
+import { figmaFilesMain } from "../../installable-extensions/figma-files/main"
+import { figmaFilesManifest } from "../../installable-extensions/figma-files/manifest"
+import { figmaFilesRuntime } from "../../installable-extensions/figma-files/runtime"
+import { figmaFilesRuntimeMetadata } from "../../installable-extensions/figma-files/runtime-metadata"
+import { notionMain } from "../../installable-extensions/notion/main"
+import { notionManifest } from "../../installable-extensions/notion/manifest"
+import { notionRuntime } from "../../installable-extensions/notion/runtime"
+import { notionRuntimeMetadata } from "../../installable-extensions/notion/runtime-metadata"
 
 async function readExtensionPackageJson(extensionName: string): Promise<{
   dependencies?: Record<string, string>
   name?: string
+  openwork?: {
+    distribution?: string
+    trust?: string
+  }
 }> {
   return JSON.parse(
-    await readFile(join(process.cwd(), "extensions", extensionName, "package.json"), "utf8")
-  ) as { dependencies?: Record<string, string>; name?: string }
+    await readFile(
+      join(process.cwd(), "installable-extensions", extensionName, "package.json"),
+      "utf8"
+    )
+  ) as {
+    dependencies?: Record<string, string>
+    name?: string
+    openwork?: {
+      distribution?: string
+      trust?: string
+    }
+  }
 }
+
+const installablePackageManifests = [figmaFilesManifest, githubManifest, notionManifest]
+const installablePackageRuntimePackages = [figmaFilesRuntime, githubRuntime, notionRuntime]
+const installablePackageRuntimeMetadataPackages = [
+  figmaFilesRuntimeMetadata,
+  githubRuntimeMetadata,
+  notionRuntimeMetadata
+]
+const installablePackageMainDefinitions = new Map([
+  [figmaFilesManifest.name, figmaFilesMain],
+  [githubManifest.name, githubMain],
+  [notionManifest.name, notionMain]
+])
 
 test("native extension registry is internally consistent", () => {
   const result = validateNativeExtensionRegistry({
@@ -43,17 +80,45 @@ test("native extension registry is internally consistent", () => {
   assert.deepEqual(result.errors, [])
 })
 
-test("Notion is the only production Notion extension entrypoint", () => {
+test("installed package samples are no longer part of the built-in static registry", () => {
+  assert.equal(
+    nativeExtensionManifests.some((manifest) => manifest.name === "figma-files"),
+    false
+  )
   assert.equal(
     nativeExtensionManifests.some((manifest) => manifest.name === "notion"),
-    true
+    false
+  )
+  assert.equal(
+    nativeExtensionManifests.some((manifest) => manifest.name === "github"),
+    false
   )
   assert.equal(
     nativeExtensionManifests.some((manifest) => manifest.name === "notion-generated"),
     false
   )
-  assert.equal(nativeExtensionMainDefinitions.has("notion"), true)
+  assert.equal(nativeExtensionMainDefinitions.has("figma-files"), false)
+  assert.equal(nativeExtensionMainDefinitions.has("notion"), false)
+  assert.equal(nativeExtensionMainDefinitions.has("github"), false)
   assert.equal(nativeExtensionMainDefinitions.has("notion-generated"), false)
+  assert.equal(
+    nativeExtensionRuntimePackages.some(
+      (runtimePackage) => runtimePackage.extensionName === "figma-files"
+    ),
+    false
+  )
+  assert.equal(
+    nativeExtensionRuntimePackages.some(
+      (runtimePackage) => runtimePackage.extensionName === "notion"
+    ),
+    false
+  )
+  assert.equal(
+    nativeExtensionRuntimePackages.some(
+      (runtimePackage) => runtimePackage.extensionName === "github"
+    ),
+    false
+  )
   assert.equal(
     nativeExtensionRuntimePackages.some(
       (runtimePackage) => runtimePackage.extensionName === "notion-generated"
@@ -66,28 +131,53 @@ test("Notion is the only production Notion extension entrypoint", () => {
     ),
     false
   )
-  assert.equal(nativeExtensionRuntimeMetadata.has("notion-generated"), false)
 
   for (const platform of ["linux", "darwin", "win32"] as const) {
     const extensionNames = listNativeExtensionManifests(platform).map((manifest) => manifest.name)
-    assert.equal(extensionNames.includes("notion"), true)
+    assert.equal(extensionNames.includes("figma-files"), false)
+    assert.equal(extensionNames.includes("notion"), false)
+    assert.equal(extensionNames.includes("github"), false)
     assert.equal(extensionNames.includes("notion-generated"), false)
   }
+})
 
-  const settingsSchemaNames = listNativeExtensionSettingsSchemas().map((schema) => schema.extName)
-  assert.equal(settingsSchemaNames.includes("notion"), true)
-  assert.equal(settingsSchemaNames.includes("notion-generated"), false)
+test("Figma Files keeps the package contract", async () => {
+  assert.deepEqual(
+    figmaFilesManifest.commands.map((command) => command.name),
+    ["index", "menu-bar"]
+  )
+  assert.deepEqual(figmaFilesManifest.connection?.auth, {
+    authorizationUrl: "https://jingle.cool/oauth/figma/start",
+    clientId: "jingle-desktop",
+    redirect: {
+      callbackPath: "/oauth/callback",
+      method: "app-scheme",
+      scheme: "jingle"
+    },
+    scopes: ["current_user:read", "projects:read", "file_metadata:read", "file_content:read"],
+    secretNames: ["accessToken"],
+    tokenUrl: "https://jingle.cool/oauth/figma/token",
+    type: "oauth"
+  })
+  assert.deepEqual(figmaFilesManifest.connection?.publicPreferenceNames, ["TEAM_ID", "open_in"])
+  assert.deepEqual(figmaFilesManifest.runtimeShell, {
+    allowedUrlSchemes: ["figma"]
+  })
+
+  const figmaFilesPackage = await readExtensionPackageJson("figma-files")
+  assert.equal(figmaFilesPackage.name, "@openwork/extension-figma-files")
+  assert.deepEqual(figmaFilesPackage.openwork, {
+    distribution: "installable",
+    trust: "trusted"
+  })
 })
 
 test("Notion keeps the migrated manifest and package contract", async () => {
-  const notion = nativeExtensionManifests.find((manifest) => manifest.name === "notion")
-  assert.ok(notion)
-
   assert.deepEqual(
-    notion.commands.map((command) => command.name),
+    notionManifest.commands.map((command) => command.name),
     ["add-text-to-page", "create-database-page", "quick-capture", "search-page"]
   )
-  assert.deepEqual(notion.aiCapability?.toolNames, [
+  assert.deepEqual(notionManifest.aiCapability?.toolNames, [
     "searchPages",
     "getPage",
     "retrievePage",
@@ -101,7 +191,7 @@ test("Notion keeps the migrated manifest and package contract", async () => {
     "createPage",
     "createDatabasePage"
   ])
-  assert.deepEqual(notion.connection?.auth, {
+  assert.deepEqual(notionManifest.connection?.auth, {
     authorizationUrl: "https://jingle.cool/oauth/notion/start",
     clientId: "jingle-desktop",
     redirect: {
@@ -114,13 +204,17 @@ test("Notion keeps the migrated manifest and package contract", async () => {
     tokenUrl: "https://jingle.cool/oauth/notion/token",
     type: "oauth"
   })
-  assert.deepEqual(notion.connection?.publicPreferenceNames, ["apiBaseUrl"])
-  assert.deepEqual(notion.runtimeShell, {
+  assert.deepEqual(notionManifest.connection?.publicPreferenceNames, ["apiBaseUrl"])
+  assert.deepEqual(notionManifest.runtimeShell, {
     allowedUrlSchemes: ["notion"]
   })
 
   const notionPackage = await readExtensionPackageJson("notion")
   assert.equal(notionPackage.name, "@openwork/extension-notion")
+  assert.deepEqual(notionPackage.openwork, {
+    distribution: "installable",
+    trust: "trusted"
+  })
   assert.equal(notionPackage.dependencies?.["@notionhq/client"], "^5.22.0")
   assert.equal(notionPackage.dependencies?.["@tryfabric/martian"], "^1.2.4")
   assert.equal(notionPackage.dependencies?.["notion-to-md"], "^3.1.9")
@@ -128,29 +222,13 @@ test("Notion keeps the migrated manifest and package contract", async () => {
 })
 
 test("Notion runtime commands use direct runtime SDK APIs instead of RPC", () => {
-  const notion = nativeExtensionManifests.find((manifest) => manifest.name === "notion")
-  const notionMain = nativeExtensionMainDefinitions.get("notion")
-  assert.ok(notion)
-  assert.ok(notionMain)
-
-  assert.equal(notion.capabilities.includes("rpc"), false)
-  assert.equal(notion.runtimeCapabilities?.includes("rpc"), false)
-  assert.deepEqual(notion.rpcMethods ?? [], [])
+  assert.equal(notionManifest.capabilities.includes("rpc"), false)
+  assert.equal(notionManifest.runtimeCapabilities?.includes("rpc"), false)
+  assert.deepEqual(notionManifest.rpcMethods ?? [], [])
   assert.equal(notionMain.service, undefined)
 })
 
 test("Notion keeps manifest runtime and metadata command order aligned", () => {
-  const notionManifest = nativeExtensionManifests.find((manifest) => manifest.name === "notion")
-  const notionRuntime = nativeExtensionRuntimePackages.find(
-    (runtimePackage) => runtimePackage.extensionName === "notion"
-  )
-  const notionRuntimeMetadata = nativeExtensionRuntimeMetadataPackages.find(
-    (metadataPackage) => metadataPackage.extensionName === "notion"
-  )
-  assert.ok(notionManifest)
-  assert.ok(notionRuntime)
-  assert.ok(notionRuntimeMetadata)
-
   const manifestRuntimeCommandNames = notionManifest.commands
     .filter((command) => command.runtime)
     .map((command) => command.name)
@@ -162,31 +240,41 @@ test("Notion keeps manifest runtime and metadata command order aligned", () => {
   )
 })
 
+test("trusted installable source packages are internally consistent", () => {
+  const result = validateNativeExtensionRegistry({
+    assetRoots: [join(process.cwd(), "installable-extensions")],
+    mainDefinitions: installablePackageMainDefinitions,
+    manifests: installablePackageManifests,
+    runtimeMetadataPackages: installablePackageRuntimeMetadataPackages,
+    runtimePackages: installablePackageRuntimePackages
+  })
+
+  assert.deepEqual(result.errors, [])
+})
+
 test("native extension registry rejects runtime command mode drift", () => {
   const result = validateNativeExtensionRegistry({
-    assetRoots: [join(process.cwd(), "extensions"), join(process.cwd(), "src/extensions")],
-    mainDefinitions: nativeExtensionMainDefinitions,
-    manifests: nativeExtensionManifests,
-    runtimeMetadataPackages: nativeExtensionRuntimeMetadataPackages,
-    runtimePackages: nativeExtensionRuntimePackages.map((runtimePackage) =>
-      runtimePackage.extensionName === "apple-reminders"
-        ? defineNativeExtensionRuntime({
-            ...runtimePackage,
-            commands: {
-              ...runtimePackage.commands,
-              "quick-add-reminder": {
-                Component: () => null,
-                mode: "view"
-              }
-            }
-          })
-        : runtimePackage
-    )
+    assetRoots: [join(process.cwd(), "installable-extensions")],
+    mainDefinitions: installablePackageMainDefinitions,
+    manifests: [githubManifest],
+    runtimeMetadataPackages: [githubRuntimeMetadata],
+    runtimePackages: [
+      defineNativeExtensionRuntime({
+        ...githubRuntime,
+        commands: {
+          ...githubRuntime.commands,
+          "unread-notifications": {
+            Component: () => null,
+            mode: "view"
+          }
+        }
+      })
+    ]
   })
 
   assert.match(
     result.errors.join("\n"),
-    /apple-reminders:quick-add-reminder.*mode "view" does not match manifest mode "no-view"/
+    /github:unread-notifications.*mode "view" does not match manifest mode "menu-bar"/
   )
 })
 
@@ -219,40 +307,41 @@ test("manifest runtime commands resolve through the package-level runtime regist
   assert.equal(translate?.mode, "view")
   assert.equal(typeof translate?.Component, "function")
 
-  const quickAddReminder = getNativeExtensionRuntimeCommand({
-    commandName: "quick-add-reminder",
-    extensionName: "apple-reminders"
-  })
-  assert.equal(quickAddReminder?.mode, "no-view")
-  assert.equal(typeof quickAddReminder?.run, "function")
-
   const unreadNotifications = getNativeExtensionRuntimeCommand({
     commandName: "unread-notifications",
     extensionName: "github"
   })
-  assert.equal(unreadNotifications?.mode, "menu-bar")
-  assert.equal(typeof unreadNotifications?.Component, "function")
+  assert.equal(unreadNotifications, null)
+
+  const figmaIndex = getNativeExtensionRuntimeCommand({
+    commandName: "index",
+    extensionName: "figma-files"
+  })
+  assert.equal(figmaIndex, null)
+
+  const figmaMenuBar = getNativeExtensionRuntimeCommand({
+    commandName: "menu-bar",
+    extensionName: "figma-files"
+  })
+  assert.equal(figmaMenuBar, null)
 
   const notionSearchPage = getNativeExtensionRuntimeCommand({
     commandName: "search-page",
     extensionName: "notion"
   })
-  assert.equal(notionSearchPage?.mode, "view")
-  assert.equal(typeof notionSearchPage?.Component, "function")
+  assert.equal(notionSearchPage, null)
 
   const notionAddTextToPage = getNativeExtensionRuntimeCommand({
     commandName: "add-text-to-page",
     extensionName: "notion"
   })
-  assert.equal(notionAddTextToPage?.mode, "view")
-  assert.equal(typeof notionAddTextToPage?.Component, "function")
+  assert.equal(notionAddTextToPage, null)
 
   const notionCreateDatabasePage = getNativeExtensionRuntimeCommand({
     commandName: "create-database-page",
     extensionName: "notion"
   })
-  assert.equal(notionCreateDatabasePage?.mode, "view")
-  assert.equal(typeof notionCreateDatabasePage?.Component, "function")
+  assert.equal(notionCreateDatabasePage, null)
 
   const retiredGeneratedSearchPage = getNativeExtensionRuntimeCommand({
     commandName: "search-page",
@@ -273,49 +362,16 @@ test("extension package icons are owned by extension manifests and flow into set
   )
 
   assert.deepEqual(manifestIcons, {
-    "apple-reminders": "assets/icon.png",
-    "figma-files": "assets/command-icon.png",
-    github: "assets/icon.svg",
     "image-generation": "assets/icon.svg",
-    notion: "assets/notion-logo.png",
     "todo-list": "assets/icon.svg",
     translate: "assets/icon.svg"
   })
-  assert.equal(
-    nativeExtensionManifests.find((manifest) => manifest.name === "notion")?.iconName,
-    "notion"
-  )
-  assert.equal(
-    nativeExtensionManifests.find((manifest) => manifest.name === "github")?.iconName,
-    "github"
-  )
-  assert.equal(
-    nativeExtensionManifests.find((manifest) => manifest.name === "figma-files")?.iconName,
-    "figma"
-  )
   assert.equal(
     nativeExtensionManifests.find((manifest) => manifest.name === "image-generation")?.iconName,
     "image"
   )
 
-  const appleRemindersSchema = toInstalledNativeExtensionSettingsSchema(
-    nativeExtensionManifests.find((manifest) => manifest.name === "apple-reminders")!
-  )
-  assert.equal(appleRemindersSchema.icon, "assets/icon.png")
-  assert.equal(appleRemindersSchema.iconName, "reminders")
-  assert.deepEqual(
-    appleRemindersSchema.commands.map((command) => [command.icon, command.iconName]),
-    [
-      ["assets/icon.png", "reminders"],
-      ["assets/icon.png", "reminders"],
-      ["assets/icon.png", "reminders"],
-      ["assets/icon.png", "reminders"]
-    ]
-  )
-
-  const githubSchema = toInstalledNativeExtensionSettingsSchema(
-    nativeExtensionManifests.find((manifest) => manifest.name === "github")!
-  )
+  const githubSchema = toInstalledNativeExtensionSettingsSchema(githubManifest)
   assert.equal(githubSchema.iconName, "github")
   assert.equal(
     githubSchema.commands.find((command) => command.name === "my-issues")?.icon,
@@ -334,9 +390,7 @@ test("extension package icons are owned by extension manifests and flow into set
     "github"
   )
 
-  const notionSchema = toInstalledNativeExtensionSettingsSchema(
-    nativeExtensionManifests.find((manifest) => manifest.name === "notion")!
-  )
+  const notionSchema = toInstalledNativeExtensionSettingsSchema(notionManifest)
   assert.deepEqual(
     notionSchema.commands.find((command) => command.name === "create-database-page")?.keywords,
     ["notion", "create", "database", "data source", "page", "markdown"]
@@ -351,9 +405,7 @@ test("extension package icons are owned by extension manifests and flow into set
 })
 
 test("launcher command owner lets commands inherit package icons unless they declare a dedicated asset", () => {
-  const githubOwner = toLauncherCommandOwnerManifest(
-    nativeExtensionManifests.find((manifest) => manifest.name === "github")!
-  )
+  const githubOwner = toLauncherCommandOwnerManifest(githubManifest)
 
   assert.equal(githubOwner.icon, "assets/icon.svg")
   const myIssuesCommand = githubOwner.commands.find((command) => command.name === "my-issues")
@@ -389,9 +441,7 @@ test("launcher command owner lets commands inherit package icons unless they dec
   assert.equal(todoListOwner.commands[0]?.icon, "assets/icon.svg")
   assert.equal(todoListOwner.commands[0]?.iconName, "todo")
 
-  const notionOwner = toLauncherCommandOwnerManifest(
-    nativeExtensionManifests.find((manifest) => manifest.name === "notion")!
-  )
+  const notionOwner = toLauncherCommandOwnerManifest(notionManifest)
   assert.equal(notionOwner.icon, "assets/notion-logo.png")
   assert.deepEqual(
     notionOwner.commands.map((command) => [command.name, command.icon, command.iconName]),
@@ -409,8 +459,6 @@ test("launcher command owner lets commands inherit package icons unless they dec
 })
 
 test("Notion declares desktop URL schemes at the runtime shell boundary", () => {
-  const notionManifest = nativeExtensionManifests.find((manifest) => manifest.name === "notion")
-
   assert.deepEqual(notionManifest?.runtimeShell, {
     allowedUrlSchemes: ["notion"]
   })

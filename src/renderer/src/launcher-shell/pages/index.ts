@@ -2,7 +2,7 @@ import type { AppCopy } from "@/lib/i18n/messages"
 import { resolveLocalizedText, type AppLocale } from "@shared/i18n"
 import { AI_CHAT_COMMAND_NAME, AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { aiBuiltInCommandOwner } from "@ai-core/command"
-import { nativeLauncherCommandOwners } from "@extension-host/index"
+import { getNativeLauncherCommandOwners } from "@extension-host/index"
 import type {
   LauncherBuiltInCommandAddress,
   LauncherBuiltInId,
@@ -17,25 +17,31 @@ import type {
 } from "./types"
 
 const builtInLauncherCommandOwners: LauncherCommandOwnerDefinition[] = [aiBuiltInCommandOwner]
-const extensionLauncherCommandOwners: LauncherCommandOwnerDefinition[] = nativeLauncherCommandOwners
 
-const builtInCommandMap = new Map(
-  builtInLauncherCommandOwners.flatMap((owner) =>
-    owner.commands.map((command) => [
-      `${owner.manifest.id}:${command.commandName}`,
-      { command, owner } as const
-    ])
+function buildLauncherCommandMap(owners: readonly LauncherCommandOwnerDefinition[]) {
+  return new Map(
+    owners.flatMap((owner) =>
+      owner.commands.map((command) => [
+        `${owner.manifest.id}:${command.commandName}`,
+        { command, owner } as const
+      ])
+    )
   )
-)
+}
 
-const extensionCommandMap = new Map(
-  extensionLauncherCommandOwners.flatMap((owner) =>
-    owner.commands.map((command) => [
-      `${owner.manifest.id}:${command.commandName}`,
-      { command, owner } as const
-    ])
-  )
-)
+const builtInCommandMap = buildLauncherCommandMap(builtInLauncherCommandOwners)
+
+function getExtensionLauncherCommandOwners(): readonly LauncherCommandOwnerDefinition[] {
+  return getNativeLauncherCommandOwners()
+}
+
+function getExtensionCommandMap() {
+  return buildLauncherCommandMap(getExtensionLauncherCommandOwners())
+}
+
+function listAllLauncherCommandOwners(): readonly LauncherCommandOwnerDefinition[] {
+  return [...builtInLauncherCommandOwners, ...getExtensionLauncherCommandOwners()]
+}
 
 export const DEFAULT_HOME_COMMAND: LauncherBuiltInCommandAddress = {
   builtInId: AI_LAUNCHER_PLUGIN_ID,
@@ -106,36 +112,26 @@ export function getLauncherCommandOwnerId(address: LauncherCommandAddress): stri
  * 列出可供搜索和展示的全部 launcher 命令元数据。
  */
 export function listLauncherCommands(locale: AppLocale): LauncherIndexedCommand[] {
-  return [
-    ...builtInLauncherCommandOwners.flatMap((owner) =>
-      owner.manifest.commands.map((command) => ({
-        address: createLauncherCommandAddress({
-          builtInId: owner.manifest.id as LauncherBuiltInId,
-          commandName: command.name
-        }),
-        description: resolveLocalizedText(command.description, locale),
-        icon: command.icon,
-        iconName: command.iconName,
-        keywords: command.keywords ?? [],
-        ownerTitle: resolveLocalizedText(owner.manifest.displayName, locale, owner.manifest.id),
-        title: resolveLocalizedText(command.title, locale, command.name)
-      }))
-    ),
-    ...extensionLauncherCommandOwners.flatMap((owner) =>
-      owner.manifest.commands.map((command) => ({
-        address: createLauncherCommandAddress({
-          commandName: command.name,
-          extensionName: owner.manifest.id as LauncherExtensionName
-        }),
-        description: resolveLocalizedText(command.description, locale),
-        icon: command.icon,
-        iconName: command.iconName,
-        keywords: command.keywords ?? [],
-        ownerTitle: resolveLocalizedText(owner.manifest.displayName, locale, owner.manifest.id),
-        title: resolveLocalizedText(command.title, locale, command.name)
-      }))
-    )
-  ]
+  return listAllLauncherCommandOwners().flatMap((owner) =>
+    owner.manifest.commands.map((command) => ({
+      address:
+        owner.manifest.id === AI_LAUNCHER_PLUGIN_ID
+          ? createLauncherCommandAddress({
+              builtInId: owner.manifest.id as LauncherBuiltInId,
+              commandName: command.name
+            })
+          : createLauncherCommandAddress({
+              commandName: command.name,
+              extensionName: owner.manifest.id as LauncherExtensionName
+            }),
+      description: resolveLocalizedText(command.description, locale),
+      icon: command.icon,
+      iconName: command.iconName,
+      keywords: command.keywords ?? [],
+      ownerTitle: resolveLocalizedText(owner.manifest.displayName, locale, owner.manifest.id),
+      title: resolveLocalizedText(command.title, locale, command.name)
+    }))
+  )
 }
 
 export function getLauncherIndexedCommand(
@@ -160,7 +156,7 @@ export function getLauncherCommandDefinition(address: LauncherCommandAddress): {
   const resolved =
     address.kind === "built-in-command"
       ? builtInCommandMap.get(getLauncherCommandKey(address))
-      : extensionCommandMap.get(getLauncherCommandKey(address))
+      : getExtensionCommandMap().get(getLauncherCommandKey(address))
 
   if (!resolved) {
     throw new Error(`Unknown launcher command "${getLauncherCommandKey(address)}"`)
@@ -195,7 +191,7 @@ export function getLauncherCommandIntents(params: {
         }))
       )
     ),
-    ...extensionLauncherCommandOwners.flatMap((owner) =>
+    ...getExtensionLauncherCommandOwners().flatMap((owner) =>
       owner.commands.flatMap((command) =>
         (command.buildIntentItems?.(params) ?? []).map((item) => ({
           address: createLauncherCommandAddress({
@@ -243,7 +239,7 @@ export function resolveLauncherCommand(params: LauncherCommandParams): {
     }
   }
 
-  for (const owner of extensionLauncherCommandOwners) {
+  for (const owner of getExtensionLauncherCommandOwners()) {
     for (const command of owner.commands) {
       const match = command.resolveCommand?.(params)
       if (match) {

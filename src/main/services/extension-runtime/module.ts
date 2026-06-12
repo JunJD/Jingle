@@ -6,6 +6,7 @@ import { NativeMenuBarService } from "../../native-menu-bar/service"
 import { NativeExtensionsService } from "../../native-extensions/service"
 import { SettingsService } from "../../settings/service"
 import { SettingsWindowRoutingService } from "../../settings-window-routing/service"
+import { getDefaultExtensionRegistryService } from "../../extensions/registry/default-registry"
 import { wrapExtensionRuntimeHostForBdd } from "./bdd-host-capabilities"
 import { ExtensionRuntimeController } from "./controller"
 import { DefaultExtensionRuntimeHostCapabilities } from "./host-capabilities"
@@ -31,7 +32,28 @@ export function registerExtensionRuntimeModule(container: DependencyContainer): 
 
       return new ExtensionRuntimeManager({
         host: wrapExtensionRuntimeHostForBdd(host),
-        processLauncher: new UtilityProcessExtensionRuntimeProcessLauncher()
+        processLauncher: new UtilityProcessExtensionRuntimeProcessLauncher(),
+        resolveRuntimePackage: (context) => {
+          const runtimeRef = getDefaultExtensionRegistryService().getRuntimePackageRef(
+            context.extensionName
+          )
+          if (!runtimeRef) {
+            throw new Error(`Native extension "${context.extensionName}" has no runtime package`)
+          }
+
+          return runtimeRef.kind === "module"
+            ? {
+                extensionName: runtimeRef.extensionName,
+                kind: "module",
+                modulePath: runtimeRef.modulePath,
+                version: runtimeRef.version
+              }
+            : {
+                extensionName: runtimeRef.extensionName,
+                kind: "built-in",
+                version: runtimeRef.version
+              }
+        }
       })
     })
   })

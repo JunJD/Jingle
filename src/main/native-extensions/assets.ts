@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs"
-import { extname, join, normalize, sep } from "node:path"
+import { extname } from "node:path"
 import { pathToFileURL } from "node:url"
+import { getDefaultExtensionRegistryService } from "../extensions/registry/default-registry"
 
 export const NATIVE_EXTENSION_ASSET_PROTOCOL = "openwork-extension-asset"
 
@@ -20,39 +20,16 @@ function getMimeType(filePath: string): string {
   }
 }
 
-function getExtensionAssetsRoots(): string[] {
-  const packageRoots = [join(process.cwd(), "extensions"), join(process.cwd(), "src/extensions")]
-  const builtResourcesRoot = join(__dirname, "../resources/extensions")
-
-  return process.env.ELECTRON_RENDERER_URL
-    ? [...packageRoots, builtResourcesRoot]
-    : [builtResourcesRoot]
-}
-
 export function resolveNativeExtensionAssetPath(params: {
   extensionName: string
   path: string
 }): string {
   const { extensionName, path } = params
-  const normalizedPath = normalize(path)
-  if (
-    !extensionName.trim() ||
-    !path.startsWith("assets/") ||
-    normalizedPath.startsWith("..") ||
-    normalizedPath.includes(`..${sep}`)
-  ) {
+  if (!extensionName.trim() || !path.startsWith("assets/")) {
     throw new Error(`Invalid native extension asset path: ${extensionName}/${path}`)
   }
 
-  for (const assetsRoot of getExtensionAssetsRoots()) {
-    const extensionRoot = join(assetsRoot, extensionName)
-    const assetPath = join(extensionRoot, normalizedPath)
-    if (existsSync(assetPath)) {
-      return assetPath
-    }
-  }
-
-  throw new Error(`Native extension asset not found: ${extensionName}/${path}`)
+  return getDefaultExtensionRegistryService().resolveAsset(extensionName, path)
 }
 
 export function createNativeExtensionAssetUrl(params: {

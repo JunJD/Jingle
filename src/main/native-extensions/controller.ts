@@ -16,6 +16,10 @@ export class NativeExtensionsController {
       return this.nativeExtensionsService.listSettingsSchemas()
     })
 
+    registerIpcHandle(ipcMain, "nativeExtensions:listLauncherCatalog", () => {
+      return this.nativeExtensionsService.listLauncherCatalog()
+    })
+
     registerIpcHandle(
       ipcMain,
       "nativeExtensions:getPreferences",

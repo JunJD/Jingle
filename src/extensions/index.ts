@@ -1,20 +1,12 @@
 import { supportsNativeExtensionPlatform } from "@shared/native-extensions"
 import type { ExtensionQuicklinkAlias } from "@shared/extension-quicklinks"
 import { DEFAULT_APP_LOCALE, resolveLocalizedText } from "@shared/i18n"
-import { appleRemindersManifest } from "../../extensions/apple-reminders/manifest"
-import { figmaFilesManifest } from "../../extensions/figma-files/manifest"
-import { githubManifest } from "../../extensions/github/manifest"
 import { imageGenerationManifest } from "../../extensions/image-generation/manifest"
-import { notionManifest } from "../../extensions/notion/manifest"
 import { todoListManifest } from "./todo-list/manifest"
 import { translateManifest } from "./translate/manifest"
 
 export const nativeExtensionManifests = [
-  appleRemindersManifest,
-  figmaFilesManifest,
-  githubManifest,
   imageGenerationManifest,
-  notionManifest,
   todoListManifest,
   translateManifest
 ].sort((left, right) =>

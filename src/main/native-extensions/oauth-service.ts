@@ -7,7 +7,7 @@ import type {
   NativeExtensionOAuthStartResponse,
   NativeExtensionPackageManifest
 } from "@shared/native-extensions"
-import { listNativeExtensionManifests } from "@extensions/index"
+import { getDefaultExtensionRegistryService } from "../extensions/registry/default-registry"
 import { setNativeExtensionConnectionSecretRecord } from "../preferences"
 import { resolveNativeExtensionConnection } from "./connection-resolver"
 
@@ -40,7 +40,7 @@ function createCodeChallenge(codeVerifier: string): string {
 }
 
 function getNativeExtensionManifest(extensionName: string): NativeExtensionPackageManifest {
-  const manifest = listNativeExtensionManifests(process.platform).find(
+  const manifest = getDefaultExtensionRegistryService().listManifests(process.platform).find(
     (candidate) => candidate.name === extensionName
   )
   if (!manifest) {

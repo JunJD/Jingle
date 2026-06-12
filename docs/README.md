@@ -7,11 +7,11 @@
 首次接手 Openwork extension/runtime 时，按下面顺序读，不需要依赖历史 issue 或会议上下文：
 
 1. [engineering-boundaries.md](./engineering-boundaries.md) 和 [runtime-invariants.md](./runtime-invariants.md)：先建立模块边界、依赖方向和运行时不变量。
-2. [extension-package-contract.md](./extension-package-contract.md)：理解 `extensions/<name>` package 应该暴露哪些入口，以及宿主如何检查边界。
+2. [extension-package-contract.md](./extension-package-contract.md)：理解 built-in / installable extension package 应该暴露哪些入口，以及宿主如何检查边界。
 3. [extension-runtime-migration-plan.md](./extension-runtime-migration-plan.md)：理解 launcher command runtime 的当前主路径、代码入口和验收方式。
 4. [extension-connector-runtime-design.md](./extension-connector-runtime-design.md)：理解 command、AI capability、connection、`@extension` 和 `loadExtension` 如何共用同一套连接语义。
 5. [extension-migration-transform-architecture-cn.md](./extension-migration-transform-architecture-cn.md)：理解 Raycast extension 迁移器的 transform pipeline、生成物和验收矩阵。
-6. [raycast-notion-dependency-migration-preview.md](./raycast-notion-dependency-migration-preview.md)：只在维护 Notion 或迁移器时阅读，重点看正式 `extensions/notion` 状态和历史 preview 证据的边界。
+6. [raycast-notion-dependency-migration-preview.md](./raycast-notion-dependency-migration-preview.md)：只在维护 Notion 或迁移器时阅读，重点看正式 `installable-extensions/notion` 状态和历史 preview 证据的边界。
 
 读完前五篇，应该能回答三件事：一个 extension package 的事实来源在哪里，command 和 AI tool 为什么共享 connection，以及迁移脚本生成的 package 需要通过哪些 contract 检查。
 
@@ -23,10 +23,10 @@
 |---|---|
 | [engineering-boundaries.md](./engineering-boundaries.md) | 工程边界、模块职责、依赖方向和实现约束 |
 | [runtime-invariants.md](./runtime-invariants.md) | 运行时不变量和执行过程必须保持的系统约束 |
-| [extension-package-contract.md](./extension-package-contract.md) | bundled extension package 的目录、manifest/main/runtime/runtime-metadata/tools 边界 |
+| [extension-package-contract.md](./extension-package-contract.md) | built-in / installable extension package 的目录、manifest/main/runtime/runtime-metadata/tools 边界 |
 | [extension-runtime-migration-plan.md](./extension-runtime-migration-plan.md) | extension command runtime 迁移执行计划和验收口径 |
 | [extension-migration-transform-architecture-cn.md](./extension-migration-transform-architecture-cn.md) | Raycast extension 迁移脚本的 transform 分层、fixtures 和生成物验收 |
-| [raycast-notion-dependency-migration-preview.md](./raycast-notion-dependency-migration-preview.md) | Notion 迁移状态、正式 `extensions/notion` 入口和历史 preview 兼容记录 |
+| [raycast-notion-dependency-migration-preview.md](./raycast-notion-dependency-migration-preview.md) | Notion 迁移状态、正式 `installable-extensions/notion` 入口和历史 preview 兼容记录 |
 | [extension-auth-connection-architecture-cn.md](./extension-auth-connection-architecture-cn.md) | extension connection/auth 长期架构和 OAuth 缺口 |
 | [extension-connector-runtime-design.md](./extension-connector-runtime-design.md) | command、AI capability、connection、`@extension` / `loadExtension` 的统一运行时边界 |
 

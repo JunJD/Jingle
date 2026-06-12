@@ -3,6 +3,7 @@ import ts from "typescript"
 import {
   fileExists,
   formatViolations,
+  isInstallableExtensionDirectory,
   listNativeExtensionDirectories,
   loadNativeExtensionManifest,
   parseSourceFile,
@@ -23,19 +24,26 @@ if (!fileExists(runtimeRegistryPath)) {
 const runtimeRegistryExtensionIds = fileExists(runtimeRegistryPath)
   ? listRuntimeRegistryExtensionIds(runtimeRegistryPath)
   : new Set()
-const directoryExtensionIds = new Set(
-  listNativeExtensionDirectories().map((directory) => directory.name)
-)
+const extensionDirectories = listNativeExtensionDirectories()
+const directoryExtensionIds = new Set(extensionDirectories.map((directory) => directory.name))
 
-for (const extensionDirectory of listNativeExtensionDirectories()) {
+for (const extensionDirectory of extensionDirectories) {
+  const isInstallable = isInstallableExtensionDirectory(extensionDirectory)
   const manifest = loadNativeExtensionManifest(extensionDirectory)
   const runtimeCommands = manifest.commands.filter((command) => command.runtime)
   const runtimePath = path.join(extensionDirectory.absolutePath, "runtime.ts")
 
-  if (!runtimeRegistryExtensionIds.has(extensionDirectory.name)) {
+  if (!isInstallable && !runtimeRegistryExtensionIds.has(extensionDirectory.name)) {
     violations.push({
       file: "src/extensions/runtime-packages.ts",
       reason: `extension "${extensionDirectory.name}" 没有被 package-level runtime registry 收录`
+    })
+  }
+
+  if (isInstallable && runtimeRegistryExtensionIds.has(extensionDirectory.name)) {
+    violations.push({
+      file: "src/extensions/runtime-packages.ts",
+      reason: `installable extension "${extensionDirectory.name}" 不应被 built-in package-level runtime registry 收录`
     })
   }
 

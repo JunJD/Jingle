@@ -5,11 +5,11 @@ import {
   runWithExtensionRuntimeSdk,
   type ExtensionRuntimeHostRequestInput
 } from "@openwork/extension-api/host-runtime"
-import AppleRemindersQuickAddReminder from "../../extensions/apple-reminders/src/quick-add-reminder"
+import AppleRemindersQuickAddReminder from "../../installable-extensions/apple-reminders/src/quick-add-reminder"
 import type {
   AppleReminder,
   AppleRemindersData
-} from "../../extensions/apple-reminders/contracts"
+} from "../../installable-extensions/apple-reminders/contracts"
 import type {
   ExtensionHostResponse,
   ExtensionRuntimeLaunchContext

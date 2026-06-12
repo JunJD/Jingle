@@ -268,7 +268,16 @@ importers:
         specifier: ^7.2.6
         version: 7.3.1(@types/node@22.19.15)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.2)
 
-  extensions/apple-reminders:
+  extensions/image-generation:
+    dependencies:
+      '@openwork/extension-api':
+        specifier: workspace:*
+        version: link:../../packages/extension-api
+      zod:
+        specifier: ^4.0.0
+        version: 4.3.6
+
+  installable-extensions/apple-reminders:
     dependencies:
       '@openwork/extension-api':
         specifier: workspace:*
@@ -286,7 +295,7 @@ importers:
         specifier: ^4.0.0
         version: 4.3.6
 
-  extensions/figma-files:
+  installable-extensions/figma-files:
     dependencies:
       '@openwork/extension-api':
         specifier: workspace:*
@@ -301,7 +310,7 @@ importers:
         specifier: ^4.0.0
         version: 4.3.6
 
-  extensions/github:
+  installable-extensions/github:
     dependencies:
       '@octokit/plugin-throttling':
         specifier: ^11.0.3
@@ -322,7 +331,7 @@ importers:
         specifier: ^4.0.0
         version: 4.3.6
 
-  extensions/notion:
+  installable-extensions/notion:
     dependencies:
       '@mozilla/readability':
         specifier: ^0.6.0
@@ -377,6 +386,15 @@ importers:
       zod:
         specifier: ^4.0.0
         version: 4.3.6
+
+  packages/extension-cli:
+    dependencies:
+      esbuild:
+        specifier: ~0.27.0
+        version: 0.27.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/extension-migration:
     dependencies:

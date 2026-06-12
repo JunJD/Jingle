@@ -5,6 +5,10 @@
   "type": "module",
   "main": "./main.ts",
   "types": "./manifest.ts",
+  "openwork": {
+    "distribution": "installable",
+    "trust": "trusted"
+  },
   "dependencies": {
     "@openwork/extension-api": "workspace:*",
     "@openwork/extension-utils": "workspace:*",

@@ -1,7 +1,7 @@
 import { ExtensionIcon } from "@/extensions/ExtensionIcon"
 import { WorkspaceFileIcon } from "@/components/workspace-file-icon"
 import { useI18n } from "@/lib/i18n"
-import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
+import { listNativeLauncherSourceMentions } from "@extension-host/index"
 import {
   parseComposerReferenceText,
   type ParsedComposerReferenceText,
@@ -97,7 +97,7 @@ export function ComposerReferenceTextViewer(props: {
 }): React.JSX.Element {
   const { onOpenWorkspaceFile, text } = props
   const { locale } = useI18n()
-  const sourceMentions = listNativeExtensionSourceMentions(
+  const sourceMentions = listNativeLauncherSourceMentions(
     window.electron.process.platform,
     locale
   )

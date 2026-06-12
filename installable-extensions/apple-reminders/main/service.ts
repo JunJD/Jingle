@@ -1,6 +1,7 @@
 import { execFile, execFileSync } from "node:child_process"
 import { existsSync, mkdirSync } from "node:fs"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 import { app } from "electron"
 import { defineNativeExtensionService, type IpcErrorCode } from "@openwork/extension-api"
@@ -24,6 +25,7 @@ const execFileAsync = promisify(execFile)
 const APPLE_REMINDERS_COMMAND_TIMEOUT_MS = 10_000
 const APPLE_REMINDERS_HELPER_NAME = "openwork-apple-reminders"
 const APPLE_REMINDERS_HELPER_INFO_PLIST_NAME = "openwork-apple-reminders-info.plist"
+const appleRemindersMainModuleDir = dirname(fileURLToPath(import.meta.url))
 
 interface AppleRemindersHelperRequest {
   method: string
@@ -70,7 +72,7 @@ function resolveAppleRemindersBinaryPath(): string | null {
   const candidates = [
     join(app.getAppPath(), "out/native", APPLE_REMINDERS_HELPER_NAME),
     join(process.cwd(), "out/native", APPLE_REMINDERS_HELPER_NAME),
-    join(__dirname, "..", "native", APPLE_REMINDERS_HELPER_NAME)
+    join(appleRemindersMainModuleDir, "..", "native", APPLE_REMINDERS_HELPER_NAME)
   ].map(resolvePackagedUnpackedPath)
 
   return candidates.find((candidate) => existsSync(candidate)) ?? null
@@ -80,10 +82,17 @@ function resolveAppleRemindersSwiftSourcePath(): string | null {
   const candidates = [
     join(app.getAppPath(), "src/native/openwork-apple-reminders.swift"),
     join(process.cwd(), "src/native/openwork-apple-reminders.swift"),
-    join(__dirname, "..", "..", "src", "native", "openwork-apple-reminders.swift"),
+    join(
+      appleRemindersMainModuleDir,
+      "..",
+      "..",
+      "src",
+      "native",
+      "openwork-apple-reminders.swift"
+    ),
     join(app.getAppPath(), "out/native/openwork-apple-reminders.swift"),
     join(process.cwd(), "out/native/openwork-apple-reminders.swift"),
-    join(__dirname, "..", "native", "openwork-apple-reminders.swift")
+    join(appleRemindersMainModuleDir, "..", "native", "openwork-apple-reminders.swift")
   ]
 
   return candidates.find((candidate) => existsSync(candidate)) ?? null
@@ -93,10 +102,17 @@ function resolveAppleRemindersInfoPlistPath(): string | null {
   const candidates = [
     join(app.getAppPath(), "src/native", APPLE_REMINDERS_HELPER_INFO_PLIST_NAME),
     join(process.cwd(), "src/native", APPLE_REMINDERS_HELPER_INFO_PLIST_NAME),
-    join(__dirname, "..", "..", "src", "native", APPLE_REMINDERS_HELPER_INFO_PLIST_NAME),
+    join(
+      appleRemindersMainModuleDir,
+      "..",
+      "..",
+      "src",
+      "native",
+      APPLE_REMINDERS_HELPER_INFO_PLIST_NAME
+    ),
     join(app.getAppPath(), "out/native", APPLE_REMINDERS_HELPER_INFO_PLIST_NAME),
     join(process.cwd(), "out/native", APPLE_REMINDERS_HELPER_INFO_PLIST_NAME),
-    join(__dirname, "..", "native", APPLE_REMINDERS_HELPER_INFO_PLIST_NAME)
+    join(appleRemindersMainModuleDir, "..", "native", APPLE_REMINDERS_HELPER_INFO_PLIST_NAME)
   ]
 
   return candidates.find((candidate) => existsSync(candidate)) ?? null

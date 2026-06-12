@@ -7,6 +7,7 @@ import ts from "typescript"
 export const repoRoot = process.cwd()
 export const srcRoot = path.join(repoRoot, "src")
 export const bundledExtensionsRoot = path.join(repoRoot, "extensions")
+export const installableExtensionsRoot = path.join(repoRoot, "installable-extensions")
 export const sourceExtensions = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]
 
 export const allowedImportMetaGlobFiles = new Set([
@@ -173,6 +174,7 @@ export function parseSourceFile(absolutePath) {
 export function listNativeExtensionDirectories() {
   const roots = [
     { absolutePath: bundledExtensionsRoot, repoPath: "extensions" },
+    { absolutePath: installableExtensionsRoot, repoPath: "installable-extensions" },
     { absolutePath: path.join(srcRoot, "extensions"), repoPath: "src/extensions" }
   ]
   const extensionDirectories = []
@@ -196,6 +198,16 @@ export function listNativeExtensionDirectories() {
 
   return extensionDirectories
     .sort((left, right) => left.name.localeCompare(right.name))
+}
+
+export function isInstallableExtensionDirectory(extensionDirectory) {
+  const packageJsonPath = path.join(extensionDirectory.absolutePath, "package.json")
+  if (!fileExists(packageJsonPath)) {
+    return false
+  }
+
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"))
+  return packageJson.openwork?.distribution === "installable"
 }
 
 export function loadNativeExtensionManifest(extensionDirectory) {

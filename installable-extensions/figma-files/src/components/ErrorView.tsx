@@ -14,7 +14,7 @@ export function ErrorView() {
   You can extract the team ID by navigating to your team page in Figma and then looking at the URL in the browser, for example:
   https://www.figma.com/files/team/<TEAM_ID>/
 
-  Update the value for <TEAM_ID> in Openwork Preferences > Extensions > Figma...  
+  Update the value for <TEAM_ID> in Openwork Preferences > Extensions > Figma...
   then reopen the command.
   `;
 

@@ -1,11 +1,13 @@
 import { defineNativeExtensionRuntimeMetadata } from "@openwork/extension-api"
-import { search } from "./src/translate.meta"
 
 export const translateRuntimeMetadata = defineNativeExtensionRuntimeMetadata({
   commands: [
     {
       name: "translate",
-      search
+      search: {
+        aliases: ["translate", "yi"],
+        keywords: ["translate", "translation", "翻译"]
+      }
     }
   ],
   extensionName: "translate"

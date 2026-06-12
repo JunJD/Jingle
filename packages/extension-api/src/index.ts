@@ -82,10 +82,17 @@ export type {
   NativeExtensionRuntimeViewCommandEntry
 } from "./extensions/runtime-contract"
 
-export { defineNativeExtensionRuntimeMetadata } from "./extensions/runtime-metadata-contract"
+export {
+  defineNativeExtensionRuntimeMetadata,
+  defineNativeExtensionRuntimeSearchAdapters
+} from "./extensions/runtime-metadata-contract"
 export type {
+  NativeExtensionRuntimeCommandArgumentHint,
   NativeExtensionRuntimeCommandMetadata,
-  NativeExtensionRuntimePackageMetadata
+  NativeExtensionRuntimeCommandSearchAdapter,
+  NativeExtensionRuntimeCommandSearchMetadata,
+  NativeExtensionRuntimePackageMetadata,
+  NativeExtensionRuntimePackageSearchAdapters
 } from "./extensions/runtime-metadata-contract"
 
 export { defineLocalizedText, resolveLocalizedText } from "./shared/i18n"

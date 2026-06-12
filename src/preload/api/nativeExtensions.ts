@@ -2,6 +2,7 @@ import type {
   NativeExtensionInvokeIpcResponse,
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionInvokeRequest,
+  NativeExtensionLauncherCatalogProjection,
   NativeExtensionOAuthStartRequest,
   NativeExtensionOAuthStartResponse,
   NativeExtensionPreferencesChangedEvent,
@@ -13,6 +14,9 @@ import { OpenworkIpcClientError } from "../ipc-errors"
 export const nativeExtensionsApi = {
   listSettingsSchemas: (): Promise<InstalledNativeExtensionSettingsSchema[]> => {
     return invokeIpc("nativeExtensions:listSettingsSchemas")
+  },
+  listLauncherCatalog: (): Promise<NativeExtensionLauncherCatalogProjection[]> => {
+    return invokeIpc("nativeExtensions:listLauncherCatalog")
   },
   getPreferences: (extensionName: string): Promise<Record<string, unknown>> => {
     return invokeIpc("nativeExtensions:getPreferences", extensionName)

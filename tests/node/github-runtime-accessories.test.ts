@@ -7,20 +7,20 @@ import {
   type ExtensionRuntimeSdkContextValue
 } from "@openwork/extension-api/host-runtime"
 import { createExtensionRuntimeRenderer } from "../../src/extension-runtime/reconciler/render"
-import GitHubSearchRepositories from "../../extensions/github/src/search-repositories"
-import { githubManifest } from "../../extensions/github/manifest"
-import { getNativeExtensionRuntimeCommand } from "../../src/extensions/runtime"
+import GitHubSearchRepositories from "../../installable-extensions/github/src/search-repositories"
+import { githubManifest } from "../../installable-extensions/github/manifest"
+import { githubRuntime } from "../../installable-extensions/github/runtime"
 import type { ExtensionHostResponse } from "../../src/shared/extension-runtime-protocol"
 import {
   getIssueLikeAccessories,
   getRepositoryAccessories,
   getWorkflowRunAccessories
-} from "../../extensions/github/src/view-helpers"
+} from "../../installable-extensions/github/src/view-helpers"
 import type {
   GitHubIssueLike,
   GitHubRepository,
   GitHubWorkflowRun
-} from "../../extensions/github/domain/client-core"
+} from "../../installable-extensions/github/domain/client-core"
 
 const GITHUB_RUNTIME_VIEW_COMMANDS = [
   "create-issue",
@@ -45,12 +45,7 @@ test("GitHub runtime commands declare manifest metadata and registry entries", (
 
   assert.deepEqual(githubRuntimeCommands, expectedRuntimeCommands.sort())
   for (const commandName of expectedRuntimeCommands) {
-    assert.ok(
-      getNativeExtensionRuntimeCommand({
-        commandName,
-        extensionName: "github"
-      })
-    )
+    assert.ok(githubRuntime.commands[commandName])
   }
 })
 

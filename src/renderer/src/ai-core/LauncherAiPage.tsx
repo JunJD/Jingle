@@ -30,7 +30,7 @@ import { useAgent } from "@/lib/use-agent"
 import { useThreadContext, useThreadSelector } from "@/lib/thread-context"
 import { updateAgentThreadModel, updateAgentThreadPermissionMode } from "@/lib/agent-control"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
-import { listNativeExtensionSourceMentions } from "@extensions/source-mentions"
+import { listNativeLauncherSourceMentions } from "@extension-host/index"
 import { useWorkspaceFileMentions, type ComposerAreaHandle } from "@/composer-area"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import { shouldGoHomeFromComposerKeyDown } from "./composer-keyboard"
@@ -50,7 +50,7 @@ function getVisibleLineCount(value: string): number {
 export function LauncherAiPage(): React.JSX.Element {
   const { copy, locale } = useI18n()
   const sourceMentions = useMemo(
-    () => listNativeExtensionSourceMentions(window.electron.process.platform, locale),
+    () => listNativeLauncherSourceMentions(window.electron.process.platform, locale),
     [locale]
   )
   const attachmentDraft = useAiAttachments()
