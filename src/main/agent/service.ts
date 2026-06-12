@@ -5,10 +5,10 @@ import { OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } from "@shared/openwork-
 import { readRunExtensionAiCapabilitiesSnapshotFromMetadata } from "@shared/extension-sources"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import {
-  hydrateNativeExtensionAiCapabilities,
-  listNativeExtensionAiCapabilityCatalog,
-  resolveNativeExtensionAiCapabilityForExtensionName,
-  resolveNativeExtensionAiCapabilitiesForRefs
+  hydrateNativeExtensionAiCapabilitiesFromManifests,
+  listNativeExtensionAiCapabilityCatalogFromManifests,
+  resolveNativeExtensionAiCapabilityForExtensionNameFromManifests,
+  resolveNativeExtensionAiCapabilitiesForRefsFromManifests
 } from "@extensions/sources"
 import {
   resolveNativeExtensionConnection,
@@ -39,6 +39,7 @@ import { WorkspaceService } from "../workspace/service"
 import { readRunPermissionModeSnapshot, readThreadPermissionMode } from "./permission-mode"
 import { resolveOpenworkWorkspaceIdentity } from "../workspace/identity"
 import { getAgentConfig } from "../preferences"
+import { listNativeExtensionManifests } from "../services/native-extensions"
 import type {
   OpenworkMemoryContextSnapshot,
   OpenworkWorkspaceIdentity
@@ -537,19 +538,11 @@ export class AgentService {
       const normalizedRefs = normalizeComposerMessageRefs(message.additional_kwargs?.refs)
       const permissionMode = requestedPermissionMode ?? readThreadPermissionMode(thread)
       const locale = getAgentConfig().locale
-      const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefs(normalizedRefs, {
-        getConnection: (extensionName) =>
-          resolveNativeExtensionConnection({
-            extensionName,
-            platform: process.platform
-          }),
-        locale,
-        permissionMode,
-        platform: process.platform
-      })
-      const aiCapabilityCatalog = listNativeExtensionAiCapabilityCatalog(process.platform, "en-US")
-      const getAiCapabilityByExtensionName = (extensionName: string) =>
-        resolveNativeExtensionAiCapabilityForExtensionName(extensionName, {
+      const extensionManifests = listNativeExtensionManifests(process.platform)
+      const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
+        normalizedRefs,
+        extensionManifests,
+        {
           getConnection: (extensionName) =>
             resolveNativeExtensionConnection({
               extensionName,
@@ -558,7 +551,28 @@ export class AgentService {
           locale,
           permissionMode,
           platform: process.platform
-        })
+        }
+      )
+      const aiCapabilityCatalog = listNativeExtensionAiCapabilityCatalogFromManifests(
+        extensionManifests,
+        process.platform,
+        "en-US"
+      )
+      const getAiCapabilityByExtensionName = (extensionName: string) =>
+        resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+          extensionName,
+          extensionManifests,
+          {
+            getConnection: (extensionName) =>
+              resolveNativeExtensionConnection({
+                extensionName,
+                platform: process.platform
+              }),
+            locale,
+            permissionMode,
+            platform: process.platform
+          }
+        )
       const workspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
       const openworkMemoryContextPack = await this.openworkMemoryService.buildContextPack({
         temporaryMode,
@@ -775,13 +789,18 @@ export class AgentService {
       )
       const resumedWorkspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
       const locale = getAgentConfig().locale
+      const extensionManifests = listNativeExtensionManifests(process.platform)
       const aiCapabilitySnapshots = readRunExtensionAiCapabilitiesSnapshotFromMetadata(
         resumedRun?.metadata
       )
       const runtimeAiCapabilities =
         aiCapabilitySnapshots === null
           ? []
-          : hydrateNativeExtensionAiCapabilities(aiCapabilitySnapshots, locale)
+          : hydrateNativeExtensionAiCapabilitiesFromManifests(
+              aiCapabilitySnapshots,
+              extensionManifests,
+              locale
+            )
       const runtime = await createAgentRuntime({
         threadId,
         runId,
@@ -793,18 +812,26 @@ export class AgentService {
         openworkMemoryWorkspaceIdentity: resumedWorkspaceIdentity,
         permissionMode,
         aiCapabilities: runtimeAiCapabilities,
-        aiCapabilityCatalog: listNativeExtensionAiCapabilityCatalog(process.platform, "en-US"),
+        aiCapabilityCatalog: listNativeExtensionAiCapabilityCatalogFromManifests(
+          extensionManifests,
+          process.platform,
+          "en-US"
+        ),
         getAiCapabilityByExtensionName: (extensionName: string) =>
-          resolveNativeExtensionAiCapabilityForExtensionName(extensionName, {
-            getConnection: (extensionName) =>
-              resolveNativeExtensionConnection({
-                extensionName,
-                platform: process.platform
-              }),
-            locale,
-            permissionMode,
-            platform: process.platform
-          }),
+          resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+            extensionName,
+            extensionManifests,
+            {
+              getConnection: (extensionName) =>
+                resolveNativeExtensionConnection({
+                  extensionName,
+                  platform: process.platform
+                }),
+              locale,
+              permissionMode,
+              platform: process.platform
+            }
+          ),
         getExtensionExecutionContext: (extensionName) =>
           resolveNativeExtensionExecutionContext({
             extensionName,

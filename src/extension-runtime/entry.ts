@@ -1,5 +1,6 @@
-import { createElement } from "react"
-import { getNativeExtensionRuntimeCommand } from "@extensions/runtime"
+import * as React from "react"
+import * as ReactJsxDevRuntime from "react/jsx-dev-runtime"
+import * as ReactJsxRuntime from "react/jsx-runtime"
 import type {
   ExtensionHostRequest,
   ExtensionHostResponse,
@@ -7,8 +8,10 @@ import type {
   ExtensionRuntimeError,
   ExtensionRuntimeEvent,
   ExtensionRuntimeLaunchContext,
+  ExtensionRuntimeLaunchPackageRef,
   ExtensionRuntimeToHostMessage
 } from "@shared/extension-runtime-protocol"
+import { loadNativeExtensionRuntimeCommand } from "./runtime-package-loader"
 import {
   createFileExtensionRuntimeCacheBackend,
   EXTENSION_RUNTIME_CACHE_DIR_ENV
@@ -18,6 +21,7 @@ import {
   createExtensionRuntimeLaunchProps,
   createExtensionRuntimeNavigation,
   ExtensionRuntimeNavigationProvider,
+  installExtensionRuntimeReactBridge,
   installExtensionRuntimeCacheBackend,
   runWithExtensionRuntimeSdk,
   type ExtensionRuntimeHostRequestInput
@@ -28,6 +32,7 @@ const pendingHostResponses = new Map<string, (response: ExtensionHostResponse) =
 let hostRequestIndex = 0
 
 const parentPort = getParentPort()
+installRuntimeReactBridge()
 installRuntimeCacheBackend()
 
 parentPort.on("message", (event) => {
@@ -35,7 +40,7 @@ parentPort.on("message", (event) => {
 
   switch (message.type) {
     case "start":
-      void startRuntime(message.sessionId, message.context)
+      void startRuntime(message.sessionId, message.context, message.runtime)
       return
     case "stop":
       process.exit(0)
@@ -93,15 +98,11 @@ function postToHost(message: ExtensionRuntimeToHostMessage): void {
 
 async function startRuntime(
   sessionId: string,
-  context: ExtensionRuntimeLaunchContext
+  context: ExtensionRuntimeLaunchContext,
+  runtimeRef: ExtensionRuntimeLaunchPackageRef
 ): Promise<void> {
   try {
-    const command = getNativeExtensionRuntimeCommand(context)
-    if (!command) {
-      throw new Error(
-        `Extension runtime command "${context.extensionName}:${context.commandName}" is not registered.`
-      )
-    }
+    const command = await loadNativeExtensionRuntimeCommand(runtimeRef, context)
 
     if (command.mode !== context.mode) {
       throw new Error(
@@ -159,7 +160,7 @@ async function startRuntime(
     )
     activeRenderer = renderer
     renderer.render(
-      createElement(
+      React.createElement(
         ExtensionRuntimeNavigationProvider,
         {
           value: {
@@ -168,7 +169,7 @@ async function startRuntime(
             registerToastAction: renderer.registerToastAction
           }
         },
-        createElement(command.Component, createExtensionRuntimeLaunchProps(resolvedContext))
+        React.createElement(command.Component, createExtensionRuntimeLaunchProps(resolvedContext))
       )
     )
     void renderer
@@ -185,6 +186,14 @@ async function startRuntime(
   } catch (error) {
     postRuntimeError(sessionId, error)
   }
+}
+
+function installRuntimeReactBridge(): void {
+  installExtensionRuntimeReactBridge({
+    React,
+    jsxDevRuntime: ReactJsxDevRuntime,
+    jsxRuntime: ReactJsxRuntime
+  })
 }
 
 async function resolveRuntimeLaunchContext(

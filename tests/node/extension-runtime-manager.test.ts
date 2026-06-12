@@ -8,6 +8,7 @@ import type {
   ExtensionHostRequest,
   ExtensionHostToRuntimeMessage,
   ExtensionRuntimeLaunchContext,
+  ExtensionRuntimeLaunchPackageRef,
   ExtensionRuntimeToHostMessage,
   ExtensionSurfaceSnapshot
 } from "../../src/shared/extension-runtime-protocol"
@@ -141,6 +142,9 @@ function createManager(
     onEventAck?: ConstructorParameters<typeof ExtensionRuntimeManager>[0]["onEventAck"]
     onError?: ConstructorParameters<typeof ExtensionRuntimeManager>[0]["onError"]
     onSurface?: ConstructorParameters<typeof ExtensionRuntimeManager>[0]["onSurface"]
+    resolveRuntimePackage?: ConstructorParameters<
+      typeof ExtensionRuntimeManager
+    >[0]["resolveRuntimePackage"]
     sessionIds?: string[]
   } = {}
 ) {
@@ -156,7 +160,15 @@ function createManager(
     onEventAck: params.onEventAck,
     onError: params.onError,
     onSurface: params.onSurface,
-    processLauncher: launcher
+    processLauncher: launcher,
+    resolveRuntimePackage:
+      params.resolveRuntimePackage ??
+      (() =>
+        ({
+          extensionName: "github",
+          kind: "built-in",
+          version: "built-in"
+        }) satisfies ExtensionRuntimeLaunchPackageRef)
   })
 
   return {
@@ -191,6 +203,11 @@ test("runtime manager starts and stops a foreground utility session", async () =
   assert.equal(session.pid, 100)
   assert.deepEqual(launcher.processes[0]?.messages[0], {
     context: createLaunchContext(),
+    runtime: {
+      extensionName: "github",
+      kind: "built-in",
+      version: "built-in"
+    },
     sessionId: "session-1",
     type: "start"
   })

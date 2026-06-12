@@ -3,13 +3,13 @@ import type {
   NativeExtensionOAuthCallbackResult,
   NativeExtensionOAuthStartRequest,
   NativeExtensionOAuthStartResponse,
+  NativeExtensionLauncherCatalogProjection,
   NativeExtensionPackageManifest,
   NativeExtensionResolvedConnection,
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionInvokeRequest,
   NativeExtensionPreferencesChangedEvent
 } from "@shared/native-extensions"
-import { listNativeExtensionManifests } from "@extensions/index"
 import {
   getNativeExtensionCommandPreferenceRecord,
   getNativeExtensionPreferenceRecord,
@@ -22,26 +22,36 @@ import {
 } from "./connection-resolver"
 import {
   invokeNativeExtension,
+  listNativeExtensionLauncherCatalog,
   listNativeExtensionSettingsSchemas
 } from "../services/native-extensions"
+import { getDefaultExtensionRegistryService } from "../extensions/registry/default-registry"
 import { NativeExtensionOAuthService } from "./oauth-service"
 
 export class NativeExtensionsService {
   private readonly oauthService = new NativeExtensionOAuthService()
 
   getManifest(extensionName: string): NativeExtensionPackageManifest {
-    const manifest = listNativeExtensionManifests(process.platform).find(
-      (candidate) => candidate.name === extensionName
-    )
-    if (!manifest) {
+    const registry = getDefaultExtensionRegistryService()
+    const extensionPackage = registry.getLoadedPackage(extensionName)
+    if (
+      !extensionPackage ||
+      !registry
+        .listEnabledPackages(process.platform)
+        .some((candidate) => candidate.id === extensionName)
+    ) {
       throw new Error(`Unknown native extension "${extensionName}"`)
     }
 
-    return manifest
+    return extensionPackage.manifest
   }
 
   listSettingsSchemas(): InstalledNativeExtensionSettingsSchema[] {
     return listNativeExtensionSettingsSchemas()
+  }
+
+  listLauncherCatalog(): NativeExtensionLauncherCatalogProjection[] {
+    return listNativeExtensionLauncherCatalog()
   }
 
   getPreferences(extensionName: string): Record<string, unknown> {

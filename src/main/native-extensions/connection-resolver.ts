@@ -1,4 +1,3 @@
-import { listNativeExtensionManifests } from "@extensions/index"
 import type {
   NativeExtensionConnectionManifest,
   NativeExtensionConnectionStatus,
@@ -6,6 +5,7 @@ import type {
   NativeExtensionPackageManifest,
   NativeExtensionResolvedConnection
 } from "@shared/native-extensions"
+import { getDefaultExtensionRegistryService } from "../extensions/registry/default-registry"
 import {
   getNativeExtensionConnectionSecretRecord,
   getResolvedNativeExtensionCommandPreferenceRecord,
@@ -22,7 +22,7 @@ function isMissingConnectionSecret(value: unknown): boolean {
 
 function getNativeExtensionManifest(extensionName: string, platform?: string) {
   const targetPlatform = platform ?? process.platform
-  const manifest = listNativeExtensionManifests(targetPlatform).find(
+  const manifest = getDefaultExtensionRegistryService().listManifests(targetPlatform).find(
     (candidate) => candidate.name === extensionName
   )
   if (!manifest) {
@@ -141,9 +141,9 @@ function resolveProviderExtensionPreferences(input: {
     return {}
   }
 
-  const providerManifest = listNativeExtensionManifests(input.platform ?? process.platform).find(
-    (manifest) => manifest.name === input.connection.provider
-  )
+  const providerManifest = getDefaultExtensionRegistryService()
+    .listManifests(input.platform ?? process.platform)
+    .find((manifest) => manifest.name === input.connection.provider)
   if (!providerManifest) {
     return {}
   }

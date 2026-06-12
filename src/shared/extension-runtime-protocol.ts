@@ -40,6 +40,19 @@ export interface ExtensionRuntimeLaunchContext {
   seedQuery: string
 }
 
+export type ExtensionRuntimeLaunchPackageRef =
+  | {
+      extensionName: string
+      kind: "built-in"
+      version: string
+    }
+  | {
+      extensionName: string
+      kind: "module"
+      modulePath: string
+      version: string
+    }
+
 export type ExtensionRuntimeSessionKind = "ambient" | "foreground" | "run-once"
 
 export interface ExtensionRuntimeSessionInfo {
@@ -659,7 +672,12 @@ export type ExtensionRuntimeToHostMessage =
   | { metrics: ExtensionRuntimeMetrics; sessionId: string; type: "metrics" }
 
 export type ExtensionHostToRuntimeMessage =
-  | { context: ExtensionRuntimeLaunchContext; sessionId: string; type: "start" }
+  | {
+      context: ExtensionRuntimeLaunchContext
+      runtime: ExtensionRuntimeLaunchPackageRef
+      sessionId: string
+      type: "start"
+    }
   | { event: ExtensionRuntimeEvent; sessionId: string; type: "event" }
   | { response: ExtensionHostResponse; sessionId: string; type: "host-response" }
   | { sessionId: string; type: "stop" }

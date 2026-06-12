@@ -5,7 +5,7 @@ import { homedir } from "os"
 import { join } from "path"
 import type { AgentConfig } from "./types"
 import { getOpenworkDir } from "./storage"
-import { listNativeExtensionManifests } from "@extensions/index"
+import { getDefaultExtensionRegistryService } from "./extensions/registry/default-registry"
 import { DEFAULT_MODELS } from "@shared/models"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale } from "@shared/i18n"
 import type { DefaultModels, SupportedDefaultModelType } from "@shared/app-types"
@@ -251,7 +251,7 @@ function listPasswordPreferenceNames(schema: NativeExtensionPreferenceSchema[]):
 }
 
 function getNativeExtensionManifest(extensionName: string) {
-  const manifest = listNativeExtensionManifests(process.platform).find(
+  const manifest = getDefaultExtensionRegistryService().listManifests(process.platform).find(
     (entry) => entry.name === extensionName
   )
   if (!manifest) {

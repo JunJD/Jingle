@@ -42,7 +42,12 @@ interface NativeExtensionAiCapabilityRegistryEntry {
 }
 
 const nativeExtensionAiCapabilityRegistry: NativeExtensionAiCapabilityRegistryEntry[] =
-  nativeExtensionManifests.flatMap((manifest) =>
+  createNativeExtensionAiCapabilityRegistry(nativeExtensionManifests)
+
+function createNativeExtensionAiCapabilityRegistry(
+  manifests: NativeExtensionPackageManifest[]
+): NativeExtensionAiCapabilityRegistryEntry[] {
+  return manifests.flatMap((manifest) =>
     manifest.aiCapability
       ? [
           {
@@ -52,6 +57,7 @@ const nativeExtensionAiCapabilityRegistry: NativeExtensionAiCapabilityRegistryEn
         ]
       : []
   )
+}
 
 function getCapabilitySupportedPlatforms(
   manifest: NativeExtensionPackageManifest,
@@ -73,19 +79,92 @@ function getComposerRefCapabilityKey(
   })
 }
 
-const aiCapabilityRegistryByKey = new Map(
-  nativeExtensionAiCapabilityRegistry.map((entry) => [
-    getCapabilityKey({
-      capabilityId: entry.capability.id,
-      extensionName: entry.manifest.name
-    }),
-    entry
-  ])
+const aiCapabilityRegistryByKey = toAiCapabilityRegistryByKey(nativeExtensionAiCapabilityRegistry)
+
+function toAiCapabilityRegistryByKey(entries: NativeExtensionAiCapabilityRegistryEntry[]) {
+  return new Map(
+    entries.map((entry) => [
+      getCapabilityKey({
+        capabilityId: entry.capability.id,
+        extensionName: entry.manifest.name
+      }),
+      entry
+    ])
+  )
+}
+
+const aiCapabilityRegistryByExtensionName = toAiCapabilityRegistryByExtensionName(
+  nativeExtensionAiCapabilityRegistry
 )
 
-const aiCapabilityRegistryByExtensionName = new Map(
-  nativeExtensionAiCapabilityRegistry.map((entry) => [entry.manifest.name, entry])
-)
+function toAiCapabilityRegistryByExtensionName(
+  entries: NativeExtensionAiCapabilityRegistryEntry[]
+) {
+  return new Map(entries.map((entry) => [entry.manifest.name, entry]))
+}
+
+function resolveNativeExtensionAiCapabilitiesForRefsWithRegistry(
+  refs: ComposerMessageRef[],
+  entriesByKey: Map<string, NativeExtensionAiCapabilityRegistryEntry>,
+  input: ResolveNativeExtensionAiCapabilityInput = {}
+): ResolvedExtensionAiCapability[] {
+  const keys = new Set(
+    refs
+      .filter(
+        (ref): ref is Extract<ComposerMessageRef, { type: "extension-source" }> =>
+          ref.type === "extension-source"
+      )
+      .map(getComposerRefCapabilityKey)
+  )
+
+  return Array.from(keys).flatMap((key) => {
+    const entry = entriesByKey.get(key)
+    if (!entry) {
+      console.warn(`[Sources] Skipping unknown extension AI capability mention "${key}".`)
+      return []
+    }
+
+    return [resolveEntryCapability(entry, input)]
+  })
+}
+
+function resolveNativeExtensionAiCapabilityForExtensionNameWithRegistry(
+  extensionName: string,
+  entriesByExtensionName: Map<string, NativeExtensionAiCapabilityRegistryEntry>,
+  input: ResolveNativeExtensionAiCapabilityInput = {}
+): ResolvedExtensionAiCapability | null {
+  const entry = entriesByExtensionName.get(extensionName)
+  if (!entry) {
+    console.warn(`[Sources] Skipping unknown extension AI capability "${extensionName}".`)
+    return null
+  }
+
+  return resolveEntryCapability(entry, input)
+}
+
+function hydrateNativeExtensionAiCapabilitiesWithRegistry(
+  snapshots: RunExtensionAiCapabilitySnapshot[],
+  entriesByKey: Map<string, NativeExtensionAiCapabilityRegistryEntry>,
+  locale: AppLocale = DEFAULT_APP_LOCALE
+): ResolvedExtensionAiCapability[] {
+  return snapshots.flatMap((snapshot) => {
+    const entry = entriesByKey.get(
+      getCapabilityKey({
+        capabilityId: snapshot.capabilityId,
+        extensionName: snapshot.extensionName
+      })
+    )
+
+    if (!entry) {
+      console.warn(
+        `[Sources] Skipping stored AI capability "${snapshot.extensionName}:${snapshot.capabilityId}" because it is no longer registered.`
+      )
+      return []
+    }
+
+    return [resolveEntryCapabilityFromSnapshot(entry, snapshot, locale)]
+  })
+}
 
 function isMissingRequiredPreferenceValue(value: unknown): boolean {
   if (typeof value === "string") {
@@ -399,37 +478,47 @@ export function resolveNativeExtensionAiCapabilitiesForRefs(
   refs: ComposerMessageRef[],
   input: ResolveNativeExtensionAiCapabilityInput = {}
 ): ResolvedExtensionAiCapability[] {
-  const keys = new Set(
-    refs
-      .filter(
-        (ref): ref is Extract<ComposerMessageRef, { type: "extension-source" }> =>
-          ref.type === "extension-source"
-      )
-      .map(getComposerRefCapabilityKey)
+  return resolveNativeExtensionAiCapabilitiesForRefsWithRegistry(
+    refs,
+    aiCapabilityRegistryByKey,
+    input
   )
+}
 
-  return Array.from(keys).flatMap((key) => {
-    const entry = aiCapabilityRegistryByKey.get(key)
-    if (!entry) {
-      console.warn(`[Sources] Skipping unknown extension AI capability mention "${key}".`)
-      return []
-    }
-
-    return [resolveEntryCapability(entry, input)]
-  })
+export function resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
+  refs: ComposerMessageRef[],
+  manifests: NativeExtensionPackageManifest[],
+  input: ResolveNativeExtensionAiCapabilityInput = {}
+): ResolvedExtensionAiCapability[] {
+  const entries = createNativeExtensionAiCapabilityRegistry(manifests)
+  return resolveNativeExtensionAiCapabilitiesForRefsWithRegistry(
+    refs,
+    toAiCapabilityRegistryByKey(entries),
+    input
+  )
 }
 
 export function resolveNativeExtensionAiCapabilityForExtensionName(
   extensionName: string,
   input: ResolveNativeExtensionAiCapabilityInput = {}
 ): ResolvedExtensionAiCapability | null {
-  const entry = aiCapabilityRegistryByExtensionName.get(extensionName)
-  if (!entry) {
-    console.warn(`[Sources] Skipping unknown extension AI capability "${extensionName}".`)
-    return null
-  }
+  return resolveNativeExtensionAiCapabilityForExtensionNameWithRegistry(
+    extensionName,
+    aiCapabilityRegistryByExtensionName,
+    input
+  )
+}
 
-  return resolveEntryCapability(entry, input)
+export function resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+  extensionName: string,
+  manifests: NativeExtensionPackageManifest[],
+  input: ResolveNativeExtensionAiCapabilityInput = {}
+): ResolvedExtensionAiCapability | null {
+  return resolveNativeExtensionAiCapabilityForExtensionNameWithRegistry(
+    extensionName,
+    toAiCapabilityRegistryByExtensionName(createNativeExtensionAiCapabilityRegistry(manifests)),
+    input
+  )
 }
 
 export function buildNativeExtensionAiCapabilityCatalogItem(input: {
@@ -475,7 +564,19 @@ export function listNativeExtensionAiCapabilityCatalog(
   platform?: string,
   locale: AppLocale = DEFAULT_APP_LOCALE
 ): ExtensionAiCapabilityCatalogItem[] {
-  return nativeExtensionAiCapabilityRegistry.flatMap((entry) => {
+  return listNativeExtensionAiCapabilityCatalogFromManifests(
+    nativeExtensionManifests,
+    platform,
+    locale
+  )
+}
+
+export function listNativeExtensionAiCapabilityCatalogFromManifests(
+  manifests: NativeExtensionPackageManifest[],
+  platform?: string,
+  locale: AppLocale = DEFAULT_APP_LOCALE
+): ExtensionAiCapabilityCatalogItem[] {
+  return createNativeExtensionAiCapabilityRegistry(manifests).flatMap((entry) => {
     const supportedPlatforms = getCapabilitySupportedPlatforms(entry.manifest, entry.capability)
     if (platform && !supportsNativeExtensionPlatformList(supportedPlatforms, platform)) {
       return []
@@ -489,21 +590,21 @@ export function hydrateNativeExtensionAiCapabilities(
   snapshots: RunExtensionAiCapabilitySnapshot[],
   locale: AppLocale = DEFAULT_APP_LOCALE
 ): ResolvedExtensionAiCapability[] {
-  return snapshots.flatMap((snapshot) => {
-    const entry = aiCapabilityRegistryByKey.get(
-      getCapabilityKey({
-        capabilityId: snapshot.capabilityId,
-        extensionName: snapshot.extensionName
-      })
-    )
+  return hydrateNativeExtensionAiCapabilitiesWithRegistry(
+    snapshots,
+    aiCapabilityRegistryByKey,
+    locale
+  )
+}
 
-    if (!entry) {
-      console.warn(
-        `[Sources] Skipping stored AI capability "${snapshot.extensionName}:${snapshot.capabilityId}" because it is no longer registered.`
-      )
-      return []
-    }
-
-    return [resolveEntryCapabilityFromSnapshot(entry, snapshot, locale)]
-  })
+export function hydrateNativeExtensionAiCapabilitiesFromManifests(
+  snapshots: RunExtensionAiCapabilitySnapshot[],
+  manifests: NativeExtensionPackageManifest[],
+  locale: AppLocale = DEFAULT_APP_LOCALE
+): ResolvedExtensionAiCapability[] {
+  return hydrateNativeExtensionAiCapabilitiesWithRegistry(
+    snapshots,
+    toAiCapabilityRegistryByKey(createNativeExtensionAiCapabilityRegistry(manifests)),
+    locale
+  )
 }

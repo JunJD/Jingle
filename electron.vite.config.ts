@@ -16,9 +16,11 @@ function copyResources(): { name: string; closeBundle: () => void } {
       const srcAssets = resolve("resources/assets")
       const srcExtensionAssets = resolve("src/extensions")
       const bundledExtensionAssets = resolve("extensions")
+      const installedExtensionPackages = resolve(".ow-build/installed-extensions")
       const destDir = resolve("out/resources")
       const destAssets = resolve("out/resources/assets")
       const destExtensionAssets = resolve("out/resources/extensions")
+      const destInstalledExtensions = resolve("out/resources/installed-extensions")
       const destIcon = resolve("out/resources/icon.png")
       const nativeDestDir = resolve("out/native")
       const nativeSources = [
@@ -62,6 +64,11 @@ function copyResources(): { name: string; closeBundle: () => void } {
             cpSync(sourceAssetDir, targetAssetDir, { recursive: true })
           }
         }
+      }
+
+      if (existsSync(installedExtensionPackages)) {
+        rmSync(destInstalledExtensions, { recursive: true, force: true })
+        cpSync(installedExtensionPackages, destInstalledExtensions, { recursive: true })
       }
 
       for (const nativeSourceName of nativeSources) {

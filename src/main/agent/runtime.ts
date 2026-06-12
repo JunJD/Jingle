@@ -37,9 +37,11 @@ import { createDesktopAutomationToolsMiddleware } from "./desktop-automation-too
 import { createWebToolsMiddleware } from "./web-tools-middleware"
 import { createTitleMiddleware } from "./title-middleware"
 import { createBddAgentRuntime } from "./bdd-runtime"
-import { nativeExtensionMainDefinitions } from "@extensions/main"
-import { nativeExtensionManifests } from "@extensions/index"
 import { createNativeExtensionToolRegistry } from "../extension-tools/native-extension-tools"
+import {
+  listNativeExtensionMainDefinitions,
+  listNativeExtensionManifests
+} from "../services/native-extensions"
 import { createExtensionAiRuntime } from "./extension-ai-runtime"
 import { createJingleTodoMiddleware } from "./jingle-todo-middleware"
 import { buildAgentRuntimeTraceConfig } from "../observability"
@@ -208,9 +210,11 @@ export async function createAgentRuntime(
     classifier: commandClassifier,
     predictor: mutationPredictor
   })
+  const extensionManifests = listNativeExtensionManifests(process.platform)
+  const extensionMainDefinitions = await listNativeExtensionMainDefinitions(process.platform)
   const extensionToolRegistry = createNativeExtensionToolRegistry({
-    definitions: nativeExtensionMainDefinitions,
-    manifests: nativeExtensionManifests
+    definitions: extensionMainDefinitions,
+    manifests: extensionManifests
   })
   const extensionAiRuntime = createExtensionAiRuntime({
     aiCapabilities,
