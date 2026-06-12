@@ -7,7 +7,8 @@ import {
   type CheckpointMetadata,
   type CheckpointTuple,
   type PendingWrite,
-  type SerializerProtocol
+  type SerializerProtocol,
+  uuid6
 } from "@langchain/langgraph-checkpoint"
 import type { Prisma } from "@prisma/client"
 import { getPrismaClient } from "../db/client"
@@ -33,7 +34,7 @@ function getRunIdForStorage(
   )
 }
 
-export class PrismaCheckpointSaver extends BaseCheckpointSaver {
+export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
   private writeQueue: Promise<void> = Promise.resolve()
 
   constructor(serde?: SerializerProtocol) {
@@ -42,6 +43,10 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
 
   async initialize(): Promise<void> {
     return
+  }
+
+  override getNextVersion(_current: string | undefined): string {
+    return uuid6(-2)
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {

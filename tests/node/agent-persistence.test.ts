@@ -1093,6 +1093,18 @@ test("prisma checkpoint saver stores checkpoints without syncing derived thread 
   assert.equal(await getLatestHitlRequest(threadId), null)
 })
 
+test("prisma checkpoint saver generates string channel versions", async () => {
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const saver = new PrismaCheckpointSaver()
+  const firstVersion = saver.getNextVersion(undefined)
+  const nextVersion = saver.getNextVersion(firstVersion)
+
+  assert.equal(typeof firstVersion, "string")
+  assert.equal(typeof nextVersion, "string")
+  assert.notEqual(nextVersion, firstVersion)
+})
+
 test("syncRunFromLatestCheckpoint accepts submitted message in latest checkpoint", async () => {
   const { createRun, createThread, getRun } = await loadDbModules()
   const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")

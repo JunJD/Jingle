@@ -26,6 +26,7 @@ import type * as _lcTypes from "langchain"
 import type * as _lcMessages from "@langchain/core/messages"
 import type * as _lcLanggraph from "@langchain/langgraph"
 import type * as _lcZodTypes from "@langchain/core/utils/types"
+import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint"
 
 import { BASE_SYSTEM_PROMPT } from "./system-prompt"
 import { createArtifactToolsMiddleware } from "./artifact-tools-middleware"
@@ -359,7 +360,8 @@ The workspace root is: ${workspacePath}`
   const agent = createAgent({
     model,
     name: "openwork",
-    checkpointer,
+    // createAgent's TypeScript overload currently narrows checkpointers to number versions.
+    checkpointer: checkpointer as unknown as BaseCheckpointSaver<number>,
     systemPrompt,
     middleware: [
       rootTodoMiddleware,
