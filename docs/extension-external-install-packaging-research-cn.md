@@ -23,10 +23,10 @@ extension source package
 
 ## 当前架构事实
 
-当前 bundled extension 已经按未来外部包的语义迈出关键一步：extension 的物理 home 是 `extensions/<name>`，并暴露五类 package surface：
+当前 trusted installed source package 已经按未来外部包的语义迈出关键一步：extension 的物理 home 是 `installable-extensions/<name>`，并暴露五类 package surface：
 
 ```txt
-extensions/<name>/
+installable-extensions/<name>/
   manifest.ts
   runtime.ts
   runtime-metadata.ts
@@ -34,25 +34,25 @@ extensions/<name>/
   assets/
 ```
 
-但宿主发现和装载仍是编译期静态聚合：
+但 built-in 聚合仍保留编译期静态 import：
 
 - `src/extensions/index.ts` 静态 import bundled manifests。
 - `src/extensions/main.ts` 静态 import main definitions。
-- `src/extensions/runtime-packages.ts` 静态 import runtime packages。
-- `src/extensions/runtime-metadata-packages.ts` 静态 import runtime metadata。
+- `src/extensions/runtime-packages.ts` 只静态 import built-in runtime packages。
+- `src/extensions/runtime-metadata-packages.ts` 只静态 import built-in runtime metadata。
 
-runtime 进程也仍然通过静态 registry 找 command：
+runtime 进程已经不再只通过静态 registry 找 command：
 
 ```txt
 src/main/services/extension-runtime/utility-process-launcher.ts
   -> utilityProcess.fork(extension-runtime-entry.js)
 src/extension-runtime/entry.ts
-  -> getNativeExtensionRuntimeCommand(context)
-src/extensions/runtime.ts
-  -> nativeExtensionRuntimePackages static map
+  -> host 传入 built-in ref 或 installed module ref
+src/extension-runtime/runtime-package-loader.ts
+  -> built-in runtime package 或 installed dist/runtime.mjs
 ```
 
-这说明当前不是“缺 package contract”，而是还缺“外部 installed registry + external module loader”。
+这说明当前不是“缺 package contract”，而是已经进入“registry + loader 主链路已通，继续补第三方 trust/capability、安全发布和 reload 语义”的阶段。
 
 ## 边界定义
 
@@ -158,7 +158,7 @@ notion-1.0.0.owext
 - Node builtins、native addon、postinstall 脚本、动态 require 进入审核/限制列表。
 - renderer metadata 必须是可序列化数据，不能带 callback 或 import UI component。
 
-这和当前 `extensions/<name>` package contract 是同一套语义，只是把 TypeScript source entry 换成 install artifact entry。
+这和当前 `installable-extensions/<name>` package contract 是同一套语义，只是把 TypeScript source entry 换成 install artifact entry。
 
 ## Host 装载架构
 
@@ -275,7 +275,7 @@ openwork-extension-asset://notion/assets/icon.png
 目标：
 
 - 定义 `openwork.extension.json` schema。
-- 让 build script 从 `extensions/apple-reminders`、`extensions/github` 产出 `.owext`。
+- 让 build script 从 `installable-extensions/apple-reminders`、`installable-extensions/figma-files`、`installable-extensions/github`、`installable-extensions/notion` 产出 installable package。
 - 产物包含 `manifest.json`、`runtime-metadata.json`、`dist/runtime.mjs`、`dist/main.mjs`、`assets/`。
 - 更新 `check:extensions` 或新增 `check:extension-artifacts` 校验产物；迁移生成物在进入 installable artifact 前，先用 `check:extension-migration` 锁住 `migrated-source` / `shell` 与 `view` / `menu-bar` / `no-view` 的 package contract。
 
@@ -287,14 +287,14 @@ npm run check:extension-migration
 pnpm exec tsx --tsconfig tsconfig.node.json --test tests/node/native-extension-shell-packages.test.ts
 ```
 
-### Phase 2：main 侧 registry service
+### Phase 2：main 侧 registry service（已落地基础链路）
 
 目标：
 
-- 新增 `ExtensionRegistryService`。
-- 先把现有 bundled registry 接进去，行为不变。
-- 再支持读取 `OPENWORK_HOME/extensions/**/openwork.extension.json`。
-- renderer 通过 IPC 获取 manifest/metadata snapshot，不再直接依赖完整静态 registry 作为未来主路。
+- `ExtensionRegistryService` 合并 built-in provider 和 installed provider。
+- built-in registry 被包装为 provider，行为保持为 app 内静态 package。
+- installed provider 支持读取 installed root 下的 `openwork.extension.json`。
+- renderer 通过 main/preload 获取 manifest/metadata catalog projection，不再直接依赖完整静态 registry 作为 launcher command owner 主路。
 
 验收：
 
@@ -303,13 +303,13 @@ pnpm exec tsx --tsconfig tsconfig.node.json --test tests/node/extension-runtime-
 npm run check:guardrails
 ```
 
-### Phase 3：runtime external module loader
+### Phase 3：runtime external module loader（已落地 trusted installed proof）
 
 目标：
 
-- runtime launch context 增加 package descriptor 或 runtime module path。
-- `src/extension-runtime/entry.ts` 支持按 package import `dist/runtime.mjs`。
-- 用 temp installed directory 安装 Apple Reminders / GitHub artifact，证明 command 可以从外部 root 启动。
+- runtime start request 携带 runtime package ref。
+- `src/extension-runtime/entry.ts` 支持加载 built-in runtime package 或 installed `dist/runtime.mjs`。
+- Apple Reminders 已作为 trusted installed package 样本验证 command 可以从 installed root 启动。
 
 验收：
 
@@ -366,10 +366,10 @@ pnpm exec tsx --tsconfig tsconfig.node.json --test tests/node/extension-source-t
 
 最小有效动作是：
 
-1. 给 `extensions/apple-reminders` 和 `extensions/github` 增加 artifact build proof。
-2. 产出两个 `.owext` 到临时目录。
-3. 写 node test 从 artifact root 读取 `openwork.extension.json`、manifest、runtime metadata，并 dynamic import runtime/main。
-4. 再把 main/renderer 的静态 registry 抽成 `BundledExtensionProvider`，为 external provider 留入口。
+1. 保持 `installable-extensions/apple-reminders` 作为唯一必须跑通的 installed runtime proof。
+2. 继续用 `npm run extension:build -- apple-reminders` 产出 installable package。
+3. 用 node test 覆盖 build artifact、installed provider、registry、launcher projection 和 runtime loader。
+4. 后续再扩展 GitHub / Notion / Figma 的 artifact proof，不把它们和 Apple Reminders 主链路修正混成一批。
 
 这个顺序能验证真正关键的问题：当前 package contract 是否足够让 extension 离开 app bundle 后继续工作。
 
