@@ -38,6 +38,33 @@ interface UseLauncherAiActionsOptions {
 
 const LAUNCHER_PERMISSION_MODE_ORDER: PermissionModeName[] = ["ask-to-edit", "explore", "auto"]
 
+function isElementTargetInsideRoot(target: EventTarget | null, root: Element | null): boolean {
+  if (!target || !root) {
+    return false
+  }
+
+  if (target === root) {
+    return true
+  }
+
+  if (typeof Node !== "undefined" && !(target instanceof Node)) {
+    return false
+  }
+
+  return root.contains(target as Node)
+}
+
+export function isLauncherAiInputEventTarget(
+  target: EventTarget | null,
+  input: LauncherInputElement | ComposerAreaHandle | null
+): boolean {
+  if (!input) {
+    return false
+  }
+
+  return isElementTargetInsideRoot(target, "getElement" in input ? input.getElement() : input)
+}
+
 function isPlainBackspaceShortcut(event: KeyboardEvent): boolean {
   return (
     event.key === "Backspace" &&
@@ -112,12 +139,7 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
   )
   const isAiInputTarget = useCallback(
     (target: EventTarget | null): boolean => {
-      const input = inputRef.current
-      if (!input) {
-        return false
-      }
-
-      return target === ("getElement" in input ? input.getElement() : input)
+      return isLauncherAiInputEventTarget(target, inputRef.current)
     },
     [inputRef]
   )

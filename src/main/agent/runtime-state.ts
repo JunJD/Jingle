@@ -125,6 +125,10 @@ function getCheckpointMessageId(
     return message.kwargs.id
   }
 
+  if (typeof message.id === "string" && message.id.length > 0) {
+    return message.id
+  }
+
   if (typeof message.tool_call_id === "string" && message.tool_call_id.length > 0) {
     return message.tool_call_id
   }
@@ -249,6 +253,16 @@ export function extractMessagesFromCheckpoint(
       created_at: now + index
     }
   })
+}
+
+export function checkpointIncludesMessageId(
+  threadId: string,
+  tuple: CheckpointTuple | undefined,
+  messageId: string
+): boolean {
+  return extractMessagesFromCheckpoint(threadId, tuple).some(
+    (message) => message.message_id === messageId
+  )
 }
 
 function resolveMessageRole(

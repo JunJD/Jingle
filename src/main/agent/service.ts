@@ -662,7 +662,10 @@ export class AgentService {
 
       if (!abortController.signal.aborted) {
         if (runtimeUsesCheckpointPersistence()) {
-          await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
+          await syncRunFromLatestCheckpoint(threadId, runId, {
+            expectedMessageId: message.id,
+            interrupted
+          })
         } else {
           await finalizeRunWithoutCheckpoint(threadId, runId, { interrupted })
         }

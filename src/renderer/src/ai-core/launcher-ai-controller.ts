@@ -67,6 +67,8 @@ function toErrorMessage(error: unknown): string {
 }
 
 export function createLauncherAiController(input: LauncherAiControllerInput): LauncherAiController {
+  let invokeInFlight = false
+
   const ensureThreadForInvoke = async (): Promise<string> => {
     if (input.threadId) {
       return input.threadId
@@ -142,6 +144,7 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
     },
     runPrimaryAction(messageInput) {
       if (
+        invokeInFlight ||
         input.isBusy ||
         input.hasPendingApproval ||
         !hasComposerMessageInputContent(messageInput)
@@ -149,12 +152,17 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
         return
       }
 
-      void invokeLauncherInput(messageInput).then((didInvoke) => {
-        if (didInvoke) {
-          input.setLocalComposerText("")
-          input.onDidInvoke?.()
-        }
-      })
+      invokeInFlight = true
+      void invokeLauncherInput(messageInput)
+        .then((didInvoke) => {
+          if (didInvoke) {
+            input.setLocalComposerText("")
+            input.onDidInvoke?.()
+          }
+        })
+        .finally(() => {
+          invokeInFlight = false
+        })
     },
     async selectModel(modelId) {
       if (input.threadId) {

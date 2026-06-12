@@ -173,7 +173,8 @@ export const DEFAULT_SHORTCUT_BINDINGS: readonly ShortcutBindingDefinition[] = [
       modifiers: [],
       key: "Enter"
     },
-    allowInTextInput: true
+    allowInTextInput: true,
+    preventDefault: true
   },
   {
     commandId: LAUNCHER_COMMAND_IDS.aiGoHome,

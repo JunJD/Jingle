@@ -82,6 +82,32 @@ function ensureCheckpointChannelVersions(
   return normalizedNewVersions
 }
 
+function normalizeLegacyChannelVersion(version: string | number): string {
+  return typeof version === "number" ? version.toString().padStart(16, "0") : version
+}
+
+function normalizeChannelVersions(versions: ChannelVersions): ChannelVersions {
+  return Object.fromEntries(
+    Object.entries(versions).map(([channel, version]) => [
+      channel,
+      normalizeLegacyChannelVersion(version)
+    ])
+  )
+}
+
+function normalizeCheckpointVersionTypes(checkpoint: Checkpoint): Checkpoint {
+  return {
+    ...checkpoint,
+    channel_versions: normalizeChannelVersions(checkpoint.channel_versions),
+    versions_seen: Object.fromEntries(
+      Object.entries(checkpoint.versions_seen).map(([node, versions]) => [
+        node,
+        normalizeChannelVersions(versions as ChannelVersions)
+      ])
+    )
+  }
+}
+
 export function readStoredCheckpointChannelVersions(
   storedType: string | null,
   storedCheckpoint: string | null
@@ -101,7 +127,7 @@ export function readStoredCheckpointChannelVersions(
   return checkpoint.channel_values ? null : (checkpoint.channel_versions ?? {})
 }
 
-export class PrismaCheckpointSaver extends BaseCheckpointSaver {
+export class PrismaCheckpointSaver extends BaseCheckpointSaver<string | number> {
   private writeQueue: Promise<void> = Promise.resolve()
 
   constructor(serde?: SerializerProtocol) {
@@ -112,18 +138,8 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
     return
   }
 
-  override getNextVersion(current: number | undefined): number
-  getNextVersion(current: string): string
-  getNextVersion(current: string | number | undefined): string | number {
-    if (typeof current === "number") {
-      return current + 1
-    }
-
-    if (typeof current === "string") {
-      return uuid6(-2)
-    }
-
-    return 1
+  override getNextVersion(_current: string | number | undefined): string {
+    return uuid6(-2)
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
@@ -536,17 +552,17 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
     )) as Checkpoint
 
     if (checkpoint.channel_values && typeof checkpoint.channel_values === "object") {
-      return checkpoint
+      return normalizeCheckpointVersionTypes(checkpoint)
     }
 
-    return {
+    return normalizeCheckpointVersionTypes({
       ...checkpoint,
       channel_values: await this.loadChannelValues(
         row.threadId,
         row.checkpointNs,
         checkpoint.channel_versions
       )
-    }
+    })
   }
 
   private async loadChannelValues(

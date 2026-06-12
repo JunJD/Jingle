@@ -5,7 +5,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test, { mock } from "node:test"
 import { emptyCheckpoint } from "@langchain/langgraph-checkpoint"
-import type { SerializerProtocol } from "@langchain/langgraph-checkpoint"
+import type { BaseCheckpointSaver, SerializerProtocol } from "@langchain/langgraph-checkpoint"
+import { HumanMessage, AIMessage } from "@langchain/core/messages"
+import { END, MessagesAnnotation, START, StateGraph } from "@langchain/langgraph"
 
 const repoRoot = process.cwd()
 let openworkHome = ""
@@ -1283,7 +1285,188 @@ test("prisma checkpoint saver advances restored string channel versions", async 
   assert.equal(restoredVersion, checkpoint.id)
   assert.equal(typeof saver.getNextVersion(restoredVersion), "string")
   assert.notEqual(saver.getNextVersion(restoredVersion), restoredVersion)
-  assert.equal(saver.getNextVersion(3), 4)
+  assert.equal(typeof saver.getNextVersion(3), "string")
+  assert.notEqual(saver.getNextVersion(3), "0000000000000003")
+})
+
+test("prisma checkpoint saver normalizes legacy mixed channel versions on restore", async () => {
+  const { createThread } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-checkpoint-mixed-version"
+  await createThread(threadId)
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-mixed-version-0001"
+  checkpoint.channel_values = {
+    __start__: {
+      messages: [{ kwargs: { content: "second", id: "message-second" }, type: "human" }]
+    },
+    messages: [{ kwargs: { content: "first", id: "message-first" }, type: "human" }]
+  }
+  checkpoint.channel_versions = {
+    __start__: "checkpoint-mixed-start",
+    messages: 10
+  }
+  checkpoint.versions_seen = {
+    __start__: {
+      __start__: 10
+    }
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "input",
+      step: 0
+    },
+    {
+      __start__: "checkpoint-mixed-start"
+    }
+  )
+
+  const latest = await saver.getTuple({
+    configurable: {
+      thread_id: threadId
+    }
+  })
+
+  assert.equal(latest?.checkpoint.channel_versions.__start__, "checkpoint-mixed-start")
+  assert.equal(latest?.checkpoint.channel_versions.messages, "0000000000000010")
+  assert.equal(latest?.checkpoint.versions_seen.__start__.__start__, "0000000000000010")
+  assert.equal(
+    latest!.checkpoint.channel_versions.__start__ >
+      latest!.checkpoint.versions_seen.__start__.__start__,
+    true
+  )
+})
+
+test("langgraph resumes legacy mixed channel versions and schedules new start input", async () => {
+  const { createThread } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-langgraph-mixed-version"
+  await createThread(threadId)
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "00000000-0000-0000-0000-000000000001"
+  checkpoint.channel_values = {
+    messages: [new HumanMessage({ content: "first", id: "message-first" })]
+  }
+  checkpoint.channel_versions = {
+    __start__: 10,
+    messages: 10
+  }
+  checkpoint.versions_seen = {
+    __start__: {
+      __start__: 10
+    }
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "loop",
+      step: 0
+    },
+    checkpoint.channel_versions
+  )
+
+  const graph = new StateGraph(MessagesAnnotation)
+    .addNode("echo", async () => ({
+      messages: [new AIMessage({ content: "ok", id: "assistant-second" })]
+    }))
+    .addEdge(START, "echo")
+    .addEdge("echo", END)
+    .compile({ checkpointer: saver as unknown as BaseCheckpointSaver<number> })
+
+  const stream = await graph.stream(
+    {
+      messages: [new HumanMessage({ content: "second", id: "message-second" })]
+    },
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      streamMode: ["values"]
+    }
+  )
+  for await (const _chunk of stream) {
+    // Drain the run so the final checkpoint is written.
+  }
+
+  const latest = await saver.getTuple({
+    configurable: {
+      thread_id: threadId
+    }
+  })
+  const messages = latest?.checkpoint.channel_values.messages as Array<{
+    id?: string
+    kwargs?: { id?: string }
+  }>
+
+  assert.deepEqual(
+    messages.map((message) => message.kwargs?.id ?? message.id),
+    ["message-first", "message-second", "assistant-second"]
+  )
+})
+
+test("syncRunFromLatestCheckpoint rejects success when submitted message is missing", async () => {
+  const { createRun, createThread, getRun } = await loadDbModules()
+  const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-missing-submitted-message"
+  const runId = "run-missing-submitted-message"
+
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-missing-submitted-message"
+  checkpoint.channel_values = {
+    messages: [{ kwargs: { content: "old", id: "message-old" }, type: "human" }]
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "input",
+      step: 0
+    }
+  )
+
+  await assert.rejects(
+    syncRunFromLatestCheckpoint(threadId, runId, {
+      expectedMessageId: "message-new"
+    }),
+    /does not include submitted message/
+  )
+  assert.equal((await getRun(runId))?.status, "running")
 })
 
 test("runtime checkpointer syncs derived thread state after checkpoint writes", async () => {

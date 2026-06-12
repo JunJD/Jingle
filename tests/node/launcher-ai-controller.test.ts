@@ -8,6 +8,7 @@ import type { PermissionModeName } from "../../src/shared/permission-mode"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "../../src/shared/launcher-ai"
 
 function createControllerHarness(input?: {
+  invokeGate?: Promise<void>
   invokeResult?: boolean
   resumeResult?: boolean
   threadId?: string | null
@@ -37,6 +38,7 @@ function createControllerHarness(input?: {
   const agentControl: Pick<AgentControl, "clearError" | "invoke" | "resume"> = {
     clearError: () => {},
     invoke: async (messageInput, options) => {
+      await input?.invokeGate
       invoked.push({ input: messageInput, threadId: options?.threadId })
       return input?.invokeResult ?? true
     },
@@ -152,6 +154,31 @@ test("launcher AI controller clears local composer after selected thread invoke 
   await new Promise((resolve) => setImmediate(resolve))
 
   assert.deepEqual(harness.createdThreads, [])
+  assert.deepEqual(harness.invoked, [{ input: messageInput, threadId: "existing-thread" }])
+  assert.deepEqual(harness.localComposerTexts, [""])
+})
+
+test("launcher AI controller ignores duplicate submits while invoke is in flight", async () => {
+  let releaseInvoke: () => void = () => {
+    throw new Error("Invoke was not started.")
+  }
+  const invokeGate = new Promise<void>((resolve) => {
+    releaseInvoke = resolve
+  })
+  const harness = createControllerHarness({ invokeGate, threadId: "existing-thread" })
+  const messageInput: ComposerMessageInput = {
+    refs: [],
+    text: "继续"
+  }
+
+  harness.controller.runPrimaryAction(messageInput)
+  harness.controller.runPrimaryAction(messageInput)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(harness.invoked, [])
+  releaseInvoke()
+  await new Promise((resolve) => setImmediate(resolve))
+
   assert.deepEqual(harness.invoked, [{ input: messageInput, threadId: "existing-thread" }])
   assert.deepEqual(harness.localComposerTexts, [""])
 })
