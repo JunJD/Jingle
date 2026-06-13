@@ -1,4 +1,5 @@
 import { extractMessageText, resolveImageBlockUrl } from "@shared/message-content"
+import { isExtensionToolCallPresentation } from "@shared/tool-presentation"
 import { stabilizeReferences } from "@/lib/stabilize-references"
 import {
   readAgentToolExecutionTiming,
@@ -253,7 +254,8 @@ export function projectTurnElapsedDivider(input: {
       continue
     }
 
-    startedAtMs = startedAtMs === null ? range.startedAtMs : Math.min(startedAtMs, range.startedAtMs)
+    startedAtMs =
+      startedAtMs === null ? range.startedAtMs : Math.min(startedAtMs, range.startedAtMs)
     completedAtMs =
       completedAtMs === null ? range.completedAtMs : Math.max(completedAtMs, range.completedAtMs)
   }
@@ -375,7 +377,20 @@ export function projectAgentActivitySummary(
   }
 }
 
-function shouldDisplayToolCall(toolCall: { name: string }): boolean {
+function shouldProjectToolActivity(toolCall: Pick<ToolCall, "name" | "presentation">): boolean {
+  if (toolCall.name === "loadExtension" || toolCall.name === "write_todos") {
+    return false
+  }
+
+  if (toolCall.name === "callExtension") {
+    // callExtension is the execution wrapper; renderer activity starts after projection adds extension UI facts.
+    return isExtensionToolCallPresentation(toolCall.presentation)
+  }
+
+  return true
+}
+
+function shouldUseActiveToolCallForStatus(toolCall: { name: string }): boolean {
   return toolCall.name !== "loadExtension" && toolCall.name !== "write_todos"
 }
 
@@ -474,7 +489,7 @@ function buildTurnToolResults(
 
   for (const message of turn.assistants) {
     for (const toolCall of message.tool_calls ?? []) {
-      if (!shouldDisplayToolCall(toolCall)) {
+      if (!shouldProjectToolActivity(toolCall)) {
         continue
       }
 
@@ -739,7 +754,7 @@ export function buildTurnAssistantEntries(turn: MessageTurn): TurnAssistantEntry
     }
 
     for (const [index, toolCall] of (message.tool_calls ?? []).entries()) {
-      if (!shouldDisplayToolCall(toolCall)) {
+      if (!shouldProjectToolActivity(toolCall)) {
         continue
       }
 
@@ -884,7 +899,7 @@ export function projectActiveTurnStatus(input: {
     }
   }
 
-  const latestActiveToolCall = activeToolCalls.filter(shouldDisplayToolCall).at(-1)
+  const latestActiveToolCall = activeToolCalls.filter(shouldUseActiveToolCallForStatus).at(-1)
   if (latestActiveToolCall) {
     if (latestActiveToolCall.status === "arguments_streaming") {
       return {

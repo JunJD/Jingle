@@ -10,7 +10,10 @@ import { createExtensionAiRuntime } from "../../src/main/agent/extension-ai-runt
 import { parseToolInputWithSchema } from "../../src/main/agent/tool-input-schema"
 import { createNativeExtensionToolRegistry } from "../../src/main/extension-tools/native-extension-tools"
 import { resolveNativeExtensionAiCapabilityForExtensionNameFromManifests } from "../../src/extensions/sources"
-import type { ExtensionToolContext, ExtensionToolDefinition } from "../../src/shared/extension-sources"
+import type {
+  ExtensionToolContext,
+  ExtensionToolDefinition
+} from "../../src/shared/extension-sources"
 import type { NativeExtensionResolvedConnection } from "../../src/shared/native-extensions"
 
 const toolContext: ExtensionToolContext = {
@@ -563,6 +566,87 @@ test("Notion createDatabasePage supports migrated property wrappers", async () =
   })
 })
 
+test("Notion createDatabasePage chunks content across create and append requests", async () => {
+  const requests: Array<{ body: unknown; method: string; url: string }> = []
+  const content = Array.from({ length: 191 }, (_, index) => `Paragraph ${index + 1}`).join("\n\n")
+
+  await withMockedFetch(requests, async () => {
+    await executeParsedNotionTool("createDatabasePage", {
+      content,
+      dataSourceId: "data-source-1",
+      title: "Long Page"
+    })
+  })
+
+  assert.deepEqual(
+    requests.map((request) => ({
+      childCount: (request.body as { children?: unknown[] } | undefined)?.children?.length,
+      method: request.method,
+      url: request.url
+    })),
+    [
+      {
+        childCount: 100,
+        method: "POST",
+        url: "https://api.notion.com/v1/pages"
+      },
+      {
+        childCount: 91,
+        method: "PATCH",
+        url: "https://api.notion.com/v1/blocks/page-created/children"
+      }
+    ]
+  )
+})
+
+test("Notion createDatabasePage returns recoverable result for invalid property options", async () => {
+  const requests: Array<{ body: unknown; method: string; url: string }> = []
+
+  await withMockedFetch(requests, async () => {
+    const output = await executeParsedNotionTool("createDatabasePage", {
+      dataSourceId: "data-source-invalid-options",
+      properties: {
+        priority_property: {
+          type: "select",
+          value: "Medium"
+        },
+        status_property: {
+          type: "status",
+          value: "Not started"
+        },
+        tags_property: {
+          type: "multi_select",
+          value: ["学习"]
+        }
+      },
+      title: "Long Page"
+    })
+
+    assert.deepEqual(output, {
+      code: "invalid_property_option",
+      dataSourceId: "data-source-invalid-options",
+      message:
+        'notion://tasks/status_property is an invalid select option "Not started". notion://tasks/tags_property is an invalid select option "学习". notion://tasks/priority_property is an invalid select option "Medium".',
+      nextAction:
+        "Call retrieveDataSource for this dataSourceId and retry with existing select, status, or multi_select option ids.",
+      status: "error"
+    })
+  })
+
+  assert.deepEqual(
+    requests.map((request) => ({
+      method: request.method,
+      url: request.url
+    })),
+    [
+      {
+        method: "POST",
+        url: "https://api.notion.com/v1/pages"
+      }
+    ]
+  )
+})
+
 test("Notion getPage returns markdown content for AI", async () => {
   const requests: Array<{ method: string; url: string }> = []
 
@@ -766,6 +850,34 @@ async function withMockedFetch<T>(
       )
     }
 
+    if (url === "https://api.notion.com/v1/pages") {
+      const body = init?.body ? JSON.parse(String(init.body)) : {}
+      if (
+        body &&
+        typeof body === "object" &&
+        "parent" in body &&
+        (body as { parent?: { data_source_id?: unknown } }).parent?.data_source_id ===
+          "data-source-invalid-options"
+      ) {
+        return jsonResponse(
+          {
+            code: "validation_error",
+            message:
+              'notion://tasks/status_property is an invalid select option "Not started". notion://tasks/tags_property is an invalid select option "学习". notion://tasks/priority_property is an invalid select option "Medium".',
+            object: "error",
+            status: 400
+          },
+          400
+        )
+      }
+
+      return jsonResponse({
+        id: "page-created",
+        object: "page",
+        url: "https://www.notion.so/page-created"
+      })
+    }
+
     if (url.includes("page-empty")) {
       return jsonResponse({
         has_more: false,
@@ -829,14 +941,6 @@ async function withMockedFetch<T>(
             }
           }
         ]
-      })
-    }
-
-    if (url === "https://api.notion.com/v1/pages") {
-      return jsonResponse({
-        id: "page-created",
-        object: "page",
-        url: "https://www.notion.so/page-created"
       })
     }
 

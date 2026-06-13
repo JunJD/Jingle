@@ -164,6 +164,32 @@ test("extension orchestration tool calls do not expose wrapper names in activity
   assert.equal(item?.toolCall.display?.title, "Generate Image")
 })
 
+test("bare callExtension wrapper does not enter chat tool activity projection", () => {
+  const entries = buildTurnAssistantEntries(
+    createTurn([
+      createAssistantMessage({
+        id: "assistant-1",
+        toolCalls: [
+          {
+            args: {
+              args: {
+                prompt: "cat"
+              },
+              extensionName: "image-generation",
+              toolName: "generateImage"
+            },
+            id: "tool-call-call-extension",
+            name: "callExtension",
+            type: "tool_call"
+          }
+        ]
+      })
+    ])
+  )
+
+  assert.equal(entries.length, 0)
+})
+
 test("thinking followed by a tool call projects to one grouped agent activity", () => {
   const entries = buildTurnAssistantEntries(
     createTurn([

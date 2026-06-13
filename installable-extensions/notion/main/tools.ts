@@ -1,8 +1,10 @@
+import { APIErrorCode, isNotionClientError } from "@notionhq/client"
 import { z } from "zod/v4"
 import { runWithExtensionRuntimeSdk } from "@openwork/extension-api"
 import {
-  createAppendMarkdownRequest,
-  createDatabasePageRequest,
+  createAppendBlockChildrenRequests,
+  createAppendMarkdownRequests,
+  createDatabasePageWritePlan,
   createQueryDataSourceRequest,
   createSearchRequest,
   toListToolOutput,
@@ -151,6 +153,14 @@ type RetrieveDataSourceInput = z.infer<typeof retrieveDataSourceInputSchema>
 type RetrievePageInput = z.infer<typeof retrievePageInputSchema>
 type SearchPagesInput = z.infer<typeof searchPagesInputSchema>
 
+type RecoverableNotionToolResult = {
+  code: "invalid_property_option"
+  dataSourceId: string
+  message: string
+  nextAction: string
+  status: "error"
+}
+
 interface NotionClient {
   blocks: {
     children: {
@@ -208,10 +218,15 @@ async function addToPageTool(ctx: ExtensionToolContext, input: unknown): Promise
   const parsedInput = input as AddToPageInput
 
   return runWithNotionClient(ctx, async (notion) => {
-    const response = await notion.blocks.children.append(createAppendMarkdownRequest(parsedInput))
+    let appendedBlockCount = 0
+
+    for (const request of createAppendMarkdownRequests(parsedInput)) {
+      const response = await notion.blocks.children.append(request)
+      appendedBlockCount += response.results?.length ?? 0
+    }
 
     return {
-      appendedBlockCount: response.results?.length ?? 0,
+      appendedBlockCount,
       pageId: parsedInput.pageId
     }
   })
@@ -350,11 +365,62 @@ async function searchPagesTool(ctx: ExtensionToolContext, input: unknown): Promi
 async function createDatabasePageTool(ctx: ExtensionToolContext, input: unknown): Promise<unknown> {
   const parsedInput = input as CreateDatabasePageInput
 
-  return runWithNotionClient(ctx, (notion) => {
-    return notion.pages.create(
-      createDatabasePageRequest(parsedInput as CreateDatabasePageToolInput)
-    )
+  return runWithNotionClient(ctx, async (notion) => {
+    const writePlan = createDatabasePageWritePlan(parsedInput as CreateDatabasePageToolInput)
+    let page: unknown
+
+    try {
+      page = await notion.pages.create(writePlan.createRequest)
+    } catch (error) {
+      const recoverableResult = toRecoverableCreatePageErrorResult(error, parsedInput)
+      if (recoverableResult) {
+        return recoverableResult
+      }
+
+      throw error
+    }
+
+    if (writePlan.appendChildrenBatches.length > 0) {
+      for (const request of createAppendBlockChildrenRequests({
+        childrenBatches: writePlan.appendChildrenBatches,
+        pageId: getCreatedPageId(page)
+      })) {
+        await notion.blocks.children.append(request)
+      }
+    }
+
+    return page
   })
+}
+
+function getCreatedPageId(page: unknown): string {
+  if (page && typeof page === "object" && "id" in page && typeof page.id === "string") {
+    return page.id
+  }
+
+  throw new Error("Notion create page response did not include a page id")
+}
+
+function toRecoverableCreatePageErrorResult(
+  error: unknown,
+  input: CreateDatabasePageInput
+): RecoverableNotionToolResult | null {
+  if (
+    !isNotionClientError(error) ||
+    error.code !== APIErrorCode.ValidationError ||
+    !error.message.includes("invalid select option")
+  ) {
+    return null
+  }
+
+  return {
+    code: "invalid_property_option",
+    dataSourceId: input.dataSourceId,
+    message: error.message,
+    nextAction:
+      "Call retrieveDataSource for this dataSourceId and retry with existing select, status, or multi_select option ids.",
+    status: "error"
+  }
 }
 
 export function createNotionTools(): ExtensionToolDefinition[] {

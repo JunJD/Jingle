@@ -7,7 +7,7 @@ import type {
 } from "@notionhq/client/build/src/api-endpoints"
 import { markdownToBlocks } from "@tryfabric/martian"
 
-import { prependDateDivider } from "./block"
+import { chunkBlockChildren, prependDateDivider } from "./block"
 import { getLocalTimezone } from "./timezone"
 
 type NotionListResponse = {
@@ -73,6 +73,11 @@ export type CreateDatabasePagePropertyInput =
       type: "date" | "email" | "phone_number" | "rich_text" | "select" | "status" | "url"
       value: string
     }
+
+export type CreateDatabasePageWritePlan = {
+  appendChildrenBatches: BlockObjectRequest[][]
+  createRequest: CreatePageParameters
+}
 
 export function createSearchRequest(
   input: SearchPagesInput | SearchDataSourcesInput
@@ -140,41 +145,72 @@ export function toListToolOutput(response: unknown) {
   }
 }
 
-export function createAppendMarkdownRequest(input: {
+export function createAppendMarkdownRequests(input: {
   addDateDivider?: boolean
   content: string
   pageId: string
   prepend?: boolean
-}): AppendBlockChildrenParameters {
-  return {
+}): AppendBlockChildrenParameters[] {
+  const batches = chunkBlockChildren(createMarkdownBlocks(input.content, input.addDateDivider))
+  const orderedBatches = input.prepend ? [...batches].reverse() : batches
+
+  return orderedBatches.map((children) => ({
     block_id: input.pageId,
-    children: createMarkdownBlocks(input.content, input.addDateDivider),
+    children,
     position: {
       type: input.prepend ? "start" : "end"
     }
-  }
+  }))
 }
 
 export function createDatabasePageRequest(
   input: CreateDatabasePageToolInput
 ): CreatePageParameters {
-  const request: CreatePageParameters = {
+  return createDatabasePageWritePlan(input).createRequest
+}
+
+export function createDatabasePageWritePlan(
+  input: CreateDatabasePageToolInput
+): CreateDatabasePageWritePlan {
+  const createRequest: CreatePageParameters = {
     parent: {
       data_source_id: input.dataSourceId
     },
     properties: createDatabasePageProperties(input)
   }
+  const appendChildrenBatches: BlockObjectRequest[][] = []
 
   const content = input.content?.trim() ?? ""
   if (input.contentBlocks?.length || content) {
-    request.children = createContentBlocks({
-      addDateDivider: input.addDateDivider,
-      content,
-      contentBlocks: input.contentBlocks
-    })
+    const batches = chunkBlockChildren(
+      createContentBlocks({
+        addDateDivider: input.addDateDivider,
+        content,
+        contentBlocks: input.contentBlocks
+      })
+    )
+    const [firstBatch, ...remainingBatches] = batches
+
+    if (firstBatch) {
+      createRequest.children = firstBatch
+      appendChildrenBatches.push(...remainingBatches)
+    }
   }
 
-  return request
+  return {
+    appendChildrenBatches,
+    createRequest
+  }
+}
+
+export function createAppendBlockChildrenRequests(input: {
+  childrenBatches: BlockObjectRequest[][]
+  pageId: string
+}): AppendBlockChildrenParameters[] {
+  return input.childrenBatches.map((children) => ({
+    block_id: input.pageId,
+    children
+  }))
 }
 
 export function createMarkdownBlocks(
