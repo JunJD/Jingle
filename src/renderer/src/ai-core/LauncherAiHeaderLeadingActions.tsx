@@ -20,6 +20,7 @@ interface LauncherAiHeaderLeadingActionsProps {
   onNewQuestion: () => void
   onSidebarPreviewChange: (isPreviewOpen: boolean) => void
   onToggleSidebar: () => void
+  showBackButton: boolean
   title: string
   titleAccessory?: ReactNode
 }
@@ -76,17 +77,20 @@ export function LauncherAiHeaderLeadingActions(
     onNewQuestion,
     onSidebarPreviewChange,
     onToggleSidebar,
+    showBackButton,
     title,
     titleAccessory
   } = props
 
   return (
     <div className="flex min-w-0 items-center gap-[var(--ow-gap-xs)]">
-      <LauncherAiHeaderAction
-        icon={<ArrowLeft className="size-[var(--ow-icon-sm)]" />}
-        label={labels.goHome}
-        onClick={onGoHome}
-      />
+      {showBackButton ? (
+        <LauncherAiHeaderAction
+          icon={<ArrowLeft className="size-[var(--ow-icon-sm)]" />}
+          label={labels.goHome}
+          onClick={onGoHome}
+        />
+      ) : null}
       <LauncherAiHeaderAction
         active={isSidebarOpen}
         icon={

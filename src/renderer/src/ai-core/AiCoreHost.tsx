@@ -50,6 +50,9 @@ export interface AiCoreThreadSubmitInput {
 
 export interface AiCoreHostValue {
   clipboard: Pick<LauncherClipboardState, "clearContext" | "context">
+  chrome?: {
+    showBackButton?: boolean
+  }
   commandName: LauncherCommandName
   initialAction: LauncherCommandInitialAction
   navigation: LauncherCommandNavigation

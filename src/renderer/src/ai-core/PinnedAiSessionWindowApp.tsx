@@ -156,6 +156,9 @@ export function PinnedAiSessionWindowApp(): React.JSX.Element {
               clearContext: () => {},
               context: EMPTY_CLIPBOARD_CONTEXT
             },
+            chrome: {
+              showBackButton: false
+            },
             commandName: AI_CHAT_COMMAND_NAME,
             initialAction: "focus",
             navigation: {

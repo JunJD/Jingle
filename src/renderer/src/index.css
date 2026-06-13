@@ -1478,6 +1478,25 @@ body[data-platform="darwin"] .launcher-window-shell {
   );
 }
 
+body[data-window="pinned-ai-session"] .launcher-window-drag-region {
+  -webkit-app-region: drag;
+}
+
+body[data-window="pinned-ai-session"] .launcher-window-drag-region button,
+body[data-window="pinned-ai-session"] .launcher-window-drag-region input,
+body[data-window="pinned-ai-session"] .launcher-window-drag-region select,
+body[data-window="pinned-ai-session"] .launcher-window-drag-region textarea,
+body[data-window="pinned-ai-session"] .launcher-window-drag-region a,
+body[data-window="pinned-ai-session"] .launcher-window-drag-region [role="button"],
+body[data-window="pinned-ai-session"] .launcher-window-drag-region [tabindex]:not([tabindex="-1"]) {
+  -webkit-app-region: no-drag;
+}
+
+html[data-platform="darwin"] body[data-window="pinned-ai-session"] .launcher-chrome-header,
+body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-header {
+  padding-left: calc(var(--window-controls-offset-inline) + 6px);
+}
+
 .launcher-chrome-footer {
   background: linear-gradient(
     180deg,

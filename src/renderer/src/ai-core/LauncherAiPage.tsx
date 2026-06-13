@@ -57,6 +57,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const host = useAiCoreHost()
   const navigation = host.navigation
   const surface = host.surface
+  const showBackButton = host.chrome?.showBackButton ?? true
   const [initialSeedQuery] = useState(host.seedQuery)
   const hasRunInitialActionRef = useRef(false)
   const [navigationError, setNavigationError] = useState<string | null>(null)
@@ -568,6 +569,7 @@ export function LauncherAiPage(): React.JSX.Element {
               goToPreviousChat: copy.launcher.goToPreviousChat,
               newQuestion: copy.launcher.newQuestion
             }}
+            showBackButton={showBackButton}
             title={sidebarTitle}
             titleAccessory={
               <LauncherAiHeaderModelPicker
@@ -759,6 +761,7 @@ export function LauncherAiPage(): React.JSX.Element {
                   mode="composer"
                   onMentionQueryChange={setMentionQuery}
                   onKeyDown={handleComposerKeyDown}
+                  onSubmit={submitCurrentInput}
                   placeholder={copy.launcher.aiInputPlaceholder}
                   sourceMentions={sourceMentions}
                   workspaceFileMentions={workspaceFileMentionState.files}
