@@ -12,15 +12,19 @@ const LAUNCHER_DRAG_REGION_SELECTOR = ".launcher-window-drag-region"
 const LAUNCHER_DRAG_EXCLUDE_SELECTOR =
   'button,input,select,textarea,a,[role="button"],[tabindex]:not([tabindex="-1"]),[contenteditable="true"]'
 const LAUNCHER_DRAG_FRAME_MS = 1000 / 60
+const LAUNCHER_SNAP_GUIDE_DELAY_MS = 500
 
 interface LauncherDragSession {
   cursorOffset: {
     x: number
     y: number
   }
+  displayBounds: Rectangle
   guideBounds: Rectangle
   interval: ReturnType<typeof setInterval>
   lastBounds: Rectangle
+  snapGuideTimer: ReturnType<typeof setTimeout>
+  snapGuideVisible: boolean
   windowSize: {
     height: number
     width: number
@@ -113,10 +117,12 @@ export function attachLauncherWindowDragController(params: {
       x: Math.round(cursor.x - session.cursorOffset.x),
       y: Math.round(cursor.y - session.cursorOffset.y)
     }
-    const snapBounds = resolveLauncherSnapBounds({
-      currentBounds: rawBounds,
-      guideBounds: session.guideBounds
-    })
+    const snapBounds = session.snapGuideVisible
+      ? resolveLauncherSnapBounds({
+          currentBounds: rawBounds,
+          guideBounds: session.guideBounds
+        })
+      : null
     const nextBounds = snapBounds ?? rawBounds
 
     if (!hasBoundsChanged(session.lastBounds, nextBounds)) {
@@ -125,6 +131,19 @@ export function attachLauncherWindowDragController(params: {
 
     setContentBounds(nextBounds)
     session.lastBounds = nextBounds
+  }
+
+  const showSnapGuide = (session: LauncherDragSession): void => {
+    if (launcherWindow.isDestroyed() || dragSession !== session || session.snapGuideVisible) {
+      return
+    }
+
+    session.snapGuideVisible = true
+    showLauncherSnapOverlay({
+      displayBounds: session.displayBounds,
+      guideBounds: session.guideBounds
+    })
+    updateDragPosition()
   }
 
   const stopDrag = (shouldPersist: boolean): void => {
@@ -136,6 +155,7 @@ export function attachLauncherWindowDragController(params: {
 
     updateDragPosition()
     clearInterval(session.interval)
+    clearTimeout(session.snapGuideTimer)
     dragSession = null
     hideLauncherSnapOverlay()
 
@@ -158,9 +178,12 @@ export function attachLauncherWindowDragController(params: {
         x: cursor.x - startBounds.x,
         y: cursor.y - startBounds.y
       },
+      displayBounds: display.bounds,
       guideBounds,
       interval: setInterval(updateDragPosition, LAUNCHER_DRAG_FRAME_MS),
       lastBounds: startBounds,
+      snapGuideTimer: setTimeout(() => showSnapGuide(session), LAUNCHER_SNAP_GUIDE_DELAY_MS),
+      snapGuideVisible: false,
       windowSize: {
         height: startBounds.height,
         width: startBounds.width
@@ -168,10 +191,6 @@ export function attachLauncherWindowDragController(params: {
     }
 
     dragSession = session
-    showLauncherSnapOverlay({
-      displayBounds: display.bounds,
-      guideBounds
-    })
     updateDragPosition()
   }
 

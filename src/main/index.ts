@@ -11,6 +11,7 @@ import { createSettingsWindow, showSettingsWindow } from "./windows/settings-win
 import { registerNativeExtensionAssetProtocol } from "./native-extensions/asset-protocol"
 import { NATIVE_EXTENSION_ASSET_PROTOCOL } from "./native-extensions/assets"
 import { startNativeMinimalIsland, stopNativeMinimalIsland } from "./services/native-minimal-island"
+import { diagnosticsLogger, installProcessDiagnostics } from "./diagnostics"
 import {
   REGISTER_DEV_PROTOCOL_CLIENT_ENV,
   resolveJingleProtocolRegistrationMode
@@ -19,6 +20,8 @@ import type { MainWindowNavigationPayload } from "@shared/main-window"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
 const JINGLE_PROTOCOL = "jingle"
+
+installProcessDiagnostics()
 
 const remoteDebuggingPort = process.env.OPENWORK_REMOTE_DEBUGGING_PORT
 if (remoteDebuggingPort) {
@@ -229,6 +232,13 @@ if (hasSingleInstanceLock) {
   })
 
   app.whenReady().then(async () => {
+    diagnosticsLogger.info("Application ready", {
+      appVersion: app.getVersion(),
+      electronVersion: process.versions.electron,
+      isPackaged: app.isPackaged,
+      platform: process.platform
+    })
+
     // Set app user model id for windows
     if (process.platform === "win32") {
       app.setAppUserModelId(isDev ? process.execPath : "com.jingle.desktop")
@@ -299,6 +309,8 @@ if (hasSingleInstanceLock) {
 }
 
 app.on("before-quit", (event) => {
+  diagnosticsLogger.info("Application before quit")
+
   if (shutdownComplete) {
     return
   }

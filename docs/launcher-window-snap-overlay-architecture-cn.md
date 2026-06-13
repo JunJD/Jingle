@@ -15,6 +15,8 @@
 
 当前实现采用社区常见的 main-process dragging 模式：`webContents.before-mouse-event` 捕获鼠标事件，main 进程读取全局 cursor 坐标，自己调用 `BrowserWindow.setContentBounds()` 移动窗口。
 
+参考线不会在 mouseDown 后立刻出现。拖动本身立即开始，参考线和吸附规则会在持续拖拽 `500ms` 后启用，用来过滤短按误触和很小的位置微调。
+
 ## 支持系统
 
 ### macOS：支持
@@ -91,6 +93,10 @@ Electron 的 `app-region: drag` 是系统拖动入口。它的优点是简单、
 
 Openwork/Jingle 现在采用的是同类模式，但没有直接引入依赖，因为我们还要插入自己的 snap overlay、固定 guide、位置持久化和 Windows shape 优化。
 
+对参考线出现时机，公开系统和社区材料没有指向“三秒长按”。Windows Snap 的官方描述是把窗口拖到屏幕边缘时自动显示 snap layout box；macOS tiling 的官方描述是拖到边缘/高亮区域后松手。SuperCmd 开源实现里可见的是命令式 window management preset，不是 Raycast 这种拖拽参考线 overlay。
+
+所以这里不把正常窗口移动延迟到几秒后才开始，也不让参考线 mouseDown 秒出。当前选择是：窗口立即跟手移动，参考线和吸附规则在持续拖动 `500ms` 后启用。
+
 ## 正确的状态边界
 
 这个功能里有三个角色：
@@ -136,12 +142,14 @@ sequenceDiagram
   Main->>Renderer: elementFromPoint hit test
   Renderer-->>Main: is draggable region
   Main->>Main: record cursorOffset and viewport guideBounds
+  Main->>Window: start moving immediately
+  Main->>Main: wait 500ms before snap feedback
   Main->>Overlay: show fixed guide lines
 
   loop 60fps while dragging
     Main->>Main: read screen.getCursorScreenPoint()
     Main->>Main: calculate raw bounds
-    Main->>Main: resolve snap bounds against guideBounds
+    Main->>Main: resolve snap bounds against guideBounds after guide delay
     Main->>Window: setContentBounds(nextBounds)
   end
 
@@ -157,6 +165,7 @@ sequenceDiagram
 - 横向吸附：当前窗口左边界接近 guide 左边界，或当前窗口右边界接近 guide 右边界。
 - 纵向吸附：当前窗口顶部接近 guide 顶部。
 - 吸附阈值：`8px`。
+- 参考线延迟：`500ms`，延迟结束前只做普通拖动，不显示参考线，也不应用吸附。
 
 这个规则的关键不是阈值，而是应用时机：必须在拖动过程中应用。
 

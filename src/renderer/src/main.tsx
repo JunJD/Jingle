@@ -8,6 +8,7 @@ import { DEFAULT_APP_THEME_SETTINGS, type AppThemeSettings } from "@shared/app-t
 import { PINNED_AI_SESSION_WINDOW_KIND } from "@shared/ai-session-window"
 import { ThreadProvider } from "./lib/thread-context"
 import { applyAppThemeSettings } from "./lib/app-theme"
+import { installRendererDiagnostics } from "./lib/diagnostics"
 import { I18nProvider } from "./lib/i18n"
 import { PinnedAiSessionWindowApp } from "./ai-core/PinnedAiSessionWindowApp"
 import MainWindowApp from "./main-window/MainWindowApp"
@@ -24,6 +25,8 @@ document.documentElement.dataset.window = resolvedWindowKind
 document.body.dataset.window = resolvedWindowKind
 document.documentElement.dataset.platform = platform
 document.body.dataset.platform = platform
+
+installRendererDiagnostics()
 
 async function resolveInitialLocale(): Promise<AppLocale> {
   try {

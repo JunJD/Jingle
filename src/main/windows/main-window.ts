@@ -1,6 +1,7 @@
 import { BrowserWindow, shell } from "electron"
 import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
+import { attachWindowDiagnostics } from "../diagnostics"
 import type { MainWindowNavigationPayload } from "@shared/main-window"
 
 const MAIN_WINDOW_WIDTH = 1380
@@ -35,6 +36,8 @@ export function createMainWindow(): BrowserWindow {
       sandbox: false
     }
   })
+
+  attachWindowDiagnostics(mainWindow, "main")
 
   mainWindow.on("ready-to-show", () => {
     mainWindow.show()
