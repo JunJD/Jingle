@@ -23,12 +23,14 @@ interface LauncherDragSession {
   guideBounds: Rectangle
   interval: ReturnType<typeof setInterval>
   lastBounds: Rectangle
-  snapGuideTimer: ReturnType<typeof setTimeout>
-  snapGuideVisible: boolean
   windowSize: {
     height: number
     width: number
   }
+}
+
+interface PendingLauncherDragActivation {
+  timer: ReturnType<typeof setTimeout>
 }
 
 export interface LauncherWindowDragController {
@@ -43,23 +45,6 @@ function isLeftMouseDown(mouse: MouseInputEvent): boolean {
 
 function isMouseUp(mouse: MouseInputEvent): boolean {
   return mouse.type === "mouseUp"
-}
-
-function getEventScreenPoint(mouse: MouseInputEvent): { x: number; y: number } {
-  const { globalX, globalY } = mouse
-  if (
-    typeof globalX === "number" &&
-    typeof globalY === "number" &&
-    Number.isFinite(globalX) &&
-    Number.isFinite(globalY)
-  ) {
-    return {
-      x: Math.round(globalX),
-      y: Math.round(globalY)
-    }
-  }
-
-  return screen.getCursorScreenPoint()
 }
 
 function hasBoundsChanged(left: Rectangle, right: Rectangle): boolean {
@@ -102,7 +87,18 @@ export function attachLauncherWindowDragController(params: {
   const { getGuideBounds, launcherWindow, persistOrigin, setContentBounds } = params
   let dragSession: LauncherDragSession | null = null
   let disposed = false
+  let pendingDragActivation: PendingLauncherDragActivation | null = null
   let pendingDragStartToken = 0
+
+  const clearPendingDragActivation = (): void => {
+    const activation = pendingDragActivation
+    if (!activation) {
+      return
+    }
+
+    clearTimeout(activation.timer)
+    pendingDragActivation = null
+  }
 
   const updateDragPosition = (): void => {
     const session = dragSession
@@ -117,12 +113,10 @@ export function attachLauncherWindowDragController(params: {
       x: Math.round(cursor.x - session.cursorOffset.x),
       y: Math.round(cursor.y - session.cursorOffset.y)
     }
-    const snapBounds = session.snapGuideVisible
-      ? resolveLauncherSnapBounds({
-          currentBounds: rawBounds,
-          guideBounds: session.guideBounds
-        })
-      : null
+    const snapBounds = resolveLauncherSnapBounds({
+      currentBounds: rawBounds,
+      guideBounds: session.guideBounds
+    })
     const nextBounds = snapBounds ?? rawBounds
 
     if (!hasBoundsChanged(session.lastBounds, nextBounds)) {
@@ -133,29 +127,16 @@ export function attachLauncherWindowDragController(params: {
     session.lastBounds = nextBounds
   }
 
-  const showSnapGuide = (session: LauncherDragSession): void => {
-    if (launcherWindow.isDestroyed() || dragSession !== session || session.snapGuideVisible) {
-      return
-    }
-
-    session.snapGuideVisible = true
-    showLauncherSnapOverlay({
-      displayBounds: session.displayBounds,
-      guideBounds: session.guideBounds
-    })
-    updateDragPosition()
-  }
-
   const stopDrag = (shouldPersist: boolean): void => {
     const session = dragSession
     pendingDragStartToken += 1
+    clearPendingDragActivation()
     if (!session) {
       return
     }
 
     updateDragPosition()
     clearInterval(session.interval)
-    clearTimeout(session.snapGuideTimer)
     dragSession = null
     hideLauncherSnapOverlay()
 
@@ -164,14 +145,14 @@ export function attachLauncherWindowDragController(params: {
     }
   }
 
-  const startDrag = (mouse: MouseInputEvent): void => {
+  const startDrag = (): void => {
     if (disposed || dragSession || launcherWindow.isDestroyed()) {
       return
     }
 
     const startBounds = launcherWindow.getContentBounds()
     const guideBounds = getGuideBounds()
-    const cursor = getEventScreenPoint(mouse)
+    const cursor = screen.getCursorScreenPoint()
     const display = screen.getDisplayMatching(guideBounds)
     const session: LauncherDragSession = {
       cursorOffset: {
@@ -182,8 +163,6 @@ export function attachLauncherWindowDragController(params: {
       guideBounds,
       interval: setInterval(updateDragPosition, LAUNCHER_DRAG_FRAME_MS),
       lastBounds: startBounds,
-      snapGuideTimer: setTimeout(() => showSnapGuide(session), LAUNCHER_SNAP_GUIDE_DELAY_MS),
-      snapGuideVisible: false,
       windowSize: {
         height: startBounds.height,
         width: startBounds.width
@@ -191,7 +170,26 @@ export function attachLauncherWindowDragController(params: {
     }
 
     dragSession = session
+    showLauncherSnapOverlay({
+      displayBounds: session.displayBounds,
+      guideBounds: session.guideBounds
+    })
     updateDragPosition()
+  }
+
+  const scheduleDragActivation = (token: number): void => {
+    clearPendingDragActivation()
+    const activation: PendingLauncherDragActivation = {
+      timer: setTimeout(() => {
+        if (pendingDragStartToken !== token || pendingDragActivation !== activation) {
+          return
+        }
+
+        pendingDragActivation = null
+        startDrag()
+      }, LAUNCHER_SNAP_GUIDE_DELAY_MS)
+    }
+    pendingDragActivation = activation
   }
 
   const handleBeforeMouseEvent = (event: Electron.Event, mouse: MouseInputEvent): void => {
@@ -211,6 +209,17 @@ export function attachLauncherWindowDragController(params: {
       return
     }
 
+    if (pendingDragActivation) {
+      event.preventDefault()
+
+      if (isMouseUp(mouse)) {
+        pendingDragStartToken += 1
+        clearPendingDragActivation()
+      }
+
+      return
+    }
+
     if (isMouseUp(mouse)) {
       pendingDragStartToken += 1
       return
@@ -225,7 +234,7 @@ export function attachLauncherWindowDragController(params: {
     void isMouseInLauncherDragRegion(launcherWindow.webContents, mouse)
       .then((isDraggable) => {
         if (isDraggable && pendingDragStartToken === dragStartToken) {
-          startDrag(mouse)
+          scheduleDragActivation(dragStartToken)
         }
       })
       .catch((error: unknown) => {
