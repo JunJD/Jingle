@@ -35,6 +35,9 @@ import {
 import type { LauncherHistoryItem } from "../../src/shared/launcher-history"
 import type { LauncherSearchResult } from "../../src/shared/launcher-search"
 import type { LocalStartItem } from "../../src/shared/local-start"
+import type { LauncherShellItem } from "../../src/renderer/src/launcher-shell/types"
+
+const originalConsoleError = console.error
 
 setNativeLauncherCatalogProjection(
   [...nativeExtensionManifests, figmaFilesManifest, githubManifest, notionManifest].map(
@@ -276,27 +279,101 @@ test("launcher result trailing labels use localized presentation categories", ()
   assert.ok(searchItem)
 
   const markup = renderToStaticMarkup(
-    createElement(
-      I18nProvider,
-      {
+    // eslint-disable-next-line react/no-children-prop
+    createElement(I18nProvider, {
+      children: createElement(LauncherResultList, {
+        height: 80,
+        onExecute: () => undefined,
+        sections: [
+          {
+            items: [searchItem],
+            kind: "search-results"
+          }
+        ],
+        selectedIndex: 0
+      }),
+      initialLocale: "zh-CN"
+    })
+  )
+
+  assert.match(markup, /应用/)
+  assert.doesNotMatch(markup, /Application/)
+})
+
+test("launcher result list keeps duplicate command refs as distinct React rows", () => {
+  const itemBase: Omit<LauncherShellItem, "id" | "kind" | "subtitle" | "title"> = {
+    action: {
+      executor: "internal",
+      target: null,
+      type: "none"
+    },
+    commandRef: {
+      builtInId: "ai",
+      commandName: "chat",
+      kind: "built-in-command"
+    },
+    presentation: {
+      categoryLabel: "Agent",
+      icon: {
+        name: "sparkles",
+        type: "glyph"
+      },
+      listActionLabel: "Open",
+      primaryActionLabel: "Open",
+      tone: "accent"
+    }
+  }
+  const errors: unknown[][] = []
+  console.error = (...args: unknown[]) => {
+    errors.push(args)
+  }
+
+  try {
+    renderToStaticMarkup(
+      // eslint-disable-next-line react/no-children-prop
+      createElement(I18nProvider, {
         children: createElement(LauncherResultList, {
-          height: 80,
+          height: 120,
           onExecute: () => undefined,
           sections: [
             {
-              items: [searchItem],
+              items: [
+                {
+                  ...itemBase,
+                  id: "feature-ai-intent",
+                  kind: "ai",
+                  subtitle: "Ask AI",
+                  title: "Ask"
+                },
+                {
+                  ...itemBase,
+                  id: "command:ai:chat",
+                  kind: "plugin",
+                  subtitle: "AI",
+                  title: "AI Chat"
+                }
+              ],
               kind: "search-results"
             }
           ],
           selectedIndex: 0
         }),
-        initialLocale: "zh-CN"
-      }
+        initialLocale: "en-US"
+      })
     )
-  )
+  } finally {
+    console.error = originalConsoleError
+  }
 
-  assert.match(markup, /应用/)
-  assert.doesNotMatch(markup, /Application/)
+  assert.equal(
+    errors.some((args) =>
+      args.some(
+        (arg) =>
+          typeof arg === "string" && arg.includes("Encountered two children with the same key")
+      )
+    ),
+    false
+  )
 })
 
 test("mergeLauncherSearchResults orders by source priority, score, and de-duplicates per source key", () => {

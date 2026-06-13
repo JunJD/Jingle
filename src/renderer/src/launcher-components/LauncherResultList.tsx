@@ -86,6 +86,10 @@ function getLauncherResultScrollKey(item: LauncherShellItem | undefined): string
   return item.id
 }
 
+function getLauncherResultRowKey(item: LauncherShellItem): string {
+  return `${getLauncherResultScrollKey(item) ?? item.id}:${item.id}`
+}
+
 export function LauncherResultList(props: {
   height: number
   onExecute: (index: number) => void
@@ -126,7 +130,7 @@ export function LauncherResultList(props: {
       ...section.items.map((item, itemIndex) => ({
         index: precedingItemsCount + itemIndex,
         item,
-        key: getLauncherResultScrollKey(item) ?? item.id,
+        key: getLauncherResultRowKey(item),
         kind: "item" as const
       }))
     ]
