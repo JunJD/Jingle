@@ -1,6 +1,7 @@
 import { BrowserWindow, type Rectangle, screen } from "electron"
 import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
+import { attachWindowDiagnostics } from "../diagnostics"
 import {
   FALLBACK_SHELL_CONFIG,
   getLauncherIdleHeight,
@@ -327,6 +328,8 @@ export function createLauncherWindow(): BrowserWindow {
       sandbox: false
     }
   })
+  attachWindowDiagnostics(launcherWindow, "launcher")
+
   const launcherDragController = attachLauncherWindowDragController({
     getGuideBounds: () => getLauncherViewportGuideBounds(launcherWindow),
     launcherWindow,

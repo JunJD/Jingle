@@ -12,6 +12,7 @@ import type { AiSessionWindowsRuntime } from "./ai-session-windows/service"
 import { installApplicationMenu } from "./app-menu"
 import { registerAppInfoIpcHandlers, registerAppInfoModule } from "./app-info/module"
 import { registerArtifactsIpcHandlers, registerArtifactsModule } from "./artifacts/module"
+import { registerDiagnosticsIpcHandlers } from "./diagnostics"
 import {
   registerExternalLinksIpcHandlers,
   registerExternalLinksModule
@@ -112,6 +113,7 @@ export class MainCompositionRoot {
     registerAiSessionWindowsIpcHandlers(this.dependencyContainer, ipcMain)
     registerAppInfoIpcHandlers(this.dependencyContainer, ipcMain)
     registerArtifactsIpcHandlers(this.dependencyContainer, ipcMain)
+    registerDiagnosticsIpcHandlers(ipcMain)
     registerExternalLinksIpcHandlers(this.dependencyContainer, ipcMain)
     registerExtensionQuicklinkIpcHandlers(this.dependencyContainer, ipcMain)
     registerLauncherIpcHandlers(this.dependencyContainer, ipcMain)

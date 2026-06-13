@@ -1,6 +1,7 @@
 import { agentApi } from "./agent"
 import { aiSessionWindowsApi } from "./aiSessionWindows"
 import { artifactsApi } from "./artifacts"
+import { diagnosticsApi } from "./diagnostics"
 import { extensionQuicklinksApi } from "./extensionQuicklinks"
 import { extensionRuntimeApi } from "./extensionRuntime"
 import { launcherApi } from "./launcher"
@@ -22,6 +23,7 @@ export const api = {
   aiSessionWindows: aiSessionWindowsApi,
   threads: threadsApi,
   artifacts: artifactsApi,
+  diagnostics: diagnosticsApi,
   extensionQuicklinks: extensionQuicklinksApi,
   extensionRuntime: extensionRuntimeApi,
   memory: memoryApi,
