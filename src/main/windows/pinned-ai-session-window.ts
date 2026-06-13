@@ -2,6 +2,7 @@ import { BrowserWindow, shell } from "electron"
 import { join } from "path"
 import { PINNED_AI_SESSION_WINDOW_KIND } from "@shared/ai-session-window"
 import { loadRendererWindow } from "./load-renderer-window"
+import { attachWindowDiagnostics } from "../diagnostics"
 
 const PINNED_AI_SESSION_WINDOW_WIDTH = 760
 const PINNED_AI_SESSION_WINDOW_HEIGHT = 640
@@ -43,6 +44,8 @@ export function createPinnedAiSessionWindow(
       sandbox: false
     }
   })
+
+  attachWindowDiagnostics(window, PINNED_AI_SESSION_WINDOW_KIND)
 
   window.on("ready-to-show", () => {
     window.show()

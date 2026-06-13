@@ -1,6 +1,7 @@
 import { BrowserWindow, shell } from "electron"
 import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
+import { attachWindowDiagnostics } from "../diagnostics"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
 const SETTINGS_WINDOW_WIDTH = 1220
@@ -35,6 +36,8 @@ export function createSettingsWindow(): BrowserWindow {
       sandbox: false
     }
   })
+
+  attachWindowDiagnostics(settingsWindow, "settings")
 
   settingsWindow.on("ready-to-show", () => {
     settingsWindow.show()

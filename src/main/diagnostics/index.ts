@@ -1,0 +1,5 @@
+export { diagnosticsLogger } from "./instance"
+export { attachWindowDiagnostics, installProcessDiagnostics } from "./electron-events"
+export { registerDiagnosticsIpcHandlers } from "./controller"
+export { normalizeRendererErrorReport } from "./renderer-report"
+export { DiagnosticsLogger } from "./logger"
