@@ -5,6 +5,7 @@ import {
   collectImports,
   fileExists,
   formatViolations,
+  installableExtensionsRoot,
   isExact,
   isUnder,
   listNativeExtensionDirectories,
@@ -30,7 +31,9 @@ function isRendererImportOwner(repoFilePath) {
     /^src\/extensions\/[^/]+\/manifest\.ts$/.test(repoFilePath) ||
     /^src\/extensions\/[^/]+\/runtime-metadata\.ts$/.test(repoFilePath) ||
     /^extensions\/[^/]+\/manifest\.ts$/.test(repoFilePath) ||
-    /^extensions\/[^/]+\/runtime-metadata\.ts$/.test(repoFilePath)
+    /^extensions\/[^/]+\/runtime-metadata\.ts$/.test(repoFilePath) ||
+    /^installable-extensions\/[^/]+\/manifest\.ts$/.test(repoFilePath) ||
+    /^installable-extensions\/[^/]+\/runtime-metadata\.ts$/.test(repoFilePath)
   )
 }
 
@@ -84,7 +87,8 @@ process.exit(1)
 function listRendererReachableRootFiles() {
   return [
     ...listSourceFiles(srcRoot),
-    ...listSourceFiles(path.join(repoRoot, "extensions"))
+    ...listSourceFiles(path.join(repoRoot, "extensions")),
+    ...listSourceFiles(installableExtensionsRoot)
   ].filter((absoluteFilePath) => isRendererImportOwner(toRepoPath(absoluteFilePath)))
 }
 
@@ -126,12 +130,20 @@ function walkRendererImportGraph(rootFilePath, currentFilePath, importStack, vis
       continue
     }
 
-    if (!isUnder(toRepoPath(resolvedPath), "src/")) {
+    if (!isRendererReachableImportPath(toRepoPath(resolvedPath))) {
       continue
     }
 
     walkRendererImportGraph(rootFilePath, resolvedPath, nextStack, visited)
   }
+}
+
+function isRendererReachableImportPath(repoFilePath) {
+  return (
+    isUnder(repoFilePath, "src/") ||
+    isUnder(repoFilePath, "extensions/") ||
+    isUnder(repoFilePath, "installable-extensions/")
+  )
 }
 
 function listRuntimeEntryCommandFiles(runtimeEntryPath) {
@@ -194,7 +206,11 @@ function collectImportedFilesByBinding(fromFilePath, sourceFile) {
 
     const resolvedPath = path.resolve(resolved)
     const repoResolvedPath = toRepoPath(resolvedPath)
-    if (!isUnder(repoResolvedPath, "src/extensions/") && !isUnder(repoResolvedPath, "extensions/")) {
+    if (
+      !isUnder(repoResolvedPath, "src/extensions/") &&
+      !isUnder(repoResolvedPath, "extensions/") &&
+      !isUnder(repoResolvedPath, "installable-extensions/")
+    ) {
       continue
     }
 

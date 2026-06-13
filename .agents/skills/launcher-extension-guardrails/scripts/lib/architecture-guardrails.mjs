@@ -62,7 +62,9 @@ export function collectImports(absoluteFilePath) {
     ) {
       imports.push({
         specifier: node.moduleSpecifier.text,
-        line: sourceFile.getLineAndCharacterOfPosition(node.moduleSpecifier.getStart(sourceFile)).line + 1
+        line:
+          sourceFile.getLineAndCharacterOfPosition(node.moduleSpecifier.getStart(sourceFile)).line +
+          1
       })
     }
 
@@ -93,7 +95,10 @@ export function resolveImportPath(fromFile, specifier) {
   }
 
   if (specifier.startsWith("@ai-core/")) {
-    return resolveResolvedBase(path.join(repoRoot, "src/renderer/src/ai-core"), specifier.slice("@ai-core/".length))
+    return resolveResolvedBase(
+      path.join(repoRoot, "src/renderer/src/ai-core"),
+      specifier.slice("@ai-core/".length)
+    )
   }
 
   if (specifier.startsWith("@extension-host/")) {
@@ -104,7 +109,10 @@ export function resolveImportPath(fromFile, specifier) {
   }
 
   if (specifier.startsWith("@extensions/")) {
-    return resolveResolvedBase(path.join(repoRoot, "src/extensions"), specifier.slice("@extensions/".length))
+    return resolveResolvedBase(
+      path.join(repoRoot, "src/extensions"),
+      specifier.slice("@extensions/".length)
+    )
   }
 
   if (specifier.startsWith("@launcher-components/")) {
@@ -144,15 +152,24 @@ export function resolveImportPath(fromFile, specifier) {
   }
 
   if (specifier.startsWith("@plugins/")) {
-    return resolveResolvedBase(path.join(repoRoot, "src/plugins"), specifier.slice("@plugins/".length))
+    return resolveResolvedBase(
+      path.join(repoRoot, "src/plugins"),
+      specifier.slice("@plugins/".length)
+    )
   }
 
   if (specifier.startsWith("@renderer/")) {
-    return resolveResolvedBase(path.join(repoRoot, "src/renderer/src"), specifier.slice("@renderer/".length))
+    return resolveResolvedBase(
+      path.join(repoRoot, "src/renderer/src"),
+      specifier.slice("@renderer/".length)
+    )
   }
 
   if (specifier.startsWith("@shared/")) {
-    return resolveResolvedBase(path.join(repoRoot, "src/shared"), specifier.slice("@shared/".length))
+    return resolveResolvedBase(
+      path.join(repoRoot, "src/shared"),
+      specifier.slice("@shared/".length)
+    )
   }
 
   if (specifier.startsWith(".")) {
@@ -188,6 +205,9 @@ export function listNativeExtensionDirectories() {
       ...fs
         .readdirSync(root.absolutePath, { withFileTypes: true })
         .filter((entry) => entry.isDirectory())
+        .filter((entry) =>
+          isNativeExtensionPackageDirectory(path.join(root.absolutePath, entry.name))
+        )
         .map((entry) => ({
           absolutePath: path.join(root.absolutePath, entry.name),
           name: entry.name,
@@ -196,8 +216,34 @@ export function listNativeExtensionDirectories() {
     )
   }
 
-  return extensionDirectories
-    .sort((left, right) => left.name.localeCompare(right.name))
+  return extensionDirectories.sort((left, right) => left.name.localeCompare(right.name))
+}
+
+function isNativeExtensionPackageDirectory(absolutePath) {
+  const entries = fs.readdirSync(absolutePath, { withFileTypes: true })
+
+  return entries.some((entry) => {
+    if (entry.name === "node_modules" || entry.name.startsWith(".")) {
+      return false
+    }
+
+    if (entry.isDirectory()) {
+      return entry.name === "src" || entry.name === "main"
+    }
+
+    if (!entry.isFile()) {
+      return false
+    }
+
+    return (
+      entry.name === "manifest.ts" ||
+      entry.name === "main.ts" ||
+      entry.name === "runtime.ts" ||
+      entry.name === "runtime-metadata.ts" ||
+      entry.name === "package.json" ||
+      sourceExtensions.includes(path.extname(entry.name))
+    )
+  })
 }
 
 export function isInstallableExtensionDirectory(extensionDirectory) {
@@ -211,11 +257,15 @@ export function isInstallableExtensionDirectory(extensionDirectory) {
 }
 
 export function loadNativeExtensionManifest(extensionDirectory) {
-  const manifestModule = loadTypeScriptModule(path.join(extensionDirectory.absolutePath, "manifest.ts"))
+  const manifestModule = loadTypeScriptModule(
+    path.join(extensionDirectory.absolutePath, "manifest.ts")
+  )
   const manifest = Object.values(manifestModule).find(isNativeExtensionManifest)
 
   if (!manifest) {
-    throw new Error(`${extensionDirectory.repoPath}/manifest.ts does not export a native extension manifest`)
+    throw new Error(
+      `${extensionDirectory.repoPath}/manifest.ts does not export a native extension manifest`
+    )
   }
 
   return manifest
@@ -236,7 +286,9 @@ export function resolveExtensionRelativeFile(extensionDirectory, relativeModuleP
 
 export function resolveExtensionCommandFile(extensionDirectory, commandName) {
   return sourceExtensions
-    .map((extension) => path.join(extensionDirectory.absolutePath, "src", `${commandName}${extension}`))
+    .map((extension) =>
+      path.join(extensionDirectory.absolutePath, "src", `${commandName}${extension}`)
+    )
     .find((candidate) => fileExists(candidate))
 }
 
@@ -347,7 +399,9 @@ function listTopLevelMapRegistryExtensionNames(absolutePath, exportName) {
 
   return entriesArgument.elements.map((entry) => {
     if (!ts.isArrayLiteralExpression(entry) || entry.elements.length === 0) {
-      throw new Error(`${toRepoPath(absolutePath)} must declare each ${exportName} entry as a tuple`)
+      throw new Error(
+        `${toRepoPath(absolutePath)} must declare each ${exportName} entry as a tuple`
+      )
     }
 
     return resolveRegistryKeyExtensionId(entry.elements[0], importedExtensionIds, absolutePath)
@@ -477,7 +531,9 @@ function collectImportedExtensionIds(sourceFile) {
 }
 
 function inferImportedExtensionId(specifier) {
-  const match = specifier.match(/^(?:\.\/|\.\.\/\.\.\/extensions\/)([^/]+)\/(?:manifest|renderer|main)$/)
+  const match = specifier.match(
+    /^(?:\.\/|\.\.\/\.\.\/extensions\/)([^/]+)\/(?:manifest|renderer|main)$/
+  )
   return match?.[1] ?? null
 }
 
@@ -502,7 +558,11 @@ function resolveRegistryKeyExtensionId(expression, importedExtensionIds, absolut
     ts.isIdentifier(expression.expression) &&
     expression.name.text === "name"
   ) {
-    return resolveImportedExtensionId(importedExtensionIds, expression.expression.text, absolutePath)
+    return resolveImportedExtensionId(
+      importedExtensionIds,
+      expression.expression.text,
+      absolutePath
+    )
   }
 
   if (ts.isIdentifier(expression)) {

@@ -1,4 +1,6 @@
 import {
+  bundledExtensionsRoot,
+  installableExtensionsRoot,
   listSourceFiles,
   readSourceText,
   srcRoot,
@@ -7,6 +9,8 @@ import {
 
 const watchPrefixes = [
   "src/extensions/",
+  "extensions/",
+  "installable-extensions/",
   "src/shared/native-extensions.ts",
   "src/renderer/src/extension-host/",
   "src/renderer/src/launcher-shell/pages/",
@@ -17,7 +21,11 @@ const watchTerms = ["internal-plugin", "pluginId", "LauncherPlugin", "builtLaunc
 
 const findings = []
 
-for (const absoluteFilePath of listSourceFiles(srcRoot)) {
+for (const absoluteFilePath of [
+  ...listSourceFiles(srcRoot),
+  ...listSourceFiles(bundledExtensionsRoot),
+  ...listSourceFiles(installableExtensionsRoot)
+]) {
   const repoFilePath = toRepoPath(absoluteFilePath)
   if (!watchPrefixes.some((prefix) => repoFilePath.startsWith(prefix))) {
     continue

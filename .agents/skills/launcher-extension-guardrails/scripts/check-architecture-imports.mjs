@@ -6,6 +6,7 @@ import {
   isUnder,
   listSourceFiles,
   resolveImportPath,
+  installableExtensionsRoot,
   srcRoot,
   toRepoPath
 } from "./lib/architecture-guardrails.mjs"
@@ -20,13 +21,16 @@ const rules = [
       isUnder(target, "src/preload/") ||
       isUnder(target, "src/extensions/") ||
       isUnder(target, "extensions/") ||
+      isUnder(target, "installable-extensions/") ||
       isUnder(target, "src/plugins/"),
     message: "shared 层不能依赖 renderer/main/preload/extensions/plugins"
   },
   {
     name: "extension-authoring-boundary",
     appliesTo: (file) =>
-      (isUnder(file, "src/extensions/") || isUnder(file, "extensions/")) &&
+      (isUnder(file, "src/extensions/") ||
+        isUnder(file, "extensions/") ||
+        isUnder(file, "installable-extensions/")) &&
       !file.includes("/main/"),
     isViolation: (_, target) =>
       isUnder(target, "src/renderer/") ||
@@ -43,8 +47,10 @@ const rules = [
     isViolation: (_, target) =>
       isUnder(target, "src/") ||
       isUnder(target, "extensions/") ||
+      isUnder(target, "installable-extensions/") ||
       isUnder(target, "packages/extension-migration/"),
-    message: "public extension packages 必须拥有自己的实现/contract，不能反向 import 宿主 src、extension 包或 migration 包"
+    message:
+      "public extension packages 必须拥有自己的实现/contract，不能反向 import 宿主 src、extension 包或 migration 包"
   },
   {
     name: "renderer-extension-catalog-projection-boundary",
@@ -60,6 +66,7 @@ const violations = []
 for (const absoluteFilePath of [
   ...listSourceFiles(srcRoot),
   ...listSourceFiles(path.join(process.cwd(), "extensions")),
+  ...listSourceFiles(installableExtensionsRoot),
   ...listSourceFiles(path.join(process.cwd(), "packages", "extension-api", "src")),
   ...listSourceFiles(path.join(process.cwd(), "packages", "extension-utils", "src"))
 ]) {

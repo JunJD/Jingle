@@ -2,6 +2,7 @@ import path from "node:path"
 import {
   collectImports,
   formatViolations,
+  installableExtensionsRoot,
   isUnder,
   listSourceFiles,
   repoRoot,
@@ -21,7 +22,8 @@ const violations = []
 
 for (const absoluteFilePath of [
   ...listSourceFiles(path.join(srcRoot, "extensions")),
-  ...listSourceFiles(path.join(repoRoot, "extensions"))
+  ...listSourceFiles(path.join(repoRoot, "extensions")),
+  ...listSourceFiles(installableExtensionsRoot)
 ]) {
   const repoFilePath = toRepoPath(absoluteFilePath)
   const imports = collectImports(absoluteFilePath)
@@ -58,7 +60,11 @@ console.error(formatViolations("no legacy plugin coupling check", violations))
 process.exit(1)
 
 function shouldCheck(file, target) {
-  if (!isUnder(file, "src/extensions/") && !isUnder(file, "extensions/")) {
+  if (
+    !isUnder(file, "src/extensions/") &&
+    !isUnder(file, "extensions/") &&
+    !isUnder(file, "installable-extensions/")
+  ) {
     return false
   }
 
