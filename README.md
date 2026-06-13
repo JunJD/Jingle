@@ -9,6 +9,8 @@
 
 A harness-first desktop agent for non-programmers, built on [deepagentsjs](https://github.com/langchain-ai/deepagentsjs), with controlled execution, approvals, and persistent run visibility.
 
+[中文 README](README-cn.md)
+
 > [!CAUTION]
 > openwork gives AI agents direct access to your filesystem and the ability to execute shell commands. Always review tool calls before approving them, and only run in workspaces you trust.
 
@@ -25,6 +27,9 @@ openwork
 
 Requires Node.js 18+.
 
+After the app opens, configure a model provider from Settings -> Models before
+starting an agent run.
+
 ### From Source
 
 ```bash
@@ -34,54 +39,85 @@ pnpm install
 pnpm run dev
 ```
 
-Or configure them in-app via the settings panel.
+Source development uses pnpm. The dev script builds the bundled installable
+extensions before starting Electron.
 
-## Electron Debugging
+## Documentation
 
-For CDP-based debugging against the real Electron window, see [docs/openwork-electron-debugging.md](docs/openwork-electron-debugging.md).
+- [Docs index](docs/README.md)
+- [中文文档索引](docs/README-cn.md)
+- [User help center](docs/help/README.md)
+- [Developer guide](docs/dev/README.md)
+- [Production readiness governance](docs/production-readiness/README.md)
+- [Electron debugging](docs/openwork-electron-debugging.md)
 
 ## Desktop Release
 
-The desktop packaging workflow runs on every branch push and can also be started manually from GitHub Actions. It only packages macOS and Windows builds.
+Desktop packaging is handled by
+[Desktop Release](.github/workflows/desktop-release.yml). It runs on tag pushes
+and can also be started manually from GitHub Actions. The current packaging
+matrix builds macOS, Windows, and Linux artifacts.
 
-Pushing a tag publishes a GitHub Release with the generated desktop assets:
+Pushing a release tag publishes a GitHub Release with the generated desktop
+assets:
 
 ```bash
 git tag v1.2.3
 git push origin v1.2.3
 ```
 
-Tags may use either `v1.2.3` or `app-v1.2.3`. The workflow strips the prefix and uses `1.2.3` as the app version. Prerelease tags such as `v1.2.3-beta.1` are marked as prereleases.
+Release tags should use either `v1.2.3` or `app-v1.2.3`. The desktop workflow
+strips the `v` / `app-v` prefix and uses `1.2.3` as the app version.
+Prerelease tags such as `v1.2.3-beta.1` are marked as prereleases.
+
+The separate [Release](.github/workflows/release.yml) workflow publishes the npm
+package on `v*` tags. A `v*` tag currently triggers both npm publishing and
+desktop packaging; an `app-v*` tag is for desktop packaging without npm publish.
 
 To package locally:
 
 ```bash
 pnpm run dist:mac
+pnpm run dist:mac:dir
 pnpm run dist:win
+pnpm run dist:linux
 ```
 
 macOS dev preview builds may be unsigned or not notarized. See [docs/macos-dev-preview-install.md](docs/macos-dev-preview-install.md) for the tester install guide.
 
-## BDD Testing
+## Validation
 
-The repository now includes a minimal Electron BDD harness built on Cucumber and Playwright.
+Core checks:
 
 ```bash
-npm run test:bdd:smoke
-npm run test:bdd
+pnpm run doctor
+pnpm run check:guardrails
+pnpm run check:extensions
+pnpm run typecheck
+pnpm run test:node
 ```
 
-The BDD runner builds the app first, launches the packaged Electron entrypoint, creates an isolated `OPENWORK_HOME` temp directory for each scenario, and applies Prisma migrations before the app starts.
+The repository also includes an Electron BDD harness built on Cucumber and
+Playwright:
 
-## Supported Models
+```bash
+pnpm run test:bdd:smoke
+pnpm run test:bdd
+```
 
-| Provider  | Models                                                                                                                    |
-| --------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Anthropic | Claude Opus 4.5, Claude Sonnet 4.5, Claude Haiku 4.5, Claude Opus 4.1, Claude Sonnet 4                                    |
-| OpenAI    | GPT-5.2, GPT-5.1, o3, o3 Mini, o4 Mini, o1, GPT-4.1, GPT-4.1 Mini, GPT-4.1 Nano, GPT-4o, GPT-4o Mini                      |
-| DashScope | GLM-4.6, Qwen 3.5 Plus, Qwen Max, Qwen Plus                                                                               |
-| DeepSeek  | DeepSeek V4 Pro, DeepSeek V4 Flash, DeepSeek Chat, DeepSeek Reasoner                                                      |
-| Google    | Gemini 3 Pro Preview, Gemini 3 Flash Preview, Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 2.5 Flash Lite                     |
+The BDD runner builds the app first, launches the packaged Electron entrypoint,
+creates an isolated `OPENWORK_HOME` temp directory for each scenario, and applies
+Prisma migrations before the app starts.
+
+See [docs/dev/validation-matrix.md](docs/dev/validation-matrix.md) for the
+full quality-gate map and [docs/dev/release-runbook.md](docs/dev/release-runbook.md)
+for packaging and release verification.
+
+## Model Providers
+
+Openwork/Jingle supports configured cloud providers, local model registries, and
+custom OpenAI-compatible endpoints through Settings -> Models. Use the in-app
+model list as the current source of truth for available models.
 
 ## Contributing
 

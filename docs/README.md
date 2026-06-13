@@ -1,84 +1,153 @@
-# Openwork 文档索引
+# Openwork Documentation Index
 
-这个目录按用途索引当前仍有维护价值的文档。已经被现有架构取代的旧路线图不保留在索引里，避免后续实现继续跟着旧概念走。
+[中文文档索引](./README-cn.md)
 
-## 新开发者阅读顺序
+This index organizes the repository docs by their production-readiness use. The category explains how to read a document today; it does not mean every older document has already been rewritten.
 
-首次接手 Openwork extension/runtime 时，按下面顺序读，不需要依赖历史 issue 或会议上下文：
+Status legend:
 
-1. [engineering-boundaries.md](./engineering-boundaries.md) 和 [runtime-invariants.md](./runtime-invariants.md)：先建立模块边界、依赖方向和运行时不变量。
-2. [extension-package-contract.md](./extension-package-contract.md)：理解 built-in / installable extension package 应该暴露哪些入口，以及宿主如何检查边界。
-3. [extension-runtime-migration-plan.md](./extension-runtime-migration-plan.md)：理解 launcher command runtime 的当前主路径、代码入口和验收方式。
-4. [extension-connector-runtime-design.md](./extension-connector-runtime-design.md)：理解 command、AI capability、connection、`@extension` 和 `loadExtension` 如何共用同一套连接语义。
-5. [extension-migration-transform-architecture-cn.md](./extension-migration-transform-architecture-cn.md)：理解 Raycast extension 迁移器的 transform pipeline、生成物和验收矩阵。
-6. [raycast-notion-dependency-migration-preview.md](./raycast-notion-dependency-migration-preview.md)：只在维护 Notion 或迁移器时阅读，重点看正式 `installable-extensions/notion` 状态和历史 preview 证据的边界。
+- `current`: usable as a current implementation or workflow entrypoint, but still verify related code paths before editing.
+- `refresh`: important topic, but the document needs to be rewritten or compressed against current code before it becomes a production entrypoint.
+- `archive`: historical research, roadmap, proposal, or background; do not treat it as a current implementation contract.
+- `content`: launch, narrative, article, or marketing material; not user help or developer contract.
 
-读完前五篇，应该能回答三件事：一个 extension package 的事实来源在哪里，command 和 AI tool 为什么共享 connection，以及迁移脚本生成的 package 需要通过哪些 contract 检查。
+## New Developer Reading Order
 
-## 当前工程合同
+When you first join Openwork/Jingle work, start from current code facts and release governance. Do not infer current behavior from historical research docs.
 
-这些文档是改代码时优先对齐的主文档。
+1. [production-readiness/README.md](./production-readiness/README.md): production release governance entrypoint.
+2. [production-readiness/production-feature-inventory.md](./production-readiness/production-feature-inventory.md): current features, user entrypoints, owner paths, and release gaps.
+3. [dev/README.md](./dev/README.md), [dev/validation-matrix.md](./dev/validation-matrix.md), and [dev/release-runbook.md](./dev/release-runbook.md): current development, validation, and release entrypoints.
+4. [engineering-boundaries.md](./engineering-boundaries.md) and [runtime-invariants.md](./runtime-invariants.md): engineering boundaries and runtime invariants; still useful, but should be refreshed before production publication.
+5. [dev/extension-development.md](./dev/extension-development.md), [extension-package-contract.md](./extension-package-contract.md), and [installable-extension-dev-guide-cn.md](./installable-extension-dev-guide-cn.md): extension package contract and installable extension development entrypoints.
+6. [agent-activity-runtime-to-ui-cn.md](./agent-activity-runtime-to-ui-cn.md) and [ai-launcher-streaming-performance-boundaries-cn.md](./ai-launcher-streaming-performance-boundaries-cn.md): current agent runtime -> renderer projection -> UI boundary notes.
+7. [openwork-electron-debugging.md](./openwork-electron-debugging.md), [macos-dev-preview-install.md](./macos-dev-preview-install.md), and [openwork-electron-size-performance-optimization.md](./openwork-electron-size-performance-optimization.md): debugging, preview install, and packaging-quality entrypoints.
 
-| 文档 | 用途 |
-|---|---|
-| [engineering-boundaries.md](./engineering-boundaries.md) | 工程边界、模块职责、依赖方向和实现约束 |
-| [runtime-invariants.md](./runtime-invariants.md) | 运行时不变量和执行过程必须保持的系统约束 |
-| [extension-package-contract.md](./extension-package-contract.md) | built-in / installable extension package 的目录、manifest/main/runtime/runtime-metadata/tools 边界 |
-| [extension-runtime-migration-plan.md](./extension-runtime-migration-plan.md) | extension command runtime 迁移执行计划和验收口径 |
-| [extension-migration-transform-architecture-cn.md](./extension-migration-transform-architecture-cn.md) | Raycast extension 迁移脚本的 transform 分层、fixtures 和生成物验收 |
-| [raycast-notion-dependency-migration-preview.md](./raycast-notion-dependency-migration-preview.md) | Notion 迁移状态、正式 `installable-extensions/notion` 入口和历史 preview 兼容记录 |
-| [extension-auth-connection-architecture-cn.md](./extension-auth-connection-architecture-cn.md) | extension connection/auth 长期架构和 OAuth 缺口 |
-| [extension-connector-runtime-design.md](./extension-connector-runtime-design.md) | command、AI capability、connection、`@extension` / `loadExtension` 的统一运行时边界 |
+Migration docs, Raycast comparisons, old proposals, and launch copy should not be used as current implementation contracts. They are grouped in the history/content sections below.
 
-## Extension 运行时与体验
+## Production Release Governance
 
-| 文档 | 用途 |
-|---|---|
-| [extension-runtime-architecture-research-cn.md](./extension-runtime-architecture-research-cn.md) | extension runtime 隔离、remote rendering、搜索生命周期和外部包参考 |
-| [extension-external-install-packaging-research-cn.md](./extension-external-install-packaging-research-cn.md) | Extension 外部安装、外部打包、pkg/Node SEA 取舍和 Openwork 推荐落地方案 |
-| [installable-extension-dev-guide-cn.md](./installable-extension-dev-guide-cn.md) | 安装型 extension 的外部源码包结构、build/dev 命令和调试路径 |
-| [extension-hitl-experience-architecture.md](./extension-hitl-experience-architecture.md) | Extension HITL 体验优化架构方案：schema form、confirmation、editable approval 和 CopilotKit 借鉴 |
-| [extension-hitl-experience-detailed-design-cn.md](./extension-hitl-experience-detailed-design-cn.md) | Extension HITL 中文详设：协议、状态机、UI、main 侧校验、分期和验收 |
+| Status  | Document                                                                                                                       | Purpose                                        |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| current | [production-readiness/README.md](./production-readiness/README.md)                                                             | Production release governance entrypoint       |
+| current | [production-readiness/production-feature-inventory.md](./production-readiness/production-feature-inventory.md)                 | Current feature inventory, entrypoints, owners |
+| current | [production-readiness/documentation-audit.md](./production-readiness/documentation-audit.md)                                   | Docs keep / rewrite / archive / delete audit   |
+| current | [production-readiness/code-classification-governance.md](./production-readiness/code-classification-governance.md)             | Product/dev/test/docs/archive classification   |
+| current | [production-readiness/help-center-information-architecture.md](./production-readiness/help-center-information-architecture.md) | Help center information architecture           |
+| current | [production-readiness/blog-topics-and-outlines.md](./production-readiness/blog-topics-and-outlines.md)                         | Launch content topics and outlines             |
+| current | [production-readiness/execution-waves.md](./production-readiness/execution-waves.md)                                           | Four-wave execution plan                       |
 
-## 产品与市场调研
+## User Help Entry
 
-| 文档 | 用途 |
-|---|---|
-| [product-narrative.md](./product-narrative.md) | 产品叙事、定位和体验方向背景 |
-| [harness-engineering-dimensions-research-cn.md](./harness-engineering-dimensions-research-cn.md) | Harness 工程维度、Raycast 交互层和 delegated work 的产品判断 |
-| [ai-launcher-intent-recognition-research.md](./ai-launcher-intent-recognition-research.md) | Electron 端侧 AI 启动器意图识别模型选型、推理栈、微调和落地调研 |
-| [model-provider-design.md](./model-provider-design.md) | 模型 provider 设计调研与方案说明 |
-| [openwork-ui-upgrade-research.md](./openwork-ui-upgrade-research.md) | Openwork UI 升级方向调研 |
-| [launch/openwork-launch-thread-cn.md](./launch/openwork-launch-thread-cn.md) | Openwork launch thread 中文稿 |
-| [launch/raycast-experience-independent-thought-cn.md](./launch/raycast-experience-independent-thought-cn.md) | Raycast 体验、Openwork harness 定位和独立产品判断 |
-| [launch/raycast-v2-windows-rewrite-research-cn.md](./launch/raycast-v2-windows-rewrite-research-cn.md) | Raycast V2 Windows rewrite 调研 |
+The help center is the user entrypoint. Historical research docs should not be used as user help.
 
-## 桌面与运行质量
+| Status  | Document                                                                                                                       | Purpose                                           |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| current | [help/README.md](./help/README.md)                                                                                             | User help center entrypoint                       |
+| current | [help/getting-started/install-and-open.md](./help/getting-started/install-and-open.md)                                         | Install, open, and first setup                    |
+| current | [help/getting-started/configure-a-model.md](./help/getting-started/configure-a-model.md)                                       | Settings -> Models setup                          |
+| current | [help/getting-started/first-agent-run.md](./help/getting-started/first-agent-run.md)                                           | First agent run                                   |
+| current | [help/core-concepts/workspace.md](./help/core-concepts/workspace.md)                                                           | Workspace trust boundary                          |
+| current | [help/core-concepts/permission-modes.md](./help/core-concepts/permission-modes.md)                                             | Permission modes and approval cards               |
+| current | [help/extensions/overview.md](./help/extensions/overview.md)                                                                   | Extension user entrypoints, connections, and AI   |
+| current | [help/logs-and-diagnostics/find-logs.md](./help/logs-and-diagnostics/find-logs.md)                                             | Local log location and support redaction          |
+| current | [help/faq.md](./help/faq.md)                                                                                                   | Frequently asked questions                        |
+| current | [macos-dev-preview-install.md](./macos-dev-preview-install.md)                                                                 | macOS unsigned / unnotarized preview install help |
+| current | [production-readiness/help-center-information-architecture.md](./production-readiness/help-center-information-architecture.md) | Future help-center IA, not final user reading     |
 
-| 文档 | 用途 |
-|---|---|
-| [openwork-native-readiness-audit.md](./openwork-native-readiness-audit.md) | Openwork 原生化上线条件、P1/P2 风险和修复分组审计 |
-| [windows-support-gap-audit.md](./windows-support-gap-audit.md) | Windows 支持现状、缺口和优先补齐路径审计 |
-| [openwork-electron-debugging.md](./openwork-electron-debugging.md) | Electron 调试流程和本地验证约束 |
-| [openwork-electron-size-performance-optimization.md](./openwork-electron-size-performance-optimization.md) | Electron 包体、启动和运行性能优化记录 |
-| [launcher-ui-audit-harness.md](./launcher-ui-audit-harness.md) | Launcher UI 运行时样式审计：Electron/CDP、computed style、DOM 密度和截图指标 |
+## Current Engineering Contracts And Dev Entry
 
-## Agent、Renderer 与状态
+These are current developer entrypoints or engineering contracts. Some still need to be shortened and refreshed before production publication.
 
-| 文档 | 用途 |
-|---|---|
-| [renderer-external-store-architecture.md](./renderer-external-store-architecture.md) | renderer external store 架构方案说明 |
-| [ai-launcher-streaming-performance-boundaries-cn.md](./ai-launcher-streaming-performance-boundaries-cn.md) | AI launcher 流式渲染性能边界、单向数据流、projection/viewport/tool selector owner 和后续改造验收口径 |
-| [agent-activity-runtime-to-ui-cn.md](./agent-activity-runtime-to-ui-cn.md) | Agent activity 从 runtime event、shared state、view projection 到 UI 结构和动效封装的链路说明 |
-| [messages-perceived-waiting-upgrade-plan-cn.md](./messages-perceived-waiting-upgrade-plan-cn.md) | Messages 感知等待改造方案：首 token 前、thinking、tool、approval 和 final handoff 的用户感受 |
+| Status  | Document                                                                                               | Purpose                                                                 |
+| ------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| current | [dev/README.md](./dev/README.md)                                                                       | Development entrypoint, owner paths, and quality gate selection         |
+| current | [dev/validation-matrix.md](./dev/validation-matrix.md)                                                 | BDD, node tests, guardrails, build/package command matrix               |
+| current | [dev/release-runbook.md](./dev/release-runbook.md)                                                     | npm release, desktop release, and local packaging runbook               |
+| current | [dev/extension-development.md](./dev/extension-development.md)                                         | Extension source roots, build/dev commands, guardrail coverage          |
+| refresh | [engineering-boundaries.md](./engineering-boundaries.md)                                               | Engineering boundaries, module responsibility, dependency direction     |
+| refresh | [runtime-invariants.md](./runtime-invariants.md)                                                       | Runtime invariants and execution constraints                            |
+| refresh | [extension-package-contract.md](./extension-package-contract.md)                                       | Built-in / bundled installable / user-installed package contract        |
+| current | [extension-migration-transform-architecture-cn.md](./extension-migration-transform-architecture-cn.md) | Extension migration transform layers, fixtures, generated output checks |
+| refresh | [installable-extension-dev-guide-cn.md](./installable-extension-dev-guide-cn.md)                       | Installable extension external source package guide                     |
+| current | [renderer-external-store-architecture.md](./renderer-external-store-architecture.md)                   | Renderer external store architecture                                    |
+| refresh | [thread-lifecycle-contract-cn.md](./thread-lifecycle-contract-cn.md)                                   | Thread lifecycle, fork, HITL, and resume contract draft                 |
+| refresh | [model-provider-design.md](./model-provider-design.md)                                                 | Model provider implementation notes needing refresh                     |
+| current | [openwork-electron-debugging.md](./openwork-electron-debugging.md)                                     | Electron debugging flow and local verification                          |
+| current | [launcher-ui-audit-harness.md](./launcher-ui-audit-harness.md)                                         | Launcher UI runtime style audit entrypoint                              |
 
-## 记忆、路线图与执行约束
+## Agent, Renderer, And State
 
-| 文档 | 用途 |
-|---|---|
-| [personal-agent-memory-product-plan.md](./personal-agent-memory-product-plan.md) | 个人 Agent 记忆 V1 产品方案：定位、范围、设置、交互和验收 |
-| [personal-agent-memory-technical-overview.md](./personal-agent-memory-technical-overview.md) | 个人 Agent 记忆 V1 技术概要：边界、middleware、数据模型、UI 状态和验证 |
-| [personal-agent-memory-implementation-article.md](./personal-agent-memory-implementation-article.md) | 个人 Agent 记忆实现文章稿 |
-| [task-parallelization-and-conflict-plan.md](./task-parallelization-and-conflict-plan.md) | 并行任务拆分、冲突边界、Paperclip 任务树和验收口径 |
-| [tsyringe-migration-roadmap.md](./tsyringe-migration-roadmap.md) | tsyringe 迁移路线和执行约束 |
-| [artifact-tab-roadmap.md](./artifact-tab-roadmap.md) | artifact tab 演进计划 |
+| Status  | Document                                                                                                   | Purpose                                                                |
+| ------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| current | [agent-activity-runtime-to-ui-cn.md](./agent-activity-runtime-to-ui-cn.md)                                 | Agent activity from runtime event, shared state, projection, and UI    |
+| current | [agent-event-state-trace-final-cn.md](./agent-event-state-trace-final-cn.md)                               | Agent event / state / trace design background                          |
+| current | [ai-launcher-streaming-performance-boundaries-cn.md](./ai-launcher-streaming-performance-boundaries-cn.md) | AI launcher streaming render performance boundary and regression guard |
+| archive | [messages-perceived-waiting-upgrade-plan-cn.md](./messages-perceived-waiting-upgrade-plan-cn.md)           | Historical perceived-waiting UX plan                                   |
+| archive | [artifact-tab-roadmap.md](./artifact-tab-roadmap.md)                                                       | Artifact tab roadmap                                                   |
+
+## Extensions, Connections, And Migration
+
+| Status  | Document                                                                                                     | Purpose                                                                          |
+| ------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| refresh | [extension-auth-connection-architecture-cn.md](./extension-auth-connection-architecture-cn.md)               | Extension auth / connection architecture needing compression into current docs   |
+| refresh | [extension-connector-runtime-design.md](./extension-connector-runtime-design.md)                             | Command, AI capability, connection, `@extension` / `loadExtension` runtime notes |
+| archive | [extension-runtime-architecture-research-cn.md](./extension-runtime-architecture-research-cn.md)             | Extension runtime isolation, remote rendering, external research                 |
+| archive | [extension-external-install-packaging-research-cn.md](./extension-external-install-packaging-research-cn.md) | External install and packaging research                                          |
+| archive | [extension-runtime-migration-plan.md](./extension-runtime-migration-plan.md)                                 | Extension command runtime migration plan                                         |
+| archive | [installable-extension-runtime-v1-proposal-cn.md](./installable-extension-runtime-v1-proposal-cn.md)         | Historical Installable Extension Runtime V1 proposal                             |
+| archive | [extension-hitl-experience-architecture.md](./extension-hitl-experience-architecture.md)                     | Extension HITL experience proposal                                               |
+| archive | [extension-hitl-experience-detailed-design-cn.md](./extension-hitl-experience-detailed-design-cn.md)         | Extension HITL detailed Chinese design                                           |
+| archive | [raycast-notion-dependency-migration-preview.md](./raycast-notion-dependency-migration-preview.md)           | Notion migration state and Raycast dependency evidence                           |
+
+## Desktop, Native Capability, And Runtime Quality
+
+| Status  | Document                                                                                                   | Purpose                                                                     |
+| ------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| refresh | [openwork-native-readiness-audit.md](./openwork-native-readiness-audit.md)                                 | Native-readiness audit needing current-code refresh                         |
+| refresh | [windows-support-gap-audit.md](./windows-support-gap-audit.md)                                             | Windows support gap audit needing package/workflow/native-extension refresh |
+| current | [launcher-window-snap-overlay-architecture-cn.md](./launcher-window-snap-overlay-architecture-cn.md)       | Launcher snap overlay and window behavior                                   |
+| current | [openwork-electron-size-performance-optimization.md](./openwork-electron-size-performance-optimization.md) | Electron size, startup, and runtime performance optimization notes          |
+
+## Memory And Product Plans
+
+| Status  | Document                                                                                             | Purpose                                            |
+| ------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| refresh | [personal-agent-memory-product-plan.md](./personal-agent-memory-product-plan.md)                     | Personal agent memory product plan                 |
+| refresh | [personal-agent-memory-technical-overview.md](./personal-agent-memory-technical-overview.md)         | Personal agent memory technical overview           |
+| content | [personal-agent-memory-implementation-article.md](./personal-agent-memory-implementation-article.md) | Personal agent memory implementation article draft |
+
+## Product, Market, And Content Assets
+
+These docs can support launch content, product judgment, or article material. Do not treat them as current developer contracts.
+
+| Status  | Document                                                                                                     | Purpose                                                   |
+| ------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| content | [product-narrative.md](./product-narrative.md)                                                               | Product narrative, positioning, and experience background |
+| content | [blog-drafts/README.md](./blog-drafts/README.md)                                                             | Production launch blog drafts entrypoint                  |
+| content | [blog-drafts/product-launch-introduction.md](./blog-drafts/product-launch-introduction.md)                   | Product launch introduction draft                         |
+| content | [blog-drafts/launcher-to-agent-workflow.md](./blog-drafts/launcher-to-agent-workflow.md)                     | Product/design essay about launcher-to-agent workflow     |
+| content | [blog-drafts/local-first-agent-workspace.md](./blog-drafts/local-first-agent-workspace.md)                   | Local-first agent workspace draft                         |
+| content | [blog-drafts/extension-runtime-design.md](./blog-drafts/extension-runtime-design.md)                         | Extension/runtime design draft                            |
+| content | [blog-drafts/production-logs-and-diagnostics.md](./blog-drafts/production-logs-and-diagnostics.md)           | Production logs and diagnostics draft                     |
+| content | [launch/openwork-launch-thread-cn.md](./launch/openwork-launch-thread-cn.md)                                 | Openwork launch thread Chinese draft                      |
+| content | [launch/raycast-experience-independent-thought-cn.md](./launch/raycast-experience-independent-thought-cn.md) | Raycast / Openwork product judgment article               |
+| archive | [launch/raycast-v2-windows-rewrite-research-cn.md](./launch/raycast-v2-windows-rewrite-research-cn.md)       | Raycast V2 Windows rewrite external research              |
+| archive | [harness-engineering-dimensions-research-cn.md](./harness-engineering-dimensions-research-cn.md)             | Harness engineering dimensions product research           |
+| archive | [ai-launcher-intent-recognition-research.md](./ai-launcher-intent-recognition-research.md)                   | On-device AI launcher intent recognition research         |
+| archive | [openwork-ui-upgrade-research.md](./openwork-ui-upgrade-research.md)                                         | UI upgrade direction research                             |
+| archive | [codex-desktop-openwork-agent-harness-gap-cn.md](./codex-desktop-openwork-agent-harness-gap-cn.md)           | Codex Desktop and Openwork harness gap research           |
+| archive | [codex-launcher-ai-chrome-path-map-cn.md](./codex-launcher-ai-chrome-path-map-cn.md)                         | Codex-style launcher AI chrome path map                   |
+| archive | [codex-launcher-pinned-session-window-plan-cn.md](./codex-launcher-pinned-session-window-plan-cn.md)         | Codex-style pinned session window plan                    |
+| archive | [codex-turn-diff-research-cn.md](./codex-turn-diff-research-cn.md)                                           | Codex turn diff / edited files research                   |
+| archive | [task-parallelization-and-conflict-plan.md](./task-parallelization-and-conflict-plan.md)                     | Parallel task split and conflict-boundary delivery        |
+| archive | [tsyringe-migration-roadmap.md](./tsyringe-migration-roadmap.md)                                             | tsyringe migration roadmap                                |
+| archive | [openwork-project-share.pptx](./openwork-project-share.pptx)                                                 | Historical share deck                                     |
+
+## Maintenance Rules
+
+- Put new user help under `docs/help`, and link it from the user help section of this index.
+- For new developer contracts or runbooks, state owner paths, verification, and failure semantics.
+- Put launch articles or market content in the content section, not in user help or engineering contracts.
+- Keep old proposals and research, but mark them `archive` so they do not mislead production release work.
+- When a doc mentions scripts, workflows, or code paths, verify against `package.json`, `.github/workflows`, and `rg --files`.
