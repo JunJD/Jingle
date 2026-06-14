@@ -1286,3 +1286,34 @@ test("AgentThreadRunner appends streamed reasoning and text content blocks", asy
     }
   ])
 })
+
+test("AgentThreadRunner ignores title generation message stream chunks", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+
+  await hub.prepareInvoke("thread-title-stream", {
+    content: "Summarize current doc",
+    id: "user-1"
+  })
+  const beforeTitle = await hub.readThreadState("thread-title-stream")
+
+  await hub.handlePayload("thread-title-stream", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "检查文档中Agent相关内容",
+          id: "title-generation-message"
+        }
+      },
+      {
+        name: "thread_title"
+      }
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const afterTitle = await hub.readThreadState("thread-title-stream")
+  assert.equal(afterTitle.revision, beforeTitle.revision)
+  assert.deepEqual(afterTitle.messagesPage, beforeTitle.messagesPage)
+})

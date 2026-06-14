@@ -71,6 +71,10 @@ interface SerializedMessageChunk {
   type?: string
 }
 
+interface StreamMessageMetadata {
+  name?: unknown
+}
+
 interface ValuesInterruptState {
   __interrupt__?: unknown[]
   todos?: Array<{ content?: string; id?: string; status?: string }>
@@ -277,7 +281,11 @@ export function decodeMessagesStreamPayload(
   data: unknown,
   currentMessageId: string | null
 ): DecodedMessagesStreamPayload {
-  const [msgChunk] = data as [SerializedMessageChunk]
+  const [msgChunk, streamMetadata] = data as [SerializedMessageChunk, StreamMessageMetadata?]
+  if (streamMetadata?.name === "thread_title") {
+    return { assistant: null, tool: null }
+  }
+
   const kwargs = msgChunk?.kwargs || {}
   const classId = Array.isArray(msgChunk?.id) ? msgChunk.id : []
   const className = classId[classId.length - 1] || ""
