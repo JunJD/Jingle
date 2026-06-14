@@ -6,11 +6,13 @@
   "files": [
     "out/",
     "bin/",
+    "packages/agent-tracing/",
     "resources/",
     "LICENSE",
     "README.md"
   ],
   "bin": {
+    "jl": "./bin/cli.js",
     "openwork": "./bin/cli.js"
   },
   "author": "LangChain",

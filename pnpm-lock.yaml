@@ -375,6 +375,8 @@ importers:
 
   packages/agent-runtime: {}
 
+  packages/agent-tracing: {}
+
   packages/extension-api:
     dependencies:
       lucide-react:
