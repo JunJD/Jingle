@@ -366,12 +366,13 @@ class ThreadRuntimeProjector {
           { appendAssistantText: false }
         )
         this.commitRuntimeEvent({
-          messageId: this.runtimeState.activeRun?.assistantMessageId ?? this.currentMessageId,
+          messageId: this.findToolCallMessageId(decoded.tool.toolCallId),
           runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
           ...toolExecution.event,
           toolCallId: decoded.tool.toolCallId,
           type: "tool.updated"
         })
+        this.currentMessageId = null
 
         if (decoded.tool.name === "task") {
           const subagents = this.taskToolCallTracker.completeSubagent(decoded.tool.toolCallId)
@@ -573,6 +574,19 @@ class ThreadRuntimeProjector {
     )
     const turnEndIndex = nextTurnStartIndex < 0 ? visibleMessages.length : nextTurnStartIndex
     return visibleMessages.slice(turnStartIndex, turnEndIndex)
+  }
+
+  private findToolCallMessageId(toolCallId: string): string | null {
+    for (const message of this.runtimeState.messagesPage) {
+      if (
+        message.role === "assistant" &&
+        message.tool_calls?.some((toolCall) => toolCall.id === toolCallId)
+      ) {
+        return message.id
+      }
+    }
+
+    return null
   }
 
   private getCreatedAt(messageId: string): Date {

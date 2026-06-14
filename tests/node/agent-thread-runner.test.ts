@@ -1103,6 +1103,79 @@ test("AgentThreadRunner ignores OpenAI-style streamed tool calls until the funct
   assert.equal(message?.tool_calls, undefined)
 })
 
+test("AgentThreadRunner starts a new assistant message after tool results", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+
+  await hub.prepareInvoke("thread-final-after-tool", {
+    content: "Search docs",
+    id: "user-1"
+  })
+  await hub.handlePayload("thread-final-after-tool", { runId: "run-1", type: "run_started" })
+  await hub.handlePayload("thread-final-after-tool", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "",
+          id: "assistant-tools",
+          tool_calls: [
+            {
+              args: { query: "agent" },
+              id: "tool-call-1",
+              name: "searchPages",
+              type: "tool_call"
+            }
+          ]
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+  await hub.handlePayload("thread-final-after-tool", {
+    data: [
+      {
+        id: ["ToolMessage"],
+        kwargs: {
+          content: "search result",
+          id: "tool-result-1",
+          name: "searchPages",
+          tool_call_id: "tool-call-1"
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+  await hub.handlePayload("thread-final-after-tool", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "Final answer"
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState("thread-final-after-tool")
+  const assistantMessages = snapshot.messagesPage.filter((message) => message.role === "assistant")
+
+  assert.equal(assistantMessages.length, 2)
+  assert.equal(assistantMessages[0]?.id, "assistant-tools")
+  assert.equal(assistantMessages[0]?.content, "")
+  assert.equal(assistantMessages[0]?.tool_calls?.[0]?.id, "tool-call-1")
+  assert.equal(assistantMessages[1]?.content, "Final answer")
+  assert.equal(assistantMessages[1]?.tool_calls, undefined)
+  assert.equal(snapshot.activeRun?.assistantMessageId, assistantMessages[1]?.id)
+  assert.equal(snapshot.activeRun?.phase, "streaming")
+})
+
 test("AgentThreadRunner hides provider-emitted tool call markup when hydrating history", async () => {
   const history = createThreadData({
     messages: [
