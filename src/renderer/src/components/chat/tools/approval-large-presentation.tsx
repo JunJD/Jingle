@@ -13,6 +13,7 @@ import { truncateMiddle } from "./shared"
 import {
   buildLargeApprovalViewModel,
   type LargeApprovalAction,
+  type LargeApprovalConfirmation,
   type LargeApprovalFact,
   type LargeApprovalImpact,
   type LargeApprovalViewModel
@@ -71,6 +72,56 @@ function ApprovalImpactList(props: { items: LargeApprovalImpact[] }): React.JSX.
           ) : null}
         </div>
       ))}
+    </div>
+  )
+}
+
+function ApprovalConfirmationBlock(props: {
+  confirmation: LargeApprovalConfirmation
+}): React.JSX.Element | null {
+  const { confirmation } = props
+  const heading = confirmation.message ?? confirmation.title
+
+  if (!heading && confirmation.facts.length === 0) {
+    return null
+  }
+
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-[var(--ow-radius-md)] border bg-background-secondary/38",
+        confirmation.tone === "danger" && "border-destructive/24 bg-destructive/4",
+        confirmation.tone === "warning" && "border-amber-500/24 bg-amber-500/5",
+        (!confirmation.tone || confirmation.tone === "default") && "border-border/58"
+      )}
+    >
+      {heading ? (
+        <div className="px-[var(--ow-space-3)] py-[var(--ow-space-2-5)] [font-size:var(--ow-font-body)] font-medium leading-[var(--ow-line-body)] text-foreground">
+          {heading}
+        </div>
+      ) : null}
+      {confirmation.facts.length > 0 ? (
+        <div className="divide-y divide-border/55">
+          {confirmation.facts.map((fact, index) => (
+            <div
+              key={`${fact.label}:${fact.value}:${index}`}
+              className="grid min-w-0 grid-cols-[minmax(88px,0.34fr)_minmax(0,1fr)] gap-[var(--ow-gap-md)] px-[var(--ow-space-3)] py-[var(--ow-space-2-5)]"
+            >
+              <div className="[font-size:var(--ow-font-meta)] font-medium leading-[var(--ow-line-body)] text-muted-foreground">
+                {fact.label}
+              </div>
+              <div
+                className={cn(
+                  "min-w-0 whitespace-pre-wrap text-left [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground/86 [overflow-wrap:anywhere]",
+                  fact.presentation === "mono" && "font-mono [font-size:var(--ow-font-meta)]"
+                )}
+              >
+                {fact.value}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -134,6 +185,7 @@ function renderLargeApprovalViewModel(
 ): React.JSX.Element | null {
   if (
     !viewModel.action &&
+    !viewModel.confirmation &&
     viewModel.target.length === 0 &&
     viewModel.impact.length === 0 &&
     viewModel.parameters.length === 0
@@ -143,6 +195,9 @@ function renderLargeApprovalViewModel(
 
   return (
     <ToolDetailStack>
+      {viewModel.confirmation ? (
+        <ApprovalConfirmationBlock confirmation={viewModel.confirmation} />
+      ) : null}
       {viewModel.action ? (
         <ToolDetailSection label={copy.toolCall.approvalAction}>
           <ApprovalActionBlock action={viewModel.action} />

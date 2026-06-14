@@ -1,7 +1,9 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { renderToStaticMarkup } from "react-dom/server"
 import type { AppCopy } from "../../src/renderer/src/lib/i18n/messages"
 import { buildLargeApprovalViewModel } from "../../src/renderer/src/components/chat/tools/approval-large-view-model"
+import { LargeApprovalBody } from "../../src/renderer/src/components/chat/tools/approval-large-presentation"
 import type {
   ExecuteToolApprovalItem,
   FileMutationToolApprovalItem,
@@ -173,18 +175,95 @@ test("large extension approval adapts business parameters without file assumptio
 
   const viewModel = buildLargeApprovalViewModel(copy, review, "{}")
 
+  assert.equal(viewModel.action, null)
+  assert.deepEqual(viewModel.confirmation, {
+    facts: [
+      { label: "title", presentation: "text", value: "Create issue" },
+      { label: "Repository", presentation: "mono", value: "JunJD/Jingle" }
+    ],
+    message: "Create this issue?",
+    title: "Confirm GitHub Issue",
+    tone: "warning"
+  })
+  assert.deepEqual(viewModel.target, [])
+  assert.deepEqual(viewModel.impact, [])
+  assert.deepEqual(viewModel.parameters, [])
+})
+
+test("large extension approval renders confirmation facts as the primary preview", () => {
+  const review: ExtensionToolApprovalItem = {
+    access: "write",
+    args: {
+      content: "# Launch notes\nShip the approval adapter",
+      title: "Create issue"
+    },
+    capabilityDisplayName: "Openwork GitHub",
+    capabilityId: "github",
+    confirmation: {
+      facts: [
+        {
+          label: "Title",
+          value: "Create issue"
+        },
+        {
+          label: "Content",
+          value: "# Launch notes\nShip the approval adapter"
+        }
+      ],
+      message: "Create this issue?",
+      title: "Confirm GitHub Issue",
+      tone: "warning"
+    },
+    extensionName: "github",
+    kind: "extension_tool",
+    permissionMode: "ask-to-edit",
+    reason: "Ask to Edit mode requires approval for write and external extension tools.",
+    toolName: "ext__github__default__createIssue",
+    toolTitle: "Create Issue"
+  }
+
+  const markup = renderToStaticMarkup(
+    <LargeApprovalBody approvalItem={review} copy={copy} rawArgs="{}" />
+  )
+
+  assert.match(markup, /Create this issue\?/)
+  assert.match(markup, /Title/)
+  assert.match(markup, /Create issue/)
+  assert.match(markup, /Content/)
+  assert.match(markup, /Launch notes/)
+  assert.match(markup, /border-amber-500\/24/)
+  assert.doesNotMatch(markup, /ext__github__default__createIssue/)
+  assert.doesNotMatch(markup, /Ask to Edit mode requires approval/)
+})
+
+test("large extension approval without confirmation keeps raw arguments as fallback details", () => {
+  const review: ExtensionToolApprovalItem = {
+    access: "write",
+    args: {
+      body: "Ship the approval adapter",
+      labels: ["frontend", "agent"],
+      title: "Create issue"
+    },
+    capabilityDisplayName: "Openwork GitHub",
+    capabilityId: "github",
+    extensionName: "github",
+    kind: "extension_tool",
+    permissionMode: "ask-to-edit",
+    reason: "Ask to Edit mode requires approval for write and external extension tools.",
+    toolName: "ext__github__default__createIssue",
+    toolTitle: "Create Issue"
+  }
+
+  const viewModel = buildLargeApprovalViewModel(copy, review, "{}")
+
   assert.deepEqual(viewModel.action, {
     detail: "ext__github__default__createIssue",
     presentation: "text",
-    title: "Confirm GitHub Issue"
+    title: "Create Issue"
   })
+  assert.equal(viewModel.confirmation, null)
   assert.deepEqual(viewModel.target, [{ label: "Source", value: "Openwork GitHub" }])
   assert.deepEqual(viewModel.impact, [
-    {
-      detail: "Create this issue?",
-      label: "Reason",
-      tone: "warning"
-    },
     {
       detail: "Ask to Edit mode requires approval for write and external extension tools.",
       label: "Reason",
@@ -192,13 +271,12 @@ test("large extension approval adapts business parameters without file assumptio
     }
   ])
   assert.deepEqual(viewModel.parameters, [
-    { label: "title", presentation: "text", value: "Create issue" },
-    { label: "Repository", presentation: "mono", value: "JunJD/Jingle" },
     { label: "body", presentation: "text", value: "Ship the approval adapter" },
     {
       label: "labels",
       presentation: "mono",
       value: '[\n  "frontend",\n  "agent"\n]'
-    }
+    },
+    { label: "title", presentation: "text", value: "Create issue" }
   ])
 })

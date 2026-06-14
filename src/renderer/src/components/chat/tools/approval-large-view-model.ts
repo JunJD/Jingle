@@ -20,8 +20,16 @@ export interface LargeApprovalImpact {
   tone?: "neutral" | "success" | "warning" | "destructive"
 }
 
+export interface LargeApprovalConfirmation {
+  facts: LargeApprovalFact[]
+  message: string | null
+  title: string
+  tone?: "default" | "warning" | "danger"
+}
+
 export interface LargeApprovalViewModel {
   action: LargeApprovalAction | null
+  confirmation: LargeApprovalConfirmation | null
   impact: LargeApprovalImpact[]
   parameters: LargeApprovalFact[]
   target: LargeApprovalFact[]
@@ -125,6 +133,7 @@ function buildExecuteLargeApprovalViewModel(
           presentation: "text",
           title: getActionTitle(copy, approvalItem)
         },
+    confirmation: null,
     impact: [
       ...buildChangeImpact(copy, approvalItem),
       approvalItem.reason
@@ -179,6 +188,7 @@ function buildFileMutationLargeApprovalViewModel(
       presentation: "text",
       title: getActionTitle(copy, approvalItem)
     },
+    confirmation: null,
     impact: buildChangeImpact(copy, approvalItem),
     parameters,
     target: buildPathTargets(copy, approvalItem)
@@ -189,68 +199,70 @@ function buildExtensionLargeApprovalViewModel(
   copy: AppCopy,
   approvalItem: Extract<ToolApprovalItem, { kind: "extension_tool" }>
 ): LargeApprovalViewModel {
-  const confirmationFacts =
+  const confirmationFacts: LargeApprovalFact[] =
     approvalItem.confirmation?.facts.map((fact) => ({
       label: fact.label,
       presentation: fact.mono ? ("mono" as const) : ("text" as const),
       value: fact.value
     })) ?? []
-  const parameters: LargeApprovalFact[] = [...confirmationFacts]
-  const confirmationFactLabels = new Set(confirmationFacts.map((fact) => fact.label))
+  const confirmation: LargeApprovalConfirmation | null = approvalItem.confirmation
+    ? {
+        facts: confirmationFacts,
+        message: approvalItem.confirmation.message ?? null,
+        title: approvalItem.confirmation.title,
+        tone: approvalItem.confirmation.tone
+      }
+    : null
+  const parameters: LargeApprovalFact[] = []
 
-  for (const [key, value] of Object.entries(approvalItem.args)) {
-    if (key.startsWith("__") || confirmationFactLabels.has(key)) {
-      continue
+  if (!confirmation) {
+    for (const [key, value] of Object.entries(approvalItem.args)) {
+      if (key.startsWith("__")) {
+        continue
+      }
+
+      const normalized = stringifyToolValue(value).trim()
+      if (!normalized) {
+        continue
+      }
+
+      parameters.push({
+        label: key,
+        presentation: normalized.includes("\n") || normalized.length > 48 ? "mono" : "text",
+        value: normalized
+      })
     }
-
-    const normalized = stringifyToolValue(value).trim()
-    if (!normalized) {
-      continue
-    }
-
-    parameters.push({
-      label: key,
-      presentation: normalized.includes("\n") || normalized.length > 48 ? "mono" : "text",
-      value: normalized
-    })
   }
 
   return {
-    action: {
-      detail: approvalItem.toolName,
-      presentation: "text",
-      title: approvalItem.confirmation?.title ?? getActionTitle(copy, approvalItem)
-    },
-    impact: [
-      approvalItem.confirmation?.message
-        ? ({
-            detail: approvalItem.confirmation.message,
-            label: copy.toolCall.approvalReason,
-            tone:
-              approvalItem.confirmation.tone === "danger"
-                ? "destructive"
-                : approvalItem.confirmation.tone === "warning"
-                  ? "warning"
-                  : "neutral"
-          } satisfies LargeApprovalImpact)
-        : null,
-      approvalItem.reason
-        ? {
-            detail: approvalItem.reason,
-            label: copy.toolCall.approvalReason,
-            tone: "warning" as const
-          }
-        : null
-    ].filter((entry) => entry !== null),
+    action: confirmation
+      ? null
+      : {
+          detail: approvalItem.toolName,
+          presentation: "text",
+          title: getActionTitle(copy, approvalItem)
+        },
+    confirmation,
+    impact:
+      confirmation || !approvalItem.reason
+        ? []
+        : [
+            {
+              detail: approvalItem.reason,
+              label: copy.toolCall.approvalReason,
+              tone: "warning" as const
+            }
+          ],
     parameters,
-    target: approvalItem.capabilityDisplayName
-      ? [
-          {
-            label: copy.toolCall.approvalSource,
-            value: approvalItem.capabilityDisplayName
-          }
-        ]
-      : []
+    target:
+      confirmation || !approvalItem.capabilityDisplayName
+        ? []
+        : [
+            {
+              label: copy.toolCall.approvalSource,
+              value: approvalItem.capabilityDisplayName
+            }
+          ]
   }
 }
 
@@ -262,6 +274,7 @@ export function buildLargeApprovalViewModel(
   if (!approvalItem) {
     return {
       action: null,
+      confirmation: null,
       impact: [],
       parameters: rawArgs
         ? [
