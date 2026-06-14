@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import type { HitlRequestRow } from "../../src/main/db"
 import {
+  extractMessagesFromCheckpoint,
   extractHitlRequestFromCheckpoint,
   extractHitlRequestFromValuesState,
   mapHitlRowToRequest
@@ -230,6 +231,92 @@ test("extractHitlRequestFromCheckpoint prefers persisted run_id for request iden
     allowed_decisions: ["approve", "reject"],
     review: null
   })
+})
+
+test("extractMessagesFromCheckpoint skips incomplete OpenAI-style tool calls", () => {
+  const rows = extractMessagesFromCheckpoint("thread-1", {
+    checkpoint: {
+      id: "checkpoint-1",
+      channel_values: {
+        messages: [
+          {
+            id: ["AIMessage"],
+            kwargs: {
+              additional_kwargs: {
+                tool_calls: [
+                  {
+                    function: {
+                      arguments: '{"path":"README.md"}'
+                    },
+                    id: "tool-call-nameless",
+                    type: "function"
+                  },
+                  {
+                    function: {
+                      arguments: '{"path":"READ',
+                      name: "read_file"
+                    },
+                    id: "tool-call-partial",
+                    type: "function"
+                  }
+                ]
+              },
+              content: "",
+              id: "assistant-checkpoint"
+            }
+          }
+        ]
+      }
+    }
+  } as never)
+
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0]?.message_id, "assistant-checkpoint")
+  assert.equal(rows[0]?.tool_calls, null)
+  assert.doesNotMatch(rows[0]?.content ?? "", /unknown|checkpoint-tool/)
+})
+
+test("extractMessagesFromCheckpoint restores complete OpenAI-style tool calls", () => {
+  const rows = extractMessagesFromCheckpoint("thread-1", {
+    checkpoint: {
+      id: "checkpoint-1",
+      channel_values: {
+        messages: [
+          {
+            id: ["AIMessage"],
+            kwargs: {
+              additional_kwargs: {
+                tool_calls: [
+                  {
+                    function: {
+                      arguments: '{"path":"README.md"}',
+                      name: "read_file"
+                    },
+                    id: "tool-call-complete",
+                    type: "function"
+                  }
+                ]
+              },
+              content: "",
+              id: "assistant-checkpoint"
+            }
+          }
+        ]
+      }
+    }
+  } as never)
+
+  assert.equal(rows.length, 1)
+  assert.deepEqual(JSON.parse(rows[0]?.tool_calls ?? "[]"), [
+    {
+      args: {
+        path: "README.md"
+      },
+      id: "tool-call-complete",
+      name: "read_file",
+      type: "tool_call"
+    }
+  ])
 })
 
 test("mapHitlRowToRequest rejects rows without tool_call_id", () => {

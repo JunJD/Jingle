@@ -69,17 +69,25 @@ interface ValuesRuntimeState {
   }>
 }
 
-function parseJsonRecord(value: string | undefined): Record<string, unknown> {
-  if (!value) {
-    return {}
+function parseRequiredJsonRecord(value: string | undefined): Record<string, unknown> | null {
+  if (typeof value !== "string" || value.length === 0) {
+    return null
   }
 
+  let parsed: unknown
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}
-  } catch {
-    return {}
+    parsed = JSON.parse(value) as unknown
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return null
+    }
+
+    throw error
   }
+
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : null
 }
 
 function getSerializedMessageClassName(message: CheckpointChannelMessage): string {
@@ -98,11 +106,22 @@ function getCheckpointToolCalls(message: CheckpointChannelMessage): ToolCall[] {
 
   const openAiToolCalls = message.kwargs?.additional_kwargs?.tool_calls
   if (Array.isArray(openAiToolCalls) && openAiToolCalls.length > 0) {
-    return openAiToolCalls.map((toolCall, index) => ({
-      id: toolCall.id || `checkpoint-tool-${index}`,
-      name: toolCall.function?.name || "unknown",
-      args: parseJsonRecord(toolCall.function?.arguments)
-    }))
+    return openAiToolCalls.flatMap((toolCall) => {
+      const name = toolCall.function?.name
+      const args = parseRequiredJsonRecord(toolCall.function?.arguments)
+      if (!toolCall.id || !name || !args) {
+        return []
+      }
+
+      return [
+        {
+          args,
+          id: toolCall.id,
+          name,
+          type: "tool_call" as const
+        }
+      ]
+    })
   }
 
   return []
