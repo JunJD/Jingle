@@ -969,6 +969,140 @@ test("AgentThreadRunner hides provider-emitted tool call markup from assistant t
   assert.equal(message?.tool_calls?.[0]?.name, "ext__appleReminders__createReminder")
 })
 
+test("AgentThreadRunner reads OpenAI-style streamed tool calls from additional kwargs", async () => {
+  const history = createThreadData({
+    messages: [],
+    todos: []
+  })
+  const hub = new AgentThreadRunner(createThreadsService(history))
+
+  await hub.handlePayload("thread-openai-tool-call", {
+    type: "stream",
+    mode: "messages",
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          additional_kwargs: {
+            tool_calls: [
+              {
+                function: {
+                  arguments: '{"path":"README.md"}',
+                  name: "read_file"
+                },
+                id: "tool-call-openai-1",
+                type: "function"
+              }
+            ]
+          },
+          content: '<function=read_file> <parameter=path>README.md</tool_call>',
+          id: "assistant-openai-tool-call"
+        },
+        type: "ai" as const
+      },
+      {}
+    ]
+  })
+
+  const snapshot = await hub.readThreadState("thread-openai-tool-call")
+  const message = snapshot.messagesPage.at(-1)
+  assert.equal(message?.id, "assistant-openai-tool-call")
+  assert.equal(message?.content, "")
+  assert.deepEqual(message?.tool_calls, [
+    {
+      args: {
+        path: "README.md"
+      },
+      id: "tool-call-openai-1",
+      name: "read_file",
+      type: "tool_call"
+    }
+  ])
+})
+
+test("AgentThreadRunner skips partial OpenAI-style streamed tool call arguments", async () => {
+  const history = createThreadData({
+    messages: [],
+    todos: []
+  })
+  const hub = new AgentThreadRunner(createThreadsService(history))
+
+  await hub.handlePayload("thread-openai-partial-tool-call", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          additional_kwargs: {
+            tool_calls: [
+              {
+                function: {
+                  arguments: '{"path":"READ',
+                  name: "read_file"
+                },
+                id: "tool-call-openai-partial-1",
+                type: "function"
+              }
+            ]
+          },
+          content: "I will inspect the file.",
+          id: "assistant-openai-partial-tool-call"
+        },
+        type: "ai" as const
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState("thread-openai-partial-tool-call")
+  const message = snapshot.messagesPage.at(-1)
+  assert.equal(message?.id, "assistant-openai-partial-tool-call")
+  assert.equal(message?.content, "I will inspect the file.")
+  assert.equal(message?.tool_calls, undefined)
+})
+
+test("AgentThreadRunner ignores OpenAI-style streamed tool calls until the function name arrives", async () => {
+  const history = createThreadData({
+    messages: [],
+    todos: []
+  })
+  const hub = new AgentThreadRunner(createThreadsService(history))
+
+  await hub.handlePayload("thread-openai-unnamed-tool-call", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          additional_kwargs: {
+            tool_calls: [
+              {
+                function: {
+                  arguments: '{"path":"README.md"}'
+                },
+                id: "tool-call-openai-unnamed-1",
+                type: "function"
+              }
+            ]
+          },
+          content: "I will inspect the file.",
+          id: "assistant-openai-unnamed-tool-call"
+        },
+        type: "ai" as const
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState("thread-openai-unnamed-tool-call")
+  const message = snapshot.messagesPage.at(-1)
+  assert.equal(message?.id, "assistant-openai-unnamed-tool-call")
+  assert.equal(message?.content, "I will inspect the file.")
+  assert.equal(message?.tool_calls, undefined)
+})
+
 test("AgentThreadRunner hides provider-emitted tool call markup when hydrating history", async () => {
   const history = createThreadData({
     messages: [

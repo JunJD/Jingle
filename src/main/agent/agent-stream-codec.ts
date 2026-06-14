@@ -36,19 +36,22 @@ export interface UsageMetadata {
   total_tokens?: number
 }
 
+interface OpenAIToolCall {
+  function?: {
+    arguments?: string
+    name?: string
+  }
+  id?: string
+  type?: string
+}
+
 interface SerializedMessageChunk {
   id?: string[]
   kwargs?: {
     additional_kwargs?: {
       [key: string]: unknown
       refs?: unknown
-      tool_calls?: Array<{
-        function?: {
-          arguments?: string
-          name?: string
-        }
-        id?: string
-      }>
+      tool_calls?: OpenAIToolCall[]
     }
     content?: string | unknown[] | AgentMessageContent
     id?: string
@@ -117,6 +120,56 @@ function getToolCallNames(toolCalls: readonly { name?: string }[] | undefined): 
         .filter((name): name is string => typeof name === "string" && name.length > 0)
     )
   )
+}
+
+function parseRequiredToolCallArgs(value: string | undefined): Record<string, unknown> | null {
+  if (typeof value !== "string" || value.length === 0) {
+    return null
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value) as unknown
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return null
+    }
+
+    throw error
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null
+  }
+
+  return parsed as Record<string, unknown>
+}
+
+function normalizeOpenAIToolCalls(toolCalls: readonly OpenAIToolCall[] | undefined): ToolCall[] {
+  return (toolCalls ?? []).flatMap((toolCall) => {
+    const name = toolCall.function?.name
+    const args = parseRequiredToolCallArgs(toolCall.function?.arguments)
+    if (!toolCall.id || !name || !args) {
+      return []
+    }
+
+    return [
+      {
+        args,
+        id: toolCall.id,
+        name,
+        type: "tool_call"
+      }
+    ]
+  })
+}
+
+function readAssistantToolCalls(kwargs: SerializedMessageChunk["kwargs"]): ToolCall[] {
+  if (kwargs?.tool_calls?.length) {
+    return kwargs.tool_calls as ToolCall[]
+  }
+
+  return normalizeOpenAIToolCalls(kwargs?.additional_kwargs?.tool_calls)
 }
 
 function getContentBlockText(block: ContentBlock): string {
@@ -234,7 +287,8 @@ export function decodeMessagesStreamPayload(
   let tool: DecodedToolMessageChunk | null = null
 
   if (isAIMessage) {
-    const content = extractAssistantContent(kwargs)
+    const toolCalls = readAssistantToolCalls(kwargs)
+    const content = extractAssistantContent(kwargs, getToolCallNames(toolCalls))
     const messageMetadata = toComposerMessageMetadata({
       refs: extractComposerMessageRefsMetadata(kwargs.additional_kwargs)
     })
@@ -243,7 +297,7 @@ export function decodeMessagesStreamPayload(
       id: kwargs.id || currentMessageId || crypto.randomUUID(),
       ...(messageMetadata ? { metadata: messageMetadata } : {}),
       toolCallChunks: kwargs.tool_call_chunks ?? [],
-      toolCalls: (kwargs.tool_calls ?? []) as ToolCall[],
+      toolCalls,
       usageMetadata: kwargs.usage_metadata || kwargs.response_metadata?.usage
     }
   }
