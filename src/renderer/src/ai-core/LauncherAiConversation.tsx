@@ -1,12 +1,19 @@
-import { AlertCircle, ExternalLink, FileText, ImageIcon, Loader2, PackageOpen, X } from "lucide-react"
+import {
+  AlertCircle,
+  ExternalLink,
+  FileText,
+  ImageIcon,
+  Loader2,
+  PackageOpen,
+  X
+} from "lucide-react"
 import { Messages } from "@/components/chat/Messages"
-import { ChatTodos } from "@/components/chat/ChatTodos"
 import { ChatJumpToLatestButton } from "@/components/chat/ChatJumpToLatestButton"
 import { IncludedMemoriesPanel } from "@/components/chat/IncludedMemoriesPanel"
 import { MemoryReviewPanel } from "@/components/chat/MemoryReviewPanel"
 import { SubagentReferencesPanel } from "@/components/chat/SubagentReferencesPanel"
 import { useVirtualChatScrollIntent } from "@/components/chat/useVirtualChatScrollIntent"
-import type { HITLRequest, Subagent, Todo } from "@/types"
+import type { Subagent } from "@/types"
 import { useI18n } from "@/lib/i18n"
 import { projectSubagentReferences } from "@/lib/subagent-view"
 import { useThreadSelector } from "@/lib/thread-context"
@@ -18,7 +25,6 @@ import type { VListHandle } from "virtua"
 
 const EMPTY_ARTIFACTS: readonly ArtifactRecord[] = []
 const EMPTY_SUBAGENTS: readonly Subagent[] = []
-const EMPTY_TODOS: readonly Todo[] = []
 const LAUNCHER_AI_AT_BOTTOM_THRESHOLD_PX = 60
 type AssistantSelectionRef = Extract<ComposerMessageRef, { type: "assistant-message-selection" }>
 
@@ -141,9 +147,7 @@ function LauncherAiPresenceMark(): React.JSX.Element {
   )
 }
 
-function LauncherArtifactImagePreview(props: {
-  artifact: FileArtifactRecord
-}): React.JSX.Element {
+function LauncherArtifactImagePreview(props: { artifact: FileArtifactRecord }): React.JSX.Element {
   const { artifact } = props
   const [preview, setPreview] = useState<ArtifactImagePreviewState>({ status: "loading" })
 
@@ -314,13 +318,10 @@ function LauncherArtifactsPanel(props: {
 const LauncherAiFooter = memo(function LauncherAiFooter(props: {
   clearError: () => void
   error: string | null
-  hasVisibleTurns: boolean
   isLoading: boolean
-  pendingApproval: HITLRequest | null
   threadId: string
-  todos: readonly Todo[]
 }): React.JSX.Element {
-  const { clearError, error, hasVisibleTurns, isLoading, pendingApproval, threadId, todos } = props
+  const { clearError, error, isLoading, threadId } = props
   const { copy } = useI18n()
   const runId = useThreadSelector(threadId, (state) => state?.agent.latestRunId ?? null)
   const subagents = useThreadSelector(
@@ -335,12 +336,6 @@ const LauncherAiFooter = memo(function LauncherAiFooter(props: {
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-[var(--launcher-ai-turn-gap)]">
-      {!isLoading && todos.length > 0 && (pendingApproval || hasVisibleTurns) && (
-        <ChatTodos todos={todos} />
-      )}
-
-      {isLoading && todos.length > 0 && <ChatTodos todos={todos} />}
-
       <LauncherArtifactsPanel artifacts={artifacts} />
 
       {!isLoading && <IncludedMemoriesPanel runId={runId} />}
@@ -429,7 +424,6 @@ export function LauncherAiConversation(props: {
   onBranch?: (messageId?: string) => Promise<void>
   onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
   onRetry: (input: ComposerMessageInput) => Promise<void> | void
-  pendingApproval: HITLRequest | null
   threadId: string
 }): React.JSX.Element {
   const {
@@ -440,7 +434,6 @@ export function LauncherAiConversation(props: {
     onBranch,
     onAddAssistantSelectionRef,
     onRetry,
-    pendingApproval,
     threadId
   } = props
 
@@ -453,7 +446,6 @@ export function LauncherAiConversation(props: {
       onBranch={onBranch}
       onAddAssistantSelectionRef={onAddAssistantSelectionRef}
       onRetry={onRetry}
-      pendingApproval={pendingApproval}
       threadId={threadId}
     />
   )
@@ -467,7 +459,6 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
   onBranch?: (messageId?: string) => Promise<void>
   onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
   onRetry: (input: ComposerMessageInput) => Promise<void> | void
-  pendingApproval: HITLRequest | null
   threadId: string
 }): React.JSX.Element {
   const { copy } = useI18n()
@@ -479,7 +470,6 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
     onBranch,
     onAddAssistantSelectionRef,
     onRetry,
-    pendingApproval,
     threadId
   } = props
   const virtualizerRef = useRef<VListHandle>(null)
@@ -491,7 +481,6 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
     threadId,
     (state) => state?.view.messageProjection.displayRows.length ?? 0
   )
-  const todos = useThreadSelector(threadId, (state) => state?.agent.todos ?? EMPTY_TODOS)
   const canFork = useThreadSelector(threadId, (state) => state?.agent.forkState.canFork ?? true)
   const chatVirtualItemCount = hasVisibleTurns || isLoading || error ? displayRowCount : 0
   const {
@@ -516,14 +505,11 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
       <LauncherAiFooter
         clearError={clearError}
         error={error}
-        hasVisibleTurns={hasVisibleTurns}
         isLoading={isLoading}
-        pendingApproval={pendingApproval}
         threadId={threadId}
-        todos={todos}
       />
     ),
-    [clearError, error, hasVisibleTurns, isLoading, pendingApproval, threadId, todos]
+    [clearError, error, isLoading, threadId]
   )
 
   if (!hasVisibleTurns && !isLoading && !error) {

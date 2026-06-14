@@ -838,7 +838,8 @@ body[data-window="pinned-ai-session"],
 }
 
 .launcher-ai-environment-menu {
-  width: 286px;
+  width: 360px;
+  max-width: calc(100vw - 24px);
   padding: 8px;
 }
 
@@ -881,6 +882,64 @@ body[data-window="pinned-ai-session"],
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.launcher-ai-environment-menu__progress {
+  margin-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--launcher-border) 72%, transparent);
+  padding: 10px 4px 2px;
+}
+
+.launcher-ai-progress__heading {
+  margin-bottom: 8px;
+  color: color-mix(in srgb, var(--muted-foreground) 82%, var(--foreground));
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.launcher-ai-progress__list {
+  display: grid;
+  gap: 6px;
+}
+
+.launcher-ai-progress__item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  color: color-mix(in srgb, var(--foreground) 76%, var(--muted-foreground));
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.launcher-ai-progress__icon {
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  stroke-width: 2.2;
+}
+
+.launcher-ai-progress__copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.launcher-ai-progress__more {
+  margin-top: 6px;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--muted-foreground) 78%, var(--foreground));
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 16px;
+  padding: 0 0 0 26px;
+  text-align: left;
+}
+
+.launcher-ai-progress__more:hover {
+  color: var(--foreground);
 }
 
 .launcher-ai-body {

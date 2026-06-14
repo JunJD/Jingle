@@ -30,6 +30,8 @@ interface LauncherAiHeaderActionsProps {
     environmentNoThread: string
     environmentNoWorkspace: string
     environmentPermission: string
+    environmentProgress: string
+    environmentProgressMore: (count: number) => string
     environmentThread: string
     environmentWorkspace: string
     openSideChat: string
@@ -99,6 +101,8 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
           environmentNoThread: labels.environmentNoThread,
           environmentNoWorkspace: labels.environmentNoWorkspace,
           environmentPermission: labels.environmentPermission,
+          environmentProgress: labels.environmentProgress,
+          environmentProgressMore: labels.environmentProgressMore,
           environmentThread: labels.environmentThread,
           environmentWorkspace: labels.environmentWorkspace
         }}

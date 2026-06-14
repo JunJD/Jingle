@@ -34,6 +34,7 @@ import { listNativeLauncherSourceMentions } from "@extension-host/index"
 import { useWorkspaceFileMentions, type ComposerAreaHandle } from "@/composer-area"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import { shouldGoHomeFromComposerKeyDown } from "./composer-keyboard"
+import type { Todo } from "@/types"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 const AI_COMPOSER_CHROME_HEIGHT = 30
@@ -42,6 +43,7 @@ const AI_COMPOSER_VISIBLE_LINES = 5
 const AI_ATTACHMENT_STRIP_HEIGHT = 48
 const AI_COMPOSER_BOTTOM_GAP = 8
 const DEFAULT_AGENT_CAN_FORK = true
+const EMPTY_TODOS: readonly Todo[] = []
 
 function getVisibleLineCount(value: string): number {
   return Math.min(AI_COMPOSER_VISIBLE_LINES, value.split("\n").length)
@@ -127,6 +129,7 @@ export function LauncherAiPage(): React.JSX.Element {
     draftTarget?.permissionMode ??
     defaultDraftPermissionMode
   const workspacePath = useThreadSelector(threadId, (state) => state?.agent.workspacePath ?? null)
+  const todos = useThreadSelector(threadId, (state) => state?.agent.todos ?? EMPTY_TODOS)
   const query = localComposerText
   const messageInput = useMemo(
     () => ({
@@ -601,6 +604,7 @@ export function LauncherAiPage(): React.JSX.Element {
               modelLabel: currentModelLabel,
               permissionLabel: currentPermissionLabel,
               threadId,
+              todos,
               workspacePath
             }}
             labels={{
@@ -621,6 +625,8 @@ export function LauncherAiPage(): React.JSX.Element {
               environmentNoThread: copy.launcher.environmentNoThread,
               environmentNoWorkspace: copy.launcher.environmentNoWorkspace,
               environmentPermission: copy.launcher.environmentPermission,
+              environmentProgress: copy.launcher.environmentProgress,
+              environmentProgressMore: copy.launcher.environmentProgressMore,
               environmentThread: copy.launcher.environmentThread,
               environmentWorkspace: copy.launcher.environmentWorkspace,
               openFolder: copy.launcher.openFolder,
@@ -689,7 +695,6 @@ export function LauncherAiPage(): React.JSX.Element {
                 onAddAssistantSelectionRef={addSelectionRef}
                 onBranch={handleBranchChat}
                 onRetry={runPrimaryAction}
-                pendingApproval={pendingApproval}
                 threadId={threadId}
               />
             ) : (

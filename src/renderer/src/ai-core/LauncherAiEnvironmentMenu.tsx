@@ -1,11 +1,14 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { Info } from "lucide-react"
+import type { Todo } from "@/types"
 import { cn } from "@/lib/utils"
+import { LauncherAiProgressList } from "./LauncherAiProgressList"
 
 export interface LauncherAiEnvironmentInfo {
   modelLabel: string | null
   permissionLabel: string
   threadId: string | null
+  todos: readonly Todo[]
   workspacePath: string | null
 }
 
@@ -18,6 +21,8 @@ interface LauncherAiEnvironmentMenuProps {
     environmentNoThread: string
     environmentNoWorkspace: string
     environmentPermission: string
+    environmentProgress: string
+    environmentProgressMore: (count: number) => string
     environmentThread: string
     environmentWorkspace: string
   }
@@ -79,6 +84,12 @@ export function LauncherAiEnvironmentMenu(
             value={environment.permissionLabel}
           />
           <EnvironmentRow label={labels.environmentThread} value={threadLabel} />
+          <LauncherAiProgressList
+            className="launcher-ai-environment-menu__progress"
+            label={labels.environmentProgress}
+            moreLabel={labels.environmentProgressMore}
+            todos={environment.todos}
+          />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

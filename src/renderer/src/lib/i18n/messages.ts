@@ -143,6 +143,8 @@ export interface AppCopy {
     environmentNoThread: string
     environmentNoWorkspace: string
     environmentPermission: string
+    environmentProgress: string
+    environmentProgressMore: (count: number) => string
     environmentThread: string
     environmentWorkspace: string
     expandSidebar: string
@@ -428,6 +430,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       environmentNoThread: "暂无会话",
       environmentNoWorkspace: "暂无 workspace",
       environmentPermission: "权限",
+      environmentProgress: "进度",
+      environmentProgressMore: (count) => `再显示 ${count} 个`,
       environmentThread: "会话",
       environmentWorkspace: "Workspace",
       expandSidebar: "展开侧边栏",
@@ -731,6 +735,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       environmentNoThread: "No session",
       environmentNoWorkspace: "No workspace",
       environmentPermission: "Permission",
+      environmentProgress: "Progress",
+      environmentProgressMore: (count) => `Show ${count} more`,
       environmentThread: "Session",
       environmentWorkspace: "Workspace",
       expandSidebar: "Expand Sidebar",
