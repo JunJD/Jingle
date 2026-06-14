@@ -174,9 +174,11 @@ class StreamingToolCallAccumulator {
 
 class ThreadRuntimeProjector {
   private readonly pendingRuntimeEvents: AgentThreadEvent[] = []
+  private readonly startedToolCallIds = new Set<string>()
   private readonly taskToolCallTracker = new TaskToolCallTracker()
   private readonly toolCallAccumulator = new StreamingToolCallAccumulator()
   private currentMessageId: string | null = null
+  private pendingValuesAssistantToolMessage: Message | null = null
   private pendingResumeDecision: HITLDecision | null = null
   private runtimeState: AgentThreadRuntimeState
 
@@ -288,7 +290,11 @@ class ThreadRuntimeProjector {
       if (decoded.assistant) {
         this.currentMessageId = decoded.assistant.id
 
-        if (decoded.assistant.content || decoded.assistant.toolCalls.length > 0) {
+        if (
+          decoded.assistant.content ||
+          decoded.assistant.toolCalls.length > 0 ||
+          this.pendingValuesAssistantToolMessage
+        ) {
           this.upsertMessage(
             this.createAssistantRuntimeMessage({
               content: decoded.assistant.content || "",
@@ -300,6 +306,7 @@ class ThreadRuntimeProjector {
             }),
             { appendAssistantText: true }
           )
+          this.mergePendingValuesAssistantToolMessage()
         }
 
         if (decoded.assistant.toolCallChunks.length > 0) {
@@ -312,15 +319,15 @@ class ThreadRuntimeProjector {
           }
         }
 
-        if (decoded.assistant.toolCalls.length > 0) {
-          this.commitToolStartedEvents(decoded.assistant.id, decoded.assistant.toolCalls)
-          const subagents = this.taskToolCallTracker.readSubagentsFromCompletedToolCalls(
-            decoded.assistant.toolCalls
-          )
-          if (subagents) {
-            this.commitSubagentsReplaced(subagents)
-          }
-        }
+        this.commitToolFactsFromAssistantMessage(
+          this.createAssistantRuntimeMessage({
+            content: decoded.assistant.content || "",
+            id: decoded.assistant.id,
+            ...(decoded.assistant.toolCalls.length > 0
+              ? { tool_calls: decoded.assistant.toolCalls }
+              : {})
+          })
+        )
 
         if (
           decoded.assistant.usageMetadata &&
@@ -388,6 +395,10 @@ class ThreadRuntimeProjector {
         runId: this.runtimeState.latestRunId,
         threadId: this.runtimeState.threadId
       })
+      if (decoded.messages) {
+        this.mergeValuesMessages(decoded.messages)
+      }
+
       if (decoded.todos) {
         this.commitRuntimeEvent({
           todos: decoded.todos,
@@ -442,7 +453,11 @@ class ThreadRuntimeProjector {
       if (!toolCall.id) {
         continue
       }
+      if (this.startedToolCallIds.has(toolCall.id)) {
+        continue
+      }
 
+      this.startedToolCallIds.add(toolCall.id)
       const startedAt = new Date()
       this.commitRuntimeEvent({
         messageId,
@@ -459,6 +474,20 @@ class ThreadRuntimeProjector {
       subagents,
       type: "subagents.replaced"
     })
+  }
+
+  private commitToolFactsFromAssistantMessage(message: Message): void {
+    if (!message.tool_calls?.length) {
+      return
+    }
+
+    this.commitToolStartedEvents(message.id, message.tool_calls)
+    const subagents = this.taskToolCallTracker.readSubagentsFromCompletedToolCalls(
+      message.tool_calls
+    )
+    if (subagents) {
+      this.commitSubagentsReplaced(subagents)
+    }
   }
 
   private createAssistantRuntimeMessage(input: {
@@ -555,6 +584,186 @@ class ThreadRuntimeProjector {
       type: "message.upserted"
     })
     return true
+  }
+
+  private readCurrentTurnAssistantIds(): Set<string> {
+    const activeRun = this.runtimeState.activeRun
+    if (!activeRun) {
+      return new Set()
+    }
+
+    return new Set(
+      this.getVisibleMessagesForTurn(activeRun.turnId)
+        .filter((message) => message.role === "assistant")
+        .map((message) => message.id)
+    )
+  }
+
+  private mergeValuesMessageIntoRuntime(message: Message): boolean {
+    const existingMessage = this.runtimeState.messagesPage.find((entry) => entry.id === message.id)
+    if (!existingMessage) {
+      return false
+    }
+
+    if (
+      existingMessage.role === "assistant" &&
+      message.role === "assistant" &&
+      !existingMessage.tool_calls?.length &&
+      (message.tool_calls?.length ?? 0) > 0
+    ) {
+      return this.upsertMessage(
+        {
+          ...existingMessage,
+          metadata: message.metadata ?? existingMessage.metadata,
+          tool_calls: message.tool_calls
+        },
+        { appendAssistantText: false }
+      )
+    }
+
+    if (existingMessage.role === "tool" && message.role === "tool") {
+      return this.upsertMessage(
+        {
+          ...existingMessage,
+          metadata: message.metadata ?? existingMessage.metadata,
+          name: message.name ?? existingMessage.name,
+          tool_call_id: message.tool_call_id ?? existingMessage.tool_call_id
+        },
+        { appendAssistantText: false }
+      )
+    }
+
+    return false
+  }
+
+  private mergeValuesAssistantIntoCurrentStream(message: Message): boolean {
+    const assistantMessageId = this.runtimeState.activeRun?.assistantMessageId
+    if (!assistantMessageId || !message.tool_calls?.length) {
+      return false
+    }
+
+    const existingMessage = this.runtimeState.messagesPage.find(
+      (entry) => entry.id === assistantMessageId && entry.role === "assistant"
+    )
+    if (!existingMessage || existingMessage.tool_calls?.length) {
+      return false
+    }
+
+    return this.upsertMessage(
+      {
+        ...existingMessage,
+        metadata: message.metadata ?? existingMessage.metadata,
+        tool_calls: message.tool_calls
+      },
+      { appendAssistantText: false }
+    )
+  }
+
+  private findValuesAssistantForCurrentStream(messages: readonly Message[]): Message | null {
+    const activeRun = this.runtimeState.activeRun
+    if (!activeRun) {
+      return null
+    }
+
+    if (activeRun.assistantMessageId) {
+      const currentAssistant = this.runtimeState.messagesPage.find(
+        (message) => message.id === activeRun.assistantMessageId && message.role === "assistant"
+      )
+      if (currentAssistant?.tool_calls?.length) {
+        return null
+      }
+    }
+
+    const existingToolCallIds = new Set<string>()
+    for (const message of this.getVisibleMessagesForTurn(activeRun.turnId)) {
+      if (message.role !== "assistant") {
+        continue
+      }
+
+      for (const toolCall of message.tool_calls ?? []) {
+        existingToolCallIds.add(toolCall.id)
+      }
+    }
+
+    const turnStartIndex = messages.findIndex(
+      (message) => message.role === "user" && message.id === activeRun.turnId
+    )
+    if (turnStartIndex < 0) {
+      return null
+    }
+
+    const nextTurnStartIndex = messages.findIndex(
+      (message, index) => index > turnStartIndex && message.role === "user"
+    )
+    const turnEndIndex = nextTurnStartIndex < 0 ? messages.length : nextTurnStartIndex
+    return (
+      messages
+        .slice(turnStartIndex, turnEndIndex)
+        .filter(
+          (message) =>
+            message.role === "assistant" &&
+            (message.tool_calls?.length ?? 0) > 0 &&
+            !message.tool_calls?.some((toolCall) => existingToolCallIds.has(toolCall.id))
+        )
+        .at(-1) ?? null
+    )
+  }
+
+  private mergeValuesMessages(messages: readonly Message[]): void {
+    if (!this.runtimeState.activeRun) {
+      return
+    }
+
+    const currentTurnAssistantIds = this.readCurrentTurnAssistantIds()
+    for (const message of messages) {
+      if (message.role === "assistant" && currentTurnAssistantIds.has(message.id)) {
+        const changed = this.mergeValuesMessageIntoRuntime(message)
+        if (changed) {
+          this.commitToolFactsFromAssistantMessage(message)
+        }
+      }
+
+      if (message.role === "tool") {
+        this.mergeValuesMessageIntoRuntime(message)
+      }
+    }
+
+    const valuesAssistant = this.findValuesAssistantForCurrentStream(messages)
+    const activeAssistantId = this.runtimeState.activeRun.assistantMessageId
+    if (
+      valuesAssistant &&
+      activeAssistantId &&
+      this.mergeValuesAssistantIntoCurrentStream(valuesAssistant)
+    ) {
+      this.commitToolFactsFromAssistantMessage({
+        ...valuesAssistant,
+        id: activeAssistantId
+      })
+      this.pendingValuesAssistantToolMessage = null
+      return
+    }
+
+    if (valuesAssistant) {
+      this.pendingValuesAssistantToolMessage = valuesAssistant
+    }
+  }
+
+  private mergePendingValuesAssistantToolMessage(): void {
+    const valuesAssistant = this.pendingValuesAssistantToolMessage
+    const activeAssistantId = this.runtimeState.activeRun?.assistantMessageId
+    if (!valuesAssistant || !activeAssistantId) {
+      return
+    }
+
+    if (!this.mergeValuesAssistantIntoCurrentStream(valuesAssistant)) {
+      return
+    }
+
+    this.commitToolFactsFromAssistantMessage({
+      ...valuesAssistant,
+      id: activeAssistantId
+    })
+    this.pendingValuesAssistantToolMessage = null
   }
 
   private getVisibleMessagesForTurn(
@@ -663,9 +872,11 @@ class ThreadRuntimeProjector {
   }
 
   private resetStreamingState(): void {
+    this.startedToolCallIds.clear()
     this.taskToolCallTracker.reset()
     this.toolCallAccumulator.reset()
     this.currentMessageId = null
+    this.pendingValuesAssistantToolMessage = null
   }
 
   private upsertMessage(message: Message, options: { appendAssistantText: boolean }): boolean {

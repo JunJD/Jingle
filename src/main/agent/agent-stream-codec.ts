@@ -46,7 +46,7 @@ interface OpenAIToolCall {
 }
 
 interface SerializedMessageChunk {
-  id?: string[]
+  id?: string | string[]
   kwargs?: {
     additional_kwargs?: {
       [key: string]: unknown
@@ -77,6 +77,7 @@ interface StreamMessageMetadata {
 
 interface ValuesInterruptState {
   __interrupt__?: unknown[]
+  messages?: SerializedMessageChunk[]
   todos?: Array<{ content?: string; id?: string; status?: string }>
 }
 
@@ -104,6 +105,7 @@ export interface DecodedMessagesStreamPayload {
 }
 
 export interface DecodedValuesStreamPayload {
+  messages: Message[] | null
   pendingApproval: HITLRequest | null
   todos: Todo[] | null
 }
@@ -244,13 +246,95 @@ function extractContent(
 
 function extractAssistantContent(
   kwargs: SerializedMessageChunk["kwargs"],
-  toolNames: readonly string[] = getToolCallNames(kwargs?.tool_calls)
+  toolNames: readonly string[] = []
 ): string | ContentBlock[] {
   return toDisplayAssistantMessageContent(kwargs?.content, {
     additional_kwargs: kwargs?.additional_kwargs,
     response_metadata: kwargs?.response_metadata,
     toolNames
   })
+}
+
+function getSerializedMessageClassName(message: SerializedMessageChunk): string {
+  if (Array.isArray(message.id)) {
+    return message.id[message.id.length - 1] || ""
+  }
+
+  return typeof message.type === "string" ? message.type : ""
+}
+
+function resolveSerializedMessageRole(
+  message: SerializedMessageChunk
+): Message["role"] | null {
+  const className = getSerializedMessageClassName(message)
+  if (className.includes("Human")) return "user"
+  if (className.includes("System")) return "system"
+  if (className.includes("Tool")) return "tool"
+  if (className.includes("AI")) return "assistant"
+
+  switch (message.type) {
+    case "human":
+      return "user"
+    case "system":
+      return "system"
+    case "tool":
+      return "tool"
+    case "ai":
+      return "assistant"
+    default:
+      return null
+  }
+}
+
+function getSerializedMessageId(
+  message: SerializedMessageChunk,
+  index: number,
+  role: Message["role"]
+): string {
+  const kwargs = message.kwargs
+  if (typeof kwargs?.id === "string" && kwargs.id.length > 0) {
+    return kwargs.id
+  }
+
+  if (typeof message.id === "string" && message.id.length > 0) {
+    return message.id
+  }
+
+  if (typeof kwargs?.tool_call_id === "string" && kwargs.tool_call_id.length > 0) {
+    return kwargs.tool_call_id
+  }
+
+  return `values:${index}:${role}`
+}
+
+function decodeValuesMessage(message: SerializedMessageChunk, index: number): Message | null {
+  const role = resolveSerializedMessageRole(message)
+  if (!role) {
+    return null
+  }
+
+  const kwargs = message.kwargs ?? {}
+  const toolCalls = role === "assistant" ? readAssistantToolCalls(kwargs) : []
+  const metadata = toComposerMessageMetadata({
+    refs: extractComposerMessageRefsMetadata(kwargs.additional_kwargs)
+  })
+  const content =
+    role === "assistant"
+      ? extractAssistantContent(kwargs, getToolCallNames(toolCalls))
+      : role === "user"
+        ? toDisplayUserMessageContent(extractContent(kwargs.content), metadata)
+        : extractContent(kwargs.content)
+
+  return {
+    content,
+    created_at: new Date(),
+    id: getSerializedMessageId(message, index, role),
+    ...(metadata ? { metadata } : {}),
+    name: kwargs.name,
+    role,
+    ...(kwargs.tool_call_id ? { tool_call_id: kwargs.tool_call_id } : {}),
+    ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {})
+  }
 }
 
 export function appendAssistantMessageContent(
@@ -341,6 +425,10 @@ export function decodeValuesStreamPayload(
     : null
 
   return {
+    messages: state.messages?.flatMap((message, index) => {
+      const decoded = decodeValuesMessage(message, index)
+      return decoded ? [decoded] : []
+    }) ?? null,
     pendingApproval,
     todos:
       state.todos === undefined

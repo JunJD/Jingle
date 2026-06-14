@@ -634,6 +634,127 @@ test("AgentThreadRunner ignores values message snapshots after streamed assistan
   assert.equal(snapshot.activeRun?.assistantMessageId, "streamed-assistant")
 })
 
+test("AgentThreadRunner merges finalized values tool calls into the live streamed assistant", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+
+  await hub.prepareInvoke("thread-values-tool-calls", {
+    content: "read package",
+    id: "user-1"
+  })
+  await hub.handlePayload("thread-values-tool-calls", {
+    data: [createSerializedAiMessage("streamed-assistant", "Reading package")],
+    mode: "messages",
+    type: "stream"
+  })
+  await hub.handlePayload("thread-values-tool-calls", {
+    data: {
+      messages: [
+        {
+          id: ["HumanMessage"],
+          kwargs: {
+            content: "read package",
+            id: "user-1"
+          },
+          type: "human" as const
+        },
+        {
+          id: ["AIMessage"],
+          kwargs: {
+            content: '{"file_path":"package.json"}',
+            id: "values-assistant",
+            tool_calls: [
+              {
+                args: {
+                  file_path: "package.json"
+                },
+                id: "tool-call-1",
+                name: "read_file",
+                type: "tool_call"
+              }
+            ]
+          },
+          type: "ai" as const
+        }
+      ]
+    },
+    mode: "values",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState("thread-values-tool-calls")
+  const assistant = snapshot.messagesPage.find((message) => message.id === "streamed-assistant")
+
+  assert.equal(assistant?.content, "Reading package")
+  assert.deepEqual(assistant?.tool_calls, [
+    {
+      args: {
+        file_path: "package.json"
+      },
+      id: "tool-call-1",
+      name: "read_file",
+      type: "tool_call"
+    }
+  ])
+  assert.equal(snapshot.activeRun?.assistantMessageId, "streamed-assistant")
+  assert.equal(snapshot.activeRun?.currentToolCallId, "tool-call-1")
+  assert.equal(snapshot.activeRun?.phase, "tool_running")
+})
+
+test("AgentThreadRunner applies pending values tool calls when values arrive before streamed assistant", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+
+  await hub.prepareInvoke("thread-values-tool-calls-first", {
+    content: "read package",
+    id: "user-1"
+  })
+  await hub.handlePayload("thread-values-tool-calls-first", {
+    data: {
+      messages: [
+        {
+          id: ["HumanMessage"],
+          kwargs: {
+            content: "read package",
+            id: "user-1"
+          },
+          type: "human" as const
+        },
+        {
+          id: ["AIMessage"],
+          kwargs: {
+            content: '{"file_path":"package.json"}',
+            id: "values-assistant",
+            tool_calls: [
+              {
+                args: {
+                  file_path: "package.json"
+                },
+                id: "tool-call-1",
+                name: "read_file",
+                type: "tool_call"
+              }
+            ]
+          },
+          type: "ai" as const
+        }
+      ]
+    },
+    mode: "values",
+    type: "stream"
+  })
+  await hub.handlePayload("thread-values-tool-calls-first", {
+    data: [createSerializedAiMessage("streamed-assistant", "")],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState("thread-values-tool-calls-first")
+  const assistant = snapshot.messagesPage.find((message) => message.id === "streamed-assistant")
+
+  assert.deepEqual(assistant?.tool_calls?.map((toolCall) => toolCall.name), ["read_file"])
+  assert.equal(snapshot.activeRun?.currentToolCallId, "tool-call-1")
+  assert.equal(snapshot.activeRun?.phase, "tool_running")
+})
+
 test("AgentThreadRunner exposes runtime messages as a thread data overlay", async () => {
   const persistedThreadData = createThreadData()
   const hub = new AgentThreadRunner(createThreadsService(persistedThreadData))
@@ -888,6 +1009,126 @@ test("AgentThreadRunner stores failed tool execution facts on tool result messag
   assert.deepEqual(snapshot.activeRun?.toolCalls, [])
   assert.ok(runtimeEventTypes.includes("tool.started"))
   assert.ok(runtimeEventTypes.includes("tool.updated"))
+})
+
+test("AgentThreadRunner does not merge completed values tool calls into the final answer", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+
+  await hub.prepareInvoke("thread-values-final-after-tool", {
+    content: "Search docs",
+    id: "user-1"
+  })
+  await hub.handlePayload("thread-values-final-after-tool", { runId: "run-1", type: "run_started" })
+  await hub.handlePayload("thread-values-final-after-tool", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "",
+          id: "assistant-tools",
+          tool_calls: [
+            {
+              args: { query: "agent" },
+              id: "tool-call-1",
+              name: "searchPages",
+              type: "tool_call"
+            }
+          ]
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+  await hub.handlePayload("thread-values-final-after-tool", {
+    data: [
+      {
+        id: ["ToolMessage"],
+        kwargs: {
+          content: "search result",
+          id: "tool-result-1",
+          name: "searchPages",
+          tool_call_id: "tool-call-1"
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+  await hub.handlePayload("thread-values-final-after-tool", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "Final answer",
+          id: "assistant-final"
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+  await hub.handlePayload("thread-values-final-after-tool", {
+    data: {
+      messages: [
+        {
+          id: ["HumanMessage"],
+          kwargs: {
+            content: "Search docs",
+            id: "user-1"
+          },
+          type: "human" as const
+        },
+        {
+          id: ["AIMessage"],
+          kwargs: {
+            content: "",
+            id: "values-tools",
+            tool_calls: [
+              {
+                args: {
+                  query: "agent"
+                },
+                id: "tool-call-1",
+                name: "searchPages",
+                type: "tool_call"
+              }
+            ]
+          },
+          type: "ai" as const
+        },
+        {
+          id: ["ToolMessage"],
+          kwargs: {
+            content: "search result",
+            id: "tool-result-1",
+            name: "searchPages",
+            tool_call_id: "tool-call-1"
+          },
+          type: "tool" as const
+        },
+        createSerializedAiMessage("values-final", "Final answer")
+      ]
+    },
+    mode: "values",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState("thread-values-final-after-tool")
+  const assistantMessages = snapshot.messagesPage.filter((message) => message.role === "assistant")
+
+  assert.equal(assistantMessages.length, 2)
+  assert.equal(assistantMessages[0]?.id, "assistant-tools")
+  assert.equal(assistantMessages[0]?.tool_calls?.[0]?.id, "tool-call-1")
+  assert.equal(assistantMessages[1]?.id, "assistant-final")
+  assert.equal(assistantMessages[1]?.content, "Final answer")
+  assert.equal(assistantMessages[1]?.tool_calls, undefined)
+  assert.equal(snapshot.activeRun?.assistantMessageId, "assistant-final")
+  assert.equal(snapshot.activeRun?.currentToolCallId, null)
+  assert.equal(snapshot.activeRun?.phase, "streaming")
 })
 
 test("AgentThreadRunner does not fabricate tool start timing when only a tool result arrives", async () => {
