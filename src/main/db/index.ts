@@ -29,4 +29,27 @@ export {
   upsertHitlRequest
 } from "./hitl"
 export type { HitlRequestRow, UpsertHitlRequestInput } from "./hitl"
-export { rebuildMessageSearchIndexFromMessages, syncMessageProjectionFromSnapshot, syncMessageSearchIndexFromSnapshot } from "./message-search"
+export {
+  rebuildMessageSearchIndexFromMessages,
+  syncMessageProjectionFromSnapshot,
+  syncMessageSearchIndexFromSnapshot
+} from "./message-search"
+export {
+  AgentEventRecorder,
+  appendAgentEvent,
+  appendAgentEventSafely,
+  enqueueAgentTraceProjection,
+  flushAgentTraceProjection
+} from "./agent-events"
+export type { AgentEventRow, AppendAgentEventInput } from "./agent-events"
+export {
+  getAgentTrace,
+  getAgentTraceBlob,
+  getAgentTraceEvents,
+  getAgentTraceStep,
+  getAgentTraceSteps,
+  listAgentTraces,
+  projectAgentTraceForRun,
+  rebuildTraceStepMessages
+} from "./agent-traces"
+export type { AgentTraceBlobRow, AgentTraceStepRow, AgentTraceSummaryRow } from "./agent-traces"

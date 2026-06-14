@@ -18,6 +18,11 @@ const REQUIRED_TABLES = [
   "checkpoints",
   "checkpoint_blobs",
   "writes",
+  "agent_events",
+  "agent_event_sequences",
+  "agent_traces",
+  "agent_trace_steps",
+  "agent_trace_blobs",
   "agent_memories",
   "agent_memory_suggestions",
   "agent_memory_inclusions"
@@ -102,6 +107,7 @@ export async function initializeDatabase(): Promise<void> {
 
   const prisma = getPrismaClient()
   await prisma.$connect()
+  await prisma.$queryRawUnsafe("PRAGMA journal_mode = WAL")
   await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON")
   await ensurePrismaSchemaApplied()
   await recoverIncompleteAgentRuns()
@@ -111,5 +117,7 @@ export async function initializeDatabase(): Promise<void> {
 
 export async function closeDatabase(): Promise<void> {
   initialized = false
+  const { flushAgentTraceProjection } = await import("./agent-events")
+  await flushAgentTraceProjection()
   await closePrismaClient()
 }
