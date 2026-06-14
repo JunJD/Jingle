@@ -155,6 +155,94 @@ test("GitHub current-user issue tool searches with viewer login", async () => {
   }
 })
 
+test("GitHub repository tools return recoverable result for unavailable repositories", async () => {
+  const originalFetch = globalThis.fetch
+  const requests: string[] = []
+
+  globalThis.fetch = async (input) => {
+    const url = String(input)
+    requests.push(url)
+
+    if (url.includes("/repos/missing-owner/missing-repo/actions/runs")) {
+      return jsonResponse(
+        {
+          documentation_url:
+            "https://docs.github.com/rest/actions/workflow-runs#list-workflow-runs-for-a-repository",
+          message: "Not Found"
+        },
+        404
+      )
+    }
+
+    return jsonResponse({ message: "Unexpected GitHub request" }, 500)
+  }
+
+  try {
+    const output = await executeGitHubTool("listWorkflowRuns", {
+      limit: 10,
+      repositoryFullName: "missing-owner/missing-repo"
+    })
+
+    assert.deepEqual(JSON.parse(output), {
+      code: "github_repository_unavailable",
+      message:
+        "Not Found - https://docs.github.com/rest/actions/workflow-runs#list-workflow-runs-for-a-repository",
+      nextAction:
+        "Search repositories with searchRepositories and retry with an accessible owner/repository name. If the repository exists but is private, tell the user the connected GitHub account needs access.",
+      repositoryFullName: "missing-owner/missing-repo",
+      status: "error",
+      toolName: "listWorkflowRuns"
+    })
+    assert.equal(requests.length, 1)
+    assert.match(requests[0] ?? "", /\/repos\/missing-owner\/missing-repo\/actions\/runs/)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("GitHub createIssue returns recoverable result for invalid repository requests", async () => {
+  const originalFetch = globalThis.fetch
+  const requests: string[] = []
+
+  globalThis.fetch = async (input) => {
+    const url = String(input)
+    requests.push(url)
+
+    if (url.includes("/repos/owner/disabled-issues/issues")) {
+      return jsonResponse(
+        {
+          documentation_url: "https://docs.github.com/rest/issues/issues#create-an-issue",
+          message: "Validation Failed"
+        },
+        422
+      )
+    }
+
+    return jsonResponse({ message: "Unexpected GitHub request" }, 500)
+  }
+
+  try {
+    const output = await executeGitHubTool("createIssue", {
+      repositoryFullName: "owner/disabled-issues",
+      title: "Bug report"
+    })
+
+    assert.deepEqual(JSON.parse(output), {
+      code: "github_request_invalid",
+      message: "Validation Failed - https://docs.github.com/rest/issues/issues#create-an-issue",
+      nextAction:
+        "Search repositories with searchRepositories and retry with an accessible owner/repository name. If the repository exists but is private, tell the user the connected GitHub account needs access.",
+      repositoryFullName: "owner/disabled-issues",
+      status: "error",
+      toolName: "createIssue"
+    })
+    assert.equal(requests.length, 1)
+    assert.match(requests[0] ?? "", /\/repos\/owner\/disabled-issues\/issues/)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test("Notion connected AI capability registers callable tools", () => {
   const capability = resolveInstalledAiCapabilityForExtensionName("notion", {
     getConnection: (extensionName) =>

@@ -321,6 +321,81 @@ test("Notion read tools use Notion client endpoints", async () => {
   })
 })
 
+test("Notion queryDataSource returns recoverable result when the data source is not shared", async () => {
+  const requests: Array<{ body: unknown; method: string; url: string }> = []
+
+  await withMockedFetch(requests, async () => {
+    const output = await executeParsedNotionTool("queryDataSource", {
+      dataSourceId: "4a5ab535-2554-4f33-848c-9199a0523462",
+      limit: 25
+    })
+
+    assert.deepEqual(output, {
+      code: "notion_data_source_not_found",
+      dataSourceId: "4a5ab535-2554-4f33-848c-9199a0523462",
+      message:
+        'Could not find database with ID: 4a5ab535-2554-4f33-848c-9199a0523462. Make sure the relevant pages and databases are shared with your integration "jingle-金狗".',
+      nextAction:
+        "Search Notion again with searchPages or getDatabases for a shared data source, then retry with an id returned by Notion. If no shared data source is found, tell the user to share the database with the connected integration.",
+      status: "error"
+    })
+  })
+
+  assert.deepEqual(stripRequestBodies(requests), [
+    {
+      body: {
+        page_size: 25
+      },
+      method: "POST",
+      url: "https://api.notion.com/v1/data_sources/4a5ab535-2554-4f33-848c-9199a0523462/query"
+    }
+  ])
+})
+
+test("Notion page and block read tools return recoverable result when the object is not shared", async () => {
+  const requests: Array<{ body: unknown; method: string; url: string }> = []
+
+  await withMockedFetch(requests, async () => {
+    const pageOutput = await executeParsedNotionTool("retrievePage", {
+      pageId: "page-fail"
+    })
+    const blockOutput = await executeParsedNotionTool("listBlockChildren", {
+      blockId: "block-fail",
+      limit: 3
+    })
+
+    assert.deepEqual(pageOutput, {
+      code: "notion_page_or_block_not_found",
+      message: "Missing page or block",
+      nextAction:
+        "Search Notion again with searchPages for a shared page, then retry with an id returned by Notion. If no shared page is found, tell the user to share it with the connected integration or provide a current id.",
+      objectId: "page-fail",
+      objectKind: "page",
+      status: "error"
+    })
+    assert.deepEqual(blockOutput, {
+      code: "notion_page_or_block_not_found",
+      message: "Missing page or block",
+      nextAction:
+        "Search Notion again with searchPages for a shared page or block, then retry with an id returned by Notion. If no shared page or block is found, tell the user to share it with the connected integration or provide a current id.",
+      objectId: "block-fail",
+      objectKind: "block",
+      status: "error"
+    })
+  })
+
+  assert.deepEqual(stripRequestBodies(requests), [
+    {
+      method: "GET",
+      url: "https://api.notion.com/v1/pages/page-fail"
+    },
+    {
+      method: "GET",
+      url: "https://api.notion.com/v1/blocks/block-fail/children?page_size=3"
+    }
+  ])
+})
+
 test("Notion write tools support add date divider and page properties", async () => {
   const requests: Array<{ body: unknown; method: string; url: string }> = []
 
@@ -647,6 +722,40 @@ test("Notion createDatabasePage returns recoverable result for invalid property 
   )
 })
 
+test("Notion createDatabasePage returns recoverable result when the data source is not shared", async () => {
+  const requests: Array<{ body: unknown; method: string; url: string }> = []
+
+  await withMockedFetch(requests, async () => {
+    const output = await executeParsedNotionTool("createDatabasePage", {
+      dataSourceId: "4a5ab535-2554-4f33-848c-9199a0523462",
+      title: "Missing Data Source"
+    })
+
+    assert.deepEqual(output, {
+      code: "notion_data_source_not_found",
+      dataSourceId: "4a5ab535-2554-4f33-848c-9199a0523462",
+      message:
+        'Could not find database with ID: 4a5ab535-2554-4f33-848c-9199a0523462. Make sure the relevant pages and databases are shared with your integration "jingle-金狗".',
+      nextAction:
+        "Search Notion again with searchPages or getDatabases for a shared data source, then retry with an id returned by Notion. If no shared data source is found, tell the user to share the database with the connected integration.",
+      status: "error"
+    })
+  })
+
+  assert.deepEqual(
+    requests.map((request) => ({
+      method: request.method,
+      url: request.url
+    })),
+    [
+      {
+        method: "POST",
+        url: "https://api.notion.com/v1/pages"
+      }
+    ]
+  )
+})
+
 test("Notion getPage returns markdown content for AI", async () => {
   const requests: Array<{ method: string; url: string }> = []
 
@@ -738,47 +847,44 @@ test("Notion getPage reports readable error content when the page request fails"
       }
     ])
     assert.deepEqual(output, {
-      content: "Missing page",
+      content: "Missing page or block",
       status: "error"
     })
   })
 })
 
-test("Notion addToPage write failures are surfaced to the tool caller", async () => {
+test("Notion addToPage returns recoverable result when the page is not shared", async () => {
   const requests: Array<{ method: string; url: string }> = []
-  const originalError = console.error
-  const originalWarn = console.warn
-  console.error = () => {}
-  console.warn = () => {}
 
-  try {
-    await withMockedFetch(requests, async () => {
-      await assert.rejects(
-        () =>
-          executeNotionTool("addToPage", {
-            content: "hello",
-            pageId: "page-fail"
-          }),
-        /Missing page/
-      )
-
-      assert.deepEqual(
-        requests.map((request) => ({
-          method: request.method,
-          url: request.url
-        })),
-        [
-          {
-            method: "PATCH",
-            url: "https://api.notion.com/v1/blocks/page-fail/children"
-          }
-        ]
-      )
+  await withMockedFetch(requests, async () => {
+    const output = await executeNotionTool("addToPage", {
+      content: "hello",
+      pageId: "page-fail"
     })
-  } finally {
-    console.error = originalError
-    console.warn = originalWarn
-  }
+
+    assert.deepEqual(output, {
+      code: "notion_page_or_block_not_found",
+      message: "Missing page or block",
+      nextAction:
+        "Search Notion again with searchPages for a shared page, then retry with an id returned by Notion. If no shared page is found, tell the user to share it with the connected integration or provide a current id.",
+      objectId: "page-fail",
+      objectKind: "page",
+      status: "error"
+    })
+  })
+
+  assert.deepEqual(
+    requests.map((request) => ({
+      method: request.method,
+      url: request.url
+    })),
+    [
+      {
+        method: "PATCH",
+        url: "https://api.notion.com/v1/blocks/page-fail/children"
+      }
+    ]
+  )
 })
 
 async function executeNotionTool(
@@ -838,11 +944,24 @@ async function withMockedFetch<T>(
       url
     })
 
-    if (url.includes("page-fail")) {
+    if (url.includes("page-fail") || url.includes("block-fail")) {
       return jsonResponse(
         {
           code: "object_not_found",
-          message: "Missing page",
+          message: "Missing page or block",
+          object: "error",
+          status: 404
+        },
+        404
+      )
+    }
+
+    if (url.includes("4a5ab535-2554-4f33-848c-9199a0523462")) {
+      return jsonResponse(
+        {
+          code: "object_not_found",
+          message:
+            'Could not find database with ID: 4a5ab535-2554-4f33-848c-9199a0523462. Make sure the relevant pages and databases are shared with your integration "jingle-金狗".',
           object: "error",
           status: 404
         },
@@ -852,6 +971,25 @@ async function withMockedFetch<T>(
 
     if (url === "https://api.notion.com/v1/pages") {
       const body = init?.body ? JSON.parse(String(init.body)) : {}
+      if (
+        body &&
+        typeof body === "object" &&
+        "parent" in body &&
+        (body as { parent?: { data_source_id?: unknown } }).parent?.data_source_id ===
+          "4a5ab535-2554-4f33-848c-9199a0523462"
+      ) {
+        return jsonResponse(
+          {
+            code: "object_not_found",
+            message:
+              'Could not find database with ID: 4a5ab535-2554-4f33-848c-9199a0523462. Make sure the relevant pages and databases are shared with your integration "jingle-金狗".',
+            object: "error",
+            status: 404
+          },
+          404
+        )
+      }
+
       if (
         body &&
         typeof body === "object" &&

@@ -153,11 +153,28 @@ type RetrieveDataSourceInput = z.infer<typeof retrieveDataSourceInputSchema>
 type RetrievePageInput = z.infer<typeof retrievePageInputSchema>
 type SearchPagesInput = z.infer<typeof searchPagesInputSchema>
 
-type RecoverableNotionToolResult = {
+type RecoverableInvalidPropertyOptionResult = {
   code: "invalid_property_option"
   dataSourceId: string
   message: string
   nextAction: string
+  status: "error"
+}
+
+type RecoverableDataSourceNotFoundResult = {
+  code: "notion_data_source_not_found"
+  dataSourceId: string
+  message: string
+  nextAction: string
+  status: "error"
+}
+
+type RecoverablePageOrBlockNotFoundResult = {
+  code: "notion_page_or_block_not_found"
+  message: string
+  nextAction: string
+  objectId: string
+  objectKind: "block" | "page"
   status: "error"
 }
 
@@ -220,9 +237,21 @@ async function addToPageTool(ctx: ExtensionToolContext, input: unknown): Promise
   return runWithNotionClient(ctx, async (notion) => {
     let appendedBlockCount = 0
 
-    for (const request of createAppendMarkdownRequests(parsedInput)) {
-      const response = await notion.blocks.children.append(request)
-      appendedBlockCount += response.results?.length ?? 0
+    try {
+      for (const request of createAppendMarkdownRequests(parsedInput)) {
+        const response = await notion.blocks.children.append(request)
+        appendedBlockCount += response.results?.length ?? 0
+      }
+    } catch (error) {
+      const recoverableResult = toRecoverablePageOrBlockNotFoundResult(error, {
+        objectId: parsedInput.pageId,
+        objectKind: "page"
+      })
+      if (recoverableResult) {
+        return recoverableResult
+      }
+
+      throw error
     }
 
     return {
@@ -319,37 +348,80 @@ async function getPageMarkdownTool(ctx: ExtensionToolContext, input: unknown): P
 }
 
 async function retrievePageTool(ctx: ExtensionToolContext, input: unknown): Promise<unknown> {
-  return runWithNotionClient(ctx, (notion) =>
-    notion.pages.retrieve({
-      page_id: (input as RetrievePageInput).pageId
-    })
-  )
+  const parsedInput = input as RetrievePageInput
+  return runWithNotionClient(ctx, async (notion) => {
+    try {
+      return await notion.pages.retrieve({
+        page_id: parsedInput.pageId
+      })
+    } catch (error) {
+      const recoverableResult = toRecoverablePageOrBlockNotFoundResult(error, {
+        objectId: parsedInput.pageId,
+        objectKind: "page"
+      })
+      if (recoverableResult) {
+        return recoverableResult
+      }
+
+      throw error
+    }
+  })
 }
 
 async function listBlockChildrenTool(ctx: ExtensionToolContext, input: unknown): Promise<unknown> {
   const parsedInput = input as ListBlockChildrenInput
-  return runWithNotionClient(ctx, (notion) =>
-    notion.blocks.children.list({
-      block_id: parsedInput.blockId,
-      page_size: parsedInput.limit
-    })
-  )
+  return runWithNotionClient(ctx, async (notion) => {
+    try {
+      return await notion.blocks.children.list({
+        block_id: parsedInput.blockId,
+        page_size: parsedInput.limit
+      })
+    } catch (error) {
+      const recoverableResult = toRecoverablePageOrBlockNotFoundResult(error, {
+        objectId: parsedInput.blockId,
+        objectKind: "block"
+      })
+      if (recoverableResult) {
+        return recoverableResult
+      }
+
+      throw error
+    }
+  })
 }
 
 async function retrieveDataSourceTool(ctx: ExtensionToolContext, input: unknown): Promise<unknown> {
-  return runWithNotionClient(ctx, (notion) =>
-    notion.dataSources.retrieve({
-      data_source_id: (input as RetrieveDataSourceInput).dataSourceId
-    })
-  )
+  const parsedInput = input as RetrieveDataSourceInput
+  return runWithNotionClient(ctx, async (notion) => {
+    try {
+      return await notion.dataSources.retrieve({
+        data_source_id: parsedInput.dataSourceId
+      })
+    } catch (error) {
+      const recoverableResult = toRecoverableDataSourceNotFoundResult(error, parsedInput)
+      if (recoverableResult) {
+        return recoverableResult
+      }
+
+      throw error
+    }
+  })
 }
 
 async function queryDataSourceTool(ctx: ExtensionToolContext, input: unknown): Promise<unknown> {
+  const parsedInput = input as QueryDataSourceInput
   return runWithNotionClient(ctx, async (notion) => {
-    const response = await notion.dataSources.query(
-      createQueryDataSourceRequest(input as QueryDataSourceInput)
-    )
-    return toListToolOutput(response)
+    try {
+      const response = await notion.dataSources.query(createQueryDataSourceRequest(parsedInput))
+      return toListToolOutput(response)
+    } catch (error) {
+      const recoverableResult = toRecoverableDataSourceNotFoundResult(error, parsedInput)
+      if (recoverableResult) {
+        return recoverableResult
+      }
+
+      throw error
+    }
   })
 }
 
@@ -372,7 +444,9 @@ async function createDatabasePageTool(ctx: ExtensionToolContext, input: unknown)
     try {
       page = await notion.pages.create(writePlan.createRequest)
     } catch (error) {
-      const recoverableResult = toRecoverableCreatePageErrorResult(error, parsedInput)
+      const recoverableResult =
+        toRecoverableCreatePageErrorResult(error, parsedInput) ??
+        toRecoverableDataSourceNotFoundResult(error, parsedInput)
       if (recoverableResult) {
         return recoverableResult
       }
@@ -404,7 +478,7 @@ function getCreatedPageId(page: unknown): string {
 function toRecoverableCreatePageErrorResult(
   error: unknown,
   input: CreateDatabasePageInput
-): RecoverableNotionToolResult | null {
+): RecoverableInvalidPropertyOptionResult | null {
   if (
     !isNotionClientError(error) ||
     error.code !== APIErrorCode.ValidationError ||
@@ -419,6 +493,44 @@ function toRecoverableCreatePageErrorResult(
     message: error.message,
     nextAction:
       "Call retrieveDataSource for this dataSourceId and retry with existing select, status, or multi_select option ids.",
+    status: "error"
+  }
+}
+
+function toRecoverableDataSourceNotFoundResult(
+  error: unknown,
+  input: { dataSourceId: string }
+): RecoverableDataSourceNotFoundResult | null {
+  if (!isNotionClientError(error) || error.code !== APIErrorCode.ObjectNotFound) {
+    return null
+  }
+
+  return {
+    code: "notion_data_source_not_found",
+    dataSourceId: input.dataSourceId,
+    message: error.message,
+    nextAction:
+      "Search Notion again with searchPages or getDatabases for a shared data source, then retry with an id returned by Notion. If no shared data source is found, tell the user to share the database with the connected integration.",
+    status: "error"
+  }
+}
+
+function toRecoverablePageOrBlockNotFoundResult(
+  error: unknown,
+  input: { objectId: string; objectKind: "block" | "page" }
+): RecoverablePageOrBlockNotFoundResult | null {
+  if (!isNotionClientError(error) || error.code !== APIErrorCode.ObjectNotFound) {
+    return null
+  }
+
+  const objectLabel = input.objectKind === "page" ? "page" : "page or block"
+
+  return {
+    code: "notion_page_or_block_not_found",
+    message: error.message,
+    nextAction: `Search Notion again with searchPages for a shared ${objectLabel}, then retry with an id returned by Notion. If no shared ${objectLabel} is found, tell the user to share it with the connected integration or provide a current id.`,
+    objectId: input.objectId,
+    objectKind: input.objectKind,
     status: "error"
   }
 }

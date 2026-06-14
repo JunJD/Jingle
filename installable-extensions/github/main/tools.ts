@@ -83,6 +83,15 @@ type ListNotificationsInput = z.infer<typeof listNotificationsInputSchema>
 type ListWorkflowRunsInput = z.infer<typeof listWorkflowRunsInputSchema>
 type CreateIssueInput = z.infer<typeof createIssueInputSchema>
 
+type RecoverableGitHubToolResult = {
+  code: "github_repository_unavailable" | "github_request_invalid"
+  message: string
+  nextAction: string
+  repositoryFullName: string
+  status: "error"
+  toolName: "createIssue" | "listWorkflowRuns"
+}
+
 function resolveGitHubPreferences(ctx: ExtensionToolContext): GitHubResolvedPreferences {
   const preferences = ctx.extensionPreferences
 
@@ -168,6 +177,52 @@ async function searchIssueQueries(params: {
   }
 
   return dedupeIssueLikes(groups.flat())
+}
+
+function getGitHubErrorStatus(error: unknown): number | null {
+  if (!error || typeof error !== "object" || !("status" in error)) {
+    return null
+  }
+
+  const status = (error as { status?: unknown }).status
+  return typeof status === "number" ? status : null
+}
+
+function toRecoverableGitHubRepositoryResult(
+  error: unknown,
+  input: { repositoryFullName: string; toolName: "createIssue" | "listWorkflowRuns" }
+): RecoverableGitHubToolResult | null {
+  const status = getGitHubErrorStatus(error)
+  if (status !== 404 && status !== 422) {
+    return null
+  }
+
+  return {
+    code: status === 404 ? "github_repository_unavailable" : "github_request_invalid",
+    message: error instanceof Error ? error.message : String(error),
+    nextAction:
+      "Search repositories with searchRepositories and retry with an accessible owner/repository name. If the repository exists but is private, tell the user the connected GitHub account needs access.",
+    repositoryFullName: input.repositoryFullName,
+    status: "error",
+    toolName: input.toolName
+  }
+}
+
+async function runGitHubRepositoryTool<TResult>(input: {
+  operation: () => Promise<TResult>
+  repositoryFullName: string
+  toolName: "createIssue" | "listWorkflowRuns"
+}): Promise<TResult | RecoverableGitHubToolResult> {
+  try {
+    return await input.operation()
+  } catch (error) {
+    const recoverableResult = toRecoverableGitHubRepositoryResult(error, input)
+    if (recoverableResult) {
+      return recoverableResult
+    }
+
+    throw error
+  }
 }
 
 export function createGitHubTools(): ExtensionToolDefinition[] {
@@ -314,9 +369,14 @@ export function createGitHubTools(): ExtensionToolDefinition[] {
     access: "read",
     description: "List recent GitHub Actions workflow runs for a repository.",
     handler: (ctx, input) =>
-      listGitHubWorkflowRuns({
-        preferences: withLimit(resolveGitHubPreferences(ctx), input.limit),
-        repositoryFullName: input.repositoryFullName
+      runGitHubRepositoryTool({
+        operation: () =>
+          listGitHubWorkflowRuns({
+            preferences: withLimit(resolveGitHubPreferences(ctx), input.limit),
+            repositoryFullName: input.repositoryFullName
+          }),
+        repositoryFullName: input.repositoryFullName,
+        toolName: "listWorkflowRuns"
       }),
     inputSchema: listWorkflowRunsInputSchema,
     name: "listWorkflowRuns",
@@ -327,11 +387,16 @@ export function createGitHubTools(): ExtensionToolDefinition[] {
     access: "write",
     description: "Create a GitHub issue in a repository.",
     handler: (ctx, input) =>
-      createGitHubIssue({
-        body: input.body,
-        preferences: resolveGitHubPreferences(ctx),
+      runGitHubRepositoryTool({
+        operation: () =>
+          createGitHubIssue({
+            body: input.body,
+            preferences: resolveGitHubPreferences(ctx),
+            repositoryFullName: input.repositoryFullName,
+            title: input.title
+          }),
         repositoryFullName: input.repositoryFullName,
-        title: input.title
+        toolName: "createIssue"
       }),
     inputSchema: createIssueInputSchema,
     name: "createIssue",

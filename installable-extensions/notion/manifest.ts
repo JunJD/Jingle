@@ -22,6 +22,8 @@ export const notionManifest = defineNativeExtensionManifest({
       "If Notion is not connected, explain that Notion needs to be connected in Settings before you can inspect Notion content.",
       "Search Notion before retrieving a page or data source unless the user provided an exact page, block, or data source id.",
       "Notion API access is limited to pages and data sources shared with the connected connection.",
+      "If a Notion data source tool returns notion_data_source_not_found, search again for a shared data source id; if none is returned, tell the user to share that database with the connected integration.",
+      "If a Notion page or block tool returns notion_page_or_block_not_found, search again for a shared page id; if none is returned, tell the user to share the page with the connected integration or provide a current id.",
       "Adding content to a Notion page writes to Notion and must follow the current Permission Mode.",
       "Do not claim to have searched Notion unless a Notion tool was available and called."
     ],
