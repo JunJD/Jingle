@@ -41,8 +41,8 @@ function mapConfirmation(input: {
 }): ToolApprovalConfirmation {
   return {
     facts: (input.value.facts ?? input.value.info)?.map(mapConfirmationFact) ?? [],
-    message: input.value.title ? input.value.message : undefined,
-    title: input.value.title ?? input.value.message ?? input.fallbackTitle,
+    message: input.value.message,
+    title: input.value.title ?? input.fallbackTitle,
     tone: input.value.tone ?? "default"
   }
 }

@@ -24,6 +24,7 @@ import {
   createExtensionAiSession
 } from "../../src/main/agent/extension-ai-runtime"
 import { ExtensionToolExecutor } from "../../src/main/extension-tools/executor"
+import { createDynamicExtensionToolApprovalPolicyProvider } from "../../src/main/extension-tools/permission"
 import { ExtensionToolRegistry } from "../../src/main/extension-tools/registry"
 import { defineNativeExtensionManifest } from "../../src/shared/native-extensions"
 
@@ -306,6 +307,63 @@ test("extension AI session replaces stale bindings when a capability is reloaded
   assert.deepEqual(session.getAllToolBindings(), [])
   assert.deepEqual(session.getVisibleToolBindings(), [])
   assert.equal(session.getAiCapabilities()[0]?.authStatus, "missing")
+})
+
+test("extension approval confirmation preserves message-only prompts under the tool title", async () => {
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  registry.registerExtensionTools("mockExtension", [
+    {
+      access: "write",
+      approval: {
+        confirmation: (input) => ({
+          info: [{ name: "Title", value: (input as { title: string }).title }],
+          message: "Create this mock item?"
+        })
+      },
+      description: "Create a mock item.",
+      handler: () => ({
+        id: "item-1"
+      }),
+      inputSchema: z.object({
+        title: z.string()
+      }),
+      name: "createItem",
+      title: "Create Item"
+    }
+  ])
+
+  const [binding] = registry.createAiCapabilityToolBindings([
+    createAiCapability({
+      enabledToolNames: ["createItem"],
+      toolExposures: [
+        {
+          agentToolName: "ext__mockSource__profile_1__createItem",
+          display: {
+            description: "Create a mock item for Mock Profile.",
+            title: "Create Item"
+          },
+          toolName: "createItem"
+        }
+      ]
+    })
+  ])
+  const provider = createDynamicExtensionToolApprovalPolicyProvider({
+    getBindings: () => [binding]
+  })
+
+  const review = await provider.getReview(binding, {
+    title: "Ship it"
+  })
+
+  assert.equal(review.kind, "extension_tool")
+  assert.deepEqual(review.confirmation, {
+    facts: [{ label: "Title", value: "Ship it" }],
+    message: "Create this mock item?",
+    title: "Create Item",
+    tone: "default"
+  })
 })
 
 test("extension tool executor validates input and passes source context to handlers", async () => {
