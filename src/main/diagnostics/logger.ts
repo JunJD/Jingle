@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync } from "fs"
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  unlinkSync
+} from "fs"
 import { appendFile } from "fs/promises"
 import { dirname, join } from "path"
 
@@ -49,17 +57,16 @@ export class DiagnosticsLogger {
     this.write("error", message, fields)
   }
 
+  errorSync(message: string, fields?: DiagnosticsLogFields): void {
+    this.writeSync("error", message, fields)
+  }
+
   async flush(): Promise<void> {
     await this.writeQueue
   }
 
   private write(level: DiagnosticsLevel, message: string, fields?: DiagnosticsLogFields): void {
-    const record = {
-      timestamp: new Date().toISOString(),
-      level,
-      message,
-      ...fields
-    }
+    const record = this.createRecord(level, message, fields)
     const line = `${JSON.stringify(record)}\n`
     this.writeQueue = this.writeQueue
       .then(async () => {
@@ -69,6 +76,30 @@ export class DiagnosticsLogger {
       .catch((error) => {
         console.error("[Diagnostics] Failed to write log:", error)
       })
+  }
+
+  private writeSync(level: DiagnosticsLevel, message: string, fields?: DiagnosticsLogFields): void {
+    const record = this.createRecord(level, message, fields)
+    const line = `${JSON.stringify(record)}\n`
+    try {
+      this.rotateIfNeeded(Buffer.byteLength(line, "utf8"))
+      appendFileSync(this.logFilePath, line, "utf8")
+    } catch (error) {
+      console.error("[Diagnostics] Failed to write log:", error)
+    }
+  }
+
+  private createRecord(
+    level: DiagnosticsLevel,
+    message: string,
+    fields?: DiagnosticsLogFields
+  ): Record<string, unknown> {
+    return {
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      ...fields
+    }
   }
 
   private rotateIfNeeded(incomingBytes: number): void {

@@ -1,31 +1,52 @@
-import { app, type BrowserWindow, type RenderProcessGoneDetails } from "electron"
+import { app, dialog, type BrowserWindow, type RenderProcessGoneDetails } from "electron"
 import type { AppWindowKind } from "../windows/load-renderer-window"
 import { diagnosticsLogger } from "./instance"
+import {
+  errorFromUnhandledRejection,
+  formatFatalMainProcessError,
+  serializeProcessError
+} from "./process-errors"
 
-function serializeError(error: unknown): Record<string, unknown> {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
-    }
-  }
-
-  return {
-    message: String(error)
-  }
+interface ProcessDiagnosticsOptions {
+  handleFatalErrors?: boolean
 }
 
-export function installProcessDiagnostics(): void {
-  process.on("uncaughtExceptionMonitor", (error) => {
-    diagnosticsLogger.error("Main process uncaught exception", serializeError(error))
+function quitAfterFatalMainProcessError(error: unknown, origin: string): void {
+  diagnosticsLogger.errorSync("Main process fatal error", {
+    error: serializeProcessError(error),
+    origin
   })
+  dialog.showErrorBox(
+    "Openwork encountered an unrecoverable error",
+    formatFatalMainProcessError(error, diagnosticsLogger.getLogFilePath())
+  )
+  app.exit(1)
+}
 
-  process.on("unhandledRejection", (reason) => {
-    diagnosticsLogger.error("Main process unhandled rejection", {
-      reason: serializeError(reason)
+export function installProcessDiagnostics(options: ProcessDiagnosticsOptions = {}): void {
+  process.on("uncaughtExceptionMonitor", (error, origin) => {
+    diagnosticsLogger.errorSync("Main process uncaught exception", {
+      error: serializeProcessError(error),
+      origin
     })
   })
+
+  if (options.handleFatalErrors) {
+    process.on("uncaughtException", (error, origin) => {
+      quitAfterFatalMainProcessError(error, origin)
+    })
+
+    process.on("unhandledRejection", (reason) => {
+      quitAfterFatalMainProcessError(errorFromUnhandledRejection(reason), "unhandledRejection")
+    })
+  } else {
+    process.on("unhandledRejection", (reason) => {
+      diagnosticsLogger.errorSync("Main process unhandled rejection", {
+        reason: serializeProcessError(reason)
+      })
+      throw errorFromUnhandledRejection(reason)
+    })
+  }
 
   app.on("child-process-gone", (_event, details) => {
     diagnosticsLogger.error("Electron child process gone", details)
@@ -70,7 +91,7 @@ export function attachWindowDiagnostics(
       windowKind,
       windowId: browserWindow.id,
       webContentsId: webContents.id,
-      ...serializeError(error)
+      ...serializeProcessError(error)
     })
   })
 
