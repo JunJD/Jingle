@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
-import { mkdtemp, rm, symlink } from "node:fs/promises"
+import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -641,12 +641,11 @@ test("trace projector keeps approval wait and resolution as one timeline step", 
   assert.equal(approvalStep.tool_call_id, "tool-call-approval")
 })
 
-test("trace CLI default timeline hides raw runtime and checkpoint events", async () => {
+test("trace dev script default timeline hides raw runtime and checkpoint events", async () => {
   const { appendAgentEvent, createRun, createThread, flushAgentTraceProjection, getPrismaClient } =
     await loadDbModules()
   const threadId = "thread-cli-step-boundary"
   const runId = "run-cli-step-boundary"
-  const cliDir = await mkdtemp(join(tmpdir(), "openwork-jl-cli-"))
 
   await createThread(threadId)
   await createRun(runId, threadId)
@@ -702,37 +701,32 @@ test("trace CLI default timeline hides raw runtime and checkpoint events", async
   })
   await flushAgentTraceProjection()
 
-  try {
-    const jlPath = join(cliDir, "jl")
-    await symlink(join(repoRoot, "bin/cli.js"), jlPath)
-    const cliEnv = {
-      ...process.env,
-      OPENWORK_HOME: openworkHome
-    }
-
-    const timeline = execFileSync("node", [jlPath, "trace", "inspect", runId], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      env: cliEnv
-    })
-    assert.match(timeline, /Agent Operation/)
-    assert.match(timeline, /Step 0\s+\[call_llm\]/)
-    assert.match(timeline, /LLM\s+in:2 out:3 tokens/)
-    assert.match(timeline, /done\s+tokens=5/)
-    assert.doesNotMatch(timeline, /\bcheckpoint\b/)
-    assert.doesNotMatch(timeline, /\bruntime\b/)
-
-    const events = execFileSync("node", [jlPath, "trace", "inspect", runId, "--events"], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      env: cliEnv
-    })
-    assert.match(events, /run\.started/)
-    assert.match(events, /checkpoint\.committed/)
-    assert.match(events, /run\.finished/)
-  } finally {
-    await rm(cliDir, { force: true, recursive: true })
+  const scriptPath = join(repoRoot, "scripts/inspect-agent-trace.cjs")
+  const cliEnv = {
+    ...process.env,
+    OPENWORK_HOME: openworkHome
   }
+
+  const timeline = execFileSync("node", [scriptPath, "inspect", runId], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: cliEnv
+  })
+  assert.match(timeline, /Agent Operation/)
+  assert.match(timeline, /Step 0\s+\[call_llm\]/)
+  assert.match(timeline, /LLM\s+in:2 out:3 tokens/)
+  assert.match(timeline, /done\s+tokens=5/)
+  assert.doesNotMatch(timeline, /\bcheckpoint\b/)
+  assert.doesNotMatch(timeline, /\bruntime\b/)
+
+  const events = execFileSync("node", [scriptPath, "inspect", runId, "--events"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: cliEnv
+  })
+  assert.match(events, /run\.started/)
+  assert.match(events, /checkpoint\.committed/)
+  assert.match(events, /run\.finished/)
 })
 
 test("trace projector rebuilds messages from baseline and delta blobs", async () => {
