@@ -85,6 +85,7 @@ export function attachLauncherWindowDragController(params: {
   setContentBounds: (bounds: Rectangle) => void
 }): LauncherWindowDragController {
   const { getGuideBounds, launcherWindow, persistOrigin, setContentBounds } = params
+  const webContents = launcherWindow.webContents
   let dragSession: LauncherDragSession | null = null
   let disposed = false
   let pendingDragActivation: PendingLauncherDragActivation | null = null
@@ -231,7 +232,7 @@ export function attachLauncherWindowDragController(params: {
 
     const dragStartToken = pendingDragStartToken + 1
     pendingDragStartToken = dragStartToken
-    void isMouseInLauncherDragRegion(launcherWindow.webContents, mouse)
+    void isMouseInLauncherDragRegion(webContents, mouse)
       .then((isDraggable) => {
         if (isDraggable && pendingDragStartToken === dragStartToken) {
           scheduleDragActivation(dragStartToken)
@@ -242,7 +243,7 @@ export function attachLauncherWindowDragController(params: {
       })
   }
 
-  launcherWindow.webContents.on("before-mouse-event", handleBeforeMouseEvent)
+  webContents.on("before-mouse-event", handleBeforeMouseEvent)
 
   return {
     cancel: () => {
@@ -250,7 +251,9 @@ export function attachLauncherWindowDragController(params: {
     },
     dispose: () => {
       disposed = true
-      launcherWindow.webContents.removeListener("before-mouse-event", handleBeforeMouseEvent)
+      if (!webContents.isDestroyed()) {
+        webContents.removeListener("before-mouse-event", handleBeforeMouseEvent)
+      }
       stopDrag(false)
     },
     isDragging: () => dragSession !== null
