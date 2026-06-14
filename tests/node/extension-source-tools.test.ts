@@ -593,6 +593,45 @@ test("extension AI middleware injects loaded guides and executes through stable 
   })
 })
 
+test("extension AI middleware returns input validation failures as tool results", async () => {
+  const registry = new ExtensionToolRegistry({
+    knownExtensionNames: ["mockExtension"]
+  })
+  registry.registerExtensionTools("mockExtension", [createSearchTool()])
+
+  const session = createExtensionAiSession({
+    aiCapabilities: [createAiCapability()],
+    registry
+  })
+  const middleware = createExtensionAiMiddleware({
+    aiCapabilityCatalog: [],
+    session,
+    threadId: "thread-1",
+    workspacePath: "/workspace"
+  })
+  assert.ok(middleware.tools)
+  const callExtension = findMiddlewareTool(middleware.tools, "callExtension")
+
+  const toolOutput = await callExtension.invoke({
+    args: {
+      limit: 5
+    },
+    extensionName: "mockExtension",
+    toolName: "searchItems"
+  })
+  const result = JSON.parse(String(toolOutput)) as {
+    code?: string
+    issues?: string[]
+    status?: string
+    toolName?: string
+  }
+
+  assert.equal(result.status, "error")
+  assert.equal(result.code, "validation_error")
+  assert.equal(result.toolName, "searchItems")
+  assert.deepEqual(result.issues, ['query: Invalid input: expected string, received undefined'])
+})
+
 test("extension AI middleware requires tool call ids for declared outputs", async () => {
   const registry = new ExtensionToolRegistry({
     knownExtensionNames: ["mockExtension"]

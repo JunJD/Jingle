@@ -8,7 +8,7 @@ import type {
 import type { NativeExtensionExecutionContext } from "@shared/native-extensions"
 import { resolveLocalizedText } from "@shared/i18n"
 import { extensionToolCallUiSchema } from "@shared/tool-presentation"
-import { z } from "./tool-input-schema"
+import { ToolSchemaValidationError, z } from "./tool-input-schema"
 import { presentExtensionToolOutputs } from "../artifacts/extension-tool-outputs"
 import { ExtensionToolExecutor } from "../extension-tools/executor"
 import type { ExtensionAgentToolBinding } from "../extension-tools/registry"
@@ -285,6 +285,27 @@ function buildLoadExtensionOutput(input: {
     .join("\n\n")
 }
 
+function serializeRecoverableExtensionToolValidationError(input: {
+  error: ToolSchemaValidationError
+  extensionName: string
+  toolName: string
+}): string {
+  return JSON.stringify(
+    {
+      code: "validation_error",
+      extensionName: input.extensionName,
+      issues: input.error.issues,
+      message: input.error.message,
+      nextAction:
+        "Retry callExtension with args matching this extension tool's loaded input schema.",
+      status: "error",
+      toolName: input.toolName
+    },
+    null,
+    2
+  )
+}
+
 async function persistLoadedCapabilities(input: {
   onLoadedAiCapabilitiesChanged?: (
     change: LoadedExtensionAiCapabilitiesChange
@@ -366,17 +387,30 @@ export function createExtensionAiMiddleware(options: CreateExtensionAiMiddleware
 
       const runId = getRunIdFromToolRuntime(runtime) ?? options.runId ?? null
       const toolCallId = getToolCallIdFromRuntime(runtime)
-      const result = await new ExtensionToolExecutor({
-        bindings: options.session.getVisibleToolBindings(),
-        getExtensionExecutionContext: options.getExtensionExecutionContext,
-        getExtensionPreferences: options.getExtensionPreferences
-      }).executeAgentToolWithResult({
-        agentToolName: binding.agentToolName,
-        args: input.args,
-        runId,
-        threadId: options.threadId,
-        workspacePath: options.workspacePath
-      })
+      let result
+      try {
+        result = await new ExtensionToolExecutor({
+          bindings: options.session.getVisibleToolBindings(),
+          getExtensionExecutionContext: options.getExtensionExecutionContext,
+          getExtensionPreferences: options.getExtensionPreferences
+        }).executeAgentToolWithResult({
+          agentToolName: binding.agentToolName,
+          args: input.args,
+          runId,
+          threadId: options.threadId,
+          workspacePath: options.workspacePath
+        })
+      } catch (error) {
+        if (error instanceof ToolSchemaValidationError) {
+          return serializeRecoverableExtensionToolValidationError({
+            error,
+            extensionName: input.extensionName,
+            toolName: input.toolName
+          })
+        }
+
+        throw error
+      }
 
       if (result.outputs.length === 0) {
         return result.serializedOutput
