@@ -4,6 +4,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 import { DiagnosticsLogger } from "../../src/main/diagnostics/logger"
+import {
+  errorFromUnhandledRejection,
+  formatFatalMainProcessError,
+  serializeProcessError
+} from "../../src/main/diagnostics/process-errors"
 import { normalizeRendererErrorReport } from "../../src/main/diagnostics/renderer-report"
 
 function createTempLogDir(): string {
@@ -59,6 +64,32 @@ test("diagnostics logger rotates old local log files", async () => {
   }
 })
 
+test("diagnostics logger writes fatal records synchronously", () => {
+  const logDir = createTempLogDir()
+  try {
+    const logger = new DiagnosticsLogger({ logDir })
+
+    logger.errorSync("Main process fatal error", {
+      error: {
+        message: "boom"
+      },
+      origin: "uncaughtException"
+    })
+
+    const line = readFileSync(logger.getLogFilePath(), "utf8").trim()
+    const record = JSON.parse(line) as Record<string, unknown>
+
+    assert.equal(record["level"], "error")
+    assert.equal(record["message"], "Main process fatal error")
+    assert.equal(record["origin"], "uncaughtException")
+    assert.deepEqual(record["error"], {
+      message: "boom"
+    })
+  } finally {
+    rmSync(logDir, { recursive: true, force: true })
+  }
+})
+
 test("renderer error reports are normalized before local logging", () => {
   assert.deepEqual(
     normalizeRendererErrorReport({
@@ -82,4 +113,34 @@ test("renderer error reports are normalized before local logging", () => {
     kind: "error",
     message: "Renderer error"
   })
+})
+
+test("process diagnostics normalize fatal main process errors", () => {
+  const error = new TypeError("Object has been destroyed")
+  const serialized = serializeProcessError(error)
+
+  assert.equal(serialized.name, "TypeError")
+  assert.equal(serialized.message, "Object has been destroyed")
+  assert.match(String(serialized.stack), /TypeError: Object has been destroyed/)
+
+  assert.deepEqual(serializeProcessError("plain failure"), {
+    message: "plain failure"
+  })
+
+  assert.equal(errorFromUnhandledRejection(error), error)
+  assert.equal(
+    errorFromUnhandledRejection("plain rejection").message,
+    "Unhandled promise rejection: plain rejection"
+  )
+
+  assert.equal(
+    formatFatalMainProcessError(error, "/tmp/openwork.log"),
+    [
+      "Object has been destroyed",
+      "",
+      "Diagnostics were written to: /tmp/openwork.log",
+      "",
+      "Openwork will quit now. Please restart the app."
+    ].join("\n")
+  )
 })

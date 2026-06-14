@@ -21,8 +21,6 @@ import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
 const JINGLE_PROTOCOL = "jingle"
 
-installProcessDiagnostics()
-
 const remoteDebuggingPort = process.env.OPENWORK_REMOTE_DEBUGGING_PORT
 if (remoteDebuggingPort) {
   // Expose Electron's Chromium target for external CDP clients like agent-browser.
@@ -43,6 +41,10 @@ const hasSingleInstanceLock = bypassSingleInstanceLock ? true : app.requestSingl
 
 // Simple dev check - replaces @electron-toolkit/utils is.dev
 const isDev = !app.isPackaged
+
+installProcessDiagnostics({
+  handleFatalErrors: !isDev
+})
 
 protocol.registerSchemesAsPrivileged([
   {
