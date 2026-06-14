@@ -1,10 +1,9 @@
 import { ChevronRight } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import type { ActiveAgentToolCall } from "@shared/agent-thread-runtime"
-import { LoaderOne } from "@/components/ui/loader"
 import {
+  AgentActivityRow,
   AgentTool,
-  AgentToolInline,
   AgentToolStatusBadge,
   type AgentToolState
 } from "@/components/agent-ui"
@@ -25,28 +24,6 @@ interface ActionMessageProps {
   presentation?: ToolPresentation
   showSummary?: boolean
   status?: ToolComponentStatus
-}
-
-export function ToolStatusIndicator(props: {
-  runningLabel: string
-  status: ToolComponentStatus
-  statusLabel: string | null
-}): React.JSX.Element | null {
-  const { runningLabel, status, statusLabel } = props
-
-  if (status === "arguments_streaming" || status === "running") {
-    return (
-      <span
-        aria-label={runningLabel}
-        className="inline-flex h-[var(--ow-space-4)] w-[var(--launcher-action-control-h)] shrink-0 items-center justify-center"
-        role="status"
-      >
-        <LoaderOne />
-      </span>
-    )
-  }
-
-  return statusLabel ? <span>{statusLabel}</span> : null
 }
 
 function toAgentToolState(status: ToolComponentStatus): AgentToolState {
@@ -233,23 +210,10 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
   if (presentation === "grouped") {
     return (
       <div className="min-w-0">
-        <AgentToolInline
-          active={isToolActive(activityStatus)}
+        <button
+          className="inline-flex max-w-full min-w-0 rounded-[var(--ow-radius-sm)] text-left text-[var(--ow-agent-timeline-muted)] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          data-active={isToolActive(activityStatus) ? "true" : undefined}
           data-tool-call-toggle={toolCall.name}
-          detail={display.detail}
-          meta={
-            meta || hasDetail ? (
-              <>
-                {meta}
-                {hasDetail ? (
-                  <ChevronRight
-                    className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
-                    data-open={isExpanded ? "true" : "false"}
-                  />
-                ) : null}
-              </>
-            ) : null
-          }
           onClick={() => {
             if (hasDetail && !approvalRequest) {
               const nextExpanded = !isExpanded
@@ -260,47 +224,35 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
               }
             }
           }}
-          title={display.title}
-        />
+          type="button"
+        >
+          <AgentActivityRow
+            active={isToolActive(activityStatus)}
+            className="w-full"
+            detail={display.detail}
+            icon={<Icon className="size-[var(--ow-icon-sm)]" />}
+            label={display.title}
+            meta={
+              meta || hasDetail ? (
+                <>
+                  {meta}
+                  {hasDetail ? (
+                    <ChevronRight
+                      className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
+                      data-open={isExpanded ? "true" : "false"}
+                    />
+                  ) : null}
+                </>
+              ) : null
+            }
+          />
+        </button>
         {hasDetail && isExpanded ? (
-          <div className="mt-[var(--ow-space-2)] pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))]">
+          <div className="mt-[var(--ow-space-2)] min-w-0 max-w-full pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))]">
             {detailContent}
           </div>
         ) : null}
       </div>
-    )
-  }
-
-  if (toolState === "complete" && !isExpanded) {
-    return (
-      <AgentToolInline
-        data-tool-call-toggle={toolCall.name}
-        detail={display.detail}
-        icon={<Icon className="size-[var(--ow-icon-sm)]" />}
-        meta={
-          meta || hasDetail ? (
-            <>
-              {meta}
-              {hasDetail ? (
-                <ChevronRight
-                  className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
-                  data-open="false"
-                />
-              ) : null}
-            </>
-          ) : null
-        }
-        onClick={() => {
-          if (hasDetail && !approvalRequest) {
-            onExpandedChange?.(true)
-
-            if (expanded === undefined) {
-              setManualExpanded(true)
-            }
-          }
-        }}
-        title={display.title}
-      />
     )
   }
 

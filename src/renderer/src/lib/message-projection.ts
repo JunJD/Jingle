@@ -4,6 +4,7 @@ import { stabilizeReferences } from "@/lib/stabilize-references"
 import {
   readAgentToolExecutionTiming,
   type ActiveAgentToolCall,
+  type AgentRunPhase,
   type AgentToolExecutionTiming
 } from "@shared/agent-thread-runtime"
 import type { HITLRequest, Message as ThreadMessage, ToolCall } from "@/types"
@@ -28,24 +29,23 @@ export type TurnAssistantEntry =
       message: ThreadMessage
     }
   | {
-      kind: "agent-activity"
-      items: AgentActivityItem[]
-      key: string
-    }
-
-export type AgentActivityItem =
-  | {
       kind: "thinking"
       key: string
       messageId: string
       text: string
     }
   | {
-      kind: "tool"
+      kind: "agent-activity"
+      items: AgentActivityItem[]
       key: string
-      messageId: string
-      toolCall: ToolCall
     }
+
+export type AgentActivityItem = {
+  kind: "tool"
+  key: string
+  messageId: string
+  toolCall: ToolCall
+}
 
 export function shouldDefaultExpandToolEntries(
   turn: MessageTurn,
@@ -83,14 +83,7 @@ export interface AgentToolExecutionView {
 
 export type AgentToolExecutionsView = Record<string, AgentToolExecutionView>
 
-export type ActiveTurnStatusProjectionKind =
-  | "composing_answer"
-  | "preparing_tool"
-  | "running_tool"
-  | "thinking"
-  | "understanding_request"
-  | "waiting_approval"
-  | "waiting_tool_result"
+export type ActiveTurnStatusProjectionKind = "thinking" | "waiting_approval"
 
 export interface ActiveTurnStatusProjection {
   kind: ActiveTurnStatusProjectionKind
@@ -378,7 +371,10 @@ export function projectAgentActivitySummary(
 }
 
 function shouldProjectToolActivity(toolCall: Pick<ToolCall, "name" | "presentation">): boolean {
-  if (toolCall.name === "loadExtension" || toolCall.name === "write_todos") {
+  if (
+    toolCall.name === "loadExtension" ||
+    toolCall.name === "write_todos"
+  ) {
     return false
   }
 
@@ -388,10 +384,6 @@ function shouldProjectToolActivity(toolCall: Pick<ToolCall, "name" | "presentati
   }
 
   return true
-}
-
-function shouldUseActiveToolCallForStatus(toolCall: { name: string }): boolean {
-  return toolCall.name !== "loadExtension" && toolCall.name !== "write_todos"
 }
 
 function stabilizeToolResultInfo(
@@ -736,7 +728,8 @@ export function buildTurnAssistantEntries(turn: MessageTurn): TurnAssistantEntry
     const reasoningText = getReasoningText(message.content)
 
     if (reasoningText.trim()) {
-      pendingActivities.push({
+      pendingActivities = flushAgentActivities(entries, pendingActivities)
+      entries.push({
         key: `thinking:${message.id}`,
         kind: "thinking",
         messageId: message.id,
@@ -767,131 +760,45 @@ export function buildTurnAssistantEntries(turn: MessageTurn): TurnAssistantEntry
   return entries
 }
 
-function getToolActivityStatus(
-  item: Extract<AgentActivityItem, { kind: "tool" }>,
-  input: {
-    pendingApproval: HITLRequest | null | undefined
-    toolExecutions: AgentToolExecutionsView
-  }
-): AgentToolExecutionViewStatus | null {
-  if (input.pendingApproval?.tool_call.id === item.toolCall.id) {
-    return "approval"
-  }
-
-  return input.toolExecutions[item.toolCall.id]?.status ?? null
-}
-
-function hasStreamingAnswer(input: {
-  assistantEntries: readonly TurnAssistantEntry[]
-  streamingAssistantId: string | null | undefined
-}): boolean {
-  for (const entry of input.assistantEntries) {
-    if (entry.kind === "assistant-content" && entry.message.id === input.streamingAssistantId) {
-      return true
-    }
-  }
-
-  return false
-}
-
-function hasStreamingThinking(input: {
-  assistantEntries: readonly TurnAssistantEntry[]
-  isStreaming: boolean
-  streamingAssistantId: string | null | undefined
-}): boolean {
-  for (const entry of input.assistantEntries) {
-    if (entry.kind !== "agent-activity") {
-      continue
-    }
-
-    for (const item of entry.items) {
-      if (
-        item.kind === "thinking" &&
-        input.isStreaming &&
-        item.messageId === input.streamingAssistantId
-      ) {
-        return true
-      }
-    }
-  }
-
-  return false
-}
-
-function findLatestPendingToolActivity(input: {
-  assistantEntries: readonly TurnAssistantEntry[]
-  pendingApproval: HITLRequest | null | undefined
-  toolExecutions: AgentToolExecutionsView
-}): { status: AgentToolExecutionViewStatus; toolCallId: string } | null {
-  for (let entryIndex = input.assistantEntries.length - 1; entryIndex >= 0; entryIndex -= 1) {
-    const entry = input.assistantEntries[entryIndex]!
-    if (entry.kind !== "agent-activity") {
-      continue
-    }
-
-    for (let itemIndex = entry.items.length - 1; itemIndex >= 0; itemIndex -= 1) {
-      const item = entry.items[itemIndex]!
-      if (item.kind === "thinking") {
-        continue
-      }
-
-      const status = getToolActivityStatus(item, input)
-      if (status && status !== "complete" && status !== "failed") {
-        return {
-          status,
-          toolCallId: item.toolCall.id
-        }
-      }
-    }
-  }
-
-  return null
-}
-
-function projectToolStatusActiveTurnKind(
-  status: AgentToolExecutionViewStatus
-): ActiveTurnStatusProjectionKind | null {
-  switch (status) {
-    case "approval":
-      return "waiting_approval"
-    case "arguments_streaming":
-      return "preparing_tool"
-    case "running":
-      return "running_tool"
-    case "waiting_result":
-      return "waiting_tool_result"
-    case "complete":
-    case "failed":
-      return null
-  }
+function assistantEntriesContainToolCall(
+  assistantEntries: readonly TurnAssistantEntry[],
+  toolCallId: string
+): boolean {
+  return assistantEntries.some((entry) =>
+    entry.kind === "agent-activity"
+      ? entry.items.some((item) => item.kind === "tool" && item.toolCall.id === toolCallId)
+      : false
+  )
 }
 
 export function projectActiveTurnStatus(input: {
-  activeToolCalls?: readonly ActiveAgentToolCall[]
+  activeRunPhase?: AgentRunPhase | null
   assistantEntries: readonly TurnAssistantEntry[]
   isStreaming: boolean
   pendingApproval?: HITLRequest | null
   streamingAssistantId?: string | null
-  toolExecutions?: AgentToolExecutionsView
 }): ActiveTurnStatusProjection | null {
   if (!input.isStreaming) {
     return null
   }
 
-  const toolExecutions = input.toolExecutions ?? EMPTY_AGENT_TOOL_EXECUTIONS_VIEW
-  const activeToolCalls = input.activeToolCalls ?? []
+  const activeRunPhase = input.activeRunPhase ?? null
+  const placement = input.assistantEntries.length > 0 ? "after_entries" : "before_entries"
+  const latestEntry = input.assistantEntries.at(-1)
+
   if (
-    hasStreamingAnswer({
-      assistantEntries: input.assistantEntries,
-      streamingAssistantId: input.streamingAssistantId
-    })
+    latestEntry?.kind === "thinking" &&
+    latestEntry.messageId === input.streamingAssistantId
   ) {
     return null
   }
 
-  const placement = input.assistantEntries.length > 0 ? "after_entries" : "before_entries"
   const pendingApprovalToolCallId = input.pendingApproval?.tool_call.id ?? null
-  if (pendingApprovalToolCallId) {
+  if (activeRunPhase === "waiting_tool_result" && pendingApprovalToolCallId) {
+    if (assistantEntriesContainToolCall(input.assistantEntries, pendingApprovalToolCallId)) {
+      return null
+    }
+
     return {
       kind: "waiting_approval",
       placement,
@@ -899,78 +806,15 @@ export function projectActiveTurnStatus(input: {
     }
   }
 
-  const latestActiveToolCall = activeToolCalls.filter(shouldUseActiveToolCallForStatus).at(-1)
-  if (latestActiveToolCall) {
-    if (latestActiveToolCall.status === "arguments_streaming") {
-      return {
-        kind: "preparing_tool",
-        placement,
-        toolCallId: latestActiveToolCall.id
-      }
-    }
-
-    if (latestActiveToolCall.status === "running") {
-      return {
-        kind: "running_tool",
-        placement,
-        toolCallId: latestActiveToolCall.id
-      }
-    }
-
-    return {
-      kind: "waiting_tool_result",
-      placement,
-      toolCallId: latestActiveToolCall.id
-    }
+  if (activeRunPhase !== "thinking" || latestEntry?.kind === "agent-activity") {
+    return null
   }
 
-  const latestPendingTool = findLatestPendingToolActivity({
-    assistantEntries: input.assistantEntries,
-    pendingApproval: input.pendingApproval,
-    toolExecutions
-  })
-  if (latestPendingTool) {
-    const kind = projectToolStatusActiveTurnKind(latestPendingTool.status)
-    if (kind) {
-      return {
-        kind,
-        placement,
-        toolCallId: latestPendingTool.toolCallId
-      }
-    }
+  return {
+    kind: "thinking",
+    placement,
+    toolCallId: null
   }
-
-  if (
-    hasStreamingThinking({
-      assistantEntries: input.assistantEntries,
-      isStreaming: input.isStreaming,
-      streamingAssistantId: input.streamingAssistantId
-    })
-  ) {
-    return {
-      kind: "thinking",
-      placement,
-      toolCallId: null
-    }
-  }
-
-  if (input.assistantEntries.length === 0) {
-    return {
-      kind: "understanding_request",
-      placement: "before_entries",
-      toolCallId: null
-    }
-  }
-
-  if (input.assistantEntries.at(-1)?.kind === "agent-activity") {
-    return {
-      kind: "composing_answer",
-      placement: "after_entries",
-      toolCallId: null
-    }
-  }
-
-  return null
 }
 
 export function getTurnCopyText(turn: MessageTurn): string {

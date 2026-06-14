@@ -28,13 +28,8 @@ export interface AppCopy {
     copyMessage: string
     agentTasks: string
     agentThought: string
-    agentStatusComposingAnswer: string
-    agentStatusPreparingTool: string
-    agentStatusRunningTool: string
     agentStatusThinking: string
-    agentStatusUnderstandingRequest: string
     agentStatusWaitingApproval: string
-    agentStatusWaitingToolResult: string
     toolActivityCompleted: string
     toolActivityCommands: (count: number) => string
     toolActivityExplored: string
@@ -317,13 +312,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       copyMessage: "复制消息",
       agentTasks: "Agent 任务",
       agentThought: "已思考",
-      agentStatusComposingAnswer: "正在整理答案",
-      agentStatusPreparingTool: "正在准备工具",
-      agentStatusRunningTool: "正在运行工具",
       agentStatusThinking: "正在思考",
-      agentStatusUnderstandingRequest: "正在理解请求",
       agentStatusWaitingApproval: "等待你确认",
-      agentStatusWaitingToolResult: "正在等待工具结果",
       toolActivityCompleted: "已处理工具",
       toolActivityCommands: (count) => `${count} 条命令`,
       toolActivityExplored: "已探索",
@@ -624,13 +614,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       copyMessage: "Copy message",
       agentTasks: "Agent Tasks",
       agentThought: "Thought",
-      agentStatusComposingAnswer: "Preparing answer",
-      agentStatusPreparingTool: "Preparing tool",
-      agentStatusRunningTool: "Running tool",
       agentStatusThinking: "Thinking",
-      agentStatusUnderstandingRequest: "Understanding request",
       agentStatusWaitingApproval: "Waiting for your confirmation",
-      agentStatusWaitingToolResult: "Waiting for tool result",
       toolActivityCompleted: "Handled tools",
       toolActivityCommands: (count) => `${count} command${count === 1 ? "" : "s"}`,
       toolActivityExplored: "Explored",

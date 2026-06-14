@@ -349,7 +349,6 @@ export function reduceAgentThreadRuntimeEvent(
       const remainingToolCalls = removeActiveToolCall(state.activeRun, event.toolCallId)
       const currentToolCall = remainingToolCalls.at(-1)
       return updateActiveRunWithPhaseStart(state, event.revision, event.completedAt, {
-        ...(event.messageId ? { assistantMessageId: event.messageId } : {}),
         currentToolCallId: currentToolCall?.id ?? null,
         phase: currentToolCall ? "tool_running" : "thinking",
         toolCalls: remainingToolCalls

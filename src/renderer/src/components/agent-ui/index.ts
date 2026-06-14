@@ -8,21 +8,18 @@ export {
   type PromptInputProps,
   type PromptInputTextareaProps
 } from "./PromptInput"
-export { TextShimmer, type TextShimmerProps } from "./TextShimmer"
 export {
+  AgentActivityRow,
   AgentTool,
   AgentToolGroup,
   AgentToolGroupContent,
-  AgentToolGroupItem,
   AgentToolGroupTrigger,
-  AgentToolInline,
   AgentToolStatusBadge,
   AgentToolStatusIcon,
+  type AgentActivityRowProps,
   type AgentToolGroupContentProps,
-  type AgentToolGroupItemProps,
   type AgentToolGroupProps,
   type AgentToolGroupTriggerProps,
-  type AgentToolInlineProps,
   type AgentToolProps,
   type AgentToolState
 } from "./Tool"

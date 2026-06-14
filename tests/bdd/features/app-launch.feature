@@ -42,7 +42,7 @@ Feature: Openwork 桌面启动
     Then Launcher 首页展示了可执行结果
     When 我在 Launcher 首页按下 Tab
     Then Launcher 界面切换到 "ai"
-    And Launcher AI 当前 turn 显示状态 "understanding_request"
+    And Launcher AI 当前 turn 显示状态 "thinking"
     And Launcher AI 最终只展示 1 条包含 "scripted agent delayed first chunk completed" 的助手回复
     And Launcher AI 新线程的 agent thread data 最终包含 1 条用户消息、1 条包含 "scripted agent delayed first chunk completed" 的助手消息，且线程状态为 "idle"
 

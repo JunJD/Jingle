@@ -262,6 +262,11 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
       ? (state.agent.activeRun?.toolCalls ?? EMPTY_ACTIVE_TOOL_CALLS)
       : EMPTY_ACTIVE_TOOL_CALLS
   )
+  const activeRunPhase = useThreadSelector(threadId, (state) =>
+    state?.view.messageProjection.activeTurnKey === turnKey
+      ? (state.agent.activeRun?.phase ?? null)
+      : null
+  )
   const activePhaseStartedAt = useThreadSelector(threadId, (state) =>
     state?.view.messageProjection.activeTurnKey === turnKey
       ? (state.agent.activeRun?.phaseStartedAt ?? null)
@@ -314,6 +319,7 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
     <>
       <MessageTurnView
         activePhaseStartedAt={activePhaseStartedAt}
+        activeRunPhase={activeRunPhase}
         activeRunStartedAt={activeRunStartedAt}
         activeToolCalls={activeToolCalls}
         isActiveTurn={isActiveTurn}

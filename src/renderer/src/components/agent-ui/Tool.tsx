@@ -5,7 +5,6 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
-import { TextShimmer } from "./TextShimmer"
 
 export type AgentToolState = "running" | "approval" | "complete" | "error"
 
@@ -64,30 +63,90 @@ export function AgentToolStatusBadge(props: {
   )
 }
 
-function isTextNode(value: React.ReactNode): value is string | number {
-  return typeof value === "string" || typeof value === "number"
+export interface AgentActivityRowProps extends Omit<
+  React.ComponentProps<"span">,
+  "children" | "title"
+> {
+  active?: boolean
+  detail?: React.ReactNode
+  detailClassName?: string
+  icon?: React.ReactNode | null
+  label: React.ReactNode
+  labelClassName?: string
+  meta?: React.ReactNode
+  trailing?: React.ReactNode
 }
 
-function ToolText(props: {
-  active?: boolean
-  className?: string
-  offset?: number
-  value: React.ReactNode
-}): React.JSX.Element {
-  const { active = false, className, offset = 0, value } = props
+export function AgentActivityRow(props: AgentActivityRowProps): React.JSX.Element {
+  const {
+    active = false,
+    className,
+    detail,
+    detailClassName,
+    icon,
+    label,
+    labelClassName,
+    meta,
+    trailing,
+    ...rest
+  } = props
+  const hasTrailing = Boolean(meta || trailing)
+  const gridClassName =
+    hasTrailing
+      ? "grid-cols-[var(--ow-icon-action)_minmax(0,1fr)_minmax(var(--ow-agent-activity-trailing-min-width),auto)]"
+      : "grid-cols-[var(--ow-icon-action)_minmax(0,1fr)]"
 
-  if (isTextNode(value)) {
-    return (
-      <TextShimmer
-        active={active}
-        className={className}
-        offset={offset}
-        text={String(value)}
-      />
-    )
-  }
-
-  return <span className={className}>{value}</span>
+  return (
+    <span
+      className={cn(
+        "ow-agent-activity-row relative isolate grid min-h-[var(--ow-agent-activity-row-height)] max-w-full min-w-0 items-center gap-x-[var(--ow-gap-sm)] overflow-hidden rounded-[var(--ow-radius-sm)] px-0 py-[var(--ow-space-0-5)]",
+        gridClassName,
+        active && "text-[var(--ow-agent-timeline-active)]",
+        className
+      )}
+      data-active={active ? "true" : undefined}
+      {...rest}
+    >
+      <span
+        className="inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center"
+        data-slot="ow-agent-activity-icon"
+      >
+        {icon}
+      </span>
+      <span
+        className="inline-flex min-w-0 max-w-full items-baseline gap-x-[var(--ow-gap-sm)] overflow-hidden whitespace-nowrap"
+        data-slot="ow-agent-activity-body"
+      >
+        <span
+          className={cn(
+            "block min-w-0 max-w-full truncate [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]",
+            labelClassName
+          )}
+        >
+          {label}
+        </span>
+        {detail ? (
+          <span
+            className={cn(
+              "block min-w-0 max-w-[min(32rem,60vw)] shrink truncate [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-[var(--ow-agent-timeline-muted)]",
+              detailClassName
+            )}
+          >
+            {detail}
+          </span>
+        ) : null}
+      </span>
+      {hasTrailing ? (
+        <span
+          className="flex min-w-[var(--ow-agent-activity-trailing-min-width)] shrink-0 items-center justify-end gap-[var(--ow-gap-xs)]"
+          data-slot="ow-agent-activity-trailing"
+        >
+          {meta}
+          {trailing}
+        </span>
+      ) : null}
+    </span>
+  )
 }
 
 export interface AgentToolProps extends Omit<React.ComponentProps<"div">, "title"> {
@@ -152,46 +211,32 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
               "h-auto w-full justify-between rounded-none bg-transparent px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left font-normal text-[var(--ow-agent-timeline-muted)] hover:bg-background-secondary/46 hover:text-foreground",
               (state === "complete" || state === "running") &&
                 "justify-start gap-[var(--ow-gap-xs)] px-0 py-[var(--ow-space-0-5)] hover:bg-transparent",
-              !hasDetail && "cursor-default hover:bg-transparent"
+              !hasDetail && "cursor-default opacity-100 hover:bg-transparent disabled:opacity-100"
             )}
             data-tool-trigger
             type="button"
             variant="ghost"
           >
-            <span className="ow-agent-tool-label flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
-              <span className="inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
-                {icon ?? <AgentToolStatusIcon className="size-[var(--ow-icon-sm)]" state={state} />}
-              </span>
-              <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-[var(--ow-gap-sm)] gap-y-[var(--ow-space-1)]">
-                <ToolText
-                  active={state === "running"}
-                  className="ow-agent-tool-title min-w-0 max-w-full [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
-                  value={title}
-                />
-                {subtitle ? (
-                  <ToolText
-                    active={state === "running"}
-                    className="ow-agent-tool-detail min-w-0 flex-1 truncate [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-[var(--ow-agent-timeline-muted)]"
-                    offset={4}
-                    value={subtitle}
+            <AgentActivityRow
+              active={state === "running"}
+              className="w-full"
+              detail={subtitle}
+              detailClassName="ow-agent-tool-detail flex-1"
+              icon={
+                icon ?? <AgentToolStatusIcon className="size-[var(--ow-icon-sm)]" state={state} />
+              }
+              label={title}
+              labelClassName="ow-agent-tool-title"
+              meta={meta}
+              trailing={
+                hasDetail ? (
+                  <ChevronRight
+                    className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
+                    data-open={isOpen ? "true" : "false"}
                   />
-                ) : null}
-              </span>
-            </span>
-            <span
-              className={cn(
-                "ml-[var(--ow-space-2)] flex shrink-0 items-center gap-[var(--ow-gap-sm)]",
-                (state === "complete" || state === "running") && "ml-0 gap-[var(--ow-gap-xs)]"
-              )}
-            >
-              {meta}
-              {hasDetail ? (
-                <ChevronRight
-                  className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
-                  data-open={isOpen ? "true" : "false"}
-                />
-              ) : null}
-            </span>
+                ) : null
+              }
+            />
           </Button>
         </CollapsibleTrigger>
         {hasDetail ? (
@@ -203,7 +248,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
           >
             <div
               className={cn(
-                "px-[var(--ow-space-3)] py-[var(--ow-space-3)]",
+                "min-w-0 max-w-full px-[var(--ow-space-3)] py-[var(--ow-space-3)]",
                 (state === "complete" || state === "running") &&
                   "px-0 pb-[var(--ow-space-2)] pt-[var(--ow-space-1)] pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))]"
               )}
@@ -216,59 +261,6 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
     </Collapsible>
   )
 }
-
-export interface AgentToolInlineProps extends Omit<React.ComponentProps<"button">, "title"> {
-  active?: boolean
-  detail?: React.ReactNode
-  icon?: React.ReactNode
-  meta?: React.ReactNode
-  title: React.ReactNode
-}
-
-export function AgentToolInline(props: AgentToolInlineProps): React.JSX.Element {
-  const { active = false, className, detail, icon, meta, title, type = "button", ...rest } = props
-
-  return (
-    <button
-      className={cn(
-        "ow-agent-tool-inline inline-flex max-w-full min-w-0 items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-sm)] px-0 py-[var(--ow-space-0-5)] text-left text-[var(--ow-agent-timeline-muted)] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        className
-      )}
-      data-active={active ? "true" : undefined}
-      type={type}
-      {...rest}
-    >
-      {icon ? (
-        <span className="inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
-          {icon}
-        </span>
-      ) : null}
-      <span className="inline-flex min-w-0 flex-none flex-wrap items-baseline gap-x-[var(--ow-gap-sm)] gap-y-[var(--ow-space-1)]">
-        <ToolText
-          active={active}
-          className="ow-agent-tool-inline-title min-w-0 max-w-full [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
-          value={title}
-        />
-        {detail ? (
-          <ToolText
-            active={active}
-            className="ow-agent-tool-inline-detail min-w-0 max-w-[min(32rem,60vw)] truncate [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-[var(--ow-agent-timeline-muted)]"
-            offset={4}
-            value={detail}
-          />
-        ) : null}
-      </span>
-      {meta ? (
-        <span className="ml-[var(--ow-space-1)] flex shrink-0 items-center gap-[var(--ow-gap-xs)]">
-          {meta}
-        </span>
-      ) : null}
-    </button>
-  )
-}
-
-const agentToolGroupGridClassName =
-  "grid grid-cols-[var(--ow-icon-action)_minmax(0,1fr)] gap-x-[var(--ow-gap-sm)]"
 
 export interface AgentToolGroupProps extends React.ComponentProps<typeof Collapsible> {
   active?: boolean
@@ -294,6 +286,7 @@ export interface AgentToolGroupTriggerProps extends React.ComponentProps<
   detail?: React.ReactNode
   icon?: React.ReactNode
   meta?: React.ReactNode
+  showTrailingToggle?: boolean
 }
 
 export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.JSX.Element {
@@ -304,8 +297,19 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
     detail,
     icon = <ListTodo className="size-[var(--ow-icon-action)]" />,
     meta,
+    showTrailingToggle,
     ...rest
   } = props
+  const hasLeadingIcon = icon !== null
+  const shouldShowTrailingToggle = showTrailingToggle ?? !hasLeadingIcon
+  const leadingIcon = hasLeadingIcon ? (
+    <span className="relative inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
+      <span className="transition-opacity group-hover:opacity-0 group-data-[state=open]:opacity-0">
+        {icon}
+      </span>
+      <ChevronRight className="ow-agent-tool-chevron absolute size-[var(--ow-icon-action)] opacity-0 group-hover:opacity-100 group-data-[state=open]:rotate-90 group-data-[state=open]:opacity-100" />
+    </span>
+  ) : null
 
   return (
     <CollapsibleTrigger
@@ -317,32 +321,21 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
       data-active={active ? "true" : undefined}
       {...rest}
     >
-      <span className={cn("grid w-full items-center", agentToolGroupGridClassName)}>
-        <span className="relative inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
-          <span className="transition-opacity group-hover:opacity-0 group-data-[state=open]:opacity-0">
-            {icon}
-          </span>
-          <ChevronRight className="ow-agent-tool-chevron absolute size-[var(--ow-icon-action)] opacity-0 group-hover:opacity-100 group-data-[state=open]:rotate-90 group-data-[state=open]:opacity-100" />
-        </span>
-        <span className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
-          <ToolText
-            active={active}
-            className="ow-agent-tool-group-title block min-w-0 max-w-full [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
-            value={children}
-          />
-          {detail ? (
-            <ToolText
-              active={active}
-              className="ow-agent-tool-group-detail min-w-0 flex-1 truncate [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-[var(--ow-agent-timeline-muted)]"
-              offset={4}
-              value={detail}
-            />
-          ) : null}
-          {meta ? (
-            <span className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">{meta}</span>
-          ) : null}
-        </span>
-      </span>
+      <AgentActivityRow
+        active={active}
+        className="w-full"
+        detail={detail}
+        detailClassName="ow-agent-tool-group-detail flex-1"
+        icon={leadingIcon}
+        label={children}
+        labelClassName="ow-agent-tool-group-title block"
+        meta={meta}
+        trailing={
+          shouldShowTrailingToggle ? (
+            <ChevronRight className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] shrink-0 opacity-0 group-hover:opacity-100 group-data-[state=open]:rotate-90 group-data-[state=open]:opacity-100" />
+          ) : null
+        }
+      />
     </CollapsibleTrigger>
   )
 }
@@ -361,37 +354,5 @@ export function AgentToolGroupContent(props: AgentToolGroupContentProps): React.
         {children}
       </div>
     </CollapsibleContent>
-  )
-}
-
-export interface AgentToolGroupItemProps extends React.ComponentProps<"div"> {
-  active?: boolean
-  icon: React.ReactNode
-}
-
-export function AgentToolGroupItem(props: AgentToolGroupItemProps): React.JSX.Element {
-  const { active = false, children, className, icon, ...rest } = props
-
-  return (
-    <div
-      className={cn(
-        "relative min-w-0 text-[var(--ow-agent-timeline-muted)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]",
-        className
-      )}
-      {...rest}
-    >
-      <div
-        className={cn(
-          "grid min-w-0 items-center",
-          agentToolGroupGridClassName,
-          active && "text-[var(--ow-agent-timeline-active)]"
-        )}
-      >
-        <span className="inline-flex size-[var(--ow-icon-action)] items-center justify-center self-center">
-          {icon}
-        </span>
-        <div className="min-w-0">{children}</div>
-      </div>
-    </div>
   )
 }

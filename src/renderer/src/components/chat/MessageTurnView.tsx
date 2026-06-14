@@ -3,6 +3,7 @@ import {
   FileText,
   FolderOpen,
   GitForkIcon,
+  MessageCircle,
   RefreshCcwIcon,
   Search,
   Terminal,
@@ -17,16 +18,12 @@ import {
   type ComposerMessageInput
 } from "@shared/message-content"
 import type { ContentBlock, HITLRequest, Message as ThreadMessage } from "@/types"
-import { ActionMessage, ToolStatusIndicator } from "./ActionMessage"
+import { ActionMessage } from "./ActionMessage"
 import {
-  AgentSteps,
-  AgentStepsContent,
-  AgentStepsTrigger,
+  AgentActivityRow,
   AgentToolGroup,
   AgentToolGroupContent,
-  AgentToolGroupItem,
-  AgentToolGroupTrigger,
-  TextShimmer
+  AgentToolGroupTrigger
 } from "@/components/agent-ui"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { createActionMessageView } from "./action-message-view"
@@ -48,7 +45,7 @@ import {
   type TurnElapsedProjection
 } from "@/lib/message-projection"
 import type { AgentToolExecutionView, AgentToolExecutionsView } from "@/lib/message-projection"
-import type { ActiveAgentToolCall } from "@shared/agent-thread-runtime"
+import type { ActiveAgentToolCall, AgentRunPhase } from "@shared/agent-thread-runtime"
 import {
   Attachment,
   Attachments,
@@ -68,7 +65,6 @@ import {
   MessageToolbar
 } from "./message"
 import { ExtensionSourceTextViewer } from "./ExtensionSourceTextViewer"
-import { LoaderOne } from "../ui/loader"
 import { CopyButton } from "../ui/button"
 import { AssistantSelectionReferencesFromMetadata } from "./AssistantSelectionReferences"
 import { getAssistantSelectionRefs } from "./useAssistantSelectionRefs"
@@ -82,14 +78,6 @@ interface StructuredMessageContent {
 
 function getWorkspaceFileName(path: string): string {
   return path.split("/").pop() || path
-}
-
-function ThinkingIcon(props: React.SVGProps<SVGSVGElement>): React.JSX.Element {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
-      <path d="M3.5 19A1.5 1.5 0 0 1 5 20.5A1.5 1.5 0 0 1 3.5 22A1.5 1.5 0 0 1 2 20.5A1.5 1.5 0 0 1 3.5 19m5-3a2.5 2.5 0 0 1 2.5 2.5A2.5 2.5 0 0 1 8.5 21A2.5 2.5 0 0 1 6 18.5A2.5 2.5 0 0 1 8.5 16m6-1c-1.19 0-2.27-.5-3-1.35c-.73.85-1.81 1.35-3 1.35c-1.96 0-3.59-1.41-3.93-3.26A4.02 4.02 0 0 1 2 8a4 4 0 0 1 4-4c.26 0 .5.03.77.07C7.5 3.41 8.45 3 9.5 3c1.19 0 2.27.5 3 1.35c.73-.85 1.81-1.35 3-1.35c1.96 0 3.59 1.41 3.93 3.26A4.02 4.02 0 0 1 22 10a4 4 0 0 1-4 4l-.77-.07c-.73.66-1.68 1.07-2.73 1.07" />
-    </svg>
-  )
 }
 
 function isRenderableImageUrl(url: string | null): url is string {
@@ -241,26 +229,33 @@ function ReasoningBlock(props: { isStreaming?: boolean; text: string }): React.J
     return null
   }
 
+  const title = isStreaming ? copy.chat.agentStatusThinking : copy.chat.agentThought
+
   return (
-    <AgentSteps active={isStreaming} className="ow-reasoning-message" defaultOpen={false}>
-      <AgentStepsTrigger
-        className="ow-reasoning-trigger [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
-        icon={
-          isStreaming ? (
-            <LoaderOne className="size-[var(--ow-icon-action)] justify-center text-[var(--ow-agent-timeline-muted)] transition-opacity group-hover:opacity-100" />
-          ) : (
-            <ThinkingIcon className="size-[var(--ow-icon-action)] transition-opacity group-hover:opacity-100" />
-          )
-        }
-      >
-        {copy.chat.agentThought}
-      </AgentStepsTrigger>
-      <AgentStepsContent bar={false} className="ow-reasoning-content space-y-[var(--ow-space-2)]">
-        <div className="pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
+    <Collapsible
+      className="ow-reasoning-message"
+      data-active={isStreaming ? "true" : "false"}
+      defaultOpen={isStreaming}
+      key={isStreaming ? "thinking" : "thought"}
+    >
+      <CollapsibleTrigger className="ow-reasoning-trigger group w-full min-w-0 cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <AgentActivityRow
+          active={isStreaming}
+          className="w-full"
+          icon={<MessageCircle className="size-[var(--ow-icon-sm)]" />}
+          label={title}
+          labelClassName="ow-reasoning-title truncate"
+          trailing={
+            <ChevronRight className="ow-reasoning-chevron size-[var(--ow-icon-sm)] shrink-0 text-[var(--ow-agent-timeline-muted)]" />
+          }
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="ow-reasoning-content ow-agent-tool-content overflow-hidden">
+        <div className="mt-[var(--ow-space-1)] min-w-0 max-w-full pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
           {text}
         </div>
-      </AgentStepsContent>
-    </AgentSteps>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -343,61 +338,6 @@ function renderStructuredContent(
   }
 }
 
-function isThinkingItemStreaming(
-  item: AgentActivityItem,
-  options: { isStreaming: boolean; streamingAssistantId: string | null }
-): boolean {
-  return (
-    item.kind === "thinking" &&
-    options.isStreaming &&
-    item.messageId === options.streamingAssistantId
-  )
-}
-
-function ThinkingActivityContent(props: {
-  item: Extract<AgentActivityItem, { kind: "thinking" }>
-  streaming: boolean
-}): React.JSX.Element | null {
-  const { copy } = useI18n()
-  const { item, streaming } = props
-
-  if (!item.text.trim()) {
-    return null
-  }
-
-  return (
-    <Collapsible
-      className="ow-agent-activity-thinking"
-      data-active={streaming ? "true" : "false"}
-      defaultOpen={false}
-    >
-      <CollapsibleTrigger className="group flex w-full min-w-0 cursor-pointer items-center gap-[var(--ow-gap-sm)] text-left text-[var(--ow-agent-timeline-muted)] transition-colors [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <span className="flex min-w-0 flex-1 items-center gap-[var(--ow-gap-sm)]">
-          <ThinkingIcon className="size-[var(--ow-icon-sm)] shrink-0" />
-          <TextShimmer
-            active={streaming}
-            className="ow-agent-activity-thinking-title min-w-0 flex-1 [overflow-wrap:anywhere]"
-            text={copy.chat.agentThought}
-          />
-        </span>
-        <ChevronRight className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] shrink-0 text-[var(--ow-agent-timeline-muted)] group-data-[state=open]:rotate-90" />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="ow-reasoning-content ow-agent-tool-content overflow-hidden">
-        <div className="mt-[var(--ow-space-1)] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-[var(--ow-reasoning-content-fg)]">
-          {item.text}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  )
-}
-
-type ThinkingActivityView = {
-  item: Extract<AgentActivityItem, { kind: "thinking" }>
-  key: string
-  kind: "thinking"
-  streaming: boolean
-}
-
 type ToolActivityView = {
   activeToolCall?: ActiveAgentToolCall
   approvalRequest: HITLRequest | null
@@ -410,7 +350,7 @@ type ToolActivityView = {
   view: ReturnType<typeof createActionMessageView>
 }
 
-type ActivityView = ThinkingActivityView | ToolActivityView
+type ActivityView = ToolActivityView
 type ProjectedToolActivityStatus =
   | "approval"
   | "arguments_streaming"
@@ -442,34 +382,11 @@ function toAgentActivitySummaryTool(action: ToolActivityView) {
 }
 
 function isActivityViewPending(action: ActivityView): boolean {
-  return action.kind === "thinking"
-    ? action.streaming
-    : action.status !== "complete" && action.status !== "failed"
+  return action.status !== "complete" && action.status !== "failed"
 }
 
 function isActivityViewLoading(action: ActivityView): boolean {
-  return action.kind === "thinking"
-    ? action.streaming
-    : action.status === "arguments_streaming" || action.status === "running"
-}
-
-function getAgentActivityStageTitle(
-  copy: ReturnType<typeof useI18n>["copy"],
-  status: ProjectedToolActivityStatus
-): string | null {
-  switch (status) {
-    case "approval":
-      return copy.chat.agentStatusWaitingApproval
-    case "arguments_streaming":
-      return copy.chat.agentStatusPreparingTool
-    case "running":
-      return copy.chat.agentStatusRunningTool
-    case "waiting_result":
-      return copy.chat.agentStatusWaitingToolResult
-    case "complete":
-    case "failed":
-      return null
-  }
+  return action.status === "arguments_streaming" || action.status === "running"
 }
 
 function projectToolActivityStatus(input: {
@@ -520,24 +437,20 @@ function projectToolActivityView(input: {
 
 function AgentActivityGroup(props: {
   defaultOpen?: boolean
-  isStreaming: boolean
   items: AgentActivityItem[]
   onOpenChange?: (open: boolean) => void
   open?: boolean
   pendingApproval?: HITLRequest | null
-  streamingAssistantId: string | null
   toolExecutions: AgentToolExecutionsView
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
   const { copy } = useI18n()
   const {
     defaultOpen = false,
-    isStreaming,
     items,
     onOpenChange,
     open,
     pendingApproval,
-    streamingAssistantId,
     toolExecutions,
     toolResults
   } = props
@@ -545,25 +458,17 @@ function AgentActivityGroup(props: {
 
   const actionViews: ActivityView[] = useMemo(
     () =>
-      items.map((item): ActivityView => {
-        if (item.kind === "thinking") {
-          return {
+      items.map(
+        (item): ActivityView =>
+          projectToolActivityView({
+            copy,
             item,
-            key: item.key,
-            kind: "thinking",
-            streaming: isThinkingItemStreaming(item, { isStreaming, streamingAssistantId })
-          }
-        }
-
-        return projectToolActivityView({
-          copy,
-          item,
-          pendingApproval,
-          toolExecutions,
-          toolResults
-        })
-      }),
-    [copy, isStreaming, items, pendingApproval, streamingAssistantId, toolExecutions, toolResults]
+            pendingApproval,
+            toolExecutions,
+            toolResults
+          })
+      ),
+    [copy, items, pendingApproval, toolExecutions, toolResults]
   )
 
   if (items.length === 0) {
@@ -574,37 +479,21 @@ function AgentActivityGroup(props: {
   const isOpen = open ?? openOverride ?? defaultOpen
   const latestActiveAction = [...actionViews].reverse().find(isActivityViewPending)
   const latestToolAction = [...actionViews].reverse().find((item) => item.kind === "tool")
-  const latestActivity = actionViews[actionViews.length - 1]
   const headerAction = hasActiveActions ? latestActiveAction : latestToolAction
   const headerToolAction = headerAction?.kind === "tool" ? headerAction : null
-  const latestThinkingActivity = latestActivity?.kind === "thinking" ? latestActivity : null
-  const toolActionViews = actionViews.filter(
-    (action): action is ToolActivityView => action.kind === "tool"
-  )
   const headerSummary = projectAgentActivityHeaderSummary(
     copy,
-    toolActionViews.map(toAgentActivitySummaryTool)
+    actionViews.map(toAgentActivitySummaryTool)
   )
-  const headerStageTitle = headerToolAction
-    ? getAgentActivityStageTitle(copy, headerToolAction.status)
-    : null
   const fallbackHeaderTitle =
-    headerStageTitle ??
-    (latestThinkingActivity?.streaming ? copy.chat.agentThought : null) ??
+    (headerToolAction?.status === "approval" ? copy.chat.agentStatusWaitingApproval : null) ??
     copy.chat.executedSteps(items.length)
-  const headerTitle =
-    headerSummary?.title ??
-    fallbackHeaderTitle
+  const headerTitle = headerSummary?.title ?? fallbackHeaderTitle
   const headerDetail = headerSummary?.detail ?? null
+  const headerTextActive = Boolean(
+    headerSummary && headerToolAction && isActivityViewLoading(headerToolAction)
+  )
   const headerIcon = headerSummary ? getAgentActivitySummaryIcon(headerSummary.icon) : undefined
-  const headerStatusMeta =
-    !isOpen && hasActiveActions && headerToolAction ? (
-      <ToolStatusIndicator
-        runningLabel={copy.common.running}
-        status={headerToolAction.view.status}
-        statusLabel={headerToolAction.view.statusLabel}
-      />
-    ) : null
 
   return (
     <AgentToolGroup
@@ -613,40 +502,20 @@ function AgentActivityGroup(props: {
       open={isOpen}
     >
       <AgentToolGroupTrigger
-        active={hasLoadingActions}
+        active={headerTextActive}
         className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
         detail={headerDetail}
         icon={headerIcon}
         {...(headerToolAction
           ? { "data-tool-call-toggle": headerToolAction.item.toolCall.name }
           : {})}
-        meta={headerStatusMeta}
       >
         {headerTitle}
       </AgentToolGroupTrigger>
       <AgentToolGroupContent className="ow-agent-activity-group-content space-y-[var(--ow-space-2)]">
         {actionViews.map((action) => {
-          if (action.kind === "thinking") {
-            return (
-              <AgentToolGroupItem
-                className="ow-agent-activity-thinking-item"
-                icon={<span aria-hidden="true" className="size-[var(--ow-icon-sm)]" />}
-                key={action.key}
-              >
-                <ThinkingActivityContent item={action.item} streaming={action.streaming} />
-              </AgentToolGroupItem>
-            )
-          }
-
-          const Icon = action.view.icon
-
           return (
-            <AgentToolGroupItem
-              active={action.status === "arguments_streaming" || action.status === "running"}
-              className="ow-agent-activity-tool-item"
-              icon={<Icon className="size-[var(--ow-icon-sm)]" />}
-              key={action.key}
-            >
+            <div className="ow-agent-activity-tool-item" key={action.key}>
               <ActionMessage
                 activeToolCall={action.activeToolCall}
                 approvalRequest={action.approvalRequest}
@@ -656,7 +525,7 @@ function AgentActivityGroup(props: {
                 status={action.status}
                 toolCall={action.item.toolCall}
               />
-            </AgentToolGroupItem>
+            </div>
           )
         })}
       </AgentToolGroupContent>
@@ -665,21 +534,12 @@ function AgentActivityGroup(props: {
 }
 
 function AssistantActivityCluster(props: {
-  isStreaming: boolean
   items: AgentActivityItem[]
   pendingApproval?: HITLRequest | null
-  streamingAssistantId: string | null
   toolExecutions: AgentToolExecutionsView
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
-  const {
-    isStreaming,
-    items,
-    pendingApproval,
-    streamingAssistantId,
-    toolExecutions,
-    toolResults
-  } = props
+  const { items, pendingApproval, toolExecutions, toolResults } = props
   const { copy } = useI18n()
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null)
   const isExpanded = expandedOverride ?? false
@@ -706,18 +566,16 @@ function AssistantActivityCluster(props: {
         toAgentActivitySummaryTool(toolActivity)
       ])
 
-      if (headerSummary) {
+      if (!isActivityViewPending(toolActivity) && headerSummary) {
         return (
           <Message className="max-w-full" from="assistant">
             <MessageContent className="w-full gap-[var(--ow-gap-md)]">
               <AgentActivityGroup
                 defaultOpen={false}
-                isStreaming={isStreaming}
                 items={items}
                 onOpenChange={handleExpandedChange}
                 open={isExpanded}
                 pendingApproval={pendingApproval}
-                streamingAssistantId={streamingAssistantId}
                 toolExecutions={toolExecutions}
                 toolResults={toolResults}
               />
@@ -743,17 +601,6 @@ function AssistantActivityCluster(props: {
         </Message>
       )
     }
-
-    return (
-      <Message className="max-w-full" from="assistant">
-        <MessageContent className="w-full gap-[var(--ow-space-2-5)]">
-          <ReasoningBlock
-            isStreaming={isThinkingItemStreaming(item, { isStreaming, streamingAssistantId })}
-            text={item.text}
-          />
-        </MessageContent>
-      </Message>
-    )
   }
 
   return (
@@ -761,12 +608,10 @@ function AssistantActivityCluster(props: {
       <MessageContent className="w-full gap-[var(--ow-gap-md)]">
         <AgentActivityGroup
           defaultOpen={false}
-          isStreaming={isStreaming}
           items={items}
           onOpenChange={handleExpandedChange}
           open={isExpanded}
           pendingApproval={pendingApproval}
-          streamingAssistantId={streamingAssistantId}
           toolExecutions={toolExecutions}
           toolResults={toolResults}
         />
@@ -809,30 +654,8 @@ function AssistantBlock(props: {
   )
 }
 
-function getActiveTurnStatusTitle(
-  copy: ReturnType<typeof useI18n>["copy"],
-  kind: ActiveTurnStatusProjection["kind"]
-): string {
-  switch (kind) {
-    case "composing_answer":
-      return copy.chat.agentStatusComposingAnswer
-    case "preparing_tool":
-      return copy.chat.agentStatusPreparingTool
-    case "running_tool":
-      return copy.chat.agentStatusRunningTool
-    case "thinking":
-      return copy.chat.agentStatusThinking
-    case "understanding_request":
-      return copy.chat.agentStatusUnderstandingRequest
-    case "waiting_approval":
-      return copy.chat.agentStatusWaitingApproval
-    case "waiting_tool_result":
-      return copy.chat.agentStatusWaitingToolResult
-  }
-}
-
 function isActiveTurnStatusShimmering(kind: ActiveTurnStatusProjection["kind"]): boolean {
-  return kind !== "waiting_approval" && kind !== "waiting_tool_result"
+  return kind === "thinking"
 }
 
 function formatActiveTurnElapsedTime(ms: number): string {
@@ -858,9 +681,7 @@ function formatTurnElapsedTime(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`
 }
 
-function TurnElapsedDivider(props: {
-  projection: TurnElapsedProjection
-}): React.JSX.Element {
+function TurnElapsedDivider(props: { projection: TurnElapsedProjection }): React.JSX.Element {
   const { projection } = props
   const { copy } = useI18n()
   const [now, setNow] = useState(() => Date.now())
@@ -950,29 +771,29 @@ function ActiveTurnStatusRow(props: {
         phaseStartedAt)
       : phaseStartedAt
   const shouldShowElapsed = status.kind !== "waiting_approval"
+  const title =
+    status.kind === "waiting_approval"
+      ? copy.chat.agentStatusWaitingApproval
+      : copy.chat.agentStatusThinking
 
   return (
     <Message className="max-w-full" from="assistant">
       <MessageContent className="w-full gap-[var(--ow-space-2-5)]">
-        <div
-          className="flex min-w-0 items-center gap-[var(--ow-gap-sm)] text-[var(--ow-agent-timeline-muted)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
+        <AgentActivityRow
+          active={isShimmering}
+          className="w-full text-[var(--ow-agent-timeline-muted)]"
           data-active-turn-status={status.kind}
+          icon={
+            status.kind === "waiting_approval" ? (
+              <TriangleAlert className="size-[var(--ow-icon-action)] text-status-warning" />
+            ) : (
+              <MessageCircle className="size-[var(--ow-icon-sm)]" />
+            )
+          }
+          label={title}
+          meta={<ActiveTurnStatusElapsed active={shouldShowElapsed} startedAt={startedAt} />}
           role="status"
-        >
-          {status.kind === "waiting_approval" ? (
-            <TriangleAlert className="size-[var(--ow-icon-action)] shrink-0 text-status-warning" />
-          ) : (
-            <LoaderOne className="size-[var(--ow-icon-action)] shrink-0" />
-          )}
-          <span className="inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-[var(--ow-gap-sm)] gap-y-[var(--ow-space-1)]">
-            <TextShimmer
-              active={isShimmering}
-              className="min-w-0 max-w-full [overflow-wrap:anywhere]"
-              text={getActiveTurnStatusTitle(copy, status.kind)}
-            />
-            <ActiveTurnStatusElapsed active={shouldShowElapsed} startedAt={startedAt} />
-          </span>
-        </div>
+        />
       </MessageContent>
     </Message>
   )
@@ -1020,6 +841,7 @@ function UserMessage(props: {
 export const MessageTurnView = memo(function MessageTurnView(props: {
   activeToolCalls: readonly ActiveAgentToolCall[]
   activePhaseStartedAt?: Date | null
+  activeRunPhase?: AgentRunPhase | null
   activeRunStartedAt?: Date | null
   isActiveTurn: boolean
   onBranch?: (messageId: string) => Promise<void> | void
@@ -1036,6 +858,7 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
   const {
     activeToolCalls,
     activePhaseStartedAt,
+    activeRunPhase,
     activeRunStartedAt,
     isActiveTurn,
     isStreaming,
@@ -1068,21 +891,13 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
   const activeTurnStatus = useMemo(
     () =>
       projectActiveTurnStatus({
-        activeToolCalls,
+        activeRunPhase,
         assistantEntries,
         isStreaming,
         pendingApproval,
-        streamingAssistantId,
-        toolExecutions
+        streamingAssistantId
       }),
-    [
-      activeToolCalls,
-      assistantEntries,
-      isStreaming,
-      pendingApproval,
-      streamingAssistantId,
-      toolExecutions
-    ]
+    [activeRunPhase, assistantEntries, isStreaming, pendingApproval, streamingAssistantId]
   )
   const activeTurnStatusRow = activeTurnStatus ? (
     <ActiveTurnStatusRow
@@ -1099,6 +914,19 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
       {turnElapsed ? <TurnElapsedDivider projection={turnElapsed} /> : null}
       {activeTurnStatus?.placement === "before_entries" ? activeTurnStatusRow : null}
       {assistantEntries.map((entry) => {
+        if (entry.kind === "thinking") {
+          return (
+            <Message className="max-w-full" from="assistant" key={entry.key}>
+              <MessageContent className="w-full gap-[var(--ow-space-2-5)]">
+                <ReasoningBlock
+                  isStreaming={isStreaming && entry.messageId === streamingAssistantId}
+                  text={entry.text}
+                />
+              </MessageContent>
+            </Message>
+          )
+        }
+
         if (entry.kind === "assistant-content") {
           return (
             <AssistantBlock
@@ -1112,11 +940,9 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
 
         return (
           <AssistantActivityCluster
-            isStreaming={isStreaming}
             items={entry.items}
             key={entry.key}
             pendingApproval={pendingApproval}
-            streamingAssistantId={streamingAssistantId}
             toolExecutions={toolExecutions}
             toolResults={toolResults}
           />
