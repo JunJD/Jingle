@@ -403,6 +403,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
       await prisma.$transaction(operations)
       await this.afterPut({
         checkpoint: preparedCheckpoint,
+        checkpointNs,
         metadata,
         runId,
         threadId
@@ -421,6 +422,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
 
   protected async afterPut(input: {
     checkpoint: Checkpoint
+    checkpointNs: string
     metadata: CheckpointMetadata
     runId: string | null
     threadId: string

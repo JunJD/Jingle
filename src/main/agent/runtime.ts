@@ -13,6 +13,7 @@ import {
   flushMessageSearchProjection,
   RuntimeCheckpointSaver
 } from "../checkpointer/runtime-checkpointer"
+import { flushAgentTraceProjection } from "../db/agent-events"
 import { LocalSandbox } from "./local-sandbox"
 import { createGuardrailMiddleware } from "./guardrail-middleware"
 import { JustBashExecuteCommandClassifier } from "./execute-command-classifier"
@@ -46,6 +47,7 @@ import {
 import { createExtensionAiRuntime } from "./extension-ai-runtime"
 import { createJingleTodoMiddleware } from "./jingle-todo-middleware"
 import { buildAgentRuntimeTraceConfig } from "../observability"
+import { createLocalAgentTraceCallback } from "../observability/local-agent-trace-callback"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
 import type { OpenworkMemoryContextPack, OpenworkWorkspaceIdentity } from "@shared/openwork-memory"
@@ -402,6 +404,13 @@ The workspace root is: ${workspacePath}`
       ...rootAgentLoopTailMiddleware
     ]
   }).withConfig({
+    callbacks: [
+      createLocalAgentTraceCallback({
+        modelId,
+        runId,
+        threadId
+      })
+    ],
     recursionLimit: 1e4,
     ...buildAgentRuntimeTraceConfig({
       aiCapabilities,
@@ -423,6 +432,7 @@ export type DeepAgent = ReturnType<typeof createAgent>
 export async function closeRuntime(): Promise<void> {
   const closePromises = Array.from(checkpointers.values()).map((cp) => cp.close())
   await Promise.all(closePromises)
+  await flushAgentTraceProjection()
   await flushMessageSearchProjection()
   checkpointers.clear()
 }

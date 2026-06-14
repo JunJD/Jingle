@@ -1,5 +1,14 @@
-import type { Checkpoint, CheckpointMetadata, CheckpointTuple, SerializerProtocol } from "@langchain/langgraph-checkpoint"
-import { extractHitlRequestFromCheckpoint, extractMessagesFromCheckpoint } from "../agent/runtime-state"
+import type {
+  Checkpoint,
+  CheckpointMetadata,
+  CheckpointTuple,
+  SerializerProtocol
+} from "@langchain/langgraph-checkpoint"
+import {
+  extractHitlRequestFromCheckpoint,
+  extractMessagesFromCheckpoint
+} from "../agent/runtime-state"
+import { appendAgentEventSafely } from "../db/agent-events"
 import { upsertHitlRequest } from "../db/hitl"
 import { syncMessageSearchIndexFromSnapshot } from "../db/message-search"
 import { PrismaCheckpointSaver } from "./prisma-saver"
@@ -49,10 +58,28 @@ export class RuntimeCheckpointSaver extends PrismaCheckpointSaver {
 
   protected override async afterPut(input: {
     checkpoint: Checkpoint
+    checkpointNs: string
     metadata: CheckpointMetadata
     runId: string | null
     threadId: string
   }): Promise<void> {
+    if (input.runId) {
+      const metadataSource =
+        typeof input.metadata.source === "string" ? input.metadata.source : null
+      await appendAgentEventSafely({
+        checkpointId: input.checkpoint.id,
+        payload: {
+          checkpointId: input.checkpoint.id,
+          checkpointNs: input.checkpointNs,
+          metadataSource,
+          step: input.metadata.step ?? null
+        },
+        runId: input.runId,
+        threadId: input.threadId,
+        type: "checkpoint.committed"
+      })
+    }
+
     const tuple = {
       checkpoint: input.checkpoint,
       metadata: input.metadata

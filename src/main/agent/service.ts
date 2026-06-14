@@ -31,6 +31,16 @@ import {
 } from "./runtime"
 import { buildAgentResumeConfig, buildAgentRunConfig } from "./run-config"
 import { extractHitlRequestFromValuesState } from "./runtime-state"
+import {
+  createAgentStreamBoundaryRecorderState,
+  recordAgentStreamBoundaryEvents,
+  recordApprovalResolved,
+  recordRunFinished,
+  recordRunInterrupted,
+  recordRunResumed,
+  recordRunStarted,
+  recordUserMessageCreated
+} from "./event-recorder"
 import { ThreadLifecycleGate, type ThreadRunLease } from "./thread-lifecycle-gate"
 import { getHitlRequest, getRun, getThread, resolveHitlRequest, upsertHitlRequest } from "../db"
 import { buildIpcErrorEvent, OpenworkIpcError } from "../ipc/error"
@@ -591,6 +601,20 @@ export class AgentService {
         permissionMode
       })
       activeRun.runId = runId
+      await recordRunStarted({
+        modelId,
+        permissionMode,
+        runId,
+        threadId,
+        userMessageId: message.id
+      })
+      await recordUserMessageCreated({
+        contentPreview: messagePreview,
+        refs: normalizedRefs,
+        runId,
+        threadId,
+        userMessageId: message.id
+      })
       sink.send({ type: "run_started", runId })
 
       if (abortController.signal.aborted) {
@@ -645,18 +669,27 @@ export class AgentService {
         })
       )
       let interrupted = false
+      const boundaryRecorderState = createAgentStreamBoundaryRecorderState()
 
       for await (const chunk of stream) {
         if (abortController.signal.aborted) break
 
         const [mode, data] = chunk as [string, unknown]
+        const serializedData = serializeStreamChunkForIpc(mode, data, { threadId, runId })
         const sawInterrupt = await persistPendingHitlFromStream(threadId, runId, mode, data)
         interrupted = interrupted || sawInterrupt
-
         sink.send({
           type: "stream",
           mode,
-          data: serializeStreamChunkForIpc(mode, data, { threadId, runId })
+          data: serializedData
+        })
+        await recordAgentStreamBoundaryEvents({
+          data: serializedData,
+          mode,
+          modelId,
+          runId,
+          state: boundaryRecorderState,
+          threadId
         })
       }
 
@@ -670,6 +703,19 @@ export class AgentService {
           await finalizeRunWithoutCheckpoint(threadId, runId, { interrupted })
         }
         await this.recordOpenworkMemoryInclusions({ runtime, runId, threadId })
+        const status = interrupted ? "interrupted" : "success"
+        if (interrupted) {
+          await recordRunInterrupted({
+            runId,
+            status: "interrupted",
+            threadId
+          })
+        }
+        await recordRunFinished({
+          runId,
+          status,
+          threadId
+        })
         sink.send({ type: "done" })
       }
     } catch (error) {
@@ -677,6 +723,12 @@ export class AgentService {
         const normalizedError = normalizeAgentRuntimeError("agent:invoke", error)
         if (activeRun.runId) {
           await markRunFailed(threadId, activeRun.runId, normalizedError)
+          await recordRunFinished({
+            error: normalizedError,
+            runId: activeRun.runId,
+            status: "error",
+            threadId
+          })
         }
         if (!isModelAuthenticationError(error)) {
           console.error("[Agent] Error:", error)
@@ -690,6 +742,17 @@ export class AgentService {
       const currentRun = this.activeRuns.get(threadId)
       if (currentRun === activeRun && abortController.signal.aborted && activeRun.runId) {
         await markRunAborted(threadId, activeRun.runId)
+        await recordRunInterrupted({
+          runId: activeRun.runId,
+          status: "interrupted",
+          threadId
+        })
+        await recordRunFinished({
+          completionReason: "aborted",
+          runId: activeRun.runId,
+          status: "interrupted",
+          threadId
+        })
       }
       if (this.activeRuns.get(threadId) === activeRun) {
         this.activeRuns.delete(threadId)
@@ -769,20 +832,27 @@ export class AgentService {
 
       await options?.onRunAccepted?.()
 
-      runId = await resumeAgentRun(threadId, resumeTarget.runId, {
+      const resumedRunId = await resumeAgentRun(threadId, resumeTarget.runId, {
         source: "resume",
         modelId: modelId ?? null,
         requestId: resumeTarget.requestId
       })
+      runId = resumedRunId
 
-      activeRun.runId = runId
-      sink.send({ type: "run_started", runId })
+      activeRun.runId = resumedRunId
+      await recordRunResumed({
+        modelId,
+        requestId: resumeTarget.requestId,
+        runId: resumedRunId,
+        threadId
+      })
+      sink.send({ type: "run_started", runId: resumedRunId })
 
       if (abortController.signal.aborted) {
         return
       }
 
-      const resumedRun = await getRun(runId)
+      const resumedRun = await getRun(resumedRunId)
       const permissionMode = readRunPermissionModeSnapshot(resumedRun)
       const resumedOpenworkMemoryContextSnapshot = readOpenworkMemoryContextSnapshot(
         resumedRun?.metadata
@@ -806,7 +876,7 @@ export class AgentService {
             )
       const runtime = await createAgentRuntime({
         threadId,
-        runId,
+        runId: resumedRunId,
         workspacePath,
         modelId,
         openworkMemoryContextPack,
@@ -845,7 +915,7 @@ export class AgentService {
             aiCapabilities
           })
       })
-      const config = buildAgentResumeConfig(threadId, runId, abortController, {
+      const config = buildAgentResumeConfig(threadId, resumedRunId, abortController, {
         modelId,
         permissionMode
       })
@@ -861,27 +931,46 @@ export class AgentService {
           mapDecisionToHitlStatus(decisionType),
           resolvedHitlDecision
         )
+        await recordApprovalResolved({
+          decision,
+          requestId: resumeTarget.requestId,
+          runId: resumedRunId,
+          threadId
+        })
       }
       const resumeValue = buildResumeValue(decision)
       const stream = await runtime.agent.stream(new Command({ resume: resumeValue }), config)
       let interrupted = false
       let hitlRequestResolved = false
+      const boundaryRecorderState = createAgentStreamBoundaryRecorderState()
 
       for await (const chunk of stream) {
         if (abortController.signal.aborted) break
 
         const [mode, data] = chunk as unknown as [string, unknown]
+        const serializedData = serializeStreamChunkForIpc(mode, data, {
+          threadId,
+          runId: resumedRunId
+        })
         if (!hitlRequestResolved) {
           // Keep newer interrupts ordered after the decision that resumed this run.
           await resolveConsumedHitlRequest()
           hitlRequestResolved = true
         }
-        const sawInterrupt = await persistPendingHitlFromStream(threadId, runId, mode, data)
+        const sawInterrupt = await persistPendingHitlFromStream(threadId, resumedRunId, mode, data)
         interrupted = interrupted || sawInterrupt
         sink.send({
           type: "stream",
           mode,
-          data: serializeStreamChunkForIpc(mode, data, { threadId, runId })
+          data: serializedData
+        })
+        await recordAgentStreamBoundaryEvents({
+          data: serializedData,
+          mode,
+          modelId,
+          runId: resumedRunId,
+          state: boundaryRecorderState,
+          threadId
         })
       }
 
@@ -890,11 +979,24 @@ export class AgentService {
           await resolveConsumedHitlRequest()
         }
         if (runtimeUsesCheckpointPersistence()) {
-          await syncRunFromLatestCheckpoint(threadId, runId, { interrupted })
+          await syncRunFromLatestCheckpoint(threadId, resumedRunId, { interrupted })
         } else {
-          await finalizeRunWithoutCheckpoint(threadId, runId, { interrupted })
+          await finalizeRunWithoutCheckpoint(threadId, resumedRunId, { interrupted })
         }
-        await this.recordOpenworkMemoryInclusions({ runtime, runId, threadId })
+        await this.recordOpenworkMemoryInclusions({ runtime, runId: resumedRunId, threadId })
+        const status = interrupted ? "interrupted" : "success"
+        if (interrupted) {
+          await recordRunInterrupted({
+            runId: resumedRunId,
+            status: "interrupted",
+            threadId
+          })
+        }
+        await recordRunFinished({
+          runId: resumedRunId,
+          status,
+          threadId
+        })
         sink.send({ type: "done" })
       }
     } catch (error) {
@@ -902,6 +1004,12 @@ export class AgentService {
         if (runId) {
           const normalizedError = normalizeAgentRuntimeError("agent:resume", error)
           await markRunFailed(threadId, runId, normalizedError)
+          await recordRunFinished({
+            error: normalizedError,
+            runId,
+            status: "error",
+            threadId
+          })
           if (!isModelAuthenticationError(error)) {
             console.error("[Agent] Resume error:", error)
           }
@@ -923,6 +1031,17 @@ export class AgentService {
     } finally {
       if (abortController.signal.aborted && runId) {
         await markRunAborted(threadId, runId)
+        await recordRunInterrupted({
+          runId,
+          status: "interrupted",
+          threadId
+        })
+        await recordRunFinished({
+          completionReason: "aborted",
+          runId,
+          status: "interrupted",
+          threadId
+        })
       }
       if (this.activeRuns.get(threadId) === activeRun) {
         this.activeRuns.delete(threadId)
