@@ -7,7 +7,8 @@ const { homedir } = require("os")
 const path = require("path")
 const { buildExecutionSnapshot, renderSnapshot } = require("../packages/agent-tracing")
 
-const args = process.argv.slice(2)
+const rawArgs = process.argv.slice(2)
+const args = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs
 
 function getOpenworkHome() {
   const override = process.env.OPENWORK_HOME?.trim()
