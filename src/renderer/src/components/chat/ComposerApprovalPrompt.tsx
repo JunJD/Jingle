@@ -34,7 +34,12 @@ export function ComposerApprovalPrompt(props: {
   const [rejecting, setRejecting] = useState(false)
   const approvalItem = request.review
   const meta = getToolApprovalPresentationMeta(copy, approvalItem, request.tool_call.name)
-  const compact = getCompactToolApprovalPresentation(copy, approvalItem, meta.subtitle)
+  const compact = getCompactToolApprovalPresentation(
+    copy,
+    approvalItem,
+    meta.subtitle,
+    request.tool_call.id
+  )
   const Icon =
     request.review?.kind === "execute_command"
       ? Terminal
@@ -47,7 +52,12 @@ export function ComposerApprovalPrompt(props: {
   const isLarge = displaySize === "large"
   const rawArgs = stringifyToolValue(request.tool_call.args)
   const largeBody = isLarge ? (
-    <LargeApprovalBody approvalItem={approvalItem} copy={copy} rawArgs={rawArgs} />
+    <LargeApprovalBody
+      approvalItem={approvalItem}
+      copy={copy}
+      rawArgs={rawArgs}
+      toolCallId={request.tool_call.id}
+    />
   ) : null
 
   return (

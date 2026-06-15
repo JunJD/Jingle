@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { AGENT_TOOL_EXECUTION_METADATA_KEY } from "../../src/shared/agent-thread-runtime"
+import { FILE_MUTATION_RESULT_METADATA_KEY } from "../../src/shared/file-mutation-result"
 import {
   buildTurnAssistantEntries,
   getTurnPendingApproval,
@@ -220,6 +221,139 @@ test("thinking followed by a tool call projects to separate reasoning and tool e
   )
 })
 
+test("streaming active tool calls project to temporary agent activity entries", () => {
+  const entries = buildTurnAssistantEntries(
+    createTurn([
+      createAssistantMessage({
+        content: "I will edit that file.",
+        id: "assistant-1"
+      })
+    ]),
+    {
+      activeToolCalls: [
+        {
+          argsText: '{"path":"src/',
+          id: "tool-call-1",
+          index: 0,
+          messageId: "assistant-1",
+          name: "edit_file",
+          runId: "run-1",
+          startedAt: new Date("2026-01-01T00:00:01.000Z"),
+          status: "arguments_streaming"
+        }
+      ]
+    }
+  )
+
+  assert.equal(entries.length, 2)
+  assert.equal(entries[0]?.kind, "assistant-content")
+  assert.equal(entries[1]?.kind, "agent-activity")
+  assert.equal(entries[1]?.key, "activity:tool:tool-call-1")
+  assert.deepEqual(
+    entries[1]?.kind === "agent-activity" ? entries[1].items[0]?.toolCall : null,
+    {
+      args: {},
+      id: "tool-call-1",
+      name: "edit_file",
+      type: "tool_call"
+    }
+  )
+})
+
+test("streaming active tool calls use complete args only when available", () => {
+  const entries = buildTurnAssistantEntries(createTurn([]), {
+    activeToolCalls: [
+      {
+        argsText: '{"path":"src/renderer.tsx"}',
+        id: "tool-call-1",
+        index: 0,
+        messageId: "assistant-1",
+        name: "edit_file",
+        runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:01.000Z"),
+        status: "arguments_streaming"
+      }
+    ]
+  })
+
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0]?.kind, "agent-activity")
+  assert.deepEqual(
+    entries[0]?.kind === "agent-activity" ? entries[0].items[0]?.toolCall : null,
+    {
+      args: {
+        path: "src/renderer.tsx"
+      },
+      id: "tool-call-1",
+      name: "edit_file",
+      type: "tool_call"
+    }
+  )
+})
+
+test("updating one active tool keeps other activity group keys stable", () => {
+  const firstToolCall = createToolCall("tool-call-history", "read_file", {
+    path: "src/index.ts"
+  })
+  const turn = createTurn([
+    createAssistantMessage({
+      id: "assistant-history",
+      toolCalls: [firstToolCall]
+    }),
+    createAssistantMessage({
+      content: "Now I will edit another file.",
+      id: "assistant-narrative"
+    })
+  ])
+
+  const firstEntries = buildTurnAssistantEntries(turn, {
+    activeToolCalls: [
+      {
+        argsText: '{"path":"src/',
+        id: "tool-call-active",
+        index: 0,
+        messageId: "assistant-active",
+        name: "write_file",
+        runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:01.000Z"),
+        status: "arguments_streaming"
+      }
+    ]
+  })
+  const nextEntries = buildTurnAssistantEntries(turn, {
+    activeToolCalls: [
+      {
+        argsText: '{"path":"src/notes.md","content":"hello"}',
+        id: "tool-call-active",
+        index: 0,
+        messageId: "assistant-active",
+        name: "write_file",
+        runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:01.000Z"),
+        status: "arguments_streaming"
+      }
+    ]
+  })
+
+  assert.equal(firstEntries[0]?.kind, "agent-activity")
+  assert.equal(nextEntries[0]?.kind, "agent-activity")
+  assert.equal(firstEntries[0]?.key, "activity:tool:tool-call-history")
+  assert.equal(nextEntries[0]?.key, "activity:tool:tool-call-history")
+  assert.equal(firstEntries.at(-1)?.kind, "agent-activity")
+  assert.equal(nextEntries.at(-1)?.kind, "agent-activity")
+  assert.equal(firstEntries.at(-1)?.key, nextEntries.at(-1)?.key)
+  const latestNextEntry = nextEntries.at(-1)
+  assert.deepEqual(
+    latestNextEntry?.kind === "agent-activity"
+      ? latestNextEntry.items[0]?.toolCall.args
+      : null,
+    {
+      content: "hello",
+      path: "src/notes.md"
+    }
+  )
+})
+
 test("consecutive tool calls project to one grouped agent activity", () => {
   const firstToolMessage = createAssistantMessage({
     id: "assistant-1",
@@ -279,9 +413,10 @@ test("active turn status is derived from current runtime facts", () => {
   assert.equal(
     projectActiveTurnStatus({
       activeRunPhase: "thinking",
-      assistantEntries: buildTurnAssistantEntries(reasoningTurn),
-      isStreaming: true,
-      streamingAssistantId: "assistant-thinking"
+      assistantEntries: buildTurnAssistantEntries(reasoningTurn, {
+        streamingAssistantId: "assistant-thinking"
+      }),
+      isStreaming: true
     }),
     null
   )
@@ -303,13 +438,17 @@ test("active turn status is derived from current runtime facts", () => {
     })
   ])
   const toolEntries = buildTurnAssistantEntries(toolTurn)
-  assert.equal(
+  assert.deepEqual(
     projectActiveTurnStatus({
       activeRunPhase: "thinking",
       assistantEntries: toolEntries,
       isStreaming: true
     }),
-    null
+    {
+      kind: "thinking",
+      placement: "inside_latest_agent_activity",
+      toolCallId: null
+    }
   )
 
   assert.equal(
@@ -361,8 +500,7 @@ test("active turn status is derived from current runtime facts", () => {
     projectActiveTurnStatus({
       activeRunPhase: "thinking",
       assistantEntries: buildTurnAssistantEntries(answerTurn),
-      isStreaming: true,
-      streamingAssistantId: "assistant-answer"
+      isStreaming: true
     }),
     {
       kind: "thinking",
@@ -456,6 +594,83 @@ test("reasoning-only assistant messages project as thinking entries", () => {
   assert.equal(entries[0]?.kind, "thinking")
   assert.equal(entries[0]?.key, "thinking:assistant-1")
   assert.equal(entries[0]?.text, "I should inspect the available files first.")
+  assert.equal(entries[0]?.isActive, false)
+})
+
+test("only latest streaming reasoning entry is active", () => {
+  const reasoningMessage = createAssistantMessage({
+    id: "assistant-reasoning",
+    content: [
+      {
+        reasoning: "I should inspect the available files first.",
+        type: "reasoning"
+      }
+    ]
+  })
+
+  const activeEntries = buildTurnAssistantEntries(createTurn([reasoningMessage]), {
+    streamingAssistantId: "assistant-reasoning"
+  })
+  assert.equal(activeEntries[0]?.kind, "thinking")
+  assert.equal(activeEntries[0]?.isActive, true)
+  assert.equal(
+    projectActiveTurnStatus({
+      activeRunPhase: "thinking",
+      assistantEntries: activeEntries,
+      isStreaming: true
+    }),
+    null
+  )
+
+  const followedByAssistantContent = buildTurnAssistantEntries(
+    createTurn([
+      reasoningMessage,
+      createAssistantMessage({
+        content: "I found the relevant files.",
+        id: "assistant-answer"
+      })
+    ]),
+    { streamingAssistantId: "assistant-reasoning" }
+  )
+  assert.equal(followedByAssistantContent[0]?.kind, "thinking")
+  assert.equal(followedByAssistantContent[0]?.isActive, false)
+  assert.deepEqual(
+    projectActiveTurnStatus({
+      activeRunPhase: "thinking",
+      assistantEntries: followedByAssistantContent,
+      isStreaming: true
+    }),
+    {
+      kind: "thinking",
+      placement: "after_entries",
+      toolCallId: null
+    }
+  )
+
+  const followedByToolActivity = buildTurnAssistantEntries(
+    createTurn([
+      reasoningMessage,
+      createAssistantMessage({
+        id: "assistant-tool",
+        toolCalls: [createToolCall("tool-call-1")]
+      })
+    ]),
+    { streamingAssistantId: "assistant-reasoning" }
+  )
+  assert.equal(followedByToolActivity[0]?.kind, "thinking")
+  assert.equal(followedByToolActivity[0]?.isActive, false)
+  assert.deepEqual(
+    projectActiveTurnStatus({
+      activeRunPhase: "thinking",
+      assistantEntries: followedByToolActivity,
+      isStreaming: true
+    }),
+    {
+      kind: "thinking",
+      placement: "inside_latest_agent_activity",
+      toolCallId: null
+    }
+  )
 })
 
 test("late tool result updates do not change the activity group key", () => {
@@ -486,6 +701,55 @@ test("late tool result updates do not change the activity group key", () => {
   assert.equal(nextEntries[0]?.kind, "agent-activity")
   assert.equal(nextEntries[0]?.key, firstEntries[0]?.key)
   assert.equal(nextEntries[0]?.key, "activity:tool:tool-call-1")
+})
+
+test("tool result projection preserves completed file mutation metadata", () => {
+  const toolCall = createToolCall("tool-call-1", "edit_file", {
+    file_path: "src/app.ts",
+    new_string: "next",
+    old_string: "current"
+  })
+  const projection = projectMessages([
+    createUserMessage("user-1", "Edit file"),
+    createAssistantMessage({
+      id: "assistant-1",
+      toolCalls: [toolCall]
+    }),
+    createToolMessage({
+      content: "Successfully replaced 1 occurrence(s) in 'src/app.ts'",
+      id: "tool-1",
+      metadata: {
+        [FILE_MUTATION_RESULT_METADATA_KEY]: {
+          files: [
+            {
+              after: "next",
+              before: "current",
+              changeType: "modify",
+              path: "src/app.ts"
+            }
+          ],
+          status: "completed",
+          toolCallId: "tool-call-1",
+          toolName: "edit_file"
+        }
+      },
+      toolCallId: toolCall.id
+    })
+  ])
+
+  assert.deepEqual(projection.turns[0]?.toolResults.get(toolCall.id)?.fileMutation, {
+    files: [
+      {
+        after: "next",
+        before: "current",
+        changeType: "modify",
+        path: "src/app.ts"
+      }
+    ],
+    status: "completed",
+    toolCallId: "tool-call-1",
+    toolName: "edit_file"
+  })
 })
 
 test("write_todos stays out of message tool activity after the todo state update is visible", () => {
@@ -552,15 +816,11 @@ test("tool execution view derives from messages and runtime facts", () => {
   const runningView = projectTurnToolExecutionsView({
     activeToolCallId: null,
     activeToolCalls: [],
-    isActiveTurnRunning: true,
     pendingApproval: null,
     turn
   })
 
-  assert.deepEqual(runningView[runningToolCall.id], {
-    status: "running",
-    toolCallId: runningToolCall.id
-  })
+  assert.equal(runningView[runningToolCall.id], undefined)
   assert.deepEqual(runningView[completedToolCall.id], {
     status: "complete",
     toolCallId: completedToolCall.id
@@ -583,7 +843,6 @@ test("tool execution view derives from messages and runtime facts", () => {
         status: "arguments_streaming"
       }
     ],
-    isActiveTurnRunning: true,
     pendingApproval: null,
     turn
   })
@@ -630,7 +889,6 @@ test("tool execution view derives from messages and runtime facts", () => {
         status: "arguments_streaming"
       }
     ],
-    isActiveTurnRunning: true,
     pendingApproval: null,
     turn: activeTurnProjection.turns[0]!
   })
@@ -646,7 +904,6 @@ test("tool execution view derives from messages and runtime facts", () => {
   const approvalView = projectTurnToolExecutionsView({
     activeToolCallId: runningToolCall.id,
     activeToolCalls: [],
-    isActiveTurnRunning: false,
     pendingApproval: approval,
     turn
   })
@@ -660,7 +917,6 @@ test("tool execution view derives from messages and runtime facts", () => {
   const finishedView = projectTurnToolExecutionsView({
     activeToolCallId: null,
     activeToolCalls: [],
-    isActiveTurnRunning: false,
     pendingApproval: null,
     turn
   })
@@ -691,7 +947,6 @@ test("completed tool execution projection reads durable metadata only from tool 
   const view = projectTurnToolExecutionsView({
     activeToolCallId: null,
     activeToolCalls: [],
-    isActiveTurnRunning: false,
     pendingApproval: null,
     turn
   })
@@ -813,6 +1068,10 @@ test("agent activity summary groups known tool categories without using tool nam
       },
       {
         status: "complete",
+        toolCall: createToolCall("tool-edit", "edit_file", { path: "/repo/src/index.ts" })
+      },
+      {
+        status: "complete",
         toolCall: createToolCall("tool-search", "grep", { pattern: "runtime" })
       },
       {
@@ -824,6 +1083,7 @@ test("agent activity summary groups known tool categories without using tool nam
       activeCategory: null,
       counts: {
         command: 1,
+        file_mutation: 1,
         file: 2,
         list: 1,
         search: 1
@@ -858,6 +1118,15 @@ test("agent activity summary groups known tool categories without using tool nam
       {
         status: "complete",
         toolCall: createToolCall("tool-read-missing-path", "read_file")
+      }
+    ]),
+    null
+  )
+  assert.equal(
+    projectAgentActivitySummary([
+      {
+        status: "arguments_streaming",
+        toolCall: createToolCall("tool-edit-partial", "edit_file")
       }
     ]),
     null
@@ -900,14 +1169,12 @@ test("turn tool execution view only applies approval to the owning turn", () => 
   const firstTurnView = projectTurnToolExecutionsView({
     activeToolCallId: secondToolCall.id,
     activeToolCalls: [],
-    isActiveTurnRunning: false,
     pendingApproval: approval,
     turn: projection.turns[0]!
   })
   const secondTurnView = projectTurnToolExecutionsView({
     activeToolCallId: secondToolCall.id,
     activeToolCalls: [],
-    isActiveTurnRunning: true,
     pendingApproval: approval,
     turn: projection.turns[1]!
   })

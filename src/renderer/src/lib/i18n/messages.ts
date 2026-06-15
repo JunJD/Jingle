@@ -30,13 +30,16 @@ export interface AppCopy {
     agentThought: string
     agentStatusThinking: string
     agentStatusWaitingApproval: string
+    toolActivityChangedFiles: string
     toolActivityCompleted: string
     toolActivityCommands: (count: number) => string
     toolActivityExplored: string
+    toolActivityFileMutations: (count: number) => string
     toolActivityFiles: (count: number) => string
     toolActivityLists: (count: number) => string
     toolActivityRanCommands: string
     toolActivityRunningCommand: string
+    toolActivityRunningFileMutation: string
     toolActivityRunningList: string
     toolActivityRunningRead: string
     toolActivityRunningSearch: string
@@ -244,19 +247,11 @@ export interface AppCopy {
     approveAndApply: string
     approveAndRun: string
     appliedChanges: string
-    changeCreate: string
-    changeDelete: string
-    changeModify: string
     compactChangeSummary: (count: number) => string
     commandCompleted: string
     commandCompletedNoOutput: string
     completed: string
     edit: string
-    fileReviewContent: string
-    fileReviewDetails: string
-    fileReviewOriginal: string
-    fileReviewPath: string
-    fileReviewUpdated: string
     fileSaved: string
     filesAndFolders: (files: number, dirs: number) => string
     foundMatches: (count: number) => string
@@ -316,13 +311,16 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentThought: "已思考",
       agentStatusThinking: "正在思考",
       agentStatusWaitingApproval: "等待你确认",
+      toolActivityChangedFiles: "已修改文件",
       toolActivityCompleted: "已处理工具",
       toolActivityCommands: (count) => `${count} 条命令`,
       toolActivityExplored: "已探索",
+      toolActivityFileMutations: (count) => `${count} 个变更`,
       toolActivityFiles: (count) => `${count} 个文件`,
       toolActivityLists: (count) => `${count} 个列表`,
       toolActivityRanCommands: "已运行",
       toolActivityRunningCommand: "正在运行命令",
+      toolActivityRunningFileMutation: "正在修改文件",
       toolActivityRunningList: "正在列目录",
       toolActivityRunningRead: "正在读取文件",
       toolActivityRunningSearch: "正在搜索",
@@ -531,19 +529,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       approveAndApply: "批准并修改",
       approveAndRun: "批准并执行",
       appliedChanges: "已变更",
-      changeCreate: "新增",
-      changeDelete: "删除",
-      changeModify: "修改",
       compactChangeSummary: (count) => `${count} 个文件`,
       commandCompleted: "命令已完成",
       commandCompletedNoOutput: "命令已完成，无输出",
       completed: "已完成",
       edit: "编辑",
-      fileReviewContent: "写入内容",
-      fileReviewDetails: "内容详情",
-      fileReviewOriginal: "当前内容",
-      fileReviewPath: "路径",
-      fileReviewUpdated: "更新后内容",
       fileSaved: "文件已保存",
       filesAndFolders: (files, dirs) =>
         dirs > 0 ? `${files} 个文件，${dirs} 个文件夹` : `${files} 个文件`,
@@ -620,13 +610,16 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentThought: "Thought",
       agentStatusThinking: "Thinking",
       agentStatusWaitingApproval: "Waiting for your confirmation",
+      toolActivityChangedFiles: "Changed files",
       toolActivityCompleted: "Handled tools",
       toolActivityCommands: (count) => `${count} command${count === 1 ? "" : "s"}`,
       toolActivityExplored: "Explored",
+      toolActivityFileMutations: (count) => `${count} change${count === 1 ? "" : "s"}`,
       toolActivityFiles: (count) => `${count} file${count === 1 ? "" : "s"}`,
       toolActivityLists: (count) => `${count} list${count === 1 ? "" : "s"}`,
       toolActivityRanCommands: "Ran",
       toolActivityRunningCommand: "Running command",
+      toolActivityRunningFileMutation: "Editing file",
       toolActivityRunningList: "Listing directory",
       toolActivityRunningRead: "Reading file",
       toolActivityRunningSearch: "Searching",
@@ -836,19 +829,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       approveAndApply: "Approve & Apply",
       approveAndRun: "Approve & Run",
       appliedChanges: "Changes applied",
-      changeCreate: "Create",
-      changeDelete: "Delete",
-      changeModify: "Modify",
       compactChangeSummary: (count) => `${count} file${count === 1 ? "" : "s"}`,
       commandCompleted: "Command completed",
       commandCompletedNoOutput: "Command completed (no output)",
       completed: "Completed",
       edit: "Edit",
-      fileReviewContent: "Content",
-      fileReviewDetails: "Content details",
-      fileReviewOriginal: "Current Content",
-      fileReviewPath: "Path",
-      fileReviewUpdated: "Updated Content",
       fileSaved: "File saved",
       filesAndFolders: (files, dirs) =>
         dirs > 0

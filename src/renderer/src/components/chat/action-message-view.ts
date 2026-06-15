@@ -2,6 +2,7 @@ import type { AppCopy } from "@/lib/i18n/messages"
 import type { HITLRequest, ToolCall } from "@/types"
 import type { ReactNode } from "react"
 import { isExtensionToolCallPresentation } from "@shared/tool-presentation"
+import type { FileMutationResultMetadata } from "@shared/file-mutation-result"
 import {
   extensionToolComponent,
   getToolComponent,
@@ -13,8 +14,10 @@ import {
 import { normalizeToolRenderModel } from "./tools/normalize"
 
 interface CreateActionMessageViewInput {
+  activeArgsText?: string
   approvalRequest?: HITLRequest | null
   copy: AppCopy
+  fileMutationResult?: FileMutationResultMetadata | null
   presentation: ToolPresentation
   result?: unknown
   status?: ToolComponentStatus
@@ -66,9 +69,20 @@ function getActionMessageToolComponent(toolCall: ToolCall): ToolComponentDefinit
 }
 
 export function createActionMessageView(input: CreateActionMessageViewInput) {
-  const { approvalRequest, copy, presentation, result, status, toolCall } = input
-  const model = normalizeToolRenderModel({
+  const {
+    activeArgsText,
     approvalRequest,
+    copy,
+    fileMutationResult,
+    presentation,
+    result,
+    status,
+    toolCall
+  } = input
+  const model = normalizeToolRenderModel({
+    activeArgsText,
+    approvalRequest,
+    fileMutationResult,
     result,
     status,
     toolCall

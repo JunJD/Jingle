@@ -87,15 +87,15 @@ function spawnDetachedWithEnv(
   })
 }
 
-async function openWithMacApplication(folderPath: string, appPath: string): Promise<void> {
-  await spawnDetached("open", ["-a", appPath, folderPath])
+async function openWithMacApplication(targetPath: string, appPath: string): Promise<void> {
+  await spawnDetached("open", ["-a", appPath, targetPath])
 }
 
-async function openWithCursorCli(folderPath: string, appPath: string): Promise<void> {
+async function openWithCursorCli(targetPath: string, appPath: string): Promise<void> {
   const electronBin = path.join(appPath, "Contents", "MacOS", "Cursor")
   const cliJs = path.join(appPath, "Contents", "Resources", "app", "out", "cli.js")
   if (!(await pathExists(electronBin)) || !(await pathExists(cliJs))) {
-    await openWithMacApplication(folderPath, appPath)
+    await openWithMacApplication(targetPath, appPath)
     return
   }
 
@@ -108,7 +108,7 @@ async function openWithCursorCli(folderPath: string, appPath: string): Promise<v
   delete env.NODE_OPTIONS
   delete env.NODE_REPL_EXTERNAL_MODULE
 
-  await spawnDetachedWithEnv(electronBin, [cliJs, folderPath], env)
+  await spawnDetachedWithEnv(electronBin, [cliJs, targetPath], env)
 }
 
 async function openInMacTerminal(folderPath: string): Promise<void> {
@@ -129,6 +129,10 @@ async function openFolderInFileManager(folderPath: string): Promise<void> {
   if (error) {
     throw new Error(error)
   }
+}
+
+async function revealPathInMacFileManager(targetPath: string): Promise<void> {
+  await spawnDetached("open", ["-R", targetPath])
 }
 
 function getOpenPathApplicationPath(result: LauncherSearchResult): string | null {
@@ -200,6 +204,21 @@ function assertDirectoryPath(folderPath: string): string {
   return path.resolve(requestedPath)
 }
 
+function resolveTargetPath(folderPath: string, filePath: string | undefined): string {
+  if (filePath === undefined) {
+    return folderPath
+  }
+
+  const requestedPath = filePath.trim()
+  if (!requestedPath) {
+    throw new Error("Missing file path")
+  }
+
+  return path.isAbsolute(requestedPath)
+    ? path.resolve(requestedPath)
+    : path.resolve(folderPath, requestedPath)
+}
+
 export class OpenTargetsService {
   async listTargets(request: ListOpenTargetsRequest): Promise<ListOpenTargetsResponse> {
     assertDirectoryPath(request.folderPath)
@@ -223,23 +242,29 @@ export class OpenTargetsService {
 
   async openTarget(request: OpenTargetRequest): Promise<void> {
     const folderPath = assertDirectoryPath(request.folderPath)
+    const targetPath = resolveTargetPath(folderPath, request.filePath)
+    const targetFolderPath = request.filePath ? path.dirname(targetPath) : folderPath
 
     if (process.env.OPENWORK_BDD === "1") {
       return
     }
 
     if (process.platform !== "darwin") {
-      await openFolderInFileManager(folderPath)
+      await openFolderInFileManager(targetFolderPath)
       return
     }
 
     if (request.targetId === "finder") {
-      await openFolderInFileManager(folderPath)
+      if (request.filePath) {
+        await revealPathInMacFileManager(targetPath)
+      } else {
+        await openFolderInFileManager(folderPath)
+      }
       return
     }
 
     if (request.targetId === "terminal") {
-      await openInMacTerminal(folderPath)
+      await openInMacTerminal(targetFolderPath)
       return
     }
 
@@ -256,10 +281,10 @@ export class OpenTargetsService {
     }
 
     if (applicationTarget.openStrategy === "cursor-cli") {
-      await openWithCursorCli(folderPath, discoveredTarget.appPath)
+      await openWithCursorCli(targetPath, discoveredTarget.appPath)
       return
     }
 
-    await openWithMacApplication(folderPath, discoveredTarget.appPath)
+    await openWithMacApplication(targetPath, discoveredTarget.appPath)
   }
 }

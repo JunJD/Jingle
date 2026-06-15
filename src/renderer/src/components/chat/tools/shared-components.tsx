@@ -1,10 +1,8 @@
 import { Children, useState } from "react"
 import { CheckCircle2, ChevronDown, Circle, Clock3, File, Folder, XCircle } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import type { AppCopy } from "@/lib/i18n/messages"
 import { cn } from "@/lib/utils"
 import type { Todo } from "@/types"
-import type { ToolApprovalChange } from "@shared/tool-approval"
 import { getBasename, type ToolFileEntry } from "./shared"
 
 export function ToolDetailStack(props: {
@@ -140,69 +138,6 @@ export function ToolFileList(props: {
           </div>
         )
       })}
-      {items.length > maxItems ? (
-        <div className="[font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
-          +{items.length - maxItems}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-export function ToolChangeList(props: {
-  copy: AppCopy
-  items: ToolApprovalChange[]
-  maxItems?: number
-}): React.JSX.Element | null {
-  const { copy, items, maxItems = 12 } = props
-  const preview = items.slice(0, maxItems)
-
-  if (preview.length === 0) {
-    return null
-  }
-
-  const getChangeLabel = (changeType: ToolApprovalChange["changeType"]): string => {
-    switch (changeType) {
-      case "create":
-        return copy.toolCall.changeCreate
-      case "delete":
-        return copy.toolCall.changeDelete
-      case "modify":
-        return copy.toolCall.changeModify
-    }
-  }
-
-  const getChangeClassName = (changeType: ToolApprovalChange["changeType"]): string => {
-    switch (changeType) {
-      case "create":
-        return "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-      case "delete":
-        return "border-destructive/20 bg-destructive/10 text-destructive"
-      case "modify":
-        return "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-    }
-  }
-
-  return (
-    <div className="grid gap-[var(--ow-gap-sm)]">
-      {preview.map((item, index) => (
-        <div
-          key={`${item.changeType}:${item.path}:${index}`}
-          className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-panel)] bg-background-secondary/55 px-[var(--ow-space-3)] py-[var(--ow-space-2)]"
-        >
-          <span
-            className={cn(
-              "inline-flex shrink-0 items-center rounded-full px-[var(--ow-space-2)] py-[var(--ow-space-0-5)] [font-size:var(--ow-font-caption)] font-medium leading-none",
-              getChangeClassName(item.changeType)
-            )}
-          >
-            {getChangeLabel(item.changeType)}
-          </span>
-          <span className="min-w-0 break-all font-mono [font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-foreground/78">
-            {item.path}
-          </span>
-        </div>
-      ))}
       {items.length > maxItems ? (
         <div className="[font-size:var(--ow-font-meta)] leading-[var(--ow-line-body)] text-muted-foreground">
           +{items.length - maxItems}

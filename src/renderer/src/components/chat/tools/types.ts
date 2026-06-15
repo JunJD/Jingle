@@ -2,6 +2,7 @@ import type { AppCopy } from "@/lib/i18n/messages"
 import type { ToolCall } from "@/types"
 import type { LucideIcon } from "lucide-react"
 import type { ReactNode } from "react"
+import type { FileMutationProjection } from "./file-mutation-view-model"
 
 export type ToolComponentStatus =
   | "arguments_streaming"
@@ -14,6 +15,7 @@ export type ToolPresentation = "standalone" | "grouped"
 
 export interface ToolRenderModel {
   args: Record<string, unknown>
+  fileMutation: FileMutationProjection | null
   hasResult: boolean
   rawArgs: string
   rawResult: string

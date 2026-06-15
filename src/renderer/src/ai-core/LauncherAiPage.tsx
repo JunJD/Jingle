@@ -30,6 +30,7 @@ import { useAgent } from "@/lib/use-agent"
 import { useThreadContext, useThreadSelector } from "@/lib/thread-context"
 import { updateAgentThreadModel, updateAgentThreadPermissionMode } from "@/lib/agent-control"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
+import { OpenTargetProvider } from "@/lib/open-target-context"
 import { listNativeLauncherSourceMentions } from "@extension-host/index"
 import { useWorkspaceFileMentions, type ComposerAreaHandle } from "@/composer-area"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
@@ -556,7 +557,8 @@ export function LauncherAiPage(): React.JSX.Element {
   }, [pendingApproval])
 
   return (
-    <div className="relative h-full">
+    <OpenTargetProvider folderPath={workspacePath}>
+      <div className="relative h-full">
       <LauncherChrome
         headerLeading={
           <LauncherAiHeaderLeadingActions
@@ -849,6 +851,7 @@ export function LauncherAiPage(): React.JSX.Element {
           onSelectModel={selectModel}
         />
       ) : null}
-    </div>
+      </div>
+    </OpenTargetProvider>
   )
 }

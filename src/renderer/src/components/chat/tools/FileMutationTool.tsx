@@ -8,9 +8,10 @@ defineToolComponent({
   renderDisplay(props) {
     return buildFileMutationSummary(props, "edit_file")
   },
-  renderDetail({ copy, args, rawResult, status }) {
-    return renderFileMutationDetail(copy, args, "edit_file", {
-      changesLabel: status === "complete" ? copy.toolCall.appliedChanges : undefined,
+  renderDetail({ copy, fileMutation, rawArgs, rawResult, status }) {
+    return renderFileMutationDetail(copy, {
+      fileMutation,
+      rawArgs: status === "arguments_streaming" ? rawArgs : undefined,
       rawResult
     })
   }
@@ -22,9 +23,10 @@ defineToolComponent({
   renderDisplay(props) {
     return buildFileMutationSummary(props, "write_file")
   },
-  renderDetail({ copy, args, rawResult, status }) {
-    return renderFileMutationDetail(copy, args, "write_file", {
-      changesLabel: status === "complete" ? copy.toolCall.appliedChanges : undefined,
+  renderDetail({ copy, fileMutation, rawArgs, rawResult, status }) {
+    return renderFileMutationDetail(copy, {
+      fileMutation,
+      rawArgs: status === "arguments_streaming" ? rawArgs : undefined,
       rawResult
     })
   }

@@ -46,6 +46,7 @@ test("extension tool presentation renders from schema display metadata", () => {
       title: "Ship it"
     },
     copy,
+    fileMutation: null,
     hasResult: true,
     isExpanded: false,
     presentation: "standalone",
@@ -85,6 +86,7 @@ test("extension tool presentation still reads legacy presentation metadata", () 
       title: "Ship it"
     },
     copy,
+    fileMutation: null,
     hasResult: false,
     isExpanded: false,
     presentation: "standalone",

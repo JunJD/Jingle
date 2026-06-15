@@ -18,6 +18,7 @@ import {
   type LargeApprovalImpact,
   type LargeApprovalViewModel
 } from "./approval-large-view-model"
+import { PierreFileMutationView } from "./PierreFileMutationView"
 
 function ApprovalActionBlock(props: { action: LargeApprovalAction }): React.JSX.Element {
   const { action } = props
@@ -186,6 +187,7 @@ function renderLargeApprovalViewModel(
   if (
     !viewModel.action &&
     !viewModel.confirmation &&
+    !viewModel.fileMutation &&
     viewModel.target.length === 0 &&
     viewModel.impact.length === 0 &&
     viewModel.parameters.length === 0
@@ -213,6 +215,11 @@ function renderLargeApprovalViewModel(
           <ApprovalImpactList items={viewModel.impact} />
         </ToolDetailSection>
       ) : null}
+      {viewModel.fileMutation ? (
+        <ToolDetailSection label={copy.toolCall.upcomingChanges}>
+          <PierreFileMutationView viewModel={viewModel.fileMutation} />
+        </ToolDetailSection>
+      ) : null}
       {viewModel.parameters.length > 0 ? (
         <ToolDetailSection label={copy.toolCall.approvalParameters}>
           <ApprovalParameterList items={viewModel.parameters} />
@@ -226,10 +233,11 @@ export function LargeApprovalBody(input: {
   approvalItem: ToolApprovalItem | null
   copy: AppCopy
   rawArgs: string
+  toolCallId: string
 }): React.JSX.Element | null {
-  const { approvalItem, copy, rawArgs } = input
+  const { approvalItem, copy, rawArgs, toolCallId } = input
   return renderLargeApprovalViewModel(
     copy,
-    buildLargeApprovalViewModel(copy, approvalItem, rawArgs)
+    buildLargeApprovalViewModel(copy, approvalItem, rawArgs, toolCallId)
   )
 }

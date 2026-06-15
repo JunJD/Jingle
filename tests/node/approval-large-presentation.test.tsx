@@ -23,14 +23,6 @@ const copy = {
     approvalReason: "Reason",
     approvalSource: "Source",
     approvalTarget: "Target",
-    changeCreate: "Create",
-    changeDelete: "Delete",
-    changeModify: "Modify",
-    fileReviewContent: "Content",
-    fileReviewDetails: "Content details",
-    fileReviewOriginal: "Current Content",
-    fileReviewPath: "Path",
-    fileReviewUpdated: "Updated Content",
     labels: {
       edit_file: "Edit File",
       execute: "Execute Command",
@@ -54,22 +46,25 @@ test("large execute approval adapts command, impact, and prediction metadata", (
     toolName: "execute"
   }
 
-  const viewModel = buildLargeApprovalViewModel(copy, review, "{}")
+  const viewModel = buildLargeApprovalViewModel(copy, review, "{}", "tool-call-1")
 
   assert.deepEqual(viewModel.action, {
     detail: "echo hello > new.txt && rm old.txt",
     presentation: "command",
     title: "Execute Command"
   })
-  assert.deepEqual(viewModel.target, [
-    { label: "Path", presentation: "path", value: "/workspace/new.txt" },
-    { label: "Path", presentation: "path", value: "/workspace/old.txt" }
-  ])
+  assert.deepEqual(viewModel.target, [])
   assert.deepEqual(viewModel.impact, [
-    { detail: "/workspace/new.txt", label: "Create", tone: "success" },
-    { detail: "/workspace/old.txt", label: "Delete", tone: "destructive" },
     { detail: "Command writes and deletes local files.", label: "Reason", tone: "neutral" }
   ])
+  assert.equal(viewModel.fileMutation?.source, "approval_preview")
+  assert.deepEqual(
+    viewModel.fileMutation?.files.map((file) => [file.path, file.diffMode, file.changeType]),
+    [
+      ["/workspace/new.txt", "tree", "create"],
+      ["/workspace/old.txt", "tree", "delete"]
+    ]
+  )
   assert.deepEqual(viewModel.parameters, [
     { label: "Profile", presentation: "mono", value: "predictable_mutation" },
     { label: "Prediction", presentation: "mono", value: "predicted" }
@@ -87,7 +82,7 @@ test("large execute approval explains unknown commands before approval", () => {
     toolName: "execute"
   }
 
-  const viewModel = buildLargeApprovalViewModel(copy, review, "{}")
+  const viewModel = buildLargeApprovalViewModel(copy, review, "{}", "tool-call-1")
 
   assert.deepEqual(viewModel.impact, [
     {
@@ -112,31 +107,32 @@ test("large file mutation approval preserves target path, change type, and conte
     toolName: "edit_file"
   }
 
-  const viewModel = buildLargeApprovalViewModel(copy, review, "{}")
+  const viewModel = buildLargeApprovalViewModel(copy, review, "{}", "tool-call-1")
 
-  assert.deepEqual(viewModel.action, {
-    detail: null,
-    presentation: "text",
-    title: "Edit File"
-  })
-  assert.deepEqual(viewModel.target, [
-    { label: "Path", presentation: "path", value: "/workspace/src/app.ts" }
-  ])
-  assert.deepEqual(viewModel.impact, [
-    { detail: "/workspace/src/app.ts", label: "Modify", tone: "warning" }
-  ])
-  assert.deepEqual(viewModel.parameters, [
-    {
-      label: "Current Content",
-      presentation: "preview",
-      value: "export const value = 1\n"
-    },
-    {
-      label: "Updated Content",
-      presentation: "preview",
-      value: "export const value = 2\n"
-    }
-  ])
+  assert.equal(viewModel.action, null)
+  assert.deepEqual(viewModel.target, [])
+  assert.deepEqual(viewModel.impact, [])
+  assert.deepEqual(viewModel.parameters, [])
+  assert.equal(viewModel.fileMutation?.source, "approval_preview")
+  assert.equal(viewModel.fileMutation?.status, "pending")
+  assert.deepEqual(
+    viewModel.fileMutation?.files.map((file) => [
+      file.path,
+      file.before,
+      file.after,
+      file.diffMode,
+      file.changeType
+    ]),
+    [
+      [
+        "/workspace/src/app.ts",
+        "export const value = 1\n",
+        "export const value = 2\n",
+        "diff",
+        "modify"
+      ]
+    ]
+  )
 })
 
 test("large extension approval adapts business parameters without file assumptions", () => {
@@ -173,7 +169,7 @@ test("large extension approval adapts business parameters without file assumptio
     toolTitle: "Create Issue"
   }
 
-  const viewModel = buildLargeApprovalViewModel(copy, review, "{}")
+  const viewModel = buildLargeApprovalViewModel(copy, review, "{}", "tool-call-1")
 
   assert.equal(viewModel.action, null)
   assert.deepEqual(viewModel.confirmation, {
@@ -223,7 +219,7 @@ test("large extension approval renders confirmation facts as the primary preview
   }
 
   const markup = renderToStaticMarkup(
-    <LargeApprovalBody approvalItem={review} copy={copy} rawArgs="{}" />
+    <LargeApprovalBody approvalItem={review} copy={copy} rawArgs="{}" toolCallId="tool-call-1" />
   )
 
   assert.match(markup, /Create this issue\?/)
@@ -254,7 +250,7 @@ test("large extension approval without confirmation keeps raw arguments as fallb
     toolTitle: "Create Issue"
   }
 
-  const viewModel = buildLargeApprovalViewModel(copy, review, "{}")
+  const viewModel = buildLargeApprovalViewModel(copy, review, "{}", "tool-call-1")
 
   assert.deepEqual(viewModel.action, {
     detail: "ext__github__default__createIssue",

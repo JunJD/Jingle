@@ -1,6 +1,11 @@
 import type { AppCopy } from "@/lib/i18n/messages"
 import type { ToolApprovalItem } from "@shared/tool-approval"
 import { stringifyToolValue } from "./shared"
+import {
+  buildApprovalFileMutationViewModel,
+  buildChangeListFileMutationViewModel,
+  type FileMutationViewModel
+} from "./file-mutation-view-model"
 
 export interface LargeApprovalAction {
   detail: string | null
@@ -30,31 +35,10 @@ export interface LargeApprovalConfirmation {
 export interface LargeApprovalViewModel {
   action: LargeApprovalAction | null
   confirmation: LargeApprovalConfirmation | null
+  fileMutation: FileMutationViewModel | null
   impact: LargeApprovalImpact[]
   parameters: LargeApprovalFact[]
   target: LargeApprovalFact[]
-}
-
-function getChangeTone(changeType: "create" | "modify" | "delete"): LargeApprovalImpact["tone"] {
-  switch (changeType) {
-    case "create":
-      return "success"
-    case "delete":
-      return "destructive"
-    case "modify":
-      return "warning"
-  }
-}
-
-function getChangeLabel(copy: AppCopy, changeType: "create" | "modify" | "delete"): string {
-  switch (changeType) {
-    case "create":
-      return copy.toolCall.changeCreate
-    case "delete":
-      return copy.toolCall.changeDelete
-    case "modify":
-      return copy.toolCall.changeModify
-  }
 }
 
 function getActionTitle(copy: AppCopy, approvalItem: ToolApprovalItem): string {
@@ -65,43 +49,10 @@ function getActionTitle(copy: AppCopy, approvalItem: ToolApprovalItem): string {
   )
 }
 
-function buildChangeImpact(
-  copy: AppCopy,
-  approvalItem: Extract<ToolApprovalItem, { kind: "execute_command" | "file_mutation" }>
-): LargeApprovalImpact[] {
-  return approvalItem.changes.map((change) => ({
-    detail: change.path,
-    label: getChangeLabel(copy, change.changeType),
-    tone: getChangeTone(change.changeType)
-  }))
-}
-
-function buildPathTargets(
-  copy: AppCopy,
-  approvalItem: Extract<ToolApprovalItem, { kind: "execute_command" | "file_mutation" }>
-): LargeApprovalFact[] {
-  if (approvalItem.kind === "file_mutation") {
-    return approvalItem.path
-      ? [
-          {
-            label: copy.toolCall.fileReviewPath,
-            presentation: "path",
-            value: approvalItem.path
-          }
-        ]
-      : []
-  }
-
-  return approvalItem.changes.map((change) => ({
-    label: copy.toolCall.fileReviewPath,
-    presentation: "path",
-    value: change.path
-  }))
-}
-
 function buildExecuteLargeApprovalViewModel(
   copy: AppCopy,
-  approvalItem: Extract<ToolApprovalItem, { kind: "execute_command" }>
+  approvalItem: Extract<ToolApprovalItem, { kind: "execute_command" }>,
+  toolCallId: string
 ): LargeApprovalViewModel {
   const parameters: LargeApprovalFact[] = []
 
@@ -134,8 +85,13 @@ function buildExecuteLargeApprovalViewModel(
           title: getActionTitle(copy, approvalItem)
         },
     confirmation: null,
+    fileMutation: buildChangeListFileMutationViewModel({
+      changes: approvalItem.changes,
+      source: "approval_preview",
+      status: "pending",
+      toolCallId
+    }),
     impact: [
-      ...buildChangeImpact(copy, approvalItem),
       approvalItem.reason
         ? {
             detail: approvalItem.reason,
@@ -148,50 +104,21 @@ function buildExecuteLargeApprovalViewModel(
         : null
     ].filter((entry) => entry !== null),
     parameters,
-    target: buildPathTargets(copy, approvalItem)
+    target: []
   }
 }
 
 function buildFileMutationLargeApprovalViewModel(
-  copy: AppCopy,
-  approvalItem: Extract<ToolApprovalItem, { kind: "file_mutation" }>
+  approvalItem: Extract<ToolApprovalItem, { kind: "file_mutation" }>,
+  toolCallId: string
 ): LargeApprovalViewModel {
-  const parameters: LargeApprovalFact[] = []
-
-  if (approvalItem.oldText !== null) {
-    parameters.push({
-      label: copy.toolCall.fileReviewOriginal,
-      presentation: "preview",
-      value: approvalItem.oldText
-    })
-  }
-
-  if (approvalItem.newText !== null) {
-    parameters.push({
-      label: copy.toolCall.fileReviewUpdated,
-      presentation: "preview",
-      value: approvalItem.newText
-    })
-  }
-
-  if (approvalItem.content !== null) {
-    parameters.push({
-      label: copy.toolCall.fileReviewContent,
-      presentation: "preview",
-      value: approvalItem.content
-    })
-  }
-
   return {
-    action: {
-      detail: null,
-      presentation: "text",
-      title: getActionTitle(copy, approvalItem)
-    },
+    action: null,
     confirmation: null,
-    impact: buildChangeImpact(copy, approvalItem),
-    parameters,
-    target: buildPathTargets(copy, approvalItem)
+    fileMutation: buildApprovalFileMutationViewModel(approvalItem, toolCallId),
+    impact: [],
+    parameters: [],
+    target: []
   }
 }
 
@@ -243,6 +170,7 @@ function buildExtensionLargeApprovalViewModel(
           title: getActionTitle(copy, approvalItem)
         },
     confirmation,
+    fileMutation: null,
     impact:
       confirmation || !approvalItem.reason
         ? []
@@ -269,12 +197,14 @@ function buildExtensionLargeApprovalViewModel(
 export function buildLargeApprovalViewModel(
   copy: AppCopy,
   approvalItem: ToolApprovalItem | null,
-  rawArgs: string
+  rawArgs: string,
+  toolCallId: string
 ): LargeApprovalViewModel {
   if (!approvalItem) {
     return {
       action: null,
       confirmation: null,
+      fileMutation: null,
       impact: [],
       parameters: rawArgs
         ? [
@@ -290,11 +220,11 @@ export function buildLargeApprovalViewModel(
   }
 
   if (approvalItem.kind === "execute_command") {
-    return buildExecuteLargeApprovalViewModel(copy, approvalItem)
+    return buildExecuteLargeApprovalViewModel(copy, approvalItem, toolCallId)
   }
 
   if (approvalItem.kind === "file_mutation") {
-    return buildFileMutationLargeApprovalViewModel(copy, approvalItem)
+    return buildFileMutationLargeApprovalViewModel(approvalItem, toolCallId)
   }
 
   return buildExtensionLargeApprovalViewModel(copy, approvalItem)

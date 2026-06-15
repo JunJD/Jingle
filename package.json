@@ -69,6 +69,7 @@
     "dist:linux": "npm run build && node scripts/run-electron-builder.mjs --linux --publish never",
     "ui-audit:launcher": "node scripts/ui-audit-launcher.mjs",
     "trace:inspect": "node scripts/inspect-agent-trace.cjs",
+    "audit:frontend-packages": "node .agents/skills/frontend-package-script-audit/scripts/audit_frontend_package_relations.mjs --root . --frontend src/renderer/src",
     "audit:package-size": "node scripts/audit-package-size.mjs",
     "audit:packaged-runtime": "node scripts/audit-packaged-runtime.mjs",
     "test:bdd:run": "cucumber-js --config tests/bdd/cucumber.config.cjs",
@@ -92,6 +93,8 @@
     "@lexical/utils": "^0.44.0",
     "@openwork/extension-api": "workspace:*",
     "@phosphor-icons/react": "^2.1.10",
+    "@pierre/diffs": "1.2.10",
+    "@pierre/trees": "1.0.0-beta.4",
     "@prisma/client": "^6.18.0",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-context-menu": "^2.2.16",
@@ -171,6 +174,9 @@
     "vite": "^7.2.6"
   },
   "pnpm": {
+    "overrides": {
+      "@shikijs/transformers": "3.23.0"
+    },
     "onlyBuiltDependencies": [
       "@prisma/client",
       "electron",

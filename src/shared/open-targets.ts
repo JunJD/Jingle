@@ -17,6 +17,7 @@ export interface ListOpenTargetsResponse {
 }
 
 export interface OpenTargetRequest {
+  filePath?: string
   folderPath: string
   targetId: string
 }

@@ -1,5 +1,10 @@
 import { extractMessageText, resolveImageBlockUrl } from "@shared/message-content"
 import { isExtensionToolCallPresentation } from "@shared/tool-presentation"
+import { parseCompleteToolCallArgsObject } from "@shared/tool-call-args"
+import {
+  readFileMutationResultMetadata,
+  type FileMutationResultMetadata
+} from "@shared/file-mutation-result"
 import { stabilizeReferences } from "@/lib/stabilize-references"
 import {
   readAgentToolExecutionTiming,
@@ -12,6 +17,7 @@ import type { HITLRequest, Message as ThreadMessage, ToolCall } from "@/types"
 export interface ToolResultInfo {
   content: ThreadMessage["content"]
   execution: AgentToolExecutionTiming | null
+  fileMutation: FileMutationResultMetadata | null
 }
 
 export interface MessageTurn {
@@ -30,6 +36,7 @@ export type TurnAssistantEntry =
     }
   | {
       kind: "thinking"
+      isActive: boolean
       key: string
       messageId: string
       text: string
@@ -87,7 +94,7 @@ export type ActiveTurnStatusProjectionKind = "thinking" | "waiting_approval"
 
 export interface ActiveTurnStatusProjection {
   kind: ActiveTurnStatusProjectionKind
-  placement: "after_entries" | "before_entries"
+  placement: "after_entries" | "before_entries" | "inside_latest_agent_activity"
   toolCallId: string | null
 }
 
@@ -105,7 +112,13 @@ export type TurnElapsedProjection =
       status: "worked"
     }
 
-export type AgentActivitySummaryCategory = "command" | "file" | "list" | "search" | "web_search"
+export type AgentActivitySummaryCategory =
+  | "command"
+  | "file"
+  | "file_mutation"
+  | "list"
+  | "search"
+  | "web_search"
 
 export interface AgentActivitySummaryToolInput {
   status: AgentToolExecutionViewStatus
@@ -135,6 +148,7 @@ const FOOTER_DISPLAY_ROW: MessageDisplayRow = {
 }
 const EMPTY_AGENT_TOOL_EXECUTIONS_VIEW: AgentToolExecutionsView = {}
 const AGENT_ACTIVITY_SUMMARY_CATEGORIES: readonly AgentActivitySummaryCategory[] = [
+  "file_mutation",
   "file",
   "list",
   "search",
@@ -178,7 +192,8 @@ export function buildToolResults(messages: ThreadMessage[]): Map<string, ToolRes
 
     results.set(message.tool_call_id, {
       content: message.content,
-      execution: readAgentToolExecutionTiming(message)
+      execution: readAgentToolExecutionTiming(message),
+      fileMutation: readFileMutationResultMetadata(message)
     })
   }
 
@@ -280,6 +295,9 @@ function getToolCallSummaryCategory(toolCall: ToolCall): AgentActivitySummaryCat
   switch (toolCall.name) {
     case "execute":
       return "command"
+    case "edit_file":
+    case "write_file":
+      return "file_mutation"
     case "read_file":
       return "file"
     case "ls":
@@ -304,6 +322,8 @@ function getToolCallSummaryFactKey(
     case "command":
       return getStringArg(args, ["command"])
     case "file":
+      return getStringArg(args, ["path", "file_path"])
+    case "file_mutation":
       return getStringArg(args, ["path", "file_path"])
     case "list":
       return getStringArg(args, ["path"])
@@ -398,10 +418,47 @@ function stabilizeToolResultInfo(
   const execution = isSameToolExecutionTiming(previous.execution, next.execution)
     ? previous.execution
     : next.execution
+  const fileMutation = isSameFileMutationResultMetadata(previous.fileMutation, next.fileMutation)
+    ? previous.fileMutation
+    : next.fileMutation
 
-  return Object.is(content, previous.content) && Object.is(execution, previous.execution)
+  return (
+    Object.is(content, previous.content) &&
+    Object.is(execution, previous.execution) &&
+    Object.is(fileMutation, previous.fileMutation)
+  )
     ? previous
-    : { content, execution }
+    : { content, execution, fileMutation }
+}
+
+function isSameFileMutationResultMetadata(
+  previous: FileMutationResultMetadata | null,
+  next: FileMutationResultMetadata | null
+): boolean {
+  if (previous === next) {
+    return true
+  }
+
+  if (!previous || !next) {
+    return false
+  }
+
+  return (
+    previous.status === next.status &&
+    previous.toolCallId === next.toolCallId &&
+    previous.toolName === next.toolName &&
+    previous.files.length === next.files.length &&
+    previous.files.every((file, index) => {
+      const nextFile = next.files[index]
+      return (
+        nextFile !== undefined &&
+        file.after === nextFile.after &&
+        file.before === nextFile.before &&
+        file.changeType === nextFile.changeType &&
+        file.path === nextFile.path
+      )
+    })
+  )
 }
 
 function isSameToolExecutionTiming(
@@ -668,6 +725,26 @@ function createToolActivityItem(
   }
 }
 
+function createActiveToolActivityItem(activeToolCall: ActiveAgentToolCall): AgentActivityItem | null {
+  if (!activeToolCall.messageId || !activeToolCall.name) {
+    return null
+  }
+
+  const args = parseCompleteToolCallArgsObject(activeToolCall.argsText)
+
+  return {
+    key: `tool:${activeToolCall.id}`,
+    kind: "tool",
+    messageId: activeToolCall.messageId,
+    toolCall: {
+      args: args ?? {},
+      id: activeToolCall.id,
+      name: activeToolCall.name,
+      type: "tool_call"
+    }
+  }
+}
+
 function flushAgentActivities(
   entries: TurnAssistantEntry[],
   pendingActivities: AgentActivityItem[]
@@ -720,9 +797,16 @@ export function buildMessageTurns(messages: ThreadMessage[]): MessageTurn[] {
   return turns
 }
 
-export function buildTurnAssistantEntries(turn: MessageTurn): TurnAssistantEntry[] {
+export function buildTurnAssistantEntries(
+  turn: MessageTurn,
+  options: {
+    activeToolCalls?: readonly ActiveAgentToolCall[]
+    streamingAssistantId?: string | null
+  } = {}
+): TurnAssistantEntry[] {
   const entries: TurnAssistantEntry[] = []
   let pendingActivities: AgentActivityItem[] = []
+  const projectedToolCallIds = new Set<string>()
 
   for (const message of turn.assistants) {
     const reasoningText = getReasoningText(message.content)
@@ -730,6 +814,7 @@ export function buildTurnAssistantEntries(turn: MessageTurn): TurnAssistantEntry
     if (reasoningText.trim()) {
       pendingActivities = flushAgentActivities(entries, pendingActivities)
       entries.push({
+        isActive: false,
         key: `thinking:${message.id}`,
         kind: "thinking",
         messageId: message.id,
@@ -752,10 +837,34 @@ export function buildTurnAssistantEntries(turn: MessageTurn): TurnAssistantEntry
       }
 
       pendingActivities.push(createToolActivityItem(message, toolCall, index))
+      projectedToolCallIds.add(toolCall.id)
     }
   }
 
+  for (const activeToolCall of options.activeToolCalls ?? []) {
+    if (projectedToolCallIds.has(activeToolCall.id)) {
+      continue
+    }
+
+    const item = createActiveToolActivityItem(activeToolCall)
+    if (!item) {
+      continue
+    }
+
+    pendingActivities.push(item)
+    projectedToolCallIds.add(activeToolCall.id)
+  }
+
   flushAgentActivities(entries, pendingActivities)
+
+  const latestEntry = entries.at(-1)
+  if (
+    latestEntry?.kind === "thinking" &&
+    options.streamingAssistantId &&
+    latestEntry.messageId === options.streamingAssistantId
+  ) {
+    latestEntry.isActive = true
+  }
 
   return entries
 }
@@ -776,7 +885,6 @@ export function projectActiveTurnStatus(input: {
   assistantEntries: readonly TurnAssistantEntry[]
   isStreaming: boolean
   pendingApproval?: HITLRequest | null
-  streamingAssistantId?: string | null
 }): ActiveTurnStatusProjection | null {
   if (!input.isStreaming) {
     return null
@@ -786,10 +894,7 @@ export function projectActiveTurnStatus(input: {
   const placement = input.assistantEntries.length > 0 ? "after_entries" : "before_entries"
   const latestEntry = input.assistantEntries.at(-1)
 
-  if (
-    latestEntry?.kind === "thinking" &&
-    latestEntry.messageId === input.streamingAssistantId
-  ) {
+  if (latestEntry?.kind === "thinking" && latestEntry.isActive) {
     return null
   }
 
@@ -806,8 +911,16 @@ export function projectActiveTurnStatus(input: {
     }
   }
 
-  if (activeRunPhase !== "thinking" || latestEntry?.kind === "agent-activity") {
+  if (activeRunPhase !== "thinking") {
     return null
+  }
+
+  if (latestEntry?.kind === "agent-activity") {
+    return {
+      kind: "thinking",
+      placement: "inside_latest_agent_activity",
+      toolCallId: null
+    }
   }
 
   return {
@@ -843,7 +956,6 @@ export function getTurnPendingApproval(
 export function projectTurnToolExecutionsView(input: {
   activeToolCallId: string | null
   activeToolCalls?: readonly ActiveAgentToolCall[]
-  isActiveTurnRunning: boolean
   pendingApproval: HITLRequest | null
   turn: MessageTurn | null
 }): AgentToolExecutionsView {
@@ -879,9 +991,7 @@ export function projectTurnToolExecutionsView(input: {
         continue
       }
 
-      if (
-        input.activeToolCallId ? toolCall.id === input.activeToolCallId : input.isActiveTurnRunning
-      ) {
+      if (input.activeToolCallId && toolCall.id === input.activeToolCallId) {
         nextToolExecutions.set(toolCall.id, {
           status: "running",
           toolCallId: toolCall.id

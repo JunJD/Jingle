@@ -7,7 +7,7 @@ import {
   type AgentToolExecutionViewStatus
 } from "@/lib/message-projection"
 
-export type AgentActivitySummaryIcon = "command" | "file" | "folder" | "search"
+export type AgentActivitySummaryIcon = "command" | "file" | "folder" | "pencil" | "search"
 
 export interface AgentActivitySummaryTool extends AgentActivitySummaryToolInput {
   status: AgentToolExecutionViewStatus
@@ -37,6 +37,8 @@ function getCategoryIcon(category: AgentActivitySummaryCategory): AgentActivityS
       return "command"
     case "file":
       return "file"
+    case "file_mutation":
+      return "pencil"
     case "list":
       return "folder"
     case "search":
@@ -51,6 +53,8 @@ function getRunningTitle(copy: AppCopy, category: AgentActivitySummaryCategory):
       return copy.chat.toolActivityRunningCommand
     case "file":
       return copy.chat.toolActivityRunningRead
+    case "file_mutation":
+      return copy.chat.toolActivityRunningFileMutation
     case "list":
       return copy.chat.toolActivityRunningList
     case "search":
@@ -70,6 +74,8 @@ function getCountDetail(
       return copy.chat.toolActivityCommands(count)
     case "file":
       return copy.chat.toolActivityFiles(count)
+    case "file_mutation":
+      return copy.chat.toolActivityFileMutations(count)
     case "list":
       return copy.chat.toolActivityLists(count)
     case "search":
@@ -100,6 +106,9 @@ export function projectAgentActivityHeaderSummary(
 
   const detail = joinSummaryDetail([
     projection.counts.file ? getCountDetail(copy, "file", projection.counts.file) : null,
+    projection.counts.file_mutation
+      ? getCountDetail(copy, "file_mutation", projection.counts.file_mutation)
+      : null,
     projection.counts.search ? getCountDetail(copy, "search", projection.counts.search) : null,
     projection.counts.list ? getCountDetail(copy, "list", projection.counts.list) : null,
     projection.counts.web_search
@@ -119,21 +128,25 @@ export function projectAgentActivityHeaderSummary(
   const primaryCategory =
     hasCategory(projection.counts, "file")
       ? "file"
-      : hasCategory(projection.counts, "search")
-        ? "search"
-        : hasCategory(projection.counts, "list")
-          ? "list"
-          : hasCategory(projection.counts, "web_search")
-            ? "web_search"
-            : hasCategory(projection.counts, "command")
-              ? "command"
-              : null
+      : hasCategory(projection.counts, "file_mutation")
+        ? "file_mutation"
+        : hasCategory(projection.counts, "search")
+          ? "search"
+          : hasCategory(projection.counts, "list")
+            ? "list"
+            : hasCategory(projection.counts, "web_search")
+              ? "web_search"
+              : hasCategory(projection.counts, "command")
+                ? "command"
+                : null
 
   return {
     detail,
     icon: primaryCategory ? getCategoryIcon(primaryCategory) : "search",
     title: hasOnlyCategory(projection.counts, "command")
       ? copy.chat.toolActivityRanCommands
+      : hasOnlyCategory(projection.counts, "file_mutation")
+        ? copy.chat.toolActivityChangedFiles
       : hasOnlyCategory(projection.counts, "web_search")
         ? copy.chat.toolActivitySearchedWeb
         : hasCategory(projection.counts, "command")

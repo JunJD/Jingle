@@ -1,5 +1,6 @@
 import {
   ChevronRight,
+  Edit,
   FileText,
   FolderOpen,
   GitForkIcon,
@@ -369,6 +370,8 @@ function getAgentActivitySummaryIcon(kind: AgentActivitySummaryIcon): React.JSX.
       return <FileText className="size-[var(--ow-icon-action)]" />
     case "folder":
       return <FolderOpen className="size-[var(--ow-icon-action)]" />
+    case "pencil":
+      return <Edit className="size-[var(--ow-icon-action)]" />
     case "search":
       return <Search className="size-[var(--ow-icon-action)]" />
   }
@@ -436,6 +439,7 @@ function projectToolActivityView(input: {
 }
 
 function AgentActivityGroup(props: {
+  activeThinking?: boolean
   defaultOpen?: boolean
   items: AgentActivityItem[]
   onOpenChange?: (open: boolean) => void
@@ -446,6 +450,7 @@ function AgentActivityGroup(props: {
 }): React.JSX.Element | null {
   const { copy } = useI18n()
   const {
+    activeThinking = false,
     defaultOpen = false,
     items,
     onOpenChange,
@@ -488,16 +493,18 @@ function AgentActivityGroup(props: {
   const fallbackHeaderTitle =
     (headerToolAction?.status === "approval" ? copy.chat.agentStatusWaitingApproval : null) ??
     copy.chat.executedSteps(items.length)
-  const headerTitle = headerSummary?.title ?? fallbackHeaderTitle
-  const headerDetail = headerSummary?.detail ?? null
+  const headerTitle = activeThinking
+    ? copy.chat.agentStatusThinking
+    : (headerSummary?.title ?? fallbackHeaderTitle)
+  const headerDetail = activeThinking ? null : (headerSummary?.detail ?? null)
   const headerTextActive = Boolean(
-    headerSummary && headerToolAction && isActivityViewLoading(headerToolAction)
+    activeThinking || (headerSummary && headerToolAction && isActivityViewLoading(headerToolAction))
   )
   const headerIcon = headerSummary ? getAgentActivitySummaryIcon(headerSummary.icon) : undefined
 
   return (
     <AgentToolGroup
-      active={hasLoadingActions}
+      active={activeThinking || hasLoadingActions}
       onOpenChange={onOpenChange ?? setOpenOverride}
       open={isOpen}
     >
@@ -520,6 +527,7 @@ function AgentActivityGroup(props: {
                 activeToolCall={action.activeToolCall}
                 approvalRequest={action.approvalRequest}
                 durationMs={action.execution?.execution?.durationMs}
+                fileMutationResult={action.result?.fileMutation}
                 presentation="grouped"
                 result={action.result?.content}
                 status={action.status}
@@ -534,12 +542,13 @@ function AgentActivityGroup(props: {
 }
 
 function AssistantActivityCluster(props: {
+  activeThinking?: boolean
   items: AgentActivityItem[]
   pendingApproval?: HITLRequest | null
   toolExecutions: AgentToolExecutionsView
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
-  const { items, pendingApproval, toolExecutions, toolResults } = props
+  const { activeThinking = false, items, pendingApproval, toolExecutions, toolResults } = props
   const { copy } = useI18n()
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null)
   const isExpanded = expandedOverride ?? false
@@ -571,6 +580,7 @@ function AssistantActivityCluster(props: {
           <Message className="max-w-full" from="assistant">
             <MessageContent className="w-full gap-[var(--ow-gap-md)]">
               <AgentActivityGroup
+                activeThinking={activeThinking}
                 defaultOpen={false}
                 items={items}
                 onOpenChange={handleExpandedChange}
@@ -592,6 +602,7 @@ function AssistantActivityCluster(props: {
               approvalRequest={toolActivity.approvalRequest}
               durationMs={toolActivity.execution?.execution?.durationMs}
               expanded={isExpanded}
+              fileMutationResult={toolActivity.result?.fileMutation}
               onExpandedChange={handleExpandedChange}
               result={toolActivity.result?.content}
               status={toolActivity.status}
@@ -607,6 +618,7 @@ function AssistantActivityCluster(props: {
     <Message className="max-w-full" from="assistant">
       <MessageContent className="w-full gap-[var(--ow-gap-md)]">
         <AgentActivityGroup
+          activeThinking={activeThinking}
           defaultOpen={false}
           items={items}
           onOpenChange={handleExpandedChange}
@@ -878,7 +890,10 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
     turn.user && hasMessageContent(turn.user.content)
       ? toComposerMessageInput(turn.user.content, turn.user.metadata)
       : null
-  const assistantEntries = useMemo(() => buildTurnAssistantEntries(turn), [turn])
+  const assistantEntries = useMemo(
+    () => buildTurnAssistantEntries(turn, { activeToolCalls, streamingAssistantId }),
+    [activeToolCalls, streamingAssistantId, turn]
+  )
   const turnElapsed = useMemo(
     () =>
       projectTurnElapsedDivider({
@@ -894,10 +909,9 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
         activeRunPhase,
         assistantEntries,
         isStreaming,
-        pendingApproval,
-        streamingAssistantId
+        pendingApproval
       }),
-    [activeRunPhase, assistantEntries, isStreaming, pendingApproval, streamingAssistantId]
+    [activeRunPhase, assistantEntries, isStreaming, pendingApproval]
   )
   const activeTurnStatusRow = activeTurnStatus ? (
     <ActiveTurnStatusRow
@@ -913,13 +927,14 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
       {turn.user ? <UserMessage message={turn.user} threadId={threadId} /> : null}
       {turnElapsed ? <TurnElapsedDivider projection={turnElapsed} /> : null}
       {activeTurnStatus?.placement === "before_entries" ? activeTurnStatusRow : null}
-      {assistantEntries.map((entry) => {
+      {assistantEntries.map((entry, index) => {
+        const isLatestEntry = index === assistantEntries.length - 1
         if (entry.kind === "thinking") {
           return (
             <Message className="max-w-full" from="assistant" key={entry.key}>
               <MessageContent className="w-full gap-[var(--ow-space-2-5)]">
                 <ReasoningBlock
-                  isStreaming={isStreaming && entry.messageId === streamingAssistantId}
+                  isStreaming={isStreaming && entry.isActive}
                   text={entry.text}
                 />
               </MessageContent>
@@ -940,6 +955,9 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
 
         return (
           <AssistantActivityCluster
+            activeThinking={
+              isLatestEntry && activeTurnStatus?.placement === "inside_latest_agent_activity"
+            }
             items={entry.items}
             key={entry.key}
             pendingApproval={pendingApproval}

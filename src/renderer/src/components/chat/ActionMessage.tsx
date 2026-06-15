@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import type { ActiveAgentToolCall } from "@shared/agent-thread-runtime"
+import type { FileMutationResultMetadata } from "@shared/file-mutation-result"
 import {
   AgentActivityRow,
   AgentTool,
@@ -15,6 +16,7 @@ import { type ToolPresentation, type ToolComponentStatus } from "./tools"
 interface ActionMessageProps {
   toolCall: ToolCall
   activeToolCall?: ActiveAgentToolCall
+  fileMutationResult?: FileMutationResultMetadata | null
   result?: unknown
   durationMs?: number | null
   approvalRequest?: HITLRequest | null
@@ -127,6 +129,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     defaultExpanded = false,
     durationMs,
     expanded,
+    fileMutationResult,
     onExpandedChange,
     presentation = "standalone",
     result,
@@ -139,14 +142,25 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
   const view = useMemo(
     () =>
       createActionMessageView({
+        activeArgsText: activeToolCall?.argsText,
         approvalRequest,
         copy,
+        fileMutationResult,
         presentation,
         result,
         status: explicitStatus,
         toolCall
       }),
-    [approvalRequest, copy, explicitStatus, presentation, result, toolCall]
+    [
+      activeToolCall?.argsText,
+      approvalRequest,
+      copy,
+      explicitStatus,
+      fileMutationResult,
+      presentation,
+      result,
+      toolCall
+    ]
   )
   const {
     definition,

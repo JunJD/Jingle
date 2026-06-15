@@ -1,8 +1,9 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { OpenTarget } from "@shared/open-targets"
 import { ChevronDown, FolderOpen, MonitorUp, Terminal } from "lucide-react"
 import { LauncherAiMenuItem } from "./LauncherAiMenuItem"
+import { useOpenTargetContext } from "@/lib/open-target-context"
 import { cn } from "@/lib/utils"
 
 const EMPTY_TARGETS: OpenTarget[] = []
@@ -41,9 +42,30 @@ function getTargetIcon(target: OpenTarget): React.JSX.Element {
   return <FolderOpen />
 }
 
+function getPrimaryTarget(
+  targets: OpenTarget[],
+  selectedTargetId: string | null
+): OpenTarget | null {
+  const selectedTarget = targets.find((target) => target.id === selectedTargetId)
+  if (selectedTarget) {
+    return selectedTarget
+  }
+
+  return (
+    targets.find((target) => target.kind === "application") ??
+    targets.find((target) => target.kind === "file-manager") ??
+    targets[0] ??
+    null
+  )
+}
+
 export function LauncherAiOpenTargetMenu(props: LauncherAiOpenTargetMenuProps): React.JSX.Element {
   const { folderPath, labels } = props
   const folderName = getFolderName(folderPath)
+  const openTargetContext = useOpenTargetContext()
+  const selectedTargetId = openTargetContext?.selectedTargetId ?? null
+  const setSelectedTargetId = openTargetContext?.setSelectedTargetId
+  const selectedTargetIdRef = useRef<string | null>(selectedTargetId)
   const [targetState, setTargetState] = useState<{
     folderPath: string
     targets: OpenTarget[]
@@ -51,13 +73,12 @@ export function LauncherAiOpenTargetMenu(props: LauncherAiOpenTargetMenuProps): 
   const [isOpen, setIsOpen] = useState(false)
   const targets = targetState?.folderPath === folderPath ? targetState.targets : EMPTY_TARGETS
   const primaryTarget = useMemo(() => {
-    return (
-      targets.find((target) => target.kind === "application") ??
-      targets.find((target) => target.kind === "file-manager") ??
-      targets[0] ??
-      null
-    )
-  }, [targets])
+    return getPrimaryTarget(targets, selectedTargetId)
+  }, [selectedTargetId, targets])
+
+  useEffect(() => {
+    selectedTargetIdRef.current = selectedTargetId
+  }, [selectedTargetId])
 
   useEffect(() => {
     if (!folderPath) {
@@ -72,16 +93,33 @@ export function LauncherAiOpenTargetMenu(props: LauncherAiOpenTargetMenuProps): 
           folderPath,
           targets: response.targets
         })
+
+        const currentTargetId = selectedTargetIdRef.current
+        const hasCurrentTarget =
+          currentTargetId !== null &&
+          response.targets.some((target) => target.id === currentTargetId)
+        if (!hasCurrentTarget) {
+          const nextPrimaryTarget = getPrimaryTarget(response.targets, null)
+          if (nextPrimaryTarget) {
+            setSelectedTargetId?.(nextPrimaryTarget.id)
+          }
+        }
       }
     })
 
     return () => {
       cancelled = true
     }
-  }, [folderPath])
+  }, [folderPath, setSelectedTargetId])
 
   function openTarget(targetId: string): void {
     if (!folderPath) {
+      return
+    }
+
+    setSelectedTargetId?.(targetId)
+    if (openTargetContext) {
+      openTargetContext.openTarget(targetId)
       return
     }
 
