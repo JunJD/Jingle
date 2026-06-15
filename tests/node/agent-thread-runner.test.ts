@@ -4,6 +4,7 @@ import type { AgentThreadDataSnapshot, Message } from "../../src/shared/app-type
 import type { HITLRequest } from "../../src/shared/hitl"
 import { AgentThreadRunner } from "../../src/main/agent/agent-thread-runner"
 import type { ThreadsService } from "../../src/main/threads/service"
+import { readFileMutationResultMetadata } from "../../src/shared/file-mutation-result"
 import {
   AGENT_TOOL_EXECUTION_METADATA_KEY,
   readAgentToolExecutionTiming
@@ -878,7 +879,7 @@ test("AgentThreadRunner surfaces streaming tool call chunks before completed too
           id: "assistant-1",
           tool_call_chunks: [
             {
-              args: '{"path":"src/',
+              args: '{"file_path":"src/',
               id: "tool-call-1",
               index: 0,
               name: "edit_file",
@@ -901,7 +902,7 @@ test("AgentThreadRunner surfaces streaming tool call chunks before completed too
           id: "assistant-1",
           tool_call_chunks: [
             {
-              args: 'renderer.tsx"}',
+              args: 'renderer.tsx","old_string":"old","new_string":"new"}',
               id: "tool-call-1",
               index: 0,
               type: "tool_call_chunk"
@@ -926,8 +927,136 @@ test("AgentThreadRunner surfaces streaming tool call chunks before completed too
   assert.equal(snapshot.activeRun?.assistantMessageId, "assistant-1")
   assert.equal(snapshot.activeRun?.currentToolCallId, "tool-call-1")
   assert.equal(activeToolCall?.name, "edit_file")
-  assert.equal(activeToolCall?.argsText, '{"path":"src/renderer.tsx"}')
+  assert.equal(
+    activeToolCall?.argsText,
+    '{"file_path":"src/renderer.tsx","old_string":"old","new_string":"new"}'
+  )
   assert.equal(activeToolCall?.status, "arguments_streaming")
+})
+
+test("AgentThreadRunner materializes completed chunk-only tool calls from streaming args", async () => {
+  const hub = new AgentThreadRunner(
+    createThreadsService(
+      createThreadData({
+        messages: [createUserMessage("user-1", "Edit a file")]
+      })
+    )
+  )
+  const runtimeEventTypes: string[] = []
+
+  await hub.connectThreadEvents("thread-tool-chunks-complete", "runtime-subscriber", (batch) => {
+    runtimeEventTypes.push(...batch.events.map((event) => event.type))
+  })
+  await hub.prepareResume("thread-tool-chunks-complete")
+  await hub.handlePayload("thread-tool-chunks-complete", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "",
+          id: "assistant-1",
+          tool_call_chunks: [
+            {
+              args: '{"file_path":"src/',
+              id: "tool-call-1",
+              index: 0,
+              name: "edit_file",
+              type: "tool_call_chunk"
+            }
+          ]
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+  await hub.handlePayload("thread-tool-chunks-complete", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "",
+          id: "assistant-1",
+          tool_call_chunks: [
+            {
+              args: 'renderer.tsx","old_string":"old","new_string":"new"}',
+              id: "tool-call-1",
+              index: 0,
+              type: "tool_call_chunk"
+            }
+          ]
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+  const beforeToolResult = await hub.readThreadState("thread-tool-chunks-complete")
+  const startedAt = beforeToolResult.activeRun?.toolCalls[0]?.startedAt
+
+  await hub.handlePayload("thread-tool-chunks-complete", {
+    data: [
+      {
+        id: ["ToolMessage"],
+        kwargs: {
+          content: "Successfully replaced 1 occurrence(s) in 'src/renderer.tsx'",
+          id: "tool-result-1",
+          name: "edit_file",
+          tool_call_id: "tool-call-1"
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState("thread-tool-chunks-complete")
+  const assistantMessage = snapshot.messagesPage.find(
+    (message) => message.id === "assistant-1" && message.role === "assistant"
+  )
+  const toolResultMessage = snapshot.messagesPage.find(
+    (message) => message.id === "tool-result-1"
+  )
+  assert.ok(toolResultMessage)
+  const timing = readAgentToolExecutionTiming(toolResultMessage)
+
+  assert.deepEqual(assistantMessage?.tool_calls, [
+    {
+      args: {
+        file_path: "src/renderer.tsx",
+        new_string: "new",
+        old_string: "old"
+      },
+      id: "tool-call-1",
+      name: "edit_file",
+      type: "tool_call"
+    }
+  ])
+  assert.equal(timing?.messageId, "tool-result-1")
+  assert.equal(timing?.toolCallId, "tool-call-1")
+  assert.equal(timing?.toolName, "edit_file")
+  assert.deepEqual(readFileMutationResultMetadata(toolResultMessage), {
+    files: [
+      {
+        after: "new",
+        before: "old",
+        changeType: "modify",
+        path: "src/renderer.tsx"
+      }
+    ],
+    status: "completed",
+    toolCallId: "tool-call-1",
+    toolName: "edit_file"
+  })
+  assert.equal(timing?.startedAt?.getTime(), startedAt?.getTime())
+  assert.equal(snapshot.activeRun?.currentToolCallId, null)
+  assert.deepEqual(snapshot.activeRun?.toolCalls, [])
+  assert.ok(runtimeEventTypes.includes("message.upserted"))
+  assert.ok(runtimeEventTypes.includes("tool.started"))
+  assert.ok(runtimeEventTypes.includes("tool.updated"))
 })
 
 test("AgentThreadRunner stores failed tool execution facts on tool result messages", async () => {
@@ -1009,6 +1138,134 @@ test("AgentThreadRunner stores failed tool execution facts on tool result messag
   assert.deepEqual(snapshot.activeRun?.toolCalls, [])
   assert.ok(runtimeEventTypes.includes("tool.started"))
   assert.ok(runtimeEventTypes.includes("tool.updated"))
+})
+
+test("AgentThreadRunner does not attach completed file mutation metadata to failed edit results", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+
+  await hub.prepareInvoke("thread-file-mutation-error", {
+    content: "Edit a file",
+    id: "user-1"
+  })
+  await hub.handlePayload("thread-file-mutation-error", { runId: "run-1", type: "run_started" })
+  await hub.handlePayload("thread-file-mutation-error", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "",
+          id: "assistant-1",
+          tool_calls: [
+            {
+              args: {
+                file_path: "src/app.ts",
+                new_string: "next",
+                old_string: "current"
+              },
+              id: "tool-call-1",
+              name: "edit_file",
+              type: "tool_call"
+            }
+          ]
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+  await hub.handlePayload("thread-file-mutation-error", {
+    data: [
+      {
+        id: ["ToolMessage"],
+        kwargs: {
+          content:
+            "Error: String 'current' has multiple occurrences (appears 2 times) in file.",
+          id: "tool-result-1",
+          name: "edit_file",
+          tool_call_id: "tool-call-1"
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState("thread-file-mutation-error")
+  const toolMessage = snapshot.messagesPage.find((message) => message.id === "tool-result-1")
+
+  assert.ok(toolMessage)
+  assert.equal(readFileMutationResultMetadata(toolMessage), null)
+})
+
+test("AgentThreadRunner does not guess write_file completed result change type", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+
+  await hub.prepareInvoke("thread-file-write-complete", {
+    content: "Write a file",
+    id: "user-1"
+  })
+  await hub.handlePayload("thread-file-write-complete", { runId: "run-1", type: "run_started" })
+  await hub.handlePayload("thread-file-write-complete", {
+    data: [
+      {
+        id: ["AIMessageChunk"],
+        kwargs: {
+          content: "",
+          id: "assistant-1",
+          tool_calls: [
+            {
+              args: {
+                content: "hello",
+                file_path: "src/notes.md"
+              },
+              id: "tool-call-1",
+              name: "write_file",
+              type: "tool_call"
+            }
+          ]
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+  await hub.handlePayload("thread-file-write-complete", {
+    data: [
+      {
+        id: ["ToolMessage"],
+        kwargs: {
+          content: "Successfully wrote to 'src/notes.md'",
+          id: "tool-result-1",
+          name: "write_file",
+          tool_call_id: "tool-call-1"
+        }
+      },
+      {}
+    ],
+    mode: "messages",
+    type: "stream"
+  })
+
+  const snapshot = await hub.readThreadState("thread-file-write-complete")
+  const toolMessage = snapshot.messagesPage.find((message) => message.id === "tool-result-1")
+
+  assert.ok(toolMessage)
+  assert.deepEqual(readFileMutationResultMetadata(toolMessage), {
+    files: [
+      {
+        after: "hello",
+        before: null,
+        changeType: null,
+        path: "src/notes.md"
+      }
+    ],
+    status: "completed",
+    toolCallId: "tool-call-1",
+    toolName: "write_file"
+  })
 })
 
 test("AgentThreadRunner does not merge completed values tool calls into the final answer", async () => {

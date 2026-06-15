@@ -42,6 +42,22 @@ test("extracts edit_file review details", () => {
   })
 })
 
+test("extracts edit_file review details from current tool schema aliases", () => {
+  const review = getFileMutationReview("edit_file", {
+    file_path: "/tmp/demo.ts",
+    new_string: "const next = true",
+    old_string: "const next = false"
+  })
+
+  assert.deepEqual(review, {
+    content: null,
+    newText: "const next = true",
+    oldText: "const next = false",
+    path: "/tmp/demo.ts",
+    toolName: "edit_file"
+  })
+})
+
 test("preserves empty strings for file mutation review", () => {
   const writeReview = getFileMutationReview("write_file", {
     content: "",

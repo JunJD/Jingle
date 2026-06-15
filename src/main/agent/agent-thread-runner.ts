@@ -7,6 +7,11 @@ import type {
   Subagent,
   ToolCall
 } from "@shared/app-types"
+import { getFileMutationReview, isFileMutationToolName } from "@shared/file-mutation-review"
+import {
+  FILE_MUTATION_RESULT_METADATA_KEY,
+  type FileMutationResultMetadata
+} from "@shared/file-mutation-result"
 import {
   AGENT_TOOL_EXECUTION_METADATA_KEY,
   createDefaultAgentThreadRuntimeState,
@@ -23,6 +28,7 @@ import {
 } from "@shared/agent-thread-runtime"
 import { deriveThreadBootstrapState } from "@shared/agent-thread-bootstrap"
 import { getIpcErrorStatus, isIpcErrorCode, type IpcErrorPayload } from "@shared/ipc-error"
+import { parseCompleteToolCallArgsObject } from "@shared/tool-call-args"
 import type { AgentStreamPayload } from "./service"
 import {
   appendAssistantMessageContent,
@@ -169,6 +175,10 @@ class StreamingToolCallAccumulator {
     }
 
     return updatedToolCalls
+  }
+
+  readToolCall(id: string): ActiveAgentToolCall | null {
+    return this.toolCalls.find((toolCall) => toolCall.id === id) ?? null
   }
 }
 
@@ -343,6 +353,9 @@ class ThreadRuntimeProjector {
 
       if (decoded.tool) {
         const completedAt = new Date()
+        const toolCallMessageId = this.ensureCanonicalAssistantToolCallForToolResult(
+          decoded.tool.toolCallId
+        )
         const toolExecution = this.createToolExecutionUpdate({
           completedAt,
           messageId: decoded.tool.id,
@@ -357,6 +370,12 @@ class ThreadRuntimeProjector {
               }
             : {})
         })
+        const fileMutationResult = this.createFileMutationResultMetadata({
+          content: decoded.tool.content,
+          status: toolExecution.event.status,
+          toolCallId: decoded.tool.toolCallId,
+          toolName: toolExecution.event.toolName
+        })
         this.upsertMessage(
           {
             content: decoded.tool.content,
@@ -364,7 +383,10 @@ class ThreadRuntimeProjector {
             id: decoded.tool.id,
             metadata: {
               ...(decoded.tool.metadata ?? {}),
-              [AGENT_TOOL_EXECUTION_METADATA_KEY]: toolExecution.metadata
+              [AGENT_TOOL_EXECUTION_METADATA_KEY]: toolExecution.metadata,
+              ...(fileMutationResult
+                ? { [FILE_MUTATION_RESULT_METADATA_KEY]: fileMutationResult }
+                : {})
             },
             name: decoded.tool.name,
             role: "tool",
@@ -373,7 +395,7 @@ class ThreadRuntimeProjector {
           { appendAssistantText: false }
         )
         this.commitRuntimeEvent({
-          messageId: this.findToolCallMessageId(decoded.tool.toolCallId),
+          messageId: toolCallMessageId,
           runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
           ...toolExecution.event,
           toolCallId: decoded.tool.toolCallId,
@@ -458,7 +480,7 @@ class ThreadRuntimeProjector {
       }
 
       this.startedToolCallIds.add(toolCall.id)
-      const startedAt = new Date()
+      const startedAt = this.findActiveToolCall(toolCall.id)?.startedAt ?? new Date()
       this.commitRuntimeEvent({
         messageId,
         runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
@@ -798,6 +820,54 @@ class ThreadRuntimeProjector {
     return null
   }
 
+  private ensureCanonicalAssistantToolCallForToolResult(toolCallId: string): string | null {
+    const existingMessageId = this.findToolCallMessageId(toolCallId)
+    if (existingMessageId) {
+      return existingMessageId
+    }
+
+    return this.materializeAssistantToolCallFromCompleteStreamingArgs(toolCallId)
+  }
+
+  private materializeAssistantToolCallFromCompleteStreamingArgs(toolCallId: string): string | null {
+    const activeToolCall = this.toolCallAccumulator.readToolCall(toolCallId)
+    if (!activeToolCall?.messageId || !activeToolCall.name) {
+      return null
+    }
+
+    const args = parseCompleteToolCallArgsObject(activeToolCall.argsText)
+    if (!args) {
+      return null
+    }
+
+    const assistantMessage = this.runtimeState.messagesPage.find(
+      (message) => message.id === activeToolCall.messageId && message.role === "assistant"
+    )
+    const toolCall: ToolCall = {
+      args,
+      id: activeToolCall.id,
+      name: activeToolCall.name,
+      type: "tool_call"
+    }
+
+    const nextMessage: Message = assistantMessage
+      ? {
+          ...assistantMessage,
+          tool_calls: [...(assistantMessage.tool_calls ?? []), toolCall]
+        }
+      : {
+          content: "",
+          created_at: activeToolCall.startedAt,
+          id: activeToolCall.messageId,
+          role: "assistant",
+          tool_calls: [toolCall]
+        }
+
+    this.upsertMessage(nextMessage, { appendAssistantText: false })
+    this.commitToolFactsFromAssistantMessage(nextMessage)
+    return activeToolCall.messageId
+  }
+
   private getCreatedAt(messageId: string): Date {
     const existingMessage = this.runtimeState.messagesPage.find(
       (message) => message.id === messageId
@@ -809,6 +879,88 @@ class ThreadRuntimeProjector {
     return (
       this.runtimeState.activeRun?.toolCalls.find((toolCall) => toolCall.id === toolCallId) ?? null
     )
+  }
+
+  private findCompletedToolCall(toolCallId: string): ToolCall | null {
+    for (const message of this.runtimeState.messagesPage) {
+      const toolCall = message.tool_calls?.find((entry) => entry.id === toolCallId)
+      if (toolCall) {
+        return toolCall
+      }
+    }
+
+    return null
+  }
+
+  private readToolCallArgs(toolCallId: string): Record<string, unknown> | null {
+    const completedToolCall = this.findCompletedToolCall(toolCallId)
+    if (completedToolCall) {
+      return completedToolCall.args
+    }
+
+    const activeToolCall = this.toolCallAccumulator.readToolCall(toolCallId)
+    return activeToolCall ? parseCompleteToolCallArgsObject(activeToolCall.argsText) : null
+  }
+
+  private createFileMutationResultMetadata(input: {
+    content: Message["content"]
+    status: "completed" | "failed"
+    toolCallId: string
+    toolName: string | null
+  }): FileMutationResultMetadata | null {
+    const { status, toolCallId, toolName } = input
+    if (status !== "completed" || !toolName || !isFileMutationToolName(toolName)) {
+      return null
+    }
+
+    const text = extractMessageText(input.content).trim()
+    const isSuccess =
+      toolName === "write_file"
+        ? text.startsWith("Successfully wrote to ")
+        : text.startsWith("Successfully replaced ")
+    if (!isSuccess) {
+      return null
+    }
+
+    const args = this.readToolCallArgs(toolCallId)
+    const review = args ? getFileMutationReview(toolName, args) : null
+    if (!review?.path) {
+      return null
+    }
+
+    if (review.toolName === "write_file" && review.content !== null) {
+      return {
+        files: [
+          {
+            after: review.content,
+            before: null,
+            changeType: null,
+            path: review.path
+          }
+        ],
+        status: "completed",
+        toolCallId,
+        toolName: review.toolName
+      }
+    }
+
+    if (review.toolName === "edit_file" && (review.oldText !== null || review.newText !== null)) {
+      return {
+        files: [
+          {
+            after: review.newText,
+            before: review.oldText,
+            changeType: "modify",
+            path: review.path
+          }
+        ],
+        status: "completed",
+        toolCallId,
+        toolName: review.toolName
+      }
+    }
+
+    return null
   }
 
   private createToolExecutionUpdate(input: {

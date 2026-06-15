@@ -16,6 +16,20 @@ function readOptionalString(value: unknown): string | null {
   return typeof value === "string" ? value : null
 }
 
+function readOptionalStringFromAliases(
+  args: Record<string, unknown>,
+  keys: readonly string[]
+): string | null {
+  for (const key of keys) {
+    const value = readOptionalString(args[key])
+    if (value !== null) {
+      return value
+    }
+  }
+
+  return null
+}
+
 export function isFileMutationToolName(value: string): value is FileMutationToolName {
   return value === "edit_file" || value === "write_file"
 }
@@ -27,9 +41,9 @@ export function getFileMutationReview(toolName: string, args: unknown): FileMuta
 
   return {
     content: readOptionalString(args.content),
-    newText: readOptionalString(args.new_str),
-    oldText: readOptionalString(args.old_str),
-    path: readOptionalString(args.path ?? args.file_path),
+    newText: readOptionalStringFromAliases(args, ["new_string", "new_str"]),
+    oldText: readOptionalStringFromAliases(args, ["old_string", "old_str"]),
+    path: readOptionalStringFromAliases(args, ["file_path", "path"]),
     toolName
   }
 }
