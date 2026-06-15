@@ -200,9 +200,8 @@ test("trace projection does not auto-run for dirty non-terminal events", async (
 
 test("run finished schedules trace projection", async () => {
   const { createRun, createThread, getAgentTrace } = await loadDbModules()
-  const { recordRunFinished, recordRunStarted } = await import(
-    "../../src/main/agent/event-recorder"
-  )
+  const { recordRunFinished, recordRunStarted } =
+    await import("../../src/main/agent/event-recorder")
   const threadId = "thread-projection-finished"
   const runId = "run-projection-finished"
 
@@ -936,7 +935,7 @@ test("stream boundary recorder keeps assistant completion separate from LLM outp
   assert.equal(eventTypes.includes("llm.output.captured"), false)
 })
 
-test("stream boundary recorder records tool call chunks as started tool events", async () => {
+test("stream boundary recorder does not promote tool call chunks to durable tool events", async () => {
   const { createRun, createThread, flushAgentTraceProjection, getAgentTraceEvents } =
     await loadDbModules()
   const { createAgentStreamBoundaryRecorderState, recordAgentStreamBoundaryEvents } =
@@ -1001,23 +1000,13 @@ test("stream boundary recorder records tool call chunks as started tool events",
   const events = await getAgentTraceEvents(runId)
   assert.deepEqual(
     events.map((event) => event.type),
-    ["message.assistant.started", "tool.call.started"]
+    ["message.assistant.started"]
   )
-  const toolStartedPayload = JSON.parse(events[1]!.payload) as Record<string, unknown>
-  assert.equal(toolStartedPayload.args, '{"path":"src/')
-  assert.equal(toolStartedPayload.messageId, "assistant-stream-tool")
-  assert.equal(toolStartedPayload.toolCallId, "tool-call-chunk-1")
-  assert.equal(toolStartedPayload.toolName, "read_file")
 })
 
-test("stream boundary recorder records finalized values tool calls and results", async () => {
-  const {
-    createRun,
-    createThread,
-    flushAgentTraceProjection,
-    getAgentTraceEvents,
-    getAgentTraceSteps
-  } = await loadDbModules()
+test("stream boundary recorder does not replay values messages as durable tool events", async () => {
+  const { createRun, createThread, flushAgentTraceProjection, getAgentTraceEvents } =
+    await loadDbModules()
   const { createAgentStreamBoundaryRecorderState, recordAgentStreamBoundaryEvents } =
     await import("../../src/main/agent/event-recorder")
   const threadId = "thread-values-tool-events"
@@ -1115,26 +1104,82 @@ test("stream boundary recorder records finalized values tool calls and results",
   await flushAgentTraceProjection()
 
   const events = await getAgentTraceEvents(runId)
+  assert.deepEqual(events, [])
+})
+
+test("stream boundary recorder records values approval interrupts", async () => {
+  const { createRun, createThread, flushAgentTraceProjection, getAgentTraceEvents } =
+    await loadDbModules()
+  const { createAgentStreamBoundaryRecorderState, recordAgentStreamBoundaryEvents } =
+    await import("../../src/main/agent/event-recorder")
+  const threadId = "thread-values-approval-events"
+  const runId = "run-values-approval-events"
+  const state = createAgentStreamBoundaryRecorderState()
+
+  await createThread(threadId)
+  await createRun(runId, threadId)
+  await recordAgentStreamBoundaryEvents({
+    data: {
+      __interrupt__: [
+        {
+          value: {
+            actionRequests: [
+              {
+                args: {
+                  file_path: "notes.md"
+                },
+                name: "write_file",
+                review: null,
+                toolCallId: "tool-call-approval-1"
+              }
+            ],
+            kind: "tool-approval",
+            reviewConfigs: [
+              {
+                actionName: "write_file",
+                allowedDecisions: ["approve", "reject"]
+              }
+            ]
+          }
+        }
+      ],
+      messages: [
+        {
+          id: ["AIMessage"],
+          kwargs: {
+            content: "",
+            id: "assistant-values-tool",
+            tool_calls: [
+              {
+                args: {
+                  file_path: "notes.md"
+                },
+                id: "tool-call-values-1",
+                name: "write_file",
+                type: "tool_call"
+              }
+            ]
+          },
+          type: "ai"
+        }
+      ]
+    },
+    mode: "values",
+    modelId: "gpt-test",
+    runId,
+    state,
+    threadId
+  })
+  await flushAgentTraceProjection()
+
+  const events = await getAgentTraceEvents(runId)
   assert.deepEqual(
     events.map((event) => event.type),
-    ["tool.call.started", "tool.call.completed"]
+    ["approval.requested"]
   )
-
-  const toolStartedPayload = JSON.parse(events[0]!.payload) as Record<string, unknown>
-  assert.equal(toolStartedPayload.messageId, "assistant-values-tool")
-  assert.equal(toolStartedPayload.toolCallId, "tool-call-values-1")
-  assert.equal(toolStartedPayload.toolName, "read_file")
-
-  const toolCompletedPayload = JSON.parse(events[1]!.payload) as Record<string, unknown>
-  assert.equal(toolCompletedPayload.messageId, "tool-result-values-1")
-  assert.equal(toolCompletedPayload.toolCallId, "tool-call-values-1")
-  assert.equal(toolCompletedPayload.toolName, "read_file")
-
-  const steps = await getAgentTraceSteps(runId)
-  assert.equal(steps.length, 1)
-  assert.equal(steps[0]?.step_type, "call_tool")
-  assert.equal(steps[0]?.tool_name, "read_file")
-  assert.equal(steps[0]?.status, "completed")
+  const approvalPayload = JSON.parse(events[0]!.payload) as Record<string, unknown>
+  assert.equal(approvalPayload.toolCallId, "tool-call-approval-1")
+  assert.equal(approvalPayload.toolName, "write_file")
 })
 
 test("stream boundary recorder records IPC serialized LangChain tool calls", async () => {

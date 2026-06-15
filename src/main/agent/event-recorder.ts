@@ -247,24 +247,6 @@ async function recordAgentStreamBoundaryEventsUnsafe(input: {
         })
       }
 
-      for (const toolCallChunk of decoded.assistant.toolCallChunks) {
-        if (!toolCallChunk.id || input.state.toolCallIds.has(toolCallChunk.id)) {
-          continue
-        }
-
-        input.state.toolCallIds.add(toolCallChunk.id)
-        await appendAgentEventSafely({
-          payload: {
-            args: toolCallChunk.args ?? null,
-            messageId: decoded.assistant.id,
-            toolCallId: toolCallChunk.id,
-            toolName: toolCallChunk.name ?? null
-          },
-          runId: input.runId,
-          threadId: input.threadId,
-          type: "tool.call.started"
-        })
-      }
     }
 
     if (decoded.tool) {
@@ -292,50 +274,6 @@ async function recordAgentStreamBoundaryEventsUnsafe(input: {
     runId: input.runId,
     threadId: input.threadId
   })
-
-  for (const message of decoded.messages ?? []) {
-    if (message.role === "assistant") {
-      input.state.assistantMessageIdRef.value = message.id
-      for (const toolCall of message.tool_calls ?? []) {
-        if (!toolCall.id || input.state.toolCallIds.has(toolCall.id)) {
-          continue
-        }
-
-        input.state.toolCallIds.add(toolCall.id)
-        await appendAgentEventSafely({
-          payload: {
-            args: toolCall.args ?? null,
-            messageId: message.id,
-            toolCallId: toolCall.id,
-            toolName: toolCall.name ?? null
-          },
-          runId: input.runId,
-          threadId: input.threadId,
-          type: "tool.call.started"
-        })
-      }
-    }
-
-    if (
-      message.role === "tool" &&
-      message.tool_call_id &&
-      !input.state.completedToolResultIds.has(message.id)
-    ) {
-      input.state.completedToolResultIds.add(message.id)
-      await appendAgentEventSafely({
-        payload: {
-          messageId: message.id,
-          output: message.content,
-          status: "completed",
-          toolCallId: message.tool_call_id,
-          toolName: message.name ?? null
-        },
-        runId: input.runId,
-        threadId: input.threadId,
-        type: "tool.call.completed"
-      })
-    }
-  }
 
   const request = decoded.pendingApproval
   if (!request || input.state.approvalRequestIds.has(request.id)) {

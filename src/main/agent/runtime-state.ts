@@ -18,13 +18,6 @@ interface CheckpointChannelMessage {
     tool_calls?: ToolCall[]
     additional_kwargs?: {
       refs?: unknown
-      tool_calls?: Array<{
-        id?: string
-        function?: {
-          name?: string
-          arguments?: string
-        }
-      }>
     }
     response_metadata?: unknown
     tool_call_id?: string
@@ -69,27 +62,6 @@ interface ValuesRuntimeState {
   }>
 }
 
-function parseRequiredJsonRecord(value: string | undefined): Record<string, unknown> | null {
-  if (typeof value !== "string" || value.length === 0) {
-    return null
-  }
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(value) as unknown
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      return null
-    }
-
-    throw error
-  }
-
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? (parsed as Record<string, unknown>)
-    : null
-}
-
 function getSerializedMessageClassName(message: CheckpointChannelMessage): string {
   return Array.isArray(message.id) ? message.id[message.id.length - 1] || "" : ""
 }
@@ -102,26 +74,6 @@ function getCheckpointToolCalls(message: CheckpointChannelMessage): ToolCall[] {
   const direct = message.kwargs?.tool_calls ?? message.tool_calls
   if (Array.isArray(direct) && direct.length > 0) {
     return direct as ToolCall[]
-  }
-
-  const openAiToolCalls = message.kwargs?.additional_kwargs?.tool_calls
-  if (Array.isArray(openAiToolCalls) && openAiToolCalls.length > 0) {
-    return openAiToolCalls.flatMap((toolCall) => {
-      const name = toolCall.function?.name
-      const args = parseRequiredJsonRecord(toolCall.function?.arguments)
-      if (!toolCall.id || !name || !args) {
-        return []
-      }
-
-      return [
-        {
-          args,
-          id: toolCall.id,
-          name,
-          type: "tool_call" as const
-        }
-      ]
-    })
   }
 
   return []

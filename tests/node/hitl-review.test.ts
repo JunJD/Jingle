@@ -233,7 +233,7 @@ test("extractHitlRequestFromCheckpoint prefers persisted run_id for request iden
   })
 })
 
-test("extractMessagesFromCheckpoint skips incomplete OpenAI-style tool calls", () => {
+test("extractMessagesFromCheckpoint does not reinterpret OpenAI-style tool calls", () => {
   const rows = extractMessagesFromCheckpoint("thread-1", {
     checkpoint: {
       id: "checkpoint-1",
@@ -253,10 +253,10 @@ test("extractMessagesFromCheckpoint skips incomplete OpenAI-style tool calls", (
                   },
                   {
                     function: {
-                      arguments: '{"path":"READ',
+                      arguments: '{"path":"README.md"}',
                       name: "read_file"
                     },
-                    id: "tool-call-partial",
+                    id: "tool-call-complete",
                     type: "function"
                   }
                 ]
@@ -276,7 +276,7 @@ test("extractMessagesFromCheckpoint skips incomplete OpenAI-style tool calls", (
   assert.doesNotMatch(rows[0]?.content ?? "", /unknown|checkpoint-tool/)
 })
 
-test("extractMessagesFromCheckpoint restores complete OpenAI-style tool calls", () => {
+test("extractMessagesFromCheckpoint restores canonical checkpoint tool calls", () => {
   const rows = extractMessagesFromCheckpoint("thread-1", {
     checkpoint: {
       id: "checkpoint-1",
@@ -285,20 +285,18 @@ test("extractMessagesFromCheckpoint restores complete OpenAI-style tool calls", 
           {
             id: ["AIMessage"],
             kwargs: {
-              additional_kwargs: {
-                tool_calls: [
-                  {
-                    function: {
-                      arguments: '{"path":"README.md"}',
-                      name: "read_file"
-                    },
-                    id: "tool-call-complete",
-                    type: "function"
-                  }
-                ]
-              },
               content: "",
-              id: "assistant-checkpoint"
+              id: "assistant-checkpoint",
+              tool_calls: [
+                {
+                  args: {
+                    path: "README.md"
+                  },
+                  id: "tool-call-complete",
+                  name: "read_file",
+                  type: "tool_call"
+                }
+              ]
             }
           }
         ]
