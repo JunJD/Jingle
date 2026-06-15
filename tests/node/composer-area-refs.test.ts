@@ -15,7 +15,8 @@ import {
   getComposerMentionMenuLayout,
   getComposerMentionTriggerMatch,
   getExtensionSourceTriggerMatch,
-  getWorkspaceFileSearchMenuStatus
+  getWorkspaceFileSearchMenuStatus,
+  hasComposerMentionSelectableOptions
 } from "../../src/renderer/src/composer-area/extension-source-typeahead"
 import {
   $createExtensionSourceReferenceNode,
@@ -326,6 +327,30 @@ test("composer mention typeahead accepts workspace path queries", () => {
     matchingString: "src/main",
     replaceableString: "@src/main"
   })
+})
+
+test("composer mention selectable state follows menu visibility", () => {
+  assert.equal(
+    hasComposerMentionSelectableOptions({
+      isMenuOpen: false,
+      optionCount: 4
+    }),
+    false
+  )
+  assert.equal(
+    hasComposerMentionSelectableOptions({
+      isMenuOpen: true,
+      optionCount: 0
+    }),
+    false
+  )
+  assert.equal(
+    hasComposerMentionSelectableOptions({
+      isMenuOpen: true,
+      optionCount: 1
+    }),
+    true
+  )
 })
 
 test("composer file mention menu exposes search status rows without selectable results", () => {

@@ -3,7 +3,6 @@ import { getLauncherViewportHeightForBody, type LauncherShellConfig } from "@sha
 const AI_PAGE_CONTENT_HEIGHT = 468
 const AI_HEADER_HEIGHT = 48
 export const AI_FOOTER_HEIGHT = 64
-export const AI_MAX_FOOTER_HEIGHT = 180
 
 export function getAiShellConfig(
   shellConfig: LauncherShellConfig,

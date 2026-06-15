@@ -75,6 +75,28 @@ function isPlainBackspaceShortcut(event: KeyboardEvent): boolean {
   )
 }
 
+function isInteractiveSubmitTarget(target: EventTarget | null): boolean {
+  if (!target || typeof target !== "object") {
+    return false
+  }
+
+  const closest = (target as { closest?: (selector: string) => Element | null }).closest
+  return (
+    typeof closest === "function" &&
+    closest.call(
+      target,
+      "button,input,textarea,select,a[href],[role='button'],[role='menuitem'],[role='option'],[role='tab']"
+    ) !== null
+  )
+}
+
+export function shouldHandleLauncherAiSubmitShortcut(
+  target: EventTarget | null,
+  input: LauncherInputElement | ComposerAreaHandle | null
+): boolean {
+  return isLauncherAiInputEventTarget(target, input) || !isInteractiveSubmitTarget(target)
+}
+
 function getPermissionModeLabel(copy: AppCopy["launcher"], mode: PermissionModeName): string {
   switch (mode) {
     case "explore":
@@ -146,7 +168,7 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
 
   const handleSubmitShortcut = useCallback(
     (event: KeyboardEvent): void => {
-      if (!isAiInputTarget(event.target)) {
+      if (!shouldHandleLauncherAiSubmitShortcut(event.target, inputRef.current)) {
         return
       }
 
@@ -157,7 +179,7 @@ export function useLauncherAiActions(options: UseLauncherAiActionsOptions): {
       event.preventDefault()
       runPrimaryAction()
     },
-    [isAiInputTarget, isApprovalPending, runPrimaryAction]
+    [inputRef, isApprovalPending, runPrimaryAction]
   )
   const handleAddAttachmentShortcut = useCallback(
     (event: KeyboardEvent): void => {

@@ -33,7 +33,6 @@ import { AssistantSelectionOverlay } from "./AssistantSelectionOverlay"
 type AssistantSelectionRef = Extract<ComposerMessageRef, { type: "assistant-message-selection" }>
 
 interface MessagesProps {
-  bottomInset?: number
   contentClassName?: string
   contentInsetY?: string
   renderFooter?: () => ReactNode
@@ -294,11 +293,10 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
       projectTurnToolExecutionsView({
         activeToolCallId,
         activeToolCalls,
-        isActiveTurnRunning: isActiveTurn && Boolean(isLoading),
         pendingApproval: turnPendingApproval,
         turn
       }),
-    [activeToolCallId, activeToolCalls, isActiveTurn, isLoading, turn, turnPendingApproval]
+    [activeToolCallId, activeToolCalls, turn, turnPendingApproval]
   )
 
   if (!turn) {
@@ -351,7 +349,6 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
 
 export function Messages(props: MessagesProps): React.JSX.Element {
   const {
-    bottomInset = 0,
     contentClassName,
     contentInsetY = "var(--ow-chat-thread-y)",
     isAtBottom = true,
@@ -415,7 +412,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     activeTurnBlank.turnKey !== null &&
     activeTurnBlank.turnKey === latestTurnKey
   const bottomSpacerHeight = `calc(${
-    bottomInset + (isActiveTurnBlankActive ? activeTurnBlank.spacerHeight : 0)
+    isActiveTurnBlankActive ? activeTurnBlank.spacerHeight : 0
   }px + ${contentInsetY})`
 
   const measureActiveTurnBlank = useEffectEvent((scrollToPinnedTurn: boolean) => {
@@ -437,10 +434,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
       }
 
       const rowHeight = row.getBoundingClientRect().height
-      const spacerHeight = Math.max(
-        Math.round(virtualizer.viewportSize - rowHeight - bottomInset),
-        0
-      )
+      const spacerHeight = Math.max(Math.round(virtualizer.viewportSize - rowHeight), 0)
 
       setActiveTurnBlank((current) => {
         const next = {

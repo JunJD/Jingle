@@ -1083,12 +1083,6 @@ body[data-window="pinned-ai-session"],
   font-size: var(--ow-font-meta);
 }
 
-.launcher-ai-composer-overlay[data-sidebar-open] {
-  left: var(--launcher-ai-sidebar-w);
-  right: 0;
-  width: auto;
-}
-
 .dark {
   --background: #15191d;
   --background-elevated: #1b2026;
@@ -1328,6 +1322,11 @@ body[data-window="pinned-ai-session"] {
 
 body[data-window="pinned-ai-session"] .launcher-window-drag-region {
   -webkit-app-region: drag;
+}
+
+html:not([data-platform="darwin"]) body[data-window="pinned-ai-session"] .launcher-chrome-header,
+body:not([data-platform="darwin"])[data-window="pinned-ai-session"] .launcher-chrome-header {
+  padding-right: calc(var(--window-controls-offset-inline) + 132px);
 }
 
 body[data-window="pinned-ai-session"] .launcher-window-drag-region button,

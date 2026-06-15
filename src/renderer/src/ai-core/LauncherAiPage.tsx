@@ -9,7 +9,7 @@ import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
 import { AI_ATTACHMENT_FILE_EXTENSIONS } from "@shared/launcher-attachments"
 import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
-import { AI_MAX_FOOTER_HEIGHT, getAiShellConfig } from "./ai-config"
+import { getAiShellConfig } from "./ai-config"
 import { LauncherAiConversation, LauncherAiEmptyState } from "./LauncherAiConversation"
 import { LauncherAiHeaderActions } from "./LauncherAiHeaderActions"
 import { LauncherAiHeaderLeadingActions } from "./LauncherAiHeaderLeadingActions"
@@ -38,17 +38,8 @@ import { shouldGoHomeFromComposerKeyDown } from "./composer-keyboard"
 import type { Todo } from "@/types"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
-const AI_COMPOSER_CHROME_HEIGHT = 30
-const AI_COMPOSER_LINE_HEIGHT = 20
-const AI_COMPOSER_VISIBLE_LINES = 5
-const AI_ATTACHMENT_STRIP_HEIGHT = 48
-const AI_COMPOSER_BOTTOM_GAP = 8
 const DEFAULT_AGENT_CAN_FORK = true
 const EMPTY_TODOS: readonly Todo[] = []
-
-function getVisibleLineCount(value: string): number {
-  return Math.min(AI_COMPOSER_VISIBLE_LINES, value.split("\n").length)
-}
 
 export function LauncherAiPage(): React.JSX.Element {
   const { copy, locale } = useI18n()
@@ -154,11 +145,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const threadError = agentError ?? navigationError
   const primaryActionDisabled =
     isBusy || hasPendingApproval || !hasComposerMessageInputContent(messageInput)
-  const composerOverlayRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [measuredComposerOverlayHeight, setMeasuredComposerOverlayHeight] = useState<number | null>(
-    null
-  )
   const [showModelPicker, setShowModelPicker] = useState(false)
   const hasThreadMessages = useThreadSelector(
     threadId,
@@ -194,26 +181,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const hasAssistantSelectionRefs = assistantSelectionRefs.length > 0
   const isComposerExpanded =
     !pendingApproval && (query.includes("\n") || hasAttachmentDraft || hasAssistantSelectionRefs)
-  const composerTextHeight = 14 + getVisibleLineCount(query) * AI_COMPOSER_LINE_HEIGHT
-  const estimatedComposerOverlayHeight = pendingApproval
-    ? 0
-    : Math.min(
-        AI_MAX_FOOTER_HEIGHT,
-        Math.ceil(
-          composerTextHeight +
-            AI_COMPOSER_CHROME_HEIGHT +
-            (hasAttachmentDraft ? AI_ATTACHMENT_STRIP_HEIGHT : 0) +
-            (hasAssistantSelectionRefs ? AI_ATTACHMENT_STRIP_HEIGHT : 0)
-        )
-      )
-  const composerOverlayHeight = pendingApproval
-    ? 0
-    : (measuredComposerOverlayHeight ?? estimatedComposerOverlayHeight)
   const shellConfig = getAiShellConfig(surface.shellConfig)
-  const conversationBottomInset =
-    pendingApproval || composerOverlayHeight === 0
-      ? 0
-      : composerOverlayHeight + AI_COMPOSER_BOTTOM_GAP
   const isApprovalPending = Boolean(pendingApproval)
   const controller = useMemo(
     () =>
@@ -542,315 +510,301 @@ export function LauncherAiPage(): React.JSX.Element {
     }
   }, [host.initialAction, initialMessageInput, runPrimaryAction])
 
-  useEffect(() => {
-    const element = composerOverlayRef.current
-    if (!element || typeof ResizeObserver === "undefined") {
-      return
-    }
-
-    const observer = new ResizeObserver(([entry]) => {
-      const nextHeight = Math.min(AI_MAX_FOOTER_HEIGHT, Math.ceil(entry.contentRect.height))
-      setMeasuredComposerOverlayHeight((current) => (current === nextHeight ? current : nextHeight))
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [pendingApproval])
-
   return (
     <OpenTargetProvider folderPath={workspacePath}>
       <div className="relative h-full">
-      <LauncherChrome
-        headerLeading={
-          <LauncherAiHeaderLeadingActions
-            canGoToNextChat={canUseHeaderThreadActions && canGoToNextChat}
-            canGoToPreviousChat={canUseHeaderThreadActions && canGoToPreviousChat}
-            canStartNewQuestion={canUseHeaderThreadActions && canStartNewQuestion}
-            isSidebarOpen={isSidebarOpen}
-            labels={{
-              collapseSidebar: copy.launcher.collapseSidebar,
-              expandSidebar: copy.launcher.expandSidebar,
-              goHome: copy.launcher.goHome,
-              goToNextChat: copy.launcher.goToNextChat,
-              goToPreviousChat: copy.launcher.goToPreviousChat,
-              newQuestion: copy.launcher.newQuestion
-            }}
-            showBackButton={showBackButton}
-            title={sidebarTitle}
-            titleAccessory={
-              <LauncherAiHeaderModelPicker
-                currentModelId={currentModelId}
-                fallbackLabel={copy.launcher.aiThreadTitle}
-                onSelectModel={selectModel}
-              />
-            }
-            onGoToNextChat={() => {
-              void handleGoToNextChat()
-            }}
-            onGoToPreviousChat={() => {
-              void handleGoToPreviousChat()
-            }}
-            onGoHome={navigation.goHome}
-            onNewQuestion={() => {
-              void handleNewQuestion()
-            }}
-            onSidebarPreviewChange={handleSidebarPreviewChange}
-            onToggleSidebar={toggleSidebar}
-          />
-        }
-        headerTrailing={
-          <LauncherAiHeaderActions
-            canBranchThread={canUseHeaderThreadActions && canBranchThread}
-            canOpenThreadMenu={canUseHeaderThreadActions}
-            canOpenPinnedWindow={canUseHeaderThreadActions && Boolean(threadId)}
-            environment={{
-              modelLabel: currentModelLabel,
-              permissionLabel: currentPermissionLabel,
-              threadId,
-              todos,
-              workspacePath
-            }}
-            labels={{
-              addAutomation: copy.launcher.addAutomation,
-              actions: copy.launcher.actionsLabel,
-              branchIntoLocal: copy.launcher.branchIntoLocal,
-              branchIntoNewWorktree: copy.launcher.branchIntoNewWorktree,
-              branchIntoSameWorktree: copy.launcher.branchIntoSameWorktree,
-              branchMenu: copy.launcher.branchMenu,
-              copyAsMarkdown: copy.launcher.copyAsMarkdown,
-              copyChat: copy.launcher.copyChat,
-              copyDeeplink: copy.launcher.copyDeeplink,
-              copySessionId: copy.launcher.copySessionId,
-              copyWorkingDirectory: copy.launcher.copyWorkingDirectory,
-              environmentInfo: copy.launcher.environmentInfo,
-              environmentModel: copy.launcher.environmentModel,
-              environmentNoModel: copy.launcher.environmentNoModel,
-              environmentNoThread: copy.launcher.environmentNoThread,
-              environmentNoWorkspace: copy.launcher.environmentNoWorkspace,
-              environmentPermission: copy.launcher.environmentPermission,
-              environmentProgress: copy.launcher.environmentProgress,
-              environmentProgressMore: copy.launcher.environmentProgressMore,
-              environmentThread: copy.launcher.environmentThread,
-              environmentWorkspace: copy.launcher.environmentWorkspace,
-              openFolder: copy.launcher.openFolder,
-              openPinnedWindow: copy.launcher.openPinnedWindow,
-              openSideChat: copy.launcher.openSideChat,
-              openTarget: copy.launcher.openTarget,
-              pinChat: copy.launcher.pinChat,
-              renameChat: copy.launcher.renameChat
-            }}
-            onBranchIntoLocal={() => {
-              void handleBranchChat()
-            }}
-            onCopySessionId={() => {
-              void copySessionId()
-            }}
-            onCopyWorkingDirectory={() => {
-              void copyWorkingDirectory()
-            }}
-            onOpenPinnedWindow={() => {
-              void openPinnedWindow()
-            }}
-          />
-        }
-        inputAccessory={
-          pendingApproval ? (
-            <div className="shrink-0 px-[var(--launcher-ai-content-x)] py-[var(--ow-space-3)]">
-              <div className="mx-auto w-full max-w-[var(--launcher-ai-content-max-width)]">
-                <ComposerApprovalPrompt
-                  key={pendingApproval.id}
-                  onDecision={(decision) => {
-                    void handleApprovalDecision(decision)
-                  }}
-                  request={pendingApproval}
+        <LauncherChrome
+          headerLeading={
+            <LauncherAiHeaderLeadingActions
+              canGoToNextChat={canUseHeaderThreadActions && canGoToNextChat}
+              canGoToPreviousChat={canUseHeaderThreadActions && canGoToPreviousChat}
+              canStartNewQuestion={canUseHeaderThreadActions && canStartNewQuestion}
+              isSidebarOpen={isSidebarOpen}
+              labels={{
+                collapseSidebar: copy.launcher.collapseSidebar,
+                expandSidebar: copy.launcher.expandSidebar,
+                goHome: copy.launcher.goHome,
+                goToNextChat: copy.launcher.goToNextChat,
+                goToPreviousChat: copy.launcher.goToPreviousChat,
+                newQuestion: copy.launcher.newQuestion
+              }}
+              showBackButton={showBackButton}
+              title={sidebarTitle}
+              titleAccessory={
+                <LauncherAiHeaderModelPicker
+                  currentModelId={currentModelId}
+                  fallbackLabel={copy.launcher.aiThreadTitle}
+                  onSelectModel={selectModel}
                 />
-              </div>
-            </div>
-          ) : undefined
-        }
-        hideInputChrome
-        inputValue={query}
-        onInputValueChange={setQuery}
-        placeholders={[copy.launcher.aiInputPlaceholder, copy.launcher.aiInputPlaceholderSecondary]}
-        shellConfig={shellConfig}
-        surface={AI_LAUNCHER_PLUGIN_ID}
-      >
-        <div className="launcher-ai-body" data-sidebar-open={isSidebarOpen ? "" : undefined}>
-          {isSidebarOpen ? (
-            <LauncherAiSidebarPanel info={sidebarInfo} labels={sidebarLabels} mode="expanded" />
-          ) : null}
-          {isSidebarPreviewVisible ? (
-            <LauncherAiSidebarPanel
-              info={sidebarInfo}
-              labels={sidebarLabels}
-              mode="preview"
-              onPointerEnter={openSidebarPreview}
-              onPointerLeave={closeSidebarPreview}
+              }
+              onGoToNextChat={() => {
+                void handleGoToNextChat()
+              }}
+              onGoToPreviousChat={() => {
+                void handleGoToPreviousChat()
+              }}
+              onGoHome={navigation.goHome}
+              onNewQuestion={() => {
+                void handleNewQuestion()
+              }}
+              onSidebarPreviewChange={handleSidebarPreviewChange}
+              onToggleSidebar={toggleSidebar}
             />
-          ) : null}
-          <div className="launcher-ai-main min-w-0 flex-1">
-            {threadId ? (
-              <LauncherAiConversation
-                bottomInset={conversationBottomInset}
-                clearError={clearVisibleError}
-                error={threadError}
-                isLoading={isBusy}
-                onAddAssistantSelectionRef={addSelectionRef}
-                onBranch={handleBranchChat}
-                onRetry={runPrimaryAction}
-                threadId={threadId}
-              />
-            ) : (
-              <LauncherAiEmptyState bottomInset={conversationBottomInset} error={threadError} />
-            )}
-          </div>
-        </div>
-      </LauncherChrome>
-
-      {!pendingApproval ? (
-        <form
-          ref={composerOverlayRef}
-          className="launcher-ai-composer-overlay pointer-events-none absolute inset-x-0 z-20 flex w-full flex-col justify-end px-[var(--launcher-ai-composer-page-x)]"
-          data-sidebar-open={isSidebarOpen ? "" : undefined}
-          onSubmit={(event) => {
-            event.preventDefault()
-            submitCurrentInput()
-          }}
-          style={{
-            bottom: AI_COMPOSER_BOTTOM_GAP,
-            maxHeight: AI_MAX_FOOTER_HEIGHT
-          }}
-        >
-          <PromptInput
-            className="pointer-events-auto mx-auto w-full max-w-[var(--launcher-ai-content-max-width)] px-[var(--ow-space-2)] py-[var(--ow-space-1)]"
-            style={{ backgroundColor: "var(--background-elevated)" }}
-            isLoading={isBusy}
-            maxHeight="var(--launcher-ai-composer-input-max-h)"
-            minHeight="var(--launcher-ai-composer-input-min-h)"
-            onSubmit={submitCurrentInput}
-            onValueChange={setQuery}
-            value={query}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              accept={AI_ATTACHMENT_FILE_EXTENSIONS.map((extension) => `.${extension}`).join(",")}
-              onChange={(event) => {
-                if (event.target.files) {
-                  void addSelectedFiles(event.target.files)
-                }
-                event.target.value = ""
+          }
+          headerTrailing={
+            <LauncherAiHeaderActions
+              canBranchThread={canUseHeaderThreadActions && canBranchThread}
+              canOpenThreadMenu={canUseHeaderThreadActions}
+              canOpenPinnedWindow={canUseHeaderThreadActions && Boolean(threadId)}
+              environment={{
+                modelLabel: currentModelLabel,
+                permissionLabel: currentPermissionLabel,
+                threadId,
+                todos,
+                workspacePath
+              }}
+              labels={{
+                addAutomation: copy.launcher.addAutomation,
+                actions: copy.launcher.actionsLabel,
+                branchIntoLocal: copy.launcher.branchIntoLocal,
+                branchIntoNewWorktree: copy.launcher.branchIntoNewWorktree,
+                branchIntoSameWorktree: copy.launcher.branchIntoSameWorktree,
+                branchMenu: copy.launcher.branchMenu,
+                copyAsMarkdown: copy.launcher.copyAsMarkdown,
+                copyChat: copy.launcher.copyChat,
+                copyDeeplink: copy.launcher.copyDeeplink,
+                copySessionId: copy.launcher.copySessionId,
+                copyWorkingDirectory: copy.launcher.copyWorkingDirectory,
+                environmentInfo: copy.launcher.environmentInfo,
+                environmentModel: copy.launcher.environmentModel,
+                environmentNoModel: copy.launcher.environmentNoModel,
+                environmentNoThread: copy.launcher.environmentNoThread,
+                environmentNoWorkspace: copy.launcher.environmentNoWorkspace,
+                environmentPermission: copy.launcher.environmentPermission,
+                environmentProgress: copy.launcher.environmentProgress,
+                environmentProgressMore: copy.launcher.environmentProgressMore,
+                environmentThread: copy.launcher.environmentThread,
+                environmentWorkspace: copy.launcher.environmentWorkspace,
+                openFolder: copy.launcher.openFolder,
+                openPinnedWindow: copy.launcher.openPinnedWindow,
+                openSideChat: copy.launcher.openSideChat,
+                openTarget: copy.launcher.openTarget,
+                pinChat: copy.launcher.pinChat,
+                renameChat: copy.launcher.renameChat
+              }}
+              onBranchIntoLocal={() => {
+                void handleBranchChat()
+              }}
+              onCopySessionId={() => {
+                void copySessionId()
+              }}
+              onCopyWorkingDirectory={() => {
+                void copyWorkingDirectory()
+              }}
+              onOpenPinnedWindow={() => {
+                void openPinnedWindow()
               }}
             />
-
-            <div
-              className={`flex min-w-0 gap-[var(--ow-gap-sm)] ${
-                isComposerExpanded ? "items-end" : "items-center"
-              }`}
-            >
-              <PromptInputAction
-                onClick={openAttachmentPicker}
-                onMouseDown={(event) => event.preventDefault()}
-                icon={<Plus className="size-[var(--ow-icon-xs)]" />}
-                label={copy.launcher.aiAddAttachment}
-                title={
-                  addAttachmentShortcut
-                    ? `${copy.launcher.aiAddAttachment} (${addAttachmentShortcut})`
-                    : copy.launcher.aiAddAttachment
-                }
-                tooltip={copy.launcher.aiAddAttachment}
-              />
-
-              <div className="flex min-w-0 flex-1 flex-col gap-[var(--ow-space-1)]">
-                <PromptInputTextarea
-                  composerRef={inputRef as React.RefObject<ComposerAreaHandle | null>}
-                  mode="composer"
-                  onMentionQueryChange={setMentionQuery}
-                  onKeyDown={handleComposerKeyDown}
-                  onSubmit={submitCurrentInput}
-                  placeholder={copy.launcher.aiInputPlaceholder}
-                  sourceMentions={sourceMentions}
-                  workspaceFileMentions={workspaceFileMentionState.files}
-                  workspaceFileSearchEnabled={workspaceFileMentionState.searchEnabled}
-                  workspaceFileSearchIncomplete={workspaceFileMentionState.isIncomplete}
-                  workspaceFileSearchInProgress={workspaceFileMentionState.isSearching}
-                  className="w-full py-[7px] [font-size:var(--ow-font-control)] font-normal"
-                />
-
-                <LauncherAttachmentStrip attachments={attachments} onRemove={removeAttachment} />
-                <AssistantSelectionReferencePill
-                  className="px-[var(--ow-space-1)]"
-                  refs={assistantSelectionRefs}
-                  removable
-                  onClear={clearSelectionRefs}
-                  onRemove={removeSelectionRef}
-                />
-              </div>
-
-              <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">
-                {actionController.canOpenActions ? (
-                  <PromptInputAction
-                    onClick={() => actionController.openActions()}
-                    onMouseDown={(event) => event.preventDefault()}
-                    icon={<Command className="size-[var(--ow-icon-sm)]" />}
-                    label={copy.launcher.actionsLabel}
-                    title={
-                      actionController.actionPanelShortcut
-                        ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
-                        : copy.launcher.actionsLabel
-                    }
-                    tooltip={
-                      actionController.actionPanelShortcut
-                        ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
-                        : copy.launcher.actionsLabel
-                    }
-                  />
-                ) : null}
-
-                {canStop ? (
-                  <PromptInputAction
-                    onClick={() => {
-                      void handleStop()
+          }
+          inputAccessory={
+            pendingApproval ? (
+              <div className="shrink-0 px-[var(--launcher-ai-content-x)] py-[var(--ow-space-3)]">
+                <div className="mx-auto w-full max-w-[var(--launcher-ai-content-max-width)]">
+                  <ComposerApprovalPrompt
+                    key={pendingApproval.id}
+                    onDecision={(decision) => {
+                      void handleApprovalDecision(decision)
                     }}
-                    onMouseDown={(event) => event.preventDefault()}
-                    icon={<Square className="size-[var(--ow-icon-compact)]" />}
-                    label={copy.launcher.aiStopLabel}
-                    title={copy.launcher.aiStopLabel}
-                    tooltip={copy.launcher.aiStopLabel}
+                    request={pendingApproval}
                   />
-                ) : (
-                  <PromptInputAction
-                    onClick={submitCurrentInput}
-                    onMouseDown={(event) => event.preventDefault()}
-                    disabled={primaryActionDisabled}
-                    icon={<ArrowUp className="size-[var(--ow-icon-sm)]" />}
-                    label={copy.launcher.aiPrimaryLabel}
-                    title={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
-                    tooltip={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
-                    className="text-foreground enabled:bg-background-secondary/72 enabled:hover:bg-background-secondary disabled:bg-transparent"
-                  />
-                )}
+                </div>
               </div>
+            ) : undefined
+          }
+          hideInputChrome
+          inputValue={query}
+          onInputValueChange={setQuery}
+          placeholders={[
+            copy.launcher.aiInputPlaceholder,
+            copy.launcher.aiInputPlaceholderSecondary
+          ]}
+          shellConfig={shellConfig}
+          surface={AI_LAUNCHER_PLUGIN_ID}
+        >
+          <div className="launcher-ai-body" data-sidebar-open={isSidebarOpen ? "" : undefined}>
+            {isSidebarOpen ? (
+              <LauncherAiSidebarPanel info={sidebarInfo} labels={sidebarLabels} mode="expanded" />
+            ) : null}
+            {isSidebarPreviewVisible ? (
+              <LauncherAiSidebarPanel
+                info={sidebarInfo}
+                labels={sidebarLabels}
+                mode="preview"
+                onPointerEnter={openSidebarPreview}
+                onPointerLeave={closeSidebarPreview}
+              />
+            ) : null}
+            <div className="launcher-ai-main min-w-0 flex-1">
+              {threadId ? (
+                <LauncherAiConversation
+                  clearError={clearVisibleError}
+                  error={threadError}
+                  isLoading={isBusy}
+                  onAddAssistantSelectionRef={addSelectionRef}
+                  onBranch={handleBranchChat}
+                  onRetry={runPrimaryAction}
+                  threadId={threadId}
+                />
+              ) : (
+                <LauncherAiEmptyState error={threadError} />
+              )}
+              {!pendingApproval ? (
+                <form
+                  className="launcher-ai-composer-footer shrink-0 px-[var(--launcher-ai-composer-page-x)] pb-[var(--ow-space-2)]"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    submitCurrentInput()
+                  }}
+                >
+                  <PromptInput
+                    className="mx-auto w-full max-w-[var(--launcher-ai-content-max-width)] px-[var(--ow-space-2)] py-[var(--ow-space-1)]"
+                    style={{ backgroundColor: "var(--background-elevated)" }}
+                    isLoading={isBusy}
+                    maxHeight="var(--launcher-ai-composer-input-max-h)"
+                    minHeight="var(--launcher-ai-composer-input-min-h)"
+                    onSubmit={submitCurrentInput}
+                    onValueChange={setQuery}
+                    value={query}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      accept={AI_ATTACHMENT_FILE_EXTENSIONS.map(
+                        (extension) => `.${extension}`
+                      ).join(",")}
+                      onChange={(event) => {
+                        if (event.target.files) {
+                          void addSelectedFiles(event.target.files)
+                        }
+                        event.target.value = ""
+                      }}
+                    />
+
+                    <div
+                      className={`flex min-w-0 gap-[var(--ow-gap-sm)] ${
+                        isComposerExpanded ? "items-end" : "items-center"
+                      }`}
+                    >
+                      <PromptInputAction
+                        onClick={openAttachmentPicker}
+                        onMouseDown={(event) => event.preventDefault()}
+                        icon={<Plus className="size-[var(--ow-icon-xs)]" />}
+                        label={copy.launcher.aiAddAttachment}
+                        title={
+                          addAttachmentShortcut
+                            ? `${copy.launcher.aiAddAttachment} (${addAttachmentShortcut})`
+                            : copy.launcher.aiAddAttachment
+                        }
+                        tooltip={copy.launcher.aiAddAttachment}
+                      />
+
+                      <div className="flex min-w-0 flex-1 flex-col gap-[var(--ow-space-1)]">
+                        <PromptInputTextarea
+                          composerRef={inputRef as React.RefObject<ComposerAreaHandle | null>}
+                          mode="composer"
+                          onMentionQueryChange={setMentionQuery}
+                          onKeyDown={handleComposerKeyDown}
+                          onSubmit={submitCurrentInput}
+                          placeholder={copy.launcher.aiInputPlaceholder}
+                          sourceMentions={sourceMentions}
+                          workspaceFileMentions={workspaceFileMentionState.files}
+                          workspaceFileSearchEnabled={workspaceFileMentionState.searchEnabled}
+                          workspaceFileSearchIncomplete={workspaceFileMentionState.isIncomplete}
+                          workspaceFileSearchInProgress={workspaceFileMentionState.isSearching}
+                          className="w-full py-[7px] [font-size:var(--ow-font-control)] font-normal"
+                        />
+
+                        <LauncherAttachmentStrip
+                          attachments={attachments}
+                          onRemove={removeAttachment}
+                        />
+                        <AssistantSelectionReferencePill
+                          className="px-[var(--ow-space-1)]"
+                          refs={assistantSelectionRefs}
+                          removable
+                          onClear={clearSelectionRefs}
+                          onRemove={removeSelectionRef}
+                        />
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">
+                        {actionController.canOpenActions ? (
+                          <PromptInputAction
+                            onClick={() => actionController.openActions()}
+                            onMouseDown={(event) => event.preventDefault()}
+                            icon={<Command className="size-[var(--ow-icon-sm)]" />}
+                            label={copy.launcher.actionsLabel}
+                            title={
+                              actionController.actionPanelShortcut
+                                ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
+                                : copy.launcher.actionsLabel
+                            }
+                            tooltip={
+                              actionController.actionPanelShortcut
+                                ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
+                                : copy.launcher.actionsLabel
+                            }
+                          />
+                        ) : null}
+
+                        {canStop ? (
+                          <PromptInputAction
+                            onClick={() => {
+                              void handleStop()
+                            }}
+                            onMouseDown={(event) => event.preventDefault()}
+                            icon={<Square className="size-[var(--ow-icon-compact)]" />}
+                            label={copy.launcher.aiStopLabel}
+                            title={copy.launcher.aiStopLabel}
+                            tooltip={copy.launcher.aiStopLabel}
+                          />
+                        ) : (
+                          <PromptInputAction
+                            onClick={submitCurrentInput}
+                            onMouseDown={(event) => event.preventDefault()}
+                            disabled={primaryActionDisabled}
+                            icon={<ArrowUp className="size-[var(--ow-icon-sm)]" />}
+                            label={copy.launcher.aiPrimaryLabel}
+                            title={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
+                            tooltip={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
+                            className="text-foreground enabled:bg-background-secondary/72 enabled:hover:bg-background-secondary disabled:bg-transparent"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </PromptInput>
+                </form>
+              ) : null}
             </div>
-          </PromptInput>
-        </form>
-      ) : null}
+          </div>
+        </LauncherChrome>
 
-      {actionController.showActions && actionController.canOpenActions ? (
-        <LauncherActionOverlay
-          actions={actionController.actions}
-          onClose={actionController.closeActions}
-        />
-      ) : null}
+        {actionController.showActions && actionController.canOpenActions ? (
+          <LauncherActionOverlay
+            actions={actionController.actions}
+            onClose={actionController.closeActions}
+          />
+        ) : null}
 
-      {showModelPicker ? (
-        <LauncherAiModelPicker
-          currentModelId={currentModelId}
-          onClose={() => setShowModelPicker(false)}
-          onSelectModel={selectModel}
-        />
-      ) : null}
+        {showModelPicker ? (
+          <LauncherAiModelPicker
+            currentModelId={currentModelId}
+            onClose={() => setShowModelPicker(false)}
+            onSelectModel={selectModel}
+          />
+        ) : null}
       </div>
     </OpenTargetProvider>
   )

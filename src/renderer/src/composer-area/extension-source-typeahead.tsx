@@ -142,6 +142,13 @@ export function getWorkspaceFileSearchMenuStatus(props: {
   return props.searchInProgress ? "searching" : "no-results"
 }
 
+export function hasComposerMentionSelectableOptions(props: {
+  isMenuOpen: boolean
+  optionCount: number
+}): boolean {
+  return props.isMenuOpen && props.optionCount > 0
+}
+
 function getWorkspaceFileSearchStatusLabel(status: WorkspaceFileSearchMenuStatus): string {
   switch (status) {
     case "empty-query":
@@ -343,6 +350,7 @@ export function ExtensionSourceTypeaheadPlugin(props: {
     workspaceFileSearchInProgress = false
   } = props
   const [query, setQuery] = useState<string | null>(null)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
   const options = useMemo<ComposerMentionOption[]>(() => {
     return [
       ...filterSourceMentionOptions(sourceMentions, query),
@@ -350,8 +358,13 @@ export function ExtensionSourceTypeaheadPlugin(props: {
     ]
   }, [query, sourceMentions, workspaceFileMentions])
   useEffect(() => {
-    onSelectableOptionsChange?.(options.length > 0)
-  }, [onSelectableOptionsChange, options.length])
+    onSelectableOptionsChange?.(
+      hasComposerMentionSelectableOptions({
+        isMenuOpen,
+        optionCount: options.length
+      })
+    )
+  }, [isMenuOpen, onSelectableOptionsChange, options.length])
   const menuRenderFn = useMenuRenderFn(
     menuBoundaryRef,
     query,
@@ -366,6 +379,14 @@ export function ExtensionSourceTypeaheadPlugin(props: {
     },
     [onQueryChange]
   )
+  const handleMenuOpen = useCallback((): void => {
+    setIsMenuOpen(true)
+    onMenuOpen?.()
+  }, [onMenuOpen])
+  const handleMenuClose = useCallback((): void => {
+    setIsMenuOpen(false)
+    onMenuClose?.()
+  }, [onMenuClose])
   const handleSelectOption = useCallback(
     (
       option: ComposerMentionOption,
@@ -407,8 +428,8 @@ export function ExtensionSourceTypeaheadPlugin(props: {
       anchorClassName="z-[9999]"
       ignoreEntityBoundary={false}
       menuRenderFn={menuRenderFn}
-      onClose={onMenuClose}
-      onOpen={onMenuOpen}
+      onClose={handleMenuClose}
+      onOpen={handleMenuOpen}
       onQueryChange={handleQueryChange}
       onSelectOption={handleSelectOption}
       options={options}

@@ -12,6 +12,7 @@ import {
   $getRoot,
   $getSelection,
   $isRangeSelection,
+  COMMAND_PRIORITY_BEFORE_EDITOR,
   COMMAND_PRIORITY_LOW,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
@@ -303,7 +304,7 @@ function ComposerAreaKeyboardPlugin(props: {
             onSubmit?.()
             return true
           },
-          COMMAND_PRIORITY_LOW
+          COMMAND_PRIORITY_BEFORE_EDITOR
         )
       ),
     [editor, handleDeleteKey, mentionMenuHasSelectableOptionsRef, onSubmit, onUserKeyDown]

@@ -91,10 +91,9 @@ export function AgentActivityRow(props: AgentActivityRowProps): React.JSX.Elemen
     ...rest
   } = props
   const hasTrailing = Boolean(meta || trailing)
-  const gridClassName =
-    hasTrailing
-      ? "grid-cols-[var(--ow-icon-action)_minmax(0,1fr)_minmax(var(--ow-agent-activity-trailing-min-width),auto)]"
-      : "grid-cols-[var(--ow-icon-action)_minmax(0,1fr)]"
+  const gridClassName = hasTrailing
+    ? "grid-cols-[var(--ow-icon-action)_minmax(0,1fr)_minmax(var(--ow-agent-activity-trailing-min-width),auto)]"
+    : "grid-cols-[var(--ow-icon-action)_minmax(0,1fr)]"
 
   return (
     <span
@@ -192,14 +191,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
     >
       <div
         className={cn(
-          "ow-agent-tool overflow-hidden",
-          state === "complete" && "rounded-[var(--ow-radius-sm)] bg-transparent",
-          state === "running" && "rounded-[var(--ow-radius-sm)] bg-transparent",
-          state !== "complete" &&
-            state !== "running" &&
-            "rounded-[var(--ow-radius-lg)] border border-border/64 bg-background-elevated/38",
-          state === "approval" && "border-status-warning/28 bg-status-warning/6",
-          state === "error" && "border-status-critical/24 bg-status-critical/6",
+          "ow-agent-tool overflow-hidden rounded-[var(--ow-radius-sm)] bg-transparent",
           className
         )}
         data-state={state}
@@ -208,9 +200,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
         <CollapsibleTrigger asChild disabled={!hasDetail}>
           <Button
             className={cn(
-              "h-auto w-full justify-between rounded-none bg-transparent px-[var(--ow-space-3)] py-[var(--ow-space-2)] text-left font-normal text-[var(--ow-agent-timeline-muted)] hover:bg-background-secondary/46 hover:text-foreground",
-              (state === "complete" || state === "running") &&
-                "justify-start gap-[var(--ow-gap-xs)] px-0 py-[var(--ow-space-0-5)] hover:bg-transparent",
+              "h-auto w-full justify-start gap-[var(--ow-gap-xs)] rounded-none bg-transparent px-0 py-[var(--ow-space-0-5)] text-left font-normal text-[var(--ow-agent-timeline-muted)] hover:bg-transparent hover:text-foreground",
               !hasDetail && "cursor-default opacity-100 hover:bg-transparent disabled:opacity-100"
             )}
             data-tool-trigger
@@ -240,19 +230,8 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
           </Button>
         </CollapsibleTrigger>
         {hasDetail ? (
-          <CollapsibleContent
-            className={cn(
-              "ow-agent-tool-content overflow-hidden",
-              state !== "complete" && state !== "running" && "border-t border-border/48"
-            )}
-          >
-            <div
-              className={cn(
-                "min-w-0 max-w-full px-[var(--ow-space-3)] py-[var(--ow-space-3)]",
-                (state === "complete" || state === "running") &&
-                  "px-0 pb-[var(--ow-space-2)] pt-[var(--ow-space-1)] pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))]"
-              )}
-            >
+          <CollapsibleContent className="ow-agent-tool-content overflow-hidden">
+            <div className="min-w-0 max-w-full px-0 pb-[var(--ow-space-2)] pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] pt-[var(--ow-space-1)]">
               {detail}
             </div>
           </CollapsibleContent>

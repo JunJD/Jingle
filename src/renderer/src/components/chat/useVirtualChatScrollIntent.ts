@@ -8,7 +8,6 @@ const CHAT_USER_SCROLL_INTENT_TTL_MS = 500
 
 interface UseVirtualChatScrollIntentOptions {
   atBottomThresholdPx?: number
-  bottomInsetPx?: number
   enabled?: boolean
   jumpToLatestGapPx?: number
   resetKey: string
@@ -22,7 +21,7 @@ interface UseVirtualChatScrollIntentResult {
   handleScrollEnd: () => void
   isAtBottom: boolean
   isScrolling: boolean
-  jumpToLatestBottomPx: number
+  jumpToLatestOffsetPx: number
   markUserScrollIntent: () => void
   scrollToLatest: () => void
   showJumpToLatest: boolean
@@ -41,7 +40,6 @@ export function useVirtualChatScrollIntent(
 ): UseVirtualChatScrollIntentResult {
   const {
     atBottomThresholdPx = CHAT_AT_BOTTOM_THRESHOLD_PX,
-    bottomInsetPx = 0,
     enabled = true,
     jumpToLatestGapPx = CHAT_JUMP_TO_LATEST_GAP_PX,
     resetKey,
@@ -191,7 +189,7 @@ export function useVirtualChatScrollIntent(
     handleScrollEnd,
     isAtBottom,
     isScrolling,
-    jumpToLatestBottomPx: bottomInsetPx + jumpToLatestGapPx,
+    jumpToLatestOffsetPx: jumpToLatestGapPx,
     markUserScrollIntent,
     scrollToLatest,
     showJumpToLatest: !isAtBottom && totalCount > 0

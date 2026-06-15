@@ -369,24 +369,12 @@ const LauncherAiFooter = memo(function LauncherAiFooter(props: {
   )
 })
 
-export function LauncherAiEmptyState(props: {
-  bottomInset?: number
-  error?: string | null
-}): React.JSX.Element {
+export function LauncherAiEmptyState(props: { error?: string | null }): React.JSX.Element {
   const { copy } = useI18n()
-  const { bottomInset = 0, error } = props
+  const { error } = props
 
   return (
-    <div
-      className="relative flex flex-1 items-center justify-center overflow-hidden px-[var(--launcher-ai-content-x)]"
-      style={
-        bottomInset > 0
-          ? {
-              paddingBottom: bottomInset
-            }
-          : undefined
-      }
-    >
+    <div className="relative flex flex-1 items-center justify-center overflow-hidden px-[var(--launcher-ai-content-x)]">
       <div className="relative flex w-full max-w-[var(--launcher-ai-empty-max-width)] flex-col items-center text-center">
         <LauncherAiPresenceMark />
         <div className="text-section-header mb-[var(--ow-space-2-5)]">
@@ -417,7 +405,6 @@ export function LauncherAiEmptyState(props: {
 }
 
 export function LauncherAiConversation(props: {
-  bottomInset: number
   clearError: () => void
   error: string | null
   isLoading: boolean
@@ -426,20 +413,11 @@ export function LauncherAiConversation(props: {
   onRetry: (input: ComposerMessageInput) => Promise<void> | void
   threadId: string
 }): React.JSX.Element {
-  const {
-    bottomInset,
-    clearError,
-    error,
-    isLoading,
-    onBranch,
-    onAddAssistantSelectionRef,
-    onRetry,
-    threadId
-  } = props
+  const { clearError, error, isLoading, onBranch, onAddAssistantSelectionRef, onRetry, threadId } =
+    props
 
   return (
     <LauncherAiConversationViewport
-      bottomInset={bottomInset}
       clearError={clearError}
       error={error}
       isLoading={isLoading}
@@ -452,7 +430,6 @@ export function LauncherAiConversation(props: {
 }
 
 const LauncherAiConversationViewport = memo(function LauncherAiConversationViewport(props: {
-  bottomInset: number
   clearError: () => void
   error: string | null
   isLoading: boolean
@@ -462,16 +439,8 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
   threadId: string
 }): React.JSX.Element {
   const { copy } = useI18n()
-  const {
-    bottomInset,
-    clearError,
-    error,
-    isLoading,
-    onBranch,
-    onAddAssistantSelectionRef,
-    onRetry,
-    threadId
-  } = props
+  const { clearError, error, isLoading, onBranch, onAddAssistantSelectionRef, onRetry, threadId } =
+    props
   const virtualizerRef = useRef<VListHandle>(null)
   const hasVisibleTurns = useThreadSelector(
     threadId,
@@ -489,13 +458,12 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
     handleScrollEnd,
     isAtBottom,
     isScrolling,
-    jumpToLatestBottomPx,
+    jumpToLatestOffsetPx,
     markUserScrollIntent,
     scrollToLatest,
     showJumpToLatest
   } = useVirtualChatScrollIntent({
     atBottomThresholdPx: LAUNCHER_AI_AT_BOTTOM_THRESHOLD_PX,
-    bottomInsetPx: bottomInset,
     resetKey: threadId,
     totalCount: chatVirtualItemCount,
     virtualizerRef
@@ -513,13 +481,12 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
   )
 
   if (!hasVisibleTurns && !isLoading && !error) {
-    return <LauncherAiEmptyState bottomInset={bottomInset} />
+    return <LauncherAiEmptyState />
   }
 
   return (
     <div className="relative min-h-0 flex-1">
       <Messages
-        bottomInset={bottomInset}
         contentClassName="mx-auto w-full min-w-0 max-w-[var(--launcher-ai-content-max-width)] px-[var(--launcher-ai-content-x)]"
         contentInsetY="var(--launcher-ai-content-y)"
         isAtBottom={isAtBottom}
@@ -540,7 +507,7 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
         <div
           className="pointer-events-none absolute inset-x-0 z-30 flex justify-center px-[var(--launcher-ai-composer-page-x)]"
           style={{
-            bottom: jumpToLatestBottomPx
+            bottom: jumpToLatestOffsetPx
           }}
         >
           <ChatJumpToLatestButton

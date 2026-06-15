@@ -35,7 +35,7 @@ export function createPinnedAiSessionWindow(
       : {
           titleBarOverlay: {
             color: "#F7F6F2",
-            height: 52,
+            height: 32,
             symbolColor: "#5F6873"
           }
         }),

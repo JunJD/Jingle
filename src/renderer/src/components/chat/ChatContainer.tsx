@@ -133,7 +133,7 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
     handleScrollEnd: handleChatScrollEnd,
     isAtBottom,
     isScrolling,
-    jumpToLatestBottomPx,
+    jumpToLatestOffsetPx,
     markUserScrollIntent,
     scrollToLatest,
     showJumpToLatest
@@ -207,7 +207,6 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
         </div>
       ) : (
         <Messages
-          bottomInset={0}
           contentClassName="mx-auto w-full max-w-[var(--ow-chat-thread-max-width)] px-[var(--ow-chat-thread-x)]"
           contentInsetY="var(--ow-chat-thread-y)"
           isAtBottom={isAtBottom}
@@ -228,7 +227,7 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
       {showJumpToLatest && (
         <div
           className="absolute left-1/2 z-10 -translate-x-1/2"
-          style={{ bottom: jumpToLatestBottomPx }}
+          style={{ bottom: jumpToLatestOffsetPx }}
         >
           <ChatJumpToLatestButton
             isLoading={isBusy}
