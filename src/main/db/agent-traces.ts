@@ -240,7 +240,7 @@ function classifyStepStatus(type: string): StepStatus {
 }
 
 function classifyEventStepStatus(type: string, payload: Record<string, unknown>): StepStatus {
-  if (readString(payload, "errorMessage") || readString(payload, "error_message")) {
+  if (readString(payload, "errorMessage")) {
     return "failed"
   }
 
@@ -258,13 +258,13 @@ function readStepKey(
   }
 
   if (stepType === "call_tool") {
-    const toolCallId = readString(payload, "toolCallId") ?? readString(payload, "tool_call_id")
+    const toolCallId = readString(payload, "toolCallId")
     return toolCallId ? `tool:${toolCallId}` : `event:${event.seq}`
   }
 
   if (stepType === "approval") {
-    const requestId = readString(payload, "requestId") ?? readString(payload, "request_id")
-    const toolCallId = readString(payload, "toolCallId") ?? readString(payload, "tool_call_id")
+    const requestId = readString(payload, "requestId")
+    const toolCallId = readString(payload, "toolCallId")
     return requestId
       ? `approval:${requestId}`
       : toolCallId
@@ -273,8 +273,8 @@ function readStepKey(
   }
 
   if (stepType === "call_llm") {
-    const messageId = readString(payload, "messageId") ?? readString(payload, "message_id")
-    const llmRunId = readString(payload, "llmRunId") ?? readString(payload, "llm_run_id")
+    const messageId = readString(payload, "messageId")
+    const llmRunId = readString(payload, "llmRunId")
     return messageId
       ? `llm-message:${messageId}`
       : llmRunId
@@ -312,35 +312,27 @@ function updateStepFromPayload(
   payload: Record<string, unknown>,
   status: StepStatus
 ): void {
-  const startedAt = readTimestamp(payload, "startedAt") ?? readTimestamp(payload, "started_at")
-  const completedAt =
-    readTimestamp(payload, "completedAt") ?? readTimestamp(payload, "completed_at")
+  const startedAt = readTimestamp(payload, "startedAt")
+  const completedAt = readTimestamp(payload, "completedAt")
   step.startedAt = Math.min(step.startedAt, startedAt ?? toNumber(event.createdAt))
   step.completedAt =
     completedAt ?? (status === "running" ? step.completedAt : toNumber(event.createdAt))
   step.status = status === "running" && step.status !== "running" ? step.status : status
   step.model = readString(payload, "model") ?? step.model
   step.provider = readString(payload, "provider") ?? step.provider
-  step.inputTokens =
-    readNumber(payload, "inputTokens") ?? readNumber(payload, "input_tokens") ?? step.inputTokens
-  step.outputTokens =
-    readNumber(payload, "outputTokens") ?? readNumber(payload, "output_tokens") ?? step.outputTokens
-  step.totalTokens =
-    readNumber(payload, "totalTokens") ?? readNumber(payload, "total_tokens") ?? step.totalTokens
+  step.inputTokens = readNumber(payload, "inputTokens") ?? step.inputTokens
+  step.outputTokens = readNumber(payload, "outputTokens") ?? step.outputTokens
+  step.totalTokens = readNumber(payload, "totalTokens") ?? step.totalTokens
   step.cost = readNumber(payload, "cost") ?? step.cost
-  step.toolName =
-    readString(payload, "toolName") ?? readString(payload, "tool_name") ?? step.toolName
-  step.toolCallId =
-    readString(payload, "toolCallId") ?? readString(payload, "tool_call_id") ?? step.toolCallId
-  step.errorType =
-    readString(payload, "errorType") ?? readString(payload, "error_type") ?? step.errorType
-  step.errorMessage =
-    readString(payload, "errorMessage") ?? readString(payload, "error_message") ?? step.errorMessage
+  step.toolName = readString(payload, "toolName") ?? step.toolName
+  step.toolCallId = readString(payload, "toolCallId") ?? step.toolCallId
+  step.errorType = readString(payload, "errorType") ?? step.errorType
+  step.errorMessage = readString(payload, "errorMessage") ?? step.errorMessage
   step.eventType = event.type
   step.eventSeq = event.seq
   step.projectedThroughSeq = event.seq
 
-  const explicitDuration = readNumber(payload, "durationMs") ?? readNumber(payload, "duration_ms")
+  const explicitDuration = readNumber(payload, "durationMs")
   step.durationMs =
     explicitDuration ??
     (step.completedAt !== null ? Math.max(0, step.completedAt - step.startedAt) : step.durationMs)
@@ -384,42 +376,33 @@ function attachStepBlobs(input: {
 }): void {
   const { step } = input
   step.messagesBaselineBlobId =
-    attachBlob({ ...input, kind: "messages_baseline" }, [
-      "messagesBaseline",
-      "messages_baseline"
-    ]) ?? step.messagesBaselineBlobId
+    attachBlob({ ...input, kind: "messages_baseline" }, ["messagesBaseline"]) ??
+    step.messagesBaselineBlobId
   step.messagesDeltaBlobId =
-    attachBlob({ ...input, kind: "messages_delta" }, ["messagesDelta", "messages_delta"]) ??
+    attachBlob({ ...input, kind: "messages_delta" }, ["messagesDelta"]) ??
     step.messagesDeltaBlobId
   step.contextBlobId =
-    attachBlob({ ...input, kind: "context_snapshot" }, [
-      "context",
-      "contextSnapshot",
-      "context_snapshot"
-    ]) ?? step.contextBlobId
+    attachBlob({ ...input, kind: "context_snapshot" }, ["context", "contextSnapshot"]) ??
+    step.contextBlobId
 
   if (step.stepType === "call_tool") {
     step.inputBlobId =
-      attachBlob({ ...input, kind: "tool_input" }, ["input", "args", "toolInput", "tool_input"]) ??
+      attachBlob({ ...input, kind: "tool_input" }, ["input", "args", "toolInput"]) ??
       step.inputBlobId
     step.outputBlobId =
-      attachBlob({ ...input, kind: "tool_output" }, [
-        "output",
-        "result",
-        "toolOutput",
-        "tool_output"
-      ]) ?? step.outputBlobId
+      attachBlob({ ...input, kind: "tool_output" }, ["output", "result", "toolOutput"]) ??
+      step.outputBlobId
     return
   }
 
   if (step.stepType === "call_llm") {
     step.inputBlobId =
-      attachBlob({ ...input, kind: "llm_input" }, ["input", "llmInput", "llm_input"]) ??
+      attachBlob({ ...input, kind: "llm_input" }, ["input", "llmInput"]) ??
       step.inputBlobId
     step.outputBlobId =
-      attachBlob({ ...input, kind: "llm_output" }, ["output", "llmOutput", "llm_output"]) ??
+      attachBlob({ ...input, kind: "llm_output" }, ["output", "llmOutput"]) ??
       step.outputBlobId
-    attachBlob({ ...input, kind: "tool_schema" }, ["toolSchema", "tool_schema"])
+    attachBlob({ ...input, kind: "tool_schema" }, ["toolSchema"])
   }
 }
 
@@ -597,14 +580,10 @@ export async function projectAgentTraceForRun(runId: string): Promise<AgentTrace
 
     if (event.type === "run.finished") {
       traceStatus = readTraceStatusFromRunFinished(payload)
-      completedAt =
-        readTimestamp(payload, "completedAt") ??
-        readTimestamp(payload, "completed_at") ??
-        toNumber(event.createdAt)
-      completionReason =
-        readString(payload, "completionReason") ?? readString(payload, "completion_reason")
-      errorType = readString(payload, "errorType") ?? readString(payload, "error_type")
-      errorMessage = readString(payload, "errorMessage") ?? readString(payload, "error_message")
+      completedAt = readTimestamp(payload, "completedAt") ?? toNumber(event.createdAt)
+      completionReason = readString(payload, "completionReason")
+      errorType = readString(payload, "errorType")
+      errorMessage = readString(payload, "errorMessage")
     }
 
     const stepType = classifyStepType(event.type)
@@ -633,10 +612,7 @@ export async function projectAgentTraceForRun(runId: string): Promise<AgentTrace
         outputTokens: 0,
         projectedThroughSeq: event.seq,
         provider: null,
-        startedAt:
-          readTimestamp(payload, "startedAt") ??
-          readTimestamp(payload, "started_at") ??
-          toNumber(event.createdAt),
+        startedAt: readTimestamp(payload, "startedAt") ?? toNumber(event.createdAt),
         status: classifyEventStepStatus(event.type, payload),
         stepIndex: steps.length,
         stepType,

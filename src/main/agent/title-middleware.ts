@@ -83,30 +83,30 @@ function shouldGenerateTitle(state: TitleState): boolean {
   }
 
   const latestAssistantMessage = assistantMessages.at(-1)
-  return latestAssistantMessage ? !hasPendingToolCalls(latestAssistantMessage) : false
+  return latestAssistantMessage ? !hasTitleBlockingToolCallSignal(latestAssistantMessage) : false
 }
 
-function hasPendingToolCalls(message: BaseMessage): boolean {
-  const toolCallMessage = message as BaseMessage & {
+function hasTitleBlockingToolCallSignal(message: BaseMessage): boolean {
+  const observedMessage = message as BaseMessage & {
     additional_kwargs?: { tool_calls?: unknown[] }
     tool_call_chunks?: unknown[]
     tool_calls?: unknown[]
   }
 
-  if (Array.isArray(toolCallMessage.tool_calls) && toolCallMessage.tool_calls.length > 0) {
+  if (Array.isArray(observedMessage.tool_calls) && observedMessage.tool_calls.length > 0) {
     return true
   }
 
   if (
-    Array.isArray(toolCallMessage.tool_call_chunks) &&
-    toolCallMessage.tool_call_chunks.length > 0
+    Array.isArray(observedMessage.tool_call_chunks) &&
+    observedMessage.tool_call_chunks.length > 0
   ) {
     return true
   }
 
   return (
-    Array.isArray(toolCallMessage.additional_kwargs?.tool_calls) &&
-    toolCallMessage.additional_kwargs.tool_calls.length > 0
+    Array.isArray(observedMessage.additional_kwargs?.tool_calls) &&
+    observedMessage.additional_kwargs.tool_calls.length > 0
   )
 }
 
@@ -176,6 +176,6 @@ export const titleMiddlewareInternals = {
   normalizeContent,
   parseTitle,
   shouldGenerateTitle,
-  hasPendingToolCalls,
+  hasTitleBlockingToolCallSignal,
   stripThinkTags
 }

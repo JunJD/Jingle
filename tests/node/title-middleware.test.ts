@@ -114,7 +114,7 @@ test("title middleware detects the first user and assistant messages", () => {
   )
 
   assert.equal(
-    titleMiddlewareInternals.hasPendingToolCalls(
+    titleMiddlewareInternals.hasTitleBlockingToolCallSignal(
       new AIMessage({
         content: "",
         tool_calls: [{ args: {}, id: "tool-call-1", name: "suggest_personal_memory" }]
