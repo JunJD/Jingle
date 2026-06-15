@@ -8,10 +8,7 @@ import type { ToolApprovalItem } from "@shared/tool-approval"
 import { getAgentConfig } from "../preferences"
 import type { AgentConfig } from "../types"
 import type { ExtensionToolApprovalPolicyProvider } from "../extension-tools/permission"
-import {
-  createToolPermissionRuntime,
-  type ToolPermissionRuntime
-} from "./tool-permission-runtime"
+import { createToolPermissionRuntime, type ToolPermissionRuntime } from "./tool-permission-runtime"
 
 const TOOL_APPROVAL_ALLOWED_DECISIONS = getDefaultHitlAllowedDecisions()
 
@@ -87,9 +84,12 @@ function buildRejectedToolMessage(input: {
   toolName: string
 }): ToolMessage {
   const { feedback, toolCallId, toolName } = input
+  const normalizedFeedback = typeof feedback === "string" ? feedback.trim() : ""
 
   return new ToolMessage({
-    content: feedback ?? `User rejected the ${toolName} tool call with id ${toolCallId}.`,
+    content: normalizedFeedback
+      ? `User rejected the ${toolName} tool call with id ${toolCallId}. Feedback: ${normalizedFeedback}`
+      : `User rejected the ${toolName} tool call with id ${toolCallId}.`,
     name: toolName,
     tool_call_id: toolCallId,
     status: "error"
@@ -168,13 +168,14 @@ export function createToolApprovalMiddleware(options: CreateToolApprovalMiddlewa
   let approvalBatch: ApprovalBatch | null = null
 
   async function runWithApprovalGate<T>(operation: () => Promise<T>): Promise<T> {
-    const batch =
-      approvalBatch ??
-      {
+    let batch = approvalBatch
+    if (!batch) {
+      batch = {
         activeCount: 0,
         consumedDecision: false
       }
-    approvalBatch = batch
+      approvalBatch = batch
+    }
     batch.activeCount += 1
     const previousGate = approvalGate
     let releaseGate!: () => void

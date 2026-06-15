@@ -268,6 +268,36 @@ test("non-allowlisted desktop automation tools return an error without approval"
   assert.match(typeof result.content === "string" ? result.content : "", /not allowlisted/i)
 })
 
+test("rejected approval returns an error tool result with explicit rejection context", async () => {
+  const middleware = createToolApprovalMiddleware({
+    permissionRuntime: createApprovalRequiredRuntime(),
+    requestToolApproval: async () => ({
+      feedback: "写的多一点呗",
+      type: "reject"
+    })
+  })
+
+  let handlerCalls = 0
+  const result = (await middleware.wrapToolCall!(
+    createToolCallRequest({ id: "tool-call-rejected" }) as never,
+    async () => {
+      handlerCalls += 1
+      return new ToolMessage({
+        content: "should not run",
+        name: "write_file",
+        tool_call_id: "tool-call-rejected"
+      })
+    }
+  )) as ToolMessage
+
+  assert.equal(handlerCalls, 0)
+  assert.equal(result.status, "error")
+  assert.match(
+    typeof result.content === "string" ? result.content : "",
+    /User rejected the write_file tool call with id tool-call-rejected\. Feedback: 写的多一点呗/
+  )
+})
+
 test("direct extension agent tool calls are denied before reaching the handler", async () => {
   const middleware = createToolApprovalMiddleware({
     extensionToolPolicyProvider: createExtensionApprovalPolicyProvider("auto")
