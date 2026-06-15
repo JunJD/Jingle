@@ -1,5 +1,11 @@
 # Extension HITL Experience Architecture
 
+> Note: this document describes a lower-level schema-form/editable-approval
+> interaction. For the higher-level product and protocol direction, where
+> extension HITL is driven by entity/action proposals rather than raw tool
+> arguments, see
+> [extension-action-proposal-protocol-cn.md](./extension-action-proposal-protocol-cn.md).
+
 ## Goal
 
 Improve Openwork extension human-in-the-loop (HITL) from a binary approval card into a schema-driven review and edit experience.

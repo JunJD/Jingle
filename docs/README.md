@@ -37,6 +37,7 @@
 | [extension-runtime-architecture-research-cn.md](./extension-runtime-architecture-research-cn.md) | extension runtime 隔离、remote rendering、搜索生命周期和外部包参考 |
 | [extension-external-install-packaging-research-cn.md](./extension-external-install-packaging-research-cn.md) | Extension 外部安装、外部打包、pkg/Node SEA 取舍和 Openwork 推荐落地方案 |
 | [installable-extension-dev-guide-cn.md](./installable-extension-dev-guide-cn.md) | 安装型 extension 的外部源码包结构、build/dev 命令和调试路径 |
+| [extension-action-proposal-protocol-cn.md](./extension-action-proposal-protocol-cn.md) | Extension WGS / Action Proposal Protocol 调研：把无限业务意图收敛成有限实体操作，减少不必要 HITL |
 | [extension-hitl-experience-architecture.md](./extension-hitl-experience-architecture.md) | Extension HITL 体验优化架构方案：schema form、confirmation、editable approval 和 CopilotKit 借鉴 |
 | [extension-hitl-experience-detailed-design-cn.md](./extension-hitl-experience-detailed-design-cn.md) | Extension HITL 中文详设：协议、状态机、UI、main 侧校验、分期和验收 |
 

@@ -1,5 +1,10 @@
 # Extension HITL 体验优化详设
 
+> 说明：这份文档描述的是较低层的 schema form / editable approval 交互。
+> 更高层的产品和协议方向是 entity/action proposal，而不是 raw tool args
+> 表单。见
+> [extension-action-proposal-protocol-cn.md](./extension-action-proposal-protocol-cn.md)。
+
 ## 1. 背景
 
 Openwork 现在已经有 HITL，但它更像一个平台级安全闸门：模型准备执行工具，main process 判断这个工具调用是允许、拒绝还是需要人工审批；如果需要审批，就通过 LangGraph interrupt 暂停运行，renderer 展示一个 approve/reject 卡片。
