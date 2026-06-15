@@ -3,7 +3,7 @@ import {
   fileExists,
   formatViolations,
   isInstallableExtensionDirectory,
-  listNativeExtensionDirectories,
+  listBuiltInRegistryExtensionDirectories,
   listTopLevelMainRegistryExtensionNames,
   listTopLevelManifestRegistryExtensionNames,
   loadNativeExtensionManifest,
@@ -13,7 +13,7 @@ import {
 const violations = []
 const extensionNames = new Map()
 const extensionTitles = new Map()
-const extensionDirectories = listNativeExtensionDirectories()
+const extensionDirectories = listBuiltInRegistryExtensionDirectories()
 const builtInExtensionDirectories = extensionDirectories.filter(
   (directory) => !isInstallableExtensionDirectory(directory)
 )

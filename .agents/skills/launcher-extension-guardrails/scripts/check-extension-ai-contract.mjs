@@ -4,7 +4,7 @@ import {
   collectImports,
   formatViolations,
   isUnder,
-  listNativeExtensionDirectories,
+  listBuiltInRegistryExtensionDirectories,
   listSourceFiles,
   loadNativeExtensionManifest,
   parseSourceFile,
@@ -14,7 +14,7 @@ import {
 
 const violations = []
 
-for (const extensionDirectory of listNativeExtensionDirectories()) {
+for (const extensionDirectory of listBuiltInRegistryExtensionDirectories()) {
   const manifest = loadNativeExtensionManifest(extensionDirectory)
   const sourceFiles = listSourceFiles(extensionDirectory.absolutePath)
 

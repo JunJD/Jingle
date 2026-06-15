@@ -4,7 +4,7 @@ import {
   fileExists,
   formatViolations,
   isInstallableExtensionDirectory,
-  listNativeExtensionDirectories,
+  listBuiltInRegistryExtensionDirectories,
   loadNativeExtensionManifest,
   parseSourceFile,
   repoRoot,
@@ -24,7 +24,7 @@ if (!fileExists(runtimeRegistryPath)) {
 const runtimeRegistryExtensionIds = fileExists(runtimeRegistryPath)
   ? listRuntimeRegistryExtensionIds(runtimeRegistryPath)
   : new Set()
-const extensionDirectories = listNativeExtensionDirectories()
+const extensionDirectories = listBuiltInRegistryExtensionDirectories()
 const directoryExtensionIds = new Set(extensionDirectories.map((directory) => directory.name))
 
 for (const extensionDirectory of extensionDirectories) {

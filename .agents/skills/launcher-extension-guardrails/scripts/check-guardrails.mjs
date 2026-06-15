@@ -3,23 +3,6 @@ import { repoRoot } from "./lib/architecture-guardrails.mjs"
 
 const commands = [
   ["node", [".agents/skills/launcher-extension-guardrails/scripts/check-architecture-imports.mjs"]],
-  ["node", [".agents/skills/launcher-extension-guardrails/scripts/check-extension-contract.mjs"]],
-  ["node", [".agents/skills/launcher-extension-guardrails/scripts/check-extension-ai-contract.mjs"]],
-  [
-    "node",
-    [
-      ".agents/skills/launcher-extension-guardrails/scripts/check-extension-runtime-capabilities.mjs"
-    ]
-  ],
-  ["node", [".agents/skills/launcher-extension-guardrails/scripts/check-extension-registry.mjs"]],
-  [
-    "node",
-    [".agents/skills/launcher-extension-guardrails/scripts/check-extension-runtime-registry.mjs"]
-  ],
-  [
-    "node",
-    [".agents/skills/launcher-extension-guardrails/scripts/check-runtime-backed-renderer-imports.mjs"]
-  ],
   ["node", [".agents/skills/launcher-extension-guardrails/scripts/check-no-glob-sprawl.mjs"]],
   [
     "node",

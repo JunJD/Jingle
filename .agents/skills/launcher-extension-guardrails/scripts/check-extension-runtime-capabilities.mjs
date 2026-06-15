@@ -2,7 +2,7 @@ import path from "node:path"
 import ts from "typescript"
 import {
   formatViolations,
-  listNativeExtensionDirectories,
+  listBuiltInRegistryExtensionDirectories,
   listSourceFiles,
   loadNativeExtensionManifest,
   parseSourceFile,
@@ -40,7 +40,7 @@ const hostCapabilities = new Set([
 
 const violations = []
 
-for (const extensionDirectory of listNativeExtensionDirectories()) {
+for (const extensionDirectory of listBuiltInRegistryExtensionDirectories()) {
   const manifest = loadNativeExtensionManifest(extensionDirectory)
   const runtimeCommands = manifest.commands.filter((command) => command.runtime)
   const requiredCapabilities = new Map()

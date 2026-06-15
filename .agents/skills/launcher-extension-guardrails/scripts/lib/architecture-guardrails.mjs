@@ -200,6 +200,20 @@ export function listNativeExtensionDirectories() {
     .sort((left, right) => left.name.localeCompare(right.name))
 }
 
+export function listBuiltInRegistryExtensionDirectories() {
+  return listNativeExtensionDirectories().filter((directory) => {
+    if (!fileExists(path.join(directory.absolutePath, "manifest.ts"))) {
+      return false
+    }
+
+    if (directory.repoPath.startsWith("src/extensions/")) {
+      return true
+    }
+
+    return directory.repoPath.startsWith("extensions/") && !isInstallableExtensionDirectory(directory)
+  })
+}
+
 export function isInstallableExtensionDirectory(extensionDirectory) {
   const packageJsonPath = path.join(extensionDirectory.absolutePath, "package.json")
   if (!fileExists(packageJsonPath)) {

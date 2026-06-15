@@ -40,6 +40,7 @@
     "lint": "eslint --cache .",
     "doctor": "node .agents/skills/launcher-extension-guardrails/scripts/doctor-architecture.mjs",
     "check:guardrails": "node .agents/skills/launcher-extension-guardrails/scripts/check-guardrails.mjs",
+    "check:extension-packages": "node .agents/skills/launcher-extension-guardrails/scripts/check-extension-packages.mjs",
     "check:extensions": "tsx --tsconfig tsconfig.node.json scripts/check-native-extensions.mjs",
     "check:extension-migration": "tsx --tsconfig tests/node/tsconfig.json --test tests/node/extension-migration-harness.test.ts tests/node/native-extension-shell-packages.test.ts tests/node/raycast-ai-migration-preview.test.ts",
     "migrate:extension": "node scripts/migrate-extension.mjs",

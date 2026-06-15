@@ -2,7 +2,7 @@ import path from "node:path"
 import {
   fileExists,
   formatViolations,
-  listNativeExtensionDirectories,
+  listBuiltInRegistryExtensionDirectories,
   loadNativeExtensionManifest,
   nativeExtensionMainDeclaresService,
   resolveExtensionCommandFile
@@ -10,7 +10,7 @@ import {
 
 const violations = []
 
-for (const extensionDirectory of listNativeExtensionDirectories()) {
+for (const extensionDirectory of listBuiltInRegistryExtensionDirectories()) {
   const manifestPath = path.join(extensionDirectory.absolutePath, "manifest.ts")
   const mainPath = path.join(extensionDirectory.absolutePath, "main.ts")
 

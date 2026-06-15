@@ -1,8 +1,8 @@
-import { listNativeExtensionDirectories, loadNativeExtensionManifest, readSourceText } from "./lib/architecture-guardrails.mjs"
+import { listBuiltInRegistryExtensionDirectories, loadNativeExtensionManifest, readSourceText } from "./lib/architecture-guardrails.mjs"
 
 const passwordPreferences = []
 
-for (const extensionDirectory of listNativeExtensionDirectories()) {
+for (const extensionDirectory of listBuiltInRegistryExtensionDirectories()) {
   const manifest = loadNativeExtensionManifest(extensionDirectory)
 
   for (const preference of manifest.preferences ?? []) {

@@ -7,7 +7,7 @@ import {
   formatViolations,
   isExact,
   isUnder,
-  listNativeExtensionDirectories,
+  listBuiltInRegistryExtensionDirectories,
   listSourceFiles,
   loadNativeExtensionManifest,
   parseSourceFile,
@@ -36,7 +36,7 @@ function isRendererImportOwner(repoFilePath) {
 
 const runtimeCommandFiles = new Map()
 
-for (const extensionDirectory of listNativeExtensionDirectories()) {
+for (const extensionDirectory of listBuiltInRegistryExtensionDirectories()) {
   const manifest = loadNativeExtensionManifest(extensionDirectory)
   for (const command of manifest.commands.filter((entry) => entry.runtime)) {
     const commandFile = resolveExtensionCommandFile(extensionDirectory, command.name)
