@@ -409,7 +409,11 @@ export function projectAgentActivitySummary(
 }
 
 function shouldProjectToolActivity(toolCall: Pick<ToolCall, "name" | "presentation">): boolean {
-  if (toolCall.name === "loadExtension" || toolCall.name === "write_todos") {
+  if (
+    toolCall.name === "loadExtension" ||
+    toolCall.name === "task" ||
+    toolCall.name === "write_todos"
+  ) {
     return false
   }
 

@@ -820,6 +820,31 @@ test("write_todos stays out of message tool activity after the todo state update
   )
 })
 
+test("task stays out of message tool activity after the subagent state update is visible", () => {
+  const taskToolCall = createToolCall("task-call-1", "task", {
+    description: "Review the staged diff",
+    subagent_type: "code-reviewer"
+  })
+  const readToolCall = createToolCall("read-call-1", "read_file")
+  const projection = projectMessages([
+    createUserMessage("user-1", "Review this"),
+    createAssistantMessage({
+      id: "assistant-1",
+      toolCalls: [taskToolCall, readToolCall]
+    })
+  ])
+  const entries = buildTurnAssistantEntries(projection.turns[0]!)
+
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0]?.kind, "agent-activity")
+  assert.deepEqual(
+    entries[0]?.kind === "agent-activity"
+      ? entries[0].items.map((item) => (item.kind === "tool" ? item.toolCall.id : item.kind))
+      : [],
+    [readToolCall.id]
+  )
+})
+
 test("tool execution view derives from messages and runtime facts", () => {
   const runningToolCall = createToolCall("tool-call-1")
   const completedToolCall = createToolCall("tool-call-2")
