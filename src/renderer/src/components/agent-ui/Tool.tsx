@@ -142,7 +142,7 @@ export function AgentActivityRow(props: AgentActivityRowProps): React.JSX.Elemen
         ) : null}
         {usesInlineTrailing ? (
           <span
-            className="inline-flex min-w-[var(--ow-agent-activity-trailing-min-width)] shrink-0 items-center justify-start gap-[var(--ow-gap-xs)]"
+            className="inline-flex min-w-[var(--ow-agent-activity-trailing-min-width)] shrink-0 items-center justify-start self-center gap-[var(--ow-gap-xs)]"
             data-slot="ow-agent-activity-trailing"
           >
             {meta}
@@ -226,7 +226,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
               active={state === "running"}
               className="w-full"
               detail={subtitle}
-              detailClassName="ow-agent-tool-detail flex-1"
+              detailClassName="ow-agent-tool-detail"
               icon={
                 icon ?? <AgentToolStatusIcon className="size-[var(--ow-icon-sm)]" state={state} />
               }
@@ -345,7 +345,7 @@ export function AgentToolGroupContent(props: AgentToolGroupContentProps): React.
       className={cn("ow-agent-tool-content overflow-hidden text-popover-foreground", className)}
       {...rest}
     >
-      <div className="relative mt-[var(--ow-space-2)] min-w-0 max-w-full space-y-[var(--ow-space-2)] before:absolute before:bottom-[var(--ow-space-1)] before:left-[calc(var(--ow-icon-action)/2)] before:top-[var(--ow-space-1)] before:w-px before:-translate-x-1/2 before:bg-border/64">
+      <div className="mt-[var(--ow-space-2)] min-w-0 max-w-full space-y-[var(--ow-space-2)]">
         {children}
       </div>
     </CollapsibleContent>
