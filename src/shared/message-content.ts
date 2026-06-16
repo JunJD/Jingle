@@ -1,6 +1,5 @@
 import type { ContentBlock } from "./app-types"
 import { extractWorkspaceFileReferencePaths } from "./composer-reference-uri"
-import { parseToolCallMarkup, stripToolCallMarkup } from "./tool-call-markup"
 
 export type AgentMessageContent =
   | string
@@ -245,7 +244,6 @@ function isContentBlockLike(value: unknown): value is ContentBlock {
 }
 
 export interface DisplayAssistantMessageContentOptions extends AssistantMessageContentSource {
-  toolNames?: readonly string[]
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -335,18 +333,6 @@ function normalizeDisplayContentBlock(value: unknown): ContentBlock | null {
   return block
 }
 
-export function stripSerializedToolCallMarkup(
-  text: string,
-  options: DisplayAssistantMessageContentOptions = {}
-): string {
-  if (!options.toolNames?.length) {
-    return text
-  }
-
-  const calls = parseToolCallMarkup(text, { availableToolNames: options.toolNames })
-  return stripToolCallMarkup(text, calls)
-}
-
 export function resolveImageBlockUrl(
   block: Pick<ContentBlock, "content" | "image_url">
 ): string | null {
@@ -395,7 +381,7 @@ export function toDisplayAssistantMessageContent(
   const reasoning = extractAssistantReasoningText(options)
 
   if (typeof displayContent === "string") {
-    const text = stripSerializedToolCallMarkup(displayContent, options)
+    const text = displayContent
     if (!reasoning.trim()) {
       return text
     }
@@ -423,14 +409,6 @@ export function toDisplayAssistantMessageContent(
     }
 
     const nextBlock = { ...block }
-    if (typeof nextBlock.text === "string") {
-      nextBlock.text = stripSerializedToolCallMarkup(nextBlock.text, options)
-    }
-
-    if (typeof nextBlock.content === "string") {
-      nextBlock.content = stripSerializedToolCallMarkup(nextBlock.content, options)
-    }
-
     return nextBlock.text?.trim() || nextBlock.content?.trim() ? [nextBlock] : []
   })
 }

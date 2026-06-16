@@ -4,7 +4,6 @@ import {
   extractMessageText,
   hasComposerMessageInputContent,
   normalizeComposerMessageRefs,
-  stripSerializedToolCallMarkup,
   toMessageContent,
   toComposerMessageInput,
   toAgentMessageContent,
@@ -228,51 +227,6 @@ test("toComposerMessageInput preserves real user text when refs metadata is also
   })
 })
 
-test("stripSerializedToolCallMarkup removes provider-emitted tool call tags", () => {
-  const text =
-    "我先创建提醒。\n<function=ext__appleReminders__createReminder> <parameter=title> 本周内整理书桌 <parameter=notes> 清理不需要的文件和物品 </tool_call>"
-
-  assert.equal(
-    stripSerializedToolCallMarkup(text, {
-      toolNames: ["ext__appleReminders__createReminder"]
-    }),
-    "我先创建提醒。"
-  )
-})
-
-test("toDisplayAssistantMessageContent hides raw tool call markup blocks", () => {
-  const content = toDisplayAssistantMessageContent(
-    [
-      {
-        text: "<function=ext__appleReminders__createReminder> <parameter=title> 周末去超市采购 </tool_call>",
-        type: "text"
-      },
-      {
-        text: "已准备创建。",
-        type: "text"
-      }
-    ],
-    {
-      toolNames: ["ext__appleReminders__createReminder"]
-    }
-  )
-
-  assert.deepEqual(content, [
-    {
-      text: "已准备创建。",
-      type: "text"
-    }
-  ])
-})
-
-test("toDisplayAssistantMessageContent preserves unconfirmed tool markup text", () => {
-  const content = toDisplayAssistantMessageContent(
-    "解释一下 <function=ext__appleReminders__createReminder> 这个格式"
-  )
-
-  assert.equal(content, "解释一下 <function=ext__appleReminders__createReminder> 这个格式")
-})
-
 test("toDisplayAssistantMessageContent preserves reasoning blocks outside response text", () => {
   const content = toDisplayAssistantMessageContent([
     {
@@ -318,7 +272,7 @@ test("toDisplayAssistantMessageContent lifts provider reasoning metadata into di
   assert.equal(extractMessageText(content), "Final answer.")
 })
 
-test("toDisplayAssistantMessageContent strips tool markup while preserving reasoning", () => {
+test("toDisplayAssistantMessageContent drops empty text while preserving reasoning", () => {
   const content = toDisplayAssistantMessageContent(
     [
       {
@@ -326,13 +280,10 @@ test("toDisplayAssistantMessageContent strips tool markup while preserving reaso
         type: "thinking"
       },
       {
-        text: "<function=ext__appleReminders__createReminder> <parameter=title> 周末采购 </tool_call>",
+        text: "",
         type: "text"
       }
-    ],
-    {
-      toolNames: ["ext__appleReminders__createReminder"]
-    }
+    ]
   )
 
   assert.deepEqual(content, [

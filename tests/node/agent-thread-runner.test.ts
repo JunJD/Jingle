@@ -1425,48 +1425,6 @@ test("AgentThreadRunner does not fabricate tool start timing when only a tool re
   assert.equal(timing?.completedAt instanceof Date, true)
 })
 
-test("AgentThreadRunner hides provider-emitted tool call markup from assistant text", async () => {
-  const history = createThreadData({
-    messages: [],
-    todos: []
-  })
-  const hub = new AgentThreadRunner(createThreadsService(history))
-
-  await hub.handlePayload("thread-4", {
-    type: "stream",
-    mode: "messages",
-    data: [
-      {
-        id: ["AIMessageChunk"],
-        kwargs: {
-          content:
-            "<function=ext__appleReminders__createReminder> <parameter=title> 本周内整理书桌 <parameter=notes> 清理不需要的文件和物品 </tool_call>",
-          id: "assistant-tool-call",
-          tool_calls: [
-            {
-              args: {
-                notes: "清理不需要的文件和物品",
-                title: "本周内整理书桌"
-              },
-              id: "tool-call-1",
-              name: "ext__appleReminders__createReminder",
-              type: "tool_call"
-            }
-          ]
-        },
-        type: "ai" as const
-      },
-      {}
-    ]
-  })
-
-  const snapshot = await hub.readThreadState("thread-4")
-  const message = snapshot.messagesPage.at(-1)
-  assert.equal(message?.id, "assistant-tool-call")
-  assert.equal(message?.content, "")
-  assert.equal(message?.tool_calls?.[0]?.name, "ext__appleReminders__createReminder")
-})
-
 test("AgentThreadRunner reads OpenAI-style streamed tool calls from additional kwargs", async () => {
   const history = createThreadData({
     messages: [],
@@ -1493,7 +1451,7 @@ test("AgentThreadRunner reads OpenAI-style streamed tool calls from additional k
               }
             ]
           },
-          content: '<function=read_file> <parameter=path>README.md</tool_call>',
+          content: "",
           id: "assistant-openai-tool-call"
         },
         type: "ai" as const
@@ -1672,39 +1630,6 @@ test("AgentThreadRunner starts a new assistant message after tool results", asyn
   assert.equal(assistantMessages[1]?.tool_calls, undefined)
   assert.equal(snapshot.activeRun?.assistantMessageId, assistantMessages[1]?.id)
   assert.equal(snapshot.activeRun?.phase, "streaming")
-})
-
-test("AgentThreadRunner hides provider-emitted tool call markup when hydrating history", async () => {
-  const history = createThreadData({
-    messages: [
-      {
-        content:
-          "<function=ext__appleReminders__createReminder> <parameter=title> 周末去超市采购 </tool_call>",
-        created_at: new Date("2025-01-01T00:00:00.000Z"),
-        id: "assistant-history-tool-call",
-        role: "assistant",
-        tool_calls: [
-          {
-            args: {
-              title: "周末去超市采购"
-            },
-            id: "tool-call-history",
-            name: "ext__appleReminders__createReminder",
-            type: "tool_call"
-          }
-        ]
-      }
-    ],
-    todos: []
-  })
-  const hub = new AgentThreadRunner(createThreadsService(history))
-
-  const snapshot = await hub.readThreadState("thread-5")
-  assert.equal(snapshot.messagesPage[0]?.content, "")
-  assert.equal(
-    snapshot.messagesPage[0]?.tool_calls?.[0]?.name,
-    "ext__appleReminders__createReminder"
-  )
 })
 
 test("AgentThreadRunner appends streamed reasoning and text content blocks", async () => {

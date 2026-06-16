@@ -213,8 +213,7 @@ export function extractMessagesFromCheckpoint(
       role === "assistant"
         ? toDisplayAssistantMessageContent(messageContent, {
             additional_kwargs: message.kwargs?.additional_kwargs,
-            response_metadata: message.kwargs?.response_metadata,
-            toolNames: toolCalls.map((toolCall) => toolCall.name)
+            response_metadata: message.kwargs?.response_metadata
           })
         : messageContent
     const messageId = getCheckpointMessageId(threadId, index, role, message)

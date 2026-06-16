@@ -118,16 +118,6 @@ function getRequiredRuntimeRunId(runId: string | null): string {
   throw new Error("[AgentStreamCodec] Missing run id for interrupt state.")
 }
 
-function getToolCallNames(toolCalls: readonly { name?: string }[] | undefined): string[] {
-  return Array.from(
-    new Set(
-      (toolCalls ?? [])
-        .map((toolCall) => toolCall.name)
-        .filter((name): name is string => typeof name === "string" && name.length > 0)
-    )
-  )
-}
-
 function parseRequiredToolCallArgs(value: string | undefined): Record<string, unknown> | null {
   if (typeof value !== "string" || value.length === 0) {
     return null
@@ -244,14 +234,10 @@ function extractContent(
   return toDisplayMessageContent(content)
 }
 
-function extractAssistantContent(
-  kwargs: SerializedMessageChunk["kwargs"],
-  toolNames: readonly string[] = []
-): string | ContentBlock[] {
+function extractAssistantContent(kwargs: SerializedMessageChunk["kwargs"]): string | ContentBlock[] {
   return toDisplayAssistantMessageContent(kwargs?.content, {
     additional_kwargs: kwargs?.additional_kwargs,
-    response_metadata: kwargs?.response_metadata,
-    toolNames
+    response_metadata: kwargs?.response_metadata
   })
 }
 
@@ -320,7 +306,7 @@ function decodeValuesMessage(message: SerializedMessageChunk, index: number): Me
   })
   const content =
     role === "assistant"
-      ? extractAssistantContent(kwargs, getToolCallNames(toolCalls))
+      ? extractAssistantContent(kwargs)
       : role === "user"
         ? toDisplayUserMessageContent(extractContent(kwargs.content), metadata)
         : extractContent(kwargs.content)
@@ -380,7 +366,7 @@ export function decodeMessagesStreamPayload(
 
   if (isAIMessage) {
     const toolCalls = readAssistantToolCalls(kwargs)
-    const content = extractAssistantContent(kwargs, getToolCallNames(toolCalls))
+    const content = extractAssistantContent(kwargs)
     const messageMetadata = toComposerMessageMetadata({
       refs: extractComposerMessageRefsMetadata(kwargs.additional_kwargs)
     })
@@ -449,9 +435,7 @@ export function sanitizeAssistantHistoryMessages(messages: Message[]): Message[]
 
     return {
       ...message,
-      content: toDisplayAssistantMessageContent(message.content, {
-        toolNames: getToolCallNames(message.tool_calls)
-      })
+      content: toDisplayAssistantMessageContent(message.content)
     }
   })
 }

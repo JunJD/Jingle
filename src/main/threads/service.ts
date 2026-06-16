@@ -103,9 +103,7 @@ function mapCheckpointMessagesToThreadMessages(
         row.role === "user"
           ? toDisplayUserMessageContent(content, metadata)
           : row.role === "assistant"
-            ? toDisplayAssistantMessageContent(content, {
-                toolNames: tool_calls?.map((toolCall) => toolCall.name)
-              })
+            ? toDisplayAssistantMessageContent(content)
             : content,
       tool_calls,
       metadata,

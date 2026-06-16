@@ -20,7 +20,6 @@ import { JustBashExecuteCommandClassifier } from "./execute-command-classifier"
 import { createExecuteCommandGuardrailProvider } from "./execute-command-guardrail-provider"
 import { JustBashMutationPredictor } from "./mutation-predictor"
 import { createSubagentReadOnlyGuardrailMiddleware } from "./subagent-read-only-guardrail"
-import { createSerializedToolCallMiddleware } from "./serialized-tool-call-middleware"
 import { createToolCallConsistencyMiddleware } from "./tool-call-consistency-middleware"
 import { createToolApprovalMiddleware } from "./tool-approval-middleware"
 import { createWorkspaceFileContextMiddleware } from "./workspace-file-context-middleware"
@@ -308,7 +307,6 @@ The workspace root is: ${workspacePath}`
         minMessagesToCache: 1
       }),
       createPatchToolCallsMiddleware(),
-      createSerializedToolCallMiddleware(),
       createSkillsMiddleware({
         backend,
         sources: skillSources
