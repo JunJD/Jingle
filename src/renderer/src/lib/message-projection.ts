@@ -983,7 +983,9 @@ export function projectActiveTurnStatus(input: {
     }
   }
 
-  if (activeRunPhase !== "thinking") {
+  const isPreContentStreaming =
+    activeRunPhase === "streaming" && input.assistantEntries.length === 0
+  if (activeRunPhase !== "thinking" && !isPreContentStreaming) {
     return null
   }
 

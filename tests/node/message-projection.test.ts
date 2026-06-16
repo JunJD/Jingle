@@ -423,6 +423,20 @@ test("active turn status is derived from current runtime facts", () => {
     toolCallId: null
   })
 
+  assert.deepEqual(
+    projectActiveTurnStatus({
+      activeRunPhase: "streaming",
+      assistantEntries: [],
+      isStreaming: true
+    }),
+    {
+      coachTip: { id: "start_with_outcome" },
+      kind: "thinking",
+      placement: "before_entries",
+      toolCallId: null
+    }
+  )
+
   const reasoningTurn = createTurn([
     createAssistantMessage({
       content: [
