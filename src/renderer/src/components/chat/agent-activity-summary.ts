@@ -19,6 +19,17 @@ export interface AgentActivityHeaderSummary {
   title: string
 }
 
+export interface AgentActivityFallbackHeaderInput {
+  hasApprovalActions: boolean
+  hasLoadingActions: boolean
+  itemsLength: number
+}
+
+export interface AgentActivityFallbackHeaderText {
+  detail: string | null
+  title: string
+}
+
 function joinSummaryDetail(parts: Array<string | null>): string | null {
   const detail = parts.filter(Boolean).join(" · ")
   return detail.length > 0 ? detail : null
@@ -125,20 +136,19 @@ export function projectAgentActivityHeaderSummary(
     }
   }
 
-  const primaryCategory =
-    hasCategory(projection.counts, "file")
-      ? "file"
-      : hasCategory(projection.counts, "file_mutation")
-        ? "file_mutation"
-        : hasCategory(projection.counts, "search")
-          ? "search"
-          : hasCategory(projection.counts, "list")
-            ? "list"
-            : hasCategory(projection.counts, "web_search")
-              ? "web_search"
-              : hasCategory(projection.counts, "command")
-                ? "command"
-                : null
+  const primaryCategory = hasCategory(projection.counts, "file")
+    ? "file"
+    : hasCategory(projection.counts, "file_mutation")
+      ? "file_mutation"
+      : hasCategory(projection.counts, "search")
+        ? "search"
+        : hasCategory(projection.counts, "list")
+          ? "list"
+          : hasCategory(projection.counts, "web_search")
+            ? "web_search"
+            : hasCategory(projection.counts, "command")
+              ? "command"
+              : null
 
   return {
     detail,
@@ -147,10 +157,34 @@ export function projectAgentActivityHeaderSummary(
       ? copy.chat.toolActivityRanCommands
       : hasOnlyCategory(projection.counts, "file_mutation")
         ? copy.chat.toolActivityChangedFiles
-      : hasOnlyCategory(projection.counts, "web_search")
-        ? copy.chat.toolActivitySearchedWeb
-        : hasCategory(projection.counts, "command")
-          ? copy.chat.toolActivityCompleted
-          : copy.chat.toolActivityExplored
+        : hasOnlyCategory(projection.counts, "web_search")
+          ? copy.chat.toolActivitySearchedWeb
+          : hasCategory(projection.counts, "command")
+            ? copy.chat.toolActivityCompleted
+            : copy.chat.toolActivityExplored
+  }
+}
+
+export function projectAgentActivityFallbackHeaderText(
+  copy: AppCopy,
+  input: AgentActivityFallbackHeaderInput
+): AgentActivityFallbackHeaderText {
+  if (input.hasApprovalActions) {
+    return {
+      detail: null,
+      title: copy.chat.agentStatusWaitingApproval
+    }
+  }
+
+  if (input.hasLoadingActions) {
+    return {
+      detail: null,
+      title: copy.chat.toolActivityRunningGeneric
+    }
+  }
+
+  return {
+    detail: null,
+    title: copy.chat.executedSteps(input.itemsLength)
   }
 }

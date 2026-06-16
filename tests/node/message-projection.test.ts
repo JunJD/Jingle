@@ -206,7 +206,8 @@ test("streaming orchestration tool calls do not enter temporary activity project
         status: "arguments_streaming"
       },
       {
-        argsText: '{"extensionName":"image-generation","toolName":"generateImage","args":{"prompt":"cat"}}',
+        argsText:
+          '{"extensionName":"image-generation","toolName":"generateImage","args":{"prompt":"cat"}}',
         id: "tool-call-call-extension",
         index: 1,
         messageId: "assistant-1",
@@ -279,15 +280,12 @@ test("streaming active tool calls project to temporary agent activity entries", 
   assert.equal(entries[0]?.kind, "assistant-content")
   assert.equal(entries[1]?.kind, "agent-activity")
   assert.equal(entries[1]?.key, "activity:tool:tool-call-1")
-  assert.deepEqual(
-    entries[1]?.kind === "agent-activity" ? entries[1].items[0]?.toolCall : null,
-    {
-      args: {},
-      id: "tool-call-1",
-      name: "edit_file",
-      type: "tool_call"
-    }
-  )
+  assert.deepEqual(entries[1]?.kind === "agent-activity" ? entries[1].items[0]?.toolCall : null, {
+    args: {},
+    id: "tool-call-1",
+    name: "edit_file",
+    type: "tool_call"
+  })
 })
 
 test("streaming active tool calls use complete args only when available", () => {
@@ -308,17 +306,14 @@ test("streaming active tool calls use complete args only when available", () => 
 
   assert.equal(entries.length, 1)
   assert.equal(entries[0]?.kind, "agent-activity")
-  assert.deepEqual(
-    entries[0]?.kind === "agent-activity" ? entries[0].items[0]?.toolCall : null,
-    {
-      args: {
-        path: "src/renderer.tsx"
-      },
-      id: "tool-call-1",
-      name: "edit_file",
-      type: "tool_call"
-    }
-  )
+  assert.deepEqual(entries[0]?.kind === "agent-activity" ? entries[0].items[0]?.toolCall : null, {
+    args: {
+      path: "src/renderer.tsx"
+    },
+    id: "tool-call-1",
+    name: "edit_file",
+    type: "tool_call"
+  })
 })
 
 test("updating one active tool keeps other activity group keys stable", () => {
@@ -374,9 +369,7 @@ test("updating one active tool keeps other activity group keys stable", () => {
   assert.equal(firstEntries.at(-1)?.key, nextEntries.at(-1)?.key)
   const latestNextEntry = nextEntries.at(-1)
   assert.deepEqual(
-    latestNextEntry?.kind === "agent-activity"
-      ? latestNextEntry.items[0]?.toolCall.args
-      : null,
+    latestNextEntry?.kind === "agent-activity" ? latestNextEntry.items[0]?.toolCall.args : null,
     {
       content: "hello",
       path: "src/notes.md"
@@ -424,6 +417,7 @@ test("active turn status is derived from current runtime facts", () => {
     isStreaming: true
   })
   assert.deepEqual(blankStatus, {
+    coachTip: { id: "start_with_outcome" },
     kind: "thinking",
     placement: "before_entries",
     toolCallId: null
@@ -475,6 +469,7 @@ test("active turn status is derived from current runtime facts", () => {
       isStreaming: true
     }),
     {
+      coachTip: { id: "keep_followups_in_thread" },
       kind: "thinking",
       placement: "inside_latest_agent_activity",
       toolCallId: null
@@ -514,6 +509,7 @@ test("active turn status is derived from current runtime facts", () => {
       pendingApproval: approval
     }),
     {
+      coachTip: null,
       kind: "waiting_approval",
       placement: "before_entries",
       toolCallId: runningToolCall.id
@@ -533,6 +529,7 @@ test("active turn status is derived from current runtime facts", () => {
       isStreaming: true
     }),
     {
+      coachTip: { id: "iterate_after_first_draft" },
       kind: "thinking",
       placement: "after_entries",
       toolCallId: null
@@ -671,6 +668,7 @@ test("only latest streaming reasoning entry is active", () => {
       isStreaming: true
     }),
     {
+      coachTip: { id: "iterate_after_first_draft" },
       kind: "thinking",
       placement: "after_entries",
       toolCallId: null
@@ -696,6 +694,7 @@ test("only latest streaming reasoning entry is active", () => {
       isStreaming: true
     }),
     {
+      coachTip: { id: "keep_followups_in_thread" },
       kind: "thinking",
       placement: "inside_latest_agent_activity",
       toolCallId: null

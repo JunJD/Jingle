@@ -1,4 +1,5 @@
 import type { AppLocale } from "@shared/i18n"
+import type { RunCoachTipId } from "@/lib/run-coach"
 
 export interface AppCopy {
   app: {
@@ -31,6 +32,7 @@ export interface AppCopy {
     agentStatusThinking: string
     agentStatusWaitingApproval: string
     contextCompacted: string
+    runCoachTip: Record<RunCoachTipId, string>
     toolActivityChangedFiles: string
     toolActivityCompleted: string
     toolActivityCommands: (count: number) => string
@@ -41,6 +43,7 @@ export interface AppCopy {
     toolActivityRanCommands: string
     toolActivityRunningCommand: string
     toolActivityRunningFileMutation: string
+    toolActivityRunningGeneric: string
     toolActivityRunningList: string
     toolActivityRunningRead: string
     toolActivityRunningSearch: string
@@ -317,6 +320,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentStatusThinking: "正在思考",
       agentStatusWaitingApproval: "等待你确认",
       contextCompacted: "上下文已自动压缩",
+      runCoachTip: {
+        iterate_after_first_draft: "第一轮只是起点，继续追问和调整通常会更接近你想要的结果。",
+        keep_followups_in_thread: "同一目标下，继续在当前任务里追问，比开新任务更容易保留上下文。",
+        start_with_outcome: "说清楚你想要的结果和格式，我就能少猜一步。"
+      },
       toolActivityChangedFiles: "已修改文件",
       toolActivityCompleted: "已处理工具",
       toolActivityCommands: (count) => `${count} 条命令`,
@@ -327,6 +335,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       toolActivityRanCommands: "已运行",
       toolActivityRunningCommand: "正在运行命令",
       toolActivityRunningFileMutation: "正在修改文件",
+      toolActivityRunningGeneric: "正在使用工具",
       toolActivityRunningList: "正在列目录",
       toolActivityRunningRead: "正在读取文件",
       toolActivityRunningSearch: "正在搜索",
@@ -621,6 +630,14 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentStatusThinking: "Thinking",
       agentStatusWaitingApproval: "Waiting for your confirmation",
       contextCompacted: "Context automatically compressed",
+      runCoachTip: {
+        iterate_after_first_draft:
+          "The first pass is only a starting point. Follow up and adjust to get closer to what you want.",
+        keep_followups_in_thread:
+          "For the same goal, staying in this task preserves context better than opening a new one.",
+        start_with_outcome:
+          "Name the outcome and format you want, and I can spend less time guessing."
+      },
       toolActivityChangedFiles: "Changed files",
       toolActivityCompleted: "Handled tools",
       toolActivityCommands: (count) => `${count} command${count === 1 ? "" : "s"}`,
@@ -631,6 +648,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       toolActivityRanCommands: "Ran",
       toolActivityRunningCommand: "Running command",
       toolActivityRunningFileMutation: "Editing file",
+      toolActivityRunningGeneric: "Using tools",
       toolActivityRunningList: "Listing directory",
       toolActivityRunningRead: "Reading file",
       toolActivityRunningSearch: "Searching",

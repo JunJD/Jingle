@@ -1,6 +1,9 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { projectAgentActivityHeaderSummary } from "../../src/renderer/src/components/chat/agent-activity-summary"
+import {
+  projectAgentActivityFallbackHeaderText,
+  projectAgentActivityHeaderSummary
+} from "../../src/renderer/src/components/chat/agent-activity-summary"
 import { appCopy } from "../../src/renderer/src/lib/i18n/messages"
 import type { HITLRequest, ToolCall } from "../../src/renderer/src/types"
 import type { FileMutationResultMetadata } from "../../src/shared/file-mutation-result"
@@ -761,5 +764,43 @@ test("projectAgentActivityHeaderSummary keeps pending exploration local and excl
       }
     ]),
     null
+  )
+})
+
+test("projectAgentActivityFallbackHeaderText keeps grouped loading headers stable", () => {
+  assert.deepEqual(
+    projectAgentActivityFallbackHeaderText(copy, {
+      hasApprovalActions: false,
+      hasLoadingActions: true,
+      itemsLength: 3
+    }),
+    {
+      detail: null,
+      title: "Using tools"
+    }
+  )
+
+  assert.deepEqual(
+    projectAgentActivityFallbackHeaderText(copy, {
+      hasApprovalActions: true,
+      hasLoadingActions: true,
+      itemsLength: 3
+    }),
+    {
+      detail: null,
+      title: "Waiting for your confirmation"
+    }
+  )
+
+  assert.deepEqual(
+    projectAgentActivityFallbackHeaderText(copy, {
+      hasApprovalActions: false,
+      hasLoadingActions: false,
+      itemsLength: 3
+    }),
+    {
+      detail: null,
+      title: "3 steps completed"
+    }
   )
 })

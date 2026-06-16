@@ -7,6 +7,12 @@ import {
 } from "@shared/file-mutation-result"
 import { stabilizeReferences } from "@/lib/stabilize-references"
 import {
+  projectRunCoachTip,
+  type ActiveRunCoachPlacement,
+  type ActiveRunCoachStatusKind,
+  type RunCoachTipProjection
+} from "@/lib/run-coach"
+import {
   readAgentToolExecutionTiming,
   type ActiveAgentToolCall,
   type AgentRunPhase,
@@ -90,11 +96,12 @@ export interface AgentToolExecutionView {
 
 export type AgentToolExecutionsView = Record<string, AgentToolExecutionView>
 
-export type ActiveTurnStatusProjectionKind = "thinking" | "waiting_approval"
+export type ActiveTurnStatusProjectionKind = ActiveRunCoachStatusKind
 
 export interface ActiveTurnStatusProjection {
+  coachTip: RunCoachTipProjection | null
   kind: ActiveTurnStatusProjectionKind
-  placement: "after_entries" | "before_entries" | "inside_latest_agent_activity"
+  placement: ActiveRunCoachPlacement
   toolCallId: string | null
 }
 
@@ -370,7 +377,9 @@ export function projectAgentActivitySummary(
     factKeysByCategory.set(category, new Set())
   }
 
-  for (const tool of categorizedTools.filter((tool) => isCompletedToolExecutionStatus(tool.status))) {
+  for (const tool of categorizedTools.filter((tool) =>
+    isCompletedToolExecutionStatus(tool.status)
+  )) {
     const category = tool.category!
     const factKey = getToolCallSummaryFactKey(category, tool.toolCall)
     if (!factKey) {
@@ -400,10 +409,7 @@ export function projectAgentActivitySummary(
 }
 
 function shouldProjectToolActivity(toolCall: Pick<ToolCall, "name" | "presentation">): boolean {
-  if (
-    toolCall.name === "loadExtension" ||
-    toolCall.name === "write_todos"
-  ) {
+  if (toolCall.name === "loadExtension" || toolCall.name === "write_todos") {
     return false
   }
 
@@ -431,11 +437,9 @@ function stabilizeToolResultInfo(
     ? previous.fileMutation
     : next.fileMutation
 
-  return (
-    Object.is(content, previous.content) &&
+  return Object.is(content, previous.content) &&
     Object.is(execution, previous.execution) &&
     Object.is(fileMutation, previous.fileMutation)
-  )
     ? previous
     : { content, execution, fileMutation }
 }
@@ -781,7 +785,9 @@ function createToolActivityItem(
   }
 }
 
-function createActiveToolActivityItem(activeToolCall: ActiveAgentToolCall): AgentActivityItem | null {
+function createActiveToolActivityItem(
+  activeToolCall: ActiveAgentToolCall
+): AgentActivityItem | null {
   if (!activeToolCall.messageId || !activeToolCall.name) {
     return null
   }
@@ -970,6 +976,7 @@ export function projectActiveTurnStatus(input: {
     }
 
     return {
+      coachTip: null,
       kind: "waiting_approval",
       placement,
       toolCallId: pendingApprovalToolCallId
@@ -981,17 +988,27 @@ export function projectActiveTurnStatus(input: {
   }
 
   if (latestEntry?.kind === "agent-activity") {
-    return {
+    const activeStatus = {
       kind: "thinking",
       placement: "inside_latest_agent_activity",
       toolCallId: null
+    } satisfies Omit<ActiveTurnStatusProjection, "coachTip">
+
+    return {
+      ...activeStatus,
+      coachTip: projectRunCoachTip(activeStatus)
     }
   }
 
-  return {
+  const activeStatus = {
     kind: "thinking",
     placement,
     toolCallId: null
+  } satisfies Omit<ActiveTurnStatusProjection, "coachTip">
+
+  return {
+    ...activeStatus,
+    coachTip: projectRunCoachTip(activeStatus)
   }
 }
 
