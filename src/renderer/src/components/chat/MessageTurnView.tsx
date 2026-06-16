@@ -11,7 +11,7 @@ import {
   Terminal,
   TriangleAlert
 } from "lucide-react"
-import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import {
   extractComposerMessageRefsMetadata,
   hasMessageContent,
@@ -78,6 +78,26 @@ interface StructuredMessageContent {
   attachments: React.ReactNode
   reasoningContent: React.ReactNode
   textContent: React.ReactNode
+}
+
+const USER_MESSAGE_COLLAPSED_LINE_COUNT = 20
+const USER_MESSAGE_COLLAPSE_EPSILON_PX = 1
+const USER_MESSAGE_FALLBACK_FONT_SIZE_PX = 12
+const USER_MESSAGE_FALLBACK_LINE_HEIGHT_MULTIPLIER = 1.5
+const USER_MESSAGE_COLLAPSED_STYLE: CSSProperties = {
+  display: "-webkit-box",
+  maxHeight: `${USER_MESSAGE_COLLAPSED_LINE_COUNT}lh`,
+  overflow: "hidden",
+  WebkitBoxOrient: "vertical",
+  WebkitLineClamp: USER_MESSAGE_COLLAPSED_LINE_COUNT
+}
+
+interface UserTextMeasurement {
+  collapsedHeightPx: number
+  contentHeightPx: number
+  lineHeightPx: number
+  text: string
+  widthPx: number
 }
 
 function getWorkspaceFileName(path: string): string {
@@ -184,6 +204,165 @@ function MessageAttachments(props: {
   )
 }
 
+function getUserTextLineHeightPx(element: HTMLElement): number {
+  const styles = window.getComputedStyle(element)
+  const lineHeightPx = Number.parseFloat(styles.lineHeight)
+
+  if (Number.isFinite(lineHeightPx)) {
+    return lineHeightPx
+  }
+
+  const fontSizePx = Number.parseFloat(styles.fontSize)
+  const fallbackFontSizePx = Number.isFinite(fontSizePx)
+    ? fontSizePx
+    : USER_MESSAGE_FALLBACK_FONT_SIZE_PX
+  return fallbackFontSizePx * USER_MESSAGE_FALLBACK_LINE_HEIGHT_MULTIPLIER
+}
+
+function measureUserTextBlock(element: HTMLDivElement, text: string): UserTextMeasurement | null {
+  const widthPx = Math.floor(element.getBoundingClientRect().width)
+
+  if (widthPx <= 0) {
+    return null
+  }
+
+  const lineHeightPx = getUserTextLineHeightPx(element)
+
+  return {
+    collapsedHeightPx: Math.ceil(lineHeightPx * USER_MESSAGE_COLLAPSED_LINE_COUNT),
+    contentHeightPx: Math.ceil(element.scrollHeight),
+    lineHeightPx,
+    text,
+    widthPx
+  }
+}
+
+function isSameUserTextMeasurement(
+  previous: UserTextMeasurement | null,
+  next: UserTextMeasurement | null
+): boolean {
+  return (
+    previous?.collapsedHeightPx === next?.collapsedHeightPx &&
+    previous?.contentHeightPx === next?.contentHeightPx &&
+    previous?.lineHeightPx === next?.lineHeightPx &&
+    previous?.text === next?.text &&
+    previous?.widthPx === next?.widthPx
+  )
+}
+
+function useUserTextCollapse(text: string): {
+  collapseState: "collapsed" | "expanded" | "uncollapsible"
+  setTextRef: (node: HTMLDivElement | null) => void
+  toggleExpansion: () => void
+} {
+  const textElementRef = useRef<HTMLDivElement | null>(null)
+  const [measurement, setMeasurement] = useState<UserTextMeasurement | null>(null)
+  const [expandedText, setExpandedText] = useState<string | null>(null)
+
+  const measure = useCallback((): void => {
+    const element = textElementRef.current
+
+    if (!element) {
+      return
+    }
+
+    const next = measureUserTextBlock(element, text)
+    setMeasurement((previous) => (isSameUserTextMeasurement(previous, next) ? previous : next))
+  }, [text])
+
+  const setTextRef = useCallback((node: HTMLDivElement | null): void => {
+    textElementRef.current = node
+  }, [])
+
+  useEffect(() => {
+    const element = textElementRef.current
+
+    if (!element || typeof ResizeObserver === "undefined") {
+      return undefined
+    }
+
+    let frameId: number | null = null
+    const scheduleMeasure = (): void => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId)
+      }
+
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null
+        measure()
+      })
+    }
+    const observer = new ResizeObserver(scheduleMeasure)
+
+    scheduleMeasure()
+    observer.observe(element)
+
+    return () => {
+      observer.disconnect()
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId)
+      }
+    }
+  }, [measure])
+
+  const isMeasuredText = measurement?.text === text
+  const isCollapsible = Boolean(
+    isMeasuredText &&
+      measurement &&
+      measurement.contentHeightPx > measurement.collapsedHeightPx + USER_MESSAGE_COLLAPSE_EPSILON_PX
+  )
+  const isExpanded = expandedText === text
+  const collapseState = !isCollapsible ? "uncollapsible" : isExpanded ? "expanded" : "collapsed"
+  const toggleExpansion = useCallback((): void => {
+    setExpandedText((current) => (current === text ? null : text))
+  }, [text])
+
+  return {
+    collapseState,
+    setTextRef,
+    toggleExpansion
+  }
+}
+
+function UserTextBlock(props: {
+  onOpenWorkspaceFile?: (path: string) => void
+  text: string
+}): React.JSX.Element {
+  const { copy } = useI18n()
+  const { onOpenWorkspaceFile, text } = props
+  const { collapseState, setTextRef, toggleExpansion } = useUserTextCollapse(text)
+  const isCollapsed = collapseState === "collapsed"
+  const isExpanded = collapseState === "expanded"
+
+  return (
+    <div className="flex min-w-0 flex-col items-start">
+      <div
+        ref={setTextRef}
+        className="whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
+        style={isCollapsed ? USER_MESSAGE_COLLAPSED_STYLE : undefined}
+      >
+        <ExtensionSourceTextViewer onOpenWorkspaceFile={onOpenWorkspaceFile} text={text} />
+      </div>
+      {collapseState !== "uncollapsible" ? (
+        <button
+          type="button"
+          aria-expanded={isExpanded}
+          className="mt-[var(--ow-space-1)] inline-flex cursor-pointer items-center gap-[var(--ow-gap-xs)] self-start text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [font-size:var(--ow-font-body)]"
+          onClick={toggleExpansion}
+        >
+          <span>{isExpanded ? copy.chat.userMessageShowLess : copy.chat.userMessageShowMore}</span>
+          <ChevronRight
+            className={cn(
+              "size-[var(--ow-icon-xs)] transition-transform",
+              isExpanded ? "-rotate-90" : "rotate-90"
+            )}
+          />
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 function renderTextBlock(
   text: string,
   options: {
@@ -200,14 +379,7 @@ function renderTextBlock(
   }
 
   if (isUser) {
-    return (
-      <div
-        key={key}
-        className="whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
-      >
-        <ExtensionSourceTextViewer onOpenWorkspaceFile={onOpenWorkspaceFile} text={text} />
-      </div>
-    )
+    return <UserTextBlock key={key} onOpenWorkspaceFile={onOpenWorkspaceFile} text={text} />
   }
 
   return (

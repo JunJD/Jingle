@@ -77,6 +77,8 @@ export interface AppCopy {
     selectedTextReferences: (count: number) => string
     tasksCompleted: (count: number) => string
     userLabel: string
+    userMessageShowLess: string
+    userMessageShowMore: string
   }
   common: {
     arguments: string
@@ -369,7 +371,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       retryMessage: "重试回答",
       selectedTextReferences: (count) => `${count} 个已选文本片段`,
       tasksCompleted: (count) => `${count} 个任务已完成`,
-      userLabel: "你"
+      userLabel: "你",
+      userMessageShowLess: "收起",
+      userMessageShowMore: "展开"
     },
     common: {
       arguments: "参数",
@@ -683,7 +687,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       selectedTextReferences: (count) =>
         `${count} selected text reference${count === 1 ? "" : "s"}`,
       tasksCompleted: (count) => `${count} task${count === 1 ? "" : "s"} completed`,
-      userLabel: "YOU"
+      userLabel: "YOU",
+      userMessageShowLess: "Show less",
+      userMessageShowMore: "Show more"
     },
     common: {
       arguments: "Arguments",
