@@ -1,6 +1,7 @@
-import { BrowserWindow, shell } from "electron"
+import { BrowserWindow } from "electron"
 import { join } from "path"
 import { PINNED_AI_SESSION_WINDOW_KIND } from "@shared/ai-session-window"
+import { installExternalWindowOpenHandler } from "./external-window-open"
 import { loadRendererWindow } from "./load-renderer-window"
 import { attachWindowDiagnostics } from "../diagnostics"
 
@@ -52,10 +53,7 @@ export function createPinnedAiSessionWindow(
     window.focus()
   })
 
-  window.webContents.setWindowOpenHandler((details) => {
-    void shell.openExternal(details.url)
-    return { action: "deny" }
-  })
+  installExternalWindowOpenHandler(window.webContents)
 
   void loadRendererWindow(window, PINNED_AI_SESSION_WINDOW_KIND, {
     pinnedWindowId: input.windowId,

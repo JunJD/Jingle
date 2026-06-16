@@ -1,6 +1,7 @@
-import { BrowserWindow, shell } from "electron"
+import { BrowserWindow } from "electron"
 import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
+import { installExternalWindowOpenHandler } from "./external-window-open"
 import { attachWindowDiagnostics } from "../diagnostics"
 import type { MainWindowNavigationPayload } from "@shared/main-window"
 
@@ -44,10 +45,7 @@ export function createMainWindow(): BrowserWindow {
     mainWindow.focus()
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    void shell.openExternal(details.url)
-    return { action: "deny" }
-  })
+  installExternalWindowOpenHandler(mainWindow.webContents)
 
   void loadRendererWindow(mainWindow, "main")
   return mainWindow

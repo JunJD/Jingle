@@ -1,5 +1,6 @@
 import { BrowserWindow, type Rectangle, screen } from "electron"
 import { join } from "path"
+import { installExternalWindowOpenHandler } from "./external-window-open"
 import { loadRendererWindow } from "./load-renderer-window"
 import { attachWindowDiagnostics } from "../diagnostics"
 import {
@@ -375,6 +376,8 @@ export function createLauncherWindow(): BrowserWindow {
       hideLauncherWindow(launcherWindow)
     }
   })
+
+  installExternalWindowOpenHandler(launcherWindow.webContents)
 
   const repositionIfVisible = (): void => {
     if (!launcherWindow.isDestroyed() && launcherWindow.isVisible()) {

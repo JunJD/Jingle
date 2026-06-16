@@ -9,7 +9,7 @@ import { code } from "@streamdown/code"
 import { math } from "@streamdown/math"
 import { mermaid } from "@streamdown/mermaid"
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
-import type { ComponentProps, HTMLAttributes } from "react"
+import type { ComponentProps, HTMLAttributes, MouseEvent as ReactMouseEvent } from "react"
 import { createContext, memo, useCallback, useContext, useMemo, useState } from "react"
 import { Streamdown } from "streamdown"
 
@@ -278,6 +278,78 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>
 
 const streamdownPlugins = { cjk, code, math, mermaid }
 
+type ExternalMarkdownLinkProps = ComponentProps<"a"> & {
+  node?: unknown
+}
+
+function getExternalMarkdownHref(href: string | undefined): string | undefined {
+  if (!href) {
+    return undefined
+  }
+
+  try {
+    const parsedUrl = new URL(href)
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      return undefined
+    }
+
+    return parsedUrl.toString()
+  } catch {
+    return undefined
+  }
+}
+
+function ExternalMarkdownLink(props: ExternalMarkdownLinkProps): React.JSX.Element {
+  const { href, node, onClick, ...anchorProps } = props
+  const externalHref = getExternalMarkdownHref(href)
+
+  void node
+
+  const handleClick = useCallback(
+    (event: ReactMouseEvent<HTMLAnchorElement>): void => {
+      onClick?.(event)
+
+      if (event.defaultPrevented || !externalHref) {
+        return
+      }
+
+      event.preventDefault()
+      void window.electron.openExternal(externalHref).catch((error) => {
+        console.error("[MessageResponse] Failed to open external link.", error)
+      })
+    },
+    [externalHref, onClick]
+  )
+
+  return (
+    <a
+      {...anchorProps}
+      data-streamdown="link"
+      href={externalHref}
+      onClick={handleClick}
+      rel="noreferrer"
+      target={undefined}
+    />
+  )
+}
+
+const streamdownComponents = { a: ExternalMarkdownLink } satisfies NonNullable<
+  MessageResponseProps["components"]
+>
+
+function getStreamdownComponents(
+  components: MessageResponseProps["components"]
+): MessageResponseProps["components"] {
+  if (!components) {
+    return streamdownComponents
+  }
+
+  return {
+    ...components,
+    a: ExternalMarkdownLink
+  }
+}
+
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
@@ -287,6 +359,7 @@ export const MessageResponse = memo(
       )}
       plugins={streamdownPlugins}
       {...props}
+      components={getStreamdownComponents(props.components)}
     />
   ),
   (prevProps, nextProps) =>
