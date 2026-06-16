@@ -32,6 +32,10 @@ const forbiddenRuntimeFilePatterns = [
   {
     pattern: /(^|[/\\])schema-engine(?:-|$)/,
     reason: "Prisma schema-engine is CLI/codegen tooling and should not be packaged."
+  },
+  {
+    pattern: /\.map$/,
+    reason: "Source maps should not be published in packaged runtime artifacts."
   }
 ]
 
