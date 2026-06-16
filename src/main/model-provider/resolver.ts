@@ -1,5 +1,6 @@
 import { getProviderAdapter } from "./adapters"
 import { getModelConfig, listModelCatalog, parseProviderModelId } from "./catalog"
+import { resolveModelContextLimit, resolveModelMaxOutputTokens } from "./model-limits"
 import { getModelProviderDefaultModel, getModelProviderDefaultModelOptions } from "./settings"
 import type { ResolvedModelRuntimeConfig } from "./types"
 
@@ -35,7 +36,9 @@ export function resolveModelRuntimeConfig(
   }
 
   return {
+    contextLimit: resolveModelContextLimit(configuredModel),
     credentials,
+    maxOutputTokens: resolveModelMaxOutputTokens(configuredModel),
     modelId: resolvedModelId,
     modelName: configuredModel?.model ?? parsedModelId.modelName,
     modelType,

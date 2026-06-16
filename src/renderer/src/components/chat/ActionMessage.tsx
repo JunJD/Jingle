@@ -44,7 +44,7 @@ function toAgentToolState(status: ToolComponentStatus): AgentToolState {
 }
 
 function isToolActive(status: ToolComponentStatus): boolean {
-  return status === "arguments_streaming" || status === "running"
+  return status === "arguments_streaming" || status === "running" || status === "waiting_result"
 }
 
 function getActionMessageStatus(
@@ -259,6 +259,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
                 </>
               ) : null
             }
+            trailingPlacement="inline"
           />
         </button>
         {hasDetail && isExpanded ? (

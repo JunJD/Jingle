@@ -8,6 +8,7 @@ import {
   projectAgentActivitySummary,
   projectActiveTurnStatus,
   projectMessages,
+  projectTurnPendingApproval,
   projectTurnElapsedDivider,
   projectTurnToolExecutionsView,
   shouldDefaultExpandToolEntries,
@@ -187,6 +188,35 @@ test("bare callExtension wrapper does not enter chat tool activity projection", 
       })
     ])
   )
+
+  assert.equal(entries.length, 0)
+})
+
+test("streaming orchestration tool calls do not enter temporary activity projection", () => {
+  const entries = buildTurnAssistantEntries(createTurn([]), {
+    activeToolCalls: [
+      {
+        argsText: '{"extensionName":"image-generation"}',
+        id: "tool-call-load-extension",
+        index: 0,
+        messageId: "assistant-1",
+        name: "loadExtension",
+        runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:01.000Z"),
+        status: "arguments_streaming"
+      },
+      {
+        argsText: '{"extensionName":"image-generation","toolName":"generateImage","args":{"prompt":"cat"}}',
+        id: "tool-call-call-extension",
+        index: 1,
+        messageId: "assistant-1",
+        name: "callExtension",
+        runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:02.000Z"),
+        status: "arguments_streaming"
+      }
+    ]
+  })
 
   assert.equal(entries.length, 0)
 })
@@ -1106,8 +1136,7 @@ test("agent activity summary groups known tool categories without using tool nam
     {
       activeCategory: "web_search",
       counts: {
-        search: 1,
-        web_search: 1
+        search: 1
       },
       status: "running"
     }
@@ -1122,14 +1151,18 @@ test("agent activity summary groups known tool categories without using tool nam
     ]),
     null
   )
-  assert.equal(
+  assert.deepEqual(
     projectAgentActivitySummary([
       {
         status: "arguments_streaming",
         toolCall: createToolCall("tool-edit-partial", "edit_file")
       }
     ]),
-    null
+    {
+      activeCategory: "file_mutation",
+      counts: {},
+      status: "running"
+    }
   )
   assert.equal(
     projectAgentActivitySummary([
@@ -1458,6 +1491,89 @@ test("tool result and approval projection changes stay scoped to the matching tu
   )
   assert.equal(getTurnPendingApproval(nextProjection.turns[0]!, pendingApproval), null)
   assert.equal(getTurnPendingApproval(nextProjection.turns[1]!, pendingApproval), pendingApproval)
+})
+
+test("active tool pending approval turn ownership is projected outside React components", () => {
+  const toolCall = createToolCall("tool-call-streaming")
+  const pendingApproval: HITLRequest = {
+    allowed_decisions: ["approve", "reject"],
+    id: "approval-streaming",
+    review: null,
+    tool_call: toolCall
+  }
+  const turn = createTurn([])
+
+  assert.equal(
+    getTurnPendingApproval(turn, pendingApproval),
+    null,
+    "no persisted assistant tool call should match the pending approval yet"
+  )
+  assert.equal(
+    projectTurnPendingApproval({
+      activeToolCalls: [
+        {
+          argsText: '{"path":"src/app.ts"}',
+          id: toolCall.id,
+          index: null,
+          messageId: null,
+          name: toolCall.name,
+          runId: "run-1",
+          startedAt: new Date("2026-01-01T00:00:00.000Z"),
+          status: "waiting_result"
+        }
+      ],
+      isActiveTurn: true,
+      pendingApproval,
+      turn
+    }),
+    pendingApproval
+  )
+  assert.equal(
+    projectTurnPendingApproval({
+      activeToolCalls: [
+        {
+          argsText: '{"path":"src/app.ts"}',
+          id: toolCall.id,
+          index: null,
+          messageId: null,
+          name: toolCall.name,
+          runId: "run-1",
+          startedAt: new Date("2026-01-01T00:00:00.000Z"),
+          status: "waiting_result"
+        }
+      ],
+      isActiveTurn: false,
+      pendingApproval,
+      turn
+    }),
+    null
+  )
+})
+
+test("summarization messages project as context compaction rows outside turns", () => {
+  const summaryMessage: Message = {
+    ...createUserMessage("summary-1", "Summary of prior context"),
+    metadata: {
+      lc_source: "summarization"
+    }
+  }
+  const projection = projectMessages([
+    summaryMessage,
+    createUserMessage("user-2", "Current question"),
+    createAssistantMessage({ content: "Current answer", id: "assistant-2" })
+  ])
+
+  assert.equal(projection.turns.length, 1)
+  assert.equal(projection.turns[0]?.key, "user-2")
+  assert.deepEqual(
+    projection.displayRows.map((row) => row.kind),
+    ["context-compaction", "turn", "footer"]
+  )
+  assert.deepEqual(projection.displayRows[0], {
+    kind: "context-compaction",
+    key: "context-compaction:summary-1",
+    messageId: "summary-1"
+  })
 })
 
 test("prepend and append preserve unchanged turn references by message id", () => {

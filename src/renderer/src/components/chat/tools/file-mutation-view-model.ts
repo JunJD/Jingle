@@ -71,78 +71,6 @@ function stableFileKey(source: FileMutationViewModelSource, toolCallId: string, 
   return `${source}:${toolCallId}:${path}`
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
-function readString(value: unknown): string | null {
-  return typeof value === "string" ? value : null
-}
-
-function readStringAlias(value: Record<string, unknown>, keys: readonly string[]): string | null {
-  for (const key of keys) {
-    const text = readString(value[key])
-    if (text !== null) {
-      return text
-    }
-  }
-
-  return null
-}
-
-function readCompletedFiles(value: Record<string, unknown>): unknown[] {
-  if (Array.isArray(value.files)) {
-    return value.files
-  }
-
-  if (Array.isArray(value.changes)) {
-    return value.changes
-  }
-
-  return []
-}
-
-function readChangeType(value: Record<string, unknown>): MutationChangeType | null {
-  const rawChangeType = readStringAlias(value, ["changeType", "type"])
-  if (
-    rawChangeType === "create" ||
-    rawChangeType === "delete" ||
-    rawChangeType === "modify"
-  ) {
-    return rawChangeType
-  }
-
-  return null
-}
-
-function readCompletedFileKey(
-  entry: Record<string, unknown>,
-  index: number,
-  path: string
-): string {
-  const key = readString(entry.key)
-  if (key !== null) {
-    return key
-  }
-
-  return `${index}:${path}`
-}
-
-function getCompletedDiffMode(input: {
-  before: string | null
-  patch: string | null
-}): FileMutationDiffMode {
-  if (input.patch) {
-    return "diff"
-  }
-
-  if (input.before !== null) {
-    return "diff"
-  }
-
-  return "code"
-}
-
 function changeTypeFromReview(
   review: Pick<FileMutationToolApprovalItem, "changes" | "path" | "toolName">
 ): MutationChangeType | null {
@@ -278,47 +206,6 @@ export function buildApprovalFileMutationViewModel(
   })
 }
 
-function parseCompletedFileChanges(value: unknown): FileMutationFileViewModel[] {
-  if (!isRecord(value)) {
-    return []
-  }
-
-  const rawFiles = readCompletedFiles(value)
-
-  return rawFiles.flatMap((entry, index) => {
-    if (!isRecord(entry)) {
-      return []
-    }
-
-    const path = readStringAlias(entry, ["path", "filePath", "file_path"])
-    if (!path) {
-      return []
-    }
-
-    const patch = readStringAlias(entry, ["patch", "patchText", "diff"])
-    const after = readStringAlias(entry, ["after", "content", "newText", "new_text"])
-    const before = readStringAlias(entry, ["before", "oldText", "old_text"])
-    if (patch === null && after === null && before === null) {
-      return []
-    }
-
-    const changeType = readChangeType(entry)
-    const key = readCompletedFileKey(entry, index, path)
-
-    return [
-      {
-        after,
-        before,
-        changeType,
-        diffMode: getCompletedDiffMode({ before, patch }),
-        key,
-        patch,
-        path
-      }
-    ]
-  })
-}
-
 function buildCompletedFilesFromResultMetadata(
   metadata: FileMutationResultMetadata | null | undefined,
   input: Pick<ToolFileMutationViewModelInput, "toolCallId" | "toolName">
@@ -341,10 +228,6 @@ function buildCompletedFilesFromResultMetadata(
     patch: null,
     path: file.path
   }))
-}
-
-function looksLikeUnifiedPatch(value: string): boolean {
-  return value.includes("diff --git ") || (value.includes("\n@@ ") && value.includes("\n--- "))
 }
 
 function stripPatchPathPrefix(path: string): string {
@@ -444,15 +327,8 @@ export function buildCompletedFileMutationViewModel(
   }
 
   const filesFromMetadata = buildCompletedFilesFromResultMetadata(input.fileMutationResult, input)
-  let files = filesFromMetadata
-  if (files.length === 0) {
-    files = parseCompletedFileChanges(input.result).map((file) => ({
-      ...file,
-      key: stableFileKey("completed_result", input.toolCallId, file.key)
-    }))
-  }
   const viewModel = createViewModel({
-    files,
+    files: filesFromMetadata,
     source: "completed_result",
     status: "completed",
     toolCallId: input.toolCallId
@@ -460,21 +336,6 @@ export function buildCompletedFileMutationViewModel(
 
   if (viewModel) {
     return { kind: "view", viewModel }
-  }
-
-  if (typeof input.result === "string" && looksLikeUnifiedPatch(input.result)) {
-    const patchViewModel = createViewModel({
-      files: buildPatchFiles({
-        patchText: input.result,
-        source: "completed_result",
-        toolCallId: input.toolCallId
-      }),
-      source: "completed_result",
-      status: "completed",
-      toolCallId: input.toolCallId
-    })
-
-    return patchViewModel ? { kind: "view", viewModel: patchViewModel } : null
   }
 
   if (input.result !== undefined) {

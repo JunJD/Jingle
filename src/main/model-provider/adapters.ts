@@ -1,4 +1,5 @@
 import { API_KEY_CREDENTIAL_VARIABLE, getProviderDefinition } from "./catalog"
+import type { ModelProfile } from "@langchain/core/language_models/profile"
 import { getCustomProviderConfig, listCustomProviderConfigs } from "./custom-providers"
 import {
   getDeclarativeProviderConfig,
@@ -183,7 +184,32 @@ export function createProviderChatModelFromAdapter(
   runtimeConfig: ResolvedModelRuntimeConfig,
   options: ChatModelOptions = {}
 ): ChatModelInstance {
-  return getProviderAdapter(runtimeConfig.providerId).createChatModel(runtimeConfig, options)
+  const model = getProviderAdapter(runtimeConfig.providerId).createChatModel(runtimeConfig, options)
+  return applyRuntimeModelProfile(model, runtimeConfig)
+}
+
+function applyRuntimeModelProfile(
+  model: ChatModelInstance,
+  runtimeConfig: ResolvedModelRuntimeConfig
+): ChatModelInstance {
+  const profileOverrides: ModelProfile = {
+    ...(runtimeConfig.contextLimit ? { maxInputTokens: runtimeConfig.contextLimit } : {}),
+    ...(runtimeConfig.maxOutputTokens ? { maxOutputTokens: runtimeConfig.maxOutputTokens } : {})
+  }
+
+  if (Object.keys(profileOverrides).length === 0) {
+    return model
+  }
+
+  Object.defineProperty(model, "profile", {
+    configurable: true,
+    value: {
+      ...model.profile,
+      ...profileOverrides
+    }
+  })
+
+  return model
 }
 
 function createApiKeyProviderAdapter(config: ProviderAdapterConfig): ProviderAdapter {
@@ -269,6 +295,7 @@ function createProviderConfigAdapter(
         description: providerConfig.description,
         fetchFrom: "customizable-model",
         id: `${providerConfig.name}:${model.name}`,
+        maxOutputTokens: model.max_output_tokens,
         model: model.name,
         modelType: "llm",
         name: model.name,

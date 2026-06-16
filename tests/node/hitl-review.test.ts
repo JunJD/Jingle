@@ -317,6 +317,33 @@ test("extractMessagesFromCheckpoint restores canonical checkpoint tool calls", (
   ])
 })
 
+test("extractMessagesFromCheckpoint preserves summarization message source metadata", () => {
+  const rows = extractMessagesFromCheckpoint("thread-1", {
+    checkpoint: {
+      id: "checkpoint-1",
+      channel_values: {
+        messages: [
+          {
+            id: ["HumanMessage"],
+            kwargs: {
+              additional_kwargs: {
+                lc_source: "summarization"
+              },
+              content: "Summary of prior context",
+              id: "summary-message"
+            }
+          }
+        ]
+      }
+    }
+  } as never)
+
+  assert.equal(rows.length, 1)
+  assert.deepEqual(JSON.parse(rows[0]?.metadata ?? "{}"), {
+    lc_source: "summarization"
+  })
+})
+
 test("mapHitlRowToRequest rejects rows without tool_call_id", () => {
   const row: HitlRequestRow = {
     request_id: "request-1",

@@ -141,6 +141,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "anthropic",
     model: "claude-opus-4-5-20251101",
     description: "Premium model with maximum intelligence",
+    contextLimit: 200_000,
+    maxOutputTokens: 64_000,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -151,6 +153,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "anthropic",
     model: "claude-sonnet-4-5-20250929",
     description: "Best balance of intelligence, speed, and cost for agents",
+    contextLimit: 200_000,
+    maxOutputTokens: 64_000,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -161,6 +165,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "anthropic",
     model: "claude-haiku-4-5-20251001",
     description: "Fastest model with near-frontier intelligence",
+    contextLimit: 200_000,
+    maxOutputTokens: 64_000,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -171,6 +177,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "anthropic",
     model: "claude-opus-4-1-20250805",
     description: "Previous generation premium model with extended thinking",
+    contextLimit: 200_000,
+    maxOutputTokens: 32_000,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -181,6 +189,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "anthropic",
     model: "claude-sonnet-4-20250514",
     description: "Fast and capable previous generation model",
+    contextLimit: 200_000,
+    maxOutputTokens: 64_000,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -191,6 +201,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-5.2",
     description: "Latest flagship with enhanced coding and agentic capabilities",
+    contextLimit: 400_000,
+    maxOutputTokens: 128_000,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -201,6 +213,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-5.1",
     description: "Advanced reasoning and robust performance",
+    contextLimit: 400_000,
+    maxOutputTokens: 128_000,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -211,6 +225,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "o3",
     description: "Advanced reasoning for complex problem-solving",
+    contextLimit: 200_000,
+    maxOutputTokens: 100_000,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -221,6 +237,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "o3-mini",
     description: "Cost-effective reasoning with faster response times",
+    contextLimit: 200_000,
+    maxOutputTokens: 100_000,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -231,6 +249,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "o4-mini",
     description: "Fast, efficient reasoning model succeeding o3",
+    contextLimit: 200_000,
+    maxOutputTokens: 100_000,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -241,6 +261,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "o1",
     description: "Premium reasoning for research, coding, math and science",
+    contextLimit: 200_000,
+    maxOutputTokens: 100_000,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -251,6 +273,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-4.1",
     description: "Strong instruction-following with 1M context window",
+    contextLimit: 1_047_576,
+    maxOutputTokens: 32_768,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -261,6 +285,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-4.1-mini",
     description: "Faster, smaller version balancing performance and efficiency",
+    contextLimit: 1_047_576,
+    maxOutputTokens: 32_768,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -271,6 +297,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-4.1-nano",
     description: "Most cost-efficient for lighter tasks",
+    contextLimit: 1_047_576,
+    maxOutputTokens: 32_768,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -281,6 +309,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-4o",
     description: "Versatile model for text generation and comprehension",
+    contextLimit: 128_000,
+    maxOutputTokens: 16_384,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -291,6 +321,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "openai",
     model: "gpt-4o-mini",
     description: "Cost-efficient variant with faster response times",
+    contextLimit: 128_000,
+    maxOutputTokens: 16_384,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -341,6 +373,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "deepseek",
     model: "deepseek-v4-pro",
     description: "Frontier reasoning and coding model exposed by DeepSeek's OpenAI-compatible API",
+    contextLimit: 1_000_000,
+    maxOutputTokens: 384_000,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -351,6 +385,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "deepseek",
     model: "deepseek-v4-flash",
     description: "Faster general-purpose DeepSeek model with OpenAI-compatible API access",
+    contextLimit: 1_000_000,
+    maxOutputTokens: 384_000,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -361,6 +397,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "google",
     model: "gemini-3-pro-preview",
     description: "State-of-the-art reasoning and multimodal understanding",
+    contextLimit: 1_048_576,
+    maxOutputTokens: 65_536,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -371,6 +409,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "google",
     model: "gemini-3-flash-preview",
     description: "Fast frontier-class model with low latency and cost",
+    contextLimit: 1_048_576,
+    maxOutputTokens: 65_536,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -381,6 +421,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "google",
     model: "gemini-2.5-pro",
     description: "High-capability model for complex reasoning and coding",
+    contextLimit: 1_048_576,
+    maxOutputTokens: 65_536,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -391,6 +433,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "google",
     model: "gemini-2.5-flash",
     description: "Lightning-fast with balance of intelligence and latency",
+    contextLimit: 1_048_576,
+    maxOutputTokens: 65_536,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"
@@ -401,6 +445,8 @@ const AVAILABLE_MODELS: ModelConfig[] = [
     provider: "google",
     model: "gemini-2.5-flash-lite",
     description: "Fast, low-cost, high-performance model",
+    contextLimit: 1_048_576,
+    maxOutputTokens: 65_536,
     fetchFrom: "predefined-model",
     modelType: "llm",
     status: "active"

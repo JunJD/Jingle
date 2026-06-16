@@ -17,6 +17,7 @@ interface CheckpointChannelMessage {
     content?: string | unknown[]
     tool_calls?: ToolCall[]
     additional_kwargs?: {
+      lc_source?: unknown
       refs?: unknown
     }
     response_metadata?: unknown
@@ -83,7 +84,14 @@ function getCheckpointMessageMetadata(
   message: CheckpointChannelMessage
 ): Record<string, unknown> | null {
   const refs = normalizeComposerMessageRefs(message.kwargs?.additional_kwargs?.refs)
-  return toComposerMessageMetadata({ refs }) ?? null
+  const metadata = toComposerMessageMetadata({ refs }) ?? {}
+  const lcSource = message.kwargs?.additional_kwargs?.lc_source
+
+  if (lcSource === "summarization") {
+    metadata.lc_source = lcSource
+  }
+
+  return Object.keys(metadata).length > 0 ? metadata : null
 }
 
 function getCheckpointMessageId(

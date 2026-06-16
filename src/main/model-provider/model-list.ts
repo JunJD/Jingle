@@ -136,9 +136,11 @@ function toModelConfig(providerId: ProviderId, remoteModel: RemoteModel): ModelC
   const localModel = getModelConfig(id)
 
   return {
+    contextLimit: localModel?.contextLimit,
     description: localModel?.description ?? remoteModel.description,
     fetchFrom: "fetch-from-remote",
     id,
+    maxOutputTokens: localModel?.maxOutputTokens,
     model: remoteModel.id,
     modelType: "llm",
     name: localModel?.name ?? remoteModel.displayName ?? remoteModel.id,

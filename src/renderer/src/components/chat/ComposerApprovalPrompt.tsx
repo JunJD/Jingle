@@ -3,6 +3,7 @@ import { ArrowUpRight, FileDiff, Terminal } from "lucide-react"
 import { getHitlRequestDisplaySize } from "@shared/hitl"
 import type { AppCopy } from "@/lib/i18n/messages"
 import { useI18n } from "@/lib/i18n"
+import { cn } from "@/lib/utils"
 import type { HITLDecision, HITLRequest } from "@/types"
 import { ComposerInterruptShell } from "./ComposerInterruptShell"
 import {
@@ -23,15 +24,30 @@ function getApproveLabel(copy: AppCopy, request: HITLRequest): string {
 }
 
 export function ComposerApprovalPrompt(props: {
+  actionsPlacement?: "inline" | "external"
   className?: string
   density?: "default" | "compact"
   onDecision: (decision: HITLDecision) => void
+  rejectFeedback?: string
+  rejectFeedbackPlacement?: "inline" | "external"
   request: HITLRequest
+  variant?: "default" | "composer-tray"
 }): React.JSX.Element {
-  const { className, density = "default", onDecision, request } = props
+  const {
+    actionsPlacement = "inline",
+    className,
+    density = "default",
+    onDecision,
+    rejectFeedback,
+    rejectFeedbackPlacement = "inline",
+    request,
+    variant = "default"
+  } = props
   const { copy } = useI18n()
   const [feedback, setFeedback] = useState("")
   const [rejecting, setRejecting] = useState(false)
+  const usesExternalActions = actionsPlacement === "external"
+  const usesExternalRejectFeedback = rejectFeedbackPlacement === "external"
   const approvalItem = request.review
   const meta = getToolApprovalPresentationMeta(copy, approvalItem, request.tool_call.name)
   const compact = getCompactToolApprovalPresentation(
@@ -47,7 +63,9 @@ export function ComposerApprovalPrompt(props: {
         ? ArrowUpRight
         : FileDiff
   const approveLabel = getApproveLabel(copy, request)
-  const trimmedFeedback = feedback.trim()
+  const trimmedFeedback = usesExternalRejectFeedback
+    ? (rejectFeedback ?? "").trim()
+    : feedback.trim()
   const displaySize = getHitlRequestDisplaySize(request)
   const isLarge = displaySize === "large"
   const rawArgs = stringifyToolValue(request.tool_call.args)
@@ -59,64 +77,69 @@ export function ComposerApprovalPrompt(props: {
       toolCallId={request.tool_call.id}
     />
   ) : null
+  const actions = usesExternalActions ? null : (
+    <div className="grid gap-[var(--ow-space-2)]">
+      {rejecting && !usesExternalRejectFeedback ? (
+        <textarea
+          aria-label={copy.toolCall.rejectFeedbackPlaceholder}
+          autoFocus
+          className="min-h-[52px] resize-none rounded-[var(--ow-radius-md)] border border-border/60 bg-background-secondary/45 px-[var(--ow-space-2-5)] py-[var(--ow-space-2)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground outline-none placeholder:text-muted-foreground/65 focus:border-foreground/25"
+          onChange={(event) => setFeedback(event.target.value)}
+          placeholder={copy.toolCall.rejectFeedbackPlaceholder}
+          value={feedback}
+        />
+      ) : null}
+
+      <div className="flex items-center justify-end gap-[var(--ow-gap-sm)]">
+        {rejecting && !usesExternalRejectFeedback ? (
+          <button
+            type="button"
+            className="min-h-8 rounded-full px-[var(--ow-space-2-5)] [font-size:var(--ow-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+            onClick={() => {
+              setFeedback("")
+              setRejecting(false)
+            }}
+          >
+            {copy.apiKeyDialog.cancel}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="min-h-8 rounded-full px-[var(--ow-space-3)] [font-size:var(--ow-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+          onClick={() => {
+            if (!usesExternalRejectFeedback && !rejecting && isLarge) {
+              setRejecting(true)
+              return
+            }
+
+            onDecision({
+              type: "reject",
+              ...(trimmedFeedback ? { feedback: trimmedFeedback } : {})
+            })
+          }}
+        >
+          {copy.toolCall.reject}
+        </button>
+        <button
+          type="button"
+          className="min-h-8 rounded-full bg-foreground px-[var(--ow-space-3)] [font-size:var(--ow-font-body)] font-semibold text-background shadow-[0_6px_16px_rgba(32,38,45,0.14)] transition-transform active:scale-[0.98]"
+          onClick={() => onDecision({ type: "approve" })}
+        >
+          {approveLabel}
+        </button>
+      </div>
+    </div>
+  )
 
   return (
     <ComposerInterruptShell
-      actions={
-        <div className="grid gap-[var(--ow-space-2)]">
-          {rejecting ? (
-            <textarea
-              aria-label={copy.toolCall.rejectFeedbackPlaceholder}
-              autoFocus
-              className="min-h-[52px] resize-none rounded-[var(--ow-radius-md)] border border-border/60 bg-background-secondary/45 px-[var(--ow-space-2-5)] py-[var(--ow-space-2)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground outline-none placeholder:text-muted-foreground/65 focus:border-foreground/25"
-              onChange={(event) => setFeedback(event.target.value)}
-              placeholder={copy.toolCall.rejectFeedbackPlaceholder}
-              value={feedback}
-            />
-          ) : null}
-
-          <div className="flex items-center justify-end gap-[var(--ow-gap-sm)]">
-            {rejecting ? (
-              <button
-                type="button"
-                className="min-h-8 rounded-full px-[var(--ow-space-2-5)] [font-size:var(--ow-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
-                onClick={() => {
-                  setFeedback("")
-                  setRejecting(false)
-                }}
-              >
-                {copy.apiKeyDialog.cancel}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="min-h-8 rounded-full px-[var(--ow-space-3)] [font-size:var(--ow-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
-              onClick={() => {
-                if (!rejecting && isLarge) {
-                  setRejecting(true)
-                  return
-                }
-
-                onDecision({
-                  type: "reject",
-                  ...(trimmedFeedback ? { feedback: trimmedFeedback } : {})
-                })
-              }}
-            >
-              {copy.toolCall.reject}
-            </button>
-            <button
-              type="button"
-              className="min-h-8 rounded-full bg-foreground px-[var(--ow-space-3)] [font-size:var(--ow-font-body)] font-semibold text-background shadow-[0_6px_16px_rgba(32,38,45,0.14)] transition-transform active:scale-[0.98]"
-              onClick={() => onDecision({ type: "approve" })}
-            >
-              {approveLabel}
-            </button>
-          </div>
-        </div>
-      }
+      actions={actions}
       body={largeBody}
-      className={className}
+      className={cn(
+        variant === "composer-tray" &&
+          "rounded-b-none border-border/70 bg-background-elevated/92 shadow-[0_1px_0_rgba(32,38,45,0.05)]",
+        className
+      )}
       density={density}
       header={
         <div className="flex min-w-0 items-center justify-between gap-[var(--ow-gap-md)]">

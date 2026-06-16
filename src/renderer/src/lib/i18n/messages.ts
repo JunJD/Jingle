@@ -30,6 +30,7 @@ export interface AppCopy {
     agentThought: string
     agentStatusThinking: string
     agentStatusWaitingApproval: string
+    contextCompacted: string
     toolActivityChangedFiles: string
     toolActivityCompleted: string
     toolActivityCommands: (count: number) => string
@@ -242,6 +243,7 @@ export interface AppCopy {
     approvalRunTitle: string
     approvalSource: string
     approvalSubmit: string
+    accept: string
     approvalTarget: string
     approve: string
     approveAndApply: string
@@ -261,6 +263,7 @@ export interface AppCopy {
     moreLines: (count: number) => string
     moreMatches: (count: number) => string
     readLines: (count: number) => string
+    decline: string
     reject: string
     rejectAndAdjust: string
     rejectFeedbackPlaceholder: string
@@ -311,6 +314,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentThought: "已思考",
       agentStatusThinking: "正在思考",
       agentStatusWaitingApproval: "等待你确认",
+      contextCompacted: "上下文已自动压缩",
       toolActivityChangedFiles: "已修改文件",
       toolActivityCompleted: "已处理工具",
       toolActivityCommands: (count) => `${count} 条命令`,
@@ -524,6 +528,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       approvalRunTitle: "是否执行这个命令？",
       approvalSource: "来源",
       approvalSubmit: "提交",
+      accept: "采纳",
       approvalTarget: "目标",
       approve: "批准",
       approveAndApply: "批准并修改",
@@ -562,6 +567,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       moreLines: (count) => `... 还有 ${count} 行`,
       moreMatches: (count) => `另外 ${count} 个匹配`,
       readLines: (count) => `读取了 ${count} 行`,
+      decline: "拒绝",
       reject: "拒绝",
       rejectAndAdjust: "拒绝，请告知 Agent 如何调整",
       rejectFeedbackPlaceholder: "告诉 Agent 需要怎么调整（可选）",
@@ -610,6 +616,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentThought: "Thought",
       agentStatusThinking: "Thinking",
       agentStatusWaitingApproval: "Waiting for your confirmation",
+      contextCompacted: "Context automatically compressed",
       toolActivityChangedFiles: "Changed files",
       toolActivityCompleted: "Handled tools",
       toolActivityCommands: (count) => `${count} command${count === 1 ? "" : "s"}`,
@@ -824,6 +831,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       approvalRunTitle: "Run this command?",
       approvalSource: "Source",
       approvalSubmit: "Submit",
+      accept: "Accept",
       approvalTarget: "Target",
       approve: "Approve",
       approveAndApply: "Approve & Apply",
@@ -867,6 +875,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       moreLines: (count) => `... ${count} more lines`,
       moreMatches: (count) => `+${count} more matches`,
       readLines: (count) => `Read ${count} line${count === 1 ? "" : "s"}`,
+      decline: "Decline",
       reject: "Reject",
       rejectAndAdjust: "Reject and tell the agent what to adjust",
       rejectFeedbackPlaceholder: "Tell the agent what to adjust (optional)",

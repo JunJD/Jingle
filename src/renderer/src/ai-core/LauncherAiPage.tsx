@@ -29,6 +29,7 @@ import { useI18n } from "@/lib/i18n"
 import { useAgent } from "@/lib/use-agent"
 import { useThreadContext, useThreadSelector } from "@/lib/thread-context"
 import { updateAgentThreadModel, updateAgentThreadPermissionMode } from "@/lib/agent-control"
+import { cn } from "@/lib/utils"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { OpenTargetProvider } from "@/lib/open-target-context"
 import { listNativeLauncherSourceMentions } from "@extension-host/index"
@@ -56,6 +57,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const hasRunInitialActionRef = useRef(false)
   const [navigationError, setNavigationError] = useState<string | null>(null)
   const [localComposerText, setLocalComposerText] = useState(() => initialSeedQuery)
+  const [approvalRejectFeedback, setApprovalRejectFeedback] = useState("")
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isSidebarPreviewOpen, setIsSidebarPreviewOpen] = useState(false)
@@ -309,6 +311,26 @@ export function LauncherAiPage(): React.JSX.Element {
   const submitCurrentInput = useCallback((): void => {
     runPrimaryAction(getCurrentMessageInput())
   }, [getCurrentMessageInput, runPrimaryAction])
+  const submitApprovalRejectFeedback = useCallback((): void => {
+    if (!pendingApproval) {
+      return
+    }
+
+    const feedback = approvalRejectFeedback.trim()
+    void handleApprovalDecision({
+      type: "reject",
+      ...(feedback ? { feedback } : {})
+    })
+    setApprovalRejectFeedback("")
+  }, [approvalRejectFeedback, handleApprovalDecision, pendingApproval])
+  const submitApprovalAccept = useCallback((): void => {
+    if (!pendingApproval) {
+      return
+    }
+
+    void handleApprovalDecision({ type: "approve" })
+    setApprovalRejectFeedback("")
+  }, [handleApprovalDecision, pendingApproval])
   const handleComposerKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>): void => {
       const input = inputRef.current
@@ -606,21 +628,6 @@ export function LauncherAiPage(): React.JSX.Element {
               }}
             />
           }
-          inputAccessory={
-            pendingApproval ? (
-              <div className="shrink-0 px-[var(--launcher-ai-content-x)] py-[var(--ow-space-3)]">
-                <div className="mx-auto w-full max-w-[var(--launcher-ai-content-max-width)]">
-                  <ComposerApprovalPrompt
-                    key={pendingApproval.id}
-                    onDecision={(decision) => {
-                      void handleApprovalDecision(decision)
-                    }}
-                    request={pendingApproval}
-                  />
-                </div>
-              </div>
-            ) : undefined
-          }
           hideInputChrome
           inputValue={query}
           onInputValueChange={setQuery}
@@ -658,45 +665,66 @@ export function LauncherAiPage(): React.JSX.Element {
               ) : (
                 <LauncherAiEmptyState error={threadError} />
               )}
-              {!pendingApproval ? (
-                <form
-                  className="launcher-ai-composer-footer shrink-0 px-[var(--launcher-ai-composer-page-x)] pb-[var(--ow-space-2)]"
-                  onSubmit={(event) => {
-                    event.preventDefault()
+              <form
+                className="launcher-ai-composer-footer shrink-0 px-[var(--launcher-ai-composer-page-x)] pb-[var(--ow-space-2)]"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  if (!isApprovalPending) {
                     submitCurrentInput()
-                  }}
-                >
-                  <PromptInput
-                    className="mx-auto w-full max-w-[var(--launcher-ai-content-max-width)] px-[var(--ow-space-2)] py-[var(--ow-space-1)]"
-                    style={{ backgroundColor: "var(--background-elevated)" }}
-                    isLoading={isBusy}
-                    maxHeight="var(--launcher-ai-composer-input-max-h)"
-                    minHeight="var(--launcher-ai-composer-input-min-h)"
-                    onSubmit={submitCurrentInput}
-                    onValueChange={setQuery}
-                    value={query}
-                  >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      className="hidden"
-                      accept={AI_ATTACHMENT_FILE_EXTENSIONS.map(
-                        (extension) => `.${extension}`
-                      ).join(",")}
-                      onChange={(event) => {
-                        if (event.target.files) {
-                          void addSelectedFiles(event.target.files)
-                        }
-                        event.target.value = ""
+                  }
+                }}
+              >
+                {pendingApproval ? (
+                  <div className="mx-auto w-full max-w-[var(--launcher-ai-content-max-width)]">
+                    <ComposerApprovalPrompt
+                      actionsPlacement="external"
+                      key={pendingApproval.id}
+                      onDecision={(decision) => {
+                        void handleApprovalDecision(decision)
+                        setApprovalRejectFeedback("")
                       }}
+                      rejectFeedback={approvalRejectFeedback}
+                      rejectFeedbackPlacement="external"
+                      request={pendingApproval}
+                      variant="composer-tray"
                     />
+                  </div>
+                ) : null}
+                <PromptInput
+                  className={cn(
+                    "mx-auto w-full max-w-[var(--launcher-ai-content-max-width)] px-[var(--ow-space-2)] py-[var(--ow-space-1)]",
+                    isApprovalPending && "rounded-t-none border-t-0"
+                  )}
+                  style={{ backgroundColor: "var(--background-elevated)" }}
+                  isLoading={isBusy}
+                  maxHeight="var(--launcher-ai-composer-input-max-h)"
+                  minHeight="var(--launcher-ai-composer-input-min-h)"
+                  onSubmit={isApprovalPending ? undefined : submitCurrentInput}
+                  onValueChange={isApprovalPending ? setApprovalRejectFeedback : setQuery}
+                  value={isApprovalPending ? approvalRejectFeedback : query}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    accept={AI_ATTACHMENT_FILE_EXTENSIONS.map(
+                      (extension) => `.${extension}`
+                    ).join(",")}
+                    onChange={(event) => {
+                      if (event.target.files) {
+                        void addSelectedFiles(event.target.files)
+                      }
+                      event.target.value = ""
+                    }}
+                  />
 
-                    <div
-                      className={`flex min-w-0 gap-[var(--ow-gap-sm)] ${
-                        isComposerExpanded ? "items-end" : "items-center"
-                      }`}
-                    >
+                  <div
+                    className={`flex min-w-0 gap-[var(--ow-gap-sm)] ${
+                      isComposerExpanded ? "items-end" : "items-center"
+                    }`}
+                  >
+                    {!isApprovalPending ? (
                       <PromptInputAction
                         onClick={openAttachmentPicker}
                         onMouseDown={(event) => event.preventDefault()}
@@ -709,68 +737,105 @@ export function LauncherAiPage(): React.JSX.Element {
                         }
                         tooltip={copy.launcher.aiAddAttachment}
                       />
+                    ) : null}
 
-                      <div className="flex min-w-0 flex-1 flex-col gap-[var(--ow-space-1)]">
-                        <PromptInputTextarea
-                          composerRef={inputRef as React.RefObject<ComposerAreaHandle | null>}
-                          mode="composer"
-                          onMentionQueryChange={setMentionQuery}
-                          onKeyDown={handleComposerKeyDown}
-                          onSubmit={submitCurrentInput}
-                          placeholder={copy.launcher.aiInputPlaceholder}
-                          sourceMentions={sourceMentions}
-                          workspaceFileMentions={workspaceFileMentionState.files}
-                          workspaceFileSearchEnabled={workspaceFileMentionState.searchEnabled}
-                          workspaceFileSearchIncomplete={workspaceFileMentionState.isIncomplete}
-                          workspaceFileSearchInProgress={workspaceFileMentionState.isSearching}
-                          className="w-full py-[7px] [font-size:var(--ow-font-control)] font-normal"
-                        />
+                    <div className="flex min-w-0 flex-1 flex-col gap-[var(--ow-space-1)]">
+                      <PromptInputTextarea
+                        composerRef={inputRef as React.RefObject<ComposerAreaHandle | null>}
+                        mode="composer"
+                        onMentionQueryChange={setMentionQuery}
+                        onKeyDown={handleComposerKeyDown}
+                        onSubmit={isApprovalPending ? undefined : submitCurrentInput}
+                        placeholder={
+                          isApprovalPending
+                            ? copy.toolCall.rejectFeedbackPlaceholder
+                            : copy.launcher.aiInputPlaceholder
+                        }
+                        sourceMentions={isApprovalPending ? [] : sourceMentions}
+                        workspaceFileMentions={
+                          isApprovalPending ? [] : workspaceFileMentionState.files
+                        }
+                        workspaceFileSearchEnabled={
+                          isApprovalPending ? false : workspaceFileMentionState.searchEnabled
+                        }
+                        workspaceFileSearchIncomplete={
+                          isApprovalPending ? false : workspaceFileMentionState.isIncomplete
+                        }
+                        workspaceFileSearchInProgress={
+                          isApprovalPending ? false : workspaceFileMentionState.isSearching
+                        }
+                        className="w-full py-[7px] [font-size:var(--ow-font-control)] font-normal"
+                      />
 
-                        <LauncherAttachmentStrip
-                          attachments={attachments}
-                          onRemove={removeAttachment}
-                        />
-                        <AssistantSelectionReferencePill
-                          className="px-[var(--ow-space-1)]"
-                          refs={assistantSelectionRefs}
-                          removable
-                          onClear={clearSelectionRefs}
-                          onRemove={removeSelectionRef}
-                        />
-                      </div>
-
-                      <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">
-                        {actionController.canOpenActions ? (
-                          <PromptInputAction
-                            onClick={() => actionController.openActions()}
-                            onMouseDown={(event) => event.preventDefault()}
-                            icon={<Command className="size-[var(--ow-icon-sm)]" />}
-                            label={copy.launcher.actionsLabel}
-                            title={
-                              actionController.actionPanelShortcut
-                                ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
-                                : copy.launcher.actionsLabel
-                            }
-                            tooltip={
-                              actionController.actionPanelShortcut
-                                ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
-                                : copy.launcher.actionsLabel
-                            }
+                      {!isApprovalPending ? (
+                        <>
+                          <LauncherAttachmentStrip
+                            attachments={attachments}
+                            onRemove={removeAttachment}
                           />
-                        ) : null}
-
-                        {canStop ? (
-                          <PromptInputAction
-                            onClick={() => {
-                              void handleStop()
-                            }}
-                            onMouseDown={(event) => event.preventDefault()}
-                            icon={<Square className="size-[var(--ow-icon-compact)]" />}
-                            label={copy.launcher.aiStopLabel}
-                            title={copy.launcher.aiStopLabel}
-                            tooltip={copy.launcher.aiStopLabel}
+                          <AssistantSelectionReferencePill
+                            className="px-[var(--ow-space-1)]"
+                            refs={assistantSelectionRefs}
+                            removable
+                            onClear={clearSelectionRefs}
+                            onRemove={removeSelectionRef}
                           />
-                        ) : (
+                        </>
+                      ) : null}
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">
+                      {isApprovalPending ? (
+                        <>
+                          <button
+                            type="button"
+                            className="min-h-8 rounded-full px-[var(--ow-space-2-5)] [font-size:var(--ow-font-body)] font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            onClick={submitApprovalRejectFeedback}
+                          >
+                            {copy.toolCall.decline}
+                          </button>
+                          <button
+                            type="button"
+                            className="min-h-8 rounded-full bg-foreground px-[var(--ow-space-3)] [font-size:var(--ow-font-body)] font-semibold text-background shadow-[0_6px_16px_rgba(32,38,45,0.14)] transition-transform hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
+                            onClick={submitApprovalAccept}
+                          >
+                            {copy.toolCall.accept}
+                          </button>
+                        </>
+                      ) : null}
+
+                      {actionController.canOpenActions && !isApprovalPending ? (
+                        <PromptInputAction
+                          onClick={() => actionController.openActions()}
+                          onMouseDown={(event) => event.preventDefault()}
+                          icon={<Command className="size-[var(--ow-icon-sm)]" />}
+                          label={copy.launcher.actionsLabel}
+                          title={
+                            actionController.actionPanelShortcut
+                              ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
+                              : copy.launcher.actionsLabel
+                          }
+                          tooltip={
+                            actionController.actionPanelShortcut
+                              ? `${copy.launcher.actionsLabel} (${actionController.actionPanelShortcut})`
+                              : copy.launcher.actionsLabel
+                          }
+                        />
+                      ) : null}
+
+                      {canStop && !isApprovalPending ? (
+                        <PromptInputAction
+                          onClick={() => {
+                            void handleStop()
+                          }}
+                          onMouseDown={(event) => event.preventDefault()}
+                          icon={<Square className="size-[var(--ow-icon-compact)]" />}
+                          label={copy.launcher.aiStopLabel}
+                          title={copy.launcher.aiStopLabel}
+                          tooltip={copy.launcher.aiStopLabel}
+                        />
+                      ) : (
+                        !isApprovalPending ? (
                           <PromptInputAction
                             onClick={submitCurrentInput}
                             onMouseDown={(event) => event.preventDefault()}
@@ -781,12 +846,12 @@ export function LauncherAiPage(): React.JSX.Element {
                             tooltip={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
                             className="text-foreground enabled:bg-background-secondary/72 enabled:hover:bg-background-secondary disabled:bg-transparent"
                           />
-                        )}
-                      </div>
+                        ) : null
+                      )}
                     </div>
-                  </PromptInput>
-                </form>
-              ) : null}
+                  </div>
+                </PromptInput>
+              </form>
             </div>
           </div>
         </LauncherChrome>

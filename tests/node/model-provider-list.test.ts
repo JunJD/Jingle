@@ -5,6 +5,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { AIMessage, type BaseMessage } from "@langchain/core/messages"
 import { ChatAnthropic } from "@langchain/anthropic"
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai"
 import { ChatOpenAI } from "@langchain/openai"
 import {
   createProviderChatModelFromAdapter,
@@ -12,6 +13,7 @@ import {
   listRemoteModelsByProvider,
   validateRemoteProviderCredentials
 } from "../../src/main/model-provider/adapters"
+import { getModelConfig } from "../../src/main/model-provider/catalog"
 import { getModelProviderStateForUI } from "../../src/main/model-provider/service"
 import type { ProviderId, ResolvedModelRuntimeConfig } from "../../src/main/model-provider/types"
 
@@ -51,11 +53,16 @@ function createRuntimeConfig(
   modelName: string,
   overrides: Partial<ResolvedModelRuntimeConfig> = {}
 ): ResolvedModelRuntimeConfig {
+  const modelId = `${providerId}:${modelName}`
+  const modelConfig = getModelConfig(modelId)
+
   return {
+    contextLimit: modelConfig?.contextLimit,
     credentials: {
       apiKey: "sk-test"
     },
-    modelId: `${providerId}:${modelName}`,
+    maxOutputTokens: modelConfig?.maxOutputTokens,
+    modelId,
     modelName,
     modelType: "llm",
     providerId,
@@ -71,6 +78,7 @@ test("anthropic chat models can disable parallel tool use for agent approvals", 
 
   assert.ok(model instanceof ChatAnthropic)
   assert.equal(model.invocationParams({}).disable_parallel_tool_use, true)
+  assert.equal(model.invocationParams({}).max_tokens, 64000)
 })
 
 test("anthropic-style providers ignore ambient Anthropic auth tokens when credentials are configured", () => {
@@ -105,6 +113,26 @@ test("openai-compatible chat models pass thinking effort as reasoning effort", (
   assert.ok(model instanceof ChatOpenAI)
   const params = model.invocationParams({}) as Record<string, unknown>
   assert.equal(params.reasoning_effort, "medium")
+  assert.equal(params.max_completion_tokens, 128000)
+  assert.equal(params.max_tokens, undefined)
+})
+
+test("openai-compatible chat models omit max tokens when the model has no configured output limit", () => {
+  const model = createProviderChatModelFromAdapter(createRuntimeConfig("dashscope", "qwen-plus"))
+
+  assert.ok(model instanceof ChatOpenAI)
+  const params = model.invocationParams({}) as Record<string, unknown>
+  assert.equal(params.max_completion_tokens, undefined)
+  assert.equal(params.max_tokens, undefined)
+})
+
+test("google chat models pass configured catalog output limits", () => {
+  const model = createProviderChatModelFromAdapter(
+    createRuntimeConfig("google", "gemini-3-pro-preview")
+  )
+
+  assert.ok(model instanceof ChatGoogleGenerativeAI)
+  assert.equal(model.maxOutputTokens, 65536)
 })
 
 test("codex provider creates a Codex CLI-backed chat model", () => {
@@ -139,6 +167,23 @@ test("declarative provider adapters use catalog metadata", () => {
     adapter.definition.credentialFormSchemas.map((schema) => schema.variable),
     ["apiKey"]
   )
+})
+
+test("dynamic local declarative providers wait for model discovery", () => {
+  const jingleHome = mkdtempSync(join(tmpdir(), "jingle-dynamic-local-provider-"))
+  process.env.JINGLE_CONFIG_HOME = join(jingleHome, "config")
+  process.env.JINGLE_DATA_HOME = join(jingleHome, "data")
+
+  try {
+    const providers = getModelProviderStateForUI().providers
+    const lmStudio = providers.find((provider) => provider.id === "lmstudio")
+
+    assert.equal(lmStudio?.source, "declarative")
+    assert.equal(lmStudio?.customConfiguration.status, "active")
+    assert.equal(lmStudio?.modelListStatus, "no-configure")
+  } finally {
+    rmSync(jingleHome, { force: true, recursive: true })
+  }
 })
 
 test("declarative provider env vars become saved credentials for URL substitution", async () => {
@@ -287,8 +332,11 @@ test("deepseek chat models use the Anthropic-compatible endpoint for thinking to
   const params = model.invocationParams({})
   assert.equal(params.disable_parallel_tool_use, true)
   assert.equal(params.model, "deepseek-v4-pro")
+  assert.equal(params.max_tokens, 384000)
   assert.deepEqual(params.thinking, { budget_tokens: 1024, type: "enabled" })
   assert.equal(params.temperature, undefined)
+  assert.equal(model.profile.maxInputTokens, 1000000)
+  assert.equal(model.profile.maxOutputTokens, 384000)
 })
 
 test("anthropic chat models pass thinking effort as thinking budget", () => {
@@ -301,7 +349,21 @@ test("anthropic chat models pass thinking effort as thinking budget", () => {
 
   const params = model.invocationParams({})
   assert.deepEqual(params.thinking, { budget_tokens: 16000, type: "enabled" })
+  assert.equal(params.max_tokens, 64000)
   assert.equal(params.temperature, undefined)
+})
+
+test("OpenAI-compatible chat models expose runtime profile limits to middleware", () => {
+  const model = createProviderChatModelFromAdapter(
+    createRuntimeConfig("dashscope", "qwen-plus", {
+      contextLimit: 128000,
+      maxOutputTokens: 8192
+    })
+  ) as ChatOpenAI
+
+  assert.ok(model instanceof ChatOpenAI)
+  assert.equal(model.profile.maxInputTokens, 128000)
+  assert.equal(model.profile.maxOutputTokens, 8192)
 })
 
 test("deepseek thinking models replay assistant tool calls with an Anthropic thinking block", async () => {
@@ -397,6 +459,29 @@ test("listRemoteModelsByProvider scopes remote model ids by provider", async () 
         modelType: "llm",
         provider: "openai",
         status: "active"
+      }
+    ]
+  )
+})
+
+test("listRemoteModelsByProvider overlays catalog token limits onto remote models", async () => {
+  mockJsonResponse({
+    data: [{ id: "gpt-5.1" }]
+  })
+
+  const models = await listRemoteModelsByProvider("openai", { apiKey: "sk-test" })
+
+  assert.deepEqual(
+    models.map((model) => ({
+      contextLimit: model.contextLimit,
+      id: model.id,
+      maxOutputTokens: model.maxOutputTokens
+    })),
+    [
+      {
+        contextLimit: 400000,
+        id: "openai:gpt-5.1",
+        maxOutputTokens: 128000
       }
     ]
   )

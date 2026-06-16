@@ -32,7 +32,9 @@ export interface ProviderDefinition {
 export type ProviderCredentials = Record<string, string>
 
 export interface ResolvedModelRuntimeConfig {
+  contextLimit?: number
   credentials: ProviderCredentials
+  maxOutputTokens?: number
   modelId: string
   modelName: string
   modelType: ModelType

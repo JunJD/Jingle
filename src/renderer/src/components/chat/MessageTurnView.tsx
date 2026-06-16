@@ -10,7 +10,7 @@ import {
   Terminal,
   TriangleAlert
 } from "lucide-react"
-import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import {
   extractComposerMessageRefsMetadata,
   hasMessageContent,
@@ -360,6 +360,11 @@ type ProjectedToolActivityStatus =
   | "running"
   | "waiting_result"
 
+type ActivityHeaderText = {
+  detail: ReactNode | null
+  title: ReactNode
+}
+
 const ACTIVE_TURN_STATUS_ELAPSED_THRESHOLD_MS = 3_000
 
 function getAgentActivitySummaryIcon(kind: AgentActivitySummaryIcon): React.JSX.Element {
@@ -389,7 +394,38 @@ function isActivityViewPending(action: ActivityView): boolean {
 }
 
 function isActivityViewLoading(action: ActivityView): boolean {
-  return action.status === "arguments_streaming" || action.status === "running"
+  return (
+    action.status === "arguments_streaming" ||
+    action.status === "running" ||
+    action.status === "waiting_result"
+  )
+}
+
+function getFallbackActivityHeaderText(input: {
+  copy: ReturnType<typeof useI18n>["copy"]
+  headerToolAction: ToolActivityView | null
+  itemsLength: number
+}): ActivityHeaderText {
+  const { copy, headerToolAction, itemsLength } = input
+
+  if (headerToolAction?.status === "approval") {
+    return {
+      detail: null,
+      title: copy.chat.agentStatusWaitingApproval
+    }
+  }
+
+  if (headerToolAction && isActivityViewLoading(headerToolAction)) {
+    return {
+      detail: headerToolAction.view.display.detail,
+      title: headerToolAction.view.display.title
+    }
+  }
+
+  return {
+    detail: null,
+    title: copy.chat.executedSteps(itemsLength)
+  }
 }
 
 function projectToolActivityStatus(input: {
@@ -490,13 +526,15 @@ function AgentActivityGroup(props: {
     copy,
     actionViews.map(toAgentActivitySummaryTool)
   )
-  const fallbackHeaderTitle =
-    (headerToolAction?.status === "approval" ? copy.chat.agentStatusWaitingApproval : null) ??
-    copy.chat.executedSteps(items.length)
+  const fallbackHeaderText = getFallbackActivityHeaderText({
+    copy,
+    headerToolAction,
+    itemsLength: items.length
+  })
   const headerTitle = activeThinking
     ? copy.chat.agentStatusThinking
-    : (headerSummary?.title ?? fallbackHeaderTitle)
-  const headerDetail = activeThinking ? null : (headerSummary?.detail ?? null)
+    : (headerSummary?.title ?? fallbackHeaderText.title)
+  const headerDetail = activeThinking ? null : (headerSummary?.detail ?? fallbackHeaderText.detail)
   const headerTextActive = Boolean(
     activeThinking || (headerSummary && headerToolAction && isActivityViewLoading(headerToolAction))
   )

@@ -467,12 +467,7 @@ test("completed file mutation view model only uses completed result facts", asyn
     toolCall
   })
 
-  assert.equal(structuredView.model.fileMutation?.kind, "view")
-  if (structuredView.model.fileMutation?.kind === "view") {
-    assert.equal(structuredView.model.fileMutation.viewModel.source, "completed_result")
-    assert.equal(structuredView.model.fileMutation.viewModel.status, "completed")
-    assert.equal(structuredView.model.fileMutation.viewModel.files[0]?.changeType, "create")
-  }
+  assert.equal(structuredView.model.fileMutation?.kind, "raw_result")
 })
 
 test("patch artifacts project multi-file changes into the Pierre file mutation model", () => {
@@ -666,7 +661,7 @@ test("projectAgentActivityHeaderSummary keeps pending exploration local and excl
       }
     ]),
     {
-      detail: "1 file",
+      detail: null,
       icon: "file",
       title: "Reading file"
     }
@@ -685,9 +680,37 @@ test("projectAgentActivityHeaderSummary keeps pending exploration local and excl
       }
     ]),
     {
-      detail: "1 change",
+      detail: null,
       icon: "pencil",
       title: "Editing file"
+    }
+  )
+
+  assert.deepEqual(
+    projectAgentActivityHeaderSummary(copy, [
+      {
+        status: "complete",
+        toolCall: {
+          args: { path: "/repo/src" },
+          id: "call_list_src",
+          name: "ls",
+          type: "tool_call"
+        }
+      },
+      {
+        status: "running",
+        toolCall: {
+          args: { path: "/repo/blog" },
+          id: "call_list_blog",
+          name: "ls",
+          type: "tool_call"
+        }
+      }
+    ]),
+    {
+      detail: "1 list",
+      icon: "folder",
+      title: "Listing directory"
     }
   )
 

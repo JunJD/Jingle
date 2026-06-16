@@ -138,6 +138,11 @@ export type MessageDisplayRow =
       turnKey: string
     }
   | {
+      kind: "context-compaction"
+      key: string
+      messageId: string
+    }
+  | {
       kind: "footer"
       key: "__chat_footer__"
     }
@@ -338,6 +343,10 @@ function isPendingToolExecutionStatus(status: AgentToolExecutionViewStatus): boo
   return status !== "complete" && status !== "failed"
 }
 
+function isCompletedToolExecutionStatus(status: AgentToolExecutionViewStatus): boolean {
+  return status === "complete"
+}
+
 export function projectAgentActivitySummary(
   tools: readonly AgentActivitySummaryToolInput[]
 ): AgentActivitySummaryProjection | null {
@@ -361,7 +370,7 @@ export function projectAgentActivitySummary(
     factKeysByCategory.set(category, new Set())
   }
 
-  for (const tool of categorizedTools) {
+  for (const tool of categorizedTools.filter((tool) => isCompletedToolExecutionStatus(tool.status))) {
     const category = tool.category!
     const factKey = getToolCallSummaryFactKey(category, tool.toolCall)
     if (!factKey) {
@@ -594,6 +603,10 @@ function attachTurnToolResults(
   }))
 }
 
+function isContextCompactionMessage(message: ThreadMessage): boolean {
+  return message.role === "user" && message.metadata?.lc_source === "summarization"
+}
+
 function stabilizeTurns(previous: MessageTurn[] | undefined, next: MessageTurn[]): MessageTurn[] {
   if (!previous) {
     return next
@@ -634,24 +647,67 @@ function stabilizeTurns(previous: MessageTurn[] | undefined, next: MessageTurn[]
   return isEqual ? previous : stableTurns
 }
 
-function buildDisplayRows(turns: MessageTurn[]): MessageDisplayRow[] {
-  return [
-    ...turns.map(
-      (turn): MessageDisplayRow => ({
-        kind: "turn",
-        key: turn.key,
-        turnKey: turn.key
+function buildDisplayRows(messages: ThreadMessage[], turns: MessageTurn[]): MessageDisplayRow[] {
+  const rows: MessageDisplayRow[] = []
+  const turnKeyByMessageId = new Map<string, string>()
+
+  for (const turn of turns) {
+    if (turn.user) {
+      turnKeyByMessageId.set(turn.user.id, turn.key)
+    }
+
+    for (const assistant of turn.assistants) {
+      turnKeyByMessageId.set(assistant.id, turn.key)
+    }
+  }
+
+  const projectedTurnKeys = new Set<string>()
+
+  for (const message of messages) {
+    if (isContextCompactionMessage(message)) {
+      rows.push({
+        kind: "context-compaction",
+        key: `context-compaction:${message.id}`,
+        messageId: message.id
       })
-    ),
-    FOOTER_DISPLAY_ROW
-  ]
+      continue
+    }
+
+    const turnKey = turnKeyByMessageId.get(message.id)
+    if (!turnKey || projectedTurnKeys.has(turnKey)) {
+      continue
+    }
+
+    projectedTurnKeys.add(turnKey)
+    rows.push({
+      kind: "turn",
+      key: turnKey,
+      turnKey
+    })
+  }
+
+  for (const turn of turns) {
+    if (projectedTurnKeys.has(turn.key)) {
+      continue
+    }
+
+    rows.push({
+      kind: "turn",
+      key: turn.key,
+      turnKey: turn.key
+    })
+  }
+
+  rows.push(FOOTER_DISPLAY_ROW)
+  return rows
 }
 
 function stabilizeDisplayRows(
   previous: MessageDisplayRow[] | undefined,
+  messages: ThreadMessage[],
   turns: MessageTurn[]
 ): MessageDisplayRow[] {
-  const next = buildDisplayRows(turns)
+  const next = buildDisplayRows(messages, turns)
   if (!previous) {
     return next
   }
@@ -727,6 +783,15 @@ function createToolActivityItem(
 
 function createActiveToolActivityItem(activeToolCall: ActiveAgentToolCall): AgentActivityItem | null {
   if (!activeToolCall.messageId || !activeToolCall.name) {
+    return null
+  }
+
+  if (
+    !shouldProjectToolActivity({
+      name: activeToolCall.name,
+      presentation: undefined
+    })
+  ) {
     return null
   }
 
@@ -953,6 +1018,33 @@ export function getTurnPendingApproval(
   return belongsToTurn ? pendingApproval : null
 }
 
+export function projectTurnPendingApproval(input: {
+  activeToolCalls?: readonly ActiveAgentToolCall[]
+  isActiveTurn: boolean
+  pendingApproval: HITLRequest | null | undefined
+  turn: MessageTurn | null
+}): HITLRequest | null {
+  if (!input.turn || !input.pendingApproval) {
+    return null
+  }
+
+  const persistedTurnApproval = getTurnPendingApproval(input.turn, input.pendingApproval)
+  if (persistedTurnApproval) {
+    return persistedTurnApproval
+  }
+
+  if (!input.isActiveTurn) {
+    return null
+  }
+
+  const pendingToolCallId = input.pendingApproval.tool_call.id
+  const belongsToActiveTool = (input.activeToolCalls ?? []).some(
+    (toolCall) => toolCall.id === pendingToolCallId
+  )
+
+  return belongsToActiveTool ? input.pendingApproval : null
+}
+
 export function projectTurnToolExecutionsView(input: {
   activeToolCallId: string | null
   activeToolCalls?: readonly ActiveAgentToolCall[]
@@ -1098,11 +1190,12 @@ export function projectMessages(
     buildToolResults(messages)
   )
   const visibleMessages = messages.filter((message) => message.role !== "tool")
+  const turnMessages = visibleMessages.filter((message) => !isContextCompactionMessage(message))
   const turns = stabilizeTurns(
     previousProjection?.turns,
-    attachTurnToolResults(buildMessageTurns(visibleMessages), toolResults)
+    attachTurnToolResults(buildMessageTurns(turnMessages), toolResults)
   )
-  const displayRows = stabilizeDisplayRows(previousProjection?.displayRows, turns)
+  const displayRows = stabilizeDisplayRows(previousProjection?.displayRows, visibleMessages, turns)
   let latestAssistantId: string | null = null
   for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
     const message = visibleMessages[index]

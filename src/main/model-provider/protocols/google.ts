@@ -1,5 +1,6 @@
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai"
 import { isChatCandidate } from "./openai-compatible"
+import { resolveRequiredMaxOutputTokens } from "../model-limits"
 import type { ProtocolCreateModelInput } from "./types"
 
 export function createGoogleChatModel(
@@ -11,6 +12,7 @@ export function createGoogleChatModel(
 
   return new ChatGoogleGenerativeAI({
     apiKey,
+    maxOutputTokens: resolveRequiredMaxOutputTokens(runtimeConfig.maxOutputTokens),
     model: runtimeConfig.modelName,
     temperature: options.temperature
   })

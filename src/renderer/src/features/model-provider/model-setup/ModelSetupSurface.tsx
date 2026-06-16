@@ -107,8 +107,9 @@ export function ModelSetupSurface(props: ModelSetupSurfaceProps): React.JSX.Elem
   const effectiveMode: SetupMode = focusedProvider ? "providers" : mode
 
   const currentModel = models.find((model) => model.id === defaultModelId) ?? null
-  const currentProvider = currentModel
-    ? (providers.find((provider) => provider.id === currentModel.provider) ?? null)
+  const currentProviderId = currentModel?.provider ?? getProviderIdFromModelId(defaultModelId)
+  const currentProvider = currentProviderId
+    ? (providers.find((provider) => provider.id === currentProviderId) ?? null)
     : null
   const freeProviders = providers.filter(
     (provider) => ["codex", "local"].includes(provider.id) || provider.source === "registry"
@@ -180,10 +181,10 @@ export function ModelSetupSurface(props: ModelSetupSurfaceProps): React.JSX.Elem
     <div className={cn("w-full", variant === "onboarding" ? "min-h-screen bg-background" : "")}>
       <div
         className={cn(
-          "mx-auto w-full max-w-[860px]",
+          "mx-auto w-full",
           variant === "onboarding"
-            ? "px-[calc(var(--window-controls-offset-inline)+18px)] pb-16 pt-[120px]"
-            : "space-y-[var(--ow-space-5)]"
+            ? "max-w-[860px] px-[calc(var(--window-controls-offset-inline)+18px)] pb-16 pt-[120px]"
+            : "max-w-[1024px] space-y-[var(--ow-space-5)]"
         )}
       >
         {variant === "onboarding" && (
@@ -205,6 +206,7 @@ export function ModelSetupSurface(props: ModelSetupSurfaceProps): React.JSX.Elem
             activeProviderId={activeProviderId}
             currentModel={currentModel}
             currentProvider={currentProvider}
+            defaultModelId={defaultModelId}
             onConfigureProvider={() => setMode("providers")}
             onSwitchModels={() => openSwitchDialog()}
           />
@@ -236,6 +238,7 @@ export function ModelSetupSurface(props: ModelSetupSurfaceProps): React.JSX.Elem
           <ProviderSettingsPage
             editorLoadingProviderId={editorLoadingProviderId}
             errorText={providerPageError}
+            models={models}
             providers={visibleProviders}
             query={query}
             title="提供商配置项"
@@ -342,11 +345,21 @@ function CurrentModelPanel(props: {
   activeProviderId: ProviderId | null
   currentModel: ModelConfig | null
   currentProvider: Provider | null
+  defaultModelId: string
   onConfigureProvider: () => void
   onSwitchModels: () => void
 }): React.JSX.Element {
-  const { activeProviderId, currentModel, currentProvider, onConfigureProvider, onSwitchModels } =
-    props
+  const {
+    activeProviderId,
+    currentModel,
+    currentProvider,
+    defaultModelId,
+    onConfigureProvider,
+    onSwitchModels
+  } = props
+  const fallbackProviderId = getProviderIdFromModelId(defaultModelId)
+  const displayModelName = currentModel?.name ?? getModelNameFromId(defaultModelId)
+  const displayProviderName = currentProvider?.name ?? fallbackProviderId
 
   return (
     <div className="rounded-[var(--ow-settings-card-radius)] border border-border bg-background-secondary/60 px-[var(--ow-space-4)] py-[var(--ow-space-4)]">
@@ -359,17 +372,20 @@ function CurrentModelPanel(props: {
             />
           </div>
           <div className="min-w-0">
+            <div className="mb-0.5 [font-size:var(--ow-font-caption)] font-medium text-muted-foreground">
+              新线程默认模型
+            </div>
             <div className="[font-size:var(--ow-font-title)] font-semibold text-foreground">
-              {currentModel?.name ?? getModelNameFromId(currentModel?.id ?? "") ?? "尚未选择模型"}
+              {displayModelName ?? "尚未设置默认模型"}
             </div>
             <div className="mt-0.5 truncate [font-size:var(--ow-font-body)] text-muted-foreground">
-              {currentProvider?.name ?? "选择一个 provider 后即可开始"}
+              {displayProviderName ?? "选择一个 provider 后即可开始"}
             </div>
           </div>
         </div>
         <div className="flex shrink-0 gap-[var(--ow-gap-sm)]">
           <Button type="button" variant="outline" onClick={onSwitchModels}>
-            切换模型
+            设置默认模型
           </Button>
           <Button type="button" variant="outline" onClick={onConfigureProvider}>
             配置提供商
@@ -383,6 +399,7 @@ function CurrentModelPanel(props: {
 function ProviderSettingsPage(props: {
   editorLoadingProviderId: ProviderId | null
   errorText: string | null
+  models: ModelConfig[]
   onAddCustom: () => void
   onBack: () => void
   onConfigureProvider: (provider: Provider) => void
@@ -392,56 +409,130 @@ function ProviderSettingsPage(props: {
   query: string
   title: string
 }): React.JSX.Element {
+  const configuredProviders = props.providers.filter(
+    (provider) => getProviderReadiness(provider, props.models) === "ready"
+  )
+  const availableProviders = props.providers.filter(
+    (provider) => getProviderReadiness(provider, props.models) !== "ready"
+  )
+  const hasProviders = props.providers.length > 0
+
   return (
-    <div className="space-y-[var(--ow-space-7)]">
-      <div className="border-b border-border pb-[var(--ow-space-7)]">
+    <div className="space-y-[var(--ow-space-6)]">
+      <div className="border-b border-border pb-[var(--ow-space-5)]">
         <button
           type="button"
-          className="inline-flex h-9 items-center gap-[var(--ow-space-2)] rounded-full bg-background-secondary px-[var(--ow-space-3)] [font-size:var(--ow-font-body)] text-muted-foreground transition hover:bg-background-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="inline-flex h-8 items-center gap-[var(--ow-space-2)] rounded-[var(--ow-radius-md)] bg-background-secondary px-[var(--ow-space-3)] [font-size:var(--ow-font-body)] text-muted-foreground transition hover:bg-background-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           onClick={props.onBack}
         >
           <ArrowLeft className="h-4 w-4" />
           返回
         </button>
-        <h1 className="mt-[var(--ow-space-6)] [font-size:34px] font-light leading-tight tracking-normal text-foreground">
-          {props.title}
-        </h1>
-      </div>
-
-      <div className="flex justify-end">
-        <div className="relative w-full sm:w-[280px]">
-          <Search className="pointer-events-none absolute left-[var(--ow-space-3)] top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            className="min-h-[var(--ow-settings-control-h)] w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)] pl-9 [font-size:var(--ow-settings-control-font)] outline-none transition focus:border-[var(--ring)]"
-            placeholder="搜索 provider"
-            value={props.query}
-            onChange={(event) => props.onQueryChange(event.target.value)}
-          />
+        <div className="mt-[var(--ow-space-5)] flex flex-col gap-[var(--ow-space-4)] sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="[font-size:28px] font-normal leading-tight tracking-normal text-foreground">
+              {props.title}
+            </h1>
+            <div className="mt-[var(--ow-space-2)] flex flex-wrap items-center gap-[var(--ow-space-2)] [font-size:var(--ow-font-caption)] text-muted-foreground">
+              <ProviderCountBadge label="已可用" value={configuredProviders.length} />
+              <ProviderCountBadge label="待处理" value={availableProviders.length} />
+            </div>
+          </div>
+          <div className="flex w-full flex-col gap-[var(--ow-space-2)] sm:w-auto sm:flex-row sm:items-center">
+            <div className="relative w-full sm:w-[260px]">
+              <Search className="pointer-events-none absolute left-[var(--ow-space-3)] top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                className="min-h-[var(--ow-settings-control-h)] w-full rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)] pl-9 [font-size:var(--ow-settings-control-font)] outline-none transition focus:border-[var(--ring)]"
+                placeholder="搜索 provider"
+                value={props.query}
+                onChange={(event) => props.onQueryChange(event.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              className="inline-flex h-[var(--ow-settings-control-h)] shrink-0 items-center justify-center gap-[var(--ow-space-2)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] [font-size:var(--ow-font-body)] font-medium text-foreground transition hover:bg-background-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              onClick={props.onAddCustom}
+            >
+              <Plus className="h-4 w-4" />
+              自定义 provider
+            </button>
+          </div>
         </div>
       </div>
 
       {props.errorText ? <InlineError text={props.errorText} /> : null}
 
-      <div className="grid justify-center gap-[var(--ow-space-4)] [grid-template-columns:repeat(auto-fill,minmax(198px,198px))]">
+      {configuredProviders.length > 0 ? (
+        <ProviderSection
+          editorLoadingProviderId={props.editorLoadingProviderId}
+          models={props.models}
+          providers={configuredProviders}
+          title="已可用"
+          onConfigureProvider={props.onConfigureProvider}
+          onSwitchModel={props.onSwitchModel}
+        />
+      ) : null}
+
+      {availableProviders.length > 0 ? (
+        <ProviderSection
+          editorLoadingProviderId={props.editorLoadingProviderId}
+          models={props.models}
+          providers={availableProviders}
+          title="待配置或检测"
+          onConfigureProvider={props.onConfigureProvider}
+          onSwitchModel={props.onSwitchModel}
+        />
+      ) : null}
+
+      {!hasProviders ? (
+        <div className="rounded-[var(--ow-radius-md)] border border-dashed border-border bg-background-secondary px-[var(--ow-space-4)] py-[var(--ow-space-6)] text-center [font-size:var(--ow-font-body)] text-muted-foreground">
+          没有匹配的 provider
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function ProviderCountBadge(props: { label: string; value: number }): React.JSX.Element {
+  return (
+    <span className="inline-flex h-6 items-center gap-[var(--ow-space-1)] rounded-full border border-border bg-background-secondary px-[var(--ow-space-2)]">
+      <span>{props.label}</span>
+      <span className="font-mono text-foreground">{props.value}</span>
+    </span>
+  )
+}
+
+function ProviderSection(props: {
+  editorLoadingProviderId: ProviderId | null
+  models: ModelConfig[]
+  onConfigureProvider: (provider: Provider) => void
+  onSwitchModel: (providerId: ProviderId) => void
+  providers: Provider[]
+  title: string
+}): React.JSX.Element {
+  return (
+    <section className="space-y-[var(--ow-space-3)]">
+      <div className="flex items-center gap-[var(--ow-space-2)]">
+        <h2 className="[font-size:var(--ow-font-title)] font-semibold text-foreground">
+          {props.title}
+        </h2>
+        <span className="rounded-full bg-background-secondary px-[var(--ow-space-2)] py-[2px] [font-size:var(--ow-font-caption)] font-mono text-muted-foreground">
+          {props.providers.length}
+        </span>
+      </div>
+      <div className="grid gap-[var(--ow-space-2)]">
         {props.providers.map((provider) => (
           <ProviderCard
             key={provider.id}
             loading={props.editorLoadingProviderId === provider.id}
+            models={props.models}
             provider={provider}
             onConfigure={() => props.onConfigureProvider(provider)}
             onSwitchModel={() => props.onSwitchModel(provider.id)}
           />
         ))}
-        <button
-          type="button"
-          className="flex min-h-[164px] flex-col items-center justify-center gap-[var(--ow-space-2)] rounded-[var(--ow-settings-card-radius)] border border-dashed border-border bg-background text-muted-foreground transition hover:border-border-emphasis hover:bg-background-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          onClick={props.onAddCustom}
-        >
-          <Plus className="h-5 w-5" />
-          <span className="[font-size:var(--ow-font-body)] font-medium">添加自定义 provider</span>
-        </button>
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -475,7 +566,7 @@ function FreeProviderGrid(props: {
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-title)] font-medium text-foreground">
                   {provider.name}
-                  {selected ? <Check className="h-4 w-4 text-status-success" /> : null}
+                  {selected ? <Check className="h-4 w-4 text-status-nominal" /> : null}
                 </span>
                 <span className="mt-[var(--ow-space-1)] block [font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-muted-foreground">
                   {provider.description?.zh_Hans ??
@@ -494,30 +585,34 @@ function FreeProviderGrid(props: {
 
 function ProviderCard(props: {
   loading: boolean
+  models: ModelConfig[]
   onConfigure: () => void
   onSwitchModel: () => void
   provider: Provider
 }): React.JSX.Element {
-  const { loading, onConfigure, onSwitchModel, provider } = props
+  const { loading, models, onConfigure, onSwitchModel, provider } = props
+  const readiness = getProviderReadiness(provider, models)
   const configured = provider.customConfiguration.status === "active"
 
   return (
-    <div className="flex min-h-[164px] flex-col justify-between rounded-[var(--ow-settings-card-radius)] border border-border bg-background-elevated p-[var(--ow-space-3)] text-left transition hover:border-border-emphasis hover:bg-background-secondary">
-      <div className="flex w-full items-start justify-between gap-[var(--ow-space-2)]">
-        {configured ? <Check className="ml-auto h-4 w-4 text-status-success" /> : null}
-      </div>
-      <div className="min-w-0">
-        <div className="flex items-center gap-[var(--ow-space-2)]">
-          <ProviderLogo providerId={provider.id} className="h-5 w-5 shrink-0 text-foreground" />
-          <div className="truncate [font-size:var(--ow-font-title)] font-medium text-foreground">
-            {provider.name}
+    <div className="group flex min-h-[92px] flex-col gap-[var(--ow-space-3)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-4)] py-[var(--ow-space-3)] text-left transition hover:border-border-emphasis hover:bg-background-secondary sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-[var(--ow-space-3)]">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--ow-radius-md)] border border-border bg-background text-foreground">
+          <ProviderLogo providerId={provider.id} className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-[var(--ow-space-2)]">
+            <div className="truncate [font-size:var(--ow-font-title)] font-medium text-foreground">
+              {provider.name}
+            </div>
+            <ProviderStatusPill readiness={readiness} />
+          </div>
+          <div className="mt-[var(--ow-space-1)] line-clamp-2 [font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-muted-foreground">
+            {provider.description?.zh_Hans ?? provider.description?.en_US ?? "自定义 provider"}
           </div>
         </div>
-        <div className="mt-[var(--ow-space-2)] line-clamp-3 min-h-[54px] [font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-muted-foreground">
-          {provider.description?.zh_Hans ?? provider.description?.en_US ?? "自定义 provider"}
-        </div>
       </div>
-      <div className="mt-[var(--ow-space-3)] flex items-center gap-[var(--ow-space-2)]">
+      <div className="flex shrink-0 items-center gap-[var(--ow-space-2)] pl-[52px] sm:pl-0">
         <button
           type="button"
           className="inline-flex h-8 items-center gap-[var(--ow-space-1)] rounded-[var(--ow-radius-md)] border border-border bg-background px-[var(--ow-space-3)] [font-size:var(--ow-font-body)] font-medium text-foreground transition hover:bg-background-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -537,12 +632,76 @@ function ProviderCard(props: {
             className="inline-flex h-8 items-center rounded-[var(--ow-radius-md)] border border-border bg-background px-[var(--ow-space-3)] [font-size:var(--ow-font-body)] font-medium text-muted-foreground transition hover:bg-background-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onClick={onSwitchModel}
           >
-            模型
+            {readiness === "needs-models" ? "检测" : "切换"}
           </button>
         ) : null}
       </div>
     </div>
   )
+}
+
+type ProviderReadiness = "ready" | "error" | "needs-models" | "needs-setup"
+
+function ProviderStatusPill(props: { readiness: ProviderReadiness }): React.JSX.Element {
+  const label = getProviderReadinessLabel(props.readiness)
+  const icon = props.readiness === "ready" ? <Check className="h-3 w-3" /> : null
+
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center gap-[var(--ow-space-1)] rounded-full border px-[var(--ow-space-2)] [font-size:var(--ow-font-caption)]",
+        getProviderReadinessClassName(props.readiness)
+      )}
+    >
+      {icon}
+      {label}
+    </span>
+  )
+}
+
+function getProviderReadiness(provider: Provider, models: ModelConfig[]): ProviderReadiness {
+  if (provider.customConfiguration.status !== "active") {
+    return "needs-setup"
+  }
+  if (provider.modelListStatus === "error") {
+    return "error"
+  }
+  if (
+    provider.modelListStatus !== "active" ||
+    models.every((model) => model.provider !== provider.id || model.status !== "active")
+  ) {
+    return "needs-models"
+  }
+
+  return "ready"
+}
+
+function getProviderReadinessLabel(readiness: ProviderReadiness): string {
+  if (readiness === "ready") {
+    return "已可用"
+  }
+  if (readiness === "error") {
+    return "模型列表失败"
+  }
+  if (readiness === "needs-models") {
+    return "待检测"
+  }
+
+  return "未配置"
+}
+
+function getProviderReadinessClassName(readiness: ProviderReadiness): string {
+  if (readiness === "ready") {
+    return "border-status-nominal/20 bg-status-nominal/10 text-status-nominal"
+  }
+  if (readiness === "error") {
+    return "border-status-critical/20 bg-status-critical/10 text-status-critical"
+  }
+  if (readiness === "needs-models") {
+    return "border-status-warning/20 bg-status-warning/10 text-status-warning"
+  }
+
+  return "border-border bg-background-secondary text-muted-foreground"
 }
 
 function ProviderEditorDialogs(props: {
@@ -1050,9 +1209,11 @@ function SwitchModelDialogContent(props: {
         <DialogHeader className="text-left">
           <DialogTitle className="flex items-center gap-[var(--ow-space-2)]">
             <SlidersHorizontal className="h-4 w-4" />
-            切换模型
+            设置新线程默认模型
           </DialogTitle>
-          <DialogDescription>选择用于对话的提供商和模型。</DialogDescription>
+          <DialogDescription>
+            选择后会用于之后新建的对话；当前已有对话请在对话顶部切换。
+          </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-[var(--ow-space-3)]">

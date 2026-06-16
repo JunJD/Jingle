@@ -4,8 +4,10 @@ import type { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager
 import type { ChatGenerationChunk, ChatResult } from "@langchain/core/outputs"
 import type { ChatModelOptions, ProtocolCreateModelInput } from "./types"
 import { isChatCandidate } from "./openai-compatible"
+import { resolveRequiredMaxOutputTokens } from "../model-limits"
 
 type AnthropicContentBlock = Record<string, unknown> & { type: string }
+type AnthropicThinkingConfig = { budget_tokens: number; type: "enabled" }
 
 export function createAnthropicChatModel(
   input: ProtocolCreateModelInput & {
@@ -24,6 +26,7 @@ export function createAnthropicChatModel(
     ...createAnthropicCredentialOptions(apiKey, headers),
     ...(baseURL ? { anthropicApiUrl: baseURL } : {}),
     ...createAnthropicToolCallOptions(options),
+    maxTokens: resolveAnthropicMaxTokens(runtimeConfig.maxOutputTokens),
     model: runtimeConfig.modelName,
     ...(thinking ? { thinking } : {}),
     ...(thinking ? {} : { temperature: options.temperature })
@@ -32,7 +35,7 @@ export function createAnthropicChatModel(
 
 function createAnthropicThinking(
   thinkingEffort: ProtocolCreateModelInput["runtimeConfig"]["thinkingEffort"]
-): { budget_tokens: number; type: "enabled" } | undefined {
+): AnthropicThinkingConfig | undefined {
   if (!thinkingEffort || thinkingEffort === "off") {
     return undefined
   }
@@ -48,6 +51,10 @@ function createAnthropicThinking(
     budget_tokens: budgetTokensByEffort[thinkingEffort],
     type: "enabled"
   }
+}
+
+function resolveAnthropicMaxTokens(maxOutputTokens: number | undefined): number {
+  return resolveRequiredMaxOutputTokens(maxOutputTokens)
 }
 
 export function createAnthropicCredentialOptions(

@@ -75,6 +75,7 @@ export interface AgentActivityRowProps extends Omit<
   labelClassName?: string
   meta?: React.ReactNode
   trailing?: React.ReactNode
+  trailingPlacement?: "edge" | "inline"
 }
 
 export function AgentActivityRow(props: AgentActivityRowProps): React.JSX.Element {
@@ -88,10 +89,13 @@ export function AgentActivityRow(props: AgentActivityRowProps): React.JSX.Elemen
     labelClassName,
     meta,
     trailing,
+    trailingPlacement = "edge",
     ...rest
   } = props
   const hasTrailing = Boolean(meta || trailing)
-  const gridClassName = hasTrailing
+  const usesEdgeTrailing = hasTrailing && trailingPlacement === "edge"
+  const usesInlineTrailing = hasTrailing && trailingPlacement === "inline"
+  const gridClassName = usesEdgeTrailing
     ? "grid-cols-[var(--ow-icon-action)_minmax(0,1fr)_minmax(var(--ow-agent-activity-trailing-min-width),auto)]"
     : "grid-cols-[var(--ow-icon-action)_minmax(0,1fr)]"
 
@@ -121,6 +125,7 @@ export function AgentActivityRow(props: AgentActivityRowProps): React.JSX.Elemen
             "block min-w-0 max-w-full truncate [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]",
             labelClassName
           )}
+          data-slot="ow-agent-activity-label"
         >
           {label}
         </span>
@@ -130,12 +135,22 @@ export function AgentActivityRow(props: AgentActivityRowProps): React.JSX.Elemen
               "block min-w-0 max-w-[min(32rem,60vw)] shrink truncate [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-[var(--ow-agent-timeline-muted)]",
               detailClassName
             )}
+            data-slot="ow-agent-activity-detail"
           >
             {detail}
           </span>
         ) : null}
+        {usesInlineTrailing ? (
+          <span
+            className="inline-flex min-w-[var(--ow-agent-activity-trailing-min-width)] shrink-0 items-center justify-start gap-[var(--ow-gap-xs)]"
+            data-slot="ow-agent-activity-trailing"
+          >
+            {meta}
+            {trailing}
+          </span>
+        ) : null}
       </span>
-      {hasTrailing ? (
+      {usesEdgeTrailing ? (
         <span
           className="flex min-w-[var(--ow-agent-activity-trailing-min-width)] shrink-0 items-center justify-end gap-[var(--ow-gap-xs)]"
           data-slot="ow-agent-activity-trailing"
@@ -226,6 +241,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
                   />
                 ) : null
               }
+              trailingPlacement="inline"
             />
           </Button>
         </CollapsibleTrigger>

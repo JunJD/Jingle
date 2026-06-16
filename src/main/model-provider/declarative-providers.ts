@@ -38,6 +38,7 @@ export function listDeclarativeProviderModels(): ModelConfig[] {
       description: provider.description,
       fetchFrom: "customizable-model" as const,
       id: `${provider.name}:${model.name}`,
+      maxOutputTokens: model.max_output_tokens,
       model: model.name,
       modelType: "llm" as const,
       name: model.name,

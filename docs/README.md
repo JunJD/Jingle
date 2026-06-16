@@ -71,6 +71,7 @@
 | [renderer-external-store-architecture.md](./renderer-external-store-architecture.md) | renderer external store 架构方案说明 |
 | [ai-launcher-streaming-performance-boundaries-cn.md](./ai-launcher-streaming-performance-boundaries-cn.md) | AI launcher 流式渲染性能边界、单向数据流、projection/viewport/tool selector owner 和后续改造验收口径 |
 | [agent-activity-runtime-to-ui-cn.md](./agent-activity-runtime-to-ui-cn.md) | Agent activity 从 runtime event、shared state、view projection 到 UI 结构和动效封装的链路说明 |
+| [tool-call-file-mutation-rendering-boundaries-cn.md](./tool-call-file-mutation-rendering-boundaries-cn.md) | Tool call、文件变更、approval preview、completed result 的渲染边界和 Pierre/legacy 清理分波计划 |
 | [messages-perceived-waiting-upgrade-plan-cn.md](./messages-perceived-waiting-upgrade-plan-cn.md) | Messages 感知等待改造方案：首 token 前、thinking、tool、approval 和 final handoff 的用户感受 |
 
 ## 记忆、路线图与执行约束

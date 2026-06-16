@@ -124,6 +124,7 @@ export interface ModelConfig {
   fetchFrom: ConfigurationMethod
   features?: ModelFeature[]
   id: string
+  maxOutputTokens?: number
   model: string
   modelType: ModelType
   name: string
@@ -148,6 +149,7 @@ export type CustomProviderEngine = "openai" | "anthropic" | "ollama"
 
 export interface CustomProviderModel {
   context_limit?: number
+  max_output_tokens?: number
   name: string
   reasoning?: boolean
 }

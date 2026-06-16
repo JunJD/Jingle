@@ -11,6 +11,7 @@ export function createOpenAICompatibleChatModel(
 
   return new ChatOpenAI({
     apiKey,
+    ...createOpenAICompatibleOutputTokenOptions(runtimeConfig.maxOutputTokens),
     model: runtimeConfig.modelName,
     ...createOpenAICompatibleToolCallOptions(options, runtimeConfig.thinkingEffort),
     temperature: options.temperature,
@@ -23,6 +24,12 @@ export function createOpenAICompatibleChatModel(
         }
       : {})
   })
+}
+
+function createOpenAICompatibleOutputTokenOptions(maxOutputTokens: number | undefined): {
+  maxTokens?: number
+} {
+  return maxOutputTokens === undefined ? {} : { maxTokens: maxOutputTokens }
 }
 
 export function createOpenAICompatibleToolCallOptions(

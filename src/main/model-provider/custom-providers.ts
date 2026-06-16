@@ -84,6 +84,7 @@ export function listCustomProviderModels(): ModelConfig[] {
       contextLimit: model.context_limit,
       fetchFrom: "customizable-model" as const,
       id: `${provider.name}:${model.name}`,
+      maxOutputTokens: model.max_output_tokens,
       model: model.name,
       modelType: "llm" as const,
       name: model.name,
@@ -233,6 +234,8 @@ function normalizeCustomProviderModel(value: unknown): CustomProviderConfig["mod
 
   return {
     context_limit: typeof value["context_limit"] === "number" ? value["context_limit"] : undefined,
+    max_output_tokens:
+      typeof value["max_output_tokens"] === "number" ? value["max_output_tokens"] : undefined,
     name: requireString(value, "name"),
     reasoning: typeof value["reasoning"] === "boolean" ? value["reasoning"] : undefined
   }

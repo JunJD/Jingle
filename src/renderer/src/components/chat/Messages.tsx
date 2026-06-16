@@ -12,14 +12,16 @@ import {
   type ReactNode,
   type RefObject
 } from "react"
+import { Archive } from "lucide-react"
 import { VList, type VListHandle } from "virtua"
 import type { ComposerMessageInput, ComposerMessageRef } from "@shared/message-content"
 import type { ActiveAgentToolCall } from "@shared/agent-thread-runtime"
 import type { ContentBlock, Message as ThreadMessage } from "@/types"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 import {
   createDefaultMessagesProjection,
-  getTurnPendingApproval,
+  projectTurnPendingApproval,
   projectTurnToolExecutionsView,
   type AgentToolExecutionsView,
   type MessageDisplayRow,
@@ -89,6 +91,22 @@ function getStreamingContentScrollKey(content: ThreadMessage["content"]): string
   }
 
   return `${textLength}:${reasoningLength}:${content.length}`
+}
+
+function ContextCompactionRow(): ReactElement {
+  const { copy } = useI18n()
+  const label = copy.chat.contextCompacted
+
+  return (
+    <div className="ow-context-compaction-row" aria-label={label}>
+      <div className="ow-context-compaction-rule" aria-hidden="true" />
+      <div className="ow-context-compaction-pill">
+        <Archive aria-hidden="true" className="size-3.5" strokeWidth={1.8} />
+        <span>{label}</span>
+      </div>
+      <div className="ow-context-compaction-rule" aria-hidden="true" />
+    </div>
+  )
 }
 
 function getToolResultsScrollKey(toolResults: Map<string, ToolResultInfo>): string {
@@ -277,16 +295,15 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
       : null
   )
   const turnPendingApproval = useThreadSelector(threadId, (state) =>
-    turn
-      ? (getTurnPendingApproval(turn, state?.agent.pendingApproval ?? null) ??
-        (state?.view.messageProjection.activeTurnKey === turnKey &&
-        state.agent.pendingApproval &&
-        state.agent.activeRun?.toolCalls.some(
-          (toolCall) => toolCall.id === state.agent.pendingApproval?.tool_call.id
-        )
-          ? state.agent.pendingApproval
-          : null))
-      : null
+    projectTurnPendingApproval({
+      activeToolCalls:
+        state?.view.messageProjection.activeTurnKey === turnKey
+          ? state.agent.activeRun?.toolCalls
+          : EMPTY_ACTIVE_TOOL_CALLS,
+      isActiveTurn: state?.view.messageProjection.activeTurnKey === turnKey,
+      pendingApproval: state?.agent.pendingApproval ?? null,
+      turn
+    })
   )
   const toolExecutions = useMemo<AgentToolExecutionsView>(
     () =>
@@ -602,6 +619,8 @@ export function Messages(props: MessagesProps): React.JSX.Element {
                   threadId={threadId}
                   turnKey={row.turnKey}
                 />
+              ) : row.kind === "context-compaction" ? (
+                <ContextCompactionRow />
               ) : (
                 <>
                   {renderFooter?.()}

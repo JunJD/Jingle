@@ -255,8 +255,18 @@ function getProviderStateForUI(adapter: ReturnType<typeof getProviderAdapter>): 
   if (modelListState?.status === "error") {
     return toProviderState(adapter.definition, "active", "error", modelListState.error)
   }
+  if (!modelListState && requiresRemoteModelDiscovery(adapter.definition)) {
+    return toProviderState(adapter.definition, "active", "no-configure")
+  }
 
   return toProviderState(adapter.definition, "active", "active")
+}
+
+function requiresRemoteModelDiscovery(provider: ProviderDefinition): boolean {
+  return (
+    provider.configurateMethods.includes("fetch-from-remote") &&
+    listCatalogModelsByProvider(provider.id, "active").length === 0
+  )
 }
 
 function isProviderConfiguredForUI(adapter: ReturnType<typeof getProviderAdapter>): boolean {
