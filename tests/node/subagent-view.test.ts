@@ -5,8 +5,7 @@ import {
   getSubagentDurationLabel,
   getSubagentKanbanStatus,
   getSubagentStatusPresentation,
-  getThreadKanbanStatus,
-  projectSubagentReferences
+  getThreadKanbanStatus
 } from "../../src/renderer/src/lib/subagent-view"
 import type { Subagent } from "../../src/renderer/src/types"
 
@@ -33,26 +32,6 @@ test("subagent view counts status buckets from runtime state", () => {
     running: 1,
     total: 4
   })
-})
-
-test("subagent view projects references without exposing raw component mapping", () => {
-  const references = projectSubagentReferences([
-    createSubagent({
-      id: "research-1",
-      status: "running",
-      subagentType: "research"
-    })
-  ])
-
-  assert.deepEqual(references, [
-    {
-      detail: "research-1 description",
-      key: "research-1",
-      status: "running",
-      subagentType: "research",
-      title: "research-1 name"
-    }
-  ])
 })
 
 test("subagent view maps runtime statuses to presentation and board statuses", () => {

@@ -10,7 +10,11 @@ import { AI_ATTACHMENT_FILE_EXTENSIONS } from "@shared/launcher-attachments"
 import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
 import { getAiShellConfig } from "./ai-config"
-import { LauncherAiConversation, LauncherAiEmptyState } from "./LauncherAiConversation"
+import {
+  LauncherAiConversation,
+  LauncherAiEmptyState,
+  LauncherAiThreadLoadingState
+} from "./LauncherAiConversation"
 import { LauncherAiHeaderActions } from "./LauncherAiHeaderActions"
 import { LauncherAiHeaderLeadingActions } from "./LauncherAiHeaderLeadingActions"
 import { LauncherAiHeaderModelPicker } from "./LauncherAiHeaderModelPicker"
@@ -36,10 +40,11 @@ import { listNativeLauncherSourceMentions } from "@extension-host/index"
 import { useWorkspaceFileMentions, type ComposerAreaHandle } from "@/composer-area"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import { shouldGoHomeFromComposerKeyDown } from "./composer-keyboard"
-import type { Todo } from "@/types"
+import type { Subagent, Todo } from "@/types"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 const DEFAULT_AGENT_CAN_FORK = true
+const EMPTY_SUBAGENTS: readonly Subagent[] = []
 const EMPTY_TODOS: readonly Todo[] = []
 
 export function LauncherAiPage(): React.JSX.Element {
@@ -85,6 +90,7 @@ export function LauncherAiPage(): React.JSX.Element {
     defaultDraftPermissionMode,
     goToNextThread,
     goToPreviousThread,
+    isHydratingThread,
     startFreshDraft: startFreshDraftTarget,
     updateFreshDraft
   } = threadNavigation
@@ -123,6 +129,7 @@ export function LauncherAiPage(): React.JSX.Element {
     draftTarget?.permissionMode ??
     defaultDraftPermissionMode
   const workspacePath = useThreadSelector(threadId, (state) => state?.agent.workspacePath ?? null)
+  const subagents = useThreadSelector(threadId, (state) => state?.agent.subagents ?? EMPTY_SUBAGENTS)
   const todos = useThreadSelector(threadId, (state) => state?.agent.todos ?? EMPTY_TODOS)
   const query = localComposerText
   const messageInput = useMemo(
@@ -581,6 +588,7 @@ export function LauncherAiPage(): React.JSX.Element {
               environment={{
                 modelLabel: currentModelLabel,
                 permissionLabel: currentPermissionLabel,
+                subagents,
                 threadId,
                 todos,
                 workspacePath
@@ -605,6 +613,13 @@ export function LauncherAiPage(): React.JSX.Element {
                 environmentPermission: copy.launcher.environmentPermission,
                 environmentProgress: copy.launcher.environmentProgress,
                 environmentProgressMore: copy.launcher.environmentProgressMore,
+                environmentSubagents: copy.launcher.environmentSubagents,
+                environmentSubagentStatuses: {
+                  completed: copy.common.completed,
+                  failed: copy.common.error,
+                  pending: copy.launcher.planned,
+                  running: copy.common.running
+                },
                 environmentThread: copy.launcher.environmentThread,
                 environmentWorkspace: copy.launcher.environmentWorkspace,
                 openFolder: copy.launcher.openFolder,
@@ -612,7 +627,8 @@ export function LauncherAiPage(): React.JSX.Element {
                 openSideChat: copy.launcher.openSideChat,
                 openTarget: copy.launcher.openTarget,
                 pinChat: copy.launcher.pinChat,
-                renameChat: copy.launcher.renameChat
+                renameChat: copy.launcher.renameChat,
+                underDevelopment: copy.launcher.underDevelopment
               }}
               onBranchIntoLocal={() => {
                 void handleBranchChat()
@@ -656,12 +672,15 @@ export function LauncherAiPage(): React.JSX.Element {
                 <LauncherAiConversation
                   clearError={clearVisibleError}
                   error={threadError}
+                  isHydrating={isHydratingThread}
                   isLoading={isBusy}
                   onAddAssistantSelectionRef={addSelectionRef}
                   onBranch={handleBranchChat}
                   onRetry={runPrimaryAction}
                   threadId={threadId}
                 />
+              ) : isHydratingThread ? (
+                <LauncherAiThreadLoadingState />
               ) : (
                 <LauncherAiEmptyState error={threadError} />
               )}

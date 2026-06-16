@@ -63,7 +63,6 @@ export interface AppCopy {
     pendingMemoryReject: string
     pendingMemoryTitle: string
     includedMemoriesTitle: (count: number) => string
-    subagentReferencesTitle: (count: number) => string
     messagePlaceholder: string
     newThreadEyebrow: string
     removeSelectionReference: string
@@ -149,6 +148,7 @@ export interface AppCopy {
     environmentPermission: string
     environmentProgress: string
     environmentProgressMore: (count: number) => string
+    environmentSubagents: string
     environmentThread: string
     environmentWorkspace: string
     expandSidebar: string
@@ -156,6 +156,7 @@ export interface AppCopy {
     goToNextChat: string
     goToPreviousChat: string
     jumpToLatest: string
+    loadingThread: string
     newQuestion: string
     openSettings: string
     openAiHistory: string
@@ -175,6 +176,7 @@ export interface AppCopy {
     sidebarRecent: string
     sidebarSources: string
     sidebarUnavailable: string
+    underDevelopment: string
     commandMatches: string
     manageUseWithCommands: string
     useWithAvailable: string
@@ -348,7 +350,6 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       pendingMemoryReject: "忽略",
       pendingMemoryTitle: "待确认记忆",
       includedMemoriesTitle: (count) => `${count} 条记忆引用`,
-      subagentReferencesTitle: (count) => `${count} 个子代理任务`,
       messagePlaceholder: "给 Agent 发送消息...",
       newThreadEyebrow: "新对话",
       removeSelectionReference: "移除引用",
@@ -434,6 +435,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       environmentPermission: "权限",
       environmentProgress: "进度",
       environmentProgressMore: (count) => `再显示 ${count} 个`,
+      environmentSubagents: "子代理任务",
       environmentThread: "会话",
       environmentWorkspace: "Workspace",
       expandSidebar: "展开侧边栏",
@@ -441,6 +443,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       goToNextChat: "前往下一个对话",
       goToPreviousChat: "前往上一个对话",
       jumpToLatest: "跳到最新",
+      loadingThread: "正在恢复会话...",
       newQuestion: "新问题",
       openSettings: "打开设置",
       openAiHistory: "打开 AI 页面",
@@ -460,6 +463,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       sidebarRecent: "Recent",
       sidebarSources: "Sources",
       sidebarUnavailable: "即将支持",
+      underDevelopment: "待开发",
       commandMatches: "命令",
       manageUseWithCommands: "管理 Use With 命令",
       useWithAvailable: "可用",
@@ -650,7 +654,6 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       pendingMemoryReject: "Ignore",
       pendingMemoryTitle: "Pending Memory",
       includedMemoriesTitle: (count) => `${count} memory reference${count === 1 ? "" : "s"}`,
-      subagentReferencesTitle: (count) => `${count} subagent task${count === 1 ? "" : "s"}`,
       messagePlaceholder: "Message the agent...",
       newThreadEyebrow: "New Thread",
       removeSelectionReference: "Remove reference",
@@ -737,6 +740,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       environmentPermission: "Permission",
       environmentProgress: "Progress",
       environmentProgressMore: (count) => `Show ${count} more`,
+      environmentSubagents: "Subagent Tasks",
       environmentThread: "Session",
       environmentWorkspace: "Workspace",
       expandSidebar: "Expand Sidebar",
@@ -744,6 +748,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       goToNextChat: "Go to Next Chat",
       goToPreviousChat: "Go to Previous Chat",
       jumpToLatest: "Jump to latest",
+      loadingThread: "Restoring session...",
       newQuestion: "New Question",
       openSettings: "Open Settings",
       openAiHistory: "Open AI",
@@ -763,6 +768,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       sidebarRecent: "Recent",
       sidebarSources: "Sources",
       sidebarUnavailable: "Coming soon",
+      underDevelopment: "Coming soon",
       commandMatches: "Commands",
       manageUseWithCommands: "Manage Fallback Commands",
       useWithAvailable: "Available",

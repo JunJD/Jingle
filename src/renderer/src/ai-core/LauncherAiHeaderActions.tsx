@@ -1,5 +1,6 @@
 import { PictureInPicture2 } from "lucide-react"
 import type { ReactNode } from "react"
+import type { SubagentStatusLabels } from "@/lib/subagent-view"
 import {
   LauncherAiEnvironmentMenu,
   type LauncherAiEnvironmentInfo
@@ -32,6 +33,8 @@ interface LauncherAiHeaderActionsProps {
     environmentPermission: string
     environmentProgress: string
     environmentProgressMore: (count: number) => string
+    environmentSubagents: string
+    environmentSubagentStatuses: SubagentStatusLabels
     environmentThread: string
     environmentWorkspace: string
     openSideChat: string
@@ -40,6 +43,7 @@ interface LauncherAiHeaderActionsProps {
     openTarget: string
     pinChat: string
     renameChat: string
+    underDevelopment: string
   }
   onBranchIntoLocal: () => void
   onCopySessionId: () => void
@@ -103,6 +107,8 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
           environmentPermission: labels.environmentPermission,
           environmentProgress: labels.environmentProgress,
           environmentProgressMore: labels.environmentProgressMore,
+          environmentSubagents: labels.environmentSubagents,
+          environmentSubagentStatuses: labels.environmentSubagentStatuses,
           environmentThread: labels.environmentThread,
           environmentWorkspace: labels.environmentWorkspace
         }}
@@ -130,7 +136,8 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
             moreActions: labels.actions,
             openSideChat: labels.openSideChat,
             pinChat: labels.pinChat,
-            renameChat: labels.renameChat
+            renameChat: labels.renameChat,
+            underDevelopment: labels.underDevelopment
           }}
           onBranchIntoLocal={onBranchIntoLocal}
           onCopySessionId={onCopySessionId}

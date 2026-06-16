@@ -32,6 +32,7 @@ interface LauncherAiThreadMenuProps {
     openSideChat: string
     pinChat: string
     renameChat: string
+    underDevelopment: string
   }
   onBranchIntoLocal: () => void
   onCopySessionId: () => void
@@ -43,7 +44,7 @@ interface ThreadMenuItemProps {
   disabled?: boolean
   icon: ReactNode
   onSelect?: (event: Event) => void
-  shortcut?: string
+  trailingLabel?: string
 }
 
 function preventDefaultSelect(event: Event): void {
@@ -51,7 +52,7 @@ function preventDefaultSelect(event: Event): void {
 }
 
 function ThreadMenuItem(props: ThreadMenuItemProps): React.JSX.Element {
-  const { children, disabled = false, icon, onSelect, shortcut } = props
+  const { children, disabled = false, icon, onSelect, trailingLabel } = props
 
   return (
     <DropdownMenu.Item
@@ -61,7 +62,9 @@ function ThreadMenuItem(props: ThreadMenuItemProps): React.JSX.Element {
     >
       <span className="launcher-thread-menu__icon">{icon}</span>
       <span className="launcher-thread-menu__label">{children}</span>
-      {shortcut ? <span className="launcher-thread-menu__shortcut">{shortcut}</span> : null}
+      {trailingLabel ? (
+        <span className="launcher-thread-menu__trailing-label">{trailingLabel}</span>
+      ) : null}
     </DropdownMenu.Item>
   )
 }
@@ -119,13 +122,25 @@ export function LauncherAiThreadMenu(props: LauncherAiThreadMenuProps): React.JS
           side="bottom"
           sideOffset={6}
         >
-          <ThreadMenuItem icon={<Pin />} onSelect={preventDefaultSelect}>
+          <ThreadMenuItem
+            icon={<Pin />}
+            onSelect={preventDefaultSelect}
+            trailingLabel={labels.underDevelopment}
+          >
             {labels.pinChat}
           </ThreadMenuItem>
-          <ThreadMenuItem icon={<Pencil />} onSelect={preventDefaultSelect}>
+          <ThreadMenuItem
+            icon={<Pencil />}
+            onSelect={preventDefaultSelect}
+            trailingLabel={labels.underDevelopment}
+          >
             {labels.renameChat}
           </ThreadMenuItem>
-          <ThreadMenuItem icon={<MessageSquarePlus />} onSelect={preventDefaultSelect}>
+          <ThreadMenuItem
+            icon={<MessageSquarePlus />}
+            onSelect={preventDefaultSelect}
+            trailingLabel={labels.underDevelopment}
+          >
             {labels.openSideChat}
           </ThreadMenuItem>
 
@@ -136,10 +151,18 @@ export function LauncherAiThreadMenu(props: LauncherAiThreadMenuProps): React.JS
             <ThreadMenuItem icon={<FileText />} onSelect={onCopySessionId}>
               {labels.copySessionId}
             </ThreadMenuItem>
-            <ThreadMenuItem icon={<Link />} onSelect={preventDefaultSelect}>
+            <ThreadMenuItem
+              icon={<Link />}
+              onSelect={preventDefaultSelect}
+              trailingLabel={labels.underDevelopment}
+            >
               {labels.copyDeeplink}
             </ThreadMenuItem>
-            <ThreadMenuItem icon={<BookOpenText />} onSelect={preventDefaultSelect}>
+            <ThreadMenuItem
+              icon={<BookOpenText />}
+              onSelect={preventDefaultSelect}
+              trailingLabel={labels.underDevelopment}
+            >
               {labels.copyAsMarkdown}
             </ThreadMenuItem>
           </ThreadMenuSubmenu>
@@ -152,15 +175,27 @@ export function LauncherAiThreadMenu(props: LauncherAiThreadMenuProps): React.JS
             >
               {labels.branchIntoLocal}
             </ThreadMenuItem>
-            <ThreadMenuItem icon={<GitBranch />} onSelect={preventDefaultSelect}>
+            <ThreadMenuItem
+              icon={<GitBranch />}
+              onSelect={preventDefaultSelect}
+              trailingLabel={labels.underDevelopment}
+            >
               {labels.branchIntoSameWorktree}
             </ThreadMenuItem>
-            <ThreadMenuItem icon={<GitBranch />} onSelect={preventDefaultSelect}>
+            <ThreadMenuItem
+              icon={<GitBranch />}
+              onSelect={preventDefaultSelect}
+              trailingLabel={labels.underDevelopment}
+            >
               {labels.branchIntoNewWorktree}
             </ThreadMenuItem>
           </ThreadMenuSubmenu>
 
-          <ThreadMenuItem icon={<Clock />} onSelect={preventDefaultSelect}>
+          <ThreadMenuItem
+            icon={<Clock />}
+            onSelect={preventDefaultSelect}
+            trailingLabel={labels.underDevelopment}
+          >
             {labels.addAutomation}
           </ThreadMenuItem>
         </DropdownMenu.Content>

@@ -11,11 +11,8 @@ import { Messages } from "@/components/chat/Messages"
 import { ChatJumpToLatestButton } from "@/components/chat/ChatJumpToLatestButton"
 import { IncludedMemoriesPanel } from "@/components/chat/IncludedMemoriesPanel"
 import { MemoryReviewPanel } from "@/components/chat/MemoryReviewPanel"
-import { SubagentReferencesPanel } from "@/components/chat/SubagentReferencesPanel"
 import { useVirtualChatScrollIntent } from "@/components/chat/useVirtualChatScrollIntent"
-import type { Subagent } from "@/types"
 import { useI18n } from "@/lib/i18n"
-import { projectSubagentReferences } from "@/lib/subagent-view"
 import { useThreadSelector } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
 import type { ArtifactRecord, FileArtifactRecord } from "@shared/artifacts"
@@ -24,7 +21,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { VListHandle } from "virtua"
 
 const EMPTY_ARTIFACTS: readonly ArtifactRecord[] = []
-const EMPTY_SUBAGENTS: readonly Subagent[] = []
 const LAUNCHER_AI_AT_BOTTOM_THRESHOLD_PX = 60
 type AssistantSelectionRef = Extract<ComposerMessageRef, { type: "assistant-message-selection" }>
 
@@ -324,11 +320,6 @@ const LauncherAiFooter = memo(function LauncherAiFooter(props: {
   const { clearError, error, isLoading, threadId } = props
   const { copy } = useI18n()
   const runId = useThreadSelector(threadId, (state) => state?.agent.latestRunId ?? null)
-  const subagents = useThreadSelector(
-    threadId,
-    (state) => state?.agent.subagents ?? EMPTY_SUBAGENTS
-  )
-  const subagentReferences = useMemo(() => projectSubagentReferences(subagents), [subagents])
   const artifacts = useThreadSelector(
     threadId,
     (state) => state?.agent.artifacts ?? EMPTY_ARTIFACTS
@@ -339,8 +330,6 @@ const LauncherAiFooter = memo(function LauncherAiFooter(props: {
       <LauncherArtifactsPanel artifacts={artifacts} />
 
       {!isLoading && <IncludedMemoriesPanel runId={runId} />}
-
-      {!isLoading && <SubagentReferencesPanel references={subagentReferences} />}
 
       {!isLoading && <MemoryReviewPanel threadId={threadId} />}
 
@@ -404,22 +393,45 @@ export function LauncherAiEmptyState(props: { error?: string | null }): React.JS
   )
 }
 
+export function LauncherAiThreadLoadingState(): React.JSX.Element {
+  const { copy } = useI18n()
+
+  return (
+    <div className="relative flex flex-1 items-center justify-center px-[var(--launcher-ai-content-x)] text-muted-foreground">
+      <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-body)]">
+        <Loader2 className="size-[var(--ow-icon-md)] animate-spin" />
+        <span>{copy.launcher.loadingThread}</span>
+      </div>
+    </div>
+  )
+}
+
 export function LauncherAiConversation(props: {
   clearError: () => void
   error: string | null
+  isHydrating: boolean
   isLoading: boolean
   onBranch?: (messageId?: string) => Promise<void>
   onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
   onRetry: (input: ComposerMessageInput) => Promise<void> | void
   threadId: string
 }): React.JSX.Element {
-  const { clearError, error, isLoading, onBranch, onAddAssistantSelectionRef, onRetry, threadId } =
-    props
+  const {
+    clearError,
+    error,
+    isHydrating,
+    isLoading,
+    onBranch,
+    onAddAssistantSelectionRef,
+    onRetry,
+    threadId
+  } = props
 
   return (
     <LauncherAiConversationViewport
       clearError={clearError}
       error={error}
+      isHydrating={isHydrating}
       isLoading={isLoading}
       onBranch={onBranch}
       onAddAssistantSelectionRef={onAddAssistantSelectionRef}
@@ -432,6 +444,7 @@ export function LauncherAiConversation(props: {
 const LauncherAiConversationViewport = memo(function LauncherAiConversationViewport(props: {
   clearError: () => void
   error: string | null
+  isHydrating: boolean
   isLoading: boolean
   onBranch?: (messageId?: string) => Promise<void>
   onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
@@ -439,8 +452,16 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
   threadId: string
 }): React.JSX.Element {
   const { copy } = useI18n()
-  const { clearError, error, isLoading, onBranch, onAddAssistantSelectionRef, onRetry, threadId } =
-    props
+  const {
+    clearError,
+    error,
+    isHydrating,
+    isLoading,
+    onBranch,
+    onAddAssistantSelectionRef,
+    onRetry,
+    threadId
+  } = props
   const virtualizerRef = useRef<VListHandle>(null)
   const hasVisibleTurns = useThreadSelector(
     threadId,
@@ -479,6 +500,10 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
     ),
     [clearError, error, isLoading, threadId]
   )
+
+  if (!hasVisibleTurns && isHydrating && !error) {
+    return <LauncherAiThreadLoadingState />
+  }
 
   if (!hasVisibleTurns && !isLoading && !error) {
     return <LauncherAiEmptyState />

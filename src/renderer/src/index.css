@@ -669,6 +669,7 @@ body[data-window="pinned-ai-session"],
 }
 
 .launcher-thread-menu__shortcut,
+.launcher-thread-menu__trailing-label,
 .launcher-thread-menu__chevron {
   margin-left: auto;
   color: color-mix(in srgb, var(--muted-foreground) 62%, transparent);
@@ -890,6 +891,12 @@ body[data-window="pinned-ai-session"],
   padding: 10px 4px 2px;
 }
 
+.launcher-ai-environment-menu__subagents {
+  margin-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--launcher-border) 72%, transparent);
+  padding: 10px 4px 2px;
+}
+
 .launcher-ai-progress__heading {
   margin-bottom: 8px;
   color: color-mix(in srgb, var(--muted-foreground) 82%, var(--foreground));
@@ -923,6 +930,14 @@ body[data-window="pinned-ai-session"],
 .launcher-ai-progress__copy {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.launcher-ai-progress__meta {
+  display: block;
+  margin-top: 1px;
+  color: color-mix(in srgb, var(--muted-foreground) 86%, transparent);
+  font-size: 11px;
+  line-height: 14px;
 }
 
 .launcher-ai-progress__more {

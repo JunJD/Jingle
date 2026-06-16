@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { AI_THREAD_SOURCE } from "@shared/launcher-ai"
 import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
 import type { Thread } from "@/types"
@@ -32,6 +32,7 @@ export interface LauncherAiThreadNavigation {
   canGoToPreviousThread: boolean
   createThread: (input: AiCoreThreadCreateInput) => Promise<AiCoreThreadHandle>
   defaultDraftPermissionMode: PermissionModeName
+  isHydratingThread: boolean
   startFreshDraft: (input: {
     modelId: string | null
     permissionMode: PermissionModeName
@@ -94,8 +95,42 @@ export function useLauncherAiThreadNavigation(
     next: null,
     previous: null
   })
+  const [hydratingThreadCount, setHydratingThreadCount] = useState(() =>
+    shouldStartFreshThread ? 0 : 1
+  )
+  const isMountedRef = useRef(true)
+  const initialHydrationPendingRef = useRef(!shouldStartFreshThread)
   const threadId = target?.kind === "thread" ? target.threadId : null
   const isFreshDraftActive = target?.kind === "draft"
+  const isHydratingThread = hydratingThreadCount > 0
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
+  const beginThreadHydration = useCallback((): (() => void) => {
+    let finished = false
+    setHydratingThreadCount((count) => count + 1)
+
+    return () => {
+      if (finished || !isMountedRef.current) {
+        return
+      }
+
+      finished = true
+      setHydratingThreadCount((count) => Math.max(0, count - 1))
+    }
+  }, [])
+  const finishInitialThreadHydration = useCallback((): void => {
+    if (!initialHydrationPendingRef.current || !isMountedRef.current) {
+      return
+    }
+
+    initialHydrationPendingRef.current = false
+    setHydratingThreadCount((count) => Math.max(0, count - 1))
+  }, [])
 
   const listAiThreads = useCallback(async (): Promise<Thread[]> => {
     return listLauncherAiThreadsByRecency(await threadHost.list())
@@ -125,14 +160,19 @@ export function useLauncherAiThreadNavigation(
   )
   const activateThread = useCallback(
     async (nextThreadId: string): Promise<void> => {
-      setTarget({
-        kind: "thread",
-        threadId: nextThreadId
-      })
-      await threadHost.activate(nextThreadId)
-      await refreshAdjacentThreadIds(nextThreadId, { freshDraftActive: false })
+      const finishHydration = beginThreadHydration()
+      try {
+        setTarget({
+          kind: "thread",
+          threadId: nextThreadId
+        })
+        await threadHost.activate(nextThreadId)
+        await refreshAdjacentThreadIds(nextThreadId, { freshDraftActive: false })
+      } finally {
+        finishHydration()
+      }
     },
-    [refreshAdjacentThreadIds, threadHost]
+    [beginThreadHydration, refreshAdjacentThreadIds, threadHost]
   )
   const createThread = useCallback(
     async (input: AiCoreThreadCreateInput): Promise<AiCoreThreadHandle> => {
@@ -163,6 +203,8 @@ export function useLauncherAiThreadNavigation(
     permissionMode: PermissionModeName
   }): Promise<void> => {
     const threads = await listAiThreads()
+    initialHydrationPendingRef.current = false
+    setHydratingThreadCount(0)
     setTarget({
       kind: "draft",
       modelId: input.modelId,
@@ -224,31 +266,40 @@ export function useLauncherAiThreadNavigation(
 
   useEffect(() => {
     let cancelled = false
+    if (target?.kind === "thread") {
+      return () => {
+        cancelled = true
+      }
+    }
 
     async function hydrateInitialThread(): Promise<void> {
-      const threads = await listAiThreads()
+      try {
+        const threads = await listAiThreads()
 
-      if (cancelled || target?.kind === "thread") {
-        return
+        if (cancelled) {
+          return
+        }
+
+        if (shouldStartFreshThread || target?.kind === "draft") {
+          await refreshAdjacentThreadIds(null, { freshDraftActive: true })
+          return
+        }
+
+        const activeThreadId = resolveActiveThreadId()
+        const restoredThreadId =
+          activeThreadId && threads.some((thread) => thread.thread_id === activeThreadId)
+            ? activeThreadId
+            : (threads[0]?.thread_id ?? null)
+
+        if (!restoredThreadId) {
+          await refreshAdjacentThreadIds(null)
+          return
+        }
+
+        await activateThread(restoredThreadId)
+      } finally {
+        finishInitialThreadHydration()
       }
-
-      if (shouldStartFreshThread || target?.kind === "draft") {
-        await refreshAdjacentThreadIds(null, { freshDraftActive: true })
-        return
-      }
-
-      const activeThreadId = resolveActiveThreadId()
-      const restoredThreadId =
-        activeThreadId && threads.some((thread) => thread.thread_id === activeThreadId)
-          ? activeThreadId
-          : (threads[0]?.thread_id ?? null)
-
-      if (!restoredThreadId) {
-        await refreshAdjacentThreadIds(null)
-        return
-      }
-
-      await activateThread(restoredThreadId)
     }
 
     void hydrateInitialThread()
@@ -258,6 +309,7 @@ export function useLauncherAiThreadNavigation(
     }
   }, [
     activateThread,
+    finishInitialThreadHydration,
     listAiThreads,
     refreshAdjacentThreadIds,
     resolveActiveThreadId,
@@ -272,6 +324,7 @@ export function useLauncherAiThreadNavigation(
     canGoToPreviousThread: Boolean(adjacentThreadIds.previous),
     createThread,
     defaultDraftPermissionMode: DEFAULT_PERMISSION_MODE,
+    isHydratingThread,
     startFreshDraft,
     target,
     updateFreshDraft,

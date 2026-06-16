@@ -10,14 +10,6 @@ export interface SubagentCounts {
   total: number
 }
 
-export interface SubagentReferenceView {
-  detail: string
-  key: string
-  status: Subagent["status"]
-  subagentType: string | null
-  title: string
-}
-
 export interface SubagentStatusLabels {
   completed: string
   failed: string
@@ -146,14 +138,4 @@ export function getSubagentTypeBadge(subagentType?: string): string {
     default:
       return subagentType?.toUpperCase() || "TASK"
   }
-}
-
-export function projectSubagentReferences(subagents: readonly Subagent[]): SubagentReferenceView[] {
-  return subagents.map((subagent) => ({
-    detail: subagent.description,
-    key: subagent.id,
-    status: subagent.status,
-    subagentType: subagent.subagentType ?? null,
-    title: subagent.name
-  }))
 }
