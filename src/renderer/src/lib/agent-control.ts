@@ -88,9 +88,7 @@ async function updateAgentThreadMetadata(input: {
   await input.threadContext.loadThreadData(input.threadId)
 }
 
-export async function updateAgentThreadModel(
-  input: UpdateAgentThreadModelInput
-): Promise<void> {
+export async function updateAgentThreadModel(input: UpdateAgentThreadModelInput): Promise<void> {
   await updateAgentThreadMetadata({
     metadata: { model: input.modelId },
     threadContext: input.threadContext,
@@ -116,10 +114,7 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
   const displayContent = toMessageContent(messageInput)
   const submitContent = toAgentMessageContentWithRefs(displayContent, messageInput.refs)
 
-  if (
-    !hasComposerMessageInputContent(messageInput) ||
-    !hasMessageContent(submitContent)
-  ) {
+  if (!hasComposerMessageInputContent(messageInput) || !hasMessageContent(submitContent)) {
     return false
   }
 
@@ -180,10 +175,7 @@ export async function editLastUserMessageAndInvokeAgentThread(
   const displayContent = toMessageContent(messageInput)
   const submitContent = toAgentMessageContentWithRefs(displayContent, messageInput.refs)
 
-  if (
-    !hasComposerMessageInputContent(messageInput) ||
-    !hasMessageContent(submitContent)
-  ) {
+  if (!hasComposerMessageInputContent(messageInput) || !hasMessageContent(submitContent)) {
     return false
   }
 

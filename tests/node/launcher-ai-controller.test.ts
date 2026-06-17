@@ -252,7 +252,6 @@ test("launcher AI controller routes query writes to local composer state", () =>
   assert.deepEqual(harness.localComposerTexts, ["下一句"])
 })
 
-
 test("launcher AI controller routes selected thread settings through command layer", async () => {
   const harness = createControllerHarness({ threadId: "existing-thread" })
 
@@ -278,7 +277,6 @@ test("launcher AI controller routes selected thread settings through command lay
     }
   ])
 })
-
 
 test("launcher AI controller returns approval resume command result", async () => {
   const harness = createControllerHarness({

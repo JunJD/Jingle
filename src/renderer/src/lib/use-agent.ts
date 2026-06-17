@@ -73,13 +73,11 @@ export function useAgent(options: UseAgentOptions): {
     threadContext.ensureThreadRuntime(threadId)
   }, [threadContext, threadId])
 
-  const runtimeStatus = useThreadSelector(
-    threadId,
-    (state) => state?.agent.status ?? null
-  )
+  const runtimeStatus = useThreadSelector(threadId, (state) => state?.agent.status ?? null)
   const threadError = useThreadSelector(threadId, (state) => state?.agent.error ?? null)
-  const [dismissedThreadError, setDismissedThreadError] =
-    useState<DismissedThreadError | null>(null)
+  const [dismissedThreadError, setDismissedThreadError] = useState<DismissedThreadError | null>(
+    null
+  )
   const [localError, setLocalError] = useState<string | null>(null)
 
   const isBusy = runtimeStatus === "running"
