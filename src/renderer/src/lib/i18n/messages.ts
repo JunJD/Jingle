@@ -329,9 +329,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       cancelEditMessage: "取消",
       editUserMessage: "编辑用户消息",
       runCoachTip: {
-        iterate_after_first_draft: "第一轮只是起点，继续追问和调整通常会更接近你想要的结果。",
-        keep_followups_in_thread: "同一目标下，继续在当前任务里追问，比开新任务更容易保留上下文。",
-        start_with_outcome: "说清楚你想要的结果和格式，我就能少猜一步。"
+        iterate_after_first_draft: "第一版出来后，继续追问会更接近目标",
+        keep_followups_in_thread: "同一目标下，继续追问更容易保留上下文",
+        start_with_outcome: "说清楚结果和格式，我就少猜一步"
       },
       toolActivityChangedFiles: "已修改文件",
       toolActivityCompleted: "已处理工具",
@@ -645,12 +645,9 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       cancelEditMessage: "Cancel",
       editUserMessage: "Edit user message",
       runCoachTip: {
-        iterate_after_first_draft:
-          "The first pass is only a starting point. Follow up and adjust to get closer to what you want.",
-        keep_followups_in_thread:
-          "For the same goal, staying in this task preserves context better than opening a new one.",
-        start_with_outcome:
-          "Name the outcome and format you want, and I can spend less time guessing."
+        iterate_after_first_draft: "After the first draft, follow up to get closer",
+        keep_followups_in_thread: "For the same goal, follow up here to keep context",
+        start_with_outcome: "Name the outcome and format so I guess less"
       },
       toolActivityChangedFiles: "Changed files",
       toolActivityCompleted: "Handled tools",

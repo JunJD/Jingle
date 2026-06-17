@@ -42,6 +42,7 @@ export type TurnAssistantEntry =
     }
   | {
       kind: "thinking"
+      coachTip: RunCoachTipProjection | null
       isActive: boolean
       key: string
       messageId: string
@@ -198,7 +199,7 @@ export function buildToolResults(messages: ThreadMessage[]): Map<string, ToolRes
   const results = new Map<string, ToolResultInfo>()
 
   for (const message of messages) {
-    if (message.role !== "tool" || !message.tool_call_id) {
+    if (!isToolResultMessage(message)) {
       continue
     }
 
@@ -210,6 +211,20 @@ export function buildToolResults(messages: ThreadMessage[]): Map<string, ToolRes
   }
 
   return results
+}
+
+function isToolResultMessage(
+  message: ThreadMessage
+): message is ThreadMessage & { tool_call_id: string } {
+  return message.role === "tool" && Boolean(message.tool_call_id)
+}
+
+function isHiddenToolResultLikeMessage(
+  message: ThreadMessage
+): message is ThreadMessage & { tool_call_id: string } {
+  return (
+    isToolResultMessage(message) || (message.role === "assistant" && Boolean(message.tool_call_id))
+  )
 }
 
 function toFiniteTimestamp(value: Date | null | undefined): number | null {
@@ -792,7 +807,7 @@ function createToolActivityItem(
 function createActiveToolActivityItem(
   activeToolCall: ActiveAgentToolCall
 ): AgentActivityItem | null {
-  if (!activeToolCall.messageId || !activeToolCall.name) {
+  if (!activeToolCall.name) {
     return null
   }
 
@@ -810,7 +825,7 @@ function createActiveToolActivityItem(
   return {
     key: `tool:${activeToolCall.id}`,
     kind: "tool",
-    messageId: activeToolCall.messageId,
+    messageId: activeToolCall.messageId ?? `active:${activeToolCall.id}`,
     toolCall: {
       args: args ?? {},
       id: activeToolCall.id,
@@ -889,6 +904,7 @@ export function buildTurnAssistantEntries(
     if (reasoningText.trim()) {
       pendingActivities = flushAgentActivities(entries, pendingActivities)
       entries.push({
+        coachTip: null,
         isActive: false,
         key: `thinking:${message.id}`,
         kind: "thinking",
@@ -939,6 +955,10 @@ export function buildTurnAssistantEntries(
     latestEntry.messageId === options.streamingAssistantId
   ) {
     latestEntry.isActive = true
+    latestEntry.coachTip = projectRunCoachTip({
+      kind: "thinking",
+      placement: entries.length === 1 ? "before_entries" : "after_entries"
+    })
   }
 
   return entries
@@ -969,7 +989,7 @@ export function projectActiveTurnStatus(input: {
   const placement = input.assistantEntries.length > 0 ? "after_entries" : "before_entries"
   const latestEntry = input.assistantEntries.at(-1)
 
-  if (latestEntry?.kind === "thinking" && latestEntry.isActive) {
+  if (latestEntry?.kind === "thinking") {
     return null
   }
 
@@ -1134,7 +1154,7 @@ export function updateProjectedMessage(
   message: ThreadMessage,
   options: MessageProjectionOptions = {}
 ): ProjectedMessageFastPathResult {
-  if (message.role !== "assistant") {
+  if (message.role !== "assistant" || isHiddenToolResultLikeMessage(message)) {
     return {
       reason: "message_role_not_assistant",
       type: "miss"
@@ -1212,7 +1232,7 @@ export function projectMessages(
     getPreviousToolResults(previousProjection),
     buildToolResults(messages)
   )
-  const visibleMessages = messages.filter((message) => message.role !== "tool")
+  const visibleMessages = messages.filter((message) => !isHiddenToolResultLikeMessage(message))
   const turnMessages = visibleMessages.filter((message) => !isContextCompactionMessage(message))
   const turns = stabilizeTurns(
     previousProjection?.turns,

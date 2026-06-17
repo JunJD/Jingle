@@ -4,7 +4,6 @@ import {
   FileText,
   FolderOpen,
   GitForkIcon,
-  Lightbulb,
   MessageCircle,
   RefreshCcwIcon,
   Search,
@@ -45,7 +44,6 @@ import {
   projectActiveTurnStatus,
   projectTurnElapsedDivider,
   type AgentActivityItem,
-  type ActiveTurnStatusProjection,
   type MessageTurn,
   type ToolResultInfo,
   type TurnElapsedProjection
@@ -75,7 +73,7 @@ import { CopyButton } from "../ui/button"
 import { AssistantSelectionReferencesFromMetadata } from "./AssistantSelectionReferences"
 import { getAssistantSelectionRefs } from "./useAssistantSelectionRefs"
 import { useThreadControl } from "@/lib/thread-context"
-import type { RunCoachTipProjection } from "@/lib/run-coach"
+import type { ActiveRunCoachStatusKind, RunCoachTipProjection } from "@/lib/run-coach"
 
 interface StructuredMessageContent {
   attachments: React.ReactNode
@@ -311,8 +309,8 @@ function useUserTextCollapse(text: string): {
   const isMeasuredText = measurement?.text === text
   const isCollapsible = Boolean(
     isMeasuredText &&
-      measurement &&
-      measurement.contentHeightPx > measurement.collapsedHeightPx + USER_MESSAGE_COLLAPSE_EPSILON_PX
+    measurement &&
+    measurement.contentHeightPx > measurement.collapsedHeightPx + USER_MESSAGE_COLLAPSE_EPSILON_PX
   )
   const isExpanded = expandedText === text
   const collapseState = !isCollapsible ? "uncollapsible" : isExpanded ? "expanded" : "collapsed"
@@ -400,12 +398,17 @@ function getReasoningBlockText(block: ContentBlock): string {
   return block.reasoning ?? block.text ?? block.content ?? ""
 }
 
-function ReasoningBlock(props: { isStreaming?: boolean; text: string }): React.JSX.Element | null {
+function ReasoningBlock(props: {
+  coachTip?: RunCoachTipProjection | null
+  isStreaming?: boolean
+  text: string
+}): React.JSX.Element | null {
   const { copy } = useI18n()
-  const { isStreaming, text } = props
+  const { coachTip = null, isStreaming, text } = props
   const [openOverride, setOpenOverride] = useState<boolean | null>(null)
+  const hasText = text.trim().length > 0
 
-  if (!text.trim()) {
+  if (!hasText && !isStreaming) {
     return null
   }
 
@@ -419,25 +422,56 @@ function ReasoningBlock(props: { isStreaming?: boolean; text: string }): React.J
       onOpenChange={setOpenOverride}
       open={isOpen}
     >
-      <CollapsibleTrigger className="ow-reasoning-trigger group w-full min-w-0 cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <AgentActivityRow
+      <CollapsibleTrigger
+        className={cn(
+          "ow-reasoning-trigger group w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          hasText ? "cursor-pointer" : "cursor-default"
+        )}
+        disabled={!hasText}
+      >
+        <ActiveTurnStatusRow
           active={isStreaming}
-          className="w-full"
+          coachTip={coachTip}
           icon={<MessageCircle className="size-[var(--ow-icon-sm)]" />}
           label={title}
           labelClassName="ow-reasoning-title truncate"
+          role={isStreaming ? "status" : undefined}
+          status="thinking"
           trailing={
-            <ChevronRight className="ow-reasoning-chevron size-[var(--ow-icon-sm)] shrink-0 text-[var(--ow-agent-timeline-muted)]" />
+            <ChevronRight
+              className={cn(
+                "ow-reasoning-chevron size-[var(--ow-icon-sm)] shrink-0 text-[var(--ow-agent-timeline-muted)]",
+                !hasText && "opacity-0"
+              )}
+            />
           }
           trailingPlacement="inline"
         />
       </CollapsibleTrigger>
-      <CollapsibleContent className="ow-reasoning-content ow-agent-tool-content overflow-hidden">
-        <div className="mt-[var(--ow-space-1)] min-w-0 max-w-full pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
-          {text}
-        </div>
-      </CollapsibleContent>
+      {hasText ? (
+        <CollapsibleContent className="ow-reasoning-content ow-agent-tool-content overflow-hidden">
+          <div className="mt-[var(--ow-space-1)] min-w-0 max-w-full pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))] whitespace-pre-wrap [overflow-wrap:anywhere] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]">
+            {text}
+          </div>
+        </CollapsibleContent>
+      ) : null}
     </Collapsible>
+  )
+}
+
+function ThinkingMessage(props: {
+  coachTip?: RunCoachTipProjection | null
+  isStreaming?: boolean
+  text: string
+}): React.JSX.Element | null {
+  const { coachTip, isStreaming, text } = props
+
+  return (
+    <Message className="max-w-full" from="assistant">
+      <MessageContent className="w-full gap-[var(--ow-space-2-5)]">
+        <ReasoningBlock coachTip={coachTip} isStreaming={isStreaming} text={text} />
+      </MessageContent>
+    </Message>
   )
 }
 
@@ -541,8 +575,6 @@ type ProjectedToolActivityStatus =
   | "running"
   | "waiting_result"
 
-const ACTIVE_TURN_STATUS_ELAPSED_THRESHOLD_MS = 3_000
-
 function getAgentActivitySummaryIcon(kind: AgentActivitySummaryIcon): React.JSX.Element {
   switch (kind) {
     case "command":
@@ -625,6 +657,7 @@ function projectToolActivityView(input: {
 
 function AgentActivityGroup(props: {
   activeThinking?: boolean
+  coachTip?: RunCoachTipProjection | null
   defaultOpen?: boolean
   items: AgentActivityItem[]
   onOpenChange?: (open: boolean) => void
@@ -636,6 +669,7 @@ function AgentActivityGroup(props: {
   const { copy } = useI18n()
   const {
     activeThinking = false,
+    coachTip = null,
     defaultOpen = false,
     items,
     onOpenChange,
@@ -681,23 +715,29 @@ function AgentActivityGroup(props: {
     hasLoadingActions,
     itemsLength: items.length
   })
-  const headerTitle = activeThinking
-    ? copy.chat.agentStatusThinking
-    : (headerSummary?.title ?? fallbackHeaderText.title)
-  const headerDetail = activeThinking ? null : (headerSummary?.detail ?? fallbackHeaderText.detail)
-  const headerTextActive = activeThinking || hasLoadingActions
+  const headerTitle = hasApprovalActions
+    ? copy.chat.agentStatusWaitingApproval
+    : activeThinking
+      ? copy.chat.agentStatusThinking
+      : (headerSummary?.title ?? fallbackHeaderText.title)
+  const headerDetail = hasApprovalActions
+    ? null
+    : activeThinking
+      ? null
+      : (headerSummary?.detail ?? fallbackHeaderText.detail)
+  const headerTextActive = !hasApprovalActions && (activeThinking || hasLoadingActions)
   const headerIcon = headerSummary ? getAgentActivitySummaryIcon(headerSummary.icon) : undefined
 
   return (
     <AgentToolGroup
-      active={activeThinking || hasLoadingActions}
+      active={!hasApprovalActions && (activeThinking || hasLoadingActions)}
       onOpenChange={onOpenChange ?? setOpenOverride}
       open={isOpen}
     >
       <AgentToolGroupTrigger
         active={headerTextActive}
         className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)]"
-        detail={headerDetail}
+        detail={activeThinking ? <RunCoachTip tip={coachTip} /> : headerDetail}
         icon={headerIcon}
         {...(headerToolAction
           ? { "data-tool-call-toggle": headerToolAction.item.toolCall.name }
@@ -729,12 +769,20 @@ function AgentActivityGroup(props: {
 
 function AssistantActivityCluster(props: {
   activeThinking?: boolean
+  coachTip?: RunCoachTipProjection | null
   items: AgentActivityItem[]
   pendingApproval?: HITLRequest | null
   toolExecutions: AgentToolExecutionsView
   toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element | null {
-  const { activeThinking = false, items, pendingApproval, toolExecutions, toolResults } = props
+  const {
+    activeThinking = false,
+    coachTip = null,
+    items,
+    pendingApproval,
+    toolExecutions,
+    toolResults
+  } = props
   const { copy } = useI18n()
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null)
   const isExpanded = expandedOverride ?? false
@@ -761,12 +809,13 @@ function AssistantActivityCluster(props: {
         toAgentActivitySummaryTool(toolActivity)
       ])
 
-      if (!isActivityViewPending(toolActivity) && headerSummary) {
+      if (activeThinking || isActivityViewPending(toolActivity) || headerSummary) {
         return (
           <Message className="max-w-full" from="assistant">
             <MessageContent className="w-full gap-[var(--ow-gap-md)]">
               <AgentActivityGroup
                 activeThinking={activeThinking}
+                coachTip={coachTip}
                 defaultOpen={false}
                 items={items}
                 onOpenChange={handleExpandedChange}
@@ -805,6 +854,7 @@ function AssistantActivityCluster(props: {
       <MessageContent className="w-full gap-[var(--ow-gap-md)]">
         <AgentActivityGroup
           activeThinking={activeThinking}
+          coachTip={coachTip}
           defaultOpen={false}
           items={items}
           onOpenChange={handleExpandedChange}
@@ -850,22 +900,6 @@ function AssistantBlock(props: {
       </MessageContent>
     </Message>
   )
-}
-
-function isActiveTurnStatusShimmering(kind: ActiveTurnStatusProjection["kind"]): boolean {
-  return kind === "thinking"
-}
-
-function formatActiveTurnElapsedTime(ms: number): string {
-  const seconds = ms / 1000
-  if (seconds < 60) {
-    return `${seconds.toFixed(1)}s`
-  }
-
-  const totalSeconds = Math.floor(seconds)
-  const minutes = Math.floor(totalSeconds / 60)
-  const remainingSeconds = totalSeconds % 60
-  return `${minutes}m ${remainingSeconds}s`
 }
 
 function formatTurnElapsedTime(ms: number): string {
@@ -917,44 +951,6 @@ function TurnElapsedDivider(props: { projection: TurnElapsedProjection }): React
   )
 }
 
-function ActiveTurnStatusElapsed(props: {
-  active: boolean
-  startedAt?: Date | null
-}): React.JSX.Element | null {
-  const { active, startedAt } = props
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    if (!active) {
-      return undefined
-    }
-
-    const timer = window.setInterval(() => {
-      setNow(Date.now())
-    }, 250)
-
-    return () => {
-      window.clearInterval(timer)
-    }
-  }, [active])
-
-  if (!active || !startedAt) {
-    return null
-  }
-
-  const startedAtMs = new Date(startedAt).getTime()
-  const elapsed = Math.max(0, now - startedAtMs)
-  if (elapsed < ACTIVE_TURN_STATUS_ELAPSED_THRESHOLD_MS) {
-    return null
-  }
-
-  return (
-    <span className="shrink-0 text-[var(--ow-agent-timeline-muted)] [font-size:var(--ow-font-caption)] tabular-nums">
-      {formatActiveTurnElapsedTime(elapsed)}
-    </span>
-  )
-}
-
 function RunCoachTip(props: { tip: RunCoachTipProjection | null }): React.JSX.Element | null {
   const { copy } = useI18n()
   const { tip } = props
@@ -965,53 +961,65 @@ function RunCoachTip(props: { tip: RunCoachTipProjection | null }): React.JSX.El
 
   return (
     <span
-      className="inline-flex min-w-0 max-w-full items-center gap-[var(--ow-gap-xs)] truncate text-[var(--ow-agent-timeline-muted)]"
+      className="inline-flex min-w-0 max-w-full items-center truncate text-[var(--ow-agent-timeline-muted)]"
       data-run-coach-tip={tip.id}
     >
-      <Lightbulb className="size-[var(--ow-icon-xs)] shrink-0" />
       <span className="min-w-0 truncate">{copy.chat.runCoachTip[tip.id]}</span>
     </span>
   )
 }
 
 function ActiveTurnStatusRow(props: {
-  activeToolCalls: readonly ActiveAgentToolCall[]
-  phaseStartedAt?: Date | null
-  status: ActiveTurnStatusProjection
+  active?: boolean
+  coachTip?: RunCoachTipProjection | null
+  icon: React.ReactNode
+  label: React.ReactNode
+  labelClassName?: string
+  role?: React.AriaRole
+  status: ActiveRunCoachStatusKind
+  trailing?: React.ReactNode
+  trailingPlacement?: "edge" | "inline"
 }): React.JSX.Element {
+  const {
+    active = false,
+    coachTip = null,
+    icon,
+    label,
+    labelClassName,
+    role,
+    status,
+    trailing,
+    trailingPlacement
+  } = props
+
+  return (
+    <AgentActivityRow
+      active={active}
+      className="w-full text-[var(--ow-agent-timeline-muted)]"
+      data-active-turn-status={status}
+      detail={<RunCoachTip tip={coachTip} />}
+      detailClassName="max-w-[min(36rem,52vw)]"
+      icon={icon}
+      label={label}
+      labelClassName={labelClassName}
+      role={role}
+      trailing={trailing}
+      trailingPlacement={trailingPlacement}
+    />
+  )
+}
+
+function WaitingApprovalStatusRow(): React.JSX.Element {
   const { copy } = useI18n()
-  const { activeToolCalls, phaseStartedAt, status } = props
-  const isShimmering = isActiveTurnStatusShimmering(status.kind)
-  const startedAt =
-    status.toolCallId !== null
-      ? (activeToolCalls.find((toolCall) => toolCall.id === status.toolCallId)?.startedAt ??
-        phaseStartedAt)
-      : phaseStartedAt
-  const shouldShowElapsed = status.kind !== "waiting_approval"
-  const title =
-    status.kind === "waiting_approval"
-      ? copy.chat.agentStatusWaitingApproval
-      : copy.chat.agentStatusThinking
 
   return (
     <Message className="max-w-full" from="assistant">
       <MessageContent className="w-full gap-[var(--ow-space-2-5)]">
-        <AgentActivityRow
-          active={isShimmering}
-          className="w-full text-[var(--ow-agent-timeline-muted)]"
-          data-active-turn-status={status.kind}
-          icon={
-            status.kind === "waiting_approval" ? (
-              <TriangleAlert className="size-[var(--ow-icon-action)] text-status-warning" />
-            ) : (
-              <MessageCircle className="size-[var(--ow-icon-sm)]" />
-            )
-          }
-          detail={<RunCoachTip tip={status.coachTip} />}
-          detailClassName="max-w-[min(36rem,52vw)]"
-          label={title}
-          meta={<ActiveTurnStatusElapsed active={shouldShowElapsed} startedAt={startedAt} />}
+        <ActiveTurnStatusRow
+          icon={<TriangleAlert className="size-[var(--ow-icon-action)] text-status-warning" />}
+          label={copy.chat.agentStatusWaitingApproval}
           role="status"
+          status="waiting_approval"
         />
       </MessageContent>
     </Message>
@@ -1182,7 +1190,6 @@ function UserMessage(props: {
 
 export const MessageTurnView = memo(function MessageTurnView(props: {
   activeToolCalls: readonly ActiveAgentToolCall[]
-  activePhaseStartedAt?: Date | null
   activeRunPhase?: AgentRunPhase | null
   activeRunStartedAt?: Date | null
   isActiveTurn: boolean
@@ -1200,7 +1207,6 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
   const { copy } = useI18n()
   const {
     activeToolCalls,
-    activePhaseStartedAt,
     activeRunPhase,
     activeRunStartedAt,
     isActiveTurn,
@@ -1251,14 +1257,19 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
       }),
     [activeRunPhase, assistantEntries, isStreaming, pendingApproval]
   )
-  const activeTurnStatusRow = activeTurnStatus ? (
-    <ActiveTurnStatusRow
-      activeToolCalls={activeToolCalls}
-      key={`${activeTurnStatus.kind}:${activeTurnStatus.toolCallId ?? "turn"}`}
-      phaseStartedAt={activePhaseStartedAt}
-      status={activeTurnStatus}
-    />
-  ) : null
+  const activeTurnStatusRow =
+    activeTurnStatus?.kind === "thinking" ? (
+      <ThinkingMessage
+        coachTip={activeTurnStatus.coachTip}
+        isStreaming
+        key={`thinking:${streamingAssistantId ?? "active"}`}
+        text=""
+      />
+    ) : activeTurnStatus?.kind === "waiting_approval" ? (
+      <WaitingApprovalStatusRow
+        key={`${activeTurnStatus.kind}:${activeTurnStatus.toolCallId ?? "turn"}`}
+      />
+    ) : null
 
   return (
     <div className="space-y-[var(--ow-space-2-5)]">
@@ -1277,11 +1288,12 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
         const isLatestEntry = index === assistantEntries.length - 1
         if (entry.kind === "thinking") {
           return (
-            <Message className="max-w-full" from="assistant" key={entry.key}>
-              <MessageContent className="w-full gap-[var(--ow-space-2-5)]">
-                <ReasoningBlock isStreaming={isStreaming && entry.isActive} text={entry.text} />
-              </MessageContent>
-            </Message>
+            <ThinkingMessage
+              coachTip={entry.coachTip}
+              isStreaming={isStreaming && entry.isActive}
+              key={entry.key}
+              text={entry.text}
+            />
           )
         }
 
@@ -1298,8 +1310,11 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
 
         return (
           <AssistantActivityCluster
-            activeThinking={
+            activeThinking={isLatestEntry && isStreaming}
+            coachTip={
               isLatestEntry && activeTurnStatus?.placement === "inside_latest_agent_activity"
+                ? activeTurnStatus.coachTip
+                : null
             }
             items={entry.items}
             key={entry.key}

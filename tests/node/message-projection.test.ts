@@ -34,13 +34,17 @@ function createToolCall(
 function createAssistantMessage(props: {
   id: string
   content?: Message["content"]
+  name?: string
+  toolCallId?: string
   toolCalls?: ToolCall[]
 }): Message {
   return {
     content: props.content ?? "",
     created_at: new Date("2026-01-01T00:00:00.000Z"),
     id: props.id,
+    ...(props.name ? { name: props.name } : {}),
     role: "assistant",
+    ...(props.toolCallId ? { tool_call_id: props.toolCallId } : {}),
     tool_calls: props.toolCalls
   }
 }
@@ -295,7 +299,7 @@ test("streaming active tool calls use complete args only when available", () => 
         argsText: '{"path":"src/renderer.tsx"}',
         id: "tool-call-1",
         index: 0,
-        messageId: "assistant-1",
+        messageId: null,
         name: "edit_file",
         runId: "run-1",
         startedAt: new Date("2026-01-01T00:00:01.000Z"),
@@ -314,6 +318,10 @@ test("streaming active tool calls use complete args only when available", () => 
     name: "edit_file",
     type: "tool_call"
   })
+  assert.equal(
+    entries[0]?.kind === "agent-activity" ? entries[0].items[0]?.messageId : null,
+    "active:tool-call-1"
+  )
 })
 
 test("updating one active tool keeps other activity group keys stable", () => {
@@ -654,10 +662,29 @@ test("only latest streaming reasoning entry is active", () => {
   })
   assert.equal(activeEntries[0]?.kind, "thinking")
   assert.equal(activeEntries[0]?.isActive, true)
+  assert.deepEqual(activeEntries[0]?.kind === "thinking" ? activeEntries[0].coachTip : null, {
+    id: "start_with_outcome"
+  })
   assert.equal(
     projectActiveTurnStatus({
       activeRunPhase: "thinking",
       assistantEntries: activeEntries,
+      isStreaming: true
+    }),
+    null
+  )
+
+  const inactiveLatestReasoning = buildTurnAssistantEntries(createTurn([reasoningMessage]))
+  assert.equal(inactiveLatestReasoning[0]?.kind, "thinking")
+  assert.equal(inactiveLatestReasoning[0]?.isActive, false)
+  assert.equal(
+    inactiveLatestReasoning[0]?.kind === "thinking" ? inactiveLatestReasoning[0].coachTip : null,
+    null
+  )
+  assert.equal(
+    projectActiveTurnStatus({
+      activeRunPhase: "thinking",
+      assistantEntries: inactiveLatestReasoning,
       isStreaming: true
     }),
     null
@@ -675,6 +702,12 @@ test("only latest streaming reasoning entry is active", () => {
   )
   assert.equal(followedByAssistantContent[0]?.kind, "thinking")
   assert.equal(followedByAssistantContent[0]?.isActive, false)
+  assert.equal(
+    followedByAssistantContent[0]?.kind === "thinking"
+      ? followedByAssistantContent[0].coachTip
+      : null,
+    null
+  )
   assert.deepEqual(
     projectActiveTurnStatus({
       activeRunPhase: "thinking",
@@ -701,6 +734,10 @@ test("only latest streaming reasoning entry is active", () => {
   )
   assert.equal(followedByToolActivity[0]?.kind, "thinking")
   assert.equal(followedByToolActivity[0]?.isActive, false)
+  assert.equal(
+    followedByToolActivity[0]?.kind === "thinking" ? followedByToolActivity[0].coachTip : null,
+    null
+  )
   assert.deepEqual(
     projectActiveTurnStatus({
       activeRunPhase: "thinking",
@@ -712,6 +749,29 @@ test("only latest streaming reasoning entry is active", () => {
       kind: "thinking",
       placement: "inside_latest_agent_activity",
       toolCallId: null
+    }
+  )
+
+  const answerThenActiveReasoning = buildTurnAssistantEntries(
+    createTurn([
+      createAssistantMessage({
+        content: "I found the relevant files.",
+        id: "assistant-answer"
+      }),
+      reasoningMessage
+    ]),
+    { streamingAssistantId: "assistant-reasoning" }
+  )
+  const activeReasoningAfterContent = answerThenActiveReasoning.at(-1)
+  assert.equal(activeReasoningAfterContent?.kind, "thinking")
+  assert.equal(
+    activeReasoningAfterContent?.kind === "thinking" ? activeReasoningAfterContent.isActive : null,
+    true
+  )
+  assert.deepEqual(
+    activeReasoningAfterContent?.kind === "thinking" ? activeReasoningAfterContent.coachTip : null,
+    {
+      id: "iterate_after_first_draft"
     }
   )
 })
@@ -842,6 +902,37 @@ test("task stays out of message tool activity after the subagent state update is
       ? entries[0].items.map((item) => (item.kind === "tool" ? item.toolCall.id : item.kind))
       : [],
     [readToolCall.id]
+  )
+})
+
+test("assistant-shaped task tool results stay out of chat content projection", () => {
+  const taskToolCall = createToolCall("task-call-1", "task", {
+    description: "Review the staged diff",
+    subagent_type: "code-reviewer"
+  })
+  const projection = projectMessages([
+    createUserMessage("user-1", "Review this"),
+    createAssistantMessage({
+      id: "assistant-1",
+      toolCalls: [taskToolCall]
+    }),
+    createAssistantMessage({
+      content: "### Latest commit analysis\n\n| Area | Files |\n| --- | --- |",
+      id: "task-result-1",
+      name: "task",
+      toolCallId: taskToolCall.id
+    })
+  ])
+
+  assert.equal(projection.turns.length, 1)
+  assert.deepEqual(
+    projection.turns[0]?.assistants.map((message) => message.id),
+    ["assistant-1"]
+  )
+  assert.equal(projection.turns[0]?.toolResults.has(taskToolCall.id), false)
+  assert.deepEqual(
+    projection.displayRows.map((row) => row.key),
+    ["user-1", "__chat_footer__"]
   )
 })
 
