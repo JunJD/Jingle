@@ -3,7 +3,7 @@ import { AlertCircle, Brain, Folder, Send, Shield, Square, X } from "lucide-reac
 import type { VListHandle } from "virtua"
 import { PromptInput, PromptInputAction, PromptInputTextarea } from "@/components/agent-ui"
 import { useThreadContext, useThreadSelector } from "@/lib/thread-context"
-import type { AgentRunValidator } from "@/lib/agent-control"
+import type { AgentRunValidator, EditLastUserMessageAndInvokeInput } from "@/lib/agent-control"
 import { useAgent } from "@/lib/use-agent"
 import { Messages } from "./Messages"
 import { AssistantSelectionReferencePill } from "./AssistantSelectionReferences"
@@ -94,6 +94,7 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
   clearError: () => void
   isBusy: boolean
   onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
+  onEditLastUserMessage: (input: EditLastUserMessageAndInvokeInput) => Promise<boolean> | boolean
   onRetry: (input: ComposerMessageInput) => Promise<void> | void
   onSelectWorkspace: () => Promise<void> | void
   pendingApproval: HITLRequest | null
@@ -105,6 +106,7 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
     clearError,
     isBusy,
     onAddAssistantSelectionRef,
+    onEditLastUserMessage,
     onRetry,
     onSelectWorkspace,
     pendingApproval,
@@ -213,6 +215,7 @@ const ChatThreadViewport = memo(function ChatThreadViewport(props: {
           isLoading={isBusy}
           isScrolling={isScrolling}
           onAddAssistantSelectionRef={onAddAssistantSelectionRef}
+          onEditLastUserMessage={onEditLastUserMessage}
           onRetry={onRetry}
           onScroll={handleChatScroll}
           onScrollEnd={handleChatScrollEnd}
@@ -279,7 +282,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   })
   const {
     view: { canStop, error: visibleError, isBusy },
-    control: { clearError, invoke, resume, stop }
+    control: { clearError, editLastUserMessageAndInvoke, invoke, resume, stop }
   } = agent
   const pendingApproval = useThreadSelector(
     threadId,
@@ -311,6 +314,12 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
       await invoke(retryInput)
     },
     [invoke]
+  )
+  const editLastUserMessage = useCallback(
+    async (editInput: EditLastUserMessageAndInvokeInput): Promise<boolean> => {
+      return editLastUserMessageAndInvoke(editInput)
+    },
+    [editLastUserMessageAndInvoke]
   )
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
@@ -346,6 +355,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
         clearError={clearError}
         isBusy={isBusy}
         onAddAssistantSelectionRef={addSelectionRef}
+        onEditLastUserMessage={editLastUserMessage}
         onRetry={retry}
         onSelectWorkspace={handleSelectWorkspaceFromEmptyState}
         pendingApproval={pendingApproval}

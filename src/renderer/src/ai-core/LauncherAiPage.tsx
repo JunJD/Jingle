@@ -258,6 +258,7 @@ export function LauncherAiPage(): React.JSX.Element {
   const {
     branchThread,
     clearVisibleError,
+    editLastUserMessage,
     goToNextChat,
     goToPreviousChat,
     handleApprovalDecision,
@@ -676,6 +677,7 @@ export function LauncherAiPage(): React.JSX.Element {
                   isLoading={isBusy}
                   onAddAssistantSelectionRef={addSelectionRef}
                   onBranch={handleBranchChat}
+                  onEditLastUserMessage={editLastUserMessage}
                   onRetry={runPrimaryAction}
                   threadId={threadId}
                 />

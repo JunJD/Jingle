@@ -17,6 +17,7 @@ import { VList, type VListHandle } from "virtua"
 import type { ComposerMessageInput, ComposerMessageRef } from "@shared/message-content"
 import type { ActiveAgentToolCall } from "@shared/agent-thread-runtime"
 import type { ContentBlock, Message as ThreadMessage } from "@/types"
+import type { EditLastUserMessageAndInvokeInput } from "@/lib/agent-control"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n"
 import {
@@ -48,6 +49,7 @@ interface MessagesProps {
   onScrollEnd?: () => void
   onScrollToLatest?: () => void
   onBranch?: (messageId: string) => Promise<void> | void
+  onEditLastUserMessage?: (input: EditLastUserMessageAndInvokeInput) => Promise<boolean> | boolean
   onRetry?: (input: ComposerMessageInput) => Promise<void> | void
   onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
 }
@@ -236,6 +238,7 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
   hasVisibleTurns: boolean
   observeKey: string
   onBranch?: (messageId: string) => Promise<void> | void
+  onEditLastUserMessage?: (input: EditLastUserMessageAndInvokeInput) => Promise<boolean> | boolean
   onRetry?: (input: ComposerMessageInput) => Promise<void> | void
   onScrollToLatest?: () => void
   rowRef: RefObject<HTMLDivElement | null>
@@ -251,6 +254,7 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
     hasVisibleTurns,
     observeKey,
     onBranch,
+    onEditLastUserMessage,
     onRetry,
     onScrollToLatest,
     rowRef,
@@ -340,6 +344,9 @@ const MessageTurnRow = memo(function MessageTurnRow(props: {
         isActiveTurn={isActiveTurn}
         isStreaming={isStreaming}
         onBranch={isLoading ? undefined : onBranch}
+        onEditLastUserMessage={
+          isLastTurnRow && !isLoading && !turnPendingApproval ? onEditLastUserMessage : undefined
+        }
         onRetry={isActiveTurn && !isLoading ? onRetry : undefined}
         pendingApproval={turnPendingApproval}
         streamingAssistantId={streamingAssistantId}
@@ -373,6 +380,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
     isScrolling = false,
     onAddAssistantSelectionRef,
     onBranch,
+    onEditLastUserMessage,
     onRetry,
     onScroll,
     onScrollEnd,
@@ -613,6 +621,7 @@ export function Messages(props: MessagesProps): React.JSX.Element {
                   isScrolling={isScrolling}
                   observeKey={row.key}
                   onBranch={onBranch}
+                  onEditLastUserMessage={onEditLastUserMessage}
                   onRetry={onRetry}
                   onScrollToLatest={onScrollToLatest}
                   rowRef={lastTurnRowRef}

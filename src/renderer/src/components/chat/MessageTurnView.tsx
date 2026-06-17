@@ -14,12 +14,15 @@ import {
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import {
   extractComposerMessageRefsMetadata,
+  extractMessageText,
+  hasComposerMessageInputContent,
   hasMessageContent,
   resolveImageBlockUrl,
   toComposerMessageInput,
   type ComposerMessageInput
 } from "@shared/message-content"
 import type { ContentBlock, HITLRequest, Message as ThreadMessage } from "@/types"
+import type { EditLastUserMessageAndInvokeInput } from "@/lib/agent-control"
 import { ActionMessage } from "./ActionMessage"
 import {
   AgentActivityRow,
@@ -35,7 +38,7 @@ import {
   type AgentActivitySummaryIcon
 } from "./agent-activity-summary"
 import { useI18n } from "@/lib/i18n"
-import { cn } from "@/lib/utils"
+import { cn, formatTime } from "@/lib/utils"
 import {
   buildTurnAssistantEntries,
   getTurnCopyText,
@@ -1016,10 +1019,15 @@ function ActiveTurnStatusRow(props: {
 }
 
 function UserMessage(props: {
+  editInput?: ComposerMessageInput | null
   message: ThreadMessage
+  onSubmitEdit?: (input: EditLastUserMessageAndInvokeInput) => Promise<boolean> | boolean
   threadId: string
 }): React.JSX.Element | null {
-  const { message, threadId } = props
+  const { editInput, message, onSubmitEdit, threadId } = props
+  const { copy, locale } = useI18n()
+  const [editingInput, setEditingInput] = useState<ComposerMessageInput | null>(null)
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false)
   const threadControl = useThreadControl(threadId)
   const handleOpenWorkspaceFile = useCallback(
     (path: string): void => {
@@ -1033,9 +1041,98 @@ function UserMessage(props: {
   })
   const hasReferences =
     getAssistantSelectionRefs(extractComposerMessageRefsMetadata(message.metadata)).length > 0
+  const canEdit = Boolean(editInput && onSubmitEdit)
+  const isEditing = canEdit && editingInput !== null
+  const editIsSubmittable = editingInput ? hasComposerMessageInputContent(editingInput) : false
+  const copyText = extractMessageText(message.content)
+  const canCopy = copyText.trim().length > 0
+  const hasActions = canCopy || canEdit
+  const createdAtLabel = formatTime(message.created_at, locale)
+
+  const startEditing = useCallback((): void => {
+    if (!editInput || !onSubmitEdit) {
+      return
+    }
+
+    setEditingInput({
+      refs: editInput.refs,
+      text: editInput.text
+    })
+  }, [editInput, onSubmitEdit])
+  const cancelEditing = useCallback((): void => {
+    setEditingInput(null)
+  }, [])
+  const submitEdit = useCallback(async (): Promise<void> => {
+    if (!canEdit || !editIsSubmittable || !editingInput || !onSubmitEdit || isSubmittingEdit) {
+      return
+    }
+
+    setIsSubmittingEdit(true)
+    try {
+      const didSubmit = await onSubmitEdit({
+        messageId: message.id,
+        messageInput: editingInput
+      })
+      if (didSubmit) {
+        setEditingInput(null)
+      }
+    } finally {
+      setIsSubmittingEdit(false)
+    }
+  }, [canEdit, editIsSubmittable, editingInput, isSubmittingEdit, message.id, onSubmitEdit])
 
   if (!content.attachments && !content.textContent && !hasReferences) {
     return null
+  }
+
+  if (isEditing) {
+    return (
+      <Message from="user">
+        {hasReferences ? (
+          <AssistantSelectionReferencesFromMetadata
+            className="ml-auto justify-end"
+            metadata={message.metadata}
+          />
+        ) : null}
+        {content.attachments}
+        <form
+          className="ml-auto flex w-full max-w-full flex-col gap-[var(--ow-space-3)] rounded-[var(--ow-radius-md)] bg-secondary px-[var(--ow-message-bubble-x)] py-[var(--ow-message-bubble-y)] text-foreground"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void submitEdit()
+          }}
+        >
+          <textarea
+            aria-label={copy.chat.editUserMessage}
+            autoFocus
+            className="min-h-[7rem] w-full resize-y bg-transparent [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-foreground outline-none placeholder:text-muted-foreground"
+            disabled={isSubmittingEdit}
+            onChange={(event) => {
+              const text = event.currentTarget.value
+              setEditingInput((current) => (current ? { ...current, text } : current))
+            }}
+            value={editingInput.text}
+          />
+          <div className="flex items-center justify-end gap-[var(--ow-gap-sm)]">
+            <button
+              className="inline-flex h-[var(--ow-control-h-md)] items-center justify-center rounded-[var(--ow-radius-sm)] bg-background-elevated px-[var(--ow-space-3)] [font-size:var(--ow-font-meta)] text-muted-foreground transition hover:bg-background-interactive hover:text-foreground disabled:opacity-50"
+              disabled={isSubmittingEdit}
+              onClick={cancelEditing}
+              type="button"
+            >
+              {copy.chat.cancelEditMessage}
+            </button>
+            <button
+              className="inline-flex h-[var(--ow-control-h-md)] items-center justify-center rounded-[var(--ow-radius-sm)] bg-primary px-[var(--ow-space-3)] [font-size:var(--ow-font-meta)] text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+              disabled={isSubmittingEdit || !editIsSubmittable}
+              type="submit"
+            >
+              {copy.chat.sendEditedMessage}
+            </button>
+          </div>
+        </form>
+      </Message>
+    )
   }
 
   return (
@@ -1050,6 +1147,35 @@ function UserMessage(props: {
       {content.textContent ? (
         <MessageContent className="gap-[var(--ow-space-2-5)]">{content.textContent}</MessageContent>
       ) : null}
+      {hasActions ? (
+        <MessageToolbar className="-mt-[var(--ow-space-1)] ml-auto justify-end">
+          <MessageActions className="h-[var(--ow-control-h-compact)] rounded-[var(--ow-radius-sm)] border border-transparent px-[var(--ow-space-1)] text-muted-foreground">
+            <span className="px-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] tabular-nums">
+              {createdAtLabel}
+            </span>
+            {canCopy ? (
+              <MessageAction asChild label={copy.chat.copyMessage} tooltip={copy.chat.copyMessage}>
+                <CopyButton
+                  className="size-[22px] rounded-[var(--ow-radius-sm)] text-muted-foreground hover:text-foreground [&_svg]:size-[var(--ow-icon-sm)]"
+                  copiedLabel={copy.common.copied}
+                  copyLabel={copy.chat.copyMessage}
+                  iconClassName="size-[var(--ow-icon-sm)]"
+                  text={copyText}
+                />
+              </MessageAction>
+            ) : null}
+            {canEdit ? (
+              <MessageAction
+                label={copy.chat.editUserMessage}
+                onClick={startEditing}
+                tooltip={copy.chat.editUserMessage}
+              >
+                <Edit className="size-[var(--ow-icon-sm)]" />
+              </MessageAction>
+            ) : null}
+          </MessageActions>
+        </MessageToolbar>
+      ) : null}
     </Message>
   )
 }
@@ -1061,6 +1187,7 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
   activeRunStartedAt?: Date | null
   isActiveTurn: boolean
   onBranch?: (messageId: string) => Promise<void> | void
+  onEditLastUserMessage?: (input: EditLastUserMessageAndInvokeInput) => Promise<boolean> | boolean
   onRetry?: (input: ComposerMessageInput) => Promise<void> | void
   pendingApproval?: HITLRequest | null
   isStreaming: boolean
@@ -1079,6 +1206,7 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
     isActiveTurn,
     isStreaming,
     onBranch,
+    onEditLastUserMessage,
     onRetry,
     pendingApproval,
     streamingAssistantId,
@@ -1094,6 +1222,12 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
     turn.user && hasMessageContent(turn.user.content)
       ? toComposerMessageInput(turn.user.content, turn.user.metadata)
       : null
+  const handleSubmitUserEdit = useCallback(
+    async (input: EditLastUserMessageAndInvokeInput): Promise<boolean> => {
+      return (await onEditLastUserMessage?.(input)) ?? false
+    },
+    [onEditLastUserMessage]
+  )
   const assistantEntries = useMemo(
     () => buildTurnAssistantEntries(turn, { activeToolCalls, streamingAssistantId }),
     [activeToolCalls, streamingAssistantId, turn]
@@ -1128,7 +1262,15 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
 
   return (
     <div className="space-y-[var(--ow-space-2-5)]">
-      {turn.user ? <UserMessage message={turn.user} threadId={threadId} /> : null}
+      {turn.user ? (
+        <UserMessage
+          editInput={onEditLastUserMessage ? retryInput : null}
+          key={`${turn.user.id}:${onEditLastUserMessage ? "editable" : "read-only"}`}
+          message={turn.user}
+          onSubmitEdit={onEditLastUserMessage ? handleSubmitUserEdit : undefined}
+          threadId={threadId}
+        />
+      ) : null}
       {turnElapsed ? <TurnElapsedDivider projection={turnElapsed} /> : null}
       {activeTurnStatus?.placement === "before_entries" ? activeTurnStatusRow : null}
       {assistantEntries.map((entry, index) => {

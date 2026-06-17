@@ -32,7 +32,10 @@ export interface AppCopy {
     agentStatusThinking: string
     agentStatusWaitingApproval: string
     contextCompacted: string
+    cancelEditMessage: string
+    editUserMessage: string
     runCoachTip: Record<RunCoachTipId, string>
+    sendEditedMessage: string
     toolActivityChangedFiles: string
     toolActivityCompleted: string
     toolActivityCommands: (count: number) => string
@@ -322,6 +325,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentStatusThinking: "正在思考",
       agentStatusWaitingApproval: "等待你确认",
       contextCompacted: "上下文已自动压缩",
+      cancelEditMessage: "取消",
+      editUserMessage: "编辑用户消息",
       runCoachTip: {
         iterate_after_first_draft: "第一轮只是起点，继续追问和调整通常会更接近你想要的结果。",
         keep_followups_in_thread: "同一目标下，继续在当前任务里追问，比开新任务更容易保留上下文。",
@@ -367,6 +372,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       selectWorkspace: "选择 workspace",
       selectWorkspaceHint: "Agent 需要一个 workspace 来创建和修改文件",
       selectWorkspaceTitle: "先选择一个 workspace 文件夹",
+      sendEditedMessage: "发送",
       startConversation: "开始和 Agent 对话",
       retryMessage: "重试回答",
       selectedTextReferences: (count) => `${count} 个已选文本片段`,
@@ -634,6 +640,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       agentStatusThinking: "Thinking",
       agentStatusWaitingApproval: "Waiting for your confirmation",
       contextCompacted: "Context automatically compressed",
+      cancelEditMessage: "Cancel",
+      editUserMessage: "Edit user message",
       runCoachTip: {
         iterate_after_first_draft:
           "The first pass is only a starting point. Follow up and adjust to get closer to what you want.",
@@ -682,6 +690,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       selectWorkspace: "Select workspace",
       selectWorkspaceHint: "The agent needs a workspace to create and modify files",
       selectWorkspaceTitle: "Select a workspace folder first",
+      sendEditedMessage: "Send",
       startConversation: "Start a conversation with the agent",
       retryMessage: "Retry response",
       selectedTextReferences: (count) =>

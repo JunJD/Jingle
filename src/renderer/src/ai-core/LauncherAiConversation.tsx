@@ -15,6 +15,7 @@ import { useVirtualChatScrollIntent } from "@/components/chat/useVirtualChatScro
 import { useI18n } from "@/lib/i18n"
 import { useThreadSelector } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
+import type { EditLastUserMessageAndInvokeInput } from "@/lib/agent-control"
 import type { ArtifactRecord, FileArtifactRecord } from "@shared/artifacts"
 import type { ComposerMessageInput, ComposerMessageRef } from "@shared/message-content"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -413,6 +414,7 @@ export function LauncherAiConversation(props: {
   isLoading: boolean
   onBranch?: (messageId?: string) => Promise<void>
   onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
+  onEditLastUserMessage?: (input: EditLastUserMessageAndInvokeInput) => Promise<boolean> | boolean
   onRetry: (input: ComposerMessageInput) => Promise<void> | void
   threadId: string
 }): React.JSX.Element {
@@ -423,6 +425,7 @@ export function LauncherAiConversation(props: {
     isLoading,
     onBranch,
     onAddAssistantSelectionRef,
+    onEditLastUserMessage,
     onRetry,
     threadId
   } = props
@@ -435,6 +438,7 @@ export function LauncherAiConversation(props: {
       isLoading={isLoading}
       onBranch={onBranch}
       onAddAssistantSelectionRef={onAddAssistantSelectionRef}
+      onEditLastUserMessage={onEditLastUserMessage}
       onRetry={onRetry}
       threadId={threadId}
     />
@@ -448,6 +452,7 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
   isLoading: boolean
   onBranch?: (messageId?: string) => Promise<void>
   onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
+  onEditLastUserMessage?: (input: EditLastUserMessageAndInvokeInput) => Promise<boolean> | boolean
   onRetry: (input: ComposerMessageInput) => Promise<void> | void
   threadId: string
 }): React.JSX.Element {
@@ -459,6 +464,7 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
     isLoading,
     onBranch,
     onAddAssistantSelectionRef,
+    onEditLastUserMessage,
     onRetry,
     threadId
   } = props
@@ -519,6 +525,7 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
         isScrolling={isScrolling}
         onBranch={canFork ? onBranch : undefined}
         onAddAssistantSelectionRef={onAddAssistantSelectionRef}
+        onEditLastUserMessage={onEditLastUserMessage}
         onRetry={onRetry}
         renderFooter={renderFooter}
         onScroll={handleScroll}
