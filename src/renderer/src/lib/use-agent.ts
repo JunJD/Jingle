@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import type { IpcErrorPayload } from "@shared/ipc-error"
 import { useThreadContext, useThreadSelector } from "./thread-context"
 import {
+  editLastUserMessageAndInvokeAgentThread,
   invokeAgentThread,
   resumeAgentThread,
   stopAgentThread,
   type AgentControl,
+  type EditLastUserMessageAndInvokeInput,
   type AgentRunValidator
 } from "./agent-control"
 
@@ -106,6 +108,24 @@ export function useAgent(options: UseAgentOptions): {
     [temporaryMode, threadContext, threadId, validateRun]
   )
 
+  const editLastUserMessageAndInvoke = useCallback(
+    async (
+      { messageId, messageInput }: EditLastUserMessageAndInvokeInput,
+      invokeOptions?: { threadId?: string }
+    ): Promise<boolean> => {
+      return editLastUserMessageAndInvokeAgentThread({
+        messageId,
+        messageInput,
+        onLocalError: setLocalError,
+        temporaryMode,
+        threadContext,
+        threadId: invokeOptions?.threadId ?? threadId,
+        validateRun
+      })
+    },
+    [temporaryMode, threadContext, threadId, validateRun]
+  )
+
   const stop = useCallback(async (): Promise<void> => {
     await stopAgentThread(threadId)
   }, [threadId])
@@ -134,11 +154,12 @@ export function useAgent(options: UseAgentOptions): {
   const control = useMemo<AgentControl>(
     () => ({
       clearError,
+      editLastUserMessageAndInvoke,
       invoke,
       resume,
       stop
     }),
-    [clearError, invoke, resume, stop]
+    [clearError, editLastUserMessageAndInvoke, invoke, resume, stop]
   )
 
   return {

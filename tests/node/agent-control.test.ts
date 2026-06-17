@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import type { AgentThreadDataSnapshot } from "../../src/shared/app-types"
 import {
+  editLastUserMessageAndInvokeAgentThread,
   invokeAgentThread,
   resumeAgentThread,
   updateAgentThreadModel,
@@ -61,6 +62,13 @@ function createThreadDataSnapshot(
 }
 
 function installWindowApiStub(input?: { threadMetadata?: Record<string, unknown> }): {
+  edited: Array<{
+    message: unknown
+    modelId: string
+    permissionMode: string
+    temporaryMode: boolean
+    threadId: string
+  }>
   invoked: Array<{
     message: unknown
     modelId: string
@@ -79,6 +87,13 @@ function installWindowApiStub(input?: { threadMetadata?: Record<string, unknown>
     threadId: string
   }>
 } {
+  const edited: Array<{
+    message: unknown
+    modelId: string
+    permissionMode: string
+    temporaryMode: boolean
+    threadId: string
+  }> = []
   const invoked: Array<{
     message: unknown
     modelId: string
@@ -102,6 +117,21 @@ function installWindowApiStub(input?: { threadMetadata?: Record<string, unknown>
     value: {
       api: {
         agent: {
+          editLastUserMessageAndInvoke: (
+            threadId: string,
+            message: unknown,
+            modelId: string,
+            permissionMode: string,
+            temporaryMode: boolean
+          ) => {
+            edited.push({
+              message,
+              modelId,
+              permissionMode,
+              temporaryMode,
+              threadId
+            })
+          },
           invoke: (
             threadId: string,
             message: unknown,
@@ -150,7 +180,7 @@ function installWindowApiStub(input?: { threadMetadata?: Record<string, unknown>
     }
   })
 
-  return { invoked, resumed, threadUpdates }
+  return { edited, invoked, resumed, threadUpdates }
 }
 
 function createPendingApproval(): HITLRequest {
@@ -315,6 +345,69 @@ test("invokeAgentThread rejects assistant selection refs without visible user te
 
   assert.equal(didInvoke, false)
   assert.deepEqual(invoked, [])
+})
+
+test("editLastUserMessageAndInvokeAgentThread preserves refs as edited message context", async () => {
+  const { edited } = installWindowApiStub()
+  const store = createThreadStore()
+  store.applyThreadDataSnapshot(
+    "thread-a",
+    createThreadDataSnapshot({
+      thread: {
+        metadata: {
+          model: "model-a",
+          permissionMode: "explore"
+        },
+        status: "idle",
+        thread_id: "thread-a",
+        title: undefined
+      }
+    })
+  )
+
+  const didEdit = await editLastUserMessageAndInvokeAgentThread({
+    messageId: "user-1",
+    messageInput: {
+      refs: [
+        {
+          selectedText: "old selected assistant text",
+          sourceMessageId: "assistant-message-1",
+          sourceThreadId: "thread-a",
+          type: "assistant-message-selection"
+        }
+      ],
+      text: "edited text"
+    },
+    threadContext: {
+      awaitThreadRuntime: async () => {},
+      getAgentCommandState: (threadId) => getAgentCommandState(store, threadId)
+    },
+    threadId: "thread-a"
+  })
+
+  assert.equal(didEdit, true)
+  assert.deepEqual(edited, [
+    {
+      message: {
+        additional_kwargs: {
+          refs: [
+            {
+              selectedText: "old selected assistant text",
+              sourceMessageId: "assistant-message-1",
+              sourceThreadId: "thread-a",
+              type: "assistant-message-selection"
+            }
+          ]
+        },
+        content: "edited text\n\nReferenced assistant selections:\n1. old selected assistant text",
+        id: "user-1"
+      },
+      modelId: "model-a",
+      permissionMode: "explore",
+      temporaryMode: false,
+      threadId: "thread-a"
+    }
+  ])
 })
 
 test("invokeAgentThread rejects busy threads before calling runtime", async () => {

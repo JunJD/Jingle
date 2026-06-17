@@ -15,6 +15,10 @@ function createControllerHarness(input?: {
 }): {
   controller: ReturnType<typeof createLauncherAiController>
   createdThreads: AiCoreThreadCreateInput[]
+  editedMessages: Array<{
+    input: { messageId: string; messageInput: ComposerMessageInput }
+    threadId: string | undefined
+  }>
   invoked: Array<{ input: ComposerMessageInput; threadId: string | undefined }>
   localComposerTexts: string[]
   resumedDecisions: unknown[]
@@ -26,6 +30,10 @@ function createControllerHarness(input?: {
   }>
 } {
   const createdThreads: AiCoreThreadCreateInput[] = []
+  const editedMessages: Array<{
+    input: { messageId: string; messageInput: ComposerMessageInput }
+    threadId: string | undefined
+  }> = []
   const invoked: Array<{ input: ComposerMessageInput; threadId: string | undefined }> = []
   const localComposerTexts: string[] = []
   const resumedDecisions: unknown[] = []
@@ -35,8 +43,15 @@ function createControllerHarness(input?: {
     metadata: Record<string, unknown>
     threadId: string
   }> = []
-  const agentControl: Pick<AgentControl, "clearError" | "invoke" | "resume"> = {
+  const agentControl: Pick<
+    AgentControl,
+    "clearError" | "editLastUserMessageAndInvoke" | "invoke" | "resume"
+  > = {
     clearError: () => {},
+    editLastUserMessageAndInvoke: async (editInput, options) => {
+      editedMessages.push({ input: editInput, threadId: options?.threadId })
+      return true
+    },
     invoke: async (messageInput, options) => {
       await input?.invokeGate
       invoked.push({ input: messageInput, threadId: options?.threadId })
@@ -111,6 +126,7 @@ function createControllerHarness(input?: {
       updateFreshDraft: () => {}
     }),
     createdThreads,
+    editedMessages,
     invoked,
     localComposerTexts,
     resumedDecisions,
@@ -198,6 +214,33 @@ test("launcher AI controller keeps local composer when invoke fails", async () =
 
   assert.deepEqual(harness.createdThreads, [])
   assert.deepEqual(harness.invoked, [{ input: messageInput, threadId: "existing-thread" }])
+  assert.deepEqual(harness.localComposerTexts, [])
+})
+
+test("launcher AI controller edits the latest user message in the selected thread", async () => {
+  const harness = createControllerHarness({ threadId: "existing-thread" })
+  const messageInput: ComposerMessageInput = {
+    refs: [],
+    text: "改成这个"
+  }
+
+  const didEdit = await harness.controller.editLastUserMessage({
+    messageId: "user-1",
+    messageInput
+  })
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(didEdit, true)
+  assert.deepEqual(harness.editedMessages, [
+    {
+      input: {
+        messageId: "user-1",
+        messageInput
+      },
+      threadId: "existing-thread"
+    }
+  ])
+  assert.deepEqual(harness.createdThreads, [])
   assert.deepEqual(harness.localComposerTexts, [])
 })
 

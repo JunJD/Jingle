@@ -22,6 +22,10 @@ export type AgentRunValidator = (input: AgentRunValidationInput) => string | nul
 
 export interface AgentControl {
   clearError: () => void
+  editLastUserMessageAndInvoke: (
+    input: EditLastUserMessageAndInvokeInput,
+    options?: { threadId?: string }
+  ) => Promise<boolean>
   invoke: (input: ComposerMessageInput, options?: { threadId?: string }) => Promise<boolean>
   resume: (decision: HITLDecision) => Promise<boolean>
   stop: () => Promise<void>
@@ -52,6 +56,11 @@ export interface InvokeAgentThreadInput {
   threadContext: Pick<ThreadContextValue, "awaitThreadRuntime" | "getAgentCommandState">
   threadId: string | null
   validateRun?: AgentRunValidator
+  messageInput: ComposerMessageInput
+}
+
+export interface EditLastUserMessageAndInvokeInput {
+  messageId: string
   messageInput: ComposerMessageInput
 }
 
@@ -149,6 +158,70 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
       {
         content: submitContent,
         id: crypto.randomUUID(),
+        ...(messageInput.refs.length > 0 ? { additional_kwargs: { refs: messageInput.refs } } : {})
+      },
+      agentState.currentModel,
+      agentState.permissionMode,
+      input.temporaryMode ?? false
+    )
+
+    return true
+  } catch (error) {
+    input.onLocalError?.(toErrorMessage(error))
+    return false
+  }
+}
+
+export async function editLastUserMessageAndInvokeAgentThread(
+  input: InvokeAgentThreadInput & { messageId: string }
+): Promise<boolean> {
+  const { messageInput, threadContext } = input
+  const message = messageInput.text.trim()
+  const displayContent = toMessageContent(messageInput)
+  const submitContent = toAgentMessageContentWithRefs(displayContent, messageInput.refs)
+
+  if (
+    !hasComposerMessageInputContent(messageInput) ||
+    !hasMessageContent(submitContent)
+  ) {
+    return false
+  }
+
+  if (!input.threadId) {
+    input.onLocalError?.("Agent thread is not selected")
+    return false
+  }
+
+  try {
+    await threadContext.awaitThreadRuntime(input.threadId)
+
+    const agentState = threadContext.getAgentCommandState(input.threadId)
+    if (!agentState) {
+      throw new Error(`Agent thread state is not initialized: ${input.threadId}`)
+    }
+
+    if (agentState.activeRun?.status === "running" || agentState.pendingApproval) {
+      return false
+    }
+
+    const validationError = input.validateRun?.({
+      message,
+      threadId: input.threadId,
+      workspacePath: agentState.workspacePath
+    })
+
+    if (validationError) {
+      input.onLocalError?.(validationError)
+      return false
+    }
+
+    input.onLocalError?.(null)
+
+    window.api.agent.editLastUserMessageAndInvoke(
+      input.threadId,
+      {
+        content: submitContent,
+        id: input.messageId,
         ...(messageInput.refs.length > 0 ? { additional_kwargs: { refs: messageInput.refs } } : {})
       },
       agentState.currentModel,

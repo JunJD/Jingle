@@ -1,7 +1,11 @@
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import type { PermissionModeName } from "@shared/permission-mode"
-import type { AgentControl, UpdateAgentThreadRecord } from "@/lib/agent-control"
+import type {
+  AgentControl,
+  EditLastUserMessageAndInvokeInput,
+  UpdateAgentThreadRecord
+} from "@/lib/agent-control"
 import type { HITLDecision } from "@/types"
 import type { AiCoreThreadCreateInput, AiCoreThreadHandle } from "./AiCoreHost"
 import type { LauncherAiActiveTarget } from "./useLauncherAiThreadNavigation"
@@ -9,7 +13,10 @@ import type { LauncherAiActiveTarget } from "./useLauncherAiThreadNavigation"
 type LauncherAiDraftTarget = Extract<LauncherAiActiveTarget, { kind: "draft" }>
 
 export interface LauncherAiControllerInput {
-  agentControl: Pick<AgentControl, "clearError" | "invoke" | "resume">
+  agentControl: Pick<
+    AgentControl,
+    "clearError" | "editLastUserMessageAndInvoke" | "invoke" | "resume"
+  >
   branchThreadUntilMessage: (threadId: string, messageId: string) => Promise<AiCoreThreadHandle>
   createBranchThread: (threadId: string) => Promise<AiCoreThreadHandle>
   createThread: (input: AiCoreThreadCreateInput) => Promise<AiCoreThreadHandle>
@@ -52,6 +59,7 @@ export interface LauncherAiControllerInput {
 export interface LauncherAiController {
   branchThread: (messageId?: string) => Promise<string | null>
   clearVisibleError: () => void
+  editLastUserMessage: (input: EditLastUserMessageAndInvokeInput) => Promise<boolean>
   goToNextChat: () => Promise<string | null>
   goToPreviousChat: () => Promise<string | null>
   handleApprovalDecision: (decision: HITLDecision) => Promise<boolean>
@@ -120,6 +128,30 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
     clearVisibleError() {
       input.setNavigationError(null)
       input.agentControl.clearError()
+    },
+    async editLastUserMessage(editInput) {
+      if (
+        invokeInFlight ||
+        input.isBusy ||
+        input.hasPendingApproval ||
+        !input.threadId ||
+        !hasComposerMessageInputContent(editInput.messageInput)
+      ) {
+        return false
+      }
+
+      invokeInFlight = true
+      try {
+        input.setNavigationError(null)
+        return await input.agentControl.editLastUserMessageAndInvoke(editInput, {
+          threadId: input.threadId
+        })
+      } catch (error) {
+        input.setNavigationError(toErrorMessage(error))
+        return false
+      } finally {
+        invokeInFlight = false
+      }
     },
     async goToNextChat() {
       try {
