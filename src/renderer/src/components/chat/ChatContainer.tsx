@@ -1,5 +1,5 @@
 import { memo, useRef, useEffect, useCallback, useMemo, useState } from "react"
-import { AlertCircle, Brain, Folder, Send, Shield, Square, X } from "lucide-react"
+import { Brain, Folder, Send, Shield, Square } from "lucide-react"
 import type { VListHandle } from "virtua"
 import { PromptInput, PromptInputAction, PromptInputTextarea } from "@/components/agent-ui"
 import { useThreadContext, useThreadSelector } from "@/lib/thread-context"
@@ -16,6 +16,7 @@ import { ChatTodos } from "./ChatTodos"
 import { ChatJumpToLatestButton } from "./ChatJumpToLatestButton"
 import { ComposerApprovalPrompt } from "./ComposerApprovalPrompt"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
+import { AgentErrorNotice } from "./AgentErrorNotice"
 import { useVirtualChatScrollIntent } from "./useVirtualChatScrollIntent"
 import { useAssistantSelectionRefs } from "./useAssistantSelectionRefs"
 import { useI18n } from "@/lib/i18n"
@@ -48,7 +49,6 @@ const ChatFooter = memo(function ChatFooter(props: {
 }): React.JSX.Element {
   const { clearError, hasVisibleTurns, isBusy, pendingApproval, threadId, todos, visibleError } =
     props
-  const { copy } = useI18n()
   const runId = useThreadSelector(threadId, (state) => state?.agent.latestRunId ?? null)
 
   return (
@@ -64,27 +64,7 @@ const ChatFooter = memo(function ChatFooter(props: {
       {!isBusy && <MemoryReviewPanel threadId={threadId} />}
 
       {visibleError && !isBusy && (
-        <div className="flex items-start gap-[var(--ow-gap-md)] border-l-[3px] border-destructive bg-destructive/8 px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
-          <AlertCircle className="mt-[var(--ow-leading-nudge)] size-[var(--ow-icon-md)] shrink-0 text-destructive" />
-          <div className="min-w-0 flex-1">
-            <div className="[font-size:var(--ow-font-body)] font-medium text-destructive">
-              {copy.chat.agentError}
-            </div>
-            <div className="mt-[var(--ow-space-1)] break-words [font-size:var(--ow-font-body)] text-muted-foreground">
-              {visibleError}
-            </div>
-            <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-muted-foreground">
-              {copy.chat.agentErrorRecovery}
-            </div>
-          </div>
-          <button
-            onClick={clearError}
-            className="shrink-0 rounded p-[var(--ow-space-1)] transition-colors hover:bg-destructive/20"
-            aria-label={copy.chat.dismissError}
-          >
-            <X className="size-[var(--ow-icon-action)] text-muted-foreground" />
-          </button>
-        </div>
+        <AgentErrorNotice error={visibleError} onDismiss={clearError} />
       )}
     </div>
   )

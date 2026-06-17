@@ -62,6 +62,14 @@ function getErrorFingerprint(value: unknown): string {
   return typeof value === "string" ? value.toLowerCase() : ""
 }
 
+function getErrorCode(value: unknown): string | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  return typeof value.code === "string" ? value.code : null
+}
+
 function errorCauseQueue(error: unknown): unknown[] {
   const queue: unknown[] = []
   const cause = getErrorLikeCause(error)
@@ -100,14 +108,67 @@ export function isModelAuthenticationError(error: unknown): boolean {
   return false
 }
 
-export function normalizeAgentRuntimeError(channel: string, error: unknown): unknown {
-  if (!isModelAuthenticationError(error)) {
-    return error
+export function isTransportInterruptionError(error: unknown): boolean {
+  const visited = new Set<unknown>()
+  const queue: unknown[] = [error]
+
+  while (queue.length > 0) {
+    const current = queue.shift()
+    if (!current || visited.has(current)) {
+      continue
+    }
+
+    visited.add(current)
+
+    const code = getErrorCode(current)
+    if (
+      code === "UND_ERR_SOCKET" ||
+      code === "UND_ERR_CONNECT_TIMEOUT" ||
+      code === "UND_ERR_HEADERS_TIMEOUT" ||
+      code === "UND_ERR_BODY_TIMEOUT" ||
+      code === "ECONNRESET" ||
+      code === "ETIMEDOUT" ||
+      code === "ENETDOWN" ||
+      code === "ENETUNREACH" ||
+      code === "EHOSTDOWN" ||
+      code === "EHOSTUNREACH"
+    ) {
+      return true
+    }
+
+    const fingerprint = getErrorFingerprint(current)
+    if (
+      fingerprint === "typeerror terminated" ||
+      fingerprint === "typeerror fetch failed" ||
+      fingerprint.includes("socket hang up") ||
+      fingerprint.includes("other side closed")
+    ) {
+      return true
+    }
+
+    queue.push(...errorCauseQueue(current))
   }
 
-  return new OpenworkIpcError({
-    channel,
-    code: "UNAUTHENTICATED",
-    message: "Authentication failed. Please check your API key in settings."
-  })
+  return false
+}
+
+export function normalizeAgentRuntimeError(channel: string, error: unknown): unknown {
+  if (isModelAuthenticationError(error)) {
+    return new OpenworkIpcError({
+      channel,
+      code: "UNAUTHENTICATED",
+      message: "Authentication failed. Please check your API key in settings."
+    })
+  }
+
+  if (isTransportInterruptionError(error)) {
+    return new OpenworkIpcError({
+      channel,
+      code: "UNAVAILABLE",
+      details: ["The underlying model or network transport ended before the run completed."],
+      message: "The agent connection was interrupted. Please retry this run."
+    })
+  }
+
+  return error
 }

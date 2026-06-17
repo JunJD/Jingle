@@ -1,14 +1,7 @@
-import {
-  AlertCircle,
-  ExternalLink,
-  FileText,
-  ImageIcon,
-  Loader2,
-  PackageOpen,
-  X
-} from "lucide-react"
+import { ExternalLink, FileText, ImageIcon, Loader2, PackageOpen } from "lucide-react"
 import { Messages } from "@/components/chat/Messages"
 import { ChatJumpToLatestButton } from "@/components/chat/ChatJumpToLatestButton"
+import { AgentErrorNotice } from "@/components/chat/AgentErrorNotice"
 import { IncludedMemoriesPanel } from "@/components/chat/IncludedMemoriesPanel"
 import { MemoryReviewPanel } from "@/components/chat/MemoryReviewPanel"
 import { useVirtualChatScrollIntent } from "@/components/chat/useVirtualChatScrollIntent"
@@ -319,7 +312,6 @@ const LauncherAiFooter = memo(function LauncherAiFooter(props: {
   threadId: string
 }): React.JSX.Element {
   const { clearError, error, isLoading, threadId } = props
-  const { copy } = useI18n()
   const runId = useThreadSelector(threadId, (state) => state?.agent.latestRunId ?? null)
   const artifacts = useThreadSelector(
     threadId,
@@ -334,27 +326,7 @@ const LauncherAiFooter = memo(function LauncherAiFooter(props: {
 
       {!isLoading && <MemoryReviewPanel threadId={threadId} />}
 
-      {error && !isLoading && (
-        <div className="flex items-start gap-[var(--ow-gap-md)] border-l-[3px] border-destructive bg-destructive/8 px-[var(--ow-space-4)] py-[var(--ow-space-3)]">
-          <AlertCircle className="mt-[var(--ow-leading-nudge)] size-[var(--ow-icon-md)] shrink-0 text-destructive" />
-          <div className="min-w-0 flex-1">
-            <div className="[font-size:var(--ow-font-body)] font-medium text-destructive">
-              {copy.chat.agentError}
-            </div>
-            <div className="mt-1 break-words [font-size:var(--ow-font-body)] text-muted-foreground">
-              {error}
-            </div>
-          </div>
-          <button
-            aria-label={copy.chat.dismissError}
-            className="shrink-0 rounded p-[var(--ow-space-1)] transition-colors hover:bg-destructive/20"
-            onClick={clearError}
-            type="button"
-          >
-            <X className="size-[var(--ow-icon-action)] text-muted-foreground" />
-          </button>
-        </div>
-      )}
+      {error && !isLoading && <AgentErrorNotice error={error} onDismiss={clearError} />}
     </div>
   )
 })
@@ -376,19 +348,7 @@ export function LauncherAiEmptyState(props: { error?: string | null }): React.JS
         <p className="mt-[var(--ow-space-3)] max-w-[var(--launcher-ai-empty-copy-max-width)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
           {copy.launcher.aiHeroDescription}
         </p>
-        {error ? (
-          <div className="mt-[var(--ow-space-6)] flex w-full items-start gap-[var(--ow-gap-md)] bg-destructive/8 px-[var(--ow-space-4)] py-[var(--ow-space-3)] text-left">
-            <AlertCircle className="mt-[var(--ow-leading-nudge)] size-[var(--ow-icon-md)] shrink-0 text-destructive" />
-            <div className="min-w-0 flex-1">
-              <div className="[font-size:var(--ow-font-body)] font-medium text-destructive">
-                {copy.chat.agentError}
-              </div>
-              <div className="mt-1 break-words [font-size:var(--ow-font-body)] text-muted-foreground">
-                {error}
-              </div>
-            </div>
-          </div>
-        ) : null}
+        {error ? <AgentErrorNotice className="mt-[var(--ow-space-6)]" error={error} /> : null}
       </div>
     </div>
   )
