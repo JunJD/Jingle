@@ -293,3 +293,28 @@ test("toDisplayAssistantMessageContent drops empty text while preserving reasoni
     }
   ])
 })
+
+test("toDisplayAssistantMessageContent preserves whitespace-only streamed text blocks", () => {
+  assert.deepEqual(
+    toDisplayAssistantMessageContent([
+      {
+        text: " ",
+        type: "text"
+      },
+      {
+        content: "\n\n",
+        type: "text"
+      }
+    ]),
+    [
+      {
+        text: " ",
+        type: "text"
+      },
+      {
+        content: "\n\n",
+        type: "text"
+      }
+    ]
+  )
+})

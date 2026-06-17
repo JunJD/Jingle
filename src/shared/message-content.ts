@@ -246,6 +246,10 @@ function isContentBlockLike(value: unknown): value is ContentBlock {
 export interface DisplayAssistantMessageContentOptions extends AssistantMessageContentSource {
 }
 
+function hasDisplayTextValue(value: string | undefined): boolean {
+  return typeof value === "string" && value.length > 0
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -387,7 +391,7 @@ export function toDisplayAssistantMessageContent(
     }
 
     const blocks: ContentBlock[] = [{ reasoning, type: "reasoning" }]
-    if (text.trim()) {
+    if (text.length > 0) {
       blocks.push({ text, type: "text" })
     }
     return blocks
@@ -409,7 +413,9 @@ export function toDisplayAssistantMessageContent(
     }
 
     const nextBlock = { ...block }
-    return nextBlock.text?.trim() || nextBlock.content?.trim() ? [nextBlock] : []
+    return hasDisplayTextValue(nextBlock.text) || hasDisplayTextValue(nextBlock.content)
+      ? [nextBlock]
+      : []
   })
 }
 

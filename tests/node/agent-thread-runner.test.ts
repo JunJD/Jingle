@@ -861,6 +861,45 @@ test("AgentThreadRunner emits only scoped runtime events during token streaming"
   ])
 })
 
+test("AgentThreadRunner preserves whitespace-only text chunks during token streaming", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+
+  await hub.prepareInvoke("thread-whitespace-token", {
+    content: "stream markdown please",
+    id: "user-1"
+  })
+
+  for (const content of ["###", " ", "变更概要", "\n\n", "| 文件 | 变更 |"]) {
+    await hub.handlePayload("thread-whitespace-token", {
+      data: [
+        {
+          id: ["AIMessageChunk"],
+          kwargs: {
+            content: [
+              {
+                text: content,
+                type: "text"
+              }
+            ],
+            id: "assistant-1"
+          },
+          type: "ai"
+        }
+      ],
+      mode: "messages",
+      type: "stream"
+    })
+  }
+
+  const snapshot = await hub.readThreadState("thread-whitespace-token")
+  assert.deepEqual(snapshot.messagesPage.at(-1)?.content, [
+    {
+      text: "### 变更概要\n\n| 文件 | 变更 |",
+      type: "text"
+    }
+  ])
+})
+
 test("AgentThreadRunner ignores empty assistant token chunks without advancing runtime revision", async () => {
   const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
   const runtimeEventTypes: string[] = []
