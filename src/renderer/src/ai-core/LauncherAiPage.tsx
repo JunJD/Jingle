@@ -446,27 +446,19 @@ export function LauncherAiPage(): React.JSX.Element {
 
     void loadThreads()
   }, [isSidebarOpen, isSidebarPreviewVisible, loadThreads])
-  const sidebarInfo = {
-    modelLabel: currentModelLabel,
-    permissionLabel: currentPermissionLabel,
-    threadId,
-    title: sidebarTitle,
-    workspacePath
-  }
   const sidebarLabels = {
-    environmentModel: copy.launcher.environmentModel,
-    environmentNoModel: copy.launcher.environmentNoModel,
-    environmentNoThread: copy.launcher.environmentNoThread,
-    environmentNoWorkspace: copy.launcher.environmentNoWorkspace,
-    environmentPermission: copy.launcher.environmentPermission,
-    environmentThread: copy.launcher.environmentThread,
-    environmentWorkspace: copy.launcher.environmentWorkspace,
     expandSidebar: copy.launcher.expandSidebar,
+    sidebarAutomation: copy.launcher.sidebarAutomation,
     sidebarChats: copy.launcher.sidebarChats,
     sidebarEmptyPinned: copy.launcher.sidebarEmptyPinned,
     sidebarEmptyRecent: copy.launcher.sidebarEmptyRecent,
-    sidebarPinned: copy.launcher.sidebarPinned
+    sidebarNewChat: copy.launcher.sidebarNewChat,
+    sidebarPinned: copy.launcher.sidebarPinned,
+    sidebarSearch: copy.launcher.sidebarSearch
   }
+  const handleOpenSidebarSearch = useCallback((): void => {
+    navigation.goHome()
+  }, [navigation])
   const handleSelectSidebarThread = useCallback(
     async (nextThreadId: string): Promise<void> => {
       if (nextThreadId === threadId) {
@@ -723,11 +715,14 @@ export function LauncherAiPage(): React.JSX.Element {
           <div className="launcher-ai-body" data-sidebar-open={isSidebarOpen ? "" : undefined}>
             {isSidebarOpen ? (
               <LauncherAiSidebarPanel
-                info={sidebarInfo}
                 labels={sidebarLabels}
                 locale={locale}
                 mode="expanded"
                 threads={sidebarThreads}
+                onNewChat={() => {
+                  void handleNewQuestion()
+                }}
+                onOpenSearch={handleOpenSidebarSearch}
                 onSelectThread={(nextThreadId) => {
                   void handleSelectSidebarThread(nextThreadId)
                 }}
@@ -735,11 +730,14 @@ export function LauncherAiPage(): React.JSX.Element {
             ) : null}
             {isSidebarPreviewVisible ? (
               <LauncherAiSidebarPanel
-                info={sidebarInfo}
                 labels={sidebarLabels}
                 locale={locale}
                 mode="preview"
                 threads={sidebarThreads}
+                onNewChat={() => {
+                  void handleNewQuestion()
+                }}
+                onOpenSearch={handleOpenSidebarSearch}
                 onPointerEnter={openSidebarPreview}
                 onPointerLeave={closeSidebarPreview}
                 onSelectThread={(nextThreadId) => {

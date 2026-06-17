@@ -180,10 +180,13 @@ export interface AppCopy {
     permissionModeSection: string
     pinChat: string
     renameChat: string
+    sidebarAutomation: string
     sidebarChats: string
     sidebarEmptyPinned: string
     sidebarEmptyRecent: string
+    sidebarNewChat: string
     sidebarPinned: string
+    sidebarSearch: string
     underDevelopment: string
     unpinChat: string
     commandMatches: string
@@ -479,10 +482,13 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       permissionModeSection: "权限模式",
       pinChat: "置顶对话",
       renameChat: "重命名对话",
+      sidebarAutomation: "自动化",
       sidebarChats: "Chats",
       sidebarEmptyPinned: "暂无置顶对话",
       sidebarEmptyRecent: "暂无最近对话",
+      sidebarNewChat: "新对话",
       sidebarPinned: "Pinned",
+      sidebarSearch: "搜索",
       underDevelopment: "待开发",
       unpinChat: "取消置顶",
       commandMatches: "命令",
@@ -796,10 +802,13 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       permissionModeSection: "Permission Mode",
       pinChat: "Pin Chat",
       renameChat: "Rename Chat",
+      sidebarAutomation: "Automations",
       sidebarChats: "Chats",
       sidebarEmptyPinned: "No pinned chats",
       sidebarEmptyRecent: "No recent chats",
+      sidebarNewChat: "New Chat",
       sidebarPinned: "Pinned",
+      sidebarSearch: "Search",
       underDevelopment: "Coming soon",
       unpinChat: "Unpin Chat",
       commandMatches: "Commands",

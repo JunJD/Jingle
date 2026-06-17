@@ -1009,45 +1009,62 @@ body[data-window="pinned-ai-session"],
   padding: var(--ow-space-3) var(--ow-space-2);
 }
 
-.launcher-ai-sidebar-panel__current {
+.launcher-ai-sidebar-panel__actions {
   display: flex;
   flex: 0 0 auto;
   min-width: 0;
   flex-direction: column;
-  gap: var(--ow-space-1);
+  gap: 3px;
 }
 
-.launcher-ai-sidebar-panel__title {
-  min-width: 0;
-  overflow: hidden;
-  padding: 0 var(--ow-space-1) var(--ow-space-1);
-  color: var(--foreground);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--ow-font-control);
-  font-weight: 600;
-  line-height: var(--ow-line-control-sm);
-}
-
-.launcher-ai-sidebar-panel__fact {
+.launcher-ai-sidebar-panel__action {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
   gap: var(--ow-space-2);
-  min-width: 0;
-  padding: 4px var(--ow-space-1);
-  font-size: var(--ow-font-meta);
+  min-height: 32px;
+  width: 100%;
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: var(--ow-space-1) var(--ow-space-1);
+  color: color-mix(in srgb, var(--foreground) 84%, var(--muted-foreground));
+  font-size: var(--ow-font-control);
   line-height: var(--ow-line-control-sm);
+  text-align: left;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease;
 }
 
-.launcher-ai-sidebar-panel__fact-label {
-  color: color-mix(in srgb, var(--muted-foreground) 78%, transparent);
+.launcher-ai-sidebar-panel__action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--background-secondary) 64%, transparent);
+  color: var(--foreground);
 }
 
-.launcher-ai-sidebar-panel__fact-value {
+.launcher-ai-sidebar-panel__action:disabled {
+  cursor: default;
+  opacity: 0.38;
+}
+
+.launcher-ai-sidebar-panel__action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--muted-foreground) 76%, transparent);
+}
+
+.launcher-ai-sidebar-panel__action-icon > svg {
+  width: var(--ow-icon-sm);
+  height: var(--ow-icon-sm);
+  stroke-width: 1.8;
+}
+
+.launcher-ai-sidebar-panel__action-label {
   min-width: 0;
   overflow: hidden;
-  color: color-mix(in srgb, var(--foreground) 86%, var(--muted-foreground));
-  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
