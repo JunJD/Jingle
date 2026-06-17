@@ -44,11 +44,14 @@ interface LauncherAiHeaderActionsProps {
     pinChat: string
     renameChat: string
     underDevelopment: string
+    unpinChat: string
   }
+  isPinned: boolean
   onBranchIntoLocal: () => void
   onCopySessionId: () => void
   onCopyWorkingDirectory: () => void
   onOpenPinnedWindow: () => void
+  onTogglePinned: () => void
 }
 
 function LauncherAiHeaderIconButton(props: {
@@ -80,11 +83,13 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
     canOpenThreadMenu,
     canOpenPinnedWindow,
     environment,
+    isPinned,
     labels,
     onBranchIntoLocal,
     onCopySessionId,
     onCopyWorkingDirectory,
-    onOpenPinnedWindow
+    onOpenPinnedWindow,
+    onTogglePinned
   } = props
 
   return (
@@ -122,6 +127,7 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
       {canOpenThreadMenu ? (
         <LauncherAiThreadMenu
           canBranchThread={canBranchThread}
+          isPinned={isPinned}
           labels={{
             addAutomation: labels.addAutomation,
             branchIntoLocal: labels.branchIntoLocal,
@@ -137,11 +143,13 @@ export function LauncherAiHeaderActions(props: LauncherAiHeaderActionsProps): Re
             openSideChat: labels.openSideChat,
             pinChat: labels.pinChat,
             renameChat: labels.renameChat,
-            underDevelopment: labels.underDevelopment
+            underDevelopment: labels.underDevelopment,
+            unpinChat: labels.unpinChat
           }}
           onBranchIntoLocal={onBranchIntoLocal}
           onCopySessionId={onCopySessionId}
           onCopyWorkingDirectory={onCopyWorkingDirectory}
+          onTogglePinned={onTogglePinned}
         />
       ) : null}
     </div>

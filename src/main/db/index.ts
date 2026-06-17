@@ -7,7 +7,8 @@ export {
   getAllThreads,
   getThread,
   searchThreadMatches,
-  updateThread
+  updateThread,
+  updateThreadMetadata
 } from "./threads"
 export type {
   CloneThreadUntilCheckpointInput,

@@ -33,10 +33,13 @@ interface LauncherAiThreadMenuProps {
     pinChat: string
     renameChat: string
     underDevelopment: string
+    unpinChat: string
   }
+  isPinned: boolean
   onBranchIntoLocal: () => void
   onCopySessionId: () => void
   onCopyWorkingDirectory: () => void
+  onTogglePinned: () => void
 }
 
 interface ThreadMenuItemProps {
@@ -96,8 +99,15 @@ function ThreadMenuSubmenu(props: {
 }
 
 export function LauncherAiThreadMenu(props: LauncherAiThreadMenuProps): React.JSX.Element {
-  const { canBranchThread, labels, onBranchIntoLocal, onCopySessionId, onCopyWorkingDirectory } =
-    props
+  const {
+    canBranchThread,
+    isPinned,
+    labels,
+    onBranchIntoLocal,
+    onCopySessionId,
+    onCopyWorkingDirectory,
+    onTogglePinned
+  } = props
 
   return (
     <DropdownMenu.Root>
@@ -122,12 +132,8 @@ export function LauncherAiThreadMenu(props: LauncherAiThreadMenuProps): React.JS
           side="bottom"
           sideOffset={6}
         >
-          <ThreadMenuItem
-            icon={<Pin />}
-            onSelect={preventDefaultSelect}
-            trailingLabel={labels.underDevelopment}
-          >
-            {labels.pinChat}
+          <ThreadMenuItem icon={<Pin />} onSelect={onTogglePinned}>
+            {isPinned ? labels.unpinChat : labels.pinChat}
           </ThreadMenuItem>
           <ThreadMenuItem
             icon={<Pencil />}

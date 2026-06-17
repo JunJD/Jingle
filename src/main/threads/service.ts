@@ -11,6 +11,7 @@ import {
   getThread,
   hasPendingHitlRequest,
   updateThread as dbUpdateThread,
+  updateThreadMetadata,
   type ThreadRow
 } from "../db"
 import { closeCheckpointer, getCheckpointer } from "../agent/runtime"
@@ -34,6 +35,7 @@ import {
   toDisplayAssistantMessageContent,
   toDisplayUserMessageContent
 } from "@shared/message-content"
+import { THREAD_PINNED_METADATA_KEY } from "@shared/thread-sidebar"
 import type {
   AgentThreadDataSnapshot,
   HITLRequest,
@@ -314,6 +316,24 @@ export class ThreadsService {
     if (!row) throw new Error("Thread not found")
 
     return mapThreadRowToThread(row)
+  }
+
+  async setPinned(threadId: string, pinned: boolean): Promise<Thread> {
+    const row = await getThread(threadId)
+    if (!row) {
+      throw new Error("Thread not found")
+    }
+
+    const metadata = row.metadata ? (JSON.parse(row.metadata) as Record<string, unknown>) : {}
+    const nextMetadata = { ...metadata }
+    if (pinned) {
+      nextMetadata[THREAD_PINNED_METADATA_KEY] = true
+    } else {
+      delete nextMetadata[THREAD_PINNED_METADATA_KEY]
+    }
+
+    const updated = await updateThreadMetadata(threadId, nextMetadata)
+    return mapThreadRowToThread(updated)
   }
 
   async clone(sourceThreadId: string): Promise<Thread> {

@@ -20,6 +20,9 @@ export const threadsApi = {
   update: (threadId: string, updates: Partial<Thread>): Promise<Thread> => {
     return invokeIpc("threads:update", { threadId, updates })
   },
+  setPinned: (threadId: string, pinned: boolean): Promise<Thread> => {
+    return invokeIpc("threads:setPinned", { threadId, pinned })
+  },
   delete: (threadId: string): Promise<void> => {
     return invokeIpc("threads:delete", threadId)
   },

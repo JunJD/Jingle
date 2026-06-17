@@ -17,6 +17,7 @@ export interface HistoryShellState {
   createThread: (metadata?: Record<string, unknown>) => Promise<Thread>
   selectThread: (threadId: string) => Promise<void>
   deleteThread: (threadId: string) => Promise<void>
+  setThreadPinned: (threadId: string, pinned: boolean) => Promise<void>
   updateThread: (threadId: string, updates: Partial<Thread>) => Promise<void>
   loadModelProviderState: () => Promise<void>
   setProviderCredentials: (
@@ -162,6 +163,15 @@ export function createHistoryShellStore(api: HistoryShellApi): HistoryShellStore
           currentThreadId
         }
       })
+    },
+
+    setThreadPinned: async (threadId: string, pinned: boolean): Promise<void> => {
+      const updated = await api.threads.setPinned(threadId, pinned)
+      setData((current) => ({
+        threads: current.threads.map((thread) =>
+          thread.thread_id === updated.thread_id ? updated : thread
+        )
+      }))
     },
 
     updateThread: async (threadId: string, updates: Partial<Thread>): Promise<void> => {

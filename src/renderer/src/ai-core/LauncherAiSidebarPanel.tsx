@@ -1,5 +1,9 @@
-import { Clock3, FolderGit2, Pin } from "lucide-react"
+import { MessageSquare, Pin } from "lucide-react"
 import type { ReactNode } from "react"
+import { isThreadPinned } from "@shared/thread-sidebar"
+import { formatRelativeTime } from "@/lib/utils"
+import type { AppLocale } from "@shared/i18n"
+import type { Thread } from "@/types"
 
 export interface LauncherAiSidebarInfo {
   modelLabel: string | null
@@ -7,6 +11,14 @@ export interface LauncherAiSidebarInfo {
   threadId: string | null
   title: string
   workspacePath: string | null
+}
+
+export interface LauncherAiSidebarThreadItem {
+  id: string
+  isActive: boolean
+  isPinned: boolean
+  title: string
+  updatedAt: Date
 }
 
 interface LauncherAiSidebarPanelProps {
@@ -20,14 +32,17 @@ interface LauncherAiSidebarPanelProps {
     environmentThread: string
     environmentWorkspace: string
     expandSidebar: string
+    sidebarChats: string
+    sidebarEmptyPinned: string
+    sidebarEmptyRecent: string
     sidebarPinned: string
-    sidebarRecent: string
-    sidebarSources: string
-    sidebarUnavailable: string
   }
+  locale: AppLocale
   mode: "expanded" | "preview"
   onPointerEnter?: () => void
   onPointerLeave?: () => void
+  onSelectThread: (threadId: string) => void
+  threads: readonly LauncherAiSidebarThreadItem[]
 }
 
 function getFolderName(folderPath: string | null): string | null {
@@ -53,27 +68,57 @@ function FactRow(props: { label: string; title?: string; value: string }): React
   )
 }
 
-function PlaceholderRow(props: {
+function SectionHeading(props: { children: ReactNode }): React.JSX.Element {
+  return <div className="launcher-ai-sidebar-panel__section-heading">{props.children}</div>
+}
+
+function EmptySectionRow(props: { children: ReactNode }): React.JSX.Element {
+  return <div className="launcher-ai-sidebar-panel__empty">{props.children}</div>
+}
+
+function ThreadRow(props: {
   icon: ReactNode
-  label: string
-  unavailableLabel: string
+  locale: AppLocale
+  onSelect: () => void
+  thread: LauncherAiSidebarThreadItem
 }): React.JSX.Element {
-  const { icon, label, unavailableLabel } = props
+  const { icon, locale, onSelect, thread } = props
 
   return (
-    <div className="launcher-ai-sidebar-panel__placeholder" aria-disabled="true">
-      <span className="launcher-ai-sidebar-panel__placeholder-icon">{icon}</span>
-      <span className="launcher-ai-sidebar-panel__placeholder-label">{label}</span>
-      <span className="launcher-ai-sidebar-panel__placeholder-status">{unavailableLabel}</span>
-    </div>
+    <button
+      type="button"
+      className="launcher-ai-sidebar-panel__thread"
+      data-active={thread.isActive ? "" : undefined}
+      title={thread.title}
+      onClick={onSelect}
+    >
+      <span className="launcher-ai-sidebar-panel__thread-icon">{icon}</span>
+      <span className="launcher-ai-sidebar-panel__thread-copy">
+        <span className="launcher-ai-sidebar-panel__thread-title">{thread.title}</span>
+        <span className="launcher-ai-sidebar-panel__thread-meta">
+          {formatRelativeTime(thread.updatedAt, locale)}
+        </span>
+      </span>
+    </button>
   )
 }
 
 export function LauncherAiSidebarPanel(props: LauncherAiSidebarPanelProps): React.JSX.Element {
-  const { info, labels, mode, onPointerEnter, onPointerLeave } = props
+  const {
+    info,
+    labels,
+    locale,
+    mode,
+    onPointerEnter,
+    onPointerLeave,
+    onSelectThread,
+    threads
+  } = props
   const workspaceName = getFolderName(info.workspacePath) ?? labels.environmentNoWorkspace
   const modelLabel = info.modelLabel ?? labels.environmentNoModel
   const threadLabel = info.threadId ?? labels.environmentNoThread
+  const pinnedThreads = threads.filter((thread) => thread.isPinned)
+  const recentThreads = threads.filter((thread) => !thread.isPinned)
 
   return (
     <aside
@@ -98,22 +143,49 @@ export function LauncherAiSidebarPanel(props: LauncherAiSidebarPanelProps): Reac
       </div>
 
       <div className="launcher-ai-sidebar-panel__section">
-        <PlaceholderRow
-          icon={<Pin />}
-          label={labels.sidebarPinned}
-          unavailableLabel={labels.sidebarUnavailable}
-        />
-        <PlaceholderRow
-          icon={<Clock3 />}
-          label={labels.sidebarRecent}
-          unavailableLabel={labels.sidebarUnavailable}
-        />
-        <PlaceholderRow
-          icon={<FolderGit2 />}
-          label={labels.sidebarSources}
-          unavailableLabel={labels.sidebarUnavailable}
-        />
+        <SectionHeading>{labels.sidebarPinned}</SectionHeading>
+        {pinnedThreads.length > 0 ? (
+          pinnedThreads.map((thread) => (
+            <ThreadRow
+              key={thread.id}
+              icon={<Pin />}
+              locale={locale}
+              thread={thread}
+              onSelect={() => onSelectThread(thread.id)}
+            />
+          ))
+        ) : (
+          <EmptySectionRow>{labels.sidebarEmptyPinned}</EmptySectionRow>
+        )}
+
+        <SectionHeading>{labels.sidebarChats}</SectionHeading>
+        {recentThreads.length > 0 ? (
+          recentThreads.map((thread) => (
+            <ThreadRow
+              key={thread.id}
+              icon={<MessageSquare />}
+              locale={locale}
+              thread={thread}
+              onSelect={() => onSelectThread(thread.id)}
+            />
+          ))
+        ) : (
+          <EmptySectionRow>{labels.sidebarEmptyRecent}</EmptySectionRow>
+        )}
       </div>
     </aside>
   )
+}
+
+export function mapThreadToLauncherAiSidebarItem(
+  thread: Thread,
+  activeThreadId: string | null
+): LauncherAiSidebarThreadItem {
+  return {
+    id: thread.thread_id,
+    isActive: thread.thread_id === activeThreadId,
+    isPinned: isThreadPinned(thread.metadata),
+    title: thread.title?.trim() || thread.thread_id,
+    updatedAt: thread.updated_at
+  }
 }

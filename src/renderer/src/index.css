@@ -976,6 +976,7 @@ body[data-window="pinned-ai-session"],
   width: var(--launcher-ai-sidebar-w);
   min-width: var(--launcher-ai-sidebar-w);
   max-width: var(--launcher-ai-sidebar-w);
+  min-height: 0;
   flex-direction: column;
   gap: var(--ow-space-3);
   overflow: hidden;
@@ -1010,6 +1011,7 @@ body[data-window="pinned-ai-session"],
 
 .launcher-ai-sidebar-panel__current {
   display: flex;
+  flex: 0 0 auto;
   min-width: 0;
   flex-direction: column;
   gap: var(--ow-space-1);
@@ -1052,50 +1054,111 @@ body[data-window="pinned-ai-session"],
 
 .launcher-ai-sidebar-panel__section {
   display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
   min-width: 0;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border-top: 1px solid color-mix(in srgb, var(--launcher-border) 72%, transparent);
   padding-top: var(--ow-space-2);
+  padding-right: var(--ow-space-1);
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 34%, transparent) transparent;
+  scrollbar-width: thin;
 }
 
-.launcher-ai-sidebar-panel__placeholder {
+.launcher-ai-sidebar-panel__section-heading {
+  min-width: 0;
+  overflow: hidden;
+  padding: var(--ow-space-2) var(--ow-space-1) var(--ow-space-1);
+  color: color-mix(in srgb, var(--muted-foreground) 72%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ow-font-meta);
+  font-weight: 600;
+  line-height: var(--ow-line-control-sm);
+}
+
+.launcher-ai-sidebar-panel__thread {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  align-items: center;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
   gap: var(--ow-space-2);
-  min-height: 30px;
+  min-height: 38px;
+  width: 100%;
+  appearance: none;
+  border: 0;
   border-radius: 6px;
-  padding: 0 var(--ow-space-1);
-  color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  background: transparent;
+  padding: var(--ow-space-1) var(--ow-space-1);
+  color: color-mix(in srgb, var(--foreground) 82%, var(--muted-foreground));
   font-size: var(--ow-font-control);
   line-height: var(--ow-line-control-sm);
-  user-select: none;
+  text-align: left;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
-.launcher-ai-sidebar-panel__placeholder-icon {
+.launcher-ai-sidebar-panel__thread:hover,
+.launcher-ai-sidebar-panel__thread[data-active] {
+  background: color-mix(in srgb, var(--background-secondary) 64%, transparent);
+  color: var(--foreground);
+}
+
+.launcher-ai-sidebar-panel__thread[data-active] {
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--foreground) 48%, transparent);
+}
+
+.launcher-ai-sidebar-panel__thread-icon {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding-top: 1px;
+  color: color-mix(in srgb, var(--muted-foreground) 76%, transparent);
 }
 
-.launcher-ai-sidebar-panel__placeholder-icon > svg {
+.launcher-ai-sidebar-panel__thread-icon > svg {
   width: var(--ow-icon-sm);
   height: var(--ow-icon-sm);
   stroke-width: 1.8;
 }
 
-.launcher-ai-sidebar-panel__placeholder-label {
+.launcher-ai-sidebar-panel__thread-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.launcher-ai-sidebar-panel__thread-title {
   min-width: 0;
   overflow: hidden;
-  color: color-mix(in srgb, var(--foreground) 72%, var(--muted-foreground));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.launcher-ai-sidebar-panel__placeholder-status {
-  color: color-mix(in srgb, var(--muted-foreground) 58%, transparent);
+.launcher-ai-sidebar-panel__thread-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--ow-font-meta);
+}
+
+.launcher-ai-sidebar-panel__empty {
+  min-width: 0;
+  overflow: hidden;
+  padding: 2px var(--ow-space-1) var(--ow-space-1) 28px;
+  color: color-mix(in srgb, var(--muted-foreground) 62%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ow-font-meta);
+  line-height: var(--ow-line-control-sm);
+  user-select: none;
 }
 
 .dark {

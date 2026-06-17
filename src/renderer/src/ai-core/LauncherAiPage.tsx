@@ -5,7 +5,7 @@ import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActio
 import { ComposerApprovalPrompt } from "@/components/chat/ComposerApprovalPrompt"
 import { useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { formatShortcutChord } from "@/shortcuts/format-shortcut"
-import { AI_LAUNCHER_PLUGIN_ID } from "@shared/launcher-ai"
+import { AI_LAUNCHER_PLUGIN_ID, AI_THREAD_SOURCE } from "@shared/launcher-ai"
 import { AI_ATTACHMENT_FILE_EXTENSIONS } from "@shared/launcher-attachments"
 import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
@@ -19,7 +19,10 @@ import { LauncherAiHeaderActions } from "./LauncherAiHeaderActions"
 import { LauncherAiHeaderLeadingActions } from "./LauncherAiHeaderLeadingActions"
 import { LauncherAiHeaderModelPicker } from "./LauncherAiHeaderModelPicker"
 import { LauncherAiModelPicker } from "./LauncherAiModelPicker"
-import { LauncherAiSidebarPanel } from "./LauncherAiSidebarPanel"
+import {
+  LauncherAiSidebarPanel,
+  mapThreadToLauncherAiSidebarItem
+} from "./LauncherAiSidebarPanel"
 import { useAiCoreHost } from "./AiCoreHost"
 import { LauncherAttachmentStrip } from "./LauncherAttachmentStrip"
 import { AssistantSelectionReferencePill } from "@/components/chat/AssistantSelectionReferences"
@@ -37,6 +40,7 @@ import { cn } from "@/lib/utils"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
 import { OpenTargetProvider } from "@/lib/open-target-context"
 import { listNativeLauncherSourceMentions } from "@extension-host/index"
+import { isThreadPinned } from "@shared/thread-sidebar"
 import { useWorkspaceFileMentions, type ComposerAreaHandle } from "@/composer-area"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import { shouldGoHomeFromComposerKeyDown } from "./composer-keyboard"
@@ -91,6 +95,7 @@ export function LauncherAiPage(): React.JSX.Element {
     goToNextThread,
     goToPreviousThread,
     isHydratingThread,
+    openThread,
     startFreshDraft: startFreshDraftTarget,
     updateFreshDraft
   } = threadNavigation
@@ -110,6 +115,13 @@ export function LauncherAiPage(): React.JSX.Element {
     removeAttachment
   } = attachmentDraft
   const updateThread = useHistoryShellStore((state) => state.updateThread)
+  const setThreadPinned = useHistoryShellStore((state) => state.setThreadPinned)
+  const loadThreads = useHistoryShellStore((state) => state.loadThreads)
+  const allThreads = useHistoryShellStore((state) => state.threads)
+  const launcherThreads = useMemo(
+    () => allThreads.filter((thread) => thread.metadata?.source === AI_THREAD_SOURCE),
+    [allThreads]
+  )
   const { inputRef } = surface
   const focusComposerOnNextFrame = useCallback((): void => {
     window.requestAnimationFrame(() => {
@@ -129,7 +141,10 @@ export function LauncherAiPage(): React.JSX.Element {
     draftTarget?.permissionMode ??
     defaultDraftPermissionMode
   const workspacePath = useThreadSelector(threadId, (state) => state?.agent.workspacePath ?? null)
-  const subagents = useThreadSelector(threadId, (state) => state?.agent.subagents ?? EMPTY_SUBAGENTS)
+  const subagents = useThreadSelector(
+    threadId,
+    (state) => state?.agent.subagents ?? EMPTY_SUBAGENTS
+  )
   const todos = useThreadSelector(threadId, (state) => state?.agent.todos ?? EMPTY_TODOS)
   const query = localComposerText
   const messageInput = useMemo(
@@ -166,6 +181,13 @@ export function LauncherAiPage(): React.JSX.Element {
     }
 
     return state.threads.find((thread) => thread.thread_id === threadId)?.title ?? null
+  })
+  const isCurrentThreadPinned = useHistoryShellStore((state) => {
+    if (!threadId) {
+      return false
+    }
+
+    return isThreadPinned(state.threads.find((thread) => thread.thread_id === threadId)?.metadata)
   })
   const currentModelLabel = useHistoryShellStore((state) => {
     if (!currentModelId) {
@@ -366,6 +388,10 @@ export function LauncherAiPage(): React.JSX.Element {
   const canBranchThread = Boolean(threadId && hasThreadMessages && canForkThread)
   const canUseHeaderThreadActions = !isApprovalPending
   const sidebarTitle = currentThreadTitle?.trim() || copy.launcher.newQuestion
+  const sidebarThreads = useMemo(
+    () => launcherThreads.map((thread) => mapThreadToLauncherAiSidebarItem(thread, threadId)),
+    [launcherThreads, threadId]
+  )
   const clearSidebarPreviewCloseTimer = useCallback((): void => {
     if (sidebarPreviewCloseTimerRef.current === null) {
       return
@@ -406,6 +432,20 @@ export function LauncherAiPage(): React.JSX.Element {
     [closeSidebarPreview, isSidebarOpen, openSidebarPreview]
   )
   const isSidebarPreviewVisible = isSidebarPreviewOpen && !isSidebarOpen
+  useEffect(() => {
+    if (!threadId) {
+      return
+    }
+
+    void loadThreads()
+  }, [loadThreads, threadId])
+  useEffect(() => {
+    if (!isSidebarOpen && !isSidebarPreviewVisible) {
+      return
+    }
+
+    void loadThreads()
+  }, [isSidebarOpen, isSidebarPreviewVisible, loadThreads])
   const sidebarInfo = {
     modelLabel: currentModelLabel,
     permissionLabel: currentPermissionLabel,
@@ -422,11 +462,24 @@ export function LauncherAiPage(): React.JSX.Element {
     environmentThread: copy.launcher.environmentThread,
     environmentWorkspace: copy.launcher.environmentWorkspace,
     expandSidebar: copy.launcher.expandSidebar,
-    sidebarPinned: copy.launcher.sidebarPinned,
-    sidebarRecent: copy.launcher.sidebarRecent,
-    sidebarSources: copy.launcher.sidebarSources,
-    sidebarUnavailable: copy.launcher.sidebarUnavailable
+    sidebarChats: copy.launcher.sidebarChats,
+    sidebarEmptyPinned: copy.launcher.sidebarEmptyPinned,
+    sidebarEmptyRecent: copy.launcher.sidebarEmptyRecent,
+    sidebarPinned: copy.launcher.sidebarPinned
   }
+  const handleSelectSidebarThread = useCallback(
+    async (nextThreadId: string): Promise<void> => {
+      if (nextThreadId === threadId) {
+        return
+      }
+
+      await openThread(nextThreadId)
+      clearTransientInputState()
+      setShowModelPicker(false)
+      focusComposerOnNextFrame()
+    },
+    [clearTransientInputState, focusComposerOnNextFrame, openThread, threadId]
+  )
   const handleGoToNextChat = useCallback(async (): Promise<void> => {
     const nextThreadId = await goToNextChat()
     if (!nextThreadId) {
@@ -481,6 +534,13 @@ export function LauncherAiPage(): React.JSX.Element {
 
     await navigator.clipboard.writeText(threadId)
   }, [threadId])
+  const toggleCurrentThreadPinned = useCallback(async (): Promise<void> => {
+    if (!threadId) {
+      return
+    }
+
+    await setThreadPinned(threadId, !isCurrentThreadPinned)
+  }, [isCurrentThreadPinned, setThreadPinned, threadId])
   const { actionController, addAttachmentShortcut, submitShortcut } = useLauncherAiActions({
     branchThread: handleBranchChat,
     canBranchThread,
@@ -586,6 +646,7 @@ export function LauncherAiPage(): React.JSX.Element {
               canBranchThread={canUseHeaderThreadActions && canBranchThread}
               canOpenThreadMenu={canUseHeaderThreadActions}
               canOpenPinnedWindow={canUseHeaderThreadActions && Boolean(threadId)}
+              isPinned={isCurrentThreadPinned}
               environment={{
                 modelLabel: currentModelLabel,
                 permissionLabel: currentPermissionLabel,
@@ -629,7 +690,8 @@ export function LauncherAiPage(): React.JSX.Element {
                 openTarget: copy.launcher.openTarget,
                 pinChat: copy.launcher.pinChat,
                 renameChat: copy.launcher.renameChat,
-                underDevelopment: copy.launcher.underDevelopment
+                underDevelopment: copy.launcher.underDevelopment,
+                unpinChat: copy.launcher.unpinChat
               }}
               onBranchIntoLocal={() => {
                 void handleBranchChat()
@@ -642,6 +704,9 @@ export function LauncherAiPage(): React.JSX.Element {
               }}
               onOpenPinnedWindow={() => {
                 void openPinnedWindow()
+              }}
+              onTogglePinned={() => {
+                void toggleCurrentThreadPinned()
               }}
             />
           }
@@ -657,15 +722,29 @@ export function LauncherAiPage(): React.JSX.Element {
         >
           <div className="launcher-ai-body" data-sidebar-open={isSidebarOpen ? "" : undefined}>
             {isSidebarOpen ? (
-              <LauncherAiSidebarPanel info={sidebarInfo} labels={sidebarLabels} mode="expanded" />
+              <LauncherAiSidebarPanel
+                info={sidebarInfo}
+                labels={sidebarLabels}
+                locale={locale}
+                mode="expanded"
+                threads={sidebarThreads}
+                onSelectThread={(nextThreadId) => {
+                  void handleSelectSidebarThread(nextThreadId)
+                }}
+              />
             ) : null}
             {isSidebarPreviewVisible ? (
               <LauncherAiSidebarPanel
                 info={sidebarInfo}
                 labels={sidebarLabels}
+                locale={locale}
                 mode="preview"
+                threads={sidebarThreads}
                 onPointerEnter={openSidebarPreview}
                 onPointerLeave={closeSidebarPreview}
+                onSelectThread={(nextThreadId) => {
+                  void handleSelectSidebarThread(nextThreadId)
+                }}
               />
             ) : null}
             <div className="launcher-ai-main min-w-0 flex-1">
@@ -729,9 +808,9 @@ export function LauncherAiPage(): React.JSX.Element {
                     type="file"
                     multiple
                     className="hidden"
-                    accept={AI_ATTACHMENT_FILE_EXTENSIONS.map(
-                      (extension) => `.${extension}`
-                    ).join(",")}
+                    accept={AI_ATTACHMENT_FILE_EXTENSIONS.map((extension) => `.${extension}`).join(
+                      ","
+                    )}
                     onChange={(event) => {
                       if (event.target.files) {
                         void addSelectedFiles(event.target.files)
@@ -855,20 +934,18 @@ export function LauncherAiPage(): React.JSX.Element {
                           title={copy.launcher.aiStopLabel}
                           tooltip={copy.launcher.aiStopLabel}
                         />
-                      ) : (
-                        !isApprovalPending ? (
-                          <PromptInputAction
-                            onClick={submitCurrentInput}
-                            onMouseDown={(event) => event.preventDefault()}
-                            disabled={primaryActionDisabled}
-                            icon={<ArrowUp className="size-[var(--ow-icon-sm)]" />}
-                            label={copy.launcher.aiPrimaryLabel}
-                            title={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
-                            tooltip={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
-                            className="text-foreground enabled:bg-background-secondary/72 enabled:hover:bg-background-secondary disabled:bg-transparent"
-                          />
-                        ) : null
-                      )}
+                      ) : !isApprovalPending ? (
+                        <PromptInputAction
+                          onClick={submitCurrentInput}
+                          onMouseDown={(event) => event.preventDefault()}
+                          disabled={primaryActionDisabled}
+                          icon={<ArrowUp className="size-[var(--ow-icon-sm)]" />}
+                          label={copy.launcher.aiPrimaryLabel}
+                          title={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
+                          tooltip={`${copy.launcher.aiPrimaryLabel} (${submitShortcutLabel})`}
+                          className="text-foreground enabled:bg-background-secondary/72 enabled:hover:bg-background-secondary disabled:bg-transparent"
+                        />
+                      ) : null}
                     </div>
                   </div>
                 </PromptInput>

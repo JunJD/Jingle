@@ -83,6 +83,8 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
       clone: async () => createThread("thread-clone"),
       cloneUntilMessage: async () => createThread("thread-clone"),
       update: async (threadId: string, updates: Partial<Thread>) => createThread(threadId, updates),
+      setPinned: async (threadId: string, pinned: boolean) =>
+        createThread(threadId, { metadata: pinned ? { pinned } : {} }),
       delete: async () => undefined,
       getAgentThreadData: async (): Promise<AgentThreadDataSnapshot> => {
         throw new Error("Not implemented in test stub")
@@ -233,6 +235,36 @@ test("refreshThread updates only the requested thread and re-sorts by recency", 
       }
     ]
   )
+})
+
+test("setThreadPinned updates thread metadata without re-sorting recency", async () => {
+  const threads = [
+    createThread("thread-newer", { updated_at: new Date("2026-01-02T00:00:00.000Z") }),
+    createThread("thread-older", { updated_at: new Date("2026-01-01T00:00:00.000Z") })
+  ]
+  const store = createHistoryShellStore(
+    createApi({
+      threads: {
+        ...createApi().threads,
+        list: async () => threads,
+        setPinned: async (threadId: string, pinned: boolean) =>
+          createThread(threadId, {
+            metadata: { pinned },
+            updated_at: threadId === "thread-older" ? threads[1]!.updated_at : threads[0]!.updated_at
+          })
+      }
+    })
+  )
+
+  await store.getState().loadThreads()
+  await store.getState().setThreadPinned("thread-older", true)
+
+  const state = store.getState()
+  assert.deepEqual(
+    state.threads.map((thread) => thread.thread_id),
+    ["thread-newer", "thread-older"]
+  )
+  assert.deepEqual(state.threads[1]?.metadata, { pinned: true })
 })
 
 test("setProviderCredentials refreshes provider and model state after persisting credentials", async () => {

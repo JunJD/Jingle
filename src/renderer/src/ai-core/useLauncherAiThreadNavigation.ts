@@ -32,6 +32,7 @@ export interface LauncherAiThreadNavigation {
   canGoToPreviousThread: boolean
   createThread: (input: AiCoreThreadCreateInput) => Promise<AiCoreThreadHandle>
   defaultDraftPermissionMode: PermissionModeName
+  openThread: (threadId: string) => Promise<void>
   isHydratingThread: boolean
   startFreshDraft: (input: {
     modelId: string | null
@@ -324,6 +325,7 @@ export function useLauncherAiThreadNavigation(
     canGoToPreviousThread: Boolean(adjacentThreadIds.previous),
     createThread,
     defaultDraftPermissionMode: DEFAULT_PERMISSION_MODE,
+    openThread: activateThread,
     isHydratingThread,
     startFreshDraft,
     target,

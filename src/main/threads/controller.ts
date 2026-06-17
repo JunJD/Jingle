@@ -31,6 +31,14 @@ export class ThreadsController {
       return this.threadsService.update(params)
     })
 
+    registerIpcHandle(
+      ipcMain,
+      "threads:setPinned",
+      async (_event, params: { pinned: boolean; threadId: string }) => {
+        return this.threadsService.setPinned(params.threadId, params.pinned)
+      }
+    )
+
     registerIpcHandle(ipcMain, "threads:clone", async (_event, sourceThreadId: string) => {
       return this.threadsService.clone(sourceThreadId)
     })

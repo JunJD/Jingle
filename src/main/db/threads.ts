@@ -562,6 +562,23 @@ export async function updateThread(
   return mapThreadRow(row)
 }
 
+export async function updateThreadMetadata(
+  threadId: string,
+  metadata: Record<string, unknown>
+): Promise<ThreadRow> {
+  const prisma = getPrismaClient()
+  const row = await prisma.thread.update({
+    where: {
+      threadId
+    },
+    data: {
+      metadata: JSON.stringify(metadata)
+    }
+  })
+
+  return mapThreadRow(row)
+}
+
 export async function deleteThread(threadId: string): Promise<void> {
   const prisma = getPrismaClient()
 
