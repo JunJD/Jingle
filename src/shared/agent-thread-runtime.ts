@@ -129,6 +129,11 @@ export type AgentThreadEvent =
       type: "message.upserted"
     }
   | {
+      messageId: string
+      revision: number
+      type: "message.truncatedAfter"
+    }
+  | {
       delta: string
       deltaAt: Date
       field: "text"
@@ -204,6 +209,7 @@ export type AgentThreadEventDraft =
   | Omit<Extract<AgentThreadEvent, { type: "run.phaseChanged" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "run.tokenUsageUpdated" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "message.upserted" }>, "revision">
+  | Omit<Extract<AgentThreadEvent, { type: "message.truncatedAfter" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "message.part.delta" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "tool.callUpdated" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "tool.started" }>, "revision">
@@ -310,6 +316,9 @@ export function reduceAgentThreadRuntimeEvent(
         phase: (event.message.tool_calls?.length ?? 0) > 0 ? "tool_running" : "streaming",
         toolCalls: mergeMessageToolCalls(state.activeRun, event.message)
       })
+
+    case "message.truncatedAfter":
+      return truncateRuntimeMessagesAfter(state, event.messageId, event.revision)
 
     case "message.part.delta": {
       const nextState = appendRuntimeMessageTextDelta(state, event.messageId, event.delta)
@@ -448,6 +457,26 @@ export function reduceAgentThreadRuntimeEvent(
                 ? "interrupted"
                 : "idle"
       }
+  }
+}
+
+function truncateRuntimeMessagesAfter(
+  state: AgentThreadRuntimeState,
+  messageId: string,
+  revision: number
+): AgentThreadRuntimeState {
+  const messageIndex = state.messagesPage.findIndex((message) => message.id === messageId)
+  if (messageIndex < 0 || messageIndex === state.messagesPage.length - 1) {
+    return updateRevision(state, revision)
+  }
+
+  return {
+    ...state,
+    messagesPage: state.messagesPage.slice(0, messageIndex + 1),
+    pendingApproval: null,
+    revision,
+    subagents: [],
+    todos: []
   }
 }
 

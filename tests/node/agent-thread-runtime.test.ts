@@ -457,3 +457,49 @@ test("agent thread runtime reads completed tool facts without fabricating a star
   assert.equal(timing?.durationMs, undefined)
   assert.equal(timing?.completedAt?.getTime(), TOOL_COMPLETED_AT.getTime())
 })
+
+test("agent thread runtime truncates messages after an edited user message", () => {
+  const startedState = reduceAgentThreadRuntimeEvent(
+    createDefaultAgentThreadRuntimeState("thread-1"),
+    {
+      revision: 1,
+      run: createActiveRun(),
+      type: "run.started"
+    }
+  )
+  const withUser = reduceAgentThreadRuntimeEvent(startedState, {
+    message: {
+      content: "edited question",
+      created_at: RUN_STARTED_AT,
+      id: "user-1",
+      role: "user"
+    },
+    revision: 2,
+    type: "message.upserted"
+  })
+  const withAssistant = reduceAgentThreadRuntimeEvent(withUser, {
+    message: createAssistantMessage("assistant-1", "old answer"),
+    revision: 3,
+    type: "message.upserted"
+  })
+  const withApproval = reduceAgentThreadRuntimeEvent(withAssistant, {
+    approval: createPendingApproval(),
+    requestedAt: APPROVAL_REQUESTED_AT,
+    revision: 4,
+    runId: "run-1",
+    type: "approval.requested"
+  })
+
+  const truncated = reduceAgentThreadRuntimeEvent(withApproval, {
+    messageId: "user-1",
+    revision: 5,
+    type: "message.truncatedAfter"
+  })
+
+  assert.deepEqual(
+    truncated.messagesPage.map((message) => message.id),
+    ["user-1"]
+  )
+  assert.equal(truncated.pendingApproval, null)
+  assert.equal(truncated.revision, 5)
+})

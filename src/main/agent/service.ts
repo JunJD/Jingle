@@ -1,9 +1,15 @@
-import { HumanMessage } from "@langchain/core/messages"
+import { HumanMessage, RemoveMessage, type BaseMessage } from "@langchain/core/messages"
 import { Command } from "@langchain/langgraph"
-import { normalizeComposerMessageRefs, summarizeMessageContent } from "@shared/message-content"
+import {
+  normalizeComposerMessageRefs,
+  summarizeMessageContent,
+  type AgentInvokeMessage,
+  type ComposerMessageRef
+} from "@shared/message-content"
 import { OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } from "@shared/openwork-memory"
 import { readRunExtensionAiCapabilitiesSnapshotFromMetadata } from "@shared/extension-sources"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
+import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
 import {
   hydrateNativeExtensionAiCapabilitiesFromManifests,
   listNativeExtensionAiCapabilityCatalogFromManifests,
@@ -26,11 +32,12 @@ import {
 import { isAbortLikeError, isModelAuthenticationError, normalizeAgentRuntimeError } from "./errors"
 import {
   createAgentRuntime,
+  getCheckpointer,
   runtimeUsesCheckpointPersistence,
   type AgentRuntimeHandle
 } from "./runtime"
 import { buildAgentResumeConfig, buildAgentRunConfig } from "./run-config"
-import { extractHitlRequestFromValuesState } from "./runtime-state"
+import { extractHitlRequestFromValuesState, extractMessagesFromCheckpoint } from "./runtime-state"
 import {
   createAgentStreamBoundaryRecorderState,
   recordAgentStreamBoundaryEvents,
@@ -56,6 +63,7 @@ import type {
 } from "@shared/openwork-memory"
 import type {
   AgentCancelParams,
+  AgentEditLastUserMessageAndInvokeParams,
   AgentInvokeParams,
   AgentResumeParams,
   HITLDecision
@@ -84,7 +92,12 @@ interface ActiveAgentRun {
   runId: string | null
 }
 
+type AgentInvokeChannel = "agent:editLastUserMessageAndInvoke" | "agent:invoke"
+type AgentRunChannel = AgentInvokeChannel | "agent:resume"
+
 interface AgentRunOptions {
+  channel?: AgentInvokeChannel
+  getMessageIdsToRemove?: () => Promise<string[]>
   onRunAccepted?: () => Promise<void> | void
 }
 
@@ -115,6 +128,101 @@ function buildResumeValue(decision: HITLDecision): {
   return {
     decisions: [buildResumeDecision(decision)]
   }
+}
+
+function buildSubmittedMessages(input: {
+  message: AgentInvokeMessage
+  normalizedRefs: ComposerMessageRef[]
+  removeMessageIds: string[]
+}): BaseMessage[] {
+  const humanMessage = new HumanMessage({
+    content: input.message.content,
+    id: input.message.id,
+    ...(input.normalizedRefs.length > 0
+      ? { additional_kwargs: { refs: input.normalizedRefs } }
+      : {})
+  })
+
+  return [
+    humanMessage,
+    ...input.removeMessageIds.map((messageId) => new RemoveMessage({ id: messageId }))
+  ]
+}
+
+function isCheckpointFallbackMessageId(threadId: string, messageId: string): boolean {
+  return messageId.startsWith(`checkpoint:${threadId}:`)
+}
+
+async function readMessageIdsAfterLatestUserMessage(input: {
+  channel: AgentInvokeChannel
+  messageId: string
+  threadId: string
+}): Promise<string[]> {
+  if (!runtimeUsesCheckpointPersistence()) {
+    throw new OpenworkIpcError({
+      channel: input.channel,
+      code: "FAILED_PRECONDITION",
+      message: "Editing the last user message requires checkpoint persistence."
+    })
+  }
+
+  const checkpointer = await getCheckpointer(input.threadId)
+  const latest = (await checkpointer.getTuple({
+    configurable: {
+      thread_id: input.threadId
+    }
+  })) as CheckpointTuple | undefined
+  if (!latest) {
+    throw new OpenworkIpcError({
+      channel: input.channel,
+      code: "FAILED_PRECONDITION",
+      message: "Cannot edit the last user message before thread history is available."
+    })
+  }
+
+  const checkpointMessages = extractMessagesFromCheckpoint(input.threadId, latest)
+  const latestUserMessageIndex = checkpointMessages.findLastIndex(
+    (message) => message.role === "user"
+  )
+  const latestUserMessage = checkpointMessages[latestUserMessageIndex]
+  if (!latestUserMessage) {
+    throw new OpenworkIpcError({
+      channel: input.channel,
+      code: "FAILED_PRECONDITION",
+      message: "Cannot edit the last user message because this thread has no user message."
+    })
+  }
+
+  if (latestUserMessage.message_id !== input.messageId) {
+    throw new OpenworkIpcError({
+      channel: input.channel,
+      code: "FAILED_PRECONDITION",
+      details: [
+        `latestUserMessageId=${latestUserMessage.message_id}`,
+        `requestedMessageId=${input.messageId}`
+      ],
+      message: "Only the latest user message can be edited and resent."
+    })
+  }
+
+  const messageIdsToRemove = Array.from(
+    new Set(
+      checkpointMessages.slice(latestUserMessageIndex + 1).map((message) => message.message_id)
+    )
+  )
+  const fallbackMessageId = messageIdsToRemove.find((messageId) =>
+    isCheckpointFallbackMessageId(input.threadId, messageId)
+  )
+  if (fallbackMessageId) {
+    throw new OpenworkIpcError({
+      channel: input.channel,
+      code: "FAILED_PRECONDITION",
+      details: [`fallbackMessageId=${fallbackMessageId}`],
+      message: "Cannot edit the last user message because a following message cannot be removed."
+    })
+  }
+
+  return messageIdsToRemove
 }
 
 interface ResumeTarget {
@@ -443,10 +551,7 @@ export class AgentService {
     private readonly workspaceService?: WorkspaceService
   ) {}
 
-  private sendThreadDeletingError(
-    channel: "agent:invoke" | "agent:resume",
-    sink: AgentStreamSink
-  ): void {
+  private sendThreadDeletingError(channel: AgentRunChannel, sink: AgentStreamSink): void {
     sink.send({
       type: "error",
       ...buildIpcErrorEvent(
@@ -462,7 +567,7 @@ export class AgentService {
 
   private async claimThreadRun(
     threadId: string,
-    channel: "agent:invoke" | "agent:resume",
+    channel: AgentRunChannel,
     sink: AgentStreamSink
   ): Promise<ThreadRunLease | null> {
     const claim = await this.threadLifecycleGate.claimRun(threadId)
@@ -490,6 +595,23 @@ export class AgentService {
     }
   }
 
+  async editLastUserMessageAndInvoke(
+    params: AgentEditLastUserMessageAndInvokeParams,
+    sink: AgentStreamSink,
+    options?: AgentRunOptions
+  ): Promise<void> {
+    await this.invoke(params, sink, {
+      ...options,
+      channel: "agent:editLastUserMessageAndInvoke",
+      getMessageIdsToRemove: () =>
+        readMessageIdsAfterLatestUserMessage({
+          channel: "agent:editLastUserMessageAndInvoke",
+          messageId: params.message.id,
+          threadId: params.threadId
+        })
+    })
+  }
+
   async invoke(
     {
       threadId,
@@ -501,16 +623,18 @@ export class AgentService {
     sink: AgentStreamSink,
     options?: AgentRunOptions
   ): Promise<void> {
+    const channel = options?.channel ?? "agent:invoke"
     const messagePreview = summarizeMessageContent(message.content)
 
     console.log("[Agent] Received invoke request:", {
+      channel,
       threadId,
       message: messagePreview.substring(0, 50),
       modelId,
       permissionMode: requestedPermissionMode
     })
 
-    const lease = await this.claimThreadRun(threadId, "agent:invoke", sink)
+    const lease = await this.claimThreadRun(threadId, channel, sink)
     if (!lease) {
       return
     }
@@ -532,9 +656,9 @@ export class AgentService {
         sink.send({
           type: "error",
           ...buildIpcErrorEvent(
-            "agent:invoke",
+            channel,
             new OpenworkIpcError({
-              channel: "agent:invoke",
+              channel,
               code: "FAILED_PRECONDITION",
               message: "Please select a workspace folder before sending messages."
             })
@@ -543,9 +667,11 @@ export class AgentService {
         return
       }
 
+      const normalizedRefs = normalizeComposerMessageRefs(message.additional_kwargs?.refs)
+      const messageIdsToRemove = (await options?.getMessageIdsToRemove?.()) ?? []
+
       await options?.onRunAccepted?.()
 
-      const normalizedRefs = normalizeComposerMessageRefs(message.additional_kwargs?.refs)
       const permissionMode = requestedPermissionMode ?? readThreadPermissionMode(thread)
       const locale = getAgentConfig().locale
       const extensionManifests = listNativeExtensionManifests(process.platform)
@@ -645,13 +771,13 @@ export class AgentService {
             aiCapabilities
           })
       })
-      const humanMessage = new HumanMessage({
-        content: message.content,
-        id: message.id,
-        ...(normalizedRefs.length > 0 ? { additional_kwargs: { refs: normalizedRefs } } : {})
+      const submittedMessages = buildSubmittedMessages({
+        message,
+        normalizedRefs,
+        removeMessageIds: messageIdsToRemove
       })
       const initialState = {
-        messages: [humanMessage],
+        messages: submittedMessages,
         ...(thread?.title &&
         !shouldAutoGenerateThreadTitle({
           metadata,
@@ -720,7 +846,7 @@ export class AgentService {
       }
     } catch (error) {
       if (!isAbortLikeError(error, abortController.signal)) {
-        const normalizedError = normalizeAgentRuntimeError("agent:invoke", error)
+        const normalizedError = normalizeAgentRuntimeError(channel, error)
         if (activeRun.runId) {
           await markRunFailed(threadId, activeRun.runId, normalizedError)
           await recordRunFinished({
@@ -735,7 +861,7 @@ export class AgentService {
         }
         sink.send({
           type: "error",
-          ...buildIpcErrorEvent("agent:invoke", normalizedError)
+          ...buildIpcErrorEvent(channel, normalizedError)
         })
       }
     } finally {

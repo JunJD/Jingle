@@ -38,6 +38,8 @@ export interface AgentInvokeParams {
   temporaryMode?: boolean
 }
 
+export interface AgentEditLastUserMessageAndInvokeParams extends AgentInvokeParams {}
+
 export interface AgentResumeParams {
   threadId: string
   command: {

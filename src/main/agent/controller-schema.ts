@@ -1,4 +1,9 @@
-import type { AgentCancelParams, AgentInvokeParams, AgentResumeParams } from "../types"
+import type {
+  AgentCancelParams,
+  AgentEditLastUserMessageAndInvokeParams,
+  AgentInvokeParams,
+  AgentResumeParams
+} from "../types"
 import {
   nonEmptyTrimmedStringSchema,
   optionalNormalizedTrimmedStringSchema
@@ -115,6 +120,16 @@ export const agentCancelParamsSchema = z
 
 export function parseAgentInvokeParams(value: unknown): AgentInvokeParams {
   return parseIpcPayloadWithSchema("agent:invoke", agentInvokeParamsSchema, value)
+}
+
+export function parseAgentEditLastUserMessageAndInvokeParams(
+  value: unknown
+): AgentEditLastUserMessageAndInvokeParams {
+  return parseIpcPayloadWithSchema(
+    "agent:editLastUserMessageAndInvoke",
+    agentInvokeParamsSchema,
+    value
+  )
 }
 
 export function parseAgentResumeParams(value: unknown): AgentResumeParams {

@@ -241,6 +241,21 @@ class ThreadRuntimeProjector {
     })
   }
 
+  prepareEditLastUserMessageAndInvoke(message: AgentInvokeMessage): void {
+    this.resetStreamingState()
+    this.pendingResumeDecision = null
+    const userMessage = createUserRuntimeMessage(message)
+    this.upsertMessage(userMessage, { appendAssistantText: false })
+    this.commitRuntimeEvent({
+      messageId: userMessage.id,
+      type: "message.truncatedAfter"
+    })
+    this.commitRuntimeEvent({
+      run: this.createActiveRun(userMessage.id, null),
+      type: "run.started"
+    })
+  }
+
   prepareResume(decision?: HITLDecision): void {
     this.resetStreamingState()
     this.pendingResumeDecision = decision ?? null
@@ -1100,6 +1115,16 @@ export class AgentThreadRunner {
     const entry = await this.ensureEntry(threadId)
     entry.replayEvents = []
     entry.projector.prepareInvoke(message)
+    this.notify(threadId)
+  }
+
+  async prepareEditLastUserMessageAndInvoke(
+    threadId: string,
+    message: AgentInvokeMessage
+  ): Promise<void> {
+    const entry = await this.ensureEntry(threadId)
+    entry.replayEvents = []
+    entry.projector.prepareEditLastUserMessageAndInvoke(message)
     this.notify(threadId)
   }
 

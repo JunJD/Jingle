@@ -156,6 +156,42 @@ test("AgentThreadRunner hydrates history and fans out runtime event batches", as
   assert.equal(afterCancel.activeRun, null)
 })
 
+test("AgentThreadRunner prepares edited last user message by truncating the old turn output", async () => {
+  const history = createThreadData({
+    messages: [
+      createUserMessage("user-1", "old question"),
+      createAssistantMessage("assistant-1", "old answer")
+    ],
+    todos: [
+      {
+        content: "old todo",
+        id: "todo-1",
+        status: "pending"
+      }
+    ]
+  })
+  const hub = new AgentThreadRunner(createThreadsService(history))
+  const seen: string[][] = []
+  await hub.connectThreadEvents("thread-1", "subscriber", (batch) => {
+    seen.push(batch.events.map((event) => event.type))
+  })
+
+  await hub.prepareEditLastUserMessageAndInvoke("thread-1", {
+    content: "edited question",
+    id: "user-1"
+  })
+
+  const snapshot = await hub.readThreadState("thread-1")
+  assert.deepEqual(
+    snapshot.messagesPage.map((message) => [message.id, message.content]),
+    [["user-1", "edited question"]]
+  )
+  assert.equal(snapshot.status, "running")
+  assert.equal(snapshot.activeRun?.userMessageId, "user-1")
+  assert.deepEqual(snapshot.todos, [])
+  assert.deepEqual(seen.at(-1), ["message.upserted", "message.truncatedAfter", "run.started"])
+})
+
 test("AgentThreadRunner restores active run ownership for hydrated pending approvals", async () => {
   const history = createThreadData({
     messages: [

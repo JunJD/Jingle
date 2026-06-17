@@ -4,10 +4,15 @@ import { AgentService, type AgentStreamSink } from "./service"
 import { AgentThreadRunner } from "./agent-thread-runner"
 import {
   parseAgentCancelParams,
+  parseAgentEditLastUserMessageAndInvokeParams,
   parseAgentInvokeParams,
   parseAgentResumeParams
 } from "./controller-schema"
-import type { AgentInvokeParams, AgentResumeParams } from "../types"
+import type {
+  AgentEditLastUserMessageAndInvokeParams,
+  AgentInvokeParams,
+  AgentResumeParams
+} from "../types"
 import { buildIpcErrorEvent } from "../ipc/error"
 import { registerIpcHandle } from "../ipc/handle"
 import { IpcSchemaValidationError } from "../ipc/schema"
@@ -25,6 +30,10 @@ export class AgentController {
 
     ipcMain.on("agent:invoke", (_event, rawParams: unknown) => {
       void this.handleInvoke(rawParams)
+    })
+
+    ipcMain.on("agent:editLastUserMessageAndInvoke", (_event, rawParams: unknown) => {
+      void this.handleEditLastUserMessageAndInvoke(rawParams)
     })
 
     ipcMain.on("agent:resume", (_event, rawParams: unknown) => {
@@ -69,6 +78,29 @@ export class AgentController {
     })
   }
 
+  private async handleEditLastUserMessageAndInvoke(rawParams: unknown): Promise<void> {
+    let params: AgentEditLastUserMessageAndInvokeParams
+
+    try {
+      params = parseAgentEditLastUserMessageAndInvokeParams(rawParams)
+    } catch (error) {
+      this.handleStreamValidationError(rawParams, "editLastUserMessageAndInvoke", error)
+      return
+    }
+
+    void this.agentService.editLastUserMessageAndInvoke(
+      params,
+      this.createStreamSink(params.threadId),
+      {
+        onRunAccepted: () =>
+          this.agentThreadRunner.prepareEditLastUserMessageAndInvoke(
+            params.threadId,
+            params.message
+          )
+      }
+    )
+  }
+
   private async handleResume(rawParams: unknown): Promise<void> {
     let params: AgentResumeParams
 
@@ -80,7 +112,8 @@ export class AgentController {
     }
 
     void this.agentService.resume(params, this.createStreamSink(params.threadId), {
-      onRunAccepted: () => this.agentThreadRunner.prepareResume(params.threadId, params.command?.resume)
+      onRunAccepted: () =>
+        this.agentThreadRunner.prepareResume(params.threadId, params.command?.resume)
     })
   }
 
@@ -128,7 +161,7 @@ export class AgentController {
 
   private handleStreamValidationError(
     rawParams: unknown,
-    operation: "invoke" | "resume",
+    operation: "editLastUserMessageAndInvoke" | "invoke" | "resume",
     error: unknown
   ): void {
     const rawThreadId = this.getRawThreadId(rawParams)
