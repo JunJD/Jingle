@@ -1,5 +1,10 @@
 # Openwork Codex Instructions
 
+## Agent 命名约定
+
+- 内部 canonical name 永远使用 `jingle`；中文 UI 显示名使用「金果」。代码、schema、事件、工具参数和持久化字段等稳定标识必须使用 `jingle`，不要把「金果」写入内部协议层。
+- 未来每次改动到一个功能链路时，需要检查该链路是否仍有早期遗留的 `openwork` / `.openwork` 命名；如果属于当前改动边界，就逐步改成 `jingle` / `.jingle`。涉及历史数据、用户目录或迁移语义时，先明确兼容和迁移边界，不做无边界的大范围重命名。
+
 ## React 状态约束
 
 - 不要在 `useEffect` 的 effect body 里同步调用 `setState` 来派生另一个 React 状态；这会触发 `react-hooks/set-state-in-effect`，也容易造成级联渲染。
