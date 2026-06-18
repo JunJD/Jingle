@@ -32,6 +32,10 @@ export interface ThreadSearchMatches {
   messages: ThreadSearchMessageMatchRow[]
 }
 
+interface ThreadSearchScope {
+  metadataSource?: string
+}
+
 export interface CreateThreadInput {
   metadata?: Record<string, unknown>
   title?: string | null
@@ -71,6 +75,10 @@ function mapThreadRow(row: {
     thread_values: row.threadValues,
     title: row.title
   }
+}
+
+function buildSqlLikeContainsQuery(value: string): string {
+  return `%${value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`
 }
 
 function buildClonedPendingHitlRequestId(targetThreadId: string, index: number): string {
@@ -134,32 +142,37 @@ export async function searchThreadMatches(params: {
   ftsQuery: string | null
   messageLimit: number
   query: string
+  scope?: ThreadSearchScope
   trigramQuery: string | null
 }): Promise<ThreadSearchMatches> {
-  const { directLimit, ftsQuery, messageLimit, query, trigramQuery } = params
+  const { directLimit, ftsQuery, messageLimit, query, scope, trigramQuery } = params
   const prisma = getPrismaClient()
+  const metadataSource = scope?.metadataSource
+  const scopedThreadWhere = metadataSource
+    ? ` AND json_extract(threads.metadata, '$.source') = ?`
+    : ""
+  const scopedThreadArgs = metadataSource ? ([metadataSource] as const) : ([] as const)
+  const directLikeQuery = buildSqlLikeContainsQuery(query)
 
   const [directRows, messageRows, trigramRows] = await Promise.all([
-    prisma.thread.findMany({
-      where: {
-        OR: [
-          {
-            threadId: {
-              contains: query
-            }
-          },
-          {
-            title: {
-              contains: query
-            }
-          }
-        ]
-      },
-      orderBy: {
-        updatedAt: "desc"
-      },
-      take: directLimit
-    }),
+    prisma.$queryRawUnsafe<
+      {
+        thread_id: string
+        title: string | null
+        updated_at: bigint | number
+      }[]
+    >(
+      `SELECT threads.thread_id, threads.title, threads.updated_at
+       FROM threads
+       WHERE (threads.thread_id LIKE ? ESCAPE '\\' OR threads.title LIKE ? ESCAPE '\\')
+       ${scopedThreadWhere}
+       ORDER BY threads.updated_at DESC
+       LIMIT ?`,
+      directLikeQuery,
+      directLikeQuery,
+      ...scopedThreadArgs,
+      directLimit
+    ),
     ftsQuery
       ? prisma.$queryRawUnsafe<
           {
@@ -174,9 +187,11 @@ export async function searchThreadMatches(params: {
            FROM messages_fts
            INNER JOIN threads ON threads.thread_id = messages_fts.thread_id
            WHERE messages_fts MATCH ?
+           ${scopedThreadWhere}
            ORDER BY rank
            LIMIT ?`,
           ftsQuery,
+          ...scopedThreadArgs,
           messageLimit
         )
       : Promise.resolve([]),
@@ -194,9 +209,11 @@ export async function searchThreadMatches(params: {
            FROM messages_fts_trigram
            INNER JOIN threads ON threads.thread_id = messages_fts_trigram.thread_id
            WHERE messages_fts_trigram MATCH ?
+           ${scopedThreadWhere}
            ORDER BY rank
            LIMIT ?`,
           trigramQuery,
+          ...scopedThreadArgs,
           messageLimit
         )
       : Promise.resolve([])
@@ -204,9 +221,9 @@ export async function searchThreadMatches(params: {
 
   return {
     direct: directRows.map((row) => ({
-      thread_id: row.threadId,
+      thread_id: row.thread_id,
       title: row.title,
-      updated_at: Number(row.updatedAt)
+      updated_at: toNumber(row.updated_at)
     })),
     messages: [...trigramRows, ...messageRows].map((row) => ({
       rank: row.rank,

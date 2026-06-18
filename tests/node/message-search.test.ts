@@ -203,3 +203,58 @@ test("message search projection removes stale checkpoint messages", async () => 
     [["message-second", "second updated"]]
   )
 })
+
+test("thread search scope limits title and message matches by metadata source", async () => {
+  const { createThread, searchThreadMatches, syncMessageSearchIndexFromSnapshot } =
+    await loadDbModules()
+
+  await createThread("launcher-ai-title-thread", {
+    metadata: { source: "launcher-ai" },
+    title: "scope shared title"
+  })
+  await createThread("history-title-thread", {
+    metadata: { source: "history" },
+    title: "scope shared title"
+  })
+  await createThread("launcher-ai-message-thread", {
+    metadata: { source: "launcher-ai" },
+    title: "launcher message"
+  })
+  await createThread("history-message-thread", {
+    metadata: { source: "history" },
+    title: "history message"
+  })
+
+  await syncMessageSearchIndexFromSnapshot("launcher-ai-message-thread", [
+    { content: JSON.stringify("scope shared body"), message_id: "launcher-message", role: "user" }
+  ])
+  await syncMessageSearchIndexFromSnapshot("history-message-thread", [
+    { content: JSON.stringify("scope shared body"), message_id: "history-message", role: "user" }
+  ])
+
+  const titleMatches = await searchThreadMatches({
+    directLimit: 10,
+    ftsQuery: null,
+    messageLimit: 10,
+    query: "scope shared title",
+    scope: { metadataSource: "launcher-ai" },
+    trigramQuery: null
+  })
+  const messageMatches = await searchThreadMatches({
+    directLimit: 10,
+    ftsQuery: '"scope"* "shared"* "body"*',
+    messageLimit: 10,
+    query: "scope shared body",
+    scope: { metadataSource: "launcher-ai" },
+    trigramQuery: null
+  })
+
+  assert.deepEqual(
+    titleMatches.direct.map((row) => row.thread_id),
+    ["launcher-ai-title-thread"]
+  )
+  assert.deepEqual(
+    messageMatches.messages.map((row) => row.thread_id),
+    ["launcher-ai-message-thread"]
+  )
+})

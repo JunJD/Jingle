@@ -128,6 +128,11 @@ class ThreadsLauncherSearchProvider implements LauncherSearchProvider {
       ftsQuery: buildUnicodeFtsQuery(query),
       messageLimit: limit * 4,
       query,
+      scope: request.threadMetadataSource
+        ? {
+            metadataSource: request.threadMetadataSource
+          }
+        : undefined,
       trigramQuery: buildTrigramFtsQuery(query)
     })
     const rows = rankThreadMatches({

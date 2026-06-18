@@ -13,6 +13,7 @@ export interface LauncherSearchRequest {
   query: string
   limit: number
   sources?: LauncherSearchSource[]
+  threadMetadataSource?: string
 }
 
 export type LauncherActionExecutor = "internal" | "shell"

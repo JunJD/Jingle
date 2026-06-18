@@ -52,7 +52,12 @@ function getSelectedProviders(request: LauncherSearchRequest): LauncherSearchPro
 
 function getSearchRequestCacheKey(request: LauncherSearchRequest): string {
   const sources = request.sources?.length ? [...request.sources].sort().join(",") : "all"
-  return `${sources}\u0000${request.limit}\u0000${request.query.trim()}`
+  return JSON.stringify({
+    limit: request.limit,
+    query: request.query.trim(),
+    sources,
+    threadMetadataSource: request.threadMetadataSource ?? null
+  })
 }
 
 function getCachedSearchResponse(cacheKey: string): LauncherSearchResponse | null {
