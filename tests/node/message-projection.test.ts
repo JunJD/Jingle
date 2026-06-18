@@ -34,17 +34,13 @@ function createToolCall(
 function createAssistantMessage(props: {
   id: string
   content?: Message["content"]
-  name?: string
-  toolCallId?: string
   toolCalls?: ToolCall[]
 }): Message {
   return {
     content: props.content ?? "",
     created_at: new Date("2026-01-01T00:00:00.000Z"),
     id: props.id,
-    ...(props.name ? { name: props.name } : {}),
     role: "assistant",
-    ...(props.toolCallId ? { tool_call_id: props.toolCallId } : {}),
     tool_calls: props.toolCalls
   }
 }
@@ -902,37 +898,6 @@ test("task stays out of message tool activity after the subagent state update is
       ? entries[0].items.map((item) => (item.kind === "tool" ? item.toolCall.id : item.kind))
       : [],
     [readToolCall.id]
-  )
-})
-
-test("assistant-shaped task tool results stay out of chat content projection", () => {
-  const taskToolCall = createToolCall("task-call-1", "task", {
-    description: "Review the staged diff",
-    subagent_type: "code-reviewer"
-  })
-  const projection = projectMessages([
-    createUserMessage("user-1", "Review this"),
-    createAssistantMessage({
-      id: "assistant-1",
-      toolCalls: [taskToolCall]
-    }),
-    createAssistantMessage({
-      content: "### Latest commit analysis\n\n| Area | Files |\n| --- | --- |",
-      id: "task-result-1",
-      name: "task",
-      toolCallId: taskToolCall.id
-    })
-  ])
-
-  assert.equal(projection.turns.length, 1)
-  assert.deepEqual(
-    projection.turns[0]?.assistants.map((message) => message.id),
-    ["assistant-1"]
-  )
-  assert.equal(projection.turns[0]?.toolResults.has(taskToolCall.id), false)
-  assert.deepEqual(
-    projection.displayRows.map((row) => row.key),
-    ["user-1", "__chat_footer__"]
   )
 })
 

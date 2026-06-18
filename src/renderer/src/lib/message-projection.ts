@@ -219,14 +219,6 @@ function isToolResultMessage(
   return message.role === "tool" && Boolean(message.tool_call_id)
 }
 
-function isHiddenToolResultLikeMessage(
-  message: ThreadMessage
-): message is ThreadMessage & { tool_call_id: string } {
-  return (
-    isToolResultMessage(message) || (message.role === "assistant" && Boolean(message.tool_call_id))
-  )
-}
-
 function toFiniteTimestamp(value: Date | null | undefined): number | null {
   if (!value) {
     return null
@@ -1154,7 +1146,7 @@ export function updateProjectedMessage(
   message: ThreadMessage,
   options: MessageProjectionOptions = {}
 ): ProjectedMessageFastPathResult {
-  if (message.role !== "assistant" || isHiddenToolResultLikeMessage(message)) {
+  if (message.role !== "assistant") {
     return {
       reason: "message_role_not_assistant",
       type: "miss"
@@ -1232,7 +1224,7 @@ export function projectMessages(
     getPreviousToolResults(previousProjection),
     buildToolResults(messages)
   )
-  const visibleMessages = messages.filter((message) => !isHiddenToolResultLikeMessage(message))
+  const visibleMessages = messages.filter((message) => !isToolResultMessage(message))
   const turnMessages = visibleMessages.filter((message) => !isContextCompactionMessage(message))
   const turns = stabilizeTurns(
     previousProjection?.turns,
