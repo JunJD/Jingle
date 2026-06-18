@@ -494,13 +494,18 @@ test("active turn status is derived from current runtime facts", () => {
     }
   )
 
-  assert.equal(
+  assert.deepEqual(
     projectActiveTurnStatus({
       activeRunPhase: "tool_running",
       assistantEntries: toolEntries,
       isStreaming: true
     }),
-    null
+    {
+      coachTip: { id: "keep_followups_in_thread" },
+      kind: "thinking",
+      placement: "inside_latest_agent_activity",
+      toolCallId: null
+    }
   )
 
   const approval: HITLRequest = {

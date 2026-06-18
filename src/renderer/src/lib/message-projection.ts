@@ -999,13 +999,12 @@ export function projectActiveTurnStatus(input: {
     }
   }
 
-  const isPreContentStreaming =
-    activeRunPhase === "streaming" && input.assistantEntries.length === 0
-  if (activeRunPhase !== "thinking" && !isPreContentStreaming) {
-    return null
-  }
-
-  if (latestEntry?.kind === "agent-activity") {
+  if (
+    latestEntry?.kind === "agent-activity" &&
+    (activeRunPhase === "thinking" ||
+      activeRunPhase === "tool_running" ||
+      activeRunPhase === "streaming")
+  ) {
     const activeStatus = {
       kind: "thinking",
       placement: "inside_latest_agent_activity",
@@ -1016,6 +1015,12 @@ export function projectActiveTurnStatus(input: {
       ...activeStatus,
       coachTip: projectRunCoachTip(activeStatus)
     }
+  }
+
+  const isPreContentStreaming =
+    activeRunPhase === "streaming" && input.assistantEntries.length === 0
+  if (activeRunPhase !== "thinking" && !isPreContentStreaming) {
+    return null
   }
 
   const activeStatus = {
