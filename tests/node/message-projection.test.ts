@@ -856,28 +856,68 @@ test("tool result projection preserves completed file mutation metadata", () => 
   })
 })
 
-test("write_todos stays out of message tool activity after the todo state update is visible", () => {
-  const todosToolCall = createToolCall("todo-call-1", "write_todos")
-  const readToolCall = createToolCall("read-call-1", "read_file")
-  const projection = projectMessages([
-    createUserMessage("user-1", "Plan the work"),
-    createAssistantMessage({
-      id: "assistant-1",
-      toolCalls: [todosToolCall, readToolCall]
-    })
-  ])
-  const turn = projection.turns[0]!
-  const entries = buildTurnAssistantEntries(turn)
+test("todo list tools stay out of message tool activity after the todo state update is visible", () => {
+  for (const toolName of ["write_todos", "update_todos"]) {
+    const todosToolCall = createToolCall(`${toolName}-call`, toolName)
+    const readToolCall = createToolCall(`${toolName}-read-call`, "read_file")
+    const projection = projectMessages([
+      createUserMessage("user-1", "Plan the work"),
+      createAssistantMessage({
+        id: "assistant-1",
+        toolCalls: [todosToolCall, readToolCall]
+      })
+    ])
+    const turn = projection.turns[0]!
+    const entries = buildTurnAssistantEntries(turn)
 
-  assert.equal(turn.toolResults.has(todosToolCall.id), false)
-  assert.equal(turn.toolResults.has(readToolCall.id), false)
+    assert.equal(turn.toolResults.has(todosToolCall.id), false)
+    assert.equal(turn.toolResults.has(readToolCall.id), false)
+    assert.equal(entries.length, 1)
+    assert.equal(entries[0]?.kind, "agent-activity")
+    assert.deepEqual(
+      entries[0]?.kind === "agent-activity"
+        ? entries[0].items.map((item) => (item.kind === "tool" ? item.toolCall.id : item.kind))
+        : [],
+      [readToolCall.id]
+    )
+  }
+})
+
+test("streaming todo list tools stay out of temporary activity projection", () => {
+  const projection = projectMessages([createUserMessage("user-1", "Plan the work")])
+  const turn = projection.turns[0]!
+  const entries = buildTurnAssistantEntries(turn, {
+    activeToolCalls: [
+      {
+        argsText: "{\"todos\":[]}",
+        id: "active-todos",
+        index: 0,
+        messageId: "assistant-active",
+        name: "update_todos",
+        runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        status: "running"
+      },
+      {
+        argsText: "{\"path\":\"src/index.ts\"}",
+        id: "active-read",
+        index: 1,
+        messageId: "assistant-active",
+        name: "read_file",
+        runId: "run-1",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        status: "running"
+      }
+    ]
+  })
+
   assert.equal(entries.length, 1)
   assert.equal(entries[0]?.kind, "agent-activity")
   assert.deepEqual(
     entries[0]?.kind === "agent-activity"
       ? entries[0].items.map((item) => (item.kind === "tool" ? item.toolCall.id : item.kind))
       : [],
-    [readToolCall.id]
+    ["active-read"]
   )
 })
 

@@ -1,4 +1,5 @@
 import { extractMessageText, resolveImageBlockUrl } from "@shared/message-content"
+import { isTodoListToolName } from "@shared/todo-tools"
 import { isExtensionToolCallPresentation } from "@shared/tool-presentation"
 import { parseCompleteToolCallArgsObject } from "@shared/tool-call-args"
 import {
@@ -416,11 +417,11 @@ export function projectAgentActivitySummary(
 }
 
 function shouldProjectToolActivity(toolCall: Pick<ToolCall, "name" | "presentation">): boolean {
-  if (
-    toolCall.name === "loadExtension" ||
-    toolCall.name === "task" ||
-    toolCall.name === "write_todos"
-  ) {
+  if (toolCall.name === "loadExtension" || toolCall.name === "task") {
+    return false
+  }
+
+  if (isTodoListToolName(toolCall.name)) {
     return false
   }
 
