@@ -93,9 +93,7 @@ export function createRuntimeEventProjectionUpdate(
   }
 }
 
-function createActiveProjectionInput(
-  agent: AgentSourceState
-): MessageProjectionOptions {
+function createActiveProjectionInput(agent: AgentSourceState): MessageProjectionOptions {
   const activeRun = agent.activeRun
 
   if (!activeRun) {
@@ -124,12 +122,34 @@ function findChangedAssistantMessage(
   return changedMessage
 }
 
+function canReuseProjectionWithoutMessageChanges(
+  previousProjection: ThreadState["view"]["messageProjection"],
+  activeProjectionInput: MessageProjectionOptions
+): boolean {
+  if (activeProjectionInput.activeTurnKey === undefined) {
+    return false
+  }
+
+  return (
+    previousProjection.activeAssistantId === (activeProjectionInput.activeAssistantId ?? null) &&
+    previousProjection.activeTurnKey === (activeProjectionInput.activeTurnKey ?? null)
+  )
+}
+
 function projectRuntimeMessages(input: {
   activeProjectionInput: MessageProjectionOptions
   changedMessageId: string | null | undefined
   messages: ThreadState["agent"]["messagesPage"]
+  messagesChanged: boolean
   previousProjection: ThreadState["view"]["messageProjection"]
 }): ThreadState["view"]["messageProjection"] {
+  if (
+    !input.messagesChanged &&
+    canReuseProjectionWithoutMessageChanges(input.previousProjection, input.activeProjectionInput)
+  ) {
+    return input.previousProjection
+  }
+
   const changedAssistantMessage = findChangedAssistantMessage(
     input.messages,
     input.changedMessageId
@@ -158,11 +178,13 @@ function applyAgentSourceStateToThreadState(
   } = {}
 ): ThreadState {
   const messagesPage = stabilizeThreadMessages(state.agent.messagesPage, agent.messagesPage)
+  const messagesChanged = !Object.is(messagesPage, state.agent.messagesPage)
   const activeProjectionInput = createActiveProjectionInput(agent)
   const messageProjection = projectRuntimeMessages({
     activeProjectionInput,
     changedMessageId: options.changedMessageId,
     messages: messagesPage,
+    messagesChanged,
     previousProjection: state.view.messageProjection
   })
 
