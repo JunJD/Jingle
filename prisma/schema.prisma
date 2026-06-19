@@ -29,9 +29,41 @@ model Thread {
   agentTraceBlobs        AgentTraceBlob[]
   agentMemorySuggestions AgentMemorySuggestion[]
   agentMemoryInclusions  AgentMemoryInclusion[]
+  workspaceBinding       ThreadWorkspaceBinding?
 
   @@index([updatedAt], map: "idx_threads_updated_at")
   @@map("threads")
+}
+
+model Project {
+  projectId                 String                   @id @map("project_id")
+  workspaceKey              String                   @unique @map("workspace_key")
+  canonicalWorkspacePath    String                   @map("canonical_workspace_path")
+  displayName               String                   @map("display_name")
+  createdAt                 BigInt                   @map("created_at")
+  updatedAt                 BigInt                   @map("updated_at")
+  archivedAt                BigInt?                  @map("archived_at")
+  threadWorkspaceBindings   ThreadWorkspaceBinding[]
+
+  @@index([updatedAt], map: "idx_projects_updated_at")
+  @@map("projects")
+}
+
+model ThreadWorkspaceBinding {
+  threadId      String   @id @map("thread_id")
+  workspaceKind String   @map("workspace_kind")
+  projectId     String?  @map("project_id")
+  workspaceKey  String?  @map("workspace_key")
+  workspacePath String?  @map("workspace_path")
+  createdAt     BigInt   @map("created_at")
+  updatedAt     BigInt   @map("updated_at")
+  thread        Thread   @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  project       Project? @relation(fields: [projectId], references: [projectId], onDelete: SetNull)
+
+  @@index([workspaceKind], map: "idx_thread_workspace_bindings_kind")
+  @@index([projectId], map: "idx_thread_workspace_bindings_project_id")
+  @@index([workspaceKey], map: "idx_thread_workspace_bindings_workspace_key")
+  @@map("thread_workspace_bindings")
 }
 
 model Run {

@@ -69,6 +69,10 @@ import {
   registerSettingsWindowRoutingModule
 } from "./settings-window-routing/module"
 import { registerShortcutsIpcHandlers, registerShortcutsModule } from "./shortcuts/module"
+import {
+  registerThreadWorkspaceIpcHandlers,
+  registerThreadWorkspaceModule
+} from "./thread-workspace/module"
 import { registerThreadsIpcHandlers, registerThreadsModule } from "./threads/module"
 import {
   startLauncherSearchIndexRefresh,
@@ -123,6 +127,7 @@ export class MainCompositionRoot {
     registerOpenworkMemoryIpcHandlers(this.dependencyContainer, ipcMain)
     registerOpenTargetsIpcHandlers(this.dependencyContainer, ipcMain)
     registerSettingsIpcHandlers(this.dependencyContainer, ipcMain)
+    registerThreadWorkspaceIpcHandlers(this.dependencyContainer, ipcMain)
     registerThreadsIpcHandlers(this.dependencyContainer, ipcMain)
     registerWorkspaceIpcHandlers(this.dependencyContainer, ipcMain)
     registerNativeExtensionsIpcHandlers(this.dependencyContainer, ipcMain)
@@ -238,6 +243,7 @@ export function createMainCompositionRoot(
   })
   registerExtensionRuntimeModule(childContainer)
   registerShortcutsModule(childContainer)
+  registerThreadWorkspaceModule(childContainer)
   registerThreadsModule(childContainer)
   registerWorkspaceModule(childContainer)
   configureQuicklinksLauncherSearchProvider({

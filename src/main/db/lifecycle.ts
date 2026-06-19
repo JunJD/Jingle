@@ -6,6 +6,8 @@ import { closePrismaClient, getPrismaClient } from "./client"
 const REQUIRED_TABLES = [
   "_prisma_migrations",
   "threads",
+  "projects",
+  "thread_workspace_bindings",
   "runs",
   "messages",
   "messages_fts",
