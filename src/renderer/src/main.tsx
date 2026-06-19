@@ -11,7 +11,6 @@ import { applyAppThemeSettings } from "./lib/app-theme"
 import { installRendererDiagnostics } from "./lib/diagnostics"
 import { I18nProvider } from "./lib/i18n"
 import { PinnedAiSessionWindowApp } from "./ai-core/PinnedAiSessionWindowApp"
-import MainWindowApp from "./main-window/MainWindowApp"
 import SettingsApp from "./settings/SettingsApp"
 import { ShortcutProvider } from "./shortcuts/shortcut-provider"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "@shared/i18n"
@@ -76,9 +75,7 @@ export function RendererRoot(): React.JSX.Element {
             </ThreadProvider>
           ) : windowKind === "settings" ? (
             <SettingsApp />
-          ) : (
-            <MainWindowApp />
-          )}
+          ) : null}
         </I18nProvider>
       </ShortcutProvider>
     </React.StrictMode>

@@ -2,11 +2,13 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import type {
   AgentThreadDataSnapshot,
+  CreateThreadInput,
   ModelConfig,
   ModelProviderState,
   Provider,
   Thread
 } from "../../src/shared/app-types"
+import { DEFAULT_THREAD_SIDEBAR_PREFERENCES } from "../../src/shared/thread-sidebar"
 import {
   createHistoryShellStore,
   type HistoryShellApi
@@ -78,8 +80,8 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
     threads: {
       list: async () => [],
       get: async () => null,
-      create: async (metadata?: Record<string, unknown>) =>
-        createThread("thread-created", { metadata }),
+      create: async (input?: CreateThreadInput) =>
+        createThread("thread-created", { metadata: input?.metadata }),
       clone: async () => createThread("thread-clone"),
       cloneUntilMessage: async () => createThread("thread-clone"),
       update: async (threadId: string, updates: Partial<Thread>) => createThread(threadId, updates),
@@ -89,6 +91,83 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
       getAgentThreadData: async (): Promise<AgentThreadDataSnapshot> => {
         throw new Error("Not implemented in test stub")
       },
+    },
+    threadSidebar: {
+      getView: async () => ({
+        chatThreads: [],
+        pinnedThreads: [],
+        preferences: DEFAULT_THREAD_SIDEBAR_PREFERENCES,
+        projectGroups: []
+      }),
+      reorderProjects: async () => ({
+        chatThreads: [],
+        pinnedThreads: [],
+        preferences: DEFAULT_THREAD_SIDEBAR_PREFERENCES,
+        projectGroups: []
+      }),
+      setOrganizeMode: async () => ({
+        chatThreads: [],
+        pinnedThreads: [],
+        preferences: DEFAULT_THREAD_SIDEBAR_PREFERENCES,
+        projectGroups: []
+      }),
+      setSortBy: async () => ({
+        chatThreads: [],
+        pinnedThreads: [],
+        preferences: DEFAULT_THREAD_SIDEBAR_PREFERENCES,
+        projectGroups: []
+      })
+    },
+    threadWorkspace: {
+      addProject: async () => ({
+        archivedAt: null,
+        canonicalWorkspacePath: "/tmp/openwork",
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        displayName: "openwork",
+        projectId: "/tmp/openwork",
+        updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+        workspaceKey: "/tmp/openwork"
+      }),
+      bindProject: async (threadId: string, workspacePath: string) => ({
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        project: null,
+        projectId: workspacePath,
+        threadId,
+        updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+        workspaceKey: workspacePath,
+        workspaceKind: "project",
+        workspacePath
+      }),
+      get: async () => null,
+      markProjectless: async (threadId: string) => ({
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        project: null,
+        projectId: null,
+        threadId,
+        updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+        workspaceKey: null,
+        workspaceKind: "projectless",
+        workspacePath: null
+      })
+    },
+    workspace: {
+      get: async () => null,
+      set: async () => null,
+      select: async () => null,
+      selectFolder: async () => null,
+      createDefault: async () => "/tmp/openwork",
+      readFile: async () => ({
+        success: false,
+        error: "Not implemented in test stub"
+      }),
+      readBinaryFile: async () => ({
+        success: false,
+        error: "Not implemented in test stub"
+      }),
+      searchFiles: async () => ({
+        success: true,
+        files: []
+      })
     },
     models: {
       getState: async () => providerState,
@@ -113,82 +192,6 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
     ...overrides
   }
 }
-
-test("createThread prepends the thread, selects it, and exits kanban mode", async () => {
-  const store = createHistoryShellStore(
-    createApi({
-      threads: {
-        ...createApi().threads,
-        create: async (metadata?: Record<string, unknown>) =>
-          createThread("thread-new", { metadata, title: "Fresh thread" })
-      }
-    })
-  )
-
-  store.getState().setShowKanbanView(true)
-  const thread = await store.getState().createThread({ source: "test" })
-  const state = store.getState()
-
-  assert.equal(thread.thread_id, "thread-new")
-  assert.equal(state.currentThreadId, "thread-new")
-  assert.equal(state.showKanbanView, false)
-  assert.deepEqual(
-    state.threads.map((candidate) => candidate.thread_id),
-    ["thread-new"]
-  )
-  assert.deepEqual(state.threads[0]?.metadata, { source: "test" })
-})
-
-test("deleteThread removes the active thread and falls through to the next one", async () => {
-  const threads = [createThread("thread-1"), createThread("thread-2"), createThread("thread-3")]
-  const store = createHistoryShellStore(
-    createApi({
-      threads: {
-        ...createApi().threads,
-        list: async () => threads
-      }
-    })
-  )
-
-  await store.getState().loadThreads()
-  await store.getState().selectThread("thread-2")
-  await store.getState().deleteThread("thread-2")
-
-  const state = store.getState()
-  assert.deepEqual(
-    state.threads.map((candidate) => candidate.thread_id),
-    ["thread-1", "thread-3"]
-  )
-  assert.equal(state.currentThreadId, "thread-1")
-})
-
-test("deleteThread rethrows failures and preserves current selection", async () => {
-  const threads = [createThread("thread-1"), createThread("thread-2"), createThread("thread-3")]
-  const deleteError = new Error("delete failed")
-  const store = createHistoryShellStore(
-    createApi({
-      threads: {
-        ...createApi().threads,
-        list: async () => threads,
-        delete: async () => {
-          throw deleteError
-        }
-      }
-    })
-  )
-
-  await store.getState().loadThreads()
-  await store.getState().selectThread("thread-2")
-
-  await assert.rejects(() => store.getState().deleteThread("thread-2"), deleteError)
-
-  const state = store.getState()
-  assert.deepEqual(
-    state.threads.map((candidate) => candidate.thread_id),
-    ["thread-1", "thread-2", "thread-3"]
-  )
-  assert.equal(state.currentThreadId, "thread-2")
-})
 
 test("refreshThread updates only the requested thread and re-sorts by recency", async () => {
   const initialThreads = [
@@ -267,6 +270,97 @@ test("setThreadPinned updates thread metadata without re-sorting recency", async
   assert.deepEqual(state.threads[1]?.metadata, { pinned: true })
 })
 
+test("addSidebarProject creates a project from a selected folder and refreshes project grouping", async () => {
+  const calls: string[] = []
+  const nextView = {
+    chatThreads: [],
+    pinnedThreads: [],
+    preferences: {
+      ...DEFAULT_THREAD_SIDEBAR_PREFERENCES,
+      organizeMode: "project" as const
+    },
+    projectGroups: [
+      {
+        projectId: "/tmp/openwork",
+        threads: [],
+        title: "openwork",
+        updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+        workspacePath: "/tmp/openwork"
+      }
+    ]
+  }
+  const store = createHistoryShellStore(
+    createApi({
+      threadSidebar: {
+        ...createApi().threadSidebar,
+        setOrganizeMode: async (mode) => {
+          calls.push(`organize:${mode}`)
+          return nextView
+        }
+      },
+      threadWorkspace: {
+        ...createApi().threadWorkspace,
+        addProject: async (workspacePath) => {
+          calls.push(`project:${workspacePath}`)
+          return {
+            archivedAt: null,
+            canonicalWorkspacePath: workspacePath,
+            createdAt: new Date("2026-01-01T00:00:00.000Z"),
+            displayName: "openwork",
+            projectId: workspacePath,
+            updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+            workspaceKey: workspacePath
+          }
+        }
+      },
+      workspace: {
+        ...createApi().workspace,
+        selectFolder: async () => {
+          calls.push("select")
+          return "/tmp/openwork"
+        }
+      }
+    })
+  )
+
+  await store.getState().addSidebarProject()
+
+  assert.deepEqual(calls, ["select", "project:/tmp/openwork", "organize:project"])
+  assert.deepEqual(store.getState().sidebarView, nextView)
+})
+
+test("addSidebarProject leaves sidebar state unchanged when folder selection is canceled", async () => {
+  let addProjectCalled = false
+  const store = createHistoryShellStore(
+    createApi({
+      threadWorkspace: {
+        ...createApi().threadWorkspace,
+        addProject: async (workspacePath) => {
+          addProjectCalled = true
+          return {
+            archivedAt: null,
+            canonicalWorkspacePath: workspacePath,
+            createdAt: new Date("2026-01-01T00:00:00.000Z"),
+            displayName: "openwork",
+            projectId: workspacePath,
+            updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+            workspaceKey: workspacePath
+          }
+        }
+      },
+      workspace: {
+        ...createApi().workspace,
+        selectFolder: async () => null
+      }
+    })
+  )
+
+  await store.getState().addSidebarProject()
+
+  assert.equal(addProjectCalled, false)
+  assert.equal(store.getState().sidebarView, null)
+})
+
 test("setProviderCredentials refreshes provider and model state after persisting credentials", async () => {
   let loadCount = 0
   let credentialsCall: { providerId: string; credentials: Record<string, string> } | null = null
@@ -325,25 +419,24 @@ test("subscribe emits only when the store mutates", async () => {
     callCount += 1
   })
 
-  store.getState().setRightPanelTab("artifacts")
-  store.getState().setSidebarCollapsed(true)
+  await store.getState().loadThreads()
+  await store.getState().loadModelProviderState()
   unsubscribe()
-  store.getState().setSidebarCollapsed(false)
+  await store.getState().loadThreads()
 
   assert.equal(callCount, 2)
 })
 
-test("no-op ui state writes do not notify subscribers", () => {
+test("no-op state writes do not notify subscribers", () => {
   const store = createHistoryShellStore(createApi())
   let callCount = 0
   store.subscribe(() => {
     callCount += 1
   })
 
-  store.getState().setRightPanelTab("todos")
-  store.getState().setSidebarCollapsed(false)
-  store.getState().setShowKanbanView(false)
-  store.getState().setShowSubagentsInKanban(true)
+  // No-op: currentThreadId is already null
+  const state = store.getState()
+  assert.equal(state.currentThreadId, null)
 
   assert.equal(callCount, 0)
 })

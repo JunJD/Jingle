@@ -5,7 +5,6 @@ import { closeDatabase, initializeDatabase } from "./db"
 import { closeRuntime } from "./agent/runtime"
 import { createMainCompositionRoot, type MainCompositionRoot } from "./composition-root"
 import { createLauncherWindow, showLauncherWindow } from "./windows/launcher-window"
-import { createMainWindow, showMainWindow } from "./windows/main-window"
 import { createPinnedAiSessionWindow } from "./windows/pinned-ai-session-window"
 import { createSettingsWindow, showSettingsWindow } from "./windows/settings-window"
 import { registerNativeExtensionAssetProtocol } from "./native-extensions/asset-protocol"
@@ -16,7 +15,6 @@ import {
   REGISTER_DEV_PROTOCOL_CLIENT_ENV,
   resolveJingleProtocolRegistrationMode
 } from "./protocol-client-registration"
-import type { MainWindowNavigationPayload } from "@shared/main-window"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
 const JINGLE_PROTOCOL = "jingle"
@@ -29,10 +27,8 @@ if (remoteDebuggingPort) {
 }
 
 let launcherWindow: BrowserWindow | null = null
-let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let mainCompositionRoot: MainCompositionRoot | null = null
-let pendingMainNavigation: MainWindowNavigationPayload | null = null
 let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
 let pendingOAuthCallbackUrl: string | null = null
 let shutdownComplete = false
@@ -68,17 +64,6 @@ function getOrCreateLauncherWindow(): BrowserWindow {
   return launcherWindow
 }
 
-function getOrCreateMainWindow(): BrowserWindow {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    mainWindow = createMainWindow()
-    mainWindow.on("closed", () => {
-      mainWindow = null
-    })
-  }
-
-  return mainWindow
-}
-
 function getOrCreateSettingsWindow(): BrowserWindow {
   if (!settingsWindow || settingsWindow.isDestroyed()) {
     settingsWindow = createSettingsWindow()
@@ -106,18 +91,6 @@ function toggleLauncher(): void {
   }
 
   showLauncherWindow(launcherWindow)
-}
-
-function openMainWindow(payload?: MainWindowNavigationPayload): void {
-  const mainWindow = getOrCreateMainWindow()
-  pendingMainNavigation = payload ?? null
-  showMainWindow(mainWindow, payload)
-}
-
-function acknowledgePendingMainNavigation(payload: MainWindowNavigationPayload): void {
-  if (payload.targetThreadId && pendingMainNavigation?.targetThreadId === payload.targetThreadId) {
-    pendingMainNavigation = null
-  }
 }
 
 function openSettingsWindow(payload?: SettingsWindowNavigationPayload): void {
@@ -225,7 +198,7 @@ if (hasSingleInstanceLock) {
       return
     }
 
-    openMainWindow()
+    showLauncher()
   })
 
   app.on("open-url", (event, rawUrl) => {
@@ -267,7 +240,6 @@ if (hasSingleInstanceLock) {
 
     // Register IPC handlers
     mainCompositionRoot = createMainCompositionRoot({
-      acknowledgePendingMainNavigation,
       consumePendingSettingsNavigation: () => {
         const pending = pendingSettingsNavigation
         pendingSettingsNavigation = null
@@ -275,10 +247,8 @@ if (hasSingleInstanceLock) {
       },
       createPinnedAiSessionWindow,
       getLauncherWindow,
-      getPendingMainNavigation: () => pendingMainNavigation,
       ipcMain,
       isDev,
-      openMainWindow,
       openSettingsWindow,
       quitApplication: () => app.quit(),
       showLauncherWindow: showLauncher,
@@ -297,7 +267,7 @@ if (hasSingleInstanceLock) {
     }
     startNativeMinimalIsland({
       openLauncher: showLauncher,
-      openMainWindow: () => openMainWindow(),
+      openMainWindow: showLauncher,
       openSettings: () => openSettingsWindow(),
       quit: () => app.quit()
     })
@@ -305,7 +275,7 @@ if (hasSingleInstanceLock) {
     showLauncher()
 
     app.on("activate", () => {
-      openMainWindow()
+      showLauncher()
     })
   })
 }

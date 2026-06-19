@@ -35,10 +35,6 @@ import {
 import { registerLauncherIpcHandlers, registerLauncherModule } from "./launcher/module"
 import { registerLocalStartIpcHandlers, registerLocalStartModule } from "./local-start/module"
 import {
-  registerMainWindowRoutingIpcHandlers,
-  registerMainWindowRoutingModule
-} from "./main-window-routing/module"
-import {
   registerNativeMenuBarIpcHandlers,
   registerNativeMenuBarModule,
   resolveNativeMenuBarService
@@ -85,18 +81,14 @@ import {
 import { configureQuicklinksLauncherSearchProvider } from "./services/launcher-search/providers/quicklinks"
 import { registerWorkspaceIpcHandlers, registerWorkspaceModule } from "./workspace/module"
 import { nativeExtensionManifests } from "@extensions/index"
-import type { MainWindowNavigationPayload } from "@shared/main-window"
 import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
 
 export interface MainCompositionContext {
-  acknowledgePendingMainNavigation: (payload: MainWindowNavigationPayload) => void
   consumePendingSettingsNavigation: () => SettingsWindowNavigationPayload | null
   createPinnedAiSessionWindow: AiSessionWindowsRuntime["createPinnedAiSessionWindow"]
   getLauncherWindow: () => BrowserWindow | null
-  getPendingMainNavigation: () => MainWindowNavigationPayload | null
   ipcMain: IpcMain
   isDev: boolean
-  openMainWindow: (payload?: MainWindowNavigationPayload) => void
   openSettingsWindow: (payload?: SettingsWindowNavigationPayload) => void
   quitApplication: () => void
   showLauncherWindow: () => void
@@ -137,7 +129,6 @@ export class MainCompositionRoot {
     registerWorkspaceIpcHandlers(this.dependencyContainer, ipcMain)
     registerNativeExtensionsIpcHandlers(this.dependencyContainer, ipcMain)
     registerNativeMenuBarIpcHandlers(this.dependencyContainer, ipcMain)
-    registerMainWindowRoutingIpcHandlers(this.dependencyContainer, ipcMain)
     registerSettingsWindowRoutingIpcHandlers(this.dependencyContainer, ipcMain)
     registerExtensionRuntimeIpcHandlers(this.dependencyContainer, ipcMain)
     registerShortcutsIpcHandlers(this.dependencyContainer, {
@@ -229,12 +220,9 @@ export function createMainCompositionRoot(
   registerLauncherHistoryModule(childContainer)
   registerLocalStartModule(childContainer)
   registerLauncherModule(childContainer, {
-    openMainWindow: context.openMainWindow
-  })
-  registerMainWindowRoutingModule(childContainer, {
-    acknowledgePendingNavigation: context.acknowledgePendingMainNavigation,
-    getPendingNavigation: context.getPendingMainNavigation,
-    openMainWindow: context.openMainWindow
+    openPinnedSessionWindow: (threadId: string) => {
+      context.createPinnedAiSessionWindow({ threadId, windowId: crypto.randomUUID() })
+    }
   })
   registerModelProviderModule(childContainer)
   registerOpenworkMemoryModule(childContainer)

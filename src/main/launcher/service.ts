@@ -12,7 +12,6 @@ import type {
   LauncherSearchRequest,
   LauncherSearchResponse
 } from "@shared/launcher-search"
-import type { MainWindowNavigationPayload } from "@shared/main-window"
 import type { LauncherHistoryService } from "../launcher-history/service"
 import type { LocalStartService } from "../local-start/service"
 import { readClipboardContext } from "../services/clipboard"
@@ -26,7 +25,7 @@ import { getLauncherOpenPathHistoryTitle } from "./history-title"
 const EMPTY_CLIPBOARD_CONTEXT: ClipboardContext = { kind: "none" }
 
 export interface LauncherRuntime {
-  openMainWindow: (payload?: MainWindowNavigationPayload) => void
+  openPinnedSessionWindow: (threadId: string) => void
 }
 
 async function openLauncherPath(
@@ -155,7 +154,7 @@ const internalLauncherActionExecutor: InternalLauncherActionExecutorHandler = as
     case "none":
       return
     case "open-history-thread":
-      runtime.openMainWindow({ targetThreadId: action.target.threadId })
+      runtime.openPinnedSessionWindow(action.target.threadId)
       return
     case "open-extension-command":
       return

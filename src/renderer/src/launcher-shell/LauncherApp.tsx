@@ -115,7 +115,7 @@ export default function LauncherApp(): React.JSX.Element {
     return window.api.launcher.hide()
   }, [])
   const openMainHistory = useCallback((): void => {
-    void window.api.mainWindow.openWindow().then(() => hideLauncher())
+    hideLauncher()
   }, [hideLauncher])
   const searchPage = useLauncherSearchPage({ openCommand, openMainHistory })
   const { executeHomeCommand, handleInputCommandKeyDown } = searchPage

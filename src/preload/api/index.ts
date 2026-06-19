@@ -7,7 +7,6 @@ import { extensionRuntimeApi } from "./extensionRuntime"
 import { launcherApi } from "./launcher"
 import { launcherHistoryApi } from "./launcherHistory"
 import { localStartApi } from "./localStart"
-import { mainWindowApi } from "./mainWindow"
 import { modelsApi } from "./models"
 import { memoryApi } from "./memory"
 import { nativeExtensionsApi } from "./nativeExtensions"
@@ -31,7 +30,6 @@ export const api = {
   memory: memoryApi,
   models: modelsApi,
   settings: settingsApi,
-  mainWindow: mainWindowApi,
   shortcuts: shortcutsApi,
   threadSidebar: threadSidebarApi,
   threadWorkspace: threadWorkspaceApi,

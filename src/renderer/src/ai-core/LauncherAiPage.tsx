@@ -579,10 +579,15 @@ export function LauncherAiPage(): React.JSX.Element {
     focusComposerOnNextFrame()
   }, [clearTransientInputState, focusComposerOnNextFrame, goToPreviousChat])
   const openMainChat = useCallback(async (): Promise<void> => {
-    if (threadId) {
-      await window.api.mainWindow.openThread(threadId)
-    } else {
-      await window.api.mainWindow.openWindow()
+    if (!threadId) {
+      return
+    }
+
+    const result = await window.api.aiSessionWindows.openPinned({ threadId })
+    if (!result.ok) {
+      console.warn("[LauncherAiPage] Pinned AI session window limit reached.", {
+        limit: result.limit
+      })
     }
     await navigation.hideLauncher()
   }, [navigation, threadId])
