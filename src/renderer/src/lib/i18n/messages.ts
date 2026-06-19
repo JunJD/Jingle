@@ -187,6 +187,8 @@ export interface AppCopy {
     sidebarNewChat: string
     sidebarPinned: string
     sidebarSearch: string
+    sidebarSearchLoading: string
+    sidebarSearchNoResults: string
     underDevelopment: string
     unpinChat: string
     commandMatches: string
@@ -489,6 +491,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       sidebarNewChat: "新对话",
       sidebarPinned: "Pinned",
       sidebarSearch: "搜索",
+      sidebarSearchLoading: "正在加载聊天...",
+      sidebarSearchNoResults: "没有匹配的对话",
       underDevelopment: "待开发",
       unpinChat: "取消置顶",
       commandMatches: "命令",
@@ -809,6 +813,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       sidebarNewChat: "New Chat",
       sidebarPinned: "Pinned",
       sidebarSearch: "Search",
+      sidebarSearchLoading: "Loading chats...",
+      sidebarSearchNoResults: "No matching chats",
       underDevelopment: "Coming soon",
       unpinChat: "Unpin Chat",
       commandMatches: "Commands",

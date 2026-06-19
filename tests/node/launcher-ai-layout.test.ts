@@ -43,3 +43,32 @@ test("launcher AI composer participates in page layout instead of message bottom
   assert.ok(conversationCall, "LauncherAiPage should render LauncherAiConversation")
   assert.doesNotMatch(conversationCall[0], /bottomInset=/)
 })
+
+test("launcher AI sidebar search opens thread search overlay backed by launcher search", async () => {
+  const pageSource = await readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx")
+
+  assert.doesNotMatch(pageSource, /handleOpenSidebarSearch/)
+  assert.match(pageSource, /window\.api\.launcher\s*\.\s*search/)
+  assert.match(pageSource, /sources:\s*\[\s*"threads"\s*\]/)
+  assert.match(pageSource, /threadMetadataSource:\s*AI_THREAD_SOURCE/)
+  assert.doesNotMatch(pageSource, /launcherThreadIdSet/)
+  assert.match(pageSource, /LauncherAiThreadSearchOverlay/)
+  assert.doesNotMatch(pageSource, /openThreadSearch[\s\S]*?setIsThreadSearchLoading\(true\)/)
+  assert.match(
+    pageSource,
+    /if \(nextTrimmedThreadSearchQuery === trimmedThreadSearchQuery\) \{\s*return\s*\}/
+  )
+
+  const sidebarPanelCall = pageSource.match(/<LauncherAiSidebarPanel[\s\S]*?\/>/)
+  assert.ok(sidebarPanelCall, "LauncherAiPage should render LauncherAiSidebarPanel")
+  assert.match(sidebarPanelCall[0], /onOpenSearch=\{openThreadSearch\}/)
+})
+
+test("launcher AI thread search overlay stays idle before query input", async () => {
+  const overlaySource = await readWorkspaceFile(
+    "src/renderer/src/ai-core/LauncherAiThreadSearchOverlay.tsx"
+  )
+
+  assert.match(overlaySource, /if \(!trimmedQuery\) \{\s*return "idle"\s*\}/)
+  assert.match(overlaySource, /visibleState === "loading"/)
+})

@@ -51,9 +51,7 @@ function SidebarAction(props: {
       onClick={disabled ? undefined : onAction}
     >
       <span className="launcher-ai-sidebar-panel__action-icon">{icon}</span>
-      <span className="launcher-ai-sidebar-panel__action-label">
-        {label}
-      </span>
+      <span className="launcher-ai-sidebar-panel__action-label">{label}</span>
     </button>
   )
 }
@@ -83,11 +81,9 @@ function ThreadRow(props: {
       onClick={onSelect}
     >
       <span className="launcher-ai-sidebar-panel__thread-icon">{icon}</span>
-      <span className="launcher-ai-sidebar-panel__thread-copy">
-        <span className="launcher-ai-sidebar-panel__thread-title">{thread.title}</span>
-        <span className="launcher-ai-sidebar-panel__thread-meta">
-          {formatRelativeTime(thread.updatedAt, locale)}
-        </span>
+      <span className="launcher-ai-sidebar-panel__thread-title">{thread.title}</span>
+      <span className="launcher-ai-sidebar-panel__thread-meta">
+        {formatRelativeTime(thread.updatedAt, locale)}
       </span>
     </button>
   )
@@ -117,21 +113,9 @@ export function LauncherAiSidebarPanel(props: LauncherAiSidebarPanelProps): Reac
       onPointerLeave={onPointerLeave}
     >
       <div className="launcher-ai-sidebar-panel__actions">
-        <SidebarAction
-          icon={<SquarePen />}
-          label={labels.sidebarNewChat}
-          onAction={onNewChat}
-        />
-        <SidebarAction
-          icon={<Search />}
-          label={labels.sidebarSearch}
-          onAction={onOpenSearch}
-        />
-        <SidebarAction
-          disabled
-          icon={<Clock />}
-          label={labels.sidebarAutomation}
-        />
+        <SidebarAction icon={<SquarePen />} label={labels.sidebarNewChat} onAction={onNewChat} />
+        <SidebarAction icon={<Search />} label={labels.sidebarSearch} onAction={onOpenSearch} />
+        <SidebarAction disabled icon={<Clock />} label={labels.sidebarAutomation} />
       </div>
 
       <div className="launcher-ai-sidebar-panel__section">

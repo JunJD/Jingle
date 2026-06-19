@@ -7,6 +7,7 @@ import { useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { formatShortcutChord } from "@/shortcuts/format-shortcut"
 import { AI_LAUNCHER_PLUGIN_ID, AI_THREAD_SOURCE } from "@shared/launcher-ai"
 import { AI_ATTACHMENT_FILE_EXTENSIONS } from "@shared/launcher-attachments"
+import { MAX_LAUNCHER_SEARCH_RESULTS } from "@shared/launcher"
 import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
 import { getAiShellConfig } from "./ai-config"
@@ -19,10 +20,8 @@ import { LauncherAiHeaderActions } from "./LauncherAiHeaderActions"
 import { LauncherAiHeaderLeadingActions } from "./LauncherAiHeaderLeadingActions"
 import { LauncherAiHeaderModelPicker } from "./LauncherAiHeaderModelPicker"
 import { LauncherAiModelPicker } from "./LauncherAiModelPicker"
-import {
-  LauncherAiSidebarPanel,
-  mapThreadToLauncherAiSidebarItem
-} from "./LauncherAiSidebarPanel"
+import { LauncherAiSidebarPanel, mapThreadToLauncherAiSidebarItem } from "./LauncherAiSidebarPanel"
+import { LauncherAiThreadSearchOverlay } from "./LauncherAiThreadSearchOverlay"
 import { useAiCoreHost } from "./AiCoreHost"
 import { LauncherAttachmentStrip } from "./LauncherAttachmentStrip"
 import { AssistantSelectionReferencePill } from "@/components/chat/AssistantSelectionReferences"
@@ -45,6 +44,7 @@ import { useWorkspaceFileMentions, type ComposerAreaHandle } from "@/composer-ar
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import { shouldGoHomeFromComposerKeyDown } from "./composer-keyboard"
 import type { Subagent, Todo } from "@/types"
+import type { LauncherSearchResult } from "@shared/launcher-search"
 
 const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 const DEFAULT_AGENT_CAN_FORK = true
@@ -70,6 +70,11 @@ export function LauncherAiPage(): React.JSX.Element {
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isSidebarPreviewOpen, setIsSidebarPreviewOpen] = useState(false)
+  const [isThreadSearchOpen, setIsThreadSearchOpen] = useState(false)
+  const [threadSearchQuery, setThreadSearchQuery] = useState("")
+  const [threadSearchResults, setThreadSearchResults] = useState<LauncherSearchResult[]>([])
+  const [threadSearchActiveIndex, setThreadSearchActiveIndex] = useState(0)
+  const [isThreadSearchLoading, setIsThreadSearchLoading] = useState(false)
   const sidebarPreviewCloseTimerRef = useRef<number | null>(null)
   const threadNavigation = useLauncherAiThreadNavigation({
     initialAction: host.initialAction,
@@ -446,6 +451,68 @@ export function LauncherAiPage(): React.JSX.Element {
 
     void loadThreads()
   }, [isSidebarOpen, isSidebarPreviewVisible, loadThreads])
+  const trimmedThreadSearchQuery = threadSearchQuery.trim()
+  useEffect(() => {
+    if (!isThreadSearchOpen || !trimmedThreadSearchQuery) {
+      return
+    }
+
+    let cancelled = false
+    const searchTimer = window.setTimeout(() => {
+      setIsThreadSearchLoading(true)
+      void window.api.launcher
+        .search({
+          limit: MAX_LAUNCHER_SEARCH_RESULTS,
+          query: trimmedThreadSearchQuery,
+          sources: ["threads"],
+          threadMetadataSource: AI_THREAD_SOURCE
+        })
+        .then((response) => {
+          if (cancelled) {
+            return
+          }
+
+          setThreadSearchResults(
+            response.results.filter((result) => result.action.type === "open-history-thread")
+          )
+          setThreadSearchActiveIndex(0)
+        })
+        .catch((error: unknown) => {
+          if (cancelled) {
+            return
+          }
+
+          console.warn("[LauncherAiPage] Failed to search launcher AI chats:", error)
+          setThreadSearchResults([])
+          setThreadSearchActiveIndex(0)
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setIsThreadSearchLoading(false)
+          }
+        })
+    }, 100)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(searchTimer)
+    }
+  }, [isThreadSearchOpen, trimmedThreadSearchQuery])
+  const handleThreadSearchQueryChange = useCallback(
+    (nextQuery: string): void => {
+      const nextTrimmedThreadSearchQuery = nextQuery.trim()
+
+      setThreadSearchQuery(nextQuery)
+      if (nextTrimmedThreadSearchQuery === trimmedThreadSearchQuery) {
+        return
+      }
+
+      setThreadSearchResults([])
+      setThreadSearchActiveIndex(0)
+      setIsThreadSearchLoading(nextTrimmedThreadSearchQuery.length > 0)
+    },
+    [trimmedThreadSearchQuery]
+  )
   const sidebarLabels = {
     expandSidebar: copy.launcher.expandSidebar,
     sidebarAutomation: copy.launcher.sidebarAutomation,
@@ -456,9 +523,21 @@ export function LauncherAiPage(): React.JSX.Element {
     sidebarPinned: copy.launcher.sidebarPinned,
     sidebarSearch: copy.launcher.sidebarSearch
   }
-  const handleOpenSidebarSearch = useCallback((): void => {
-    navigation.goHome()
-  }, [navigation])
+  const openThreadSearch = useCallback((): void => {
+    setThreadSearchQuery("")
+    setThreadSearchResults([])
+    setThreadSearchActiveIndex(0)
+    setIsThreadSearchLoading(false)
+    setIsThreadSearchOpen(true)
+    void loadThreads()
+  }, [loadThreads])
+  const closeThreadSearch = useCallback((): void => {
+    setIsThreadSearchOpen(false)
+    setThreadSearchQuery("")
+    setThreadSearchResults([])
+    setThreadSearchActiveIndex(0)
+    setIsThreadSearchLoading(false)
+  }, [])
   const handleSelectSidebarThread = useCallback(
     async (nextThreadId: string): Promise<void> => {
       if (nextThreadId === threadId) {
@@ -471,6 +550,13 @@ export function LauncherAiPage(): React.JSX.Element {
       focusComposerOnNextFrame()
     },
     [clearTransientInputState, focusComposerOnNextFrame, openThread, threadId]
+  )
+  const handleSelectThreadSearchResult = useCallback(
+    async (nextThreadId: string): Promise<void> => {
+      closeThreadSearch()
+      await handleSelectSidebarThread(nextThreadId)
+    },
+    [closeThreadSearch, handleSelectSidebarThread]
   )
   const handleGoToNextChat = useCallback(async (): Promise<void> => {
     const nextThreadId = await goToNextChat()
@@ -722,7 +808,7 @@ export function LauncherAiPage(): React.JSX.Element {
                 onNewChat={() => {
                   void handleNewQuestion()
                 }}
-                onOpenSearch={handleOpenSidebarSearch}
+                onOpenSearch={openThreadSearch}
                 onSelectThread={(nextThreadId) => {
                   void handleSelectSidebarThread(nextThreadId)
                 }}
@@ -737,7 +823,7 @@ export function LauncherAiPage(): React.JSX.Element {
                 onNewChat={() => {
                   void handleNewQuestion()
                 }}
-                onOpenSearch={handleOpenSidebarSearch}
+                onOpenSearch={openThreadSearch}
                 onPointerEnter={openSidebarPreview}
                 onPointerLeave={closeSidebarPreview}
                 onSelectThread={(nextThreadId) => {
@@ -964,6 +1050,27 @@ export function LauncherAiPage(): React.JSX.Element {
             currentModelId={currentModelId}
             onClose={() => setShowModelPicker(false)}
             onSelectModel={selectModel}
+          />
+        ) : null}
+
+        {isThreadSearchOpen ? (
+          <LauncherAiThreadSearchOverlay
+            activeIndex={threadSearchActiveIndex}
+            currentThreadId={threadId}
+            isLoading={isThreadSearchLoading}
+            labels={{
+              search: copy.launcher.sidebarSearch,
+              searchLoading: copy.launcher.sidebarSearchLoading,
+              searchNoResults: copy.launcher.sidebarSearchNoResults
+            }}
+            onActiveIndexChange={setThreadSearchActiveIndex}
+            onClose={closeThreadSearch}
+            onQueryChange={handleThreadSearchQueryChange}
+            onSelectThread={(nextThreadId) => {
+              void handleSelectThreadSearchResult(nextThreadId)
+            }}
+            query={threadSearchQuery}
+            results={threadSearchResults}
           />
         ) : null}
       </div>

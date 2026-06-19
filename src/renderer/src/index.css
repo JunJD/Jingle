@@ -1100,16 +1100,16 @@ body[data-window="pinned-ai-session"],
 
 .launcher-ai-sidebar-panel__thread {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  align-items: start;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
   gap: var(--ow-space-2);
-  min-height: 38px;
+  min-height: 32px;
   width: 100%;
   appearance: none;
   border: 0;
   border-radius: 6px;
   background: transparent;
-  padding: var(--ow-space-1) var(--ow-space-1);
+  padding: var(--ow-space-1) var(--ow-space-2) var(--ow-space-1) var(--ow-space-1);
   color: color-mix(in srgb, var(--foreground) 82%, var(--muted-foreground));
   font-size: var(--ow-font-control);
   line-height: var(--ow-line-control-sm);
@@ -1125,15 +1125,10 @@ body[data-window="pinned-ai-session"],
   color: var(--foreground);
 }
 
-.launcher-ai-sidebar-panel__thread[data-active] {
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--foreground) 48%, transparent);
-}
-
 .launcher-ai-sidebar-panel__thread-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding-top: 1px;
   color: color-mix(in srgb, var(--muted-foreground) 76%, transparent);
 }
 
@@ -1141,13 +1136,6 @@ body[data-window="pinned-ai-session"],
   width: var(--ow-icon-sm);
   height: var(--ow-icon-sm);
   stroke-width: 1.8;
-}
-
-.launcher-ai-sidebar-panel__thread-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 1px;
 }
 
 .launcher-ai-sidebar-panel__thread-title {
@@ -1159,11 +1147,13 @@ body[data-window="pinned-ai-session"],
 
 .launcher-ai-sidebar-panel__thread-meta {
   min-width: 0;
+  max-width: 58px;
   overflow: hidden;
   color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--ow-font-meta);
+  text-align: right;
 }
 
 .launcher-ai-sidebar-panel__empty {
@@ -1176,6 +1166,164 @@ body[data-window="pinned-ai-session"],
   font-size: var(--ow-font-meta);
   line-height: var(--ow-line-control-sm);
   user-select: none;
+}
+
+.launcher-ai-thread-search {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--ow-space-4);
+  padding-top: min(10vh, 72px);
+  background: color-mix(in srgb, var(--background) 34%, transparent);
+}
+
+.launcher-ai-thread-search__panel {
+  display: flex;
+  width: min(520px, calc(100vw - var(--ow-space-8)));
+  max-height: min(430px, calc(100vh - var(--ow-space-8)));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--launcher-border) 78%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--launcher-surface-strong) 88%, transparent);
+  box-shadow:
+    0 24px 64px rgba(32, 38, 45, 0.14),
+    0 8px 24px rgba(32, 38, 45, 0.1);
+  backdrop-filter: blur(18px);
+}
+
+.launcher-ai-thread-search__input-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--ow-space-2);
+  min-height: 52px;
+  padding: 0 var(--ow-space-4);
+  color: var(--foreground);
+}
+
+.launcher-ai-thread-search__input-icon {
+  width: var(--ow-icon-sm);
+  height: var(--ow-icon-sm);
+  color: color-mix(in srgb, var(--muted-foreground) 72%, transparent);
+  stroke-width: 1.8;
+}
+
+.launcher-ai-thread-search__input {
+  min-width: 0;
+  width: 100%;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--ow-font-control);
+  line-height: var(--ow-line-control-md);
+  outline: 0;
+  padding: 0;
+}
+
+.launcher-ai-thread-search__input::placeholder {
+  color: color-mix(in srgb, var(--muted-foreground) 76%, transparent);
+}
+
+.launcher-ai-thread-search__body {
+  min-height: 48px;
+  overflow-y: auto;
+  border-top: 1px solid color-mix(in srgb, var(--launcher-border) 72%, transparent);
+  padding: var(--ow-space-2);
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 34%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.launcher-ai-thread-search__status {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ow-space-2);
+  color: color-mix(in srgb, var(--muted-foreground) 74%, transparent);
+  font-size: var(--ow-font-control);
+  line-height: var(--ow-line-control-sm);
+}
+
+.launcher-ai-thread-search__spinner {
+  width: var(--ow-icon-sm);
+  height: var(--ow-icon-sm);
+}
+
+.launcher-ai-thread-search__results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.launcher-ai-thread-search__result {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--ow-space-2);
+  width: 100%;
+  appearance: none;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: var(--ow-space-2);
+  color: color-mix(in srgb, var(--foreground) 82%, var(--muted-foreground));
+  text-align: left;
+}
+
+.launcher-ai-thread-search__result:hover,
+.launcher-ai-thread-search__result[data-active] {
+  background: color-mix(in srgb, var(--background-secondary) 70%, transparent);
+  color: var(--foreground);
+}
+
+.launcher-ai-thread-search__result[data-current] {
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--foreground) 48%, transparent);
+}
+
+.launcher-ai-thread-search__result-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 1px;
+  color: color-mix(in srgb, var(--muted-foreground) 76%, transparent);
+}
+
+.launcher-ai-thread-search__result-icon > svg {
+  width: var(--ow-icon-sm);
+  height: var(--ow-icon-sm);
+  stroke-width: 1.8;
+}
+
+.launcher-ai-thread-search__result-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.launcher-ai-thread-search__result-title,
+.launcher-ai-thread-search__result-subtitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launcher-ai-thread-search__result-title {
+  font-size: var(--ow-font-control);
+  line-height: var(--ow-line-control-sm);
+}
+
+.launcher-ai-thread-search__result-subtitle {
+  color: color-mix(in srgb, var(--muted-foreground) 72%, transparent);
+  font-size: var(--ow-font-meta);
+  line-height: var(--ow-line-control-sm);
 }
 
 .dark {
