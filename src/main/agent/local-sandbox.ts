@@ -11,7 +11,13 @@
 
 import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { FilesystemBackend, type ExecuteResponse, type SandboxBackendProtocol } from "deepagents"
+import {
+  FilesystemBackend,
+  type ExecuteResponse,
+  type FileInfo,
+  type GrepMatch,
+  type SandboxBackendProtocol
+} from "deepagents"
 
 /**
  * Options for LocalSandbox configuration.
@@ -71,6 +77,23 @@ export class LocalSandbox extends FilesystemBackend implements SandboxBackendPro
     this.maxOutputBytes = options.maxOutputBytes ?? 100_000 // ~100KB default
     this.env = options.env ?? ({ ...process.env } as Record<string, string>)
     this.workingDir = options.rootDir ?? process.cwd()
+  }
+
+  async lsInfo(dirPath = "/"): Promise<FileInfo[]> {
+    return super.lsInfo(this.resolveDefaultWorkspaceSearchPath(dirPath))
+  }
+
+  async grepRaw(
+    pattern: string,
+    dirPath: string | null = "/",
+    glob: string | null = null
+  ): Promise<GrepMatch[] | string> {
+    return super.grepRaw(pattern, this.resolveDefaultWorkspaceSearchPath(dirPath), glob)
+  }
+
+  private resolveDefaultWorkspaceSearchPath(searchPath: string | null | undefined): string {
+    const normalizedPath = typeof searchPath === "string" ? searchPath.trim() : ""
+    return !normalizedPath || normalizedPath === "/" ? this.cwd : normalizedPath
   }
 
   /**

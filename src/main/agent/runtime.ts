@@ -35,6 +35,7 @@ import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint"
 import { BASE_SYSTEM_PROMPT } from "./system-prompt"
 import { createArtifactToolsMiddleware } from "./artifact-tools-middleware"
 import { createDesktopAutomationToolsMiddleware } from "./desktop-automation-tools-middleware"
+import { createFilesystemToolErrorMiddleware } from "./filesystem-tool-error-middleware"
 import { createWebToolsMiddleware } from "./web-tools-middleware"
 import { createTitleMiddleware } from "./title-middleware"
 import { createBddAgentRuntime } from "./bdd-runtime"
@@ -289,6 +290,7 @@ The workspace root is: ${workspacePath}`
     return [
       createToolCallConsistencyMiddleware(),
       createJingleTodoMiddleware(),
+      createFilesystemToolErrorMiddleware(),
       createFilesystemMiddleware({
         backend,
         systemPrompt: filesystemSystemPrompt
