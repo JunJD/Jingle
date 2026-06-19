@@ -4,6 +4,7 @@ import { AgentService, type AgentStreamSink } from "./service"
 import { AgentThreadRunner } from "./agent-thread-runner"
 import {
   parseAgentCancelParams,
+  parseAgentConnectThreadEventsParams,
   parseAgentEditLastUserMessageAndInvokeParams,
   parseAgentInvokeParams,
   parseAgentResumeParams
@@ -49,8 +50,10 @@ export class AgentController {
     })
 
     registerIpcHandle(ipcMain, "agent:connectThreadEvents", async (event, rawParams: unknown) => {
-      const params = parseAgentCancelParams(rawParams)
-      await this.ensureEventSubscription(event.sender, params.threadId)
+      const params = parseAgentConnectThreadEventsParams(rawParams)
+      await this.ensureEventSubscription(event.sender, params.threadId, {
+        fromRevision: params.fromRevision
+      })
     })
 
     registerIpcHandle(
@@ -129,7 +132,11 @@ export class AgentController {
     }
   }
 
-  private async ensureEventSubscription(sender: WebContents, threadId: string): Promise<void> {
+  private async ensureEventSubscription(
+    sender: WebContents,
+    threadId: string,
+    options: { fromRevision?: number } = {}
+  ): Promise<void> {
     const subscriptionKey = this.getSubscriptionKey(sender.id, threadId)
     const listener = (batch: AgentThreadEventBatch): void => {
       if (!sender.isDestroyed()) {
@@ -137,7 +144,9 @@ export class AgentController {
       }
     }
 
-    await this.agentThreadRunner.connectThreadEvents(threadId, subscriptionKey, listener)
+    await this.agentThreadRunner.connectThreadEvents(threadId, subscriptionKey, listener, {
+      fromRevision: options.fromRevision
+    })
 
     if (this.eventSubscriptionCleanups.has(subscriptionKey)) {
       return

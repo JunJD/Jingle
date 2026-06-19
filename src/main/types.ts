@@ -52,6 +52,11 @@ export interface AgentCancelParams {
   threadId: string
 }
 
+export interface AgentConnectThreadEventsParams {
+  fromRevision?: number
+  threadId: string
+}
+
 // Thread IPC
 export interface ThreadUpdateParams {
   threadId: string

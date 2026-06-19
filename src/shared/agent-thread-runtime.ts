@@ -87,6 +87,10 @@ export interface AgentThreadEventBatch {
   threadId: string
 }
 
+export interface AgentThreadReplayOptions {
+  fromRevision?: number
+}
+
 export type AgentThreadRunFinishStatus = "completed" | "failed" | "cancelled"
 
 export type AgentThreadEvent =

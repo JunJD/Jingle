@@ -1,6 +1,9 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import type { AgentThreadEventBatch } from "../../src/shared/agent-thread-runtime"
+import type {
+  AgentThreadEventBatch,
+  AgentThreadReplayOptions
+} from "../../src/shared/agent-thread-runtime"
 import type { AgentThreadDataSnapshot } from "../../src/shared/app-types"
 import type { HITLRequest } from "../../src/shared/hitl"
 import { createAgentRuntimeManager } from "../../src/renderer/src/lib/agent-runtime-manager"
@@ -78,8 +81,14 @@ function createThreadDataSnapshot(input: {
 
 function installWindowApiStub(input: {
   getAgentThreadData?: (threadId: string) => Promise<AgentThreadDataSnapshot>
-  onConnect?: (callback: (batch: AgentThreadEventBatch) => void) => void
-  onReplayThreadEvents?: (threadId: string) => Promise<void> | void
+  onConnect?: (
+    callback: (batch: AgentThreadEventBatch) => void,
+    options?: AgentThreadReplayOptions
+  ) => void
+  onReplayThreadEvents?: (
+    threadId: string,
+    options?: AgentThreadReplayOptions
+  ) => Promise<void> | void
 }): void {
   Object.defineProperty(globalThis, "window", {
     configurable: true,
@@ -88,15 +97,16 @@ function installWindowApiStub(input: {
         agent: {
           connectThreadEvents: (
             _threadId: string,
-            callback: (batch: AgentThreadEventBatch) => void
+            callback: (batch: AgentThreadEventBatch) => void,
+            options?: AgentThreadReplayOptions
           ) => {
-            input.onConnect?.(callback)
+            input.onConnect?.(callback, options)
             return Object.assign(() => {}, {
               ready: Promise.resolve()
             })
           },
-          replayThreadEvents: async (threadId: string) => {
-            await input.onReplayThreadEvents?.(threadId)
+          replayThreadEvents: async (threadId: string, options?: AgentThreadReplayOptions) => {
+            await input.onReplayThreadEvents?.(threadId, options)
           }
         },
         threads: {
@@ -232,6 +242,7 @@ test("agent runtime manager loads thread snapshot through its runtime boundary",
 
 test("agent runtime manager replays runtime events instead of applying snapshot content while streaming", async () => {
   const replayedThreadIds: string[] = []
+  const replayOptions: Array<AgentThreadReplayOptions | undefined> = []
   let snapshotLoadCount = 0
   installWindowApiStub({
     getAgentThreadData: async () => {
@@ -240,8 +251,9 @@ test("agent runtime manager replays runtime events instead of applying snapshot 
         messages: []
       })
     },
-    onReplayThreadEvents: (threadId) => {
+    onReplayThreadEvents: (threadId, options) => {
       replayedThreadIds.push(threadId)
+      replayOptions.push(options)
     }
   })
   const store = createThreadStore()
@@ -278,6 +290,7 @@ test("agent runtime manager replays runtime events instead of applying snapshot 
   const state = getThreadState(store, "thread-a")
   assert.equal(state.agent.activeRun?.status, "running")
   assert.deepEqual(replayedThreadIds, ["thread-a"])
+  assert.deepEqual(replayOptions, [{ fromRevision: 2 }])
   assert.equal(snapshotLoadCount, 1)
   assert.deepEqual(
     state.agent.messagesPage.map((message) => message.content),

@@ -1,4 +1,4 @@
-import type { AgentThreadEventBatch } from "@shared/agent-thread-runtime"
+import type { AgentThreadEventBatch, AgentThreadReplayOptions } from "@shared/agent-thread-runtime"
 import type { HITLDecision } from "@shared/hitl"
 import type { AgentInvokeMessage } from "@shared/message-content"
 import type { PermissionModeName } from "@shared/permission-mode"
@@ -52,7 +52,8 @@ export const agentApi = {
   },
   connectThreadEvents: (
     threadId: string,
-    onBatch: (batch: AgentThreadEventBatch) => void
+    onBatch: (batch: AgentThreadEventBatch) => void,
+    options: AgentThreadReplayOptions = {}
   ): AgentThreadEventSubscription => {
     const channel = getThreadEventsChannel(threadId)
     let disposed = false
@@ -67,7 +68,7 @@ export const agentApi = {
 
     ipcRenderer.on(channel, listener)
 
-    const ready: Promise<void> = invokeIpc("agent:connectThreadEvents", { threadId })
+    const ready: Promise<void> = invokeIpc("agent:connectThreadEvents", { ...options, threadId })
       .then(() => undefined)
       .catch((error) => {
         if (!disposed) {
@@ -92,7 +93,7 @@ export const agentApi = {
     cleanup.ready = ready
     return cleanup
   },
-  replayThreadEvents: (threadId: string): Promise<void> => {
-    return invokeIpc("agent:connectThreadEvents", { threadId }).then(() => undefined)
+  replayThreadEvents: (threadId: string, options: AgentThreadReplayOptions = {}): Promise<void> => {
+    return invokeIpc("agent:connectThreadEvents", { ...options, threadId }).then(() => undefined)
   }
 }

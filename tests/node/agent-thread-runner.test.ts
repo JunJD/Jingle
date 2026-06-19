@@ -861,6 +861,45 @@ test("AgentThreadRunner emits only scoped runtime events during token streaming"
   ])
 })
 
+test("AgentThreadRunner replays only events after the requested revision", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+
+  await hub.prepareInvoke("thread-replay", {
+    content: "stream please",
+    id: "user-1"
+  })
+  await hub.handlePayload("thread-replay", {
+    type: "stream",
+    mode: "messages",
+    data: [createSerializedAiMessage("assistant-1", "hello")]
+  })
+  await hub.handlePayload("thread-replay", {
+    type: "stream",
+    mode: "messages",
+    data: [createSerializedAiMessage("assistant-1", " again")]
+  })
+
+  const replayedBatches: Array<{ latestRevision: number; revisions: number[] }> = []
+  await hub.connectThreadEvents(
+    "thread-replay",
+    "runtime-subscriber",
+    (batch) => {
+      replayedBatches.push({
+        latestRevision: batch.latestRevision,
+        revisions: batch.events.map((event) => event.revision)
+      })
+    },
+    { fromRevision: 2 }
+  )
+
+  assert.deepEqual(replayedBatches, [
+    {
+      latestRevision: 4,
+      revisions: [3, 4]
+    }
+  ])
+})
+
 test("AgentThreadRunner preserves whitespace-only text chunks during token streaming", async () => {
   const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
 

@@ -1138,11 +1138,12 @@ export class AgentThreadRunner {
   async connectThreadEvents(
     threadId: string,
     subscriberId: string,
-    listener: (batch: AgentThreadEventBatch) => void
+    listener: (batch: AgentThreadEventBatch) => void,
+    options: { fromRevision?: number } = {}
   ): Promise<void> {
     const entry = await this.ensureEntry(threadId)
     entry.eventSubscribers.set(subscriberId, listener)
-    this.replayThreadEvents(threadId, entry, listener)
+    this.replayThreadEvents(threadId, entry, listener, options)
   }
 
   disconnectThreadEvents(threadId: string, subscriberId: string): void {
@@ -1248,15 +1249,18 @@ export class AgentThreadRunner {
   private replayThreadEvents(
     threadId: string,
     entry: AgentHubEntry,
-    listener: (batch: AgentThreadEventBatch) => void
+    listener: (batch: AgentThreadEventBatch) => void,
+    options: { fromRevision?: number } = {}
   ): void {
-    if (entry.replayEvents.length === 0) {
+    const fromRevision = options.fromRevision ?? 0
+    const replayEvents = entry.replayEvents.filter((event) => event.revision > fromRevision)
+    if (replayEvents.length === 0) {
       return
     }
 
     listener({
-      events: structuredClone(entry.replayEvents),
-      latestRevision: entry.replayEvents[entry.replayEvents.length - 1]?.revision ?? 0,
+      events: structuredClone(replayEvents),
+      latestRevision: entry.projector.readState().revision,
       threadId
     })
   }

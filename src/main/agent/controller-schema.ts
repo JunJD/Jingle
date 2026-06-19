@@ -1,5 +1,6 @@
 import type {
   AgentCancelParams,
+  AgentConnectThreadEventsParams,
   AgentEditLastUserMessageAndInvokeParams,
   AgentInvokeParams,
   AgentResumeParams
@@ -118,6 +119,13 @@ export const agentCancelParamsSchema = z
   })
   .strict()
 
+export const agentConnectThreadEventsParamsSchema = z
+  .object({
+    fromRevision: z.number().int().nonnegative().optional(),
+    threadId: nonEmptyTrimmedStringSchema
+  })
+  .strict()
+
 export function parseAgentInvokeParams(value: unknown): AgentInvokeParams {
   return parseIpcPayloadWithSchema("agent:invoke", agentInvokeParamsSchema, value)
 }
@@ -138,4 +146,14 @@ export function parseAgentResumeParams(value: unknown): AgentResumeParams {
 
 export function parseAgentCancelParams(value: unknown): AgentCancelParams {
   return parseIpcPayloadWithSchema("agent:cancel", agentCancelParamsSchema, value)
+}
+
+export function parseAgentConnectThreadEventsParams(
+  value: unknown
+): AgentConnectThreadEventsParams {
+  return parseIpcPayloadWithSchema(
+    "agent:connectThreadEvents",
+    agentConnectThreadEventsParamsSchema,
+    value
+  )
 }

@@ -110,9 +110,16 @@ export function createAgentRuntimeManager({
 
     initializedThreads.add(threadId)
     threadStore.ensureThreadState(threadId)
-    const subscription = window.api.agent.connectThreadEvents(threadId, (batch) => {
-      applyRuntimeBatch(batch)
-    })
+    const fromRevision = getInitializedThreadState(threadId).agent.revision
+    const subscription = window.api.agent.connectThreadEvents(
+      threadId,
+      (batch) => {
+        applyRuntimeBatch(batch)
+      },
+      {
+        fromRevision
+      }
+    )
     runtimeCleanup[threadId] = subscription
     runtimeReady[threadId] = subscription.ready
   }
@@ -125,7 +132,8 @@ export function createAgentRuntimeManager({
   async function replayThreadRuntimeEvents(threadId: string): Promise<void> {
     ensureThreadRuntime(threadId)
     await (runtimeReady[threadId] ?? Promise.resolve())
-    await window.api.agent.replayThreadEvents(threadId)
+    const fromRevision = getInitializedThreadState(threadId).agent.revision
+    await window.api.agent.replayThreadEvents(threadId, { fromRevision })
   }
 
   function startRuntimeResync(threadId: string): void {
