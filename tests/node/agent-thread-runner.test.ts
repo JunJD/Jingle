@@ -88,7 +88,8 @@ function createThreadData(
       },
       pendingApproval,
       runId: null,
-      todos: input.todos ?? []
+      todos: input.todos ?? [],
+      workspacePath: null
     }
   }
 }
@@ -437,7 +438,8 @@ test("AgentThreadRunner hydrates an empty thread only once", async () => {
           forkState: { canFork: true },
           pendingApproval: null,
           runId: null,
-          todos: []
+          todos: [],
+          workspacePath: null
         }
       } satisfies AgentThreadDataSnapshot
     },
@@ -459,7 +461,8 @@ test("AgentThreadRunner hydrates an empty thread only once", async () => {
           forkState: { canFork: true },
           pendingApproval: null,
           runId: null,
-          todos: []
+          todos: [],
+          workspacePath: null
         }
       } satisfies AgentThreadDataSnapshot
     }

@@ -33,6 +33,7 @@ interface LauncherThreadCreateInput {
   source: string
   title: string
   visibility: string
+  workspacePath?: string
 }
 
 interface LauncherThreadSubmitInput {
@@ -151,7 +152,9 @@ export default function LauncherApp(): React.JSX.Element {
     async (input: LauncherThreadCreateInput) => {
       const [resolvedModelId, workspacePathResult] = await Promise.all([
         input.modelId ? Promise.resolve(input.modelId) : window.api.models.getDefault("llm"),
-        window.api.workspace.createDefault({ title: input.title })
+        input.workspacePath
+          ? Promise.resolve(input.workspacePath)
+          : window.api.workspace.createDefault({ title: input.title })
       ])
 
       if (!workspacePathResult) {
@@ -160,11 +163,13 @@ export default function LauncherApp(): React.JSX.Element {
       const workspacePath = workspacePathResult
 
       const thread = await window.api.threads.create({
-        model: resolvedModelId,
-        [THREAD_PERMISSION_MODE_METADATA_KEY]: input.permissionMode ?? DEFAULT_PERMISSION_MODE,
-        source: input.source,
-        title: input.title,
-        visibility: input.visibility,
+        metadata: {
+          model: resolvedModelId,
+          [THREAD_PERMISSION_MODE_METADATA_KEY]: input.permissionMode ?? DEFAULT_PERMISSION_MODE,
+          source: input.source,
+          title: input.title,
+          visibility: input.visibility
+        },
         workspacePath
       })
 
@@ -195,8 +200,8 @@ export default function LauncherApp(): React.JSX.Element {
         typeof metadata.model === "string"
           ? metadata.model
           : await window.api.models.getDefault("llm")
-      const workspacePath =
-        typeof metadata.workspacePath === "string" ? metadata.workspacePath : null
+      const workspacePath = (await window.api.threadWorkspace.get(branchedThread.thread_id))
+        ?.workspacePath
 
       if (!workspacePath) {
         throw new Error(inputNeedsWorkspaceMessage)

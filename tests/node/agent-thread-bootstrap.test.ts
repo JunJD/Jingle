@@ -46,7 +46,8 @@ test("thread bootstrap derives interrupted state and approval-owned active run",
       forkState: { canFork: false, reason: "pending_hitl" },
       pendingApproval: createPendingApproval(),
       runId: "run-1",
-      todos: []
+      todos: [],
+      workspacePath: null
     }
   } satisfies AgentThreadDataSnapshot)
 
@@ -74,7 +75,8 @@ test("thread bootstrap maps persisted error string into runtime error payload", 
       forkState: { canFork: true },
       pendingApproval: null,
       runId: "run-1",
-      todos: []
+      todos: [],
+      workspacePath: null
     }
   } satisfies AgentThreadDataSnapshot)
 

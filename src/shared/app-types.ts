@@ -18,6 +18,11 @@ export interface Thread {
   title?: string
 }
 
+export interface CreateThreadInput {
+  metadata?: Record<string, unknown>
+  workspacePath?: string | null
+}
+
 export type RunStatus = "pending" | "running" | "error" | "success" | "interrupted"
 
 export interface Run {
@@ -282,6 +287,7 @@ export interface AgentThreadRunStateSnapshot {
   pendingApproval: HITLRequest | null
   runId: string | null
   todos: Todo[]
+  workspacePath: string | null
 }
 
 export interface AgentThreadDataSnapshot {

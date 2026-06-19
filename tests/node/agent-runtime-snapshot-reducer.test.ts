@@ -20,7 +20,6 @@ test("agent runtime snapshot reducer applies messages, metadata, and non-runtime
     thread: {
       metadata: {
         model: "openai:gpt-4o",
-        workspacePath: "/tmp/demo",
         permissionMode: "ask-to-edit"
       },
       status: "idle",
@@ -39,7 +38,8 @@ test("agent runtime snapshot reducer applies messages, metadata, and non-runtime
       forkState: { canFork: true },
       pendingApproval: null,
       runId: "run-1",
-      todos: []
+      todos: [],
+      workspacePath: "/tmp/demo"
     }
   } satisfies AgentThreadDataSnapshot)
 
@@ -97,7 +97,8 @@ test("agent runtime snapshot reducer does not produce runtime facts from snapsho
           id: "snapshot-todo",
           status: "pending"
         }
-      ]
+      ],
+      workspacePath: null
     }
   } satisfies AgentThreadDataSnapshot)
 
@@ -135,7 +136,8 @@ test("agent runtime snapshot reducer clears missing metadata instead of keeping 
       forkState: { canFork: true },
       pendingApproval: null,
       runId: null,
-      todos: []
+      todos: [],
+      workspacePath: null
     }
   } satisfies AgentThreadDataSnapshot)
 
@@ -149,8 +151,7 @@ test("agent runtime snapshot reducer applies only metadata from busy snapshots",
   const next = applyRuntimeSnapshotToThreadState(state, {
     thread: {
       metadata: {
-        model: "openai:gpt-4o",
-        workspacePath: "/tmp/busy"
+        model: "openai:gpt-4o"
       },
       status: "busy",
       thread_id: "thread-1",
@@ -168,7 +169,8 @@ test("agent runtime snapshot reducer applies only metadata from busy snapshots",
       forkState: { canFork: false, reason: "busy" },
       pendingApproval: null,
       runId: "run-1",
-      todos: []
+      todos: [],
+      workspacePath: "/tmp/busy"
     }
   } satisfies AgentThreadDataSnapshot)
 
@@ -184,8 +186,7 @@ test("agent runtime snapshot reducer does not produce interrupted runtime facts"
   const next = applyRuntimeSnapshotToThreadState(state, {
     thread: {
       metadata: {
-        model: "openai:gpt-4o",
-        workspacePath: "/tmp/interrupted"
+        model: "openai:gpt-4o"
       },
       status: "interrupted",
       thread_id: "thread-1",
@@ -223,7 +224,8 @@ test("agent runtime snapshot reducer does not produce interrupted runtime facts"
         }
       },
       runId: "run-1",
-      todos: []
+      todos: [],
+      workspacePath: "/tmp/interrupted"
     }
   } satisfies AgentThreadDataSnapshot)
 

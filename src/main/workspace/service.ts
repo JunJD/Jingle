@@ -12,6 +12,8 @@ import type {
   WorkspaceSetParams
 } from "../types"
 import { OpenworkMemoryService } from "../openwork-memory/service"
+import { getThread } from "../db"
+import { ThreadWorkspaceService } from "../thread-workspace/service"
 import { WorkspaceRepository } from "./repository"
 
 const WORKSPACE_FILE_SEARCH_MAX_RESULTS = 20
@@ -105,6 +107,7 @@ export class WorkspaceService {
 
   constructor(
     private readonly workspaceRepository: WorkspaceRepository,
+    private readonly threadWorkspaceService: ThreadWorkspaceService,
     private readonly openworkMemoryService: OpenworkMemoryService
   ) {}
 
@@ -123,7 +126,7 @@ export class WorkspaceService {
       return this.resolveGlobalWorkspacePath()
     }
 
-    return this.workspaceRepository.getThreadWorkspacePath(threadId)
+    return this.threadWorkspaceService.getThreadWorkspacePath(threadId)
   }
 
   async setWorkspacePath(params: WorkspaceSetParams): Promise<string | null> {
@@ -136,8 +139,7 @@ export class WorkspaceService {
 
     await this.assertCanChangeThreadWorkspace(threadId)
 
-    const didUpdate = await this.workspaceRepository.setThreadWorkspacePath(threadId, newPath)
-    if (!didUpdate) return null
+    await this.setThreadWorkspacePath(threadId, newPath)
 
     if (newPath) {
       this.workspaceRepository.setGlobalWorkspacePath(newPath)
@@ -157,7 +159,7 @@ export class WorkspaceService {
     return workspacePath
   }
 
-  async selectWorkspace(threadId?: string): Promise<string | null> {
+  async selectWorkspaceFolder(): Promise<string | null> {
     const defaultPath =
       this.workspaceRepository.getWorkspaceDialogPath() ??
       (await this.resolveGlobalWorkspacePath()) ??
@@ -175,17 +177,20 @@ export class WorkspaceService {
 
     const selectedPath = result.filePaths[0]
     this.workspaceRepository.setWorkspaceDialogPath(selectedPath)
+    return selectedPath
+  }
+
+  async selectWorkspace(threadId?: string): Promise<string | null> {
+    const selectedPath = await this.selectWorkspaceFolder()
+    if (!selectedPath) {
+      return null
+    }
 
     if (threadId) {
       await this.assertCanChangeThreadWorkspace(threadId)
 
-      const didUpdate = await this.workspaceRepository.setThreadWorkspacePath(
-        threadId,
-        selectedPath
-      )
-      if (didUpdate) {
-        this.workspaceRepository.setGlobalWorkspacePath(selectedPath)
-      }
+      await this.setThreadWorkspacePath(threadId, selectedPath)
+      this.workspaceRepository.setGlobalWorkspacePath(selectedPath)
     } else {
       this.workspaceRepository.setGlobalWorkspacePath(selectedPath)
     }
@@ -200,6 +205,23 @@ export class WorkspaceService {
     if (hasPendingWorkspaceSuggestions) {
       throw new Error("Resolve pending workspace memories before changing this thread's workspace.")
     }
+  }
+
+  private async setThreadWorkspacePath(
+    threadId: string,
+    workspacePath: string | null
+  ): Promise<void> {
+    const thread = await getThread(threadId)
+    if (!thread) {
+      throw new Error("Thread not found")
+    }
+
+    if (workspacePath) {
+      await this.threadWorkspaceService.bindProject(threadId, workspacePath)
+      return
+    }
+
+    await this.threadWorkspaceService.markProjectless(threadId)
   }
 
   async readFile(params: WorkspaceFileParams): Promise<WorkspaceFileReadResult> {
@@ -306,7 +328,7 @@ export class WorkspaceService {
     | { fullPath: string; modifiedAt: string; size: number; success: true }
     | { error: string; success: false }
   > {
-    const workspacePath = await this.workspaceRepository.getThreadWorkspacePath(params.threadId)
+    const workspacePath = await this.threadWorkspaceService.getThreadWorkspacePath(params.threadId)
 
     if (!workspacePath) {
       return {

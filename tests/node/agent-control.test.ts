@@ -49,7 +49,8 @@ function createThreadDataSnapshot(
       forkState: { canFork: true },
       pendingApproval: null,
       runId: null,
-      todos: []
+      todos: [],
+      workspacePath: null
     },
     thread: {
       metadata: undefined,

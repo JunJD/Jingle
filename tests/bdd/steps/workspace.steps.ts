@@ -25,13 +25,15 @@ async function createThread(world: OpenworkWorld, title: string): Promise<Thread
       window as typeof window & {
         api: {
           threads: {
-            create: (metadata?: Record<string, unknown>) => Promise<ThreadSnapshot>
+            create: (input?: { metadata?: Record<string, unknown> }) => Promise<ThreadSnapshot>
           }
         }
       }
     ).api.threads.create({
-      source: "bdd-workspace-ui",
-      title: inputTitle
+      metadata: {
+        source: "bdd-workspace-ui",
+        title: inputTitle
+      }
     })
   }, title)
 }

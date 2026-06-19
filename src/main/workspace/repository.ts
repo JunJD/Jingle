@@ -1,4 +1,3 @@
-import { getThread, updateThread } from "../db"
 import {
   getGlobalWorkspacePath,
   getWorkspaceDialogPath,
@@ -21,24 +20,5 @@ export class WorkspaceRepository {
 
   setWorkspaceDialogPath(workspacePath: string | null): void {
     setWorkspaceDialogPath(workspacePath)
-  }
-
-  async getThreadWorkspacePath(threadId: string): Promise<string | null> {
-    const thread = await getThread(threadId)
-    if (!thread?.metadata) return null
-
-    const metadata = JSON.parse(thread.metadata) as { workspacePath?: string | null }
-    return metadata.workspacePath || null
-  }
-
-  async setThreadWorkspacePath(threadId: string, workspacePath: string | null): Promise<boolean> {
-    const thread = await getThread(threadId)
-    if (!thread) return false
-
-    const metadata = thread.metadata ? JSON.parse(thread.metadata) : {}
-    metadata.workspacePath = workspacePath
-    await updateThread(threadId, { metadata: JSON.stringify(metadata) })
-
-    return true
   }
 }

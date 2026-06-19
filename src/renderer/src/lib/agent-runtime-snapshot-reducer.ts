@@ -92,7 +92,7 @@ export function applyRuntimeSnapshotToThreadState(
       threadId: snapshot.thread.thread_id,
       todos: state.agent.todos,
       tokenUsage: state.agent.tokenUsage,
-      workspacePath: typeof metadata.workspacePath === "string" ? metadata.workspacePath : null
+      workspacePath: snapshot.runState.workspacePath
     },
     view: {
       ...state.view,

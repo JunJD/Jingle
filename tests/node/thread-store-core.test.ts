@@ -105,7 +105,8 @@ function createThreadDataSnapshot(
       forkState: { canFork: true },
       pendingApproval: null,
       runId: null,
-      todos: []
+      todos: [],
+      workspacePath: null
     },
     ...input
   }
@@ -296,7 +297,8 @@ test("thread data snapshot and events update thread state through store reducer"
         forkState: { canFork: true },
         pendingApproval: null,
         runId: activeRun.runId,
-        todos: []
+        todos: [],
+        workspacePath: null
       },
       thread: {
         metadata: {
@@ -426,7 +428,8 @@ test("run started immediately moves projection active turn before assistant firs
         forkState: { canFork: true },
         pendingApproval: null,
         runId: null,
-        todos: []
+        todos: [],
+        workspacePath: null
       },
       thread: {
         metadata: undefined,
@@ -502,7 +505,8 @@ test("stale idle snapshots do not remove runtime messages after a finished run",
         forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
-        todos: []
+        todos: [],
+        workspacePath: null
       },
       thread: {
         metadata: undefined,
@@ -558,7 +562,8 @@ test("stale idle snapshots do not remove runtime messages after a finished run",
         forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
-        todos: []
+        todos: [],
+        workspacePath: null
       },
       thread: {
         metadata: undefined,
@@ -596,7 +601,8 @@ test("stale idle snapshots do not remove runtime messages after a finished run",
         forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-2",
-        todos: []
+        todos: [],
+        workspacePath: null
       },
       thread: {
         metadata: undefined,
@@ -642,7 +648,8 @@ test("runtime tool events update source run facts and message projection facts",
         forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
-        todos: []
+        todos: [],
+        workspacePath: null
       },
       thread: {
         metadata: undefined,
@@ -761,7 +768,8 @@ test("run finished clears active run when no tool result exists", () => {
         forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
-        todos: []
+        todos: [],
+        workspacePath: null
       },
       thread: {
         metadata: undefined,
@@ -855,7 +863,8 @@ test("pending approval updates source approval facts", () => {
         forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
-        todos: []
+        todos: [],
+        workspacePath: null
       },
       thread: {
         metadata: undefined,
@@ -922,7 +931,8 @@ test("pending approval updates source approval facts", () => {
         forkState: { canFork: false, reason: "pending_hitl" },
         pendingApproval: snapshotApproval,
         runId: "run-1",
-        todos: []
+        todos: [],
+        workspacePath: null
       },
       thread: {
         metadata: undefined,
@@ -970,7 +980,8 @@ test("runtime delta for an unknown message does not advance revision before thre
         forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
-        todos: []
+        todos: [],
+        workspacePath: null
       },
       thread: {
         metadata: undefined,
@@ -1004,7 +1015,8 @@ test("runtime token delta keeps historical turn references stable after thread d
         forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
-        todos: []
+        todos: [],
+        workspacePath: null
       },
       thread: {
         metadata: undefined,
@@ -1057,7 +1069,8 @@ test("runtime token delta in long history keeps inactive turns and rows stable",
         forkState: { canFork: true },
         pendingApproval: null,
         runId: "run-1",
-        todos: []
+        todos: [],
+        workspacePath: null
       },
       thread: {
         metadata: undefined,
@@ -1129,7 +1142,8 @@ test("thread data snapshot restores non-runtime facts and stale events do not ro
             id: "snapshot-todo",
             status: "pending"
           }
-        ]
+        ],
+        workspacePath: null
       },
       thread: {
         metadata: undefined,

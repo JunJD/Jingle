@@ -32,6 +32,9 @@ export const workspaceApi = {
   select: (threadId?: string): Promise<string | null> => {
     return invokeIpc("workspace:select", threadId)
   },
+  selectFolder: (): Promise<string | null> => {
+    return invokeIpc("workspace:selectFolder")
+  },
   createDefault: (params: WorkspaceCreateDefaultParams = {}): Promise<string> => {
     return invokeIpc("workspace:createDefault", params)
   },

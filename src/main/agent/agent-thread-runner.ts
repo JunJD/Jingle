@@ -1194,7 +1194,8 @@ export class AgentThreadRunner {
         forkState: toRuntimeForkState(runtimeState, persistedThreadData.runState.forkState),
         pendingApproval: runtimeState.pendingApproval,
         runId: runtimeState.latestRunId ?? persistedThreadData.runState.runId,
-        todos: runtimeState.todos
+        todos: runtimeState.todos,
+        workspacePath: persistedThreadData.runState.workspacePath
       }
     }
   }

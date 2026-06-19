@@ -1,12 +1,18 @@
 import assert from "node:assert/strict"
+import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { mkdtemp, mkdir, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import test, { after, before } from "node:test"
 import { createThread, initializeDatabase, closeDatabase } from "../../src/main/db"
+import { ThreadWorkspaceRepository } from "../../src/main/thread-workspace/repository"
+import { ThreadWorkspaceService } from "../../src/main/thread-workspace/service"
 import { WorkspaceRepository } from "../../src/main/workspace/repository"
 import { WorkspaceService } from "../../src/main/workspace/service"
+
+const repoRoot = process.cwd()
+let openworkHome = ""
 
 class MemorySafeOpenworkMemoryService {
   hasPendingWorkspaceSuggestions(): Promise<boolean> {
@@ -25,11 +31,13 @@ class StaticGlobalWorkspaceRepository extends WorkspaceRepository {
 }
 
 function createWorkspaceServiceFromRepository(repository: WorkspaceRepository): WorkspaceService {
+  const threadWorkspaceService = new ThreadWorkspaceService(new ThreadWorkspaceRepository())
   return new WorkspaceService(
     repository,
+    threadWorkspaceService,
     new MemorySafeOpenworkMemoryService() as unknown as ConstructorParameters<
       typeof WorkspaceService
-    >[1]
+    >[2]
   )
 }
 
@@ -38,20 +46,31 @@ async function createWorkspaceService(
   workspacePath: string
 ): Promise<WorkspaceService> {
   const repository = new WorkspaceRepository()
-  await createThread(threadId, {
-    metadata: {
-      workspacePath
-    }
-  })
+  await createThread(threadId)
+  await new ThreadWorkspaceService(new ThreadWorkspaceRepository()).bindProject(
+    threadId,
+    workspacePath
+  )
   return createWorkspaceServiceFromRepository(repository)
 }
 
 before(async () => {
+  openworkHome = await mkdtemp(join(tmpdir(), "openwork-workspace-file-search-home-"))
+  process.env.OPENWORK_HOME = openworkHome
+  execFileSync("node", ["scripts/run-prisma-openwork-db.mjs", "migrate", "deploy"], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      OPENWORK_HOME: openworkHome
+    }
+  })
   await initializeDatabase()
 })
 
 after(async () => {
   await closeDatabase()
+  delete process.env.OPENWORK_HOME
+  await rm(openworkHome, { force: true, recursive: true })
 })
 
 test("workspace file search returns workspace-relative file refs", async () => {

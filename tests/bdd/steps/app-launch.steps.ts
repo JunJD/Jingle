@@ -6,6 +6,7 @@ import { getPrismaClient } from "../../../src/main/db/client"
 import type { Page } from "@playwright/test"
 import type { AgentThreadDataSnapshot, Thread } from "../../../src/shared/app-types"
 import { AI_THREAD_SOURCE } from "../../../src/shared/launcher-ai"
+import type { ThreadWorkspaceBindingRecord } from "../../../src/shared/thread-workspace"
 
 function getLauncherAiSurface(page: import("@playwright/test").Page) {
   return page.locator('.launcher-chrome[data-surface="ai"]').first()
@@ -72,6 +73,9 @@ async function getLatestLauncherAiThreadData(
   return page.evaluate(async ({ source, workspacePath }) => {
     const api = (window as typeof window & {
       api: {
+        threadWorkspace: {
+          get: (threadId: string) => Promise<ThreadWorkspaceBindingRecord | null>
+        }
         threads: {
           getAgentThreadData: (threadId: string) => Promise<AgentThreadDataSnapshot>
           list: () => Promise<Thread[]>
@@ -80,12 +84,20 @@ async function getLatestLauncherAiThreadData(
     }).api
 
     const threads = await api.threads.list()
-    const launcherThread = threads
+    const launcherThreads = threads
       .filter((thread) => thread.metadata?.source === source)
-      .filter((thread) => thread.metadata?.workspacePath === workspacePath)
       .sort((left, right) => {
         return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
-      })[0]
+      })
+    let launcherThread: Thread | undefined
+
+    for (const thread of launcherThreads) {
+      const binding = await api.threadWorkspace.get(thread.thread_id)
+      if (binding?.workspacePath === workspacePath) {
+        launcherThread = thread
+        break
+      }
+    }
 
     if (!launcherThread) {
       throw new Error(`No launcher AI thread found for workspace: ${workspacePath}`)

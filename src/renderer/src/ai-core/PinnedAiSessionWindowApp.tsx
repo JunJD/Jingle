@@ -41,10 +41,6 @@ function resolveThreadModel(thread: Thread): string | null {
   return typeof thread.metadata?.model === "string" ? thread.metadata.model : null
 }
 
-function resolveThreadWorkspacePath(thread: Thread): string | null {
-  return typeof thread.metadata?.workspacePath === "string" ? thread.metadata.workspacePath : null
-}
-
 export function PinnedAiSessionWindowApp(): React.JSX.Element {
   const initialThreadId = useMemo(() => readPinnedSessionThreadId(), [])
   const { copy } = useI18n()
@@ -66,18 +62,22 @@ export function PinnedAiSessionWindowApp(): React.JSX.Element {
     async (input: AiCoreThreadCreateInput) => {
       const [resolvedModelId, workspacePathResult] = await Promise.all([
         input.modelId ? Promise.resolve(input.modelId) : window.api.models.getDefault("llm"),
-        window.api.workspace.createDefault({ title: input.title })
+        input.workspacePath
+          ? Promise.resolve(input.workspacePath)
+          : window.api.workspace.createDefault({ title: input.title })
       ])
       if (!workspacePathResult) {
         throw new Error(inputNeedsWorkspaceMessage)
       }
 
       const thread = await window.api.threads.create({
-        [THREAD_PERMISSION_MODE_METADATA_KEY]: input.permissionMode ?? DEFAULT_PERMISSION_MODE,
-        model: resolvedModelId,
-        source: input.source,
-        title: input.title,
-        visibility: input.visibility,
+        metadata: {
+          [THREAD_PERMISSION_MODE_METADATA_KEY]: input.permissionMode ?? DEFAULT_PERMISSION_MODE,
+          model: resolvedModelId,
+          source: input.source,
+          title: input.title,
+          visibility: input.visibility
+        },
         workspacePath: workspacePathResult
       })
 
@@ -94,7 +94,7 @@ export function PinnedAiSessionWindowApp(): React.JSX.Element {
     async (threadId: string) => {
       const thread = await window.api.threads.clone(threadId)
       const modelId = resolveThreadModel(thread) ?? (await window.api.models.getDefault("llm"))
-      const workspacePath = resolveThreadWorkspacePath(thread)
+      const workspacePath = (await window.api.threadWorkspace.get(thread.thread_id))?.workspacePath
       if (!workspacePath) {
         throw new Error(inputNeedsWorkspaceMessage)
       }
@@ -112,7 +112,7 @@ export function PinnedAiSessionWindowApp(): React.JSX.Element {
     async (threadId: string, messageId: string) => {
       const thread = await window.api.threads.cloneUntilMessage(threadId, messageId)
       const modelId = resolveThreadModel(thread) ?? (await window.api.models.getDefault("llm"))
-      const workspacePath = resolveThreadWorkspacePath(thread)
+      const workspacePath = (await window.api.threadWorkspace.get(thread.thread_id))?.workspacePath
       if (!workspacePath) {
         throw new Error(inputNeedsWorkspaceMessage)
       }

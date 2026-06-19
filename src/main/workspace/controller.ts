@@ -24,6 +24,10 @@ export class WorkspaceController {
       return this.workspaceService.selectWorkspace(threadId)
     })
 
+    registerIpcHandle(ipcMain, "workspace:selectFolder", async () => {
+      return this.workspaceService.selectWorkspaceFolder()
+    })
+
     registerIpcHandle(
       ipcMain,
       "workspace:createDefault",

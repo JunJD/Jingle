@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron"
-import type { AgentThreadDataSnapshot, ThreadUpdateParams } from "../types"
+import type { AgentThreadDataSnapshot, CreateThreadInput, ThreadUpdateParams } from "../types"
 import { AgentThreadRunner } from "../agent/agent-thread-runner"
 import { registerIpcHandle } from "../ipc/handle"
 import { ThreadsService } from "./service"
@@ -22,8 +22,8 @@ export class ThreadsController {
     registerIpcHandle(
       ipcMain,
       "threads:create",
-      async (_event, metadata?: Record<string, unknown>) => {
-        return this.threadsService.create(metadata)
+      async (_event, input?: CreateThreadInput) => {
+        return this.threadsService.create(input)
       }
     )
 

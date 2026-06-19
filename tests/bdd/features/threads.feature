@@ -11,7 +11,7 @@
     并且 我通过 threads API 创建标题为 "BDD Created Thread" 且来源为 "bdd"
     那么 最新创建线程标题应为 "BDD Created Thread"
     而且 最新创建线程 metadata.source 应为 "bdd"
-    而且 最新创建线程 metadata.workspacePath 应为当前全局 workspace
+    而且 最新创建线程 workspace binding 应为当前全局 workspace
     而且 最新创建线程 metadata.model 应为非空字符串
     而且 threads:list 包含最新创建线程
 

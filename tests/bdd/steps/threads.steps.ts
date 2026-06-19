@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { Then, When } from "@cucumber/cucumber"
 import { expect } from "@playwright/test"
 import type { AgentThreadDataSnapshot } from "../../../src/shared/app-types"
+import type { ThreadWorkspaceBindingRecord } from "../../../src/shared/thread-workspace"
 import { OpenworkWorld } from "../support/world"
 
 type ThreadSnapshot = {
@@ -21,10 +22,12 @@ async function createThread(
     return (
       window as typeof window & {
         api: {
-          threads: { create: (metadata?: Record<string, unknown>) => Promise<ThreadSnapshot> }
+          threads: {
+            create: (input?: { metadata?: Record<string, unknown> }) => Promise<ThreadSnapshot>
+          }
         }
       }
-    ).api.threads.create(input)
+    ).api.threads.create({ metadata: input })
   }, metadata)
 }
 
@@ -49,6 +52,25 @@ async function getThread(world: OpenworkWorld, threadId: string): Promise<Thread
         api: { threads: { get: (threadId: string) => Promise<ThreadSnapshot | null> } }
       }
     ).api.threads.get(inputThreadId)
+  }, threadId)
+}
+
+async function getThreadWorkspaceBinding(
+  world: OpenworkWorld,
+  threadId: string
+): Promise<ThreadWorkspaceBindingRecord | null> {
+  const page = await world.getPageByKind("launcher")
+
+  return page.evaluate(async (inputThreadId) => {
+    return (
+      window as typeof window & {
+        api: {
+          threadWorkspace: {
+            get: (threadId: string) => Promise<ThreadWorkspaceBindingRecord | null>
+          }
+        }
+      }
+    ).api.threadWorkspace.get(inputThreadId)
   }, threadId)
 }
 
@@ -170,13 +192,13 @@ Then(
 )
 
 Then(
-  "最新创建线程 metadata.workspacePath 应为当前全局 workspace",
+  "最新创建线程 workspace binding 应为当前全局 workspace",
   async function (this: OpenworkWorld) {
     const threadId = this.getScenarioValue("threads.latestThreadId")
     const expectedWorkspacePath = this.getScenarioValue("threads.currentWorkspacePath")
-    const thread = await getThread(this, threadId)
+    const binding = await getThreadWorkspaceBinding(this, threadId)
 
-    expect(thread?.metadata?.workspacePath).toBe(expectedWorkspacePath)
+    expect(binding?.workspacePath).toBe(expectedWorkspacePath)
   }
 )
 

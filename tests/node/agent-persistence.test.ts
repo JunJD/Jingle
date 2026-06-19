@@ -17,6 +17,75 @@ async function loadDbModules() {
   return { ...db, getPrismaClient }
 }
 
+async function bindThreadWorkspace(threadId: string, workspacePath: string): Promise<void> {
+  const { ThreadWorkspaceRepository } = await import("../../src/main/thread-workspace/repository")
+  const { ThreadWorkspaceService } = await import("../../src/main/thread-workspace/service")
+  await new ThreadWorkspaceService(new ThreadWorkspaceRepository()).bindProject(
+    threadId,
+    workspacePath
+  )
+}
+
+async function createWorkspaceServiceForTest() {
+  const { OpenworkMemoryService } = await import("../../src/main/openwork-memory/service")
+  const { ThreadWorkspaceRepository } = await import("../../src/main/thread-workspace/repository")
+  const { ThreadWorkspaceService } = await import("../../src/main/thread-workspace/service")
+  const { WorkspaceRepository } = await import("../../src/main/workspace/repository")
+  const { WorkspaceService } = await import("../../src/main/workspace/service")
+
+  return new WorkspaceService(
+    new WorkspaceRepository(),
+    new ThreadWorkspaceService(new ThreadWorkspaceRepository()),
+    new OpenworkMemoryService()
+  )
+}
+
+async function createAgentServiceForTest(input: {
+  openworkMemoryService?: unknown
+  threadLifecycleGate?: unknown
+} = {}) {
+  const { AgentService } = await import("../../src/main/agent/service")
+  const { OpenworkMemoryService } = await import("../../src/main/openwork-memory/service")
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+
+  return new AgentService(
+    (input.openworkMemoryService ?? new OpenworkMemoryService()) as ConstructorParameters<
+      typeof AgentService
+    >[0],
+    (input.threadLifecycleGate ?? new ThreadLifecycleGate()) as ConstructorParameters<
+      typeof AgentService
+    >[1],
+    await createWorkspaceServiceForTest()
+  )
+}
+
+async function createThreadsServiceForTest(input: { threadLifecycleGate?: unknown } = {}) {
+  const { ArtifactsService } = await import("../../src/main/artifacts/service")
+  const { ThreadsService } = await import("../../src/main/threads/service")
+  const { ThreadWorkspaceRepository } = await import("../../src/main/thread-workspace/repository")
+  const { ThreadWorkspaceService } = await import("../../src/main/thread-workspace/service")
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+
+  return new ThreadsService(
+    new ArtifactsService(),
+    { getDefaultModel: () => "openai:gpt-test" } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[1],
+    { getAgentConfig: () => ({ locale: "en_US" }) } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[2],
+    { resolveGlobalWorkspacePath: async () => repoRoot } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[3],
+    new ThreadWorkspaceService(
+      new ThreadWorkspaceRepository()
+    ) as unknown as ConstructorParameters<typeof ThreadsService>[4],
+    (input.threadLifecycleGate ?? new ThreadLifecycleGate()) as ConstructorParameters<
+      typeof ThreadsService
+    >[5]
+  )
+}
+
 test.before(async () => {
   openworkHome = await mkdtemp(join(tmpdir(), "openwork-agent-persistence-"))
   process.env.OPENWORK_HOME = openworkHome
@@ -140,7 +209,6 @@ test("resume primitives target the request's run instead of the latest active ru
 
 test("agent resume keeps HITL request pending when resumed stream fails before first chunk", async () => {
   const { createRun, createThread, getHitlRequest, upsertHitlRequest } = await loadDbModules()
-  const { AgentService } = await import("../../src/main/agent/service")
   const consoleLog = mock.method(console, "log", () => {})
   const consoleError = mock.method(console, "error", () => {})
   const previousRuntimeMode = process.env.OPENWORK_BDD_AGENT_RUNTIME
@@ -148,7 +216,8 @@ test("agent resume keeps HITL request pending when resumed stream fails before f
   const threadId = "thread-resume-failure"
   const runId = "run-resume-failure"
   const requestId = "request-resume-failure"
-  await createThread(threadId, { metadata: { workspacePath: repoRoot } })
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
   await createRun(runId, threadId, { status: "interrupted" })
   await upsertHitlRequest({
     request_id: requestId,
@@ -164,7 +233,9 @@ test("agent resume keeps HITL request pending when resumed stream fails before f
   const events: Array<{ type: string }> = []
   process.env.OPENWORK_BDD_AGENT_RUNTIME = "scripted"
   try {
-    await new AgentService().resume(
+    await (
+      await createAgentServiceForTest()
+    ).resume(
       {
         command: {
           resume: {
@@ -202,7 +273,6 @@ test("agent resume keeps HITL request pending when resumed stream fails before f
 
 test("agent resume rejects workspace mismatch before mutating the run", async () => {
   const { createRun, createThread, getRun, upsertHitlRequest } = await loadDbModules()
-  const { AgentService } = await import("../../src/main/agent/service")
   const consoleLog = mock.method(console, "log", () => {})
   const consoleError = mock.method(console, "error", () => {})
 
@@ -211,7 +281,8 @@ test("agent resume rejects workspace mismatch before mutating the run", async ()
   const threadId = "thread-resume-workspace-mismatch"
   const runId = "run-resume-workspace-mismatch"
   const requestId = "request-resume-workspace-mismatch"
-  await createThread(threadId, { metadata: { workspacePath: currentWorkspacePath } })
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, currentWorkspacePath)
   await createRun(runId, threadId, {
     metadata: {
       openworkMemoryContextSnapshot: {
@@ -241,7 +312,9 @@ test("agent resume rejects workspace mismatch before mutating the run", async ()
 
   const events: Array<{ details?: string[]; type: string }> = []
   try {
-    await new AgentService().resume(
+    await (
+      await createAgentServiceForTest()
+    ).resume(
       {
         command: {
           resume: {
@@ -280,12 +353,12 @@ test("agent resume rejects workspace mismatch before mutating the run", async ()
 
 test("agent cancel covers invoke setup before a run id exists", async () => {
   const { createThread, getPrismaClient } = await loadDbModules()
-  const { AgentService } = await import("../../src/main/agent/service")
   const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
   const consoleLog = mock.method(console, "log", () => {})
 
   const threadId = "thread-cancel-before-run"
-  await createThread(threadId, { metadata: { workspacePath: repoRoot } })
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
 
   let releaseContextPack: () => void = () => {
     throw new Error("Context pack build was not reached.")
@@ -304,10 +377,10 @@ test("agent cancel covers invoke setup before a run id exists", async () => {
     recordInclusions: async () => undefined
   }
   const lifecycleGate = new ThreadLifecycleGate()
-  const agentService = new AgentService(
-    memoryService as unknown as ConstructorParameters<typeof AgentService>[0],
-    lifecycleGate
-  )
+  const agentService = await createAgentServiceForTest({
+    openworkMemoryService: memoryService,
+    threadLifecycleGate: lifecycleGate
+  })
   const invoke = agentService.invoke(
     {
       message: {
@@ -340,12 +413,12 @@ test("agent cancel covers invoke setup before a run id exists", async () => {
 
 test("agent deletion gate rejects invoke while thread deletion is active", async () => {
   const { createThread, getPrismaClient } = await loadDbModules()
-  const { AgentService } = await import("../../src/main/agent/service")
   const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
   const consoleLog = mock.method(console, "log", () => {})
 
   const threadId = "thread-deleting-rejects-invoke"
-  await createThread(threadId, { metadata: { workspacePath: repoRoot } })
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
 
   let releaseDeletion: () => void = () => {
     throw new Error("Deletion gate was not entered.")
@@ -354,7 +427,9 @@ test("agent deletion gate rejects invoke while thread deletion is active", async
     releaseDeletion = resolve
   })
   const lifecycleGate = new ThreadLifecycleGate()
-  const agentService = new AgentService(undefined, lifecycleGate)
+  const agentService = await createAgentServiceForTest({
+    threadLifecycleGate: lifecycleGate
+  })
   const events: Array<{ code?: string; type: string }> = []
   let runAccepted = false
 
@@ -629,9 +704,8 @@ test("workspace memory suggestions cannot be accepted from a different thread wo
   const { createThread } = await loadDbModules()
   const { OpenworkMemoryService } = await import("../../src/main/openwork-memory/service")
 
-  await createThread("thread-workspace-a", {
-    metadata: { workspacePath: join(openworkHome, "workspace-a") }
-  })
+  await createThread("thread-workspace-a")
+  await bindThreadWorkspace("thread-workspace-a", join(openworkHome, "workspace-a"))
   const suggestion = await createAgentMemorySuggestion({
     content: "Workspace A uses pnpm.",
     scope: "workspace",
@@ -648,15 +722,12 @@ test("workspace memory suggestions cannot be accepted from a different thread wo
 
 test("workspace changes are blocked while thread has pending workspace memory suggestions", async () => {
   const { createAgentMemorySuggestion } = await import("../../src/main/db/agent-memory")
-  const { createThread, getThread } = await loadDbModules()
-  const { OpenworkMemoryService } = await import("../../src/main/openwork-memory/service")
-  const { WorkspaceRepository } = await import("../../src/main/workspace/repository")
-  const { WorkspaceService } = await import("../../src/main/workspace/service")
+  const { createThread, getThreadWorkspaceBinding } = await loadDbModules()
   const threadId = "thread-pending-workspace-memory-guard"
+  const workspacePath = join(openworkHome, "workspace-a")
 
-  await createThread(threadId, {
-    metadata: { workspacePath: "workspace-a" }
-  })
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, workspacePath)
   await createAgentMemorySuggestion({
     content: "Workspace A uses pnpm.",
     scope: "workspace",
@@ -665,7 +736,7 @@ test("workspace changes are blocked while thread has pending workspace memory su
     workspaceKey: "workspace-a"
   })
 
-  const service = new WorkspaceService(new WorkspaceRepository(), new OpenworkMemoryService())
+  const service = await createWorkspaceServiceForTest()
 
   await assert.rejects(
     service.setWorkspacePath({
@@ -675,9 +746,8 @@ test("workspace changes are blocked while thread has pending workspace memory su
     /Resolve pending workspace memories/
   )
 
-  const thread = await getThread(threadId)
-  const metadata = JSON.parse(thread?.metadata ?? "{}") as { workspacePath?: string }
-  assert.equal(metadata.workspacePath, "workspace-a")
+  const binding = await getThreadWorkspaceBinding(threadId)
+  assert.equal(binding?.workspace_path, workspacePath)
 })
 
 test("agent run memory snapshot stores frozen context content", async () => {
@@ -1814,14 +1884,12 @@ test("thread-scoped checkpoint reads keep run ids out of conversation resume con
 
 test("thread delete waits for active runtime setup before removing metadata", async () => {
   const { createThread, getThread } = await loadDbModules()
-  const { AgentService } = await import("../../src/main/agent/service")
   const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
-  const { ThreadsService } = await import("../../src/main/threads/service")
-  const { ArtifactsService } = await import("../../src/main/artifacts/service")
   const consoleLog = mock.method(console, "log", () => {})
 
   const threadId = "thread-delete-waits-for-runtime"
-  await createThread(threadId, { metadata: { workspacePath: repoRoot } })
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
 
   let releaseContextPack: () => void = () => {
     throw new Error("Context pack build was not reached.")
@@ -1840,23 +1908,13 @@ test("thread delete waits for active runtime setup before removing metadata", as
     recordInclusions: async () => undefined
   }
   const lifecycleGate = new ThreadLifecycleGate()
-  const agentService = new AgentService(
-    memoryService as unknown as ConstructorParameters<typeof AgentService>[0],
-    lifecycleGate
-  )
-  const service = new ThreadsService(
-    new ArtifactsService(),
-    { getDefaultModel: () => "openai:gpt-test" } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[1],
-    { getAgentConfig: () => ({ locale: "en_US" }) } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[2],
-    { resolveGlobalWorkspacePath: async () => repoRoot } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[3],
-    lifecycleGate
-  )
+  const agentService = await createAgentServiceForTest({
+    openworkMemoryService: memoryService,
+    threadLifecycleGate: lifecycleGate
+  })
+  const service = await createThreadsServiceForTest({
+    threadLifecycleGate: lifecycleGate
+  })
 
   const invoke = agentService.invoke(
     {
@@ -1892,8 +1950,6 @@ test("thread delete waits for active runtime setup before removing metadata", as
 test("cloneUntilMessage branches from the checkpoint that first contains the target message", async () => {
   const { createRun, createThread, getPrismaClient } = await loadDbModules()
   const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
-  const { ThreadsService } = await import("../../src/main/threads/service")
-  const { ArtifactsService } = await import("../../src/main/artifacts/service")
   const { THREAD_PERMISSION_MODE_METADATA_KEY } = await import("../../src/shared/permission-mode")
 
   const sourceThreadId = "thread-source"
@@ -1968,18 +2024,7 @@ test("cloneUntilMessage branches from the checkpoint that first contains the tar
     }
   )
 
-  const service = new ThreadsService(
-    new ArtifactsService(),
-    { getDefaultModel: () => "openai:gpt-test" } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[1],
-    { getAgentConfig: () => ({ locale: "en_US" }) } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[2],
-    { resolveGlobalWorkspacePath: async () => repoRoot } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[3]
-  )
+  const service = await createThreadsServiceForTest()
   const clonedThread = await service.cloneUntilMessage(sourceThreadId, "message-ai-1")
   const prisma = getPrismaClient()
   const clonedCheckpointRows = await prisma.checkpoint.findMany({
@@ -2028,18 +2073,16 @@ test("cloneUntilMessage branches from the checkpoint that first contains the tar
 
 test("thread fork rejects threads with pending HITL requests", async () => {
   const { createRun, createThread, upsertHitlRequest } = await loadDbModules()
-  const { ThreadsService } = await import("../../src/main/threads/service")
-  const { ArtifactsService } = await import("../../src/main/artifacts/service")
 
   const sourceThreadId = "thread-pending-hitl"
   const runId = "run-pending-hitl"
 
   await createThread(sourceThreadId, {
     metadata: {
-      model: "openai:gpt-test",
-      workspacePath: repoRoot
+      model: "openai:gpt-test"
     }
   })
+  await bindThreadWorkspace(sourceThreadId, repoRoot)
   await createRun(runId, sourceThreadId, { status: "interrupted" })
   await upsertHitlRequest({
     request_id: "request-pending-hitl",
@@ -2052,18 +2095,7 @@ test("thread fork rejects threads with pending HITL requests", async () => {
     status: "pending"
   })
 
-  const service = new ThreadsService(
-    new ArtifactsService(),
-    { getDefaultModel: () => "openai:gpt-test" } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[1],
-    { getAgentConfig: () => ({ locale: "en_US" }) } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[2],
-    { resolveGlobalWorkspacePath: async () => repoRoot } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[3]
-  )
+  const service = await createThreadsServiceForTest()
 
   await assert.rejects(
     service.cloneUntilMessage(sourceThreadId, "message-user-1"),
@@ -2084,33 +2116,19 @@ test("thread fork rejects threads with pending HITL requests", async () => {
 
 test("thread fork state blocks busy threads", async () => {
   const { createThread, updateThread } = await loadDbModules()
-  const { ThreadsService } = await import("../../src/main/threads/service")
-  const { ArtifactsService } = await import("../../src/main/artifacts/service")
-
   const sourceThreadId = "thread-busy-fork-state"
 
   await createThread(sourceThreadId, {
     metadata: {
-      model: "openai:gpt-test",
-      workspacePath: repoRoot
+      model: "openai:gpt-test"
     }
   })
+  await bindThreadWorkspace(sourceThreadId, repoRoot)
   await updateThread(sourceThreadId, {
     status: "busy"
   })
 
-  const service = new ThreadsService(
-    new ArtifactsService(),
-    { getDefaultModel: () => "openai:gpt-test" } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[1],
-    { getAgentConfig: () => ({ locale: "en_US" }) } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[2],
-    { resolveGlobalWorkspacePath: async () => repoRoot } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[3]
-  )
+  const service = await createThreadsServiceForTest()
 
   const threadData = await service.getAgentThreadData(sourceThreadId)
   assert.deepEqual(threadData.runState.forkState, {
@@ -2123,18 +2141,15 @@ test("thread fork state blocks busy threads", async () => {
 test("thread fork rejects checkpoints that contain HITL interrupts", async () => {
   const { createRun, createThread, getPrismaClient } = await loadDbModules()
   const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
-  const { ThreadsService } = await import("../../src/main/threads/service")
-  const { ArtifactsService } = await import("../../src/main/artifacts/service")
-
   const sourceThreadId = "thread-interrupt-checkpoint"
   const runId = "run-interrupt-checkpoint"
 
   await createThread(sourceThreadId, {
     metadata: {
-      model: "openai:gpt-test",
-      workspacePath: repoRoot
+      model: "openai:gpt-test"
     }
   })
+  await bindThreadWorkspace(sourceThreadId, repoRoot)
   await createRun(runId, sourceThreadId, { status: "interrupted" })
 
   const checkpoint = emptyCheckpoint()
@@ -2181,18 +2196,7 @@ test("thread fork rejects checkpoints that contain HITL interrupts", async () =>
     }
   })
 
-  const service = new ThreadsService(
-    new ArtifactsService(),
-    { getDefaultModel: () => "openai:gpt-test" } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[1],
-    { getAgentConfig: () => ({ locale: "en_US" }) } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[2],
-    { resolveGlobalWorkspacePath: async () => repoRoot } as unknown as ConstructorParameters<
-      typeof ThreadsService
-    >[3]
-  )
+  const service = await createThreadsServiceForTest()
 
   await assert.rejects(
     service.cloneUntilMessage(sourceThreadId, "message-user-interrupt"),

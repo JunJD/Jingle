@@ -5,6 +5,7 @@ import { ThreadLifecycleGate } from "../agent/thread-lifecycle-gate"
 import { ArtifactsService } from "../artifacts/service"
 import { ModelProviderService } from "../model-provider/service"
 import { SettingsService } from "../settings/service"
+import { ThreadWorkspaceService } from "../thread-workspace/service"
 import { WorkspaceService } from "../workspace/service"
 import { ThreadsController } from "./controller"
 import { ThreadsService } from "./service"
@@ -17,6 +18,7 @@ export function registerThreadsModule(container: DependencyContainer): void {
         dependencyContainer.resolve(ModelProviderService),
         dependencyContainer.resolve(SettingsService),
         dependencyContainer.resolve(WorkspaceService),
+        dependencyContainer.resolve(ThreadWorkspaceService),
         dependencyContainer.resolve(ThreadLifecycleGate)
       )
     })

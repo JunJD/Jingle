@@ -32,7 +32,10 @@ interface AgentBddWindow extends Window {
       connectThreadEvents: (threadId: string, onBatch: (batch: AgentThreadEventBatch) => void) => () => void
     }
     threads: {
-      create: (metadata?: Record<string, unknown>) => Promise<AgentThreadSummary>
+      create: (input?: {
+        metadata?: Record<string, unknown>
+        workspacePath?: string | null
+      }) => Promise<AgentThreadSummary>
       get: (threadId: string) => Promise<AgentThreadSummary | null>
       getAgentThreadData: (threadId: string) => Promise<AgentThreadDataSnapshot>
     }
@@ -214,8 +217,10 @@ When(
     const thread = await page.evaluate(
       async ({ source, title: inputTitle, workspacePath: inputWorkspacePath }) => {
         return (window as unknown as AgentBddWindow).api.threads.create({
-          source,
-          title: inputTitle,
+          metadata: {
+            source,
+            title: inputTitle
+          },
           workspacePath: inputWorkspacePath
         })
       },

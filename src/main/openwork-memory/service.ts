@@ -31,7 +31,7 @@ import {
   rejectAgentMemorySuggestion,
   updateAgentMemory
 } from "../db/agent-memory"
-import { getThread } from "../db"
+import { getThreadWorkspaceBinding } from "../db"
 import {
   getGlobalWorkspacePath,
   getOpenworkMemorySettings,
@@ -125,9 +125,8 @@ export class OpenworkMemoryService {
   }
 
   async getThreadWorkspaceIdentity(threadId: string): Promise<OpenworkWorkspaceIdentity | null> {
-    const thread = await getThread(threadId)
-    const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
-    const workspacePath = metadata.workspacePath
+    const binding = await getThreadWorkspaceBinding(threadId)
+    const workspacePath = binding?.workspace_path
 
     return typeof workspacePath === "string" && workspacePath.trim().length > 0
       ? resolveOpenworkWorkspaceIdentity(workspacePath)

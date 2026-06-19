@@ -4,6 +4,7 @@ import { WorkspaceController } from "./controller"
 import { WorkspaceRepository } from "./repository"
 import { WorkspaceService } from "./service"
 import { OpenworkMemoryService } from "../openwork-memory/service"
+import { ThreadWorkspaceService } from "../thread-workspace/service"
 
 export function registerWorkspaceModule(container: DependencyContainer): void {
   container.register(WorkspaceRepository, {
@@ -15,6 +16,7 @@ export function registerWorkspaceModule(container: DependencyContainer): void {
     useFactory: instanceCachingFactory((dependencyContainer) => {
       return new WorkspaceService(
         dependencyContainer.resolve(WorkspaceRepository),
+        dependencyContainer.resolve(ThreadWorkspaceService),
         dependencyContainer.resolve(OpenworkMemoryService)
       )
     })

@@ -546,9 +546,9 @@ export class AgentService {
   private readonly activeRuns = new Map<string, ActiveAgentRun>()
 
   constructor(
-    private readonly openworkMemoryService = new OpenworkMemoryService(),
-    private readonly threadLifecycleGate = new ThreadLifecycleGate(),
-    private readonly workspaceService?: WorkspaceService
+    private readonly openworkMemoryService: OpenworkMemoryService,
+    private readonly threadLifecycleGate: ThreadLifecycleGate,
+    private readonly workspaceService: WorkspaceService
   ) {}
 
   private sendThreadDeletingError(channel: AgentRunChannel, sink: AgentStreamSink): void {
@@ -647,10 +647,7 @@ export class AgentService {
 
     try {
       const thread = await getThread(threadId)
-      const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
-      console.log("[Agent] Thread metadata:", metadata)
-
-      const workspacePath = metadata.workspacePath as string | undefined
+      const workspacePath = await this.workspaceService.getWorkspacePath(threadId)
 
       if (!workspacePath) {
         sink.send({
@@ -771,6 +768,9 @@ export class AgentService {
             aiCapabilities
           })
       })
+      const threadMetadata = thread?.metadata
+        ? (JSON.parse(thread.metadata) as Record<string, unknown>)
+        : {}
       const submittedMessages = buildSubmittedMessages({
         message,
         normalizedRefs,
@@ -780,7 +780,7 @@ export class AgentService {
         messages: submittedMessages,
         ...(thread?.title &&
         !shouldAutoGenerateThreadTitle({
-          metadata,
+          metadata: threadMetadata,
           title: thread.title
         })
           ? { title: thread.title }
@@ -917,9 +917,7 @@ export class AgentService {
     let runId: string | null = null
 
     try {
-      const thread = await getThread(threadId)
-      const metadata = thread?.metadata ? JSON.parse(thread.metadata) : {}
-      const workspacePath = metadata.workspacePath as string | undefined
+      const workspacePath = await this.workspaceService.getWorkspacePath(threadId)
 
       if (!workspacePath) {
         sink.send({

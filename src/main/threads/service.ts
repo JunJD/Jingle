@@ -28,6 +28,7 @@ import type { ArtifactRecord } from "@shared/artifacts"
 import { OpenworkIpcError } from "../ipc/error"
 import { ModelProviderService } from "../model-provider/service"
 import { SettingsService } from "../settings/service"
+import { ThreadWorkspaceService } from "../thread-workspace/service"
 import { WorkspaceService } from "../workspace/service"
 import { syncMessageSearchIndexFromSnapshot } from "../db/message-search"
 import { formatDefaultThreadTitle } from "@shared/i18n"
@@ -38,6 +39,7 @@ import {
 import { THREAD_PINNED_METADATA_KEY } from "@shared/thread-sidebar"
 import type {
   AgentThreadDataSnapshot,
+  CreateThreadInput,
   HITLRequest,
   Message,
   Thread,
@@ -197,6 +199,7 @@ export class ThreadsService {
     private readonly modelProviderService: ModelProviderService,
     private readonly settingsService: SettingsService,
     private readonly workspaceService: WorkspaceService,
+    private readonly threadWorkspaceService: ThreadWorkspaceService,
     private readonly threadLifecycleGate = new ThreadLifecycleGate()
   ) {}
 
@@ -269,6 +272,23 @@ export class ThreadsService {
     }
   }
 
+  private async cloneThreadWorkspaceBinding(
+    sourceThreadId: string,
+    targetThreadId: string
+  ): Promise<void> {
+    const sourceBinding = await this.threadWorkspaceService.get(sourceThreadId)
+    if (
+      !sourceBinding ||
+      sourceBinding.workspaceKind === "projectless" ||
+      !sourceBinding.workspacePath
+    ) {
+      await this.threadWorkspaceService.markProjectless(targetThreadId)
+      return
+    }
+
+    await this.threadWorkspaceService.bindProject(targetThreadId, sourceBinding.workspacePath)
+  }
+
   async list(): Promise<Thread[]> {
     const threads = await getAllThreads()
     return threads.map((row) => mapThreadRowToThread(row))
@@ -279,12 +299,30 @@ export class ThreadsService {
     return row ? mapThreadRowToThread(row) : null
   }
 
-  async create(metadata?: Record<string, unknown>): Promise<Thread> {
+  private async resolveCreateThreadWorkspacePath(
+    input?: CreateThreadInput
+  ): Promise<string | null> {
+    if (!input || !("workspacePath" in input) || input.workspacePath === undefined) {
+      return this.workspaceService.resolveGlobalWorkspacePath()
+    }
+
+    if (input.workspacePath === null) {
+      return null
+    }
+
+    if (input.workspacePath.trim().length === 0) {
+      throw new Error("Workspace path cannot be empty.")
+    }
+
+    return input.workspacePath
+  }
+
+  async create(input?: CreateThreadInput): Promise<Thread> {
     const threadId = uuid()
+    const workspacePath = await this.resolveCreateThreadWorkspacePath(input)
     const nextMetadata: Record<string, unknown> = {
       model: this.modelProviderService.getDefaultModel("llm"),
-      workspacePath: await this.workspaceService.resolveGlobalWorkspacePath(),
-      ...metadata
+      ...input?.metadata
     }
     const requestedTitle = nextMetadata.title
     const title =
@@ -298,6 +336,11 @@ export class ThreadsService {
       metadata: threadMetadata,
       title
     })
+    if (workspacePath) {
+      await this.threadWorkspaceService.bindProject(threadId, workspacePath)
+    } else {
+      await this.threadWorkspaceService.markProjectless(threadId)
+    }
 
     return mapThreadRowToThread(thread, title)
   }
@@ -366,6 +409,7 @@ export class ThreadsService {
         : undefined,
       title: sourceThread.title
     })
+    await this.cloneThreadWorkspaceBinding(sourceThreadId, threadId)
 
     try {
       const checkpointer = await getCheckpointer(threadId)
@@ -443,6 +487,7 @@ export class ThreadsService {
         : undefined,
       title: sourceThread.title
     })
+    await this.cloneThreadWorkspaceBinding(sourceThreadId, threadId)
 
     try {
       const targetCheckpointer = await getCheckpointer(threadId)
@@ -483,9 +528,10 @@ export class ThreadsService {
   }
 
   async getPersistedAgentThreadData(threadId: string): Promise<AgentThreadDataSnapshot> {
-    const [facts, latestRun] = await Promise.all([
+    const [facts, latestRun, workspacePath] = await Promise.all([
       this.loadThreadRuntimeFacts(threadId),
-      this.getLatestRunSummary(threadId)
+      this.getLatestRunSummary(threadId),
+      this.threadWorkspaceService.getThreadWorkspacePath(threadId)
     ])
 
     return {
@@ -499,7 +545,8 @@ export class ThreadsService {
         pendingApproval: facts.pendingApproval,
         todos: facts.todos,
         error: latestRun.error,
-        runId: latestRun.runId
+        runId: latestRun.runId,
+        workspacePath
       }
     }
   }

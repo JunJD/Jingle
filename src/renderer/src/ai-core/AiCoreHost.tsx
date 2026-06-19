@@ -41,6 +41,7 @@ export interface AiCoreThreadCreateInput {
   source: string
   title: string
   visibility: string
+  workspacePath?: string
 }
 
 export interface AiCoreThreadSubmitInput {

@@ -57,6 +57,7 @@ function createThreadDataSnapshot(input: {
   messages: Message[]
   pendingApproval?: AgentThreadDataSnapshot["runState"]["pendingApproval"]
   status?: AgentThreadDataSnapshot["thread"]["status"]
+  workspacePath?: string | null
 }): AgentThreadDataSnapshot {
   return {
     messages: {
@@ -68,7 +69,8 @@ function createThreadDataSnapshot(input: {
       forkState: { canFork: true },
       pendingApproval: input.pendingApproval ?? null,
       runId: null,
-      todos: []
+      todos: [],
+      workspacePath: input.workspacePath ?? null
     },
     thread: {
       metadata: input.metadata,
@@ -306,13 +308,13 @@ test("agent runtime manager applies metadata snapshots while streaming before re
       snapshotLoadCount += 1
       return createThreadDataSnapshot({
         metadata: {
-          model: "openai:gpt-4o",
-          workspacePath: "/tmp/streaming"
+          model: "openai:gpt-4o"
         },
         messages: [
           createUserMessage("snapshot-user", "Snapshot should not replace runtime messages")
         ],
-        status: "busy"
+        status: "busy",
+        workspacePath: "/tmp/streaming"
       })
     },
     onReplayThreadEvents: (threadId) => {
@@ -452,8 +454,7 @@ test("agent runtime manager replays interrupted runtime facts instead of applyin
     getAgentThreadData: async () =>
       createThreadDataSnapshot({
         metadata: {
-          model: "openai:gpt-4o",
-          workspacePath: "/tmp/interrupted"
+          model: "openai:gpt-4o"
         },
         messages: [
           createUserMessage("snapshot-user", "Snapshot approval copy"),
@@ -463,7 +464,8 @@ test("agent runtime manager replays interrupted runtime facts instead of applyin
           }
         ],
         pendingApproval: snapshotApproval,
-        status: "interrupted"
+        status: "interrupted",
+        workspacePath: "/tmp/interrupted"
       }),
     onConnect: (callback) => {
       connection.listener = callback

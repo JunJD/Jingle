@@ -4,10 +4,15 @@ import type { AppLocale } from "@shared/i18n"
 import type { HITLDecision, HITLRequest } from "@shared/hitl"
 import type { PermissionModeName } from "@shared/permission-mode"
 import type { ArtifactRecord } from "@shared/artifacts"
-import type { CustomProviderInput, ProviderId, SetDefaultModelOptions } from "@shared/app-types"
+import type {
+  CustomProviderInput,
+  ProviderId,
+  SetDefaultModelOptions
+} from "@shared/app-types"
 import type { ExtensionToolCallPresentation, ToolCallDisplay } from "@shared/tool-presentation"
 export type { HITLDecision, HITLRequest } from "@shared/hitl"
 export type {
+  CreateThreadInput,
   CustomProviderConfig,
   CustomProviderInput,
   DefaultModelOptions,
@@ -204,6 +209,7 @@ export interface AgentThreadRunStateSnapshot {
   pendingApproval: HITLRequest | null
   runId: string | null
   todos: Todo[]
+  workspacePath: string | null
 }
 
 export interface AgentThreadDataSnapshot {

@@ -1,4 +1,4 @@
-import type { AgentThreadDataSnapshot, Thread } from "@shared/app-types"
+import type { AgentThreadDataSnapshot, CreateThreadInput, Thread } from "@shared/app-types"
 import { invokeIpc } from "../ipc"
 
 export const threadsApi = {
@@ -8,8 +8,8 @@ export const threadsApi = {
   get: (threadId: string): Promise<Thread | null> => {
     return invokeIpc("threads:get", threadId)
   },
-  create: (metadata?: Record<string, unknown>): Promise<Thread> => {
-    return invokeIpc("threads:create", metadata)
+  create: (input?: CreateThreadInput): Promise<Thread> => {
+    return invokeIpc("threads:create", input)
   },
   clone: (threadId: string): Promise<Thread> => {
     return invokeIpc("threads:clone", threadId)
