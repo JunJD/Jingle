@@ -15,6 +15,7 @@ import { nativeMenuBarApi } from "./nativeMenuBar"
 import { openTargetsApi } from "./openTargets"
 import { settingsApi } from "./settings"
 import { shortcutsApi } from "./shortcuts"
+import { threadSidebarApi } from "./threadSidebar"
 import { threadWorkspaceApi } from "./threadWorkspace"
 import { threadsApi } from "./threads"
 import { workspaceApi } from "./workspace"
@@ -32,6 +33,7 @@ export const api = {
   settings: settingsApi,
   mainWindow: mainWindowApi,
   shortcuts: shortcutsApi,
+  threadSidebar: threadSidebarApi,
   threadWorkspace: threadWorkspaceApi,
   launcher: launcherApi,
   launcherHistory: launcherHistoryApi,

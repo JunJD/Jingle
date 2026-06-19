@@ -1,0 +1,141 @@
+import assert from "node:assert/strict"
+import { execFileSync } from "node:child_process"
+import { randomUUID } from "node:crypto"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import test, { after, before } from "node:test"
+import { closeDatabase, createThread, initializeDatabase } from "../../src/main/db"
+import { ThreadSidebarRepository } from "../../src/main/thread-sidebar/repository"
+import { ThreadSidebarService } from "../../src/main/thread-sidebar/service"
+import { ThreadWorkspaceRepository } from "../../src/main/thread-workspace/repository"
+import { ThreadWorkspaceService } from "../../src/main/thread-workspace/service"
+
+const repoRoot = process.cwd()
+let openworkHome = ""
+
+before(async () => {
+  openworkHome = await mkdtemp(join(tmpdir(), "openwork-sidebar-view-home-"))
+  process.env.OPENWORK_HOME = openworkHome
+  execFileSync("node", ["scripts/run-prisma-openwork-db.mjs", "migrate", "deploy"], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      OPENWORK_HOME: openworkHome
+    }
+  })
+  await initializeDatabase()
+})
+
+after(async () => {
+  await closeDatabase()
+  delete process.env.OPENWORK_HOME
+  await rm(openworkHome, { force: true, recursive: true })
+})
+
+function createThreadMetadata(input: { pinned?: boolean }): Record<string, unknown> {
+  if (!input.pinned) {
+    return {}
+  }
+
+  return { pinned: true }
+}
+
+async function createProjectThread(input: {
+  id: string
+  pinned?: boolean
+  title: string
+  workspacePath: string
+}): Promise<void> {
+  await createThread(input.id, {
+    metadata: createThreadMetadata(input),
+    title: input.title
+  })
+  await new ThreadWorkspaceService(new ThreadWorkspaceRepository()).bindProject(
+    input.id,
+    input.workspacePath
+  )
+}
+
+async function createProjectlessThread(input: {
+  id: string
+  pinned?: boolean
+  title: string
+}): Promise<void> {
+  await createThread(input.id, {
+    metadata: createThreadMetadata(input),
+    title: input.title
+  })
+  await new ThreadWorkspaceService(new ThreadWorkspaceRepository()).markProjectless(input.id)
+}
+
+test("thread sidebar view groups project, projectless, and pinned facts", async () => {
+  new ThreadSidebarService(new ThreadSidebarRepository()).resetPreferences()
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "openwork-sidebar-project-"))
+  try {
+    const projectPath = join(workspaceRoot, "openwork")
+    const emptyProjectPath = join(workspaceRoot, "jingle-web")
+    await new ThreadWorkspaceService(new ThreadWorkspaceRepository()).addProject(emptyProjectPath)
+    await createProjectThread({
+      id: `sidebar-project-${randomUUID()}`,
+      title: "Project Chat",
+      workspacePath: projectPath
+    })
+    await createProjectlessThread({
+      id: `sidebar-loose-${randomUUID()}`,
+      title: "Loose Chat"
+    })
+    await createProjectThread({
+      id: `sidebar-pinned-${randomUUID()}`,
+      pinned: true,
+      title: "Pinned Chat",
+      workspacePath: projectPath
+    })
+
+    const view = await new ThreadSidebarService(new ThreadSidebarRepository()).getView()
+
+    assert.ok(view.pinnedThreads.some((thread) => thread.title === "Pinned Chat"))
+    assert.ok(view.chatThreads.some((thread) => thread.title === "Loose Chat"))
+    assert.ok(
+      view.projectGroups.some(
+        (group) =>
+          group.workspacePath === projectPath &&
+          group.threads.some((thread) => thread.title === "Project Chat") &&
+          !group.threads.some((thread) => thread.title === "Pinned Chat")
+      )
+    )
+    assert.ok(
+      view.projectGroups.some(
+        (group) => group.workspacePath === emptyProjectPath && group.threads.length === 0
+      )
+    )
+  } finally {
+    await rm(workspaceRoot, { force: true, recursive: true })
+  }
+})
+
+test("thread sidebar view applies created and manual sort preferences", async () => {
+  const service = new ThreadSidebarService(new ThreadSidebarRepository())
+  service.resetPreferences()
+  const olderId = `sidebar-order-older-${randomUUID()}`
+  const newerId = `sidebar-order-newer-${randomUUID()}`
+  await createProjectlessThread({ id: olderId, title: "Older Manual" })
+  await createProjectlessThread({ id: newerId, title: "Newer Manual" })
+
+  await service.setSortBy("created")
+  const createdView = await service.getView()
+  const createdTitles = createdView.chatThreads.map((thread) => thread.title)
+  assert.ok(createdTitles.indexOf("Newer Manual") < createdTitles.indexOf("Older Manual"))
+
+  service.resetPreferences()
+  const repository = new ThreadSidebarRepository()
+  repository.setPreferences({
+    manualThreadOrder: [olderId, newerId],
+    organizeMode: "project",
+    projectOrder: [],
+    sortBy: "manual"
+  })
+  const manualView = await new ThreadSidebarService(repository).getView()
+  const manualThreadIds = manualView.chatThreads.map((thread) => thread.threadId)
+  assert.ok(manualThreadIds.indexOf(olderId) < manualThreadIds.indexOf(newerId))
+})
