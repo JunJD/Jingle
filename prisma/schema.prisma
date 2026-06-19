@@ -368,8 +368,6 @@ model AgentTraceStep {
   toolCallId             String?    @map("tool_call_id")
   inputBlobId            String?    @map("input_blob_id")
   outputBlobId           String?    @map("output_blob_id")
-  messagesBaselineBlobId String?    @map("messages_baseline_blob_id")
-  messagesDeltaBlobId    String?    @map("messages_delta_blob_id")
   contextBlobId          String?    @map("context_blob_id")
   errorType              String?    @map("error_type")
   errorMessage           String?    @map("error_message")

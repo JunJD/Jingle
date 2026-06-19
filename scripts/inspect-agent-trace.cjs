@@ -30,7 +30,6 @@ Usage:
   node scripts/inspect-agent-trace.cjs inspect <traceId> --step <n>
   node scripts/inspect-agent-trace.cjs inspect <traceId> --events
   node scripts/inspect-agent-trace.cjs inspect <traceId> --tools
-  node scripts/inspect-agent-trace.cjs inspect <traceId> --messages
 `)
 }
 
@@ -193,7 +192,7 @@ function readSteps(traceId) {
     `
       SELECT step_index, step_type, status, started_at, completed_at, duration_ms, model, provider,
              input_tokens, output_tokens, total_tokens, tool_name, tool_call_id,
-             input_blob_id, output_blob_id, messages_baseline_blob_id, messages_delta_blob_id,
+             input_blob_id, output_blob_id,
              event_seq, event_type, error_type, error_message
       FROM agent_trace_steps
       WHERE trace_id = ?
@@ -262,8 +261,6 @@ function printStep(traceId, stepIndex) {
   for (const [label, blobId] of [
     ["input", step.input_blob_id],
     ["output", step.output_blob_id],
-    ["messages_baseline", step.messages_baseline_blob_id],
-    ["messages_delta", step.messages_delta_blob_id],
     ["context", step.context_blob_id]
   ]) {
     const blob = readBlob(blobId)
@@ -319,41 +316,6 @@ function printTools(traceId) {
   }
 }
 
-function printMessages(traceId, stepArg) {
-  const stepIndex = stepArg === null ? 0 : Number(stepArg)
-  const [step] = readJsonQuery(
-    `
-      SELECT messages_baseline_blob_id, messages_delta_blob_id
-      FROM agent_trace_steps
-      WHERE trace_id = ? AND step_index = ?
-      LIMIT 1
-    `,
-    [traceId, stepIndex]
-  )
-
-  if (!step) {
-    throw new Error(`Step ${stepIndex} not found in trace "${traceId}".`)
-  }
-
-  const baseline = readBlob(step.messages_baseline_blob_id)
-  if (!baseline) {
-    console.log("No messages baseline blob recorded for this step.")
-    return
-  }
-
-  const baselineMessages = JSON.parse(baseline.value)
-  const delta = readBlob(step.messages_delta_blob_id)
-  let messages = baselineMessages
-  if (delta) {
-    const parsedDelta = JSON.parse(delta.value)
-    messages = Array.isArray(parsedDelta)
-      ? [...baselineMessages, ...parsedDelta]
-      : [...baselineMessages, ...(parsedDelta.append || [])]
-  }
-
-  console.log(JSON.stringify(messages, null, 2))
-}
-
 function handleTraceCommand(traceArgs) {
   const [command, rawTraceId, ...rest] = traceArgs
 
@@ -380,10 +342,6 @@ function handleTraceCommand(traceArgs) {
 
   if (stepArg !== null && stepArg !== undefined) {
     printStep(traceId, Number(stepArg))
-    if (rest.includes("--messages")) {
-      console.log("\nmessages")
-      printMessages(traceId, stepArg)
-    }
     return
   }
 
@@ -394,11 +352,6 @@ function handleTraceCommand(traceArgs) {
 
   if (rest.includes("--tools")) {
     printTools(traceId)
-    return
-  }
-
-  if (rest.includes("--messages")) {
-    printMessages(traceId, null)
     return
   }
 

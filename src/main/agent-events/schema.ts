@@ -51,17 +51,14 @@ const eventPayloadSchemas = {
     .strict(),
   "llm.input.captured": z
     .object({
-      context: z.unknown().optional(),
-      contextSnapshot: z.unknown().optional(),
       extraParams: jsonRecordSchema,
-      input: z.unknown(),
+      inputHash: z.string(),
       llmRunId: z.string(),
-      messagesBaseline: z.array(z.unknown()),
-      messagesDelta: z.array(z.unknown()).optional(),
+      messageCount: z.number().int().nonnegative(),
+      preview: z.string().nullable(),
       model: optionalNullableStringSchema,
       provider: optionalNullableStringSchema,
-      runName: optionalNullableStringSchema,
-      toolSchema: z.unknown().optional()
+      runName: optionalNullableStringSchema
     })
     .strict(),
   "llm.output.captured": z

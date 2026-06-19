@@ -79,8 +79,6 @@ CREATE TABLE "agent_trace_steps" (
     "tool_call_id" TEXT,
     "input_blob_id" TEXT,
     "output_blob_id" TEXT,
-    "messages_baseline_blob_id" TEXT,
-    "messages_delta_blob_id" TEXT,
     "context_blob_id" TEXT,
     "error_type" TEXT,
     "error_message" TEXT,

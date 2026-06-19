@@ -1189,6 +1189,107 @@ test("prisma checkpoint saver stores channel values as reusable checkpoint blobs
   assert.deepEqual(latest?.checkpoint.channel_values, secondCheckpoint.channel_values)
 })
 
+test("prisma checkpoint saver stores pregel task messages as checkpoint refs", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { decodeSerializedPayload } = await import("../../src/main/checkpointer/storage-codec")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-pregel-task-message-ref"
+  await createThread(threadId)
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-pregel-task-message-ref"
+  checkpoint.channel_values = {
+    messages: [
+      {
+        kwargs: {
+          content: "this complete message must not be duplicated into writes",
+          id: "message-ref-source"
+        },
+        type: "human"
+      }
+    ]
+  }
+  checkpoint.channel_versions = {
+    messages: "checkpoint-pregel-task-message-ref-version"
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  const config = await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    },
+    {
+      messages: "checkpoint-pregel-task-message-ref-version"
+    }
+  )
+  await saver.putWrites(
+    config,
+    [
+      [
+        "__pregel_tasks",
+        {
+          args: {
+            messages: checkpoint.channel_values.messages,
+            todos: [{ content: "keep pending task shape", id: "todo-ref" }]
+          },
+          node: "tools"
+        }
+      ]
+    ],
+    "task-pregel-message-ref"
+  )
+
+  const writeRow = await getPrismaClient().checkpointWrite.findFirstOrThrow({
+    where: {
+      channel: "__pregel_tasks",
+      checkpointId: checkpoint.id,
+      threadId
+    }
+  })
+  const storedPayload = decodeSerializedPayload(writeRow.type, writeRow.value)
+  const storedWriteJson =
+    typeof storedPayload.value === "string"
+      ? storedPayload.value
+      : Buffer.from(storedPayload.value).toString("utf8")
+  const storedWrite = JSON.parse(storedWriteJson) as {
+    args?: { messages?: unknown }
+  }
+  assert.equal(storedWriteJson.includes("this complete message must not be duplicated"), false)
+  assert.deepEqual(storedWrite.args?.messages, {
+    __openworkRef: "checkpoint-channel",
+    channel: "messages"
+  })
+
+  const tuple = await saver.getTuple({
+    configurable: {
+      checkpoint_id: checkpoint.id,
+      thread_id: threadId
+    }
+  })
+  assert.deepEqual(tuple?.pendingWrites, [
+    [
+      "task-pregel-message-ref",
+      "__pregel_tasks",
+      {
+        args: {
+          messages: checkpoint.channel_values.messages,
+          todos: [{ content: "keep pending task shape", id: "todo-ref" }]
+        },
+        node: "tools"
+      }
+    ]
+  ])
+})
+
 test("prisma checkpoint saver stores empty blobs for versioned channels without values", async () => {
   const { createThread, getPrismaClient } = await loadDbModules()
   const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")

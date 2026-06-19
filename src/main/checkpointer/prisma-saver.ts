@@ -41,6 +41,17 @@ type StringVersionCheckpoint = Checkpoint & {
   versions_seen: Record<string, Record<string, string>>
 }
 
+type PendingMessagesRef = {
+  __openworkRef: "checkpoint-channel"
+  channel: "messages"
+}
+
+const PREGEL_TASKS_CHANNEL = "__pregel_tasks"
+const OPENWORK_PENDING_MESSAGES_REF: PendingMessagesRef = {
+  __openworkRef: "checkpoint-channel",
+  channel: "messages"
+}
+
 function readStringField(value: unknown, key: string): string | null {
   if (!value || typeof value !== "object") {
     return null
@@ -48,6 +59,65 @@ function readStringField(value: unknown, key: string): string | null {
 
   const field = (value as Record<string, unknown>)[key]
   return typeof field === "string" && field.length > 0 ? field : null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function isPendingMessagesRef(value: unknown): value is PendingMessagesRef {
+  return (
+    isRecord(value) &&
+    value.__openworkRef === OPENWORK_PENDING_MESSAGES_REF.__openworkRef &&
+    value.channel === OPENWORK_PENDING_MESSAGES_REF.channel
+  )
+}
+
+function normalizePregelTaskMessages(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value
+  }
+
+  const args = value.args
+  if (!isRecord(args) || !Object.prototype.hasOwnProperty.call(args, "messages")) {
+    return value
+  }
+
+  return {
+    ...value,
+    args: {
+      ...args,
+      messages: OPENWORK_PENDING_MESSAGES_REF
+    }
+  }
+}
+
+function restorePregelTaskMessages(value: unknown, messages: unknown): unknown {
+  if (!isRecord(value)) {
+    return value
+  }
+
+  const args = value.args
+  if (!isRecord(args) || !isPendingMessagesRef(args.messages)) {
+    return value
+  }
+
+  return {
+    ...value,
+    args: {
+      ...args,
+      messages
+    }
+  }
+}
+
+function hasPregelTaskMessagesRef(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  const args = value.args
+  return isRecord(args) && isPendingMessagesRef(args.messages)
 }
 
 function getRunIdForStorage(config: RunnableConfig, metadata?: CheckpointMetadata): string | null {
@@ -451,7 +521,9 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
       for (let idx = 0; idx < writes.length; idx += 1) {
         const write = writes[idx]
         const writeIndex = WRITES_IDX_MAP[write[0]] ?? idx
-        const [type, serializedValue] = await this.serde.dumpsTyped(write[1])
+        const writeValue =
+          write[0] === PREGEL_TASKS_CHANNEL ? normalizePregelTaskMessages(write[1]) : write[1]
+        const [type, serializedValue] = await this.serde.dumpsTyped(writeValue)
         const [storedType, storedValue] = encodeSerializedPayload(type, serializedValue)
 
         operations.push(
@@ -642,10 +714,61 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
 
     for (const row of rows) {
       const payload = decodeSerializedPayload(row.type, row.value)
-      const value = await this.serde.loadsTyped(payload.type, payload.value)
+      const rawValue = await this.serde.loadsTyped(payload.type, payload.value)
+      const value =
+        row.channel === PREGEL_TASKS_CHANNEL && hasPregelTaskMessagesRef(rawValue)
+          ? restorePregelTaskMessages(
+              rawValue,
+              await this.loadChannelValue(threadId, checkpointNs, "messages", checkpointId)
+            )
+          : rawValue
       pendingWrites.push([row.taskId, row.channel, value])
     }
 
     return pendingWrites
+  }
+
+  private async loadChannelValue(
+    threadId: string,
+    checkpointNs: string,
+    channel: string,
+    checkpointId: string
+  ): Promise<unknown> {
+    const checkpointRow = await getPrismaClient().checkpoint.findUnique({
+      where: {
+        threadId_checkpointNs_checkpointId: {
+          checkpointId,
+          checkpointNs,
+          threadId
+        }
+      }
+    })
+    if (!checkpointRow) {
+      throw new Error(
+        `[PrismaCheckpointSaver] Missing checkpoint "${checkpointId}" for pending write channel "${channel}".`
+      )
+    }
+
+    const channelVersions = readStoredCheckpointChannelVersions(
+      checkpointRow.type,
+      checkpointRow.checkpoint
+    )
+    const version = channelVersions?.[channel]
+    if (!version) {
+      throw new Error(
+        `[PrismaCheckpointSaver] Missing channel version for "${channel}" on checkpoint "${checkpointId}".`
+      )
+    }
+
+    const values = await this.loadChannelValues(threadId, checkpointNs, {
+      [channel]: version
+    })
+    if (!Object.prototype.hasOwnProperty.call(values, channel)) {
+      throw new Error(
+        `[PrismaCheckpointSaver] Missing channel value for "${channel}" on checkpoint "${checkpointId}".`
+      )
+    }
+
+    return values[channel]
   }
 }

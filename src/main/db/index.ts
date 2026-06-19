@@ -50,7 +50,6 @@ export {
   getAgentTraceStep,
   getAgentTraceSteps,
   listAgentTraces,
-  projectAgentTraceForRun,
-  rebuildTraceStepMessages
+  projectAgentTraceForRun
 } from "./agent-traces"
 export type { AgentTraceBlobRow, AgentTraceStepRow, AgentTraceSummaryRow } from "./agent-traces"

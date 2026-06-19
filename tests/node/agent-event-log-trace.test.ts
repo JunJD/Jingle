@@ -139,10 +139,11 @@ test("trace projection waits for an explicit flush after event bursts", async ()
   await appendAgentEvent({
     payload: {
       extraParams: {},
-      input: { prompt: "hello" },
+      inputHash: "hash-projection-burst",
       llmRunId: "llm-run-projection-burst",
-      messagesBaseline: [],
+      messageCount: 1,
       model: "gpt-test",
+      preview: "hello",
       provider: "openai",
       runName: null
     },
@@ -408,11 +409,11 @@ test("trace projector merges llm input and output into one call_llm step", async
   await appendAgentEvent({
     payload: {
       extraParams: {},
-      input: { prompt: "hello" },
+      inputHash: "hash-llm-merge",
       llmRunId: "llm-run-merge",
-      messagesBaseline: [{ role: "user", content: "hello" }],
-      messagesDelta: [],
+      messageCount: 1,
       model: "gpt-test",
+      preview: "hello",
       provider: "openai",
       runName: null
     },
@@ -455,12 +456,10 @@ test("trace projector merges llm input and output into one call_llm step", async
   assert.equal(step.input_tokens, 5)
   assert.equal(step.output_tokens, 7)
   assert.equal(step.total_tokens, 12)
-  assert.ok(step.input_blob_id)
+  assert.equal(step.input_blob_id, null)
   assert.ok(step.output_blob_id)
 
-  const inputBlob = await getAgentTraceBlob(step.input_blob_id)
   const outputBlob = await getAgentTraceBlob(step.output_blob_id)
-  assert.equal(inputBlob?.kind, "llm_input")
   assert.equal(outputBlob?.kind, "llm_output")
 })
 
@@ -728,67 +727,10 @@ test("trace dev script default timeline hides raw runtime and checkpoint events"
   assert.match(events, /run\.finished/)
 })
 
-test("trace projector rebuilds messages from baseline and delta blobs", async () => {
-  const {
-    appendAgentEvent,
-    createRun,
-    createThread,
-    flushAgentTraceProjection,
-    getAgentTraceSteps,
-    getPrismaClient,
-    rebuildTraceStepMessages
-  } = await loadDbModules()
-  const threadId = "thread-messages-delta"
-  const runId = "run-messages-delta"
-  const baseline = [{ role: "system", content: "base" }]
-  const delta = [{ role: "user", content: "hello" }]
-
-  await createThread(threadId)
-  await createRun(runId, threadId)
-  await appendAgentEvent({
-    payload: runStartedPayload(),
-    runId,
-    threadId,
-    type: "run.started"
-  })
-  await appendAgentEvent({
-    payload: {
-      extraParams: {},
-      input: { prompt: "hello" },
-      llmRunId: "llm-run-delta",
-      messagesBaseline: baseline,
-      messagesDelta: delta,
-      model: null,
-      provider: null,
-      runName: null
-    },
-    runId,
-    threadId,
-    type: "llm.input.captured"
-  })
-  await getPrismaClient().run.update({
-    data: {
-      status: "interrupted"
-    },
-    where: {
-      runId
-    }
-  })
-  await flushAgentTraceProjection()
-
-  const llmStep = (await getAgentTraceSteps(runId)).find((step) => step.step_type === "call_llm")
-  assert.ok(llmStep?.messages_baseline_blob_id)
-  assert.ok(llmStep?.messages_delta_blob_id)
-
-  const messages = await rebuildTraceStepMessages(runId, llmStep!.step_index)
-  assert.deepEqual(messages, [...baseline, ...delta])
-})
-
-test("local trace callback captures chat model input as a trace blob", async () => {
+test("local trace callback captures chat model input summary without full messages", async () => {
   const {
     createRun,
     createThread,
-    getAgentTraceBlob,
     getAgentTraceEvents,
     getAgentTraceSteps,
     getPrismaClient,
@@ -834,6 +776,12 @@ test("local trace callback captures chat model input as a trace blob", async () 
   )
   const llmInputPayload = JSON.parse(events[0]!.payload) as Record<string, unknown>
   assert.equal(llmInputPayload.llmRunId, "llm-run-1")
+  assert.equal(llmInputPayload.messageCount, 1)
+  assert.equal(llmInputPayload.preview, "actual model input")
+  assert.equal(typeof llmInputPayload.inputHash, "string")
+  assert.equal("input" in llmInputPayload, false)
+  assert.equal("messagesBaseline" in llmInputPayload, false)
+  assert.equal("messagesDelta" in llmInputPayload, false)
 
   await projectAgentTraceForRun(runId)
 
@@ -843,10 +791,7 @@ test("local trace callback captures chat model input as a trace blob", async () 
 
   const llmStep = (await getAgentTraceSteps(runId)).find((step) => step.step_type === "call_llm")
   assert.equal(llmStep?.status, "running")
-  assert.ok(llmStep?.input_blob_id)
-
-  const blob = await getAgentTraceBlob(llmStep!.input_blob_id)
-  assert.match(blob?.value ?? "", /actual model input/)
+  assert.equal(llmStep?.input_blob_id, null)
 })
 
 test("local trace callback does not capture title generation runs", async () => {

@@ -14,10 +14,7 @@ type StepStatus = "running" | "completed" | "failed" | "waiting_for_human"
 type StepType = "approval" | "call_llm" | "call_tool"
 type BlobKind =
   | "context_snapshot"
-  | "llm_input"
   | "llm_output"
-  | "messages_baseline"
-  | "messages_delta"
   | "raw"
   | "tool_input"
   | "tool_output"
@@ -49,8 +46,6 @@ interface StepDraft {
   eventType: string | null
   inputBlobId: string | null
   inputTokens: number
-  messagesBaselineBlobId: string | null
-  messagesDeltaBlobId: string | null
   model: string | null
   outputBlobId: string | null
   outputTokens: number
@@ -108,8 +103,6 @@ export interface AgentTraceStepRow {
   error_type: string | null
   input_blob_id: string | null
   input_tokens: number
-  messages_baseline_blob_id: string | null
-  messages_delta_blob_id: string | null
   model: string | null
   output_blob_id: string | null
   output_tokens: number
@@ -375,12 +368,6 @@ function attachStepBlobs(input: {
   traceId: string
 }): void {
   const { step } = input
-  step.messagesBaselineBlobId =
-    attachBlob({ ...input, kind: "messages_baseline" }, ["messagesBaseline"]) ??
-    step.messagesBaselineBlobId
-  step.messagesDeltaBlobId =
-    attachBlob({ ...input, kind: "messages_delta" }, ["messagesDelta"]) ??
-    step.messagesDeltaBlobId
   step.contextBlobId =
     attachBlob({ ...input, kind: "context_snapshot" }, ["context", "contextSnapshot"]) ??
     step.contextBlobId
@@ -396,9 +383,6 @@ function attachStepBlobs(input: {
   }
 
   if (step.stepType === "call_llm") {
-    step.inputBlobId =
-      attachBlob({ ...input, kind: "llm_input" }, ["input", "llmInput"]) ??
-      step.inputBlobId
     step.outputBlobId =
       attachBlob({ ...input, kind: "llm_output" }, ["output", "llmOutput"]) ??
       step.outputBlobId
@@ -464,8 +448,6 @@ function mapStepRow(row: {
   errorType: string | null
   inputBlobId: string | null
   inputTokens: number
-  messagesBaselineBlobId: string | null
-  messagesDeltaBlobId: string | null
   model: string | null
   outputBlobId: string | null
   outputTokens: number
@@ -485,8 +467,6 @@ function mapStepRow(row: {
     error_type: row.errorType,
     input_blob_id: row.inputBlobId,
     input_tokens: row.inputTokens,
-    messages_baseline_blob_id: row.messagesBaselineBlobId,
-    messages_delta_blob_id: row.messagesDeltaBlobId,
     model: row.model,
     output_blob_id: row.outputBlobId,
     output_tokens: row.outputTokens,
@@ -605,8 +585,6 @@ export async function projectAgentTraceForRun(runId: string): Promise<AgentTrace
         eventType: null,
         inputBlobId: null,
         inputTokens: 0,
-        messagesBaselineBlobId: null,
-        messagesDeltaBlobId: null,
         model: null,
         outputBlobId: null,
         outputTokens: 0,
@@ -719,8 +697,6 @@ export async function projectAgentTraceForRun(runId: string): Promise<AgentTrace
           eventType: step.eventType,
           inputBlobId: step.inputBlobId,
           inputTokens: step.inputTokens,
-          messagesBaselineBlobId: step.messagesBaselineBlobId,
-          messagesDeltaBlobId: step.messagesDeltaBlobId,
           model: step.model,
           outputBlobId: step.outputBlobId,
           outputTokens: step.outputTokens,
@@ -858,42 +834,4 @@ export async function getAgentTraceBlob(blobId: string | null): Promise<AgentTra
         value: row.value
       }
     : null
-}
-
-export async function rebuildTraceStepMessages(
-  traceId: string,
-  stepIndex: number
-): Promise<unknown[]> {
-  const step = await getAgentTraceStep(traceId, stepIndex)
-  if (!step) {
-    throw new Error(
-      `[AgentTraceProjector] Trace step ${stepIndex} not found for trace "${traceId}".`
-    )
-  }
-
-  const baselineBlob = await getAgentTraceBlob(step.messages_baseline_blob_id)
-  if (!baselineBlob) {
-    return []
-  }
-
-  const baseline = JSON.parse(baselineBlob.value) as unknown
-  if (!Array.isArray(baseline)) {
-    throw new Error("[AgentTraceProjector] messages baseline blob must be an array.")
-  }
-
-  const deltaBlob = await getAgentTraceBlob(step.messages_delta_blob_id)
-  if (!deltaBlob) {
-    return baseline
-  }
-
-  const delta = JSON.parse(deltaBlob.value) as unknown
-  if (Array.isArray(delta)) {
-    return [...baseline, ...delta]
-  }
-
-  if (delta && typeof delta === "object" && Array.isArray((delta as { append?: unknown }).append)) {
-    return [...baseline, ...(delta as { append: unknown[] }).append]
-  }
-
-  throw new Error("[AgentTraceProjector] Unsupported messages delta format.")
 }

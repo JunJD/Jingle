@@ -2,6 +2,7 @@ import { BaseCallbackHandler } from "@langchain/core/callbacks/base"
 import type { BaseMessage } from "@langchain/core/messages"
 import type { LLMResult } from "@langchain/core/outputs"
 import type { Serialized } from "@langchain/core/load/serializable"
+import { createHash } from "crypto"
 import { appendAgentEventSafely } from "../db/agent-events"
 
 const NON_AGENT_EXECUTION_RUN_NAMES = new Set(["thread_title"])
@@ -27,6 +28,40 @@ function serializeMessage(message: BaseMessage): Record<string, unknown> {
     toolCallId: stored.data.tool_call_id ?? null,
     additionalKwargs: stored.data.additional_kwargs ?? {},
     responseMetadata: stored.data.response_metadata ?? {}
+  }
+}
+
+function compactText(value: string): string {
+  return value.replace(/\s+/g, " ").trim()
+}
+
+function readContentPreview(content: unknown): string | null {
+  if (typeof content === "string") {
+    const preview = compactText(content).slice(0, 240)
+    return preview.length > 0 ? preview : null
+  }
+
+  if (Array.isArray(content)) {
+    const preview = compactText(JSON.stringify(content)).slice(0, 240)
+    return preview.length > 0 ? preview : null
+  }
+
+  return null
+}
+
+function summarizeMessages(messages: BaseMessage[]): {
+  inputHash: string
+  messageCount: number
+  preview: string | null
+} {
+  const serializedMessages = messages.map(serializeMessage)
+  const inputJson = JSON.stringify(serializedMessages)
+  const lastMessage = messages.at(-1)
+
+  return {
+    inputHash: createHash("sha256").update(inputJson).digest("hex"),
+    messageCount: messages.length,
+    preview: lastMessage ? readContentPreview(lastMessage.content) : null
   }
 }
 
@@ -101,15 +136,15 @@ export function createLocalAgentTraceCallback(
       }
 
       const messages = messageGroups[0] ?? []
+      const messageSummary = summarizeMessages(messages)
       await appendAgentEventSafely({
         payload: {
           extraParams: extraParams ?? {},
-          input: {
-            messages: messages.map(serializeMessage)
-          },
+          inputHash: messageSummary.inputHash,
           llmRunId,
-          messagesBaseline: messages.map(serializeMessage),
+          messageCount: messageSummary.messageCount,
           model: input.modelId ?? readSerializedName(llm),
+          preview: messageSummary.preview,
           provider: readSerializedName(llm),
           runName: runName ?? null
         },

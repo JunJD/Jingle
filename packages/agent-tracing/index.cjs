@@ -135,8 +135,6 @@ function buildExecutionSnapshot(input) {
       events: step.event_type ? [{ seq: step.event_seq, type: step.event_type }] : [],
       executionTimeMs: stepDuration(step),
       inputTokens: step.input_tokens,
-      messagesBaseline: readBlobJson(readBlob(step.messages_baseline_blob_id)),
-      messagesDelta: readBlobJson(readBlob(step.messages_delta_blob_id)),
       outputTokens: step.output_tokens,
       startedAt: step.started_at,
       stepIndex: step.step_index,
