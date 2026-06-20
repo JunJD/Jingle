@@ -1,6 +1,7 @@
 import type { ProviderId } from "./app-types"
 
 export type SettingsWindowTab =
+  | "archived"
   | "appearance"
   | "general"
   | "memory"

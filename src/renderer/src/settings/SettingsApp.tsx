@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react"
-import { Brain, Keyboard, KeyRound, Link2, Palette, Puzzle, Settings2 } from "lucide-react"
+import { Archive, Brain, Keyboard, KeyRound, Link2, Palette, Puzzle, Settings2 } from "lucide-react"
 import type { SettingsWindowTab, SettingsWindowTarget } from "@shared/settings-window"
 import { useI18n } from "../lib/i18n"
 import { AppearanceTab } from "./AppearanceTab"
+import { ArchivedThreadsTab } from "./ArchivedThreadsTab"
 import { getSettingsCopy } from "./copy"
 import { ExtensionsTab } from "./ExtensionsTab"
 import { GeneralTab } from "./GeneralTab"
@@ -95,6 +96,15 @@ export default function SettingsApp(): React.JSX.Element {
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab("archived")}
+            data-settings-tab="archived"
+            className={getSettingsTabClassName(activeTab === "archived")}
+          >
+            <Archive className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+            {copy.tabs.archived}
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab("provider")}
             data-settings-tab="provider"
             className={getSettingsTabClassName(activeTab === "provider")}
@@ -155,6 +165,10 @@ export default function SettingsApp(): React.JSX.Element {
         ) : activeTab === "memory" ? (
           <div className={settingsScrollPaneClassName}>
             <MemoryTab locale={locale} />
+          </div>
+        ) : activeTab === "archived" ? (
+          <div className={settingsScrollPaneClassName}>
+            <ArchivedThreadsTab locale={locale} />
           </div>
         ) : activeTab === "quicklinks" ? (
           <div className={settingsScrollPaneClassName}>

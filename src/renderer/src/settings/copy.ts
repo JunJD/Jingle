@@ -4,6 +4,7 @@ interface SettingsCopy {
   title: string
   tabs: {
     appearance: string
+    archived: string
     extensions: string
     general: string
     memory: string
@@ -80,6 +81,29 @@ interface SettingsCopy {
     translucentWindows: string
     uiFont: string
     variant: string
+  }
+  archived: {
+    allProjects: string
+    confirmCancel: string
+    confirmDelete: string
+    confirmDeleteDescription: (title: string) => string
+    confirmDeleteTitle: string
+    confirmDeleteVisibleDescription: (count: number) => string
+    confirmDeleteVisibleTitle: string
+    deleted: string
+    deletedAll: (count: number) => string
+    delete: string
+    deleteVisible: string
+    description: string
+    emptyDescription: string
+    emptyTitle: string
+    loading: string
+    projectless: string
+    restore: string
+    restored: string
+    searchPlaceholder: string
+    title: string
+    unknownProject: string
   }
   provider: {
     title: string
@@ -197,6 +221,7 @@ const zhCN: SettingsCopy = {
   title: "设置",
   tabs: {
     appearance: "外观",
+    archived: "已归档",
     extensions: "Extensions",
     general: "通用",
     memory: "记忆",
@@ -274,6 +299,29 @@ const zhCN: SettingsCopy = {
     translucentWindows: "半透明窗口",
     uiFont: "UI 字体",
     variant: "模式"
+  },
+  archived: {
+    allProjects: "全部项目",
+    confirmCancel: "取消",
+    confirmDelete: "确认删除",
+    confirmDeleteDescription: (title) => `这会永久删除「${title}」。此操作无法撤销。`,
+    confirmDeleteTitle: "删除这个归档对话？",
+    confirmDeleteVisibleDescription: (count) => `这会永久删除当前列表中的 ${count} 个归档对话。此操作无法撤销。`,
+    confirmDeleteVisibleTitle: "删除当前列表？",
+    deleted: "已删除归档对话",
+    deletedAll: (count) => `已删除 ${count} 个归档对话`,
+    delete: "删除",
+    deleteVisible: "删除当前列表",
+    description: "查看、恢复或删除已归档的对话，并按项目或无项目分组筛选。",
+    emptyDescription: "当前筛选条件下没有已归档对话。",
+    emptyTitle: "没有归档对话",
+    loading: "正在加载已归档对话...",
+    projectless: "无项目",
+    restore: "取消归档",
+    restored: "已取消归档",
+    searchPlaceholder: "搜索已归档对话",
+    title: "已归档对话",
+    unknownProject: "未知项目"
   },
   provider: {
     title: "Model Provider",
@@ -392,6 +440,7 @@ const enUS: SettingsCopy = {
   title: "Settings",
   tabs: {
     appearance: "Appearance",
+    archived: "Archived",
     extensions: "Extensions",
     general: "General",
     memory: "Memory",
@@ -469,6 +518,31 @@ const enUS: SettingsCopy = {
     translucentWindows: "Translucent Windows",
     uiFont: "UI Font",
     variant: "Variant"
+  },
+  archived: {
+    allProjects: "All projects",
+    confirmCancel: "Cancel",
+    confirmDelete: "Delete",
+    confirmDeleteDescription: (title) =>
+      `This permanently deletes "${title}". This action cannot be undone.`,
+    confirmDeleteTitle: "Delete this archived chat?",
+    confirmDeleteVisibleDescription: (count) =>
+      `This permanently deletes ${count} archived chat${count === 1 ? "" : "s"} in the current list. This action cannot be undone.`,
+    confirmDeleteVisibleTitle: "Delete the current list?",
+    deleted: "Archived chat deleted",
+    deletedAll: (count) => `${count} archived chat${count === 1 ? "" : "s"} deleted`,
+    delete: "Delete",
+    deleteVisible: "Delete Visible",
+    description: "Review, restore, or delete archived chats filtered by project or projectless.",
+    emptyDescription: "No archived chats match the current filters.",
+    emptyTitle: "No archived chats",
+    loading: "Loading archived chats...",
+    projectless: "Projectless",
+    restore: "Unarchive",
+    restored: "Chat unarchived",
+    searchPlaceholder: "Search archived chats",
+    title: "Archived Chats",
+    unknownProject: "Unknown project"
   },
   provider: {
     title: "Model Providers",

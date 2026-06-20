@@ -1,9 +1,13 @@
 import type { AgentThreadDataSnapshot, CreateThreadInput, Thread } from "@shared/app-types"
+import type { ArchivedThreadsView } from "@shared/thread-archive"
 import { invokeIpc } from "../ipc"
 
 export const threadsApi = {
   list: (): Promise<Thread[]> => {
     return invokeIpc("threads:list")
+  },
+  listArchived: (): Promise<ArchivedThreadsView> => {
+    return invokeIpc("threads:listArchived")
   },
   get: (threadId: string): Promise<Thread | null> => {
     return invokeIpc("threads:get", threadId)
@@ -22,6 +26,9 @@ export const threadsApi = {
   },
   setPinned: (threadId: string, pinned: boolean): Promise<Thread> => {
     return invokeIpc("threads:setPinned", { threadId, pinned })
+  },
+  setArchived: (threadId: string, archived: boolean): Promise<Thread> => {
+    return invokeIpc("threads:setArchived", { threadId, archived })
   },
   delete: (threadId: string): Promise<void> => {
     return invokeIpc("threads:delete", threadId)

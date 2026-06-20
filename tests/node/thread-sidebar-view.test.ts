@@ -5,7 +5,12 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test, { after, before } from "node:test"
-import { closeDatabase, createThread, initializeDatabase } from "../../src/main/db"
+import {
+  closeDatabase,
+  createThread,
+  initializeDatabase,
+  setThreadArchived
+} from "../../src/main/db"
 import { ThreadSidebarRepository } from "../../src/main/thread-sidebar/repository"
 import { ThreadSidebarService } from "../../src/main/thread-sidebar/service"
 import { ThreadWorkspaceRepository } from "../../src/main/thread-workspace/repository"
@@ -157,4 +162,35 @@ test("thread sidebar view applies created and manual sort preferences", async ()
   const manualView = await new ThreadSidebarService(repository).getView()
   const manualThreadIds = manualView.chatThreads.map((thread) => thread.threadId)
   assert.ok(manualThreadIds.indexOf(olderId) < manualThreadIds.indexOf(newerId))
+})
+
+test("thread sidebar view excludes archived threads while preserving active project groups", async () => {
+  new ThreadSidebarService(new ThreadSidebarRepository()).resetPreferences()
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "openwork-sidebar-archive-"))
+  try {
+    const projectPath = join(workspaceRoot, "openwork")
+    const archivedId = `sidebar-archived-${randomUUID()}`
+    await createProjectThread({
+      id: archivedId,
+      title: "Archived Project Chat",
+      workspacePath: projectPath
+    })
+    await createProjectThread({
+      id: `sidebar-active-${randomUUID()}`,
+      title: "Active Project Chat",
+      workspacePath: projectPath
+    })
+    await setThreadArchived(archivedId, true)
+
+    const view = await new ThreadSidebarService(new ThreadSidebarRepository()).getView()
+    const projectGroup = view.projectGroups.find((group) => group.workspacePath === projectPath)
+
+    assert.ok(projectGroup)
+    assert.ok(projectGroup.threads.some((thread) => thread.title === "Active Project Chat"))
+    assert.ok(!projectGroup.threads.some((thread) => thread.title === "Archived Project Chat"))
+    assert.ok(!view.chatThreads.some((thread) => thread.title === "Archived Project Chat"))
+    assert.ok(!view.pinnedThreads.some((thread) => thread.title === "Archived Project Chat"))
+  } finally {
+    await rm(workspaceRoot, { force: true, recursive: true })
+  }
 })

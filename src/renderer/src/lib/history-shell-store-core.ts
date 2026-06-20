@@ -15,7 +15,9 @@ export interface HistoryShellState {
   addSidebarProject: () => Promise<void>
   loadSidebarView: () => Promise<void>
   loadThreads: () => Promise<void>
+  deleteThread: (threadId: string) => Promise<void>
   refreshThread: (threadId: string) => Promise<void>
+  setThreadArchived: (threadId: string, archived: boolean) => Promise<void>
   setSidebarOrganizeMode: (mode: ThreadSidebarOrganizeMode) => Promise<void>
   setSidebarSortBy: (sortBy: ThreadSidebarSortBy) => Promise<void>
   setThreadPinned: (threadId: string, pinned: boolean) => Promise<void>
@@ -127,6 +129,23 @@ export function createHistoryShellStore(api: HistoryShellApi): HistoryShellStore
       setData({ sidebarView, threads })
     },
 
+    deleteThread: async (threadId: string): Promise<void> => {
+      await api.threads.delete(threadId)
+      const sidebarView = await api.threadSidebar.getView()
+      setData((current) => {
+        const nextThreads = current.threads.filter((thread) => thread.thread_id !== threadId)
+
+        return {
+          currentThreadId:
+            current.currentThreadId === threadId
+              ? (nextThreads[0]?.thread_id ?? null)
+              : current.currentThreadId,
+          sidebarView,
+          threads: nextThreads
+        }
+      })
+    },
+
     refreshThread: async (threadId: string): Promise<void> => {
       const thread = await api.threads.get(threadId)
       setData((current) => {
@@ -155,6 +174,25 @@ export function createHistoryShellStore(api: HistoryShellApi): HistoryShellStore
     setSidebarSortBy: async (sortBy: ThreadSidebarSortBy): Promise<void> => {
       const sidebarView = await api.threadSidebar.setSortBy(sortBy)
       setData({ sidebarView })
+    },
+
+    setThreadArchived: async (threadId: string, archived: boolean): Promise<void> => {
+      const updated = await api.threads.setArchived(threadId, archived)
+      const sidebarView = await api.threadSidebar.getView()
+      setData((current) => {
+        const nextThreads = archived
+          ? current.threads.filter((thread) => thread.thread_id !== threadId)
+          : upsertThreadByRecency(current.threads, updated)
+
+        return {
+          currentThreadId:
+            archived && current.currentThreadId === threadId
+              ? (nextThreads[0]?.thread_id ?? null)
+              : current.currentThreadId,
+          sidebarView,
+          threads: nextThreads
+        }
+      })
     },
 
     setThreadPinned: async (threadId: string, pinned: boolean): Promise<void> => {

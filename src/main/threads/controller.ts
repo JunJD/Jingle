@@ -15,6 +15,10 @@ export class ThreadsController {
       return this.threadsService.list()
     })
 
+    registerIpcHandle(ipcMain, "threads:listArchived", async () => {
+      return this.threadsService.listArchivedView()
+    })
+
     registerIpcHandle(ipcMain, "threads:get", async (_event, threadId: string) => {
       return this.threadsService.get(threadId)
     })
@@ -36,6 +40,14 @@ export class ThreadsController {
       "threads:setPinned",
       async (_event, params: { pinned: boolean; threadId: string }) => {
         return this.threadsService.setPinned(params.threadId, params.pinned)
+      }
+    )
+
+    registerIpcHandle(
+      ipcMain,
+      "threads:setArchived",
+      async (_event, params: { archived: boolean; threadId: string }) => {
+        return this.threadsService.setArchived(params.threadId, params.archived)
       }
     )
 

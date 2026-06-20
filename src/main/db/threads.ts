@@ -7,6 +7,7 @@ export interface ThreadRow {
   thread_id: string
   created_at: number
   updated_at: number
+  archived_at: number | null
   metadata: string | null
   status: string
   thread_values: string | null
@@ -61,6 +62,7 @@ function mapThreadRow(row: {
   threadId: string
   createdAt: bigint
   updatedAt: bigint
+  archivedAt: bigint | null
   metadata: string | null
   status: string
   threadValues: string | null
@@ -70,6 +72,7 @@ function mapThreadRow(row: {
     thread_id: row.threadId,
     created_at: toNumber(row.createdAt),
     updated_at: toNumber(row.updatedAt),
+    archived_at: row.archivedAt === null ? null : toNumber(row.archivedAt),
     metadata: row.metadata,
     status: row.status,
     thread_values: row.threadValues,
@@ -115,11 +118,35 @@ function buildCheckpointBlobVersionFilters(
   return Array.from(filters.values())
 }
 
-export async function getAllThreads(): Promise<ThreadRow[]> {
+export async function getActiveThreads(): Promise<ThreadRow[]> {
   const prisma = getPrismaClient()
   const rows = await prisma.thread.findMany({
     orderBy: {
       updatedAt: "desc"
+    },
+    where: {
+      archivedAt: null
+    }
+  })
+
+  return rows.map(mapThreadRow)
+}
+
+export async function getArchivedThreads(): Promise<ThreadRow[]> {
+  const prisma = getPrismaClient()
+  const rows = await prisma.thread.findMany({
+    orderBy: [
+      {
+        archivedAt: "desc"
+      },
+      {
+        updatedAt: "desc"
+      }
+    ],
+    where: {
+      archivedAt: {
+        not: null
+      }
     }
   })
 
@@ -149,8 +176,8 @@ export async function searchThreadMatches(params: {
   const prisma = getPrismaClient()
   const metadataSource = scope?.metadataSource
   const scopedThreadWhere = metadataSource
-    ? ` AND json_extract(threads.metadata, '$.source') = ?`
-    : ""
+    ? ` AND threads.archived_at IS NULL AND json_extract(threads.metadata, '$.source') = ?`
+    : " AND threads.archived_at IS NULL"
   const scopedThreadArgs = metadataSource ? ([metadataSource] as const) : ([] as const)
   const directLikeQuery = buildSqlLikeContainsQuery(query)
 
@@ -246,6 +273,7 @@ export async function createThread(
     data: {
       threadId,
       createdAt: now,
+      archivedAt: null,
       updatedAt: now,
       metadata: input?.metadata ? JSON.stringify(input.metadata) : null,
       status: "idle",
@@ -294,6 +322,7 @@ export async function cloneThread(
     const row = await tx.thread.create({
       data: {
         createdAt: now,
+        archivedAt: null,
         metadata: nextMetadata,
         status: "idle",
         threadId: targetThreadId,
@@ -472,6 +501,7 @@ export async function cloneThreadUntilCheckpoint(
     const row = await tx.thread.create({
       data: {
         createdAt: now,
+        archivedAt: null,
         metadata: nextMetadata,
         status: "idle",
         threadId: targetThreadId,
@@ -584,6 +614,25 @@ export async function updateThread(
       status: updates.status,
       threadValues: updates.thread_values,
       title: updates.title
+    }
+  })
+
+  return mapThreadRow(row)
+}
+
+export async function setThreadArchived(
+  threadId: string,
+  archived: boolean
+): Promise<ThreadRow> {
+  const prisma = getPrismaClient()
+  const now = BigInt(Date.now())
+  const row = await prisma.thread.update({
+    data: {
+      archivedAt: archived ? now : null,
+      updatedAt: now
+    },
+    where: {
+      threadId
     }
   })
 

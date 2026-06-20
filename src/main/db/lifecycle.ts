@@ -31,6 +31,7 @@ const REQUIRED_TABLES = [
 ] as const
 
 const REQUIRED_TABLE_COLUMNS = {
+  threads: ["archived_at"],
   hitl_requests: ["review_kind", "review_payload"],
   checkpoints: ["run_id"]
 } as const

@@ -1,5 +1,5 @@
 import {
-  getAllThreads,
+  getActiveThreads,
   getProjects,
   getThreadWorkspaceBindings,
   mapProjectRecord,
@@ -184,7 +184,7 @@ export class ThreadSidebarService {
 
   async getView(): Promise<ThreadSidebarView> {
     const preferences = this.repository.getPreferences()
-    const threads = await getAllThreads()
+    const threads = await getActiveThreads()
     const [projectRows, bindingRows] = await Promise.all([
       getProjects(),
       getThreadWorkspaceBindings(threads.map((thread) => thread.thread_id))

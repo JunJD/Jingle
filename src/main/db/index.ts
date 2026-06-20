@@ -4,9 +4,11 @@ export {
   cloneThread,
   createThread,
   deleteThread,
-  getAllThreads,
+  getActiveThreads,
+  getArchivedThreads,
   getThread,
   searchThreadMatches,
+  setThreadArchived,
   updateThread,
   updateThreadMetadata
 } from "./threads"

@@ -5,11 +5,17 @@ import {
   cloneThreadUntilCheckpoint as dbCloneThreadUntilCheckpoint,
   createThread as dbCreateThread,
   deleteThread as dbDeleteThread,
-  getAllThreads,
+  getActiveThreads,
+  getArchivedThreads,
   getLatestHitlRequest,
   getLatestRun,
+  getProjects,
   getThread,
+  getThreadWorkspaceBindings,
   hasPendingHitlRequest,
+  mapProjectRecord,
+  mapThreadWorkspaceBindingRecord,
+  setThreadArchived as dbSetThreadArchived,
   updateThread as dbUpdateThread,
   updateThreadMetadata,
   type ThreadRow
@@ -37,6 +43,7 @@ import {
   toDisplayUserMessageContent
 } from "@shared/message-content"
 import { THREAD_PINNED_METADATA_KEY } from "@shared/thread-sidebar"
+import type { ArchivedThreadItem, ArchivedThreadsView } from "@shared/thread-archive"
 import type {
   AgentThreadDataSnapshot,
   CreateThreadInput,
@@ -63,11 +70,20 @@ function mapThreadRowToThread(row: ThreadRow, fallbackTitle?: string): Thread {
     thread_id: row.thread_id,
     created_at: new Date(row.created_at),
     updated_at: new Date(row.updated_at),
+    archived_at: row.archived_at === null ? null : new Date(row.archived_at),
     metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
     status: row.status as Thread["status"],
     thread_values: row.thread_values ? JSON.parse(row.thread_values) : undefined,
     title: row.title ?? fallbackTitle
   }
+}
+
+function resolveArchivedAt(thread: ThreadRow): Date {
+  if (thread.archived_at === null) {
+    throw new Error(`Archived thread ${thread.thread_id} is missing archived_at.`)
+  }
+
+  return new Date(thread.archived_at)
 }
 
 function mapCheckpointMessagesToThreadMessages(
@@ -300,8 +316,41 @@ export class ThreadsService {
   }
 
   async list(): Promise<Thread[]> {
-    const threads = await getAllThreads()
+    const threads = await getActiveThreads()
     return threads.map((row) => mapThreadRowToThread(row))
+  }
+
+  async listArchivedView(): Promise<ArchivedThreadsView> {
+    const threads = await getArchivedThreads()
+    const [projectRows, bindingRows] = await Promise.all([
+      getProjects(),
+      getThreadWorkspaceBindings(threads.map((thread) => thread.thread_id))
+    ])
+    const bindings = new Map(
+      bindingRows.map((binding) => [
+        binding.thread_id,
+        mapThreadWorkspaceBindingRecord(binding)
+      ])
+    )
+
+    return {
+      projects: projectRows.map(mapProjectRecord),
+      threads: threads.map((thread): ArchivedThreadItem => {
+        const binding = bindings.get(thread.thread_id) ?? null
+        const title = thread.title?.trim() || "New Chat"
+
+        return {
+          archivedAt: resolveArchivedAt(thread),
+          createdAt: new Date(thread.created_at),
+          projectId: binding?.projectId ?? null,
+          threadId: thread.thread_id,
+          title,
+          updatedAt: new Date(thread.updated_at),
+          workspaceKind: binding?.workspaceKind ?? "projectless",
+          workspacePath: binding?.workspacePath ?? null
+        }
+      })
+    }
   }
 
   async get(threadId: string): Promise<Thread | null> {
@@ -406,6 +455,11 @@ export class ThreadsService {
     }
 
     const updated = await updateThreadMetadata(threadId, nextMetadata)
+    return mapThreadRowToThread(updated)
+  }
+
+  async setArchived(threadId: string, archived: boolean): Promise<Thread> {
+    const updated = await dbSetThreadArchived(threadId, archived)
     return mapThreadRowToThread(updated)
   }
 

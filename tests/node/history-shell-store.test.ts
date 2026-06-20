@@ -79,6 +79,10 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
   return {
     threads: {
       list: async () => [],
+      listArchived: async () => ({
+        projects: [],
+        threads: []
+      }),
       get: async () => null,
       create: async (input?: CreateThreadInput) =>
         createThread("thread-created", { metadata: input?.metadata }),
@@ -87,6 +91,10 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
       update: async (threadId: string, updates: Partial<Thread>) => createThread(threadId, updates),
       setPinned: async (threadId: string, pinned: boolean) =>
         createThread(threadId, { metadata: pinned ? { pinned } : {} }),
+      setArchived: async (threadId: string, archived: boolean) =>
+        createThread(threadId, {
+          archived_at: archived ? new Date("2026-01-03T00:00:00.000Z") : null
+        }),
       delete: async () => undefined,
       getAgentThreadData: async (): Promise<AgentThreadDataSnapshot> => {
         throw new Error("Not implemented in test stub")
@@ -268,6 +276,34 @@ test("setThreadPinned updates thread metadata without re-sorting recency", async
     ["thread-newer", "thread-older"]
   )
   assert.deepEqual(state.threads[1]?.metadata, { pinned: true })
+})
+
+test("setThreadArchived removes archived threads from active history state", async () => {
+  const threads = [
+    createThread("thread-newer", { updated_at: new Date("2026-01-02T00:00:00.000Z") }),
+    createThread("thread-older", { updated_at: new Date("2026-01-01T00:00:00.000Z") })
+  ]
+  const store = createHistoryShellStore(
+    createApi({
+      threads: {
+        ...createApi().threads,
+        list: async () => threads,
+        setArchived: async (threadId: string, archived: boolean) =>
+          createThread(threadId, {
+            archived_at: archived ? new Date("2026-01-03T00:00:00.000Z") : null,
+            updated_at: threadId === "thread-newer" ? threads[0]!.updated_at : threads[1]!.updated_at
+          })
+      }
+    })
+  )
+
+  await store.getState().loadThreads()
+  await store.getState().setThreadArchived("thread-newer", true)
+
+  assert.deepEqual(
+    store.getState().threads.map((thread) => thread.thread_id),
+    ["thread-older"]
+  )
 })
 
 test("addSidebarProject creates a project from a selected folder and refreshes project grouping", async () => {

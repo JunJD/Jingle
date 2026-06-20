@@ -111,6 +111,7 @@ export interface Thread {
   thread_id: string
   created_at: Date
   updated_at: Date
+  archived_at?: Date | null
   metadata?: Record<string, unknown>
   status: ThreadStatus
   thread_values?: Record<string, unknown>

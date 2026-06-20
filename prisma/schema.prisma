@@ -11,6 +11,7 @@ model Thread {
   threadId               String                  @id @map("thread_id")
   createdAt              BigInt                  @map("created_at")
   updatedAt              BigInt                  @map("updated_at")
+  archivedAt             BigInt?                 @map("archived_at")
   metadata               String?
   status                 String                  @default("idle")
   threadValues           String?                 @map("thread_values")
@@ -31,6 +32,7 @@ model Thread {
   agentMemoryInclusions  AgentMemoryInclusion[]
   workspaceBinding       ThreadWorkspaceBinding?
 
+  @@index([archivedAt, updatedAt], map: "idx_threads_archived_at_updated_at")
   @@index([updatedAt], map: "idx_threads_updated_at")
   @@map("threads")
 }
