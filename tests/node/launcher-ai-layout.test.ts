@@ -55,6 +55,27 @@ test("launcher AI composer participates in page layout instead of message bottom
   assert.doesNotMatch(conversationCall[0], /bottomInset=/)
 })
 
+test("renderer entry keeps bootstrap side effects out of the React refresh boundary", async () => {
+  const [mainSource, rootSource] = await Promise.all([
+    readWorkspaceFile("src/renderer/src/main.tsx"),
+    readWorkspaceFile("src/renderer/src/RendererRoot.tsx")
+  ])
+
+  assert.match(
+    mainSource,
+    /ReactDOM\.createRoot\(document\.getElementById\("root"\)!\)\.render\(\s*<RendererRoot resolvedWindowKind=\{resolvedWindowKind\} windowKind=\{windowKind\} \/>\s*\)/
+  )
+  assert.match(mainSource, /import \{ RendererRoot \} from "\.\/RendererRoot"/)
+  assert.doesNotMatch(mainSource, /export function RendererRoot/)
+  assert.doesNotMatch(mainSource, /export const RendererRoot/)
+  assert.doesNotMatch(mainSource, /export default/)
+  assert.doesNotMatch(mainSource, /__jingleRendererRoot/)
+  assert.equal(mainSource.match(/ReactDOM\.createRoot/g)?.length, 1)
+  assert.match(rootSource, /export function RendererRoot/)
+  assert.doesNotMatch(rootSource, /ReactDOM\.createRoot/)
+  assert.doesNotMatch(rootSource, /bootstrapRenderer/)
+})
+
 test("launcher AI sidebar search opens thread search overlay backed by launcher search", async () => {
   const pageSource = await readWorkspaceFile("src/renderer/src/ai-core/LauncherAiPage.tsx")
 
