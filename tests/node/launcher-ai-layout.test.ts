@@ -270,3 +270,37 @@ test("launcher AI thread search overlay stays idle before query input", async ()
   assert.match(overlaySource, /if \(!trimmedQuery\) \{\s*return "idle"\s*\}/)
   assert.match(overlaySource, /visibleState === "loading"/)
 })
+
+test("launcher AI thread loading copy distinguishes restore from opening", async () => {
+  const [navigationSource, conversationSource, messagesSource] = await Promise.all([
+    readWorkspaceFile("src/renderer/src/ai-core/useLauncherAiThreadNavigation.ts"),
+    readWorkspaceFile("src/renderer/src/ai-core/LauncherAiConversation.tsx"),
+    readWorkspaceFile("src/renderer/src/lib/i18n/messages.ts")
+  ])
+
+  assert.match(
+    navigationSource,
+    /export type LauncherAiThreadLoadingReason = "opening" \| "restoring"/
+  )
+  assert.match(navigationSource, /reason: shouldStartFreshThread \? null : "restoring"/)
+  assert.match(navigationSource, /reason: LauncherAiThreadLoadingReason = "opening"/)
+  assert.match(navigationSource, /await activateThread\(restoredThreadId, "restoring"\)/)
+  assert.match(
+    navigationSource,
+    /if \(!restoredThreadId\) \{[\s\S]*?setTarget\(\{[\s\S]*?kind: "draft"/
+  )
+  assert.match(navigationSource, /const navigationVersionRef = useRef\(0\)/)
+  const startFreshDraftBody = navigationSource.match(
+    /const startFreshDraft = useCallback\([\s\S]*?const updateFreshDraft = useCallback/
+  )
+  assert.ok(startFreshDraftBody, "startFreshDraft should exist")
+  assert.match(
+    startFreshDraftBody[0],
+    /const activeThreadId = resolveActiveThreadId\(\)[\s\S]*?setTarget\({[\s\S]*?kind: "draft"/
+  )
+  assert.doesNotMatch(startFreshDraftBody[0], /const threads = await listAiThreads\(\)/)
+  assert.match(conversationSource, /copy\.launcher\.restoringThread/)
+  assert.match(conversationSource, /copy\.launcher\.openingThread/)
+  assert.doesNotMatch(conversationSource, /copy\.launcher\.loadingThread/)
+  assert.doesNotMatch(messagesSource, /loadingThread/)
+})

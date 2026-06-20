@@ -165,12 +165,12 @@ export interface AppCopy {
     goToNextChat: string
     goToPreviousChat: string
     jumpToLatest: string
-    loadingThread: string
     addProject: string
     markAsUnread: string
     newQuestion: string
     organizeByProject: string
     organizeByTime: string
+    openingThread: string
     openSettings: string
     openAiHistory: string
     openMainChat: string
@@ -192,6 +192,7 @@ export interface AppCopy {
     renameProject: string
     removeProject: string
     revealInFinder: string
+    restoringThread: string
     sidebarAutomation: string
     sidebarArchiveAllChats: string
     sidebarChats: string
@@ -487,12 +488,12 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       goToNextChat: "前往下一个对话",
       goToPreviousChat: "前往上一个对话",
       jumpToLatest: "跳到最新",
-      loadingThread: "正在恢复会话...",
       addProject: "添加工作空间项目",
       markAsUnread: "标记为未读",
       newQuestion: "新问题",
       organizeByProject: "按项目整理",
       organizeByTime: "按时间整理",
+      openingThread: "正在打开会话...",
       openSettings: "打开设置",
       openAiHistory: "打开 AI 页面",
       openMainChat: "在主窗口打开",
@@ -514,6 +515,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       renameProject: "重命名项目",
       removeProject: "移除项目",
       revealInFinder: "在 Finder 中显示",
+      restoringThread: "正在恢复会话...",
       sidebarAutomation: "自动化",
       sidebarArchiveAllChats: "归档所有聊天",
       sidebarChats: "对话",
@@ -827,12 +829,12 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       goToNextChat: "Go to Next Chat",
       goToPreviousChat: "Go to Previous Chat",
       jumpToLatest: "Jump to latest",
-      loadingThread: "Restoring session...",
       addProject: "Add Workspace Project",
       markAsUnread: "Mark as Unread",
       newQuestion: "New Question",
       organizeByProject: "Group by Project",
       organizeByTime: "Group by Time",
+      openingThread: "Opening session...",
       openSettings: "Open Settings",
       openAiHistory: "Open AI",
       openMainChat: "Open in Main Window",
@@ -854,6 +856,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       renameProject: "Rename Project",
       removeProject: "Remove Project",
       revealInFinder: "Reveal in Finder",
+      restoringThread: "Restoring session...",
       sidebarAutomation: "Automations",
       sidebarArchiveAllChats: "Archive All Chats",
       sidebarChats: "Chats",

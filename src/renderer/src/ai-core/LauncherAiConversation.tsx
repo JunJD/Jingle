@@ -9,6 +9,7 @@ import { useI18n } from "@/lib/i18n"
 import { useThreadSelector } from "@/lib/thread-context"
 import { cn } from "@/lib/utils"
 import type { EditLastUserMessageAndInvokeInput } from "@/lib/agent-control"
+import type { LauncherAiThreadLoadingReason } from "./useLauncherAiThreadNavigation"
 import type { ArtifactRecord, FileArtifactRecord } from "@shared/artifacts"
 import type { ComposerMessageInput, ComposerMessageRef } from "@shared/message-content"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -354,14 +355,18 @@ export function LauncherAiEmptyState(props: { error?: string | null }): React.JS
   )
 }
 
-export function LauncherAiThreadLoadingState(): React.JSX.Element {
+export function LauncherAiThreadLoadingState(props: {
+  reason: LauncherAiThreadLoadingReason | null
+}): React.JSX.Element {
   const { copy } = useI18n()
+  const label =
+    props.reason === "restoring" ? copy.launcher.restoringThread : copy.launcher.openingThread
 
   return (
     <div className="relative flex flex-1 items-center justify-center px-[var(--launcher-ai-content-x)] text-muted-foreground">
       <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-body)]">
         <Loader2 className="size-[var(--ow-icon-md)] animate-spin" />
-        <span>{copy.launcher.loadingThread}</span>
+        <span>{label}</span>
       </div>
     </div>
   )
@@ -372,6 +377,7 @@ export function LauncherAiConversation(props: {
   error: string | null
   isHydrating: boolean
   isLoading: boolean
+  loadingReason: LauncherAiThreadLoadingReason | null
   onBranch?: (messageId?: string) => Promise<void>
   onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
   onEditLastUserMessage?: (input: EditLastUserMessageAndInvokeInput) => Promise<boolean> | boolean
@@ -383,6 +389,7 @@ export function LauncherAiConversation(props: {
     error,
     isHydrating,
     isLoading,
+    loadingReason,
     onBranch,
     onAddAssistantSelectionRef,
     onEditLastUserMessage,
@@ -396,6 +403,7 @@ export function LauncherAiConversation(props: {
       error={error}
       isHydrating={isHydrating}
       isLoading={isLoading}
+      loadingReason={loadingReason}
       onBranch={onBranch}
       onAddAssistantSelectionRef={onAddAssistantSelectionRef}
       onEditLastUserMessage={onEditLastUserMessage}
@@ -410,6 +418,7 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
   error: string | null
   isHydrating: boolean
   isLoading: boolean
+  loadingReason: LauncherAiThreadLoadingReason | null
   onBranch?: (messageId?: string) => Promise<void>
   onAddAssistantSelectionRef?: (ref: AssistantSelectionRef) => void
   onEditLastUserMessage?: (input: EditLastUserMessageAndInvokeInput) => Promise<boolean> | boolean
@@ -422,6 +431,7 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
     error,
     isHydrating,
     isLoading,
+    loadingReason,
     onBranch,
     onAddAssistantSelectionRef,
     onEditLastUserMessage,
@@ -468,7 +478,7 @@ const LauncherAiConversationViewport = memo(function LauncherAiConversationViewp
   )
 
   if (!hasVisibleTurns && isHydrating && !error) {
-    return <LauncherAiThreadLoadingState />
+    return <LauncherAiThreadLoadingState reason={loadingReason} />
   }
 
   if (!hasVisibleTurns && !isLoading && !error) {

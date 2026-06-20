@@ -106,6 +106,7 @@ export function LauncherAiPage(): React.JSX.Element {
     isHydratingThread,
     openThread,
     startFreshDraft: startFreshDraftTarget,
+    threadLoadingReason,
     updateFreshDraft
   } = threadNavigation
   const agent = useAgent({
@@ -1031,6 +1032,7 @@ export function LauncherAiPage(): React.JSX.Element {
                   error={threadError}
                   isHydrating={isHydratingThread}
                   isLoading={isBusy}
+                  loadingReason={threadLoadingReason}
                   onAddAssistantSelectionRef={addSelectionRef}
                   onBranch={handleBranchChat}
                   onEditLastUserMessage={editLastUserMessage}
@@ -1038,7 +1040,7 @@ export function LauncherAiPage(): React.JSX.Element {
                   threadId={threadId}
                 />
               ) : isHydratingThread ? (
-                <LauncherAiThreadLoadingState />
+                <LauncherAiThreadLoadingState reason={threadLoadingReason} />
               ) : (
                 <LauncherAiEmptyState error={threadError} />
               )}
