@@ -61,12 +61,16 @@ async function createProjectlessThread(input: {
   id: string
   pinned?: boolean
   title: string
+  workspacePath?: string
 }): Promise<void> {
   await createThread(input.id, {
     metadata: createThreadMetadata(input),
     title: input.title
   })
-  await new ThreadWorkspaceService(new ThreadWorkspaceRepository()).markProjectless(input.id)
+  await new ThreadWorkspaceService(new ThreadWorkspaceRepository()).markProjectless(
+    input.id,
+    input.workspacePath
+  )
 }
 
 test("thread sidebar view groups project, projectless, and pinned facts", async () => {
@@ -74,6 +78,7 @@ test("thread sidebar view groups project, projectless, and pinned facts", async 
   const workspaceRoot = await mkdtemp(join(tmpdir(), "openwork-sidebar-project-"))
   try {
     const projectPath = join(workspaceRoot, "openwork")
+    const defaultWorkspacePath = join(workspaceRoot, "AI Space", "default-thread")
     const emptyProjectPath = join(workspaceRoot, "jingle-web")
     await new ThreadWorkspaceService(new ThreadWorkspaceRepository()).addProject(emptyProjectPath)
     await createProjectThread({
@@ -84,6 +89,11 @@ test("thread sidebar view groups project, projectless, and pinned facts", async 
     await createProjectlessThread({
       id: `sidebar-loose-${randomUUID()}`,
       title: "Loose Chat"
+    })
+    await createProjectlessThread({
+      id: `sidebar-default-workspace-${randomUUID()}`,
+      title: "Default Workspace Chat",
+      workspacePath: defaultWorkspacePath
     })
     await createProjectThread({
       id: `sidebar-pinned-${randomUUID()}`,
@@ -96,6 +106,15 @@ test("thread sidebar view groups project, projectless, and pinned facts", async 
 
     assert.ok(view.pinnedThreads.some((thread) => thread.title === "Pinned Chat"))
     assert.ok(view.chatThreads.some((thread) => thread.title === "Loose Chat"))
+    assert.ok(
+      view.chatThreads.some(
+        (thread) =>
+          thread.title === "Default Workspace Chat" &&
+          thread.workspaceKind === "projectless" &&
+          thread.workspacePath === defaultWorkspacePath
+      )
+    )
+    assert.ok(!view.projectGroups.some((group) => group.workspacePath === defaultWorkspacePath))
     assert.ok(
       view.projectGroups.some(
         (group) =>

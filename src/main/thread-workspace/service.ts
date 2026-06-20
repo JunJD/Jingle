@@ -24,10 +24,13 @@ export class ThreadWorkspaceService {
 
   async getThreadWorkspacePath(threadId: string): Promise<string | null> {
     const binding = await this.repository.get(threadId)
-    return binding?.workspaceKind === "project" ? binding.workspacePath : null
+    return binding?.workspacePath ?? null
   }
 
-  async markProjectless(threadId: string): Promise<ThreadWorkspaceBindingRecord> {
-    return this.repository.markProjectless(threadId)
+  async markProjectless(
+    threadId: string,
+    workspacePath?: string | null
+  ): Promise<ThreadWorkspaceBindingRecord> {
+    return this.repository.markProjectless(threadId, workspacePath)
   }
 }

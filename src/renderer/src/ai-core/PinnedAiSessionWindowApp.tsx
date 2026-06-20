@@ -62,13 +62,11 @@ export function PinnedAiSessionWindowApp(): React.JSX.Element {
     async (input: AiCoreThreadCreateInput) => {
       const [resolvedModelId, workspacePathResult] = await Promise.all([
         input.modelId ? Promise.resolve(input.modelId) : window.api.models.getDefault("llm"),
-        input.workspacePath
-          ? Promise.resolve(input.workspacePath)
-          : window.api.workspace.createDefault({ title: input.title })
+        input.workspacePath === undefined
+          ? window.api.workspace.createDefault({ title: input.title })
+          : Promise.resolve(input.workspacePath)
       ])
-      if (!workspacePathResult) {
-        throw new Error(inputNeedsWorkspaceMessage)
-      }
+      const workspacePath = workspacePathResult
 
       const thread = await window.api.threads.create({
         metadata: {
@@ -78,17 +76,18 @@ export function PinnedAiSessionWindowApp(): React.JSX.Element {
           title: input.title,
           visibility: input.visibility
         },
-        workspacePath: workspacePathResult
+        workspaceKind: input.workspaceKind ?? "projectless",
+        workspacePath
       })
 
       await activateThread(thread.thread_id)
       return {
         modelId: resolvedModelId,
         threadId: thread.thread_id,
-        workspacePath: workspacePathResult
+        workspacePath
       }
     },
-    [activateThread, inputNeedsWorkspaceMessage]
+    [activateThread]
   )
   const cloneThread = useCallback(
     async (threadId: string) => {

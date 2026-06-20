@@ -6,6 +6,7 @@ import { Suspense } from "react"
 import type { LauncherShellConfig } from "@shared/launcher"
 import { AI_CHAT_COMMAND_NAME } from "@shared/launcher-ai"
 import type { PermissionModeName } from "@shared/permission-mode"
+import type { ThreadWorkspaceKind } from "@shared/thread-workspace"
 import { useI18n } from "@/lib/i18n"
 import type { Thread } from "@/types"
 import { deriveLauncherCommandOwnerClipboardContext } from "@shared/clipboard-derivations"
@@ -27,6 +28,7 @@ interface LauncherThreadCreateInput {
   source: string
   title: string
   visibility: string
+  workspaceKind?: ThreadWorkspaceKind
   workspacePath?: string
 }
 

@@ -328,7 +328,7 @@ export class WorkspaceService {
     | { fullPath: string; modifiedAt: string; size: number; success: true }
     | { error: string; success: false }
   > {
-    const workspacePath = await this.threadWorkspaceService.getThreadWorkspacePath(params.threadId)
+    const workspacePath = await this.getWorkspacePath(params.threadId)
 
     if (!workspacePath) {
       return {

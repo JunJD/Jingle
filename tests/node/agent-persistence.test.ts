@@ -1966,6 +1966,7 @@ test("cloneUntilMessage branches from the checkpoint that first contains the tar
     },
     title: "Source thread"
   })
+  await bindThreadWorkspace(sourceThreadId, repoRoot)
   await createRun(firstRunId, sourceThreadId, { status: "success" })
   await createRun(secondRunId, sourceThreadId, { status: "success" })
 

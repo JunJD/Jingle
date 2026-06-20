@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { AI_THREAD_SOURCE } from "@shared/launcher-ai"
 import { DEFAULT_PERMISSION_MODE, type PermissionModeName } from "@shared/permission-mode"
+import type { ThreadWorkspaceKind } from "@shared/thread-workspace"
 import type { Thread } from "@/types"
 import type { AiCoreThreadCreateInput, AiCoreThreadHandle } from "./AiCoreHost"
 import { useAiCoreThreads } from "./AiCoreHost"
@@ -19,6 +20,7 @@ export type LauncherAiActiveTarget =
       kind: "draft"
       modelId: string | null
       permissionMode: PermissionModeName
+      workspaceKind: ThreadWorkspaceKind
       workspacePath: string | null
     }
   | {
@@ -38,12 +40,14 @@ export interface LauncherAiThreadNavigation {
   startFreshDraft: (input: {
     modelId: string | null
     permissionMode: PermissionModeName
+    workspaceKind?: ThreadWorkspaceKind
     workspacePath?: string | null
   }) => Promise<void>
   target: LauncherAiActiveTarget | null
   updateFreshDraft: (input: Partial<{
     modelId: string | null
     permissionMode: PermissionModeName
+    workspaceKind: ThreadWorkspaceKind
     workspacePath: string | null
   }>) => void
   goToNextThread: () => Promise<string | null>
@@ -92,6 +96,7 @@ export function useLauncherAiThreadNavigation(
           kind: "draft",
           modelId: null,
           permissionMode: DEFAULT_PERMISSION_MODE,
+          workspaceKind: "projectless",
           workspacePath: null
         }
       : null
@@ -206,6 +211,7 @@ export function useLauncherAiThreadNavigation(
   const startFreshDraft = useCallback(async (input: {
     modelId: string | null
     permissionMode: PermissionModeName
+    workspaceKind?: ThreadWorkspaceKind
     workspacePath?: string | null
   }): Promise<void> => {
     const threads = await listAiThreads()
@@ -215,6 +221,7 @@ export function useLauncherAiThreadNavigation(
       kind: "draft",
       modelId: input.modelId,
       permissionMode: input.permissionMode,
+      workspaceKind: input.workspaceKind ?? "projectless",
       workspacePath: input.workspacePath ?? null
     })
     setAdjacentThreadIds(getAdjacentThreadIds(threads, null, true))
@@ -224,6 +231,7 @@ export function useLauncherAiThreadNavigation(
       input: Partial<{
         modelId: string | null
         permissionMode: PermissionModeName
+        workspaceKind: ThreadWorkspaceKind
         workspacePath: string | null
       }>
     ): void => {
@@ -236,6 +244,7 @@ export function useLauncherAiThreadNavigation(
                 ? input.modelId
                 : null,
             permissionMode: input.permissionMode ?? DEFAULT_PERMISSION_MODE,
+            workspaceKind: input.workspaceKind ?? "projectless",
             workspacePath: input.workspacePath ?? null
           }
         }

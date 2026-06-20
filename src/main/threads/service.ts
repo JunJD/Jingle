@@ -193,6 +193,16 @@ interface LoadedThreadRuntimeFacts {
   todos: Todo[]
 }
 
+type ResolvedCreateThreadWorkspace =
+  | {
+      workspaceKind: "project"
+      workspacePath: string
+    }
+  | {
+      workspaceKind: "projectless"
+      workspacePath: string
+    }
+
 export class ThreadsService {
   constructor(
     private readonly artifactsService: ArtifactsService,
@@ -277,12 +287,12 @@ export class ThreadsService {
     targetThreadId: string
   ): Promise<void> {
     const sourceBinding = await this.threadWorkspaceService.get(sourceThreadId)
-    if (
-      !sourceBinding ||
-      sourceBinding.workspaceKind === "projectless" ||
-      !sourceBinding.workspacePath
-    ) {
-      await this.threadWorkspaceService.markProjectless(targetThreadId)
+    if (!sourceBinding?.workspacePath) {
+      throw new Error("Thread workspace path is missing.")
+    }
+
+    if (sourceBinding.workspaceKind === "projectless") {
+      await this.threadWorkspaceService.markProjectless(targetThreadId, sourceBinding.workspacePath)
       return
     }
 
@@ -301,25 +311,45 @@ export class ThreadsService {
 
   private async resolveCreateThreadWorkspacePath(
     input?: CreateThreadInput
-  ): Promise<string | null> {
-    if (!input || !("workspacePath" in input) || input.workspacePath === undefined) {
-      return this.workspaceService.resolveGlobalWorkspacePath()
+  ): Promise<string> {
+    const workspacePath =
+      input && "workspacePath" in input && input.workspacePath !== undefined
+        ? input.workspacePath
+        : await this.workspaceService.resolveGlobalWorkspacePath()
+
+    if (workspacePath === null) {
+      throw new Error("No workspace root folder linked.")
     }
 
-    if (input.workspacePath === null) {
-      return null
-    }
-
-    if (input.workspacePath.trim().length === 0) {
+    if (workspacePath.trim().length === 0) {
       throw new Error("Workspace path cannot be empty.")
     }
 
-    return input.workspacePath
+    return workspacePath
+  }
+
+  private async resolveCreateThreadWorkspace(
+    input?: CreateThreadInput
+  ): Promise<ResolvedCreateThreadWorkspace> {
+    const workspaceKind = input?.workspaceKind ?? "projectless"
+    const workspacePath = await this.resolveCreateThreadWorkspacePath(input)
+
+    if (workspaceKind === "project") {
+      return {
+        workspaceKind,
+        workspacePath
+      }
+    }
+
+    return {
+      workspaceKind,
+      workspacePath
+    }
   }
 
   async create(input?: CreateThreadInput): Promise<Thread> {
     const threadId = uuid()
-    const workspacePath = await this.resolveCreateThreadWorkspacePath(input)
+    const { workspaceKind, workspacePath } = await this.resolveCreateThreadWorkspace(input)
     const nextMetadata: Record<string, unknown> = {
       model: this.modelProviderService.getDefaultModel("llm"),
       ...input?.metadata
@@ -336,10 +366,10 @@ export class ThreadsService {
       metadata: threadMetadata,
       title
     })
-    if (workspacePath) {
+    if (workspaceKind === "project") {
       await this.threadWorkspaceService.bindProject(threadId, workspacePath)
     } else {
-      await this.threadWorkspaceService.markProjectless(threadId)
+      await this.threadWorkspaceService.markProjectless(threadId, workspacePath)
     }
 
     return mapThreadRowToThread(thread, title)

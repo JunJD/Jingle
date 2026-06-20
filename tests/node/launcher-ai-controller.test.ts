@@ -5,9 +5,11 @@ import type { AgentControl } from "../../src/renderer/src/lib/use-agent"
 import type { AiCoreThreadCreateInput } from "../../src/renderer/src/ai-core/AiCoreHost"
 import type { ComposerMessageInput } from "../../src/shared/message-content"
 import type { PermissionModeName } from "../../src/shared/permission-mode"
+import type { ThreadWorkspaceKind } from "../../src/shared/thread-workspace"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "../../src/shared/launcher-ai"
 
 function createControllerHarness(input?: {
+  draftWorkspaceKind?: ThreadWorkspaceKind
   draftWorkspacePath?: string | null
   invokeGate?: Promise<void>
   invokeResult?: boolean
@@ -29,6 +31,7 @@ function createControllerHarness(input?: {
   startedDrafts: Array<{
     modelId: string | null
     permissionMode: PermissionModeName
+    workspaceKind?: ThreadWorkspaceKind
     workspacePath?: string | null
   }>
   threadUpdates: Array<{
@@ -50,6 +53,7 @@ function createControllerHarness(input?: {
   const startedDrafts: Array<{
     modelId: string | null
     permissionMode: PermissionModeName
+    workspaceKind?: ThreadWorkspaceKind
     workspacePath?: string | null
   }> = []
   const threadUpdates: Array<{
@@ -105,6 +109,7 @@ function createControllerHarness(input?: {
             kind: "draft",
             modelId: "draft-model",
             permissionMode: "explore",
+            workspaceKind: input?.draftWorkspaceKind ?? "projectless",
             workspacePath: input?.draftWorkspacePath ?? null
           },
       goToNextThread: async () => null,
@@ -172,7 +177,8 @@ test("launcher AI controller creates a draft thread before invoking agent comman
       permissionMode: "explore",
       source: AI_THREAD_SOURCE,
       title: "AI Thread",
-      visibility: AI_THREAD_VISIBILITY
+      visibility: AI_THREAD_VISIBILITY,
+      workspaceKind: "projectless"
     }
   ])
   assert.deepEqual(harness.invoked, [{ input: messageInput, threadId: "created-thread" }])
@@ -183,6 +189,7 @@ test("launcher AI controller starts a workspace draft without creating an empty 
   const harness = createControllerHarness({ threadId: "existing-thread" })
 
   const didStart = await harness.controller.startFreshDraft({
+    workspaceKind: "project",
     workspacePath: "/tmp/openwork"
   })
 
@@ -192,6 +199,7 @@ test("launcher AI controller starts a workspace draft without creating an empty 
     {
       modelId: "current-model",
       permissionMode: "ask-to-edit",
+      workspaceKind: "project",
       workspacePath: "/tmp/openwork"
     }
   ])
@@ -199,7 +207,10 @@ test("launcher AI controller starts a workspace draft without creating an empty 
 })
 
 test("launcher AI controller creates workspace draft thread only when submitted", async () => {
-  const harness = createControllerHarness({ draftWorkspacePath: "/tmp/openwork" })
+  const harness = createControllerHarness({
+    draftWorkspaceKind: "project",
+    draftWorkspacePath: "/tmp/openwork"
+  })
   const messageInput: ComposerMessageInput = {
     refs: [],
     text: "在这个项目里开始"
@@ -215,6 +226,7 @@ test("launcher AI controller creates workspace draft thread only when submitted"
       source: AI_THREAD_SOURCE,
       title: "AI Thread",
       visibility: AI_THREAD_VISIBILITY,
+      workspaceKind: "project",
       workspacePath: "/tmp/openwork"
     }
   ])

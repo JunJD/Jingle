@@ -9,6 +9,7 @@ import {
 } from "react"
 import type { LauncherShellConfig } from "@shared/launcher"
 import type { PermissionModeName } from "@shared/permission-mode"
+import type { ThreadWorkspaceKind } from "@shared/thread-workspace"
 import type { LauncherClipboardState } from "@launcher-shell/LauncherClipboardContext"
 import type { LauncherInputStatus } from "@launcher-shell/launcher-input-status"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
@@ -41,6 +42,7 @@ export interface AiCoreThreadCreateInput {
   source: string
   title: string
   visibility: string
+  workspaceKind?: ThreadWorkspaceKind
   workspacePath?: string
 }
 

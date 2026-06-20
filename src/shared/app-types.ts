@@ -3,6 +3,7 @@ import type { AppLocale, LocalizedText } from "./i18n"
 import type { HITLRequest } from "./hitl"
 import type { ArtifactRecord } from "./artifacts"
 import type { ExtensionToolCallPresentation, ToolCallDisplay } from "./tool-presentation"
+import type { ThreadWorkspaceKind } from "./thread-workspace"
 export type { LocalizedText } from "./i18n"
 export type { HITLDecision, HITLRequest } from "./hitl"
 
@@ -20,7 +21,8 @@ export interface Thread {
 
 export interface CreateThreadInput {
   metadata?: Record<string, unknown>
-  workspacePath?: string | null
+  workspaceKind?: ThreadWorkspaceKind
+  workspacePath?: string
 }
 
 export type RunStatus = "pending" | "running" | "error" | "success" | "interrupted"

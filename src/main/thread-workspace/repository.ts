@@ -41,13 +41,16 @@ export class ThreadWorkspaceRepository {
     return binding ? mapThreadWorkspaceBindingRecord(binding) : null
   }
 
-  async markProjectless(threadId: string): Promise<ThreadWorkspaceBindingRecord> {
+  async markProjectless(
+    threadId: string,
+    workspacePath?: string | null
+  ): Promise<ThreadWorkspaceBindingRecord> {
     const binding = await upsertThreadWorkspaceBinding({
       projectId: null,
       threadId,
       workspaceKey: null,
       workspaceKind: "projectless",
-      workspacePath: null
+      workspacePath: workspacePath ?? null
     })
 
     return mapThreadWorkspaceBindingRecord(binding)

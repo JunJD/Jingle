@@ -1,6 +1,7 @@
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "@shared/launcher-ai"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import type { PermissionModeName } from "@shared/permission-mode"
+import type { ThreadWorkspaceKind } from "@shared/thread-workspace"
 import type {
   AgentControl,
   EditLastUserMessageAndInvokeInput,
@@ -48,12 +49,14 @@ export interface LauncherAiControllerInput {
     input: Partial<{
       modelId: string | null
       permissionMode: PermissionModeName
+      workspaceKind: ThreadWorkspaceKind
       workspacePath: string | null
     }>
   ) => void
   startFreshDraftTarget: (input: {
     modelId: string | null
     permissionMode: PermissionModeName
+    workspaceKind?: ThreadWorkspaceKind
     workspacePath?: string | null
   }) => Promise<void>
 }
@@ -69,14 +72,19 @@ export interface LauncherAiController {
   selectModel: (modelId: string) => Promise<boolean>
   selectPermissionMode: (permissionMode: PermissionModeName) => Promise<boolean>
   setQuery: (value: string) => void
-  startFreshDraft: (input?: { workspacePath?: string | null }) => Promise<boolean>
+  startFreshDraft: (input?: {
+    workspaceKind?: ThreadWorkspaceKind
+    workspacePath?: string | null
+  }) => Promise<boolean>
 }
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function resolveDraftWorkspacePath(draftTarget: LauncherAiDraftTarget | null): string | undefined {
+function resolveDraftWorkspacePath(
+  draftTarget: LauncherAiDraftTarget | null
+): string | undefined {
   if (!draftTarget || draftTarget.workspacePath === null) {
     return undefined
   }
@@ -101,7 +109,8 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
       permissionMode: input.draftTarget?.permissionMode ?? input.defaultDraftPermissionMode,
       source: AI_THREAD_SOURCE,
       title: input.title,
-      visibility: AI_THREAD_VISIBILITY
+      visibility: AI_THREAD_VISIBILITY,
+      workspaceKind: input.draftTarget?.workspaceKind ?? "projectless"
     }
     const workspacePath = resolveDraftWorkspacePath(input.draftTarget)
     if (workspacePath !== undefined) {
@@ -264,6 +273,7 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
         await input.startFreshDraftTarget({
           modelId: input.currentModelId,
           permissionMode: input.currentPermissionMode,
+          workspaceKind: draftInput?.workspaceKind,
           workspacePath: draftInput?.workspacePath
         })
         input.setLocalComposerText("")

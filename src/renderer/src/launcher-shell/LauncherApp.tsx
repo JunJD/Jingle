@@ -4,6 +4,7 @@ import {
   DEFAULT_PERMISSION_MODE,
   THREAD_PERMISSION_MODE_METADATA_KEY
 } from "@shared/permission-mode"
+import type { ThreadWorkspaceKind } from "@shared/thread-workspace"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
 import type { PermissionModeName } from "@shared/permission-mode"
 import { LauncherIntelligenceGlow } from "@launcher-components/LauncherIntelligenceGlow"
@@ -33,6 +34,7 @@ interface LauncherThreadCreateInput {
   source: string
   title: string
   visibility: string
+  workspaceKind?: ThreadWorkspaceKind
   workspacePath?: string
 }
 
@@ -152,14 +154,11 @@ export default function LauncherApp(): React.JSX.Element {
     async (input: LauncherThreadCreateInput) => {
       const [resolvedModelId, workspacePathResult] = await Promise.all([
         input.modelId ? Promise.resolve(input.modelId) : window.api.models.getDefault("llm"),
-        input.workspacePath
-          ? Promise.resolve(input.workspacePath)
-          : window.api.workspace.createDefault({ title: input.title })
+        input.workspacePath === undefined
+          ? window.api.workspace.createDefault({ title: input.title })
+          : Promise.resolve(input.workspacePath)
       ])
 
-      if (!workspacePathResult) {
-        throw new Error(inputNeedsWorkspaceMessage)
-      }
       const workspacePath = workspacePathResult
 
       const thread = await window.api.threads.create({
@@ -170,6 +169,7 @@ export default function LauncherApp(): React.JSX.Element {
           title: input.title,
           visibility: input.visibility
         },
+        workspaceKind: input.workspaceKind ?? "projectless",
         workspacePath
       })
 
@@ -181,7 +181,7 @@ export default function LauncherApp(): React.JSX.Element {
         workspacePath
       }
     },
-    [inputNeedsWorkspaceMessage, loadThreadData]
+    [loadThreadData]
   )
   const activatePluginThread = useCallback(
     async (threadId: string): Promise<void> => {
