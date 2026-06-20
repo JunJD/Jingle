@@ -2218,12 +2218,8 @@ body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-h
   will-change: background-position;
 }
 
-:is(
-    .ow-agent-activity-row:hover,
-    button:hover .ow-agent-activity-row,
-    .ow-agent-tool-group-trigger:hover .ow-agent-activity-row,
-    .ow-reasoning-trigger:hover .ow-agent-activity-row
-  )
+.ow-agent-activity-row
+  [data-slot="ow-agent-activity-body"]:hover
   :is([data-slot="ow-agent-activity-label"], [data-slot="ow-agent-activity-detail"]) {
   animation: none;
   background-image: none;
@@ -3497,7 +3493,6 @@ body[data-window="pinned-ai-session"] .ow-markdown,
 
 .ow-reasoning-trigger:hover {
   background: transparent;
-  color: var(--foreground);
 }
 
 .ow-reasoning-chevron {

@@ -117,7 +117,7 @@ export function AgentActivityRow(props: AgentActivityRowProps): React.JSX.Elemen
         {icon}
       </span>
       <span
-        className="inline-flex min-w-0 max-w-full items-baseline gap-x-[var(--ow-gap-sm)] overflow-hidden whitespace-nowrap"
+        className="inline-flex w-fit min-w-0 max-w-full justify-self-start items-baseline gap-x-[var(--ow-gap-sm)] overflow-hidden whitespace-nowrap"
         data-slot="ow-agent-activity-body"
       >
         <span
@@ -216,7 +216,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
         <CollapsibleTrigger asChild disabled={!hasDetail}>
           <Button
             className={cn(
-              "h-auto w-full justify-start gap-[var(--ow-gap-xs)] rounded-none bg-transparent px-0 py-[var(--ow-space-0-5)] text-left font-normal text-[var(--ow-agent-timeline-muted)] hover:bg-transparent hover:text-foreground",
+              "h-auto min-w-0 max-w-full shrink justify-start gap-[var(--ow-gap-xs)] rounded-none bg-transparent px-0 py-[var(--ow-space-0-5)] text-left font-normal text-[var(--ow-agent-timeline-muted)] hover:bg-transparent",
               !hasDetail && "cursor-default opacity-100 hover:bg-transparent disabled:opacity-100"
             )}
             data-tool-trigger
@@ -225,7 +225,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
           >
             <AgentActivityRow
               active={state === "running"}
-              className="w-full"
+              className="w-fit max-w-full"
               detail={subtitle}
               detailClassName="ow-agent-tool-detail"
               icon={
@@ -310,7 +310,7 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
   return (
     <CollapsibleTrigger
       className={cn(
-        "ow-agent-tool-group-trigger group w-full cursor-pointer items-center text-left text-[var(--ow-agent-timeline-muted)] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "ow-agent-tool-group-trigger group inline-flex min-w-0 max-w-full cursor-pointer items-center text-left text-[var(--ow-agent-timeline-muted)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className
       )}
       aria-live={active ? "polite" : undefined}
@@ -319,9 +319,9 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
     >
       <AgentActivityRow
         active={active}
-        className="w-full"
+        className="w-fit max-w-full"
         detail={detail}
-        detailClassName="ow-agent-tool-group-detail flex-1"
+        detailClassName="ow-agent-tool-group-detail"
         icon={leadingIcon}
         label={children}
         labelClassName="ow-agent-tool-group-title block"
