@@ -25,6 +25,8 @@ model Thread {
   checkpointWrites       CheckpointWrite[]
   hitlRequests           HitlRequest[]
   messages               Message[]
+  messageEvents          MessageEvent[]
+  messageStateVersions   MessageStateVersion[]
   agentEvents            AgentEvent[]
   agentTraces            AgentTrace[]
   agentTraceBlobs        AgentTraceBlob[]
@@ -81,6 +83,8 @@ model Run {
   assistant              Assistant?              @relation(fields: [assistantId], references: [assistantId], onDelete: SetNull)
   artifacts              Artifact[]
   hitlRequests           HitlRequest[]
+  messages               Message[]
+  messageEvents          MessageEvent[]
   agentEvents            AgentEvent[]
   agentTraces            AgentTrace[]
   agentMemorySuggestions AgentMemorySuggestion[]
@@ -296,23 +300,64 @@ model CheckpointBlob {
 }
 
 model Message {
-  threadId   String  @map("thread_id")
-  messageId  String  @map("message_id")
+  threadId   String @map("thread_id")
+  messageId  String @map("message_id")
+  seq        Int
   role       String
   kind       String
   content    String
+  rawMessage String @map("raw_message")
+  rawHash    String @map("raw_hash")
   toolCalls  String? @map("tool_calls")
   toolCallId String? @map("tool_call_id")
   name       String?
   metadata   String?
-  createdAt  BigInt  @map("created_at")
-  updatedAt  BigInt  @map("updated_at")
-  searchText String  @map("search_text")
-  thread     Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  runId      String? @map("run_id")
+  createdAt  BigInt @map("created_at")
+  updatedAt  BigInt @map("updated_at")
+  searchText String @map("search_text")
+  thread     Thread @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  run        Run?   @relation(fields: [runId], references: [runId], onDelete: SetNull)
 
   @@id([threadId, messageId])
+  @@index([threadId, seq], map: "idx_messages_thread_seq")
   @@index([threadId, createdAt], map: "idx_messages_thread_created_at")
+  @@index([runId], map: "idx_messages_run_id")
   @@map("messages")
+}
+
+model MessageEvent {
+  eventId      String  @id @map("event_id")
+  threadId     String  @map("thread_id")
+  checkpointNs String  @default("") @map("checkpoint_ns")
+  seq          Int
+  type         String
+  messageId    String? @map("message_id")
+  runId        String? @map("run_id")
+  checkpointId String? @map("checkpoint_id")
+  payload      String
+  createdAt    BigInt  @map("created_at")
+  thread       Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  run          Run?    @relation(fields: [runId], references: [runId], onDelete: SetNull)
+
+  @@unique([threadId, checkpointNs, seq], map: "uidx_message_events_thread_ns_seq")
+  @@index([threadId, checkpointNs, checkpointId], map: "idx_message_events_checkpoint")
+  @@index([threadId, runId, seq], map: "idx_message_events_thread_run_seq")
+  @@map("message_events")
+}
+
+model MessageStateVersion {
+  threadId     String  @map("thread_id")
+  checkpointNs String  @default("") @map("checkpoint_ns")
+  version      String
+  throughSeq   Int     @map("through_seq")
+  stateHash    String? @map("state_hash")
+  createdAt    BigInt  @map("created_at")
+  thread       Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@id([threadId, checkpointNs, version])
+  @@index([threadId, checkpointNs, throughSeq], map: "idx_message_state_versions_thread_ns_seq")
+  @@map("message_state_versions")
 }
 
 model AgentEvent {
