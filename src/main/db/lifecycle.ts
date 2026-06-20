@@ -10,6 +10,8 @@ const REQUIRED_TABLES = [
   "thread_workspace_bindings",
   "runs",
   "messages",
+  "message_events",
+  "message_state_versions",
   "messages_fts",
   "messages_fts_trigram",
   "artifacts",
@@ -32,6 +34,7 @@ const REQUIRED_TABLES = [
 
 const REQUIRED_TABLE_COLUMNS = {
   threads: ["archived_at"],
+  messages: ["seq", "raw_message", "raw_hash", "run_id"],
   hitl_requests: ["review_kind", "review_payload"],
   checkpoints: ["run_id"]
 } as const

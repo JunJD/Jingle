@@ -12,7 +12,8 @@ let openworkHome = ""
 async function loadDbModules() {
   const db = await import("../../src/main/db")
   const { getPrismaClient } = await import("../../src/main/db/client")
-  return { ...db, getPrismaClient }
+  const messageSearch = await import("../../src/main/db/message-search")
+  return { ...db, ...messageSearch, getPrismaClient }
 }
 
 test.before(async () => {

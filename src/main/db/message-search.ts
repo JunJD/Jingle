@@ -100,6 +100,14 @@ function buildProjectedMessages(messages: IndexedCheckpointMessage[]): IndexedPr
   }))
 }
 
+function buildLegacyRawMessage(message: IndexedProjectedMessage): string {
+  return JSON.stringify({
+    content: parseIndexedMessageContent(message.content),
+    role: message.role,
+    source: "legacy-message-search-projection"
+  })
+}
+
 export async function syncMessageProjectionFromSnapshot(
   threadId: string,
   messages: IndexedCheckpointMessage[]
@@ -126,7 +134,7 @@ export async function syncMessageProjectionFromSnapshot(
     })
   }
 
-  for (const message of projectedMessages) {
+  for (const [index, message] of projectedMessages.entries()) {
     await prisma.message.upsert({
       where: {
         threadId_messageId: {
@@ -141,8 +149,12 @@ export async function syncMessageProjectionFromSnapshot(
         messageId: message.messageId,
         metadata: message.metadata,
         name: message.name,
+        rawHash: message.messageId,
+        rawMessage: buildLegacyRawMessage(message),
         role: message.role,
+        runId: null,
         searchText: message.searchText,
+        seq: index + 1,
         threadId,
         toolCallId: message.toolCallId,
         toolCalls: message.toolCalls,
@@ -153,8 +165,11 @@ export async function syncMessageProjectionFromSnapshot(
         kind: message.kind,
         metadata: message.metadata,
         name: message.name,
+        rawHash: message.messageId,
+        rawMessage: buildLegacyRawMessage(message),
         role: message.role,
         searchText: message.searchText,
+        seq: index + 1,
         toolCallId: message.toolCallId,
         toolCalls: message.toolCalls,
         updatedAt: now
@@ -176,7 +191,10 @@ export async function rebuildMessageSearchIndexFromMessages(threadId?: string): 
 
   if (threadId) {
     await prisma.$executeRawUnsafe(`DELETE FROM "messages_fts" WHERE thread_id = ?`, threadId)
-    await prisma.$executeRawUnsafe(`DELETE FROM "messages_fts_trigram" WHERE thread_id = ?`, threadId)
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM "messages_fts_trigram" WHERE thread_id = ?`,
+      threadId
+    )
     await prisma.$executeRawUnsafe(
       `INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text")
        SELECT "thread_id", "message_id", "role", "search_text"

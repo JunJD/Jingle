@@ -4,56 +4,22 @@ import type {
   CheckpointTuple,
   SerializerProtocol
 } from "@langchain/langgraph-checkpoint"
-import {
-  extractHitlRequestFromCheckpoint,
-  extractMessagesFromCheckpoint
-} from "../agent/runtime-state"
+import { extractHitlRequestFromCheckpoint } from "../agent/runtime-state"
 import { appendAgentEventSafely } from "../db/agent-events"
 import { upsertHitlRequest } from "../db/hitl"
-import { syncMessageSearchIndexFromSnapshot } from "../db/message-search"
 import { PrismaCheckpointSaver } from "./prisma-saver"
-
-type MessageSearchProjectionSync = (
-  threadId: string,
-  messages: ReturnType<typeof extractMessagesFromCheckpoint>
-) => Promise<void>
 
 type RuntimeCheckpointSaverOptions = {
   serde?: SerializerProtocol
-  syncMessageSearchProjection?: MessageSearchProjectionSync
-}
-
-let messageSearchProjectionQueue: Promise<void> = Promise.resolve()
-
-export function enqueueMessageSearchProjection(
-  threadId: string,
-  messages: ReturnType<typeof extractMessagesFromCheckpoint>,
-  syncMessageSearchProjection: MessageSearchProjectionSync = syncMessageSearchIndexFromSnapshot
-): void {
-  messageSearchProjectionQueue = messageSearchProjectionQueue
-    .catch(() => undefined)
-    .then(async () => {
-      await syncMessageSearchProjection(threadId, messages)
-    })
-    .catch((error) => {
-      console.warn(
-        `[RuntimeCheckpointSaver] Failed to sync message search projection for thread ${threadId}:`,
-        error
-      )
-    })
 }
 
 export async function flushMessageSearchProjection(): Promise<void> {
-  await messageSearchProjectionQueue
+  return
 }
 
 export class RuntimeCheckpointSaver extends PrismaCheckpointSaver {
-  private readonly syncMessageSearchProjection: MessageSearchProjectionSync
-
   constructor(options: RuntimeCheckpointSaverOptions = {}) {
     super(options.serde)
-    this.syncMessageSearchProjection =
-      options.syncMessageSearchProjection ?? syncMessageSearchIndexFromSnapshot
   }
 
   protected override async afterPut(input: {
@@ -84,7 +50,6 @@ export class RuntimeCheckpointSaver extends PrismaCheckpointSaver {
       checkpoint: input.checkpoint,
       metadata: input.metadata
     } as CheckpointTuple
-
     const hitlRequest = extractHitlRequestFromCheckpoint(input.threadId, tuple, {
       runId: input.runId
     })
@@ -102,11 +67,5 @@ export class RuntimeCheckpointSaver extends PrismaCheckpointSaver {
         status: "pending"
       })
     }
-
-    enqueueMessageSearchProjection(
-      input.threadId,
-      extractMessagesFromCheckpoint(input.threadId, tuple),
-      this.syncMessageSearchProjection
-    )
   }
 }

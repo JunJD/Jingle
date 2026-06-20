@@ -14,6 +14,11 @@ import {
 } from "@langchain/langgraph-checkpoint"
 import type { Prisma } from "@prisma/client"
 import { getPrismaClient } from "../db/client"
+import {
+  loadMessagesForStateVersion,
+  persistMessageStateVersion,
+  prepareMessageStateItems
+} from "../db/message-state"
 import { decodeSerializedPayload, encodeSerializedPayload } from "./storage-codec"
 
 type CheckpointRow = {
@@ -47,9 +52,10 @@ type PendingMessagesRef = {
 }
 
 const PREGEL_TASKS_CHANNEL = "__pregel_tasks"
+const MESSAGES_CHANNEL = "messages"
 const OPENWORK_PENDING_MESSAGES_REF: PendingMessagesRef = {
   __openworkRef: "checkpoint-channel",
-  channel: "messages"
+  channel: MESSAGES_CHANNEL
 }
 
 function readStringField(value: unknown, key: string): string | null {
@@ -384,6 +390,25 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
       assertStringCheckpointVersions(preparedCheckpoint)
       const checkpointManifest = copyCheckpointManifest(preparedCheckpoint)
 
+      const messages = preparedCheckpoint.channel_values[MESSAGES_CHANNEL]
+      const messagesVersion = preparedCheckpoint.channel_versions[MESSAGES_CHANNEL]
+      if (messages !== undefined && !Array.isArray(messages)) {
+        throw new Error(
+          `[PrismaCheckpointSaver] Checkpoint "${checkpoint.id}" has a non-array messages channel value.`
+        )
+      }
+      if (messages !== undefined && !messagesVersion) {
+        throw new Error(
+          `[PrismaCheckpointSaver] Checkpoint "${checkpoint.id}" has messages channel value without a messages channel version.`
+        )
+      }
+      const preparedMessages = Array.isArray(messages)
+        ? await prepareMessageStateItems({
+            messages,
+            serde: this.serde
+          })
+        : undefined
+
       const [[type, serializedCheckpoint], [metadataType, serializedMetadata], serializedBlobs] =
         await Promise.all([
           this.serde.dumpsTyped(checkpointManifest),
@@ -406,27 +431,41 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
       const valueBlobs = serializedBlobs.filter((blob) => blob.type !== "empty")
       const emptyBlobs = serializedBlobs.filter((blob) => blob.type === "empty")
 
-      const operations: Prisma.PrismaPromise<unknown>[] = valueBlobs.map((blob) =>
-        prisma.checkpointBlob.upsert({
-          where: {
-            threadId_checkpointNs_channel_version: {
-              channel: blob.channel,
+      await prisma.$transaction(async (tx) => {
+        if (messagesVersion) {
+          await persistMessageStateVersion(
+            {
+              checkpointId: checkpoint.id,
               checkpointNs,
+              messages: preparedMessages,
+              runId,
               threadId,
-              version: blob.version
-            }
-          },
-          create: blob,
-          update: {
-            type: blob.type,
-            value: blob.value
-          }
-        })
-      )
+              version: messagesVersion
+            },
+            tx
+          )
+        }
 
-      operations.push(
-        ...emptyBlobs.map((blob) =>
-          prisma.checkpointBlob.upsert({
+        for (const blob of valueBlobs) {
+          await tx.checkpointBlob.upsert({
+            where: {
+              threadId_checkpointNs_channel_version: {
+                channel: blob.channel,
+                checkpointNs,
+                threadId,
+                version: blob.version
+              }
+            },
+            create: blob,
+            update: {
+              type: blob.type,
+              value: blob.value
+            }
+          })
+        }
+
+        for (const blob of emptyBlobs) {
+          await tx.checkpointBlob.upsert({
             where: {
               threadId_checkpointNs_channel_version: {
                 channel: blob.channel,
@@ -438,11 +477,9 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
             create: blob,
             update: {}
           })
-        )
-      )
+        }
 
-      operations.push(
-        prisma.checkpoint.upsert({
+        await tx.checkpoint.upsert({
           where: {
             threadId_checkpointNs_checkpointId: {
               threadId,
@@ -468,9 +505,7 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
             metadata: storedMetadata
           }
         })
-      )
-
-      await prisma.$transaction(operations)
+      })
       await this.afterPut({
         checkpoint: preparedCheckpoint,
         checkpointNs,
@@ -566,17 +601,31 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
     return this.enqueueWrite(async () => {
       const prisma = getPrismaClient()
 
-      await prisma.$transaction([
-        prisma.checkpointBlob.deleteMany({
-          where: { threadId }
-        }),
-        prisma.checkpointWrite.deleteMany({
-          where: { threadId }
-        }),
-        prisma.checkpoint.deleteMany({
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(`DELETE FROM "messages_fts" WHERE thread_id = ?`, threadId)
+        await tx.$executeRawUnsafe(
+          `DELETE FROM "messages_fts_trigram" WHERE thread_id = ?`,
+          threadId
+        )
+        await tx.message.deleteMany({
           where: { threadId }
         })
-      ])
+        await tx.messageEvent.deleteMany({
+          where: { threadId }
+        })
+        await tx.messageStateVersion.deleteMany({
+          where: { threadId }
+        })
+        await tx.checkpointBlob.deleteMany({
+          where: { threadId }
+        })
+        await tx.checkpointWrite.deleteMany({
+          where: { threadId }
+        })
+        await tx.checkpoint.deleteMany({
+          where: { threadId }
+        })
+      })
     })
   }
 
@@ -601,6 +650,10 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
   ): Promise<CheckpointBlobRow[]> {
     const blobs: CheckpointBlobRow[] = []
     for (const [channel, version] of Object.entries(versions)) {
+      if (channel === MESSAGES_CHANNEL) {
+        continue
+      }
+
       if (channel in values) {
         const [type, serializedValue] = await this.serde.dumpsTyped(values[channel])
         const [storedType, storedValue] = encodeSerializedPayload(type, serializedValue)
@@ -663,20 +716,34 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver<string> {
     }
 
     const prisma = getPrismaClient()
-    const rows = await prisma.checkpointBlob.findMany({
-      where: {
-        OR: entries.map(([channel, version]) => ({
-          channel,
-          version
-        })),
-        checkpointNs,
-        threadId
-      }
-    })
+    const blobEntries = entries.filter(([channel]) => channel !== MESSAGES_CHANNEL)
+    const rows =
+      blobEntries.length === 0
+        ? []
+        : await prisma.checkpointBlob.findMany({
+            where: {
+              OR: blobEntries.map(([channel, version]) => ({
+                channel,
+                version
+              })),
+              checkpointNs,
+              threadId
+            }
+          })
     const rowByKey = new Map(rows.map((row) => [`${row.channel}\0${row.version}`, row]))
     const values: Record<string, unknown> = {}
 
     for (const [channel, version] of entries) {
+      if (channel === MESSAGES_CHANNEL) {
+        values[channel] = await loadMessagesForStateVersion({
+          checkpointNs,
+          serde: this.serde,
+          threadId,
+          version
+        })
+        continue
+      }
+
       const row = rowByKey.get(`${channel}\0${version}`)
       if (!row) {
         throw new Error(

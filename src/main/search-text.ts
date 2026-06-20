@@ -1,5 +1,6 @@
 const CJK_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u
 const WORD_PATTERN = /[\p{L}\p{N}_]+/gu
+const MAX_SEGMENTED_SEARCH_TEXT_LENGTH = 20_000
 const segmenter = new Intl.Segmenter(["zh", "ja", "ko", "en"], { granularity: "word" })
 
 export function hasCjkText(value: string): boolean {
@@ -7,6 +8,10 @@ export function hasCjkText(value: string): boolean {
 }
 
 export function buildSegmentedSearchText(value: string): string | null {
+  if (value.length > MAX_SEGMENTED_SEARCH_TEXT_LENGTH) {
+    return null
+  }
+
   const segments = Array.from(segmenter.segment(value))
     .filter((segment) => segment.isWordLike)
     .map((segment) => segment.segment.trim())

@@ -47,11 +47,15 @@ export {
   upsertHitlRequest
 } from "./hitl"
 export type { HitlRequestRow, UpsertHitlRequestInput } from "./hitl"
+export { rebuildMessageSearchIndexFromMessages } from "./message-search"
 export {
-  rebuildMessageSearchIndexFromMessages,
-  syncMessageProjectionFromSnapshot,
-  syncMessageSearchIndexFromSnapshot
-} from "./message-search"
+  checkpointMessageStateIncludesMessage,
+  listProjectedThreadMessages,
+  loadMessagesForStateVersion,
+  persistMessageStateVersion,
+  prepareMessageStateItems
+} from "./message-state"
+export type { MessageProjectionRow, PreparedMessageStateItem } from "./message-state"
 export {
   AgentEventRecorder,
   appendAgentEvent,
