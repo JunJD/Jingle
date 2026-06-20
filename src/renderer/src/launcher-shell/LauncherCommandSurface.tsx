@@ -27,6 +27,7 @@ interface LauncherThreadCreateInput {
   source: string
   title: string
   visibility: string
+  workspacePath?: string
 }
 
 interface LauncherThreadSubmitInput {

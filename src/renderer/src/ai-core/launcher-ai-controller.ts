@@ -48,11 +48,13 @@ export interface LauncherAiControllerInput {
     input: Partial<{
       modelId: string | null
       permissionMode: PermissionModeName
+      workspacePath: string | null
     }>
   ) => void
   startFreshDraftTarget: (input: {
     modelId: string | null
     permissionMode: PermissionModeName
+    workspacePath?: string | null
   }) => Promise<void>
 }
 
@@ -67,11 +69,23 @@ export interface LauncherAiController {
   selectModel: (modelId: string) => Promise<boolean>
   selectPermissionMode: (permissionMode: PermissionModeName) => Promise<boolean>
   setQuery: (value: string) => void
-  startFreshDraft: () => Promise<boolean>
+  startFreshDraft: (input?: { workspacePath?: string | null }) => Promise<boolean>
 }
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function resolveDraftWorkspacePath(draftTarget: LauncherAiDraftTarget | null): string | undefined {
+  if (!draftTarget || draftTarget.workspacePath === null) {
+    return undefined
+  }
+
+  if (draftTarget.workspacePath.trim().length === 0) {
+    throw new Error("Workspace path cannot be empty.")
+  }
+
+  return draftTarget.workspacePath
 }
 
 export function createLauncherAiController(input: LauncherAiControllerInput): LauncherAiController {
@@ -82,13 +96,19 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
       return input.threadId
     }
 
-    const createdThread = await input.createThread({
+    const createInput: AiCoreThreadCreateInput = {
       modelId: input.draftTarget?.modelId ?? undefined,
       permissionMode: input.draftTarget?.permissionMode ?? input.defaultDraftPermissionMode,
       source: AI_THREAD_SOURCE,
       title: input.title,
       visibility: AI_THREAD_VISIBILITY
-    })
+    }
+    const workspacePath = resolveDraftWorkspacePath(input.draftTarget)
+    if (workspacePath !== undefined) {
+      createInput.workspacePath = workspacePath
+    }
+
+    const createdThread = await input.createThread(createInput)
 
     return createdThread.threadId
   }
@@ -238,12 +258,13 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
       input.setNavigationError(null)
       input.setLocalComposerText(value)
     },
-    async startFreshDraft() {
+    async startFreshDraft(draftInput) {
       try {
         input.setNavigationError(null)
         await input.startFreshDraftTarget({
           modelId: input.currentModelId,
-          permissionMode: input.currentPermissionMode
+          permissionMode: input.currentPermissionMode,
+          workspacePath: draftInput?.workspacePath
         })
         input.setLocalComposerText("")
         return true

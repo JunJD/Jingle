@@ -19,6 +19,7 @@ export type LauncherAiActiveTarget =
       kind: "draft"
       modelId: string | null
       permissionMode: PermissionModeName
+      workspacePath: string | null
     }
   | {
       kind: "thread"
@@ -37,11 +38,13 @@ export interface LauncherAiThreadNavigation {
   startFreshDraft: (input: {
     modelId: string | null
     permissionMode: PermissionModeName
+    workspacePath?: string | null
   }) => Promise<void>
   target: LauncherAiActiveTarget | null
   updateFreshDraft: (input: Partial<{
     modelId: string | null
     permissionMode: PermissionModeName
+    workspacePath: string | null
   }>) => void
   goToNextThread: () => Promise<string | null>
   goToPreviousThread: () => Promise<string | null>
@@ -88,7 +91,8 @@ export function useLauncherAiThreadNavigation(
       ? {
           kind: "draft",
           modelId: null,
-          permissionMode: DEFAULT_PERMISSION_MODE
+          permissionMode: DEFAULT_PERMISSION_MODE,
+          workspacePath: null
         }
       : null
   )
@@ -202,6 +206,7 @@ export function useLauncherAiThreadNavigation(
   const startFreshDraft = useCallback(async (input: {
     modelId: string | null
     permissionMode: PermissionModeName
+    workspacePath?: string | null
   }): Promise<void> => {
     const threads = await listAiThreads()
     initialHydrationPendingRef.current = false
@@ -209,12 +214,19 @@ export function useLauncherAiThreadNavigation(
     setTarget({
       kind: "draft",
       modelId: input.modelId,
-      permissionMode: input.permissionMode
+      permissionMode: input.permissionMode,
+      workspacePath: input.workspacePath ?? null
     })
     setAdjacentThreadIds(getAdjacentThreadIds(threads, null, true))
   }, [listAiThreads])
   const updateFreshDraft = useCallback(
-    (input: Partial<{ modelId: string | null; permissionMode: PermissionModeName }>): void => {
+    (
+      input: Partial<{
+        modelId: string | null
+        permissionMode: PermissionModeName
+        workspacePath: string | null
+      }>
+    ): void => {
       setTarget((currentTarget) => {
         if (!currentTarget) {
           return {
@@ -223,7 +235,8 @@ export function useLauncherAiThreadNavigation(
               input.modelId !== undefined
                 ? input.modelId
                 : null,
-            permissionMode: input.permissionMode ?? DEFAULT_PERMISSION_MODE
+            permissionMode: input.permissionMode ?? DEFAULT_PERMISSION_MODE,
+            workspacePath: input.workspacePath ?? null
           }
         }
 

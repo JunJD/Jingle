@@ -8,6 +8,7 @@ import type { PermissionModeName } from "../../src/shared/permission-mode"
 import { AI_THREAD_SOURCE, AI_THREAD_VISIBILITY } from "../../src/shared/launcher-ai"
 
 function createControllerHarness(input?: {
+  draftWorkspacePath?: string | null
   invokeGate?: Promise<void>
   invokeResult?: boolean
   resumeResult?: boolean
@@ -21,9 +22,15 @@ function createControllerHarness(input?: {
   }>
   invoked: Array<{ input: ComposerMessageInput; threadId: string | undefined }>
   localComposerTexts: string[]
+  navigationErrors: Array<string | null>
   resumedDecisions: unknown[]
   selectedModels: string[]
   selectedPermissionModes: PermissionModeName[]
+  startedDrafts: Array<{
+    modelId: string | null
+    permissionMode: PermissionModeName
+    workspacePath?: string | null
+  }>
   threadUpdates: Array<{
     metadata: Record<string, unknown>
     threadId: string
@@ -36,9 +43,15 @@ function createControllerHarness(input?: {
   }> = []
   const invoked: Array<{ input: ComposerMessageInput; threadId: string | undefined }> = []
   const localComposerTexts: string[] = []
+  const navigationErrors: Array<string | null> = []
   const resumedDecisions: unknown[] = []
   const selectedModels: string[] = []
   const selectedPermissionModes: PermissionModeName[] = []
+  const startedDrafts: Array<{
+    modelId: string | null
+    permissionMode: PermissionModeName
+    workspacePath?: string | null
+  }> = []
   const threadUpdates: Array<{
     metadata: Record<string, unknown>
     threadId: string
@@ -91,17 +104,22 @@ function createControllerHarness(input?: {
         : {
             kind: "draft",
             modelId: "draft-model",
-            permissionMode: "explore"
+            permissionMode: "explore",
+            workspacePath: input?.draftWorkspacePath ?? null
           },
       goToNextThread: async () => null,
       goToPreviousThread: async () => null,
       hasPendingApproval: false,
       isBusy: false,
-      setNavigationError: () => {},
+      setNavigationError: (error) => {
+        navigationErrors.push(error)
+      },
       setLocalComposerText: (value) => {
         localComposerTexts.push(value)
       },
-      startFreshDraftTarget: async () => {},
+      startFreshDraftTarget: async (draftInput) => {
+        startedDrafts.push(draftInput)
+      },
       threadId: input?.threadId ?? null,
       title: "AI Thread",
       updateThread: async (threadId, update) => {
@@ -129,9 +147,11 @@ function createControllerHarness(input?: {
     editedMessages,
     invoked,
     localComposerTexts,
+    navigationErrors,
     resumedDecisions,
     selectedModels,
     selectedPermissionModes,
+    startedDrafts,
     threadUpdates
   }
 }
@@ -157,6 +177,65 @@ test("launcher AI controller creates a draft thread before invoking agent comman
   ])
   assert.deepEqual(harness.invoked, [{ input: messageInput, threadId: "created-thread" }])
   assert.deepEqual(harness.localComposerTexts, [""])
+})
+
+test("launcher AI controller starts a workspace draft without creating an empty thread", async () => {
+  const harness = createControllerHarness({ threadId: "existing-thread" })
+
+  const didStart = await harness.controller.startFreshDraft({
+    workspacePath: "/tmp/openwork"
+  })
+
+  assert.equal(didStart, true)
+  assert.deepEqual(harness.createdThreads, [])
+  assert.deepEqual(harness.startedDrafts, [
+    {
+      modelId: "current-model",
+      permissionMode: "ask-to-edit",
+      workspacePath: "/tmp/openwork"
+    }
+  ])
+  assert.deepEqual(harness.localComposerTexts, [""])
+})
+
+test("launcher AI controller creates workspace draft thread only when submitted", async () => {
+  const harness = createControllerHarness({ draftWorkspacePath: "/tmp/openwork" })
+  const messageInput: ComposerMessageInput = {
+    refs: [],
+    text: "在这个项目里开始"
+  }
+
+  harness.controller.runPrimaryAction(messageInput)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(harness.createdThreads, [
+    {
+      modelId: "draft-model",
+      permissionMode: "explore",
+      source: AI_THREAD_SOURCE,
+      title: "AI Thread",
+      visibility: AI_THREAD_VISIBILITY,
+      workspacePath: "/tmp/openwork"
+    }
+  ])
+  assert.deepEqual(harness.invoked, [{ input: messageInput, threadId: "created-thread" }])
+  assert.deepEqual(harness.localComposerTexts, [""])
+})
+
+test("launcher AI controller rejects empty workspace draft path on submit", async () => {
+  const harness = createControllerHarness({ draftWorkspacePath: "   " })
+  const messageInput: ComposerMessageInput = {
+    refs: [],
+    text: "在空路径里开始"
+  }
+
+  harness.controller.runPrimaryAction(messageInput)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(harness.createdThreads, [])
+  assert.deepEqual(harness.invoked, [])
+  assert.deepEqual(harness.localComposerTexts, [])
+  assert.equal(harness.navigationErrors.at(-1), "Workspace path cannot be empty.")
 })
 
 test("launcher AI controller clears local composer after selected thread invoke succeeds", async () => {
