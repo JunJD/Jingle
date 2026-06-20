@@ -1,6 +1,7 @@
 import { Prisma, type Checkpoint as PrismaCheckpoint } from "@prisma/client"
 import { readStoredCheckpointChannelVersions } from "../checkpointer/prisma-saver"
 import { getPrismaClient } from "./client"
+import { projectMessageStateThroughSeq } from "./message-state"
 import { toNumber } from "./utils"
 
 export interface ThreadRow {
@@ -398,6 +399,95 @@ export async function cloneThread(
         "value"
       FROM "checkpoint_blobs"
       WHERE "thread_id" = ${sourceThreadId}
+        AND "channel" <> 'messages'
+    `
+
+    await tx.$executeRaw`
+      INSERT INTO "messages" (
+        "thread_id",
+        "message_id",
+        "seq",
+        "role",
+        "kind",
+        "content",
+        "raw_message",
+        "raw_hash",
+        "tool_calls",
+        "tool_call_id",
+        "name",
+        "metadata",
+        "run_id",
+        "created_at",
+        "updated_at",
+        "search_text"
+      )
+      SELECT
+        ${targetThreadId},
+        "message_id",
+        "seq",
+        "role",
+        "kind",
+        "content",
+        "raw_message",
+        "raw_hash",
+        "tool_calls",
+        "tool_call_id",
+        "name",
+        "metadata",
+        NULL,
+        "created_at",
+        ${now},
+        "search_text"
+      FROM "messages"
+      WHERE "thread_id" = ${sourceThreadId}
+    `
+
+    await tx.$executeRaw`
+      INSERT INTO "message_events" (
+        "event_id",
+        "thread_id",
+        "checkpoint_ns",
+        "seq",
+        "type",
+        "message_id",
+        "run_id",
+        "checkpoint_id",
+        "payload",
+        "created_at"
+      )
+      SELECT
+        lower(hex(randomblob(16))),
+        ${targetThreadId},
+        "checkpoint_ns",
+        "seq",
+        "type",
+        "message_id",
+        NULL,
+        "checkpoint_id",
+        "payload",
+        "created_at"
+      FROM "message_events"
+      WHERE "thread_id" = ${sourceThreadId}
+    `
+
+    await tx.$executeRaw`
+      INSERT INTO "message_state_versions" (
+        "thread_id",
+        "checkpoint_ns",
+        "version",
+        "through_seq",
+        "state_hash",
+        "created_at"
+      )
+      SELECT
+        ${targetThreadId},
+        "checkpoint_ns",
+        "version",
+        "through_seq",
+        "state_hash",
+        "created_at"
+      FROM "message_state_versions"
+      WHERE "thread_id" = ${sourceThreadId}
     `
 
     if (pendingHitlRequests.length > 0) {
@@ -488,7 +578,37 @@ export async function cloneThreadUntilCheckpoint(
         readStoredCheckpointChannelVersions(checkpoint.type, checkpoint.checkpoint)
       )
       .filter((versions): versions is Record<string, string> => versions !== null)
-    const checkpointBlobFilters = buildCheckpointBlobVersionFilters(checkpointChannelVersions)
+    const checkpointBlobFilters = buildCheckpointBlobVersionFilters(
+      checkpointChannelVersions.map((versions) => {
+        const { messages: _messages, ...nonMessageVersions } = versions
+        void _messages
+        return nonMessageVersions
+      })
+    )
+    const targetCheckpointChannelVersions =
+      readStoredCheckpointChannelVersions(targetCheckpoint.type, targetCheckpoint.checkpoint) ?? {}
+    const targetMessagesVersion = targetCheckpointChannelVersions.messages
+    if (!targetMessagesVersion) {
+      throw new Error(
+        `[cloneThreadUntilCheckpoint] Checkpoint "${input.checkpointId}" is missing messages channel version.`
+      )
+    }
+    const targetMessageStateVersion = await tx.messageStateVersion.findUnique({
+      select: { throughSeq: true },
+      where: {
+        threadId_checkpointNs_version: {
+          checkpointNs,
+          threadId: sourceThreadId,
+          version: targetMessagesVersion
+        }
+      }
+    })
+    if (!targetMessageStateVersion) {
+      throw new Error(
+        `[cloneThreadUntilCheckpoint] Checkpoint "${input.checkpointId}" is missing message state version.`
+      )
+    }
+    const targetMessageThroughSeq = targetMessageStateVersion.throughSeq
     const nextMetadata =
       input.metadata === undefined ? sourceThread.metadata : JSON.stringify(input.metadata)
     const nextTitle = input.title ?? sourceThread.title
@@ -577,8 +697,77 @@ export async function cloneThreadUntilCheckpoint(
         WHERE "thread_id" = ${sourceThreadId}
           AND "checkpoint_ns" = ${checkpointNs}
           AND (${checkpointBlobFilterSql})
+          AND "channel" <> 'messages'
       `
     }
+
+    await projectMessageStateThroughSeq(
+      {
+        checkpointNs,
+        runId: null,
+        sourceThreadId,
+        targetThreadId,
+        throughSeq: targetMessageThroughSeq,
+        updatedAt: now
+      },
+      tx
+    )
+
+    await tx.$executeRaw`
+      INSERT INTO "message_events" (
+        "event_id",
+        "thread_id",
+        "checkpoint_ns",
+        "seq",
+        "type",
+        "message_id",
+        "run_id",
+        "checkpoint_id",
+        "payload",
+        "created_at"
+      )
+      SELECT
+        lower(hex(randomblob(16))),
+        ${targetThreadId},
+        "checkpoint_ns",
+        "seq",
+        "type",
+        "message_id",
+        NULL,
+        "checkpoint_id",
+        "payload",
+        "created_at"
+      FROM "message_events"
+      WHERE "thread_id" = ${sourceThreadId}
+        AND "checkpoint_ns" = ${checkpointNs}
+        AND "seq" <= ${targetMessageThroughSeq}
+    `
+
+    await tx.$executeRaw`
+      INSERT INTO "message_state_versions" (
+        "thread_id",
+        "checkpoint_ns",
+        "version",
+        "through_seq",
+        "state_hash",
+        "created_at"
+      )
+      SELECT
+        ${targetThreadId},
+        "checkpoint_ns",
+        "version",
+        "through_seq",
+        "state_hash",
+        "created_at"
+      FROM "message_state_versions"
+      WHERE "thread_id" = ${sourceThreadId}
+        AND "checkpoint_ns" = ${checkpointNs}
+        AND "version" IN (${Prisma.join(
+          checkpointChannelVersions
+            .map((versions) => versions.messages)
+            .filter((version): version is string => Boolean(version))
+        )})
+    `
 
     return mapThreadRow(row)
   })
@@ -663,6 +852,12 @@ export async function deleteThread(threadId: string): Promise<void> {
     await tx.$executeRawUnsafe(`DELETE FROM "messages_fts" WHERE thread_id = ?`, threadId)
     await tx.$executeRawUnsafe(`DELETE FROM "messages_fts_trigram" WHERE thread_id = ?`, threadId)
     await tx.message.deleteMany({
+      where: { threadId }
+    })
+    await tx.messageEvent.deleteMany({
+      where: { threadId }
+    })
+    await tx.messageStateVersion.deleteMany({
       where: { threadId }
     })
     await tx.hitlRequest.deleteMany({

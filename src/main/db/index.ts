@@ -53,6 +53,7 @@ export {
   listProjectedThreadMessages,
   loadMessagesForStateVersion,
   persistMessageStateVersion,
+  projectMessageStateThroughSeq,
   prepareMessageStateItems
 } from "./message-state"
 export type { MessageProjectionRow, PreparedMessageStateItem } from "./message-state"

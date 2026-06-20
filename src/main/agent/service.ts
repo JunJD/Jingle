@@ -9,7 +9,6 @@ import {
 import { OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } from "@shared/openwork-memory"
 import { readRunExtensionAiCapabilitiesSnapshotFromMetadata } from "@shared/extension-sources"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
-import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
 import {
   hydrateNativeExtensionAiCapabilitiesFromManifests,
   listNativeExtensionAiCapabilityCatalogFromManifests,
@@ -32,12 +31,11 @@ import {
 import { isAbortLikeError, isModelAuthenticationError, normalizeAgentRuntimeError } from "./errors"
 import {
   createAgentRuntime,
-  getCheckpointer,
   runtimeUsesCheckpointPersistence,
   type AgentRuntimeHandle
 } from "./runtime"
 import { buildAgentResumeConfig, buildAgentRunConfig } from "./run-config"
-import { extractHitlRequestFromValuesState, extractMessagesFromCheckpoint } from "./runtime-state"
+import { extractHitlRequestFromValuesState } from "./runtime-state"
 import {
   createAgentStreamBoundaryRecorderState,
   recordAgentStreamBoundaryEvents,
@@ -50,6 +48,7 @@ import {
 } from "./event-recorder"
 import { ThreadLifecycleGate, type ThreadRunLease } from "./thread-lifecycle-gate"
 import { getHitlRequest, getRun, getThread, resolveHitlRequest, upsertHitlRequest } from "../db"
+import { listProjectedThreadMessages } from "../db/message-state"
 import { buildIpcErrorEvent, OpenworkIpcError } from "../ipc/error"
 import { OpenworkMemoryService } from "../openwork-memory/service"
 import { WorkspaceService } from "../workspace/service"
@@ -149,10 +148,6 @@ function buildSubmittedMessages(input: {
   ]
 }
 
-function isCheckpointFallbackMessageId(threadId: string, messageId: string): boolean {
-  return messageId.startsWith(`checkpoint:${threadId}:`)
-}
-
 async function readMessageIdsAfterLatestUserMessage(input: {
   channel: AgentInvokeChannel
   messageId: string
@@ -166,25 +161,11 @@ async function readMessageIdsAfterLatestUserMessage(input: {
     })
   }
 
-  const checkpointer = await getCheckpointer(input.threadId)
-  const latest = (await checkpointer.getTuple({
-    configurable: {
-      thread_id: input.threadId
-    }
-  })) as CheckpointTuple | undefined
-  if (!latest) {
-    throw new OpenworkIpcError({
-      channel: input.channel,
-      code: "FAILED_PRECONDITION",
-      message: "Cannot edit the last user message before thread history is available."
-    })
-  }
-
-  const checkpointMessages = extractMessagesFromCheckpoint(input.threadId, latest)
-  const latestUserMessageIndex = checkpointMessages.findLastIndex(
+  const messages = await listProjectedThreadMessages(input.threadId)
+  const latestUserMessageIndex = messages.findLastIndex(
     (message) => message.role === "user"
   )
-  const latestUserMessage = checkpointMessages[latestUserMessageIndex]
+  const latestUserMessage = messages[latestUserMessageIndex]
   if (!latestUserMessage) {
     throw new OpenworkIpcError({
       channel: input.channel,
@@ -206,21 +187,8 @@ async function readMessageIdsAfterLatestUserMessage(input: {
   }
 
   const messageIdsToRemove = Array.from(
-    new Set(
-      checkpointMessages.slice(latestUserMessageIndex + 1).map((message) => message.message_id)
-    )
+    new Set(messages.slice(latestUserMessageIndex + 1).map((message) => message.message_id))
   )
-  const fallbackMessageId = messageIdsToRemove.find((messageId) =>
-    isCheckpointFallbackMessageId(input.threadId, messageId)
-  )
-  if (fallbackMessageId) {
-    throw new OpenworkIpcError({
-      channel: input.channel,
-      code: "FAILED_PRECONDITION",
-      details: [`fallbackMessageId=${fallbackMessageId}`],
-      message: "Cannot edit the last user message because a following message cannot be removed."
-    })
-  }
 
   return messageIdsToRemove
 }

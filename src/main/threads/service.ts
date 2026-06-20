@@ -20,11 +20,15 @@ import {
   updateThreadMetadata,
   type ThreadRow
 } from "../db"
+import {
+  checkpointMessageStateIncludesMessage,
+  listProjectedThreadMessages,
+  type MessageProjectionRow
+} from "../db/message-state"
 import { closeCheckpointer, getCheckpointer } from "../agent/runtime"
 import {
   checkpointHasInterrupt,
   extractHitlRequestFromCheckpoint,
-  extractMessagesFromCheckpoint,
   extractTodosFromCheckpoint,
   mapHitlRowToRequest
 } from "../agent/runtime-state"
@@ -36,7 +40,7 @@ import { ModelProviderService } from "../model-provider/service"
 import { SettingsService } from "../settings/service"
 import { ThreadWorkspaceService } from "../thread-workspace/service"
 import { WorkspaceService } from "../workspace/service"
-import { syncMessageSearchIndexFromSnapshot } from "../db/message-search"
+import { rebuildMessageSearchIndexFromMessages } from "../db/message-search"
 import { formatDefaultThreadTitle } from "@shared/i18n"
 import {
   toDisplayAssistantMessageContent,
@@ -86,10 +90,10 @@ function resolveArchivedAt(thread: ThreadRow): Date {
   return new Date(thread.archived_at)
 }
 
-function mapCheckpointMessagesToThreadMessages(
-  checkpointMessages: ReturnType<typeof extractMessagesFromCheckpoint>
+function mapProjectedMessagesToThreadMessages(
+  projectedMessages: MessageProjectionRow[]
 ): Message[] {
-  return checkpointMessages.map((row) => {
+  return projectedMessages.map((row) => {
     let content: Message["content"] = ""
     let tool_calls: Message["tool_calls"] | undefined
     let metadata: Message["metadata"] | undefined
@@ -132,16 +136,6 @@ function mapCheckpointMessagesToThreadMessages(
       created_at: new Date(row.created_at)
     }
   })
-}
-
-function checkpointIncludesMessage(
-  threadId: string,
-  tuple: CheckpointTuple | undefined,
-  messageId: string
-): boolean {
-  return extractMessagesFromCheckpoint(threadId, tuple).some(
-    (message) => message.message_id === messageId
-  )
 }
 
 async function computeThreadForkState(input: {
@@ -275,8 +269,8 @@ export class ThreadsService {
       }
     })
 
-    const messages = mapCheckpointMessagesToThreadMessages(
-      extractMessagesFromCheckpoint(threadId, checkpoint)
+    const messages = mapProjectedMessagesToThreadMessages(
+      await listProjectedThreadMessages(threadId)
     )
     const todos = extractTodosFromCheckpoint(checkpoint)
     const checkpointRequest = extractHitlRequestFromCheckpoint(threadId, checkpoint)
@@ -327,10 +321,7 @@ export class ThreadsService {
       getThreadWorkspaceBindings(threads.map((thread) => thread.thread_id))
     ])
     const bindings = new Map(
-      bindingRows.map((binding) => [
-        binding.thread_id,
-        mapThreadWorkspaceBindingRecord(binding)
-      ])
+      bindingRows.map((binding) => [binding.thread_id, mapThreadWorkspaceBindingRecord(binding)])
     )
 
     return {
@@ -358,9 +349,7 @@ export class ThreadsService {
     return row ? mapThreadRowToThread(row) : null
   }
 
-  private async resolveCreateThreadWorkspacePath(
-    input?: CreateThreadInput
-  ): Promise<string> {
+  private async resolveCreateThreadWorkspacePath(input?: CreateThreadInput): Promise<string> {
     const workspacePath =
       input && "workspacePath" in input && input.workspacePath !== undefined
         ? input.workspacePath
@@ -496,17 +485,7 @@ export class ThreadsService {
     await this.cloneThreadWorkspaceBinding(sourceThreadId, threadId)
 
     try {
-      const checkpointer = await getCheckpointer(threadId)
-      const latest = await checkpointer.getTuple({
-        configurable: {
-          thread_id: threadId
-        }
-      })
-
-      await syncMessageSearchIndexFromSnapshot(
-        threadId,
-        extractMessagesFromCheckpoint(threadId, latest)
-      )
+      await rebuildMessageSearchIndexFromMessages(threadId)
     } catch (error) {
       console.warn("[Threads] Failed to sync cloned thread message search index:", error)
     }
@@ -533,7 +512,20 @@ export class ThreadsService {
       threadId: sourceThreadId
     })
 
-    if (!latest || !checkpointIncludesMessage(sourceThreadId, latest, messageId)) {
+    const sourceMessages = await listProjectedThreadMessages(sourceThreadId)
+    const targetMessage = sourceMessages.find((message) => message.message_id === messageId)
+    const latestCheckpointNs = latest?.config.configurable?.checkpoint_ns ?? ""
+    const latestMessagesVersion = latest?.checkpoint.channel_versions.messages
+    const latestIncludesMessage = latestMessagesVersion
+      ? await checkpointMessageStateIncludesMessage({
+          checkpointNs: latestCheckpointNs,
+          messageId,
+          threadId: sourceThreadId,
+          version: latestMessagesVersion
+        })
+      : false
+
+    if (!latest || !targetMessage || !latestIncludesMessage) {
       throw new Error("Message not found")
     }
 
@@ -545,7 +537,18 @@ export class ThreadsService {
         throw new Error("Checkpoint parent not found")
       }
 
-      if (!checkpointIncludesMessage(sourceThreadId, parent, messageId)) {
+      const parentMessagesVersion = parent.checkpoint.channel_versions.messages
+      if (!parentMessagesVersion) {
+        break
+      }
+
+      const parentIncludesMessage = await checkpointMessageStateIncludesMessage({
+        checkpointNs: parent.config.configurable?.checkpoint_ns ?? "",
+        messageId,
+        threadId: sourceThreadId,
+        version: parentMessagesVersion
+      })
+      if (!parentIncludesMessage) {
         break
       }
 
@@ -574,17 +577,7 @@ export class ThreadsService {
     await this.cloneThreadWorkspaceBinding(sourceThreadId, threadId)
 
     try {
-      const targetCheckpointer = await getCheckpointer(threadId)
-      const clonedLatest = await targetCheckpointer.getTuple({
-        configurable: {
-          thread_id: threadId
-        }
-      })
-
-      await syncMessageSearchIndexFromSnapshot(
-        threadId,
-        extractMessagesFromCheckpoint(threadId, clonedLatest)
-      )
+      await rebuildMessageSearchIndexFromMessages(threadId)
     } catch (error) {
       console.warn("[Threads] Failed to sync message-limited cloned thread search index:", error)
     }

@@ -782,6 +782,33 @@ export async function loadMessagesForStateVersion(
   )
 }
 
+export async function projectMessageStateThroughSeq(
+  input: {
+    checkpointNs: string
+    runId: string | null
+    sourceThreadId: string
+    targetThreadId: string
+    throughSeq: number
+    updatedAt: bigint
+  },
+  tx: TransactionClient = getPrismaClient()
+): Promise<void> {
+  const items = await loadMessageStateItemsThroughSeq(tx, {
+    checkpointNs: input.checkpointNs,
+    threadId: input.sourceThreadId,
+    throughSeq: input.throughSeq
+  })
+
+  for (const item of items) {
+    await upsertProjectedMessage(tx, {
+      item,
+      now: input.updatedAt,
+      runId: input.runId,
+      threadId: input.targetThreadId
+    })
+  }
+}
+
 export async function checkpointMessageStateIncludesMessage(
   input: CheckpointMessageStateInput,
   tx: TransactionClient = getPrismaClient()
@@ -798,7 +825,9 @@ export async function checkpointMessageStateIncludesMessage(
   })
 
   if (!stateVersion) {
-    return false
+    throw new Error(
+      `[MessageState] Missing message state version "${input.version}" for thread "${input.threadId}" namespace "${input.checkpointNs}".`
+    )
   }
 
   const latestEvent = await tx.messageEvent.findFirst({
