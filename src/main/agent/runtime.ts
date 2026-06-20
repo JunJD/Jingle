@@ -86,6 +86,15 @@ function getSystemPrompt(workspacePath: string): string {
   return workingDirSection + BASE_SYSTEM_PROMPT
 }
 
+export function getExecuteToolDescription(workspacePath: string): string {
+  return `Run a shell command on the user's machine.
+
+The host starts every command with current working directory set to:
+${workspacePath}
+
+The command field is the command to run from that directory. For workspace commands, pass the command itself, such as "git status" or "npm test"; do not prefix it with "cd ${workspacePath} &&".`
+}
+
 // Per-thread checkpointer cache
 const checkpointers = new Map<string, RuntimeCheckpointSaver>()
 
@@ -258,6 +267,7 @@ export async function createAgentRuntime(
 - grep: search for text within files
 
 The workspace root is: ${workspacePath}`
+  const executeToolDescription = getExecuteToolDescription(workspacePath)
 
   const openworkMemoryService = options.openworkMemoryService ?? null
   const useOpenworkMemory = openworkMemoryService !== null
@@ -293,6 +303,9 @@ The workspace root is: ${workspacePath}`
       createFilesystemToolErrorMiddleware(),
       createFilesystemMiddleware({
         backend,
+        customToolDescriptions: {
+          execute: executeToolDescription
+        },
         systemPrompt: filesystemSystemPrompt
       }),
       createArtifactToolsMiddleware({
