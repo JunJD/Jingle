@@ -2071,6 +2071,121 @@ test("cloneUntilMessage branches from the checkpoint that first contains the tar
   )
 })
 
+test("cloneThread copies checkpoint payload rows without preserving source run ownership", async () => {
+  const { cloneThread, createRun, createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const sourceThreadId = "thread-clone-checkpoint-source"
+  const targetThreadId = "thread-clone-checkpoint-target"
+  const runId = "run-clone-checkpoint-source"
+  const largeContent = "large checkpoint payload ".repeat(12_000)
+
+  await createThread(sourceThreadId, {
+    metadata: {
+      model: "openai:gpt-test"
+    },
+    title: "Clone checkpoint source"
+  })
+  await createRun(runId, sourceThreadId, { status: "success" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-clone-payload"
+  checkpoint.channel_values = {
+    messages: [
+      {
+        kwargs: {
+          content: largeContent,
+          id: "message-clone-payload"
+        },
+        type: "human"
+      }
+    ],
+    todos: [{ content: "copied todo", id: "todo-clone-payload", status: "pending" }]
+  }
+  checkpoint.channel_versions = {
+    messages: "checkpoint-clone-messages-version",
+    todos: "checkpoint-clone-todos-version"
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  const config = await saver.put(
+    {
+      configurable: {
+        thread_id: sourceThreadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    },
+    {
+      messages: "checkpoint-clone-messages-version",
+      todos: "checkpoint-clone-todos-version"
+    }
+  )
+  await saver.putWrites(
+    config,
+    [
+      ["messages", { marker: "message-write" }],
+      [
+        "__pregel_tasks",
+        {
+          args: {
+            messages: checkpoint.channel_values.messages
+          },
+          node: "tools"
+        }
+      ]
+    ],
+    "task-clone-payload"
+  )
+
+  const clonedThread = await cloneThread(sourceThreadId, targetThreadId, {
+    metadata: { model: "openai:gpt-test" },
+    title: "Clone checkpoint target"
+  })
+  const prisma = getPrismaClient()
+  const checkpointRows = await prisma.checkpoint.findMany({
+    where: { threadId: clonedThread.thread_id }
+  })
+  const blobRows = await prisma.checkpointBlob.findMany({
+    orderBy: [{ channel: "asc" }, { version: "asc" }],
+    where: { threadId: clonedThread.thread_id }
+  })
+  const writeRows = await prisma.checkpointWrite.findMany({
+    orderBy: [{ channel: "asc" }, { taskId: "asc" }, { idx: "asc" }],
+    where: { threadId: clonedThread.thread_id }
+  })
+  const clonedCheckpoint = await saver.getTuple({
+    configurable: {
+      thread_id: clonedThread.thread_id
+    }
+  })
+
+  assert.equal(clonedThread.thread_id, targetThreadId)
+  assert.deepEqual(
+    checkpointRows.map((row) => row.runId),
+    [null]
+  )
+  assert.deepEqual(
+    blobRows.map((row) => `${row.channel}:${row.version}`),
+    [
+      "messages:checkpoint-clone-messages-version",
+      "todos:checkpoint-clone-todos-version"
+    ]
+  )
+  assert.deepEqual(
+    writeRows.map((row) => row.channel),
+    ["__pregel_tasks", "messages"]
+  )
+  assert.deepEqual(clonedCheckpoint?.checkpoint.channel_values, checkpoint.channel_values)
+})
+
 test("thread fork rejects threads with pending HITL requests", async () => {
   const { createRun, createThread, upsertHitlRequest } = await loadDbModules()
 

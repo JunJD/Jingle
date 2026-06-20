@@ -1,4 +1,4 @@
-import type { Checkpoint as PrismaCheckpoint } from "@prisma/client"
+import { Prisma, type Checkpoint as PrismaCheckpoint } from "@prisma/client"
 import { readStoredCheckpointChannelVersions } from "../checkpointer/prisma-saver"
 import { getPrismaClient } from "./client"
 import { toNumber } from "./utils"
@@ -275,26 +275,6 @@ export async function cloneThread(
       throw new Error("Thread not found")
     }
 
-    const checkpoints = await tx.checkpoint.findMany({
-      orderBy: {
-        checkpointId: "asc"
-      },
-      where: {
-        threadId: sourceThreadId
-      }
-    })
-    const checkpointWrites = await tx.checkpointWrite.findMany({
-      orderBy: [{ checkpointId: "asc" }, { taskId: "asc" }, { idx: "asc" }],
-      where: {
-        threadId: sourceThreadId
-      }
-    })
-    const checkpointBlobs = await tx.checkpointBlob.findMany({
-      orderBy: [{ checkpointNs: "asc" }, { channel: "asc" }, { version: "asc" }],
-      where: {
-        threadId: sourceThreadId
-      }
-    })
     const pendingHitlRequests = await tx.hitlRequest.findMany({
       orderBy: [{ updatedAt: "desc" }, { requestId: "asc" }],
       where: {
@@ -323,47 +303,73 @@ export async function cloneThread(
       }
     })
 
-    if (checkpoints.length > 0) {
-      await tx.checkpoint.createMany({
-        data: checkpoints.map((checkpoint) => ({
-          checkpoint: checkpoint.checkpoint,
-          checkpointId: checkpoint.checkpointId,
-          checkpointNs: checkpoint.checkpointNs,
-          metadata: checkpoint.metadata,
-          parentCheckpointId: checkpoint.parentCheckpointId,
-          threadId: targetThreadId,
-          type: checkpoint.type
-        }))
-      })
-    }
+    await tx.$executeRaw`
+      INSERT INTO "checkpoints" (
+        "thread_id",
+        "run_id",
+        "checkpoint_ns",
+        "checkpoint_id",
+        "parent_checkpoint_id",
+        "type",
+        "checkpoint",
+        "metadata"
+      )
+      SELECT
+        ${targetThreadId},
+        NULL,
+        "checkpoint_ns",
+        "checkpoint_id",
+        "parent_checkpoint_id",
+        "type",
+        "checkpoint",
+        "metadata"
+      FROM "checkpoints"
+      WHERE "thread_id" = ${sourceThreadId}
+    `
 
-    if (checkpointWrites.length > 0) {
-      await tx.checkpointWrite.createMany({
-        data: checkpointWrites.map((write) => ({
-          channel: write.channel,
-          checkpointId: write.checkpointId,
-          checkpointNs: write.checkpointNs,
-          idx: write.idx,
-          taskId: write.taskId,
-          threadId: targetThreadId,
-          type: write.type,
-          value: write.value
-        }))
-      })
-    }
+    await tx.$executeRaw`
+      INSERT INTO "writes" (
+        "thread_id",
+        "checkpoint_ns",
+        "checkpoint_id",
+        "task_id",
+        "idx",
+        "channel",
+        "type",
+        "value"
+      )
+      SELECT
+        ${targetThreadId},
+        "checkpoint_ns",
+        "checkpoint_id",
+        "task_id",
+        "idx",
+        "channel",
+        "type",
+        "value"
+      FROM "writes"
+      WHERE "thread_id" = ${sourceThreadId}
+    `
 
-    if (checkpointBlobs.length > 0) {
-      await tx.checkpointBlob.createMany({
-        data: checkpointBlobs.map((blob) => ({
-          channel: blob.channel,
-          checkpointNs: blob.checkpointNs,
-          threadId: targetThreadId,
-          type: blob.type,
-          value: blob.value,
-          version: blob.version
-        }))
-      })
-    }
+    await tx.$executeRaw`
+      INSERT INTO "checkpoint_blobs" (
+        "thread_id",
+        "checkpoint_ns",
+        "channel",
+        "version",
+        "type",
+        "value"
+      )
+      SELECT
+        ${targetThreadId},
+        "checkpoint_ns",
+        "channel",
+        "version",
+        "type",
+        "value"
+      FROM "checkpoint_blobs"
+      WHERE "thread_id" = ${sourceThreadId}
+    `
 
     if (pendingHitlRequests.length > 0) {
       await tx.hitlRequest.createMany({
@@ -454,30 +460,6 @@ export async function cloneThreadUntilCheckpoint(
       )
       .filter((versions): versions is Record<string, string> => versions !== null)
     const checkpointBlobFilters = buildCheckpointBlobVersionFilters(checkpointChannelVersions)
-    const checkpointWrites =
-      checkpointIds.length > 0
-        ? await tx.checkpointWrite.findMany({
-            orderBy: [{ checkpointId: "asc" }, { taskId: "asc" }, { idx: "asc" }],
-            where: {
-              checkpointId: {
-                in: checkpointIds
-              },
-              checkpointNs,
-              threadId: sourceThreadId
-            }
-          })
-        : []
-    const checkpointBlobs =
-      checkpointBlobFilters.length > 0
-        ? await tx.checkpointBlob.findMany({
-            orderBy: [{ checkpointNs: "asc" }, { channel: "asc" }, { version: "asc" }],
-            where: {
-              OR: checkpointBlobFilters,
-              checkpointNs,
-              threadId: sourceThreadId
-            }
-          })
-        : []
     const nextMetadata =
       input.metadata === undefined ? sourceThread.metadata : JSON.stringify(input.metadata)
     const nextTitle = input.title ?? sourceThread.title
@@ -511,32 +493,61 @@ export async function cloneThreadUntilCheckpoint(
       }))
     })
 
-    if (checkpointWrites.length > 0) {
-      await tx.checkpointWrite.createMany({
-        data: checkpointWrites.map((write) => ({
-          channel: write.channel,
-          checkpointId: write.checkpointId,
-          checkpointNs: write.checkpointNs,
-          idx: write.idx,
-          taskId: write.taskId,
-          threadId: targetThreadId,
-          type: write.type,
-          value: write.value
-        }))
-      })
-    }
+    await tx.$executeRaw`
+      INSERT INTO "writes" (
+        "thread_id",
+        "checkpoint_ns",
+        "checkpoint_id",
+        "task_id",
+        "idx",
+        "channel",
+        "type",
+        "value"
+      )
+      SELECT
+        ${targetThreadId},
+        "checkpoint_ns",
+        "checkpoint_id",
+        "task_id",
+        "idx",
+        "channel",
+        "type",
+        "value"
+      FROM "writes"
+      WHERE "thread_id" = ${sourceThreadId}
+        AND "checkpoint_ns" = ${checkpointNs}
+        AND "checkpoint_id" IN (${Prisma.join(checkpointIds)})
+    `
 
-    if (checkpointBlobs.length > 0) {
-      await tx.checkpointBlob.createMany({
-        data: checkpointBlobs.map((blob) => ({
-          channel: blob.channel,
-          checkpointNs: blob.checkpointNs,
-          threadId: targetThreadId,
-          type: blob.type,
-          value: blob.value,
-          version: blob.version
-        }))
-      })
+    if (checkpointBlobFilters.length > 0) {
+      const checkpointBlobFilterSql = Prisma.join(
+        checkpointBlobFilters.map(
+          ({ channel, version }) => Prisma.sql`("channel" = ${channel} AND "version" = ${version})`
+        ),
+        " OR "
+      )
+
+      await tx.$executeRaw`
+        INSERT INTO "checkpoint_blobs" (
+          "thread_id",
+          "checkpoint_ns",
+          "channel",
+          "version",
+          "type",
+          "value"
+        )
+        SELECT
+          ${targetThreadId},
+          "checkpoint_ns",
+          "channel",
+          "version",
+          "type",
+          "value"
+        FROM "checkpoint_blobs"
+        WHERE "thread_id" = ${sourceThreadId}
+          AND "checkpoint_ns" = ${checkpointNs}
+          AND (${checkpointBlobFilterSql})
+      `
     }
 
     return mapThreadRow(row)
