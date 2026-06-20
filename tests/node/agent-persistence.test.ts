@@ -1661,6 +1661,49 @@ test("prisma checkpoint saver rejects non-string channel versions", async () => 
   )
 })
 
+test("syncRunFromLatestCheckpoint accepts submitted message in message projection", async () => {
+  const { createRun, createThread, getRun } = await loadDbModules()
+  const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-with-submitted-message"
+  const runId = "run-with-submitted-message"
+
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-with-submitted-message"
+  checkpoint.channel_values = {
+    messages: [{ content: "new", id: "message-new", type: "human" }]
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "input",
+      step: 0
+    }
+  )
+
+  await assert.doesNotReject(
+    syncRunFromLatestCheckpoint(threadId, runId, {
+      expectedMessageId: "message-new"
+    })
+  )
+  assert.equal((await getRun(runId))?.status, "success")
+})
+
 test("syncRunFromLatestCheckpoint rejects success when submitted message is missing", async () => {
   const { createRun, createThread, getRun } = await loadDbModules()
   const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
