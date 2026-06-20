@@ -5,6 +5,9 @@ import { buildFileMutationSummary, renderFileMutationDetail } from "./file-mutat
 defineToolComponent({
   name: "edit_file",
   icon: Edit,
+  hasDetail({ fileMutation, rawArgs, rawResult, status }) {
+    return Boolean(fileMutation || rawResult || (status === "arguments_streaming" && rawArgs))
+  },
   renderDisplay(props) {
     return buildFileMutationSummary(props, "edit_file")
   },
@@ -20,6 +23,9 @@ defineToolComponent({
 defineToolComponent({
   name: "write_file",
   icon: Edit,
+  hasDetail({ fileMutation, rawArgs, rawResult, status }) {
+    return Boolean(fileMutation || rawResult || (status === "arguments_streaming" && rawArgs))
+  },
   renderDisplay(props) {
     return buildFileMutationSummary(props, "write_file")
   },

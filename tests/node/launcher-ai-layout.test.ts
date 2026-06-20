@@ -304,3 +304,32 @@ test("launcher AI thread loading copy distinguishes restore from opening", async
   assert.doesNotMatch(conversationSource, /copy\.launcher\.loadingThread/)
   assert.doesNotMatch(messagesSource, /loadingThread/)
 })
+
+test("chat tool details stay out of the collapsed streaming render path", async () => {
+  const [actionMessageSource, actionViewSource, agentToolSource] = await Promise.all([
+    readWorkspaceFile("src/renderer/src/components/chat/ActionMessage.tsx"),
+    readWorkspaceFile("src/renderer/src/components/chat/action-message-view.ts"),
+    readWorkspaceFile("src/renderer/src/components/agent-ui/Tool.tsx")
+  ])
+
+  assert.match(
+    actionViewSource,
+    /const hasDetail = definition\.renderDetail \? definition\.hasDetail\(componentProps\) : false/
+  )
+  assert.doesNotMatch(actionViewSource, /definition\.hasDetail\?\.\(componentProps\) \?\? true/)
+  assert.match(actionMessageSource, /const canExpandDetail = hasDetail && !approvalRequest/)
+  assert.match(
+    actionMessageSource,
+    /if \(!canExpandDetail \|\| !isExpanded\) \{\s*return null\s*\}/
+  )
+  assert.match(actionMessageSource, /definition\.renderDetail\?\.\(/)
+  assert.ok(
+    actionMessageSource.indexOf("if (!canExpandDetail || !isExpanded)") <
+      actionMessageSource.indexOf("definition.renderDetail?.("),
+    "detail render should be gated by expand state"
+  )
+  assert.match(actionMessageSource, /detail=\{detailContent\}/)
+  assert.match(actionMessageSource, /hasDetail=\{canExpandDetail\}/)
+  assert.match(agentToolSource, /hasDetail,\s*icon,/)
+  assert.doesNotMatch(agentToolSource, /Boolean\(detail\)/)
+})

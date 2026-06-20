@@ -36,9 +36,22 @@ export interface ToolDisplay {
   title: ReactNode
 }
 
-export interface ToolComponentDefinition {
+interface ToolComponentBaseDefinition {
   name: string
   icon: LucideIcon
   renderDisplay: (props: ToolComponentProps) => ToolDisplay
-  renderDetail?: (props: ToolComponentProps) => ReactNode
 }
+
+interface ToolComponentSummaryDefinition extends ToolComponentBaseDefinition {
+  hasDetail?: undefined
+  renderDetail?: undefined
+}
+
+interface ToolComponentDetailDefinition extends ToolComponentBaseDefinition {
+  hasDetail: (props: ToolComponentProps) => boolean
+  renderDetail: (props: ToolComponentProps) => ReactNode
+}
+
+export type ToolComponentDefinition =
+  | ToolComponentSummaryDefinition
+  | ToolComponentDetailDefinition

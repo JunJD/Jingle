@@ -166,6 +166,7 @@ export function AgentActivityRow(props: AgentActivityRowProps): React.JSX.Elemen
 export interface AgentToolProps extends Omit<React.ComponentProps<"div">, "title"> {
   defaultOpen?: boolean
   detail?: React.ReactNode
+  hasDetail: boolean
   icon?: React.ReactNode
   meta?: React.ReactNode
   onOpenChange?: (open: boolean) => void
@@ -180,6 +181,7 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
     className,
     defaultOpen = false,
     detail,
+    hasDetail,
     icon,
     meta,
     onOpenChange,
@@ -191,7 +193,6 @@ export function AgentTool(props: AgentToolProps): React.JSX.Element {
   } = props
   const [internalOpen, setInternalOpen] = useState(defaultOpen)
   const isOpen = open ?? internalOpen
-  const hasDetail = Boolean(detail)
 
   return (
     <Collapsible

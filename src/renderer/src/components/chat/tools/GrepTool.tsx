@@ -6,6 +6,9 @@ import { asGrepMatches, getPatternArg } from "./shared"
 defineToolComponent({
   name: "grep",
   icon: Search,
+  hasDetail({ result }) {
+    return asGrepMatches(result).length > 0
+  },
   renderDisplay({ copy, args, result }) {
     const pattern = getPatternArg(args)
     const matches = asGrepMatches(result)
@@ -13,7 +16,8 @@ defineToolComponent({
 
     return {
       detail: pattern,
-      resultMeta: matches.length > 0 ? copy.toolCall.matchesInFiles(matches.length, fileCount) : null,
+      resultMeta:
+        matches.length > 0 ? copy.toolCall.matchesInFiles(matches.length, fileCount) : null,
       title: copy.toolCall.labels.grep
     }
   },

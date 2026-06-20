@@ -6,6 +6,9 @@ import { asTodos } from "./shared"
 defineToolComponent({
   name: "write_todos",
   icon: ListTodo,
+  hasDetail({ args }) {
+    return asTodos(args.todos).length > 0
+  },
   renderDisplay({ copy, args }) {
     const todos = asTodos(args.todos)
     const completedCount = todos.filter((todo) => todo.status === "completed").length

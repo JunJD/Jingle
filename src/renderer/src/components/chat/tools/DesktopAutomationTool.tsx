@@ -11,6 +11,9 @@ function getStringArg(args: Record<string, unknown>, key: string): string | null
 defineToolComponent({
   name: "open_application",
   icon: AppWindow,
+  hasDetail({ rawArgs, rawResult }) {
+    return Boolean(rawArgs || rawResult)
+  },
   renderDisplay({ copy, args }) {
     return {
       detail: getStringArg(args, "name") ?? getStringArg(args, "bundleId"),
@@ -30,6 +33,9 @@ defineToolComponent({
 defineToolComponent({
   name: "open_desktop_route",
   icon: Route,
+  hasDetail({ rawArgs, rawResult }) {
+    return Boolean(rawArgs || rawResult)
+  },
   renderDisplay({ copy, args }) {
     return {
       detail: getStringArg(args, "url"),
@@ -49,6 +55,9 @@ defineToolComponent({
 defineToolComponent({
   name: "find_ax_elements",
   icon: ScanSearch,
+  hasDetail({ rawArgs, rawResult }) {
+    return Boolean(rawArgs || rawResult)
+  },
   renderDisplay({ copy, args }) {
     return {
       detail: getStringArg(args, "titleContains") ?? getStringArg(args, "role"),
@@ -68,6 +77,9 @@ defineToolComponent({
 defineToolComponent({
   name: "press_ax_element",
   icon: MousePointerClick,
+  hasDetail({ rawArgs, rawResult }) {
+    return Boolean(rawArgs || rawResult)
+  },
   renderDisplay({ copy, args }) {
     return {
       detail: getStringArg(args, "titleContains") ?? getPathArg(args),
@@ -87,6 +99,9 @@ defineToolComponent({
 defineToolComponent({
   name: "click_screen_point",
   icon: MousePointerClick,
+  hasDetail({ rawArgs, rawResult }) {
+    return Boolean(rawArgs || rawResult)
+  },
   renderDisplay({ copy, args }) {
     const x = typeof args.x === "number" ? args.x : null
     const y = typeof args.y === "number" ? args.y : null

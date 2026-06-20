@@ -120,6 +120,9 @@ export function PresentArtifactsDetail(
 defineToolComponent({
   icon: PackageOpen,
   name: "present_artifacts",
+  hasDetail({ args, rawResult }) {
+    return getArtifactItems(args).length > 0 || rawResult.trim().length > 0
+  },
   renderDisplay({ copy, args }) {
     const items = getArtifactItems(args)
 

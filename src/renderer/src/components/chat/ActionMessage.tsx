@@ -162,39 +162,33 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       toolCall
     ]
   )
-  const {
-    definition,
-    display,
-    icon: Icon,
-    model,
-    status,
-    statusLabel
-  } = view
+  const { definition, display, hasDetail, icon: Icon, model, status, statusLabel } = view
   const activityStatus = getActionMessageStatus(status, activeToolCall)
   const autoExpanded = Boolean(approvalRequest) || defaultExpanded
   const isExpanded = approvalRequest ? true : (expanded ?? manualExpanded ?? autoExpanded)
+  const canExpandDetail = hasDetail && !approvalRequest
   const detail = useMemo<React.ReactNode>(() => {
-    if (approvalRequest) {
+    if (!canExpandDetail || !isExpanded) {
       return null
     }
 
-    const contentDetail = definition.renderDetail?.({
-      copy,
-      isExpanded,
-      presentation,
-      toolCall,
-      ...model
-    })
-    return contentDetail
-  }, [approvalRequest, copy, definition, isExpanded, model, presentation, toolCall])
+    return (
+      definition.renderDetail?.({
+        copy,
+        isExpanded,
+        presentation,
+        toolCall,
+        ...model
+      }) ?? null
+    )
+  }, [canExpandDetail, copy, definition, isExpanded, model, presentation, toolCall])
 
-  const hasDetail = Boolean(detail)
   const toolState = toAgentToolState(activityStatus)
   const statusMeta =
     statusLabel && toolState !== "complete" ? (
       <AgentToolStatusBadge state={toolState}>{statusLabel}</AgentToolStatusBadge>
     ) : null
-  const detailContent = hasDetail ? (
+  const detailContent = detail ? (
     <div className="min-w-0 max-w-full overflow-hidden">{detail}</div>
   ) : null
   const executionTime =
@@ -218,7 +212,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
     ) : null
 
   if (!showSummary) {
-    return hasDetail && isExpanded ? detailContent : null
+    return detailContent
   }
 
   if (presentation === "grouped") {
@@ -229,7 +223,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
           data-active={isToolActive(activityStatus) ? "true" : undefined}
           data-tool-call-toggle={toolCall.name}
           onClick={() => {
-            if (hasDetail && !approvalRequest) {
+            if (canExpandDetail) {
               const nextExpanded = !isExpanded
               onExpandedChange?.(nextExpanded)
 
@@ -247,10 +241,10 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
             icon={<Icon className="size-[var(--ow-icon-sm)]" />}
             label={display.title}
             meta={
-              meta || hasDetail ? (
+              meta || canExpandDetail ? (
                 <>
                   {meta}
-                  {hasDetail ? (
+                  {canExpandDetail ? (
                     <ChevronRight
                       className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] text-[var(--ow-agent-timeline-muted)]"
                       data-open={isExpanded ? "true" : "false"}
@@ -262,7 +256,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
             trailingPlacement="inline"
           />
         </button>
-        {hasDetail && isExpanded ? (
+        {canExpandDetail && isExpanded ? (
           <div className="mt-[var(--ow-space-2)] min-w-0 max-w-full pl-[calc(var(--ow-icon-action)+var(--ow-gap-sm))]">
             {detailContent}
           </div>
@@ -276,6 +270,7 @@ export function ActionMessage(props: ActionMessageProps): React.JSX.Element | nu
       data-tool-call-toggle={toolCall.name}
       defaultOpen={autoExpanded}
       detail={detailContent}
+      hasDetail={canExpandDetail}
       icon={<Icon className="size-[var(--ow-icon-sm)]" />}
       meta={meta}
       onOpenChange={(nextExpanded) => {

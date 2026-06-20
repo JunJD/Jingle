@@ -92,6 +92,9 @@ function renderSearchResultsList(
 defineToolComponent({
   name: "web_search",
   icon: Search,
+  hasDetail({ args, rawResult }) {
+    return Boolean(getPatternArg(args) || rawResult)
+  },
   renderDisplay({ copy, args }) {
     const query = getPatternArg(args)
 

@@ -88,17 +88,20 @@ export function createActionMessageView(input: CreateActionMessageViewInput) {
     toolCall
   })
   const definition = getActionMessageToolComponent(toolCall)
-  const display = normalizeActionMessageDisplay(definition.renderDisplay({
+  const componentProps = {
     copy,
     isExpanded: Boolean(approvalRequest),
     presentation,
     toolCall,
     ...model
-  }))
+  }
+  const display = normalizeActionMessageDisplay(definition.renderDisplay(componentProps))
+  const hasDetail = definition.renderDetail ? definition.hasDetail(componentProps) : false
 
   return {
     definition,
     display,
+    hasDetail,
     icon: definition.icon,
     model,
     status: model.status,

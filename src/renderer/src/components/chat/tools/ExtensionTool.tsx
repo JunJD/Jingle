@@ -13,6 +13,10 @@ function parseExtensionToolCallUi(toolCall: ToolComponentProps["toolCall"]) {
 export const extensionToolComponent: ToolComponentDefinition = {
   name: "extension",
   icon: Plug,
+  hasDetail(props) {
+    const ui = parseExtensionToolCallUi(props.toolCall)
+    return Boolean(ui.display.description || props.rawArgs || props.rawResult)
+  },
   renderDisplay(props) {
     const ui = parseExtensionToolCallUi(props.toolCall)
     return {

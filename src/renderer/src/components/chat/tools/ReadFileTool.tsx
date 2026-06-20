@@ -7,6 +7,9 @@ import { countLines, getBasename, getPathArg } from "./shared"
 defineToolComponent({
   name: "read_file",
   icon: FileText,
+  hasDetail({ args, rawResult }) {
+    return Boolean(getPathArg(args) || rawResult)
+  },
   renderDisplay({ copy, args, rawResult }) {
     const path = getPathArg(args)
     const target = path ? getBasename(path) : null

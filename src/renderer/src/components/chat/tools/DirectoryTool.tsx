@@ -38,6 +38,9 @@ function asDirectoryEntries(result: unknown): ToolFileEntry[] {
 defineToolComponent({
   name: "ls",
   icon: FolderOpen,
+  hasDetail({ args, result }) {
+    return Boolean(getPathArg(args) || asDirectoryEntries(result).length > 0)
+  },
   renderDisplay({ copy, args, result }) {
     const path = getPathArg(args)
     const target = path ? getBasename(path) : null
@@ -74,6 +77,9 @@ defineToolComponent({
 defineToolComponent({
   name: "glob",
   icon: FolderOpen,
+  hasDetail({ args, result }) {
+    return Boolean(getPatternArg(args) || asStringArray(result).length > 0)
+  },
   renderDisplay({ copy, args, result }) {
     const pattern = getPatternArg(args)
     const matches = asStringArray(result)

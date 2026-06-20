@@ -6,6 +6,9 @@ import { getCommandArg, truncateMiddle } from "./shared"
 defineToolComponent({
   name: "execute",
   icon: Terminal,
+  hasDetail({ args, rawResult }) {
+    return Boolean(getCommandArg(args) || rawResult)
+  },
   renderDisplay({ copy, args }) {
     const command = getCommandArg(args)
 
