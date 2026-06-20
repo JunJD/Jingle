@@ -118,6 +118,7 @@ export interface AppCopy {
     actionsLabel: string
     addAutomation: string
     aiAddAttachment: string
+    archiveChat: string
     branchIntoLocal: string
     branchIntoNewWorktree: string
     branchIntoSameWorktree: string
@@ -165,12 +166,17 @@ export interface AppCopy {
     goToPreviousChat: string
     jumpToLatest: string
     loadingThread: string
+    addProject: string
+    markAsUnread: string
     newQuestion: string
+    organizeByProject: string
+    organizeByTime: string
     openSettings: string
     openAiHistory: string
     openMainChat: string
     openFolder: string
     openPinnedWindow: string
+    openThreadInNewWindow: string
     openTarget: string
     openSideChat: string
     openApp: string
@@ -179,16 +185,28 @@ export interface AppCopy {
     permissionModeExplore: string
     permissionModeSection: string
     pinChat: string
+    pinProject: string
+    createPermanentWorktree: string
+    projectOptions: string
     renameChat: string
+    renameProject: string
+    removeProject: string
+    revealInFinder: string
     sidebarAutomation: string
+    sidebarArchiveAllChats: string
     sidebarChats: string
     sidebarEmptyPinned: string
+    sidebarEmptyProjects: string
     sidebarEmptyRecent: string
     sidebarNewChat: string
     sidebarPinned: string
+    sidebarProjects: string
     sidebarSearch: string
     sidebarSearchLoading: string
     sidebarSearchNoResults: string
+    sortByCreated: string
+    sortByManual: string
+    sortByUpdated: string
     underDevelopment: string
     unpinChat: string
     commandMatches: string
@@ -422,6 +440,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       actionsLabel: "操作",
       addAutomation: "添加自动化...",
       aiAddAttachment: "添加附件",
+      archiveChat: "归档对话",
       branchIntoLocal: "分叉到本地",
       branchIntoNewWorktree: "分叉到新 worktree",
       branchIntoSameWorktree: "分叉到同一 worktree",
@@ -469,12 +488,17 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       goToPreviousChat: "前往上一个对话",
       jumpToLatest: "跳到最新",
       loadingThread: "正在恢复会话...",
+      addProject: "添加工作空间项目",
+      markAsUnread: "标记为未读",
       newQuestion: "新问题",
+      organizeByProject: "按项目整理",
+      organizeByTime: "按时间整理",
       openSettings: "打开设置",
       openAiHistory: "打开 AI 页面",
       openMainChat: "在主窗口打开",
       openFolder: "打开当前文件夹",
       openPinnedWindow: "钉出窗口",
+      openThreadInNewWindow: "在新窗口中打开",
       openTarget: "打开方式",
       openSideChat: "打开侧边聊天",
       openApp: "打开应用",
@@ -483,16 +507,28 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       permissionModeExplore: "自动审查",
       permissionModeSection: "权限模式",
       pinChat: "置顶对话",
+      pinProject: "置顶项目",
+      createPermanentWorktree: "创建永久工作树",
+      projectOptions: "项目选项",
       renameChat: "重命名对话",
+      renameProject: "重命名项目",
+      removeProject: "移除项目",
+      revealInFinder: "在 Finder 中显示",
       sidebarAutomation: "自动化",
-      sidebarChats: "Chats",
+      sidebarArchiveAllChats: "归档所有聊天",
+      sidebarChats: "对话",
       sidebarEmptyPinned: "暂无置顶对话",
+      sidebarEmptyProjects: "暂无项目对话",
       sidebarEmptyRecent: "暂无最近对话",
       sidebarNewChat: "新对话",
-      sidebarPinned: "Pinned",
+      sidebarPinned: "置顶",
+      sidebarProjects: "项目",
       sidebarSearch: "搜索",
       sidebarSearchLoading: "正在加载聊天...",
       sidebarSearchNoResults: "没有匹配的对话",
+      sortByCreated: "创建时间",
+      sortByManual: "手动排序",
+      sortByUpdated: "最近更新",
       underDevelopment: "待开发",
       unpinChat: "取消置顶",
       commandMatches: "命令",
@@ -744,6 +780,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       actionsLabel: "Actions",
       addAutomation: "Add Automation...",
       aiAddAttachment: "Add attachment",
+      archiveChat: "Archive Chat",
       branchIntoLocal: "Fork into Local",
       branchIntoNewWorktree: "Fork into New Worktree",
       branchIntoSameWorktree: "Fork into Same Worktree",
@@ -791,12 +828,17 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       goToPreviousChat: "Go to Previous Chat",
       jumpToLatest: "Jump to latest",
       loadingThread: "Restoring session...",
+      addProject: "Add Workspace Project",
+      markAsUnread: "Mark as Unread",
       newQuestion: "New Question",
+      organizeByProject: "Group by Project",
+      organizeByTime: "Group by Time",
       openSettings: "Open Settings",
       openAiHistory: "Open AI",
       openMainChat: "Open in Main Window",
       openFolder: "Open Current Folder",
       openPinnedWindow: "Open in Separate Window",
+      openThreadInNewWindow: "Open in New Window",
       openTarget: "Open With",
       openSideChat: "Open Side Chat",
       openApp: "Open App",
@@ -805,16 +847,28 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       permissionModeExplore: "Auto Review",
       permissionModeSection: "Permission Mode",
       pinChat: "Pin Chat",
+      pinProject: "Pin Project",
+      createPermanentWorktree: "Create Permanent Worktree",
+      projectOptions: "Project Options",
       renameChat: "Rename Chat",
+      renameProject: "Rename Project",
+      removeProject: "Remove Project",
+      revealInFinder: "Reveal in Finder",
       sidebarAutomation: "Automations",
+      sidebarArchiveAllChats: "Archive All Chats",
       sidebarChats: "Chats",
       sidebarEmptyPinned: "No pinned chats",
+      sidebarEmptyProjects: "No project chats",
       sidebarEmptyRecent: "No recent chats",
       sidebarNewChat: "New Chat",
       sidebarPinned: "Pinned",
+      sidebarProjects: "Projects",
       sidebarSearch: "Search",
       sidebarSearchLoading: "Loading chats...",
       sidebarSearchNoResults: "No matching chats",
+      sortByCreated: "Created Time",
+      sortByManual: "Manual Order",
+      sortByUpdated: "Recently Updated",
       underDevelopment: "Coming soon",
       unpinChat: "Unpin Chat",
       commandMatches: "Commands",

@@ -20,7 +20,7 @@ import { LauncherAiHeaderActions } from "./LauncherAiHeaderActions"
 import { LauncherAiHeaderLeadingActions } from "./LauncherAiHeaderLeadingActions"
 import { LauncherAiHeaderModelPicker } from "./LauncherAiHeaderModelPicker"
 import { LauncherAiModelPicker } from "./LauncherAiModelPicker"
-import { LauncherAiSidebarPanel, mapThreadToLauncherAiSidebarItem } from "./LauncherAiSidebarPanel"
+import { LauncherAiSidebarPanel } from "./LauncherAiSidebarPanel"
 import { LauncherAiThreadSearchOverlay } from "./LauncherAiThreadSearchOverlay"
 import { useAiCoreHost } from "./AiCoreHost"
 import { LauncherAttachmentStrip } from "./LauncherAttachmentStrip"
@@ -50,6 +50,10 @@ const AI_SHORTCUT_SCOPES = ["launcher.ai"] as const
 const DEFAULT_AGENT_CAN_FORK = true
 const EMPTY_SUBAGENTS: readonly Subagent[] = []
 const EMPTY_TODOS: readonly Todo[] = []
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
 
 export function LauncherAiPage(): React.JSX.Element {
   const { copy, locale } = useI18n()
@@ -121,12 +125,12 @@ export function LauncherAiPage(): React.JSX.Element {
   } = attachmentDraft
   const updateThread = useHistoryShellStore((state) => state.updateThread)
   const setThreadPinned = useHistoryShellStore((state) => state.setThreadPinned)
+  const setThreadArchived = useHistoryShellStore((state) => state.setThreadArchived)
+  const addSidebarProject = useHistoryShellStore((state) => state.addSidebarProject)
+  const setSidebarOrganizeMode = useHistoryShellStore((state) => state.setSidebarOrganizeMode)
+  const setSidebarSortBy = useHistoryShellStore((state) => state.setSidebarSortBy)
   const loadThreads = useHistoryShellStore((state) => state.loadThreads)
-  const allThreads = useHistoryShellStore((state) => state.threads)
-  const launcherThreads = useMemo(
-    () => allThreads.filter((thread) => thread.metadata?.source === AI_THREAD_SOURCE),
-    [allThreads]
-  )
+  const sidebarView = useHistoryShellStore((state) => state.sidebarView)
   const { inputRef } = surface
   const focusComposerOnNextFrame = useCallback((): void => {
     window.requestAnimationFrame(() => {
@@ -145,7 +149,10 @@ export function LauncherAiPage(): React.JSX.Element {
     useThreadSelector(threadId, (state) => state?.agent.permissionMode ?? null) ??
     draftTarget?.permissionMode ??
     defaultDraftPermissionMode
-  const workspacePath = useThreadSelector(threadId, (state) => state?.agent.workspacePath ?? null)
+  const workspacePath =
+    useThreadSelector(threadId, (state) => state?.agent.workspacePath ?? null) ??
+    draftTarget?.workspacePath ??
+    null
   const subagents = useThreadSelector(
     threadId,
     (state) => state?.agent.subagents ?? EMPTY_SUBAGENTS
@@ -393,10 +400,6 @@ export function LauncherAiPage(): React.JSX.Element {
   const canBranchThread = Boolean(threadId && hasThreadMessages && canForkThread)
   const canUseHeaderThreadActions = !isApprovalPending
   const sidebarTitle = currentThreadTitle?.trim() || copy.launcher.newQuestion
-  const sidebarThreads = useMemo(
-    () => launcherThreads.map((thread) => mapThreadToLauncherAiSidebarItem(thread, threadId)),
-    [launcherThreads, threadId]
-  )
   const clearSidebarPreviewCloseTimer = useCallback((): void => {
     if (sidebarPreviewCloseTimerRef.current === null) {
       return
@@ -514,14 +517,40 @@ export function LauncherAiPage(): React.JSX.Element {
     [trimmedThreadSearchQuery]
   )
   const sidebarLabels = {
+    addProject: copy.launcher.addProject,
+    archiveChat: copy.launcher.archiveChat,
+    branchIntoLocal: copy.launcher.branchIntoLocal,
+    branchIntoNewWorktree: copy.launcher.branchIntoNewWorktree,
+    copyDeeplink: copy.launcher.copyDeeplink,
+    copySessionId: copy.launcher.copySessionId,
+    copyWorkingDirectory: copy.launcher.copyWorkingDirectory,
     expandSidebar: copy.launcher.expandSidebar,
+    markAsUnread: copy.launcher.markAsUnread,
+    organizeByProject: copy.launcher.organizeByProject,
+    organizeByTime: copy.launcher.organizeByTime,
+    openThreadInNewWindow: copy.launcher.openThreadInNewWindow,
+    pinChat: copy.launcher.pinChat,
+    pinProject: copy.launcher.pinProject,
+    createPermanentWorktree: copy.launcher.createPermanentWorktree,
+    projectOptions: copy.launcher.projectOptions,
+    renameChat: copy.launcher.renameChat,
+    renameProject: copy.launcher.renameProject,
+    removeProject: copy.launcher.removeProject,
+    revealInFinder: copy.launcher.revealInFinder,
     sidebarAutomation: copy.launcher.sidebarAutomation,
+    sidebarArchiveAllChats: copy.launcher.sidebarArchiveAllChats,
     sidebarChats: copy.launcher.sidebarChats,
     sidebarEmptyPinned: copy.launcher.sidebarEmptyPinned,
+    sidebarEmptyProjects: copy.launcher.sidebarEmptyProjects,
     sidebarEmptyRecent: copy.launcher.sidebarEmptyRecent,
     sidebarNewChat: copy.launcher.sidebarNewChat,
     sidebarPinned: copy.launcher.sidebarPinned,
-    sidebarSearch: copy.launcher.sidebarSearch
+    sidebarProjects: copy.launcher.sidebarProjects,
+    sidebarSearch: copy.launcher.sidebarSearch,
+    sortByCreated: copy.launcher.sortByCreated,
+    sortByManual: copy.launcher.sortByManual,
+    sortByUpdated: copy.launcher.sortByUpdated,
+    unpinChat: copy.launcher.unpinChat
   }
   const openThreadSearch = useCallback((): void => {
     setThreadSearchQuery("")
@@ -557,6 +586,153 @@ export function LauncherAiPage(): React.JSX.Element {
       await handleSelectSidebarThread(nextThreadId)
     },
     [closeThreadSearch, handleSelectSidebarThread]
+  )
+  const runSidebarThreadAction = useCallback(
+    async (action: () => Promise<void>): Promise<void> => {
+      try {
+        setNavigationError(null)
+        await action()
+      } catch (error) {
+        setNavigationError(toErrorMessage(error))
+      }
+    },
+    []
+  )
+  const addSidebarProjectFromPicker = useCallback(
+    async (): Promise<void> => {
+      await runSidebarThreadAction(addSidebarProject)
+    },
+    [addSidebarProject, runSidebarThreadAction]
+  )
+  const createProjectSidebarThread = useCallback(
+    async (nextWorkspacePath: string): Promise<void> => {
+      await runSidebarThreadAction(async () => {
+        const didStart = await startFreshDraft({
+          workspaceKind: "project",
+          workspacePath: nextWorkspacePath
+        })
+        if (!didStart) {
+          return
+        }
+
+        clearTransientInputState()
+        setShowModelPicker(false)
+        focusComposerOnNextFrame()
+      })
+    },
+    [
+      clearTransientInputState,
+      focusComposerOnNextFrame,
+      runSidebarThreadAction,
+      startFreshDraft
+    ]
+  )
+  const branchSidebarThread = useCallback(
+    async (sourceThreadId: string): Promise<void> => {
+      await runSidebarThreadAction(async () => {
+        await createBranchThread(sourceThreadId)
+        clearTransientInputState()
+        setShowModelPicker(false)
+        focusComposerOnNextFrame()
+      })
+    },
+    [clearTransientInputState, createBranchThread, focusComposerOnNextFrame, runSidebarThreadAction]
+  )
+  const copySidebarThreadSessionId = useCallback(
+    async (nextThreadId: string): Promise<void> => {
+      await runSidebarThreadAction(async () => {
+        await navigator.clipboard.writeText(nextThreadId)
+      })
+    },
+    [runSidebarThreadAction]
+  )
+  const copySidebarThreadWorkingDirectory = useCallback(
+    async (nextWorkspacePath: string): Promise<void> => {
+      await runSidebarThreadAction(async () => {
+        await navigator.clipboard.writeText(nextWorkspacePath)
+      })
+    },
+    [runSidebarThreadAction]
+  )
+  const openSidebarThreadInNewWindow = useCallback(
+    async (nextThreadId: string): Promise<void> => {
+      await runSidebarThreadAction(async () => {
+        const result = await window.api.aiSessionWindows.openPinned({ threadId: nextThreadId })
+        if (!result.ok) {
+          console.warn("[LauncherAiPage] Pinned AI session window limit reached.", {
+            limit: result.limit
+          })
+        }
+      })
+    },
+    [runSidebarThreadAction]
+  )
+  const revealSidebarThreadInFinder = useCallback(
+    async (nextWorkspacePath: string): Promise<void> => {
+      await runSidebarThreadAction(async () => {
+        await window.api.openTargets.open({ folderPath: nextWorkspacePath, targetId: "finder" })
+      })
+    },
+    [runSidebarThreadAction]
+  )
+  const toggleSidebarThreadPinned = useCallback(
+    async (nextThreadId: string, pinned: boolean): Promise<void> => {
+      await runSidebarThreadAction(async () => {
+        await setThreadPinned(nextThreadId, pinned)
+      })
+    },
+    [runSidebarThreadAction, setThreadPinned]
+  )
+  const archiveSidebarThread = useCallback(
+    async (nextThreadId: string): Promise<void> => {
+      await runSidebarThreadAction(async () => {
+        await setThreadArchived(nextThreadId, true)
+        if (nextThreadId === threadId) {
+          const didStart = await startFreshDraft()
+          if (didStart) {
+            clearTransientInputState()
+            setShowModelPicker(false)
+            focusComposerOnNextFrame()
+          }
+        }
+      })
+    },
+    [
+      clearTransientInputState,
+      focusComposerOnNextFrame,
+      runSidebarThreadAction,
+      setThreadArchived,
+      startFreshDraft,
+      threadId
+    ]
+  )
+  const sidebarThreadMenuActions = useMemo(
+    () => ({
+      onArchive: archiveSidebarThread,
+      onBranchIntoLocal: branchSidebarThread,
+      onCopySessionId: copySidebarThreadSessionId,
+      onCopyWorkingDirectory: copySidebarThreadWorkingDirectory,
+      onOpenInNewWindow: openSidebarThreadInNewWindow,
+      onRevealInFinder: revealSidebarThreadInFinder,
+      onTogglePinned: toggleSidebarThreadPinned
+    }),
+    [
+      archiveSidebarThread,
+      branchSidebarThread,
+      copySidebarThreadSessionId,
+      copySidebarThreadWorkingDirectory,
+      openSidebarThreadInNewWindow,
+      revealSidebarThreadInFinder,
+      toggleSidebarThreadPinned
+    ]
+  )
+  const sidebarProjectActions = useMemo(
+    () => ({
+      onCopyWorkingDirectory: copySidebarThreadWorkingDirectory,
+      onCreateChat: createProjectSidebarThread,
+      onRevealInFinder: revealSidebarThreadInFinder
+    }),
+    [copySidebarThreadWorkingDirectory, createProjectSidebarThread, revealSidebarThreadInFinder]
   )
   const handleGoToNextChat = useCallback(async (): Promise<void> => {
     const nextThreadId = await goToNextChat()
@@ -806,10 +982,14 @@ export function LauncherAiPage(): React.JSX.Element {
           <div className="launcher-ai-body" data-sidebar-open={isSidebarOpen ? "" : undefined}>
             {isSidebarOpen ? (
               <LauncherAiSidebarPanel
+                activeThreadId={threadId}
                 labels={sidebarLabels}
                 locale={locale}
                 mode="expanded"
-                threads={sidebarThreads}
+                sidebarView={sidebarView}
+                projectActions={sidebarProjectActions}
+                threadMenuActions={sidebarThreadMenuActions}
+                onAddProject={addSidebarProjectFromPicker}
                 onNewChat={() => {
                   void handleNewQuestion()
                 }}
@@ -817,14 +997,20 @@ export function LauncherAiPage(): React.JSX.Element {
                 onSelectThread={(nextThreadId) => {
                   void handleSelectSidebarThread(nextThreadId)
                 }}
+                onSetSidebarOrganizeMode={setSidebarOrganizeMode}
+                onSetSidebarSortBy={setSidebarSortBy}
               />
             ) : null}
             {isSidebarPreviewVisible ? (
               <LauncherAiSidebarPanel
+                activeThreadId={threadId}
                 labels={sidebarLabels}
                 locale={locale}
                 mode="preview"
-                threads={sidebarThreads}
+                sidebarView={sidebarView}
+                projectActions={sidebarProjectActions}
+                threadMenuActions={sidebarThreadMenuActions}
+                onAddProject={addSidebarProjectFromPicker}
                 onNewChat={() => {
                   void handleNewQuestion()
                 }}
@@ -834,6 +1020,8 @@ export function LauncherAiPage(): React.JSX.Element {
                 onSelectThread={(nextThreadId) => {
                   void handleSelectSidebarThread(nextThreadId)
                 }}
+                onSetSidebarOrganizeMode={setSidebarOrganizeMode}
+                onSetSidebarSortBy={setSidebarSortBy}
               />
             ) : null}
             <div className="launcher-ai-main min-w-0 flex-1">
