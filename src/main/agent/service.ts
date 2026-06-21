@@ -431,6 +431,10 @@ function projectValuesStreamDataForIpc(data: unknown): Record<string, unknown> {
     projectedState.todos = state.todos
   }
 
+  if (state.contextInclusions !== undefined && !Array.isArray(state.contextInclusions)) {
+    throw new Error("[AgentService] Invalid values contextInclusions state.")
+  }
+
   if (Array.isArray(state.contextInclusions)) {
     projectedState.contextInclusions = state.contextInclusions
   }
