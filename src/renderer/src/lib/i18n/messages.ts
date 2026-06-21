@@ -69,6 +69,10 @@ export interface AppCopy {
     pendingMemoryReject: string
     pendingMemoryTitle: string
     includedMemoriesTitle: (count: number) => string
+    contextEvidenceTitle: (count: number) => string
+    contextEvidenceProvided: string
+    contextEvidenceRetrieved: string
+    contextEvidenceCited: string
     messagePlaceholder: string
     newThreadEyebrow: string
     removeSelectionReference: string
@@ -391,6 +395,10 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       pendingMemoryReject: "忽略",
       pendingMemoryTitle: "待确认记忆",
       includedMemoriesTitle: (count) => `${count} 条记忆引用`,
+      contextEvidenceTitle: (count) => `${count} 条上下文`,
+      contextEvidenceProvided: "已提供",
+      contextEvidenceRetrieved: "已检索",
+      contextEvidenceCited: "已引用",
       messagePlaceholder: "给 Agent 发送消息...",
       newThreadEyebrow: "新对话",
       removeSelectionReference: "移除引用",
@@ -731,6 +739,10 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       pendingMemoryReject: "Ignore",
       pendingMemoryTitle: "Pending Memory",
       includedMemoriesTitle: (count) => `${count} memory reference${count === 1 ? "" : "s"}`,
+      contextEvidenceTitle: (count) => `${count} context item${count === 1 ? "" : "s"}`,
+      contextEvidenceProvided: "Provided",
+      contextEvidenceRetrieved: "Retrieved",
+      contextEvidenceCited: "Cited",
       messagePlaceholder: "Message the agent...",
       newThreadEyebrow: "New Thread",
       removeSelectionReference: "Remove reference",

@@ -2,7 +2,7 @@ import { ExternalLink, FileText, ImageIcon, Loader2, PackageOpen } from "lucide-
 import { Messages } from "@/components/chat/Messages"
 import { ChatJumpToLatestButton } from "@/components/chat/ChatJumpToLatestButton"
 import { AgentErrorNotice } from "@/components/chat/AgentErrorNotice"
-import { IncludedMemoriesPanel } from "@/components/chat/IncludedMemoriesPanel"
+import { ContextEvidencePanel } from "@/components/chat/ContextEvidencePanel"
 import { MemoryReviewPanel } from "@/components/chat/MemoryReviewPanel"
 import { useVirtualChatScrollIntent } from "@/components/chat/useVirtualChatScrollIntent"
 import { useI18n } from "@/lib/i18n"
@@ -313,7 +313,6 @@ const LauncherAiFooter = memo(function LauncherAiFooter(props: {
   threadId: string
 }): React.JSX.Element {
   const { clearError, error, isLoading, threadId } = props
-  const runId = useThreadSelector(threadId, (state) => state?.agent.latestRunId ?? null)
   const artifacts = useThreadSelector(
     threadId,
     (state) => state?.agent.artifacts ?? EMPTY_ARTIFACTS
@@ -323,7 +322,7 @@ const LauncherAiFooter = memo(function LauncherAiFooter(props: {
     <div className="flex w-full min-w-0 flex-col gap-[var(--launcher-ai-turn-gap)]">
       <LauncherArtifactsPanel artifacts={artifacts} />
 
-      {!isLoading && <IncludedMemoriesPanel runId={runId} />}
+      {!isLoading && <ContextEvidencePanel threadId={threadId} />}
 
       {!isLoading && <MemoryReviewPanel threadId={threadId} />}
 

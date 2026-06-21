@@ -9,7 +9,7 @@ import { Messages } from "./Messages"
 import { AssistantSelectionReferencePill } from "./AssistantSelectionReferences"
 import { MemoryReviewPanel } from "./MemoryReviewPanel"
 import { ModelSwitcher } from "./ModelSwitcher"
-import { IncludedMemoriesPanel } from "./IncludedMemoriesPanel"
+import { ContextEvidencePanel } from "./ContextEvidencePanel"
 import { WorkspacePicker } from "./WorkspacePicker"
 import { selectWorkspaceFolder } from "@/lib/workspace-utils"
 import { ChatTodos } from "./ChatTodos"
@@ -49,7 +49,6 @@ const ChatFooter = memo(function ChatFooter(props: {
 }): React.JSX.Element {
   const { clearError, hasVisibleTurns, isBusy, pendingApproval, threadId, todos, visibleError } =
     props
-  const runId = useThreadSelector(threadId, (state) => state?.agent.latestRunId ?? null)
 
   return (
     <div className="flex flex-col gap-[var(--ow-chat-thread-gap)]">
@@ -59,7 +58,7 @@ const ChatFooter = memo(function ChatFooter(props: {
 
       {isBusy && todos.length > 0 && <ChatTodos todos={todos} />}
 
-      {!isBusy && <IncludedMemoriesPanel runId={runId} />}
+      {!isBusy && <ContextEvidencePanel threadId={threadId} />}
 
       {!isBusy && <MemoryReviewPanel threadId={threadId} />}
 
