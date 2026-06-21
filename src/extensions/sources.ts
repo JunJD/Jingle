@@ -179,7 +179,7 @@ function mapConnectionStatusToAuthStatus(
 }
 
 function resolveConnectionState(
-  extensionName: string,
+  entry: NativeExtensionAiCapabilityRegistryEntry,
   supported: boolean,
   input: ResolveNativeExtensionAiCapabilityInput
 ): ResolvedExtensionConnectionState {
@@ -192,7 +192,7 @@ function resolveConnectionState(
 
   if (!input.getConnection) {
     console.warn(
-      `[Sources] Missing connection resolver for extension AI capability "${extensionName}".`
+      `[Sources] Missing connection resolver for extension AI capability "${entry.manifest.name}".`
     )
     return {
       authStatus: "failed",
@@ -201,14 +201,14 @@ function resolveConnectionState(
   }
 
   try {
-    const connection = input.getConnection(extensionName)
+    const connection = input.getConnection(entry.manifest.name)
     return {
       authStatus: mapConnectionStatusToAuthStatus(connection.status),
       publicConfig: connection.publicConfig
     }
   } catch (error) {
     console.warn(
-      `[Sources] Failed to read connection for extension AI capability "${extensionName}".`,
+      `[Sources] Failed to read connection for extension AI capability "${entry.manifest.name}".`,
       error
     )
     return {
@@ -294,7 +294,7 @@ function resolveEntryCapability(
       )
     : true
   const connectionState = resolveConnectionState(
-    entry.manifest.name,
+    entry,
     platformSupported,
     input
   )

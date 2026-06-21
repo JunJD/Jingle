@@ -175,6 +175,12 @@ export interface NativeExtensionOAuthStartRequest {
   extensionName: string
 }
 
+export interface NativeExtensionConnectionSecretUpdateRequest {
+  connectionId?: string
+  extensionName: string
+  secrets: Record<string, string>
+}
+
 export interface NativeExtensionOAuthStartResponse {
   authorizationUrl: string
   connectionId: string
@@ -217,7 +223,7 @@ export interface NativeExtensionPackageManifest<
   aiCapability?: NativeExtensionAiCapability
   capabilities: LauncherCommandOwnerCapability[]
   commands: Array<NativeExtensionCommandManifest<TCommandName>>
-  connection?: NativeExtensionConnectionManifest
+  connection: NativeExtensionConnectionManifest
   defaultCommandName?: TCommandName
   description?: LocalizedTextValue
   /** Extension-package-relative asset path, for example "assets/icon.svg". */
@@ -264,7 +270,7 @@ export interface NativeExtensionCommandSettingsSchema {
 
 export interface InstalledNativeExtensionSettingsSchema {
   commands: NativeExtensionCommandSettingsSchema[]
-  connection?: NativeExtensionConnectionManifest
+  connection: NativeExtensionConnectionManifest
   description: LocalizedTextValue
   extName: string
   icon?: NativeExtensionIcon
@@ -274,6 +280,7 @@ export interface InstalledNativeExtensionSettingsSchema {
 }
 
 export interface NativeExtensionPreferencesState {
+  connectionSecrets: Record<string, Record<string, string>>
   extensionPreferences: Record<string, Record<string, unknown>>
   commandPreferences: Record<string, Record<string, unknown>>
 }
@@ -388,7 +395,7 @@ function validateOptionalStringArray(input: {
 function validateConnectionAuthManifest(
   manifestName: string,
   connection: NativeExtensionConnectionManifest
-): void {
+): Set<string> {
   const auth = connection.auth
 
   if (auth.type === "none") {
@@ -397,7 +404,7 @@ function validateConnectionAuthManifest(
         `Native extension "${manifestName}" connection "${connection.id}" auth.secretNames must be empty for auth.type "none"`
       )
     }
-    return
+    return new Set()
   }
 
   validateOptionalStringArray({
@@ -413,7 +420,7 @@ function validateConnectionAuthManifest(
   }
 
   if (auth.type !== "oauth") {
-    return
+    return new Set(auth.secretNames)
   }
 
   assertNonEmptyString(
@@ -440,7 +447,7 @@ function validateConnectionAuthManifest(
       redirect.redirectUrl,
       `Native extension "${manifestName}" connection "${connection.id}" auth.redirect.redirectUrl must be non-empty`
     )
-    return
+    return new Set(auth.secretNames)
   }
 
   if (redirect.method === "app-scheme") {
@@ -452,7 +459,7 @@ function validateConnectionAuthManifest(
       redirect.callbackPath,
       `Native extension "${manifestName}" connection "${connection.id}" auth.redirect.callbackPath must be non-empty`
     )
-    return
+    return new Set(auth.secretNames)
   }
 
   assertNonEmptyString(
@@ -463,16 +470,14 @@ function validateConnectionAuthManifest(
     redirect.callbackPath,
     `Native extension "${manifestName}" connection "${connection.id}" auth.redirect.callbackPath must be non-empty`
   )
+
+  return new Set(auth.secretNames)
 }
 
 function validateConnectionManifest(
   manifestName: string,
-  connection: NativeExtensionConnectionManifest | undefined
-): void {
-  if (!connection) {
-    return
-  }
-
+  connection: NativeExtensionConnectionManifest
+): Set<string> {
   assertNonEmptyString(
     connection.id,
     `Native extension "${manifestName}" connection.id must be non-empty`
@@ -485,7 +490,7 @@ function validateConnectionManifest(
     connection.title,
     `Native extension "${manifestName}" connection.title must be non-empty`
   )
-  validateOptionalStringArray({
+  const publicPreferenceNames = validateOptionalStringArray({
     extensionName: manifestName,
     fieldName: `connection "${connection.id}" publicPreferenceNames`,
     values: connection.publicPreferenceNames
@@ -496,7 +501,16 @@ function validateConnectionManifest(
       `Native extension "${manifestName}" connection "${connection.id}" connectGuide must be non-empty when declared`
     )
   }
-  validateConnectionAuthManifest(manifestName, connection)
+  const connectionSecretNames = validateConnectionAuthManifest(manifestName, connection)
+  for (const preferenceName of publicPreferenceNames) {
+    if (connectionSecretNames.has(preferenceName)) {
+      throw new Error(
+        `Native extension "${manifestName}" connection "${connection.id}" publicPreferenceNames cannot include secret "${preferenceName}"`
+      )
+    }
+  }
+
+  return connectionSecretNames
 }
 
 function validateRuntimeShellManifest(
@@ -540,6 +554,26 @@ function validateRuntimeShellManifest(
     throw new Error(
       `Native extension "${manifestName}" declares runtimeShell URL schemes without the "shell" runtime capability`
     )
+  }
+}
+
+function validatePreferenceSchemas(input: {
+  manifestName: string
+  preferences: readonly NativeExtensionPreferenceSchema[] | undefined
+  reservedSecretNames: ReadonlySet<string>
+  scope: string
+}): void {
+  for (const preference of input.preferences ?? []) {
+    if (preference.type === "password") {
+      throw new Error(
+        `Native extension "${input.manifestName}" ${input.scope} preference "${preference.name}" must use connection.auth instead of password preferences`
+      )
+    }
+    if (input.reservedSecretNames.has(preference.name)) {
+      throw new Error(
+        `Native extension "${input.manifestName}" ${input.scope} preference "${preference.name}" must not reuse connection secret names`
+      )
+    }
   }
 }
 
@@ -598,6 +632,12 @@ export function validateNativeExtensionPackageManifest(
     )
   }
 
+  if (!manifest.connection) {
+    throw new Error(`Native extension "${manifest.name}" must declare a connection manifest`)
+  }
+
+  const connectionSecretNames = validateConnectionManifest(manifest.name, manifest.connection)
+
   if (manifest.aiCapability) {
     const capability = manifest.aiCapability
     assertNonEmptyString(
@@ -628,7 +668,7 @@ export function validateNativeExtensionPackageManifest(
         capability.connectionId,
         `Native extension "${manifest.name}" aiCapability.connectionId must be non-empty when declared`
       )
-      if (manifest.connection && capability.connectionId !== manifest.connection.id) {
+      if (capability.connectionId !== manifest.connection.id) {
         throw new Error(
           `Native extension "${manifest.name}" aiCapability.connectionId references unknown connection "${capability.connectionId}"`
         )
@@ -686,7 +726,12 @@ export function validateNativeExtensionPackageManifest(
     }
   }
 
-  validateConnectionManifest(manifest.name, manifest.connection)
+  validatePreferenceSchemas({
+    manifestName: manifest.name,
+    preferences: manifest.preferences,
+    reservedSecretNames: connectionSecretNames,
+    scope: "extension"
+  })
   validateNativeExtensionIcon(manifest.name, "package", manifest.icon)
 
   const commandNames = new Set<string>()
@@ -698,6 +743,12 @@ export function validateNativeExtensionPackageManifest(
     }
 
     commandNames.add(command.name)
+    validatePreferenceSchemas({
+      manifestName: manifest.name,
+      preferences: command.preferences,
+      reservedSecretNames: connectionSecretNames,
+      scope: `command "${command.name}"`
+    })
     validateNativeExtensionIcon(manifest.name, `command "${command.name}"`, command.icon)
 
     if (command.runtime && command.mode === "view" && !command.runtime.viewport) {

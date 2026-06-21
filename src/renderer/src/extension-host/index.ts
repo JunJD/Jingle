@@ -4,7 +4,8 @@ import {
   supportsNativeExtensionPlatformList,
   toLauncherCommandOwnerManifestFromProjection,
   type NativeExtensionLauncherCatalogProjection,
-  type NativeExtensionLauncherCommandProjection
+  type NativeExtensionLauncherCommandProjection,
+  type NativeExtensionSourceMentionProjection
 } from "@shared/native-extensions"
 import { resolveLocalizedText, type AppLocale } from "@shared/i18n"
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
@@ -29,13 +30,18 @@ function getViewportHeight(
 }
 
 let nativeLauncherCommandOwners: LauncherCommandOwnerDefinition[] = []
-let nativeLauncherCatalogProjection: readonly NativeExtensionLauncherCatalogProjection[] = []
+let nativeSourceMentionProjection: readonly NativeExtensionSourceMentionProjection[] = []
 
 export function setNativeLauncherCatalogProjection(
   catalog: readonly NativeExtensionLauncherCatalogProjection[]
 ): void {
-  nativeLauncherCatalogProjection = catalog
   nativeLauncherCommandOwners = buildNativeLauncherCommandOwners(catalog)
+}
+
+export function setNativeSourceMentionProjection(
+  sourceMentions: readonly NativeExtensionSourceMentionProjection[]
+): void {
+  nativeSourceMentionProjection = sourceMentions
 }
 
 export function getNativeLauncherCommandOwners(): readonly LauncherCommandOwnerDefinition[] {
@@ -46,12 +52,8 @@ export function listNativeLauncherSourceMentions(
   platform: string,
   locale: AppLocale
 ): ExtensionSourceMention[] {
-  return nativeLauncherCatalogProjection.flatMap((extension) => {
-    const sourceMention = extension.sourceMention
-    if (
-      !sourceMention ||
-      !supportsNativeExtensionPlatformList(sourceMention.supportedPlatforms, platform)
-    ) {
+  return nativeSourceMentionProjection.flatMap((sourceMention) => {
+    if (!supportsNativeExtensionPlatformList(sourceMention.supportedPlatforms, platform)) {
       return []
     }
 

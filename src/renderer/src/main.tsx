@@ -1,5 +1,8 @@
 import ReactDOM from "react-dom/client"
-import { setNativeLauncherCatalogProjection } from "@extension-host/index"
+import {
+  setNativeLauncherCatalogProjection,
+  setNativeSourceMentionProjection
+} from "@extension-host/index"
 import { DEFAULT_APP_THEME_SETTINGS } from "@shared/app-theme"
 import { applyAppThemeSettings } from "./lib/app-theme"
 import { installRendererDiagnostics } from "./lib/diagnostics"
@@ -20,7 +23,12 @@ installRendererDiagnostics()
 applyAppThemeSettings(DEFAULT_APP_THEME_SETTINGS)
 
 async function bootstrapRenderer(): Promise<void> {
-  setNativeLauncherCatalogProjection(await window.api.nativeExtensions.listLauncherCatalog())
+  const [launcherCatalog, sourceMentions] = await Promise.all([
+    window.api.nativeExtensions.listLauncherCatalog(),
+    window.api.nativeExtensions.listSourceMentions()
+  ])
+  setNativeLauncherCatalogProjection(launcherCatalog)
+  setNativeSourceMentionProjection(sourceMentions)
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <RendererRoot resolvedWindowKind={resolvedWindowKind} windowKind={windowKind} />
   )

@@ -18,10 +18,8 @@ import {
   resolveNativeExtensionAiCapabilityForExtensionNameFromManifests,
   resolveNativeExtensionAiCapabilitiesForRefsFromManifests
 } from "@extensions/sources"
-import {
-  resolveNativeExtensionConnection,
-  resolveNativeExtensionExecutionContext
-} from "../native-extensions/connection-resolver"
+import { resolveNativeExtensionConnection } from "../native-extensions/connection-resolver"
+import { resolveNativeExtensionExecutionContext } from "../native-extensions/execution-context"
 import {
   beginAgentRun,
   finalizeRunWithoutCheckpoint,

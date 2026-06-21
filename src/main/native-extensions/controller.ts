@@ -1,5 +1,6 @@
 import type { IpcMain } from "electron"
 import type {
+  NativeExtensionConnectionSecretUpdateRequest,
   NativeExtensionInvokeIpcResponse,
   NativeExtensionInvokeRequest,
   NativeExtensionOAuthStartRequest
@@ -18,6 +19,10 @@ export class NativeExtensionsController {
 
     registerIpcHandle(ipcMain, "nativeExtensions:listLauncherCatalog", () => {
       return this.nativeExtensionsService.listLauncherCatalog()
+    })
+
+    registerIpcHandle(ipcMain, "nativeExtensions:listSourceMentions", () => {
+      return this.nativeExtensionsService.listSourceMentions()
     })
 
     registerIpcHandle(
@@ -69,6 +74,14 @@ export class NativeExtensionsController {
       "nativeExtensions:startOAuthConnection",
       (_event, request: NativeExtensionOAuthStartRequest) => {
         return this.nativeExtensionsService.startOAuthConnection(request)
+      }
+    )
+
+    registerIpcHandle(
+      ipcMain,
+      "nativeExtensions:setConnectionSecrets",
+      (_event, request: NativeExtensionConnectionSecretUpdateRequest) => {
+        return this.nativeExtensionsService.setConnectionSecrets(request)
       }
     )
 

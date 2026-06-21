@@ -2,6 +2,7 @@ import { defineLocalizedText as l, defineNativeExtensionManifest } from "@openwo
 
 export const imageGenerationManifest = defineNativeExtensionManifest({
   aiCapability: {
+    connectionId: "default",
     description: "Generate and edit images from natural language prompts.",
     guide:
       "Use this capability when the user asks to generate or edit raster images. Successful image generation or edit results are automatically presented in Artifacts.",
@@ -18,8 +19,6 @@ export const imageGenerationManifest = defineNativeExtensionManifest({
       value: "image"
     },
     permissionMode: "auto",
-    publicPreferenceNames: ["baseUrl"],
-    requiredPreferenceNames: ["apiKey"],
     title: l("Image Generation", "生图"),
     toolDisplays: {
       editImage: {
@@ -35,22 +34,23 @@ export const imageGenerationManifest = defineNativeExtensionManifest({
   },
   capabilities: [],
   commands: [],
+  connection: {
+    auth: {
+      secretNames: ["apiKey"],
+      type: "apiKey"
+    },
+    connectGuide:
+      "Configure an OpenAI-compatible image generation API key in Jingle Settings. Jingle stores the key locally and passes it to the Image Generation extension at runtime.",
+    id: "default",
+    provider: "image-generation",
+    publicPreferenceNames: ["baseUrl"],
+    title: l("Image Generation", "生图")
+  },
   description: l("Generate and edit images from AI chat.", "在 AI 对话中生成和编辑图片。"),
   icon: "assets/icon.svg",
   iconName: "image",
   name: "image-generation",
   preferences: [
-    {
-      description: l(
-        "API key for the image generation provider.",
-        "生图服务的 API Key。"
-      ),
-      name: "apiKey",
-      placeholder: "sk-...",
-      required: true,
-      title: l("API Key", "API Key"),
-      type: "password"
-    },
     {
       default: "https://www.xiongxiongai.online",
       description: l(

@@ -1,4 +1,3 @@
-import { safeStorage } from "electron"
 import Store from "electron-store"
 import { mkdirSync } from "fs"
 import { homedir } from "os"
@@ -62,10 +61,6 @@ interface SettingsStoreShape {
   workspacePath: string | null
 }
 
-interface SecretsStoreShape {
-  nativeExtensionSecrets: NativeExtensionSecretsState
-}
-
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
   desktopAutomationAllowlist: [],
   skillSources: [],
@@ -73,18 +68,9 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
 }
 
 const DEFAULT_NATIVE_EXTENSION_PREFERENCES: NativeExtensionPreferencesState = {
+  connectionSecrets: {},
   extensionPreferences: {},
   commandPreferences: {}
-}
-
-interface NativeExtensionSecretsState {
-  extensionSecrets: Record<string, Record<string, string>>
-  commandSecrets: Record<string, Record<string, string>>
-}
-
-const DEFAULT_NATIVE_EXTENSION_SECRETS: NativeExtensionSecretsState = {
-  extensionSecrets: {},
-  commandSecrets: {}
 }
 
 const DEFAULT_WORKSPACE_PATH = join(homedir(), "Documents", "Jingle")
@@ -109,14 +95,6 @@ const settingsStore = new Store<SettingsStoreShape>({
     shortcutSettings: DEFAULT_SHORTCUT_SETTINGS,
     workspaceDialogPath: null,
     workspacePath: DEFAULT_WORKSPACE_PATH
-  }
-})
-
-const secretsStore = new Store<SecretsStoreShape>({
-  name: "secrets",
-  cwd: getOpenworkDir(),
-  defaults: {
-    nativeExtensionSecrets: DEFAULT_NATIVE_EXTENSION_SECRETS
   }
 })
 
@@ -208,21 +186,9 @@ function normalizeNativeExtensionPreferencesState(value: unknown): NativeExtensi
   const raw = value as Partial<NativeExtensionPreferencesState>
 
   return {
+    connectionSecrets: normalizeSecretRecordMap(raw.connectionSecrets),
     extensionPreferences: normalizePreferenceRecordMap(raw.extensionPreferences),
     commandPreferences: normalizePreferenceRecordMap(raw.commandPreferences)
-  }
-}
-
-function normalizeNativeExtensionSecretsState(value: unknown): NativeExtensionSecretsState {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return DEFAULT_NATIVE_EXTENSION_SECRETS
-  }
-
-  const raw = value as Partial<NativeExtensionSecretsState>
-
-  return {
-    extensionSecrets: normalizeSecretRecordMap(raw.extensionSecrets),
-    commandSecrets: normalizeSecretRecordMap(raw.commandSecrets)
   }
 }
 
@@ -238,22 +204,10 @@ function getConnectionSecretStoreKey(provider: string, connectionId: string): st
   return `connection:${provider}:${connectionId}`
 }
 
-function isPasswordPreference(preference: NativeExtensionPreferenceSchema): boolean {
-  return preference.type === "password"
-}
-
-function listPasswordPreferenceNames(schema: NativeExtensionPreferenceSchema[]): Set<string> {
-  return new Set(
-    schema
-      .filter((preference) => isPasswordPreference(preference))
-      .map((preference) => preference.name)
-  )
-}
-
 function getNativeExtensionManifest(extensionName: string) {
-  const manifest = getDefaultExtensionRegistryService().listManifests(process.platform).find(
-    (entry) => entry.name === extensionName
-  )
+  const manifest = getDefaultExtensionRegistryService()
+    .listManifests(process.platform)
+    .find((entry) => entry.name === extensionName)
   if (!manifest) {
     throw new Error(`Unknown native extension "${extensionName}"`)
   }
@@ -306,60 +260,6 @@ function normalizePreferenceValue(
   return value
 }
 
-function assertSecretStorageAvailable(): void {
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error("Secure secret storage is not available on this system.")
-  }
-}
-
-function encryptSecretValue(value: string): string {
-  assertSecretStorageAvailable()
-  return safeStorage.encryptString(value).toString("base64")
-}
-
-function decryptSecretValue(value: string): string {
-  assertSecretStorageAvailable()
-  return safeStorage.decryptString(Buffer.from(value, "base64"))
-}
-
-function omitPasswordPreferenceValues(
-  schema: NativeExtensionPreferenceSchema[],
-  record: Record<string, unknown>
-): Record<string, unknown> {
-  const secretPreferenceNames = listPasswordPreferenceNames(schema)
-  if (secretPreferenceNames.size === 0) {
-    return record
-  }
-
-  return Object.fromEntries(
-    Object.entries(record).filter(([key]) => !secretPreferenceNames.has(key))
-  )
-}
-
-function resolveNextSecretPreferenceRecord(params: {
-  currentRecord: Record<string, string>
-  nextRecord: Record<string, unknown>
-  schema: NativeExtensionPreferenceSchema[]
-}): Record<string, string> {
-  const nextSecretRecord = { ...params.currentRecord }
-
-  for (const preferenceName of listPasswordPreferenceNames(params.schema)) {
-    if (!Object.hasOwn(params.nextRecord, preferenceName)) {
-      continue
-    }
-
-    const secretValue = String(params.nextRecord[preferenceName] ?? "")
-    if (secretValue.length > 0) {
-      nextSecretRecord[preferenceName] = secretValue
-      continue
-    }
-
-    delete nextSecretRecord[preferenceName]
-  }
-
-  return nextSecretRecord
-}
-
 function resolveCommandPreferenceRecord(params: {
   commandName: string
   extensionName: string
@@ -403,58 +303,20 @@ function normalizeWindowCoordinate(value: unknown): number | undefined {
   return Math.round(value)
 }
 
-function getNativeExtensionSecretsState(): NativeExtensionSecretsState {
-  const stored = secretsStore.get("nativeExtensionSecrets", DEFAULT_NATIVE_EXTENSION_SECRETS) as
-    | NativeExtensionSecretsState
-    | undefined
-
-  return normalizeNativeExtensionSecretsState(stored)
-}
-
-function setNativeExtensionSecretsState(nextState: NativeExtensionSecretsState): void {
-  secretsStore.set("nativeExtensionSecrets", nextState)
-}
-
-function getNativeExtensionSecretRecord(params: {
-  key: string
-  schema: NativeExtensionPreferenceSchema[]
-  scope: "command" | "extension"
-}): Record<string, string> {
-  const state = getNativeExtensionSecretsState()
-  const encryptedRecord =
-    params.scope === "extension"
-      ? normalizeSecretRecord(state.extensionSecrets[params.key])
-      : normalizeSecretRecord(state.commandSecrets[params.key])
-
-  return Object.fromEntries(
-    params.schema
-      .filter((preference) => isPasswordPreference(preference))
-      .flatMap((preference) => {
-        const encryptedValue = encryptedRecord[preference.name]
-        if (!encryptedValue) {
-          return []
-        }
-
-        return [[preference.name, decryptSecretValue(encryptedValue)]]
-      })
-  )
-}
-
 export function getNativeExtensionConnectionSecretRecord(params: {
   connectionId: string
   provider: string
   secretNames: string[]
 }): Record<string, string> {
-  const schema = params.secretNames.map((secretName) => ({
-    name: secretName,
-    type: "password"
-  }))
+  const key = getConnectionSecretStoreKey(params.provider, params.connectionId)
+  const record = normalizeSecretRecord(getNativeExtensionPreferencesState().connectionSecrets[key])
 
-  return getNativeExtensionSecretRecord({
-    key: getConnectionSecretStoreKey(params.provider, params.connectionId),
-    schema,
-    scope: "extension"
-  })
+  return Object.fromEntries(
+    params.secretNames.flatMap((secretName) => {
+      const value = record[secretName]
+      return value ? [[secretName, value]] : []
+    })
+  )
 }
 
 export function setNativeExtensionConnectionSecretRecord(params: {
@@ -470,71 +332,21 @@ export function setNativeExtensionConnectionSecretRecord(params: {
     })
   )
 
-  setNativeExtensionSecretRecord({
-    key: getConnectionSecretStoreKey(params.provider, params.connectionId),
-    nextRecord,
-    scope: "extension"
+  const state = getNativeExtensionPreferencesState()
+  const key = getConnectionSecretStoreKey(params.provider, params.connectionId)
+  const connectionSecrets = { ...state.connectionSecrets }
+  if (Object.keys(nextRecord).length === 0) {
+    delete connectionSecrets[key]
+  } else {
+    connectionSecrets[key] = nextRecord
+  }
+
+  settingsStore.set("nativeExtensionPreferences", {
+    ...state,
+    connectionSecrets
   })
 
   return getNativeExtensionConnectionSecretRecord(params)
-}
-function setNativeExtensionSecretRecord(params: {
-  key: string
-  nextRecord: Record<string, string>
-  scope: "command" | "extension"
-}): void {
-  const state = getNativeExtensionSecretsState()
-  const encryptedRecord = Object.fromEntries(
-    Object.entries(params.nextRecord).map(([key, value]) => [key, encryptSecretValue(value)])
-  )
-
-  if (params.scope === "extension") {
-    const extensionSecrets = { ...state.extensionSecrets }
-    if (Object.keys(encryptedRecord).length === 0) {
-      delete extensionSecrets[params.key]
-    } else {
-      extensionSecrets[params.key] = encryptedRecord
-    }
-
-    setNativeExtensionSecretsState({
-      ...state,
-      extensionSecrets
-    })
-    return
-  }
-
-  const commandSecrets = { ...state.commandSecrets }
-  if (Object.keys(encryptedRecord).length === 0) {
-    delete commandSecrets[params.key]
-  } else {
-    commandSecrets[params.key] = encryptedRecord
-  }
-
-  setNativeExtensionSecretsState({
-    ...state,
-    commandSecrets
-  })
-}
-
-function stripPasswordPreferenceValues(
-  schema: NativeExtensionPreferenceSchema[],
-  record: Record<string, unknown>
-): Record<string, unknown> {
-  if (!schema.some((preference) => isPasswordPreference(preference))) {
-    return record
-  }
-
-  return Object.fromEntries(
-    schema.map((preference) => [
-      preference.name,
-      isPasswordPreference(preference)
-        ? getDefaultPreferenceValue(preference)
-        : normalizePreferenceValue(
-            preference,
-            record[preference.name] ?? getDefaultPreferenceValue(preference)
-          )
-    ])
-  )
 }
 
 function normalizeWindowDimension(value: unknown): number | null {
@@ -661,100 +473,54 @@ export function getNativeExtensionCommandPreferenceRecord(
   extensionName: string,
   commandName: string
 ): Record<string, unknown> {
-  return readNativeExtensionCommandPreferenceRecord({
-    commandName,
-    extensionName,
-    includeSecrets: false
-  })
+  return readNativeExtensionCommandPreferenceRecord(extensionName, commandName)
 }
 
 export function getResolvedNativeExtensionCommandPreferenceRecord(
   extensionName: string,
   commandName: string
 ): Record<string, unknown> {
-  return readNativeExtensionCommandPreferenceRecord({
-    commandName,
-    extensionName,
-    includeSecrets: true
-  })
+  return readNativeExtensionCommandPreferenceRecord(extensionName, commandName)
 }
 
-function readNativeExtensionCommandPreferenceRecord(params: {
+function readNativeExtensionCommandPreferenceRecord(
+  extensionName: string,
   commandName: string
-  extensionName: string
-  includeSecrets: boolean
-}): Record<string, unknown> {
+): Record<string, unknown> {
   const state = getNativeExtensionPreferencesState()
-  const commandKey = getCommandPreferenceStoreKey(params.extensionName, params.commandName)
-  const commandSchema = getCommandPreferenceSchema(params.extensionName, params.commandName)
-  const extensionRecord = readNativeExtensionPreferenceRecord({
-    extensionName: params.extensionName,
-    includeSecrets: params.includeSecrets
-  })
+  const commandKey = getCommandPreferenceStoreKey(extensionName, commandName)
+  const extensionRecord = readNativeExtensionPreferenceRecord(extensionName)
   const resolvedCommandRecord = resolveCommandPreferenceRecord({
-    commandName: params.commandName,
-    extensionName: params.extensionName,
+    commandName,
+    extensionName,
     nextRecord: normalizePreferenceRecord(state.commandPreferences[commandKey])
   })
-  const commandRecord = params.includeSecrets
-    ? {
-        ...resolvedCommandRecord,
-        ...getNativeExtensionSecretRecord({
-          key: commandKey,
-          schema: commandSchema,
-          scope: "command"
-        })
-      }
-    : stripPasswordPreferenceValues(commandSchema, resolvedCommandRecord)
 
   return {
     ...extensionRecord,
-    ...commandRecord
+    ...resolvedCommandRecord
   }
 }
 
 export function getNativeExtensionPreferenceRecord(extensionName: string): Record<string, unknown> {
-  return readNativeExtensionPreferenceRecord({
-    extensionName,
-    includeSecrets: false
-  })
+  return readNativeExtensionPreferenceRecord(extensionName)
 }
 
 export function getResolvedNativeExtensionPreferenceRecord(
   extensionName: string
 ): Record<string, unknown> {
-  return readNativeExtensionPreferenceRecord({
-    extensionName,
-    includeSecrets: true
-  })
+  return readNativeExtensionPreferenceRecord(extensionName)
 }
 
-function readNativeExtensionPreferenceRecord(params: {
-  extensionName: string
-  includeSecrets: boolean
-}): Record<string, unknown> {
+function readNativeExtensionPreferenceRecord(extensionName: string): Record<string, unknown> {
   const state = getNativeExtensionPreferencesState()
-  const key = getExtensionPreferenceStoreKey(params.extensionName)
-  const schema = getExtensionPreferenceSchema(params.extensionName)
+  const key = getExtensionPreferenceStoreKey(extensionName)
   const resolvedRecord = resolveExtensionPreferenceRecord({
-    extensionName: params.extensionName,
+    extensionName,
     nextRecord: normalizePreferenceRecord(state.extensionPreferences[key])
   })
 
-  if (!params.includeSecrets) {
-    return stripPasswordPreferenceValues(schema, resolvedRecord)
-  }
-
-  const extensionSecretRecord = getNativeExtensionSecretRecord({
-    key,
-    schema,
-    scope: "extension"
-  })
-
-  return {
-    ...resolvedRecord,
-    ...extensionSecretRecord
-  }
+  return resolvedRecord
 }
 
 export function setNativeExtensionPreferenceRecord(
@@ -763,44 +529,21 @@ export function setNativeExtensionPreferenceRecord(
 ): Record<string, unknown> {
   const state = getNativeExtensionPreferencesState()
   const key = getExtensionPreferenceStoreKey(extensionName)
-  const schema = getExtensionPreferenceSchema(extensionName)
   const rawRecord = normalizePreferenceRecord(nextRecord)
   const normalizedRecord = resolveExtensionPreferenceRecord({
     extensionName,
     nextRecord: rawRecord
   })
-  const secretRecord = resolveNextSecretPreferenceRecord({
-    currentRecord: getNativeExtensionSecretRecord({
-      key,
-      schema,
-      scope: "extension"
-    }),
-    nextRecord: rawRecord,
-    schema
-  })
-  const settingsRecord = omitPasswordPreferenceValues(schema, normalizedRecord)
   const nextState: NativeExtensionPreferencesState = {
+    connectionSecrets: state.connectionSecrets,
     extensionPreferences: {
       ...state.extensionPreferences,
-      [key]: settingsRecord
+      [key]: normalizedRecord
     },
     commandPreferences: state.commandPreferences
   }
 
   settingsStore.set("nativeExtensionPreferences", nextState)
-  if (listPasswordPreferenceNames(schema).size > 0) {
-    setNativeExtensionSecretRecord({
-      key,
-      nextRecord: secretRecord,
-      scope: "extension"
-    })
-  } else {
-    setNativeExtensionSecretRecord({
-      key,
-      nextRecord: {},
-      scope: "extension"
-    })
-  }
   return getNativeExtensionPreferenceRecord(extensionName)
 }
 
@@ -811,45 +554,22 @@ export function setNativeExtensionCommandPreferenceRecord(
 ): Record<string, unknown> {
   const state = getNativeExtensionPreferencesState()
   const key = getCommandPreferenceStoreKey(extensionName, commandName)
-  const schema = getCommandPreferenceSchema(extensionName, commandName)
   const rawRecord = normalizePreferenceRecord(nextRecord)
   const normalizedRecord = resolveCommandPreferenceRecord({
     commandName,
     extensionName,
     nextRecord: rawRecord
   })
-  const secretRecord = resolveNextSecretPreferenceRecord({
-    currentRecord: getNativeExtensionSecretRecord({
-      key,
-      schema,
-      scope: "command"
-    }),
-    nextRecord: rawRecord,
-    schema
-  })
-  const settingsRecord = omitPasswordPreferenceValues(schema, normalizedRecord)
   const nextState: NativeExtensionPreferencesState = {
+    connectionSecrets: state.connectionSecrets,
     extensionPreferences: state.extensionPreferences,
     commandPreferences: {
       ...state.commandPreferences,
-      [key]: settingsRecord
+      [key]: normalizedRecord
     }
   }
 
   settingsStore.set("nativeExtensionPreferences", nextState)
-  if (listPasswordPreferenceNames(schema).size > 0) {
-    setNativeExtensionSecretRecord({
-      key,
-      nextRecord: secretRecord,
-      scope: "command"
-    })
-  } else {
-    setNativeExtensionSecretRecord({
-      key,
-      nextRecord: {},
-      scope: "command"
-    })
-  }
   return getNativeExtensionCommandPreferenceRecord(extensionName, commandName)
 }
 

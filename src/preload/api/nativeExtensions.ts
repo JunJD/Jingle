@@ -1,4 +1,5 @@
 import type {
+  NativeExtensionConnectionSecretUpdateRequest,
   NativeExtensionInvokeIpcResponse,
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionInvokeRequest,
@@ -6,7 +7,8 @@ import type {
   NativeExtensionOAuthStartRequest,
   NativeExtensionOAuthStartResponse,
   NativeExtensionPreferencesChangedEvent,
-  NativeExtensionResolvedConnection
+  NativeExtensionResolvedConnection,
+  NativeExtensionSourceMentionProjection
 } from "@shared/native-extensions"
 import { invokeIpc, ipcRenderer } from "../ipc"
 import { OpenworkIpcClientError } from "../ipc-errors"
@@ -17,6 +19,9 @@ export const nativeExtensionsApi = {
   },
   listLauncherCatalog: (): Promise<NativeExtensionLauncherCatalogProjection[]> => {
     return invokeIpc("nativeExtensions:listLauncherCatalog")
+  },
+  listSourceMentions: (): Promise<NativeExtensionSourceMentionProjection[]> => {
+    return invokeIpc("nativeExtensions:listSourceMentions")
   },
   getPreferences: (extensionName: string): Promise<Record<string, unknown>> => {
     return invokeIpc("nativeExtensions:getPreferences", extensionName)
@@ -52,6 +57,11 @@ export const nativeExtensionsApi = {
     request: NativeExtensionOAuthStartRequest
   ): Promise<NativeExtensionOAuthStartResponse> => {
     return invokeIpc("nativeExtensions:startOAuthConnection", request)
+  },
+  setConnectionSecrets: (
+    request: NativeExtensionConnectionSecretUpdateRequest
+  ): Promise<NativeExtensionResolvedConnection> => {
+    return invokeIpc("nativeExtensions:setConnectionSecrets", request)
   },
   invoke: <TPayload, TResult>(
     request: NativeExtensionInvokeRequest<TPayload>

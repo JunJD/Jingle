@@ -14,6 +14,7 @@ export type {
   NativeExtensionCommandSettingsSchema,
   NativeExtensionConnectionAuthManifest,
   NativeExtensionConnectionManifest,
+  NativeExtensionConnectionSecretUpdateRequest,
   NativeExtensionConnectionStatus,
   NativeExtensionExecutionContext,
   NativeExtensionIcon,

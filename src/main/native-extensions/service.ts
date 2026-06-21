@@ -1,6 +1,7 @@
 import { BrowserWindow } from "electron"
 import type {
   NativeExtensionOAuthCallbackResult,
+  NativeExtensionConnectionSecretUpdateRequest,
   NativeExtensionOAuthStartRequest,
   NativeExtensionOAuthStartResponse,
   NativeExtensionLauncherCatalogProjection,
@@ -8,22 +9,24 @@ import type {
   NativeExtensionResolvedConnection,
   InstalledNativeExtensionSettingsSchema,
   NativeExtensionInvokeRequest,
-  NativeExtensionPreferencesChangedEvent
+  NativeExtensionPreferencesChangedEvent,
+  NativeExtensionSourceMentionProjection
 } from "@shared/native-extensions"
 import {
   getNativeExtensionCommandPreferenceRecord,
+  getNativeExtensionConnectionSecretRecord,
   getNativeExtensionPreferenceRecord,
+  setNativeExtensionConnectionSecretRecord,
   setNativeExtensionCommandPreferenceRecord,
   setNativeExtensionPreferenceRecord
 } from "../preferences"
-import {
-  resolveNativeExtensionConnection,
-  resolveNativeExtensionExecutionContext
-} from "./connection-resolver"
+import { resolveNativeExtensionConnection } from "./connection-resolver"
+import { resolveNativeExtensionExecutionContext } from "./execution-context"
 import {
   invokeNativeExtension,
   listNativeExtensionLauncherCatalog,
-  listNativeExtensionSettingsSchemas
+  listNativeExtensionSettingsSchemas,
+  listNativeExtensionSourceMentions
 } from "../services/native-extensions"
 import { getDefaultExtensionRegistryService } from "../extensions/registry/default-registry"
 import { NativeExtensionOAuthService } from "./oauth-service"
@@ -52,6 +55,10 @@ export class NativeExtensionsService {
 
   listLauncherCatalog(): NativeExtensionLauncherCatalogProjection[] {
     return listNativeExtensionLauncherCatalog()
+  }
+
+  listSourceMentions(): NativeExtensionSourceMentionProjection[] {
+    return listNativeExtensionSourceMentions()
   }
 
   getPreferences(extensionName: string): Record<string, unknown> {
@@ -114,6 +121,51 @@ export class NativeExtensionsService {
       scope: "command"
     })
     return record
+  }
+
+  setConnectionSecrets(
+    request: NativeExtensionConnectionSecretUpdateRequest
+  ): NativeExtensionResolvedConnection {
+    const manifest = this.getManifest(request.extensionName)
+    const connection = manifest.connection
+    if (!connection) {
+      throw new Error(`Native extension "${request.extensionName}" does not declare a connection`)
+    }
+    if (request.connectionId && connection.id !== request.connectionId) {
+      throw new Error(
+        `Native extension "${request.extensionName}" does not declare connection "${request.connectionId}"`
+      )
+    }
+    if (connection.auth.type === "none") {
+      throw new Error(
+        `Native extension "${request.extensionName}" connection "${connection.id}" does not use secrets`
+      )
+    }
+    if (connection.auth.type === "oauth") {
+      throw new Error(
+        `Native extension "${request.extensionName}" connection "${connection.id}" is OAuth-backed`
+      )
+    }
+
+    const currentRecord = getNativeExtensionConnectionSecretRecord({
+      connectionId: connection.id,
+      provider: connection.provider,
+      secretNames: connection.auth.secretNames
+    })
+    setNativeExtensionConnectionSecretRecord({
+      connectionId: connection.id,
+      nextRecord: {
+        ...currentRecord,
+        ...request.secrets
+      },
+      provider: connection.provider,
+      secretNames: connection.auth.secretNames
+    })
+    this.emitPreferencesChanged({
+      extensionName: request.extensionName,
+      scope: "extension"
+    })
+    return this.getConnection(request.extensionName)
   }
 
   invoke(request: NativeExtensionInvokeRequest): Promise<unknown> {

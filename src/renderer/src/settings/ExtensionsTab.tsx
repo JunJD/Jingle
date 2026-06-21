@@ -4,6 +4,7 @@ import type { ModelConfig } from "@shared/app-types"
 import { resolveLocalizedText, type AppLocale, type LocalizedTextValue } from "@shared/i18n"
 import type {
   InstalledNativeExtensionSettingsSchema,
+  NativeExtensionConnectionManifest,
   NativeExtensionPreferenceSchema,
   NativeExtensionResolvedConnection
 } from "@shared/native-extensions"
@@ -70,27 +71,36 @@ function resolvePreferenceLabel(
   return resolveExtensionText(preference.title ?? preference.label, locale, preference.name)
 }
 
+function isLocalSecretConnection(
+  connection: NativeExtensionConnectionManifest
+): connection is NativeExtensionConnectionManifest & {
+  auth: Extract<
+    NativeExtensionConnectionManifest["auth"],
+    { type: "apiKey" | "personalAccessToken" }
+  >
+} {
+  return connection.auth.type === "apiKey" || connection.auth.type === "personalAccessToken"
+}
+
 function PreferenceField(props: {
   disabledLabel: string
   enabledLabel: string
   modelOptions: Array<{ id: string; label: string }>
   onChange: (nextValue: unknown) => void
+  onCommit: (nextValue: unknown) => void
   preference: NativeExtensionPreferenceSchema
   locale: AppLocale
-  hideSecretLabel: string
-  showSecretLabel: string
   useEnvironmentFallbackLabel: string
   value: unknown
 }): React.JSX.Element {
   const {
     disabledLabel,
     enabledLabel,
-    hideSecretLabel,
     locale,
     modelOptions,
     onChange,
+    onCommit,
     preference,
-    showSecretLabel,
     useEnvironmentFallbackLabel,
     value
   } = props
@@ -105,13 +115,22 @@ function PreferenceField(props: {
           <span className="min-w-0 truncate text-muted-foreground">
             {value === true ? enabledLabel : disabledLabel}
           </span>
-          <SettingsSwitch checked={value === true} label={fieldLabel} onCheckedChange={onChange} />
+          <SettingsSwitch
+            checked={value === true}
+            label={fieldLabel}
+            onCheckedChange={(checked) => {
+              onChange(checked)
+              onCommit(checked)
+            }}
+          />
         </div>
       ) : preference.type === "dropdown" ? (
         <SettingsSelect
           value={String(value ?? "")}
           onChange={(event) => {
-            onChange(event.target.value)
+            const nextValue = event.target.value
+            onChange(nextValue)
+            onCommit(nextValue)
           }}
         >
           {(preference.data ?? []).map((entry) => (
@@ -127,7 +146,9 @@ function PreferenceField(props: {
         <SettingsSelect
           value={String(value ?? "")}
           onChange={(event) => {
-            onChange(event.target.value || null)
+            const nextValue = event.target.value || null
+            onChange(nextValue)
+            onCommit(nextValue)
           }}
         >
           <option value="">{useEnvironmentFallbackLabel}</option>
@@ -143,18 +164,16 @@ function PreferenceField(props: {
           value={getNativeExtensionApplicationPreferenceLabel(value)}
           placeholder={placeholder || (locale === "zh-CN" ? "应用名称" : "Application name")}
           onChange={(event) => {
-            onChange(normalizeNativeExtensionApplicationPreferenceValue(event.target.value))
+            const nextValue = normalizeNativeExtensionApplicationPreferenceValue(event.target.value)
+            onChange(nextValue)
           }}
-          spellCheck={false}
-        />
-      ) : preference.type === "password" ? (
-        <SettingsPasswordInput
-          value={String(value ?? "")}
-          placeholder={placeholder}
-          showLabel={showSecretLabel}
-          hideLabel={hideSecretLabel}
-          onChange={(event) => {
-            onChange(event.target.value)
+          onBlur={(event) => {
+            onCommit(normalizeNativeExtensionApplicationPreferenceValue(event.currentTarget.value))
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur()
+            }
           }}
           spellCheck={false}
         />
@@ -164,7 +183,16 @@ function PreferenceField(props: {
           value={String(value ?? "")}
           placeholder={placeholder}
           onChange={(event) => {
-            onChange(event.target.value)
+            const nextValue = event.target.value
+            onChange(nextValue)
+          }}
+          onBlur={(event) => {
+            onCommit(event.currentTarget.value)
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur()
+            }
           }}
           spellCheck={false}
         />
@@ -179,10 +207,9 @@ function PreferenceSection(props: {
   enabledLabel: string
   modelOptions: Array<{ id: string; label: string }>
   onChange: (preferenceName: string, nextValue: unknown) => void
+  onCommit: (preferenceName: string, nextValue: unknown) => void
   preferences: NativeExtensionPreferenceSchema[]
   locale: AppLocale
-  hideSecretLabel: string
-  showSecretLabel: string
   title?: string
   useEnvironmentFallbackLabel: string
   values: Record<string, unknown>
@@ -191,12 +218,11 @@ function PreferenceSection(props: {
     disabledLabel,
     emptyLabel,
     enabledLabel,
-    hideSecretLabel,
     locale,
     modelOptions,
     onChange,
+    onCommit,
     preferences,
-    showSecretLabel,
     title,
     useEnvironmentFallbackLabel,
     values
@@ -222,14 +248,15 @@ function PreferenceSection(props: {
               key={preference.name}
               disabledLabel={disabledLabel}
               enabledLabel={enabledLabel}
-              hideSecretLabel={hideSecretLabel}
               modelOptions={modelOptions}
               locale={locale}
               onChange={(nextValue) => {
                 onChange(preference.name, nextValue)
               }}
+              onCommit={(nextValue) => {
+                onCommit(preference.name, nextValue)
+              }}
               preference={preference}
-              showSecretLabel={showSecretLabel}
               useEnvironmentFallbackLabel={useEnvironmentFallbackLabel}
               value={values[preference.name]}
             />
@@ -244,45 +271,9 @@ function buildPreferenceUpdateRecord(params: {
   currentRecord: Record<string, unknown>
   nextValue: unknown
   preferenceName: string
-  preferences: NativeExtensionPreferenceSchema[]
 }): Record<string, unknown> {
-  const passwordPreferenceNames = new Set(
-    params.preferences
-      .filter((preference) => preference.type === "password")
-      .map((preference) => preference.name)
-  )
-
   return {
-    ...Object.fromEntries(
-      Object.entries(params.currentRecord).filter(
-        ([key]) => !passwordPreferenceNames.has(key) || key === params.preferenceName
-      )
-    ),
-    [params.preferenceName]: params.nextValue
-  }
-}
-
-function isPasswordPreference(
-  preferences: NativeExtensionPreferenceSchema[],
-  preferenceName: string
-): boolean {
-  return preferences.some(
-    (preference) => preference.name === preferenceName && preference.type === "password"
-  )
-}
-
-function buildPreferenceRecordForLocalState(params: {
-  nextRecord: Record<string, unknown>
-  nextValue: unknown
-  preferenceName: string
-  preferences: NativeExtensionPreferenceSchema[]
-}): Record<string, unknown> {
-  if (!isPasswordPreference(params.preferences, params.preferenceName)) {
-    return params.nextRecord
-  }
-
-  return {
-    ...params.nextRecord,
+    ...params.currentRecord,
     [params.preferenceName]: params.nextValue
   }
 }
@@ -293,13 +284,12 @@ function CommandCard(props: {
   disabledLabel: string
   emptyLabel: string
   enabledLabel: string
-  hideSecretLabel: string
   labelMode: string
   locale: AppLocale
   modelOptions: Array<{ id: string; label: string }>
   onChange: (preferenceName: string, nextValue: unknown) => void
+  onCommit: (preferenceName: string, nextValue: unknown) => void
   preferences: NativeExtensionPreferenceSchema[]
-  showSecretLabel: string
   title: string
   useEnvironmentFallbackLabel: string
   values: Record<string, unknown>
@@ -317,7 +307,6 @@ function CommandCard(props: {
     emptyLabel,
     enabledLabel,
     extensionName,
-    hideSecretLabel,
     icon,
     iconName,
     labelMode,
@@ -325,8 +314,8 @@ function CommandCard(props: {
     modelOptions,
     mode,
     onChange,
+    onCommit,
     preferences,
-    showSecretLabel,
     title,
     useEnvironmentFallbackLabel,
     values
@@ -364,12 +353,11 @@ function CommandCard(props: {
           disabledLabel={disabledLabel}
           emptyLabel={emptyLabel}
           enabledLabel={enabledLabel}
-          hideSecretLabel={hideSecretLabel}
           modelOptions={modelOptions}
           locale={locale}
           onChange={onChange}
+          onCommit={onCommit}
           preferences={preferences}
-          showSecretLabel={showSecretLabel}
           useEnvironmentFallbackLabel={useEnvironmentFallbackLabel}
           values={values}
         />
@@ -378,7 +366,27 @@ function CommandCard(props: {
   )
 }
 
-function ConnectionCard(props: {
+function ConnectionStatusBadge(props: {
+  connected: boolean
+  labels: {
+    connected: string
+    missing: string
+  }
+}): React.JSX.Element {
+  return (
+    <span
+      className={`rounded-full border px-[var(--ow-space-2-5)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] ${
+        props.connected
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500"
+          : "border-border bg-background text-muted-foreground"
+      }`}
+    >
+      {props.connected ? props.labels.connected : props.labels.missing}
+    </span>
+  )
+}
+
+function OAuthConnectionCard(props: {
   connection: NativeExtensionResolvedConnection | null
   error: string | null
   isConnecting: boolean
@@ -410,15 +418,13 @@ function ConnectionCard(props: {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-[var(--ow-gap-sm)]">
-          <span
-            className={`rounded-full border px-[var(--ow-space-2-5)] py-[var(--ow-space-1)] [font-size:var(--ow-font-meta)] ${
-              connected
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500"
-                : "border-border bg-background text-muted-foreground"
-            }`}
-          >
-            {connected ? statusLabels.connected : statusLabels.missing}
-          </span>
+          <ConnectionStatusBadge
+            connected={connected}
+            labels={{
+              connected: statusLabels.connected,
+              missing: statusLabels.missing
+            }}
+          />
           <button
             type="button"
             disabled={isConnecting}
@@ -428,6 +434,101 @@ function ConnectionCard(props: {
             {isConnecting ? statusLabels.connecting : statusLabels.connect}
           </button>
         </div>
+      </div>
+      {error ? (
+        <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-destructive">
+          {error}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function SecretConnectionCard(props: {
+  connection: NativeExtensionResolvedConnection | null
+  connectionManifest: NativeExtensionConnectionManifest & {
+    auth: Extract<
+      NativeExtensionConnectionManifest["auth"],
+      { type: "apiKey" | "personalAccessToken" }
+    >
+  }
+  error: string | null
+  hideSecretLabel: string
+  isSecretDirty: (secretName: string) => boolean
+  onSecretChange: (secretName: string, nextValue: string) => void
+  onSecretCommit: (secretName: string, nextValue: string) => void
+  secretValues: Record<string, string>
+  showSecretLabel: string
+  statusLabels: {
+    connected: string
+    description: string
+    missing: string
+    title: string
+  }
+}): React.JSX.Element {
+  const {
+    connection,
+    connectionManifest,
+    error,
+    hideSecretLabel,
+    isSecretDirty,
+    onSecretChange,
+    onSecretCommit,
+    secretValues,
+    showSecretLabel,
+    statusLabels
+  } = props
+  const connected = connection?.status === "connected"
+  const secretTitle = connectionManifest.auth.type === "apiKey" ? "API Key" : "Access Token"
+
+  return (
+    <div
+      className={`${settingsCardClassName} px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-[var(--ow-gap-md)]">
+        <div className="min-w-0 space-y-[var(--ow-space-1)]">
+          <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-label)] font-semibold text-foreground">
+            <Link className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] text-muted-foreground" />
+            <span>{statusLabels.title}</span>
+          </div>
+          <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-body)] text-muted-foreground">
+            {connectionManifest.connectGuide ?? statusLabels.description}
+          </div>
+        </div>
+        <ConnectionStatusBadge
+          connected={connected}
+          labels={{
+            connected: statusLabels.connected,
+            missing: statusLabels.missing
+          }}
+        />
+      </div>
+      <div className="mt-[var(--ow-space-3)] space-y-[var(--ow-space-3)]">
+        {connectionManifest.auth.secretNames.map((secretName) => (
+          <SettingsField key={secretName} label={secretTitle} required>
+            <SettingsPasswordInput
+              value={secretValues[secretName] ?? ""}
+              placeholder={secretName === "apiKey" ? "sk-..." : ""}
+              showLabel={showSecretLabel}
+              hideLabel={hideSecretLabel}
+              onChange={(event) => {
+                const nextValue = event.target.value
+                onSecretChange(secretName, nextValue)
+              }}
+              onBlur={(event) => {
+                if (isSecretDirty(secretName)) {
+                  onSecretCommit(secretName, event.currentTarget.value)
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.currentTarget.blur()
+                }
+              }}
+              spellCheck={false}
+            />
+          </SettingsField>
+        ))}
       </div>
       {error ? (
         <div className="mt-[var(--ow-space-2)] [font-size:var(--ow-font-meta)] text-destructive">
@@ -457,6 +558,9 @@ export function ExtensionsTab(props: {
   >({})
   const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({})
   const [connectingExtensions, setConnectingExtensions] = useState<Record<string, boolean>>({})
+  const [connectionSecretRecords, setConnectionSecretRecords] = useState<
+    Record<string, Record<string, string>>
+  >({})
   const [selectedExtName, setSelectedExtName] = useState<string | null>(focusedExtensionName)
   const [search, setSearch] = useState("")
 
@@ -528,18 +632,20 @@ export function ExtensionsTab(props: {
     }
   )
 
-  const refreshExtensionConnection = useEffectEvent(async (extensionName: string): Promise<void> => {
-    const schema = schemas.find((candidate) => candidate.extName === extensionName)
-    if (!schema?.connection) {
-      return
-    }
+  const refreshExtensionConnection = useEffectEvent(
+    async (extensionName: string): Promise<void> => {
+      const schema = schemas.find((candidate) => candidate.extName === extensionName)
+      if (!schema?.connection) {
+        return
+      }
 
-    const connection = await window.api.nativeExtensions.getConnection(extensionName)
-    setConnectionRecords((current) => ({
-      ...current,
-      [extensionName]: connection
-    }))
-  })
+      const connection = await window.api.nativeExtensions.getConnection(extensionName)
+      setConnectionRecords((current) => ({
+        ...current,
+        [extensionName]: connection
+      }))
+    }
+  )
 
   useEffect(() => {
     const controller = new AbortController()
@@ -620,10 +726,25 @@ export function ExtensionsTab(props: {
     filteredSchemas[0] ??
     null
 
+  const updateCommandPreferenceDraft = (
+    extensionName: string,
+    commandName: string,
+    preferenceName: string,
+    nextValue: unknown
+  ): void => {
+    const recordKey = `${extensionName}:${commandName}`
+    setCommandRecords((current) => ({
+      ...current,
+      [recordKey]: {
+        ...(current[recordKey] ?? {}),
+        [preferenceName]: nextValue
+      }
+    }))
+  }
+
   const updateCommandPreference = async (
     extensionName: string,
     commandName: string,
-    preferences: NativeExtensionPreferenceSchema[],
     preferenceName: string,
     nextValue: unknown
   ): Promise<void> => {
@@ -635,25 +756,41 @@ export function ExtensionsTab(props: {
       buildPreferenceUpdateRecord({
         currentRecord,
         nextValue,
-        preferenceName,
-        preferences
+        preferenceName
       })
     )
 
-    setCommandRecords((current) => ({
+    setCommandRecords((current) => {
+      const currentRecord = current[recordKey] ?? {}
+      return {
+        ...current,
+        [recordKey]: {
+          ...nextRecord,
+          ...currentRecord,
+          [preferenceName]: Object.is(currentRecord[preferenceName], nextValue)
+            ? nextRecord[preferenceName]
+            : currentRecord[preferenceName]
+        }
+      }
+    })
+  }
+
+  const updateExtensionPreferenceDraft = (
+    extensionName: string,
+    preferenceName: string,
+    nextValue: unknown
+  ): void => {
+    setExtensionRecords((current) => ({
       ...current,
-      [recordKey]: buildPreferenceRecordForLocalState({
-        nextRecord,
-        nextValue,
-        preferenceName,
-        preferences
-      })
+      [extensionName]: {
+        ...(current[extensionName] ?? {}),
+        [preferenceName]: nextValue
+      }
     }))
   }
 
   const updateExtensionPreference = async (
     extensionName: string,
-    preferences: NativeExtensionPreferenceSchema[],
     preferenceName: string,
     nextValue: unknown
   ): Promise<void> => {
@@ -663,20 +800,23 @@ export function ExtensionsTab(props: {
       buildPreferenceUpdateRecord({
         currentRecord,
         nextValue,
-        preferenceName,
-        preferences
+        preferenceName
       })
     )
 
-    setExtensionRecords((current) => ({
-      ...current,
-      [extensionName]: buildPreferenceRecordForLocalState({
-        nextRecord,
-        nextValue,
-        preferenceName,
-        preferences
-      })
-    }))
+    setExtensionRecords((current) => {
+      const currentRecord = current[extensionName] ?? {}
+      return {
+        ...current,
+        [extensionName]: {
+          ...nextRecord,
+          ...currentRecord,
+          [preferenceName]: Object.is(currentRecord[preferenceName], nextValue)
+            ? nextRecord[preferenceName]
+            : currentRecord[preferenceName]
+        }
+      }
+    })
   }
 
   const startOAuthConnection = async (extensionName: string): Promise<void> => {
@@ -708,6 +848,71 @@ export function ExtensionsTab(props: {
         delete next[extensionName]
         return next
       })
+    }
+  }
+
+  const updateConnectionSecretDraft = (
+    extensionName: string,
+    secretName: string,
+    nextValue: string
+  ): void => {
+    setConnectionSecretRecords((current) => ({
+      ...current,
+      [extensionName]: {
+        ...(current[extensionName] ?? {}),
+        [secretName]: nextValue
+      }
+    }))
+  }
+
+  const updateConnectionSecret = async (
+    extensionName: string,
+    secretName: string,
+    nextValue: string
+  ): Promise<void> => {
+    try {
+      setConnectionErrors((current) => {
+        const next = { ...current }
+        delete next[extensionName]
+        return next
+      })
+      const currentRecord = connectionSecretRecords[extensionName] ?? {}
+      const connection = await window.api.nativeExtensions.setConnectionSecrets({
+        extensionName,
+        secrets: {
+          ...currentRecord,
+          [secretName]: nextValue
+        }
+      })
+      setConnectionRecords((current) => ({
+        ...current,
+        [extensionName]: connection
+      }))
+      setConnectionSecretRecords((current) => {
+        const extensionDraft = current[extensionName]
+        if (!extensionDraft || !Object.prototype.hasOwnProperty.call(extensionDraft, secretName)) {
+          return current
+        }
+
+        const nextExtensionDraft = { ...extensionDraft }
+        delete nextExtensionDraft[secretName]
+        if (Object.keys(nextExtensionDraft).length === 0) {
+          const next = { ...current }
+          delete next[extensionName]
+          return next
+        }
+
+        return {
+          ...current,
+          [extensionName]: nextExtensionDraft
+        }
+      })
+    } catch (error) {
+      console.error("[ExtensionsTab] Failed to save connection secret:", error)
+      setConnectionErrors((current) => ({
+        ...current,
+        [extensionName]: copy.extensions.connectFailed
+      }))
     }
   }
 
@@ -810,23 +1015,52 @@ export function ExtensionsTab(props: {
             </div>
 
             <div className="space-y-[var(--ow-space-3)]">
-              {selectedSchema.connection?.auth.type === "oauth" ? (
-                <ConnectionCard
-                  connection={connectionRecords[selectedSchema.extName] ?? null}
-                  error={connectionErrors[selectedSchema.extName] ?? null}
-                  isConnecting={connectingExtensions[selectedSchema.extName] ?? false}
-                  onConnect={() => {
-                    void startOAuthConnection(selectedSchema.extName)
-                  }}
-                  statusLabels={{
-                    connected: copy.extensions.connectionConnected,
-                    connect: copy.extensions.connectAccount,
-                    connecting: copy.extensions.connectingAccount,
-                    description: copy.extensions.connectionDescription,
-                    missing: copy.extensions.connectionMissing,
-                    title: copy.extensions.connectionTitle
-                  }}
-                />
+              {selectedSchema.connection ? (
+                selectedSchema.connection.auth.type === "oauth" ? (
+                  <OAuthConnectionCard
+                    connection={connectionRecords[selectedSchema.extName] ?? null}
+                    error={connectionErrors[selectedSchema.extName] ?? null}
+                    isConnecting={connectingExtensions[selectedSchema.extName] ?? false}
+                    onConnect={() => {
+                      void startOAuthConnection(selectedSchema.extName)
+                    }}
+                    statusLabels={{
+                      connected: copy.extensions.connectionConnected,
+                      connect: copy.extensions.connectAccount,
+                      connecting: copy.extensions.connectingAccount,
+                      description: copy.extensions.connectionDescription,
+                      missing: copy.extensions.connectionMissing,
+                      title: copy.extensions.connectionTitle
+                    }}
+                  />
+                ) : isLocalSecretConnection(selectedSchema.connection) ? (
+                  <SecretConnectionCard
+                    connection={connectionRecords[selectedSchema.extName] ?? null}
+                    connectionManifest={selectedSchema.connection}
+                    error={connectionErrors[selectedSchema.extName] ?? null}
+	                    hideSecretLabel={copy.common.hideSecret}
+                    isSecretDirty={(secretName) =>
+                      Object.prototype.hasOwnProperty.call(
+                        connectionSecretRecords[selectedSchema.extName] ?? {},
+                        secretName
+                      )
+                    }
+	                    onSecretChange={(secretName, nextValue) => {
+	                      updateConnectionSecretDraft(selectedSchema.extName, secretName, nextValue)
+	                    }}
+                    onSecretCommit={(secretName, nextValue) => {
+                      void updateConnectionSecret(selectedSchema.extName, secretName, nextValue)
+                    }}
+                    secretValues={connectionSecretRecords[selectedSchema.extName] ?? {}}
+                    showSecretLabel={copy.common.showSecret}
+                    statusLabels={{
+                      connected: copy.extensions.connectionConnected,
+                      description: copy.extensions.connectionDescription,
+                      missing: copy.extensions.connectionMissing,
+                      title: copy.extensions.connectionTitle
+                    }}
+                  />
+                ) : null
               ) : null}
 
               {selectedSchema.preferences.length > 0 ? (
@@ -837,19 +1071,23 @@ export function ExtensionsTab(props: {
                     disabledLabel={copy.extensions.disabled}
                     emptyLabel={copy.extensions.noPreferences}
                     enabledLabel={copy.extensions.enabled}
-                    hideSecretLabel={copy.common.hideSecret}
                     locale={locale}
                     modelOptions={modelOptions}
                     onChange={(preferenceName, nextValue) => {
+                      updateExtensionPreferenceDraft(
+                        selectedSchema.extName,
+                        preferenceName,
+                        nextValue
+                      )
+                    }}
+                    onCommit={(preferenceName, nextValue) => {
                       void updateExtensionPreference(
                         selectedSchema.extName,
-                        selectedSchema.preferences,
                         preferenceName,
                         nextValue
                       )
                     }}
                     preferences={selectedSchema.preferences}
-                    showSecretLabel={copy.common.showSecret}
                     useEnvironmentFallbackLabel={copy.general.useEnvironmentFallback}
                     values={extensionRecords[selectedSchema.extName] ?? {}}
                   />
@@ -866,7 +1104,6 @@ export function ExtensionsTab(props: {
                   emptyLabel={copy.extensions.noPreferences}
                   enabledLabel={copy.extensions.enabled}
                   extensionName={selectedSchema.extName}
-                  hideSecretLabel={copy.common.hideSecret}
                   icon={command.icon}
                   iconName={command.iconName}
                   labelMode={copy.extensions.mode}
@@ -874,16 +1111,22 @@ export function ExtensionsTab(props: {
                   mode={command.mode}
                   modelOptions={modelOptions}
                   onChange={(preferenceName, nextValue) => {
+                    updateCommandPreferenceDraft(
+                      selectedSchema.extName,
+                      command.name,
+                      preferenceName,
+                      nextValue
+                    )
+                  }}
+                  onCommit={(preferenceName, nextValue) => {
                     void updateCommandPreference(
                       selectedSchema.extName,
                       command.name,
-                      command.preferences,
                       preferenceName,
                       nextValue
                     )
                   }}
                   preferences={command.preferences}
-                  showSecretLabel={copy.common.showSecret}
                   title={resolveExtensionText(command.title, locale, command.name)}
                   useEnvironmentFallbackLabel={copy.general.useEnvironmentFallback}
                   values={commandRecords[`${selectedSchema.extName}:${command.name}`] ?? {}}

@@ -4,16 +4,18 @@ import {
   type NativeExtensionInvokeRequest,
   type NativeExtensionLauncherCatalogProjection,
   type NativeExtensionPackageManifest,
+  type NativeExtensionSourceMentionProjection,
   type NativeExtensionService,
   toInstalledNativeExtensionSettingsSchema,
   toLauncherCommandOwnerManifest,
-  toNativeExtensionLauncherCatalogProjection
+  toNativeExtensionLauncherCatalogProjection,
+  toNativeExtensionSourceMentionProjection
 } from "@shared/native-extensions"
 import { DEFAULT_APP_LOCALE, resolveLocalizedText } from "@shared/i18n"
 import { validateLauncherCommandOwnerManifest } from "@shared/launcher-command-owner"
 import { getDefaultExtensionRegistryService } from "../../extensions/registry/default-registry"
 import { loadExtensionMainDefinition } from "../../extensions/registry/main-loader"
-import { resolveNativeExtensionExecutionContext } from "../../native-extensions/connection-resolver"
+import { resolveNativeExtensionExecutionContext } from "../../native-extensions/execution-context"
 
 const nativeExtensionRegistry = getDefaultExtensionRegistryService()
 const supportedNativeExtensionPackages = nativeExtensionRegistry.listEnabledPackages(
@@ -111,6 +113,22 @@ export function listNativeExtensionLauncherCatalog(
         extensionPackage.runtimeMetadata
       )
       return projection.commands.length > 0 ? [projection] : []
+    })
+}
+
+export function listNativeExtensionSourceMentions(
+  platform = process.platform
+): NativeExtensionSourceMentionProjection[] {
+  return nativeExtensionRegistry
+    .listEnabledPackages(platform)
+    .sort((left, right) =>
+      resolveLocalizedText(left.manifest.title, DEFAULT_APP_LOCALE).localeCompare(
+        resolveLocalizedText(right.manifest.title, DEFAULT_APP_LOCALE)
+      )
+    )
+    .flatMap((extensionPackage) => {
+      const sourceMention = toNativeExtensionSourceMentionProjection(extensionPackage.manifest)
+      return sourceMention ? [sourceMention] : []
     })
 }
 
