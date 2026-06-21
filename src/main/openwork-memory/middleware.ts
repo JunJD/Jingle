@@ -1,6 +1,7 @@
 import { createMiddleware, tool, type AgentMiddleware, type ToolRuntime } from "langchain"
 import { z } from "zod/v4"
 import type {
+  AgentContextInclusion,
   OpenworkMemoryContextItem,
   OpenworkMemoryContextPack,
   OpenworkMemoryScope,
@@ -54,6 +55,10 @@ const suggestPersonalMemorySchema = z
     type: z.enum(["about_me", "workspace_context", "correction"])
   })
   .strict()
+
+type OpenworkMemoryToolState = {
+  contextInclusions?: AgentContextInclusion[]
+}
 
 function groupItems(
   contextPack: OpenworkMemoryContextPack
@@ -125,12 +130,14 @@ export function createOpenworkMemoryMiddleware(
   const suggestPersonalMemoryTool =
     options.mode === "root" && options.allowSuggestions
       ? tool(
-          async (input, runtime: ToolRuntime) => {
+          async (input, runtime: ToolRuntime<OpenworkMemoryToolState>) => {
             const parsed = suggestPersonalMemorySchema.parse(input)
+            const evidenceIds = runtime.state.contextInclusions?.map((entry) => entry.id) ?? []
             await options.service.createSuggestion(
               {
                 content: parsed.content,
                 reason: parsed.reason ?? null,
+                ...(evidenceIds.length > 0 ? { reviewPayload: { evidenceIds } } : {}),
                 scope: parsed.scope as OpenworkMemoryScope,
                 sourceRunId: getRunIdFromToolRuntime(runtime) ?? options.runId,
                 threadId: options.threadId,

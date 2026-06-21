@@ -216,6 +216,7 @@ class ThreadRuntimeProjector {
     })
     this.runtimeState = {
       activeRun: bootstrap.activeRun,
+      contextInclusions: bootstrap.contextInclusions,
       error: bootstrap.error,
       hasMoreBefore: false,
       latestRunId: bootstrap.latestRunId,
@@ -283,6 +284,13 @@ class ThreadRuntimeProjector {
           }
         }
         this.commitRuntimeEvent({ runId: payload.runId, type: "run.idAssigned" })
+        return
+
+      case "context_inclusions":
+        this.commitRuntimeEvent({
+          inclusions: payload.inclusions,
+          type: "context.inclusionsReplaced"
+        })
         return
 
       case "stream":
@@ -449,6 +457,13 @@ class ThreadRuntimeProjector {
           requestedAt: new Date(),
           runId: this.runtimeState.activeRun?.runId ?? this.runtimeState.latestRunId,
           type: "approval.requested"
+        })
+      }
+
+      if (decoded.contextInclusions) {
+        this.commitRuntimeEvent({
+          inclusions: decoded.contextInclusions,
+          type: "context.inclusionsReplaced"
         })
       }
     }
@@ -1191,6 +1206,7 @@ export class AgentThreadRunner {
       },
       runState: {
         error: runtimeState.error?.message ?? persistedThreadData.runState.error,
+        contextInclusions: runtimeState.contextInclusions,
         forkState: toRuntimeForkState(runtimeState, persistedThreadData.runState.forkState),
         pendingApproval: runtimeState.pendingApproval,
         runId: runtimeState.latestRunId ?? persistedThreadData.runState.runId,

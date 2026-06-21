@@ -54,6 +54,14 @@ function parseJsonRecord(value: string | null): Record<string, unknown> | null {
     : null
 }
 
+function readSuggestionReviewPayloadEvidenceIds(value: string | null): string[] {
+  const reviewPayload = parseJsonRecord(value)
+  const evidenceIds = reviewPayload?.evidenceIds
+  return Array.isArray(evidenceIds)
+    ? evidenceIds.filter((entry): entry is string => typeof entry === "string")
+    : []
+}
+
 function mapMemory(row: AgentMemoryModel): OpenworkMemoryRecord {
   return {
     content: row.content,
@@ -280,6 +288,7 @@ export async function acceptAgentMemorySuggestion(
       scope: (input.scope ?? suggestion.scope) as OpenworkMemoryRecord["scope"],
       workspaceKey: input.workspaceKey !== undefined ? input.workspaceKey : suggestion.workspaceKey
     })
+    const evidenceIds = readSuggestionReviewPayloadEvidenceIds(suggestion.reviewPayload)
     const memory = await tx.agentMemory.create({
       data: {
         memoryId: randomUUID(),
@@ -293,6 +302,7 @@ export async function acceptAgentMemorySuggestion(
         updatedAt: now,
         metadata: serializeJsonValue({
           acceptedSuggestionId: suggestion.suggestionId,
+          ...(evidenceIds.length > 0 ? { evidenceIds } : {}),
           sourceRunId: suggestion.sourceRunId,
           threadId: suggestion.threadId
         })

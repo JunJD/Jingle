@@ -603,6 +603,9 @@ test("personal memory suggestions require acceptance before becoming active memo
   const suggestion = await createAgentMemorySuggestion({
     content: "User prefers concise implementation notes.",
     reason: "The user asked for developer-oriented documents.",
+    reviewPayload: {
+      evidenceIds: ["ctx:run-memory:retrieved:history_message:thread-memory:message-1"]
+    },
     scope: "global",
     sourceRunId: runId,
     threadId,
@@ -617,6 +620,9 @@ test("personal memory suggestions require acceptance before becoming active memo
 
   assert.equal(pendingSuggestions.length, 1)
   assert.equal(pendingSuggestions[0].suggestionId, suggestion.suggestionId)
+  assert.deepEqual(pendingSuggestions[0].reviewPayload, {
+    evidenceIds: ["ctx:run-memory:retrieved:history_message:thread-memory:message-1"]
+  })
   assert.equal(activeMemoriesBeforeAcceptance.length, 0)
 
   const memory = await acceptAgentMemorySuggestion(suggestion.suggestionId)
@@ -627,6 +633,9 @@ test("personal memory suggestions require acceptance before becoming active memo
   })
 
   assert.equal(memory.source, "agent_suggestion")
+  assert.deepEqual(memory.metadata?.evidenceIds, [
+    "ctx:run-memory:retrieved:history_message:thread-memory:message-1"
+  ])
   assert.equal(activeMemories.length, 1)
   assert.equal(activeMemories[0].memoryId, memory.memoryId)
   assert.equal(acceptedSuggestions.length, 1)
@@ -861,6 +870,68 @@ test("memory off and temporary mode keep file context but exclude structured mem
   assert.equal(
     temporaryPack?.items.some((item) => item.kind === "about_me"),
     false
+  )
+})
+
+test("provided context inclusions distinguish structured memory from temporary file context", async () => {
+  const { buildProvidedContextInclusions } = await import("../../src/shared/openwork-memory")
+
+  const workspaceIdentity = {
+    canonicalWorkspacePath: repoRoot,
+    displayName: "openwork",
+    workspaceKey: repoRoot
+  }
+  const contextPack = {
+    canonicalWorkspacePath: repoRoot,
+    generatedAt: 123,
+    items: [
+      {
+        content: "Remembered stable preference.",
+        id: "memory:memory-provided",
+        kind: "about_me" as const,
+        scope: "global" as const,
+        sourceLabel: "Global personal memory",
+        sourceType: "structured" as const,
+        structuredMemoryId: "memory-provided"
+      },
+      {
+        content: "Workspace rule body.",
+        id: "workspace:agents",
+        kind: "rules" as const,
+        scope: "workspace" as const,
+        sourceLabel: "Workspace AGENTS.md",
+        sourceType: "file" as const
+      }
+    ],
+    workspaceIdentity,
+    workspaceKey: repoRoot
+  }
+  const temporaryContextPack = {
+    ...contextPack,
+    items: contextPack.items.filter((item) => item.sourceType === "file"),
+    temporaryMode: true
+  }
+
+  const inclusions = buildProvidedContextInclusions({
+    contextPack,
+    runId: "run-provided",
+    threadId: "thread-provided"
+  })
+  const temporaryInclusions = buildProvidedContextInclusions({
+    contextPack: temporaryContextPack,
+    runId: "run-temporary",
+    threadId: "thread-temporary"
+  })
+
+  assert.equal(inclusions.length, 2)
+  assert.equal(inclusions[0]?.mode, "provided")
+  assert.equal(inclusions[0]?.sourceType, "memory")
+  assert.equal(inclusions[0]?.target.memoryId, "memory-provided")
+  assert.equal(inclusions[1]?.sourceType, "context_file")
+  assert.equal(inclusions[1]?.target.path, "workspace:agents")
+  assert.deepEqual(
+    temporaryInclusions.map((inclusion) => inclusion.sourceType),
+    ["context_file"]
   )
 })
 

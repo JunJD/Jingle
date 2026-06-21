@@ -101,6 +101,7 @@ function createThreadDataSnapshot(
       messages: []
     },
     runState: {
+      contextInclusions: [],
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
@@ -293,6 +294,7 @@ test("thread data snapshot and events update thread state through store reducer"
         messages: [createUserMessage("user-1", "Question")]
       },
       runState: {
+        contextInclusions: [],
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
@@ -424,6 +426,7 @@ test("run started immediately moves projection active turn before assistant firs
         ]
       },
       runState: {
+        contextInclusions: [],
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
@@ -501,6 +504,7 @@ test("stale idle snapshots do not remove runtime messages after a finished run",
         messages: firstTurnMessages
       },
       runState: {
+        contextInclusions: [],
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
@@ -558,6 +562,7 @@ test("stale idle snapshots do not remove runtime messages after a finished run",
         messages: firstTurnMessages
       },
       runState: {
+        contextInclusions: [],
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
@@ -597,6 +602,7 @@ test("stale idle snapshots do not remove runtime messages after a finished run",
         ]
       },
       runState: {
+        contextInclusions: [],
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
@@ -644,6 +650,7 @@ test("runtime tool events update source run facts and message projection facts",
         ]
       },
       runState: {
+        contextInclusions: [],
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
@@ -764,6 +771,7 @@ test("run finished clears active run when no tool result exists", () => {
         ]
       },
       runState: {
+        contextInclusions: [],
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
@@ -859,6 +867,7 @@ test("pending approval updates source approval facts", () => {
         ]
       },
       runState: {
+        contextInclusions: [],
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
@@ -927,6 +936,7 @@ test("pending approval updates source approval facts", () => {
         ]
       },
       runState: {
+        contextInclusions: [],
         error: null,
         forkState: { canFork: false, reason: "pending_hitl" },
         pendingApproval: snapshotApproval,
@@ -976,6 +986,7 @@ test("runtime delta for an unknown message does not advance revision before thre
         ]
       },
       runState: {
+        contextInclusions: [],
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
@@ -1011,6 +1022,7 @@ test("runtime token delta keeps historical turn references stable after thread d
         ]
       },
       runState: {
+        contextInclusions: [],
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
@@ -1065,6 +1077,7 @@ test("runtime token delta in long history keeps inactive turns and rows stable",
         messages
       },
       runState: {
+        contextInclusions: [],
         error: null,
         forkState: { canFork: true },
         pendingApproval: null,
@@ -1132,6 +1145,7 @@ test("thread data snapshot restores non-runtime facts and stale events do not ro
         messages: [createUserMessage("user-1", "Question")]
       },
       runState: {
+        contextInclusions: [],
         error: "Needs approval",
         forkState: { canFork: false, reason: "pending_hitl" },
         pendingApproval,

@@ -6,7 +6,10 @@ import {
   type AgentInvokeMessage,
   type ComposerMessageRef
 } from "@shared/message-content"
-import { OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } from "@shared/openwork-memory"
+import {
+  OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY,
+  buildProvidedContextInclusions
+} from "@shared/openwork-memory"
 import { readRunExtensionAiCapabilitiesSnapshotFromMetadata } from "@shared/extension-sources"
 import { shouldAutoGenerateThreadTitle } from "@shared/thread-title"
 import {
@@ -57,6 +60,7 @@ import { resolveOpenworkWorkspaceIdentity } from "../workspace/identity"
 import { getAgentConfig } from "../preferences"
 import { listNativeExtensionManifests } from "../services/native-extensions"
 import type {
+  AgentContextInclusion,
   OpenworkMemoryContextSnapshot,
   OpenworkWorkspaceIdentity
 } from "@shared/openwork-memory"
@@ -80,6 +84,7 @@ export type AgentStreamPayload =
       status?: number
     }
   | { type: "run_started"; runId: string }
+  | { type: "context_inclusions"; inclusions: AgentContextInclusion[] }
   | { type: "stream"; data: unknown; mode: string }
 
 export interface AgentStreamSink {
@@ -410,6 +415,7 @@ function projectValuesStreamDataForIpc(data: unknown): Record<string, unknown> {
 
   const state = data as {
     __interrupt__?: unknown
+    contextInclusions?: unknown
     files?: unknown
     messages?: unknown
     todos?: unknown
@@ -423,6 +429,10 @@ function projectValuesStreamDataForIpc(data: unknown): Record<string, unknown> {
 
   if (Array.isArray(state.todos)) {
     projectedState.todos = state.todos
+  }
+
+  if (Array.isArray(state.contextInclusions)) {
+    projectedState.contextInclusions = state.contextInclusions
   }
 
   if (typeof state.workspacePath === "string" && state.workspacePath.trim()) {
@@ -692,6 +702,13 @@ export class AgentService {
         permissionMode
       })
       activeRun.runId = runId
+      const providedInclusions = openworkMemoryContextPack
+        ? buildProvidedContextInclusions({
+            contextPack: openworkMemoryContextPack,
+            runId,
+            threadId
+          })
+        : []
       await recordRunStarted({
         modelId,
         permissionMode,
@@ -707,6 +724,10 @@ export class AgentService {
         userMessageId: message.id
       })
       sink.send({ type: "run_started", runId })
+
+      if (providedInclusions.length > 0) {
+        sink.send({ type: "context_inclusions", inclusions: providedInclusions })
+      }
 
       if (abortController.signal.aborted) {
         return
@@ -745,6 +766,7 @@ export class AgentService {
         removeMessageIds: messageIdsToRemove
       })
       const initialState = {
+        contextInclusions: providedInclusions,
         messages: submittedMessages,
         ...(thread?.title &&
         !shouldAutoGenerateThreadTitle({

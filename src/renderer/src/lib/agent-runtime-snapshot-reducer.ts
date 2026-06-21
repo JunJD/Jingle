@@ -34,11 +34,32 @@ function isSnapshotMessageRollback(
   currentMessages: ThreadState["agent"]["messagesPage"],
   snapshotMessages: AgentThreadDataSnapshot["messages"]["messages"]
 ): boolean {
-  if (currentMessages.length === 0 || snapshotMessages.length >= currentMessages.length) {
+  if (currentMessages.length === 0) {
     return false
   }
 
-  return snapshotMessages.every((message, index) => message.id === currentMessages[index]?.id)
+  const snapshotMessageEntries = snapshotMessages.map(
+    (message, index) => [message.id, { index, message }] as const
+  )
+  const snapshotMessagesById = new Map(snapshotMessageEntries)
+  let lastSnapshotIndex = -1
+
+  return currentMessages.some((currentMessage) => {
+    const snapshotEntry = snapshotMessagesById.get(currentMessage.id)
+    if (!snapshotEntry || snapshotEntry.index < lastSnapshotIndex) {
+      return true
+    }
+
+    lastSnapshotIndex = snapshotEntry.index
+    const snapshotMessage = snapshotEntry.message
+
+    return (
+      typeof currentMessage.content === "string" &&
+      typeof snapshotMessage.content === "string" &&
+      currentMessage.content.startsWith(snapshotMessage.content) &&
+      snapshotMessage.content.length < currentMessage.content.length
+    )
+  })
 }
 
 export function applyRuntimeSnapshotToThreadState(
@@ -50,11 +71,10 @@ export function applyRuntimeSnapshotToThreadState(
   const wouldRollbackRuntimeMessages =
     state.agent.revision > 0 &&
     isSnapshotMessageRollback(state.agent.messagesPage, snapshot.messages.messages)
-  const canApplySnapshotContent =
-    !hasRuntimeRun &&
-    !wouldRollbackRuntimeMessages &&
-    snapshot.thread.status !== "busy" &&
-    snapshot.thread.status !== "interrupted"
+  const isLiveSnapshot = snapshot.thread.status === "busy" || snapshot.thread.status === "interrupted"
+  const canApplySnapshotContent = !hasRuntimeRun && !wouldRollbackRuntimeMessages && !isLiveSnapshot
+  const canApplySnapshotRuntimeState =
+    !hasRuntimeRun && !wouldRollbackRuntimeMessages && !isLiveSnapshot
   const messagesPage = canApplySnapshotContent
     ? stabilizeThreadMessages(state.agent.messagesPage, snapshot.messages.messages)
     : state.agent.messagesPage
@@ -66,6 +86,9 @@ export function applyRuntimeSnapshotToThreadState(
   const forkState = canApplySnapshotContent
     ? stabilizeReferences(state.agent.forkState, snapshot.runState.forkState)
     : state.agent.forkState
+  const contextInclusions = canApplySnapshotRuntimeState
+    ? stabilizeReferences(state.agent.contextInclusions, snapshot.runState.contextInclusions)
+    : state.agent.contextInclusions
 
   return {
     ...state,
@@ -73,8 +96,9 @@ export function applyRuntimeSnapshotToThreadState(
       ...state.agent,
       activeRun: state.agent.activeRun,
       artifacts,
+      contextInclusions,
       currentModel: typeof metadata.model === "string" ? metadata.model : DEFAULT_MODELS.llm,
-      error: canApplySnapshotContent
+      error: canApplySnapshotRuntimeState
         ? toSnapshotErrorPayload(snapshot.runState.error)
         : state.agent.error,
       forkState,
@@ -86,7 +110,7 @@ export function applyRuntimeSnapshotToThreadState(
         : DEFAULT_PERMISSION_MODE,
       latestRunId: state.agent.latestRunId,
       subagents: state.agent.subagents,
-      status: canApplySnapshotContent
+      status: canApplySnapshotRuntimeState
         ? toRuntimeSnapshotStatus(snapshot.thread.status)
         : state.agent.status,
       threadId: snapshot.thread.thread_id,

@@ -28,6 +28,7 @@ import {
 import { closeCheckpointer, getCheckpointer } from "../agent/runtime"
 import {
   checkpointHasInterrupt,
+  extractContextInclusionsFromCheckpoint,
   extractHitlRequestFromCheckpoint,
   extractTodosFromCheckpoint,
   mapHitlRowToRequest
@@ -48,6 +49,12 @@ import {
 } from "@shared/message-content"
 import { THREAD_PINNED_METADATA_KEY } from "@shared/thread-sidebar"
 import type { ArchivedThreadItem, ArchivedThreadsView } from "@shared/thread-archive"
+import {
+  OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY,
+  buildProvidedContextInclusions,
+  type AgentContextInclusion,
+  type OpenworkMemoryContextSnapshot
+} from "@shared/openwork-memory"
 import type {
   AgentThreadDataSnapshot,
   CreateThreadInput,
@@ -80,6 +87,36 @@ function mapThreadRowToThread(row: ThreadRow, fallbackTitle?: string): Thread {
     thread_values: row.thread_values ? JSON.parse(row.thread_values) : undefined,
     title: row.title ?? fallbackTitle
   }
+}
+
+function readOpenworkMemoryContextSnapshot(
+  metadata: Record<string, unknown> | null
+): OpenworkMemoryContextSnapshot | null {
+  const value = metadata?.[OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY]
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as OpenworkMemoryContextSnapshot)
+    : null
+}
+
+function buildPersistedContextInclusions(input: {
+  metadata: Record<string, unknown> | null
+  runId: string | null
+  threadId: string
+}) {
+  if (!input.runId) {
+    return []
+  }
+
+  const snapshot = readOpenworkMemoryContextSnapshot(input.metadata)
+  if (!snapshot) {
+    return []
+  }
+
+  return buildProvidedContextInclusions({
+    contextPack: snapshot,
+    runId: input.runId,
+    threadId: input.threadId
+  })
 }
 
 function resolveArchivedAt(thread: ThreadRow): Date {
@@ -209,6 +246,7 @@ async function assertThreadCanFork(input: {
 interface LoadedThreadRuntimeFacts {
   artifacts: ArtifactRecord[]
   checkpoint: CheckpointTuple | undefined
+  contextInclusions: AgentContextInclusion[]
   forkState: ThreadForkState
   messages: Message[]
   pendingApproval: HITLRequest | null
@@ -238,28 +276,33 @@ export class ThreadsService {
 
   async getLatestRunSummary(threadId: string): Promise<{
     error: string | null
+    metadata: Record<string, unknown> | null
     runId: string | null
   }> {
     const latestRun = await getLatestRun(threadId)
     if (!latestRun) {
       return {
         error: null,
+        metadata: null,
         runId: null
       }
     }
 
     let error: string | null = null
+    let metadata: Record<string, unknown> | null = null
     if (latestRun.metadata) {
       try {
-        const metadata = JSON.parse(latestRun.metadata) as { error?: unknown }
+        metadata = JSON.parse(latestRun.metadata) as Record<string, unknown>
         error = typeof metadata.error === "string" ? metadata.error : null
       } catch {
         error = null
+        metadata = null
       }
     }
 
     return {
       error,
+      metadata,
       runId: latestRun.run_id
     }
   }
@@ -286,6 +329,7 @@ export class ThreadsService {
       await listProjectedThreadMessages(threadId)
     )
     const todos = extractTodosFromCheckpoint(checkpoint)
+    const contextInclusions = extractContextInclusionsFromCheckpoint(checkpoint)
     const checkpointRequest = extractHitlRequestFromCheckpoint(threadId, checkpoint)
     const pendingApproval = await resolvePendingHitlRequest(latestHitl)
     const forkState = await computeThreadForkState({
@@ -297,6 +341,7 @@ export class ThreadsService {
     return {
       artifacts,
       checkpoint,
+      contextInclusions,
       forkState,
       messages,
       pendingApproval: latestHitl ? pendingApproval : checkpointRequest,
@@ -631,6 +676,14 @@ export class ThreadsService {
         messages: facts.messages
       },
       runState: {
+        contextInclusions:
+          facts.contextInclusions.length > 0
+            ? facts.contextInclusions
+            : buildPersistedContextInclusions({
+                metadata: latestRun.metadata,
+                runId: latestRun.runId,
+                threadId
+              }),
         forkState: facts.forkState,
         pendingApproval: facts.pendingApproval,
         todos: facts.todos,

@@ -1,5 +1,6 @@
 import type { ToolCall as LangChainToolCall, ToolCallChunk } from "@langchain/core/messages"
 import type { AgentTokenUsage } from "@shared/agent-thread-runtime"
+import type { AgentContextInclusion } from "@shared/openwork-memory"
 import type {
   AgentInvokeMessage,
   AgentMessageContent
@@ -77,6 +78,7 @@ interface StreamMessageMetadata {
 
 interface ValuesInterruptState {
   __interrupt__?: unknown[]
+  contextInclusions?: AgentContextInclusion[]
   messages?: SerializedMessageChunk[]
   todos?: Array<{ content?: string; id?: string; status?: string }>
 }
@@ -105,6 +107,7 @@ export interface DecodedMessagesStreamPayload {
 }
 
 export interface DecodedValuesStreamPayload {
+  contextInclusions: AgentContextInclusion[] | null
   messages: Message[] | null
   pendingApproval: HITLRequest | null
   todos: Todo[] | null
@@ -323,6 +326,18 @@ function decodeValuesMessage(message: SerializedMessageChunk, index: number): Me
   }
 }
 
+function decodeValuesContextInclusions(state: ValuesInterruptState): AgentContextInclusion[] | null {
+  if (state.contextInclusions === undefined) {
+    return null
+  }
+
+  if (!Array.isArray(state.contextInclusions)) {
+    throw new Error("[AgentStreamCodec] Invalid values contextInclusions state.")
+  }
+
+  return state.contextInclusions
+}
+
 export function appendAssistantMessageContent(
   existing: Message["content"],
   incoming: Message["content"]
@@ -411,6 +426,7 @@ export function decodeValuesStreamPayload(
     : null
 
   return {
+    contextInclusions: decodeValuesContextInclusions(state),
     messages: state.messages?.flatMap((message, index) => {
       const decoded = decodeValuesMessage(message, index)
       return decoded ? [decoded] : []

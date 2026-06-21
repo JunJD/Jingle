@@ -34,6 +34,7 @@ test("agent runtime snapshot reducer applies messages, metadata, and non-runtime
       ]
     },
     runState: {
+      contextInclusions: [],
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
@@ -50,6 +51,54 @@ test("agent runtime snapshot reducer applies messages, metadata, and non-runtime
   assert.equal(next.agent.permissionMode, DEFAULT_PERMISSION_MODE)
   assert.equal(next.agent.latestRunId, null)
   assert.equal(next.agent.activeRun, null)
+})
+
+test("agent runtime snapshot reducer hydrates context inclusions from run state", () => {
+  const state = createDefaultThreadState()
+  const next = applyRuntimeSnapshotToThreadState(state, {
+    thread: {
+      metadata: {},
+      status: "idle",
+      thread_id: "thread-1",
+      title: undefined
+    },
+    messages: {
+      artifacts: [],
+      messages: []
+    },
+    runState: {
+      contextInclusions: [
+        {
+          availability: "available",
+          createdAt: 123,
+          id: "ctx:run-1:retrieved:history_message:thread-1:message-1",
+          messageId: null,
+          mode: "retrieved",
+          preview: "Earlier answer",
+          runId: "run-1",
+          sourceId: "message-1",
+          sourceType: "history_message",
+          target: {
+            messageId: "message-1",
+            threadId: "thread-1",
+            type: "history_message"
+          },
+          threadId: "thread-1",
+          title: "assistant message",
+          turnId: null
+        }
+      ],
+      error: null,
+      forkState: { canFork: true },
+      pendingApproval: null,
+      runId: "run-1",
+      todos: [],
+      workspacePath: null
+    }
+  } satisfies AgentThreadDataSnapshot)
+
+  assert.equal(next.agent.contextInclusions.length, 1)
+  assert.equal(next.agent.contextInclusions[0]?.sourceType, "history_message")
 })
 
 test("agent runtime snapshot reducer does not produce runtime facts from snapshot run state", () => {
@@ -87,6 +136,7 @@ test("agent runtime snapshot reducer does not produce runtime facts from snapsho
       messages: []
     },
     runState: {
+      contextInclusions: [],
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
@@ -132,6 +182,7 @@ test("agent runtime snapshot reducer clears missing metadata instead of keeping 
       messages: []
     },
     runState: {
+      contextInclusions: [],
       error: null,
       forkState: { canFork: true },
       pendingApproval: null,
@@ -165,6 +216,7 @@ test("agent runtime snapshot reducer applies only metadata from busy snapshots",
       ]
     },
     runState: {
+      contextInclusions: [],
       error: null,
       forkState: { canFork: false, reason: "busy" },
       pendingApproval: null,
@@ -210,6 +262,7 @@ test("agent runtime snapshot reducer does not produce interrupted runtime facts"
       ]
     },
     runState: {
+      contextInclusions: [],
       error: null,
       forkState: { canFork: false, reason: "pending_hitl" },
       pendingApproval: {

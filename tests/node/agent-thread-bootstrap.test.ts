@@ -42,6 +42,7 @@ test("thread bootstrap derives interrupted state and approval-owned active run",
       ]
     },
     runState: {
+      contextInclusions: [],
       error: null,
       forkState: { canFork: false, reason: "pending_hitl" },
       pendingApproval: createPendingApproval(),
@@ -71,6 +72,7 @@ test("thread bootstrap maps persisted error string into runtime error payload", 
       messages: []
     },
     runState: {
+      contextInclusions: [],
       error: "boom",
       forkState: { canFork: true },
       pendingApproval: null,
@@ -84,4 +86,50 @@ test("thread bootstrap maps persisted error string into runtime error payload", 
   assert.equal(bootstrap.error?.message, "boom")
   assert.equal(bootstrap.error?.status, 500)
   assert.equal(bootstrap.activeRun, null)
+})
+
+test("thread bootstrap preserves persisted context inclusions", () => {
+  const bootstrap = deriveThreadBootstrapState({
+    thread: {
+      metadata: undefined,
+      status: "idle",
+      thread_id: "thread-1",
+      title: undefined
+    },
+    messages: {
+      artifacts: [],
+      messages: []
+    },
+    runState: {
+      contextInclusions: [
+        {
+          availability: "available",
+          createdAt: 123,
+          id: "ctx:run-1:provided:memory:memory-1",
+          messageId: null,
+          mode: "provided",
+          preview: "Memory preview",
+          runId: "run-1",
+          sourceId: "memory-1",
+          sourceType: "memory",
+          target: {
+            memoryId: "memory-1",
+            type: "memory"
+          },
+          threadId: "thread-1",
+          title: "Personal memory",
+          turnId: null
+        }
+      ],
+      error: null,
+      forkState: { canFork: true },
+      pendingApproval: null,
+      runId: "run-1",
+      todos: [],
+      workspacePath: null
+    }
+  } satisfies AgentThreadDataSnapshot)
+
+  assert.equal(bootstrap.contextInclusions.length, 1)
+  assert.equal(bootstrap.contextInclusions[0]?.id, "ctx:run-1:provided:memory:memory-1")
 })

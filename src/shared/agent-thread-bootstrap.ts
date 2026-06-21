@@ -8,6 +8,7 @@ import type { IpcErrorPayload } from "./ipc-error"
 
 export interface AgentThreadBootstrapState {
   activeRun: ActiveAgentRun | null
+  contextInclusions: AgentThreadDataSnapshot["runState"]["contextInclusions"]
   error: IpcErrorPayload | null
   latestRunId: string | null
   pendingApproval: AgentThreadDataSnapshot["runState"]["pendingApproval"]
@@ -52,6 +53,7 @@ export function deriveThreadBootstrapState(
 
   return {
     activeRun,
+    contextInclusions: threadData.runState.contextInclusions,
     error: toBootstrapError(threadData.runState.error),
     latestRunId: threadData.runState.runId,
     pendingApproval: threadData.runState.pendingApproval,

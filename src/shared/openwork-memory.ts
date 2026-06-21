@@ -196,3 +196,213 @@ export interface UpdateOpenworkMemoryInput {
   scope?: OpenworkMemoryScope
   type?: OpenworkMemoryType
 }
+
+// --- AgentContextInclusion (Memory V2) ---
+
+export const AGENT_CONTEXT_SOURCE_TYPES = [
+  "memory",
+  "context_file",
+  "history_message",
+  "trace_step",
+  "artifact"
+] as const
+
+export const AGENT_CONTEXT_INCLUSION_MODES = ["provided", "retrieved", "cited"] as const
+export const AGENT_CONTEXT_AVAILABILITIES = ["available", "unavailable"] as const
+export const AGENT_CONTEXT_UNAVAILABLE_CODES = [
+  "deleted",
+  "not_found",
+  "permission_denied",
+  "snapshot_missing",
+  "source_unreadable"
+] as const
+
+export type AgentContextSourceType = (typeof AGENT_CONTEXT_SOURCE_TYPES)[number]
+export type AgentContextInclusionMode = (typeof AGENT_CONTEXT_INCLUSION_MODES)[number]
+export type AgentContextAvailability = (typeof AGENT_CONTEXT_AVAILABILITIES)[number]
+export type AgentContextUnavailableCode = (typeof AGENT_CONTEXT_UNAVAILABLE_CODES)[number]
+
+export interface AgentContextJumpTarget {
+  artifactId?: string
+  memoryId?: string
+  messageId?: string
+  path?: string
+  runId?: string
+  threadId?: string
+  traceId?: string
+  traceStepId?: string
+  type: AgentContextSourceType
+}
+
+export interface AgentContextUnavailableReason {
+  code: AgentContextUnavailableCode
+  message: string
+}
+
+export interface AgentContextInclusion {
+  availability: AgentContextAvailability
+  createdAt: number
+  id: string
+  messageId: string | null
+  metadata?: Record<string, unknown>
+  mode: AgentContextInclusionMode
+  preview: string
+  runId: string
+  sourceId: string
+  sourceType: AgentContextSourceType
+  target: AgentContextJumpTarget
+  threadId: string
+  title: string
+  turnId: string | null
+  unavailableReason?: AgentContextUnavailableReason
+}
+
+export interface CreateRetrievedMemoryContextInclusionInput {
+  createdAt: number
+  memory: OpenworkMemoryRecord
+  runId: string
+  threadId: string
+}
+
+export interface CreateRetrievedMessageContextInclusionInput {
+  createdAt: number
+  message: {
+    content: string
+    id: string
+    role: string
+    threadId: string
+  }
+  runId: string
+  threadId: string
+}
+
+export function contextPackItemToContextInclusion(
+  item: OpenworkMemoryContextItem,
+  input: { createdAt: number; runId: string; threadId: string }
+): AgentContextInclusion {
+  const sourceType: AgentContextSourceType =
+    item.sourceType === "structured" ? "memory" : "context_file"
+  const sourceId = item.structuredMemoryId ?? item.id
+  const target: AgentContextJumpTarget =
+    sourceType === "memory"
+      ? { memoryId: sourceId, type: "memory" }
+      : { path: item.id, type: "context_file" }
+
+  return {
+    availability: "available",
+    createdAt: input.createdAt,
+    id: `ctx:${input.runId}:provided:${sourceType}:${sourceId}`,
+    messageId: null,
+    mode: "provided",
+    preview: item.content.slice(0, 200),
+    runId: input.runId,
+    sourceId,
+    sourceType,
+    target,
+    threadId: input.threadId,
+    title: item.sourceLabel,
+    turnId: null,
+    ...(item.structuredMemoryId
+      ? {
+          metadata: {
+            kind: item.kind,
+            scope: item.scope,
+            structuredMemoryId: item.structuredMemoryId
+          }
+        }
+      : { metadata: { kind: item.kind, scope: item.scope } })
+  }
+}
+
+export function buildProvidedContextInclusions(input: {
+  contextPack: OpenworkMemoryContextPack
+  runId: string
+  threadId: string
+}): AgentContextInclusion[] {
+  const createdAt = input.contextPack.generatedAt
+  return input.contextPack.items.map((item) =>
+    contextPackItemToContextInclusion(item, {
+      createdAt,
+      runId: input.runId,
+      threadId: input.threadId
+    })
+  )
+}
+
+export function createRetrievedMemoryContextInclusion(
+  input: CreateRetrievedMemoryContextInclusionInput
+): AgentContextInclusion {
+  const { memory } = input
+
+  return {
+    availability: "available",
+    createdAt: input.createdAt,
+    id: `ctx:${input.runId}:retrieved:memory:${memory.memoryId}`,
+    messageId: null,
+    metadata: {
+      scope: memory.scope,
+      type: memory.type,
+      workspaceKey: memory.workspaceKey
+    },
+    mode: "retrieved",
+    preview: memory.content.slice(0, 200),
+    runId: input.runId,
+    sourceId: memory.memoryId,
+    sourceType: "memory",
+    target: {
+      memoryId: memory.memoryId,
+      type: "memory"
+    },
+    threadId: input.threadId,
+    title: memory.scope === "workspace" ? "Workspace memory" : "Personal memory",
+    turnId: null
+  }
+}
+
+export function createRetrievedMessageContextInclusion(
+  input: CreateRetrievedMessageContextInclusionInput
+): AgentContextInclusion {
+  const sourceId = input.message.id
+
+  return {
+    availability: "available",
+    createdAt: input.createdAt,
+    id: `ctx:${input.runId}:retrieved:history_message:${input.message.threadId}:${sourceId}`,
+    messageId: null,
+    metadata: {
+      role: input.message.role,
+      sourceThreadId: input.message.threadId
+    },
+    mode: "retrieved",
+    preview: input.message.content.slice(0, 200),
+    runId: input.runId,
+    sourceId,
+    sourceType: "history_message",
+    target: {
+      messageId: sourceId,
+      threadId: input.message.threadId,
+      type: "history_message"
+    },
+    threadId: input.threadId,
+    title: `${input.message.role} message`,
+    turnId: null
+  }
+}
+
+export function upsertAgentContextInclusions(
+  existing: AgentContextInclusion[],
+  incoming: AgentContextInclusion[]
+): AgentContextInclusion[] {
+  const inclusions = [...existing]
+
+  for (const inclusion of incoming) {
+    const existingIndex = inclusions.findIndex((entry) => entry.id === inclusion.id)
+    if (existingIndex >= 0) {
+      inclusions[existingIndex] = inclusion
+    } else {
+      inclusions.push(inclusion)
+    }
+  }
+
+  return inclusions
+}

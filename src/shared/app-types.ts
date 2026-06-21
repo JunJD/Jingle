@@ -4,6 +4,7 @@ import type { HITLRequest } from "./hitl"
 import type { ArtifactRecord } from "./artifacts"
 import type { ExtensionToolCallPresentation, ToolCallDisplay } from "./tool-presentation"
 import type { ThreadWorkspaceKind } from "./thread-workspace"
+import type { AgentContextInclusion } from "./openwork-memory"
 export type { LocalizedText } from "./i18n"
 export type { HITLDecision, HITLRequest } from "./hitl"
 
@@ -285,6 +286,7 @@ export interface AgentThreadInfoSnapshot {
 }
 
 export interface AgentThreadRunStateSnapshot {
+  contextInclusions: AgentContextInclusion[]
   error: string | null
   forkState: ThreadForkState
   pendingApproval: HITLRequest | null

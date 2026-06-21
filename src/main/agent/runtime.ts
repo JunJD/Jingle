@@ -39,6 +39,7 @@ import { createFilesystemToolErrorMiddleware } from "./filesystem-tool-error-mid
 import { createWebToolsMiddleware } from "./web-tools-middleware"
 import { createTitleMiddleware } from "./title-middleware"
 import { createBddAgentRuntime } from "./bdd-runtime"
+import { createAgentContextInclusionMiddleware } from "./agent-context-inclusion-middleware"
 import { createNativeExtensionToolRegistry } from "../extension-tools/native-extension-tools"
 import {
   listNativeExtensionMainDefinitions,
@@ -275,8 +276,14 @@ The workspace root is: ${workspacePath}`
     useOpenworkMemory &&
     !options.openworkMemoryTemporaryMode &&
     openworkMemoryService.getSettings().useMemory === true
+  const allowOpenworkMemorySearch = allowOpenworkMemorySuggestions
   const openworkMemoryWorkspaceIdentity =
     options.openworkMemoryContextPack?.workspaceIdentity ?? options.openworkMemoryWorkspaceIdentity
+  const resolvedOpenworkMemoryWorkspaceIdentity = openworkMemoryWorkspaceIdentity ?? {
+    canonicalWorkspacePath: workspacePath,
+    displayName: workspacePath,
+    workspaceKey: workspacePath
+  }
   const openworkMemoryInclusionCollector = createOpenworkMemoryInclusionCollector()
   const rootOpenworkMemoryRuntime = useOpenworkMemory
     ? createOpenworkMemoryMiddleware({
@@ -288,11 +295,7 @@ The workspace root is: ${workspacePath}`
         service: openworkMemoryService,
         temporaryMode: false,
         threadId,
-        workspaceIdentity: openworkMemoryWorkspaceIdentity ?? {
-          canonicalWorkspacePath: workspacePath,
-          displayName: workspacePath,
-          workspaceKey: workspacePath
-        }
+        workspaceIdentity: resolvedOpenworkMemoryWorkspaceIdentity
       })
     : null
 
@@ -332,6 +335,13 @@ The workspace root is: ${workspacePath}`
   function createRootAgentLoopMiddleware() {
     return [
       ...createSharedAgentLoopMiddleware(),
+      createAgentContextInclusionMiddleware({
+        allowMemorySearch: allowOpenworkMemorySearch,
+        memoryService: openworkMemoryService,
+        runId,
+        threadId,
+        workspaceIdentity: resolvedOpenworkMemoryWorkspaceIdentity
+      }),
       ...(rootOpenworkMemoryRuntime ? [rootOpenworkMemoryRuntime.middleware] : []),
       ...(options.workspaceService
         ? [
@@ -367,11 +377,7 @@ The workspace root is: ${workspacePath}`
           service: openworkMemoryService,
           temporaryMode: false,
           threadId,
-          workspaceIdentity: openworkMemoryWorkspaceIdentity ?? {
-            canonicalWorkspacePath: workspacePath,
-            displayName: workspacePath,
-            workspaceKey: workspacePath
-          }
+          workspaceIdentity: resolvedOpenworkMemoryWorkspaceIdentity
         })
       : null
 

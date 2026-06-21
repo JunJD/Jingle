@@ -232,6 +232,17 @@ export class OpenworkMemoryService {
     })
   }
 
+  searchMemoriesForContext(
+    input: ListOpenworkMemoriesInput & { limit?: number },
+    workspaceIdentity: OpenworkWorkspaceIdentity
+  ): Promise<OpenworkMemoryRecord[]> {
+    return listAgentMemories({
+      ...input,
+      status: "active",
+      workspaceKey: workspaceIdentity.workspaceKey
+    }).then((memories) => memories.slice(0, input.limit ?? 8))
+  }
+
   async createMemory(input: CreateOpenworkMemoryInput): Promise<OpenworkMemoryRecord> {
     const workspaceIdentity =
       input.scope === "workspace" ? await this.requireCurrentWorkspaceIdentity() : null

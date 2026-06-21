@@ -82,6 +82,7 @@ function createThreadData(
       messages: input.messages ?? []
     },
     runState: {
+      contextInclusions: [],
       error: null,
       forkState: {
         canFork: true
@@ -155,6 +156,51 @@ test("AgentThreadRunner hydrates history and fans out runtime event batches", as
   assert.equal(afterCancel.latestRunId, "run-1")
   assert.equal(afterCancel.status, "cancelled")
   assert.equal(afterCancel.activeRun, null)
+})
+
+test("AgentThreadRunner projects retrieved context inclusions from values stream state", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+
+  await hub.prepareInvoke("thread-1", {
+    content: "Find old context",
+    id: "user-1"
+  })
+  await hub.handlePayload("thread-1", {
+    runId: "run-1",
+    type: "run_started"
+  })
+  await hub.handlePayload("thread-1", {
+    data: {
+      contextInclusions: [
+        {
+          availability: "available",
+          createdAt: 123,
+          id: "ctx:run-1:retrieved:history_message:thread-1:message-1",
+          messageId: null,
+          mode: "retrieved",
+          preview: "Recovered old message",
+          runId: "run-1",
+          sourceId: "message-1",
+          sourceType: "history_message",
+          target: {
+            messageId: "message-1",
+            threadId: "thread-1",
+            type: "history_message"
+          },
+          threadId: "thread-1",
+          title: "assistant message",
+          turnId: null
+        }
+      ]
+    },
+    mode: "values",
+    type: "stream"
+  })
+
+  const state = await hub.readThreadState("thread-1")
+  assert.equal(state.contextInclusions.length, 1)
+  assert.equal(state.contextInclusions[0]?.mode, "retrieved")
+  assert.equal(state.contextInclusions[0]?.sourceType, "history_message")
 })
 
 test("AgentThreadRunner prepares edited last user message by truncating the old turn output", async () => {
@@ -434,6 +480,7 @@ test("AgentThreadRunner hydrates an empty thread only once", async () => {
           messages: []
         },
         runState: {
+          contextInclusions: [],
           error: null,
           forkState: { canFork: true },
           pendingApproval: null,
@@ -457,6 +504,7 @@ test("AgentThreadRunner hydrates an empty thread only once", async () => {
           messages: []
         },
         runState: {
+          contextInclusions: [],
           error: null,
           forkState: { canFork: true },
           pendingApproval: null,

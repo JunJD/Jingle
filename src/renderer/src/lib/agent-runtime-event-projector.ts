@@ -16,6 +16,7 @@ type RuntimeEventProjectionUpdate = {
   agent: Pick<
     AgentSourceState,
     | "activeRun"
+    | "contextInclusions"
     | "error"
     | "latestRunId"
     | "messagesPage"
@@ -77,6 +78,7 @@ export function createRuntimeEventProjectionUpdate(
   return {
     agent: {
       activeRun: nextState.agent.activeRun,
+      contextInclusions: nextState.agent.contextInclusions,
       error: nextState.agent.error,
       latestRunId: nextState.agent.latestRunId,
       messagesPage: nextState.agent.messagesPage,

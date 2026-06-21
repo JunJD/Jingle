@@ -9,6 +9,7 @@ import type {
   ProviderId,
   SetDefaultModelOptions
 } from "@shared/app-types"
+import type { AgentContextInclusion } from "@shared/openwork-memory"
 import type { ExtensionToolCallPresentation, ToolCallDisplay } from "@shared/tool-presentation"
 export type { HITLDecision, HITLRequest } from "@shared/hitl"
 export type {
@@ -205,6 +206,7 @@ export interface AgentThreadInfoSnapshot {
 }
 
 export interface AgentThreadRunStateSnapshot {
+  contextInclusions: AgentContextInclusion[]
   error: string | null
   forkState: ThreadForkState
   pendingApproval: HITLRequest | null

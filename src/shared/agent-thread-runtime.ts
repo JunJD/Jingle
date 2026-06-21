@@ -1,4 +1,5 @@
 import type { HITLDecision, HITLRequest, Message, Subagent, Todo } from "./app-types"
+import type { AgentContextInclusion } from "./openwork-memory"
 import type { IpcErrorPayload } from "./ipc-error"
 
 export type AgentThreadRuntimeStatus = "idle" | "running" | "interrupted" | "error" | "cancelled"
@@ -68,6 +69,7 @@ export interface ActiveAgentRun {
 
 export interface AgentThreadRuntimeState {
   activeRun: ActiveAgentRun | null
+  contextInclusions: AgentContextInclusion[]
   error: IpcErrorPayload | null
   hasMoreBefore: boolean
   latestRunId: string | null
@@ -196,6 +198,11 @@ export type AgentThreadEvent =
       type: "todos.replaced"
     }
   | {
+      inclusions: AgentContextInclusion[]
+      revision: number
+      type: "context.inclusionsReplaced"
+    }
+  | {
       completedAt: Date
       durationMs: number | null
       error: IpcErrorPayload | null
@@ -222,11 +229,13 @@ export type AgentThreadEventDraft =
   | Omit<Extract<AgentThreadEvent, { type: "approval.cleared" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "subagents.replaced" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "todos.replaced" }>, "revision">
+  | Omit<Extract<AgentThreadEvent, { type: "context.inclusionsReplaced" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "run.finished" }>, "revision">
 
 export function createDefaultAgentThreadRuntimeState(threadId: string): AgentThreadRuntimeState {
   return {
     activeRun: null,
+    contextInclusions: [],
     error: null,
     hasMoreBefore: false,
     latestRunId: null,
@@ -262,6 +271,7 @@ export function reduceAgentThreadRuntimeEvent(
       return {
         ...state,
         activeRun: event.run,
+        contextInclusions: [],
         error: null,
         latestRunId: event.run.runId,
         pendingApproval: null,
@@ -444,6 +454,13 @@ export function reduceAgentThreadRuntimeEvent(
         ...state,
         revision: event.revision,
         todos: event.todos
+      }
+
+    case "context.inclusionsReplaced":
+      return {
+        ...state,
+        contextInclusions: event.inclusions,
+        revision: event.revision
       }
 
     case "run.finished":

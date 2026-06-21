@@ -2,6 +2,7 @@ import type { CheckpointTuple } from "@langchain/langgraph-checkpoint"
 import type { ActionRequest, ReviewConfig } from "langchain"
 import type { HitlRequestRow } from "../db"
 import type { HITLRequest, Todo, ToolCall } from "../types"
+import type { AgentContextInclusion } from "@shared/openwork-memory"
 import { getDefaultHitlAllowedDecisions, normalizeHitlAllowedDecisions } from "@shared/hitl"
 import { parseToolApprovalItem } from "@shared/tool-approval"
 import {
@@ -47,6 +48,7 @@ interface LatestCheckpointState {
   checkpoint?: {
     id?: string
     channel_values?: {
+      contextInclusions?: AgentContextInclusion[]
       messages?: CheckpointChannelMessage[]
       title?: string | null
       todos?: Array<{ id?: string; content?: string; status?: string }>
@@ -279,6 +281,22 @@ export function extractTodosFromCheckpoint(tuple: CheckpointTuple | undefined): 
     content: todo.content || "",
     status: (todo.status || "pending") as Todo["status"]
   }))
+}
+
+export function extractContextInclusionsFromCheckpoint(
+  tuple: CheckpointTuple | undefined
+): AgentContextInclusion[] {
+  const state = tuple as LatestCheckpointState | undefined
+  const contextInclusions = state?.checkpoint?.channel_values?.contextInclusions
+  if (contextInclusions === undefined) {
+    return []
+  }
+
+  if (!Array.isArray(contextInclusions)) {
+    throw new Error("[RuntimeState] Invalid checkpoint contextInclusions channel.")
+  }
+
+  return contextInclusions
 }
 
 export function extractTitleFromCheckpoint(tuple: CheckpointTuple | undefined): string | null {
