@@ -305,7 +305,7 @@ test("Raycast migration shell host entry keeps no-view commands in runtime metad
     const runtimeSource = String(artifacts["openwork-package/runtime.ts"])
 
     assert.match(manifestSource, /"name": "quick-add-reminder"/)
-    assert.match(runtimeMetadataSource, /name: "quick-add-reminder"/)
+    assert.match(runtimeMetadataSource, /"name": "quick-add-reminder"/)
     assert.match(runtimeSource, /"quick-add-reminder": \{\n\s+mode: "no-view"/)
     assert.match(runtimeSource, /not wired into the Openwork runtime/)
     assert.doesNotMatch(runtimeSource, /run: async \(\) => \{\}/)
@@ -334,7 +334,7 @@ test("Raycast migration migrated-source host entry wires no-view command source 
     const quickAddSource = String(artifacts["openwork-package/src/quick-add-reminder.tsx"])
 
     assert.match(manifestSource, /"name": "quick-add-reminder"/)
-    assert.match(runtimeMetadataSource, /name: "quick-add-reminder"/)
+    assert.match(runtimeMetadataSource, /"name": "quick-add-reminder"/)
     assert.match(
       runtimeSource,
       /import AppleRemindersGeneratedQuickAddReminderCommand from "\.\/src\/quick-add-reminder"/
@@ -386,7 +386,7 @@ test("Raycast migration generated host entries satisfy command mode contracts", 
 
       for (const commandName of ["my-reminders", "menu-bar-reminders", "quick-add-reminder"]) {
         assert.match(manifestSource, new RegExp(`"name": "${commandName}"`))
-        assert.match(runtimeMetadataSource, new RegExp(`name: "${commandName}"`))
+        assert.match(runtimeMetadataSource, new RegExp(`"name": "${commandName}"`))
         assert.match(runtimeSource, new RegExp(`"${commandName}": \\{`))
       }
 
@@ -697,7 +697,7 @@ test("Raycast migration preview reports dependency decisions and unsupported API
     assert.deepEqual(preview.manifestPreview.runtimeShell, { allowedUrlSchemes: ["notion"] })
     assert.deepEqual(
       preview.manifestPreview.preferences.map((preference: { name: string }) => preference.name),
-      ["accessToken", "open_in"]
+      ["open_in"]
     )
     assert.deepEqual(
       preview.manifestPreview.preferences.find(
@@ -938,7 +938,7 @@ test("Raycast migration preview reports dependency decisions and unsupported API
     assert.match(manifestPatch.aiCapability.guide, /modifying a page/)
     assert.deepEqual(
       manifestPatch.preferences.map((preference: { name: string }) => preference.name),
-      ["accessToken", "open_in"]
+      ["open_in"]
     )
     assert.deepEqual(
       manifestPatch.preferences.find(
@@ -1062,17 +1062,16 @@ test("Raycast migration preview reports dependency decisions and unsupported API
       "utf8"
     )
     assert.match(openworkRuntimeMetadata, /defineNativeExtensionRuntimeMetadata/)
-    assert.match(openworkRuntimeMetadata, /name: "search-page"/)
-    assert.match(openworkRuntimeMetadata, /const commandSearchConfigs/)
+    assert.match(openworkRuntimeMetadata, /"name": "search-page"/)
     assert.match(openworkRuntimeMetadata, /aliases/)
-    assert.match(openworkRuntimeMetadata, /commandName": "search-page"/)
+    assert.match(openworkRuntimeMetadata, /keywords/)
     const openworkIdentity = await readFile(
       join(artifactDir, "openwork-package", "identity.ts"),
       "utf8"
     )
     assert.match(openworkIdentity, /subjectTerms: \[\s*"fixture"\s*\]/)
     assert.match(openworkIdentity, /export const EXTENSION_SUBJECT_TERMS = EXTENSION_IDENTITY\.subjectTerms/)
-    assert.match(openworkRuntimeMetadata, /resolveCommand/)
+    assert.doesNotMatch(openworkRuntimeMetadata, /resolveCommand|buildIntentItems/)
     assert.doesNotMatch(openworkRuntimeMetadata, /config\.aliases\.includes\(query\)/)
     assert.doesNotMatch(openworkRuntimeMetadata, /@shared\/launcher/)
 
@@ -2814,8 +2813,8 @@ test("Raycast migration generated Notion-style package keeps runtime contracts r
 
     const runtimeMetadataSource = String(artifacts["openwork-package/runtime-metadata.ts"])
     assert.match(runtimeMetadataSource, /aliases/)
-    assert.match(runtimeMetadataSource, /resolveCommand/)
-    assert.match(runtimeMetadataSource, /EXTENSION_SUBJECT_TERMS/)
+    assert.match(runtimeMetadataSource, /keywords/)
+    assert.doesNotMatch(runtimeMetadataSource, /resolveCommand|buildIntentItems/)
     assert.doesNotMatch(runtimeMetadataSource, /const EXTENSION_NAME/)
     assert.equal(artifacts["openwork-package/assets/.gitkeep"], "")
 
@@ -2847,39 +2846,9 @@ test("Raycast migration generated Notion-style package keeps runtime contracts r
         'assert.equal(command.mode, "view")',
         'const search = fixtureGeneratedRuntimeMetadata.commands.find((candidate) => candidate.name === "search-page")?.search',
         "assert.ok(search)",
-        "assert.deepEqual(",
-        "  search.resolveCommand?.({",
-        "    altKey: false,",
-        "    ctrlKey: false,",
-        '    key: " ",',
-        "    metaKey: false,",
-        '    query: "search pages",',
-        "    shiftKey: false",
-        "  }),",
-        "  null",
-        ")",
-        "assert.deepEqual(",
-        "  search.resolveCommand?.({",
-        "    altKey: false,",
-        "    ctrlKey: false,",
-        '    key: " ",',
-        "    metaKey: false,",
-        '    query: "fixture search pages",',
-        "    shiftKey: false",
-        "  }),",
-        "  { commandName: 'search-page', openOptions: { seedQuery: '' } }",
-        ")",
-        "assert.deepEqual(",
-        "  search.resolveCommand?.({",
-        "    altKey: false,",
-        "    ctrlKey: false,",
-        '    key: "Enter",',
-        "    metaKey: false,",
-        '    query: "fixture search pages",',
-        "    shiftKey: false",
-        "  }),",
-        "  null",
-        ")"
+        "assert.deepEqual(search.aliases, ['search-page', 'search page', 'search pages'])",
+        "assert.ok(search.keywords?.includes('search'))",
+        "assert.ok(search.keywords?.includes('查找'))"
       ].join("\n")
     )
 

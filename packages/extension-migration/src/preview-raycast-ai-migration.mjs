@@ -566,8 +566,8 @@ function mapPlatforms(platforms) {
 function buildManifestPreview(pkg, sourceFiles, target) {
   const tools = Array.isArray(pkg.tools) ? pkg.tools : []
   const toolNames = tools.map((tool) => toOpenworkToolName(tool.name)).filter(Boolean)
+  const connectionSecretNames = extractConnectionSecretNames(pkg.preferences)
   const migratedPreferences = migratePreferences(pkg.preferences)
-  const connectionSecretNames = suggestConnectionSecretNames(migratedPreferences)
   const toolDisplays = Object.fromEntries(
     tools
       .filter((tool) => typeof tool.name === "string")
@@ -734,22 +734,17 @@ function migratePreferences(preferences) {
     return []
   }
 
-  return preferences.map((preference) => migratePreference(preference))
+  return preferences.flatMap((preference) => {
+    if (preference.type === "password") {
+      return []
+    }
+
+    return [migratePreference(preference)]
+  })
 }
 
 function migratePreference(preference) {
   let migratedPreference = preference
-
-  if (preference.type === "password" && /token|secret|key/i.test(preference.name ?? "")) {
-    migratedPreference = {
-      ...preference,
-      description:
-        preference.description ??
-        "Token used by Openwork to connect this extension to the external service.",
-      name: "accessToken",
-      title: preference.title ?? "Access Token"
-    }
-  }
 
   if (migratedPreference.type !== "appPicker") {
     return migratedPreference
@@ -972,12 +967,15 @@ function buildGuide(pkg, target, connectionSecretNames = []) {
   return extendKnownExtensionGuide(guide, { pkg, target })
 }
 
-function suggestConnectionSecretNames(preferences) {
+function extractConnectionSecretNames(preferences) {
   if (!Array.isArray(preferences)) {
     return []
   }
 
-  const token = preferences.find((preference) => /token|secret|key/i.test(preference.name ?? ""))
+  const token = preferences.find(
+    (preference) =>
+      preference.type === "password" && /token|secret|key/i.test(preference.name ?? "")
+  )
   if (!token) {
     return []
   }
@@ -2242,7 +2240,10 @@ function buildTypesPreviewSource(preview) {
 }
 
 function buildPreferenceTypeAliases(preview) {
-  const extensionPreferences = preview.manifestPreview.preferences ?? []
+  const extensionPreferences = [
+    ...(preview.manifestPreview.preferences ?? []),
+    ...connectionSecretNamesToTypePreferences(preview.manifestPreview.connection)
+  ]
   const lines = [
     `type Extension = ${formatPreferenceTypeLiteral(preview, extensionPreferences, (preference) =>
       preferenceToType(preference)
@@ -2282,6 +2283,15 @@ function buildArgumentTypeAliases(preview) {
   }
 
   return lines.length > 0 ? lines : ["type Empty = Record<string, never>"]
+}
+
+function connectionSecretNamesToTypePreferences(connection) {
+  const secretNames = connection?.auth?.type === "none" ? [] : connection?.auth?.secretNames ?? []
+  return secretNames.map((name) => ({
+    name,
+    required: false,
+    type: "text"
+  }))
 }
 
 function formatTypeLiteral(items, getType) {
@@ -2328,191 +2338,20 @@ function buildRuntimeMetadataPreviewSource(preview) {
   const commandConfigs = commands.map((command, index) =>
     buildRuntimeMetadataSearchConfig(command, index)
   )
-
-  if (commands.length === 0) {
-    return `${[
-      'import { defineNativeExtensionRuntimeMetadata } from "@openwork/extension-api"',
-      'import { EXTENSION_ID } from "./identity"',
-      "",
-      `export const ${runtimeMetadataName} = defineNativeExtensionRuntimeMetadata(${JSON.stringify(
-        {
-          commands: [],
-          extensionName: "__OPENWORK_EXTENSION_ID__"
-        },
-        null,
-        2
-      ).replace(JSON.stringify("__OPENWORK_EXTENSION_ID__"), "EXTENSION_ID")})`,
-      ""
-    ].join("\n")}`
-  }
-
-  const searchCommandName = commands[0].name
-  const commandEntries = commands
-    .map((command) => {
-      const lines = ["    {"]
-      if (command.name === searchCommandName) {
-        lines.push(`      name: ${JSON.stringify(command.name)},`, "      search")
-      } else {
-        lines.push(`      name: ${JSON.stringify(command.name)}`)
-      }
-      lines.push("    }")
-      return lines.join("\n")
-    })
-    .join(",\n")
+  const commandEntries = commandConfigs.map((config) => ({
+    name: config.commandName,
+    search: {
+      aliases: config.aliases,
+      keywords: config.terms
+    }
+  }))
 
   return `${[
     'import { defineNativeExtensionRuntimeMetadata } from "@openwork/extension-api"',
-    'import { EXTENSION_ICON, EXTENSION_ID, EXTENSION_SUBJECT_TERMS } from "./identity"',
-    "",
-    "interface GeneratedSearchCopy {",
-    "  launcher: {",
-    "    openGeneric: string",
-    "    resultKindExtension: string",
-    "  }",
-    "}",
-    "",
-    "interface GeneratedCommandSearchConfig {",
-    "  aliases: string[]",
-    "  commandName: string",
-    "  primaryActionLabel: string",
-    "  priority: number",
-    "  subtitle: string",
-    "  terms: string[]",
-    "  title: string",
-    "  urlFallback: boolean",
-    "}",
-    "",
-    `const commandSearchConfigs: GeneratedCommandSearchConfig[] = ${JSON.stringify(
-      commandConfigs,
-      null,
-      2
-    )}`,
-    "",
-    "function normalizeQuery(query: string): string {",
-    "  return query.trim().toLowerCase()",
-    "}",
-    "",
-    "function hasAnyTerm(query: string, terms: readonly string[]): boolean {",
-    "  return terms.some((term) => query.includes(term))",
-    "}",
-    "",
-    "function extractUrl(query: string): string | null {",
-    "  return query.match(/https?:\\/\\/\\S+/i)?.[0] ?? null",
-    "}",
-    "",
-    "function hasExtensionSubject(query: string): boolean {",
-    "  return hasAnyTerm(query, EXTENSION_SUBJECT_TERMS)",
-    "}",
-    "",
-    "function matchesCommandAlias(query: string, config: GeneratedCommandSearchConfig): boolean {",
-    "  return EXTENSION_SUBJECT_TERMS.some((subject) =>",
-    "    config.aliases.some((alias) => query === `${subject} ${alias}` || query === `${alias} ${subject}`)",
-    "  )",
-    "}",
-    "",
-    "function createExtensionIcon() {",
-    "  if (EXTENSION_ICON) {",
-    "    return {",
-    "      extensionName: EXTENSION_ID,",
-    "      icon: EXTENSION_ICON,",
-    "      type: \"extension\" as const",
-    "    }",
-    "  }",
-    "",
-    "  return {",
-    "    extensionName: EXTENSION_ID,",
-    "    type: \"extension\" as const",
-    "  }",
-    "}",
-    "",
-    "function createPresentation(copy: GeneratedSearchCopy, primaryActionLabel: string) {",
-    "  return {",
-    "    categoryLabel: copy.launcher.resultKindExtension,",
-    "    icon: createExtensionIcon(),",
-    "    listActionLabel: copy.launcher.openGeneric,",
-    "    primaryActionLabel,",
-    "    tone: \"accent\" as const",
-    "  }",
-    "}",
-    "",
-    "const search = {",
-    "  buildIntentItems: ({ copy, query }: { copy: GeneratedSearchCopy; query: string }) => {",
-    "    const trimmedQuery = query.trim()",
-    "    const normalizedQuery = normalizeQuery(query)",
-    "",
-    "    if (!trimmedQuery || !hasExtensionSubject(normalizedQuery)) {",
-    "      return []",
-    "    }",
-    "",
-    "    return commandSearchConfigs.flatMap((config) => {",
-    "      if (!hasAnyTerm(normalizedQuery, config.terms)) {",
-    "        return []",
-    "      }",
-    "",
-    "      const url = config.urlFallback ? extractUrl(trimmedQuery) : null",
-    "",
-    "      return [",
-    "        {",
-    "          commandName: config.commandName,",
-    "          id: `${EXTENSION_ID}:${config.commandName}:intent:${trimmedQuery}`,",
-    "          kind: \"plugin\" as const,",
-    "          openOptions: url",
-    "            ? {",
-    "                launchProps: {",
-    "                  fallbackText: url",
-    "                },",
-    "                seedQuery: trimmedQuery",
-    "              }",
-    "            : {",
-    "                seedQuery: trimmedQuery",
-    "              },",
-    "          presentation: createPresentation(copy, config.primaryActionLabel),",
-    "          priority: config.priority,",
-    "          subtitle: config.subtitle,",
-    "          title: config.title",
-    "        }",
-    "      ]",
-    "    })",
-    "  },",
-    "  resolveCommand: ({",
-    "    altKey,",
-    "    ctrlKey,",
-    "    key,",
-    "    metaKey,",
-    "    query",
-    "  }: {",
-    "    altKey: boolean",
-    "    ctrlKey: boolean",
-    "    key: string",
-    "    metaKey: boolean",
-    "    query: string",
-    "  }) => {",
-    "    if (altKey || ctrlKey || metaKey || key !== \" \") {",
-    "      return null",
-    "    }",
-    "",
-    "    const normalizedQuery = normalizeQuery(query)",
-    "    const matchedConfig = commandSearchConfigs.find((config) =>",
-    "      matchesCommandAlias(normalizedQuery, config)",
-    "    )",
-    "",
-    "    if (!matchedConfig) {",
-    "      return null",
-    "    }",
-    "",
-    "    return {",
-    "      commandName: matchedConfig.commandName,",
-    "      openOptions: {",
-    "        seedQuery: \"\"",
-    "      }",
-    "    }",
-    "  }",
-    "}",
+    'import { EXTENSION_ID } from "./identity"',
     "",
     `export const ${runtimeMetadataName} = defineNativeExtensionRuntimeMetadata({`,
-    "  commands: [",
-    commandEntries,
-    "  ],",
+    `  commands: ${JSON.stringify(commandEntries, null, 2)},`,
     "  extensionName: EXTENSION_ID",
     "})",
     ""
