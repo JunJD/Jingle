@@ -1,12 +1,13 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
-import { writeFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
+import { imageGenerationManifest } from "../../extensions/image-generation/manifest"
 import { notionManifest } from "../../installable-extensions/notion/manifest"
 
 const requireFromTest = createRequire(import.meta.url)
@@ -15,6 +16,7 @@ const originalOpenworkHome = process.env.OPENWORK_HOME
 const originalElectronRendererUrl = process.env.ELECTRON_RENDERER_URL
 let openworkHome = ""
 let connectionResolver!: typeof import("../../src/main/native-extensions/connection-resolver")
+let executionContext!: typeof import("../../src/main/native-extensions/execution-context")
 let extensionSources!: typeof import("../../src/extensions/sources")
 let preferences!: typeof import("../../src/main/preferences")
 let DefaultExtensionRuntimeHostCapabilities!: typeof import("../../src/main/services/extension-runtime/host-capabilities").DefaultExtensionRuntimeHostCapabilities
@@ -281,6 +283,7 @@ test.before(async () => {
   installElectronSafeStorageMock()
   preferences = await import("../../src/main/preferences")
   connectionResolver = await import("../../src/main/native-extensions/connection-resolver")
+  executionContext = await import("../../src/main/native-extensions/execution-context")
   extensionSources = await import("../../src/extensions/sources")
   ;({ DefaultExtensionRuntimeHostCapabilities } =
     await import("../../src/main/services/extension-runtime/host-capabilities"))
@@ -300,7 +303,7 @@ test("native extension connection secrets are not exposed through public prefere
   assert.equal(Object.hasOwn(resolvedRecord, "accessToken"), false)
   assert.equal(resolvedRecord.apiBaseUrl, "https://api.notion.example.test/v1")
 
-  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+  const context = executionContext.resolveNativeExtensionExecutionContext({
     commandName: "search-page",
     extensionName: "notion"
   })
@@ -325,10 +328,11 @@ test("OAuth command preferences ignore legacy extension secrets without a connec
   assert.equal(Object.hasOwn(resolvedRecord, "accessToken"), false)
   assert.equal(resolvedRecord.apiBaseUrl, "https://api.notion.example.test/v1")
 
-  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+  const context = executionContext.resolveNativeExtensionExecutionContext({
     commandName: "search-page",
     extensionName: "notion"
   })
+  assert.ok(context.connection)
   assert.equal(context.connection.status, "missing")
   assert.equal(Object.hasOwn(context.extensionPreferences, "accessToken"), false)
   assert.equal(Object.hasOwn(context.commandPreferences ?? {}, "accessToken"), false)
@@ -345,10 +349,11 @@ test("saving OAuth extension preferences removes retired legacy extension secret
   assert.equal(Object.hasOwn(resolvedRecord, "accessToken"), false)
   assert.equal(resolvedRecord.apiBaseUrl, "https://api.notion.changed.test/v1")
 
-  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+  const context = executionContext.resolveNativeExtensionExecutionContext({
     commandName: "search-page",
     extensionName: "notion"
   })
+  assert.ok(context.connection)
   assert.equal(context.connection.status, "missing")
   assert.deepEqual(
     preferences.getNativeExtensionConnectionSecretRecord({
@@ -399,11 +404,12 @@ test("resolved extension preferences do not read legacy command-scoped shared se
 test("connection resolver ignores command-scoped shared secrets", () => {
   seedLegacyGitHubCommandToken("ghp_legacy_secret")
 
-  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+  const context = executionContext.resolveNativeExtensionExecutionContext({
     commandName: "my-issues",
     extensionName: "github"
   })
 
+  assert.ok(context.connection)
   assert.equal(context.connection.status, "missing")
   assert.deepEqual(context.connection.missingSecretNames, ["accessToken"])
   assert.equal(Object.hasOwn(context.extensionPreferences, "accessToken"), false)
@@ -420,11 +426,12 @@ test("connection resolver ignores legacy extension-scoped shared secrets", () =>
     extensionAccessToken: "ghp_extension_secret"
   })
 
-  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+  const context = executionContext.resolveNativeExtensionExecutionContext({
     commandName: "my-issues",
     extensionName: "github"
   })
 
+  assert.ok(context.connection)
   assert.equal(context.connection.status, "missing")
   assert.deepEqual(context.connection.missingSecretNames, ["accessToken"])
   assert.equal(Object.hasOwn(context.extensionPreferences, "accessToken"), false)
@@ -455,11 +462,12 @@ test("connection-scoped secrets connect GitHub without manual token preferences"
     }
   )
 
-  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+  const context = executionContext.resolveNativeExtensionExecutionContext({
     commandName: "my-issues",
     extensionName: "github"
   })
 
+  assert.ok(context.connection)
   assert.equal(context.connection.status, "connected")
   assert.deepEqual(context.connection.missingSecretNames, [])
   assert.equal(context.extensionPreferences.accessToken, "ghp_oauth_secret")
@@ -469,7 +477,7 @@ test("connection-scoped secrets connect GitHub without manual token preferences"
   })
 })
 
-test("connection-scoped GitHub secret overrides legacy extension token during OAuth migration", () => {
+test("connection-scoped GitHub secret overrides retired legacy extension token", () => {
   seedLegacyGitHubTokens({
     apiBaseUrl: "https://github.example.test/api/v3",
     commandAccessToken: "ghp_legacy_secret",
@@ -477,11 +485,12 @@ test("connection-scoped GitHub secret overrides legacy extension token during OA
   })
   saveGitHubConnectionSecret("ghp_oauth_secret")
 
-  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+  const context = executionContext.resolveNativeExtensionExecutionContext({
     commandName: "my-issues",
     extensionName: "github"
   })
 
+  assert.ok(context.connection)
   assert.equal(context.connection.status, "connected")
   assert.equal(context.extensionPreferences.accessToken, "ghp_oauth_secret")
   assert.equal(context.commandPreferences?.accessToken, "ghp_oauth_secret")
@@ -760,11 +769,12 @@ test("platform OAuth start clears pending state when browser launch fails", asyn
 test("connection resolver ignores legacy Notion secrets and rejects retired generated package", () => {
   seedLegacyNotionExtensionToken("notion_provider_secret")
 
-  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+  const context = executionContext.resolveNativeExtensionExecutionContext({
     commandName: "search-page",
     extensionName: "notion"
   })
 
+  assert.ok(context.connection)
   assert.equal(context.connection.status, "missing")
   assert.equal(context.connection.provider, "notion")
   assert.deepEqual(context.connection.missingSecretNames, ["accessToken"])
@@ -778,7 +788,7 @@ test("connection resolver ignores legacy Notion secrets and rejects retired gene
 
   assert.throws(
     () =>
-      connectionResolver.resolveNativeExtensionExecutionContext({
+      executionContext.resolveNativeExtensionExecutionContext({
         commandName: "search-page",
         extensionName: "notion-generated"
       }),
@@ -900,6 +910,161 @@ test("connection-scoped Notion token feeds runtime host and AI capability throug
   assert.deepEqual(capability?.enabledToolNames, capability?.capability.toolNames)
 })
 
+test("Image Generation API key uses the native extension connection auth path", async () => {
+  preferences.setNativeExtensionPreferenceRecord("image-generation", {
+    baseUrl: "https://images.example.test"
+  })
+  preferences.setNativeExtensionConnectionSecretRecord({
+    connectionId: "default",
+    nextRecord: {
+      apiKey: "sk-image-secret"
+    },
+    provider: "image-generation",
+    secretNames: ["apiKey"]
+  })
+
+  const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
+  const nativeExtensionsService = new NativeExtensionsService()
+
+  assert.deepEqual(nativeExtensionsService.getPreferences("image-generation"), {
+    baseUrl: "https://images.example.test"
+  })
+  assert.deepEqual(preferences.getResolvedNativeExtensionPreferenceRecord("image-generation"), {
+    baseUrl: "https://images.example.test"
+  })
+  assert.deepEqual(nativeExtensionsService.getResolvedPreferences("image-generation"), {
+    apiKey: "sk-image-secret",
+    baseUrl: "https://images.example.test"
+  })
+  const context = executionContext.resolveNativeExtensionExecutionContext({
+    extensionName: "image-generation"
+  })
+  assert.equal(context.connection.status, "connected")
+  assert.deepEqual(context.connection.publicConfig, {
+    baseUrl: "https://images.example.test"
+  })
+  assert.deepEqual(context.extensionPreferences, {
+    apiKey: "sk-image-secret",
+    baseUrl: "https://images.example.test"
+  })
+  assert.equal(nativeExtensionsService.getConnection("image-generation").status, "connected")
+  const settingsFile = JSON.parse(readFileSync(join(openworkHome, "settings.json"), "utf8")) as {
+    nativeExtensionPreferences?: {
+      connectionSecrets?: Record<string, Record<string, string>>
+      extensionPreferences?: Record<string, Record<string, unknown>>
+    }
+  }
+  assert.equal(
+    settingsFile.nativeExtensionPreferences?.extensionPreferences?.["image-generation"]?.apiKey,
+    undefined
+  )
+  assert.deepEqual(
+    settingsFile.nativeExtensionPreferences?.connectionSecrets?.[
+      "connection:image-generation:default"
+    ],
+    {
+      apiKey: "sk-image-secret"
+    }
+  )
+  assert.equal(
+    Object.values(settingsFile.nativeExtensionPreferences?.extensionPreferences ?? {}).some(
+      (record) => record.apiKey === "sk-image-secret"
+    ),
+    false
+  )
+})
+
+test("partial connection secret updates preserve existing connection secrets", async () => {
+  preferences.setNativeExtensionConnectionSecretRecord({
+    connectionId: "default",
+    nextRecord: {
+      apiKey: "sk-image-secret"
+    },
+    provider: "image-generation",
+    secretNames: ["apiKey"]
+  })
+
+  const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
+  const nativeExtensionsService = new NativeExtensionsService()
+  const connection = nativeExtensionsService.setConnectionSecrets({
+    extensionName: "image-generation",
+    secrets: {}
+  })
+
+  assert.equal(connection.status, "connected")
+  assert.deepEqual(
+    preferences.getNativeExtensionConnectionSecretRecord({
+      connectionId: "default",
+      provider: "image-generation",
+      secretNames: ["apiKey"]
+    }),
+    {
+      apiKey: "sk-image-secret"
+    }
+  )
+})
+
+test("connection-scoped Image Generation API key connects AI capability", () => {
+  preferences.setNativeExtensionPreferenceRecord("image-generation", {
+    baseUrl: "https://images.example.test"
+  })
+  preferences.setNativeExtensionConnectionSecretRecord({
+    connectionId: "default",
+    nextRecord: {
+      apiKey: "sk-image-secret"
+    },
+    provider: "image-generation",
+    secretNames: ["apiKey"]
+  })
+
+  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+    "image-generation",
+    [imageGenerationManifest],
+    {
+      getConnection: (extensionName) =>
+        connectionResolver.resolveNativeExtensionConnection({ extensionName })
+    }
+  )
+
+  assert.equal(capability?.authStatus, "connected")
+  assert.deepEqual(capability?.enabledToolNames, ["generateImage", "editImage"])
+  assert.deepEqual(
+    capability?.toolExposures.map((tool) => tool.toolName),
+    ["generateImage", "editImage"]
+  )
+  assert.deepEqual(capability?.publicConfig, {
+    baseUrl: "https://images.example.test"
+  })
+})
+
+test("missing connection-scoped Image Generation API key leaves AI capability missing", () => {
+  preferences.setNativeExtensionPreferenceRecord("image-generation", {
+    baseUrl: "https://images.example.test"
+  })
+  preferences.setNativeExtensionConnectionSecretRecord({
+    connectionId: "default",
+    nextRecord: {},
+    provider: "image-generation",
+    secretNames: ["apiKey"]
+  })
+
+  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+    "image-generation",
+    [imageGenerationManifest],
+    {
+      getConnection: (extensionName) =>
+        connectionResolver.resolveNativeExtensionConnection({ extensionName })
+    }
+  )
+
+  assert.equal(capability?.authStatus, "missing")
+  assert.deepEqual(capability?.enabledToolNames, [])
+  assert.deepEqual(capability?.toolExposures, [])
+  assert.deepEqual(capability?.publicConfig, {
+    baseUrl: "https://images.example.test"
+  })
+})
+
 test("connection-scoped Figma token feeds execution context without manual token preferences", () => {
   preferences.setNativeExtensionPreferenceRecord("figma-files", {
     TEAM_ID: "123",
@@ -912,11 +1077,12 @@ test("connection-scoped Figma token feeds execution context without manual token
   const publicRecord = preferences.getNativeExtensionPreferenceRecord("figma-files")
   assert.equal(Object.hasOwn(publicRecord, "accessToken"), false)
 
-  const context = connectionResolver.resolveNativeExtensionExecutionContext({
+  const context = executionContext.resolveNativeExtensionExecutionContext({
     commandName: "index",
     extensionName: "figma-files"
   })
 
+  assert.ok(context.connection)
   assert.equal(context.connection.status, "connected")
   assert.equal(context.connection.provider, "figma")
   assert.deepEqual(context.connection.publicConfig, {

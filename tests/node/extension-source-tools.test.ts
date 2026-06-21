@@ -190,10 +190,148 @@ test("native extension manifest rejects legacy ai configuration", () => {
         },
         capabilities: [],
         commands: [],
+        connection: {
+          auth: {
+            type: "none"
+          },
+          id: "default",
+          provider: "legacy-ai",
+          title: "Legacy AI"
+        },
         name: "legacy-ai",
         title: "Legacy AI"
       }),
     /aiCapability, not ai/
+  )
+})
+
+test("native extension manifest requires an explicit connection", () => {
+  assert.throws(
+    () =>
+      defineNativeExtensionManifest({
+        aiCapability: {
+          guide: "Use the test source.",
+          id: "missing-connection",
+          title: "Missing Connection",
+          toolNames: []
+        },
+        capabilities: [],
+        commands: [],
+        name: "missing-connection",
+        title: "Missing Connection"
+      }),
+    /must declare a connection manifest/
+  )
+})
+
+test("native extension manifest rejects extension password preferences", () => {
+  assert.throws(
+    () =>
+      defineNativeExtensionManifest({
+        capabilities: [],
+        commands: [],
+        connection: {
+          auth: {
+            type: "none"
+          },
+          id: "default",
+          provider: "password-extension-preference",
+          title: "Password Extension Preference"
+        },
+        name: "password-extension-preference",
+        preferences: [
+          {
+            name: "apiKey",
+            type: "password"
+          }
+        ],
+        title: "Password Extension Preference"
+      }),
+    /extension preference "apiKey" must use connection\.auth/
+  )
+})
+
+test("native extension manifest rejects command password preferences", () => {
+  assert.throws(
+    () =>
+      defineNativeExtensionManifest({
+        capabilities: [],
+        commands: [
+          {
+            mode: "no-view",
+            name: "run",
+            preferences: [
+              {
+                name: "accessToken",
+                type: "password"
+              }
+            ],
+            title: "Run"
+          }
+        ],
+        connection: {
+          auth: {
+            type: "none"
+          },
+          id: "default",
+          provider: "password-command-preference",
+          title: "Password Command Preference"
+        },
+        name: "password-command-preference",
+        title: "Password Command Preference"
+      }),
+    /command "run" preference "accessToken" must use connection\.auth/
+  )
+})
+
+test("native extension manifest rejects preferences that reuse connection secret names", () => {
+  assert.throws(
+    () =>
+      defineNativeExtensionManifest({
+        capabilities: [],
+        commands: [],
+        connection: {
+          auth: {
+            secretNames: ["apiKey"],
+            type: "apiKey"
+          },
+          id: "default",
+          provider: "secret-name-collision",
+          title: "Secret Name Collision"
+        },
+        name: "secret-name-collision",
+        preferences: [
+          {
+            name: "apiKey",
+            type: "text"
+          }
+        ],
+        title: "Secret Name Collision"
+      }),
+    /extension preference "apiKey" must not reuse connection secret names/
+  )
+})
+
+test("native extension manifest rejects public config that exposes connection secret names", () => {
+  assert.throws(
+    () =>
+      defineNativeExtensionManifest({
+        capabilities: [],
+        commands: [],
+        connection: {
+          auth: {
+            secretNames: ["apiKey"],
+            type: "apiKey"
+          },
+          id: "default",
+          provider: "secret-public-config",
+          publicPreferenceNames: ["apiKey"],
+          title: "Secret Public Config"
+        },
+        name: "secret-public-config",
+        title: "Secret Public Config"
+      }),
+    /publicPreferenceNames cannot include secret "apiKey"/
   )
 })
 

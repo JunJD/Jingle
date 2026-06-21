@@ -57,7 +57,10 @@ test("built-in extension registry resolves package-owned assets", () => {
     /escapes its assets directory/
   )
   assert.throws(() => registry.resolveAsset("github", "assets/icon.svg"), /Unknown extension/)
-  assert.throws(() => registry.resolveAsset("figma-files", "assets/command-icon.png"), /Unknown extension/)
+  assert.throws(
+    () => registry.resolveAsset("figma-files", "assets/command-icon.png"),
+    /Unknown extension/
+  )
 })
 
 test("extension CLI builds bundled trusted extensions as installed runtime packages", async () => {
@@ -65,11 +68,7 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
   try {
     await execFileAsync(
       process.execPath,
-      [
-        "scripts/build-installed-extension.mjs",
-        "--out-dir",
-        rootDir
-      ],
+      ["scripts/build-installed-extension.mjs", "--out-dir", rootDir],
       { cwd: process.cwd() }
     )
 
@@ -161,8 +160,6 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
         keywords: ["notion", "search", "find", "look up", "搜索", "查找", "查询"]
       }
     )
-    assert.equal(githubLauncherProjection.sourceMention?.sourceId, "github")
-    assert.equal(notionLauncherProjection.sourceMention?.sourceId, "notion")
     const launcherOwners = buildNativeLauncherCommandOwners([
       launcherProjection,
       figmaFilesLauncherProjection,
@@ -204,8 +201,7 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
       ["add-text-to-page", "create-database-page", "quick-capture", "search-page"]
     )
     assert.deepEqual(
-      notionRuntimeMetadataJson.commands.find((command) => command.name === "search-page")
-        ?.search,
+      notionRuntimeMetadataJson.commands.find((command) => command.name === "search-page")?.search,
       {
         aliases: ["search page", "search pages", "search"],
         keywords: ["notion", "search", "find", "look up", "搜索", "查找", "查询"]
@@ -351,7 +347,10 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
             requestHost
           }
         },
-        React.createElement(menuBarCommand.Component, createExtensionRuntimeLaunchProps(launchContext))
+        React.createElement(
+          menuBarCommand.Component,
+          createExtensionRuntimeLaunchProps(launchContext)
+        )
       )
     )
     await renderer.flushSnapshots()
@@ -360,6 +359,51 @@ test("extension CLI builds bundled trusted extensions as installed runtime packa
     await renderer.flushSnapshots()
   } finally {
     await rm(rootDir, { force: true, recursive: true })
+  }
+})
+
+test("native extension launcher catalog and source mention catalog stay separate", async () => {
+  const previousOpenworkHome = process.env.OPENWORK_HOME
+  const previousRendererUrl = process.env.ELECTRON_RENDERER_URL
+  const openworkHome = await mkdtemp(join(tmpdir(), "openwork-extension-catalog-"))
+
+  try {
+    process.env.OPENWORK_HOME = openworkHome
+    delete process.env.ELECTRON_RENDERER_URL
+    const { listNativeExtensionLauncherCatalog, listNativeExtensionSourceMentions } = await import(
+      `../../src/main/services/native-extensions?catalog-test=${Date.now()}`
+    )
+
+    assert.deepEqual(
+      listNativeExtensionLauncherCatalog("darwin").map((extension) => extension.extName),
+      ["todo-list", "translate"]
+    )
+    assert.deepEqual(
+      listNativeExtensionSourceMentions("darwin").map((mention) => ({
+        extensionName: mention.extensionName,
+        sourceId: mention.sourceId,
+        value: mention.value
+      })),
+      [
+        {
+          extensionName: "image-generation",
+          sourceId: "image",
+          value: "image"
+        }
+      ]
+    )
+  } finally {
+    if (previousOpenworkHome === undefined) {
+      delete process.env.OPENWORK_HOME
+    } else {
+      process.env.OPENWORK_HOME = previousOpenworkHome
+    }
+    if (previousRendererUrl === undefined) {
+      delete process.env.ELECTRON_RENDERER_URL
+    } else {
+      process.env.ELECTRON_RENDERER_URL = previousRendererUrl
+    }
+    await rm(openworkHome, { force: true, recursive: true })
   }
 })
 
@@ -380,13 +424,7 @@ test("extension CLI dev fails fast when the initial build fails", async () => {
       () =>
         execFileAsync(
           process.execPath,
-          [
-            "packages/extension-cli/src/cli.mjs",
-            "dev",
-            sourceRoot,
-            "--out-dir",
-            outputRoot
-          ],
+          ["packages/extension-cli/src/cli.mjs", "dev", sourceRoot, "--out-dir", outputRoot],
           { cwd: process.cwd(), timeout: 5000 }
         ),
       (error) => {
@@ -424,6 +462,12 @@ test("extension CLI rejects function search adapters in installable runtime meta
         "export const manifest = defineNativeExtensionManifest({",
         "  capabilities: [],",
         "  commands: [],",
+        "  connection: {",
+        "    auth: { type: \"none\" },",
+        "    id: \"default\",",
+        '    provider: "function-search",',
+        '    title: "Function Search"',
+        "  },",
         '  name: "function-search",',
         '  title: "Function Search"',
         "})",
@@ -454,13 +498,7 @@ test("extension CLI rejects function search adapters in installable runtime meta
       () =>
         execFileAsync(
           process.execPath,
-          [
-            "packages/extension-cli/src/cli.mjs",
-            "build",
-            sourceRoot,
-            "--out-dir",
-            outputRoot
-          ],
+          ["packages/extension-cli/src/cli.mjs", "build", sourceRoot, "--out-dir", outputRoot],
           { cwd: process.cwd(), timeout: 5000 }
         ),
       (error) => {
@@ -568,6 +606,14 @@ async function writeInstalledExtensionFixture(
     JSON.stringify({
       capabilities: [],
       commands: [],
+      connection: {
+        auth: {
+          type: "none"
+        },
+        id: "default",
+        provider: "sample",
+        title: "Sample"
+      },
       icon: "assets/icon.svg",
       name: "sample",
       title: "Sample"
