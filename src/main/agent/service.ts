@@ -978,6 +978,13 @@ export class AgentService {
       const openworkMemoryContextPack = this.openworkMemoryService.rebuildContextPackFromSnapshot(
         resumedOpenworkMemoryContextSnapshot
       )
+      const resumeContextInclusions = openworkMemoryContextPack
+        ? buildProvidedContextInclusions({
+            contextPack: openworkMemoryContextPack,
+            runId: resumedRunId,
+            threadId
+          })
+        : []
       const resumedWorkspaceIdentity = await resolveOpenworkWorkspaceIdentity(workspacePath)
       const locale = getAgentConfig().locale
       const extensionManifests = listNativeExtensionManifests(process.platform)
@@ -1057,7 +1064,13 @@ export class AgentService {
         })
       }
       const resumeValue = buildResumeValue(decision)
-      const stream = await runtime.agent.stream(new Command({ resume: resumeValue }), config)
+      const resumeInput = new Command({
+        resume: resumeValue,
+        ...(resumeContextInclusions.length > 0
+          ? { update: { contextInclusions: resumeContextInclusions } }
+          : {})
+      })
+      const stream = await runtime.agent.stream(resumeInput, config)
       let interrupted = false
       let hitlRequestResolved = false
       const boundaryRecorderState = createAgentStreamBoundaryRecorderState()

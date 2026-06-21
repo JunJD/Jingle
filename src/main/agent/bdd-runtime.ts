@@ -63,6 +63,12 @@ function readResumeFeedback(input: unknown): string {
     .join("\n")
 }
 
+function readInputContextInclusions(input: unknown): unknown[] | undefined {
+  const contextInclusions = (input as { update?: { contextInclusions?: unknown } }).update
+    ?.contextInclusions
+  return Array.isArray(contextInclusions) ? contextInclusions : undefined
+}
+
 async function waitForAbort(signal: AbortSignal | undefined): Promise<void> {
   if (!signal || signal.aborted) {
     return
@@ -94,9 +100,13 @@ async function waitForDelay(ms: number, signal: AbortSignal | undefined): Promis
 function createCompletionState(
   options: CreateBddAgentRuntimeOptions,
   content: string,
-  todoId: string
+  todoId: string,
+  input?: unknown
 ) {
+  const contextInclusions = input ? readInputContextInclusions(input) : undefined
+
   return {
+    ...(contextInclusions ? { contextInclusions } : {}),
     todos: [
       {
         content,
@@ -186,7 +196,7 @@ export function createBddAgentRuntime(options: CreateBddAgentRuntimeOptions): Bd
             { langgraph_node: "agent" }
           ]
         ]
-        yield ["values", createCompletionState(options, content, todoId)]
+        yield ["values", createCompletionState(options, content, todoId, input)]
         return
       }
 
@@ -239,7 +249,7 @@ export function createBddAgentRuntime(options: CreateBddAgentRuntimeOptions): Bd
             { langgraph_node: "agent" }
           ]
         ]
-        yield ["values", createCompletionState(options, content, todoId)]
+        yield ["values", createCompletionState(options, content, todoId, input)]
         return
       }
 
@@ -255,7 +265,7 @@ export function createBddAgentRuntime(options: CreateBddAgentRuntimeOptions): Bd
           { langgraph_node: "agent" }
         ]
       ]
-      yield ["values", createCompletionState(options, content, todoId)]
+      yield ["values", createCompletionState(options, content, todoId, input)]
     }
   }
 }

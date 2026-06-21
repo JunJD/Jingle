@@ -353,6 +353,99 @@ test("agent resume rejects workspace mismatch before mutating the run", async ()
   )
 })
 
+test("agent resume seeds frozen provided context inclusions into resumed runtime state", async () => {
+  const { createRun, createThread, updateThread, upsertHitlRequest } = await loadDbModules()
+  const { OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } =
+    await import("../../src/shared/openwork-memory")
+  const consoleLog = mock.method(console, "log", () => {})
+  const previousRuntimeMode = process.env.OPENWORK_BDD_AGENT_RUNTIME
+
+  const threadId = "thread-resume-context-inclusions"
+  const runId = "run-resume-context-inclusions"
+  const requestId = "request-resume-context-inclusions"
+  const workspaceIdentity = {
+    canonicalWorkspacePath: repoRoot,
+    displayName: "openwork",
+    workspaceKey: repoRoot
+  }
+
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  await createRun(runId, threadId, {
+    metadata: {
+      [OPENWORK_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY]: {
+        canonicalWorkspacePath: repoRoot,
+        generatedAt: 123,
+        items: [
+          {
+            content: "Frozen resume memory body.",
+            id: "memory:memory-resume-context",
+            kind: "about_me",
+            scope: "global",
+            sourceLabel: "Global personal memory",
+            sourceType: "structured",
+            structuredMemoryId: "memory-resume-context"
+          }
+        ],
+        workspaceIdentity,
+        workspaceKey: repoRoot
+      }
+    },
+    status: "interrupted"
+  })
+  await updateThread(threadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    request_id: requestId,
+    thread_id: threadId,
+    run_id: runId,
+    tool_call_id: "tool-call-resume-context-inclusions",
+    tool_name: "write_file",
+    tool_args: { path: `${repoRoot}/approval.txt` },
+    allowed_decisions: ["approve", "reject"],
+    status: "pending"
+  })
+
+  const events: Array<{ data?: unknown; mode?: string; type: string }> = []
+
+  try {
+    process.env.OPENWORK_BDD_AGENT_RUNTIME = "scripted"
+    await (
+      await createAgentServiceForTest()
+    ).resume(
+      {
+        command: {
+          resume: {
+            request_id: requestId,
+            tool_call_id: "tool-call-resume-context-inclusions",
+            type: "approve"
+          }
+        },
+        modelId: "bdd",
+        threadId
+      },
+      {
+        send: (event) => events.push(event as (typeof events)[number])
+      }
+    )
+  } finally {
+    consoleLog.mock.restore()
+    if (previousRuntimeMode === undefined) {
+      delete process.env.OPENWORK_BDD_AGENT_RUNTIME
+    } else {
+      process.env.OPENWORK_BDD_AGENT_RUNTIME = previousRuntimeMode
+    }
+  }
+
+  const valuesEvent = events.find((event) => event.type === "stream" && event.mode === "values")
+  const contextInclusions = (valuesEvent?.data as { contextInclusions?: Array<{ id?: string }> })
+    ?.contextInclusions
+
+  assert.equal(
+    contextInclusions?.[0]?.id,
+    "ctx:run-resume-context-inclusions:provided:memory:memory-resume-context"
+  )
+})
+
 test("agent cancel covers invoke setup before a run id exists", async () => {
   const { createThread, getPrismaClient } = await loadDbModules()
   const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")

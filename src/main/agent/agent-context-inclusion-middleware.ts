@@ -13,6 +13,7 @@ import {
   createRetrievedMessageContextInclusion,
   upsertAgentContextInclusions,
   type AgentContextInclusion,
+  type OpenworkMemoryRecord,
   type OpenworkWorkspaceIdentity
 } from "@shared/openwork-memory"
 import { extractMessageText } from "@shared/message-content"
@@ -23,6 +24,8 @@ import { getRunIdFromToolRuntime } from "./run-config"
 type ContextInclusionToolState = {
   contextInclusions?: AgentContextInclusion[]
 }
+
+const TOOL_CONTEXT_CONTENT_LIMIT = 4_000
 
 const agentContextJumpTargetSchema = z
   .object({
@@ -116,6 +119,38 @@ function readProjectedMessageText(message: MessageProjectionRow): string {
   return text.trim() || message.content
 }
 
+function clipToolContextContent(content: string): string {
+  const trimmed = content.trim()
+  return trimmed.length > TOOL_CONTEXT_CONTENT_LIMIT
+    ? `${trimmed.slice(0, TOOL_CONTEXT_CONTENT_LIMIT)}\n[truncated]`
+    : trimmed
+}
+
+function formatRetrievedMessageToolContent(input: {
+  message: MessageProjectionRow
+  text: string
+}): string {
+  return [
+    "Retrieved message context:",
+    `id: ${input.message.message_id}`,
+    `role: ${input.message.role}`,
+    "",
+    clipToolContextContent(input.text)
+  ].join("\n")
+}
+
+function formatRetrievedMemoryToolContent(memories: OpenworkMemoryRecord[]): string {
+  return [
+    "Retrieved memory context:",
+    ...memories.map((memory, index) =>
+      [
+        `[${index + 1}] ${memory.scope}/${memory.type} (${memory.memoryId})`,
+        clipToolContextContent(memory.content)
+      ].join("\n")
+    )
+  ].join("\n\n")
+}
+
 function createToolMessage(input: {
   content: string
   name: string
@@ -143,10 +178,11 @@ export function createAgentContextInclusionMiddleware(
       }
 
       const runId = getRunIdFromToolRuntime(runtime) ?? options.runId
+      const messageText = readProjectedMessageText(message)
       const inclusion = createRetrievedMessageContextInclusion({
         createdAt: Date.now(),
         message: {
-          content: readProjectedMessageText(message),
+          content: messageText,
           id: message.message_id,
           role: message.role,
           threadId: targetThreadId
@@ -164,7 +200,10 @@ export function createAgentContextInclusionMiddleware(
           contextInclusions,
           messages: [
             createToolMessage({
-              content: `Retrieved message context: ${message.message_id}`,
+              content: formatRetrievedMessageToolContent({
+                message,
+                text: messageText
+              }),
               name: "get_message_context",
               runtime
             })
@@ -220,7 +259,7 @@ export function createAgentContextInclusionMiddleware(
                 contextInclusions,
                 messages: [
                   createToolMessage({
-                    content: `Retrieved ${memories.length} memory context item(s).`,
+                    content: formatRetrievedMemoryToolContent(memories),
                     name: "search_memory",
                     runtime
                   })
@@ -242,4 +281,9 @@ export function createAgentContextInclusionMiddleware(
     stateSchema: agentContextInclusionStateSchema,
     tools: searchMemoryTool ? [searchMemoryTool, getMessageContextTool] : [getMessageContextTool]
   })
+}
+
+export const agentContextInclusionMiddlewareInternals = {
+  formatRetrievedMemoryToolContent,
+  formatRetrievedMessageToolContent
 }
