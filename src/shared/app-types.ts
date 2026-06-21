@@ -179,6 +179,7 @@ export interface CustomProviderConfig {
     required?: boolean
     secret?: boolean
   }>
+  fast_model?: string | null
   headers?: Record<string, string>
   model_doc_link?: string | null
   models: CustomProviderModel[]

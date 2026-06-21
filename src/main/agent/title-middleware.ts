@@ -1,10 +1,9 @@
-import { AIMessage, HumanMessage, type BaseMessage } from "@langchain/core/messages"
+import { AIMessage, HumanMessage, SystemMessage, type BaseMessage } from "@langchain/core/messages"
 import { createMiddleware } from "langchain"
 import { z } from "zod/v4"
 import { getChatModelInstance } from "../llm/get-chat-model"
 
 const MAX_TITLE_CHARS = 60
-const FALLBACK_TITLE_CHARS = 50
 const TITLE_GENERATION_TIMEOUT_MS = 2_500
 
 const titleStateSchema = z.object({
@@ -55,19 +54,10 @@ function stripThinkTags(text: string): string {
 }
 
 function parseTitle(content: BaseMessage["content"]): string {
-  const title = stripThinkTags(normalizeContent(content)).replace(/^["']|["']$/g, "").trim()
+  const title = stripThinkTags(normalizeContent(content))
+    .replace(/^["']|["']$/g, "")
+    .trim()
   return title.length > MAX_TITLE_CHARS ? title.slice(0, MAX_TITLE_CHARS) : title
-}
-
-function fallbackTitle(userMessage: string): string {
-  const cleaned = userMessage.trim().replace(/\s+/g, " ")
-  if (!cleaned) {
-    return "New Conversation"
-  }
-
-  return cleaned.length > FALLBACK_TITLE_CHARS
-    ? `${cleaned.slice(0, FALLBACK_TITLE_CHARS).trimEnd()}...`
-    : cleaned
 }
 
 function shouldGenerateTitle(state: TitleState): boolean {
@@ -110,46 +100,42 @@ function hasTitleBlockingToolCallSignal(message: BaseMessage): boolean {
   )
 }
 
-function buildTitlePrompt(state: TitleState): { prompt: string; userMessage: string } {
+function buildTitlePrompt(state: TitleState): { prompt: string; system: string } {
   const userMessage = normalizeContent(
     state.messages.find((message) => HumanMessage.isInstance(message))?.content ?? ""
   )
-  const assistantMessage = stripThinkTags(
-    normalizeContent(
-      state.messages.find((message) => AIMessage.isInstance(message))?.content ?? ""
-    )
-  )
 
   return {
-    prompt: [
-      "Generate a concise title for this conversation.",
-      "Maximum 6 words, or 18 Chinese characters.",
-      "Return only the title. Do not include quotes or explanation.",
-      "",
-      `User: ${userMessage.slice(0, 500)}`,
-      `Assistant: ${assistantMessage.slice(0, 500)}`
-    ].join("\n"),
-    userMessage
+    system: [
+      "Generate a short title that describes the topic of the user's message.",
+      "Use four English words or fewer, or 18 Chinese characters or fewer.",
+      "Reply with only the title. Do not include quotes, explanation, or reasoning."
+    ].join(" "),
+    prompt: ["---BEGIN USER MESSAGE---", userMessage.slice(0, 1000), "---END USER MESSAGE---"].join(
+      "\n"
+    )
   }
 }
 
 async function generateAiTitle(state: TitleState): Promise<string | null> {
-  const { prompt, userMessage } = buildTitlePrompt(state)
+  const { prompt, system } = buildTitlePrompt(state)
 
   try {
     const model = getChatModelInstance({
       modelPreference: "fast",
-      temperature: 0
+      temperature: 0,
+      thinkingEffort: "off"
     })
-    const response = await model.withConfig({ runName: "thread_title" }).invoke(
-      [new HumanMessage(prompt)],
-      { timeout: TITLE_GENERATION_TIMEOUT_MS }
-    )
+    const response = await model
+      .withConfig({ runName: "thread_title" })
+      .invoke([new SystemMessage(system), new HumanMessage(prompt)], {
+        timeout: TITLE_GENERATION_TIMEOUT_MS
+      })
     const title = parseTitle(response.content)
-    return title || fallbackTitle(userMessage)
+    return title || null
   } catch (error) {
-    console.debug("[TitleMiddleware] Failed to generate title; using fallback.", error)
-    return fallbackTitle(userMessage)
+    console.warn("[TitleMiddleware] Failed to generate title.", error)
+    return null
   }
 }
 
@@ -172,7 +158,6 @@ export function createTitleMiddleware(options: CreateTitleMiddlewareOptions = {}
 
 export const titleMiddlewareInternals = {
   buildTitlePrompt,
-  fallbackTitle,
   normalizeContent,
   parseTitle,
   shouldGenerateTitle,

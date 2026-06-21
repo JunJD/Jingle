@@ -22,6 +22,7 @@ export interface ProviderDefinition {
   configurateMethods: ConfigurationMethod[]
   credentialFormSchemas: CredentialFormSchema[]
   description?: Provider["description"]
+  fastModel?: string
   id: ProviderId
   label: Provider["label"]
   name: string

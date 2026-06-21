@@ -1,11 +1,16 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { AIMessage, AIMessageChunk, HumanMessage } from "@langchain/core/messages"
-import { createTitleMiddleware, titleMiddlewareInternals } from "../../src/main/agent/title-middleware"
+import {
+  createTitleMiddleware,
+  titleMiddlewareInternals
+} from "../../src/main/agent/title-middleware"
 
 type AfterModelTestHook = (state: unknown, runtime: unknown) => unknown | Promise<unknown>
 
-function getAfterModelHook(middleware: ReturnType<typeof createTitleMiddleware>): AfterModelTestHook {
+function getAfterModelHook(
+  middleware: ReturnType<typeof createTitleMiddleware>
+): AfterModelTestHook {
   const hook = middleware.afterModel
   assert.ok(hook)
   return (typeof hook === "function" ? hook : hook.hook) as AfterModelTestHook
@@ -86,14 +91,41 @@ test("title middleware waits until pending tool calls are resolved", async () =>
   assert.deepEqual(afterFinalAssistantText, { title: "AI title" })
 })
 
-test("title middleware cleans output and falls back to the first user message", () => {
+test("title middleware cleans generated output", () => {
   const title = titleMiddlewareInternals.parseTitle(' "<think>ignore</think>  Release notes  " ')
-  const fallback = titleMiddlewareInternals.fallbackTitle(
-    "   Ship the new login flow and verify the onboarding path   "
-  )
 
   assert.equal(title, "Release notes")
-  assert.equal(fallback, "Ship the new login flow and verify the onboarding...")
+})
+
+test("title middleware leaves title unset when generation fails", async () => {
+  const middleware = createTitleMiddleware({
+    generateTitle: async () => null
+  })
+  const afterModel = getAfterModelHook(middleware)
+
+  const result = await afterModel(
+    {
+      messages: [new HumanMessage("Fix login"), new AIMessage("Got it")],
+      title: null
+    },
+    {}
+  )
+
+  assert.equal(result, undefined)
+})
+
+test("title prompt is based on the first user message only", () => {
+  const prompt = titleMiddlewareInternals.buildTitlePrompt({
+    messages: [
+      new HumanMessage("Summarize the authentication bug"),
+      new AIMessage("The implementation uses OAuth callbacks and retries.")
+    ],
+    title: null
+  })
+
+  assert.match(prompt.system, /Generate a short title/)
+  assert.match(prompt.prompt, /Summarize the authentication bug/)
+  assert.doesNotMatch(prompt.prompt, /OAuth callbacks/)
 })
 
 test("title middleware detects the first user and assistant messages", () => {

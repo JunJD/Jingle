@@ -48,6 +48,7 @@ const PROVIDERS: ProviderDefinition[] = [
       en_US: "Anthropic Claude chat models.",
       zh_Hans: "Anthropic Claude 聊天模型。"
     },
+    fastModel: "claude-haiku-4-5-20251001",
     id: "anthropic",
     label: {
       en_US: "Anthropic",
@@ -63,6 +64,7 @@ const PROVIDERS: ProviderDefinition[] = [
       en_US: "OpenAI chat and reasoning models.",
       zh_Hans: "OpenAI 聊天和推理模型。"
     },
+    fastModel: "gpt-4o-mini",
     id: "openai",
     label: {
       en_US: "OpenAI",
@@ -78,6 +80,7 @@ const PROVIDERS: ProviderDefinition[] = [
       en_US: "Google Gemini chat models.",
       zh_Hans: "Google Gemini 聊天模型。"
     },
+    fastModel: "gemini-2.5-flash-lite",
     id: "google",
     label: {
       en_US: "Google",
@@ -93,6 +96,7 @@ const PROVIDERS: ProviderDefinition[] = [
       en_US: "Alibaba Cloud DashScope OpenAI-compatible chat models.",
       zh_Hans: "阿里云 DashScope OpenAI-compatible 聊天模型。"
     },
+    fastModel: "qwen-plus",
     id: "dashscope",
     label: {
       en_US: "DashScope",
@@ -108,6 +112,7 @@ const PROVIDERS: ProviderDefinition[] = [
       en_US: "DeepSeek OpenAI-compatible chat and reasoning models.",
       zh_Hans: "DeepSeek OpenAI-compatible 聊天和推理模型。"
     },
+    fastModel: "deepseek-v4-flash",
     id: "deepseek",
     label: {
       en_US: "DeepSeek",

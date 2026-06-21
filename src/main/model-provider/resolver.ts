@@ -1,21 +1,19 @@
 import { getProviderAdapter } from "./adapters"
-import { getModelConfig, listModelCatalog, parseProviderModelId } from "./catalog"
+import {
+  getModelConfig,
+  getProviderDefinition,
+  parseProviderModelId,
+  toProviderModelId
+} from "./catalog"
 import { resolveModelContextLimit, resolveModelMaxOutputTokens } from "./model-limits"
 import { getModelProviderDefaultModel, getModelProviderDefaultModelOptions } from "./settings"
-import type { ResolvedModelRuntimeConfig } from "./types"
+import type { ResolvedModelRuntimeConfig, ThinkingEffort } from "./types"
 
 export interface ResolveModelRuntimeConfigOptions {
   modelPreference?: "fast"
   modelId?: string
+  thinkingEffort?: ThinkingEffort | null
 }
-
-const FAST_MODEL_CANDIDATE_IDS = [
-  "openai:gpt-4.1-nano",
-  "google:gemini-2.5-flash-lite",
-  "deepseek:deepseek-v4-flash",
-  "anthropic:claude-haiku-4-5-20251001",
-  "dashscope:qwen-plus"
-]
 
 export function resolveModelRuntimeConfig(
   options: ResolveModelRuntimeConfigOptions = {}
@@ -43,19 +41,28 @@ export function resolveModelRuntimeConfig(
     modelName: configuredModel?.model ?? parsedModelId.modelName,
     modelType,
     providerId,
-    thinkingEffort: getModelProviderDefaultModelOptions().llm.thinkingEffort ?? null
+    thinkingEffort:
+      options.thinkingEffort === undefined
+        ? (getModelProviderDefaultModelOptions().llm.thinkingEffort ?? null)
+        : options.thinkingEffort
   }
 }
 
 function resolvePreferredModelId(modelPreference: "fast" | undefined): string {
+  const defaultModelId = getModelProviderDefaultModel("llm")
+
   if (modelPreference !== "fast") {
-    return getModelProviderDefaultModel("llm")
+    return defaultModelId
   }
 
-  const configuredFastModelId = FAST_MODEL_CANDIDATE_IDS.find((modelId) => {
-    const model = listModelCatalog().find((candidate) => candidate.id === modelId)
-    return model?.modelType === "llm" && getProviderAdapter(model.provider).hasCredentials()
-  })
+  const parsedDefaultModel = parseProviderModelId(defaultModelId)
+  const provider = getProviderDefinition(parsedDefaultModel.providerId)
+  const fastModel = provider?.fastModel?.trim()
+  if (!fastModel) {
+    throw new Error(
+      `Model provider ${parsedDefaultModel.providerId} does not declare a fast model.`
+    )
+  }
 
-  return configuredFastModelId ?? getModelProviderDefaultModel("llm")
+  return toProviderModelId(parsedDefaultModel.providerId, fastModel)
 }

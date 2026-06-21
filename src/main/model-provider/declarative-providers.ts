@@ -23,6 +23,7 @@ export function listDeclarativeProviderDefinitions(): ProviderDefinition[] {
         : ["fetch-from-remote"],
     credentialFormSchemas: declarativeProviderCredentials(provider),
     description: toLocalizedText(provider.description ?? `${provider.display_name} provider.`),
+    fastModel: provider.fast_model ?? undefined,
     id: provider.name,
     label: toLocalizedText(provider.display_name),
     name: provider.display_name,

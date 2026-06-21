@@ -67,7 +67,8 @@ export class DefaultExtensionRuntimeHostCapabilities implements ExtensionRuntime
     const model = getChatModelInstance({
       modelPreference: input.modelPreference,
       modelId: input.modelId?.trim() || undefined,
-      temperature: input.temperature
+      temperature: input.temperature,
+      thinkingEffort: input.modelPreference === "fast" ? "off" : undefined
     })
     const messages = input.system
       ? [new SystemMessage(input.system), new HumanMessage(input.prompt)]

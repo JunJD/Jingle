@@ -68,8 +68,7 @@ test("retired safeStorage credential entries are ignored without Electron decryp
     deleteProviderCredentialsForUI,
     getProviderCredentialsForUI,
     getModelProviderStateForUI
-  } =
-    await import("../../src/main/model-provider/service")
+  } = await import("../../src/main/model-provider/service")
   const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
 
   const paths = getModelProviderPaths()
@@ -104,22 +103,36 @@ test("retired safeStorage credential entries are ignored without Electron decryp
   assert.equal(authJson.providers?.anthropic, undefined)
 })
 
-test("fast model preference resolves to a configured low-latency model", async () => {
-  const { setProviderCredentialsForUI } = await import("../../src/main/model-provider/service")
+test("fast model preference resolves through the active provider declaration", async () => {
+  const { setDefaultModelForUI, setProviderCredentialsForUI } =
+    await import("../../src/main/model-provider/service")
   const { resolveModelRuntimeConfig } = await import("../../src/main/model-provider/resolver")
 
-  globalThis.fetch = async () =>
-    new Response(JSON.stringify({ data: [{ id: "deepseek-v4-flash" }] }), {
+  globalThis.fetch = async (input) => {
+    const url = String(input)
+    const data = url.includes("api.openai.com")
+      ? [{ id: "gpt-4o-mini" }]
+      : [{ id: "deepseek-v4-pro" }, { id: "deepseek-v4-flash" }]
+
+    return new Response(JSON.stringify({ data }), {
       status: 200,
       statusText: "OK"
     })
+  }
 
+  await setProviderCredentialsForUI("openai", { apiKey: "sk-openai-fast-candidate" })
   await setProviderCredentialsForUI("deepseek", { apiKey: "sk-fast-model-key" })
+  await setDefaultModelForUI("llm", "deepseek:deepseek-v4-pro", {
+    thinkingEffort: "high"
+  })
 
-  assert.equal(
-    resolveModelRuntimeConfig({ modelPreference: "fast" }).modelId,
-    "deepseek:deepseek-v4-flash"
-  )
+  const runtimeConfig = resolveModelRuntimeConfig({
+    modelPreference: "fast",
+    thinkingEffort: "off"
+  })
+  assert.equal(runtimeConfig.modelId, "deepseek:deepseek-v4-flash")
+  assert.equal(runtimeConfig.modelName, "deepseek-v4-flash")
+  assert.equal(runtimeConfig.thinkingEffort, "off")
 })
 
 test("custom providers are persisted under the Jingle custom provider directory", async () => {
@@ -132,7 +145,7 @@ test("custom providers are persisted under the Jingle custom provider directory"
   upsertCustomProviderForUI({
     apiKey: "sk-custom-key",
     baseUrl: "https://api.example.test/v1",
-    displayName: "xiaoxiong",
+    displayName: "test provider",
     engine: "openai",
     models: ["gpt-5.5"],
     requiresAuth: true,
@@ -140,17 +153,56 @@ test("custom providers are persisted under the Jingle custom provider directory"
   })
 
   const paths = getModelProviderPaths()
-  const customProviderPath = join(paths.customProvidersDir, "custom_xiaoxiong.json")
-  const customProviderConfig = getCustomProviderConfig("custom_xiaoxiong")
+  const customProviderPath = join(paths.customProvidersDir, "custom_test_provider.json")
+  const customProviderConfig = getCustomProviderConfig("custom_test_provider")
 
   assert.equal(customProviderConfig?.base_url, "https://api.example.test/v1")
-  assert.match(await readFile(customProviderPath, "utf8"), /"display_name": "xiaoxiong"/)
+  assert.match(await readFile(customProviderPath, "utf8"), /"display_name": "test provider"/)
   assert.ok(
-    getModelProviderStateForUI().providers.some((provider) => provider.id === "custom_xiaoxiong")
+    getModelProviderStateForUI().providers.some(
+      (provider) => provider.id === "custom_test_provider"
+    )
   )
 
-  await setDefaultModelForUI("llm", "custom_xiaoxiong:gpt-5.5")
-  assert.equal(resolveModelRuntimeConfig().modelId, "custom_xiaoxiong:gpt-5.5")
+  await setDefaultModelForUI("llm", "custom_test_provider:gpt-5.5")
+  assert.equal(resolveModelRuntimeConfig().modelId, "custom_test_provider:gpt-5.5")
+})
+
+test("custom provider fast_model is used for fast model preference", async () => {
+  const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
+  const { resolveModelRuntimeConfig } = await import("../../src/main/model-provider/resolver")
+  const { setDefaultModelForUI, upsertCustomProviderForUI } =
+    await import("../../src/main/model-provider/service")
+
+  upsertCustomProviderForUI({
+    apiKey: "sk-fast-provider-key",
+    baseUrl: "https://fast.example.test/v1",
+    displayName: "fastlane",
+    engine: "openai",
+    models: ["main-model"],
+    requiresAuth: true,
+    supportsStreaming: true
+  })
+
+  const paths = getModelProviderPaths()
+  const customProviderPath = join(paths.customProvidersDir, "custom_fastlane.json")
+  const customProviderConfig = JSON.parse(await readFile(customProviderPath, "utf8")) as Record<
+    string,
+    unknown
+  >
+  await writeFile(
+    customProviderPath,
+    `${JSON.stringify({ ...customProviderConfig, fast_model: "fast-model" }, null, 2)}\n`,
+    "utf8"
+  )
+
+  await setDefaultModelForUI("llm", "custom_fastlane:main-model")
+
+  assert.equal(
+    resolveModelRuntimeConfig({ modelPreference: "fast" }).modelId,
+    "custom_fastlane:fast-model"
+  )
+  assert.equal(resolveModelRuntimeConfig({ modelPreference: "fast" }).modelName, "fast-model")
 })
 
 test("custom providers cannot overwrite declarative provider ids", async () => {
@@ -274,18 +326,27 @@ test("stored custom providers reject Codex CLI as a custom engine", async () => 
 })
 
 test("default model thinking effort is persisted in Jingle config", async () => {
-  const { setDefaultModelForUI } = await import("../../src/main/model-provider/service")
+  const { setDefaultModelForUI, upsertCustomProviderForUI } =
+    await import("../../src/main/model-provider/service")
   const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
-  const { resolveModelRuntimeConfig } = await import("../../src/main/model-provider/resolver")
 
-  await setDefaultModelForUI("llm", "custom_xiaoxiong:gpt-5.5", {
+  upsertCustomProviderForUI({
+    apiKey: "sk-thinking-provider-key",
+    baseUrl: "https://thinking.example.test/v1",
+    displayName: "thinking provider",
+    engine: "openai",
+    models: ["gpt-thinking"],
+    requiresAuth: true,
+    supportsStreaming: true
+  })
+
+  await setDefaultModelForUI("llm", "custom_thinking_provider:gpt-thinking", {
     thinkingEffort: "high"
   })
 
   const paths = getModelProviderPaths()
   const configText = await readFile(paths.configPath, "utf8")
-  assert.match(configText, /thinking_effort: high/)
-  assert.equal(resolveModelRuntimeConfig().thinkingEffort, "high")
+  assert.match(configText, /custom_thinking_provider:\n(?:    .+\n)*    thinking_effort: high/)
 })
 
 test("custom provider edits keep the original provider id", async () => {
@@ -295,27 +356,37 @@ test("custom provider edits keep the original provider id", async () => {
   const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
   const { resolveModelRuntimeConfig } = await import("../../src/main/model-provider/resolver")
 
+  upsertCustomProviderForUI({
+    apiKey: "sk-editable-provider-key",
+    baseUrl: "https://editable.example.test/v1",
+    displayName: "editable provider",
+    engine: "openai",
+    models: ["gpt-5.5"],
+    requiresAuth: true,
+    supportsStreaming: true
+  })
+
   const providerId = upsertCustomProviderForUI({
     basePath: "/compat",
     baseUrl: "https://api2.example.test",
-    description: "Edited xiaoxiong provider.",
-    displayName: "xiaoxiong pro",
+    description: "Edited test provider.",
+    displayName: "test provider pro",
     engine: "openai",
     headers: {
       "X-Jingle": "yes"
     },
     models: ["gpt-6"],
-    providerId: "custom_xiaoxiong",
+    providerId: "custom_editable_provider",
     requiresAuth: true,
     supportsStreaming: false
   })
 
   const paths = getModelProviderPaths()
-  const customProviderPath = join(paths.customProvidersDir, "custom_xiaoxiong.json")
-  const customProviderConfig = getCustomProviderConfig("custom_xiaoxiong")
+  const customProviderPath = join(paths.customProvidersDir, "custom_editable_provider.json")
+  const customProviderConfig = getCustomProviderConfig("custom_editable_provider")
 
-  assert.equal(providerId, "custom_xiaoxiong")
-  assert.equal(customProviderConfig?.display_name, "xiaoxiong pro")
+  assert.equal(providerId, "custom_editable_provider")
+  assert.equal(customProviderConfig?.display_name, "test provider pro")
   assert.equal(customProviderConfig?.base_url, "https://api2.example.test")
   assert.equal(customProviderConfig?.base_path, "/compat")
   assert.equal(customProviderConfig?.supports_streaming, false)
@@ -324,29 +395,48 @@ test("custom provider edits keep the original provider id", async () => {
     customProviderConfig?.models.map((model) => model.name),
     ["gpt-6"]
   )
-  assert.match(await readFile(customProviderPath, "utf8"), /"display_name": "xiaoxiong pro"/)
+  assert.match(await readFile(customProviderPath, "utf8"), /"display_name": "test provider pro"/)
 
-  await setDefaultModelForUI("llm", "custom_xiaoxiong:gpt-6")
-  assert.equal(resolveModelRuntimeConfig().modelId, "custom_xiaoxiong:gpt-6")
+  await setDefaultModelForUI("llm", "custom_editable_provider:gpt-6")
+  assert.equal(
+    resolveModelRuntimeConfig({ modelId: "custom_editable_provider:gpt-6" }).modelId,
+    "custom_editable_provider:gpt-6"
+  )
 })
 
 test("unlisted custom provider models require an explicit user choice", async () => {
-  const { setDefaultModelForUI } = await import("../../src/main/model-provider/service")
+  const { setDefaultModelForUI, upsertCustomProviderForUI } =
+    await import("../../src/main/model-provider/service")
+  const { getModelProviderPaths } = await import("../../src/main/model-provider/paths")
   const { resolveModelRuntimeConfig } = await import("../../src/main/model-provider/resolver")
 
+  upsertCustomProviderForUI({
+    apiKey: "sk-unlisted-provider-key",
+    baseUrl: "https://unlisted.example.test/v1",
+    displayName: "unlisted provider",
+    engine: "openai",
+    models: ["gpt-listed"],
+    requiresAuth: true,
+    supportsStreaming: true
+  })
+
   await assert.rejects(
-    setDefaultModelForUI("llm", "custom_xiaoxiong:gpt-7"),
-    /Model is not available for provider custom_xiaoxiong: gpt-7/
+    setDefaultModelForUI("llm", "custom_unlisted_provider:gpt-7"),
+    /Model is not available for provider custom_unlisted_provider: gpt-7/
   )
 
-  await setDefaultModelForUI("llm", "custom_xiaoxiong:gpt-7", {
+  await setDefaultModelForUI("llm", "custom_unlisted_provider:gpt-7", {
     allowUnlisted: true,
     thinkingEffort: "max"
   })
 
-  const runtimeConfig = resolveModelRuntimeConfig()
-  assert.equal(runtimeConfig.modelId, "custom_xiaoxiong:gpt-7")
-  assert.equal(runtimeConfig.thinkingEffort, "max")
+  const runtimeConfig = resolveModelRuntimeConfig({ modelId: "custom_unlisted_provider:gpt-7" })
+  assert.equal(runtimeConfig.modelId, "custom_unlisted_provider:gpt-7")
+  const paths = getModelProviderPaths()
+  assert.match(
+    await readFile(paths.configPath, "utf8"),
+    /custom_unlisted_provider:\n(?:    .+\n)*    thinking_effort: max/
+  )
 })
 
 test("registry models are listed without enabling unsupported local inference", async () => {

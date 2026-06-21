@@ -65,6 +65,7 @@ export function listCustomProviderDefinitions(): ProviderDefinition[] {
     description: toLocalizedText(
       provider.description ?? `Custom ${provider.display_name} provider.`
     ),
+    fastModel: provider.fast_model ?? undefined,
     id: provider.name,
     label: toLocalizedText(provider.display_name),
     name: provider.display_name,
@@ -114,6 +115,7 @@ export function upsertCustomProvider(input: CustomProviderInput): CustomProvider
       normalizeOptionalString(input.description) ?? `Custom ${input.displayName} provider.`,
     display_name: input.displayName.trim(),
     engine: input.engine,
+    ...(existingConfig?.fast_model ? { fast_model: existingConfig.fast_model } : {}),
     headers: input.headers ?? {},
     models: input.models.map((model) => ({ name: model.trim() })).filter((model) => model.name),
     name: providerId,
@@ -166,6 +168,7 @@ function normalizeCustomProviderConfig(value: unknown): CustomProviderConfig {
   const name = requireString(value, "name")
   const displayName = requireString(value, "display_name")
   const engine = requireEngine(value["engine"])
+  const fastModel = getNullableString(value, "fast_model")
   const rawModels = value["models"]
   if (!Array.isArray(rawModels)) {
     throw new Error(`Custom provider ${name} models must be an array.`)
@@ -181,6 +184,7 @@ function normalizeCustomProviderConfig(value: unknown): CustomProviderConfig {
       typeof value["dynamic_models"] === "boolean" ? value["dynamic_models"] : undefined,
     engine,
     env_vars: normalizeCustomProviderEnvVars(value["env_vars"]),
+    ...(fastModel ? { fast_model: fastModel } : {}),
     headers: normalizeStringRecord(value["headers"]),
     model_doc_link: getNullableString(value, "model_doc_link"),
     models: rawModels.map(normalizeCustomProviderModel),
