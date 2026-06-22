@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Archive, Brain, Keyboard, KeyRound, Link2, Palette, Puzzle, Settings2 } from "lucide-react"
 import type { SettingsWindowTab, SettingsWindowTarget } from "@shared/settings-window"
-import { useI18n } from "../lib/i18n"
+import { useI18n } from "@/lib/i18n"
 import { AppearanceTab } from "./AppearanceTab"
 import { ArchivedThreadsTab } from "./ArchivedThreadsTab"
 import { getSettingsCopy } from "./copy"

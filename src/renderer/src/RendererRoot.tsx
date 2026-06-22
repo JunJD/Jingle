@@ -4,10 +4,10 @@ import { LauncherClipboardProvider } from "@launcher-shell/LauncherClipboardCont
 import { DEFAULT_APP_THEME_SETTINGS, type AppThemeSettings } from "@shared/app-theme"
 import { PINNED_AI_SESSION_WINDOW_KIND } from "@shared/ai-session-window"
 import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "@shared/i18n"
+import { I18nProvider } from "@/lib/i18n"
 import { PinnedAiSessionWindowApp } from "./ai-core/PinnedAiSessionWindowApp"
 import { ThreadProvider } from "./lib/thread-context"
 import { applyAppThemeSettings } from "./lib/app-theme"
-import { I18nProvider } from "./lib/i18n"
 import SettingsApp from "./settings/SettingsApp"
 import { ShortcutProvider } from "./shortcuts/shortcut-provider"
 

@@ -9,7 +9,8 @@ import { nativeExtensionManifests } from "../../src/extensions"
 import { parseExtensionQuicklinkCommandUrl } from "../../src/shared/extension-quicklinks"
 import {
   buildNativeLauncherCommandOwners,
-  setNativeLauncherCatalogProjection
+  setNativeLauncherCatalogProjection,
+  setNativeSourceMentionProjection
 } from "../../src/renderer/src/extension-host"
 import { ExtensionIcon } from "../../src/renderer/src/extensions/ExtensionIcon"
 import { LauncherResultList } from "../../src/renderer/src/launcher-components/LauncherResultList"
@@ -23,7 +24,10 @@ import {
 import { buildLauncherSearchShellItems } from "../../src/renderer/src/launcher-shell/search-items"
 import { resolveLauncherCommand } from "../../src/renderer/src/launcher-shell/pages"
 import { FALLBACK_SHELL_CONFIG } from "../../src/shared/launcher"
-import { toNativeExtensionLauncherCatalogProjection } from "../../src/shared/native-extensions"
+import {
+  toNativeExtensionLauncherCatalogProjection,
+  toNativeExtensionSourceMentionProjection
+} from "../../src/shared/native-extensions"
 import {
   createEmptyLauncherSearchResultsBySource,
   createLauncherSearchPageStore,
@@ -39,6 +43,14 @@ import type { LocalStartItem } from "../../src/shared/local-start"
 setNativeLauncherCatalogProjection(
   [...nativeExtensionManifests, figmaFilesManifest, githubManifest, notionManifest].map(
     (manifest) => toNativeExtensionLauncherCatalogProjection(manifest)
+  )
+)
+setNativeSourceMentionProjection(
+  [...nativeExtensionManifests, figmaFilesManifest, githubManifest, notionManifest].flatMap(
+    (manifest) => {
+      const sourceMention = toNativeExtensionSourceMentionProjection(manifest)
+      return sourceMention ? [sourceMention] : []
+    }
   )
 )
 

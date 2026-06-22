@@ -3,7 +3,7 @@ import { FolderOpen, Languages, Layers2, Rocket } from "lucide-react"
 import type { AgentConfig } from "@shared/app-types"
 import type { LauncherSettings, LauncherWindowMode } from "@shared/launcher-settings"
 import { SUPPORTED_APP_LOCALES, type AppLocale } from "@shared/i18n"
-import { useI18n } from "../lib/i18n"
+import { useI18n } from "@/lib/i18n"
 import { getSettingsCopy } from "./copy"
 import {
   inputClassName,

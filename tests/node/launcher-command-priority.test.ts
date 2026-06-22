@@ -1,11 +1,18 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { nativeExtensionManifests } from "../../src/extensions"
+import { setNativeLauncherCatalogProjection } from "../../src/renderer/src/extension-host"
 import { appCopy } from "../../src/renderer/src/lib/i18n/messages"
 import { buildLauncherHomeSurfaceModel } from "../../src/renderer/src/launcher-shell/home-surface"
 import type { ExtensionSourceMention } from "../../src/shared/extension-sources"
 import type { LauncherSearchResult } from "../../src/shared/launcher-search"
+import { toNativeExtensionLauncherCatalogProjection } from "../../src/shared/native-extensions"
 
 const copy = appCopy["zh-CN"]
+
+setNativeLauncherCatalogProjection(
+  nativeExtensionManifests.map((manifest) => toNativeExtensionLauncherCatalogProjection(manifest))
+)
 
 function buildSurface(
   query: string,
@@ -45,8 +52,10 @@ test("high confidence extension intents become the primary launcher result", () 
     extensionName: "translate",
     kind: "extension-command"
   })
+  const useWithSection = surface.sections.find((section) => section.kind === "use-with")
+  assert.ok(useWithSection)
   assert.equal(
-    surface.items.some((item) => item.id.startsWith("use-with:translate:")),
+    useWithSection.items.some((item) => item.id.startsWith("use-with:translate:")),
     false
   )
 })

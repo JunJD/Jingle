@@ -12,7 +12,8 @@ async function readWorkspaceFile(path: string): Promise<string> {
 function readCssRule(cssSource: string, selector: string): string {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
   const ruleMatch = new RegExp(`(?:^|\\n)${escapedSelector} \\{`).exec(cssSource)
-  const ruleStart = ruleMatch?.index == null ? -1 : ruleMatch.index + (ruleMatch[0][0] === "\n" ? 1 : 0)
+  const ruleStart =
+    ruleMatch?.index == null ? -1 : ruleMatch.index + (ruleMatch[0][0] === "\n" ? 1 : 0)
   assert.ok(ruleStart >= 0, `${selector} style should exist`)
   const ruleEnd = cssSource.indexOf("\n}", ruleStart)
   assert.ok(ruleEnd > ruleStart, `${selector} style should close`)
@@ -72,8 +73,25 @@ test("renderer entry keeps bootstrap side effects out of the React refresh bound
   assert.doesNotMatch(mainSource, /__jingleRendererRoot/)
   assert.equal(mainSource.match(/ReactDOM\.createRoot/g)?.length, 1)
   assert.match(rootSource, /export function RendererRoot/)
+  assert.match(rootSource, /import \{ I18nProvider \} from "@\/lib\/i18n"/)
   assert.doesNotMatch(rootSource, /ReactDOM\.createRoot/)
   assert.doesNotMatch(rootSource, /bootstrapRenderer/)
+})
+
+test("renderer i18n context is imported through one module identity", async () => {
+  const [rootSource, settingsSource, generalSource] = await Promise.all([
+    readWorkspaceFile("src/renderer/src/RendererRoot.tsx"),
+    readWorkspaceFile("src/renderer/src/settings/SettingsApp.tsx"),
+    readWorkspaceFile("src/renderer/src/settings/GeneralTab.tsx")
+  ])
+  const sources = [rootSource, settingsSource, generalSource]
+
+  for (const source of sources) {
+    assert.doesNotMatch(source, /from ["'](?:\.{1,2}\/)+lib\/i18n["']/)
+  }
+  assert.match(rootSource, /from "@\/lib\/i18n"/)
+  assert.match(settingsSource, /from "@\/lib\/i18n"/)
+  assert.match(generalSource, /from "@\/lib\/i18n"/)
 })
 
 test("launcher AI sidebar search opens thread search overlay backed by launcher search", async () => {
@@ -212,8 +230,49 @@ test("launcher AI sidebar thread context menu reuses owned actions and disables 
   assert.doesNotMatch(projectThreadAction[0], /createThread\(/)
   assert.match(pageSource, /projectActions=\{sidebarProjectActions\}/)
   assert.match(pageSource, /setThreadArchived\(nextThreadId, true\)/)
-  assert.match(pageSource, /window\.api\.openTargets\.open\(\{ folderPath: nextWorkspacePath, targetId: "finder" \}\)/)
-  assert.match(pageSource, /window\.api\.aiSessionWindows\.openPinned\(\{ threadId: nextThreadId \}\)/)
+  assert.match(
+    pageSource,
+    /window\.api\.openTargets\.open\(\{ folderPath: nextWorkspacePath, targetId: "finder" \}\)/
+  )
+  assert.match(
+    pageSource,
+    /window\.api\.aiSessionWindows\.openPinned\(\{ threadId: nextThreadId \}\)/
+  )
+})
+
+test("archived chats use a first-class thread column and settings archive view", async () => {
+  const [schemaSource, migrationSource, dbSource, serviceSource, settingsSource] =
+    await Promise.all([
+      readWorkspaceFile("prisma/schema.prisma"),
+      readWorkspaceFile("prisma/migrations/20260620000000_add_thread_archived_at/migration.sql"),
+      readWorkspaceFile("src/main/db/threads.ts"),
+      readWorkspaceFile("src/main/threads/service.ts"),
+      readWorkspaceFile("src/renderer/src/settings/ArchivedThreadsTab.tsx")
+    ])
+
+  assert.match(schemaSource, /archivedAt\s+BigInt\?\s+@map\("archived_at"\)/)
+  assert.match(migrationSource, /ALTER TABLE "threads" ADD COLUMN "archived_at" BIGINT/)
+  assert.match(dbSource, /getActiveThreads/)
+  assert.match(dbSource, /getArchivedThreads/)
+  assert.match(dbSource, /setThreadArchived/)
+  assert.match(dbSource, /archivedAt:\s*archived \? now : null/)
+  assert.doesNotMatch(dbSource, /metadata\[['"]archived['"]\]/)
+  assert.doesNotMatch(dbSource, /metadata\.archived/)
+  assert.doesNotMatch(dbSource, /ARCHIVED_METADATA/)
+  assert.match(serviceSource, /listArchivedView/)
+  assert.match(serviceSource, /getThreadWorkspaceBindings/)
+  assert.match(settingsSource, /window\.api\.threads\.listArchived\(\)/)
+  assert.match(settingsSource, /window\.api\.threads\.setArchived\(threadId, false\)/)
+  assert.match(settingsSource, /window\.api\.threads\.delete\(threadId\)/)
+  assert.match(settingsSource, /DialogContent/)
+  assert.match(settingsSource, /deleteConfirmation/)
+  assert.match(settingsSource, /confirmDelete\(\)/)
+  assert.match(settingsSource, /setDeleteConfirmation\(\{[\s\S]*?kind: "single"/)
+  assert.match(settingsSource, /setDeleteConfirmation\(\{[\s\S]*?kind: "visible"/)
+  assert.doesNotMatch(
+    settingsSource,
+    /onClick=\{\(\) => \{\s*void delete(?:Thread|VisibleThreads)\(/
+  )
 })
 
 test("launcher AI sidebar rows share one list item shell across chats and projects", async () => {
@@ -281,6 +340,19 @@ test("launcher AI sidebar rows share one list item shell across chats and projec
   assert.doesNotMatch(cssSource, /launcher-ai-sidebar-panel__project-action/)
   assert.doesNotMatch(cssSource, /launcher-ai-sidebar-panel__thread(?:\b|__)/)
   assert.doesNotMatch(cssSource, /item-actions:focus-within/)
+})
+
+test("launcher AI project thread creation reuses the selected project workspace", async () => {
+  const [hostSource, launcherAppSource] = await Promise.all([
+    readWorkspaceFile("src/renderer/src/ai-core/AiCoreHost.tsx"),
+    readWorkspaceFile("src/renderer/src/launcher-shell/LauncherApp.tsx")
+  ])
+
+  assert.match(hostSource, /workspaceKind\?: ThreadWorkspaceKind/)
+  assert.match(hostSource, /workspacePath\?: string/)
+  assert.match(launcherAppSource, /input\.workspacePath === undefined/)
+  assert.match(launcherAppSource, /workspaceKind: input\.workspaceKind \?\? "projectless"/)
+  assert.match(launcherAppSource, /workspacePath\s*\}/)
 })
 
 test("launcher AI thread search overlay stays idle before query input", async () => {
