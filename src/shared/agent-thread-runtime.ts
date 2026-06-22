@@ -1,4 +1,5 @@
 import type { HITLDecision, HITLRequest, Message, Subagent, Todo } from "./app-types"
+import type { ComposerMessageInput } from "./message-content"
 import type { AgentContextInclusion } from "./openwork-memory"
 import type { IpcErrorPayload } from "./ipc-error"
 
@@ -53,6 +54,18 @@ export interface AgentTokenUsage {
   lastUpdated: Date
 }
 
+export interface AgentFollowUpQueueSummary {
+  count: number
+  items: AgentFollowUpQueueItem[]
+  nextRequestId: string | null
+}
+
+export interface AgentFollowUpQueueItem {
+  messageInput: ComposerMessageInput
+  requestId: string
+  text: string
+}
+
 export interface ActiveAgentRun {
   assistantMessageId: string | null
   currentToolCallId: string | null
@@ -71,6 +84,7 @@ export interface AgentThreadRuntimeState {
   activeRun: ActiveAgentRun | null
   contextInclusions: AgentContextInclusion[]
   error: IpcErrorPayload | null
+  followUpQueue: AgentFollowUpQueueSummary
   hasMoreBefore: boolean
   latestRunId: string | null
   messagesPage: Message[]
@@ -203,6 +217,11 @@ export type AgentThreadEvent =
       type: "context.inclusionsReplaced"
     }
   | {
+      revision: number
+      summary: AgentFollowUpQueueSummary
+      type: "followUp.queueChanged"
+    }
+  | {
       completedAt: Date
       durationMs: number | null
       error: IpcErrorPayload | null
@@ -230,6 +249,7 @@ export type AgentThreadEventDraft =
   | Omit<Extract<AgentThreadEvent, { type: "subagents.replaced" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "todos.replaced" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "context.inclusionsReplaced" }>, "revision">
+  | Omit<Extract<AgentThreadEvent, { type: "followUp.queueChanged" }>, "revision">
   | Omit<Extract<AgentThreadEvent, { type: "run.finished" }>, "revision">
 
 export function createDefaultAgentThreadRuntimeState(threadId: string): AgentThreadRuntimeState {
@@ -237,6 +257,11 @@ export function createDefaultAgentThreadRuntimeState(threadId: string): AgentThr
     activeRun: null,
     contextInclusions: [],
     error: null,
+    followUpQueue: {
+      count: 0,
+      items: [],
+      nextRequestId: null
+    },
     hasMoreBefore: false,
     latestRunId: null,
     messagesPage: [],
@@ -460,6 +485,13 @@ export function reduceAgentThreadRuntimeEvent(
       return {
         ...state,
         contextInclusions: event.inclusions,
+        revision: event.revision
+      }
+
+    case "followUp.queueChanged":
+      return {
+        ...state,
+        followUpQueue: event.summary,
         revision: event.revision
       }
 

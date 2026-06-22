@@ -503,3 +503,34 @@ test("agent thread runtime truncates messages after an edited user message", () 
   assert.equal(truncated.pendingApproval, null)
   assert.equal(truncated.revision, 5)
 })
+
+test("agent thread runtime stores follow-up queue facts", () => {
+  const queued = reduceAgentThreadRuntimeEvent(createDefaultAgentThreadRuntimeState("thread-1"), {
+    revision: 1,
+    summary: {
+      count: 2,
+      items: [
+        {
+          messageInput: { refs: [], text: "queued follow-up" },
+          requestId: "request-1",
+          text: "queued follow-up"
+        }
+      ],
+      nextRequestId: "request-1"
+    },
+    type: "followUp.queueChanged"
+  })
+
+  assert.deepEqual(queued.followUpQueue, {
+    count: 2,
+    items: [
+      {
+        messageInput: { refs: [], text: "queued follow-up" },
+        requestId: "request-1",
+        text: "queued follow-up"
+      }
+    ],
+    nextRequestId: "request-1"
+  })
+  assert.equal(queued.revision, 1)
+})

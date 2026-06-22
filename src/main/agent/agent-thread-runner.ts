@@ -19,6 +19,7 @@ import {
   type AgentToolExecutionError,
   type ActiveAgentToolCall,
   type ActiveAgentRun,
+  type AgentFollowUpQueueSummary,
   type AgentRunPhase,
   type AgentThreadEvent,
   type AgentThreadEventBatch,
@@ -220,6 +221,11 @@ class ThreadRuntimeProjector {
       error: bootstrap.error,
       hasMoreBefore: false,
       latestRunId: bootstrap.latestRunId,
+      followUpQueue: {
+        count: 0,
+        items: [],
+        nextRequestId: null
+      },
       messagesPage: messages,
       pendingApproval: bootstrap.pendingApproval,
       revision: 0,
@@ -239,6 +245,13 @@ class ThreadRuntimeProjector {
     this.commitRuntimeEvent({
       run: this.createActiveRun(message.id, null),
       type: "run.started"
+    })
+  }
+
+  applyFollowUpQueueSummary(summary: AgentFollowUpQueueSummary): void {
+    this.commitRuntimeEvent({
+      summary,
+      type: "followUp.queueChanged"
     })
   }
 
@@ -1147,6 +1160,15 @@ export class AgentThreadRunner {
     const entry = await this.ensureEntry(threadId)
     entry.replayEvents = []
     entry.projector.prepareResume(decision)
+    this.notify(threadId)
+  }
+
+  async applyFollowUpQueueSummary(
+    threadId: string,
+    summary: AgentFollowUpQueueSummary
+  ): Promise<void> {
+    const entry = await this.ensureEntry(threadId)
+    entry.projector.applyFollowUpQueueSummary(summary)
     this.notify(threadId)
   }
 
