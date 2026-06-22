@@ -70,6 +70,7 @@ const agentMessageContentBlockSchema = z.discriminatedUnion("type", [
 ])
 
 const permissionModeSchema = z.enum(["explore", "ask-to-edit", "auto"])
+const followUpActionSchema = z.literal("steer")
 
 export const agentInvokeParamsSchema = z
   .object({
@@ -88,7 +89,8 @@ export const agentInvokeParamsSchema = z
       .strict(),
     modelId: optionalNormalizedTrimmedStringSchema,
     permissionMode: permissionModeSchema.optional(),
-    temporaryMode: z.boolean().optional()
+    temporaryMode: z.boolean().optional(),
+    followUpAction: followUpActionSchema.optional()
   })
   .strict()
 

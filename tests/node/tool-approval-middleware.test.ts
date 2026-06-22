@@ -203,6 +203,7 @@ test("allowlisted desktop automation tools bypass approval and continue to the h
   const middleware = createToolApprovalMiddleware({
     getAgentConfig: () => ({
       desktopAutomationAllowlist: ["com.apple.finder"],
+      followUpMode: "queue",
       locale: "zh-CN",
       skillSources: []
     })
@@ -237,6 +238,7 @@ test("non-allowlisted desktop automation tools return an error without approval"
   const middleware = createToolApprovalMiddleware({
     getAgentConfig: () => ({
       desktopAutomationAllowlist: ["com.apple.finder"],
+      followUpMode: "queue",
       locale: "zh-CN",
       skillSources: []
     })
@@ -468,6 +470,7 @@ test("app-targeted desktop route calls require target metadata for allowlist che
   const middleware = createToolApprovalMiddleware({
     getAgentConfig: () => ({
       desktopAutomationAllowlist: ["com.netease.163music"],
+      followUpMode: "queue",
       locale: "zh-CN",
       skillSources: []
     })
@@ -704,6 +707,7 @@ test("click_screen_point requires an allowlisted target application", async () =
   const middleware = createToolApprovalMiddleware({
     getAgentConfig: () => ({
       desktopAutomationAllowlist: ["com.netease.163music"],
+      followUpMode: "queue",
       locale: "zh-CN",
       skillSources: []
     })

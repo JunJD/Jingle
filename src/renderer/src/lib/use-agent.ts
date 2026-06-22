@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { IpcErrorPayload } from "@shared/ipc-error"
 import { useThreadContext, useThreadSelector } from "./thread-context"
 import {
@@ -74,7 +74,9 @@ export function useAgent(options: UseAgentOptions): {
   }, [threadContext, threadId])
 
   const runtimeStatus = useThreadSelector(threadId, (state) => state?.agent.status ?? null)
+  const followUpQueue = useThreadSelector(threadId, (state) => state?.agent.followUpQueue ?? null)
   const threadError = useThreadSelector(threadId, (state) => state?.agent.error ?? null)
+  const drainingFollowUpRequestIdRef = useRef<string | null>(null)
   const [dismissedThreadError, setDismissedThreadError] = useState<DismissedThreadError | null>(
     null
   )
@@ -87,6 +89,12 @@ export function useAgent(options: UseAgentOptions): {
       : threadError
   const error = formatAgentErrorForView(visibleThreadError) ?? localError
 
+  useEffect(() => {
+    if (runtimeStatus !== "idle") {
+      drainingFollowUpRequestIdRef.current = null
+    }
+  }, [runtimeStatus])
+
   const clearError = useCallback((): void => {
     setDismissedThreadError({ error: threadError, threadId })
     setLocalError(null)
@@ -94,17 +102,68 @@ export function useAgent(options: UseAgentOptions): {
 
   const invoke = useCallback(
     async (messageInput, invokeOptions): Promise<boolean> => {
+      const targetThreadId = invokeOptions?.threadId ?? threadId
       return invokeAgentThread({
         messageInput,
+        followUpAction: invokeOptions?.followUpAction,
+        onQueueFollowUp: (queuedInput) => {
+          if (!targetThreadId) {
+            throw new Error("Agent thread is not selected")
+          }
+          threadContext.getThreadControl(targetThreadId).agent.enqueueFollowUp(queuedInput)
+        },
         onLocalError: setLocalError,
         temporaryMode,
         threadContext,
-        threadId: invokeOptions?.threadId ?? threadId,
+        threadId: targetThreadId,
         validateRun
       })
     },
     [temporaryMode, threadContext, threadId, validateRun]
   )
+
+  useEffect(() => {
+    if (!threadId || runtimeStatus !== "idle" || !followUpQueue?.nextRequestId) {
+      return
+    }
+
+    const requestId = followUpQueue.nextRequestId
+    if (drainingFollowUpRequestIdRef.current) {
+      return
+    }
+
+    drainingFollowUpRequestIdRef.current = requestId
+    const control = threadContext.getThreadControl(threadId)
+    const item = control.agent.takeFollowUp(requestId)
+    if (!item) {
+      drainingFollowUpRequestIdRef.current = null
+      return
+    }
+
+    void invokeAgentThread({
+      messageInput: item.messageInput,
+      onQueueFollowUp: (queuedInput) => {
+        control.agent.enqueueFollowUp(queuedInput)
+      },
+      onLocalError: setLocalError,
+      temporaryMode,
+      threadContext,
+      threadId,
+      validateRun
+    }).then((didInvoke) => {
+      if (!didInvoke) {
+        control.agent.restoreFollowUp(item)
+        drainingFollowUpRequestIdRef.current = null
+      }
+    })
+  }, [
+    followUpQueue?.nextRequestId,
+    runtimeStatus,
+    temporaryMode,
+    threadContext,
+    threadId,
+    validateRun
+  ])
 
   const editLastUserMessageAndInvoke = useCallback(
     async (

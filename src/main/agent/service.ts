@@ -35,6 +35,11 @@ import {
   runtimeUsesCheckpointPersistence,
   type AgentRuntimeHandle
 } from "./runtime"
+import {
+  createAgentRunSteeringBuffer,
+  type AgentRunSteeringBuffer,
+  type AppliedAgentSteer
+} from "./run-steering"
 import { buildAgentResumeConfig, buildAgentRunConfig } from "./run-config"
 import { extractHitlRequestFromValuesState } from "./runtime-state"
 import {
@@ -92,6 +97,7 @@ export interface AgentStreamSink {
 interface ActiveAgentRun {
   controller: AbortController
   runId: string | null
+  steeringBuffer: AgentRunSteeringBuffer
 }
 
 type AgentInvokeChannel = "agent:editLastUserMessageAndInvoke" | "agent:invoke"
@@ -101,6 +107,7 @@ interface AgentRunOptions {
   channel?: AgentInvokeChannel
   getMessageIdsToRemove?: () => Promise<string[]>
   onRunAccepted?: () => Promise<void> | void
+  onSteersApplied?: (steers: AppliedAgentSteer[]) => Promise<void> | void
 }
 
 function mapDecisionToHitlStatus(decision: HITLDecision["type"]): "approved" | "rejected" {
@@ -621,7 +628,10 @@ export class AgentService {
     const abortController = lease.abortController
     const activeRun: ActiveAgentRun = {
       controller: abortController,
-      runId: null
+      runId: null,
+      steeringBuffer: createAgentRunSteeringBuffer({
+        onSteersApplied: options?.onSteersApplied
+      })
     }
     this.activeRuns.set(threadId, activeRun)
 
@@ -746,6 +756,7 @@ export class AgentService {
         openworkMemoryWorkspaceIdentity: workspaceIdentity,
         workspaceService: this.workspaceService,
         permissionMode,
+        steeringBuffer: activeRun.steeringBuffer,
         aiCapabilities,
         aiCapabilityCatalog,
         getAiCapabilityByExtensionName,
@@ -893,7 +904,10 @@ export class AgentService {
     const abortController = lease.abortController
     const activeRun: ActiveAgentRun = {
       controller: abortController,
-      runId: null
+      runId: null,
+      steeringBuffer: createAgentRunSteeringBuffer({
+        onSteersApplied: options?.onSteersApplied
+      })
     }
     this.activeRuns.set(threadId, activeRun)
     const decision = command?.resume
@@ -1007,6 +1021,7 @@ export class AgentService {
         openworkMemoryTemporaryMode: openworkMemoryContextPack?.temporaryMode === true,
         openworkMemoryWorkspaceIdentity: resumedWorkspaceIdentity,
         permissionMode,
+        steeringBuffer: activeRun.steeringBuffer,
         aiCapabilities: runtimeAiCapabilities,
         aiCapabilityCatalog: listNativeExtensionAiCapabilityCatalogFromManifests(
           extensionManifests,
@@ -1191,5 +1206,20 @@ export class AgentService {
       await markRunAborted(threadId, activeRun.runId)
     }
     return true
+  }
+
+  steerActiveRun(
+    threadId: string,
+    message: AgentInvokeParams["message"]
+  ): ReturnType<AgentRunSteeringBuffer["accept"]> | null {
+    const activeRun = this.activeRuns.get(threadId)
+    if (!activeRun) {
+      return null
+    }
+
+    return activeRun.steeringBuffer.accept({
+      message,
+      runId: activeRun.runId
+    })
   }
 }

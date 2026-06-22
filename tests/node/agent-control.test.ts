@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { AgentThreadDataSnapshot } from "../../src/shared/app-types"
+import type { ComposerMessageInput } from "../../src/shared/message-content"
 import {
   editLastUserMessageAndInvokeAgentThread,
   invokeAgentThread,
@@ -63,7 +64,10 @@ function createThreadDataSnapshot(
   }
 }
 
-function installWindowApiStub(input?: { threadMetadata?: Record<string, unknown> }): {
+function installWindowApiStub(input?: {
+  followUpMode?: "queue" | "steer"
+  threadMetadata?: Record<string, unknown>
+}): {
   edited: Array<{
     message: unknown
     modelId: string
@@ -72,6 +76,7 @@ function installWindowApiStub(input?: { threadMetadata?: Record<string, unknown>
     threadId: string
   }>
   invoked: Array<{
+    followUpAction?: string
     message: unknown
     modelId: string
     permissionMode: string
@@ -97,6 +102,7 @@ function installWindowApiStub(input?: { threadMetadata?: Record<string, unknown>
     threadId: string
   }> = []
   const invoked: Array<{
+    followUpAction?: string
     message: unknown
     modelId: string
     permissionMode: string
@@ -139,9 +145,11 @@ function installWindowApiStub(input?: { threadMetadata?: Record<string, unknown>
             message: unknown,
             modelId: string,
             permissionMode: string,
-            temporaryMode: boolean
+            temporaryMode: boolean,
+            followUpAction?: string
           ) => {
             invoked.push({
+              ...(followUpAction ? { followUpAction } : {}),
               message,
               modelId,
               permissionMode,
@@ -169,6 +177,14 @@ function installWindowApiStub(input?: { threadMetadata?: Record<string, unknown>
             status: "idle",
             thread_id: threadId,
             updated_at: new Date("2026-01-01T00:00:00.000Z")
+          })
+        },
+        settings: {
+          getAgentConfig: async () => ({
+            desktopAutomationAllowlist: [],
+            followUpMode: input?.followUpMode ?? "steer",
+            locale: "zh-CN",
+            skillSources: []
           })
         }
       }
@@ -412,9 +428,86 @@ test("editLastUserMessageAndInvokeAgentThread preserves refs as edited message c
   ])
 })
 
-test("invokeAgentThread rejects busy threads before calling runtime", async () => {
+test("invokeAgentThread queues running follow-ups locally when configured to queue", async () => {
+  const { invoked } = installWindowApiStub({ followUpMode: "queue" })
+  const store = createThreadStore()
+  store.applyThreadDataSnapshot(
+    "thread-a",
+    createThreadDataSnapshot({
+      thread: {
+        metadata: {
+          model: "model-a",
+          permissionMode: "explore"
+        },
+        status: "idle",
+        thread_id: "thread-a",
+        title: undefined
+      }
+    })
+  )
+  store.applyRuntimeEvents("thread-a", [
+    {
+      revision: 1,
+      run: {
+        assistantMessageId: null,
+        currentToolCallId: null,
+        phase: "thinking",
+        phaseStartedAt: new Date("2026-01-01T00:00:00.000Z"),
+        runId: "run-a",
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        status: "running",
+        threadId: "thread-a",
+        toolCalls: [],
+        turnId: "turn-a",
+        userMessageId: "user-a"
+      },
+      type: "run.started"
+    }
+  ])
+  const queuedInputs: ComposerMessageInput[] = []
+
+  const didInvoke = await invokeAgentThread({
+    messageInput: {
+      refs: [],
+      text: "queue this"
+    },
+    onQueueFollowUp: (messageInput) => {
+      queuedInputs.push(messageInput)
+    },
+    threadContext: {
+      awaitThreadRuntime: async () => {},
+      getAgentCommandState: (threadId) => getAgentCommandState(store, threadId)
+    },
+    threadId: "thread-a"
+  })
+
+  assert.equal(didInvoke, true)
+  assert.deepEqual(invoked, [])
+  assert.deepEqual(queuedInputs, [
+    {
+      refs: [],
+      text: "queue this"
+    }
+  ])
+})
+
+test("invokeAgentThread sends running follow-ups with the configured follow-up action", async () => {
   const { invoked } = installWindowApiStub()
   const store = createThreadStore()
+  store.applyThreadDataSnapshot(
+    "thread-a",
+    createThreadDataSnapshot({
+      thread: {
+        metadata: {
+          model: "model-a",
+          permissionMode: "explore"
+        },
+        status: "idle",
+        thread_id: "thread-a",
+        title: undefined
+      }
+    })
+  )
   store.applyRuntimeEvents("thread-a", [
     {
       revision: 1,
@@ -447,8 +540,20 @@ test("invokeAgentThread rejects busy threads before calling runtime", async () =
     threadId: "thread-a"
   })
 
-  assert.equal(didInvoke, false)
-  assert.deepEqual(invoked, [])
+  assert.equal(didInvoke, true)
+  assert.deepEqual(invoked, [
+    {
+      followUpAction: "steer",
+      message: {
+        content: "hello",
+        id: "message-id"
+      },
+      modelId: "model-a",
+      permissionMode: "explore",
+      temporaryMode: false,
+      threadId: "thread-a"
+    }
+  ])
 })
 
 test("invokeAgentThread validates with command facts instead of full thread state", async () => {

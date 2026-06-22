@@ -148,6 +148,9 @@ function useThreadContextInternal(): ThreadContextInternalValue {
   return context
 }
 
+export function useThreadControl(threadId: string): ThreadControl
+export function useThreadControl(threadId: null): null
+export function useThreadControl(threadId: string | null): ThreadControl | null
 export function useThreadControl(threadId: string | null): ThreadControl | null {
   const context = useThreadContextInternal()
 

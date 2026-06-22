@@ -18,6 +18,7 @@ type RuntimeEventProjectionUpdate = {
     | "activeRun"
     | "contextInclusions"
     | "error"
+    | "followUpQueue"
     | "latestRunId"
     | "messagesPage"
     | "pendingApproval"
@@ -80,6 +81,7 @@ export function createRuntimeEventProjectionUpdate(
       activeRun: nextState.agent.activeRun,
       contextInclusions: nextState.agent.contextInclusions,
       error: nextState.agent.error,
+      followUpQueue: nextState.agent.followUpQueue,
       latestRunId: nextState.agent.latestRunId,
       messagesPage: nextState.agent.messagesPage,
       pendingApproval: nextState.agent.pendingApproval,

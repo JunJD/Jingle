@@ -3,12 +3,9 @@ import type { AgentInvokeMessage } from "@shared/message-content"
 import type { AppLocale } from "@shared/i18n"
 import type { HITLDecision, HITLRequest } from "@shared/hitl"
 import type { PermissionModeName } from "@shared/permission-mode"
+import type { AgentFollowUpAction, AgentFollowUpMode } from "@shared/agent-follow-up"
 import type { ArtifactRecord } from "@shared/artifacts"
-import type {
-  CustomProviderInput,
-  ProviderId,
-  SetDefaultModelOptions
-} from "@shared/app-types"
+import type { CustomProviderInput, ProviderId, SetDefaultModelOptions } from "@shared/app-types"
 import type { AgentContextInclusion } from "@shared/openwork-memory"
 import type { ExtensionToolCallPresentation, ToolCallDisplay } from "@shared/tool-presentation"
 export type { HITLDecision, HITLRequest } from "@shared/hitl"
@@ -42,6 +39,7 @@ export interface AgentInvokeParams {
   modelId?: string
   permissionMode?: PermissionModeName
   temporaryMode?: boolean
+  followUpAction?: AgentFollowUpAction
 }
 
 export interface AgentEditLastUserMessageAndInvokeParams extends AgentInvokeParams {}
@@ -134,6 +132,7 @@ export interface Run {
 
 export interface AgentConfig {
   desktopAutomationAllowlist: string[]
+  followUpMode: AgentFollowUpMode
   skillSources: string[]
   locale: AppLocale
 }

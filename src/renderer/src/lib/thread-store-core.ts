@@ -4,10 +4,13 @@ import type { ArtifactRecord } from "@shared/artifacts"
 import type { AgentThreadDataSnapshot } from "@shared/app-types"
 import {
   createDefaultAgentThreadRuntimeState,
+  type AgentFollowUpQueueItem,
+  type AgentFollowUpQueueSummary,
   type AgentThreadEvent,
   type AgentThreadRuntimeState,
   type AgentTokenUsage
 } from "@shared/agent-thread-runtime"
+import type { ComposerMessageInput } from "@shared/message-content"
 import {
   getArtifactTabId,
   getFileTabId,
@@ -66,7 +69,15 @@ export interface ThreadLocalUiControl {
   setFileContents: (path: string, content: string) => void
 }
 
+export interface ThreadAgentControl {
+  enqueueFollowUp: (messageInput: ComposerMessageInput) => AgentFollowUpQueueItem
+  removeFollowUp: (requestId: string) => void
+  restoreFollowUp: (item: AgentFollowUpQueueItem) => void
+  takeFollowUp: (requestId: string) => AgentFollowUpQueueItem | null
+}
+
 export interface ThreadControl {
+  agent: ThreadAgentControl
   local: ThreadLocalUiControl
 }
 
@@ -102,6 +113,14 @@ export function createDefaultThreadState(threadId = ""): ThreadState {
       activeTab: "agent",
       fileContents: {}
     }
+  }
+}
+
+function summarizeFollowUpQueue(items: AgentFollowUpQueueItem[]): AgentFollowUpQueueSummary {
+  return {
+    count: items.length,
+    items,
+    nextRequestId: items[0]?.requestId ?? null
   }
 }
 
@@ -300,7 +319,56 @@ export function createThreadStore(): ThreadStore {
       }
     }
 
-    const control: ThreadControl = { local }
+    const agent: ThreadAgentControl = {
+      enqueueFollowUp: (messageInput) => {
+        const item: AgentFollowUpQueueItem = {
+          messageInput,
+          requestId: crypto.randomUUID(),
+          text: messageInput.text.trim()
+        }
+        updateThreadState(threadId, (state) => ({
+          agent: {
+            followUpQueue: summarizeFollowUpQueue([...state.agent.followUpQueue.items, item])
+          }
+        }))
+        return item
+      },
+      removeFollowUp: (requestId) => {
+        updateThreadState(threadId, (state) => ({
+          agent: {
+            followUpQueue: summarizeFollowUpQueue(
+              state.agent.followUpQueue.items.filter((item) => item.requestId !== requestId)
+            )
+          }
+        }))
+      },
+      restoreFollowUp: (item) => {
+        updateThreadState(threadId, (state) => {
+          if (state.agent.followUpQueue.items.some((entry) => entry.requestId === item.requestId)) {
+            return {}
+          }
+
+          return {
+            agent: {
+              followUpQueue: summarizeFollowUpQueue([item, ...state.agent.followUpQueue.items])
+            }
+          }
+        })
+      },
+      takeFollowUp: (requestId) => {
+        const item = threadStates[threadId]?.agent.followUpQueue.items.find(
+          (entry) => entry.requestId === requestId
+        )
+        if (!item) {
+          return null
+        }
+
+        agent.removeFollowUp(requestId)
+        return item
+      }
+    }
+
+    const control: ThreadControl = { agent, local }
     controlCache[threadId] = control
     return control
   }

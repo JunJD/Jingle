@@ -76,6 +76,11 @@ export interface AppCopy {
     contextEvidenceCited: string
     messagePlaceholder: string
     newThreadEyebrow: string
+    queuedFollowUpDelete: string
+    queuedFollowUpEdit: string
+    queuedFollowUpMore: (count: number) => string
+    queuedFollowUpSteer: string
+    queuedFollowUpUntitled: string
     removeSelectionReference: string
     selectWorkspace: string
     selectWorkspaceHint: string
@@ -403,6 +408,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       contextEvidenceCited: "已引用",
       messagePlaceholder: "给 Agent 发送消息...",
       newThreadEyebrow: "新对话",
+      queuedFollowUpDelete: "删除排队消息",
+      queuedFollowUpEdit: "编辑排队消息",
+      queuedFollowUpMore: (count) => `还有 ${count} 条后续消息`,
+      queuedFollowUpSteer: "引导",
+      queuedFollowUpUntitled: "后续消息",
       removeSelectionReference: "移除引用",
       selectWorkspace: "选择 workspace",
       selectWorkspaceHint: "Agent 需要一个 workspace 来创建和修改文件",
@@ -751,6 +761,11 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       contextEvidenceCited: "Cited",
       messagePlaceholder: "Message the agent...",
       newThreadEyebrow: "New Thread",
+      queuedFollowUpDelete: "Delete queued message",
+      queuedFollowUpEdit: "Edit queued message",
+      queuedFollowUpMore: (count) => `${count} more queued message${count === 1 ? "" : "s"}`,
+      queuedFollowUpSteer: "Steer",
+      queuedFollowUpUntitled: "Queued message",
       removeSelectionReference: "Remove reference",
       selectWorkspace: "Select workspace",
       selectWorkspaceHint: "The agent needs a workspace to create and modify files",

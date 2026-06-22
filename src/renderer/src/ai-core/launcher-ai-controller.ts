@@ -206,7 +206,6 @@ export function createLauncherAiController(input: LauncherAiControllerInput): La
     runPrimaryAction(messageInput) {
       if (
         invokeInFlight ||
-        input.isBusy ||
         input.hasPendingApproval ||
         !hasComposerMessageInputContent(messageInput)
       ) {

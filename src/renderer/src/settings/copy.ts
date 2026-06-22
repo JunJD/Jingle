@@ -36,6 +36,10 @@ interface SettingsCopy {
     launcherModeDescription: string
     launcherModeDefault: string
     launcherModeCompact: string
+    followUpModeTitle: string
+    followUpModeDescription: string
+    followUpModeQueue: string
+    followUpModeSteer: string
     localeTitle: string
     localeDescription: string
     skillSourcesTitle: string
@@ -254,6 +258,10 @@ const zhCN: SettingsCopy = {
     launcherModeDescription: "控制根搜索默认展示密度。",
     launcherModeDefault: "默认",
     launcherModeCompact: "紧凑",
+    followUpModeTitle: "跟进行为",
+    followUpModeDescription: "在 Jingle 运行时，后续消息会加入队列，或引导当前运行。",
+    followUpModeQueue: "排队",
+    followUpModeSteer: "引导",
     localeTitle: "界面语言",
     localeDescription: "影响应用文案和设置页语言。",
     skillSourcesTitle: "Skill Sources",
@@ -473,6 +481,11 @@ const enUS: SettingsCopy = {
     launcherModeDescription: "Controls the default density of root search.",
     launcherModeDefault: "Default",
     launcherModeCompact: "Compact",
+    followUpModeTitle: "Follow-up Behavior",
+    followUpModeDescription:
+      "While Jingle is running, later messages are queued or used to steer the active run.",
+    followUpModeQueue: "Queue",
+    followUpModeSteer: "Steer",
     localeTitle: "Interface Language",
     localeDescription: "Affects app copy and settings language.",
     skillSourcesTitle: "Skill Sources",

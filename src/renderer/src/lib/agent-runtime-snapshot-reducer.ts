@@ -103,6 +103,7 @@ export function applyRuntimeSnapshotToThreadState(
         : state.agent.error,
       forkState,
       hasMoreBefore: false,
+      followUpQueue: state.agent.followUpQueue,
       messagesPage,
       pendingApproval: state.agent.pendingApproval,
       permissionMode: isPermissionModeName(permissionMode)

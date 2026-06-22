@@ -5,6 +5,7 @@ import type { ArtifactRecord } from "./artifacts"
 import type { ExtensionToolCallPresentation, ToolCallDisplay } from "./tool-presentation"
 import type { ThreadWorkspaceKind } from "./thread-workspace"
 import type { AgentContextInclusion } from "./openwork-memory"
+import type { AgentFollowUpMode } from "./agent-follow-up"
 export type { LocalizedText } from "./i18n"
 export type { HITLDecision, HITLRequest } from "./hitl"
 
@@ -213,6 +214,7 @@ export interface ModelProviderPaths {
 
 export interface AgentConfig {
   desktopAutomationAllowlist: string[]
+  followUpMode: AgentFollowUpMode
   skillSources: string[]
   locale: AppLocale
 }

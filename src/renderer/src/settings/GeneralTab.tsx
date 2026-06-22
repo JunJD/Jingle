@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
-import { FolderOpen, Languages, Layers2, Rocket } from "lucide-react"
+import { CornerDownRight, FolderOpen, Languages, Layers2, Rocket } from "lucide-react"
 import type { AgentConfig } from "@shared/app-types"
+import type { AgentFollowUpMode } from "@shared/agent-follow-up"
 import type { LauncherSettings, LauncherWindowMode } from "@shared/launcher-settings"
 import { SUPPORTED_APP_LOCALES, type AppLocale } from "@shared/i18n"
 import { useI18n } from "@/lib/i18n"
@@ -80,6 +81,11 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
   const handleLauncherModeChange = async (nextMode: LauncherWindowMode): Promise<void> => {
     const nextSettings = await window.api.settings.setLauncherSettings({ windowMode: nextMode })
     setLauncherSettings(nextSettings)
+  }
+
+  const handleFollowUpModeChange = async (nextMode: AgentFollowUpMode): Promise<void> => {
+    const nextConfig = await window.api.settings.setAgentConfig({ followUpMode: nextMode })
+    setAgentConfig(nextConfig)
   }
 
   if (!agentConfig || !launcherSettings) {
@@ -164,6 +170,30 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
                 </option>
               ))}
             </select>
+          </div>
+        </SettingsRow>
+
+        <SettingsRow
+          icon={<CornerDownRight className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
+          title={copy.general.followUpModeTitle}
+          description={copy.general.followUpModeDescription}
+        >
+          <div className="inline-flex min-h-[var(--ow-settings-control-h)] overflow-hidden rounded-[var(--ow-radius-md)] border border-border bg-background-elevated p-[var(--ow-space-0-5)]">
+            {(["queue", "steer"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={agentConfig.followUpMode === mode}
+                className={`rounded-[var(--ow-radius-sm)] px-[var(--ow-space-3)] py-[var(--ow-space-1)] [font-size:var(--ow-settings-control-font)] font-medium transition ${
+                  agentConfig.followUpMode === mode
+                    ? "bg-background-secondary text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => void handleFollowUpModeChange(mode)}
+              >
+                {mode === "queue" ? copy.general.followUpModeQueue : copy.general.followUpModeSteer}
+              </button>
+            ))}
           </div>
         </SettingsRow>
 

@@ -1905,3 +1905,27 @@ test("AgentThreadRunner ignores title generation message stream chunks", async (
   assert.equal(afterTitle.revision, beforeTitle.revision)
   assert.deepEqual(afterTitle.messagesPage, beforeTitle.messagesPage)
 })
+
+test("AgentThreadRunner emits follow-up queue runtime events", async () => {
+  const hub = new AgentThreadRunner(createThreadsService(createThreadData()))
+  const seen: string[][] = []
+
+  await hub.connectThreadEvents("thread-follow-up", "subscriber", (batch) => {
+    seen.push(batch.events.map((event) => event.type))
+  })
+  await hub.applyFollowUpQueueSummary("thread-follow-up", {
+    count: 1,
+    items: [
+      {
+        messageInput: { refs: [], text: "queued follow-up" },
+        requestId: "request-1",
+        text: "queued follow-up"
+      }
+    ],
+    nextRequestId: "request-1"
+  })
+
+  const state = await hub.readThreadState("thread-follow-up")
+  assert.deepEqual(seen, [["followUp.queueChanged"]])
+  assert.equal(state.followUpQueue.count, 1)
+})
