@@ -14,6 +14,9 @@ const REQUIRED_TABLES = [
   "message_state_versions",
   "messages_fts",
   "messages_fts_trigram",
+  "thread_digests",
+  "thread_digests_fts",
+  "thread_digests_fts_trigram",
   "artifacts",
   "artifact_presentations",
   "assistants",
@@ -124,6 +127,8 @@ export async function initializeDatabase(): Promise<void> {
 export async function closeDatabase(): Promise<void> {
   initialized = false
   const { flushAgentTraceProjection } = await import("./agent-events")
+  const { flushThreadDigestProjection } = await import("../projection/thread-digest-queue")
   await flushAgentTraceProjection()
+  await flushThreadDigestProjection()
   await closePrismaClient()
 }

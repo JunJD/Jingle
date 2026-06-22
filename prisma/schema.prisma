@@ -25,6 +25,7 @@ model Thread {
   checkpointWrites       CheckpointWrite[]
   hitlRequests           HitlRequest[]
   messages               Message[]
+  threadDigest           ThreadDigest?
   messageEvents          MessageEvent[]
   messageStateVersions   MessageStateVersion[]
   agentEvents            AgentEvent[]
@@ -324,6 +325,26 @@ model Message {
   @@index([threadId, createdAt], map: "idx_messages_thread_created_at")
   @@index([runId], map: "idx_messages_run_id")
   @@map("messages")
+}
+
+model ThreadDigest {
+  threadId             String @id @map("thread_id")
+  status               String @default("pending")
+  summary              String?
+  topics               String?
+  decisions            String?
+  openQuestions        String? @map("open_questions")
+  messageCount         Int    @default(0) @map("message_count")
+  projectedThroughSeq  Int    @default(0) @map("projected_through_seq")
+  sourceHash           String? @map("source_hash")
+  projectionError      String? @map("projection_error")
+  generatedAt          BigInt? @map("generated_at")
+  createdAt            BigInt @map("created_at")
+  updatedAt            BigInt @map("updated_at")
+  thread               Thread @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@index([status, updatedAt], map: "idx_thread_digests_status_updated_at")
+  @@map("thread_digests")
 }
 
 model MessageEvent {

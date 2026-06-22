@@ -58,6 +58,14 @@ export {
 } from "./message-state"
 export type { MessageProjectionRow, PreparedMessageStateItem } from "./message-state"
 export {
+  getThreadDigest,
+  markThreadDigestProjectionError,
+  markThreadDigestProjectionPending,
+  searchThreadDigests,
+  upsertReadyThreadDigest
+} from "./thread-digests"
+export type { UpsertReadyThreadDigestInput } from "./thread-digests"
+export {
   AgentEventRecorder,
   appendAgentEvent,
   appendAgentEventSafely,

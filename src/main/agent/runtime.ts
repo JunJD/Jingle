@@ -14,6 +14,7 @@ import {
   RuntimeCheckpointSaver
 } from "../checkpointer/runtime-checkpointer"
 import { flushAgentTraceProjection } from "../db/agent-events"
+import { flushThreadDigestProjection } from "../projection/thread-digest-queue"
 import { LocalSandbox } from "./local-sandbox"
 import { createGuardrailMiddleware } from "./guardrail-middleware"
 import { JustBashExecuteCommandClassifier } from "./execute-command-classifier"
@@ -453,5 +454,6 @@ export async function closeRuntime(): Promise<void> {
   await Promise.all(closePromises)
   await flushAgentTraceProjection()
   await flushMessageSearchProjection()
+  await flushThreadDigestProjection()
   checkpointers.clear()
 }

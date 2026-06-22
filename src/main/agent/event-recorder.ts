@@ -1,6 +1,7 @@
 import { decodeMessagesStreamPayload, decodeValuesStreamPayload } from "./agent-stream-codec"
 import { appendAgentEventSafely, enqueueAgentTraceProjection } from "../db/agent-events"
 import { OpenworkIpcError } from "../ipc/error"
+import { enqueueThreadDigestProjection } from "../projection/thread-digest-queue"
 import type { HITLDecision } from "../types"
 
 export interface AgentStreamBoundaryRecorderState {
@@ -159,6 +160,7 @@ export async function recordRunFinished(input: {
   })
   if (event) {
     enqueueAgentTraceProjection(input.runId)
+    enqueueThreadDigestProjection(input.threadId)
   }
 }
 
