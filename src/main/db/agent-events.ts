@@ -3,6 +3,7 @@ import { getPrismaClient } from "./client"
 import { markAgentTraceProjectionError, projectAgentTraceForRun } from "./agent-traces"
 import { serializeJsonValue, toNumber } from "./utils"
 import { normalizeAgentEventPayload, type AgentEventType } from "../agent-events/schema"
+import { createProjectionQueue } from "../projection/projection-queue"
 
 export type AgentEventAggregateType = "run" | "thread"
 
@@ -42,151 +43,31 @@ export interface AppendAgentEventInput {
   type: AgentEventType
 }
 
-interface AgentTraceProjectionQueueState {
-  dirtyRunIds: Set<string>
-  drainQueued: boolean
-  flushRequested: boolean
-  queue: Promise<void>
-  scheduledRunIds: Set<string>
-  timer: ReturnType<typeof setTimeout> | null
-}
-
-const AGENT_TRACE_PROJECTION_QUEUE_STATE_KEY = "__openworkAgentTraceProjectionQueueState__"
 const AGENT_TRACE_PROJECTION_DEBOUNCE_MS = 500
-
-function getAgentTraceProjectionQueueState(): AgentTraceProjectionQueueState {
-  const globalScope = globalThis as typeof globalThis & {
-    [AGENT_TRACE_PROJECTION_QUEUE_STATE_KEY]?: AgentTraceProjectionQueueState
-  }
-
-  let state = globalScope[AGENT_TRACE_PROJECTION_QUEUE_STATE_KEY]
-  if (!state) {
-    state = {
-      dirtyRunIds: new Set<string>(),
-      drainQueued: false,
-      flushRequested: false,
-      queue: Promise.resolve(),
-      scheduledRunIds: new Set<string>(),
-      timer: null
-    }
-    globalScope[AGENT_TRACE_PROJECTION_QUEUE_STATE_KEY] = state
-  }
-
-  return state
-}
-
-async function projectAgentTraceForRunSafely(runId: string): Promise<void> {
-  try {
-    await projectAgentTraceForRun(runId)
-  } catch (error) {
+const agentTraceProjectionQueue = createProjectionQueue<string>({
+  debounceMs: AGENT_TRACE_PROJECTION_DEBOUNCE_MS,
+  getKey: (runId) => runId,
+  name: "AgentTraceProjector",
+  onError: async (runId, error) => {
     const message = error instanceof Error ? error.message : String(error)
-    console.warn(`[AgentTraceProjector] Failed to project trace for run ${runId}:`, error)
-    try {
-      await markAgentTraceProjectionError(runId, message)
-    } catch (markError) {
-      console.warn(
-        `[AgentTraceProjector] Failed to mark projection error for run ${runId}:`,
-        markError
-      )
-    }
-  }
-}
-
-async function drainPendingAgentTraceProjections(
-  state: AgentTraceProjectionQueueState
-): Promise<void> {
-  const runIds = state.flushRequested
-    ? Array.from(state.dirtyRunIds)
-    : Array.from(state.scheduledRunIds)
-  state.flushRequested = false
-
-  for (const runId of runIds) {
-    state.dirtyRunIds.delete(runId)
-    state.scheduledRunIds.delete(runId)
-  }
-
-  for (const runId of runIds) {
-    await projectAgentTraceForRunSafely(runId)
-  }
-}
-
-function queueAgentTraceProjectionDrain(
-  state: AgentTraceProjectionQueueState,
-  options: { flush: boolean }
-): void {
-  if (options.flush) {
-    state.flushRequested = true
-  }
-
-  if (state.drainQueued) {
-    return
-  }
-
-  state.drainQueued = true
-  state.queue = state.queue
-    .catch(() => undefined)
-    .then(async () => {
-      try {
-        await drainPendingAgentTraceProjections(state)
-      } finally {
-        state.drainQueued = false
-        if (state.scheduledRunIds.size > 0) {
-          scheduleAgentTraceProjectionDrain(state)
-        }
-      }
-    })
-}
-
-function scheduleAgentTraceProjectionDrain(state: AgentTraceProjectionQueueState): void {
-  if (state.timer || state.drainQueued) {
-    return
-  }
-
-  state.timer = setTimeout(() => {
-    state.timer = null
-    queueAgentTraceProjectionDrain(state, { flush: false })
-  }, AGENT_TRACE_PROJECTION_DEBOUNCE_MS)
-  state.timer.unref?.()
-}
+    await markAgentTraceProjectionError(runId, message)
+  },
+  run: async (runId) => {
+    await projectAgentTraceForRun(runId)
+  },
+  stateKey: "agent-trace"
+})
 
 export function enqueueAgentTraceProjection(runId: string): void {
-  const state = getAgentTraceProjectionQueueState()
-  state.dirtyRunIds.add(runId)
-  state.scheduledRunIds.add(runId)
-  scheduleAgentTraceProjectionDrain(state)
+  agentTraceProjectionQueue.enqueue(runId)
 }
 
 function markAgentTraceProjectionDirty(runId: string): void {
-  const state = getAgentTraceProjectionQueueState()
-  state.dirtyRunIds.add(runId)
+  agentTraceProjectionQueue.markDirty(runId)
 }
 
 export async function flushAgentTraceProjection(): Promise<void> {
-  const state = getAgentTraceProjectionQueueState()
-
-  for (;;) {
-    if (state.timer) {
-      clearTimeout(state.timer)
-      state.timer = null
-      queueAgentTraceProjectionDrain(state, { flush: true })
-    } else if (
-      (state.dirtyRunIds.size > 0 || state.scheduledRunIds.size > 0) &&
-      !state.drainQueued
-    ) {
-      queueAgentTraceProjectionDrain(state, { flush: true })
-    }
-
-    await state.queue
-
-    if (
-      !state.timer &&
-      !state.drainQueued &&
-      state.dirtyRunIds.size === 0 &&
-      state.scheduledRunIds.size === 0
-    ) {
-      return
-    }
-  }
+  await agentTraceProjectionQueue.flush()
 }
 
 function mapAgentEventRow(row: {
