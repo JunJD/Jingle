@@ -62,7 +62,7 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck:bdd": "tsc --noEmit -p tests/bdd/tsconfig.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:node-tests && npm run typecheck:web && npm run typecheck:bdd",
-    "start": "node scripts/run-with-dotenv.mjs production -- electron-vite preview",
+    "start": "node scripts/run-with-env.mjs OPENWORK_REGISTER_DEV_PROTOCOL_CLIENT=1 -- node scripts/run-with-dotenv.mjs production -- electron-vite preview",
     "dev": "npm run build:installed-extensions && node scripts/run-with-dotenv.mjs development -- electron-vite dev",
     "build:electron": "npm run build:installed-extensions && electron-vite build && npm run build:native-island",
     "build": "node scripts/build-with-react-compiler-guard.mjs",
