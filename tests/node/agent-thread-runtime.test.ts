@@ -9,6 +9,7 @@ import {
 } from "../../src/shared/agent-thread-runtime"
 import type { HITLRequest } from "../../src/shared/hitl"
 import type { Message } from "../../src/shared/app-types"
+import type { AgentContextInclusion } from "../../src/shared/openwork-memory"
 
 const RUN_STARTED_AT = new Date("2026-01-01T00:00:00.000Z")
 const FIRST_DELTA_AT = new Date("2026-01-01T00:00:01.000Z")
@@ -54,6 +55,28 @@ function createAssistantMessage(id: string, content = ""): Message {
     created_at: new Date("2026-01-01T00:00:00.000Z"),
     id,
     role: "assistant"
+  }
+}
+
+function createHistoryInclusion(runId = "run-1"): AgentContextInclusion {
+  return {
+    availability: "available",
+    createdAt: 123,
+    id: `ctx:${runId}:retrieved:history_message:thread-1:message-1`,
+    messageId: null,
+    mode: "retrieved",
+    preview: "Earlier answer",
+    runId,
+    sourceId: "message-1",
+    sourceType: "history_message",
+    target: {
+      messageId: "message-1",
+      threadId: "thread-1",
+      type: "history_message"
+    },
+    threadId: "thread-1",
+    title: "assistant message",
+    turnId: null
   }
 }
 
@@ -344,6 +367,187 @@ test("agent thread runtime preserves pending approval while a paused run resumes
   assert.equal(clearedState.pendingApproval, null)
   assert.equal(clearedState.activeRun?.phaseStartedAt, APPROVAL_RESOLVED_AT)
   assert.equal(clearedState.activeRun?.toolCalls[0]?.status, "running")
+})
+
+test("agent thread runtime applies context inclusion replacement events", () => {
+  const inclusion = createHistoryInclusion()
+  const startedState = reduceAgentThreadRuntimeEvent(
+    createDefaultAgentThreadRuntimeState("thread-1"),
+    {
+      revision: 1,
+      run: createActiveRun(),
+      type: "run.started"
+    }
+  )
+
+  const nextState = reduceAgentThreadRuntimeEvent(startedState, {
+    inclusions: [inclusion],
+    revision: 2,
+    type: "context.inclusionsReplaced"
+  })
+
+  assert.deepEqual(nextState.contextInclusions, [
+    {
+      ...inclusion,
+      messageId: "user-1",
+      turnId: "user-1"
+    }
+  ])
+  assert.equal(nextState.revision, 2)
+})
+
+test("agent thread runtime preserves message-bound context on new runs and clears unbound context", () => {
+  const inclusion = createHistoryInclusion()
+  const unboundInclusion = {
+    ...createHistoryInclusion("run-1"),
+    id: "ctx:run-1:provided:memory:memory-1",
+    mode: "provided" as const,
+    sourceId: "memory-1",
+    sourceType: "memory" as const,
+    target: {
+      memoryId: "memory-1",
+      type: "memory" as const
+    },
+    title: "Personal memory"
+  } satisfies AgentContextInclusion
+  const firstRunState = reduceAgentThreadRuntimeEvent(
+    createDefaultAgentThreadRuntimeState("thread-1"),
+    {
+      revision: 1,
+      run: createActiveRun(),
+      type: "run.started"
+    }
+  )
+  const withInclusionsState = reduceAgentThreadRuntimeEvent(firstRunState, {
+    inclusions: [inclusion],
+    revision: 2,
+    type: "context.inclusionsReplaced"
+  })
+  const withUnboundInclusionState = {
+    ...withInclusionsState,
+    contextInclusions: [...withInclusionsState.contextInclusions, unboundInclusion]
+  }
+  const resumedState = reduceAgentThreadRuntimeEvent(withUnboundInclusionState, {
+    revision: 3,
+    run: {
+      ...createActiveRun(),
+      runId: "run-1"
+    },
+    type: "run.resumed"
+  })
+  const nextRunState = reduceAgentThreadRuntimeEvent(resumedState, {
+    revision: 4,
+    run: {
+      ...createActiveRun(),
+      runId: "run-2",
+      turnId: "user-2",
+      userMessageId: "user-2"
+    },
+    type: "run.started"
+  })
+  const newRunProvidedInclusion = {
+    ...unboundInclusion,
+    id: "ctx:run-2:provided:memory:memory-2",
+    runId: "run-2",
+    sourceId: "memory-2",
+    target: {
+      memoryId: "memory-2",
+      type: "memory" as const
+    }
+  } satisfies AgentContextInclusion
+  const nextRunWithContextState = reduceAgentThreadRuntimeEvent(nextRunState, {
+    inclusions: [newRunProvidedInclusion],
+    revision: 5,
+    type: "context.inclusionsReplaced"
+  })
+
+  const boundInclusion = {
+    ...inclusion,
+    messageId: "user-1",
+    turnId: "user-1"
+  }
+  assert.deepEqual(resumedState.contextInclusions, [boundInclusion, unboundInclusion])
+  assert.deepEqual(nextRunState.contextInclusions, [boundInclusion])
+  assert.deepEqual(nextRunWithContextState.contextInclusions, [
+    boundInclusion,
+    newRunProvidedInclusion
+  ])
+})
+
+test("agent thread runtime accumulates message-bound retrieval evidence within one run", () => {
+  const firstInclusion = createHistoryInclusion()
+  const secondInclusion = {
+    ...createHistoryInclusion(),
+    id: "ctx:run-1:retrieved:history_message:thread-1:message-2",
+    sourceId: "message-2",
+    target: {
+      messageId: "message-2",
+      threadId: "thread-1",
+      type: "history_message" as const
+    }
+  }
+  const startedState = reduceAgentThreadRuntimeEvent(
+    createDefaultAgentThreadRuntimeState("thread-1"),
+    {
+      revision: 1,
+      run: {
+        ...createActiveRun(),
+        runId: "run-1"
+      },
+      type: "run.started"
+    }
+  )
+  const firstRetrievedState = reduceAgentThreadRuntimeEvent(startedState, {
+    inclusions: [firstInclusion],
+    revision: 2,
+    type: "context.inclusionsReplaced"
+  })
+  const secondRetrievedState = reduceAgentThreadRuntimeEvent(firstRetrievedState, {
+    inclusions: [secondInclusion],
+    revision: 3,
+    type: "context.inclusionsReplaced"
+  })
+
+  assert.deepEqual(
+    secondRetrievedState.contextInclusions.map((inclusion) => inclusion.sourceId),
+    ["message-1", "message-2"]
+  )
+  assert.deepEqual(
+    secondRetrievedState.contextInclusions.map((inclusion) => inclusion.turnId),
+    ["user-1", "user-1"]
+  )
+})
+
+test("agent thread runtime marks message-bound evidence unavailable when its message is truncated", () => {
+  const inclusion = {
+    ...createHistoryInclusion(),
+    messageId: "assistant-1",
+    turnId: "user-1"
+  }
+  const state = {
+    ...createDefaultAgentThreadRuntimeState("thread-1"),
+    contextInclusions: [inclusion],
+    messagesPage: [
+      {
+        content: "Question",
+        created_at: new Date("2026-01-01T00:00:00.000Z"),
+        id: "user-1",
+        role: "user" as const
+      },
+      createAssistantMessage("assistant-1", "Answer")
+    ],
+    revision: 1
+  }
+
+  const nextState = reduceAgentThreadRuntimeEvent(state, {
+    messageId: "user-1",
+    revision: 2,
+    type: "message.truncatedAfter"
+  })
+
+  assert.equal(nextState.messagesPage.length, 1)
+  assert.equal(nextState.contextInclusions[0]?.availability, "unavailable")
+  assert.equal(nextState.contextInclusions[0]?.unavailableReason?.code, "deleted")
 })
 
 test("agent thread runtime ignores stale event revisions", () => {

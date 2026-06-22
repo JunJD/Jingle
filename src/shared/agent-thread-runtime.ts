@@ -271,7 +271,7 @@ export function reduceAgentThreadRuntimeEvent(
       return {
         ...state,
         activeRun: event.run,
-        contextInclusions: [],
+        contextInclusions: retainHistoricalContextInclusions(state.contextInclusions),
         error: null,
         latestRunId: event.run.runId,
         pendingApproval: null,
@@ -459,7 +459,11 @@ export function reduceAgentThreadRuntimeEvent(
     case "context.inclusionsReplaced":
       return {
         ...state,
-        contextInclusions: event.inclusions,
+        contextInclusions: replaceRuntimeContextInclusions({
+          activeRun: state.activeRun,
+          existing: state.contextInclusions,
+          incoming: event.inclusions
+        }),
         revision: event.revision
       }
 
@@ -493,12 +497,128 @@ function truncateRuntimeMessagesAfter(
 
   return {
     ...state,
+    contextInclusions: markTruncatedContextInclusionsUnavailable({
+      anchorMessage: state.messagesPage[messageIndex] ?? null,
+      inclusions: state.contextInclusions,
+      removedMessageIds: new Set(
+        state.messagesPage.slice(messageIndex + 1).map((message) => message.id)
+      )
+    }),
     messagesPage: state.messagesPage.slice(0, messageIndex + 1),
     pendingApproval: null,
     revision,
     subagents: [],
     todos: []
   }
+}
+
+function retainHistoricalContextInclusions(
+  inclusions: AgentContextInclusion[]
+): AgentContextInclusion[] {
+  return inclusions.filter(
+    (inclusion) =>
+      inclusion.mode !== "provided" &&
+      (inclusion.turnId !== null || inclusion.messageId !== null)
+  )
+}
+
+function bindRuntimeContextInclusionsToActiveTurn(
+  inclusions: AgentContextInclusion[],
+  activeRun: ActiveAgentRun | null
+): AgentContextInclusion[] {
+  if (!activeRun) {
+    return inclusions
+  }
+
+  const messageId = activeRun.assistantMessageId ?? activeRun.userMessageId
+  return inclusions.map((inclusion) =>
+    inclusion.mode !== "provided" && (inclusion.turnId === null || inclusion.messageId === null)
+      ? {
+          ...inclusion,
+          messageId: inclusion.messageId ?? messageId,
+          turnId: inclusion.turnId ?? activeRun.turnId
+        }
+      : inclusion
+  )
+}
+
+function replaceRuntimeContextInclusions(input: {
+  activeRun: ActiveAgentRun | null
+  existing: AgentContextInclusion[]
+  incoming: AgentContextInclusion[]
+}): AgentContextInclusion[] {
+  const incoming = bindRuntimeContextInclusionsToActiveTurn(input.incoming, input.activeRun)
+  if (!input.activeRun) {
+    return incoming
+  }
+
+  const historical = input.existing.filter(
+    (inclusion) =>
+      inclusion.mode !== "provided" &&
+      (inclusion.turnId !== null || inclusion.messageId !== null)
+  )
+
+  return upsertContextInclusions(historical, incoming)
+}
+
+function upsertContextInclusions(
+  existing: AgentContextInclusion[],
+  incoming: AgentContextInclusion[]
+): AgentContextInclusion[] {
+  const inclusions = [...existing]
+  const indexById = new Map(inclusions.map((inclusion, index) => [inclusion.id, index]))
+
+  for (const inclusion of incoming) {
+    const existingIndex = indexById.get(inclusion.id)
+    if (existingIndex === undefined) {
+      indexById.set(inclusion.id, inclusions.length)
+      inclusions.push(inclusion)
+      continue
+    }
+
+    inclusions[existingIndex] = inclusion
+  }
+
+  return inclusions
+}
+
+function markTruncatedContextInclusionsUnavailable(input: {
+  anchorMessage: Message | null
+  inclusions: AgentContextInclusion[]
+  removedMessageIds: Set<string>
+}): AgentContextInclusion[] {
+  const truncatedTurnId =
+    input.anchorMessage?.role === "user" ? input.anchorMessage.id : null
+  if (input.removedMessageIds.size === 0 && !truncatedTurnId) {
+    return input.inclusions
+  }
+
+  let changed = false
+  const next = input.inclusions.map((inclusion) => {
+    const wasRemovedWithMessage =
+      inclusion.messageId !== null && input.removedMessageIds.has(inclusion.messageId)
+    const wasRemovedWithTurn =
+      truncatedTurnId !== null && inclusion.turnId === truncatedTurnId
+
+    if (
+      (!wasRemovedWithMessage && !wasRemovedWithTurn) ||
+      inclusion.availability === "unavailable"
+    ) {
+      return inclusion
+    }
+
+    changed = true
+    return {
+      ...inclusion,
+      availability: "unavailable" as const,
+      unavailableReason: {
+        code: "deleted" as const,
+        message: "The message that held this evidence was removed or edited."
+      }
+    }
+  })
+
+  return changed ? next : input.inclusions
 }
 
 function appendRuntimeMessageTextDelta(

@@ -36,6 +36,41 @@ export function createAgentRuntimeManager({
     return getInitializedThreadState(threadId).agent.status === "running"
   }
 
+  function selectRuntimeBatch(batch: AgentThreadEventBatch) {
+    const currentRevision = getInitializedThreadState(batch.threadId).agent.revision
+    return selectRuntimeEventsAfterRevision(currentRevision, batch)
+  }
+
+  function collectPendingGapBatches(batches: AgentThreadEventBatch[]): Array<{
+    batch: AgentThreadEventBatch
+    selection: Extract<ReturnType<typeof selectRuntimeEventsAfterRevision>, { type: "gap" }>
+  }> {
+    const pendingGaps: Array<{
+      batch: AgentThreadEventBatch
+      selection: Extract<ReturnType<typeof selectRuntimeEventsAfterRevision>, { type: "gap" }>
+    }> = []
+
+    for (const batch of batches) {
+      const selection = selectRuntimeBatch(batch)
+      if (selection.type === "gap") {
+        pendingGaps.push({ batch, selection })
+      }
+    }
+
+    return pendingGaps
+  }
+
+  function findNextContiguousBatch(batches: AgentThreadEventBatch[]): number {
+    for (const [index, batch] of batches.entries()) {
+      const selection = selectRuntimeBatch(batch)
+      if (selection.type === "events") {
+        return index
+      }
+    }
+
+    return -1
+  }
+
   function applyRuntimeEvents(threadId: string, events: AgentThreadEvent[]): void {
     if (events.length === 0) {
       return
@@ -57,24 +92,35 @@ export function createAgentRuntimeManager({
       return
     }
 
+    const remainingBatches = batches
     delete pendingRuntimeBatches[threadId]
-    for (const batch of batches) {
-      const currentRevision = getInitializedThreadState(batch.threadId).agent.revision
-      const selection = selectRuntimeEventsAfterRevision(currentRevision, batch)
-      if (selection.type === "events") {
+
+    while (remainingBatches.length > 0 && !runtimeResync[threadId]) {
+      const nextBatchIndex = findNextContiguousBatch(remainingBatches)
+      if (nextBatchIndex >= 0) {
+        const [batch] = remainingBatches.splice(nextBatchIndex, 1)
+        const currentRevision = getInitializedThreadState(batch.threadId).agent.revision
+        const selection = selectRuntimeEventsAfterRevision(currentRevision, batch)
+        if (selection.type !== "events") {
+          continue
+        }
         applyRuntimeEvents(batch.threadId, selection.events)
         continue
       }
 
-      if (selection.type === "gap") {
-        console.warn("[AgentRuntimeManager] Runtime event gap detected; resyncing event stream.", {
-          actualRevision: selection.actualRevision,
-          expectedRevision: selection.expectedRevision,
-          threadId: batch.threadId
-        })
-        startRuntimeResync(batch.threadId)
+      const pendingGaps = collectPendingGapBatches(remainingBatches)
+      if (pendingGaps.length === 0) {
         return
       }
+
+      pendingRuntimeBatches[threadId] = pendingGaps.map((entry) => entry.batch)
+      const firstGap = pendingGaps[0]
+      console.warn("[AgentRuntimeManager] Runtime event gap detected; resyncing event stream.", {
+        actualRevision: firstGap.selection.actualRevision,
+        expectedRevision: firstGap.selection.expectedRevision,
+        threadId: firstGap.batch.threadId
+      })
+      startRuntimeResync(threadId)
     }
   }
 
@@ -86,8 +132,7 @@ export function createAgentRuntimeManager({
       return
     }
 
-    const currentRevision = getInitializedThreadState(batch.threadId).agent.revision
-    const selection = selectRuntimeEventsAfterRevision(currentRevision, batch)
+    const selection = selectRuntimeBatch(batch)
     if (selection.type === "events") {
       applyRuntimeEvents(batch.threadId, selection.events)
       return
@@ -137,13 +182,18 @@ export function createAgentRuntimeManager({
   }
 
   function startRuntimeResync(threadId: string): void {
-    void resyncThreadRuntime(threadId).catch((error) => {
+    if (runtimeResync[threadId]) {
+      return
+    }
+
+    const resync = resyncThreadRuntime(threadId).catch((error) => {
       console.error("[AgentRuntimeManager] Runtime resync failed.", {
         entry: "runtimeResync",
         error,
         threadId
       })
     })
+    runtimeResync[threadId] = resync
   }
 
   function startHistoryRefresh(threadId: string): void {
@@ -165,27 +215,16 @@ export function createAgentRuntimeManager({
   }
 
   async function resyncThreadRuntime(threadId: string): Promise<void> {
-    if (isThreadStreaming(threadId)) {
-      await replayThreadRuntimeEvents(threadId)
-      return
-    }
-
-    if (runtimeResync[threadId]) {
-      await runtimeResync[threadId]
-      return
-    }
-
-    const resync = (async () => {
-      try {
+    try {
+      if (isThreadStreaming(threadId)) {
+        await replayThreadRuntimeEvents(threadId)
+      } else {
         await loadThreadData(threadId)
-      } finally {
-        runtimeResync[threadId] = null
-        drainPendingRuntimeBatches(threadId)
       }
-    })()
-
-    runtimeResync[threadId] = resync
-    await resync
+    } finally {
+      runtimeResync[threadId] = null
+      drainPendingRuntimeBatches(threadId)
+    }
   }
 
   async function loadThreadData(threadId: string): Promise<void> {

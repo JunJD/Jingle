@@ -300,13 +300,12 @@ test("thread data snapshot and events update thread state through store reducer"
         pendingApproval: null,
         runId: activeRun.runId,
         todos: [],
-        workspacePath: null
+        workspacePath: "/tmp/launcher-ai-first-send"
       },
       thread: {
         metadata: {
           model: "openai:gpt-4o",
-          permissionMode: "auto",
-          workspacePath: "/tmp/launcher-ai-first-send"
+          permissionMode: "auto"
         },
         status: "idle",
         thread_id: "thread-a",

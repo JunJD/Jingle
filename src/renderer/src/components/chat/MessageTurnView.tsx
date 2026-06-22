@@ -74,6 +74,7 @@ import { AssistantSelectionReferencesFromMetadata } from "./AssistantSelectionRe
 import { getAssistantSelectionRefs } from "./useAssistantSelectionRefs"
 import { useThreadControl } from "@/lib/thread-context"
 import type { ActiveRunCoachStatusKind, RunCoachTipProjection } from "@/lib/run-coach"
+import { ContextEvidencePanel } from "./ContextEvidencePanel"
 
 interface StructuredMessageContent {
   attachments: React.ReactNode
@@ -1325,6 +1326,8 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
         )
       })}
       {activeTurnStatus?.placement === "after_entries" ? activeTurnStatusRow : null}
+
+      <ContextEvidencePanel threadId={threadId} turnId={turn.key} />
 
       {hasAssistantMessages && !shouldHideToolbar ? (
         <MessageToolbar className="mt-0 justify-start">
