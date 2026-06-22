@@ -1,740 +1,823 @@
-# Agent Context State Memory V2 设计目标
+# Agent Context State Memory V2 设计与分步验收
 
-## 背景
+## 0. 文档目的
 
-Openwork 当前已经有一套个人记忆 V1：
+这份文档定义 Openwork 的长期记忆、session 历史检索、ThreadDigest 摘要投影、runtime evidence state 和 renderer 回显边界。它必须能独立指导实现、review 和验收，不依赖任何外部对话上下文。
 
-- `AgentMemory` 保存用户确认过的长期记忆。
-- `AgentMemorySuggestion` 保存等待用户确认的候选记忆。
-- `OpenworkMemoryContextPack` 在 run 开始前把文件型上下文和结构化记忆打包。
-- `openworkMemory` middleware 把 context pack 注入 model context。
-- `AgentMemoryInclusion` 记录某个 run 包含过哪些结构化记忆。
-- `IncludedMemoriesPanel` 通过 `latestRunId` 查询 `memory.listIncludedMemoriesForRun` 展示 included memories。
-
-V1 解决的是“Agent 不要忘记用户确认过的长期偏好和稳定事实”。它没有完整解决另一类问题：Agent 如何把 memory、history message、trace、artifact 当作可查询、可审计、可回显的运行时上下文。
-
-V2 的目标不是替换 `AgentMemory`，而是新增一层运行时上下文关系：Agent 可以通过工具主动检索上下文；工具结果可以服务模型推理，但 UI 的事实源必须来自 runtime/schema state projection，而不是 tool message、live memory 表或 renderer 临时反推。
-
-## 核心判断
-
-上下文检索能力采用 `tool + schema state`，而不是 tool message 驱动 UI。
+V2 的目标不是“把更多文本塞进模型”，而是建立一条可恢复、可审计、可回显的上下文链路：
 
 ```text
-Tool
-  Agent 主动检索 memory / history / trace / artifact。
-
-Schema state
-  Runtime 保存这次 run / turn / message 被提供、检索、引用过哪些上下文。
-
-Projection
-  Main/renderer store 把 schema state 投影成 thread.agent.contextInclusions。
-
-Renderer
-  ContextEvidencePanel 只消费 projection，不解析 tool message，不查询 live memory 表反推 UI。
-
-Tool message
-  只服务模型回路。即使 tool message 被隐藏、压缩或重新排版，Evidence UI 仍必须正确。
+长期记忆 / thread 摘要 / 历史消息 / trace / artifact
+  -> run start context pack 或 runtime retrieval tools
+  -> LangGraph schema state: contextInclusions
+  -> stream values / checkpoint snapshot / hydrate
+  -> renderer thread store projection
+  -> ContextEvidencePanel / MemoryReviewPanel
 ```
 
-这个模式与 todos / subagents 对齐：
+每一步都必须有明确 owner。renderer 只能消费 runtime/schema state 的投影，不能解析 tool message、live memory inclusion 表、trace 表或 artifact 表来反推主聊天 evidence UI。
 
-```text
-write_todos tool
-  -> state.todos
-  -> todos.replaced runtime event
-  -> thread.agent.todos
-  -> renderer 渲染 todos
+## 1. 核心结论
 
-search_memory tool
-  -> state.contextInclusions
-  -> context.inclusionsReplaced runtime event
-  -> thread.agent.contextInclusions
-  -> renderer 渲染 Context / Evidence
+1. `Thread` 就是 Openwork 内部 session 本体。
+2. `SessionBinding` 只是 thread/session 与外部来源的绑定关系，不是 session 本体，也不是 summary owner。
+3. `AgentMemory` 是长期记忆本体，只能通过 `AgentMemorySuggestion` + 用户确认写入。
+4. `OpenworkMemoryContextPack` 只负责 run start 时冻结 provided context。
+5. `AgentMemoryInclusion` 是 V1 structured memory inclusion audit，不能驱动主聊天 evidence 回显。
+6. `ThreadDigest` 是可重建的 thread/session 摘要投影，用于 session 级 history routing。
+7. `messages_fts` / `messages_fts_trigram` 是具体历史消息证据层。
+8. `AgentContextInclusion` 是 runtime evidence 关系 state，不是长期记忆。
+9. 主聊天 UI 的唯一 context/evidence truth source 是 `thread.agent.contextInclusions`。
+10. `provided` 只表示被提供给模型，不等于模型实际使用。
+11. `retrieved` 只表示工具检索结果被提供给模型，不等于模型最终引用。
+12. `cited` 只能由明确 citation 机制写入，不能凭模型自称使用了什么。
+13. temporary mode 下不读取 structured memory、不写 suggestion、不生成 memory provided inclusion。
+
+## 2. 领域实体与 owner
+
+### 2.1 Thread
+
+`Thread` 是 session 本体，拥有 messages、runs、trace、artifacts、runtime snapshot 和 ThreadDigest。
+
+history retrieval 必须在没有 `SessionBinding` 的情况下仍然工作。`SessionBinding` 可以增强显示或外部路由，但不能成为 history retrieval 的前置条件。
+
+### 2.2 SessionBinding
+
+`SessionBinding` 表达外部会话或本地 binding key 到当前 `Thread` 的关系：
+
+```prisma
+model SessionBinding {
+  sessionKey      String  @id @map("session_key")
+  workspaceKey    String  @map("workspace_key")
+  workspacePath   String  @map("workspace_path")
+  currentThreadId String  @map("current_thread_id")
+  metadata        String?
+}
 ```
 
-## 设计目标
+V2 规则：
 
-1. `AgentMemory` 继续作为长期记忆本体，不承载运行时上下文关系。
-2. `AgentContextInclusion` 表达运行时上下文 / evidence 关系，不是长期记忆。
-3. `provided` 只表示“被系统提供给模型”，不表示模型实际使用。
-4. `retrieved` 只表示“Agent tool 成功检索并写入 state”，不表示模型实际引用。
-5. `cited` 只有在回答引用机制明确后才能写入，不能仅凭模型自称使用了什么。
-6. renderer 不解析 tool message，不直接拼 raw trace，不从 live memory 表反推历史 run。
-7. 主聊天 surface 只能有一个 context/evidence truth source。
-8. 长期记忆写入仍必须走 `AgentMemorySuggestion` 和用户确认，不允许静默保存。
-9. 运行时上下文状态必须可恢复、可审计、可测试。
+- `currentThreadId` 指向当前 thread/session。
+- `sessionKey` 是外部或本地 binding key。
+- IM 信息如果存在，只能存在于 binding metadata 或后续显式字段中。
+- summary 不写入 `SessionBinding.metadata`。
+- `search_history` 不依赖 `SessionBinding`。
 
-## 非目标
+### 2.3 AgentMemory
 
-- 不把所有聊天历史自动总结成长期记忆。
-- 不默认引入向量库。
-- 不把规则文件、AGENTS.md、技能来源合并进 `AgentMemory`。
-- 不让 renderer 解析 tool result JSON 来判断 UI。
-- 不把 memory 文本混进 message content。
-- 不把“被提供给模型”误称为“被模型实际使用”。
-- 不做静默自动写入 active memory。
-- 第一版不要求实现 turn/message-level UI，但 schema 必须允许后续迁移。
+`AgentMemory` 是长期记忆本体，适合保存用户确认过的稳定偏好、工作区长期事实和纠正记录。
 
-## 当前实体语义
+不适合保存：
 
-### `AgentMemory`
+- 所有历史对话摘要。
+- 某次 run 检索了什么上下文。
+- 某个 session 当前做到哪一步。
 
-长期记忆本体。保存用户确认过的偏好、稳定事实和纠正记录。
+### 2.4 AgentMemorySuggestion
 
-示例：
+`AgentMemorySuggestion` 是候选长期记忆。模型只能创建 pending suggestion，不能直接写 active memory。
 
-```text
-用户偏好：不要用 fallback 掩盖真实错误。
-工作区事实：内部 canonical name 使用 jingle。
-纠正记录：projection 失败应先查 owner，不应自动重试。
-```
-
-`AgentMemory` 不记录某次回答用了什么上下文。它只回答“系统长期记住了什么”。
-
-### `AgentMemorySuggestion`
-
-候选长期记忆。Agent 可以提出，但必须由用户接受后才变成 active `AgentMemory`。
-
-V2 中，`propose_memory` 或类似工具创建 suggestion 时，可以把相关 `AgentContextInclusion.id`、`messageId`、`traceId` 写入 `reviewPayload`，让用户知道候选记忆从哪里来。接受 suggestion 后，`AgentMemory.metadata` 应保留来源 suggestion 和 evidence id。
-
-### `OpenworkMemoryContextPack`
-
-run start 前由 memory owner 构造的上下文包。它包含：
-
-- 文件型上下文，例如 rules / instruction source / workspace context file。
-- 结构化 active memory，例如 `about_me`、`workspace_context`、`correction`。
-- diagnostics，例如某个 context source 读取失败。
-- workspace identity 和 generatedAt。
-
-`OpenworkMemoryContextPack` 是 run start 的输入事实。它必须冻结到 run metadata 的 `openworkMemoryContextSnapshot`，用于 refresh、reopen、resume 时还原同一份 provided context。恢复时不能重新读取当前 live memory 表来冒充旧 run 的上下文。
-
-### `AgentMemoryInclusion`
-
-V1 的结构化 memory inclusion 审计表。它记录某个 run 包含过哪些 `AgentMemory`。
-
-V2 中它可以继续用于：
-
-- structured memory 的审计。
-- `lastIncludedAt` 统计。
-- settings / debug 入口展示 memory inclusion audit。
-- 兼容现有数据。
-
-但它不能继续作为主聊天回显的事实源。主聊天 surface 的 Context / Evidence UI 必须来自 `AgentContextInclusion` 的 runtime/schema state projection。
-
-### `AgentContextInclusion`
-
-运行时上下文关系。它不是长期记忆，而是记录某次 run / turn / message 中，上下文如何进入 Agent 工作。
-
-建议契约：
+V2 中 suggestion 可以带来源：
 
 ```ts
-export type AgentContextSourceType =
+interface OpenworkMemoryEvidenceRef {
+  id: string
+  mode: AgentContextInclusionMode
+  preview: string
+  sourceId: string
+  sourceType: AgentContextSourceType
+  target: AgentContextJumpTarget
+  threadId: string
+  title: string
+}
+```
+
+写入规则：
+
+- `suggest_personal_memory` 从当前 runtime state 的 `contextInclusions` 生成 `reviewPayload.evidenceIds` 和 `reviewPayload.evidenceRefs`。
+- 只允许绑定 `availability: "available"` 且非 `provided` 的 evidence refs。
+- 用户接受前不能写 active `AgentMemory`。
+- 用户接受后，`AgentMemory.metadata` 保留 `acceptedSuggestionId`、`sourceRunId`、`threadId`、`evidenceIds` 和 `evidenceRefs`。
+
+### 2.5 OpenworkMemoryContextPack
+
+`OpenworkMemoryContextPack` 是 run start 时冻结的 provided context pack。它可以包含 structured memory、文件型 context、diagnostics、workspace identity 和 generatedAt。
+
+职责：
+
+- run start 时冻结“系统主动提供给模型的上下文”。
+- 生成 `mode: "provided"` 的 `AgentContextInclusion`。
+- 保存到 run metadata / checkpoint 恢复路径。
+
+非职责：
+
+- 不做 history retrieval。
+- 不代表模型实际使用了这些内容。
+- temporary mode 下不读取 structured `AgentMemory`。
+
+### 2.6 AgentMemoryInclusion
+
+`AgentMemoryInclusion` 是 V1 audit 表，用于记录某个 run included 过哪些 structured `AgentMemory`。
+
+允许用途：
+
+- memory audit。
+- `lastIncludedAt` 统计。
+- settings/debug 入口。
+
+禁止用途：
+
+- 驱动主聊天 evidence UI。
+- 通过 latest run 查询来回显当前聊天上下文。
+
+### 2.7 ThreadDigest
+
+`ThreadDigest` 是 thread/session 的派生摘要投影，不是长期记忆。
+
+当前持久模型：
+
+```prisma
+model ThreadDigest {
+  threadId             String @id @map("thread_id")
+  status               String @default("pending")
+  summary              String?
+  topics               String?
+  decisions            String?
+  openQuestions        String? @map("open_questions")
+  messageCount         Int    @default(0) @map("message_count")
+  projectedThroughSeq  Int    @default(0) @map("projected_through_seq")
+  sourceHash           String? @map("source_hash")
+  projectionError      String? @map("projection_error")
+  generatedAt          BigInt? @map("generated_at")
+  createdAt            BigInt @map("created_at")
+  updatedAt            BigInt @map("updated_at")
+}
+```
+
+当前 shared record：
+
+```ts
+interface ThreadDigestRecord {
+  decisions: string[]
+  generatedAt: number | null
+  messageCount: number
+  openQuestions: string[]
+  projectedThroughSeq: number
+  projectionError: string | null
+  sourceHash: string | null
+  status: "pending" | "ready" | "failed"
+  summary: string | null
+  threadId: string
+  topics: string[]
+  updatedAt: number
+}
+```
+
+FTS：
+
+- `thread_digests_fts` 使用 `unicode61`。
+- `thread_digests_fts_trigram` 使用 `trigram`。
+- 搜索文本由 `summary + topics + decisions + openQuestions` 以及分词结果组成。
+
+语义：
+
+- `ThreadDigest` 是 session 级 routing 层。
+- `ThreadDigest` 可异步生成、可重建。
+- projection failure 不阻塞 checkpoint / run persistence。
+- failure 必须写 `status: "failed"` 和 `projectionError`，不能写 fake digest。
+
+### 2.8 Message FTS
+
+message search projection 是具体证据层。它回答：
+
+```text
+哪条历史消息提供了可检索、可展示、可展开的证据？
+```
+
+它不负责总结整个 session，也不替代 `ThreadDigest`。
+
+### 2.9 AgentContextInclusion
+
+`AgentContextInclusion` 是 runtime evidence 关系 state。
+
+当前契约：
+
+```ts
+type AgentContextSourceType =
   | "memory"
   | "context_file"
+  | "thread_digest"
   | "history_message"
   | "trace_step"
   | "artifact"
 
-export type AgentContextInclusionMode =
-  | "provided"
-  | "retrieved"
-  | "cited"
+type AgentContextInclusionMode = "provided" | "retrieved" | "cited"
+type AgentContextAvailability = "available" | "unavailable"
 
-export type AgentContextAvailability =
-  | "available"
-  | "unavailable"
-
-export type AgentContextUnavailableCode =
-  | "deleted"
-  | "not_found"
-  | "permission_denied"
-  | "snapshot_missing"
-  | "source_unreadable"
-
-export interface AgentContextJumpTarget {
-  type: AgentContextSourceType
-  memoryId?: string
-  path?: string
-  threadId?: string
-  messageId?: string
-  runId?: string
-  traceId?: string
-  traceStepId?: string
-  artifactId?: string
-}
-
-export interface AgentContextUnavailableReason {
-  code: AgentContextUnavailableCode
-  message: string
-}
-
-export interface AgentContextInclusion {
-  id: string
-  runId: string
-  threadId: string
-  turnId: string | null
-  messageId: string | null
-  sourceType: AgentContextSourceType
-  sourceId: string
-  mode: AgentContextInclusionMode
-  title: string
-  preview: string
-  target: AgentContextJumpTarget
+interface AgentContextInclusion {
   availability: AgentContextAvailability
-  unavailableReason?: AgentContextUnavailableReason
-  metadata?: Record<string, unknown>
   createdAt: number
+  id: string
+  messageId: string | null
+  metadata?: Record<string, unknown>
+  mode: AgentContextInclusionMode
+  preview: string
+  runId: string
+  sourceId: string
+  sourceType: AgentContextSourceType
+  target: AgentContextJumpTarget
+  threadId: string
+  title: string
+  turnId: string | null
+  unavailableReason?: {
+    code: "deleted" | "not_found" | "permission_denied" | "snapshot_missing" | "source_unreadable"
+    message: string
+  }
 }
 ```
 
-字段语义：
+`target` 是 UI jump contract。source 不可用时，UI 不能猜 target；应使用 frozen `title/preview` 并展示 unavailable reason。
 
-- `id`: 稳定 id。相同 run、mode、sourceType、sourceId、turn/message 绑定应生成同一个 id，避免 refresh 后 UI 抖动。
-- `runId`: inclusion 所属 run。
-- `threadId`: inclusion 所属 thread。
-- `turnId`: 第一版可为 `null`；当它绑定到某个 user -> assistant turn 后填入。
-- `messageId`: 第一版可为 `null`；当它绑定到某条 assistant answer 后填入。
-- `sourceType`: 来源类别。
-- `sourceId`: durable source id。memory 用 `memoryId`；history 用 `messageId`；trace 用 trace/step id；artifact 用 artifact id；context file 用稳定 path/id。
-- `mode`: `provided` / `retrieved` / `cited`。
-- `title`: UI summary 标题，必须来自 owner 生成的 view model。
-- `preview`: 冻结过的短 preview。历史回显优先读 snapshot 中的 preview，不重新读取 live source。
-- `target`: 跳转目标契约。renderer 只能根据这个契约跳转或禁用跳转，不能猜 URL 或反查 raw table。
-- `availability`: 当前 evidence 是否可打开。
-- `unavailableReason`: source 被删、权限不足、trace blob 缺失等情况的明确原因。
-- `metadata`: owner 私有附加信息，不作为 renderer 的主要跳转契约。
-- `createdAt`: inclusion 写入 schema state 的时间。由 writer 提供；从 snapshot 重建时使用冻结时间，不能每次 refresh 变动。
+## 3. 权威状态与恢复闭环
 
-## 权威状态与恢复闭环
+### 3.1 Live owner
 
-### 权威 owner
-
-V2 的权威状态分两层：
-
-1. Live authoritative state: LangGraph schema state 中的 `contextInclusions`。
-2. Durable recovery state: checkpoint / run snapshot 中持久化的 `contextInclusions`。
-
-`AgentThreadRunStateSnapshot.contextInclusions` 是 main 给 renderer 的读取投影，不是新的 owner。renderer store 中的 `thread.agent.contextInclusions` 也是投影，不是来源。
-
-第一版不新增独立 DB 表作为 canonical owner。`AgentMemoryInclusion` 继续作为 V1 structured memory inclusion audit，不升级为 `AgentContextInclusion` 的主存储。如果后续为了审计新增 `AgentContextInclusion` DB 表，它也必须从 schema state 写入事件派生，且 renderer 仍通过 thread snapshot / runtime event projection 消费，不直接查表反推 UI。
-
-### Live stream 路径
+`contextInclusions` 的 live owner 是 LangGraph schema state。
 
 ```text
-AgentService run start
-  -> OpenworkMemoryService.buildContextPack(...)
-  -> freeze OpenworkMemoryContextSnapshot into Run.metadata
-  -> seed state.contextInclusions with provided inclusions
-  -> emit context.inclusionsReplaced
-  -> AgentThreadRunner reducer
-  -> thread.agent.contextInclusions
+run start / retrieval tool
+  -> Command.update({ contextInclusions })
+  -> values stream
+  -> AgentThreadRunner handlePayload
+  -> context.inclusionsReplaced event
+  -> AgentThreadRuntimeState.contextInclusions
+  -> renderer store projection
+```
+
+renderer store 只是投影，不是来源。
+
+### 3.2 Durable owner
+
+`AgentThreadRunStateSnapshot.contextInclusions` 是 durable recovery contract。
+
+```text
+checkpoint channel_values.contextInclusions
+  -> AgentThreadRunStateSnapshot.contextInclusions
+  -> deriveThreadBootstrapState
+  -> AgentRuntimeManager hydrate
   -> ContextEvidencePanel
 ```
 
 要求：
 
-- `run.started` 或新 run preparation 必须清理上一轮未绑定的 run-level inclusions，避免旧 run 的 provided context 暂时显示在新 run 上。
-- `context.inclusionsReplaced` 第一版可以整体替换，和 `todos.replaced` 保持一致。
-- 当 tool 后续写入 `retrieved` inclusion 时，writer 可以生成完整数组并发 `context.inclusionsReplaced`；不需要第一版做增量协议。
+- stream 期间一致。
+- refresh 后一致。
+- reopen 后一致。
+- resume interrupted run 后一致。
+- tool message 被隐藏、压缩或不再展示 raw result 后，evidence UI 仍然正确。
 
-### Snapshot / hydrate 路径
+### 3.3 Run start 生命周期
 
-`AgentThreadRunStateSnapshot` 必须包含：
+新 run 开始时：
 
-```ts
-interface AgentThreadRunStateSnapshot {
-  // existing fields
-  contextInclusions: AgentContextInclusion[]
-}
-```
+- 清理上一轮未绑定的 run-level inclusions。
+- 保留已绑定到 `turnId` 或 `messageId` 的 historical retrieved/cited inclusions。
+- 使用 frozen `OpenworkMemoryContextPack` 生成新 run 的 provided inclusions。
 
-恢复路径：
+resume interrupted run 时：
 
-```text
-ThreadsService.getPersistedAgentThreadData(...)
-  -> read checkpoint / latest run state
-  -> read frozen openworkMemoryContextSnapshot for provided context if needed
-  -> return runState.contextInclusions
-  -> deriveThreadBootstrapState(...)
-  -> ThreadRuntimeProjector.hydrateFromThreadData(...)
-  -> thread.agent.contextInclusions
-```
+- 不重新读取 live memory 冒充旧 run context。
+- 使用 frozen context snapshot / checkpoint 中的 inclusions。
+- 保留同一 run 的 runtime evidence state。
 
-要求：
+### 3.4 Turn / message-level 生命周期
 
-- refresh / reopen 后，`ContextEvidencePanel` 看到的 inclusion 必须和 live run 时一致。
-- resume interrupted run 时，必须使用 run metadata 中冻结的 `OpenworkMemoryContextSnapshot`，不能用当前 workspace 的 live memory 重新构造旧 run 的 provided context。
-- workspace mismatch 继续沿用现有 workspace identity 校验；不能静默换 workspace 并重算 context。
-- hydrate 失败不能被包装成“空 context 正常”。如果 checkpoint / run metadata 损坏，主流程要暴露明确 diagnostic 或 IPC error。
-
-### Run metadata 和 checkpoint 的关系
-
-`OpenworkMemoryContextSnapshot` 是 provided context 的冻结输入。它用于：
-
-- 审计 run start 时提供给模型的上下文。
-- resume 时重建同一份 model context。
-- 在 checkpoint 还没有写入初始 state 或需要修复投影时，重建 provided inclusions。
-
-`contextInclusions` 是运行时关系 state。它用于：
-
-- renderer 回显 Context / Evidence。
-- tool retrieved/cited evidence 的追加。
-- turn/message-level evidence 的恢复。
-
-不要把两者合并成一个概念。context snapshot 说明“系统当时准备了什么上下文”；context inclusion 说明“这些上下文以什么关系进入了 run / turn / message”。
-
-## 写入协议
-
-### `provided`
-
-写入时机：
-
-- 新 run 开始，`OpenworkMemoryContextPack` 构造完成并冻结到 run metadata 后。
-
-写入 owner：
-
-- `OpenworkMemoryService` / agent service 负责把 `OpenworkMemoryContextPack.items` 转换为 `AgentContextInclusion(mode="provided")`。
-- Runtime/schema state owner 负责写入 `state.contextInclusions` 并发出 `context.inclusionsReplaced`。
-
-写入规则：
-
-- structured memory item 生成 `sourceType: "memory"`。
-- file/context source item 生成 `sourceType: "context_file"`。
-- `preview` 来自冻结 context item 内容的短摘录。
-- `target` 必须能表达 memory settings / context file / source path 的跳转或不可跳转状态。
-- `provided` 只表示被放进 model context，不表示被模型使用。
-- temporary mode 下不读取 structured `AgentMemory`，不生成 `sourceType: "memory"` 的 provided inclusion。context file 是否仍 included 取决于 `OpenworkMemoryContextPack` 的明确结果，不能靠 renderer 猜。
-
-### `retrieved`
-
-写入时机：
-
-- `search_memory`
-- `search_history`
-- `get_message_context`
-- `get_trace_evidence`
-
-这些 tool 查询成功并得到可展示 evidence view model 后。
-
-写入 owner：
-
-- tool owner 查询 main-owned 数据源。
-- tool owner 生成 `AgentContextInclusion(mode="retrieved")`。
-- runtime/schema state owner 写入 `contextInclusions`。
-
-写入规则：
-
-- 查询失败不写入 fake inclusion。
-- 没查到结果可以返回“无结果”的 tool result，但不应写入 `unavailable` inclusion。`unavailable` 只用于曾经存在的 evidence 后来不可读。
-- tool result 给模型简短说明即可，不能成为 UI truth source。
-- 对同一 run/turn/source 的重复检索应 upsert 同一 inclusion，而不是无限追加重复项。
-
-### `cited`
-
-写入时机：
-
-- 只有当回答引用机制明确后，例如结构化 citation annotation、显式 cite tool、或 assistant message metadata 中有经过 runtime 校验的引用关系。
-
-禁止：
-
-- 不能因为模型自然语言说“我使用了某条记忆”就写 `cited`。
-- 不能从最终回答文本里用正则猜 evidence。
-
-写入 owner：
-
-- citation 机制的 owner 校验引用目标存在，并将对应 inclusion 或 source 写成 `mode: "cited"`。
-
-第一版可以不写 `cited`。UI 可以先支持 label，但不能展示没有可靠写入来源的 cited 数据。
-
-## Run / Turn / Message 生命周期
-
-### 第一版 run-level 展示
-
-第一版允许所有 `provided` inclusion 使用：
+第一版允许 global/run-level 展示：
 
 ```ts
 turnId: null
 messageId: null
 ```
 
-`ContextEvidencePanel` 可以挂在 active run / footer 区域，以 run-level summary 展示。
+当 active run 有 stable `turnId` / message id 时，retrieved evidence 会绑定到当前 turn：
 
-新 run 开始时：
-
-- 清理上一轮未绑定的 run-level inclusions。
-- 等 runId 和 frozen context snapshot ready 后，用新 run 的 provided inclusions 替换。
-
-resume interrupted run 时：
-
-- 不把 interrupted run 的 inclusions 清空。
-- 从 checkpoint / frozen snapshot hydrate 原 run 的 context facts。
-- 后续 tool retrieved inclusions 继续写入同一个 run。
-
-edit last user message / truncate 时：
-
-- 被删除 message 之后的 message-bound / turn-bound evidence 必须一起移除。
-- run-level latest inclusions 按新 run 替换。
-
-### 迁移到 turn/message-level
-
-当 assistant answer messageId 确定后，可以把当前 run-level inclusion 绑定到：
-
-- `turnId`: user message id 或 runtime 创建的 stable turn id。
-- `messageId`: assistant answer id。
-
-迁移目标：
-
-```text
-messageProjection.turns[n]
-  -> assistant message
-  -> contextInclusions where messageId or turnId matches
-  -> ContextEvidencePanel near that answer
+```ts
+turnId: activeRun.turnId
+messageId: activeRun.assistantMessageId if present, otherwise activeRun.userMessageId
 ```
+
+规则：
+
+- `provided` 保持 run-level，不绑定成“使用证据”。
+- non-provided evidence 在同一 run 中多次 tool retrieval 要累积，不互相覆盖。
+- 新 run 不清掉 historical message-bound evidence。
+- truncate/edit 删除相关消息后，inclusion 标记 `availability: "unavailable"` 和 `unavailableReason.code: "deleted"`。
+
+## 4. 写入协议
+
+### 4.1 provided
+
+owner：run start context pack builder / runtime invoke path。
+
+写入时机：
+
+- run start 时从 frozen `OpenworkMemoryContextPack` 生成。
+- resume 时从 frozen snapshot/checkpoint 恢复，不重新读取 live memory。
+
+语义：
+
+- `provided` 只表示这些 context 被提供给模型。
+- `provided` 不等于模型使用。
+- temporary mode 下，不读取 structured memory，也不生成 `sourceType: "memory"` 的 provided inclusion。
+
+### 4.2 retrieved
+
+owner：runtime context retrieval middleware。
+
+写入时机：
+
+- `search_history` 成功向模型返回 digest/message 内容后写入。
+- `get_message_context` 成功返回 message window 后写入。
+- `get_trace_evidence` 成功返回 trace/artifact 内容后写入。
+- V2 不实现 `search_memory` retrieval 写入。active structured memory 只通过 run start context pack 以 `provided` 进入模型上下文。
+
+失败规则：
+
+- 空结果不写 inclusion。
+- source 不存在不写 inclusion。
+- blob/artifact 缺失不写 fake inclusion。
+- tool error 不应被包装成“已检索”。
+
+### 4.3 cited
+
+owner：未来明确 citation mechanism。
+
+当前 V2 不凭模型自称写 `cited`。只有当回答引用机制能把 final answer span 与具体 source id 绑定时，才允许写 `mode: "cited"`。
+
+## 5. ProjectionQueue 与 ThreadDigest
+
+### 5.1 ProjectionQueue
+
+V2 使用本地 main process `ProjectionQueue`，不引入外部 MQ。
+
+能力：
+
+- `enqueue(job)`：按 key 合并 scheduled/dirty jobs。
+- `markDirty(job)`：标记 stale job，不立刻调度。
+- `flush()`：清 timer，串行 drain 所有 dirty/scheduled jobs。
+- `onError(job, error)`：记录 projection failure。
+- `stateKey`：允许同一进程热重载时共享 queue state。
 
 要求：
 
-- message-bound evidence 不应被新 run 清掉。
-- `AgentThreadDataSnapshot` 必须能返回当前消息页需要的 historical inclusions，而不是只返回 latest run 的 inclusions。
-- 历史消息附近的 evidence 从 checkpoint / durable state 恢复；renderer 不能根据 `latestRunId` 去查 live memory inclusion 表。
+- projection failure 不影响核心 checkpoint/run persistence。
+- `closeRuntime` / `closeDatabase` 必须 flush projection queues。
+- crash 后不依赖 durable job table；通过 projection 可重建和 stale detection 恢复。
 
-### 历史 evidence 恢复
+### 5.2 ThreadDigest projection
 
-长期目标是：打开历史 thread 时，消息附近的 evidence 能随消息一起恢复。
+触发：
 
-实现原则：
+- run terminal event recorder enqueue。
+- closeRuntime / closeDatabase flush。
 
-- 对 run-level 第一版，历史 evidence 可以先只显示 latest run summary。
-- 一旦进入 turn/message-level，snapshot 读取层必须按当前 message page 收集对应 `contextInclusions`。
-- 如果 source 后来不可读，保留 inclusion 的 `title` / `preview`，将 `availability` 标为 `unavailable`，并显示明确原因。
-- 不允许因为 source 缺失就静默删除 evidence，除非对应 message/turn 被用户明确删除或 truncate。
+生成：
 
-## 渲染边界
+- 使用 `modelPreference: "fast"`。
+- `thinkingEffort: "off"`。
+- run name: `thread_digest`。
+- timeout: 8s。
+- bounded prompt：最多 80 条 user/assistant projected messages，最多 16000 chars。
+- 输出 strict JSON：`summary`, `topics`, `decisions`, `openQuestions`。
+- zod 校验和 normalize 后才写 `thread_digests`。
 
-### `ContextEvidencePanel`
+失败：
 
-`ContextEvidencePanel` 是主聊天 surface 的唯一 Context / Evidence 回显组件。
+- `markThreadDigestProjectionPending(threadId)` 表示开始 projection。
+- 失败写 `status: "failed"` 和 `projectionError`。
+- 失败清空 digest FTS，不写 fake search row。
+- 已有 digest 被失败覆盖为 failed 是可观察 diagnostic，不伪装为 ready。
+
+## 6. Retrieval tools
+
+### 6.1 search_history
+
+目的：
+
+```text
+根据 query 找相关 thread/session，再返回具体 history message evidence。
+```
+
+输入：
+
+```ts
+{
+  query: string
+  limit?: number
+  threadId?: string
+}
+```
+
+执行：
+
+1. 查询 `thread_digests_fts` 和 `thread_digests_fts_trigram`。
+2. 如果传入 `threadId`，digest 和 messages 都 scoped 到该 thread。
+3. 无 `threadId` 时，先用 digest 命中的 thread ids 路由 message FTS。
+4. digest 缺失时，message FTS 继续作为具体历史消息证据层。
+5. tool result 必须把 digest summary 和 matched message bodies 返回给模型。
+6. 成功返回给模型的 digest 写 `sourceType: "thread_digest"` inclusion。
+7. 成功返回给模型的 messages 写 `sourceType: "history_message"` inclusion。
+
+空结果：
+
+- 返回 no result message。
+- 不写 inclusion。
+
+### 6.2 get_message_context
+
+目的：
+
+```text
+围绕某条 projected history message 展开 bounded transcript window。
+```
+
+输入：
+
+```ts
+{
+  threadId: string
+  messageId: string
+  before?: number
+  after?: number
+}
+```
+
+执行：
+
+1. 从 projected messages 读取目标 thread。
+2. 定位 focus message。
+3. 返回 before/after window。
+4. 写 focus `history_message` inclusion。
+
+失败：
+
+- message 不存在：返回 not found，不写 inclusion。
+- thread 不存在或无 projected messages：返回 not found，不写 inclusion。
+- 不从当前 thread 猜目标 message 所属 thread。
+
+### 6.3 get_trace_evidence
+
+目的：
+
+```text
+按 run / trace step / tool call / artifact 展开执行证据。
+```
+
+输入至少包含一个 selector：
+
+```ts
+{
+  runId?: string
+  traceId?: string
+  traceStepId?: string
+  toolCallId?: string
+  artifactId?: string
+  includeInput?: boolean
+  includeOutput?: boolean
+}
+```
+
+执行：
+
+- trace owner 查询 trace / step / blob。
+- artifact owner 查询 artifact。
+- 返回 bounded input/output/artifact evidence。
+- 成功返回 trace step 时写 `trace_step` inclusion。
+- 成功返回 artifact 内容时写 `artifact` inclusion。
+
+失败：
+
+- trace 不存在不写 inclusion。
+- step 不存在不写 inclusion。
+- requested blob 缺失不写 inclusion。
+- artifact 缺失不写 artifact inclusion。
+
+### 6.4 search_memory
+
+主 Agent 默认不暴露 `search_memory`。
+
+原因：
+
+- active structured memory 已经通过 run start context pack provided。
+- history retrieval 的目标是 thread/session 历史，应走 `search_history`。
+- 长期记忆和历史消息必须保持概念分离。
+
+V2 不保留该 tool。settings/debug 可以展示 `AgentMemory` 与 `AgentMemoryInclusion` audit，但不能通过 `search_memory` 参与主 Agent retrieval。
+
+## 7. Renderer 边界
+
+### 7.1 ContextEvidencePanel
+
+`ContextEvidencePanel` 是主聊天 context/evidence 回显入口。
 
 职责：
 
 - 只消费 `thread.agent.contextInclusions`。
-- 展示 mode、sourceType、title、preview、availability。
-- 根据 `target` 提供跳转或禁用态。
+- 支持 global/run-level、turn-level、message-level placement。
+- 展示 mode、source label、title、preview、availability。
 - 不解析 tool message。
-- 不调用 `memory.listIncludedMemoriesForRun`。
-- 不从 live `AgentMemory` 表或 trace 表拼 UI。
+- 不查询 live memory inclusion 表、trace 表或 artifact 表来驱动主聊天 evidence。
 
-### `IncludedMemoriesPanel`
+### 7.2 IncludedMemoriesPanel
 
-`IncludedMemoriesPanel` 属于 V1 included memory audit UI。它可以保留在 settings 或 debug 入口，但不能和 `ContextEvidencePanel` 并列驱动当前聊天回显。
+`IncludedMemoriesPanel` 只能保留在 settings/debug/audit 入口。
 
-硬验收：
+硬约束：
 
-- `ChatContainer` / `LauncherAiConversation` 的主聊天 footer 或 message surface 不能同时挂 `ContextEvidencePanel` 和 `IncludedMemoriesPanel`。
-- 主聊天回显不能依赖 `latestRunId -> memory.listIncludedMemoriesForRun`。
-- 如果保留 `IncludedMemoriesPanel`，文案必须表达“included memory audit”，不能暗示模型使用了这些记忆。
+- 主聊天 surface 不能挂 `IncludedMemoriesPanel`。
+- 主聊天不能调用 `memory.listIncludedMemoriesForRun` 驱动回显。
+- tool result 隐藏/压缩后 evidence UI 仍由 `ContextEvidencePanel` 显示。
 
-## Owner 边界
+### 7.3 MemoryReviewPanel
 
-### Runtime schema owner
+`MemoryReviewPanel` 展示 pending `AgentMemorySuggestion`。
 
-文件范围：
+允许读取：
 
-- `src/shared/agent-thread-runtime.ts`
-- `src/shared/app-types.ts`
-- `src/shared/agent-thread-bootstrap.ts`
-- `src/main/agent/agent-thread-runner.ts`
-- `src/renderer/src/lib/thread-store-core.ts`
-- `src/renderer/src/lib/agent-runtime-event-projector.ts`
-- `src/renderer/src/lib/agent-runtime-snapshot-reducer.ts`
+- `memory.listSuggestions({ status: "pending", threadId })`。
+- suggestion 的 `reviewPayload.evidenceRefs`。
 
-职责：
+不允许：
 
-- 定义 `contextInclusions` state。
-- 定义 `context.inclusionsReplaced` event。
-- 让 live stream、snapshot hydrate、refresh、reopen、resume 后状态一致。
-- 保证 renderer store 只是 projection。
+- 从 tool message 反推 suggestion 来源。
+- 从 live included memory 表反推 suggestion 来源。
+- 用户接受前写 active memory。
 
-### Memory owner
+## 8. Failure semantics
 
-文件范围：
+### 8.1 Context pack
 
-- `src/shared/openwork-memory.ts`
-- `src/main/openwork-memory/service.ts`
-- `src/main/openwork-memory/middleware.ts`
-- `src/main/db/agent-memory.ts`
+- 可读取 item 进入 context pack。
+- 不可读取 source 写 diagnostics。
+- diagnostics 进入 snapshot/log。
+- 不生成 fake success inclusion。
+- workspace identity / permission 前置失败可以阻塞 run，并明确报错。
 
-职责：
+### 8.2 ThreadDigest
 
-- 管长期 `AgentMemory` 和 `AgentMemorySuggestion`。
-- 构造 `OpenworkMemoryContextPack`。
-- 生成 `provided` context inclusion。
-- 提供 `search_memory` 的 main-side 数据能力。
-- 保留 `AgentMemoryInclusion` 审计，但不让它驱动主聊天回显。
+- projection failure 不阻塞 checkpoint。
+- failure 写 `ThreadDigest.status = "failed"` 和 `projectionError`。
+- FTS 不保留 failed digest 的 fake search row。
+- search_history 可以继续返回 message hits，但不能伪造 thread summary。
 
-### History / trace / artifact owner
+### 8.3 Tools
 
-文件范围：
+- 查询失败不写 inclusion。
+- 空结果不写 inclusion。
+- source 缺失不写 fake inclusion。
+- tool result 给模型的内容必须和写入 inclusion 的 source 一致。
 
-- `src/main/db/message-search.ts`
-- `src/main/db/threads.ts`
-- `src/main/db/agent-traces.ts`
-- `src/main/db/agent-events.ts`
-- artifact service / presentation owner
+### 8.4 Unavailable evidence
 
-职责：
+如果历史消息、trace blob、artifact、memory 后来不可读：
 
-- 提供 message、trace、artifact evidence 查询。
-- 输出可投影的 evidence view model。
-- 不把 raw trace 直接暴露给 renderer 作为默认 UI 数据。
-- 查询失败时返回明确错误，不写假 inclusion。
+- 保留 frozen `title` / `preview`。
+- 标记 `availability: "unavailable"`。
+- 写明确 `unavailableReason`。
+- UI 禁用跳转或展示不可用状态。
 
-### Renderer owner
-
-文件范围：
-
-- `src/renderer/src/lib/message-projection.ts`
-- `src/renderer/src/components/chat/ContextEvidencePanel.tsx`
-- `src/renderer/src/components/chat/*`
-- `src/renderer/src/ai-core/LauncherAiConversation.tsx`
-
-职责：
-
-- 消费 `thread.agent.contextInclusions`。
-- 渲染 Context / Evidence summary 和 details。
-- 不解析 tool message。
-- 不从 live memory 表、trace 表、artifact 表反推当前聊天 evidence。
-
-## 失败语义
-
-### Context pack 构造失败
-
-- 可读取的 context item 仍可进入 context pack。
-- 不可读取的 context source 写入 `OpenworkMemoryContextPack.diagnostics`。
-- diagnostics 必须可观察：至少进入 run metadata / log；后续可以投影为 unavailable evidence。
-- 不阻塞核心 run，除非 workspace identity、权限或配置前置条件失败。
-- 不生成假 inclusion 来表示成功读取。
-
-### Tool 查询失败
-
-- tool 返回结构化错误。
-- 不写入 `contextInclusions`。
-- 不把失败包装成空结果。
-- 不告诉用户“已加入 context state”。
-
-### Evidence source 后来不可用
-
-- 如果历史 message 被删、trace blob 不可读、artifact 缺失、memory 被 archived，已存在 inclusion 不应被 renderer 猜测修复。
-- snapshot/projection owner 设置 `availability: "unavailable"` 和明确 `unavailableReason`。
-- UI 显示 title/preview 和 unavailable 状态；jump target 禁用或打开错误详情。
-
-### Persistence / hydrate 失败
-
-- `getAgentThreadData` 不能把 hydrate 失败静默变成空 `contextInclusions`。
-- 如果 checkpoint / run metadata 损坏，返回明确 IPC error 或 thread-level diagnostic。
-- renderer 可以隐藏 panel，但必须有可观察错误入口，不能让用户以为该 run 没有 evidence。
-
-### Temporary mode
+### 8.5 Temporary mode
 
 - 不读取 structured `AgentMemory`。
-- 不写入 `AgentMemorySuggestion`。
-- 不生成 `sourceType: "memory"` 的 provided inclusion。
-- 如果 temporary mode 仍读取文件型 context source，必须只生成 `sourceType: "context_file"`，并保持文案清楚。
+- 不写 `AgentMemorySuggestion`。
+- 不生成 memory provided inclusion。
+- 文件型 context 仍可读取，并只生成 `context_file` provided inclusion。
 
-### Suggestion 写入失败
+## 9. 分阶段实施与 Pause Gate
 
-- 作为 tool 错误返回。
-- 不创建 active memory。
-- 不告诉用户 pending suggestion 已保存。
+每个 phase 完成后暂停 review。每批代码提交前必须跑 code-review。文档更新放在最后收口，但文档最终必须和真实实现一致。
 
-## V1 到 V2 的收敛步骤
+### Phase 0: 文档冻结
 
-### Step 1: 语义改名
+目标：
 
-把 UI 中的 “used memories” 语义改成 “provided context” 或 “included context”。
-
-原因：`AgentMemoryInclusion` 表达的是 run 中被注入的 structured memory，不代表模型实际引用。
+- 固化本文档中的 owner、状态、tool 协议、失败语义和验收矩阵。
 
 验收：
 
-- UI 不再暗示所有 included memory 都被回答使用。
-- 设置项保留时，文案与真实语义一致。
+- 文档自洽，不依赖外部对话。
+- 明确 `Thread = Session`。
+- 明确 `SessionBinding` 只是外部绑定。
+- 明确 `ThreadDigest + messages FTS` 是 history retrieval 核心。
+- 明确 `contextInclusions` 是主聊天 evidence truth source。
 
-### Step 2: 增加 runtime state
+Pause Gate：
 
-在 `AgentThreadRuntimeState` 和 `AgentThreadRunStateSnapshot` 增加 `contextInclusions`。
+- 文档 review 通过。
 
-验收：
+### Phase 1: 通用 ProjectionQueue
 
-- `context.inclusionsReplaced` 能更新 `thread.agent.contextInclusions`。
-- snapshot hydrate 能恢复 `thread.agent.contextInclusions`。
-- renderer 不需要查 `latestRunId` 才能知道当前上下文关系。
+目标：
 
-### Step 3: 把 context pack 写入 state
-
-run 开始构造 `OpenworkMemoryContextPack` 后，同时生成 `provided` inclusions。
-
-验收：
-
-- active memory 和 context file 都能在 state 中看到。
-- temporary mode 不产生 memory provided inclusion。
-- context snapshot 保持冻结，resume 时使用同一份上下文事实。
-- refresh / reopen 后 panel 仍显示同一批 provided inclusions。
-
-### Step 4: renderer 从 state 回显
-
-新增或收敛 `ContextEvidencePanel`。
+- main process 有复用型 projection queue。
+- 支持 coalesce key、debounce、串行 drain、flush、onError。
+- trace/digest 等派生投影不阻塞核心持久化。
 
 验收：
 
-- 主聊天 surface 不再挂 `IncludedMemoriesPanel`。
-- renderer 不调用 `memory.listIncludedMemoriesForRun` 驱动当前聊天回显。
-- renderer 不解析 tool message。
-- context panel 可以折叠展开。
+- queue coalesce/debounce/flush/error 测试通过。
+- closeRuntime / closeDatabase flush projection。
+- projection failure 可观察。
 
-### Step 5: 新增主动查询 tools
+### Phase 2: Runtime evidence state baseline
 
-先做：
+目标：
 
-```text
-search_memory
-get_message_context
-```
-
-再接：
-
-```text
-search_history
-get_trace_evidence
-```
+- `contextInclusions` 完成 live event、snapshot、hydrate、refresh、reopen、resume 闭环。
+- `ContextEvidencePanel` 成为主聊天 evidence truth source。
 
 验收：
 
-- tool 调用成功后结果进入 `contextInclusions(mode="retrieved")`。
-- tool message 可以隐藏或压缩，UI 仍能正确回显。
-- 查询失败显式返回错误，不写 fake inclusion。
+- live run provided context 可显示。
+- refresh/reopen/resume 一致。
+- renderer 不调用 `memory.listIncludedMemoriesForRun` 驱动主聊天回显。
+- tool message 隐藏/压缩后 evidence UI 仍正确。
 
-### Step 6: suggestion 绑定 evidence
+### Phase 3: Tool surface 收敛
 
-`propose_memory` 创建 `AgentMemorySuggestion` 时，把相关 evidence id 写入 `reviewPayload`。
+目标：
+
+- 主 Agent 默认不暴露 `search_memory`。
+- `search_history` / `get_message_context` / `get_trace_evidence` 有 action renderer shell 和 tool labels。
 
 验收：
 
-- 用户能看到候选记忆从哪里来。
-- 接受候选记忆后，`AgentMemory.metadata` 保留来源 suggestion 和 evidence。
-- 长期记忆仍必须由用户确认。
+- 缺 renderer 不再导致聊天崩溃。
+- retrieval shell 不展示 raw result，不作为 evidence truth source。
 
-## 第一版推荐切面
+### Phase 4: ThreadDigest schema/projection
 
-第一版只做以下闭环：
+目标：
 
-```text
-OpenworkMemoryContextPack
-  -> AgentContextInclusion(mode="provided")
-  -> state.contextInclusions
-  -> context.inclusionsReplaced
-  -> AgentThreadRunStateSnapshot.contextInclusions
-  -> thread.agent.contextInclusions
-  -> ContextEvidencePanel
-```
+- 新增 ThreadDigest 持久模型、FTS、shared type、repository 和 projection generator。
+- run terminal 后 enqueue digest projection。
 
-必须同时覆盖 live 和 recovery：
+验收：
 
-- live run 能显示。
-- refresh 能恢复。
-- reopen 能恢复。
-- resume 使用 frozen snapshot。
-- 主聊天不再显示旧 `IncludedMemoriesPanel`。
+- digest 可生成、更新、搜索、失败诊断。
+- 同 thread 多次 enqueue 合并。
+- closeRuntime/closeDatabase flush。
+- generator 使用 fast model、thinking off、strict JSON、bounded prompt。
+- failure 不写 fake digest。
 
-第二版再加：
+### Phase 5: search_history 升级
 
-```text
-search_memory / get_message_context
-  -> AgentContextInclusion(mode="retrieved")
-  -> ContextEvidencePanel
-```
+目标：
 
-第三版再接：
+- `search_history` 先搜 ThreadDigest，再搜 messages FTS。
+- 结果按 thread/session 分组并写 inclusions。
 
-```text
-search_history / get_trace_evidence
-  -> message / trace / artifact evidence
-  -> turn-level / message-level ContextEvidencePanel
-```
+验收：
 
-## 验收标准
+- 无 threadId 时 session routing 生效。
+- 有 threadId 时 scoped search。
+- digest 缺失时只返回 message hits 并不写 fake digest inclusion。
+- 空结果不写 inclusion。
 
-1. `AgentMemory`、`AgentMemorySuggestion`、memory settings 继续工作。
-2. `AgentContextInclusion` 不写入 active memory，不替代 `AgentMemory`。
-3. `provided` 只表示被提供给模型，不暗示模型实际使用。
-4. `contextInclusions` 的 authoritative owner 是 runtime/schema state；renderer store 只是 projection。
-5. `AgentThreadRunStateSnapshot.contextInclusions` 支持 snapshot hydrate、refresh、reopen。
-6. resume 使用 frozen `OpenworkMemoryContextSnapshot`，不重算旧 run 的 memory context。
-7. `ContextEvidencePanel` 是主聊天 surface 唯一 Context / Evidence 回显入口。
-8. 主聊天 surface 不调用 `memory.listIncludedMemoriesForRun` 驱动当前聊天 evidence。
-9. tool message 被隐藏或压缩后，Evidence UI 仍正确。
-10. temporary mode 不读取 structured memory、不写 suggestion、不生成 memory provided inclusion。
-11. tool 查询失败不写 fake inclusion。
-12. persistence / hydrate 失败有可观察错误，不静默表现为“没有 context”。
+### Phase 6: get_message_context
 
-## 测试矩阵
+目标：
 
-### Runtime reducer event 测试
+- `get_message_context` 使用 `threadId + messageId + before + after` 展开 projected transcript window。
 
-覆盖：
+验收：
 
-- `createDefaultAgentThreadRuntimeState` 初始 `contextInclusions: []`。
-- `context.inclusionsReplaced` 更新 state。
-- 旧 revision event 不覆盖新 state。
-- new run start 清理上一轮未绑定 run-level inclusions。
-- message truncate 删除被截断 turn/message 的 evidence。
+- 支持跨 thread 展开。
+- missing message 不写 inclusion。
+- tool result 给模型包含 bounded transcript。
+- UI 仍从 state projection 回显。
 
-### Snapshot / hydrate 恢复测试
+### Phase 7: get_trace_evidence
 
-覆盖：
+目标：
 
-- `AgentThreadDataSnapshot.runState.contextInclusions` hydrate 到 `thread.agent.contextInclusions`。
-- `deriveThreadBootstrapState` 保留 context inclusions。
-- `ThreadRuntimeProjector.hydrateFromThreadData` 不把 context 清空。
-- `readThreadDataOverlay` 把 live runtime `contextInclusions` 写回 overlay snapshot。
-- refresh/reopen 后 `ContextEvidencePanel` 仍有同一批 inclusions。
+- 按 runId/traceStepId/toolCallId/artifactId 查询 trace/artifact evidence。
 
-### Run start provided inclusion 测试
+验收：
 
-覆盖：
+- trace step retrieval。
+- toolCallId lookup。
+- missing blob no fake inclusion。
+- linked artifact inclusion。
 
-- `OpenworkMemoryContextPack.items` 转成 `mode: "provided"`。
-- structured item 生成 `sourceType: "memory"`。
-- file item 生成 `sourceType: "context_file"`。
-- generated id 稳定，refresh 不抖动。
-- `preview` 来自 frozen snapshot。
-- temporary mode 不生成 memory provided inclusion。
-- context pack diagnostics 不生成假 success inclusion。
+### Phase 8: turn/message-level evidence
 
-### Tool retrieved inclusion 测试
+目标：
 
-覆盖：
+- evidence 从 run-level 迁移到 turn/message-level，历史消息附近可恢复显示。
 
-- `search_memory` 成功后写 `mode: "retrieved"`。
-- `get_message_context` 成功后写 `sourceType: "history_message"`。
-- 查询失败返回结构化错误且不写 state。
-- 空结果不写 unavailable inclusion。
-- 重复检索同一 source upsert，不重复刷屏。
+验收：
 
-### Renderer 边界测试
+- 新 run 不清掉 message-bound evidence。
+- 历史 thread hydrate 后 evidence 在对应消息附近。
+- truncate/edit 清理或标记 unavailable。
 
-覆盖：
+### Phase 9: memory suggestion evidence binding
 
-- `ContextEvidencePanel` 只从 `thread.agent.contextInclusions` 取数据。
-- 主聊天 `ChatContainer` / `LauncherAiConversation` 不挂 `IncludedMemoriesPanel`。
-- 主聊天回显不调用 `memory.listIncludedMemoriesForRun`。
-- tool message 隐藏或压缩后，Evidence UI 仍显示 state 中的 evidence。
-- unavailable evidence 显示明确状态，不猜 fallback 文案。
+目标：
 
-### Long-term memory safety 测试
+- suggestion reviewPayload 绑定 evidence refs。
+- accept 后 AgentMemory.metadata 保留来源。
+- temporary mode 不写 suggestion。
 
-覆盖：
+验收：
 
-- `propose_memory` 只创建 `AgentMemorySuggestion`。
-- 用户接受前不会写 active `AgentMemory`。
-- suggestion `reviewPayload` 能包含 evidence id。
-- 接受 suggestion 后 `AgentMemory.metadata` 保留来源信息。
+- suggestion 来源可见。
+- 用户接受前不写 active memory。
+- 接受后 metadata 保留 source。
+- temporary mode 不暴露 suggestion tool。
+
+## 10. 最小测试矩阵
+
+### ProjectionQueue
+
+- coalesce by key。
+- debounce drain。
+- flush drains pending jobs。
+- onError called and queue continues。
+
+### Runtime state
+
+- default state includes `contextInclusions: []`。
+- `context.inclusionsReplaced` updates state。
+- snapshot/hydrate restores inclusions。
+- new run clears unbound run-level inclusions。
+- resume preserves interrupted run inclusions。
+- same-run retrieval inclusions accumulate。
+- truncate/edit marks related evidence unavailable。
+
+### Provided context
+
+- context pack items become provided inclusions。
+- structured memory creates memory provided inclusion。
+- context file creates context_file provided inclusion。
+- temporary mode creates no memory provided inclusion。
+
+### ThreadDigest
+
+- projection creates ready digest。
+- projection updates through latest message seq。
+- FTS searches summary/topics/decisions/openQuestions。
+- projection failure is diagnostic and not searchable。
+- empty thread stays non-ready/no fake digest。
+
+### search_history
+
+- routes through ThreadDigest first。
+- returns concrete message bodies to model。
+- writes thread_digest/history_message inclusions only for successful results。
+- scoped thread search works。
+- missing digest path does not write fake digest inclusion。
+- empty result writes no inclusion。
+
+### get_message_context
+
+- expands around focus message。
+- supports cross-thread focus messages。
+- missing message writes no inclusion。
+- result content reaches model。
+
+### get_trace_evidence
+
+- retrieves trace step by traceStepId。
+- retrieves trace step by toolCallId。
+- missing trace/blob writes no fake inclusion。
+- linked artifact writes artifact inclusion only when content is provided。
+
+### Renderer
+
+- main chat does not mount `IncludedMemoriesPanel`。
+- main chat does not call `memory.listIncludedMemoriesForRun`。
+- `ContextEvidencePanel` reads `thread.agent.contextInclusions`。
+- tool renderer shell exists for retrieval tools。
+- tool result hidden/compressed still leaves evidence visible。
+- `MemoryReviewPanel` displays suggestion evidence refs from reviewPayload。
+
+### Long-term memory
+
+- suggestion creation does not write active memory。
+- accept suggestion writes active memory with source metadata。
+- reviewPayload parser rejects non-schema evidence refs。
+- temporary mode writes no suggestion。
+
+## 11. 完成定义
+
+V2 完成必须同时满足：
+
+1. 当前代码实现了 Phase 1-9 的 owner、state、tool、projection、renderer 和 memory safety 边界。
+2. 本文档与当前实现一致，不保留早期冲突草案。
+3. targeted tests 覆盖所有核心验收项。
+4. `npm run typecheck` 通过。
+5. guardrails 通过。
+6. code-review 无阻塞 finding。
+7. 未把主聊天 evidence UI 回退到 tool message、live memory inclusion 表或 renderer-only state。
