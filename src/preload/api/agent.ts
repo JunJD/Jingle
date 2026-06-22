@@ -2,6 +2,7 @@ import type { AgentThreadEventBatch, AgentThreadReplayOptions } from "@shared/ag
 import type { HITLDecision } from "@shared/hitl"
 import type { AgentInvokeMessage } from "@shared/message-content"
 import type { PermissionModeName } from "@shared/permission-mode"
+import type { AgentFollowUpAction } from "@shared/agent-follow-up"
 import { invokeIpc, ipcRenderer } from "../ipc"
 
 function getThreadEventsChannel(threadId: string): string {
@@ -19,9 +20,17 @@ export const agentApi = {
     message: AgentInvokeMessage,
     modelId?: string,
     permissionMode?: PermissionModeName,
-    temporaryMode?: boolean
+    temporaryMode?: boolean,
+    followUpAction?: AgentFollowUpAction
   ): void => {
-    ipcRenderer.send("agent:invoke", { threadId, message, modelId, permissionMode, temporaryMode })
+    ipcRenderer.send("agent:invoke", {
+      threadId,
+      message,
+      modelId,
+      permissionMode,
+      temporaryMode,
+      followUpAction
+    })
   },
   editLastUserMessageAndInvoke: (
     threadId: string,

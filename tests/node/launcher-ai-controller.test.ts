@@ -13,6 +13,7 @@ function createControllerHarness(input?: {
   draftWorkspacePath?: string | null
   invokeGate?: Promise<void>
   invokeResult?: boolean
+  isBusy?: boolean
   resumeResult?: boolean
   threadId?: string | null
 }): {
@@ -115,7 +116,7 @@ function createControllerHarness(input?: {
       goToNextThread: async () => null,
       goToPreviousThread: async () => null,
       hasPendingApproval: false,
-      isBusy: false,
+      isBusy: input?.isBusy ?? false,
       setNavigationError: (error) => {
         navigationErrors.push(error)
       },
@@ -255,6 +256,21 @@ test("launcher AI controller clears local composer after selected thread invoke 
   const messageInput: ComposerMessageInput = {
     refs: [],
     text: "继续"
+  }
+
+  harness.controller.runPrimaryAction(messageInput)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(harness.createdThreads, [])
+  assert.deepEqual(harness.invoked, [{ input: messageInput, threadId: "existing-thread" }])
+  assert.deepEqual(harness.localComposerTexts, [""])
+})
+
+test("launcher AI controller allows follow-up submit while the selected thread is running", async () => {
+  const harness = createControllerHarness({ isBusy: true, threadId: "existing-thread" })
+  const messageInput: ComposerMessageInput = {
+    refs: [],
+    text: "继续补一条"
   }
 
   harness.controller.runPrimaryAction(messageInput)

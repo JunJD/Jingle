@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { PromptInput, PromptInputAction, PromptInputTextarea } from "@/components/agent-ui"
 import { LauncherActionOverlay } from "@/features/launcher-actions/LauncherActionOverlay"
 import { ComposerApprovalPrompt } from "@/components/chat/ComposerApprovalPrompt"
+import { ComposerFollowUpQueue } from "@/components/chat/ComposerFollowUpQueue"
 import { useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { formatShortcutChord } from "@/shortcuts/format-shortcut"
 import { AI_LAUNCHER_PLUGIN_ID, AI_THREAD_SOURCE } from "@shared/launcher-ai"
@@ -33,7 +34,7 @@ import { useLauncherAiThreadNavigation } from "./useLauncherAiThreadNavigation"
 import { useHistoryShellStore } from "@/lib/history-shell-store"
 import { useI18n } from "@/lib/i18n"
 import { useAgent } from "@/lib/use-agent"
-import { useThreadContext, useThreadSelector } from "@/lib/thread-context"
+import { useThreadContext, useThreadControl, useThreadSelector } from "@/lib/thread-context"
 import { updateAgentThreadModel, updateAgentThreadPermissionMode } from "@/lib/agent-control"
 import { cn } from "@/lib/utils"
 import { useDisableTabNavigation } from "@/lib/use-disable-tab-navigation"
@@ -43,6 +44,7 @@ import { isThreadPinned } from "@shared/thread-sidebar"
 import { useWorkspaceFileMentions, type ComposerAreaHandle } from "@/composer-area"
 import { hasComposerMessageInputContent, type ComposerMessageInput } from "@shared/message-content"
 import { shouldGoHomeFromComposerKeyDown } from "./composer-keyboard"
+import type { AgentFollowUpQueueItem } from "@shared/agent-thread-runtime"
 import type { Subagent, Todo } from "@/types"
 import type { LauncherSearchResult } from "@shared/launcher-search"
 
@@ -93,6 +95,7 @@ export function LauncherAiPage(): React.JSX.Element {
     removeSelectionRef
   } = useAssistantSelectionRefs(threadId)
   const threadContext = useThreadContext()
+  const threadControl = useThreadControl(threadId)
   const draftTarget = threadNavigation.target?.kind === "draft" ? threadNavigation.target : null
   const {
     branchThread: createBranchThread,
@@ -142,6 +145,7 @@ export function LauncherAiPage(): React.JSX.Element {
     threadId,
     (state) => state?.agent.pendingApproval ?? null
   )
+  const followUpQueue = useThreadSelector(threadId, (state) => state?.agent.followUpQueue ?? null)
   const currentModelId =
     useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null) ??
     draftTarget?.modelId ??
@@ -180,8 +184,9 @@ export function LauncherAiPage(): React.JSX.Element {
   }, [clearAllAttachments, clearSelectionRefs])
   const hasPendingApproval = Boolean(pendingApproval)
   const threadError = agentError ?? navigationError
-  const primaryActionDisabled =
-    isBusy || hasPendingApproval || !hasComposerMessageInputContent(messageInput)
+  const canSubmitComposerDraft = !hasPendingApproval && hasComposerMessageInputContent(messageInput)
+  const primaryActionDisabled = !canSubmitComposerDraft
+  const showStopAction = canStop && !canSubmitComposerDraft
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showModelPicker, setShowModelPicker] = useState(false)
   const hasThreadMessages = useThreadSelector(
@@ -227,6 +232,9 @@ export function LauncherAiPage(): React.JSX.Element {
     !pendingApproval && (query.includes("\n") || hasAttachmentDraft || hasAssistantSelectionRefs)
   const shellConfig = getAiShellConfig(surface.shellConfig)
   const isApprovalPending = Boolean(pendingApproval)
+  const showFollowUpQueue = Boolean(
+    !isApprovalPending && threadId && followUpQueue && followUpQueue.count > 0
+  )
   const controller = useMemo(
     () =>
       createLauncherAiController({
@@ -354,6 +362,52 @@ export function LauncherAiPage(): React.JSX.Element {
   const submitCurrentInput = useCallback((): void => {
     runPrimaryAction(getCurrentMessageInput())
   }, [getCurrentMessageInput, runPrimaryAction])
+  const editQueuedFollowUp = useCallback(
+    (item: AgentFollowUpQueueItem): void => {
+      if (!threadControl) {
+        return
+      }
+
+      const edited = threadControl.agent.takeFollowUp(item.requestId)
+      if (!edited) {
+        return
+      }
+
+      clearTransientInputState()
+      setQuery(edited.messageInput.text)
+      setMentionQuery(null)
+      focusComposerOnNextFrame()
+    },
+    [clearTransientInputState, focusComposerOnNextFrame, setQuery, threadControl]
+  )
+  const deleteQueuedFollowUp = useCallback(
+    (item: AgentFollowUpQueueItem): void => {
+      if (!threadControl) {
+        return
+      }
+
+      threadControl.agent.removeFollowUp(item.requestId)
+    },
+    [threadControl]
+  )
+  const steerQueuedFollowUp = useCallback(
+    async (item: AgentFollowUpQueueItem): Promise<void> => {
+      if (!threadControl) {
+        return
+      }
+
+      const queued = threadControl.agent.takeFollowUp(item.requestId)
+      if (!queued) {
+        return
+      }
+
+      const didInvoke = await agentControl.invoke(queued.messageInput, { followUpAction: "steer" })
+      if (!didInvoke) {
+        threadControl.agent.restoreFollowUp(queued)
+      }
+    },
+    [agentControl, threadControl]
+  )
   const submitApprovalRejectFeedback = useCallback((): void => {
     if (!pendingApproval) {
       return
@@ -1069,10 +1123,19 @@ export function LauncherAiPage(): React.JSX.Element {
                     />
                   </div>
                 ) : null}
+                {!isApprovalPending && threadId && followUpQueue ? (
+                  <ComposerFollowUpQueue
+                    className="mx-auto w-full max-w-[var(--launcher-ai-content-max-width)]"
+                    onDeleteQueuedFollowUp={deleteQueuedFollowUp}
+                    onEditQueuedFollowUp={editQueuedFollowUp}
+                    onSteerQueuedFollowUp={steerQueuedFollowUp}
+                    queue={followUpQueue}
+                  />
+                ) : null}
                 <PromptInput
                   className={cn(
                     "mx-auto w-full max-w-[var(--launcher-ai-content-max-width)] px-[var(--ow-space-2)] py-[var(--ow-space-1)]",
-                    isApprovalPending && "rounded-t-none border-t-0"
+                    (isApprovalPending || showFollowUpQueue) && "rounded-t-none border-t-0"
                   )}
                   style={{ backgroundColor: "var(--background-elevated)" }}
                   isLoading={isBusy}
@@ -1202,7 +1265,7 @@ export function LauncherAiPage(): React.JSX.Element {
                         />
                       ) : null}
 
-                      {canStop && !isApprovalPending ? (
+                      {showStopAction && !isApprovalPending ? (
                         <PromptInputAction
                           onClick={() => {
                             void handleStop()

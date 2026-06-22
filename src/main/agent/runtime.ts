@@ -47,6 +47,7 @@ import {
 } from "../services/native-extensions"
 import { createExtensionAiRuntime } from "./extension-ai-runtime"
 import { createJingleTodoMiddleware } from "./jingle-todo-middleware"
+import { createRunSteeringMiddleware, type AgentRunSteeringBuffer } from "./run-steering"
 import { buildAgentRuntimeTraceConfig } from "../observability"
 import { createLocalAgentTraceCallback } from "../observability/local-agent-trace-callback"
 import type { PermissionModeName } from "@shared/permission-mode"
@@ -153,6 +154,7 @@ export interface CreateAgentRuntimeOptions {
   onLoadedAiCapabilitiesChanged?: (
     change: LoadedExtensionAiCapabilitiesChange
   ) => Promise<void> | void
+  steeringBuffer?: AgentRunSteeringBuffer
   /** Workspace path - REQUIRED for agent to operate on files */
   workspacePath: string
 }
@@ -342,6 +344,7 @@ The workspace root is: ${workspacePath}`
         threadId,
         workspaceIdentity: resolvedOpenworkMemoryWorkspaceIdentity
       }),
+      ...(options.steeringBuffer ? [createRunSteeringMiddleware(options.steeringBuffer)] : []),
       ...(rootOpenworkMemoryRuntime ? [rootOpenworkMemoryRuntime.middleware] : []),
       ...(options.workspaceService
         ? [

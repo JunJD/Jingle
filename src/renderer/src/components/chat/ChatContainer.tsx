@@ -2,7 +2,7 @@ import { memo, useRef, useEffect, useCallback, useMemo, useState } from "react"
 import { Brain, Folder, Send, Shield, Square } from "lucide-react"
 import type { VListHandle } from "virtua"
 import { PromptInput, PromptInputAction, PromptInputTextarea } from "@/components/agent-ui"
-import { useThreadContext, useThreadSelector } from "@/lib/thread-context"
+import { useThreadContext, useThreadControl, useThreadSelector } from "@/lib/thread-context"
 import type { AgentRunValidator, EditLastUserMessageAndInvokeInput } from "@/lib/agent-control"
 import { useAgent } from "@/lib/use-agent"
 import { Messages } from "./Messages"
@@ -15,6 +15,7 @@ import { selectWorkspaceFolder } from "@/lib/workspace-utils"
 import { ChatTodos } from "./ChatTodos"
 import { ChatJumpToLatestButton } from "./ChatJumpToLatestButton"
 import { ComposerApprovalPrompt } from "./ComposerApprovalPrompt"
+import { ComposerFollowUpQueue } from "./ComposerFollowUpQueue"
 import { ContextUsageIndicator } from "./ContextUsageIndicator"
 import { AgentErrorNotice } from "./AgentErrorNotice"
 import { useVirtualChatScrollIntent } from "./useVirtualChatScrollIntent"
@@ -28,6 +29,7 @@ import {
   type ComposerMessageInput,
   type ComposerMessageRef
 } from "@shared/message-content"
+import type { AgentFollowUpQueueItem } from "@shared/agent-thread-runtime"
 import type { HITLRequest, Todo } from "@/types"
 
 interface ChatContainerProps {
@@ -243,6 +245,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   useDisableTabNavigation(inputRef)
 
   const threadContext = useThreadContext()
+  const threadControl = useThreadControl(threadId)
   const tokenUsage = useThreadSelector(
     threadId,
     (state) => state?.agent.tokenUsage ?? EMPTY_TOKEN_USAGE
@@ -267,19 +270,31 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     threadId,
     (state) => state?.agent.pendingApproval ?? null
   )
-  const canInvoke =
-    hasComposerMessageInputContent({ refs: [], text: input }) && !isBusy && !pendingApproval
+  const followUpQueue = useThreadSelector(threadId, (state) => state?.agent.followUpQueue ?? null)
+  const composerAvailabilityInput = useMemo(
+    () => ({
+      refs: assistantSelectionRefs,
+      text: input
+    }),
+    [assistantSelectionRefs, input]
+  )
+  const canInvoke = hasComposerMessageInputContent(composerAvailabilityInput) && !pendingApproval
+  const showStopAction = canStop && !canInvoke
+  const showFollowUpQueue = Boolean(followUpQueue && followUpQueue.count > 0)
 
   useEffect(() => {
     inputRef.current?.focus()
   }, [threadId])
 
-  const invokeWithComposerRefs = useCallback(async (): Promise<boolean> => {
+  const getCurrentComposerMessageInput = useCallback((): ComposerMessageInput => {
     const composer = inputRef.current
-    const didInvoke = await invoke({
+    return {
       refs: [...(composer?.getRefs() ?? []), ...assistantSelectionRefs],
       text: composer?.getModelText() ?? input
-    })
+    }
+  }, [assistantSelectionRefs, input])
+  const invokeWithComposerRefs = useCallback(async (): Promise<boolean> => {
+    const didInvoke = await invoke(getCurrentComposerMessageInput())
     if (didInvoke) {
       setInput("")
       clearSelectionRefs()
@@ -287,7 +302,43 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     }
 
     return didInvoke
-  }, [assistantSelectionRefs, clearSelectionRefs, input, invoke])
+  }, [clearSelectionRefs, getCurrentComposerMessageInput, invoke])
+  const editQueuedFollowUp = useCallback(
+    (item: AgentFollowUpQueueItem): void => {
+      const edited = threadControl.agent.takeFollowUp(item.requestId)
+      if (!edited) {
+        return
+      }
+
+      setInput(edited.messageInput.text)
+      clearSelectionRefs()
+      setMentionQuery(null)
+      window.requestAnimationFrame(() => {
+        inputRef.current?.focus()
+      })
+    },
+    [clearSelectionRefs, threadControl]
+  )
+  const deleteQueuedFollowUp = useCallback(
+    (item: AgentFollowUpQueueItem): void => {
+      threadControl.agent.removeFollowUp(item.requestId)
+    },
+    [threadControl]
+  )
+  const steerQueuedFollowUp = useCallback(
+    async (item: AgentFollowUpQueueItem): Promise<void> => {
+      const queued = threadControl.agent.takeFollowUp(item.requestId)
+      if (!queued) {
+        return
+      }
+
+      const didInvoke = await invoke(queued.messageInput, { followUpAction: "steer" })
+      if (!didInvoke) {
+        threadControl.agent.restoreFollowUp(queued)
+      }
+    },
+    [invoke, threadControl]
+  )
   const retry = useCallback(
     async (retryInput: ComposerMessageInput): Promise<void> => {
       await invoke(retryInput)
@@ -355,58 +406,71 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
                 request={pendingApproval}
               />
             ) : (
-              <PromptInput
-                className="px-[var(--ow-space-4)] py-[var(--ow-space-4)]"
-                disabled={isBusy}
-                isLoading={isBusy}
-                maxHeight="200px"
-                minHeight="var(--ow-chat-composer-input-min-h)"
-                onSubmit={() => {
-                  void invokeWithComposerRefs()
-                }}
-                onValueChange={setInput}
-                value={input}
-              >
-                <div className="flex min-w-0 items-end gap-[var(--ow-gap-md)]">
-                  <PromptInputTextarea
-                    composerRef={inputRef}
-                    mode="composer"
-                    onMentionQueryChange={setMentionQuery}
-                    onKeyDown={handleKeyDown}
-                    placeholder={copy.chat.messagePlaceholder}
-                    sourceMentions={sourceMentions}
-                    workspaceFileMentions={workspaceFileMentionState.files}
-                    workspaceFileSearchEnabled={workspaceFileMentionState.searchEnabled}
-                    workspaceFileSearchIncomplete={workspaceFileMentionState.isIncomplete}
-                    workspaceFileSearchInProgress={workspaceFileMentionState.isSearching}
-                    className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
+              <div>
+                {followUpQueue ? (
+                  <ComposerFollowUpQueue
+                    onDeleteQueuedFollowUp={deleteQueuedFollowUp}
+                    onEditQueuedFollowUp={editQueuedFollowUp}
+                    onSteerQueuedFollowUp={steerQueuedFollowUp}
+                    queue={followUpQueue}
                   />
-                  <div className="flex h-[var(--ow-chat-composer-action-h)] shrink-0 items-center justify-center">
-                    {canStop ? (
-                      <PromptInputAction
-                        onClick={handleCancel}
-                        icon={<Square className="size-[var(--ow-icon-action)]" />}
-                        label={copy.launcher.aiStopLabel}
-                        className="size-[var(--ow-control-h-md)] bg-background-elevated"
-                      />
-                    ) : (
-                      <PromptInputAction
-                        type="submit"
-                        disabled={!canInvoke}
-                        icon={<Send className="size-[var(--ow-icon-action)]" />}
-                        label={copy.launcher.aiPrimaryLabel}
-                        className="size-[var(--ow-control-h-md)] bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
-                      />
-                    )}
+                ) : null}
+                <PromptInput
+                  className={`px-[var(--ow-space-4)] py-[var(--ow-space-4)] ${
+                    showFollowUpQueue ? "rounded-t-none border-t-0" : ""
+                  }`}
+                  disabled={Boolean(pendingApproval)}
+                  isLoading={isBusy}
+                  maxHeight="200px"
+                  minHeight="var(--ow-chat-composer-input-min-h)"
+                  onSubmit={() => {
+                    void invokeWithComposerRefs()
+                  }}
+                  onValueChange={setInput}
+                  value={input}
+                >
+                  <div className="flex min-w-0 items-end gap-[var(--ow-gap-md)]">
+                    <PromptInputTextarea
+                      composerRef={inputRef}
+                      mode="composer"
+                      onMentionQueryChange={setMentionQuery}
+                      onKeyDown={handleKeyDown}
+                      placeholder={copy.chat.messagePlaceholder}
+                      sourceMentions={sourceMentions}
+                      workspaceFileMentions={workspaceFileMentionState.files}
+                      workspaceFileSearchEnabled={workspaceFileMentionState.searchEnabled}
+                      workspaceFileSearchIncomplete={workspaceFileMentionState.isIncomplete}
+                      workspaceFileSearchInProgress={workspaceFileMentionState.isSearching}
+                      className="min-w-0 flex-1 resize-none bg-transparent px-0 py-0 [font-size:var(--ow-font-display)] text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
+                    />
+                    <div className="flex h-[var(--ow-chat-composer-action-h)] shrink-0 items-center justify-center">
+                      <div className="flex items-center gap-[var(--ow-gap-sm)]">
+                        {showStopAction ? (
+                          <PromptInputAction
+                            onClick={handleCancel}
+                            icon={<Square className="size-[var(--ow-icon-action)]" />}
+                            label={copy.launcher.aiStopLabel}
+                            className="size-[var(--ow-control-h-md)] bg-background-elevated"
+                          />
+                        ) : null}
+                        <PromptInputAction
+                          type="submit"
+                          disabled={!canInvoke}
+                          icon={<Send className="size-[var(--ow-icon-action)]" />}
+                          label={copy.launcher.aiPrimaryLabel}
+                          className="size-[var(--ow-control-h-md)] bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <AssistantSelectionReferencePill
-                  refs={assistantSelectionRefs}
-                  removable
-                  onClear={clearSelectionRefs}
-                  onRemove={removeSelectionRef}
-                />
-              </PromptInput>
+                  <AssistantSelectionReferencePill
+                    refs={assistantSelectionRefs}
+                    removable
+                    onClear={clearSelectionRefs}
+                    onRemove={removeSelectionRef}
+                  />
+                </PromptInput>
+              </div>
             )}
 
             <div className="flex items-center justify-between gap-[var(--ow-gap-lg)]">

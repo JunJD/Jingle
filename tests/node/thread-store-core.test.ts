@@ -167,6 +167,57 @@ test("thread subscriptions stay scoped to the matching thread id", () => {
   assert.equal(getThreadState(store, "thread-b").agent.permissionMode, DEFAULT_PERMISSION_MODE)
 })
 
+test("thread agent control owns local follow-up queue edits", () => {
+  const store = createThreadStore()
+  const control = store.getThreadControl("thread-a").agent
+  const first = control.enqueueFollowUp({
+    refs: [],
+    text: " first follow-up "
+  })
+  const second = control.enqueueFollowUp({
+    refs: [],
+    text: "second follow-up"
+  })
+
+  assert.deepEqual(getThreadState(store, "thread-a").agent.followUpQueue, {
+    count: 2,
+    items: [
+      {
+        messageInput: {
+          refs: [],
+          text: " first follow-up "
+        },
+        requestId: first.requestId,
+        text: "first follow-up"
+      },
+      {
+        messageInput: {
+          refs: [],
+          text: "second follow-up"
+        },
+        requestId: second.requestId,
+        text: "second follow-up"
+      }
+    ],
+    nextRequestId: first.requestId
+  })
+
+  assert.equal(control.takeFollowUp(first.requestId), first)
+  assert.deepEqual(getThreadState(store, "thread-a").agent.followUpQueue, {
+    count: 1,
+    items: [second],
+    nextRequestId: second.requestId
+  })
+
+  control.restoreFollowUp(first)
+  control.removeFollowUp(second.requestId)
+  assert.deepEqual(getThreadState(store, "thread-a").agent.followUpQueue, {
+    count: 1,
+    items: [first],
+    nextRequestId: first.requestId
+  })
+})
+
 test("artifact changed events update source artifacts without rewriting open tab facts", () => {
   const store = createThreadStore()
   const localControl = store.getThreadControl("thread-a").local
@@ -300,13 +351,12 @@ test("thread data snapshot and events update thread state through store reducer"
         pendingApproval: null,
         runId: activeRun.runId,
         todos: [],
-        workspacePath: null
+        workspacePath: "/tmp/launcher-ai-first-send"
       },
       thread: {
         metadata: {
           model: "openai:gpt-4o",
-          permissionMode: "auto",
-          workspacePath: "/tmp/launcher-ai-first-send"
+          permissionMode: "auto"
         },
         status: "idle",
         thread_id: "thread-a",

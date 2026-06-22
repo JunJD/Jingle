@@ -33,6 +33,7 @@ import {
   normalizeOpenworkMemorySettings,
   type OpenworkMemorySettings
 } from "@shared/openwork-memory"
+import { DEFAULT_AGENT_FOLLOW_UP_MODE, normalizeAgentFollowUpMode } from "@shared/agent-follow-up"
 
 export interface PersistedWindowState {
   width: number
@@ -63,6 +64,7 @@ interface SettingsStoreShape {
 
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
   desktopAutomationAllowlist: [],
+  followUpMode: DEFAULT_AGENT_FOLLOW_UP_MODE,
   skillSources: [],
   locale: DEFAULT_APP_LOCALE
 }
@@ -399,6 +401,7 @@ export function getAgentConfig(): AgentConfig {
     desktopAutomationAllowlist: normalizeDesktopAutomationAllowlist(
       stored?.desktopAutomationAllowlist
     ),
+    followUpMode: normalizeAgentFollowUpMode(stored?.followUpMode),
     skillSources: normalizePathList(stored?.skillSources),
     locale: normalizeAppLocale(stored?.locale)
   }
@@ -413,6 +416,9 @@ export function setAgentConfig(updates: Partial<AgentConfig>): AgentConfig {
             updates.desktopAutomationAllowlist
           )
         }
+      : {}),
+    ...(updates.followUpMode
+      ? { followUpMode: normalizeAgentFollowUpMode(updates.followUpMode) }
       : {}),
     ...(updates.skillSources ? { skillSources: normalizePathList(updates.skillSources) } : {}),
     ...(updates.locale ? { locale: normalizeAppLocale(updates.locale) } : {})

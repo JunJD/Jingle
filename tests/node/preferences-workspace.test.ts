@@ -40,3 +40,17 @@ test("global workspace defaults to the Jingle documents folder", async () => {
     rmSync(openworkHome, { force: true, recursive: true })
   }
 })
+
+test("agent config defaults follow-up behavior to queue and normalizes updates", async () => {
+  const openworkHome = mkdtempSync(join(tmpdir(), "jingle-agent-config-store-"))
+  process.env.OPENWORK_HOME = openworkHome
+
+  try {
+    const preferences = await import("../../src/main/preferences")
+    assert.equal(preferences.getAgentConfig().followUpMode, "queue")
+    assert.equal(preferences.setAgentConfig({ followUpMode: "steer" }).followUpMode, "steer")
+  } finally {
+    restoreEnvValue("OPENWORK_HOME", originalOpenworkHome)
+    rmSync(openworkHome, { force: true, recursive: true })
+  }
+})

@@ -76,6 +76,10 @@ export class AgentController {
       return
     }
 
+    if (await this.handleRunningFollowUp(params)) {
+      return
+    }
+
     void this.agentService.invoke(params, this.createStreamSink(params.threadId), {
       onRunAccepted: () => this.agentThreadRunner.prepareInvoke(params.threadId, params.message)
     })
@@ -122,6 +126,36 @@ export class AgentController {
 
   private createThreadEventsChannel(threadId: string): string {
     return `agent:thread-events:${threadId}`
+  }
+
+  private async handleRunningFollowUp(params: AgentInvokeParams): Promise<boolean> {
+    const runtimeState = await this.agentThreadRunner.readThreadState(params.threadId)
+    if (runtimeState.activeRun?.status !== "running") {
+      return false
+    }
+
+    if (params.followUpAction !== "steer") {
+      await this.agentThreadRunner.handlePayload(params.threadId, {
+        type: "error",
+        ...buildIpcErrorEvent(
+          "agent:invoke",
+          new Error("Agent run is already in progress; follow-ups must be queued locally or steered")
+        )
+      })
+      return true
+    }
+
+    const appliedSteer = this.agentService.steerActiveRun(params.threadId, params.message)
+    if (!appliedSteer) {
+      await this.agentThreadRunner.handlePayload(params.threadId, {
+        type: "error",
+        ...buildIpcErrorEvent(
+          "agent:invoke",
+          new Error("Agent run is not available for steering")
+        )
+      })
+    }
+    return true
   }
 
   private createStreamSink(threadId: string): AgentStreamSink {

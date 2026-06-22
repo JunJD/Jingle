@@ -10,6 +10,7 @@ import {
   THREAD_PERMISSION_MODE_METADATA_KEY,
   type PermissionModeName
 } from "@shared/permission-mode"
+import type { AgentFollowUpAction } from "@shared/agent-follow-up"
 import type { ThreadContextValue } from "./thread-context"
 
 export interface AgentRunValidationInput {
@@ -26,7 +27,10 @@ export interface AgentControl {
     input: EditLastUserMessageAndInvokeInput,
     options?: { threadId?: string }
   ) => Promise<boolean>
-  invoke: (input: ComposerMessageInput, options?: { threadId?: string }) => Promise<boolean>
+  invoke: (
+    input: ComposerMessageInput,
+    options?: { followUpAction?: AgentFollowUpAction; threadId?: string }
+  ) => Promise<boolean>
   resume: (decision: HITLDecision) => Promise<boolean>
   stop: () => Promise<void>
 }
@@ -51,6 +55,8 @@ export interface UpdateAgentThreadPermissionModeInput {
 }
 
 export interface InvokeAgentThreadInput {
+  followUpAction?: AgentFollowUpAction
+  onQueueFollowUp?: (messageInput: ComposerMessageInput) => void
   onLocalError?: (error: string | null) => void
   temporaryMode?: boolean
   threadContext: Pick<ThreadContextValue, "awaitThreadRuntime" | "getAgentCommandState">
@@ -131,9 +137,14 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
       throw new Error(`Agent thread state is not initialized: ${input.threadId}`)
     }
 
-    if (agentState.activeRun?.status === "running" || agentState.pendingApproval) {
+    if (agentState.pendingApproval) {
       return false
     }
+
+    const isRunningFollowUp = agentState.activeRun?.status === "running"
+    const followUpMode = isRunningFollowUp
+      ? (input.followUpAction ?? (await window.api.settings.getAgentConfig()).followUpMode)
+      : undefined
 
     const validationError = input.validateRun?.({
       message,
@@ -148,6 +159,17 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
 
     input.onLocalError?.(null)
 
+    if (isRunningFollowUp && followUpMode === "queue") {
+      if (!input.onQueueFollowUp) {
+        throw new Error("Agent follow-up queue control is not available")
+      }
+      input.onQueueFollowUp(messageInput)
+      return true
+    }
+
+    const followUpAction: AgentFollowUpAction | undefined =
+      followUpMode === "steer" ? "steer" : undefined
+
     window.api.agent.invoke(
       input.threadId,
       {
@@ -157,7 +179,8 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
       },
       agentState.currentModel,
       agentState.permissionMode,
-      input.temporaryMode ?? false
+      input.temporaryMode ?? false,
+      followUpAction
     )
 
     return true

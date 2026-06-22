@@ -55,7 +55,8 @@ test("parseAgentInvokeParams trims routing identifiers and preserves message con
       }
     },
     modelId: "  gpt-5  ",
-    permissionMode: "auto"
+    permissionMode: "auto",
+    followUpAction: "steer"
   })
 
   assert.deepEqual(parsed, {
@@ -105,7 +106,8 @@ test("parseAgentInvokeParams trims routing identifiers and preserves message con
       }
     },
     modelId: "gpt-5",
-    permissionMode: "auto"
+    permissionMode: "auto",
+    followUpAction: "steer"
   })
 })
 
@@ -126,6 +128,26 @@ test("parseAgentResumeParams requires request_id at the IPC boundary", () => {
       assert.deepEqual(error.issues, [
         "command.resume.request_id: Invalid input: expected string, received undefined"
       ])
+      return true
+    }
+  )
+})
+
+test("parseAgentInvokeParams rejects queue as a main-process follow-up action", () => {
+  assert.throws(
+    () =>
+      parseAgentInvokeParams({
+        threadId: "thread-1",
+        message: {
+          id: "message-1",
+          content: "hello"
+        },
+        followUpAction: "queue"
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof IpcSchemaValidationError)
+      assert.equal(error.channel, "agent:invoke")
+      assert.deepEqual(error.issues, ['followUpAction: Invalid input: expected "steer"'])
       return true
     }
   )
