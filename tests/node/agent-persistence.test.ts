@@ -697,7 +697,23 @@ test("personal memory suggestions require acceptance before becoming active memo
     content: "User prefers concise implementation notes.",
     reason: "The user asked for developer-oriented documents.",
     reviewPayload: {
-      evidenceIds: ["ctx:run-memory:retrieved:history_message:thread-memory:message-1"]
+      evidenceIds: ["ctx:run-memory:retrieved:history_message:thread-memory:message-1"],
+      evidenceRefs: [
+        {
+          id: "ctx:run-memory:retrieved:history_message:thread-memory:message-1",
+          mode: "retrieved",
+          preview: "The user asked for developer-oriented documents.",
+          sourceId: "message-1",
+          sourceType: "history_message",
+          target: {
+            messageId: "message-1",
+            threadId,
+            type: "history_message"
+          },
+          threadId,
+          title: "user message"
+        }
+      ]
     },
     scope: "global",
     sourceRunId: runId,
@@ -714,7 +730,23 @@ test("personal memory suggestions require acceptance before becoming active memo
   assert.equal(pendingSuggestions.length, 1)
   assert.equal(pendingSuggestions[0].suggestionId, suggestion.suggestionId)
   assert.deepEqual(pendingSuggestions[0].reviewPayload, {
-    evidenceIds: ["ctx:run-memory:retrieved:history_message:thread-memory:message-1"]
+    evidenceIds: ["ctx:run-memory:retrieved:history_message:thread-memory:message-1"],
+    evidenceRefs: [
+      {
+        id: "ctx:run-memory:retrieved:history_message:thread-memory:message-1",
+        mode: "retrieved",
+        preview: "The user asked for developer-oriented documents.",
+        sourceId: "message-1",
+        sourceType: "history_message",
+        target: {
+          messageId: "message-1",
+          threadId,
+          type: "history_message"
+        },
+        threadId,
+        title: "user message"
+      }
+    ]
   })
   assert.equal(activeMemoriesBeforeAcceptance.length, 0)
 
@@ -728,6 +760,22 @@ test("personal memory suggestions require acceptance before becoming active memo
   assert.equal(memory.source, "agent_suggestion")
   assert.deepEqual(memory.metadata?.evidenceIds, [
     "ctx:run-memory:retrieved:history_message:thread-memory:message-1"
+  ])
+  assert.deepEqual(memory.metadata?.evidenceRefs, [
+    {
+      id: "ctx:run-memory:retrieved:history_message:thread-memory:message-1",
+      mode: "retrieved",
+      preview: "The user asked for developer-oriented documents.",
+      sourceId: "message-1",
+      sourceType: "history_message",
+      target: {
+        messageId: "message-1",
+        threadId,
+        type: "history_message"
+      },
+      threadId,
+      title: "user message"
+    }
   ])
   assert.equal(activeMemories.length, 1)
   assert.equal(activeMemories[0].memoryId, memory.memoryId)

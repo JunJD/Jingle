@@ -2,6 +2,7 @@ import { createMiddleware, tool, type AgentMiddleware, type ToolRuntime } from "
 import { z } from "zod/v4"
 import type {
   AgentContextInclusion,
+  OpenworkMemoryEvidenceRef,
   OpenworkMemoryContextItem,
   OpenworkMemoryContextPack,
   OpenworkMemoryScope,
@@ -58,6 +59,35 @@ const suggestPersonalMemorySchema = z
 
 type OpenworkMemoryToolState = {
   contextInclusions?: AgentContextInclusion[]
+}
+
+function buildSuggestionEvidenceRefs(
+  contextInclusions: AgentContextInclusion[] | undefined
+): OpenworkMemoryEvidenceRef[] {
+  const refs: OpenworkMemoryEvidenceRef[] = []
+  const seenIds = new Set<string>()
+
+  for (const inclusion of contextInclusions ?? []) {
+    if (inclusion.availability !== "available" || inclusion.mode === "provided") {
+      continue
+    }
+    if (seenIds.has(inclusion.id)) {
+      continue
+    }
+    seenIds.add(inclusion.id)
+    refs.push({
+      id: inclusion.id,
+      mode: inclusion.mode,
+      preview: inclusion.preview,
+      sourceId: inclusion.sourceId,
+      sourceType: inclusion.sourceType,
+      target: inclusion.target,
+      threadId: inclusion.threadId,
+      title: inclusion.title
+    })
+  }
+
+  return refs
 }
 
 function groupItems(
@@ -128,16 +158,24 @@ export function createOpenworkMemoryMiddleware(
   options: CreateOpenworkMemoryMiddlewareOptions
 ): OpenworkMemoryRuntime {
   const suggestPersonalMemoryTool =
-    options.mode === "root" && options.allowSuggestions
+    options.mode === "root" && options.allowSuggestions && !options.temporaryMode
       ? tool(
           async (input, runtime: ToolRuntime<OpenworkMemoryToolState>) => {
             const parsed = suggestPersonalMemorySchema.parse(input)
-            const evidenceIds = runtime.state.contextInclusions?.map((entry) => entry.id) ?? []
+            const evidenceRefs = buildSuggestionEvidenceRefs(runtime.state.contextInclusions)
+            const evidenceIds = evidenceRefs.map((entry) => entry.id)
             await options.service.createSuggestion(
               {
                 content: parsed.content,
                 reason: parsed.reason ?? null,
-                ...(evidenceIds.length > 0 ? { reviewPayload: { evidenceIds } } : {}),
+                ...(evidenceRefs.length > 0
+                  ? {
+                      reviewPayload: {
+                        evidenceIds,
+                        evidenceRefs
+                      }
+                    }
+                  : {}),
                 scope: parsed.scope as OpenworkMemoryScope,
                 sourceRunId: getRunIdFromToolRuntime(runtime) ?? options.runId,
                 threadId: options.threadId,

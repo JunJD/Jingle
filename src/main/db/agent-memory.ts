@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client"
 import { randomUUID } from "crypto"
+import { readOpenworkMemoryEvidenceRefsFromReviewPayload } from "@shared/openwork-memory"
 import type {
   AcceptOpenworkMemorySuggestionInput,
   CreateOpenworkMemoryInput,
@@ -289,6 +290,9 @@ export async function acceptAgentMemorySuggestion(
       workspaceKey: input.workspaceKey !== undefined ? input.workspaceKey : suggestion.workspaceKey
     })
     const evidenceIds = readSuggestionReviewPayloadEvidenceIds(suggestion.reviewPayload)
+    const evidenceRefs = readOpenworkMemoryEvidenceRefsFromReviewPayload(
+      parseJsonRecord(suggestion.reviewPayload)
+    )
     const memory = await tx.agentMemory.create({
       data: {
         memoryId: randomUUID(),
@@ -303,6 +307,7 @@ export async function acceptAgentMemorySuggestion(
         metadata: serializeJsonValue({
           acceptedSuggestionId: suggestion.suggestionId,
           ...(evidenceIds.length > 0 ? { evidenceIds } : {}),
+          ...(evidenceRefs.length > 0 ? { evidenceRefs } : {}),
           sourceRunId: suggestion.sourceRunId,
           threadId: suggestion.threadId
         })

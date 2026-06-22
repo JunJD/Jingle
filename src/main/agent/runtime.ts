@@ -277,7 +277,6 @@ The workspace root is: ${workspacePath}`
     useOpenworkMemory &&
     !options.openworkMemoryTemporaryMode &&
     openworkMemoryService.getSettings().useMemory === true
-  const allowOpenworkMemorySearch = allowOpenworkMemorySuggestions
   const openworkMemoryWorkspaceIdentity =
     options.openworkMemoryContextPack?.workspaceIdentity ?? options.openworkMemoryWorkspaceIdentity
   const resolvedOpenworkMemoryWorkspaceIdentity = openworkMemoryWorkspaceIdentity ?? {
@@ -294,7 +293,7 @@ The workspace root is: ${workspacePath}`
         mode: "root",
         runId,
         service: openworkMemoryService,
-        temporaryMode: false,
+        temporaryMode: options.openworkMemoryTemporaryMode === true,
         threadId,
         workspaceIdentity: resolvedOpenworkMemoryWorkspaceIdentity
       })
@@ -337,11 +336,8 @@ The workspace root is: ${workspacePath}`
     return [
       ...createSharedAgentLoopMiddleware(),
       createAgentContextInclusionMiddleware({
-        allowMemorySearch: allowOpenworkMemorySearch,
-        memoryService: openworkMemoryService,
         runId,
-        threadId,
-        workspaceIdentity: resolvedOpenworkMemoryWorkspaceIdentity
+        threadId
       }),
       ...(rootOpenworkMemoryRuntime ? [rootOpenworkMemoryRuntime.middleware] : []),
       ...(options.workspaceService
@@ -376,7 +372,7 @@ The workspace root is: ${workspacePath}`
           mode: "subagent",
           runId,
           service: openworkMemoryService,
-          temporaryMode: false,
+          temporaryMode: options.openworkMemoryTemporaryMode === true,
           threadId,
           workspaceIdentity: resolvedOpenworkMemoryWorkspaceIdentity
         })
