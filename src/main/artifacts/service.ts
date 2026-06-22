@@ -50,6 +50,14 @@ export class ArtifactsService {
     return listArtifacts(threadId)
   }
 
+  get(artifactId: string): Promise<ArtifactRecord | null> {
+    return getArtifact(artifactId)
+  }
+
+  listByToolCallId(input: { runId?: string; toolCallId: string }): Promise<ArtifactRecord[]> {
+    return listArtifactsByToolCallId(input)
+  }
+
   open(artifactId: string, action?: ArtifactActionId): Promise<ArtifactActionResolution> {
     return openArtifact(artifactId, action)
   }
@@ -213,16 +221,22 @@ function hasArtifactChanges(
 }
 
 async function getArtifactOrThrow(artifactId: string): Promise<ArtifactRecord> {
+  const artifact = await getArtifact(artifactId)
+
+  if (!artifact) {
+    throw new Error(`Artifact not found: ${artifactId}`)
+  }
+
+  return artifact
+}
+
+export async function getArtifact(artifactId: string): Promise<ArtifactRecord | null> {
   const prisma = getPrismaClient()
   const row = await prisma.artifact.findUnique({
     where: { artifactId }
   })
 
-  if (!row) {
-    throw new Error(`Artifact not found: ${artifactId}`)
-  }
-
-  return decodeArtifactRecord(mapArtifactModel(row))
+  return row ? decodeArtifactRecord(mapArtifactModel(row)) : null
 }
 
 export async function listArtifacts(threadId: string): Promise<ArtifactRecord[]> {
@@ -233,6 +247,24 @@ export async function listArtifacts(threadId: string): Promise<ArtifactRecord[]>
     },
     where: {
       threadId
+    }
+  })
+
+  return rows.map((row) => decodeArtifactRecord(mapArtifactModel(row)))
+}
+
+export async function listArtifactsByToolCallId(input: {
+  runId?: string
+  toolCallId: string
+}): Promise<ArtifactRecord[]> {
+  const prisma = getPrismaClient()
+  const rows = await prisma.artifact.findMany({
+    orderBy: {
+      createdAt: "desc"
+    },
+    where: {
+      toolCallId: input.toolCallId,
+      ...(input.runId ? { runId: input.runId } : {})
     }
   })
 

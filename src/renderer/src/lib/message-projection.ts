@@ -324,6 +324,9 @@ function getToolCallSummaryCategory(toolCall: ToolCall): AgentActivitySummaryCat
       return "list"
     case "glob":
     case "grep":
+    case "get_message_context":
+    case "get_trace_evidence":
+    case "search_history":
       return "search"
     case "web_search":
       return "web_search"
@@ -348,7 +351,16 @@ function getToolCallSummaryFactKey(
     case "list":
       return getStringArg(args, ["path"])
     case "search":
-      return getStringArg(args, ["pattern", "query", "glob"])
+      return getStringArg(args, [
+        "pattern",
+        "query",
+        "glob",
+        "messageId",
+        "traceStepId",
+        "toolCallId",
+        "artifactId",
+        "runId"
+      ])
     case "web_search":
       return getStringArg(args, ["query", "pattern"])
   }

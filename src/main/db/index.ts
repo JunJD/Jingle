@@ -54,9 +54,14 @@ export {
   loadMessagesForStateVersion,
   persistMessageStateVersion,
   projectMessageStateThroughSeq,
-  prepareMessageStateItems
+  prepareMessageStateItems,
+  searchProjectedThreadMessages
 } from "./message-state"
-export type { MessageProjectionRow, PreparedMessageStateItem } from "./message-state"
+export type {
+  MessageProjectionRow,
+  MessageSearchMatchRow,
+  PreparedMessageStateItem
+} from "./message-state"
 export {
   getThreadDigest,
   markThreadDigestProjectionError,
@@ -74,12 +79,16 @@ export {
 } from "./agent-events"
 export type { AgentEventRow, AppendAgentEventInput } from "./agent-events"
 export {
+  formatAgentTraceStepId,
   getAgentTrace,
   getAgentTraceBlob,
+  getAgentTraceByRunId,
   getAgentTraceEvents,
   getAgentTraceStep,
+  getAgentTraceStepByToolCallId,
   getAgentTraceSteps,
   listAgentTraces,
+  parseAgentTraceStepId,
   projectAgentTraceForRun
 } from "./agent-traces"
 export type { AgentTraceBlobRow, AgentTraceStepRow, AgentTraceSummaryRow } from "./agent-traces"

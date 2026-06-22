@@ -111,6 +111,7 @@ export interface AgentTraceStepRow {
   status: string
   step_index: number
   step_type: string
+  trace_id: string
   tool_call_id: string | null
   tool_name: string | null
   total_tokens: number
@@ -456,6 +457,7 @@ function mapStepRow(row: {
   status: string
   stepIndex: number
   stepType: string
+  traceId: string
   toolCallId: string | null
   toolName: string | null
   totalTokens: number
@@ -475,10 +477,32 @@ function mapStepRow(row: {
     status: row.status,
     step_index: row.stepIndex,
     step_type: row.stepType,
+    trace_id: row.traceId,
     tool_call_id: row.toolCallId,
     tool_name: row.toolName,
     total_tokens: row.totalTokens
   }
+}
+
+export function formatAgentTraceStepId(traceId: string, stepIndex: number): string {
+  return `${traceId}:${stepIndex}`
+}
+
+export function parseAgentTraceStepId(
+  traceStepId: string
+): { stepIndex: number; traceId: string } | null {
+  const separatorIndex = traceStepId.lastIndexOf(":")
+  if (separatorIndex <= 0 || separatorIndex === traceStepId.length - 1) {
+    return null
+  }
+
+  const traceId = traceStepId.slice(0, separatorIndex)
+  const stepIndex = Number(traceStepId.slice(separatorIndex + 1))
+  if (!Number.isInteger(stepIndex) || stepIndex < 0) {
+    return null
+  }
+
+  return { stepIndex, traceId }
 }
 
 export async function markAgentTraceProjectionError(runId: string, message: string): Promise<void> {
@@ -754,6 +778,17 @@ export async function getAgentTrace(traceIdOrLatest: string): Promise<AgentTrace
   return row ? mapTraceRow(row) : null
 }
 
+export async function getAgentTraceByRunId(runId: string): Promise<AgentTraceSummaryRow | null> {
+  const prisma = getPrismaClient()
+  const row = await prisma.agentTrace.findUnique({
+    where: {
+      runId
+    }
+  })
+
+  return row ? mapTraceRow(row) : null
+}
+
 export async function getAgentTraceSteps(traceId: string): Promise<AgentTraceStepRow[]> {
   const prisma = getPrismaClient()
   const rows = await prisma.agentTraceStep.findMany({
@@ -779,6 +814,29 @@ export async function getAgentTraceStep(
         stepIndex,
         traceId
       }
+    }
+  })
+
+  return row ? mapStepRow(row) : null
+}
+
+export async function getAgentTraceStepByToolCallId(input: {
+  runId?: string
+  toolCallId: string
+  traceId?: string
+}): Promise<AgentTraceStepRow | null> {
+  const prisma = getPrismaClient()
+  const row = await prisma.agentTraceStep.findFirst({
+    orderBy: [{ trace: { startedAt: "desc" } }, { stepIndex: "asc" }],
+    where: {
+      toolCallId: input.toolCallId,
+      trace:
+        input.traceId || input.runId
+          ? {
+              ...(input.traceId ? { traceId: input.traceId } : {}),
+              ...(input.runId ? { runId: input.runId } : {})
+            }
+          : undefined
     }
   })
 

@@ -8,7 +8,11 @@ import {
   summarizeMessageContent,
   type AgentMessageContent
 } from "@shared/message-content"
-import { buildSegmentedSearchText } from "../search-text"
+import {
+  buildSegmentedSearchText,
+  buildTrigramFtsQuery,
+  buildUnicodeFtsQuery
+} from "../search-text"
 import { getPrismaClient } from "./client"
 
 export type MessageEventType = "message.upsert" | "message.remove"
@@ -22,9 +26,18 @@ export interface MessageProjectionRow {
   name: string | null
   raw_message: string
   role: string
+  run_id: string | null
   seq: number
+  thread_id: string
   tool_call_id: string | null
   tool_calls: string | null
+}
+
+export interface MessageSearchMatchRow extends MessageProjectionRow {
+  rank: number
+  search_text: string | null
+  thread_title: string | null
+  thread_updated_at: number
 }
 
 export interface PreparedMessageStateItem {
@@ -75,6 +88,26 @@ type TransactionClient = Omit<
   PrismaClient,
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
 >
+
+type MessageSearchQueryRow = {
+  content: string
+  created_at: bigint | number
+  kind: string
+  message_id: string
+  metadata: string | null
+  name: string | null
+  rank: number
+  raw_message: string
+  role: string
+  run_id: string | null
+  search_text: string | null
+  seq: number
+  thread_id: string
+  thread_title: string | null
+  thread_updated_at: bigint | number
+  tool_call_id: string | null
+  tool_calls: string | null
+}
 
 function stableStringify(value: unknown): string {
   const serialized = JSON.stringify(value)
@@ -222,9 +255,8 @@ function readName(message: unknown): string | null {
 
 function readMetadata(message: unknown): string | null {
   const kwargs = readKwargs(message)
-  const directAdditionalKwargs = isRecord(message) && isRecord(message.additional_kwargs)
-    ? message.additional_kwargs
-    : {}
+  const directAdditionalKwargs =
+    isRecord(message) && isRecord(message.additional_kwargs) ? message.additional_kwargs : {}
   const additionalKwargs = isRecord(kwargs.additional_kwargs)
     ? kwargs.additional_kwargs
     : directAdditionalKwargs
@@ -253,9 +285,9 @@ function parseIndexedMessageContent(
   throw new Error("[MessageState] Indexed message content must be a string or content array.")
 }
 
-function parseIndexedMessageRefs(metadata: string | null): ReturnType<
-  typeof extractComposerMessageRefsMetadata
-> {
+function parseIndexedMessageRefs(
+  metadata: string | null
+): ReturnType<typeof extractComposerMessageRefsMetadata> {
   if (!metadata) {
     return []
   }
@@ -633,10 +665,7 @@ export async function persistMessageStateVersion(
     )
   }
 
-  const items =
-    input.messages === undefined
-      ? previous.items
-      : input.messages
+  const items = input.messages === undefined ? previous.items : input.messages
   const stateHash = buildStateHash(items)
   let seq = await readNextMessageEventSeq(tx, input.threadId, input.checkpointNs)
   const previousById = new Map(previous.items.map((item) => [item.messageId, item]))
@@ -730,8 +759,7 @@ export async function persistMessageStateVersion(
     update: {
       createdAt: now,
       stateHash,
-      throughSeq:
-        changedItems.length > 0 || removedItems.length > 0 ? seq - 1 : previous.throughSeq
+      throughSeq: changedItems.length > 0 || removedItems.length > 0 ? seq - 1 : previous.throughSeq
     },
     where: {
       threadId_checkpointNs_version: {
@@ -846,7 +874,9 @@ export async function checkpointMessageStateIncludesMessage(
   return latestEvent?.type === "message.upsert"
 }
 
-export async function listProjectedThreadMessages(threadId: string): Promise<MessageProjectionRow[]> {
+export async function listProjectedThreadMessages(
+  threadId: string
+): Promise<MessageProjectionRow[]> {
   const rows = await getPrismaClient().message.findMany({
     orderBy: { seq: "asc" },
     where: { threadId }
@@ -861,8 +891,129 @@ export async function listProjectedThreadMessages(threadId: string): Promise<Mes
     name: row.name,
     raw_message: row.rawMessage,
     role: row.role,
+    run_id: row.runId,
     seq: row.seq,
+    thread_id: row.threadId,
     tool_call_id: row.toolCallId,
     tool_calls: row.toolCalls
   }))
+}
+
+function mapMessageSearchQueryRow(row: MessageSearchQueryRow): MessageSearchMatchRow {
+  return {
+    content: row.content,
+    created_at: Number(row.created_at),
+    kind: row.kind,
+    message_id: row.message_id,
+    metadata: row.metadata,
+    name: row.name,
+    rank: row.rank,
+    raw_message: row.raw_message,
+    role: row.role,
+    run_id: row.run_id,
+    search_text: row.search_text,
+    seq: row.seq,
+    thread_id: row.thread_id,
+    thread_title: row.thread_title,
+    thread_updated_at: Number(row.thread_updated_at),
+    tool_call_id: row.tool_call_id,
+    tool_calls: row.tool_calls
+  }
+}
+
+function dedupeMessageSearchRows(
+  rows: MessageSearchQueryRow[],
+  limit: number
+): MessageSearchMatchRow[] {
+  const seen = new Set<string>()
+  const matches: MessageSearchMatchRow[] = []
+
+  for (const row of rows) {
+    const key = `${row.thread_id}:${row.message_id}`
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    matches.push(mapMessageSearchQueryRow(row))
+    if (matches.length >= limit) {
+      break
+    }
+  }
+
+  return matches
+}
+
+export async function searchProjectedThreadMessages(input: {
+  limit: number
+  query: string
+  threadId?: string
+}): Promise<MessageSearchMatchRow[]> {
+  const query = input.query.trim()
+  const limit = Math.min(Math.max(input.limit, 1), 50)
+  if (!query) {
+    return []
+  }
+
+  const ftsQuery = buildUnicodeFtsQuery(query)
+  const trigramQuery = buildTrigramFtsQuery(query)
+  const threadWhere = input.threadId
+    ? " AND messages.thread_id = ?"
+    : " AND threads.archived_at IS NULL"
+  const threadArgs = input.threadId ? ([input.threadId] as const) : ([] as const)
+  const selectColumns = `
+    messages.thread_id,
+    messages.message_id,
+    messages.role,
+    messages.kind,
+    messages.content,
+    messages.metadata,
+    messages.name,
+    messages.raw_message,
+    messages.run_id,
+    messages.seq,
+    messages.tool_call_id,
+    messages.tool_calls,
+    messages.created_at,
+    threads.title AS thread_title,
+    threads.updated_at AS thread_updated_at`
+  const prisma = getPrismaClient()
+  const [trigramRows, ftsRows] = await Promise.all([
+    trigramQuery
+      ? prisma.$queryRawUnsafe<MessageSearchQueryRow[]>(
+          `SELECT ${selectColumns}, messages_fts_trigram.search_text, bm25(messages_fts_trigram) AS rank
+           FROM messages_fts_trigram
+           INNER JOIN messages
+             ON messages.thread_id = messages_fts_trigram.thread_id
+            AND messages.message_id = messages_fts_trigram.message_id
+           INNER JOIN threads ON threads.thread_id = messages.thread_id
+           WHERE messages_fts_trigram MATCH ?
+           ${threadWhere}
+           ORDER BY rank
+           LIMIT ?`,
+          trigramQuery,
+          ...threadArgs,
+          limit
+        )
+      : Promise.resolve([]),
+    ftsQuery
+      ? prisma.$queryRawUnsafe<MessageSearchQueryRow[]>(
+          `SELECT ${selectColumns}, messages_fts.search_text, bm25(messages_fts) AS rank
+           FROM messages_fts
+           INNER JOIN messages
+             ON messages.thread_id = messages_fts.thread_id
+            AND messages.message_id = messages_fts.message_id
+           INNER JOIN threads ON threads.thread_id = messages.thread_id
+           WHERE messages_fts MATCH ?
+           ${threadWhere}
+           ORDER BY rank
+           LIMIT ?`,
+          ftsQuery,
+          ...threadArgs,
+          limit
+        )
+      : Promise.resolve([])
+  ])
+
+  return dedupeMessageSearchRows([...trigramRows, ...ftsRows], limit)
 }

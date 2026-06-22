@@ -7,6 +7,7 @@ import {
 import { appCopy } from "../../src/renderer/src/lib/i18n/messages"
 import type { HITLRequest, ToolCall } from "../../src/renderer/src/types"
 import type { FileMutationResultMetadata } from "../../src/shared/file-mutation-result"
+import { serializeContextRetrievalToolResult } from "../../src/shared/context-retrieval-results"
 import type { ReactNode } from "react"
 import {
   buildPatchArtifactFileMutationViewModel,
@@ -553,6 +554,39 @@ test("createActionMessageView keeps read search list command summaries descripti
       type: "tool_call"
     }
   })
+  const searchHistoryView = createActionMessageView({
+    copy,
+    presentation: "grouped",
+    result: "Retrieved history content should stay out of the tool activity detail.",
+    toolCall: {
+      args: { query: "old runtime decision" },
+      id: "call_search_history",
+      name: "search_history",
+      type: "tool_call"
+    }
+  })
+  const messageContextView = createActionMessageView({
+    copy,
+    presentation: "grouped",
+    result: "Retrieved message content should stay out of the tool activity detail.",
+    toolCall: {
+      args: { messageId: "msg_0123456789abcdef", threadId: "thread_0123456789abcdef" },
+      id: "call_get_message_context",
+      name: "get_message_context",
+      type: "tool_call"
+    }
+  })
+  const traceEvidenceView = createActionMessageView({
+    copy,
+    presentation: "grouped",
+    result: "Retrieved trace content should stay out of the tool activity detail.",
+    toolCall: {
+      args: { traceStepId: "trace_step_0123456789abcdef" },
+      id: "call_get_trace_evidence",
+      name: "get_trace_evidence",
+      type: "tool_call"
+    }
+  })
 
   assert.equal(
     displayText(commandView),
@@ -561,6 +595,76 @@ test("createActionMessageView keeps read search list command summaries descripti
   assert.equal(displayText(globView), "Find Files · src/**/*.ts · Found 1 match")
   assert.equal(displayText(grepView), "Search Content · runtime · 1 match in 1 file")
   assert.equal(displayText(webSearchView), "Search Web · Openwork agent runtime")
+  assert.equal(displayText(searchHistoryView), "Search History · old runtime decision")
+  assert.equal(
+    displayText(messageContextView),
+    "Read Message Context · thread_0123456789abcdef · msg_0123456789abcdef"
+  )
+  assert.equal(displayText(traceEvidenceView), "Read Trace Evidence · trace_step_0123456789abcdef")
+  assert.equal(searchHistoryView.hasDetail, false)
+  assert.equal(messageContextView.hasDetail, false)
+  assert.equal(traceEvidenceView.hasDetail, false)
+})
+
+test("createActionMessageView expands structured context retrieval results", async () => {
+  setRendererWindowStub()
+
+  const { createActionMessageView } =
+    await import("../../src/renderer/src/components/chat/action-message-view")
+
+  const toolCall: ToolCall = {
+    args: { query: "history" },
+    id: "call_search_history_structured",
+    name: "search_history",
+    type: "tool_call"
+  }
+  const view = createActionMessageView({
+    copy,
+    presentation: "grouped",
+    result: serializeContextRetrievalToolResult({
+      items: [
+        {
+          messageId: "message-1",
+          role: "assistant",
+          runId: "run-1",
+          snippet: "History result body",
+          threadId: "thread-1",
+          toolCallId: null,
+          toolCalls: [],
+          type: "history_message"
+        }
+      ],
+      kind: "history_search",
+      nextActions: [
+        {
+          args: {
+            after: 2,
+            before: 2,
+            messageId: "message-1",
+            threadId: "thread-1"
+          },
+          reason: "Expand transcript context around thread-1/message-1.",
+          tool: "get_message_context"
+        }
+      ],
+      query: "history",
+      status: "ok",
+      summary: "Found 0 thread digest match(es) and 1 history message match(es)."
+    }),
+    toolCall
+  })
+
+  const detail =
+    view.definition.renderDetail?.({
+      copy,
+      isExpanded: true,
+      presentation: "grouped",
+      toolCall,
+      ...view.model
+    }) ?? null
+
+  assert.equal(view.hasDetail, true)
+  assert.notEqual(detail, null)
 })
 
 test("createActionMessageView renders explicit extension display and presentation", async () => {

@@ -86,6 +86,17 @@ export interface OpenworkMemorySuggestionRecord {
   workspaceKey: string | null
 }
 
+export interface OpenworkMemoryEvidenceRef {
+  id: string
+  mode: AgentContextInclusionMode
+  preview: string
+  sourceId: string
+  sourceType: AgentContextSourceType
+  target: AgentContextJumpTarget
+  threadId: string
+  title: string
+}
+
 export interface OpenworkMemoryInclusionRecord {
   content: string
   createdAt: number
@@ -202,6 +213,7 @@ export interface UpdateOpenworkMemoryInput {
 export const AGENT_CONTEXT_SOURCE_TYPES = [
   "memory",
   "context_file",
+  "thread_digest",
   "history_message",
   "trace_step",
   "artifact"
@@ -257,11 +269,97 @@ export interface AgentContextInclusion {
   unavailableReason?: AgentContextUnavailableReason
 }
 
-export interface CreateRetrievedMemoryContextInclusionInput {
-  createdAt: number
-  memory: OpenworkMemoryRecord
-  runId: string
-  threadId: string
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value))
+}
+
+function isAgentContextSourceType(value: unknown): value is AgentContextSourceType {
+  return (
+    typeof value === "string" &&
+    AGENT_CONTEXT_SOURCE_TYPES.includes(value as AgentContextSourceType)
+  )
+}
+
+function isAgentContextInclusionMode(value: unknown): value is AgentContextInclusionMode {
+  return (
+    typeof value === "string" &&
+    AGENT_CONTEXT_INCLUSION_MODES.includes(value as AgentContextInclusionMode)
+  )
+}
+
+function normalizeAgentContextJumpTarget(value: unknown): AgentContextJumpTarget | null {
+  if (!isRecord(value) || !isAgentContextSourceType(value.type)) {
+    return null
+  }
+
+  const target: AgentContextJumpTarget = {
+    type: value.type
+  }
+  const stringFields = [
+    "artifactId",
+    "memoryId",
+    "messageId",
+    "path",
+    "runId",
+    "threadId",
+    "traceId",
+    "traceStepId"
+  ] as const
+
+  for (const field of stringFields) {
+    const fieldValue = value[field]
+    if (fieldValue === undefined) {
+      continue
+    }
+    if (typeof fieldValue !== "string") {
+      return null
+    }
+    target[field] = fieldValue
+  }
+
+  return target
+}
+
+export function readOpenworkMemoryEvidenceRefsFromReviewPayload(
+  reviewPayload: Record<string, unknown> | null | undefined
+): OpenworkMemoryEvidenceRef[] {
+  const evidenceRefs = reviewPayload?.evidenceRefs
+  if (!Array.isArray(evidenceRefs)) {
+    return []
+  }
+
+  return evidenceRefs.flatMap((entry): OpenworkMemoryEvidenceRef[] => {
+    if (!isRecord(entry)) {
+      return []
+    }
+
+    const target = normalizeAgentContextJumpTarget(entry.target)
+    if (
+      typeof entry.id !== "string" ||
+      !isAgentContextInclusionMode(entry.mode) ||
+      typeof entry.preview !== "string" ||
+      typeof entry.sourceId !== "string" ||
+      !isAgentContextSourceType(entry.sourceType) ||
+      target === null ||
+      typeof entry.threadId !== "string" ||
+      typeof entry.title !== "string"
+    ) {
+      return []
+    }
+
+    return [
+      {
+        id: entry.id,
+        mode: entry.mode,
+        preview: entry.preview,
+        sourceId: entry.sourceId,
+        sourceType: entry.sourceType,
+        target,
+        threadId: entry.threadId,
+        title: entry.title
+      }
+    ]
+  })
 }
 
 export interface CreateRetrievedMessageContextInclusionInput {
@@ -272,6 +370,48 @@ export interface CreateRetrievedMessageContextInclusionInput {
     role: string
     threadId: string
   }
+  runId: string
+  threadId: string
+}
+
+export interface CreateRetrievedThreadDigestContextInclusionInput {
+  createdAt: number
+  digest: {
+    preview: string
+    threadId: string
+    title: string | null
+  }
+  runId: string
+  threadId: string
+}
+
+export interface CreateRetrievedTraceStepContextInclusionInput {
+  createdAt: number
+  runId: string
+  sourceRunId: string
+  sourceThreadId: string
+  step: {
+    preview: string
+    stepIndex: number
+    stepType: string
+    toolCallId: string | null
+    toolName: string | null
+    traceId: string
+  }
+  threadId: string
+}
+
+export interface CreateRetrievedArtifactContextInclusionInput {
+  artifact: {
+    artifactId: string
+    kind: string
+    preview: string
+    runId: string | null
+    threadId: string
+    title: string
+    toolCallId: string | null
+  }
+  createdAt: number
   runId: string
   threadId: string
 }
@@ -329,36 +469,6 @@ export function buildProvidedContextInclusions(input: {
   )
 }
 
-export function createRetrievedMemoryContextInclusion(
-  input: CreateRetrievedMemoryContextInclusionInput
-): AgentContextInclusion {
-  const { memory } = input
-
-  return {
-    availability: "available",
-    createdAt: input.createdAt,
-    id: `ctx:${input.runId}:retrieved:memory:${memory.memoryId}`,
-    messageId: null,
-    metadata: {
-      scope: memory.scope,
-      type: memory.type,
-      workspaceKey: memory.workspaceKey
-    },
-    mode: "retrieved",
-    preview: memory.content.slice(0, 200),
-    runId: input.runId,
-    sourceId: memory.memoryId,
-    sourceType: "memory",
-    target: {
-      memoryId: memory.memoryId,
-      type: "memory"
-    },
-    threadId: input.threadId,
-    title: memory.scope === "workspace" ? "Workspace memory" : "Personal memory",
-    turnId: null
-  }
-}
-
 export function createRetrievedMessageContextInclusion(
   input: CreateRetrievedMessageContextInclusionInput
 ): AgentContextInclusion {
@@ -385,6 +495,106 @@ export function createRetrievedMessageContextInclusion(
     },
     threadId: input.threadId,
     title: `${input.message.role} message`,
+    turnId: null
+  }
+}
+
+export function createRetrievedThreadDigestContextInclusion(
+  input: CreateRetrievedThreadDigestContextInclusionInput
+): AgentContextInclusion {
+  const sourceId = input.digest.threadId
+
+  return {
+    availability: "available",
+    createdAt: input.createdAt,
+    id: `ctx:${input.runId}:retrieved:thread_digest:${sourceId}`,
+    messageId: null,
+    metadata: {
+      sourceThreadId: sourceId
+    },
+    mode: "retrieved",
+    preview: input.digest.preview.slice(0, 200),
+    runId: input.runId,
+    sourceId,
+    sourceType: "thread_digest",
+    target: {
+      threadId: sourceId,
+      type: "thread_digest"
+    },
+    threadId: input.threadId,
+    title: input.digest.title ? `Thread summary: ${input.digest.title}` : "Thread summary",
+    turnId: null
+  }
+}
+
+export function createRetrievedTraceStepContextInclusion(
+  input: CreateRetrievedTraceStepContextInclusionInput
+): AgentContextInclusion {
+  const sourceId = `${input.step.traceId}:${input.step.stepIndex}`
+
+  return {
+    availability: "available",
+    createdAt: input.createdAt,
+    id: `ctx:${input.runId}:retrieved:trace_step:${sourceId}`,
+    messageId: null,
+    metadata: {
+      sourceRunId: input.sourceRunId,
+      sourceThreadId: input.sourceThreadId,
+      stepIndex: input.step.stepIndex,
+      stepType: input.step.stepType,
+      toolCallId: input.step.toolCallId,
+      toolName: input.step.toolName,
+      traceId: input.step.traceId
+    },
+    mode: "retrieved",
+    preview: input.step.preview.slice(0, 200),
+    runId: input.runId,
+    sourceId,
+    sourceType: "trace_step",
+    target: {
+      runId: input.sourceRunId,
+      threadId: input.sourceThreadId,
+      traceId: input.step.traceId,
+      traceStepId: sourceId,
+      type: "trace_step"
+    },
+    threadId: input.threadId,
+    title: input.step.toolName
+      ? `Trace step: ${input.step.toolName}`
+      : `Trace step: ${input.step.stepType}`,
+    turnId: null
+  }
+}
+
+export function createRetrievedArtifactContextInclusion(
+  input: CreateRetrievedArtifactContextInclusionInput
+): AgentContextInclusion {
+  const sourceId = input.artifact.artifactId
+
+  return {
+    availability: "available",
+    createdAt: input.createdAt,
+    id: `ctx:${input.runId}:retrieved:artifact:${sourceId}`,
+    messageId: null,
+    metadata: {
+      kind: input.artifact.kind,
+      sourceRunId: input.artifact.runId,
+      sourceThreadId: input.artifact.threadId,
+      toolCallId: input.artifact.toolCallId
+    },
+    mode: "retrieved",
+    preview: input.artifact.preview.slice(0, 200),
+    runId: input.runId,
+    sourceId,
+    sourceType: "artifact",
+    target: {
+      artifactId: sourceId,
+      ...(input.artifact.runId ? { runId: input.artifact.runId } : {}),
+      threadId: input.artifact.threadId,
+      type: "artifact"
+    },
+    threadId: input.threadId,
+    title: `Artifact: ${input.artifact.title}`,
     turnId: null
   }
 }

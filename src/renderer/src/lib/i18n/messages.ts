@@ -66,6 +66,7 @@ export interface AppCopy {
     memoryTemporaryOn: string
     pendingWorkspaceMemoryBlocksWorkspaceChange: string
     pendingMemoryAccept: string
+    pendingMemoryEvidenceTitle: (count: number) => string
     pendingMemoryReject: string
     pendingMemoryTitle: string
     includedMemoriesTitle: (count: number) => string
@@ -392,6 +393,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       pendingWorkspaceMemoryBlocksWorkspaceChange:
         "当前对话有待确认的工作区记忆。请先保存或忽略这些记忆，再更换 workspace。",
       pendingMemoryAccept: "保存",
+      pendingMemoryEvidenceTitle: (count) => `${count} 条来源`,
       pendingMemoryReject: "忽略",
       pendingMemoryTitle: "待确认记忆",
       includedMemoriesTitle: (count) => `${count} 条记忆引用`,
@@ -629,6 +631,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
         edit_file: "编辑文件",
         execute: "执行命令",
         find_ax_elements: "查找 AX 元素",
+        get_message_context: "读取历史消息",
+        get_trace_evidence: "读取执行证据",
         glob: "查找文件",
         grep: "搜索内容",
         ls: "列出目录",
@@ -637,6 +641,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
         present_artifacts: "呈现成果",
         press_ax_element: "按压 AX 元素",
         read_file: "读取文件",
+        search_history: "搜索历史",
         task: "子代理任务",
         web_search: "搜索网页",
         write_file: "写入文件",
@@ -736,6 +741,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       pendingWorkspaceMemoryBlocksWorkspaceChange:
         "This conversation has pending workspace memories. Save or ignore them before changing workspace.",
       pendingMemoryAccept: "Save",
+      pendingMemoryEvidenceTitle: (count) => `${count} source${count === 1 ? "" : "s"}`,
       pendingMemoryReject: "Ignore",
       pendingMemoryTitle: "Pending Memory",
       includedMemoriesTitle: (count) => `${count} memory reference${count === 1 ? "" : "s"}`,
@@ -976,6 +982,8 @@ export const appCopy: Record<AppLocale, AppCopy> = {
         edit_file: "Edit File",
         execute: "Execute Command",
         find_ax_elements: "Find AX Elements",
+        get_message_context: "Read Message Context",
+        get_trace_evidence: "Read Trace Evidence",
         glob: "Find Files",
         grep: "Search Content",
         ls: "List Directory",
@@ -984,6 +992,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
         present_artifacts: "Present Artifacts",
         press_ax_element: "Press AX Element",
         read_file: "Read File",
+        search_history: "Search History",
         task: "Subagent Task",
         web_search: "Search Web",
         write_file: "Write File",

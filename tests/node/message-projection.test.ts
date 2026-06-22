@@ -1245,6 +1245,24 @@ test("agent activity summary groups known tool categories without using tool nam
       },
       {
         status: "complete",
+        toolCall: createToolCall("tool-history-search", "search_history", {
+          query: "runtime history"
+        })
+      },
+      {
+        status: "complete",
+        toolCall: createToolCall("tool-message-context", "get_message_context", {
+          messageId: "msg-1"
+        })
+      },
+      {
+        status: "complete",
+        toolCall: createToolCall("tool-trace-evidence", "get_trace_evidence", {
+          traceStepId: "trace-step-1"
+        })
+      },
+      {
+        status: "complete",
         toolCall: createToolCall("tool-command", "execute", { command: "npm test" })
       }
     ]),
@@ -1255,7 +1273,7 @@ test("agent activity summary groups known tool categories without using tool nam
         file_mutation: 1,
         file: 2,
         list: 1,
-        search: 1
+        search: 4
       },
       status: "complete"
     }
