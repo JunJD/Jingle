@@ -40,7 +40,7 @@ jobs:
       - name: Setup pnpm
         shell: bash
         run: |
-          npm install --global corepack@latest
+          npm install --global --force corepack@latest
           corepack enable
           corepack prepare "$(node -p 'require("./package.json").packageManager')" --activate
           pnpm --version
