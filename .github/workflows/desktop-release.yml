@@ -17,9 +17,38 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  prepare-release:
+    name: Prepare GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Create draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists."
+            exit 0
+          fi
+
+          args=(--verify-tag --draft --title "$GITHUB_REF_NAME" --notes "")
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+
+          gh release create "$GITHUB_REF_NAME" "${args[@]}"
+
   package:
     name: Package ${{ matrix.name }}
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ${{ matrix.runner }}
+    needs: prepare-release
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -67,21 +96,29 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload workflow artifact
+      - name: Upload release assets
         if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: openwork-${{ matrix.name }}-${{ github.run_id }}
-          retention-days: 7
-          path: |
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s nullglob
+          assets=(
             dist/*.dmg
             dist/*.exe
             dist/*.AppImage
             dist/*.blockmap
             dist/latest*.yml
-          if-no-files-found: error
+          )
 
-  publish:
+          if (( ${#assets[@]} == 0 )); then
+            echo "No release assets found in dist." >&2
+            exit 1
+          fi
+
+          gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
+
+  publish-release:
     name: Publish GitHub Release
     if: startsWith(github.ref, 'refs/tags/')
     needs: package
@@ -90,24 +127,8 @@ jobs:
       contents: write
 
     steps:
-      - name: Download package artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: openwork-*-${{ github.run_id }}
-          path: release-assets
-          merge-multiple: true
-
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          files: |
-            release-assets/*.dmg
-            release-assets/*.exe
-            release-assets/*.AppImage
-            release-assets/*.blockmap
-            release-assets/latest*.yml
+      - name: Publish release
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false
