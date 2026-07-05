@@ -1,0 +1,10 @@
+{
+  "name": "@jingle/agent-tracing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "./index.cjs",
+  "exports": {
+    ".": "./index.cjs"
+  }
+}

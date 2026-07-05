@@ -1,0 +1,149 @@
+appId: com.jingle.desktop
+productName: Jingle
+directories:
+  output: dist
+npmRebuild: false
+afterPack: scripts/after-pack-audit.cjs
+electronLanguages:
+  - en
+  - en_GB
+  - zh_CN
+  - zh_TW
+files:
+  - out/**
+  - package.json
+  - resources/**
+  - "!**/*.map"
+  - "!node_modules/**"
+  - from: node_modules/@prisma/client
+    to: node_modules/@prisma/client
+    filter:
+      - package.json
+      - default.js
+      - index.js
+      - runtime/library.js
+  - from: node_modules/.prisma/client
+    to: node_modules/.prisma/client
+    filter:
+      - package.json
+      - default.js
+      - index.js
+      - schema.prisma
+      - libquery_engine-*.node
+      - query_engine-*.node
+  - from: node_modules/just-bash
+    to: node_modules/just-bash
+    filter:
+      - package.json
+      - dist/bundle/**
+      - node_modules/**
+      - vendor/**
+      - "!**/*.map"
+  - from: node_modules/quickjs-emscripten
+    to: node_modules/quickjs-emscripten
+    filter:
+      - package.json
+      - dist/**
+      - "!**/*.map"
+  - from: node_modules/quickjs-emscripten-core
+    to: node_modules/quickjs-emscripten-core
+    filter:
+      - package.json
+      - dist/**
+      - "!**/*.map"
+  - from: node_modules/@jitl
+    to: node_modules/@jitl
+    filter:
+      - "**/*"
+      - "!**/*.map"
+  - from: node_modules/sql.js
+    to: node_modules/sql.js
+    filter:
+      - package.json
+      - dist/**
+      - "!**/*.map"
+  - from: node_modules/compressjs
+    to: node_modules/compressjs
+    filter:
+      - package.json
+      - main.js
+      - lib/**
+      - node_modules/**
+      - "!**/*.map"
+  - from: node_modules/amdefine
+    to: node_modules/amdefine
+    filter:
+      - package.json
+      - amdefine.js
+      - intercept.js
+  - from: node_modules/sprintf-js
+    to: node_modules/sprintf-js
+    filter:
+      - package.json
+      - src/**
+      - dist/**
+      - "!**/*.map"
+  - from: node_modules/turndown
+    to: node_modules/turndown
+    filter:
+      - package.json
+      - lib/**
+  - from: node_modules/@mixmark-io/domino
+    to: node_modules/@mixmark-io/domino
+    filter:
+      - package.json
+      - lib/**
+  - from: node_modules/@vscode
+    to: node_modules/@vscode
+    filter:
+      - ripgrep/package.json
+      - ripgrep/lib/**
+      - ripgrep-*/package.json
+      - ripgrep-*/bin/**
+asarUnpack:
+  - out/native/**
+  - node_modules/.prisma/client/*.node
+  - node_modules/@vscode/ripgrep-*/bin/*
+mac:
+  category: public.app-category.productivity
+  icon: resources/icon.icns
+  extendInfo:
+    NSRemindersFullAccessUsageDescription: Jingle needs access to Reminders to list, create, complete, and delete reminders you request.
+    NSRemindersUsageDescription: Jingle needs access to Reminders to list, create, complete, and delete reminders you request.
+    CFBundleURLTypes:
+      - CFBundleURLName: Jingle OAuth Callback
+        CFBundleURLSchemes:
+          - jingle
+  target:
+    - dmg
+dmg:
+  background: resources/dmg/background.png
+  iconSize: 88
+  iconTextSize: 12
+  window:
+    width: 760
+    height: 560
+  contents:
+    - x: 180
+      y: 210
+      type: file
+    - x: 580
+      y: 210
+      type: link
+      path: /Applications
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+win:
+  icon: resources/icon.ico
+  target:
+    - nsis
+linux:
+  category: Utility
+  icon: resources/icon.png
+  target:
+    - AppImage
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+publish:
+  provider: github

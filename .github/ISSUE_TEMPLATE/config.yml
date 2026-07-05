@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/JunJD/Jingle#readme
+    about: Check the README for setup and usage information
+  - name: Support
+    url: https://github.com/JunJD/Jingle/blob/main/SUPPORT.md
+    about: Learn what context to include when asking for help
+  - name: Security Policy
+    url: https://github.com/JunJD/Jingle/blob/main/SECURITY.md
+    about: Report vulnerabilities through the private channel described here

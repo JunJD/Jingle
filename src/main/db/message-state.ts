@@ -1,0 +1,892 @@
+import { createHash, randomUUID } from "crypto"
+import type { SerializerProtocol } from "@langchain/langgraph-checkpoint"
+import { Prisma, type PrismaClient } from "@prisma/client"
+import { readJingleLangGraphSerializedMessage } from "@jingle/langchain-agent-harness/transitional"
+import type { ContentBlock } from "@shared/app-types"
+import {
+  extractComposerMessageRefsMetadata,
+  normalizeComposerMessageRefs,
+  extractMessageText,
+  summarizeMessageContent,
+  type AgentMessageContent
+} from "@shared/message-content"
+import {
+  buildSegmentedSearchText,
+  buildTrigramFtsQuery,
+  buildUnicodeFtsQuery
+} from "../search-text"
+import { getPrismaClient } from "./client"
+
+export type MessageEventType = "message.upsert" | "message.remove"
+
+export interface MessageProjectionRow {
+  content: string
+  created_at: number
+  kind: string
+  message_id: string
+  metadata: string | null
+  name: string | null
+  raw_message: string
+  role: string
+  run_id: string | null
+  seq: number
+  thread_id: string
+  tool_call_id: string | null
+  tool_calls: string | null
+}
+
+export interface MessageSearchMatchRow extends MessageProjectionRow {
+  rank: number
+  search_text: string | null
+  thread_title: string | null
+  thread_updated_at: number
+}
+
+export interface PreparedMessageStateItem {
+  content: string
+  kind: string
+  messageId: string
+  metadata: string | null
+  name: string | null
+  order: number
+  rawHash: string
+  rawMessageEncoding: "base64" | "text"
+  rawMessageType: string
+  rawMessageValue: string
+  role: string
+  toolCallId: string | null
+  toolCalls: string | null
+}
+
+interface PersistMessageStateInput {
+  checkpointId: string
+  checkpointNs: string
+  messages?: PreparedMessageStateItem[]
+  runId: string | null
+  threadId: string
+  version: string
+}
+
+interface MessageStateVersionInput {
+  checkpointNs: string
+  serde: SerializerProtocol
+  threadId: string
+  version: string
+}
+
+interface CheckpointMessageStateInput {
+  checkpointNs: string
+  messageId: string
+  threadId: string
+  version: string
+}
+
+interface LoadedMessageState {
+  items: PreparedMessageStateItem[]
+  throughSeq: number
+}
+
+type TransactionClient = Omit<
+  PrismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
+>
+
+type MessageSearchQueryRow = {
+  content: string
+  created_at: bigint | number
+  kind: string
+  message_id: string
+  metadata: string | null
+  name: string | null
+  rank: number
+  raw_message: string
+  role: string
+  run_id: string | null
+  search_text: string | null
+  seq: number
+  thread_id: string
+  thread_title: string | null
+  thread_updated_at: bigint | number
+  tool_call_id: string | null
+  tool_calls: string | null
+}
+
+function stableStringify(value: unknown): string {
+  const serialized = JSON.stringify(value)
+  if (serialized === undefined) {
+    throw new Error("[MessageState] Cannot serialize undefined as message state payload.")
+  }
+  return serialized
+}
+
+function encodeRawMessagePayload(value: Uint8Array | string): {
+  encoding: "base64" | "text"
+  value: string
+} {
+  if (typeof value === "string") {
+    return {
+      encoding: "text",
+      value
+    }
+  }
+
+  return {
+    encoding: "base64",
+    value: Buffer.from(value).toString("base64")
+  }
+}
+
+function decodeRawMessagePayload(input: {
+  encoding: "base64" | "text"
+  value: string
+}): Uint8Array | string {
+  return input.encoding === "text"
+    ? input.value
+    : Uint8Array.from(Buffer.from(input.value, "base64"))
+}
+
+function hashText(value: string | Uint8Array): string {
+  return createHash("sha256").update(value).digest("hex")
+}
+
+function readMetadata(input: {
+  refs?: unknown
+  source?: string
+}): string | null {
+  const refs = normalizeComposerMessageRefs(input.refs)
+  const metadata: Record<string, unknown> = {}
+
+  if (refs.length > 0) {
+    metadata.refs = refs
+  }
+
+  if (input.source === "summarization") {
+    metadata.lc_source = "summarization"
+  }
+
+  return Object.keys(metadata).length > 0 ? stableStringify(metadata) : null
+}
+
+function parseIndexedMessageContent(
+  content: string
+): string | ContentBlock[] | AgentMessageContent {
+  const parsed = JSON.parse(content) as unknown
+  if (typeof parsed === "string" || Array.isArray(parsed)) {
+    return parsed as string | ContentBlock[] | AgentMessageContent
+  }
+
+  throw new Error("[MessageState] Indexed message content must be a string or content array.")
+}
+
+function parseIndexedMessageRefs(
+  metadata: string | null
+): ReturnType<typeof extractComposerMessageRefsMetadata> {
+  if (!metadata) {
+    return []
+  }
+
+  return extractComposerMessageRefsMetadata(JSON.parse(metadata) as unknown)
+}
+
+function buildIndexedMessageSearchText(input: {
+  content: string
+  metadata: string | null
+}): string {
+  const parsedContent = parseIndexedMessageContent(input.content)
+  const refs = parseIndexedMessageRefs(input.metadata)
+
+  const refLabels = refs.map((ref) => {
+    switch (ref.type) {
+      case "file":
+        return ref.name
+      case "image":
+        return ref.name ?? "Attached image"
+      case "assistant-message-selection":
+        return ref.selectedText
+      default:
+        return ""
+    }
+  })
+
+  const extractedText = extractMessageText(parsedContent).trim()
+  const candidateParts = [
+    extractedText,
+    summarizeMessageContent(parsedContent).trim(),
+    buildSegmentedSearchText(extractedText)?.trim() ?? "",
+    ...refLabels.map((part) => part.trim())
+  ]
+
+  return Array.from(new Set(candidateParts.filter(Boolean))).join("\n")
+}
+
+async function serializeMessageStateItem(input: {
+  index: number
+  message: unknown
+  serde: SerializerProtocol
+}): Promise<PreparedMessageStateItem> {
+  const [rawMessageType, serializedRawMessage] = await input.serde.dumpsTyped(input.message)
+  const rawMessagePayload = encodeRawMessagePayload(serializedRawMessage)
+  const rawHash = hashText(serializedRawMessage)
+  const message = readJingleLangGraphSerializedMessage({
+    message: input.message,
+    order: input.index + 1,
+    rawHash
+  })
+  const content = stableStringify(message.content)
+  const metadata = readMetadata(message.metadataHints)
+
+  return {
+    content,
+    kind: message.role === "tool" ? "tool_result" : "message",
+    messageId: message.messageId,
+    metadata,
+    name: message.name,
+    order: input.index + 1,
+    rawHash,
+    rawMessageEncoding: rawMessagePayload.encoding,
+    rawMessageType,
+    rawMessageValue: rawMessagePayload.value,
+    role: message.role,
+    toolCallId: message.toolCallId,
+    toolCalls: message.toolCalls.length > 0 ? stableStringify(message.toolCalls) : null
+  }
+}
+
+function buildStateHash(items: PreparedMessageStateItem[]): string {
+  return hashText(
+    stableStringify(
+      items.map((item) => ({
+        messageId: item.messageId,
+        order: item.order,
+        rawHash: item.rawHash
+      }))
+    )
+  )
+}
+
+async function readNextMessageEventSeq(
+  tx: TransactionClient,
+  threadId: string,
+  checkpointNs: string
+): Promise<number> {
+  const latest = await tx.messageEvent.findFirst({
+    orderBy: { seq: "desc" },
+    select: { seq: true },
+    where: {
+      checkpointNs,
+      threadId
+    }
+  })
+
+  return (latest?.seq ?? 0) + 1
+}
+
+function parseMessageStateEventItem(event: {
+  eventId: string
+  payload: string
+}): PreparedMessageStateItem {
+  const payload = JSON.parse(event.payload) as Partial<PreparedMessageStateItem>
+  if (
+    typeof payload.messageId !== "string" ||
+    (payload.rawMessageEncoding !== "base64" && payload.rawMessageEncoding !== "text") ||
+    typeof payload.rawMessageType !== "string" ||
+    typeof payload.rawMessageValue !== "string" ||
+    typeof payload.rawHash !== "string" ||
+    typeof payload.role !== "string" ||
+    typeof payload.kind !== "string" ||
+    typeof payload.content !== "string" ||
+    typeof payload.order !== "number"
+  ) {
+    throw new Error(`[MessageState] Message event "${event.eventId}" has an invalid payload.`)
+  }
+  const rawMessageEncoding = payload.rawMessageEncoding
+
+  return {
+    content: payload.content,
+    kind: payload.kind,
+    messageId: payload.messageId,
+    metadata: payload.metadata ?? null,
+    name: payload.name ?? null,
+    order: payload.order,
+    rawHash: payload.rawHash,
+    rawMessageEncoding,
+    rawMessageType: payload.rawMessageType,
+    rawMessageValue: payload.rawMessageValue,
+    role: payload.role,
+    toolCallId: payload.toolCallId ?? null,
+    toolCalls: payload.toolCalls ?? null
+  }
+}
+
+async function loadMessageStateItemsThroughSeq(
+  tx: TransactionClient,
+  input: {
+    checkpointNs: string
+    threadId: string
+    throughSeq: number
+  }
+): Promise<PreparedMessageStateItem[]> {
+  if (input.throughSeq <= 0) {
+    return []
+  }
+
+  const events = await tx.messageEvent.findMany({
+    orderBy: { seq: "asc" },
+    where: {
+      checkpointNs: input.checkpointNs,
+      seq: {
+        lte: input.throughSeq
+      },
+      threadId: input.threadId
+    }
+  })
+  const messages = new Map<string, PreparedMessageStateItem>()
+
+  for (const event of events) {
+    if (event.type === "message.remove" && event.messageId) {
+      messages.delete(event.messageId)
+      continue
+    }
+
+    if (event.type === "message.upsert" && event.messageId) {
+      messages.set(event.messageId, parseMessageStateEventItem(event))
+      continue
+    }
+
+    throw new Error(`[MessageState] Unsupported message event type "${event.type}".`)
+  }
+
+  return Array.from(messages.values()).sort((left, right) => left.order - right.order)
+}
+
+async function loadLatestMessageState(
+  tx: TransactionClient,
+  input: {
+    checkpointNs: string
+    threadId: string
+  }
+): Promise<LoadedMessageState> {
+  const latest = await tx.messageStateVersion.findFirst({
+    orderBy: { throughSeq: "desc" },
+    where: {
+      checkpointNs: input.checkpointNs,
+      threadId: input.threadId
+    }
+  })
+
+  if (!latest) {
+    return {
+      items: [],
+      throughSeq: 0
+    }
+  }
+
+  return {
+    items: await loadMessageStateItemsThroughSeq(tx, {
+      checkpointNs: input.checkpointNs,
+      threadId: input.threadId,
+      throughSeq: latest.throughSeq
+    }),
+    throughSeq: latest.throughSeq
+  }
+}
+
+async function deleteProjectedMessage(
+  tx: TransactionClient,
+  input: {
+    messageId: string
+    threadId: string
+  }
+): Promise<void> {
+  await Promise.all([
+    tx.message.deleteMany({
+      where: {
+        messageId: input.messageId,
+        threadId: input.threadId
+      }
+    }),
+    tx.$executeRaw`DELETE FROM "messages_fts" WHERE thread_id = ${input.threadId} AND message_id = ${input.messageId}`,
+    tx.$executeRaw`DELETE FROM "messages_fts_trigram" WHERE thread_id = ${input.threadId} AND message_id = ${input.messageId}`
+  ])
+}
+
+async function replaceMessageSearchIndex(
+  tx: TransactionClient,
+  input: {
+    messageId: string
+    role: string
+    searchText: string
+    threadId: string
+  }
+): Promise<void> {
+  await Promise.all([
+    tx.$executeRaw`DELETE FROM "messages_fts" WHERE thread_id = ${input.threadId} AND message_id = ${input.messageId}`,
+    tx.$executeRaw`DELETE FROM "messages_fts_trigram" WHERE thread_id = ${input.threadId} AND message_id = ${input.messageId}`
+  ])
+
+  if (input.searchText.length > 0) {
+    await Promise.all([
+      tx.$executeRaw(
+        Prisma.sql`INSERT INTO "messages_fts" ("thread_id", "message_id", "role", "search_text")
+          VALUES (${input.threadId}, ${input.messageId}, ${input.role}, ${input.searchText})`
+      ),
+      tx.$executeRaw(
+        Prisma.sql`INSERT INTO "messages_fts_trigram" ("thread_id", "message_id", "role", "search_text")
+          VALUES (${input.threadId}, ${input.messageId}, ${input.role}, ${input.searchText})`
+      )
+    ])
+  }
+}
+
+async function upsertProjectedMessage(
+  tx: TransactionClient,
+  input: {
+    item: PreparedMessageStateItem
+    now: bigint
+    runId: string | null
+    threadId: string
+  }
+): Promise<void> {
+  const searchText = buildIndexedMessageSearchText({
+    content: input.item.content,
+    metadata: input.item.metadata
+  })
+  const rawMessage = stableStringify({
+    encoding: input.item.rawMessageEncoding,
+    type: input.item.rawMessageType,
+    value: input.item.rawMessageValue
+  })
+
+  await tx.message.upsert({
+    create: {
+      content: input.item.content,
+      createdAt: input.now + BigInt(input.item.order),
+      kind: input.item.kind,
+      messageId: input.item.messageId,
+      metadata: input.item.metadata,
+      name: input.item.name,
+      rawHash: input.item.rawHash,
+      rawMessage,
+      role: input.item.role,
+      runId: input.runId,
+      searchText,
+      seq: input.item.order,
+      threadId: input.threadId,
+      toolCallId: input.item.toolCallId,
+      toolCalls: input.item.toolCalls,
+      updatedAt: input.now
+    },
+    update: {
+      content: input.item.content,
+      kind: input.item.kind,
+      metadata: input.item.metadata,
+      name: input.item.name,
+      rawHash: input.item.rawHash,
+      rawMessage,
+      role: input.item.role,
+      runId: input.runId,
+      searchText,
+      seq: input.item.order,
+      toolCallId: input.item.toolCallId,
+      toolCalls: input.item.toolCalls,
+      updatedAt: input.now
+    },
+    where: {
+      threadId_messageId: {
+        messageId: input.item.messageId,
+        threadId: input.threadId
+      }
+    }
+  })
+  await replaceMessageSearchIndex(tx, {
+    messageId: input.item.messageId,
+    role: input.item.role,
+    searchText,
+    threadId: input.threadId
+  })
+}
+
+export async function prepareMessageStateItems(input: {
+  messages: unknown[]
+  serde: SerializerProtocol
+}): Promise<PreparedMessageStateItem[]> {
+  return Promise.all(
+    input.messages.map((message, index) =>
+      serializeMessageStateItem({
+        index,
+        message,
+        serde: input.serde
+      })
+    )
+  )
+}
+
+export async function persistMessageStateVersion(
+  input: PersistMessageStateInput,
+  tx: TransactionClient = getPrismaClient()
+): Promise<void> {
+  const now = BigInt(Date.now())
+  const previous = await loadLatestMessageState(tx, {
+    checkpointNs: input.checkpointNs,
+    threadId: input.threadId
+  })
+  if (input.messages === undefined && previous.throughSeq === 0) {
+    throw new Error(
+      `[MessageState] Checkpoint "${input.checkpointId}" references messages version "${input.version}" before any message facts exist.`
+    )
+  }
+
+  const items = input.messages === undefined ? previous.items : input.messages
+  const stateHash = buildStateHash(items)
+  let seq = await readNextMessageEventSeq(tx, input.threadId, input.checkpointNs)
+  const previousById = new Map(previous.items.map((item) => [item.messageId, item]))
+  const nextIds = new Set(items.map((item) => item.messageId))
+  const removedItems =
+    input.messages === undefined
+      ? []
+      : previous.items.filter((item) => !nextIds.has(item.messageId))
+  const changedItems =
+    input.messages === undefined
+      ? []
+      : items.filter((item) => {
+          const previousItem = previousById.get(item.messageId)
+          return (
+            !previousItem ||
+            previousItem.rawHash !== item.rawHash ||
+            previousItem.order !== item.order
+          )
+        })
+
+  const shouldUpdateProjection = input.checkpointNs === ""
+
+  for (const item of removedItems) {
+    await tx.messageEvent.create({
+      data: {
+        checkpointId: input.checkpointId,
+        checkpointNs: input.checkpointNs,
+        createdAt: now,
+        eventId: randomUUID(),
+        messageId: item.messageId,
+        payload: stableStringify({
+          messageId: item.messageId,
+          stateHash,
+          version: input.version
+        }),
+        runId: input.runId,
+        seq,
+        threadId: input.threadId,
+        type: "message.remove"
+      }
+    })
+
+    if (shouldUpdateProjection) {
+      await deleteProjectedMessage(tx, {
+        messageId: item.messageId,
+        threadId: input.threadId
+      })
+    }
+
+    seq += 1
+  }
+
+  for (const item of changedItems) {
+    await tx.messageEvent.create({
+      data: {
+        checkpointId: input.checkpointId,
+        checkpointNs: input.checkpointNs,
+        createdAt: now,
+        eventId: randomUUID(),
+        messageId: item.messageId,
+        payload: stableStringify(item),
+        runId: input.runId,
+        seq,
+        threadId: input.threadId,
+        type: "message.upsert"
+      }
+    })
+
+    if (shouldUpdateProjection) {
+      await upsertProjectedMessage(tx, {
+        item,
+        now,
+        runId: input.runId,
+        threadId: input.threadId
+      })
+    }
+
+    seq += 1
+  }
+
+  await tx.messageStateVersion.upsert({
+    create: {
+      checkpointNs: input.checkpointNs,
+      createdAt: now,
+      stateHash,
+      threadId: input.threadId,
+      throughSeq:
+        changedItems.length > 0 || removedItems.length > 0 ? seq - 1 : previous.throughSeq,
+      version: input.version
+    },
+    update: {
+      createdAt: now,
+      stateHash,
+      throughSeq: changedItems.length > 0 || removedItems.length > 0 ? seq - 1 : previous.throughSeq
+    },
+    where: {
+      threadId_checkpointNs_version: {
+        checkpointNs: input.checkpointNs,
+        threadId: input.threadId,
+        version: input.version
+      }
+    }
+  })
+}
+
+export async function loadMessagesForStateVersion(
+  input: MessageStateVersionInput,
+  tx: TransactionClient = getPrismaClient()
+): Promise<unknown[]> {
+  const stateVersion = await tx.messageStateVersion.findUnique({
+    where: {
+      threadId_checkpointNs_version: {
+        checkpointNs: input.checkpointNs,
+        threadId: input.threadId,
+        version: input.version
+      }
+    }
+  })
+
+  if (!stateVersion) {
+    throw new Error(
+      `[MessageState] Missing message state version "${input.version}" for thread "${input.threadId}" namespace "${input.checkpointNs}".`
+    )
+  }
+
+  const items = await loadMessageStateItemsThroughSeq(tx, {
+    checkpointNs: input.checkpointNs,
+    threadId: input.threadId,
+    throughSeq: stateVersion.throughSeq
+  })
+
+  return Promise.all(
+    items.map((item) =>
+      input.serde.loadsTyped(
+        item.rawMessageType,
+        decodeRawMessagePayload({
+          encoding: item.rawMessageEncoding,
+          value: item.rawMessageValue
+        })
+      )
+    )
+  )
+}
+
+export async function projectMessageStateThroughSeq(
+  input: {
+    checkpointNs: string
+    runId: string | null
+    sourceThreadId: string
+    targetThreadId: string
+    throughSeq: number
+    updatedAt: bigint
+  },
+  tx: TransactionClient = getPrismaClient()
+): Promise<void> {
+  const items = await loadMessageStateItemsThroughSeq(tx, {
+    checkpointNs: input.checkpointNs,
+    threadId: input.sourceThreadId,
+    throughSeq: input.throughSeq
+  })
+
+  await Promise.all(
+    items.map((item) =>
+      upsertProjectedMessage(tx, {
+        item,
+        now: input.updatedAt,
+        runId: input.runId,
+        threadId: input.targetThreadId
+      })
+    )
+  )
+}
+
+export async function checkpointMessageStateIncludesMessage(
+  input: CheckpointMessageStateInput,
+  tx: TransactionClient = getPrismaClient()
+): Promise<boolean> {
+  const stateVersion = await tx.messageStateVersion.findUnique({
+    select: { throughSeq: true },
+    where: {
+      threadId_checkpointNs_version: {
+        checkpointNs: input.checkpointNs,
+        threadId: input.threadId,
+        version: input.version
+      }
+    }
+  })
+
+  if (!stateVersion) {
+    throw new Error(
+      `[MessageState] Missing message state version "${input.version}" for thread "${input.threadId}" namespace "${input.checkpointNs}".`
+    )
+  }
+
+  const latestEvent = await tx.messageEvent.findFirst({
+    orderBy: { seq: "desc" },
+    select: { type: true },
+    where: {
+      checkpointNs: input.checkpointNs,
+      messageId: input.messageId,
+      seq: {
+        lte: stateVersion.throughSeq
+      },
+      threadId: input.threadId
+    }
+  })
+
+  return latestEvent?.type === "message.upsert"
+}
+
+export async function listProjectedThreadMessages(
+  threadId: string
+): Promise<MessageProjectionRow[]> {
+  const rows = await getPrismaClient().message.findMany({
+    orderBy: { seq: "asc" },
+    where: { threadId }
+  })
+
+  return rows.map((row) => ({
+    content: row.content,
+    created_at: Number(row.createdAt),
+    kind: row.kind,
+    message_id: row.messageId,
+    metadata: row.metadata,
+    name: row.name,
+    raw_message: row.rawMessage,
+    role: row.role,
+    run_id: row.runId,
+    seq: row.seq,
+    thread_id: row.threadId,
+    tool_call_id: row.toolCallId,
+    tool_calls: row.toolCalls
+  }))
+}
+
+function mapMessageSearchQueryRow(row: MessageSearchQueryRow): MessageSearchMatchRow {
+  return {
+    content: row.content,
+    created_at: Number(row.created_at),
+    kind: row.kind,
+    message_id: row.message_id,
+    metadata: row.metadata,
+    name: row.name,
+    rank: row.rank,
+    raw_message: row.raw_message,
+    role: row.role,
+    run_id: row.run_id,
+    search_text: row.search_text,
+    seq: row.seq,
+    thread_id: row.thread_id,
+    thread_title: row.thread_title,
+    thread_updated_at: Number(row.thread_updated_at),
+    tool_call_id: row.tool_call_id,
+    tool_calls: row.tool_calls
+  }
+}
+
+function dedupeMessageSearchRows(
+  rows: MessageSearchQueryRow[],
+  limit: number
+): MessageSearchMatchRow[] {
+  const seen = new Set<string>()
+  const matches: MessageSearchMatchRow[] = []
+
+  for (const row of rows) {
+    const key = `${row.thread_id}:${row.message_id}`
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    matches.push(mapMessageSearchQueryRow(row))
+    if (matches.length >= limit) {
+      break
+    }
+  }
+
+  return matches
+}
+
+export async function searchProjectedThreadMessages(input: {
+  limit: number
+  query: string
+  threadId?: string
+}): Promise<MessageSearchMatchRow[]> {
+  const query = input.query.trim()
+  const limit = Math.min(Math.max(input.limit, 1), 50)
+  if (!query) {
+    return []
+  }
+
+  const ftsQuery = buildUnicodeFtsQuery(query)
+  const trigramQuery = buildTrigramFtsQuery(query)
+  const threadWhere = input.threadId
+    ? " AND messages.thread_id = ?"
+    : " AND threads.archived_at IS NULL"
+  const threadArgs = input.threadId ? ([input.threadId] as const) : ([] as const)
+  const selectColumns = `
+    messages.thread_id,
+    messages.message_id,
+    messages.role,
+    messages.kind,
+    messages.content,
+    messages.metadata,
+    messages.name,
+    messages.raw_message,
+    messages.run_id,
+    messages.seq,
+    messages.tool_call_id,
+    messages.tool_calls,
+    messages.created_at,
+    threads.title AS thread_title,
+    threads.updated_at AS thread_updated_at`
+  const prisma = getPrismaClient()
+  const [trigramRows, ftsRows] = await Promise.all([
+    trigramQuery
+      ? prisma.$queryRawUnsafe<MessageSearchQueryRow[]>(
+          `SELECT ${selectColumns}, messages_fts_trigram.search_text, bm25(messages_fts_trigram) AS rank
+           FROM messages_fts_trigram
+           INNER JOIN messages
+             ON messages.thread_id = messages_fts_trigram.thread_id
+            AND messages.message_id = messages_fts_trigram.message_id
+           INNER JOIN threads ON threads.thread_id = messages.thread_id
+           WHERE messages_fts_trigram MATCH ?
+           ${threadWhere}
+           ORDER BY rank
+           LIMIT ?`,
+          trigramQuery,
+          ...threadArgs,
+          limit
+        )
+      : Promise.resolve([]),
+    ftsQuery
+      ? prisma.$queryRawUnsafe<MessageSearchQueryRow[]>(
+          `SELECT ${selectColumns}, messages_fts.search_text, bm25(messages_fts) AS rank
+           FROM messages_fts
+           INNER JOIN messages
+             ON messages.thread_id = messages_fts.thread_id
+            AND messages.message_id = messages_fts.message_id
+           INNER JOIN threads ON threads.thread_id = messages.thread_id
+           WHERE messages_fts MATCH ?
+           ${threadWhere}
+           ORDER BY rank
+           LIMIT ?`,
+          ftsQuery,
+          ...threadArgs,
+          limit
+        )
+      : Promise.resolve([])
+  ])
+
+  return dedupeMessageSearchRows([...trigramRows, ...ftsRows], limit)
+}

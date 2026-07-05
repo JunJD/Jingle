@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.node.json",
+  "include": [
+    "../../extensions/**/*",
+    "../../installable-extensions/**/*",
+    "../../src/extensions/**/*",
+    "../../src/preload/index.d.ts",
+    "../../src/renderer/src/**/*",
+    "../../tests/node/**/*"
+  ],
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "types": ["node"]
+  }
+}

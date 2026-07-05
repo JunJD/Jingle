@@ -1,0 +1,21 @@
+{
+  "name": "@jingle/extension-apple-reminders",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./main.ts",
+  "jingle": {
+    "distribution": "installable",
+    "trust": "trusted"
+  },
+  "types": "./manifest.ts",
+  "dependencies": {
+    "@jingle/extension-api": "workspace:*",
+    "lucide-react": "^0.469.0",
+    "react": "^19.2.1",
+    "zod": "^4.0.0"
+  },
+  "peerDependencies": {
+    "electron": "^39.2.6"
+  }
+}

@@ -1,0 +1,2841 @@
+import assert from "node:assert/strict"
+import { execFileSync } from "node:child_process"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import test, { mock } from "node:test"
+import { emptyCheckpoint } from "@langchain/langgraph-checkpoint"
+import type { SerializerProtocol } from "@langchain/langgraph-checkpoint"
+import { appleRemindersManifest } from "../../installable-extensions/apple-reminders/manifest"
+
+const repoRoot = process.cwd()
+const originalJingleHome = process.env.JINGLE_HOME
+let jingleHome = ""
+
+async function loadDbModules() {
+  const db = await import("../../src/main/db")
+  const { getPrismaClient } = await import("../../src/main/db/client")
+  return { ...db, getPrismaClient }
+}
+
+async function bindThreadWorkspace(threadId: string, workspacePath: string): Promise<void> {
+  const { ThreadWorkspaceRepository } = await import("../../src/main/thread-workspace/repository")
+  const { ThreadWorkspaceService } = await import("../../src/main/thread-workspace/service")
+  await new ThreadWorkspaceService(new ThreadWorkspaceRepository()).bindProject(
+    threadId,
+    workspacePath
+  )
+}
+
+async function createWorkspaceServiceForTest() {
+  const { JingleMemoryService } = await import("../../src/main/jingle-memory/service")
+  const { ThreadWorkspaceRepository } = await import("../../src/main/thread-workspace/repository")
+  const { ThreadWorkspaceService } = await import("../../src/main/thread-workspace/service")
+  const { WorkspaceRepository } = await import("../../src/main/workspace/repository")
+  const { WorkspaceService } = await import("../../src/main/workspace/service")
+
+  return new WorkspaceService(
+    new WorkspaceRepository(),
+    new ThreadWorkspaceService(new ThreadWorkspaceRepository()),
+    new JingleMemoryService()
+  )
+}
+
+async function createAgentServiceForTest(
+  input: {
+    jingleMemoryService?: unknown
+    threadLifecycleGate?: unknown
+  } = {}
+) {
+  const { AgentService } = await import("../../src/main/agent/service")
+  const { JingleMemoryService } = await import("../../src/main/jingle-memory/service")
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+
+  return new AgentService(
+    (input.jingleMemoryService ?? new JingleMemoryService()) as ConstructorParameters<
+      typeof AgentService
+    >[0],
+    (input.threadLifecycleGate ?? new ThreadLifecycleGate()) as ConstructorParameters<
+      typeof AgentService
+    >[1],
+    await createWorkspaceServiceForTest()
+  )
+}
+
+async function createThreadsServiceForTest(input: { threadLifecycleGate?: unknown } = {}) {
+  const { ArtifactsService } = await import("../../src/main/artifacts/service")
+  const { ThreadsService } = await import("../../src/main/threads/service")
+  const { ThreadWorkspaceRepository } = await import("../../src/main/thread-workspace/repository")
+  const { ThreadWorkspaceService } = await import("../../src/main/thread-workspace/service")
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+
+  return new ThreadsService(
+    new ArtifactsService(),
+    { getDefaultModel: () => "openai:gpt-test" } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[1],
+    { getAgentConfig: () => ({ locale: "en_US" }) } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[2],
+    { resolveGlobalWorkspacePath: async () => repoRoot } as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[3],
+    new ThreadWorkspaceService(new ThreadWorkspaceRepository()) as unknown as ConstructorParameters<
+      typeof ThreadsService
+    >[4],
+    (input.threadLifecycleGate ?? new ThreadLifecycleGate()) as ConstructorParameters<
+      typeof ThreadsService
+    >[5]
+  )
+}
+
+test.before(async () => {
+  jingleHome = await mkdtemp(join(tmpdir(), "jingle-agent-persistence-"))
+  process.env.JINGLE_HOME = jingleHome
+
+  execFileSync("node", ["scripts/run-prisma-jingle-db.mjs", "migrate", "deploy"], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      JINGLE_HOME: jingleHome,
+    }
+  })
+})
+
+test.beforeEach(async () => {
+  const { closeDatabase, initializeDatabase, getPrismaClient } = await loadDbModules()
+  await closeDatabase()
+  await initializeDatabase()
+  await getPrismaClient().thread.deleteMany()
+  await getPrismaClient().agentMemory.deleteMany()
+})
+
+test("database startup interrupts agent state left active by a previous process", async () => {
+  const {
+    closeDatabase,
+    createRun,
+    createThread,
+    getRun,
+    getThread,
+    initializeDatabase,
+    updateThread
+  } = await loadDbModules()
+  const consoleWarn = mock.method(console, "warn", () => {})
+  const threadId = "thread-startup-recovery"
+  const runId = "run-startup-recovery"
+
+  try {
+    await createThread(threadId)
+    await createRun(runId, threadId, { status: "running" })
+    await updateThread(threadId, { status: "busy" })
+
+    await closeDatabase()
+    await initializeDatabase()
+
+    const run = await getRun(runId)
+    const thread = await getThread(threadId)
+
+    assert.equal(run?.status, "interrupted")
+    assert.equal(thread?.status, "interrupted")
+    assert.equal(consoleWarn.mock.callCount(), 1)
+  } finally {
+    consoleWarn.mock.restore()
+  }
+})
+
+test.after(async () => {
+  const { closeDatabase } = await loadDbModules()
+  await closeDatabase()
+  if (originalJingleHome === undefined) {
+    delete process.env.JINGLE_HOME
+  } else {
+    process.env.JINGLE_HOME = originalJingleHome
+  }
+
+  if (jingleHome) {
+    await rm(jingleHome, { force: true, recursive: true })
+  }
+})
+
+test("resume primitives target the request's run instead of the latest active run", async () => {
+  const { createRun, createThread, getHitlRequest, getRun, resolveHitlRequest, upsertHitlRequest } =
+    await loadDbModules()
+  const { resumeAgentRun } = await import("../../src/main/agent/persistence")
+
+  const threadId = "thread-1"
+  const olderRunId = "run-older"
+  const latestRunId = "run-latest"
+
+  await createThread(threadId)
+  await createRun(olderRunId, threadId, { status: "interrupted" })
+  await createRun(latestRunId, threadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    request_id: "request-older",
+    thread_id: threadId,
+    run_id: olderRunId,
+    tool_call_id: "tool-call-older",
+    tool_name: "write_file",
+    tool_args: { path: "/tmp/older.txt" },
+    allowed_decisions: ["approve", "reject"],
+    status: "pending"
+  })
+  await upsertHitlRequest({
+    request_id: "request-latest",
+    thread_id: threadId,
+    run_id: latestRunId,
+    tool_call_id: "tool-call-latest",
+    tool_name: "write_file",
+    tool_args: { path: "/tmp/latest.txt" },
+    allowed_decisions: ["approve", "reject"],
+    status: "pending"
+  })
+
+  const request = await getHitlRequest("request-older")
+  assert.equal(request?.run_id, olderRunId)
+
+  await resumeAgentRun(threadId, request!.run_id!, {
+    requestId: request!.request_id,
+    source: "resume"
+  })
+  await resolveHitlRequest(request!.request_id, "approved", {
+    request_id: request!.request_id,
+    tool_call_id: request!.tool_call_id,
+    type: "approve"
+  })
+
+  const resumedRun = await getRun(olderRunId)
+  const latestRun = await getRun(latestRunId)
+  const resolvedRequest = await getHitlRequest("request-older")
+  const untouchedRequest = await getHitlRequest("request-latest")
+
+  assert.equal(resumedRun?.status, "running")
+  assert.equal(latestRun?.status, "interrupted")
+  assert.equal(resolvedRequest?.status, "approved")
+  assert.equal(untouchedRequest?.status, "pending")
+})
+
+test("agent resume keeps HITL request pending when resumed stream fails before first chunk", async () => {
+  const { createRun, createThread, getHitlRequest, upsertHitlRequest } = await loadDbModules()
+  const consoleLog = mock.method(console, "log", () => {})
+  const consoleError = mock.method(console, "error", () => {})
+  const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
+
+  const threadId = "thread-resume-failure"
+  const runId = "run-resume-failure"
+  const requestId = "request-resume-failure"
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  await createRun(runId, threadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    request_id: requestId,
+    thread_id: threadId,
+    run_id: runId,
+    tool_call_id: "tool-call-resume-failure",
+    tool_name: "write_file",
+    tool_args: { path: `${repoRoot}/approval.txt` },
+    allowed_decisions: ["approve", "reject"],
+    status: "pending"
+  })
+
+  const events: Array<{ type: string }> = []
+  process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
+  try {
+    await (
+      await createAgentServiceForTest()
+    ).resume(
+      {
+        decision: {
+          feedback: "bdd:fail-before-first-chunk",
+          request_id: requestId,
+          tool_call_id: "tool-call-resume-failure",
+          type: "approve"
+        },
+        modelId: "bdd",
+        threadId
+      },
+      {
+        send: (event) => events.push({ type: event.type })
+      }
+    )
+  } finally {
+    if (previousRuntimeMode === undefined) {
+      delete process.env.JINGLE_BDD_AGENT_RUNTIME
+    } else {
+      process.env.JINGLE_BDD_AGENT_RUNTIME = previousRuntimeMode
+    }
+    consoleError.mock.restore()
+    consoleLog.mock.restore()
+  }
+
+  const request = await getHitlRequest(requestId)
+  assert.equal(request?.status, "pending")
+  assert.equal(request?.decision, null)
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["run_started", "error"]
+  )
+})
+
+test("agent resume rejects workspace mismatch before mutating the run", async () => {
+  const { createRun, createThread, getRun, upsertHitlRequest } = await loadDbModules()
+  const { JINGLE_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } =
+    await import("../../src/shared/jingle-memory")
+  const consoleLog = mock.method(console, "log", () => {})
+  const consoleError = mock.method(console, "error", () => {})
+
+  const originalWorkspacePath = await mkdtemp(join(jingleHome, "workspace-original-"))
+  const currentWorkspacePath = await mkdtemp(join(jingleHome, "workspace-current-"))
+  const threadId = "thread-resume-workspace-mismatch"
+  const runId = "run-resume-workspace-mismatch"
+  const requestId = "request-resume-workspace-mismatch"
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, currentWorkspacePath)
+  await createRun(runId, threadId, {
+    metadata: {
+      [JINGLE_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY]: {
+        canonicalWorkspacePath: originalWorkspacePath,
+        generatedAt: 1,
+        items: [],
+        workspaceIdentity: {
+          canonicalWorkspacePath: originalWorkspacePath,
+          displayName: "original",
+          workspaceKey: originalWorkspacePath
+        },
+        workspaceKey: originalWorkspacePath
+      }
+    },
+    status: "interrupted"
+  })
+  await upsertHitlRequest({
+    request_id: requestId,
+    thread_id: threadId,
+    run_id: runId,
+    tool_call_id: "tool-call-resume-workspace-mismatch",
+    tool_name: "write_file",
+    tool_args: { path: `${currentWorkspacePath}/approval.txt` },
+    allowed_decisions: ["approve", "reject"],
+    status: "pending"
+  })
+
+  const events: Array<{ details?: string[]; type: string }> = []
+  try {
+    await (
+      await createAgentServiceForTest()
+    ).resume(
+      {
+        decision: {
+          request_id: requestId,
+          tool_call_id: "tool-call-resume-workspace-mismatch",
+          type: "approve"
+        },
+        modelId: "bdd",
+        threadId
+      },
+      {
+        send: (event) =>
+          events.push({
+            details: "details" in event ? event.details : undefined,
+            type: event.type
+          })
+      }
+    )
+  } finally {
+    consoleError.mock.restore()
+    consoleLog.mock.restore()
+  }
+
+  const run = await getRun(runId)
+  assert.equal(run?.status, "interrupted")
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["error"]
+  )
+  assert.equal(
+    events[0].details?.some((detail) => detail.includes("fork_current_workspace")),
+    true
+  )
+})
+
+test("agent resume seeds frozen provided context inclusions into resumed runtime state", async () => {
+  const { createRun, createThread, updateThread, upsertHitlRequest } = await loadDbModules()
+  const { JINGLE_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } =
+    await import("../../src/shared/jingle-memory")
+  const consoleLog = mock.method(console, "log", () => {})
+  const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
+
+  const threadId = "thread-resume-context-inclusions"
+  const runId = "run-resume-context-inclusions"
+  const requestId = "request-resume-context-inclusions"
+  const workspaceIdentity = {
+    canonicalWorkspacePath: repoRoot,
+    displayName: "jingle",
+    workspaceKey: repoRoot
+  }
+
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  await createRun(runId, threadId, {
+    metadata: {
+      [JINGLE_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY]: {
+        canonicalWorkspacePath: repoRoot,
+        generatedAt: 123,
+        items: [
+          {
+            content: "Frozen resume memory body.",
+            id: "memory:memory-resume-context",
+            kind: "about_me",
+            scope: "global",
+            sourceLabel: "Global personal memory",
+            sourceType: "structured",
+            structuredMemoryId: "memory-resume-context"
+          }
+        ],
+        workspaceIdentity,
+        workspaceKey: repoRoot
+      }
+    },
+    status: "interrupted"
+  })
+  await updateThread(threadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    request_id: requestId,
+    thread_id: threadId,
+    run_id: runId,
+    tool_call_id: "tool-call-resume-context-inclusions",
+    tool_name: "write_file",
+    tool_args: { path: `${repoRoot}/approval.txt` },
+    allowed_decisions: ["approve", "reject"],
+    status: "pending"
+  })
+
+  const events: Array<{ data?: unknown; mode?: string; type: string }> = []
+
+  try {
+    process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
+    await (
+      await createAgentServiceForTest()
+    ).resume(
+      {
+        decision: {
+          request_id: requestId,
+          tool_call_id: "tool-call-resume-context-inclusions",
+          type: "approve"
+        },
+        modelId: "bdd",
+        threadId
+      },
+      {
+        send: (event) => events.push(event as (typeof events)[number])
+      }
+    )
+  } finally {
+    consoleLog.mock.restore()
+    if (previousRuntimeMode === undefined) {
+      delete process.env.JINGLE_BDD_AGENT_RUNTIME
+    } else {
+      process.env.JINGLE_BDD_AGENT_RUNTIME = previousRuntimeMode
+    }
+  }
+
+  const valuesEvent = events.find((event) => event.type === "stream" && event.mode === "values")
+  const contextInclusions = (valuesEvent?.data as { contextInclusions?: Array<{ id?: string }> })
+    ?.contextInclusions
+
+  assert.equal(
+    contextInclusions?.[0]?.id,
+    "ctx:run-resume-context-inclusions:provided:memory:memory-resume-context"
+  )
+})
+
+test("agent cancel covers invoke setup before a run id exists", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+  const consoleLog = mock.method(console, "log", () => {})
+
+  const threadId = "thread-cancel-before-run"
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+
+  let releaseContextPack: () => void = () => {
+    throw new Error("Context pack build was not reached.")
+  }
+  const contextPackGate = new Promise<void>((resolve) => {
+    releaseContextPack = resolve
+  })
+  let contextPackStarted = false
+  const memoryService = {
+    buildContextPack: async () => {
+      contextPackStarted = true
+      await contextPackGate
+      return null
+    },
+    createContextSnapshot: () => null,
+    recordInclusions: async () => undefined
+  }
+  const lifecycleGate = new ThreadLifecycleGate()
+  const agentService = await createAgentServiceForTest({
+    jingleMemoryService: memoryService,
+    threadLifecycleGate: lifecycleGate
+  })
+  const invoke = agentService.invoke(
+    {
+      message: {
+        content: "cancel before run id",
+        id: "message-cancel-before-run"
+      },
+      modelId: "bdd",
+      threadId
+    },
+    {
+      send: () => undefined
+    }
+  )
+
+  try {
+    while (!contextPackStarted) {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+
+    assert.equal(await agentService.cancel({ threadId }), true)
+    releaseContextPack()
+    await invoke
+
+    const runs = await getPrismaClient().run.findMany({ where: { threadId } })
+    assert.equal(runs.length, 0)
+  } finally {
+    consoleLog.mock.restore()
+  }
+})
+
+test("agent cancel records one aborted lifecycle for an active run", async () => {
+  const { createThread, getPrismaClient, getRun } = await loadDbModules()
+  const consoleLog = mock.method(console, "log", () => {})
+  const previousRuntimeMode = process.env.JINGLE_BDD_AGENT_RUNTIME
+
+  const threadId = "thread-cancel-active-run"
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+  process.env.JINGLE_BDD_AGENT_RUNTIME = "scripted"
+
+  let runId: string | null = null
+  let valuesSeen = false
+  const agentService = await createAgentServiceForTest()
+  const invoke = agentService.invoke(
+    {
+      message: {
+        content: "bdd:long",
+        id: "message-cancel-active-run"
+      },
+      modelId: "bdd",
+      threadId
+    },
+    {
+      send: (event) => {
+        if (event.type === "run_started") {
+          runId = event.runId
+        }
+        if (event.type === "stream" && event.mode === "values") {
+          valuesSeen = true
+        }
+      }
+    }
+  )
+
+  try {
+    while (!runId || !valuesSeen) {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+
+    assert.equal(await agentService.cancel({ threadId }), true)
+    await invoke
+
+    const run = await getRun(runId)
+    assert.equal(run?.status, "interrupted")
+
+    const lifecycleEvents = await getPrismaClient().agentEvent.findMany({
+      orderBy: { seq: "asc" },
+      where: {
+        runId,
+        type: {
+          in: ["run.started", "run.interrupted", "run.finished"]
+        }
+      }
+    })
+    const projectedEvents = lifecycleEvents.map((event) => ({
+      payload: JSON.parse(event.payload) as Record<string, unknown>,
+      type: event.type
+    }))
+    assert.equal(projectedEvents[0]?.payload.source, "invoke")
+    assert.equal(projectedEvents[0]?.payload.userMessageId, "message-cancel-active-run")
+    assert.deepEqual(
+      projectedEvents.map((event) => ({
+        payload:
+          event.type === "run.started"
+            ? { source: event.payload.source, userMessageId: event.payload.userMessageId }
+            : event.payload,
+        type: event.type
+      })),
+      [
+        {
+          payload: {
+            source: "invoke",
+            userMessageId: "message-cancel-active-run"
+          },
+          type: "run.started"
+        },
+        {
+          payload: {
+            status: "interrupted"
+          },
+          type: "run.interrupted"
+        },
+        {
+          payload: {
+            completionReason: "aborted",
+            errorMessage: null,
+            errorType: null,
+            status: "interrupted"
+          },
+          type: "run.finished"
+        }
+      ]
+    )
+  } finally {
+    if (previousRuntimeMode === undefined) {
+      delete process.env.JINGLE_BDD_AGENT_RUNTIME
+    } else {
+      process.env.JINGLE_BDD_AGENT_RUNTIME = previousRuntimeMode
+    }
+    consoleLog.mock.restore()
+  }
+})
+
+test("agent deletion gate rejects invoke while thread deletion is active", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+  const consoleLog = mock.method(console, "log", () => {})
+
+  const threadId = "thread-deleting-rejects-invoke"
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+
+  let releaseDeletion: () => void = () => {
+    throw new Error("Deletion gate was not entered.")
+  }
+  const deletionGate = new Promise<void>((resolve) => {
+    releaseDeletion = resolve
+  })
+  const lifecycleGate = new ThreadLifecycleGate()
+  const agentService = await createAgentServiceForTest({
+    threadLifecycleGate: lifecycleGate
+  })
+  const events: Array<{ code?: string; type: string }> = []
+  let runAccepted = false
+
+  const deletion = lifecycleGate.withDeletion(threadId, async () => {
+    await deletionGate
+  })
+
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    await agentService.invoke(
+      {
+        message: {
+          content: "invoke while deleting",
+          id: "message-deleting-rejects-invoke"
+        },
+        modelId: "bdd",
+        threadId
+      },
+      {
+        send: (event) => {
+          events.push({ code: "code" in event ? event.code : undefined, type: event.type })
+        }
+      },
+      {
+        onRunAccepted: () => {
+          runAccepted = true
+        }
+      }
+    )
+
+    assert.deepEqual(events, [{ code: "CONFLICT", type: "error" }])
+    assert.equal(runAccepted, false)
+    const runs = await getPrismaClient().run.findMany({ where: { threadId } })
+    assert.equal(runs.length, 0)
+  } finally {
+    releaseDeletion()
+    await deletion
+    consoleLog.mock.restore()
+  }
+})
+
+test("run failure preserves interrupted status when pending HITL remains", async () => {
+  const { createRun, createThread, getRun, getThread, upsertHitlRequest } = await loadDbModules()
+  const { markRunFailed } = await import("../../src/main/agent/persistence")
+
+  const threadId = "thread-failed-with-pending-hitl"
+  const runId = "run-failed-with-pending-hitl"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+  await upsertHitlRequest({
+    request_id: "request-still-pending",
+    thread_id: threadId,
+    run_id: runId,
+    tool_call_id: "tool-call-still-pending",
+    tool_name: "callExtension",
+    tool_args: {
+      args: {
+        reminderId: "reminder-2"
+      },
+      extensionName: "apple-reminders",
+      toolName: "deleteReminder"
+    },
+    allowed_decisions: ["approve", "reject"],
+    status: "pending"
+  })
+
+  await markRunFailed(threadId, runId, new Error("checkpoint write timed out"))
+
+  const run = await getRun(runId)
+  const thread = await getThread(threadId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  assert.equal(run?.status, "interrupted")
+  assert.equal(thread?.status, "interrupted")
+  assert.equal(metadata.error, "checkpoint write timed out")
+})
+
+test("agent run metadata snapshots permission mode and preserves it through resume", async () => {
+  const { createThread, getRun } = await loadDbModules()
+  const { beginAgentRun, resumeAgentRun } = await import("../../src/main/agent/persistence")
+  const { readRunPermissionModeSnapshot } = await import("../../src/main/agent/permission-mode")
+  const {
+    createRunExtensionAiCapabilitiesSnapshot,
+    readRunExtensionAiCapabilitiesSnapshotFromMetadata,
+    RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY
+  } = await import("../../src/shared/extension-sources")
+  const { resolveNativeExtensionAiCapabilitiesForRefsFromManifests } =
+    await import("../../src/extensions/sources")
+
+  const threadId = "thread-permission"
+  await createThread(threadId)
+  const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
+    [
+      {
+        extensionName: "apple-reminders",
+        name: "Apple Reminders",
+        sourceId: "appleReminders",
+        type: "extension-source"
+      }
+    ],
+    [appleRemindersManifest],
+    {
+      permissionMode: "auto",
+      platform: "darwin"
+    }
+  )
+
+  const { runId } = await beginAgentRun(threadId, "gpt-test", {
+    aiCapabilities,
+    permissionMode: "auto"
+  })
+  const createdRun = await getRun(runId)
+  assert.equal(readRunPermissionModeSnapshot(createdRun), "auto")
+  const createdMetadata = JSON.parse(createdRun?.metadata ?? "{}") as Record<string, unknown>
+  const aiCapabilitiesSnapshot =
+    createdMetadata[RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY]
+  assert.ok(Array.isArray(aiCapabilitiesSnapshot))
+  const [firstSnapshot] = aiCapabilitiesSnapshot as Array<Record<string, unknown>>
+  assert.equal(typeof firstSnapshot?.createdAt, "string")
+  assert.deepEqual(firstSnapshot?.publicConfigSnapshot, {})
+  const expectedAiCapabilitiesSnapshot = createRunExtensionAiCapabilitiesSnapshot({
+    aiCapabilities,
+    runId
+  }).map((snapshot) => ({
+    ...snapshot,
+    createdAt: firstSnapshot?.createdAt
+  }))
+  assert.deepEqual(expectedAiCapabilitiesSnapshot, aiCapabilitiesSnapshot)
+  assert.deepEqual(
+    readRunExtensionAiCapabilitiesSnapshotFromMetadata(createdRun?.metadata),
+    aiCapabilitiesSnapshot
+  )
+
+  await resumeAgentRun(threadId, runId, {
+    requestId: "request-1",
+    source: "resume"
+  })
+
+  const resumedRun = await getRun(runId)
+  assert.equal(readRunPermissionModeSnapshot(resumedRun), "auto")
+  assert.deepEqual(
+    readRunExtensionAiCapabilitiesSnapshotFromMetadata(resumedRun?.metadata),
+    aiCapabilitiesSnapshot
+  )
+  const resumedMetadata = JSON.parse(resumedRun?.metadata ?? "{}") as Record<string, unknown>
+  assert.deepEqual(
+    resumedMetadata[RUN_EXTENSION_AI_CAPABILITIES_SNAPSHOT_METADATA_KEY],
+    aiCapabilitiesSnapshot
+  )
+  assert.match(resumedRun?.metadata ?? "", /request-1/)
+})
+
+test("personal memory suggestions require acceptance before becoming active memory", async () => {
+  const { createRun, createThread } = await loadDbModules()
+  const {
+    acceptAgentMemorySuggestion,
+    createAgentMemorySuggestion,
+    listAgentMemoryInclusionsForRun,
+    listAgentMemories,
+    listAgentMemorySuggestions,
+    recordAgentMemoryInclusions
+  } = await import("../../src/main/db/agent-memory")
+
+  const threadId = "thread-memory"
+  const runId = "run-memory"
+  await createThread(threadId)
+  await createRun(runId, threadId)
+
+  const suggestion = await createAgentMemorySuggestion({
+    content: "User prefers concise implementation notes.",
+    reason: "The user asked for developer-oriented documents.",
+    reviewPayload: {
+      evidenceIds: ["ctx:run-memory:retrieved:history_message:thread-memory:message-1"],
+      evidenceRefs: [
+        {
+          id: "ctx:run-memory:retrieved:history_message:thread-memory:message-1",
+          mode: "retrieved",
+          preview: "The user asked for developer-oriented documents.",
+          sourceId: "message-1",
+          sourceType: "history_message",
+          target: {
+            messageId: "message-1",
+            threadId,
+            type: "history_message"
+          },
+          threadId,
+          title: "user message"
+        }
+      ]
+    },
+    scope: "global",
+    sourceRunId: runId,
+    threadId,
+    type: "about_me"
+  })
+
+  const pendingSuggestions = await listAgentMemorySuggestions({
+    status: "pending",
+    threadId
+  })
+  const activeMemoriesBeforeAcceptance = await listAgentMemories({ status: "active" })
+
+  assert.equal(pendingSuggestions.length, 1)
+  assert.equal(pendingSuggestions[0].suggestionId, suggestion.suggestionId)
+  assert.deepEqual(pendingSuggestions[0].reviewPayload, {
+    evidenceIds: ["ctx:run-memory:retrieved:history_message:thread-memory:message-1"],
+    evidenceRefs: [
+      {
+        id: "ctx:run-memory:retrieved:history_message:thread-memory:message-1",
+        mode: "retrieved",
+        preview: "The user asked for developer-oriented documents.",
+        sourceId: "message-1",
+        sourceType: "history_message",
+        target: {
+          messageId: "message-1",
+          threadId,
+          type: "history_message"
+        },
+        threadId,
+        title: "user message"
+      }
+    ]
+  })
+  assert.equal(activeMemoriesBeforeAcceptance.length, 0)
+
+  const memory = await acceptAgentMemorySuggestion(suggestion.suggestionId)
+  const activeMemories = await listAgentMemories({ status: "active" })
+  const acceptedSuggestions = await listAgentMemorySuggestions({
+    status: "accepted",
+    threadId
+  })
+
+  assert.equal(memory.source, "agent_suggestion")
+  assert.deepEqual(memory.metadata?.evidenceIds, [
+    "ctx:run-memory:retrieved:history_message:thread-memory:message-1"
+  ])
+  assert.deepEqual(memory.metadata?.evidenceRefs, [
+    {
+      id: "ctx:run-memory:retrieved:history_message:thread-memory:message-1",
+      mode: "retrieved",
+      preview: "The user asked for developer-oriented documents.",
+      sourceId: "message-1",
+      sourceType: "history_message",
+      target: {
+        messageId: "message-1",
+        threadId,
+        type: "history_message"
+      },
+      threadId,
+      title: "user message"
+    }
+  ])
+  assert.equal(activeMemories.length, 1)
+  assert.equal(activeMemories[0].memoryId, memory.memoryId)
+  assert.equal(acceptedSuggestions.length, 1)
+
+  await recordAgentMemoryInclusions({
+    memoryIds: [memory.memoryId, memory.memoryId],
+    runId,
+    threadId
+  })
+  const inclusions = await listAgentMemoryInclusionsForRun(runId)
+
+  assert.equal(inclusions.length, 1)
+  assert.equal(inclusions[0].memoryId, memory.memoryId)
+})
+
+test("personal memory persistence normalizes scope workspace ownership", async () => {
+  const {
+    acceptAgentMemorySuggestion,
+    createAgentMemory,
+    createAgentMemorySuggestion,
+    updateAgentMemory
+  } = await import("../../src/main/db/agent-memory")
+
+  const globalMemory = await createAgentMemory({
+    content: "Global memory ignores workspace keys.",
+    scope: "global",
+    type: "about_me",
+    workspaceKey: repoRoot
+  })
+  assert.equal(globalMemory.workspaceKey, null)
+
+  await assert.rejects(
+    createAgentMemory({
+      content: "Workspace memory needs a workspace key.",
+      scope: "workspace",
+      type: "workspace_context"
+    }),
+    /Workspace-scoped memory requires workspaceKey/
+  )
+
+  const workspaceSuggestion = await createAgentMemorySuggestion({
+    content: "Workspace suggestion can be accepted globally.",
+    scope: "workspace",
+    type: "workspace_context",
+    workspaceKey: repoRoot
+  })
+  const acceptedAsGlobal = await acceptAgentMemorySuggestion(workspaceSuggestion.suggestionId, {
+    scope: "global"
+  })
+  assert.equal(acceptedAsGlobal.scope, "global")
+  assert.equal(acceptedAsGlobal.workspaceKey, null)
+
+  await assert.rejects(
+    updateAgentMemory(globalMemory.memoryId, { scope: "workspace" }),
+    /Workspace-scoped memory requires workspaceKey/
+  )
+})
+
+test("accepting workspace memory suggestions preserves suggestion workspace ownership by default", async () => {
+  const { acceptAgentMemorySuggestion, createAgentMemorySuggestion } =
+    await import("../../src/main/db/agent-memory")
+
+  const suggestion = await createAgentMemorySuggestion({
+    content: "Workspace A uses pnpm.",
+    scope: "workspace",
+    type: "workspace_context",
+    workspaceKey: "workspace-a"
+  })
+  const memory = await acceptAgentMemorySuggestion(suggestion.suggestionId)
+
+  assert.equal(memory.scope, "workspace")
+  assert.equal(memory.workspaceKey, "workspace-a")
+})
+
+test("workspace memory suggestions cannot be accepted from a different thread workspace", async () => {
+  const { createAgentMemorySuggestion } = await import("../../src/main/db/agent-memory")
+  const { createThread } = await loadDbModules()
+  const { JingleMemoryService } = await import("../../src/main/jingle-memory/service")
+
+  await createThread("thread-workspace-a")
+  await bindThreadWorkspace("thread-workspace-a", join(jingleHome, "workspace-a"))
+  const suggestion = await createAgentMemorySuggestion({
+    content: "Workspace A uses pnpm.",
+    scope: "workspace",
+    threadId: "thread-workspace-a",
+    type: "workspace_context",
+    workspaceKey: join(jingleHome, "workspace-b")
+  })
+
+  await assert.rejects(
+    new JingleMemoryService().acceptSuggestion(suggestion.suggestionId, {}),
+    /does not belong to the current workspace/
+  )
+})
+
+test("workspace changes are blocked while thread has pending workspace memory suggestions", async () => {
+  const { createAgentMemorySuggestion } = await import("../../src/main/db/agent-memory")
+  const { createThread, getThreadWorkspaceBinding } = await loadDbModules()
+  const threadId = "thread-pending-workspace-memory-guard"
+  const workspacePath = join(jingleHome, "workspace-a")
+
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, workspacePath)
+  await createAgentMemorySuggestion({
+    content: "Workspace A uses pnpm.",
+    scope: "workspace",
+    threadId,
+    type: "workspace_context",
+    workspaceKey: "workspace-a"
+  })
+
+  const service = await createWorkspaceServiceForTest()
+
+  await assert.rejects(
+    service.setWorkspacePath({
+      path: "workspace-b",
+      threadId
+    }),
+    /Resolve pending workspace memories/
+  )
+
+  const binding = await getThreadWorkspaceBinding(threadId)
+  assert.equal(binding?.workspace_path, workspacePath)
+})
+
+test("agent run memory snapshot stores frozen context content", async () => {
+  const { createRun, createThread, getRun } = await loadDbModules()
+  const { beginAgentRun } = await import("../../src/main/agent/persistence")
+  const { JingleMemoryService } = await import("../../src/main/jingle-memory/service")
+  const { JINGLE_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY } =
+    await import("../../src/shared/jingle-memory")
+
+  const service = new JingleMemoryService()
+  const threadId = "thread-memory-snapshot"
+  const workspaceIdentity = {
+    canonicalWorkspacePath: repoRoot,
+    displayName: "jingle",
+    workspaceKey: repoRoot
+  }
+  const contextPack = {
+    canonicalWorkspacePath: repoRoot,
+    generatedAt: 1,
+    items: [
+      {
+        content: "Freeze this personal memory body in run metadata.",
+        id: "memory:memory-snapshot",
+        kind: "about_me" as const,
+        scope: "global" as const,
+        sourceLabel: "Global personal memory",
+        sourceType: "structured" as const,
+        structuredMemoryId: "memory-snapshot"
+      }
+    ],
+    workspaceIdentity,
+    workspaceKey: repoRoot
+  }
+  await createThread(threadId)
+  await createRun("run-memory-snapshot-source", threadId)
+
+  const { runId } = await beginAgentRun(threadId, "gpt-test", {
+    jingleMemoryContextSnapshot: service.createContextSnapshot(contextPack)
+  })
+  const run = await getRun(runId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  const snapshot = metadata[JINGLE_MEMORY_CONTEXT_SNAPSHOT_METADATA_KEY] as {
+    items: Array<Record<string, unknown>>
+  }
+
+  assert.equal(run?.metadata?.includes("Freeze this personal memory body"), true)
+  assert.equal(snapshot.items[0]?.structuredMemoryId, "memory-snapshot")
+  assert.equal(snapshot.items[0]?.content, "Freeze this personal memory body in run metadata.")
+})
+
+test("memory context snapshot rebuild uses frozen file content", async () => {
+  const { JingleMemoryService } = await import("../../src/main/jingle-memory/service")
+  const { resolveJingleWorkspaceIdentity } = await import("../../src/main/workspace/identity")
+
+  const workspacePath = await mkdtemp(join(jingleHome, "workspace-memory-snapshot-"))
+  await mkdir(join(workspacePath, ".jingle"), { recursive: true })
+  await writeFile(join(workspacePath, ".jingle", "AGENTS.md"), "Workspace rule for resume.")
+
+  const service = new JingleMemoryService()
+  const contextPack = await service.buildContextPack({
+    workspaceIdentity: await resolveJingleWorkspaceIdentity(workspacePath)
+  })
+  const snapshot = service.createContextSnapshot(contextPack)
+  await writeFile(join(workspacePath, ".jingle", "AGENTS.md"), "Changed after snapshot.")
+  const rebuilt = service.rebuildContextPackFromSnapshot(snapshot)
+
+  assert.equal(
+    rebuilt?.items.some(
+      (item) => item.id === "workspace:agents" && item.content === "Workspace rule for resume."
+    ),
+    true
+  )
+})
+
+test("memory off and temporary mode keep file context but exclude structured memory", async () => {
+  const { createAgentMemory } = await import("../../src/main/db/agent-memory")
+  const { JingleMemoryService } = await import("../../src/main/jingle-memory/service")
+  const { resolveJingleWorkspaceIdentity } = await import("../../src/main/workspace/identity")
+  const { setJingleMemorySettings } = await import("../../src/main/preferences")
+
+  const workspacePath = await mkdtemp(join(jingleHome, "workspace-memory-off-"))
+  await mkdir(join(workspacePath, ".jingle"), { recursive: true })
+  await writeFile(join(workspacePath, ".jingle", "AGENTS.md"), "Workspace rule stays active.")
+  const workspaceIdentity = await resolveJingleWorkspaceIdentity(workspacePath)
+  await createAgentMemory({
+    content: "Structured memory should be disabled.",
+    scope: "global",
+    type: "about_me"
+  })
+
+  const service = new JingleMemoryService()
+  setJingleMemorySettings({ useMemory: false })
+  const memoryOffPack = await service.buildContextPack({ workspaceIdentity })
+  const temporaryPack = await service.buildContextPack({ temporaryMode: true, workspaceIdentity })
+  setJingleMemorySettings({ useMemory: true })
+
+  assert.equal(
+    memoryOffPack?.items.some((item) => item.id === "workspace:agents"),
+    true
+  )
+  assert.equal(
+    memoryOffPack?.items.some((item) => item.kind === "about_me"),
+    false
+  )
+  assert.equal(
+    temporaryPack?.items.some((item) => item.id === "workspace:agents"),
+    true
+  )
+  assert.equal(
+    temporaryPack?.items.some((item) => item.kind === "about_me"),
+    false
+  )
+})
+
+test("provided context inclusions distinguish structured memory from temporary file context", async () => {
+  const { buildProvidedContextInclusions } = await import("../../src/shared/jingle-memory")
+
+  const workspaceIdentity = {
+    canonicalWorkspacePath: repoRoot,
+    displayName: "jingle",
+    workspaceKey: repoRoot
+  }
+  const contextPack = {
+    canonicalWorkspacePath: repoRoot,
+    generatedAt: 123,
+    items: [
+      {
+        content: "Remembered stable preference.",
+        id: "memory:memory-provided",
+        kind: "about_me" as const,
+        scope: "global" as const,
+        sourceLabel: "Global personal memory",
+        sourceType: "structured" as const,
+        structuredMemoryId: "memory-provided"
+      },
+      {
+        content: "Workspace rule body.",
+        id: "workspace:agents",
+        kind: "rules" as const,
+        scope: "workspace" as const,
+        sourceLabel: "Workspace AGENTS.md",
+        sourceType: "file" as const
+      }
+    ],
+    workspaceIdentity,
+    workspaceKey: repoRoot
+  }
+  const temporaryContextPack = {
+    ...contextPack,
+    items: contextPack.items.filter((item) => item.sourceType === "file"),
+    temporaryMode: true
+  }
+
+  const inclusions = buildProvidedContextInclusions({
+    contextPack,
+    runId: "run-provided",
+    threadId: "thread-provided"
+  })
+  const temporaryInclusions = buildProvidedContextInclusions({
+    contextPack: temporaryContextPack,
+    runId: "run-temporary",
+    threadId: "thread-temporary"
+  })
+
+  assert.equal(inclusions.length, 2)
+  assert.equal(inclusions[0]?.mode, "provided")
+  assert.equal(inclusions[0]?.sourceType, "memory")
+  assert.equal(inclusions[0]?.target.memoryId, "memory-provided")
+  assert.equal(inclusions[1]?.sourceType, "context_file")
+  assert.equal(inclusions[1]?.target.path, "workspace:agents")
+  assert.deepEqual(
+    temporaryInclusions.map((inclusion) => inclusion.sourceType),
+    ["context_file"]
+  )
+})
+
+test("memory context snapshots truncate large file context", async () => {
+  const { JingleMemoryService } = await import("../../src/main/jingle-memory/service")
+  const service = new JingleMemoryService()
+  const workspaceIdentity = {
+    canonicalWorkspacePath: repoRoot,
+    displayName: "jingle",
+    workspaceKey: repoRoot
+  }
+  const snapshot = service.createContextSnapshot({
+    canonicalWorkspacePath: repoRoot,
+    generatedAt: 1,
+    items: [
+      {
+        content: "x".repeat(60_000),
+        id: "workspace:agents",
+        kind: "rules",
+        scope: "workspace",
+        sourceLabel: "Workspace AGENTS.md",
+        sourceType: "file"
+      }
+    ],
+    workspaceIdentity,
+    workspaceKey: repoRoot
+  })
+
+  assert.equal(snapshot?.snapshotTruncated, true)
+  assert.equal(snapshot?.items[0].truncated, true)
+  assert.equal(snapshot?.items[0].content.length, 8_000)
+})
+
+test("run metadata updates preserve loaded extension snapshots and resume metadata", async () => {
+  const { createThread, getRun } = await loadDbModules()
+  const { beginAgentRun, resumeAgentRun, updateRunExtensionAiCapabilitiesSnapshot } =
+    await import("../../src/main/agent/persistence")
+  const { readRunExtensionAiCapabilitiesSnapshotFromMetadata } =
+    await import("../../src/shared/extension-sources")
+  const { resolveNativeExtensionAiCapabilitiesForRefsFromManifests } =
+    await import("../../src/extensions/sources")
+
+  const threadId = "thread-extension-metadata-merge"
+  await createThread(threadId)
+
+  const { runId } = await beginAgentRun(threadId, "gpt-test", {
+    aiCapabilities: [],
+    permissionMode: "ask-to-edit"
+  })
+  const aiCapabilities = resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
+    [
+      {
+        extensionName: "apple-reminders",
+        name: "Apple Reminders",
+        sourceId: "appleReminders",
+        type: "extension-source"
+      }
+    ],
+    [appleRemindersManifest],
+    {
+      permissionMode: "ask-to-edit",
+      platform: "darwin"
+    }
+  )
+
+  await Promise.all([
+    updateRunExtensionAiCapabilitiesSnapshot(runId, {
+      aiCapabilities
+    }),
+    resumeAgentRun(threadId, runId, {
+      requestId: "request-loaded-extension",
+      source: "resume"
+    })
+  ])
+
+  const run = await getRun(runId)
+  const metadata = JSON.parse(run?.metadata ?? "{}") as Record<string, unknown>
+  assert.equal(metadata.requestId, "request-loaded-extension")
+  assert.equal(metadata.source, "resume")
+  assert.deepEqual(
+    readRunExtensionAiCapabilitiesSnapshotFromMetadata(run?.metadata)?.map(
+      (snapshot) => snapshot.extensionName
+    ),
+    ["apple-reminders"]
+  )
+})
+
+test("syncRunFromLatestCheckpoint reads the latest checkpoint for that run only", async () => {
+  const { createRun, createThread, getRun } = await loadDbModules()
+  const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-1"
+  const interruptedRunId = "run-interrupted"
+  const successRunId = "run-success"
+
+  await createThread(threadId)
+  await createRun(interruptedRunId, threadId, { status: "running" })
+  await createRun(successRunId, threadId, { status: "running" })
+
+  const interruptedCheckpoint = emptyCheckpoint()
+  interruptedCheckpoint.id = "checkpoint-0001"
+  interruptedCheckpoint.channel_values = {
+    __interrupt__: [
+      {
+        value: {
+          actionRequests: []
+        }
+      }
+    ]
+  }
+
+  const successCheckpoint = emptyCheckpoint()
+  successCheckpoint.id = "checkpoint-0002"
+  successCheckpoint.channel_values = {
+    messages: []
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: interruptedRunId
+      }
+    },
+    interruptedCheckpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: successRunId
+      }
+    },
+    successCheckpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 1
+    }
+  )
+
+  const status = await syncRunFromLatestCheckpoint(threadId, interruptedRunId)
+  const interruptedRun = await getRun(interruptedRunId)
+  const successRun = await getRun(successRunId)
+
+  assert.equal(status, "interrupted")
+  assert.equal(interruptedRun?.status, "interrupted")
+  assert.equal(successRun?.status, "running")
+})
+
+test("checkpoint writes are serialized on one saver instance", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-checkpoint-write-queue"
+  const checkpointId = "checkpoint-write-queue"
+  const jsonSerializer: SerializerProtocol = {
+    dumpsTyped: async (value: unknown) => ["json", Buffer.from(JSON.stringify(value), "utf8")],
+    loadsTyped: async (_type: string, value: Uint8Array | string) =>
+      JSON.parse(typeof value === "string" ? value : Buffer.from(value).toString("utf8"))
+  }
+  let firstWriteBlocked = false
+  let releaseFirstWrite: () => void = () => {
+    throw new Error("First checkpoint write did not reach the serializer.")
+  }
+  const firstWriteGate = new Promise<void>((resolve) => {
+    releaseFirstWrite = resolve
+  })
+  let activeWrites = 0
+  let maxActiveWrites = 0
+  let serializedSecondWrite = false
+  const blockingSerializer: SerializerProtocol = {
+    dumpsTyped: async (value: unknown) => {
+      if (value && typeof value === "object" && "marker" in value) {
+        activeWrites += 1
+        maxActiveWrites = Math.max(maxActiveWrites, activeWrites)
+        try {
+          if ((value as { marker?: unknown }).marker === "first") {
+            firstWriteBlocked = true
+            await firstWriteGate
+          }
+          if ((value as { marker?: unknown }).marker === "second") {
+            serializedSecondWrite = true
+          }
+        } finally {
+          activeWrites -= 1
+        }
+      }
+
+      return jsonSerializer.dumpsTyped(value)
+    },
+    loadsTyped: (type, value) => jsonSerializer.loadsTyped(type, value)
+  }
+
+  await createThread(threadId)
+  const saver = new PrismaCheckpointSaver(blockingSerializer)
+  const firstWrite = saver.putWrites(
+    {
+      configurable: {
+        checkpoint_id: checkpointId,
+        thread_id: threadId
+      }
+    },
+    [["messages", { marker: "first" }]],
+    "task-first"
+  )
+  const secondWrite = saver.putWrites(
+    {
+      configurable: {
+        checkpoint_id: checkpointId,
+        thread_id: threadId
+      }
+    },
+    [["messages", { marker: "second" }]],
+    "task-second"
+  )
+
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.equal(firstWriteBlocked, true)
+  assert.equal(serializedSecondWrite, false)
+  assert.equal(maxActiveWrites, 1)
+
+  releaseFirstWrite()
+  await Promise.all([firstWrite, secondWrite])
+
+  const rows = await getPrismaClient().checkpointWrite.findMany({
+    orderBy: [{ taskId: "asc" }, { idx: "asc" }],
+    where: {
+      checkpointId,
+      threadId
+    }
+  })
+  assert.deepEqual(
+    rows.map((row) => row.taskId),
+    ["task-first", "task-second"]
+  )
+  assert.equal(maxActiveWrites, 1)
+})
+
+test("prisma checkpoint saver stores message facts without runtime side effects", async () => {
+  const { createThread, createRun, getLatestHitlRequest, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-pure-checkpoint-store"
+  const runId = "run-pure-checkpoint-store"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-pure-store"
+  checkpoint.channel_values = {
+    __interrupt__: [
+      {
+        value: {
+          actionRequests: [
+            {
+              args: { path: `${repoRoot}/pending.txt` },
+              name: "write_file",
+              toolCallId: "tool-call-pure-store"
+            }
+          ]
+        }
+      }
+    ],
+    messages: [{ kwargs: { content: "needs approval", id: "message-user-pure" }, type: "human" }]
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+
+  const prisma = getPrismaClient()
+  const searchRows = await prisma.$queryRawUnsafe<Array<{ search_text: string }>>(
+    `SELECT search_text FROM "messages_fts" WHERE thread_id = ?`,
+    threadId
+  )
+  const messageEvents = await prisma.messageEvent.findMany({ where: { threadId } })
+  const messageStateVersions = await prisma.messageStateVersion.findMany({ where: { threadId } })
+
+  assert.equal(searchRows.length, 1)
+  assert.deepEqual(
+    messageEvents.map((event) => `${event.type}:${event.messageId ?? ""}`),
+    ["message.upsert:message-user-pure"]
+  )
+  assert.deepEqual(
+    messageStateVersions.map((version) => version.version),
+    [checkpoint.id]
+  )
+  assert.equal(await getLatestHitlRequest(threadId), null)
+})
+
+test("prisma checkpoint saver stores channel values as reusable checkpoint blobs", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-checkpoint-blobs"
+  await createThread(threadId)
+
+  const firstCheckpoint = emptyCheckpoint()
+  firstCheckpoint.id = "checkpoint-blob-0001"
+  firstCheckpoint.channel_values = {
+    messages: [{ kwargs: { content: "first", id: "message-first" }, type: "human" }],
+    todos: [{ content: "keep me", id: "todo-1", status: "pending" }]
+  }
+  firstCheckpoint.channel_versions = {
+    messages: "checkpoint-blob-messages-0001",
+    todos: "checkpoint-blob-todos-0001"
+  }
+
+  const secondCheckpoint = emptyCheckpoint()
+  secondCheckpoint.id = "checkpoint-blob-0002"
+  secondCheckpoint.channel_values = {
+    messages: [
+      { kwargs: { content: "first", id: "message-first" }, type: "human" },
+      { kwargs: { content: "second", id: "message-second" }, type: "ai" }
+    ],
+    todos: [{ content: "keep me", id: "todo-1", status: "pending" }]
+  }
+  secondCheckpoint.channel_versions = {
+    messages: "checkpoint-blob-messages-0002",
+    todos: "checkpoint-blob-todos-0001"
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  const firstConfig = await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      }
+    },
+    firstCheckpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    },
+    {
+      messages: "checkpoint-blob-messages-0001",
+      todos: "checkpoint-blob-todos-0001"
+    }
+  )
+  await saver.put(
+    firstConfig,
+    secondCheckpoint,
+    {
+      parents: { "": firstCheckpoint.id },
+      source: "update",
+      step: 1
+    },
+    {
+      messages: "checkpoint-blob-messages-0002"
+    }
+  )
+
+  const prisma = getPrismaClient()
+  const checkpointRows = await prisma.checkpoint.findMany({
+    orderBy: { checkpointId: "asc" },
+    where: { threadId }
+  })
+  const blobRows = await prisma.checkpointBlob.findMany({
+    orderBy: [{ channel: "asc" }, { version: "asc" }],
+    where: { threadId }
+  })
+  const eventRows = await prisma.messageEvent.findMany({
+    orderBy: { seq: "asc" },
+    where: { threadId }
+  })
+  const stateVersionRows = await prisma.messageStateVersion.findMany({
+    orderBy: { version: "asc" },
+    where: { threadId }
+  })
+  const latest = await saver.getTuple({
+    configurable: {
+      thread_id: threadId
+    }
+  })
+
+  assert.equal(checkpointRows.length, 2)
+  assert.equal(
+    checkpointRows.every((row) => !row.checkpoint?.includes("channel_values")),
+    true
+  )
+  assert.deepEqual(
+    blobRows.map((row) => `${row.channel}:${row.version}`),
+    ["todos:checkpoint-blob-todos-0001"]
+  )
+  assert.deepEqual(
+    stateVersionRows.map((row) => `${row.version}:${row.throughSeq}`),
+    ["checkpoint-blob-messages-0001:1", "checkpoint-blob-messages-0002:2"]
+  )
+  assert.deepEqual(
+    eventRows.map((row) => `${row.type}:${row.messageId ?? ""}`),
+    ["message.upsert:message-first", "message.upsert:message-second"]
+  )
+  assert.deepEqual(latest?.checkpoint.channel_values, secondCheckpoint.channel_values)
+})
+
+test("prisma checkpoint saver stores pregel task messages as checkpoint refs", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { decodeSerializedPayload } = await import("../../src/main/checkpointer/storage-codec")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-pregel-task-message-ref"
+  await createThread(threadId)
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-pregel-task-message-ref"
+  checkpoint.channel_values = {
+    messages: [
+      {
+        kwargs: {
+          content: "this complete message must not be duplicated into writes",
+          id: "message-ref-source"
+        },
+        type: "human"
+      }
+    ]
+  }
+  checkpoint.channel_versions = {
+    messages: "checkpoint-pregel-task-message-ref-version"
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  const config = await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    },
+    {
+      messages: "checkpoint-pregel-task-message-ref-version"
+    }
+  )
+  await saver.putWrites(
+    config,
+    [
+      [
+        "__pregel_tasks",
+        {
+          args: {
+            messages: checkpoint.channel_values.messages,
+            todos: [{ content: "keep pending task shape", id: "todo-ref" }]
+          },
+          node: "tools"
+        }
+      ]
+    ],
+    "task-pregel-message-ref"
+  )
+
+  const writeRow = await getPrismaClient().checkpointWrite.findFirstOrThrow({
+    where: {
+      channel: "__pregel_tasks",
+      checkpointId: checkpoint.id,
+      threadId
+    }
+  })
+  const storedPayload = decodeSerializedPayload(writeRow.type, writeRow.value)
+  const storedWriteJson =
+    typeof storedPayload.value === "string"
+      ? storedPayload.value
+      : Buffer.from(storedPayload.value).toString("utf8")
+  const storedWrite = JSON.parse(storedWriteJson) as {
+    args?: { messages?: unknown }
+  }
+  assert.equal(storedWriteJson.includes("this complete message must not be duplicated"), false)
+  assert.deepEqual(storedWrite.args?.messages, {
+    __jingleRef: "checkpoint-channel",
+    channel: "messages"
+  })
+
+  const tuple = await saver.getTuple({
+    configurable: {
+      checkpoint_id: checkpoint.id,
+      thread_id: threadId
+    }
+  })
+  assert.deepEqual(tuple?.pendingWrites, [
+    [
+      "task-pregel-message-ref",
+      "__pregel_tasks",
+      {
+        args: {
+          messages: checkpoint.channel_values.messages,
+          todos: [{ content: "keep pending task shape", id: "todo-ref" }]
+        },
+        node: "tools"
+      }
+    ]
+  ])
+})
+
+test("prisma checkpoint saver stores messages as delta events", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-message-state-delta-events"
+  await createThread(threadId)
+
+  const firstCheckpoint = emptyCheckpoint()
+  firstCheckpoint.id = "checkpoint-message-delta-0001"
+  firstCheckpoint.channel_values = {
+    messages: [{ kwargs: { content: "first", id: "message-first" }, type: "human" }]
+  }
+  firstCheckpoint.channel_versions = {
+    messages: "message-delta-v1"
+  }
+
+  const secondCheckpoint = emptyCheckpoint()
+  secondCheckpoint.id = "checkpoint-message-delta-0002"
+  secondCheckpoint.channel_values = {
+    messages: [
+      { kwargs: { content: "first", id: "message-first" }, type: "human" },
+      { kwargs: { content: "second", id: "message-second" }, type: "ai" }
+    ]
+  }
+  secondCheckpoint.channel_versions = {
+    messages: "message-delta-v2"
+  }
+
+  const thirdCheckpoint = emptyCheckpoint()
+  thirdCheckpoint.id = "checkpoint-message-delta-0003"
+  thirdCheckpoint.channel_values = {
+    messages: secondCheckpoint.channel_values.messages
+  }
+  thirdCheckpoint.channel_versions = {
+    messages: "message-delta-v3"
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  const firstConfig = await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      }
+    },
+    firstCheckpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+  const secondConfig = await saver.put(firstConfig, secondCheckpoint, {
+    parents: { "": firstCheckpoint.id },
+    source: "update",
+    step: 1
+  })
+  await saver.put(secondConfig, thirdCheckpoint, {
+    parents: { "": secondCheckpoint.id },
+    source: "update",
+    step: 2
+  })
+
+  const prisma = getPrismaClient()
+  const blobRows = await prisma.checkpointBlob.findMany({
+    where: { threadId }
+  })
+  const eventRows = await prisma.messageEvent.findMany({
+    orderBy: { seq: "asc" },
+    where: { threadId }
+  })
+  const stateVersionRows = await prisma.messageStateVersion.findMany({
+    orderBy: { version: "asc" },
+    where: { threadId }
+  })
+  const latest = await saver.getTuple({
+    configurable: {
+      thread_id: threadId
+    }
+  })
+
+  assert.deepEqual(blobRows, [])
+  assert.deepEqual(
+    eventRows.map((row) => `${row.seq}:${row.type}:${row.messageId ?? ""}`),
+    ["1:message.upsert:message-first", "2:message.upsert:message-second"]
+  )
+  assert.deepEqual(
+    stateVersionRows.map((row) => `${row.version}:${row.throughSeq}`),
+    ["message-delta-v1:1", "message-delta-v2:2", "message-delta-v3:2"]
+  )
+  assert.deepEqual(
+    latest?.checkpoint.channel_values.messages,
+    secondCheckpoint.channel_values.messages
+  )
+})
+
+test("prisma checkpoint saver derives ids for messages without provider ids", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-message-state-derived-id"
+  await createThread(threadId)
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-message-derived-id"
+  checkpoint.channel_values = {
+    messages: [{ content: "provider omitted id", type: "human" }]
+  }
+  checkpoint.channel_versions = {
+    messages: "message-derived-id-v1"
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+
+  const prisma = getPrismaClient()
+  const [event] = await prisma.messageEvent.findMany({ where: { threadId } })
+  const [message] = await prisma.message.findMany({ where: { threadId } })
+
+  assert.equal(event?.type, "message.upsert")
+  assert.match(event?.messageId ?? "", /^message:[a-f0-9]{64}:1:user$/)
+  assert.equal(message?.messageId, event?.messageId)
+})
+
+test("prisma checkpoint saver stores empty blobs for versioned channels without values", async () => {
+  const { createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-checkpoint-empty-versioned-channels"
+  await createThread(threadId)
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-empty-versioned-channels"
+  checkpoint.channel_values = {
+    messages: [{ kwargs: { content: "retry", id: "message-retry" }, type: "human" }]
+  }
+  checkpoint.channel_versions = {
+    __pregel_tasks: "checkpoint-empty-pregel-tasks",
+    __start__: "checkpoint-empty-start",
+    messages: "checkpoint-empty-messages"
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "input",
+      step: 0
+    },
+    {
+      messages: "checkpoint-empty-messages"
+    }
+  )
+
+  const prisma = getPrismaClient()
+  const blobRows = await prisma.checkpointBlob.findMany({
+    orderBy: [{ channel: "asc" }, { version: "asc" }],
+    where: { threadId }
+  })
+  const stateVersionRows = await prisma.messageStateVersion.findMany({
+    where: { threadId }
+  })
+  const latest = await saver.getTuple({
+    configurable: {
+      thread_id: threadId
+    }
+  })
+
+  assert.deepEqual(
+    blobRows.map((row) => `${row.channel}:${row.version}:${row.type}`),
+    ["__pregel_tasks:checkpoint-empty-pregel-tasks:empty", "__start__:checkpoint-empty-start:empty"]
+  )
+  assert.deepEqual(
+    stateVersionRows.map((row) => row.version),
+    ["checkpoint-empty-messages"]
+  )
+  assert.deepEqual(latest?.checkpoint.channel_values, checkpoint.channel_values)
+})
+
+test("prisma checkpoint saver advances restored string channel versions", async () => {
+  const { createThread } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-checkpoint-string-version"
+  await createThread(threadId)
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-string-version-0001"
+  checkpoint.channel_values = {
+    artifacts: {
+      manifestsById: {},
+      presentationsByIdempotencyKey: {}
+    }
+  }
+  checkpoint.channel_versions = {}
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    },
+    {}
+  )
+
+  const latest = await saver.getTuple({
+    configurable: {
+      thread_id: threadId
+    }
+  })
+  const restoredVersion = latest?.checkpoint.channel_versions.artifacts
+
+  assert.equal(restoredVersion, checkpoint.id)
+  assert.equal(typeof saver.getNextVersion(restoredVersion), "string")
+  assert.notEqual(saver.getNextVersion(restoredVersion), restoredVersion)
+})
+
+test("prisma checkpoint saver rejects non-string channel versions", async () => {
+  const { createThread } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-checkpoint-numeric-version"
+  await createThread(threadId)
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-numeric-version-0001"
+  checkpoint.channel_values = {
+    messages: [{ kwargs: { content: "first", id: "message-first" }, type: "human" }]
+  }
+  checkpoint.channel_versions = {
+    messages: 10
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await assert.rejects(
+    saver.put(
+      {
+        configurable: {
+          thread_id: threadId
+        }
+      },
+      checkpoint,
+      {
+        parents: {},
+        source: "input",
+        step: 0
+      },
+      checkpoint.channel_versions
+    ),
+    /non-string version/
+  )
+})
+
+test("syncRunFromLatestCheckpoint accepts submitted message in message projection", async () => {
+  const { createRun, createThread, getRun } = await loadDbModules()
+  const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-with-submitted-message"
+  const runId = "run-with-submitted-message"
+
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-with-submitted-message"
+  checkpoint.channel_values = {
+    messages: [{ content: "new", id: "message-new", type: "human" }]
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "input",
+      step: 0
+    }
+  )
+
+  await assert.doesNotReject(
+    syncRunFromLatestCheckpoint(threadId, runId, {
+      expectedMessageId: "message-new"
+    })
+  )
+  assert.equal((await getRun(runId))?.status, "success")
+})
+
+test("syncRunFromLatestCheckpoint rejects success when submitted message is missing", async () => {
+  const { createRun, createThread, getRun } = await loadDbModules()
+  const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-missing-submitted-message"
+  const runId = "run-missing-submitted-message"
+
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-missing-submitted-message"
+  checkpoint.channel_values = {
+    messages: [{ kwargs: { content: "old", id: "message-old" }, type: "human" }]
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "input",
+      step: 0
+    }
+  )
+
+  await assert.rejects(
+    syncRunFromLatestCheckpoint(threadId, runId, {
+      expectedMessageId: "message-new"
+    }),
+    /does not include submitted message/
+  )
+  assert.equal((await getRun(runId))?.status, "running")
+})
+
+test("runtime checkpointer syncs derived thread state after checkpoint writes", async () => {
+  const { createThread, createRun, getLatestHitlRequest, getPrismaClient } = await loadDbModules()
+  const { RuntimeCheckpointSaver, flushMessageSearchProjection } =
+    await import("../../src/main/checkpointer/runtime-checkpointer")
+
+  const threadId = "thread-runtime-checkpoint-store"
+  const runId = "run-runtime-checkpoint-store"
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-runtime-store"
+  checkpoint.channel_values = {
+    __interrupt__: [
+      {
+        value: {
+          actionRequests: [
+            {
+              args: { path: `${repoRoot}/pending.txt` },
+              name: "write_file",
+              toolCallId: "tool-call-runtime-store"
+            }
+          ]
+        }
+      }
+    ],
+    messages: [{ kwargs: { content: "needs approval", id: "message-user-runtime" }, type: "human" }]
+  }
+
+  const saver = new RuntimeCheckpointSaver()
+  try {
+    await saver.put(
+      {
+        configurable: {
+          thread_id: threadId
+        },
+        metadata: {
+          run_id: runId
+        }
+      },
+      checkpoint,
+      {
+        parents: {},
+        source: "update",
+        step: 0
+      }
+    )
+
+    assert.equal((await getLatestHitlRequest(threadId))?.tool_call_id, "tool-call-runtime-store")
+
+    await flushMessageSearchProjection()
+
+    const prisma = getPrismaClient()
+    const messageRows = await prisma.message.findMany({ where: { threadId } })
+    const searchRows = await prisma.$queryRawUnsafe<Array<{ search_text: string }>>(
+      `SELECT search_text FROM "messages_fts" WHERE thread_id = ?`,
+      threadId
+    )
+
+    assert.equal(messageRows.length, 1)
+    assert.equal(searchRows.length, 1)
+    assert.match(searchRows[0]!.search_text, /needs approval/)
+  } finally {
+    await saver.close()
+  }
+})
+
+test("runtime checkpointer stores message facts in the checkpoint transaction", async () => {
+  const { createThread, createRun, getLatestHitlRequest, getPrismaClient } = await loadDbModules()
+  const { RuntimeCheckpointSaver, flushMessageSearchProjection } =
+    await import("../../src/main/checkpointer/runtime-checkpointer")
+  const threadId = "thread-runtime-search-failure"
+  const runId = "run-runtime-search-failure"
+
+  await createThread(threadId)
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-runtime-search-failure"
+  checkpoint.channel_values = {
+    __interrupt__: [
+      {
+        value: {
+          actionRequests: [
+            {
+              args: { path: `${repoRoot}/pending.txt` },
+              name: "write_file",
+              toolCallId: "tool-call-search-failure"
+            }
+          ]
+        }
+      }
+    ],
+    messages: [{ kwargs: { content: "still saved", id: "message-search-failure" }, type: "human" }]
+  }
+
+  const saver = new RuntimeCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+  await flushMessageSearchProjection()
+
+  const prisma = getPrismaClient()
+  const checkpointRows = await prisma.checkpoint.findMany({ where: { threadId } })
+  const messageEvents = await prisma.messageEvent.findMany({ where: { threadId } })
+  const messageStateVersions = await prisma.messageStateVersion.findMany({ where: { threadId } })
+  const searchRows = await prisma.$queryRawUnsafe<Array<{ search_text: string }>>(
+    `SELECT search_text FROM "messages_fts" WHERE thread_id = ?`,
+    threadId
+  )
+
+  assert.equal(checkpointRows.length, 1)
+  assert.equal((await getLatestHitlRequest(threadId))?.tool_call_id, "tool-call-search-failure")
+  assert.deepEqual(
+    messageEvents.map((event) => `${event.type}:${event.messageId ?? ""}`),
+    ["message.upsert:message-search-failure"]
+  )
+  assert.deepEqual(
+    messageStateVersions.map((version) => version.version),
+    [checkpoint.id]
+  )
+  assert.equal(searchRows.length, 1)
+})
+
+test("closeRuntimeCheckpointers closes checkpointers without a message projection queue", async () => {
+  const { closeRuntimeCheckpointers, getCheckpointer } = await import(
+    "../../src/main/checkpointer/runtime-checkpointer-manager"
+  )
+  const threadId = "thread-close-runtime-no-search-projection"
+  const firstSaver = await getCheckpointer(threadId)
+
+  await closeRuntimeCheckpointers()
+
+  const secondSaver = await getCheckpointer(threadId)
+  assert.notEqual(secondSaver, firstSaver)
+  await closeRuntimeCheckpointers()
+})
+
+test("syncRunFromLatestCheckpoint copies a generated checkpoint title onto auto-titled threads", async () => {
+  const { createRun, createThread, getThread } = await loadDbModules()
+  const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-title"
+  const runId = "run-title"
+
+  await createThread(threadId, {
+    metadata: { source: "launcher-ai" },
+    title: "快速提问"
+  })
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-title"
+  checkpoint.channel_values = {
+    messages: [
+      { type: "human", content: "帮我整理一下这次发布的标题和摘要" },
+      { type: "ai", content: "好，开始整理" }
+    ],
+    title: "发布摘要整理"
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+
+  await syncRunFromLatestCheckpoint(threadId, runId)
+
+  const thread = await getThread(threadId)
+  assert.equal(thread?.title, "发布摘要整理")
+})
+
+test("syncRunFromLatestCheckpoint preserves manually renamed launcher titles", async () => {
+  const { createRun, createThread, getThread } = await loadDbModules()
+  const { syncRunFromLatestCheckpoint } = await import("../../src/main/agent/persistence")
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-manual-title"
+  const runId = "run-manual-title"
+
+  await createThread(threadId, {
+    metadata: { source: "launcher-ai" },
+    title: "我改过的标题"
+  })
+  await createRun(runId, threadId, { status: "running" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-manual-title"
+  checkpoint.channel_values = {
+    messages: [
+      { type: "human", content: "帮我整理一下这次发布的标题和摘要" },
+      { type: "ai", content: "好，开始整理" }
+    ],
+    title: "发布摘要整理"
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+
+  await syncRunFromLatestCheckpoint(threadId, runId)
+
+  const thread = await getThread(threadId)
+  assert.equal(thread?.title, "我改过的标题")
+})
+
+test("thread-scoped checkpoint reads keep run ids out of conversation resume config", async () => {
+  const { createRun, createThread } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const threadId = "thread-1"
+  const firstRunId = "run-first"
+  const secondRunId = "run-second"
+
+  await createThread(threadId)
+  await createRun(firstRunId, threadId, { status: "success" })
+  await createRun(secondRunId, threadId, { status: "success" })
+
+  const firstCheckpoint = emptyCheckpoint()
+  firstCheckpoint.id = "checkpoint-0001"
+  firstCheckpoint.channel_values = {
+    messages: [{ type: "human", content: "first question" }]
+  }
+
+  const secondCheckpoint = emptyCheckpoint()
+  secondCheckpoint.id = "checkpoint-0002"
+  secondCheckpoint.channel_values = {
+    messages: [
+      { type: "human", content: "first question" },
+      { type: "ai", content: "first answer" },
+      { type: "human", content: "second question" }
+    ]
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: firstRunId
+      }
+    },
+    firstCheckpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+  await saver.put(
+    {
+      configurable: {
+        thread_id: threadId
+      },
+      metadata: {
+        run_id: secondRunId
+      }
+    },
+    secondCheckpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 1
+    }
+  )
+
+  const latestForThread = await saver.getTuple({
+    configurable: {
+      thread_id: threadId
+    }
+  })
+  const firstRunScoped = await saver.getTuple({
+    configurable: {
+      checkpoint_run_id: firstRunId,
+      thread_id: threadId,
+    }
+  })
+
+  assert.equal(latestForThread?.checkpoint.id, secondCheckpoint.id)
+  assert.equal(latestForThread?.config.configurable?.run_id, undefined)
+  assert.equal(firstRunScoped?.checkpoint.id, firstCheckpoint.id)
+  assert.equal(firstRunScoped?.config.configurable?.run_id, firstRunId)
+})
+
+test("thread delete waits for active runtime setup before removing metadata", async () => {
+  const { createThread, getThread } = await loadDbModules()
+  const { ThreadLifecycleGate } = await import("../../src/main/agent/thread-lifecycle-gate")
+  const consoleLog = mock.method(console, "log", () => {})
+
+  const threadId = "thread-delete-waits-for-runtime"
+  await createThread(threadId)
+  await bindThreadWorkspace(threadId, repoRoot)
+
+  let releaseContextPack: () => void = () => {
+    throw new Error("Context pack build was not reached.")
+  }
+  const contextPackGate = new Promise<void>((resolve) => {
+    releaseContextPack = resolve
+  })
+  let contextPackStarted = false
+  const memoryService = {
+    buildContextPack: async () => {
+      contextPackStarted = true
+      await contextPackGate
+      return null
+    },
+    createContextSnapshot: () => null,
+    recordInclusions: async () => undefined
+  }
+  const lifecycleGate = new ThreadLifecycleGate()
+  const agentService = await createAgentServiceForTest({
+    jingleMemoryService: memoryService,
+    threadLifecycleGate: lifecycleGate
+  })
+  const service = await createThreadsServiceForTest({
+    threadLifecycleGate: lifecycleGate
+  })
+
+  const invoke = agentService.invoke(
+    {
+      message: {
+        content: "delete while starting",
+        id: "message-delete-while-starting"
+      },
+      modelId: "bdd",
+      threadId
+    },
+    {
+      send: () => undefined
+    }
+  )
+
+  try {
+    while (!contextPackStarted) {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+
+    const deletion = service.delete(threadId)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    assert.notEqual(await getThread(threadId), null)
+
+    releaseContextPack()
+    await Promise.all([invoke, deletion])
+    assert.equal(await getThread(threadId), null)
+  } finally {
+    consoleLog.mock.restore()
+  }
+})
+
+test("cloneUntilMessage branches from the checkpoint that first contains the target message", async () => {
+  const { createRun, createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+  const { THREAD_PERMISSION_MODE_METADATA_KEY } = await import("../../src/shared/permission-mode")
+
+  const sourceThreadId = "thread-source"
+  const firstRunId = "run-first"
+  const secondRunId = "run-second"
+
+  await createThread(sourceThreadId, {
+    metadata: {
+      model: "openai:gpt-test",
+      source: "launcher-ai",
+      [THREAD_PERMISSION_MODE_METADATA_KEY]: "ask-to-edit",
+      visibility: "launcher-ai",
+      workspacePath: repoRoot
+    },
+    title: "Source thread"
+  })
+  await bindThreadWorkspace(sourceThreadId, repoRoot)
+  await createRun(firstRunId, sourceThreadId, { status: "success" })
+  await createRun(secondRunId, sourceThreadId, { status: "success" })
+
+  const firstCheckpoint = emptyCheckpoint()
+  firstCheckpoint.id = "checkpoint-0001"
+  firstCheckpoint.channel_values = {
+    messages: [
+      { kwargs: { content: "first question", id: "message-user-1" }, type: "human" },
+      { kwargs: { content: "first answer", id: "message-ai-1" }, type: "ai" }
+    ]
+  }
+
+  const secondCheckpoint = emptyCheckpoint()
+  secondCheckpoint.id = "checkpoint-0002"
+  secondCheckpoint.channel_values = {
+    messages: [
+      { kwargs: { content: "first question", id: "message-user-1" }, type: "human" },
+      { kwargs: { content: "first answer", id: "message-ai-1" }, type: "ai" },
+      { kwargs: { content: "second question", id: "message-user-2" }, type: "human" }
+    ]
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  const firstConfig = await saver.put(
+    {
+      configurable: {
+        thread_id: sourceThreadId
+      },
+      metadata: {
+        run_id: firstRunId
+      }
+    },
+    firstCheckpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+  await saver.putWrites(firstConfig, [["messages", { marker: "first-write" }]], "task-first")
+  await saver.put(
+    {
+      configurable: {
+        checkpoint_id: firstCheckpoint.id,
+        thread_id: sourceThreadId
+      },
+      metadata: {
+        run_id: secondRunId
+      }
+    },
+    secondCheckpoint,
+    {
+      parents: { "": firstCheckpoint.id },
+      source: "update",
+      step: 1
+    }
+  )
+
+  const service = await createThreadsServiceForTest()
+  const clonedThread = await service.cloneUntilMessage(sourceThreadId, "message-ai-1")
+  const prisma = getPrismaClient()
+  const clonedCheckpointRows = await prisma.checkpoint.findMany({
+    orderBy: { checkpointId: "asc" },
+    where: { threadId: clonedThread.thread_id }
+  })
+  const clonedWriteRows = await prisma.checkpointWrite.findMany({
+    where: { threadId: clonedThread.thread_id }
+  })
+  const clonedRunRows = await prisma.run.findMany({
+    where: { threadId: clonedThread.thread_id }
+  })
+  const clonedSearchRows = await prisma.$queryRawUnsafe<Array<{ message_id: string }>>(
+    `SELECT message_id FROM "messages_fts" WHERE thread_id = ? ORDER BY message_id`,
+    clonedThread.thread_id
+  )
+  const clonedSaver = new PrismaCheckpointSaver()
+  const clonedCheckpoint = await clonedSaver.getTuple({
+    configurable: {
+      thread_id: clonedThread.thread_id
+    }
+  })
+
+  assert.deepEqual(
+    clonedCheckpointRows.map((checkpoint) => checkpoint.checkpointId),
+    [firstCheckpoint.id]
+  )
+  assert.deepEqual(
+    clonedCheckpointRows.map((checkpoint) => checkpoint.runId),
+    [null]
+  )
+  assert.deepEqual(
+    clonedWriteRows.map((write) => write.checkpointId),
+    [firstCheckpoint.id]
+  )
+  assert.deepEqual(clonedRunRows, [])
+  assert.deepEqual(
+    clonedSearchRows.map((row) => row.message_id),
+    ["message-ai-1", "message-user-1"]
+  )
+  assert.deepEqual(
+    clonedCheckpoint?.checkpoint.channel_values.messages,
+    firstCheckpoint.channel_values.messages
+  )
+})
+
+test("cloneThread copies checkpoint payload rows without preserving source run ownership", async () => {
+  const { cloneThread, createRun, createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+
+  const sourceThreadId = "thread-clone-checkpoint-source"
+  const targetThreadId = "thread-clone-checkpoint-target"
+  const runId = "run-clone-checkpoint-source"
+  const largeContent = "large checkpoint payload ".repeat(12_000)
+
+  await createThread(sourceThreadId, {
+    metadata: {
+      model: "openai:gpt-test"
+    },
+    title: "Clone checkpoint source"
+  })
+  await createRun(runId, sourceThreadId, { status: "success" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-clone-payload"
+  checkpoint.channel_values = {
+    messages: [
+      {
+        kwargs: {
+          content: largeContent,
+          id: "message-clone-payload"
+        },
+        type: "human"
+      }
+    ],
+    todos: [{ content: "copied todo", id: "todo-clone-payload", status: "pending" }]
+  }
+  checkpoint.channel_versions = {
+    messages: "checkpoint-clone-messages-version",
+    todos: "checkpoint-clone-todos-version"
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  const config = await saver.put(
+    {
+      configurable: {
+        thread_id: sourceThreadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    },
+    {
+      messages: "checkpoint-clone-messages-version",
+      todos: "checkpoint-clone-todos-version"
+    }
+  )
+  await saver.putWrites(
+    config,
+    [
+      ["messages", { marker: "message-write" }],
+      [
+        "__pregel_tasks",
+        {
+          args: {
+            messages: checkpoint.channel_values.messages
+          },
+          node: "tools"
+        }
+      ]
+    ],
+    "task-clone-payload"
+  )
+
+  const clonedThread = await cloneThread(sourceThreadId, targetThreadId, {
+    metadata: { model: "openai:gpt-test" },
+    title: "Clone checkpoint target"
+  })
+  const prisma = getPrismaClient()
+  const checkpointRows = await prisma.checkpoint.findMany({
+    where: { threadId: clonedThread.thread_id }
+  })
+  const blobRows = await prisma.checkpointBlob.findMany({
+    orderBy: [{ channel: "asc" }, { version: "asc" }],
+    where: { threadId: clonedThread.thread_id }
+  })
+  const writeRows = await prisma.checkpointWrite.findMany({
+    orderBy: [{ channel: "asc" }, { taskId: "asc" }, { idx: "asc" }],
+    where: { threadId: clonedThread.thread_id }
+  })
+  const clonedCheckpoint = await saver.getTuple({
+    configurable: {
+      thread_id: clonedThread.thread_id
+    }
+  })
+
+  assert.equal(clonedThread.thread_id, targetThreadId)
+  assert.deepEqual(
+    checkpointRows.map((row) => row.runId),
+    [null]
+  )
+  assert.deepEqual(
+    blobRows.map((row) => `${row.channel}:${row.version}`),
+    ["todos:checkpoint-clone-todos-version"]
+  )
+  assert.deepEqual(
+    writeRows.map((row) => row.channel),
+    ["__pregel_tasks", "messages"]
+  )
+  assert.deepEqual(clonedCheckpoint?.checkpoint.channel_values, checkpoint.channel_values)
+})
+
+test("thread fork rejects threads with pending HITL requests", async () => {
+  const { createRun, createThread, upsertHitlRequest } = await loadDbModules()
+
+  const sourceThreadId = "thread-pending-hitl"
+  const runId = "run-pending-hitl"
+
+  await createThread(sourceThreadId, {
+    metadata: {
+      model: "openai:gpt-test"
+    }
+  })
+  await bindThreadWorkspace(sourceThreadId, repoRoot)
+  await createRun(runId, sourceThreadId, { status: "interrupted" })
+  await upsertHitlRequest({
+    request_id: "request-pending-hitl",
+    thread_id: sourceThreadId,
+    run_id: runId,
+    tool_call_id: "tool-call-pending-hitl",
+    tool_name: "write_file",
+    tool_args: { path: `${repoRoot}/pending.txt` },
+    allowed_decisions: ["approve", "reject"],
+    status: "pending"
+  })
+
+  const service = await createThreadsServiceForTest()
+
+  await assert.rejects(
+    service.cloneUntilMessage(sourceThreadId, "message-user-1"),
+    /Cannot fork a thread while human approval is pending/
+  )
+  await assert.rejects(
+    service.clone(sourceThreadId),
+    /Cannot fork a thread while human approval is pending/
+  )
+
+  const threadData = await service.getAgentThreadData(sourceThreadId)
+  assert.deepEqual(threadData.runState.forkState, {
+    canFork: false,
+    reason: "pending_hitl"
+  })
+  assert.equal(threadData.runState.pendingApproval?.id, "request-pending-hitl")
+})
+
+test("thread fork state blocks busy threads", async () => {
+  const { createThread, updateThread } = await loadDbModules()
+  const sourceThreadId = "thread-busy-fork-state"
+
+  await createThread(sourceThreadId, {
+    metadata: {
+      model: "openai:gpt-test"
+    }
+  })
+  await bindThreadWorkspace(sourceThreadId, repoRoot)
+  await updateThread(sourceThreadId, {
+    status: "busy"
+  })
+
+  const service = await createThreadsServiceForTest()
+
+  const threadData = await service.getAgentThreadData(sourceThreadId)
+  assert.deepEqual(threadData.runState.forkState, {
+    canFork: false,
+    reason: "busy"
+  })
+  await assert.rejects(service.clone(sourceThreadId), /Cannot fork a thread while it is running/)
+})
+
+test("thread fork rejects checkpoints that contain HITL interrupts", async () => {
+  const { createRun, createThread, getPrismaClient } = await loadDbModules()
+  const { PrismaCheckpointSaver } = await import("../../src/main/checkpointer/prisma-saver")
+  const sourceThreadId = "thread-interrupt-checkpoint"
+  const runId = "run-interrupt-checkpoint"
+
+  await createThread(sourceThreadId, {
+    metadata: {
+      model: "openai:gpt-test"
+    }
+  })
+  await bindThreadWorkspace(sourceThreadId, repoRoot)
+  await createRun(runId, sourceThreadId, { status: "interrupted" })
+
+  const checkpoint = emptyCheckpoint()
+  checkpoint.id = "checkpoint-interrupt"
+  checkpoint.channel_values = {
+    __interrupt__: [
+      {
+        value: {
+          actionRequests: [
+            {
+              args: { path: `${repoRoot}/pending.txt` },
+              name: "write_file",
+              toolCallId: "tool-call-interrupt"
+            }
+          ]
+        }
+      }
+    ],
+    messages: [
+      { kwargs: { content: "needs approval", id: "message-user-interrupt" }, type: "human" }
+    ]
+  }
+
+  const saver = new PrismaCheckpointSaver()
+  await saver.put(
+    {
+      configurable: {
+        thread_id: sourceThreadId
+      },
+      metadata: {
+        run_id: runId
+      }
+    },
+    checkpoint,
+    {
+      parents: {},
+      source: "update",
+      step: 0
+    }
+  )
+  await getPrismaClient().hitlRequest.deleteMany({
+    where: {
+      threadId: sourceThreadId
+    }
+  })
+
+  const service = await createThreadsServiceForTest()
+
+  await assert.rejects(
+    service.cloneUntilMessage(sourceThreadId, "message-user-interrupt"),
+    /Cannot fork from a message that is waiting for human approval/
+  )
+  await assert.rejects(
+    service.clone(sourceThreadId),
+    /Cannot fork from a message that is waiting for human approval/
+  )
+
+  const threadData = await service.getAgentThreadData(sourceThreadId)
+  assert.deepEqual(threadData.runState.forkState, {
+    canFork: false,
+    reason: "checkpoint_interrupt"
+  })
+  assert.deepEqual(
+    threadData.messages.messages.map((message) => message.id),
+    ["message-user-interrupt"]
+  )
+})

@@ -1,0 +1,4 @@
+-- No-op migration.
+-- The original generated migration attempted to drop SQLite FTS5 trigram
+-- shadow tables explicitly after dropping the parent virtual table, which
+-- fails because SQLite removes those backing tables automatically.

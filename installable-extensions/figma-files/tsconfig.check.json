@@ -1,0 +1,54 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "paths": {
+      "zod": [
+        "../../node_modules/zod"
+      ],
+      "zod/*": [
+        "../../node_modules/zod/*"
+      ],
+      "@jingle/extension-api": [
+        "../../packages/extension-api/src/index.ts"
+      ],
+      "@jingle/extension-utils": [
+        "../../packages/extension-utils/src/index.ts"
+      ],
+      "@shared/*": [
+        "../../src/shared/*"
+      ]
+    },
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ESNext",
+    "typeRoots": [
+      "./node_modules/@types",
+      "../../node_modules/@types"
+    ]
+  },
+  "include": [
+    "main.ts",
+    "main/**/*.ts",
+    "identity.ts",
+    "manifest.ts",
+    "runtime-metadata.ts",
+    "runtime.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "types.d.ts"
+  ]
+}

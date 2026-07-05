@@ -1,0 +1,146 @@
+.ow-user-message-navigation-rail-list {
+  --ow-user-message-navigation-marker-progress: 0;
+}
+
+.ow-user-message-navigation-rail-marker {
+  --ow-user-message-navigation-marker-progress: 0;
+  width: 26px;
+  transform: scaleX(calc(0.2308 + 0.7692 * var(--ow-user-message-navigation-marker-progress)));
+  transform-origin: left center;
+  transition:
+    transform 160ms
+      linear(
+        0,
+        0.398 10%,
+        0.682 20%,
+        0.843 30%,
+        0.925 40%,
+        0.972 50%,
+        1.004 60%,
+        1.008 70%,
+        1.003 80%,
+        1
+      ),
+    background-color 100ms ease,
+    opacity 100ms ease;
+}
+
+:is(
+    .ow-user-message-navigation-rail-row:has(
+      + .ow-user-message-navigation-rail-row[data-scrub-target]
+    ),
+    .ow-user-message-navigation-rail-row[data-scrub-target] + .ow-user-message-navigation-rail-row
+  )
+  .ow-user-message-navigation-rail-marker {
+  --ow-user-message-navigation-marker-progress: 0.7;
+}
+
+:is(
+    .ow-user-message-navigation-rail-row:has(
+      + .ow-user-message-navigation-rail-row
+        + .ow-user-message-navigation-rail-row[data-scrub-target]
+    ),
+    .ow-user-message-navigation-rail-row[data-scrub-target]
+      + .ow-user-message-navigation-rail-row
+      + .ow-user-message-navigation-rail-row
+  )
+  .ow-user-message-navigation-rail-marker {
+  --ow-user-message-navigation-marker-progress: 0.4;
+}
+
+:is(
+    .ow-user-message-navigation-rail-row:has(
+      + .ow-user-message-navigation-rail-row
+        + .ow-user-message-navigation-rail-row
+        + .ow-user-message-navigation-rail-row[data-scrub-target]
+    ),
+    .ow-user-message-navigation-rail-row[data-scrub-target]
+      + .ow-user-message-navigation-rail-row
+      + .ow-user-message-navigation-rail-row
+      + .ow-user-message-navigation-rail-row
+  )
+  .ow-user-message-navigation-rail-marker {
+  --ow-user-message-navigation-marker-progress: 0.2;
+}
+
+:is(
+    .ow-user-message-navigation-rail-row:focus-visible,
+    .ow-user-message-navigation-rail-row[data-scrub-target]
+  )
+  .ow-user-message-navigation-rail-marker {
+  --ow-user-message-navigation-marker-progress: 1;
+}
+
+.ow-user-message-navigation-rail-list[data-scrubbing] .ow-user-message-navigation-rail-marker {
+  transition-duration: 0s;
+}
+
+.ow-user-message-navigation-rail-list[data-scrubbing]
+  .ow-user-message-navigation-rail-row[aria-current="true"]:not([data-scrub-target])
+  .ow-user-message-navigation-rail-marker {
+  background-color: var(--muted-foreground);
+  opacity: 0.4;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ow-user-message-navigation-rail-list:not([data-scrubbing]):hover
+    .ow-user-message-navigation-rail-row[aria-current="true"]:not(:hover):not(:focus-visible)
+    .ow-user-message-navigation-rail-marker {
+    background-color: var(--muted-foreground);
+    opacity: 0.4;
+  }
+
+  :is(
+      .ow-user-message-navigation-rail-list:not([data-scrubbing])
+        .ow-user-message-navigation-rail-row:has(+ .ow-user-message-navigation-rail-row:hover),
+      .ow-user-message-navigation-rail-list:not([data-scrubbing])
+        .ow-user-message-navigation-rail-row:hover
+        + .ow-user-message-navigation-rail-row
+    )
+    .ow-user-message-navigation-rail-marker {
+    --ow-user-message-navigation-marker-progress: 0.7;
+  }
+
+  :is(
+      .ow-user-message-navigation-rail-list:not([data-scrubbing])
+        .ow-user-message-navigation-rail-row:has(
+          + .ow-user-message-navigation-rail-row + .ow-user-message-navigation-rail-row:hover
+        ),
+      .ow-user-message-navigation-rail-list:not([data-scrubbing])
+        .ow-user-message-navigation-rail-row:hover
+        + .ow-user-message-navigation-rail-row
+        + .ow-user-message-navigation-rail-row
+    )
+    .ow-user-message-navigation-rail-marker {
+    --ow-user-message-navigation-marker-progress: 0.4;
+  }
+
+  :is(
+      .ow-user-message-navigation-rail-list:not([data-scrubbing])
+        .ow-user-message-navigation-rail-row:has(
+          + .ow-user-message-navigation-rail-row
+            + .ow-user-message-navigation-rail-row
+            + .ow-user-message-navigation-rail-row:hover
+        ),
+      .ow-user-message-navigation-rail-list:not([data-scrubbing])
+        .ow-user-message-navigation-rail-row:hover
+        + .ow-user-message-navigation-rail-row
+        + .ow-user-message-navigation-rail-row
+        + .ow-user-message-navigation-rail-row
+    )
+    .ow-user-message-navigation-rail-marker {
+    --ow-user-message-navigation-marker-progress: 0.2;
+  }
+
+  .ow-user-message-navigation-rail-list:not([data-scrubbing])
+    .ow-user-message-navigation-rail-row:hover
+    .ow-user-message-navigation-rail-marker {
+    --ow-user-message-navigation-marker-progress: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ow-user-message-navigation-rail-marker {
+    transition-duration: 0s;
+  }
+}

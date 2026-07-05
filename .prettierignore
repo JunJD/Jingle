@@ -1,0 +1,16 @@
+out
+dist
+node_modules
+.agents
+.codex
+.claude
+.jingle-build
+test-results
+drafts
+badcase
+pnpm-lock.yaml
+package-lock.json
+LICENSE.md
+tsconfig.json
+tsconfig.*.json
+*.tsbuildinfo

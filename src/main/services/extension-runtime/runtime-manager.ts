@@ -1,0 +1,592 @@
+import { randomUUID } from "crypto"
+import type {
+  ExtensionAiAskPayload,
+  ExtensionAgentHostRequest,
+  ExtensionHostRequest,
+  ExtensionHostResponse,
+  ExtensionRuntimeEventAck,
+  ExtensionRuntimeError,
+  ExtensionRuntimeEvent,
+  ExtensionRuntimeLaunchContext,
+  ExtensionRuntimeLaunchPackageRef,
+  ExtensionRuntimeMetrics,
+  ExtensionRuntimeRunResult,
+  ExtensionRuntimeSessionError,
+  ExtensionRuntimeSessionInfo,
+  ExtensionRuntimeSessionKind,
+  ExtensionRuntimeToHostMessage,
+  ExtensionSurfaceSnapshot,
+  ExtensionConfirmAlertPayload,
+  ExtensionNavigationHostRequest,
+  ExtensionQuicklinksHostRequest,
+  ExtensionRuntimeHostCapability,
+  ExtensionRuntimeStorageScope,
+  ExtensionToastPayload
+} from "@shared/extension-runtime-protocol"
+import type { NativeExtensionInvokeRequest } from "@shared/native-extensions"
+import type { ExtensionRuntimeProcess, ExtensionRuntimeProcessLauncher } from "./runtime-process"
+
+export type {
+  ExtensionRuntimeRunResult,
+  ExtensionRuntimeSessionError,
+  ExtensionRuntimeSessionInfo,
+  ExtensionRuntimeSessionKind
+} from "@shared/extension-runtime-protocol"
+
+type MaybePromise<T> = T | Promise<T>
+
+export interface ExtensionRuntimeStorageParams {
+  context: ExtensionRuntimeLaunchContext
+  key: string
+  scope: ExtensionRuntimeStorageScope
+}
+
+export interface ExtensionRuntimeStorageScopeParams {
+  context: ExtensionRuntimeLaunchContext
+  scope: ExtensionRuntimeStorageScope
+}
+
+export interface ExtensionRuntimeHostCapabilities {
+  askAI: (input: ExtensionAiAskPayload) => Promise<string>
+  confirmAlert: (alert: ExtensionConfirmAlertPayload) => MaybePromise<boolean>
+  getRuntimeCapabilities: (params: {
+    commandName: string
+    extensionName: string
+  }) => MaybePromise<readonly ExtensionRuntimeHostCapability[]>
+  getCommandPreferences: (params: {
+    commandName: string
+    extensionName: string
+  }) => MaybePromise<Record<string, unknown>>
+  getExtensionPreferences: (extensionName: string) => MaybePromise<Record<string, unknown>>
+  getStorageValue: (params: ExtensionRuntimeStorageParams) => MaybePromise<unknown>
+  listStorageValues: (
+    params: ExtensionRuntimeStorageScopeParams
+  ) => MaybePromise<Record<string, unknown>>
+  removeStorageValue: (params: ExtensionRuntimeStorageParams) => MaybePromise<void>
+  clearStorageValues: (params: ExtensionRuntimeStorageScopeParams) => MaybePromise<void>
+  pasteClipboardText: (content: { html?: string; text: string }) => MaybePromise<void>
+  readClipboardText: () => MaybePromise<string>
+  readSelectedText: () => MaybePromise<string>
+  showToast: (params: { sessionId: string; toast: ExtensionToastPayload }) => MaybePromise<void>
+  handleNavigationRequest: (params: {
+    request: ExtensionNavigationHostRequest
+    sessionId: string
+  }) => MaybePromise<void>
+  handleRunBotAgentRequest: (params: {
+    request: ExtensionAgentHostRequest
+    sessionId: string
+  }) => MaybePromise<unknown>
+  invokeNativeExtension: (request: NativeExtensionInvokeRequest) => Promise<unknown>
+  openExtensionSettings: (params: {
+    commandName?: string
+    extensionName: string
+  }) => MaybePromise<void>
+  openExternal: (params: ExtensionRuntimeOpenExternalParams) => Promise<void>
+  registerQuicklink: (params: ExtensionRuntimeRegisterQuicklinkParams) => MaybePromise<unknown>
+  setStorageValue: (
+    params: ExtensionRuntimeStorageParams & { value: unknown }
+  ) => MaybePromise<void>
+  writeClipboardText: (content: { html?: string; text: string }) => MaybePromise<void>
+}
+
+export interface ExtensionRuntimeOpenExternalParams {
+  allowedUrlSchemes: readonly string[]
+  application?: {
+    bundleId?: string
+    name?: string
+    path?: string
+  }
+  context: ExtensionRuntimeLaunchContext
+  url: string
+}
+
+export interface ExtensionRuntimeRegisterQuicklinkParams {
+  context: ExtensionRuntimeLaunchContext
+  request: ExtensionQuicklinksHostRequest["payload"]
+}
+
+export type ExtensionRuntimeSurfaceListener = (
+  surface: ExtensionSurfaceSnapshot,
+  session: ExtensionRuntimeSessionInfo
+) => void
+
+export type ExtensionRuntimeErrorListener = (error: ExtensionRuntimeSessionError) => void
+
+export type ExtensionRuntimeEventAckListener = (
+  ack: ExtensionRuntimeEventAck,
+  session: ExtensionRuntimeSessionInfo
+) => void
+
+export interface ExtensionRuntimeManagerOptions {
+  createSessionId?: () => string
+  host: ExtensionRuntimeHostCapabilities
+  onEventAck?: (ack: ExtensionRuntimeEventAck, session: ExtensionRuntimeSessionInfo) => void
+  onError?: (error: ExtensionRuntimeSessionError) => void
+  onMetrics?: (metrics: ExtensionRuntimeMetrics, session: ExtensionRuntimeSessionInfo) => void
+  onSurface?: (surface: ExtensionSurfaceSnapshot, session: ExtensionRuntimeSessionInfo) => void
+  processLauncher: ExtensionRuntimeProcessLauncher
+  resolveRuntimePackage: (
+    context: ExtensionRuntimeLaunchContext
+  ) => ExtensionRuntimeLaunchPackageRef
+}
+
+interface RuntimeSession {
+  context: ExtensionRuntimeLaunchContext
+  disposeListeners: Array<() => void>
+  kind: ExtensionRuntimeSessionKind
+  process: ExtensionRuntimeProcess
+  resolveRunOnce?: (result: ExtensionRuntimeRunResult) => void
+  runtimeCapabilities: Set<ExtensionRuntimeHostCapability>
+  sessionId: string
+  stopping: boolean
+}
+
+export class ExtensionRuntimeManager {
+  private foregroundSession: RuntimeSession | null = null
+  private lastError: ExtensionRuntimeSessionError | null = null
+  private readonly eventAckListeners = new Set<ExtensionRuntimeEventAckListener>()
+  private readonly errorListeners = new Set<ExtensionRuntimeErrorListener>()
+  private readonly sessions = new Map<string, RuntimeSession>()
+  private readonly surfaceListeners = new Set<ExtensionRuntimeSurfaceListener>()
+
+  constructor(private readonly options: ExtensionRuntimeManagerOptions) {}
+
+  dispose(): void {
+    for (const session of Array.from(this.sessions.values())) {
+      this.stopSession(session)
+    }
+  }
+
+  getForegroundSession(): ExtensionRuntimeSessionInfo | null {
+    return this.foregroundSession ? toSessionInfo(this.foregroundSession) : null
+  }
+
+  getLastError(): ExtensionRuntimeSessionError | null {
+    return this.lastError
+  }
+
+  onEventAck(listener: ExtensionRuntimeEventAckListener): () => void {
+    this.eventAckListeners.add(listener)
+    return () => {
+      this.eventAckListeners.delete(listener)
+    }
+  }
+
+  onError(listener: ExtensionRuntimeErrorListener): () => void {
+    this.errorListeners.add(listener)
+    return () => {
+      this.errorListeners.delete(listener)
+    }
+  }
+
+  onSurface(listener: ExtensionRuntimeSurfaceListener): () => void {
+    this.surfaceListeners.add(listener)
+    return () => {
+      this.surfaceListeners.delete(listener)
+    }
+  }
+
+  runOnce(
+    context: ExtensionRuntimeLaunchContext,
+    options?: { onSessionStart?: (session: ExtensionRuntimeSessionInfo) => void }
+  ): Promise<ExtensionRuntimeRunResult> {
+    return new Promise((resolve) => {
+      void this.startSession("run-once", context, {
+        beforeStart: (session) => {
+          session.resolveRunOnce = resolve
+          options?.onSessionStart?.(toSessionInfo(session))
+        }
+      }).catch((error) => {
+        resolve({
+          error: toRuntimeError("runtime_start_failed", error),
+          sessionId: "",
+          status: "error"
+        })
+      })
+    })
+  }
+
+  sendEvent(sessionId: string, event: ExtensionRuntimeEvent): boolean {
+    const session = this.sessions.get(sessionId)
+    if (!session) {
+      return false
+    }
+
+    session.process.postMessage({
+      event,
+      sessionId,
+      type: "event"
+    })
+    return true
+  }
+
+  async startAmbient(context: ExtensionRuntimeLaunchContext): Promise<ExtensionRuntimeSessionInfo> {
+    const session = await this.startSession("ambient", context)
+    return toSessionInfo(session)
+  }
+
+  async startForeground(
+    context: ExtensionRuntimeLaunchContext,
+    options?: { sessionId?: string }
+  ): Promise<ExtensionRuntimeSessionInfo> {
+    const session = await this.startSession("foreground", context, {
+      sessionId: options?.sessionId
+    })
+    if (this.foregroundSession) {
+      this.stopSession(this.foregroundSession)
+    }
+
+    this.foregroundSession = session
+    return toSessionInfo(session)
+  }
+
+  stopForeground(sessionId = this.foregroundSession?.sessionId): boolean {
+    if (!sessionId) {
+      return false
+    }
+
+    const session = this.sessions.get(sessionId)
+    if (!session || session.kind !== "foreground") {
+      return false
+    }
+
+    this.stopSession(session)
+    return true
+  }
+
+  private async answerHostRequest(session: RuntimeSession, request: ExtensionHostRequest) {
+    const response = await this.createHostResponse(session, request)
+    if (this.sessions.get(session.sessionId) !== session) {
+      return
+    }
+
+    session.process.postMessage({
+      response,
+      sessionId: session.sessionId,
+      type: "host-response"
+    })
+  }
+
+  private async createHostResponse(
+    session: RuntimeSession,
+    request: ExtensionHostRequest
+  ): Promise<ExtensionHostResponse> {
+    try {
+      const result = await this.resolveHostRequest(session, request)
+      return {
+        id: request.id,
+        ok: true,
+        result
+      }
+    } catch (error) {
+      return {
+        error: toRuntimeError("host_request_failed", error),
+        id: request.id,
+        ok: false
+      }
+    }
+  }
+
+  private handleExit(session: RuntimeSession, code: number): void {
+    this.detachSession(session)
+    if (session.stopping) {
+      return
+    }
+
+    const error: ExtensionRuntimeError = {
+      code: "runtime_crashed",
+      message: `Extension runtime exited with code ${code}.`
+    }
+    this.recordError(session, error)
+  }
+
+  private handleMessage(session: RuntimeSession, message: ExtensionRuntimeToHostMessage): void {
+    if (
+      message.sessionId !== session.sessionId ||
+      this.sessions.get(session.sessionId) !== session
+    ) {
+      return
+    }
+
+    switch (message.type) {
+      case "ready":
+        if (session.kind === "run-once") {
+          session.resolveRunOnce?.({
+            sessionId: session.sessionId,
+            status: "ready"
+          })
+          this.stopSession(session)
+        }
+        return
+      case "surface":
+        this.emitSurface(message.surface, toSessionInfo(session))
+        return
+      case "event-ack":
+        this.emitEventAck(message.ack, toSessionInfo(session))
+        return
+      case "host-request":
+        void this.answerHostRequest(session, message.request)
+        return
+      case "error":
+        this.recordError(session, message.error)
+        return
+      case "metrics":
+        this.options.onMetrics?.(message.metrics, toSessionInfo(session))
+        return
+    }
+  }
+
+  private recordError(session: RuntimeSession, error: ExtensionRuntimeError): void {
+    const sessionError: ExtensionRuntimeSessionError = {
+      error,
+      sessionId: session.sessionId
+    }
+    this.lastError = sessionError
+    session.resolveRunOnce?.({
+      error,
+      sessionId: session.sessionId,
+      status: "error"
+    })
+    this.options.onError?.(sessionError)
+    for (const listener of this.errorListeners) {
+      listener(sessionError)
+    }
+    if (session.kind === "run-once" && this.sessions.get(session.sessionId) === session) {
+      this.stopSession(session)
+    }
+  }
+
+  private async resolveHostRequest(
+    session: RuntimeSession,
+    request: ExtensionHostRequest
+  ): Promise<unknown> {
+    assertRuntimeCapability(session, request.capability)
+
+    switch (request.capability) {
+      case "preferences":
+        assertOwnExtension(session, request.payload.extensionName)
+        if (request.method === "get-extension-preferences") {
+          return this.options.host.getExtensionPreferences(request.payload.extensionName)
+        }
+
+        return this.options.host.getCommandPreferences({
+          commandName: request.payload.commandName ?? session.context.commandName,
+          extensionName: request.payload.extensionName
+        })
+      case "storage":
+        if (request.method === "get") {
+          return this.options.host.getStorageValue({
+            context: session.context,
+            key: request.payload.key,
+            scope: request.payload.scope ?? "command"
+          })
+        }
+
+        if (request.method === "remove") {
+          await this.options.host.removeStorageValue({
+            context: session.context,
+            key: request.payload.key,
+            scope: request.payload.scope ?? "command"
+          })
+          return null
+        }
+
+        if (request.method === "all-items") {
+          return this.options.host.listStorageValues({
+            context: session.context,
+            scope: request.payload.scope ?? "command"
+          })
+        }
+
+        if (request.method === "clear") {
+          await this.options.host.clearStorageValues({
+            context: session.context,
+            scope: request.payload.scope ?? "command"
+          })
+          return null
+        }
+
+        await this.options.host.setStorageValue({
+          context: session.context,
+          key: request.payload.key,
+          scope: request.payload.scope ?? "command",
+          value: request.payload.value
+        })
+        return null
+      case "shell":
+        await this.options.host.openExternal({
+          allowedUrlSchemes: request.payload.allowedUrlSchemes ?? [],
+          application: request.payload.application,
+          context: session.context,
+          url: request.payload.url
+        })
+        return null
+      case "settings":
+        assertOwnExtension(session, request.payload.extensionName)
+        await this.options.host.openExtensionSettings(request.payload)
+        return null
+      case "quicklinks":
+        return this.options.host.registerQuicklink({
+          context: session.context,
+          request: request.payload
+        })
+      case "rpc":
+        assertOwnExtension(session, request.payload.extensionName)
+        return this.options.host.invokeNativeExtension(request.payload)
+      case "navigation":
+        return this.options.host.handleNavigationRequest({
+          request,
+          sessionId: session.sessionId
+        })
+      case "clipboard":
+        if (request.method === "read-text") {
+          return this.options.host.readClipboardText()
+        }
+
+        if (request.method === "read-selected-text") {
+          return this.options.host.readSelectedText()
+        }
+
+        if (request.method === "paste-text") {
+          await this.options.host.pasteClipboardText(request.payload)
+          return null
+        }
+
+        await this.options.host.writeClipboardText(request.payload)
+        return null
+      case "dialog":
+        return this.options.host.confirmAlert(request.payload)
+      case "toast":
+        await this.options.host.showToast({
+          sessionId: session.sessionId,
+          toast: request.payload
+        })
+        return null
+      case "ai":
+        return this.options.host.askAI(request.payload)
+      case "agent":
+        return this.options.host.handleRunBotAgentRequest({
+          request,
+          sessionId: session.sessionId
+        })
+      case "scheduler":
+        throw new Error(`Unsupported runtime host capability "${request.capability}"`)
+    }
+  }
+
+  private async startSession(
+    kind: ExtensionRuntimeSessionKind,
+    context: ExtensionRuntimeLaunchContext,
+    options?: { beforeStart?: (session: RuntimeSession) => void; sessionId?: string }
+  ): Promise<RuntimeSession> {
+    const runtimeCapabilities = new Set(
+      await this.options.host.getRuntimeCapabilities({
+        commandName: context.commandName,
+        extensionName: context.extensionName
+      })
+    )
+    const runtimePackage = this.options.resolveRuntimePackage(context)
+    const sessionId = options?.sessionId ?? this.options.createSessionId?.() ?? randomUUID()
+    const process = this.options.processLauncher.launch()
+    const session: RuntimeSession = {
+      context,
+      disposeListeners: [],
+      kind,
+      process,
+      runtimeCapabilities,
+      sessionId,
+      stopping: false
+    }
+
+    this.sessions.set(sessionId, session)
+    session.disposeListeners.push(
+      process.onMessage((message) => this.handleMessage(session, message)),
+      process.onExit((code) => this.handleExit(session, code))
+    )
+    options?.beforeStart?.(session)
+    process.postMessage({
+      context,
+      runtime: runtimePackage,
+      sessionId,
+      type: "start"
+    })
+
+    return session
+  }
+
+  private emitSurface(
+    surface: ExtensionSurfaceSnapshot,
+    sessionInfo: ExtensionRuntimeSessionInfo
+  ): void {
+    this.options.onSurface?.(surface, sessionInfo)
+    for (const listener of this.surfaceListeners) {
+      listener(surface, sessionInfo)
+    }
+  }
+
+  private emitEventAck(
+    ack: ExtensionRuntimeEventAck,
+    sessionInfo: ExtensionRuntimeSessionInfo
+  ): void {
+    this.options.onEventAck?.(ack, sessionInfo)
+    for (const listener of this.eventAckListeners) {
+      listener(ack, sessionInfo)
+    }
+  }
+
+  private stopSession(session: RuntimeSession): void {
+    session.stopping = true
+    this.detachSession(session)
+    session.process.postMessage({
+      sessionId: session.sessionId,
+      type: "stop"
+    })
+    session.process.kill()
+  }
+
+  private detachSession(session: RuntimeSession): void {
+    for (const dispose of session.disposeListeners) {
+      dispose()
+    }
+    session.disposeListeners = []
+    this.sessions.delete(session.sessionId)
+    if (this.foregroundSession === session) {
+      this.foregroundSession = null
+    }
+  }
+}
+
+function assertOwnExtension(session: RuntimeSession, extensionName: string): void {
+  if (extensionName !== session.context.extensionName) {
+    throw new Error(
+      `Runtime session "${session.sessionId}" cannot access extension "${extensionName}"`
+    )
+  }
+}
+
+function assertRuntimeCapability(
+  session: RuntimeSession,
+  capability: ExtensionRuntimeHostCapability
+): void {
+  if (!session.runtimeCapabilities.has(capability)) {
+    throw new Error(
+      `Runtime command "${session.context.extensionName}:${session.context.commandName}" tried to use undeclared host capability "${capability}"`
+    )
+  }
+}
+
+function toRuntimeError(code: string, error: unknown): ExtensionRuntimeError {
+  return {
+    code,
+    message: error instanceof Error ? error.message : String(error)
+  }
+}
+
+function toSessionInfo(session: RuntimeSession): ExtensionRuntimeSessionInfo {
+  return {
+    context: session.context,
+    kind: session.kind,
+    pid: session.process.pid,
+    sessionId: session.sessionId
+  }
+}

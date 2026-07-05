@@ -1,0 +1,315 @@
+import React from "react"
+void React
+import {
+  ActionPanel,
+  Icon,
+  showToast,
+  Action,
+  Image,
+  Keyboard,
+  Toast
+} from "@jingle/extension-api"
+import { formatDistanceToNow } from "date-fns"
+
+import { useUsers } from "../../hooks"
+import {
+  getPropertyIcon,
+  notionColorToTintColor,
+  patchPage,
+  PageProperty,
+  DatabaseProperty,
+  DatabasePropertyConfig,
+  ReadablePropertyType,
+  User
+} from "../../../domain"
+
+type EditPropertyOptions = DatabasePropertyConfig<"select" | "multi_select">["options"][number] & {
+  icon?: string
+}
+
+export function ActionEditPageProperty({
+  databaseProperty,
+  pageId,
+  pageProperty,
+  shortcut,
+  mutate,
+  icon,
+  options,
+  users: providedUsers
+}: {
+  databaseProperty: DatabaseProperty
+  pageId: string
+  pageProperty?: PageProperty
+  mutate: () => Promise<void>
+  shortcut?: Keyboard.Shortcut
+  icon?: Image.ImageLike
+  options?: EditPropertyOptions[]
+  users?: User[]
+}) {
+  if (!icon) icon = getPropertyIcon(databaseProperty)
+
+  const { data: fetchedUsers } = useUsers()
+  const users = providedUsers ?? fetchedUsers
+
+  const title = "Set " + databaseProperty.name
+
+  async function setPageProperty(patch: Parameters<typeof patchPage>[1]) {
+    showToast({
+      style: Toast.Style.Animated,
+      title: "Updating Property"
+    })
+    const updatedPage = await patchPage(pageId, patch)
+    if (updatedPage && updatedPage.id) {
+      showToast({
+        title: "Property Updated"
+      })
+      mutate()
+    }
+  }
+
+  const { type, config, value } = propertyHelper(databaseProperty, pageProperty)
+
+  switch (type) {
+    case "checkbox":
+      return (
+        <Action
+          title={(value ? "Uncheck " : "Check ") + databaseProperty.name}
+          icon={value ? Icon.Checkmark : Icon.Circle}
+          shortcut={shortcut}
+          onAction={() => setPageProperty({ [databaseProperty.id]: { checkbox: !value } })}
+        />
+      )
+
+    case "select": {
+      if (!options) options = config.options
+      return (
+        <ActionPanel.Submenu title={title} icon={icon} shortcut={shortcut}>
+          {options?.map((opt) => (
+            <Action
+              key={opt.id}
+              icon={
+                (opt.icon ? opt.icon : opt.id !== "_select_null_")
+                  ? {
+                      source: opt.icon
+                        ? opt.icon
+                        : value?.id === opt.id
+                          ? Icon.Checkmark
+                          : Icon.Circle,
+                      tintColor: notionColorToTintColor(opt.color)
+                    }
+                  : undefined
+              }
+              title={
+                (opt.name ? opt.name : "Untitled") + (opt.icon && value?.id === opt.id ? "  ✓" : "")
+              }
+              onAction={() => {
+                if (opt.id && opt.id !== "_select_null_") {
+                  setPageProperty({ [databaseProperty.id]: { select: { id: opt.id } } })
+                } else {
+                  setPageProperty({ [databaseProperty.id]: { select: null } })
+                }
+              }}
+            />
+          ))}
+        </ActionPanel.Submenu>
+      )
+    }
+
+    case "status": {
+      if (!options) options = config.options
+      return (
+        <ActionPanel.Submenu title={title} icon={icon} shortcut={shortcut}>
+          {options?.map((opt) => (
+            <Action
+              key={opt.id}
+              icon={
+                (opt.icon ? opt.icon : opt.id !== "_select_null_")
+                  ? {
+                      source: opt.icon
+                        ? opt.icon
+                        : value?.id === opt.id
+                          ? Icon.Checkmark
+                          : Icon.Circle,
+                      tintColor: notionColorToTintColor(opt.color)
+                    }
+                  : undefined
+              }
+              title={
+                (opt.name ? opt.name : "Untitled") + (opt.icon && value?.id === opt.id ? "  ✓" : "")
+              }
+              onAction={() => {
+                if (opt.id && opt.id !== "_select_null_") {
+                  setPageProperty({ [databaseProperty.id]: { status: { id: opt.id } } })
+                } else {
+                  setPageProperty({ [databaseProperty.id]: { status: null } })
+                }
+              }}
+            />
+          ))}
+        </ActionPanel.Submenu>
+      )
+    }
+
+    case "date": {
+      return (
+        <ActionPanel.Submenu title={title} icon={icon} shortcut={shortcut}>
+          <ActionPanel.Submenu
+            title={value?.start ? formatDistanceToNow(new Date(value.start)) : "No Date"}
+            icon="icon/date_start.png"
+          >
+            <Action
+              title="Now"
+              onAction={() => {
+                const currentTime = getCurrentTimestamp()
+                const date = value ? { ...value } : { start: currentTime }
+                date.start = currentTime
+                setPageProperty({ [databaseProperty.id]: { date } })
+              }}
+            />
+          </ActionPanel.Submenu>
+          <ActionPanel.Submenu
+            title={value?.end ? formatDistanceToNow(new Date(value.end)) : "No Date"}
+            icon="icon/date_end.png"
+          >
+            <Action
+              title="Now"
+              onAction={() => {
+                const currentTime = getCurrentTimestamp()
+                const date = value
+                  ? { ...value }
+                  : {
+                      start: currentTime,
+                      end: currentTime
+                    }
+                date.end = currentTime
+                setPageProperty({ [databaseProperty.id]: { date } })
+              }}
+            />
+          </ActionPanel.Submenu>
+        </ActionPanel.Submenu>
+      )
+    }
+
+    case "multi_select": {
+      if (!options) options = config.options
+      const selectedOptions = value ?? []
+      const multiSelectIds = selectedOptions.map((selection) => selection.id)
+      const selectedOptionIds = selectedOptions.map((selection) => ({ id: selection.id }))
+      return (
+        <ActionPanel.Submenu title={title} icon={icon} shortcut={shortcut}>
+          {options?.map((opt) => {
+            if (!opt.id) {
+              return null
+            }
+            return (
+              <Action
+                key={opt.id}
+                icon={{
+                  source: opt.id && multiSelectIds?.includes(opt.id) ? Icon.Checkmark : Icon.Circle,
+                  tintColor: notionColorToTintColor(opt.color)
+                }}
+                title={opt.name}
+                onAction={() => {
+                  if (!opt.id) {
+                    return
+                  }
+                  if (multiSelectIds.includes(opt.id)) {
+                    setPageProperty({
+                      [databaseProperty.id]: {
+                        multi_select: selectedOptionIds.filter((o) => o.id !== opt.id)
+                      }
+                    })
+                  } else {
+                    setPageProperty({
+                      [databaseProperty.id]: {
+                        multi_select: [...selectedOptionIds, { id: opt.id }]
+                      }
+                    })
+                  }
+                }}
+              />
+            )
+          })}
+        </ActionPanel.Submenu>
+      )
+    }
+
+    case "people": {
+      const selectedPeople = value ?? []
+      const peopleIds = selectedPeople.map((user) => user.id)
+      const peopleIdSet = new Set(peopleIds)
+      const usersById = new Map(users.map((user) => [user.id, user]))
+      const unselectedUsers: User[] = []
+      for (const user of users) {
+        if (!peopleIdSet.has(user.id)) unselectedUsers.push(user)
+      }
+      return (
+        <ActionPanel.Submenu title={title} icon={icon} shortcut={shortcut}>
+          <ActionPanel.Section>
+            {selectedPeople.map((user) => {
+              const resolvedUser = usersById.get(user.id)
+              const userName = ("name" in user ? user.name : resolvedUser?.name) ?? "Unknown"
+              const avatarUrl =
+                ("avatar_url" in user ? user.avatar_url : resolvedUser?.avatar_url) ?? undefined
+              return (
+                <Action
+                  key={user.id}
+                  icon={avatarUrl ? { source: avatarUrl, mask: Image.Mask.Circle } : undefined}
+                  title={userName + "  ✓"}
+                  onAction={() =>
+                    setPageProperty({
+                      [databaseProperty.id]: {
+                        people: selectedPeople.filter((o) => o.id !== user.id)
+                      }
+                    })
+                  }
+                />
+              )
+            })}
+          </ActionPanel.Section>
+          <ActionPanel.Section>
+            {unselectedUsers.map((user) => (
+              <Action
+                key={user.id}
+                icon={
+                  user?.avatar_url
+                    ? { source: user.avatar_url, mask: Image.Mask.Circle }
+                    : undefined
+                }
+                title={user?.name ? user.name : "Unknown"}
+                onAction={() =>
+                  setPageProperty({
+                    [databaseProperty.id]: {
+                      people: [...selectedPeople, { id: user.id }]
+                    }
+                  })
+                }
+              />
+            ))}
+          </ActionPanel.Section>
+        </ActionPanel.Submenu>
+      )
+    }
+
+    default:
+      return null
+  }
+}
+
+// This isn't great code, but this component will be replaced soon.
+const propertyHelper = (databaseProperty: DatabaseProperty, pageProperty?: PageProperty) =>
+  ({
+    type: databaseProperty.type,
+    config: databaseProperty.config,
+    value: pageProperty?.value
+  }) as {
+    [PP in Extract<PageProperty, { type: ReadablePropertyType }> as PP["type"]]: {
+      type: PP["type"]
+      config: DatabasePropertyConfig<PP["type"]>
+      value?: PP["value"]
+    }
+  }[ReadablePropertyType]
+
+function getCurrentTimestamp() {
+  return new Date().toISOString()
+}

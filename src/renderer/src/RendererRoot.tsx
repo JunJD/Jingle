@@ -1,0 +1,91 @@
+import React, { useEffect, useState } from "react"
+import LauncherApp from "@launcher-shell/LauncherApp"
+import { LauncherClipboardProvider } from "@launcher-shell/LauncherClipboardContext"
+import { LauncherSelectionProvider } from "@launcher-shell/LauncherSelectionContext"
+import { DEFAULT_APP_THEME_SETTINGS, type AppThemeSettings } from "@shared/app-theme"
+import { PINNED_AI_SESSION_WINDOW_KIND } from "@shared/ai-session-window"
+import { DEFAULT_APP_LOCALE, normalizeAppLocale, type AppLocale } from "@shared/i18n"
+import { IPC_NETWORK_WINDOW_KIND } from "@jingle/devtools-network"
+import { I18nProvider } from "@/lib/i18n"
+import { PinnedAiSessionWindowApp } from "./ai-core/PinnedAiSessionWindowApp"
+import { IpcNetworkApp } from "./devtools/IpcNetworkApp"
+import { ThreadProvider } from "./lib/thread-context"
+import { applyAppThemeSettings } from "./lib/app-theme"
+import SettingsApp from "./settings/SettingsApp"
+import { ShortcutProvider } from "./shortcuts/shortcut-provider"
+
+async function resolveInitialLocale(): Promise<AppLocale> {
+  try {
+    const agentConfig = await window.api.settings.getAgentConfig()
+    return normalizeAppLocale(agentConfig.locale)
+  } catch {
+    return DEFAULT_APP_LOCALE
+  }
+}
+
+async function resolveInitialAppThemeSettings(): Promise<AppThemeSettings> {
+  try {
+    return await window.api.settings.getAppThemeSettings()
+  } catch {
+    return DEFAULT_APP_THEME_SETTINGS
+  }
+}
+
+export function RendererRoot(props: {
+  resolvedWindowKind: string
+  windowKind: string | null
+}): React.JSX.Element {
+  if (props.windowKind === IPC_NETWORK_WINDOW_KIND) {
+    return (
+      <React.StrictMode>
+        <IpcNetworkApp />
+      </React.StrictMode>
+    )
+  }
+
+  return <AppRendererRoot {...props} />
+}
+
+function AppRendererRoot(props: {
+  resolvedWindowKind: string
+  windowKind: string | null
+}): React.JSX.Element {
+  const { resolvedWindowKind, windowKind } = props
+  const [locale, setLocale] = useState<AppLocale>(DEFAULT_APP_LOCALE)
+  const shortcutWindowKind =
+    resolvedWindowKind === "launcher" || resolvedWindowKind === PINNED_AI_SESSION_WINDOW_KIND
+      ? "launcher"
+      : resolvedWindowKind === "settings"
+        ? "settings"
+        : "main"
+
+  useEffect(() => {
+    void resolveInitialLocale().then(setLocale)
+    void resolveInitialAppThemeSettings().then(applyAppThemeSettings)
+    return window.api.settings.onAppThemeSettingsChanged(applyAppThemeSettings)
+  }, [])
+
+  return (
+    <React.StrictMode>
+      <ShortcutProvider windowKind={shortcutWindowKind}>
+        <I18nProvider key={locale} initialLocale={locale}>
+          {windowKind === "launcher" ? (
+            <ThreadProvider eventSurface="launcher">
+              <LauncherClipboardProvider>
+                <LauncherSelectionProvider>
+                  <LauncherApp />
+                </LauncherSelectionProvider>
+              </LauncherClipboardProvider>
+            </ThreadProvider>
+          ) : windowKind === PINNED_AI_SESSION_WINDOW_KIND ? (
+            <ThreadProvider eventSurface="pinned-ai-session">
+              <PinnedAiSessionWindowApp />
+            </ThreadProvider>
+          ) : windowKind === "settings" ? (
+            <SettingsApp />
+          ) : null}
+        </I18nProvider>
+      </ShortcutProvider>
+    </React.StrictMode>
+  )
+}

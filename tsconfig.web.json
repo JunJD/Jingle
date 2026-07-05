@@ -1,0 +1,80 @@
+{
+  "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
+  "include": [
+    "extensions/**/*",
+    "installable-extensions/**/*",
+    "src/extensions/**/*",
+    "packages/*/src/**/*",
+    "src/renderer/src/env.d.ts",
+    "src/renderer/src/**/*",
+    "src/renderer/src/**/*.tsx",
+    "src/plugins/**/*",
+    "src/preload/*.d.ts",
+    "src/shared/**/*",
+    "src/preload/api/**/*",
+    "src/preload/ipc-errors.ts",
+    "src/preload/ipc.ts"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "src/renderer/src/*"
+      ],
+      "@ai-core/*": [
+        "src/renderer/src/ai-core/*"
+      ],
+      "@extension-host/*": [
+        "src/renderer/src/extension-host/*"
+      ],
+      "@extensions/*": [
+        "src/extensions/*"
+      ],
+      "@launcher-components/*": [
+        "src/renderer/src/launcher-components/*"
+      ],
+      "@launcher-shell/*": [
+        "src/renderer/src/launcher-shell/*"
+      ],
+      "@jingle/extension-api": [
+        "packages/extension-api/src/index.ts"
+      ],
+      "@jingle/extension-api/host-runtime": [
+        "packages/extension-api/src/host-runtime.ts"
+      ],
+      "@jingle/agent-client": [
+        "packages/agent-client/src/index.ts"
+      ],
+      "@jingle/agent-react": [
+        "packages/agent-react/src/index.ts"
+      ],
+      "@jingle/devtools-network": [
+        "packages/devtools-network/src/index.ts"
+      ],
+      "@jingle/devtools-network/protocol": [
+        "packages/devtools-network/src/protocol.ts"
+      ],
+      "@jingle/extension-utils": [
+        "packages/extension-utils/src/index.ts"
+      ],
+      "@plugins/*": [
+        "src/plugins/*"
+      ],
+      "@renderer/*": [
+        "src/renderer/src/*"
+      ],
+      "@shared/*": [
+        "src/shared/*"
+      ]
+    }
+  },
+  "exclude": [
+    "extensions/*/main/**/*",
+    "installable-extensions/*/main/**/*",
+    "packages/langchain-agent-harness/**/*",
+    "packages/devtools-network/src/main.ts",
+    "src/extensions/*/main/**/*"
+  ]
+}

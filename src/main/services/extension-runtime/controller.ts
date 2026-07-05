@@ -1,0 +1,150 @@
+import type { IpcMain, WebContents } from "electron"
+import type {
+  ExtensionRuntimeEvent,
+  ExtensionRuntimeForegroundStartRequest,
+  ExtensionRuntimeLaunchContext,
+  ExtensionRuntimeNavigationResponse,
+  ExtensionRuntimeRunBotAgentResponse,
+  ExtensionRuntimeRunResult
+} from "@shared/extension-runtime-protocol"
+import { registerIpcHandle } from "../../ipc/handle"
+import { ExtensionRuntimeRendererBridge } from "./renderer-bridge"
+import { ExtensionRuntimeManager } from "./runtime-manager"
+
+const SURFACE_CHANNEL = "extensionRuntime:surface"
+const ERROR_CHANNEL = "extensionRuntime:error"
+const EVENT_ACK_CHANNEL = "extensionRuntime:eventAck"
+const RUN_ONCE_SESSION_CHANNEL = "extensionRuntime:runOnceSession"
+
+export class ExtensionRuntimeController {
+  private readonly surfaceSubscribers = new Map<number, WebContents>()
+  private readonly surfaceSubscriberDestroyCleanups = new Map<number, () => void>()
+
+  constructor(
+    private readonly runtimeManager: ExtensionRuntimeManager,
+    private readonly rendererBridge: ExtensionRuntimeRendererBridge
+  ) {
+    this.runtimeManager.onSurface((surface, session) => {
+      for (const subscriber of this.surfaceSubscribers.values()) {
+        if (!subscriber.isDestroyed()) {
+          subscriber.send(SURFACE_CHANNEL, { session, surface })
+        }
+      }
+    })
+    this.runtimeManager.onError((error) => {
+      this.rendererBridge.releaseSession(error.sessionId)
+      for (const subscriber of this.surfaceSubscribers.values()) {
+        if (!subscriber.isDestroyed()) {
+          subscriber.send(ERROR_CHANNEL, error)
+        }
+      }
+    })
+    this.runtimeManager.onEventAck((ack, session) => {
+      for (const subscriber of this.surfaceSubscribers.values()) {
+        if (!subscriber.isDestroyed()) {
+          subscriber.send(EVENT_ACK_CHANNEL, { ack, session })
+        }
+      }
+    })
+  }
+
+  register(ipcMain: IpcMain): void {
+    registerIpcHandle(ipcMain, "extensionRuntime:subscribeSurfaces", (event) => {
+      const senderId = event.sender.id
+      this.surfaceSubscribers.set(senderId, event.sender)
+      if (!this.surfaceSubscriberDestroyCleanups.has(senderId)) {
+        const cleanup = () => {
+          this.surfaceSubscribers.delete(senderId)
+          this.surfaceSubscriberDestroyCleanups.delete(senderId)
+        }
+        this.surfaceSubscriberDestroyCleanups.set(senderId, cleanup)
+        event.sender.once("destroyed", cleanup)
+      }
+    })
+
+    registerIpcHandle(ipcMain, "extensionRuntime:unsubscribeSurfaces", (event) => {
+      const senderId = event.sender.id
+      const cleanup = this.surfaceSubscriberDestroyCleanups.get(senderId)
+      if (cleanup) {
+        event.sender.removeListener("destroyed", cleanup)
+        this.surfaceSubscriberDestroyCleanups.delete(senderId)
+      }
+      this.surfaceSubscribers.delete(senderId)
+    })
+
+    registerIpcHandle(
+      ipcMain,
+      "extensionRuntime:startForeground",
+      async (event, request: ExtensionRuntimeForegroundStartRequest) => {
+        const previousSessionId = this.runtimeManager.getForegroundSession()?.sessionId
+        this.rendererBridge.bindSession(request.sessionId, event.sender)
+        try {
+          const session = await this.runtimeManager.startForeground(request.context, {
+            sessionId: request.sessionId
+          })
+          if (previousSessionId) {
+            this.rendererBridge.releaseSession(previousSessionId)
+          }
+          return session
+        } catch (error) {
+          this.rendererBridge.releaseSession(request.sessionId)
+          throw error
+        }
+      }
+    )
+
+    registerIpcHandle(
+      ipcMain,
+      "extensionRuntime:runOnce",
+      async (event, context: ExtensionRuntimeLaunchContext): Promise<ExtensionRuntimeRunResult> => {
+        let sessionId: string | null = null
+        try {
+          return await this.runtimeManager.runOnce(context, {
+            onSessionStart: (session) => {
+              sessionId = session.sessionId
+              this.rendererBridge.bindSession(session.sessionId, event.sender)
+              event.sender.send(RUN_ONCE_SESSION_CHANNEL, session)
+            }
+          })
+        } finally {
+          if (sessionId) {
+            this.rendererBridge.releaseSession(sessionId)
+          }
+        }
+      }
+    )
+
+    registerIpcHandle(ipcMain, "extensionRuntime:stopForeground", (_event, sessionId?: string) => {
+      const stoppedSessionId = sessionId ?? this.runtimeManager.getForegroundSession()?.sessionId
+      const stopped = this.runtimeManager.stopForeground(sessionId)
+      if (stopped && stoppedSessionId) {
+        this.rendererBridge.releaseSession(stoppedSessionId)
+      }
+      return stopped
+    })
+
+    registerIpcHandle(
+      ipcMain,
+      "extensionRuntime:sendEvent",
+      (_event, sessionId: string, runtimeEvent: ExtensionRuntimeEvent) => {
+        return this.runtimeManager.sendEvent(sessionId, runtimeEvent)
+      }
+    )
+
+    registerIpcHandle(
+      ipcMain,
+      "extensionRuntime:completeNavigationRequest",
+      (event, response: ExtensionRuntimeNavigationResponse) => {
+        return this.rendererBridge.completeNavigationRequest(event.sender, response)
+      }
+    )
+
+    registerIpcHandle(
+      ipcMain,
+      "extensionRuntime:completeRunBotAgentRequest",
+      (event, response: ExtensionRuntimeRunBotAgentResponse) => {
+        return this.rendererBridge.completeRunBotAgentRequest(event.sender, response)
+      }
+    )
+  }
+}

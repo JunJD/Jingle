@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title desc">
+  <title id="title">Jingle app icon</title>
+  <desc id="desc">A dark desktop app icon with a companion-like command capsule looking slightly right.</desc>
+  <defs>
+    <linearGradient id="bg" x1="14" y1="8" x2="86" y2="94" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2d3833"/>
+      <stop offset=".52" stop-color="#111816"/>
+      <stop offset="1" stop-color="#060807"/>
+    </linearGradient>
+    <radialGradient id="warmth" cx="52" cy="48" r="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4fd878" stop-opacity=".17"/>
+      <stop offset=".68" stop-color="#17271d" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="capsule" x1="19" y1="35" x2="81" y2="67" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffff6"/>
+      <stop offset="1" stop-color="#d3ead9"/>
+    </linearGradient>
+    <linearGradient id="green" x1="55" y1="31" x2="76" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d2ff7c"/>
+      <stop offset="1" stop-color="#28c97b"/>
+    </linearGradient>
+    <filter id="shadow" x="-24%" y="-24%" width="148%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#000000" flood-opacity=".34"/>
+    </filter>
+  </defs>
+  <rect x="5.5" y="5.5" width="89" height="89" rx="25.5" fill="url(#bg)"/>
+  <rect x="5.5" y="5.5" width="89" height="89" rx="25.5" fill="url(#warmth)"/>
+  <g filter="url(#shadow)">
+    <rect x="18.5" y="35" width="63" height="30" rx="15" fill="url(#capsule)"/>
+    <circle cx="33" cy="49.5" r="6" fill="none" stroke="#627069" stroke-width="3"/>
+    <circle cx="34.5" cy="49" r="1.8" fill="#627069"/>
+    <path d="M39.1 54.2l4.5 4.5" stroke="#627069" stroke-width="2.8" stroke-linecap="round"/>
+    <path d="M49.5 49.5h11" stroke="#56625d" stroke-width="3.8" stroke-linecap="round"/>
+    <circle cx="69" cy="49.5" r="5.8" fill="url(#green)"/>
+    <circle cx="69.8" cy="47.8" r="1.5" fill="#efffd5" opacity=".78"/>
+  </g>
+  <path d="M59 29c6.7-4.6 14.8-3.4 20.4 2.5" fill="none" stroke="#75ed98" stroke-linecap="round" stroke-width="3.3"/>
+</svg>

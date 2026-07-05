@@ -1,0 +1,83 @@
+{
+  "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
+  "include": [
+    "electron.vite.config.*",
+    "extensions/**/*",
+    "installable-extensions/**/*",
+    "src/extensions/**/*",
+    "src/extension-runtime/**/*",
+    "src/main/**/*",
+    "packages/*/src/**/*",
+    "src/plugins/**/*",
+    "src/preload/**/*",
+    "src/shared/**/*"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "jsx": "react-jsx",
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig.node.tsbuildinfo",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "src/renderer/src/*"
+      ],
+      "@ai-core/*": [
+        "src/renderer/src/ai-core/*"
+      ],
+      "@extension-host/*": [
+        "src/renderer/src/extension-host/*"
+      ],
+      "@extensions/*": [
+        "src/extensions/*"
+      ],
+      "@launcher-components/*": [
+        "src/renderer/src/launcher-components/*"
+      ],
+      "@launcher-shell/*": [
+        "src/renderer/src/launcher-shell/*"
+      ],
+      "@jingle/extension-api": [
+        "packages/extension-api/src/index.ts"
+      ],
+      "@jingle/extension-api/host-runtime": [
+        "packages/extension-api/src/host-runtime.ts"
+      ],
+      "@jingle/agent-client": [
+        "packages/agent-client/src/index.ts"
+      ],
+      "@jingle/agent-react": [
+        "packages/agent-react/src/index.ts"
+      ],
+      "@jingle/langchain-agent-harness": [
+        "packages/langchain-agent-harness/src/index.ts"
+      ],
+      "@jingle/langchain-agent-harness/transitional": [
+        "packages/langchain-agent-harness/src/root-transitional-api.ts"
+      ],
+      "@jingle/devtools-network": [
+        "packages/devtools-network/src/index.ts"
+      ],
+      "@jingle/devtools-network/main": [
+        "packages/devtools-network/src/main.ts"
+      ],
+      "@jingle/devtools-network/protocol": [
+        "packages/devtools-network/src/protocol.ts"
+      ],
+      "@jingle/extension-utils": [
+        "packages/extension-utils/src/index.ts"
+      ],
+      "@plugins/*": [
+        "src/plugins/*"
+      ],
+      "@renderer/*": [
+        "src/renderer/src/*"
+      ],
+      "@shared/*": [
+        "src/shared/*"
+      ]
+    },
+    "types": [
+      "electron-vite/node"
+    ]
+  }
+}

@@ -1,0 +1,600 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Thread {
+  threadId               String                  @id @map("thread_id")
+  createdAt              BigInt                  @map("created_at")
+  updatedAt              BigInt                  @map("updated_at")
+  archivedAt             BigInt?                 @map("archived_at")
+  metadata               String?
+  status                 String                  @default("idle")
+  threadValues           String?                 @map("thread_values")
+  title                  String?
+  runs                   Run[]
+  artifacts              Artifact[]
+  artifactPresentations  ArtifactPresentation[]
+  sessionBindings        SessionBinding[]        @relation("SessionBindingCurrentThread")
+  checkpoints            Checkpoint[]
+  checkpointBlobs        CheckpointBlob[]
+  checkpointWrites       CheckpointWrite[]
+  hitlRequests           HitlRequest[]
+  messages               Message[]
+  threadDigest           ThreadDigest?
+  messageEvents          MessageEvent[]
+  messageStateVersions   MessageStateVersion[]
+  agentEvents            AgentEvent[]
+  agentTraces            AgentTrace[]
+  agentTraceBlobs        AgentTraceBlob[]
+  agentMemorySuggestions AgentMemorySuggestion[]
+  agentMemoryInclusions  AgentMemoryInclusion[]
+  workspaceBinding       ThreadWorkspaceBinding?
+  workflow               ThreadWorkflow?
+  workflowLabels         ThreadLabel[]
+  spawnedChildEdges      ThreadSpawnEdge[]       @relation("ThreadSpawnEdgeParent")
+  spawnParentEdge        ThreadSpawnEdge?        @relation("ThreadSpawnEdgeChild")
+
+  @@index([archivedAt, updatedAt], map: "idx_threads_archived_at_updated_at")
+  @@index([updatedAt], map: "idx_threads_updated_at")
+  @@map("threads")
+}
+
+model Project {
+  projectId               String                   @id @map("project_id")
+  workspaceKey            String                   @unique @map("workspace_key")
+  canonicalWorkspacePath  String                   @map("canonical_workspace_path")
+  displayName             String                   @map("display_name")
+  createdAt               BigInt                   @map("created_at")
+  updatedAt               BigInt                   @map("updated_at")
+  archivedAt              BigInt?                  @map("archived_at")
+  threadWorkspaceBindings ThreadWorkspaceBinding[]
+  workflowStatuses        WorkflowStatus[]
+  workflowLabels          WorkflowLabel[]
+
+  @@index([updatedAt], map: "idx_projects_updated_at")
+  @@map("projects")
+}
+
+model ThreadWorkspaceBinding {
+  threadId      String   @id @map("thread_id")
+  workspaceKind String   @map("workspace_kind")
+  projectId     String?  @map("project_id")
+  workspaceKey  String?  @map("workspace_key")
+  workspacePath String?  @map("workspace_path")
+  createdAt     BigInt   @map("created_at")
+  updatedAt     BigInt   @map("updated_at")
+  thread        Thread   @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  project       Project? @relation(fields: [projectId], references: [projectId], onDelete: SetNull)
+
+  @@index([workspaceKind], map: "idx_thread_workspace_bindings_kind")
+  @@index([projectId], map: "idx_thread_workspace_bindings_project_id")
+  @@index([workspaceKey], map: "idx_thread_workspace_bindings_workspace_key")
+  @@map("thread_workspace_bindings")
+}
+
+model ThreadWorkflow {
+  threadId             String          @id @map("thread_id")
+  statusId             String?         @map("status_id")
+  primarySourceRefJson String?         @map("primary_source_ref_json")
+  currentGate          String?         @map("current_gate")
+  statusUpdatedAt      BigInt          @map("status_updated_at")
+  createdAt            BigInt          @map("created_at")
+  updatedAt            BigInt          @map("updated_at")
+  thread               Thread          @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  status               WorkflowStatus? @relation(fields: [statusId], references: [statusId], onDelete: SetNull)
+
+  @@index([statusId], map: "idx_thread_workflows_status_id")
+  @@index([currentGate, updatedAt], map: "idx_thread_workflows_current_gate_updated_at")
+  @@map("thread_workflows")
+}
+
+model WorkflowStatus {
+  statusId        String           @id @map("status_id")
+  projectId       String           @map("project_id")
+  key             String
+  label           String
+  category        String
+  colorJson       String?          @map("color_json")
+  icon            String?
+  orderIndex      Int              @default(0) @map("order_index")
+  isFixed         Boolean          @default(false) @map("is_fixed")
+  isDefault       Boolean          @default(false) @map("is_default")
+  createdAt       BigInt           @map("created_at")
+  updatedAt       BigInt           @map("updated_at")
+  project         Project          @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+  threadWorkflows ThreadWorkflow[]
+
+  @@unique([projectId, key], map: "uidx_workflow_statuses_project_key")
+  @@index([projectId, category, orderIndex], map: "idx_workflow_statuses_project_category_order")
+  @@map("workflow_statuses")
+}
+
+model WorkflowLabel {
+  labelId       String          @id @map("label_id")
+  projectId     String          @map("project_id")
+  parentLabelId String?         @map("parent_label_id")
+  key           String
+  name          String
+  colorJson     String?         @map("color_json")
+  valueType     String          @default("boolean") @map("value_type")
+  autoRulesJson String?         @map("auto_rules_json")
+  orderIndex    Int             @default(0) @map("order_index")
+  createdAt     BigInt          @map("created_at")
+  updatedAt     BigInt          @map("updated_at")
+  project       Project         @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+  parent        WorkflowLabel?  @relation("WorkflowLabelTree", fields: [parentLabelId], references: [labelId], onDelete: SetNull)
+  children      WorkflowLabel[] @relation("WorkflowLabelTree")
+  threadLabels  ThreadLabel[]
+
+  @@unique([projectId, key], map: "uidx_workflow_labels_project_key")
+  @@index([projectId, parentLabelId, orderIndex], map: "idx_workflow_labels_project_parent_order")
+  @@map("workflow_labels")
+}
+
+model ThreadLabel {
+  threadId  String        @map("thread_id")
+  labelId   String        @map("label_id")
+  rawValue  String        @default("") @map("raw_value")
+  createdAt BigInt        @map("created_at")
+  thread    Thread        @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  label     WorkflowLabel @relation(fields: [labelId], references: [labelId], onDelete: Cascade)
+
+  @@id([threadId, labelId, rawValue])
+  @@index([labelId, rawValue], map: "idx_thread_labels_label_value")
+  @@index([threadId, createdAt], map: "idx_thread_labels_thread_created_at")
+  @@map("thread_labels")
+}
+
+model ThreadSpawnEdge {
+  parentThreadId String  @map("parent_thread_id")
+  childThreadId  String  @unique(map: "uidx_thread_spawn_edges_child_thread_id") @map("child_thread_id")
+  role           String?
+  edgeStatus     String  @default("open") @map("edge_status")
+  metadata       String?
+  createdAt      BigInt  @map("created_at")
+  closedAt       BigInt? @map("closed_at")
+  parentThread   Thread  @relation("ThreadSpawnEdgeParent", fields: [parentThreadId], references: [threadId], onDelete: Cascade)
+  childThread    Thread  @relation("ThreadSpawnEdgeChild", fields: [childThreadId], references: [threadId], onDelete: Cascade)
+
+  @@id([parentThreadId, childThreadId])
+  @@index([parentThreadId, edgeStatus], map: "idx_thread_spawn_edges_parent_status")
+  @@index([edgeStatus, createdAt], map: "idx_thread_spawn_edges_status_created_at")
+  @@map("thread_spawn_edges")
+}
+
+model Run {
+  runId                  String                  @id @map("run_id")
+  threadId               String                  @map("thread_id")
+  assistantId            String?                 @map("assistant_id")
+  createdAt              BigInt                  @map("created_at")
+  updatedAt              BigInt                  @map("updated_at")
+  status                 String?
+  metadata               String?
+  kwargs                 String?
+  thread                 Thread                  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  assistant              Assistant?              @relation(fields: [assistantId], references: [assistantId], onDelete: SetNull)
+  artifacts              Artifact[]
+  hitlRequests           HitlRequest[]
+  messages               Message[]
+  messageEvents          MessageEvent[]
+  agentEvents            AgentEvent[]
+  agentTraces            AgentTrace[]
+  agentMemorySuggestions AgentMemorySuggestion[]
+  agentMemoryInclusions  AgentMemoryInclusion[]
+
+  @@index([threadId], map: "idx_runs_thread_id")
+  @@index([status], map: "idx_runs_status")
+  @@map("runs")
+}
+
+model AgentMemory {
+  memoryId       String                 @id @map("memory_id")
+  type           String
+  scope          String
+  workspaceKey   String?                @map("workspace_key")
+  content        String
+  status         String                 @default("active")
+  source         String
+  createdAt      BigInt                 @map("created_at")
+  updatedAt      BigInt                 @map("updated_at")
+  lastIncludedAt BigInt?                @map("last_included_at")
+  metadata       String?
+  inclusions     AgentMemoryInclusion[]
+
+  @@index([type, status, updatedAt], map: "idx_agent_memories_type_status_updated_at")
+  @@index([scope, workspaceKey, status, updatedAt], map: "idx_agent_memories_scope_workspace_status_updated_at")
+  @@map("agent_memories")
+}
+
+model AgentMemorySuggestion {
+  suggestionId  String  @id @map("suggestion_id")
+  type          String
+  scope         String
+  workspaceKey  String? @map("workspace_key")
+  content       String
+  reason        String?
+  reviewPayload String? @map("review_payload")
+  decision      String?
+  status        String  @default("pending")
+  threadId      String? @map("thread_id")
+  sourceRunId   String? @map("source_run_id")
+  createdAt     BigInt  @map("created_at")
+  updatedAt     BigInt  @map("updated_at")
+  resolvedAt    BigInt? @map("resolved_at")
+  thread        Thread? @relation(fields: [threadId], references: [threadId], onDelete: SetNull)
+  sourceRun     Run?    @relation(fields: [sourceRunId], references: [runId], onDelete: SetNull)
+
+  @@index([status, updatedAt], map: "idx_agent_memory_suggestions_status_updated_at")
+  @@index([threadId, status, updatedAt], map: "idx_agent_memory_suggestions_thread_status_updated_at")
+  @@index([scope, workspaceKey, status, updatedAt], map: "idx_agent_memory_suggestions_scope_workspace_status_updated_at")
+  @@map("agent_memory_suggestions")
+}
+
+model AgentMemoryInclusion {
+  inclusionId String      @id @map("inclusion_id")
+  memoryId    String      @map("memory_id")
+  threadId    String      @map("thread_id")
+  runId       String      @map("run_id")
+  createdAt   BigInt      @map("created_at")
+  memory      AgentMemory @relation(fields: [memoryId], references: [memoryId], onDelete: Cascade)
+  thread      Thread      @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  run         Run         @relation(fields: [runId], references: [runId], onDelete: Cascade)
+
+  @@unique([memoryId, runId], map: "uidx_agent_memory_inclusions_memory_run")
+  @@index([runId], map: "idx_agent_memory_inclusions_run_id")
+  @@index([threadId, createdAt], map: "idx_agent_memory_inclusions_thread_id_created_at")
+  @@map("agent_memory_inclusions")
+}
+
+model Assistant {
+  assistantId String  @id @map("assistant_id")
+  graphId     String  @map("graph_id")
+  name        String?
+  model       String  @default("claude-sonnet-4-5-20250929")
+  config      String?
+  createdAt   BigInt  @map("created_at")
+  updatedAt   BigInt  @map("updated_at")
+  runs        Run[]
+
+  @@map("assistants")
+}
+
+model SessionBinding {
+  sessionKey      String  @id @map("session_key")
+  workspaceKey    String  @map("workspace_key")
+  workspacePath   String  @map("workspace_path")
+  currentThreadId String  @map("current_thread_id")
+  createdAt       BigInt  @map("created_at")
+  updatedAt       BigInt  @map("updated_at")
+  metadata        String?
+  currentThread   Thread  @relation("SessionBindingCurrentThread", fields: [currentThreadId], references: [threadId], onDelete: Cascade)
+
+  @@index([workspaceKey], map: "idx_session_bindings_workspace_key")
+  @@index([currentThreadId], map: "idx_session_bindings_thread_id")
+  @@map("session_bindings")
+}
+
+model HitlRequest {
+  requestId        String  @id @map("request_id")
+  threadId         String  @map("thread_id")
+  runId            String? @map("run_id")
+  toolCallId       String? @map("tool_call_id")
+  toolName         String  @map("tool_name")
+  toolArgs         String  @map("tool_args")
+  reviewKind       String? @map("review_kind")
+  reviewPayload    String? @map("review_payload")
+  allowedDecisions String  @map("allowed_decisions")
+  status           String  @default("pending")
+  decision         String?
+  createdAt        BigInt  @map("created_at")
+  updatedAt        BigInt  @map("updated_at")
+  resolvedAt       BigInt? @map("resolved_at")
+  thread           Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  run              Run?    @relation(fields: [runId], references: [runId], onDelete: SetNull)
+
+  @@index([threadId, status, updatedAt], map: "idx_hitl_requests_thread_status_updated_at")
+  @@index([threadId, updatedAt], map: "idx_hitl_requests_thread_updated_at")
+  @@index([runId], map: "idx_hitl_requests_run_id")
+  @@map("hitl_requests")
+}
+
+model Artifact {
+  artifactId  String  @id @map("artifact_id")
+  threadId    String  @map("thread_id")
+  runId       String? @map("run_id")
+  messageId   String? @map("message_id")
+  toolCallId  String? @map("tool_call_id")
+  artifactKey String  @map("artifact_key")
+  dedupeKey   String? @map("dedupe_key")
+  kind        String
+  title       String
+  subtitle    String?
+  sourceType  String  @map("source_type")
+  mimeType    String? @map("mime_type")
+  sizeBytes   BigInt? @map("size_bytes")
+  sourceUri   String? @map("source_uri")
+  previewText String? @map("preview_text")
+  payloadJson String? @map("payload_json")
+  status      String  @default("ready")
+  createdAt   BigInt  @map("created_at")
+  updatedAt   BigInt  @map("updated_at")
+  thread      Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  run         Run?    @relation(fields: [runId], references: [runId], onDelete: SetNull)
+
+  @@unique([threadId, dedupeKey], map: "uidx_artifacts_thread_dedupe_key")
+  @@index([threadId, createdAt], map: "idx_artifacts_thread_created_at")
+  @@index([threadId, kind, createdAt], map: "idx_artifacts_thread_kind_created_at")
+  @@index([runId], map: "idx_artifacts_run_id")
+  @@index([messageId], map: "idx_artifacts_message_id")
+  @@map("artifacts")
+}
+
+model ArtifactPresentation {
+  presentationId  String @id @map("presentation_id")
+  threadId        String @map("thread_id")
+  idempotencyKey  String @map("idempotency_key")
+  contentHash     String @map("content_hash")
+  artifactIdsJson String @map("artifact_ids_json")
+  createdAt       BigInt @map("created_at")
+  updatedAt       BigInt @map("updated_at")
+  thread          Thread @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@unique([threadId, idempotencyKey], map: "uidx_artifact_presentations_thread_idempotency")
+  @@index([threadId, createdAt], map: "idx_artifact_presentations_thread_created_at")
+  @@map("artifact_presentations")
+}
+
+model Checkpoint {
+  threadId           String  @map("thread_id")
+  runId              String? @map("run_id")
+  checkpointNs       String  @default("") @map("checkpoint_ns")
+  checkpointId       String  @map("checkpoint_id")
+  parentCheckpointId String? @map("parent_checkpoint_id")
+  type               String?
+  checkpoint         String?
+  metadata           String?
+  thread             Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@id([threadId, checkpointNs, checkpointId])
+  @@index([threadId, checkpointNs], map: "idx_checkpoints_thread_ns")
+  @@index([threadId, runId, checkpointNs, checkpointId], map: "idx_checkpoints_thread_run_ns_checkpoint_id")
+  @@map("checkpoints")
+}
+
+model CheckpointWrite {
+  threadId     String  @map("thread_id")
+  checkpointNs String  @default("") @map("checkpoint_ns")
+  checkpointId String  @map("checkpoint_id")
+  taskId       String  @map("task_id")
+  idx          Int
+  channel      String
+  type         String?
+  value        String?
+  thread       Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@id([threadId, checkpointNs, checkpointId, taskId, idx])
+  @@index([threadId, checkpointNs, checkpointId], map: "idx_writes_thread_checkpoint")
+  @@map("writes")
+}
+
+model CheckpointBlob {
+  threadId     String  @map("thread_id")
+  checkpointNs String  @default("") @map("checkpoint_ns")
+  channel      String
+  version      String
+  type         String?
+  value        String?
+  thread       Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@id([threadId, checkpointNs, channel, version])
+  @@index([threadId, checkpointNs], map: "idx_checkpoint_blobs_thread_ns")
+  @@map("checkpoint_blobs")
+}
+
+model Message {
+  threadId   String @map("thread_id")
+  messageId  String @map("message_id")
+  seq        Int
+  role       String
+  kind       String
+  content    String
+  rawMessage String @map("raw_message")
+  rawHash    String @map("raw_hash")
+  toolCalls  String? @map("tool_calls")
+  toolCallId String? @map("tool_call_id")
+  name       String?
+  metadata   String?
+  runId      String? @map("run_id")
+  createdAt  BigInt @map("created_at")
+  updatedAt  BigInt @map("updated_at")
+  searchText String @map("search_text")
+  thread     Thread @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  run        Run?   @relation(fields: [runId], references: [runId], onDelete: SetNull)
+
+  @@id([threadId, messageId])
+  @@index([threadId, seq], map: "idx_messages_thread_seq")
+  @@index([threadId, createdAt], map: "idx_messages_thread_created_at")
+  @@index([runId], map: "idx_messages_run_id")
+  @@map("messages")
+}
+
+model ThreadDigest {
+  threadId             String @id @map("thread_id")
+  status               String @default("pending")
+  summary              String?
+  topics               String?
+  decisions            String?
+  openQuestions        String? @map("open_questions")
+  messageCount         Int    @default(0) @map("message_count")
+  projectedThroughSeq  Int    @default(0) @map("projected_through_seq")
+  sourceHash           String? @map("source_hash")
+  projectionError      String? @map("projection_error")
+  generatedAt          BigInt? @map("generated_at")
+  createdAt            BigInt @map("created_at")
+  updatedAt            BigInt @map("updated_at")
+  thread               Thread @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@index([status, updatedAt], map: "idx_thread_digests_status_updated_at")
+  @@map("thread_digests")
+}
+
+model MessageEvent {
+  eventId      String  @id @map("event_id")
+  threadId     String  @map("thread_id")
+  checkpointNs String  @default("") @map("checkpoint_ns")
+  seq          Int
+  type         String
+  messageId    String? @map("message_id")
+  runId        String? @map("run_id")
+  checkpointId String? @map("checkpoint_id")
+  payload      String
+  createdAt    BigInt  @map("created_at")
+  thread       Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  run          Run?    @relation(fields: [runId], references: [runId], onDelete: SetNull)
+
+  @@unique([threadId, checkpointNs, seq], map: "uidx_message_events_thread_ns_seq")
+  @@index([threadId, checkpointNs, checkpointId], map: "idx_message_events_checkpoint")
+  @@index([threadId, runId, seq], map: "idx_message_events_thread_run_seq")
+  @@map("message_events")
+}
+
+model MessageStateVersion {
+  threadId     String  @map("thread_id")
+  checkpointNs String  @default("") @map("checkpoint_ns")
+  version      String
+  throughSeq   Int     @map("through_seq")
+  stateHash    String? @map("state_hash")
+  createdAt    BigInt  @map("created_at")
+  thread       Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@id([threadId, checkpointNs, version])
+  @@index([threadId, checkpointNs, throughSeq], map: "idx_message_state_versions_thread_ns_seq")
+  @@map("message_state_versions")
+}
+
+model AgentEvent {
+  eventId       String  @id @map("event_id")
+  aggregateId   String  @map("aggregate_id")
+  aggregateType String  @map("aggregate_type")
+  seq           Int
+  threadId      String  @map("thread_id")
+  runId         String? @map("run_id")
+  type          String
+  schemaVersion Int     @default(1) @map("schema_version")
+  payload       String
+  createdAt     BigInt  @map("created_at")
+  checkpointId  String? @map("checkpoint_id")
+  traceId       String? @map("trace_id")
+  metadata      String?
+  thread        Thread  @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  run           Run?    @relation(fields: [runId], references: [runId], onDelete: SetNull)
+
+  @@unique([aggregateId, seq], map: "uidx_agent_events_aggregate_seq")
+  @@index([threadId, runId], map: "idx_agent_events_thread_run")
+  @@index([type], map: "idx_agent_events_type")
+  @@index([traceId, seq], map: "idx_agent_events_trace_seq")
+  @@map("agent_events")
+}
+
+model AgentEventSequence {
+  aggregateId   String @id @map("aggregate_id")
+  aggregateType String @map("aggregate_type")
+  seq           Int
+  updatedAt     BigInt @map("updated_at")
+
+  @@map("agent_event_sequences")
+}
+
+model AgentTrace {
+  traceId             String           @id @map("trace_id")
+  threadId            String           @map("thread_id")
+  runId               String           @map("run_id")
+  agentId             String?          @map("agent_id")
+  status              String
+  model               String?
+  provider            String?
+  startedAt           BigInt           @map("started_at")
+  completedAt         BigInt?          @map("completed_at")
+  completionReason    String?          @map("completion_reason")
+  errorType           String?          @map("error_type")
+  errorMessage        String?          @map("error_message")
+  totalSteps          Int              @default(0) @map("total_steps")
+  totalInputTokens    Int              @default(0) @map("total_input_tokens")
+  totalOutputTokens   Int              @default(0) @map("total_output_tokens")
+  totalTokens         Int              @default(0) @map("total_tokens")
+  totalCost           Float            @default(0) @map("total_cost")
+  projectedThroughSeq Int              @default(0) @map("projected_through_seq")
+  hasGap              Boolean          @default(false) @map("has_gap")
+  projectionError     String?          @map("projection_error")
+  createdAt           BigInt           @map("created_at")
+  updatedAt           BigInt           @map("updated_at")
+  thread              Thread           @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  run                 Run              @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  steps               AgentTraceStep[]
+  blobs               AgentTraceBlob[]
+
+  @@unique([runId], map: "uidx_agent_traces_run_id")
+  @@index([threadId, startedAt], map: "idx_agent_traces_thread_started_at")
+  @@index([status, updatedAt], map: "idx_agent_traces_status_updated_at")
+  @@map("agent_traces")
+}
+
+model AgentTraceStep {
+  traceId                String     @map("trace_id")
+  stepIndex              Int        @map("step_index")
+  stepType               String     @map("step_type")
+  status                 String
+  eventType              String?    @map("event_type")
+  eventSeq               Int?       @map("event_seq")
+  startedAt              BigInt     @map("started_at")
+  completedAt            BigInt?    @map("completed_at")
+  durationMs             Int?       @map("duration_ms")
+  model                  String?
+  provider               String?
+  inputTokens            Int        @default(0) @map("input_tokens")
+  outputTokens           Int        @default(0) @map("output_tokens")
+  totalTokens            Int        @default(0) @map("total_tokens")
+  cost                   Float      @default(0)
+  toolName               String?    @map("tool_name")
+  toolCallId             String?    @map("tool_call_id")
+  inputBlobId            String?    @map("input_blob_id")
+  outputBlobId           String?    @map("output_blob_id")
+  contextBlobId          String?    @map("context_blob_id")
+  errorType              String?    @map("error_type")
+  errorMessage           String?    @map("error_message")
+  projectedThroughSeq    Int        @map("projected_through_seq")
+  trace                  AgentTrace @relation(fields: [traceId], references: [traceId], onDelete: Cascade)
+
+  @@id([traceId, stepIndex])
+  @@index([traceId, stepType, startedAt], map: "idx_agent_trace_steps_type_started_at")
+  @@index([traceId, toolCallId], map: "idx_agent_trace_steps_tool_call_id")
+  @@map("agent_trace_steps")
+}
+
+model AgentTraceBlob {
+  blobId      String     @id @map("blob_id")
+  traceId     String     @map("trace_id")
+  stepIndex   Int?       @map("step_index")
+  kind        String
+  contentType String     @map("content_type")
+  encoding    String
+  sizeBytes   Int        @map("size_bytes")
+  sha256      String
+  preview     String?
+  value       String
+  createdAt   BigInt     @map("created_at")
+  threadId    String     @map("thread_id")
+  runId       String?    @map("run_id")
+  trace       AgentTrace @relation(fields: [traceId], references: [traceId], onDelete: Cascade)
+  thread      Thread     @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+
+  @@index([traceId, stepIndex], map: "idx_agent_trace_blobs_trace_step")
+  @@index([traceId, kind], map: "idx_agent_trace_blobs_trace_kind")
+  @@index([sha256], map: "idx_agent_trace_blobs_sha256")
+  @@map("agent_trace_blobs")
+}
