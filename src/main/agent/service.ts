@@ -466,7 +466,7 @@ export class AgentService {
         threadId,
         workspacePath,
         modelId,
-        runtimeModules: {
+        runtimeCapabilities: {
           approval: {
             permissionMode
           },
@@ -739,7 +739,7 @@ export class AgentService {
         threadId,
         workspacePath,
         modelId,
-        runtimeModules: {
+        runtimeCapabilities: {
           approval: {
             permissionMode
           },
