@@ -26,7 +26,7 @@
     "jl": "./bin/cli.js"
   },
   "author": "Jingle contributors",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "homepage": "https://jingle.cool",
   "repository": {
     "type": "git",

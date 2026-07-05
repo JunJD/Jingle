@@ -2,10 +2,10 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-[![License: MIT][license-badge]][license-url]
+[![License: Apache-2.0][license-badge]][license-url]
 
-[license-badge]: https://img.shields.io/badge/License-MIT-yellow.svg
-[license-url]: https://opensource.org/licenses/MIT
+[license-badge]: https://img.shields.io/badge/License-Apache--2.0-blue.svg
+[license-url]: https://www.apache.org/licenses/LICENSE-2.0
 
 Jingle is a desktop command launcher and agent workbench.
 
@@ -130,4 +130,4 @@ project help, see [SUPPORT.md](SUPPORT.md). For security reports, see
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Apache License 2.0. See [LICENSE](LICENSE).

@@ -26,6 +26,7 @@ Fixes #
 - [ ] I listed any skipped checks and why.
 - [ ] UI changes include screenshots or a short visual QA note.
 - [ ] Dependency changes include the relevant package audit when needed.
+- [ ] I understand that intentional contributions are submitted under the Apache License 2.0 unless explicitly stated otherwise.
 
 ## Notes
 
