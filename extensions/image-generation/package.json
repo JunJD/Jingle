@@ -7,6 +7,6 @@
   "types": "./manifest.ts",
   "dependencies": {
     "@jingle/extension-api": "workspace:*",
-    "zod": "^4.0.0"
+    "zod": "^4.4.3"
   }
 }
