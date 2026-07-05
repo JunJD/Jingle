@@ -8,12 +8,16 @@ import { join } from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
 import { imageGenerationManifest } from "../../extensions/image-generation/manifest"
+import { figmaFilesManifest } from "../../installable-extensions/figma-files/manifest"
 import { notionManifest } from "../../installable-extensions/notion/manifest"
 
 const requireFromTest = createRequire(import.meta.url)
 const execFileAsync = promisify(execFile)
 const originalJingleHome = process.env.JINGLE_HOME
 const originalElectronRendererUrl = process.env.ELECTRON_RENDERER_URL
+const skipFigmaFilesPlatformTests = !figmaFilesManifest.supportedPlatforms?.includes(
+  process.platform as "darwin" | "linux" | "win32"
+)
 let jingleHome = ""
 let connectionResolver!: typeof import("../../src/main/native-extensions/connection-resolver")
 let executionContext!: typeof import("../../src/main/native-extensions/execution-context")
@@ -650,7 +654,7 @@ test("platform OAuth callback exchanges handoff code and stores Notion connectio
   }
 })
 
-test("platform OAuth callback exchanges handoff code and stores Figma connection secret", async () => {
+test("platform OAuth callback exchanges handoff code and stores Figma connection secret", { skip: skipFigmaFilesPlatformTests }, async () => {
   const shellOpenedUrls: string[] = []
   ;(
     globalThis as typeof globalThis & {
@@ -1052,7 +1056,7 @@ test("missing connection-scoped Image Generation API key leaves AI capability mi
   })
 })
 
-test("connection-scoped Figma token feeds execution context without manual token preferences", () => {
+test("connection-scoped Figma token feeds execution context without manual token preferences", { skip: skipFigmaFilesPlatformTests }, () => {
   preferences.setNativeExtensionPreferenceRecord("figma-files", {
     TEAM_ID: "123",
     open_in: {

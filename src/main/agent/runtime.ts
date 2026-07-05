@@ -46,13 +46,13 @@ export interface CreateAgentRunHandleOptions {
   threadId: string
   /** Model ID to use (defaults to configured default model) */
   modelId?: string
-  runtimeModules: CreateAgentRunHandleRuntimeModules
+  runtimeCapabilities: CreateAgentRunHandleRuntimeCapabilities
   steeringBuffer?: AgentRunSteeringBufferPort
   /** Workspace path - REQUIRED for agent to operate on files */
   workspacePath: string
 }
 
-export interface CreateAgentRunHandleRuntimeModules {
+export interface CreateAgentRunHandleRuntimeCapabilities {
   approval: {
     permissionMode: PermissionModeName
   }
@@ -103,11 +103,11 @@ export async function createAgentRunHandle(
   options: CreateAgentRunHandleOptions
 ): Promise<AgentRunHandle> {
   const { threadId, modelId, workspacePath } = options
-  const runtimeModules = options.runtimeModules
-  const permissionMode = runtimeModules.approval.permissionMode
-  const aiCapabilities = runtimeModules.extensionAi.capabilitySnapshot
-  const workspaceService = runtimeModules.workspaceContext.service
-  const memoryModule = runtimeModules.memory
+  const runtimeCapabilities = options.runtimeCapabilities
+  const permissionMode = runtimeCapabilities.approval.permissionMode
+  const aiCapabilities = runtimeCapabilities.extensionAi.capabilitySnapshot
+  const workspaceService = runtimeCapabilities.workspaceContext.service
+  const memoryCapability = runtimeCapabilities.memory
 
   if (!threadId) {
     throw new Error("Thread ID is required for checkpointing.")
@@ -127,7 +127,7 @@ export async function createAgentRunHandle(
     const agent = createBddAgentRuntime({ threadId, workspacePath }) as unknown as BddAgentRuntime
     const thread = createBddHarnessThread({
       agent,
-      jingleMemoryService: memoryModule.service ?? undefined,
+      jingleMemoryService: memoryCapability.service ?? undefined,
       threadId,
       workspacePath
     })
@@ -156,19 +156,19 @@ export async function createAgentRunHandle(
   })
   const extensionAiRuntime = createExtensionAiRuntime({
     aiCapabilities,
-    aiCapabilityCatalog: runtimeModules.extensionAi.capabilityCatalog
-      ? extensionToolRegistry.withCatalogToolAccess(runtimeModules.extensionAi.capabilityCatalog)
+    aiCapabilityCatalog: runtimeCapabilities.extensionAi.capabilityCatalog
+      ? extensionToolRegistry.withCatalogToolAccess(runtimeCapabilities.extensionAi.capabilityCatalog)
       : undefined,
-    getAiCapabilityByExtensionName: runtimeModules.extensionAi.getCapabilityByExtensionName,
-    getExtensionExecutionContext: runtimeModules.extensionAi.getExecutionContext,
-    getExtensionPreferences: runtimeModules.extensionAi.getPreferences,
-    onLoadedAiCapabilitiesChanged: runtimeModules.extensionAi.onLoadedCapabilitiesChanged,
+    getAiCapabilityByExtensionName: runtimeCapabilities.extensionAi.getCapabilityByExtensionName,
+    getExtensionExecutionContext: runtimeCapabilities.extensionAi.getExecutionContext,
+    getExtensionPreferences: runtimeCapabilities.extensionAi.getPreferences,
+    onLoadedAiCapabilitiesChanged: runtimeCapabilities.extensionAi.onLoadedCapabilitiesChanged,
     registry: extensionToolRegistry,
     threadId,
     workspacePath
   })
 
-  console.log("[Runtime] Jingle memory items:", memoryModule.contextPack?.items.length ?? 0)
+  console.log("[Runtime] Jingle memory items:", memoryCapability.contextPack?.items.length ?? 0)
 
   const runtime = createAgentRuntime({
     capabilities: {
@@ -183,10 +183,10 @@ export async function createAgentRunHandle(
         runtime: extensionAiRuntime
       },
       memory: {
-        contextPack: memoryModule.contextPack,
-        service: memoryModule.service,
-        temporaryMode: memoryModule.temporaryMode,
-        workspaceIdentity: memoryModule.workspaceIdentity
+        contextPack: memoryCapability.contextPack,
+        service: memoryCapability.service,
+        temporaryMode: memoryCapability.temporaryMode,
+        workspaceIdentity: memoryCapability.workspaceIdentity
       },
       model: {
         model,

@@ -88,7 +88,7 @@ export const RUNTIME_THREAD_BOUNDARY = {
       id: "module-to-execution-assembly",
       owner: "assembleRuntimeExecution",
       surface: [
-        "RuntimeModule[] -> RuntimeExecutionMiddleware[]",
+        "internal capability contribution -> RuntimeExecutionMiddleware[]",
         "host capabilities -> current engine middleware"
       ],
       visibility: "internal"
