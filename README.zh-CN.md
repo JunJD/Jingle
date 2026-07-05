@@ -9,6 +9,8 @@
 
 Jingle 是一个桌面命令启动器和 Agent 工作台。
 
+官方网站：[jingle.cool](https://jingle.cool)
+
 它把 Raycast 那种键盘优先、快速启动的体验作为基础，然后补上 Agent 真正开始做事后
 需要的部分：审批、工具执行、checkpoint、线程历史、本地记忆，以及用户能检查的扩展
 工具。

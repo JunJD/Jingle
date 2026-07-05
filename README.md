@@ -9,6 +9,8 @@
 
 Jingle is a desktop command launcher and agent workbench.
 
+Official site: [jingle.cool](https://jingle.cool)
+
 It takes the keyboard-first speed of Raycast as the baseline, then adds the
 parts an agent needs when work moves beyond a short chat: approvals, tool
 execution, checkpoints, thread history, local memory, and extension tools that
