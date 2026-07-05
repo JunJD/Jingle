@@ -10,7 +10,7 @@
     "./host-runtime": "./src/host-runtime.ts"
   },
   "dependencies": {
-    "lucide-react": "^0.469.0"
+    "lucide-react": "^1.23.0"
   },
   "peerDependencies": {
     "react": "^19.2.1",

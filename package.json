@@ -113,7 +113,7 @@
     "just-bash": "^3.0.2",
     "langchain": "^1.2.12",
     "lexical": "^0.44.0",
-    "lucide-react": "^0.469.0",
+    "lucide-react": "^1.23.0",
     "motion": "^12.38.0",
     "nanoid": "^5.1.7",
     "partial-json": "^0.1.7",

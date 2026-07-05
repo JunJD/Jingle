@@ -20,6 +20,9 @@ importers:
       '@jingle/devtools-network':
         specifier: workspace:*
         version: link:packages/devtools-network
+      '@jingle/extension-api':
+        specifier: workspace:*
+        version: link:packages/extension-api
       '@jingle/langchain-agent-harness':
         specifier: workspace:*
         version: link:packages/langchain-agent-harness
@@ -50,9 +53,6 @@ importers:
       '@lexical/utils':
         specifier: ^0.44.0
         version: 0.44.0
-      '@jingle/extension-api':
-        specifier: workspace:*
-        version: link:packages/extension-api
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -156,8 +156,8 @@ importers:
         specifier: ^0.44.0
         version: 0.44.0
       lucide-react:
-        specifier: ^0.469.0
-        version: 0.469.0(react@19.2.4)
+        specifier: ^1.23.0
+        version: 1.23.0(react@19.2.4)
       motion:
         specifier: ^12.38.0
         version: 12.38.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -313,8 +313,8 @@ importers:
         specifier: ^39.2.6
         version: 39.8.3
       lucide-react:
-        specifier: ^0.469.0
-        version: 0.469.0(react@19.2.4)
+        specifier: ^1.23.0
+        version: 1.23.0(react@19.2.4)
       react:
         specifier: ^19.2.1
         version: 19.2.4
@@ -351,18 +351,18 @@ importers:
 
   installable-extensions/github:
     dependencies:
+      '@jingle/extension-api':
+        specifier: workspace:*
+        version: link:../../packages/extension-api
       '@octokit/plugin-throttling':
         specifier: ^11.0.3
         version: 11.0.3(@octokit/core@7.0.6)
       '@octokit/rest':
         specifier: ^22.0.1
         version: 22.0.1
-      '@jingle/extension-api':
-        specifier: workspace:*
-        version: link:../../packages/extension-api
       lucide-react:
-        specifier: ^0.469.0
-        version: 0.469.0(react@19.2.4)
+        specifier: ^1.23.0
+        version: 1.23.0(react@19.2.4)
       react:
         specifier: ^19.2.1
         version: 19.2.4
@@ -372,18 +372,18 @@ importers:
 
   installable-extensions/notion:
     dependencies:
-      '@mozilla/readability':
-        specifier: ^0.6.0
-        version: 0.6.0
-      '@notionhq/client':
-        specifier: ^5.22.0
-        version: 5.22.0
       '@jingle/extension-api':
         specifier: workspace:*
         version: link:../../packages/extension-api
       '@jingle/extension-utils':
         specifier: workspace:*
         version: link:../../packages/extension-utils
+      '@mozilla/readability':
+        specifier: ^0.6.0
+        version: 0.6.0
+      '@notionhq/client':
+        specifier: ^5.22.0
+        version: 5.22.0
       '@tryfabric/martian':
         specifier: ^1.2.4
         version: 1.2.4
@@ -394,8 +394,8 @@ importers:
         specifier: ^0.18.12
         version: 0.18.12
       lucide-react:
-        specifier: ^0.469.0
-        version: 0.469.0(react@19.2.4)
+        specifier: ^1.23.0
+        version: 1.23.0(react@19.2.4)
       notion-to-md:
         specifier: ^3.1.9
         version: 3.1.9
@@ -424,8 +424,8 @@ importers:
   packages/extension-api:
     dependencies:
       lucide-react:
-        specifier: ^0.469.0
-        version: 0.469.0(react@19.2.4)
+        specifier: ^1.23.0
+        version: 1.23.0(react@19.2.4)
       react:
         specifier: ^19.2.1
         version: 19.2.4
@@ -4450,6 +4450,10 @@ packages:
     resolution: {integrity: sha512-eKpRKAovdpZtR1WopLHxlBWvAgPny3c4gX1G5Jhwmmw4XJj0ifSD5qB5TOo8hmA0wlRKDAOAhEE1yVPgs6Fgcg==}
     engines: {node: '>=14.14'}
 
+  fs-extra@11.3.6:
+    resolution: {integrity: sha512-w8ZNZr2mKIc7qeNaQ9AVPT1+iFaI+Avd4xudVOvdDJ8VytREi1Ft5Ih7hd9jjehod8vAM5GMsfQ/TpPf4EyoEA==}
+    engines: {node: '>=14.14'}
+
   fs-extra@7.0.1:
     resolution: {integrity: sha512-YJDaCJZEnBmcbw13fvdAM9AwNOJwOzrE4pqMqBq5nFiEqXUqHwlK4B+3pUw6JNvfSPtX05xFHtYy/1ni01eGCw==}
     engines: {node: '>=6 <7 || >=8'}
@@ -5254,8 +5258,8 @@ packages:
   lru_map@0.4.1:
     resolution: {integrity: sha512-I+lBvqMMFfqaV8CJCISjI3wbjmwVu/VyOoU7+qtu9d7ioW5klMgsTTiUOUp+DJvfTTzKXoPbyC6YfgkNcyPSOg==}
 
-  lucide-react@0.469.0:
-    resolution: {integrity: sha512-28vvUnnKQ/dBwiCQtwJw7QauYnE7yd2Cyp4tTTJpvglX4EMpbflcdBgrgToX2j71B3YvugK/NH3BGUk+E/p/Fw==}
+  lucide-react@1.23.0:
+    resolution: {integrity: sha512-38BpJcD0JhFosxHApP/BYsBetLpQFRoTRzEzstM/XCc3jsAG7wqaY1lgVwxiUe3xqYE+lNxo2PkCmYwXWrwwIw==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
@@ -7609,7 +7613,7 @@ snapshots:
     dependencies:
       cross-dirname: 0.1.0
       debug: 4.4.3(supports-color@8.1.1)
-      fs-extra: 11.3.5
+      fs-extra: 11.3.6
       minimist: 1.2.8
       postject: 1.0.0-alpha.6
     transitivePeerDependencies:
@@ -11400,6 +11404,13 @@ snapshots:
       jsonfile: 6.2.1
       universalify: 2.0.1
 
+  fs-extra@11.3.6:
+    dependencies:
+      graceful-fs: 4.2.11
+      jsonfile: 6.2.1
+      universalify: 2.0.1
+    optional: true
+
   fs-extra@7.0.1:
     dependencies:
       graceful-fs: 4.2.11
@@ -12276,7 +12287,7 @@ snapshots:
 
   lru_map@0.4.1: {}
 
-  lucide-react@0.469.0(react@19.2.4):
+  lucide-react@1.23.0(react@19.2.4):
     dependencies:
       react: 19.2.4
 
