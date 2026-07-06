@@ -295,14 +295,6 @@ importers:
         specifier: ^7.2.6
         version: 7.3.1(@types/node@22.19.15)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
 
-  extensions/image-generation:
-    dependencies:
-      '@jingle/extension-api':
-        specifier: workspace:*
-        version: link:../../packages/extension-api
-      zod:
-        specifier: ^4.0.0
-        version: 4.3.6
 
   installable-extensions/apple-reminders:
     dependencies:

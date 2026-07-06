@@ -18,20 +18,20 @@ export function createRuntimeThreadOperationControl<
       if (!runState.currentRunId) {
         throw new Error("[RuntimeThread] Cannot compact before beginning a run.")
       }
-      return createRunExecution({ runId: runState.currentRunId }).compact(compactInput)
+      return (await createRunExecution({ runId: runState.currentRunId })).compact(compactInput)
     },
-    invoke: (invokeInput, streamOptions) => {
+    invoke: async (invokeInput, streamOptions) => {
       runState.currentRunId = invokeInput.runId
 
-      return createRunExecution(invokeInput).streamInvoke(
+      return (await createRunExecution(invokeInput)).streamInvoke(
         buildRuntimeInvokeInitialState(invokeInput),
         streamOptions
       )
     },
-    resume: (resumeInput, streamOptions) => {
+    resume: async (resumeInput, streamOptions) => {
       runState.currentRunId = resumeInput.runId
 
-      return createRunExecution(resumeInput).streamResume(
+      return (await createRunExecution(resumeInput)).streamResume(
         buildRuntimeResumeCommand(resumeInput),
         streamOptions
       )

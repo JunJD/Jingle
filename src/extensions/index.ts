@@ -1,11 +1,9 @@
 import { supportsNativeExtensionPlatform } from "@shared/native-extensions"
 import { DEFAULT_APP_LOCALE, resolveLocalizedText } from "@shared/i18n"
-import { imageGenerationManifest } from "../../extensions/image-generation/manifest"
 import { todoListManifest } from "./todo-list/manifest"
 import { translateManifest } from "./translate/manifest"
 
 export const nativeExtensionManifests = [
-  imageGenerationManifest,
   todoListManifest,
   translateManifest
 ].sort((left, right) =>

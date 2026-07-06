@@ -21,7 +21,7 @@ import type {
   RuntimeExtensionToolsConfig,
   RuntimeExtensionToolStateUpdateResult,
   RuntimeLoadExtensionToolInput
-} from "./runtime-contract"
+} from "./runtime-tools"
 
 export const JINGLE_LOAD_EXTENSION_TOOL_NAME = "loadExtension"
 export const JINGLE_CALL_EXTENSION_TOOL_NAME = "callExtension"

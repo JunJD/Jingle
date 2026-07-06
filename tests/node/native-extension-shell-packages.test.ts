@@ -1,6 +1,5 @@
 import assert from "node:assert/strict"
 import test, { mock } from "node:test"
-import { imageGenerationManifest } from "../../extensions/image-generation/manifest"
 import { appleRemindersManifest } from "../../installable-extensions/apple-reminders/manifest"
 import { appleRemindersRuntime } from "../../installable-extensions/apple-reminders/runtime"
 import { createAppleRemindersTools } from "../../installable-extensions/apple-reminders/main/tools"
@@ -28,13 +27,6 @@ const appleRemindersRef: ComposerMessageRef = {
   extensionName: "apple-reminders",
   name: "Apple Reminders",
   sourceId: "appleReminders",
-  type: "extension-source"
-}
-
-const imageGenerationRef: ComposerMessageRef = {
-  extensionName: "image-generation",
-  name: "Image Generation",
-  sourceId: "image",
   type: "extension-source"
 }
 
@@ -316,96 +308,23 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
       supportedPlatforms: mention.supportedPlatforms,
       value: mention.value
     })),
-    [
-      {
-        extensionName: "image-generation",
-        icon: "assets/icon.svg",
-        label: "生图",
-        sourceId: "image",
-        supportedPlatforms: undefined,
-        value: "image"
-      }
-    ]
+    []
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("darwin").map((mention) => mention.sourceId),
-    ["image"]
+    []
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("linux").map((mention) => mention.sourceId),
-    ["image"]
+    []
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("darwin", "zh-CN").map((mention) => ({
       label: mention.label,
       sourceId: mention.sourceId
     })),
-    [{ label: "生图", sourceId: "image" }]
+    []
   )
-})
-
-test("Image Generation live package uses API key connection auth", () => {
-  assert.deepEqual(imageGenerationManifest.connection?.auth, {
-    secretNames: ["apiKey"],
-    type: "apiKey"
-  })
-  assert.equal(imageGenerationManifest.aiCapability?.connectionId, "default")
-  assert.deepEqual(imageGenerationManifest.connection?.publicPreferenceNames, ["baseUrl"])
-})
-
-test("Image Generation AI capability reads connection-scoped auth", () => {
-  const [capability] = resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
-    [imageGenerationRef],
-    [imageGenerationManifest],
-    {
-      getConnection: () => ({
-        connectionId: "default",
-        extensionName: "image-generation",
-        missingSecretNames: [],
-        provider: "image-generation",
-        publicConfig: {
-          baseUrl: "https://images.example.test"
-        },
-        status: "connected"
-      })
-    }
-  )
-
-  assert.equal(capability?.authStatus, "connected")
-  assert.deepEqual(
-    capability?.enabledToolNames,
-    imageGenerationManifest.aiCapability?.toolNames
-  )
-  assert.deepEqual(
-    capability?.toolExposures.map((tool) => tool.toolName),
-    imageGenerationManifest.aiCapability?.toolNames
-  )
-  assert.deepEqual(capability?.publicConfig, {
-    baseUrl: "https://images.example.test"
-  })
-})
-
-test("Image Generation AI capability reports missing auth when API key is absent", () => {
-  const [capability] = resolveNativeExtensionAiCapabilitiesForRefsFromManifests(
-    [imageGenerationRef],
-    [imageGenerationManifest],
-    {
-      getConnection: () => ({
-        connectionId: "default",
-        extensionName: "image-generation",
-        missingSecretNames: ["apiKey"],
-        provider: "image-generation",
-        publicConfig: {
-          baseUrl: "https://images.example.test"
-        },
-        status: "missing"
-      })
-    }
-  )
-
-  assert.equal(capability?.authStatus, "missing")
-  assert.deepEqual(capability?.enabledToolNames, [])
-  assert.deepEqual(capability?.toolExposures, [])
 })
 
 test("empty AI capability refs do not read extension connection state", () => {
@@ -539,7 +458,7 @@ test("extension AI capability display resolves in the requested locale", () => {
 test("extension AI capability catalog does not read preferences", () => {
   assert.deepEqual(
     listNativeExtensionAiCapabilityCatalog("darwin").map((item) => item.extensionName),
-    ["image-generation"]
+    []
   )
   assert.deepEqual(
     listNativeExtensionAiCapabilityCatalogFromManifests(livePackageManifests, "darwin").map(

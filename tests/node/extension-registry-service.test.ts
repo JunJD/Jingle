@@ -39,10 +39,6 @@ test("built-in extension registry mirrors the current static manifest registry",
   assert.equal(registry.getLoadedPackage("apple-reminders"), null)
   assert.equal(registry.getLoadedPackage("figma-files"), null)
   assert.equal(registry.getRuntimePackageRef("apple-reminders"), null)
-  assert.equal(
-    registry.getLoadedPackage("image-generation")?.runtimeMetadata?.extensionName,
-    "image-generation"
-  )
 })
 
 test("built-in extension registry resolves package-owned assets", () => {
@@ -434,13 +430,7 @@ test("native extension launcher catalog and source mention catalog stay separate
         sourceId: mention.sourceId,
         value: mention.value
       })),
-      [
-        {
-          extensionName: "image-generation",
-          sourceId: "image",
-          value: "image"
-        }
-      ]
+      []
     )
   } finally {
     if (previousJingleHome === undefined) {

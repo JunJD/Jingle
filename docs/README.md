@@ -47,3 +47,8 @@ For product direction:
 
 - [English roadmap](../roadmap.md)
 - [简体中文路线图](../roadmap.zh-CN.md)
+
+For releases:
+
+- [release-channels.md](./release-channels.md)
+- [release-channels.zh-CN.md](./release-channels.zh-CN.md)

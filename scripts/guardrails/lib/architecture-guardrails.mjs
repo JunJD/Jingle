@@ -16,6 +16,10 @@ export const allowedImportMetaGlobFiles = new Set([
 ])
 
 export function listSourceFiles(directory) {
+  if (!fs.existsSync(directory)) {
+    return []
+  }
+
   const entries = fs.readdirSync(directory, { withFileTypes: true })
   const files = []
 

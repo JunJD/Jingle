@@ -1,23 +1,19 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
-import { readFileSync, writeFileSync } from "node:fs"
+import { writeFileSync } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
-import { imageGenerationManifest } from "../../extensions/image-generation/manifest"
-import { figmaFilesManifest } from "../../installable-extensions/figma-files/manifest"
 import { notionManifest } from "../../installable-extensions/notion/manifest"
 
+const figmaPlatformSupported = process.platform === "darwin" || process.platform === "win32"
 const requireFromTest = createRequire(import.meta.url)
 const execFileAsync = promisify(execFile)
 const originalJingleHome = process.env.JINGLE_HOME
 const originalElectronRendererUrl = process.env.ELECTRON_RENDERER_URL
-const skipFigmaFilesPlatformTests = !figmaFilesManifest.supportedPlatforms?.includes(
-  process.platform as "darwin" | "linux" | "win32"
-)
 let jingleHome = ""
 let connectionResolver!: typeof import("../../src/main/native-extensions/connection-resolver")
 let executionContext!: typeof import("../../src/main/native-extensions/execution-context")
@@ -654,7 +650,11 @@ test("platform OAuth callback exchanges handoff code and stores Notion connectio
   }
 })
 
-test("platform OAuth callback exchanges handoff code and stores Figma connection secret", { skip: skipFigmaFilesPlatformTests }, async () => {
+test("platform OAuth callback exchanges handoff code and stores Figma connection secret", async () => {
+  if (!figmaPlatformSupported) {
+    return
+  }
+
   const shellOpenedUrls: string[] = []
   ;(
     globalThis as typeof globalThis & {
@@ -901,162 +901,11 @@ test("connection-scoped Notion token feeds runtime host and AI capability throug
   assert.deepEqual(capability?.enabledToolNames, capability?.capability.toolNames)
 })
 
-test("Image Generation API key uses the native extension connection auth path", async () => {
-  preferences.setNativeExtensionPreferenceRecord("image-generation", {
-    baseUrl: "https://images.example.test"
-  })
-  preferences.setNativeExtensionConnectionSecretRecord({
-    connectionId: "default",
-    nextRecord: {
-      apiKey: "sk-image-secret"
-    },
-    provider: "image-generation",
-    secretNames: ["apiKey"]
-  })
-
-  const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
-  const nativeExtensionsService = new NativeExtensionsService()
-
-  assert.deepEqual(nativeExtensionsService.getPreferences("image-generation"), {
-    baseUrl: "https://images.example.test"
-  })
-  assert.deepEqual(preferences.getResolvedNativeExtensionPreferenceRecord("image-generation"), {
-    baseUrl: "https://images.example.test"
-  })
-  assert.deepEqual(nativeExtensionsService.getResolvedPreferences("image-generation"), {
-    apiKey: "sk-image-secret",
-    baseUrl: "https://images.example.test"
-  })
-  const context = executionContext.resolveNativeExtensionExecutionContext({
-    extensionName: "image-generation"
-  })
-  assert.equal(context.connection.status, "connected")
-  assert.deepEqual(context.connection.publicConfig, {
-    baseUrl: "https://images.example.test"
-  })
-  assert.deepEqual(context.extensionPreferences, {
-    apiKey: "sk-image-secret",
-    baseUrl: "https://images.example.test"
-  })
-  assert.equal(nativeExtensionsService.getConnection("image-generation").status, "connected")
-  const settingsFile = JSON.parse(readFileSync(join(jingleHome, "settings.json"), "utf8")) as {
-    nativeExtensionPreferences?: {
-      connectionSecrets?: Record<string, Record<string, string>>
-      extensionPreferences?: Record<string, Record<string, unknown>>
-    }
+test("connection-scoped Figma token feeds execution context without manual token preferences", () => {
+  if (!figmaPlatformSupported) {
+    return
   }
-  assert.equal(
-    settingsFile.nativeExtensionPreferences?.extensionPreferences?.["image-generation"]?.apiKey,
-    undefined
-  )
-  assert.deepEqual(
-    settingsFile.nativeExtensionPreferences?.connectionSecrets?.[
-      "connection:image-generation:default"
-    ],
-    {
-      apiKey: "sk-image-secret"
-    }
-  )
-  assert.equal(
-    Object.values(settingsFile.nativeExtensionPreferences?.extensionPreferences ?? {}).some(
-      (record) => record.apiKey === "sk-image-secret"
-    ),
-    false
-  )
-})
 
-test("partial connection secret updates preserve existing connection secrets", async () => {
-  preferences.setNativeExtensionConnectionSecretRecord({
-    connectionId: "default",
-    nextRecord: {
-      apiKey: "sk-image-secret"
-    },
-    provider: "image-generation",
-    secretNames: ["apiKey"]
-  })
-
-  const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
-  const nativeExtensionsService = new NativeExtensionsService()
-  const connection = nativeExtensionsService.setConnectionSecrets({
-    extensionName: "image-generation",
-    secrets: {}
-  })
-
-  assert.equal(connection.status, "connected")
-  assert.deepEqual(
-    preferences.getNativeExtensionConnectionSecretRecord({
-      connectionId: "default",
-      provider: "image-generation",
-      secretNames: ["apiKey"]
-    }),
-    {
-      apiKey: "sk-image-secret"
-    }
-  )
-})
-
-test("connection-scoped Image Generation API key connects AI capability", () => {
-  preferences.setNativeExtensionPreferenceRecord("image-generation", {
-    baseUrl: "https://images.example.test"
-  })
-  preferences.setNativeExtensionConnectionSecretRecord({
-    connectionId: "default",
-    nextRecord: {
-      apiKey: "sk-image-secret"
-    },
-    provider: "image-generation",
-    secretNames: ["apiKey"]
-  })
-
-  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
-    "image-generation",
-    [imageGenerationManifest],
-    {
-      getConnection: (extensionName) =>
-        connectionResolver.resolveNativeExtensionConnection({ extensionName })
-    }
-  )
-
-  assert.equal(capability?.authStatus, "connected")
-  assert.deepEqual(capability?.enabledToolNames, ["generateImage", "editImage"])
-  assert.deepEqual(
-    capability?.toolExposures.map((tool) => tool.toolName),
-    ["generateImage", "editImage"]
-  )
-  assert.deepEqual(capability?.publicConfig, {
-    baseUrl: "https://images.example.test"
-  })
-})
-
-test("missing connection-scoped Image Generation API key leaves AI capability missing", () => {
-  preferences.setNativeExtensionPreferenceRecord("image-generation", {
-    baseUrl: "https://images.example.test"
-  })
-  preferences.setNativeExtensionConnectionSecretRecord({
-    connectionId: "default",
-    nextRecord: {},
-    provider: "image-generation",
-    secretNames: ["apiKey"]
-  })
-
-  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
-    "image-generation",
-    [imageGenerationManifest],
-    {
-      getConnection: (extensionName) =>
-        connectionResolver.resolveNativeExtensionConnection({ extensionName })
-    }
-  )
-
-  assert.equal(capability?.authStatus, "missing")
-  assert.deepEqual(capability?.enabledToolNames, [])
-  assert.deepEqual(capability?.toolExposures, [])
-  assert.deepEqual(capability?.publicConfig, {
-    baseUrl: "https://images.example.test"
-  })
-})
-
-test("connection-scoped Figma token feeds execution context without manual token preferences", { skip: skipFigmaFilesPlatformTests }, () => {
   preferences.setNativeExtensionPreferenceRecord("figma-files", {
     TEAM_ID: "123",
     open_in: {

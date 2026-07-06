@@ -1,6 +1,6 @@
 import type { RuntimeExecutionMiddleware } from "./harness-runtime"
 import { createJingleHumanApprovalHook } from "./human-approval-middleware"
-import type { RuntimeControlHostContract } from "./runtime-contract"
+import type { RuntimeResolvedControlHostContract } from "./runtime-contract"
 
 export interface CreateRuntimeApprovalEntriesInput<
   TContextInclusion = unknown,
@@ -8,7 +8,7 @@ export interface CreateRuntimeApprovalEntriesInput<
   TInvokeRunLifecycleInput = unknown,
   TResumeRunLifecycleInput = unknown
 > {
-  control: RuntimeControlHostContract<
+  control: RuntimeResolvedControlHostContract<
     TContextInclusion,
     TReview,
     TInvokeRunLifecycleInput,

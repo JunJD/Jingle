@@ -1,9 +1,9 @@
 import type {
   CreateRuntimeThreadFactoryInput,
   RuntimePauseControllerContract,
-  RuntimeRunLifecycleControllerContract,
-  RuntimeThreadScope
+  RuntimeRunLifecycleControllerContract
 } from "./runtime-contract"
+import type { RuntimeThreadScope } from "./runtime-scope"
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
 import type { RuntimeThread } from "./runtime-thread"
 import type { RuntimeExecutionFactory } from "./runtime-execution-factory"

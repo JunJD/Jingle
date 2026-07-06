@@ -14,7 +14,7 @@ import type {
   RuntimeGetMessageContextInput,
   RuntimeGetTraceEvidenceInput,
   RuntimeSearchHistoryInput
-} from "./runtime-contract"
+} from "./runtime-context"
 import {
   buildJingleToolResultUpdateCommand,
   getRunIdFromToolRuntime,

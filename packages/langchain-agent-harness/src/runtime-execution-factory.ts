@@ -5,9 +5,13 @@ import { assembleRuntimeExecution } from "./runtime-execution-assembly"
 import { createRuntimeObservationExecution } from "./runtime-observation-capability"
 import type {
   RuntimeHostContract,
+  RuntimeResolvedHostContract
+} from "./runtime-contract"
+import type {
+  RuntimeRunCapabilityScope,
   RuntimeRunContextScope,
   RuntimeThreadScope
-} from "./runtime-contract"
+} from "./runtime-scope"
 import type {
   RuntimeRunExecution,
   RuntimeRunExecutionInput
@@ -33,7 +37,7 @@ export interface RuntimeExecutionFactoryInput<
 
 export type RuntimeExecutionFactory = (
   operationInput: RuntimeRunExecutionInput
-) => RuntimeRunExecution
+) => Promise<RuntimeRunExecution>
 
 export function createRuntimeExecutionFactory<
   TContextInclusion extends JingleContextInclusionStateItem = JingleContextInclusionStateItem,
@@ -50,24 +54,33 @@ export function createRuntimeExecutionFactory<
     TResumeRunLifecycleInput
   >
 ): RuntimeExecutionFactory {
-  return (operationInput) => {
+  return async (operationInput) => {
+    const runContext: RuntimeRunContextScope = {
+      ...input.thread,
+      runId: operationInput.runId
+    }
+    const capabilityScope: RuntimeRunCapabilityScope = {
+      ...runContext,
+      modelId: operationInput.modelId
+    }
+    const resolvedHost = await resolveRuntimeHostForRun({
+      capabilityScope,
+      host: input.host,
+      thread: input.thread
+    })
     const {
       checkpoint,
       control,
       execution: executionHost,
       observation
-    } = input.host
-    const runContext: RuntimeRunContextScope = {
-      ...input.thread,
-      runId: operationInput.runId
-    }
+    } = resolvedHost
     const observationExecution = createRuntimeObservationExecution({
       modelId: operationInput.modelId,
       observation,
       runContext
     })
     const runtimeExecution = assembleRuntimeExecution({
-      host: input.host,
+      host: resolvedHost,
       runContext,
       steeringBuffer: operationInput.steeringBuffer,
       thread: input.thread
@@ -128,5 +141,63 @@ export function createRuntimeExecutionFactory<
           })
         )
     }
+  }
+}
+
+async function resolveRuntimeHostForRun<
+  TContextInclusion extends JingleContextInclusionStateItem,
+  TGuardrailMetadata,
+  TReview,
+  TInvokeRunLifecycleInput,
+  TResumeRunLifecycleInput
+>(input: {
+  capabilityScope: RuntimeRunCapabilityScope
+  host: RuntimeHostContract<
+    TContextInclusion,
+    TGuardrailMetadata,
+    TReview,
+    TInvokeRunLifecycleInput,
+    TResumeRunLifecycleInput
+  >
+  thread: RuntimeThreadScope
+}): Promise<
+  RuntimeResolvedHostContract<
+    TContextInclusion,
+    TGuardrailMetadata,
+    TReview,
+    TInvokeRunLifecycleInput,
+    TResumeRunLifecycleInput
+  >
+> {
+  const { capabilityScope, host, thread } = input
+
+  return {
+    checkpoint: {
+      checkpointer: await host.checkpoint.checkpointer(thread)
+    },
+    context: host.context,
+    control: {
+      approvalController: await host.control.approvalController(capabilityScope),
+      compaction: {
+        summarization: await host.control.compaction.summarization(capabilityScope)
+      },
+      pauseController: host.control.pauseController,
+      runLifecycleController: host.control.runLifecycleController
+    },
+    environment: {
+      artifactPresentation: host.environment.artifactPresentation,
+      backend: await host.environment.backend(thread),
+      desktopAutomationTools: host.environment.desktopAutomationTools,
+      executeToolDescription: host.environment.executeToolDescription(thread),
+      extensionAiTools: host.environment.extensionAiTools,
+      filesystemSystemPrompt: host.environment.filesystemSystemPrompt(thread),
+      skillSources: host.environment.skillSources(thread),
+      webTools: host.environment.webTools
+    },
+    execution: {
+      model: await host.execution.model(capabilityScope),
+      systemPrompt: host.execution.systemPrompt(thread)
+    },
+    observation: host.observation
   }
 }

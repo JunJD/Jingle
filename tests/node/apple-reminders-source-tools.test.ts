@@ -10,7 +10,6 @@ import {
 import { createAppleRemindersTools } from "../../installable-extensions/apple-reminders/main/tools"
 import { appleRemindersManifest } from "../../installable-extensions/apple-reminders/manifest"
 import { githubManifest } from "../../installable-extensions/github/manifest"
-import { imageGenerationManifest } from "../../extensions/image-generation/manifest"
 import { notionManifest } from "../../installable-extensions/notion/manifest"
 import {
   buildNativeExtensionAiCapabilityCatalogItem,
@@ -125,8 +124,7 @@ const appleRemindersRef: ComposerMessageRef = {
 const sourceTestManifests = [
   githubManifest,
   notionManifest,
-  appleRemindersManifest,
-  imageGenerationManifest
+  appleRemindersManifest
 ]
 
 function resolveNativeExtensionAiCapabilitiesForRefs(
@@ -180,7 +178,7 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
   assert.deepEqual(resolveNativeExtensionAiCapabilitiesForRefs([]), [])
   assert.deepEqual(
     nativeExtensionSourceMentions.map((mention) => mention.sourceId),
-    ["image"]
+    []
   )
   assert.deepEqual(
     sourceTestManifests
@@ -228,32 +226,23 @@ test("AI capability is loaded only from an explicit extension source ref", () =>
         sourceId: "appleReminders",
         supportedPlatforms: ["darwin"],
         value: "apple-reminders"
-      },
-      {
-        extensionName: "image-generation",
-        icon: "assets/icon.svg",
-        iconName: "image",
-        label: "生图",
-        sourceId: "image",
-        supportedPlatforms: undefined,
-        value: "image"
       }
     ]
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("darwin").map((mention) => mention.sourceId),
-    ["image"]
+    []
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("linux").map((mention) => mention.sourceId),
-    ["image"]
+    []
   )
   assert.deepEqual(
     listNativeExtensionSourceMentions("darwin", "zh-CN").map((mention) => ({
       label: mention.label,
       sourceId: mention.sourceId
     })),
-    [{ label: "生图", sourceId: "image" }]
+    []
   )
 
   const [capability] = resolveAppleRemindersCapabilities("darwin")
@@ -353,7 +342,7 @@ test("extension AI capability catalog does not read preferences", () => {
     listNativeExtensionAiCapabilityCatalogFromManifests(sourceTestManifests, "darwin").map(
       (item) => item.extensionName
     ),
-    ["github", "notion", "apple-reminders", "image-generation"]
+    ["github", "notion", "apple-reminders"]
   )
 })
 

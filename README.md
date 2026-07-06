@@ -117,6 +117,12 @@ See [roadmap.md](roadmap.md) for the product and project roadmap. A
 Simplified Chinese version is available at
 [roadmap.zh-CN.md](roadmap.zh-CN.md).
 
+## Releases
+
+Jingle uses stable and nightly release channels. See
+[docs/release-channels.md](docs/release-channels.md) for tag formats and
+release rules.
+
 ## Contributing
 
 Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), keep

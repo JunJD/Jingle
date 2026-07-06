@@ -4,11 +4,9 @@ import {
   type JingleLangChainTraceEvent
 } from "./langchain-trace-callback"
 import type { JingleAgentRunTraceConfig } from "./run-config"
-import type {
-  RuntimeObservationHostContract,
-  RuntimeRunContextScope,
-  RuntimeTraceSinkContract
-} from "./runtime-contract"
+import type { RuntimeObservationHostContract } from "./runtime-contract"
+import type { RuntimeTraceSinkContract } from "./runtime-observation"
+import type { RuntimeRunContextScope } from "./runtime-scope"
 
 export interface RuntimeObservationRunConfigInput {
   source: "invoke" | "resume"

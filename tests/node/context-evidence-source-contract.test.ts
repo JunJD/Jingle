@@ -56,10 +56,7 @@ test("agent runtime passes temporary mode into jingle memory middleware", async 
   const runtimeHostSource = await readWorkspaceFile("src/main/agent/runtime-assembly.ts")
 
   assert.equal(runtimeHostSource.includes("createJingleMemoryHarnessPortOptions"), true)
-  assert.equal(
-    runtimeHostSource.includes("temporaryMode: capabilities.memory.temporaryMode === true"),
-    true
-  )
+  assert.equal(runtimeHostSource.includes("temporaryMode: facts.jingleMemoryTemporaryMode"), true)
   assert.equal(runtimeHostSource.includes("temporaryMode: false"), false)
 })
 

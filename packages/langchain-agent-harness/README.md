@@ -8,12 +8,12 @@ Current runtime owner:
 
 - run steering buffer and harness-owned LangChain middleware injection; the host passes a per-run steering buffer, not a middleware factory
 - prompt builders, skill-source ordering, run/resume config, checkpoint lookup config, resume Command builder, submitted message and invoke initial-state builders, ToolRuntime run/tool-call id readers, tool-result ToolMessage/update Command builders, AIMessage tool-call mapper, and LangGraph interrupt guard
-- Runtime module assembly through `createRuntime({ modules })`, with `RuntimeThread` as the control surface for invoke/resume/compact/run completion behavior
+- Structured runtime capability assembly through `createRuntime({ capabilities })`, with `RuntimeThread` as the control surface for invoke/resume/compact/run completion behavior
 - `RuntimeGraph` owns the operation-driven LangGraph execution topology; legacy middleware-shaped nodes remain internal engine details, not public API
 - abort-aware run stream draining through `drainRuntimeRunStream`, with host ports still owning HITL persistence and IPC fan-out while the runtime owns LangChain runtime/run trace config binding and trace callback assembly through a host trace port
 - per-thread checkpointer manager lifecycle, with saver creation and close flushers injected by the host
 - shared/root agent-loop middleware topology
-- filesystem, summarization, and skills middleware construction, with backend, model, prompts, and skill sources injected by RuntimeModule contributions; compaction uses a Jingle-owned handoff-oriented context compaction prompt
+- filesystem, summarization, and skills middleware construction, with backend, model, prompts, and skill sources injected by runtime capabilities; compaction uses a Jingle-owned handoff-oriented context compaction prompt
 - Jingle skill source ordering, with canonical workspace lookup at `.jingle/skills`
 - generic guardrail middleware
 - LangChain message text/tool-call-signal/HumanMessage refs and cloning readers used by host middleware adapters, plus trace callback lifecycle, skipped run-name handling, input summary hashing/preview, usage extraction, and error capture for observability callbacks

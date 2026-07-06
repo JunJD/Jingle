@@ -1,6 +1,6 @@
 {
   "name": "jingle",
-  "version": "2.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Jingle is a desktop command launcher and agent workbench for auditable AI agents.",
   "main": "./out/main/index.js",
@@ -50,7 +50,7 @@
   },
   "scripts": {
     "format": "prettier --write .",
-    "lint": "eslint --cache --ext .js,.cjs,.mjs,.ts,.tsx src packages scripts extensions installable-extensions tests bin electron.vite.config.ts eslint.config.mjs prisma.config.ts",
+    "lint": "eslint --cache --ext .js,.cjs,.mjs,.ts,.tsx src packages scripts installable-extensions tests bin electron.vite.config.ts eslint.config.mjs prisma.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc -p tests/node/tsconfig.json && tsc --noEmit -p tsconfig.web.json --composite false && tsc --noEmit -p tests/bdd/tsconfig.json",
     "start": "node scripts/start-jingle-preview.mjs",
     "dev": "node scripts/build-installed-extension.mjs && node scripts/run-with-dotenv.mjs development -- electron-vite dev",

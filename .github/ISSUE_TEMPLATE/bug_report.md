@@ -27,7 +27,7 @@ What actually happened.
 ## Environment
 
 - **OS**: [e.g., macOS 14.0, Windows 11, Ubuntu 22.04]
-- **Jingle version or commit**: [e.g., 2.0.0 or a commit SHA]
+- **Jingle version or commit**: [e.g., 0.0.1 or a commit SHA]
 - **Node.js version**: [e.g., 20.10.0]
 - **Installation method**: [from source / packaged preview / release build]
 
