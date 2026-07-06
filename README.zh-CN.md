@@ -2,10 +2,10 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-[![License: MIT][license-badge]][license-url]
+[![License: Apache-2.0][license-badge]][license-url]
 
-[license-badge]: https://img.shields.io/badge/License-MIT-yellow.svg
-[license-url]: https://opensource.org/licenses/MIT
+[license-badge]: https://img.shields.io/badge/License-Apache--2.0-blue.svg
+[license-url]: https://www.apache.org/licenses/LICENSE-2.0
 
 Jingle 是一个桌面命令启动器和 Agent 工作台。
 
@@ -120,4 +120,4 @@ Bug 请通过 [GitHub Issues](https://github.com/JunJD/Jingle/issues) 提交。�
 
 ## License
 
-MIT。详见 [LICENSE](LICENSE)。
+Apache License 2.0。详见 [LICENSE](LICENSE)。
