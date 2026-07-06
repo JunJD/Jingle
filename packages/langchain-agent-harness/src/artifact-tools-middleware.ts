@@ -12,7 +12,7 @@ import type {
   RuntimeArtifactPresentationConfig,
   RuntimeArtifactPresentationContext,
   RuntimeArtifactPresentationResult
-} from "./runtime-contract"
+} from "./runtime-tools"
 
 export type JingleArtifactPresentationContext = RuntimeArtifactPresentationContext
 export type JingleArtifactPresentationResult = RuntimeArtifactPresentationResult

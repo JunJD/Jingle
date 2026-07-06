@@ -1,8 +1,8 @@
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
 import type {
-  CreateRuntimeThreadFactoryInput,
-  RuntimeThreadScope
+  CreateRuntimeThreadFactoryInput
 } from "./runtime-contract"
+import type { RuntimeThreadScope } from "./runtime-scope"
 import type { RuntimeThread } from "./runtime-thread"
 import { createRuntimeThread } from "./runtime-thread-implementation"
 

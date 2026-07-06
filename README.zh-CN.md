@@ -109,6 +109,11 @@ make extension-dev EXTENSION=installable-extensions/coffee
 产品和开源路线图见 [roadmap.zh-CN.md](roadmap.zh-CN.md)。英文版见
 [roadmap.md](roadmap.md)。
 
+## 发布
+
+Jingle 使用稳定版和 nightly 版两个发布通道。Tag 格式和发布规则见
+[docs/release-channels.zh-CN.md](docs/release-channels.zh-CN.md)。
+
 ## 贡献
 
 欢迎贡献。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，让改动保持清晰边界；如果修改

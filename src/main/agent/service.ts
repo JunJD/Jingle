@@ -21,6 +21,9 @@ import { resolveNativeExtensionExecutionContext } from "../native-extensions/exe
 import { updateRunExtensionAiCapabilitiesSnapshot } from "./persistence"
 import { isAbortLikeError, isModelAuthenticationError, normalizeAgentRuntimeError } from "./errors"
 import { createAgentRunHandle } from "./runtime"
+import { createAgentRuntime } from "./runtime-assembly"
+import { createExtensionAiRuntime } from "./extension-ai-runtime"
+import { createNativeExtensionToolRegistry } from "../extension-tools/native-extension-tools"
 import {
   createAgentRunSteeringBuffer,
   projectJingleStreamChunkForHostIpc,
@@ -52,7 +55,10 @@ import { WorkspaceService } from "../workspace/service"
 import { readRunPermissionModeSnapshot, readThreadPermissionMode } from "./permission-mode"
 import { resolveJingleWorkspaceIdentity } from "../workspace/identity"
 import { getAgentConfig } from "../preferences"
-import { listNativeExtensionManifests } from "../services/native-extensions"
+import {
+  listNativeExtensionMainDefinitions,
+  listNativeExtensionManifests
+} from "../services/native-extensions"
 import type {
   AgentContextInclusion,
   JingleMemoryContextSnapshot,
@@ -302,12 +308,18 @@ export function serializeStreamChunkForIpc(
 
 export class AgentService {
   private readonly activeRuns = new Map<string, ActiveAgentServiceRun>()
+  private readonly agentRuntime: ReturnType<typeof createAgentRuntime>
 
   constructor(
     private readonly jingleMemoryService: JingleMemoryService,
     private readonly threadLifecycleGate: ThreadLifecycleGate,
     private readonly workspaceService: WorkspaceService
-  ) {}
+  ) {
+    this.agentRuntime = createAgentRuntime({
+      jingleMemoryService,
+      workspaceService
+    })
+  }
 
   private sendThreadDeletingError(channel: AgentRunChannel, sink: AgentStreamSink): void {
     sink.send({
@@ -437,6 +449,11 @@ export class AgentService {
         process.platform,
         "en-US"
       )
+      const extensionMainDefinitions = await listNativeExtensionMainDefinitions(process.platform)
+      const extensionToolRegistry = createNativeExtensionToolRegistry({
+        definitions: extensionMainDefinitions,
+        manifests: extensionManifests
+      })
       const getAiCapabilityByExtensionName = (extensionName: string) =>
         resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
           extensionName,
@@ -457,44 +474,34 @@ export class AgentService {
         temporaryMode,
         workspaceIdentity
       })
+      const extensionAiRuntime = createExtensionAiRuntime({
+        aiCapabilities,
+        aiCapabilityCatalog: extensionToolRegistry.withCatalogToolAccess(aiCapabilityCatalog),
+        getAiCapabilityByExtensionName,
+        getExtensionExecutionContext: (extensionName) =>
+          resolveNativeExtensionExecutionContext({
+            extensionName,
+            platform: process.platform
+          }),
+        onLoadedAiCapabilitiesChanged: ({ aiCapabilities, runId }) =>
+          updateRunExtensionAiCapabilitiesSnapshot(runId, {
+            aiCapabilities
+          }),
+        registry: extensionToolRegistry,
+        threadId,
+        workspacePath
+      })
 
       if (abortController.signal.aborted) {
         return
       }
 
       const runHandle = await createAgentRunHandle({
+        jingleMemoryService: this.jingleMemoryService,
+        runtime: this.agentRuntime,
         threadId,
-        workspacePath,
-        modelId,
-        runtimeCapabilities: {
-          approval: {
-            permissionMode
-          },
-          extensionAi: {
-            capabilityCatalog: aiCapabilityCatalog,
-            capabilitySnapshot: aiCapabilities,
-            getCapabilityByExtensionName: getAiCapabilityByExtensionName,
-            getExecutionContext: (extensionName) =>
-              resolveNativeExtensionExecutionContext({
-                extensionName,
-                platform: process.platform
-              }),
-            onLoadedCapabilitiesChanged: ({ aiCapabilities, runId }) =>
-              updateRunExtensionAiCapabilitiesSnapshot(runId, {
-                aiCapabilities
-              })
-          },
-          memory: {
-            contextPack: jingleMemoryContextPack,
-            service: this.jingleMemoryService,
-            temporaryMode,
-            workspaceIdentity
-          },
-          workspaceContext: {
-            service: this.workspaceService
-          }
-        },
         steeringBuffer: activeRun.steeringBuffer,
+        workspacePath
       })
       activeRun.thread = runHandle.thread
 
@@ -504,12 +511,15 @@ export class AgentService {
 
       const { recordingRefs, runId } = await runHandle.thread.beginInvokeRun({
         invoke: {
+          aiCapabilities,
+          extensionAiRuntime,
+          jingleMemoryContextPack,
           jingleMemoryContextSnapshot:
             this.jingleMemoryService.createContextSnapshot(jingleMemoryContextPack),
           jingleMemoryTemporaryMode: jingleMemoryContextPack?.temporaryMode === true,
-          aiCapabilities,
           modelId,
-          permissionMode
+          permissionMode,
+          workspaceIdentity
         }
       })
       activeRun.runId = runId
@@ -734,58 +744,55 @@ export class AgentService {
               aiCapabilitySnapshots,
               extensionManifests,
               locale
+            )
+      const aiCapabilityCatalog = listNativeExtensionAiCapabilityCatalogFromManifests(
+        extensionManifests,
+        process.platform,
+        "en-US"
       )
-      const runHandle = await createAgentRunHandle({
-        threadId,
-        workspacePath,
-        modelId,
-        runtimeCapabilities: {
-          approval: {
-            permissionMode
-          },
-          extensionAi: {
-            capabilityCatalog: listNativeExtensionAiCapabilityCatalogFromManifests(
-              extensionManifests,
-              process.platform,
-              "en-US"
-            ),
-            capabilitySnapshot: runtimeAiCapabilities,
-            getCapabilityByExtensionName: (extensionName: string) =>
-              resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
-                extensionName,
-                extensionManifests,
-                {
-                  getConnection: (extensionName) =>
-                    resolveNativeExtensionConnection({
-                      extensionName,
-                      platform: process.platform
-                    }),
-                  locale,
-                  permissionMode,
-                  platform: process.platform
-                }
-              ),
-            getExecutionContext: (extensionName) =>
-              resolveNativeExtensionExecutionContext({
+      const extensionMainDefinitions = await listNativeExtensionMainDefinitions(process.platform)
+      const extensionToolRegistry = createNativeExtensionToolRegistry({
+        definitions: extensionMainDefinitions,
+        manifests: extensionManifests
+      })
+      const getAiCapabilityByExtensionName = (extensionName: string) =>
+        resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+          extensionName,
+          extensionManifests,
+          {
+            getConnection: (extensionName) =>
+              resolveNativeExtensionConnection({
                 extensionName,
                 platform: process.platform
               }),
-            onLoadedCapabilitiesChanged: ({ aiCapabilities, runId }) =>
-              updateRunExtensionAiCapabilitiesSnapshot(runId, {
-                aiCapabilities
-              })
-          },
-          memory: {
-            contextPack: jingleMemoryContextPack,
-            service: this.jingleMemoryService,
-            temporaryMode: jingleMemoryContextPack?.temporaryMode === true,
-            workspaceIdentity: resumedWorkspaceIdentity
-          },
-          workspaceContext: {
-            service: this.workspaceService
+            locale,
+            permissionMode,
+            platform: process.platform
           }
-        },
+        )
+      const extensionAiRuntime = createExtensionAiRuntime({
+        aiCapabilities: runtimeAiCapabilities,
+        aiCapabilityCatalog: extensionToolRegistry.withCatalogToolAccess(aiCapabilityCatalog),
+        getAiCapabilityByExtensionName,
+        getExtensionExecutionContext: (extensionName) =>
+          resolveNativeExtensionExecutionContext({
+            extensionName,
+            platform: process.platform
+          }),
+        onLoadedAiCapabilitiesChanged: ({ aiCapabilities, runId }) =>
+          updateRunExtensionAiCapabilitiesSnapshot(runId, {
+            aiCapabilities
+          }),
+        registry: extensionToolRegistry,
+        threadId,
+        workspacePath
+      })
+      const runHandle = await createAgentRunHandle({
+        jingleMemoryService: this.jingleMemoryService,
+        runtime: this.agentRuntime,
+        threadId,
         steeringBuffer: activeRun.steeringBuffer,
+        workspacePath
       })
       activeRun.thread = runHandle.thread
 
@@ -795,10 +802,16 @@ export class AgentService {
 
       const { recordingRefs, runId: resumedRunId } = await runHandle.thread.beginResumeRun({
         resume: {
+          aiCapabilities: runtimeAiCapabilities,
+          extensionAiRuntime,
+          jingleMemoryContextPack,
+          jingleMemoryTemporaryMode: jingleMemoryContextPack?.temporaryMode === true,
           modelId,
+          permissionMode,
           requestId: resumeTarget.requestId,
           runId: resumeTarget.runId,
-          source: "resume"
+          source: "resume",
+          workspaceIdentity: resumedWorkspaceIdentity
         }
       })
       runId = resumedRunId

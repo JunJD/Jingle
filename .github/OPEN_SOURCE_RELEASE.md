@@ -15,6 +15,7 @@ Use this checklist before making the GitHub repository public.
   - deprecated branches
   - obsolete release tags
   - checkpoint or tool-specific refs such as `refs/t3/*`
+- Remove obsolete GitHub Releases before public launch.
 - If release work is staged on another branch, merge or replay it into the clean
   public branch and verify that branch before making the repository public.
 - Open issues and pull requests should either be useful to public readers or
@@ -36,6 +37,8 @@ Also verify:
   generated-extension names
 - the generated npm pack file list contains no legacy names
 - reachable public refs do not expose private cleanup history
+- release tags follow `vX.Y.Z` for stable builds or
+  `vX.Y.Z-nightly.YYYYMMDD[.N]` for nightly builds
 - local markdown links in README, roadmap, support, security, contributing, and
   docs resolve
 

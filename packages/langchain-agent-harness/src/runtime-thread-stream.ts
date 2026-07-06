@@ -2,10 +2,10 @@ import { persistJingleValuesHitlRequest } from "./langgraph-hitl-reader"
 import { drainRuntimeRunStream } from "./run-stream"
 import type {
   CreateRuntimeThreadFactoryInput,
-  RuntimePauseControllerContract,
-  RuntimeThreadScope
+  RuntimePauseControllerContract
 } from "./runtime-contract"
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
+import type { RuntimeThreadScope } from "./runtime-scope"
 import type { RuntimeThreadStreamControl } from "./runtime-thread"
 
 export interface RuntimeThreadStreamDrainControlInput<TReview = unknown> {

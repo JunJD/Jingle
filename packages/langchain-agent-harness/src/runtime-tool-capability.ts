@@ -5,7 +5,8 @@ import { createFilesystemToolErrorMiddleware } from "./filesystem-tool-error-mid
 import { createJinglePatchToolCallsMiddleware } from "./harness-runtime/patch-tool-calls"
 import type { RuntimeExecutionMiddleware, RuntimeMiddlewareHook } from "./harness-runtime"
 import { createJingleTodoHook } from "./jingle-todo-middleware"
-import type { RuntimeEnvironmentHostContract, RuntimeRunContextScope, RuntimeThreadScope } from "./runtime-contract"
+import type { RuntimeResolvedEnvironmentHostContract } from "./runtime-contract"
+import type { RuntimeRunContextScope, RuntimeThreadScope } from "./runtime-scope"
 import {
   createRuntimeSandboxCapability,
   type CreateRuntimeSandboxCapabilityInput,
@@ -22,7 +23,7 @@ export interface RuntimeCoreToolCapability extends RuntimeSandboxCapability {
 
 export interface CreateRuntimeToolEntriesInput {
   core: RuntimeCoreToolCapability
-  environment: RuntimeEnvironmentHostContract
+  environment: RuntimeResolvedEnvironmentHostContract
   runContext: RuntimeRunContextScope
   thread: RuntimeThreadScope
 }

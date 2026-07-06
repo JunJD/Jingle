@@ -34,6 +34,10 @@ export {
   RUNTIME_OPERATION_SURFACE
 } from "./runtime-operation"
 export type { RuntimeRunStreamOptions } from "./runtime-execution"
+export type {
+  RuntimeRunContextScope,
+  RuntimeThreadScope
+} from "./runtime-scope"
 
 export type {
   RuntimeApproval,
@@ -71,13 +75,6 @@ export {
 export type {
   RuntimeCreationAssemblyContract,
   RuntimeInternalOnlySurface,
-  RuntimeObservationBoundaryContract,
-  RuntimeObservationDeferredSurface,
-  RuntimeObservationImplementedSurface,
-  RuntimeObservationSurface,
-  RuntimeObservationSurfaceContract,
-  RuntimeObservationSurfaceOwner,
-  RuntimeObservationSurfaceStatus,
   RuntimePackageExportBoundaryContract,
   RuntimePackageEntrypointContract,
   RuntimePackageEntrypointId,
@@ -93,13 +90,23 @@ export type {
   RuntimePublicSurfaceCapability,
   RuntimePublicSurfaceRole,
   RuntimePublicSurfaceStability
-} from "./runtime-contract"
+} from "./runtime-workbench"
 
 export {
-  RUNTIME_OBSERVATION_BOUNDARY,
   RUNTIME_PACKAGE_EXPORT_BOUNDARY,
   RUNTIME_WORKBENCH_CONTRACT
-} from "./runtime-contract"
+} from "./runtime-workbench"
+
+export type {
+  RuntimeObservationBoundaryContract,
+  RuntimeObservationDeferredSurface,
+  RuntimeObservationImplementedSurface,
+  RuntimeObservationSurface,
+  RuntimeObservationSurfaceContract,
+  RuntimeObservationSurfaceOwner,
+  RuntimeObservationSurfaceStatus
+} from "./runtime-observation"
+export { RUNTIME_OBSERVATION_BOUNDARY } from "./runtime-observation"
 
 export type {
   RuntimeChildWorkStatus,
@@ -157,6 +164,7 @@ export type {
   RuntimeArtifactPresentationProvider,
   RuntimeArtifactPresentationResult,
   RuntimeBackend,
+  RuntimeCapabilities,
   RuntimeContextRetrievalConfig,
   RuntimeContextRetrievalProvider,
   RuntimeContextRetrievalResult,
@@ -179,7 +187,6 @@ export type {
   RuntimeMemoryConfig,
   RuntimeMemoryProvider,
   RuntimeModelProvider,
-  RuntimeObservationSink,
   RuntimePauseController,
   RuntimeRunLifecycleController,
   RuntimeSearchHistoryInput,
@@ -189,12 +196,12 @@ export type {
   RuntimeSummarizationController,
   RuntimeTitleGeneratorContract,
   RuntimeTitleGenerator,
-  RuntimeTraceSink,
   RuntimeWebTools,
   RuntimeWorkspaceFileContextConfig,
   RuntimeWorkspaceFileContextRequest,
   RuntimeWorkspaceFileContextProvider
-} from "./runtime-module"
+} from "./runtime-capabilities"
+export type { RuntimeObservationSink, RuntimeTraceSink } from "./runtime-observation"
 
 export type {
   RuntimeThreadBoundaryContract,

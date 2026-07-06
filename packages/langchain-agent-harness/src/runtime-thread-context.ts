@@ -1,8 +1,8 @@
 import { createRuntimeExecutionFactory } from "./runtime-execution-factory"
 import type {
-  CreateRuntimeThreadFactoryInput,
-  RuntimeThreadScope
+  CreateRuntimeThreadFactoryInput
 } from "./runtime-contract"
+import type { RuntimeThreadScope } from "./runtime-scope"
 import type { RuntimeExecutionFactory } from "./runtime-execution-factory"
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
 

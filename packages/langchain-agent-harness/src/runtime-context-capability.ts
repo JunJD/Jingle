@@ -2,7 +2,8 @@ import { createJingleContextRetrievalToolsHook } from "./context-retrieval-tools
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
 import type { RuntimeExecutionMiddleware } from "./harness-runtime"
 import { createJingleMemoryHook, createJingleMemoryRecordingRefsHook } from "./memory-middleware"
-import type { RuntimeContextHostContract, RuntimeRunContextScope, RuntimeThreadScope } from "./runtime-contract"
+import type { RuntimeContextHostContract } from "./runtime-contract"
+import type { RuntimeRunContextScope, RuntimeThreadScope } from "./runtime-scope"
 import { createJingleWorkspaceFileContextMiddleware } from "./workspace-file-context-middleware"
 
 export interface CreateRuntimeContextEntriesInput<

@@ -153,7 +153,7 @@ test("extension orchestration tool calls do not expose wrapper names in activity
         toolCalls: [
           {
             args: {
-              extensionName: "image-generation"
+              extensionName: "github"
             },
             id: "tool-call-load-extension",
             name: "loadExtension",
@@ -162,21 +162,21 @@ test("extension orchestration tool calls do not expose wrapper names in activity
           {
             args: {
               args: {
-                prompt: "cat"
+                query: "jingle"
               },
-              extensionName: "image-generation",
-              toolName: "generateImage"
+              extensionName: "github",
+              toolName: "searchRepositories"
             },
             display: {
-              description: "Create an image from a prompt.",
-              title: "Generate Image"
+              description: "Search GitHub repositories.",
+              title: "Search Repositories"
             },
             id: "tool-call-call-extension",
             name: "callExtension",
             presentation: {
               access: "external" as const,
-              capabilityDisplayName: "Image Generation",
-              capabilityTitle: "Image Generation",
+              capabilityDisplayName: "GitHub",
+              capabilityTitle: "GitHub",
               kind: "extension" as const
             },
             type: "tool_call"
@@ -192,7 +192,7 @@ test("extension orchestration tool calls do not expose wrapper names in activity
   const item = entries[0]?.items[0]
   assert.equal(item?.kind, "tool")
   assert.equal(item?.toolCall.name, "callExtension")
-  assert.equal(item?.toolCall.display?.title, "Generate Image")
+  assert.equal(item?.toolCall.display?.title, "Search Repositories")
 })
 
 test("bare callExtension wrapper does not enter chat tool activity projection", () => {
@@ -204,10 +204,10 @@ test("bare callExtension wrapper does not enter chat tool activity projection", 
           {
             args: {
               args: {
-                prompt: "cat"
+                query: "jingle"
               },
-              extensionName: "image-generation",
-              toolName: "generateImage"
+              extensionName: "github",
+              toolName: "searchRepositories"
             },
             id: "tool-call-call-extension",
             name: "callExtension",
@@ -225,7 +225,7 @@ test("streaming orchestration tool calls do not enter temporary activity project
   const entries = buildTurnAssistantEntries(createTurn([]), {
     activeToolCalls: [
       {
-        argsText: '{"extensionName":"image-generation"}',
+        argsText: '{"extensionName":"github"}',
         id: "tool-call-load-extension",
         index: 0,
         messageId: "assistant-1",
@@ -236,7 +236,7 @@ test("streaming orchestration tool calls do not enter temporary activity project
       },
       {
         argsText:
-          '{"extensionName":"image-generation","toolName":"generateImage","args":{"prompt":"cat"}}',
+          '{"extensionName":"github","toolName":"searchRepositories","args":{"query":"jingle"}}',
         id: "tool-call-call-extension",
         index: 1,
         messageId: "assistant-1",

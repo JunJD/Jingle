@@ -1,12 +1,8 @@
 import { createRuntimeThreadFactory } from "./runtime-thread-factory"
 import type { RuntimeHostContract } from "./runtime-contract"
 import type { RuntimeThread, RuntimeThreadInput } from "./runtime-thread"
-import {
-  assembleRuntimeModules,
-  createRuntimeObservationSink,
-  type RuntimeModule,
-  type RuntimeModuleContribution
-} from "./runtime-module"
+import type { RuntimeCapabilities } from "./runtime-capabilities"
+import { createRuntimeObservationSink } from "./runtime-observation"
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
 
 export interface Runtime<
@@ -26,18 +22,13 @@ export interface CreateRuntimeInput<
   TInvokeRunLifecycleInput = unknown,
   TResumeRunLifecycleInput = unknown
 > {
-  /**
-   * Transitional capability assembly input. This is not the target public
-   * harness model; concrete capability owners should replace this manifest as
-   * they become first-class runtime entities.
-   */
-  capabilities: readonly RuntimeModule<
+  capabilities: RuntimeCapabilities<
     TContextInclusion,
     TGuardrailMetadata,
     TReview,
     TInvokeRunLifecycleInput,
     TResumeRunLifecycleInput
-  >[]
+  >
 }
 
 export function createRuntime<
@@ -59,9 +50,6 @@ export function createRuntime<
   TInvokeRunLifecycleInput,
   TResumeRunLifecycleInput
 > {
-  const contribution = assembleRuntimeModules({
-    modules: input.capabilities
-  })
   const threadFactory = createRuntimeThreadFactory({
     host: createRuntimeHost<
       TContextInclusion,
@@ -69,7 +57,7 @@ export function createRuntime<
       TReview,
       TInvokeRunLifecycleInput,
       TResumeRunLifecycleInput
-    >(contribution)
+    >(input.capabilities)
   })
 
   return {
@@ -86,7 +74,7 @@ function createRuntimeHost<
   TInvokeRunLifecycleInput = unknown,
   TResumeRunLifecycleInput = unknown
 >(
-  contribution: RuntimeModuleContribution<
+  contribution: RuntimeCapabilities<
     TContextInclusion,
     TGuardrailMetadata,
     TReview,
@@ -175,7 +163,7 @@ function createRuntimeHost<
     )
   }
   const observation = {
-    sink: createRuntimeObservationSink(contribution)
+    sink: createRuntimeObservationSink(contribution.observation)
   }
 
   return {
@@ -190,7 +178,7 @@ function createRuntimeHost<
 
 function requireRuntimeContribution<T>(value: T | undefined, path: string): T {
   if (value === undefined) {
-    throw new Error(`[Runtime] Missing RuntimeModule contribution: ${path}.`)
+    throw new Error(`[Runtime] Missing runtime capability contribution: ${path}.`)
   }
 
   return value

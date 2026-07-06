@@ -330,14 +330,9 @@ test("extension package icons are owned by extension manifests and flow into set
   )
 
   assert.deepEqual(manifestIcons, {
-    "image-generation": "assets/icon.svg",
     "todo-list": "assets/icon.svg",
     translate: "assets/icon.svg"
   })
-  assert.equal(
-    nativeExtensionManifests.find((manifest) => manifest.name === "image-generation")?.iconName,
-    "image"
-  )
 
   const githubSchema = toInstalledNativeExtensionSettingsSchema(githubManifest)
   assert.equal(githubSchema.iconName, "github")
@@ -363,13 +358,6 @@ test("extension package icons are owned by extension manifests and flow into set
     notionSchema.commands.find((command) => command.name === "create-database-page")?.keywords,
     ["notion", "create", "database", "data source", "page", "markdown"]
   )
-
-  const imageGenerationSchema = toInstalledNativeExtensionSettingsSchema(
-    nativeExtensionManifests.find((manifest) => manifest.name === "image-generation")!
-  )
-  assert.equal(imageGenerationSchema.icon, "assets/icon.svg")
-  assert.equal(imageGenerationSchema.iconName, "image")
-  assert.deepEqual(imageGenerationSchema.commands, [])
 })
 
 test("launcher command owner lets commands inherit package icons unless they declare a dedicated asset", () => {

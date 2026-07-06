@@ -21,9 +21,9 @@ export interface RuntimeThreadInput {
 }
 
 export type RuntimeThreadRoleId =
+  | "capability-to-execution-assembly"
   | "control-surface"
   | "graph-engine-creation"
-  | "module-to-execution-assembly"
   | "operation-factory"
 
 export type RuntimeThreadRoleVisibility = "internal" | "public"
@@ -85,11 +85,11 @@ export const RUNTIME_THREAD_BOUNDARY = {
     },
     {
       files: ["src/runtime-execution-assembly.ts"],
-      id: "module-to-execution-assembly",
+      id: "capability-to-execution-assembly",
       owner: "assembleRuntimeExecution",
       surface: [
-        "internal capability contribution -> RuntimeExecutionMiddleware[]",
-        "host capabilities -> current engine middleware"
+        "RuntimeCapabilities -> RuntimeHostContract",
+        "RuntimeHostContract -> current engine middleware"
       ],
       visibility: "internal"
     }

@@ -2,11 +2,8 @@ import type { AgentRunSteeringBufferPort } from "./run-steering"
 import { createRuntimeAgentLoopEntries } from "./agent-loop"
 import type { JingleContextInclusionStateItem } from "./context-inclusion-state"
 import type { RuntimeExecutionMiddleware } from "./harness-runtime"
-import type {
-  RuntimeHostContract,
-  RuntimeRunContextScope,
-  RuntimeThreadScope
-} from "./runtime-contract"
+import type { RuntimeResolvedHostContract } from "./runtime-contract"
+import type { RuntimeRunContextScope, RuntimeThreadScope } from "./runtime-scope"
 import { createRuntimeApprovalEntries } from "./runtime-approval-capability"
 import { createRuntimeContextEntries } from "./runtime-context-capability"
 import { createRuntimeGuardrailEntries } from "./runtime-guardrail-capability"
@@ -24,7 +21,7 @@ export interface RuntimeExecutionAssemblyInput<
   TInvokeRunLifecycleInput = unknown,
   TResumeRunLifecycleInput = unknown
 > {
-  host: RuntimeHostContract<
+  host: RuntimeResolvedHostContract<
     TContextInclusion,
     TGuardrailMetadata,
     TReview,

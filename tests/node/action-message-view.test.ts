@@ -758,23 +758,23 @@ test("createActionMessageView renders explicit extension display and presentatio
     toolCall: {
       args: {},
       display: {
-        description: "Generate Image from image-generation.",
-        title: "Generate Image"
+        description: "Search GitHub repositories from GitHub.",
+        title: "Search Repositories"
       },
       id: "tool-call-extension",
       name: "callExtension",
       presentation: {
         access: "external",
-        capabilityDisplayName: "image-generation",
-        capabilityTitle: "Image Generation",
+        capabilityDisplayName: "GitHub",
+        capabilityTitle: "GitHub",
         kind: "extension"
       },
       type: "tool_call"
     }
   })
 
-  assert.equal(displayText(view), "Generate Image · image-generation")
-  assert.equal(view.display.title, "Generate Image")
+  assert.equal(displayText(view), "Search Repositories · GitHub")
+  assert.equal(view.display.title, "Search Repositories")
 })
 
 test("projectAgentActivityHeaderSummary summarizes completed exploration tools", () => {

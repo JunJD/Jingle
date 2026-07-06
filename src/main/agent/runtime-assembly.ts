@@ -1,9 +1,6 @@
-import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint"
 import type {
   CreateRuntimeInput,
   Runtime,
-  RuntimeBackend,
-  RuntimeModelProvider,
   RuntimeRunContext
 } from "@jingle/langchain-agent-harness"
 import { createRuntime } from "@jingle/langchain-agent-harness"
@@ -19,13 +16,7 @@ import {
 import { getDefaultHitlAllowedDecisions } from "@shared/hitl"
 import { withMutationPrediction } from "@shared/mutation-prediction"
 import { withExecuteCommandPolicy } from "@shared/execute-command-policy"
-import type { PermissionModeName } from "@shared/permission-mode"
-import type { ResolvedExtensionAiCapability } from "@shared/extension-sources"
-import type {
-  AgentContextInclusion,
-  JingleMemoryContextPack,
-  JingleWorkspaceIdentity
-} from "@shared/jingle-memory"
+import type { AgentContextInclusion } from "@shared/jingle-memory"
 import { createArtifactPresentationHandler } from "./artifact-presentation-handler"
 import { createAgentContextInclusionToolHandlers } from "./context-retrieval-tool-handlers"
 import { createToolPermissionRuntime } from "./tool-permission-runtime"
@@ -56,20 +47,19 @@ import type { ExecuteCommandGuardrailMetadata } from "./execute-command-guardrai
 import { createExecuteCommandGuardrailProvider } from "./execute-command-guardrail-provider"
 import { JustBashExecuteCommandClassifier } from "./execute-command-classifier"
 import { JustBashMutationPredictor } from "./mutation-predictor"
-import type { createExtensionAiRuntime } from "./extension-ai-runtime"
 import { appendAgentEventSafely } from "../db/agent-events"
-import {
-  buildAgentRunTraceConfig,
-  buildAgentRuntimeTraceConfig
-} from "../observability/agent-trace"
+import { buildAgentRunTraceConfig } from "../observability/agent-trace"
 import { getDevtoolsNetworkRecorder } from "@jingle/devtools-network/main"
 import {
   createRuntimeRunLifecycleController,
+  type AgentRuntimeRunFacts,
   type JingleInvokeRunLifecycleInput,
   type JingleResumeRunLifecycleInput
 } from "./run-lifecycle-controller"
 import { createRuntimePauseController } from "./pause-controller"
 import type { ToolApprovalItem } from "@shared/tool-approval"
+import { getCheckpointer } from "../checkpointer/runtime-checkpointer-manager"
+import { LocalSandbox } from "./local-sandbox"
 
 const TITLE_GENERATION_TIMEOUT_MS = 2_500
 const desktopAutomationRunner = createDesktopAutomationRunner()
@@ -88,50 +78,15 @@ type JingleRuntime = Runtime<
   JingleResumeRunLifecycleInput
 >
 
-type JingleRuntimeCapability = JingleRuntimeInput["capabilities"][number]
-
 export interface CreateAgentRuntimeInput {
-  capabilities: JingleAgentRuntimeCapabilities
+  jingleMemoryService: JingleMemoryService
+  workspaceService: WorkspaceService
 }
 
-export interface JingleAgentRuntimeCapabilities {
-  approval: JingleAgentRuntimeApprovalCapability
-  checkpoint: JingleAgentRuntimeCheckpointCapability
-  extensionAi: JingleAgentRuntimeExtensionAiCapability
-  memory: JingleAgentRuntimeMemoryCapability
-  model: JingleAgentRuntimeModelCapability
-  workspaceContext: JingleAgentRuntimeWorkspaceContextCapability
-}
-
-export interface JingleAgentRuntimeApprovalCapability {
-  permissionMode: PermissionModeName
-}
-
-export interface JingleAgentRuntimeCheckpointCapability {
-  checkpointer: BaseCheckpointSaver<string | number>
-}
-
-export interface JingleAgentRuntimeExtensionAiCapability {
-  capabilitySnapshot: ResolvedExtensionAiCapability[]
-  runtime: ReturnType<typeof createExtensionAiRuntime>
-}
-
-export interface JingleAgentRuntimeMemoryCapability {
-  contextPack?: JingleMemoryContextPack | null
-  service: JingleMemoryService | null
-  temporaryMode: boolean
-  workspaceIdentity?: JingleWorkspaceIdentity
-}
-
-export interface JingleAgentRuntimeModelCapability {
-  model: RuntimeModelProvider
-  modelId?: string
-}
-
-export interface JingleAgentRuntimeWorkspaceContextCapability {
-  backend: RuntimeBackend
-  service: WorkspaceService | null
-  workspacePath: string
+interface AgentRuntimeRunFactRegistry {
+  delete(runId: string): void
+  get(runId: string): AgentRuntimeRunFacts
+  set(runId: string, facts: AgentRuntimeRunFacts): void
 }
 
 export function createAgentRuntime(input: CreateAgentRuntimeInput): JingleRuntime {
@@ -139,254 +94,214 @@ export function createAgentRuntime(input: CreateAgentRuntimeInput): JingleRuntim
 }
 
 function createAgentRuntimeInput(input: CreateAgentRuntimeInput): JingleRuntimeInput {
-  const { capabilities } = input
-  const permissionMode = capabilities.approval.permissionMode
-  const workspacePath = capabilities.workspaceContext.workspacePath
-  const agentConfig = getAgentConfig()
-  const skillSources = buildJingleSkillSources({
-    configuredSources: agentConfig.skillSources,
-    jingleHomeDir: getJingleHomeDir(),
-    workspacePath
+  const runFacts = createAgentRuntimeRunFactRegistry()
+  const runLifecycleController = createRuntimeRunLifecycleController({
+    jingleMemoryService: input.jingleMemoryService,
+    onRunStarted: ({ facts, runId }) => runFacts.set(runId, facts),
+    onRunSettled: ({ runId }) => runFacts.delete(runId)
   })
-  const guardrailProvider = createExecuteCommandGuardrailProvider({
-    classifier: new JustBashExecuteCommandClassifier(),
-    predictor: new JustBashMutationPredictor({
-      workspacePath
-    })
-  })
-  const jingleMemoryService = capabilities.memory.service ?? null
-  const workspaceService = capabilities.workspaceContext.service ?? null
-  const allowJingleMemorySuggestions =
-    jingleMemoryService !== null &&
-    !capabilities.memory.temporaryMode &&
-    jingleMemoryService.getSettings().useMemory === true
-  const jingleMemoryWorkspaceIdentity =
-    capabilities.memory.contextPack?.workspaceIdentity ?? capabilities.memory.workspaceIdentity
-  const resolvedJingleMemoryWorkspaceIdentity = jingleMemoryWorkspaceIdentity ?? {
-    canonicalWorkspacePath: workspacePath,
-    displayName: workspacePath,
-    workspaceKey: workspacePath
-  }
-  const memoryPort = jingleMemoryService
-    ? (run: RuntimeRunContext) =>
-        createJingleMemoryHarnessPortOptions({
-          allowSuggestions: allowJingleMemorySuggestions,
-          contextPack: capabilities.memory.contextPack ?? null,
-          service: jingleMemoryService,
-          temporaryMode: capabilities.memory.temporaryMode === true,
-          threadId: run.threadId,
-          workspaceIdentity: resolvedJingleMemoryWorkspaceIdentity
-        })
-    : undefined
 
   return {
-    capabilities: [
-      {
-        kind: "model",
-        name: "model",
-        contribute: () => ({
-          model: {
-            model: capabilities.model.model
+    capabilities: {
+      model: {
+        model: (scope) =>
+          getChatModelInstance({
+            modelId: readRunModelId(scope, runFacts),
+            parallelToolCalls: false
+          })
+      },
+      checkpoint: {
+        checkpointer: (thread) => getCheckpointer(thread.threadId)
+      },
+      tools: {
+        artifactPresentation: (thread) => ({
+          presentArtifacts: createArtifactPresentationHandler({
+            threadId: thread.threadId,
+            workspacePath: thread.workspacePath
+          })
+        }),
+        backend: (thread) =>
+          new LocalSandbox({
+            rootDir: thread.workspacePath,
+            virtualMode: false,
+            timeout: 120_000,
+            maxOutputBytes: 100_000
+          }),
+        desktopAutomationTools: {
+          clickScreenPoint: async (toolInput) => {
+            const request = parseClickScreenPointRequest(toolInput)
+            return clickScreenPoint(request, desktopAutomationRunner)
+          },
+          findAxElements: async (toolInput) => {
+            const request = parseFindAxElementsRequest(toolInput)
+            return findAxElements(request, desktopAutomationRunner)
+          },
+          openApplication: async (toolInput) => {
+            const request = parseOpenApplicationRequest(toolInput)
+            return openApplication(request, desktopAutomationRunner)
+          },
+          openDesktopRoute: async (toolInput) => {
+            const request = parseOpenDesktopRouteRequest(toolInput)
+            return openDesktopRoute(request, desktopAutomationRunner)
+          },
+          pressAxElement: async (toolInput) => {
+            const request = parsePressAxElementRequest(toolInput)
+            return pressAxElement(request, desktopAutomationRunner)
           }
+        },
+        extensionAiTools: (run) =>
+          runFacts.get(run.runId).extensionAiRuntime.createToolsOptions({
+            runId: run.runId,
+            threadId: run.threadId,
+            workspacePath: run.workspacePath
+          }),
+        skillSources: (thread) =>
+          buildJingleSkillSources({
+            configuredSources: getAgentConfig().skillSources,
+            jingleHomeDir: getJingleHomeDir(),
+            workspacePath: thread.workspacePath
+          }),
+        webTools: {
+          searchWeb
+        }
+      },
+      context: {
+        contextRetrieval: (run) =>
+          createAgentContextInclusionToolHandlers({
+            threadId: run.threadId
+          }),
+        guardrail: (thread) => ({
+          applyMetadata: applyGuardrailMetadata,
+          provider: createExecuteCommandGuardrailProvider({
+            classifier: new JustBashExecuteCommandClassifier(),
+            predictor: new JustBashMutationPredictor({
+              workspacePath: thread.workspacePath
+            })
+          })
+        }),
+        memory: (run: RuntimeRunContext) => {
+          const facts = runFacts.get(run.runId)
+          return createJingleMemoryHarnessPortOptions({
+            allowSuggestions:
+              !facts.jingleMemoryTemporaryMode &&
+              input.jingleMemoryService.getSettings().useMemory === true,
+            contextPack: facts.jingleMemoryContextPack,
+            service: input.jingleMemoryService,
+            temporaryMode: facts.jingleMemoryTemporaryMode,
+            threadId: run.threadId,
+            workspaceIdentity: facts.workspaceIdentity
+          })
+        },
+        systemPrompt: (thread) => buildJingleSystemPrompt(thread.workspacePath),
+        workspaceFileContext: (thread) => ({
+          resolveContext: createWorkspaceFileContextResolver({
+            threadId: thread.threadId,
+            workspaceService: input.workspaceService
+          })
         })
       },
-      {
-        kind: "checkpoint",
-        name: "checkpoint",
-        contribute: () => ({
-          checkpoint: {
-            checkpointer: capabilities.checkpoint.checkpointer
+      control: {
+        approvalController: (scope) => {
+          const facts = runFacts.get(scope.runId)
+          return {
+            allowedDecisions: getDefaultHitlAllowedDecisions(),
+            policyRuntime: createToolPermissionRuntime({
+              extensionToolPolicyProvider: facts.extensionAiRuntime.approvalPolicyProvider,
+              permissionMode: facts.permissionMode
+            })
           }
-        })
+        },
+        pauseController: createRuntimePauseController(),
+        runLifecycleController
       },
-      {
-        kind: "tools",
-        name: "tools",
-        contribute: () => ({
-          tools: {
-            artifactPresentation: (thread) => ({
-              presentArtifacts: createArtifactPresentationHandler({
-                threadId: thread.threadId,
-                workspacePath: thread.workspacePath
-              })
+      observation: {
+        trace: {
+          createRunConfig: ({ runId, source, threadId }) =>
+            buildAgentRunTraceConfig({
+              modelId: runFacts.get(runId).modelId,
+              permissionMode: runFacts.get(runId).permissionMode,
+              runId,
+              source,
+              threadId
             }),
-            backend: capabilities.workspaceContext.backend,
-            desktopAutomationTools: {
-              clickScreenPoint: async (toolInput) => {
-                const request = parseClickScreenPointRequest(toolInput)
-                return clickScreenPoint(request, desktopAutomationRunner)
+          recordEvent: async ({ event, runId, threadId }) => {
+            getDevtoolsNetworkRecorder().append({
+              channel: event.type,
+              metadata: {
+                runId,
+                threadId
               },
-              findAxElements: async (toolInput) => {
-                const request = parseFindAxElementsRequest(toolInput)
-                return findAxElements(request, desktopAutomationRunner)
-              },
-              openApplication: async (toolInput) => {
-                const request = parseOpenApplicationRequest(toolInput)
-                return openApplication(request, desktopAutomationRunner)
-              },
-              openDesktopRoute: async (toolInput) => {
-                const request = parseOpenDesktopRouteRequest(toolInput)
-                return openDesktopRoute(request, desktopAutomationRunner)
-              },
-              pressAxElement: async (toolInput) => {
-                const request = parsePressAxElementRequest(toolInput)
-                return pressAxElement(request, desktopAutomationRunner)
-              }
-            },
-            skillSources,
-            webTools: {
-              searchWeb
-            }
+              payload: event.payload,
+              source: "agent-trace",
+              status: "sent"
+            })
+            await appendAgentEventSafely({
+              payload: event.payload,
+              runId,
+              threadId,
+              type: event.type
+            })
           }
-        })
+        }
       },
-      {
-        kind: "tools",
-        name: "extension-ai-tools",
-        contribute: () => ({
-          tools: {
-            extensionAiTools: (run) =>
-              capabilities.extensionAi.runtime.createToolsOptions({
-                runId: run.runId,
-                threadId: run.threadId,
-                workspacePath: run.workspacePath
-              })
-          }
-        })
-      },
-      {
-        kind: "context",
-        name: "workspace-context",
-        contribute: () => ({
-          context: {
-            contextRetrieval: (run) =>
-              createAgentContextInclusionToolHandlers({
-                threadId: run.threadId
-              }),
-            guardrail: () => ({
-              applyMetadata: applyGuardrailMetadata,
-              provider: guardrailProvider
+      compaction: {
+        summarization: (scope) =>
+          createRuntimeCompactionSummarizationController({
+            backend: new LocalSandbox({
+              rootDir: scope.workspacePath,
+              virtualMode: false,
+              timeout: 120_000,
+              maxOutputBytes: 100_000
             }),
-            systemPrompt: buildJingleSystemPrompt(workspacePath),
-            workspaceFileContext: workspaceService
-              ? (thread) => ({
-                  resolveContext: createWorkspaceFileContextResolver({
-                    threadId: thread.threadId,
-                    workspaceService
-                  })
-                })
-              : undefined
-          }
-        })
-      },
-      ...(memoryPort
-        ? [
-            {
-              kind: "context",
-              name: "memory",
-              contribute: () => ({ context: { memory: memoryPort } })
-            } satisfies JingleRuntimeCapability
-          ]
-        : []),
-      {
-        kind: "control",
-        name: "approval",
-        contribute: () => ({
-          control: {
-            approvalController: {
-              allowedDecisions: getDefaultHitlAllowedDecisions(),
-              policyRuntime: createToolPermissionRuntime({
-                extensionToolPolicyProvider: capabilities.extensionAi.runtime.approvalPolicyProvider,
-                permissionMode
-              })
-            },
-            pauseController: createRuntimePauseController()
-          }
-        })
-      },
-      {
-        kind: "control",
-        name: "run-lifecycle",
-        contribute: () => ({
-          control: {
-            runLifecycleController: createRuntimeRunLifecycleController({
-              jingleMemoryService
+            model: getChatModelInstance({
+              modelId: readRunModelId(scope, runFacts),
+              parallelToolCalls: false
             })
-          }
-        })
+          })
       },
-      {
-        kind: "observation",
-        name: "observation",
-        contribute: () => ({
-          observation: {
-            trace: {
-              createRunConfig: ({ runId, source, threadId }) =>
-                buildAgentRunTraceConfig({
-                  modelId: capabilities.model.modelId,
-                  permissionMode,
-                  runId,
-                  source,
-                  threadId
-                }),
-              createRuntimeConfig: () =>
-                buildAgentRuntimeTraceConfig({
-                  aiCapabilities: capabilities.extensionAi.runtime.session.getAiCapabilities(),
-                  modelId: capabilities.model.modelId,
-                  permissionMode
-                }),
-              recordEvent: async ({ event, runId, threadId }) => {
-                getDevtoolsNetworkRecorder().append({
-                  channel: event.type,
-                  metadata: {
-                    runId,
-                    threadId
-                  },
-                  payload: event.payload,
-                  source: "agent-trace",
-                  status: "sent"
-                })
-                await appendAgentEventSafely({
-                  payload: event.payload,
-                  runId,
-                  threadId,
-                  type: event.type
-                })
-              }
-            }
-          }
-        })
-      },
-      {
-        kind: "compaction",
-        name: "compaction",
-        contribute: () => ({
-          compaction: {
-            summarization: createRuntimeCompactionSummarizationController({
-              backend: capabilities.workspaceContext.backend,
-              model: capabilities.model.model
-            })
-          }
-        })
-      },
-      {
-        kind: "prompt",
-        name: "prompt",
-        contribute: () => ({
-          prompt: {
-            executeToolDescription: buildJingleExecuteToolDescription(workspacePath),
-            filesystemSystemPrompt: buildJingleFilesystemSystemPrompt(workspacePath),
-            titleGenerator: createJingleTitleGenerator({
-              createModel: createThreadTitleModel,
-              onError: (error) => {
-                console.warn("[TitleMiddleware] Failed to generate title.", error)
-              },
-              timeoutMs: TITLE_GENERATION_TIMEOUT_MS
-            })
-          }
+      prompt: {
+        executeToolDescription: (thread) => buildJingleExecuteToolDescription(thread.workspacePath),
+        filesystemSystemPrompt: (thread) => buildJingleFilesystemSystemPrompt(thread.workspacePath),
+        titleGenerator: createJingleTitleGenerator({
+          createModel: createThreadTitleModel,
+          onError: (error) => {
+            console.warn("[TitleMiddleware] Failed to generate title.", error)
+          },
+          timeoutMs: TITLE_GENERATION_TIMEOUT_MS
         })
       }
-    ] satisfies JingleRuntimeCapability[]
+    }
+  }
+}
+
+function readRunModelId(
+  scope: { modelId?: string; runId: string },
+  runFacts: AgentRuntimeRunFactRegistry
+): string | undefined {
+  if (scope.modelId) {
+    return scope.modelId
+  }
+
+  return runFacts.get(scope.runId).modelId
+}
+
+function createAgentRuntimeRunFactRegistry(): AgentRuntimeRunFactRegistry {
+  const factsByRunId = new Map<string, AgentRuntimeRunFacts>()
+
+  return {
+    delete(runId) {
+      factsByRunId.delete(runId)
+    },
+    get(runId) {
+      const facts = factsByRunId.get(runId)
+      if (!facts) {
+        throw new Error(`[Runtime] Missing run facts for run "${runId}".`)
+      }
+      return facts
+    },
+    set(runId, facts) {
+      factsByRunId.set(runId, facts)
+    }
   }
 }
 

@@ -14,7 +14,7 @@ import type {
   RuntimeMemoryConfig,
   RuntimeSuggestPersonalMemoryContext,
   RuntimeSuggestPersonalMemoryInput
-} from "./runtime-contract"
+} from "./runtime-context"
 
 export const JINGLE_SUGGEST_PERSONAL_MEMORY_TOOL_NAME = "suggest_personal_memory"
 

@@ -29,7 +29,7 @@ export const RUNTIME_TARGET_NODE_DESCRIPTORS = {
   ContextActivationNode: {
     boundary: "context",
     cannot: ["compact history", "commit product run status"],
-    consumes: ["RuntimeOperation", "RuntimeModule.context", "RuntimeState.contextInclusions"],
+    consumes: ["RuntimeOperation", "RuntimeCapabilities.context", "RuntimeState.contextInclusions"],
     engineStatus: "wired",
     kind: "ContextActivationNode",
     privateWrites: ["activatedContext"],
@@ -49,7 +49,7 @@ export const RUNTIME_TARGET_NODE_DESCRIPTORS = {
   ModelStepNode: {
     boundary: "model",
     cannot: ["execute tools", "write external durable stores directly"],
-    consumes: ["workingSet", "RuntimeModule.model"],
+    consumes: ["workingSet", "RuntimeCapabilities.model"],
     engineStatus: "runtime-kernel-with-middleware-compat",
     kind: "ModelStepNode",
     privateWrites: ["modelOutput"],
@@ -59,7 +59,7 @@ export const RUNTIME_TARGET_NODE_DESCRIPTORS = {
   PermissionGateNode: {
     boundary: "permission",
     cannot: ["let UI create approval facts", "execute tools"],
-    consumes: ["modelOutput.toolCalls", "RuntimeModule.approval"],
+    consumes: ["modelOutput.toolCalls", "RuntimeCapabilities.control.approval"],
     engineStatus: "legacy-approval-handoff",
     kind: "PermissionGateNode",
     privateWrites: ["permissionDecision"],
@@ -70,7 +70,7 @@ export const RUNTIME_TARGET_NODE_DESCRIPTORS = {
   ToolStepNode: {
     boundary: "tool",
     cannot: ["hide infrastructure errors", "call model"],
-    consumes: ["toolCalls", "RuntimeModule.tools"],
+    consumes: ["toolCalls", "RuntimeCapabilities.tools"],
     engineStatus: "runtime-kernel-with-middleware-compat",
     kind: "ToolStepNode",
     privateWrites: ["toolUpdate"],
@@ -100,7 +100,7 @@ export const RUNTIME_TARGET_NODE_DESCRIPTORS = {
   CompactSummarizeNode: {
     boundary: "compact",
     cannot: ["commit product facts", "project UI completion state"],
-    consumes: ["compactPlan", "RuntimeModule.compaction"],
+    consumes: ["compactPlan", "RuntimeCapabilities.compaction"],
     engineStatus: "wired",
     kind: "CompactSummarizeNode",
     privateWrites: ["compactUpdate"],
