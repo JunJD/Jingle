@@ -15,6 +15,8 @@ export type {
   JingleAgentFollowUpMode,
   JingleAgentFollowUpQueueItem,
   JingleAgentFollowUpQueueSummary,
+  JingleAgentSteerFailureReason,
+  JingleAgentSteerResult,
   JingleAgentRunValidationInput,
   JingleAgentRunValidator
 } from "./commands"

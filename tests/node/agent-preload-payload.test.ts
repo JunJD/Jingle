@@ -30,11 +30,15 @@ test("agent invoke IPC payload omits optional undefined fields", () => {
     threadId: "thread-1"
   })
   assert.equal(Object.hasOwn(payload, "followUpAction"), false)
+  assert.equal(Object.hasOwn(payload, "expectedRunId"), false)
+  assert.equal(Object.hasOwn(payload, "expectedTurnId"), false)
 })
 
-test("agent invoke IPC payload preserves follow-up steering", () => {
+test("agent invoke IPC payload preserves follow-up steering identity", () => {
   assert.deepEqual(
     buildAgentInvokeIpcPayload({
+      expectedRunId: "run-1",
+      expectedTurnId: "turn-1",
       followUpAction: "steer",
       message: {
         content: "continue",
@@ -43,6 +47,8 @@ test("agent invoke IPC payload preserves follow-up steering", () => {
       threadId: "thread-1"
     }),
     {
+      expectedRunId: "run-1",
+      expectedTurnId: "turn-1",
       followUpAction: "steer",
       message: {
         content: "continue",

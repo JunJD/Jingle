@@ -270,6 +270,7 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
     (state) => state?.agent.pendingApproval ?? null
   )
   const followUpQueue = useThreadSelector(threadId, (state) => state?.agent.followUpQueue ?? null)
+  const activeRun = useThreadSelector(threadId, (state) => state?.agent.activeRun ?? null)
   const composerAvailabilityInput = useMemo(
     () => ({
       refs: assistantSelectionRefs,
@@ -326,9 +327,12 @@ export function ChatContainer({ threadId }: ChatContainerProps): React.JSX.Eleme
   )
   const steerQueuedFollowUp = useCallback(
     async (item: JingleAgentFollowUpQueueItem): Promise<void> => {
-      await threadControl.agent.steerFollowUp(item.requestId)
+      await threadControl.agent.steerFollowUp(
+        item.requestId,
+        activeRun ? { runId: activeRun.runId, turnId: activeRun.turnId } : undefined
+      )
     },
-    [threadControl]
+    [activeRun, threadControl]
   )
   const retry = useCallback(
     async (retryInput: ComposerMessageInput): Promise<void> => {

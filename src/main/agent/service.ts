@@ -31,6 +31,7 @@ import {
   type AppliedAgentSteer
 } from "@jingle/langchain-agent-harness/transitional"
 import type { RuntimeThread } from "@jingle/langchain-agent-harness"
+import type { JingleAgentSteerResult } from "@jingle/agent-client"
 import { runtimeUsesCheckpointPersistence } from "../checkpointer/runtime-checkpointer-manager"
 import type {
   JingleInvokeRunLifecycleInput,
@@ -102,16 +103,14 @@ type JingleRuntimeThread = RuntimeThread<
 type AgentRunSteerContent = AgentInvokeMessage["content"]
 type AgentRunSteerRefs = NonNullable<AgentInvokeMessage["refs"]>
 type JingleAppliedAgentSteer = AppliedAgentSteer<AgentRunSteerContent, AgentRunSteerRefs>
-type JingleAgentRunSteeringBuffer = AgentRunSteeringBuffer<
-  AgentRunSteerContent,
-  AgentRunSteerRefs
->
+type JingleAgentRunSteeringBuffer = AgentRunSteeringBuffer<AgentRunSteerContent, AgentRunSteerRefs>
 
 interface ActiveAgentServiceRun {
   controller: AbortController
   runId: string | null
   thread: JingleRuntimeThread | null
   steeringBuffer: JingleAgentRunSteeringBuffer
+  turnId: string | null
 }
 
 interface AgentRunOptions {
@@ -119,6 +118,12 @@ interface AgentRunOptions {
   getMessageIdsToRemove?: () => Promise<string[]>
   onRunAccepted?: () => Promise<void> | void
   onSteersApplied?: (steers: JingleAppliedAgentSteer[]) => Promise<void> | void
+}
+
+interface AgentSteerActiveRunOptions {
+  acceptedAt?: Date
+  expectedRunId?: string | null
+  expectedTurnId?: string | null
 }
 
 function mapDecisionToHitlStatus(decision: HITLDecision["type"]): "approved" | "rejected" {
@@ -399,7 +404,8 @@ export class AgentService {
       thread: null,
       steeringBuffer: createAgentRunSteeringBuffer({
         onSteersApplied: options?.onSteersApplied
-      })
+      }),
+      turnId: message.id
     }
     this.activeRuns.set(threadId, activeRun)
 
@@ -676,7 +682,8 @@ export class AgentService {
       thread: null,
       steeringBuffer: createAgentRunSteeringBuffer({
         onSteersApplied: options?.onSteersApplied
-      })
+      }),
+      turnId: null
     }
     this.activeRuns.set(threadId, activeRun)
     const decisionType = decision.type
@@ -725,9 +732,7 @@ export class AgentService {
         throw new Error(`[Agent] Missing resume source run "${resumeTarget.runId}".`)
       }
       const permissionMode = readRunPermissionModeSnapshot(sourceRun)
-      const resumedJingleMemoryContextSnapshot = readJingleMemoryContextSnapshot(
-        sourceRun.metadata
-      )
+      const resumedJingleMemoryContextSnapshot = readJingleMemoryContextSnapshot(sourceRun.metadata)
       const jingleMemoryContextPack = this.jingleMemoryService.rebuildContextPackFromSnapshot(
         resumedJingleMemoryContextSnapshot
       )
@@ -974,19 +979,43 @@ export class AgentService {
     return true
   }
 
-  async steerActiveRun(
+  steerActiveRun(
     threadId: string,
     message: AgentInvokeParams["message"],
-    options: { acceptedAt?: Date; onBeforeAccept?: () => Promise<void> | void } = {}
-  ): Promise<ReturnType<JingleAgentRunSteeringBuffer["accept"]> | null> {
+    options: AgentSteerActiveRunOptions = {}
+  ): JingleAgentSteerResult {
     const activeRun = this.activeRuns.get(threadId)
     if (!activeRun) {
-      return null
+      return { reason: "no_active_run", type: "rejected" }
     }
 
-    await options.onBeforeAccept?.()
+    if (
+      options.expectedTurnId &&
+      activeRun.turnId !== null &&
+      activeRun.turnId !== options.expectedTurnId
+    ) {
+      return {
+        reason: "active_turn_mismatch",
+        runId: activeRun.runId,
+        turnId: activeRun.turnId,
+        type: "rejected"
+      }
+    }
 
-    return activeRun.steeringBuffer.accept({
+    if (
+      options.expectedRunId &&
+      activeRun.runId !== null &&
+      activeRun.runId !== options.expectedRunId
+    ) {
+      return {
+        reason: "active_run_mismatch",
+        runId: activeRun.runId,
+        turnId: activeRun.turnId,
+        type: "rejected"
+      }
+    }
+
+    const accepted = activeRun.steeringBuffer.accept({
       acceptedAt: options.acceptedAt,
       message: {
         content: message.content,
@@ -996,5 +1025,6 @@ export class AgentService {
       },
       runId: activeRun.runId
     })
+    return { runId: accepted.runId, turnId: activeRun.turnId, type: "accepted" }
   }
 }

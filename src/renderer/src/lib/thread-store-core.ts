@@ -7,6 +7,7 @@ import type {
 import {
   createJingleThreadStateStore,
   type JingleAgentFollowUpQueueItem,
+  type JingleAgentSteerResult,
   type JingleTokenUsage
 } from "@jingle/agent-client"
 import type { ComposerMessageInput } from "@shared/message-content"
@@ -78,7 +79,10 @@ export interface ThreadAgentControl {
   enqueueFollowUp: (messageInput: ComposerMessageInput) => Promise<JingleAgentFollowUpQueueItem>
   removeFollowUp: (requestId: string) => Promise<void>
   restoreFollowUp: (item: JingleAgentFollowUpQueueItem) => Promise<void>
-  steerFollowUp: (requestId: string) => Promise<{ ok: boolean }>
+  steerFollowUp: (
+    requestId: string,
+    expected?: { runId?: string | null; turnId?: string | null }
+  ) => Promise<JingleAgentSteerResult>
   takeFollowUp: (requestId: string) => Promise<JingleAgentFollowUpQueueItem | null>
 }
 
@@ -321,8 +325,13 @@ export function createThreadStore(): ThreadStore {
       restoreFollowUp: (item) => {
         return window.api.agent.restoreFollowUp(threadId, item)
       },
-      steerFollowUp: (requestId) => {
-        return window.api.agent.steerFollowUp(threadId, requestId)
+      steerFollowUp: (requestId, expected) => {
+        return window.api.agent.steerFollowUp(
+          threadId,
+          requestId,
+          expected?.runId,
+          expected?.turnId
+        )
       },
       takeFollowUp: (requestId) => {
         return window.api.agent.takeFollowUp(threadId, requestId)

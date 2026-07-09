@@ -2,6 +2,7 @@ import type { AgentThreadEvent } from "@shared/agent-thread-contract"
 import type {
   JingleAgentFollowUpAction,
   JingleAgentFollowUpQueueItem,
+  JingleAgentSteerResult,
   JingleAgentRuntimeReplayOptions,
   JingleAgentRuntimeSubscription,
   JingleRuntimeEventBatch
@@ -28,17 +29,21 @@ export const agentApi = {
     modelId?: string,
     permissionMode?: PermissionModeName,
     temporaryMode?: boolean,
-    followUpAction?: JingleAgentFollowUpAction
+    followUpAction?: JingleAgentFollowUpAction,
+    expectedRunId?: string | null,
+    expectedTurnId?: string | null
   ): void => {
     ipcRenderer.send(
       "agent:invoke",
       buildAgentInvokeIpcPayload({
+        expectedRunId,
         threadId,
         message,
         modelId,
         permissionMode,
         temporaryMode,
-        followUpAction
+        followUpAction,
+        expectedTurnId
       })
     )
   },
@@ -88,8 +93,19 @@ export const agentApi = {
   ): Promise<JingleAgentFollowUpQueueItem | null> => {
     return invokeIpc("agent:takeFollowUp", { requestId, threadId })
   },
-  steerFollowUp: (threadId: string, requestId: string): Promise<{ ok: boolean }> => {
-    return invokeIpc("agent:steerFollowUp", { requestId, threadId })
+  steerFollowUp: (
+    threadId: string,
+    requestId: string,
+    expectedRunId?: string | null,
+    expectedTurnId?: string | null
+  ): Promise<JingleAgentSteerResult> => {
+    const payload = {
+      ...(expectedRunId !== undefined ? { expectedRunId } : {}),
+      ...(expectedTurnId !== undefined ? { expectedTurnId } : {}),
+      requestId,
+      threadId
+    }
+    return invokeIpc("agent:steerFollowUp", payload)
   },
   connectThreadEvents: (
     threadId: string,

@@ -78,6 +78,8 @@ const agentThreadEventSubscriptionSurfaceSchema = z.enum(["launcher", "pinned-ai
 
 export const agentInvokeParamsSchema = z
   .object({
+    expectedRunId: optionalNormalizedTrimmedStringSchema.nullable().optional(),
+    expectedTurnId: optionalNormalizedTrimmedStringSchema.nullable().optional(),
     threadId: nonEmptyTrimmedStringSchema,
     message: z
       .object({
@@ -153,6 +155,15 @@ export const agentFollowUpQueueRequestParamsSchema = z
   })
   .strict()
 
+export const agentSteerFollowUpParamsSchema = z
+  .object({
+    expectedRunId: optionalNormalizedTrimmedStringSchema.nullable().optional(),
+    expectedTurnId: optionalNormalizedTrimmedStringSchema.nullable().optional(),
+    requestId: nonEmptyTrimmedStringSchema,
+    threadId: nonEmptyTrimmedStringSchema
+  })
+  .strict()
+
 export const agentFollowUpQueueItemParamsSchema = z
   .object({
     item: followUpQueueItemSchema,
@@ -204,6 +215,10 @@ export function parseAgentFollowUpQueueRequestParams(
   value: unknown
 ): AgentFollowUpQueueRequestParams {
   return parseIpcPayloadWithSchema(channel, agentFollowUpQueueRequestParamsSchema, value)
+}
+
+export function parseAgentSteerFollowUpParams(value: unknown): AgentFollowUpQueueRequestParams {
+  return parseIpcPayloadWithSchema("agent:steerFollowUp", agentSteerFollowUpParamsSchema, value)
 }
 
 export function parseAgentFollowUpQueueItemParams(

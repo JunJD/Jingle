@@ -152,9 +152,21 @@ function installAgentQueueApiStub(): {
           restoreFollowUp: async (threadId: string, item: unknown) => {
             calls.push({ input: { item, threadId }, type: "restore" })
           },
-          steerFollowUp: async (threadId: string, requestId: string) => {
-            calls.push({ input: { requestId, threadId }, type: "steer" })
-            return { ok: true }
+          steerFollowUp: async (
+            threadId: string,
+            requestId: string,
+            expectedRunId?: string | null,
+            expectedTurnId?: string | null
+          ) => {
+            calls.push({
+              input: { expectedRunId, expectedTurnId, requestId, threadId },
+              type: "steer"
+            })
+            return {
+              runId: expectedRunId ?? null,
+              turnId: expectedTurnId ?? null,
+              type: "accepted"
+            }
           },
           takeFollowUp: async (threadId: string, requestId: string) => {
             calls.push({ input: { requestId, threadId }, type: "take" })
@@ -225,7 +237,10 @@ test("thread agent control delegates follow-up queue edits to main runtime owner
   })
   const taken = await control.takeFollowUp(first.requestId)
   await control.restoreFollowUp(first)
-  const steered = await control.steerFollowUp(first.requestId)
+  const steered = await control.steerFollowUp(first.requestId, {
+    runId: "run-1",
+    turnId: "turn-1"
+  })
   await control.removeFollowUp(first.requestId)
 
   assert.deepEqual(taken, {
@@ -236,7 +251,7 @@ test("thread agent control delegates follow-up queue edits to main runtime owner
     requestId: "request-1",
     text: "first follow-up"
   })
-  assert.deepEqual(steered, { ok: true })
+  assert.deepEqual(steered, { runId: "run-1", turnId: "turn-1", type: "accepted" })
   assert.equal(store.getThreadState("thread-a"), null)
   assert.deepEqual(calls, [
     {
@@ -265,6 +280,8 @@ test("thread agent control delegates follow-up queue edits to main runtime owner
     },
     {
       input: {
+        expectedRunId: "run-1",
+        expectedTurnId: "turn-1",
         requestId: "request-1",
         threadId: "thread-a"
       },

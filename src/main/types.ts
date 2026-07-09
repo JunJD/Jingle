@@ -41,12 +41,14 @@ export type ThreadStatus = "idle" | "busy" | "interrupted" | "error"
 
 // Agent IPC
 export interface AgentInvokeParams {
+  expectedRunId?: string | null
+  expectedTurnId?: string | null
+  followUpAction?: JingleAgentFollowUpAction
   threadId: string
   message: AgentInvokeMessage
   modelId?: string
   permissionMode?: PermissionModeName
   temporaryMode?: boolean
-  followUpAction?: JingleAgentFollowUpAction
 }
 
 export interface AgentEditLastUserMessageAndInvokeParams extends AgentInvokeParams {}
@@ -73,6 +75,8 @@ export interface AgentFollowUpQueueItemParams {
 }
 
 export interface AgentFollowUpQueueRequestParams {
+  expectedRunId?: string | null
+  expectedTurnId?: string | null
   requestId: string
   threadId: string
 }

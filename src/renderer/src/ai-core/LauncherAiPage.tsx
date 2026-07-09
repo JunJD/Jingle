@@ -252,6 +252,7 @@ export function LauncherAiPage(): React.JSX.Element {
     (state) => state?.agent.pendingApproval ?? null
   )
   const followUpQueue = useThreadSelector(threadId, (state) => state?.agent.followUpQueue ?? null)
+  const activeRun = useThreadSelector(threadId, (state) => state?.agent.activeRun ?? null)
   const currentModelId =
     useThreadSelector(threadId, (state) => state?.agent.currentModel ?? null) ??
     draftTarget?.modelId ??
@@ -564,9 +565,12 @@ export function LauncherAiPage(): React.JSX.Element {
         return
       }
 
-      await threadControl.agent.steerFollowUp(item.requestId)
+      await threadControl.agent.steerFollowUp(
+        item.requestId,
+        activeRun ? { runId: activeRun.runId, turnId: activeRun.turnId } : undefined
+      )
     },
-    [threadControl]
+    [activeRun, threadControl]
   )
   const submitApprovalRejectFeedback = useCallback((): void => {
     if (!pendingApproval) {

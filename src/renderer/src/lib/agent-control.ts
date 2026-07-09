@@ -192,7 +192,13 @@ export async function invokeAgentThread(input: InvokeAgentThreadInput): Promise<
       commandState.currentModel,
       commandState.permissionMode,
       input.temporaryMode ?? false,
-      followUpPlan.action
+      followUpPlan.action,
+      followUpPlan.action === "steer" && commandState.activeRun
+        ? commandState.activeRun.runId
+        : undefined,
+      followUpPlan.action === "steer" && commandState.activeRun
+        ? commandState.activeRun.turnId
+        : undefined
     )
 
     return true

@@ -100,6 +100,8 @@ function installWindowApiStub(input?: {
     threadId: string
   }> = []
   const invoked: Array<{
+    expectedRunId?: string | null
+    expectedTurnId?: string | null
     followUpAction?: string
     message: unknown
     modelId: string
@@ -144,9 +146,13 @@ function installWindowApiStub(input?: {
             modelId: string,
             permissionMode: string,
             temporaryMode: boolean,
-            followUpAction?: string
+            followUpAction?: string,
+            expectedRunId?: string | null,
+            expectedTurnId?: string | null
           ) => {
             invoked.push({
+              ...(expectedRunId !== undefined ? { expectedRunId } : {}),
+              ...(expectedTurnId !== undefined ? { expectedTurnId } : {}),
               ...(followUpAction ? { followUpAction } : {}),
               message,
               modelId,
@@ -761,6 +767,8 @@ test("invokeAgentThread sends running follow-ups with the configured follow-up a
   assert.equal(didInvoke, true)
   assert.deepEqual(invoked, [
     {
+      expectedRunId: "run-a",
+      expectedTurnId: "turn-a",
       followUpAction: "steer",
       message: {
         content: "hello",

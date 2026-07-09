@@ -6,7 +6,8 @@ import {
   parseAgentFollowUpQueueMessageParams,
   parseAgentFollowUpQueueRequestParams,
   parseAgentInvokeParams,
-  parseAgentResumeParams
+  parseAgentResumeParams,
+  parseAgentSteerFollowUpParams
 } from "../../src/main/agent/controller-schema"
 import { IpcSchemaValidationError } from "../../src/main/ipc/schema"
 
@@ -57,10 +58,14 @@ test("parseAgentInvokeParams trims routing identifiers and preserves message con
     },
     modelId: "  gpt-5  ",
     permissionMode: "auto",
+    expectedRunId: "  run-1  ",
+    expectedTurnId: "  turn-1  ",
     followUpAction: "steer"
   })
 
   assert.deepEqual(parsed, {
+    expectedRunId: "run-1",
+    expectedTurnId: "turn-1",
     threadId: "thread-1",
     message: {
       id: "message-1",
@@ -186,6 +191,36 @@ test("parseAgentFollowUpQueue params normalize queue command payloads", () => {
       threadId: " thread-1 "
     }),
     {
+      requestId: "request-1",
+      threadId: "thread-1"
+    }
+  )
+
+  assert.deepEqual(
+    parseAgentSteerFollowUpParams({
+      expectedRunId: " run-1 ",
+      expectedTurnId: " turn-1 ",
+      requestId: " request-1 ",
+      threadId: " thread-1 "
+    }),
+    {
+      expectedRunId: "run-1",
+      expectedTurnId: "turn-1",
+      requestId: "request-1",
+      threadId: "thread-1"
+    }
+  )
+
+  assert.deepEqual(
+    parseAgentSteerFollowUpParams({
+      expectedRunId: null,
+      expectedTurnId: null,
+      requestId: " request-1 ",
+      threadId: " thread-1 "
+    }),
+    {
+      expectedRunId: null,
+      expectedTurnId: null,
       requestId: "request-1",
       threadId: "thread-1"
     }

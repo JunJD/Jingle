@@ -2,6 +2,8 @@ import { type IpcMain, type WebContents } from "electron"
 import {
   buildJingleAgentCommandEnvelope,
   buildJingleAgentCommandMessage,
+  type JingleAgentSteerFailureReason,
+  type JingleAgentSteerResult,
   type JingleRuntimeEventBatch
 } from "@jingle/agent-client"
 import type {
@@ -18,7 +20,8 @@ import {
   parseAgentFollowUpQueueMessageParams,
   parseAgentFollowUpQueueRequestParams,
   parseAgentInvokeParams,
-  parseAgentResumeParams
+  parseAgentResumeParams,
+  parseAgentSteerFollowUpParams
 } from "./controller-schema"
 import type {
   AgentEditLastUserMessageAndInvokeParams,
@@ -111,8 +114,11 @@ export class AgentController {
     })
 
     registerIpcHandle(ipcMain, "agent:steerFollowUp", async (_event, rawParams: unknown) => {
-      const params = parseAgentFollowUpQueueRequestParams("agent:steerFollowUp", rawParams)
-      return this.handleSteerFollowUp(params.threadId, params.requestId)
+      const params = parseAgentSteerFollowUpParams(rawParams)
+      return this.handleSteerFollowUp(params.threadId, params.requestId, {
+        expectedRunId: params.expectedRunId,
+        expectedTurnId: params.expectedTurnId
+      })
     })
   }
 
@@ -192,27 +198,31 @@ export class AgentController {
   private async handleSteeringFollowUp(params: AgentInvokeParams): Promise<boolean> {
     if (params.followUpAction === "steer") {
       const acceptedAt = new Date()
-      const appliedSteer = await this.agentService.steerActiveRun(params.threadId, params.message, {
+      const steerResult = this.agentService.steerActiveRun(params.threadId, params.message, {
         acceptedAt,
-        onBeforeAccept: () => {
-          return this.agentThreadRunner.prepareSteeringMessage(
+        expectedRunId: params.expectedRunId,
+        expectedTurnId: params.expectedTurnId
+      })
+      if (steerResult.type === "accepted") {
+        await this.enqueueRuntimeProjection(params.threadId, () =>
+          this.agentThreadRunner.prepareSteeringMessage(
             params.threadId,
             params.message,
             acceptedAt
           )
-        }
-      })
-      if (appliedSteer) {
+        )
         return true
       }
 
-      const runtimeState = await this.agentThreadRunner.readThreadState(params.threadId)
-      if (runtimeState.activeRun?.status === "running") {
+      if (
+        steerResult.reason === "active_run_mismatch" ||
+        steerResult.reason === "active_turn_mismatch"
+      ) {
         await this.agentThreadRunner.handlePayload(params.threadId, {
           type: "error",
           ...buildIpcErrorEvent(
             "agent:invoke",
-            new Error("Agent run is not available for steering")
+            new Error(this.getSteerRejectedMessage(steerResult.reason))
           )
         })
         return true
@@ -236,18 +246,22 @@ export class AgentController {
     return true
   }
 
-  private async handleSteerFollowUp(threadId: string, requestId: string): Promise<{ ok: boolean }> {
-    const queued = await this.agentThreadRunner.takeFollowUp(threadId, requestId)
+  private async handleSteerFollowUp(
+    threadId: string,
+    requestId: string,
+    options: { expectedRunId?: string | null; expectedTurnId?: string | null } = {}
+  ): Promise<JingleAgentSteerResult> {
+    const runtimeState = await this.agentThreadRunner.readThreadState(threadId)
+    const queued = runtimeState.followUpQueue.items.find((item) => item.requestId === requestId)
     if (!queued) {
-      return { ok: false }
+      return { reason: "queue_item_not_found", type: "rejected" }
     }
 
     const commandEnvelope = buildJingleAgentCommandEnvelope({
       messageInput: queued.messageInput
     })
     if (!commandEnvelope) {
-      await this.agentThreadRunner.restoreFollowUp(threadId, queued)
-      return { ok: false }
+      return { reason: "invalid_message", type: "rejected" }
     }
 
     const message: AgentInvokeParams["message"] = buildJingleAgentCommandMessage({
@@ -255,28 +269,48 @@ export class AgentController {
       messageId: queued.requestId
     })
     const acceptedAt = new Date()
-    const appliedSteer = await this.agentService.steerActiveRun(threadId, message, {
+    const steerResult = this.agentService.steerActiveRun(threadId, message, {
       acceptedAt,
-      onBeforeAccept: () => {
-        return this.agentThreadRunner.prepareSteeringMessage(threadId, message, acceptedAt)
-      }
+      expectedRunId: options.expectedRunId,
+      expectedTurnId: options.expectedTurnId
     })
-    if (!appliedSteer) {
-      const runtimeState = await this.agentThreadRunner.readThreadState(threadId)
-      await this.agentThreadRunner.restoreFollowUp(threadId, queued)
-      if (runtimeState.activeRun?.status === "running") {
+    if (steerResult.type === "rejected") {
+      if (
+        steerResult.reason === "active_run_mismatch" ||
+        steerResult.reason === "active_turn_mismatch" ||
+        steerResult.reason === "invalid_message"
+      ) {
         await this.agentThreadRunner.handlePayload(threadId, {
           type: "error",
           ...buildIpcErrorEvent(
             "agent:steerFollowUp",
-            new Error("Agent run is not available for steering")
+            new Error(this.getSteerRejectedMessage(steerResult.reason))
           )
         })
       }
-      return { ok: false }
+      return steerResult
     }
 
-    return { ok: true }
+    await this.enqueueRuntimeProjection(threadId, () =>
+      this.agentThreadRunner.prepareSteeringMessage(threadId, message, acceptedAt)
+    )
+    await this.agentThreadRunner.removeFollowUp(threadId, requestId)
+    return steerResult
+  }
+
+  private getSteerRejectedMessage(reason: JingleAgentSteerFailureReason): string {
+    switch (reason) {
+      case "active_run_mismatch":
+        return "Agent run changed before the queued follow-up could steer it"
+      case "active_turn_mismatch":
+        return "Agent turn changed before the queued follow-up could steer it"
+      case "invalid_message":
+        return "Queued follow-up is empty and cannot steer the active run"
+      case "no_active_run":
+        return "Agent run is not available for steering"
+      case "queue_item_not_found":
+        return "Queued follow-up is no longer available"
+    }
   }
 
   private createStreamSink(threadId: string): AgentStreamSink {

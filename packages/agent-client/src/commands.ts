@@ -53,6 +53,26 @@ export interface JingleAgentFollowUpQueueSummary {
   nextRequestId: string | null
 }
 
+export type JingleAgentSteerFailureReason =
+  | "active_run_mismatch"
+  | "active_turn_mismatch"
+  | "invalid_message"
+  | "no_active_run"
+  | "queue_item_not_found"
+
+export type JingleAgentSteerResult =
+  | {
+      runId: string | null
+      turnId: string | null
+      type: "accepted"
+    }
+  | {
+      reason: JingleAgentSteerFailureReason
+      runId?: string | null
+      turnId?: string | null
+      type: "rejected"
+    }
+
 export function summarizeJingleAgentFollowUpQueue(
   items: readonly JingleAgentFollowUpQueueItem[]
 ): JingleAgentFollowUpQueueSummary {
@@ -112,8 +132,14 @@ export type JingleAgentResumeDecision = JingleAgentApprovalDecision & {
   tool_call_id: string
 }
 
+export interface JingleAgentCommandActiveRun {
+  runId?: string | null
+  status: string
+  turnId?: string | null
+}
+
 export interface JingleAgentCommandState<TPermissionMode = string> {
-  activeRun: { status: string } | null
+  activeRun: JingleAgentCommandActiveRun | null
   currentModel: string | null
   pendingApproval: JingleAgentPendingApprovalRef | null
   permissionMode: TPermissionMode

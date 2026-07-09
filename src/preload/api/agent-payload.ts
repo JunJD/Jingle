@@ -8,6 +8,8 @@ import type { PermissionModeName } from "@shared/permission-mode"
 import type { AgentThreadEventSubscriptionSurface } from "@shared/agent-thread-contract"
 
 export interface AgentInvokeIpcPayload {
+  readonly expectedRunId?: string | null
+  readonly expectedTurnId?: string | null
   readonly followUpAction?: JingleAgentFollowUpAction
   readonly message: AgentInvokeMessage
   readonly modelId?: string
@@ -43,6 +45,8 @@ function withOptionalProperty<TObject extends object, TKey extends string, TValu
 }
 
 export function buildAgentInvokeIpcPayload(input: {
+  readonly expectedRunId?: string | null
+  readonly expectedTurnId?: string | null
   readonly followUpAction?: JingleAgentFollowUpAction
   readonly message: AgentInvokeMessage
   readonly modelId?: string
@@ -69,7 +73,19 @@ export function buildAgentInvokeIpcPayload(input: {
     input.temporaryMode
   )
 
-  return withOptionalProperty(withTemporaryMode, "followUpAction", input.followUpAction)
+  const withFollowUpAction = withOptionalProperty(
+    withTemporaryMode,
+    "followUpAction",
+    input.followUpAction
+  )
+
+  const withExpectedRunId = withOptionalProperty(
+    withFollowUpAction,
+    "expectedRunId",
+    input.expectedRunId
+  )
+
+  return withOptionalProperty(withExpectedRunId, "expectedTurnId", input.expectedTurnId)
 }
 
 export function buildAgentResumeIpcPayload(input: {
