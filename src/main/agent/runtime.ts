@@ -135,7 +135,9 @@ function createBddHarnessThread(input: {
         messageCountBeforeCompaction: 0
       } satisfies RuntimeCompactResult
     }
-  const createOperation = async (operationInput: BddRunOperationInput): Promise<BddRunOperation> => ({
+  const createOperation = async (
+    operationInput: BddRunOperationInput
+  ): Promise<BddRunOperation> => ({
     compact: createSkippedCompaction(operationInput),
     streamInvoke: (streamInput, options) =>
       input.agent.stream(streamInput, { signal: options.signal }),
