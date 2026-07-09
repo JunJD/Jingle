@@ -951,9 +951,7 @@ function createAssistantProcessEntries(
   return entries.map((entry, index) => createAssistantProcessEntry(entry, startIndex + index))
 }
 
-function splitAssistantProcessEntries(
-  entries: readonly TurnAssistantEntry[]
-): {
+function splitAssistantProcessEntries(entries: readonly TurnAssistantEntry[]): {
   finalEntries: AssistantProcessRenderEntry[]
   processEntries: AssistantProcessRenderEntry[]
 } {
@@ -966,6 +964,15 @@ function splitAssistantProcessEntries(
     finalEntries: createAssistantProcessEntries(entries.slice(splitIndex), splitIndex),
     processEntries: createAssistantProcessEntries(entries.slice(0, splitIndex))
   }
+}
+
+function getAgentActivityEntries(
+  entries: readonly AssistantProcessRenderEntry[]
+): Array<Extract<AssistantProcessRenderEntry, { kind: "agent-activity" }>> {
+  return entries.filter(
+    (entry): entry is Extract<AssistantProcessRenderEntry, { kind: "agent-activity" }> =>
+      entry.kind === "agent-activity"
+  )
 }
 
 function renderAssistantProcessEntry(input: {
@@ -1034,15 +1041,46 @@ function renderAssistantProcessEntry(input: {
 
 function AssistantProcessFold(props: {
   children: React.ReactNode
+  entries: readonly AssistantProcessRenderEntry[]
+  pendingApproval?: HITLRequest | null
+  threadId: string
   turnElapsed: TurnElapsedProjection | null
+  toolExecutions: AgentToolExecutionsView
+  toolResults: Map<string, ToolResultInfo>
 }): React.JSX.Element {
-  const { children, turnElapsed } = props
+  const { children, entries, pendingApproval, threadId, turnElapsed, toolExecutions, toolResults } =
+    props
   const { copy } = useI18n()
   const title = getAssistantProcessFoldTitle({ copy, turnElapsed })
+  const summaryParts = useMemo(
+    () =>
+      projectAssistantProcessFoldSummary({
+        copy,
+        entries,
+        pendingApproval,
+        threadId,
+        toolExecutions,
+        toolResults
+      }),
+    [copy, entries, pendingApproval, threadId, toolExecutions, toolResults]
+  )
 
   return (
-    <AgentToolGroup defaultOpen={false}>
-      <AgentToolGroupTrigger className="leading-[var(--ow-line-chat)]" icon={null}>
+    <AgentToolGroup className="ow-assistant-process-fold" defaultOpen={false}>
+      <AgentToolGroupTrigger
+        className="leading-[var(--ow-line-chat)]"
+        detail={summaryParts.details.join(" · ")}
+        icon={null}
+        leadingAccessory={
+          <span
+            aria-label={copy.chat.turnProcessSteps(summaryParts.stepCount)}
+            className="inline-flex h-[18px] shrink-0 items-center rounded-[var(--ow-radius-sm)] border border-border/60 bg-background-secondary/42 px-[var(--ow-space-1-5)] text-[10px] font-medium tabular-nums"
+          >
+            {summaryParts.stepCount}
+          </span>
+        }
+        showLeadingToggle
+      >
         {title}
       </AgentToolGroupTrigger>
       <AgentToolGroupContent className="ow-agent-activity-group-content">
@@ -1050,6 +1088,45 @@ function AssistantProcessFold(props: {
       </AgentToolGroupContent>
     </AgentToolGroup>
   )
+}
+
+function projectAssistantProcessFoldSummary(input: {
+  copy: ReturnType<typeof useI18n>["copy"]
+  entries: readonly AssistantProcessRenderEntry[]
+  pendingApproval?: HITLRequest | null
+  threadId: string
+  toolExecutions: AgentToolExecutionsView
+  toolResults: Map<string, ToolResultInfo>
+}): {
+  details: string[]
+  stepCount: number
+} {
+  const { copy, entries, pendingApproval, threadId, toolExecutions, toolResults } = input
+  const agentActivityEntries = getAgentActivityEntries(entries)
+  const actionViews = agentActivityEntries.flatMap((entry) =>
+    entry.entry.items.map((item) =>
+      projectToolActivityView({
+        copy,
+        item,
+        pendingApproval,
+        threadId,
+        toolExecutions,
+        toolResults
+      })
+    )
+  )
+  const stepCount = actionViews.length
+  const canUseHeaderSummary = !actionViews.some(hasUnappliedFileMutationAction)
+  const activitySummary =
+    canUseHeaderSummary && actionViews.length > 0
+      ? projectAgentActivityHeaderSummary(copy, actionViews.map(toAgentActivitySummaryTool))
+      : null
+  const details = activitySummary?.detail ? [activitySummary.detail] : []
+
+  return {
+    details,
+    stepCount
+  }
 }
 
 function getAssistantProcessFoldTitle(input: {
@@ -1497,15 +1574,21 @@ export const MessageTurnView = memo(function MessageTurnView(props: {
   )
   const latestEntryIndex = assistantEntries.length - 1
   const shouldFoldProcess =
-    !isLatestTurn &&
-    !isStreaming &&
-    processEntries.some((item) => item.kind === "agent-activity")
+    !isLatestTurn && !isStreaming && processEntries.some((item) => item.kind === "agent-activity")
   const visibleEntries = shouldFoldProcess
     ? finalEntries
     : assistantEntries.map(createAssistantProcessEntry)
   const processFold =
     shouldFoldProcess && processEntries.length > 0 ? (
-      <AssistantProcessFold key="assistant-process-fold" turnElapsed={turnElapsed}>
+      <AssistantProcessFold
+        entries={processEntries}
+        key="assistant-process-fold"
+        pendingApproval={pendingApproval}
+        threadId={threadId}
+        turnElapsed={turnElapsed}
+        toolExecutions={toolExecutions}
+        toolResults={toolResults}
+      >
         {processEntries.map((item) =>
           renderAssistantProcessEntry({
             activeTurnStatus,

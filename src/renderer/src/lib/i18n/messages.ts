@@ -56,6 +56,7 @@ export interface AppCopy {
     toolActivitySearchedWeb: string
     toolActivityWebSearches: (count: number) => string
     turnProcessed: string
+    turnProcessSteps: (count: number) => string
     turnWorkedFor: (time: string) => string
     turnWorking: string
     turnWorkingFor: (time: string) => string
@@ -393,6 +394,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       toolActivitySearchedWeb: "已搜索网页",
       toolActivityWebSearches: (count) => `${count} 次`,
       turnProcessed: "已处理",
+      turnProcessSteps: (count) => `${count} 个步骤`,
       turnWorkedFor: (time) => `已处理 ${time}`,
       turnWorking: "处理中",
       turnWorkingFor: (time) => `处理中 ${time}`,
@@ -752,6 +754,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       toolActivitySearchedWeb: "Searched web",
       toolActivityWebSearches: (count) => `${count} time${count === 1 ? "" : "s"}`,
       turnProcessed: "Processed",
+      turnProcessSteps: (count) => `${count} step${count === 1 ? "" : "s"}`,
       turnWorkedFor: (time) => `Worked for ${time}`,
       turnWorking: "Working",
       turnWorkingFor: (time) => `Working for ${time}`,

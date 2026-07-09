@@ -1,6 +1,14 @@
 "use client"
 
-import { CheckCircle2, ChevronRight, ListTodo, Loader2, TriangleAlert, XCircle } from "lucide-react"
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ListTodo,
+  Loader2,
+  TriangleAlert,
+  XCircle
+} from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -291,7 +299,9 @@ export interface AgentToolGroupTriggerProps extends React.ComponentProps<
   active?: boolean
   detail?: React.ReactNode
   icon?: React.ReactNode
+  leadingAccessory?: React.ReactNode
   meta?: React.ReactNode
+  showLeadingToggle?: boolean
   showTrailingToggle?: boolean
 }
 
@@ -302,20 +312,40 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
     className,
     detail,
     icon = <ListTodo className="size-[var(--ow-icon-action)]" />,
+    leadingAccessory,
     meta,
+    showLeadingToggle = false,
     showTrailingToggle,
     ...rest
   } = props
   const hasLeadingIcon = icon !== null
-  const shouldShowTrailingToggle = showTrailingToggle ?? !hasLeadingIcon
+  const usesLeadingToggle = !hasLeadingIcon && showLeadingToggle
+  const shouldShowTrailingToggle = showTrailingToggle ?? (!hasLeadingIcon && !usesLeadingToggle)
+  const leadingToggle = (
+    <span className="relative inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
+      <ChevronRight className="ow-agent-tool-chevron absolute size-[var(--ow-icon-action)] opacity-45 group-hover:opacity-100 group-data-[state=open]:hidden" />
+      <ChevronDown className="ow-agent-tool-chevron absolute hidden size-[var(--ow-icon-action)] group-data-[state=open]:block" />
+    </span>
+  )
   const leadingIcon = hasLeadingIcon ? (
     <span className="relative inline-flex size-[var(--ow-icon-action)] shrink-0 items-center justify-center">
       <span className="transition-opacity group-hover:opacity-0 group-data-[state=open]:opacity-0">
         {icon}
       </span>
-      <ChevronRight className="ow-agent-tool-chevron absolute size-[var(--ow-icon-action)] opacity-0 group-hover:opacity-100 group-data-[state=open]:rotate-90 group-data-[state=open]:opacity-100" />
+      <ChevronRight className="ow-agent-tool-chevron absolute size-[var(--ow-icon-action)] opacity-0 group-hover:opacity-100 group-data-[state=open]:hidden" />
+      <ChevronDown className="ow-agent-tool-chevron absolute hidden size-[var(--ow-icon-action)] group-data-[state=open]:block" />
     </span>
+  ) : usesLeadingToggle ? (
+    leadingToggle
   ) : null
+  const label = leadingAccessory ? (
+    <span className="inline-flex min-w-0 max-w-full items-center gap-[var(--ow-gap-sm)]">
+      {leadingAccessory}
+      <span className="min-w-0 truncate">{children}</span>
+    </span>
+  ) : (
+    children
+  )
 
   return (
     <CollapsibleTrigger
@@ -333,12 +363,15 @@ export function AgentToolGroupTrigger(props: AgentToolGroupTriggerProps): React.
         detail={detail}
         detailClassName="ow-agent-tool-group-detail"
         icon={leadingIcon}
-        label={children}
+        label={label}
         labelClassName="ow-agent-tool-group-title block"
         meta={meta}
         trailing={
           shouldShowTrailingToggle ? (
-            <ChevronRight className="ow-agent-tool-chevron size-[var(--ow-icon-sm)] shrink-0 opacity-0 group-hover:opacity-100 group-data-[state=open]:rotate-90 group-data-[state=open]:opacity-100" />
+            <span className="relative inline-flex size-[var(--ow-icon-sm)] shrink-0 items-center justify-center">
+              <ChevronRight className="ow-agent-tool-chevron absolute size-[var(--ow-icon-sm)] opacity-45 group-hover:opacity-100 group-data-[state=open]:hidden" />
+              <ChevronDown className="ow-agent-tool-chevron absolute hidden size-[var(--ow-icon-sm)] group-data-[state=open]:block" />
+            </span>
           ) : null
         }
       />
