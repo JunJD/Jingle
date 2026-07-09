@@ -7,6 +7,7 @@ import {
 import { isPermissionModeName, THREAD_PERMISSION_MODE_METADATA_KEY } from "@shared/permission-mode"
 import { DEFAULT_MODELS } from "@shared/models"
 import { DEFAULT_PERMISSION_MODE } from "@shared/permission-mode"
+import { deriveThreadBootstrapState } from "@shared/agent-thread-bootstrap"
 import type { AgentThreadDataSnapshot } from "@shared/app-types"
 import type { IpcErrorPayload } from "@shared/ipc-error"
 import { projectMessages } from "./message-projection"
@@ -63,6 +64,10 @@ export function applyRuntimeSnapshotToThreadState(
   })
   const snapshotPolicy = snapshotApplication.policy
   const sourceState = snapshotApplication.state
+  const bootstrapState =
+    snapshotPolicy.canApplyRuntimeState && snapshot.thread.status === "interrupted"
+      ? deriveThreadBootstrapState(snapshot)
+      : null
   const messagesPage = snapshotPolicy.canApplyContent
     ? stabilizeJingleMessageList(state.agent.messagesPage, sourceState.messagesPage)
     : sourceState.messagesPage
@@ -79,23 +84,23 @@ export function applyRuntimeSnapshotToThreadState(
     : sourceState.contextInclusions
   const nextAgentState: ThreadState["agent"] = {
     ...state.agent,
-    activeRun: sourceState.activeRun,
+    activeRun: bootstrapState?.activeRun ?? sourceState.activeRun,
     artifacts,
     contextInclusions,
     currentModel: typeof metadata.model === "string" ? metadata.model : DEFAULT_MODELS.llm,
-    error: sourceState.error,
+    error: bootstrapState?.error ?? sourceState.error,
     forkState,
     hasMoreBefore: false,
     followUpQueue: sourceState.followUpQueue,
     messagesPage,
-    pendingApproval: sourceState.pendingApproval,
+    pendingApproval: bootstrapState?.pendingApproval ?? sourceState.pendingApproval,
     permissionMode: isPermissionModeName(permissionMode)
       ? permissionMode
       : DEFAULT_PERMISSION_MODE,
-    latestRunId: sourceState.latestRunId,
-    status: sourceState.status,
+    latestRunId: bootstrapState?.latestRunId ?? sourceState.latestRunId,
+    status: bootstrapState?.status ?? sourceState.status,
     threadId: snapshot.thread.thread_id,
-    todos: sourceState.todos,
+    todos: bootstrapState?.todos ?? sourceState.todos,
     tokenUsage: sourceState.tokenUsage,
     workspacePath: snapshot.runState.workspacePath
   }

@@ -126,8 +126,7 @@ export function resolveJingleSnapshotApplicationPolicy(
       currentMessages: input.current.messagesPage,
       snapshotMessages: input.snapshot.messages
     })
-  const isLiveSnapshot =
-    input.snapshot.status === "busy" || input.snapshot.status === "interrupted"
+  const isLiveSnapshot = input.snapshot.status === "busy"
   const canApplySnapshotFacts =
     !hasRuntimeRun && !wouldRollbackRuntimeMessages && !isLiveSnapshot
 

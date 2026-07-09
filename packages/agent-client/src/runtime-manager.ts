@@ -276,8 +276,7 @@ export function createJingleAgentRuntimeClient<
     if (
       wasStreaming ||
       isThreadStreaming(threadId) ||
-      threadStatus === "busy" ||
-      threadStatus === "interrupted"
+      threadStatus === "busy"
     ) {
       ports.applyThreadDataSnapshot(threadId, threadData)
       await replayThreadRuntimeEvents(threadId)

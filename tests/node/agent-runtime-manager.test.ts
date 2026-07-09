@@ -568,7 +568,7 @@ test("agent runtime manager replays events instead of applying busy snapshots", 
   )
 })
 
-test("agent runtime manager replays interrupted runtime facts instead of applying snapshots", async () => {
+test("agent runtime manager hydrates interrupted snapshots without replay", async () => {
   const pendingApproval = createPendingApproval()
   const contextInclusion = createContextInclusion()
   const snapshotApproval: HITLRequest = {
@@ -664,17 +664,17 @@ test("agent runtime manager replays interrupted runtime facts instead of applyin
   await manager.loadThreadData("thread-a")
 
   const state = getThreadState(store, "thread-a")
-  assert.deepEqual(replayedThreadIds, ["thread-a"])
+  assert.deepEqual(replayedThreadIds, [])
   assert.equal(state.agent.currentModel, "openai:gpt-4o")
   assert.equal(state.agent.workspacePath, "/tmp/interrupted")
-  assert.equal(state.agent.pendingApproval?.id, pendingApproval.id)
+  assert.equal(state.agent.pendingApproval?.id, snapshotApproval.id)
   assert.equal(state.agent.contextInclusions[0]?.id, contextInclusion.id)
   assert.equal(state.agent.activeRun?.status, "waiting_approval")
-  assert.equal(state.agent.activeRun?.assistantMessageId, "assistant-1")
-  assert.equal(state.agent.activeRun?.turnId, "user-1")
+  assert.equal(state.agent.activeRun?.assistantMessageId, "snapshot-assistant")
+  assert.equal(state.agent.activeRun?.turnId, "snapshot-user")
   assert.deepEqual(
     state.agent.messagesPage.map((message) => message.content),
-    ["Needs approval", ""]
+    ["Snapshot approval copy", ""]
   )
 })
 

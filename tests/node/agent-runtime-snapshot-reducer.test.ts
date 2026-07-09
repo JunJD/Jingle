@@ -237,7 +237,7 @@ test("agent runtime snapshot reducer applies only metadata from busy snapshots",
   assert.equal(next.agent.latestRunId, null)
 })
 
-test("agent runtime snapshot reducer does not produce interrupted runtime facts", () => {
+test("agent runtime snapshot reducer hydrates interrupted approval snapshots", () => {
   const state = createDefaultThreadState()
   const next = applyRuntimeSnapshotToThreadState(state, {
     thread: {
@@ -288,9 +288,16 @@ test("agent runtime snapshot reducer does not produce interrupted runtime facts"
 
   assert.equal(next.agent.currentModel, "openai:gpt-4o")
   assert.equal(next.agent.workspacePath, "/tmp/interrupted")
-  assert.equal(next.agent.activeRun, null)
-  assert.equal(next.agent.pendingApproval, null)
-  assert.equal(next.agent.latestRunId, null)
+  assert.equal(next.agent.activeRun?.status, "waiting_approval")
+  assert.equal(next.agent.activeRun?.assistantMessageId, "assistant-1")
+  assert.equal(next.agent.activeRun?.turnId, "user-1")
+  assert.equal(next.agent.pendingApproval?.id, "hitl:thread-1:run-1:tool-1")
+  assert.equal(next.agent.latestRunId, "run-1")
+  assert.deepEqual(
+    next.agent.messagesPage.map((message) => message.id),
+    ["user-1", "assistant-1"]
+  )
+  assert.equal(next.view.messageProjection.turns.length, 1)
   assert.deepEqual(next.agent.todos, [])
   assert.equal(next.agent.tokenUsage, null)
 })
