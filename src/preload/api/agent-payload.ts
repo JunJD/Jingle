@@ -44,6 +44,20 @@ function withOptionalProperty<TObject extends object, TKey extends string, TValu
   }
 }
 
+function assignOptionalProperties<TResult extends object>(
+  base: object,
+  optionals: ReadonlyArray<readonly [key: string, value: unknown]>
+): TResult {
+  const result: Record<string, unknown> = { ...base }
+  for (const [key, value] of optionals) {
+    if (value !== undefined) {
+      result[key] = value
+    }
+  }
+
+  return result as TResult
+}
+
 export function buildAgentInvokeIpcPayload(input: {
   readonly expectedRunId?: string | null
   readonly expectedTurnId?: string | null
@@ -54,38 +68,20 @@ export function buildAgentInvokeIpcPayload(input: {
   readonly temporaryMode?: boolean
   readonly threadId: string
 }): AgentInvokeIpcPayload {
-  const withModelId = withOptionalProperty(
+  return assignOptionalProperties<AgentInvokeIpcPayload>(
     {
       message: input.message,
       threadId: input.threadId
     },
-    "modelId",
-    input.modelId
+    [
+      ["modelId", input.modelId],
+      ["permissionMode", input.permissionMode],
+      ["temporaryMode", input.temporaryMode],
+      ["followUpAction", input.followUpAction],
+      ["expectedRunId", input.expectedRunId],
+      ["expectedTurnId", input.expectedTurnId]
+    ]
   )
-  const withPermissionMode = withOptionalProperty(
-    withModelId,
-    "permissionMode",
-    input.permissionMode
-  )
-  const withTemporaryMode = withOptionalProperty(
-    withPermissionMode,
-    "temporaryMode",
-    input.temporaryMode
-  )
-
-  const withFollowUpAction = withOptionalProperty(
-    withTemporaryMode,
-    "followUpAction",
-    input.followUpAction
-  )
-
-  const withExpectedRunId = withOptionalProperty(
-    withFollowUpAction,
-    "expectedRunId",
-    input.expectedRunId
-  )
-
-  return withOptionalProperty(withExpectedRunId, "expectedTurnId", input.expectedTurnId)
 }
 
 export function buildAgentResumeIpcPayload(input: {
