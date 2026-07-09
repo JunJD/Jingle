@@ -11,6 +11,7 @@ electronLanguages:
   - zh_TW
 files:
   - out/**
+  - prisma/migrations/**
   - package.json
   - resources/**
   - "!**/*.map"
