@@ -3,6 +3,7 @@ import type { ExtensionToolContext, ExtensionToolDefinition } from "@jingle/exte
 import {
   createGitHubIssue,
   dedupeIssueLikes,
+  getGitHubIssue,
   listGitHubLatestRepositories,
   listGitHubNotifications,
   listGitHubStarredRepositories,
@@ -74,6 +75,11 @@ const createIssueInputSchema = z.object({
   title: z.string().trim().min(1)
 })
 
+const getIssueInputSchema = z.object({
+  issueNumber: z.number().int().min(1),
+  repositoryFullName: repositoryFullNameSchema
+})
+
 type ListMyIssuesInput = z.infer<typeof listMyIssuesInputSchema>
 type ListMyPullRequestsInput = z.infer<typeof listMyPullRequestsInputSchema>
 type SearchGitHubInput = z.infer<typeof searchGitHubInputSchema>
@@ -82,6 +88,7 @@ type ListRepositoriesInput = z.infer<typeof listRepositoriesInputSchema>
 type ListNotificationsInput = z.infer<typeof listNotificationsInputSchema>
 type ListWorkflowRunsInput = z.infer<typeof listWorkflowRunsInputSchema>
 type CreateIssueInput = z.infer<typeof createIssueInputSchema>
+type GetIssueInput = z.infer<typeof getIssueInputSchema>
 
 type RecoverableGitHubToolResult = {
   code: "github_repository_unavailable" | "github_request_invalid"
@@ -402,6 +409,20 @@ export function createGitHubTools(): ExtensionToolDefinition[] {
     title: "Create Issue"
   }
 
+  const getIssueTool: ExtensionToolDefinition<GetIssueInput> = {
+    access: "read",
+    description: "Get a single GitHub issue by repository and issue number.",
+    handler: (ctx, input) =>
+      getGitHubIssue({
+        issueNumber: input.issueNumber,
+        preferences: resolveGitHubPreferences(ctx),
+        repositoryFullName: input.repositoryFullName
+      }),
+    inputSchema: getIssueInputSchema,
+    name: "getIssue",
+    title: "Get Issue"
+  }
+
   return [
     listMyIssuesTool,
     listMyPullRequestsTool,
@@ -411,6 +432,7 @@ export function createGitHubTools(): ExtensionToolDefinition[] {
     listRepositoriesTool,
     listNotificationsTool,
     listWorkflowRunsTool,
-    createIssueTool
+    createIssueTool,
+    getIssueTool
   ]
 }

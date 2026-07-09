@@ -92,6 +92,21 @@ export interface GitHubWorkflowRun {
   url: string
 }
 
+export interface GitHubIssue {
+  body: string
+  closedAt: string | null
+  createdAt: string
+  id: number
+  labels: string[]
+  number: number
+  repositoryName: string
+  state: "closed" | "open"
+  title: string
+  updatedAt: string
+  url: string
+  userLogin: string
+}
+
 export interface GitHubIssueLike {
   comments: number
   id: number
@@ -618,6 +633,57 @@ export async function listGitHubRepositoryBranches(params: {
     .map((item) => ({
       name: item.name
     }))
+}
+
+interface GitHubGetIssueResponse {
+  body?: string | null
+  closed_at?: string | null
+  created_at?: string
+  html_url?: string
+  id?: number
+  labels?: Array<{ name?: string }>
+  number?: number
+  repository_url?: string
+  state?: "closed" | "open"
+  title?: string
+  updated_at?: string
+  user?: { login?: string } | null
+}
+
+export async function getGitHubIssue(params: {
+  issueNumber: number
+  preferences: GitHubResolvedPreferences
+  repositoryFullName: string
+}): Promise<GitHubIssue> {
+  const { owner, repo } = parseRepositoryOwnerAndName(params.repositoryFullName)
+  const payload = await fetchGitHubJson<GitHubGetIssueResponse>(
+    params.preferences,
+    "GET /repos/{owner}/{repo}/issues/{issue_number}",
+    {
+      issue_number: params.issueNumber,
+      owner,
+      repo
+    }
+  )
+
+  if (typeof payload.id !== "number" || typeof payload.html_url !== "string") {
+    throw new Error("GitHub did not return the issue")
+  }
+
+  return {
+    body: payload.body ?? "",
+    closedAt: payload.closed_at ?? null,
+    createdAt: payload.created_at ?? "",
+    id: payload.id,
+    labels: (payload.labels ?? []).map((label) => label.name ?? "").filter(Boolean),
+    number: payload.number ?? params.issueNumber,
+    repositoryName: parseRepositoryName(payload.repository_url),
+    state: payload.state === "closed" ? "closed" : "open",
+    title: payload.title ?? "",
+    updatedAt: payload.updated_at ?? "",
+    url: payload.html_url,
+    userLogin: payload.user?.login ?? ""
+  }
 }
 
 export async function createGitHubIssue(params: {

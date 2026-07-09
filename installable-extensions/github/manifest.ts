@@ -39,6 +39,13 @@ export const githubManifest = defineNativeExtensionManifest({
         description: l("Create a GitHub issue in a repository.", "在仓库中创建 GitHub Issue。"),
         title: l("Create Issue", "创建 Issue")
       },
+      getIssue: {
+        description: l(
+          "Get a single GitHub issue by repository and issue number.",
+          "通过仓库和 Issue 编号获取单个 GitHub Issue 的详细内容。"
+        ),
+        title: l("Get Issue", "获取 Issue")
+      },
       listMyIssues: {
         description: l(
           "List issues created by, assigned to, or mentioning the current user.",
@@ -105,7 +112,8 @@ export const githubManifest = defineNativeExtensionManifest({
       "listRepositories",
       "listNotifications",
       "listWorkflowRuns",
-      "createIssue"
+      "createIssue",
+      "getIssue"
     ]
   },
   capabilities: ["navigation", "rpc", "surface"],
