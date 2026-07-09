@@ -25,3 +25,13 @@ skills-lock.json
 drafts/
 docs/illustrations/
 docs/work-classification-ui-mockup*
+
+# Craft Agent 工作区运行时产物（非项目源码）
+/config.json
+/events.jsonl
+/views.json
+/labels/
+/statuses/
+/sessions/
+/projects/
+/.claude-plugin/
