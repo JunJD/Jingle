@@ -39,6 +39,7 @@ export {
   resolveJingleAgentInvokeReadiness,
   resolveJingleAgentResumeReadiness,
   selectJingleAgentCommandState,
+  shouldSurfaceJingleSteerRejection,
   summarizeJingleAgentFollowUpQueue
 } from "./commands"
 export type {

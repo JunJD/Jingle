@@ -73,6 +73,26 @@ export type JingleAgentSteerResult =
       type: "rejected"
     }
 
+/**
+ * 判断某个 steer 拒绝原因是否应作为 runtime error 呈现给用户。
+ *
+ * 收口“哪些拒绝需要上报”的语义，避免各调用方各自维护 reason 列表导致漂移。
+ * - active_run_mismatch / active_turn_mismatch：并发冲突，用户预期的运行/回合已改变，需提示。
+ * - invalid_message：队列项内容为空无法 steer，需提示。
+ * - no_active_run / queue_item_not_found：属于可静默的边界情况，由调用方按各自控制流处理，不作为错误上报。
+ */
+export function shouldSurfaceJingleSteerRejection(reason: JingleAgentSteerFailureReason): boolean {
+  switch (reason) {
+    case "active_run_mismatch":
+    case "active_turn_mismatch":
+    case "invalid_message":
+      return true
+    case "no_active_run":
+    case "queue_item_not_found":
+      return false
+  }
+}
+
 export function summarizeJingleAgentFollowUpQueue(
   items: readonly JingleAgentFollowUpQueueItem[]
 ): JingleAgentFollowUpQueueSummary {

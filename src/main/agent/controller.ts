@@ -2,6 +2,7 @@ import { type IpcMain, type WebContents } from "electron"
 import {
   buildJingleAgentCommandEnvelope,
   buildJingleAgentCommandMessage,
+  shouldSurfaceJingleSteerRejection,
   type JingleAgentSteerFailureReason,
   type JingleAgentSteerResult,
   type JingleRuntimeEventBatch
@@ -214,10 +215,7 @@ export class AgentController {
         return true
       }
 
-      if (
-        steerResult.reason === "active_run_mismatch" ||
-        steerResult.reason === "active_turn_mismatch"
-      ) {
+      if (shouldSurfaceJingleSteerRejection(steerResult.reason)) {
         await this.agentThreadRunner.handlePayload(params.threadId, {
           type: "error",
           ...buildIpcErrorEvent(
@@ -275,11 +273,7 @@ export class AgentController {
       expectedTurnId: options.expectedTurnId
     })
     if (steerResult.type === "rejected") {
-      if (
-        steerResult.reason === "active_run_mismatch" ||
-        steerResult.reason === "active_turn_mismatch" ||
-        steerResult.reason === "invalid_message"
-      ) {
+      if (shouldSurfaceJingleSteerRejection(steerResult.reason)) {
         await this.agentThreadRunner.handlePayload(threadId, {
           type: "error",
           ...buildIpcErrorEvent(

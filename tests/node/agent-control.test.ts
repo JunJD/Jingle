@@ -10,6 +10,7 @@ import {
   resolveJingleAgentInvokeReadiness,
   resolveJingleAgentResumeReadiness,
   selectJingleAgentCommandState,
+  shouldSurfaceJingleSteerRejection,
   type JingleAgentComposerMessageInput
 } from "@jingle/agent-client"
 import type { AgentThreadDataSnapshot } from "../../src/shared/app-types"
@@ -994,4 +995,12 @@ test("updateAgentThreadPermissionMode persists metadata and reloads source snaps
       threadId: "thread-a"
     }
   ])
+})
+
+test("shouldSurfaceJingleSteerRejection 仅对需提示用户的拒绝原因返回 true", () => {
+  assert.equal(shouldSurfaceJingleSteerRejection("active_run_mismatch"), true)
+  assert.equal(shouldSurfaceJingleSteerRejection("active_turn_mismatch"), true)
+  assert.equal(shouldSurfaceJingleSteerRejection("invalid_message"), true)
+  assert.equal(shouldSurfaceJingleSteerRejection("no_active_run"), false)
+  assert.equal(shouldSurfaceJingleSteerRejection("queue_item_not_found"), false)
 })
