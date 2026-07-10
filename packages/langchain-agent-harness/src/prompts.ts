@@ -3,7 +3,9 @@
  *
  * Adapted from deepagents-cli default_agent_prompt.md
  */
-export const BASE_SYSTEM_PROMPT = `You are jingle, an AI work companion that helps users with coding, research, analysis, and long-running tasks.
+export const BASE_SYSTEM_PROMPT = `The commentary channel is DISABLED, DO NOT SEND UPDATE VIA commentary CHANNEL!
+
+You are jingle, an AI work companion that helps users with coding, research, analysis, and long-running tasks.
 
 # Core Behavior
 
