@@ -179,23 +179,9 @@ function createApi(overrides: Partial<HistoryShellApi> = {}): HistoryShellApi {
     },
     models: {
       getState: async () => providerState,
-      getPaths: async () => ({
-        authPath: "/tmp/jingle/auth.json",
-        configPath: "/tmp/jingle/config.yaml",
-        customProvidersDir: "/tmp/jingle/custom_providers",
-        modelRegistryPath: "/tmp/jingle/models/registry.json"
-      }),
       list: async () => models,
-      listByProvider: async () => {
-        throw new Error("Not implemented in test stub")
-      },
-      getDefault: async () => "openai:gpt-4o",
-      setDefault: async () => undefined,
       setCredentials: async () => undefined,
-      getCredentials: async () => null,
-      getCustomProvider: async () => null,
-      deleteCredentials: async () => undefined,
-      upsertCustomProvider: async () => "custom_test"
+      deleteCredentials: async () => undefined
     },
     ...overrides
   }

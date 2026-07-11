@@ -37,8 +37,10 @@ export interface HistoryShellStore {
 
 export type HistoryShellApi = Pick<
   JingleAPI,
-  "models" | "threadSidebar" | "threads" | "threadWorkspace" | "workspace"
->
+  "threadSidebar" | "threads" | "threadWorkspace" | "workspace"
+> & {
+  models: Pick<JingleAPI["models"], "deleteCredentials" | "getState" | "list" | "setCredentials">
+}
 
 interface HistoryShellData {
   threads: Thread[]
