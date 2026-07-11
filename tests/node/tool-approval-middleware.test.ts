@@ -783,7 +783,7 @@ test("resolveFileMutationChangeType marks missing write_file targets as create",
 
   const changeType = await resolveFileMutationChangeType("write_file", {
     content: "hello",
-    path: targetPath
+    file_path: targetPath
   })
 
   assert.equal(changeType, "create")
@@ -796,7 +796,7 @@ test("resolveFileMutationChangeType marks existing write_file targets as modify"
 
   const changeType = await resolveFileMutationChangeType("write_file", {
     content: "updated",
-    path: targetPath
+    file_path: targetPath
   })
 
   assert.equal(changeType, "modify")
