@@ -55,6 +55,7 @@ let mainCompositionRoot: MainCompositionRoot | null = null
 let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
 let pendingOAuthCallbackUrl: string | null = null
 let shutdownComplete = false
+let shutdownPromise: Promise<void> | null = null
 const bypassSingleInstanceLock = process.env.JINGLE_BDD === "1"
 const hasSingleInstanceLock = bypassSingleInstanceLock ? true : app.requestSingleInstanceLock()
 
@@ -231,14 +232,17 @@ async function shutdownMainProcess(): Promise<void> {
     return
   }
 
-  stopNativeMinimalIsland()
-  stopNativeSelectionCapture()
-  disposeAppEntry()
-  mainCompositionRoot?.dispose()
-  mainCompositionRoot = null
-  await closeRuntimeCheckpointers()
-  await closeDatabase()
-  shutdownComplete = true
+  shutdownPromise ??= (async () => {
+    stopNativeMinimalIsland()
+    stopNativeSelectionCapture()
+    disposeAppEntry()
+    await mainCompositionRoot?.dispose()
+    mainCompositionRoot = null
+    await closeRuntimeCheckpointers()
+    await closeDatabase()
+    shutdownComplete = true
+  })()
+  await shutdownPromise
 }
 
 if (!hasSingleInstanceLock) {
