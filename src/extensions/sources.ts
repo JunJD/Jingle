@@ -255,13 +255,20 @@ function toToolExposure(input: {
   locale: AppLocale
   toolName: string
 }): ExtensionAiCapabilityTool {
-  const display = input.capability.toolDisplays?.[input.toolName]
-  const title = resolveLocalizedText(display?.title, input.locale, input.toolName)
+  const display =
+    input.capability.toolDisplays &&
+    Object.prototype.hasOwnProperty.call(input.capability.toolDisplays, input.toolName)
+      ? input.capability.toolDisplays[input.toolName]
+      : undefined
+  if (!display) {
+    throw new Error(`Missing tool display metadata for "${input.toolName}".`)
+  }
+  const title = resolveLocalizedText(display.title, input.locale)
 
   return {
     agentToolName: toAgentToolName(input),
     display: {
-      description: resolveLocalizedText(display?.description, input.locale, title),
+      description: resolveLocalizedText(display.description, input.locale),
       title
     },
     toolName: input.toolName
@@ -273,11 +280,18 @@ function toCatalogToolSummary(input: {
   locale: AppLocale
   toolName: string
 }) {
-  const display = input.capability.toolDisplays?.[input.toolName]
-  const title = resolveLocalizedText(display?.title, input.locale, input.toolName)
+  const display =
+    input.capability.toolDisplays &&
+    Object.prototype.hasOwnProperty.call(input.capability.toolDisplays, input.toolName)
+      ? input.capability.toolDisplays[input.toolName]
+      : undefined
+  if (!display) {
+    throw new Error(`Missing tool display metadata for "${input.toolName}".`)
+  }
+  const title = resolveLocalizedText(display.title, input.locale)
 
   return {
-    description: resolveLocalizedText(display?.description, input.locale, title),
+    description: resolveLocalizedText(display.description, input.locale),
     title,
     toolName: input.toolName
   }

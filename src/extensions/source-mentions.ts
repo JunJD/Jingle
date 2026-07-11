@@ -13,10 +13,17 @@ function toSourceMentionTool(
   toolName: string,
   locale: AppLocale
 ): ExtensionAiCapabilityCatalogToolSummary {
-  const display = capability.toolDisplays?.[toolName]
-  const title = resolveLocalizedText(display?.title, locale, toolName)
+  const display =
+    capability.toolDisplays &&
+    Object.prototype.hasOwnProperty.call(capability.toolDisplays, toolName)
+      ? capability.toolDisplays[toolName]
+      : undefined
+  if (!display) {
+    throw new Error(`Missing tool display metadata for "${toolName}".`)
+  }
+  const title = resolveLocalizedText(display.title, locale)
   return {
-    description: resolveLocalizedText(display?.description, locale, title),
+    description: resolveLocalizedText(display.description, locale),
     title,
     toolName
   }

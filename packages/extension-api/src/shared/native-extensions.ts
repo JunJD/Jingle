@@ -710,6 +710,18 @@ export function validateNativeExtensionPackageManifest(
     }
 
     const declaredToolNames = new Set(capability.toolNames)
+    for (const toolName of declaredToolNames) {
+      const display =
+        capability.toolDisplays && hasOwnRecordKey(capability.toolDisplays, toolName)
+          ? capability.toolDisplays[toolName]
+          : undefined
+      if (!display || typeof display !== "object") {
+        throw new Error(
+          `Native extension "${manifest.name}" aiCapability.toolDisplays must define "${toolName}"`
+        )
+      }
+    }
+
     for (const [toolName, display] of Object.entries(capability.toolDisplays ?? {})) {
       if (!declaredToolNames.has(toolName)) {
         throw new Error(

@@ -764,6 +764,18 @@ export function validateNativeExtensionPackageManifest(
     }
 
     const declaredToolNames = new Set(capability.toolNames)
+    for (const toolName of declaredToolNames) {
+      const display =
+        capability.toolDisplays && hasOwnRecordKey(capability.toolDisplays, toolName)
+          ? capability.toolDisplays[toolName]
+          : undefined
+      if (!display || typeof display !== "object") {
+        throw new Error(
+          `Native extension "${manifest.name}" aiCapability.toolDisplays must define "${toolName}"`
+        )
+      }
+    }
+
     for (const [toolName, display] of Object.entries(capability.toolDisplays ?? {})) {
       if (!declaredToolNames.has(toolName)) {
         throw new Error(
@@ -986,10 +998,19 @@ export function toNativeExtensionSourceMentionProjection(
     sourceId: capability.id,
     supportedPlatforms: capability.supportedPlatforms ?? manifest.supportedPlatforms,
     tools: capability.toolNames.map((toolName) => {
-      const display = capability.toolDisplays?.[toolName]
+      const display =
+        capability.toolDisplays && hasOwnRecordKey(capability.toolDisplays, toolName)
+          ? capability.toolDisplays[toolName]
+          : undefined
+      if (!display) {
+        throw new Error(
+          `Native extension "${manifest.name}" is missing tool display metadata for "${toolName}"`
+        )
+      }
+
       return {
-        description: display?.description ?? display?.title ?? toolName,
-        title: display?.title ?? toolName,
+        description: display.description,
+        title: display.title,
         toolName
       }
     }),
