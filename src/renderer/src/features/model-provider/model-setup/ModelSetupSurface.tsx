@@ -93,7 +93,7 @@ export function ModelSetupSurface(props: ModelSetupSurfaceProps): React.JSX.Elem
     focusProviderId,
     onFocusProviderConsumed,
     snapshot,
-    title = "欢迎使用 Jingle",
+    title = "欢迎使用金果",
     variant
   } = props
   const [surfaceState, dispatchSurface] = useReducer(

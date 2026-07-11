@@ -69,7 +69,7 @@ export function ModelOnboardingGuard(props: ModelOnboardingGuardProps): React.JS
     <ModelSetupSurface
       commands={controller.commands}
       snapshot={snapshot}
-      title="欢迎使用 Jingle"
+      title="欢迎使用金果"
       variant="onboarding"
     />
   )

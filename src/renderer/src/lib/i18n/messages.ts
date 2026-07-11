@@ -353,7 +353,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       removeKey: "移除 Key",
       save: "保存",
       saveError: "保存密钥失败，请检查本地凭证文件权限。",
-      secureStorageHint: "密钥会写入 Jingle auth.json，不会写入 ~/.jingle/.env。",
+      secureStorageHint: "密钥会写入金果 auth.json，不会写入 ~/.jingle/.env。",
       updateTitle: (providerName) => `更新 ${providerName} API Key`,
       updateDescription: "输入新的 API Key 覆盖已有值，或直接移除。"
     },
@@ -484,7 +484,7 @@ export const appCopy: Record<AppLocale, AppCopy> = {
       branchMenu: "分支",
       branchChatSwitched: "已切换到分叉对话",
       changeModel: "切换模型...",
-      aiEmptyEyebrow: "Jingle",
+      aiEmptyEyebrow: "金果",
       aiEntryLabel: "问 AI",
       aiExtensionIntentSubtitle: (handle) => `${handle} · AI 扩展`,
       aiExtensionIntentTitle: (name) => `问 ${name}`,
