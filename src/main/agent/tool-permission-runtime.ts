@@ -60,7 +60,7 @@ function deny(args: Record<string, unknown>, reason: string): ToolPermissionDeci
 
 function requireApproval(
   args: Record<string, unknown>,
-  review: ToolApprovalItem | null,
+  review: ToolApprovalItem,
   reason?: string
 ): ToolPermissionDecision {
   return {
@@ -103,14 +103,19 @@ export async function resolveFileMutationChangeType(
 async function buildApprovalReview(
   toolName: string,
   args: Record<string, unknown>
-): Promise<ToolApprovalItem | null> {
+): Promise<ToolApprovalItem> {
   const fileMutationChangeType = isFileMutationToolName(toolName)
     ? await resolveFileMutationChangeType(toolName, args)
     : undefined
 
-  return buildToolApprovalItem(toolName, args, {
+  const review = buildToolApprovalItem(toolName, args, {
     fileMutationChangeType: fileMutationChangeType ?? undefined
   })
+  if (!review) {
+    throw new Error(`[ToolPermissionRuntime] Missing approval review for tool "${toolName}".`)
+  }
+
+  return review
 }
 
 async function evaluateExecuteTool(
@@ -191,10 +196,6 @@ export function createToolPermissionRuntime(
 
       if (desktopAutomationDecision?.disposition === "deny") {
         return deny(toolArgs, desktopAutomationDecision.reason)
-      }
-
-      if (desktopAutomationDecision?.disposition === "require_approval") {
-        return requireApproval(toolArgs, null, desktopAutomationDecision.reason)
       }
 
       const executeDecision = await evaluateExecuteTool(
