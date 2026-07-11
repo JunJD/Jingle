@@ -13,7 +13,7 @@ interface DesktopAutomationTarget {
 }
 
 interface DesktopAutomationPolicyDecision {
-  disposition: "allow" | "deny" | "require_approval"
+  disposition: "allow" | "deny"
   reason: string
 }
 
