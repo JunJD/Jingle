@@ -17,7 +17,9 @@ export class SettingsService {
   }
 
   setAgentConfig(updates: Partial<AgentConfig>): AgentConfig {
-    return setAgentConfig(updates)
+    const config = setAgentConfig(updates)
+    this.emitAgentConfigChanged(config)
+    return config
   }
 
   getAppThemeSettings(): AppThemeSettings {
@@ -42,6 +44,14 @@ export class SettingsService {
     for (const window of BrowserWindow.getAllWindows()) {
       if (!window.isDestroyed()) {
         window.webContents.send("settings:appThemeSettingsChanged", settings)
+      }
+    }
+  }
+
+  private emitAgentConfigChanged(config: AgentConfig): void {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send("settings:agentConfigChanged", config)
       }
     }
   }

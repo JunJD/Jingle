@@ -12,6 +12,16 @@ export const settingsApi = {
   setAgentConfig: (updates: Partial<AgentConfig>): Promise<AgentConfig> => {
     return invokeIpc("settings:setAgentConfig", updates)
   },
+  onAgentConfigChanged: (callback: (config: AgentConfig) => void): (() => void) => {
+    const handler = (_event: unknown, config: AgentConfig): void => {
+      callback(config)
+    }
+
+    ipcRenderer.on("settings:agentConfigChanged", handler)
+    return () => {
+      ipcRenderer.removeListener("settings:agentConfigChanged", handler)
+    }
+  },
   getAppThemeSettings: (): Promise<AppThemeSettings> => {
     return invokeIpc("settings:getAppThemeSettings")
   },

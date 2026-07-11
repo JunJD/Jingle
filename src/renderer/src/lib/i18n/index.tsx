@@ -27,6 +27,12 @@ export function I18nProvider(props: {
     document.body.dataset.locale = locale
   }, [locale])
 
+  useEffect(() => {
+    return window.api.settings.onAgentConfigChanged((config) => {
+      setLocaleState(normalizeAppLocale(config.locale))
+    })
+  }, [])
+
   const setLocale = useCallback(async (nextLocale: AppLocale): Promise<void> => {
     const normalizedLocale = normalizeAppLocale(nextLocale)
     const nextConfig = await window.api.settings.setAgentConfig({ locale: normalizedLocale })
