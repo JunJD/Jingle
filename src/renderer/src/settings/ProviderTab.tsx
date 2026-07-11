@@ -1,18 +1,11 @@
-import { useCallback, useEffect, useReducer } from "react"
+import { RotateCw } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { ModelSetupSurface } from "@/features/model-provider/model-setup/ModelSetupSurface"
-import type {
-  CustomProviderInput,
-  ModelConfig,
-  Provider,
-  ProviderId
-} from "@shared/app-types"
+import { InlineError } from "@/features/model-provider/model-setup/ProviderSetupPages"
+import { useModelSetupController } from "@/features/model-provider/model-setup/useModelSetupController"
+import type { ProviderId } from "@shared/app-types"
+import type { ModelSetupProvider } from "@shared/model-setup"
 import type { SettingsWindowTarget } from "@shared/settings-window"
-import {
-  getCachedProviderTabData,
-  loadProviderTabData,
-  updateCachedProviderTabData,
-  type ProviderTabData
-} from "./provider-tab-data"
 
 type ProviderTabProps = {
   focusTarget: SettingsWindowTarget | null
@@ -32,224 +25,77 @@ function ProviderTabSkeleton(): React.JSX.Element {
   )
 }
 
-interface ProviderTabState {
-  data: ProviderTabData
-  loadError: string | null
+function ProviderTabError(props: {
+  error: string
   loading: boolean
+  onRetry: () => void
+}): React.JSX.Element {
+  return (
+    <div className="space-y-[var(--ow-space-3)]">
+      <InlineError text={props.error} />
+      <Button type="button" variant="outline" disabled={props.loading} onClick={props.onRetry}>
+        <RotateCw className={props.loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+        重试
+      </Button>
+    </div>
+  )
 }
 
-type ProviderTabAction =
-  | { type: "default-model-changed"; defaultModelId: string; options?: Parameters<typeof window.api.models.setDefault>[2] }
-  | { type: "load-failed"; error: string }
-  | { type: "load-started" }
-  | { type: "loaded"; data: ProviderTabData }
+export function ProviderTab(props: ProviderTabProps): React.JSX.Element {
+  const { focusTarget, onFocusTargetConsumed } = props
+  const controller = useModelSetupController()
 
-function createEmptyProviderTabData(): ProviderTabData {
-  return {
-    activeProviderId: null,
-    defaultModelId: "",
-    defaultModelOptions: {},
-    modelProviderPaths: null,
-    models: [],
-    providers: []
+  if (controller.loading && !controller.snapshot) {
+    return <ProviderTabSkeleton />
   }
-}
-
-function createProviderTabInitialState(cachedData: ProviderTabData | null): ProviderTabState {
-  return {
-    data: cachedData ?? createEmptyProviderTabData(),
-    loadError: null,
-    loading: cachedData === null
-  }
-}
-
-function getProviderIdFromModelId(modelId: string): ProviderId | null {
-  const separatorIndex = modelId.indexOf(":")
-  return separatorIndex > 0 ? modelId.slice(0, separatorIndex) : null
-}
-
-function normalizeDefaultModelOptions(
-  options: Parameters<typeof window.api.models.setDefault>[2] | undefined
-): ProviderTabData["defaultModelOptions"] {
-  return {
-    thinkingEffort: options?.thinkingEffort ?? null
-  }
-}
-
-function createDefaultOptionsForFirstProviderModel(
-  model: ModelConfig
-): ProviderTabData["defaultModelOptions"] {
-  if (model.reasoning) {
-    return {
-      thinkingEffort: "high"
+  if (!controller.snapshot) {
+    if (!controller.error) {
+      throw new Error("Model setup controller finished without a snapshot or an error.")
     }
+    return (
+      <div className="mx-auto w-full max-w-[var(--ow-settings-content-max-width)]">
+        <ProviderTabError
+          error={controller.error}
+          loading={controller.loading}
+          onRetry={() => void controller.reload()}
+        />
+      </div>
+    )
   }
 
-  return {
-    thinkingEffort: null
-  }
+  const focusProviderId = getValidFocusProviderId(focusTarget, controller.snapshot.providers)
+
+  return (
+    <div className="mx-auto w-full max-w-[var(--ow-settings-content-max-width)]">
+      <ModelSetupSurface
+        commands={controller.commands}
+        focusProviderId={focusProviderId}
+        snapshot={controller.snapshot}
+        variant="settings"
+        onFocusProviderConsumed={onFocusTargetConsumed}
+      />
+      {controller.error ? (
+        <div className="mt-[var(--ow-space-3)]">
+          <ProviderTabError
+            error={controller.error}
+            loading={controller.loading}
+            onRetry={() => void controller.reload()}
+          />
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function getValidFocusProviderId(
   focusTarget: SettingsWindowTarget | null,
-  providers: Provider[]
+  providers: ModelSetupProvider[]
 ): ProviderId | null {
   if (!focusTarget?.providerId) {
     return null
   }
 
-  if (providers.some((provider) => provider.id === focusTarget.providerId)) {
-    return focusTarget.providerId
-  }
-
-  return null
-}
-
-function providerTabReducer(state: ProviderTabState, action: ProviderTabAction): ProviderTabState {
-  switch (action.type) {
-    case "default-model-changed":
-      return {
-        ...state,
-        data: {
-          ...state.data,
-          activeProviderId: getProviderIdFromModelId(action.defaultModelId),
-          defaultModelId: action.defaultModelId,
-          defaultModelOptions: normalizeDefaultModelOptions(action.options)
-        }
-      }
-    case "load-failed":
-      return { ...state, loadError: action.error, loading: false }
-    case "load-started":
-      return { ...state, loadError: null, loading: true }
-    case "loaded":
-      return { data: action.data, loadError: null, loading: false }
-  }
-}
-
-export function ProviderTab(props: ProviderTabProps): React.JSX.Element {
-  const { focusTarget, onFocusTargetConsumed } = props
-  const cachedProviderTabData = getCachedProviderTabData()
-  const [state, dispatch] = useReducer(
-    providerTabReducer,
-    cachedProviderTabData,
-    createProviderTabInitialState
-  )
-  const {
-    data: {
-      activeProviderId,
-      defaultModelId,
-      defaultModelOptions,
-      modelProviderPaths,
-      models,
-      providers
-    },
-    loadError,
-    loading
-  } = state
-
-  const loadData = useCallback(async (force = false): Promise<void> => {
-    if (!getCachedProviderTabData()) {
-      dispatch({ type: "load-started" })
-    }
-    try {
-      const data = await loadProviderTabData(force)
-      dispatch({ type: "loaded", data })
-    } catch (error) {
-      dispatch({
-        type: "load-failed",
-        error: error instanceof Error ? error.message : String(error)
-      })
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadData(true)
-  }, [loadData])
-
-  const handleDefaultModelChange = useCallback(
-    async (
-      nextModelId: string,
-      options?: Parameters<typeof window.api.models.setDefault>[2]
-    ): Promise<void> => {
-      await window.api.models.setDefault("llm", nextModelId, options)
-      updateCachedProviderTabData((current) => ({
-        ...current,
-        activeProviderId: getProviderIdFromModelId(nextModelId),
-        defaultModelId: nextModelId,
-        defaultModelOptions: normalizeDefaultModelOptions(options)
-      }))
-      dispatch({ type: "default-model-changed", defaultModelId: nextModelId, options })
-    },
-    []
-  )
-
-  const handleCreateCustomProvider = async (provider: CustomProviderInput): Promise<ProviderId> => {
-    const providerId = await window.api.models.upsertCustomProvider(provider)
-    await loadData(true)
-    return providerId
-  }
-
-  const handleSaveCredentials = useCallback(
-    async (providerId: ProviderId, credentials: Record<string, string>): Promise<void> => {
-      await window.api.models.setCredentials(providerId, credentials)
-      await loadData(true)
-    },
-    [loadData]
-  )
-
-  const handleDeleteCredentials = useCallback(
-    async (providerId: ProviderId): Promise<void> => {
-      await window.api.models.deleteCredentials(providerId)
-      await loadData(true)
-    },
-    [loadData]
-  )
-
-  const handleActivateProvider = useCallback(
-    async (providerId: ProviderId): Promise<void> => {
-      const response = await window.api.models.listByProvider(providerId, "llm")
-      const firstModel = response.models[0]
-      if (!firstModel) {
-        throw new Error(`Provider has no available model: ${providerId}`)
-      }
-      await handleDefaultModelChange(
-        firstModel.id,
-        createDefaultOptionsForFirstProviderModel(firstModel)
-      )
-    },
-    [handleDefaultModelChange]
-  )
-
-  if (loading) {
-    return <ProviderTabSkeleton />
-  }
-
-  const focusProviderId = getValidFocusProviderId(focusTarget, providers)
-
-  return (
-    <div className="mx-auto w-full max-w-[var(--ow-settings-content-max-width)]">
-      <ModelSetupSurface
-        activeProviderId={activeProviderId}
-        providers={providers}
-        models={models}
-        defaultModelId={defaultModelId}
-        defaultModelOptions={defaultModelOptions}
-        focusProviderId={focusProviderId}
-        modelProviderPaths={modelProviderPaths}
-        onActivateProvider={handleActivateProvider}
-        onCreateCustomProvider={handleCreateCustomProvider}
-        onDeleteCredentials={handleDeleteCredentials}
-        onFocusProviderConsumed={onFocusTargetConsumed}
-        onRefresh={() => loadData(true)}
-        onSaveCredentials={handleSaveCredentials}
-        onSelectModel={handleDefaultModelChange}
-        variant="settings"
-      />
-      {loadError && (
-        <div className="mt-[var(--ow-space-3)] rounded-[var(--ow-settings-card-radius)] border border-destructive/25 bg-destructive/10 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)] [font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-destructive">
-          {loadError}
-        </div>
-      )}
-    </div>
-  )
+  return providers.some((provider) => provider.id === focusTarget.providerId)
+    ? focusTarget.providerId
+    : null
 }
