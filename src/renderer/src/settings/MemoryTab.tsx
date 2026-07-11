@@ -469,9 +469,17 @@ export function MemoryTab(props: { locale: AppLocale }): React.JSX.Element {
     }
   }, [])
 
+  useEffect(() => {
+    if (!status) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => setStatus(""), 1600)
+    return () => window.clearTimeout(timeoutId)
+  }, [status])
+
   const flashSaved = (): void => {
     setStatus(copy.memory.savedStatus)
-    window.setTimeout(() => setStatus(""), 1600)
   }
 
   const updateSettings = async (updates: Partial<JingleMemorySettings>): Promise<void> => {

@@ -524,6 +524,15 @@ export function AppearanceTab(props: { locale: AppLocale }): React.JSX.Element {
     })
   }, [])
 
+  useEffect(() => {
+    if (!status) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => setStatus(""), 1600)
+    return () => window.clearTimeout(timeoutId)
+  }, [status])
+
   const serializedTheme = useMemo(() => {
     return themeSettings ? serializeJingleThemeV1(themeSettings.config) : ""
   }, [themeSettings])
@@ -555,7 +564,6 @@ export function AppearanceTab(props: { locale: AppLocale }): React.JSX.Element {
     const parsed = parseJingleThemeV1Token(importDraft)
     if (!parsed) {
       setStatus(copy.appearance.importFailed)
-      window.setTimeout(() => setStatus(""), 1600)
       return
     }
 
@@ -564,14 +572,12 @@ export function AppearanceTab(props: { locale: AppLocale }): React.JSX.Element {
       presetId: "custom"
     }).then(() => {
       setStatus(copy.appearance.imported)
-      window.setTimeout(() => setStatus(""), 1600)
     })
   }
 
   const handleCopyTheme = async (): Promise<void> => {
     await navigator.clipboard.writeText(serializedTheme)
     setStatus(copy.appearance.copied)
-    window.setTimeout(() => setStatus(""), 1600)
   }
 
   if (!themeSettings) {

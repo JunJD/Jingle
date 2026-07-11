@@ -158,13 +158,21 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
     })
   }, [])
 
+  useEffect(() => {
+    if (!status) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => dispatch({ type: "status-cleared" }), 1600)
+    return () => window.clearTimeout(timeoutId)
+  }, [status])
+
   const saveAgentConfig = async (): Promise<void> => {
     const nextConfig = await window.api.settings.setAgentConfig({
       desktopAutomationAllowlist: parseLineList(desktopAutomationAllowlistDraft),
       skillSources: parseLineList(skillSourcesDraft)
     })
     dispatch({ type: "agent-config-saved", agentConfig: nextConfig, status: copy.general.saved })
-    window.setTimeout(() => dispatch({ type: "status-cleared" }), 1600)
   }
 
   const handleWorkspaceSelect = async (): Promise<void> => {
