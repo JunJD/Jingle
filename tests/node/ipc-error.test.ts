@@ -31,6 +31,27 @@ test("serializeIpcErrorPayload round-trips through the shared parser", () => {
   })
 })
 
+test("parseSerializedIpcErrorMessage reads Electron-wrapped invoke errors", () => {
+  const serialized = serializeIpcErrorPayload({
+    channel: "threads:get",
+    code: "NOT_FOUND",
+    message: "Thread was not found.",
+    status: 404
+  })
+
+  assert.deepEqual(
+    parseSerializedIpcErrorMessage(
+      `Error invoking remote method 'threads:get': Error: ${serialized}`
+    ),
+    {
+      channel: "threads:get",
+      code: "NOT_FOUND",
+      message: "Thread was not found.",
+      status: 404
+    }
+  )
+})
+
 test("extractIpcErrorPayload reads structured errors from Error instances", () => {
   const error = new Error(
     serializeIpcErrorPayload({

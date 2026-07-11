@@ -45,8 +45,9 @@ function normalizeDetails(value: unknown): string[] | undefined {
 }
 
 function getSerializedIpcErrorPayloadText(message: string): string | null {
-  if (message.startsWith(JINGLE_IPC_ERROR_PREFIX)) {
-    return message.slice(JINGLE_IPC_ERROR_PREFIX.length)
+  const prefixIndex = message.indexOf(JINGLE_IPC_ERROR_PREFIX)
+  if (prefixIndex >= 0) {
+    return message.slice(prefixIndex + JINGLE_IPC_ERROR_PREFIX.length)
   }
 
   return null
