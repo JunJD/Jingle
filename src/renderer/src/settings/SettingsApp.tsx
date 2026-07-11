@@ -9,7 +9,7 @@ import { ExtensionsTab } from "./ExtensionsTab"
 import { GeneralTab } from "./GeneralTab"
 import { MemoryTab } from "./MemoryTab"
 import { ProviderTab } from "./ProviderTab"
-import { preloadProviderTabData } from "./provider-tab-data"
+import { preloadModelSetupSnapshot } from "@/features/model-provider/model-setup/useModelSetupController"
 import { QuicklinksTab } from "./QuicklinksTab"
 import { ShortcutsTab } from "./ShortcutsTab"
 
@@ -39,7 +39,7 @@ export default function SettingsApp(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    preloadProviderTabData()
+    preloadModelSetupSnapshot()
 
     void window.api.settings.getPendingNavigation().then((payload) => {
       if (!payload) {
