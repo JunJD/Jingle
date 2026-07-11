@@ -9,9 +9,26 @@ import type {
   ProviderModelsResponse,
   SetDefaultModelOptions
 } from "@shared/app-types"
+import {
+  MODEL_SETUP_IPC_CHANNELS,
+  type ModelSetupIpcArgs,
+  type ModelSetupIpcChannel,
+  type ModelSetupIpcResult,
+  type ModelSetupModelSelection
+} from "@shared/model-setup"
 import { invokeIpc } from "../ipc"
 
+function invokeModelSetupIpc<TChannel extends ModelSetupIpcChannel>(
+  channel: TChannel,
+  ...args: ModelSetupIpcArgs<TChannel>
+): Promise<ModelSetupIpcResult<TChannel>> {
+  return invokeIpc(channel, ...args)
+}
+
 export const modelsApi = {
+  getSetupSnapshot: () => {
+    return invokeModelSetupIpc(MODEL_SETUP_IPC_CHANNELS.getSnapshot)
+  },
   getState: (): Promise<ModelProviderState> => {
     return invokeIpc("models:getState")
   },
@@ -51,5 +68,17 @@ export const modelsApi = {
   },
   upsertCustomProvider: (provider: CustomProviderInput): Promise<ProviderId> => {
     return invokeIpc("models:upsertCustomProvider", { provider })
+  },
+  listSetupProviderModels: (provider: ProviderId) => {
+    return invokeModelSetupIpc(MODEL_SETUP_IPC_CHANNELS.listProviderModels, provider)
+  },
+  activateSetupProvider: (provider: ProviderId) => {
+    return invokeModelSetupIpc(MODEL_SETUP_IPC_CHANNELS.activateProvider, provider)
+  },
+  selectSetupModel: (selection: ModelSetupModelSelection) => {
+    return invokeModelSetupIpc(MODEL_SETUP_IPC_CHANNELS.selectModel, selection)
+  },
+  resolveSetupUnlistedModel: (provider: ProviderId, modelName: string) => {
+    return invokeModelSetupIpc(MODEL_SETUP_IPC_CHANNELS.resolveUnlistedModel, provider, modelName)
   }
 }

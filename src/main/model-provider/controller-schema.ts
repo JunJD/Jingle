@@ -1,4 +1,9 @@
 import type { ZodType } from "zod/v4"
+import {
+  MODEL_SETUP_IPC_CHANNELS,
+  type ModelSetupIpcArgs,
+  type ModelSetupIpcChannel
+} from "@shared/model-setup"
 import { z } from "../ipc/schema"
 import { nonEmptyTrimmedStringSchema } from "../ipc/schema-primitives"
 import type {
@@ -9,6 +14,24 @@ import type {
 
 const providerIdArgsSchema = z.tuple([nonEmptyTrimmedStringSchema])
 const thinkingEffortSchema = z.enum(["off", "low", "medium", "high", "max"]).nullable()
+
+const modelSelectionSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("listed"),
+      modelId: nonEmptyTrimmedStringSchema,
+      thinkingEffort: thinkingEffortSchema
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("unlisted"),
+      modelName: nonEmptyTrimmedStringSchema,
+      providerId: nonEmptyTrimmedStringSchema,
+      thinkingEffort: thinkingEffortSchema
+    })
+    .strict()
+])
 
 const customProviderInputSchema = z
   .object({
@@ -57,3 +80,18 @@ export const legacyModelMutationIpcArgsSchemas = {
     z.object({ provider: customProviderInputSchema }).strict()
   ]) satisfies ZodType<[UpsertCustomProviderParams]>
 }
+
+type ModelSetupIpcSchemaMap = {
+  [TChannel in ModelSetupIpcChannel]: ZodType<ModelSetupIpcArgs<TChannel>>
+}
+
+export const modelSetupIpcArgsSchemas = {
+  [MODEL_SETUP_IPC_CHANNELS.activateProvider]: providerIdArgsSchema,
+  [MODEL_SETUP_IPC_CHANNELS.getSnapshot]: z.tuple([]),
+  [MODEL_SETUP_IPC_CHANNELS.listProviderModels]: providerIdArgsSchema,
+  [MODEL_SETUP_IPC_CHANNELS.resolveUnlistedModel]: z.tuple([
+    nonEmptyTrimmedStringSchema,
+    nonEmptyTrimmedStringSchema
+  ]),
+  [MODEL_SETUP_IPC_CHANNELS.selectModel]: z.tuple([modelSelectionSchema])
+} satisfies ModelSetupIpcSchemaMap

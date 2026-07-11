@@ -1,6 +1,19 @@
 import type { SetDefaultModelOptions, SupportedDefaultModelType } from "@shared/app-types"
+import type {
+  ModelSetupModel,
+  ModelSetupModelSelection,
+  ModelSetupProviderModelsResult,
+  ModelSetupProvider,
+  ModelSetupSnapshot,
+  ModelSetupUnlistedModelMetadata
+} from "@shared/model-setup"
 import { getProviderAdapter, listProviderAdapters } from "./adapters"
-import { getModelConfig, getProviderDefinition, parseProviderModelId } from "./catalog"
+import {
+  getModelConfig,
+  getProviderDefinition,
+  parseProviderModelId,
+  toProviderModelId
+} from "./catalog"
 import { getCustomProviderConfig, upsertCustomProvider } from "./custom-providers"
 import { modelSupportsReasoning } from "./model-metadata"
 import { listCatalogModelsByProvider } from "./model-list"
@@ -35,6 +48,10 @@ import type {
 } from "./types"
 
 export class ModelProviderService {
+  getSetupSnapshot(): ModelSetupSnapshot {
+    return getModelSetupSnapshotForUI()
+  }
+
   getState(): ModelProviderState {
     return getModelProviderStateForUI()
   }
@@ -48,6 +65,10 @@ export class ModelProviderService {
     modelType: string = "llm"
   ): Promise<ProviderModelsResponse> {
     return listModelsByProviderForUI(provider, modelType)
+  }
+
+  listSetupProviderModels(provider: string): Promise<ModelSetupProviderModelsResult> {
+    return refreshSetupProviderModelsForUI(provider)
   }
 
   getDefaultModel(modelType: string): string {
@@ -85,6 +106,182 @@ export class ModelProviderService {
   upsertCustomProvider(provider: CustomProviderInput): ProviderId {
     return upsertCustomProviderForUI(provider)
   }
+
+  activateSetupProvider(provider: string): Promise<void> {
+    return activateProviderForSetup(provider)
+  }
+
+  selectSetupModel(selection: ModelSetupModelSelection): Promise<void> {
+    return selectModelForSetup(selection)
+  }
+
+  resolveSetupUnlistedModel(provider: string, modelName: string): ModelSetupUnlistedModelMetadata {
+    return resolveUnlistedModelForSetup(provider, modelName)
+  }
+}
+
+export function getModelSetupSnapshotForUI(): ModelSetupSnapshot {
+  const providerState = getModelProviderStateForUI()
+  const defaultModelId = providerState.defaultModels.llm
+  const availableModels = listAvailableModelsForUI("llm")
+  const models = availableModels.map((model) => toModelSetupModel(model, "resolved"))
+  let defaultModel = models.find((model) => model.id === defaultModelId)
+  if (!defaultModel) {
+    const defaultModelConfig = resolveDefaultModelConfig(defaultModelId, "llm")
+    defaultModel = toModelSetupModel(
+      defaultModelConfig,
+      getModelConfig(defaultModelId) ? "resolved" : "inferred"
+    )
+    models.push(defaultModel)
+  }
+
+  return {
+    activeProviderId: providerState.activeProviderId,
+    defaultModel,
+    defaultModelOptions: providerState.defaultModelOptions.llm,
+    modelProviderPaths: getModelProviderPaths(),
+    models,
+    providers: providerState.providers.map(requireModelSetupProvider)
+  }
+}
+
+async function refreshSetupProviderModelsForUI(
+  provider: string
+): Promise<ModelSetupProviderModelsResult> {
+  const response = await listModelsByProviderForUI(provider, "llm")
+  const resolvedProvider = requireModelSetupProvider(response.provider)
+  const resolvedModels = response.models.map((model) => toModelSetupModel(model, "resolved"))
+  const snapshot = getModelSetupSnapshotForUI()
+  for (const model of resolvedModels) {
+    if (model.provider !== resolvedProvider.id) {
+      throw new Error(
+        `Refreshed model provider does not match the response: ${model.id} -> ${model.provider}`
+      )
+    }
+    if (!snapshot.models.some((snapshotModel) => snapshotModel.id === model.id)) {
+      throw new Error(`Refreshed model is missing from the setup snapshot: ${model.id}`)
+    }
+  }
+
+  return {
+    modelIds: resolvedModels.map((model) => model.id),
+    providerId: resolvedProvider.id,
+    snapshot
+  }
+}
+
+async function activateProviderForSetup(provider: string): Promise<void> {
+  const response = await listModelsByProviderForUI(provider, "llm")
+  if (response.provider.modelListStatus === "error") {
+    if (!response.provider.modelListError) {
+      throw new Error(`Provider model list error is missing: ${provider}`)
+    }
+    throw new Error(response.provider.modelListError)
+  }
+
+  const firstModel = response.models[0]
+  if (!firstModel) {
+    throw new Error(`Provider has no available model: ${provider}`)
+  }
+  const firstModelReasoning = requireModelReasoning(firstModel)
+
+  await setDefaultModelForUI("llm", firstModel.id, {
+    thinkingEffort: firstModelReasoning ? "high" : null
+  })
+}
+
+async function selectModelForSetup(selection: ModelSetupModelSelection): Promise<void> {
+  let modelId: string
+  const thinkingEffort = selection.thinkingEffort
+  if (selection.kind === "listed") {
+    modelId = selection.modelId
+    const listedModel = listModelsForUI("llm").find((model) => model.id === modelId)
+    if (!listedModel) {
+      throw new Error(`Listed model is missing from the setup snapshot: ${modelId}`)
+    }
+    if (
+      !requireModelReasoning(listedModel) &&
+      thinkingEffort !== null &&
+      thinkingEffort !== "off"
+    ) {
+      throw new Error(`Listed model does not support thinking effort: ${modelId}`)
+    }
+  } else {
+    const metadata = resolveUnlistedModelForSetup(selection.providerId, selection.modelName)
+    modelId = toProviderModelId(metadata.providerId, metadata.modelName)
+  }
+
+  await setDefaultModelForUI("llm", modelId, {
+    allowUnlisted: selection.kind === "unlisted",
+    thinkingEffort
+  })
+}
+
+function resolveUnlistedModelForSetup(
+  provider: string,
+  rawModelName: string
+): ModelSetupUnlistedModelMetadata {
+  const providerDefinition = requireProviderDefinition(provider)
+  if (!providerDefinition.configurateMethods.includes("customizable-model")) {
+    throw new Error(`Model provider does not allow unlisted models: ${provider}`)
+  }
+
+  const modelName = rawModelName.trim()
+  if (!modelName) {
+    throw new Error("Unlisted model name is required.")
+  }
+
+  return {
+    modelName,
+    providerId: providerDefinition.id,
+    reasoningInference: {
+      source: "model-name-pattern",
+      suggestsSupport: modelSupportsReasoning(modelName)
+    }
+  }
+}
+
+function toModelSetupModel(
+  model: ModelConfig,
+  capabilityKind: "inferred" | "resolved"
+): ModelSetupModel {
+  const reasoning = requireModelReasoning(model)
+  const modelWithoutReasoning = { ...model }
+  delete modelWithoutReasoning.reasoning
+
+  return {
+    ...modelWithoutReasoning,
+    reasoningCapability:
+      capabilityKind === "resolved"
+        ? { kind: "resolved", supported: reasoning }
+        : {
+            kind: "inferred",
+            source: "model-name-pattern",
+            suggestsSupport: reasoning
+          }
+  }
+}
+
+function requireModelSetupProvider(provider: Provider): ModelSetupProvider {
+  if (
+    !provider.description ||
+    !provider.description.zh_Hans.trim() ||
+    !provider.description.en_US.trim()
+  ) {
+    throw new Error(`Provider description is not resolved: ${provider.id}`)
+  }
+  for (const schema of provider.providerCredentialSchema.credentialFormSchemas) {
+    if (!schema.label.zh_Hans.trim() || !schema.label.en_US.trim()) {
+      throw new Error(
+        `Provider credential label is not resolved: ${provider.id}.${schema.variable}`
+      )
+    }
+  }
+
+  return {
+    ...provider,
+    description: provider.description
+  }
 }
 
 export function getModelProviderStateForUI(): ModelProviderState {
@@ -98,27 +295,31 @@ export function getModelProviderStateForUI(): ModelProviderState {
 
 export function listModelsForUI(modelType: string = "llm"): ModelConfig[] {
   const supportedModelType = requireSupportedDefaultModelType(modelType)
+  return includeCurrentDefaultModel(
+    listAvailableModelsForUI(supportedModelType),
+    supportedModelType
+  )
+}
 
-  const models = listProviderAdapters().flatMap((adapter) => {
-    requireProviderSupportsModelType(adapter.definition, supportedModelType)
+function listAvailableModelsForUI(modelType: SupportedDefaultModelType): ModelConfig[] {
+  return listProviderAdapters().flatMap((adapter) => {
+    requireProviderSupportsModelType(adapter.definition, modelType)
 
     if (!adapter.hasCredentials()) {
       return listCatalogModelsByProvider(adapter.definition.id, "no-configure").filter(
-        (model) => model.modelType === supportedModelType
+        (model) => model.modelType === modelType
       )
     }
 
     const modelListState = getProviderModelListState(adapter.definition.id)
     if (modelListState) {
-      return modelListState.models.filter((model) => model.modelType === supportedModelType)
+      return modelListState.models.filter((model) => model.modelType === modelType)
     }
 
     return listCatalogModelsByProvider(adapter.definition.id, "active").filter(
-      (model) => model.modelType === supportedModelType
+      (model) => model.modelType === modelType
     )
   })
-
-  return includeCurrentDefaultModel(models, supportedModelType)
 }
 
 export async function listModelsByProviderForUI(
