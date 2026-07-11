@@ -1,10 +1,6 @@
 import type { IpcMain } from "electron"
-import type {
-  SetDefaultModelParams,
-  SetProviderCredentialsParams,
-  UpsertCustomProviderParams
-} from "../types"
-import { registerIpcHandle } from "../ipc/handle"
+import { registerIpcHandle, registerValidatedIpcHandle } from "../ipc/handle"
+import { legacyModelMutationIpcArgsSchemas } from "./controller-schema"
 import { ModelProviderService } from "./service"
 
 export class ModelProviderController {
@@ -39,18 +35,20 @@ export class ModelProviderController {
       return this.modelProviderService.getDefaultModel(modelType)
     })
 
-    registerIpcHandle(
+    registerValidatedIpcHandle(
       ipcMain,
       "models:setDefault",
-      async (_event, { modelType, modelId, options }: SetDefaultModelParams) => {
+      legacyModelMutationIpcArgsSchemas.setDefault,
+      async (_event, { modelType, modelId, options }) => {
         await this.modelProviderService.setDefaultModel(modelType, modelId, options)
       }
     )
 
-    registerIpcHandle(
+    registerValidatedIpcHandle(
       ipcMain,
       "models:setCredentials",
-      async (_event, { provider, credentials }: SetProviderCredentialsParams) => {
+      legacyModelMutationIpcArgsSchemas.setCredentials,
+      async (_event, { provider, credentials }) => {
         await this.modelProviderService.setCredentials(provider, credentials)
       }
     )
@@ -59,14 +57,20 @@ export class ModelProviderController {
       return this.modelProviderService.getCredentials(provider)
     })
 
-    registerIpcHandle(ipcMain, "models:deleteCredentials", async (_event, provider: string) => {
-      this.modelProviderService.deleteCredentials(provider)
-    })
+    registerValidatedIpcHandle(
+      ipcMain,
+      "models:deleteCredentials",
+      legacyModelMutationIpcArgsSchemas.deleteCredentials,
+      async (_event, provider) => {
+        this.modelProviderService.deleteCredentials(provider)
+      }
+    )
 
-    registerIpcHandle(
+    registerValidatedIpcHandle(
       ipcMain,
       "models:upsertCustomProvider",
-      async (_event, { provider }: UpsertCustomProviderParams) => {
+      legacyModelMutationIpcArgsSchemas.upsertCustomProvider,
+      async (_event, { provider }) => {
         return this.modelProviderService.upsertCustomProvider(provider)
       }
     )
