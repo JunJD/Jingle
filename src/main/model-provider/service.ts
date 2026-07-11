@@ -144,6 +144,7 @@ export async function listModelsByProviderForUI(
     const models = (await adapter.listModels(credentials)).filter(
       (model) => model.modelType === supportedModelType
     )
+    models.forEach(requireModelReasoning)
     setProviderModelListSuccess(adapter.definition.id, models)
 
     return {
@@ -181,24 +182,46 @@ export async function setDefaultModelForUI(
 
   const canUseUnlisted =
     options.allowUnlisted && adapter.definition.configurateMethods.includes("customizable-model")
-  let providerModels: ModelConfig[]
+  let providerModels: ModelConfig[] | null = null
   try {
     providerModels = await adapter.listModels(credentials)
-    setProviderModelListSuccess(parsedModelId.providerId, providerModels)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     setProviderModelListError(parsedModelId.providerId, message)
     if (!canUseUnlisted) {
       throw error
     }
-    providerModels = []
+  }
+  if (providerModels) {
+    try {
+      providerModels
+        .filter((model) => model.modelType === supportedModelType)
+        .forEach(requireModelReasoning)
+    } catch (error) {
+      setProviderModelListError(
+        parsedModelId.providerId,
+        error instanceof Error ? error.message : String(error)
+      )
+      throw error
+    }
+    setProviderModelListSuccess(parsedModelId.providerId, providerModels)
   }
 
-  const targetModel = providerModels.find(
+  const targetModel = providerModels?.find(
     (model) => model.id === modelId && model.modelType === supportedModelType
   )
   if (targetModel) {
-    setModelProviderDefaultModel(supportedModelType, modelId, options)
+    if (!targetModel.reasoning && options.thinkingEffort && options.thinkingEffort !== "off") {
+      throw new Error(`Model does not support thinking effort: ${modelId}`)
+    }
+    setModelProviderDefaultModel(supportedModelType, modelId, {
+      ...options,
+      thinkingEffort: targetModel.reasoning
+        ? options.thinkingEffort
+        : options.thinkingEffort === "off"
+          ? "off"
+          : null
+    })
     return
   }
 
@@ -227,6 +250,7 @@ export async function setProviderCredentialsForUI(
   const adapter = requireProviderAdapter(provider)
   const normalizedCredentials = adapter.normalizeCredentials(credentials)
   const models = await adapter.listModels(normalizedCredentials)
+  models.filter((model) => model.modelType === "llm").forEach(requireModelReasoning)
 
   adapter.saveCredentials(normalizedCredentials)
   setProviderModelListSuccess(adapter.definition.id, models)
@@ -357,6 +381,14 @@ function requireProviderDefinition(provider: string): ProviderDefinition {
   }
 
   return providerDefinition
+}
+
+function requireModelReasoning(model: ModelConfig): boolean {
+  if (typeof model.reasoning !== "boolean") {
+    throw new Error(`Model reasoning metadata is not resolved: ${model.id}`)
+  }
+
+  return model.reasoning
 }
 
 function requireSupportedDefaultModelType(modelType: string): SupportedDefaultModelType {
