@@ -142,8 +142,6 @@ export class LocalSandbox extends JingleNodeFilesystemBackend implements JingleS
 
     const executionCwd = createExecuteCommandSessionEnv(this.workingDir).resolveCwd(options.cwd)
 
-    console.log("[LocalSandbox] Executing command:", command, "cwd:", executionCwd)
-
     return new Promise<JingleFilesystemExecuteResponse>((resolve) => {
       const outputParts: string[] = []
       let totalBytes = 0
