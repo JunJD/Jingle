@@ -206,7 +206,11 @@ export async function setDefaultModelForUI(
     setModelProviderDefaultModel(supportedModelType, modelId, {
       ...options,
       thinkingEffort:
-        options.thinkingEffort ?? (modelSupportsReasoning(parsedModelId.modelName) ? "high" : null)
+        options.thinkingEffort === undefined
+          ? modelSupportsReasoning(parsedModelId.modelName)
+            ? "high"
+            : null
+          : options.thinkingEffort
     })
     return
   }
