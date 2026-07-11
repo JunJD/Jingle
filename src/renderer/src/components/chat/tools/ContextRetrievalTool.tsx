@@ -8,7 +8,7 @@ import {
   type TraceEvidenceToolResult
 } from "@shared/context-retrieval-results"
 import { defineToolComponent } from "./registry-core"
-import { getPatternArg, joinSummaryParts, truncateMiddle } from "./shared"
+import { getQueryArg, joinSummaryParts, truncateMiddle } from "./shared"
 import {
   ToolCodeBlock,
   ToolCollapsibleSection,
@@ -212,7 +212,7 @@ defineToolComponent({
     return Boolean(getContextRetrievalResult({ rawResult, result }))
   },
   renderDisplay({ copy, args }) {
-    const query = getPatternArg(args)
+    const query = getQueryArg(args)
 
     return {
       detail: query ? truncateMiddle(query, 60) : null,

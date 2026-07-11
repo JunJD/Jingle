@@ -1,7 +1,7 @@
 import { AppWindow, MousePointerClick, Route, ScanSearch } from "lucide-react"
 import { defineToolComponent } from "./registry-core"
 import { ToolCodeBlock, ToolDetailStack } from "./shared-components"
-import { getPathArg, stringifyToolValue } from "./shared"
+import { stringifyToolValue } from "./shared"
 
 function getStringArg(args: Record<string, unknown>, key: string): string | null {
   const value = args[key]
@@ -82,7 +82,7 @@ defineToolComponent({
   },
   renderDisplay({ copy, args }) {
     return {
-      detail: getStringArg(args, "titleContains") ?? getPathArg(args),
+      detail: getStringArg(args, "titleContains"),
       title: copy.toolCall.labels.press_ax_element
     }
   },

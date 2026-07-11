@@ -28,8 +28,13 @@ export function getBasename(path: string): string {
 }
 
 export function getPathArg(args: Record<string, unknown>): string | null {
-  const path = args.path ?? args.file_path
-  return typeof path === "string" && path.trim().length > 0 ? path : null
+  return typeof args.path === "string" && args.path.trim().length > 0 ? args.path : null
+}
+
+export function getFilePathArg(args: Record<string, unknown>): string | null {
+  return typeof args.file_path === "string" && args.file_path.trim().length > 0
+    ? args.file_path
+    : null
 }
 
 export function getCommandArg(args: Record<string, unknown>): string | null {
@@ -47,8 +52,11 @@ export function getMutationPredictionArg(args: Record<string, unknown>): Mutatio
 }
 
 export function getPatternArg(args: Record<string, unknown>): string | null {
-  const pattern = args.pattern ?? args.query ?? args.glob
-  return typeof pattern === "string" && pattern.trim().length > 0 ? pattern : null
+  return typeof args.pattern === "string" && args.pattern.trim().length > 0 ? args.pattern : null
+}
+
+export function getQueryArg(args: Record<string, unknown>): string | null {
+  return typeof args.query === "string" && args.query.trim().length > 0 ? args.query : null
 }
 
 export function truncateMiddle(value: string, limit = 72): string {

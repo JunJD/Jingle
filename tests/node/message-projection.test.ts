@@ -1241,7 +1241,7 @@ test("agent activity summary groups known tool categories without using tool nam
       },
       {
         status: "complete",
-        toolCall: createToolCall("tool-edit", "edit_file", { path: "/repo/src/index.ts" })
+        toolCall: createToolCall("tool-edit", "edit_file", { file_path: "/repo/src/index.ts" })
       },
       {
         status: "complete",
@@ -1256,7 +1256,8 @@ test("agent activity summary groups known tool categories without using tool nam
       {
         status: "complete",
         toolCall: createToolCall("tool-message-context", "get_message_context", {
-          messageId: "msg-1"
+          messageId: "msg-1",
+          threadId: "thread-1"
         })
       },
       {
@@ -1278,6 +1279,32 @@ test("agent activity summary groups known tool categories without using tool nam
         file: 2,
         list: 1,
         search: 4
+      },
+      status: "complete"
+    }
+  )
+
+  assert.deepEqual(
+    projectJingleAgentActivitySummary([
+      {
+        status: "complete",
+        toolCall: createToolCall("tool-message-context-1", "get_message_context", {
+          messageId: "msg-1",
+          threadId: "thread-1"
+        })
+      },
+      {
+        status: "complete",
+        toolCall: createToolCall("tool-message-context-2", "get_message_context", {
+          messageId: "msg-1",
+          threadId: "thread-2"
+        })
+      }
+    ]),
+    {
+      activeCategory: null,
+      counts: {
+        search: 2
       },
       status: "complete"
     }

@@ -204,7 +204,7 @@ test("createActionMessageView does not repeat the read file label when no path i
     toolCall: {
       ...baseToolCall,
       args: {
-        path: "/Users/example/project/src/index.ts"
+        file_path: "/Users/example/project/src/index.ts"
       }
     }
   })
@@ -814,7 +814,7 @@ test("projectAgentActivityHeaderSummary summarizes completed exploration tools",
     {
       status: "complete",
       toolCall: {
-        args: { path: "/repo/src/index.ts", oldText: "old", newText: "new" },
+        args: { file_path: "/repo/src/index.ts", new_string: "new", old_string: "old" },
         id: "call_edit_index",
         name: "edit_file"
       }
@@ -852,7 +852,7 @@ test("projectAgentActivityHeaderSummary keeps pending exploration local and excl
       {
         status: "running",
         toolCall: {
-          args: { path: "/repo/src/index.ts", oldText: "old", newText: "new" },
+          args: { file_path: "/repo/src/index.ts", new_string: "new", old_string: "old" },
           id: "call_edit",
           name: "edit_file"
         }

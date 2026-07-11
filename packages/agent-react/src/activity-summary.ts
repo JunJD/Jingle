@@ -40,15 +40,25 @@ const JINGLE_AGENT_ACTIVITY_SUMMARY_CATEGORIES: readonly JingleAgentActivitySumm
   "command"
 ]
 
-function getStringArg(args: Record<string, unknown>, names: readonly string[]): string | null {
-  for (const name of names) {
-    const value = args[name]
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value
-    }
-  }
+function getStringArg(args: Record<string, unknown>, name: string): string | null {
+  const value = args[name]
+  return typeof value === "string" && value.trim().length > 0 ? value : null
+}
 
-  return null
+function getTraceEvidenceFactKey(args: Record<string, unknown>): string | null {
+  const identifiers = ["artifactId", "runId", "toolCallId", "traceId", "traceStepId"].flatMap(
+    (name) => {
+      const value = getStringArg(args, name)
+      return value ? [[name, value]] : []
+    }
+  )
+  return identifiers.length > 0 ? JSON.stringify(identifiers) : null
+}
+
+function getMessageContextFactKey(args: Record<string, unknown>): string | null {
+  const threadId = getStringArg(args, "threadId")
+  const messageId = getStringArg(args, "messageId")
+  return threadId && messageId ? JSON.stringify([threadId, messageId]) : null
 }
 
 function getToolCallSummaryCategory(
@@ -77,34 +87,30 @@ function getToolCallSummaryCategory(
   }
 }
 
-function getToolCallSummaryFactKey(
-  category: JingleAgentActivitySummaryCategory,
-  toolCall: JingleAgentActivityToolCallSource
-): string | null {
+function getToolCallSummaryFactKey(toolCall: JingleAgentActivityToolCallSource): string | null {
   const args = toolCall.args ?? {}
 
-  switch (category) {
-    case "command":
-      return getStringArg(args, ["command"])
-    case "file":
-      return getStringArg(args, ["path", "file_path"])
-    case "file_mutation":
-      return getStringArg(args, ["path", "file_path"])
-    case "list":
-      return getStringArg(args, ["path"])
-    case "search":
-      return getStringArg(args, [
-        "pattern",
-        "query",
-        "glob",
-        "messageId",
-        "traceStepId",
-        "toolCallId",
-        "artifactId",
-        "runId"
-      ])
+  switch (toolCall.name) {
+    case "execute":
+      return getStringArg(args, "command")
+    case "edit_file":
+    case "read_file":
+    case "write_file":
+      return getStringArg(args, "file_path")
+    case "ls":
+      return getStringArg(args, "path")
+    case "glob":
+    case "grep":
+      return getStringArg(args, "pattern")
+    case "get_message_context":
+      return getMessageContextFactKey(args)
+    case "get_trace_evidence":
+      return getTraceEvidenceFactKey(args)
+    case "search_history":
     case "web_search":
-      return getStringArg(args, ["query", "pattern"])
+      return getStringArg(args, "query")
+    default:
+      return null
   }
 }
 
@@ -143,7 +149,7 @@ export function projectJingleAgentActivitySummary(
     isCompletedToolExecutionStatus(tool.status)
   )) {
     const category = tool.category!
-    const factKey = getToolCallSummaryFactKey(category, tool.toolCall)
+    const factKey = getToolCallSummaryFactKey(tool.toolCall)
     if (!factKey) {
       return null
     }
