@@ -228,7 +228,8 @@ test("GitHub live package keeps runtime, connection, and AI tool contracts", () 
     "listRepositories",
     "listNotifications",
     "listWorkflowRuns",
-    "createIssue"
+    "createIssue",
+    "getIssue"
   ])
   assert.deepEqual(
     sorted(Object.keys(githubManifest.aiCapability?.toolDisplays ?? {})),

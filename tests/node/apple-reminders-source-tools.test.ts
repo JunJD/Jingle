@@ -501,7 +501,8 @@ test("GitHub AI capability becomes connected from resolved connection and expose
     "listRepositories",
     "listNotifications",
     "listWorkflowRuns",
-    "createIssue"
+    "createIssue",
+    "getIssue"
   ])
   assert.deepEqual(capability?.enabledToolNames, capability?.capability.toolNames)
   assert.deepEqual(

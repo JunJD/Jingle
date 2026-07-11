@@ -109,7 +109,8 @@ test("GitHub connected AI capability registers callable tools", () => {
       "listRepositories",
       "listNotifications",
       "listWorkflowRuns",
-      "createIssue"
+      "createIssue",
+      "getIssue"
     ]
   )
 })
