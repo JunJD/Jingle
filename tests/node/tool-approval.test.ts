@@ -78,7 +78,7 @@ test("buildToolApprovalItem marks new write_file targets as upcoming creations",
   const approvalItem = buildToolApprovalItem(
     "write_file",
     {
-      path: "/workspace/src/app.ts",
+      file_path: "/workspace/src/app.ts",
       content: ""
     },
     {
@@ -106,7 +106,7 @@ test("buildToolApprovalItem marks existing write_file targets as upcoming modifi
   const approvalItem = buildToolApprovalItem(
     "write_file",
     {
-      path: "/workspace/src/app.ts",
+      file_path: "/workspace/src/app.ts",
       content: "export {}"
     },
     {

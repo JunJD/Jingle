@@ -14,7 +14,7 @@ test("identifies file mutation tool names", () => {
 test("extracts write_file review details", () => {
   const review = getFileMutationReview("write_file", {
     content: "hello\nworld",
-    path: "/tmp/demo.txt"
+    file_path: "/tmp/demo.txt"
   })
 
   assert.deepEqual(review, {
@@ -27,22 +27,6 @@ test("extracts write_file review details", () => {
 })
 
 test("extracts edit_file review details", () => {
-  const review = getFileMutationReview("edit_file", {
-    new_str: "const next = true",
-    old_str: "const next = false",
-    path: "/tmp/demo.ts"
-  })
-
-  assert.deepEqual(review, {
-    content: null,
-    newText: "const next = true",
-    oldText: "const next = false",
-    path: "/tmp/demo.ts",
-    toolName: "edit_file"
-  })
-})
-
-test("extracts edit_file review details from current tool schema aliases", () => {
   const review = getFileMutationReview("edit_file", {
     file_path: "/tmp/demo.ts",
     new_string: "const next = true",
@@ -61,12 +45,12 @@ test("extracts edit_file review details from current tool schema aliases", () =>
 test("preserves empty strings for file mutation review", () => {
   const writeReview = getFileMutationReview("write_file", {
     content: "",
-    path: "/tmp/empty.txt"
+    file_path: "/tmp/empty.txt"
   })
   const editReview = getFileMutationReview("edit_file", {
-    new_str: "",
-    old_str: "",
-    path: "/tmp/replace.txt"
+    file_path: "/tmp/replace.txt",
+    new_string: "",
+    old_string: ""
   })
 
   assert.deepEqual(writeReview, {
@@ -81,6 +65,22 @@ test("preserves empty strings for file mutation review", () => {
     newText: "",
     oldText: "",
     path: "/tmp/replace.txt",
+    toolName: "edit_file"
+  })
+})
+
+test("does not interpret retired file mutation aliases", () => {
+  const review = getFileMutationReview("edit_file", {
+    new_str: "next",
+    old_str: "before",
+    path: "/tmp/legacy.ts"
+  })
+
+  assert.deepEqual(review, {
+    content: null,
+    newText: null,
+    oldText: null,
+    path: null,
     toolName: "edit_file"
   })
 })

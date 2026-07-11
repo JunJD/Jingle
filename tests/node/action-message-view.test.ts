@@ -279,7 +279,7 @@ test("createActionMessageView does not repeat file mutation labels when no path 
       ...baseToolCall,
       args: {
         content: "first\nsecond",
-        path: "/Users/example/project/notes.md"
+        file_path: "/Users/example/project/notes.md"
       }
     }
   })
@@ -296,7 +296,7 @@ test("createActionMessageView builds file mutation detail from tool args without
   const toolCall: ToolCall = {
     args: {
       content: "first\nsecond",
-      path: "/Users/example/project/notes.md"
+      file_path: "/Users/example/project/notes.md"
     },
     id: "call_write",
     name: "write_file",
@@ -358,7 +358,7 @@ test("createActionMessageView renders partial streaming file mutation previews",
   }
 
   const partialView = createActionMessageView({
-    activeArgsText: '{"path":"src/',
+    activeArgsText: '{"file_path":"src/',
     copy,
     presentation: "grouped",
     status: "arguments_streaming",
@@ -383,7 +383,7 @@ test("createActionMessageView renders partial streaming file mutation previews",
   assert.equal(partialView.hasDetail, false)
 
   const contentView = createActionMessageView({
-    activeArgsText: '{"path":"src/notes.md","content":"first',
+    activeArgsText: '{"file_path":"src/notes.md","content":"first',
     copy,
     presentation: "grouped",
     status: "arguments_streaming",
@@ -413,7 +413,7 @@ test("createActionMessageView renders partial streaming file mutation previews",
 
 test("file mutation view model derives streaming previews from partial args", () => {
   const projection = buildStreamingFileMutationViewModel({
-    argsText: '{"path":"src/notes.md","content":"first',
+    argsText: '{"file_path":"src/notes.md","content":"first',
     toolCallId: "call_write",
     toolName: "write_file"
   })
@@ -434,9 +434,9 @@ test("file mutation approval preview uses pending Pierre view model facts", asyn
     await import("../../src/renderer/src/components/chat/action-message-view")
   const toolCall: ToolCall = {
     args: {
-      old_str: "export const value = 1\n",
-      new_str: "export const value = 2\n",
-      path: "/workspace/src/app.ts"
+      file_path: "/workspace/src/app.ts",
+      new_string: "export const value = 2\n",
+      old_string: "export const value = 1\n"
     },
     id: "call_edit",
     name: "edit_file",
@@ -481,7 +481,7 @@ test("completed file mutation view model renders only completed result facts", a
   const toolCall: ToolCall = {
     args: {
       content: "draft",
-      path: "src/notes.md"
+      file_path: "src/notes.md"
     },
     id: "call_write",
     name: "write_file",
