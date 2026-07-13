@@ -25,7 +25,7 @@ function getClipboardLabel(
   }
 
   if (context.files.length === 1) {
-    return context.files[0]?.name ?? copy.launcher.clipboardFiles(1)
+    return context.files[0].name
   }
 
   return copy.launcher.clipboardFiles(context.files.length)

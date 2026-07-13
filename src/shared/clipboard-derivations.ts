@@ -1,6 +1,7 @@
 import type {
   ClipboardContext,
   ClipboardFile,
+  ClipboardFileList,
   ClipboardPayloadKind,
   ClipboardSnapshot
 } from "./clipboard"
@@ -8,6 +9,10 @@ import type {
 export interface ClipboardFilter {
   accepts: readonly ClipboardPayloadKind[]
   acceptFile?: (file: ClipboardFile) => boolean
+}
+
+function hasClipboardFiles(files: ClipboardFile[]): files is ClipboardFileList {
+  return files.length > 0
 }
 
 const EMPTY_CLIPBOARD_CONTEXT: ClipboardContext = {
@@ -27,7 +32,7 @@ export function filterClipboardSnapshot(
   }
 
   const files = snapshot.files.filter(filter.acceptFile)
-  if (files.length === 0) {
+  if (!hasClipboardFiles(files)) {
     return EMPTY_CLIPBOARD_CONTEXT
   }
 

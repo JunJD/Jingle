@@ -121,6 +121,10 @@ function readClipboardFiles(): ClipboardFile[] {
   return files
 }
 
+function hasClipboardFiles(files: ClipboardFile[]): files is [ClipboardFile, ...ClipboardFile[]] {
+  return files.length > 0
+}
+
 function buildClipboardImage(image: Electron.NativeImage): ClipboardImage {
   const size = image.getSize()
   const maxPreviewEdge = 112
@@ -144,7 +148,7 @@ function buildClipboardImage(image: Electron.NativeImage): ClipboardImage {
 
 export function readClipboardContext(): ClipboardContext {
   const files = readClipboardFiles()
-  if (files.length > 0) {
+  if (hasClipboardFiles(files)) {
     return {
       files,
       kind: "files"

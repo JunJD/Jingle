@@ -5,6 +5,8 @@ export interface ClipboardFile {
   path: string
 }
 
+export type ClipboardFileList = [ClipboardFile, ...ClipboardFile[]]
+
 export interface ClipboardImage {
   dataUrl: string
   height: number
@@ -21,7 +23,7 @@ export type ClipboardSnapshot =
       text: string
     }
   | {
-      files: ClipboardFile[]
+      files: ClipboardFileList
       kind: "files"
     }
   | {
