@@ -10,7 +10,6 @@ import {
 } from "./ai-session-windows/module"
 import { AiSessionWindowsService, type AiSessionWindowsRuntime } from "./ai-session-windows/service"
 import { installApplicationMenu } from "./app-menu"
-import { registerAppInfoIpcHandlers, registerAppInfoModule } from "./app-info/module"
 import { registerArtifactsIpcHandlers, registerArtifactsModule } from "./artifacts/module"
 import { registerDiagnosticsIpcHandlers } from "./diagnostics/controller"
 import {
@@ -126,7 +125,6 @@ export class MainCompositionRoot {
 
     registerAgentIpcHandlers(this.dependencyContainer, ipcMain)
     registerAiSessionWindowsIpcHandlers(this.dependencyContainer, ipcMain)
-    registerAppInfoIpcHandlers(this.dependencyContainer, ipcMain)
     registerArtifactsIpcHandlers(this.dependencyContainer, ipcMain)
     registerDiagnosticsIpcHandlers(ipcMain)
     registerExternalLinksIpcHandlers(this.dependencyContainer, ipcMain)
@@ -248,7 +246,6 @@ export function createMainCompositionRoot(
   registerAiSessionWindowsModule(childContainer, {
     createPinnedAiSessionWindow: context.createPinnedAiSessionWindow
   })
-  registerAppInfoModule(childContainer)
   registerArtifactsModule(childContainer)
   registerExternalLinksModule(childContainer)
   registerExtensionQuicklinkModule(childContainer, {
