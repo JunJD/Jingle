@@ -39,7 +39,7 @@ export interface AppThemePreset {
 }
 
 export const DEFAULT_UI_FONT_FAMILY =
-  '"OW Sans CN", "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Segoe UI", sans-serif'
+  '"Jingle Sans CN", "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Segoe UI", sans-serif'
 
 export const DEFAULT_CODE_FONT_FAMILY =
   '"JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace'
