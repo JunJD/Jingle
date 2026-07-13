@@ -1,5 +1,4 @@
 PNPM ?= pnpm
-NPM ?= npm
 EXTENSION ?= installable-extensions/coffee
 
 .PHONY: help setup dev use start build check doctor test test-node test-bdd-smoke db db-deploy db-status db-reset extensions extension-dev extension-build release-smoke
@@ -23,7 +22,7 @@ help:
 	@printf "  make db-reset          Reset the local Jingle DB\n"
 	@printf "  make extensions        Build and check installed extensions\n"
 	@printf "  make extension-dev     Run an extension in dev mode; set EXTENSION=path\n"
-	@printf "  make release-smoke     Build, check, and run npm pack dry-run\n\n"
+	@printf "  make release-smoke     Build, check, and audit the packaged app for this platform\n\n"
 
 setup:
 	$(PNPM) install
@@ -83,4 +82,4 @@ extension-build:
 release-smoke:
 	$(MAKE) build
 	$(MAKE) check
-	$(NPM) pack --dry-run
+	node scripts/run-release-smoke.mjs
