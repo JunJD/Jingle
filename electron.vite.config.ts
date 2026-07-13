@@ -133,6 +133,7 @@ export default defineConfig({
       externalizeDeps: false,
       lib: {
         entry: {
+          "database-bootstrap-audit": resolve("src/main/db/bootstrap-audit-entry.ts"),
           "extension-runtime-entry": resolve("src/extension-runtime/entry.ts"),
           index: resolve("src/main/index.ts")
         },

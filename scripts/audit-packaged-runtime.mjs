@@ -6,10 +6,12 @@ import { basename, join, resolve, sep } from "node:path"
 const root = resolve(process.argv[2] ?? "dist")
 const forbiddenMacLinkPrefixes = ["/opt/homebrew/", "/usr/local/opt/"]
 const requiredExternalPackages = ["@prisma/client", "just-bash"]
-const requiredPrismaMigrationNames = [
-  "20260412200000_baseline",
-  "20260705000000_add_thread_workflow_classification"
-]
+const requiredPrismaMigrationNames = readdirSync(resolve("prisma/migrations"), {
+  withFileTypes: true
+})
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort((left, right) => left.localeCompare(right))
 const forbiddenRuntimePackages = [
   {
     name: "electron",
@@ -321,8 +323,7 @@ if (bashResult.exitCode !== 0 || bashResult.stdout.trim() !== "packaged-runtime"
   throw new Error("Packaged just-bash smoke returned an unexpected result.")
 }
 
-const { readFileSync, readdirSync } = await import("node:fs")
-const { createHash, randomUUID } = await import("node:crypto")
+const { readdirSync } = await import("node:fs")
 const { PrismaClient } = requireFromApp("@prisma/client")
 
 const migrationsRoot = join(appAsarPath, "prisma", "migrations")
@@ -345,138 +346,9 @@ const prisma = new PrismaClient({
   }
 })
 
-function splitSqlStatements(sql) {
-  const statements = []
-  let current = ""
-  let inSingleQuote = false
-  let inDoubleQuote = false
-  let inLineComment = false
-  let inBlockComment = false
-
-  for (let index = 0; index < sql.length; index += 1) {
-    const char = sql[index]
-    const nextChar = sql[index + 1]
-
-    if (inLineComment) {
-      current += char
-      if (char === "\\n") {
-        inLineComment = false
-      }
-      continue
-    }
-
-    if (inBlockComment) {
-      current += char
-      if (char === "*" && nextChar === "/") {
-        current += nextChar
-        index += 1
-        inBlockComment = false
-      }
-      continue
-    }
-
-    if (inSingleQuote) {
-      current += char
-      if (char === "'" && nextChar === "'") {
-        current += nextChar
-        index += 1
-        continue
-      }
-      if (char === "'") {
-        inSingleQuote = false
-      }
-      continue
-    }
-
-    if (inDoubleQuote) {
-      current += char
-      if (char === '"' && nextChar === '"') {
-        current += nextChar
-        index += 1
-        continue
-      }
-      if (char === '"') {
-        inDoubleQuote = false
-      }
-      continue
-    }
-
-    if (char === "-" && nextChar === "-") {
-      current += char + nextChar
-      index += 1
-      inLineComment = true
-      continue
-    }
-
-    if (char === "/" && nextChar === "*") {
-      current += char + nextChar
-      index += 1
-      inBlockComment = true
-      continue
-    }
-
-    if (char === "'") {
-      current += char
-      inSingleQuote = true
-      continue
-    }
-
-    if (char === '"') {
-      current += char
-      inDoubleQuote = true
-      continue
-    }
-
-    if (char === ";") {
-      const statement = current.trim()
-      if (hasExecutableSqlStatement(statement)) {
-        statements.push(statement)
-      }
-      current = ""
-      continue
-    }
-
-    current += char
-  }
-
-  const statement = current.trim()
-  if (hasExecutableSqlStatement(statement)) {
-    statements.push(statement)
-  }
-
-  return statements
-}
-
-function hasExecutableSqlStatement(statement) {
-  return statement.split("\\n").some((line) => {
-    const trimmed = line.trim()
-    return trimmed.length > 0 && !trimmed.startsWith("--") && !trimmed.startsWith("/*")
-  })
-}
-
 try {
-  await prisma.$executeRawUnsafe(
-    'CREATE TABLE IF NOT EXISTS "_prisma_migrations" ("id" TEXT PRIMARY KEY NOT NULL, "checksum" TEXT NOT NULL, "finished_at" DATETIME, "migration_name" TEXT NOT NULL, "logs" TEXT, "rolled_back_at" DATETIME, "started_at" DATETIME NOT NULL DEFAULT current_timestamp, "applied_steps_count" INTEGER UNSIGNED NOT NULL DEFAULT 0)'
-  )
-  for (const migrationName of migrationNames) {
-    const migrationPath = join(migrationsRoot, migrationName, "migration.sql")
-    const sql = readFileSync(migrationPath, "utf-8")
-    const now = Date.now()
-    await prisma.$executeRawUnsafe("BEGIN")
-    for (const statement of splitSqlStatements(sql)) {
-      await prisma.$executeRawUnsafe(statement)
-    }
-    await prisma.$executeRawUnsafe(
-      'INSERT INTO "_prisma_migrations" ("id", "checksum", "finished_at", "migration_name", "started_at", "applied_steps_count") VALUES (?, ?, ?, ?, ?, ?)',
-      randomUUID(),
-      createHash("sha256").update(sql).digest("hex"),
-      now,
-      migrationName,
-      now,
-      1
-    )
-    await prisma.$executeRawUnsafe("COMMIT")
-  }
+  const { auditDatabaseBootstrap } = requireFromApp("./out/main/database-bootstrap-audit.js")
+  await auditDatabaseBootstrap()
 
   const migrationRows = await prisma.$queryRawUnsafe(
     "SELECT migration_name FROM _prisma_migrations ORDER BY migration_name"
