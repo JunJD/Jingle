@@ -68,8 +68,8 @@ function copyResources(): { name: string; closeBundle: () => void } {
         }
       }
 
+      rmSync(destInstalledExtensions, { recursive: true, force: true })
       if (existsSync(installedExtensionPackages)) {
-        rmSync(destInstalledExtensions, { recursive: true, force: true })
         cpSync(installedExtensionPackages, destInstalledExtensions, { recursive: true })
       }
 
