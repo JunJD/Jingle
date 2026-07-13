@@ -48,8 +48,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Audit frontend package declarations
+        run: pnpm run audit:frontend-packages
+
       - name: Build Electron app
-        run: make build
+        run: pnpm run build
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

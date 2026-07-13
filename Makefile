@@ -44,6 +44,7 @@ build:
 check:
 	$(PNPM) run lint
 	$(PNPM) run typecheck
+	$(PNPM) run audit:frontend-packages
 	node scripts/guardrails/check-guardrails.mjs
 	node scripts/guardrails/check-extension-packages.mjs
 

@@ -117,6 +117,9 @@ jobs:
         run: |
           npm version "${{ needs.prepare-release.outputs.version }}" --no-git-tag-version --allow-same-version
 
+      - name: Audit frontend package declarations
+        run: pnpm run audit:frontend-packages
+
       - name: Package desktop app
         run: ${{ matrix.command }}
         env:
