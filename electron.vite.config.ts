@@ -80,7 +80,7 @@ function copyResources(): { name: string; closeBundle: () => void } {
           format: "esm",
           outfile: mutationPredictorWorkerDest,
           platform: "node",
-          target: "node18"
+          target: "node22"
         })
       }
     }
