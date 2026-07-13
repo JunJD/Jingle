@@ -3,6 +3,7 @@
 import { builtinModules } from "node:module"
 import { promises as fs } from "node:fs"
 import path from "node:path"
+import ts from "typescript"
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"])
 const SKIP_DIRECTORIES = new Set(["node_modules", ".git", "dist", "out", "coverage"])
@@ -27,7 +28,8 @@ function parseArgs(argv) {
   const options = {
     frontend: [],
     json: false,
-    root: process.cwd()
+    root: process.cwd(),
+    tsconfig: "tsconfig.web.json"
   }
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -52,6 +54,12 @@ function parseArgs(argv) {
       index += 1
       continue
     }
+
+    if (arg === "--tsconfig") {
+      options.tsconfig = argv[index + 1] ?? options.tsconfig
+      index += 1
+      continue
+    }
   }
 
   if (options.frontend.length === 0) {
@@ -59,6 +67,18 @@ function parseArgs(argv) {
   }
 
   return options
+}
+
+function matchesPathAlias(specifier, alias) {
+  const wildcardIndex = alias.indexOf("*")
+  if (wildcardIndex < 0) {
+    return specifier === alias
+  }
+
+  return (
+    specifier.startsWith(alias.slice(0, wildcardIndex)) &&
+    specifier.endsWith(alias.slice(wildcardIndex + 1))
+  )
 }
 
 function isBarePackageSpecifier(specifier) {
@@ -87,6 +107,78 @@ function normalizePackageName(specifier) {
   }
 
   return specifier.split("/")[0]
+}
+
+function readTsconfigOptions(tsconfigPath) {
+  let unrecoverableDiagnostic = null
+  const parsed = ts.getParsedCommandLineOfConfigFile(
+    tsconfigPath,
+    {},
+    {
+      ...ts.sys,
+      onUnRecoverableConfigFileDiagnostic(diagnostic) {
+        unrecoverableDiagnostic = diagnostic
+      }
+    }
+  )
+  const diagnostics = [
+    ...(unrecoverableDiagnostic ? [unrecoverableDiagnostic] : []),
+    ...(parsed?.errors ?? [])
+  ]
+
+  if (!parsed || diagnostics.length > 0) {
+    const detail = diagnostics
+      .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))
+      .join("\n")
+    throw new Error(`Invalid TSConfig at ${tsconfigPath}${detail ? `:\n${detail}` : ""}`)
+  }
+
+  return parsed.options
+}
+
+function isPathWithinRoot(root, targetPath) {
+  const relativePath = path.relative(root, targetPath)
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith(`..${path.sep}`) &&
+      relativePath !== ".." &&
+      !path.isAbsolute(relativePath))
+  )
+}
+
+async function findOwningPackageName(root, resolvedFilePath) {
+  let currentPath = path.dirname(resolvedFilePath)
+
+  while (isPathWithinRoot(root, currentPath)) {
+    if (currentPath === root) {
+      return null
+    }
+
+    const packageJsonPath = path.join(currentPath, "package.json")
+    if (await pathExists(packageJsonPath)) {
+      const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"))
+      return typeof packageJson.name === "string" ? packageJson.name : null
+    }
+
+    const parentPath = path.dirname(currentPath)
+    if (parentPath === currentPath) {
+      break
+    }
+    currentPath = parentPath
+  }
+
+  return null
+}
+
+async function isPackageAliasImport(root, specifier, containingFile, tsconfigOptions) {
+  const resolvedFilePath = ts.resolveModuleName(specifier, containingFile, tsconfigOptions, ts.sys)
+    .resolvedModule?.resolvedFileName
+  if (!resolvedFilePath) {
+    return false
+  }
+
+  const ownerPackageName = await findOwningPackageName(root, resolvedFilePath)
+  return ownerPackageName === normalizePackageName(specifier)
 }
 
 function extractImportSpecifiers(source) {
@@ -220,6 +312,10 @@ async function main() {
   const dependencies = packageJson.dependencies ?? {}
   const devDependencies = packageJson.devDependencies ?? {}
   const scripts = packageJson.scripts ?? {}
+  const tsconfigPath = path.resolve(root, options.tsconfig)
+  const tsconfigOptions = readTsconfigOptions(tsconfigPath)
+  const paths = tsconfigOptions.paths ?? {}
+  const pathAliases = Object.keys(paths)
   const declaredPackages = new Set([
     ...Object.keys(dependencies),
     ...Object.keys(devDependencies)
@@ -249,6 +345,13 @@ async function main() {
         }
 
         const packageName = normalizePackageName(specifier)
+        const isInternalAlias = pathAliases.some((alias) => matchesPathAlias(specifier, alias))
+        if (
+          isInternalAlias &&
+          !(await isPackageAliasImport(root, specifier, filePath, tsconfigOptions))
+        ) {
+          continue
+        }
         const record = packageImports.get(packageName) ?? {
           files: new Set(),
           specifiers: new Set()
@@ -340,6 +443,9 @@ async function main() {
 
   if (options.json) {
     console.log(JSON.stringify(report, null, 2))
+    if (report.missingDeclarations.length > 0) {
+      process.exitCode = 1
+    }
     return
   }
 
@@ -382,6 +488,9 @@ async function main() {
   )
 
   console.log(lines.join("\n"))
+  if (report.missingDeclarations.length > 0) {
+    process.exitCode = 1
+  }
 }
 
 main().catch((error) => {
