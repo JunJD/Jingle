@@ -2,7 +2,7 @@ PNPM ?= pnpm
 NPM ?= npm
 EXTENSION ?= installable-extensions/coffee
 
-.PHONY: help setup dev use start build check test test-node test-bdd-smoke db db-deploy db-status db-reset extensions extension-dev extension-build release-smoke
+.PHONY: help setup dev use start build check doctor test test-node test-bdd-smoke db db-deploy db-status db-reset extensions extension-dev extension-build release-smoke
 
 help:
 	@printf "\nJingle public development commands\n\n"
@@ -11,6 +11,7 @@ help:
 	@printf "Develop:\n"
 	@printf "  make dev               Start Jingle in development mode\n"
 	@printf "  make check             Run lint, typecheck, and architecture guardrails\n"
+	@printf "  make doctor            Scan frontend contracts and write agent-readable reports\n"
 	@printf "  make test              Run node tests and the BDD smoke suite\n"
 	@printf "  make build             Build the app, installed extensions, and native helpers\n\n"
 	@printf "Use:\n"
@@ -45,6 +46,9 @@ check:
 	$(PNPM) run typecheck
 	node scripts/guardrails/check-guardrails.mjs
 	node scripts/guardrails/check-extension-packages.mjs
+
+doctor:
+	node scripts/guardrails/doctor-run.mjs
 
 test: test-node test-bdd-smoke
 

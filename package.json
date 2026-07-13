@@ -154,7 +154,7 @@
     "prettier": "^3.7.4",
     "prisma": "^6.18.0",
     "react": "^19.2.1",
-    "react-doctor": "^0.5.8",
+    "react-doctor": "0.7.4",
     "react-dom": "^19.2.1",
     "react-reconciler": "0.33.0",
     "tailwindcss": "^4.0.0",

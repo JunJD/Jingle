@@ -14,6 +14,7 @@ raycast
 .ipo/
 .x-media/
 .jingle-build/
+/.jingle-doctor/reports/
 test-results
 electron.vite.config.*.mjs
 prisma/dev.sqlite*

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "JINGLE-BOUNDARY-001",
+      "ruleId": "renderer-bridge-owner",
+      "title": "Feature controllers own renderer IPC",
+      "owner": "feature-controller",
+      "severity": "warning",
+      "status": "active",
+      "path": ".jingle-doctor/cases/JINGLE-BOUNDARY-001.md"
+    },
+    {
+      "id": "JINGLE-BOUNDARY-002",
+      "ruleId": "lower-layer-imports-shell",
+      "title": "Lower renderer layers do not import shells",
+      "owner": "renderer-architecture",
+      "severity": "warning",
+      "status": "active",
+      "path": ".jingle-doctor/cases/JINGLE-BOUNDARY-002.md"
+    },
+    {
+      "id": "JINGLE-UI-001",
+      "ruleId": "primitive-isolation",
+      "title": "UI primitives remain product-agnostic",
+      "owner": "components-ui",
+      "severity": "warning",
+      "status": "active",
+      "path": ".jingle-doctor/cases/JINGLE-UI-001.md"
+    },
+    {
+      "id": "JINGLE-UI-002",
+      "ruleId": "radix-owner",
+      "title": "Radix imports are wrapped by UI primitives",
+      "owner": "components-ui",
+      "severity": "warning",
+      "status": "active",
+      "path": ".jingle-doctor/cases/JINGLE-UI-002.md"
+    },
+    {
+      "id": "JINGLE-UI-003",
+      "ruleId": "native-control-bypass",
+      "title": "Product surfaces use shared form and button primitives",
+      "owner": "business-component",
+      "severity": "warning",
+      "status": "active",
+      "path": ".jingle-doctor/cases/JINGLE-UI-003.md"
+    },
+    {
+      "id": "JINGLE-UI-004",
+      "ruleId": "native-title-tooltip",
+      "title": "Visible hover help uses the Tooltip primitive",
+      "owner": "business-component",
+      "severity": "warning",
+      "status": "active",
+      "path": ".jingle-doctor/cases/JINGLE-UI-004.md"
+    },
+    {
+      "id": "JINGLE-MOTION-001",
+      "ruleId": "bounded-transition-properties",
+      "title": "Transitions name their animated properties",
+      "owner": "components-ui",
+      "severity": "warning",
+      "status": "active",
+      "path": ".jingle-doctor/cases/JINGLE-MOTION-001.md"
+    },
+    {
+      "id": "JINGLE-MOTION-002",
+      "ruleId": "loading-motion-owner",
+      "title": "Loading motion uses the shared Spinner contract",
+      "owner": "components-ui",
+      "severity": "warning",
+      "status": "active",
+      "path": ".jingle-doctor/cases/JINGLE-MOTION-002.md"
+    },
+    {
+      "id": "JINGLE-MOTION-003",
+      "ruleId": "perpetual-motion-owner",
+      "title": "Perpetual motion represents a real running state",
+      "owner": "business-component",
+      "severity": "warning",
+      "status": "active",
+      "path": ".jingle-doctor/cases/JINGLE-MOTION-003.md"
+    },
+    {
+      "id": "JINGLE-MOTION-004",
+      "ruleId": "shared-motion-contract",
+      "title": "Shared microinteraction contracts stay complete",
+      "owner": "components-ui",
+      "severity": "warning",
+      "status": "active",
+      "path": ".jingle-doctor/cases/JINGLE-MOTION-004.md"
+    }
+  ]
+}
