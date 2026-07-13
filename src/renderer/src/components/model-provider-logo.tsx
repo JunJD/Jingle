@@ -1,4 +1,4 @@
-import { Cloud } from "lucide-react"
+import { CircleHelp, Cloud } from "lucide-react"
 import type { ProviderId } from "@/types"
 
 type ProviderLogoProps = {
@@ -54,6 +54,21 @@ function DashScopeLogo(props: ProviderLogoProps): React.JSX.Element {
   return <Cloud aria-hidden="true" className={className} />
 }
 
+function UnknownProviderLogo(
+  props: ProviderLogoProps & { providerId: ProviderId }
+): React.JSX.Element {
+  const { className, providerId } = props
+
+  return (
+    <CircleHelp
+      aria-label={`Unknown model provider: ${providerId}`}
+      className={className}
+      data-provider-logo-status="unavailable"
+      role="img"
+    />
+  )
+}
+
 const PROVIDER_LOGOS = {
   anthropic: AnthropicLogo,
   codex: OpenAILogo,
@@ -67,7 +82,11 @@ export function ProviderLogo(
   props: ProviderLogoProps & { providerId: ProviderId }
 ): React.JSX.Element {
   const { className, providerId } = props
-  const Logo = PROVIDER_LOGOS[providerId] ?? DashScopeLogo
+  const Logo = PROVIDER_LOGOS[providerId]
+
+  if (!Logo) {
+    return <UnknownProviderLogo className={className} providerId={providerId} />
+  }
 
   return <Logo className={className} />
 }
