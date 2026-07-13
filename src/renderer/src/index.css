@@ -383,7 +383,6 @@
   --ow-popover-w-sm: 256px;
   --ow-dialog-mobile-w: calc(100% - 2rem);
   --ow-dialog-w-sm: 400px;
-  --ow-dialog-w-md: 560px;
   --ow-font-ui-family:
     "OW Sans CN", "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
     "Segoe UI", sans-serif;
@@ -593,9 +592,6 @@ body[data-window="pinned-ai-session"],
   --ow-settings-switch-pad: 2px;
   --ow-settings-switch-thumb: 12px;
   --ow-settings-switch-travel: 14px;
-  --ow-model-badge-h: 18px;
-  --ow-model-badge-x: 5px;
-  --ow-model-badge-radius: 5px;
 }
 
 .model-selection-content {
@@ -605,10 +601,6 @@ body[data-window="pinned-ai-session"],
   --ow-model-selector-list-h: 200px;
   --ow-model-selector-row-radius: 10px;
   --ow-model-selector-error-max-w: 220px;
-}
-
-.system-model-selector-dialog {
-  --ow-dialog-w-model-selector: 480px;
 }
 
 .ow-attachments,
