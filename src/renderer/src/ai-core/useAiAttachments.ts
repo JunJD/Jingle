@@ -25,6 +25,10 @@ export type LauncherAiAttachmentDraft =
       source: "clipboard" | "picker"
     }
 
+function reportInvalidAttachment(reason: string): void {
+  console.error(`[LauncherAiAttachments] ${reason}`)
+}
+
 function deriveLauncherAiAttachmentDrafts(context: ClipboardContext): LauncherAiAttachmentDraft[] {
   switch (context.kind) {
     case "image":
@@ -63,8 +67,6 @@ function deriveLauncherAiAttachmentDrafts(context: ClipboardContext): LauncherAi
   }
 }
 
-type PickerFile = File & { path?: string }
-
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -97,8 +99,18 @@ function readImageSize(dataUrl: string): Promise<{ height: number; width: number
   })
 }
 
-async function toPickedAttachment(file: PickerFile): Promise<LauncherAiAttachmentDraft | null> {
-  const path = file.path ?? file.name
+async function toPickedAttachment(file: File): Promise<LauncherAiAttachmentDraft | null> {
+  const name = file.name.trim()
+  if (!name) {
+    return null
+  }
+
+  const path = window.electron.getPathForFile(file).trim()
+  if (!path) {
+    reportInvalidAttachment(`Cannot attach "${name}" because its file path is unavailable.`)
+    return null
+  }
+
   if (!isAiAttachmentFilePath(path)) {
     return null
   }
@@ -112,7 +124,7 @@ async function toPickedAttachment(file: PickerFile): Promise<LauncherAiAttachmen
       height: size.height,
       id: `picker:image:${path}:${file.lastModified}`,
       kind: "image",
-      name: file.name,
+      name,
       path,
       previewDataUrl,
       source: "picker",
@@ -124,7 +136,7 @@ async function toPickedAttachment(file: PickerFile): Promise<LauncherAiAttachmen
     id: `picker:file:${path}:${file.lastModified}`,
     isDirectory: false,
     kind: "file",
-    name: file.name,
+    name,
     path,
     source: "picker"
   }
@@ -237,7 +249,7 @@ export function useAiAttachments(): {
     }
 
     const nextAttachments = (
-      await Promise.all(selectedFiles.map((file) => toPickedAttachment(file as PickerFile)))
+      await Promise.all(selectedFiles.map(toPickedAttachment))
     ).filter((attachment): attachment is LauncherAiAttachmentDraft => attachment !== null)
 
     if (nextAttachments.length === 0) {

@@ -3,9 +3,11 @@ import {
   type SettingsWindowTab,
   type SettingsWindowTarget
 } from "@shared/settings-window"
+import { webUtils } from "electron"
 import { invokeIpc, ipcRenderer } from "./ipc"
 
 export const electronAPI = {
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   ipcRenderer: {
     send: (channel: string, ...args: unknown[]) => ipcRenderer.send(channel, ...args),
     on: (channel: string, listener: (...args: unknown[]) => void) => {
