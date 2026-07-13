@@ -2,8 +2,46 @@ import { ipcRenderer } from "electron"
 import type { AgentConfig } from "@shared/app-types"
 import type { AppThemeSettings } from "@shared/app-theme"
 import type { LauncherSettings } from "@shared/launcher-settings"
-import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
+import {
+  SETTINGS_NAVIGATION_CHANGED_CHANNEL,
+  settingsWindowNavigationPayloadSchema,
+  type SettingsWindowNavigationPayload
+} from "@shared/settings-window"
 import { invokeIpc } from "../ipc"
+
+let pendingNavigationClaim: Promise<SettingsWindowNavigationPayload | null> | null = null
+let pendingNavigationClaimSettled = false
+let navigationDeliveryGeneration = 0
+
+function claimPendingNavigation(): Promise<SettingsWindowNavigationPayload | null> {
+  if (pendingNavigationClaimSettled) {
+    return Promise.resolve(null)
+  }
+
+  if (!pendingNavigationClaim) {
+    const claimGeneration = navigationDeliveryGeneration
+    pendingNavigationClaim = invokeIpc<unknown>("settings:getPendingNavigation")
+      .then((payload) => {
+        const parsedPayload =
+          payload === null ? null : settingsWindowNavigationPayloadSchema.parse(payload)
+        pendingNavigationClaimSettled = true
+        if (navigationDeliveryGeneration !== claimGeneration) {
+          return null
+        }
+
+        return parsedPayload
+      })
+      .catch((error: unknown) => {
+        // Retrying can recover a pre-consume transport failure. A claim already
+        // consumed by main resolves to null on retry, so navigation is never replayed.
+        pendingNavigationClaim = null
+        pendingNavigationClaimSettled = false
+        throw error
+      })
+  }
+
+  return pendingNavigationClaim
+}
 
 export const settingsApi = {
   getAgentConfig: (): Promise<AgentConfig> => {
@@ -45,12 +83,25 @@ export const settingsApi = {
     return invokeIpc("settings:setLauncherSettings", updates)
   },
   openWindow: (payload?: SettingsWindowNavigationPayload): Promise<void> => {
-    return invokeIpc("settings:openWindow", payload)
+    return payload ? invokeIpc("settings:openWindow", payload) : invokeIpc("settings:openWindow")
   },
   openTab: (payload: SettingsWindowNavigationPayload): Promise<void> => {
     return invokeIpc("settings:openTab", payload)
   },
   getPendingNavigation: (): Promise<SettingsWindowNavigationPayload | null> => {
-    return invokeIpc("settings:getPendingNavigation")
+    return claimPendingNavigation()
+  },
+  onNavigationChanged: (
+    callback: (payload: SettingsWindowNavigationPayload) => void
+  ): (() => void) => {
+    const handler = (_event: unknown, payload: unknown): void => {
+      navigationDeliveryGeneration += 1
+      callback(settingsWindowNavigationPayloadSchema.parse(payload))
+    }
+
+    ipcRenderer.on(SETTINGS_NAVIGATION_CHANGED_CHANNEL, handler)
+    return () => {
+      ipcRenderer.removeListener(SETTINGS_NAVIGATION_CHANGED_CHANNEL, handler)
+    }
   }
 }

@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useState } from "react"
-import { Archive, Brain, Keyboard, KeyRound, Link2, Palette, Puzzle, Settings2 } from "lucide-react"
-import type { SettingsWindowTab, SettingsWindowTarget } from "@shared/settings-window"
-import { useI18n } from "@/lib/i18n"
-import { AppearanceTab } from "./AppearanceTab"
-import { ArchivedThreadsTab } from "./ArchivedThreadsTab"
-import { getSettingsCopy } from "./copy"
-import { ExtensionsTab } from "./ExtensionsTab"
-import { GeneralTab } from "./GeneralTab"
-import { MemoryTab } from "./MemoryTab"
-import { ProviderTab } from "./ProviderTab"
+import { CircleAlert, Settings2 } from "lucide-react"
+import {
+  createSettingsWindowNavigationPayload,
+  type SettingsWindowNavigationPayload,
+  type SettingsWindowTab
+} from "@shared/settings-window"
 import { preloadModelSetupSnapshot } from "@/features/model-provider/model-setup/useModelSetupController"
-import { QuicklinksTab } from "./QuicklinksTab"
-import { ShortcutsTab } from "./ShortcutsTab"
+import { useI18n } from "@/lib/i18n"
+import { getSettingsCopy } from "./copy"
+import { SETTINGS_PAGE_ORDER, SETTINGS_PAGE_REGISTRY } from "./navigation/registry"
 
 const settingsScrollPaneClassName =
   "h-full overflow-x-hidden overflow-y-auto pr-[var(--ow-space-1)] [scrollbar-gutter:stable]"
@@ -31,30 +28,75 @@ function getSettingsTabClassName(active: boolean, withBorder = true): string {
 export default function SettingsApp(): React.JSX.Element {
   const { locale } = useI18n()
   const copy = getSettingsCopy(locale)
-  const [activeTab, setActiveTab] = useState<SettingsWindowTab>("general")
-  const [focusTarget, setFocusTarget] = useState<SettingsWindowTarget | null>(null)
+  const [navigation, setNavigation] = useState<SettingsWindowNavigationPayload>(() =>
+    createSettingsWindowNavigationPayload("general")
+  )
+  const [navigationDeliveryFailed, setNavigationDeliveryFailed] = useState(false)
+
+  const navigateToTab = useCallback((tab: SettingsWindowTab) => {
+    setNavigation(createSettingsWindowNavigationPayload(tab))
+  }, [])
 
   const handleFocusTargetConsumed = useCallback(() => {
-    setFocusTarget(null)
+    setNavigation((current) => {
+      if (current.tab !== "provider" || !current.target) {
+        return current
+      }
+
+      return { tab: "provider" }
+    })
   }, [])
 
   useEffect(() => {
     preloadModelSetupSnapshot()
 
-    void window.api.settings.getPendingNavigation().then((payload) => {
-      if (!payload) {
+    let disposed = false
+    let receivedLiveNavigation = false
+    const unsubscribe = window.api.settings.onNavigationChanged((payload) => {
+      if (disposed) {
         return
       }
 
-      setActiveTab(payload.tab)
-      setFocusTarget(payload.target ?? null)
+      receivedLiveNavigation = true
+      setNavigationDeliveryFailed(false)
+      setNavigation(payload)
     })
 
-    return window.electron.onSettingsTabChanged((payload) => {
-      setActiveTab(payload.tab)
-      setFocusTarget(payload.target ?? null)
-    })
+    void window.api.settings
+      .getPendingNavigation()
+      .then((payload) => {
+        if (disposed || receivedLiveNavigation) {
+          return
+        }
+
+        setNavigationDeliveryFailed(false)
+        if (payload) {
+          setNavigation(payload)
+        }
+      })
+      .catch((error: unknown) => {
+        if (disposed) {
+          return
+        }
+
+        console.error("[Settings] Failed to claim pending navigation.", error)
+        if (!receivedLiveNavigation) {
+          setNavigationDeliveryFailed(true)
+        }
+      })
+
+    return () => {
+      disposed = true
+      unsubscribe()
+    }
   }, [])
+
+  const activePage = SETTINGS_PAGE_REGISTRY[navigation.tab]
+  const pageContent = activePage.render({
+    locale,
+    navigation,
+    onFocusTargetConsumed: handleFocusTargetConsumed
+  })
 
   return (
     <div className="settings-app flex h-screen flex-col overflow-hidden bg-background text-foreground">
@@ -68,78 +110,23 @@ export default function SettingsApp(): React.JSX.Element {
         </div>
 
         <div className="app-no-drag inline-flex items-stretch overflow-hidden rounded-[var(--ow-settings-nav-radius)] border border-border bg-background-elevated shadow-sm">
-          <button
-            type="button"
-            onClick={() => setActiveTab("general")}
-            data-settings-tab="general"
-            className={getSettingsTabClassName(activeTab === "general", false)}
-          >
-            <Settings2 className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
-            {copy.tabs.general}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("appearance")}
-            data-settings-tab="appearance"
-            className={getSettingsTabClassName(activeTab === "appearance")}
-          >
-            <Palette className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
-            {copy.tabs.appearance}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("memory")}
-            data-settings-tab="memory"
-            className={getSettingsTabClassName(activeTab === "memory")}
-          >
-            <Brain className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
-            {copy.tabs.memory}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("archived")}
-            data-settings-tab="archived"
-            className={getSettingsTabClassName(activeTab === "archived")}
-          >
-            <Archive className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
-            {copy.tabs.archived}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("provider")}
-            data-settings-tab="provider"
-            className={getSettingsTabClassName(activeTab === "provider")}
-          >
-            <KeyRound className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
-            {copy.tabs.provider}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("extensions")}
-            data-settings-tab="extensions"
-            className={getSettingsTabClassName(activeTab === "extensions")}
-          >
-            <Puzzle className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
-            {copy.tabs.extensions}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("quicklinks")}
-            data-settings-tab="quicklinks"
-            className={getSettingsTabClassName(activeTab === "quicklinks")}
-          >
-            <Link2 className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
-            {copy.tabs.quicklinks}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("shortcuts")}
-            data-settings-tab="shortcuts"
-            className={getSettingsTabClassName(activeTab === "shortcuts")}
-          >
-            <Keyboard className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
-            {copy.tabs.shortcuts}
-          </button>
+          {SETTINGS_PAGE_ORDER.map((tab, index) => {
+            const definition = SETTINGS_PAGE_REGISTRY[tab]
+            const Icon = definition.icon
+
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => navigateToTab(tab)}
+                data-settings-tab={tab}
+                className={getSettingsTabClassName(navigation.tab === tab, index > 0)}
+              >
+                <Icon className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
+                {copy.tabs[tab]}
+              </button>
+            )
+          })}
         </div>
 
         <div className="flex min-w-0 flex-1 justify-end [font-size:var(--ow-settings-tab-font)] text-[var(--window-chrome-muted)]">
@@ -147,41 +134,28 @@ export default function SettingsApp(): React.JSX.Element {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden p-[var(--ow-settings-window-pad)]">
-        {activeTab === "general" ? (
-          <div className={settingsScrollPaneClassName}>
-            <GeneralTab locale={locale} />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-[var(--ow-settings-window-pad)]">
+        {navigationDeliveryFailed ? (
+          <div
+            role="alert"
+            className="mb-[var(--ow-space-3)] flex shrink-0 items-center gap-[var(--ow-gap-sm)] border-b border-destructive/30 pb-[var(--ow-space-3)] text-sm text-destructive"
+          >
+            <CircleAlert className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)] shrink-0" />
+            <span>
+              {locale === "zh-CN"
+                ? "设置导航初始化失败。请关闭并重新打开设置窗口。"
+                : "Settings navigation could not initialize. Close and reopen Settings."}
+            </span>
           </div>
-        ) : activeTab === "appearance" ? (
-          <div className={settingsScrollPaneClassName}>
-            <AppearanceTab locale={locale} />
-          </div>
-        ) : activeTab === "provider" ? (
-          <div className={settingsScrollPaneClassName}>
-            <ProviderTab
-              focusTarget={focusTarget}
-              onFocusTargetConsumed={handleFocusTargetConsumed}
-            />
-          </div>
-        ) : activeTab === "memory" ? (
-          <div className={settingsScrollPaneClassName}>
-            <MemoryTab locale={locale} />
-          </div>
-        ) : activeTab === "archived" ? (
-          <div className={settingsScrollPaneClassName}>
-            <ArchivedThreadsTab locale={locale} />
-          </div>
-        ) : activeTab === "quicklinks" ? (
-          <div className={settingsScrollPaneClassName}>
-            <QuicklinksTab locale={locale} />
-          </div>
-        ) : activeTab === "shortcuts" ? (
-          <div className={settingsScrollPaneClassName}>
-            <ShortcutsTab locale={locale} />
-          </div>
-        ) : (
-          <ExtensionsTab focusTarget={focusTarget} locale={locale} />
-        )}
+        ) : null}
+
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {activePage.scrollsWithWindow ? (
+            <div className={settingsScrollPaneClassName}>{pageContent}</div>
+          ) : (
+            pageContent
+          )}
+        </div>
       </div>
     </div>
   )

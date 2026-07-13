@@ -1,4 +1,8 @@
-import type { SettingsWindowNavigationPayload, SettingsWindowTab } from "@shared/settings-window"
+import {
+  createSettingsWindowNavigationPayload,
+  type SettingsWindowTab,
+  type SettingsWindowTarget
+} from "@shared/settings-window"
 import { invokeIpc, ipcRenderer } from "./ipc"
 
 export const electronAPI = {
@@ -23,23 +27,8 @@ export const electronAPI = {
   openExternal: (url: string): Promise<void> => {
     return invokeIpc("shell:openExternal", url)
   },
-  openSettingsTab: (
-    tab: SettingsWindowTab,
-    target?: SettingsWindowNavigationPayload["target"]
-  ): Promise<void> => {
-    return invokeIpc("settings:openTab", { tab, ...(target ? { target } : {}) })
-  },
-  onSettingsTabChanged: (
-    callback: (payload: SettingsWindowNavigationPayload) => void
-  ): (() => void) => {
-    const listener = (_event: unknown, payload: SettingsWindowNavigationPayload): void => {
-      callback(payload)
-    }
-
-    ipcRenderer.on("settings-tab-changed", listener)
-    return () => {
-      ipcRenderer.removeListener("settings-tab-changed", listener)
-    }
+  openSettingsTab: (tab: SettingsWindowTab, target?: SettingsWindowTarget): Promise<void> => {
+    return invokeIpc("settings:openTab", createSettingsWindowNavigationPayload(tab, target))
   },
   process: {
     platform: process.platform,

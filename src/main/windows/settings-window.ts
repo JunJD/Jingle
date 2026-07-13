@@ -1,13 +1,21 @@
-import { BrowserWindow } from "electron"
+import { BrowserWindow, type WebContents } from "electron"
 import { join } from "path"
 import { loadRendererWindow } from "./load-renderer-window"
 import { installExternalWindowOpenHandler } from "./external-window-open"
 import { lockFixedWindowZoom } from "./window-zoom"
 import { attachWindowDiagnostics } from "../diagnostics/electron-events"
-import type { SettingsWindowNavigationPayload } from "@shared/settings-window"
+import {
+  SETTINGS_NAVIGATION_CHANGED_CHANNEL,
+  type SettingsWindowNavigationPayload
+} from "@shared/settings-window"
 
 const SETTINGS_WINDOW_WIDTH = 1220
 const SETTINGS_WINDOW_HEIGHT = 820
+const settingsWindowWebContents = new WeakSet<WebContents>()
+
+export function isSettingsWindowWebContents(webContents: WebContents): boolean {
+  return settingsWindowWebContents.has(webContents) && !webContents.isDestroyed()
+}
 
 export function createSettingsWindow(): BrowserWindow {
   const isMac = process.platform === "darwin"
@@ -38,6 +46,7 @@ export function createSettingsWindow(): BrowserWindow {
       sandbox: false
     }
   })
+  settingsWindowWebContents.add(settingsWindow.webContents)
 
   attachWindowDiagnostics(settingsWindow, "settings")
   lockFixedWindowZoom(settingsWindow)
@@ -62,15 +71,7 @@ export function showSettingsWindow(
   }
 
   if (payload) {
-    const emitPayload = (): void => {
-      settingsWindow.webContents.send("settings-tab-changed", payload)
-    }
-
-    if (settingsWindow.webContents.isLoadingMainFrame()) {
-      settingsWindow.webContents.once("did-finish-load", emitPayload)
-    } else {
-      emitPayload()
-    }
+    settingsWindow.webContents.send(SETTINGS_NAVIGATION_CHANGED_CHANNEL, payload)
   }
 
   settingsWindow.show()

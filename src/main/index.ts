@@ -53,6 +53,7 @@ let ipcNetworkWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let mainCompositionRoot: MainCompositionRoot | null = null
 let pendingSettingsNavigation: SettingsWindowNavigationPayload | null = null
+let settingsRendererReady = false
 let pendingOAuthCallbackUrl: string | null = null
 let shutdownComplete = false
 let shutdownPromise: Promise<void> | null = null
@@ -101,9 +102,25 @@ function getOrCreateLauncherWindow(): BrowserWindow {
 
 function getOrCreateSettingsWindow(): BrowserWindow {
   if (!settingsWindow || settingsWindow.isDestroyed()) {
+    settingsRendererReady = false
     settingsWindow = createSettingsWindow()
+    const createdWindow = settingsWindow
+    createdWindow.webContents.on("did-start-loading", () => {
+      if (settingsWindow === createdWindow) {
+        settingsRendererReady = false
+      }
+    })
+    createdWindow.webContents.on("render-process-gone", () => {
+      if (settingsWindow === createdWindow) {
+        settingsRendererReady = false
+      }
+    })
     settingsWindow.on("closed", () => {
-      settingsWindow = null
+      if (settingsWindow === createdWindow) {
+        settingsWindow = null
+        pendingSettingsNavigation = null
+        settingsRendererReady = false
+      }
     })
   }
 
@@ -142,13 +159,11 @@ function toggleLauncher(): void {
 function openSettingsWindow(payload?: SettingsWindowNavigationPayload): void {
   const settingsWindow = getOrCreateSettingsWindow()
 
-  if (payload && settingsWindow.webContents.isLoadingMainFrame()) {
-    pendingSettingsNavigation = payload
-  } else {
-    pendingSettingsNavigation = null
+  if (payload) {
+    pendingSettingsNavigation = settingsRendererReady ? null : payload
   }
 
-  showSettingsWindow(settingsWindow, payload)
+  showSettingsWindow(settingsWindow, settingsRendererReady ? payload : undefined)
 }
 
 function openIpcNetworkWindow(): void {
@@ -306,6 +321,7 @@ if (hasSingleInstanceLock) {
       consumePendingSettingsNavigation: () => {
         const pending = pendingSettingsNavigation
         pendingSettingsNavigation = null
+        settingsRendererReady = true
         return pending
       },
       createPinnedAiSessionWindow,
