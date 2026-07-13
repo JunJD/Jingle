@@ -51,7 +51,7 @@ const REQUIRED_TABLE_COLUMNS = {
   checkpoints: ["run_id"]
 } as const
 const DATABASE_SCHEMA_RECOVERY_HINT =
-  "The app applies packaged Prisma migrations automatically during startup; if this is a packaged install, restart Jingle and check the main-process logs. In development, run `pnpm prisma:migrate:deploy`."
+  "The app applies packaged Prisma migrations automatically during startup; if this is a packaged install, restart Jingle and check the main-process logs. In development, run `node scripts/run-prisma-jingle-db.mjs migrate deploy`."
 
 let initialized = false
 
