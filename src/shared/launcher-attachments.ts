@@ -1,4 +1,4 @@
-const AI_ATTACHMENT_IMAGE_EXTENSIONS = [
+export const AI_ATTACHMENT_IMAGE_EXTENSIONS = [
   "png",
   "jpg",
   "jpeg",
@@ -9,24 +9,6 @@ const AI_ATTACHMENT_IMAGE_EXTENSIONS = [
   "tiff",
   "heic",
   "heif"
-] as const
-
-const AI_ATTACHMENT_DOCUMENT_EXTENSIONS = [
-  "pdf",
-  "doc",
-  "docx",
-  "xls",
-  "xlsx",
-  "csv",
-  "ppt",
-  "pptx",
-  "txt",
-  "md"
-] as const
-
-export const AI_ATTACHMENT_FILE_EXTENSIONS = [
-  ...AI_ATTACHMENT_IMAGE_EXTENSIONS,
-  ...AI_ATTACHMENT_DOCUMENT_EXTENSIONS
 ] as const
 
 function getPathExtension(path: string): string {
@@ -41,11 +23,5 @@ function getPathExtension(path: string): string {
 export function isAiAttachmentImagePath(path: string): boolean {
   return AI_ATTACHMENT_IMAGE_EXTENSIONS.includes(
     getPathExtension(path) as (typeof AI_ATTACHMENT_IMAGE_EXTENSIONS)[number]
-  )
-}
-
-export function isAiAttachmentFilePath(path: string): boolean {
-  return AI_ATTACHMENT_FILE_EXTENSIONS.includes(
-    getPathExtension(path) as (typeof AI_ATTACHMENT_FILE_EXTENSIONS)[number]
   )
 }

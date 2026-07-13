@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { ClipboardContext } from "@shared/clipboard"
-import { isAiAttachmentFilePath, isAiAttachmentImagePath } from "@shared/launcher-attachments"
+import { isAiAttachmentImagePath } from "@shared/launcher-attachments"
 import type { ComposerMessageRef } from "@shared/message-content"
 import { useAiCoreClipboard } from "./AiCoreHost"
 
@@ -45,21 +45,7 @@ function deriveLauncherAiAttachmentDrafts(context: ClipboardContext): LauncherAi
         }
       ]
     case "files":
-      return context.files.reduce<LauncherAiAttachmentDraft[]>((drafts, file) => {
-        if (!file.isFile || !isAiAttachmentFilePath(file.path)) {
-          return drafts
-        }
-
-        drafts.push({
-          id: `clipboard:file:${file.path}`,
-          isDirectory: file.isDirectory,
-          kind: "file",
-          name: file.name,
-          path: file.path,
-          source: "clipboard"
-        })
-        return drafts
-      }, [])
+      return []
     case "none":
     case "text":
     default:
@@ -100,45 +86,24 @@ function readImageSize(dataUrl: string): Promise<{ height: number; width: number
 }
 
 async function toPickedAttachment(file: File): Promise<LauncherAiAttachmentDraft | null> {
-  const name = file.name.trim()
-  if (!name) {
+  const name = file.name
+  if (!isAiAttachmentImagePath(name)) {
+    reportInvalidAttachment(`Cannot attach "${name}" because only images are supported.`)
     return null
   }
 
-  const path = window.electron.getPathForFile(file).trim()
-  if (!path) {
-    reportInvalidAttachment(`Cannot attach "${name}" because its file path is unavailable.`)
-    return null
-  }
-
-  if (!isAiAttachmentFilePath(path)) {
-    return null
-  }
-
-  if (isAiAttachmentImagePath(path)) {
-    const previewDataUrl = await readFileAsDataUrl(file)
-    const size = await readImageSize(previewDataUrl)
-
-    return {
-      dataUrl: previewDataUrl,
-      height: size.height,
-      id: `picker:image:${path}:${file.lastModified}`,
-      kind: "image",
-      name,
-      path,
-      previewDataUrl,
-      source: "picker",
-      width: size.width
-    }
-  }
+  const previewDataUrl = await readFileAsDataUrl(file)
+  const size = await readImageSize(previewDataUrl)
 
   return {
-    id: `picker:file:${path}:${file.lastModified}`,
-    isDirectory: false,
-    kind: "file",
+    dataUrl: previewDataUrl,
+    height: size.height,
+    id: `picker:image:${name}:${file.size}:${file.lastModified}`,
+    kind: "image",
     name,
-    path,
-    source: "picker"
+    previewDataUrl,
+    source: "picker",
+    width: size.width
   }
 }
 

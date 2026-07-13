@@ -7,7 +7,7 @@ import { ComposerFollowUpQueue } from "@/components/chat/ComposerFollowUpQueue"
 import { useShortcutScopeLayer } from "@/shortcuts/shortcut-context"
 import { formatShortcutChord } from "@/shortcuts/format-shortcut"
 import { AI_LAUNCHER_PLUGIN_ID, AI_THREAD_SOURCE } from "@shared/launcher-ai"
-import { AI_ATTACHMENT_FILE_EXTENSIONS } from "@shared/launcher-attachments"
+import { AI_ATTACHMENT_IMAGE_EXTENSIONS } from "@shared/launcher-attachments"
 import { MAX_LAUNCHER_SEARCH_RESULTS } from "@shared/launcher"
 import { resolveShortcutPlatform } from "@shared/shortcuts/model"
 import { LauncherChrome } from "@launcher-components/LauncherChrome"
@@ -1321,7 +1321,7 @@ export function LauncherAiPage(): React.JSX.Element {
                       type="file"
                       multiple
                       className="hidden"
-                      accept={AI_ATTACHMENT_FILE_EXTENSIONS.map(
+                      accept={AI_ATTACHMENT_IMAGE_EXTENSIONS.map(
                         (extension) => `.${extension}`
                       ).join(",")}
                       onChange={(event) => {
