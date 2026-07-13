@@ -376,9 +376,6 @@
   --ow-progress-track-h-sm: 4px;
   --ow-progress-track-h-md: 8px;
   --ow-progress-track-w: 64px;
-  --ow-shimmer-track-h: 2px;
-  --ow-shimmer-track-w: 44px;
-  --ow-shimmer-thumb-w: 18px;
   --ow-textarea-min-h: 80px;
   --ow-popover-w-sm: 256px;
   --ow-dialog-mobile-w: calc(100% - 2rem);
@@ -3754,21 +3751,4 @@ body[data-window="pinned-ai-session"] .ow-markdown,
 
 .shiki-content .line:hover {
   background-color: var(--background-interactive);
-}
-
-@keyframes glide {
-  0% {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-
-  35%,
-  65% {
-    opacity: 0.52;
-  }
-
-  100% {
-    opacity: 0;
-    transform: translateX(48px);
-  }
 }
