@@ -1,17 +1,17 @@
-# 树莓派性能待复现基线（2026-07-13）
+# 本地 Bundle 产物待复现快照（2026-07-13）
 
-## 测量上下文
+## 快照上下文
 
-测量上下文中的仓库 `HEAD` 为 `3e35ae1282d6aecc0a09297df9dd3b66d3bcb7cb`，该提交的
+快照上下文中的仓库 `HEAD` 为 `3e35ae1282d6aecc0a09297df9dd3b66d3bcb7cb`，该提交的
 committer time 为 `2026-07-13T21:41:09+08:00`。这里的时间是提交元数据，不是运行
-测量命令的 wall-clock time；后者未单独记录。`HEAD` 只作为运行上下文，不是已有
+采集命令的 wall-clock time；后者未单独记录。`HEAD` 只作为运行上下文，不是已有
 `out/` 产物的来源证明。
 
 工作树存在其他 session 的未提交改动，`out/` 产物没有可验证的 commit metadata，
 且 main 与 renderer 文件的修改时间不一致。因此无法证明这些产物对应当前 `HEAD`、
 当前 dirty tree 或同一次 build。
 
-## 测量命令
+## 采集命令
 
 ```sh
 git rev-parse HEAD
@@ -42,7 +42,7 @@ MiB 按 `bytes / 1,048,576` 计算。
 
 ## 阻塞证据
 
-基线测量早期的触发命令：
+快照采集早期的触发命令：
 
 ```sh
 /usr/bin/time -l npm run build
@@ -57,7 +57,7 @@ tests/node/launcher-model-filter.test.ts(3,45): error TS2307: Cannot find module
 Owner 判断：该测试仍引用当前工作树中已删除的 `launcher-model-filter` 模块，属于对应
 launcher/test owner 的陈旧测试阻塞；本轮只记录，不修复。
 
-基线测量早期的触发命令：
+快照采集早期的触发命令：
 
 ```sh
 make doctor
@@ -72,10 +72,10 @@ make: *** No rule to make target `doctor'.  Stop.
 该错误是当时的精确输出，但复核时并发工作树已经发生变化：`make doctor` 现已进入
 `scripts/guardrails/doctor-run.mjs`，不再复现 target 缺失。因此它只是已失效的瞬时阻塞
 证据，不是当前 blocker。相关 Makefile 和 Doctor findings 均属于 Doctor/build tooling
-owner；本轮不修改，也不把当前 findings 纳入这份 bundle 基线。
+owner；本轮不修改，也不把当前 findings 纳入这份 bundle 快照。
 
 ## 结论限制
 
-这是旧 `out/` 的待复现基线，不是当前源码的性能结论。当前 build 尚未生成可归因于
+这是本机旧 `out/` 的待复现产物快照，不是当前源码的性能结论。当前 build 尚未生成可归因于
 一致源码状态的新产物；在 owner 清理仍有效的 build 阻塞、共享工作树收敛并完成一次
 可追溯 build 之前，不应根据这些数字推断当前源码的 bundle、启动、内存、CPU 或交互性能。
