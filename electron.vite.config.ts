@@ -23,12 +23,6 @@ function copyResources(): { name: string; closeBundle: () => void } {
       const destInstalledExtensions = resolve("out/resources/installed-extensions")
       const destIcon = resolve("out/resources/icon.png")
       const nativeDestDir = resolve("out/native")
-      const nativeSources = [
-        "jingle-apple-reminders.swift",
-        "jingle-apple-reminders-info.plist",
-        "jingle-desktop-automation.swift",
-        "jingle-minimal-island.swift"
-      ]
       const mutationPredictorWorkerSource = resolve("src/main/agent/mutation-predictor-worker.ts")
       const mutationPredictorWorkerDestDir = resolve("out/main")
       const mutationPredictorWorkerDest = resolve("out/main/mutation-predictor-worker.mjs")
@@ -74,13 +68,6 @@ function copyResources(): { name: string; closeBundle: () => void } {
       }
 
       rmSync(nativeDestDir, { recursive: true, force: true })
-      for (const nativeSourceName of nativeSources) {
-        const nativeSource = resolve("src/native", nativeSourceName)
-        if (existsSync(nativeSource)) {
-          mkdirSync(nativeDestDir, { recursive: true })
-          copyFileSync(nativeSource, resolve("out/native", nativeSourceName))
-        }
-      }
 
       if (existsSync(mutationPredictorWorkerSource)) {
         if (!existsSync(mutationPredictorWorkerDestDir)) {
