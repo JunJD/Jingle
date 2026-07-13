@@ -29,7 +29,7 @@ cd Jingle
 make setup
 ```
 
-需要 Node.js 18+ 和 pnpm 10+。
+需要 Node.js 20.19+ 或 22.12+，以及 pnpm 10+。
 
 `make setup` 会安装依赖、生成 Prisma client，并执行本地 Jingle 数据库 migrations。
 

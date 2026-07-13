@@ -8,7 +8,7 @@ owner of the change before editing files.
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20.19+ or 22.12+
 - pnpm 10+
 - Git
 
