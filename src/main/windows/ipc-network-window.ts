@@ -1,6 +1,7 @@
 import { BrowserWindow } from "electron"
 import { join } from "path"
 import { IPC_NETWORK_WINDOW_KIND } from "@jingle/devtools-network"
+import { IPC_NETWORK_PRELOAD_CAPABILITY_ARGUMENT } from "@shared/preload-capability"
 import { attachWindowDiagnostics } from "../diagnostics/electron-events"
 import { installExternalWindowOpenHandler } from "./external-window-open"
 import { loadRendererWindow } from "./load-renderer-window"
@@ -22,6 +23,7 @@ export function createIpcNetworkWindow(): BrowserWindow {
     backgroundColor: "#111318",
     title: "IPC Network",
     webPreferences: {
+      additionalArguments: [IPC_NETWORK_PRELOAD_CAPABILITY_ARGUMENT],
       contextIsolation: true,
       nodeIntegration: false,
       preload: join(__dirname, "../preload/index.js"),
