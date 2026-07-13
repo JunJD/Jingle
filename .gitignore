@@ -9,7 +9,11 @@ release
 .env
 raycast
 .agents/
-.codex/
+.codex/*
+!.codex/config.toml
+!.codex/agents/
+.codex/agents/*
+!.codex/agents/*.toml
 .claude/
 .ipo/
 .x-media/

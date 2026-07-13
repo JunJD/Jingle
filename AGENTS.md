@@ -5,6 +5,28 @@
 - 内部 canonical name 永远使用 `jingle`；中文 UI 显示名使用「金果」。代码、schema、事件、工具参数和持久化字段等稳定标识必须使用 `jingle`，不要把「金果」写入内部协议层。
 - 不要引入旧项目名、旧本地目录、旧 URI scheme、旧 descriptor、旧 metadata key 或旧 env var。当前改动边界内如果发现旧项目标识，直接收敛为 Jingle-only 契约，不保留兼容层。
 
+## 持续专家审查 Subagents
+
+- 项目级专家定义位于 `.codex/agents/*.toml`。遇到项目审查、Issue 规划或对应领域的高风险改动时，主动选择最相关的专家，不要每次机械启动全部角色。
+- `extension_developer_auditor`：公开 extension SDK、包契约、开发工具链、安装与诊断体验。
+- `long_running_agent_operator`：长时间 run、审批、取消、恢复、重连、checkpoint 和 durable terminal status。
+- `incident_response_auditor`：生产故障取证、日志、诊断包、失败可见性、恢复与脱敏。
+- `cross_platform_desktop_auditor`：macOS、Windows、Linux 的原生行为、安装、首次启动、升级与发布产物。
+- `ai_eval_auditor`：模型与 provider 行为、上下文、工具选择、审批正确性、任务完成判定和 Eval 缺口。
+- `performance_energy_auditor`：启动、Launcher 搜索、renderer、SQLite/FTS、长 run 的性能、资源和能耗。
+- `craft_agents_oss_feature_scout`：持续研究 craft-agents-oss 的状态模型、工作流和产品机制，提炼适合 Jingle 的 Feature 候选。
+- `codex_app_feature_scout`：持续研究 Codex app 的公开产品能力、任务协作和审查工作流，提炼适合 Jingle 的 Feature 候选。
+- `workbuddy_feature_scout`：持续研究 WorkBuddy 的专家协作、办公产物和任务交付工作流，提炼适合 Jingle 的 Feature 候选。
+- 默认让这些专家只读取证、复现和起草候选；由父 Agent 统一去重、判断 owner、决定是否修改代码或写入 GitHub。
+- Feature Scout 必须先证明 Jingle 用户任务中的真实缺口；“其他产品已经有”不能单独构成 Feature 理由。
+- Feature Scout 提候选前必须完成现有能力审计：使用同义词搜索真实入口，并沿 schema/runtime/main/preload/projection/renderer 检查完整链路，同时核对公开远端、HEAD 和 dirty worktree。不能因为名称、入口或布局不同就判定能力不存在。
+- 如果基础能力已经存在，候选必须先列出 `Existing capability`，再把 Issue 收窄为可证明的 `Incremental gap`；优先扩展现有 owner，不新建重复事实源。dirty worktree 已实现的能力只能标记为本地待合入，默认不创建公开 Feature Issue。
+- 父 Agent 在写入 GitHub 前必须独立复核现有能力与增量缺口；Issue 正文必须同时说明“已经有什么”和“还缺什么”。
+- Feature Scout 只提炼用户价值、状态边界和交互原则，不复制其他产品的 UI、文案、品牌资产或未经许可的专有实现。
+- 并行只用于互相独立的审查面；同一 owner 或共享 dirty 文件不要交给多个 Agent 同时处理。
+- 每次审查必须区分公开远端、本地 `origin/main`、当前 `HEAD`、dirty worktree、构建产物和运行时观察，不能把其中一层的事实冒充另一层。
+- 安全敏感发现只能形成 private Security Advisory 候选，禁止在公开 Issue 草案里披露利用细节。
+
 ## React 状态约束
 
 - 不要在 `useEffect` 的 effect body 里同步调用 `setState` 来派生另一个 React 状态；这会触发 `react-hooks/set-state-in-effect`，也容易造成级联渲染。
