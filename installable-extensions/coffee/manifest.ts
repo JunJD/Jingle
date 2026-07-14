@@ -120,6 +120,7 @@ export const coffeeManifest = defineNativeExtensionManifest({
           name: "time",
           placeholder: l("17:30", "17:30"),
           required: true,
+          title: l("Time", "时间"),
           type: "text"
         }
       ],
