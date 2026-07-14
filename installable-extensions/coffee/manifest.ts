@@ -85,18 +85,21 @@ export const coffeeManifest = defineNativeExtensionManifest({
           name: "hours",
           placeholder: l("Hours", "小时"),
           required: false,
+          title: l("Hours", "小时"),
           type: "text"
         },
         {
           name: "minutes",
           placeholder: l("Minutes", "分钟"),
           required: false,
+          title: l("Minutes", "分钟"),
           type: "text"
         },
         {
           name: "seconds",
           placeholder: l("Seconds", "秒"),
           required: false,
+          title: l("Seconds", "秒"),
           type: "text"
         }
       ],
