@@ -31,10 +31,7 @@ async function resolveInitialAppThemeSettings(): Promise<AppThemeSettings> {
   }
 }
 
-export function RendererRoot(props: {
-  resolvedWindowKind: string
-  windowKind: string | null
-}): React.JSX.Element {
+export function RendererRoot(props: { windowKind: string }): React.JSX.Element {
   if (props.windowKind === IPC_NETWORK_WINDOW_KIND) {
     return (
       <React.StrictMode>
@@ -46,16 +43,13 @@ export function RendererRoot(props: {
   return <AppRendererRoot {...props} />
 }
 
-function AppRendererRoot(props: {
-  resolvedWindowKind: string
-  windowKind: string | null
-}): React.JSX.Element {
-  const { resolvedWindowKind, windowKind } = props
+function AppRendererRoot(props: { windowKind: string }): React.JSX.Element {
+  const { windowKind } = props
   const [locale, setLocale] = useState<AppLocale>(DEFAULT_APP_LOCALE)
   const shortcutWindowKind =
-    resolvedWindowKind === "launcher" || resolvedWindowKind === PINNED_AI_SESSION_WINDOW_KIND
+    windowKind === "launcher" || windowKind === PINNED_AI_SESSION_WINDOW_KIND
       ? "launcher"
-      : resolvedWindowKind === "settings"
+      : windowKind === "settings"
         ? "settings"
         : "main"
 

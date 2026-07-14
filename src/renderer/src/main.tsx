@@ -10,12 +10,11 @@ import { installRendererDiagnostics } from "./lib/diagnostics"
 import { RendererRoot } from "./RendererRoot"
 import "./index.css"
 
-const windowKind = new URLSearchParams(window.location.search).get("window")
-const resolvedWindowKind = windowKind ?? "main"
+const windowKind = new URLSearchParams(window.location.search).get("window") ?? "launcher"
 const platform = window.electron.process.platform
 
-document.documentElement.dataset.window = resolvedWindowKind
-document.body.dataset.window = resolvedWindowKind
+document.documentElement.dataset.window = windowKind
+document.body.dataset.window = windowKind
 document.documentElement.dataset.platform = platform
 document.body.dataset.platform = platform
 
@@ -25,12 +24,12 @@ applyAppThemeSettings(DEFAULT_APP_THEME_SETTINGS)
 
 function renderRoot(): void {
   ReactDOM.createRoot(document.getElementById("root")!).render(
-    <RendererRoot resolvedWindowKind={resolvedWindowKind} windowKind={windowKind} />
+    <RendererRoot windowKind={windowKind} />
   )
 }
 
 async function bootstrapRenderer(): Promise<void> {
-  if (resolvedWindowKind === IPC_NETWORK_WINDOW_KIND) {
+  if (windowKind === IPC_NETWORK_WINDOW_KIND) {
     renderRoot()
     return
   }
