@@ -102,6 +102,7 @@ interface SettingsCopy {
     emptyDescription: string
     emptyTitle: string
     loading: string
+    projectFilterLabel: string
     projectless: string
     restore: string
     restored: string
@@ -179,9 +180,11 @@ interface SettingsCopy {
     savedMemories: string
     savedStatus: string
     scope: string
+    scopeLabel: string
     showIncludedMemories: string
     showIncludedMemoriesDescription: string
     title: string
+    typeLabel: string
     useMemory: string
     useMemoryDescription: string
     workspace: string
@@ -324,6 +327,7 @@ const zhCN: SettingsCopy = {
     emptyDescription: "当前筛选条件下没有已归档对话。",
     emptyTitle: "没有归档对话",
     loading: "正在加载已归档对话...",
+    projectFilterLabel: "按项目筛选归档对话",
     projectless: "无项目",
     restore: "取消归档",
     restored: "已取消归档",
@@ -401,9 +405,11 @@ const zhCN: SettingsCopy = {
     savedMemories: "已保存记忆",
     savedStatus: "已保存",
     scope: "范围",
+    scopeLabel: "记忆范围",
     showIncludedMemories: "展示纳入记录",
     showIncludedMemoriesDescription: "对话完成后允许界面展示本轮纳入上下文的记忆。",
     title: "记忆",
+    typeLabel: "记忆类型",
     useMemory: "启用记忆",
     useMemoryDescription: "开启后，Agent 会在每次运行前读取本地记忆和上下文文件。",
     workspace: "当前工作区",
@@ -550,6 +556,7 @@ const enUS: SettingsCopy = {
     emptyDescription: "No archived chats match the current filters.",
     emptyTitle: "No archived chats",
     loading: "Loading archived chats...",
+    projectFilterLabel: "Filter archived chats by project",
     projectless: "Projectless",
     restore: "Unarchive",
     restored: "Chat unarchived",
@@ -633,10 +640,12 @@ const enUS: SettingsCopy = {
     savedMemories: "Saved Memories",
     savedStatus: "Saved",
     scope: "Scope",
+    scopeLabel: "Memory scope",
     showIncludedMemories: "Show included memories",
     showIncludedMemoriesDescription:
       "Allow the UI to show which memories were included after a run.",
     title: "Memory",
+    typeLabel: "Memory type",
     useMemory: "Use memory",
     useMemoryDescription:
       "When enabled, the agent reads local memory and context files before a run.",

@@ -9,13 +9,13 @@ import { getSettingsCopy } from "./copy"
 import {
   inputClassName,
   secondaryButtonClassName,
-  selectClassName,
   settingsCardClassName,
   settingsPageClassName,
   settingsPageDescriptionClassName,
   settingsPageHeaderClassName,
   settingsPageTitleClassName,
-  SettingsRow
+  SettingsRow,
+  SettingsSelect
 } from "./settings-ui"
 
 function parseLineList(value: string): string[] {
@@ -251,10 +251,11 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
           icon={<Rocket className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
           title={copy.general.launcherModeTitle}
           description={copy.general.launcherModeDescription}
+          titleId="settings-general-launcher-mode-title"
         >
           <div className="max-w-[var(--ow-settings-select-w)]">
-            <select
-              className={selectClassName}
+            <SettingsSelect
+              aria-labelledby="settings-general-launcher-mode-title"
               value={launcherSettings.windowMode}
               onChange={(event) => {
                 void handleLauncherModeChange(event.target.value as LauncherWindowMode)
@@ -262,7 +263,7 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
             >
               <option value="default">{copy.general.launcherModeDefault}</option>
               <option value="compact">{copy.general.launcherModeCompact}</option>
-            </select>
+            </SettingsSelect>
           </div>
         </SettingsRow>
 
@@ -270,10 +271,11 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
           icon={<Languages className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
           title={copy.general.localeTitle}
           description={copy.general.localeDescription}
+          titleId="settings-general-locale-title"
         >
           <div className="max-w-[var(--ow-settings-select-w)]">
-            <select
-              className={selectClassName}
+            <SettingsSelect
+              aria-labelledby="settings-general-locale-title"
               value={agentConfig.locale}
               onChange={(event) => {
                 void handleLocaleChange(event.target.value as AppLocale)
@@ -284,7 +286,7 @@ export function GeneralTab(props: { locale: AppLocale }): React.JSX.Element {
                   {entry}
                 </option>
               ))}
-            </select>
+            </SettingsSelect>
           </div>
         </SettingsRow>
 

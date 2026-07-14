@@ -15,7 +15,6 @@ import { getSettingsCopy } from "./copy"
 import {
   inputClassName,
   secondaryButtonClassName,
-  selectClassName,
   settingsCardClassName,
   settingsInsetCardClassName,
   settingsPageClassName,
@@ -23,6 +22,7 @@ import {
   settingsPageHeaderClassName,
   settingsPageTitleClassName,
   SettingsRow,
+  SettingsSelect,
   SettingsSwitch
 } from "./settings-ui"
 
@@ -240,8 +240,9 @@ function NewMemoryCard(props: {
           }}
         />
         <div className="flex flex-wrap items-center gap-[var(--ow-gap-md)]">
-          <select
-            className={`${selectClassName} max-w-[var(--ow-settings-select-w)]`}
+          <SettingsSelect
+            aria-label={copy.memory.typeLabel}
+            className="max-w-[var(--ow-settings-select-w)]"
             value={draft.type}
             onChange={(event) => {
               onDraftChange({
@@ -253,9 +254,10 @@ function NewMemoryCard(props: {
             <option value="about_me">{copy.memory.aboutMe}</option>
             <option value="workspace_context">{copy.memory.workspaceContext}</option>
             <option value="correction">{copy.memory.correction}</option>
-          </select>
-          <select
-            className={`${selectClassName} max-w-[var(--ow-settings-select-w)]`}
+          </SettingsSelect>
+          <SettingsSelect
+            aria-label={copy.memory.scopeLabel}
+            className="max-w-[var(--ow-settings-select-w)]"
             value={draft.scope}
             onChange={(event) => {
               onDraftChange({
@@ -266,7 +268,7 @@ function NewMemoryCard(props: {
           >
             <option value="global">{copy.memory.global}</option>
             <option value="workspace">{copy.memory.workspace}</option>
-          </select>
+          </SettingsSelect>
           <button
             type="button"
             className={secondaryButtonClassName}

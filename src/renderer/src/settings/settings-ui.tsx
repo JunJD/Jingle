@@ -12,9 +12,10 @@ export function SettingsRow(props: {
   description: string
   icon: ReactNode
   title: string
+  titleId?: string
   withBorder?: boolean
 }): React.JSX.Element {
-  const { children, description, icon, title, withBorder = true } = props
+  const { children, description, icon, title, titleId, withBorder = true } = props
 
   return (
     <div
@@ -25,7 +26,10 @@ export function SettingsRow(props: {
       <div className="flex items-start gap-[var(--ow-settings-header-gap)]">
         <div className="mt-0.5 text-muted-foreground">{icon}</div>
         <div className="space-y-[var(--ow-space-1)]">
-          <div className="[font-size:var(--ow-font-label)] font-semibold text-foreground">
+          <div
+            id={titleId}
+            className="[font-size:var(--ow-font-label)] font-semibold text-foreground"
+          >
             {title}
           </div>
           <div className="[font-size:var(--ow-settings-description-size)] leading-[var(--ow-line-body)] text-muted-foreground">

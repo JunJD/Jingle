@@ -14,13 +14,13 @@ import { getSettingsCopy } from "./copy"
 import {
   inputClassName,
   secondaryButtonClassName,
-  selectClassName,
   settingsCardClassName,
   settingsPageClassName,
   settingsPageDescriptionClassName,
   settingsPageHeaderClassName,
   settingsPageTitleClassName,
   SettingsRow,
+  SettingsSelect,
   SettingsSwitch
 } from "./settings-ui"
 
@@ -192,11 +192,13 @@ function AppearanceThemeRow(props: {
       icon={<Palette className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)]" />}
       title={copy.appearance.themeTitle}
       description={copy.appearance.themeDescription}
+      titleId="settings-appearance-theme-title"
     >
       <div className="grid gap-[var(--ow-gap-md)]">
         <div className="flex flex-wrap items-center gap-[var(--ow-gap-md)]">
-          <select
-            className={`${selectClassName} max-w-[var(--ow-settings-select-w)]`}
+          <SettingsSelect
+            aria-labelledby="settings-appearance-theme-title"
+            className="max-w-[var(--ow-settings-select-w)]"
             value={presetId}
             onChange={(event) => onPresetChange(event.target.value)}
           >
@@ -206,7 +208,7 @@ function AppearanceThemeRow(props: {
               </option>
             ))}
             <option value="custom">{copy.appearance.customTheme}</option>
-          </select>
+          </SettingsSelect>
           <button
             type="button"
             className={secondaryButtonClassName}
@@ -392,11 +394,15 @@ function AppearanceBehaviorRow(props: {
     >
       <div className="grid gap-[var(--ow-gap-md)]">
         <div className="grid gap-[var(--ow-space-1)]">
-          <span className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground">
+          <label
+            className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground"
+            htmlFor="settings-appearance-variant"
+          >
             {copy.appearance.variant}
-          </span>
-          <select
-            className={`${selectClassName} max-w-[var(--ow-settings-select-w)]`}
+          </label>
+          <SettingsSelect
+            id="settings-appearance-variant"
+            className="max-w-[var(--ow-settings-select-w)]"
             value={config.variant}
             onChange={(event) => {
               const variant = event.target.value === "dark" ? "dark" : "light"
@@ -405,14 +411,18 @@ function AppearanceBehaviorRow(props: {
           >
             <option value="light">{copy.appearance.lightVariant}</option>
             <option value="dark">{copy.appearance.darkVariant}</option>
-          </select>
+          </SettingsSelect>
         </div>
         <div className="grid gap-[var(--ow-space-1)]">
-          <span className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground">
+          <label
+            className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground"
+            htmlFor="settings-appearance-code-theme"
+          >
             {copy.appearance.codeTheme}
-          </span>
-          <select
-            className={`${selectClassName} max-w-[var(--ow-settings-select-w)]`}
+          </label>
+          <SettingsSelect
+            id="settings-appearance-code-theme"
+            className="max-w-[var(--ow-settings-select-w)]"
             value={config.codeThemeId}
             onChange={(event) => {
               const codeThemeId = event.target.value
@@ -424,7 +434,7 @@ function AppearanceBehaviorRow(props: {
                 {option}
               </option>
             ))}
-          </select>
+          </SettingsSelect>
         </div>
         <div className="flex min-h-[var(--ow-settings-control-h)] items-center justify-between gap-[var(--ow-gap-md)] rounded-[var(--ow-radius-md)] border border-border bg-background-elevated px-[var(--ow-space-3)] py-[var(--ow-space-1)]">
           <span className="[font-size:var(--ow-font-body)] font-medium text-muted-foreground">

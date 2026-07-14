@@ -16,12 +16,12 @@ import { getSettingsCopy } from "./copy"
 import {
   inputClassName,
   secondaryButtonClassName,
-  selectClassName,
   settingsCardClassName,
   settingsPageClassName,
   settingsPageDescriptionClassName,
   settingsPageHeaderClassName,
-  settingsPageTitleClassName
+  settingsPageTitleClassName,
+  SettingsSelect
 } from "./settings-ui"
 
 type ProjectFilterValue = "all" | "projectless" | `project:${string}`
@@ -278,8 +278,8 @@ export function ArchivedThreadsTab(props: { locale: AppLocale }): React.JSX.Elem
             />
           </label>
 
-          <select
-            className={selectClassName}
+          <SettingsSelect
+            aria-label={copy.archived.projectFilterLabel}
             value={projectFilter}
             onChange={(event) =>
               dispatch({
@@ -295,7 +295,7 @@ export function ArchivedThreadsTab(props: { locale: AppLocale }): React.JSX.Elem
                 {project.displayName}
               </option>
             ))}
-          </select>
+          </SettingsSelect>
         </div>
 
         {visibleThreads.length === 0 ? (
