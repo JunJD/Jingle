@@ -646,11 +646,6 @@ body[data-window="pinned-ai-session"],
   --ow-chat-attachment-image-radius: 18px;
 }
 
-.context-usage-popover {
-  --ow-context-popover-w: 288px;
-}
-
-.model-switcher-popover,
 .launcher-ai-model-popover {
   width: var(--ow-model-quick-popover-w, 356px);
   height: min(
@@ -2376,31 +2371,6 @@ body[data-platform="darwin"][data-window="pinned-ai-session"] .launcher-chrome-h
   }
 }
 
-.ow-agent-steps[data-active="true"] .ow-agent-steps-title {
-  background-image: linear-gradient(
-    to right,
-    var(--ow-agent-timeline-muted) 30%,
-    color-mix(in srgb, var(--ow-agent-timeline-muted) 58%, var(--foreground) 42%) 50%,
-    var(--ow-agent-timeline-muted) 70%
-  );
-  background-size: 200% auto;
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  animation: ow-agent-steps-title-shimmer 4s linear infinite;
-}
-
-@keyframes ow-agent-steps-title-shimmer {
-  0% {
-    background-position: 200% 50%;
-  }
-
-  100% {
-    background-position: -200% 50%;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .ow-context-compaction-rule::after,
   .ow-context-compaction-pill::after {
@@ -3660,14 +3630,6 @@ body[data-window="pinned-ai-session"] .ow-markdown,
 
   to {
     height: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ow-agent-steps[data-active="true"] .ow-agent-steps-title {
-    animation: none;
-    color: var(--ow-agent-timeline-muted);
-    -webkit-text-fill-color: var(--ow-agent-timeline-muted);
   }
 }
 
