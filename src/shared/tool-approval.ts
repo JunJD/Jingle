@@ -120,6 +120,15 @@ function readOptionalString(value: unknown): string | null {
   return typeof value === "string" ? value : null
 }
 
+function readRequiredString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null
+  }
+
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
 function readOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined
 }
@@ -196,11 +205,16 @@ export function parseToolApprovalItem(value: unknown): ToolApprovalItem | null {
   }
 
   if (value.kind === "execute_command" && value.toolName === "execute") {
+    const changes = parseToolApprovalChanges(value.changes)
+    if (!Array.isArray(value.changes) || changes.length !== value.changes.length) {
+      return null
+    }
+
     return {
       kind: "execute_command",
       toolName: "execute",
       command: readOptionalString(value.command),
-      changes: parseToolApprovalChanges(value.changes),
+      changes,
       profile: isExecuteCommandProfile(value.profile) ? value.profile : null,
       predictionStatus: isMutationPredictionStatus(value.predictionStatus)
         ? value.predictionStatus
@@ -210,6 +224,11 @@ export function parseToolApprovalItem(value: unknown): ToolApprovalItem | null {
   }
 
   if (value.kind === "file_mutation" && isFileMutationToolName(value.toolName)) {
+    const changes = parseToolApprovalChanges(value.changes)
+    if (!Array.isArray(value.changes) || changes.length !== value.changes.length) {
+      return null
+    }
+
     return {
       kind: "file_mutation",
       toolName: value.toolName,
@@ -217,7 +236,7 @@ export function parseToolApprovalItem(value: unknown): ToolApprovalItem | null {
       content: readOptionalString(value.content),
       oldText: readOptionalString(value.oldText),
       newText: readOptionalString(value.newText),
-      changes: parseToolApprovalChanges(value.changes)
+      changes
     }
   }
 
@@ -227,22 +246,35 @@ export function parseToolApprovalItem(value: unknown): ToolApprovalItem | null {
     isPermissionModeName(value.permissionMode) &&
     isRecord(value.args)
   ) {
+    const capabilityDisplayName = readRequiredString(value.capabilityDisplayName)
+    const capabilityId = readRequiredString(value.capabilityId)
+    const extensionName = readRequiredString(value.extensionName)
+    const reason = readRequiredString(value.reason)
+    const toolTitle = readRequiredString(value.toolTitle)
+    const confirmation = parseToolApprovalConfirmation(value.confirmation)
+    if (
+      !capabilityDisplayName ||
+      !capabilityId ||
+      !extensionName ||
+      !reason ||
+      !toolTitle ||
+      (value.confirmation !== undefined && !confirmation)
+    ) {
+      return null
+    }
+
     return {
       access: value.access,
       args: value.args,
-      capabilityDisplayName:
-        readOptionalString(value.capabilityDisplayName) ??
-        readOptionalString(value.sourceDisplayName) ??
-        "",
-      capabilityId:
-        readOptionalString(value.capabilityId) ?? readOptionalString(value.sourceId) ?? "",
-      confirmation: parseToolApprovalConfirmation(value.confirmation),
-      extensionName: readOptionalString(value.extensionName) ?? "",
+      capabilityDisplayName,
+      capabilityId,
+      confirmation,
+      extensionName,
       kind: "extension_tool",
       permissionMode: value.permissionMode,
-      reason: readOptionalString(value.reason) ?? "",
+      reason,
       toolName: value.toolName,
-      toolTitle: readOptionalString(value.toolTitle) ?? value.toolName
+      toolTitle
     }
   }
 
