@@ -43,13 +43,6 @@ export interface ExtensionRuntimeLaunchContext {
 
 export type ExtensionRuntimeSessionKind = "ambient" | "foreground" | "run-once"
 
-export interface ExtensionRuntimeSessionInfo {
-  context: ExtensionRuntimeLaunchContext
-  kind: ExtensionRuntimeSessionKind
-  pid?: number
-  sessionId: string
-}
-
 export interface ExtensionRuntimeSessionError {
   error: ExtensionRuntimeError
   sessionId: string
@@ -713,12 +706,6 @@ export type ExtensionRuntimeToHostMessage =
   | { request: ExtensionHostRequest; sessionId: string; type: "host-request" }
   | { error: ExtensionRuntimeError; sessionId: string; type: "error" }
   | { metrics: ExtensionRuntimeMetrics; sessionId: string; type: "metrics" }
-
-export type ExtensionHostToRuntimeMessage =
-  | { context: ExtensionRuntimeLaunchContext; sessionId: string; type: "start" }
-  | { event: ExtensionRuntimeEvent; sessionId: string; type: "event" }
-  | { response: ExtensionHostResponse; sessionId: string; type: "host-response" }
-  | { sessionId: string; type: "stop" }
 
 export interface ExtensionRuntimeError {
   code: string

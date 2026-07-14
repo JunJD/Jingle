@@ -31,3 +31,4 @@ export type {
   RuntimeCacheBackendScope,
   RuntimeCacheEntry
 } from "./extension-runtime/sdk/storage"
+export type * from "./shared/extension-runtime-protocol"
