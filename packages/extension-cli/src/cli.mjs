@@ -15,6 +15,12 @@ import { setTimeout as delay } from "node:timers/promises"
 import { pathToFileURL } from "node:url"
 import { build } from "esbuild"
 import ts from "typescript"
+import {
+  acquirePublishLock,
+  assertPublishLockHeld,
+  formatPublishLockErrorDiagnostics,
+  releasePublishLock
+} from "./publish-lock.mjs"
 
 const repoRoot = process.cwd()
 const defaultOutputRoot = resolve(repoRoot, ".jingle-build", "installed-extensions")
@@ -135,13 +141,29 @@ async function buildAndReport(extensionRef, outputRoot, trustOverride, options =
       throw error
     }
     reportBuildFailure(error, options.publishedPackageRoot)
-    console.error(error instanceof Error ? error.message : String(error))
+    reportBuildErrorDiagnostics(error)
     return null
+  }
+}
+
+function reportBuildErrorDiagnostics(error) {
+  const primaryMessage = error instanceof Error ? error.message : String(error)
+  console.error(primaryMessage)
+  for (const diagnostic of formatPublishLockErrorDiagnostics(error)) {
+    if (diagnostic !== `Publish lock error: ${primaryMessage}`) {
+      console.error(diagnostic)
+    }
   }
 }
 
 function reportBuildFailure(error, previouslyPublishedPackageRoot) {
   const status = resolvePublishedArtifactStatus(error, previouslyPublishedPackageRoot)
+  if (status.kind === "published") {
+    console.error(
+      `The new extension package was published, but the publication transaction did not finish cleanly: ${status.packageRoot}`
+    )
+    return
+  }
   if (status.kind === "final") {
     console.error(
       `New extension build failed; continuing to use the previously published extension package: ${status.packageRoot}`
@@ -168,6 +190,10 @@ function resolvePublishedArtifactStatus(error, previouslyPublishedPackageRoot) {
     isPackageDirectoryPresent(rollback.backupRoot)
   ) {
     return { kind: "backup", packageRoot: rollback.backupRoot }
+  }
+  const publishedPackageRoot = getPublishedPackageFailureRoot(error)
+  if (publishedPackageRoot && isPackageDirectoryPresent(publishedPackageRoot)) {
+    return { kind: "published", packageRoot: publishedPackageRoot }
   }
   if (previouslyPublishedPackageRoot && isPackageDirectoryPresent(previouslyPublishedPackageRoot)) {
     return { kind: "final", packageRoot: previouslyPublishedPackageRoot }
@@ -243,65 +269,109 @@ async function buildExtension(input) {
     packageParent,
     `${extensionPackageTemporaryDirectoryPrefix}staging-${randomUUID()}`
   )
+  const publishLock = await acquirePublishLock(packageRoot)
+  let transactionError = null
+  let releaseError = null
+  let publishedPackageRoot = null
 
   try {
-    mkdirSync(join(stagingRoot, "dist"), { recursive: true })
-    writeJson(join(stagingRoot, "manifest.json"), manifest)
-    writeJson(join(stagingRoot, "runtime-metadata.json"), runtimeMetadata)
+    try {
+      assertPublishLockHeld(publishLock)
+      mkdirSync(join(stagingRoot, "dist"), { recursive: true })
+      writeJson(join(stagingRoot, "manifest.json"), manifest)
+      writeJson(join(stagingRoot, "runtime-metadata.json"), runtimeMetadata)
 
-    const assetsDir = join(extensionRoot, "assets")
-    if (!existsSync(assetsDir)) {
-      throw new Error(`Extension assets directory is missing: ${assetsDir}`)
-    }
-    cpSync(assetsDir, join(stagingRoot, "assets"), { recursive: true })
+      const assetsDir = join(extensionRoot, "assets")
+      if (!existsSync(assetsDir)) {
+        throw new Error(`Extension assets directory is missing: ${assetsDir}`)
+      }
+      cpSync(assetsDir, join(stagingRoot, "assets"), { recursive: true })
 
-    const runtimeExportName = findDefinitionExportName(
-      join(extensionRoot, "runtime.ts"),
-      "defineNativeExtensionRuntime"
-    )
-    const mainExportName = findDefinitionExportName(
-      join(extensionRoot, "main.ts"),
-      "defineNativeExtensionMain"
-    )
-
-    await buildModuleFromSource({
-      extensionRoot,
-      installRuntimeReactShim: true,
-      outfile: join(stagingRoot, "dist", "runtime.mjs"),
-      source: `export { ${runtimeExportName} as default } from "./runtime"\n`,
-      sourcefile: `${manifest.name}-runtime-entry.ts`
-    })
-    await buildModuleFromSource({
-      extensionRoot,
-      external: ["electron"],
-      outfile: join(stagingRoot, "dist", "main.mjs"),
-      source: `export { ${mainExportName} as default } from "./main"\n`,
-      sourcefile: `${manifest.name}-main-entry.ts`
-    })
-
-    writeJson(join(stagingRoot, "jingle.extension.json"), {
-      assets: "./assets",
-      id: manifest.name,
-      main: "./dist/main.mjs",
-      manifest: "./manifest.json",
-      runtime: "./dist/runtime.mjs",
-      runtimeMetadata: "./runtime-metadata.json",
-      schemaVersion: 1,
-      trust,
-      version
-    })
-    await publishPackageDirectory(stagingRoot, packageRoot)
-  } catch (error) {
-    const cleanupError = await removePackageDirectory(stagingRoot)
-    if (cleanupError) {
-      const cleanupFailure = new AggregateError(
-        [error, cleanupError],
-        `Extension build failed and staging cleanup also failed: ${stagingRoot}`
+      const runtimeExportName = findDefinitionExportName(
+        join(extensionRoot, "runtime.ts"),
+        "defineNativeExtensionRuntime"
       )
-      copyRollbackFailureFacts(error, cleanupFailure)
-      throw cleanupFailure
+      const mainExportName = findDefinitionExportName(
+        join(extensionRoot, "main.ts"),
+        "defineNativeExtensionMain"
+      )
+
+      await buildModuleFromSource({
+        extensionRoot,
+        installRuntimeReactShim: true,
+        outfile: join(stagingRoot, "dist", "runtime.mjs"),
+        source: `export { ${runtimeExportName} as default } from "./runtime"\n`,
+        sourcefile: `${manifest.name}-runtime-entry.ts`
+      })
+      await buildModuleFromSource({
+        extensionRoot,
+        external: ["electron"],
+        outfile: join(stagingRoot, "dist", "main.mjs"),
+        source: `export { ${mainExportName} as default } from "./main"\n`,
+        sourcefile: `${manifest.name}-main-entry.ts`
+      })
+
+      writeJson(join(stagingRoot, "jingle.extension.json"), {
+        assets: "./assets",
+        id: manifest.name,
+        main: "./dist/main.mjs",
+        manifest: "./manifest.json",
+        runtime: "./dist/runtime.mjs",
+        runtimeMetadata: "./runtime-metadata.json",
+        schemaVersion: 1,
+        trust,
+        version
+      })
+      await publishPackageDirectory(stagingRoot, packageRoot, publishLock)
+      publishedPackageRoot = packageRoot
+    } catch (error) {
+      let failure = error
+      if (existsSync(stagingRoot)) {
+        try {
+          assertPublishLockHeld(publishLock)
+          const cleanupError = await removePackageDirectory(stagingRoot)
+          if (cleanupError) {
+            throw cleanupError
+          }
+        } catch (cleanupError) {
+          failure = new AggregateError(
+            [error, cleanupError],
+            `Extension build failed and staging cleanup could not finish safely: ${stagingRoot}`
+          )
+          copyPublicationFailureFacts(error, failure)
+        }
+      }
+      transactionError = failure
     }
-    throw error
+  } finally {
+    try {
+      await releasePublishLock(publishLock, publishLock.ownerToken)
+    } catch (error) {
+      releaseError = error
+    }
+  }
+
+  if (transactionError && releaseError) {
+    const failure = new AggregateError(
+      [transactionError, releaseError],
+      `Extension transaction failed and its publish lock also could not be released: ${packageRoot}`
+    )
+    copyPublicationFailureFacts(transactionError, failure)
+    throw failure
+  }
+  if (transactionError) {
+    throw transactionError
+  }
+  if (releaseError) {
+    const failure = new AggregateError(
+      [releaseError],
+      `Extension package was published, but its publish lock could not be released: ${packageRoot}`
+    )
+    failure.code = "JINGLE_EXTENSION_PUBLISH_LOCK_RELEASE_FAILED"
+    if (publishedPackageRoot) {
+      failure.publishedPackageRoot = publishedPackageRoot
+    }
+    throw failure
   }
 
   return {
@@ -312,7 +382,7 @@ async function buildExtension(input) {
   }
 }
 
-async function publishPackageDirectory(stagingRoot, packageRoot) {
+async function publishPackageDirectory(stagingRoot, packageRoot, publishLock) {
   const backupRoot = join(
     dirname(packageRoot),
     `${extensionPackageTemporaryDirectoryPrefix}backup-${randomUUID()}`
@@ -320,14 +390,17 @@ async function publishPackageDirectory(stagingRoot, packageRoot) {
   let previousArtifactMoved = false
 
   try {
+    assertPublishLockHeld(publishLock)
     if (existsSync(packageRoot)) {
       await renameDirectoryWithRetry(packageRoot, backupRoot)
       previousArtifactMoved = true
     }
+    assertPublishLockHeld(publishLock)
     await renameDirectoryWithRetry(stagingRoot, packageRoot)
   } catch (publishError) {
     if (previousArtifactMoved && !existsSync(packageRoot)) {
       try {
+        assertPublishLockHeld(publishLock)
         await renameDirectoryWithRetry(backupRoot, packageRoot)
       } catch (rollbackError) {
         const error = new AggregateError(
@@ -343,6 +416,13 @@ async function publishPackageDirectory(stagingRoot, packageRoot) {
   }
 
   if (previousArtifactMoved) {
+    try {
+      assertPublishLockHeld(publishLock)
+    } catch (error) {
+      error.publishedPackageRoot = packageRoot
+      error.previousPackageBackupRoot = backupRoot
+      throw error
+    }
     const cleanupError = await removePackageDirectory(backupRoot)
     if (cleanupError) {
       console.warn(
@@ -376,6 +456,32 @@ function copyRollbackFailureFacts(source, target) {
   }
   target.code = "JINGLE_EXTENSION_PUBLISH_ROLLBACK_FAILED"
   target.publishedPackageRollback = rollback
+}
+
+function getPublishedPackageFailureRoot(error) {
+  if (!error || typeof error !== "object") {
+    return null
+  }
+  if (typeof error.publishedPackageRoot === "string") {
+    return error.publishedPackageRoot
+  }
+  if (error instanceof AggregateError) {
+    for (const nestedError of error.errors) {
+      const packageRoot = getPublishedPackageFailureRoot(nestedError)
+      if (packageRoot) {
+        return packageRoot
+      }
+    }
+  }
+  return null
+}
+
+function copyPublicationFailureFacts(source, target) {
+  copyRollbackFailureFacts(source, target)
+  const publishedPackageRoot = getPublishedPackageFailureRoot(source)
+  if (publishedPackageRoot) {
+    target.publishedPackageRoot = publishedPackageRoot
+  }
 }
 
 function isPackageDirectoryPresent(packageRoot) {
