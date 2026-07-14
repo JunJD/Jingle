@@ -80,51 +80,13 @@ export type ExtensionActionNode = CommonProtocol.ExtensionActionNode
 export type ExtensionActionStyle = CommonProtocol.ExtensionActionStyle
 export type ExtensionActionShortcutNode = CommonProtocol.ExtensionActionShortcutNode
 
-export interface ExtensionRunBotAgentSourceRef {
-  id?: string
-  label?: string
-  metadata?: Record<string, unknown>
-  type: string
-  url?: string
-}
-
-export interface ExtensionRunBotAgentPromptPlan {
-  contextRefs?: ExtensionRunBotAgentSourceRef[]
-  instructions?: string[]
-  objective: string
-  skillRefs?: string[]
-}
-
-export interface ExtensionRunBotAgentWorkflow {
-  labels?: string[]
-  status?: string
-}
-
-export interface ExtensionRunBotAgentPayload {
-  prompt: ExtensionRunBotAgentPromptPlan
-  sourceRef?: ExtensionRunBotAgentSourceRef
-  title: string
-  workflow?: ExtensionRunBotAgentWorkflow
-}
-
-export interface ExtensionRuntimeRunBotAgentRequestEvent {
-  request: ExtensionAgentHostRequest
-  sessionId: string
-}
-
-export type ExtensionRuntimeRunBotAgentResponse =
-  | {
-      ok: true
-      requestId: string
-      result: unknown
-      sessionId: string
-    }
-  | {
-      error: ExtensionRuntimeError
-      ok: false
-      requestId: string
-      sessionId: string
-    }
+export type ExtensionRunBotAgentSourceRef = CommonProtocol.ExtensionRunBotAgentSourceRef
+export type ExtensionRunBotAgentPromptPlan = CommonProtocol.ExtensionRunBotAgentPromptPlan
+export type ExtensionRunBotAgentWorkflow = CommonProtocol.ExtensionRunBotAgentWorkflow
+export type ExtensionRunBotAgentPayload = CommonProtocol.ExtensionRunBotAgentPayload
+export type ExtensionRuntimeRunBotAgentRequestEvent =
+  CommonProtocol.ExtensionRuntimeRunBotAgentRequestEvent
+export type ExtensionRuntimeRunBotAgentResponse = CommonProtocol.ExtensionRuntimeRunBotAgentResponse
 
 export type ExtensionVisualNode = CommonProtocol.ExtensionVisualNode
 export type ExtensionTextVisualNode = CommonProtocol.ExtensionTextVisualNode
@@ -134,17 +96,11 @@ export type ExtensionSvgVisualNode = CommonProtocol.ExtensionSvgVisualNode
 export type ExtensionSvgProps = CommonProtocol.ExtensionSvgProps
 export type ExtensionRuntimeEvent = CommonProtocol.ExtensionRuntimeEvent
 
-export type ExtensionHostRequest =
-  | Exclude<CommonProtocol.ExtensionHostRequest, { capability: "agent" }>
-  | ExtensionAgentHostRequest
+export type ExtensionHostRequest = CommonProtocol.ExtensionHostRequest
 
 export type ExtensionHostRequestBase = CommonProtocol.ExtensionHostRequestBase
 
-export interface ExtensionAgentHostRequest extends ExtensionHostRequestBase {
-  capability: "agent"
-  method: "run-bot-agent"
-  payload: ExtensionRunBotAgentPayload
-}
+export type ExtensionAgentHostRequest = CommonProtocol.ExtensionAgentHostRequest
 
 export type ExtensionRpcHostRequest = CommonProtocol.ExtensionRpcHostRequest
 export type ExtensionStorageHostRequest = CommonProtocol.ExtensionStorageHostRequest
@@ -184,9 +140,7 @@ export type ExtensionAiHostRequest = CommonProtocol.ExtensionAiHostRequest
 export type ExtensionAiAskPayload = CommonProtocol.ExtensionAiAskPayload
 export type ExtensionHostResponse = CommonProtocol.ExtensionHostResponse
 
-export type ExtensionRuntimeToHostMessage =
-  | Exclude<CommonProtocol.ExtensionRuntimeToHostMessage, { type: "host-request" }>
-  | { request: ExtensionHostRequest; sessionId: string; type: "host-request" }
+export type ExtensionRuntimeToHostMessage = CommonProtocol.ExtensionRuntimeToHostMessage
 
 export interface ExtensionRuntimeUtilityExecutionLease {
   context: ExtensionRuntimeLaunchContext
