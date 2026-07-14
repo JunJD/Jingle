@@ -163,6 +163,7 @@ interface SettingsCopy {
     accept: string
     add: string
     archive: string
+    archivedMemories: string
     askBeforeSaving: string
     askBeforeSavingDescription: string
     content: string
@@ -170,6 +171,7 @@ interface SettingsCopy {
     correction: string
     delete: string
     description: string
+    emptyArchivedMemories: string
     emptyMemories: string
     emptySuggestions: string
     global: string
@@ -177,6 +179,7 @@ interface SettingsCopy {
     memoryType: string
     pendingSuggestions: string
     reject: string
+    restore: string
     savedMemories: string
     savedStatus: string
     scope: string
@@ -388,6 +391,7 @@ const zhCN: SettingsCopy = {
     accept: "保存",
     add: "添加记忆",
     archive: "归档",
+    archivedMemories: "已归档记忆",
     askBeforeSaving: "保存前确认",
     askBeforeSavingDescription: "V1 固定开启；Agent 只能创建待确认建议。",
     content: "内容",
@@ -395,6 +399,7 @@ const zhCN: SettingsCopy = {
     correction: "纠偏",
     delete: "删除",
     description: "管理本地个人记忆、当前工作区记忆和 Agent 建议。",
+    emptyArchivedMemories: "还没有归档的记忆。",
     emptyMemories: "还没有保存的记忆。",
     emptySuggestions: "没有待确认建议。",
     global: "全局",
@@ -402,6 +407,7 @@ const zhCN: SettingsCopy = {
     memoryType: "类型",
     pendingSuggestions: "待确认建议",
     reject: "忽略",
+    restore: "恢复",
     savedMemories: "已保存记忆",
     savedStatus: "已保存",
     scope: "范围",
@@ -623,6 +629,7 @@ const enUS: SettingsCopy = {
     accept: "Save",
     add: "Add memory",
     archive: "Archive",
+    archivedMemories: "Archived Memories",
     askBeforeSaving: "Confirm before saving",
     askBeforeSavingDescription: "Always on in V1. The agent can only create pending suggestions.",
     content: "Content",
@@ -630,6 +637,7 @@ const enUS: SettingsCopy = {
     correction: "Correction",
     delete: "Delete",
     description: "Manage local personal memory, current workspace memory, and agent suggestions.",
+    emptyArchivedMemories: "No archived memories.",
     emptyMemories: "No saved memories yet.",
     emptySuggestions: "No pending suggestions.",
     global: "Global",
@@ -637,6 +645,7 @@ const enUS: SettingsCopy = {
     memoryType: "Type",
     pendingSuggestions: "Pending Suggestions",
     reject: "Ignore",
+    restore: "Restore",
     savedMemories: "Saved Memories",
     savedStatus: "Saved",
     scope: "Scope",

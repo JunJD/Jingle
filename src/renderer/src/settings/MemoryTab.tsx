@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react"
-import { Brain, Check, Database, FileText, Plus, Trash2, X } from "lucide-react"
+import {
+  Archive,
+  Brain,
+  Check,
+  Database,
+  FileText,
+  Plus,
+  RotateCcw,
+  X,
+  type LucideIcon
+} from "lucide-react"
 import type {
   JingleContextSourceRecord,
   JingleMemoryRecord,
@@ -27,29 +37,35 @@ import {
 } from "./settings-ui"
 
 interface MemoryTabState {
+  activeMemories: JingleMemoryRecord[]
+  archivedMemories: JingleMemoryRecord[]
   contextSources: JingleContextSourceRecord[]
-  memories: JingleMemoryRecord[]
   settings: JingleMemorySettings
   suggestions: JingleMemorySuggestionRecord[]
   workspaceIdentity: JingleWorkspaceIdentity | null
 }
 
 async function readMemoryTabState(): Promise<MemoryTabState> {
-  const [settings, workspaceIdentity, memories, suggestions, contextSources] = await Promise.all([
-    window.api.memory.getSettings(),
-    window.api.memory.getCurrentWorkspaceIdentity(),
-    window.api.memory.listMemories({
-      status: "active"
-    }),
-    window.api.memory.listSuggestions({
-      status: "pending"
-    }),
-    window.api.memory.listContextSources()
-  ])
+  const [settings, workspaceIdentity, activeMemories, archivedMemories, suggestions, contextSources] =
+    await Promise.all([
+      window.api.memory.getSettings(),
+      window.api.memory.getCurrentWorkspaceIdentity(),
+      window.api.memory.listMemories({
+        status: "active"
+      }),
+      window.api.memory.listMemories({
+        status: "archived"
+      }),
+      window.api.memory.listSuggestions({
+        status: "pending"
+      }),
+      window.api.memory.listContextSources()
+    ])
 
   return {
+    activeMemories,
+    archivedMemories,
     contextSources,
-    memories,
     settings,
     suggestions,
     workspaceIdentity
@@ -358,22 +374,34 @@ function PendingSuggestionsCard(props: {
   )
 }
 
-function SavedMemoriesCard(props: {
+function MemoriesCard(props: {
+  actionIcon: LucideIcon
+  actionLabel: string
   copy: SettingsCopy
+  emptyLabel: string
   memories: JingleMemoryRecord[]
-  onArchiveMemory: (memory: JingleMemoryRecord) => Promise<void>
+  onAction: (memory: JingleMemoryRecord) => Promise<void>
+  title: string
 }): React.JSX.Element {
-  const { copy, memories, onArchiveMemory } = props
+  const {
+    actionIcon: ActionIcon,
+    actionLabel,
+    copy,
+    emptyLabel,
+    memories,
+    onAction,
+    title
+  } = props
 
   return (
     <div className={settingsCardClassName}>
       <div className="border-b border-border/70 px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
-        <SectionHeader title={copy.memory.savedMemories} count={memories.length} />
+        <SectionHeader title={title} count={memories.length} />
       </div>
       <div className="grid gap-[var(--ow-space-3)] px-[var(--ow-settings-card-x)] py-[var(--ow-settings-card-y)]">
         {memories.length === 0 ? (
           <div className={`${settingsInsetCardClassName} border-dashed text-muted-foreground`}>
-            {copy.memory.emptyMemories}
+            {emptyLabel}
           </div>
         ) : (
           memories.map((memory) => (
@@ -391,11 +419,11 @@ function SavedMemoriesCard(props: {
                   type="button"
                   className={secondaryButtonClassName}
                   onClick={() => {
-                    void onArchiveMemory(memory)
+                    void onAction(memory)
                   }}
                 >
-                  <Trash2 className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
-                  {copy.memory.archive}
+                  <ActionIcon className="h-4 w-4" />
+                  {actionLabel}
                 </button>
               </div>
             </div>
@@ -522,6 +550,11 @@ export function MemoryTab(props: { locale: AppLocale }): React.JSX.Element {
     await loadMemory()
   }
 
+  const restoreMemory = async (memory: JingleMemoryRecord): Promise<void> => {
+    await window.api.memory.restoreMemory(memory.memoryId)
+    await loadMemory()
+  }
+
   if (!state) {
     return (
       <div className="flex h-full items-center justify-center [font-size:var(--ow-font-label)] text-muted-foreground">
@@ -552,10 +585,23 @@ export function MemoryTab(props: { locale: AppLocale }): React.JSX.Element {
         onRejectSuggestion={rejectSuggestion}
         suggestions={state.suggestions}
       />
-      <SavedMemoriesCard
+      <MemoriesCard
+        actionIcon={Archive}
+        actionLabel={copy.memory.archive}
         copy={copy}
-        memories={state.memories}
-        onArchiveMemory={archiveMemory}
+        emptyLabel={copy.memory.emptyMemories}
+        memories={state.activeMemories}
+        onAction={archiveMemory}
+        title={copy.memory.savedMemories}
+      />
+      <MemoriesCard
+        actionIcon={RotateCcw}
+        actionLabel={copy.memory.restore}
+        copy={copy}
+        emptyLabel={copy.memory.emptyArchivedMemories}
+        memories={state.archivedMemories}
+        onAction={restoreMemory}
+        title={copy.memory.archivedMemories}
       />
       <ContextSourcesCard contextSources={state.contextSources} copy={copy} />
     </div>
