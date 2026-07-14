@@ -2,6 +2,7 @@ import Store from "electron-store"
 import { mkdirSync } from "fs"
 import { homedir } from "os"
 import { join } from "path"
+import { isDeepStrictEqual } from "node:util"
 import type { AgentConfig } from "./types"
 import { getJingleHomeDir } from "./storage"
 import { getDefaultExtensionRegistryService } from "./extensions/registry/default-registry"
@@ -14,8 +15,10 @@ import {
   type AppThemeSettings
 } from "@shared/app-theme"
 import type {
+  NativeExtensionConnectionManifest,
   NativeExtensionPreferenceSchema,
-  NativeExtensionPreferencesState
+  NativeExtensionPreferencesState,
+  NativeExtensionPackageManifest
 } from "@shared/native-extensions"
 import { normalizeNativeExtensionApplicationPreferenceValue } from "@shared/native-extensions"
 import {
@@ -59,12 +62,70 @@ interface SettingsStoreShape {
   launcherSettings: LauncherSettings
   launcherWindowState: PersistedLauncherWindowState | null
   mainWindowState: PersistedWindowState | null
-  nativeExtensionPreferences: NativeExtensionPreferencesState
+  nativeExtensionPreferences: PersistedNativeExtensionPreferencesState
   jingleMemorySettings?: JingleMemorySettings
   pinnedAiSessionWindowRestoreState: PinnedAiSessionWindowRestoreState
   shortcutSettings: ShortcutSettings
   workspaceDialogPath: string | null
   workspacePath: string | null
+}
+
+interface NativeExtensionConnectionRevisions {
+  connectionConfigRevision: number
+  credentialRevision: number
+}
+
+interface NativeExtensionRevisionState {
+  commandConfigs: Record<string, number>
+  connectionConfigs: Record<string, NativeExtensionConnectionRevisions>
+  extensionConfigs: Record<string, number>
+  version: 1
+}
+
+interface PersistedNativeExtensionPreferencesState extends NativeExtensionPreferencesState {
+  revisions: NativeExtensionRevisionState
+}
+
+export interface NativeExtensionConfigurationRevisions {
+  commandConfigRevision: number
+  connectionConfigRevision: number
+  credentialRevision: number
+  extensionConfigRevision: number
+}
+
+export interface NativeExtensionConfigurationToken {
+  commandName?: string
+  connectionId: string
+  extensionName: string
+  provider: string
+  revisions: NativeExtensionConfigurationRevisions
+}
+
+export type NativeExtensionConfigurationMutationKind =
+  | "command-config"
+  | "connection-config"
+  | "credential"
+  | "extension-config"
+
+export type NativeExtensionConfigurationMutation = NativeExtensionConfigurationToken & {
+  changed: readonly NativeExtensionConfigurationMutationKind[]
+}
+
+export interface NativeExtensionConfigurationSnapshot {
+  commandName?: string
+  commandPreferences?: Record<string, unknown>
+  connection: NativeExtensionConnectionManifest
+  connectionSecrets: Record<string, string>
+  extensionName: string
+  extensionPreferences: Record<string, unknown>
+  publicConfig: Record<string, unknown>
+  token: NativeExtensionConfigurationToken
+}
+
+export interface NativeExtensionConfigurationCommit<TValue> {
+  mutation: NativeExtensionConfigurationMutation
+  snapshot: NativeExtensionConfigurationSnapshot
+  value: TValue
 }
 
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
@@ -74,10 +135,16 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   locale: DEFAULT_APP_LOCALE
 }
 
-const DEFAULT_NATIVE_EXTENSION_PREFERENCES: NativeExtensionPreferencesState = {
+const DEFAULT_NATIVE_EXTENSION_PREFERENCES: PersistedNativeExtensionPreferencesState = {
   connectionSecrets: {},
   extensionPreferences: {},
-  commandPreferences: {}
+  commandPreferences: {},
+  revisions: {
+    commandConfigs: {},
+    connectionConfigs: {},
+    extensionConfigs: {},
+    version: 1
+  }
 }
 
 const DEFAULT_PINNED_AI_SESSION_WINDOW_RESTORE_STATE: PinnedAiSessionWindowRestoreState = {
@@ -218,17 +285,90 @@ function normalizeSecretRecordMap(value: unknown): Record<string, Record<string,
   )
 }
 
-function normalizeNativeExtensionPreferencesState(value: unknown): NativeExtensionPreferencesState {
+function normalizeRevision(value: unknown, owner: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new Error(`Invalid persisted native extension revision for ${owner}`)
+  }
+
+  return value as number
+}
+
+function normalizeRevisionRecord(value: unknown, owner: string): Record<string, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Invalid persisted native extension revision map for ${owner}`)
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, revision]) => [
+      key,
+      normalizeRevision(revision, `${owner}:${key}`)
+    ])
+  )
+}
+
+function normalizeConnectionRevisionRecord(
+  value: unknown
+): Record<string, NativeExtensionConnectionRevisions> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid persisted native extension connection revision map")
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, revisions]) => {
+      if (!revisions || typeof revisions !== "object" || Array.isArray(revisions)) {
+        throw new Error(`Invalid persisted native extension connection revisions for ${key}`)
+      }
+
+      const record = revisions as Record<string, unknown>
+      return [
+        key,
+        {
+          connectionConfigRevision: normalizeRevision(
+            record.connectionConfigRevision,
+            `connection-config:${key}`
+          ),
+          credentialRevision: normalizeRevision(record.credentialRevision, `credential:${key}`)
+        }
+      ]
+    })
+  )
+}
+
+function normalizeNativeExtensionRevisionState(value: unknown): NativeExtensionRevisionState {
+  if (value === undefined) {
+    return DEFAULT_NATIVE_EXTENSION_PREFERENCES.revisions
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid persisted native extension revision state")
+  }
+
+  const raw = value as Partial<NativeExtensionRevisionState>
+  if (raw.version !== 1) {
+    throw new Error(`Unsupported native extension revision state version: ${String(raw.version)}`)
+  }
+
+  return {
+    commandConfigs: normalizeRevisionRecord(raw.commandConfigs, "command-config"),
+    connectionConfigs: normalizeConnectionRevisionRecord(raw.connectionConfigs),
+    extensionConfigs: normalizeRevisionRecord(raw.extensionConfigs, "extension-config"),
+    version: 1
+  }
+}
+
+function normalizeNativeExtensionPreferencesState(
+  value: unknown
+): PersistedNativeExtensionPreferencesState {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return DEFAULT_NATIVE_EXTENSION_PREFERENCES
   }
 
-  const raw = value as Partial<NativeExtensionPreferencesState>
+  const raw = value as Partial<PersistedNativeExtensionPreferencesState>
 
   return {
     connectionSecrets: normalizeSecretRecordMap(raw.connectionSecrets),
     extensionPreferences: normalizePreferenceRecordMap(raw.extensionPreferences),
-    commandPreferences: normalizePreferenceRecordMap(raw.commandPreferences)
+    commandPreferences: normalizePreferenceRecordMap(raw.commandPreferences),
+    revisions: normalizeNativeExtensionRevisionState(raw.revisions)
   }
 }
 
@@ -237,16 +377,34 @@ function getExtensionPreferenceStoreKey(extensionName: string): string {
 }
 
 function getCommandPreferenceStoreKey(extensionName: string, commandName: string): string {
+  if (extensionName.includes("\0") || commandName.includes("\0")) {
+    throw new Error("Native extension command identity contains a reserved null character")
+  }
+  if (extensionName.includes(":") || commandName.includes(":")) {
+    return `\0${JSON.stringify(["command", extensionName, commandName])}`
+  }
+
   return `${extensionName}:${commandName}`
 }
 
-function getConnectionSecretStoreKey(provider: string, connectionId: string): string {
-  return `connection:${provider}:${connectionId}`
+export function getNativeExtensionConnectionOwnerKey(params: {
+  connectionId: string
+  extensionName: string
+  provider: string
+}): string {
+  return JSON.stringify(["connection", params.extensionName, params.provider, params.connectionId])
 }
 
-function getNativeExtensionManifest(extensionName: string) {
+function getCommandRevisionStoreKey(extensionName: string, commandName: string): string {
+  return JSON.stringify(["command", extensionName, commandName])
+}
+
+function getNativeExtensionManifest(
+  extensionName: string,
+  platform: string = process.platform
+): NativeExtensionPackageManifest {
   const manifest = getDefaultExtensionRegistryService()
-    .listManifests(process.platform)
+    .listManifests(platform)
     .find((entry) => entry.name === extensionName)
   if (!manifest) {
     throw new Error(`Unknown native extension "${extensionName}"`)
@@ -265,9 +423,16 @@ function getCommandPreferenceSchema(
 ): NativeExtensionPreferenceSchema[] {
   const manifest = getNativeExtensionManifest(extensionName)
 
+  return getCommandPreferenceSchemaFromManifest(manifest, commandName)
+}
+
+function getCommandPreferenceSchemaFromManifest(
+  manifest: NativeExtensionPackageManifest,
+  commandName: string
+): NativeExtensionPreferenceSchema[] {
   const command = manifest.commands.find((entry) => entry.name === commandName)
   if (!command) {
-    throw new Error(`Native extension "${extensionName}" does not declare command "${commandName}"`)
+    throw new Error(`Native extension "${manifest.name}" does not declare command "${commandName}"`)
   }
 
   return command.preferences ?? []
@@ -300,39 +465,136 @@ function normalizePreferenceValue(
   return value
 }
 
+function normalizeJsonFact(value: unknown, path: string, seen: Set<object>): unknown {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return value
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error(`Native extension preference ${path} must be a finite number`)
+    }
+    return Object.is(value, -0) ? 0 : value
+  }
+  if (Array.isArray(value)) {
+    if (seen.has(value)) {
+      throw new Error(`Native extension preference ${path} must not contain cycles`)
+    }
+    seen.add(value)
+    const result: unknown[] = []
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.prototype.hasOwnProperty.call(value, index)) {
+        throw new Error(`Native extension preference ${path} must not contain sparse arrays`)
+      }
+      result.push(normalizeJsonFact(value[index], `${path}[${index}]`, seen))
+    }
+    seen.delete(value)
+    return result
+  }
+  if (value && typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value)
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new Error(`Native extension preference ${path} must be a plain JSON object`)
+    }
+    if (seen.has(value)) {
+      throw new Error(`Native extension preference ${path} must not contain cycles`)
+    }
+    seen.add(value)
+    const result = Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        normalizeJsonFact(entry, `${path}.${key}`, seen)
+      ])
+    )
+    seen.delete(value)
+    return result
+  }
+
+  throw new Error(`Native extension preference ${path} is not JSON-compatible`)
+}
+
+function normalizePreferenceFactRecord(value: Record<string, unknown>): Record<string, unknown> {
+  return normalizeJsonFact(value, "record", new Set()) as Record<string, unknown>
+}
+
+function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
+  if (!value || typeof value !== "object") {
+    return value
+  }
+  if (seen.has(value)) {
+    return value
+  }
+
+  seen.add(value)
+  for (const nested of Object.values(value)) {
+    deepFreeze(nested, seen)
+  }
+  return Object.freeze(value)
+}
+
 function resolveCommandPreferenceRecord(params: {
   commandName: string
   extensionName: string
   nextRecord: Record<string, unknown>
+  schema?: NativeExtensionPreferenceSchema[]
 }): Record<string, unknown> {
-  const schema = getCommandPreferenceSchema(params.extensionName, params.commandName)
+  const schema =
+    params.schema ?? getCommandPreferenceSchema(params.extensionName, params.commandName)
 
-  return Object.fromEntries(
-    schema.map((preference) => [
-      preference.name,
-      normalizePreferenceValue(
-        preference,
-        params.nextRecord[preference.name] ?? getDefaultPreferenceValue(preference)
-      )
-    ])
+  return normalizePreferenceFactRecord(
+    Object.fromEntries(
+      schema.map((preference) => [
+        preference.name,
+        normalizePreferenceValue(
+          preference,
+          params.nextRecord[preference.name] ?? getDefaultPreferenceValue(preference)
+        )
+      ])
+    )
   )
 }
 
 function resolveExtensionPreferenceRecord(params: {
   extensionName: string
   nextRecord: Record<string, unknown>
+  schema?: NativeExtensionPreferenceSchema[]
 }): Record<string, unknown> {
-  const schema = getExtensionPreferenceSchema(params.extensionName)
+  const schema = params.schema ?? getExtensionPreferenceSchema(params.extensionName)
 
-  return Object.fromEntries(
-    schema.map((preference) => [
-      preference.name,
-      normalizePreferenceValue(
-        preference,
-        params.nextRecord[preference.name] ?? getDefaultPreferenceValue(preference)
-      )
-    ])
+  return normalizePreferenceFactRecord(
+    Object.fromEntries(
+      schema.map((preference) => [
+        preference.name,
+        normalizePreferenceValue(
+          preference,
+          params.nextRecord[preference.name] ?? getDefaultPreferenceValue(preference)
+        )
+      ])
+    )
   )
+}
+
+function resolveConnectionPublicConfig(
+  connection: NativeExtensionConnectionManifest,
+  extensionPreferences: Record<string, unknown>
+): Record<string, unknown> {
+  return Object.fromEntries(
+    (connection.publicPreferenceNames ?? []).flatMap((preferenceName) =>
+      Object.prototype.hasOwnProperty.call(extensionPreferences, preferenceName)
+        ? [[preferenceName, structuredClone(extensionPreferences[preferenceName])]]
+        : []
+    )
+  )
+}
+
+function incrementNativeExtensionRevision(revision: number, owner: string): number {
+  if (!Number.isSafeInteger(revision) || revision < 0) {
+    throw new Error(`Invalid native extension revision for ${owner}`)
+  }
+  if (revision === Number.MAX_SAFE_INTEGER) {
+    throw new Error(`Native extension revision overflow for ${owner}`)
+  }
+
+  return revision + 1
 }
 
 function normalizeWindowCoordinate(value: unknown): number | undefined {
@@ -345,48 +607,114 @@ function normalizeWindowCoordinate(value: unknown): number | undefined {
 
 export function getNativeExtensionConnectionSecretRecord(params: {
   connectionId: string
+  extensionName: string
   provider: string
-  secretNames: string[]
 }): Record<string, string> {
-  const key = getConnectionSecretStoreKey(params.provider, params.connectionId)
-  const record = normalizeSecretRecord(getNativeExtensionPreferencesState().connectionSecrets[key])
-
-  return Object.fromEntries(
-    params.secretNames.flatMap((secretName) => {
-      const value = record[secretName]
-      return value ? [[secretName, value]] : []
-    })
-  )
+  const manifest = getNativeExtensionManifest(params.extensionName)
+  if (
+    manifest.connection.id !== params.connectionId ||
+    manifest.connection.provider !== params.provider
+  ) {
+    throw new Error(
+      `Native extension "${params.extensionName}" does not own connection "${params.provider}:${params.connectionId}"`
+    )
+  }
+  const state = getNativeExtensionPreferencesState()
+  return readNativeExtensionConnectionSecretRecordFromState(state, {
+    ...params,
+    secretNames:
+      manifest.connection.auth.type === "none" ? [] : manifest.connection.auth.secretNames
+  })
 }
 
 export function setNativeExtensionConnectionSecretRecord(params: {
   connectionId: string
+  expectedConnection?: NativeExtensionConnectionManifest
+  extensionName: string
+  mode: "merge" | "replace"
   nextRecord: Record<string, string>
   provider: string
-  secretNames: string[]
-}): Record<string, string> {
+}): NativeExtensionConfigurationCommit<Record<string, string>> {
+  const manifest = getNativeExtensionManifest(params.extensionName)
+  if (
+    manifest.connection.id !== params.connectionId ||
+    manifest.connection.provider !== params.provider
+  ) {
+    throw new Error(
+      `Native extension "${params.extensionName}" does not own connection "${params.provider}:${params.connectionId}"`
+    )
+  }
+  if (
+    params.expectedConnection &&
+    !isDeepStrictEqual(params.expectedConnection, manifest.connection)
+  ) {
+    throw new Error(
+      `Native extension "${params.extensionName}" connection changed before credential commit`
+    )
+  }
+  if (manifest.connection.auth.type === "none") {
+    throw new Error(
+      `Native extension "${params.extensionName}" connection "${params.connectionId}" does not use secrets`
+    )
+  }
+
+  const state = getNativeExtensionPreferencesState()
+  const secretNames = manifest.connection.auth.secretNames
+  const currentRecord = readNativeExtensionConnectionSecretRecordFromState(state, {
+    ...params,
+    secretNames
+  })
+  const candidateRecord =
+    params.mode === "merge" ? { ...currentRecord, ...params.nextRecord } : params.nextRecord
   const nextRecord = Object.fromEntries(
-    params.secretNames.flatMap((secretName) => {
-      const value = params.nextRecord[secretName]
+    secretNames.flatMap((secretName) => {
+      const value = candidateRecord[secretName]
       return value && value.length > 0 ? [[secretName, value]] : []
     })
   )
-
-  const state = getNativeExtensionPreferencesState()
-  const key = getConnectionSecretStoreKey(params.provider, params.connectionId)
+  const key = getNativeExtensionConnectionOwnerKey(params)
   const connectionSecrets = { ...state.connectionSecrets }
   if (Object.keys(nextRecord).length === 0) {
     delete connectionSecrets[key]
   } else {
     connectionSecrets[key] = nextRecord
   }
-
-  settingsStore.set("nativeExtensionPreferences", {
+  const currentConnectionRevisions = getNativeExtensionConnectionRevisions(state, key)
+  const nextState: PersistedNativeExtensionPreferencesState = {
     ...state,
-    connectionSecrets
+    connectionSecrets,
+    revisions: {
+      ...state.revisions,
+      connectionConfigs: {
+        ...state.revisions.connectionConfigs,
+        [key]: {
+          ...currentConnectionRevisions,
+          credentialRevision: incrementNativeExtensionRevision(
+            currentConnectionRevisions.credentialRevision,
+            `credential:${key}`
+          )
+        }
+      }
+    }
+  }
+  const snapshot = createNativeExtensionConfigurationSnapshotFromState({
+    manifest,
+    state: nextState
   })
+  const mutation = createNativeExtensionConfigurationMutation(snapshot.token, ["credential"])
 
-  return getNativeExtensionConnectionSecretRecord(params)
+  settingsStore.set("nativeExtensionPreferences", nextState)
+
+  return {
+    mutation,
+    snapshot,
+    value: structuredClone(
+      readNativeExtensionConnectionSecretRecordFromState(nextState, {
+        ...params,
+        secretNames
+      })
+    )
+  }
 }
 
 function normalizeWindowDimension(value: unknown): number | null {
@@ -507,40 +835,39 @@ export function setJingleMemorySettings(
   return nextSettings
 }
 
-function getNativeExtensionPreferencesState(): NativeExtensionPreferencesState {
+function getNativeExtensionPreferencesState(): PersistedNativeExtensionPreferencesState {
   const stored = settingsStore.get(
     "nativeExtensionPreferences",
     DEFAULT_NATIVE_EXTENSION_PREFERENCES
-  ) as NativeExtensionPreferencesState | undefined
+  ) as PersistedNativeExtensionPreferencesState | undefined
 
   return normalizeNativeExtensionPreferencesState(stored)
 }
 
-export function getNativeExtensionCommandPreferenceRecord(
-  extensionName: string,
-  commandName: string
+function readNativeExtensionPreferenceRecordFromState(
+  state: PersistedNativeExtensionPreferencesState,
+  manifest: NativeExtensionPackageManifest
 ): Record<string, unknown> {
-  return readNativeExtensionCommandPreferenceRecord(extensionName, commandName)
+  const key = getExtensionPreferenceStoreKey(manifest.name)
+  return resolveExtensionPreferenceRecord({
+    extensionName: manifest.name,
+    nextRecord: normalizePreferenceRecord(state.extensionPreferences[key]),
+    schema: manifest.preferences ?? []
+  })
 }
 
-export function getResolvedNativeExtensionCommandPreferenceRecord(
-  extensionName: string,
+function readNativeExtensionCommandPreferenceRecordFromState(
+  state: PersistedNativeExtensionPreferencesState,
+  manifest: NativeExtensionPackageManifest,
   commandName: string
 ): Record<string, unknown> {
-  return readNativeExtensionCommandPreferenceRecord(extensionName, commandName)
-}
-
-function readNativeExtensionCommandPreferenceRecord(
-  extensionName: string,
-  commandName: string
-): Record<string, unknown> {
-  const state = getNativeExtensionPreferencesState()
-  const commandKey = getCommandPreferenceStoreKey(extensionName, commandName)
-  const extensionRecord = readNativeExtensionPreferenceRecord(extensionName)
+  const commandKey = getCommandPreferenceStoreKey(manifest.name, commandName)
+  const extensionRecord = readNativeExtensionPreferenceRecordFromState(state, manifest)
   const resolvedCommandRecord = resolveCommandPreferenceRecord({
     commandName,
-    extensionName,
-    nextRecord: normalizePreferenceRecord(state.commandPreferences[commandKey])
+    extensionName: manifest.name,
+    nextRecord: normalizePreferenceRecord(state.commandPreferences[commandKey]),
+    schema: getCommandPreferenceSchemaFromManifest(manifest, commandName)
   })
 
   return {
@@ -549,75 +876,284 @@ function readNativeExtensionCommandPreferenceRecord(
   }
 }
 
+function readNativeExtensionConnectionSecretRecordFromState(
+  state: PersistedNativeExtensionPreferencesState,
+  params: {
+    connectionId: string
+    extensionName: string
+    provider: string
+    secretNames: string[]
+  }
+): Record<string, string> {
+  const key = getNativeExtensionConnectionOwnerKey(params)
+  const record = normalizeSecretRecord(state.connectionSecrets[key])
+
+  return Object.fromEntries(
+    params.secretNames.flatMap((secretName) => {
+      const value = record[secretName]
+      return value ? [[secretName, value]] : []
+    })
+  )
+}
+
+function getNativeExtensionConnectionRevisions(
+  state: PersistedNativeExtensionPreferencesState,
+  connectionKey: string
+): NativeExtensionConnectionRevisions {
+  return (
+    state.revisions.connectionConfigs[connectionKey] ?? {
+      connectionConfigRevision: 0,
+      credentialRevision: 0
+    }
+  )
+}
+
+function createNativeExtensionConfigurationToken(params: {
+  commandName?: string
+  manifest: NativeExtensionPackageManifest
+  state: PersistedNativeExtensionPreferencesState
+}): NativeExtensionConfigurationToken {
+  const connection = params.manifest.connection
+  const connectionKey = getNativeExtensionConnectionOwnerKey({
+    connectionId: connection.id,
+    extensionName: params.manifest.name,
+    provider: connection.provider
+  })
+  const connectionRevisions = getNativeExtensionConnectionRevisions(params.state, connectionKey)
+  const commandConfigRevision = params.commandName
+    ? (params.state.revisions.commandConfigs[
+        getCommandRevisionStoreKey(params.manifest.name, params.commandName)
+      ] ?? 0)
+    : 0
+  const revisions = Object.freeze<NativeExtensionConfigurationRevisions>({
+    commandConfigRevision,
+    connectionConfigRevision: connectionRevisions.connectionConfigRevision,
+    credentialRevision: connectionRevisions.credentialRevision,
+    extensionConfigRevision: params.state.revisions.extensionConfigs[params.manifest.name] ?? 0
+  })
+
+  return Object.freeze({
+    ...(params.commandName ? { commandName: params.commandName } : {}),
+    connectionId: connection.id,
+    extensionName: params.manifest.name,
+    provider: connection.provider,
+    revisions
+  })
+}
+
+function createNativeExtensionConfigurationSnapshotFromState(params: {
+  commandName?: string
+  manifest: NativeExtensionPackageManifest
+  state: PersistedNativeExtensionPreferencesState
+}): NativeExtensionConfigurationSnapshot {
+  const extensionPreferences = readNativeExtensionPreferenceRecordFromState(
+    params.state,
+    params.manifest
+  )
+  const commandPreferences = params.commandName
+    ? readNativeExtensionCommandPreferenceRecordFromState(
+        params.state,
+        params.manifest,
+        params.commandName
+      )
+    : undefined
+  const connection = structuredClone(params.manifest.connection)
+  const connectionSecrets = readNativeExtensionConnectionSecretRecordFromState(params.state, {
+    connectionId: connection.id,
+    extensionName: params.manifest.name,
+    provider: connection.provider,
+    secretNames: connection.auth.type === "none" ? [] : connection.auth.secretNames
+  })
+
+  return deepFreeze({
+    ...(params.commandName ? { commandName: params.commandName } : {}),
+    ...(commandPreferences ? { commandPreferences: structuredClone(commandPreferences) } : {}),
+    connection,
+    connectionSecrets: structuredClone(connectionSecrets),
+    extensionName: params.manifest.name,
+    extensionPreferences: structuredClone(extensionPreferences),
+    publicConfig: resolveConnectionPublicConfig(connection, extensionPreferences),
+    token: createNativeExtensionConfigurationToken(params)
+  })
+}
+
+function createNativeExtensionConfigurationMutation(
+  token: NativeExtensionConfigurationToken,
+  changed: NativeExtensionConfigurationMutationKind[]
+): NativeExtensionConfigurationMutation {
+  return Object.freeze({
+    ...token,
+    changed: Object.freeze([...changed])
+  })
+}
+
+export function getNativeExtensionConfigurationSnapshot(input: {
+  commandName?: string
+  extensionName: string
+  platform?: string
+}): NativeExtensionConfigurationSnapshot {
+  const manifest = getNativeExtensionManifest(input.extensionName, input.platform)
+  const state = getNativeExtensionPreferencesState()
+
+  return createNativeExtensionConfigurationSnapshotFromState({
+    ...(input.commandName ? { commandName: input.commandName } : {}),
+    manifest,
+    state
+  })
+}
+
+export function getNativeExtensionCommandPreferenceRecord(
+  extensionName: string,
+  commandName: string
+): Record<string, unknown> {
+  const manifest = getNativeExtensionManifest(extensionName)
+  const state = getNativeExtensionPreferencesState()
+  return readNativeExtensionCommandPreferenceRecordFromState(state, manifest, commandName)
+}
+
+export function getResolvedNativeExtensionCommandPreferenceRecord(
+  extensionName: string,
+  commandName: string
+): Record<string, unknown> {
+  const manifest = getNativeExtensionManifest(extensionName)
+  const state = getNativeExtensionPreferencesState()
+  return readNativeExtensionCommandPreferenceRecordFromState(state, manifest, commandName)
+}
+
 export function getNativeExtensionPreferenceRecord(extensionName: string): Record<string, unknown> {
-  return readNativeExtensionPreferenceRecord(extensionName)
+  const manifest = getNativeExtensionManifest(extensionName)
+  const state = getNativeExtensionPreferencesState()
+  return readNativeExtensionPreferenceRecordFromState(state, manifest)
 }
 
 export function getResolvedNativeExtensionPreferenceRecord(
   extensionName: string
 ): Record<string, unknown> {
-  return readNativeExtensionPreferenceRecord(extensionName)
-}
-
-function readNativeExtensionPreferenceRecord(extensionName: string): Record<string, unknown> {
+  const manifest = getNativeExtensionManifest(extensionName)
   const state = getNativeExtensionPreferencesState()
-  const key = getExtensionPreferenceStoreKey(extensionName)
-  const resolvedRecord = resolveExtensionPreferenceRecord({
-    extensionName,
-    nextRecord: normalizePreferenceRecord(state.extensionPreferences[key])
-  })
-
-  return resolvedRecord
+  return readNativeExtensionPreferenceRecordFromState(state, manifest)
 }
 
 export function setNativeExtensionPreferenceRecord(
   extensionName: string,
   nextRecord: Record<string, unknown>
-): Record<string, unknown> {
+): NativeExtensionConfigurationCommit<Record<string, unknown>> {
+  const manifest = getNativeExtensionManifest(extensionName)
   const state = getNativeExtensionPreferencesState()
   const key = getExtensionPreferenceStoreKey(extensionName)
   const rawRecord = normalizePreferenceRecord(nextRecord)
   const normalizedRecord = resolveExtensionPreferenceRecord({
     extensionName,
-    nextRecord: rawRecord
+    nextRecord: rawRecord,
+    schema: manifest.preferences ?? []
   })
-  const nextState: NativeExtensionPreferencesState = {
+  const currentRecord = readNativeExtensionPreferenceRecordFromState(state, manifest)
+  const currentPublicConfig = resolveConnectionPublicConfig(manifest.connection, currentRecord)
+  const nextPublicConfig = resolveConnectionPublicConfig(manifest.connection, normalizedRecord)
+  const connectionConfigChanged = !isDeepStrictEqual(currentPublicConfig, nextPublicConfig)
+  const connectionKey = getNativeExtensionConnectionOwnerKey({
+    connectionId: manifest.connection.id,
+    extensionName,
+    provider: manifest.connection.provider
+  })
+  const currentConnectionRevisions = getNativeExtensionConnectionRevisions(state, connectionKey)
+  const nextConnectionRevisions: NativeExtensionConnectionRevisions = {
+    connectionConfigRevision: connectionConfigChanged
+      ? incrementNativeExtensionRevision(
+          currentConnectionRevisions.connectionConfigRevision,
+          `connection-config:${connectionKey}`
+        )
+      : currentConnectionRevisions.connectionConfigRevision,
+    credentialRevision: currentConnectionRevisions.credentialRevision
+  }
+  const nextExtensionConfigRevision = incrementNativeExtensionRevision(
+    state.revisions.extensionConfigs[extensionName] ?? 0,
+    `extension-config:${extensionName}`
+  )
+  const nextState: PersistedNativeExtensionPreferencesState = {
     connectionSecrets: state.connectionSecrets,
     extensionPreferences: {
       ...state.extensionPreferences,
       [key]: normalizedRecord
     },
-    commandPreferences: state.commandPreferences
+    commandPreferences: state.commandPreferences,
+    revisions: {
+      ...state.revisions,
+      connectionConfigs: {
+        ...state.revisions.connectionConfigs,
+        [connectionKey]: nextConnectionRevisions
+      },
+      extensionConfigs: {
+        ...state.revisions.extensionConfigs,
+        [extensionName]: nextExtensionConfigRevision
+      }
+    }
   }
+  const snapshot = createNativeExtensionConfigurationSnapshotFromState({
+    manifest,
+    state: nextState
+  })
+  const mutation = createNativeExtensionConfigurationMutation(snapshot.token, [
+    "extension-config",
+    ...(connectionConfigChanged ? (["connection-config"] as const) : [])
+  ])
 
   settingsStore.set("nativeExtensionPreferences", nextState)
-  return getNativeExtensionPreferenceRecord(extensionName)
+  return {
+    mutation,
+    snapshot,
+    value: structuredClone(snapshot.extensionPreferences)
+  }
 }
 
 export function setNativeExtensionCommandPreferenceRecord(
   extensionName: string,
   commandName: string,
   nextRecord: Record<string, unknown>
-): Record<string, unknown> {
+): NativeExtensionConfigurationCommit<Record<string, unknown>> {
+  const manifest = getNativeExtensionManifest(extensionName)
   const state = getNativeExtensionPreferencesState()
   const key = getCommandPreferenceStoreKey(extensionName, commandName)
+  const revisionKey = getCommandRevisionStoreKey(extensionName, commandName)
   const rawRecord = normalizePreferenceRecord(nextRecord)
   const normalizedRecord = resolveCommandPreferenceRecord({
     commandName,
     extensionName,
-    nextRecord: rawRecord
+    nextRecord: rawRecord,
+    schema: getCommandPreferenceSchemaFromManifest(manifest, commandName)
   })
-  const nextState: NativeExtensionPreferencesState = {
+  const nextCommandConfigRevision = incrementNativeExtensionRevision(
+    state.revisions.commandConfigs[revisionKey] ?? 0,
+    `command-config:${revisionKey}`
+  )
+  const nextState: PersistedNativeExtensionPreferencesState = {
     connectionSecrets: state.connectionSecrets,
     extensionPreferences: state.extensionPreferences,
     commandPreferences: {
       ...state.commandPreferences,
       [key]: normalizedRecord
+    },
+    revisions: {
+      ...state.revisions,
+      commandConfigs: {
+        ...state.revisions.commandConfigs,
+        [revisionKey]: nextCommandConfigRevision
+      }
     }
   }
+  const snapshot = createNativeExtensionConfigurationSnapshotFromState({
+    commandName,
+    manifest,
+    state: nextState
+  })
+  const mutation = createNativeExtensionConfigurationMutation(snapshot.token, ["command-config"])
 
   settingsStore.set("nativeExtensionPreferences", nextState)
-  return getNativeExtensionCommandPreferenceRecord(extensionName, commandName)
+  return {
+    mutation,
+    snapshot,
+    value: structuredClone(snapshot.commandPreferences ?? snapshot.extensionPreferences)
+  }
 }
 
 export function getLauncherSettings(): LauncherSettings {

@@ -8,8 +8,15 @@ import type {
   NativeExtensionPackageManifest
 } from "@shared/native-extensions"
 import { getDefaultExtensionRegistryService } from "../extensions/registry/default-registry"
-import { setNativeExtensionConnectionSecretRecord } from "../preferences"
-import { resolveNativeExtensionConnection } from "./connection-resolver"
+import {
+  setNativeExtensionConnectionSecretRecord,
+  type NativeExtensionConfigurationMutation
+} from "../preferences"
+
+export interface NativeExtensionOAuthCommitResult {
+  mutation: NativeExtensionConfigurationMutation
+  result: NativeExtensionOAuthCallbackResult
+}
 
 interface PendingOAuthConnection {
   codeVerifier: string
@@ -40,9 +47,9 @@ function createCodeChallenge(codeVerifier: string): string {
 }
 
 function getNativeExtensionManifest(extensionName: string): NativeExtensionPackageManifest {
-  const manifest = getDefaultExtensionRegistryService().listManifests(process.platform).find(
-    (candidate) => candidate.name === extensionName
-  )
+  const manifest = getDefaultExtensionRegistryService()
+    .listManifests(process.platform)
+    .find((candidate) => candidate.name === extensionName)
   if (!manifest) {
     throw new Error(`Unknown native extension "${extensionName}"`)
   }
@@ -169,7 +176,11 @@ async function exchangeOAuthToken(params: {
   }
 
   const payload: unknown = await response.json()
-  if (!isTokenResponseRecord(payload) || typeof payload.access_token !== "string") {
+  if (
+    !isTokenResponseRecord(payload) ||
+    typeof payload.access_token !== "string" ||
+    payload.access_token.trim().length === 0
+  ) {
     throw new Error("OAuth token exchange did not return access_token")
   }
 
@@ -192,7 +203,7 @@ export class NativeExtensionOAuthService {
 
     const pendingConnection: PendingOAuthConnection = {
       codeVerifier,
-      connection,
+      connection: structuredClone(connection),
       extensionName: request.extensionName,
       provider: connection.provider,
       state
@@ -213,7 +224,7 @@ export class NativeExtensionOAuthService {
     }
   }
 
-  async finishCallback(rawUrl: string): Promise<NativeExtensionOAuthCallbackResult> {
+  async finishCallback(rawUrl: string): Promise<NativeExtensionOAuthCommitResult> {
     const callbackUrl = parseOAuthCallbackUrl(rawUrl)
     const state = callbackUrl.searchParams.get("state")
     if (!state) {
@@ -241,18 +252,34 @@ export class NativeExtensionOAuthService {
       redirectUrl: getRedirectUrl(pending.connection),
       state
     })
-    setNativeExtensionConnectionSecretRecord({
+    const commit = setNativeExtensionConnectionSecretRecord({
       connectionId: pending.connection.id,
+      expectedConnection: pending.connection,
+      extensionName: pending.extensionName,
+      mode: "replace",
       nextRecord: {
         accessToken
       },
-      provider: pending.connection.provider,
-      secretNames: pending.connection.auth.secretNames
+      provider: pending.connection.provider
     })
+    const committedConnection = commit.snapshot.connection
+    const status =
+      committedConnection.auth.type !== "none" &&
+      committedConnection.auth.secretNames.every((secretName) => {
+        const value = commit.snapshot.connectionSecrets[secretName]
+        return typeof value === "string" && value.trim().length > 0
+      })
+        ? "connected"
+        : "missing"
 
-    return resolveNativeExtensionConnection({
-      extensionName: pending.extensionName,
-      platform: process.platform
-    })
+    return {
+      mutation: commit.mutation,
+      result: {
+        connectionId: pending.connection.id,
+        extensionName: pending.extensionName,
+        provider: pending.connection.provider,
+        status
+      }
+    }
   }
 }

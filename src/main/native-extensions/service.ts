@@ -14,14 +14,17 @@ import type {
 } from "@shared/native-extensions"
 import {
   getNativeExtensionCommandPreferenceRecord,
-  getNativeExtensionConnectionSecretRecord,
   getNativeExtensionPreferenceRecord,
   setNativeExtensionConnectionSecretRecord,
   setNativeExtensionCommandPreferenceRecord,
-  setNativeExtensionPreferenceRecord
+  setNativeExtensionPreferenceRecord,
+  type NativeExtensionConfigurationMutation
 } from "../preferences"
 import { resolveNativeExtensionConnection } from "./connection-resolver"
-import { resolveNativeExtensionExecutionContext } from "./execution-context"
+import {
+  resolveNativeExtensionExecutionContext,
+  resolveNativeExtensionExecutionContextFromSnapshot
+} from "./execution-context"
 import {
   invokeNativeExtension,
   listNativeExtensionLauncherCatalog,
@@ -31,8 +34,21 @@ import {
 import { getDefaultExtensionRegistryService } from "../extensions/registry/default-registry"
 import { NativeExtensionOAuthService } from "./oauth-service"
 
+export type NativeExtensionConfigurationCommittedListener = (
+  mutation: NativeExtensionConfigurationMutation
+) => void
+
 export class NativeExtensionsService {
+  private readonly configurationCommittedListeners =
+    new Set<NativeExtensionConfigurationCommittedListener>()
   private readonly oauthService = new NativeExtensionOAuthService()
+
+  onConfigurationCommitted(listener: NativeExtensionConfigurationCommittedListener): () => void {
+    this.configurationCommittedListeners.add(listener)
+    return () => {
+      this.configurationCommittedListeners.delete(listener)
+    }
+  }
 
   getManifest(extensionName: string): NativeExtensionPackageManifest {
     const registry = getDefaultExtensionRegistryService()
@@ -83,12 +99,13 @@ export class NativeExtensionsService {
     extensionName: string,
     nextRecord: Record<string, unknown>
   ): Record<string, unknown> {
-    const record = setNativeExtensionPreferenceRecord(extensionName, nextRecord)
+    const commit = setNativeExtensionPreferenceRecord(extensionName, nextRecord)
+    this.emitConfigurationCommitted(commit.mutation)
     this.emitPreferencesChanged({
       extensionName,
       scope: "extension"
     })
-    return record
+    return commit.value
   }
 
   getCommandPreferences(extensionName: string, commandName: string): Record<string, unknown> {
@@ -114,13 +131,14 @@ export class NativeExtensionsService {
     nextRecord: Record<string, unknown>
   }): Record<string, unknown> {
     const { commandName, extensionName, nextRecord } = params
-    const record = setNativeExtensionCommandPreferenceRecord(extensionName, commandName, nextRecord)
+    const commit = setNativeExtensionCommandPreferenceRecord(extensionName, commandName, nextRecord)
+    this.emitConfigurationCommitted(commit.mutation)
     this.emitPreferencesChanged({
       commandName,
       extensionName,
       scope: "command"
     })
-    return record
+    return commit.value
   }
 
   setConnectionSecrets(
@@ -147,25 +165,20 @@ export class NativeExtensionsService {
       )
     }
 
-    const currentRecord = getNativeExtensionConnectionSecretRecord({
+    const commit = setNativeExtensionConnectionSecretRecord({
       connectionId: connection.id,
-      provider: connection.provider,
-      secretNames: connection.auth.secretNames
+      expectedConnection: connection,
+      extensionName: request.extensionName,
+      mode: "merge",
+      nextRecord: request.secrets,
+      provider: connection.provider
     })
-    setNativeExtensionConnectionSecretRecord({
-      connectionId: connection.id,
-      nextRecord: {
-        ...currentRecord,
-        ...request.secrets
-      },
-      provider: connection.provider,
-      secretNames: connection.auth.secretNames
-    })
+    this.emitConfigurationCommitted(commit.mutation)
     this.emitPreferencesChanged({
       extensionName: request.extensionName,
       scope: "extension"
     })
-    return this.getConnection(request.extensionName)
+    return resolveNativeExtensionExecutionContextFromSnapshot(commit.snapshot).connection
   }
 
   invoke(request: NativeExtensionInvokeRequest): Promise<unknown> {
@@ -179,18 +192,34 @@ export class NativeExtensionsService {
   }
 
   async finishOAuthCallback(rawUrl: string): Promise<NativeExtensionOAuthCallbackResult> {
-    const result = await this.oauthService.finishCallback(rawUrl)
+    const commit = await this.oauthService.finishCallback(rawUrl)
+    this.emitConfigurationCommitted(commit.mutation)
     this.emitPreferencesChanged({
-      extensionName: result.extensionName,
+      extensionName: commit.result.extensionName,
       scope: "extension"
     })
-    return result
+    return commit.result
+  }
+
+  private emitConfigurationCommitted(mutation: NativeExtensionConfigurationMutation): void {
+    for (const listener of this.configurationCommittedListeners) {
+      try {
+        listener(mutation)
+      } catch (error) {
+        // Admission must validate persisted revisions; observers only accelerate active-session cleanup.
+        console.error("[jingle:native-extensions] Configuration commit listener failed", error)
+      }
+    }
   }
 
   private emitPreferencesChanged(event: NativeExtensionPreferencesChangedEvent): void {
     for (const window of BrowserWindow.getAllWindows()) {
       if (!window.isDestroyed()) {
-        window.webContents.send("nativeExtensions:preferencesChanged", event)
+        try {
+          window.webContents.send("nativeExtensions:preferencesChanged", event)
+        } catch (error) {
+          console.error("[jingle:native-extensions] Preference projection failed", error)
+        }
       }
     }
   }

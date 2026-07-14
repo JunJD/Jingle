@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
-import { writeFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
@@ -35,27 +35,30 @@ function saveNotionSecret(): void {
 function saveGitHubConnectionSecret(accessToken: string): void {
   preferences.setNativeExtensionConnectionSecretRecord({
     connectionId: "default",
+    extensionName: "github",
+    mode: "replace",
     nextRecord: { accessToken },
-    provider: "github",
-    secretNames: ["accessToken"]
+    provider: "github"
   })
 }
 
 function saveNotionConnectionSecret(accessToken: string): void {
   preferences.setNativeExtensionConnectionSecretRecord({
     connectionId: "default",
+    extensionName: "notion",
+    mode: "replace",
     nextRecord: { accessToken },
-    provider: "notion",
-    secretNames: ["accessToken"]
+    provider: "notion"
   })
 }
 
 function saveFigmaConnectionSecret(accessToken: string): void {
   preferences.setNativeExtensionConnectionSecretRecord({
     connectionId: "default",
+    extensionName: "figma-files",
+    mode: "replace",
     nextRecord: { accessToken },
-    provider: "figma",
-    secretNames: ["accessToken"]
+    provider: "figma"
   })
 }
 
@@ -66,7 +69,10 @@ function encodeMockSecret(value: string): string {
 function assertDesktopOAuthAuthorizationContract(authorizationUrl: URL): void {
   assert.equal(authorizationUrl.searchParams.get("client_id"), desktopOAuthContract.clientId)
   assert.equal(authorizationUrl.searchParams.get("redirect_uri"), desktopOAuthContract.redirectUri)
-  assert.equal(authorizationUrl.searchParams.get("response_type"), desktopOAuthContract.responseType)
+  assert.equal(
+    authorizationUrl.searchParams.get("response_type"),
+    desktopOAuthContract.responseType
+  )
   assert.equal(
     authorizationUrl.searchParams.get("code_challenge_method"),
     desktopOAuthContract.codeChallengeMethod
@@ -209,7 +215,12 @@ function installElectronSafeStorageMock(): void {
 
   electronModule.exports = {
     BrowserWindow: {
-      getAllWindows: () => []
+      getAllWindows: () =>
+        (
+          globalThis as typeof globalThis & {
+            __JINGLE_TEST_NATIVE_EXTENSION_WINDOWS__?: unknown[]
+          }
+        ).__JINGLE_TEST_NATIVE_EXTENSION_WINDOWS__ ?? []
     },
     dialog: {
       showMessageBox: async () => ({ response: 0 })
@@ -248,6 +259,11 @@ function createRuntimeHostQuicklinkServiceMock(): ConstructorParameters<
 }
 
 test.after(async () => {
+  delete (
+    globalThis as typeof globalThis & {
+      __JINGLE_TEST_NATIVE_EXTENSION_WINDOWS__?: unknown[]
+    }
+  ).__JINGLE_TEST_NATIVE_EXTENSION_WINDOWS__
   if (originalJingleHome === undefined) {
     delete process.env.JINGLE_HOME
   } else {
@@ -358,8 +374,8 @@ test("saving OAuth extension preferences removes retired legacy extension secret
   assert.deepEqual(
     preferences.getNativeExtensionConnectionSecretRecord({
       connectionId: "default",
-      provider: "notion",
-      secretNames: ["accessToken"]
+      extensionName: "notion",
+      provider: "notion"
     }),
     {}
   )
@@ -373,7 +389,7 @@ test("native extension appPicker preferences normalize to application records", 
 
   const stringRecord = preferences.setNativeExtensionPreferenceRecord("notion", {
     open_in: " Notion "
-  })
+  }).value
   assert.deepEqual(stringRecord.open_in, { name: "Notion" })
   assert.deepEqual(preferences.getResolvedNativeExtensionPreferenceRecord("notion").open_in, {
     name: "Notion"
@@ -385,12 +401,291 @@ test("native extension appPicker preferences normalize to application records", 
       name: " Notion ",
       path: " /Applications/Notion.app "
     }
-  })
+  }).value
   assert.deepEqual(objectRecord.open_in, {
     bundleId: "notion.id",
     name: "Notion",
     path: "/Applications/Notion.app"
   })
+})
+
+test("native extension configuration writes advance only their owned revisions", () => {
+  const originalExtensionRecord = preferences.getNativeExtensionPreferenceRecord("notion")
+  const beforeExtension = preferences.getNativeExtensionConfigurationSnapshot({
+    commandName: "search-page",
+    extensionName: "notion"
+  })
+  const sameExtensionCommit = preferences.setNativeExtensionPreferenceRecord(
+    "notion",
+    originalExtensionRecord
+  )
+
+  assert.deepEqual(sameExtensionCommit.mutation.changed, ["extension-config"])
+  assert.equal(
+    sameExtensionCommit.snapshot.token.revisions.extensionConfigRevision,
+    beforeExtension.token.revisions.extensionConfigRevision + 1
+  )
+  assert.equal(
+    sameExtensionCommit.snapshot.token.revisions.connectionConfigRevision,
+    beforeExtension.token.revisions.connectionConfigRevision
+  )
+  assert.equal(
+    sameExtensionCommit.snapshot.token.revisions.credentialRevision,
+    beforeExtension.token.revisions.credentialRevision
+  )
+  assert.equal(sameExtensionCommit.mutation.revisions, sameExtensionCommit.snapshot.token.revisions)
+
+  const publicConfigCommit = preferences.setNativeExtensionPreferenceRecord("notion", {
+    ...sameExtensionCommit.value,
+    apiBaseUrl: "https://api.notion.revision.test/v1"
+  })
+  assert.deepEqual(publicConfigCommit.mutation.changed, ["extension-config", "connection-config"])
+  assert.equal(
+    publicConfigCommit.snapshot.token.revisions.extensionConfigRevision,
+    sameExtensionCommit.snapshot.token.revisions.extensionConfigRevision + 1
+  )
+  assert.equal(
+    publicConfigCommit.snapshot.token.revisions.connectionConfigRevision,
+    sameExtensionCommit.snapshot.token.revisions.connectionConfigRevision + 1
+  )
+
+  const beforeCommand = preferences.getNativeExtensionConfigurationSnapshot({
+    commandName: "search-page",
+    extensionName: "notion"
+  })
+  const commandCommit = preferences.setNativeExtensionCommandPreferenceRecord(
+    "notion",
+    "search-page",
+    preferences.getNativeExtensionCommandPreferenceRecord("notion", "search-page")
+  )
+  assert.deepEqual(commandCommit.mutation.changed, ["command-config"])
+  assert.equal(
+    commandCommit.snapshot.token.revisions.commandConfigRevision,
+    beforeCommand.token.revisions.commandConfigRevision + 1
+  )
+  assert.equal(
+    commandCommit.snapshot.token.revisions.extensionConfigRevision,
+    beforeCommand.token.revisions.extensionConfigRevision
+  )
+  assert.equal(
+    commandCommit.snapshot.token.revisions.connectionConfigRevision,
+    beforeCommand.token.revisions.connectionConfigRevision
+  )
+
+  const currentSecretRecord = preferences.getNativeExtensionConnectionSecretRecord({
+    connectionId: "default",
+    extensionName: "notion",
+    provider: "notion"
+  })
+  const beforeCredential = preferences.getNativeExtensionConfigurationSnapshot({
+    extensionName: "notion"
+  })
+  const credentialCommit = preferences.setNativeExtensionConnectionSecretRecord({
+    connectionId: "default",
+    extensionName: "notion",
+    mode: "replace",
+    nextRecord: currentSecretRecord,
+    provider: "notion"
+  })
+  assert.deepEqual(credentialCommit.mutation.changed, ["credential"])
+  assert.equal(
+    credentialCommit.snapshot.token.revisions.credentialRevision,
+    beforeCredential.token.revisions.credentialRevision + 1
+  )
+  assert.equal(
+    credentialCommit.snapshot.token.revisions.extensionConfigRevision,
+    beforeCredential.token.revisions.extensionConfigRevision
+  )
+  assert.equal(
+    credentialCommit.snapshot.token.revisions.connectionConfigRevision,
+    beforeCredential.token.revisions.connectionConfigRevision
+  )
+
+  preferences.setNativeExtensionPreferenceRecord("notion", originalExtensionRecord)
+})
+
+test("native extension configuration tokens are secret-free and connection owners are isolated", () => {
+  assert.notEqual(
+    preferences.getNativeExtensionConnectionOwnerKey({
+      connectionId: "default",
+      extensionName: "github",
+      provider: "shared-provider"
+    }),
+    preferences.getNativeExtensionConnectionOwnerKey({
+      connectionId: "default",
+      extensionName: "notion",
+      provider: "shared-provider"
+    })
+  )
+
+  const commit = preferences.setNativeExtensionConnectionSecretRecord({
+    connectionId: "default",
+    extensionName: "notion",
+    mode: "replace",
+    nextRecord: { accessToken: "notion_revision_secret" },
+    provider: "notion"
+  })
+  const context = executionContext.resolveNativeExtensionExecutionContextFromSnapshot(
+    commit.snapshot
+  )
+
+  assert.equal(context.configurationToken, commit.snapshot.token)
+  assert.equal(context.extensionPreferences.accessToken, "notion_revision_secret")
+  assert.equal(Object.hasOwn(context.connection.publicConfig, "accessToken"), false)
+  assert.equal(JSON.stringify(context.configurationToken).includes("notion_revision_secret"), false)
+  assert.equal(Object.isFrozen(commit.snapshot), true)
+  assert.equal(Object.isFrozen(commit.snapshot.connectionSecrets), true)
+  assert.notEqual(commit.value, commit.snapshot.connectionSecrets)
+  commit.value.accessToken = "mutated_return_value"
+  assert.equal(commit.snapshot.connectionSecrets.accessToken, "notion_revision_secret")
+
+  const beforeStaleCommit = preferences.getNativeExtensionConfigurationSnapshot({
+    extensionName: "notion"
+  })
+  assert.throws(
+    () =>
+      preferences.setNativeExtensionConnectionSecretRecord({
+        connectionId: "default",
+        expectedConnection: {
+          ...commit.snapshot.connection,
+          connectGuide: "stale connection definition"
+        },
+        extensionName: "notion",
+        mode: "replace",
+        nextRecord: { accessToken: "must_not_commit" },
+        provider: "notion"
+      }),
+    /connection changed before credential commit/
+  )
+  assert.equal(
+    preferences.getNativeExtensionConfigurationSnapshot({ extensionName: "notion" }).token.revisions
+      .credentialRevision,
+    beforeStaleCommit.token.revisions.credentialRevision
+  )
+
+  preferences.setNativeExtensionConnectionSecretRecord({
+    connectionId: "default",
+    extensionName: "notion",
+    mode: "replace",
+    nextRecord: {},
+    provider: "notion"
+  })
+})
+
+test("native extension revision overflow fails before changing persisted facts", () => {
+  const settingsPath = join(jingleHome, "settings.json")
+  const originalSettings = readFileSync(settingsPath, "utf8")
+  const originalRecord = preferences.getNativeExtensionPreferenceRecord("notion")
+  const persisted = JSON.parse(originalSettings) as {
+    nativeExtensionPreferences: {
+      revisions: {
+        extensionConfigs: Record<string, number>
+      }
+    }
+  }
+  persisted.nativeExtensionPreferences.revisions.extensionConfigs.notion = Number.MAX_SAFE_INTEGER
+  writeFileSync(settingsPath, JSON.stringify(persisted, null, 2))
+
+  try {
+    assert.throws(
+      () => preferences.setNativeExtensionPreferenceRecord("notion", originalRecord),
+      /revision overflow/
+    )
+    assert.deepEqual(preferences.getNativeExtensionPreferenceRecord("notion"), originalRecord)
+    assert.equal(
+      preferences.getNativeExtensionConfigurationSnapshot({ extensionName: "notion" }).token
+        .revisions.extensionConfigRevision,
+      Number.MAX_SAFE_INTEGER
+    )
+  } finally {
+    writeFileSync(settingsPath, originalSettings)
+  }
+})
+
+test("versioned revision corruption and non-JSON preferences fail closed", () => {
+  const settingsPath = join(jingleHome, "settings.json")
+  const originalSettings = readFileSync(settingsPath, "utf8")
+  const persisted = JSON.parse(originalSettings) as {
+    nativeExtensionPreferences: {
+      revisions: {
+        commandConfigs: unknown
+      }
+    }
+  }
+  persisted.nativeExtensionPreferences.revisions.commandConfigs = null
+  writeFileSync(settingsPath, JSON.stringify(persisted, null, 2))
+  try {
+    assert.throws(
+      () => preferences.getNativeExtensionConfigurationSnapshot({ extensionName: "notion" }),
+      /revision map/
+    )
+  } finally {
+    writeFileSync(settingsPath, originalSettings)
+  }
+
+  const before = preferences.getNativeExtensionConfigurationSnapshot({
+    extensionName: "notion"
+  })
+  assert.throws(
+    () =>
+      preferences.setNativeExtensionPreferenceRecord("notion", {
+        ...before.extensionPreferences,
+        apiBaseUrl: new Date()
+      }),
+    /plain JSON object/
+  )
+  const after = preferences.getNativeExtensionConfigurationSnapshot({
+    extensionName: "notion"
+  })
+  assert.deepEqual(after.token.revisions, before.token.revisions)
+  assert.deepEqual(after.extensionPreferences, before.extensionPreferences)
+})
+
+test("native extension service publishes the committed mutation before renderer projection", async () => {
+  const order: string[] = []
+  const mutations: import("../../src/main/preferences").NativeExtensionConfigurationMutation[] = []
+  ;(
+    globalThis as typeof globalThis & {
+      __JINGLE_TEST_NATIVE_EXTENSION_WINDOWS__?: unknown[]
+    }
+  ).__JINGLE_TEST_NATIVE_EXTENSION_WINDOWS__ = [
+    {
+      isDestroyed: () => false,
+      webContents: {
+        send: () => {
+          order.push("renderer")
+        }
+      }
+    }
+  ]
+
+  try {
+    const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
+    const service = new NativeExtensionsService()
+    const unsubscribe = service.onConfigurationCommitted((mutation) => {
+      order.push("main")
+      mutations.push(mutation)
+    })
+    const before = preferences.getNativeExtensionConfigurationSnapshot({
+      extensionName: "notion"
+    })
+    const record = preferences.getNativeExtensionPreferenceRecord("notion")
+
+    assert.deepEqual(service.setPreferences("notion", record), record)
+    unsubscribe()
+    assert.deepEqual(order, ["main", "renderer"])
+    assert.equal(mutations.length, 1)
+    assert.equal(
+      mutations[0]?.revisions.extensionConfigRevision,
+      before.token.revisions.extensionConfigRevision + 1
+    )
+  } finally {
+    ;(
+      globalThis as typeof globalThis & {
+        __JINGLE_TEST_NATIVE_EXTENSION_WINDOWS__?: unknown[]
+      }
+    ).__JINGLE_TEST_NATIVE_EXTENSION_WINDOWS__ = []
+  }
 })
 
 test("resolved extension preferences do not read legacy command-scoped shared secrets", () => {
@@ -454,8 +749,8 @@ test("connection-scoped secrets connect GitHub without manual token preferences"
   assert.deepEqual(
     preferences.getNativeExtensionConnectionSecretRecord({
       connectionId: "default",
-      provider: "github",
-      secretNames: ["accessToken"]
+      extensionName: "github",
+      provider: "github"
     }),
     {
       accessToken: "ghp_oauth_secret"
@@ -522,6 +817,14 @@ test("platform OAuth callback exchanges handoff code and stores GitHub connectio
   try {
     const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
     const nativeExtensionsService = new NativeExtensionsService()
+    const mutations: import("../../src/main/preferences").NativeExtensionConfigurationMutation[] =
+      []
+    const unsubscribe = nativeExtensionsService.onConfigurationCommitted((mutation) => {
+      mutations.push(mutation)
+    })
+    const beforeCredential = preferences.getNativeExtensionConfigurationSnapshot({
+      extensionName: "github"
+    })
     const start = await nativeExtensionsService.startOAuthConnection({ extensionName: "github" })
     const authorizationUrl = new URL(start.authorizationUrl)
     const state = authorizationUrl.searchParams.get("state")
@@ -539,8 +842,14 @@ test("platform OAuth callback exchanges handoff code and stores GitHub connectio
     const result = await nativeExtensionsService.finishOAuthCallback(
       `jingle://oauth/callback?state=${encodeURIComponent(state)}&provider=github&code=handoff-code`
     )
+    unsubscribe()
 
     assert.equal(result.status, "connected")
+    assert.deepEqual(mutations[0]?.changed, ["credential"])
+    assert.equal(
+      mutations[0]?.revisions.credentialRevision,
+      beforeCredential.token.revisions.credentialRevision + 1
+    )
     assert.equal(tokenRequests.length, 1)
     assert.equal(tokenRequests[0]?.url, "https://jingle.cool/oauth/github/token")
     assertDesktopOAuthTokenRequestContract(tokenRequests[0]?.body ?? {}, state)
@@ -551,8 +860,8 @@ test("platform OAuth callback exchanges handoff code and stores GitHub connectio
     assert.deepEqual(
       preferences.getNativeExtensionConnectionSecretRecord({
         connectionId: "default",
-        provider: "github",
-        secretNames: ["accessToken"]
+        extensionName: "github",
+        provider: "github"
       }),
       {
         accessToken: "ghp_callback_secret"
@@ -561,10 +870,62 @@ test("platform OAuth callback exchanges handoff code and stores GitHub connectio
   } finally {
     preferences.setNativeExtensionConnectionSecretRecord({
       connectionId: "default",
+      extensionName: "github",
+      mode: "replace",
       nextRecord: {},
-      provider: "github",
-      secretNames: ["accessToken"]
+      provider: "github"
     })
+    globalThis.fetch = originalFetch
+    ;(
+      globalThis as typeof globalThis & {
+        __JINGLE_TEST_SHELL_OPEN_EXTERNAL_URLS__?: string[]
+      }
+    ).__JINGLE_TEST_SHELL_OPEN_EXTERNAL_URLS__ = []
+  }
+})
+
+test("OAuth rejects an empty token without committing a credential revision", async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ access_token: "   " }), {
+      headers: {
+        "content-type": "application/json"
+      },
+      status: 200
+    })) as typeof fetch
+
+  try {
+    const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
+    const nativeExtensionsService = new NativeExtensionsService()
+    const mutations: import("../../src/main/preferences").NativeExtensionConfigurationMutation[] =
+      []
+    nativeExtensionsService.onConfigurationCommitted((mutation) => {
+      mutations.push(mutation)
+    })
+    const before = preferences.getNativeExtensionConfigurationSnapshot({
+      extensionName: "github"
+    })
+    const start = await nativeExtensionsService.startOAuthConnection({ extensionName: "github" })
+    const state = new URL(start.authorizationUrl).searchParams.get("state")
+    assert.ok(state)
+
+    await assert.rejects(
+      () =>
+        nativeExtensionsService.finishOAuthCallback(
+          `jingle://oauth/callback?state=${encodeURIComponent(state)}&provider=github&code=handoff-code`
+        ),
+      /did not return access_token/
+    )
+
+    const after = preferences.getNativeExtensionConfigurationSnapshot({
+      extensionName: "github"
+    })
+    assert.equal(
+      after.token.revisions.credentialRevision,
+      before.token.revisions.credentialRevision
+    )
+    assert.deepEqual(mutations, [])
+  } finally {
     globalThis.fetch = originalFetch
     ;(
       globalThis as typeof globalThis & {
@@ -627,8 +988,8 @@ test("platform OAuth callback exchanges handoff code and stores Notion connectio
     assert.deepEqual(
       preferences.getNativeExtensionConnectionSecretRecord({
         connectionId: "default",
-        provider: "notion",
-        secretNames: ["accessToken"]
+        extensionName: "notion",
+        provider: "notion"
       }),
       {
         accessToken: "notion_callback_secret"
@@ -637,9 +998,10 @@ test("platform OAuth callback exchanges handoff code and stores Notion connectio
   } finally {
     preferences.setNativeExtensionConnectionSecretRecord({
       connectionId: "default",
+      extensionName: "notion",
+      mode: "replace",
       nextRecord: {},
-      provider: "notion",
-      secretNames: ["accessToken"]
+      provider: "notion"
     })
     globalThis.fetch = originalFetch
     ;(
@@ -680,7 +1042,9 @@ test("platform OAuth callback exchanges handoff code and stores Figma connection
   try {
     const { NativeExtensionsService } = await import("../../src/main/native-extensions/service")
     const nativeExtensionsService = new NativeExtensionsService()
-    const start = await nativeExtensionsService.startOAuthConnection({ extensionName: "figma-files" })
+    const start = await nativeExtensionsService.startOAuthConnection({
+      extensionName: "figma-files"
+    })
     const authorizationUrl = new URL(start.authorizationUrl)
     const state = authorizationUrl.searchParams.get("state")
 
@@ -710,8 +1074,8 @@ test("platform OAuth callback exchanges handoff code and stores Figma connection
     assert.deepEqual(
       preferences.getNativeExtensionConnectionSecretRecord({
         connectionId: "default",
-        provider: "figma",
-        secretNames: ["accessToken"]
+        extensionName: "figma-files",
+        provider: "figma"
       }),
       {
         accessToken: "figma_callback_secret"
@@ -720,9 +1084,10 @@ test("platform OAuth callback exchanges handoff code and stores Figma connection
   } finally {
     preferences.setNativeExtensionConnectionSecretRecord({
       connectionId: "default",
+      extensionName: "figma-files",
+      mode: "replace",
       nextRecord: {},
-      provider: "figma",
-      secretNames: ["accessToken"]
+      provider: "figma"
     })
     globalThis.fetch = originalFetch
     ;(
@@ -805,14 +1170,15 @@ test("connection-scoped Notion secrets connect AI capabilities", () => {
   assert.equal(connection.provider, "notion")
   assert.deepEqual(connection.missingSecretNames, [])
 
-  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
-    "notion",
-    [notionManifest],
-    {
-      getConnection: (extensionName) =>
-        connectionResolver.resolveNativeExtensionConnection({ extensionName })
-    }
-  )
+  const capability =
+    extensionSources.resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+      "notion",
+      [notionManifest],
+      {
+        getConnection: (extensionName) =>
+          connectionResolver.resolveNativeExtensionConnection({ extensionName })
+      }
+    )
 
   assert.equal(capability?.authStatus, "connected")
   assert.deepEqual(capability?.enabledToolNames, [
@@ -886,14 +1252,15 @@ test("connection-scoped Notion token feeds runtime host and AI capability throug
     "notion_settings_token"
   )
 
-  const capability = extensionSources.resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
-    "notion",
-    [notionManifest],
-    {
-      getConnection: (extensionName) =>
-        connectionResolver.resolveNativeExtensionConnection({ extensionName })
-    }
-  )
+  const capability =
+    extensionSources.resolveNativeExtensionAiCapabilityForExtensionNameFromManifests(
+      "notion",
+      [notionManifest],
+      {
+        getConnection: (extensionName) =>
+          connectionResolver.resolveNativeExtensionConnection({ extensionName })
+      }
+    )
   assert.equal(capability?.authStatus, "connected")
   assert.deepEqual(capability?.publicConfig, {
     apiBaseUrl: "https://api.notion.com/v1"
