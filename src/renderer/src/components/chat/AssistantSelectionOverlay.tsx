@@ -1,6 +1,7 @@
 import { MessageSquarePlus } from "lucide-react"
 import { useCallback, useEffect, useEffectEvent, useState } from "react"
 import type { ComposerMessageRef } from "@shared/message-content"
+import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
 
 type AssistantSelectionRef = Extract<ComposerMessageRef, { type: "assistant-message-selection" }>
@@ -95,8 +96,9 @@ export function AssistantSelectionOverlay(props: {
   }
 
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
       className="fixed z-50 inline-flex h-[30px] -translate-x-1/2 items-center gap-[var(--ow-space-1-5)] rounded-full border border-border/65 bg-background-elevated/94 px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)] text-foreground/90 shadow-[0_8px_22px_rgba(0,0,0,0.16)] backdrop-blur-sm transition-colors duration-100 hover:bg-background-secondary/72 hover:text-foreground"
       style={{
         left: draft.rect.left,
@@ -111,6 +113,6 @@ export function AssistantSelectionOverlay(props: {
     >
       <MessageSquarePlus className="size-[var(--ow-icon-sm)] text-muted-foreground" />
       <span>{copy.chat.addSelectionToChat}</span>
-    </button>
+    </Button>
   )
 }
