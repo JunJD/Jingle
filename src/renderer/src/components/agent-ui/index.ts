@@ -23,15 +23,3 @@ export {
   type AgentToolProps,
   type AgentToolState
 } from "./Tool"
-export {
-  AgentStep,
-  AgentSteps,
-  AgentStepsBar,
-  AgentStepsContent,
-  AgentStepsTrigger,
-  type AgentStepProps,
-  type AgentStepsBarProps,
-  type AgentStepsContentProps,
-  type AgentStepsProps,
-  type AgentStepsTriggerProps
-} from "./Steps"

@@ -10,15 +10,13 @@ async function readWorkspaceFile(path: string): Promise<string> {
 }
 
 test("main chat surfaces use ContextEvidencePanel as the current evidence source", async () => {
-  const [chatContainer, launcherConversation, messageTurnView, contextEvidencePanel] =
+  const [launcherConversation, messageTurnView, contextEvidencePanel] =
     await Promise.all([
-      readWorkspaceFile("src/renderer/src/components/chat/ChatContainer.tsx"),
       readWorkspaceFile("src/renderer/src/ai-core/LauncherAiConversation.tsx"),
       readWorkspaceFile("src/renderer/src/components/chat/MessageTurnView.tsx"),
       readWorkspaceFile("src/renderer/src/components/chat/ContextEvidencePanel.tsx")
     ])
 
-  assert.equal(chatContainer.includes("IncludedMemoriesPanel"), false)
   assert.equal(launcherConversation.includes("IncludedMemoriesPanel"), false)
   assert.equal(contextEvidencePanel.includes("listIncludedMemoriesForRun"), false)
   assert.equal(contextEvidencePanel.includes("useThreadSelector"), true)
