@@ -66,8 +66,14 @@ export function getLauncherIndexedCommandIcon(
     return icon
   }
 
+  if (!command.iconName) {
+    throw new Error(
+      `Built-in launcher command "${command.address.builtInId}:${command.address.commandName}" is missing iconName`
+    )
+  }
+
   return {
-    name: command.iconName ?? "search",
+    name: command.iconName,
     type: "glyph"
   }
 }
