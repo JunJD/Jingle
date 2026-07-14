@@ -29,6 +29,7 @@ import {
   listAgentMemorySuggestions,
   recordAgentMemoryInclusions,
   rejectAgentMemorySuggestion,
+  restoreAgentMemory,
   updateAgentMemory
 } from "../db/agent-memory"
 import { getThreadWorkspaceBinding } from "../db/thread-workspace"
@@ -284,6 +285,11 @@ export class JingleMemoryService {
   async archiveMemory(memoryId: string): Promise<JingleMemoryRecord> {
     await this.assertMemoryMutableFromCurrentWorkspace(memoryId)
     return archiveAgentMemory(memoryId)
+  }
+
+  async restoreMemory(memoryId: string): Promise<JingleMemoryRecord> {
+    await this.assertMemoryMutableFromCurrentWorkspace(memoryId)
+    return restoreAgentMemory(memoryId)
   }
 
   async deleteMemory(memoryId: string): Promise<void> {

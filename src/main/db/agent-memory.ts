@@ -399,6 +399,19 @@ export async function archiveAgentMemory(memoryId: string): Promise<JingleMemory
   return mapMemory(row)
 }
 
+export async function restoreAgentMemory(memoryId: string): Promise<JingleMemoryRecord> {
+  const prisma = getPrismaClient()
+  const row = await prisma.agentMemory.update({
+    where: { memoryId },
+    data: {
+      status: "active",
+      updatedAt: BigInt(Date.now())
+    }
+  })
+
+  return mapMemory(row)
+}
+
 export async function deleteAgentMemory(memoryId: string): Promise<void> {
   const prisma = getPrismaClient()
   await prisma.agentMemory.delete({
