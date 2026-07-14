@@ -482,8 +482,6 @@ body[data-window="pinned-ai-session"],
   --ow-reasoning-rail: color-mix(in srgb, var(--status-info) 28%, transparent);
   --ow-reasoning-bg: color-mix(in srgb, var(--status-info) 5%, transparent);
   --ow-chat-action-indent: 28px;
-  --ow-chat-artifact-max-w: 56rem;
-  --ow-chat-code-preview-min-w: 760px;
   --ow-chat-attachment-image-size: 96px;
   --ow-chat-attachment-image-size-wide: 112px;
   --ow-chat-attachment-image-radius: 18px;
@@ -635,8 +633,6 @@ body[data-window="pinned-ai-session"],
   --ow-prompt-input-shadow: 0 12px 30px rgba(32, 38, 45, 0.06);
   --ow-prompt-input-shadow-focus:
     0 14px 34px rgba(32, 38, 45, 0.09), 0 0 0 1px color-mix(in srgb, var(--ring) 10%, transparent);
-  --ow-chat-artifact-max-w: 56rem;
-  --ow-chat-code-preview-min-w: 760px;
   --ow-chat-thread-x: 32px;
   --ow-chat-thread-y: 28px;
   --ow-chat-thread-max-width: 56rem;
