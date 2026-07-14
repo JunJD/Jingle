@@ -7,6 +7,7 @@ export function NativeSurfaceActionsFooter(props: {
   leading: ReactNode
 }): React.JSX.Element {
   const { controller, leading } = props
+  const primaryAction = controller.primaryActionPresentation
 
   return (
     <>
@@ -31,15 +32,15 @@ export function NativeSurfaceActionsFooter(props: {
 
         <button
           type="button"
-          onClick={controller.executePrimaryAction}
+          onClick={primaryAction.kind === "ready" ? primaryAction.execute : undefined}
           onMouseDown={(event) => event.preventDefault()}
-          disabled={!controller.primaryAction}
+          disabled={primaryAction.kind === "invalid"}
           className="launcher-action-link flex h-[var(--launcher-action-control-h)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] px-[var(--ow-space-2-5)] [font-size:var(--ow-font-meta)] font-medium text-foreground disabled:opacity-40"
         >
-          <span>{controller.primaryAction?.title ?? controller.primaryActionFallbackTitle}</span>
-          {controller.primaryActionShortcut ? (
+          <span>{primaryAction.title}</span>
+          {primaryAction.kind === "ready" && primaryAction.shortcut ? (
             <span className="launcher-shortcut [font-size:var(--ow-font-meta)] text-muted-foreground">
-              {controller.primaryActionShortcut}
+              {primaryAction.shortcut}
             </span>
           ) : null}
         </button>

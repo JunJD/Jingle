@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useRef,
-  useState,
   type ReactElement,
   type ReactNode
 } from "react"
@@ -18,7 +17,7 @@ export interface RuntimeListProps {
   children?: ReactNode
   filtering?: boolean | { keepSectionOrder?: boolean }
   isLoading?: boolean
-  navigationTitle?: string
+  navigationTitle: string
   onSearchTextChange?: (value: string) => Promise<void> | void
   pagination?: RuntimeListPagination
   searchBarAccessory?: ReactNode
@@ -69,7 +68,7 @@ export interface RuntimeListItemAccessory {
 export interface RuntimeListEmptyViewProps {
   actions?: ReactNode
   description?: string
-  title?: string
+  title: string
 }
 
 export interface RuntimeListDropdownProps {
@@ -77,7 +76,7 @@ export interface RuntimeListDropdownProps {
   onChange?: (value: string) => Promise<void> | void
   storeValue?: boolean
   tooltip?: string
-  value?: string
+  value: string
 }
 
 export interface RuntimeListDropdownSectionProps {
@@ -141,20 +140,39 @@ function ListEmptyView(props: RuntimeListEmptyViewProps): ReactElement {
 function ListDropdown(props: RuntimeListDropdownProps): ReactElement {
   const { children, onChange, storeValue, value, ...hostProps } = props
   const sdk = useExtensionRuntimeSdkOptional()
-  const [storedValue, setStoredValue] = useState<string | undefined>(undefined)
   const hasLoadedRef = useRef(false)
   const onChangeRef = useRef(onChange)
+  const pendingUserValueRef = useRef<string | undefined>(undefined)
   const valueRef = useRef(value)
-  const resolvedValue = storeValue ? value ?? storedValue : value
 
   useEffect(() => {
     onChangeRef.current = onChange
     valueRef.current = value
   }, [onChange, value])
 
+  const persistStoredValue = useCallback(
+    (nextValue: string): void => {
+      if (!sdk) {
+        return
+      }
+
+      void sdk.requestHost({
+        capability: "storage",
+        method: "set",
+        payload: {
+          key: LIST_DROPDOWN_STORE_VALUE_KEY,
+          scope: "command",
+          value: nextValue
+        }
+      })
+    },
+    [sdk]
+  )
+
   useEffect(() => {
     if (!storeValue || !sdk) {
       hasLoadedRef.current = false
+      pendingUserValueRef.current = undefined
       return
     }
 
@@ -175,12 +193,18 @@ function ListDropdown(props: RuntimeListDropdownProps): ReactElement {
       }
 
       hasLoadedRef.current = true
+      const pendingUserValue = pendingUserValueRef.current
+      if (pendingUserValue !== undefined) {
+        pendingUserValueRef.current = undefined
+        persistStoredValue(pendingUserValue)
+        return
+      }
+
       if (typeof response.result !== "string") {
         return
       }
 
-      if (valueRef.current === undefined) {
-        setStoredValue(response.result)
+      if (response.result !== valueRef.current) {
         void onChangeRef.current?.(response.result)
       }
     })
@@ -188,26 +212,22 @@ function ListDropdown(props: RuntimeListDropdownProps): ReactElement {
     return () => {
       cancelled = true
     }
-  }, [sdk, storeValue])
+  }, [persistStoredValue, sdk, storeValue])
 
   const handleChange = useCallback(
     (nextValue: string) => {
-      setStoredValue(nextValue)
-      if (storeValue && sdk && hasLoadedRef.current) {
-        void sdk.requestHost({
-          capability: "storage",
-          method: "set",
-          payload: {
-            key: LIST_DROPDOWN_STORE_VALUE_KEY,
-            scope: "command",
-            value: nextValue
-          }
-        })
+      valueRef.current = nextValue
+      if (storeValue && sdk) {
+        if (hasLoadedRef.current) {
+          persistStoredValue(nextValue)
+        } else {
+          pendingUserValueRef.current = nextValue
+        }
       }
 
       return onChange?.(nextValue)
     },
-    [onChange, sdk, storeValue]
+    [onChange, persistStoredValue, sdk, storeValue]
   )
 
   return createElement(
@@ -216,7 +236,7 @@ function ListDropdown(props: RuntimeListDropdownProps): ReactElement {
       ...hostProps,
       onChange: handleChange,
       storeValue,
-      value: resolvedValue
+      value
     },
     children
   )

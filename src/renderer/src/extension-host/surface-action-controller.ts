@@ -1,13 +1,30 @@
 import { Fragment, createElement, type ReactNode } from "react"
 import { useLauncherActionController } from "@/features/launcher-actions/controller"
-import type {
-  LauncherActionController,
-  LauncherActionDescriptor
-} from "@/features/launcher-actions/model"
+import type { LauncherActionDescriptor } from "@/features/launcher-actions/model"
 import { NativeSurfaceHeaderLeading } from "./chrome"
 import { NativeSurfaceActionLayer, NativeSurfaceActionsFooter } from "./surface-actions"
 
-export type NativeSurfaceActionController = LauncherActionController
+export type NativeSurfacePrimaryActionPresentation =
+  | {
+      execute: () => void
+      kind: "ready"
+      shortcut: string | null
+      title: string
+    }
+  | {
+      kind: "invalid"
+      title: string
+    }
+
+export interface NativeSurfaceActionController {
+  actionPanelShortcut: string | null
+  actions: LauncherActionDescriptor[]
+  canOpenActions: boolean
+  closeActions: () => void
+  openActions: () => void
+  primaryActionPresentation: NativeSurfacePrimaryActionPresentation
+  showActions: boolean
+}
 
 export interface NativeSurfaceController {
   actionController: NativeSurfaceActionController
@@ -18,9 +35,35 @@ export interface NativeSurfaceController {
 
 export function useNativeSurfaceActionController(params: {
   actions: LauncherActionDescriptor[]
-  primaryActionFallbackTitle: string
+  invalidPrimaryActionTitle: string
 }): NativeSurfaceActionController {
-  return useLauncherActionController(params)
+  const { actions, invalidPrimaryActionTitle } = params
+  const controller = useLauncherActionController({
+    actions,
+    primaryActionFallbackTitle: invalidPrimaryActionTitle
+  })
+  const primaryActionPresentation: NativeSurfacePrimaryActionPresentation =
+    controller.primaryAction === null
+      ? {
+          kind: "invalid",
+          title: invalidPrimaryActionTitle
+        }
+      : {
+          execute: controller.executePrimaryAction,
+          kind: "ready",
+          shortcut: controller.primaryActionShortcut,
+          title: controller.primaryAction.title
+        }
+
+  return {
+    actionPanelShortcut: controller.actionPanelShortcut,
+    actions: controller.actions,
+    canOpenActions: controller.canOpenActions,
+    closeActions: controller.closeActions,
+    openActions: controller.openActions,
+    primaryActionPresentation,
+    showActions: controller.showActions
+  }
 }
 
 function createFooterLeading(params: {
@@ -56,12 +99,12 @@ export function useNativeSurfaceController(params: {
   footerCount?: string | null
   footerLabel: string
   headerLabel?: string
-  primaryActionFallbackTitle: string
+  invalidPrimaryActionTitle: string
 }): NativeSurfaceController {
-  const { actions, footerCount, footerLabel, headerLabel, primaryActionFallbackTitle } = params
+  const { actions, footerCount, footerLabel, headerLabel, invalidPrimaryActionTitle } = params
   const actionController = useNativeSurfaceActionController({
     actions,
-    primaryActionFallbackTitle
+    invalidPrimaryActionTitle
   })
 
   return {

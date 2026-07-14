@@ -70,7 +70,6 @@ export interface ExtensionSurfaceBase {
   canPop?: boolean
   commandName: string
   extensionName: string
-  navigationTitle?: string
   revision: number
 }
 
@@ -80,6 +79,7 @@ export interface ExtensionListSurfaceSnapshot extends ExtensionSurfaceBase {
   filtering: boolean
   isLoading: boolean
   kind: "list"
+  navigationTitle: string
   pagination?: ExtensionListPaginationNode
   searchBarAccessory?: ExtensionListDropdownNode
   searchBarPlaceholder?: string
@@ -113,13 +113,13 @@ export interface ExtensionListItemNode {
 export interface ExtensionListEmptyViewNode {
   actions: ExtensionActionNode[]
   description?: string
-  title?: string
+  title: string
 }
 
 export interface ExtensionListDropdownNode {
   id: string
   sections: ExtensionListDropdownSectionNode[]
-  value?: string
+  value: string
 }
 
 export interface ExtensionListDropdownSectionNode {
@@ -140,6 +140,7 @@ export interface ExtensionDetailSurfaceSnapshot extends ExtensionSurfaceBase {
   kind: "detail"
   markdown?: string
   metadata: ExtensionDetailMetadataNode[]
+  navigationTitle: string
 }
 
 export interface ExtensionDetailMetadataNode {
@@ -154,6 +155,7 @@ export interface ExtensionFormSurfaceSnapshot extends ExtensionSurfaceBase {
   fields: ExtensionFormFieldNode[]
   isLoading: boolean
   kind: "form"
+  navigationTitle: string
 }
 
 export type ExtensionFormFieldNode =
@@ -195,7 +197,7 @@ export interface ExtensionFormCheckboxFieldNode extends ExtensionFormFieldBase {
   autoFocus?: boolean
   focusRequestId?: number
   kind: "checkbox"
-  label?: string
+  label: string
   value: boolean
 }
 
@@ -276,7 +278,7 @@ export interface ExtensionMenuBarItemNode {
 }
 
 export interface ExtensionErrorSurfaceSnapshot extends ExtensionSurfaceBase {
-  description?: string
+  description: string
   kind: "error"
   title: string
 }

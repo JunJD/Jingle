@@ -42,6 +42,13 @@ interface SnapshotBuildState {
   nextActionId: () => string
 }
 
+class ExtensionSurfaceContractError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "ExtensionSurfaceContractError"
+  }
+}
+
 const SVG_TAG_NAMES = new Set([
   "circle",
   "clipPath",
@@ -67,6 +74,30 @@ export function createSurfaceSnapshot(container: RuntimeHostContainer): Extensio
   container.menuBarActionHandlers.clear()
   const state = createSnapshotBuildState()
 
+  try {
+    return createValidatedSurfaceSnapshot(container, state)
+  } catch (error) {
+    if (!(error instanceof ExtensionSurfaceContractError)) {
+      throw error
+    }
+
+    container.actionHandlers.clear()
+    container.menuBarActionHandlers.clear()
+    return {
+      commandName: container.context.commandName,
+      description: error.message,
+      extensionName: container.context.extensionName,
+      kind: "error",
+      revision: container.revision,
+      title: "Invalid extension surface"
+    }
+  }
+}
+
+function createValidatedSurfaceSnapshot(
+  container: RuntimeHostContainer,
+  state: SnapshotBuildState
+): ExtensionSurfaceSnapshot {
   const menuBar = findFirstElement(container.children, ExtensionHostElement.MenuBarExtra)
   if (menuBar) {
     return createMenuBarSnapshot(container, menuBar)
@@ -86,6 +117,7 @@ export function createSurfaceSnapshot(container: RuntimeHostContainer): Extensio
   if (!list) {
     return {
       commandName: container.context.commandName,
+      description: "The extension did not render a List, Detail, Form, or Menu Bar surface.",
       extensionName: container.context.extensionName,
       kind: "error",
       revision: container.revision,
@@ -218,7 +250,7 @@ function createListSnapshot(
     filtering: readListFilteringProp(list.props),
     isLoading: readBooleanProp(list.props, "isLoading", false),
     kind: "list",
-    navigationTitle: readStringProp(list.props, "navigationTitle"),
+    navigationTitle: readRequiredNonEmptyStringProp(list.props, "navigationTitle", "List"),
     pagination: collectListPagination(container, list),
     revision: container.revision,
     searchBarAccessory: collectDropdown(list),
@@ -268,7 +300,7 @@ function createDetailSnapshot(
     kind: "detail",
     markdown: readStringProp(detail.props, "markdown"),
     metadata: collectDetailMetadata(detail),
-    navigationTitle: readStringProp(detail.props, "navigationTitle"),
+    navigationTitle: readRequiredNonEmptyStringProp(detail.props, "navigationTitle", "Detail"),
     revision: container.revision
   }
 }
@@ -290,7 +322,7 @@ function createFormSnapshot(
     fields: collectFormFields(form),
     isLoading: readBooleanProp(form.props, "isLoading", false),
     kind: "form",
-    navigationTitle: readStringProp(form.props, "navigationTitle"),
+    navigationTitle: readRequiredNonEmptyStringProp(form.props, "navigationTitle", "Form"),
     revision: container.revision
   }
 }
@@ -364,7 +396,7 @@ function collectEmptyView(
       directChildrenOfType(emptyView, ExtensionHostElement.ActionPanel)
     ),
     description: readStringProp(emptyView.props, "description"),
-    title: readStringProp(emptyView.props, "title")
+    title: readRequiredNonEmptyStringProp(emptyView.props, "title", "List.EmptyView")
   }
 }
 
@@ -406,7 +438,7 @@ function collectDropdown(list: RuntimeHostElementNode): ExtensionListDropdownNod
   return {
     id: "list-dropdown",
     sections,
-    value: readStringProp(dropdown.props, "value")
+    value: readRequiredStringProp(dropdown.props, "value", "List.Dropdown")
   }
 }
 
@@ -490,7 +522,6 @@ function createFormFieldNode(
   fallbackId: string
 ): ExtensionFormFieldNode[] {
   const id = readStringProp(node.props, "id") ?? fallbackId
-  const title = readStringProp(node.props, "title") ?? ""
   const description = readStringProp(node.props, "description")
   const error = readStringProp(node.props, "error")
   const info = readStringProp(node.props, "info")
@@ -506,7 +537,7 @@ function createFormFieldNode(
         info,
         kind: "text-field",
         placeholder: readStringProp(node.props, "placeholder"),
-        title,
+        title: readRequiredNonEmptyStringProp(node.props, "title", "Form.TextField"),
         value: readStringProp(node.props, "value") ?? ""
       }
     ]
@@ -524,7 +555,7 @@ function createFormFieldNode(
         info,
         kind: "text-area",
         placeholder: readStringProp(node.props, "placeholder"),
-        title,
+        title: readRequiredNonEmptyStringProp(node.props, "title", "Form.TextArea"),
         value: readStringProp(node.props, "value") ?? ""
       }
     ]
@@ -540,8 +571,8 @@ function createFormFieldNode(
         id,
         info,
         kind: "checkbox",
-        label: readStringProp(node.props, "label"),
-        title,
+        label: readRequiredNonEmptyStringProp(node.props, "label", "Form.Checkbox"),
+        title: readRequiredNonEmptyStringProp(node.props, "title", "Form.Checkbox"),
         value: readBooleanProp(node.props, "value", false)
       }
     ]
@@ -558,7 +589,7 @@ function createFormFieldNode(
         info,
         kind: "date-picker",
         placeholder: readStringProp(node.props, "placeholder"),
-        title,
+        title: readRequiredNonEmptyStringProp(node.props, "title", "Form.DatePicker"),
         type: readDatePickerTypeProp(node.props),
         value: readDatePickerValueProp(node.props)
       }
@@ -585,7 +616,7 @@ function createFormFieldNode(
         items,
         kind: "dropdown",
         searchable,
-        title,
+        title: readRequiredNonEmptyStringProp(node.props, "title", "Form.Dropdown"),
         value:
           readStringProp(node.props, "value") ??
           readStringProp(node.props, "defaultValue") ??
@@ -610,7 +641,7 @@ function createFormFieldNode(
           value: readStringProp(item.props, "value") ?? ""
         })),
         kind: "tag-picker",
-        title,
+        title: readRequiredNonEmptyStringProp(node.props, "title", "Form.TagPicker"),
         value: readStringArrayProp(node.props, "value")
       }
     ]
@@ -1168,6 +1199,32 @@ function isListPaginationProp(value: unknown): value is {
 
 function readStringProp(props: RuntimeHostProps, name: string): string | undefined {
   return typeof props[name] === "string" ? props[name] : undefined
+}
+
+function readRequiredStringProp(
+  props: RuntimeHostProps,
+  name: string,
+  owner: string
+): string {
+  const value = readStringProp(props, name)
+  if (value === undefined) {
+    throw new ExtensionSurfaceContractError(`${owner} requires a string ${name} prop.`)
+  }
+
+  return value
+}
+
+function readRequiredNonEmptyStringProp(
+  props: RuntimeHostProps,
+  name: string,
+  owner: string
+): string {
+  const value = readRequiredStringProp(props, name, owner)
+  if (value.trim().length === 0) {
+    throw new ExtensionSurfaceContractError(`${owner} requires a non-empty ${name} prop.`)
+  }
+
+  return value
 }
 
 function readClipboardContentProp(

@@ -8,7 +8,7 @@ export interface RuntimeDetailProps {
   isLoading?: boolean
   markdown?: string
   metadata?: ReactNode
-  navigationTitle?: string
+  navigationTitle: string
 }
 
 export interface RuntimeDetailMetadataProps {

@@ -339,6 +339,7 @@ function PullRequestDetailsFields(props: {
       <Form.Checkbox
         description="Create the pull request as a draft."
         id="draft"
+        label="Create as draft"
         onChange={onDraftChange}
         title="Draft"
         value={draft}

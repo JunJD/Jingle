@@ -221,6 +221,7 @@ export function QuickCapture({ initialUrl, launchContext }: QuickCaptureProps) {
 
   return (
     <Form
+      navigationTitle="Quick Capture"
       actions={
         <ActionPanel>
           <Action.SubmitForm onSubmit={handleSubmit} title="Capture" icon={Icon.SaveDocument} />
@@ -245,6 +246,7 @@ export function QuickCapture({ initialUrl, launchContext }: QuickCaptureProps) {
         label="Append with a date divider"
         info="Add a divider with the current date before the captured content"
         storeValue
+        title="Date Divider"
       />
 
       {/*
@@ -277,7 +279,7 @@ export function QuickCapture({ initialUrl, launchContext }: QuickCaptureProps) {
 
 function QuickCaptureCommand(props: QuickCaptureProps) {
   const { data: initialUrl, isLoading } = useCachedInitialUrl()
-  if (isLoading) return <Form isLoading />
+  if (isLoading) return <Form isLoading navigationTitle="Quick Capture" />
   return <QuickCapture {...props} initialUrl={initialUrl} />
 }
 

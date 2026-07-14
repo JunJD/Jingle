@@ -246,7 +246,7 @@ test("runtime reconciler waits for asynchronous action handlers", async () => {
   function AsyncActionList() {
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -295,7 +295,7 @@ test("runtime reconciler executes registered toast actions", async () => {
 
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -405,7 +405,7 @@ test("runtime SDK client is available to first passive effects", async () => {
 
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         id: "ready",
         title: "Ready"
@@ -451,7 +451,7 @@ test("runtime SDK exposes merged command preference values", async () => {
 
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         id: "ready",
         title: "Ready"
@@ -571,6 +571,7 @@ test("runtime SDK creates launch props", () => {
 test("runtime command component can render with launch props", async () => {
   function LaunchPropsDetail(props: LaunchProps<{ arguments: { text?: string } }>) {
     return createElement(Detail, {
+      navigationTitle: "Test Detail",
       markdown: props.arguments.text ?? "missing"
     })
   }
@@ -603,7 +604,7 @@ test("runtime SDK open delegates URL targets to shell host capability", async ()
   function OpenList() {
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -670,7 +671,7 @@ test("runtime actions preserve keyboard shortcuts", async () => {
   function ShortcutList() {
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -719,7 +720,7 @@ test("runtime reconciler preserves action panel submenu hierarchy", async () => 
   function SubmenuList() {
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -789,7 +790,7 @@ test("runtime reconciler batches multiple state updates into one snapshot", asyn
 
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -840,6 +841,7 @@ test("runtime reconciler keeps action ids unique across list and item actions", 
     createElement(
       List,
       {
+        navigationTitle: "Test List",
         actions: createElement(
           ActionPanel,
           null,
@@ -881,7 +883,7 @@ test("runtime reconciler serializes JSX icon visuals", async () => {
   renderer.render(
     createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         accessories: createElement("span", null, "Pinned"),
         actions: createElement(
@@ -943,7 +945,7 @@ test("runtime reconciler serializes extension API icon and image-like visuals", 
   renderer.render(
     createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         accessories: [
           {
@@ -1006,7 +1008,7 @@ test("runtime reconciler preserves JSX accessory arrays separately from plain ac
   renderer.render(
     createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         accessories: [
           createElement("span", { key: "one" }, "First"),
@@ -1076,7 +1078,7 @@ test("runtime reconciler dispatches OpenInBrowser actions through host requests"
   renderer.render(
     createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -1136,7 +1138,7 @@ test("runtime reconciler dispatches CopyToClipboard actions through host request
   renderer.render(
     createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -1196,7 +1198,7 @@ test("runtime reconciler preserves formatted CopyToClipboard content", async () 
   renderer.render(
     createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -1259,7 +1261,7 @@ test("runtime Action.CreateQuicklink registers a launcher quicklink", async () =
   renderer.render(
     createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -1338,7 +1340,7 @@ test("runtime Action.RunBotAgent delegates to the agent host capability", async 
   renderer.render(
     createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -1419,7 +1421,7 @@ test("runtime reconciler dispatches Paste actions through host requests", async 
   renderer.render(
     createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -1475,7 +1477,7 @@ test("runtime SDK confirmAlert delegates confirmation to dialog host capability"
   function ConfirmList() {
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -1562,6 +1564,7 @@ test("runtime reconciler dispatches list query changes to List handlers", async 
     return createElement(
       List,
       {
+        navigationTitle: "Test List",
         onSearchTextChange: setQuery,
         searchText: query
       },
@@ -1596,6 +1599,7 @@ test("runtime reconciler treats object filtering config as remote filtering", as
     createElement(
       List,
       {
+        navigationTitle: "Test List",
         filtering: {
           keepSectionOrder: true
         }
@@ -1619,6 +1623,7 @@ test("runtime reconciler preserves List throttle in snapshots", async () => {
     createElement(
       List,
       {
+        navigationTitle: "Test List",
         throttle: true
       },
       createElement(List.Item, {
@@ -1644,6 +1649,7 @@ test("runtime reconciler dispatches form dropdown search changes", async () => {
     return createElement(
       Form,
       {
+        navigationTitle: "Test Form",
         actions: createElement(
           ActionPanel,
           null,
@@ -1764,7 +1770,7 @@ test("runtime reconciler snapshots detail surfaces and navigates back", async ()
 
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -1837,6 +1843,7 @@ test("runtime reconciler serializes Detail metadata tag list items", async () =>
   const renderer = createTestRenderer()
   renderer.render(
     createElement(Detail, {
+      navigationTitle: "Test Detail",
       markdown: "# Metadata",
       metadata: createElement(
         Detail.Metadata,
@@ -1874,6 +1881,7 @@ test("runtime reconciler preserves Detail metadata link targets", async () => {
   const renderer = createTestRenderer()
   renderer.render(
     createElement(Detail, {
+      navigationTitle: "Test Detail",
       markdown: "# Metadata",
       metadata: createElement(
         Detail.Metadata,
@@ -1923,7 +1931,7 @@ test("runtime Action.Push opens a detail surface through the navigation stack", 
   function PushFlow() {
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -2168,7 +2176,7 @@ test("runtime Form storeValue hydrates empty values and persists changes", async
 
     return createElement(
       Form,
-      null,
+      { navigationTitle: "Test Form" },
       createElement(Form.TextField, {
         id: "title",
         onChange: setTitle,
@@ -2255,11 +2263,13 @@ test("runtime List.Dropdown storeValue hydrates and persists command scoped valu
     return createElement(
       List,
       {
+        navigationTitle: "Test List",
         searchBarAccessory: createElement(
           List.Dropdown,
           {
             onChange: setSort,
             storeValue: true,
+            value: sort,
             tooltip: "Sort by"
           },
           createElement(List.Dropdown.Item, {
@@ -2309,59 +2319,80 @@ test("runtime List.Dropdown storeValue hydrates and persists command scoped valu
   assert.equal(storage.get("list-dropdown"), "last_edited_time")
 })
 
-test("runtime List.Dropdown storeValue persists the first change without an existing value", async () => {
-  const storage = new Map<string, unknown>()
-  const requests: ExtensionRuntimeHostRequestInput[] = []
+test("runtime List.Dropdown storeValue preserves a pre-hydration user change", async () => {
+  for (const storedValue of [undefined, "last_edited_time"] as const) {
+    const storage = new Map<string, unknown>()
+    if (storedValue !== undefined) {
+      storage.set("list-dropdown", storedValue)
+    }
 
-  function StoredDropdownList() {
-    const [sort, setSort] = useState("last_edited_time")
+    const requests: ExtensionRuntimeHostRequestInput[] = []
+    let releaseHydration = (): void => undefined
+    const hydrationGate = new Promise<void>((resolve) => {
+      releaseHydration = resolve
+    })
 
-    return createElement(
-      List,
-      {
-        searchBarAccessory: createElement(
-          List.Dropdown,
-          {
-            onChange: setSort,
-            storeValue: true,
-            tooltip: "Sort by"
-          },
-          createElement(List.Dropdown.Item, {
-            title: "Last Edited",
-            value: "last_edited_time"
-          }),
-          createElement(List.Dropdown.Item, {
-            title: "Created",
-            value: "created_time"
-          })
-        )
-      },
-      createElement(List.Item, {
-        id: "sort",
-        title: `Sort ${sort}`
+    function StoredDropdownList() {
+      const [sort, setSort] = useState("last_edited_time")
+
+      return createElement(
+        List,
+        {
+          navigationTitle: "Test List",
+          searchBarAccessory: createElement(
+            List.Dropdown,
+            {
+              onChange: setSort,
+              storeValue: true,
+              value: sort,
+              tooltip: "Sort by"
+            },
+            createElement(List.Dropdown.Item, {
+              title: "Last Edited",
+              value: "last_edited_time"
+            }),
+            createElement(List.Dropdown.Item, {
+              title: "Created",
+              value: "created_time"
+            })
+          )
+        },
+        createElement(List.Item, {
+          id: "sort",
+          title: `Sort ${sort}`
+        })
+      )
+    }
+
+    const renderer = createTestRenderer()
+    renderer.render(
+      withRuntimeProvider(createElement(StoredDropdownList), async (request) => {
+        if (request.capability === "storage" && request.method === "get") {
+          await hydrationGate
+        }
+
+        return resolveStorageRequest(request, requests, storage)
       })
     )
-  }
+    await renderer.flushSnapshots()
 
-  const renderer = createTestRenderer()
-  renderer.render(
-    withRuntimeProvider(createElement(StoredDropdownList), async (request) =>
-      resolveStorageRequest(request, requests, storage)
+    assert.equal(
+      await renderer.dispatchEvent({
+        type: "list.dropdown.change",
+        value: "created_time"
+      }),
+      true
     )
-  )
-  await renderer.flushSnapshots()
-  await renderer.flushSnapshots()
 
-  assert.equal(
-    await renderer.dispatchEvent({
-      type: "list.dropdown.change",
-      value: "created_time"
-    }),
-    true
-  )
-  await renderer.flushSnapshots()
+    releaseHydration()
+    await renderer.flushSnapshots()
+    await renderer.flushSnapshots()
 
-  assert.equal(storage.get("list-dropdown"), "created_time")
+    const snapshot = renderer.getSnapshot()
+    assertListSnapshot(snapshot)
+    assert.equal(snapshot.searchBarAccessory?.value, "created_time")
+    assert.equal(storage.get("list-dropdown"), "created_time")
+  }
 })
 
 test("runtime Action.SubmitForm passes current form values to onSubmit", async () => {
@@ -2373,6 +2404,7 @@ test("runtime Action.SubmitForm passes current form values to onSubmit", async (
     createElement(
       Form,
       {
+        navigationTitle: "Test Form",
         actions: createElement(
           ActionPanel,
           null,
@@ -2392,6 +2424,7 @@ test("runtime Action.SubmitForm passes current form values to onSubmit", async (
       }),
       createElement(Form.Checkbox, {
         id: "completed",
+        label: "Completed",
         onChange: () => {},
         title: "Completed",
         value: true
@@ -2469,6 +2502,7 @@ test("runtime Form.Dropdown submits the first item when uncontrolled", async () 
     createElement(
       Form,
       {
+        navigationTitle: "Test Form",
         actions: createElement(
           ActionPanel,
           null,
@@ -2532,6 +2566,7 @@ test("runtime searchable Form.Dropdown does not treat search results as selected
     createElement(
       Form,
       {
+        navigationTitle: "Test Form",
         actions: createElement(
           ActionPanel,
           null,
@@ -2590,6 +2625,7 @@ test("runtime Action.SubmitForm prefers event form values from the renderer", as
     createElement(
       Form,
       {
+        navigationTitle: "Test Form",
         actions: createElement(
           ActionPanel,
           null,
@@ -2649,6 +2685,7 @@ test("runtime Action.SubmitForm keeps raw form values when renderer only overrid
     createElement(
       Form,
       {
+        navigationTitle: "Test Form",
         actions: createElement(
           ActionPanel,
           null,
@@ -2713,7 +2750,7 @@ test("runtime Form.DatePicker preserves date-time values", async () => {
 
     return createElement(
       Form,
-      null,
+      { navigationTitle: "Test Form" },
       createElement(Form.DatePicker, {
         id: "due",
         onChange: (value) => {
@@ -2744,7 +2781,7 @@ test("runtime reconciler snapshots form messages", async () => {
   renderer.render(
     createElement(
       Form,
-      null,
+      { navigationTitle: "Test Form" },
       createElement(Form.Message, {
         id: "form-message",
         text: "Choose both source and target branches.",
@@ -2776,7 +2813,7 @@ test("runtime SDK Form.Description renders as an informational form message", as
   renderer.render(
     createElement(
       Form,
-      null,
+      { navigationTitle: "Test Form" },
       createElement(Form.Description, {
         id: "description",
         text: "Add to Runtime Notes"
@@ -2818,6 +2855,7 @@ test("useForm exposes itemProps object, reset, and focus controls", async () => 
     return createElement(
       Form,
       {
+        navigationTitle: "Test Form",
         actions: createElement(
           ActionPanel,
           null,
@@ -2910,7 +2948,7 @@ test("runtime SDK opens extension settings through host requests", async () => {
   function SettingsList() {
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -2975,7 +3013,7 @@ test("runtime SDK opens native extension and command settings", async () => {
   function PreferencesList() {
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -3066,7 +3104,7 @@ test("runtime reconciler rejects stale action events from an old snapshot revisi
 
     return createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -3144,7 +3182,7 @@ test("runtime reconciler rejects disabled action events", async () => {
   renderer.render(
     createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         actions: createElement(
           ActionPanel,
@@ -3198,6 +3236,7 @@ test("runtime reconciler preserves keyed item order across reorder and removal",
     return createElement(
       List,
       {
+        navigationTitle: "Test List",
         actions: createElement(
           ActionPanel,
           null,
@@ -3256,7 +3295,7 @@ test("runtime reconciler clears the host container when the root unmounts", asyn
   renderer.render(
     createElement(
       List,
-      null,
+      { navigationTitle: "Test List" },
       createElement(List.Item, {
         id: "item",
         title: "Item"
@@ -3283,6 +3322,7 @@ test("runtime reconciler snapshots list pagination and dispatches load more", as
     return createElement(
       List,
       {
+        navigationTitle: "Test List",
         pagination: {
           hasMore,
           isLoading: false,
@@ -3359,6 +3399,7 @@ test("useCachedPromise exposes pagination to runtime lists", async () => {
     return createElement(
       List,
       {
+        navigationTitle: "Test List",
         isLoading: !data,
         pagination
       },
@@ -3414,6 +3455,7 @@ test("useCachedPromise reports loading before the first promise resolves", async
     return createElement(
       List,
       {
+        navigationTitle: "Test List",
         isLoading
       },
       (data ?? []).map((item) =>
@@ -3480,6 +3522,7 @@ test("useCachedPromise supports initialData and data/error callbacks", async () 
     return createElement(
       List,
       {
+        navigationTitle: "Test List",
         actions: createElement(
           ActionPanel,
           null,
@@ -3566,6 +3609,7 @@ test("useCachedPromise exposes abortable controllers", async () => {
     return createElement(
       List,
       {
+        navigationTitle: "Test List",
         actions: createElement(
           ActionPanel,
           null,
@@ -3658,6 +3702,7 @@ test("useFetch loads JSON data and applies mapResult callbacks", async () => {
       return createElement(
         List,
         {
+          navigationTitle: "Test List",
           isLoading
         },
         (data ?? []).map((item) =>
@@ -3739,6 +3784,7 @@ test("useFetch exposes pagination", async () => {
       return createElement(
         List,
         {
+          navigationTitle: "Test List",
           pagination
         },
         (data ?? []).map((item) =>
@@ -3803,7 +3849,7 @@ test("useFetch reports failed requests through failure toasts by default", async
         }
       })
 
-      return createElement(List, null)
+      return createElement(List, { navigationTitle: "Test List" })
     }
 
     const renderer = createTestRenderer()
@@ -3851,6 +3897,7 @@ test("useLocalStorage reads and writes extension-scoped storage", async () => {
     return createElement(
       List,
       {
+        navigationTitle: "Test List",
         isLoading
       },
       createElement(List.Item, {

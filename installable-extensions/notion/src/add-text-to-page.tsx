@@ -58,6 +58,7 @@ export function AddTextToPage(props: LaunchProps<{ arguments: Arguments.AddTextT
 
   return (
     <Form
+      navigationTitle="Add Text to Page"
       actions={
         <ActionPanel>
           <Action.SubmitForm onSubmit={handleSubmit} title="Add Text to Page" icon={Icon.Plus} />
@@ -83,6 +84,7 @@ export function AddTextToPage(props: LaunchProps<{ arguments: Arguments.AddTextT
         label="Append at the top"
         info="Append the content at the top of the page instead of the bottom"
         storeValue
+        title="Position"
       />
 
       <Form.Checkbox
@@ -90,6 +92,7 @@ export function AddTextToPage(props: LaunchProps<{ arguments: Arguments.AddTextT
         label="Append with a date divider"
         info="Add a divider with the current date before the content"
         storeValue
+        title="Date Divider"
       />
     </Form>
   );

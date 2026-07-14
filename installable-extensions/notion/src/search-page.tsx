@@ -42,6 +42,7 @@ export function Search() {
   return (
     <List
       isLoading={isLoading}
+      navigationTitle="Search Notion"
       searchBarPlaceholder="Search pages"
       onSearchTextChange={setSearchText}
       throttle

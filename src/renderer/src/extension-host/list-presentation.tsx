@@ -24,6 +24,26 @@ export interface NativeSurfaceListSectionPresentation {
   title?: string
 }
 
+export type NativeSurfaceListEmptyPresentation =
+  | {
+      kind: "loading"
+      label: string
+    }
+  | {
+      action?: {
+        execute: () => void
+        title: string
+      }
+      description?: string
+      kind: "ready"
+      title: string
+    }
+  | {
+      description: string
+      kind: "invalid"
+      title: string
+    }
+
 export function NativeSurfaceListRows(props: {
   isLoadingMore?: boolean
   onLoadMore?: () => void
@@ -171,47 +191,41 @@ export function NativeSurfaceListRows(props: {
 }
 
 export function NativeSurfaceListEmptyState(props: {
-  actionTitle?: string
-  description?: string
-  isLoading?: boolean
-  onAction?: () => void
-  title?: string
+  presentation: NativeSurfaceListEmptyPresentation
 }): React.JSX.Element {
-  const { actionTitle, description, isLoading = false, onAction, title } = props
+  const { presentation } = props
 
   return (
     <div className="flex flex-1 items-center justify-center px-[var(--ow-space-6)]">
-      {isLoading ? (
+      {presentation.kind === "loading" ? (
         <div className="flex items-center gap-[var(--ow-gap-sm)] [font-size:var(--ow-font-body)] text-muted-foreground">
           <LoaderCircle className="h-[var(--ow-icon-action)] w-[var(--ow-icon-action)] animate-spin" />
-          <span>Loading...</span>
+          <span>{presentation.label}</span>
         </div>
-      ) : title || description || onAction ? (
+      ) : (
         <div className="max-w-[var(--ow-empty-max-w)] space-y-[var(--ow-space-3)] text-center">
           <div className="space-y-[var(--ow-space-1)]">
             <div className="[font-size:var(--ow-font-title)] font-semibold text-foreground">
-              {title ?? "No items"}
+              {presentation.title}
             </div>
-            {description ? (
+            {presentation.description ? (
               <div className="[font-size:var(--ow-font-body)] leading-[var(--ow-line-chat)] text-muted-foreground">
-                {description}
+                {presentation.description}
               </div>
             ) : null}
           </div>
-          {onAction ? (
+          {presentation.kind === "ready" && presentation.action ? (
             <button
               type="button"
-              onClick={onAction}
+              onClick={presentation.action.execute}
               onMouseDown={(event) => event.preventDefault()}
               className="inline-flex h-[var(--ow-control-h-md)] items-center gap-[var(--ow-gap-sm)] rounded-[var(--ow-radius-md)] border border-border bg-background px-[var(--ow-space-3)] [font-size:var(--ow-font-control)] font-medium text-foreground transition hover:bg-background-secondary"
             >
-              <span>{actionTitle ?? "Open"}</span>
+              <span>{presentation.action.title}</span>
               <ChevronRight className="h-[var(--ow-icon-sm)] w-[var(--ow-icon-sm)]" />
             </button>
           ) : null}
         </div>
-      ) : (
-        <div className="[font-size:var(--ow-font-body)] text-muted-foreground">No items</div>
       )}
     </div>
   )

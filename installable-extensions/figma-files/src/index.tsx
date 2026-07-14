@@ -116,6 +116,7 @@ export default function FigmaFilesIndex(): React.JSX.Element {
     <List
       filtering={{ keepSectionOrder: true }}
       isLoading={isLoading}
+      navigationTitle="Figma Files"
       onSearchTextChange={setSearchText}
       searchBarAccessory={searchBarAccessory}
       searchBarPlaceholder={copy.searchFigmaFiles}

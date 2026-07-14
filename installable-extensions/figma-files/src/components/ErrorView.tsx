@@ -18,5 +18,5 @@ export function ErrorView() {
   then reopen the command.
   `;
 
-  return <Detail markdown={markdown} />;
+  return <Detail markdown={markdown} navigationTitle="Figma Files" />;
 }

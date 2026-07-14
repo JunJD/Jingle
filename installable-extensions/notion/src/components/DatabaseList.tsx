@@ -54,7 +54,7 @@ export function DatabaseList({ databasePage, setRecentPage, removeRecentPage, us
   }, [databasePage, setRecentPage])
 
   if (isLoadingDatabaseProperties || isLoadingDatabaseViews) {
-    return <List isLoading />;
+    return <List isLoading navigationTitle={navigationTitle} />;
   }
 
   return (
@@ -63,7 +63,10 @@ export function DatabaseList({ databasePage, setRecentPage, removeRecentPage, us
       searchBarPlaceholder="Filter pages"
       navigationTitle={navigationTitle}
       onSearchTextChange={setSearchText}
-      searchBarAccessory={createElement(DatabaseListSortDropdown, { onChange: setSort })}
+      searchBarAccessory={createElement(DatabaseListSortDropdown, {
+        onChange: setSort,
+        value: sort
+      })}
       throttle
     >
       <DatabaseView
@@ -90,14 +93,17 @@ export function DatabaseList({ databasePage, setRecentPage, removeRecentPage, us
 }
 
 const DatabaseListSortDropdown = memo(function DatabaseListSortDropdown({
-  onChange
+  onChange,
+  value
 }: {
   onChange: (value: "last_edited_time" | "created_time") => void
+  value: "last_edited_time" | "created_time"
 }) {
   return (
     <List.Dropdown
       tooltip="Sort by"
       storeValue
+      value={value}
       onChange={(value) => onChange(value as "last_edited_time" | "created_time")}
     >
       <List.Dropdown.Item title="Last Edited At" value="last_edited_time" />

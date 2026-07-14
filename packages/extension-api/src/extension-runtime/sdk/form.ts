@@ -104,7 +104,7 @@ export interface RuntimeFormProps {
   actions?: ReactNode
   children?: ReactNode
   isLoading?: boolean
-  navigationTitle?: string
+  navigationTitle: string
 }
 
 export interface RuntimeFormFieldProps {
@@ -112,7 +112,7 @@ export interface RuntimeFormFieldProps {
   error?: string
   id?: string
   info?: string
-  title?: string
+  title: string
 }
 
 export interface RuntimeFormTextFieldProps extends RuntimeFormFieldProps {
@@ -133,7 +133,7 @@ export interface RuntimeFormTextAreaProps extends RuntimeFormFieldProps {
 }
 
 export interface RuntimeFormCheckboxProps extends RuntimeFormFieldProps {
-  label?: string
+  label: string
   onChange: RuntimeFormFieldChangeHandler<boolean>
   storeValue?: boolean
   value?: boolean

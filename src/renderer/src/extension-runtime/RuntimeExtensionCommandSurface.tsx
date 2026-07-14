@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
   type Ref,
@@ -24,18 +23,13 @@ import { LauncherChrome } from "@launcher-components/LauncherChrome"
 import type { LauncherInputElement } from "@launcher-shell/input-element"
 import type {
   ExtensionActionNode,
-  ExtensionDetailMetadataNode,
   ExtensionDetailSurfaceSnapshot,
   ExtensionFormFieldNode,
   ExtensionFormDropdownFieldNode,
   ExtensionFormSurfaceSnapshot,
-  ExtensionRuntimeEventAck,
-  ExtensionListItemNode,
-  ExtensionListSectionNode,
   ExtensionListSurfaceSnapshot,
   ExtensionSurfaceSnapshot,
   ExtensionSvgVisualNode,
-  ExtensionToastPayload,
   ExtensionVisualNode
 } from "@shared/extension-runtime-protocol"
 import { LAUNCHER_COMMAND_IDS } from "@shared/shortcuts/ids"
@@ -54,44 +48,28 @@ import {
   type NativeSurfaceListSectionPresentation
 } from "../extension-host/list-presentation"
 import {
-  acknowledgeRuntimeFormLocalValue,
-  createRuntimeFormValueOverrides,
-  reconcileRuntimeFormLocalValues,
   type RuntimeFormLocalValues,
-  type RuntimeFormPendingValue,
   type RuntimeFormValue
 } from "./form-local-values"
 import { formatRuntimeActionShortcut, toLauncherActionShortcut } from "./runtime-action-shortcuts"
-import { handleRuntimeNavigationRequest } from "./runtime-navigation"
-import { RuntimeToastOverlay, type RuntimeToastState } from "./runtime-toast-overlay"
+import {
+  openRuntimeExternalTarget,
+  projectRuntimeActiveActionNodes,
+  projectRuntimeDetailMetadata,
+  projectRuntimeListChrome,
+  projectRuntimeListEmptyPresentation,
+  projectRuntimeListItemPrimaryAction,
+  projectRuntimeListSections,
+  useRuntimeExtensionController,
+  type RuntimeDetailMetadataViewModel,
+  type RuntimeListDropdownViewModel,
+  type RuntimeOpenExternalCommand
+} from "./runtime-extension-controller"
+import { RuntimeToastOverlay } from "./runtime-toast-overlay"
 import { resolveRuntimeVisualImageSource } from "./runtime-visual-assets"
 
 const RUNTIME_LIST_SHORTCUT_SCOPES = ["launcher.list"] as const
-const RUNTIME_LIST_QUERY_THROTTLE_MS = 250
-const RUNTIME_TOAST_DISMISS_MS = 3200
 const streamdownPlugins = { cjk, code, math, mermaid }
-
-function createRuntimeSessionId(): string {
-  if (typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID()
-  }
-
-  return `runtime-session-${Date.now()}-${Math.random().toString(36).slice(2)}`
-}
-
-function isOpenableMetadataTarget(value: string): boolean {
-  try {
-    const url = new URL(value)
-    return (
-      url.protocol === "http:" ||
-      url.protocol === "https:" ||
-      url.protocol === "mailto:" ||
-      url.protocol === "tel:"
-    )
-  } catch {
-    return false
-  }
-}
 
 function isPlainDeletionKey(event: ReactKeyboardEvent<LauncherInputElement>): boolean {
   return (
@@ -103,40 +81,8 @@ function isPlainDeletionKey(event: ReactKeyboardEvent<LauncherInputElement>): bo
   )
 }
 
-interface RuntimeListItemDescriptor extends ExtensionListItemNode {
-  sectionTitle?: string
-}
-
-interface RuntimeListSectionDescriptor extends Omit<ExtensionListSectionNode, "items"> {
-  items: RuntimeListItemDescriptor[]
-}
-
-interface RuntimeSurfaceState {
-  error: string | null
-  sessionId: string | null
-  snapshot: ExtensionSurfaceSnapshot | null
-}
-
-interface RuntimeFormState {
-  localValues: RuntimeFormLocalValues
-  pendingValues: ReadonlyMap<string, RuntimeFormPendingValue>
-}
-
 interface RuntimeVisualRenderContext {
   extensionName: string
-}
-
-type RuntimeFormStateAction =
-  | { ack: ExtensionRuntimeEventAck; type: "field.ack" }
-  | { changeId: string; fieldId: string; type: "field.change"; value: RuntimeFormValue }
-  | { fields: readonly ExtensionFormFieldNode[]; type: "surface.reconcile" }
-  | { type: "reset" }
-
-function createRuntimeFormState(): RuntimeFormState {
-  return {
-    localValues: {},
-    pendingValues: new Map()
-  }
 }
 
 async function completeRuntimeRunBotAgentRequest(
@@ -147,59 +93,6 @@ async function completeRuntimeRunBotAgentRequest(
 
 function getRuntimeRequestErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-function runtimeFormStateReducer(
-  state: RuntimeFormState,
-  action: RuntimeFormStateAction
-): RuntimeFormState {
-  if (action.type === "reset") {
-    return Object.keys(state.localValues).length === 0 && state.pendingValues.size === 0
-      ? state
-      : createRuntimeFormState()
-  }
-
-  if (action.type === "surface.reconcile") {
-    const reconciled = reconcileRuntimeFormLocalValues({
-      fields: action.fields,
-      localValues: state.localValues,
-      pendingValues: state.pendingValues
-    })
-
-    if (
-      reconciled.localValues === state.localValues &&
-      reconciled.pendingValues === state.pendingValues
-    ) {
-      return state
-    }
-
-    return reconciled
-  }
-
-  if (action.type === "field.ack") {
-    return acknowledgeRuntimeFormLocalValue({
-      changeId: action.ack.changeId,
-      fieldId: action.ack.fieldId,
-      localValues: state.localValues,
-      pendingValues: state.pendingValues
-    })
-  }
-
-  const pendingValues = new Map(state.pendingValues)
-  pendingValues.set(action.fieldId, {
-    changeId: action.changeId,
-    value: action.value
-  })
-
-  return {
-    localValues: Object.is(state.localValues[action.fieldId], action.value)
-      ? state.localValues
-      : {
-          ...state.localValues,
-          [action.fieldId]: action.value
-        },
-    pendingValues
-  }
 }
 
 function isListSnapshot(
@@ -218,63 +111,6 @@ function isFormSnapshot(
   snapshot: ExtensionSurfaceSnapshot | null
 ): snapshot is ExtensionFormSurfaceSnapshot {
   return snapshot?.kind === "form"
-}
-
-function mapRuntimeListItem(
-  item: ExtensionListItemNode,
-  section: ExtensionListSectionNode
-): RuntimeListItemDescriptor {
-  return {
-    ...item,
-    sectionTitle: section.title
-  }
-}
-
-function runtimeListItemMatchesQuery(item: ExtensionListItemNode, normalizedQuery: string): boolean {
-  if (!normalizedQuery) {
-    return true
-  }
-
-  const haystack = [item.title, item.subtitle ?? "", ...item.keywords].join(" ").toLowerCase()
-  return haystack.includes(normalizedQuery)
-}
-
-function filterSections(
-  sections: ExtensionListSectionNode[],
-  query: string
-): RuntimeListSectionDescriptor[] {
-  const normalizedQuery = query.trim().toLowerCase()
-
-  return sections.reduce<RuntimeListSectionDescriptor[]>((filteredSections, section) => {
-    const items = section.items.reduce<RuntimeListSectionDescriptor["items"]>(
-      (sectionItems, item) => {
-        if (runtimeListItemMatchesQuery(item, normalizedQuery)) {
-          sectionItems.push(mapRuntimeListItem(item, section))
-        }
-
-        return sectionItems
-      },
-      []
-    )
-
-    if (items.length > 0) {
-      filteredSections.push({ ...section, items })
-    }
-
-    return filteredSections
-  }, [])
-}
-
-function mapSections(sections: ExtensionListSectionNode[]): RuntimeListSectionDescriptor[] {
-  return sections.reduce<RuntimeListSectionDescriptor[]>((mappedSections, section) => {
-    const items = section.items.map((item) => mapRuntimeListItem(item, section))
-
-    if (items.length > 0) {
-      mappedSections.push({ ...section, items })
-    }
-
-    return mappedSections
-  }, [])
 }
 
 function renderVisual(
@@ -336,27 +172,16 @@ function renderAccessoryVisuals(
 }
 
 function RuntimeListDropdown(props: {
-  sessionId: string
-  snapshot: ExtensionListSurfaceSnapshot
-}): React.JSX.Element | null {
-  const { sessionId, snapshot } = props
-  const dropdown = snapshot.searchBarAccessory
-  if (!dropdown) {
-    return null
-  }
-
-  const value = dropdown.value ?? dropdown.sections[0]?.items[0]?.value ?? ""
+  dropdown: RuntimeListDropdownViewModel
+  onChange: (value: string) => void
+}): React.JSX.Element {
+  const { dropdown, onChange } = props
 
   return (
     <NativeExtensionSelect
       className={nativeSurfaceListDropdownClassName}
-      value={value}
-      onChange={(nextValue) => {
-        void window.api.extensionRuntime.sendEvent(sessionId, {
-          type: "list.dropdown.change",
-          value: nextValue
-        })
-      }}
+      value={dropdown.value}
+      onChange={onChange}
     >
       {dropdown.sections.map((section) =>
         section.title ? (
@@ -382,17 +207,17 @@ function RuntimeListDropdown(props: {
 function RuntimeSurfaceHeaderLeading(props: {
   canPop: boolean
   label?: string
+  onGoHome: () => void
   onPop: () => void
 }): React.JSX.Element {
-  const { canPop, label, onPop } = props
-  const navigation = useNativeExtensionNavigation()
+  const { canPop, label, onGoHome, onPop } = props
   const buttonLabel = canPop ? "Go Back" : "Go Home"
 
   return (
     <div className="flex min-w-0 items-center gap-[var(--ow-gap-sm)]">
       <button
         type="button"
-        onClick={canPop ? onPop : navigation.goHome}
+        onClick={canPop ? onPop : onGoHome}
         onMouseDown={(event) => event.preventDefault()}
         className="launcher-icon-button flex h-[var(--launcher-icon-button-size)] w-[var(--launcher-icon-button-size)] shrink-0 appearance-none items-center justify-center rounded-full border-0 text-muted-foreground transition hover:text-foreground"
         aria-label={buttonLabel}
@@ -411,18 +236,24 @@ function RuntimeSurfaceHeaderLeading(props: {
 
 function RuntimeDetailSurface(props: {
   createActionDescriptor: (action: ExtensionActionNode) => LauncherActionDescriptor
+  onGoHome: () => void
   onNavigateBack: () => void
+  openExternal: RuntimeOpenExternalCommand
   snapshot: ExtensionDetailSurfaceSnapshot
 }): React.JSX.Element {
-  const { createActionDescriptor, onNavigateBack, snapshot } = props
+  const { createActionDescriptor, onGoHome, onNavigateBack, openExternal, snapshot } = props
   const actionItems = useMemo(
     () => snapshot.actions.map(createActionDescriptor),
     [createActionDescriptor, snapshot.actions]
   )
+  const metadataEntries = useMemo(
+    () => snapshot.metadata.map(projectRuntimeDetailMetadata),
+    [snapshot.metadata]
+  )
   const surfaceController = useNativeSurfaceController({
     actions: actionItems,
-    footerLabel: snapshot.navigationTitle ?? "Detail",
-    primaryActionFallbackTitle: "Open"
+    footerLabel: snapshot.navigationTitle,
+    invalidPrimaryActionTitle: "Action unavailable"
   })
 
   return (
@@ -430,7 +261,11 @@ function RuntimeDetailSurface(props: {
       <NativeSurfaceChrome
         footer={surfaceController.footer}
         headerLeading={
-          <RuntimeSurfaceHeaderLeading canPop={snapshot.canPop === true} onPop={onNavigateBack} />
+          <RuntimeSurfaceHeaderLeading
+            canPop={snapshot.canPop === true}
+            onGoHome={onGoHome}
+            onPop={onNavigateBack}
+          />
         }
         surface="runtime-detail"
         title={snapshot.navigationTitle}
@@ -472,11 +307,12 @@ function RuntimeDetailSurface(props: {
                     Metadata
                   </div>
                   <div className="space-y-[var(--ow-space-3)]">
-                    {snapshot.metadata.map((entry) => (
+                    {metadataEntries.map((entry) => (
                       <RuntimeDetailMetadataEntry
-                        key={`${entry.title}:${entry.text}:${entry.target ?? ""}`}
+                        key={`${entry.title}:${entry.text}:${entry.openTarget ?? ""}`}
                         entry={entry}
                         extensionName={snapshot.extensionName}
+                        openExternal={openExternal}
                       />
                     ))}
                   </div>
@@ -493,21 +329,22 @@ function RuntimeDetailSurface(props: {
 }
 
 function RuntimeDetailMetadataEntry(props: {
-  entry: ExtensionDetailMetadataNode
+  entry: RuntimeDetailMetadataViewModel
   extensionName: string
+  openExternal: RuntimeOpenExternalCommand
 }): React.JSX.Element {
-  const { entry, extensionName } = props
-  const canOpenTarget = entry.target ? isOpenableMetadataTarget(entry.target) : false
+  const { entry, extensionName, openExternal } = props
+  const canOpenTarget = entry.openTarget !== null
   const textClassName = canOpenTarget
     ? "break-words [font-size:var(--ow-font-body)] text-primary underline-offset-2 hover:underline"
     : "break-words [font-size:var(--ow-font-body)] text-foreground"
 
   const handleOpen = (): void => {
-    if (!entry.target || !canOpenTarget) {
+    if (!entry.openTarget) {
       return
     }
 
-    void window.electron.openExternal(entry.target)
+    openExternal(entry.openTarget)
   }
 
   return (
@@ -538,6 +375,7 @@ function RuntimeFormSurface(props: {
   localValues: RuntimeFormLocalValues
   onFieldChange: (fieldId: string, value: RuntimeFormValue) => void
   onFormDropdownSearch: (fieldId: string, query: string) => void
+  onGoHome: () => void
   onNavigateBack: () => void
   snapshot: ExtensionFormSurfaceSnapshot
 }): React.JSX.Element {
@@ -546,6 +384,7 @@ function RuntimeFormSurface(props: {
     localValues,
     onFieldChange,
     onFormDropdownSearch,
+    onGoHome,
     onNavigateBack,
     snapshot
   } = props
@@ -555,8 +394,8 @@ function RuntimeFormSurface(props: {
   )
   const surfaceController = useNativeSurfaceController({
     actions: actionItems,
-    footerLabel: snapshot.navigationTitle ?? "Form",
-    primaryActionFallbackTitle: "Submit"
+    footerLabel: snapshot.navigationTitle,
+    invalidPrimaryActionTitle: "Submit unavailable"
   })
 
   const handleFieldChange = (fieldId: string, value: RuntimeFormValue): void => {
@@ -568,7 +407,11 @@ function RuntimeFormSurface(props: {
       <NativeSurfaceChrome
         footer={surfaceController.footer}
         headerLeading={
-          <RuntimeSurfaceHeaderLeading canPop={snapshot.canPop === true} onPop={onNavigateBack} />
+          <RuntimeSurfaceHeaderLeading
+            canPop={snapshot.canPop === true}
+            onGoHome={onGoHome}
+            onPop={onNavigateBack}
+          />
         }
         surface="runtime-form"
         title={snapshot.navigationTitle}
@@ -675,7 +518,7 @@ function RuntimeFormField(props: {
             ref={inputRef as Ref<HTMLInputElement>}
             onChange={(event) => onChange(event.target.checked)}
           />
-          <span>{field.label ?? field.title}</span>
+          <span>{field.label}</span>
         </span>
       </label>
     )
@@ -859,45 +702,25 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   const hostNavigation = useNativeExtensionNavigation()
   const surface = useNativeExtensionSurface()
   const activeSessionIdRef = useRef<string | null>(null)
-  const initialSeedQueryRef = useRef(host.seedQuery)
-  const lastLocalInputRef = useRef(host.seedQuery)
-  const hasReceivedListSurfaceRef = useRef(false)
-  const listQueryThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const nextFormChangeIdRef = useRef(0)
-  const syncInputAfterActionRef = useRef(false)
-  const toastDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const nextToastIdRef = useRef(0)
-  const [formState, dispatchFormState] = useReducer(
-    runtimeFormStateReducer,
-    undefined,
-    createRuntimeFormState
-  )
-  const [inputText, setInputText] = useState(host.seedQuery)
-  const [selectedIndex, setSelectedIndex] = useState(0)
-  const [runtimeToast, setRuntimeToast] = useState<RuntimeToastState | null>(null)
-  const [runtimeState, setRuntimeState] = useState<RuntimeSurfaceState>({
-    error: null,
-    sessionId: null,
-    snapshot: null
+  const controller = useRuntimeExtensionController({
+    activeSessionIdRef,
+    host,
+    navigation: hostNavigation
   })
-  const snapshot = runtimeState.snapshot
+  const [selectedIndex, setSelectedIndex] = useState(0)
+
+  const snapshot = controller.runtimeState.snapshot
   const detailSnapshot = isDetailSnapshot(snapshot) ? snapshot : null
   const formSnapshot = isFormSnapshot(snapshot) ? snapshot : null
   const listSnapshot = isListSnapshot(snapshot) ? snapshot : null
-  const visualRenderContext = useMemo<RuntimeVisualRenderContext>(
-    () => ({
-      extensionName: snapshot?.extensionName ?? host.extensionName
-    }),
-    [host.extensionName, snapshot?.extensionName]
+  const listDropdownProjection = controller.listDropdownProjection
+  const visualRenderContext = useMemo<RuntimeVisualRenderContext | null>(
+    () => (snapshot ? { extensionName: snapshot.extensionName } : null),
+    [snapshot]
   )
   const sections = useMemo(
-    () =>
-      listSnapshot
-        ? listSnapshot.filtering
-          ? filterSections(listSnapshot.sections, inputText)
-          : mapSections(listSnapshot.sections)
-        : [],
-    [inputText, listSnapshot]
+    () => projectRuntimeListSections({ query: controller.inputText, snapshot: listSnapshot }),
+    [controller.inputText, listSnapshot]
   )
   const presentationSections = useMemo<NativeSurfaceListSectionPresentation[]>(
     () =>
@@ -905,12 +728,12 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         ...section,
         items: section.items.map((item) => ({
           accessory:
-            item.accessories.length > 0
+            item.accessories.length > 0 && visualRenderContext
               ? renderAccessoryVisuals(item.accessories, visualRenderContext)
               : undefined,
           actionLabel: item.actions[0]?.title,
           hasActionPanel: item.actions.length > 1,
-          icon: renderVisual(item.icon, visualRenderContext),
+          icon: visualRenderContext ? renderVisual(item.icon, visualRenderContext) : undefined,
           id: item.id,
           subtitle: item.subtitle,
           title: item.title
@@ -921,149 +744,52 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
   const items = sections.flatMap((section) => section.items)
   const activeSelectedIndex = Math.min(selectedIndex, Math.max(items.length - 1, 0))
   const selectedItem = items[activeSelectedIndex] ?? null
-
-  const sendRuntimeEvent = useCallback(
-    (event: Parameters<typeof window.api.extensionRuntime.sendEvent>[1]): void => {
-      if (!runtimeState.sessionId) {
-        return
-      }
-
-      void window.api.extensionRuntime.sendEvent(runtimeState.sessionId, event)
-    },
-    [runtimeState.sessionId]
+  const listChrome = useMemo(
+    () => projectRuntimeListChrome({ selectedItem, snapshot: listSnapshot }),
+    [listSnapshot, selectedItem]
   )
-  const sendListQueryChange = useCallback(
-    (query: string): void => {
-      sendRuntimeEvent({
-        query,
-        type: "list.query.change"
+
+  const sendListDropdownChange = useCallback(
+    (value: string): void => {
+      controller.sendEvent({
+        type: "list.dropdown.change",
+        value
       })
     },
-    [sendRuntimeEvent]
+    [controller]
   )
-  const clearListQueryThrottleTimer = useCallback((): void => {
-    if (!listQueryThrottleTimerRef.current) {
-      return
-    }
-
-    clearTimeout(listQueryThrottleTimerRef.current)
-    listQueryThrottleTimerRef.current = null
-  }, [])
-  const clearToastDismissTimer = useCallback((): void => {
-    if (!toastDismissTimerRef.current) {
-      return
-    }
-
-    clearTimeout(toastDismissTimerRef.current)
-    toastDismissTimerRef.current = null
-  }, [])
-  const dismissRuntimeToast = useCallback((): void => {
-    clearToastDismissTimer()
-    setRuntimeToast(null)
-  }, [clearToastDismissTimer])
-  const showRuntimeToast = useCallback(
-    (toast: ExtensionToastPayload): void => {
-      clearToastDismissTimer()
-      const id = nextToastIdRef.current++
-      setRuntimeToast({ id, toast })
-      toastDismissTimerRef.current = setTimeout(() => {
-        setRuntimeToast((current) => (current?.id === id ? null : current))
-        toastDismissTimerRef.current = null
-      }, RUNTIME_TOAST_DISMISS_MS)
-    },
-    [clearToastDismissTimer]
-  )
-  const executeRuntimeToastAction = useCallback(
-    (actionId: string): void => {
-      sendRuntimeEvent({
-        actionId,
-        type: "toast.action.execute"
-      })
-      dismissRuntimeToast()
-    },
-    [dismissRuntimeToast, sendRuntimeEvent]
-  )
-  const scheduleListQueryChange = useCallback(
-    (query: string, throttle: boolean): void => {
-      clearListQueryThrottleTimer()
-      if (!throttle) {
-        sendListQueryChange(query)
-        return
-      }
-
-      listQueryThrottleTimerRef.current = setTimeout(() => {
-        listQueryThrottleTimerRef.current = null
-        sendListQueryChange(query)
-      }, RUNTIME_LIST_QUERY_THROTTLE_MS)
-    },
-    [clearListQueryThrottleTimer, sendListQueryChange]
-  )
-
-  const executeActionNode = useCallback(
-    (action: ExtensionActionNode): void => {
-      if (!snapshot) {
-        return
-      }
-
-      if (snapshot.kind === "list") {
-        syncInputAfterActionRef.current = true
-      }
-
-      sendRuntimeEvent({
-        actionId: action.id,
-        formValues:
-          snapshot.kind === "form"
-            ? createRuntimeFormValueOverrides({
-                fields: snapshot.fields,
-                localValues: formState.localValues
-              })
-            : undefined,
-        revision: snapshot.revision,
-        type: "action.execute"
-      })
-    },
-    [formState.localValues, sendRuntimeEvent, snapshot]
-  )
+  const openExternal: RuntimeOpenExternalCommand = openRuntimeExternalTarget
 
   const createActionDescriptor = useCallback(
-    (action: ExtensionActionNode): LauncherActionDescriptor =>
-      createRuntimeActionDescriptor({
+    (action: ExtensionActionNode): LauncherActionDescriptor => {
+      if (!visualRenderContext) {
+        throw new Error("Cannot project an extension action before its surface is ready.")
+      }
+
+      return createRuntimeActionDescriptor({
         action,
-        executeActionNode,
+        executeActionNode: controller.executeAction,
         visualRenderContext
-      }),
-    [executeActionNode, visualRenderContext]
+      })
+    },
+    [controller.executeAction, visualRenderContext]
   )
 
-  /* eslint-disable react-hooks/refs -- LauncherActionDescriptor callbacks run from user events, not while descriptors are mapped. */
-  const listActions = useMemo(
-    () => (listSnapshot?.actions ?? []).map(createActionDescriptor),
-    [createActionDescriptor, listSnapshot?.actions]
+  const activeActionNodes = useMemo(
+    () => projectRuntimeActiveActionNodes({ listSnapshot, selectedItem }),
+    [listSnapshot, selectedItem]
   )
-  const emptyViewActions = useMemo(
-    () => (listSnapshot?.emptyView?.actions ?? []).map(createActionDescriptor),
-    [createActionDescriptor, listSnapshot?.emptyView?.actions]
+  const activeActions = useMemo(
+    () => activeActionNodes.map(createActionDescriptor),
+    [activeActionNodes, createActionDescriptor]
   )
-  const selectedActions = useMemo(
-    () => (selectedItem?.actions ?? []).map(createActionDescriptor),
-    [createActionDescriptor, selectedItem?.actions]
-  )
-  /* eslint-enable react-hooks/refs */
-
-  const activeActions =
-    selectedActions.length > 0
-      ? selectedActions
-      : emptyViewActions.length > 0
-        ? emptyViewActions
-        : listActions
-  const footerLabel = selectedItem?.sectionTitle ?? listSnapshot?.navigationTitle ?? "Results"
   const footerCount = items.length > 0 ? `${activeSelectedIndex + 1} of ${items.length}` : null
   const surfaceController = useNativeSurfaceController({
     actions: activeActions,
     footerCount,
-    footerLabel,
-    headerLabel: listSnapshot?.navigationTitle,
-    primaryActionFallbackTitle: "Open"
+    footerLabel: listChrome.footerLabel,
+    headerLabel: listChrome.headerLabel,
+    invalidPrimaryActionTitle: "Open unavailable"
   })
   const handleMoveSelectionDownShortcut = (event: KeyboardEvent): void => {
     if (event.target !== surface.inputRef.current || items.length === 0) {
@@ -1088,84 +814,6 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     handleMoveSelectionDownShortcut
   )
   useShortcutCommandHandler(LAUNCHER_COMMAND_IDS.listMoveSelectionUp, handleMoveSelectionUpShortcut)
-
-  useEffect(() => {
-    const unsubscribe = window.api.extensionRuntime.subscribeSurfaces(
-      (event) => {
-        if (event.session.sessionId !== activeSessionIdRef.current) {
-          return
-        }
-
-        setRuntimeState((current) => ({
-          ...current,
-          error: null,
-          sessionId: event.session.sessionId,
-          snapshot: event.surface
-        }))
-
-        if (event.surface.kind === "list") {
-          const isFirstListSurface = !hasReceivedListSurfaceRef.current
-          hasReceivedListSurfaceRef.current = true
-          const localInputText = lastLocalInputRef.current
-          const shouldSyncInput =
-            syncInputAfterActionRef.current ||
-            (isFirstListSurface && localInputText === initialSeedQueryRef.current) ||
-            event.surface.searchText === localInputText
-          if (shouldSyncInput) {
-            syncInputAfterActionRef.current = false
-            lastLocalInputRef.current = event.surface.searchText
-            setInputText(event.surface.searchText)
-          } else {
-            void window.api.extensionRuntime.sendEvent(event.session.sessionId, {
-              query: localInputText,
-              type: "list.query.change"
-            })
-          }
-        }
-
-        if (event.surface.kind === "form") {
-          dispatchFormState({
-            fields: event.surface.fields,
-            type: "surface.reconcile"
-          })
-        } else {
-          dispatchFormState({ type: "reset" })
-        }
-      },
-      (error) => {
-        if (error.sessionId !== activeSessionIdRef.current) {
-          return
-        }
-
-        setRuntimeState((current) => ({
-          ...current,
-          error: error.error.message
-        }))
-      }
-    )
-
-    return unsubscribe
-  }, [clearListQueryThrottleTimer])
-
-  useEffect(() => {
-    return window.api.extensionRuntime.subscribeNavigationRequests((event) => {
-      if (event.sessionId !== activeSessionIdRef.current) {
-        return
-      }
-
-      void handleRuntimeNavigationRequest(event, hostNavigation)
-    })
-  }, [hostNavigation])
-
-  useEffect(() => {
-    return window.api.extensionRuntime.subscribeToastRequests((event) => {
-      if (event.sessionId !== activeSessionIdRef.current) {
-        return
-      }
-
-      showRuntimeToast(event.toast)
-    })
-  }, [showRuntimeToast])
 
   useEffect(() => {
     return window.api.extensionRuntime.subscribeRunBotAgentRequests((event) => {
@@ -1201,96 +849,9 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
     })
   }, [host])
 
-  useEffect(() => {
-    return window.api.extensionRuntime.subscribeEventAcks((event) => {
-      if (event.session.sessionId !== activeSessionIdRef.current) {
-        return
-      }
-
-      dispatchFormState({
-        ack: event.ack,
-        type: "field.ack"
-      })
-    })
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    const sessionId = createRuntimeSessionId()
-
-    hasReceivedListSurfaceRef.current = false
-    activeSessionIdRef.current = sessionId
-
-    void window.api.extensionRuntime
-      .startForeground({
-        context: {
-          commandName: host.commandName,
-          commandPreferences: host.commandPreferences,
-          extensionName: host.extensionName,
-          extensionPreferences: {},
-          initialAction: host.initialAction,
-          launchProps: host.launchProps,
-          locale: host.locale,
-          mode: "view",
-          seedQuery: initialSeedQueryRef.current
-        },
-        sessionId
-      })
-      .then((session) => {
-        if (cancelled) {
-          void window.api.extensionRuntime.stopForeground(session.sessionId)
-          return
-        }
-
-        nextFormChangeIdRef.current = 0
-        dispatchFormState({ type: "reset" })
-        clearListQueryThrottleTimer()
-        setRuntimeState((current) => {
-          if (current.sessionId === session.sessionId) {
-            return current
-          }
-
-          return {
-            error: null,
-            sessionId: session.sessionId,
-            snapshot: null
-          }
-        })
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setRuntimeState({
-            error: error instanceof Error ? error.message : String(error),
-            sessionId: null,
-            snapshot: null
-          })
-        }
-      })
-
-    return () => {
-      cancelled = true
-      clearListQueryThrottleTimer()
-      clearToastDismissTimer()
-      setRuntimeToast(null)
-      void window.api.extensionRuntime.stopForeground(sessionId)
-      activeSessionIdRef.current = null
-    }
-  }, [
-    host.commandName,
-    host.commandPreferences,
-    host.extensionName,
-    host.initialAction,
-    host.launchProps,
-    host.locale,
-    clearListQueryThrottleTimer,
-    clearToastDismissTimer
-  ])
-
   const handleInputChange = (value: string): void => {
-    lastLocalInputRef.current = value
-    setInputText(value)
     setSelectedIndex(0)
-    scheduleListQueryChange(value, listSnapshot?.throttle === true)
+    controller.setInputText(value, listSnapshot?.throttle === true)
   }
 
   const handleInputKeyDown = (event: ReactKeyboardEvent<LauncherInputElement>): void => {
@@ -1300,66 +861,64 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
 
     event.preventDefault()
     event.stopPropagation()
-    hostNavigation.goHome()
+    controller.goHome()
   }
 
   const handleFieldChange = (fieldId: string, value: RuntimeFormValue): void => {
-    const changeId = `form-change-${nextFormChangeIdRef.current++}`
-    dispatchFormState({ changeId, fieldId, type: "field.change", value })
-    sendRuntimeEvent({
-      changeId,
-      fieldId,
-      type: "form.field.change",
-      value
-    })
+    controller.setFormFieldValue(fieldId, value)
   }
 
   const handleFormDropdownSearch = (fieldId: string, query: string): void => {
-    sendRuntimeEvent({
-      fieldId,
-      query,
-      type: "form.dropdown.search"
-    })
+    controller.setFormDropdownSearch(fieldId, query)
   }
 
   const handleNavigateBack = (): void => {
-    sendRuntimeEvent({
-      type: "navigation.pop"
-    })
+    controller.navigateBack()
   }
 
-  if (!runtimeState.error && detailSnapshot) {
+  const surfaceError = controller.surfaceError
+  const emptyPresentation = projectRuntimeListEmptyPresentation({
+    listSnapshot,
+    primaryAction: surfaceController.actionController.primaryActionPresentation,
+    snapshot,
+    surfaceError
+  })
+
+  if (!surfaceError && detailSnapshot) {
     return (
       <div className="relative h-full">
         <RuntimeDetailSurface
           createActionDescriptor={createActionDescriptor}
+          onGoHome={controller.goHome}
           onNavigateBack={handleNavigateBack}
+          openExternal={openExternal}
           snapshot={detailSnapshot}
         />
         <RuntimeToastOverlay
-          onAction={executeRuntimeToastAction}
-          onDismiss={dismissRuntimeToast}
-          toast={runtimeToast}
+          onAction={controller.executeToastAction}
+          onDismiss={controller.dismissToast}
+          toast={controller.runtimeToast}
         />
       </div>
     )
   }
 
-  if (!runtimeState.error && formSnapshot) {
+  if (!surfaceError && formSnapshot) {
     return (
       <div className="relative h-full">
         <RuntimeFormSurface
           createActionDescriptor={createActionDescriptor}
-          localValues={formState.localValues}
+          localValues={controller.formLocalValues}
           onFieldChange={handleFieldChange}
           onFormDropdownSearch={handleFormDropdownSearch}
+          onGoHome={controller.goHome}
           onNavigateBack={handleNavigateBack}
           snapshot={formSnapshot}
         />
         <RuntimeToastOverlay
-          onAction={executeRuntimeToastAction}
-          onDismiss={dismissRuntimeToast}
-          toast={runtimeToast}
+          onAction={controller.executeToastAction}
+          onDismiss={controller.dismissToast}
+          toast={controller.runtimeToast}
         />
       </div>
     )
@@ -1372,51 +931,47 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
         headerLeading={
           <RuntimeSurfaceHeaderLeading
             canPop={listSnapshot?.canPop === true}
-            label={listSnapshot?.navigationTitle}
+            label={listChrome.headerLabel}
+            onGoHome={controller.goHome}
             onPop={handleNavigateBack}
           />
         }
         headerTrailing={
-          listSnapshot && runtimeState.sessionId ? (
-            <RuntimeListDropdown sessionId={runtimeState.sessionId} snapshot={listSnapshot} />
+          listDropdownProjection.kind === "ready" ? (
+            <RuntimeListDropdown
+              dropdown={listDropdownProjection.dropdown}
+              onChange={sendListDropdownChange}
+            />
           ) : null
         }
         inputRef={surface.inputRef}
         inputStatus={snapshot ? surface.inputStatus : "pending"}
-        inputValue={inputText}
+        inputValue={controller.inputText}
         onInputKeyDown={handleInputKeyDown}
         onInputValueChange={handleInputChange}
-        placeholders={[listSnapshot?.searchBarPlaceholder ?? "Search"]}
+        placeholders={listChrome.placeholders}
         shellConfig={surface.shellConfig}
         surface="runtime-list"
       >
-        {runtimeState.error ? (
-          <div className="flex flex-1 items-center justify-center px-[var(--ow-space-6)] [font-size:var(--ow-font-body)] text-muted-foreground">
-            {runtimeState.error}
-          </div>
-        ) : snapshot?.kind === "error" ? (
-          <NativeSurfaceListEmptyState description={snapshot.description} title={snapshot.title} />
-        ) : !listSnapshot ? (
-          <NativeSurfaceListEmptyState isLoading />
-        ) : items.length > 0 ? (
+        {!surfaceError && listSnapshot && items.length > 0 ? (
           <NativeSurfaceListRows
             isLoadingMore={listSnapshot.pagination?.isLoading === true}
             onLoadMore={
               listSnapshot.pagination?.hasMore
                 ? () =>
-                    sendRuntimeEvent({
+                    controller.sendEvent({
                       type: "list.pagination.load-more"
                     })
                 : undefined
             }
             onExecute={(index) => {
               setSelectedIndex(index)
-              const itemActions = items[index]?.actions.length
-                ? items[index]!.actions
-                : listSnapshot.actions
-              const primaryAction = itemActions[0]
+              const primaryAction = projectRuntimeListItemPrimaryAction({
+                item: items[index],
+                listSnapshot
+              })
               if (primaryAction && !primaryAction.disabled) {
-                executeActionNode(primaryAction)
+                controller.executeAction(primaryAction)
               }
             }}
             onOpenActions={(index) => {
@@ -1428,25 +983,15 @@ export function RuntimeExtensionCommandSurface(): React.JSX.Element {
             selectedIndex={selectedIndex}
           />
         ) : (
-          <NativeSurfaceListEmptyState
-            actionTitle={surfaceController.actionController.primaryAction?.title}
-            description={listSnapshot.emptyView?.description}
-            isLoading={listSnapshot.isLoading}
-            onAction={
-              surfaceController.actionController.primaryAction
-                ? surfaceController.actionController.executePrimaryAction
-                : undefined
-            }
-            title={listSnapshot.emptyView?.title}
-          />
+          <NativeSurfaceListEmptyState presentation={emptyPresentation} />
         )}
       </LauncherChrome>
 
       {surfaceController.actionLayer}
       <RuntimeToastOverlay
-        onAction={executeRuntimeToastAction}
-        onDismiss={dismissRuntimeToast}
-        toast={runtimeToast}
+        onAction={controller.executeToastAction}
+        onDismiss={controller.dismissToast}
+        toast={controller.runtimeToast}
       />
     </div>
   )
