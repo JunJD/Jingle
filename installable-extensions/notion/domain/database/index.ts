@@ -79,7 +79,7 @@ export async function fetchDatabases() {
       mappedDatabases.push({
         id: result.id,
         last_edited_time: new Date(result.last_edited_time).getTime(),
-        title: result.title[0]?.plain_text,
+        title: result.title[0]?.plain_text ?? null,
         ...getDatabaseIconUrls(result.icon)
       })
     }
