@@ -102,6 +102,7 @@ export function createApplicationMenuTemplate(
 
   const settingsItem: MenuItemConstructorOptions = {
     label: "Settings",
+    accelerator: "CommandOrControl+,",
     click: () => {
       params.showSettings()
     }
@@ -109,7 +110,23 @@ export function createApplicationMenuTemplate(
 
   return process.platform === "darwin"
     ? [
-        { label: "Jingle", role: "appMenu" },
+        {
+          label: "Jingle",
+          role: "appMenu",
+          submenu: [
+            { role: "about" },
+            { type: "separator" },
+            settingsItem,
+            { type: "separator" },
+            { role: "services" },
+            { type: "separator" },
+            { role: "hide" },
+            { role: "hideOthers" },
+            { role: "unhide" },
+            { type: "separator" },
+            { role: "quit" }
+          ]
+        },
         {
           label: "File",
           submenu: [{ role: "close" }]
@@ -121,7 +138,6 @@ export function createApplicationMenuTemplate(
           submenu: [
             mainSubjectItem,
             launcherItem,
-            settingsItem,
             { type: "separator" },
             { role: "minimize" },
             { role: "zoom" },

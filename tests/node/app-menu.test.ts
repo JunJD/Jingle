@@ -18,8 +18,8 @@ function withPlatform<T>(platform: NodeJS.Platform, fn: () => T): T {
   }
 }
 
-test("macOS application menu uses the Jingle app label", () => {
-  const template = withPlatform("darwin", () =>
+function createTemplate(platform: NodeJS.Platform) {
+  return withPlatform(platform, () =>
     createApplicationMenuTemplate({
       isDev: true,
       launcherShortcutAccelerator: null,
@@ -28,7 +28,37 @@ test("macOS application menu uses the Jingle app label", () => {
       showSettings: () => {}
     })
   )
+}
+
+function getSubmenu(item: Electron.MenuItemConstructorOptions | undefined) {
+  assert.ok(Array.isArray(item?.submenu))
+  return item.submenu
+}
+
+test("macOS exposes Settings with its app-wide accelerator in the Jingle app menu", () => {
+  const template = createTemplate("darwin")
 
   assert.equal(template[0]?.label, "Jingle")
   assert.equal(template[0]?.role, "appMenu")
+  const settingsItems = getSubmenu(template[0]).filter((item) => item.label === "Settings")
+  assert.equal(settingsItems.length, 1)
+  assert.equal(settingsItems[0]?.accelerator, "CommandOrControl+,")
+  assert.equal(
+    getSubmenu(template.find((item) => item.label === "Window")).some(
+      (item) => item.label === "Settings"
+    ),
+    false
+  )
 })
+
+for (const platform of ["win32", "linux"] satisfies NodeJS.Platform[]) {
+  test(`${platform} exposes Settings with its app-wide accelerator in the File menu`, () => {
+    const template = createTemplate(platform)
+    const settingsItems = getSubmenu(template.find((item) => item.label === "File")).filter(
+      (item) => item.label === "Settings"
+    )
+
+    assert.equal(settingsItems.length, 1)
+    assert.equal(settingsItems[0]?.accelerator, "CommandOrControl+,")
+  })
+}
