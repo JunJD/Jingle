@@ -29,6 +29,7 @@ import {
   listAgentMemorySuggestions,
   recordAgentMemoryInclusions,
   rejectAgentMemorySuggestion,
+  restoreAgentMemory,
   updateAgentMemory
 } from "../db/agent-memory"
 import { getThreadWorkspaceBinding } from "../db/thread-workspace"
@@ -103,9 +104,7 @@ function filterMemoryType(
   memories: JingleMemoryRecord[],
   type: JingleMemoryRecord["type"]
 ): JingleMemoryRecord[] {
-  return memories
-    .filter((memory) => memory.type === type)
-    .slice(0, MEMORY_LIMITS[type])
+  return memories.filter((memory) => memory.type === type).slice(0, MEMORY_LIMITS[type])
 }
 
 export class JingleMemoryService {
@@ -253,9 +252,7 @@ export class JingleMemoryService {
     })
   }
 
-  listSuggestions(
-    input: ListJingleSuggestionsInput
-  ): Promise<JingleMemorySuggestionRecord[]> {
+  listSuggestions(input: ListJingleSuggestionsInput): Promise<JingleMemorySuggestionRecord[]> {
     return this.listSuggestionsForCurrentWorkspace(input)
   }
 
@@ -284,6 +281,11 @@ export class JingleMemoryService {
   async archiveMemory(memoryId: string): Promise<JingleMemoryRecord> {
     await this.assertMemoryMutableFromCurrentWorkspace(memoryId)
     return archiveAgentMemory(memoryId)
+  }
+
+  async restoreMemory(memoryId: string): Promise<JingleMemoryRecord> {
+    await this.assertMemoryMutableFromCurrentWorkspace(memoryId)
+    return restoreAgentMemory(memoryId)
   }
 
   async deleteMemory(memoryId: string): Promise<void> {
@@ -315,7 +317,9 @@ export class JingleMemoryService {
   private async resolveThreadOrCurrentWorkspaceIdentity(
     threadId: string | null
   ): Promise<JingleWorkspaceIdentity> {
-    const threadWorkspaceIdentity = threadId ? await this.getThreadWorkspaceIdentity(threadId) : null
+    const threadWorkspaceIdentity = threadId
+      ? await this.getThreadWorkspaceIdentity(threadId)
+      : null
     return threadWorkspaceIdentity ?? this.requireCurrentWorkspaceIdentity()
   }
 
@@ -390,7 +394,7 @@ export class JingleMemoryService {
   ): Promise<JingleMemorySuggestionRecord> {
     const resolvedWorkspaceIdentity =
       input.scope === "workspace"
-        ? workspaceIdentity ?? (await this.requireCurrentWorkspaceIdentity())
+        ? (workspaceIdentity ?? (await this.requireCurrentWorkspaceIdentity()))
         : null
 
     return createAgentMemorySuggestion({

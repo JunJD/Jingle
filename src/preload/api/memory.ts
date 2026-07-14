@@ -50,14 +50,14 @@ export const memoryApi = {
   rejectSuggestion: (suggestionId: string): Promise<JingleMemorySuggestionRecord> => {
     return invokeIpc("memory:rejectSuggestion", suggestionId)
   },
-  updateMemory: (
-    memoryId: string,
-    input: UpdateJingleMemoryInput
-  ): Promise<JingleMemoryRecord> => {
+  updateMemory: (memoryId: string, input: UpdateJingleMemoryInput): Promise<JingleMemoryRecord> => {
     return invokeIpc("memory:updateMemory", memoryId, input)
   },
   archiveMemory: (memoryId: string): Promise<JingleMemoryRecord> => {
     return invokeIpc("memory:archiveMemory", memoryId)
+  },
+  restoreMemory: (memoryId: string): Promise<JingleMemoryRecord> => {
+    return invokeIpc("memory:restoreMemory", memoryId)
   },
   deleteMemory: (memoryId: string): Promise<void> => {
     return invokeIpc("memory:deleteMemory", memoryId)

@@ -119,6 +119,15 @@ export class JingleMemoryController {
 
     registerValidatedIpcHandle(
       ipcMain,
+      "memory:restoreMemory",
+      memoryIdArgsSchema,
+      (_event, memoryId) => {
+        return this.service.restoreMemory(memoryId)
+      }
+    )
+
+    registerValidatedIpcHandle(
+      ipcMain,
       "memory:deleteMemory",
       memoryIdArgsSchema,
       async (_event, memoryId) => {

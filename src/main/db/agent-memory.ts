@@ -368,7 +368,8 @@ export async function updateAgentMemory(
     input.scope !== undefined || input.workspaceKey !== undefined
       ? normalizeScopeWorkspace({
           scope: (input.scope ?? existing.scope) as JingleMemoryRecord["scope"],
-          workspaceKey: input.workspaceKey !== undefined ? input.workspaceKey : existing.workspaceKey
+          workspaceKey:
+            input.workspaceKey !== undefined ? input.workspaceKey : existing.workspaceKey
         })
       : null
   const row = await prisma.agentMemory.update({
@@ -392,6 +393,19 @@ export async function archiveAgentMemory(memoryId: string): Promise<JingleMemory
     where: { memoryId },
     data: {
       status: "archived",
+      updatedAt: BigInt(Date.now())
+    }
+  })
+
+  return mapMemory(row)
+}
+
+export async function restoreAgentMemory(memoryId: string): Promise<JingleMemoryRecord> {
+  const prisma = getPrismaClient()
+  const row = await prisma.agentMemory.update({
+    where: { memoryId },
+    data: {
+      status: "active",
       updatedAt: BigInt(Date.now())
     }
   })
