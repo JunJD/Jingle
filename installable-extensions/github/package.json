@@ -14,7 +14,7 @@
     "@octokit/rest": "^22.0.1",
     "@jingle/extension-api": "workspace:*",
     "lucide-react": "^0.469.0",
-    "react": "^19.2.1",
-    "zod": "^4.0.0"
+    "react": "^19.2.7",
+    "zod": "^4.4.3"
   }
 }
