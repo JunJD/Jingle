@@ -612,8 +612,7 @@ body[data-window="pinned-ai-session"],
 }
 
 .chat-history-shell,
-.chat-thread-surface,
-.markdown-viewer-surface {
+.chat-thread-surface {
   --ow-code-preview-max-h: 22rem;
   --ow-chip-label-max-width: 120px;
   --ow-message-max-w: 92%;
@@ -3214,14 +3213,6 @@ body[data-window="pinned-ai-session"] .ow-markdown,
   --ow-markdown-table-radius: var(--ow-radius-sm);
   --ow-markdown-table-width: max-content;
   --ow-markdown-table-wrapper-w: 100%;
-}
-
-.markdown-viewer-surface .ow-markdown {
-  --ow-markdown-heading-1: 24px;
-  --ow-markdown-heading-2: 20px;
-  --ow-markdown-heading-3: 17px;
-  --ow-markdown-heading-gap-before: var(--ow-space-6);
-  --ow-markdown-table-max-h: 32rem;
 }
 
 .ow-markdown :where(p) {
